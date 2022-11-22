@@ -1828,6 +1828,11 @@ ovn-nbctl set Load_Balancer lb8 options:neighbor_responder=all
 ovn-nbctl lb-add lb9 "[[4444::4444]]:8080" "[[10::10]]:8080" udp
 ovn-nbctl set Load_Balancer lb9 options:neighbor_responder=all
 
+ovn-nbctl lb-add lb10 "55.55.55.55:8080" "10.0.0.8:8080" udp
+ovn-nbctl set Load_Balancer lb10 options:neighbor_responder=none
+ovn-nbctl lb-add lb11 "[[5555::5555]]:8080" "[[10::10]]:8080" udp
+ovn-nbctl set Load_Balancer lb11 options:neighbor_responder=none
+
 ovn-nbctl lr-lb-add lr lb1
 ovn-nbctl lr-lb-add lr lb2
 ovn-nbctl lr-lb-add lr lb3
@@ -1837,6 +1842,8 @@ ovn-nbctl lr-lb-add lr lb6
 ovn-nbctl lr-lb-add lr lb7
 ovn-nbctl lr-lb-add lr lb8
 ovn-nbctl lr-lb-add lr lb9
+ovn-nbctl lr-lb-add lr lb10
+ovn-nbctl lr-lb-add lr lb11
 
 ovn-nbctl --wait=sb sync
 lr_key=$(fetch_column sb:datapath_binding tunnel_key external_ids:name=lr)

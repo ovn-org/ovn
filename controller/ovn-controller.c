@@ -2791,13 +2791,15 @@ struct ed_type_lflow_output {
     struct ovn_extend_table meter_table;
     /* lflow <-> resource cross reference */
     struct objdep_mgr lflow_deps_mgr;;
+    /* load balancer <-> resource cross reference */
+    struct objdep_mgr lb_deps_mgr;
     /* conjunciton ID usage information of lflows */
     struct conj_ids conj_ids;
 
-    /* lflows processed in the current engine execution.
+    /* objects (lflows and lbs) processed in the current engine execution.
      * Cleared by en_lflow_output_clear_tracked_data before each engine
      * execution. */
-    struct uuidset lflows_processed;
+    struct uuidset objs_processed;
 
     /* Data which is persistent and not cleared during
      * full recompute. */
@@ -2954,8 +2956,9 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_out->group_table = &fo->group_table;
     l_ctx_out->meter_table = &fo->meter_table;
     l_ctx_out->lflow_deps_mgr = &fo->lflow_deps_mgr;
+    l_ctx_out->lb_deps_mgr = &fo->lb_deps_mgr;
     l_ctx_out->conj_ids = &fo->conj_ids;
-    l_ctx_out->lflows_processed = &fo->lflows_processed;
+    l_ctx_out->objs_processed = &fo->objs_processed;
     l_ctx_out->lflow_cache = fo->pd.lflow_cache;
     l_ctx_out->hairpin_id_pool = fo->hd.pool;
     l_ctx_out->hairpin_lb_ids = &fo->hd.ids;
@@ -2970,8 +2973,9 @@ en_lflow_output_init(struct engine_node *node OVS_UNUSED,
     ovn_extend_table_init(&data->group_table);
     ovn_extend_table_init(&data->meter_table);
     objdep_mgr_init(&data->lflow_deps_mgr);
+    objdep_mgr_init(&data->lb_deps_mgr);
     lflow_conj_ids_init(&data->conj_ids);
-    uuidset_init(&data->lflows_processed);
+    uuidset_init(&data->objs_processed);
     simap_init(&data->hd.ids);
     data->hd.pool = id_pool_create(1, UINT32_MAX - 1);
     nd_ra_opts_init(&data->nd_ra_opts);
@@ -2983,7 +2987,7 @@ static void
 en_lflow_output_clear_tracked_data(void *data)
 {
     struct ed_type_lflow_output *flow_output_data = data;
-    uuidset_clear(&flow_output_data->lflows_processed);
+    uuidset_clear(&flow_output_data->objs_processed);
 }
 
 static void
@@ -2994,8 +2998,9 @@ en_lflow_output_cleanup(void *data)
     ovn_extend_table_destroy(&flow_output_data->group_table);
     ovn_extend_table_destroy(&flow_output_data->meter_table);
     objdep_mgr_destroy(&flow_output_data->lflow_deps_mgr);
+    objdep_mgr_destroy(&flow_output_data->lb_deps_mgr);
     lflow_conj_ids_destroy(&flow_output_data->conj_ids);
-    uuidset_destroy(&flow_output_data->lflows_processed);
+    uuidset_destroy(&flow_output_data->objs_processed);
     lflow_cache_destroy(flow_output_data->pd.lflow_cache);
     simap_destroy(&flow_output_data->hd.ids);
     id_pool_destroy(flow_output_data->hd.pool);
@@ -3030,6 +3035,7 @@ en_lflow_output_run(struct engine_node *node, void *data)
     struct ovn_extend_table *group_table = &fo->group_table;
     struct ovn_extend_table *meter_table = &fo->meter_table;
     struct objdep_mgr *lflow_deps_mgr = &fo->lflow_deps_mgr;
+    struct objdep_mgr *lb_deps_mgr = &fo->lb_deps_mgr;
 
     static bool first_run = true;
     if (first_run) {
@@ -3039,6 +3045,7 @@ en_lflow_output_run(struct engine_node *node, void *data)
         ovn_extend_table_clear(group_table, false /* desired */);
         ovn_extend_table_clear(meter_table, false /* desired */);
         objdep_mgr_clear(lflow_deps_mgr);
+        objdep_mgr_clear(lb_deps_mgr);
         lflow_conj_ids_clear(&fo->conj_ids);
     }
 
@@ -3172,7 +3179,7 @@ lflow_output_addr_sets_handler(struct engine_node *node, void *data)
         if (!objdep_mgr_handle_change(l_ctx_out.lflow_deps_mgr,
                                       OBJDEP_TYPE_ADDRSET, ref_name,
                                       lflow_handle_changed_ref,
-                                      l_ctx_out.lflows_processed,
+                                      l_ctx_out.objs_processed,
                                       &l_ctx_in, &l_ctx_out, &changed)) {
             return false;
         }
@@ -3191,7 +3198,7 @@ lflow_output_addr_sets_handler(struct engine_node *node, void *data)
                                           OBJDEP_TYPE_ADDRSET,
                                           shash_node->name,
                                           lflow_handle_changed_ref,
-                                          l_ctx_out.lflows_processed,
+                                          l_ctx_out.objs_processed,
                                           &l_ctx_in, &l_ctx_out, &changed)) {
                 return false;
             }
@@ -3204,7 +3211,7 @@ lflow_output_addr_sets_handler(struct engine_node *node, void *data)
         if (!objdep_mgr_handle_change(l_ctx_out.lflow_deps_mgr,
                                       OBJDEP_TYPE_ADDRSET, ref_name,
                                       lflow_handle_changed_ref,
-                                      l_ctx_out.lflows_processed,
+                                      l_ctx_out.objs_processed,
                                       &l_ctx_in, &l_ctx_out, &changed)) {
             return false;
         }
@@ -3239,7 +3246,7 @@ lflow_output_port_groups_handler(struct engine_node *node, void *data)
         if (!objdep_mgr_handle_change(l_ctx_out.lflow_deps_mgr,
                                       OBJDEP_TYPE_PORTGROUP, ref_name,
                                       lflow_handle_changed_ref,
-                                      l_ctx_out.lflows_processed,
+                                      l_ctx_out.objs_processed,
                                       &l_ctx_in, &l_ctx_out, &changed)) {
             return false;
         }
@@ -3251,7 +3258,7 @@ lflow_output_port_groups_handler(struct engine_node *node, void *data)
         if (!objdep_mgr_handle_change(l_ctx_out.lflow_deps_mgr,
                                       OBJDEP_TYPE_PORTGROUP, ref_name,
                                       lflow_handle_changed_ref,
-                                      l_ctx_out.lflows_processed,
+                                      l_ctx_out.objs_processed,
                                       &l_ctx_in, &l_ctx_out, &changed)) {
             return false;
         }
@@ -3263,7 +3270,7 @@ lflow_output_port_groups_handler(struct engine_node *node, void *data)
         if (!objdep_mgr_handle_change(l_ctx_out.lflow_deps_mgr,
                                       OBJDEP_TYPE_PORTGROUP, ref_name,
                                       lflow_handle_changed_ref,
-                                      l_ctx_out.lflows_processed,
+                                      l_ctx_out.objs_processed,
                                       &l_ctx_in, &l_ctx_out, &changed)) {
             return false;
         }
@@ -3297,7 +3304,17 @@ lflow_output_template_vars_handler(struct engine_node *node, void *data)
         if (!objdep_mgr_handle_change(l_ctx_out.lflow_deps_mgr,
                                       OBJDEP_TYPE_TEMPLATE,
                                       res_name, lflow_handle_changed_ref,
-                                      l_ctx_out.lflows_processed,
+                                      l_ctx_out.objs_processed,
+                                      &l_ctx_in, &l_ctx_out, &changed)) {
+            return false;
+        }
+        if (changed) {
+            engine_set_node_state(node, EN_UPDATED);
+        }
+        if (!objdep_mgr_handle_change(l_ctx_out.lb_deps_mgr,
+                                      OBJDEP_TYPE_TEMPLATE,
+                                      res_name, lb_handle_changed_ref,
+                                      l_ctx_out.objs_processed,
                                       &l_ctx_in, &l_ctx_out, &changed)) {
             return false;
         }
@@ -3309,7 +3326,17 @@ lflow_output_template_vars_handler(struct engine_node *node, void *data)
         if (!objdep_mgr_handle_change(l_ctx_out.lflow_deps_mgr,
                                       OBJDEP_TYPE_TEMPLATE,
                                       res_name, lflow_handle_changed_ref,
-                                      l_ctx_out.lflows_processed,
+                                      l_ctx_out.objs_processed,
+                                      &l_ctx_in, &l_ctx_out, &changed)) {
+            return false;
+        }
+        if (changed) {
+            engine_set_node_state(node, EN_UPDATED);
+        }
+        if (!objdep_mgr_handle_change(l_ctx_out.lb_deps_mgr,
+                                      OBJDEP_TYPE_TEMPLATE,
+                                      res_name, lb_handle_changed_ref,
+                                      l_ctx_out.objs_processed,
                                       &l_ctx_in, &l_ctx_out, &changed)) {
             return false;
         }
@@ -3321,7 +3348,17 @@ lflow_output_template_vars_handler(struct engine_node *node, void *data)
         if (!objdep_mgr_handle_change(l_ctx_out.lflow_deps_mgr,
                                       OBJDEP_TYPE_TEMPLATE,
                                       res_name, lflow_handle_changed_ref,
-                                      l_ctx_out.lflows_processed,
+                                      l_ctx_out.objs_processed,
+                                      &l_ctx_in, &l_ctx_out, &changed)) {
+            return false;
+        }
+        if (changed) {
+            engine_set_node_state(node, EN_UPDATED);
+        }
+        if (!objdep_mgr_handle_change(l_ctx_out.lb_deps_mgr,
+                                      OBJDEP_TYPE_TEMPLATE,
+                                      res_name, lb_handle_changed_ref,
+                                      l_ctx_out.objs_processed,
                                       &l_ctx_in, &l_ctx_out, &changed)) {
             return false;
         }

@@ -28,6 +28,7 @@
 #include "openvswitch/json.h"
 #include "lib/acl-log.h"
 #include "lib/copp.h"
+#include "lib/lb.h"
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-util.h"
 #include "memory.h"
@@ -2837,6 +2838,7 @@ nbctl_lb_add(struct ctl_context *ctx)
     bool empty_backend_rej = shash_find(&ctx->options, "--reject") != NULL;
     bool empty_backend_event = shash_find(&ctx->options, "--event") != NULL;
     bool add_route = shash_find(&ctx->options, "--add-route") != NULL;
+    bool template = shash_find(&ctx->options, "--template") != NULL;
 
     if (empty_backend_event && empty_backend_rej) {
             ctl_error(ctx,
@@ -2844,10 +2846,11 @@ nbctl_lb_add(struct ctl_context *ctx)
             return;
     }
 
+    int lb_address_family = AF_INET;
     const char *lb_proto;
     bool is_update_proto = false;
 
-    if (ctx->argc == 4) {
+    if (ctx->argc <= 4) {
         /* Default protocol. */
         lb_proto = "tcp";
     } else {
@@ -2863,79 +2866,59 @@ nbctl_lb_add(struct ctl_context *ctx)
         }
     }
 
-    struct sockaddr_storage ss_vip;
-    if (!inet_parse_active(lb_vip, 0, &ss_vip, false, NULL)) {
-        ctl_error(ctx, "%s: should be an IP address (or an IP address "
-                  "and a port number with : as a separator).", lb_vip);
-        return;
+    if (ctx->argc > 5) {
+        lb_address_family = !strcmp(ctx->argv[5], "ipv4") ? AF_INET : AF_INET6;
+
     }
 
-    struct ds lb_vip_normalized_ds = DS_EMPTY_INITIALIZER;
-    uint16_t lb_vip_port = ss_get_port(&ss_vip);
-    if (lb_vip_port) {
-        ss_format_address(&ss_vip, &lb_vip_normalized_ds);
-        ds_put_format(&lb_vip_normalized_ds, ":%d", lb_vip_port);
-    } else {
-        ss_format_address_nobracks(&ss_vip, &lb_vip_normalized_ds);
-    }
-    const char *lb_vip_normalized = ds_cstr(&lb_vip_normalized_ds);
-
-    if (!lb_vip_port && is_update_proto) {
-        ds_destroy(&lb_vip_normalized_ds);
-        ctl_error(ctx, "Protocol is unnecessary when no port of vip "
-                  "is given.");
-        return;
-    }
-
-    char *token = NULL, *save_ptr = NULL;
+    struct ds lb_vip_normalized = DS_EMPTY_INITIALIZER;
     struct ds lb_ips_new = DS_EMPTY_INITIALIZER;
-    for (token = strtok_r(lb_ips, ",", &save_ptr);
-            token != NULL; token = strtok_r(NULL, ",", &save_ptr)) {
-        struct sockaddr_storage ss_dst;
+    struct ovn_lb_vip lb_vip_parsed;
 
-        if (lb_vip_port) {
-            if (!inet_parse_active(token, -1, &ss_dst, false, NULL)) {
-                ctl_error(ctx, "%s: should be an IP address and a port "
-                          "number with : as a separator.", token);
-                goto out;
-            }
-        } else {
-            if (!inet_parse_address(token, &ss_dst)) {
-                ctl_error(ctx, "%s: should be an IP address.", token);
-                goto out;
-            }
-        }
-
-        if (ss_vip.ss_family != ss_dst.ss_family) {
-            ctl_error(ctx, "%s: IP address family is different from VIP %s.",
-                      token, lb_vip_normalized);
-            goto out;
-        }
-        ds_put_format(&lb_ips_new, "%s%s",
-                lb_ips_new.length ? "," : "", token);
+    char *error = ovn_lb_vip_init(&lb_vip_parsed, lb_vip, lb_ips, template,
+                                  lb_address_family);
+    if (error) {
+        ctl_error(ctx, "%s", error);
+        ovn_lb_vip_destroy(&lb_vip_parsed);
+        free(error);
+        return;
     }
+
+    if (is_update_proto && !lb_vip_parsed.port_str) {
+        ctl_error(ctx, "Protocol is unnecessary when no port of vip is "
+                       "given.");
+        ovn_lb_vip_destroy(&lb_vip_parsed);
+        return;
+    }
+
+    ovn_lb_vip_format(&lb_vip_parsed, &lb_vip_normalized, template);
+    ovn_lb_vip_backends_format(&lb_vip_parsed, &lb_ips_new, template);
+    ovn_lb_vip_destroy(&lb_vip_parsed);
 
     const struct nbrec_load_balancer *lb = NULL;
     if (!add_duplicate) {
-        char *error = lb_by_name_or_uuid(ctx, lb_name, false, &lb);
+        error = lb_by_name_or_uuid(ctx, lb_name, false, &lb);
         if (error) {
             ctx->error = error;
             goto out;
         }
         if (lb) {
-            if (smap_get(&lb->vips, lb_vip_normalized)) {
+            if (smap_get(&lb->vips, ds_cstr(&lb_vip_normalized))) {
                 if (!may_exist) {
                     ctl_error(ctx, "%s: a load balancer with this vip (%s) "
-                              "already exists", lb_name, lb_vip_normalized);
+                              "already exists", lb_name,
+                              ds_cstr(&lb_vip_normalized));
                     goto out;
                 }
                 /* Update the vips. */
                 smap_replace(CONST_CAST(struct smap *, &lb->vips),
-                        lb_vip_normalized, ds_cstr(&lb_ips_new));
+                             ds_cstr(&lb_vip_normalized),
+                             ds_cstr(&lb_ips_new));
             } else {
                 /* Add the new vips. */
                 smap_add(CONST_CAST(struct smap *, &lb->vips),
-                        lb_vip_normalized, ds_cstr(&lb_ips_new));
+                         ds_cstr(&lb_vip_normalized),
+                         ds_cstr(&lb_ips_new));
             }
 
             /* Update the load balancer. */
@@ -2954,7 +2937,7 @@ nbctl_lb_add(struct ctl_context *ctx)
     nbrec_load_balancer_set_name(lb, lb_name);
     nbrec_load_balancer_set_protocol(lb, lb_proto);
     smap_add(CONST_CAST(struct smap *, &lb->vips),
-            lb_vip_normalized, ds_cstr(&lb_ips_new));
+             ds_cstr(&lb_vip_normalized), ds_cstr(&lb_ips_new));
     nbrec_load_balancer_set_vips(lb, &lb->vips);
     struct smap options = SMAP_INITIALIZER(&options);
     if (empty_backend_rej) {
@@ -2966,12 +2949,17 @@ nbctl_lb_add(struct ctl_context *ctx)
     if (add_route) {
         smap_add(&options, "add_route", "true");
     }
+    if (template) {
+        smap_add(&options, "template", "true");
+        smap_add(&options, "address-family",
+                 lb_address_family == AF_INET ? "ipv4" : "ipv6");
+    }
     nbrec_load_balancer_set_options(lb, &options);
     smap_destroy(&options);
 out:
     ds_destroy(&lb_ips_new);
 
-    ds_destroy(&lb_vip_normalized_ds);
+    ds_destroy(&lb_vip_normalized);
 }
 
 static void
@@ -3025,6 +3013,7 @@ static void
 nbctl_pre_lb_list(struct ctl_context *ctx)
 {
     ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_options);
     ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_protocol);
     ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_vips);
 }
@@ -3033,6 +3022,7 @@ static void
 lb_info_add_smap(const struct nbrec_load_balancer *lb,
                  struct smap *lbs, int vip_width)
 {
+    bool template = smap_get_bool(&lb->options, "template", false);
     const struct smap_node **nodes = smap_sort(&lb->vips);
     if (!nodes) {
         return;
@@ -3041,13 +3031,24 @@ lb_info_add_smap(const struct nbrec_load_balancer *lb,
     struct ds val = DS_EMPTY_INITIALIZER;
     for (size_t i = 0; i < smap_count(&lb->vips); i++) {
         const struct smap_node *node = nodes[i];
+        const char *protocol = lb->protocol;
 
-        struct sockaddr_storage ss;
-        if (!inet_parse_active(node->key, 0, &ss, false, NULL)) {
-            continue;
+        if (!template) {
+            struct sockaddr_storage ss;
+            if (!inet_parse_active(node->key, 0, &ss, false, NULL)) {
+                continue;
+            }
+            protocol = ss_get_port(&ss) ? lb->protocol : "";
+        } else {
+            if (!lb->protocol) {
+                VLOG_WARN("Load Balancer "UUID_FMT" (%s) is a template and "
+                          "misses protocol", UUID_ARGS(&lb->header_.uuid),
+                          lb->name);
+                continue;
+            }
+            protocol = lb->protocol;
         }
 
-        char *protocol = ss_get_port(&ss) ? lb->protocol : "";
         if (i == 0) {
             ds_put_format(&val, UUID_FMT "    %-20.16s%-11.7s%-*.*s%s",
                           UUID_ARGS(&lb->header_.uuid),
@@ -3239,6 +3240,7 @@ nbctl_pre_lr_lb_list(struct ctl_context *ctx)
                          &nbrec_logical_router_col_load_balancer_group);
 
     ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_options);
     ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_protocol);
     ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_vips);
 
@@ -3402,6 +3404,7 @@ nbctl_pre_ls_lb_list(struct ctl_context *ctx)
                          &nbrec_logical_switch_col_load_balancer_group);
 
     ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_options);
     ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_protocol);
     ovsdb_idl_add_column(ctx->idl, &nbrec_load_balancer_col_vips);
 
@@ -7472,9 +7475,10 @@ static const struct ctl_command_syntax nbctl_commands[] = {
       nbctl_pre_lr_nat_set_ext_ips, nbctl_lr_nat_set_ext_ips,
       NULL, "--is-exempted", RW},
     /* load balancer commands. */
-    { "lb-add", 3, 4, "LB VIP[:PORT] IP[:PORT]... [PROTOCOL]",
+    { "lb-add", 3, 5, "LB VIP[:PORT] IP[:PORT]... [PROTOCOL] [ADDRESS_FAMILY]",
       nbctl_pre_lb_add, nbctl_lb_add, NULL,
-      "--may-exist,--add-duplicate,--reject,--event,--add-route", RW },
+      "--may-exist,--add-duplicate,--reject,--event,--add-route,--template",
+      RW },
     { "lb-del", 1, 2, "LB [VIP]", nbctl_pre_lb_del, nbctl_lb_del, NULL,
         "--if-exists", RW },
     { "lb-list", 0, 1, "[LB]", nbctl_pre_lb_list, nbctl_lb_list, NULL, "", RO },

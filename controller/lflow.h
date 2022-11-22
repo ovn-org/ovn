@@ -122,9 +122,10 @@ struct lflow_ctx_out {
     struct ovn_extend_table *group_table;
     struct ovn_extend_table *meter_table;
     struct objdep_mgr *lflow_deps_mgr;
+    struct objdep_mgr *lb_deps_mgr;
     struct lflow_cache *lflow_cache;
     struct conj_ids *conj_ids;
-    struct uuidset *lflows_processed;
+    struct uuidset *objs_processed;
     struct simap *hairpin_lb_ids;
     struct id_pool *hairpin_id_pool;
 };
@@ -174,4 +175,8 @@ bool lflow_handle_changed_mc_groups(struct lflow_ctx_in *,
                                     struct lflow_ctx_out *);
 bool lflow_handle_changed_port_bindings(struct lflow_ctx_in *,
                                         struct lflow_ctx_out *);
+
+bool lb_handle_changed_ref(enum objdep_type type, const char *res_name,
+                           struct ovs_list *objs_todo,
+                           const void *in_arg, void *out_arg);
 #endif /* controller/lflow.h */

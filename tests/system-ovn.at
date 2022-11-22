@@ -9273,3 +9273,186 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([load-balancer template IPv4])
+AT_SKIP_IF([test $HAVE_NC = no])
+AT_KEYWORDS([ovnlb templates])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+OVS_CHECK_CT_ZERO_SNAT()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+# Logical network:
+# VM1 -- LS1 -- GW-Router -- LS2 -- VM3
+#         |
+# VM2 ----+
+#
+# A templated load balancer applied on LS1 and GW-Router with
+# VM1 as backend.  The VIP should be accessible from both VM2 and VM3.
+
+check ovn-nbctl                                                   \
+    -- lr-add rtr                                                 \
+    -- set Logical_Router rtr options:chassis=hv1                 \
+    -- lrp-add rtr rtr-ls1 00:00:00:00:01:00 42.42.42.1/24        \
+    -- lrp-add rtr rtr-ls2 00:00:00:00:02:00 43.43.43.1/24        \
+    -- ls-add ls1                                                 \
+    -- lsp-add ls1 ls1-rtr                                        \
+    -- lsp-set-addresses ls1-rtr 00:00:00:00:01:00                \
+    -- lsp-set-type ls1-rtr router                                \
+    -- lsp-set-options ls1-rtr router-port=rtr-ls1                \
+    -- lsp-add ls1 vm1 -- lsp-set-addresses vm1 00:00:00:00:00:01 \
+    -- lsp-add ls1 vm2 -- lsp-set-addresses vm2 00:00:00:00:00:02 \
+    -- ls-add ls2                                                 \
+    -- lsp-add ls2 ls2-rtr                                        \
+    -- lsp-set-addresses ls2-rtr 00:00:00:00:02:00                \
+    -- lsp-set-type ls2-rtr router                                \
+    -- lsp-set-options ls2-rtr router-port=rtr-ls2                \
+    -- lsp-add ls2 vm3 -- lsp-set-addresses vm3 00:00:00:00:00:03
+
+# Add a template LB that eventually expands to:
+# VIP=66.66.66.66:666 backends=42.42.42.2:4242 proto=tcp
+
+AT_CHECK([ovn-nbctl -- create chassis_template_var chassis="hv1" variables="{vip=66.66.66.66,vport=666,backends=\"42.42.42.2:4242\"}"],
+         [0], [ignore])
+
+check ovn-nbctl --template lb-add lb-test "^vip:^vport" "^backends" tcp \
+    -- ls-lb-add ls1 lb-test                                            \
+    -- lr-lb-add rtr lb-test
+
+ADD_NAMESPACES(vm1)
+ADD_VETH(vm1, vm1, br-int, "42.42.42.2/24", "00:00:00:00:00:01", "42.42.42.1")
+
+ADD_NAMESPACES(vm2)
+ADD_VETH(vm2, vm2, br-int, "42.42.42.3/24", "00:00:00:00:00:02", "42.42.42.1")
+
+ADD_NAMESPACES(vm3)
+ADD_VETH(vm3, vm3, br-int, "43.43.43.2/24", "00:00:00:00:00:03", "43.43.43.1")
+
+# Wait for ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ovn-appctl -t ovn-controller debug/dump-local-template-vars | sort], [0], [dnl
+Local template vars:
+name: 'backends' value: '42.42.42.2:4242'
+name: 'vip' value: '66.66.66.66'
+name: 'vport' value: '666'
+])
+
+# Start IPv4 TCP server on vm1.
+NETNS_DAEMONIZE([vm1], [nc -k -l 42.42.42.2 4242], [nc-vm1.pid])
+
+# Make sure connecting to the VIP works.
+NS_CHECK_EXEC([vm2], [nc 66.66.66.66 666 -z], [0], [ignore], [ignore])
+NS_CHECK_EXEC([vm3], [nc 66.66.66.66 666 -z], [0], [ignore], [ignore])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([load-balancer template IPv6])
+AT_SKIP_IF([test $HAVE_NC = no])
+AT_KEYWORDS([ovnlb templates])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+OVS_CHECK_CT_ZERO_SNAT()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+# Logical network:
+# VM1 -- LS1 -- GW-Router -- LS2 -- VM3
+#         |
+# VM2 ----+
+#
+# A templated load balancer applied on LS1 and GW-Router with
+# VM1 as backend.  The VIP should be accessible from both VM2 and VM3.
+
+check ovn-nbctl                                                   \
+    -- lr-add rtr                                                 \
+    -- set Logical_Router rtr options:chassis=hv1                 \
+    -- lrp-add rtr rtr-ls1 00:00:00:00:01:00 4242::1/64           \
+    -- lrp-add rtr rtr-ls2 00:00:00:00:02:00 4343::1/64           \
+    -- ls-add ls1                                                 \
+    -- lsp-add ls1 ls1-rtr                                        \
+    -- lsp-set-addresses ls1-rtr 00:00:00:00:01:00                \
+    -- lsp-set-type ls1-rtr router                                \
+    -- lsp-set-options ls1-rtr router-port=rtr-ls1                \
+    -- lsp-add ls1 vm1 -- lsp-set-addresses vm1 00:00:00:00:00:01 \
+    -- lsp-add ls1 vm2 -- lsp-set-addresses vm2 00:00:00:00:00:02 \
+    -- ls-add ls2                                                 \
+    -- lsp-add ls2 ls2-rtr                                        \
+    -- lsp-set-addresses ls2-rtr 00:00:00:00:02:00                \
+    -- lsp-set-type ls2-rtr router                                \
+    -- lsp-set-options ls2-rtr router-port=rtr-ls2                \
+    -- lsp-add ls2 vm3 -- lsp-set-addresses vm3 00:00:00:00:00:03
+
+# Add a template LB that eventually expands to:
+# VIP=6666::1 backends=[4242::2]:4242 proto=tcp
+
+AT_CHECK([ovn-nbctl -- create chassis_template_var chassis="hv1" variables="{vip=\"6666::1\",vport=666,backends=\"[[4242::2]]:4242\"}"],
+         [0], [ignore])
+
+check ovn-nbctl --template lb-add lb-test "^vip:^vport" "^backends" tcp ipv6 \
+    -- ls-lb-add ls1 lb-test                                                 \
+    -- lr-lb-add rtr lb-test
+
+ADD_NAMESPACES(vm1)
+ADD_VETH(vm1, vm1, br-int, "4242::2/64", "00:00:00:00:00:01", "4242::1")
+OVS_WAIT_UNTIL([test "$(ip netns exec vm1 ip a | grep 4242::2 | grep tentative)" = ""])
+
+ADD_NAMESPACES(vm2)
+ADD_VETH(vm2, vm2, br-int, "4242::3/64", "00:00:00:00:00:02", "4242::1")
+OVS_WAIT_UNTIL([test "$(ip netns exec vm2 ip a | grep 4242::3 | grep tentative)" = ""])
+
+ADD_NAMESPACES(vm3)
+ADD_VETH(vm3, vm3, br-int, "4343::2/64", "00:00:00:00:00:03", "4343::1")
+OVS_WAIT_UNTIL([test "$(ip netns exec vm3 ip a | grep 4343::2 | grep tentative)" = ""])
+
+# Wait for ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ovn-appctl -t ovn-controller debug/dump-local-template-vars | sort], [0], [dnl
+Local template vars:
+name: 'backends' value: '[[4242::2]]:4242'
+name: 'vip' value: '6666::1'
+name: 'vport' value: '666'
+])
+
+# Start IPv6 TCP server on vm1.
+NETNS_DAEMONIZE([vm1], [nc -k -l 4242::2 4242], [nc-vm1.pid])
+
+# Make sure connecting to the VIP works.
+NS_CHECK_EXEC([vm2], [nc 6666::1 666 -z], [0], [ignore], [ignore])
+NS_CHECK_EXEC([vm3], [nc 6666::1 666 -z], [0], [ignore], [ignore])
+
+AT_CLEANUP
+])
