@@ -2600,8 +2600,8 @@ struct ed_type_lflow_output {
     struct ovn_extend_table group_table;
     /* meter ids for QoS */
     struct ovn_extend_table meter_table;
-    /* lflow resource cross reference */
-    struct lflow_resource_ref lflow_resource_ref;
+    /* lflow <-> resource cross reference */
+    struct objdep_mgr lflow_deps_mgr;;
     /* conjunciton ID usage information of lflows */
     struct conj_ids conj_ids;
 
@@ -2760,7 +2760,7 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_out->flow_table = &fo->flow_table;
     l_ctx_out->group_table = &fo->group_table;
     l_ctx_out->meter_table = &fo->meter_table;
-    l_ctx_out->lfrr = &fo->lflow_resource_ref;
+    l_ctx_out->lflow_deps_mgr = &fo->lflow_deps_mgr;
     l_ctx_out->conj_ids = &fo->conj_ids;
     l_ctx_out->lflows_processed = &fo->lflows_processed;
     l_ctx_out->lflow_cache = fo->pd.lflow_cache;
@@ -2776,7 +2776,7 @@ en_lflow_output_init(struct engine_node *node OVS_UNUSED,
     ovn_desired_flow_table_init(&data->flow_table);
     ovn_extend_table_init(&data->group_table);
     ovn_extend_table_init(&data->meter_table);
-    lflow_resource_init(&data->lflow_resource_ref);
+    objdep_mgr_init(&data->lflow_deps_mgr);
     lflow_conj_ids_init(&data->conj_ids);
     uuidset_init(&data->lflows_processed);
     simap_init(&data->hd.ids);
@@ -2800,7 +2800,7 @@ en_lflow_output_cleanup(void *data)
     ovn_desired_flow_table_destroy(&flow_output_data->flow_table);
     ovn_extend_table_destroy(&flow_output_data->group_table);
     ovn_extend_table_destroy(&flow_output_data->meter_table);
-    lflow_resource_destroy(&flow_output_data->lflow_resource_ref);
+    objdep_mgr_destroy(&flow_output_data->lflow_deps_mgr);
     lflow_conj_ids_destroy(&flow_output_data->conj_ids);
     uuidset_destroy(&flow_output_data->lflows_processed);
     lflow_cache_destroy(flow_output_data->pd.lflow_cache);
@@ -2836,7 +2836,7 @@ en_lflow_output_run(struct engine_node *node, void *data)
     struct ovn_desired_flow_table *lflow_table = &fo->flow_table;
     struct ovn_extend_table *group_table = &fo->group_table;
     struct ovn_extend_table *meter_table = &fo->meter_table;
-    struct lflow_resource_ref *lfrr = &fo->lflow_resource_ref;
+    struct objdep_mgr *lflow_deps_mgr = &fo->lflow_deps_mgr;
 
     static bool first_run = true;
     if (first_run) {
@@ -2845,7 +2845,7 @@ en_lflow_output_run(struct engine_node *node, void *data)
         ovn_desired_flow_table_clear(lflow_table);
         ovn_extend_table_clear(group_table, false /* desired */);
         ovn_extend_table_clear(meter_table, false /* desired */);
-        lflow_resource_clear(lfrr);
+        objdep_mgr_clear(lflow_deps_mgr);
         lflow_conj_ids_clear(&fo->conj_ids);
     }
 
@@ -2976,8 +2976,11 @@ lflow_output_addr_sets_handler(struct engine_node *node, void *data)
     }
 
     SSET_FOR_EACH (ref_name, &as_data->deleted) {
-        if (!lflow_handle_changed_ref(REF_TYPE_ADDRSET, ref_name, &l_ctx_in,
-                                      &l_ctx_out, &changed)) {
+        if (!objdep_mgr_handle_change(l_ctx_out.lflow_deps_mgr,
+                                      OBJDEP_TYPE_ADDRSET, ref_name,
+                                      lflow_handle_changed_ref,
+                                      l_ctx_out.lflows_processed,
+                                      &l_ctx_in, &l_ctx_out, &changed)) {
             return false;
         }
         if (changed) {
@@ -2991,7 +2994,11 @@ lflow_output_addr_sets_handler(struct engine_node *node, void *data)
                                           &l_ctx_out, &changed)) {
             VLOG_DBG("Can't incrementally handle the change of address set %s."
                      " Reprocess related lflows.", shash_node->name);
-            if (!lflow_handle_changed_ref(REF_TYPE_ADDRSET, shash_node->name,
+            if (!objdep_mgr_handle_change(l_ctx_out.lflow_deps_mgr,
+                                          OBJDEP_TYPE_ADDRSET,
+                                          shash_node->name,
+                                          lflow_handle_changed_ref,
+                                          l_ctx_out.lflows_processed,
                                           &l_ctx_in, &l_ctx_out, &changed)) {
                 return false;
             }
@@ -3001,8 +3008,11 @@ lflow_output_addr_sets_handler(struct engine_node *node, void *data)
         }
     }
     SSET_FOR_EACH (ref_name, &as_data->new) {
-        if (!lflow_handle_changed_ref(REF_TYPE_ADDRSET, ref_name, &l_ctx_in,
-                                      &l_ctx_out, &changed)) {
+        if (!objdep_mgr_handle_change(l_ctx_out.lflow_deps_mgr,
+                                      OBJDEP_TYPE_ADDRSET, ref_name,
+                                      lflow_handle_changed_ref,
+                                      l_ctx_out.lflows_processed,
+                                      &l_ctx_in, &l_ctx_out, &changed)) {
             return false;
         }
         if (changed) {
@@ -3033,8 +3043,11 @@ lflow_output_port_groups_handler(struct engine_node *node, void *data)
     }
 
     SSET_FOR_EACH (ref_name, &pg_data->deleted) {
-        if (!lflow_handle_changed_ref(REF_TYPE_PORTGROUP, ref_name, &l_ctx_in,
-                                      &l_ctx_out, &changed)) {
+        if (!objdep_mgr_handle_change(l_ctx_out.lflow_deps_mgr,
+                                      OBJDEP_TYPE_PORTGROUP, ref_name,
+                                      lflow_handle_changed_ref,
+                                      l_ctx_out.lflows_processed,
+                                      &l_ctx_in, &l_ctx_out, &changed)) {
             return false;
         }
         if (changed) {
@@ -3042,8 +3055,11 @@ lflow_output_port_groups_handler(struct engine_node *node, void *data)
         }
     }
     SSET_FOR_EACH (ref_name, &pg_data->updated) {
-        if (!lflow_handle_changed_ref(REF_TYPE_PORTGROUP, ref_name, &l_ctx_in,
-                                      &l_ctx_out, &changed)) {
+        if (!objdep_mgr_handle_change(l_ctx_out.lflow_deps_mgr,
+                                      OBJDEP_TYPE_PORTGROUP, ref_name,
+                                      lflow_handle_changed_ref,
+                                      l_ctx_out.lflows_processed,
+                                      &l_ctx_in, &l_ctx_out, &changed)) {
             return false;
         }
         if (changed) {
@@ -3051,8 +3067,11 @@ lflow_output_port_groups_handler(struct engine_node *node, void *data)
         }
     }
     SSET_FOR_EACH (ref_name, &pg_data->new) {
-        if (!lflow_handle_changed_ref(REF_TYPE_PORTGROUP, ref_name, &l_ctx_in,
-                                      &l_ctx_out, &changed)) {
+        if (!objdep_mgr_handle_change(l_ctx_out.lflow_deps_mgr,
+                                      OBJDEP_TYPE_PORTGROUP, ref_name,
+                                      lflow_handle_changed_ref,
+                                      l_ctx_out.lflows_processed,
+                                      &l_ctx_in, &l_ctx_out, &changed)) {
             return false;
         }
         if (changed) {

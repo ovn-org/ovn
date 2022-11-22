@@ -31,6 +31,8 @@ lib_libovn_la_SOURCES = \
 	lib/mcast-group-index.c \
 	lib/mcast-group-index.h \
 	lib/lex.c \
+	lib/objdep.c \
+	lib/objdep.h \
 	lib/ovn-l7.h \
 	lib/ovn-l7.c \
 	lib/ovn-util.c \
