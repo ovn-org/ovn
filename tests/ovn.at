@@ -28578,7 +28578,11 @@ ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1 24 geneve
 
 # Get the encap rec, should be just one - with geneve/192.168.0.1
-encap_rec=$(ovn-sbctl --data=bare --no-heading --column encaps list chassis hv1)
+# Skip initial null encap
+OVS_WAIT_UNTIL(
+  [encap_rec=$(ovn-sbctl --bare --no-heading --columns encaps list chassis hv1)
+  echo "encap_rec = $encap_rec"
+  test $encap_rec])
 
 # Set multiple IPs
 as hv1
@@ -28587,9 +28591,10 @@ ovs-vsctl \
 
 # Check if the encap_rec changed - should have, no need to
 # compare the exact values.
-encap_rec_mvtep=$(ovn-sbctl --data=bare --no-heading --column encaps list chassis hv1)
-
-AT_CHECK([test "$encap_rec" != "$encap_rec_mvtep"], [0], [])
+OVS_WAIT_UNTIL(
+  [encap_rec_mvtep=$(ovn-sbctl --bare --no-heading --columns encaps list chassis hv1)
+  echo "encap_rec_mvtep = $encap_rec_mvtep"
+  test "$encap_rec" != "$encap_rec_mvtep"])
 
 # now, wait for a couple of secs -  should be enough time, I suppose.
 sleep 2
