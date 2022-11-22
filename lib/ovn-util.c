@@ -793,9 +793,6 @@ ip_address_and_port_from_lb_key(const char *key, char **ip_address,
 {
     struct sockaddr_storage ss;
     if (!inet_parse_active(key, 0, &ss, false, NULL)) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "bad ip address or port for load balancer key %s",
-                     key);
         *ip_address = NULL;
         memset(ip, 0, sizeof(*ip));
         *port = 0;

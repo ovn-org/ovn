@@ -19,12 +19,23 @@
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-sb-idl.h"
 #include "lib/ovn-util.h"
+#include "ovn/lex.h"
 
 /* OpenvSwitch lib includes. */
 #include "openvswitch/vlog.h"
 #include "lib/smap.h"
 
 VLOG_DEFINE_THIS_MODULE(lb);
+
+static const char *lb_neighbor_responder_mode_names[] = {
+    [LB_NEIGH_RESPOND_REACHABLE] = "reachable",
+    [LB_NEIGH_RESPOND_ALL] = "all",
+    [LB_NEIGH_RESPOND_NONE] = "none",
+};
+
+static struct nbrec_load_balancer_health_check *
+ovn_lb_get_health_check(const struct nbrec_load_balancer *nbrec_lb,
+                        const char *vip_port_str, bool template);
 
 struct ovn_lb_ip_set *
 ovn_lb_ip_set_create(void)
@@ -71,94 +82,293 @@ ovn_lb_ip_set_clone(struct ovn_lb_ip_set *lb_ip_set)
     return clone;
 }
 
-static
-bool ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
-                     const char *lb_value)
+/* Format for backend ips: "IP1:port1,IP2:port2,...". */
+static char *
+ovn_lb_backends_init_explicit(struct ovn_lb_vip *lb_vip, const char *value)
 {
-    int addr_family;
-
-    if (!ip_address_and_port_from_lb_key(lb_key, &lb_vip->vip_str,
-                                         &lb_vip->vip, &lb_vip->vip_port,
-                                         &addr_family)) {
-        return false;
-    }
-
-    /* Format for backend ips: "IP1:port1,IP2:port2,...". */
-    size_t n_backends = 0;
+    struct ds errors = DS_EMPTY_INITIALIZER;
     size_t n_allocated_backends = 0;
-    char *tokstr = xstrdup(lb_value);
+    char *tokstr = xstrdup(value);
     char *save_ptr = NULL;
+    lb_vip->n_backends = 0;
+
     for (char *token = strtok_r(tokstr, ",", &save_ptr);
         token != NULL;
         token = strtok_r(NULL, ",", &save_ptr)) {
 
-        if (n_backends == n_allocated_backends) {
+        if (lb_vip->n_backends == n_allocated_backends) {
             lb_vip->backends = x2nrealloc(lb_vip->backends,
                                           &n_allocated_backends,
                                           sizeof *lb_vip->backends);
         }
 
-        struct ovn_lb_backend *backend = &lb_vip->backends[n_backends];
+        struct ovn_lb_backend *backend = &lb_vip->backends[lb_vip->n_backends];
         int backend_addr_family;
         if (!ip_address_and_port_from_lb_key(token, &backend->ip_str,
                                              &backend->ip, &backend->port,
                                              &backend_addr_family)) {
+            if (lb_vip->port_str) {
+                ds_put_format(&errors, "%s: should be an IP address and a "
+                                       "port number with : as a separator, ",
+                              token);
+            } else {
+                ds_put_format(&errors, "%s: should be an IP address, ", token);
+            }
             continue;
         }
 
-        if (addr_family != backend_addr_family) {
+        if (lb_vip->address_family != backend_addr_family) {
             free(backend->ip_str);
+            ds_put_format(&errors, "%s: IP address family is different from "
+                                   "VIP %s, ",
+                          token, lb_vip->vip_str);
             continue;
         }
 
-        n_backends++;
+        if (lb_vip->port_str) {
+            if (!backend->port) {
+                free(backend->ip_str);
+                ds_put_format(&errors, "%s: should be an IP address and "
+                                       "a port number with : as a separator, ",
+                              token);
+                continue;
+            }
+        } else {
+            if (backend->port) {
+                free(backend->ip_str);
+                ds_put_format(&errors, "%s: should be an IP address, ", token);
+                continue;
+            }
+        }
+
+        backend->port_str =
+            backend->port ? xasprintf("%"PRIu16, backend->port) : NULL;
+        lb_vip->n_backends++;
     }
     free(tokstr);
-    lb_vip->n_backends = n_backends;
-    return true;
+
+    if (ds_last(&errors) != EOF) {
+        ds_chomp(&errors, ' ');
+        ds_chomp(&errors, ',');
+        ds_put_char(&errors, '.');
+        return ds_steal_cstr(&errors);
+    }
+    return NULL;
 }
 
 static
-void ovn_lb_vip_destroy(struct ovn_lb_vip *vip)
+char *ovn_lb_vip_init_explicit(struct ovn_lb_vip *lb_vip, const char *lb_key,
+                               const char *lb_value)
+{
+    if (!ip_address_and_port_from_lb_key(lb_key, &lb_vip->vip_str,
+                                         &lb_vip->vip, &lb_vip->vip_port,
+                                         &lb_vip->address_family)) {
+        return xasprintf("%s: should be an IP address (or an IP address "
+                         "and a port number with : as a separator).", lb_key);
+    }
+
+    lb_vip->port_str = lb_vip->vip_port
+                       ? xasprintf("%"PRIu16, lb_vip->vip_port)
+                       : NULL;
+
+    return ovn_lb_backends_init_explicit(lb_vip, lb_value);
+}
+
+/* Parses backends of a templated LB VIP.
+ * For now only the following template forms are supported:
+ * A.
+ *   ^backendip_variable1[:^port_variable1|:port],
+ *   ^backendip_variable2[:^port_variable2|:port]
+ *
+ * B.
+ *   ^backends_variable1,^backends_variable2 is also a thing
+ *      where 'backends_variable1' may expand to IP1_1:PORT1_1 on chassis-1
+ *                                               IP1_2:PORT1_2 on chassis-2
+ *        and 'backends_variable2' may expand to IP2_1:PORT2_1 on chassis-1
+ *                                               IP2_2:PORT2_2 on chassis-2
+ */
+static char *
+ovn_lb_backends_init_template(struct ovn_lb_vip *lb_vip, const char *value_)
+{
+    struct ds errors = DS_EMPTY_INITIALIZER;
+    char *value = xstrdup(value_);
+    char *save_ptr = NULL;
+    size_t n_allocated_backends = 0;
+    lb_vip->n_backends = 0;
+
+    for (char *backend = strtok_r(value, ",", &save_ptr); backend;
+         backend = strtok_r(NULL, ",", &save_ptr)) {
+
+        char *atom = xstrdup(backend);
+        char *save_ptr2 = NULL;
+        bool success = false;
+        char *backend_ip = NULL;
+        char *backend_port = NULL;
+
+        for (char *subatom = strtok_r(atom, ":", &save_ptr2); subatom;
+             subatom = strtok_r(NULL, ":", &save_ptr2)) {
+            if (backend_ip && backend_port) {
+                success = false;
+                break;
+            }
+            success = true;
+            if (!backend_ip) {
+                backend_ip = xstrdup(subatom);
+            } else {
+                backend_port = xstrdup(subatom);
+            }
+        }
+
+        if (success) {
+            if (lb_vip->n_backends == n_allocated_backends) {
+                lb_vip->backends = x2nrealloc(lb_vip->backends,
+                                              &n_allocated_backends,
+                                              sizeof *lb_vip->backends);
+            }
+
+            struct ovn_lb_backend *lb_backend =
+                &lb_vip->backends[lb_vip->n_backends];
+            lb_backend->ip_str = backend_ip;
+            lb_backend->port_str = backend_port;
+            lb_backend->port = 0;
+            lb_vip->n_backends++;
+        } else {
+            ds_put_format(&errors, "%s: should be a template of the form: "
+                          "'^backendip_variable1[:^port_variable1|:port]', ",
+                          atom);
+        }
+        free(atom);
+    }
+
+    free(value);
+    if (ds_last(&errors) != EOF) {
+        ds_chomp(&errors, ' ');
+        ds_chomp(&errors, ',');
+        ds_put_char(&errors, '.');
+        return ds_steal_cstr(&errors);
+    }
+    return NULL;
+}
+
+/* Parses a VIP of a templated LB.
+ * For now only the following template forms are supported:
+ *   ^vip_variable[:^port_variable|:port]
+ */
+static char *
+ovn_lb_vip_init_template(struct ovn_lb_vip *lb_vip, const char *lb_key_,
+                         const char *lb_value, int address_family)
+{
+    char *save_ptr = NULL;
+    char *lb_key = xstrdup(lb_key_);
+    bool success = false;
+
+    for (char *atom = strtok_r(lb_key, ":", &save_ptr); atom;
+         atom = strtok_r(NULL, ":", &save_ptr)) {
+        if (lb_vip->vip_str && lb_vip->port_str) {
+            success = false;
+            break;
+        }
+        success = true;
+        if (!lb_vip->vip_str) {
+            lb_vip->vip_str = xstrdup(atom);
+        } else {
+            lb_vip->port_str = xstrdup(atom);
+        }
+    }
+    free(lb_key);
+
+    if (!success) {
+        return xasprintf("%s: should be a template of the form: "
+                         "'^vip_variable[:^port_variable|:port]'.",
+                         lb_key_);
+    }
+
+    lb_vip->address_family = address_family;
+    return ovn_lb_backends_init_template(lb_vip, lb_value);
+}
+
+/* Returns NULL on success, an error string on failure.  The caller is
+ * responsible for destroying 'lb_vip' in all cases.
+ */
+char *
+ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
+                const char *lb_value, bool template, int address_family)
+{
+    memset(lb_vip, 0, sizeof *lb_vip);
+
+    return !template
+           ?  ovn_lb_vip_init_explicit(lb_vip, lb_key, lb_value)
+           :  ovn_lb_vip_init_template(lb_vip, lb_key, lb_value,
+                                       address_family);
+}
+
+void
+ovn_lb_vip_destroy(struct ovn_lb_vip *vip)
 {
     free(vip->vip_str);
+    free(vip->port_str);
     for (size_t i = 0; i < vip->n_backends; i++) {
         free(vip->backends[i].ip_str);
+        free(vip->backends[i].port_str);
     }
     free(vip->backends);
+}
+
+void
+ovn_lb_vip_format(const struct ovn_lb_vip *vip, struct ds *s, bool template)
+{
+    bool needs_brackets = vip->address_family == AF_INET6 && vip->port_str
+                          && !template;
+    if (needs_brackets) {
+        ds_put_char(s, '[');
+    }
+    ds_put_cstr(s, vip->vip_str);
+    if (needs_brackets) {
+        ds_put_char(s, ']');
+    }
+    if (vip->port_str) {
+        ds_put_format(s, ":%s", vip->port_str);
+    }
+}
+
+void
+ovn_lb_vip_backends_format(const struct ovn_lb_vip *vip, struct ds *s,
+                           bool template)
+{
+    bool needs_brackets = vip->address_family == AF_INET6 && vip->port_str
+                          && !template;
+    for (size_t i = 0; i < vip->n_backends; i++) {
+        struct ovn_lb_backend *backend = &vip->backends[i];
+
+        if (needs_brackets) {
+            ds_put_char(s, '[');
+        }
+        ds_put_cstr(s, backend->ip_str);
+        if (needs_brackets) {
+            ds_put_char(s, ']');
+        }
+        if (backend->port_str) {
+            ds_put_format(s, ":%s", backend->port_str);
+        }
+        if (i != vip->n_backends - 1) {
+            ds_put_char(s, ',');
+        }
+    }
 }
 
 static
 void ovn_northd_lb_vip_init(struct ovn_northd_lb_vip *lb_vip_nb,
                             const struct ovn_lb_vip *lb_vip,
                             const struct nbrec_load_balancer *nbrec_lb,
-                            const char *vip_port_str, const char *backend_ips)
+                            const char *vip_port_str, const char *backend_ips,
+                            bool template)
 {
     lb_vip_nb->backend_ips = xstrdup(backend_ips);
     lb_vip_nb->n_backends = lb_vip->n_backends;
     lb_vip_nb->backends_nb = xcalloc(lb_vip_nb->n_backends,
                                      sizeof *lb_vip_nb->backends_nb);
-
-    struct nbrec_load_balancer_health_check *lb_health_check = NULL;
-    if (nbrec_lb->protocol && !strcmp(nbrec_lb->protocol, "sctp")) {
-        if (nbrec_lb->n_health_check > 0) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_WARN_RL(&rl,
-                         "SCTP load balancers do not currently support "
-                         "health checks. Not creating health checks for "
-                         "load balancer " UUID_FMT,
-                         UUID_ARGS(&nbrec_lb->header_.uuid));
-        }
-    } else {
-        for (size_t j = 0; j < nbrec_lb->n_health_check; j++) {
-            if (!strcmp(nbrec_lb->health_check[j]->vip, vip_port_str)) {
-                lb_health_check = nbrec_lb->health_check[j];
-                break;
-            }
-        }
-    }
-
-    lb_vip_nb->lb_health_check = lb_health_check;
+    lb_vip_nb->lb_health_check =
+        ovn_lb_get_health_check(nbrec_lb, vip_port_str, template);
 }
 
 static
@@ -189,12 +399,113 @@ ovn_lb_get_hairpin_snat_ip(const struct uuid *lb_uuid,
     }
 }
 
+static bool
+ovn_lb_get_routable_mode(const struct nbrec_load_balancer *nbrec_lb,
+                         bool routable, bool template)
+{
+    if (template && routable) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "Template load balancer "UUID_FMT" does not suport "
+                           "option 'add_route'.  Forcing it to disabled.",
+                     UUID_ARGS(&nbrec_lb->header_.uuid));
+        return false;
+    }
+    return routable;
+}
+
+static bool
+ovn_lb_neigh_mode_is_valid(enum lb_neighbor_responder_mode mode, bool template)
+{
+    if (!template) {
+        return true;
+    }
+
+    switch (mode) {
+    case LB_NEIGH_RESPOND_REACHABLE:
+        return false;
+    case LB_NEIGH_RESPOND_ALL:
+    case LB_NEIGH_RESPOND_NONE:
+        return true;
+    }
+    return false;
+}
+
+static enum lb_neighbor_responder_mode
+ovn_lb_get_neigh_mode(const struct nbrec_load_balancer *nbrec_lb,
+                      const char *mode, bool template)
+{
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+    enum lb_neighbor_responder_mode default_mode =
+        template ? LB_NEIGH_RESPOND_NONE : LB_NEIGH_RESPOND_REACHABLE;
+
+    if (!mode) {
+        mode = lb_neighbor_responder_mode_names[default_mode];
+    }
+
+    for (size_t i = 0; i < ARRAY_SIZE(lb_neighbor_responder_mode_names); i++) {
+        if (!strcmp(mode, lb_neighbor_responder_mode_names[i])) {
+            if (ovn_lb_neigh_mode_is_valid(i, template)) {
+                return i;
+            }
+            break;
+        }
+    }
+
+    VLOG_WARN_RL(&rl, "Invalid neighbor responder mode %s for load balancer "
+                       UUID_FMT", forcing it to %s",
+                 mode, UUID_ARGS(&nbrec_lb->header_.uuid),
+                 lb_neighbor_responder_mode_names[default_mode]);
+    return default_mode;
+}
+
+static struct nbrec_load_balancer_health_check *
+ovn_lb_get_health_check(const struct nbrec_load_balancer *nbrec_lb,
+                        const char *vip_port_str, bool template)
+{
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+
+    if (!nbrec_lb->n_health_check) {
+        return NULL;
+    }
+
+    if (nbrec_lb->protocol && !strcmp(nbrec_lb->protocol, "sctp")) {
+        VLOG_WARN_RL(&rl,
+                     "SCTP load balancers do not currently support "
+                     "health checks. Not creating health checks for "
+                     "load balancer " UUID_FMT,
+                     UUID_ARGS(&nbrec_lb->header_.uuid));
+        return NULL;
+    }
+
+    if (template) {
+        VLOG_WARN_RL(&rl,
+                     "Template load balancers do not currently support "
+                     "health checks. Not creating health checks for "
+                     "load balancer " UUID_FMT,
+                     UUID_ARGS(&nbrec_lb->header_.uuid));
+        return NULL;
+    }
+
+    for (size_t i = 0; i < nbrec_lb->n_health_check; i++) {
+        if (!strcmp(nbrec_lb->health_check[i]->vip, vip_port_str)) {
+            return nbrec_lb->health_check[i];
+        }
+    }
+    return NULL;
+}
+
 struct ovn_northd_lb *
 ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
 {
+    bool template = smap_get_bool(&nbrec_lb->options, "template", false);
     bool is_udp = nullable_string_is_equal(nbrec_lb->protocol, "udp");
     bool is_sctp = nullable_string_is_equal(nbrec_lb->protocol, "sctp");
     struct ovn_northd_lb *lb = xzalloc(sizeof *lb);
+    int address_family = !strcmp(smap_get_def(&nbrec_lb->options,
+                                              "address-family", "ipv4"),
+                                 "ipv4")
+                         ? AF_INET
+                         : AF_INET6;
 
     lb->nlb = nbrec_lb;
     lb->proto = is_udp ? "udp" : is_sctp ? "sctp" : "tcp";
@@ -202,12 +513,16 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
     lb->vips = xcalloc(lb->n_vips, sizeof *lb->vips);
     lb->vips_nb = xcalloc(lb->n_vips, sizeof *lb->vips_nb);
     lb->controller_event = smap_get_bool(&nbrec_lb->options, "event", false);
-    lb->routable = smap_get_bool(&nbrec_lb->options, "add_route", false);
+
+    bool routable = smap_get_bool(&nbrec_lb->options, "add_route", false);
+    lb->routable = ovn_lb_get_routable_mode(nbrec_lb, routable, template);
+
     lb->skip_snat = smap_get_bool(&nbrec_lb->options, "skip_snat", false);
-    const char *mode =
-        smap_get_def(&nbrec_lb->options, "neighbor_responder", "reachable");
-    lb->neigh_mode = strcmp(mode, "all") ? LB_NEIGH_RESPOND_REACHABLE
-                                         : LB_NEIGH_RESPOND_ALL;
+    lb->template = template;
+
+    const char *mode = smap_get(&nbrec_lb->options, "neighbor_responder");
+    lb->neigh_mode = ovn_lb_get_neigh_mode(nbrec_lb, mode, template);
+
     uint32_t affinity_timeout =
         smap_get_uint(&nbrec_lb->options, "affinity_timeout", 0);
     if (affinity_timeout > UINT16_MAX) {
@@ -227,13 +542,19 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
         struct ovn_lb_vip *lb_vip = &lb->vips[n_vips];
         struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[n_vips];
 
-        lb_vip->empty_backend_rej = smap_get_bool(&nbrec_lb->options,
-                                                  "reject", false);
-        if (!ovn_lb_vip_init(lb_vip, node->key, node->value)) {
+        char *error = ovn_lb_vip_init(lb_vip, node->key, node->value,
+                                      template, address_family);
+        if (error) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_WARN_RL(&rl, "Failed to initialize LB VIP: %s", error);
+            ovn_lb_vip_destroy(lb_vip);
+            free(error);
             continue;
         }
+        lb_vip->empty_backend_rej = smap_get_bool(&nbrec_lb->options,
+                                                  "reject", false);
         ovn_northd_lb_vip_init(lb_vip_nb, lb_vip, nbrec_lb,
-                               node->key, node->value);
+                               node->key, node->value, template);
         if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
             sset_add(&lb->ips_v4, lb_vip->vip_str);
         } else {
@@ -381,9 +702,12 @@ ovn_lb_group_find(const struct hmap *lb_groups, const struct uuid *uuid)
 }
 
 struct ovn_controller_lb *
-ovn_controller_lb_create(const struct sbrec_load_balancer *sbrec_lb)
+ovn_controller_lb_create(const struct sbrec_load_balancer *sbrec_lb,
+                         const struct smap *template_vars,
+                         struct sset *template_vars_ref)
 {
     struct ovn_controller_lb *lb = xzalloc(sizeof *lb);
+    bool template = smap_get_bool(&sbrec_lb->options, "template", false);
 
     lb->slb = sbrec_lb;
     lb->n_vips = smap_count(&sbrec_lb->vips);
@@ -395,10 +719,26 @@ ovn_controller_lb_create(const struct sbrec_load_balancer *sbrec_lb)
     SMAP_FOR_EACH (node, &sbrec_lb->vips) {
         struct ovn_lb_vip *lb_vip = &lb->vips[n_vips];
 
-        if (!ovn_lb_vip_init(lb_vip, node->key, node->value)) {
-            continue;
+        struct lex_str key_s = template
+                               ? lexer_parse_template_string(node->key,
+                                                             template_vars,
+                                                             template_vars_ref)
+                               : lex_str_use(node->key);
+        struct lex_str value_s = template
+                               ? lexer_parse_template_string(node->value,
+                                                             template_vars,
+                                                             template_vars_ref)
+                               : lex_str_use(node->value);
+        char *error = ovn_lb_vip_init_explicit(lb_vip,
+                                               lex_str_get(&key_s),
+                                               lex_str_get(&value_s));
+        if (error) {
+            free(error);
+        } else {
+            n_vips++;
         }
-        n_vips++;
+        lex_str_free(&key_s);
+        lex_str_free(&value_s);
     }
 
     /* It's possible that parsing VIPs fails.  Update the lb->n_vips to the

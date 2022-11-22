@@ -35,6 +35,7 @@ struct uuid;
 enum lb_neighbor_responder_mode {
     LB_NEIGH_RESPOND_REACHABLE,
     LB_NEIGH_RESPOND_ALL,
+    LB_NEIGH_RESPOND_NONE,
 };
 
 /* The "routable" ssets are subsets of the load balancer IPs for which IP
@@ -67,6 +68,7 @@ struct ovn_northd_lb {
     bool controller_event;
     bool routable;
     bool skip_snat;
+    bool template;
     uint16_t affinity_timeout;
 
     struct sset ips_v4;
@@ -82,19 +84,31 @@ struct ovn_northd_lb {
 };
 
 struct ovn_lb_vip {
-    struct in6_addr vip;
-    char *vip_str;
-    uint16_t vip_port;
-
+    struct in6_addr vip; /* Only used in ovn-controller. */
+    char *vip_str;       /* Actual VIP string representation (without port).
+                          * To be used in ovn-northd.
+                          */
+    uint16_t vip_port;   /* Only used in ovn-controller. */
+    char *port_str;      /* Actual port string representation.  To be used
+                          * in ovn-northd.
+                          */
     struct ovn_lb_backend *backends;
     size_t n_backends;
     bool empty_backend_rej;
+    int address_family;
 };
 
 struct ovn_lb_backend {
-    struct in6_addr ip;
-    char *ip_str;
-    uint16_t port;
+    struct in6_addr ip;  /* Only used in ovn-controller. */
+    char *ip_str;        /* Actual IP string representation. To be used in
+                          * ovn-northd.
+                          */
+    uint16_t port;       /* Mostly used in ovn-controller but also for
+                          * healthcheck in ovn-northd.
+                          */
+    char *port_str;      /* Actual port string representation. To be used
+                          * in ovn-northd.
+                          */
 };
 
 /* ovn-northd specific backend information. */
@@ -174,7 +188,17 @@ struct ovn_controller_lb {
 };
 
 struct ovn_controller_lb *ovn_controller_lb_create(
-    const struct sbrec_load_balancer *);
+    const struct sbrec_load_balancer *,
+    const struct smap *template_vars,
+    struct sset *template_vars_ref);
 void ovn_controller_lb_destroy(struct ovn_controller_lb *);
+
+char *ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
+                      const char *lb_value, bool template, int address_family);
+void ovn_lb_vip_destroy(struct ovn_lb_vip *vip);
+void ovn_lb_vip_format(const struct ovn_lb_vip *vip, struct ds *s,
+                       bool template);
+void ovn_lb_vip_backends_format(const struct ovn_lb_vip *vip, struct ds *s,
+                                bool template);
 
 #endif /* OVN_LIB_LB_H 1 */

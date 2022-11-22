@@ -857,23 +857,19 @@ AT_CHECK([ovn-nbctl -vsocket_util:off lb-add lb0 30.0.0.10 192.168.10.10:a80], [
 [ovn-nbctl: 192.168.10.10:a80: should be an IP address.
 ])
 
-AT_CHECK([ovn-nbctl -vsocket_util:off lb-add lb0 30.0.0.10 192.168.10.10:], [1], [],
-[ovn-nbctl: 192.168.10.10:: should be an IP address.
-])
-
 AT_CHECK([ovn-nbctl -vsocket_util:off lb-add lb0 30.0.0.10 192.168.10.1a], [1], [],
 [ovn-nbctl: 192.168.10.1a: should be an IP address.
 ])
 
 AT_CHECK([ovn-nbctl lb-add lb0 30.0.0.10: 192.168.10.10:80,192.168.10.20:80 tcp], [1], [],
-[ovn-nbctl: Protocol is unnecessary when no port of vip is given.
+[ovn-nbctl: 192.168.10.10:80: should be an IP address, 192.168.10.20:80: should be an IP address.
 ])
 
 AT_CHECK([ovn-nbctl lb-add lb0 30.0.0.10 192.168.10.10 tcp], [1], [],
 [ovn-nbctl: Protocol is unnecessary when no port of vip is given.
 ])
 
-AT_CHECK([ovn-nbctl lb-add lb0 30.0.0.10 192.168.10.10:900 tcp], [1], [],
+AT_CHECK([ovn-nbctl lb-add lb0 30.0.0.10 192.168.10.10 tcp], [1], [],
 [ovn-nbctl: Protocol is unnecessary when no port of vip is given.
 ])
 
@@ -1111,7 +1107,7 @@ AT_CHECK([ovn-nbctl -vsocket_util:off lb-add lb0 ae0f::10fff [[fd0f::10]]:80,fd0
 
 
 AT_CHECK([ovn-nbctl -vsocket_util:off lb-add lb0 ae0f::10 [[fd0f::10]]:80,[[fd0f::20]]:80], [1], [],
-[ovn-nbctl: [[fd0f::10]]:80: should be an IP address.
+[ovn-nbctl: [[fd0f::10]]:80: should be an IP address, [[fd0f::20]]:80: should be an IP address.
 ])
 
 
@@ -1125,18 +1121,13 @@ AT_CHECK([ovn-nbctl -vsocket_util:off lb-add lb0 ae0f::10 [[fd0f::10]]:a80], [1]
 ])
 
 
-AT_CHECK([ovn-nbctl -vsocket_util:off lb-add lb0 ae0f::10 [[fd0f::10]]:], [1], [],
-[ovn-nbctl: [[fd0f::10]]:: should be an IP address.
-])
-
-
 AT_CHECK([ovn-nbctl -vsocket_util:off lb-add lb0 ae0f::10 fd0f::1001a], [1], [],
 [ovn-nbctl: fd0f::1001a: should be an IP address.
 ])
 
 
 AT_CHECK([ovn-nbctl -vsocket_util:off lb-add lb0 [[ae0f::10]]: [[fd0f::10]]:80,[[fd0f::20]]:80 tcp], [1], [],
-[ovn-nbctl: Protocol is unnecessary when no port of vip is given.
+[ovn-nbctl: [[fd0f::10]]:80: should be an IP address, [[fd0f::20]]:80: should be an IP address.
 ])
 
 
@@ -1146,7 +1137,7 @@ AT_CHECK([ovn-nbctl lb-add lb0 ae0f::10 fd0f::10 tcp], [1], [],
 
 
 AT_CHECK([ovn-nbctl lb-add lb0 ae0f::10 [[fd0f::10]]:900 tcp], [1], [],
-[ovn-nbctl: Protocol is unnecessary when no port of vip is given.
+[ovn-nbctl: [[fd0f::10]]:900: should be an IP address.
 ])
 
 AT_CHECK([ovn-nbctl lb-add lb0 ae0f::10 192.168.10.10], [1], [],
@@ -1158,7 +1149,7 @@ AT_CHECK([ovn-nbctl lb-add lb0 ae0f::10 192.168.10.10], [1], [],
 ])
 
 AT_CHECK([ovn-nbctl lb-add lb0 [[ae0f::10]]:80 192.168.10.10:80], [1], [],
-[ovn-nbctl: 192.168.10.10:80: IP address family is different from VIP [[ae0f::10]]:80.
+[ovn-nbctl: 192.168.10.10:80: IP address family is different from VIP ae0f::10.
 ])
 
 AT_CHECK([ovn-nbctl lb-add lb0 30.0.0.10 ae0f::10], [1], [],
@@ -1166,7 +1157,7 @@ AT_CHECK([ovn-nbctl lb-add lb0 30.0.0.10 ae0f::10], [1], [],
 ])
 
 AT_CHECK([ovn-nbctl lb-add lb0 30.0.0.10:80 [[ae0f::10]]:80], [1], [],
-[ovn-nbctl: [[ae0f::10]]:80: IP address family is different from VIP 30.0.0.10:80.
+[ovn-nbctl: [[ae0f::10]]:80: IP address family is different from VIP 30.0.0.10.
 ])
 
 AT_CHECK([ovn-nbctl lb-add lb0 ae0f::10 fd0f::10])

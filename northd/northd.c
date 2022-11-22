@@ -3709,6 +3709,10 @@ static void
 ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn, struct ovn_northd_lb *lb,
                   struct hmap *monitor_map, struct hmap *ports)
 {
+    if (lb->template) {
+        return;
+    }
+
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
         struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[i];
@@ -4025,12 +4029,19 @@ static void
 build_lrouter_lb_reachable_ips(struct ovn_datapath *od,
                                const struct ovn_northd_lb *lb)
 {
+    /* If configured to not reply to any neighbor requests for all VIPs
+     * return early.
+     */
+    if (lb->neigh_mode == LB_NEIGH_RESPOND_NONE) {
+        return;
+    }
+
     /* If configured to reply to neighbor requests for all VIPs force them
      * all to be considered "reachable".
      */
     if (lb->neigh_mode == LB_NEIGH_RESPOND_ALL) {
         for (size_t i = 0; i < lb->n_vips; i++) {
-            if (IN6_IS_ADDR_V4MAPPED(&lb->vips[i].vip)) {
+            if (lb->vips[i].address_family == AF_INET) {
                 sset_add(&od->lb_ips->ips_v4_reachable, lb->vips[i].vip_str);
             } else {
                 sset_add(&od->lb_ips->ips_v6_reachable, lb->vips[i].vip_str);
@@ -4042,8 +4053,9 @@ build_lrouter_lb_reachable_ips(struct ovn_datapath *od,
     /* Otherwise, a VIP is reachable if there's at least one router
      * subnet that includes it.
      */
+    ovs_assert(lb->neigh_mode == LB_NEIGH_RESPOND_REACHABLE);
     for (size_t i = 0; i < lb->n_vips; i++) {
-        if (IN6_IS_ADDR_V4MAPPED(&lb->vips[i].vip)) {
+        if (lb->vips[i].address_family == AF_INET) {
             ovs_be32 vip_ip4 = in6_addr_get_mapped_ipv4(&lb->vips[i].vip);
             struct ovn_port *op;
 
@@ -5817,16 +5829,16 @@ build_empty_lb_event_flow(struct ovn_lb_vip *lb_vip,
     ds_clear(action);
     ds_clear(match);
 
-    bool ipv4 = IN6_IS_ADDR_V4MAPPED(&lb_vip->vip);
+    bool ipv4 = lb_vip->address_family == AF_INET;
 
     ds_put_format(match, "ip%s.dst == %s && %s",
                   ipv4 ? "4": "6", lb_vip->vip_str, lb->proto);
 
     char *vip = lb_vip->vip_str;
-    if (lb_vip->vip_port) {
-        ds_put_format(match, " && %s.dst == %u", lb->proto, lb_vip->vip_port);
-        vip = xasprintf("%s%s%s:%u", ipv4 ? "" : "[", lb_vip->vip_str,
-                        ipv4 ? "" : "]", lb_vip->vip_port);
+    if (lb_vip->port_str) {
+        ds_put_format(match, " && %s.dst == %s", lb->proto, lb_vip->port_str);
+        vip = xasprintf("%s%s%s:%s", ipv4 ? "" : "[", lb_vip->vip_str,
+                        ipv4 ? "" : "]", lb_vip->port_str);
     }
 
     ds_put_format(action,
@@ -5837,7 +5849,7 @@ build_empty_lb_event_flow(struct ovn_lb_vip *lb_vip,
                   event_to_string(OVN_EVENT_EMPTY_LB_BACKENDS),
                   vip, lb->proto,
                   UUID_ARGS(&lb->nlb->header_.uuid));
-    if (lb_vip->vip_port) {
+    if (lb_vip->port_str) {
         free(vip);
     }
     return true;
@@ -6894,7 +6906,7 @@ build_lb_rules_pre_stateful(struct hmap *lflows, struct ovn_northd_lb *lb,
         /* Store the original destination IP to be used when generating
          * hairpin flows.
          */
-        if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
+        if (lb->vips[i].address_family == AF_INET) {
             ip_match = "ip4";
             ds_put_format(action, REG_ORIG_DIP_IPV4 " = %s; ",
                           lb_vip->vip_str);
@@ -6905,7 +6917,7 @@ build_lb_rules_pre_stateful(struct hmap *lflows, struct ovn_northd_lb *lb,
         }
 
         const char *proto = NULL;
-        if (lb_vip->vip_port) {
+        if (lb_vip->port_str) {
             proto = "tcp";
             if (lb->nlb->protocol) {
                 if (!strcmp(lb->nlb->protocol, "udp")) {
@@ -6918,14 +6930,14 @@ build_lb_rules_pre_stateful(struct hmap *lflows, struct ovn_northd_lb *lb,
             /* Store the original destination port to be used when generating
              * hairpin flows.
              */
-            ds_put_format(action, REG_ORIG_TP_DPORT " = %"PRIu16"; ",
-                          lb_vip->vip_port);
+            ds_put_format(action, REG_ORIG_TP_DPORT " = %s; ",
+                          lb_vip->port_str);
         }
         ds_put_format(action, "%s;", ct_lb_mark ? "ct_lb_mark" : "ct_lb");
 
         ds_put_format(match, "%s.dst == %s", ip_match, lb_vip->vip_str);
-        if (lb_vip->vip_port) {
-            ds_put_format(match, " && %s.dst == %d", proto, lb_vip->vip_port);
+        if (lb_vip->port_str) {
+            ds_put_format(match, " && %s.dst == %s", proto, lb_vip->port_str);
         }
 
         struct ovn_lflow *lflow_ref = NULL;
@@ -7357,22 +7369,10 @@ build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb, bool ct_lb_mark,
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
         struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[i];
         const char *ip_match = NULL;
-        if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
+        if (lb_vip->address_family == AF_INET) {
             ip_match = "ip4";
         } else {
             ip_match = "ip6";
-        }
-
-        const char *proto = NULL;
-        if (lb_vip->vip_port) {
-            proto = "tcp";
-            if (lb->nlb->protocol) {
-                if (!strcmp(lb->nlb->protocol, "udp")) {
-                    proto = "udp";
-                } else if (!strcmp(lb->nlb->protocol, "sctp")) {
-                    proto = "sctp";
-                }
-            }
         }
 
         ds_clear(action);
@@ -7392,8 +7392,9 @@ build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb, bool ct_lb_mark,
         ds_put_format(match, "ct.new && %s.dst == %s", ip_match,
                       lb_vip->vip_str);
         int priority = 110;
-        if (lb_vip->vip_port) {
-            ds_put_format(match, " && %s.dst == %d", proto, lb_vip->vip_port);
+        if (lb_vip->port_str) {
+            ds_put_format(match, " && %s.dst == %s", lb->proto,
+                          lb_vip->port_str);
             priority = 120;
         }
 
@@ -10397,7 +10398,7 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
      * of "ct_lb_mark($targets);". The other flow is for ct.est with
      * an action of "next;".
      */
-    if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
+    if (lb_vip->address_family == AF_INET) {
         ds_put_format(match, "ip4 && "REG_NEXT_HOP_IPV4" == %s",
                       lb_vip->vip_str);
     } else {
@@ -10413,14 +10414,14 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     }
 
     int prio = 110;
-    if (lb_vip->vip_port) {
+    if (lb_vip->port_str) {
         prio = 120;
         new_match = xasprintf("ct.new && !ct.rel && %s && %s && "
-                              REG_ORIG_TP_DPORT_ROUTER" == %d",
-                              ds_cstr(match), lb->proto, lb_vip->vip_port);
+                              REG_ORIG_TP_DPORT_ROUTER" == %s",
+                              ds_cstr(match), lb->proto, lb_vip->port_str);
         est_match = xasprintf("ct.est && !ct.rel && %s && %s && "
-                              REG_ORIG_TP_DPORT_ROUTER" == %d && %s == 1",
-                              ds_cstr(match), lb->proto, lb_vip->vip_port,
+                              REG_ORIG_TP_DPORT_ROUTER" == %s && %s == 1",
+                              ds_cstr(match), lb->proto, lb_vip->port_str,
                               ct_natted);
     } else {
         new_match = xasprintf("ct.new && !ct.rel && %s", ds_cstr(match));
@@ -10429,7 +10430,7 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     }
 
     const char *ip_match = NULL;
-    if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
+    if (lb_vip->address_family == AF_INET) {
         ip_match = "ip4";
     } else {
         ip_match = "ip6";
@@ -10447,9 +10448,9 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
         ds_put_format(&undnat_match, "(%s.src == %s", ip_match,
                       backend->ip_str);
 
-        if (backend->port) {
-            ds_put_format(&undnat_match, " && %s.src == %d) || ",
-                          lb->proto, backend->port);
+        if (backend->port_str) {
+            ds_put_format(&undnat_match, " && %s.src == %s) || ",
+                          lb->proto, backend->port_str);
         } else {
             ds_put_cstr(&undnat_match, ") || ");
         }
@@ -10462,9 +10463,9 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     struct ds unsnat_match = DS_EMPTY_INITIALIZER;
     ds_put_format(&unsnat_match, "%s && %s.dst == %s && %s",
                   ip_match, ip_match, lb_vip->vip_str, lb->proto);
-    if (lb_vip->vip_port) {
-        ds_put_format(&unsnat_match, " && %s.dst == %d", lb->proto,
-                      lb_vip->vip_port);
+    if (lb_vip->port_str) {
+        ds_put_format(&unsnat_match, " && %s.dst == %s", lb->proto,
+                      lb_vip->port_str);
     }
 
     struct ovn_datapath **gw_router_skip_snat =
@@ -10737,7 +10738,7 @@ build_lrouter_defrag_flows_for_lb(struct ovn_northd_lb *lb,
         ds_clear(&defrag_actions);
         ds_clear(match);
 
-        if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
+        if (lb_vip->address_family == AF_INET) {
             ds_put_format(match, "ip && ip4.dst == %s", lb_vip->vip_str);
             ds_put_format(&defrag_actions, REG_NEXT_HOP_IPV4" = %s; ",
                           lb_vip->vip_str);
@@ -10747,7 +10748,7 @@ build_lrouter_defrag_flows_for_lb(struct ovn_northd_lb *lb,
                           lb_vip->vip_str);
         }
 
-        if (lb_vip->vip_port) {
+        if (lb_vip->port_str) {
             ds_put_format(match, " && %s", lb->proto);
             prio = 110;
 

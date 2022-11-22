@@ -1933,8 +1933,68 @@
         is applied reply to ARP/neighbor discovery requests for all VIPs
         of the load balancer.  If set to <code>reachable</code>, then routers
         on which the load balancer is applied reply to ARP/neighbor discovery
-        requests only for VIPs that are part of a router's subnet.  The default
-        value of this option, if not specified, is <code>reachable</code>.
+        requests only for VIPs that are part of a router's subnet.  If set to
+        <code>none</code>, then routers on which the load balancer is applied
+        never reply to ARP/neighbor discovery requests for any of the load
+        balancer VIPs. Load balancers with <code>options:template=true</code>
+        do not support <code>reachable</code> as a valid mode.  The default
+        value of this option, if not specified, is <code>reachable</code> for
+        regular load balancers and <code>none</code> for template load
+        balancers.
+      </column>
+
+      <column name="options" key="template">
+        <p>
+          Option to be set to <code>true</code>, if the load balancer is a
+          template.  The load balancer VIPs and backends must be using
+          <ref table="Chassis_Template_Var"/> in their definitions.
+        </p>
+
+        <p>
+          Load balancer template VIP supported formats are:
+        </p>
+        <pre>
+^VIP_VAR[:^PORT_VAR|:port]
+        </pre>
+
+        <p>
+          where <code>VIP_VAR</code> and <code>PORT_VAR</code> are keys of
+          the <ref table="Chassis_Template_Var"/> <ref column="variables"/>
+          records.
+        </p>
+
+        <p>
+          Note: The VIP and PORT cannot be combined into a single template
+          variable. For example, a <ref table="Chassis_Template_Var"/>
+          variable expanding to <code>10.0.0.1:8080</code> is not valid
+          if used as VIP.
+        </p>
+
+        <p>
+          Load balancer template backend supported formats are:
+        </p>
+        <pre>
+^BACKEND_VAR1[:^PORT_VAR1|:port],^BACKEND_VAR2[:^PORT_VAR2|:port]
+
+or
+
+^BACKENDS_VAR1,^BACKENDS_VAR2
+        </pre>
+        <p>
+          where <code>BACKEND_VAR1</code>, <code>PORT_VAR1</code>,
+          <code>BACKEND_VAR2</code>, <code>PORT_VAR2</code>,
+          <code>BACKENDS_VAR1</code> and <code>BACKENDS_VAR2</code> are keys
+          of the <ref table="Chassis_Template_Var"/> <ref column="variables"/>
+          records.
+        </p>
+      </column>
+
+      <column name="options" key="address-family">
+        Address family used by the load balancer.  Supported values are
+        <code>ipv4</code> and <code>ipv6</code>.  The address-family is
+        only used for load balancers with <code>options:template=true</code>.
+        For explicit load balancers, setting the address-family has no
+        effect.
       </column>
 
       <column name="options" key="affinity_timeout">

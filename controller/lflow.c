@@ -97,6 +97,15 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
                       struct lflow_ctx_in *l_ctx_in,
                       struct lflow_ctx_out *l_ctx_out);
 
+static void
+consider_lb_hairpin_flows(struct objdep_mgr *mgr,
+                          const struct sbrec_load_balancer *sbrec_lb,
+                          const struct hmap *local_datapaths,
+                          const struct smap *template_vars,
+                          bool use_ct_mark,
+                          struct ovn_desired_flow_table *flow_table,
+                          struct simap *ids);
+
 static void add_port_sec_flows(const struct shash *binding_lports,
                                const struct sbrec_chassis *,
                                struct ovn_desired_flow_table *);
@@ -223,7 +232,7 @@ lflow_handle_changed_flows(struct lflow_ctx_in *l_ctx_in,
         UUIDSET_INITIALIZER(&flood_remove_nodes);
     SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_TRACKED (lflow,
                                                l_ctx_in->logical_flow_table) {
-        if (uuidset_find(l_ctx_out->lflows_processed, &lflow->header_.uuid)) {
+        if (uuidset_find(l_ctx_out->objs_processed, &lflow->header_.uuid)) {
             VLOG_DBG("lflow "UUID_FMT"has been processed, skip.",
                      UUID_ARGS(&lflow->header_.uuid));
             continue;
@@ -253,14 +262,14 @@ lflow_handle_changed_flows(struct lflow_ctx_in *l_ctx_in,
                      UUID_ARGS(&lflow->header_.uuid));
 
             /* For the extra lflows that need to be reprocessed because of the
-             * flood remove, remove it from lflows_processed. */
+             * flood remove, remove it from objs_processed. */
             struct uuidset_node *unode =
-                uuidset_find(l_ctx_out->lflows_processed,
+                uuidset_find(l_ctx_out->objs_processed,
                              &lflow->header_.uuid);
             if (unode) {
                 VLOG_DBG("lflow "UUID_FMT"has been processed, now reprocess.",
                          UUID_ARGS(&lflow->header_.uuid));
-                uuidset_delete(l_ctx_out->lflows_processed, unode);
+                uuidset_delete(l_ctx_out->objs_processed, unode);
             }
 
             consider_logical_flow(lflow, false, l_ctx_in, l_ctx_out);
@@ -687,7 +696,7 @@ lflow_handle_addr_set_update(const char *as_name,
     struct object_to_resources_list_node *resource_list_node;
     RESOURCE_FOR_EACH_OBJ (resource_list_node, resource_node) {
         const struct uuid *obj_uuid = &resource_list_node->obj_uuid;
-        if (uuidset_find(l_ctx_out->lflows_processed, obj_uuid)) {
+        if (uuidset_find(l_ctx_out->objs_processed, obj_uuid)) {
             VLOG_DBG("lflow "UUID_FMT"has been processed, skip.",
                      UUID_ARGS(obj_uuid));
             continue;
@@ -777,18 +786,55 @@ lflow_handle_changed_ref(enum objdep_type type, const char *res_name,
         }
 
         /* For the extra lflows that need to be reprocessed because of the
-         * flood remove, remove it from lflows_processed. */
+         * flood remove, remove it from objs_processed. */
         struct uuidset_node *unode =
-            uuidset_find(l_ctx_out->lflows_processed, &lflow->header_.uuid);
+            uuidset_find(l_ctx_out->objs_processed, &lflow->header_.uuid);
         if (unode) {
             VLOG_DBG("lflow "UUID_FMT"has been processed, now reprocess.",
                      UUID_ARGS(&lflow->header_.uuid));
-            uuidset_delete(l_ctx_out->lflows_processed, unode);
+            uuidset_delete(l_ctx_out->objs_processed, unode);
         }
 
         consider_logical_flow(lflow, false, l_ctx_in, l_ctx_out);
     }
     uuidset_destroy(&flood_remove_nodes);
+    return true;
+}
+
+bool
+lb_handle_changed_ref(enum objdep_type type, const char *res_name,
+                      struct ovs_list *objs_todo,
+                      const void *in_arg, void *out_arg)
+{
+    struct lflow_ctx_in *l_ctx_in = CONST_CAST(struct lflow_ctx_in *, in_arg);
+    struct lflow_ctx_out *l_ctx_out = out_arg;
+
+    struct object_to_resources_list_node *resource_lb_uuid;
+    LIST_FOR_EACH_POP (resource_lb_uuid, list_node, objs_todo) {
+        VLOG_DBG("Reprocess LB "UUID_FMT" for resource type: %s, name: %s",
+                 UUID_ARGS(&resource_lb_uuid->obj_uuid),
+                 objdep_type_name(type), res_name);
+
+        const struct sbrec_load_balancer *lb =
+            sbrec_load_balancer_table_get_for_uuid(
+                l_ctx_in->lb_table, &resource_lb_uuid->obj_uuid);
+        if (!lb) {
+            VLOG_DBG("Failed to find LB "UUID_FMT" referred by: %s",
+                     UUID_ARGS(&resource_lb_uuid->obj_uuid), res_name);
+        } else {
+            ofctrl_remove_flows(l_ctx_out->flow_table,
+                                &resource_lb_uuid->obj_uuid);
+
+            consider_lb_hairpin_flows(l_ctx_out->lb_deps_mgr, lb,
+                                      l_ctx_in->local_datapaths,
+                                      l_ctx_in->template_vars,
+                                      l_ctx_in->lb_hairpin_use_ct_mark,
+                                      l_ctx_out->flow_table,
+                                      l_ctx_out->hairpin_lb_ids);
+        }
+
+        free(resource_lb_uuid);
+    }
     return true;
 }
 
@@ -1260,9 +1306,9 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
 
     COVERAGE_INC(consider_logical_flow);
     if (!is_recompute) {
-        ovs_assert(!uuidset_find(l_ctx_out->lflows_processed,
+        ovs_assert(!uuidset_find(l_ctx_out->objs_processed,
                                  &lflow->header_.uuid));
-        uuidset_insert(l_ctx_out->lflows_processed, &lflow->header_.uuid);
+        uuidset_insert(l_ctx_out->objs_processed, &lflow->header_.uuid);
     }
 
     if (dp) {
@@ -2002,8 +2048,10 @@ add_lb_ct_snat_hairpin_flows(struct ovn_controller_lb *lb,
 }
 
 static void
-consider_lb_hairpin_flows(const struct sbrec_load_balancer *sbrec_lb,
+consider_lb_hairpin_flows(struct objdep_mgr *mgr,
+                          const struct sbrec_load_balancer *sbrec_lb,
                           const struct hmap *local_datapaths,
+                          const struct smap *template_vars,
                           bool use_ct_mark,
                           struct ovn_desired_flow_table *flow_table,
                           struct simap *ids)
@@ -2040,7 +2088,9 @@ consider_lb_hairpin_flows(const struct sbrec_load_balancer *sbrec_lb,
         return;
     }
 
-    struct ovn_controller_lb *lb = ovn_controller_lb_create(sbrec_lb);
+    struct sset template_vars_ref = SSET_INITIALIZER(&template_vars_ref);
+    struct ovn_controller_lb *lb =
+        ovn_controller_lb_create(sbrec_lb, template_vars, &template_vars_ref);
     uint8_t lb_proto = IPPROTO_TCP;
     if (lb->slb->protocol && lb->slb->protocol[0]) {
         if (!strcmp(lb->slb->protocol, "udp")) {
@@ -2050,6 +2100,11 @@ consider_lb_hairpin_flows(const struct sbrec_load_balancer *sbrec_lb,
         }
     }
 
+    const char *tv_name;
+    SSET_FOR_EACH (tv_name, &template_vars_ref) {
+        objdep_mgr_add(mgr, OBJDEP_TYPE_TEMPLATE, tv_name,
+                       &sbrec_lb->header_.uuid);
+    }
     for (i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
 
@@ -2064,13 +2119,17 @@ consider_lb_hairpin_flows(const struct sbrec_load_balancer *sbrec_lb,
     add_lb_ct_snat_hairpin_flows(lb, id, lb_proto, flow_table);
 
     ovn_controller_lb_destroy(lb);
+    sset_destroy(&template_vars_ref);
 }
 
 /* Adds OpenFlow flows to flow tables for each Load balancer VIPs and
  * backends to handle the load balanced hairpin traffic. */
 static void
-add_lb_hairpin_flows(const struct sbrec_load_balancer_table *lb_table,
-                     const struct hmap *local_datapaths, bool use_ct_mark,
+add_lb_hairpin_flows(struct objdep_mgr *mgr,
+                     const struct sbrec_load_balancer_table *lb_table,
+                     const struct hmap *local_datapaths,
+                     const struct smap *template_vars,
+                     bool use_ct_mark,
                      struct ovn_desired_flow_table *flow_table,
                      struct simap *ids,
                      struct id_pool *pool)
@@ -2093,8 +2152,8 @@ add_lb_hairpin_flows(const struct sbrec_load_balancer_table *lb_table,
             ovs_assert(id_pool_alloc_id(pool, &id));
             simap_put(ids, lb->name, id);
         }
-        consider_lb_hairpin_flows(lb, local_datapaths, use_ct_mark,
-                                  flow_table, ids);
+        consider_lb_hairpin_flows(mgr, lb, local_datapaths, template_vars,
+                                  use_ct_mark, flow_table, ids);
     }
 }
 
@@ -2230,7 +2289,9 @@ lflow_run(struct lflow_ctx_in *l_ctx_in, struct lflow_ctx_out *l_ctx_out)
                        l_ctx_in->static_mac_binding_table,
                        l_ctx_in->local_datapaths,
                        l_ctx_out->flow_table);
-    add_lb_hairpin_flows(l_ctx_in->lb_table, l_ctx_in->local_datapaths,
+    add_lb_hairpin_flows(l_ctx_out->lb_deps_mgr, l_ctx_in->lb_table,
+                         l_ctx_in->local_datapaths,
+                         l_ctx_in->template_vars,
                          l_ctx_in->lb_hairpin_use_ct_mark,
                          l_ctx_out->flow_table,
                          l_ctx_out->hairpin_lb_ids,
@@ -2281,10 +2342,10 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
     const struct sbrec_logical_flow *lflow;
     SBREC_LOGICAL_FLOW_FOR_EACH_EQUAL (
         lflow, lf_row, l_ctx_in->sbrec_logical_flow_by_logical_datapath) {
-        if (uuidset_find(l_ctx_out->lflows_processed, &lflow->header_.uuid)) {
+        if (uuidset_find(l_ctx_out->objs_processed, &lflow->header_.uuid)) {
             continue;
         }
-        uuidset_insert(l_ctx_out->lflows_processed, &lflow->header_.uuid);
+        uuidset_insert(l_ctx_out->objs_processed, &lflow->header_.uuid);
         consider_logical_flow__(lflow, dp, l_ctx_in, l_ctx_out);
     }
     sbrec_logical_flow_index_destroy_row(lf_row);
@@ -2309,7 +2370,7 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
         sbrec_logical_flow_index_set_logical_dp_group(lf_row, ldpg);
         SBREC_LOGICAL_FLOW_FOR_EACH_EQUAL (
             lflow, lf_row, l_ctx_in->sbrec_logical_flow_by_logical_dp_group) {
-            if (uuidset_find(l_ctx_out->lflows_processed,
+            if (uuidset_find(l_ctx_out->objs_processed,
                              &lflow->header_.uuid)) {
                 continue;
             }
@@ -2361,7 +2422,9 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
     /* Add load balancer hairpin flows if the datapath has any load balancers
      * associated. */
     for (size_t i = 0; i < n_dp_lbs; i++) {
-        consider_lb_hairpin_flows(dp_lbs[i], l_ctx_in->local_datapaths,
+        consider_lb_hairpin_flows(l_ctx_out->lb_deps_mgr, dp_lbs[i],
+                                  l_ctx_in->local_datapaths,
+                                  l_ctx_in->template_vars,
                                   l_ctx_in->lb_hairpin_use_ct_mark,
                                   l_ctx_out->flow_table,
                                   l_ctx_out->hairpin_lb_ids);
@@ -2383,7 +2446,7 @@ lflow_handle_flows_for_lport(const struct sbrec_port_binding *pb,
                                   OBJDEP_TYPE_PORTBINDING,
                                   pb->logical_port,
                                   lflow_handle_changed_ref,
-                                  l_ctx_out->lflows_processed,
+                                  l_ctx_out->objs_processed,
                                   l_ctx_in, l_ctx_out, &changed)) {
         return false;
     }
@@ -2422,7 +2485,7 @@ lflow_handle_changed_port_bindings(struct lflow_ctx_in *l_ctx_in,
                                       OBJDEP_TYPE_PORTBINDING,
                                       pb->logical_port,
                                       lflow_handle_changed_ref,
-                                      l_ctx_out->lflows_processed,
+                                      l_ctx_out->objs_processed,
                                       l_ctx_in, l_ctx_out, &changed)) {
             ret = false;
             break;
@@ -2449,7 +2512,7 @@ lflow_handle_changed_mc_groups(struct lflow_ctx_in *l_ctx_in,
         if (!objdep_mgr_handle_change(l_ctx_out->lflow_deps_mgr,
                                       OBJDEP_TYPE_MC_GROUP, ds_cstr(&mg_key),
                                       lflow_handle_changed_ref,
-                                      l_ctx_out->lflows_processed,
+                                      l_ctx_out->objs_processed,
                                       l_ctx_in, l_ctx_out, &changed)) {
             ret = false;
             break;
@@ -2503,7 +2566,9 @@ lflow_handle_changed_lbs(struct lflow_ctx_in *l_ctx_in,
 
         VLOG_DBG("Add load balancer hairpin flows for "UUID_FMT,
                  UUID_ARGS(&lb->header_.uuid));
-        consider_lb_hairpin_flows(lb, l_ctx_in->local_datapaths,
+        consider_lb_hairpin_flows(l_ctx_out->lb_deps_mgr, lb,
+                                  l_ctx_in->local_datapaths,
+                                  l_ctx_in->template_vars,
                                   l_ctx_in->lb_hairpin_use_ct_mark,
                                   l_ctx_out->flow_table,
                                   l_ctx_out->hairpin_lb_ids);
