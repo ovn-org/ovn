@@ -26,9 +26,12 @@
 #include "openvswitch/rconn.h"
 #include "openvswitch/ofp-msgs.h"
 #include "openvswitch/ofp-meter.h"
+#include "openvswitch/ofp-util.h"
 #include "ovn/features.h"
 
 VLOG_DEFINE_THIS_MODULE(features);
+
+#define FEATURES_DEFAULT_PROBE_INTERVAL_SEC 5
 
 struct ovs_feature {
     enum ovs_feature_value value;
@@ -74,7 +77,8 @@ static void
 ovs_feature_rconn_setup(const char *br_name)
 {
     if (!swconn) {
-        swconn = rconn_create(5, 0, DSCP_DEFAULT, 1 << OFP15_VERSION);
+        swconn = rconn_create(FEATURES_DEFAULT_PROBE_INTERVAL_SEC, 0,
+                              DSCP_DEFAULT, 1 << OFP15_VERSION);
     }
 
     if (!rconn_is_connected(swconn)) {
@@ -85,11 +89,14 @@ ovs_feature_rconn_setup(const char *br_name)
         }
         free(target);
     }
+    rconn_set_probe_interval(swconn, FEATURES_DEFAULT_PROBE_INTERVAL_SEC);
 }
 
 static bool
 ovs_feature_get_openflow_cap(const char *br_name)
 {
+    struct ofpbuf *msg;
+
     if (!br_name) {
         return false;
     }
@@ -102,15 +109,14 @@ ovs_feature_get_openflow_cap(const char *br_name)
     }
 
     /* send new requests just after reconnect. */
-    if (conn_seq_no == rconn_get_connection_seqno(swconn)) {
-        return false;
+    if (conn_seq_no != rconn_get_connection_seqno(swconn)) {
+        /* dump datapath meter capabilities. */
+        msg = ofpraw_alloc(OFPRAW_OFPST13_METER_FEATURES_REQUEST,
+                           rconn_get_version(swconn), 0);
+        rconn_send(swconn, msg, NULL);
     }
 
     bool ret = false;
-    /* dump datapath meter capabilities. */
-    struct ofpbuf *msg = ofpraw_alloc(OFPRAW_OFPST13_METER_FEATURES_REQUEST,
-                                      rconn_get_version(swconn), 0);
-    rconn_send(swconn, msg, NULL);
     for (int i = 0; i < 50; i++) {
         msg = rconn_recv(swconn);
         if (!msg) {
@@ -137,6 +143,8 @@ ovs_feature_get_openflow_cap(const char *br_name)
                 }
             }
             conn_seq_no = rconn_get_connection_seqno(swconn);
+        } else if (type == OFPTYPE_ECHO_REQUEST) {
+            rconn_send(swconn, ofputil_encode_echo_reply(oh), NULL);
         }
         ofpbuf_delete(msg);
     }
