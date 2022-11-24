@@ -32779,116 +32779,53 @@ OVN_FOR_EACH_NORTHD([
 AT_SETUP([recomputes])
 ovn_start
 
-n_hv=4
-
-# Add chassis
 net_add n1
-for i in $(seq 1 $n_hv); do
-    sim_add hv$i
-    as hv$i
-    check ovs-vsctl add-br br-phys
-    ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
-    ovn_attach n1 br-phys 192.168.0.$i 24 geneve
-done
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n1 br-phys 192.168.0.1 24 geneve
 
-check ovn-sbctl set connection . inactivity_probe=0
-
-add_switch_ports() {
-    start_port=$1
-    end_port=$2
-    nb_hv=$3
-    bulk_size=$4
-    for ((i=start_port; i<end_port; )) do
-        start_bulk=$i
-        for hv in $(seq 1 $nb_hv); do
-            end_bulk=$((start_bulk+bulk_size-1))
-            for port in $(seq $start_bulk $end_bulk); do
-                logical_switch_port=lsp${port}
-                OVN_NBCTL(lsp-add ls1 $logical_switch_port)
-                OVN_NBCTL(lsp-set-addresses $logical_switch_port dynamic)
-            done
-            start_bulk=$((end_bulk+1))
-        done
-        RUN_OVN_NBCTL()
-
-        start_bulk=$i
-        for hv in $(seq 1 $nb_hv); do
-            end_bulk=$((start_bulk+bulk_size-1))
-            for port in $(seq $start_bulk $end_bulk); do
-                logical_switch_port=lsp${port}
-                as hv$hv ovs-vsctl \
-                    --no-wait -- add-port br-int vif${port} \
-                    -- set Interface vif${port} external_ids:iface-id=$logical_switch_port
-            done
-            start_bulk=$((end_bulk+1))
-        done
-        i=$((end_bulk+1))
-    done
-}
 check ovn-nbctl ls-add ls1
 check ovn-nbctl set Logical_Switch ls1 other_config:subnet=10.1.0.0/16
 check ovn-nbctl set Logical_Switch ls1 other_config:exclude_ips=10.1.255.254
 
-check ovn-nbctl lr-add lr1
-check ovn-nbctl lsp-add ls1 lsp0 -- set Logical_Switch_Port lsp0 type=router options:router-port=lrp0 addresses=dynamic
-check ovn-nbctl lrp-add lr1 lrp0 "f0:00:00:01:00:01" 10.1.255.254/16
-check ovn-nbctl lr-nat-add lr1 snat 10.2.0.1 10.1.0.0/16
-
-lflow_run=0
 check ovn-nbctl --wait=hv sync
 
-# Tunnel ports might not be added (yet) at this point on slow system.
-# Wait for flows related to such ports to ensure those ports have been added
-# before we measure recomputes. Otherwise, ovs_interface handler might be run
-# afterwards for tunnel ports, causing recomputes.
-for i in $(seq 1 $n_hv); do
-    for j in $(seq 1 $n_hv); do
-        if test $i != $j; then
-            OVN_WAIT_REMOTE_INPUT_FLOWS(["hv$i"],["hv$j"])
-        fi
-    done
-done
+as hv1
+lflow_run=$(ovn-appctl -t ovn-controller coverage/read-counter lflow_run)
 
-for i in $(seq 1 $n_hv); do
-    as hv$i
-    lflow_run1=$(ovn-appctl -t ovn-controller coverage/read-counter lflow_run)
-    lflow_run=`expr $lflow_run1 + $lflow_run`
-done
+check ovn-nbctl lsp-add ls1 lsp1
+check ovn-nbctl lsp-add ls1 lsp2
+check ovn-nbctl --wait=hv sync
 
-add_switch_ports 1 1000 $n_hv 5
+# Make sb sleep
+AT_CHECK([kill -STOP $(cat ovn-sb/ovsdb-server.pid)])
+
+as hv1
+ovs-vsctl --no-wait -- add-port br-int vif1 \
+                    -- set Interface vif1 external_ids:iface-id=lsp1
+ovs-vsctl --no-wait -- add-port br-int vif2 \
+                    -- set Interface vif2 external_ids:iface-id=lsp2
+
+# Check that ovn-controller handled the bindings
+OVS_WAIT_UNTIL(
+    [test `ovs-appctl -t ovn-controller debug/dump-local-bindings | grep interface | wc -l` -eq 2],
+    [kill -CONT $(cat ovn-sb/ovsdb-server.pid)]
+)
+AT_CHECK([kill -CONT $(cat ovn-sb/ovsdb-server.pid)])
 
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
-for i in $(seq 1 $n_hv); do
-    pid=$(cat hv${i}/ovn-controller.pid)
-    u=$((u+$(cat "/proc/$pid/stat" | awk '{print $14}')))
-    s=$((s+$(cat "/proc/$pid/stat" | awk '{print $15}')))
-done
+as hv1
+lflow_run_end=$(ovn-appctl -t ovn-controller coverage/read-counter lflow_run)
 
-n_pid=$(cat northd/ovn-northd.pid)
-n_u=$(cat "/proc/$pid/stat" | awk '{print $14}')
-n_s=$(cat "/proc/$pid/stat" | awk '{print $15}')
-
-echo "Total Northd User Time: $n_u"
-echo "Total Northd System Time: $n_s"
-echo "Total Controller User Time: $u"
-echo "Total Controller System Time: $s"
-
-lflow_run_end=0
-for i in $(seq 1 $n_hv); do
-    as hv$i
-    lflow_run1=$(ovn-appctl -t ovn-controller coverage/read-counter lflow_run)
-    lflow_run_end=`expr $lflow_run1 + $lflow_run_end`
-done
 n_recomputes=`expr $lflow_run_end - $lflow_run`
 echo "$n_recomputes recomputes"
 
 AT_CHECK([test $lflow_run_end == $lflow_run])
 
-for i in $(seq 2 $n_hv); do
-    OVN_CLEANUP_SBOX([hv$i])
-done
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
