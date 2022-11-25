@@ -8630,8 +8630,8 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=78 |grep cookie |sed -e 's/duration=
 ])
 
 check_affinity_flows () {
-n1=$(ovs-ofctl dump-flows br-int table=15 |awk '/priority=150,ip,reg4=0xc0a80102/{print substr($4,11,length($4)-11)}')
-n2=$(ovs-ofctl dump-flows br-int table=15 |awk '/priority=150,ip,reg4=0xc0a80202/{print substr($4,11,length($4)-11)}')
+n1=$(ovs-ofctl dump-flows br-int table=15 |awk '/priority=150,ct_state=\+new\+trk,ip,reg4=0xc0a80102/{print substr($4,11,length($4)-11)}')
+n2=$(ovs-ofctl dump-flows br-int table=15 |awk '/priority=150,ct_state=\+new\+trk,ip,reg4=0xc0a80202/{print substr($4,11,length($4)-11)}')
 [[ $n1 -gt 0 -a $n2 -eq 0 ]] || [[ $n1 -eq 0 -a $n2 -gt 0 ]]
 echo $?
 }
@@ -8902,8 +8902,8 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=78 |grep cookie |sed -e 's/duration=
 ])
 
 check_affinity_flows () {
-n1=$(ovs-ofctl dump-flows br-int table=15 |awk '/priority=150,ipv6,reg4=0xfd110000/{print substr($4,11,length($4)-11)}')
-n2=$(ovs-ofctl dump-flows br-int table=15 |awk '/priority=150,ipv6,reg4=0xfd120000/{print substr($4,11,length($4)-11)}')
+n1=$(ovs-ofctl dump-flows br-int table=15 |awk '/priority=150,ct_state=\+new\+trk,ipv6,reg4=0xfd110000/{print substr($4,11,length($4)-11)}')
+n2=$(ovs-ofctl dump-flows br-int table=15 |awk '/priority=150,ct_state=\+new\+trk,ipv6,reg4=0xfd120000/{print substr($4,11,length($4)-11)}')
 [[ $n1 -gt 0 -a $n2 -eq 0 ]] || [[ $n1 -eq 0 -a $n2 -gt 0 ]]
 echo $?
 }
