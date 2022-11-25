@@ -817,7 +817,7 @@ ip_address_and_port_from_lb_key(const char *key, char **ip_address,
  *
  * This value is also used to handle some backward compatibility during
  * upgrading. It should never decrease or rewind. */
-#define OVN_INTERNAL_MINOR_VER 5
+#define OVN_INTERNAL_MINOR_VER 6
 
 /* Returns the OVN version. The caller must free the returned value. */
 char *
