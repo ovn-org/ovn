@@ -926,11 +926,12 @@
         is specified in <code>options</code> column, that includes a L4 port
         <var>PORT</var> of protocol <var>P</var> and IP address <var>VIP</var>,
         a priority-150 flow is added. For IPv4 <var>VIPs</var>, the flow
-        matches <code>reg9[6] == 1 &amp;&amp; ip &amp;&amp; ip4.dst ==
-        <var>VIP</var> &amp;&amp; <var>P</var>.dst == <var>PORT</var></code>.
-        For IPv6 <var>VIPs</var>, the flow matches <code>reg9[6] == 1
-        &amp;&amp; ip &amp;&amp; ip6.dst == <var> VIP </var>&amp;&amp;
-        <var>P</var> &amp;&amp; <var>P</var>.dst == <var> PORT</var></code>.
+        matches <code>reg9[6] == 1 &amp;&amp; ct.new &amp;&amp; ip &amp;&amp;
+        ip4.dst == <var>VIP</var> &amp;&amp; <var>P</var>.dst == <var>PORT
+        </var></code>. For IPv6 <var>VIPs</var>, the flow matches
+        <code>reg9[6] == 1 &amp;&amp; ct.new &amp;&amp; ip &amp;&amp;
+        ip6.dst == <var> VIP </var>&amp;&amp; <var>P</var> &amp;&amp;
+        <var>P</var>.dst == <var> PORT</var></code>.
         The flow's action is <code>ct_lb_mark(<var>args</var>)</code>, where
         <var>args</var> contains comma separated IP addresses (and optional
         port numbers) to load balance to.  The address family of the IP
@@ -3344,8 +3345,8 @@ icmp6 {
         a positive affinity timeout is specified in <code>options</code>
         column, that includes a L4 port <var>PORT</var> of protocol
         <var>P</var> and IPv4 or IPv6 address <var>VIP</var>, a priority-150
-        flow that matches on <code>reg9[6] == 1 &amp;&amp; ip &amp;&amp;
-        reg0 == <var>VIP</var> &amp;&amp; <var>P</var> &amp;&amp;
+        flow that matches on <code>reg9[6] == 1 &amp;&amp; ct.new &amp;&amp;
+        ip &amp;&amp; reg0 == <var>VIP</var> &amp;&amp; <var>P</var> &amp;&amp;
         reg9[16..31] == </code> <code><var>PORT</var></code> (<code>xxreg0
         == <var>VIP</var></code> in the IPv6 case) with an action of
         <code>ct_lb_mark(<var>args</var>) </code>, where <var>args</var>
