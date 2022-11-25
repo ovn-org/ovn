@@ -61,20 +61,20 @@ jobs:
     steps:
     - name: checkout
       if: github.event_name == 'push' || github.event_name == 'pull_request'
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         submodules: recursive
 
     # For weekly runs, don't update submodules
     - name: checkout without submodule
       if: github.event_name == 'schedule'
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     # Weekly runs test using OVS master instead of the
     # submodule.
     - name: checkout OVS master
       if: github.event_name == 'schedule'
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: 'openvswitch/ovs'
         path: 'ovs'
@@ -103,7 +103,7 @@ jobs:
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: set up python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: '3.x'
 
@@ -116,9 +116,9 @@ jobs:
     - name: copy logs on failure
       if: failure() || cancelled()
       run: |
-        # upload-artifact@v2 throws exceptions if it tries to upload socket
+        # upload-artifact@v3 throws exceptions if it tries to upload socket
         # files and we could have some socket files in testsuite.dir.
-        # Also, upload-artifact@v2 doesn't work well enough with wildcards.
+        # Also, upload-artifact@v3 doesn't work well enough with wildcards.
         # So, we're just archiving everything here to avoid any issues.
         mkdir logs
         cp config.log ./logs/
@@ -130,7 +130,7 @@ jobs:
 
     - name: upload logs on failure
       if: failure() || cancelled()
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: logs-linux-${{ join(matrix.cfg.*, '-') }}
         path: logs.tgz
@@ -149,18 +149,18 @@ jobs:
     steps:
     - name: checkout
       if: github.event_name == 'push' || github.event_name == 'pull_request'
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         submodules: recursive
     # For weekly runs, don't update submodules
     - name: checkout without submodule
       if: github.event_name == 'schedule'
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
     # Weekly runs test using OVS master instead of the
     # submodule.
     - name: checkout OVS master
       if: github.event_name == 'schedule'
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: 'openvswitch/ovs'
         path: 'ovs'
@@ -172,7 +172,7 @@ jobs:
         echo "$HOME/bin"        >> $GITHUB_PATH
         echo "$HOME/.local/bin" >> $GITHUB_PATH
     - name: set up python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: '3.x'
     - name: prepare
@@ -181,7 +181,7 @@ jobs:
       run:  ./.ci/osx-build.sh
     - name: upload logs on failure
       if: failure()
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: logs-osx-clang---disable-ssl
         path: config.log
