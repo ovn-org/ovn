@@ -1,5 +1,8 @@
 Post v22.09.0
 -------------
+  - Add load balancer "affinity_timeout" option to configure load balancing
+    of traffic from a particular client to the same backend for a given
+    period of time.
   - ovn-northd: Add configuration knobs to enable drop sampling using OVS's
     per-flow IPFIX sampling.
 
