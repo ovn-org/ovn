@@ -1,0 +1,155 @@
+name: System tests using ovn-fake-multinode
+
+on:
+  schedule:
+    # Run everyday at midnight
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    env:
+      RUNC_CMD: podman
+      OS_IMAGE: "fedora:37"
+      # https://github.com/actions/runner-images/issues/6282
+      XDG_RUNTIME_DIR: ''
+
+    name: Build ovn-fake-multinode image
+    runs-on: ubuntu-20.04
+    steps:
+    - name: Check out ovn-fake-multi-node
+      uses: actions/checkout@v3
+      with:
+        repository: 'ovn-org/ovn-fake-multinode'
+        path: 'ovn-fake-multinode'
+        ref: 'v0.1'
+
+    # Check out ovn and ovs separately inside ovn-fake-multinode/ovn and ovn-fake-multinode/ovs
+    # ovn-fake-multinode builds and installs ovs from ovn-fake-multinode/ovs
+    # and it builds and installs ovn from ovn-fake-multinode/ovn. It uses the ovs submodule for ovn compilation.
+    - name: Check out ovn
+      uses: actions/checkout@v3
+      with:
+        path: 'ovn-fake-multinode/ovn'
+        submodules: recursive
+
+    - name: Check out ovs master
+      uses: actions/checkout@v3
+      with:
+        path: 'ovn-fake-multinode/ovs'
+        repository: 'openvswitch/ovs'
+        ref: 'master'
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt-get install -y podman
+
+    - name: Build ovn-fake-multi-node main image
+      run: |
+        set -x
+        sudo -E ./ovn_cluster.sh build
+        mkdir -p /tmp/_output
+        sudo podman save ovn/ovn-multi-node:latest > /tmp/_output/ovn_main_image.tar
+      working-directory: ovn-fake-multinode
+
+    - name: Checkout ovn branch-22.03
+      uses: actions/checkout@v3
+      with:
+        path: 'ovn-fake-multinode/ovn'
+        submodules: recursive
+        ref: 'branch-22.03'
+
+    - name: Build ovn-fake-multi-node 22.03 image
+      run: |
+        set -x
+        sudo -E ./ovn_cluster.sh build
+        mkdir -p /tmp/_output
+        sudo podman tag ovn/ovn-multi-node:latest ovn/ovn-multi-node:22.03
+        sudo podman save ovn/ovn-multi-node:22.03 > /tmp/_output/ovn_22_03_image.tar
+      working-directory: ovn-fake-multinode
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: test-main-image
+        path: /tmp/_output/ovn_main_image.tar
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: test-22-03-image
+        path: /tmp/_output/ovn_22_03_image.tar
+
+  multinode-tests:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 15
+    env:
+      RUNC_CMD: podman
+      OS_IMAGE: "fedora:37"
+      CENTRAL_IMAGE: ${{ matrix.cfg.central_image }}
+      # Disable SSL for now. Revisit this if required.
+      ENABLE_SSL: no
+      # https://github.com/actions/runner-images/issues/6282
+      XDG_RUNTIME_DIR: ''
+
+    name: multinode tests ${{ join(matrix.cfg.*, ' ') }}
+    needs: [build]
+    strategy:
+      fail-fast: false
+      matrix:
+        cfg:
+        - { central_image: "ovn/ovn-multi-node:latest" }
+        - { central_image: "ovn/ovn-multi-node:22.03" }
+
+    steps:
+
+    - name: Free up disk space
+      run: sudo eatmydata apt-get remove --auto-remove -y aspnetcore-* dotnet-* libmono-* mono-* msbuild php-* php7* ghc-* zulu-*
+
+    - uses: actions/download-artifact@v3
+      with:
+        name: test-main-image
+
+    - uses: actions/download-artifact@v3
+      with:
+        name: test-22-03-image
+
+    - name: Load podman image
+      run: |
+        sudo podman load --input ovn_main_image.tar
+        sudo podman load --input ovn_22_03_image.tar
+
+    - name: Check out ovn-fake-multi-node
+      uses: actions/checkout@v3
+      with:
+        repository: 'ovn-org/ovn-fake-multinode'
+        path: 'ovn-fake-multinode'
+        ref: 'v0.1'
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt-get install -y podman openvswitch-switch
+        sudo systemctl start openvswitch-switch
+        sudo ovs-vsctl show
+
+    - name: Start basic cluster
+      run: |
+        sudo -E ./ovn_cluster.sh start
+        sudo podman exec -it ovn-central ovn-nbctl show
+        sudo podman exec -it ovn-central ovn-appctl -t ovn-northd version
+        sudo podman exec -it ovn-chassis-1 ovn-appctl -t ovn-controller version
+      working-directory: ovn-fake-multinode
+
+    - name: Run basic test script
+      run: |
+        sudo ./.ci/test_basic.sh
+      working-directory: ovn-fake-multinode
+
+    - name: Stop cluster
+      run: |
+        sudo -E ./ovn_cluster.sh stop
+      working-directory: ovn-fake-multinode
