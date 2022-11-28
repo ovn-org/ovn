@@ -19,9 +19,9 @@ jobs:
         libssl-dev llvm-dev libelf-dev libnuma-dev libpcap-dev  \
         selinux-policy-dev ncat python3-scapy isc-dhcp-server
       m32_dependecies: gcc-multilib
+      ARCH:        ${{ matrix.cfg.arch }}
       CC:          ${{ matrix.cfg.compiler }}
       LIBS:        ${{ matrix.cfg.libs }}
-      M32:         ${{ matrix.cfg.m32 }}
       OPTS:        ${{ matrix.cfg.opts }}
       TESTSUITE:   ${{ matrix.cfg.testsuite }}
       TEST_RANGE:  ${{ matrix.cfg.test_range }}
@@ -56,7 +56,7 @@ jobs:
         - { compiler: clang, testsuite: system-test, sanitizers: sanitizers, test_range: "-100" }
         - { compiler: clang, testsuite: system-test, sanitizers: sanitizers, test_range: "101-200" }
         - { compiler: clang, testsuite: system-test, sanitizers: sanitizers, test_range: "201-" }
-        - { compiler: gcc,  m32: m32, opts: --disable-ssl}
+        - { arch: x86, compiler: gcc, opts: --disable-ssl }
 
     steps:
     - name: checkout
@@ -90,11 +90,11 @@ jobs:
       run:  sudo apt install -y ${{ env.dependencies }}
 
     - name: install libunbound libunwind
-      if:   matrix.cfg.m32 == ''
+      if:   matrix.cfg.arch != 'x86'
       run:  sudo apt install -y libunbound-dev libunwind-dev
 
     - name: install 32-bit dependencies
-      if:   matrix.cfg.m32 != ''
+      if:   matrix.cfg.arch == 'x86'
       run:  sudo apt install -y ${{ env.m32_dependecies }}
 
     - name: update PATH

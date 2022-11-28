@@ -3,9 +3,10 @@
 set -o errexit
 set -x
 
+ARCH=${ARCH:-"x86_64"}
 COMMON_CFLAGS=""
 OVN_CFLAGS=""
-EXTRA_OPTS="--enable-Werror"
+OPTS="$OPTS --enable-Werror"
 
 function configure_ovs()
 {
@@ -23,28 +24,33 @@ function configure_ovn()
     { cat config.log; exit 1; }
 }
 
-save_OPTS="${OPTS} $*"
-OPTS="${EXTRA_OPTS} ${save_OPTS}"
+function configure_gcc()
+{
+    if [ "$ARCH" = "x86_64" ]; then
+        # Enable sparse only for x86_64 architecture.
+        OPTS="$OPTS --enable-sparse"
+    elif [ "$ARCH" = "x86" ]; then
+        # Adding m32 flag directly to CC to avoid any possible issues
+        # with API/ABI difference on 'configure' and 'make' stages.
+        export CC="$CC -m32"
+    fi
+}
 
-# If AddressSanitizer and UndefinedBehaviorSanitizer are requested, enable them,
-# but only for OVN, not for OVS.  However, disable some optimizations for
-# OVS, to make sanitizer reports user friendly.
-if [ "$SANITIZERS" ]; then
-    # Use the default options configured in tests/atlocal.in, in UBSAN_OPTIONS.
-    COMMON_CFLAGS="${COMMON_CFLAGS} -O1 -fno-omit-frame-pointer -fno-common -g"
-    OVN_CFLAGS="${OVN_CFLAGS} -fsanitize=address,undefined"
-fi
-
-if [ "$CC" = "clang" ]; then
+function configure_clang()
+{
+    # If AddressSanitizer and UndefinedBehaviorSanitizer are requested,
+    # enable them, but only for OVN, not for OVS.  However, disable some
+    # optimizations for OVS, to make sanitizer reports user friendly.
+    if [ "$SANITIZERS" ]; then
+       # Use the default options configured in tests/atlocal.in,
+       # in UBSAN_OPTIONS.
+       COMMON_CFLAGS="${COMMON_CFLAGS} -O1 -fno-omit-frame-pointer -fno-common -g"
+       OVN_CFLAGS="${OVN_CFLAGS} -fsanitize=address,undefined"
+    fi
     COMMON_CFLAGS="${COMMON_CFLAGS} -Wno-error=unused-command-line-argument"
-elif [ "$M32" ]; then
-    # Not using sparse for 32bit builds on 64bit machine.
-    # Adding m32 flag directly to CC to avoid any possible issues with API/ABI
-    # difference on 'configure' and 'make' stages.
-    export CC="$CC -m32"
-else
-    OPTS="$OPTS --enable-sparse"
-fi
+}
+
+configure_$CC
 
 if [ "$TESTSUITE" ]; then
     if [ "$TESTSUITE" = "system-test" ]; then
