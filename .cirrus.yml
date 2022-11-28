@@ -1,31 +1,46 @@
-freebsd_build_task:
+arm_unit_tests_task:
 
-  freebsd_instance:
-    matrix:
-      image: freebsd-12-0-release-amd64
-      image: freebsd-11-2-release-amd64
-    cpu: 4
-    memory: 8G
+  arm_container:
+    image: quay.io/fedora/fedora:37
+    memory: 4G
+    cpu: 2
 
   env:
-    DEPENDENCIES: automake libtool gmake gcc wget openssl
-                  python py27-six py27-sphinx py27-openssl
-                  python3 py36-six py36-openssl
+    ARCH: aarch64
+    CIRRUS_CLONE_SUBMODULES: true
+    PATH: ${HOME}/bin:${HOME}/.local/bin:${PATH}
+    DEPENDENCIES: autoconf automake clang curl ethtool gcc git
+      glibc-langpack-en groff iproute iproute-tc iputils libcap-ng-devel
+      libtool net-tools nmap-ncat openssl openssl-devel python3-devel
+      python3-pip python3-sphinx tcpdump unbound unbound-devel wget
     matrix:
-      COMPILER: gcc
-      COMPILER: clang
+      - CC: gcc
+        TESTSUITE: test
+        TEST_RANGE: -500
+      - CC: gcc
+        TESTSUITE: test
+        TEST_RANGE: 501-1000
+      - CC: gcc
+        TESTSUITE: test
+        TEST_RANGE: 1001-
+      - CC: clang
+        TESTSUITE: test
+        TEST_RANGE: -500
+      - CC: clang
+        TESTSUITE: test
+        TEST_RANGE: 501-1000
+      - CC: clang
+        TESTSUITE: test
+        TEST_RANGE: 1001-
+
+  name: ARM64 ${CC} ${TESTSUITE} ${TEST_RANGE}
+
+  dependencies_script:
+    - dnf -y update
+    - dnf -y install ${DEPENDENCIES}
 
   prepare_script:
-    - pkg install -y ${DEPENDENCIES}
-
-  configure_script:
-    - ./boot.sh
-    - ./configure CC=${COMPILER} MAKE=gmake OVS_CFLAGS='-Wall' --enable-Werror
-                  || { cat config.log; exit 1; }
+    - ./.ci/linux-prepare.sh
 
   build_script:
-    - gmake -j8
-
-  check_script:
-    - gmake -j8 check TESTSUITEFLAGS=-j8 RECHECK=yes
-                || { cat ./tests/testsuite.log; exit 1; }
+    - ./.ci/linux-build.sh
