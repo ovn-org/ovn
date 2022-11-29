@@ -86,6 +86,7 @@ EXTRA_DIST = \
 	README.rst \
 	NOTICE \
 	.cirrus.yml \
+	.ci/linux-prepare.sh \
 	.ci/ci.sh \
 	.ci/linux-build.sh \
 	.ci/osx-build.sh \

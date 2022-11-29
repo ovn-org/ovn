@@ -1,0 +1,166 @@
+#
+#
+
+# M_NS_EXEC([fake_node], [namespace], [command])
+#
+# Execute 'command' in 'namespace'
+m4_define([M_NS_EXEC],
+    [podman exec $1 ip netns exec $2 $3])
+
+# M_NS_CHECK_EXEC([fake_node], [namespace], [command], other_params...)
+#
+# Wrapper for AT_CHECK that executes 'command' inside 'fake_node''s namespace'.
+# 'other_params' as passed as they are to AT_CHECK.
+m4_define([M_NS_CHECK_EXEC],
+    [ AT_CHECK([M_NS_EXEC([$1], [$2], [$3])], m4_shift(m4_shift(m4_shift($@)))) ]
+)
+
+OVS_START_SHELL_HELPERS
+
+m_as() {
+    c=$1
+    shift
+    podman exec $c "$@"
+}
+
+m_central_as () {
+    podman exec ovn-central "$@"
+}
+
+check_fake_multinode_setup() {
+    check m_as ovn-central ovn-nbctl --wait=sb sync
+    AT_CHECK([m_as ovn-chassis-1 ovn-appctl -t ovn-controller version], [0], [ignore])
+    AT_CHECK([m_as ovn-chassis-2 ovn-appctl -t ovn-controller version], [0], [ignore])
+    AT_CHECK([m_as ovn-gw-1 ovn-appctl -t ovn-controller version], [0], [ignore])
+    AT_CHECK([m_as ovn-gw-1 ovn-appctl -t ovn-controller version], [0], [ignore])
+}
+
+cleanup_multinode_resources() {
+    m_as ovn-central rm -f /etc/ovn/ovnnb_db.db
+    m_as ovn-central /usr/share/ovn/scripts/ovn-ctl restart_northd
+    check m_as ovn-central ovn-nbctl --wait=sb sync
+    for c in ovn-chassis-1 ovn-chassis-2 ovn-gw-1
+    do
+        m_as $c ovs-vsctl del-br br-int
+        m_as $c ip --all netns delete
+    done
+}
+
+multinode_nbctl () {
+    m_as ovn-central ovn-nbctl "$@"
+}
+
+# m_count_rows TABLE [CONDITION...]
+#
+# Prints the number of rows in TABLE (that satisfy CONDITION).
+# Uses the southbound db by default; set DB=nb for the northbound database.
+m_count_rows() {
+    local db=$(parse_db $1) table=$(parse_table $1); shift
+    m_central_as ovn-${db}ctl --format=table --no-headings find $table "$@" | wc -l
+}
+
+# m_check_row_count [DATABASE:]TABLE COUNT [CONDITION...]
+#
+# Checks that TABLE contains COUNT rows (that satisfy CONDITION).
+# The default DATABASE is "sb".
+m_check_row_count() {
+    local db=$(parse_db $1) table=$(parse_table $1); shift
+    local count=$1; shift
+    local found=$(m_count_rows $c $db:$table "$@")
+    echo
+    echo "Checking for $count rows in $db $table${1+ with $*}... found $found"
+    if test "$count" != "$found"; then
+        m_central_as ovn-${db}ctl list $table
+        AT_FAIL_IF([:])
+    fi
+}
+
+# m_wait_row_count [DATABASE:]TABLE COUNT [CONDITION...]
+#
+# Waits until TABLE contains COUNT rows (that satisfy CONDITION).
+# The default DATABASE is "sb".
+m_wait_row_count() {
+    local db=$(parse_db $1) table=$(parse_table $1); shift
+    local count=$1; shift
+    local a=$1 b=$2 c=$3 d=$4 e=$5
+    echo "Waiting until $count rows in $db $table${1+ with $*}..."
+    OVS_WAIT_UNTIL([test $count = $(m_count_rows $db:$table $a $b $c $d $e)],[
+      echo "$db table $table has the following rows. $(m_count_rows $db:$table $a $b $c $d $e) rows match instead of expected $count:"
+      m_central_as ovn-${db}ctl list $table])
+}
+
+# m_wait_column EXPECTED [DATABASE:]TABLE [COLUMN [CONDITION...]]
+#
+# Wait until all of the values of COLUMN in the rows of TABLE (that
+# satisfy CONDITION) equal EXPECTED (ignoring order).
+#
+# The default DATABASE is "sb".
+#
+# COLUMN defaults to _uuid if unspecified.
+m_wait_column() {
+    local expected=$(for d in $1; do echo $d; done | sort)
+    local db=$(parse_db $2) table=$(parse_table $2) column=${3-_uuid}; shift; shift; shift
+    local a=$1 b=$2 c=$3 d=$4 e=$5
+
+    echo
+    echo "Waiting until $column in $db $table${1+ with $*} is $expected..."
+    OVS_WAIT_UNTIL([
+      found=$(m_central_as ovn-${db}ctl --bare --columns $column find $table $a $b $c $d $e)
+      found=$(for d in $found; do echo $d; done | sort)
+      test "$expected" = "$found"
+    ], [
+      echo "$column in $db table $table has value $found, from the following rows:"
+      m_central_as ovn-${db}ctl list $table])
+}
+
+# m_fetch_column [DATABASE:]TABLE COLUMN [CONDITION...]
+#
+# Fetches and prints all the values of COLUMN in the rows of TABLE
+# (that satisfy CONDITION), sorting the results lexicographically.
+# The default DATABASE is "sb".
+m_fetch_column() {
+    local db=$(parse_db $1) table=$(parse_table $1) column=${2-_uuid}; shift; shift
+    # Using "echo" removes spaces and newlines.
+    echo $(m_central_as ovn-${db}ctl --bare --columns $column find $table "$@" | sort)
+}
+
+# m_check_column EXPECTED [DATABASE:]TABLE COLUMN [CONDITION...]
+#
+# Fetches all of the values of COLUMN in the rows of TABLE (that
+# satisfy CONDITION), and compares them against EXPECTED (ignoring
+# order).
+#
+# The default DATABASE is "sb".
+m_check_column() {
+    local expected=$1 db=$(parse_db $2) table=$(parse_table $2) column=${3-_uuid}; shift; shift; shift
+    local found=$(m_central_as ovn-${db}ctl --bare --columns $column find $table "$@")
+
+    # Sort the expected and found values.
+    local found=$(for d in $found; do echo $d; done | sort)
+    local expected=$(for d in $expected; do echo $d; done | sort)
+
+    echo
+    echo "Checking values in $db $table${1+ with $*} against $expected... found $found"
+    if test "$found" != "$expected"; then
+        m_central_as ovn-${db}ctl list $table
+        AT_FAIL_IF([:])
+    fi
+}
+
+# m_wait_for_ports_up [PORT...]
+#
+# With arguments, waits for specified Logical_Switch_Ports to come up.
+# Without arguments, waits for all "plain" and router
+# Logical_Switch_Ports to come up.
+m_wait_for_ports_up() {
+    if test $# = 0; then
+        m_wait_row_count nb:Logical_Switch_Port 0 up!=true type='""'
+        m_wait_row_count nb:Logical_Switch_Port 0 up!=true type=router
+    else
+        for port; do
+            m_wait_row_count nb:Logical_Switch_Port 1 up=true name=$port
+        done
+    fi
+}
+
+OVS_END_SHELL_HELPERS
