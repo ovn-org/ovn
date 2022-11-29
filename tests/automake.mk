@@ -5,10 +5,12 @@ EXTRA_DIST += \
 	$(SYSTEM_KMOD_TESTSUITE_AT) \
 	$(SYSTEM_USERSPACE_TESTSUITE_AT) \
 	$(PERF_TESTSUITE_AT) \
+	$(MULTINODE_TESTSUITE_AT) \
 	$(TESTSUITE) \
 	$(SYSTEM_KMOD_TESTSUITE) \
 	$(SYSTEM_USERSPACE_TESTSUITE) \
 	$(PERF_TESTSUITE) \
+	$(MULTINODE_TESTSUITE) \
 	tests/atlocal.in \
 	$(srcdir)/package.m4 \
 	$(srcdir)/tests/testsuite \
@@ -61,6 +63,11 @@ PERF_TESTSUITE_AT = \
 	tests/perf-testsuite.at \
 	tests/perf-northd.at
 
+MULTINODE_TESTSUITE_AT = \
+	tests/multinode-testsuite.at \
+	tests/multinode-macros.at \
+	tests/multinode.at
+
 check_SCRIPTS += tests/atlocal
 
 TESTSUITE = $(srcdir)/tests/testsuite
@@ -72,7 +79,9 @@ PERF_TESTSUITE = $(srcdir)/tests/perf-testsuite
 PERF_TESTSUITE_DIR = $(abs_top_builddir)/tests/perf-testsuite.dir
 PERF_TESTSUITE_RESULTS = $(PERF_TESTSUITE_DIR)/results
 DISTCLEANFILES += tests/atconfig tests/atlocal
-
+MULTINODE_TESTSUITE = $(srcdir)/tests/multinode-testsuite
+MULTINODE_TESTSUITE_DIR = $(abs_top_builddir)/tests/multinode-testsuite.dir
+MULTINODE_TESTSUITE_RESULTS = $(MULTINODE_TESTSUITE_DIR)/results
 AUTOTEST_PATH = $(ovs_builddir)/utilities:$(ovs_builddir)/vswitchd:$(ovs_builddir)/ovsdb:$(ovs_builddir)/vtep:tests:$(PTHREAD_WIN32_DIR_DLL):$(SSL_DIR):controller-vtep:northd:utilities:controller:ic
 
 export ovs_srcdir
@@ -197,6 +206,18 @@ check-perf: all
 	@echo
 	@echo "Results can be found in $(PERF_TESTSUITE_RESULTS)"
 
+check-multinode: all
+	@mkdir -p $(MULTINODE_TESTSUITE_DIR)
+	@echo  > $(MULTINODE_TESTSUITE_RESULTS)
+	set $(SHELL) '$(MULTINODE_TESTSUITE)' -C tests  AUTOTEST_PATH='$(AUTOTEST_PATH)'; \
+	"$$@" $(TESTSUITEFLAGS) -j1 || (test X'$(RECHECK)' = Xyes && "$$@" --recheck)
+	@echo
+	@echo  '## -------------------- ##'
+	@echo  '##  Multinode test Results ##'
+	@echo  '## -------------------- ##'
+	@cat $(MULTINODE_TESTSUITE_RESULTS)
+	@echo
+	@echo "Results can be found in $(MULTINODE_TESTSUITE_RESULTS)"
 
 AUTOTEST = $(AUTOM4TE) --language=autotest
 
@@ -220,6 +241,10 @@ $(SYSTEM_USERSPACE_TESTSUITE): package.m4 $(SYSTEM_TESTSUITE_AT) $(SYSTEM_USERSP
 	$(AM_V_at)mv $@.tmp $@
 
 $(PERF_TESTSUITE): package.m4 $(PERF_TESTSUITE_AT) $(COMMON_MACROS_AT)
+	$(AM_V_GEN)$(AUTOTEST) -I '$(srcdir)' -o $@.tmp $@.at
+	$(AM_V_at)mv $@.tmp $@
+
+$(MULTINODE_TESTSUITE): package.m4 $(MULTINODE_TESTSUITE_AT) $(COMMON_MACROS_AT)
 	$(AM_V_GEN)$(AUTOTEST) -I '$(srcdir)' -o $@.tmp $@.at
 	$(AM_V_at)mv $@.tmp $@
 
