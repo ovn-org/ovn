@@ -910,7 +910,7 @@ encode_CT_COMMIT_V2(const struct ovnact_nest *on,
 
 static void
 parse_ct_nat(struct action_context *ctx, const char *name,
-             struct ovnact_ct_nat *cn)
+             enum ovnact_ct_nat_type type, struct ovnact_ct_nat *cn)
 {
     add_prerequisite(ctx, "ip");
 
@@ -921,6 +921,8 @@ parse_ct_nat(struct action_context *ctx, const char *name,
     }
     cn->ltable = ctx->pp->cur_ltable + 1;
     cn->commit = false;
+    cn->family = AF_UNSPEC;
+    cn->type = OVNACT_CT_NAT_UNSPEC;
 
     if (lexer_match(ctx->lexer, LEX_T_LPAREN)) {
         if (ctx->lexer->token.type != LEX_T_INTEGER
@@ -932,10 +934,12 @@ parse_ct_nat(struct action_context *ctx, const char *name,
         if (ctx->lexer->token.format == LEX_F_IPV4) {
             cn->commit = true;
             cn->family = AF_INET;
+            cn->type = type;
             cn->ipv4 = ctx->lexer->token.value.ipv4;
         } else if (ctx->lexer->token.format == LEX_F_IPV6) {
             cn->commit = true;
             cn->family = AF_INET6;
+            cn->type = type;
             cn->ipv6 = ctx->lexer->token.value.ipv6;
         }
         lexer_get(ctx->lexer);
@@ -984,26 +988,28 @@ parse_ct_nat(struct action_context *ctx, const char *name,
 static void
 parse_CT_DNAT(struct action_context *ctx)
 {
-    parse_ct_nat(ctx, "ct_dnat", ovnact_put_CT_DNAT(ctx->ovnacts));
+    parse_ct_nat(ctx, "ct_dnat", OVNACT_CT_NAT_DEST,
+                 ovnact_put_CT_DNAT(ctx->ovnacts));
 }
 
 static void
 parse_CT_SNAT(struct action_context *ctx)
 {
-    parse_ct_nat(ctx, "ct_snat", ovnact_put_CT_SNAT(ctx->ovnacts));
+    parse_ct_nat(ctx, "ct_snat", OVNACT_CT_NAT_SRC,
+                 ovnact_put_CT_SNAT(ctx->ovnacts));
 }
 
 static void
 parse_CT_DNAT_IN_CZONE(struct action_context *ctx)
 {
-    parse_ct_nat(ctx, "ct_dnat_in_czone",
+    parse_ct_nat(ctx, "ct_dnat_in_czone", OVNACT_CT_NAT_DEST,
                  ovnact_put_CT_DNAT_IN_CZONE(ctx->ovnacts));
 }
 
 static void
 parse_CT_SNAT_IN_CZONE(struct action_context *ctx)
 {
-    parse_ct_nat(ctx, "ct_snat_in_czone",
+    parse_ct_nat(ctx, "ct_snat_in_czone", OVNACT_CT_NAT_SRC,
                  ovnact_put_CT_SNAT_IN_CZONE(ctx->ovnacts));
 }
 
@@ -1022,6 +1028,7 @@ parse_CT_COMMIT_NAT(struct action_context *ctx)
     cn->commit = true;
     cn->ltable = ctx->pp->cur_ltable + 1;
     cn->family = AF_UNSPEC;
+    cn->type = OVNACT_CT_NAT_UNSPEC;
     cn->port_range.exists = false;
 }
 
@@ -1083,8 +1090,7 @@ format_CT_COMMIT_NAT(const struct ovnact_ct_nat *cn OVS_UNUSED, struct ds *s)
 static void
 encode_ct_nat(const struct ovnact_ct_nat *cn,
               const struct ovnact_encode_params *ep,
-              bool snat, enum mf_field_id zone_src,
-              struct ofpbuf *ofpacts)
+              enum mf_field_id zone_src, struct ofpbuf *ofpacts)
 {
     const size_t ct_offset = ofpacts->size;
     ofpbuf_pull(ofpacts, ct_offset);
@@ -1103,25 +1109,25 @@ encode_ct_nat(const struct ovnact_ct_nat *cn,
     ofpbuf_pull(ofpacts, nat_offset);
 
     nat = ofpact_put_NAT(ofpacts);
-    nat->flags = 0;
-    nat->range_af = AF_UNSPEC;
+    nat->range_af = cn->family;
+
+    switch (cn->type) {
+        case OVNACT_CT_NAT_SRC:
+            nat->flags |= NX_NAT_F_SRC;
+            break;
+        case OVNACT_CT_NAT_DEST:
+            nat->flags |= NX_NAT_F_DST;
+            break;
+        case OVNACT_CT_NAT_UNSPEC:
+        default:
+            nat->flags = 0;
+            break;
+    }
 
     if (cn->family == AF_INET) {
-        nat->range_af = AF_INET;
         nat->range.addr.ipv4.min = cn->ipv4;
-        if (snat) {
-            nat->flags |= NX_NAT_F_SRC;
-        } else {
-            nat->flags |= NX_NAT_F_DST;
-        }
     } else if (cn->family == AF_INET6) {
-        nat->range_af = AF_INET6;
         nat->range.addr.ipv6.min = cn->ipv6;
-        if (snat) {
-            nat->flags |= NX_NAT_F_SRC;
-        } else {
-            nat->flags |= NX_NAT_F_DST;
-        }
     }
 
     if (cn->port_range.exists) {
@@ -1143,7 +1149,7 @@ encode_CT_DNAT(const struct ovnact_ct_nat *cn,
                const struct ovnact_encode_params *ep,
                struct ofpbuf *ofpacts)
 {
-    encode_ct_nat(cn, ep, false, MFF_LOG_DNAT_ZONE, ofpacts);
+    encode_ct_nat(cn, ep, MFF_LOG_DNAT_ZONE, ofpacts);
 }
 
 static void
@@ -1151,7 +1157,7 @@ encode_CT_SNAT(const struct ovnact_ct_nat *cn,
                const struct ovnact_encode_params *ep,
                struct ofpbuf *ofpacts)
 {
-    encode_ct_nat(cn, ep, true, MFF_LOG_SNAT_ZONE, ofpacts);
+    encode_ct_nat(cn, ep, MFF_LOG_SNAT_ZONE, ofpacts);
 }
 
 static void
@@ -1159,7 +1165,7 @@ encode_CT_DNAT_IN_CZONE(const struct ovnact_ct_nat *cn,
                         const struct ovnact_encode_params *ep,
                         struct ofpbuf *ofpacts)
 {
-    encode_ct_nat(cn, ep, false, ep->common_nat_ct_zone, ofpacts);
+    encode_ct_nat(cn, ep, ep->common_nat_ct_zone, ofpacts);
 }
 
 static void
@@ -1167,7 +1173,7 @@ encode_CT_SNAT_IN_CZONE(const struct ovnact_ct_nat *cn,
                         const struct ovnact_encode_params *ep,
                         struct ofpbuf *ofpacts)
 {
-    encode_ct_nat(cn, ep, true, ep->common_nat_ct_zone, ofpacts);
+    encode_ct_nat(cn, ep, ep->common_nat_ct_zone, ofpacts);
 }
 
 static void
@@ -1178,7 +1184,7 @@ encode_CT_COMMIT_NAT(const struct ovnact_ct_nat *cn,
     enum mf_field_id zone = ep->is_switch
                             ? MFF_LOG_CT_ZONE
                             : MFF_LOG_DNAT_ZONE;
-    encode_ct_nat(cn, ep, false, zone, ofpacts);
+    encode_ct_nat(cn, ep, zone, ofpacts);
 }
 
 static void

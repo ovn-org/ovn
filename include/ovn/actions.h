@@ -264,6 +264,14 @@ struct ovnact_ct_commit_v1 {
     ovs_be128 ct_label, ct_label_mask;
 };
 
+/* Type of NAT used for the particular action.
+ * UNSPEC translates to applying NAT that works for both directions. */
+enum ovnact_ct_nat_type {
+    OVNACT_CT_NAT_SRC,
+    OVNACT_CT_NAT_DEST,
+    OVNACT_CT_NAT_UNSPEC,
+};
+
 /* OVNACT_CT_DNAT, OVNACT_CT_SNAT, OVNACT_CT_COMMIT_NAT. */
 struct ovnact_ct_nat {
     struct ovnact ovnact;
@@ -278,6 +286,8 @@ struct ovnact_ct_nat {
        uint16_t port_lo;
        uint16_t port_hi;
     } port_range;
+
+    enum ovnact_ct_nat_type type;
 
     bool commit;                /* Explicit commit action. */
 
