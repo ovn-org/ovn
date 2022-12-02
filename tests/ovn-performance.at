@@ -420,7 +420,7 @@ OVN_CONTROLLER_EXPECT_NO_HIT(
 # Add ACLs for port group pg1
 OVN_CONTROLLER_EXPECT_NO_HIT(
     [hv1 hv2], [lflow_run],
-    [ovn-nbctl --wait=hv acl-add pg1 to-lport 1001 'outport == @pg1 && ip4.src == $pg1_ip4' allow]
+    [ovn-nbctl --wait=hv acl-add pg1 to-lport 1001 'outport == @pg1 && ip4.src == \$pg1_ip4' allow]
 )
 
 # Create a public logical switch and attach the router to it.
