@@ -4427,6 +4427,8 @@ nbctl_pre_lr_route_del(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl,
                          &nbrec_logical_router_static_route_col_policy);
     ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_static_route_col_bfd);
+    ovsdb_idl_add_column(ctx->idl,
                          &nbrec_logical_router_static_route_col_ip_prefix);
     ovsdb_idl_add_column(ctx->idl,
                          &nbrec_logical_router_static_route_col_nexthop);
@@ -4438,7 +4440,7 @@ nbctl_pre_lr_route_del(struct ctl_context *ctx)
 }
 
 static void
-nbctl_lr_route_del(struct ctl_context *ctx)
+ nbctl_lr_route_del(struct ctl_context *ctx)
 {
     const struct nbrec_logical_router *lr;
     char *error = lr_by_name_or_uuid(ctx, ctx->argv[1], true, &lr);
@@ -4555,6 +4557,10 @@ nbctl_lr_route_del(struct ctl_context *ctx)
         }
 
         /* Everything matched. Removing. */
+        if (lr->static_routes[i]->bfd) {
+            nbrec_bfd_delete(lr->static_routes[i]->bfd);
+        }
+
         nbrec_logical_router_update_static_routes_delvalue(
             lr, lr->static_routes[i]);
         n_removed++;
