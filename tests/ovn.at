@@ -4270,24 +4270,21 @@ vtep-ctl add-ls lsw0
 
 start_daemon ovs-vtep br-vtep
 start_daemon ovn-controller-vtep --vtep-db=unix:"$ovs_base"/vtep/db.sock --ovnsb-db=unix:"$ovs_base"/ovn-sb/ovn-sb.sock
-
 OVS_WAIT_UNTIL([vtep-ctl bind-ls br-vtep br-vtep_n2 0 lsw0])
 
 OVS_WAIT_UNTIL([test -n "`as vtep vtep-ctl get-replication-mode lsw0 |
                grep -- source`"])
-# It takes more time for the update to be processed by ovs-vtep.
-sleep 1
 
 # Add hv3 on the other side of the vtep
 sim_add hv3
 as hv3
 ovs-vsctl add-br br-phys
 net_attach n2 br-phys
-
 ovs-vsctl add-port br-phys vif3 -- set Interface vif3 options:tx_pcap=hv3/vif3-tx.pcap options:rxq_pcap=hv3/vif3-rx.pcap ofport-request=1
 
 # vtep is quite slow setting up all flows
-OVS_WAIT_UNTIL([test `as vtep ovs-ofctl dump-flows br-vtep_vtep_ls1 | grep "priority=0" | grep "output" | wc -l` -eq 1])
+# We need to wait for flow flooding to br-vtep_n2, vx1 and vx2
+OVS_WAIT_UNTIL([test `as vtep ovs-ofctl dump-flows br-vtep_vtep_ls1 | grep "priority=0" | grep -o "output" | wc -l` -eq 3])
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
 # packets for ARP resolution (native tunneling doesn't queue packets
