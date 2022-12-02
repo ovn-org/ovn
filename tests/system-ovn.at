@@ -7723,9 +7723,7 @@ test_ping() {
 check_acl_log_count() {
     local expected_count=$1
 
-    AT_CHECK_UNQUOTED([grep -c acl_log ovn-controller.log], [0], [dnl
-$expected_count
-])
+    OVS_WAIT_UNTIL([test $expected_count = `cat ovn-controller.log | grep -c acl_log`])
 }
 
 # Set external-ids in br-int needed for ovn-controller
