@@ -5943,11 +5943,13 @@ AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_lab
 
 # Flush conntrack entries for easier output parsing of next test.
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
-
 # Change bob1 L2 address anche check the reply is properly updated.
 ovn-nbctl set Logical_Router_Port R2_ext mac='"00:00:10:01:02:04"'
 ovn-nbctl set Logical_Switch_Port r2-ext \
      type=router options:router-port=R2_ext addresses='"00:00:10:01:02:04"'
+
+# Wait for ovn-controller before sending traffic
+ovn-nbctl --wait=hv sync
 
 NS_CHECK_EXEC([bob1], [nc -z 10.0.0.2 80], [0])
 AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x1001020400000000/.*)' -c], [0], [dnl
@@ -5962,7 +5964,6 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
 sed -e 's/mark=[[0-9]]*/mark=<cleared>/'], [0], [dnl
 tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000,protoinfo=(state=<cleared>)
 ])
-
 # Check entries in table 76 and 77 expires w/o traffic
 OVS_WAIT_UNTIL([
 test $(ovs-ofctl dump-flows br-int | grep -c 'table=76, n_packets') -eq 0
