@@ -128,12 +128,18 @@ OVS_START_SHELL_HELPERS
 # hex_to_binary HEXDIGITS
 #
 # Converts the pairs of HEXDIGITS into bytes and prints them on stdout.
-hex_to_binary() {
-    printf $(while test -n "$1"; do
-                 printf '\\%03o' 0x$(expr "$1" : '\(..\)')
-                 set -- "${1##??}"
-             done)
-}
+if test x$HAVE_XXD = xno; then
+    hex_to_binary() {
+        printf $(while test -n "$1"; do
+                     printf '\\%03o' 0x$(expr "$1" : '\(..\)')
+                     set -- "${1##??}"
+                 done)
+    }
+else
+    hex_to_binary() {
+        echo $1 | xxd -r -p
+    }
+fi
 
 # tcpdump_hex TITLE PACKET
 #
