@@ -166,6 +166,9 @@ fi
 # Set HAVE_TCPDUMP
 find_command tcpdump
 
+# Set HAVE_XXD
+find_command xxd
+
 # Set HAVE_LFTP
 find_command lftp
 
