@@ -15707,7 +15707,6 @@ echo "Now test Route Info option"
 ovn-nbctl --wait=hv set Logical_Router_port ro-sw ipv6_ra_configs:route_info="HIGH-aef1::11/48,LOW-aef2::11/96"
 route_info=18023008ffffffffaef100000000000018036018ffffffffaef20000000000000000000000000000
 ra_test 000005dc 08 $dns_addr $dnssl $route_info c0 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
-exit 0
 echo "Test a different address mode now"
 ovn-nbctl --wait=hv set Logical_Router_Port ro-sw ipv6_ra_configs:address_mode=dhcpv6_stateful
 ra_test 000005dc 88 $dns_addr $dnssl $route_info 80 40 aef00000000000000000000000000000 30 fd0f0000000000000000000000000000
@@ -33050,10 +33049,9 @@ check ovn-nbctl lr-nat-add lr0 snat 172.16.0.2 10.0.0.0/24
 check ovn-nbctl lr-nat-add lr0 dnat 172.16.0.2 10.0.0.2
 
 check ovn-nbctl --wait=hv sync
-
 # Use constants so that if tables or registers change, this test can
 # be updated easily.
-DNAT_TABLE=14
+DNAT_TABLE=15
 SNAT_TABLE=43
 DNAT_ZONE_REG="NXM_NX_REG11[[0..15]]"
 SNAT_ZONE_REG="NXM_NX_REG12[[0..15]]"
@@ -33061,9 +33059,14 @@ SNAT_ZONE_REG="NXM_NX_REG12[[0..15]]"
 lr0_dp_key=$(printf "%x" $(fetch_column Datapath_Binding tunnel_key external_ids:name=lr0))
 
 dnat_zone=$(ovs-ofctl dump-flows br-int table=$DNAT_TABLE,metadata=0x${lr0_dp_key} | grep "nw_dst=172.16.0.2" | grep -o zone=.*, | cut -d '=' -f 2)
-dnat_zone=${dnat_zone::-1}
+if test -n "$dnat_zone"; then
+  dnat_zone=${dnat_zone::-1}
+fi
 snat_zone=$(ovs-ofctl dump-flows br-int table=$SNAT_TABLE,metadata=0x${lr0_dp_key} | grep priority=153 | grep -o zone=.*, | cut -d '=' -f 2)
-snat_zone=${snat_zone::-1}
+if test -n "$snat_zone"; then
+  snat_zone=${snat_zone::-1}
+fi
+echo d="$dnat_zone" s="$snat_zone" "$DNAT_ZONE_REG" "$DNAT_ZONE_REG"
 
 # For now, we expect that the common zone is the dnat zone
 
@@ -33073,9 +33076,13 @@ check test "$snat_zone" = "$DNAT_ZONE_REG"
 check ovn-nbctl --wait=hv set logical_router lr0 options:snat-ct-zone=666
 
 dnat_zone=$(ovs-ofctl dump-flows br-int table=$DNAT_TABLE,metadata=0x${lr0_dp_key} | grep "nw_dst=172.16.0.2" | grep -o zone=.*, | cut -d '=' -f 2)
-dnat_zone=${dnat_zone::-1}
+if test -n "$dnat_zone"; then
+  dnat_zone=${dnat_zone::-1}
+fi
 snat_zone=$(ovs-ofctl dump-flows br-int table=$SNAT_TABLE,metadata=0x${lr0_dp_key} | grep priority=153 | grep -o zone=.*, | cut -d '=' -f 2)
-snat_zone=${snat_zone::-1}
+if test -n "$snat_zone"; then
+  snat_zone=${snat_zone::-1}
+fi
 
 # Now with an snat-ct-zone set, the common zone is the snat zone
 
