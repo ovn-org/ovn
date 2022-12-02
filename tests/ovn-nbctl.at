@@ -1614,6 +1614,7 @@ AT_CHECK([ovn-nbctl lr-route-add lr0 0.0.0.0/0 192.168.0.1])
 AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.1.0/24 11.0.1.1 lp0])
 AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.1/24 11.0.0.2])
 AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.10.0/24 lp0])
+AT_CHECK([ovn-nbctl --bfd lr-route-add lr0 10.0.20.0/24 11.0.2.1 lp0])
 AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.10.0/24 lp1], [1], [],
   [ovn-nbctl: bad IPv4 nexthop argument: lp1
 ])
@@ -1667,12 +1668,17 @@ Route Table <main>:
               10.0.0.0/24                  11.0.0.1 dst-ip
               10.0.1.0/24                  11.0.1.1 dst-ip lp0
              10.0.10.0/24                           dst-ip lp0
+             10.0.20.0/24                  11.0.2.1 dst-ip lp0 bfd
               20.0.0.0/24                   discard dst-ip
               9.16.1.0/24                  11.0.0.1 src-ip
               10.0.0.0/24                  11.0.0.2 src-ip
               20.0.0.0/24                   discard src-ip
                 0.0.0.0/0               192.168.0.1 dst-ip
 ])
+
+check_row_count nb:BFD 1
+AT_CHECK([ovn-nbctl lr-route-del lr0 10.0.20.0/24])
+check_row_count nb:BFD 0
 
 AT_CHECK([ovn-nbctl lrp-add lr0 lp1 f0:00:00:00:00:02 11.0.0.254/24])
 AT_CHECK([ovn-nbctl --may-exist lr-route-add lr0 10.0.0.111/24 11.0.0.1 lp1])
