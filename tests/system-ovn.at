@@ -4871,12 +4871,11 @@ ADD_NAMESPACES(sw1-p1-rej)
 ADD_VETH(sw1-p1-rej, sw1-p1-rej, br-int, "20.0.0.3/24", "40:54:00:00:00:03", \
          "20.0.0.1")
 
-sleep 1
-
 # Capture packets in sw0-p1-rej.
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 4 -i sw0-p1-rej tcp > sw0-p1-rej-ip4.pcap &], [0])
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej tcp > sw0-p1-rej-ip4.pcap 2> err &], [0])
 
-sleep 1
+#Wait for tcpdump to get started before generating first packets
+OVS_WAIT_UNTIL([test 1 = $(cat err | grep -c listening)])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -vz 10.0.0.4 80 2>&1 | grep -i 'connection refused'
@@ -4894,17 +4893,20 @@ grep controller | grep tp_dst=84 -c)
 ])
 
 OVS_WAIT_UNTIL([
-    total=`cat sw0-p1-rej-ip4.pcap |  wc -l`
+    total=`cat sw0-p1-rej-ip4.pcap |  grep "10\.0\.0\.3" | wc -l`
     echo "total = $total"
     test "${total}" = "4"
 ])
 
-# Without this sleep, test case fails intermittently.
-sleep 3
+kill $(pidof tcpdump)
 
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 2 -i sw0-p2-rej tcp port 80 > sw0-p2-rej-ip6.pcap &], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej tcp port 80 > sw0-p2-rej-ip6.pcap 2> err &], [0])
 
-sleep 1
+#Wait for tcpdump to get started before generating first packets
+OVS_WAIT_UNTIL([test 1 = $(cat err | grep -c listening)])
+
+OVS_WAIT_UNTIL([test "$(ip netns exec sw0-p1-rej ip a | grep aef0::3 | grep tentative)" = ""])
+OVS_WAIT_UNTIL([test "$(ip netns exec sw0-p2-rej ip a | grep aef0::4 | grep tentative)" = ""])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -vz6 aef0::3 80 2>&1 | grep -i 'connection refused'
@@ -4912,11 +4914,10 @@ OVS_WAIT_UNTIL([
 
 
 OVS_WAIT_UNTIL([
-    total=`cat sw0-p2-rej-ip6.pcap |  wc -l`
+    total=`cat sw0-p2-rej-ip6.pcap |  grep "aef0::3\.80" |wc -l`
     echo "total = $total"
     test "${total}" = "2"
 ])
-
 ovn-nbctl acl-add sw1 from-lport 1004 "ip" allow-related
 ovn-nbctl acl-add sw1 to-lport 1004 "ip" allow-related
 ovn-nbctl --log acl-add pg0 to-lport 1004 "outport == @pg0 && ip && tcp && tcp.dst == 84" reject
@@ -4925,9 +4926,12 @@ OVS_WAIT_UNTIL([
     ip netns exec sw1-p1-rej nc -vz 10.0.0.4 84 2>&1 | grep -i 'connection refused'
 ])
 
+kill $(pidof tcpdump)
+
+
 # Now test for IPv4 UDP.
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 1 -i sw0-p1-rej udp port 90 > sw0-p1-rej-udp.pcap &], [0])
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 1 -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap &], [0])
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej udp port 90 > sw0-p1-rej-udp.pcap 2> err &], [0])
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap 2> err &], [0])
 
 printf '.%.0s' {1..100} > foo
 OVS_WAIT_UNTIL([
@@ -4937,10 +4941,11 @@ OVS_WAIT_UNTIL([
     test $c -eq 1
 ])
 
+kill $(pidof tcpdump)
 rm -f *.pcap
 
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 1 -i sw0-p1-rej udp port 94 > sw0-p1-rej-udp.pcap &], [0])
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 1 -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap &], [0])
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej udp port 94 > sw0-p1-rej-udp.pcap 2> err &], [0])
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap 2> err &], [0])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -u 10.0.0.4 94 < foo
@@ -4948,10 +4953,11 @@ OVS_WAIT_UNTIL([
 "10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port 94 unreachable" | uniq | wc -l)
     test $c -eq 1
 ])
+kill $(pidof tcpdump)
 
 # Now test for IPv6 UDP.
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 1 -i sw0-p2-rej udp port 90 > sw0-p2-rej-ip6-udp.pcap &], [0])
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 1 -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap &], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej udp port 90 > sw0-p2-rej-ip6-udp.pcap 2> err &], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap 2> err &], [0])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -u -6 aef0::3 90 < foo
@@ -4961,10 +4967,11 @@ aef0::3 udp port 90" | uniq | wc -l)
     test $c -eq 1
 ])
 
+kill $(pidof tcpdump)
 rm -f *.pcap
 
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 1 -i sw0-p2-rej udp port 94 > sw0-p2-rej-ip6-udp.pcap &], [0])
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 1 -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap &], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej udp port 94 > sw0-p2-rej-ip6-udp.pcap 2> err &], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap 2> err &], [0])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -u -6 aef0::3 94 < foo
@@ -4973,6 +4980,7 @@ OVS_WAIT_UNTIL([
 aef0::3 udp port 94" | uniq | wc -l)
     test $c -eq 1
 ])
+kill $(pidof tcpdump)
 
 # Delete all the ACLs of pg0 and add the ACL with a generic match with reject action.
 ovn-nbctl pg-del pg0
@@ -4989,7 +4997,7 @@ OVS_WAIT_UNTIL([
 
 rm -f *.pcap
 
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 1 -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap &], [0])
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap 2> err &], [0])
 
 printf '.%.0s' {1..100} > foo
 OVS_WAIT_UNTIL([
@@ -4999,9 +5007,10 @@ OVS_WAIT_UNTIL([
     test $c -eq 1
 ])
 
+kill $(pidof tcpdump)
 rm -f *.pcap
 # Now test for IPv6 UDP.
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 1 -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap &], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap 2> err &], [0])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -u -6 aef0::3 90 < foo
@@ -5010,7 +5019,7 @@ OVS_WAIT_UNTIL([
 aef0::3 udp port 90" | uniq | wc -l)
     test $c -eq 1
 ])
-
+kill $(pidof tcpdump)
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
@@ -5112,12 +5121,11 @@ ADD_NAMESPACES(sw1-p1-rej)
 ADD_VETH(sw1-p1-rej, sw1-p1-rej, br-int, "20.0.0.3/24", "40:54:00:00:00:03", \
          "20.0.0.1")
 
-sleep 1
-
 # Capture packets in sw0-p1-rej.
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 4 -i sw0-p1-rej tcp > sw0-p1-rej-ip4.pcap &], [0])
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej tcp > sw0-p1-rej-ip4.pcap 2> err &], [0])
 
-sleep 1
+#Wait for tcpdump to get started before generating first packets
+OVS_WAIT_UNTIL([test 1 = $(cat err | grep -c listening)])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -vz 10.0.0.4 80 2>&1 | grep -i 'connection refused'
@@ -5135,17 +5143,20 @@ grep controller | grep tp_dst=84 -c)
 ])
 
 OVS_WAIT_UNTIL([
-    total=`cat sw0-p1-rej-ip4.pcap |  wc -l`
+    total=`cat sw0-p1-rej-ip4.pcap |  grep "10\.0\.0\.4" | wc -l`
     echo "total = $total"
     test "${total}" = "4"
 ])
 
-# Without this sleep, test case fails intermittently.
-sleep 3
+kill $(pidof tcpdump)
 
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 2 -i sw0-p2-rej tcp port 80 > sw0-p2-rej-ip6.pcap &], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej tcp port 80 > sw0-p2-rej-ip6.pcap 2> err &], [0])
 
-sleep 1
+#Wait for tcpdump to get started before generating first packets
+OVS_WAIT_UNTIL([test 1 = $(cat err | grep -c listening)])
+
+OVS_WAIT_UNTIL([test "$(ip netns exec sw0-p1-rej ip a | grep aef0::3 | grep tentative)" = ""])
+OVS_WAIT_UNTIL([test "$(ip netns exec sw0-p2-rej ip a | grep aef0::4 | grep tentative)" = ""])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -vz6 aef0::3 80 2>&1 | grep -i 'connection refused'
@@ -5153,10 +5164,12 @@ OVS_WAIT_UNTIL([
 
 
 OVS_WAIT_UNTIL([
-    total=`cat sw0-p2-rej-ip6.pcap |  wc -l`
+    total=`cat sw0-p2-rej-ip6.pcap | grep "aef0::3\.80" | wc -l`
     echo "total = $total"
     test "${total}" = "2"
 ])
+
+kill $(pidof tcpdump)
 
 ovn-nbctl --apply-after-lb acl-add sw1 from-lport 1004 "ip" allow-related
 ovn-nbctl acl-add sw1 to-lport 1004 "ip" allow-related
@@ -5167,8 +5180,8 @@ OVS_WAIT_UNTIL([
 ])
 
 # Now test for IPv4 UDP.
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 1 -i sw0-p1-rej udp port 90 > sw0-p1-rej-udp.pcap &], [0])
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 1 -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap &], [0])
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej udp port 90 > sw0-p1-rej-udp.pcap 2> err &], [0])
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap 2> err &], [0])
 
 printf '.%.0s' {1..100} > foo
 OVS_WAIT_UNTIL([
@@ -5178,10 +5191,11 @@ OVS_WAIT_UNTIL([
     test $c -eq 1
 ])
 
+kill $(pidof tcpdump)
 rm -f *.pcap
 
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 1 -i sw0-p1-rej udp port 94 > sw0-p1-rej-udp.pcap &], [0])
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 1 -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap &], [0])
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej udp port 94 > sw0-p1-rej-udp.pcap 2> err &], [0])
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap 2> err &], [0])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -u 10.0.0.4 94 < foo
@@ -5190,9 +5204,11 @@ OVS_WAIT_UNTIL([
     test $c -eq 1
 ])
 
+kill $(pidof tcpdump)
+
 # Now test for IPv6 UDP.
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 1 -i sw0-p2-rej udp port 90 > sw0-p2-rej-ip6-udp.pcap &], [0])
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 1 -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap &], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej udp port 90 > sw0-p2-rej-ip6-udp.pcap 2> err &], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap 2> err &], [0])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -u -6 aef0::3 90 < foo
@@ -5202,10 +5218,11 @@ aef0::3 udp port 90" | uniq | wc -l)
     test $c -eq 1
 ])
 
+kill $(pidof tcpdump)
 rm -f *.pcap
 
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 1 -i sw0-p2-rej udp port 94 > sw0-p2-rej-ip6-udp.pcap &], [0])
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 1 -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap &], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej udp port 94 > sw0-p2-rej-ip6-udp.pcap 2> err &], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap 2> err &], [0])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -u -6 aef0::3 94 < foo
@@ -5228,9 +5245,10 @@ OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -vz6 aef0::3 80 2>&1 | grep -i 'connection refused'
 ])
 
+kill $(pidof tcpdump)
 rm -f *.pcap
 
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -nn -c 1 -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap &], [0])
+NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap 2> err &], [0])
 
 printf '.%.0s' {1..100} > foo
 OVS_WAIT_UNTIL([
@@ -5240,9 +5258,10 @@ OVS_WAIT_UNTIL([
     test $c -eq 1
 ])
 
+kill $(pidof tcpdump)
 rm -f *.pcap
 # Now test for IPv6 UDP.
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -nn -c 1 -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap &], [0])
+NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap 2> err &], [0])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -u -6 aef0::3 90 < foo
@@ -5252,6 +5271,7 @@ aef0::3 udp port 90" | uniq | wc -l)
     test $c -eq 1
 ])
 
+kill $(pidof tcpdump)
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
