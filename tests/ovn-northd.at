@@ -8023,8 +8023,8 @@ AT_CHECK([grep "ls_in_lb " S0flows | sort], [0], [dnl
 ])
 AT_CHECK([grep "ls_in_lb_aff_learn" S0flows | sort], [0], [dnl
   table=13(ls_in_lb_aff_learn ), priority=0    , match=(1), action=(next;)
-  table=13(ls_in_lb_aff_learn ), priority=100  , match=(reg9[[6]] == 0 && ct.new && ip4 && reg1 == 172.16.0.10 && ip4.dst == 10.0.0.2 && tcp.dst == 80), action=(commit_lb_aff(vip = "172.16.0.10:80", backend = "10.0.0.2:80", proto = tcp, timeout = 60); /* drop */)
-  table=13(ls_in_lb_aff_learn ), priority=100  , match=(reg9[[6]] == 0 && ct.new && ip4 && reg1 == 172.16.0.10 && ip4.dst == 20.0.0.2 && tcp.dst == 80), action=(commit_lb_aff(vip = "172.16.0.10:80", backend = "20.0.0.2:80", proto = tcp, timeout = 60); /* drop */)
+  table=13(ls_in_lb_aff_learn ), priority=100  , match=(reg9[[6]] == 0 && ct.new && ip4 && reg1 == 172.16.0.10 && reg2[[0..15]] == 80 && ip4.dst == 10.0.0.2 && tcp.dst == 80), action=(commit_lb_aff(vip = "172.16.0.10:80", backend = "10.0.0.2:80", proto = tcp, timeout = 60); /* drop */)
+  table=13(ls_in_lb_aff_learn ), priority=100  , match=(reg9[[6]] == 0 && ct.new && ip4 && reg1 == 172.16.0.10 && reg2[[0..15]] == 80 && ip4.dst == 20.0.0.2 && tcp.dst == 80), action=(commit_lb_aff(vip = "172.16.0.10:80", backend = "20.0.0.2:80", proto = tcp, timeout = 60); /* drop */)
 ])
 
 AS_BOX([Test LR flows])
@@ -8045,8 +8045,8 @@ AT_CHECK([grep "lr_in_dnat " R1flows | sort], [0], [dnl
 ])
 AT_CHECK([grep "lr_in_lb_aff_learn" R1flows | sort], [0], [dnl
   table=8 (lr_in_lb_aff_learn ), priority=0    , match=(1), action=(next;)
-  table=8 (lr_in_lb_aff_learn ), priority=100  , match=(reg9[[6]] == 0 && ct.new && ip4 && reg0 == 172.16.0.10 && ip4.dst == 10.0.0.2 && tcp.dst == 80), action=(commit_lb_aff(vip = "172.16.0.10:80", backend = "10.0.0.2:80", proto = tcp, timeout = 60); /* drop */)
-  table=8 (lr_in_lb_aff_learn ), priority=100  , match=(reg9[[6]] == 0 && ct.new && ip4 && reg0 == 172.16.0.10 && ip4.dst == 20.0.0.2 && tcp.dst == 80), action=(commit_lb_aff(vip = "172.16.0.10:80", backend = "20.0.0.2:80", proto = tcp, timeout = 60); /* drop */)
+  table=8 (lr_in_lb_aff_learn ), priority=100  , match=(reg9[[6]] == 0 && ct.new && ip4 && reg0 == 172.16.0.10 && reg9[[16..31]] == 80 && ip4.dst == 10.0.0.2 && tcp.dst == 80), action=(commit_lb_aff(vip = "172.16.0.10:80", backend = "10.0.0.2:80", proto = tcp, timeout = 60); /* drop */)
+  table=8 (lr_in_lb_aff_learn ), priority=100  , match=(reg9[[6]] == 0 && ct.new && ip4 && reg0 == 172.16.0.10 && reg9[[16..31]] == 80 && ip4.dst == 20.0.0.2 && tcp.dst == 80), action=(commit_lb_aff(vip = "172.16.0.10:80", backend = "20.0.0.2:80", proto = tcp, timeout = 60); /* drop */)
 ])
 
 AS_BOX([Test LR flows - skip_snat=true])
