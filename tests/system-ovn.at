@@ -8583,8 +8583,12 @@ ovn-nbctl lsp-add bar bar2 \
 
 ovn-nbctl lb-add lb0 172.16.1.100:8080 192.168.1.2:80,192.168.2.2:80
 ovn-nbctl lb-add lb10 172.16.1.110:8080 192.168.1.2:80,192.168.2.2:80
+ovn-nbctl lb-add lb0-no-aff 172.16.1.100:8081 192.168.1.2:80,192.168.2.2:80
+ovn-nbctl lb-add lb10-no-aff 172.16.1.110:8081 192.168.1.2:80,192.168.2.2:80
 ovn-nbctl lr-lb-add R2 lb0
 ovn-nbctl lr-lb-add R2 lb10
+ovn-nbctl lr-lb-add R2 lb0-no-aff
+ovn-nbctl lr-lb-add R2 lb10-no-aff
 
 # Start webservers in 'foo1', 'bar1'.
 NETNS_DAEMONIZE([foo1], [nc -l -k 192.168.1.2 80], [nc-foo1.pid])
@@ -8636,17 +8640,22 @@ n2=$(ovs-ofctl dump-flows br-int table=15 |awk '/priority=150,ct_state=\+new\+tr
 echo $?
 }
 AT_CHECK([test $(check_affinity_flows) -eq 0])
+NS_CHECK_EXEC([alice1], [nc -z 172.16.1.100 8081])
 
 # Flush conntrack entries for easier output parsing of next test.
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 ovn-nbctl lb-add lb1 172.16.1.101:8080 192.168.1.2:80,192.168.2.2:80
 ovn-nbctl lb-add lb11 172.16.1.111:8080 192.168.1.2:80,192.168.2.2:80
+ovn-nbctl lb-add lb1-no-aff 172.16.1.101:8081 192.168.1.2:80,192.168.2.2:80
+ovn-nbctl lb-add lb11-no-aff 172.16.1.111:8081 192.168.1.2:80,192.168.2.2:80
 # Enable lb affinity
 ovn-nbctl --wait=sb set load_balancer lb1 options:affinity_timeout=3
-ovn-nbctl --wait=sb set load_balancer lb1 options:affinity_timeout=3
+ovn-nbctl --wait=sb set load_balancer lb11 options:affinity_timeout=3
 ovn-nbctl lr-lb-add R2 lb1
 ovn-nbctl lr-lb-add R2 lb11
+ovn-nbctl lr-lb-add R2 lb1-no-aff
+ovn-nbctl lr-lb-add R2 lb11-no-aff
 
 # check we use both backends
 for i in $(seq 1 15); do
@@ -8661,6 +8670,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 tcp,orig=(src=172.16.1.2,dst=172.16.1.101,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 tcp,orig=(src=172.16.1.2,dst=172.16.1.101,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
+NS_CHECK_EXEC([alice1], [nc -z 172.16.1.101 8081])
 
 # Flush conntrack entries for easier output parsing of next test.
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
@@ -8669,10 +8679,14 @@ NETNS_DAEMONIZE([bar2], [nc -l -k 192.168.2.3 80], [nc-bar2.pid])
 
 ovn-nbctl lb-add lb2 192.168.2.100:8080 192.168.2.2:80,192.168.2.3:80
 ovn-nbctl lb-add lb20 192.168.2.120:8080 192.168.2.2:80,192.168.2.3:80
+ovn-nbctl lb-add lb2-no-aff 192.168.2.100:8081 192.168.2.2:80,192.168.2.3:80
+ovn-nbctl lb-add lb20-no-aff 192.168.2.120:8081 192.168.2.2:80,192.168.2.3:80
 ovn-nbctl --wait=sb set load_balancer lb2 options:affinity_timeout=60
 ovn-nbctl --wait=sb set load_balancer lb20 options:affinity_timeout=60
 ovn-nbctl ls-lb-add foo lb2
 ovn-nbctl ls-lb-add foo lb20
+ovn-nbctl ls-lb-add foo lb2-no-aff
+ovn-nbctl ls-lb-add foo lb20-no-aff
 
 for i in $(seq 1 15); do
     echo Request $i
@@ -8683,16 +8697,21 @@ AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(192.168.2.100) |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/; s/src=192.168.2.[[0-9]]/src=192.168.2.<cleared>/'], [0], [dnl
 tcp,orig=(src=192.168.1.2,dst=192.168.2.100,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.<cleared>,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
+NS_CHECK_EXEC([foo1], [nc -z 192.168.2.100 8081])
 
 # Flush conntrack entries for easier output parsing of next test.
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 ovn-nbctl lb-add lb3 192.168.2.101:8080 192.168.2.2:80,192.168.2.3:80
 ovn-nbctl lb-add lb30 192.168.2.131:8080 192.168.2.2:80,192.168.2.3:80
+ovn-nbctl lb-add lb3-no-aff 192.168.2.101:8081 192.168.2.2:80,192.168.2.3:80
+ovn-nbctl lb-add lb30-no-aff 192.168.2.131:8081 192.168.2.2:80,192.168.2.3:80
 ovn-nbctl --wait=sb set load_balancer lb3 options:affinity_timeout=3
 ovn-nbctl --wait=sb set load_balancer lb30 options:affinity_timeout=3
 ovn-nbctl ls-lb-add foo lb3
 ovn-nbctl ls-lb-add foo lb30
+ovn-nbctl ls-lb-add foo lb3-no-aff
+ovn-nbctl ls-lb-add foo lb30-no-aff
 # Flush conntrack entries for easier output parsing of next test.
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
@@ -8708,16 +8727,23 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 tcp,orig=(src=192.168.1.2,dst=192.168.2.101,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 tcp,orig=(src=192.168.1.2,dst=192.168.2.101,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
+NS_CHECK_EXEC([foo1], [nc -z 192.168.2.101 8081])
 
 NS_CHECK_EXEC([foo1], [ip neigh add 192.168.1.200 lladdr 00:00:01:01:02:03 dev foo1], [0])
 ovn-nbctl lb-add lb4 192.168.1.100:8080 192.168.1.2:80
 ovn-nbctl lb-add lb40 192.168.1.140:8080 192.168.1.2:80
+ovn-nbctl lb-add lb4-no-aff 192.168.1.100:8081 192.168.1.2:80
+ovn-nbctl lb-add lb40-no-aff 192.168.1.140:8081 192.168.1.2:80
 ovn-nbctl --wait=sb set load_balancer lb4 options:affinity_timeout=60 options:hairpin_snat_ip=192.168.1.200
 ovn-nbctl --wait=sb set load_balancer lb40 options:affinity_timeout=60 options:hairpin_snat_ip=192.168.1.200
 ovn-nbctl ls-lb-add foo lb4
 ovn-nbctl ls-lb-add foo lb40
 ovn-nbctl lr-lb-add R1 lb4
 ovn-nbctl lr-lb-add R1 lb40
+ovn-nbctl ls-lb-add foo lb4-no-aff
+ovn-nbctl ls-lb-add foo lb40-no-aff
+ovn-nbctl lr-lb-add R1 lb4-no-aff
+ovn-nbctl lr-lb-add R1 lb40-no-aff
 
 # Flush conntrack entries for easier output parsing of next test.
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
@@ -8734,6 +8760,7 @@ tcp,orig=(src=192.168.1.2,dst=192.168.1.100,sport=<cleared>,dport=<cleared>),rep
 tcp,orig=(src=192.168.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=192.168.1.200,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
 tcp,orig=(src=192.168.1.200,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=192.168.1.200,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
 ])
+NS_CHECK_EXEC([foo1], [nc -z 192.168.1.100 8081])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
@@ -8855,8 +8882,12 @@ ovn-nbctl lsp-add bar bar2 \
 
 ovn-nbctl lb-add lb0 [[fd30::1]]:8080 [[fd11::2]]:80,[[fd12::2]]:80
 ovn-nbctl lb-add lb10 [[fd30::10]]:8080 [[fd11::2]]:80,[[fd12::2]]:80
+ovn-nbctl lb-add lb0-no-aff [[fd30::1]]:8081 [[fd11::2]]:80,[[fd12::2]]:80
+ovn-nbctl lb-add lb10-no-aff [[fd30::10]]:8081 [[fd11::2]]:80,[[fd12::2]]:80
 ovn-nbctl lr-lb-add R2 lb0
 ovn-nbctl lr-lb-add R2 lb10
+ovn-nbctl lr-lb-add R2 lb0-no-aff
+ovn-nbctl lr-lb-add R2 lb10-no-aff
 
 # Wait for ovn-controller to catch up.
 ovn-nbctl --wait=hv sync
@@ -8879,6 +8910,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 tcp,orig=(src=fd72::2,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd11::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 tcp,orig=(src=fd72::2,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd12::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
+NS_CHECK_EXEC([alice1], [nc -z fd30::1 8081])
 
 # Flush conntrack entries for easier output parsing of next test.
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
@@ -8908,17 +8940,22 @@ n2=$(ovs-ofctl dump-flows br-int table=15 |awk '/priority=150,ct_state=\+new\+tr
 echo $?
 }
 AT_CHECK([test $(check_affinity_flows) -eq 0])
+NS_CHECK_EXEC([alice1], [nc -z fd30::1 8081])
 
 # Flush conntrack entries for easier output parsing of next test.
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 ovn-nbctl lb-add lb1 [[fd30::2]]:8080 [[fd11::2]]:80,[[fd12::2]]:80
 ovn-nbctl lb-add lb11 [[fd30::12]]:8080 [[fd11::2]]:80,[[fd12::2]]:80
+ovn-nbctl lb-add lb1-no-aff [[fd30::2]]:8081 [[fd11::2]]:80,[[fd12::2]]:80
+ovn-nbctl lb-add lb11-no-aff [[fd30::12]]:8081 [[fd11::2]]:80,[[fd12::2]]:80
 # Enable lb affinity
 ovn-nbctl --wait=sb set load_balancer lb1 options:affinity_timeout=3
 ovn-nbctl --wait=sb set load_balancer lb11 options:affinity_timeout=3
 ovn-nbctl lr-lb-add R2 lb1
 ovn-nbctl lr-lb-add R2 lb11
+ovn-nbctl lr-lb-add R2 lb1-no-aff
+ovn-nbctl lr-lb-add R2 lb11-no-aff
 
 # check we use both backends
 for i in $(seq 1 15); do
@@ -8933,6 +8970,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 tcp,orig=(src=fd72::2,dst=fd30::2,sport=<cleared>,dport=<cleared>),reply=(src=fd11::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 tcp,orig=(src=fd72::2,dst=fd30::2,sport=<cleared>,dport=<cleared>),reply=(src=fd12::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
+NS_CHECK_EXEC([alice1], [nc -z fd30::2 8081])
 
 # Flush conntrack entries for easier output parsing of next test.
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
@@ -8941,10 +8979,14 @@ NETNS_DAEMONIZE([bar2], [nc -l -k fd12::3 80], [nc-bar2.pid])
 
 ovn-nbctl lb-add lb2 [[fd12::a]]:8080 [[fd12::2]]:80,[[fd12::3]]:80
 ovn-nbctl lb-add lb20 [[fd12::2a]]:8080 [[fd12::2]]:80,[[fd12::3]]:80
+ovn-nbctl lb-add lb2-no-aff [[fd12::a]]:8081 [[fd12::2]]:80,[[fd12::3]]:80
+ovn-nbctl lb-add lb20-no-aff [[fd12::2a]]:8081 [[fd12::2]]:80,[[fd12::3]]:80
 ovn-nbctl --wait=sb set load_balancer lb2 options:affinity_timeout=60
 ovn-nbctl --wait=sb set load_balancer lb20 options:affinity_timeout=60
 ovn-nbctl ls-lb-add foo lb2
 ovn-nbctl ls-lb-add foo lb20
+ovn-nbctl ls-lb-add foo lb2-no-aff
+ovn-nbctl ls-lb-add foo lb20-no-aff
 
 for i in $(seq 1 15); do
     echo Request $i
@@ -8956,15 +8998,20 @@ AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd12::a) | grep -v fe80 |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/; s/src=fd12::[[0-9]]/src=fd12::<cleared>/'], [0], [dnl
 tcp,orig=(src=fd11::2,dst=fd12::a,sport=<cleared>,dport=<cleared>),reply=(src=fd12::<cleared>,dst=fd11::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
+NS_CHECK_EXEC([foo1], [nc -z fd12::a 8081])
 
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 ovn-nbctl lb-add lb3 [[fd12::b]]:8080 [[fd12::2]]:80,[[fd12::3]]:80
 ovn-nbctl lb-add lb30 [[fd12::3b]]:8080 [[fd12::2]]:80,[[fd12::3]]:80
+ovn-nbctl lb-add lb3-no-aff [[fd12::b]]:8081 [[fd12::2]]:80,[[fd12::3]]:80
+ovn-nbctl lb-add lb30-no-aff [[fd12::3b]]:8081 [[fd12::2]]:80,[[fd12::3]]:80
 ovn-nbctl --wait=sb set load_balancer lb3 options:affinity_timeout=3
 ovn-nbctl --wait=sb set load_balancer lb30 options:affinity_timeout=3
 ovn-nbctl ls-lb-add foo lb3
 ovn-nbctl ls-lb-add foo lb30
+ovn-nbctl ls-lb-add foo lb3-no-aff
+ovn-nbctl ls-lb-add foo lb30-no-aff
 
 for i in $(seq 1 15); do
     echo Request $i
@@ -8977,16 +9024,23 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 tcp,orig=(src=fd11::2,dst=fd12::b,sport=<cleared>,dport=<cleared>),reply=(src=fd12::2,dst=fd11::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 tcp,orig=(src=fd11::2,dst=fd12::b,sport=<cleared>,dport=<cleared>),reply=(src=fd12::3,dst=fd11::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
+NS_CHECK_EXEC([foo1], [nc -z fd12::b 8081])
 
 NS_CHECK_EXEC([foo1], [ip -6 neigh add fd11::b lladdr 00:00:01:01:02:03 dev foo1], [0])
 ovn-nbctl --wait=sb lb-add lb4 [[fd11::a]]:8080 [[fd11::2]]:80
 ovn-nbctl --wait=sb lb-add lb40 [[fd11::a]]:8080 [[fd11::2]]:80
+ovn-nbctl --wait=sb lb-add lb4-no-aff [[fd11::a]]:8081 [[fd11::2]]:80
+ovn-nbctl --wait=sb lb-add lb40-no-aff [[fd11::a]]:8081 [[fd11::2]]:80
 ovn-nbctl --wait=sb set load_balancer lb4 options:affinity_timeout=60 options:hairpin_snat_ip="fd11::b"
 ovn-nbctl --wait=sb set load_balancer lb40 options:affinity_timeout=60 options:hairpin_snat_ip="fd11::b"
 ovn-nbctl ls-lb-add foo lb4
 ovn-nbctl ls-lb-add foo lb40
 ovn-nbctl lr-lb-add R1 lb4
 ovn-nbctl lr-lb-add R1 lb40
+ovn-nbctl ls-lb-add foo lb4-no-aff
+ovn-nbctl ls-lb-add foo lb40-no-aff
+ovn-nbctl lr-lb-add R1 lb4-no-aff
+ovn-nbctl lr-lb-add R1 lb40-no-aff
 
 # Flush conntrack entries for easier output parsing of next test.
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
@@ -9003,6 +9057,7 @@ tcp,orig=(src=fd11::2,dst=fd11::2,sport=<cleared>,dport=<cleared>),reply=(src=fd
 tcp,orig=(src=fd11::2,dst=fd11::a,sport=<cleared>,dport=<cleared>),reply=(src=fd11::2,dst=fd11::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 tcp,orig=(src=fd11::b,dst=fd11::2,sport=<cleared>,dport=<cleared>),reply=(src=fd11::2,dst=fd11::b,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
 ])
+NS_CHECK_EXEC([foo1], [nc -z fd11::a 8081])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
