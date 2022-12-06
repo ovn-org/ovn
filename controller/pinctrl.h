@@ -26,6 +26,7 @@
 struct hmap;
 struct shash;
 struct lport_index;
+struct ovsdb_idl;
 struct ovsdb_idl_index;
 struct ovsdb_idl_txn;
 struct ovsrec_bridge;
@@ -57,7 +58,8 @@ void pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                  const struct shash *local_active_ports_ras);
 void pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn);
 void pinctrl_destroy(void);
-void pinctrl_set_br_int_name(char *br_int_name);
+void pinctrl_set_br_int_name(const char *br_int_name);
+void pinctrl_update(const struct ovsdb_idl *idl, const char *br_int_name);
 
 struct activated_port {
     uint32_t dp_key;
