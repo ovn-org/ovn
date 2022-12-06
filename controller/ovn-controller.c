@@ -4615,6 +4615,7 @@ main(int argc, char *argv[])
                         }
                         stopwatch_start(PINCTRL_RUN_STOPWATCH_NAME,
                                         time_msec());
+                        pinctrl_update(ovnsb_idl_loop.idl, br_int->name);
                         pinctrl_run(ovnsb_idl_txn,
                                     sbrec_datapath_binding_by_key,
                                     sbrec_port_binding_by_datapath,
