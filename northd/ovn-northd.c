@@ -125,6 +125,10 @@ static const char *rbac_igmp_group_auth[] =
     {""};
 static const char *rbac_igmp_group_update[] =
     {"address", "chassis", "datapath", "ports"};
+static const char *rbac_bfd_auth[] =
+    {""};
+static const char *rbac_bfd_update[] =
+    {"status"};
 
 static struct rbac_perm_cfg {
     const char *table;
@@ -206,6 +210,14 @@ static struct rbac_perm_cfg {
         .insdel = true,
         .update = rbac_igmp_group_update,
         .n_update = ARRAY_SIZE(rbac_igmp_group_update),
+        .row = NULL
+    },{
+        .table = "BFD",
+        .auth = rbac_bfd_auth,
+        .n_auth = ARRAY_SIZE(rbac_bfd_auth),
+        .insdel = false,
+        .update = rbac_bfd_update,
+        .n_update = ARRAY_SIZE(rbac_bfd_update),
         .row = NULL
     },{
         .table = NULL,
