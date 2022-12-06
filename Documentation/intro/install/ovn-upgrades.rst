@@ -27,7 +27,12 @@ OVN Upgrades
 
 Since OVN is a distributed system, special consideration must be given to
 the process used to upgrade OVN across a deployment.  This document discusses
-the recommended upgrade process.
+the two recommended `Upgrade procedures`_, `Rolling upgrade`_ and `Fail-safe
+upgrade`_.
+
+Which one to choose depends on whether you are running a version of OVN that is
+within range of upstream support for upgrades to the version of OVN you want to
+upgrade to.
 
 Release Notes
 -------------
@@ -43,21 +48,84 @@ upgraded together, partly for convenience.  OVN is included in OVS releases
 so it's easiest to upgrade them together.  OVN may also make use of new
 features of OVS only available in that release.
 
+Upgrade procedures
+------------------
+
+Rolling upgrade
+~~~~~~~~~~~~~~~
+
+1. `Upgrade ovn-controller`_
+
+2. `Upgrade OVN Databases and ovn-northd`_
+
+3. `Upgrade OVN Integration`_
+
+In order to successfully perform a rolling upgrade, the ovn-controller process
+needs to understand the structure of the database for the version you are
+upgrading from and to simultaneously.
+
+To avoid buildup of complexity and technical debt we limit the span of versions
+supported for a rolling upgrade on `Long-term Support Releases`_ (LTS), and it
+should always be possible to upgrade from the previous LTS version to the next.
+
+The first LTS version of OVN was 22.03.  If you want to upgrade between other
+versions, you can use the `Fail-safe upgrade`_ procedure.
+
+Fail-safe upgrade
+~~~~~~~~~~~~~~~~~
+
+1. Upgrade to the most recent point release or package version available for
+   the major version of OVN you are upgrading from.
+
+2. Enable the version pinning feature in the ovn-controller by setting the
+   ``external_ids:ovn-match-northd-version`` flag to 'true' as documented in
+   the `ovn-controller man page`_.
+
+3. If the version of OVN you are upgrading from does not have the `version
+   pinning check in the incremental processing engine`_, you must stop
+   ovn-northd and manually change the northd_internal_version to ensure the
+   controllers go into fail-safe mode before processing changes induced by the
+   upgrade.
+
+    $ sudo /usr/share/ovn/scripts/ovn-ctl stop_northd --ovn-manage-ovsdb=no
+    $ sudo ovn-sbctl set sb-global . options:northd_internal_version="foo"
+
+4. `Upgrade OVN Databases and ovn-northd`_
+
+5. `Upgrade ovn-controller`_
+
+6. `Upgrade OVN Integration`_
+
+When upgrading between a span of versions that is not supported, you may be at
+risk for the new ovn-controller process not understanding the structure of the
+old database, which may lead to data plane downtime for running instances.
+
+To avoid this there is a fail safe approach, which involves making the
+ovn-controller process refrain from making changes to the local flow state when
+a version mismatch between the ovn-controller and ovn-northd is detected.
+
+Steps
+-----
+
+This section documents individual steps in a upgrade procedure in no particular
+order.  For information on ordering of the steps, please refer to the `Upgrade
+procedures`_ section.
+
 Upgrade ovn-controller
-----------------------
+~~~~~~~~~~~~~~~~~~~~~~
 
 You should start by upgrading ovn-controller on each host it's running on.
 First, you upgrade the OVS and OVN packages.  Then, restart the
 ovn-controller service.  You can restart with ovn-ctl::
 
-    $ sudo /usr/share/openvswitch/scripts/ovn-ctl restart_controller
+    $ sudo /usr/share/ovn/scripts/ovn-ctl restart_controller
 
 or with systemd::
 
     $ sudo systemd restart ovn-controller
 
 Upgrade OVN Databases and ovn-northd
-------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The OVN databases and ovn-northd should be upgraded next.  Since ovn-controller
 has already been upgraded, it will be ready to operate on any new functionality
@@ -69,7 +137,7 @@ automatically restarts the databases and upgrades the database schema, as well.
 
 You may perform this restart using the ovn-ctl script::
 
-    $ sudo /usr/share/openvswitch/scripts/ovn-ctl restart_northd
+    $ sudo /usr/share/ovn/scripts/ovn-ctl restart_northd
 
 or if you're using a Linux distribution with systemd::
 
@@ -90,7 +158,7 @@ or if you're using a Linux distribution with systemd::
     $ sudo systemctl restart ovn-ic-db
 
 Schema Change
-^^^^^^^^^^^^^
++++++++++++++
 
 During database upgrading, if there is schema change, the DB file will be
 converted to the new schema automatically, if the schema change is backward
@@ -123,8 +191,8 @@ of known impactible schema changes and how to fix when error encountered.
    schema (restart ovn-ic database daemon).
 
 
-Upgrading OVN Integration
--------------------------
+Upgrade OVN Integration
+~~~~~~~~~~~~~~~~~~~~~~~
 
 Lastly, you may also want to upgrade integration with OVN that you may be
 using.  For example, this could be the OpenStack Neutron driver or
@@ -133,3 +201,11 @@ ovn-kubernetes.
 OVN's northbound database schema is a backwards compatible interface, so
 you should be able to safely complete an OVN upgrade before upgrading
 any integration in use.
+
+.. LINKS
+.. _Long-term Support Releases:
+   ../../internals/release-process.html#long-term-support-releases
+.. _ovn-controller man page:
+   https://www.ovn.org/support/dist-docs/ovn-controller.8.html
+.. _version pinning check in the incremental processing engine:
+   https://github.com/ovn-org/ovn/commit/c2eeb2c98ea8
