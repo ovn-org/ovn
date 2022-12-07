@@ -145,6 +145,16 @@ ovn_init_symtab(struct shash *symtab)
                                     WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab, "ct_mark.ecmp_reply_port", NULL,
                                     "ct_mark[16..31]", WR_CT_COMMIT);
+    expr_symtab_add_subfield_scoped(symtab, "ct_mark.skip_snat", NULL,
+                                    "ct_mark["
+                                    OVN_CT_STR(OVN_CT_LB_SKIP_SNAT_BIT)
+                                    "]",
+                                    WR_CT_COMMIT);
+    expr_symtab_add_subfield_scoped(symtab, "ct_mark.force_snat", NULL,
+                                    "ct_mark["
+                                    OVN_CT_STR(OVN_CT_LB_FORCE_SNAT_BIT)
+                                    "]",
+                                    WR_CT_COMMIT);
 
     expr_symtab_add_field_scoped(symtab, "ct_label", MFF_CT_LABEL, NULL,
                                  false, WR_CT_COMMIT);
@@ -167,6 +177,16 @@ ovn_init_symtab(struct shash *symtab)
                                     "ct_label[80..95]", WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab, "ct_label.label", NULL,
                                     "ct_label[96..127]", WR_CT_COMMIT);
+    expr_symtab_add_subfield_scoped(symtab, "ct_label.skip_snat", NULL,
+                                    "ct_label["
+                                    OVN_CT_STR(OVN_CT_LB_SKIP_SNAT_BIT)
+                                    "]",
+                                    WR_CT_COMMIT);
+    expr_symtab_add_subfield_scoped(symtab, "ct_label.force_snat", NULL,
+                                    "ct_label["
+                                    OVN_CT_STR(OVN_CT_LB_FORCE_SNAT_BIT)
+                                    "]",
+                                    WR_CT_COMMIT);
 
     expr_symtab_add_field(symtab, "ct_state", MFF_CT_STATE, NULL, false);
 
