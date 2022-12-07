@@ -7036,12 +7036,12 @@ build_lb_rules_pre_stateful(struct hmap *lflows, struct ovn_northd_lb *lb,
  *      match=(REGBIT_KNOWN_LB_SESSION == 1 && ct.new && ip4
  *             && REG_LB_AFF_BACKEND_IP4 == B1 && REG_LB_AFF_MATCH_PORT == BP1)
  *      action=(REG_NEXT_HOP_IPV4 = V; lb_action;
- *              ct_lb_mark(backends=B1:BP1);)
+ *              ct_lb_mark(backends=B1:BP1; ct_flag);)
  *   table=lr_in_dnat, priority=150
  *      match=(REGBIT_KNOWN_LB_SESSION == 1 && ct.new && ip4
  *             && REG_LB_AFF_BACKEND_IP4 == B2 && REG_LB_AFF_MATCH_PORT == BP2)
  *      action=(REG_NEXT_HOP_IPV4 = V; lb_action;
- *              ct_lb_mark(backends=B2:BP2);)
+ *              ct_lb_mark(backends=B2:BP2; ct_flag);)
  *
  * - load balancing affinity learn:
  *   table=lr_in_lb_aff_learn, priority=100
@@ -7099,6 +7099,13 @@ build_lb_affinity_lr_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
     const char *reg_vip = ipv6 ? REG_NEXT_HOP_IPV6 : REG_NEXT_HOP_IPV4;
     const char *reg_backend =
         ipv6 ? REG_LB_L3_AFF_BACKEND_IP6 : REG_LB_AFF_BACKEND_IP4;
+    const char *ct_flag = NULL;
+    if (lb_action && !strcmp(lb_action, "flags.skip_snat_for_lb = 1; ")) {
+        ct_flag = "; skip_snat";
+    } else if (lb_action &&
+               !strcmp(lb_action, "flags.force_snat_for_lb = 1; ")) {
+        ct_flag = "; force_snat";
+    }
 
     /* Prepare common part of affinity LB and affinity learn action. */
     ds_put_format(&aff_action, "%s = %s; ", reg_vip, lb_vip->vip_str);
@@ -7160,6 +7167,10 @@ build_lb_affinity_lr_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
         } else {
             ds_put_cstr(&aff_action, backend->ip_str);
             ds_put_cstr(&aff_action_learn, backend->ip_str);
+        }
+
+        if (ct_flag) {
+            ds_put_cstr(&aff_action, ct_flag);
         }
 
         ds_put_cstr(&aff_action, ");");
@@ -10474,6 +10485,11 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     bool reject = build_lb_vip_actions(lb_vip, vips_nb, action,
                                        lb->selection_fields, false,
                                        ct_lb_mark);
+    bool drop = !!strncmp(ds_cstr(action), "ct_lb", strlen("ct_lb"));
+    if (!drop) {
+        /* Remove the trailing ");". */
+        ds_truncate(action, action->length - 2);
+    }
 
     /* Higher priority rules are added for load-balancing in DNAT
      * table.  For every match (on a VIP[:port]), we add two flows.
@@ -10490,8 +10506,9 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     }
 
     if (lb->skip_snat) {
-        skip_snat_new_action = xasprintf("flags.skip_snat_for_lb = 1; %s",
-                                         ds_cstr(action));
+        skip_snat_new_action = xasprintf("flags.skip_snat_for_lb = 1; %s%s",
+                                         ds_cstr(action),
+                                         drop ? "" : "; skip_snat);");
         skip_snat_est_action = xasprintf("flags.skip_snat_for_lb = 1; "
                                          "next;");
     }
@@ -10624,8 +10641,9 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
             skip_snat_new_action, est_match,
             skip_snat_est_action, lflows, prio, meter_groups);
 
-    char *new_actions = xasprintf("flags.force_snat_for_lb = 1; %s",
-                                  ds_cstr(action));
+    char *new_actions = xasprintf("flags.force_snat_for_lb = 1; %s%s",
+                                  ds_cstr(action),
+                                  drop ? "" : "; force_snat);");
     build_gw_lrouter_nat_flows_for_lb(lb, gw_router_force_snat,
             n_gw_router_force_snat, reject, new_match,
             new_actions, est_match,
@@ -10639,6 +10657,10 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
                                "flags.force_snat_for_lb = 1; ",
                                lb_aff_force_snat_router,
                                n_lb_aff_force_snat_router);
+
+    if (!drop) {
+        ds_put_cstr(action, ");");
+    }
 
     build_gw_lrouter_nat_flows_for_lb(lb, gw_router, n_gw_router,
             reject, new_match, ds_cstr(action), est_match,
@@ -14205,7 +14227,7 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
     ovn_lflow_add(lflows, od, S_ROUTER_OUT_EGR_LOOP, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 0, "1", "next;");
 
-    /* Ingress DNAT and DEFRAG Table (Priority 50).
+    /* Ingress DNAT and DEFRAG Table (Priority 50/70).
      *
      * The defrag stage needs to have flows for ICMP in order to get
      * the correct ct_state that can be used by DNAT stage.
@@ -14218,10 +14240,29 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
      * related traffic such as an ICMP Port Unreachable through
      * that's generated from a non-listening UDP port.  */
     if (od->has_lb_vip) {
+        ds_clear(match);
+        const char *ct_flag_reg = ct_lb_mark ? "ct_mark" : "ct_label";
+
+        ds_put_cstr(match, "ct.rel && !ct.est && !ct.new");
+        size_t match_len = match->length;
+
         ovn_lflow_add(lflows, od, S_ROUTER_IN_DEFRAG, 50, "icmp || icmp6",
                       "ct_dnat;");
+
+        ds_put_format(match, " && %s.skip_snat == 1", ct_flag_reg);
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 70, ds_cstr(match),
+                      "flags.skip_snat_for_lb = 1; ct_commit_nat;");
+
+        ds_truncate(match, match_len);
+        ds_put_format(match, " && %s.force_snat == 1", ct_flag_reg);
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 70, ds_cstr(match),
+                      "flags.force_snat_for_lb = 1; ct_commit_nat;");
+
+        ds_truncate(match, match_len);
         ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 50,
                       "ct.rel && !ct.est && !ct.new", "ct_commit_nat;");
+
+        ds_clear(match);
     }
 
     /* If the router has load balancer or DNAT rules, re-circulate every packet

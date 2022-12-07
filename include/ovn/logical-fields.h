@@ -182,9 +182,13 @@ const struct ovn_field *ovn_field_from_name(const char *name);
 
 #define OVN_CT_BLOCKED_BIT 0
 #define OVN_CT_NATTED_BIT  1
+#define OVN_CT_LB_SKIP_SNAT_BIT 2
+#define OVN_CT_LB_FORCE_SNAT_BIT 3
 
 #define OVN_CT_BLOCKED 1
 #define OVN_CT_NATTED  2
+#define OVN_CT_LB_SKIP_SNAT 4
+#define OVN_CT_LB_FORCE_SNAT 8
 
 #define OVN_CT_ECMP_ETH_1ST_BIT 32
 #define OVN_CT_ECMP_ETH_END_BIT 79
