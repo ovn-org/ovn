@@ -60,6 +60,9 @@ static char *unixctl_path;
 /* The southbound database. */
 static struct ovsdb_idl *ovnsb_idl;
 
+/* --leader-only, --no-leader-only: Only accept the leader in a cluster. */
+static int leader_only = true;
+
 /* --detailed: Show a detailed, table-by-table trace. */
 static bool detailed;
 
@@ -138,6 +141,7 @@ main(int argc, char *argv[])
                                  1, INT_MAX, ovntrace_trace, NULL);
     }
     ovnsb_idl = ovsdb_idl_create(db, &sbrec_idl_class, true, false);
+    ovsdb_idl_set_leader_only(ovnsb_idl, leader_only);
 
     bool already_read = false;
     for (;;) {
@@ -243,6 +247,8 @@ parse_options(int argc, char *argv[])
 {
     enum {
         OPT_DB = UCHAR_MAX + 1,
+        OPT_LEADER_ONLY,
+        OPT_NO_LEADER_ONLY,
         OPT_UNIXCTL,
         OPT_DETAILED,
         OPT_SUMMARY,
@@ -260,6 +266,8 @@ parse_options(int argc, char *argv[])
     };
     static const struct option long_options[] = {
         {"db", required_argument, NULL, OPT_DB},
+        {"leader-only", no_argument, NULL, OPT_LEADER_ONLY},
+        {"no-leader-only", no_argument, NULL, OPT_NO_LEADER_ONLY},
         {"unixctl", required_argument, NULL, OPT_UNIXCTL},
         {"detailed", no_argument, NULL, OPT_DETAILED},
         {"summary", no_argument, NULL, OPT_SUMMARY},
@@ -292,6 +300,14 @@ parse_options(int argc, char *argv[])
         switch (c) {
         case OPT_DB:
             db = optarg;
+            break;
+
+        case OPT_LEADER_ONLY:
+            leader_only = true;
+            break;
+
+        case OPT_NO_LEADER_ONLY:
+            leader_only = false;
             break;
 
         case OPT_UNIXCTL:
@@ -390,6 +406,7 @@ Output style options:\n\
 Other options:\n\
   --db=DATABASE           connect to DATABASE\n\
                           (default: %s)\n\
+  --no-leader-only        accept any cluster member, not just the leader\n\
   --ovs[=REMOTE]          obtain corresponding OpenFlow flows from REMOTE\n\
                           (default: %s)\n\
   --unixctl=SOCKET        set control socket name\n\
