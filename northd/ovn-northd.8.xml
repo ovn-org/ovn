@@ -474,7 +474,9 @@
       priority-110 flow is added to skip over stateful ACLs. Multicast, IPv6
       Neighbor Discovery and MLD traffic also skips stateful ACLs. For
       "allow-stateless" ACLs, a flow is added to bypass setting the hint for
-      connection tracker processing.
+      connection tracker processing when there are stateful ACLs or LB rules;
+      <code>REGBIT_ACL_STATELESS</code> is set for traffic matching stateless
+      ACL flows.
     </p>
 
     <p>
@@ -494,8 +496,10 @@
       in ingress table <code>LB</code> and <code>Stateful</code>.  It contains
       a priority-0 flow that simply moves traffic to the next table. Moreover
       it contains two priority-110 flows to move multicast, IPv6 Neighbor
-      Discovery and MLD traffic to the next table. If load balancing rules with
-      virtual IP addresses (and ports) are configured in
+      Discovery and MLD traffic to the next table. It also contains two
+      priority-110 flows to move stateless traffic, i.e traffic for which
+      <code>REGBIT_ACL_STATELESS</code> is set, to the next table. If load
+      balancing rules with virtual IP addresses (and ports) are configured in
       <code>OVN_Northbound</code> database for a logical switch datapath, a
       priority-100 flow is added with the match <code>ip</code> to match on IP
       packets and sets the action <code>reg0[2] = 1; next;</code> to act as a
@@ -1973,32 +1977,7 @@ output;
       </li>
     </ul>
 
-    <h3>Egress Table 0: Pre-LB</h3>
-
-    <p>
-      This table is similar to ingress table <code>Pre-LB</code>.  It
-      contains a priority-0 flow that simply moves traffic to the next table.
-      Moreover it contains two priority-110 flows to move multicast, IPv6
-      Neighbor Discovery and MLD traffic to the next table. If any load
-      balancing rules exist for the datapath, a priority-100 flow is added with
-      a match of <code>ip</code> and action of <code>reg0[2] = 1; next;</code>
-      to act as a hint for table <code>Pre-stateful</code> to send IP packets
-      to the connection tracker for packet de-fragmentation and possibly DNAT
-      the destination VIP to one of the selected backend for already committed
-      load balanced traffic.
-    </p>
-
-    <p>
-      This table also has a priority-110 flow with the match
-      <code>eth.src == <var>E</var></code> for all logical switch
-      datapaths to move traffic to the next table. Where <var>E</var>
-      is the service monitor mac defined in the
-      <ref column="options:svc_monitor_mac" table="NB_Global"
-      db="OVN_Northbound"/> column of <ref table="NB_Global"
-      db="OVN_Northbound"/> table.
-    </p>
-
-    <h3>Egress Table 1: <code>to-lport</code> Pre-ACLs</h3>
+    <h3>Egress Table 0: <code>to-lport</code> Pre-ACLs</h3>
 
     <p>
       This is similar to ingress table <code>Pre-ACLs</code> except for
@@ -2022,6 +2001,32 @@ output;
       is the peer of a logical router port. This flow is added to
       skip the connection tracking of packets which will be entering
       logical router datapath from logical switch datapath for routing.
+    </p>
+
+
+    <h3>Egress Table 1: Pre-LB</h3>
+
+    <p>
+      This table is similar to ingress table <code>Pre-LB</code>.  It
+      contains a priority-0 flow that simply moves traffic to the next table.
+      Moreover it contains two priority-110 flows to move multicast, IPv6
+      Neighbor Discovery and MLD traffic to the next table. If any load
+      balancing rules exist for the datapath, a priority-100 flow is added with
+      a match of <code>ip</code> and action of <code>reg0[2] = 1; next;</code>
+      to act as a hint for table <code>Pre-stateful</code> to send IP packets
+      to the connection tracker for packet de-fragmentation and possibly DNAT
+      the destination VIP to one of the selected backend for already committed
+      load balanced traffic.
+    </p>
+
+    <p>
+      This table also has a priority-110 flow with the match
+      <code>eth.src == <var>E</var></code> for all logical switch
+      datapaths to move traffic to the next table. Where <var>E</var>
+      is the service monitor mac defined in the
+      <ref column="options:svc_monitor_mac" table="NB_Global"
+      db="OVN_Northbound"/> column of <ref table="NB_Global"
+      db="OVN_Northbound"/> table.
     </p>
 
     <h3>Egress Table 2: Pre-stateful</h3>
