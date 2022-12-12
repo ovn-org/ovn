@@ -128,8 +128,8 @@ enum ovn_stage {
     PIPELINE_STAGE(SWITCH, IN,  L2_UNKNOWN,    25, "ls_in_l2_unknown")    \
                                                                           \
     /* Logical switch egress stages. */                                   \
-    PIPELINE_STAGE(SWITCH, OUT, PRE_LB,       0, "ls_out_pre_lb")         \
-    PIPELINE_STAGE(SWITCH, OUT, PRE_ACL,      1, "ls_out_pre_acl")        \
+    PIPELINE_STAGE(SWITCH, OUT, PRE_ACL,      0, "ls_out_pre_acl")        \
+    PIPELINE_STAGE(SWITCH, OUT, PRE_LB,       1, "ls_out_pre_lb")         \
     PIPELINE_STAGE(SWITCH, OUT, PRE_STATEFUL, 2, "ls_out_pre_stateful")   \
     PIPELINE_STAGE(SWITCH, OUT, ACL_HINT,     3, "ls_out_acl_hint")       \
     PIPELINE_STAGE(SWITCH, OUT, ACL,          4, "ls_out_acl")            \
@@ -199,6 +199,7 @@ enum ovn_stage {
 #define REGBIT_LKUP_FDB           "reg0[11]"
 #define REGBIT_HAIRPIN_REPLY      "reg0[12]"
 #define REGBIT_ACL_LABEL          "reg0[13]"
+#define REGBIT_ACL_STATELESS      "reg0[16]"
 
 #define REG_ORIG_DIP_IPV4         "reg1"
 #define REG_ORIG_DIP_IPV6         "xxreg1"
@@ -259,7 +260,7 @@ enum ovn_stage {
  * | R0 |     REGBIT_{CONNTRACK/DHCP/DNS}              |   |                  |
  * |    |     REGBIT_{HAIRPIN/HAIRPIN_REPLY}           |   |                  |
  * |    | REGBIT_ACL_HINT_{ALLOW_NEW/ALLOW/DROP/BLOCK} |   |                  |
- * |    |     REGBIT_ACL_LABEL                         | X |                  |
+ * |    |     REGBIT_ACL_{LABEL/STATELESS}             | X |                  |
  * +----+----------------------------------------------+ X |                  |
  * | R1 |         ORIG_DIP_IPV4 (>= IN_PRE_STATEFUL)   | R |                  |
  * +----+----------------------------------------------+ E |                  |
@@ -5809,17 +5810,18 @@ build_stateless_filter(struct ovn_datapath *od,
                        const struct nbrec_acl *acl,
                        struct hmap *lflows)
 {
+    const char *action = REGBIT_ACL_STATELESS" = 1; next;";
     if (!strcmp(acl->direction, "from-lport")) {
         ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_PRE_ACL,
                                 acl->priority + OVN_ACL_PRI_OFFSET,
                                 acl->match,
-                                "next;",
+                                action,
                                 &acl->header_);
     } else {
         ovn_lflow_add_with_hint(lflows, od, S_SWITCH_OUT_PRE_ACL,
                                 acl->priority + OVN_ACL_PRI_OFFSET,
                                 acl->match,
-                                "next;",
+                                action,
                                 &acl->header_);
     }
 }
@@ -5912,6 +5914,10 @@ build_pre_acls(struct ovn_datapath *od, const struct hmap *port_groups,
                       REGBIT_CONNTRACK_DEFRAG" = 1; next;");
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL, 100, "ip",
                       REGBIT_CONNTRACK_DEFRAG" = 1; next;");
+    } else if (od->has_lb_vip) {
+        /* We'll build stateless filters if there are LB rules so that
+         * the stateless flows are not tracked in pre-lb. */
+         build_stateless_filters(od, port_groups, lflows);
     }
 }
 
@@ -6015,6 +6021,12 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows)
                                      110, lflows);
         }
     }
+
+    /* Do not sent statless flows via conntrack */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB, 110,
+                  REGBIT_ACL_STATELESS" == 1", "next;");
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB, 110,
+                  REGBIT_ACL_STATELESS" == 1", "next;");
 
     /* 'REGBIT_CONNTRACK_NAT' is set to let the pre-stateful table send
      * packet to conntrack for defragmentation and possibly for unNATting.
@@ -7012,7 +7024,8 @@ build_lb_rules_pre_stateful(struct hmap *lflows, struct ovn_northd_lb *lb,
         }
         ds_put_format(action, "%s;", ct_lb_mark ? "ct_lb_mark" : "ct_lb");
 
-        ds_put_format(match, "%s.dst == %s", ip_match, lb_vip->vip_str);
+        ds_put_format(match, REGBIT_CONNTRACK_NAT" == 1 && %s.dst == %s",
+                      ip_match, lb_vip->vip_str);
         if (lb_vip->vip_port) {
             ds_put_format(match, " && %s.dst == %d", proto, lb_vip->vip_port);
         }
