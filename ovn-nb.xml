@@ -2063,6 +2063,9 @@
           outgoing TCP traffic directed to an IP address, then you probably
           also want to define another rule to allow incoming TCP traffic coming
           from this same IP address.
+          In addition, traffic that matches stateless ACLs will bypass
+          load-balancer DNAT/un-DNAT processing. Stateful ACLs should be
+          used instead if the traffic is supposed to be load-balanced.
         </li>
 
         <li>
