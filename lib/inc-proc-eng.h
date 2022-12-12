@@ -18,19 +18,19 @@
 #define INC_PROC_ENG_H 1
 
 /* The Incremental Processing Engine is a framework for incrementally
- * processing changes from different inputs. The main user is ovn-controller.
- * To compute desired states (e.g. openflow rules) based on many inputs (e.g.
- * south-bound DB tables, local OVSDB interfaces, etc.), it is straightforward
- * to recompute everything when there is any change in any inputs, but it
- * is inefficient when the size of the input data becomes large. Instead,
- * tracking the changes and update the desired states based on what's changed
- * is more efficient and scalable. However, it is not straightforward to
- * implement the change-based processing when there are a big number of
+ * processing changes from different inputs. A example use case is
+ * ovn-controller.  To compute desired states (e.g. openflow rules) based on
+ * many inputs (e.g.  south-bound DB tables, local OVSDB interfaces, etc.), it
+ * is straightforward to recompute everything when there is any change in any
+ * inputs, but it is inefficient when the size of the input data becomes large.
+ * Instead, tracking the changes and update the desired states based on what's
+ * changed is more efficient and scalable. However, it is not straightforward
+ * to implement the change-based processing when there are a big number of
  * inputs. In addition, what makes it more complicated is that intermediate
- * results needs to be computed, which needs to be reused in different part
- * of the processing and finally generates the final desired states. It is
- * proved to be difficult and error-prone to implement this kind of complex
- * processing by ad-hoc implementation.
+ * results needs to be computed, which needs to be reused in different part of
+ * the processing and finally generates the final desired states. It is proved
+ * to be difficult and error-prone to implement this kind of complex processing
+ * by ad-hoc implementation.
  *
  * This framework is to provide a generic way to solve the above problem.
  * It does not understand the processing logic, but provides a unified way
@@ -38,15 +38,25 @@
  * users to implement the processing logic for how to handle each input
  * changes.
  *
- * The engine is composed of engine_nodes. Each engine_node is either
- * an input, an output or both (intermediate result). Each engine node
- * maintains its own data, which is persistent across interactions. Each node
- * has zero to ENGINE_MAX_INPUT inputs, which creates a DAG (directed
- * acyclic graph). For each input of each engine_node, there is a
- * change_handler to process changes of that input, and update the data
- * of the engine_node. Then the user can simply call the run() method
- * of the engine so that the processing will happen in the order according
- * to the dependencies defined and handle the changes incrementally.
+ * The engine is composed of engine_nodes. Each engine node maintains its own
+ * data, which is persistent across main loop iterations. Each node has zero to
+ * ENGINE_MAX_INPUT inputs, which creates a DAG (directed acyclic graph),
+ * representing the dependencies between the nodes. Nodes without inputs
+ * maintains the pure inputs, nodes without offsprings maintain the final
+ * output, and nodes in the middle are the ones maintaining intermediate
+ * results.
+ *
+ * For each input of each engine_node, there is a user-defined change_handler
+ * to process changes of that input, and update the data (output) of the
+ * engine_node accordingly. A change_handler usually needs to consider other
+ * inputs of the same node during this process.
+ *
+ * The user can simply call the run() method of the leaf output engine node to
+ * trigger the processing of the whole engine, and the processing will happen
+ * in the order according to the dependencies defined and handle the changes
+ * incrementally. When there are multiple leaf nodes, a dummy output node can
+ * be created with the leaf nodes as inputs, as a triggering point of the
+ * engine.
  *
  * While the more fine-grained dependencies and change-handlers are
  * implemented, the more efficient the processing will be, it is not
@@ -58,6 +68,81 @@
  * defined for a certain input on a certain engine_node, the run() method
  * of the engine_node will be called to fall-back to a full recompute
  * against all its inputs.
+ *
+ * The Incremental Processing Engine intends to help the correctness and
+ * maintainability, but to achieve the goals, it requires the user to follow
+ * some guidelines.  Otherwise it is easy to be abused and results in bugs or
+ * unmanageable code complexity.
+ *
+ * - Focus on data when designing the node dependency graph.
+ *
+ *   An engine node exists for the data it maintains, and the data is the pure
+ *   outcome of the inputs of the node. It is analogous to materialized views
+ *   of database tables, although the data structure is not limited to
+ *   relations and can be any form. The operations on the data implemented by
+ *   change-handlers and run() method are analogous to the SQL operations such
+ *   as selection, projection and join.
+ *
+ *   There may be exceptions that some nodes may look data-less, e.g. a node
+ *   that is responsible for syncing data from a NB table to a SB table (in
+ *   ovn-northd). The node would have the NB table as input and a
+ *   change-handler simply converts the input changes and updates directly to
+ *   SB IDL. The node itself doesn't need to maintain any data. However,
+ *   essentially, this is still a data-centric design, and the data of the
+ *   node is maintained in the SB IDL itself. (A more clear separation may be
+ *   maintaining a copy of the desired SB data in the memory, and then updating
+ *   the SB IDL outside of the Incremental Processing Engine. However, this
+ *   merely increases CPU and memory footprint without obvious benefit.)
+ *
+ * - Avoid global variables and always get input from the engine node's input.
+ *
+ *   The main purpose of the Incremental Processing Engine is to make the
+ *   dependencies explicit and avoid missing handling any hidden dependencies,
+ *   but there is no way in the framework to prevent the usage of global
+ *   variables. It is the users responsibility to avoid global variables. If
+ *   there is any data/states that is participated in the generation of the
+ *   output, the data should come from the node's input (accessible through
+ *   engine APIs) only.
+ *
+ *   The engine framework doesn't have a mechanism to prevent the use of global
+ *   variables in handlers/run(), so it is the developer's responsibility to
+ *   keep this in mind and avoid such use. If there are some very specific
+ *   reasons a global variable is required (such as to greatly simply code
+ *   complexity while the change of the global data is handled properly -
+ *   e.g. ensured to trigger a full recompute), it should be clearly documented
+ *   to call out and raise attention for future changes that could possibly
+ *   break the correctness.
+ *
+ *   Note that the engine context may be easily abused to contain global data.
+ *   The purpose of the engine context is to include critical information that
+ *   is required through out the engine processing by handlers, and mostly it
+ *   is just the IDL txn handle that is required for some handlers to write
+ *   data to OVSDB and nothing else. It must be careful not adding any real
+ *   data dependency to the engine context.
+ *
+ * - All input changes need to be handled.
+ *
+ *   If a node depends on an input, it means the input data participated in the
+ *   generation of the node's data. If the input changes, it means potential
+ *   change to the node's data. If it is not clear how to handle the change, or
+ *   if the change is very rare and doesn't worth a complex change handler
+ *   implementation, simply return false from the change-handler so that a
+ *   recompute is triggered to ensure the correctness. Not handling an input
+ *   change suggests that either the input shouldn't be in the dependency graph
+ *   of the current node, or there is a potential bug.
+ *
+ *   However, we do see special cases that a no-op handler (meaning doing
+ *   nothing) can be used to skip an input change handling. In such cases, it
+ *   is usually that the node depends on several inputs and the input changes
+ *   are correlated, and handling some of the input changes is sufficient to
+ *   cover the changes of some other input. Take an example:
+ *
+ *   Node A depends on input B and C. If we know that C always changes with B,
+ *   and handling B's change would have covered C's change, then it is ok to
+ *   ignore C's input change.
+ *
+ *   However, in practice this should be very rare. It should be extremely
+ *   cautious to use a no-op handler with careful documentation for the reason.
  */
 
 #define ENGINE_MAX_INPUT 256
