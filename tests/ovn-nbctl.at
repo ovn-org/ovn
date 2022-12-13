@@ -435,6 +435,108 @@ AT_CHECK([ovn-nbctl meter-list], [0], [dnl
 
 dnl ---------------------------------------------------------------------
 
+OVN_NBCTL_TEST([ovn_nbctl_mirrors], [mirrors], [
+check ovn-nbctl mirror-add mirror1 gre 0 from-lport 10.10.10.1
+check ovn-nbctl mirror-add mirror2 erspan 1 to-lport 10.10.10.2
+check ovn-nbctl mirror-add mirror3 gre 2 to-lport 10.10.10.3
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-port1
+check ovn-nbctl lsp-add sw0 sw0-port2
+check ovn-nbctl lsp-add sw0 sw0-port3
+
+dnl Add duplicate mirror name
+AT_CHECK([ovn-nbctl mirror-add mirror1 gre 0 from-lport 10.10.10.5], [1], [], [stderr])
+AT_CHECK([grep 'already exists' stderr], [0], [ignore])
+
+dnl Attach invalid source port to mirror
+AT_CHECK([ovn-nbctl lsp-attach-mirror sw0-port4 mirror3], [1], [], [stderr])
+AT_CHECK([grep 'port name not found' stderr], [0], [ignore])
+
+dnl Attach source port to invalid mirror
+AT_CHECK([ovn-nbctl lsp-attach-mirror sw0-port3 mirror4], [1], [], [stderr])
+AT_CHECK([grep 'mirror name not found' stderr], [0], [ignore])
+
+mirror3uuid=$(fetch_column nb:Mirror _uuid name=mirror3)
+dnl Attach source port to mirror
+check ovn-nbctl lsp-attach-mirror sw0-port1 mirror3
+check_column "$mirror3uuid" nb:Logical_Switch_Port mirror_rules name=sw0-port1
+
+dnl Attach one more source port to mirror
+check ovn-nbctl lsp-attach-mirror sw0-port3 mirror3
+check_column "$mirror3uuid" nb:Logical_Switch_Port mirror_rules name=sw0-port3
+
+dnl Verify if multiple ports are attached to the same mirror properly
+AT_CHECK([ovn-nbctl mirror-list], [0], [dnl
+mirror1:
+  Type     :  gre
+  Sink     :  10.10.10.1
+  Filter   :  from-lport
+  Index/Key:  0
+
+mirror2:
+  Type     :  erspan
+  Sink     :  10.10.10.2
+  Filter   :  to-lport
+  Index/Key:  1
+
+mirror3:
+  Type     :  gre
+  Sink     :  10.10.10.3
+  Filter   :  to-lport
+  Index/Key:  2
+
+])
+
+dnl Detach one source port from mirror
+check ovn-nbctl lsp-detach-mirror sw0-port3 mirror3
+
+dnl Check if the detach happened from source properly
+check_column "" nb:Logical_Switch_Port mirror_rules name=sw0-port3
+
+dnl Delete a single mirror which has source attached.
+check ovn-nbctl mirror-del mirror3
+
+dnl Check if the detach happened from source properly
+check_column "" nb:Logical_Switch_Port mirror_rules name=sw0-port1
+
+dnl Check if the mirror deleted properly
+AT_CHECK([ovn-nbctl mirror-list], [0], [dnl
+mirror1:
+  Type     :  gre
+  Sink     :  10.10.10.1
+  Filter   :  from-lport
+  Index/Key:  0
+
+mirror2:
+  Type     :  erspan
+  Sink     :  10.10.10.2
+  Filter   :  to-lport
+  Index/Key:  1
+
+])
+
+dnl Delete another mirror
+check ovn-nbctl mirror-del mirror2
+
+dnl Update the Sink address
+check ovn-nbctl set mirror . sink=192.168.1.13
+
+AT_CHECK([ovn-nbctl mirror-list], [0], [dnl
+mirror1:
+  Type     :  gre
+  Sink     :  192.168.1.13
+  Filter   :  from-lport
+  Index/Key:  0
+
+])
+
+dnl Delete all mirrors
+check ovn-nbctl mirror-del
+AT_CHECK([ovn-nbctl mirror-list], [0], [dnl
+])])
+
+dnl ---------------------------------------------------------------------
+
 OVN_NBCTL_TEST([ovn_nbctl_nats], [NATs], [
 AT_CHECK([ovn-nbctl lr-add lr0])
 AT_CHECK([ovn-nbctl lr-nat-add lr0 snatt 30.0.0.2 192.168.1.2], [1], [],

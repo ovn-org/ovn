@@ -272,6 +272,19 @@ QoS commands:\n\
                             remove QoS rules from SWITCH\n\
   qos-list SWITCH           print QoS rules for SWITCH\n\
 \n\
+Mirror commands:\n\
+  mirror-add NAME TYPE INDEX FILTER IP\n\
+                            add a mirror with given name\n\
+                            specify TYPE 'gre' or 'erspan'\n\
+                            specify the tunnel INDEX value\n\
+                                (indicates key if GRE\n\
+                                 erpsan_idx if ERSPAN)\n\
+                            specify FILTER for mirroring selection\n\
+                                'to-lport' / 'from-lport'\n\
+                            specify Sink / Destination i.e. Remote IP\n\
+  mirror-del [NAME]         remove mirrors\n\
+  mirror-list               print mirrors\n\
+\n\
 Meter commands:\n\
   [--fair]\n\
   meter-add NAME ACTION RATE UNIT [BURST]\n\
@@ -312,6 +325,8 @@ Logical switch port commands:\n\
                             set dhcpv6 options for PORT\n\
   lsp-get-dhcpv6-options PORT  get the dhcpv6 options for PORT\n\
   lsp-get-ls PORT           get the logical switch which the port belongs to\n\
+  lsp-attach-mirror PORT MIRROR   attach source PORT to MIRROR\n\
+  lsp-detach-mirror PORT MIRROR   detach source PORT from MIRROR\n\
 \n\
 Forwarding group commands:\n\
   [--liveness]\n\
@@ -1684,6 +1699,125 @@ nbctl_pre_lsp_type(struct ctl_context *ctx)
 {
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_type);
+}
+
+static void
+nbctl_pre_lsp_mirror(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_switch_port_col_mirror_rules);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_name);
+}
+
+static int
+mirror_cmp(const void *mirror1_, const void *mirror2_)
+{
+    const struct nbrec_mirror *const *mirror_1 = mirror1_;
+    const struct nbrec_mirror *const *mirror_2 = mirror2_;
+
+    const struct nbrec_mirror *mirror1 = *mirror_1;
+    const struct nbrec_mirror *mirror2 = *mirror_2;
+
+    return strcmp(mirror1->name, mirror2->name);
+}
+
+static char * OVS_WARN_UNUSED_RESULT
+mirror_by_name_or_uuid(struct ctl_context *ctx, const char *id,
+                    bool must_exist,
+                    const struct nbrec_mirror **mirror_p)
+{
+    const struct nbrec_mirror *mirror = NULL;
+    *mirror_p = NULL;
+
+    struct uuid mirror_uuid;
+    bool is_uuid = uuid_from_string(&mirror_uuid, id);
+    if (is_uuid) {
+        mirror = nbrec_mirror_get_for_uuid(ctx->idl, &mirror_uuid);
+    }
+
+    if (!mirror) {
+        NBREC_MIRROR_FOR_EACH (mirror, ctx->idl) {
+            if (!strcmp(mirror->name, id)) {
+                break;
+            }
+        }
+    }
+
+    if (!mirror && must_exist) {
+        return xasprintf("%s: mirror %s not found",
+                         id, is_uuid ? "UUID" : "name");
+    }
+
+    *mirror_p = mirror;
+    return NULL;
+}
+
+static void
+nbctl_lsp_attach_mirror(struct ctl_context *ctx)
+{
+    const char *port = ctx->argv[1];
+    const char *mirror_name = ctx->argv[2];
+    const struct nbrec_logical_switch_port *lsp = NULL;
+    const struct nbrec_mirror *mirror;
+
+    char *error;
+
+    error = lsp_by_name_or_uuid(ctx, port, true, &lsp);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    /*check if a mirror rule actually exists on that name or not*/
+    error = mirror_by_name_or_uuid(ctx, mirror_name, true, &mirror);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    /* Check if same mirror rule already exists for the lsp */
+    for (size_t i = 0; i < lsp->n_mirror_rules; i++) {
+        if (uuid_equals(&lsp->mirror_rules[i]->header_.uuid,
+                        &mirror->header_.uuid)) {
+            bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
+            if (!may_exist) {
+                ctl_error(ctx, "mirror %s is already attached to the "
+                          "logical port %s.",
+                          lsp->mirror_rules[i]->name, ctx->argv[1]);
+            }
+            return;
+        }
+    }
+
+    nbrec_logical_switch_port_update_mirror_rules_addvalue(lsp, mirror);
+}
+
+static void
+nbctl_lsp_detach_mirror(struct ctl_context *ctx)
+{
+    const char *port = ctx->argv[1];
+    const char *mirror_name = ctx->argv[2];
+    const struct nbrec_logical_switch_port *lsp = NULL;
+    const struct nbrec_mirror *mirror;
+
+    char *error;
+
+    error = lsp_by_name_or_uuid(ctx, port, true, &lsp);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+
+    /*check if a mirror rule actually exists on that name or not*/
+    error = mirror_by_name_or_uuid(ctx, mirror_name, true, &mirror);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    nbrec_logical_switch_port_update_mirror_rules_delvalue(lsp, mirror);
 }
 
 static void
@@ -7250,6 +7384,192 @@ cmd_ha_ch_grp_set_chassis_prio(struct ctl_context *ctx)
     nbrec_ha_chassis_set_priority(ha_chassis, priority);
 }
 
+static char * OVS_WARN_UNUSED_RESULT
+parse_mirror_filter(const char *arg, const char **selection_p)
+{
+    /* Validate selection.  Only require the first letter. */
+    if (arg[0] == 't') {
+        *selection_p = "to-lport";
+    } else if (arg[0] == 'f') {
+        *selection_p = "from-lport";
+    } else {
+        *selection_p = NULL;
+        return xasprintf("%s: selection must be \"to-lport\" or "
+                         "\"from-lport\"", arg);
+    }
+    return NULL;
+}
+
+static char * OVS_WARN_UNUSED_RESULT
+parse_mirror_tunnel_type(const char *arg, const char **type_p)
+{
+    /* Validate type.  Only require the first letter. */
+    if (arg[0] == 'g') {
+        *type_p = "gre";
+    } else if (arg[0] == 'e') {
+        *type_p = "erspan";
+    } else {
+        *type_p = NULL;
+        return xasprintf("%s: type must be \"gre\" or "
+                         "\"erspan\"", arg);
+    }
+    return NULL;
+}
+
+static void
+nbctl_pre_mirror_add(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_filter);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_index);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_sink);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_type);
+}
+
+static void
+nbctl_mirror_add(struct ctl_context *ctx)
+{
+    const char *filter = NULL;
+    const char *sink_ip = NULL;
+    const char *type = NULL;
+    const char *name = NULL;
+    char *new_sink_ip = NULL;
+    int64_t index;
+    char *error = NULL;
+    const struct nbrec_mirror *mirror_check = NULL;
+
+    /* Mirror Name */
+    name = ctx->argv[1];
+    NBREC_MIRROR_FOR_EACH (mirror_check, ctx->idl) {
+        if (!strcmp(mirror_check->name, name)) {
+            ctl_error(ctx, "Mirror with %s name already exists.",
+                      name);
+            return;
+        }
+    }
+
+    /* Tunnel Type - GRE/ERSPAN */
+    error = parse_mirror_tunnel_type(ctx->argv[2], &type);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    /* tunnel index / GRE key / ERSPAN idx */
+    if (!str_to_long(ctx->argv[3], 10, (long int *) &index)) {
+        ctl_error(ctx, "Invalid Index");
+        return;
+    }
+
+    /* Filter for mirroring */
+    error = parse_mirror_filter(ctx->argv[4], &filter);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    /* Destination / Sink details */
+    sink_ip = ctx->argv[5];
+
+    /* check if it is a valid ip */
+    new_sink_ip = normalize_ipv4_addr_str(sink_ip);
+    if (!new_sink_ip) {
+        new_sink_ip = normalize_ipv6_addr_str(sink_ip);
+    }
+
+    if (!new_sink_ip) {
+        ctl_error(ctx, "Invalid sink ip: %s", sink_ip);
+        return;
+    }
+    free(new_sink_ip);
+
+    /* Create the mirror. */
+    struct nbrec_mirror *mirror = nbrec_mirror_insert(ctx->txn);
+    nbrec_mirror_set_name(mirror, name);
+    nbrec_mirror_set_index(mirror, index);
+    nbrec_mirror_set_filter(mirror, filter);
+    nbrec_mirror_set_type(mirror, type);
+    nbrec_mirror_set_sink(mirror, sink_ip);
+
+}
+
+static void
+nbctl_pre_mirror_del(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_name);
+}
+
+static void
+nbctl_mirror_del(struct ctl_context *ctx)
+{
+    const struct nbrec_mirror *mirror, *next;
+
+    /* If a name is not specified, delete all mirrors. */
+    if (ctx->argc == 1) {
+        NBREC_MIRROR_FOR_EACH_SAFE (mirror, next, ctx->idl) {
+            nbrec_mirror_delete(mirror);
+        }
+        return;
+    }
+
+    /* Remove the matching mirror. */
+    NBREC_MIRROR_FOR_EACH (mirror, ctx->idl) {
+        if (strcmp(ctx->argv[1], mirror->name)) {
+            continue;
+        }
+        nbrec_mirror_delete(mirror);
+        return;
+    }
+}
+
+static void
+nbctl_pre_mirror_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_filter);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_index);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_sink);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_type);
+}
+
+static void
+nbctl_mirror_list(struct ctl_context *ctx)
+{
+
+    const struct nbrec_mirror **mirrors = NULL;
+    const struct nbrec_mirror *mirror;
+    size_t n_capacity = 0;
+    size_t n_mirrors = 0;
+
+    NBREC_MIRROR_FOR_EACH (mirror, ctx->idl) {
+        if (n_mirrors == n_capacity) {
+            mirrors = x2nrealloc(mirrors, &n_capacity, sizeof *mirrors);
+        }
+
+        mirrors[n_mirrors] = mirror;
+        n_mirrors++;
+    }
+
+    if (n_mirrors) {
+        qsort(mirrors, n_mirrors, sizeof *mirrors, mirror_cmp);
+    }
+
+    for (size_t i = 0; i < n_mirrors; i++) {
+        mirror = mirrors[i];
+        ds_put_format(&ctx->output, "%s:\n", mirror->name);
+        /* print all the values */
+        ds_put_format(&ctx->output, "  Type     :  %s\n", mirror->type);
+        ds_put_format(&ctx->output, "  Sink     :  %s\n", mirror->sink);
+        ds_put_format(&ctx->output, "  Filter   :  %s\n", mirror->filter);
+        ds_put_format(&ctx->output, "  Index/Key:  %ld\n",
+                      (long int) mirror->index);
+        ds_put_cstr(&ctx->output, "\n");
+    }
+
+    free(mirrors);
+}
+
 static const struct ctl_table_class tables[NBREC_N_TABLES] = {
     [NBREC_TABLE_DHCP_OPTIONS].row_ids
     = {{&nbrec_logical_switch_port_col_name, NULL,
@@ -7346,6 +7666,15 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     { "qos-list", 1, 1, "SWITCH", nbctl_pre_qos_list, nbctl_qos_list,
       NULL, "", RO },
 
+    /* mirror commands. */
+    { "mirror-add", 5, 5,
+      "NAME TYPE INDEX FILTER IP",
+      nbctl_pre_mirror_add, nbctl_mirror_add, NULL, "--may-exist", RW },
+    { "mirror-del", 0, 1, "[NAME]",
+      nbctl_pre_mirror_del, nbctl_mirror_del, NULL, "", RW },
+    { "mirror-list", 0, 0, "", nbctl_pre_mirror_list, nbctl_mirror_list,
+      NULL, "", RO },
+
     /* meter commands. */
     { "meter-add", 4, 5, "NAME ACTION RATE UNIT [BURST]", nbctl_pre_meter_add,
       nbctl_meter_add, NULL, "--fair,--may-exist", RW },
@@ -7400,6 +7729,10 @@ static const struct ctl_command_syntax nbctl_commands[] = {
       nbctl_lsp_get_dhcpv6_options, NULL, "", RO },
     { "lsp-get-ls", 1, 1, "PORT", nbctl_pre_lsp_get_ls, nbctl_lsp_get_ls,
       NULL, "", RO },
+    { "lsp-attach-mirror", 2, 2, "PORT MIRROR", nbctl_pre_lsp_mirror,
+      nbctl_lsp_attach_mirror, NULL, "--may-exist", RW },
+    { "lsp-detach-mirror", 2, 2, "PORT MIRROR", nbctl_pre_lsp_mirror,
+      nbctl_lsp_detach_mirror, NULL, "", RW },
 
     /* forwarding group commands. */
     { "fwd-group-add", 4, INT_MAX, "SWITCH GROUP VIP VMAC PORT...",
