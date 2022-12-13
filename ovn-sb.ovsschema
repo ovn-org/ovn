@@ -1,7 +1,7 @@
 {
     "name": "OVN_Southbound",
-    "version": "20.26.0",
-    "cksum": "3311869408 29176",
+    "version": "20.27.0",
+    "cksum": "4078371916 30328",
     "tables": {
         "SB_Global": {
             "columns": {
@@ -142,6 +142,23 @@
             "indexes": [["datapath", "tunnel_key"],
                         ["datapath", "name"]],
             "isRoot": true},
+        "Mirror": {
+            "columns": {
+                "name": {"type": "string"},
+                "filter": {"type": {"key": {"type": "string",
+                                            "enum": ["set",
+                                                     ["from-lport",
+                                                      "to-lport"]]}}},
+                "sink":{"type": "string"},
+                "type": {"type": {"key": {"type": "string",
+                                            "enum": ["set",
+                                                     ["gre", "erspan"]]}}},
+                "index": {"type": "integer"},
+                "external_ids": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}}},
+            "indexes": [["name"]],
+            "isRoot": true},
         "Meter": {
             "columns": {
                 "name": {"type": "string"},
@@ -230,6 +247,11 @@
                                                       "refTable": "Encap",
                                                       "refType": "weak"},
                                     "min": 0, "max": "unlimited"}},
+                "mirror_rules": {"type": {"key": {"type": "uuid",
+                                          "refTable": "Mirror",
+                                          "refType": "weak"},
+                                  "min": 0,
+                                  "max": "unlimited"}},
                 "mac": {"type": {"key": "string",
                                  "min": 0,
                                  "max": "unlimited"}},

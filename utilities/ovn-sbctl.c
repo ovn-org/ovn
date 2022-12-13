@@ -307,6 +307,7 @@ pre_get_info(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &sbrec_port_binding_col_chassis);
     ovsdb_idl_add_column(ctx->idl, &sbrec_port_binding_col_datapath);
     ovsdb_idl_add_column(ctx->idl, &sbrec_port_binding_col_up);
+    ovsdb_idl_add_column(ctx->idl, &sbrec_port_binding_col_mirror_rules);
 
     ovsdb_idl_add_column(ctx->idl, &sbrec_logical_flow_col_logical_datapath);
     ovsdb_idl_add_column(ctx->idl, &sbrec_logical_flow_col_logical_dp_group);
@@ -1430,6 +1431,9 @@ static const struct ctl_table_class tables[SBREC_N_TABLES] = {
 
     [SBREC_TABLE_HA_CHASSIS_GROUP].row_ids[0]
     = {&sbrec_ha_chassis_group_col_name, NULL, NULL},
+
+    [SBREC_TABLE_MIRROR].row_ids[0]
+    = {&sbrec_mirror_col_name, NULL, NULL},
 
     [SBREC_TABLE_METER].row_ids[0]
     = {&sbrec_meter_col_name, NULL, NULL},

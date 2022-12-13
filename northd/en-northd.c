@@ -80,6 +80,8 @@ void en_northd_run(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("NB_static_mac_binding", node));
     input_data.nbrec_chassis_template_var_table =
         EN_OVSDB_GET(engine_get_input("NB_chassis_template_var", node));
+    input_data.nbrec_mirror_table =
+        EN_OVSDB_GET(engine_get_input("NB_mirror", node));
 
     input_data.sbrec_sb_global_table =
         EN_OVSDB_GET(engine_get_input("SB_sb_global", node));
@@ -113,6 +115,8 @@ void en_northd_run(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("SB_static_mac_binding", node));
     input_data.sbrec_chassis_template_var_table =
         EN_OVSDB_GET(engine_get_input("SB_chassis_template_var", node));
+    input_data.sbrec_mirror_table =
+        EN_OVSDB_GET(engine_get_input("SB_mirror", node));
 
     northd_run(&input_data, data,
                eng_ctx->ovnnb_idl_txn,
