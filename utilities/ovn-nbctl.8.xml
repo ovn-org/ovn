@@ -809,6 +809,15 @@
         Get the logical switch which the <var>port</var> belongs to.
       </dd>
 
+      <dt><code>lsp-attach-mirror</code> <var>port</var> <var>m</var></dt>
+      <dd>
+        Attaches the mirror <var>m</var> to the logical port <var>port</var>.
+      </dd>
+
+      <dt><code>lsp-dettach-mirror</code> <var>port</var> <var>m</var></dt>
+      <dd>
+        Detaches the mirror <var>m</var> from the logical port <var>port</var>.
+      </dd>
     </dl>
 
     <h2>Forwarding Group Commands</h2>
@@ -1531,6 +1540,48 @@
       <dd>
         Adds the control plane protection policy <code>name</code> to the
         logical router <code>router</code>.
+      </dd>
+    </dl>
+
+    <h2> Mirror commands</h2>
+    <dl>
+      <dt><code>mirror-add</code> <var>m</var> <var>type</var>
+      <var>index</var> <var>filter</var> <var>dest</var></dt>
+      <dd>
+        <p>
+          Creates a new mirror in the <code>Mirror</code>
+          table with the name <code>m</code> with the below mandatory
+          arguments.
+        </p>
+
+        <p>
+          <var>type</var> specifies the mirror type - <code>gre</code>
+          or <code>erspan</code>.
+        </p>
+
+        <p>
+          <var>index</var> specifies the tunnel index value (which is
+          an integer).
+        </p>
+
+        <p>
+          <var>filter</var> specifies the mirror source selection.
+          Can be <code>from-lport</code> or <code>to-lport</code>.
+        </p>
+
+        <p>
+          <var>dest</var> specifies the mirror destination IP (v4 or v6).
+        </p>
+      </dd>
+
+      <dt><code>mirror-del</code> <var>m</var></dt>
+      <dd>
+        Deletes the mirror <code>m</code>.
+      </dd>
+
+      <dt><code>mirror-list</code></dt>
+      <dd>
+        Lists the mirrors.
       </dd>
     </dl>
 
