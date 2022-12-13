@@ -41,7 +41,9 @@ controller_ovn_controller_SOURCES = \
 	controller/ovsport.h \
 	controller/ovsport.c \
 	controller/vif-plug.h \
-	controller/vif-plug.c
+	controller/vif-plug.c \
+	controller/mirror.h \
+	controller/mirror.c
 
 controller_ovn_controller_LDADD = lib/libovn.la $(OVS_LIBDIR)/libopenvswitch.la
 man_MANS += controller/ovn-controller.8
