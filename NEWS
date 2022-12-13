@@ -10,6 +10,7 @@ OVN v22.12.0 - xx xxx xxxx
     per-flow IPFIX sampling.
   - Add support for component templates within logical flows and load
     balancers.
+  - Add support for remote port mirroring (Experimental).
 
 OVN v22.09.0 - 16 Sep 2022
 --------------------------

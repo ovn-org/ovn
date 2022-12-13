@@ -16242,6 +16242,530 @@ OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Mirror])
+AT_KEYWORDS([Mirror])
+ovn_start
+
+# Logical network:
+# One LR - R1 has switch ls1 (191.168.1.0/24) connected to it,
+# and has switch ls2 (172.16.1.0/24) connected to it.
+
+ovn-nbctl lr-add R1
+
+ovn-nbctl ls-add ls1
+ovn-nbctl ls-add ls2
+
+# Connect ls1 to R1
+ovn-nbctl lrp-add R1 ls1 00:00:00:01:02:f1 192.168.1.1/24
+ovn-nbctl lsp-add ls1 rp-ls1 -- set Logical_Switch_Port rp-ls1 \
+    type=router options:router-port=ls1 addresses=\"00:00:00:01:02:f1\"
+
+# Connect ls2 to R1
+ovn-nbctl lrp-add R1 ls2 00:00:00:01:02:f2 172.16.1.1/24
+ovn-nbctl lsp-add ls2 rp-ls2 -- set Logical_Switch_Port rp-ls2 \
+    type=router options:router-port=ls2 addresses=\"00:00:00:01:02:f2\"
+
+# Create logical port ls1-lp1 in ls1
+ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "00:00:00:01:02:03 192.168.1.2"
+
+# Create logical port ls2-lp1 in ls2
+ovn-nbctl lsp-add ls2 ls2-lp1 \
+-- lsp-set-addresses ls2-lp1 "00:00:00:01:02:04 172.16.1.2"
+
+ovn-nbctl lsp-add ls1 ln-public
+ovn-nbctl lsp-set-type ln-public localnet
+ovn-nbctl lsp-set-addresses ln-public unknown
+ovn-nbctl lsp-set-options ln-public network_name=public
+
+# Create one hypervisor and create OVS ports corresponding to logical ports.
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys -- set bridge br-phys other-config:hwaddr=\"00:00:00:01:02:00\"
+ovn_attach n1 br-phys 192.168.1.11
+
+ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=ls1-lp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+ovs-vsctl -- add-port br-int vif2 -- \
+    set interface vif2 external-ids:iface-id=ls2-lp1 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=1
+
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-phys
+
+# Allow some time for ovn-northd and ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+ovn-nbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
+
+for i in 1 2; do
+    : > vif$i.expected
+done
+
+net_add n2
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys -- set bridge br-phys other-config:hwaddr=\"00:00:00:02:02:00\"
+ovn_attach n2 br-phys 192.168.1.12
+
+OVN_POPULATE_ARP
+
+as hv1
+
+# test_ipv4_icmp_request INPORT ETH_SRC ETH_DST IPV4_SRC IPV4_DST IP_CHKSUM ICMP_CHKSUM [EXP_IP_CHKSUM EXP_ICMP_CHKSUM] ENCAP_TYPE FILTER
+#
+# Causes a packet to be received on INPORT.  The packet is an ICMPv4
+# request with ETH_SRC, ETH_DST, IPV4_SRC, IPV4_DST, IP_CHSUM and
+# ICMP_CHKSUM as specified.  If EXP_IP_CHKSUM and EXP_ICMP_CHKSUM are
+# provided, then it should be the ip and icmp checksums of the packet
+# responded; otherwise, no reply is expected.
+# In the absence of an ip checksum calculation helpers, this relies
+# on the caller to provide the checksums for the ip and icmp headers.
+# XXX This should be more systematic.
+#
+# INPORT is an lport number, e.g. 11 for vif11.
+# ETH_SRC and ETH_DST are each 12 hex digits.
+# IPV4_SRC and IPV4_DST are each 8 hex digits.
+# IP_CHSUM and ICMP_CHKSUM are each 4 hex digits.
+# EXP_IP_CHSUM and EXP_ICMP_CHKSUM are each 4 hex digits.
+# ENCAP_TYPE - gre or erspan
+# FILTER - Mirror Filter - to-lport / from-lport
+test_ipv4_icmp_request() {
+    local inport=$1 eth_src=$2 eth_dst=$3 ipv4_src=$4 ipv4_dst=$5 ip_chksum=$6 icmp_chksum=$7
+    local exp_ip_chksum=$8 exp_icmp_chksum=$9 mirror_encap_type=${10} mirror_filter=${11}
+    shift; shift; shift; shift; shift; shift; shift
+    shift; shift; shift; shift;
+
+    # Use ttl to exercise section 4.2.2.9 of RFC1812
+    local ip_ttl=02
+    local icmp_id=5fbf
+    local icmp_seq=0001
+    local icmp_data=$(seq 1 56 | xargs printf "%02x")
+    local icmp_type_code_request=0800
+    local icmp_payload=${icmp_type_code_request}${icmp_chksum}${icmp_id}${icmp_seq}${icmp_data}
+    local packet=${eth_dst}${eth_src}08004500005400004000${ip_ttl}01${ip_chksum}${ipv4_src}${ipv4_dst}${icmp_payload}
+
+    as hv1 ovs-appctl netdev-dummy/receive vif$inport $packet
+
+    # Expect to receive the reply, if any. In same port where packet was sent.
+    # Note: src and dst fields are expected to be reversed.
+    local icmp_type_code_response=0000
+    local reply_icmp_ttl=fe
+    local reply_icmp_payload=${icmp_type_code_response}${exp_icmp_chksum}${icmp_id}${icmp_seq}${icmp_data}
+    local reply=${eth_src}${eth_dst}08004500005400004000${reply_icmp_ttl}01${exp_ip_chksum}${ipv4_dst}${ipv4_src}${reply_icmp_payload}
+    echo $reply >> vif$inport.expected
+    local remote_mac=000000020200
+    local local_mac=000000010200
+    if test ${mirror_encap_type} = "gre" ; then
+        local ipv4_gre=4500007e00004000402fb6e9c0a8010bc0a8010c2000655800000000
+        if test ${mirror_filter} = "to-lport" ; then
+            local mirror=${remote_mac}${local_mac}0800${ipv4_gre}${reply}
+        elif test ${mirror_filter} = "from-lport" ; then
+            local mirror=${remote_mac}${local_mac}0800${ipv4_gre}${packet}
+        fi
+    elif test ${mirror_encap_type} = "erspan" ; then
+        local ipv4_erspan=4500008600004000402fb6e1c0a8010bc0a8010c
+        local erspan_seq0=100088be000000001000000000000000
+        local erspan_seq1=100088be000000011000000000000000
+        if test ${mirror_filter} = "to-lport" ; then
+            local mirror=${remote_mac}${local_mac}0800${ipv4_erspan}${erspan_seq0}${reply}
+        elif test ${mirror_filter} = "from-lport" ; then
+            local mirror=${remote_mac}${local_mac}0800${ipv4_erspan}${erspan_seq1}${packet}
+        fi
+    fi
+    echo $mirror >> br-phys_n1.expected
+
+}
+
+# Set IPs
+rtr_l2_ip=$(ip_to_hex 172 16 1 1)
+l1_ip=$(ip_to_hex 192 168 1 2)
+
+check ovn-nbctl mirror-add mirror0 gre 0 to-lport 192.168.1.12
+check ovn-nbctl lsp-attach-mirror ls1-lp1 mirror0
+
+# Send ping packet and check for mirrored packet of the reply
+test_ipv4_icmp_request 1 000000010203 0000000102f1 $l1_ip $rtr_l2_ip 0000 8510 03ff 8d10 "gre" "to-lport"
+
+OVN_CHECK_PACKETS_CONTAIN([hv1/br-phys_n1-tx.pcap], [br-phys_n1.expected])
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+
+as hv1 reset_pcap_file vif1 hv1/vif1
+as hv1 reset_pcap_file br-phys_n1 hv1/br-phys_n1
+rm -f br-phys_n1.expected
+rm -f vif1.expected
+
+check ovn-nbctl set mirror . type=erspan
+
+# Send ping packet and check for mirrored packet of the reply
+test_ipv4_icmp_request 1 000000010203 0000000102f1 $l1_ip $rtr_l2_ip 0000 8510 03ff 8d10 "erspan" "to-lport"
+
+OVN_CHECK_PACKETS_CONTAIN([hv1/br-phys_n1-tx.pcap], [br-phys_n1.expected])
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+
+as hv1 reset_pcap_file vif1 hv1/vif1
+as hv1 reset_pcap_file br-phys_n1 hv1/br-phys_n1
+rm -f br-phys_n1.expected
+rm -f vif1.expected
+
+check ovn-nbctl set mirror . filter=from-lport
+
+# Send ping packet and check for mirrored packet of the request
+test_ipv4_icmp_request 1 000000010203 0000000102f1 $l1_ip $rtr_l2_ip 0000 8510 03ff 8d10 "erspan" "from-lport"
+
+OVN_CHECK_PACKETS_CONTAIN([hv1/br-phys_n1-tx.pcap], [br-phys_n1.expected])
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+
+as hv1 reset_pcap_file vif1 hv1/vif1
+as hv1 reset_pcap_file br-phys_n1 hv1/br-phys_n1
+rm -f br-phys_n1.expected
+rm -f vif1.expected
+
+check ovn-nbctl set mirror . type=gre
+
+# Send ping packet and check for mirrored packet of the request
+test_ipv4_icmp_request 1 000000010203 0000000102f1 $l1_ip $rtr_l2_ip 0000 8510 03ff 8d10 "gre" "from-lport"
+
+OVN_CHECK_PACKETS_CONTAIN([hv1/br-phys_n1-tx.pcap], [br-phys_n1.expected])
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+
+echo "---------OVN NB Mirror-----"
+ovn-nbctl mirror-list
+
+echo "---------OVS Mirror----"
+ovs-vsctl list Mirror
+
+echo "-----------------------"
+
+echo "Verifying Mirror deletion in OVS"
+# Set vif1 iface-id such that OVN releases port binding
+check ovs-vsctl set interface vif1 external_ids:iface-id=foo
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([as hv1 ovs-vsctl list Mirror], [0], [dnl
+])
+
+# Set vif1 iface-id back to ls1-lp1
+check ovs-vsctl set interface vif1 external_ids:iface-id=ls1-lp1
+check ovn-nbctl --wait=hv sync
+
+OVS_WAIT_UNTIL([test $(as hv1 ovs-vsctl get Mirror mirror0 name) = "mirror0"])
+
+# Delete vif1 so that OVN releases port binding
+check ovs-vsctl del-port br-int vif1
+check ovn-nbctl --wait=hv sync
+
+OVS_WAIT_UNTIL([test 0 = $(as hv1 ovs-vsctl list Mirror | wc -l)])
+
+OVN_CLEANUP([hv1], [hv2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Mirror test bulk updates])
+AT_KEYWORDS([Mirror test bulk updates])
+ovn_start
+
+# Logical network:
+# One LR - R1 has switch ls1 (191.168.1.0/24) connected to it,
+# and has switch ls2 (172.16.1.0/24) connected to it.
+
+ovn-nbctl lr-add R1
+
+ovn-nbctl ls-add ls1
+ovn-nbctl ls-add ls2
+
+# Connect ls1 to R1
+ovn-nbctl lrp-add R1 ls1 00:00:00:01:02:f1 192.168.1.1/24
+ovn-nbctl lsp-add ls1 rp-ls1 -- set Logical_Switch_Port rp-ls1 \
+    type=router options:router-port=ls1 addresses=\"00:00:00:01:02:f1\"
+
+# Connect ls2 to R1
+ovn-nbctl lrp-add R1 ls2 00:00:00:01:02:f2 172.16.1.1/24
+ovn-nbctl lsp-add ls2 rp-ls2 -- set Logical_Switch_Port rp-ls2 \
+    type=router options:router-port=ls2 addresses=\"00:00:00:01:02:f2\"
+
+# Create logical port ls1-lp1 in ls1
+ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "00:00:00:01:02:03 192.168.1.2"
+
+# Create logical port ls1-lp2 in ls1
+ovn-nbctl lsp-add ls1 ls1-lp2 \
+-- lsp-set-addresses ls1-lp2 "00:00:00:01:03:03 192.168.1.3"
+
+# Create logical port ls2-lp1 in ls2
+ovn-nbctl lsp-add ls2 ls2-lp1 \
+-- lsp-set-addresses ls2-lp1 "00:00:00:01:02:04 172.16.1.2"
+
+# Create logical port ls2-lp2 in ls2
+ovn-nbctl lsp-add ls2 ls2-lp2 \
+-- lsp-set-addresses ls2-lp2 "00:00:00:01:03:04 172.16.1.3"
+
+ovn-nbctl lsp-add ls1 ln-public
+ovn-nbctl lsp-set-type ln-public localnet
+ovn-nbctl lsp-set-addresses ln-public unknown
+ovn-nbctl lsp-set-options ln-public network_name=public
+
+# Create 2 hypervisors and create OVS ports corresponding to logical ports for hv1.
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys -- set bridge br-phys other-config:hwaddr=\"00:00:00:01:02:00\"
+ovn_attach n1 br-phys 192.168.1.11
+
+net_add n2
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys -- set bridge br-phys other-config:hwaddr=\"00:00:00:02:02:00\"
+ovn_attach n2 br-phys 192.168.1.12
+
+OVN_POPULATE_ARP
+
+as hv1
+
+ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=ls1-lp1
+
+ovs-vsctl -- add-port br-int vif2 -- \
+    set interface vif2 external-ids:iface-id=ls2-lp1
+
+ovs-vsctl -- add-port br-int vif3 -- \
+    set interface vif3 external-ids:iface-id=ls1-lp2
+
+ovs-vsctl -- add-port br-int vif4 -- \
+    set interface vif4 external-ids:iface-id=ls2-lp2
+
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-phys
+
+# Allow some time for ovn-northd and ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+ovn-nbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
+
+check ovn-nbctl mirror-add mirror0 gre 0 to-lport 192.168.1.12
+check ovn-nbctl lsp-attach-mirror ls1-lp1 mirror0
+check ovn-nbctl --wait=hv sync
+origA=$(ovs-vsctl get Mirror mirror0 select_dst_port)
+check ovn-nbctl lsp-attach-mirror ls2-lp1 mirror0
+
+check ovn-nbctl mirror-add mirror1 gre 1 to-lport 192.168.1.12
+check ovn-nbctl lsp-attach-mirror ls1-lp2 mirror1
+check ovn-nbctl --wait=hv sync
+origB=$(ovs-vsctl get Mirror mirror1 select_dst_port)
+check ovn-nbctl lsp-attach-mirror ls2-lp2 mirror1
+
+check ovn-nbctl --wait=hv sync
+
+as hv1
+orig1=$(ovs-vsctl get Mirror mirror0 select_dst_port)
+orig2=$(ovs-vsctl get Mirror mirror1 select_dst_port)
+
+check ovn-nbctl mirror-del
+check ovn-nbctl --wait=hv sync
+
+check ovn-nbctl mirror-add mirror0 gre 0 to-lport 192.168.1.12
+check ovn-nbctl mirror-add mirror1 gre 1 to-lport 192.168.1.12
+
+# Attaches multiple mirrors
+
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl lsp-attach-mirror ls2-lp1 mirror0
+check ovn-nbctl lsp-attach-mirror ls1-lp1 mirror0
+check ovn-nbctl lsp-attach-mirror ls2-lp2 mirror1
+check ovn-nbctl lsp-attach-mirror ls1-lp2 mirror1
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+
+check ovn-nbctl --wait=hv sync
+
+as hv1
+new1=$(ovs-vsctl get Mirror mirror0 select_dst_port)
+new2=$(ovs-vsctl get Mirror mirror1 select_dst_port)
+
+AT_CHECK([test "$orig1" = "$new1"], [0], [])
+
+AT_CHECK([test "$orig2" = "$new2"], [0], [])
+
+# Equal detaches and attaches
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl lsp-detach-mirror ls1-lp1 mirror0
+check ovn-nbctl lsp-detach-mirror ls2-lp1 mirror0
+check ovn-nbctl lsp-attach-mirror ls1-lp2 mirror0
+check ovn-nbctl lsp-attach-mirror ls2-lp2 mirror0
+
+check ovn-nbctl lsp-detach-mirror ls1-lp2 mirror1
+check ovn-nbctl lsp-detach-mirror ls2-lp2 mirror1
+check ovn-nbctl lsp-attach-mirror ls1-lp1 mirror1
+check ovn-nbctl lsp-attach-mirror ls2-lp1 mirror1
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+
+check ovn-nbctl --wait=hv sync
+
+# Make sure that ovn-controller has not asserted.
+AT_CHECK([kill -0 $(cat hv1/ovn-controller.pid)])
+
+as hv1
+new1=$(ovs-vsctl get Mirror mirror0 select_dst_port)
+new2=$(ovs-vsctl get Mirror mirror1 select_dst_port)
+
+AT_CHECK([test "$orig1" = "$new2"], [0], [])
+
+AT_CHECK([test "$orig2" = "$new1"], [0], [])
+
+# Detaches more than attaches
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl lsp-detach-mirror ls1-lp1 mirror1
+check ovn-nbctl lsp-detach-mirror ls2-lp1 mirror1
+check ovn-nbctl lsp-detach-mirror ls1-lp2 mirror0
+check ovn-nbctl lsp-detach-mirror ls2-lp2 mirror0
+check ovn-nbctl lsp-attach-mirror ls1-lp1 mirror0
+check ovn-nbctl lsp-attach-mirror ls1-lp2 mirror1
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+
+check ovn-nbctl --wait=hv sync
+# Make sure that ovn-controller has not asserted.
+AT_CHECK([kill -0 $(cat hv1/ovn-controller.pid)])
+
+as hv1
+new1=$(ovs-vsctl get Mirror mirror0 select_dst_port)
+new2=$(ovs-vsctl get Mirror mirror1 select_dst_port)
+
+AT_CHECK([test "$origA" = "$new1"], [0], [])
+
+AT_CHECK([test "$origB" = "$new2"], [0], [])
+
+# Attaches more than detaches
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl lsp-detach-mirror ls1-lp1 mirror0
+check ovn-nbctl lsp-detach-mirror ls1-lp2 mirror1
+check ovn-nbctl lsp-attach-mirror ls1-lp2 mirror0
+check ovn-nbctl lsp-attach-mirror ls2-lp2 mirror0
+check ovn-nbctl lsp-attach-mirror ls1-lp1 mirror1
+check ovn-nbctl lsp-attach-mirror ls2-lp1 mirror1
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+
+check ovn-nbctl --wait=hv sync
+# Make sure that ovn-controller has not asserted.
+AT_CHECK([kill -0 $(cat hv1/ovn-controller.pid)])
+
+as hv1
+new1=$(ovs-vsctl get Mirror mirror0 select_dst_port)
+new2=$(ovs-vsctl get Mirror mirror1 select_dst_port)
+
+AT_CHECK([test "$orig1" = "$new2"], [0], [])
+
+AT_CHECK([test "$orig2" = "$new1"], [0], [])
+
+# Detaches all
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl lsp-detach-mirror ls1-lp2 mirror0
+check ovn-nbctl lsp-detach-mirror ls2-lp2 mirror0
+check ovn-nbctl lsp-detach-mirror ls1-lp1 mirror1
+check ovn-nbctl lsp-detach-mirror ls2-lp1 mirror1
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+check ovn-nbctl --wait=hv sync
+
+OVS_WAIT_UNTIL([test 0 = $(as hv1 ovs-vsctl list Mirror | wc -l)])
+
+check ovn-nbctl mirror-add mirror2 gre 2 to-lport 192.168.1.12
+check ovn-nbctl lsp-attach-mirror ls1-lp1 mirror2
+check ovn-nbctl --wait=hv sync
+
+# Attaches SAME port to multiple mirrors
+# and detaches it from existing mirror.
+# More attach than detach
+
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl lsp-attach-mirror ls1-lp1 mirror0
+check ovn-nbctl lsp-attach-mirror ls1-lp1 mirror1
+check ovn-nbctl lsp-detach-mirror ls1-lp1 mirror2
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+
+check ovn-nbctl --wait=hv sync
+
+as hv1
+new1=$(ovs-vsctl get Mirror mirror0 select_dst_port)
+new2=$(ovs-vsctl get Mirror mirror1 select_dst_port)
+
+AT_CHECK([test "$origA" = "$new1"], [0], [])
+AT_CHECK([test "$origA" = "$new2"], [0], [])
+OVS_WAIT_UNTIL([test 0 = $(as hv1 ovs-vsctl list Mirror mirror2 | wc -l)])
+
+check ovn-nbctl mirror-add mirror3 gre 3 to-lport 192.168.1.12
+check ovn-nbctl lsp-attach-mirror ls1-lp1 mirror3
+check ovn-nbctl --wait=hv sync
+
+# Detaches SAME port from multiple mirrors
+# and attaches it to existing mirror.
+# More detach than attach
+
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl lsp-detach-mirror ls1-lp1 mirror0
+check ovn-nbctl lsp-detach-mirror ls1-lp1 mirror3
+check ovn-nbctl lsp-attach-mirror ls1-lp1 mirror2
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+
+check ovn-nbctl --wait=hv sync
+
+as hv1
+new1=$(ovs-vsctl get Mirror mirror1 select_dst_port)
+new2=$(ovs-vsctl get Mirror mirror2 select_dst_port)
+
+AT_CHECK([test "$origA" = "$new1"], [0], [])
+AT_CHECK([test "$origA" = "$new2"], [0], [])
+OVS_WAIT_UNTIL([test 0 = $(as hv1 ovs-vsctl list Mirror mirror0 | wc -l)])
+OVS_WAIT_UNTIL([test 0 = $(as hv1 ovs-vsctl list Mirror mirror3 | wc -l)])
+
+check ovn-nbctl mirror-del
+check ovn-nbctl --wait=hv sync
+check ovn-nbctl mirror-add mirror0 erspan 0 to-lport 192.168.1.12
+check ovn-nbctl lsp-attach-mirror ls1-lp1 mirror0
+check ovn-nbctl --wait=hv sync
+
+# Make sure different fields of mirror resource set from OVN
+# propagates to OVS correctly
+
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl set mirror . filter=from-lport
+check ovn-nbctl set mirror . type=gre
+check ovn-nbctl set mirror . index=123
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+
+check ovn-nbctl --wait=hv sync
+
+as hv1
+new1=$(ovs-vsctl get Mirror mirror0 select_src_port)
+AT_CHECK([test "$origA" = "$new1"], [0], [])
+type=$(ovs-vsctl get Interface ovn-mirror0 type)
+OVS_WAIT_UNTIL([test "gre" = "$type"])
+index=$(ovs-vsctl get Interface ovn-mirror0 options:key | grep 123 | wc -l)
+OVS_WAIT_UNTIL([test "1" = "$index"])
+
+# pause ovn-controller and delete the mirror and make sure that
+# ovn-controller deletes the ovs mirror when it is resumed.
+
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-nbctl --wait=sb mirror-del
+check as hv1 ovn-appctl -t ovn-controller debug/resume
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([as hv1 ovs-vsctl list mirror], [0], [])
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([Port Groups])

@@ -78,6 +78,7 @@
 #include "lib/inc-proc-eng.h"
 #include "lib/ovn-l7.h"
 #include "hmapx.h"
+#include "mirror.h"
 
 VLOG_DEFINE_THIS_MODULE(main);
 
@@ -1012,6 +1013,7 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_name);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_interfaces);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_external_ids);
+    mirror_register_ovs_idl(ovs_idl);
 }
 
 #define SB_NODES \
@@ -3934,6 +3936,7 @@ main(int argc, char *argv[])
     patch_init();
     pinctrl_init();
     lflow_init();
+    mirror_init();
     vif_plug_provider_initialize();
 
     /* Connect to OVS OVSDB instance. */
@@ -4648,6 +4651,11 @@ main(int argc, char *argv[])
                                     &runtime_data->local_active_ports_ras);
                         stopwatch_stop(PINCTRL_RUN_STOPWATCH_NAME,
                                        time_msec());
+                        mirror_run(ovs_idl_txn,
+                                   ovsrec_mirror_table_get(ovs_idl_loop.idl),
+                                   sbrec_mirror_table_get(ovnsb_idl_loop.idl),
+                                   br_int,
+                                   &runtime_data->lbinding_data.bindings);
                         /* Updating monitor conditions if runtime data or
                          * logical datapath goups changed. */
                         if (engine_node_changed(&en_runtime_data)
@@ -4894,6 +4902,7 @@ loop_done:
     pinctrl_destroy();
     binding_destroy();
     patch_destroy();
+    mirror_destroy();
     if_status_mgr_destroy(if_mgr);
     shash_destroy(&vif_plug_deleted_iface_ids);
     shash_destroy(&vif_plug_changed_iface_ids);
