@@ -2881,6 +2881,51 @@ tcp.flags = RST;
     </column>
   </table>
 
+  <table name="Mirror" title="Mirror Entry">
+    <p>
+      Each row in this table represents a mirror that can be used for
+      port mirroring. These mirrors are referenced by the
+      <ref column="mirror_rules" table="Port_Binding"/> column in
+      the <ref table="Port_Binding"/> table.
+    </p>
+
+    <column name="name">
+      <p>
+        Represents the name of the mirror.
+      </p>
+    </column>
+
+    <column name="filter">
+      <p>
+        The value of this field represents selection criteria of the mirror.
+      </p>
+    </column>
+
+    <column name="sink">
+      <p>
+        The value of this field represents the destination/sink of the mirror.
+      </p>
+    </column>
+
+    <column name="type">
+      <p>
+        The value of this field represents the type of the tunnel used for
+        sending the mirrored packets
+      </p>
+    </column>
+
+    <column name="index">
+      <p>
+        The value of this field represents the key/idx depending on the
+        tunnel type configured
+      </p>
+    </column>
+
+    <column name="external_ids">
+      See <em>External IDs</em> at the beginning of this document.
+    </column>
+  </table>
+
   <table name="Meter" title="Meter entry">
     <p>
       Each row in this table represents a meter that can be used for QoS or
@@ -3382,6 +3427,11 @@ tcp.flags = RST;
         See also <ref table="Port_Binding" column="requested_chassis"/>.
       </column>
     </group>
+
+    <column name="mirror_rules">
+        Mirror rules that apply to the port binding.
+        Please see the <ref table="Mirror"/> table.
+    </column>
 
     <group title="Patch Options">
       <p>

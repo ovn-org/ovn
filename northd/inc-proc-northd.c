@@ -52,6 +52,7 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_northd);
     NB_NODE(acl, "acl") \
     NB_NODE(logical_router, "logical_router") \
     NB_NODE(qos, "qos") \
+    NB_NODE(mirror, "mirror") \
     NB_NODE(meter, "meter") \
     NB_NODE(meter_band, "meter_band") \
     NB_NODE(logical_router_port, "logical_router_port") \
@@ -95,6 +96,7 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_northd);
     SB_NODE(logical_flow, "logical_flow") \
     SB_NODE(logical_dp_group, "logical_DP_group") \
     SB_NODE(multicast_group, "multicast_group") \
+    SB_NODE(mirror, "mirror") \
     SB_NODE(meter, "meter") \
     SB_NODE(meter_band, "meter_band") \
     SB_NODE(datapath_binding, "datapath_binding") \
@@ -178,6 +180,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_nb_acl, NULL);
     engine_add_input(&en_northd, &en_nb_logical_router, NULL);
     engine_add_input(&en_northd, &en_nb_qos, NULL);
+    engine_add_input(&en_northd, &en_nb_mirror, NULL);
     engine_add_input(&en_northd, &en_nb_meter, NULL);
     engine_add_input(&en_northd, &en_nb_meter_band, NULL);
     engine_add_input(&en_northd, &en_nb_logical_router_port, NULL);
@@ -200,6 +203,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_sb_encap, NULL);
     engine_add_input(&en_northd, &en_sb_port_group, NULL);
     engine_add_input(&en_northd, &en_sb_logical_dp_group, NULL);
+    engine_add_input(&en_northd, &en_sb_mirror, NULL);
     engine_add_input(&en_northd, &en_sb_meter, NULL);
     engine_add_input(&en_northd, &en_sb_meter_band, NULL);
     engine_add_input(&en_northd, &en_sb_datapath_binding, NULL);

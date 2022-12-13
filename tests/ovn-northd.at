@@ -2327,6 +2327,111 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Check NB-SB mirrors sync])
+AT_KEYWORDS([mirrors])
+ovn_start
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-port1
+check ovn-nbctl lsp-add sw0 sw0-port2
+check ovn-nbctl --wait=sb mirror-add mirror1 erspan 1 from-lport 10.10.10.2
+check_column mirror1 Mirror name
+check_column 10.10.10.2 Mirror sink
+check_column erspan Mirror type
+check_column 1 Mirror index
+check_column from-lport Mirror filter
+
+check ovn-nbctl --wait=sb set mirror . sink=192.168.1.13
+
+check_column 192.168.1.13 Mirror sink
+check_column erspan Mirror type
+check_column 1 Mirror index
+check_column from-lport Mirror filter
+
+check ovn-nbctl --wait=sb set mirror . type=gre
+
+check_column 192.168.1.13 Mirror sink
+check_column gre Mirror type
+check_column 1 Mirror index
+check_column from-lport Mirror filter
+
+check ovn-nbctl --wait=sb set mirror . index=12
+
+check_column 192.168.1.13 Mirror sink
+check_column gre Mirror type
+check_column 12 Mirror index
+check_column from-lport Mirror filter
+
+check ovn-nbctl --wait=sb set mirror . filter=to-lport
+
+check_column 192.168.1.13 Mirror sink
+check_column gre Mirror type
+check_column 12 Mirror index
+check_column to-lport Mirror filter
+
+# Verify mirror attach
+check ovn-nbctl --wait=sb lsp-attach-mirror sw0-port1 mirror1
+
+mirror1uuid=$(fetch_column sb:Mirror _uuid name=mirror1)
+check_column "$mirror1uuid" sb:Port_Binding mirror_rules logical_port=sw0-port1
+
+check ovn-nbctl --wait=sb mirror-add mirror2 gre 2 from-lport 10.10.10.2
+check_row_count sb:Mirror 2
+
+# Verify mirror detach (and another attach)
+check ovn-nbctl lsp-attach-mirror sw0-port1 mirror2
+check ovn-nbctl lsp-detach-mirror sw0-port1 mirror1
+check ovn-nbctl --wait=sb sync
+
+mirror2uuid=$(fetch_column sb:Mirror _uuid name=mirror2)
+check_column "$mirror2uuid" sb:Port_Binding mirror_rules logical_port=sw0-port1
+
+# Verify mirror-del (one by one)
+check ovn-nbctl --wait=sb mirror-del mirror2
+check_row_count sb:Mirror 1
+check ovn-nbctl --wait=sb mirror-del mirror1
+check_row_count sb:Mirror 0
+check_column "" sb:Port_Binding mirror_rules logical_port=sw0-port1
+
+# Verify mirror-add
+check ovn-nbctl --wait=sb mirror-add mirror2 gre 2 to-lport 10.10.10.2
+check_row_count sb:Mirror 1
+
+check_column 10.10.10.2 Mirror sink
+check_column gre Mirror type
+check_column 2 Mirror index
+check_column to-lport Mirror filter
+
+# Verify same attached to multiple ports
+check ovn-nbctl --wait=sb lsp-attach-mirror sw0-port1 mirror2
+check ovn-nbctl --wait=sb lsp-attach-mirror sw0-port2 mirror2
+
+mirror2uuid=$(fetch_column sb:Mirror _uuid name=mirror2)
+check_column "$mirror2uuid" sb:Port_Binding mirror_rules logical_port=sw0-port1
+check_column "$mirror2uuid" sb:Port_Binding mirror_rules logical_port=sw0-port2
+
+# Verify same port attached to multiple mirrors
+check ovn-nbctl --wait=sb mirror-add mirror1 erspan 1 to-lport 10.10.10.2
+check ovn-nbctl --wait=sb lsp-attach-mirror sw0-port1 mirror1
+check_row_count sb:Mirror 2
+check_row_count nb:Mirror 2
+
+mirror1uuid=$(fetch_column sb:Mirror _uuid name=mirror1)
+check_column "$mirror2uuid $mirror1uuid" sb:Port_Binding mirror_rules logical_port=sw0-port1
+
+# Verify delete (bulk)
+check ovn-nbctl --wait=sb mirror-del
+check_row_count nb:Mirror 0
+check_column "" nb:Logical_Switch_Port mirror_rules name=sw0-port1
+check_column "" nb:Logical_Switch_Port mirror_rules name=sw0-port2
+check_row_count sb:Mirror 0
+check_column "" sb:Port_Binding mirror_rules logical_port=sw0-port1
+check_column "" sb:Port_Binding mirror_rules logical_port=sw0-port2
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ACL skip hints for stateless config])
 AT_KEYWORDS([acl])
 ovn_start
