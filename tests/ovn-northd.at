@@ -2364,7 +2364,7 @@ check ovn-nbctl --wait=sb \
     -- ls-lb-add ls lb
 
 AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e ls_in_acl -e ls_out_acl | sort], [0], [dnl
-  table=12(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
+  table=15(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
   table=3 (ls_out_acl_hint    ), priority=0    , match=(1), action=(next;)
   table=3 (ls_out_acl_hint    ), priority=1    , match=(ct.est && ct_mark.blocked == 0), action=(reg0[[10]] = 1; next;)
   table=3 (ls_out_acl_hint    ), priority=2    , match=(ct.est && ct_mark.blocked == 1), action=(reg0[[9]] = 1; next;)
@@ -2407,7 +2407,7 @@ ovn-nbctl --wait=sb clear logical_switch ls acls
 ovn-nbctl --wait=sb clear logical_switch ls load_balancer
 
 AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e ls_in_acl -e ls_out_acl | sort], [0], [dnl
-  table=12(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
+  table=15(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
   table=3 (ls_out_acl_hint    ), priority=65535, match=(1), action=(next;)
   table=4 (ls_out_acl         ), priority=65535, match=(1), action=(next;)
   table=7 (ls_in_acl_hint     ), priority=65535, match=(1), action=(next;)
@@ -7587,7 +7587,7 @@ sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_check_port_sec), priority=70   , match=(inport == "localnetport"), action=(set_queue(10); reg0[[15]] = check_in_port_sec(); next;)
-  table=??(ls_in_check_port_sec), priority=70   , match=(inport == "sw0p1"), action=(reg0[[14]] = 1; next(pipeline=ingress, table=16);)
+  table=??(ls_in_check_port_sec), priority=70   , match=(inport == "sw0p1"), action=(reg0[[14]] = 1; next(pipeline=ingress, table=14);)
   table=??(ls_in_check_port_sec), priority=70   , match=(inport == "sw0p2"), action=(set_queue(10); reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
   table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
