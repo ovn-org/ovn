@@ -153,6 +153,14 @@ struct pending_pkt {
 /* Registered ofctrl seqno type for nb_cfg propagation. */
 static size_t ofctrl_seq_type_nb_cfg;
 
+/* Only set monitor conditions on tables that are available in the
+ * server schema.
+ */
+#define sb_table_set_monitor_condition(idl, table, cond)   \
+    (sbrec_server_has_##table##_table(idl)              \
+     ? sbrec_##table##_set_condition(idl, cond) \
+     : 0)
+
 static unsigned int
 update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
                    const struct sbrec_chassis *chassis,
@@ -288,17 +296,17 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
 
 out:;
     unsigned int cond_seqnos[] = {
-        sbrec_port_binding_set_condition(ovnsb_idl, &pb),
-        sbrec_logical_flow_set_condition(ovnsb_idl, &lf),
-        sbrec_logical_dp_group_set_condition(ovnsb_idl, &ldpg),
-        sbrec_mac_binding_set_condition(ovnsb_idl, &mb),
-        sbrec_multicast_group_set_condition(ovnsb_idl, &mg),
-        sbrec_dns_set_condition(ovnsb_idl, &dns),
-        sbrec_controller_event_set_condition(ovnsb_idl, &ce),
-        sbrec_ip_multicast_set_condition(ovnsb_idl, &ip_mcast),
-        sbrec_igmp_group_set_condition(ovnsb_idl, &igmp),
-        sbrec_chassis_private_set_condition(ovnsb_idl, &chprv),
-        sbrec_chassis_template_var_set_condition(ovnsb_idl, &tv),
+        sb_table_set_monitor_condition(ovnsb_idl, port_binding, &pb),
+        sb_table_set_monitor_condition(ovnsb_idl, logical_flow, &lf),
+        sb_table_set_monitor_condition(ovnsb_idl, logical_dp_group, &ldpg),
+        sb_table_set_monitor_condition(ovnsb_idl, mac_binding, &mb),
+        sb_table_set_monitor_condition(ovnsb_idl, multicast_group, &mg),
+        sb_table_set_monitor_condition(ovnsb_idl, dns, &dns),
+        sb_table_set_monitor_condition(ovnsb_idl, controller_event, &ce),
+        sb_table_set_monitor_condition(ovnsb_idl, ip_multicast, &ip_mcast),
+        sb_table_set_monitor_condition(ovnsb_idl, igmp_group, &igmp),
+        sb_table_set_monitor_condition(ovnsb_idl, chassis_private, &chprv),
+        sb_table_set_monitor_condition(ovnsb_idl, chassis_template_var, &tv),
     };
 
     unsigned int expected_cond_seqno = 0;
