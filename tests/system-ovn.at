@@ -8547,3 +8547,114 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+###########################################################
+## ls1 -- cluster-router -- join - gr1 -- public1 -- ln1 ##
+###########################################################
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Gateway router with dynamic_neigh_routers])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-ex], [set Bridge br-ex fail-mode=standalone])
+
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=provider:br-ex
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+# Add routers
+check ovn-nbctl lr-add gr1
+check ovn-nbctl lr-add cluster-router
+
+# Add switches
+check ovn-nbctl ls-add join
+check ovn-nbctl ls-add public1
+check ovn-nbctl ls-add ls1
+
+# Add ls1 ports
+check ovn-nbctl lsp-add ls1 ls1p1 \
+    -- lsp-set-addresses ls1p1 "00:00:00:00:01:11 10.244.2.11"
+
+check ovn-nbctl lsp-add ls1 ls1-to-cluster-router \
+    -- lsp-set-type ls1-to-cluster-router router \
+    -- lsp-set-options ls1-to-cluster-router router-port=cluster-router-to-ls1 \
+    -- lsp-set-addresses ls1-to-cluster-router router
+
+# Add cluster-router ports
+check ovn-nbctl lrp-add cluster-router cluster-router-to-ls1 "00:00:00:0f:01:01" 10.244.2.1/24 \
+    -- lrp-add cluster-router cluster-router-to-join "00:00:00:0f:02:01" 100.64.0.1/16 \
+    -- lrp-set-gateway-chassis cluster-router-to-ls1 hv1 10 \
+    -- --policy=src-ip lr-route-add cluster-router 10.244.2.0/24 100.64.0.3
+
+# Add join ports
+check ovn-nbctl lsp-add join join-to-cluster-router \
+    -- lsp-set-type join-to-cluster-router router \
+    -- lsp-set-options join-to-cluster-router router-port=cluster-router-to-join \
+    -- lsp-set-addresses join-to-cluster-router router \
+    -- lsp-add join join-to-gr1 \
+    -- lsp-set-type join-to-gr1 router \
+    -- lsp-set-options join-to-gr1 router-port=gr1-to-join \
+    -- lsp-set-addresses join-to-gr1 router
+
+check ovn-nbctl set logical_router gr1 options:lb_force_snat_ip=router_ip \
+    -- set logical_router gr1 options:snat-ct-zone=0 \
+    -- set logical_router gr1 options:dynamic_neigh_routers=true
+
+# Add gr1 ports and set natting
+check ovn-nbctl lrp-add gr1 gr1-to-join "00:00:00:0f:02:03" 100.64.0.3/16 \
+    -- lr-route-add gr1 10.244.0.0/16 100.64.0.1 \
+    -- lr-nat-add gr1 snat 10.89.189.12 10.244.0.0/16 \
+    -- lrp-add gr1 gr1-to-public1 "0a:0a:b6:fc:03:12" 10.89.189.12/24 \
+    -- set logical_router gr1 options:chassis=hv1
+
+# Add public1 ports
+check ovn-nbctl lsp-add public1 public1-to-gr1 \
+    -- lsp-set-type public1-to-gr1 router \
+    -- lsp-set-options public1-to-gr1 router-port=gr1-to-public1 \
+    -- lsp-set-addresses public1-to-gr1 router \
+    -- lsp-add public1 ln1 \
+    -- lsp-set-type ln1 localnet \
+    -- lsp-set-options ln1 network_name=provider \
+    -- lsp-set-addresses ln1 unknown
+
+check ovn-nbctl --wait=hv sync
+
+ADD_NAMESPACES(ns_ls1p1)
+ADD_VETH(ls1p1, ns_ls1p1, br-int, "10.244.2.11/24", "00:00:00:00:01:11", "10.244.2.1")
+
+ADD_NAMESPACES(ns_ext1)
+ADD_VETH(ln1, ns_ext1, br-ex, "10.89.189.1/24", "0a:0a:b6:fc:03:01")
+
+NS_CHECK_EXEC([ns_ls1p1], [ping -q -c 3 -i 0.3 -w 2 10.89.189.1 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
