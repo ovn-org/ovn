@@ -93,6 +93,28 @@ AT_CHECK([ovn-sbctl -f csv -d bare --no-headings --columns ip,type list encap | 
 1.2.3.5,vxlan
 ])
 
+AT_CHECK([ovn-sbctl chassis-add ch2 geneve 2.3.4.5])
+ch2_uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find chassis name=ch2)
+ovn-sbctl create Chassis_Private name=ch2 chassis=$ch2_uuid
+check_row_count Chassis_Private 1
+
+AT_CHECK([ovn-sbctl -f csv -d bare --no-headings --columns ip,type list encap | sort],
+         [0], [dnl
+1.2.3.5,geneve
+1.2.3.5,stt
+1.2.3.5,vxlan
+2.3.4.5,geneve
+])
+
+AT_CHECK([ovn-sbctl chassis-del ch2])
+AT_CHECK([ovn-sbctl -f csv -d bare --no-headings --columns ip,type list encap | sort],
+         [0], [dnl
+1.2.3.5,geneve
+1.2.3.5,stt
+1.2.3.5,vxlan
+])
+check_row_count Chassis_Private 0
+
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 as

@@ -164,6 +164,8 @@ struct sbctl_context {
     bool cache_valid;
     /* Maps from chassis name to struct sbctl_chassis. */
     struct shash chassis;
+    /* Maps from chassis name to struct sbctl_chassis_private. */
+    struct shash chassis_private;
     /* Maps from lport name to struct sbctl_port_binding. */
     struct shash port_bindings;
 };
@@ -177,6 +179,10 @@ sbctl_context_cast(struct ctl_context *base)
 
 struct sbctl_chassis {
     const struct sbrec_chassis *ch_cfg;
+};
+
+struct sbctl_chassis_private {
+    const struct sbrec_chassis_private *ch_priv;
 };
 
 struct sbctl_port_binding {
@@ -193,6 +199,7 @@ sbctl_context_invalidate_cache(struct ctl_context *ctx)
     }
     sbctl_ctx->cache_valid = false;
     shash_destroy_free_data(&sbctl_ctx->chassis);
+    shash_destroy_free_data(&sbctl_ctx->chassis_private);
     shash_destroy_free_data(&sbctl_ctx->port_bindings);
 }
 
@@ -207,11 +214,13 @@ sbctl_context_get(struct ctl_context *ctx)
     }
 
     const struct sbrec_chassis *chassis_rec;
+    const struct sbrec_chassis_private *chassis_private_rec;
     const struct sbrec_port_binding *port_binding_rec;
     struct sset chassis, port_bindings;
 
     sbctl_ctx->cache_valid = true;
     shash_init(&sbctl_ctx->chassis);
+    shash_init(&sbctl_ctx->chassis_private);
     shash_init(&sbctl_ctx->port_bindings);
     sset_init(&chassis);
     SBREC_CHASSIS_FOR_EACH(chassis_rec, ctx->idl) {
@@ -226,6 +235,25 @@ sbctl_context_get(struct ctl_context *ctx)
         ch = xmalloc(sizeof *ch);
         ch->ch_cfg = chassis_rec;
         shash_add(&sbctl_ctx->chassis, chassis_rec->name, ch);
+    }
+    sset_destroy(&chassis);
+
+    sset_init(&chassis);
+    SBREC_CHASSIS_PRIVATE_FOR_EACH (chassis_private_rec, ctx->idl) {
+        struct sbctl_chassis_private *ch_priv;
+
+        if (!sset_add(&chassis, chassis_private_rec->name)) {
+            VLOG_WARN("database contains duplicate private record for "
+                      "chassis named (%s)",
+                      chassis_rec->name);
+            continue;
+        }
+
+        ch_priv = xmalloc(sizeof *ch_priv);
+        ch_priv->ch_priv = chassis_private_rec;
+        shash_add(&sbctl_ctx->chassis_private,
+                  chassis_private_rec->name,
+                  ch_priv);
     }
     sset_destroy(&chassis);
 
@@ -280,6 +308,22 @@ find_chassis(struct ctl_context *ctx, const char *name, bool must_exist)
     return sbctl_ch;
 }
 
+static struct sbctl_chassis_private *
+find_chassis_private(struct ctl_context *ctx,
+                     const char *name,
+                     bool must_exist)
+{
+    struct sbctl_context *sbctl_ctx = sbctl_context_get(ctx);
+    struct sbctl_chassis_private *sbctl_ch_priv = shash_find_data(
+        &sbctl_ctx->chassis_private, name);
+
+    if (must_exist && !sbctl_ch_priv) {
+        ctl_error(ctx, "no private record for chassis named %s", name);
+    }
+
+    return sbctl_ch_priv;
+}
+
 static struct sbctl_port_binding *
 find_port_binding(struct ctl_context *ctx, const char *name, bool must_exist)
 {
@@ -298,6 +342,8 @@ pre_get_info(struct ctl_context *ctx)
 {
     ovsdb_idl_add_column(ctx->idl, &sbrec_chassis_col_name);
     ovsdb_idl_add_column(ctx->idl, &sbrec_chassis_col_encaps);
+
+    ovsdb_idl_add_column(ctx->idl, &sbrec_chassis_private_col_name);
 
     ovsdb_idl_add_column(ctx->idl, &sbrec_encap_col_type);
     ovsdb_idl_add_column(ctx->idl, &sbrec_encap_col_ip);
@@ -434,6 +480,18 @@ cmd_chassis_del(struct ctl_context *ctx)
             for (i = 0; i < sbctl_ch->ch_cfg->n_encaps; i++) {
                 sbrec_encap_delete(sbctl_ch->ch_cfg->encaps[i]);
             }
+
+            struct sbctl_chassis_private *sbctl_ch_priv;
+            sbctl_ch_priv = find_chassis_private(ctx, ctx->argv[1], false);
+            if (sbctl_ch_priv) {
+                if (sbctl_ch_priv->ch_priv) {
+                    sbrec_chassis_private_delete(sbctl_ch_priv->ch_priv);
+                }
+                shash_find_and_delete(&sbctl_ctx->chassis_private,
+                                      ctx->argv[1]);
+                free(sbctl_ch_priv);
+            }
+
             sbrec_chassis_delete(sbctl_ch->ch_cfg);
         }
         shash_find_and_delete(&sbctl_ctx->chassis, ctx->argv[1]);
