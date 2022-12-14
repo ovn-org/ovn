@@ -8324,21 +8324,19 @@ OVN_FOR_EACH_NORTHD([
 AT_SETUP([Check default drop])
 AT_KEYWORDS([drop])
 
-# Check that there is an explicit drop lflow in all tables.
-check_default_lflow() {
-    dps=$(ovn-sbctl --bare  --columns=_uuid list Datapath_Binding | xargs)
-    for dp in $dps; do
-        for pipeline in ingress egress; do
-            for table in $(ovn-sbctl --bare --columns=table_id find Logical_Flow logical_datapath="$dp" pipeline="$pipeline" | xargs | sort | uniq); do
-               echo "Checking if datapath $dp pipeline $pipeline table $table has a default action"
-               AT_CHECK([ovn-sbctl --columns=_uuid find Logical_Flow logical_datapath="$dp" pipeline="$pipeline" table_id=$table match="1" priority">="0 | wc -l | tr -d "\n\r" ], [0], [1], [ignore],
-               [echo "Datapath $dp pipeline $pipeline table $table does not have a default action"])
-            done
-        done
-    done
-}
-
 ovn_start
+
+# Check that there is an explicit drop lflow in for spoecified DP and table.
+check_default_lflow() {
+    dp=$1
+    pipeline=$2
+
+    table_len=$(ovn-sbctl --bare --columns table find logical_flow logical_datapath=$dp pipeline=$pipeline | sort | uniq | wc -l)
+    table_len_default=$(ovn-sbctl --bare --columns table find logical_flow logical_datapath=$dp pipeline=$pipeline match=1 | sort | uniq | wc -l)
+
+    echo "Checking if datapath $dp pipeline $pipeline has default actions"
+    AT_CHECK([test $table_len -eq $table_len_default], [0], [ignore], [ignore], [echo "Datapath $dp pipeline $pipeline is missing some default action"])
+}
 
 # Create LS + LR
 check ovn-nbctl --wait=sb \
@@ -8352,13 +8350,34 @@ check ovn-nbctl --wait=sb \
                 -- lsp-add S1 p1 \
                 -- lsp-set-addresses p1 "02:ac:10:01:00:0a 172.16.1.100"
 
-check_default_lflow
+ovn-sbctl dump-flows R1 > R1_flows
+ovn-sbctl dump-flows R1 | grep "match=(1)" > R1_default_flows
+ovn-sbctl dump-flows S1 > S1_flows
+ovn-sbctl dump-flows S1 | grep "match=(1)" > S1_default_flows
+
+AT_CAPTURE_FILE([R1_flows])
+AT_CAPTURE_FILE([R1_default_flows])
+AT_CAPTURE_FILE([S1_flows])
+AT_CAPTURE_FILE([S1_default_flows])
+
+lr_uuid=$(fetch_column datapath _uuid external_ids:name=R1)
+ls_uuid=$(fetch_column datapath _uuid external_ids:name=S1)
+
+check_default_lflow $lr_uuid ingress
+check_default_lflow $lr_uuid egress
+
+check_default_lflow $ls_uuid ingress
+check_default_lflow $ls_uuid egress
 
 # Add stateless ACL
 check ovn-nbctl --wait=sb \
                 -- acl-add S1 from-lport 100 'inport=p1 && ip4' allow-stateless
 
-check_default_lflow
+AT_CHECK([ovn-sbctl dump-flows | grep "ls_in_acl" | grep "match=(1)"  | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(ls_in_acl          ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_acl_hint     ), priority=0    , match=(1), action=(next;)
+])
 
 check ovn-nbctl --wait=sb acl-del S1
 
@@ -8367,7 +8386,11 @@ check ovn-nbctl --wait=sb acl-del S1
 check ovn-nbctl --wait=sb \
                 -- acl-add S1 from-lport 2 "udp" allow-related
 
-check_default_lflow
+AT_CHECK([ovn-sbctl dump-flows | grep "ls_in_acl" | grep "match=(1)"  | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(ls_in_acl          ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_acl_hint     ), priority=0    , match=(1), action=(next;)
+])
 
 check ovn-nbctl --wait=sb acl-del S1
 
@@ -8376,12 +8399,22 @@ check ovn-nbctl --wait=sb \
     -- lb-add lb "10.0.0.1" "10.0.0.2" \
     -- ls-lb-add S1 lb
 
-check_default_lflow
+AT_CHECK([ovn-sbctl dump-flows | grep "ls_in_acl" | grep "match=(1)"  | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(ls_in_acl          ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_acl_hint     ), priority=0    , match=(1), action=(next;)
+])
+
 
 # Check LB + stateless ACL
 check ovn-nbctl --wait=sb \
                 -- acl-add S1 from-lport 100 'inport=p1 && ip4' allow-stateless
-check_default_lflow
+
+AT_CHECK([ovn-sbctl dump-flows | grep "ls_in_acl" | grep "match=(1)"  | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(ls_in_acl          ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_acl_hint     ), priority=0    , match=(1), action=(next;)
+])
 
 check ovn-nbctl --wait=sb acl-del S1
 
@@ -8389,7 +8422,11 @@ check ovn-nbctl --wait=sb acl-del S1
 check ovn-nbctl --wait=sb \
                 -- acl-add S1 from-lport 2 "udp" allow-related
 
-check_default_lflow
+AT_CHECK([ovn-sbctl dump-flows | grep "ls_in_acl" | grep "match=(1)"  | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(ls_in_acl          ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_acl_hint     ), priority=0    , match=(1), action=(next;)
+])
 
 AT_CLEANUP
 ])
