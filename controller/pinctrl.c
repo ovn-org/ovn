@@ -1419,7 +1419,6 @@ prepare_ipv6_prefixd(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
 struct buffer_info {
     struct ofpbuf ofpacts;
-    ofp_port_t ofp_port;
     struct dp_packet *p;
 };
 
@@ -1495,7 +1494,6 @@ buffered_push_packet(struct buffered_packets *bp,
     union mf_value pkt_mark_value;
     mf_get_value(pkt_mark_field, &md->flow, &pkt_mark_value);
     ofpact_put_set_field(&bi->ofpacts, pkt_mark_field, &pkt_mark_value, NULL);
-    bi->ofp_port = md->flow.in_port.ofp_port;
 
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&bi->ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
@@ -1531,7 +1529,7 @@ buffered_send_packets(struct rconn *swconn, struct buffered_packets *bp,
             .ofpacts = bi->ofpacts.data,
             .ofpacts_len = bi->ofpacts.size,
         };
-        match_set_in_port(&po.flow_metadata, bi->ofp_port);
+        match_set_in_port(&po.flow_metadata, OFPP_CONTROLLER);
         queue_msg(swconn, ofputil_encode_packet_out(&po, proto));
 
         ofpbuf_uninit(&bi->ofpacts);
