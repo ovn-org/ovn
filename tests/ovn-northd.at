@@ -7556,11 +7556,20 @@ ovn_start
 
 add_switch_ports() {
     for port in $(seq $1 $2); do
-        logical_switch_port=lsp${port}
-        check ovn-nbctl lsp-add ls1 $logical_switch_port
-        check ovn-nbctl lsp-set-addresses $logical_switch_port dynamic
+        OVN_NBCTL(lsp-add ls1 lsp${port})
+        OVN_NBCTL(lsp-set-addresses lsp${port} dynamic)
     done
+    RUN_OVN_NBCTL()
 }
+
+delete_switch_ports() {
+    for port in $(seq $1 $2); do
+        OVN_NBCTL(lsp-del lsp${port})
+    done
+    RUN_OVN_NBCTL()
+}
+
+m4_define([DUMP_FLOWS_SORTED], [sed -e 's/arp.tpa == 10.1.0.[[0-9]]\{1,3\}/arp.tpa == 10.1.0.??/;s/eth.dst == ..:..:..:..:..:../??:??:??:??:??:??/' | sort])
 
 # Build some rather heavy config and modify number of threads in the middle
 check ovn-nbctl ls-add ls1
@@ -7589,27 +7598,21 @@ check ovn-nbctl --wait=sb sync
 # Run 3 times: one with parallelization enabled, one with disabled, and one while changing
 # Compare the flows produced by the three runs
 # Ignore IP/MAC addresses
-ovn-sbctl dump-flows | sed 's/arp.tpa == 10.1.0..../arp.tpa == 10.1.0.??/' | sed 's/eth.dst == ..:..:..:..:..:../??:??:??:??:??:??/' |sort > flows1
+ovn-sbctl dump-flows | DUMP_FLOWS_SORTED > flows1
 
 # Restart with 1 thread
-for port in $(seq 1 250); do
-    logical_switch_port=lsp${port}
-    check ovn-nbctl lsp-del $logical_switch_port
-done
+delete_switch_ports 1 250
 add_switch_ports 1 250
 check ovn-nbctl --wait=sb sync
-ovn-sbctl dump-flows | sed 's/arp.tpa == 10.1.0..../arp.tpa == 10.1.0.??/' | sed 's/eth.dst == ..:..:..:..:..:../??:??:??:??:??:??/' |sort > flows2
+ovn-sbctl dump-flows | DUMP_FLOWS_SORTED > flows2
 AT_CHECK([diff flows1 flows2])
 
 # Restart with with 8 threads
 check as northd ovn-appctl -t NORTHD_TYPE parallel-build/set-n-threads 8
-for port in $(seq 1 250); do
-    logical_switch_port=lsp${port}
-    check ovn-nbctl lsp-del $logical_switch_port
-done
+delete_switch_ports 1 250
 add_switch_ports 1 250
 check ovn-nbctl --wait=sb sync
-ovn-sbctl dump-flows | sed 's/arp.tpa == 10.1.0..../arp.tpa == 10.1.0.??/' | sed 's/eth.dst == ..:..:..:..:..:../??:??:??:??:??:??/' |sort > flows3
+ovn-sbctl dump-flows | DUMP_FLOWS_SORTED > flows3
 AT_CHECK([diff flows1 flows3])
 
 AT_CLEANUP
