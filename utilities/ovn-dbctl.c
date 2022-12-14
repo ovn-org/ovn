@@ -721,7 +721,7 @@ do_dbctl(const struct ovn_dbctl_options *dbctl_options,
     ctl_context_init(ctx, NULL, idl, txn, symtab, NULL);
     for (size_t i = 0; i < n_commands; i++) {
         struct ctl_command *c = &commands[i];
-        ctl_context_init_command(ctx, c);
+        ctl_context_init_command(ctx, c, c == &commands[n_commands - 1]);
         if (c->syntax->run) {
             (c->syntax->run)(ctx);
         }

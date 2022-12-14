@@ -675,9 +675,9 @@ static const struct ctl_table_class tables[ICNBREC_N_TABLES] = {
 
 static void
 ic_nbctl_context_init_command(struct ic_nbctl_context *ic_nbctl_ctx,
-                           struct ctl_command *command)
+                           struct ctl_command *command, bool last_command)
 {
-    ctl_context_init_command(&ic_nbctl_ctx->base, command);
+    ctl_context_init_command(&ic_nbctl_ctx->base, command, last_command);
 }
 
 static void
@@ -762,7 +762,8 @@ do_ic_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
     }
     ic_nbctl_context_init(&ic_nbctl_ctx, NULL, idl, txn, symtab);
     for (c = commands; c < &commands[n_commands]; c++) {
-        ic_nbctl_context_init_command(&ic_nbctl_ctx, c);
+        ic_nbctl_context_init_command(&ic_nbctl_ctx, c,
+                                      c == &commands[n_commands - 1]);
         if (c->syntax->run) {
             (c->syntax->run)(&ic_nbctl_ctx.base);
         }
