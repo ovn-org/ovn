@@ -125,11 +125,11 @@ enum ovn_stage {
     PIPELINE_STAGE(SWITCH, IN,  LB_AFF_CHECK,  11, "ls_in_lb_aff_check")  \
     PIPELINE_STAGE(SWITCH, IN,  LB,            12, "ls_in_lb")            \
     PIPELINE_STAGE(SWITCH, IN,  LB_AFF_LEARN,  13, "ls_in_lb_aff_learn")  \
-    PIPELINE_STAGE(SWITCH, IN,  ACL_AFTER_LB,  14, "ls_in_acl_after_lb")  \
-    PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      15, "ls_in_stateful")      \
-    PIPELINE_STAGE(SWITCH, IN,  PRE_HAIRPIN,   16, "ls_in_pre_hairpin")   \
-    PIPELINE_STAGE(SWITCH, IN,  NAT_HAIRPIN,   17, "ls_in_nat_hairpin")   \
-    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       18, "ls_in_hairpin")       \
+    PIPELINE_STAGE(SWITCH, IN,  PRE_HAIRPIN,   14, "ls_in_pre_hairpin")   \
+    PIPELINE_STAGE(SWITCH, IN,  NAT_HAIRPIN,   15, "ls_in_nat_hairpin")   \
+    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       16, "ls_in_hairpin")       \
+    PIPELINE_STAGE(SWITCH, IN,  ACL_AFTER_LB,  17, "ls_in_acl_after_lb")  \
+    PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      18, "ls_in_stateful")      \
     PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    19, "ls_in_arp_rsp")       \
     PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  20, "ls_in_dhcp_options")  \
     PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 21, "ls_in_dhcp_response") \
