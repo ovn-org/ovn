@@ -4584,7 +4584,7 @@ ADD_VETH(lsp, lsp, br-int, "42.42.42.1/24", "00:00:00:00:00:01", \
 ovn-nbctl --wait=hv -t 3 sync
 
 # Start IPv4 TCP server on lsp.
-NS_CHECK_EXEC([lsp], [timeout 2s nc -k -l 42.42.42.1 4041 &], [0])
+NETNS_DAEMONIZE([lsp], [nc -l -k 42.42.42.1 4041], [lsp0.pid])
 
 # Check that IPv4 TCP hairpin connection succeeds on both VIPs.
 NS_CHECK_EXEC([lsp], [nc 88.88.88.88 8080 -z], [0], [ignore], [ignore])
@@ -4607,6 +4607,16 @@ OVS_WAIT_UNTIL([
     total_pkts=$(cat lsp.pcap | wc -l)
     test "${total_pkts}" = "3"
 ])
+
+ovn-nbctl pg-add pg0 lsp
+ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1004 "ip4 && ip4.dst == 10.0.0.2" drop
+ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1002 "ip4 && tcp" allow-related
+ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1002 "ip4 && udp" allow
+ovn-nbctl --wait=hv sync
+
+## Check that IPv4 TCP hairpin connection succeeds on both VIPs.
+NS_CHECK_EXEC([lsp], [nc 88.88.88.88 8080 -z], [0], [ignore], [ignore])
+NS_CHECK_EXEC([lsp], [nc 88.88.88.89 8080 -z], [0], [ignore], [ignore])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
@@ -4674,7 +4684,7 @@ OVS_WAIT_UNTIL([test "$(ip netns exec lsp ip a | grep 4200::1 | grep tentative)"
 ovn-nbctl --wait=hv -t 3 sync
 
 # Start IPv6 TCP server on lsp.
-NS_CHECK_EXEC([lsp], [timeout 2s nc -k -l 4200::1 4041 &], [0])
+NETNS_DAEMONIZE([lsp], [nc -l -k 4200::1 4041], [lsp0.pid])
 
 # Check that IPv6 TCP hairpin connection succeeds on both VIPs.
 NS_CHECK_EXEC([lsp], [nc 8800::0088 8080 -z], [0], [ignore], [ignore])
@@ -4697,6 +4707,16 @@ OVS_WAIT_UNTIL([
     total_pkts=$(cat lsp.pcap | wc -l)
     test "${total_pkts}" = "3"
 ])
+
+ovn-nbctl pg-add pg0 lsp
+ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1002 "ip6 && tcp" allow-related
+ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1002 "ip6 && udp" allow
+ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1000 "ip6" drop
+ovn-nbctl --wait=hv sync
+
+# Check that IPv6 TCP hairpin connection succeeds on both VIPs.
+NS_CHECK_EXEC([lsp], [nc 8800::0088 8080 -z], [0], [ignore], [ignore])
+NS_CHECK_EXEC([lsp], [nc 8800::0089 8080 -z], [0], [ignore], [ignore])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 

@@ -2247,7 +2247,7 @@ check ovn-nbctl --wait=sb \
     -- ls-lb-add ls lb
 
 AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e ls_in_acl -e ls_out_acl | sort], [0], [dnl
-  table=13(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
+  table=16(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
   table=3 (ls_out_acl_hint    ), priority=0    , match=(1), action=(next;)
   table=3 (ls_out_acl_hint    ), priority=1    , match=(ct.est && ct_mark.blocked == 0), action=(reg0[[10]] = 1; next;)
   table=3 (ls_out_acl_hint    ), priority=2    , match=(ct.est && ct_mark.blocked == 1), action=(reg0[[9]] = 1; next;)
@@ -2288,7 +2288,7 @@ ovn-nbctl --wait=sb clear logical_switch ls acls
 ovn-nbctl --wait=sb clear logical_switch ls load_balancer
 
 AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e ls_in_acl -e ls_out_acl | sort], [0], [dnl
-  table=13(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
+  table=16(ls_in_acl_after_lb ), priority=0    , match=(1), action=(next;)
   table=3 (ls_out_acl_hint    ), priority=65535, match=(1), action=(next;)
   table=4 (ls_out_acl         ), priority=65535, match=(1), action=(next;)
   table=8 (ls_in_acl_hint     ), priority=65535, match=(1), action=(next;)
@@ -3905,9 +3905,9 @@ check_stateful_flows() {
 ])
 
     AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
-  table=14(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
+  table=17(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
+  table=17(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=17(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
     AT_CHECK([grep "ls_out_pre_lb" sw0flows | sort], [0], [dnl
@@ -3975,9 +3975,9 @@ AT_CHECK([grep "ls_in_lb" sw0flows | sort], [0], [dnl
 ])
 
 AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
-  table=14(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
+  table=17(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
+  table=17(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=17(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
 AT_CHECK([grep "ls_out_pre_lb" sw0flows | sort], [0], [dnl
@@ -4021,9 +4021,9 @@ AT_CHECK([grep -w "ls_in_acl" sw0flows | grep 2002 | sort], [0], [dnl
   table=9 (ls_in_acl          ), priority=2002 , match=(reg0[[8]] == 1 && (tcp)), action=(reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
 ])
 AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
-  table=14(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
+  table=17(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
+  table=17(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=17(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
 AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 2002 | sort], [0], [dnl
@@ -4050,9 +4050,9 @@ AT_CHECK([grep -w "ls_in_acl" sw0flows | grep 2002 | sort], [0], [dnl
   table=9 (ls_in_acl          ), priority=2002 , match=(reg0[[8]] == 1 && (udp)), action=(next;)
 ])
 AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
-  table=14(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
+  table=17(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
+  table=17(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=17(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
 AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 2002 | sort], [0], [dnl
@@ -4079,9 +4079,9 @@ AT_CHECK([grep -w "ls_in_acl" sw0flows | grep 2002 | sort], [0], [dnl
   table=9 (ls_in_acl          ), priority=2002 , match=(reg0[[8]] == 1 && (udp)), action=(next;)
 ])
 AT_CHECK([grep "ls_in_stateful" sw0flows | sort], [0], [dnl
-  table=14(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
-  table=14(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
+  table=17(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
+  table=17(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
+  table=17(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
 AT_CHECK([grep -w "ls_out_acl" sw0flows | grep 2002 | sort], [0], [dnl
