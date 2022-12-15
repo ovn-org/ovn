@@ -895,8 +895,7 @@ ic_route_find(struct hmap *routes, const struct in6_addr *prefix,
             r->plen == plen &&
             ipv6_addr_equals(&r->nexthop, nexthop) &&
             !strcmp(r->origin, origin) &&
-            !strcmp(r->route_table ? r->route_table : "", route_table) &&
-            ipv6_addr_equals(&r->nexthop, nexthop)) {
+            !strcmp(r->route_table ? r->route_table : "", route_table)) {
             return r;
         }
     }
@@ -1131,17 +1130,8 @@ add_static_to_routes_ad(
     struct hmap *routes_ad,
     const struct nbrec_logical_router_static_route *nb_route,
     const struct lport_addresses *nexthop_addresses,
-    const struct smap *nb_options, const char *route_table)
+    const struct smap *nb_options)
 {
-    if (strcmp(route_table, nb_route->route_table)) {
-        if (VLOG_IS_DBG_ENABLED()) {
-            VLOG_DBG("Skip advertising route %s -> %s as its route table %s !="
-                     " %s of TS port", nb_route->ip_prefix, nb_route->nexthop,
-                     nb_route->route_table, route_table);
-        }
-        return;
-    }
-
     struct in6_addr prefix, nexthop;
     unsigned int plen;
     if (!parse_route(nb_route->ip_prefix, nb_route->nexthop,
@@ -1566,10 +1556,10 @@ build_ts_routes_to_adv(struct ic_context *ctx,
                 nbrec_logical_router_update_static_routes_delvalue(lr,
                     nb_route);
             }
-        } else {
+        } else if (!strcmp(ts_route_table, nb_route->route_table)) {
             /* It may be a route to be advertised */
             add_static_to_routes_ad(routes_ad, nb_route, ts_port_addrs,
-                                    &nb_global->options, ts_route_table);
+                                    &nb_global->options);
         }
     }
 
@@ -1602,7 +1592,6 @@ advertise_lr_routes(struct ic_context *ctx,
     const struct icsbrec_port_binding *isb_pb;
     const char *lrp_name, *ts_name, *route_table;
     struct lport_addresses ts_port_addrs;
-    const struct nbrec_logical_router *lr = ic_lr->lr;
     const struct icnbrec_transit_switch *key;
 
     struct hmap routes_ad = HMAP_INITIALIZER(&routes_ad);
@@ -1620,7 +1609,7 @@ advertise_lr_routes(struct ic_context *ctx,
             VLOG_INFO_RL(&rl, "Route sync ignores port %s on ts %s for router"
                          " %s because the addresses are invalid.",
                          isb_pb->logical_port, isb_pb->transit_switch,
-                         lr->name);
+                         ic_lr->lr->name);
             continue;
         }
         lrp_name = get_lrp_name_by_ts_port_name(ctx, isb_pb->logical_port);
