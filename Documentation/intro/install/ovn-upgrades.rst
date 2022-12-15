@@ -75,6 +75,20 @@ or if you're using a Linux distribution with systemd::
 
     $ sudo systemctl restart ovn-northd
 
+In case your deployment utilizes OVN Interconnection (OVN IC) functionality,
+it is also needed to restart ovn-ic daemons and separately restart ovn-ic
+databases.
+
+You may perform this restart using the ovn-ctl script::
+
+    $ sudo /usr/share/openvswitch/scripts/ovn-ctl restart_ic
+    $ sudo /usr/share/openvswitch/scripts/ovn-ctl restart_ic_ovsdb
+
+or if you're using a Linux distribution with systemd::
+
+    $ sudo systemctl restart ovn-ic
+    $ sudo systemctl restart ovn-ic-db
+
 Schema Change
 ^^^^^^^^^^^^^
 
@@ -101,6 +115,12 @@ of known impactible schema changes and how to fix when error encountered.
    Then delete the chassis with command::
 
     $ ovn-sbctl chassis-del <chassis>
+
+#. Release 22.12: index [transit_switch, availability_zone, route_table,
+   ip_prefix, nexthop] added for OVN Interconnection Southbound DB table Route.
+   If there are duplicated records in this table, users are adviced to upgrade
+   ovn-ic daemons in all availability zones first and after that convert OVS
+   schema (restart ovn-ic database daemon).
 
 
 Upgrading OVN Integration
