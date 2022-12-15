@@ -11,6 +11,10 @@ OVN v22.12.0 - xx xxx xxxx
   - Add support for component templates within logical flows and load
     balancers.
   - Add support for remote port mirroring (Experimental).
+  - Add new OVN IC Route table index. This index ensures no duplicate routes
+    can be advertized.  When upgrading to this version user must ensure that
+    all ovn-ic daemons in all availability zones are upgraded before ovn-ic SB
+    database schema is converted.
 
 OVN v22.09.0 - 16 Sep 2022
 --------------------------
