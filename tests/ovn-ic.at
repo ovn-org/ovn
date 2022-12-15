@@ -122,6 +122,79 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- route deletion upon TS deletion])
+
+ovn_init_ic_db
+net_add n1
+
+# 1 GW per AZ
+for i in 1 2; do
+    az=az$i
+    ovn_start $az
+    sim_add gw-$az
+    as gw-$az
+    check ovs-vsctl add-br br-phys
+    ovn_az_attach $az n1 br-phys 192.168.1.$i
+    check ovs-vsctl set open . external-ids:ovn-is-interconn=true
+    check ovn-nbctl set nb-global . \
+        options:ic-route-adv=true \
+        options:ic-route-adv-default=true \
+        options:ic-route-learn=true \
+        options:ic-route-learn-default=true
+done
+
+create_ic_infra() {
+    az_id=$1
+    ts_id=$2
+    az=az$i
+
+    lsp=lsp${az_id}-${ts_id}
+    lrp=lrp${az_id}-${ts_id}
+    ts=ts${az_id}-${ts_id}
+    lr=lr${az_id}-${ts_id}
+
+    ovn_as $az
+
+    check ovn-ic-nbctl ts-add $ts
+    check ovn-nbctl lr-add $lr
+    check ovn-nbctl lrp-add $lr $lrp 00:00:00:00:00:0$az_id 10.0.$az_id.1/24
+    check ovn-nbctl lrp-set-gateway-chassis $lrp gw-$az
+
+    check ovn-nbctl lsp-add $ts $lsp -- \
+        lsp-set-addresses $lsp router -- \
+        lsp-set-type $lsp router -- \
+        lsp-set-options $lsp router-port=$lrp
+
+    check ovn-nbctl lr-route-add $lr 192.168.0.0/16 10.0.$az_id.10
+}
+
+create_ic_infra 1 1
+create_ic_infra 1 2
+create_ic_infra 2 1
+
+ovn_as az1
+
+wait_row_count ic-sb:Route 3 ip_prefix=192.168.0.0/16
+
+# remove transit switch 1 (from az1) and check if its route is deleted
+# same route from another AZ and ts should remain, as
+check ovn-ic-nbctl ts-del ts1-1
+sleep 2
+ovn-ic-sbctl list route
+ovn-ic-nbctl list transit_switch
+wait_row_count ic-sb:route 2 ip_prefix=192.168.0.0/16
+ovn-ic-sbctl list route
+
+for i in 1 2; do
+    az=az$i
+    OVN_CLEANUP_SBOX(gw-$az)
+    OVN_CLEANUP_AZ([$az])
+done
+OVN_CLEANUP_IC
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- gateway sync])
 
 ovn_init_ic_db
