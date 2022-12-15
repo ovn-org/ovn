@@ -757,6 +757,7 @@ port_binding_run(struct ic_context *ctx,
     }
     icsbrec_port_binding_index_destroy_row(isb_pb_key);
 
+    const struct sbrec_port_binding *sb_pb;
     const struct icnbrec_transit_switch *ts;
     ICNBREC_TRANSIT_SWITCH_FOR_EACH (ts, ctx->ovninb_idl) {
         const struct nbrec_logical_switch *ls = find_ts_in_nb(ctx, ts->name);
@@ -788,9 +789,9 @@ port_binding_run(struct ic_context *ctx,
         for (int i = 0; i < ls->n_ports; i++) {
             lsp = ls->ports[i];
 
-            const struct sbrec_port_binding *sb_pb = find_lsp_in_sb(ctx, lsp);
             if (!strcmp(lsp->type, "router")) {
                 /* The port is local. */
+                sb_pb = find_lsp_in_sb(ctx, lsp);
                 if (!sb_pb) {
                     continue;
                 }
@@ -807,6 +808,7 @@ port_binding_run(struct ic_context *ctx,
                 if (!isb_pb) {
                     nbrec_logical_switch_update_ports_delvalue(ls, lsp);
                 } else {
+                    sb_pb = find_lsp_in_sb(ctx, lsp);
                     if (!sb_pb) {
                         continue;
                     }
