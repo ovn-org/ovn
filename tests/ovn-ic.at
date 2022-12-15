@@ -195,6 +195,66 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- duplicate NB route adv/learn])
+
+ovn_init_ic_db
+net_add n1
+
+# 1 GW per AZ
+for i in 1 2; do
+    az=az$i
+    ovn_start $az
+    sim_add gw-$az
+    as gw-$az
+    check ovs-vsctl add-br br-phys
+    ovn_az_attach $az n1 br-phys 192.168.1.$i
+    check ovs-vsctl set open . external-ids:ovn-is-interconn=true
+    check ovn-nbctl set nb-global . \
+        options:ic-route-adv=true \
+        options:ic-route-adv-default=true \
+        options:ic-route-learn=true \
+        options:ic-route-learn-default=true
+done
+
+ovn_as az1
+
+# create transit switch and connect to LR
+check ovn-ic-nbctl ts-add ts1
+for i in 1 2; do
+    ovn_as az$i
+
+    check ovn-nbctl lr-add lr1
+    check ovn-nbctl lrp-add lr1 lrp$i 00:00:00:00:0$i:01 10.0.$i.1/24
+    check ovn-nbctl lrp-set-gateway-chassis lrp$i gw-az$i
+
+    check ovn-nbctl lsp-add ts1 lsp$i -- \
+        lsp-set-addresses lsp$i router -- \
+        lsp-set-type lsp$i router -- \
+        lsp-set-options lsp$i router-port=lrp$i
+done
+
+ovn_as az1
+
+ovn-nbctl \
+  --id=@id create logical-router-static-route ip_prefix=1.1.1.1/32 nexthop=10.0.1.10 -- \
+  add logical-router lr1 static_routes @id
+ovn-nbctl \
+  --id=@id create logical-router-static-route ip_prefix=1.1.1.1/32 nexthop=10.0.1.10 -- \
+  add logical-router lr1 static_routes @id
+
+wait_row_count ic-sb:route 1 ip_prefix=1.1.1.1/32
+
+for i in 1 2; do
+    az=az$i
+    OVN_CLEANUP_SBOX(gw-$az)
+    OVN_CLEANUP_AZ([$az])
+done
+
+OVN_CLEANUP_IC
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- gateway sync])
 
 ovn_init_ic_db
