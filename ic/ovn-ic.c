@@ -71,6 +71,7 @@ struct ic_context {
     struct ovsdb_idl_index *icsbrec_port_binding_by_az;
     struct ovsdb_idl_index *icsbrec_port_binding_by_ts;
     struct ovsdb_idl_index *icsbrec_port_binding_by_ts_az;
+    struct ovsdb_idl_index *icsbrec_route_by_az;
     struct ovsdb_idl_index *icsbrec_route_by_ts;
     struct ovsdb_idl_index *icsbrec_route_by_ts_az;
 };
@@ -1613,12 +1614,47 @@ advertise_lr_routes(struct ic_context *ctx,
 }
 
 static void
+delete_orphan_ic_routes(struct ic_context *ctx,
+                         const struct icsbrec_availability_zone *az)
+{
+    const struct icsbrec_route *isb_route, *isb_route_key =
+        icsbrec_route_index_init_row(ctx->icsbrec_route_by_az);
+    icsbrec_route_index_set_availability_zone(isb_route_key, az);
+
+    const struct icnbrec_transit_switch *t_sw, *t_sw_key;
+
+    ICSBREC_ROUTE_FOR_EACH_EQUAL (isb_route, isb_route_key,
+                                  ctx->icsbrec_route_by_az)
+    {
+        t_sw_key = icnbrec_transit_switch_index_init_row(
+            ctx->icnbrec_transit_switch_by_name);
+        icnbrec_transit_switch_index_set_name(t_sw_key,
+            isb_route->transit_switch);
+        t_sw = icnbrec_transit_switch_index_find(
+            ctx->icnbrec_transit_switch_by_name, t_sw_key);
+        icnbrec_transit_switch_index_destroy_row(t_sw_key);
+
+        if (!t_sw) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_INFO_RL(&rl, "Deleting orphan ICDB:Route: %s->%s (%s, rtb:%s,"
+                         " transit switch: %s)", isb_route->ip_prefix,
+                         isb_route->nexthop, isb_route->origin,
+                         isb_route->route_table, isb_route->transit_switch);
+            icsbrec_route_delete(isb_route);
+        }
+    }
+    icsbrec_route_index_destroy_row(isb_route_key);
+}
+
+static void
 route_run(struct ic_context *ctx,
           const struct icsbrec_availability_zone *az)
 {
     if (!ctx->ovnisb_txn || !ctx->ovnnb_txn) {
         return;
     }
+
+    delete_orphan_ic_routes(ctx, az);
 
     struct hmap ic_lrs = HMAP_INITIALIZER(&ic_lrs);
     const struct icsbrec_port_binding *isb_pb;
@@ -1908,6 +1944,10 @@ main(int argc, char *argv[])
                                   &icsbrec_port_binding_col_transit_switch,
                                   &icsbrec_port_binding_col_availability_zone);
 
+    struct ovsdb_idl_index *icsbrec_route_by_az
+        = ovsdb_idl_index_create1(ovnisb_idl_loop.idl,
+                                  &icsbrec_route_col_availability_zone);
+
     struct ovsdb_idl_index *icsbrec_route_by_ts
         = ovsdb_idl_index_create1(ovnisb_idl_loop.idl,
                                   &icsbrec_route_col_transit_switch);
@@ -1962,6 +2002,7 @@ main(int argc, char *argv[])
                 .icsbrec_port_binding_by_az = icsbrec_port_binding_by_az,
                 .icsbrec_port_binding_by_ts = icsbrec_port_binding_by_ts,
                 .icsbrec_port_binding_by_ts_az = icsbrec_port_binding_by_ts_az,
+                .icsbrec_route_by_az = icsbrec_route_by_az,
                 .icsbrec_route_by_ts = icsbrec_route_by_ts,
                 .icsbrec_route_by_ts_az = icsbrec_route_by_ts_az,
             };
