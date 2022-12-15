@@ -202,6 +202,15 @@
         </p>
       </column>
 
+      <column name="options" key="northd_trim_timeout">
+        <p>
+          When used, this configuration value specifies the time, in
+          milliseconds, since the last <code>ovn-northd</code> active operation
+          after which memory trimming is performed.  By default this is set to
+          30000 (30 seconds).
+        </p>
+      </column>
+
       <column name="options" key="use_logical_dp_groups">
         <p>
           Note: This option is deprecated, the only behavior is to always

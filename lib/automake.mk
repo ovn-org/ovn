@@ -30,6 +30,8 @@ lib_libovn_la_SOURCES = \
 	lib/mac-binding-index.h \
 	lib/mcast-group-index.c \
 	lib/mcast-group-index.h \
+	lib/memory-trim.c \
+	lib/memory-trim.h \
 	lib/lex.c \
 	lib/objdep.c \
 	lib/objdep.h \

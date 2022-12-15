@@ -24,10 +24,9 @@
 #include "coverage.h"
 #include "lflow-cache.h"
 #include "lib/uuid.h"
-#include "openvswitch/poll-loop.h"
+#include "memory-trim.h"
 #include "openvswitch/vlog.h"
 #include "ovn/expr.h"
-#include "timeval.h"
 
 VLOG_DEFINE_THIS_MODULE(lflow_cache);
 
@@ -54,6 +53,7 @@ static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
 
 struct lflow_cache {
     struct hmap entries[LCACHE_T_MAX];
+    struct memory_trimmer *mt;
     uint32_t n_entries;
     uint32_t high_watermark;
     uint32_t capacity;
@@ -61,10 +61,7 @@ struct lflow_cache {
     uint64_t max_mem_usage;
     uint32_t trim_limit;
     uint32_t trim_wmark_perc;
-    uint32_t trim_timeout_ms;
     uint64_t trim_count;
-    long long int last_active_ms;
-    bool recently_active;
     bool enabled;
 };
 
@@ -84,7 +81,6 @@ static struct lflow_cache_value *lflow_cache_add__(
 static void lflow_cache_delete__(struct lflow_cache *lc,
                                  struct lflow_cache_entry *lce);
 static void lflow_cache_trim__(struct lflow_cache *lc, bool force);
-static void lflow_cache_record_activity__(struct lflow_cache *lc);
 
 struct lflow_cache *
 lflow_cache_create(void)
@@ -94,6 +90,7 @@ lflow_cache_create(void)
     for (size_t i = 0; i < LCACHE_T_MAX; i++) {
         hmap_init(&lc->entries[i]);
     }
+    lc->mt = memory_trimmer_create();
 
     return lc;
 }
@@ -127,6 +124,7 @@ lflow_cache_destroy(struct lflow_cache *lc)
     for (size_t i = 0; i < LCACHE_T_MAX; i++) {
         hmap_destroy(&lc->entries[i]);
     }
+    memory_trimmer_destroy(lc->mt);
     free(lc);
 }
 
@@ -144,13 +142,6 @@ lflow_cache_enable(struct lflow_cache *lc, bool enabled, uint32_t capacity,
                      "requested %"PRIu32", using 100 instead",
                      trim_wmark_perc);
         trim_wmark_perc = 100;
-    }
-
-    if (trim_timeout_ms < 1000) {
-        VLOG_WARN_RL(&rl, "Invalid requested trim timeout: "
-                     "requested %"PRIu32" ms, using 1000 ms instead",
-                     trim_timeout_ms);
-        trim_timeout_ms = 1000;
     }
 
     uint64_t max_mem_usage = max_mem_usage_kb * 1024;
@@ -172,13 +163,13 @@ lflow_cache_enable(struct lflow_cache *lc, bool enabled, uint32_t capacity,
     lc->max_mem_usage = max_mem_usage;
     lc->trim_limit = lflow_trim_limit;
     lc->trim_wmark_perc = trim_wmark_perc;
-    lc->trim_timeout_ms = trim_timeout_ms;
+    memory_trimmer_set(lc->mt, trim_timeout_ms);
 
     if (need_flush) {
-        lflow_cache_record_activity__(lc);
+        memory_trimmer_record_activity(lc->mt);
         lflow_cache_flush(lc);
     } else if (need_trim) {
-        lflow_cache_record_activity__(lc);
+        memory_trimmer_record_activity(lc->mt);
         lflow_cache_trim__(lc, false);
     }
 }
@@ -286,7 +277,7 @@ lflow_cache_delete(struct lflow_cache *lc, const struct uuid *lflow_uuid)
         lflow_cache_delete__(lc, CONTAINER_OF(lcv, struct lflow_cache_entry,
                                               value));
         lflow_cache_trim__(lc, false);
-        lflow_cache_record_activity__(lc);
+        memory_trimmer_record_activity(lc->mt);
     }
 }
 
@@ -327,41 +318,15 @@ lflow_cache_get_memory_usage(const struct lflow_cache *lc, struct simap *usage)
 void
 lflow_cache_run(struct lflow_cache *lc)
 {
-    if (!lc->recently_active) {
-        return;
-    }
-
-    long long int now = time_msec();
-    if (now < lc->last_active_ms || now < lc->trim_timeout_ms) {
-        VLOG_WARN_RL(&rl, "Detected cache last active timestamp overflow");
-        lc->recently_active = false;
+    if (memory_trimmer_can_run(lc->mt)) {
         lflow_cache_trim__(lc, true);
-        return;
-    }
-
-    if (now < lc->trim_timeout_ms) {
-        VLOG_WARN_RL(&rl, "Detected very large trim timeout: "
-                     "now %lld ms timeout %"PRIu32" ms",
-                     now, lc->trim_timeout_ms);
-        return;
-    }
-
-    if (now - lc->trim_timeout_ms >= lc->last_active_ms) {
-        VLOG_INFO_RL(&rl, "Detected cache inactivity "
-                    "(last active %lld ms ago): trimming cache",
-                    now - lc->last_active_ms);
-        lflow_cache_trim__(lc, true);
-        lc->recently_active = false;
     }
 }
 
 void
 lflow_cache_wait(struct lflow_cache *lc)
 {
-    if (!lc->recently_active) {
-        return;
-    }
-    poll_timer_wait_until(lc->last_active_ms + lc->trim_timeout_ms);
+    memory_trimmer_wait(lc->mt);
 }
 
 static struct lflow_cache_value *
@@ -388,7 +353,7 @@ lflow_cache_add__(struct lflow_cache *lc, const struct uuid *lflow_uuid,
         }
     }
 
-    lflow_cache_record_activity__(lc);
+    memory_trimmer_record_activity(lc->mt);
     lc->mem_usage += size;
 
     COVERAGE_INC(lflow_cache_add);
@@ -447,17 +412,8 @@ lflow_cache_trim__(struct lflow_cache *lc, bool force)
         hmap_shrink(&lc->entries[i]);
     }
 
-#if HAVE_DECL_MALLOC_TRIM
-    malloc_trim(0);
-#endif
+    memory_trimmer_trim(lc->mt);
 
     lc->high_watermark = lc->n_entries;
     lc->trim_count++;
-}
-
-static void
-lflow_cache_record_activity__(struct lflow_cache *lc)
-{
-    lc->last_active_ms = time_msec();
-    lc->recently_active = true;
 }

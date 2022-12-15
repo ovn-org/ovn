@@ -25,6 +25,7 @@
 #include "inc-proc-northd.h"
 #include "lib/ip-mcast-index.h"
 #include "lib/mcast-group-index.h"
+#include "lib/memory-trim.h"
 #include "memory.h"
 #include "northd.h"
 #include "ovs-numa.h"
@@ -727,6 +728,34 @@ run_idl_loop(struct ovsdb_idl_loop *idl_loop, const char *name)
     return txn;
 }
 
+#define DEFAULT_NORTHD_TRIM_TO_MS 30000
+
+static void
+run_memory_trimmer(struct ovsdb_idl *ovnnb_idl, bool activity)
+{
+    static struct memory_trimmer *mt = NULL;
+
+    if (!mt) {
+        mt = memory_trimmer_create();
+    }
+
+    const struct nbrec_nb_global *nb = nbrec_nb_global_first(ovnnb_idl);
+    if (nb) {
+        memory_trimmer_set(mt, smap_get_uint(&nb->options,
+                                             "northd_trim_timeout",
+                                             DEFAULT_NORTHD_TRIM_TO_MS));
+    }
+
+    if (activity) {
+        memory_trimmer_record_activity(mt);
+    }
+
+    if (memory_trimmer_can_run(mt)) {
+        memory_trimmer_trim(mt);
+    }
+    memory_trimmer_wait(mt);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -905,7 +934,8 @@ main(int argc, char *argv[])
 
             if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
                 int64_t loop_start_time = time_wall_msec();
-                inc_proc_northd_run(ovnnb_txn, ovnsb_txn, recompute);
+                bool activity = inc_proc_northd_run(ovnnb_txn, ovnsb_txn,
+                                                    recompute);
                 recompute = false;
                 if (ovnsb_txn) {
                     check_and_add_supported_dhcp_opts_to_sb_db(
@@ -937,6 +967,7 @@ main(int argc, char *argv[])
                               "force recompute next time.");
                     recompute = true;
                 }
+                run_memory_trimmer(ovnnb_idl_loop.idl, activity);
             } else {
                 /* Make sure we send any pending requests, e.g., lock. */
                 ovsdb_idl_loop_commit_and_wait(&ovnnb_idl_loop);
