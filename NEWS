@@ -1,4 +1,4 @@
-OVN v22.12.0 - xx xxx xxxx
+OVN v22.12.0 - 16 Dec 2022
 --------------------------
   - Add load balancer "affinity_timeout" option to configure load balancing
     of traffic from a particular client to the same backend for a given
