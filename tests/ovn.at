@@ -26227,23 +26227,38 @@ wait_row_count Port_Binding 1 logical_port=lsp-cont1 chassis=$ch
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
+# TEST_LR_DROP_TRAFFIC_FOR_OWN_IPS [ DGP | GR ]
 # Test dropping traffic destined to router owned IPs.
-OVN_FOR_EACH_NORTHD([
-AT_SETUP([gateway router drop traffic for own IPs])
+m4_define([TEST_LR_DROP_TRAFFIC_FOR_OWN_IPS], [
 ovn_start
 
-ovn-nbctl lr-add r1 -- set logical_router r1 options:chassis=hv1
-ovn-nbctl ls-add s1
+ovn-nbctl lr-add r1 # Gateway router or LR with DGP on the ext side
+ovn-nbctl ls-add ext # simulate external LS
+ovn-nbctl ls-add s2 # simulate internal LS
 
-# Connnect r1 to s1.
-ovn-nbctl lrp-add r1 lrp-r1-s1 00:00:00:00:01:01 10.0.1.1/24
-ovn-nbctl lsp-add s1 lsp-s1-r1 -- set Logical_Switch_Port lsp-s1-r1 type=router \
-    options:router-port=lrp-r1-s1 addresses=router
+# Connnect r1 to ext.
+ovn-nbctl lrp-add r1 lrp-r1-ext 00:00:00:00:01:01 10.0.1.1/24
+if test X"$1" = X"DGP"; then
+    ovn-nbctl lrp-set-gateway-chassis lrp-r1-ext hv1 1
+else
+    ovn-nbctl set logical_router r1 options:chassis=hv1
+fi
+ovn-nbctl lsp-add ext lsp-ext-r1 -- set Logical_Switch_Port lsp-ext-r1 type=router \
+    options:router-port=lrp-r1-ext addresses=router
 
-# Create logical port p1 in s1
-ovn-nbctl lsp-add s1 p1 \
+# Connnect r1 to s2.
+ovn-nbctl lrp-add r1 lrp-r1-s2 00:00:00:00:02:01 10.0.2.1/24
+ovn-nbctl lsp-add s2 lsp-s2-r1 -- set Logical_Switch_Port lsp-s2-r1 type=router \
+    options:router-port=lrp-r1-s2 addresses=router
+
+# Create logical port p1 in ext
+ovn-nbctl lsp-add ext p1 \
 -- lsp-set-addresses p1 "f0:00:00:00:01:02 10.0.1.2" \
 -- lsp-set-port-security p1 "f0:00:00:00:01:02 10.0.1.2"
+
+# Create logical port p2 in s2
+ovn-nbctl lsp-add s2 p2 \
+-- lsp-set-addresses p2 "f0:00:00:00:02:02 10.0.2.2"
 
 # Create two hypervisor and create OVS ports corresponding to logical ports.
 net_add n1
@@ -26258,6 +26273,12 @@ ovs-vsctl -- add-port br-int hv1-vif1 -- \
     options:rxq_pcap=hv1/vif1-rx.pcap \
     ofport-request=1
 
+ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=p2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
 # packets for ARP resolution (native tunneling doesn't queue packets
 # for ARP resolution).
@@ -26268,9 +26289,10 @@ ovn-nbctl --wait=hv sync
 
 sw_key=$(ovn-sbctl --bare --columns tunnel_key list datapath_binding r1)
 
+echo sw_key: $sw_key
 AT_CHECK([ovn-sbctl lflow-list | grep lr_in_arp_resolve | grep 10.0.1.1], [1], [])
 
-# Send ip packets from p1 to lrp-r1-s1
+# Send ip packets from p1 to lrp-r1-ext
 src_mac="f00000000102"
 dst_mac="000000000101"
 src_ip=`ip_to_hex 10 0 1 2`
@@ -26289,10 +26311,10 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=11, n_packets=1,.*
 ])
 
 # Use the router IP as SNAT IP.
-ovn-nbctl set logical_router r1 options:lb_force_snat_ip=10.0.1.1
+ovn-nbctl lr-nat-add r1 snat 10.0.1.1 10.8.8.0/24
 ovn-nbctl --wait=hv sync
 
-# Send ip packets from p1 to lrp-r1-s1
+# Send ip packets from p1 to lrp-r1-ext
 src_mac="f00000000102"
 dst_mac="000000000101"
 src_ip=`ip_to_hex 10 0 1 2`
@@ -26307,11 +26329,53 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep "actions=controller" | grep 
 ])
 
 # The packet should've been dropped in the lr_in_arp_resolve stage.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=23, n_packets=1,.* priority=1,ip,metadata=0x${sw_key},nw_dst=10.0.1.1 actions=drop" -c], [0], [dnl
+if test X"$1" = X"DGP"; then
+    prio=150
+    inport=reg14
+    outport=reg15
+else
+    prio=1
+fi
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=23, n_packets=1,.* priority=$prio,ip,$inport.*$outport.*metadata=0x${sw_key},nw_dst=10.0.1.1 actions=drop" -c], [0], [dnl
 1
 ])
 
+# Send ip packets from p2 to lrp-r1-ext
+src_mac="f00000000202"
+dst_mac="000000000201"
+src_ip=`ip_to_hex 10 0 2 2`
+dst_ip=`ip_to_hex 10 0 1 1`
+packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}${dst_ip}0035111100080000
+as hv1 ovs-appctl netdev-dummy/receive hv1-vif2 $packet
+
+# Still no packet-ins should reach ovn-controller.
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep "actions=controller" | grep -v n_packets=0 -c], [1], [dnl
+0
+])
+
+if test X"$1" = X"DGP"; then
+    # The packet dst should be resolved once for E/W centralized NAT purpose.
+    AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=23, n_packets=1,.* priority=100,reg0=0xa000101,reg15=.*metadata=0x${sw_key} actions=mod_dl_dst:00:00:00:00:01:01,resubmit" -c], [0], [dnl
+1
+])
+fi
+
+# The packet should've been finally dropped in the lr_in_arp_resolve stage.
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=23, n_packets=2,.* priority=$prio,ip,$inport.*$outport.*metadata=0x${sw_key},nw_dst=10.0.1.1 actions=drop" -c], [0], [dnl
+1
+])
 OVN_CLEANUP([hv1])
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([gateway router drop traffic for own IPs])
+TEST_LR_DROP_TRAFFIC_FOR_OWN_IPS(GR)
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([distributed gateway port drop traffic for own IPs])
+TEST_LR_DROP_TRAFFIC_FOR_OWN_IPS(DGP)
 AT_CLEANUP
 ])
 

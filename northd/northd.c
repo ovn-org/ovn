@@ -13447,7 +13447,8 @@ build_lrouter_ingress_flow(struct hmap *lflows, struct ovn_datapath *od,
 static int
 lrouter_check_nat_entry(struct ovn_datapath *od, const struct nbrec_nat *nat,
                         ovs_be32 *mask, bool *is_v6, int *cidr_bits,
-                        struct eth_addr *mac, bool *distributed)
+                        struct eth_addr *mac, bool *distributed,
+                        struct ovn_port **nat_l3dgw_port)
 {
     struct in6_addr ipv6, mask_v6, v6_exact = IN6ADDR_EXACT_INIT;
     ovs_be32 ip;
@@ -13479,6 +13480,27 @@ lrouter_check_nat_entry(struct ovn_datapath *od, const struct nbrec_nat *nat,
         * Treat the rest of the handling of this NAT rule
         * as IPv6. */
         *is_v6 = true;
+    }
+    /* Validate gateway_port of NAT rule. */
+    *nat_l3dgw_port = NULL;
+    if (od->n_l3dgw_ports == 1) {
+        *nat_l3dgw_port = od->l3dgw_ports[0];
+    } else if (od->n_l3dgw_ports > 1) {
+        /* Find the DGP reachable for the NAT external IP. */
+        for (size_t i = 0; i < od->n_l3dgw_ports; i++) {
+           if (find_lrp_member_ip(od->l3dgw_ports[i], nat->external_ip)) {
+               *nat_l3dgw_port = od->l3dgw_ports[i];
+               break;
+           }
+        }
+        if (*nat_l3dgw_port == NULL) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_WARN_RL(&rl, "Unable to determine gateway_port for NAT "
+                         "with external_ip: %s configured on logical "
+                         "router: %s with multiple distributed gateway "
+                         "ports", nat->external_ip, od->nbr->name);
+            return -EINVAL;
+        }
     }
 
     /* Check the validity of nat->logical_ip. 'logical_ip' can
@@ -13652,9 +13674,10 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
         bool is_v6, distributed;
         ovs_be32 mask;
         int cidr_bits;
+        struct ovn_port *l3dgw_port;
 
         if (lrouter_check_nat_entry(od, nat, &mask, &is_v6, &cidr_bits,
-                                    &mac, &distributed) < 0) {
+                                    &mac, &distributed, &l3dgw_port) < 0) {
             continue;
         }
 
@@ -13673,6 +13696,23 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
             sset_add(&nat_entries, nat->external_ip);
         } else {
             if (!sset_contains(&nat_entries, nat->external_ip)) {
+                /* Drop packets coming in from external that still has
+                 * destination IP equals to the NAT external IP, to avoid loop.
+                 * The packets must have gone through DNAT/unSNAT stage but
+                 * failed to convert the destination. */
+                ds_clear(match);
+                ds_put_format(
+                    match, "inport == %s && outport == %s && ip%s.dst == %s",
+                    l3dgw_port->json_key, l3dgw_port->json_key,
+                    is_v6 ? "6" : "4", nat->external_ip);
+                ovn_lflow_add_with_hint(lflows, od,
+                                        S_ROUTER_IN_ARP_RESOLVE,
+                                        150, ds_cstr(match),
+                                        "drop;",
+                                        &nat->header_);
+                /* Now for packets coming from other (downlink) LRPs, allow ARP
+                 * resolve for the NAT IP, so that such packets can be
+                 * forwarded for E/W NAT. */
                 ds_clear(match);
                 ds_put_format(
                     match, "outport == %s && %s == %s",
