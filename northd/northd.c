@@ -13881,6 +13881,23 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
             sset_add(&nat_entries, nat->external_ip);
         } else {
             if (!sset_contains(&nat_entries, nat->external_ip)) {
+                /* Drop packets coming in from external that still has
+                 * destination IP equals to the NAT external IP, to avoid loop.
+                 * The packets must have gone through DNAT/unSNAT stage but
+                 * failed to convert the destination. */
+                ds_clear(match);
+                ds_put_format(
+                    match, "inport == %s && outport == %s && ip%s.dst == %s",
+                    l3dgw_port->json_key, l3dgw_port->json_key,
+                    is_v6 ? "6" : "4", nat->external_ip);
+                ovn_lflow_add_with_hint(lflows, od,
+                                        S_ROUTER_IN_ARP_RESOLVE,
+                                        150, ds_cstr(match),
+                                        "drop;",
+                                        &nat->header_);
+                /* Now for packets coming from other (downlink) LRPs, allow ARP
+                 * resolve for the NAT IP, so that such packets can be
+                 * forwarded for E/W NAT. */
                 ds_clear(match);
                 ds_put_format(
                     match, "outport == %s && %s == %s",
