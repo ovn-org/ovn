@@ -4262,13 +4262,17 @@ outport = <var>P</var>
           For each row in the <code>NAT</code> table with IPv4 address
           <var>A</var> in the <ref column="external_ip"
           table="NAT" db="OVN_Northbound"/> column of
-          <ref table="NAT" db="OVN_Northbound"/> table, a priority-100
-          flow with the match <code>outport === <var>P</var> &amp;&amp;
-          reg0 == <var>A</var></code> has actions <code>eth.dst = <var>E</var>;
-          next;</code>, where <code>P</code> is the distributed logical router
-          port, <var>E</var> is the Ethernet address if set in the
-          <ref column="external_mac" table="NAT" db="OVN_Northbound"/> column
-          of <ref table="NAT" db="OVN_Northbound"/> table for of type
+          <ref table="NAT" db="OVN_Northbound"/> table, below two flows are
+          programmed:
+        </p>
+
+        <p>
+          A priority-100 flow with the match <code>outport == <var>P</var>
+          &amp;&amp; reg0 == <var>A</var></code> has actions <code>eth.dst =
+          <var>E</var>; next;</code>, where <code>P</code> is the distributed
+          logical router port, <var>E</var> is the Ethernet address if set in
+          the <ref column="external_mac" table="NAT" db="OVN_Northbound"/>
+          column of <ref table="NAT" db="OVN_Northbound"/> table for of type
           <code>dnat_and_snat</code>, otherwise the Ethernet address of the
           distributed logical router port. Note that if the
           <ref column="external_ip" table="NAT" db="OVN_Northbound"/> is not
@@ -4279,8 +4283,17 @@ outport = <var>P</var>
         </p>
 
         <p>
+          Corresponding to the above flow, a priority-150 flow with the match
+          <code>inport == <var>P</var> &amp;&amp; outport == <var>P</var>
+          &amp;&amp; ip4.dst == <var>A</var></code> has actions
+          <code>drop;</code> to exclude packets that have gone through
+          DNAT/unSNAT stage but failed to convert the destination, to avoid
+          loop.
+        </p>
+
+        <p>
           For IPv6 NAT entries, same flows are added, but using the register
-          <code>xxreg0</code> for the match.
+          <code>xxreg0</code> and field <code>ip6</code> for the match.
         </p>
       </li>
 
