@@ -154,9 +154,15 @@ main(int argc, char *argv[])
         }
 
         if (ovsdb_idl_has_ever_connected(ovnsb_idl)) {
-            if (!already_read) {
-                already_read = true;
+            if (get_detach()) {
+                // When daemon mode, need to read latest data.
                 read_db();
+            } else {
+                // Non-daemon mode, just read once.
+                if (!already_read) {
+                    already_read = true;
+                    read_db();
+                }
             }
 
             daemonize_complete();
