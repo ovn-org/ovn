@@ -1,0 +1,31 @@
+From 903eef2dd6f9fec818a580760f4757d8137b9974 Mon Sep 17 00:00:00 2001
+From: Dumitru Ceara <dceara@redhat.com>
+Date: Mon, 19 Dec 2022 12:18:55 +0100
+Subject: [PATCH] DOWNSTREAM: Disable session affinity tests.
+
+Commit https://github.com/ovn-org/ovn-kubernetes/commit/898d2f8f10c4
+enabled affinity timeout tests but the underlying OVN feature is
+not supported in this branch.  Disable affinity tests.
+
+Signed-off-by: Dumitru Ceara <dceara@redhat.com>
+---
+ test/scripts/e2e-kind.sh | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/test/scripts/e2e-kind.sh b/test/scripts/e2e-kind.sh
+index 69959fa1b..c3b2a5c3e 100755
+--- a/test/scripts/e2e-kind.sh
++++ b/test/scripts/e2e-kind.sh
+@@ -26,6 +26,9 @@ kube-proxy
+ should set TCP CLOSE_WAIT timeout
+ \[Feature:ProxyTerminatingEndpoints\]
+ 
++# Disable session affinity tests completely.
++session affinity
++
+ # NOT IMPLEMENTED; SEE DISCUSSION IN https://github.com/ovn-org/ovn-kubernetes/pull/1225
+ named port.+\[Feature:NetworkPolicy\]
+ 
+-- 
+2.31.1
+
