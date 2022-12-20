@@ -1,5 +1,6 @@
-OVN v22.03.2 - xx xxx xxxx
+OVN v22.03.2 - 20 Dec 2022
 --------------------------
+  - Bug fixes
   - Support (LSP.options:qos_min_rate) to guarantee minimal bandwidth available
     for a logical port.
   - Bump python version required for building OVN to 3.6.
