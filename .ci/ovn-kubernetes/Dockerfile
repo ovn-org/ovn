@@ -47,9 +47,17 @@ RUN GO111MODULE=on go install github.com/ovn-org/libovsdb/cmd/modelgen@${LIBOVSD
 # Clone OVN Kubernetes and build the binary based on the commit passed as argument
 WORKDIR /root
 RUN git clone https://github.com/ovn-org/ovn-kubernetes.git
-WORKDIR /root/ovn-kubernetes/go-controller
+WORKDIR /root/ovn-kubernetes
 RUN git checkout ${OVNKUBE_COMMIT} && git log -n 1
 
+# Copy the ovn-kubernetes scripts from the OVN sources and apply any
+# custom changes if needed.
+RUN mkdir -p /tmp/ovn/.ci/ovn-kubernetes
+COPY .ci/ovn-kubernetes /tmp/ovn/.ci/ovn-kubernetes
+WORKDIR /tmp/ovn
+RUN .ci/ovn-kubernetes/prepare.sh /root/ovn-kubernetes
+
+WORKDIR /root/ovn-kubernetes/go-controller
 # Make sure we use the OVN NB/SB schema from the local code.
 COPY --from=ovnbuilder /tmp/ovn/ovn-nb.ovsschema pkg/nbdb/ovn-nb.ovsschema
 COPY --from=ovnbuilder /tmp/ovn/ovn-sb.ovsschema pkg/sbdb/ovn-sb.ovsschema
