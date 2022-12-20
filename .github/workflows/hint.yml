@@ -1,0 +1,33 @@
+name: Hint to a github contributor
+
+on:
+  pull_request_target:
+    types: [opened, created]
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add comment to PR
+        env:
+          URL: ${{ github.event.pull_request.comments_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MESSAGE:
+            Hi!\n
+            Thanks for the patch.\n
+            Please take a look at
+            https://github.com/ovn-org/ovn/blob/main/Documentation/internals/contributing/submitting-patches.rst
+            and
+            https://github.com/ovn-org/ovn/blob/main/Documentation/internals/contributing/coding-style.rst\n
+            Squash commits and ensure that your patch passes the checks:\n
+            ```\n
+            $ ./utilities/checkpatch.py -1\n
+            ```\n
+
+        run: |
+          curl \
+            -X POST \
+            $URL \
+            -H "Content-Type: application/json" \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            --data "{ \"body\": \"$MESSAGE\" }"
