@@ -1118,6 +1118,8 @@ Default directories with "configure" option and environment variable override:
   user binaries: /usr/local/bin (--bindir, OVN_BINDIR)
   system binaries: /usr/local/sbin (--sbindir, OVN_SBINDIR)
 EOF
+
+    exit 0
 }
 
 set_defaults
