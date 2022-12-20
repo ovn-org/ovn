@@ -95,6 +95,7 @@ static bool use_friendly_names = true;
 OVS_NO_RETURN static void usage(void);
 static void parse_options(int argc, char *argv[]);
 static char *trace(const char *datapath, const char *flow);
+static void clear_data(void);
 static void read_db(void);
 static unixctl_cb_func ovntrace_exit;
 static unixctl_cb_func ovntrace_trace;
@@ -136,6 +137,9 @@ main(int argc, char *argv[])
         if (error) {
             ovs_fatal(error, "failed to create unixctl server");
         }
+        puts(unixctl_server_get_path(server));
+        fflush(stdout);
+
         unixctl_command_register("exit", "", 0, 0, ovntrace_exit, &exiting);
         unixctl_command_register("trace", "[OPTIONS] [DATAPATH] MICROFLOW",
                                  1, INT_MAX, ovntrace_trace, NULL);
@@ -143,7 +147,6 @@ main(int argc, char *argv[])
     ovnsb_idl = ovsdb_idl_create(db, &sbrec_idl_class, true, false);
     ovsdb_idl_set_leader_only(ovnsb_idl, leader_only);
 
-    bool already_read = false;
     for (;;) {
         ovsdb_idl_run(ovnsb_idl);
         unixctl_server_run(server);
@@ -154,11 +157,8 @@ main(int argc, char *argv[])
         }
 
         if (ovsdb_idl_has_ever_connected(ovnsb_idl)) {
-            if (!already_read) {
-                already_read = true;
-                read_db();
-            }
-
+            clear_data();
+            read_db();
             daemonize_complete();
             if (!get_detach()) {
                 const char *dp_s = argc > 1 ? argv[0] : NULL;
@@ -443,7 +443,7 @@ struct ovntrace_port {
     struct uuid uuid;
     char *name;
     char *name2;
-    const char *friendly_name;
+    char *friendly_name;
     char *type;
     uint16_t tunnel_key;
     struct ovntrace_port *peer; /* Patch ports only. */
@@ -677,6 +677,120 @@ shorten_uuid(const char *s)
     return (len >= UUID_LEN && uuid_is_partial_string(s + (len - UUID_LEN))
             ? xmemdup0(s, len - (UUID_LEN - 6))
             : xstrdup(s));
+}
+
+static void
+ovntrace_fdbs_destroy(struct hmap *fdbs)
+{
+    struct ovntrace_fdb *fdb;
+    HMAP_FOR_EACH_POP (fdb, node, fdbs) {
+        free(fdb);
+    }
+    hmap_destroy(fdbs);
+}
+
+static void
+ovntrace_mac_bindings_destroy(struct hmap *bindings)
+{
+    struct ovntrace_mac_binding *binding;
+    HMAP_FOR_EACH_POP (binding, node, bindings) {
+        free(binding);
+    }
+    hmap_destroy(bindings);
+}
+
+static void
+ovntrace_flows_destroy(struct ovntrace_flow **flows, size_t n_flows)
+{
+    for (size_t i = 0; i < n_flows; i++) {
+        struct ovntrace_flow *flow = flows[i];
+        free(flow->stage_name);
+        free(flow->source);
+        expr_destroy(flow->match);
+        free(flow->match_s);
+        ovnacts_free(flow->ovnacts, flow->ovnacts_len);
+        free(flow->ovnacts);
+        free(flow);
+    }
+    free(flows);
+}
+
+static void
+ovntrace_mcgroups_destroy(struct ovs_list *mcgroups)
+{
+    struct ovntrace_mcgroup *mcgroup;
+    LIST_FOR_EACH_POP (mcgroup, list_node, mcgroups) {
+        free(mcgroup->name);
+        free(mcgroup->ports);
+        free(mcgroup);
+    }
+}
+
+static void
+ovntrace_datapaths_destroy(void)
+{
+    struct ovntrace_datapath *dp;
+    HMAP_FOR_EACH_POP (dp, sb_uuid_node, &datapaths) {
+        ovntrace_mcgroups_destroy(&dp->mcgroups);
+        ovntrace_mac_bindings_destroy(&dp->mac_bindings);
+        ovntrace_fdbs_destroy(&dp->fdbs);
+        ovntrace_flows_destroy(dp->flows, dp->n_flows);
+        free(dp->name);
+        free(dp->name2);
+        free(dp->friendly_name);
+        free(dp);
+    }
+    hmap_destroy(&datapaths);
+}
+
+static void
+ovntrace_ports_destroy(void)
+{
+    struct shash_node *node, *node_next;
+    SHASH_FOR_EACH_SAFE (node, node_next, &ports) {
+        struct ovntrace_port *port = node->data;
+        free(port->name);
+        free(port->type);
+        free(port->name2);
+        free(port->friendly_name);
+        free(port);
+        shash_delete(&ports, node);
+    }
+    shash_destroy(&ports);
+}
+
+static void
+address_sets_destroy(void)
+{
+    expr_const_sets_destroy(&address_sets);
+    shash_destroy(&address_sets);
+}
+
+static void
+port_groups_destroy(void)
+{
+    expr_const_sets_destroy(&port_groups);
+    shash_destroy(&port_groups);
+}
+
+static void
+clear_data(void)
+{
+    static bool first_clear = true;
+    if (first_clear) {
+        first_clear = false;
+    } else {
+        ovntrace_datapaths_destroy();
+        ovntrace_ports_destroy();
+        address_sets_destroy();
+        port_groups_destroy();
+        dhcp_opts_destroy(&dhcp_opts);
+        dhcp_opts_destroy(&dhcpv6_opts);
+        nd_ra_opts_destroy(&nd_ra_opts);
+        controller_event_opts_destroy(&event_opts);
+        expr_symtab_destroy(&symtab);
+        shash_destroy(&symtab);
+    }
 }
 
 static void
