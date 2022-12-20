@@ -1,5 +1,6 @@
-OVN v22.06.1 - xx xxx xxxx
+OVN v22.06.1 - 20 Dec 2022
 --------------------------
+  - Bug fixes
   - Added nb_global IPsec options ipsec_encapsulation=true (libreswan)
     and ipsec_forceencaps=true (strongswan) to unconditionally enforce
     NAT-T UDP encapsulation. Requires OVS support for IPsec custom tunnel
