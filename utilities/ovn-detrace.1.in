@@ -39,6 +39,10 @@ environments.
 Also decode flow information (like OVS ofport) from the flows by connecting
 to the OVS DB.
 .
+.IP "\fB\-\-no-leader-only\fR"
+Connect to any cluster member, not just the leader. The option works for
+OVN Southbound DB and OVN Northbound DB.
+.
 .IP "\fB\-\-ovsdb=\fIserver\fR"
 The OVS DB remote to contact if \fB\-\-ovs\fR is present.  If the
 \fBOVS_RUNDIR\fR environment variable is set, its value is used as the
