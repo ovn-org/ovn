@@ -50,6 +50,7 @@ The following options are also available:
   --ovnsb=DATABASE            use DATABASE as southbound DB
   --ovnnb=DATABASE            use DATABASE as northbound DB
   --ovsdb=DATABASE            use DATABASE as OVS DB
+  --no-leader-only            accept any cluster member, not just the leader
   -p, --private-key=FILE      file with private key
   -c, --certificate=FILE      file with certificate for private key
   -C, --ca-cert=FILE          file with peer CA certificate\
@@ -90,12 +91,12 @@ class OVSDB(object):
             if time.time() >= stop:
                 raise Exception('Retry Timeout')
 
-    def __init__(self, remote, schema_name):
+    def __init__(self, remote, schema_name, leader_only=True):
         self.remote = remote
         self._txn = None
         schema = self._get_schema(schema_name)
         schema.register_all()
-        self._idl_conn = idl.Idl(remote, schema)
+        self._idl_conn = idl.Idl(remote, schema, leader_only=leader_only)
         OVSDB.wait_for_db_change(self._idl_conn)  # Initial Sync with DB
 
     def _get_schema(self, schema_name):
@@ -411,6 +412,7 @@ def main():
     try:
         options, args = getopt.gnu_getopt(sys.argv[1:], 'hVp:c:C:',
                                           ['help', 'version', 'ovs',
+                                           'no-leader-only',
                                            'ovnsb=', 'ovnnb=', 'ovsdb=',
                                            'private-key=', 'certificate=',
                                            'ca-cert='])
@@ -418,10 +420,11 @@ def main():
         sys.stderr.write("%s: %s\n" % (argv0, geo.msg))
         sys.exit(1)
 
-    ovnsb_db = None
-    ovnnb_db = None
-    ovs_db   = None
-    ovs      = False
+    ovnsb_db    = None
+    ovnnb_db    = None
+    ovs_db      = None
+    ovs         = False
+    leader_only = True
 
     ssl_pk      = None
     ssl_cert    = None
@@ -446,6 +449,8 @@ def main():
             ssl_ca_cert = value
         elif key in ['--ovs']:
             ovs = True
+        elif key in ['--no-leader-only']:
+            leader_only = False
         else:
             sys.exit(0)
 
@@ -483,8 +488,8 @@ def main():
     if ovs and not ovs_db:
         ovs_db = 'unix:%s/db.sock' % ovs_rundir
 
-    ovsdb_ovnsb = OVSDB(ovnsb_db, 'OVN_Southbound')
-    ovsdb_ovnnb = OVSDB(ovnnb_db, 'OVN_Northbound')
+    ovsdb_ovnsb = OVSDB(ovnsb_db, 'OVN_Southbound', leader_only=leader_only)
+    ovsdb_ovnnb = OVSDB(ovnnb_db, 'OVN_Northbound', leader_only=leader_only)
 
     printer = Printer()
     cookie_handlers = get_cookie_handlers(ovsdb_ovnnb, ovsdb_ovnsb, printer)
