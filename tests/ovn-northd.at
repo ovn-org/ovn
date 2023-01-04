@@ -2232,9 +2232,9 @@ check ovn-nbctl acl-add sw0 to-lport 1002 'outport == "sw0-p1" && ip4.src == 10.
 check ovn-nbctl acl-add sw0 to-lport 1002 'outport == "sw0-p1" && ip4.src == 10.0.0.13' allow
 check ovn-nbctl acl-add pg0 to-lport 1002 'outport == "pg0" && ip4.src == 10.0.0.11' drop
 
-acl1=$(ovn-nbctl --bare --column _uuid,match find acl | grep -B1 '10.0.0.12' | head -1)
-acl2=$(ovn-nbctl --bare --column _uuid,match find acl | grep -B1 '10.0.0.13' | head -1)
-acl3=$(ovn-nbctl --bare --column _uuid,match find acl | grep -B1 '10.0.0.11' | head -1)
+acl1=$(ovn-nbctl --bare --column _uuid,match find acl | grep -F -B1 '10.0.0.12' | head -1)
+acl2=$(ovn-nbctl --bare --column _uuid,match find acl | grep -F -B1 '10.0.0.13' | head -1)
+acl3=$(ovn-nbctl --bare --column _uuid,match find acl | grep -F -B1 '10.0.0.11' | head -1)
 check ovn-nbctl set acl $acl1 log=true severity=alert meter=meter_me name=acl_one
 check ovn-nbctl set acl $acl2 log=true severity=info  meter=meter_me name=acl_two
 check ovn-nbctl set acl $acl3 log=true severity=info  meter=meter_me name=acl_three
