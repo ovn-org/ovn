@@ -34479,3 +34479,55 @@ OVS_WAIT_UNTIL([
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller deletes OVN patch ports for its integration bridge only])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+
+# prepare OVN patch ports on both "integration" bridges
+ovs-vsctl add-br br-phys
+ovs-vsctl add-br br-int
+ovs-vsctl -- add-port br-int fake-int-to-phys -- \
+    set port fake-int-to-phys external-ids:ovn-localnet-port=fake-port -- \
+    set interface fake-int-to-phys options:peer=fake-phys-to-int type=patch
+ovs-vsctl -- add-port br-phys fake-phys-to-int -- \
+    set port fake-phys-to-int external-ids:ovn-localnet-port=fake-port -- \
+    set interface fake-phys-to-int options:peer=fake-int-to-phys type=patch
+
+ovs-vsctl add-br br-phys-2
+ovs-vsctl add-br br-int-2
+ovs-vsctl -- add-port br-int-2 fake-int-2-to-phys-2 -- \
+    set port fake-int-2-to-phys-2 external-ids:ovn-localnet-port=fake-port-2 -- \
+    set interface fake-int-2-to-phys-2 options:peer=fake-phys-2-to-int-2 type=patch
+ovs-vsctl -- add-port br-phys-2 fake-phys-2-to-int-2 -- \
+    set port fake-phys-2-to-int-2 external-ids:ovn-localnet-port=fake-port-2 -- \
+    set interface fake-phys-2-to-int-2 options:peer=fake-int-2-to-phys-2 type=patch
+
+ovn_attach n1 br-phys 192.168.1.1 24
+
+# allow controller to immediately clean patch ports up
+check ovn-appctl -t ovn-controller debug/ignore-startup-delay
+
+# check that patch port on br-int is cleaned up (and also its peer)
+OVS_WAIT_UNTIL([
+    test 0 = $(ovs-vsctl --columns _uuid --bare find Port name=fake-int-to-phys | wc -l)
+])
+OVS_WAIT_UNTIL([
+    test 0 = $(ovs-vsctl --columns _uuid --bare find Port name=fake-phys-to-int | wc -l)
+])
+
+# check that patch port on a different bridge is not touched
+OVS_WAIT_UNTIL([
+    test 1 = $(ovs-vsctl --columns _uuid --bare find Port name=fake-int-2-to-phys-2 | wc -l)
+])
+OVS_WAIT_UNTIL([
+    test 1 = $(ovs-vsctl --columns _uuid --bare find Port name=fake-phys-2-to-int-2 | wc -l)
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])

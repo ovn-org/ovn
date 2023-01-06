@@ -271,12 +271,26 @@ add_bridge_mappings(struct ovsdb_idl_txn *ovs_idl_txn,
     shash_destroy(&bridge_mappings);
 }
 
+static const struct ovsrec_port *
+get_port(struct ovsdb_idl_index *ovsrec_port_by_name, const char *name)
+{
+    struct ovsrec_port *target =
+        ovsrec_port_index_init_row(ovsrec_port_by_name);
+    ovsrec_port_index_set_name(target, name);
+
+    const struct ovsrec_port *port = NULL;
+    OVSREC_PORT_FOR_EACH_EQUAL (port, target, ovsrec_port_by_name) {
+    }
+    ovsrec_port_index_destroy_row(target);
+    return port;
+}
+
 void
 patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
           struct ovsdb_idl_index *sbrec_port_binding_by_type,
           const struct ovsrec_bridge_table *bridge_table,
           const struct ovsrec_open_vswitch_table *ovs_table,
-          const struct ovsrec_port_table *port_table,
+          struct ovsdb_idl_index *ovsrec_port_by_name,
           const struct ovsrec_bridge *br_int,
           const struct sbrec_chassis *chassis,
           const struct hmap *local_datapaths)
@@ -293,7 +307,8 @@ patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
      * leaving useless ports on upgrade. */
     struct shash existing_ports = SHASH_INITIALIZER(&existing_ports);
     const struct ovsrec_port *port;
-    OVSREC_PORT_TABLE_FOR_EACH (port, port_table) {
+    for (size_t i = 0; i < br_int->n_ports; i++) {
+        port = br_int->ports[i];
         if (smap_get(&port->external_ids, "ovn-localnet-port")
             || smap_get(&port->external_ids, "ovn-l2gateway-port")
             || smap_get(&port->external_ids, "ovn-l3gateway-port")
@@ -321,6 +336,23 @@ patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
          * ovn-controller.  Otherwise it may cause unncessary dataplane
          * interruption during restart/upgrade. */
         if (!daemon_started_recently()) {
+            /* delete peer patch port first */
+            for (size_t i = 0; i < port->n_interfaces; i++) {
+                struct ovsrec_interface *iface = port->interfaces[i];
+                if (strcmp(iface->type, "patch")) {
+                    continue;
+                }
+                const char *iface_peer = smap_get(&iface->options, "peer");
+                if (iface_peer) {
+                    const struct ovsrec_port *peer_port =
+                        get_port(ovsrec_port_by_name, iface_peer);
+                    if (peer_port) {
+                        remove_port(bridge_table, peer_port);
+                    }
+                }
+            }
+
+            /* now delete integration bridge patch port */
             remove_port(bridge_table, port);
         }
     }

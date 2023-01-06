@@ -40,7 +40,7 @@ void patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
                struct ovsdb_idl_index *sbrec_port_binding_by_type,
                const struct ovsrec_bridge_table *,
                const struct ovsrec_open_vswitch_table *,
-               const struct ovsrec_port_table *,
+               struct ovsdb_idl_index *ovsrec_port_by_name,
                const struct ovsrec_bridge *br_int,
                const struct sbrec_chassis *,
                const struct hmap *local_datapaths);

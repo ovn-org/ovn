@@ -3999,6 +3999,9 @@ main(int argc, char *argv[])
     struct ovsdb_idl_index *ovsrec_port_by_interfaces
         = ovsdb_idl_index_create1(ovs_idl_loop.idl,
                                   &ovsrec_port_col_interfaces);
+    struct ovsdb_idl_index *ovsrec_port_by_name
+        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
+                                  &ovsrec_port_col_name);
 
     ovsdb_idl_get_initial_snapshot(ovs_idl_loop.idl);
 
@@ -4647,7 +4650,7 @@ main(int argc, char *argv[])
                             sbrec_port_binding_by_type,
                             ovsrec_bridge_table_get(ovs_idl_loop.idl),
                             ovsrec_open_vswitch_table_get(ovs_idl_loop.idl),
-                            ovsrec_port_table_get(ovs_idl_loop.idl),
+                            ovsrec_port_by_name,
                             br_int, chassis, &runtime_data->local_datapaths);
                         stopwatch_stop(PATCH_RUN_STOPWATCH_NAME, time_msec());
                         if (vif_plug_provider_has_providers() && ovs_idl_txn) {
