@@ -330,9 +330,13 @@ out:;
 }
 
 static const char *
-br_int_name(const struct ovsrec_open_vswitch *cfg)
+br_int_name(const struct ovsrec_open_vswitch_table *ovs_table)
 {
-    return smap_get_def(&cfg->external_ids, "ovn-bridge", DEFAULT_BRIDGE_NAME);
+    const struct ovsrec_open_vswitch *cfg =
+        ovsrec_open_vswitch_table_first(ovs_table);
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    return get_chassis_external_id_value(&cfg->external_ids, chassis_id,
+                                         "ovn-bridge", DEFAULT_BRIDGE_NAME);
 }
 
 static const struct ovsrec_bridge *
@@ -344,7 +348,7 @@ create_br_int(struct ovsdb_idl_txn *ovs_idl_txn,
     if (!cfg) {
         return NULL;
     }
-    const char *bridge_name = br_int_name(cfg);
+    const char *bridge_name = br_int_name(ovs_table);
 
     ovsdb_idl_txn_add_comment(ovs_idl_txn,
             "ovn-controller: creating integration bridge '%s'", bridge_name);
@@ -429,7 +433,7 @@ get_br_int(const struct ovsrec_bridge_table *bridge_table,
         return NULL;
     }
 
-    return get_bridge(bridge_table, br_int_name(cfg));
+    return get_bridge(bridge_table, br_int_name(ovs_table));
 }
 
 static const struct ovsrec_datapath *
@@ -468,8 +472,11 @@ process_br_int(struct ovsdb_idl_txn *ovs_idl_txn,
              * Otherwise use the datapath-type set in br-int, if any.
              * Finally, assume "system" datapath if none configured.
              */
+            const char *chassis_id = get_ovs_chassis_id(ovs_table);
             const char *datapath_type =
-                smap_get(&cfg->external_ids, "ovn-bridge-datapath-type");
+                get_chassis_external_id_value(
+                    &cfg->external_ids, chassis_id,
+                    "ovn-bridge-datapath-type", NULL);
 
             if (!datapath_type) {
                 if (br_int->datapath_type[0]) {
@@ -520,10 +527,16 @@ static int
 get_ofctrl_probe_interval(struct ovsdb_idl *ovs_idl)
 {
     const struct ovsrec_open_vswitch *cfg = ovsrec_open_vswitch_first(ovs_idl);
-    return !cfg ? OFCTRL_DEFAULT_PROBE_INTERVAL_SEC :
-                  smap_get_int(&cfg->external_ids,
-                               "ovn-openflow-probe-interval",
-                               OFCTRL_DEFAULT_PROBE_INTERVAL_SEC);
+    if (!cfg) {
+        return OFCTRL_DEFAULT_PROBE_INTERVAL_SEC;
+    }
+
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        ovsrec_open_vswitch_table_get(ovs_idl);
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    return get_chassis_external_id_value_int(
+        &cfg->external_ids, chassis_id,
+        "ovn-openflow-probe-interval", OFCTRL_DEFAULT_PROBE_INTERVAL_SEC);
 }
 
 /* Retrieves the pointer to the OVN Southbound database from 'ovs_idl' and
@@ -540,18 +553,26 @@ update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
     }
 
     /* Set remote based on user configuration. */
-    const char *remote = smap_get(&cfg->external_ids, "ovn-remote");
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        ovsrec_open_vswitch_table_get(ovs_idl);
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    const char *remote =
+        get_chassis_external_id_value(
+            &cfg->external_ids, chassis_id, "ovn-remote", NULL);
     ovsdb_idl_set_remote(ovnsb_idl, remote, true);
 
     /* Set probe interval, based on user configuration and the remote. */
     int default_interval = (remote && !stream_or_pstream_needs_probes(remote)
                             ? 0 : DEFAULT_PROBE_INTERVAL_MSEC);
-    int interval = smap_get_int(&cfg->external_ids,
-                                "ovn-remote-probe-interval", default_interval);
+    int interval =
+        get_chassis_external_id_value_int(
+            &cfg->external_ids, chassis_id,
+            "ovn-remote-probe-interval", default_interval);
     ovsdb_idl_set_probe_interval(ovnsb_idl, interval);
 
-    bool monitor_all = smap_get_bool(&cfg->external_ids, "ovn-monitor-all",
-                                     false);
+    bool monitor_all =
+        get_chassis_external_id_value_bool(
+            &cfg->external_ids, chassis_id, "ovn-monitor-all", false);
     if (monitor_all) {
         /* Always call update_sb_monitors when monitor_all is true.
          * Otherwise, don't call it here, because there would be unnecessary
@@ -574,25 +595,31 @@ update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
     }
 
     if (ctx) {
-        lflow_cache_enable(ctx->lflow_cache,
-                           smap_get_bool(&cfg->external_ids,
-                                         "ovn-enable-lflow-cache",
-                                         true),
-                           smap_get_uint(&cfg->external_ids,
-                                         "ovn-limit-lflow-cache",
-                                         DEFAULT_LFLOW_CACHE_MAX_ENTRIES),
-                           smap_get_ullong(&cfg->external_ids,
-                                           "ovn-memlimit-lflow-cache-kb",
-                                           DEFAULT_LFLOW_CACHE_MAX_MEM_KB),
-                           smap_get_uint(&cfg->external_ids,
-                                         "ovn-trim-limit-lflow-cache",
-                                         DEFAULT_LFLOW_CACHE_TRIM_LIMIT),
-                           smap_get_uint(&cfg->external_ids,
-                                         "ovn-trim-wmark-perc-lflow-cache",
-                                         DEFAULT_LFLOW_CACHE_WMARK_PERC),
-                           smap_get_uint(&cfg->external_ids,
-                                         "ovn-trim-timeout-ms",
-                                         DEFAULT_LFLOW_CACHE_TRIM_TO_MS));
+        lflow_cache_enable(
+            ctx->lflow_cache,
+            get_chassis_external_id_value_bool(
+                &cfg->external_ids, chassis_id,
+                "ovn-enable-lflow-cache", true),
+            get_chassis_external_id_value_uint(
+                &cfg->external_ids, chassis_id,
+                "ovn-limit-lflow-cache",
+                DEFAULT_LFLOW_CACHE_MAX_ENTRIES),
+            get_chassis_external_id_value_ullong(
+                &cfg->external_ids, chassis_id,
+                "ovn-memlimit-lflow-cache-kb",
+                DEFAULT_LFLOW_CACHE_MAX_MEM_KB),
+            get_chassis_external_id_value_uint(
+                &cfg->external_ids, chassis_id,
+                "ovn-trim-limit-lflow-cache",
+                DEFAULT_LFLOW_CACHE_TRIM_LIMIT),
+            get_chassis_external_id_value_uint(
+                &cfg->external_ids, chassis_id,
+                "ovn-trim-wmark-perc-lflow-cache",
+                DEFAULT_LFLOW_CACHE_WMARK_PERC),
+            get_chassis_external_id_value_uint(
+                &cfg->external_ids, chassis_id,
+                "ovn-trim-timeout-ms",
+                DEFAULT_LFLOW_CACHE_TRIM_TO_MS));
     }
 }
 
@@ -835,7 +862,7 @@ restore_ct_zones(const struct ovsrec_bridge_table *bridge_table,
     }
 
     const struct ovsrec_bridge *br_int;
-    br_int = get_bridge(bridge_table, br_int_name(cfg));
+    br_int = get_bridge(bridge_table, br_int_name(ovs_table));
     if (!br_int) {
         /* If the integration bridge hasn't been defined, assume that
          * any existing ct-zone definitions aren't valid. */
@@ -948,7 +975,9 @@ get_transport_zones(const struct ovsrec_open_vswitch_table *ovs_table)
 {
     const struct ovsrec_open_vswitch *cfg
         = ovsrec_open_vswitch_table_first(ovs_table);
-    return smap_get_def(&cfg->external_ids, "ovn-transport-zones", "");
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    return get_chassis_external_id_value(&cfg->external_ids, chassis_id,
+                                         "ovn-transport-zones", "");
 }
 
 static void
@@ -3853,8 +3882,12 @@ check_northd_version(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
     static bool version_mismatch;
 
     const struct ovsrec_open_vswitch *cfg = ovsrec_open_vswitch_first(ovs_idl);
-    if (!cfg || !smap_get_bool(&cfg->external_ids, "ovn-match-northd-version",
-                               false)) {
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        ovsrec_open_vswitch_table_get(ovs_idl);
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    if (!cfg || !get_chassis_external_id_value_bool(
+                     &cfg->external_ids, chassis_id,
+                     "ovn-match-northd-version", false)) {
         version_mismatch = false;
         return true;
     }

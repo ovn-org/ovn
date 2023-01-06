@@ -84,6 +84,10 @@
         default is <code>br-int</code>.  If this bridge does not exist when
         ovn-controller starts, it will be created automatically with the
         default configuration suggested in <code>ovn-architecture</code>(7).
+        When more than one controllers are running on the same host,
+        <code>external_ids:ovn-bridge-CHASSIS_NAME</code> should be set for
+        each of them, pointing to a unique bridge. This is required to avoid
+        controllers stepping on each others' feet.
       </dd>
 
       <dt><code>external_ids:ovn-bridge-datapath-type</code></dt>
@@ -353,6 +357,18 @@
         are used on the host for overlay traffic.
       </dd>
     </dl>
+
+    <p>
+        Most of configuration options listed above can also be set for a
+        particular chassis name (see <code>external_ids:system-id </code>
+        for more information). This can be achieved by setting
+        <code>external_ids:option-[chassis]</code> instead of
+        <code>external_ids:option</code>. For example, set
+        <code>external_ids:ovn-encap-ip-otherhv</code> to use a particular
+        IP address for the controller instance named <code>otherhv</code>.
+        Name specific configuration options always override any global options
+        set in the database.
+    </p>
 
     <p>
       <code>ovn-controller</code> reads the following values from the

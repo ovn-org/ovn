@@ -1080,6 +1080,14 @@
             implications because the network used for tunneling must have MTU
             larger than <code>localnet</code> for stable connectivity.
           </p>
+
+          <p>
+            If the same host co-hosts more than one controller instance
+            (either belonging to the same or separate clusters), special
+            attention should be given to consistently using unique chassis
+            names used in this option. It is advised that chassis names -
+            and not host names - are used for this option.
+          </p>
         </column>
 
         <column name="options" key="activation-strategy">

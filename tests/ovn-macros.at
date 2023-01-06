@@ -290,7 +290,7 @@ net_attach () {
 
 # ovn_az_attach AZ NETWORK BRIDGE IP [MASKLEN] [ENCAP]
 ovn_az_attach() {
-    local az=$1 net=$2 bridge=$3 ip=$4 masklen=${5-24} encap=${6-geneve,vxlan}
+    local az=$1 net=$2 bridge=$3 ip=$4 masklen=${5-24} encap=${6-geneve,vxlan} systemid=${7-$sandbox}
     net_attach $net $bridge || return 1
 
     mac=`ovs-vsctl get Interface $bridge mac_in_use | sed s/\"//g`
@@ -315,7 +315,7 @@ ovn_az_attach() {
     fi
     ovs-vsctl \
         -- set Open_vSwitch . external-ids:hostname=$sandbox \
-        -- set Open_vSwitch . external-ids:system-id=$sandbox \
+        -- set Open_vSwitch . external-ids:system-id=$systemid \
         -- set Open_vSwitch . external-ids:ovn-remote=$ovn_remote \
         -- set Open_vSwitch . external-ids:ovn-encap-type=$encap \
         -- set Open_vSwitch . external-ids:ovn-encap-ip=$ip \

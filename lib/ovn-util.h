@@ -318,4 +318,30 @@ int64_t daemon_startup_ts(void);
 char *lr_lb_address_set_name(uint32_t lr_tunnel_key, int addr_family);
 char *lr_lb_address_set_ref(uint32_t lr_tunnel_key, int addr_family);
 
+const char *
+get_chassis_external_id_value(const struct smap *,
+                              const char *chassis_id,
+                              const char *option_key,
+                              const char *def);
+int
+get_chassis_external_id_value_int(const struct smap *,
+                                  const char *chassis_id,
+                                  const char *option_key,
+                                  int def);
+unsigned int
+get_chassis_external_id_value_uint(const struct smap *,
+                                   const char *chassis_id,
+                                   const char *option_key,
+                                   unsigned int def);
+unsigned long long int
+get_chassis_external_id_value_ullong(const struct smap *external_ids,
+                                     const char *chassis_id,
+                                     const char *option_key,
+                                     unsigned long long int def);
+bool
+get_chassis_external_id_value_bool(const struct smap *,
+                                   const char *chassis_id,
+                                   const char *option_key,
+                                   bool def);
+
 #endif /* OVN_UTIL_H */

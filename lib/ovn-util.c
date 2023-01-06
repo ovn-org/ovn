@@ -965,3 +965,82 @@ lr_lb_address_set_ref(uint32_t lr_tunnel_key, int addr_family)
 {
     return lr_lb_address_set_name_(lr_tunnel_key, "$", addr_family);
 }
+
+static char *
+chassis_option_key(const char *option_key, const char *chassis_id)
+{
+    if (!chassis_id) {
+        return xasprintf("%s", option_key);
+    }
+    return xasprintf("%s-%s", option_key, chassis_id);
+}
+
+const char *
+get_chassis_external_id_value(const struct smap *external_ids,
+                              const char *chassis_id,
+                              const char *option_key,
+                              const char *def)
+{
+    char *chassis_key = chassis_option_key(option_key, chassis_id);
+    const char *ret =
+        smap_get_def(external_ids, chassis_key,
+                     smap_get_def(external_ids, option_key, def));
+    free(chassis_key);
+    return ret;
+}
+
+int
+get_chassis_external_id_value_int(const struct smap *external_ids,
+                                  const char *chassis_id,
+                                  const char *option_key,
+                                  int def)
+{
+    char *chassis_key = chassis_option_key(option_key, chassis_id);
+    int ret =
+        smap_get_int(external_ids, chassis_key,
+                     smap_get_int(external_ids, option_key, def));
+    free(chassis_key);
+    return ret;
+}
+
+unsigned int
+get_chassis_external_id_value_uint(const struct smap *external_ids,
+                                   const char *chassis_id,
+                                   const char *option_key,
+                                   unsigned int def)
+{
+    char *chassis_key = chassis_option_key(option_key, chassis_id);
+    unsigned int ret =
+        smap_get_uint(external_ids, chassis_key,
+                      smap_get_uint(external_ids, option_key, def));
+    free(chassis_key);
+    return ret;
+}
+
+unsigned long long int
+get_chassis_external_id_value_ullong(const struct smap *external_ids,
+                                     const char *chassis_id,
+                                     const char *option_key,
+                                     unsigned long long int def)
+{
+    char *chassis_key = chassis_option_key(option_key, chassis_id);
+    unsigned long long int ret =
+        smap_get_ullong(external_ids, chassis_key,
+                        smap_get_ullong(external_ids, option_key, def));
+    free(chassis_key);
+    return ret;
+}
+
+bool
+get_chassis_external_id_value_bool(const struct smap *external_ids,
+                                   const char *chassis_id,
+                                   const char *option_key,
+                                   bool def)
+{
+    char *chassis_key = chassis_option_key(option_key, chassis_id);
+    bool ret =
+        smap_get_bool(external_ids, chassis_key,
+                      smap_get_bool(external_ids, option_key, def));
+    free(chassis_key);
+    return ret;
+}

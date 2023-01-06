@@ -15,6 +15,7 @@
 
 #include <config.h>
 
+#include "chassis.h"
 #include "patch.h"
 #include "ovsport.h"
 
@@ -131,7 +132,10 @@ add_ovs_bridge_mappings(const struct ovsrec_open_vswitch_table *ovs_table,
         const char *mappings_cfg;
         char *cur, *next, *start;
 
-        mappings_cfg = smap_get(&cfg->external_ids, "ovn-bridge-mappings");
+        const char *chassis_id = get_ovs_chassis_id(ovs_table);
+        mappings_cfg =
+            get_chassis_external_id_value(
+                &cfg->external_ids, chassis_id, "ovn-bridge-mappings", NULL);
         if (!mappings_cfg || !mappings_cfg[0]) {
             return;
         }

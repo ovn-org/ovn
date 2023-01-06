@@ -185,24 +185,29 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
     bool set_local_ip = false;
     if (cfg) {
         /* If the tos option is configured, get it */
-        const char *encap_tos = smap_get_def(&cfg->external_ids,
-           "ovn-encap-tos", "none");
+        const char *encap_tos =
+            get_chassis_external_id_value(
+                &cfg->external_ids, tc->this_chassis->name,
+                "ovn-encap-tos", "none");
 
         if (encap_tos && strcmp(encap_tos, "none")) {
             smap_add(&options, "tos", encap_tos);
         }
 
         /* If the df_default option is configured, get it */
-
-        const char *encap_df = smap_get(&cfg->external_ids,
-           "ovn-encap-df_default");
+        const char *encap_df =
+            get_chassis_external_id_value(
+                &cfg->external_ids, tc->this_chassis->name,
+                "ovn-encap-df_default", NULL);
         if (encap_df) {
             smap_add(&options, "df_default", encap_df);
         }
 
         /* If ovn-set-local-ip option is configured, get it */
-        set_local_ip = smap_get_bool(&cfg->external_ids, "ovn-set-local-ip",
-                                     false);
+        set_local_ip =
+            get_chassis_external_id_value_bool(
+                &cfg->external_ids, tc->this_chassis->name,
+                "ovn-set-local-ip", false);
     }
 
     /* Add auth info if ipsec is enabled. */

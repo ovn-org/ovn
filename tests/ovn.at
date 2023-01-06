@@ -34281,3 +34281,38 @@ OVN_CLEANUP
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([chassis-specific configuration options])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+
+ovs-vsctl \
+    -- set Open_vSwitch . external-ids:ovn-encap-type-hv3=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip-hv3=192.168.1.1
+
+as hv1 ovs-vsctl set-ssl \
+   $PKIDIR/testpki-hv3-privkey.pem \
+   $PKIDIR/testpki-hv3-cert.pem \
+   $PKIDIR/testpki-cacert.pem
+
+ovn_attach n1 br-phys 192.168.0.1 24 vxlan hv3
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2 24 geneve
+
+# despite that we configured ovn-encap-ip=192.168.0.1, this setting is
+# overridden by chassis specific ovn-encap-ip-hv3
+wait_column 192.168.1.1 Encap ip chassis_name=hv3 type=geneve
+
+check_column "" Encap ip chassis_name=hv1 type=vxlan
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])
