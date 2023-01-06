@@ -37,6 +37,7 @@ VLOG_DEFINE_THIS_MODULE(chassis);
 #define HOST_NAME_MAX 255
 #endif /* HOST_NAME_MAX */
 
+char *cli_system_id = NULL;
 char *file_system_id = NULL;
 
 /*
@@ -829,6 +830,10 @@ chassis_get_mac(const struct sbrec_chassis *chassis_rec,
 const char *
 get_ovs_chassis_id(const struct ovsrec_open_vswitch_table *ovs_table)
 {
+    if (cli_system_id) {
+        return cli_system_id;
+    }
+
     if (file_system_id) {
         return file_system_id;
     }

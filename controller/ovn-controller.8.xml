@@ -75,8 +75,10 @@
       stale <code>Chassis</code> and <code>Chassis_Private</code> records
       after changing the <code>system-id</code>. Note that the chassis name can
       also be provided via the <code>system-id-override</code> file in the
-      local OVN "etc" directory. The file configuration overrides the one from
-      the database, if both are present.</dd>
+      local OVN "etc" directory or via the <code>-n</code> command-line option.
+      The following precedence is used: first, the command-line option is read;
+      if not present, the <code>system-id-override</code> file is read; if not
+      present, then the name configured in the database is used.</dd>
 
       <dt><code>external_ids:hostname</code></dt>
       <dd>The hostname to use in the Chassis table.</dd>

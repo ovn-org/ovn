@@ -290,7 +290,7 @@ net_attach () {
 
 # ovn_az_attach AZ NETWORK BRIDGE IP [MASKLEN] [ENCAP]
 ovn_az_attach() {
-    local az=$1 net=$2 bridge=$3 ip=$4 masklen=${5-24} encap=${6-geneve,vxlan} systemid=${7-$sandbox}
+    local az=$1 net=$2 bridge=$3 ip=$4 masklen=${5-24} encap=${6-geneve,vxlan} systemid=${7-$sandbox} cli_args=${@:8}
     net_attach $net $bridge || return 1
 
     mac=`ovs-vsctl get Interface $bridge mac_in_use | sed s/\"//g`
@@ -331,7 +331,7 @@ ovn_az_attach() {
         ovs-vsctl set open . external_ids:ovn-monitor-all=true
     fi
 
-    start_daemon ovn-controller --enable-dummy-vif-plug || return 1
+    start_daemon ovn-controller --enable-dummy-vif-plug ${cli_args} || return 1
 }
 
 # ovn_attach NETWORK BRIDGE IP [MASKLEN] [ENCAP]
