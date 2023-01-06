@@ -345,6 +345,36 @@ ovn_attach() {
     ovn_az_attach NONE $@
 }
 
+# This function is similar to ovn_attach but makes sure it doesn't
+# mess with another controller settings
+start_virtual_controller() {
+    local net=$1 bridge=$2 int_bridge=$3 ip=$4 masklen=${5-24} encap=${6-geneve,vxlan} systemid=${7-$sandbox} cli_args=${@:8}
+    net_attach $net $bridge || return 1
+
+    mac=`ovs-vsctl get Interface $bridge mac_in_use | sed s/\"//g`
+    arp_table="$arp_table $sandbox,$bridge,$ip,$mac"
+    ovs-appctl netdev-dummy/ip4addr $bridge $ip/$masklen >/dev/null || return 1
+    ovs-appctl ovs/route/add $ip/$masklen $bridge >/dev/null || return 1
+
+    local ovn_remote
+    if test X$HAVE_OPENSSL = Xyes; then
+        ovn_remote=$SSL_OVN_SB_DB
+    else
+        ovn_remote=unix:$ovs_base/ovn-sb/ovn-sb.sock
+    fi
+    ovs-vsctl \
+        -- set Open_vSwitch . external-ids:ovn-remote-$systemid=$ovn_remote \
+        -- set Open_vSwitch . external-ids:ovn-encap-type-$systemid=$encap \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip-$systemid=$ip \
+        -- set Open_vSwitch . external-ids:ovn-bridge-$systemid=$int_bridge \
+        -- --may-exist add-br $int_bridge \
+        -- set bridge $int_bridge fail-mode=secure other-config:disable-in-band=true \
+        || return 1
+
+    echo IHAR ${cli_args}
+    ovn-controller --enable-dummy-vif-plug ${cli_args} -vconsole:off --detach --no-chdir
+}
+
 # ovn_setenv AZ
 ovn_setenv () {
     local d=$ovs_base/$1

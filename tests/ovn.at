@@ -34417,40 +34417,11 @@ ovn-nbctl --wait=hv sync
 echo hv2 > ${OVN_SYSCONFDIR}/system-id-override
 ovs-vsctl add-br br-phys2
 
-# This function is similar to ovn_attach but makes sure it doesn't
-# mess with another controller settings
-start_virtual_controller() {
-    local net=$1 bridge=$2 ip=$3 masklen=${4-24} encap=${5-geneve,vxlan} systemid=${6-$sandbox} cli_args=${@:7}
-    net_attach $net $bridge || return 1
-
-    mac=`ovs-vsctl get Interface $bridge mac_in_use | sed s/\"//g`
-    arp_table="$arp_table $sandbox,$bridge,$ip,$mac"
-    ovs-appctl netdev-dummy/ip4addr $bridge $ip/$masklen >/dev/null || return 1
-    ovs-appctl ovs/route/add $ip/$masklen $bridge >/dev/null || return 1
-
-    local ovn_remote
-    if test X$HAVE_OPENSSL = Xyes; then
-        ovn_remote=$SSL_OVN_SB_DB
-    else
-        ovn_remote=unix:$ovs_base/ovn-sb/ovn-sb.sock
-    fi
-    ovs-vsctl \
-        -- set Open_vSwitch . external-ids:ovn-remote-$systemid=$ovn_remote \
-        -- set Open_vSwitch . external-ids:ovn-encap-type-$systemid=$encap \
-        -- set Open_vSwitch . external-ids:ovn-encap-ip-$systemid=$ip \
-        -- set Open_vSwitch . external-ids:ovn-bridge-$systemid=br-int-2 \
-        -- --may-exist add-br br-int-2 \
-        -- set bridge br-int-2 fail-mode=secure other-config:disable-in-band=true \
-        || return 1
-
-    ovn-controller --enable-dummy-vif-plug ${cli_args} -vconsole:off --detach --no-chdir
-}
-
 # for some reason SSL ovsdb configuration overrides CLI, so
 # delete ssl config from ovsdb to give CLI arguments priority
 ovs-vsctl del-ssl
 
-start_virtual_controller n1 br-phys2 192.168.0.2 24 geneve,vxlan hv2 \
+start_virtual_controller n1 br-phys2 br-int-2 192.168.0.2 24 geneve,vxlan hv2 \
     --pidfile=${OVS_RUNDIR}/ovn-controller-2.pid \
     --log-file=${OVS_RUNDIR}/ovn-controller-2.log \
     -p $PKIDIR/testpki-hv2-privkey.pem \
@@ -34527,6 +34498,112 @@ OVS_WAIT_UNTIL([
 OVS_WAIT_UNTIL([
     test 1 = $(ovs-vsctl --columns _uuid --bare find Port name=fake-phys-2-to-int-2 | wc -l)
 ])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+# NOTE: This test case runs two ovn-controllers inside the same sandbox (hv1).
+# Each controller uses a unique chassis name - hv1 and hv2 - and manage
+# different bridges with different ports. This is why all 'as' commands below
+# are executed from the same - hv1 - sandbox, regardless of whether they
+# logically belong to ports of chassis named hv1 or hv2.
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([multiple controllers on the same host can talk to each other])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys-1
+ovs-vsctl set open . external-ids:ovn-bridge-mappings-hv1=phys:br-phys-1
+
+ovn_attach n1 br-phys-1 192.168.1.1 24
+
+# Disable local ARP responder to pass ARP requests through tunnels
+check ovn-nbctl \
+    ls-add ls \
+    -- add Logical_Switch ls other_config vlan-passthru=true
+ovn-nbctl lsp-add ls lp1
+ovn-nbctl lsp-set-addresses lp1 "00:00:00:00:00:01 10.0.0.1"
+
+ovn-nbctl lsp-add ls ln_port
+ovn-nbctl lsp-set-addresses ln_port unknown
+ovn-nbctl lsp-set-type ln_port localnet
+ovn-nbctl lsp-set-options ln_port network_name=phys
+
+ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=lp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap
+
+reset_env() {
+    as hv1 reset_pcap_file vif1 hv1/vif1
+    as hv1 reset_pcap_file vif2 hv1/vif2
+    for port in hv1/vif1 hv1/vif2; do
+        : > $port.expected
+    done
+}
+
+check_packets() {
+    OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv1/vif1-tx.pcap], [hv1/vif1.expected])
+    OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv1/vif2-tx.pcap], [hv1/vif2.expected])
+}
+
+send_arp() {
+    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 spa=$5 tpa=$6
+    local request=${eth_dst}${eth_src}08060001080006040001${eth_src}${spa}${eth_dst}${tpa}
+    as ${hv} ovs-appctl netdev-dummy/receive $inport $request
+    echo "${request}"
+}
+
+wait_for_ports_up
+ovn-nbctl --wait=hv sync
+
+# now start the second virtual controller
+ovs-vsctl add-br br-phys-2
+ovs-vsctl set open . external-ids:ovn-bridge-mappings-hv2=phys:br-phys-2
+
+ovn-nbctl lsp-add ls lp2
+ovn-nbctl lsp-set-addresses lp2 "00:00:00:00:00:02 10.0.0.2"
+
+# the file is read once at startup so it's safe to write it
+# here after the first ovn-controller has started
+echo hv2 > ${OVN_SYSCONFDIR}/system-id-override
+
+# for some reason SSL ovsdb configuration overrides CLI, so
+# delete ssl config from ovsdb to give CLI arguments priority
+ovs-vsctl del-ssl
+
+start_virtual_controller n1 br-phys-2 br-int-2 192.168.2.1 24 geneve,vxlan hv2 \
+    --pidfile=${OVS_RUNDIR}/ovn-controller-2.pid \
+    --log-file=${OVS_RUNDIR}/ovn-controller-2.log \
+    -p $PKIDIR/testpki-hv2-privkey.pem \
+    -c $PKIDIR/testpki-hv2-cert.pem \
+    -C $PKIDIR/testpki-cacert.pem
+pidfile="$OVS_RUNDIR"/ovn-controller-2.pid
+on_exit "test -e \"$pidfile\" && kill \`cat \"$pidfile\"\`"
+
+ovs-vsctl -- add-port br-int-2 vif2 -- \
+    set interface vif2 external-ids:iface-id=lp2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap
+
+wait_for_ports_up
+ovn-nbctl --wait=hv sync
+
+OVN_POPULATE_ARP
+
+reset_env
+
+lp1_spa=$(ip_to_hex 10 0 0 1)
+lp2_spa=$(ip_to_hex 10 0 0 2)
+request=$(send_arp hv1 vif1 000000000001 000000000002 $lp1_spa $lp2_spa)
+echo $request >> hv1/vif2.expected
+request=$(send_arp hv1 vif2 000000000002 000000000001 $lp2_spa $lp1_spa)
+echo $request >> hv1/vif1.expected
+
+check_packets
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
