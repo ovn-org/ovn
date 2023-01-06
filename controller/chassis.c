@@ -794,21 +794,146 @@ chassis_get_mac(const struct sbrec_chassis *chassis_rec,
     return ret;
 }
 
+const char *
+get_ovs_chassis_id(const struct ovsrec_open_vswitch_table *ovs_table)
+{
+    const struct ovsrec_open_vswitch *cfg
+        = ovsrec_open_vswitch_table_first(ovs_table);
+    const char *chassis_id = cfg ? smap_get(&cfg->external_ids, "system-id")
+                                 : NULL;
+
+    if (!chassis_id) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "'system-id' in Open_vSwitch database is missing.");
+    }
+
+    return chassis_id;
+}
+
+static bool
+is_chassis_idx_stored(const struct ovsrec_open_vswitch_table *ovs_table)
+{
+    const struct ovsrec_open_vswitch *cfg =
+        ovsrec_open_vswitch_table_first(ovs_table);
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    if (!chassis_id) {
+        return false;
+    }
+    char *idx_key = xasprintf(CHASSIS_IDX_PREFIX "%s", chassis_id);
+    const char *idx = smap_get(&cfg->other_config, idx_key);
+    free(idx_key);
+    return !!idx;
+}
+
+const char *get_chassis_idx(const struct ovsrec_open_vswitch_table *ovs_table)
+{
+    const struct ovsrec_open_vswitch *cfg =
+        ovsrec_open_vswitch_table_first(ovs_table);
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    if (!chassis_id) {
+        return "";
+    }
+    char *idx_key = xasprintf(CHASSIS_IDX_PREFIX "%s", chassis_id);
+    const char *idx = smap_get_def(&cfg->other_config, idx_key, "");
+    free(idx_key);
+    return idx;
+}
+
+void
+store_chassis_index_if_needed(
+        const struct ovsrec_open_vswitch_table *ovs_table)
+{
+    const struct ovsrec_open_vswitch *cfg =
+        ovsrec_open_vswitch_table_first(ovs_table);
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+
+    char *idx_key = xasprintf(CHASSIS_IDX_PREFIX "%s", chassis_id);
+    const char *chassis_idx = smap_get(&cfg->other_config, idx_key);
+    if (!chassis_idx) {
+        /* Collect all indices so far consumed by other chassis. */
+        struct sset used_indices = SSET_INITIALIZER(&used_indices);
+        struct smap_node *node;
+        SMAP_FOR_EACH (node, &cfg->other_config) {
+            if (!strncmp(node->key, CHASSIS_IDX_PREFIX,
+                    sizeof(CHASSIS_IDX_PREFIX) - 1)) {
+                sset_add(&used_indices, node->value);
+            }
+        }
+        /* First chassis on the host: use an empty string to avoid adding an
+         * unnecessary index character to tunnel port names when a single
+         * controller is running on the host (the most common case). */
+        if (!sset_contains(&used_indices, "")) {
+            ovsrec_open_vswitch_update_other_config_setkey(
+                cfg, idx_key, "");
+            goto out;
+        }
+        /* Next chassis gets an alphanum index allocated. */
+        char idx[] = "0";
+        for (char i = '0'; i <= '9'; i++) {
+            idx[0] = i;
+            if (!sset_contains(&used_indices, idx)) {
+                ovsrec_open_vswitch_update_other_config_setkey(
+                    cfg, idx_key, idx);
+                goto out;
+            }
+        }
+        for (char i = 'a'; i <= 'z'; i++) {
+            idx[0] = i;
+            if (!sset_contains(&used_indices, idx)) {
+                ovsrec_open_vswitch_update_other_config_setkey(
+                    cfg, idx_key, idx);
+                goto out;
+            }
+        }
+        /* All indices consumed: it's safer to just abort. */
+        VLOG_ERR("All unique controller indices consumed. Exiting.");
+        exit(EXIT_FAILURE);
+    }
+out:
+    free(idx_key);
+}
+
+static void
+clear_chassis_index_if_needed(
+        const struct ovsrec_open_vswitch_table *ovs_table)
+{
+    const struct ovsrec_open_vswitch *cfg =
+        ovsrec_open_vswitch_table_first(ovs_table);
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    char *idx_key = xasprintf(CHASSIS_IDX_PREFIX "%s", chassis_id);
+    if (smap_get(&cfg->other_config, idx_key)) {
+        ovsrec_open_vswitch_update_other_config_delkey(cfg, idx_key);
+    }
+    free(idx_key);
+}
+
 /* Returns true if the database is all cleaned up, false if more work is
  * required. */
 bool
-chassis_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
+chassis_cleanup(struct ovsdb_idl_txn *ovs_idl_txn,
+                struct ovsdb_idl_txn *ovnsb_idl_txn,
+                const struct ovsrec_open_vswitch_table *ovs_table,
                 const struct sbrec_chassis *chassis_rec,
                 const struct sbrec_chassis_private *chassis_private_rec)
 {
-    if (!chassis_rec && !chassis_private_rec) {
+    if (!chassis_rec && !chassis_private_rec &&
+            !is_chassis_idx_stored(ovs_table)) {
         return true;
     }
+
+    const char *chassis_name = get_ovs_chassis_id(ovs_table);
+    if (ovs_idl_txn) {
+        ovsdb_idl_txn_add_comment(
+            ovs_idl_txn,
+            "ovn-controller: unregistering chassis index for '%s'",
+            chassis_name);
+        clear_chassis_index_if_needed(ovs_table);
+    }
+
     if (ovnsb_idl_txn) {
         ovsdb_idl_txn_add_comment(ovnsb_idl_txn,
                                   "ovn-controller: unregistering chassis '%s'",
-                                  chassis_rec ? chassis_rec->name
-                                  : chassis_private_rec->name);
+                                  chassis_name);
         if (chassis_rec) {
             sbrec_chassis_delete(chassis_rec);
         }

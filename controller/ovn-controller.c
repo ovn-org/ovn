@@ -497,22 +497,6 @@ process_br_int(struct ovsdb_idl_txn *ovs_idl_txn,
     *br_int_ = br_int;
 }
 
-static const char *
-get_ovs_chassis_id(const struct ovsrec_open_vswitch_table *ovs_table)
-{
-    const struct ovsrec_open_vswitch *cfg
-        = ovsrec_open_vswitch_table_first(ovs_table);
-    const char *chassis_id = cfg ? smap_get(&cfg->external_ids, "system-id")
-                                 : NULL;
-
-    if (!chassis_id) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "'system-id' in Open_vSwitch database is missing.");
-    }
-
-    return chassis_id;
-}
-
 static void
 update_ssl_config(const struct ovsrec_ssl_table *ssl_table)
 {
@@ -4474,6 +4458,12 @@ main(int argc, char *argv[])
             }
         }
 
+        static bool chassis_idx_stored = false;
+        if (ovs_idl_txn && !chassis_idx_stored) {
+            store_chassis_index_if_needed(ovs_table);
+            chassis_idx_stored = true;
+        }
+
         if (ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl) &&
             northd_version_match) {
 
@@ -4881,7 +4871,7 @@ loop_done:
             /* Run all of the cleanup functions, even if one of them returns
              * false. We're done if all of them return true. */
             done = binding_cleanup(ovnsb_idl_txn, port_binding_table, chassis);
-            done = chassis_cleanup(ovnsb_idl_txn,
+            done = chassis_cleanup(ovs_idl_txn, ovnsb_idl_txn, ovs_table,
                                    chassis, chassis_private) && done;
             done = encaps_cleanup(ovs_idl_txn, br_int) && done;
             done = igmp_group_cleanup(ovnsb_idl_txn, sbrec_igmp_group) && done;

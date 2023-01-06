@@ -34248,3 +34248,36 @@ AT_CHECK([ovs-ofctl dump-flows br-int | grep table=68 | ofctl_strip_all], [0], [
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-chassis-idx maintenance in ovsdb])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+
+# check that chassis index is unset before ovn-controller is started
+AT_CHECK([ovs-vsctl get Open_vSwitch . other_config:ovn-chassis-idx-hv1], [1], [ignore], [ignore])
+
+ovn_attach n1 br-phys 192.168.0.1
+
+# check that chassis index is set now that ovn-controller is running
+OVS_WAIT_UNTIL([ovs-vsctl get Open_vSwitch . other_config:ovn-chassis-idx-hv1])
+OVS_WAIT_UNTIL([test x$(ovs-vsctl get Open_vSwitch . other_config:ovn-chassis-idx-hv1) = 'x""'])
+
+# exit ovn-controller which should clean up allocated index in the database
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+# check that chassis index is unset since ovn-controller cleaned it up
+OVS_WAIT_UNTIL([ovs-vsctl get Open_vSwitch . other_config:ovn-chassis-idx-hv1; test $? -eq 1])
+
+# clean up the rest of services on hv1
+OVN_CLEANUP_VSWITCH([hv1])
+
+# tear down main services
+OVN_CLEANUP
+
+AT_CLEANUP
+])

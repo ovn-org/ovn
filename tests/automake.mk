@@ -253,6 +253,7 @@ tests_ovstest_SOURCES = \
 tests_ovstest_LDADD = $(OVS_LIBDIR)/daemon.lo \
     $(OVS_LIBDIR)/libopenvswitch.la lib/libovn.la \
 	controller/binding.$(OBJEXT) \
+	controller/chassis.$(OBJEXT) \
 	controller/encaps.$(OBJEXT) \
 	controller/ha-chassis.$(OBJEXT) \
 	controller/if-status.$(OBJEXT) \
