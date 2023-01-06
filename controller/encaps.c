@@ -388,7 +388,6 @@ chassis_tzones_overlap(const struct sset *transport_zones,
 
 void
 encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
-           const struct ovsrec_bridge_table *bridge_table,
            const struct ovsrec_bridge *br_int,
            const struct sbrec_chassis_table *chassis_table,
            const struct sbrec_chassis *this_chassis,
@@ -401,7 +400,6 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
     }
 
     const struct sbrec_chassis *chassis_rec;
-    const struct ovsrec_bridge *br;
 
     struct tunnel_ctx tc = {
         .chassis = SHASH_INITIALIZER(&tc.chassis),
@@ -419,27 +417,25 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
     /* Collect all port names into tc.port_names.
      *
      * Collect all the OVN-created tunnels into tc.tunnel_hmap. */
-    OVSREC_BRIDGE_TABLE_FOR_EACH (br, bridge_table) {
-        for (size_t i = 0; i < br->n_ports; i++) {
-            const struct ovsrec_port *port = br->ports[i];
-            sset_add(&tc.port_names, port->name);
+    for (size_t i = 0; i < br_int->n_ports; i++) {
+        const struct ovsrec_port *port = br_int->ports[i];
+        sset_add(&tc.port_names, port->name);
 
-            /*
-             * note that the id here is not just the chassis name, but the
-             * combination of <chassis_name><delim><encap_ip>
-             */
-            const char *id = smap_get(&port->external_ids, "ovn-chassis-id");
-            if (id) {
-                if (!shash_find(&tc.chassis, id)) {
-                    struct chassis_node *chassis = xzalloc(sizeof *chassis);
-                    chassis->bridge = br;
-                    chassis->port = port;
-                    shash_add_assert(&tc.chassis, id, chassis);
-                } else {
-                    /* Duplicate port for ovn-chassis-id.  Arbitrarily choose
-                     * to delete this one. */
-                    ovsrec_bridge_update_ports_delvalue(br, port);
-                }
+        /*
+         * note that the id here is not just the chassis name, but the
+         * combination of <chassis_name><delim><encap_ip>
+         */
+        const char *id = smap_get(&port->external_ids, "ovn-chassis-id");
+        if (id) {
+            if (!shash_find(&tc.chassis, id)) {
+                struct chassis_node *chassis = xzalloc(sizeof *chassis);
+                chassis->bridge = br_int;
+                chassis->port = port;
+                shash_add_assert(&tc.chassis, id, chassis);
+            } else {
+                /* Duplicate port for ovn-chassis-id.  Arbitrarily choose
+                 * to delete this one. */
+                ovsrec_bridge_update_ports_delvalue(br_int, port);
             }
         }
     }

@@ -4579,8 +4579,7 @@ main(int argc, char *argv[])
                 }
 
                 if (chassis) {
-                    encaps_run(ovs_idl_txn,
-                               bridge_table, br_int,
+                    encaps_run(ovs_idl_txn, br_int,
                                sbrec_chassis_table_get(ovnsb_idl_loop.idl),
                                chassis,
                                sbrec_sb_global_first(ovnsb_idl_loop.idl),

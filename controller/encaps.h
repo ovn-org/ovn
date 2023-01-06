@@ -30,7 +30,6 @@ struct sset;
 
 void encaps_register_ovs_idl(struct ovsdb_idl *);
 void encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
-                const struct ovsrec_bridge_table *,
                 const struct ovsrec_bridge *br_int,
                 const struct sbrec_chassis_table *,
                 const struct sbrec_chassis *,

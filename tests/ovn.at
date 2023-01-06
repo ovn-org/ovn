@@ -34391,3 +34391,91 @@ check_column "" Encap ip chassis_name=hv1 type=vxlan
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([controllers don't touch tunnels that are not on br-int])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys1
+ovn_attach n1 br-phys1 192.168.0.1
+
+# use a port as a canary in the mine to wait until the controller is up
+# (meaning, ssl configuration was read from the database)
+ovn-nbctl ls-add ls
+ovn-nbctl lsp-add ls lp
+ovn-nbctl lsp-set-options lp requested-chassis=hv1
+ovs-vsctl -- add-port br-int vif -- \
+    set interface vif external-ids:iface-id=lp
+wait_for_ports_up
+ovn-nbctl --wait=hv sync
+
+# the file is read once at startup so it's safe to write it
+# here after the first ovn-controller has started
+echo hv2 > ${OVN_SYSCONFDIR}/system-id-override
+ovs-vsctl add-br br-phys2
+
+# This function is similar to ovn_attach but makes sure it doesn't
+# mess with another controller settings
+start_virtual_controller() {
+    local net=$1 bridge=$2 ip=$3 masklen=${4-24} encap=${5-geneve,vxlan} systemid=${6-$sandbox} cli_args=${@:7}
+    net_attach $net $bridge || return 1
+
+    mac=`ovs-vsctl get Interface $bridge mac_in_use | sed s/\"//g`
+    arp_table="$arp_table $sandbox,$bridge,$ip,$mac"
+    ovs-appctl netdev-dummy/ip4addr $bridge $ip/$masklen >/dev/null || return 1
+    ovs-appctl ovs/route/add $ip/$masklen $bridge >/dev/null || return 1
+
+    local ovn_remote
+    if test X$HAVE_OPENSSL = Xyes; then
+        ovn_remote=$SSL_OVN_SB_DB
+    else
+        ovn_remote=unix:$ovs_base/ovn-sb/ovn-sb.sock
+    fi
+    ovs-vsctl \
+        -- set Open_vSwitch . external-ids:ovn-remote-$systemid=$ovn_remote \
+        -- set Open_vSwitch . external-ids:ovn-encap-type-$systemid=$encap \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip-$systemid=$ip \
+        -- set Open_vSwitch . external-ids:ovn-bridge-$systemid=br-int-2 \
+        -- --may-exist add-br br-int-2 \
+        -- set bridge br-int-2 fail-mode=secure other-config:disable-in-band=true \
+        || return 1
+
+    ovn-controller --enable-dummy-vif-plug ${cli_args} -vconsole:off --detach --no-chdir
+}
+
+# for some reason SSL ovsdb configuration overrides CLI, so
+# delete ssl config from ovsdb to give CLI arguments priority
+ovs-vsctl del-ssl
+
+start_virtual_controller n1 br-phys2 192.168.0.2 24 geneve,vxlan hv2 \
+    --pidfile=${OVS_RUNDIR}/ovn-controller-2.pid \
+    --log-file=${OVS_RUNDIR}/ovn-controller-2.log \
+    -p $PKIDIR/testpki-hv2-privkey.pem \
+    -c $PKIDIR/testpki-hv2-cert.pem \
+    -C $PKIDIR/testpki-cacert.pem
+pidfile="$OVS_RUNDIR"/ovn-controller-2.pid
+on_exit "test -e \"$pidfile\" && kill \`cat \"$pidfile\"\`"
+
+ovn-nbctl lsp-add ls lp2
+ovn-nbctl lsp-set-options lp2 requested-chassis=hv2
+ovs-vsctl -- add-port br-int-2 vif2 -- \
+    set interface vif2 external-ids:iface-id=lp2
+wait_for_ports_up
+ovn-nbctl --wait=hv sync
+
+# check that both tunnel ports are present, meaning controllers
+# don't step on each other
+ovs-vsctl show
+OVS_WAIT_UNTIL([
+    test 1 = $(ovs-vsctl --columns _uuid --bare find Port name=ovn0-hv1-0 | wc -l)
+])
+OVS_WAIT_UNTIL([
+    test 1 = $(ovs-vsctl --columns _uuid --bare find Port name=ovn-hv2-0 | wc -l)
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
