@@ -88,7 +88,9 @@ ovs_setenv() {
     OVS_LOGDIR=$ovs_dir; export OVS_LOGDIR
     OVS_DBDIR=$ovs_dir; export OVS_DBDIR
     OVS_SYSCONFDIR=$ovs_dir; export OVS_SYSCONFDIR
+    OVN_SYSCONFDIR=$ovs_dir; export OVN_SYSCONFDIR
     OVS_PKGDATADIR=$ovs_dir; export OVS_PKGDATADIR
+    OVN_PKGDATADIR=$ovs_dir; export OVN_PKGDATADIR
 }
 
 # Prints the integers from $1 to $2, increasing by $3 (default 1) on stdout.

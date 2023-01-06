@@ -33,6 +33,8 @@ struct sset;
 struct eth_addr;
 struct smap;
 
+extern char *file_system_id;
+
 void chassis_register_ovs_idl(struct ovsdb_idl *);
 const struct sbrec_chassis *chassis_run(
     struct ovsdb_idl_txn *ovnsb_idl_txn,
