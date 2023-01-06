@@ -376,6 +376,19 @@
     </p>
 
     <p>
+        Chassis-specific configuration options in the database plus the ability
+        to configure the chassis name to use via the
+        <code>system-id-override</code> file or command line allows to run
+        multiple <code>ovn-controller</code> instances with unique chassis
+        names on the same host using the same <code>vswitchd</code> instance.
+        This may be useful when running a hybrid setup with more than one CMS
+        managing ports on the host, or to use different datapath types on the
+        same host. Note that this ability is highly experimental and has known
+        limitations (for example, stateful ACLs are not supported). Use at your
+        own risk.
+    </p>
+
+    <p>
       <code>ovn-controller</code> reads the following values from the
       <code>Open_vSwitch</code> database of the local OVS instance:
     </p>
