@@ -572,6 +572,7 @@ AT_CHECK([ovstest test-ovn exhaustive --operation=convert --bits=2 3], [0],
 AT_CLEANUP
 
 AT_SETUP([3-term numeric expression simplification])
+AT_KEYWORDS([slowtest])
 AT_CHECK([ovstest test-ovn exhaustive --operation=simplify --nvars=2 --svars=0 3], [0],
   [Tested simplifying 490770 expressions of 3 terminals with 2 numeric vars (each 3 bits) in terms of operators == != < <= > >=.
 ])
@@ -626,6 +627,7 @@ AT_CHECK([simplify '!is_chassis_resident("eth2")'], [0], [1
 AT_CLEANUP
 
 AT_SETUP([4-term numeric expression normalization])
+AT_KEYWORDS([slowtest])
 AT_CHECK([ovstest test-ovn exhaustive --operation=normalize --nvars=3 --svars=0 --bits=1 4], [0],
   [Tested normalizing 1874026 expressions of 4 terminals with 3 numeric vars (each 1 bits) in terms of operators == != < <= > >=.
 ])
@@ -644,6 +646,7 @@ AT_CHECK([ovstest test-ovn exhaustive --operation=normalize --nvars=1 --bits=1 -
 AT_CLEANUP
 
 AT_SETUP([5-term numeric expression normalization])
+AT_KEYWORDS([slowtest])
 AT_CHECK([ovstest test-ovn exhaustive --operation=normalize --nvars=3 --svars=0 --bits=1 --relops='==' 5], [0],
   [Tested normalizing 1317600 expressions of 5 terminals with 3 numeric vars (each 1 bits) in terms of operators ==.
 ])
@@ -676,6 +679,7 @@ AT_CHECK([ovstest test-ovn exhaustive --operation=flow --nvars=0 --svars=4 4], [
 AT_CLEANUP
 
 AT_SETUP([4-term mixed expressions to flows])
+AT_KEYWORDS([slowtest])
 AT_KEYWORDS([expression])
 AT_CHECK([ovstest test-ovn exhaustive --operation=flow --nvars=1 --bits=2 --svars=1 --relops='==' 4], [0],
   [Tested converting to flows 48312 expressions of 4 terminals with 1 numeric vars (each 2 bits) in terms of operators == and 1 string vars.
@@ -2344,6 +2348,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([3 HVs, 1 LS, 3 lports/HV])
 AT_KEYWORDS([ovnarp])
+AT_KEYWORDS([slowtest])
 ovn_start
 
 # Create hypervisors hv[123].
@@ -4616,6 +4621,7 @@ AT_CLEANUP
 # 3 hypervisors, 3 logical switches with 3 logical ports each, 1 logical router
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([3 HVs, 3 LS, 3 lports/LS, 1 LR])
+AT_KEYWORDS([slowtest])
 ovn_start
 
 # Logical network:
@@ -6353,6 +6359,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([dhcpv4 : 1 HV, 2 LS, 2 LSPs/LS])
+AT_KEYWORDS([slowtest])
 ovn_start
 
 check ovn-nbctl ls-add ls1
@@ -8203,6 +8210,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ipam])
+AT_KEYWORDS([slowtest])
 ovn_start
 
 check_dynamic_addresses() {
@@ -14332,6 +14340,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([basic connectivity with multiple requested-chassis])
 AT_KEYWORDS([multi-chassis])
+AT_KEYWORDS([slowtest])
 ovn_start
 
 net_add n1
@@ -15056,6 +15065,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([options:activation-strategy for logical port])
 AT_KEYWORDS([multi-chassis])
+AT_KEYWORDS([slowtest])
 ovn_start
 
 net_add n1
@@ -16814,6 +16824,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([Port Groups])
 AT_KEYWORDS([ovnpg])
+AT_KEYWORDS([slowtest])
 ovn_start
 
 # Logical network:
@@ -17034,6 +17045,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ACLs on Port Groups])
 AT_KEYWORDS([ovnpg_acl])
+AT_KEYWORDS([slowtest])
 ovn_start
 
 # Logical network:
@@ -19619,6 +19631,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([router - check packet length - icmp defrag])
 AT_KEYWORDS([check packet length])
+AT_KEYWORDS([slowtest])
 ovn_start
 
 ovn-nbctl ls-add sw0
@@ -21563,6 +21576,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([IGMP snoop/querier/relay])
 AT_KEYWORDS([IP-multicast snoop query querier relay])
+AT_KEYWORDS([slowtest])
 
 ovn_start
 
@@ -22285,6 +22299,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([MLD snoop/querier/relay])
 AT_KEYWORDS([IP-multicast snoop query querier relay])
+AT_KEYWORDS([slowtest])
 
 ovn_start
 
@@ -25065,6 +25080,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([interconnection])
+AT_KEYWORDS([slowtest])
 
 ovn_init_ic_db
 n_az=5
@@ -28607,6 +28623,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ARP replies for SNAT external ips])
+AT_KEYWORDS([slowtest])
 ovn_start
 
 net_add n1

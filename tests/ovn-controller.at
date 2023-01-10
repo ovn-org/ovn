@@ -533,6 +533,7 @@ AT_CLEANUP
 # result in any ovn-controller asserts or crashes.
 AT_SETUP([ovn-controller - port binding type change handling])
 AT_KEYWORDS([ovn])
+AT_KEYWORDS([slowtest])
 ovn_start
 
 net_add n1
