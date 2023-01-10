@@ -1609,13 +1609,108 @@ main(int argc, char *argv[])
     struct ovsdb_idl_loop ovnisb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
         ovsdb_idl_create(ovn_ic_sb_db, &icsbrec_idl_class, true, true));
 
-    /* ovn-nb db. XXX: add only needed tables and columns */
+    /* ovn-nb db. */
     struct ovsdb_idl_loop ovnnb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
-        ovsdb_idl_create(ovnnb_db, &nbrec_idl_class, true, true));
+        ovsdb_idl_create(ovnnb_db, &nbrec_idl_class, false, true));
 
-    /* ovn-sb db. XXX: add only needed tables and columns */
+    ovsdb_idl_add_table(ovnnb_idl_loop.idl, &nbrec_table_nb_global);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl, &nbrec_nb_global_col_name);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl, &nbrec_nb_global_col_options);
+
+    ovsdb_idl_add_table(ovnnb_idl_loop.idl,
+                        &nbrec_table_logical_router_static_route);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_router_static_route_col_ip_prefix);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_router_static_route_col_nexthop);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_router_static_route_col_external_ids);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_router_static_route_col_policy);
+
+    ovsdb_idl_add_table(ovnnb_idl_loop.idl, &nbrec_table_logical_router);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_router_col_static_routes);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_router_col_ports);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_router_col_options);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_router_col_external_ids);
+
+    ovsdb_idl_add_table(ovnnb_idl_loop.idl, &nbrec_table_logical_router_port);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_router_port_col_name);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_router_port_col_networks);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_router_port_col_external_ids);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_router_port_col_options);
+
+    ovsdb_idl_add_table(ovnnb_idl_loop.idl, &nbrec_table_logical_switch);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_switch_col_name);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_switch_col_ports);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_switch_col_other_config);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_switch_col_external_ids);
+
+    ovsdb_idl_add_table(ovnnb_idl_loop.idl, &nbrec_table_logical_switch_port);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_switch_port_col_addresses);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_switch_port_col_options);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_switch_port_col_type);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_switch_port_col_up);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_switch_port_col_addresses);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_switch_port_col_enabled);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_switch_port_col_external_ids);
+
+    /* ovn-sb db. */
     struct ovsdb_idl_loop ovnsb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
-        ovsdb_idl_create(ovnsb_db, &sbrec_idl_class, true, true));
+        ovsdb_idl_create(ovnsb_db, &sbrec_idl_class, false, true));
+
+    ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_chassis);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_encaps);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_external_ids);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_name);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_hostname);
+
+    ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_encap);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_encap_col_chassis_name);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_encap_col_type);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_encap_col_ip);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_encap_col_options);
+
+    ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_datapath_binding);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
+                         &sbrec_datapath_binding_col_external_ids);
+
+    ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_port_binding);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
+                         &sbrec_port_binding_col_datapath);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
+                         &sbrec_port_binding_col_mac);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
+                         &sbrec_port_binding_col_options);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
+                         &sbrec_port_binding_col_logical_port);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
+                         &sbrec_port_binding_col_external_ids);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
+                         &sbrec_port_binding_col_chassis);
 
     /* Create IDL indexes */
     struct ovsdb_idl_index *nbrec_ls_by_name
