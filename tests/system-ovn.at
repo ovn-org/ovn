@@ -6945,10 +6945,10 @@ p = IP(src="192.168.1.2", dst="192.168.1.1") / UDP(dport = 12345) / Raw(b"X"*64)
 send (p, iface='sw01', loop = 0, verbose = 0, count = 20)
 EOF
 
-# 1pps + 1 burst size
+# 1pps
 OVS_WAIT_UNTIL([
     n_reject=$(grep unreachable reject.pcap | wc -l)
-    test "${n_reject}" = "2"
+    test "${n_reject}" = "1"
 ])
 kill $(pidof tcpdump)
 rm -f reject.pcap
@@ -6961,10 +6961,10 @@ p = IP(src="192.168.1.2", dst="192.168.1.1") / UDP(dport = 12345) / Raw(b"X"*64)
 send (p, iface='sw01', loop = 0, verbose = 0, count = 100)
 EOF
 
-# 10pps + 1 burst size
+# 10pps
 OVS_WAIT_UNTIL([
     n_reject=$(grep unreachable reject.pcap | wc -l)
-    test "${n_reject}" = "20"
+    test "${n_reject}" = "10"
 ])
 
 kill $(pidof tcpdump)
@@ -6996,10 +6996,10 @@ p = IP(src="192.168.1.2", dst="172.16.1.100") / TCP(dport = 80, flags="S") / Raw
 send (p, iface='sw01', loop = 0, verbose = 0, count = 100)
 EOF
 
-# 1pps + 1 burst size
+# 1pps
 OVS_WAIT_UNTIL([
     n_arp=$(grep ARP arp.pcap | wc -l)
-    test "${n_arp}" = "2"
+    test "${n_arp}" = "1"
 ])
 kill $(pidof tcpdump)
 
@@ -7015,10 +7015,10 @@ p = IP(src="192.168.1.2", dst="172.16.1.100", ttl=1) / TCP(dport = 8080, flags="
 send (p, iface='sw01', loop = 0, verbose = 0, count = 100)
 EOF
 
-# 1pps + 1 burst size
+# 1pps
 OVS_WAIT_UNTIL([
     n_icmp=$(grep ICMP icmp.pcap | wc -l)
-    test "${n_icmp}" = "2"
+    test "${n_icmp}" = "1"
 ])
 kill $(pidof tcpdump)
 
@@ -7030,7 +7030,7 @@ bfd: bfd-meter
 
 check ovn-nbctl --bfd lr-route-add R1 240.0.0.0/8 172.16.1.50 rp-public
 printf "%08x" $(ovn-sbctl get bfd . disc) > /tmp/disc
-NS_EXEC([server], [tcpdump -l -n -i s1 udp port 3784 -Q in > bfd.pcap &])
+NS_EXEC([server], [tcpdump -l -nn -i s1 udp port 3784 and ip[[29]]==0x90 -Q in > bfd.pcap &])
 ip netns exec server scapy -H <<-EOF
 import binascii
 f = open("/tmp/disc", "r")
@@ -7043,10 +7043,10 @@ f.close()
 EOF
 rm /tmp/disc
 
-# 1pps + 1 burst size
+# 1pps
 OVS_WAIT_UNTIL([
-    n_tcp_rst=$(grep Final bfd.pcap | wc -l)
-    test "${n_tcp_rst}" = "2"
+    n_bfd=$(grep 3784 bfd.pcap | wc -l)
+    test "${n_bfd}" = "1"
 ])
 kill $(pidof tcpdump)
 
