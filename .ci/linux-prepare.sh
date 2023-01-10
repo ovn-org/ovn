@@ -12,4 +12,10 @@ set -ev
 git clone git://git.kernel.org/pub/scm/devel/sparse/sparse.git
 cd sparse && make -j4 HAVE_LLVM= HAVE_SQLITE= install && cd ..
 
-pip3 install --disable-pip-version-check --user flake8 hacking sphinx pyOpenSSL
+# Installing wheel separately because it may be needed to build some
+# of the packages during dependency backtracking and pip >= 22.0 will
+# abort backtracking on build failures:
+#     https://github.com/pypa/pip/issues/10655
+pip3 install --disable-pip-version-check --user wheel
+pip3 install --disable-pip-version-check --user \
+    flake8 'hacking>=3.0' sphinx setuptools pyelftools pyOpenSSL
