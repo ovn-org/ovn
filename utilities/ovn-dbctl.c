@@ -188,6 +188,8 @@ ovn_dbctl_main(int argc, char *argv[],
     idl = the_idl = ovsdb_idl_create_unconnected(dbctl_options->idl_class,
                                                  daemon_mode);
     ovsdb_idl_set_shuffle_remotes(idl, shuffle_remotes);
+    /* "set_db_change_aware" is true iff in daemon mode. */
+    ovsdb_idl_set_db_change_aware(idl, daemon_mode);
     /* "retry" is true iff in daemon mode. */
     ovsdb_idl_set_remote(idl, db, daemon_mode);
     ovsdb_idl_set_leader_only(idl, leader_only);

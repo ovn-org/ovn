@@ -111,7 +111,9 @@ main(int argc, char *argv[])
     ctl_timeout_setup(timeout);
 
     /* Initialize IDL. */
-    idl = the_idl = ovsdb_idl_create(db, &icsbrec_idl_class, true, false);
+    idl = the_idl = ovsdb_idl_create_unconnected(&icsbrec_idl_class, true);
+    ovsdb_idl_set_remote(idl, db, false);
+    ovsdb_idl_set_db_change_aware(idl, false);
     ovsdb_idl_set_leader_only(idl, leader_only);
     run_prerequisites(commands, n_commands, idl);
 
