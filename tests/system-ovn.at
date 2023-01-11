@@ -4649,10 +4649,12 @@ ovn-nbctl lb-add lb-ipv4-tcp     88.88.88.88:8080 42.42.42.1:4041 tcp
 ovn-nbctl lb-add lb-ipv4-tcp-dup 88.88.88.89:8080 42.42.42.1:4041 tcp
 ovn-nbctl lb-add lb-ipv4-udp     88.88.88.88:4040 42.42.42.1:2021 udp
 ovn-nbctl lb-add lb-ipv4-udp-dup 88.88.88.89:4040 42.42.42.1:2021 udp
+ovn-nbctl lb-add lb-ipv4 88.88.88.90 42.42.42.1
 ovn-nbctl ls-lb-add sw lb-ipv4-tcp
 ovn-nbctl ls-lb-add sw lb-ipv4-tcp-dup
 ovn-nbctl ls-lb-add sw lb-ipv4-udp
 ovn-nbctl ls-lb-add sw lb-ipv4-udp-dup
+ovn-nbctl ls-lb-add sw lb-ipv4
 
 ovn-nbctl lr-add rtr
 ovn-nbctl lrp-add rtr rtr-sw 00:00:00:00:01:00 42.42.42.254/24
@@ -4673,21 +4675,23 @@ NS_CHECK_EXEC([lsp], [timeout 2s nc -k -l 42.42.42.1 4041 &], [0])
 # Check that IPv4 TCP hairpin connection succeeds on both VIPs.
 NS_CHECK_EXEC([lsp], [nc 88.88.88.88 8080 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([lsp], [nc 88.88.88.89 8080 -z], [0], [ignore], [ignore])
+NS_CHECK_EXEC([lsp], [nc 88.88.88.90 4041 -z], [0], [ignore], [ignore])
 
 # Capture IPv4 UDP hairpinned packets.
 filter="dst 42.42.42.1 and dst port 2021 and udp"
-NS_CHECK_EXEC([lsp], [tcpdump -nn -c 2 -i lsp ${filter} > lsp.pcap &])
+NS_CHECK_EXEC([lsp], [tcpdump -nn -c 3 -i lsp ${filter} > lsp.pcap &])
 
 sleep 1
 
 # Generate IPv4 UDP hairpin traffic.
 NS_CHECK_EXEC([lsp], [echo a | nc -u 88.88.88.88 4040 &], [0])
 NS_CHECK_EXEC([lsp], [echo a | nc -u 88.88.88.89 4040 &], [0])
+NS_CHECK_EXEC([lsp], [echo a | nc -u 88.88.88.90 2021 &], [0])
 
 # Check hairpin traffic.
 OVS_WAIT_UNTIL([
     total_pkts=$(cat lsp.pcap | wc -l)
-    test "${total_pkts}" = "2"
+    test "${total_pkts}" = "3"
 ])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
@@ -4736,10 +4740,12 @@ ovn-nbctl lb-add lb-ipv6-tcp     [[8800::0088]]:8080 [[4200::1]]:4041 tcp
 ovn-nbctl lb-add lb-ipv6-tcp-dup [[8800::0089]]:8080 [[4200::1]]:4041 tcp
 ovn-nbctl lb-add lb-ipv6-udp     [[8800::0088]]:4040 [[4200::1]]:2021 udp
 ovn-nbctl lb-add lb-ipv6-udp-dup [[8800::0089]]:4040 [[4200::1]]:2021 udp
+ovn-nbctl lb-add lb-ipv6 8800::0090 4200::1
 ovn-nbctl ls-lb-add sw lb-ipv6-tcp
 ovn-nbctl ls-lb-add sw lb-ipv6-tcp-dup
 ovn-nbctl ls-lb-add sw lb-ipv6-udp
 ovn-nbctl ls-lb-add sw lb-ipv6-udp-dup
+ovn-nbctl ls-lb-add sw lb-ipv6
 
 ovn-nbctl lr-add rtr
 ovn-nbctl lrp-add rtr rtr-sw 00:00:00:00:01:00 4200::00ff/64
@@ -4759,21 +4765,23 @@ NS_CHECK_EXEC([lsp], [timeout 2s nc -k -l 4200::1 4041 &], [0])
 # Check that IPv6 TCP hairpin connection succeeds on both VIPs.
 NS_CHECK_EXEC([lsp], [nc 8800::0088 8080 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([lsp], [nc 8800::0089 8080 -z], [0], [ignore], [ignore])
+NS_CHECK_EXEC([lsp], [nc 8800::0090 4041 -z], [0], [ignore], [ignore])
 
 # Capture IPv6 UDP hairpinned packets.
 filter="dst 4200::1 and dst port 2021 and udp"
-NS_CHECK_EXEC([lsp], [tcpdump -nn -c 2 -i lsp $filter > lsp.pcap &])
+NS_CHECK_EXEC([lsp], [tcpdump -nn -c 3 -i lsp $filter > lsp.pcap &])
 
 sleep 1
 
 # Generate IPv6 UDP hairpin traffic.
 NS_CHECK_EXEC([lsp], [echo a | nc -u 8800::0088 4040 &], [0])
 NS_CHECK_EXEC([lsp], [echo a | nc -u 8800::0089 4040 &], [0])
+NS_CHECK_EXEC([lsp], [echo a | nc -u 8800::0090 2021 &], [0])
 
 # Check hairpin traffic.
 OVS_WAIT_UNTIL([
     total_pkts=$(cat lsp.pcap | wc -l)
-    test "${total_pkts}" = "2"
+    test "${total_pkts}" = "3"
 ])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
