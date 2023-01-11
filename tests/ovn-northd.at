@@ -3748,7 +3748,7 @@ flow="eth.dst == 00:00:00:00:01:00 && inport == \"rtr-ls\" && ip4.src == 42.42.4
 
 AT_CHECK_UNQUOTED([ovn-trace --ct new --minimal "${flow}" --lb-dst 42.42.42.42:4242], [0], [dnl
 # tcp,reg14=0x1,vlan_tci=0x0000,dl_src=00:00:00:00:00:00,dl_dst=00:00:00:00:01:00,nw_src=42.42.42.42,nw_dst=43.43.43.43,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=4343,tcp_flags=0
-ct_dnat /* assuming no un-dnat entry, so no change */ {
+ct_next(ct_state=new|trk) {
     ct_lb {
         ip.ttl--;
         eth.src = 00:00:00:00:01:00;
@@ -3766,7 +3766,9 @@ ct_dnat /* assuming no un-dnat entry, so no change */ {
 
 AT_CHECK_UNQUOTED([ovn-trace --minimal "${flow}" --lb-dst 42.42.42.42:4242], [0], [dnl
 # tcp,reg14=0x1,vlan_tci=0x0000,dl_src=00:00:00:00:00:00,dl_dst=00:00:00:00:01:00,nw_src=42.42.42.42,nw_dst=43.43.43.43,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=4343,tcp_flags=0
-ct_dnat /* assuming no un-dnat entry, so no change */ /* default (use --ct to customize) */;
+ct_next(ct_state=est|trk /* default (use --ct to customize) */) {
+    ct_dnat /* assuming no un-dnat entry, so no change */;
+};
 ])
 
 AT_CLEANUP
