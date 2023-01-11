@@ -1567,9 +1567,6 @@ add_lb_vip_hairpin_reply_action(struct in6_addr *vip6, ovs_be32 vip,
     /* Hairpin replies have the same nw_proto as packets that created the
      * session.
      */
-    union mf_value imm_proto = {
-        .u8 = lb_proto,
-    };
     ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
     ol_spec->dst.field = mf_from_id(MFF_IP_PROTO);
     ol_spec->src.field = mf_from_id(MFF_IP_PROTO);
@@ -1577,16 +1574,21 @@ add_lb_vip_hairpin_reply_action(struct in6_addr *vip6, ovs_be32 vip,
     ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
     ol_spec->n_bits = ol_spec->dst.n_bits;
     ol_spec->dst_type = NX_LEARN_DST_MATCH;
-    ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
-    mf_write_subfield_value(&ol_spec->dst, &imm_proto, &match);
-
-    /* Push value last, as this may reallocate 'ol_spec' */
-    imm_bytes = DIV_ROUND_UP(ol_spec->dst.n_bits, 8);
-    src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
-    memcpy(src_imm, &imm_proto, imm_bytes);
 
     /* Hairpin replies have source port == <backend-port>. */
     if (has_l4_port) {
+        union mf_value imm_proto = {
+            .u8 = lb_proto,
+        };
+
+        ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
+        mf_write_subfield_value(&ol_spec->dst, &imm_proto, &match);
+
+        /* Push value last, as this may reallocate 'ol_spec' */
+        imm_bytes = DIV_ROUND_UP(ol_spec->dst.n_bits, 8);
+        src_imm = ofpbuf_put_zeros(ofpacts, OFPACT_ALIGN(imm_bytes));
+        memcpy(src_imm, &imm_proto, imm_bytes);
+
         ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
         switch (lb_proto) {
         case IPPROTO_TCP:
@@ -1609,6 +1611,8 @@ add_lb_vip_hairpin_reply_action(struct in6_addr *vip6, ovs_be32 vip,
         ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
         ol_spec->n_bits = ol_spec->dst.n_bits;
         ol_spec->dst_type = NX_LEARN_DST_MATCH;
+        ol_spec->src_type = NX_LEARN_SRC_FIELD;
+    } else {
         ol_spec->src_type = NX_LEARN_SRC_FIELD;
     }
 
