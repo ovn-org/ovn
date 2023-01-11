@@ -63,7 +63,7 @@ def sodepends(include_info, filenames, dst):
             continue
 
         # Open file.
-        include_dirs = [info[0] for info in include_info]
+        include_dirs = [info[1] if len(info) == 2 else info[0] for info in include_info]
         fn = soutil.find_file(include_dirs, toplevel)
         if not fn:
             ok = False
