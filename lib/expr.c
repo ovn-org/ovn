@@ -35,7 +35,7 @@ VLOG_DEFINE_THIS_MODULE(expr);
 
 static struct expr *parse_and_annotate(const char *s,
                                        const struct shash *symtab,
-                                       struct ovs_list *nesting,
+                                       struct sset *nesting,
                                        char **errorp);
 
 /* Returns the name of measurement level 'level'. */
@@ -1582,9 +1582,10 @@ expr_field_parse(struct lexer *lexer, const struct shash *symtab,
         while (symbol) {
             if (symbol->prereqs) {
                 char *error;
-                struct ovs_list nesting = OVS_LIST_INITIALIZER(&nesting);
+                struct sset nesting = SSET_INITIALIZER(&nesting);
                 struct expr *e = parse_and_annotate(symbol->prereqs, symtab,
                                                     &nesting, &error);
+                sset_destroy(&nesting);
                 if (error) {
                     lexer_error(lexer, "%s", error);
                     free(error);
@@ -1940,21 +1941,12 @@ expr_destroy(struct expr *expr)
 
 /* Annotation. */
 
-/* An element in a linked list of symbols.
- *
- * Used to detect when a symbol is being expanded recursively, to allow
- * flagging an error. */
-struct annotation_nesting {
-    struct ovs_list node;
-    const struct expr_symbol *symbol;
-};
-
 static struct expr *expr_annotate_(struct expr *, const struct shash *symtab,
-                                   struct ovs_list *nesting, char **errorp);
+                                   struct sset *nesting, char **errorp);
 
 static struct expr *
 parse_and_annotate(const char *s, const struct shash *symtab,
-                   struct ovs_list *nesting, char **errorp)
+                   struct sset *nesting, char **errorp)
 {
     char *error;
     struct expr *expr;
@@ -1976,22 +1968,16 @@ parse_and_annotate(const char *s, const struct shash *symtab,
 
 static struct expr *
 expr_annotate_cmp(struct expr *expr, const struct shash *symtab,
-                  bool append_prereqs, struct ovs_list *nesting, char **errorp)
+                  bool append_prereqs, struct sset *nesting, char **errorp)
 {
     const struct expr_symbol *symbol = expr->cmp.symbol;
-    const struct annotation_nesting *iter;
-    LIST_FOR_EACH (iter, node, nesting) {
-        if (iter->symbol == symbol) {
-            *errorp = xasprintf("Recursive expansion of symbol `%s'.",
-                                symbol->name);
-            expr_destroy(expr);
-            return NULL;
-        }
+    struct sset_node *nested_node = sset_add(nesting, symbol->name);
+    if (!nested_node) {
+        *errorp = xasprintf("Recursive expansion of symbol `%s'.",
+                            symbol->name);
+        expr_destroy(expr);
+        return NULL;
     }
-
-    struct annotation_nesting an;
-    an.symbol = symbol;
-    ovs_list_push_back(nesting, &an.node);
 
     struct expr *prereqs = NULL;
     if (append_prereqs && symbol->prereqs) {
@@ -2025,20 +2011,20 @@ expr_annotate_cmp(struct expr *expr, const struct shash *symtab,
     }
 
     *errorp = NULL;
-    ovs_list_remove(&an.node);
+    sset_delete(nesting, nested_node);
     return prereqs ? expr_combine(EXPR_T_AND, expr, prereqs) : expr;
 
 error:
     expr_destroy(expr);
     expr_destroy(prereqs);
-    ovs_list_remove(&an.node);
+    sset_delete(nesting, nested_node);
     return NULL;
 }
 
 /* Append (logical AND) prerequisites for given symbol to the expression. */
 static struct expr *
 expr_append_prereqs(struct expr *expr, const struct expr_symbol *symbol,
-                    const struct shash *symtab, struct ovs_list *nesting,
+                    const struct shash *symtab, struct sset *nesting,
                     char **errorp)
 {
     struct expr *prereqs = NULL;
@@ -2063,7 +2049,7 @@ static const struct expr_symbol *expr_get_unique_symbol(
  * have arranged to deal with them). */
 static struct expr *
 expr_annotate__(struct expr *expr, const struct shash *symtab,
-                bool append_prereqs, struct ovs_list *nesting, char **errorp)
+                bool append_prereqs, struct sset *nesting, char **errorp)
 {
     switch (expr->type) {
     case EXPR_T_CMP:
@@ -2122,7 +2108,7 @@ expr_annotate__(struct expr *expr, const struct shash *symtab,
  * Uses 'nesting' to ensure that a given symbol is not recursively expanded. */
 static struct expr *
 expr_annotate_(struct expr *expr, const struct shash *symtab,
-               struct ovs_list *nesting, char **errorp)
+               struct sset *nesting, char **errorp)
 {
     return expr_annotate__(expr, symtab, true, nesting, errorp);
 }
@@ -2148,8 +2134,11 @@ expr_annotate_(struct expr *expr, const struct shash *symtab,
 struct expr *
 expr_annotate(struct expr *expr, const struct shash *symtab, char **errorp)
 {
-    struct ovs_list nesting = OVS_LIST_INITIALIZER(&nesting);
-    return expr_annotate_(expr, symtab, &nesting, errorp);
+    struct sset nesting = SSET_INITIALIZER(&nesting);
+    struct expr *result = expr_annotate_(expr, symtab, &nesting, errorp);
+    sset_destroy(&nesting);
+
+    return result;
 }
 
 static struct expr *
