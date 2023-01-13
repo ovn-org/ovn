@@ -2091,9 +2091,13 @@ acl_cmp(const void *acl1_, const void *acl2_)
 
     int dir1 = dir_encode(acl1->direction);
     int dir2 = dir_encode(acl2->direction);
+    bool after_lb1 = smap_get_bool(&acl1->options, "apply-after-lb", false);
+    bool after_lb2 = smap_get_bool(&acl2->options, "apply-after-lb", false);
 
     if (dir1 != dir2) {
         return dir1 < dir2 ? -1 : 1;
+    } else if (after_lb1 != after_lb2) {
+        return after_lb2 ? -1 : 1;
     } else if (acl1->priority != acl2->priority) {
         return acl1->priority > acl2->priority ? -1 : 1;
     } else {
@@ -2191,6 +2195,9 @@ nbctl_acl_list(struct ctl_context *ctx)
         }
         if (acl->label) {
           ds_put_format(&ctx->output, " label=%"PRId64, acl->label);
+        }
+        if (smap_get_bool(&acl->options, "apply-after-lb", false)) {
+            ds_put_cstr(&ctx->output, " [after-lb]");
         }
         ds_put_cstr(&ctx->output, "\n");
     }
