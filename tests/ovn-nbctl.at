@@ -223,6 +223,9 @@ ovn_nbctl_test_acl() {
    AT_CHECK([ovn-nbctl $2 acl-add $1 to-lport 100 ip drop])
    AT_CHECK([ovn-nbctl $2 --label=1234 acl-add $1 from-lport 70 icmp allow-related])
    AT_CHECK([ovn-nbctl $2 --label=1235 acl-add $1 to-lport 70 icmp allow-related])
+   AT_CHECK([ovn-nbctl $2 --apply-after-lb acl-add $1 from-lport 500 tcp allow])
+   AT_CHECK([ovn-nbctl $2 --apply-after-lb acl-add $1 from-lport 300 tcp drop])
+   AT_CHECK([ovn-nbctl $2 --apply-after-lb acl-add $1 from-lport 300 udp allow])
 
    dnl Add duplicated ACL
    AT_CHECK([ovn-nbctl $2 acl-add $1 to-lport 100 ip drop], [1], [], [stderr])
@@ -247,6 +250,9 @@ from-lport   600 (udp) drop log()
 from-lport   400 (tcp) drop
 from-lport   200 (ip) drop
 from-lport    70 (icmp) allow-related label=1234
+from-lport   500 (tcp) allow [[after-lb]]
+from-lport   300 (tcp) drop [[after-lb]]
+from-lport   300 (udp) allow [[after-lb]]
   to-lport   500 (udp) drop log(name=test,severity=info)
   to-lport   300 (tcp) drop
   to-lport   100 (ip) drop
@@ -260,6 +266,9 @@ from-lport   600 (udp) drop log()
 from-lport   400 (tcp) drop
 from-lport   200 (ip) drop
 from-lport    70 (icmp) allow-related label=1234
+from-lport   500 (tcp) allow [[after-lb]]
+from-lport   300 (tcp) drop [[after-lb]]
+from-lport   300 (udp) allow [[after-lb]]
 ])
 
    dnl Delete all ACLs.
