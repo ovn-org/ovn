@@ -122,7 +122,38 @@ main(int argc, char *argv[])
 
     /* Connect to OVN SB database. */
     struct ovsdb_idl_loop ovnsb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
-        ovsdb_idl_create(ovnsb_remote, &sbrec_idl_class, true, true));
+        ovsdb_idl_create(ovnsb_remote, &sbrec_idl_class, false, true));
+
+    ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_sb_global);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_sb_global_col_options);
+
+    ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_chassis);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_encaps);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_name);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_other_config);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
+                         &sbrec_chassis_col_vtep_logical_switches);
+
+    ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_encap);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_encap_col_chassis_name);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_encap_col_ip);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_encap_col_options);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_encap_col_type);
+
+    ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_datapath_binding);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
+                         &sbrec_datapath_binding_col_tunnel_key);
+
+    ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_port_binding);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_port_binding_col_chassis);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_port_binding_col_datapath);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
+                         &sbrec_port_binding_col_logical_port);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_port_binding_col_mac);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_port_binding_col_options);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_port_binding_col_type);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_port_binding_col_up);
+
     ovsdb_idl_get_initial_snapshot(ovnsb_idl_loop.idl);
 
     char *ovn_version = ovn_get_internal_version();
