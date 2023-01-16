@@ -1,7 +1,7 @@
 ARG OVNKUBE_COMMIT=master
 ARG LIBOVSDB_COMMIT=8081fe24e48f
 
-FROM fedora:35 AS ovnbuilder
+FROM fedora:37 AS ovnbuilder
 
 USER root
 
@@ -64,7 +64,7 @@ COPY --from=ovnbuilder /tmp/ovn/ovn-sb.ovsschema pkg/sbdb/ovn-sb.ovsschema
 RUN go generate ./pkg/nbdb && go generate ./pkg/sbdb && make
 
 # Build the final image
-FROM fedora:35
+FROM fedora:37
 
 # install needed dependencies
 RUN INSTALL_PKGS=" \
