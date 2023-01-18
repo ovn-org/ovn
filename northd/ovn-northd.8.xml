@@ -794,8 +794,9 @@
         policy, <code>ct_mark.blocked</code> will get set and packets in the
         reply direction will no longer be allowed, either. This flow also
         clears the register bits <code>reg0[9]</code> and
-        <code>reg0[10]</code>.  If ACL logging and logging of related packets
-        is enabled, then a companion priority-65533 flow will be installed that
+        <code>reg0[10]</code> and sets register bit <code>reg0[17]</code>.
+        If ACL logging and logging of related packets is enabled, then a
+        companion priority-65533 flow will be installed that
         accomplishes the same thing but also logs the traffic.
       </li>
 
@@ -1171,6 +1172,15 @@
         known connections.  Setting <code>ct_label</code> marks a connection
         as one that was previously allowed, but should no longer be
         allowed due to a policy change.
+      </li>
+    </ul>
+
+    <ul>
+      <li>
+        One priority-65532 flow matching packets with <code>reg0[17]</code>
+        set (either replies to existing sessions or traffic related to
+        existing sessions) and allows these by advancing to the next
+        table.
       </li>
     </ul>
 
