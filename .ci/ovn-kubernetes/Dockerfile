@@ -8,21 +8,16 @@ USER root
 ENV PYTHONDONTWRITEBYTECODE yes
 
 # install needed rpms - openvswitch must be 2.10.4 or higher
-RUN INSTALL_PKGS=" \
-    python3-pyyaml bind-utils procps-ng openssl numactl-libs firewalld-filesystem \
-    libpcap hostname desktop-file-utils \
-    python3-openvswitch python3-pyOpenSSL \
-    autoconf automake libtool g++ gcc fedora-packager rpmdevtools \
-    unbound unbound-devel groff python3-sphinx graphviz openssl openssl-devel \
-    checkpolicy libcap-ng-devel selinux-policy-devel" && \
-    dnf install --best --refresh -y --setopt=tsflags=nodocs $INSTALL_PKGS && \
-    dnf clean all && rm -rf /var/cache/dnf/*
+RUN INSTALL_PKGS=" rpm-build dnf-plugins-core" && \
+    dnf install --best --refresh -y --setopt=tsflags=nodocs $INSTALL_PKGS
 
 # Build OVS and OVN rpms from current folder
 RUN mkdir /tmp/ovn
 COPY . /tmp/ovn
 WORKDIR /tmp/ovn/ovs
 
+RUN sed -e 's/@VERSION@/0.0.1/' rhel/openvswitch-fedora.spec.in > /tmp/ovs.spec
+RUN dnf builddep -y /tmp/ovs.spec
 RUN ./boot.sh
 RUN ./configure -v
 RUN make rpm-fedora
@@ -30,6 +25,8 @@ RUN rm rpm/rpmbuild/RPMS/x86_64/*debug*
 RUN rm rpm/rpmbuild/RPMS/x86_64/*devel*
 
 WORKDIR /tmp/ovn
+RUN sed -e 's/@VERSION@/0.0.1/' rhel/ovn-fedora.spec.in > /tmp/ovn.spec
+RUN dnf builddep -y /tmp/ovn.spec
 RUN ./boot.sh
 RUN ./configure
 RUN make rpm-fedora
