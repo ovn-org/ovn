@@ -798,6 +798,11 @@ update_ct_zones(const struct shash *binding_lports,
             }
             bitmap_set1(ct_zone_bitmap, snat_req_node->data);
             node->data = snat_req_node->data;
+        } else {
+            add_pending_ct_zone_entry(pending_ct_zones, CT_ZONE_OF_QUEUED,
+                                      snat_req_node->data, true, snat_req_node->name);
+            bitmap_set1(ct_zone_bitmap, snat_req_node->data);
+            simap_put(ct_zones, snat_req_node->name, snat_req_node->data);
         }
     }
 

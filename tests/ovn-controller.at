@@ -2500,3 +2500,30 @@ AT_CHECK([GET_LOCAL_TEMPLATE_VARS], [1], [])
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - Requested SNAT Zone in router creation transaction])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+dnl This is key. Add the snat-ct-zone when creating the logical router and then
+dnl do not make any further changes to the logical router settings.
+check ovn-nbctl lr-add lr0 -- set Logical_Router lr0 options:snat-ct-zone=666
+check ovn-nbctl lrp-add lr0 lrp-gw 01:00:00:00:00:01 172.16.0.1
+check ovn-nbctl lrp-set-gateway-chassis lrp-gw hv1
+
+check ovn-nbctl --wait=hv sync
+
+lr_uuid=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+ct_zones=$(ovn-appctl -t ovn-controller ct-zone-list)
+zone_num=$(printf "$ct_zones" | grep ${lr_uuid}_snat | cut -d ' ' -f 2)
+
+check test "$zone_num" -eq 666
+
+AT_CLEANUP
+])
