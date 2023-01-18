@@ -8880,3 +8880,145 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACL default_acl_drop])
+AT_KEYWORDS([acl default_acl_drop])
+
+CHECK_CONNTRACK()
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+ovn-nbctl ls-add sw
+
+# Logical port 'vm1' in switch 'sw'.
+ADD_NAMESPACES(vm1)
+ADD_VETH(vm1, vm1, br-int, "10.0.0.1/24", "f0:00:00:01:02:03", \
+         "10.0.0.254")
+check ovn-nbctl lsp-add sw vm1 \
+-- lsp-set-addresses vm1 "f0:00:00:01:02:03 10.0.0.1"
+
+# Logical port 'vm2' in switch 'sw'.
+ADD_NAMESPACES(vm2)
+ADD_VETH(vm2, vm2, br-int, "10.0.0.2/24", "f0:00:00:01:02:05", \
+"10.0.0.254")
+check ovn-nbctl lsp-add sw vm2 \
+-- lsp-set-addresses vm2 "f0:00:00:01:02:05 10.0.0.2"
+
+# Wait for ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+AS_BOX([from-lport acl, default_acl_drop false])
+check ovn-nbctl acl-del sw
+check ovn-nbctl set NB_Global . options:default_acl_drop=false \
+    -- acl-add sw from-lport 20 "ip4 && icmp" allow-related \
+    -- acl-add sw from-lport 10 "ip4" drop
+check ovn-nbctl --wait=hv sync
+
+# 'vm1' should be able to ping 'vm2' directly.
+NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AS_BOX([from-lport acl, default_acl_drop true])
+check ovn-nbctl acl-del sw
+check ovn-nbctl set NB_Global . options:default_acl_drop=true \
+    -- acl-add sw from-lport 20 "ip4 && icmp" allow-related \
+    -- acl-add sw from-lport 10 "arp" allow \
+    -- --apply-after-lb acl-add sw from-lport 1 1 allow \
+    -- acl-add sw to-lport 1 1 allow
+check ovn-nbctl --wait=hv sync
+
+# 'vm1' should be able to ping 'vm2' directly.
+NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AS_BOX([from-lport acl, after LB, default_acl_drop false])
+check ovn-nbctl acl-del sw
+check ovn-nbctl set NB_Global . options:default_acl_drop=false \
+    -- --apply-after-lb acl-add sw from-lport 20 "ip4 && icmp" allow-related \
+    -- --apply-after-lb acl-add sw from-lport 10 "ip4" drop
+check ovn-nbctl --wait=hv sync
+
+# 'vm1' should be able to ping 'vm2' directly.
+NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AS_BOX([from-lport acl, after LB, default_acl_drop true])
+check ovn-nbctl acl-del sw
+check ovn-nbctl set NB_Global . options:default_acl_drop=true \
+    -- acl-add sw from-lport 1 1 allow \
+    -- --apply-after-lb acl-add sw from-lport 20 "ip4 && icmp" allow-related \
+    -- --apply-after-lb acl-add sw from-lport 20 "arp" allow-related \
+    -- acl-add sw to-lport 1 1 allow
+check ovn-nbctl --wait=hv sync
+
+# 'vm1' should be able to ping 'vm2' directly.
+NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AS_BOX([to-lport acl, default_acl_drop false])
+check ovn-nbctl acl-del sw
+check ovn-nbctl set NB_Global . options:default_acl_drop=false \
+    -- acl-add sw to-lport 20 "ip4 && icmp" allow-related \
+    -- acl-add sw to-lport 10 "ip4" drop
+check ovn-nbctl --wait=hv sync
+
+# 'vm1' should be able to ping 'vm2' directly.
+NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AS_BOX([to-lport acl, default_acl_drop true])
+check ovn-nbctl acl-del sw
+check ovn-nbctl set NB_Global . options:default_acl_drop=true \
+    -- acl-add sw from-lport 1 1 allow \
+    -- --apply-after-lb acl-add sw from-lport 1 1 allow \
+    -- acl-add sw to-lport 20 "ip4 && icmp" allow-related \
+    -- acl-add sw to-lport 20 "arp" allow
+check ovn-nbctl --wait=hv sync
+
+# 'vm1' should be able to ping 'vm2' directly.
+NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
