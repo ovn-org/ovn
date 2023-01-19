@@ -3278,7 +3278,9 @@ icmp6 {
             For the related traffic, a priority 50 flow that matches
             <code>ct.rel &amp;&amp; !ct.est &amp;&amp; !ct.new </code>
             with an action of <code>ct_commit_nat;</code>, if the router
-            has load balancer assigned to it.
+            has load balancer assigned to it. Along with two priority 70 flows
+            that match <code>skip_snat</code> and <code>force_snat</code>
+            flags.
         </p>
       </li>
     </ul>

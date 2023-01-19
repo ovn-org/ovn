@@ -1998,7 +1998,7 @@
         </dd>
 
         <dt><code>ct_lb;</code></dt>
-        <dt><code>ct_lb(backends=<var>ip</var>[:<var>port</var>][,...][; hash_fields=<var>field1</var>,<var>field2</var>,...]);</code></dt>
+        <dt><code>ct_lb(backends=<var>ip</var>[:<var>port</var>][,...][; hash_fields=<var>field1</var>,<var>field2</var>,...][; ct_flag]);</code></dt>
         <dd>
           <p>
             With arguments, <code>ct_lb</code> commits the packet
@@ -2010,7 +2010,10 @@
             <code>dp_hash</code> is used as the OpenFlow group selection
             method, but if <code>hash_fields</code> is specified,
             <code>hash</code> is used as the selection method, and the fields
-            listed are used as the hash fields.
+            listed are used as the hash fields. The <code>ct_flag</code>
+            field represents one of supported flag: <code>skip_snat</code> or
+            <code>force_snat</code>, this flag will be stored in
+            <code>ct_label</code> register.
           </p>
           <p>
             Without arguments, <code>ct_lb</code> sends the packet to the
@@ -2032,7 +2035,7 @@
         </dd>
 
         <dt><code>ct_lb_mark;</code></dt>
-        <dt><code>ct_lb_mark(backends=<var>ip</var>[:<var>port</var>][,...][; hash_fields=<var>field1</var>,<var>field2</var>,...]);</code></dt>
+        <dt><code>ct_lb_mark(backends=<var>ip</var>[:<var>port</var>][,...][; hash_fields=<var>field1</var>,<var>field2</var>,...][; ct_flag]);</code></dt>
         <dd>
           <p>
               Same as <code>ct_lb</code>, except that it internally uses ct_mark
