@@ -759,6 +759,8 @@
         related to a committed flow in the connection tracker (e.g., an
         ICMP Port Unreachable from a non-listening UDP port), as long
         as the committed flow does not have <code>ct_mark.blocked</code> set.
+        This flow also applies NAT to the related traffic so that ICMP headers
+        and the inner packet have correct addresses.
         If ACL logging and logging of related packets is enabled, then a
         companion priority-65533 flow will be installed that accomplishes the
         same thing but also logs the traffic.
@@ -3101,10 +3103,10 @@ icmp6 {
           Router with gateway port in <code>OVN_Northbound</code> database that
           includes a L4 port <var>PORT</var> of protocol <var>P</var> and IPv4
           or IPv6 address <var>VIP</var>, a priority-120 flow that matches on
-          <code>ct.new &amp;&amp; ip &amp;&amp; reg0 == <var>VIP</var>
-          &amp;&amp; <var>P</var> &amp;&amp; reg9[16..31] == </code>
-          <code><var>PORT</var></code> (<code>xxreg0 == <var>VIP</var></code>
-          in the IPv6 case) with an action of
+          <code>ct.new &amp;&amp; !ct.rel &amp;&amp; ip &amp;&amp; reg0 ==
+          <var>VIP</var> &amp;&amp; <var>P</var> &amp;&amp; reg9[16..31] ==
+          </code> <code><var>PORT</var></code> (<code>xxreg0 == <var>VIP</var>
+          </code> in the IPv6 case) with an action of
           <code>ct_lb_mark(<var>args</var>)</code>, where <var>args</var> contains
           comma separated IPv4 or IPv6 addresses (and optional port numbers) to
           load balance to.  If the router is configured to force SNAT any
@@ -3133,9 +3135,9 @@ icmp6 {
           <code>OVN_Northbound</code> database that includes a L4 port
           <var>PORT</var> of protocol <var>P</var> and IPv4 or IPv6 address
           <var>VIP</var>, a priority-120 flow that matches on
-          <code>ct.est &amp;&amp; ip4 &amp;&amp; reg0 == <var>VIP</var>
-          &amp;&amp; <var>P</var> &amp;&amp; reg9[16..31] == </code>
-          <code><var>PORT</var></code> (<code>ip6</code> and
+          <code>ct.est &amp;&amp; !ct.rel &amp;&amp; ip4 &amp;&amp; reg0 ==
+          <var>VIP</var> &amp;&amp; <var>P</var> &amp;&amp; reg9[16..31] ==
+          </code> <code><var>PORT</var></code> (<code>ip6</code> and
           <code>xxreg0 == <var>VIP</var></code> in the IPv6 case) with an
           action of <code>next;</code>. If the router is configured to force
           SNAT any load-balanced packets, the above action will be replaced by
@@ -3158,7 +3160,7 @@ icmp6 {
           For all the configured load balancing rules for a router in
           <code>OVN_Northbound</code> database that includes just an IP address
           <var>VIP</var> to match on, a priority-110 flow that matches on
-          <code>ct.new &amp;&amp; ip4 &amp;&amp; reg0 ==
+          <code>ct.new &amp;&amp; !ct.rel &amp;&amp; ip4 &amp;&amp; reg0 ==
           <var>VIP</var></code> (<code>ip6</code> and <code>xxreg0 ==
           <var>VIP</var></code> in the IPv6 case) with an action of
           <code>ct_lb_mark(<var>args</var>)</code>, where <var>args</var> contains
@@ -3185,7 +3187,7 @@ icmp6 {
           For all the configured load balancing rules for a router in
           <code>OVN_Northbound</code> database that includes just an IP address
           <var>VIP</var> to match on, a priority-110 flow that matches on
-          <code>ct.est &amp;&amp; ip4 &amp;&amp; reg0 ==
+          <code>ct.est &amp;&amp; !ct.rel &amp;&amp; ip4 &amp;&amp; reg0 ==
           <var>VIP</var></code> (or <code>ip6</code> and
           <code>xxreg0 == <var>VIP</var></code>) with an action of
           <code>next;</code>. If the router is configured to force SNAT any
@@ -3211,6 +3213,15 @@ icmp6 {
         whenever an incoming packet is received for this load-balancer.
         Please note using <code>--reject</code> option will disable
         empty_lb SB controller event for this load balancer.
+      </li>
+
+      <li>
+        <p>
+            For the related traffic, a priority 50 flow that matches
+            <code>ct.rel &amp;&amp; !ct.est &amp;&amp; !ct.new </code>
+            with an action of <code>ct_commit_nat;</code>, if the router
+            has load balancer assigned to it.
+        </p>
       </li>
     </ul>
 
