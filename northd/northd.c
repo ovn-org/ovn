@@ -407,14 +407,23 @@ build_chassis_features(const struct northd_input *input_data,
     const struct sbrec_chassis *chassis;
 
     SBREC_CHASSIS_TABLE_FOR_EACH (chassis, input_data->sbrec_chassis) {
-        if (!smap_get_bool(&chassis->other_config,
-                           OVN_FEATURE_CT_NO_MASKED_LABEL,
-                           false)) {
+        bool ct_no_masked_label =
+            smap_get_bool(&chassis->other_config,
+                          OVN_FEATURE_CT_NO_MASKED_LABEL,
+                          false);
+        if (!ct_no_masked_label && chassis_features->ct_no_masked_label) {
             chassis_features->ct_no_masked_label = false;
-            return;
+        }
+
+        bool ct_lb_related =
+            smap_get_bool(&chassis->other_config,
+                          OVN_FEATURE_CT_LB_RELATED,
+                          false);
+        if (!ct_lb_related &&
+            chassis_features->ct_lb_related) {
+            chassis_features->ct_lb_related = false;
         }
     }
-    chassis_features->ct_no_masked_label = true;
 }
 
 struct ovn_chassis_qdisc_queues {
@@ -6611,14 +6620,17 @@ build_acls(struct ovn_datapath *od, const struct chassis_features *features,
          * a dynamically negotiated FTP data channel), but will allow
          * related traffic such as an ICMP Port Unreachable through
          * that's generated from a non-listening UDP port.  */
+        const char *ct_acl_action = features->ct_lb_related
+                                    ? "ct_commit_nat;"
+                                    : "next;";
         ds_clear(&match);
         ds_put_format(&match, "!ct.est && ct.rel && !ct.new%s && %s == 0",
                       use_ct_inv_match ? " && !ct.inv" : "",
                       ct_blocked_match);
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, UINT16_MAX - 3,
-                      ds_cstr(&match), "ct_commit_nat;");
+                      ds_cstr(&match), ct_acl_action);
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, UINT16_MAX - 3,
-                      ds_cstr(&match), "ct_commit_nat;");
+                      ds_cstr(&match), ct_acl_action);
 
         /* Ingress and Egress ACL Table (Priority 65532).
          *
@@ -9939,9 +9951,11 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
                                struct hmap *lflows,
                                struct ds *match, struct ds *action,
                                const struct shash *meter_groups,
-                               bool ct_lb_mark)
+                               const struct chassis_features *features)
 {
-    const char *ct_natted = ct_lb_mark ? "ct_mark.natted" : "ct_label.natted";
+    const char *ct_natted = features->ct_no_masked_label
+                            ? "ct_mark.natted"
+                            : "ct_label.natted";
     char *skip_snat_new_action = NULL;
     char *skip_snat_est_action = NULL;
     char *new_match;
@@ -9952,7 +9966,7 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
 
     bool reject = build_lb_vip_actions(lb_vip, vips_nb, action,
                                        lb->selection_fields, false,
-                                       ct_lb_mark);
+                                       features->ct_no_masked_label);
     bool drop = !!strncmp(ds_cstr(action), "ct_lb", strlen("ct_lb"));
     if (!drop) {
         /* Remove the trailing ");". */
@@ -9974,9 +9988,11 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     }
 
     if (lb->skip_snat) {
+        const char *skip_snat = features->ct_lb_related && !drop
+                                ? "; skip_snat);"
+                                : "";
         skip_snat_new_action = xasprintf("flags.skip_snat_for_lb = 1; %s%s",
-                                         ds_cstr(action),
-                                         drop ? "" : "; skip_snat);");
+                                         ds_cstr(action), skip_snat);
         skip_snat_est_action = xasprintf("flags.skip_snat_for_lb = 1; "
                                          "next;");
     }
@@ -10094,9 +10110,11 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
             skip_snat_new_action, est_match,
             skip_snat_est_action, lflows, prio, meter_groups);
 
+    const char *force_snat = features->ct_lb_related && !drop
+                             ? "; force_snat);"
+                             : "";
     char *new_actions = xasprintf("flags.force_snat_for_lb = 1; %s%s",
-                                  ds_cstr(action),
-                                  drop ? "" : "; force_snat);");
+                                  ds_cstr(action), force_snat);
     build_gw_lrouter_nat_flows_for_lb(lb, gw_router_force_snat,
             n_gw_router_force_snat, reject, new_match,
             new_actions, est_match,
@@ -10333,7 +10351,7 @@ build_lrouter_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
 
         build_lrouter_nat_flows_for_lb(lb_vip, lb, &lb->vips_nb[i],
                                        lflows, match, action, meter_groups,
-                                       features->ct_no_masked_label);
+                                       features);
 
         if (!build_empty_lb_event_flow(lb_vip, lb, match, action)) {
             continue;
@@ -13604,7 +13622,7 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
                                 const struct hmap *ports, struct ds *match,
                                 struct ds *actions,
                                 const struct shash *meter_groups,
-                                bool ct_lb_mark)
+                                const struct chassis_features *features)
 {
     if (!od->nbr) {
         return;
@@ -13635,9 +13653,11 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
      * a dynamically negotiated FTP data channel), but will allow
      * related traffic such as an ICMP Port Unreachable through
      * that's generated from a non-listening UDP port.  */
-    if (od->has_lb_vip) {
+    if (od->has_lb_vip && features->ct_lb_related) {
         ds_clear(match);
-        const char *ct_flag_reg = ct_lb_mark ? "ct_mark" : "ct_label";
+        const char *ct_flag_reg = features->ct_no_masked_label
+                                  ? "ct_mark"
+                                  : "ct_label";
 
         ds_put_cstr(match, "ct.rel && !ct.est && !ct.new");
         size_t match_len = match->length;
@@ -13838,7 +13858,7 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
 
     if (od->nbr->n_nat) {
         ds_clear(match);
-        const char *ct_natted = ct_lb_mark ?
+        const char *ct_natted = features->ct_no_masked_label ?
                                 "ct_mark.natted" :
                                 "ct_label.natted";
         ds_put_format(match, "ip && %s == 1", ct_natted);
@@ -13955,7 +13975,7 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
     build_lrouter_arp_nd_for_datapath(od, lsi->lflows, lsi->meter_groups);
     build_lrouter_nat_defrag_and_lb(od, lsi->lflows, lsi->ports, &lsi->match,
                                     &lsi->actions, lsi->meter_groups,
-                                    lsi->features->ct_no_masked_label);
+                                    lsi->features);
 }
 
 /* Helper function to combine all lflow generation which is iterated by port.
@@ -15521,7 +15541,10 @@ northd_init(struct northd_data *data)
     hmap_init(&data->lb_groups);
     hmap_init(&data->bfd_connections);
     ovs_list_init(&data->lr_list);
-    memset(&data->features, 0, sizeof data->features);
+    data->features = (struct chassis_features) {
+        .ct_no_masked_label = true,
+        .ct_lb_related = true,
+    };
     data->ovn_internal_version_changed = false;
 }
 
