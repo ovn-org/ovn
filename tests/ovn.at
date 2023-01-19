@@ -278,12 +278,16 @@ ct_label = NXM_NX_CT_LABEL
 ct_label.blocked = ct_label[0]
 ct_label.ecmp_reply_eth = ct_label[32..79]
 ct_label.ecmp_reply_port = ct_label[80..95]
+ct_label.force_snat = ct_label[3]
 ct_label.label = ct_label[96..127]
 ct_label.natted = ct_label[1]
+ct_label.skip_snat = ct_label[2]
 ct_mark = NXM_NX_CT_MARK
 ct_mark.blocked = ct_mark[0]
 ct_mark.ecmp_reply_port = ct_mark[16..31]
+ct_mark.force_snat = ct_mark[3]
 ct_mark.natted = ct_mark[1]
+ct_mark.skip_snat = ct_mark[2]
 ct_state = NXM_NX_CT_STATE
 ]])
 AT_CLEANUP
@@ -1092,15 +1096,23 @@ ct_lb(backends=192.168.1.2:80,192.168.1.3:80);
     encodes as group:1
     uses group: id(1), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
     has prereqs ip
+ct_lb(backends=192.168.1.2:80,192.168.1.3:80; skip_snat);
+    encodes as group:2
+    uses group: id(2), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label,set_field:4/4->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label,set_field:4/4->ct_label)))
+    has prereqs ip
+ct_lb(backends=192.168.1.2:80,192.168.1.3:80; force_snat);
+    encodes as group:3
+    uses group: id(3), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label,set_field:8/8->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label,set_field:8/8->ct_label)))
+    has prereqs ip
 ct_lb(backends=192.168.1.2, 192.168.1.3, );
     formats as ct_lb(backends=192.168.1.2,192.168.1.3);
-    encodes as group:2
-    uses group: id(2), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
+    encodes as group:4
+    uses group: id(4), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2, fd0f::3, );
     formats as ct_lb(backends=fd0f::2,fd0f::3);
-    encodes as group:3
-    uses group: id(3), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
+    encodes as group:5
+    uses group: id(5), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
     has prereqs ip
 
 ct_lb(backends=192.168.1.2:);
@@ -1115,30 +1127,59 @@ ct_lb(backends=[192.168.1.2]);
 ct_lb(backends=192.168.1.2:80,192.168.1.3:80; hash_fields=eth_src,eth_dst,ip_src);
     Syntax error at `eth_src' invalid hash_fields.
 ct_lb(backends=192.168.1.2:80,192.168.1.3:80; hash_fields="eth_src,eth_dst,ip_src");
-    encodes as group:4
-    uses group: id(4), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
+    encodes as group:6
+    uses group: id(6), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,tp_src,tp_dst");
-    encodes as group:5
-    uses group: id(5), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tp_src,tp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
+    encodes as group:7
+    uses group: id(7), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tp_src,tp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,tcp_src,tcp_dst");
-    encodes as group:6
-    uses group: id(6), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tcp_src,tcp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
+    encodes as group:8
+    uses group: id(8), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tcp_src,tcp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,udp_src,udp_dst");
-    encodes as group:7
-    uses group: id(7), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,udp_src,udp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
+    encodes as group:9
+    uses group: id(9), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,udp_src,udp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst");
-    encodes as group:8
-    uses group: id(8), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
+    encodes as group:10
+    uses group: id(10), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
+    has prereqs ip
+ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst"; skip_snat);
+    encodes as group:11
+    uses group: id(11), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label,set_field:4/4->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label,set_field:4/4->ct_label)))
+    has prereqs ip
+ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst"; force_snat);
+    encodes as group:12
+    uses group: id(12), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label,set_field:8/8->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label,set_field:8/8->ct_label)))
     has prereqs ip
 
 ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80);
-    encodes as group:9
-    uses group: id(9), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark)))
+    encodes as group:13
+    uses group: id(13), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark)))
     has prereqs ip
+ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; skip_snat);
+    encodes as group:14
+    uses group: id(14), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)))
+    has prereqs ip
+ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; force_snat);
+    encodes as group:15
+    uses group: id(15), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)))
+    has prereqs ip
+ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst");
+    encodes as group:16
+    uses group: id(16), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark)))
+    has prereqs ip
+ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst"; skip_snat);
+    encodes as group:17
+    uses group: id(17), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)))
+    has prereqs ip
+ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst"; force_snat);
+    encodes as group:18
+    uses group: id(18), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)))
+    has prereqs ip
+
 # ct_next
 ct_next;
     encodes as ct(table=19,zone=NXM_NX_REG13[0..15])
@@ -1896,13 +1937,13 @@ handle_svc_check(reg0);
 # select
 reg9[16..31] = select(1=50, 2=100, 3, );
     formats as reg9[16..31] = select(1=50, 2=100, 3=100);
-    encodes as group:10
-    uses group: id(10), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:50,actions=load:1->xreg4[16..31],resubmit(,19),bucket=bucket_id=1,weight:100,actions=load:2->xreg4[16..31],resubmit(,19),bucket=bucket_id=2,weight:100,actions=load:3->xreg4[16..31],resubmit(,19))
+    encodes as group:19
+    uses group: id(19), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:50,actions=load:1->xreg4[16..31],resubmit(,19),bucket=bucket_id=1,weight:100,actions=load:2->xreg4[16..31],resubmit(,19),bucket=bucket_id=2,weight:100,actions=load:3->xreg4[16..31],resubmit(,19))
 
 reg0 = select(1, 2);
     formats as reg0 = select(1=100, 2=100);
-    encodes as group:11
-    uses group: id(11), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=load:1->xxreg0[96..127],resubmit(,19),bucket=bucket_id=1,weight:100,actions=load:2->xxreg0[96..127],resubmit(,19))
+    encodes as group:20
+    uses group: id(20), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=load:1->xxreg0[96..127],resubmit(,19),bucket=bucket_id=1,weight:100,actions=load:2->xxreg0[96..127],resubmit(,19))
 
 reg0 = select(1=, 2);
     Syntax error at `,' expecting weight.
@@ -1919,12 +1960,12 @@ reg0[0..14] = select(1, 2, 3);
 
 fwd_group(liveness=true, childports="eth0", "lsp1");
     formats as fwd_group(liveness="true", childports="eth0", "lsp1");
-    encodes as group:12
-    uses group: id(12), name(type=select,selection_method=dp_hash,bucket=watch_port:5,load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=watch_port:17,load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
+    encodes as group:21
+    uses group: id(21), name(type=select,selection_method=dp_hash,bucket=watch_port:5,load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=watch_port:17,load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
 
 fwd_group(childports="eth0", "lsp1");
-    encodes as group:13
-    uses group: id(13), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
+    encodes as group:22
+    uses group: id(22), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
 
 fwd_group(childports=eth0);
     Syntax error at `eth0' expecting logical switch port.
@@ -1933,8 +1974,8 @@ fwd_group();
     Syntax error at `)' expecting `;'.
 
 fwd_group(childports="eth0", "lsp1");
-    encodes as group:13
-    uses group: id(13), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
+    encodes as group:22
+    uses group: id(22), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
 
 fwd_group(liveness=xyzzy, childports="eth0", "lsp1");
     Syntax error at `xyzzy' expecting true or false.
