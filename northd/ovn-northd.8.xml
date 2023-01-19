@@ -3174,6 +3174,13 @@ icmp6 {
       packet de-fragmentation and tracking before sending it to the next table.
     </p>
 
+    <p>
+      If load balancing rules are configured in <code>OVN_Northbound</code>
+      database for a Gateway router, a priority 50 flow that matches
+      <code>icmp || icmp6</code> with an action of <code>ct_dnat;</code>,
+      this allows potentially related ICMP traffic to pass through CT.
+    </p>
+
     <h3>Ingress Table 6: DNAT</h3>
 
     <p>
