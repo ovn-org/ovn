@@ -917,6 +917,7 @@ parse_ct_nat(struct action_context *ctx, const char *name,
         return;
     }
     cn->ltable = ctx->pp->cur_ltable + 1;
+    cn->commit = false;
 
     if (lexer_match(ctx->lexer, LEX_T_LPAREN)) {
         if (ctx->lexer->token.type != LEX_T_INTEGER
@@ -926,9 +927,11 @@ parse_ct_nat(struct action_context *ctx, const char *name,
             return;
         }
         if (ctx->lexer->token.format == LEX_F_IPV4) {
+            cn->commit = true;
             cn->family = AF_INET;
             cn->ipv4 = ctx->lexer->token.value.ipv4;
         } else if (ctx->lexer->token.format == LEX_F_IPV6) {
+            cn->commit = true;
             cn->family = AF_INET6;
             cn->ipv6 = ctx->lexer->token.value.ipv6;
         }
@@ -1002,6 +1005,24 @@ parse_CT_SNAT_IN_CZONE(struct action_context *ctx)
 }
 
 static void
+parse_CT_COMMIT_NAT(struct action_context *ctx)
+{
+    add_prerequisite(ctx, "ip");
+
+    if (ctx->pp->cur_ltable >= ctx->pp->n_tables) {
+        lexer_error(ctx->lexer,
+                    "\"ct_commit_related\" action not allowed in last table.");
+        return;
+    }
+
+    struct ovnact_ct_nat *cn = ovnact_put_CT_COMMIT_NAT(ctx->ovnacts);
+    cn->commit = true;
+    cn->ltable = ctx->pp->cur_ltable + 1;
+    cn->family = AF_UNSPEC;
+    cn->port_range.exists = false;
+}
+
+static void
 format_ct_nat(const struct ovnact_ct_nat *cn, const char *name, struct ds *s)
 {
     ds_put_cstr(s, name);
@@ -1048,6 +1069,12 @@ static void
 format_CT_SNAT_IN_CZONE(const struct ovnact_ct_nat *cn, struct ds *s)
 {
     format_ct_nat(cn, "ct_snat_in_czone", s);
+}
+
+static void
+format_CT_COMMIT_NAT(const struct ovnact_ct_nat *cn OVS_UNUSED, struct ds *s)
+{
+    ds_put_cstr(s, "ct_commit_nat;");
 }
 
 static void
@@ -1101,7 +1128,7 @@ encode_ct_nat(const struct ovnact_ct_nat *cn,
 
     ofpacts->header = ofpbuf_push_uninit(ofpacts, nat_offset);
     ct = ofpacts->header;
-    if (cn->family == AF_INET || cn->family == AF_INET6) {
+    if (cn->commit) {
         ct->flags |= NX_CT_F_COMMIT;
     }
     ofpact_finish(ofpacts, &ct->ofpact);
@@ -1138,6 +1165,17 @@ encode_CT_SNAT_IN_CZONE(const struct ovnact_ct_nat *cn,
                         struct ofpbuf *ofpacts)
 {
     encode_ct_nat(cn, ep, true, ep->common_nat_ct_zone, ofpacts);
+}
+
+static void
+encode_CT_COMMIT_NAT(const struct ovnact_ct_nat *cn,
+                         const struct ovnact_encode_params *ep,
+                         struct ofpbuf *ofpacts)
+{
+    enum mf_field_id zone = ep->is_switch
+                            ? MFF_LOG_CT_ZONE
+                            : MFF_LOG_DNAT_ZONE;
+    encode_ct_nat(cn, ep, false, zone, ofpacts);
 }
 
 static void
@@ -4328,6 +4366,8 @@ parse_action(struct action_context *ctx)
         parse_ct_lb_action(ctx, true);
     } else if (lexer_match_id(ctx->lexer, "ct_clear")) {
         ovnact_put_CT_CLEAR(ctx->ovnacts);
+    } else if (lexer_match_id(ctx->lexer, "ct_commit_nat")) {
+        parse_CT_COMMIT_NAT(ctx);
     } else if (lexer_match_id(ctx->lexer, "clone")) {
         parse_CLONE(ctx);
     } else if (lexer_match_id(ctx->lexer, "arp")) {

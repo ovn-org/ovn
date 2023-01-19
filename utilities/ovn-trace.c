@@ -2421,6 +2421,35 @@ execute_ct_nat(const struct ovnact_ct_nat *ct_nat,
 }
 
 static void
+execute_ct_commit_nat(const struct ovnact_ct_nat *ct_nat,
+                      const struct ovntrace_datapath *dp, struct flow *uflow,
+                      enum ovnact_pipeline pipeline, struct ovs_list *super)
+{
+    struct flow ct_flow = *uflow;
+    struct ds s = DS_EMPTY_INITIALIZER;
+
+    ds_put_cstr(&s, "ct_commit_nat /* assuming no"
+                    " un-nat entry, so no change */");
+
+    /* ct(nat) implies ct(). */
+    if (!(ct_flow.ct_state & CS_TRACKED)) {
+        ct_flow.ct_state |= next_ct_state(&s);
+    }
+
+    struct ovntrace_node *node = ovntrace_node_append(
+        super, OVNTRACE_NODE_TRANSFORMATION, "%s", ds_cstr(&s));
+    ds_destroy(&s);
+
+    /* Trace the actions in the next table. */
+    trace__(dp, &ct_flow, ct_nat->ltable, pipeline, &node->subs);
+
+    /* Upon return, we will trace the actions following the ct action in the
+     * original table.  The pipeline forked, so we're using the original
+     * flow, not ct_flow. */
+}
+
+
+static void
 execute_ct_lb(const struct ovnact_ct_lb *ct_lb,
               const struct ovntrace_datapath *dp, struct flow *uflow,
               enum ovnact_pipeline pipeline, struct ovs_list *super)
@@ -2731,6 +2760,11 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
 
         case OVNACT_CT_CLEAR:
             flow_clear_conntrack(uflow);
+            break;
+
+        case OVNACT_CT_COMMIT_NAT:
+            execute_ct_commit_nat(ovnact_get_CT_COMMIT_NAT(a), dp, uflow,
+                                  pipeline, super);
             break;
 
         case OVNACT_CLONE:
