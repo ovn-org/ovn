@@ -93,6 +93,8 @@ LTS releases are scheduled to be released once every two years. This means
 that any given LTS will receive bug fix support for two years, followed by
 one year of critical bug fixes and security fixes.
 
+The current LTS version is documented on the `Long Term Support Releases`__
+page of `ovn.org`__.
 
 Release Numbering
 -----------------
@@ -168,3 +170,6 @@ Contact
 -------
 
 Use dev@openvswitch.org to discuss the OVN development and release process.
+
+__ https://www.ovn.org/en/releases/long_term_support/
+__ https://www.ovn.org
