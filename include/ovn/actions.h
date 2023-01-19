@@ -281,6 +281,12 @@ struct ovnact_ct_nat {
     uint8_t ltable;             /* Logical table ID of next table. */
 };
 
+enum ovnact_ct_lb_flag {
+    OVNACT_CT_LB_FLAG_NONE,
+    OVNACT_CT_LB_FLAG_SKIP_SNAT,
+    OVNACT_CT_LB_FLAG_FORCE_SNAT,
+};
+
 struct ovnact_ct_lb_dst {
     int family;
     union {
@@ -297,6 +303,7 @@ struct ovnact_ct_lb {
     size_t n_dsts;
     uint8_t ltable;             /* Logical table ID of next table. */
     char *hash_fields;
+    enum ovnact_ct_lb_flag ct_flag;
 };
 
 struct ovnact_select_dst {
