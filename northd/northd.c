@@ -6688,7 +6688,8 @@ build_acls(struct ovn_datapath *od, const struct chassis_features *features,
         /* Ingress and Egress ACL Table (Priority 65535).
          *
          * Allow traffic that is related to an existing conntrack entry that
-         * has not been marked for deletion (ct_mark.blocked).
+         * has not been marked for deletion (ct_mark.blocked). At the same
+         * time apply NAT on this traffic.
          *
          * This is enforced at a higher priority than ACLs can be defined.
          *
@@ -6701,9 +6702,9 @@ build_acls(struct ovn_datapath *od, const struct chassis_features *features,
                       use_ct_inv_match ? " && !ct.inv" : "",
                       ct_blocked_match);
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, UINT16_MAX - 3,
-                      ds_cstr(&match), "next;");
+                      ds_cstr(&match), "ct_commit_nat;");
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, UINT16_MAX - 3,
-                      ds_cstr(&match), "next;");
+                      ds_cstr(&match), "ct_commit_nat;");
 
         /* Ingress and Egress ACL Table (Priority 65532).
          *
@@ -10008,16 +10009,16 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     int prio = 110;
     if (lb_vip->vip_port) {
         prio = 120;
-        new_match = xasprintf("ct.new && %s && %s && "
+        new_match = xasprintf("ct.new && !ct.rel && %s && %s && "
                               REG_ORIG_TP_DPORT_ROUTER" == %d",
                               ds_cstr(match), lb->proto, lb_vip->vip_port);
-        est_match = xasprintf("ct.est && %s && %s && "
+        est_match = xasprintf("ct.est && !ct.rel && %s && %s && "
                               REG_ORIG_TP_DPORT_ROUTER" == %d && %s == 1",
                               ds_cstr(match), lb->proto, lb_vip->vip_port,
                               ct_natted);
     } else {
-        new_match = xasprintf("ct.new && %s", ds_cstr(match));
-        est_match = xasprintf("ct.est && %s && %s == 1",
+        new_match = xasprintf("ct.new && !ct.rel && %s", ds_cstr(match));
+        est_match = xasprintf("ct.est && !ct.rel && %s && %s == 1",
                           ds_cstr(match), ct_natted);
     }
 
@@ -13665,6 +13666,20 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
     ovn_lflow_add(lflows, od, S_ROUTER_OUT_POST_SNAT, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_ROUTER_OUT_EGR_LOOP, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 0, "1", "next;");
+
+    /* Ingress DNAT Table (Priority 50).
+     *
+     * Allow traffic that is related to an existing conntrack entry.
+     * At the same time apply NAT for this traffic.
+     *
+     * NOTE: This does not support related data sessions (eg,
+     * a dynamically negotiated FTP data channel), but will allow
+     * related traffic such as an ICMP Port Unreachable through
+     * that's generated from a non-listening UDP port.  */
+    if (od->has_lb_vip) {
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 50,
+                      "ct.rel && !ct.est && !ct.new", "ct_commit_nat;");
+    }
 
     /* If the router has load balancer or DNAT rules, re-circulate every packet
      * through the DNAT zone so that packets that need to be unDNATed in the
