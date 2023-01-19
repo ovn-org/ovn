@@ -1467,6 +1467,18 @@
           Clears connection tracking state.
         </dd>
 
+        <dt><code>ct_commit_nat;</code></dt>
+        <dd>
+          <p>
+            Applies NAT and commits the connection to the CT. Automatically
+            moves on to the next table, as if followed by
+            <code>next</code>.
+            This is very useful for connections that are in related state for
+            already existing connections and allows the NAT to be applied
+            to them as well.
+          </p>
+        </dd>
+
         <dt><code>clone { <var>action</var>; </code>...<code> };</code></dt>
         <dd>
           Makes a copy of the packet being processed and executes each
