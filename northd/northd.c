@@ -13612,7 +13612,10 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
     ovn_lflow_add(lflows, od, S_ROUTER_OUT_EGR_LOOP, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 0, "1", "next;");
 
-    /* Ingress DNAT Table (Priority 50).
+    /* Ingress DNAT and DEFRAG Table (Priority 50).
+     *
+     * The defrag stage needs to have flows for ICMP in order to get
+     * the correct ct_state that can be used by DNAT stage.
      *
      * Allow traffic that is related to an existing conntrack entry.
      * At the same time apply NAT for this traffic.
@@ -13622,6 +13625,8 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
      * related traffic such as an ICMP Port Unreachable through
      * that's generated from a non-listening UDP port.  */
     if (od->has_lb_vip) {
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_DEFRAG, 50, "icmp || icmp6",
+                      "ct_dnat;");
         ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 50,
                       "ct.rel && !ct.est && !ct.new", "ct_commit_nat;");
     }
