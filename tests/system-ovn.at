@@ -8668,9 +8668,7 @@ check ovn-nbctl lr-add lr
 check ovn-nbctl lrp-add lr lr-ls0 00:00:00:00:10:00 192.168.10.1/24
 check ovn-nbctl lrp-add lr lr-ls1 00:00:00:00:20:00 192.168.20.1/24
 
-check ovn-nbctl lrp-set-gateway-chassis lr-ls0 hv1
-
-check ovn-nbctl lb-add lb0 192.168.20.20 192.168.20.10
+check ovn-nbctl set logical_router lr options:chassis=hv1
 
 ADD_NAMESPACES(client)
 ADD_VETH(client, client, br-int, "192.168.10.10/24", "00:00:00:00:10:10", \
@@ -8696,15 +8694,9 @@ icmp_expected=000000002010000000002000080045000038011f0000fe011c41c0a80a0ac0\
 a8140a0304f778000005784500001c000040000911d26cc0a8140ac0a80a0a0002000100080000
 
 test_related_traffic() {
+    check ovn-nbctl --wait=hv sync
 
-    check ovn-nbctl ls-lb-del ls0
-    check ovn-nbctl lr-lb-del lr
-
-    if [[ "$1" == "switch" ]]; then
-        check ovn-nbctl ls-lb-add ls0 lb0
-    else
-        check ovn-nbctl lr-lb-add lr lb0
-    fi
+    check ovs-appctl dpctl/flush-conntrack
 
     NETNS_DAEMONIZE([client], [tcpdump -U -i client -w client.pcap], [tcpdump0.pid])
     NETNS_DAEMONIZE([server], [tcpdump -U -i server -w server.pcap], [tcpdump1.pid])
@@ -8724,8 +8716,8 @@ test_related_traffic() {
     check ovs-ofctl packet-out br-int "in_port=ovs-client,packet=$icmp,actions=resubmit(,0)"
 
     # Check if all packets have arrived
-    WAIT_PACKET([client.pcap], [$client_udp_expected])
     WAIT_PACKET([server.pcap], [$server_udp_expected])
+    WAIT_PACKET([client.pcap], [$client_udp_expected])
     WAIT_PACKET([server.pcap], [$icmp_expected])
 
     kill $(cat tcpdump0.pid) $(cat tcpdump1.pid)
@@ -8734,8 +8726,56 @@ test_related_traffic() {
     rm -f client.pcap server.pcap
 }
 
-test_related_traffic switch
-test_related_traffic router
+AS_BOX([ICMP related on switch, LB without port and protocol])
+check ovn-nbctl lb-add lb0 192.168.20.20 192.168.20.10
+check ovn-nbctl ls-lb-add ls0 lb0
+
+test_related_traffic
+
+check ovn-nbctl ls-lb-del ls0
+check ovn-nbctl lb-del lb0
+
+AS_BOX([ICMP related on switch, LB with port and protocol])
+check ovn-nbctl lb-add lb0 192.168.20.20:2 192.168.20.10:2 udp
+check ovn-nbctl ls-lb-add ls0 lb0
+
+test_related_traffic
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(192.168.20.20) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+udp,orig=(src=192.168.10.10,dst=192.168.20.20,sport=<cleared>,dport=<cleared>),reply=(src=192.168.20.10,dst=192.168.10.10,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2
+])
+
+check ovn-nbctl ls-lb-del ls0
+check ovn-nbctl lb-del lb0
+
+AS_BOX([ICMP related on router, LB without port and protocol])
+check ovn-nbctl lb-add lb0 192.168.20.20 192.168.20.10
+check ovn-nbctl lr-lb-add lr lb0
+
+test_related_traffic
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(192.168.20.20) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+udp,orig=(src=192.168.10.10,dst=192.168.20.20,sport=<cleared>,dport=<cleared>),reply=(src=192.168.20.10,dst=192.168.10.10,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2
+])
+
+check ovn-nbctl lr-lb-del lr
+check ovn-nbctl lb-del lb0
+
+AS_BOX([ICMP related on switch, LB with port and protocol])
+check ovn-nbctl lb-add lb0 192.168.20.20:2 192.168.20.10:2 udp
+check ovn-nbctl lr-lb-add lr lb0
+
+test_related_traffic
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(192.168.20.20) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+udp,orig=(src=192.168.10.10,dst=192.168.20.20,sport=<cleared>,dport=<cleared>),reply=(src=192.168.20.10,dst=192.168.10.10,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2
+])
+
+check ovn-nbctl lr-lb-del lr
+check ovn-nbctl lb-del lb0
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
