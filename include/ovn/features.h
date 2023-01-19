@@ -23,6 +23,7 @@
 /* ovn-controller supported feature names. */
 #define OVN_FEATURE_PORT_UP_NOTIF      "port-up-notif"
 #define OVN_FEATURE_CT_NO_MASKED_LABEL "ct-no-masked-label"
+#define OVN_FEATURE_CT_LB_RELATED "ovn-ct-lb-related"
 
 /* OVS datapath supported features.  Based on availability OVN might generate
  * different types of openflows.
