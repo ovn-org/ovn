@@ -154,6 +154,7 @@ main(int argc, char *argv[])
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_port_binding_col_type);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_port_binding_col_up);
 
+    ovsdb_idl_set_leader_only(ovnsb_idl_loop.idl, false);
     ovsdb_idl_get_initial_snapshot(ovnsb_idl_loop.idl);
 
     char *ovn_version = ovn_get_internal_version();
