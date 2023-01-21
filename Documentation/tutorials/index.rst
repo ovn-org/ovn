@@ -42,6 +42,7 @@ vSwitch.
    ovn-sandbox
    ovn-openstack
    ovn-rbac
+   ovn-ovsdb-relay
    ovn-ipsec
    ovn-interconnection
    ddlog-new-feature

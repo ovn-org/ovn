@@ -21,6 +21,8 @@
 
       Avoid deeper levels because they do not render well.
 
+.. _ovn_rbac:
+
 =============================================
 OVN Role-Based Access Control (RBAC) Tutorial
 =============================================

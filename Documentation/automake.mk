@@ -18,6 +18,10 @@ DOC_SOURCE = \
 	Documentation/tutorials/ovn-openstack.rst \
 	Documentation/tutorials/ovn-sandbox.rst \
 	Documentation/tutorials/ovn-ipsec.rst \
+	Documentation/tutorials/ovn-ovsdb-relay.rst \
+	Documentation/tutorials/images/ovsdb-relay-1.png \
+	Documentation/tutorials/images/ovsdb-relay-2.png \
+	Documentation/tutorials/images/ovsdb-relay-3.png \
 	Documentation/tutorials/ovn-rbac.rst \
 	Documentation/tutorials/ovn-interconnection.rst \
 	Documentation/tutorials/ddlog-new-feature.rst \
