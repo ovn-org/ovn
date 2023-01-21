@@ -3303,6 +3303,14 @@ sbrec_port_binding_update_mirror_rules(struct northd_input *input_data,
     check_and_do_sb_mirror_addition(input_data, op);
 }
 
+/* Return true if given ovn_port has peer and this peer's ovn_datapath
+ * has_vtep_lports set to true. False otherwise. */
+static bool
+l3dgw_port_has_associated_vtep_lports(const struct ovn_port *op)
+{
+    return op->peer && op->peer->od->has_vtep_lports;
+}
+
 static void
 ovn_port_update_sbrec(struct northd_input *input_data,
                       struct ovsdb_idl_txn *ovnsb_txn,
@@ -3372,7 +3380,10 @@ ovn_port_update_sbrec(struct northd_input *input_data,
             }
             smap_add(&new, "distributed-port", op->nbrp->name);
 
-            bool always_redirect = !op->od->has_distributed_nat;
+            bool always_redirect =
+                !op->od->has_distributed_nat &&
+                !l3dgw_port_has_associated_vtep_lports(op->l3dgw_port);
+
             if (redirect_type) {
                 smap_add(&new, "redirect-type", redirect_type);
                 /* XXX Why can't we enable always-redirect when redirect-type
@@ -11638,7 +11649,7 @@ build_gateway_mtu_flow(struct hmap *lflows, struct ovn_port *op,
 static bool
 consider_l3dwg_port_is_centralized(struct ovn_port *op)
 {
-    if (op->peer && op->peer->od->has_vtep_lports) {
+    if (l3dgw_port_has_associated_vtep_lports(op)) {
         return false;
     }
 
@@ -12844,6 +12855,17 @@ build_gateway_redirect_flows_for_lrouter(
         return;
     }
     for (size_t i = 0; i < od->n_l3dgw_ports; i++) {
+        if (l3dgw_port_has_associated_vtep_lports(od->l3dgw_ports[i])) {
+            /* Skip adding redirect lflow for vtep-enabled l3dgw ports.
+             * Traffic from hypervisor to VTEP (ramp) switch should go in
+             * distributed manner. Only returning routed traffic must go
+             * through centralized gateway (or ha-chassis-group).
+             * This assumes that attached logical switch with vtep lport(s) has
+             * no localnet port(s) for NAT. Otherwise centralized NAT will not
+             * work. */
+            continue;
+        }
+
         const struct ovsdb_idl_row *stage_hint = NULL;
         bool add_def_flow = true;
 

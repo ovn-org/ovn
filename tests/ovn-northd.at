@@ -6076,7 +6076,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
-AT_SETUP([ovn-northd -- lr admission with vtep lports])
+AT_SETUP([ovn-northd -- lrp with chassis-redirect and ls with vtep lport])
 AT_KEYWORDS([multiple-l3dgw-ports])
 ovn_start NORTHD_TYPE
 check ovn-sbctl chassis-add ch1 geneve 127.0.0.2
@@ -6100,6 +6100,11 @@ AT_CHECK([grep lr_in_admission lrflows | grep lrp1 | sed 's/table=../table=??/' 
   table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
 ])
 
+# Check the flows in lr_in_gw_redirect stage
+AT_CHECK([grep lr_in_gw_redirect lrflows | grep lrp1 | sed 's/table=../table=??/' | sort], [0], [])
+
+wait_row_count Port_Binding 0 logical_port=cr-lrp1 options:always-redirect="true"
+
 # make lrp a cr-port and check its flows
 check ovn-nbctl lrp-set-gateway-chassis lrp1 ch1
 
@@ -6112,6 +6117,13 @@ AT_CHECK([grep lr_in_admission lrflows | grep lrp1 | sed 's/table=../table=??/' 
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1")), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
   table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
 ])
+
+# Check the flows in lr_in_gw_redirect stage
+AT_CHECK([grep lr_in_gw_redirect lrflows | grep lrp1 | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_gw_redirect  ), priority=50   , match=(outport == "lrp1"), action=(outport = "cr-lrp1"; next;)
+])
+
+wait_row_count Port_Binding 1 logical_port=cr-lrp1 options:always-redirect="true"
 
 # attach vtep logical port to logical switch and check flows.
 # there should not be is_chassis_resident part.
@@ -6127,6 +6139,11 @@ AT_CHECK([grep lr_in_admission lrflows | grep lrp1 | sed 's/table=../table=??/' 
   table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
 ])
 
+# Check the flows in lr_in_gw_redirect stage
+AT_CHECK([grep lr_in_gw_redirect lrflows | grep lrp1 | sed 's/table=../table=??/' | sort], [0], [])
+
+wait_row_count Port_Binding 0 logical_port=cr-lrp1 options:always-redirect="true"
+
 # delete vtep lport and check lrp has is_chassis_resident match part again.
 check ovn-nbctl lsp-del lsp-vtep
 
@@ -6139,6 +6156,13 @@ AT_CHECK([grep lr_in_admission lrflows | grep lrp1 | sed 's/table=../table=??/' 
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1")), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
   table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
 ])
+
+# Check the flows in lr_in_gw_redirect stage
+AT_CHECK([grep lr_in_gw_redirect lrflows | grep lrp1 | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_gw_redirect  ), priority=50   , match=(outport == "lrp1"), action=(outport = "cr-lrp1"; next;)
+])
+
+wait_row_count Port_Binding 1 logical_port=cr-lrp1 options:always-redirect="true"
 
 AT_CLEANUP
 ])
