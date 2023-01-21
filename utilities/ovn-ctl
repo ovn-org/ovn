@@ -84,6 +84,10 @@ stop_ic_ovsdb () {
     stop_ic_sb_ovsdb
 }
 
+stop_sb_relay_ovsdb() {
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovnsb_relay $DB_SB_RELAY_PIDFILE $DB_SB_RELAY_CTRL_SOCK
+}
+
 demote_xx_ovsdb () {
     local sync_from_addr=$1
     local sync_from_proto=$2
@@ -179,6 +183,7 @@ start_ovsdb__() {
     local ovn_db_ssl_cert
     local ovn_db_ssl_cacert
     local ovn_db_election_timer
+    local relay_mode
     eval db_pid_file=\$DB_${DB}_PIDFILE
     eval cluster_local_addr=\$DB_${DB}_CLUSTER_LOCAL_ADDR
     eval cluster_local_port=\$DB_${DB}_CLUSTER_LOCAL_PORT
@@ -205,6 +210,8 @@ start_ovsdb__() {
     eval ovn_db_ssl_cert=\$OVN_${DB}_DB_SSL_CERT
     eval ovn_db_ssl_cacert=\$OVN_${DB}_DB_SSL_CA_CERT
     eval ovn_db_election_timer=\$DB_${DB}_ELECTION_TIMER
+    eval relay_mode=\$RELAY_MODE
+    eval relay_remote=\$DB_${DB}_REMOTE
 
     ovn_install_dir "$OVN_RUNDIR"
     ovn_install_dir "$ovn_logdir"
@@ -222,6 +229,8 @@ start_ovsdb__() {
         mode=active_passive
         echo "$sync_from_proto:$sync_from_addr:\
 $sync_from_port" > $active_conf_file
+    elif test X"$relay_mode" != Xno; then
+        mode=relay
     else
         mode=standalone
     fi
@@ -245,6 +254,8 @@ $cluster_remote_port
         else
             create_cluster "$file" "$schema" "$local" "$ovn_db_election_timer"
         fi
+    elif test $mode = relay; then
+        local file="relay:${schema_name}:${relay_remote}"
     else
         upgrade_db "$file" "$schema"
     fi
@@ -332,7 +343,7 @@ $cluster_remote_port
     fi
 
     # Initialize the database if it's NOT joining a cluster.
-    if test -z "$cluster_remote_addr"; then
+    if test -z "$cluster_remote_addr" && test X$mode != Xrelay; then
         $(echo ovn-${db}ctl | tr _ -) --no-leader-only --db="unix:$sock" init
     fi
 
@@ -347,6 +358,11 @@ $cluster_remote_port
 
 start_nb_ovsdb() {
     start_ovsdb__ NB nb OVN_Northbound NB_Global "$OVSDB_NB_WRAPPER"
+}
+
+start_sb_relay_ovsdb() {
+    RELAY_MODE=yes
+    start_ovsdb__ SB_RELAY sb-relay OVN_Southbound SB_Global
 }
 
 start_sb_ovsdb() {
@@ -694,6 +710,11 @@ restart_ic_sb_ovsdb () {
     start_ic_sb_ovsdb
 }
 
+restart_sb_relay_ovsdb() {
+    stop_sb_relay_ovsdb
+    start_sb_relay_ovsdb
+}
+
 ## ---- ##
 ## main ##
 ## ---- ##
@@ -785,6 +806,8 @@ set_defaults () {
     OVN_IC_SB_LOG="-vconsole:off -vfile:info"
     OVN_IC_NB_LOGFILE="$ovn_logdir/ovsdb-server-ic-nb.log"
     OVN_IC_SB_LOGFILE="$ovn_logdir/ovsdb-server-ic-sb.log"
+    OVN_SB_RELAY_LOG="-vconsole:emer -vsyslog:err -vfile:info"
+    OVN_SB_RELAY_LOGFILE="$ovn_logdir/ovsdb-server-sb-relay.log"
 
     OVN_CONTROLLER_SSL_KEY=""
     OVN_CONTROLLER_SSL_CERT=""
@@ -867,6 +890,15 @@ set_defaults () {
     OVN_IC_SB_DB_SSL_CERT=""
     OVN_IC_SB_DB_SSL_CA_CERT=""
 
+    RELAY_MODE=no
+    DB_SB_RELAY_REMOTE=
+    DB_SB_RELAY_SOCK=$OVN_RUNDIR/ovnsb_relay_db.sock
+    DB_SB_RELAY_PIDFILE=$OVN_RUNDIR/ovnsb_relay_db.pid
+    DB_SB_RELAY_CTRL_SOCK=$OVN_RUNDIR/ovnsb_relay_db.ctl
+    OVN_SB_RELAY_DB_SSL_KEY=""
+    OVN_SB_RELAY_DB_SSL_CERT=""
+    OVN_SB_RELAY_DB_SSL_CA_CERT=""
+    DB_SB_RELAY_USE_REMOTE_IN_DB="yes"
 }
 
 set_option () {
@@ -902,6 +934,7 @@ Commands:
   start_ic_sb_ovsdb             start ovn ic-southbound db ovsdb-server process
   start_controller            start ovn-controller
   start_controller_vtep       start ovn-controller-vtep
+  start_sb_relay_ovsdb        start ovn southbound db ovsdb-server relay process
   stop_northd                 stop ovn-northd
   stop_ovsdb                  stop ovn related ovsdb-server processes
   stop_nb_ovsdb               stop ovn northbound db ovsdb-server process
@@ -912,6 +945,7 @@ Commands:
   stop_ic_sb_ovsdb              stop ovn ic-southbound db ovsdb-server process
   stop_controller             stop ovn-controller
   stop_controller_vtep        stop ovn-controller-vtep
+  stop_sb_relay_ovsdb         stop ovn southbound db ovsdb-server relay process
   restart_northd              restart ovn-northd
   restart_ovsdb               restart ovn related ovsdb-server processes
   restart_nb_ovsdb            restart ovn northbound db ovsdb-server process
@@ -922,6 +956,7 @@ Commands:
   restart_ic_sb_ovsdb           restart ovn ic-southbound db ovsdb-server process
   restart_controller          restart ovn-controller
   restart_controller_vtep     restart ovn-controller-vtep
+  restart_sb_relay_ovsdb      restart ovn southbound db ovsdb-server relay process
   status_northd               status ovs-northd
   status_ovsdb                status related ovsdb-server processes
   status_ic                   status ovn-ic
@@ -993,6 +1028,10 @@ Options:
                                  processes should be started with
                                  --disable-file-column-diff.
                                  More details in ovsdb(7).  (default: no)
+  --db-sb-relay-remote           Specifies upstream cluster/server remote for ovsdb relay
+  --db-sb-relay-use-remote-in-db=no|yes
+                                 OVN_Sorthbound db listen on target connection table (default: $DB_SB_RELAY_USE_REMOTE_IN_DB)
+
   --ovn-northd-ddlog=yes|no      whether we should run the DDlog version
                                  of ovn-northd.  The default is "no".
   -h, --help                     display this help message
@@ -1107,6 +1146,12 @@ File location options:
   --ovn-ic-sb-db=IC SB DB address(es) (default: $OVN_IC_SB_DB)
   --db-ic-nb-use-remote-in-db=yes|no OVN_IC_Northbound db listen on target connection table (default: $DB_IC_NB_USE_REMOTE_IN_DB)
   --db-ic-sb-use-remote-in-db=yes|no OVN_IC_Southbound db listen on target connection table (default: $DB_IC_SB_USE_REMOTE_IN_DB)
+  --db-sb-relay-sock=SOCKET  OVN_IC_Northbound db socket (default: $DB_SB_RELAY_SOCK)
+  --db-sb-relay-pidfile=FILE OVN_Southbound relay db pidfile (default: $DB_SB_RELAY_CTRL_PIDFILE)
+  --db-sb-relay-ctrl-sock=SOCKET OVN_Southbound relay db control socket (default: $DB_SB_RELAY_CTRL_SOCK)
+  --ovn-sb-relay-db-ssl-key=KEY OVN_Southbound DB relay SSL private key file
+  --ovn-sb-relay-db-ssl-cert=CERT OVN_Southbound DB relay SSL certificate file
+  --ovn-sb-relay-db-ssl-ca-cert=CERT OVN OVN_Southbound DB relay SSL CA certificate file
 
 Default directories with "configure" option and environment variable override:
   logs: /usr/local/var/log/ovn (--with-logdir, OVN_LOGDIR)
@@ -1204,6 +1249,9 @@ case $command in
     start_ic_sb_ovsdb)
         start_ic_sb_ovsdb
         ;;
+    start_sb_relay_ovsdb)
+        start_sb_relay_ovsdb
+        ;;
     stop_northd)
         stop_northd
         ;;
@@ -1234,6 +1282,9 @@ case $command in
     stop_ic_sb_ovsdb)
         stop_ic_sb_ovsdb
         ;;
+    stop_sb_relay_ovsdb)
+       stop_sb_relay_ovsdb
+        ;;
     restart_northd)
         restart_northd
         ;;
@@ -1263,6 +1314,9 @@ case $command in
         ;;
     restart_ic_sb_ovsdb)
         restart_ic_sb_ovsdb
+        ;;
+    restart_sb_relay_ovsdb)
+        restart_sb_relay_ovsdb
         ;;
     status_northd)
         daemon_status $OVN_NORTHD_BIN || exit 1
