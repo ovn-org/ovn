@@ -1,0 +1,39 @@
+# This system unit is used to manage OVN DB daemons.
+# It supports all '_ovsdb'-ending commands in
+# /usr/share/ovn/scripts/ovn-ctl script. Consult it for additional info.
+#
+# Each OVN DB systemd unit instance name %i (a part after '@' symbol) must match
+# with appropriate ovn-ctl subcommand, which starts and ends with 'start_' and
+# '_ovsdb' respectively.
+# User must provide appropriate environment variable 'ovn_$i_opts' either in
+# /etc/sysconfig/ovn, in /etc/sysconfig/ovn-%i or in
+# /etc/systemd/system/ovn-db@%i.service.d/local.conf file.
+#
+# For example, to configure ovn-db@sb daemon, which runs ovsdb-server with
+# OVN_Southbound database schema, you should define variable 'ovn_sb_opts' in
+# /etc/systemd/system/ovn-db@sb.service.d/local.conf:
+#
+#   [System]
+#   Environment="ovn_sb_opts=--db-sb-sock=/usr/local/var/run/ovn/ovnsb_db.sock"
+#
+# Alternatively, you may specify environment variable in the /etc/sysconfig/ovn-sb file:
+#
+#   ovn_sb_opts="--db-sb-sock=/usr/local/var/run/ovn/ovnsb_db.sock"
+
+[Unit]
+Description=OVN database daemon
+After=syslog.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=OVN_RUNDIR=%t/ovn OVN_DBDIR=/var/lib/ovn
+EnvironmentFile=-/etc/sysconfig/ovn
+EnvironmentFile=-/etc/sysconfig/ovn-%i
+ExecStartPre=-/usr/bin/chown -R ${OVN_USER_ID} ${OVN_DBDIR}
+ExecStart=/usr/share/ovn/scripts/ovn-ctl \
+          --ovn-user=${OVN_USER_ID} start_%i_ovsdb $OPTIONS $ovn_%i_opts
+ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_%i_ovsdb
+
+[Install]
+WantedBy=multi-user.target

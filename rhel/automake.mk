@@ -13,6 +13,7 @@ EXTRA_DIST += \
 	rhel/ovn-fedora.spec.in \
 	rhel/usr_lib_systemd_system_ovn-controller.service \
 	rhel/usr_lib_systemd_system_ovn-controller-vtep.service \
+	rhel/usr_lib_systemd_system_ovn-db@.service \
 	rhel/usr_lib_systemd_system_ovn-ic.service \
 	rhel/usr_lib_systemd_system_ovn-ic-db.service \
 	rhel/usr_lib_systemd_system_ovn-northd.service \

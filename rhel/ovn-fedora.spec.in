@@ -165,7 +165,7 @@ install -p -D -m 0644 \
         rhel/usr_share_ovn_scripts_systemd_sysconfig.template \
         $RPM_BUILD_ROOT/%{_sysconfdir}/sysconfig/ovn
 
-for service in ovn-controller ovn-controller-vtep ovn-northd ovn-ic ovn-ic-db; do
+for service in ovn-controller ovn-controller-vtep ovn-northd ovn-ic ovn-ic-db ovn-db@; do
         install -p -D -m 0644 \
                         rhel/usr_lib_systemd_system_${service}.service \
                         $RPM_BUILD_ROOT%{_unitdir}/${service}.service
@@ -265,6 +265,17 @@ if [ $1 -eq 1 ] ; then
     fi
 fi
 
+%preun
+%if 0%{?systemd_preun:1}
+    %systemd_preun ovn-db@*.service
+%else
+    if [ $1 -eq 0 ] ; then
+        # Package removal, not upgrade
+        /bin/systemctl --no-reload disable ovn-db@*.service >/dev/null 2>&1 || :
+        /bin/systemctl stop ovn-db@*.service >/dev/null 2>&1 || :
+    fi
+%endif
+
 %preun central
 %if 0%{?systemd_preun:1}
     %systemd_preun ovn-northd.service
@@ -328,6 +339,15 @@ if [ $1 -eq 1 ]; then
 fi
 %endif
 
+%if 0%{?systemd_post:1}
+    %systemd_post ovn-db@*.service
+%else
+    # Package install, not upgrade
+    if [ $1 -eq 1 ]; then
+        /bin/systemctl daemon-reload >dev/null || :
+    fi
+%endif
+
 %post central
 %if 0%{?systemd_post:1}
     %systemd_post ovn-northd.service
@@ -377,6 +397,11 @@ fi
 %endif
 
 %postun
+%if 0%{?systemd_postun:1}
+    %systemd_postun ovn-db@*.service
+%else
+    /bin/systemctl daemon-reload >/dev/null 2>&1 || :
+%endif
 
 %postun central
 %if 0%{?systemd_postun_with_restart:1}
@@ -492,6 +517,7 @@ fi
 %{_mandir}/man5/ovn-ic-sb.5*
 %{_prefix}/lib/ocf/resource.d/ovn/ovndb-servers
 %config(noreplace) %{_sysconfdir}/logrotate.d/ovn
+%{_unitdir}/ovn-db@.service
 
 %files docker
 %{_bindir}/ovn-docker-overlay-driver
@@ -522,6 +548,9 @@ fi
 %{_unitdir}/ovn-controller-vtep.service
 
 %changelog
+* Wed Jan 11 2023 Vladislav Odintsov <odivlad@gmail.com>
+- Added ovn-db@.service systemd-unit.
+
 * Mon Feb 1 2021 Vladislav Odintsov <odivlad@gmail.com>
 - Added ovn-ic, ovn-ic-db systemd-units.
 
