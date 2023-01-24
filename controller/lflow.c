@@ -911,6 +911,7 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
         .is_switch = ldp->is_switch,
         .group_table = l_ctx_out->group_table,
         .meter_table = l_ctx_out->meter_table,
+        .collector_ids = l_ctx_in->collector_ids,
         .lflow_uuid = lflow->header_.uuid,
         .dp_key = ldp->datapath->tunnel_key,
 

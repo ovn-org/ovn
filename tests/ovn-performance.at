@@ -586,6 +586,30 @@ OVN_CONTROLLER_EXPECT_NO_HIT(
     [ovn-nbctl --wait=hv meter-del meter0]
 )
 
+OVN_CONTROLLER_EXPECT_HIT(
+    [hv1], [lflow_run],
+    [as hv1 ovs-vsctl --id=@br get Bridge br-int --  \
+        --id=@i create IPFIX targets=\"192.168.1.1\"  -- \
+        create Flow_Sample_Collector_Set bridge=@br id=1 ipfix=@i]
+)
+
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv3], [lflow_run],
+    [as hv2 ovs-vsctl --id=@br get Bridge br-int --  \
+        --id=@i create IPFIX targets=\"192.168.1.1\"  -- \
+        create Flow_Sample_Collector_Set bridge=@br id=1 ipfix=@i]
+)
+
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1], [lflow_run],
+    [as hv1 ovs-vsctl set IPFIX . targets=\"192.168.1.2\"]
+)
+
+OVN_CONTROLLER_EXPECT_HIT(
+    [hv1], [lflow_run],
+    [as hv1 ovs-vsctl destroy Flow_Sample_Collector_Set .]
+)
+
 for i in 1 2; do
     j=$((i%2 + 1))
     lp=lp$i

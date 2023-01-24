@@ -1047,6 +1047,8 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_add_column(ovs_idl, &ovsrec_ssl_col_private_key);
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_datapath);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_datapath_col_capabilities);
+    ovsdb_idl_add_table(ovs_idl, &ovsrec_table_flow_sample_collector_set);
+
     chassis_register_ovs_idl(ovs_idl);
     encaps_register_ovs_idl(ovs_idl);
     binding_register_ovs_idl(ovs_idl);
@@ -1063,6 +1065,10 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_name);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_interfaces);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_external_ids);
+    ovsdb_idl_track_add_column(ovs_idl,
+                               &ovsrec_flow_sample_collector_set_col_bridge);
+    ovsdb_idl_track_add_column(ovs_idl,
+                               &ovsrec_flow_sample_collector_set_col_id);
     mirror_register_ovs_idl(ovs_idl);
 }
 
@@ -1102,7 +1108,8 @@ enum sb_engine_node {
     OVS_NODE(bridge, "bridge") \
     OVS_NODE(port, "port") \
     OVS_NODE(interface, "interface") \
-    OVS_NODE(qos, "qos")
+    OVS_NODE(qos, "qos") \
+    OVS_NODE(flow_sample_collector_set, "flow_sample_collector_set")
 
 enum ovs_engine_node {
 #define OVS_NODE(NAME, NAME_STR) OVS_##NAME,
@@ -2873,6 +2880,9 @@ struct ed_type_lflow_output {
 
     /* Fixed controller_event supported options. */
     struct controller_event_options controller_event_opts;
+
+    /* Configured Flow Sample Collector Sets. */
+    struct flow_collector_ids collector_ids;
 };
 
 static void
@@ -3011,6 +3021,7 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->dhcpv6_opts = &dhcp_opts->v6_opts;
     l_ctx_in->controller_event_opts = &fo->controller_event_opts;
     l_ctx_in->template_vars = &template_vars->local_templates;
+    l_ctx_in->collector_ids = &fo->collector_ids;
 
     l_ctx_out->flow_table = &fo->flow_table;
     l_ctx_out->group_table = &fo->group_table;
@@ -3040,6 +3051,7 @@ en_lflow_output_init(struct engine_node *node OVS_UNUSED,
     data->hd.pool = id_pool_create(1, UINT32_MAX - 1);
     nd_ra_opts_init(&data->nd_ra_opts);
     controller_event_opts_init(&data->controller_event_opts);
+    flow_collector_ids_init(&data->collector_ids);
     return data;
 }
 
@@ -3066,6 +3078,7 @@ en_lflow_output_cleanup(void *data)
     id_pool_destroy(flow_output_data->hd.pool);
     nd_ra_opts_destroy(&flow_output_data->nd_ra_opts);
     controller_event_opts_destroy(&flow_output_data->controller_event_opts);
+    flow_collector_ids_destroy(&flow_output_data->collector_ids);
 }
 
 static void
@@ -3133,6 +3146,45 @@ lflow_output_sb_logical_flow_handler(struct engine_node *node, void *data)
 
     engine_set_node_state(node, EN_UPDATED);
     return handled;
+}
+
+static bool
+lflow_output_flow_sample_collector_set_handler(struct engine_node *node,
+                                               void *data OVS_UNUSED)
+{
+    const struct ovsrec_flow_sample_collector_set_table *flow_collector_table =
+        EN_OVSDB_GET(engine_get_input("OVS_flow_sample_collector_set", node));
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
+    const struct ovsrec_bridge_table *bridge_table =
+        EN_OVSDB_GET(engine_get_input("OVS_bridge", node));
+
+    const struct ovsrec_open_vswitch *cfg =
+        ovsrec_open_vswitch_table_first(ovs_table);
+    if (!cfg) {
+        return true;
+    }
+
+    const struct ovsrec_bridge *br_int;
+    br_int = get_bridge(bridge_table, br_int_name(cfg));
+    if (!br_int) {
+        return true;
+    }
+
+    const struct ovsrec_flow_sample_collector_set *set;
+    OVSREC_FLOW_SAMPLE_COLLECTOR_SET_TABLE_FOR_EACH_TRACKED (set,
+                                                        flow_collector_table) {
+        if (set->bridge == br_int) {
+            struct ed_type_lflow_output *lfo = data;
+            flow_collector_ids_clear(&lfo->collector_ids);
+            flow_collector_ids_init_from_table(&lfo->collector_ids,
+                                               flow_collector_table);
+            return false;
+        }
+    }
+
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
 }
 
 static bool
@@ -4250,6 +4302,8 @@ main(int argc, char *argv[])
 
     engine_add_input(&en_lflow_output, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_lflow_output, &en_ovs_bridge, NULL);
+    engine_add_input(&en_lflow_output, &en_ovs_flow_sample_collector_set,
+                     lflow_output_flow_sample_collector_set_handler);
 
     engine_add_input(&en_lflow_output, &en_sb_mac_binding,
                      lflow_output_sb_mac_binding_handler);

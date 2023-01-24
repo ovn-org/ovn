@@ -2216,6 +2216,10 @@ sample(probability=10);
     formats as sample(probability=10,collector_set=0,obs_domain=0,obs_point=0);
     encodes as sample(probability=10,collector_set_id=0,obs_domain_id=11259375,obs_point_id=0)
 
+# sample with a collector_set_id that is not configured in the chassis.
+sample(probability=100,collector_set=999,obs_domain=0,obs_point=1000);
+    encodes as drop
+
 sample(probability=0,collector_set=200,obs_domain=0,obs_point=1000);
     probability must be greater than zero
 
@@ -33901,6 +33905,10 @@ check_sample_drops() {
     AT_CAPTURE_FILE([oflows_nosample])
     # Take match part of flows that contain "drop".
     drop_matches="$(grep 'drop' oflows_nosample | grep -oP 'table=\d*, priority=.* ')"
+
+    ovs-vsctl --id=@br get Bridge br-int --  \
+        --id=@i create IPFIX targets=\"192.168.1.1\"  -- \
+        create Flow_Sample_Collector_Set bridge=@br id=123 ipfix=@i
 
     check ovn-nbctl -- set NB_Global . options:debug_drop_collector_set="123" \
                     -- set NB_Global . options:debug_drop_domain_id="1"

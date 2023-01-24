@@ -34,6 +34,7 @@
 #include "ovn/logical-fields.h"
 #include "lib/ovn-l7.h"
 #include "lib/extend-table.h"
+#include "lib/ovn-util.h"
 #include "ovs-thread.h"
 #include "ovstest.h"
 #include "openvswitch/shash.h"
@@ -1302,6 +1303,12 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
     struct ovn_extend_table meter_table;
     ovn_extend_table_init(&meter_table);
 
+    /* Initialize collector sets. */
+    struct flow_collector_ids collector_ids;
+    flow_collector_ids_init(&collector_ids);
+    flow_collector_ids_add(&collector_ids, 0);
+    flow_collector_ids_add(&collector_ids, 200);
+
     simap_init(&ports);
     simap_put(&ports, "eth0", 5);
     simap_put(&ports, "eth1", 6);
@@ -1348,6 +1355,7 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
                 .is_switch = true,
                 .group_table = &group_table,
                 .meter_table = &meter_table,
+                .collector_ids = &collector_ids,
 
                 .pipeline = OVNACT_P_INGRESS,
                 .ingress_ptable = OFTABLE_LOG_INGRESS_PIPELINE,
@@ -1434,6 +1442,7 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
     smap_destroy(&template_vars);
     ovn_extend_table_destroy(&group_table);
     ovn_extend_table_destroy(&meter_table);
+    flow_collector_ids_destroy(&collector_ids);
     exit(ok ? EXIT_SUCCESS : EXIT_FAILURE);
 }
 

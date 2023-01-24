@@ -4384,7 +4384,14 @@ encode_SAMPLE(const struct ovnact_sample *sample,
               const struct ovnact_encode_params *ep,
               struct ofpbuf *ofpacts)
 {
-    struct ofpact_sample *os = ofpact_put_SAMPLE(ofpacts);
+    struct ofpact_sample *os;
+    if (!ep->collector_ids ||
+        !flow_collector_ids_lookup(ep->collector_ids,
+                                   sample->collector_set_id)) {
+        return;
+    }
+
+    os = ofpact_put_SAMPLE(ofpacts);
     os->probability = sample->probability;
     os->collector_set_id = sample->collector_set_id;
     os->obs_domain_id =

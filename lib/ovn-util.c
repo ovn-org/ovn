@@ -1044,3 +1044,54 @@ get_chassis_external_id_value_bool(const struct smap *external_ids,
     free(chassis_key);
     return ret;
 }
+
+void flow_collector_ids_init(struct flow_collector_ids *ids)
+{
+    ovs_list_init(&ids->list);
+}
+
+void flow_collector_ids_init_from_table(struct flow_collector_ids *ids,
+    const struct ovsrec_flow_sample_collector_set_table *table)
+{
+    flow_collector_ids_init(ids);
+    const struct ovsrec_flow_sample_collector_set *ovs_collector_set;
+    OVSREC_FLOW_SAMPLE_COLLECTOR_SET_TABLE_FOR_EACH (ovs_collector_set,
+                                                    table) {
+        flow_collector_ids_add(ids, ovs_collector_set->id);
+    }
+}
+
+void flow_collector_ids_add(struct flow_collector_ids *ids,
+                            uint64_t id)
+{
+    struct flow_collector_id *collector = xzalloc(sizeof *collector);
+    collector->id = id;
+    ovs_list_push_back(&ids->list, &collector->node);
+}
+
+bool flow_collector_ids_lookup(const struct flow_collector_ids *ids,
+                               uint32_t id)
+{
+    struct flow_collector_id *collector;
+    LIST_FOR_EACH (collector, node, &ids->list) {
+        if (collector->id == id) {
+          return true;
+        }
+    }
+    return false;
+}
+
+void flow_collector_ids_destroy(struct flow_collector_ids *ids)
+{
+    struct flow_collector_id *collector;
+    LIST_FOR_EACH_SAFE (collector, node, &ids->list) {
+        ovs_list_remove(&collector->node);
+        free(collector);
+    }
+}
+
+void flow_collector_ids_clear(struct flow_collector_ids *ids)
+{
+    flow_collector_ids_destroy(ids);
+    flow_collector_ids_init(ids);
+}

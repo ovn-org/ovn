@@ -43,11 +43,12 @@
 #include "openvswitch/uuid.h"
 #include "openvswitch/list.h"
 
-struct ovn_extend_table;
-struct ovsdb_idl_index;
-struct ovn_desired_flow_table;
 struct hmap;
 struct hmap_node;
+struct ovn_desired_flow_table;
+struct ovn_extend_table;
+struct ovsdb_idl_index;
+struct ovsrec_flow_sample_collector_set_table;
 struct sbrec_chassis;
 struct sbrec_load_balancer;
 struct sbrec_logical_flow_table;
@@ -114,6 +115,7 @@ struct lflow_ctx_in {
     const struct hmap *dhcpv6_opts;
     const struct controller_event_options *controller_event_opts;
     const struct smap *template_vars;
+    const struct flow_collector_ids *collector_ids;
     bool lb_hairpin_use_ct_mark;
 };
 

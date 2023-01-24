@@ -33,6 +33,7 @@ struct ofpbuf;
 struct shash;
 struct simap;
 struct ovn_extend_table;
+struct collector_set_ids;
 
 /* List of OVN logical actions.
  *
@@ -830,6 +831,9 @@ struct ovnact_encode_params {
 
     /* A struct to figure out the meter_id for meter actions. */
     struct ovn_extend_table *meter_table;
+
+    /* A struct to lookup Flow_Sample_Collector_Set ids */
+    const struct flow_collector_ids *collector_ids;
 
     /* The logical flow uuid that drove this action. */
     struct uuid lflow_uuid;

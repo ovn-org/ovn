@@ -28,15 +28,16 @@
 #define ROUTE_ORIGIN_CONNECTED "connected"
 #define ROUTE_ORIGIN_STATIC "static"
 
+struct eth_addr;
 struct nbrec_logical_router_port;
+struct ovsrec_flow_sample_collector_set_table;
+struct sbrec_datapath_binding;
 struct sbrec_logical_flow;
+struct sbrec_port_binding;
+struct smap;
 struct svec;
 struct uuid;
-struct eth_addr;
-struct sbrec_port_binding;
-struct sbrec_datapath_binding;
 struct unixctl_conn;
-struct smap;
 
 struct ipv4_netaddr {
     ovs_be32 addr;            /* 192.168.10.123 */
@@ -343,5 +344,22 @@ get_chassis_external_id_value_bool(const struct smap *,
                                    const char *chassis_id,
                                    const char *option_key,
                                    bool def);
+
+/* flow_collector_ids is a helper struct used to store and lookup
+ * Flow_Sample_Collector_Set ids. */
+struct flow_collector_id {
+    struct ovs_list node;  /* In flow_collector_ids->list */
+    uint64_t id;
+};
+struct flow_collector_ids {
+    struct ovs_list list;
+};
+void flow_collector_ids_init(struct flow_collector_ids *);
+void flow_collector_ids_init_from_table(struct flow_collector_ids *,
+    const struct ovsrec_flow_sample_collector_set_table *);
+void flow_collector_ids_add(struct flow_collector_ids *, uint64_t);
+bool flow_collector_ids_lookup(const struct flow_collector_ids *, uint32_t);
+void flow_collector_ids_destroy(struct flow_collector_ids *);
+void flow_collector_ids_clear(struct flow_collector_ids *);
 
 #endif /* OVN_UTIL_H */
