@@ -3187,6 +3187,64 @@ lflow_output_flow_sample_collector_set_handler(struct engine_node *node,
     return true;
 }
 
+static void
+pflow_output_get_debug(struct engine_node *node, struct physical_debug *debug)
+{
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
+    const struct ovsrec_bridge_table *bridge_table =
+        EN_OVSDB_GET(engine_get_input("OVS_bridge", node));
+    const struct sbrec_sb_global_table *sb_global_table =
+        EN_OVSDB_GET(engine_get_input("SB_sb_global", node));
+    const struct sbrec_sb_global *sb_global =
+        sbrec_sb_global_table_first(sb_global_table);
+
+    if (!debug) {
+        return;
+    }
+    debug->collector_set_id = 0;
+    debug->obs_domain_id = 0;
+
+    const struct ovsrec_open_vswitch *ovs_cfg =
+        ovsrec_open_vswitch_table_first(ovs_table);
+    if (!ovs_cfg) {
+        return;
+    }
+
+    const struct ovsrec_bridge *br_int;
+    br_int = get_bridge(bridge_table, br_int_name(ovs_cfg));
+    if (!br_int) {
+        return;
+    }
+
+    const uint32_t debug_collector_set =
+        smap_get_uint(&sb_global->options, "debug_drop_collector_set", 0);
+    if (!debug_collector_set) {
+        return;
+    }
+
+    struct ovsdb_idl_index *ovsrec_flow_sample_collector_set_by_id =
+        engine_ovsdb_node_get_index(
+                engine_get_input("OVS_flow_sample_collector_set", node), "id");
+
+    struct ovsrec_flow_sample_collector_set *s =
+        ovsrec_flow_sample_collector_set_index_init_row(
+        ovsrec_flow_sample_collector_set_by_id);
+
+    ovsrec_flow_sample_collector_set_index_set_id(s, debug_collector_set);
+    ovsrec_flow_sample_collector_set_index_set_bridge(s, br_int);
+    if (!ovsrec_flow_sample_collector_set_index_find(
+        ovsrec_flow_sample_collector_set_by_id, s)) {
+        ovsrec_flow_sample_collector_set_index_destroy_row(s);
+        return;
+    }
+    ovsrec_flow_sample_collector_set_index_destroy_row(s);
+
+    debug->collector_set_id = debug_collector_set;
+    debug->obs_domain_id = smap_get_uint(&sb_global->options,
+                                         "debug_drop_domain_id", 0);
+}
+
 static bool
 lflow_output_sb_mac_binding_handler(struct engine_node *node, void *data)
 {
@@ -3637,11 +3695,6 @@ static void init_physical_ctx(struct engine_node *node,
         chassis = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
     }
 
-    const struct sbrec_sb_global_table *sb_global_table =
-        EN_OVSDB_GET(engine_get_input("SB_sb_global", node));
-    const struct sbrec_sb_global *sb_global =
-        sbrec_sb_global_table_first(sb_global_table);
-
     ovs_assert(br_int && chassis);
 
     struct ed_type_ct_zones *ct_zones_data =
@@ -3663,13 +3716,8 @@ static void init_physical_ctx(struct engine_node *node,
     p_ctx->local_bindings = &rt_data->lbinding_data.bindings;
     p_ctx->patch_ofports = &non_vif_data->patch_ofports;
     p_ctx->chassis_tunnels = &non_vif_data->chassis_tunnels;
-    p_ctx->debug.collector_set_id = smap_get_uint(&sb_global->options,
-                                                  "debug_drop_collector_set",
-                                                  0);
 
-    p_ctx->debug.obs_domain_id = smap_get_uint(&sb_global->options,
-                                               "debug_drop_domain_id",
-                                               0);
+    pflow_output_get_debug(node, &p_ctx->debug);
 }
 
 static void *
@@ -3873,26 +3921,16 @@ pflow_output_activated_ports_handler(struct engine_node *node, void *data)
 }
 
 static bool
-pflow_output_sb_sb_global_handler(struct engine_node *node, void *data)
+pflow_output_debug_handler(struct engine_node *node, void *data)
 {
-    const struct sbrec_sb_global_table *sb_global_table =
-        EN_OVSDB_GET(engine_get_input("SB_sb_global", node));
-    const struct sbrec_sb_global *sb_global =
-        sbrec_sb_global_table_first(sb_global_table);
-
     struct ed_type_pflow_output *pfo = data;
+    struct physical_debug debug;
 
-    uint32_t collector_set_id = smap_get_uint(&sb_global->options,
-                                              "debug_drop_collector_set",
-                                              0);
-    uint32_t obs_domain_id = smap_get_uint(&sb_global->options,
-                                           "debug_drop_domain_id",
-                                           0);
+    pflow_output_get_debug(node, &debug);
 
-    if (pfo->debug.collector_set_id != collector_set_id ||
-        pfo->debug.obs_domain_id != obs_domain_id) {
-        pfo->debug.collector_set_id = collector_set_id;
-        pfo->debug.obs_domain_id = obs_domain_id;
+    if (pfo->debug.collector_set_id != debug.collector_set_id ||
+        pfo->debug.obs_domain_id != debug.obs_domain_id) {
+        pfo->debug = debug;
         return false;
     }
     engine_set_node_state(node, EN_UPDATED);
@@ -4060,6 +4098,10 @@ main(int argc, char *argv[])
     struct ovsdb_idl_index *ovsrec_port_by_name
         = ovsdb_idl_index_create1(ovs_idl_loop.idl,
                                   &ovsrec_port_col_name);
+    struct ovsdb_idl_index *ovsrec_flow_sample_collector_set_by_id
+        = ovsdb_idl_index_create2(ovs_idl_loop.idl,
+                                  &ovsrec_flow_sample_collector_set_col_bridge,
+                                  &ovsrec_flow_sample_collector_set_col_id);
 
     ovsdb_idl_get_initial_snapshot(ovs_idl_loop.idl);
 
@@ -4260,8 +4302,10 @@ main(int argc, char *argv[])
     engine_add_input(&en_pflow_output, &en_mff_ovn_geneve, NULL);
     engine_add_input(&en_pflow_output, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_pflow_output, &en_ovs_bridge, NULL);
+    engine_add_input(&en_pflow_output, &en_ovs_flow_sample_collector_set,
+                     pflow_output_debug_handler);
     engine_add_input(&en_pflow_output, &en_sb_sb_global,
-                     pflow_output_sb_sb_global_handler);
+                     pflow_output_debug_handler);
 
     engine_add_input(&en_northd_options, &en_sb_sb_global,
                      en_northd_options_sb_sb_global_handler);
@@ -4398,6 +4442,8 @@ main(int argc, char *argv[])
                                 sbrec_static_mac_binding_by_datapath);
     engine_ovsdb_node_add_index(&en_sb_chassis_template_var, "chassis",
                                 sbrec_chassis_template_var_index_by_chassis);
+    engine_ovsdb_node_add_index(&en_ovs_flow_sample_collector_set, "id",
+                                ovsrec_flow_sample_collector_set_by_id);
 
     struct ed_type_lflow_output *lflow_output_data =
         engine_get_internal_data(&en_lflow_output);
