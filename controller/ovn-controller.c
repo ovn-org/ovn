@@ -3839,10 +3839,11 @@ pflow_output_sb_sb_global_handler(struct engine_node *node, void *data)
 
     if (pfo->debug.collector_set_id != collector_set_id ||
         pfo->debug.obs_domain_id != obs_domain_id) {
-        engine_set_node_state(node, EN_UPDATED);
         pfo->debug.collector_set_id = collector_set_id;
         pfo->debug.obs_domain_id = obs_domain_id;
+        return false;
     }
+    engine_set_node_state(node, EN_UPDATED);
     return true;
 }
 
