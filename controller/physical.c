@@ -843,6 +843,7 @@ put_drop(const struct physical_debug *debug, uint8_t table_id,
         os->collector_set_id = debug->collector_set_id;
         os->obs_domain_id = (debug->obs_domain_id << 24);
         os->obs_point_id = table_id;
+        os->sampling_port = OFPP_NONE;
     }
 }
 
