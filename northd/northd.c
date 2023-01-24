@@ -5666,7 +5666,7 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct hmap *lflows,
         ds_put_format(match, "outport == %s", op->json_key);
         ovn_lflow_add_with_lport_and_hint(
             lflows, op->od, S_SWITCH_IN_L2_UNKNOWN, 50, ds_cstr(match),
-            "drop;", op->key, &op->nbsp->header_);
+            debug_drop_action(), op->key, &op->nbsp->header_);
         return;
     }
 
@@ -5760,7 +5760,7 @@ build_lswitch_output_port_sec_od(struct ovn_datapath *od,
                       REGBIT_PORT_SEC_DROP" = check_out_port_sec(); next;");
 
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_APPLY_PORT_SEC, 50,
-                      REGBIT_PORT_SEC_DROP" == 1", "drop;");
+                      REGBIT_PORT_SEC_DROP" == 1", debug_drop_action());
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_APPLY_PORT_SEC, 0,
                       "1", "output;");
 
@@ -6707,7 +6707,8 @@ build_acls(struct ovn_datapath *od, const struct chassis_features *features,
            struct hmap *lflows, const struct hmap *port_groups,
            const struct shash *meter_groups)
 {
-    const char *default_acl_action = default_acl_drop ? "drop;" : "next;";
+    const char *default_acl_action = default_acl_drop ? debug_drop_action() :
+                                                        "next;";
     bool has_stateful = od->has_stateful_acl || od->has_lb_vip;
     const char *ct_blocked_match = features->ct_no_masked_label
                                    ? "ct_mark.blocked"
@@ -6776,7 +6777,7 @@ build_acls(struct ovn_datapath *od, const struct chassis_features *features,
                       REGBIT_CONNTRACK_COMMIT" = 1; next;");
 
         default_acl_action = default_acl_drop
-                             ? "drop;"
+                             ? debug_drop_action()
                              : REGBIT_CONNTRACK_COMMIT" = 1; next;";
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, 1, "ip && !ct.est",
                       default_acl_action);
@@ -9037,7 +9038,8 @@ build_lswitch_ip_unicast_lookup(struct ovn_port *op,
              * or IPv6 addresses (or both). */
             struct eth_addr mac;
             bool lsp_enabled = lsp_is_enabled(op->nbsp);
-            char *action = lsp_enabled ? "outport = %s; output;" : "drop;";
+            const char *action = lsp_enabled ? "outport = %s; output;" :
+                                               debug_drop_action();
             if (ovs_scan(op->nbsp->addresses[i],
                         ETH_ADDR_SCAN_FMT, ETH_ADDR_SCAN_ARGS(mac))) {
                 ds_clear(match);
@@ -12813,12 +12815,13 @@ build_gateway_redirect_flows_for_lrouter(
                                   nat_entry_is_v6(nat) ? "6" : "4",
                                   nat->nb->external_ip);
                     ovn_lflow_add(lflows, od, S_ROUTER_IN_GW_REDIRECT, 70,
-                                  ds_cstr(&match_ext), "drop;");
+                                  ds_cstr(&match_ext), debug_drop_action());
                     add_def_flow = false;
                 }
             } else if (nat->nb->exempted_ext_ips) {
                 ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_GW_REDIRECT,
-                                        75, ds_cstr(&match_ext), "drop;",
+                                        75, ds_cstr(&match_ext),
+                                        debug_drop_action(),
                                         stage_hint);
             }
             ds_destroy(&match_ext);

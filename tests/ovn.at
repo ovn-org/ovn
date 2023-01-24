@@ -33910,9 +33910,12 @@ check_sample_drops() {
     AT_CAPTURE_FILE([oflows_sample])
 
     # Check that every drop has now contains a "sample" action.
-    for flow in "$drop_matches"; do
-        AT_CHECK([grep -q "$flow actions=.*sample.*" oflows_sample], [0], [ignore], [ignore], [echo "Flow $flow has a drop and did not get sampled"])
+    save_IFS=$IFS
+    IFS=$'\n'
+    for flow in $drop_matches; do
+        AT_CHECK([grep "${flow}actions=.*sample.*" oflows_sample], [0], [ignore], [ignore], [echo "Flow $flow has a drop and did not get sampled"])
     done
+    IFS=$save_IFS
 }
 
 check_drops() {
