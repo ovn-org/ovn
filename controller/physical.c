@@ -1498,6 +1498,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         if (!strcmp(binding->type, "localnet")) {
             /* do not forward traffic from localport to localnet port */
             ofpbuf_clear(ofpacts_p);
+            put_drop(debug, OFTABLE_CHECK_LOOPBACK, ofpacts_p);
             match_outport_dp_and_port_keys(&match, dp_key, port_key);
             match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
                                  MLF_LOCALPORT, MLF_LOCALPORT);
