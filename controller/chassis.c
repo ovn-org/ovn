@@ -597,6 +597,55 @@ chassis_build_encaps(struct ovsdb_idl_txn *ovnsb_idl_txn,
     return encaps;
 }
 
+/* 'struct sset' of all supported options in other_confing. Anything missing
+ * in this set will be removed from the chassis configuration. */
+static void
+update_supported_sset(struct sset *supported)
+{
+    /* OvS external_ids. */
+    sset_add(supported, "ovn-bridge-mappings");
+    sset_add(supported, "datapath-type");
+    sset_add(supported, "ovn-cms-options");
+    sset_add(supported, "ovn-monitor-all");
+    sset_add(supported, "ovn-enable-lflow-cache");
+    sset_add(supported, "ovn-limit-lflow-cache");
+    sset_add(supported, "ovn-memlimit-lflow-cache-kb");
+    sset_add(supported, "ovn-trim-limit-lflow-cache");
+    sset_add(supported, "ovn-trim-wmark-perc-lflow-cache");
+    sset_add(supported, "ovn-trim-timeout-ms");
+    sset_add(supported, "iface-types");
+    sset_add(supported, "ovn-chassis-mac-mappings");
+    sset_add(supported, "is-interconn");
+
+    /* Internal options. */
+    sset_add(supported, "is-vtep");
+    sset_add(supported, "is-remote");
+    sset_add(supported, OVN_FEATURE_PORT_UP_NOTIF);
+    sset_add(supported, OVN_FEATURE_CT_NO_MASKED_LABEL);
+    sset_add(supported, OVN_FEATURE_MAC_BINDING_TIMESTAMP);
+    sset_add(supported, OVN_FEATURE_CT_LB_RELATED);
+}
+
+static void
+remove_unsupported_options(const struct sbrec_chassis *chassis_rec,
+                           bool *updated)
+{
+    struct sset supported_options = SSET_INITIALIZER(&supported_options);
+    update_supported_sset(&supported_options);
+
+    const struct smap_node *node;
+    SMAP_FOR_EACH (node, &chassis_rec->other_config) {
+        if (!sset_contains(&supported_options, node->key)) {
+            VLOG_WARN("Removing unsupported key \"%s\" from chassis record.",
+                      node->key);
+            sbrec_chassis_update_other_config_delkey(chassis_rec, node->key);
+            *updated = true;
+        }
+    }
+
+    sset_destroy(&supported_options);
+}
+
 /* If this is a chassis config update after we initialized the record once
  * then we should always be able to find it with the ID we saved in
  * chassis_state.
@@ -661,6 +710,8 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
     }
 
     update_chassis_transport_zones(transport_zones, chassis_rec);
+
+    remove_unsupported_options(chassis_rec, &updated);
 
     /* If any of the encaps should change, update them. */
     bool tunnels_changed =

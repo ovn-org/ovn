@@ -2527,3 +2527,27 @@ check test "$zone_num" -eq 666
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - check unsupported chassis options removal])
+
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+ovn-nbctl --wait=sb sync
+
+chassis_id=$(fetch_column Chassis _uuid name=hv1)
+check ovn-sbctl set chassis $chassis_id other_config:unsupported="value"
+
+OVS_WAIT_UNTIL([grep -q 'Removing unsupported key "unsupported" from chassis record.' hv1/ovn-controller.log])
+
+AT_CHECK([ovn-sbctl get chassis $chassis_id other_config:unsupported], [1], [ignore], [ignore])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
