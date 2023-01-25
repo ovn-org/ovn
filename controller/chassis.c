@@ -233,7 +233,7 @@ update_chassis_transport_zones(const struct sset *transport_zones,
  * Parse an ovs 'encap_type' string and stores the resulting types in the
  * 'encap_type_set' string set.
  */
-static bool
+static void
 chassis_parse_ovs_encap_type(const char *encap_type,
                              struct sset *encap_type_set)
 {
@@ -247,26 +247,23 @@ chassis_parse_ovs_encap_type(const char *encap_type,
             VLOG_INFO_RL(&rl, "Unknown tunnel type: %s", type);
         }
     }
-
-    return true;
 }
 
 /*
  * Parse an ovs 'encap_ip' string and stores the resulting IP representations
  * in the 'encap_ip_set' string set.
  */
-static bool
+static void
 chassis_parse_ovs_encap_ip(const char *encap_ip, struct sset *encap_ip_set)
 {
     sset_from_delimited_string(encap_ip_set, encap_ip, ",");
-    return true;
 }
 
 /*
  * Parse the ovs 'iface_types' and store them in the format required by the
  * Chassis record.
  */
-static bool
+static void
 chassis_parse_ovs_iface_types(char **iface_types, size_t n_iface_types,
                               struct ds *iface_types_str)
 {
@@ -274,7 +271,6 @@ chassis_parse_ovs_iface_types(char **iface_types, size_t n_iface_types,
         ds_put_format(iface_types_str, "%s,", iface_types[i]);
     }
     ds_chomp(iface_types_str, ',');
-    return true;
 }
 
 /*
@@ -329,26 +325,17 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
     ovs_cfg->trim_timeout_ms =
         get_trim_timeout(&cfg->external_ids, chassis_id);
 
-    if (!chassis_parse_ovs_encap_type(encap_type, &ovs_cfg->encap_type_set)) {
-        return false;
-    }
+    chassis_parse_ovs_encap_type(encap_type, &ovs_cfg->encap_type_set);
 
     /* 'ovn-encap-ip' can accept a comma-delimited list of IP addresses instead
      * of a single IP address. Although this is undocumented, it can be used
      * to enable certain hardware-offloaded use cases in which a host has
      * multiple NICs and is assigning SR-IOV VFs to a guest (as logical ports).
      */
-    if (!chassis_parse_ovs_encap_ip(encap_ips, &ovs_cfg->encap_ip_set)) {
-        sset_destroy(&ovs_cfg->encap_type_set);
-        return false;
-    }
+    chassis_parse_ovs_encap_ip(encap_ips, &ovs_cfg->encap_ip_set);
 
-    if (!chassis_parse_ovs_iface_types(cfg->iface_types,
-                                       cfg->n_iface_types,
-                                       &ovs_cfg->iface_types)) {
-        sset_destroy(&ovs_cfg->encap_type_set);
-        sset_destroy(&ovs_cfg->encap_ip_set);
-    }
+    chassis_parse_ovs_iface_types(cfg->iface_types, cfg->n_iface_types,
+                                  &ovs_cfg->iface_types);
 
     ovs_cfg->is_interconn = get_is_interconn(&cfg->external_ids, chassis_id);
 
@@ -714,7 +701,7 @@ chassis_private_get_record(
             chassis_private_lookup_by_name(sbrec_chassis_pvt_by_name,
                                            chassis_id);
 
-    if (!chassis_p && ovnsb_idl_txn) {
+    if (!chassis_p) {
         return sbrec_chassis_private_insert(ovnsb_idl_txn);
     }
 
