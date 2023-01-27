@@ -77,7 +77,8 @@ struct chassis_features {
 struct northd_data {
     /* Global state for 'en-northd'. */
     struct hmap datapaths;
-    struct hmap ports;
+    struct hmap ls_ports;
+    struct hmap lr_ports;
     struct hmap port_groups;
     struct shash meter_groups;
     struct hmap lbs;
@@ -102,7 +103,8 @@ struct lflow_input {
     struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp;
 
     const struct hmap *datapaths;
-    const struct hmap *ports;
+    const struct hmap *ls_ports;
+    const struct hmap *lr_ports;
     const struct hmap *port_groups;
     const struct shash *meter_groups;
     const struct hmap *lbs;

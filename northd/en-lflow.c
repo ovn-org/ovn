@@ -55,7 +55,8 @@ void en_lflow_run(struct engine_node *node, void *data OVS_UNUSED)
                          "sbrec_mcast_group_by_name");
 
     lflow_input.datapaths = &northd_data->datapaths;
-    lflow_input.ports = &northd_data->ports;
+    lflow_input.ls_ports = &northd_data->ls_ports;
+    lflow_input.lr_ports = &northd_data->lr_ports;
     lflow_input.port_groups = &northd_data->port_groups;
     lflow_input.meter_groups = &northd_data->meter_groups;
     lflow_input.lbs = &northd_data->lbs;
@@ -67,7 +68,7 @@ void en_lflow_run(struct engine_node *node, void *data OVS_UNUSED)
     stopwatch_start(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
     build_bfd_table(&lflow_input, eng_ctx->ovnsb_idl_txn,
                     &northd_data->bfd_connections,
-                    &northd_data->ports);
+                    &northd_data->lr_ports);
     build_lflows(&lflow_input, eng_ctx->ovnsb_idl_txn);
     bfd_cleanup_connections(&lflow_input, &northd_data->bfd_connections);
     stopwatch_stop(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
