@@ -7193,7 +7193,7 @@ ha_chassis_group_by_name_or_uuid(struct ctl_context *ctx, const char *id,
     }
 
     if (!ha_ch_grp && must_exist) {
-        ctx->error = xasprintf("%s: ha_chassi_group %s not found",
+        ctx->error = xasprintf("%s: ha_chassis_group %s not found",
                                id, is_uuid ? "UUID" : "name");
     }
 
