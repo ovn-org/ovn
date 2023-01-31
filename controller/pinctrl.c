@@ -4534,6 +4534,24 @@ send_garp_rarp_update(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 }
                 free(name);
             }
+            /*
+             * Send RARPs even if we do not have a ipv4 address as it e.g.
+             * happens on ipv6 only ports.
+             */
+            if (laddrs->n_ipv4_addrs == 0) {
+                    char *name = xasprintf("%s-noip",
+                                           binding_rec->logical_port);
+                    garp_rarp = shash_find_data(&send_garp_rarp_data, name);
+                    if (garp_rarp) {
+                        garp_rarp->dp_key = binding_rec->datapath->tunnel_key;
+                        garp_rarp->port_key = binding_rec->tunnel_key;
+                    } else {
+                        add_garp_rarp(name, laddrs->ea,
+                                      0, binding_rec->datapath->tunnel_key,
+                                      binding_rec->tunnel_key);
+                    }
+                    free(name);
+            }
             destroy_lport_addresses(laddrs);
             free(laddrs);
         }
@@ -5843,6 +5861,11 @@ consider_nat_address(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     for (i = 0; i < laddrs->n_ipv4_addrs; i++) {
         char *name = xasprintf("%s-%s", pb->logical_port,
                                         laddrs->ipv4_addrs[i].addr_s);
+        sset_add(nat_address_keys, name);
+        free(name);
+    }
+    if (laddrs->n_ipv4_addrs == 0) {
+        char *name = xasprintf("%s-noip", pb->logical_port);
         sset_add(nat_address_keys, name);
         free(name);
     }

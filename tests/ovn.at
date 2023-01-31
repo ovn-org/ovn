@@ -9033,6 +9033,76 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([send reverse arp for router without ipv4 address])
+ovn_start
+# Create logical switch
+ovn-nbctl ls-add ls0
+# Create gateway router
+ovn-nbctl create Logical_Router name=lr0 options:chassis=hv1
+# Add router port to gateway router
+ovn-nbctl lrp-add lr0 lrp0 f0:00:00:00:00:01 fd12:3456:789a:1::1/64
+ovn-nbctl lsp-add ls0 lrp0-rp -- set Logical_Switch_Port lrp0-rp \
+    type=router options:router-port=lrp0 addresses='"f0:00:00:00:00:01"'
+# Add nat-address option
+ovn-nbctl lsp-set-options lrp0-rp router-port=lrp0 nat-addresses="router"
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl \
+    -- add-br br-phys \
+    -- add-br br-eth0
+
+ovn_attach n1 br-phys fd12:3456:789a:1::1 64
+
+AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1:br-eth0])
+AT_CHECK([ovs-vsctl add-port br-eth0 snoopvif -- set Interface snoopvif options:tx_pcap=hv1/snoopvif-tx.pcap options:rxq_pcap=hv1/snoopvif-rx.pcap])
+
+# Create a localnet port.
+AT_CHECK([ovn-nbctl lsp-add ls0 ln_port])
+AT_CHECK([ovn-nbctl lsp-set-addresses ln_port unknown])
+AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
+AT_CHECK([ovn-nbctl lsp-set-options ln_port network_name=physnet1])
+
+# Wait until the patch ports are created to connect br-int to br-eth0
+OVS_WAIT_UNTIL([test 1 = `ovs-vsctl show | \
+grep "Port patch-br-int-to-ln_port" | wc -l`])
+
+ovn-sbctl list port_binding lrp0-rp
+echo "*****"
+ovn-nbctl list logical_switch_port lrp0-rp
+ovn-nbctl list logical_router_port lrp0
+ovn-nbctl show
+# Wait for packet to be received.
+OVS_WAIT_UNTIL([test `wc -c < "hv1/snoopvif-tx.pcap"` -ge 50])
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap  | sort | uniq > packets
+expected="fffffffffffff0000000000180350001080006040003f0000000000100000000f0000000000100000000"
+echo $expected > expout
+AT_CHECK([sort packets], [0], [expout])
+
+# Temporarily remove nat-addresses option to avoid race conditions
+# due to GARP backoff
+ovn-nbctl lsp-set-options lrp0-rp router-port=lrp0 nat-addresses=""
+
+as hv1 reset_pcap_file snoopvif hv1/snoopvif
+
+# Re-add nat-addresses option
+ovn-nbctl lsp-set-options lrp0-rp router-port=lrp0 nat-addresses="router" exclude-lb-vips-from-garp="true"
+
+# Wait for packets to be received.
+OVS_WAIT_UNTIL([test `wc -c < "hv1/snoopvif-tx.pcap"` -ge 50])
+
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap  > packets
+expected="fffffffffffff0000000000180350001080006040003f0000000000100000000f0000000000100000000"
+echo $expected > expout
+AT_CHECK([sort packets], [0], [expout])
+
+OVN_CLEANUP([hv1])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([delete mac bindings])
 ovn_start
 net_add n1
@@ -13892,10 +13962,11 @@ $mcast_node_ip $nd_target $nd_src_ip
 OVS_WAIT_WHILE([test 24 = $(wc -c hv1/br-phys_n1-tx.pcap | cut -d " " -f1)])
 OVS_WAIT_WHILE([test 24 = $(wc -c hv1/br-phys-tx.pcap | cut -d " " -f1)])
 
+# Use the grep here to filter out rarp packets that might have arrived
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/br-phys_n1-tx.pcap | \
-trim_zeros > 1.packets
+grep -v ffffffffffff | trim_zeros > 1.packets
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/br-phys-tx.pcap | \
-trim_zeros > 2.packets
+grep -v ffffffffffff | trim_zeros > 2.packets
 
 cat ipv6_ns.expected | cut -c -112 > expout
 AT_CHECK([cat 1.packets | cut -c -112], [0], [expout])
@@ -13932,10 +14003,11 @@ $mcast_node_ip $nd_target $nd_src_ip
 OVS_WAIT_WHILE([test 24 = $(wc -c hv1/br-phys_n1-tx.pcap | cut -d " " -f1)])
 OVS_WAIT_WHILE([test 24 = $(wc -c hv1/br-phys-tx.pcap | cut -d " " -f1)])
 
+# Use the grep here to filter out rarp packets that might have arrived
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/br-phys_n1-tx.pcap | \
-trim_zeros > 1.packets
+grep -v ffffffffffff | trim_zeros > 1.packets
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/br-phys-tx.pcap | \
-trim_zeros > 2.packets
+grep -v ffffffffffff | trim_zeros > 2.packets
 
 cat ipv6_ns.expected | cut -c -112 > expout
 AT_CHECK([cat 1.packets | cut -c -112], [0], [expout])
