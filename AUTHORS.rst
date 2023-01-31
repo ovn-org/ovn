@@ -370,6 +370,7 @@ Steve Ruan                         ruansx@cn.ibm.com
 Stuart Cardall                     developer@it-offshore.co.uk
 Sugesh Chandran                    sugesh.chandran@intel.com
 SUGYO Kazushi                      sugyo.org@gmail.com
+Surya Seetharaman                  suryaseetharaman.9@gmail.com
 Sven Haardiek                      sven.haardiek@uni-muenster.de
 Tadaaki Nagao                      nagao@stratosphere.co.jp
 Terry Wilson                       twilson@redhat.com
