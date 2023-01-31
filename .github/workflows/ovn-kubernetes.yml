@@ -73,6 +73,7 @@ jobs:
     env:
       JOB_NAME: "${{ matrix.target }}-${{ matrix.ha }}-${{ matrix.gateway-mode }}-${{ matrix.ipfamily }}-${{ matrix.disable-snat-multiple-gws }}-${{ matrix.second-bridge }}"
       OVN_HYBRID_OVERLAY_ENABLE: "${{ matrix.target == 'control-plane' }}"
+      KIND_INSTALL_METALLB: "${{ matrix.target == 'control-plane' }}"
       OVN_MULTICAST_ENABLE:  "${{ matrix.target == 'control-plane' }}"
       OVN_EMPTY_LB_EVENTS: "${{ matrix.target == 'control-plane' }}"
       OVN_HA: "true"
