@@ -13979,8 +13979,9 @@ AT_CHECK([cat 2.packets | cut -c 117-], [0], [expout])
 
 # Check that NS packets are not flooded across routing domains. That means
 # that hv2 should not send any packets across the physical network.
+# Use the grep here to filter out rarp packets that might have arrived
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap | \
-trim_zeros > 2.packets
+grep -v ffffffffffff | trim_zeros > 2.packets
 AT_CHECK([cat 2.packets], [0], [])
 
 # Now send a packet with destination ip other than
@@ -14020,8 +14021,9 @@ AT_CHECK([cat 2.packets | cut -c 117-], [0], [expout])
 
 # Check that NS packets are not flooded across routing domains. That means
 # that hv2 should not send any packets across the physical network.
+# Use the grep here to filter out rarp packets that might have arrived
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap | \
-trim_zeros > 2.packets
+grep -v ffffffffffff | trim_zeros > 2.packets
 AT_CHECK([cat 2.packets], [0], [])
 
 OVN_CLEANUP([hv1])
