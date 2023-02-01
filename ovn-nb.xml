@@ -630,7 +630,7 @@
         These options control IP Multicast Snooping configuration of the
         logical switch. To enable IP Multicast Snooping set
         <ref column="other_config" key="mcast_snoop"/> to true. To enable IP
-        Multicast Querier set <ref column="other_config" key="mcast_snoop"/>
+        Multicast Querier set <ref column="other_config" key="mcast_querier"/>
         to true. If IP Multicast Querier is enabled
         <ref column="other_config" key="mcast_eth_src"/> and
         <ref column="other_config" key="mcast_ip4_src"/> must be set.
@@ -638,10 +638,14 @@
       <column name="other_config" key="mcast_snoop"
           type='{"type": "boolean"}'>
         Enables/disables IP Multicast Snooping on the logical switch.
+        Default: <code>false</code>.
       </column>
       <column name="other_config" key="mcast_querier"
           type='{"type": "boolean"}'>
         Enables/disables IP Multicast Querier on the logical switch.
+        Only applicable if <ref column="other_config" key="mcast_snoop"/>
+        is enabled.
+        Default: <code>true</code>.
       </column>
       <column name="other_config" key="mcast_flood_unregistered"
           type='{"type": "boolean"}'>
