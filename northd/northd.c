@@ -12550,11 +12550,8 @@ build_arp_resolve_flows_for_lrouter_port(
         }
 
         for (size_t i = 0; i < op->od->n_router_ports; i++) {
-            const char *router_port_name = smap_get(
-                                &op->od->router_ports[i]->nbsp->options,
-                                "router-port");
-            struct ovn_port *router_port = ovn_port_find(ports,
-                                                         router_port_name);
+            struct ovn_port *router_port =
+                ovn_port_get_peer(ports, op->od->router_ports[i]);
             if (!router_port || !router_port->nbrp) {
                 continue;
             }
