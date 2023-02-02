@@ -4871,7 +4871,7 @@ ovn_igmp_group_get_ports(const struct sbrec_igmp_group *sb_igmp_group,
         struct ovn_port *port =
             ovn_port_find(ovn_ports, sb_igmp_group->ports[i]->logical_port);
 
-        if (!port) {
+        if (!port || !port->nbsp) {
             continue;
         }
 
