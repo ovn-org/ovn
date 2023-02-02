@@ -8418,9 +8418,11 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
                           igmp_group->mcgroup.name);
         } else {
             /* RFC 4291, section 2.7.1: Skip groups that correspond to all
-             * hosts.
+             * hosts, all link-local routers and all site routers.
              */
-            if (ipv6_is_all_hosts(&igmp_group->address)) {
+            if (ipv6_is_all_hosts(&igmp_group->address) ||
+                ipv6_is_all_router(&igmp_group->address) ||
+                ipv6_is_all_site_router(&igmp_group->address)) {
                 return;
             }
             if (atomic_compare_exchange_strong(
