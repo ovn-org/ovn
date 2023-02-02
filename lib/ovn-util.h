@@ -70,6 +70,23 @@ struct lport_addresses {
     struct ipv6_netaddr *ipv6_addrs;
 };
 
+static inline bool
+ipv6_is_all_router(const struct in6_addr *addr)
+{
+    return ipv6_addr_equals(addr, &in6addr_all_routers);
+}
+
+static const struct in6_addr in6addr_all_site_routers = {{{
+    0xff,0x05,0x00,0x00,0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x02
+}}};
+
+static inline bool
+ipv6_is_all_site_router(const struct in6_addr *addr)
+{
+    return ipv6_addr_equals(addr, &in6addr_all_site_routers);
+}
+
 bool is_dynamic_lsp_address(const char *address);
 bool extract_addresses(const char *address, struct lport_addresses *,
                        int *ofs);
