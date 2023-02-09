@@ -3979,7 +3979,8 @@ build_lbs(struct northd_input *input_data, struct hmap *datapaths,
     const struct nbrec_load_balancer *nbrec_lb;
     NBREC_LOAD_BALANCER_TABLE_FOR_EACH (nbrec_lb,
                                input_data->nbrec_load_balancer_table) {
-        struct ovn_northd_lb *lb_nb = ovn_northd_lb_create(nbrec_lb);
+        struct ovn_northd_lb *lb_nb = ovn_northd_lb_create(nbrec_lb,
+                                                           n_datapaths);
         hmap_insert(lbs, &lb_nb->hmap_node,
                     uuid_hash(&nbrec_lb->header_.uuid));
     }
@@ -4237,9 +4238,11 @@ build_lswitch_lbs_from_lrouter(struct hmap *lbs, struct hmap *lb_groups)
     }
 
     struct ovn_northd_lb *lb;
+    size_t index;
+
     HMAP_FOR_EACH (lb, hmap_node, lbs) {
-        for (size_t i = 0; i < lb->n_nb_lr; i++) {
-            struct ovn_datapath *od = lb->nb_lr[i];
+        BITMAP_FOR_EACH_1 (index, n_datapaths, lb->nb_lr_map) {
+            struct ovn_datapath *od = datapaths_array[index];
             ovn_northd_lb_add_ls(lb, od->n_ls_peers, od->ls_peers);
         }
     }
@@ -4254,6 +4257,17 @@ build_lswitch_lbs_from_lrouter(struct hmap *lbs, struct hmap *lb_groups)
                                      od->ls_peers);
             }
         }
+    }
+}
+
+static void
+build_lb_count_dps(struct hmap *lbs)
+{
+    struct ovn_northd_lb *lb;
+
+    HMAP_FOR_EACH (lb, hmap_node, lbs) {
+        lb->n_nb_lr = bitmap_count1(lb->nb_lr_map, n_datapaths);
+        lb->n_nb_ls = bitmap_count1(lb->nb_ls_map, n_datapaths);
     }
 }
 
@@ -4419,25 +4433,18 @@ sync_lbs(struct northd_input *input_data, struct ovsdb_idl_txn *ovnsb_txn,
         }
 
         /* Find datapath group for this load balancer. */
-        unsigned long *lb_dps_bitmap;
         struct ovn_dp_group *dpg;
         uint32_t hash;
 
-        lb_dps_bitmap = bitmap_allocate(n_datapaths);
-        for (size_t i = 0; i < lb->n_nb_ls; i++) {
-            bitmap_set1(lb_dps_bitmap, lb->nb_ls[i]->index);
-        }
-
-        hash = hash_int(bitmap_count1(lb_dps_bitmap, n_datapaths), 0);
-        dpg = ovn_dp_group_find(&dp_groups, lb_dps_bitmap, hash);
+        hash = hash_int(lb->n_nb_ls, 0);
+        dpg = ovn_dp_group_find(&dp_groups, lb->nb_ls_map, hash);
         if (!dpg) {
             dpg = xzalloc(sizeof *dpg);
             dpg->dp_group = ovn_sb_insert_logical_dp_group(ovnsb_txn,
-                                                           lb_dps_bitmap);
-            dpg->bitmap = bitmap_clone(lb_dps_bitmap, n_datapaths);
+                                                           lb->nb_ls_map);
+            dpg->bitmap = bitmap_clone(lb->nb_ls_map, n_datapaths);
             hmap_insert(&dp_groups, &dpg->node, hash);
         }
-        bitmap_free(lb_dps_bitmap);
 
         /* Update columns. */
         sbrec_load_balancer_set_name(lb->slb, lb->nlb->name);
@@ -7081,9 +7088,10 @@ build_lb_rules_pre_stateful(struct hmap *lflows, struct ovn_northd_lb *lb,
                 ovn_stage_get_pipeline(S_SWITCH_IN_PRE_STATEFUL), 120,
                 ds_cstr(match), ds_cstr(action));
         struct ovs_mutex *hash_lock = lflow_hash_lock(lflows, hash);
+        size_t index;
 
-        for (size_t j = 0; j < lb->n_nb_ls; j++) {
-            struct ovn_datapath *od = lb->nb_ls[j];
+        BITMAP_FOR_EACH_1 (index, n_datapaths, lb->nb_ls_map) {
+            struct ovn_datapath *od = datapaths_array[index];
 
             if (!ovn_dp_group_add_with_reference(lflow_ref, od)) {
                 lflow_ref = ovn_lflow_add_at_with_hash(
@@ -7390,12 +7398,14 @@ build_lb_affinity_ls_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
             ovn_stage_get_pipeline(S_SWITCH_IN_LB_AFF_CHECK), 100,
             ds_cstr(&new_lb_match), aff_check);
     struct ovs_mutex *hash_lock = lflow_hash_lock(lflows, hash_aff_check);
+    size_t index;
 
-    for (size_t i = 0; i < lb->n_nb_ls; i++) {
-        if (!ovn_dp_group_add_with_reference(lflow_ref_aff_check,
-                                             lb->nb_ls[i])) {
+    BITMAP_FOR_EACH_1 (index, n_datapaths, lb->nb_ls_map) {
+        struct ovn_datapath *od = datapaths_array[index];
+
+        if (!ovn_dp_group_add_with_reference(lflow_ref_aff_check, od)) {
             lflow_ref_aff_check = ovn_lflow_add_at_with_hash(
-                    lflows, lb->nb_ls[i], S_SWITCH_IN_LB_AFF_CHECK, 100,
+                    lflows, od, S_SWITCH_IN_LB_AFF_CHECK, 100,
                     ds_cstr(&new_lb_match), aff_check, NULL, NULL,
                     &lb->nlb->header_, OVS_SOURCE_LOCATOR, hash_aff_check);
         }
@@ -7494,12 +7504,13 @@ build_lb_affinity_ls_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
         struct ovs_mutex *hash_lock_learn = lflow_hash_lock(lflows,
                                                             hash_aff_learn);
 
-        for (size_t j = 0; j < lb->n_nb_ls; j++) {
+        BITMAP_FOR_EACH_1 (index, n_datapaths, lb->nb_ls_map) {
+            struct ovn_datapath *od = datapaths_array[index];
+
             /* Forward to OFTABLE_CHK_LB_AFFINITY table to store flow tuple. */
-            if (!ovn_dp_group_add_with_reference(lflow_ref_aff_learn,
-                                                 lb->nb_ls[j])) {
+            if (!ovn_dp_group_add_with_reference(lflow_ref_aff_learn, od)) {
                 lflow_ref_aff_learn = ovn_lflow_add_at_with_hash(
-                        lflows, lb->nb_ls[j], S_SWITCH_IN_LB_AFF_LEARN, 100,
+                        lflows, od, S_SWITCH_IN_LB_AFF_LEARN, 100,
                         ds_cstr(&aff_match_learn), ds_cstr(&aff_action_learn),
                         NULL, NULL, &lb->nlb->header_, OVS_SOURCE_LOCATOR,
                         hash_aff_learn);
@@ -7514,12 +7525,13 @@ build_lb_affinity_ls_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
                 150, ds_cstr(&aff_match), ds_cstr(&aff_action));
         struct ovs_mutex *hash_lock_lb = lflow_hash_lock(lflows, hash_aff_lb);
 
-        for (size_t j = 0; j < lb->n_nb_ls; j++) {
+        BITMAP_FOR_EACH_1 (index, n_datapaths, lb->nb_ls_map) {
+            struct ovn_datapath *od = datapaths_array[index];
+
             /* Use already selected backend within affinity timeslot. */
-            if (!ovn_dp_group_add_with_reference(lflow_ref_aff_lb,
-                                                 lb->nb_ls[j])) {
+            if (!ovn_dp_group_add_with_reference(lflow_ref_aff_lb, od)) {
                 lflow_ref_aff_lb = ovn_lflow_add_at_with_hash(
-                    lflows, lb->nb_ls[j], S_SWITCH_IN_LB, 150,
+                    lflows, od, S_SWITCH_IN_LB, 150,
                     ds_cstr(&aff_match), ds_cstr(&aff_action), NULL, NULL,
                     &lb->nlb->header_, OVS_SOURCE_LOCATOR,
                     hash_aff_lb);
@@ -7598,9 +7610,10 @@ build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb,
                 ovn_stage_get_pipeline(S_SWITCH_IN_LB), priority,
                 ds_cstr(match), ds_cstr(action));
         struct ovs_mutex *hash_lock = lflow_hash_lock(lflows, hash);
+        size_t index;
 
-        for (size_t j = 0; j < lb->n_nb_ls; j++) {
-            struct ovn_datapath *od = lb->nb_ls[j];
+        BITMAP_FOR_EACH_1 (index, n_datapaths, lb->nb_ls_map) {
+            struct ovn_datapath *od = datapaths_array[index];
 
             if (reject) {
                 meter = copp_meter_get(COPP_REJECT, od->nbs->copp,
@@ -10777,9 +10790,10 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     /* Group gw router since we do not have datapath dependency in
      * lflow generation for them.
      */
-    for (size_t i = 0; i < lb->n_nb_lr; i++) {
+    size_t index;
+    BITMAP_FOR_EACH_1 (index, n_datapaths, lb->nb_lr_map) {
+        struct ovn_datapath *od = datapaths_array[index];
         enum lrouter_nat_lb_flow_type type;
-        struct ovn_datapath *od = lb->nb_lr[i];
 
         if (lb->skip_snat) {
             type = LROUTER_NAT_LB_FLOW_SKIP_SNAT;
@@ -10791,16 +10805,16 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
         }
 
         if (!od->n_l3dgw_ports) {
-            bitmap_set1(dp_bitmap[type], od->index);
+            bitmap_set1(dp_bitmap[type], index);
         } else {
             build_distr_lrouter_nat_flows_for_lb(&ctx, type, od);
         }
 
         if (!lport_addresses_is_empty(&od->lb_force_snat_addrs) ||
             od->lb_force_snat_router_ip) {
-            bitmap_set1(dp_bitmap[LROUTER_NAT_LB_AFF_FORCE_SNAT], od->index);
+            bitmap_set1(dp_bitmap[LROUTER_NAT_LB_AFF_FORCE_SNAT], index);
         } else {
-            bitmap_set1(dp_bitmap[LROUTER_NAT_LB_AFF], od->index);
+            bitmap_set1(dp_bitmap[LROUTER_NAT_LB_AFF], index);
         }
 
         if (sset_contains(&od->external_ips, lb_vip->vip_str)) {
@@ -10868,8 +10882,11 @@ build_lswitch_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
         if (!build_empty_lb_event_flow(lb_vip, lb, match, action)) {
             continue;
         }
-        for (size_t j = 0; j < lb->n_nb_ls; j++) {
-            struct ovn_datapath *od = lb->nb_ls[j];
+
+        size_t index;
+        BITMAP_FOR_EACH_1 (index, n_datapaths, lb->nb_ls_map) {
+            struct ovn_datapath *od = datapaths_array[index];
+
             ovn_lflow_add_with_hint__(lflows, od,
                                       S_SWITCH_IN_PRE_LB, 130, ds_cstr(match),
                                       ds_cstr(action),
@@ -10947,9 +10964,11 @@ build_lrouter_defrag_flows_for_lb(struct ovn_northd_lb *lb,
                 ovn_stage_get_pipeline(S_ROUTER_IN_DEFRAG), prio,
                 ds_cstr(match), ds_cstr(&defrag_actions));
         struct ovs_mutex *hash_lock = lflow_hash_lock(lflows, hash);
+        size_t index;
 
-        for (size_t j = 0; j < lb->n_nb_lr; j++) {
-            struct ovn_datapath *od = lb->nb_lr[j];
+        BITMAP_FOR_EACH_1 (index, n_datapaths, lb->nb_lr_map) {
+            struct ovn_datapath *od = datapaths_array[index];
+
             if (ovn_dp_group_add_with_reference(lflow_ref, od)) {
                 continue;
             }
@@ -10970,6 +10989,8 @@ build_lrouter_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
                            const struct chassis_features *features,
                            struct ds *match, struct ds *action)
 {
+    size_t index;
+
     if (!lb->n_nb_lr) {
         return;
     }
@@ -10984,8 +11005,10 @@ build_lrouter_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
         if (!build_empty_lb_event_flow(lb_vip, lb, match, action)) {
             continue;
         }
-        for (size_t j = 0; j < lb->n_nb_lr; j++) {
-            struct ovn_datapath *od = lb->nb_lr[j];
+
+        BITMAP_FOR_EACH_1 (index, n_datapaths, lb->nb_lr_map) {
+            struct ovn_datapath *od = datapaths_array[index];
+
             ovn_lflow_add_with_hint__(lflows, od, S_ROUTER_IN_DNAT,
                                       130, ds_cstr(match), ds_cstr(action),
                                       NULL,
@@ -10997,8 +11020,10 @@ build_lrouter_flows_for_lb(struct ovn_northd_lb *lb, struct hmap *lflows,
     }
 
     if (lb->skip_snat) {
-        for (size_t i = 0; i < lb->n_nb_lr; i++) {
-            ovn_lflow_add(lflows, lb->nb_lr[i], S_ROUTER_OUT_SNAT, 120,
+        BITMAP_FOR_EACH_1 (index, n_datapaths, lb->nb_lr_map) {
+            struct ovn_datapath *od = datapaths_array[index];
+
+            ovn_lflow_add(lflows, od, S_ROUTER_OUT_SNAT, 120,
                           "flags.skip_snat_for_lb == 1 && ip", "next;");
         }
     }
@@ -16323,6 +16348,7 @@ ovnnb_db_run(struct northd_input *input_data,
                 &data->datapaths, &data->ports);
     build_lb_port_related_data(&data->datapaths, &data->ports, &data->lbs,
                                &data->lb_groups, input_data, ovnsb_txn);
+    build_lb_count_dps(&data->lbs);
     build_ipam(&data->datapaths, &data->ports);
     build_port_group_lswitches(input_data, &data->port_groups, &data->ports);
     build_lrouter_groups(&data->ports, &data->lr_list);

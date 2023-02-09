@@ -19,10 +19,12 @@
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-sb-idl.h"
 #include "lib/ovn-util.h"
+#include "northd/northd.h"
 #include "ovn/lex.h"
 
 /* OpenvSwitch lib includes. */
 #include "openvswitch/vlog.h"
+#include "lib/bitmap.h"
 #include "lib/smap.h"
 
 VLOG_DEFINE_THIS_MODULE(lb);
@@ -495,7 +497,8 @@ ovn_lb_get_health_check(const struct nbrec_load_balancer *nbrec_lb,
 }
 
 struct ovn_northd_lb *
-ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
+ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb,
+                     size_t n_datapaths)
 {
     bool template = smap_get_bool(&nbrec_lb->options, "template", false);
     bool is_udp = nullable_string_is_equal(nbrec_lb->protocol, "udp");
@@ -532,6 +535,9 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
         affinity_timeout = UINT16_MAX;
     }
     lb->affinity_timeout = affinity_timeout;
+
+    lb->nb_ls_map = bitmap_allocate(n_datapaths);
+    lb->nb_lr_map = bitmap_allocate(n_datapaths);
 
     sset_init(&lb->ips_v4);
     sset_init(&lb->ips_v6);
@@ -608,24 +614,18 @@ void
 ovn_northd_lb_add_lr(struct ovn_northd_lb *lb, size_t n,
                      struct ovn_datapath **ods)
 {
-    while (lb->n_allocated_nb_lr <= lb->n_nb_lr + n) {
-        lb->nb_lr = x2nrealloc(lb->nb_lr, &lb->n_allocated_nb_lr,
-                               sizeof *lb->nb_lr);
+    for (size_t i = 0; i < n; i++) {
+        bitmap_set1(lb->nb_lr_map, ods[i]->index);
     }
-    memcpy(&lb->nb_lr[lb->n_nb_lr], ods, n * sizeof *ods);
-    lb->n_nb_lr += n;
 }
 
 void
 ovn_northd_lb_add_ls(struct ovn_northd_lb *lb, size_t n,
                      struct ovn_datapath **ods)
 {
-    while (lb->n_allocated_nb_ls <= lb->n_nb_ls + n) {
-        lb->nb_ls = x2nrealloc(lb->nb_ls, &lb->n_allocated_nb_ls,
-                               sizeof *lb->nb_ls);
+    for (size_t i = 0; i < n; i++) {
+        bitmap_set1(lb->nb_ls_map, ods[i]->index);
     }
-    memcpy(&lb->nb_ls[lb->n_nb_ls], ods, n * sizeof *ods);
-    lb->n_nb_ls += n;
 }
 
 void
@@ -640,8 +640,8 @@ ovn_northd_lb_destroy(struct ovn_northd_lb *lb)
     sset_destroy(&lb->ips_v4);
     sset_destroy(&lb->ips_v6);
     free(lb->selection_fields);
-    free(lb->nb_lr);
-    free(lb->nb_ls);
+    bitmap_free(lb->nb_lr_map);
+    bitmap_free(lb->nb_ls_map);
     free(lb);
 }
 

@@ -75,12 +75,10 @@ struct ovn_northd_lb {
     struct sset ips_v6;
 
     size_t n_nb_ls;
-    size_t n_allocated_nb_ls;
-    struct ovn_datapath **nb_ls;
+    unsigned long *nb_ls_map;
 
     size_t n_nb_lr;
-    size_t n_allocated_nb_lr;
-    struct ovn_datapath **nb_lr;
+    unsigned long *nb_lr_map;
 };
 
 struct ovn_lb_vip {
@@ -127,7 +125,8 @@ struct ovn_northd_lb_backend {
     const struct sbrec_service_monitor *sbrec_monitor;
 };
 
-struct ovn_northd_lb *ovn_northd_lb_create(const struct nbrec_load_balancer *);
+struct ovn_northd_lb *ovn_northd_lb_create(const struct nbrec_load_balancer *,
+                                           size_t n_datapaths);
 struct ovn_northd_lb *ovn_northd_lb_find(const struct hmap *,
                                          const struct uuid *);
 void ovn_northd_lb_destroy(struct ovn_northd_lb *);
