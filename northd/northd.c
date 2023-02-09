@@ -5179,28 +5179,24 @@ static thread_local size_t thread_lflow_counter = 0;
 /* Adds an OVN datapath to a datapath group of existing logical flow.
  * Version to use when hash bucket locking is NOT required or the corresponding
  * hash lock is already taken. */
-static bool
+static void
 ovn_dp_group_add_with_reference(struct ovn_lflow *lflow_ref,
                                 const struct ovn_datapath *od,
                                 const unsigned long *dp_bitmap)
     OVS_REQUIRES(fake_hash_mutex)
 {
-    if (!lflow_ref) {
-        return false;
-    }
     if (od) {
         bitmap_set1(lflow_ref->dpg_bitmap, od->index);
     }
     if (dp_bitmap) {
         bitmap_or(lflow_ref->dpg_bitmap, dp_bitmap, n_datapaths);
     }
-    return true;
 }
 
 /* Adds a row with the specified contents to the Logical_Flow table.
  * Version to use when hash bucket locking is NOT required.
  */
-static struct ovn_lflow *
+static void
 do_ovn_lflow_add(struct hmap *lflow_map, const struct ovn_datapath *od,
                  const unsigned long *dp_bitmap,
                  uint32_t hash, enum ovn_stage stage, uint16_t priority,
@@ -5217,7 +5213,7 @@ do_ovn_lflow_add(struct hmap *lflow_map, const struct ovn_datapath *od,
                                actions, ctrl_meter, hash);
     if (old_lflow) {
         ovn_dp_group_add_with_reference(old_lflow, od, dp_bitmap);
-        return old_lflow;
+        return;
     }
 
     lflow = xmalloc(sizeof *lflow);
@@ -5238,32 +5234,6 @@ do_ovn_lflow_add(struct hmap *lflow_map, const struct ovn_datapath *od,
         hmap_insert_fast(lflow_map, &lflow->hmap_node, hash);
         thread_lflow_counter++;
     }
-    return lflow;
-}
-
-/* Adds a row with the specified contents to the Logical_Flow table.
- * Version to use when hash is pre-computed and a hash bucket is already
- * locked if necessary. */
-static struct ovn_lflow *
-ovn_lflow_add_at_with_hash(struct hmap *lflow_map,
-                           const struct ovn_datapath *od,
-                           const unsigned long *dp_bitmap,
-                           enum ovn_stage stage, uint16_t priority,
-                           const char *match, const char *actions,
-                           const char *io_port, const char *ctrl_meter,
-                           const struct ovsdb_idl_row *stage_hint,
-                           const char *where, uint32_t hash)
-    OVS_REQUIRES(fake_hash_mutex)
-{
-    struct ovn_lflow *lflow;
-
-    ovs_assert(!od ||
-               ovn_stage_to_datapath_type(stage) == ovn_datapath_get_type(od));
-
-    lflow = do_ovn_lflow_add(lflow_map, od, dp_bitmap, hash, stage, priority,
-                             match, actions, io_port, stage_hint, where,
-                             ctrl_meter);
-    return lflow;
 }
 
 /* Adds a row with the specified contents to the Logical_Flow table. */
@@ -5279,15 +5249,17 @@ ovn_lflow_add_at(struct hmap *lflow_map, const struct ovn_datapath *od,
     struct ovs_mutex *hash_lock;
     uint32_t hash;
 
+    ovs_assert(!od ||
+               ovn_stage_to_datapath_type(stage) == ovn_datapath_get_type(od));
+
     hash = ovn_logical_flow_hash(ovn_stage_get_table(stage),
                                  ovn_stage_get_pipeline(stage),
                                  priority, match,
                                  actions);
 
     hash_lock = lflow_hash_lock(lflow_map, hash);
-    ovn_lflow_add_at_with_hash(lflow_map, od, dp_bitmap, stage, priority,
-                               match, actions, io_port, ctrl_meter,
-                               stage_hint, where, hash);
+    do_ovn_lflow_add(lflow_map, od, dp_bitmap, hash, stage, priority,
+                     match, actions, io_port, stage_hint, where, ctrl_meter);
     lflow_hash_unlock(hash_lock);
 }
 
@@ -7514,32 +7486,35 @@ build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb,
 
         build_lb_affinity_ls_flows(lflows, lb, lb_vip);
 
-        struct ovn_lflow *lflow_ref = NULL;
-        uint32_t hash = ovn_logical_flow_hash(
-                ovn_stage_get_table(S_SWITCH_IN_LB),
-                ovn_stage_get_pipeline(S_SWITCH_IN_LB), priority,
-                ds_cstr(match), ds_cstr(action));
-        struct ovs_mutex *hash_lock = lflow_hash_lock(lflows, hash);
-        size_t index;
+        unsigned long *dp_non_meter = NULL;
+        bool build_non_meter = false;
+        if (reject) {
+            size_t index;
 
-        BITMAP_FOR_EACH_1 (index, n_datapaths, lb->nb_ls_map) {
-            struct ovn_datapath *od = datapaths_array[index];
+            dp_non_meter = bitmap_clone(lb->nb_ls_map, n_datapaths);
+            BITMAP_FOR_EACH_1 (index, n_datapaths, lb->nb_ls_map) {
+                struct ovn_datapath *od = datapaths_array[index];
 
-            if (reject) {
                 meter = copp_meter_get(COPP_REJECT, od->nbs->copp,
                                        meter_groups);
-            }
-            if (meter || !ovn_dp_group_add_with_reference(lflow_ref,
-                                                          od, NULL)) {
-                struct ovn_lflow *lflow = ovn_lflow_add_at_with_hash(
-                        lflows, od, NULL, S_SWITCH_IN_LB, priority,
+                if (!meter) {
+                    build_non_meter = true;
+                    continue;
+                }
+                bitmap_set0(dp_non_meter, index);
+                ovn_lflow_add_with_hint__(
+                        lflows, od, S_SWITCH_IN_LB, priority,
                         ds_cstr(match), ds_cstr(action),
-                        NULL, meter, &lb->nlb->header_,
-                        OVS_SOURCE_LOCATOR, hash);
-                lflow_ref = meter ? NULL : lflow;
+                        NULL, meter, &lb->nlb->header_);
             }
         }
-        lflow_hash_unlock(hash_lock);
+        if (!reject || build_non_meter) {
+            ovn_lflow_add_with_dp_group(
+                lflows, dp_non_meter ? dp_non_meter : lb->nb_ls_map,
+                S_SWITCH_IN_LB, priority,
+                ds_cstr(match), ds_cstr(action), &lb->nlb->header_);
+        }
+        bitmap_free(dp_non_meter);
     }
 }
 
@@ -10442,15 +10417,6 @@ get_force_snat_ip(struct ovn_datapath *od, const char *key_type,
     return true;
 }
 
-#define LROUTER_NAT_LB_FLOW_INIT(MATCH, ACTION, PRIO)     \
-    (struct lrouter_nat_lb_flow) {                        \
-        .action = (ACTION),                               \
-        .hash = ovn_logical_flow_hash(                    \
-            ovn_stage_get_table(S_ROUTER_IN_DNAT),        \
-            ovn_stage_get_pipeline(S_ROUTER_IN_DNAT),     \
-            (PRIO), ds_cstr(MATCH), (ACTION)),            \
-    }
-
 enum lrouter_nat_lb_flow_type {
     LROUTER_NAT_LB_FLOW_NORMAL = 0,
     LROUTER_NAT_LB_FLOW_SKIP_SNAT,
@@ -10458,14 +10424,9 @@ enum lrouter_nat_lb_flow_type {
     LROUTER_NAT_LB_FLOW_MAX,
 };
 
-struct lrouter_nat_lb_flow {
-    char *action;
-    uint32_t hash;
-};
-
 struct lrouter_nat_lb_flows_ctx {
-    struct lrouter_nat_lb_flow new[LROUTER_NAT_LB_FLOW_MAX];
-    struct lrouter_nat_lb_flow est[LROUTER_NAT_LB_FLOW_MAX];
+    const char *new_action[LROUTER_NAT_LB_FLOW_MAX];
+    const char *est_action[LROUTER_NAT_LB_FLOW_MAX];
 
     struct ds *new_match;
     struct ds *est_match;
@@ -10507,10 +10468,10 @@ build_distr_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
     }
 
     ovn_lflow_add_with_hint__(ctx->lflows, od, S_ROUTER_IN_DNAT, ctx->prio,
-                              ds_cstr(ctx->new_match), ctx->new[type].action,
+                              ds_cstr(ctx->new_match), ctx->new_action[type],
                               NULL, meter, &ctx->lb->nlb->header_);
     ovn_lflow_add_with_hint(ctx->lflows, od, S_ROUTER_IN_DNAT, ctx->prio,
-                            ds_cstr(ctx->est_match), ctx->est[type].action,
+                            ds_cstr(ctx->est_match), ctx->est_action[type],
                             &ctx->lb->nlb->header_);
 
     ds_truncate(ctx->new_match, new_match_len);
@@ -10520,8 +10481,8 @@ build_distr_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
         return;
     }
 
-    char *action = type == LROUTER_NAT_LB_FLOW_NORMAL
-                   ? gw_action : ctx->est[type].action;
+    const char *action = (type == LROUTER_NAT_LB_FLOW_NORMAL)
+                         ? gw_action : ctx->est_action[type];
 
     ds_put_format(ctx->undnat_match,
                   ") && outport == %s && is_chassis_resident(%s)",
@@ -10538,41 +10499,44 @@ build_gw_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
                                   enum lrouter_nat_lb_flow_type type,
                                   const unsigned long *dp_bitmap)
 {
-    struct ovn_lflow *new_lflow_ref = NULL;
-    struct lrouter_nat_lb_flow *new_flow = &ctx->new[type];
-    struct lrouter_nat_lb_flow *est_flow = &ctx->est[type];
-    struct ovs_mutex *hash_lock;
+    unsigned long *dp_non_meter = NULL;
+    bool build_non_meter = false;
     size_t index;
 
     if (bitmap_is_all_zeros(dp_bitmap, n_datapaths)) {
         return;
     }
 
-    hash_lock = lflow_hash_lock(ctx->lflows, new_flow->hash);
-    BITMAP_FOR_EACH_1 (index, n_datapaths, dp_bitmap) {
-        struct ovn_datapath *od = datapaths_array[index];
-        const char *meter = NULL;
-        struct ovn_lflow *lflow;
+    if (ctx->reject) {
+        dp_non_meter = bitmap_clone(dp_bitmap, n_datapaths);
+        BITMAP_FOR_EACH_1 (index, n_datapaths, dp_bitmap) {
+            struct ovn_datapath *od = datapaths_array[index];
+            const char *meter;
 
-        if (ctx->reject) {
             meter = copp_meter_get(COPP_REJECT, od->nbr->copp,
                                    ctx->meter_groups);
-        }
-
-        if (meter ||
-            !ovn_dp_group_add_with_reference(new_lflow_ref, od, NULL)) {
-            lflow = ovn_lflow_add_at_with_hash(ctx->lflows, od, NULL,
-                    S_ROUTER_IN_DNAT, ctx->prio, ds_cstr(ctx->new_match),
-                    new_flow->action, NULL, meter, &ctx->lb->nlb->header_,
-                    OVS_SOURCE_LOCATOR, new_flow->hash);
-            new_lflow_ref = meter ? NULL : lflow;
+            if (!meter) {
+                build_non_meter = true;
+                continue;
+            }
+            bitmap_set0(dp_non_meter, index);
+            ovn_lflow_add_with_hint__(ctx->lflows, od, S_ROUTER_IN_DNAT,
+                    ctx->prio, ds_cstr(ctx->new_match), ctx->new_action[type],
+                    NULL, meter, &ctx->lb->nlb->header_);
         }
     }
-    lflow_hash_unlock(hash_lock);
+    if (!ctx->reject || build_non_meter) {
+        ovn_lflow_add_with_dp_group(ctx->lflows,
+            dp_non_meter ? dp_non_meter : dp_bitmap,
+            S_ROUTER_IN_DNAT, ctx->prio, ds_cstr(ctx->new_match),
+            ctx->new_action[type], &ctx->lb->nlb->header_);
+    }
+    bitmap_free(dp_non_meter);
 
     ovn_lflow_add_with_dp_group(
         ctx->lflows, dp_bitmap, S_ROUTER_IN_DNAT, ctx->prio,
-        ds_cstr(ctx->est_match), est_flow->action, &ctx->lb->nlb->header_);
+        ds_cstr(ctx->est_match), ctx->est_action[type],
+        &ctx->lb->nlb->header_);
 }
 
 static void
@@ -10666,22 +10630,16 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
         .undnat_match = &undnat_match
     };
 
-    ctx.new[LROUTER_NAT_LB_FLOW_NORMAL] =
-        LROUTER_NAT_LB_FLOW_INIT(match, ds_cstr(action), prio);
-    ctx.est[LROUTER_NAT_LB_FLOW_NORMAL] =
-        LROUTER_NAT_LB_FLOW_INIT(&est_match, "next;", prio);
+    ctx.new_action[LROUTER_NAT_LB_FLOW_NORMAL] = ds_cstr(action);
+    ctx.est_action[LROUTER_NAT_LB_FLOW_NORMAL] = "next;";
 
-    ctx.new[LROUTER_NAT_LB_FLOW_SKIP_SNAT] =
-        LROUTER_NAT_LB_FLOW_INIT(match, ds_cstr(&skip_snat_act), prio);
-    ctx.est[LROUTER_NAT_LB_FLOW_SKIP_SNAT] =
-        LROUTER_NAT_LB_FLOW_INIT(&est_match,
-                                 "flags.skip_snat_for_lb = 1; next;", prio);
+    ctx.new_action[LROUTER_NAT_LB_FLOW_SKIP_SNAT] = ds_cstr(&skip_snat_act);
+    ctx.est_action[LROUTER_NAT_LB_FLOW_SKIP_SNAT] =
+                                        "flags.skip_snat_for_lb = 1; next;";
 
-    ctx.new[LROUTER_NAT_LB_FLOW_FORCE_SNAT] =
-        LROUTER_NAT_LB_FLOW_INIT(match, ds_cstr(&force_snat_act), prio);
-    ctx.est[LROUTER_NAT_LB_FLOW_FORCE_SNAT] =
-        LROUTER_NAT_LB_FLOW_INIT(&est_match,
-                                 "flags.force_snat_for_lb = 1; next;", prio);
+    ctx.new_action[LROUTER_NAT_LB_FLOW_FORCE_SNAT] = ds_cstr(&force_snat_act);
+    ctx.est_action[LROUTER_NAT_LB_FLOW_FORCE_SNAT] =
+                                        "flags.force_snat_for_lb = 1; next;";
 
     enum {
         LROUTER_NAT_LB_AFF            = LROUTER_NAT_LB_FLOW_MAX,
