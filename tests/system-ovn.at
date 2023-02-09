@@ -9839,7 +9839,7 @@ ovn-nbctl ls-lb-del foo lb1
 
 # add stateless acl
 check ovn-nbctl acl-add foo from-lport 1 1 allow-stateless
-check ovn-nbctl acl-add foo to-lport 1 1 allow-stateless
+check ovn-nbctl --wait=hv acl-add foo to-lport 1 1 allow-stateless
 
 AT_CHECK([ip netns exec foo1 wget   192.168.2.2 -t 3 -T 1], [0], [ignore], [ignore])
 
@@ -9984,7 +9984,7 @@ ovn-nbctl ls-lb-del foo lb1
 
 # add stateless acl
 check ovn-nbctl acl-add foo from-lport 1 1 allow-stateless
-check ovn-nbctl acl-add foo to-lport 1 1 allow-stateless
+check ovn-nbctl --wait=hv acl-add foo to-lport 1 1 allow-stateless
 
 AT_CHECK([ip netns exec foo1  wget http://[[fd12::2]] -t 3 -T 1], [0], [ignore], [ignore])
 
