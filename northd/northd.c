@@ -5006,7 +5006,6 @@ struct ovn_lflow {
     struct hmap_node hmap_node;
 
     struct ovn_datapath *od;     /* 'logical_datapath' in SB schema.  */
-    struct ovs_mutex dpg_lock;   /* Lock guarding access to 'dpg_bitmap' */
     unsigned long *dpg_bitmap;   /* Bitmap of all datapaths by their 'index'.*/
     enum ovn_stage stage;
     uint16_t priority;
@@ -5073,29 +5072,6 @@ ovn_lflow_init(struct ovn_lflow *lflow, struct ovn_datapath *od,
     lflow->ctrl_meter = ctrl_meter;
     lflow->dpg = NULL;
     lflow->where = where;
-    if (parallelization_state != STATE_NULL) {
-        ovs_mutex_init(&lflow->dpg_lock);
-    }
-}
-
-static bool
-ovn_dp_group_add_with_reference(struct ovn_lflow *lflow_ref,
-                                struct ovn_datapath *od)
-                                OVS_NO_THREAD_SAFETY_ANALYSIS
-{
-    if (!lflow_ref) {
-        return false;
-    }
-
-    if (parallelization_state == STATE_USE_PARALLELIZATION) {
-        ovs_mutex_lock(&lflow_ref->dpg_lock);
-        bitmap_set1(lflow_ref->dpg_bitmap, od->index);
-        ovs_mutex_unlock(&lflow_ref->dpg_lock);
-    } else {
-        bitmap_set1(lflow_ref->dpg_bitmap, od->index);
-    }
-
-    return true;
 }
 
 /* The lflow_hash_lock is a mutex array that protects updates to the shared
@@ -5136,6 +5112,30 @@ lflow_hash_lock_destroy(void)
     lflow_hash_lock_initialized = false;
 }
 
+static struct ovs_mutex *
+lflow_hash_lock(const struct hmap *lflow_map, uint32_t hash)
+    OVS_NO_THREAD_SAFETY_ANALYSIS
+{
+    struct ovs_mutex *hash_lock = NULL;
+
+    if (parallelization_state == STATE_USE_PARALLELIZATION) {
+        hash_lock =
+            &lflow_hash_locks[hash & lflow_map->mask & LFLOW_HASH_LOCK_MASK];
+        ovs_mutex_lock(hash_lock);
+    }
+    return hash_lock;
+}
+
+static void
+lflow_hash_unlock(struct ovs_mutex *hash_lock)
+    OVS_NO_THREAD_SAFETY_ANALYSIS
+{
+    if (hash_lock) {
+        ovs_mutex_unlock(hash_lock);
+    }
+}
+
+
 /* This thread-local var is used for parallel lflow building when dp-groups is
  * enabled. It maintains the number of lflows inserted by the current thread to
  * the shared lflow hmap in the current iteration. It is needed because the
@@ -5147,6 +5147,22 @@ lflow_hash_lock_destroy(void)
  * fix_flow_map_size()).
  * */
 static thread_local size_t thread_lflow_counter = 0;
+
+/* Adds an OVN datapath to a datapath group of existing logical flow.
+ * Version to use when hash bucket locking is NOT required or the corresponding
+ * hash lock is already taken. */
+static bool
+ovn_dp_group_add_with_reference(struct ovn_lflow *lflow_ref,
+                                struct ovn_datapath *od)
+    OVS_NO_THREAD_SAFETY_ANALYSIS
+{
+    if (!lflow_ref) {
+        return false;
+    }
+
+    bitmap_set1(lflow_ref->dpg_bitmap, od->index);
+    return true;
+}
 
 /* Adds a row with the specified contents to the Logical_Flow table.
  * Version to use when hash bucket locking is NOT required.
@@ -5189,28 +5205,8 @@ do_ovn_lflow_add(struct hmap *lflow_map, struct ovn_datapath *od,
 }
 
 /* Adds a row with the specified contents to the Logical_Flow table.
- * Version to use when hash bucket locking IS required.
- */
-static struct ovn_lflow *
-do_ovn_lflow_add_pd(struct hmap *lflow_map, struct ovn_datapath *od,
-                    uint32_t hash, enum ovn_stage stage, uint16_t priority,
-                    const char *match, const char *actions,
-                    const char *io_port,
-                    const struct ovsdb_idl_row *stage_hint,
-                    const char *where, const char *ctrl_meter)
-{
-
-    struct ovn_lflow *lflow;
-    struct ovs_mutex *hash_lock =
-        &lflow_hash_locks[hash & lflow_map->mask & LFLOW_HASH_LOCK_MASK];
-
-    ovs_mutex_lock(hash_lock);
-    lflow = do_ovn_lflow_add(lflow_map, od, hash, stage, priority, match,
-                             actions, io_port, stage_hint, where, ctrl_meter);
-    ovs_mutex_unlock(hash_lock);
-    return lflow;
-}
-
+ * Version to use when hash is pre-computed and a hash bucket is already
+ * locked if necessary. */
 static struct ovn_lflow *
 ovn_lflow_add_at_with_hash(struct hmap *lflow_map, struct ovn_datapath *od,
                            enum ovn_stage stage, uint16_t priority,
@@ -5222,14 +5218,9 @@ ovn_lflow_add_at_with_hash(struct hmap *lflow_map, struct ovn_datapath *od,
     struct ovn_lflow *lflow;
 
     ovs_assert(ovn_stage_to_datapath_type(stage) == ovn_datapath_get_type(od));
-    if (parallelization_state == STATE_USE_PARALLELIZATION) {
-        lflow = do_ovn_lflow_add_pd(lflow_map, od, hash, stage, priority,
-                                    match, actions, io_port, stage_hint, where,
-                                    ctrl_meter);
-    } else {
-        lflow = do_ovn_lflow_add(lflow_map, od, hash, stage, priority, match,
-                         actions, io_port, stage_hint, where, ctrl_meter);
-    }
+
+    lflow = do_ovn_lflow_add(lflow_map, od, hash, stage, priority, match,
+                             actions, io_port, stage_hint, where, ctrl_meter);
     return lflow;
 }
 
@@ -5241,14 +5232,18 @@ ovn_lflow_add_at(struct hmap *lflow_map, struct ovn_datapath *od,
                  const char *ctrl_meter,
                  const struct ovsdb_idl_row *stage_hint, const char *where)
 {
+    struct ovs_mutex *hash_lock;
     uint32_t hash;
 
     hash = ovn_logical_flow_hash(ovn_stage_get_table(stage),
                                  ovn_stage_get_pipeline(stage),
                                  priority, match,
                                  actions);
+
+    hash_lock = lflow_hash_lock(lflow_map, hash);
     ovn_lflow_add_at_with_hash(lflow_map, od, stage, priority, match, actions,
                                io_port, ctrl_meter, stage_hint, where, hash);
+    lflow_hash_unlock(hash_lock);
 }
 
 static void
@@ -5322,9 +5317,6 @@ static void
 ovn_lflow_destroy(struct hmap *lflows, struct ovn_lflow *lflow)
 {
     if (lflow) {
-        if (parallelization_state != STATE_NULL) {
-            ovs_mutex_destroy(&lflow->dpg_lock);
-        }
         if (lflows) {
             hmap_remove(lflows, &lflow->hmap_node);
         }
@@ -7064,6 +7056,7 @@ build_lb_rules_pre_stateful(struct hmap *lflows, struct ovn_northd_lb *lb,
                 ovn_stage_get_table(S_SWITCH_IN_PRE_STATEFUL),
                 ovn_stage_get_pipeline(S_SWITCH_IN_PRE_STATEFUL), 120,
                 ds_cstr(match), ds_cstr(action));
+        struct ovs_mutex *hash_lock = lflow_hash_lock(lflows, hash);
 
         for (size_t j = 0; j < lb->n_nb_ls; j++) {
             struct ovn_datapath *od = lb->nb_ls[j];
@@ -7076,6 +7069,7 @@ build_lb_rules_pre_stateful(struct hmap *lflows, struct ovn_northd_lb *lb,
                         OVS_SOURCE_LOCATOR, hash);
             }
         }
+        lflow_hash_unlock(hash_lock);
     }
 }
 
@@ -7134,6 +7128,7 @@ build_lb_affinity_lr_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
             ovn_stage_get_table(S_ROUTER_IN_LB_AFF_CHECK),
             ovn_stage_get_pipeline(S_ROUTER_IN_LB_AFF_CHECK), 100,
             new_lb_match, aff_check);
+    struct ovs_mutex *hash_lock = lflow_hash_lock(lflows, hash_aff_check);
 
     for (size_t i = 0; i < n_dplist; i++) {
         if (!ovn_dp_group_add_with_reference(lflow_ref_aff_check, dplist[i])) {
@@ -7143,6 +7138,7 @@ build_lb_affinity_lr_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
                     OVS_SOURCE_LOCATOR, hash_aff_check);
         }
     }
+    lflow_hash_unlock(hash_lock);
 
     struct ds aff_action = DS_EMPTY_INITIALIZER;
     struct ds aff_action_learn = DS_EMPTY_INITIALIZER;
@@ -7244,12 +7240,8 @@ build_lb_affinity_lr_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
                 ovn_stage_get_table(S_ROUTER_IN_LB_AFF_LEARN),
                 ovn_stage_get_pipeline(S_ROUTER_IN_LB_AFF_LEARN),
                 100, ds_cstr(&aff_match_learn), ds_cstr(&aff_action_learn));
-
-        struct ovn_lflow *lflow_ref_aff_lb = NULL;
-        uint32_t hash_aff_lb = ovn_logical_flow_hash(
-                ovn_stage_get_table(S_ROUTER_IN_DNAT),
-                ovn_stage_get_pipeline(S_ROUTER_IN_DNAT),
-                150, ds_cstr(&aff_match), ds_cstr(&aff_action));
+        struct ovs_mutex *hash_lock_learn = lflow_hash_lock(lflows,
+                                                            hash_aff_learn);
 
         for (size_t j = 0; j < n_dplist; j++) {
             /* Forward to OFTABLE_CHK_LB_AFFINITY table to store flow tuple. */
@@ -7261,6 +7253,17 @@ build_lb_affinity_lr_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
                         NULL, NULL, &lb->nlb->header_, OVS_SOURCE_LOCATOR,
                         hash_aff_learn);
             }
+        }
+        lflow_hash_unlock(hash_lock_learn);
+
+        struct ovn_lflow *lflow_ref_aff_lb = NULL;
+        uint32_t hash_aff_lb = ovn_logical_flow_hash(
+                ovn_stage_get_table(S_ROUTER_IN_DNAT),
+                ovn_stage_get_pipeline(S_ROUTER_IN_DNAT),
+                150, ds_cstr(&aff_match), ds_cstr(&aff_action));
+        struct ovs_mutex *hash_lock_lb = lflow_hash_lock(lflows, hash_aff_lb);
+
+        for (size_t j = 0; j < n_dplist; j++) {
             /* Use already selected backend within affinity timeslot. */
             if (!ovn_dp_group_add_with_reference(lflow_ref_aff_lb,
                                                  dplist[j])) {
@@ -7271,6 +7274,7 @@ build_lb_affinity_lr_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
                     hash_aff_lb);
             }
         }
+        lflow_hash_unlock(hash_lock_lb);
 
         ds_truncate(&aff_action, aff_action_len);
         ds_truncate(&aff_action_learn, aff_action_learn_len);
@@ -7357,6 +7361,7 @@ build_lb_affinity_ls_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
             ovn_stage_get_table(S_SWITCH_IN_LB_AFF_CHECK),
             ovn_stage_get_pipeline(S_SWITCH_IN_LB_AFF_CHECK), 100,
             ds_cstr(&new_lb_match), aff_check);
+    struct ovs_mutex *hash_lock = lflow_hash_lock(lflows, hash_aff_check);
 
     for (size_t i = 0; i < lb->n_nb_ls; i++) {
         if (!ovn_dp_group_add_with_reference(lflow_ref_aff_check,
@@ -7367,6 +7372,7 @@ build_lb_affinity_ls_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
                     &lb->nlb->header_, OVS_SOURCE_LOCATOR, hash_aff_check);
         }
     }
+    lflow_hash_unlock(hash_lock);
     ds_destroy(&new_lb_match);
 
     struct ds aff_action = DS_EMPTY_INITIALIZER;
@@ -7457,12 +7463,8 @@ build_lb_affinity_ls_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
                 ovn_stage_get_table(S_SWITCH_IN_LB_AFF_LEARN),
                 ovn_stage_get_pipeline(S_SWITCH_IN_LB_AFF_LEARN),
                 100, ds_cstr(&aff_match_learn), ds_cstr(&aff_action_learn));
-
-        struct ovn_lflow *lflow_ref_aff_lb = NULL;
-        uint32_t hash_aff_lb = ovn_logical_flow_hash(
-                ovn_stage_get_table(S_SWITCH_IN_LB),
-                ovn_stage_get_pipeline(S_SWITCH_IN_LB),
-                150, ds_cstr(&aff_match), ds_cstr(&aff_action));
+        struct ovs_mutex *hash_lock_learn = lflow_hash_lock(lflows,
+                                                            hash_aff_learn);
 
         for (size_t j = 0; j < lb->n_nb_ls; j++) {
             /* Forward to OFTABLE_CHK_LB_AFFINITY table to store flow tuple. */
@@ -7474,6 +7476,17 @@ build_lb_affinity_ls_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
                         NULL, NULL, &lb->nlb->header_, OVS_SOURCE_LOCATOR,
                         hash_aff_learn);
             }
+        }
+        lflow_hash_unlock(hash_lock_learn);
+
+        struct ovn_lflow *lflow_ref_aff_lb = NULL;
+        uint32_t hash_aff_lb = ovn_logical_flow_hash(
+                ovn_stage_get_table(S_SWITCH_IN_LB),
+                ovn_stage_get_pipeline(S_SWITCH_IN_LB),
+                150, ds_cstr(&aff_match), ds_cstr(&aff_action));
+        struct ovs_mutex *hash_lock_lb = lflow_hash_lock(lflows, hash_aff_lb);
+
+        for (size_t j = 0; j < lb->n_nb_ls; j++) {
             /* Use already selected backend within affinity timeslot. */
             if (!ovn_dp_group_add_with_reference(lflow_ref_aff_lb,
                                                  lb->nb_ls[j])) {
@@ -7484,6 +7497,7 @@ build_lb_affinity_ls_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
                     hash_aff_lb);
             }
         }
+        lflow_hash_unlock(hash_lock_lb);
 
         ds_truncate(&aff_action, aff_action_len);
         ds_truncate(&aff_action_learn, aff_action_learn_len);
@@ -7555,6 +7569,7 @@ build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb,
                 ovn_stage_get_table(S_SWITCH_IN_LB),
                 ovn_stage_get_pipeline(S_SWITCH_IN_LB), priority,
                 ds_cstr(match), ds_cstr(action));
+        struct ovs_mutex *hash_lock = lflow_hash_lock(lflows, hash);
 
         for (size_t j = 0; j < lb->n_nb_ls; j++) {
             struct ovn_datapath *od = lb->nb_ls[j];
@@ -7572,6 +7587,7 @@ build_lb_rules(struct hmap *lflows, struct ovn_northd_lb *lb,
                 lflow_ref = meter ? NULL : lflow;
             }
         }
+        lflow_hash_unlock(hash_lock);
     }
 }
 
@@ -10574,10 +10590,13 @@ build_gw_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
     const char *meter = NULL;
     struct lrouter_nat_lb_flow *new_flow = &ctx->new[type];
     struct lrouter_nat_lb_flow *est_flow = &ctx->est[type];
+    struct ovs_mutex *hash_lock;
 
     if (ctx->reject) {
         meter = copp_meter_get(COPP_REJECT, od->nbr->copp, ctx->meter_groups);
     }
+
+    hash_lock = lflow_hash_lock(ctx->lflows, new_flow->hash);
     if (meter || !ovn_dp_group_add_with_reference(new_flow->lflow_ref, od)) {
         struct ovn_lflow *lflow = ovn_lflow_add_at_with_hash(ctx->lflows, od,
                 S_ROUTER_IN_DNAT, ctx->prio, ds_cstr(ctx->new_match),
@@ -10585,13 +10604,16 @@ build_gw_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
                 OVS_SOURCE_LOCATOR, new_flow->hash);
         new_flow->lflow_ref = meter ? NULL : lflow;
     }
+    lflow_hash_unlock(hash_lock);
 
+    hash_lock = lflow_hash_lock(ctx->lflows, est_flow->hash);
     if (!ovn_dp_group_add_with_reference(est_flow->lflow_ref, od)) {
         est_flow->lflow_ref = ovn_lflow_add_at_with_hash(ctx->lflows, od,
                 S_ROUTER_IN_DNAT, ctx->prio, ds_cstr(ctx->est_match),
                 est_flow->action, NULL, NULL, &ctx->lb->nlb->header_,
                 OVS_SOURCE_LOCATOR, est_flow->hash);
     }
+    lflow_hash_unlock(hash_lock);
 }
 
 static void
@@ -10878,6 +10900,8 @@ build_lrouter_defrag_flows_for_lb(struct ovn_northd_lb *lb,
                 ovn_stage_get_table(S_ROUTER_IN_DEFRAG),
                 ovn_stage_get_pipeline(S_ROUTER_IN_DEFRAG), prio,
                 ds_cstr(match), ds_cstr(&defrag_actions));
+        struct ovs_mutex *hash_lock = lflow_hash_lock(lflows, hash);
+
         for (size_t j = 0; j < lb->n_nb_lr; j++) {
             struct ovn_datapath *od = lb->nb_lr[j];
             if (ovn_dp_group_add_with_reference(lflow_ref, od)) {
@@ -10889,6 +10913,7 @@ build_lrouter_defrag_flows_for_lb(struct ovn_northd_lb *lb,
                                     NULL, NULL, &lb->nlb->header_,
                                     OVS_SOURCE_LOCATOR, hash);
         }
+        lflow_hash_unlock(hash_lock);
     }
     ds_destroy(&defrag_actions);
 }
