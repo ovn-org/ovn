@@ -10674,11 +10674,13 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
             build_distr_lrouter_nat_flows_for_lb(&ctx, type, od);
         }
 
-        if (!lport_addresses_is_empty(&od->lb_force_snat_addrs) ||
-            od->lb_force_snat_router_ip) {
-            bitmap_set1(dp_bitmap[LROUTER_NAT_LB_AFF_FORCE_SNAT], index);
-        } else {
-            bitmap_set1(dp_bitmap[LROUTER_NAT_LB_AFF], index);
+        if (lb->affinity_timeout) {
+            if (!lport_addresses_is_empty(&od->lb_force_snat_addrs) ||
+                od->lb_force_snat_router_ip) {
+                bitmap_set1(dp_bitmap[LROUTER_NAT_LB_AFF_FORCE_SNAT], index);
+            } else {
+                bitmap_set1(dp_bitmap[LROUTER_NAT_LB_AFF], index);
+            }
         }
 
         if (sset_contains(&od->external_ips, lb_vip->vip_str)) {
