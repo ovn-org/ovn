@@ -31740,20 +31740,42 @@ AT_KEYWORDS([proxy-arp])
 ovn_start
 
 # Logical network:
-# One LR - lr1 has switch ls1 (192.16.1.0/24) connected to it,
+# One LR - lr1 has switch ls1 (192.16.1.0/24) and ls2 (192.168.2.0/24) connected to it,
 # and and one HV with IP 192.16.1.6.
 
 ovn-nbctl lr-add lr1
 ovn-nbctl ls-add ls1
+ovn-nbctl ls-add ls2
 
 # Connect ls1 to lr1
-ovn-nbctl lrp-add lr1 ls1 00:00:00:01:02:f1 192.16.1.1/24
+ls1_ro_mac=00:00:00:01:02:f1
+ls1_ro_ip4=192.168.1.1
+ls1_ro_ip6=fd11::1
+ovn-nbctl lrp-add lr1 ls1 $ls1_ro_mac $ls1_ro_ip4/24 $ls1_ro_ip6/64
 ovn-nbctl lsp-add ls1 rp-ls1 -- set Logical_Switch_Port rp-ls1 \
-    type=router options:router-port=ls1 addresses=\"00:00:00:01:02:f1\"
+    type=router options:router-port=ls1 addresses=\"router\"
 
 # Create logical port ls1-lp1 in ls1
+ls1_p1_mac=00:00:00:01:02:03
+ls1_p1_ip4=192.16.1.6
+ls1_p1_ip6=fd11::2
 ovn-nbctl lsp-add ls1 ls1-lp1 \
--- lsp-set-addresses ls1-lp1 "00:00:00:01:02:03 192.16.1.6"
+-- lsp-set-addresses ls1-lp1 "$ls1_p1_mac $ls1_p1_ip4 $ls1_p1_ip6"
+
+# Connect ls2 to lr1
+ls2_ro_mac=00:00:00:01:02:f2
+ls2_ro_ip4=192.168.2.1
+ls2_ro_ip6=fd12::1
+ovn-nbctl lrp-add lr1 ls2 $ls2_ro_mac $ls2_ro_ip4/24 $ls2_ro_ip6/64
+ovn-nbctl lsp-add ls2 rp-ls2 -- set Logical_Switch_Port rp-ls2 \
+    type=router options:router-port=ls1 addresses=\"router\"
+
+# Create logical port ls2-lp1 in ls2
+ls2_p1_mac=00:00:00:01:02:04
+ls2_p1_ip4=192.16.2.6
+ls2_p1_ip6=fd12::2
+ovn-nbctl lsp-add ls2 ls2-lp1 \
+-- lsp-set-addresses ls2-lp1 "$ls2_p1_mac $ls2_p1_ip4 $ls2_p1_ip6"
 
 # Create one hypervisor and create OVS ports corresponding to logical ports.
 net_add n1
@@ -31771,52 +31793,149 @@ ovs-vsctl -- add-port br-int vif1 -- \
     options:rxq_pcap=hv1/vif1-rx.pcap \
     ofport-request=1
 
-# And proxy ARP flows for 69.254.239.254 and 169.254.239.2
-# and check that SB flows have been added.
+ovs-vsctl -- add-port br-int vif2 -- \
+    set interface vif2 external-ids:iface-id=ls2-lp1 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=1
+
+
+# Two proxy arp/ndp configurations with and wihout mac both dual stack
+# and with CIDR to check sbflows
+arp_proxy_ls1_ip4=169.254.238.2
+arp_proxy_ls1_ip6=fd7b:6b4d:7b25:d22d::2
+arp_proxy_ls1=(169.254.238.0/24 \
+               169.254.239.2 \
+               fd7b:6b4d:7b25:d22d::0/64 \
+               fd7b:6b4d:7b25:d22f::1)
+arp_proxy_ls1_option="\"${arp_proxy_ls1[[*]]}\""
+
+arp_proxy_ls2_ip4=169.254.236.2
+arp_proxy_ls2_ip6=fd7b:6b4d:7b25:d22b::2
+arp_proxy_ls2=(00:00:00:02:02:f1 \
+               169.254.236.0/24 \
+               169.254.237.2 \
+               fd7b:6b4d:7b25:d22b::0/64 \
+               fd7b:6b4d:7b25:d22c::1)
+arp_proxy_ls2_option="\"${arp_proxy_ls2[[*]]}\""
+
 ovn-nbctl --wait=hv add Logical_Switch_Port rp-ls1 \
-options arp_proxy='"169.254.239.254 169.254.239.2"'
+options arp_proxy="$arp_proxy_ls1_option"
+ovn-nbctl --wait=hv add Logical_Switch_Port rp-ls2 \
+options arp_proxy="$arp_proxy_ls2_option"
 ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
 
-AT_CHECK([ovn-sbctl dump-flows | grep ls_in_arp_rsp | grep "169.254.239.2" | sed 's/table=../table=??/'], [0], [dnl
-  table=??(ls_in_arp_rsp      ), priority=50   , match=(arp.op == 1 && arp.tpa == {169.254.239.254,169.254.239.2}), dnl
-action=(eth.dst = eth.src; eth.src = 00:00:00:01:02:f1; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 00:00:00:01:02:f1; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+# IPv4 LS1 Responder lflows
+AT_CHECK([ovn-sbctl dump-flows |
+          grep ls_in_arp_rsp |
+          grep "${arp_proxy_ls1[[1]]}" |
+          sed 's/table=../table=??/'], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(arp.op == 1 && dnl
+arp.tpa == {169.254.238.0/24,169.254.239.2/32}), dnl
+action=(eth.dst = eth.src; eth.src = 00:00:00:01:02:f1; arp.op = 2; dnl
+/* ARP reply */ arp.tha = arp.sha; arp.sha = 00:00:00:01:02:f1; dnl
+arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
 ])
 
-# Remove and check that the flows have been removed
-ovn-nbctl --wait=hv remove Logical_Switch_Port rp-ls1 options arp_proxy='"169.254.239.254 169.254.239.2"'
+# IPv6 LS1 Responder lflows
+AT_CHECK([ovn-sbctl dump-flows |
+          grep ls_in_arp_rsp |
+          grep "${arp_proxy_ls1[[3]]}" |
+          sed 's/table=../table=??/'], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=50   , dnl
+match=(nd_ns && ip6.dst == { fd7b:6b4d:7b25:d22d::/64, ff02::1:ff00:0/64, dnl
+fd7b:6b4d:7b25:d22f::1/128, ff02::1:ff00:1/128 } && dnl
+nd.target == { fd7b:6b4d:7b25:d22d::/64, fd7b:6b4d:7b25:d22f::1/128 }), dnl
+action=(nd_na_router { eth.src = 00:00:00:01:02:f1; ip6.src = nd.target; dnl
+nd.target = nd.target; nd.tll = 00:00:00:01:02:f1; outport = inport; dnl
+flags.loopback = 1; output; };)
+])
 
-AT_CHECK([ovn-sbctl dump-flows | grep ls_in_arp_rsp | grep "169.254.239.2"], [1], [dnl
+# IPv4 LS2 Responder lflows
+AT_CHECK([ovn-sbctl dump-flows |
+          grep ls_in_arp_rsp |
+          grep "${arp_proxy_ls2[[2]]}" |
+          sed 's/table=../table=??/'], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=50   , dnl
+match=(arp.op == 1 && arp.tpa == {169.254.236.0/24,169.254.237.2/32}), dnl
+action=(eth.dst = eth.src; eth.src = 00:00:00:02:02:f1; arp.op = 2; dnl
+/* ARP reply */ arp.tha = arp.sha; arp.sha = 00:00:00:02:02:f1; dnl
+arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+])
+
+# IPv4 LS2 Responder lflows
+AT_CHECK([ovn-sbctl dump-flows |
+          grep ls_in_arp_rsp |
+          grep "${arp_proxy_ls2[[4]]}" |
+          sed 's/table=../table=??/'], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=50   , dnl
+match=(nd_ns && ip6.dst == { fd7b:6b4d:7b25:d22b::/64, ff02::1:ff00:0/64, dnl
+fd7b:6b4d:7b25:d22c::1/128, ff02::1:ff00:1/128 } && dnl
+nd.target == { fd7b:6b4d:7b25:d22b::/64, fd7b:6b4d:7b25:d22c::1/128 }), dnl
+action=(nd_na_router { eth.src = 00:00:00:02:02:f1; ip6.src = nd.target; dnl
+nd.target = nd.target; nd.tll = 00:00:00:02:02:f1; outport = inport; dnl
+flags.loopback = 1; output; };)
+])
+
+# L2 lookup lflows
+AT_CHECK([ovn-sbctl dump-flows |
+          grep ls_in_l2_lkup |
+          grep "${arp_proxy_ls2[[0]]}" |
+          sed 's/table=../table=??/'], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=50   , dnl
+match=(eth.dst == { 00:00:00:02:02:f1, 00:00:00:01:02:f1 }), dnl
+action=(outport = "rp-ls2"; output;)
+])
+
+# LR admission lflows
+AT_CHECK([ovn-sbctl dump-flows |
+          grep lr_in_admission |
+          grep "${arp_proxy_ls2[[0]]}" |
+          sed 's/table=../table=??/'], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , dnl
+match=(eth.dst == { 00:00:00:02:02:f1, 00:00:00:01:02:f1 } && dnl
+inport == "ls1"), action=(xreg0[[0..47]] = 00:00:00:01:02:f1; next;)
+])
+
+
+# Remove and check that the flows have been removed
+ovn-nbctl --wait=hv remove Logical_Switch_Port rp-ls1 \
+options arp_proxy="$arp_proxy_ls1_option"
+AT_CHECK([ovn-sbctl dump-flows |
+          grep ls_in_arp_rsp |
+          grep "${arp_proxy_ls1[[1]]}"], [1], [dnl
+])
+ovn-nbctl --wait=hv remove Logical_Switch_Port rp-ls2 \
+options arp_proxy="$arp_proxy_ls2_option"
+AT_CHECK([ovn-sbctl dump-flows |
+          grep ls_in_arp_rsp |
+          grep "${arp_proxy_ls2[[2]]}"], [1], [dnl
 ])
 
 # Add the flows back send arp request and check we see an ARP response
 ovn-nbctl --wait=hv add Logical_Switch_Port rp-ls1 \
-options arp_proxy='"169.254.239.254 169.254.239.2"'
+options arp_proxy="$arp_proxy_ls1_option"
 
-ls1_p1_mac=00:00:00:01:02:03
-ls1_p1_ip=192.16.1.6
-
-ls1_ro_mac=00:00:00:01:02:f1
-ls1_ro_ip=192.168.1.1
-
-proxy_ip1=169.254.239.254
-proxy_ip2=169.254.239.2
+ovn-nbctl --wait=hv add Logical_Switch_Port rp-ls2 \
+options arp_proxy="$arp_proxy_ls2_option"
 
 bcast_mac=ff:ff:ff:ff:ff:ff
 
-# Send ARP request for 169.254.239.254
+# Send ARP request for ls1 arp_proxy ipv4 /32 address
 packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$bcast_mac &&
-       arp.op==1 && arp.sha==$ls1_p1_mac && arp.spa==$ls1_p1_ip &&
-       arp.tha==$bcast_mac && arp.tpa==$proxy_ip1"
+       arp.op==1 && arp.sha==$ls1_p1_mac && arp.spa==$ls1_p1_ip4 &&
+       arp.tha==$bcast_mac && arp.tpa==${arp_proxy_ls1[[1]]}"
 
 as hv1 ovn-appctl -t ovn-controller inject-pkt "$packet"
 
-as hv1 ovs-ofctl dump-flows br-int| grep 169.254.239.254 | grep priority=50 > debug1
+as hv1 ovs-ofctl dump-flows br-int| \
+                 grep ${arp_proxy_ls1[[1]]} | grep priority=50 > debug1
 AT_CAPTURE_FILE([debug1])
 
 # Check if packet hit the ARP reply ovs flow
 AT_CHECK([ovs-ofctl dump-flows br-int | \
-    grep "169.254.239.254" | \
+    grep "${arp_proxy_ls1[[1]]}" | \
     grep "priority=50" | \
     grep "arp_op=1" | \
     grep "n_packets=1" | wc -l], [0], [dnl
@@ -31825,8 +31944,8 @@ AT_CHECK([ovs-ofctl dump-flows br-int | \
 
 # Check that the HV gets an ARP reply
 expected="eth.src==$ls1_ro_mac && eth.dst==$ls1_p1_mac &&
-       arp.op==2 && arp.sha==$ls1_ro_mac && arp.spa==$proxy_ip1 &&
-       arp.tha==$ls1_p1_mac && arp.tpa==$ls1_p1_ip"
+       arp.op==2 && arp.sha==$ls1_ro_mac && arp.spa==${arp_proxy_ls1[[1]]} &&
+       arp.tha==$ls1_p1_mac && arp.tpa==$ls1_p1_ip4"
 echo $expected | ovstest test-ovn expr-to-packets > expected
 
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
@@ -33313,7 +33432,7 @@ check ovs-vsctl add-port br-int ls0-hv -- set Interface ls0-hv external-ids:ifac
 check ovn-nbctl lr-add lr0
 
 check ovn-nbctl ls-add ls0
-check ovn-nbctl lsp-add ls0 ls0-lr0 
+check ovn-nbctl lsp-add ls0 ls0-lr0
 check ovn-nbctl lsp-set-type ls0-lr0 router
 check ovn-nbctl lsp-set-addresses ls0-lr0 router
 check ovn-nbctl lrp-add lr0 lr0-ls0 00:00:00:00:00:01 10.0.0.1

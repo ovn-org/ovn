@@ -1401,6 +1401,15 @@ nd_na_router {
           database), for logical ports of type <code>virtual</code> and for
           logical ports with 'unknown' address set.
         </p>
+
+        <p>
+          The above NDP responder flows are added for the list of
+          IPv6 addresses if defined in <code>options:arp_proxy</code> column of
+          <code>Logical_Switch_Port</code> table for logical switch ports of
+          type <code>router</code>.
+        </p>
+
+
       </li>
 
       <li>

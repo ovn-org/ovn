@@ -106,6 +106,7 @@ m4_define([ADD_VETH],
         NS_CHECK_EXEC([$2], [ip link set dev $1 address $5])
       fi
       if test -n "$6"; then
+        NS_CHECK_EXEC([$2], [ip route add $6 dev $1])
         NS_CHECK_EXEC([$2], [ip route add default via $6])
       fi
       on_exit "ip link del ovs-$1"

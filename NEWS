@@ -8,6 +8,8 @@ OVN v23.03.0 - 03 Mar 2023
   - Add ovn-ctl commands for (re)starting/stopping OVSDB relay for OVN SB DB.
   - Add new ovn-db@.service systemd unit to run ovsdb-servers in separate
     systemd units.
+  - Enhance LSP.options:arp_proxy to support IPv6, configurable MAC
+    addresses and CIDRs.
 
 OVN v22.12.0 - 16 Dec 2022
 --------------------------
