@@ -236,9 +236,6 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_lflow, &en_sb_multicast_group, NULL);
     engine_add_input(&en_lflow, &en_sb_igmp_group, NULL);
     engine_add_input(&en_lflow, &en_northd, NULL);
-    /* XXX: The "en_mac_binding_aging" should be separate "root" node
-     * once I-P engine allows multiple root nodes. */
-    engine_add_input(&en_lflow, &en_mac_binding_aging, NULL);
 
     engine_add_input(&en_sync_to_sb_addr_set, &en_nb_address_set,
                      sync_to_sb_addr_set_nb_address_set_handler);
@@ -256,6 +253,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                      northd_output_sync_to_sb_handler);
     engine_add_input(&en_northd_output, &en_lflow,
                      northd_output_lflow_handler);
+    engine_add_input(&en_northd_output, &en_mac_binding_aging,
+                     northd_output_mac_binding_aging_handler);
 
     struct engine_arg engine_arg = {
         .nb_idl = nb->idl,

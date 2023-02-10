@@ -131,9 +131,7 @@ en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
         waker->should_schedule = false;
     }
 
-    /* This node is part of lflow, but lflow does not depend on it. Setting
-     * state as unchanged does not trigger lflow node when it is not needed. */
-    engine_set_node_state(node, EN_UNCHANGED);
+    engine_set_node_state(node, EN_UPDATED);
 }
 
 void *
