@@ -4306,35 +4306,36 @@ pflow_output_debug_handler(struct engine_node *node, void *data)
 }
 
 static void *
-en_flow_output_init(struct engine_node *node OVS_UNUSED,
-                    struct engine_arg *arg OVS_UNUSED)
+en_controller_output_init(struct engine_node *node OVS_UNUSED,
+                          struct engine_arg *arg OVS_UNUSED)
 {
     return NULL;
 }
 
 static void
-en_flow_output_cleanup(void *data OVS_UNUSED)
+en_controller_output_cleanup(void *data OVS_UNUSED)
 {
 
 }
 
 static void
-en_flow_output_run(struct engine_node *node OVS_UNUSED, void *data OVS_UNUSED)
+en_controller_output_run(struct engine_node *node OVS_UNUSED,
+                         void *data OVS_UNUSED)
 {
     engine_set_node_state(node, EN_UPDATED);
 }
 
 static bool
-flow_output_pflow_output_handler(struct engine_node *node,
-                                 void *data OVS_UNUSED)
+controller_output_pflow_output_handler(struct engine_node *node,
+                                       void *data OVS_UNUSED)
 {
     engine_set_node_state(node, EN_UPDATED);
     return true;
 }
 
 static bool
-flow_output_lflow_output_handler(struct engine_node *node,
-                                 void *data OVS_UNUSED)
+controller_output_lflow_output_handler(struct engine_node *node,
+                                       void *data OVS_UNUSED)
 {
     engine_set_node_state(node, EN_UPDATED);
     return true;
@@ -4606,7 +4607,7 @@ main(int argc, char *argv[])
     ENGINE_NODE(postponed_ports, "postponed_ports");
     ENGINE_NODE(pflow_output, "physical_flow_output");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lflow_output, "logical_flow_output");
-    ENGINE_NODE(flow_output, "flow_output");
+    ENGINE_NODE(controller_output, "controller_output");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(addr_sets, "addr_sets");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(port_groups, "port_groups");
     ENGINE_NODE(northd_options, "northd_options");
@@ -4784,16 +4785,16 @@ main(int argc, char *argv[])
     engine_add_input(&en_runtime_data, &en_ovs_interface_shadow,
                      runtime_data_ovs_interface_shadow_handler);
 
-    engine_add_input(&en_flow_output, &en_lflow_output,
-                     flow_output_lflow_output_handler);
-    engine_add_input(&en_flow_output, &en_pflow_output,
-                     flow_output_pflow_output_handler);
+    engine_add_input(&en_controller_output, &en_lflow_output,
+                     controller_output_lflow_output_handler);
+    engine_add_input(&en_controller_output, &en_pflow_output,
+                     controller_output_pflow_output_handler);
 
     struct engine_arg engine_arg = {
         .sb_idl = ovnsb_idl_loop.idl,
         .ovs_idl = ovs_idl_loop.idl,
     };
-    engine_init(&en_flow_output, &engine_arg);
+    engine_init(&en_controller_output, &engine_arg);
 
     engine_ovsdb_node_add_index(&en_sb_chassis, "name", sbrec_chassis_by_name);
     engine_ovsdb_node_add_index(&en_sb_multicast_group, "name_datapath",
