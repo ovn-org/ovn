@@ -814,7 +814,7 @@
         Attaches the mirror <var>m</var> to the logical port <var>port</var>.
       </dd>
 
-      <dt><code>lsp-dettach-mirror</code> <var>port</var> <var>m</var></dt>
+      <dt><code>lsp-detach-mirror</code> <var>port</var> <var>m</var></dt>
       <dd>
         Detaches the mirror <var>m</var> from the logical port <var>port</var>.
       </dd>
