@@ -2832,8 +2832,7 @@
       The maximum number of networks is reduced to 4096.
     </li>
     <li>
-      The maximum number of ports per network is reduced to 4096. (Including
-      multicast group ports.)
+      The maximum number of ports per network is reduced to 2048.
     </li>
     <li>
       ACLs matching against logical ingress port identifiers are not supported.
