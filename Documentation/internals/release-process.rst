@@ -75,6 +75,8 @@ Scheduling`_ for the timing of each stage:
    2019.10.2, and so on.  The process is the same for these additional release
    as for a .0 release.
 
+.. _long-term-support:
+
 Long-term Support Releases
 --------------------------
 

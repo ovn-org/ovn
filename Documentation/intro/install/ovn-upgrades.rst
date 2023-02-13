@@ -65,7 +65,7 @@ needs to understand the structure of the database for the version you are
 upgrading from and to simultaneously.
 
 To avoid buildup of complexity and technical debt we limit the span of versions
-supported for a rolling upgrade on `Long-term Support Releases`_ (LTS), and it
+supported for a rolling upgrade on :ref:`long-term-support` (LTS), and it
 should always be possible to upgrade from the previous LTS version to the next.
 
 The first LTS version of OVN was 22.03.  If you want to upgrade between other
@@ -203,8 +203,6 @@ you should be able to safely complete an OVN upgrade before upgrading
 any integration in use.
 
 .. LINKS
-.. _Long-term Support Releases:
-   ../../internals/release-process.html#long-term-support-releases
 .. _ovn-controller man page:
    https://www.ovn.org/support/dist-docs/ovn-controller.8.html
 .. _version pinning check in the incremental processing engine:
