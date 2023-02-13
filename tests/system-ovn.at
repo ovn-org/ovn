@@ -1618,8 +1618,8 @@ OVS_WAIT_UNTIL([
 ovn-nbctl --reject lb-add lb3 30.0.0.10:80 ""
 ovn-nbctl ls-lb-add foo lb3
 # Filter reset segments
-NS_CHECK_EXEC([foo1], [tcpdump -c 1 -neei foo1 ip[[33:1]]=0x14 > rst.pcap 2>/dev/null &])
-sleep 1
+NS_CHECK_EXEC([foo1], [tcpdump -l -c 1 -neei foo1 ip[[33:1]]=0x14 > rst.pcap 2>tcpdump_err &])
+OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
 NS_CHECK_EXEC([foo1], [wget -q 30.0.0.10],[4])
 
 OVS_WAIT_UNTIL([
@@ -3584,8 +3584,8 @@ icmp,orig=(src=192.168.2.2,dst=172.16.1.2,id=<cleared>,type=8,code=0),reply=(src
 ])
 
 # Try to ping external network
-NS_CHECK_EXEC([ext-net], [tcpdump -n -c 3 -i ext-veth dst 172.16.1.3 and icmp > ext-net.pcap &])
-sleep 1
+NS_CHECK_EXEC([ext-net], [tcpdump -l -n -c 3 -i ext-veth dst 172.16.1.3 and icmp > ext-net.pcap 2>tcpdump_err &])
+OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
 AT_CHECK([ovn-nbctl lr-nat-del R1 snat])
 NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.1 | FORMAT_PING], \
 [0], [dnl
@@ -4663,9 +4663,8 @@ NS_CHECK_EXEC([lsp], [nc 88.88.88.90 4041 -z], [0], [ignore], [ignore])
 
 # Capture IPv4 UDP hairpinned packets.
 filter="dst 42.42.42.1 and dst port 2021 and udp"
-NS_CHECK_EXEC([lsp], [tcpdump -nn -c 3 -i lsp ${filter} > lsp.pcap &])
-
-sleep 1
+NS_CHECK_EXEC([lsp], [tcpdump -l -nn -c 3 -i lsp ${filter} > lsp.pcap 2>tcpdump_err &])
+OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
 
 # Generate IPv4 UDP hairpin traffic.
 NS_CHECK_EXEC([lsp], [echo a | nc -u 88.88.88.88 4040 &], [0])
@@ -4763,9 +4762,8 @@ NS_CHECK_EXEC([lsp], [nc 8800::0090 4041 -z], [0], [ignore], [ignore])
 
 # Capture IPv6 UDP hairpinned packets.
 filter="dst 4200::1 and dst port 2021 and udp"
-NS_CHECK_EXEC([lsp], [tcpdump -nn -c 3 -i lsp $filter > lsp.pcap &])
-
-sleep 1
+NS_CHECK_EXEC([lsp], [tcpdump -l -nn -c 3 -i lsp $filter > lsp.pcap 2>tcpdump_err &])
+OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
 
 # Generate IPv6 UDP hairpin traffic.
 NS_CHECK_EXEC([lsp], [echo a | nc -u 8800::0088 4040 &], [0])
@@ -9308,13 +9306,15 @@ test_related_traffic() {
 
     check ovs-appctl dpctl/flush-conntrack
 
-    NETNS_DAEMONIZE([client], [tcpdump -U -i client -w client.pcap], [tcpdump0.pid])
-    NETNS_DAEMONIZE([server], [tcpdump -U -i server -w server.pcap], [tcpdump1.pid])
+    NETNS_DAEMONIZE([client], [tcpdump -l -U -i client -w client.pcap 2>client_err], [tcpdump0.pid])
+    NETNS_DAEMONIZE([server], [tcpdump -l -U -i server -w server.pcap 2>server_err], [tcpdump1.pid])
 
     # Setup a dummy UDP listeners so we don't get "port unreachable".
     NETNS_DAEMONIZE([client], [nc -l -u 1], [nc0.pid])
     NETNS_DAEMONIZE([server], [nc -l -u 2], [nc1.pid])
-    sleep 1
+
+    OVS_WAIT_UNTIL([grep "listening" client_err])
+    OVS_WAIT_UNTIL([grep "listening" server_err])
 
     # Send UDP client -> server
     check ovs-ofctl packet-out br-int "in_port=ovs-client,packet=$client_udp,actions=resubmit(,0)"
