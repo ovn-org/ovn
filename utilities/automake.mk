@@ -37,6 +37,10 @@ EXTRA_DIST += \
     utilities/ovn_detrace.py.in \
     utilities/ovndb-servers.ocf \
     utilities/checkpatch.py \
+    utilities/containers/ci.sh \
+    utilities/containers/Makefile \
+    utilities/containers/py-requirements.txt \
+    utilities/containers/fedora/Dockerfile \
     utilities/docker/Makefile \
     utilities/docker/start-ovn \
     utilities/docker/ovn_default_nb_port \

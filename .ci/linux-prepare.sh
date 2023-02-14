@@ -18,4 +18,4 @@ cd sparse && make -j4 HAVE_LLVM= HAVE_SQLITE= install && cd ..
 #     https://github.com/pypa/pip/issues/10655
 pip3 install --disable-pip-version-check --user wheel
 pip3 install --disable-pip-version-check --user \
-    flake8 'hacking>=3.0' sphinx setuptools pyelftools pyOpenSSL
+-r utilities/containers/py-requirements.txt

@@ -1,0 +1,6 @@
+flake8
+hacking>=3.0
+sphinx
+setuptools
+pyelftools
+pyOpenSSL
