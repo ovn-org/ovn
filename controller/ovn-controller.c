@@ -3166,7 +3166,7 @@ lflow_output_flow_sample_collector_set_handler(struct engine_node *node,
     }
 
     const struct ovsrec_bridge *br_int;
-    br_int = get_bridge(bridge_table, br_int_name(cfg));
+    br_int = get_bridge(bridge_table, br_int_name(ovs_table));
     if (!br_int) {
         return true;
     }
@@ -3212,7 +3212,7 @@ pflow_output_get_debug(struct engine_node *node, struct physical_debug *debug)
     }
 
     const struct ovsrec_bridge *br_int;
-    br_int = get_bridge(bridge_table, br_int_name(ovs_cfg));
+    br_int = get_bridge(bridge_table, br_int_name(ovs_table));
     if (!br_int) {
         return;
     }
