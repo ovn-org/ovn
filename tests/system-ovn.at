@@ -9510,7 +9510,8 @@ name: 'vport' value: '666'
 # Start IPv4 TCP server on vm1.
 NETNS_DAEMONIZE([vm1], [nc -k -l 42.42.42.2 4242], [nc-vm1.pid])
 
-# Make sure connecting to the VIP works.
+# Make sure connecting to the VIP works (hairpin, via ls and via lr).
+NS_CHECK_EXEC([vm1], [nc 66.66.66.66 666 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([vm2], [nc 66.66.66.66 666 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([vm3], [nc 66.66.66.66 666 -z], [0], [ignore], [ignore])
 
@@ -9603,7 +9604,8 @@ name: 'vport' value: '666'
 # Start IPv6 TCP server on vm1.
 NETNS_DAEMONIZE([vm1], [nc -k -l 4242::2 4242], [nc-vm1.pid])
 
-# Make sure connecting to the VIP works.
+# Make sure connecting to the VIP works (hairpin, via ls and via lr).
+NS_CHECK_EXEC([vm1], [nc 6666::1 666 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([vm2], [nc 6666::1 666 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([vm3], [nc 6666::1 666 -z], [0], [ignore], [ignore])
 

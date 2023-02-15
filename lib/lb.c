@@ -316,11 +316,10 @@ ovn_lb_vip_destroy(struct ovn_lb_vip *vip)
     free(vip->backends);
 }
 
-void
-ovn_lb_vip_format(const struct ovn_lb_vip *vip, struct ds *s, bool template)
+static void
+ovn_lb_vip_format__(const struct ovn_lb_vip *vip, struct ds *s,
+                    bool needs_brackets)
 {
-    bool needs_brackets = vip->address_family == AF_INET6 && vip->port_str
-                          && !template;
     if (needs_brackets) {
         ds_put_char(s, '[');
     }
@@ -331,6 +330,30 @@ ovn_lb_vip_format(const struct ovn_lb_vip *vip, struct ds *s, bool template)
     if (vip->port_str) {
         ds_put_format(s, ":%s", vip->port_str);
     }
+}
+
+/* Formats the VIP in the way the ovn-controller expects it, that is,
+ * template IPv6 variables need to be between brackets too.
+ */
+static char *
+ovn_lb_vip6_template_format_internal(const struct ovn_lb_vip *vip)
+{
+    struct ds s = DS_EMPTY_INITIALIZER;
+
+    if (vip->vip_str && *vip->vip_str == LEX_TEMPLATE_PREFIX) {
+        ovn_lb_vip_format__(vip, &s, true);
+    } else {
+        ovn_lb_vip_format(vip, &s, !!vip->port_str);
+    }
+    return ds_steal_cstr(&s);
+}
+
+void
+ovn_lb_vip_format(const struct ovn_lb_vip *vip, struct ds *s, bool template)
+{
+    bool needs_brackets = vip->address_family == AF_INET6 && vip->port_str
+                          && !template;
+    ovn_lb_vip_format__(vip, s, needs_brackets);
 }
 
 void
@@ -515,6 +538,7 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb,
     lb->n_vips = smap_count(&nbrec_lb->vips);
     lb->vips = xcalloc(lb->n_vips, sizeof *lb->vips);
     lb->vips_nb = xcalloc(lb->n_vips, sizeof *lb->vips_nb);
+    smap_init(&lb->template_vips);
     lb->controller_event = smap_get_bool(&nbrec_lb->options, "event", false);
 
     bool routable = smap_get_bool(&nbrec_lb->options, "add_route", false);
@@ -566,6 +590,12 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb,
         } else {
             sset_add(&lb->ips_v6, lb_vip->vip_str);
         }
+
+        if (lb->template && address_family == AF_INET6) {
+            smap_add_nocopy(&lb->template_vips,
+                            ovn_lb_vip6_template_format_internal(lb_vip),
+                            xstrdup(node->value));
+        }
         n_vips++;
     }
 
@@ -610,6 +640,15 @@ ovn_northd_lb_find(const struct hmap *lbs, const struct uuid *uuid)
     return NULL;
 }
 
+const struct smap *
+ovn_northd_lb_get_vips(const struct ovn_northd_lb *lb)
+{
+    if (!smap_is_empty(&lb->template_vips)) {
+        return &lb->template_vips;
+    }
+    return &lb->nlb->vips;
+}
+
 void
 ovn_northd_lb_add_lr(struct ovn_northd_lb *lb, size_t n,
                      struct ovn_datapath **ods)
@@ -637,6 +676,7 @@ ovn_northd_lb_destroy(struct ovn_northd_lb *lb)
     }
     free(lb->vips);
     free(lb->vips_nb);
+    smap_destroy(&lb->template_vips);
     sset_destroy(&lb->ips_v4);
     sset_destroy(&lb->ips_v6);
     free(lb->selection_fields);

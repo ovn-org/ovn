@@ -4448,7 +4448,7 @@ sync_lbs(struct northd_input *input_data, struct ovsdb_idl_txn *ovnsb_txn,
 
         /* Update columns. */
         sbrec_load_balancer_set_name(lb->slb, lb->nlb->name);
-        sbrec_load_balancer_set_vips(lb->slb, &lb->nlb->vips);
+        sbrec_load_balancer_set_vips(lb->slb, ovn_northd_lb_get_vips(lb));
         sbrec_load_balancer_set_protocol(lb->slb, lb->nlb->protocol);
         sbrec_load_balancer_set_datapath_group(lb->slb, dpg->dp_group);
         sbrec_load_balancer_set_options(lb->slb, &options);

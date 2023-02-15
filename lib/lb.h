@@ -19,6 +19,7 @@
 
 #include <sys/types.h>
 #include <netinet/in.h>
+#include "lib/smap.h"
 #include "openvswitch/hmap.h"
 #include "ovn-util.h"
 #include "sset.h"
@@ -62,6 +63,9 @@ struct ovn_northd_lb {
     char *selection_fields;
     struct ovn_lb_vip *vips;
     struct ovn_northd_lb_vip *vips_nb;
+    struct smap template_vips; /* Slightly changed template VIPs, populated
+                                * if needed.  Until now it's only required
+                                * for IPv6 template load balancers. */
     size_t n_vips;
 
     enum lb_neighbor_responder_mode neigh_mode;
@@ -129,6 +133,7 @@ struct ovn_northd_lb *ovn_northd_lb_create(const struct nbrec_load_balancer *,
                                            size_t n_datapaths);
 struct ovn_northd_lb *ovn_northd_lb_find(const struct hmap *,
                                          const struct uuid *);
+const struct smap *ovn_northd_lb_get_vips(const struct ovn_northd_lb *);
 void ovn_northd_lb_destroy(struct ovn_northd_lb *);
 void ovn_northd_lb_add_lr(struct ovn_northd_lb *lb, size_t n,
                           struct ovn_datapath **ods);
