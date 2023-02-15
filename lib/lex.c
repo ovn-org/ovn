@@ -782,7 +782,7 @@ next:
         p = lex_parse_port_group(p, token);
         break;
 
-    case '^':
+    case LEX_TEMPLATE_PREFIX:
         p = lex_parse_template(p, token);
         break;
 
@@ -1061,7 +1061,7 @@ lexer_parse_template_string(const char *s, const struct smap *template_vars,
                             struct sset *template_vars_ref)
 {
     /* No '^' means no templates. */
-    if (!strchr(s, '^')) {
+    if (!strchr(s, LEX_TEMPLATE_PREFIX)) {
         return lex_str_use(s);
     }
 

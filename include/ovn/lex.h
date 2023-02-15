@@ -29,6 +29,8 @@
 
 struct ds;
 
+#define LEX_TEMPLATE_PREFIX '^'
+
 /* Token type. */
 enum lex_type {
     LEX_T_END,                  /* end of input */
