@@ -43,6 +43,10 @@ static struct ovs_feature all_ovs_features[] = {
         .value = OVS_CT_ZERO_SNAT_SUPPORT,
         .name = "ct_zero_snat"
     },
+    {
+        .value = OVS_CT_TUPLE_FLUSH_SUPPORT,
+        .name = "ct_flush"
+    }
 };
 
 /* A bitmap of OVS features that have been detected as 'supported'. */
@@ -60,6 +64,7 @@ ovs_feature_is_valid(enum ovs_feature_value feature)
     switch (feature) {
     case OVS_CT_ZERO_SNAT_SUPPORT:
     case OVS_DP_METER_SUPPORT:
+    case OVS_CT_TUPLE_FLUSH_SUPPORT:
         return true;
     default:
         return false;

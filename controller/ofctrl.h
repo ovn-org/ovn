@@ -58,6 +58,7 @@ enum mf_field_id ofctrl_get_mf_field_id(void);
 void ofctrl_put(struct ovn_desired_flow_table *lflow_table,
                 struct ovn_desired_flow_table *pflow_table,
                 struct shash *pending_ct_zones,
+                struct hmap *pending_lb_tuples,
                 const struct sbrec_meter_table *,
                 uint64_t nb_cfg,
                 bool lflow_changed,

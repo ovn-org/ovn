@@ -838,3 +838,71 @@ ovn_controller_lb_find(const struct hmap *ovn_controller_lbs,
     }
     return NULL;
 }
+
+static uint32_t
+ovn_lb_5tuple_hash(const struct ovn_lb_5tuple *tuple)
+{
+    uint32_t hash = 0;
+
+    hash = hash_add_in6_addr(hash, &tuple->vip_ip);
+    hash = hash_add_in6_addr(hash, &tuple->backend_ip);
+
+    hash = hash_add(hash, tuple->vip_port);
+    hash = hash_add(hash, tuple->backend_port);
+
+    hash = hash_add(hash, tuple->proto);
+
+    return hash_finish(hash, 0);
+
+}
+
+void
+ovn_lb_5tuple_init(struct ovn_lb_5tuple *tuple, const struct ovn_lb_vip *vip,
+                   const struct ovn_lb_backend *backend, uint8_t proto)
+{
+    tuple->vip_ip = vip->vip;
+    tuple->vip_port = vip->vip_port;
+    tuple->backend_ip = backend->ip;
+    tuple->backend_port = backend->port;
+    tuple->proto = vip->vip_port ? proto : 0;
+}
+
+void
+ovn_lb_5tuple_add(struct hmap *tuples, const struct ovn_lb_vip *vip,
+                  const struct ovn_lb_backend *backend, uint8_t proto)
+{
+    struct ovn_lb_5tuple *tuple = xmalloc(sizeof *tuple);
+    ovn_lb_5tuple_init(tuple, vip, backend, proto);
+    hmap_insert(tuples, &tuple->hmap_node, ovn_lb_5tuple_hash(tuple));
+}
+
+void
+ovn_lb_5tuple_find_and_delete(struct hmap *tuples,
+                              const struct ovn_lb_5tuple *tuple)
+{
+    uint32_t hash = ovn_lb_5tuple_hash(tuple);
+
+    struct ovn_lb_5tuple *node;
+    HMAP_FOR_EACH_WITH_HASH (node, hmap_node, hash, tuples) {
+        if (ipv6_addr_equals(&tuple->vip_ip, &node->vip_ip) &&
+            ipv6_addr_equals(&tuple->backend_ip, &node->backend_ip) &&
+            tuple->vip_port == node->vip_port &&
+            tuple->backend_port == node->backend_port &&
+            tuple->proto == node->proto) {
+            hmap_remove(tuples, &node->hmap_node);
+            free(node);
+            return;
+        }
+    }
+}
+
+void
+ovn_lb_5tuples_destroy(struct hmap *tuples)
+{
+    struct ovn_lb_5tuple *tuple;
+    HMAP_FOR_EACH_POP (tuple, hmap_node, tuples) {
+        free(tuple);
+    }
+
+    hmap_destroy(tuples);
+}

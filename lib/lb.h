@@ -213,4 +213,25 @@ void ovn_lb_vip_format(const struct ovn_lb_vip *vip, struct ds *s,
 void ovn_lb_vip_backends_format(const struct ovn_lb_vip *vip, struct ds *s,
                                 bool template);
 
+struct ovn_lb_5tuple {
+    struct hmap_node hmap_node;
+
+    struct in6_addr vip_ip;
+    uint16_t vip_port;
+
+    struct in6_addr backend_ip;
+    uint16_t backend_port;
+
+    uint8_t proto;
+};
+
+void ovn_lb_5tuple_init(struct ovn_lb_5tuple *tuple,
+                        const struct ovn_lb_vip *vip,
+                        const struct ovn_lb_backend *backend, uint8_t proto);
+void ovn_lb_5tuple_add(struct hmap *tuples, const struct ovn_lb_vip *vip,
+                       const struct ovn_lb_backend *backend, uint8_t proto);
+void ovn_lb_5tuple_find_and_delete(struct hmap *tuples,
+                                   const struct ovn_lb_5tuple *tuple);
+void ovn_lb_5tuples_destroy(struct hmap *tuples);
+
 #endif /* OVN_LIB_LB_H 1 */

@@ -30,6 +30,7 @@
 #include "openvswitch/match.h"
 #include "openvswitch/ofp-actions.h"
 #include "openvswitch/ofp-bundle.h"
+#include "openvswitch/ofp-ct.h"
 #include "openvswitch/ofp-flow.h"
 #include "openvswitch/ofp-group.h"
 #include "openvswitch/ofp-match.h"
@@ -43,6 +44,7 @@
 #include "ovn-controller.h"
 #include "ovn/actions.h"
 #include "lib/extend-table.h"
+#include "lib/lb.h"
 #include "openvswitch/poll-loop.h"
 #include "physical.h"
 #include "openvswitch/rconn.h"
@@ -2485,6 +2487,36 @@ update_installed_flows_by_track(struct ovn_desired_flow_table *flow_table,
     }
 }
 
+static void
+add_ct_flush_tuple(const struct ovn_lb_5tuple *tuple,
+                   struct ovs_list *msgs)
+{
+    if (VLOG_IS_DBG_ENABLED()) {
+        struct ds ds = DS_EMPTY_INITIALIZER;
+
+        ds_put_cstr(&ds, "Flushing CT for 5-tuple: vip=");
+        ipv6_format_mapped(&tuple->vip_ip, &ds);
+        ds_put_format(&ds, ":%"PRIu16", backend=", tuple->vip_port);
+        ipv6_format_mapped(&tuple->backend_ip, &ds);
+        ds_put_format(&ds, ":%"PRIu16", protocol=%"PRIu8,
+                      tuple->backend_port, tuple->proto);
+        VLOG_DBG("%s", ds_cstr(&ds));
+
+        ds_destroy(&ds);
+    }
+
+    struct ofp_ct_match match = {
+        .ip_proto = tuple->proto,
+        .tuple_orig.dst = tuple->vip_ip,
+        .tuple_orig.dst_port = htons(tuple->vip_port),
+        .tuple_reply.src = tuple->backend_ip,
+        .tuple_reply.src_port = htons(tuple->backend_port),
+    };
+
+    struct ofpbuf *msg = ofp_ct_match_encode(&match, NULL, OFP15_VERSION);
+    ovs_list_push_back(msgs, &msg->list_node);
+}
+
 bool
 ofctrl_has_backlog(void)
 {
@@ -2524,6 +2556,7 @@ void
 ofctrl_put(struct ovn_desired_flow_table *lflow_table,
            struct ovn_desired_flow_table *pflow_table,
            struct shash *pending_ct_zones,
+           struct hmap *pending_lb_tuples,
            const struct sbrec_meter_table *meter_table,
            uint64_t req_cfg,
            bool lflows_changed,
@@ -2753,6 +2786,14 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
 
     /* Sync the contents of meters->desired to meters->existing. */
     ovn_extend_table_sync(meters);
+
+    if (ovs_feature_is_supported(OVS_CT_TUPLE_FLUSH_SUPPORT)) {
+        struct ovn_lb_5tuple *tuple;
+        HMAP_FOR_EACH_POP (tuple, hmap_node, pending_lb_tuples) {
+            add_ct_flush_tuple(tuple, &msgs);
+            free(tuple);
+        }
+    }
 
     if (!ovs_list_is_empty(&msgs)) {
         /* Add a barrier to the list of messages. */

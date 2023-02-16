@@ -34700,3 +34700,68 @@ check_packets
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([CT flush load balancer backends])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovn-appctl vlog/set ofctrl:dbg
+
+check ovn-nbctl ls-add sw
+check ovn-nbctl lsp-add sw lsp1
+check ovs-vsctl add-port br-int p1 -- set interface p1 external_ids:iface-id=lsp1
+
+wait_for_ports_up
+ovn-nbctl --wait=hv sync
+
+check ovn-nbctl lb-add lb1 "192.168.0.10" "192.168.10.10,192.168.10.20"
+check ovn-nbctl ls-lb-add sw lb1
+
+# Remove a single backend
+check ovn-nbctl set load_balancer lb1 vips='"192.168.0.10"="192.168.10.10"'
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.0.10:0, backend=192.168.10.20:0, protocol=0" hv1/ovn-controller.log], [0])
+
+# Add a new backend (there shouldn't be any flush)
+check ovn-nbctl set load_balancer lb1 vips='"192.168.0.10"="192.168.10.10,192.168.10.30"'
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([test "$(grep -c "Flushing CT for 5-tuple" hv1/ovn-controller.log)" = "1"], [0])
+
+# Remove the whole LB
+check ovn-nbctl lb-del lb1
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.0.10:0, backend=192.168.10.10:0, protocol=0" hv1/ovn-controller.log], [0])
+AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.0.10:0, backend=192.168.10.30:0, protocol=0" hv1/ovn-controller.log], [0])
+
+# Check flush for LB with port and protocol
+check ovn-nbctl lb-add lb1 "192.168.30.10:80" "192.168.40.10:8080,192.168.40.20:8090" udp
+check ovn-nbctl ls-lb-add sw lb1
+check ovn-nbctl lb-del lb1
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.30.10:80, backend=192.168.40.10:8080, protocol=17" hv1/ovn-controller.log], [0])
+AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.30.10:80, backend=192.168.40.20:8090, protocol=17" hv1/ovn-controller.log], [0])
+
+# Check recompute when LB is no longer local
+check ovn-nbctl lb-add lb1 "192.168.50.10:80" "192.168.60.10:8080"
+check ovn-nbctl ls-lb-add sw lb1
+check ovs-vsctl remove interface p1 external_ids iface-id
+check ovn-appctl inc-engine/recompute
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.50.10:80, backend=192.168.60.10:8080, protocol=6" hv1/ovn-controller.log], [0])
+
+AT_CHECK([test "$(grep -c "Flushing CT for 5-tuple" hv1/ovn-controller.log)" = "6"], [0])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])

@@ -313,6 +313,23 @@ void ddlog_warn(const char *msg);
 void ddlog_err(const char *msg);
 #endif
 
+static inline uint32_t
+hash_add_in6_addr(uint32_t hash, const struct in6_addr *addr)
+{
+    for (uint8_t i = 0; i < 4; i++) {
+#ifdef s6_addr32
+        hash = hash_add(hash, addr->s6_addr32[i]);
+#else
+        uint8_t index = i * 4;
+        uint32_t part = (uint32_t) addr->s6_addr[index]
+            | (uint32_t) addr->s6_addr[index + 1] << 8
+            | (uint32_t) addr->s6_addr[index + 2] << 16
+            | (uint32_t) addr->s6_addr[index + 3] << 24;
+        hash = hash_add(hash, part);
+#endif
+    }
+    return hash;
+}
 
 /* Must be a bit-field ordered from most-preferred (higher number) to
  * least-preferred (lower number). */
