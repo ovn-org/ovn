@@ -29,6 +29,11 @@ jobs:
     name: Build
     runs-on: ubuntu-20.04
     steps:
+    - name: Enable Docker experimental features
+      run: |
+        echo $'{"experimental": true}' | sudo tee /etc/docker/daemon.json
+        sudo service docker restart
+
     - name: Check out ovn
       uses: actions/checkout@v3
       with:
@@ -38,7 +43,7 @@ jobs:
       run: |
         docker build --build-arg OVNKUBE_COMMIT=${{ env.OVNKUBE_COMMIT }} \
           --build-arg LIBOVSDB_COMMIT=${{ env.LIBOVSDB_COMMIT }} \
-          -t ovn-daemonset-f:dev -f .ci/ovn-kubernetes/Dockerfile .
+          --squash -t ovn-daemonset-f:dev -f .ci/ovn-kubernetes/Dockerfile .
         mkdir /tmp/_output
         docker save ovn-daemonset-f:dev > /tmp/_output/image.tar
 

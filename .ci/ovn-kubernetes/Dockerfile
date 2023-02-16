@@ -66,8 +66,7 @@ FROM fedora:37
 # install needed dependencies
 RUN INSTALL_PKGS=" \
     iptables iproute iputils hostname unbound-libs kubernetes-client kmod socat" && \
-    dnf install --best --refresh -y --setopt=tsflags=nodocs $INSTALL_PKGS && \
-    dnf clean all && rm -rf /var/cache/dnf/*
+    dnf install --best --refresh -y --setopt=tsflags=nodocs $INSTALL_PKGS
 
 RUN mkdir -p /var/run/openvswitch
 
@@ -89,6 +88,10 @@ COPY --from=ovnkubebuilder /root/ovn-kubernetes/go-controller/_output/go/bin/ovn
 COPY --from=ovnkubebuilder /root/ovn-kubernetes/dist/images/ovnkube.sh /root/
 COPY --from=ovnkubebuilder /root/ovn-kubernetes/dist/images/ovndb-raft-functions.sh /root/
 COPY --from=ovnkubebuilder /root/ovn-kubernetes/dist/images/iptables-scripts /usr/sbin/
+
+# Make some room.
+RUN REMOVE_PKGS="llvm-libs clang-libs" && \
+    dnf remove -y $REMOVE_PKGS && dnf clean all && rm -rf /var/cache/dnf/*
 
 LABEL io.k8s.display-name="ovn-kubernetes" \
     io.k8s.description="This is a Kubernetes network plugin that provides an overlay network using OVN." \
