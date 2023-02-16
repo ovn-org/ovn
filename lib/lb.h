@@ -177,7 +177,11 @@ ovn_lb_group_add_lr(struct ovn_lb_group *lb_group, struct ovn_datapath *lr)
 }
 
 struct ovn_controller_lb {
+    struct hmap_node hmap_node;
+
     const struct sbrec_load_balancer *slb; /* May be NULL. */
+
+    uint8_t proto;
 
     struct ovn_lb_vip *vips;
     size_t n_vips;
@@ -196,6 +200,10 @@ struct ovn_controller_lb *ovn_controller_lb_create(
     const struct smap *template_vars,
     struct sset *template_vars_ref);
 void ovn_controller_lb_destroy(struct ovn_controller_lb *);
+void ovn_controller_lbs_destroy(struct hmap *ovn_controller_lbs);
+struct ovn_controller_lb *ovn_controller_lb_find(
+    const struct hmap *ovn_controller_lbs,
+    const struct uuid *uuid);
 
 char *ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
                       const char *lb_value, bool template, int address_family);

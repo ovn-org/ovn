@@ -101,7 +101,6 @@ struct lflow_ctx_in {
     const struct sbrec_multicast_group_table *mc_group_table;
     const struct sbrec_fdb_table *fdb_table;
     const struct sbrec_chassis *chassis;
-    const struct sbrec_load_balancer_table *lb_table;
     const struct sbrec_static_mac_binding_table *static_mac_binding_table;
     const struct hmap *local_datapaths;
     const struct shash *addr_sets;
@@ -116,6 +115,7 @@ struct lflow_ctx_in {
     const struct controller_event_options *controller_event_opts;
     const struct smap *template_vars;
     const struct flow_collector_ids *collector_ids;
+    const struct hmap *local_lbs;
     bool lb_hairpin_use_ct_mark;
 };
 
@@ -161,13 +161,16 @@ void lflow_handle_changed_static_mac_bindings(
     const struct sbrec_static_mac_binding_table *smb_table,
     const struct hmap *local_datapaths,
     struct ovn_desired_flow_table *);
-bool lflow_handle_changed_lbs(struct lflow_ctx_in *, struct lflow_ctx_out *);
+bool lflow_handle_changed_lbs(struct lflow_ctx_in *l_ctx_in,
+                              struct lflow_ctx_out *l_ctx_out,
+                              const struct uuidset *deleted_lbs,
+                              const struct uuidset *updated_lbs,
+                              const struct uuidset *new_lbs,
+                              const struct hmap *old_lbs);
 bool lflow_handle_changed_fdbs(struct lflow_ctx_in *, struct lflow_ctx_out *);
 void lflow_destroy(void);
 
 bool lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *,
-                                  const struct sbrec_load_balancer **dp_lbs,
-                                  size_t n_dp_lbs,
                                   struct lflow_ctx_in *,
                                   struct lflow_ctx_out *);
 bool lflow_handle_flows_for_lport(const struct sbrec_port_binding *,
@@ -178,7 +181,4 @@ bool lflow_handle_changed_mc_groups(struct lflow_ctx_in *,
 bool lflow_handle_changed_port_bindings(struct lflow_ctx_in *,
                                         struct lflow_ctx_out *);
 
-bool lb_handle_changed_ref(enum objdep_type type, const char *res_name,
-                           struct ovs_list *objs_todo,
-                           const void *in_arg, void *out_arg);
 #endif /* controller/lflow.h */

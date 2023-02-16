@@ -98,10 +98,7 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
                       struct lflow_ctx_out *l_ctx_out);
 
 static void
-consider_lb_hairpin_flows(struct objdep_mgr *mgr,
-                          const struct sbrec_load_balancer *sbrec_lb,
-                          const struct hmap *local_datapaths,
-                          const struct smap *template_vars,
+consider_lb_hairpin_flows(const struct ovn_controller_lb *lb,
                           bool use_ct_mark,
                           struct ovn_desired_flow_table *flow_table,
                           struct simap *ids);
@@ -798,43 +795,6 @@ lflow_handle_changed_ref(enum objdep_type type, const char *res_name,
         consider_logical_flow(lflow, false, l_ctx_in, l_ctx_out);
     }
     uuidset_destroy(&flood_remove_nodes);
-    return true;
-}
-
-bool
-lb_handle_changed_ref(enum objdep_type type, const char *res_name,
-                      struct ovs_list *objs_todo,
-                      const void *in_arg, void *out_arg)
-{
-    struct lflow_ctx_in *l_ctx_in = CONST_CAST(struct lflow_ctx_in *, in_arg);
-    struct lflow_ctx_out *l_ctx_out = out_arg;
-
-    struct object_to_resources_list_node *resource_lb_uuid;
-    LIST_FOR_EACH_POP (resource_lb_uuid, list_node, objs_todo) {
-        VLOG_DBG("Reprocess LB "UUID_FMT" for resource type: %s, name: %s",
-                 UUID_ARGS(&resource_lb_uuid->obj_uuid),
-                 objdep_type_name(type), res_name);
-
-        const struct sbrec_load_balancer *lb =
-            sbrec_load_balancer_table_get_for_uuid(
-                l_ctx_in->lb_table, &resource_lb_uuid->obj_uuid);
-        if (!lb) {
-            VLOG_DBG("Failed to find LB "UUID_FMT" referred by: %s",
-                     UUID_ARGS(&resource_lb_uuid->obj_uuid), res_name);
-        } else {
-            ofctrl_remove_flows(l_ctx_out->flow_table,
-                                &resource_lb_uuid->obj_uuid);
-
-            consider_lb_hairpin_flows(l_ctx_out->lb_deps_mgr, lb,
-                                      l_ctx_in->local_datapaths,
-                                      l_ctx_in->template_vars,
-                                      l_ctx_in->lb_hairpin_use_ct_mark,
-                                      l_ctx_out->flow_table,
-                                      l_ctx_out->hairpin_lb_ids);
-        }
-
-        free(resource_lb_uuid);
-    }
     return true;
 }
 
@@ -1647,10 +1607,9 @@ add_lb_vip_hairpin_reply_action(struct in6_addr *vip6, ovs_be32 vip,
  * original destination tuple stored by ovn-northd.
  */
 static void
-add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
+add_lb_vip_hairpin_flows(const struct ovn_controller_lb *lb,
                          struct ovn_lb_vip *lb_vip,
                          struct ovn_lb_backend *lb_backend,
-                         uint8_t lb_proto,
                          bool use_ct_mark,
                          struct ovn_desired_flow_table *flow_table)
 {
@@ -1689,7 +1648,7 @@ add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
                           ntohl(vip4));
         }
 
-        add_lb_vip_hairpin_reply_action(NULL, snat_vip4, lb_proto,
+        add_lb_vip_hairpin_reply_action(NULL, snat_vip4, lb->proto,
                                         lb_backend->port,
                                         lb->slb->header_.uuid.parts[0],
                                         &ofpacts);
@@ -1714,17 +1673,17 @@ add_lb_vip_hairpin_flows(struct ovn_controller_lb *lb,
                             ntoh128(vip6_value));
         }
 
-        add_lb_vip_hairpin_reply_action(snat_vip6, 0, lb_proto,
+        add_lb_vip_hairpin_reply_action(snat_vip6, 0, lb->proto,
                                         lb_backend->port,
                                         lb->slb->header_.uuid.parts[0],
                                         &ofpacts);
     }
 
     if (lb_backend->port) {
-        match_set_nw_proto(&hairpin_match, lb_proto);
+        match_set_nw_proto(&hairpin_match, lb->proto);
         match_set_tp_dst(&hairpin_match, htons(lb_backend->port));
         if (!lb->hairpin_orig_tuple) {
-            match_set_ct_nw_proto(&hairpin_match, lb_proto);
+            match_set_ct_nw_proto(&hairpin_match, lb->proto);
             match_set_ct_tp_dst(&hairpin_match, htons(lb_vip->vip_port));
         } else {
             match_set_reg_masked(&hairpin_match,
@@ -1784,7 +1743,7 @@ add_lb_ct_snat_hairpin_for_dp(const struct ovn_controller_lb *lb,
 }
 
 static void
-add_lb_ct_snat_hairpin_dp_flows(struct ovn_controller_lb *lb,
+add_lb_ct_snat_hairpin_dp_flows(const struct ovn_controller_lb *lb,
                                 uint32_t id,
                                 struct ovn_desired_flow_table *flow_table)
 {
@@ -1877,10 +1836,9 @@ add_lb_ct_snat_hairpin_dp_flows(struct ovn_controller_lb *lb,
  * that this LB belongs to. These flows (and the actual SNAT flow) get added
  * by add_lb_ct_snat_hairpin_dp_flows(). */
 static void
-add_lb_ct_snat_hairpin_vip_flow(struct ovn_controller_lb *lb,
+add_lb_ct_snat_hairpin_vip_flow(const struct ovn_controller_lb *lb,
                                 uint32_t id,
                                 struct ovn_lb_vip *lb_vip,
-                                uint8_t lb_proto,
                                 struct ovn_desired_flow_table *flow_table)
 {
     uint64_t stub[1024 / 8];
@@ -1973,10 +1931,10 @@ add_lb_ct_snat_hairpin_vip_flow(struct ovn_controller_lb *lb,
         }
     }
 
-    match_set_nw_proto(&match, lb_proto);
+    match_set_nw_proto(&match, lb->proto);
     if (lb_vip->vip_port) {
         if (!lb->hairpin_orig_tuple) {
-            match_set_ct_nw_proto(&match, lb_proto);
+            match_set_ct_nw_proto(&match, lb->proto);
             match_set_ct_tp_dst(&match, htons(lb_vip->vip_port));
         } else {
             match_set_reg_masked(&match, MFF_LOG_LB_ORIG_TP_DPORT - MFF_REG0,
@@ -2007,9 +1965,8 @@ add_lb_ct_snat_hairpin_vip_flow(struct ovn_controller_lb *lb,
  * Note: 'conjunctive_id' must be a unique identifier for each LB as it is used
  * as a conjunctive flow id. */
 static void
-add_lb_ct_snat_hairpin_flows(struct ovn_controller_lb *lb,
+add_lb_ct_snat_hairpin_flows(const struct ovn_controller_lb *lb,
                              uint32_t conjunctive_id,
-                             uint8_t lb_proto,
                              struct ovn_desired_flow_table *flow_table)
 {
     /* We must add a flow for each LB VIP. In the general case, this flow
@@ -2046,102 +2003,47 @@ add_lb_ct_snat_hairpin_flows(struct ovn_controller_lb *lb,
     for (int i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
         add_lb_ct_snat_hairpin_vip_flow(lb, conjunctive_id,
-                                        lb_vip, lb_proto, flow_table);
+                                        lb_vip, flow_table);
     }
 
     add_lb_ct_snat_hairpin_dp_flows(lb, conjunctive_id, flow_table);
 }
 
 static void
-consider_lb_hairpin_flows(struct objdep_mgr *mgr,
-                          const struct sbrec_load_balancer *sbrec_lb,
-                          const struct hmap *local_datapaths,
-                          const struct smap *template_vars,
+consider_lb_hairpin_flows(const struct ovn_controller_lb *lb,
                           bool use_ct_mark,
                           struct ovn_desired_flow_table *flow_table,
                           struct simap *ids)
 {
-    int id = simap_get(ids, sbrec_lb->name);
-    VLOG_DBG("Load Balancer %s has conjunctive flow id %u",
-             sbrec_lb->name, id);
+    int id = simap_get(ids, lb->slb->name);
+    VLOG_DBG("Load Balancer %s has conjunctive flow id %u", lb->slb->name, id);
 
-    /* Check if we need to add flows or not.  If there is one datapath
-     * in the local_datapaths, it means all the datapaths of the lb
-     * will be in the local_datapaths. */
-    size_t i;
-    for (i = 0; i < sbrec_lb->n_datapaths; i++) {
-        if (get_local_datapath(local_datapaths,
-                               sbrec_lb->datapaths[i]->tunnel_key)) {
-            break;
-        }
-    }
-
-    if (sbrec_lb->n_datapaths && i == sbrec_lb->n_datapaths) {
-        return;
-    }
-
-    struct sbrec_logical_dp_group *dp_group = sbrec_lb->datapath_group;
-
-    for (i = 0; dp_group && i < dp_group->n_datapaths; i++) {
-        if (get_local_datapath(local_datapaths,
-                               dp_group->datapaths[i]->tunnel_key)) {
-            break;
-        }
-    }
-
-    if (dp_group && i == dp_group->n_datapaths) {
-        return;
-    }
-
-    struct sset template_vars_ref = SSET_INITIALIZER(&template_vars_ref);
-    struct ovn_controller_lb *lb =
-        ovn_controller_lb_create(sbrec_lb, template_vars, &template_vars_ref);
-    uint8_t lb_proto = IPPROTO_TCP;
-    if (lb->slb->protocol && lb->slb->protocol[0]) {
-        if (!strcmp(lb->slb->protocol, "udp")) {
-            lb_proto = IPPROTO_UDP;
-        } else if (!strcmp(lb->slb->protocol, "sctp")) {
-            lb_proto = IPPROTO_SCTP;
-        }
-    }
-
-    const char *tv_name;
-    SSET_FOR_EACH (tv_name, &template_vars_ref) {
-        objdep_mgr_add(mgr, OBJDEP_TYPE_TEMPLATE, tv_name,
-                       &sbrec_lb->header_.uuid);
-    }
-    for (i = 0; i < lb->n_vips; i++) {
+    for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
 
         for (size_t j = 0; j < lb_vip->n_backends; j++) {
             struct ovn_lb_backend *lb_backend = &lb_vip->backends[j];
 
-            add_lb_vip_hairpin_flows(lb, lb_vip, lb_backend, lb_proto,
+            add_lb_vip_hairpin_flows(lb, lb_vip, lb_backend,
                                      use_ct_mark, flow_table);
         }
     }
 
-    add_lb_ct_snat_hairpin_flows(lb, id, lb_proto, flow_table);
-
-    ovn_controller_lb_destroy(lb);
-    sset_destroy(&template_vars_ref);
+    add_lb_ct_snat_hairpin_flows(lb, id, flow_table);
 }
 
 /* Adds OpenFlow flows to flow tables for each Load balancer VIPs and
  * backends to handle the load balanced hairpin traffic. */
 static void
-add_lb_hairpin_flows(struct objdep_mgr *mgr,
-                     const struct sbrec_load_balancer_table *lb_table,
-                     const struct hmap *local_datapaths,
-                     const struct smap *template_vars,
+add_lb_hairpin_flows(const struct hmap *local_lbs,
                      bool use_ct_mark,
                      struct ovn_desired_flow_table *flow_table,
                      struct simap *ids,
                      struct id_pool *pool)
 {
     uint32_t id;
-    const struct sbrec_load_balancer *lb;
-    SBREC_LOAD_BALANCER_TABLE_FOR_EACH (lb, lb_table) {
+    const struct ovn_controller_lb *lb;
+    HMAP_FOR_EACH (lb, hmap_node, local_lbs) {
         /* Allocate a unique 32-bit integer to this load-balancer. This will
          * be used as a conjunctive flow id in the OFTABLE_CT_SNAT_HAIRPIN
          * table.
@@ -2152,13 +2054,12 @@ add_lb_hairpin_flows(struct objdep_mgr *mgr,
          * "UINT32_MAX" load-balancers.
          */
 
-        id = simap_get(ids, lb->name);
+        id = simap_get(ids, lb->slb->name);
         if (!id) {
             ovs_assert(id_pool_alloc_id(pool, &id));
-            simap_put(ids, lb->name, id);
+            simap_put(ids, lb->slb->name, id);
         }
-        consider_lb_hairpin_flows(mgr, lb, local_datapaths, template_vars,
-                                  use_ct_mark, flow_table, ids);
+        consider_lb_hairpin_flows(lb, use_ct_mark, flow_table, ids);
     }
 }
 
@@ -2294,9 +2195,7 @@ lflow_run(struct lflow_ctx_in *l_ctx_in, struct lflow_ctx_out *l_ctx_out)
                        l_ctx_in->static_mac_binding_table,
                        l_ctx_in->local_datapaths,
                        l_ctx_out->flow_table);
-    add_lb_hairpin_flows(l_ctx_out->lb_deps_mgr, l_ctx_in->lb_table,
-                         l_ctx_in->local_datapaths,
-                         l_ctx_in->template_vars,
+    add_lb_hairpin_flows(l_ctx_in->local_lbs,
                          l_ctx_in->lb_hairpin_use_ct_mark,
                          l_ctx_out->flow_table,
                          l_ctx_out->hairpin_lb_ids,
@@ -2333,8 +2232,6 @@ lflow_destroy(void)
 
 bool
 lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
-                             const struct sbrec_load_balancer **dp_lbs,
-                             size_t n_dp_lbs,
                              struct lflow_ctx_in *l_ctx_in,
                              struct lflow_ctx_out *l_ctx_out)
 {
@@ -2423,17 +2320,6 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
                                smb->override_dynamic_mac ? 150 : 50);
     }
     sbrec_static_mac_binding_index_destroy_row(smb_index_row);
-
-    /* Add load balancer hairpin flows if the datapath has any load balancers
-     * associated. */
-    for (size_t i = 0; i < n_dp_lbs; i++) {
-        consider_lb_hairpin_flows(l_ctx_out->lb_deps_mgr, dp_lbs[i],
-                                  l_ctx_in->local_datapaths,
-                                  l_ctx_in->template_vars,
-                                  l_ctx_in->lb_hairpin_use_ct_mark,
-                                  l_ctx_out->flow_table,
-                                  l_ctx_out->hairpin_lb_ids);
-    }
 
     return handled;
 }
@@ -2529,52 +2415,58 @@ lflow_handle_changed_mc_groups(struct lflow_ctx_in *l_ctx_in,
 
 bool
 lflow_handle_changed_lbs(struct lflow_ctx_in *l_ctx_in,
-                         struct lflow_ctx_out *l_ctx_out)
+                         struct lflow_ctx_out *l_ctx_out,
+                         const struct uuidset *deleted_lbs,
+                         const struct uuidset *updated_lbs,
+                         const struct uuidset *new_lbs,
+                         const struct hmap *old_lbs)
 {
-    const struct sbrec_load_balancer *lb;
+    const struct ovn_controller_lb *lb;
+
     struct id_pool *pool = l_ctx_out->hairpin_id_pool;
     struct simap *ids = l_ctx_out->hairpin_lb_ids;
 
-    SBREC_LOAD_BALANCER_TABLE_FOR_EACH_TRACKED (lb, l_ctx_in->lb_table) {
-        if (sbrec_load_balancer_is_deleted(lb)) {
-            VLOG_DBG("Remove hairpin flows for deleted load balancer "UUID_FMT,
-                     UUID_ARGS(&lb->header_.uuid));
-            ofctrl_remove_flows(l_ctx_out->flow_table, &lb->header_.uuid);
-            id_pool_free_id(pool, simap_get(ids, lb->name));
-            simap_find_and_delete(ids, lb->name);
-        }
+    struct uuidset_node *uuid_node;
+    UUIDSET_FOR_EACH (uuid_node, deleted_lbs) {
+        lb = ovn_controller_lb_find(old_lbs, &uuid_node->uuid);
+
+        VLOG_DBG("Remove hairpin flows for deleted load balancer "UUID_FMT,
+                 UUID_ARGS(&uuid_node->uuid));
+        ofctrl_remove_flows(l_ctx_out->flow_table, &uuid_node->uuid);
+        id_pool_free_id(pool, simap_get(ids, lb->slb->name));
+        simap_find_and_delete(ids, lb->slb->name);
     }
 
-    SBREC_LOAD_BALANCER_TABLE_FOR_EACH_TRACKED (lb, l_ctx_in->lb_table) {
-        if (sbrec_load_balancer_is_deleted(lb)) {
-            continue;
-        }
+    UUIDSET_FOR_EACH (uuid_node, updated_lbs) {
+        lb = ovn_controller_lb_find(l_ctx_in->local_lbs, &uuid_node->uuid);
 
-        if (!sbrec_load_balancer_is_new(lb)) {
-            VLOG_DBG("Remove hairpin flows for updated load balancer "UUID_FMT,
-                     UUID_ARGS(&lb->header_.uuid));
-            ofctrl_remove_flows(l_ctx_out->flow_table, &lb->header_.uuid);
-        } else {
-            /* Allocate a unique 32-bit integer to this load-balancer. This
-             * will be used as a conjunctive flow id in the
-             * OFTABLE_CT_SNAT_HAIRPIN table.
-             *
-             * If we are unable to allocate a unique ID then we have run out of
-             * ids. As this is unrecoverable then we abort. However, this is
-             * unlikely to happen as it would be mean that we have created
-             * "UINT32_MAX" load-balancers.
-             */
-            uint32_t id;
-            ovs_assert(id_pool_alloc_id(pool, &id));
-            simap_put(ids, lb->name, id);
-        }
+        VLOG_DBG("Remove and add hairpin flows for updated load balancer "
+                  UUID_FMT, UUID_ARGS(&uuid_node->uuid));
+        ofctrl_remove_flows(l_ctx_out->flow_table, &uuid_node->uuid);
+        consider_lb_hairpin_flows(lb, l_ctx_in->lb_hairpin_use_ct_mark,
+                                  l_ctx_out->flow_table,
+                                  l_ctx_out->hairpin_lb_ids);
+    }
+
+    UUIDSET_FOR_EACH (uuid_node, new_lbs) {
+        lb = ovn_controller_lb_find(l_ctx_in->local_lbs, &uuid_node->uuid);
+
+        /* Allocate a unique 32-bit integer to this load-balancer. This
+         * will be used as a conjunctive flow id in the
+         * OFTABLE_CT_SNAT_HAIRPIN table.
+         *
+         * If we are unable to allocate a unique ID then we have run out of
+         * ids. As this is unrecoverable then we abort. However, this is
+         * unlikely to happen as it would be mean that we have created
+         * "UINT32_MAX" load-balancers.
+         */
+        uint32_t id;
+        ovs_assert(id_pool_alloc_id(pool, &id));
+        simap_put(ids, lb->slb->name, id);
 
         VLOG_DBG("Add load balancer hairpin flows for "UUID_FMT,
-                 UUID_ARGS(&lb->header_.uuid));
-        consider_lb_hairpin_flows(l_ctx_out->lb_deps_mgr, lb,
-                                  l_ctx_in->local_datapaths,
-                                  l_ctx_in->template_vars,
-                                  l_ctx_in->lb_hairpin_use_ct_mark,
+                 UUID_ARGS(&uuid_node->uuid));
+        consider_lb_hairpin_flows(lb, l_ctx_in->lb_hairpin_use_ct_mark,
                                   l_ctx_out->flow_table,
                                   l_ctx_out->hairpin_lb_ids);
     }

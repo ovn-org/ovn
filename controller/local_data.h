@@ -30,6 +30,7 @@ struct sbrec_chassis;
 struct ovsdb_idl_index;
 struct ovsrec_bridge;
 struct ovsrec_interface_table;
+struct sbrec_load_balancer;
 
 /* A logical datapath that has some relevance to this hypervisor.  A logical
  * datapath D is relevant to hypervisor H if:
@@ -161,5 +162,7 @@ void add_local_datapath_multichassis_port(struct local_datapath *ld,
                                           const void *data);
 void remove_local_datapath_multichassis_port(struct local_datapath *ld,
                                              char *logical_port);
+bool lb_is_local(const struct sbrec_load_balancer *sbrec_lb,
+                 const struct hmap *local_datapaths);
 
 #endif /* controller/local_data.h */

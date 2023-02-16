@@ -781,6 +781,15 @@ ovn_controller_lb_create(const struct sbrec_load_balancer *sbrec_lb,
         lex_str_free(&value_s);
     }
 
+    lb->proto = IPPROTO_TCP;
+    if (sbrec_lb->protocol && sbrec_lb->protocol[0]) {
+        if (!strcmp(sbrec_lb->protocol, "udp")) {
+            lb->proto = IPPROTO_UDP;
+        } else if (!strcmp(sbrec_lb->protocol, "sctp")) {
+            lb->proto = IPPROTO_SCTP;
+        }
+    }
+
     /* It's possible that parsing VIPs fails.  Update the lb->n_vips to the
      * correct value.
      */
@@ -803,4 +812,29 @@ ovn_controller_lb_destroy(struct ovn_controller_lb *lb)
     free(lb->vips);
     destroy_lport_addresses(&lb->hairpin_snat_ips);
     free(lb);
+}
+
+void
+ovn_controller_lbs_destroy(struct hmap *ovn_controller_lbs)
+{
+    struct ovn_controller_lb *lb;
+    HMAP_FOR_EACH_POP (lb, hmap_node, ovn_controller_lbs) {
+        ovn_controller_lb_destroy(lb);
+    }
+
+    hmap_destroy(ovn_controller_lbs);
+}
+
+struct ovn_controller_lb *
+ovn_controller_lb_find(const struct hmap *ovn_controller_lbs,
+                       const struct uuid *uuid)
+{
+    struct ovn_controller_lb *lb;
+    size_t hash = uuid_hash(uuid);
+    HMAP_FOR_EACH_WITH_HASH (lb, hmap_node, hash, ovn_controller_lbs) {
+        if (uuid_equals(&lb->slb->header_.uuid, uuid)) {
+            return lb;
+        }
+    }
+    return NULL;
 }
