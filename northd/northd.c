@@ -7179,9 +7179,9 @@ build_lb_affinity_lr_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
     ds_put_format(&aff_action, "%s = %s; ", reg_vip, lb_vip->vip_str);
     ds_put_cstr(&aff_action_learn, "commit_lb_aff(vip = \"");
 
-    if (lb_vip->vip_port) {
-        ds_put_format(&aff_action_learn, ipv6 ? "[%s]:%"PRIu16 : "%s:%"PRIu16,
-                      lb_vip->vip_str, lb_vip->vip_port);
+    if (lb_vip->port_str) {
+        ds_put_format(&aff_action_learn, ipv6 ? "[%s]:%s" : "%s:%s",
+                      lb_vip->vip_str, lb_vip->port_str);
     } else {
         ds_put_cstr(&aff_action_learn, lb_vip->vip_str);
     }
@@ -7193,12 +7193,12 @@ build_lb_affinity_lr_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
     ds_put_cstr(&aff_action_learn, "\", backend = \"");
 
     /* Prepare common part of affinity learn match. */
-    if (lb_vip->vip_port) {
+    if (lb_vip->port_str) {
         ds_put_format(&aff_match_learn, REGBIT_KNOWN_LB_SESSION" == 0 && "
                       "ct.new && %s && %s == %s && "
-                      REG_ORIG_TP_DPORT_ROUTER" == %"PRIu16" && "
+                      REG_ORIG_TP_DPORT_ROUTER" == %s && "
                       "%s.dst == ", ip_match, reg_vip, lb_vip->vip_str,
-                      lb_vip->vip_port, ip_match);
+                      lb_vip->port_str, ip_match);
     } else {
         ds_put_format(&aff_match_learn, REGBIT_KNOWN_LB_SESSION" == 0 && "
                       "ct.new && %s && %s == %s && %s.dst == ", ip_match,
@@ -7244,7 +7244,7 @@ build_lb_affinity_lr_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
         ds_put_cstr(&aff_action, ");");
         ds_put_char(&aff_action_learn, '"');
 
-        if (lb_vip->vip_port) {
+        if (lb_vip->port_str) {
             ds_put_format(&aff_action_learn, ", proto = %s", lb->proto);
         }
 
@@ -7334,9 +7334,9 @@ build_lb_affinity_ls_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
                       lb_vip->vip_str);
     }
 
-    if (lb_vip->vip_port) {
-        ds_put_format(&new_lb_match, " && "REG_ORIG_TP_DPORT " == %"PRIu16,
-                      lb_vip->vip_port);
+    if (lb_vip->port_str) {
+        ds_put_format(&new_lb_match, " && "REG_ORIG_TP_DPORT " == %s",
+                      lb_vip->port_str);
     }
 
     static char *aff_check = REGBIT_KNOWN_LB_SESSION" = chk_lb_aff(); next;";
@@ -7363,11 +7363,11 @@ build_lb_affinity_ls_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
                   reg_vip, lb_vip->vip_str);
     ds_put_cstr(&aff_action_learn, "commit_lb_aff(vip = \"");
 
-    if (lb_vip->vip_port) {
-        ds_put_format(&aff_action, REG_ORIG_TP_DPORT" = %"PRIu16"; ",
-                      lb_vip->vip_port);
-        ds_put_format(&aff_action_learn, ipv6 ? "[%s]:%"PRIu16 : "%s:%"PRIu16,
-                      lb_vip->vip_str, lb_vip->vip_port);
+    if (lb_vip->port_str) {
+        ds_put_format(&aff_action, REG_ORIG_TP_DPORT" = %s; ",
+                      lb_vip->port_str);
+        ds_put_format(&aff_action_learn, ipv6 ? "[%s]:%s" : "%s:%s",
+                      lb_vip->vip_str, lb_vip->port_str);
     } else {
         ds_put_cstr(&aff_action_learn, lb_vip->vip_str);
     }
@@ -7376,12 +7376,12 @@ build_lb_affinity_ls_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
     ds_put_cstr(&aff_action_learn, "\", backend = \"");
 
     /* Prepare common part of affinity learn match. */
-    if (lb_vip->vip_port) {
+    if (lb_vip->port_str) {
         ds_put_format(&aff_match_learn, REGBIT_KNOWN_LB_SESSION" == 0 && "
                       "ct.new && %s && %s == %s && "
-                      REG_ORIG_TP_DPORT" == %"PRIu16" && %s.dst == ",
+                      REG_ORIG_TP_DPORT" == %s && %s.dst == ",
                       ip_match, reg_vip, lb_vip->vip_str,
-                      lb_vip->vip_port, ip_match);
+                      lb_vip->port_str, ip_match);
     } else {
         ds_put_format(&aff_match_learn, REGBIT_KNOWN_LB_SESSION" == 0 && "
                       "ct.new && %s && %s == %s && %s.dst == ",
@@ -7422,7 +7422,7 @@ build_lb_affinity_ls_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
         ds_put_cstr(&aff_action, ");");
         ds_put_char(&aff_action_learn, '"');
 
-        if (lb_vip->vip_port) {
+        if (lb_vip->port_str) {
             ds_put_format(&aff_action_learn, ", proto = %s", lb->proto);
         }
 
@@ -10622,10 +10622,10 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
      */
     ds_put_format(match, "ct.new && !ct.rel && %s && %s == %s",
                   ip_match, ip_reg, lb_vip->vip_str);
-    if (lb_vip->vip_port) {
+    if (lb_vip->port_str) {
         prio = 120;
-        ds_put_format(match, " && %s && "REG_ORIG_TP_DPORT_ROUTER" == %d",
-                      lb->proto, lb_vip->vip_port);
+        ds_put_format(match, " && %s && "REG_ORIG_TP_DPORT_ROUTER" == %s",
+                      lb->proto, lb_vip->port_str);
     }
 
     ds_put_cstr(&est_match, "ct.est");
