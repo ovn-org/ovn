@@ -24247,7 +24247,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([Load balancer health checks])
+AT_SETUP([Load balancer health checks - IPv4])
 AT_KEYWORDS([lb])
 ovn_start
 
@@ -24416,6 +24416,205 @@ ovn-sbctl dump-flows lr0 > sbflows4
 AT_CHECK([grep lr_in_dnat sbflows4 | grep priority=120 | sed 's/table=..//' | sort], [0], [dnl
   (lr_in_dnat         ), priority=120  , match=(ct.est && !ct.rel && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1 && is_chassis_resident("cr-lr0-public")), action=(next;)
   (lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && is_chassis_resident("cr-lr0-public")), action=(drop;)
+])
+
+# Delete sw0-p1
+check ovn-nbctl lsp-del sw0-p1
+
+wait_row_count Service_Monitor 1
+
+# Add back sw0-p1 but without any IP address.
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03" -- \
+    lsp-set-port-security sw0-p1 "50:54:00:00:00:03"
+
+wait_row_count Service_Monitor 2 status=offline
+
+check ovn-nbctl lsp-del sw0-p1
+check ovn-nbctl lsp-del sw1-p1
+wait_row_count Service_Monitor 0
+
+# Add back sw0-p1 but without any address set.
+check ovn-nbctl lsp-add sw0 sw0-p1
+
+wait_row_count Service_Monitor 1
+wait_row_count Service_Monitor 0 status=offline
+wait_row_count Service_Monitor 0 status=online
+
+OVN_CLEANUP([hv1], [hv2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Load balancer health checks - IPv6])
+AT_KEYWORDS([lb])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+check ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=sw0-p2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+check ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=sw1-p1 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+
+check ovn-nbctl ls-add sw0
+
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 2001::3"
+check ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03 2001::3"
+
+# Create port group and ACLs for sw0 ports.
+check ovn-nbctl pg-add pg0_drop sw0-p1
+check ovn-nbctl acl-add pg0_drop from-lport 1001 "inport == @pg0_drop && ip" drop
+check ovn-nbctl acl-add pg0_drop to-lport 1001 "outport == @pg0_drop && ip" drop
+
+# Create the second logical switch with one port
+check ovn-nbctl ls-add sw1
+check ovn-nbctl lsp-add sw1 sw1-p1
+check ovn-nbctl lsp-set-addresses sw1-p1 "40:54:00:00:00:03 2002::3"
+check ovn-nbctl lsp-set-port-security sw1-p1 "40:54:00:00:00:03 2002::3"
+
+# Create port group and ACLs for sw1 ports.
+check ovn-nbctl pg-add pg1_drop sw1-p1
+check ovn-nbctl acl-add pg1_drop from-lport 1001 "inport == @pg1_drop && ip" drop
+check ovn-nbctl acl-add pg1_drop to-lport 1001 "outport == @pg1_drop && ip" drop
+
+check ovn-nbctl pg-add pg1 sw1-p1
+check ovn-nbctl acl-add pg1 from-lport 1002 "inport == @pg1 && ip6" allow-related
+check ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip6 && ip6.src == ::/0 && icmp6" allow-related
+check ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip6 && ip6.src == ::/0 && tcp && tcp.dst == 80" allow-related
+check ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip6 && ip6.src == ::/0 && udp && udp.dst == 80" allow-related
+
+# Create a logical router and attach both logical switches
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 2001::1/64
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 router
+check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 2001::a/64
+check ovn-nbctl lsp-add sw1 sw1-lr0
+check ovn-nbctl lsp-set-type sw1-lr0 router
+check ovn-nbctl lsp-set-addresses sw1-lr0 router
+check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+
+check ovn-nbctl lb-add lb1 [[2001::a]]:80 [[2001::3]]:80,[[2002::3]]:80
+OVN_LB_ID=$(ovn-nbctl --bare --column _uuid find load_balancer name=lb1)
+check ovn-nbctl set load_balancer ${OVN_LB_ID} selection_fields="ip_dst,ip_src,tp_dst,tp_src"
+#
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:\"[[2001::3]]\"=\"sw0-p1:[[2001::2]]\"
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:\"[[2002::3]]\"=\"sw1-p1:[[2002::2]]\"
+
+AT_CHECK([ovn-nbctl --wait=sb \
+          -- --id=@hc create Load_Balancer_Health_Check vip="\[\[2001\:\:a\]\]\:80" \
+             options:failure_count=100 \
+          -- add Load_Balancer . health_check @hc | uuidfilt], [0], [<0>
+])
+
+check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
+check ovn-nbctl --wait=sb ls-lb-add sw1 lb1
+check ovn-nbctl --wait=sb lr-lb-add lr0 lb1
+
+check ovn-nbctl ls-add public
+check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 2003::1/64
+check ovn-nbctl lsp-add public public-lr0
+check ovn-nbctl lsp-set-type public-lr0 router
+check ovn-nbctl lsp-set-addresses public-lr0 router
+check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+
+# localnet port
+check ovn-nbctl lsp-add public ln-public
+check ovn-nbctl lsp-set-type ln-public localnet
+check ovn-nbctl lsp-set-addresses ln-public unknown
+check ovn-nbctl lsp-set-options ln-public network_name=public
+
+# schedule the gw router port to a chassis. Change the name of the chassis
+check ovn-nbctl --wait=hv lrp-set-gateway-chassis lr0-public hv1 20
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+wait_row_count Service_Monitor 2
+
+AT_CAPTURE_FILE([sbflows])
+OVS_WAIT_FOR_OUTPUT(
+  [ovn-sbctl dump-flows > sbflows
+   ovn-sbctl dump-flows sw0 | grep ct_lb_mark | grep priority=120 | sed 's/table=..//'], 0,
+  [dnl
+  (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6.dst == 2001::a && tcp.dst == 80), action=(xxreg1 = 2001::a; reg2[[0..15]] = 80; ct_lb_mark;)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip6.dst == 2001::a && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=[[2001::3]]:80,[[2002::3]]:80; hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
+])
+
+AT_CAPTURE_FILE([sbflows2])
+OVS_WAIT_FOR_OUTPUT(
+  [ovn-sbctl dump-flows > sbflows2
+   ovn-sbctl dump-flows lr0 | grep ct_lb_mark | grep priority=120 | sed 's/table=..//'], 0,
+  [  (lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && xxreg0 == 2001::a && tcp && reg9[[16..31]] == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=[[2001::3]]:80,[[2002::3]]:80; hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
+])
+
+# get the svc monitor mac.
+svc_mon_src_mac=`ovn-nbctl get NB_Global . options:svc_monitor_mac | \
+sed s/":"//g | sed s/\"//g`
+
+OVS_WAIT_UNTIL(
+    [test 1 = `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | \
+grep "505400000003${svc_mon_src_mac}" | wc -l`]
+)
+
+OVS_WAIT_UNTIL(
+    [test 1 = `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/vif1-tx.pcap | \
+grep "405400000003${svc_mon_src_mac}" | wc -l`]
+)
+
+check ovn-nbctl set load_balancer_health_check [[2001::a]]:80 options:failure_count=1
+wait_row_count Service_Monitor 2 status=offline
+
+OVS_WAIT_UNTIL(
+    [test 2 = `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | \
+grep "505400000003${svc_mon_src_mac}" | wc -l`]
+)
+
+OVS_WAIT_UNTIL(
+    [test 2 = `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/vif1-tx.pcap | \
+grep "405400000003${svc_mon_src_mac}" | wc -l`]
+)
+
+AT_CAPTURE_FILE([sbflows3])
+ovn-sbctl dump-flows sw0 > sbflows3
+AT_CHECK(
+  [grep "ip6.dst == 2001::a && tcp.dst == 80" sbflows3 | grep priority=120 |\
+   sed 's/table=../table=??/'], [0], [dnl
+  table=??(ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6.dst == 2001::a && tcp.dst == 80), action=(xxreg1 = 2001::a; reg2[[0..15]] = 80; ct_lb_mark;)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip6.dst == 2001::a && tcp.dst == 80), action=(drop;)
+])
+
+AT_CAPTURE_FILE([sbflows4])
+ovn-sbctl dump-flows lr0 > sbflows4
+AT_CHECK([grep lr_in_dnat sbflows4 | grep priority=120 | sed 's/table=..//' | sort], [0], [dnl
+  (lr_in_dnat         ), priority=120  , match=(ct.est && !ct.rel && ip6 && xxreg0 == 2001::a && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1 && is_chassis_resident("cr-lr0-public")), action=(next;)
+  (lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && xxreg0 == 2001::a && tcp && reg9[[16..31]] == 80 && is_chassis_resident("cr-lr0-public")), action=(drop;)
 ])
 
 # Delete sw0-p1

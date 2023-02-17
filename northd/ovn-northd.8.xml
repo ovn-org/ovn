@@ -1469,6 +1469,23 @@ output;
           These flows are required if an ARP request is sent for the IP
           <var>SVC_MON_SRC_IP</var>.
         </p>
+
+        <p>
+          For IPv6 the similar flow is added with the following action
+        </p>
+
+        <pre>
+nd_na {
+    eth.dst = eth.src;
+    eth.src = <var>E</var>;
+    ip6.src = <var>A</var>;
+    nd.target = <var>A</var>;
+    nd.tll = <var>E</var>;
+    outport = inport;
+    flags.loopback = 1;
+    output;
+};
+        </pre>
       </li>
 
       <li>

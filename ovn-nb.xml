@@ -1847,9 +1847,8 @@
 
     <group title="Health Checks">
       <p>
-        OVN supports health checks for load balancer endpoints, for IPv4 load
-        balancers only.  When health checks are enabled, the load balancer uses
-        only healthy endpoints.
+        OVN supports health checks for load balancer endpoints. When health
+        checks are enabled, the load balancer uses only healthy endpoints.
       </p>
 
       <p>
@@ -1861,7 +1860,7 @@
         column="health_check"/> a reference to a <ref
         table="Load_Balancer_Health_Check"/> row whose <ref
         table="Load_Balancer_Health_Check" column="vip"/> is set to
-        <code>10.0.0.10</code>.
+        <code>10.0.0.10</code>. The same approach can be used for IPv6 as well.
       </p>
 
       <column name="health_check">
@@ -1872,8 +1871,10 @@
         <p>
           Maps from endpoint IP to a colon-separated pair of logical port name
           and source IP,
-          e.g. <code><var>port_name</var>:<var>sourc_ip</var></code>.  Health
-          checks are sent to this port with the specified source IP.
+          e.g. <code><var>port_name</var>:<var>sourc_ip</var></code> for IPv4.
+          Health checks are sent to this port with the specified source IP.
+          For IPv6 square brackets must be used around IP address, e.g:
+          <code><var>port_name</var>:<var>[sourc_ip]</var></code>
         </p>
 
         <p>
@@ -1881,6 +1882,11 @@
           defined as <code>10.0.0.4</code>=<code>sw0-p1:10.0.0.2</code> and
           <code>20.0.0.4</code>=<code>sw1-p1:20.0.0.2</code>, if the values
           given were suitable ports and IP addresses.
+        </p>
+
+        <p>
+          For IPv6 IP to port mappings might be defined as
+          <code>[2001::1]</code>=<code>sw0-p1:[2002::1]</code>.
         </p>
       </column>
     </group>
@@ -2055,8 +2061,7 @@ or
 
   <table name="Load_Balancer_Health_Check" title="load balancer">
     <p>
-      Each row represents one load balancer health check. Health checks
-      are supported for IPv4 load balancers only.
+      Each row represents one load balancer health check.
     </p>
 
     <column name="vip">
