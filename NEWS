@@ -1,5 +1,5 @@
-Post v22.12.0
--------------
+OVN v23.03.0 - xx xxx xxxx
+--------------------------
   - ovn-controller: Experimental support for co-hosting multiple controller
     instances on the same host.
   - Add ovn-ctl commands for (re)starting/stopping OVSDB relay for OVN SB DB.
