@@ -86,8 +86,8 @@ EXTRA_DIST = \
 	README.rst \
 	NOTICE \
 	.cirrus.yml \
+	.ci/ci.sh \
 	.ci/linux-build.sh \
-	.ci/linux-prepare.sh \
 	.ci/osx-build.sh \
 	.ci/osx-prepare.sh \
 	.ci/ovn-kubernetes/Dockerfile \
