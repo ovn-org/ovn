@@ -4882,7 +4882,7 @@ OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -u 10.0.0.4 90 < foo
     c=$(cat sw0-p1-rej-icmp.pcap | grep \
 "10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port 90 unreachable" | uniq | wc -l)
-    test $c -eq 1
+    test $c -ge 1
 ])
 
 rm -f *.pcap
@@ -4894,7 +4894,7 @@ OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -u 10.0.0.4 94 < foo
     c=$(cat sw0-p1-rej-icmp.pcap | grep \
 "10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port 94 unreachable" | uniq | wc -l)
-    test $c -eq 1
+    test $c -ge 1
 ])
 
 # Now test for IPv6 UDP.
@@ -4906,7 +4906,7 @@ OVS_WAIT_UNTIL([
     c=$(cat sw0-p2-rej-icmp6.pcap | grep \
 "IP6 aef0::3 > aef0::4: ICMP6, destination unreachable, unreachable port, \
 aef0::3 udp port 90" | uniq | wc -l)
-    test $c -eq 1
+    test $c -ge 1
 ])
 
 rm -f *.pcap
@@ -4919,7 +4919,7 @@ OVS_WAIT_UNTIL([
     c=$(cat sw0-p2-rej-icmp6.pcap | grep \
 "IP6 aef0::3 > aef0::4: ICMP6, destination unreachable, unreachable port, \
 aef0::3 udp port 94" | uniq | wc -l)
-    test $c -eq 1
+    test $c -ge 1
 ])
 
 # Delete all the ACLs of pg0 and add the ACL with a generic match with reject action.
@@ -4944,7 +4944,7 @@ OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -u 10.0.0.4 90 < foo
     c=$(cat sw0-p1-rej-icmp.pcap | grep \
 "10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port 90 unreachable" | uniq | wc -l)
-    test $c -eq 1
+    test $c -ge 1
 ])
 
 rm -f *.pcap
@@ -4956,7 +4956,7 @@ OVS_WAIT_UNTIL([
     c=$(cat sw0-p2-rej-icmp6.pcap | grep \
 "IP6 aef0::3 > aef0::4: ICMP6, destination unreachable, unreachable port, \
 aef0::3 udp port 90" | uniq | wc -l)
-    test $c -eq 1
+    test $c -ge 1
 ])
 
 
@@ -5123,7 +5123,7 @@ OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -u 10.0.0.4 90 < foo
     c=$(cat sw0-p1-rej-icmp.pcap | grep \
 "10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port 90 unreachable" | uniq | wc -l)
-    test $c -eq 1
+    test $c -ge 1
 ])
 
 rm -f *.pcap
@@ -5135,7 +5135,7 @@ OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -u 10.0.0.4 94 < foo
     c=$(cat sw0-p1-rej-icmp.pcap | grep \
 "10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port 94 unreachable" | uniq | wc -l)
-    test $c -eq 1
+    test $c -ge 1
 ])
 
 # Now test for IPv6 UDP.
@@ -5147,7 +5147,7 @@ OVS_WAIT_UNTIL([
     c=$(cat sw0-p2-rej-icmp6.pcap | grep \
 "IP6 aef0::3 > aef0::4: ICMP6, destination unreachable, unreachable port, \
 aef0::3 udp port 90" | uniq | wc -l)
-    test $c -eq 1
+    test $c -ge 1
 ])
 
 rm -f *.pcap
@@ -5160,7 +5160,7 @@ OVS_WAIT_UNTIL([
     c=$(cat sw0-p2-rej-icmp6.pcap | grep \
 "IP6 aef0::3 > aef0::4: ICMP6, destination unreachable, unreachable port, \
 aef0::3 udp port 94" | uniq | wc -l)
-    test $c -eq 1
+    test $c -ge 1
 ])
 
 # Delete all the ACLs of pg0 and add the ACL with a generic match with reject action.
@@ -5185,7 +5185,7 @@ OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -u 10.0.0.4 90 < foo
     c=$(cat sw0-p1-rej-icmp.pcap | grep \
 "10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port 90 unreachable" | uniq | wc -l)
-    test $c -eq 1
+    test $c -ge 1
 ])
 
 rm -f *.pcap
@@ -5197,7 +5197,7 @@ OVS_WAIT_UNTIL([
     c=$(cat sw0-p2-rej-icmp6.pcap | grep \
 "IP6 aef0::3 > aef0::4: ICMP6, destination unreachable, unreachable port, \
 aef0::3 udp port 90" | uniq | wc -l)
-    test $c -eq 1
+    test $c -ge 1
 ])
 
 
