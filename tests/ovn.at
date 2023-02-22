@@ -20926,8 +20926,8 @@ check ovn-nbctl lsp-set-addresses sw1-lr0 00:00:00:00:ff:02
 check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
 
 # Add an ACL that matches on sw0-vir/sw0-vir6 being bound locally.
-check ovn-nbctl acl-add sw0 to-lport 1000 'is_chassis_resident("sw0-vir") && ip' allow
-check ovn-nbctl acl-add sw0 to-lport 1000 'is_chassis_resident("sw0-vir6") && ip' allow
+check ovn-nbctl acl-add sw0 to-lport 1000 'is_chassis_resident("sw0-vir") && ip4' allow
+check ovn-nbctl acl-add sw0 to-lport 1000 'is_chassis_resident("sw0-vir6") && ip6' allow
 
 check ovn-nbctl ls-add public
 check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24 2001:db8::1/64
@@ -21012,9 +21012,8 @@ check_virtual_offlows_present() {
     lr0_dp_key=$(printf "%x" $(fetch_column Datapath_Binding tunnel_key external_ids:name=lr0))
     lr0_public_dp_key=$(printf "%x" $(fetch_column Port_Binding tunnel_key logical_port=lr0-public))
 
-    AT_CHECK_UNQUOTED([as $hv ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | grep "priority=2000"], [0], [dnl
+    AT_CHECK_UNQUOTED([as $hv ovs-ofctl dump-flows br-int table=44,ip | ofctl_strip_all | grep "priority=2000"], [0], [dnl
  table=44, priority=2000,ip,metadata=0x$sw0_dp_key actions=resubmit(,45)
- table=44, priority=2000,ipv6,metadata=0x$sw0_dp_key actions=resubmit(,45)
 ])
 
     AT_CHECK_UNQUOTED([as $hv ovs-ofctl dump-flows br-int table=11 | ofctl_strip_all | \
@@ -21025,7 +21024,7 @@ check_virtual_offlows_present() {
 
 check_virtual_offlows_not_present() {
     hv=$1
-    AT_CHECK([as $hv ovs-ofctl dump-flows br-int table=45 | ofctl_strip_all | grep "priority=2000"], [1], [dnl
+    AT_CHECK([as $hv ovs-ofctl dump-flows br-int table=44,ip | ofctl_strip_all | grep "priority=2000"], [1], [dnl
 ])
 
     AT_CHECK([as $hv ovs-ofctl dump-flows br-int table=11 | ofctl_strip_all | \
