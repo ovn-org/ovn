@@ -109,6 +109,15 @@ static void server_loop(const struct ovn_dbctl_options *dbctl_options,
                         struct ovsdb_idl *idl, int argc, char *argv[]);
 static void ovn_dbctl_exit(int status);
 
+static void
+destroy_argv(int argc, char **argv)
+{
+    for (int i = 0; i < argc; i++) {
+        free(argv[i]);
+    }
+    free(argv);
+}
+
 int
 ovn_dbctl_main(int argc, char *argv[],
                const struct ovn_dbctl_options *dbctl_options)
@@ -151,6 +160,7 @@ ovn_dbctl_main(int argc, char *argv[],
     char *error_s = ovs_cmdl_parse_all(argc, argv_, get_all_options(),
                                        &parsed_options, &n_parsed_options);
     if (error_s) {
+        destroy_argv(argc, argv_);
         ctl_fatal("%s", error_s);
     }
 
@@ -179,6 +189,7 @@ ovn_dbctl_main(int argc, char *argv[],
     bool daemon_mode = false;
     if (get_detach()) {
         if (argc != optind) {
+            destroy_argv(argc, argv_);
             ctl_fatal("non-option arguments not supported with --detach "
                       "(use --help for help)");
         }
@@ -206,11 +217,8 @@ ovn_dbctl_main(int argc, char *argv[],
         if (error) {
             ovsdb_idl_destroy(idl);
             idl = the_idl = NULL;
+            destroy_argv(argc, argv_);
 
-            for (int i = 0; i < argc; i++) {
-                free(argv_[i]);
-            }
-            free(argv_);
             ctl_fatal("%s", error);
         }
 
@@ -239,21 +247,15 @@ cleanup:
         }
         free(commands);
         if (error) {
-            for (int i = 0; i < argc; i++) {
-                free(argv_[i]);
-            }
-            free(argv_);
+            destroy_argv(argc, argv_);
             ctl_fatal("%s", error);
         }
     }
 
     ovsdb_idl_destroy(idl);
     idl = the_idl = NULL;
+    destroy_argv(argc, argv_);
 
-    for (int i = 0; i < argc; i++) {
-        free(argv_[i]);
-    }
-    free(argv_);
     exit(EXIT_SUCCESS);
 }
 
@@ -1240,40 +1242,53 @@ dbctl_client(const struct ovn_dbctl_options *dbctl_options,
 
     ctl_timeout_setup(timeout);
 
+    char *cmd_result = NULL;
+    char *cmd_error = NULL;
     struct jsonrpc *client;
+    int exit_status;
+    char *error_str;
+
     int error = unixctl_client_create(socket_name, &client);
     if (error) {
-        ctl_fatal("%s: could not connect to %s daemon (%s); "
-                  "unset %s to avoid using daemon",
-                  socket_name, program_name, ovs_strerror(error),
-                  dbctl_options->daemon_env_var_name);
+        error_str = xasprintf("%s: could not connect to %s daemon (%s); "
+                              "unset %s to avoid using daemon",
+                              socket_name, program_name, ovs_strerror(error),
+                              dbctl_options->daemon_env_var_name);
+        goto log_error;
     }
 
-    char *cmd_result;
-    char *cmd_error;
     error = unixctl_client_transact(client, "run",
                                     args.n, args.names,
                                     &cmd_result, &cmd_error);
     if (error) {
-        ctl_fatal("%s: transaction error (%s)",
-                  socket_name, ovs_strerror(error));
+        error_str = xasprintf("%s: transaction error (%s)",
+                              socket_name, ovs_strerror(error));
+        goto log_error;
     }
-    svec_destroy(&args);
 
-    int exit_status;
     if (cmd_error) {
-        exit_status = EXIT_FAILURE;
         fprintf(stderr, "%s: %s", program_name, cmd_error);
-    } else {
-        exit_status = EXIT_SUCCESS;
-        fputs(cmd_result, stdout);
+        goto error;
     }
+
+    exit_status = EXIT_SUCCESS;
+    fputs(cmd_result, stdout);
+    goto cleanup;
+
+log_error:
+    VLOG_ERR("%s", error_str);
+    ovs_error(0, "%s", error_str);
+    free(error_str);
+
+error:
+    exit_status = EXIT_FAILURE;
+
+cleanup:
     free(cmd_result);
     free(cmd_error);
     jsonrpc_close(client);
-    for (int i = 0; i < argc; i++) {
-        free(argv[i]);
-    }
-    free(argv);
+    svec_destroy(&args);
+    destroy_argv(argc, argv);
+
     exit(exit_status);
 }
