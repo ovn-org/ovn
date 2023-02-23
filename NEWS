@@ -2,6 +2,11 @@ Post v23.03.0
 -------------
   - Enhance LSP.options:arp_proxy to support IPv6, configurable MAC
     addresses and CIDRs.
+  - Add LS.other_config:broadcast-arps-to-all-routers. If false then arp
+    requests are only send to Logical Routers on that Logical Switch if the
+    target mac address matches. Arp requests matching no Logical Router will
+    only be forwarded to non-router ports. Default is true which keeps the
+    existing behaviour of flooding these arp requests to all attached Ports.
 
 OVN v23.03.0 - 03 Mar 2023
 --------------------------

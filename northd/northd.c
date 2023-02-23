@@ -9030,6 +9030,14 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
             }
         }
 
+
+        if (!smap_get_bool(&od->nbs->other_config,
+                           "broadcast-arps-to-all-routers", true)) {
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 72,
+                        "eth.mcast && (arp.op == 1 || nd_ns)",
+                        "outport = \""MC_FLOOD_L2"\"; output;");
+        }
+
         ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 70, "eth.mcast",
                       "outport = \""MC_FLOOD"\"; output;");
     }

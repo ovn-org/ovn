@@ -6422,6 +6422,37 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([check broadcast-arps-to-all-routers option])
+ovn_start
+
+ovn-nbctl lr-add R1
+ovn-nbctl set logical_router R1 options:chassis=hv1
+ovn-nbctl lrp-add R1 R1-S1 02:ac:10:01:00:01 172.16.1.1/24
+
+ovn-nbctl ls-add S1
+ovn-nbctl lsp-add S1 S1-R1
+ovn-nbctl lsp-set-type S1-R1 router
+ovn-nbctl lsp-set-addresses S1-R1 "02:ac:10:01:00:01 172.16.1.1"
+ovn-nbctl --wait=sb lsp-set-options S1-R1 router-port=R1-S1 nat-addresses="router"
+ovn-nbctl lsp-add S1 S1-VIF
+ovn-nbctl lsp-set-addresses S1-VIF "02:ac:10:01:00:02 unkown"
+
+AT_CHECK([ovn-sbctl lflow-list S1 | grep ls_in_l2_lkup | grep -q 'match=(eth.mcast && (arp.op == 1 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)'], [1])
+
+ovn-nbctl --wait=sb set Logical_Switch S1 \
+                    other_config:broadcast-arps-to-all-routers=false
+
+AT_CHECK([ovn-sbctl lflow-list S1 | grep ls_in_l2_lkup | grep -q 'match=(eth.mcast && (arp.op == 1 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)'], [0])
+
+ovn-nbctl --wait=sb set Logical_Switch S1 \
+                    other_config:broadcast-arps-to-all-routers=true
+
+AT_CHECK([ovn-sbctl lflow-list S1 | grep ls_in_l2_lkup | grep -q 'match=(eth.mcast && (arp.op == 1 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)'], [1])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ACL log replies -- flows])
 
 set_acl_options() {

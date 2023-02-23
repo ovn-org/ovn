@@ -729,6 +729,18 @@
         localnet ports, fabric traffic that belongs to other tagged networks may
         be passed through such a port.
       </column>
+
+      <column name="other_config" key="broadcast-arps-to-all-routers"
+          type='{"type": "boolean"}'>
+        Determines whether arp requests and ipv6 neighbor solicitations should
+        be send to all routers and other switchports (default) or if it should
+        only be send to switchports where the ip/mac address is unknown.
+        Setting this to false can significantly reduce the load if the logical
+        switch can receive arp requests for ips it does not know about.
+        However setting this to false also means that garps are no longer
+        forwarded to all routers and therefor the mac bindings of the routers
+        are no longer updated.
+      </column>
     </group>
 
     <group title="Common Columns">
