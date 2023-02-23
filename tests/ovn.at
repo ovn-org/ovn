@@ -20971,16 +20971,6 @@ AT_CHECK([grep ls_in_arp_rsp sw0-flows | grep bind_vport | sed 's/table=../table
 ovn-sbctl dump-flows lr0 > lr0-flows
 AT_CAPTURE_FILE([lr0-flows])
 
-# Since the sw0-vir is not claimed by any chassis, eth.dst should be set to
-# zero if the ip4.dst is the virtual ip in the router pipeline.
-AT_CHECK([grep lr_in_arp_resolve lr0-flows | grep "reg0 == 10.0.0.10" | sed 's/table=../table=??/'], [0], [dnl
-  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 00:00:00:00:00:00; next;)
-])
-
-AT_CHECK([grep lr_in_arp_resolve lr0-flows | grep "xxreg0 == 1000::61d1" | sed 's/table=../table=??/'], [0], [dnl
-  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && xxreg0 == 1000::61d1), action=(eth.dst = 00:00:00:00:00:00; next;)
-])
-
 hv1_ch_uuid=`ovn-sbctl --bare --columns _uuid find chassis name="hv1"`
 hv2_ch_uuid=`ovn-sbctl --bare --columns _uuid find chassis name="hv2"`
 
@@ -21058,17 +21048,8 @@ check_row_count Port_Binding 1 logical_port=sw0-vir6 virtual_parent=sw0-p1
 wait_for_ports_up sw0-vir6
 check ovn-nbctl --wait=hv sync
 
-# There should be an arp resolve flow to resolve the virtual_ip with the
-# sw0-p1's MAC.
 ovn-sbctl dump-flows lr0 > lr0-flows2
 AT_CAPTURE_FILE([lr0-flows2])
-AT_CHECK([grep lr_in_arp_resolve lr0-flows2 | grep "reg0 == 10.0.0.10" | sed 's/table=../table=??/'], [0], [dnl
-  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:03; next;)
-])
-
-AT_CHECK([grep lr_in_arp_resolve lr0-flows2 | grep "xxreg0 == 1000::61d1" | sed 's/table=../table=??/'], [0], [dnl
-  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && xxreg0 == 1000::61d1), action=(eth.dst = 50:54:00:00:00:03; next;)
-])
 
 # hv1 should add the flow for the ACL with is_chassis_redirect check for sw0-vir and
 # arp responder flow in lr0 pipeline.
@@ -21190,15 +21171,10 @@ logical_port=sw0-vir) = xsw0-p3])
 
 wait_for_ports_up sw0-vir
 
-# There should be an arp resolve flow to resolve the virtual_ip with the
-# sw0-p3's MAC.
 check ovn-nbctl --wait=hv sync
 ovn-sbctl dump-flows lr0 > lr0-flows3
 AT_CAPTURE_FILE([lr0-flows3])
 cp ovn-sb/ovn-sb.db lr0-flows3.db
-AT_CHECK([grep lr_in_arp_resolve lr0-flows3 | grep "reg0 == 10.0.0.10"  | sed 's/table=../table=??/'], [0], [dnl
-  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:05; next;)
-])
 
 # hv1 should add the flow for the ACL with is_chassis_redirect check for sw0-vir and
 # arp responder flow in lr0 pipeline.
@@ -21223,14 +21199,9 @@ logical_port=sw0-vir) = xsw0-p2])
 
 wait_for_ports_up sw0-vir
 
-# There should be an arp resolve flow to resolve the virtual_ip with the
-# sw0-p2's MAC.
 check ovn-nbctl --wait=hv sync
 ovn-sbctl dump-flows lr0 > lr0-flows4
 AT_CAPTURE_FILE([lr0-flows4])
-AT_CHECK([grep lr_in_arp_resolve lr0-flows4 | grep "reg0 == 10.0.0.10" | sed 's/table=../table=??/'], [0], [dnl
-  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:04; next;)
-])
 
 # hv2 should add the flow for the ACL with is_chassis_redirect check for sw0-vir and
 # arp responder flow in lr0 pipeline.
@@ -21256,13 +21227,10 @@ logical_port=sw0-vir) = xsw0-p1])
 
 wait_for_ports_up sw0-vir
 
+check ovn-nbctl --wait=hv sync
 ovn-sbctl dump-flows lr0 > lr0-flows5
 AT_CAPTURE_FILE([lr0-flows5])
-AT_CHECK([grep lr_in_arp_resolve lr0-flows5 | grep "reg0 == 10.0.0.10" | sed 's/table=../table=??/'], [0], [dnl
-  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:03; next;)
-])
 
-check ovn-nbctl --wait=hv sync
 # hv1 should add the flow for the ACL with is_chassis_redirect check for sw0-vir and
 # arp responder flow in lr0 pipeline.
 check_virtual_offlows_present hv1
@@ -21282,15 +21250,10 @@ logical_port=sw0-vir) = x])
 
 wait_row_count nb:Logical_Switch_Port 1 up=false name=sw0-vir
 
-# Since the sw0-vir is not claimed by any chassis, eth.dst should be set to
-# zero if the ip4.dst is the virtual ip.
+check ovn-nbctl --wait=hv sync
 ovn-sbctl dump-flows lr0 > lr0-flows6
 AT_CAPTURE_FILE([lr0-flows6])
-AT_CHECK([grep lr_in_arp_resolve lr0-flows6 | grep "reg0 == 10.0.0.10" | sed 's/table=../table=??/'], [0], [dnl
-  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 00:00:00:00:00:00; next;)
-])
 
-check ovn-nbctl --wait=hv sync
 # hv1 should remove the flow for the ACL with is_chassis_redirect check for sw0-vir and
 # arp responder flow in lr0 pipeline.
 check_virtual_offlows_not_present hv1
@@ -21316,13 +21279,10 @@ logical_port=sw0-vir) = xsw0-p2])
 
 wait_for_ports_up sw0-vir
 
+check ovn-nbctl --wait=hv sync
 ovn-sbctl dump-flows lr0 > lr0-flows7
 AT_CAPTURE_FILE([lr0-flows7])
-AT_CHECK([grep lr_in_arp_resolve lr0-flows7 | grep "reg0 == 10.0.0.10" | sed 's/table=../table=??/'], [0], [dnl
-  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 50:54:00:00:00:04; next;)
-])
 
-check ovn-nbctl --wait=hv sync
 # hv2 should add the flow for the ACL with is_chassis_redirect check for sw0-vir and
 # arp responder flow in lr0 pipeline.
 check_virtual_offlows_present hv2
@@ -21351,6 +21311,7 @@ AT_CHECK([grep ls_in_arp_rsp sw0-flows2 | grep bind_vport], [1])
 # Add back virtual_ip and clear virtual_parents.
 ovn-nbctl --wait=hv set logical_switch_port sw0-vir options:virtual-ip=10.0.0.10
 
+check ovn-nbctl --wait=hv sync
 ovn-sbctl dump-flows sw0 > sw0-flows3
 AT_CAPTURE_FILE([sw0-flows3])
 AT_CHECK([grep ls_in_arp_rsp sw0-flows3 | grep bind_vport | sed 's/table=../table=??/'], [0], [dnl
@@ -21358,7 +21319,6 @@ AT_CHECK([grep ls_in_arp_rsp sw0-flows3 | grep bind_vport | sed 's/table=../tabl
   table=??(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p3" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
 ])
 
-check ovn-nbctl --wait=hv sync
 # hv2 should remove the flow for the ACL with is_chassis_redirect check for sw0-vir and
 # arp responder flow in lr0 pipeline.
 check_virtual_offlows_not_present hv2
@@ -21373,7 +21333,6 @@ AT_CHECK([grep ls_in_arp_rsp sw0-flows4 | grep bind_vport], [1])
 
 ovn-sbctl dump-flows lr0 > lr0-flows8
 AT_CAPTURE_FILE([lr0-flows8])
-AT_CHECK([grep lr_in_arp_resolve lr0-flows8 | grep "reg0 == 10.0.0.10"], [1])
 
 # Delete sw0-vir and add again.
 ovn-nbctl lsp-del sw0-vir
@@ -21400,12 +21359,6 @@ AT_CHECK([grep ls_in_arp_rsp sw0-flows | grep bind_vport | sed 's/table=../table
 
 ovn-sbctl dump-flows lr0 > lr0-flows
 AT_CAPTURE_FILE([lr0-flows])
-
-# Since the sw0-vir is not claimed by any chassis, eth.dst should be set to
-# zero if the ip4.dst is the virtual ip in the router pipeline.
-AT_CHECK([grep lr_in_arp_resolve lr0-flows | grep "reg0 == 10.0.0.10" | sed 's/table=../table=??/'], [0], [dnl
-  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-sw0" && reg0 == 10.0.0.10), action=(eth.dst = 00:00:00:00:00:00; next;)
-])
 
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP

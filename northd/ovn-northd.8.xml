@@ -4206,9 +4206,13 @@ outport = <var>P</var>
           data in the <code>OVN_Northbound</code> database.  For router ports
           connected to logical switches, MAC bindings can be known statically
           from the <code>addresses</code> column in the
-          <code>Logical_Switch_Port</code> table.  For router ports
-          connected to other logical routers, MAC bindings can be known
-          statically from the <code>mac</code> and <code>networks</code>
+          <code>Logical_Switch_Port</code> table. (Note: the flow is not
+          installed for IPs of logical switch ports of type
+          <code>virtual</code>, and dynamic MAC binding is used for those IPs
+          instead, so that virtual parent failover does not depend on <code>
+          ovn-northd</code>, to achieve better failover performance.) For
+          router ports connected to other logical routers, MAC bindings can be
+          known statically from the <code>mac</code> and <code>networks</code>
           column in the <code>Logical_Router_Port</code> table.  (Note: the
           flow is NOT installed for the IP addresses that belong to a neighbor
           logical router port if the current router has the
@@ -4221,33 +4225,6 @@ outport = <var>P</var>
           priority-100 flow with match <code>outport === <var>P</var>
           &amp;&amp; reg0 == <var>A</var></code> has actions
           <code>eth.dst = <var>E</var>; next;</code>.
-        </p>
-
-        <p>
-          For each virtual ip <var>A</var> configured on a logical port
-          of type <code>virtual</code> and its virtual parent set in
-          its corresponding <ref db="OVN_Southbound" table="Port_Binding"/>
-          record and the virtual parent with the Ethernet address <var>E</var>
-          and the virtual ip is reachable via the router port <var>P</var>, a
-          priority-100 flow with match <code>outport === <var>P</var>
-          &amp;&amp; xxreg0/reg0 == <var>A</var></code> has actions
-          <code>eth.dst = <var>E</var>; next;</code>.
-        </p>
-
-        <p>
-          For each virtual ip <var>A</var> configured on a logical port
-          of type <code>virtual</code> and its virtual parent <code>not</code>
-          set in its corresponding
-          <ref db="OVN_Southbound" table="Port_Binding"/>
-          record and the virtual ip <var>A</var> is reachable via the
-          router port <var>P</var>, a
-          priority-100 flow with match <code>outport === <var>P</var>
-          &amp;&amp; xxreg0/reg0 == <var>A</var></code> has actions
-          <code>eth.dst = <var>00:00:00:00:00:00</var>; next;</code>.
-          This flow is added so that the ARP is always resolved for the
-          virtual ip <var>A</var> by generating ARP request and
-          <code>not</code> consulting the MAC_Binding table as it can have
-          incorrect value for the virtual ip <var>A</var>.
         </p>
 
         <p>
