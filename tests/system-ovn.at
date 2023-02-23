@@ -10706,3 +10706,148 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+####################################################################
+#  ls1p1 (virtual parent of VIP)
+#           \
+#           ls1 -- lr1 (floating-ip) -- public1 (localnet) -- ext1
+#           /
+#  ls1p2 (virtual parent of VIP)
+####################################################################
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([virtual port with floating IP])
+AT_SKIP_IF([test "$HAVE_ARPING" = no])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-ex], [set Bridge br-ex fail-mode=standalone])
+
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=provider:br-ex
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+# Add routers
+check ovn-nbctl lr-add lr1
+
+# Add switches
+check ovn-nbctl ls-add public1
+check ovn-nbctl ls-add ls1
+
+# Add ls1 ports
+check ovn-nbctl lsp-add ls1 ls1p1 \
+    -- lsp-set-addresses ls1p1 "00:00:00:00:01:11 10.0.0.11"
+
+check ovn-nbctl lsp-add ls1 ls1p2 \
+    -- lsp-set-addresses ls1p2 "00:00:00:00:01:12 10.0.0.12"
+
+check ovn-nbctl lsp-add ls1 ls1-to-lr1 \
+    -- lsp-set-type ls1-to-lr1 router \
+    -- lsp-set-options ls1-to-lr1 router-port=lr1-to-ls1 \
+    -- lsp-set-addresses ls1-to-lr1 router
+
+# Add ls1 virtual port
+check ovn-nbctl lsp-add ls1 vip \
+    -- lsp-set-addresses vip "00:00:00:00:01:88 10.0.0.88" \
+    -- lsp-set-type vip virtual \
+    -- set logical_switch_port vip options:virtual-ip=10.0.0.88 \
+    -- set logical_switch_port vip options:virtual-parents=ls1p1,ls1p2
+
+# Add lr1 ports
+check ovn-nbctl lrp-add lr1 lr1-to-ls1 "00:00:00:0f:01:01" 10.0.0.1/24 \
+    -- lrp-add lr1 lr1-to-public1 "00:00:00:0f:02:01" 172.0.0.1/24 \
+    -- lrp-set-gateway-chassis lr1-to-public1 hv1 10
+
+# Add floating-ip
+check ovn-nbctl lr-nat-add lr1 dnat_and_snat 172.0.0.88 10.0.0.88 vip 10:54:00:00:00:88
+
+# Add public1 ports
+check ovn-nbctl lsp-add public1 public1-to-lr1 \
+    -- lsp-set-type public1-to-lr1 router \
+    -- lsp-set-options public1-to-lr1 router-port=lr1-to-public1 \
+    -- lsp-set-addresses public1-to-lr1 router \
+    -- lsp-add public1 ln1 \
+    -- lsp-set-type ln1 localnet \
+    -- lsp-set-options ln1 network_name=provider \
+    -- lsp-set-addresses ln1 unknown
+
+check ovn-nbctl --wait=hv sync
+
+ADD_NAMESPACES(ns_ls1p1)
+ADD_VETH(ls1p1, ns_ls1p1, br-int, "10.0.0.11/24", "00:00:00:00:01:11", "10.0.0.1")
+
+ADD_NAMESPACES(ns_ls1p2)
+ADD_VETH(ls1p2, ns_ls1p2, br-int, "10.0.0.12/24", "00:00:00:00:01:12", "10.0.0.1")
+
+ADD_NAMESPACES(ns_ext1)
+ADD_VETH(ln1, ns_ext1, br-ex, "172.0.0.99/24", "0a:0a:b6:fc:03:01", "172.0.0.1")
+
+# Claim vip at ls1p1: configure the virtual IP and send GARP.
+NS_CHECK_EXEC([ns_ls1p1], [ip addr del 10.0.0.11/24 dev ls1p1;
+                           ip addr add 10.0.0.88/24 dev ls1p1;
+                           ip route add default via 10.0.0.1])
+NS_EXEC([ns_ls1p1], [arping -U -c 1 -w 2 -I ls1p1 10.0.0.88])
+wait_for_ports_up vip
+check ovn-nbctl --wait=hv sync
+
+# ping virtual IP from ext1
+NS_CHECK_EXEC([ns_ext1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.88 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# ping floating virtual IP from ext1
+NS_CHECK_EXEC([ns_ext1], [ping -q -c 3 -i 0.3 -w 2 172.0.0.88 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Move virtual IP to ls1p2
+NS_CHECK_EXEC([ns_ls1p1], [ip addr del 10.0.0.88/24 dev ls1p1])
+NS_CHECK_EXEC([ns_ls1p2], [ip addr del 10.0.0.12/24 dev ls1p2;
+                           ip addr add 10.0.0.88/24 dev ls1p2;
+                           ip route add default via 10.0.0.1])
+NS_EXEC([ns_ls1p2], [arping -U -c 1 -w 2 -I ls1p2 10.0.0.88])
+
+wait_column "ls1p2" Port_Binding virtual_parent logical_port=vip
+check ovn-nbctl --wait=hv sync
+
+# ping virtual IP from ext1
+NS_CHECK_EXEC([ns_ext1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.88 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# ping floating virtual IP from ext1
+NS_CHECK_EXEC([ns_ext1], [ping -q -c 3 -i 0.3 -w 2 172.0.0.88 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])

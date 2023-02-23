@@ -190,6 +190,9 @@ find_command dhcpd
 # Set HAVE_BFDD_BEACON
 find_command bfdd-beacon
 
+# Set HAVE_ARPING
+find_command arping
+
 # Turn off proxies.
 unset http_proxy
 unset https_proxy
