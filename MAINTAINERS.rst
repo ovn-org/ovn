@@ -55,8 +55,6 @@ This is the current list of active OVN committers:
      - mmichels@redhat.com
    * - Numan Siddique
      - nusddiq@redhat.com
-   * - Russell Bryant
-     - russell@ovn.org
 
 The project also maintains a list of Emeritus Committers (or Maintainers).
 More information about Emeritus Committers can be found here:
@@ -69,6 +67,8 @@ More information about Emeritus Committers can be found here:
      - Email
    * - Ben Pfaff
      - blp@ovn.org
+   * - Russell Bryant
+     - russell@ovn.org
 
 .. Cut here for the Documentation/internals/maintainers.rst
 
