@@ -7856,7 +7856,7 @@ build_lrouter_groups(struct hmap *ports, struct ovs_list *lr_list)
 }
 
 /*
- * Ingress table 24: Flows that flood self originated ARP/RARP/ND packets in
+ * Ingress table 25: Flows that flood self originated ARP/RARP/ND packets in
  * the switching domain.
  */
 static void
@@ -7970,7 +7970,7 @@ lrouter_port_ipv6_reachable(const struct ovn_port *op,
 }
 
 /*
- * Ingress table 24: Flows that forward ARP/ND requests only to the routers
+ * Ingress table 25: Flows that forward ARP/ND requests only to the routers
  * that own the addresses. Other ARP/ND packets are still flooded in the
  * switching domain as regular broadcast.
  */
@@ -8007,7 +8007,7 @@ build_lswitch_rport_arp_req_flow(const char *ips,
 }
 
 /*
- * Ingress table 24: Flows that forward ARP/ND requests only to the routers
+ * Ingress table 25: Flows that forward ARP/ND requests only to the routers
  * that own the addresses.
  * Priorities:
  * - 80: self originated GARPs that need to follow regular processing.
@@ -8336,7 +8336,8 @@ build_lswitch_flows(const struct hmap *datapaths,
 
     struct ovn_datapath *od;
 
-    /* Ingress table 25: Destination lookup for unknown MACs (priority 0). */
+    /* Ingress table 25/26: Destination lookup for unknown MACs
+     * (priority 0). */
     HMAP_FOR_EACH (od, key_node, datapaths) {
         if (!od->nbs) {
             continue;
@@ -8411,7 +8412,7 @@ build_lswitch_lflows_admission_control(struct ovn_datapath *od,
     }
 }
 
-/* Ingress table 18: ARP/ND responder, skip requests coming from localnet
+/* Ingress table 19: ARP/ND responder, skip requests coming from localnet
  * ports. (priority 100); see ovn-northd.8.xml for the rationale. */
 
 static void
@@ -8429,7 +8430,7 @@ build_lswitch_arp_nd_responder_skip_local(struct ovn_port *op,
     }
 }
 
-/* Ingress table 18: ARP/ND responder, reply for known IPs.
+/* Ingress table 19: ARP/ND responder, reply for known IPs.
  * (priority 50). */
 static void
 build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
@@ -8689,7 +8690,7 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
     }
 }
 
-/* Ingress table 18: ARP/ND responder, by default goto next.
+/* Ingress table 19: ARP/ND responder, by default goto next.
  * (priority 0)*/
 static void
 build_lswitch_arp_nd_responder_default(struct ovn_datapath *od,
@@ -8700,7 +8701,7 @@ build_lswitch_arp_nd_responder_default(struct ovn_datapath *od,
     }
 }
 
-/* Ingress table 18: ARP/ND responder for service monitor source ip.
+/* Ingress table 19: ARP/ND responder for service monitor source ip.
  * (priority 110)*/
 static void
 build_lswitch_arp_nd_service_monitor(struct ovn_northd_lb *lb,
@@ -8769,7 +8770,7 @@ build_lswitch_arp_nd_service_monitor(struct ovn_northd_lb *lb,
 }
 
 
-/* Logical switch ingress table 19 and 20: DHCP options and response
+/* Logical switch ingress table 20 and 21: DHCP options and response
  * priority 100 flows. */
 static void
 build_lswitch_dhcp_options_and_response(struct ovn_port *op,
@@ -8821,11 +8822,11 @@ build_lswitch_dhcp_options_and_response(struct ovn_port *op,
     }
 }
 
-/* Ingress table 19 and 20: DHCP options and response, by default goto
+/* Ingress table 20 and 21: DHCP options and response, by default goto
  * next. (priority 0).
- * Ingress table 21 and 22: DNS lookup and response, by default goto next.
+ * Ingress table 22 and 23: DNS lookup and response, by default goto next.
  * (priority 0).
- * Ingress table 23 - External port handling, by default goto next.
+ * Ingress table 24 - External port handling, by default goto next.
  * (priority 0). */
 static void
 build_lswitch_dhcp_and_dns_defaults(struct ovn_datapath *od,
@@ -8840,7 +8841,7 @@ build_lswitch_dhcp_and_dns_defaults(struct ovn_datapath *od,
     }
 }
 
-/* Logical switch ingress table 21 and 22: DNS lookup and response
+/* Logical switch ingress table 22 and 23: DNS lookup and response
 * priority 100 flows.
 */
 static void
@@ -8868,7 +8869,7 @@ build_lswitch_dns_lookup_and_response(struct ovn_datapath *od,
     }
 }
 
-/* Table 23: External port. Drop ARP request for router ips from
+/* Table 24: External port. Drop ARP request for router ips from
  * external ports  on chassis not binding those ports.
  * This makes the router pipeline to be run only on the chassis
  * binding the external ports. */
@@ -8885,7 +8886,7 @@ build_lswitch_external_port(struct ovn_port *op,
     }
 }
 
-/* Ingress table 24: Destination lookup, broadcast and multicast handling
+/* Ingress table 25: Destination lookup, broadcast and multicast handling
  * (priority 70 - 100). */
 static void
 build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
@@ -8970,7 +8971,7 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
 }
 
 
-/* Ingress table 24: Add IP multicast flows learnt from IGMP/MLD
+/* Ingress table 25: Add IP multicast flows learnt from IGMP/MLD
  * (priority 90). */
 static void
 build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
@@ -9054,7 +9055,7 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
 
 static struct ovs_mutex mcgroup_mutex = OVS_MUTEX_INITIALIZER;
 
-/* Ingress table 24: Destination lookup, unicast handling (priority 50), */
+/* Ingress table 25: Destination lookup, unicast handling (priority 50), */
 static void
 build_lswitch_ip_unicast_lookup(struct ovn_port *op,
                                 struct hmap *lflows,
