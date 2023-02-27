@@ -33,7 +33,7 @@ EnvironmentFile=-/etc/sysconfig/ovn-%i
 ExecStartPre=-/usr/bin/chown -R ${OVN_USER_ID} ${OVN_DBDIR}
 ExecStart=/usr/share/ovn/scripts/ovn-ctl \
           --ovn-user=${OVN_USER_ID} start_%i_ovsdb $OPTIONS $ovn_%i_opts
-ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_%i_ovsdb
+ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_%i_ovsdb $OPTIONS $ovn_%i_opts
 
 [Install]
 WantedBy=multi-user.target
