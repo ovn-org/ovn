@@ -26,7 +26,7 @@ EnvironmentFile=-/etc/sysconfig/ovn-northd
 ExecStartPre=-/usr/bin/chown -R ${OVN_USER_ID} ${OVN_DBDIR}
 ExecStart=/usr/share/ovn/scripts/ovn-ctl \
           --ovn-user=${OVN_USER_ID} start_northd $OVN_NORTHD_OPTS
-ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_northd
+ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_northd $OVN_NORTHD_OPTS
 
 [Install]
 WantedBy=multi-user.target
