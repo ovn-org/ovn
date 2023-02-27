@@ -266,11 +266,6 @@ bool ip_address_and_port_from_lb_key(const char *key, char **ip_address,
  * value. */
 char *ovn_get_internal_version(void);
 
-/* Parse the provided internal version string and return the "minor" part which
- * is expected to be an unsigned integer followed by the last "." in the
- * string. Returns 0 if the string can't be parsed. */
-unsigned int ovn_parse_internal_version_minor(const char *ver);
-
 /* OVN Packet definitions. These may eventually find a home in OVS's
  * packets.h file. For the time being, they live here because OVN uses them
  * and OVS does not.
