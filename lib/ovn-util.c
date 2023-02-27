@@ -825,24 +825,6 @@ ovn_get_internal_version(void)
                      N_OVNACTS, OVN_INTERNAL_MINOR_VER);
 }
 
-unsigned int
-ovn_parse_internal_version_minor(const char *ver)
-{
-    const char *p = ver + strlen(ver);
-    for (int i = 0; i < strlen(ver); i++) {
-        if (*p == '.') {
-            break;
-        }
-        p--;
-    }
-
-    unsigned int minor;
-    if (ovs_scan(p, ".%u", &minor)) {
-        return minor;
-    }
-    return 0;
-}
-
 #ifdef DDLOG
 /* Callbacks used by the ddlog northd code to print warnings and errors. */
 void
