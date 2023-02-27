@@ -91,7 +91,7 @@ en_sync_to_sb_addr_set_run(struct engine_node *node, void *data OVS_UNUSED)
 
     sync_addr_sets(nb_address_set_table, nb_port_group_table,
                    sb_address_set_table, eng_ctx->ovnsb_idl_txn,
-                   &northd_data->datapaths);
+                   &northd_data->lr_datapaths);
 
     engine_set_node_state(node, EN_UPDATED);
 }

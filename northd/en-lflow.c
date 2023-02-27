@@ -54,7 +54,8 @@ void en_lflow_run(struct engine_node *node, void *data OVS_UNUSED)
                           engine_get_input("SB_multicast_group", node),
                          "sbrec_mcast_group_by_name");
 
-    lflow_input.datapaths = &northd_data->datapaths;
+    lflow_input.ls_datapaths = &northd_data->ls_datapaths;
+    lflow_input.lr_datapaths = &northd_data->lr_datapaths;
     lflow_input.ls_ports = &northd_data->ls_ports;
     lflow_input.lr_ports = &northd_data->lr_ports;
     lflow_input.port_groups = &northd_data->port_groups;

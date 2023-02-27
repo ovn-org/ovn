@@ -521,7 +521,7 @@ ovn_lb_get_health_check(const struct nbrec_load_balancer *nbrec_lb,
 
 struct ovn_northd_lb *
 ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb,
-                     size_t n_datapaths)
+                     size_t n_ls_datapaths, size_t n_lr_datapaths)
 {
     bool template = smap_get_bool(&nbrec_lb->options, "template", false);
     bool is_udp = nullable_string_is_equal(nbrec_lb->protocol, "udp");
@@ -560,8 +560,8 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb,
     }
     lb->affinity_timeout = affinity_timeout;
 
-    lb->nb_ls_map = bitmap_allocate(n_datapaths);
-    lb->nb_lr_map = bitmap_allocate(n_datapaths);
+    lb->nb_ls_map = bitmap_allocate(n_ls_datapaths);
+    lb->nb_lr_map = bitmap_allocate(n_lr_datapaths);
 
     sset_init(&lb->ips_v4);
     sset_init(&lb->ips_v6);
@@ -687,12 +687,13 @@ ovn_northd_lb_destroy(struct ovn_northd_lb *lb)
 
 /* Constructs a new 'struct ovn_lb_group' object from the Nb LB Group record
  * and a hash map of all existing 'struct ovn_northd_lb' objects.  Space will
- * be allocated for 'max_datapaths' logical switches and the same amount of
+ * be allocated for 'max_ls_datapaths' logical switches and 'max_lr_datapaths'
  * logical routers to which this LB Group is applied.  Can be filled later
  * with ovn_lb_group_add_ls() and ovn_lb_group_add_lr() respectively. */
 struct ovn_lb_group *
 ovn_lb_group_create(const struct nbrec_load_balancer_group *nbrec_lb_group,
-                    const struct hmap *lbs, size_t max_datapaths)
+                    const struct hmap *lbs, size_t max_ls_datapaths,
+                    size_t max_lr_datapaths)
 {
     struct ovn_lb_group *lb_group;
 
@@ -700,8 +701,8 @@ ovn_lb_group_create(const struct nbrec_load_balancer_group *nbrec_lb_group,
     lb_group->uuid = nbrec_lb_group->header_.uuid;
     lb_group->n_lbs = nbrec_lb_group->n_load_balancer;
     lb_group->lbs = xmalloc(lb_group->n_lbs * sizeof *lb_group->lbs);
-    lb_group->ls = xmalloc(max_datapaths * sizeof *lb_group->ls);
-    lb_group->lr = xmalloc(max_datapaths * sizeof *lb_group->lr);
+    lb_group->ls = xmalloc(max_ls_datapaths * sizeof *lb_group->ls);
+    lb_group->lr = xmalloc(max_lr_datapaths * sizeof *lb_group->lr);
     lb_group->lb_ips = ovn_lb_ip_set_create();
 
     for (size_t i = 0; i < nbrec_lb_group->n_load_balancer; i++) {
