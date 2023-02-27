@@ -25286,8 +25286,10 @@ AT_SETUP([interconnection])
 AT_KEYWORDS([slowtest])
 
 ovn_init_ic_db
-n_az=5
-n_ts=5
+# The number needs to stay relatively low due to high memory consumption
+# with address sanitizers enabled.
+n_az=3
+n_ts=3
 for i in `seq 1 $n_az`; do
     ovn_start az$i
 done
