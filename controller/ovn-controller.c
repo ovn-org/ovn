@@ -3264,11 +3264,6 @@ struct lflow_output_persistent_data {
     struct lflow_cache *lflow_cache;
 };
 
-struct lflow_output_hairpin_data {
-    struct id_pool *pool;
-    struct simap   ids;
-};
-
 struct ed_type_lflow_output {
     /* Logical flow table */
     struct ovn_desired_flow_table flow_table;
@@ -3289,9 +3284,6 @@ struct ed_type_lflow_output {
     /* Data which is persistent and not cleared during
      * full recompute. */
     struct lflow_output_persistent_data pd;
-
-    /* Data for managing hairpin flow conjunctive flow ids. */
-    struct lflow_output_hairpin_data hd;
 
     /* Fixed neighbor discovery supported options. */
     struct hmap nd_ra_opts;
@@ -3448,8 +3440,6 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_out->conj_ids = &fo->conj_ids;
     l_ctx_out->objs_processed = &fo->objs_processed;
     l_ctx_out->lflow_cache = fo->pd.lflow_cache;
-    l_ctx_out->hairpin_id_pool = fo->hd.pool;
-    l_ctx_out->hairpin_lb_ids = &fo->hd.ids;
 }
 
 static void *
@@ -3463,8 +3453,6 @@ en_lflow_output_init(struct engine_node *node OVS_UNUSED,
     objdep_mgr_init(&data->lflow_deps_mgr);
     lflow_conj_ids_init(&data->conj_ids);
     uuidset_init(&data->objs_processed);
-    simap_init(&data->hd.ids);
-    data->hd.pool = id_pool_create(1, UINT32_MAX - 1);
     nd_ra_opts_init(&data->nd_ra_opts);
     controller_event_opts_init(&data->controller_event_opts);
     flow_collector_ids_init(&data->collector_ids);
@@ -3489,8 +3477,6 @@ en_lflow_output_cleanup(void *data)
     lflow_conj_ids_destroy(&flow_output_data->conj_ids);
     uuidset_destroy(&flow_output_data->objs_processed);
     lflow_cache_destroy(flow_output_data->pd.lflow_cache);
-    simap_destroy(&flow_output_data->hd.ids);
-    id_pool_destroy(flow_output_data->hd.pool);
     nd_ra_opts_destroy(&flow_output_data->nd_ra_opts);
     controller_event_opts_destroy(&flow_output_data->controller_event_opts);
     flow_collector_ids_destroy(&flow_output_data->collector_ids);
