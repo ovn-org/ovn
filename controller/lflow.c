@@ -18,7 +18,6 @@
 #include "lflow.h"
 #include "coverage.h"
 #include "ha-chassis.h"
-#include "lib/id-pool.h"
 #include "lflow-cache.h"
 #include "local_data.h"
 #include "lport.h"
@@ -99,9 +98,9 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
 
 static void
 consider_lb_hairpin_flows(const struct ovn_controller_lb *lb,
+                          const struct hmap *local_datapaths,
                           bool use_ct_mark,
-                          struct ovn_desired_flow_table *flow_table,
-                          struct simap *ids);
+                          struct ovn_desired_flow_table *flow_table);
 
 static void add_port_sec_flows(const struct shash *binding_lports,
                                const struct sbrec_chassis *,
@@ -1731,114 +1730,38 @@ add_lb_vip_hairpin_flows(const struct ovn_controller_lb *lb,
 static void
 add_lb_ct_snat_hairpin_for_dp(const struct ovn_controller_lb *lb,
                               const struct sbrec_datapath_binding *datapath,
+                              const struct hmap *local_datapaths,
                               struct match *dp_match,
                               struct ofpbuf *dp_acts,
                               struct ovn_desired_flow_table *flow_table)
 {
-    match_set_metadata(dp_match, htonll(datapath->tunnel_key));
-    ofctrl_add_or_append_flow(flow_table, OFTABLE_CT_SNAT_HAIRPIN, 200,
+    if (datapath) {
+        if (!get_local_datapath(local_datapaths, datapath->tunnel_key)) {
+            return;
+        }
+        match_set_metadata(dp_match, htonll(datapath->tunnel_key));
+    }
+
+    /* A flow added for the "hairpin_snat_ip" case will have an extra
+     * datapath match, but it will also match on the less restrictive
+     * general case.  Therefore, we set the priority in the
+     * "hairpin_snat_ip" case to be higher than the general case. */
+    ofctrl_add_or_append_flow(flow_table, OFTABLE_CT_SNAT_HAIRPIN,
+                              datapath ? 200 : 100,
                               lb->slb->header_.uuid.parts[0],
                               dp_match, dp_acts, &lb->slb->header_.uuid,
                               NX_CTLR_NO_METER, NULL);
 }
 
-static void
-add_lb_ct_snat_hairpin_dp_flows(const struct ovn_controller_lb *lb,
-                                uint32_t id,
-                                struct ovn_desired_flow_table *flow_table)
-{
-    /* If "hairpin_snat_ip" is not specified on this LB, we do not need
-       to add these flows because no conjunctive flows have been added
-       by add_lb_ct_snat_hairpin_vip_flow() for this LB. */
-    if (!lb->hairpin_snat_ips.n_ipv4_addrs &&
-        !lb->hairpin_snat_ips.n_ipv6_addrs) {
-        return;
-    }
-
-    uint64_t stub[1024 / 8];
-    struct ofpbuf dp_acts = OFPBUF_STUB_INITIALIZER(stub);
-    struct ofpact_conjunction *conj;
-
-    conj = ofpact_put_CONJUNCTION(&dp_acts);
-    conj->id = id;
-    conj->n_clauses = 2;
-    conj->clause = 0;
-
-    struct match dp_match = MATCH_CATCHALL_INITIALIZER;
-
-    for (size_t i = 0; i < lb->slb->n_datapaths; i++) {
-        add_lb_ct_snat_hairpin_for_dp(lb, lb->slb->datapaths[i],
-                                      &dp_match, &dp_acts, flow_table);
-    }
-    if (lb->slb->datapath_group) {
-        for (size_t i = 0; i < lb->slb->datapath_group->n_datapaths; i++) {
-            add_lb_ct_snat_hairpin_for_dp(
-                lb, lb->slb->datapath_group->datapaths[i],
-                &dp_match, &dp_acts, flow_table);
-        }
-    }
-
-    ofpbuf_uninit(&dp_acts);
-
-    struct ofpbuf snat_acts = OFPBUF_STUB_INITIALIZER(stub);
-
-    struct ofpact_conntrack *ct = ofpact_put_CT(&snat_acts);
-    ct->recirc_table = NX_CT_RECIRC_NONE;
-    ct->zone_src.field = mf_from_id(MFF_LOG_SNAT_ZONE);
-    ct->zone_src.ofs = 0;
-    ct->zone_src.n_bits = 16;
-    ct->flags = NX_CT_F_COMMIT;
-    ct->alg = 0;
-
-    size_t nat_offset;
-    nat_offset = snat_acts.size;
-    ofpbuf_pull(&snat_acts, nat_offset);
-
-    struct ofpact_nat *nat = ofpact_put_NAT(&snat_acts);
-    nat->flags = NX_NAT_F_SRC;
-
-    snat_acts.header = ofpbuf_push_uninit(&snat_acts, nat_offset);
-    ofpact_finish(&snat_acts, &ct->ofpact);
-
-    struct match snat_match = MATCH_CATCHALL_INITIALIZER;
-
-    match_set_conj_id(&snat_match, id);
-
-    if (lb->hairpin_snat_ips.n_ipv4_addrs) {
-        nat->range_af = AF_INET;
-        nat->range.addr.ipv4.min = lb->hairpin_snat_ips.ipv4_addrs[0].addr;
-        match_set_dl_type(&snat_match, htons(ETH_TYPE_IP));
-
-        ofctrl_add_flow(flow_table, OFTABLE_CT_SNAT_HAIRPIN, 200,
-                    lb->slb->header_.uuid.parts[0],
-                    &snat_match, &snat_acts, &lb->slb->header_.uuid);
-    }
-
-    if (lb->hairpin_snat_ips.n_ipv6_addrs) {
-        nat->range_af = AF_INET6;
-        nat->range.addr.ipv6.min = lb->hairpin_snat_ips.ipv6_addrs[0].addr;
-        match_set_dl_type(&snat_match, htons(ETH_TYPE_IPV6));
-
-        ofctrl_add_flow(flow_table, OFTABLE_CT_SNAT_HAIRPIN, 200,
-                    lb->slb->header_.uuid.parts[0],
-                    &snat_match, &snat_acts, &lb->slb->header_.uuid);
-    }
-
-    ofpbuf_uninit(&snat_acts);
-}
-
-
-/* Add a ct_snat flow for each VIP of the LB. If this LB does not use
+/* Add a ct_snat flow for each VIP of the LB.  If this LB does not use
  * "hairpin_snat_ip", we can SNAT using the VIP.
  *
- * If this LB uses "hairpin_snat_ip", we add a flow to one dimension of a
- * conjunctive flow 'id'. The other dimension consists of the datapaths
- * that this LB belongs to. These flows (and the actual SNAT flow) get added
- * by add_lb_ct_snat_hairpin_dp_flows(). */
+ * If this LB uses "hairpin_snat_ip", we can SNAT using that address, but
+ * we have to add a separate flow per datapath. */
 static void
 add_lb_ct_snat_hairpin_vip_flow(const struct ovn_controller_lb *lb,
-                                uint32_t id,
-                                struct ovn_lb_vip *lb_vip,
+                                const struct ovn_lb_vip *lb_vip,
+                                const struct hmap *local_datapaths,
                                 struct ovn_desired_flow_table *flow_table)
 {
     uint64_t stub[1024 / 8];
@@ -1851,51 +1774,33 @@ add_lb_ct_snat_hairpin_vip_flow(const struct ovn_controller_lb *lb,
         address_family = AF_INET6;
     }
 
-    bool use_hairpin_snat_ip = false;
-    uint16_t priority = 100;
-    if ((address_family == AF_INET && lb->hairpin_snat_ips.n_ipv4_addrs) ||
-        (address_family == AF_INET6 && lb->hairpin_snat_ips.n_ipv6_addrs)) {
-        use_hairpin_snat_ip = true;
+    struct ofpact_conntrack *ct = ofpact_put_CT(&ofpacts);
+    ct->recirc_table = NX_CT_RECIRC_NONE;
+    ct->zone_src.field = mf_from_id(MFF_LOG_SNAT_ZONE);
+    ct->zone_src.ofs = 0;
+    ct->zone_src.n_bits = 16;
+    ct->flags = NX_CT_F_COMMIT;
+    ct->alg = 0;
 
-        /* A flow added for the "hairpin_snat_ip" case will also match on the
-           less restrictive general case. This can be seen as the match in both
-           cases is the same (the second dimension of the conjunction makes it
-           more restrictive). Therefore, we set the priority in the
-           "hairpin_snat_ip" case to be higher than the general case. */
-        priority = 200;
-    }
+    size_t nat_offset;
+    nat_offset = ofpacts.size;
+    ofpbuf_pull(&ofpacts, nat_offset);
 
-    if (use_hairpin_snat_ip) {
-        struct ofpact_conjunction *conj;
-        conj = ofpact_put_CONJUNCTION(&ofpacts);
-        conj->id = id;
-        conj->n_clauses = 2;
-        conj->clause = 1;
+    struct ofpact_nat *nat = ofpact_put_NAT(&ofpacts);
+    nat->flags = NX_NAT_F_SRC;
+    nat->range_af = address_family;
+
+    if (nat->range_af == AF_INET) {
+        nat->range.addr.ipv4.min = lb->hairpin_snat_ips.n_ipv4_addrs
+                                   ? lb->hairpin_snat_ips.ipv4_addrs[0].addr
+                                   : in6_addr_get_mapped_ipv4(&lb_vip->vip);
     } else {
-        struct ofpact_conntrack *ct = ofpact_put_CT(&ofpacts);
-        ct->recirc_table = NX_CT_RECIRC_NONE;
-        ct->zone_src.field = mf_from_id(MFF_LOG_SNAT_ZONE);
-        ct->zone_src.ofs = 0;
-        ct->zone_src.n_bits = 16;
-        ct->flags = NX_CT_F_COMMIT;
-        ct->alg = 0;
-
-        size_t nat_offset;
-        nat_offset = ofpacts.size;
-        ofpbuf_pull(&ofpacts, nat_offset);
-
-        struct ofpact_nat *nat = ofpact_put_NAT(&ofpacts);
-        nat->flags = NX_NAT_F_SRC;
-        nat->range_af = address_family;
-
-        if (nat->range_af == AF_INET) {
-            nat->range.addr.ipv4.min = in6_addr_get_mapped_ipv4(&lb_vip->vip);
-        } else {
-            nat->range.addr.ipv6.min = lb_vip->vip;
-        }
-        ofpacts.header = ofpbuf_push_uninit(&ofpacts, nat_offset);
-        ofpact_finish(&ofpacts, &ct->ofpact);
+        nat->range.addr.ipv6.min = lb->hairpin_snat_ips.n_ipv6_addrs
+                                   ? lb->hairpin_snat_ips.ipv6_addrs[0].addr
+                                   : lb_vip->vip;
     }
+    ofpacts.header = ofpbuf_push_uninit(&ofpacts, nat_offset);
+    ofpact_finish(&ofpacts, &ct->ofpact);
 
     struct match match = MATCH_CATCHALL_INITIALIZER;
 
@@ -1942,15 +1847,31 @@ add_lb_ct_snat_hairpin_vip_flow(const struct ovn_controller_lb *lb,
         }
     }
 
-    /* We need to "add_or_append" flows because this match may form part
-     * of flows if the same "hairpin_snat_ip" address is present on mutiple
-     * LBs */
-    ofctrl_add_or_append_flow(flow_table, OFTABLE_CT_SNAT_HAIRPIN, priority,
-                              lb->slb->header_.uuid.parts[0],
-                              &match, &ofpacts, &lb->slb->header_.uuid,
-                              NX_CTLR_NO_METER, NULL);
-    ofpbuf_uninit(&ofpacts);
+    bool use_hairpin_snat_ip = false;
+    if ((address_family == AF_INET && lb->hairpin_snat_ips.n_ipv4_addrs) ||
+        (address_family == AF_INET6 && lb->hairpin_snat_ips.n_ipv6_addrs)) {
+        use_hairpin_snat_ip = true;
+    }
 
+    if (!use_hairpin_snat_ip) {
+        add_lb_ct_snat_hairpin_for_dp(lb, NULL, NULL,
+                                      &match, &ofpacts, flow_table);
+    } else {
+        for (size_t i = 0; i < lb->slb->n_datapaths; i++) {
+            add_lb_ct_snat_hairpin_for_dp(lb, lb->slb->datapaths[i],
+                                          local_datapaths,
+                                          &match, &ofpacts, flow_table);
+        }
+        if (lb->slb->datapath_group) {
+            for (size_t i = 0; i < lb->slb->datapath_group->n_datapaths; i++) {
+                add_lb_ct_snat_hairpin_for_dp(
+                    lb, lb->slb->datapath_group->datapaths[i],
+                    local_datapaths, &match, &ofpacts, flow_table);
+            }
+        }
+    }
+
+    ofpbuf_uninit(&ofpacts);
 }
 
 /* When a packet is sent to a LB VIP from a backend and the LB selects that
@@ -1960,13 +1881,10 @@ add_lb_ct_snat_hairpin_vip_flow(const struct ovn_controller_lb *lb,
  * the LB entry in the NBDB.
  *
  * add_lb_ct_snat_hairpin_flows() adds OpenFlow flows for each LB in order to
- * achieve this behaviour.
- *
- * Note: 'conjunctive_id' must be a unique identifier for each LB as it is used
- * as a conjunctive flow id. */
+ * achieve this behaviour. */
 static void
 add_lb_ct_snat_hairpin_flows(const struct ovn_controller_lb *lb,
-                             uint32_t conjunctive_id,
+                             const struct hmap *local_datapaths,
                              struct ovn_desired_flow_table *flow_table)
 {
     /* We must add a flow for each LB VIP. In the general case, this flow
@@ -1988,10 +1906,9 @@ add_lb_ct_snat_hairpin_flows(const struct ovn_controller_lb *lb,
        above we do not need to add an OpenFlow flow for each datapath. However,
        if one LB has specified "hairpin_snat_ip", then we need to SNAT that LB
        using the "hairpin_snat_ip" address rather than the VIP. In order to
-       achieve that, we can use a conjunctive flow that matches on any VIPs
-       from the "hairpin_snat_ip" LB and any datapath on which this LB is
-       added. This conjuctive flow can then SNAT using the "hairpin_snat_ip" IP
-       address rather than the LB VIP.
+       achieve that, we need to add a datapath metadata match.  These flows
+       will match on a subset of fields of more general flows, generated for a
+       case without "hairpin_snat_ip", so they need to have a higher priority.
 
        There is another potential exception. Consider the case in which we have
        two LBs which both have "hairpin_snat_ip" set. If these LBs have
@@ -2001,23 +1918,17 @@ add_lb_ct_snat_hairpin_flows(const struct ovn_controller_lb *lb,
        same VIP should not be added to the same datapath. */
 
     for (int i = 0; i < lb->n_vips; i++) {
-        struct ovn_lb_vip *lb_vip = &lb->vips[i];
-        add_lb_ct_snat_hairpin_vip_flow(lb, conjunctive_id,
-                                        lb_vip, flow_table);
+        add_lb_ct_snat_hairpin_vip_flow(lb, &lb->vips[i], local_datapaths,
+                                        flow_table);
     }
-
-    add_lb_ct_snat_hairpin_dp_flows(lb, conjunctive_id, flow_table);
 }
 
 static void
 consider_lb_hairpin_flows(const struct ovn_controller_lb *lb,
+                          const struct hmap *local_datapaths,
                           bool use_ct_mark,
-                          struct ovn_desired_flow_table *flow_table,
-                          struct simap *ids)
+                          struct ovn_desired_flow_table *flow_table)
 {
-    int id = simap_get(ids, lb->slb->name);
-    VLOG_DBG("Load Balancer %s has conjunctive flow id %u", lb->slb->name, id);
-
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
 
@@ -2029,37 +1940,21 @@ consider_lb_hairpin_flows(const struct ovn_controller_lb *lb,
         }
     }
 
-    add_lb_ct_snat_hairpin_flows(lb, id, flow_table);
+    add_lb_ct_snat_hairpin_flows(lb, local_datapaths, flow_table);
 }
 
 /* Adds OpenFlow flows to flow tables for each Load balancer VIPs and
  * backends to handle the load balanced hairpin traffic. */
 static void
 add_lb_hairpin_flows(const struct hmap *local_lbs,
+                     const struct hmap *local_datapaths,
                      bool use_ct_mark,
-                     struct ovn_desired_flow_table *flow_table,
-                     struct simap *ids,
-                     struct id_pool *pool)
+                     struct ovn_desired_flow_table *flow_table)
 {
-    uint32_t id;
     const struct ovn_controller_lb *lb;
     HMAP_FOR_EACH (lb, hmap_node, local_lbs) {
-        /* Allocate a unique 32-bit integer to this load-balancer. This will
-         * be used as a conjunctive flow id in the OFTABLE_CT_SNAT_HAIRPIN
-         * table.
-         *
-         * If we are unable to allocate a unique ID then we have run out of
-         * ids. As this is unrecoverable then we abort. However, this is
-         * unlikely to happen as it would be mean that we have created
-         * "UINT32_MAX" load-balancers.
-         */
-
-        id = simap_get(ids, lb->slb->name);
-        if (!id) {
-            ovs_assert(id_pool_alloc_id(pool, &id));
-            simap_put(ids, lb->slb->name, id);
-        }
-        consider_lb_hairpin_flows(lb, use_ct_mark, flow_table, ids);
+        consider_lb_hairpin_flows(lb, local_datapaths,
+                                  use_ct_mark, flow_table);
     }
 }
 
@@ -2196,10 +2091,9 @@ lflow_run(struct lflow_ctx_in *l_ctx_in, struct lflow_ctx_out *l_ctx_out)
                        l_ctx_in->local_datapaths,
                        l_ctx_out->flow_table);
     add_lb_hairpin_flows(l_ctx_in->local_lbs,
+                         l_ctx_in->local_datapaths,
                          l_ctx_in->lb_hairpin_use_ct_mark,
-                         l_ctx_out->flow_table,
-                         l_ctx_out->hairpin_lb_ids,
-                         l_ctx_out->hairpin_id_pool);
+                         l_ctx_out->flow_table);
     add_fdb_flows(l_ctx_in->fdb_table, l_ctx_in->local_datapaths,
                   l_ctx_out->flow_table);
     add_port_sec_flows(l_ctx_in->binding_lports, l_ctx_in->chassis,
@@ -2423,9 +2317,6 @@ lflow_handle_changed_lbs(struct lflow_ctx_in *l_ctx_in,
 {
     const struct ovn_controller_lb *lb;
 
-    struct id_pool *pool = l_ctx_out->hairpin_id_pool;
-    struct simap *ids = l_ctx_out->hairpin_lb_ids;
-
     struct uuidset_node *uuid_node;
     UUIDSET_FOR_EACH (uuid_node, deleted_lbs) {
         lb = ovn_controller_lb_find(old_lbs, &uuid_node->uuid);
@@ -2433,8 +2324,6 @@ lflow_handle_changed_lbs(struct lflow_ctx_in *l_ctx_in,
         VLOG_DBG("Remove hairpin flows for deleted load balancer "UUID_FMT,
                  UUID_ARGS(&uuid_node->uuid));
         ofctrl_remove_flows(l_ctx_out->flow_table, &uuid_node->uuid);
-        id_pool_free_id(pool, simap_get(ids, lb->slb->name));
-        simap_find_and_delete(ids, lb->slb->name);
     }
 
     UUIDSET_FOR_EACH (uuid_node, updated_lbs) {
@@ -2443,32 +2332,19 @@ lflow_handle_changed_lbs(struct lflow_ctx_in *l_ctx_in,
         VLOG_DBG("Remove and add hairpin flows for updated load balancer "
                   UUID_FMT, UUID_ARGS(&uuid_node->uuid));
         ofctrl_remove_flows(l_ctx_out->flow_table, &uuid_node->uuid);
-        consider_lb_hairpin_flows(lb, l_ctx_in->lb_hairpin_use_ct_mark,
-                                  l_ctx_out->flow_table,
-                                  l_ctx_out->hairpin_lb_ids);
+        consider_lb_hairpin_flows(lb, l_ctx_in->local_datapaths,
+                                  l_ctx_in->lb_hairpin_use_ct_mark,
+                                  l_ctx_out->flow_table);
     }
 
     UUIDSET_FOR_EACH (uuid_node, new_lbs) {
         lb = ovn_controller_lb_find(l_ctx_in->local_lbs, &uuid_node->uuid);
 
-        /* Allocate a unique 32-bit integer to this load-balancer. This
-         * will be used as a conjunctive flow id in the
-         * OFTABLE_CT_SNAT_HAIRPIN table.
-         *
-         * If we are unable to allocate a unique ID then we have run out of
-         * ids. As this is unrecoverable then we abort. However, this is
-         * unlikely to happen as it would be mean that we have created
-         * "UINT32_MAX" load-balancers.
-         */
-        uint32_t id;
-        ovs_assert(id_pool_alloc_id(pool, &id));
-        simap_put(ids, lb->slb->name, id);
-
         VLOG_DBG("Add load balancer hairpin flows for "UUID_FMT,
                  UUID_ARGS(&uuid_node->uuid));
-        consider_lb_hairpin_flows(lb, l_ctx_in->lb_hairpin_use_ct_mark,
-                                  l_ctx_out->flow_table,
-                                  l_ctx_out->hairpin_lb_ids);
+        consider_lb_hairpin_flows(lb, l_ctx_in->local_datapaths,
+                                  l_ctx_in->lb_hairpin_use_ct_mark,
+                                  l_ctx_out->flow_table);
     }
 
     return true;
