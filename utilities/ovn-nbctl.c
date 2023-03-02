@@ -4553,7 +4553,7 @@ nbctl_lr_route_add(struct ctl_context *ctx)
     }
 
 cleanup:
-    if (next_hop && strlen(next_hop)) {
+    if (next_hop && next_hop[0]) {
         free(next_hop);
     }
     free(prefix);
@@ -6590,12 +6590,12 @@ print_route(const struct nbrec_logical_router_static_route *route,
 
     if (!strcmp(route->nexthop, "discard")) {
         next_hop = xasprintf("discard");
-    } else if (strlen(route->nexthop)) {
+    } else if (route->nexthop[0]) {
         next_hop = normalize_prefix_str(route->nexthop);
     }
     ds_put_format(s, "%25s %25s", prefix, next_hop);
     free(prefix);
-    if (strlen(next_hop)) {
+    if (next_hop[0]) {
         free(next_hop);
     }
 
@@ -6734,8 +6734,8 @@ nbctl_lr_route_list(struct ctl_context *ctx)
         if (!i || (i > 0 && strcmp(route->route_table,
                                    ipv4_routes[i - 1].route->route_table))) {
             ds_put_format(&ctx->output, "%sRoute Table %s:\n", i ? "\n" : "",
-                          strlen(route->route_table) ? route->route_table
-                                                     : "<main>");
+                          route->route_table[0] ? route->route_table
+                                                : "<main>");
         }
 
         print_route(ipv4_routes[i].route, &ctx->output, ecmp);
@@ -6760,8 +6760,8 @@ nbctl_lr_route_list(struct ctl_context *ctx)
         if (!i || (i > 0 && strcmp(route->route_table,
                                    ipv6_routes[i - 1].route->route_table))) {
             ds_put_format(&ctx->output, "%sRoute Table %s:\n", i ? "\n" : "",
-                          strlen(route->route_table) ? route->route_table
-                                                     : "<main>");
+                          route->route_table[0] ? route->route_table
+                                                : "<main>");
         }
 
         print_route(ipv6_routes[i].route, &ctx->output, ecmp);

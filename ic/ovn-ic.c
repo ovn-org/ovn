@@ -1162,7 +1162,7 @@ add_static_to_routes_ad(
             ipv6_format_addr(&nexthop, &msg);
         }
 
-        ds_put_format(&msg, ", route_table: %s", strlen(nb_route->route_table)
+        ds_put_format(&msg, ", route_table: %s", nb_route->route_table[0]
                                                  ? nb_route->route_table
                                                  : "<main>");
 
@@ -1348,7 +1348,7 @@ sync_learned_routes(struct ic_context *ctx,
                 continue;
             }
 
-            if (strlen(isb_route->route_table) &&
+            if (isb_route->route_table[0] &&
                 strcmp(isb_route->route_table, ts_route_table)) {
                 if (VLOG_IS_DBG_ENABLED()) {
                     VLOG_DBG("Skip learning static route %s -> %s as either "

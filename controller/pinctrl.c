@@ -3775,12 +3775,12 @@ ipv6_ra_update_config(const struct sbrec_port_binding *pb)
 
     const char *dnssl = smap_get(&pb->options, "ipv6_ra_dnssl");
     if (dnssl) {
-        ds_put_buffer(&config->dnssl, dnssl, strlen(dnssl));
+        ds_put_cstr(&config->dnssl, dnssl);
     }
 
     const char *route_info = smap_get(&pb->options, "ipv6_ra_route_info");
     if (route_info) {
-        ds_put_buffer(&config->route_info, route_info, strlen(route_info));
+        ds_put_cstr(&config->route_info, route_info);
     }
 
     return config;
@@ -5825,7 +5825,7 @@ extract_addresses_with_port(const char *addresses,
     int ofs;
     if (!extract_addresses(addresses, laddrs, &ofs)) {
         return false;
-    } else if (ofs >= strlen(addresses)) {
+    } else if (!addresses[ofs]) {
         return true;
     }
 

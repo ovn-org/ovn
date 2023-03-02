@@ -99,9 +99,9 @@ static const char *
 get_hostname(const struct smap *ext_ids, const char *chassis_id)
 {
     const char *hostname = get_chassis_external_id_value(ext_ids, chassis_id,
-                                                         "hostname", "");
+                                                         "hostname", NULL);
 
-    if (strlen(hostname) == 0) {
+    if (!hostname) {
         static char hostname_[HOST_NAME_MAX + 1];
 
         if (gethostname(hostname_, sizeof(hostname_))) {
