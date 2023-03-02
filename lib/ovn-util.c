@@ -105,18 +105,34 @@ is_dynamic_lsp_address(const char *address)
     char ipv6_s[IPV6_SCAN_LEN + 1];
     struct eth_addr ea;
     ovs_be32 ip;
-    int n;
-    return (!strcmp(address, "dynamic")
-            || (ovs_scan(address, "dynamic "IP_SCAN_FMT"%n",
-                         IP_SCAN_ARGS(&ip), &n)
-                         && address[n] == '\0')
-            || (ovs_scan(address, "dynamic "IP_SCAN_FMT" "IPV6_SCAN_FMT"%n",
-                         IP_SCAN_ARGS(&ip), ipv6_s, &n)
-                         && address[n] == '\0')
-            || (ovs_scan(address, "dynamic "IPV6_SCAN_FMT"%n",
-                         ipv6_s, &n) && address[n] == '\0')
-            || (ovs_scan(address, ETH_ADDR_SCAN_FMT" dynamic%n",
-                         ETH_ADDR_SCAN_ARGS(ea), &n) && address[n] == '\0'));
+    int n = 0;
+
+    if (!strncmp(address, "dynamic", 7)) {
+        n = 7;
+        if (!address[n]) {
+            /* "dynamic" */
+            return true;
+        }
+        if (ovs_scan_len(address, &n, " "IP_SCAN_FMT, IP_SCAN_ARGS(&ip))
+            && !address[n]) {
+            /* "dynamic x.x.x.x" */
+            return true;
+        }
+        if (ovs_scan_len(address, &n, " "IPV6_SCAN_FMT, ipv6_s)
+            && !address[n]) {
+            /* Either "dynamic xxxx::xxxx" or "dynamic x.x.x.x xxxx::xxxx". */
+            return true;
+        }
+        return false;
+    }
+
+    if (ovs_scan_len(address, &n, ETH_ADDR_SCAN_FMT" dynamic",
+                     ETH_ADDR_SCAN_ARGS(ea)) && !address[n]) {
+        /* "xx:xx:xx:xx:xx:xx dynamic" */
+        return true;
+    }
+
+    return false;
 }
 
 static bool
