@@ -128,7 +128,6 @@ parse_and_store_addresses(const char *address, struct lport_addresses *laddrs,
     const char *buf = address;
     const char *const start = buf;
     int buf_index = 0;
-    const char *buf_end = buf + strlen(address);
 
     if (extract_eth_addr) {
         if (!ovs_scan_len(buf, &buf_index, ETH_ADDR_SCAN_FMT,
@@ -151,7 +150,7 @@ parse_and_store_addresses(const char *address, struct lport_addresses *laddrs,
      * and store in the 'laddrs'. Break the loop if invalid data is found.
      */
     buf += buf_index;
-    while (buf < buf_end) {
+    while (*buf != '\0') {
         buf_index = 0;
         error = ip_parse_cidr_len(buf, &buf_index, &ip4, &plen);
         if (!error) {
@@ -205,7 +204,7 @@ extract_lsp_addresses(const char *address, struct lport_addresses *laddrs)
     int ofs;
     bool success = extract_addresses(address, laddrs, &ofs);
 
-    if (success && ofs < strlen(address)) {
+    if (success && address[ofs]) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
         VLOG_INFO_RL(&rl, "invalid syntax '%s' in address", address);
     }

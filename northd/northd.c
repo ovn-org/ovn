@@ -9624,7 +9624,7 @@ route_table_add(struct simap *route_tables, const char *route_table_name)
 static uint32_t
 get_route_table_id(struct simap *route_tables, const char *route_table_name)
 {
-    if (!route_table_name || !strlen(route_table_name)) {
+    if (!route_table_name || !route_table_name[0]) {
         return 0;
     }
 
@@ -9699,7 +9699,7 @@ parsed_routes_add(struct ovn_datapath *od, const struct hmap *ports,
     struct in6_addr nexthop;
     unsigned int plen;
     bool is_discard_route = !strcmp(route->nexthop, "discard");
-    bool valid_nexthop = strlen(route->nexthop) && !is_discard_route;
+    bool valid_nexthop = route->nexthop[0] && !is_discard_route;
     if (valid_nexthop) {
         if (!ip46_parse_cidr(route->nexthop, &nexthop, &plen)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
@@ -9990,7 +9990,7 @@ find_static_route_outport(struct ovn_datapath *od, const struct hmap *ports,
                          route->output_port, route->ip_prefix);
             return false;
         }
-        if (strlen(route->nexthop)) {
+        if (route->nexthop[0]) {
             lrp_addr_s = find_lrp_member_ip(out_port, route->nexthop);
         }
         if (!lrp_addr_s) {
@@ -10022,7 +10022,7 @@ find_static_route_outport(struct ovn_datapath *od, const struct hmap *ports,
                 continue;
             }
 
-            if (strlen(route->nexthop)) {
+            if (route->nexthop[0]) {
                 lrp_addr_s = find_lrp_member_ip(out_port, route->nexthop);
             }
             if (lrp_addr_s) {
@@ -10338,7 +10338,7 @@ add_route(struct hmap *lflows, struct ovn_datapath *od,
     } else {
         ds_put_format(&common_actions, REG_ECMP_GROUP_ID" = 0; %s = ",
                       is_ipv4 ? REG_NEXT_HOP_IPV4 : REG_NEXT_HOP_IPV6);
-        if (gateway && strlen(gateway)) {
+        if (gateway && gateway[0]) {
             ds_put_cstr(&common_actions, gateway);
         } else {
             ds_put_format(&common_actions, "ip%s.dst", is_ipv4 ? "4" : "6");
