@@ -1,4 +1,4 @@
-OVN v23.03.0 - xx xxx xxxx
+OVN v23.03.0 - 03 Mar 2023
 --------------------------
   - ovn-controller: Experimental support for co-hosting multiple controller
     instances on the same host.
