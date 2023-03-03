@@ -1746,11 +1746,9 @@ add_lb_ct_snat_hairpin_for_dp(const struct ovn_controller_lb *lb,
      * datapath match, but it will also match on the less restrictive
      * general case.  Therefore, we set the priority in the
      * "hairpin_snat_ip" case to be higher than the general case. */
-    ofctrl_add_or_append_flow(flow_table, OFTABLE_CT_SNAT_HAIRPIN,
-                              datapath ? 200 : 100,
-                              lb->slb->header_.uuid.parts[0],
-                              dp_match, dp_acts, &lb->slb->header_.uuid,
-                              NX_CTLR_NO_METER, NULL);
+    ofctrl_add_flow(flow_table, OFTABLE_CT_SNAT_HAIRPIN,
+                    datapath ? 200 : 100, lb->slb->header_.uuid.parts[0],
+                    dp_match, dp_acts, &lb->slb->header_.uuid);
 }
 
 /* Add a ct_snat flow for each VIP of the LB.  If this LB does not use
