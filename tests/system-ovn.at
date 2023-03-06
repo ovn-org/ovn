@@ -10851,3 +10851,168 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACL and committing to conntrack])
+AT_KEYWORDS([acl])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+check ovn-nbctl lr-add r1
+check ovn-nbctl lrp-add r1 r1_s1 00:de:ad:fe:00:01 173.0.1.1/24
+check ovn-nbctl lrp-add r1 r1_s2 00:de:ad:fe:00:02 173.0.2.1/24
+
+check ovn-nbctl ls-add s1
+check ovn-nbctl lsp-add s1 s1_r1
+check ovn-nbctl lsp-set-type s1_r1 router
+check ovn-nbctl lsp-set-addresses s1_r1 router
+check ovn-nbctl lsp-set-options s1_r1 router-port=r1_s1
+
+check ovn-nbctl ls-add s2
+check ovn-nbctl lsp-add s2 s2_r1
+check ovn-nbctl lsp-set-type s2_r1 router
+check ovn-nbctl lsp-set-addresses s2_r1 router
+check ovn-nbctl lsp-set-options s2_r1 router-port=r1_s2
+
+check ovn-nbctl lsp-add s1 vm1
+check ovn-nbctl lsp-set-addresses vm1 "00:de:ad:01:00:01 173.0.1.2"
+
+check ovn-nbctl lsp-add s2 vm2
+check ovn-nbctl lsp-set-addresses vm2 "00:de:ad:01:00:02 173.0.2.2"
+
+check ovn-nbctl lsp-add s2 vm3
+check ovn-nbctl lsp-set-addresses vm3 "00:de:ad:01:00:03 173.0.2.3"
+
+check ovn-nbctl lb-add lb1 30.0.0.1:80 173.0.2.2:80 udp
+check ovn-nbctl lb-add lb2 20.0.0.1:80 173.0.1.2:80 udp
+check ovn-nbctl lb-add lb1 30.0.0.1 173.0.2.2
+check ovn-nbctl lb-add lb2 173.0.2.250 173.0.1.3
+check ovn-nbctl ls-lb-add s1 lb1
+check ovn-nbctl ls-lb-add s2 lb2
+
+ADD_NAMESPACES(vm1)
+ADD_VETH(vm1, vm1, br-int, "173.0.1.2/24", "00:de:ad:01:00:01", \
+         "173.0.1.1")
+ADD_NAMESPACES(vm2)
+ADD_VETH(vm2, vm2, br-int, "173.0.2.2/24", "00:de:ad:01:00:02", \
+         "173.0.2.1")
+ADD_NAMESPACES(vm3)
+ADD_VETH(vm3, vm3, br-int, "173.0.2.250/24", "00:de:ad:01:00:03", \
+         "173.0.2.1")
+
+check ovn-nbctl acl-add s1 from-lport 1001 "ip" allow
+check ovn-nbctl acl-add s1 to-lport 1002 "ip" allow
+check ovn-nbctl acl-add s2 from-lport 1003 "ip" allow
+check ovn-nbctl acl-add s2 to-lport 1004 "ip" allow
+check ovn-nbctl --wait=hv sync
+AS_BOX([initial ping])
+# Send ping in background. Same ping, same flow throughout the test
+on_exit 'kill $(pidof ping)'
+NS_EXEC([vm1], [ping -c 10000 -i 0.1 30.0.0.1 > icmp.txt &])
+
+# Check for conntrack entries
+OVS_WAIT_FOR_OUTPUT([
+    ovs-appctl dpctl/dump-conntrack | FORMAT_CT(173.0.1.2) | \
+      sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=173.0.1.2,dst=173.0.2.2,id=<cleared>,type=8,code=0),reply=(src=173.0.2.2,dst=173.0.1.2,id=<cleared>,type=0,code=0),zone=<cleared>
+icmp,orig=(src=173.0.1.2,dst=30.0.0.1,id=<cleared>,type=8,code=0),reply=(src=173.0.2.2,dst=173.0.1.2,id=<cleared>,type=0,code=0),zone=<cleared>,mark=2
+])
+
+# Now check for multiple ct_commits
+ovs-appctl dpctl/dump-flows > dp_flows
+zone_id=$(ovn-appctl -t ovn-controller ct-zone-list | grep vm1 | cut -d ' ' -f2)
+AT_CHECK([test 1 = `cat dp_flows | grep "commit,zone=$zone_id" | wc -l`])
+
+check ovn-nbctl acl-del s1 from-lport 1001 "ip"
+check ovn-nbctl acl-del s1 to-lport 1002 "ip"
+check ovn-nbctl acl-del s2 from-lport 1003 "ip"
+check ovn-nbctl acl-del s2 to-lport 1004 "ip"
+
+AS_BOX([acl drop echo request])
+check ovn-nbctl --log --severity=alert --name=drop-flow-s1 acl-add s1 to-lport 2001 icmp4 drop
+# acl-drop to-lport s1 apply to traffic from s1 to vm1 and s1 to r1.
+check ovn-nbctl --wait=hv sync
+
+# Check that traffic is blocked
+# Wait for some packets to hit the rule to avoid potential race conditions. Then count packets.
+OVS_WAIT_UNTIL([test `cat ovn-controller.log | grep acl_log | grep -c drop-flow-s1` -gt "0"])
+total_icmp_pkts=$(cat icmp.txt | grep ttl | wc -l)
+
+# Wait some time and check whether packets went through. In the worse race condition, the sleep is too short
+# and this test will still succeed.
+sleep 1
+OVS_WAIT_UNTIL([
+        total_icmp1_pkts=$(cat icmp.txt | grep ttl | wc -l)
+        test "${total_icmp1_pkts}" -eq "${total_icmp_pkts}"
+])
+
+AS_BOX([acl allow-related echo request])
+check ovn-nbctl acl-add s1 to-lport 2002 "icmp4 && ip4.src == 173.0.1.2" allow-related
+# This rule has higher priority than to-lport 2001 icmp4 drop.
+# So traffic from s1 (w/ src=173.0.1.2) to r1 should be accepted
+# (return) traffic from s1 to vm1 should be accepted as return traffic
+check ovn-nbctl --wait=hv sync
+OVS_WAIT_UNTIL([
+        total_icmp1_pkts=$(cat icmp.txt | grep ttl | wc -l)
+        test "${total_icmp1_pkts}" -gt "${total_icmp_pkts}"
+])
+
+# Check we did not break handling acl-drop for existing flows
+AS_BOX([acl drop echo request in s2])
+check ovn-nbctl acl-del s1 to-lport 2001 icmp4
+check ovn-nbctl --log --severity=alert --name=drop-flow-s2 acl-add s2 to-lport 2001 icmp4 drop
+check ovn-nbctl --wait=hv sync
+
+OVS_WAIT_UNTIL([test `cat ovn-controller.log | grep acl_log | grep -c drop-flow-s2` -gt "0"])
+
+OVS_WAIT_FOR_OUTPUT([
+    ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | \
+      sed -e 's/zone=[[0-9]]*/zone=<cleared>/' | \
+      sed -e 's/mark=[[0-9]]*/mark=<cleared>/'], [0], [dnl
+icmp,orig=(src=173.0.1.2,dst=30.0.0.1,id=<cleared>,type=8,code=0),reply=(src=173.0.2.2,dst=173.0.1.2,id=<cleared>,type=0,code=0),zone=<cleared>,mark=<cleared>
+])
+total_icmp_pkts=$(cat icmp.txt | grep ttl | wc -l)
+
+# Allow ping again
+AS_BOX([acl allow echo request in s2])
+check ovn-nbctl acl-add s2 to-lport 2005 icmp4 allow
+check ovn-nbctl --wait=hv sync
+OVS_WAIT_FOR_OUTPUT([
+    ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | \
+      sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=173.0.1.2,dst=30.0.0.1,id=<cleared>,type=8,code=0),reply=(src=173.0.2.2,dst=173.0.1.2,id=<cleared>,type=0,code=0),zone=<cleared>,mark=2
+])
+OVS_WAIT_UNTIL([
+        total_icmp1_pkts=$(cat icmp.txt | grep ttl | wc -l)
+        test "${total_icmp1_pkts}" -gt "${total_icmp_pkts}"
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])

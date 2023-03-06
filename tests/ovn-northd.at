@@ -4111,6 +4111,7 @@ check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
 check ovn-nbctl --wait=sb sync
 
 check_stateful_flows() {
+    action=$1
     ovn-sbctl dump-flows sw0 > sw0flows
     AT_CAPTURE_FILE([sw0flows])
 
@@ -4144,12 +4145,12 @@ check_stateful_flows() {
   table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
 
-    AT_CHECK([grep "ls_out_pre_lb" sw0flows | sort], [0], [dnl
+    AT_CHECK_UNQUOTED([grep "ls_out_pre_lb" sw0flows | sort], [0], [dnl
   table=1 (ls_out_pre_lb      ), priority=0    , match=(1), action=(next;)
   table=1 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[2]] = 1; next;)
   table=1 (ls_out_pre_lb      ), priority=110  , match=(eth.mcast), action=(next;)
-  table=1 (ls_out_pre_lb      ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
-  table=1 (ls_out_pre_lb      ), priority=110  , match=(ip && outport == "sw0-lr0"), action=(next;)
+  table=1 (ls_out_pre_lb      ), priority=110  , match=(eth.src == \$svc_monitor_mac), action=(next;)
+  table=1 (ls_out_pre_lb      ), priority=110  , match=(ip && outport == "sw0-lr0"), action=($action)
   table=1 (ls_out_pre_lb      ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2), action=(next;)
   table=1 (ls_out_pre_lb      ), priority=110  , match=(reg0[[16]] == 1), action=(next;)
 ])
@@ -4169,13 +4170,13 @@ check_stateful_flows() {
 ])
 }
 
-check_stateful_flows
+check_stateful_flows "ct_clear; next;"
 
 # Add few ACLs
 check ovn-nbctl --wait=sb acl-add sw0 from-lport 1002 "ip4 && tcp && tcp.dst == 80" allow-related
 check ovn-nbctl --wait=sb acl-add sw0 to-lport 1002 "ip4 && tcp && tcp.src == 80" drop
 
-check_stateful_flows
+check_stateful_flows "next;"
 
 # Remove load balancers from sw0
 check ovn-nbctl ls-lb-del sw0 lb0

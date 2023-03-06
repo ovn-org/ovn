@@ -5779,20 +5779,24 @@ skip_port_from_conntrack(struct ovn_datapath *od, struct ovn_port *op,
      * know about the connection, as the icmp request went through the logical
      * router on hostA, not hostB. This would only work with distributed
      * conntrack state across all chassis. */
-    struct ds match_in = DS_EMPTY_INITIALIZER;
-    struct ds match_out = DS_EMPTY_INITIALIZER;
 
-    ds_put_format(&match_in, "ip && inport == %s", op->json_key);
-    ds_put_format(&match_out, "ip && outport == %s", op->json_key);
+    const char *ingress_action = "next;";
+    const char *egress_action = od->has_stateful_acl
+                                ? "next;"
+                                : "ct_clear; next;";
+
+    char *ingress_match = xasprintf("ip && inport == %s", op->json_key);
+    char *egress_match = xasprintf("ip && outport == %s", op->json_key);
+
     ovn_lflow_add_with_lport_and_hint(lflows, od, in_stage, priority,
-                                      ds_cstr(&match_in), "next;", op->key,
-                                      &op->nbsp->header_);
+                                      ingress_match, ingress_action,
+                                      op->key, &op->nbsp->header_);
     ovn_lflow_add_with_lport_and_hint(lflows, od, out_stage, priority,
-                                      ds_cstr(&match_out), "next;", op->key,
-                                      &op->nbsp->header_);
+                                      egress_match, egress_action,
+                                      op->key, &op->nbsp->header_);
 
-    ds_destroy(&match_in);
-    ds_destroy(&match_out);
+    free(ingress_match);
+    free(egress_match);
 }
 
 static void
