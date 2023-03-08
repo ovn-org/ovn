@@ -10535,9 +10535,9 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
 
     if (lb->skip_snat) {
         const char *skip_snat = features->ct_lb_related && !drop
-                                ? "; skip_snat);"
+                                ? "; skip_snat"
                                 : "";
-        skip_snat_new_action = xasprintf("flags.skip_snat_for_lb = 1; %s%s",
+        skip_snat_new_action = xasprintf("flags.skip_snat_for_lb = 1; %s%s);",
                                          ds_cstr(action), skip_snat);
         skip_snat_est_action = xasprintf("flags.skip_snat_for_lb = 1; "
                                          "next;");
@@ -10672,9 +10672,9 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
             skip_snat_est_action, lflows, prio, meter_groups);
 
     const char *force_snat = features->ct_lb_related && !drop
-                             ? "; force_snat);"
+                             ? "; force_snat"
                              : "";
-    char *new_actions = xasprintf("flags.force_snat_for_lb = 1; %s%s",
+    char *new_actions = xasprintf("flags.force_snat_for_lb = 1; %s%s);",
                                   ds_cstr(action), force_snat);
     build_gw_lrouter_nat_flows_for_lb(lb, gw_router_force_snat,
             n_gw_router_force_snat, reject, new_match,

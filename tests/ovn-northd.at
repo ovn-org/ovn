@@ -7840,6 +7840,22 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e natted -e ct_lb], [0], [dnl
   table=2 (ls_out_pre_stateful), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb;)
 ])
 
+check ovn-nbctl --wait=sb set logical_router lr options:lb_force_snat_ip="42.42.42.1"
+AT_CHECK([ovn-sbctl lflow-list | grep lr_in_dnat], [0], [dnl
+  table=7 (lr_in_dnat         ), priority=110  , match=(ct.est && !ct.rel && ip4 && reg0 == 66.66.66.66 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=7 (lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && reg0 == 66.66.66.66), action=(flags.force_snat_for_lb = 1; ct_lb(backends=42.42.42.2);)
+  table=7 (lr_in_dnat         ), priority=0    , match=(1), action=(next;)
+])
+check ovn-nbctl remove logical_router lr options lb_force_snat_ip
+
+check ovn-nbctl --wait=sb set load_balancer lb-test options:skip_snat="true"
+AT_CHECK([ovn-sbctl lflow-list | grep lr_in_dnat], [0], [dnl
+  table=7 (lr_in_dnat         ), priority=110  , match=(ct.est && !ct.rel && ip4 && reg0 == 66.66.66.66 && ct_label.natted == 1), action=(flags.skip_snat_for_lb = 1; next;)
+  table=7 (lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && reg0 == 66.66.66.66), action=(flags.skip_snat_for_lb = 1; ct_lb(backends=42.42.42.2);)
+  table=7 (lr_in_dnat         ), priority=0    , match=(1), action=(next;)
+])
+check ovn-nbctl remove load_balancer lb-test options skip_snat
+
 AS_BOX([Chassis upgrades and supports ct_lb_mark - use ct_lb_mark and ct_mark.natted])
 check ovn-sbctl set chassis hv other_config:ct-no-masked-label=true
 check ovn-nbctl --wait=sb sync
@@ -8501,6 +8517,22 @@ AT_CHECK([grep -e "lr_in_defrag" -e "lr_in_dnat" lflows1], [0], [dnl
   table=? (lr_in_dnat         ), priority=110  , match=(ct.est && !ct.rel && ip4 && reg0 == 192.168.0.1 && ct_label.natted == 1), action=(next;)
   table=? (lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && reg0 == 192.168.0.1), action=(ct_lb(backends=192.168.1.10);)
 ])
+
+check ovn-nbctl --wait=sb set logical_router lr options:lb_force_snat_ip="192.168.1.1"
+AT_CHECK([ovn-sbctl lflow-list | grep lr_in_dnat], [0], [dnl
+  table=7 (lr_in_dnat         ), priority=110  , match=(ct.est && !ct.rel && ip4 && reg0 == 192.168.0.1 && ct_label.natted == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=7 (lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && reg0 == 192.168.0.1), action=(flags.force_snat_for_lb = 1; ct_lb(backends=192.168.1.10);)
+  table=7 (lr_in_dnat         ), priority=0    , match=(1), action=(next;)
+])
+check ovn-nbctl remove logical_router lr options lb_force_snat_ip
+
+check ovn-nbctl --wait=sb set load_balancer lb-test options:skip_snat="true"
+AT_CHECK([ovn-sbctl lflow-list | grep lr_in_dnat], [0], [dnl
+  table=7 (lr_in_dnat         ), priority=110  , match=(ct.est && !ct.rel && ip4 && reg0 == 192.168.0.1 && ct_label.natted == 1), action=(flags.skip_snat_for_lb = 1; next;)
+  table=7 (lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && reg0 == 192.168.0.1), action=(flags.skip_snat_for_lb = 1; ct_lb(backends=192.168.1.10);)
+  table=7 (lr_in_dnat         ), priority=0    , match=(1), action=(next;)
+])
+check ovn-nbctl remove load_balancer lb-test options skip_snat
 
 AT_CHECK([grep -e "ls_in_acl" -e "ls_out_acl" lflows1 | grep "priority=65532"], [0], [dnl
   table=? (ls_in_acl          ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_label.blocked == 0), action=(reg0[[17]] = 1; next;)
