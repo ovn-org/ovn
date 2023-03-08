@@ -8650,3 +8650,39 @@ AT_CHECK([grep -e "ls_in_acl" -e "ls_out_acl" lflows2 | grep "priority=65532"], 
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Chassis-feature compatibitility - remote chassis])
+ovn_start
+
+AS_BOX([Local chassis])
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.1 \
+  -- set chassis hv1 other_config:ct-no-masked-label=true \
+  -- set chassis hv1 other_config:ovn-ct-lb-related=true \
+  -- set chassis hv1 other_config:mac-binding-timestamp=true
+
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE debug/chassis-features-list], [0], [dnl
+ct_no_masked_label:    true
+ct_lb_related:         true
+mac_binding_timestamp: true
+])
+
+AS_BOX([Remote chassis])
+check ovn-sbctl chassis-add hv2 geneve 127.0.0.2 \
+  -- set chassis hv2 other_config:is-remote=true \
+  -- set chassis hv2 other_config:ct-no-masked-label=false \
+  -- set chassis hv2 other_config:ovn-ct-lb-related=false \
+  -- set chassis hv2 other_config:mac-binding-timestamp=false
+
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE debug/chassis-features-list], [0], [dnl
+ct_no_masked_label:    true
+ct_lb_related:         true
+mac_binding_timestamp: true
+])
+
+AT_CLEANUP
+])
