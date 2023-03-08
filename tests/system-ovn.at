@@ -10422,3 +10422,271 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([1 LR to test ARP proxy combinations])
+AT_KEYWORDS([proxy-arp])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+# Logical network:
+# One LR - R1 and two LSs - foo and bar, R1 has switches foo (192.168.1.0/24) and
+# bar (192.168.2.0/24) connected to it
+#
+#    foo -- R1 -- bar
+
+check ovn-nbctl lr-add R1
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+
+# Connect foo to R1
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+    type=router options:arp_proxy="0a:58:a9:fe:01:01 169.254.239.254 169.254.239.2 169.254.238.0/24 " options:router-port=foo addresses='"router"'
+
+# Connect bar to R1
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+    type=router options:arp_proxy="169.254.239.253" options:router-port=bar addresses='"router"'
+
+# Logical port 'foo1' in switch 'foo'.
+ADD_NAMESPACES(foo1)
+ADD_VETH(foo1, foo1, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
+         "169.254.239.2")
+check ovn-nbctl lsp-add foo foo1 \
+-- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
+
+# Logical port 'foo2' in switch 'foo'.
+ADD_NAMESPACES(foo2)
+ADD_VETH(foo2, foo2, br-int, "192.168.1.3/24", "f0:00:00:01:02:04", \
+         "169.254.239.254")
+check ovn-nbctl lsp-add foo foo2 \
+-- lsp-set-addresses foo2 "f0:00:00:01:02:04 192.168.1.3"
+
+# Logical port 'foo3' in switch 'foo'.
+ADD_NAMESPACES(foo3)
+ADD_VETH(foo3, foo3, br-int, "192.168.1.4/24", "f0:00:00:01:02:05", \
+         "169.254.238.1")
+check ovn-nbctl lsp-add foo foo3 \
+-- lsp-set-addresses foo3 "f0:00:00:01:02:05 192.168.1.4"
+
+# Logical port 'bar1' in switch 'bar'.
+ADD_NAMESPACES(bar1)
+ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:06", \
+"169.254.239.253")
+check ovn-nbctl lsp-add bar bar1 \
+-- lsp-set-addresses bar1 "f0:00:00:01:02:06 192.168.2.2"
+
+# wait for ovn-controller to catch up.
+check ovn-nbctl --wait=hv sync
+
+NETNS_DAEMONIZE([foo1], [tcpdump -l -nn -e -i foo1 'ether dst 0a:58:a9:fe:01:01 and icmp' > foo1-icmp.pcap 2>foo1-tcpdump.stderr], [foo1-icmp-tcpdump.pid])
+OVS_WAIT_UNTIL([grep "listening" foo1-tcpdump.stderr])
+
+# 'foo1' should be able to ping 'bar1'
+NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+OVS_WAIT_UNTIL([
+    total_pkts=$(cat foo1-icmp.pcap| wc -l)
+    test "${total_pkts}" = "3"
+])
+
+NETNS_DAEMONIZE([foo2], [tcpdump -l -nn -e -i foo2 'ether dst 0a:58:a9:fe:01:01 and icmp' > foo2-icmp.pcap 2>foo2-tcpdump.stderr], [foo2-icmp-tcpdump.pid])
+OVS_WAIT_UNTIL([grep "listening" foo2-tcpdump.stderr])
+
+# 'foo2' should be able to ping 'bar1'
+NS_CHECK_EXEC([foo2], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+OVS_WAIT_UNTIL([
+    total_pkts=$(cat foo2-icmp.pcap| wc -l)
+    test "${total_pkts}" = "3"
+])
+
+NETNS_DAEMONIZE([foo3], [tcpdump -l -nn -e -i foo3 'ether dst 0a:58:a9:fe:01:01 and icmp' > foo3-icmp.pcap 2>foo3-tcpdump.stderr], [foo3-icmp-tcpdump.pid])
+OVS_WAIT_UNTIL([grep "listening" foo3-tcpdump.stderr])
+
+# 'foo3' should be able to ping 'bar1'
+NS_CHECK_EXEC([foo3], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+OVS_WAIT_UNTIL([
+    total_pkts=$(cat foo3-icmp.pcap| wc -l)
+    test "${total_pkts}" = "3"
+])
+
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([1 LR to test ARP proxy combinations - IPv6])
+AT_KEYWORDS([proxy-arp])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+# Logical network:
+# One LR - R1 and two LSs - foo and bar, R1 has switches foo (fd11::/64) and
+# bar (fd12::/64) connected to it
+#
+#    foo -- R1 -- bar
+
+check ovn-nbctl lr-add R1
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+
+# Connect foo to R1
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd11::1/64
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+    type=router options:arp_proxy="0a:58:a9:fe:01:01 fd7b:6b4d:7b25:d22f::1 fd7b:6b4d:7b25:d22f::2 fd7b:6b4d:7b25:d22d::0/64" options:router-port=foo addresses='"router"'
+
+# Connect bar to R1
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd12::1/64
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+    type=router options:arp_proxy="fd7b:6b4d:7b25:d22f::3" options:router-port=bar addresses='"router"'
+
+# Logical port 'foo1' in switch 'foo'.
+ADD_NAMESPACES(foo1)
+ADD_VETH(foo1, foo1, br-int, "fd11::2/64", "f0:00:00:01:02:03", \
+         "fd7b:6b4d:7b25:d22f::1")
+OVS_WAIT_UNTIL([test "$(ip netns exec foo1 ip a | grep fd11::2 | grep tentative)" = ""])
+check ovn-nbctl lsp-add foo foo1 \
+-- lsp-set-addresses foo1 "f0:00:00:01:02:03 fd11::2"
+
+# Logical port 'foo2' in switch 'foo'.
+ADD_NAMESPACES(foo2)
+ADD_VETH(foo2, foo2, br-int, "fd11::3/64", "f0:00:00:01:02:04", \
+         "fd7b:6b4d:7b25:d22f::2")
+OVS_WAIT_UNTIL([test "$(ip netns exec foo2 ip a | grep fd11::3 | grep tentative)" = ""])
+check ovn-nbctl lsp-add foo foo2 \
+-- lsp-set-addresses foo2 "f0:00:00:01:02:04 fd11::3"
+
+# Logical port 'foo3' in switch 'foo'.
+ADD_NAMESPACES(foo3)
+ADD_VETH(foo3, foo3, br-int, "fd11::4/64", "f0:00:00:01:02:05", \
+         "fd7b:6b4d:7b25:d22d::1")
+OVS_WAIT_UNTIL([test "$(ip netns exec foo3 ip a | grep fd11::4 | grep tentative)" = ""])
+check ovn-nbctl lsp-add foo foo3 \
+-- lsp-set-addresses foo3 "f0:00:00:01:02:05 fd11::4"
+
+# Logical port 'bar1' in switch 'bar'.
+ADD_NAMESPACES(bar1)
+ADD_VETH(bar1, bar1, br-int, "fd12::2/64", "f0:00:00:01:02:06", \
+"fd7b:6b4d:7b25:d22f::3")
+OVS_WAIT_UNTIL([test "$(ip netns exec foo1 ip a | grep fd12::2 | grep tentative)" = ""])
+check ovn-nbctl lsp-add bar bar1 \
+-- lsp-set-addresses bar1 "f0:00:00:01:02:06 fd12::2"
+
+# wait for ovn-controller to catch up.
+check ovn-nbctl --wait=hv sync
+
+# Force ipv6 nd neighbour solicitation
+NS_EXEC([foo1], [ping6 -c 1 fd12::2])
+
+NETNS_DAEMONIZE([foo1], [tcpdump -vvvv -ttt -l -nn -e -i foo1 'ether dst 0a:58:a9:fe:01:01 and icmp6' > foo1-icmp6.pcap 2> foo1-tcpdump.stderr], [foo1-icmp6-tcpdump.pid])
+OVS_WAIT_UNTIL([grep "listening" foo1-tcpdump.stderr])
+
+# 'foo1' should be able to ping 'bar1'
+NS_CHECK_EXEC([foo1], [ping6 -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+OVS_WAIT_UNTIL([
+    total_pkts=$(cat foo1-icmp6.pcap| grep "echo request" | wc -l)
+    test "${total_pkts}" = "3"
+])
+
+# Force ipv6 nd neighbour solicitation
+NS_EXEC([foo2], [ping6 -c 1 fd12::2])
+
+NETNS_DAEMONIZE([foo2], [tcpdump -vvvv -ttt -l -nn -e -i foo2 'ether dst 0a:58:a9:fe:01:01 and icmp6' > foo2-icmp6.pcap 2> foo2-tcpdump.stderr], [foo2-icmp6-tcpdump.pid])
+OVS_WAIT_UNTIL([grep "listening" foo2-tcpdump.stderr])
+
+# 'foo2' should be able to ping 'bar1'
+NS_CHECK_EXEC([foo2], [ping6 -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+OVS_WAIT_UNTIL([
+    total_pkts=$(cat foo2-icmp6.pcap| grep "echo request" | wc -l)
+    test "${total_pkts}" = "3"
+])
+
+# Force ipv6 nd neighbour solicitation
+NS_EXEC([foo3], [ping6 -c 1 fd12::2])
+
+NETNS_DAEMONIZE([foo3], [tcpdump -vvvv -ttt -l -nn -e -i foo3 'ether dst 0a:58:a9:fe:01:01 and icmp6' > foo3-icmp6.pcap 2> foo3-tcpdump.stderr], [foo3-icmp6-tcpdump.pid])
+OVS_WAIT_UNTIL([grep "listening" foo3-tcpdump.stderr])
+
+# 'foo3' should be able to ping 'bar1'
+NS_CHECK_EXEC([foo3], [ping6 -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+OVS_WAIT_UNTIL([
+    total_pkts=$(cat foo3-icmp6.pcap| grep "echo request" | wc -l)
+    test "${total_pkts}" = "3"
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])

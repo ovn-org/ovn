@@ -992,12 +992,17 @@
         </column>
 
         <column name="options" key="arp_proxy">
-          Optional. A list of IPv4 addresses that this
-          logical switch <code>router</code> port will reply to ARP requests.
-          Example: <code>169.254.239.254 169.254.239.2</code>. The
-          <ref column="options" key="router-port"/>'s logical router should
-          have a route to forward packets sent to configured proxy ARP IPs to
-          an appropriate destination.
+          Optional. A list of MAC and addresses/cidrs or just addresses/cidrs
+          that this logical switch <code>router</code> port will reply to
+          ARP/NDP requests. Examples:
+          <code>169.254.239.254 169.254.239.2</code>,
+          <code>0a:58:a9:fe:01:01 169.254.239.254 169.254.239.2
+           169.254.238.0/24</code>,
+          <code>fd7b:6b4d:7b25:d22f::1 fd7b:6b4d:7b25:d22f::2</code>,
+          <code>0a:58:a9:fe:01:01 fd7b:6b4d:7b25:d22f::0/64</code>.
+          The<ref column="options" key="router-port"/>'s logical router
+          should have a route to forward packets sent to configured proxy ARP
+          MAC/IPs to an appropriate destination.
         </column>
       </group>
 
