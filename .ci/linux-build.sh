@@ -7,13 +7,14 @@ ARCH=${ARCH:-"x86_64"}
 COMMON_CFLAGS=""
 OVN_CFLAGS=""
 OPTS="$OPTS --enable-Werror"
+JOBS=${JOBS:-"-j4"}
 
 function configure_ovs()
 {
     pushd ovs
     ./boot.sh && ./configure CFLAGS="${COMMON_CFLAGS}" $* || \
     { cat config.log; exit 1; }
-    make -j4 || { cat config.log; exit 1; }
+    make $JOBS || { cat config.log; exit 1; }
     popd
 }
 
@@ -50,34 +51,56 @@ function configure_clang()
     COMMON_CFLAGS="${COMMON_CFLAGS} -Wno-error=unused-command-line-argument"
 }
 
+function execute_tests()
+{
+    # 'distcheck' will reconfigure with required options.
+    # Now we only need to prepare the Makefile without sparse-wrapped CC.
+    configure_ovn
+
+    export DISTCHECK_CONFIGURE_FLAGS="$OPTS"
+    if ! make distcheck CFLAGS="${COMMON_CFLAGS} ${OVN_CFLAGS}" $JOBS \
+        TESTSUITEFLAGS="$JOBS $TEST_RANGE" RECHECK=yes
+    then
+        # testsuite.log is necessary for debugging.
+        cat */_build/sub/tests/testsuite.log
+        exit 1
+    fi
+}
+
+function execute_system_tests()
+{
+      type=$1
+      log_file=$2
+
+      configure_ovn $OPTS
+      make $JOBS || { cat config.log; exit 1; }
+      if ! sudo make $JOBS $type TESTSUITEFLAGS="$TEST_RANGE" RECHECK=yes; then
+          # $log_file is necessary for debugging.
+          cat tests/$log_file
+          exit 1
+      fi
+}
+
 configure_$CC
 
 if [ "$TESTSUITE" ]; then
-    if [ "$TESTSUITE" = "system-test" ]; then
-        configure_ovn $OPTS
-        make -j4 || { cat config.log; exit 1; }
-        if ! sudo make -j4 check-kernel TESTSUITEFLAGS="$TEST_RANGE" RECHECK=yes; then
-            # system-kmod-testsuite.log is necessary for debugging.
-            cat tests/system-kmod-testsuite.log
-            exit 1
-        fi
-    else
-        # 'distcheck' will reconfigure with required options.
-        # Now we only need to prepare the Makefile without sparse-wrapped CC.
-        configure_ovn
+    case "$TESTSUITE" in
+        "test")
+        execute_tests
+        ;;
 
-        export DISTCHECK_CONFIGURE_FLAGS="$OPTS"
-        if ! make distcheck CFLAGS="${COMMON_CFLAGS} ${OVN_CFLAGS}" -j4 \
-            TESTSUITEFLAGS="-j4 $TEST_RANGE" RECHECK=yes
-        then
-            # testsuite.log is necessary for debugging.
-            cat */_build/sub/tests/testsuite.log
-            exit 1
-        fi
-    fi
+        "system-test")
+        execute_system_tests "check-kernel" "system-kmod-testsuite.log"
+        ;;
+
+        "system-test-userspace")
+        execute_system_tests "check-system-userspace" \
+            "system-userspace-testsuite.log"
+        ;;
+    esac
 else
     configure_ovn $OPTS
-    make -j4 || { cat config.log; exit 1; }
+    make $JOBS || { cat config.log; exit 1; }
 fi
 
 exit 0
