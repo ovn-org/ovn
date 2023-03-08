@@ -6841,7 +6841,7 @@ AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_mark | grep -v ipv6 -c], [0], [i
 # Clear ACL for sw0
 check ovn-nbctl --wait=hv clear logical_switch sw0 acls
 
-check ovs-appctl dpctl/del-flows
+check ovs-appctl revalidator/purge
 
 check ovn-nbctl --wait=hv sync
 

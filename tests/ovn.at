@@ -12276,7 +12276,7 @@ AS_BOX([Verify packet at outside1 i.e nexthop(172.16.1.1) port])
 expected=${nexthop_mac}${gw_mac}08004500001c000000003f110100${foo1_ip}${dst_ip}0035111100080000
 echo $expected > hv3-vif1.expected
 
-check as hv1 ovs-appctl dpctl/del-flows
+check as hv1 ovs-appctl revalidator/purge
 
 as hv1 reset_pcap_file br-ex_n2 hv1/br-ex_n2
 as hv3 reset_pcap_file hv3-vif1 hv3/vif1
