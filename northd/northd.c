@@ -9912,9 +9912,9 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     if (smap_get_bool(&lb->nlb->options, "skip_snat", false)) {
         snat_type = SKIP_SNAT;
         const char *skip_snat = features->ct_lb_related && !drop
-                                ? "; skip_snat);"
+                                ? "; skip_snat"
                                 : "";
-        skip_snat_new_action = xasprintf("flags.skip_snat_for_lb = 1; %s%s",
+        skip_snat_new_action = xasprintf("flags.skip_snat_for_lb = 1; %s%s);",
                                          ds_cstr(action), skip_snat);
         skip_snat_est_action = xasprintf("flags.skip_snat_for_lb = 1; "
                                          "next;");
@@ -9976,9 +9976,9 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     }
 
     const char *force_snat = features->ct_lb_related && !drop
-                             ? "; force_snat);"
+                             ? "; force_snat"
                              : "";
-    force_snat_new_action = xasprintf("flags.force_snat_for_lb = 1; %s%s",
+    force_snat_new_action = xasprintf("flags.force_snat_for_lb = 1; %s%s);",
                                       ds_cstr(action), force_snat);
     if (!drop) {
         ds_put_cstr(action, ");");
