@@ -285,7 +285,7 @@ ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=fd30::1)'])
 
 # 'alice1' should be able to ping 'foo1' directly.
-NS_CHECK_EXEC([alice1], [ping6 -v -q -c 3 -i 0.3 -w 2 fd11::2 | FORMAT_PING], \
+NS_CHECK_EXEC([alice1], [ping6 -q -c 3 -i 0.3 -w 2 fd11::2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -8497,7 +8497,7 @@ NS_CHECK_EXEC([ls1p1], [ping -q -c 3 -i 0.3 -w 2  172.16.1.1 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-NS_CHECK_EXEC([ls1p1], [ping6 -v -q -c 3 -i 0.3 -w 2 1711::1  | FORMAT_PING], \
+NS_CHECK_EXEC([ls1p1], [ping6 -q -c 3 -i 0.3 -w 2 1711::1  | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
