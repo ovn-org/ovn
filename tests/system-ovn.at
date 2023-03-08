@@ -8482,11 +8482,18 @@ check ovn-nbctl lsp-set-addresses ln unknown
 check ovn-nbctl lr-nat-add lr1 snat 172.16.1.10 192.168.1.0/24
 check ovn-nbctl lr-nat-add lr1 snat 1711::10 2001::/64
 
-NS_ADD_INT(ls1p1, ls1p1, br-int, "192.168.1.1/24", "00:00:00:01:01:01", "2001::1/64", "192.168.1.254", "2001::a" )
-NS_ADD_INT(ls1p2, ls1p2, br-int, "192.168.1.2/24", "00:00:00:01:01:02", "2001::2/64", "192.168.1.254", "2001::a" )
+ADD_NAMESPACES(ls1p1)
+ADD_VETH(ls1p1, ls1p1, br-int, "192.168.1.1/24", "00:00:00:01:01:01", \
+         "192.168.1.254", , "2001::1/64", "2001::a")
+
+ADD_NAMESPACES(ls1p2)
+ADD_VETH(ls1p2, ls1p2, br-int, "192.168.1.2/24", "00:00:00:01:01:02", \
+         "192.168.1.254", , "2001::2/64", "2001::a")
 
 ADD_NAMESPACES(ext1)
-ADD_INT(ext1, ext1, br0, 172.16.1.1/24, 1711::1/64)
+ADD_VETH(ext1, ext1, br0, "172.16.1.1/24", "00:ee:00:01:01:01", \
+         "172.16.1.254", , "1711::1/64", "1711::a")
+
 check ovn-nbctl --wait=hv sync
 wait_for_ports_up
 OVS_WAIT_UNTIL([test "$(ip netns exec ls1p1 ip a | grep 2001::1 | grep tentative)" = ""])
@@ -8548,25 +8555,17 @@ wait_igmp_flows_installed()
 }
 
 ADD_NAMESPACES(vm1)
-ADD_INT([vm1], [vm1], [br-int], [42.42.42.1/24])
-NS_CHECK_EXEC([vm1], [ip link set vm1 address 00:00:00:00:00:01], [0])
-NS_CHECK_EXEC([vm1], [ip route add default via 42.42.42.5], [0])
-check ovs-vsctl set Interface vm1 external_ids:iface-id=vm1
+ADD_VETH(vm1, vm1, br-int, "42.42.42.1/24", "00:00:00:00:00:01", \
+         "42.42.42.5")
 
 ADD_NAMESPACES(vm2)
-ADD_INT([vm2], [vm2], [br-int], [42.42.42.2/24])
-NS_CHECK_EXEC([vm2], [ip link set vm2 address 00:00:00:00:00:02], [0])
-NS_CHECK_EXEC([vm2], [ip link set lo up], [0])
-check ovs-vsctl set Interface vm2 external_ids:iface-id=vm2
+ADD_VETH(vm2, vm2, br-int, "42.42.42.2/24", "00:00:00:00:00:02")
 
 ADD_NAMESPACES(vm3)
 NETNS_DAEMONIZE([vm3], [tcpdump -n -i any -nnleX > vm3.pcap 2>/dev/null], [tcpdump3.pid])
 
-ADD_INT([vm3], [vm3], [br-int], [42.42.42.3/24])
-NS_CHECK_EXEC([vm3], [ip link set vm3 address 00:00:00:00:00:03], [0])
-NS_CHECK_EXEC([vm3], [ip link set lo up], [0])
-NS_CHECK_EXEC([vm3], [ip route add default via 42.42.42.5], [0])
-check ovs-vsctl set Interface vm3 external_ids:iface-id=vm3
+ADD_VETH(vm3, vm3, br-int, "42.42.42.3/24", "00:00:00:00:00:03", \
+         "42.42.42.5")
 
 NS_CHECK_EXEC([vm2], [sysctl -w net.ipv4.igmp_max_memberships=100], [ignore], [ignore])
 NS_CHECK_EXEC([vm3], [sysctl -w net.ipv4.igmp_max_memberships=100], [ignore], [ignore])
