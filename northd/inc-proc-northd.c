@@ -34,9 +34,12 @@
 #include "en-lflow.h"
 #include "en-northd-output.h"
 #include "en-sync-sb.h"
+#include "unixctl.h"
 #include "util.h"
 
 VLOG_DEFINE_THIS_MODULE(inc_proc_northd);
+
+static unixctl_cb_func chassis_features_list;
 
 #define NB_NODES \
     NB_NODE(nb_global, "nb_global") \
@@ -306,6 +309,12 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_ovsdb_node_add_index(&en_sb_address_set,
                                 "sbrec_address_set_by_name",
                                 sbrec_address_set_by_name);
+
+    struct northd_data *northd_data =
+        engine_get_internal_data(&en_northd);
+    unixctl_command_register("debug/chassis-features-list", "", 0, 0,
+                             chassis_features_list,
+                             &northd_data->features);
 }
 
 /* Returns true if the incremental processing ended up updating nodes. */
@@ -355,4 +364,21 @@ void inc_proc_northd_cleanup(void)
 {
     engine_cleanup();
     engine_set_context(NULL);
+}
+
+static void
+chassis_features_list(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                      const char *argv[] OVS_UNUSED, void *features_)
+{
+    struct chassis_features *features = features_;
+    struct ds ds = DS_EMPTY_INITIALIZER;
+
+    ds_put_format(&ds, "ct_no_masked_label:    %s\n",
+                  features->ct_no_masked_label ? "true" : "false");
+    ds_put_format(&ds, "ct_lb_related:         %s\n",
+                  features->ct_lb_related ? "true" : "false");
+    ds_put_format(&ds, "mac_binding_timestamp: %s\n",
+                  features->mac_binding_timestamp ? "true" : "false");
+    unixctl_command_reply(conn, ds_cstr(&ds));
+    ds_destroy(&ds);
 }
