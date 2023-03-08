@@ -47,9 +47,9 @@ jobs:
         - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "-500" }
         - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "501-1000" }
         - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "1001-" }
-        - { compiler: clang, testsuite: test, libs: -ljemalloc, test_range: "-500" }
-        - { compiler: clang, testsuite: test, libs: -ljemalloc, test_range: "501-1000" }
-        - { compiler: clang, testsuite: test, libs: -ljemalloc, test_range: "1001-" }
+        - { compiler: gcc, testsuite: system-test-userspace, test_range: "-100" }
+        - { compiler: gcc, testsuite: system-test-userspace, test_range: "101-200" }
+        - { compiler: gcc, testsuite: system-test-userspace, test_range: "201-" }
         - { compiler: gcc, testsuite: system-test, test_range: "-100" }
         - { compiler: gcc, testsuite: system-test, test_range: "101-200" }
         - { compiler: gcc, testsuite: system-test, test_range: "201-" }
