@@ -44,43 +44,8 @@ m4_define([NS_CHECK_EXEC],
 # appropriate type, and allows additional arguments to be passed.
 m4_define([ADD_BR], [ovs-vsctl _ADD_BR([$1]) -- $2])
 
-# ADD_INT([port], [namespace], [ovs-br], [ip_addr] [ip6_addr])
-#
-# Add an internal port to 'ovs-br', then shift it into 'namespace' and
-# configure it with 'ip_addr' (specified in CIDR notation).
-# Optionally add an ipv6 address
-m4_define([ADD_INT],
-    [ AT_CHECK([ovs-vsctl add-port $3 $1 -- set int $1 type=internal])
-      AT_CHECK([ip link set $1 netns $2])
-      NS_CHECK_EXEC([$2], [ip addr add $4 dev $1])
-      NS_CHECK_EXEC([$2], [ip link set dev $1 up])
-      if test -n "$5"; then
-        NS_CHECK_EXEC([$2], [ip -6 addr add $5 dev $1])
-      fi
-    ]
-)
-
-# NS_ADD_INT([port], [namespace], [ovs-br], [ip_addr] [mac_addr] [ip6_addr] [default_gw] [default_ipv6_gw])
-# Create a namespace
-# Add an internal port to 'ovs-br', then shift it into 'namespace'.
-# Configure it with 'ip_addr' (specified in CIDR notation) and ip6_addr.
-# Set mac_addr
-# Add default gw for ipv4 and ipv6
-m4_define([NS_ADD_INT],
-    [ AT_CHECK([ovs-vsctl add-port $3 $1 -- set int $1 type=internal  external_ids:iface-id=$1])
-      ADD_NAMESPACES($2)
-      AT_CHECK([ip link set $1 netns $2])
-      NS_CHECK_EXEC([$2], [ip link set $1 address $5])
-      NS_CHECK_EXEC([$2], [ip link set dev $1 up])
-      NS_CHECK_EXEC([$2], [ip addr add $4 dev $1])
-      NS_CHECK_EXEC([$2], [ip addr add $6 dev $1])
-      NS_CHECK_EXEC([$2], [ip route add default via $7 dev $1])
-      NS_CHECK_EXEC([$2], [ip -6 route add default via $8 dev $1])
-    ]
-)
-
 # ADD_VETH([port], [namespace], [ovs-br], [ip_addr] [mac_addr], [gateway],
-#          [ip_addr_flags])
+#          [ip_addr_flags] [ip6_addr] [gateway6])
 #
 # Add a pair of veth ports. 'port' will be added to name space 'namespace',
 # and "ovs-'port'" will be added to ovs bridge 'ovs-br'.
@@ -107,6 +72,12 @@ m4_define([ADD_VETH],
       fi
       if test -n "$6"; then
         NS_CHECK_EXEC([$2], [ip route add default via $6])
+      fi
+      if test -n "$8"; then
+        NS_CHECK_EXEC([$2], [ip addr add $8 dev $1])
+      fi
+      if test -n "$9"; then
+        NS_CHECK_EXEC([$2], [ip route add default via $9])
       fi
       on_exit "ip link del ovs-$1"
     ]
