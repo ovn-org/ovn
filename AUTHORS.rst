@@ -137,6 +137,7 @@ Esteban Rodriguez Betancourt       estebarb@hpe.com
 Aymerich Edward                    edward.aymerich@hpe.com
 Edward Tomasz Napierała            trasz@freebsd.org
 Eitan Eliahu                       eliahue@vmware.com
+Enrique Llorente                   ellorent@redhat.com
 Eohyung Lee                        liquidnuker@gmail.com
 Eric Dumazet                       edumazet@google.com
 Eric Garver                        e@erig.me
