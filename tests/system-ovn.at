@@ -8686,7 +8686,7 @@ ovn-sbctl list ip_multicast
 
 wait_igmp_flows_installed()
 {
-    OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int table=33 | \
+    OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int table=35 | \
     grep 'priority=90' | grep "nw_dst=$1"])
 }
 

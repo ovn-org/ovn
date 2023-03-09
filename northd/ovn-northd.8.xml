@@ -684,7 +684,7 @@
       </li>
     </ul>
 
-    <h3>Ingress table 8: <code>from-lport</code> ACLs before LB</h3>
+    <h3>Ingress table 8: <code>from-lport</code> ACL evaluation before LB</h3>
 
     <p>
       Logical flows in this table closely reproduce those in the
@@ -697,61 +697,71 @@
     </p>
     <ul>
       <li>
-        <code>allow</code> ACLs translate into logical flows with
-        the <code>next;</code> action.  If there are any stateful ACLs
-        on this datapath, then <code>allow</code> ACLs translate to
-        <code>ct_commit; next;</code> (which acts as a hint for the next tables
-        to commit the connection to conntrack). In case the <code>ACL</code>
-        has a label then <code>reg3</code> is loaded with the label value and
-        <code>reg0[13]</code> bit is set to 1 (which acts as a hint for the
-        next tables to commit the label to conntrack).
+        This table is responsible for evaluating ACLs, and setting a register
+        bit to indicate whether the ACL decided to allow, drop, or reject the
+        traffic. The allow bit is <code>reg8[16]</code>. The drop bit is
+        <code>reg8[17]</code>. All flows in this table will advance the packet
+        to the next table, where the bits from before are evaluated to
+        determine what to do with the packet. Any flows in this table that
+        intend for the packet to pass will set <code>reg8[16]</code> to 1,
+        even if an ACL with an allow-type action was not matched. This lets the
+        next table know to allow the traffic to pass. These bits will be
+        referred to as the "allow", "drop", and "reject" bits in the upcoming
+        paragraphs.
       </li>
       <li>
-        <code>allow-related</code> ACLs translate into logical
-        flows with the <code>ct_commit(ct_label=0/1); next;</code> actions
-        for new connections and <code>reg0[1] = 1; next;</code> for existing
-        connections.  In case the <code>ACL</code> has a label then
+        <code>allow</code> ACLs translate into logical flows that set the allow
+        bit to 1 and advance the packet to the next table. If there are any
+        stateful ACLs on this datapath, then <code>allow</code> ACLs set the
+        allow bit to one and in addition perform <code>ct_commit;</code> (which
+        acts as a hint for future tables to commit the connection to
+        conntrack). In case the <code>ACL</code> has a label then
         <code>reg3</code> is loaded with the label value and
         <code>reg0[13]</code> bit is set to 1 (which acts as a hint for the
         next tables to commit the label to conntrack).
       </li>
       <li>
-        <code>allow-stateless</code> ACLs translate into logical
-        flows with the <code>next;</code> action.
+        <code>allow-related</code> ACLs translate into logical flows that set
+        the allow bit and additionally have <code>ct_commit(ct_label=0/1);
+        next;</code> actions for new connections and <code>reg0[1] = 1;
+        next;</code> for existing connections.  In case the <code>ACL</code>
+        has a label then <code>reg3</code> is loaded with the label value and
+        <code>reg0[13]</code> bit is set to 1 (which acts as a hint for the
+        next tables to commit the label to conntrack).
       </li>
       <li>
-        <code>reject</code> ACLs translate into logical
-        flows with the
-        <code>tcp_reset { output &lt;-&gt; inport;
-        next(pipeline=egress,table=5);}</code>
-        action for TCP connections,<code>icmp4/icmp6</code> action
-        for UDP connections, and <code>sctp_abort {output &lt;-%gt; inport;
-        next(pipeline=egress,table=5);}</code> action for SCTP associations.
+        <code>allow-stateless</code> ACLs translate into logical flows that set
+        the allow bit and advance to the next table.
       </li>
       <li>
-        Other ACLs translate to <code>drop;</code> for new or untracked
-        connections and <code>ct_commit(ct_label=1/1);</code> for known
-        connections.  Setting <code>ct_label</code> marks a connection
-        as one that was previously allowed, but should no longer be
-        allowed due to a policy change.
+        <code>reject</code> ACLs translate into logical flows with that set the
+        reject bit and advance to the next table.
+      </li>
+      <li>
+        Other ACLs set the drop bit and advance to the next table for new or
+        untracked connections. For known connections, they set the drop bit,
+        as well as running the <code>ct_commit(ct_label=1/1);</code> action.
+        Setting <code>ct_label</code> marks a connection as one that was
+        previously allowed, but should no longer be allowed due to a policy
+        change.
       </li>
     </ul>
 
     <p>
-      This table contains a priority-65535 flow to advance to the next table
-      if the logical switch has <code>no</code> ACLs configured, otherwise a
-      priority-0 flow to advance to the next table so that ACLs allow
-      packets by default if <ref column="options:default_acl_drop"
-      table="NB_Global" db="OVN_Northbound"/> column of <ref table="NB_Global"
-      db="OVN_Northbound"/> is <code>false</code> or not set.  Otherwise
-      the flow action is set to <code>drop;</code> to implement a default
-      drop behavior.
+      This table contains a priority-65535 flow to set the allow bit and
+      advance to the next table if the logical switch has <code>no</code>
+      ACLs configured, otherwise a priority-0 flow to advance to the next
+      table is added. This flow does not set the allow bit, so that the next
+      table can decide whether to allow or drop the packet based on the value
+      of the <ref column="options:default_acl_drop" table="NB_Global"
+      db="OVN_Northbound"/> column of the <ref table="NB_Global"
+      db="OVN_Northbound"/> table.
     </p>
 
     <p>
-      A priority-65532 flow is added to allow IPv6 Neighbor solicitation,
-      Neighbor discover, Router solicitation, Router advertisement and MLD
-      packets regardless of other ACLs defined.
+      A priority-65532 flow is added that sets the allow bit for
+      IPv6 Neighbor solicitation, Neighbor discover, Router solicitation,
+      Router advertisement and MLD packets regardless of other ACLs defined.
     </p>
 
     <p>
@@ -773,24 +783,17 @@
       </li>
 
       <li>
-        If <ref column="options:default_acl_drop" table="NB_Global"
-        db="OVN_Northbound"/> column of <ref table="NB_Global"
-        db="OVN_Northbound"/> is <code>true</code>, a priority-1
-        flow that drops IP traffic that is not part of established
-        sessions.
+        A priority-1 flow that sets the allow bit and sets the hint to commit
+        IP traffic to the connection tracker (with action <code>reg0[1] = 1;
+        next;</code>).  This is needed for the default allow policy because,
+        while the initiator's direction may not have any stateful rules, the
+        server's may and then its return traffic would not be known and marked
+        as invalid.
       </li>
 
       <li>
-        A priority-1 flow that sets the hint to commit IP traffic to the
-        connection tracker (with action <code>reg0[1] = 1; next;</code>).  This
-        is needed for the default allow policy because, while the initiator's
-        direction may not have any stateful rules, the server's may and then
-        its return traffic would not be known and marked as invalid.
-      </li>
-
-      <li>
-        A priority-65532 flow that allows any traffic in the reply
-        direction for a connection that has been committed to the
+        A priority-65532 flow that sets the allow bit for any traffic in the
+        reply direction for a connection that has been committed to the
         connection tracker (i.e., established flows), as long as
         the committed flow does not have <code>ct_mark.blocked</code> set.
         We only handle traffic in the reply direction here because
@@ -807,9 +810,9 @@
       </li>
 
       <li>
-        A priority-65532 flow that allows any traffic that is considered
-        related to a committed flow in the connection tracker (e.g., an
-        ICMP Port Unreachable from a non-listening UDP port), as long
+        A priority-65532 flow that sets the allow bit for any traffic that is
+        considered related to a committed flow in the connection tracker (e.g.,
+        an ICMP Port Unreachable from a non-listening UDP port), as long
         as the committed flow does not have <code>ct_mark.blocked</code> set.
         This flow also applies NAT to the related traffic so that ICMP headers
         and the inner packet have correct addresses.
@@ -819,14 +822,14 @@
       </li>
 
       <li>
-        A priority-65532 flow that drops all traffic marked by the
-        connection tracker as invalid.
+        A priority-65532 flow that sets the drop bit for all traffic marked by
+        the connection tracker as invalid.
       </li>
 
       <li>
-        A priority-65532 flow that drops all traffic in the reply direction
-        with <code>ct_mark.blocked</code> set meaning that the connection
-        should no longer be allowed due to a policy change.  Packets
+        A priority-65532 flow that sets the drop bit for all traffic in the
+        reply direction with <code>ct_mark.blocked</code> set meaning that the
+        connection should no longer be allowed due to a policy change.  Packets
         in the request direction are skipped here to let a newly created
         ACL re-allow this connection.
       </li>
@@ -842,7 +845,7 @@
         A priority 34000 logical flow is added for each logical switch datapath
         with the match <code>eth.dst = <var>E</var></code> to allow the service
         monitor reply packet destined to <code>ovn-controller</code>
-        with the action <code>next</code>, where <var>E</var> is the
+        that sets the allow bit, where <var>E</var> is the
         service monitor mac defined in the
         <ref column="options:svc_monitor_mac" table="NB_Global"
         db="OVN_Northbound"/> column of <ref table="NB_Global"
@@ -850,7 +853,40 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 9: <code>from-lport</code> QoS Marking</h3>
+    <h3>Ingress Table 9: <code>from-lport</code> ACL action</h3>
+
+    <p>
+      Logical flows in this table decide how to proceed based on the values of
+      the allow, drop, and reject bits that may have been set in the previous
+      table.
+    </p>
+
+    <ul>
+      <li>
+        If no ACLs are configured, then a priority 0 flow is installed that
+        matches everything and advances to the next table.
+      </li>
+
+      <li>
+        A priority 1000 flow is installed that will advance the packet to the
+        next table if the allow bit is set.
+      </li>
+
+      <li>
+        A priority 1000 flow is installed that will run the <code>drop;</code>
+        action if the drop bit is set.
+      </li>
+
+      <li>
+        A priority 1000 flow is installed that will run the <code>tcp_reset
+        { output &lt;-&gt; inport; next(pipeline=egress,table=5);}</code>
+        action for TCP connections,<code>icmp4/icmp6</code> action
+        for UDP connections, and <code>sctp_abort {output &lt;-%gt; inport;
+        next(pipeline=egress,table=5);}</code> action for SCTP associations.
+      </li>
+    </ul>
+
+    <h3>Ingress Table 10: <code>from-lport</code> QoS Marking</h3>
 
     <p>
       Logical flows in this table closely reproduce those in the
@@ -872,7 +908,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 10: <code>from-lport</code> QoS Meter</h3>
+    <h3>Ingress Table 11: <code>from-lport</code> QoS Meter</h3>
 
     <p>
       Logical flows in this table closely reproduce those in the
@@ -894,7 +930,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 11: Load balancing affinity check</h3>
+    <h3>Ingress Table 12: Load balancing affinity check</h3>
 
     <p>
       Load balancing affinity check table contains the following
@@ -922,7 +958,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 12: LB</h3>
+    <h3>Ingress Table 13: LB</h3>
 
     <ul>
       <li>
@@ -1002,7 +1038,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 13: Load balancing affinity learn</h3>
+    <h3>Ingress Table 14: Load balancing affinity learn</h3>
 
     <p>
       Load balancing affinity learn table contains the following
@@ -1033,7 +1069,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 14: Pre-Hairpin</h3>
+    <h3>Ingress Table 15: Pre-Hairpin</h3>
     <ul>
       <li>
         If the logical switch has load balancer(s) configured, then a
@@ -1051,7 +1087,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 15: Nat-Hairpin</h3>
+    <h3>Ingress Table 16: Nat-Hairpin</h3>
     <ul>
       <li>
          If the logical switch has load balancer(s) configured, then a
@@ -1086,7 +1122,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 16: Hairpin</h3>
+    <h3>Ingress Table 17: Hairpin</h3>
     <ul>
       <li>
         <p>
@@ -1120,56 +1156,57 @@
       </li>
     </ul>
 
-    <h3>Ingress table 17: <code>from-lport</code> ACLs after LB</h3>
+    <h3>Ingress table 18: <code>from-lport</code> ACL evaluation after LB</h3>
 
     <p>
       Logical flows in this table closely reproduce those in the
-      <code>ACL</code> table in the <code>OVN_Northbound</code> database
+      <code>ACL eval</code> table in the <code>OVN_Northbound</code> database
       for the <code>from-lport</code> direction with the option
       <code>apply-after-lb</code> set to <code>true</code>.
       The <code>priority</code> values from the <code>ACL</code> table have a
       limited range and have 1000 added to them to leave room for OVN default
-      flows at both higher and lower priorities.
+      flows at both higher and lower priorities. The flows in this table
+      indicate the ACL verdict by setting <code>reg8[16]</code> for
+      <code>allow-type</code> ACLs, <code>reg8[17]</code> for <code>drop</code>
+      ACLs, and <code>reg8[17]</code> for <code>reject</code> ACLs, and then
+      advancing the packet to the next table. These will be reffered to as the
+      allow bit, drop bit, and reject bit throughout the documentation for this
+      table and the next one.
     </p>
 
     <ul>
       <li>
         <code>allow</code> apply-after-lb ACLs translate into logical flows
-        with the <code>next;</code> action.  If there are any stateful ACLs
+        that set the allow bit.  If there are any stateful ACLs
         (including both before-lb and after-lb ACLs)
-        on this datapath, then <code>allow</code> ACLs translate to
-        <code>ct_commit; next;</code> (which acts as a hint for the next tables
-        to commit the connection to conntrack). In case the <code>ACL</code>
+        on this datapath, then <code>allow</code> ACLs also run
+        <code>ct_commit; next;</code> (which acts as a hint for an upcoming
+        table to commit the connection to conntrack). In case the
+        <code>ACL</code> has a label then <code>reg3</code> is loaded with the
+        label value and <code>reg0[13]</code> bit is set to 1 (which acts as a
+        hint for the next tables to commit the label to conntrack).
+      </li>
+      <li>
+        <code>allow-related</code> apply-after-lb ACLs translate into logical
+        flows that set the allow bit and run the <code>ct_commit(ct_label=0/1);
+        next;</code> actions for new connections and <code>reg0[1] = 1;
+        next;</code> for existing connections.  In case the <code>ACL</code>
         has a label then <code>reg3</code> is loaded with the label value and
         <code>reg0[13]</code> bit is set to 1 (which acts as a hint for the
         next tables to commit the label to conntrack).
       </li>
       <li>
-        <code>allow-related</code> apply-after-lb ACLs translate into logical
-        flows with the <code>ct_commit(ct_label=0/1); next;</code> actions
-        for new connections and <code>reg0[1] = 1; next;</code> for existing
-        connections.  In case the <code>ACL</code> has a label then
-        <code>reg3</code> is loaded with the label value and
-        <code>reg0[13]</code> bit is set to 1 (which acts as a hint for the
-        next tables to commit the label to conntrack).
-      </li>
-      <li>
         <code>allow-stateless</code> apply-after-lb ACLs translate into logical
-        flows with the <code>next;</code> action.
+        flows that set the allow bit and advance to the next table.
       </li>
       <li>
         <code>reject</code> apply-after-lb ACLs translate into logical
-        flows with the
-        <code>tcp_reset { output &lt;-&gt; inport;
-        next(pipeline=egress,table=5);}</code>
-        action for TCP connections,<code>icmp4/icmp6</code> action
-        for UDP connections, and <code>sctp_abort {output &lt;-%gt; inport;
-        next(pipeline=egress,table=5);}</code> action for SCTP associations.
+        flows that set the reject bit and advance to the next table.
       </li>
       <li>
-        Other apply-after-lb ACLs translate to <code>drop;</code> for new
-        or untracked connections and <code>ct_commit(ct_label=1/1);</code> for
-        known connections.  Setting <code>ct_label</code> marks a connection
+        Other apply-after-lb ACLs set the drop bit for new or untracked
+        connections and <code>ct_commit(ct_label=1/1);</code> for known
+        connections.  Setting <code>ct_label</code> marks a connection
         as one that was previously allowed, but should no longer be
         allowed due to a policy change.
       </li>
@@ -1179,8 +1216,8 @@
       <li>
         One priority-65532 flow matching packets with <code>reg0[17]</code>
         set (either replies to existing sessions or traffic related to
-        existing sessions) and allows these by advancing to the next
-        table.
+        existing sessions) and allows these by setting the allow bit and
+        advancing to the next table.
       </li>
     </ul>
 
@@ -1191,7 +1228,40 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 18: Stateful</h3>
+    <h3>Ingress Table 19: <code>from-lport</code> ACL action after LB</h3>
+
+    <p>
+      Logical flows in this table decide how to proceed based on the values of
+      the allow, drop, and reject bits that may have been set in the previous
+      table.
+    </p>
+
+    <ul>
+      <li>
+        If no ACLs are configured, then a priority 0 flow is installed that
+        matches everything and advances to the next table.
+      </li>
+
+      <li>
+        A priority 1000 flow is installed that will advance the packet to the
+        next table if the allow bit is set.
+      </li>
+
+      <li>
+        A priority 1000 flow is installed that will run the <code>drop;</code>
+        action if the drop bit is set.
+      </li>
+
+      <li>
+        A priority 1000 flow is installed that will run the <code>tcp_reset
+        { output &lt;-&gt; inport; next(pipeline=egress,table=5);}</code>
+        action for TCP connections,<code>icmp4/icmp6</code> action
+        for UDP connections, and <code>sctp_abort {output &lt;-%gt; inport;
+        next(pipeline=egress,table=5);}</code> action for SCTP associations.
+      </li>
+    </ul>
+
+    <h3>Ingress Table 20: Stateful</h3>
 
     <ul>
       <li>
@@ -1214,7 +1284,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 19: ARP/ND responder</h3>
+    <h3>Ingress Table 21: ARP/ND responder</h3>
 
     <p>
       This table implements ARP/ND responder in a logical switch for known
@@ -1541,7 +1611,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 20: DHCP option processing</h3>
+    <h3>Ingress Table 22: DHCP option processing</h3>
 
     <p>
       This table adds the DHCPv4 options to a DHCPv4 packet from the
@@ -1602,7 +1672,7 @@ next;
       </li>
     </ul>
 
-    <h3>Ingress Table 21: DHCP responses</h3>
+    <h3>Ingress Table 23: DHCP responses</h3>
 
     <p>
       This table implements DHCP responder for the DHCP replies generated by
@@ -1683,7 +1753,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 22 DNS Lookup</h3>
+    <h3>Ingress Table 24 DNS Lookup</h3>
 
     <p>
       This table looks up and resolves the DNS names to the corresponding
@@ -1712,7 +1782,7 @@ reg0[4] = dns_lookup(); next;
       </li>
     </ul>
 
-    <h3>Ingress Table 23 DNS Responses</h3>
+    <h3>Ingress Table 25 DNS Responses</h3>
 
     <p>
       This table implements DNS responder for the DNS replies generated by
@@ -1747,7 +1817,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress table 24 External ports</h3>
+    <h3>Ingress table 26 External ports</h3>
 
     <p>
       Traffic from the <code>external</code> logical ports enter the ingress
@@ -1790,7 +1860,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 25 Destination Lookup</h3>
+    <h3>Ingress Table 27 Destination Lookup</h3>
 
     <p>
       This table implements switching behavior.  It contains these logical
@@ -1966,7 +2036,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 26 Destination unknown</h3>
+    <h3>Ingress Table 28 Destination unknown</h3>
 
     <p>
       This table handles the packets whose destination was not found or
@@ -2116,11 +2186,15 @@ output;
       This is similar to ingress table <code>ACL hints</code>.
     </p>
 
-    <h3>Egress Table 4: <code>to-lport</code> ACLs</h3>
+    <h3>Egress Table 4: <code>to-lport</code> ACL evaluation</h3>
 
     <p>
-      This is similar to ingress table <code>ACLs</code> except for
-      <code>to-lport</code> ACLs.
+      This is similar to ingress table <code>ACL eval</code> except for
+      <code>to-lport</code> ACLs. As a reminder, these flows use the
+      following register bits to indicate their verdicts.
+      <code>Allow-type</code> ACLs set <code>reg8[16]</code>, <code>drop</code>
+      ACLs set <code>reg8[17]</code>, and <code>reject</code> ACLs set
+      <code>reg8[18]</code>.
     </p>
 
     <p>
@@ -2137,14 +2211,16 @@ output;
         A priority 34000 logical flow is added for each logical port which
         has DHCPv4 options defined to allow the DHCPv4 reply packet and which has
         DHCPv6 options defined to allow the DHCPv6 reply packet from the
-        <code>Ingress Table 18: DHCP responses</code>.
+        <code>Ingress Table 18: DHCP responses</code>. This is indicated by
+        setting the allow bit.
       </li>
 
       <li>
         A priority 34000 logical flow is added for each logical switch datapath
         configured with DNS records with the match <code>udp.dst = 53</code>
         to allow the DNS reply packet from the
-        <code>Ingress Table 20: DNS responses</code>.
+        <code>Ingress Table 20: DNS responses</code>. This is indicated by
+        setting the allow bit.
       </li>
 
       <li>
@@ -2155,32 +2231,38 @@ output;
         service monitor mac defined in the
         <ref column="options:svc_monitor_mac" table="NB_Global"
         db="OVN_Northbound"/> column of <ref table="NB_Global"
-        db="OVN_Northbound"/> table.
+        db="OVN_Northbound"/> table. This is indicated by setting the allow
+        bit.
       </li>
     </ul>
 
-    <h3>Egress Table 5: <code>to-lport</code> QoS Marking</h3>
+    <h3>Egress Table 5: <code>to-lport</code> ACL action</h3>
+    <p>
+      This is similar to ingress table <code>ACL action</code>.
+    </p>
+
+    <h3>Egress Table 6: <code>to-lport</code> QoS Marking</h3>
 
     <p>
       This is similar to ingress table <code>QoS marking</code> except
       they apply to <code>to-lport</code> QoS rules.
     </p>
 
-    <h3>Egress Table 6: <code>to-lport</code> QoS Meter</h3>
+    <h3>Egress Table 7: <code>to-lport</code> QoS Meter</h3>
 
     <p>
       This is similar to ingress table <code>QoS meter</code> except
       they apply to <code>to-lport</code> QoS rules.
     </p>
 
-    <h3>Egress Table 7: Stateful</h3>
+    <h3>Egress Table 8: Stateful</h3>
 
     <p>
       This is similar to ingress table <code>Stateful</code> except that
       there are no rules added for load balancing new connections.
     </p>
 
-    <h3>Egress Table 8: Egress Port Security - check</h3>
+    <h3>Egress Table 9: Egress Port Security - check</h3>
 
     <p>
       This is similar to the port security logic in table
@@ -2209,7 +2291,7 @@ output;
       </li>
     </ul>
 
-    <h3>Egress Table 9: Egress Port Security - Apply</h3>
+    <h3>Egress Table 10: Egress Port Security - Apply</h3>
 
     <p>
       This is similar to the ingress port security logic in ingress table

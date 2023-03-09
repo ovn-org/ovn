@@ -13308,15 +13308,20 @@ grep active_backup | grep members:$hv2_gw1_ofport,$hv2_gw2_ofport \
 ])
 
 # make sure that flows for handling the outside router port reside on gw1 through ls_in_l2_lkup table
-OVS_WAIT_FOR_OUTPUT([as gw1 ovs-ofctl dump-flows br-int table=33 | \
+
+sleep 10
+
+as gw1 ovs-ofctl dump-flows br-int
+
+OVS_WAIT_FOR_OUTPUT([as gw1 ovs-ofctl dump-flows br-int table=35 | \
 grep "dl_dst=00:00:02:01:02:04" | wc -l], [0], [[1
 ]])
-OVS_WAIT_FOR_OUTPUT([as gw2 ovs-ofctl dump-flows br-int table=33 | \
+OVS_WAIT_FOR_OUTPUT([as gw2 ovs-ofctl dump-flows br-int table=35 | \
 grep "dl_dst=00:00:02:01:02:04" | wc -l], [0], [[0
 ]])
 
 # make sure ARP responder flows for outside router port reside on gw1 too through ls_in_arp_rsp table
-OVS_WAIT_UNTIL([test `as gw1 ovs-ofctl dump-flows br-int table=27 | \
+OVS_WAIT_UNTIL([test `as gw1 ovs-ofctl dump-flows br-int table=29 | \
 grep arp_tpa=192.168.0.101 | wc -l` -ge 1])
 
 # check that the chassis redirect port has been claimed by the gw1 chassis
@@ -13398,10 +13403,10 @@ AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-hv1-0],[0],
 ]])
 
 # make sure that flows for handling the outside router port reside on gw2 now
-OVS_WAIT_FOR_OUTPUT([as gw2 ovs-ofctl dump-flows br-int table=33 | \
+OVS_WAIT_FOR_OUTPUT([as gw2 ovs-ofctl dump-flows br-int table=35 | \
 grep "dl_dst=00:00:02:01:02:04" | wc -l], [0], [[1
 ]])
-OVS_WAIT_FOR_OUTPUT([as gw1 ovs-ofctl dump-flows br-int table=33 | \
+OVS_WAIT_FOR_OUTPUT([as gw1 ovs-ofctl dump-flows br-int table=35 | \
 grep "dl_dst=00:00:02:01:02:04" | wc -l], [0], [[0
 ]])
 
@@ -13413,10 +13418,10 @@ as main ovs-vsctl del-port n1 $port
 bfd_dump
 
 # make sure that flows for handling the outside router port reside on gw1 now
-OVS_WAIT_FOR_OUTPUT([as gw1 ovs-ofctl dump-flows br-int table=33 | \
+OVS_WAIT_FOR_OUTPUT([as gw1 ovs-ofctl dump-flows br-int table=35 | \
 grep "dl_dst=00:00:02:01:02:04" | wc -l], [0], [[1
 ]])
-OVS_WAIT_FOR_OUTPUT([as gw2 ovs-ofctl dump-flows br-int table=33 | \
+OVS_WAIT_FOR_OUTPUT([as gw2 ovs-ofctl dump-flows br-int table=35 | \
 grep "dl_dst=00:00:02:01:02:04" | wc -l], [0], [[0
 ]])
 
@@ -13530,15 +13535,15 @@ grep active_backup | grep members:$hv2_gw1_ofport,$hv2_gw2_ofport \
 ])
 
 # make sure that flows for handling the outside router port reside on gw1
-OVS_WAIT_FOR_OUTPUT([as gw1 ovs-ofctl dump-flows br-int table=33 | \
+OVS_WAIT_FOR_OUTPUT([as gw1 ovs-ofctl dump-flows br-int table=35 | \
 grep "dl_dst=00:00:02:01:02:04" | wc -l], [0], [[1
 ]])
-OVS_WAIT_FOR_OUTPUT([as gw2 ovs-ofctl dump-flows br-int table=33 | \
+OVS_WAIT_FOR_OUTPUT([as gw2 ovs-ofctl dump-flows br-int table=35 | \
 grep "dl_dst:00:00:02:01:02:04" | wc -l], [0], [[0
 ]])
 
 # make sure ARP responder flows for outside router port reside on gw1 too
-OVS_WAIT_UNTIL([test `as gw1 ovs-ofctl dump-flows br-int table=27 | \
+OVS_WAIT_UNTIL([test `as gw1 ovs-ofctl dump-flows br-int table=29 | \
 grep arp_tpa=192.168.0.101 | wc -l` -ge 1 ])
 
 # check that the chassis redirect port has been claimed by the gw1 chassis
@@ -13602,10 +13607,10 @@ AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-hv1-0],[0],
 ]])
 
 # make sure that flows for handling the outside router port reside on gw2 now
-OVS_WAIT_FOR_OUTPUT([as gw2 ovs-ofctl dump-flows br-int table=33 | \
+OVS_WAIT_FOR_OUTPUT([as gw2 ovs-ofctl dump-flows br-int table=35 | \
 grep "dl_dst=00:00:02:01:02:04" | wc -l], [0], [[1
 ]])
-OVS_WAIT_FOR_OUTPUT([as gw1 ovs-ofctl dump-flows br-int table=33 | \
+OVS_WAIT_FOR_OUTPUT([as gw1 ovs-ofctl dump-flows br-int table=35 | \
 grep "dl_dst=00:00:02:01:02:04" | wc -l], [0], [[0
 ]])
 
@@ -13617,10 +13622,10 @@ as main ovs-vsctl del-port n1 $port
 bfd_dump
 
 # make sure that flows for handling the outside router port reside on gw2 now
-OVS_WAIT_FOR_OUTPUT([as gw1 ovs-ofctl dump-flows br-int table=33 | \
+OVS_WAIT_FOR_OUTPUT([as gw1 ovs-ofctl dump-flows br-int table=35 | \
 grep "dl_dst=00:00:02:01:02:04" | wc -l], [0], [[1
 ]])
-OVS_WAIT_FOR_OUTPUT([as gw2 ovs-ofctl dump-flows br-int table=33 | \
+OVS_WAIT_FOR_OUTPUT([as gw2 ovs-ofctl dump-flows br-int table=35 | \
 grep "dl_dst=00:00:02:01:02:04" | wc -l], [0], [[0
 ]])
 
@@ -16400,8 +16405,8 @@ ovn-nbctl --wait=hv sync
 ovn-sbctl dump-flows sw0 > sw0-flows
 AT_CAPTURE_FILE([sw0-flows])
 
-AT_CHECK([grep -E 'ls_(in|out)_acl' sw0-flows |grep reject| sed 's/table=../table=??/' | sort], [0], [dnl
-  table=??(ls_out_acl         ), priority=2002 , match=(ip), action=(reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=25); };)
+AT_CHECK([grep -E 'ls_out_acl' sw0-flows | grep reject | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(ls_out_acl_action  ), priority=1000 , match=(reg8[[18]] == 1), action=(reg8[[16]] = 0; reg8[[17]] = 0; reg8[[18]] = 0; reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=27); };)
 ])
 
 
@@ -18099,15 +18104,15 @@ check ovn-nbctl acl-add ls1 to-lport 3 'ip4.src==10.0.0.1' allow
 check ovn-nbctl --wait=hv sync
 
 # Check OVS flows, the less restrictive flows should have been installed.
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all |
     grep "priority=1003" | \
     sed 's/conjunction([[^)]]*)/conjunction()/g' | \
     sed 's/conj_id=[[0-9]]*,/conj_id=xxx,/g' | sort], [0], [dnl
- table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
- table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
- table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,45)
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
  table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
 ])
@@ -18148,11 +18153,11 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
     grep "priority=1003" | \
     sed 's/conjunction([[^)]]*)/conjunction()/g' | \
     sed 's/conj_id=[[0-9]]*,/conj_id=xxx,/g' | sort], [0], [dnl
- table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
- table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
- table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,45)
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
  table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
 ])
@@ -18166,8 +18171,8 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
     grep "priority=1003" | \
     sed 's/conjunction([[^)]]*)/conjunction()/g' | \
     sed 's/conj_id=[[0-9]]*,/conj_id=xxx,/g' | sort], [0], [dnl
- table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
- table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=conjunction(),conjunction()
@@ -18206,11 +18211,11 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
    grep "priority=1003" | \
    sed 's/conjunction([[^)]]*)/conjunction()/g' | \
    sed 's/conj_id=[[0-9]]*,/conj_id=xxx,/g' | sort], [0], [dnl
- table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
- table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
- table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,45)
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
  table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
 ])
@@ -18227,16 +18232,16 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=44 | ofctl_strip_all | \
    grep "priority=1003" | \
    sed 's/conjunction([[^)]]*)/conjunction()/g' | \
    sed 's/conj_id=[[0-9]]*,/conj_id=xxx,/g' | sort], [0], [dnl
- table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
- table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
- table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
+ table=44, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction(),conjunction()
- table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=resubmit(,45)
+ table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
  table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction(),conjunction()
  table=44, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
- table=44, priority=1003,udp,metadata=0x1 actions=resubmit(,45)
- table=44, priority=1003,udp6,metadata=0x1 actions=resubmit(,45)
+ table=44, priority=1003,udp,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
+ table=44, priority=1003,udp6,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
 ])
 
 OVN_CLEANUP([hv1])
@@ -19642,7 +19647,7 @@ wait_for_ports_up ls1-lp_ext1
 # There should be a flow in hv2 to drop traffic from ls1-lp_ext1 destined
 # to router mac.
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int \
-table=32,dl_src=f0:00:00:00:00:03,dl_dst=a0:10:00:00:00:01 | \
+table=34,dl_src=f0:00:00:00:00:03,dl_dst=a0:10:00:00:00:01 | \
 grep -c "actions=drop"], [0], [1
 ])
 # Stop ovn-controllers on hv1 and hv3.
@@ -21265,7 +21270,7 @@ check_virtual_offlows_present() {
     lr0_public_dp_key=$(printf "%x" $(fetch_column Port_Binding tunnel_key logical_port=lr0-public))
 
     AT_CHECK_UNQUOTED([as $hv ovs-ofctl dump-flows br-int table=44,ip | ofctl_strip_all | grep "priority=2000"], [0], [dnl
- table=44, priority=2000,ip,metadata=0x$sw0_dp_key actions=resubmit(,45)
+ table=44, priority=2000,ip,metadata=0x$sw0_dp_key actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,45)
 ])
 
     AT_CHECK_UNQUOTED([as $hv ovs-ofctl dump-flows br-int table=11 | ofctl_strip_all | \
@@ -21303,7 +21308,7 @@ check_row_count Port_Binding 1 logical_port=sw0-vir virtual_parent=sw0-p1
 wait_for_ports_up sw0-vir
 check ovn-nbctl --wait=hv sync
 AT_CHECK([test 2 = `cat hv1/ovn-controller.log | grep "pinctrl received  packet-in" | \
-grep opcode=BIND_VPORT | grep OF_Table_ID=27 | wc -l`])
+grep opcode=BIND_VPORT | grep OF_Table_ID=29 | wc -l`])
 
 wait_row_count Port_Binding 1 logical_port=sw0-vir6 chassis=$hv1_ch_uuid
 check_row_count Port_Binding 1 logical_port=sw0-vir6 virtual_parent=sw0-p1
@@ -28642,7 +28647,11 @@ check ovn-nbctl acl-add ls1 from-lport 1 '1' drop
 check ovn-nbctl --wait=hv sync
 
 AT_CHECK([test "$expr_cnt" = "$(get_cache_count cache-expr)"], [0], [])
-AT_CHECK([test "$(($matches_cnt + 1))" = "$(get_cache_count cache-matches)"], [0], [])
+# Changing from having no ACLs to having ACLs adds 9 logical flows, 3 in each
+# of ls_in_acl_action, ls_in_acl_after_lb_action, and ls_out_acl_action, plus the
+# logical flow representing the ACL itself. This is where the 10 comes from in
+# the calculation below.
+AT_CHECK([test "$(($matches_cnt + 10))" = "$(get_cache_count cache-matches)"], [0], [])
 
 AS_BOX([Check expr caching for is_chassis_resident() matches])
 expr_cnt=$(get_cache_count cache-expr)
@@ -32009,9 +32018,10 @@ check ovn-nbctl --wait=hv sync
 dp_key=$(fetch_column Datapath_Binding tunnel_key external_ids:name=ls)
 rtr_port_key=$(fetch_column Port_Binding tunnel_key logical_port=ls_lr)
 
+ovs-ofctl dump-flows br-int table=16 | grep "reg14=0x${rtr_port_key},metadata=0x${dp_key},nw_dst=42.42.42.42 actions=load:0x1->OXM_OF_PKT_REG4[49],resubmit(,17)"
 # Check that ovn-controller adds a flow to drop packets with dest IP
 # 42.42.42.42 coming from the router port.
-AT_CHECK([ovs-ofctl dump-flows br-int table=16 | grep "reg14=0x${rtr_port_key},metadata=0x${dp_key},nw_dst=42.42.42.42 actions=drop" -c], [0], [dnl
+AT_CHECK([ovs-ofctl dump-flows br-int table=16 | grep "reg14=0x${rtr_port_key},metadata=0x${dp_key},nw_dst=42.42.42.42 actions=load:0x1->OXM_OF_PKT_REG4\[\[49\]\],resubmit(,17)" -c], [0], [dnl
 1
 ])
 
@@ -32767,15 +32777,15 @@ done
 check ovn-nbctl --wait=hv sync
 
 # hv0 should see flows for lsp1 but not lsp2
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=27 | grep 10.0.1.2], [0], [ignore])
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=27 | grep 10.0.2.2], [1])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=29 | grep 10.0.1.2], [0], [ignore])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=29 | grep 10.0.2.2], [1])
 # hv2 should see flows for lsp2 but not lsp1
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=27 | grep 10.0.2.2], [0], [ignore])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=27 | grep 10.0.1.2], [1])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=29 | grep 10.0.2.2], [0], [ignore])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=29 | grep 10.0.1.2], [1])
 
 # Change lrp_lr_ls1 to a regular lrp, hv2 should see flows for lsp1
 check ovn-nbctl --wait=hv lrp-del-gateway-chassis lrp_lr_ls1 hv1
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=27 | grep 10.0.1.2], [0], [ignore])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=29 | grep 10.0.1.2], [0], [ignore])
 
 # Change it back, and trigger recompute to make sure extra flows are removed
 # from hv2 (recompute is needed because currently I-P adds local datapaths but
@@ -32783,11 +32793,11 @@ AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=27 | grep 10.0.1.2], [0], [ig
 check ovn-nbctl --wait=hv lrp-set-gateway-chassis lrp_lr_ls1 hv1 1
 as hv2 check ovn-appctl -t ovn-controller recompute
 ovn-nbctl --wait=hv sync
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=27 | grep 10.0.1.2], [1])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=29 | grep 10.0.1.2], [1])
 
 # Enable dnat_and_snat on lr, and now hv2 should see flows for lsp1.
 AT_CHECK([ovn-nbctl --wait=hv --gateway-port=lrp_lr_ls1 lr-nat-add lr dnat_and_snat 192.168.0.1 10.0.1.3 lsp1 f0:00:00:00:00:03])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=27 | grep 10.0.1.2], [0], [ignore])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=29 | grep 10.0.1.2], [0], [ignore])
 
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
@@ -34804,14 +34814,14 @@ lsp2=0x$(fetch_column Port_Binding tunnel_key logical_port=lsp2)
 dnl Ensure the ACL is translated to OpenFlows expanding pg1.
 as hv1
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42' | ofctl_strip_all], [0], [dnl
- table=16, priority=1001,ip,reg14=$lsp1,metadata=0x1,nw_src=42.42.42.42 actions=resubmit(,17)
- table=16, priority=1001,ip,reg14=$lsp2,metadata=0x1,nw_src=42.42.42.42 actions=resubmit(,17)
+ table=16, priority=1001,ip,reg14=$lsp1,metadata=0x1,nw_src=42.42.42.42 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,17)
+ table=16, priority=1001,ip,reg14=$lsp2,metadata=0x1,nw_src=42.42.42.42 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,17)
 ])
 
 dnl Remove a port from pg1 and expect OpenFlows to be correctly updated.
 check ovn-nbctl --wait=hv pg-set-ports pg1 lsp2
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42' | ofctl_strip_all], [0], [dnl
- table=16, priority=1001,ip,reg14=$lsp2,metadata=0x1,nw_src=42.42.42.42 actions=resubmit(,17)
+ table=16, priority=1001,ip,reg14=$lsp2,metadata=0x1,nw_src=42.42.42.42 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,17)
 ])
 
 dnl Change the Chassis_Template_Var mapping to use the address set.
@@ -34820,14 +34830,14 @@ check ovn-nbctl --wait=hv set Chassis_Template_Var hv1 variables:CONDITION='ip4.
 dnl Ensure the ACL is translated to OpenFlows expanding as1.
 as hv1
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42' | ofctl_strip_all], [0], [dnl
- table=16, priority=1001,ip,metadata=0x1,nw_src=42.42.42.42,nw_dst=1.1.1.1 actions=resubmit(,17)
- table=16, priority=1001,ip,metadata=0x1,nw_src=42.42.42.42,nw_dst=1.1.1.2 actions=resubmit(,17)
+ table=16, priority=1001,ip,metadata=0x1,nw_src=42.42.42.42,nw_dst=1.1.1.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,17)
+ table=16, priority=1001,ip,metadata=0x1,nw_src=42.42.42.42,nw_dst=1.1.1.2 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,17)
 ])
 
 dnl Remove an IP from AS1 and expect OpenFlows to be correctly updated.
 check ovn-nbctl set address_set as1 addresses=\"1.1.1.1\"
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42' | ofctl_strip_all], [0], [dnl
- table=16, priority=1001,ip,metadata=0x1,nw_src=42.42.42.42,nw_dst=1.1.1.1 actions=resubmit(,17)
+ table=16, priority=1001,ip,metadata=0x1,nw_src=42.42.42.42,nw_dst=1.1.1.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,17)
 ])
 
 dnl Remove the mapping and expect OpenFlows to be removed.

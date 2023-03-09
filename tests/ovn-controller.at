@@ -919,9 +919,9 @@ for i in $(seq 10); do
     if test "$i" = 3; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.2 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3 actions=drop
+priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.2 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.3 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     fi
     AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$i
@@ -941,7 +941,7 @@ for i in $(seq 10); do
     if test "$i" = 9; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}'], [0], [dnl
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10 actions=drop
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     fi
     if test "$i" = 10; then
@@ -967,12 +967,12 @@ for i in $(seq 10); do
     if test "$i" = 3; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.2 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.1.1 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.1.2 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.1.3 actions=drop
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.2 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.1.1 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.1.2 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.1.3 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     fi
     AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$(($i * 2))
@@ -1092,9 +1092,9 @@ for i in $(seq 10); do
     if test "$i" = 1; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
-priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,tp_dst=111 actions=drop
-priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,tp_dst=222 actions=drop
-priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,tp_dst=333 actions=drop
+priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,tp_dst=111 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,tp_dst=222 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,tp_dst=333 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     else
         # (1 conj_id flow + 3 tp_dst flows) = 4 extra flows
@@ -1106,8 +1106,8 @@ priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,tp_dst=33
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | \
             sed -r 's/conjunction.*,/conjunction,/' | \
-            sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
-priority=1100,conj_id=,metadata=0x$dp_key actions=drop
+            sed -r 's/conj_id=.*,metadata/conj_id=,metadata/' | sort], [0], [dnl
+priority=1100,conj_id=,metadata=0x$dp_key actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=conjunction,1/2)
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.2 actions=conjunction,1/2)
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3 actions=conjunction,1/2)
@@ -1134,9 +1134,9 @@ for i in $(seq 10); do
         # no conjunction left
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
-priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,tp_dst=111 actions=drop
-priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,tp_dst=222 actions=drop
-priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,tp_dst=333 actions=drop
+priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,tp_dst=111 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,tp_dst=222 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,tp_dst=333 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     else
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$((14 - $i))
@@ -1158,8 +1158,8 @@ for i in $(seq 10); do
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | \
             sed -r 's/conjunction.*,/conjunction,/' | \
-            sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
-priority=1100,conj_id=,metadata=0x$dp_key actions=drop
+            sed -r 's/conj_id=.*,metadata/conj_id=,metadata/' | sort], [0], [dnl
+priority=1100,conj_id=,metadata=0x$dp_key actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=conjunction,1/2)
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.2 actions=conjunction,1/2)
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3 actions=conjunction,1/2)
@@ -1289,7 +1289,7 @@ for i in $(seq 10); do
     if test "$i" = 1; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,nw_dst=10.0.0.6 actions=drop
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,nw_dst=10.0.0.6 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     else
         # (1 conj_id + nw_src * i + nw_dst * i) = 1 + i*2 flows
@@ -1301,8 +1301,8 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,nw_dst=10.
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | \
             sed -r 's/conjunction.*,/conjunction,/' | \
-            sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
-priority=1100,conj_id=,metadata=0x$dp_key actions=drop
+            sed -r 's/conj_id=.*,metadata/conj_id=,metadata/' | sort], [0], [dnl
+priority=1100,conj_id=,metadata=0x$dp_key actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.6 actions=conjunction,1/2)
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.7 actions=conjunction,1/2)
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.8 actions=conjunction,1/2)
@@ -1331,7 +1331,7 @@ for i in $(seq 10); do
         # no conjunction left
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10.0.0.15 actions=drop
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10.0.0.15 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     else
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$((21 - $i*2))
@@ -1357,9 +1357,9 @@ for i in $(seq 2 10); do
     if test "$i" = 3; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,nw_dst=10.0.0.6 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.2,nw_dst=10.0.0.6 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3,nw_dst=10.0.0.6 actions=drop
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,nw_dst=10.0.0.6 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.2,nw_dst=10.0.0.6 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3,nw_dst=10.0.0.6 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     fi
     AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$i
@@ -1383,8 +1383,8 @@ for i in $(seq 10); do
     if test "$i" = 9; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}'], [0], [dnl
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10.0.0.6 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10.0.0.7 actions=drop
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10.0.0.6 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10.0.0.7 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     elif test "$i" = 10; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep "priority=1100"], [1], [ignore])
@@ -1446,8 +1446,8 @@ for i in $(seq 10); do
     if test "$i" = 1; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.6 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=drop
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.6 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     else
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$(($i*2))
@@ -1459,12 +1459,12 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=dr
             grep -v reply | awk '{print $7, $8}' | \
             sed -r 's/conjunction.*,/conjunction,/' | \
             sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.6 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.7 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.8 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.2 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3 actions=drop
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.6 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.7 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.8 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.2 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     fi
 done
@@ -1542,8 +1542,8 @@ for i in $(seq 10); do
     if test "$i" = 1; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.6 actions=drop
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.6 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     elif test "$i" -lt 6; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$(($i*2))
@@ -1558,12 +1558,12 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.6 actions=dr
             grep -v reply | awk '{print $7, $8}' | \
             sed -r 's/conjunction.*,/conjunction,/' | \
             sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.2 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.6 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.7 actions=drop
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.8 actions=drop
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.2 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.6 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.7 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.8 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     fi
 done
@@ -1640,7 +1640,7 @@ for i in $(seq 10); do
     if test "$i" = 1; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,nw_dst=10.0.0.1 actions=drop
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,nw_dst=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     else
         # (1 conj_id + nw_src * i + nw_dst * i) = 1 + i*2 flows
@@ -1652,8 +1652,8 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,nw_dst=10.
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | \
             sed -r 's/conjunction.*,/conjunction,/' | \
-            sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
-priority=1100,conj_id=,metadata=0x$dp_key actions=drop
+            sed -r 's/conj_id=.*,metadata/conj_id=,metadata/' | sort], [0], [dnl
+priority=1100,conj_id=,metadata=0x$dp_key actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.1 actions=conjunction,1/2)
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.2 actions=conjunction,1/2)
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.3 actions=conjunction,1/2)
@@ -1680,7 +1680,7 @@ for i in $(seq 10); do
         # no conjunction left
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
-priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10.0.0.10 actions=drop
+priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10.0.0.10 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     else
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$((21 - $i*2))
@@ -1702,8 +1702,8 @@ for i in $(seq 10); do
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | \
             sed -r 's/conjunction.*,/conjunction,/' | \
-            sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
-priority=1100,conj_id=,metadata=0x$dp_key actions=drop
+            sed -r 's/conj_id=.*,metadata/conj_id=,metadata/' | sort], [0], [dnl
+priority=1100,conj_id=,metadata=0x$dp_key actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.1 actions=conjunction,1/2)
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.2 actions=conjunction,1/2)
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.3 actions=conjunction,1/2)
@@ -1742,8 +1742,8 @@ check ovn-nbctl --wait=hv sync
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
     grep -v reply | awk '{print $7, $8}' | \
     sed -r 's/conjunction.*,/conjunction,/' | \
-    sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
-priority=1100,conj_id=,metadata=0x$dp_key actions=drop
+    sed -r 's/conj_id=.*,metadata/conj_id=,metadata/' | sort], [0], [dnl
+priority=1100,conj_id=,metadata=0x$dp_key actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.1 actions=conjunction,1/2)
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.2 actions=conjunction,1/2)
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.3 actions=conjunction,1/2)
@@ -1766,8 +1766,8 @@ check ovn-nbctl --wait=hv remove address_set as1 addresses 10.0.0.4,10.0.0.5
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
     grep -v reply | awk '{print $7, $8}' | \
     sed -r 's/conjunction.*,/conjunction,/' | \
-    sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
-priority=1100,conj_id=,metadata=0x$dp_key actions=drop
+    sed -r 's/conj_id=.*,metadata/conj_id=,metadata/' | sort], [0], [dnl
+priority=1100,conj_id=,metadata=0x$dp_key actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.1 actions=conjunction,1/2)
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.2 actions=conjunction,1/2)
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.3 actions=conjunction,1/2)
@@ -1824,9 +1824,9 @@ check ovn-nbctl --wait=hv sync
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
     grep -v reply | awk '{print $7, $8}' | \
     sed -r 's/conjunction.[[0-9]]*,/conjunction,/g' | \
-    sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
-priority=1100,conj_id=,metadata=0x$dp_key actions=drop
-priority=1100,conj_id=,metadata=0x$dp_key actions=drop
+    sed -r 's/conj_id=.*,metadata/conj_id=,metadata/' | sort], [0], [dnl
+priority=1100,conj_id=,metadata=0x$dp_key actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,conj_id=,metadata=0x$dp_key actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.11 actions=conjunction,1/2)
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.12 actions=conjunction,1/2)
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.13 actions=conjunction,1/2)
@@ -1849,9 +1849,9 @@ check ovn-nbctl --wait=hv sync
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
     grep -v reply | awk '{print $7, $8}' | \
     sed -r 's/conjunction.[[0-9]]*,/conjunction,/g' | \
-    sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
-priority=1100,conj_id=,metadata=0x$dp_key actions=drop
-priority=1100,conj_id=,metadata=0x$dp_key actions=drop
+    sed -r 's/conj_id=.*,metadata/conj_id=,metadata/' | sort], [0], [dnl
+priority=1100,conj_id=,metadata=0x$dp_key actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,conj_id=,metadata=0x$dp_key actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.11 actions=conjunction,1/2)
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.12 actions=conjunction,1/2)
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.13 actions=conjunction,1/2)
@@ -1880,9 +1880,9 @@ check ovn-nbctl --wait=hv sync
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
     grep -v reply | awk '{print $7, $8}' | \
     sed -r 's/conjunction.[[0-9]]*,/conjunction,/g' | \
-    sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
-priority=1100,conj_id=,metadata=0x$dp_key actions=drop
-priority=1100,conj_id=,metadata=0x$dp_key actions=drop
+    sed -r 's/conj_id=.*,metadata/conj_id=,metadata/' | sort], [0], [dnl
+priority=1100,conj_id=,metadata=0x$dp_key actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,conj_id=,metadata=0x$dp_key actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.11 actions=conjunction,1/2)
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.12 actions=conjunction,1/2)
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.13 actions=conjunction,1/2)
@@ -1944,9 +1944,9 @@ for i in $(seq 5); do
     if test "$i" = 3; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
-priority=1100,reg15=0x$port_key,metadata=0x$dp_key,dl_src=aa:aa:aa:aa:aa:01 actions=drop
-priority=1100,reg15=0x$port_key,metadata=0x$dp_key,dl_src=aa:aa:aa:aa:aa:02 actions=drop
-priority=1100,reg15=0x$port_key,metadata=0x$dp_key,dl_src=aa:aa:aa:aa:aa:03 actions=drop
+priority=1100,reg15=0x$port_key,metadata=0x$dp_key,dl_src=aa:aa:aa:aa:aa:01 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,reg15=0x$port_key,metadata=0x$dp_key,dl_src=aa:aa:aa:aa:aa:02 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,reg15=0x$port_key,metadata=0x$dp_key,dl_src=aa:aa:aa:aa:aa:03 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     fi
     AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$i
@@ -1967,7 +1967,7 @@ for i in $(seq 5); do
     if test "$i" = 4; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}'], [0], [dnl
-priority=1100,reg15=0x$port_key,metadata=0x$dp_key,dl_src=aa:aa:aa:aa:aa:05 actions=drop
+priority=1100,reg15=0x$port_key,metadata=0x$dp_key,dl_src=aa:aa:aa:aa:aa:05 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     fi
     if test "$i" = 5; then
@@ -2025,9 +2025,9 @@ for i in $(seq 5); do
     if test "$i" = 3; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
-priority=1100,ipv6,reg15=0x$port_key,metadata=0x$dp_key,ipv6_src=ff::1 actions=drop
-priority=1100,ipv6,reg15=0x$port_key,metadata=0x$dp_key,ipv6_src=ff::2 actions=drop
-priority=1100,ipv6,reg15=0x$port_key,metadata=0x$dp_key,ipv6_src=ff::3 actions=drop
+priority=1100,ipv6,reg15=0x$port_key,metadata=0x$dp_key,ipv6_src=ff::1 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ipv6,reg15=0x$port_key,metadata=0x$dp_key,ipv6_src=ff::2 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
+priority=1100,ipv6,reg15=0x$port_key,metadata=0x$dp_key,ipv6_src=ff::3 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     fi
     AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$i
@@ -2047,7 +2047,7 @@ for i in $(seq 5); do
     if test "$i" = 4; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}'], [0], [dnl
-priority=1100,ipv6,reg15=0x$port_key,metadata=0x$dp_key,ipv6_src=ff::5 actions=drop
+priority=1100,ipv6,reg15=0x$port_key,metadata=0x$dp_key,ipv6_src=ff::5 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,45)
 ])
     fi
     if test "$i" = 5; then
