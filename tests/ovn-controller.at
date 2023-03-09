@@ -2540,6 +2540,7 @@ ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
 
 ovn-nbctl --wait=sb sync
+wait_row_count Chassis 1 name=hv1
 
 chassis_id=$(fetch_column Chassis _uuid name=hv1)
 check ovn-sbctl set chassis $chassis_id other_config:unsupported="value"
