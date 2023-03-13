@@ -41,7 +41,7 @@ VLOG_DEFINE_THIS_MODULE(ovn_parallel_hmap);
 #define WORKER_SEM_NAME "%x-%p-%"PRIxSIZE
 #define MAIN_SEM_NAME "%x-%p-main"
 
-static atomic_bool initial_pool_setup = ATOMIC_VAR_INIT(false);
+static atomic_bool initial_pool_setup = false;
 
 /* This is set only in the process of exit and the set is
  * accompanied by a fence. It does not need to be atomic or be
@@ -156,7 +156,7 @@ init_controls(struct worker_pool *pool)
         new_control->pool = pool;
         new_control->worker = 0;
         ovs_mutex_init(&new_control->mutex);
-        new_control->finished = ATOMIC_VAR_INIT(false);
+        atomic_init(&new_control->finished, false);
         sprintf(sem_name, WORKER_SEM_NAME, sembase, pool, i);
         new_control->fire = sem_open(sem_name, O_CREAT, S_IRWXU, 0);
         if (new_control->fire == SEM_FAILED) {

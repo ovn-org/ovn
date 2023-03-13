@@ -1069,8 +1069,8 @@ init_mcast_flow_count(struct ovn_datapath *od)
     }
 
     struct mcast_switch_info *mcast_sw_info = &od->mcast_info.sw;
-    mcast_sw_info->active_v4_flows = ATOMIC_VAR_INIT(0);
-    mcast_sw_info->active_v6_flows = ATOMIC_VAR_INIT(0);
+    atomic_init(&mcast_sw_info->active_v4_flows, 0);
+    atomic_init(&mcast_sw_info->active_v6_flows, 0);
 }
 
 static void
