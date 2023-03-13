@@ -399,7 +399,7 @@
       must be either <code>switch</code> or <code>port-group</code>.
     </p>
     <dl>
-      <dt>[<code>--type=</code>{<code>switch</code> | <code>port-group</code>}] [<code>--log</code>] [<code>--meter=</code><var>meter</var>] [<code>--severity=</code><var>severity</var>] [<code>--name=</code><var>name</var>] [<code>--label=</code><var>label</var>] [<code>--may-exist</code>] [<code>--apply-after-lb</code>] <code>acl-add</code> <var>entity</var> <var>direction</var> <var>priority</var> <var>match</var> <var>verdict</var></dt>
+        <dt>[<code>--type=</code>{<code>switch</code> | <code>port-group</code>}] [<code>--log</code>] [<code>--meter=</code><var>meter</var>] [<code>--severity=</code><var>severity</var>] [<code>--name=</code><var>name</var>] [<code>--label=</code><var>label</var>] [<code>--may-exist</code>] [<code>--apply-after-lb</code>] [<code>--tier</code>] <code>acl-add</code> <var>entity</var> <var>direction</var> <var>priority</var> <var>match</var> <var>verdict</var></dt>
       <dd>
         <p>
           Adds the specified ACL to <var>entity</var>.  <var>direction</var>
@@ -430,16 +430,29 @@
           of the <code>ACL</code> table.  As the option name suggests, the ACL
           will be applied after the logical switch load balancer stage.
         </p>
+        <p>
+          The <code>--tier</code> option sets the ACL's tier to the specified
+          value. For more information about ACL tiers, see the documentation
+          for the <code>ovn-nb</code>(5) database.
+        </p>
       </dd>
 
-      <dt>[<code>--type=</code>{<code>switch</code> | <code>port-group</code>}] <code>acl-del</code> <var>entity</var> [<var>direction</var> [<var>priority</var> <var>match</var>]]</dt>
+      <dt>[<code>--type=</code>{<code>switch</code> | <code>port-group</code>}] [<code>--tier</code>] <code>acl-del</code> <var>entity</var> [<var>direction</var> [<var>priority</var> <var>match</var>]]</dt>
       <dd>
-        Deletes ACLs from <var>entity</var>.  If only <var>entity</var> is
-        supplied, all the ACLs from the <var>entity</var> are deleted.  If
-        <var>direction</var> is also specified, then all the flows in that
-        direction will be deleted from the <var>entity</var>.  If all the
-        fields are given, then a single flow that matches all the fields will
-        be deleted.
+        <p>
+          Deletes ACLs from <var>entity</var>.  If only <var>entity</var> is
+          supplied, all the ACLs from the <var>entity</var> are deleted.  If
+          <var>direction</var> is also specified, then all the flows in that
+          direction will be deleted from the <var>entity</var>.  If all the
+          fields are given, then a single flow that matches all the fields will
+          be deleted.
+        </p>
+
+        <p>
+          If the <code>--tier</code> option is provided, then only ACLs of the
+          given tier value will be deleted, in addition to whatever other
+          criteria have been provided.
+        </p>
       </dd>
 
       <dt>[<code>--type=</code>{<code>switch</code> | <code>port-group</code>}] <code>acl-list</code> <var>entity</var> </dt>

@@ -48,6 +48,7 @@
 #include "unixctl.h"
 #include "util.h"
 #include "openvswitch/vlog.h"
+#include "bitmap.h"
 
 VLOG_DEFINE_THIS_MODULE(nbctl);
 
@@ -2116,6 +2117,8 @@ acl_cmp(const void *acl1_, const void *acl2_)
         return after_lb2 ? -1 : 1;
     } else if (acl1->priority != acl2->priority) {
         return acl1->priority > acl2->priority ? -1 : 1;
+    } else if (acl1->tier != acl2->tier) {
+        return acl1->tier > acl2->tier ? -1 : 1;
     } else {
         return strcmp(acl1->match, acl2->match);
     }
@@ -2299,6 +2302,7 @@ nbctl_pre_acl(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_priority);
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_match);
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_options);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_tier);
 }
 
 static void
@@ -2406,6 +2410,16 @@ nbctl_acl_add(struct ctl_context *ctx)
         nbrec_acl_set_options(acl, &options);
     }
 
+    const char *tier_s = shash_find_data(&ctx->options, "--tier");
+    if (tier_s) {
+        long tier;
+        if (!str_to_long(tier_s, 10, &tier)) {
+            ctl_error(ctx, "Invalid tier %s", tier_s);
+            return;
+        }
+        nbrec_acl_set_tier(acl, tier);
+    }
+
     /* Check if same acl already exists for the ls/portgroup */
     size_t n_acls = pg ? pg->n_acls : ls->n_acls;
     struct nbrec_acl **acls = pg ? pg->acls : ls->acls;
@@ -2434,6 +2448,10 @@ nbctl_acl_del(struct ctl_context *ctx)
 {
     const struct nbrec_logical_switch *ls = NULL;
     const struct nbrec_port_group *pg = NULL;
+    const char *tier_s = shash_find_data(&ctx->options, "--tier");
+    long tier;
+    unsigned long *bitmaps[3];
+    size_t n_bitmaps = 0;
 
     char *error = acl_cmd_get_pg_or_ls(ctx, &ls, &pg);
     if (error) {
@@ -2441,8 +2459,13 @@ nbctl_acl_del(struct ctl_context *ctx)
         return;
     }
 
-    if (ctx->argc == 2) {
-        /* If direction, priority, and match are not specified, delete
+    if (tier_s && !str_to_long(tier_s, 10, &tier)) {
+        ctl_error(ctx, "Invalid tier %s", tier_s);
+        return;
+    }
+
+    if (ctx->argc == 2 && !tier_s) {
+        /* If direction, priority, tier, and match are not specified, delete
          * all ACLs. */
         if (pg) {
             nbrec_port_group_verify_acls(pg);
@@ -2454,55 +2477,83 @@ nbctl_acl_del(struct ctl_context *ctx)
         return;
     }
 
-    const char *direction;
-    error = parse_direction(ctx->argv[2], &direction);
-    if (error) {
-        ctx->error = error;
-        return;
-    }
-
     size_t n_acls = pg ? pg->n_acls : ls->n_acls;
     struct nbrec_acl **acls = pg ? pg->acls : ls->acls;
-    /* If priority and match are not specified, delete all ACLs with the
-     * specified direction. */
-    if (ctx->argc == 3) {
+
+    if (tier_s) {
+        bitmaps[n_bitmaps] = bitmap_allocate(n_acls);
+        for (size_t i = 0; i < n_acls; i++) {
+            if (acls[i]->tier == tier) {
+                bitmap_set1(bitmaps[n_bitmaps], i);
+            }
+        }
+        n_bitmaps++;
+    }
+
+    if (ctx->argc >= 3) {
+        const char *direction;
+        error = parse_direction(ctx->argv[2], &direction);
+        if (error) {
+            ctx->error = error;
+            goto cleanup;
+        }
+
+        /* If priority and match are not specified, delete all ACLs with the
+         * specified direction. */
+        bitmaps[n_bitmaps] = bitmap_allocate(n_acls);
         for (size_t i = 0; i < n_acls; i++) {
             if (!strcmp(direction, acls[i]->direction)) {
-                if (pg) {
-                    nbrec_port_group_update_acls_delvalue(pg, acls[i]);
-                } else {
-                    nbrec_logical_switch_update_acls_delvalue(ls, acls[i]);
-                }
+                bitmap_set1(bitmaps[n_bitmaps], i);
             }
         }
-        return;
+        n_bitmaps++;
     }
 
-    int64_t priority;
-    error = parse_priority(ctx->argv[3], &priority);
-    if (error) {
-        ctx->error = error;
-        return;
-    }
-
-    if (ctx->argc == 4) {
-        ctl_error(ctx, "cannot specify priority without match");
-        return;
-    }
-
-    /* Remove the matching rule. */
-    for (size_t i = 0; i < n_acls; i++) {
-        struct nbrec_acl *acl = acls[i];
-
-        if (priority == acl->priority && !strcmp(ctx->argv[4], acl->match) &&
-             !strcmp(direction, acl->direction)) {
-            if (pg) {
-                nbrec_port_group_update_acls_delvalue(pg, acl);
-            } else {
-                nbrec_logical_switch_update_acls_delvalue(ls, acl);
-            }
-            return;
+    if (ctx->argc >= 4) {
+        int64_t priority;
+        error = parse_priority(ctx->argv[3], &priority);
+        if (error) {
+            ctx->error = error;
+            goto cleanup;
         }
+
+        if (ctx->argc == 4) {
+            ctl_error(ctx, "cannot specify priority without match");
+            goto cleanup;
+        }
+
+        /* Remove the matching rule. */
+        bitmaps[n_bitmaps] = bitmap_allocate(n_acls);
+        for (size_t i = 0; i < n_acls; i++) {
+            struct nbrec_acl *acl = acls[i];
+
+            if (priority == acl->priority &&
+                !strcmp(ctx->argv[4], acl->match)) {
+                bitmap_set1(bitmaps[n_bitmaps], i);
+            }
+        }
+        n_bitmaps++;
+    }
+
+    unsigned long *bitmap_result = bitmap_allocate1(n_acls);
+    for (size_t i = 0; i < n_bitmaps; i++) {
+        bitmap_result = bitmap_and(bitmap_result, bitmaps[i], n_acls);
+    }
+
+    size_t index;
+    BITMAP_FOR_EACH_1 (index, n_acls, bitmap_result) {
+        if (pg) {
+            nbrec_port_group_update_acls_delvalue(pg, acls[index]);
+        } else {
+            nbrec_logical_switch_update_acls_delvalue(ls, acls[index]);
+        }
+    }
+
+    free(bitmap_result);
+
+cleanup:
+    for (size_t i = 0; i < n_bitmaps; i++) {
+        free(bitmaps[i]);
     }
 }
 
@@ -7680,9 +7731,9 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     { "acl-add", 5, 6, "{SWITCH | PORTGROUP} DIRECTION PRIORITY MATCH ACTION",
       nbctl_pre_acl, nbctl_acl_add, NULL,
       "--log,--may-exist,--type=,--name=,--severity=,--meter=,--label=,"
-      "--apply-after-lb", RW },
+      "--apply-after-lb,--tier=", RW },
     { "acl-del", 1, 4, "{SWITCH | PORTGROUP} [DIRECTION [PRIORITY MATCH]]",
-      nbctl_pre_acl, nbctl_acl_del, NULL, "--type=", RW },
+      nbctl_pre_acl, nbctl_acl_del, NULL, "--type=,--tier=", RW },
     { "acl-list", 1, 1, "{SWITCH | PORTGROUP}",
       nbctl_pre_acl_list, nbctl_acl_list, NULL, "--type=", RO },
 

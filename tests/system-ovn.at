@@ -11363,7 +11363,6 @@ acl_test() {
     # Add an untiered drop ACL. This should cause pings to fail.
     check ovn-nbctl --wait=sb $options acl-add $thing $direction 1000 "ip4.dst == 10.0.0.2" drop
     acl1_uuid=$(ovn-nbctl --bare --columns _uuid find ACL priority=1000)
-
     NS_CHECK_EXEC([lsp1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | PING_PCT], \
 [0], [dnl
 100% packet loss

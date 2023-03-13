@@ -31,6 +31,9 @@ Post v23.03.0
     port is possible to define QoS rules to apply to the local egress localnet
     port. Please note now the QoS will be applied just to the local localnet
     port and not to all localnet port marked with ovn-egress iface.
+  - Support for tiered ACLs has been added. This allows for ACLs to be layered
+    into separate tiers of priority. For more information, please see the
+    ovn-nb and ovn-northd manpages.
 
 OVN v23.03.0 - 03 Mar 2023
 --------------------------

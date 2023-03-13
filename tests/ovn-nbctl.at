@@ -2616,6 +2616,83 @@ ovn-nbctl: no row "foo1" in table Logical_Switch
 
 dnl ---------------------------------------------------------------------
 
+OVN_NBCTL_TEST([acl_tiers], [ACL tier operations], [
+check ovn-nbctl ls-add ls
+check ovn-nbctl --tier=3 acl-add ls from-lport 1000 "ip" drop
+check_column 3 nb:ACL tier priority=1000
+
+check ovn-nbctl --tier=3 acl-add ls from-lport 1001 "ip" drop
+check_column 3 nb:ACL tier priority=1001
+
+check ovn-nbctl --tier=2 acl-add ls from-lport 1002 "ip" drop
+check_column 2 nb:ACL tier priority=1002
+
+# Removing the tier 3 acls from ls should result in 1 ACL
+# remaining.
+check ovn-nbctl --tier=3 acl-del ls
+check_row_count nb:ACL 1
+check_column 2 nb:ACL tier priority=1002
+
+# Add two egress ACLs at tier 2.
+check ovn-nbctl --tier=2 acl-add ls to-lport 1000 "ip" drop
+check ovn-nbctl --tier=2 acl-add ls to-lport 1001 "ip" drop
+
+check_row_count nb:ACL 3 tier=2
+
+# This should remove the egress tier 2 ACLs and leave the
+# ingress tier 2 ACL
+check ovn-nbctl --tier=2 acl-del ls to-lport
+check_row_count nb:ACL 1
+check_column 2 nb:ACL tier priority=1002
+check_column from-lport nb:ACL direction priority=1002
+
+# Re-add two ingress ACLs at tier 2.
+check ovn-nbctl --tier=2 acl-add ls from-lport 1000 "ip" drop
+check ovn-nbctl --tier=2 acl-add ls from-lport 1001 "ip" drop
+
+check_row_count nb:ACL 3
+
+# Attempt to remove all tier 3 ACLs. All three ACLs are tier 2
+# so this shouldn't have any effect.
+check ovn-nbctl --tier=3 acl-del ls
+check_row_count nb:ACL 3
+
+# Attempt to remove all ingress tier 3 ACLs. All three ACLs are tier
+# 2, so this shouldn't have any effect.
+check ovn-nbctl --tier=3 acl-del ls from-lport
+check_row_count nb:ACL 3
+
+# Attempt to remove the 1000 priority ACL but specify tier 3. Since
+# all ACLs are tier 2, this should have no effect.
+check ovn-nbctl --tier=3 acl-del ls from-lport 1000 "ip"
+check_row_count nb:ACL 3
+
+# Specifying the proper tier should result in all ACLs being deleted.
+check ovn-nbctl --tier=2 acl-del ls
+check_row_count nb:ACL 0
+
+# Now let's experiment with identical ACLs at different tiers.
+check ovn-nbctl --tier=1 acl-add ls from-lport 1000 "ip" drop
+check ovn-nbctl --tier=2 acl-add ls from-lport 1000 "ip" drop
+check ovn-nbctl --tier=3 acl-add ls from-lport 1000 "ip" drop
+check_row_count nb:ACL 3
+check_row_count nb:ACL 1 tier=1
+check_row_count nb:ACL 1 tier=2
+check_row_count nb:ACL 1 tier=3
+
+# Specifying tier 1 should result in only one ACL being deleted.
+check ovn-nbctl --tier=1 acl-del ls from-lport 1000 "ip"
+check_row_count nb:ACL 2
+check_row_count nb:ACL 1 tier=2
+check_row_count nb:ACL 1 tier=3
+
+# Not specifying a tier should result in all ACLs being deleted.
+check ovn-nbctl acl-del ls from-lport 1000 "ip"
+check_row_count nb:ACL 0
+])
+
+dnl ---------------------------------------------------------------------
+
 AT_SETUP([ovn-nbctl - daemon retry connection])
 OVN_NBCTL_TEST_START daemon
 AT_CHECK([kill `cat ovsdb-server.pid`])
