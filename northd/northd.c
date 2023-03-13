@@ -245,6 +245,7 @@ enum ovn_stage {
 #define REGBIT_ACL_VERDICT_ALLOW "reg8[16]"
 #define REGBIT_ACL_VERDICT_DROP "reg8[17]"
 #define REGBIT_ACL_VERDICT_REJECT "reg8[18]"
+#define REG_ACL_TIER "reg8[30..31]"
 
 /* Indicate that this packet has been recirculated using egress
  * loopback.  This allows certain checks to be bypassed, such as a
@@ -5656,36 +5657,51 @@ ovn_ls_port_group_destroy(struct hmap *nb_pgs)
     hmap_destroy(nb_pgs);
 }
 
+static bool
+od_set_acl_flags(struct ovn_datapath *od, struct nbrec_acl **acls,
+                 size_t n_acls)
+{
+    /* A true return indicates that there are no possible ACL flags
+     * left to set on od. A false return indicates that further ACLs
+     * should be explored in case more flags need to be set on od
+     */
+    if (!n_acls) {
+        return false;
+    }
+
+    od->has_acls = true;
+    for (size_t i = 0; i < n_acls; i++) {
+        const struct nbrec_acl *acl = acls[i];
+        if (acl->tier > od->max_acl_tier) {
+            od->max_acl_tier = acl->tier;
+        }
+        if (!od->has_stateful_acl && !strcmp(acl->action, "allow-related")) {
+            od->has_stateful_acl = true;
+        }
+        if (od->has_stateful_acl &&
+            od->max_acl_tier == nbrec_acl_col_tier.type.value.integer.max) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static void
 ls_get_acl_flags(struct ovn_datapath *od)
 {
     od->has_acls = false;
     od->has_stateful_acl = false;
+    od->max_acl_tier = 0;
 
-    if (od->nbs->n_acls) {
-        od->has_acls = true;
-
-        for (size_t i = 0; i < od->nbs->n_acls; i++) {
-            struct nbrec_acl *acl = od->nbs->acls[i];
-            if (!strcmp(acl->action, "allow-related")) {
-                od->has_stateful_acl = true;
-                return;
-            }
-        }
+    if (od_set_acl_flags(od, od->nbs->acls, od->nbs->n_acls)) {
+        return;
     }
 
     struct ovn_ls_port_group *ls_pg;
     HMAP_FOR_EACH (ls_pg, key_node, &od->nb_pgs) {
-        if (ls_pg->nb_pg->n_acls) {
-            od->has_acls = true;
-
-            for (size_t i = 0; i < ls_pg->nb_pg->n_acls; i++) {
-                struct nbrec_acl *acl = ls_pg->nb_pg->acls[i];
-                if (!strcmp(acl->action, "allow-related")) {
-                    od->has_stateful_acl = true;
-                    return;
-                }
-            }
+        if (od_set_acl_flags(od, ls_pg->nb_pg->acls, ls_pg->nb_pg->n_acls)) {
+            return;
         }
     }
 }
@@ -6410,10 +6426,19 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
     size_t log_verdict_len = actions->length;
     uint16_t priority = acl->priority + OVN_ACL_PRI_OFFSET;
 
+    /* All ACLS will start by matching on their respective tier. */
+    size_t match_tier_len = 0;
+    ds_clear(match);
+    if (od->max_acl_tier) {
+        ds_put_format(match, REG_ACL_TIER " == %"PRId64" && ", acl->tier);
+        match_tier_len = match->length;
+    }
+
     if (!has_stateful || !strcmp(acl->action, "allow-stateless")) {
         ds_put_cstr(actions, "next;");
+        ds_put_format(match, "(%s)", acl->match);
         ovn_lflow_add_with_hint(lflows, od, stage, priority,
-                                acl->match, ds_cstr(actions),
+                                ds_cstr(match), ds_cstr(actions),
                                 &acl->header_);
         return;
     }
@@ -6438,7 +6463,7 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
          * by ct_commit in the "stateful" stage) to indicate that the
          * connection should be allowed to resume.
          */
-        ds_clear(match);
+        ds_truncate(match, match_tier_len);
         ds_put_format(match, REGBIT_ACL_HINT_ALLOW_NEW " == 1 && (%s)",
                       acl->match);
 
@@ -6461,7 +6486,7 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
          * Commit the connection only if the ACL has a label. This is done
          * to update the connection tracking entry label in case the ACL
          * allowing the connection changes. */
-        ds_clear(match);
+        ds_truncate(match, match_tier_len);
         ds_truncate(actions, log_verdict_len);
         ds_put_format(match, REGBIT_ACL_HINT_ALLOW " == 1 && (%s)",
                       acl->match);
@@ -6482,7 +6507,7 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
          * to the connection tracker with ct_commit. */
         /* If the packet is not tracked or not part of an established
          * connection, then we can simply reject/drop it. */
-        ds_clear(match);
+        ds_truncate(match, match_tier_len);
         ds_put_cstr(match, REGBIT_ACL_HINT_DROP " == 1");
         ds_put_format(match, " && (%s)", acl->match);
 
@@ -6502,7 +6527,7 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
          * ct_commit() to the "stateful" stage, but since we're
          * rejecting/dropping the packet, we go ahead and do it here.
          */
-        ds_clear(match);
+        ds_truncate(match, match_tier_len);
         ds_put_cstr(match, REGBIT_ACL_HINT_BLOCK " == 1");
         ds_put_format(match, " && (%s)", acl->match);
 
@@ -6656,6 +6681,7 @@ static void
 build_acl_action_lflows(struct ovn_datapath *od, struct hmap *lflows,
                         const char *default_acl_action,
                         const struct shash *meter_groups,
+                        struct ds *match,
                         struct ds *actions)
 {
     enum ovn_stage stages [] = {
@@ -6668,6 +6694,10 @@ build_acl_action_lflows(struct ovn_datapath *od, struct hmap *lflows,
     ds_put_cstr(actions, REGBIT_ACL_VERDICT_ALLOW " = 0; "
                         REGBIT_ACL_VERDICT_DROP " = 0; "
                         REGBIT_ACL_VERDICT_REJECT " = 0; ");
+    if (od->max_acl_tier) {
+        ds_put_cstr(actions, REG_ACL_TIER " = 0; ");
+    }
+
     size_t verdict_len = actions->length;
 
     for (size_t i = 0; i < ARRAY_SIZE(stages); i++) {
@@ -6705,6 +6735,20 @@ build_acl_action_lflows(struct ovn_datapath *od, struct hmap *lflows,
         ds_truncate(actions, verdict_len);
         ds_put_cstr(actions, default_acl_action);
         ovn_lflow_add(lflows, od, stage, 0, "1", ds_cstr(actions));
+
+        struct ds tier_actions = DS_EMPTY_INITIALIZER;
+        for (size_t j = 0; j < od->max_acl_tier; j++) {
+            ds_clear(match);
+            ds_put_format(match, REG_ACL_TIER " == %"PRIuSIZE, j);
+            ds_clear(&tier_actions);
+            ds_put_format(&tier_actions, REG_ACL_TIER " = %"PRIuSIZE"; "
+                          "next(pipeline=%s,table=%d);",
+                          j + 1, ingress ? "ingress" : "egress",
+                          ovn_stage_get_table(stage) - 1);
+            ovn_lflow_add(lflows, od, stage, 500, ds_cstr(match),
+                         ds_cstr(&tier_actions));
+        }
+        ds_destroy(&tier_actions);
     }
 }
 
@@ -7074,7 +7118,7 @@ build_acls(struct ovn_datapath *od, const struct chassis_features *features,
     }
 
     build_acl_action_lflows(od, lflows, default_acl_action, meter_groups,
-                            &actions);
+                            &match, &actions);
 
     ds_destroy(&match);
     ds_destroy(&actions);

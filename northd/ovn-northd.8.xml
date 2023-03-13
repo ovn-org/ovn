@@ -710,6 +710,12 @@
         paragraphs.
       </li>
       <li>
+        If the <code>tier</code> column has been configured on the ACL, then
+        OVN will also match the current tier counter against the configured
+        ACL tier. OVN keeps count of the current tier in
+        <code>reg8[30..31]</code>.
+      </li>
+      <li>
         <code>allow</code> ACLs translate into logical flows that set the allow
         bit to 1 and advance the packet to the next table. If there are any
         stateful ACLs on this datapath, then <code>allow</code> ACLs set the
@@ -883,6 +889,13 @@
         action for TCP connections,<code>icmp4/icmp6</code> action
         for UDP connections, and <code>sctp_abort {output &lt;-%gt; inport;
         next(pipeline=egress,table=5);}</code> action for SCTP associations.
+      </li>
+
+      <li>
+        If any ACLs have tiers configured on them, then three priority 500
+        flows are installed. If the current tier counter is 0, 1, or 2, then
+        the current tier counter is incremented by one and the packet is sent
+        back to the previous table for re-evaluation.
       </li>
     </ul>
 
@@ -1174,6 +1187,13 @@
       table and the next one.
     </p>
 
+    <p>
+      Like with ACLs that are evaluated before load balancers, if the ACL is
+      configured with a tier value, then the current tier counter, supplied
+      in reg8[30..31] is matched against the ACL's configured tier in addition
+      to the ACL's match.
+    </p>
+
     <ul>
       <li>
         <code>allow</code> apply-after-lb ACLs translate into logical flows
@@ -1258,6 +1278,13 @@
         action for TCP connections,<code>icmp4/icmp6</code> action
         for UDP connections, and <code>sctp_abort {output &lt;-%gt; inport;
         next(pipeline=egress,table=5);}</code> action for SCTP associations.
+      </li>
+
+      <li>
+        If any ACLs have tiers configured on them, then three priority 500
+        flows are installed. If the current tier counter is 0, 1, or 2, then
+        the current tier counter is incremented by one and the packet is sent
+        back to the previous table for re-evaluation.
       </li>
     </ul>
 
@@ -2195,6 +2222,14 @@ output;
       <code>Allow-type</code> ACLs set <code>reg8[16]</code>, <code>drop</code>
       ACLs set <code>reg8[17]</code>, and <code>reject</code> ACLs set
       <code>reg8[18]</code>.
+    </p>
+
+    <p>
+      Also like with ingress ACLs, egress ACLs can have a configured
+      <code>tier</code>. If a tier is configured, then the current tier
+      counter is evaluated against the ACL's configured tier in addition
+      to the ACL's match. The current tier counter is stored in
+      <code>reg8[30..31]</code>.
     </p>
 
     <p>

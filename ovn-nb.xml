@@ -2284,6 +2284,26 @@ or
       </ul>
     </column>
 
+    <column name="tier">
+      <p>The hierarchical tier that this ACL belongs to.</p>
+
+      <p>
+        ACLs can be assigned to numerical tiers. When evaluating ACLs, an
+        internal counter is used to determine which tier of ACLs should be
+        evaluated. Tier 0 ACLs are evaluated first. If no verdict can be
+        determined, then tier 1 ACLs are evaluated next. This continues
+        until the maximum tier value is reached. If all tiers of ACLs are
+        evaluated and no verdict is reached, then the <ref column="options"
+        key="default_acl_drop" table="NB_Global" /> option from table
+        <ref table="NB_Global" /> is used to determine how to proceed.
+      </p>
+
+      <p>
+        In this version of OVN, the maximum tier value for ACLs is 3,
+        meaning there are 4 tiers of ACLs allowed (0-3).
+      </p>
+    </column>
+
     <group title="options">
       <p>
         ACLs options.

@@ -230,6 +230,7 @@ struct ovn_datapath {
     bool has_lb_vip;
     bool has_unknown;
     bool has_acls;
+    uint64_t max_acl_tier;
     bool has_vtep_lports;
     bool has_arp_proxy_port;
 

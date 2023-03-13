@@ -11315,3 +11315,111 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Tiered ACLs])
+AT_KEYWORDS([acl])
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+
+start_daemon ovn-controller
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add ls lsp1 -- lsp-set-addresses lsp1 "00:00:00:00:00:01 10.0.0.1"
+check ovn-nbctl lsp-add ls lsp2 -- lsp-set-addresses lsp2 "00:00:00:00:00:02 10.0.0.2"
+
+check ovn-nbctl pg-add pg lsp1 lsp2
+
+ADD_NAMESPACES(lsp1)
+ADD_VETH(lsp1, lsp1, br-int, "10.0.0.1/24", "00:00:00:00:00:01")
+ADD_NAMESPACES(lsp2)
+ADD_VETH(lsp2, lsp2, br-int, "10.0.0.2/24", "00:00:00:00:00:02")
+
+m4_define([PING_PCT], [grep -o "[[0-9]]\{1,3\}% packet loss"])
+
+acl_test() {
+    direction=$1
+    options=$2
+    thing=$3
+
+    # First a baseline. If traffic isn't being allowed, then something is
+    # very wrong.
+    NS_CHECK_EXEC([lsp1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | PING_PCT], \
+[0], [dnl
+0% packet loss
+])
+    # Add an untiered drop ACL. This should cause pings to fail.
+    check ovn-nbctl --wait=sb $options acl-add $thing $direction 1000 "ip4.dst == 10.0.0.2" drop
+    acl1_uuid=$(ovn-nbctl --bare --columns _uuid find ACL priority=1000)
+
+    NS_CHECK_EXEC([lsp1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | PING_PCT], \
+[0], [dnl
+100% packet loss
+])
+
+    # Change the tier to 3. Despite there being "holes" in tiers 0, 1, and 2,
+    # the ACL should still apply, and pings should fail.
+    check ovn-nbctl --wait=sb set ACL $acl1_uuid tier=3
+    NS_CHECK_EXEC([lsp1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | PING_PCT], \
+[0], [dnl
+100% packet loss
+])
+
+    # Add a tier-0 ACL that allows the traffic. The priority is only 4, but
+    # since it is a higher tier, the traffic should be allowed.
+    check ovn-nbctl --wait=sb $options acl-add $thing $direction 4 "ip4.dst == 10.0.0.2" allow
+    NS_CHECK_EXEC([lsp1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | PING_PCT], \
+[0], [dnl
+0% packet loss
+])
+
+    # Removing the 0-tier ACL should make traffic go back to being dropped.
+    check ovn-nbctl --wait=sb acl-del $thing $direction 4 "ip4.dst == 10.0.0.2"
+    NS_CHECK_EXEC([lsp1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | PING_PCT], \
+[0], [dnl
+100% packet loss
+])
+
+    # Removing all ACLs should make traffic go back to passing.
+    check ovn-nbctl --wait=sb acl-del $thing
+    NS_CHECK_EXEC([lsp1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | PING_PCT], \
+[0], [dnl
+0% packet loss
+])
+}
+
+acl_test from-lport "" ls
+acl_test from-lport "--apply-after-lb" ls
+acl_test to-lport "" ls
+acl_test from-lport "" pg
+acl_test from-lport "--apply-after-lb" pg
+acl_test to-lport "" pg
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
