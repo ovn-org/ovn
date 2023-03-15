@@ -19,7 +19,9 @@ RUN dnf -y update \
         iproute \
         iproute-tc \
         iputils \
+        jemalloc-devel \
         kernel-devel \
+        kmod \
         libcap-ng-devel \
         libtool \
         net-tools \

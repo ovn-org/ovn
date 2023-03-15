@@ -1,5 +1,6 @@
 flake8
 hacking>=3.0
+scapy
 sphinx
 setuptools
 pyelftools
