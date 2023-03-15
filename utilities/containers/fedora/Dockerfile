@@ -1,5 +1,7 @@
 FROM quay.io/fedora/fedora:latest
 
+ARG CONTAINERS_PATH
+
 # Update distro, install packages and clean any possible leftovers
 RUN dnf -y update \
     && \
@@ -52,7 +54,7 @@ RUN git clone git://git.kernel.org/pub/scm/devel/sparse/sparse.git \
 
 WORKDIR /workspace
 
-COPY py-requirements.txt /tmp/py-requirements.txt
+COPY $CONTAINERS_PATH/py-requirements.txt /tmp/py-requirements.txt
 
 # Update and install pip dependencies
 RUN python3 -m pip install --upgrade pip \
