@@ -67,11 +67,14 @@ void en_lflow_run(struct engine_node *node, void *data OVS_UNUSED)
                       northd_data->ovn_internal_version_changed;
 
     stopwatch_start(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
-    build_bfd_table(&lflow_input, eng_ctx->ovnsb_idl_txn,
+    build_bfd_table(eng_ctx->ovnsb_idl_txn,
+                    lflow_input.nbrec_bfd_table,
+                    lflow_input.sbrec_bfd_table,
                     &northd_data->bfd_connections,
                     &northd_data->lr_ports);
     build_lflows(&lflow_input, eng_ctx->ovnsb_idl_txn);
-    bfd_cleanup_connections(&lflow_input, &northd_data->bfd_connections);
+    bfd_cleanup_connections(lflow_input.nbrec_bfd_table,
+                            &northd_data->bfd_connections);
     stopwatch_stop(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
 
     engine_set_node_state(node, EN_UPDATED);

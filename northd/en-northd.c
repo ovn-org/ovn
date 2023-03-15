@@ -62,9 +62,9 @@ void en_northd_run(struct engine_node *node, void *data)
 
     input_data.nbrec_nb_global_table =
         EN_OVSDB_GET(engine_get_input("NB_nb_global", node));
-    input_data.nbrec_logical_switch =
+    input_data.nbrec_logical_switch_table =
         EN_OVSDB_GET(engine_get_input("NB_logical_switch", node));
-    input_data.nbrec_logical_router =
+    input_data.nbrec_logical_router_table =
         EN_OVSDB_GET(engine_get_input("NB_logical_router", node));
     input_data.nbrec_load_balancer_table =
         EN_OVSDB_GET(engine_get_input("NB_load_balancer", node));
@@ -93,7 +93,7 @@ void en_northd_run(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("SB_mac_binding", node));
     input_data.sbrec_ha_chassis_group_table =
         EN_OVSDB_GET(engine_get_input("SB_ha_chassis_group", node));
-    input_data.sbrec_chassis =
+    input_data.sbrec_chassis_table =
         EN_OVSDB_GET(engine_get_input("SB_chassis", node));
     input_data.sbrec_fdb_table =
         EN_OVSDB_GET(engine_get_input("SB_fdb", node));
