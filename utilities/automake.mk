@@ -41,6 +41,7 @@ EXTRA_DIST += \
     utilities/containers/Makefile \
     utilities/containers/py-requirements.txt \
     utilities/containers/fedora/Dockerfile \
+    utilities/containers/ubuntu/Dockerfile \
     utilities/docker/Makefile \
     utilities/docker/start-ovn \
     utilities/docker/ovn_default_nb_port \
