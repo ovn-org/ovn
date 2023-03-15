@@ -77,8 +77,10 @@ function copy_sources_to_workdir() {
         cp -a $CONTAINER_WORKSPACE/ovn/. $CONTAINER_WORKDIR \
         && \
         rm -rf $CONTAINER_WORKDIR/ovs \
-        &&
-        cp -a $CONTAINER_WORKSPACE/ovs/. $CONTAINER_WORKDIR/ovs
+        && \
+        cp -a $CONTAINER_WORKSPACE/ovs/. $CONTAINER_WORKDIR/ovs \
+        && \
+        git config --global --add safe.directory $CONTAINER_WORKDIR
     "
 }
 
