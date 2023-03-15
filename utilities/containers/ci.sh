@@ -36,9 +36,37 @@ function container_shell() {
     ${CONTAINER_CMD} exec "-i$USE_TTY" "$CONTAINER_ID" /bin/bash
 }
 
+function archive_logs() {
+    if [ -z "$archive_logs" ]; then
+        return 1;
+    fi
+
+    log_dir=$CONTAINER_WORKSPACE/logs/
+    container_exec "
+        mkdir $log_dir \
+        && \
+        cp $CONTAINER_WORKDIR/config.log $log_dir \
+        && \
+        cp -r $CONTAINER_WORKDIR/*/_build/sub/tests/testsuite.* \
+        $log_dir || true \
+        && \
+        cp -r $CONTAINER_WORKDIR/tests/system-*-testsuite.* \
+        $log_dir || true \
+        && \
+        chmod -R +r $log_dir \
+        &&
+        tar -czvf $CONTAINER_WORKSPACE/logs.tgz $log_dir
+    "
+    ${CONTAINER_CMD} cp "$CONTAINER_ID:/$CONTAINER_WORKSPACE/logs.tgz" logs.tgz
+}
+
 function remove_container() {
     res=$?
-    [ "$res" -ne 0 ] && echo "*** ERROR: $res ***"
+    if [  "$res" -ne 0  ]; then
+        archive_logs
+        echo "*** ERROR: $res ***"
+    fi
+
     ${CONTAINER_CMD} rm -f "$CONTAINER_ID"
 }
 
@@ -71,7 +99,7 @@ function run_tests() {
 }
 
 options=$(getopt --options "" \
-    --long help,shell,jobs:,ovn-path:,ovs-path:,image-name:\
+    --long help,shell,archive-logs,jobs:,ovn-path:,ovs-path:,image-name:\
     -- "${@}")
 eval set -- "$options"
 while true; do
@@ -95,10 +123,14 @@ while true; do
         shift
         IMAGE_NAME="$1"
         ;;
+    --archive-logs)
+        archive_logs="1"
+        ;;
     --help)
         set +x
-        printf "$0 [--shell] [--help] [--jobs=<JOBS>] [--ovn-path=<OVN_PATH>]"
-        printf "[--ovs-path=<OVS_PATH>] [--image-name=<IMAGE_NAME>]\n"
+        printf "$0 [--shell] [--help] [--archive-logs] [--jobs=<JOBS>] "
+        printf "[--ovn-path=<OVN_PATH>] [--ovs-path=<OVS_PATH>] "
+        printf "[--image-name=<IMAGE_NAME>]\n"
         exit
         ;;
     --)
