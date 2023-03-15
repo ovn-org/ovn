@@ -1,4 +1,4 @@
-FROM quay.io/fedora/fedora:37
+FROM quay.io/fedora/fedora:latest
 
 # Update distro, install packages and clean any possible leftovers
 RUN dnf -y update \
