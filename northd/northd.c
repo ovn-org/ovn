@@ -3888,7 +3888,7 @@ build_lb_vip_actions(struct ovn_lb_vip *lb_vip,
     const char *ct_lb_action =
         features->ct_no_masked_label ? "ct_lb_mark" : "ct_lb";
     bool reject = !lb_vip->n_backends && lb_vip->empty_backend_rej;
-    bool drop = false;
+    bool drop = !lb_vip->n_backends && !lb_vip->empty_backend_rej;
 
     if (lb_vip_nb->lb_health_check) {
         ds_put_format(action, "%s(backends=", ct_lb_action);
