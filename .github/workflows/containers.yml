@@ -1,0 +1,55 @@
+name: Containers
+on:
+  # Be able to run the job manually when needed
+  workflow_dispatch:
+  # Build every week on Monday 00:00
+  schedule:
+    - cron:  '0 0 * * 1'
+
+env:
+  IMAGE_REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ovn-org
+  IMAGE_NAME: ovn-tests
+  CONTAINERS_PATH: ./utilities/containers
+  DEPENDENCIES: podman
+
+jobs:
+  container:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        distro: [ fedora, ubuntu ]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Update APT cache
+        run: sudo apt update
+
+      - name: Install dependencies
+        run: sudo apt install -y ${{ env.DEPENDENCIES }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Build container images
+        id: build-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: ${{ env.IMAGE_NAME }}
+          archs: amd64, arm64
+          tags: ${{ matrix.distro }}
+          build-args: CONTAINERS_PATH=${{ env.CONTAINERS_PATH }}
+          dockerfiles: ${{ env.CONTAINERS_PATH }}/${{ matrix.distro }}/Dockerfile
+
+      - name: Push to ghcr.io
+        id: push-to-registry
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-image.outputs.image }}
+          tags: ${{ steps.build-image.outputs.tags }}
+          registry: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAMESPACE }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Print image url
+        run: echo "Image pushed to ${{ steps.push-to-registry.outputs.registry-paths }}"

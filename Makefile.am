@@ -93,6 +93,7 @@ EXTRA_DIST = \
 	.ci/ovn-kubernetes/Dockerfile \
 	.ci/ovn-kubernetes/prepare.sh \
 	.ci/ovn-kubernetes/custom.patch \
+	.github/workflows/containers.yml \
 	.github/workflows/test.yml \
 	.github/workflows/ovn-kubernetes.yml \
 	boot.sh \
