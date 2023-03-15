@@ -53,7 +53,6 @@ struct northd_input {
     const struct sbrec_meter_table *sbrec_meter_table;
     const struct sbrec_dns_table *sbrec_dns_table;
     const struct sbrec_ip_multicast_table *sbrec_ip_multicast_table;
-    const struct sbrec_chassis_private_table *sbrec_chassis_private_table;
     const struct sbrec_static_mac_binding_table
         *sbrec_static_mac_binding_table;
     const struct sbrec_chassis_template_var_table
