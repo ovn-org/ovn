@@ -2721,12 +2721,17 @@ join_logical_ports(struct northd_input *input_data,
              */
             const char *arp_proxy = smap_get(&op->nbsp->options,"arp_proxy");
             int ofs = 0;
-            if (arp_proxy &&
-                !extract_addresses(arp_proxy, &op->proxy_arp_addrs, &ofs) &&
-                !extract_ip_addresses(arp_proxy, &op->proxy_arp_addrs)) {
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-                VLOG_WARN_RL(&rl, "Invalid arp_proxy option: '%s' at lsp '%s'",
-                             arp_proxy, op->nbsp->name);
+            if (arp_proxy) {
+                if (extract_addresses(arp_proxy, &op->proxy_arp_addrs, &ofs) ||
+                    extract_ip_addresses(arp_proxy, &op->proxy_arp_addrs)) {
+                    op->od->has_arp_proxy_port = true;
+                } else {
+                    static struct vlog_rate_limit rl =
+                        VLOG_RATE_LIMIT_INIT(1, 5);
+                    VLOG_WARN_RL(&rl,
+                        "Invalid arp_proxy option: '%s' at lsp '%s'",
+                        arp_proxy, op->nbsp->name);
+                }
             }
         } else if (op->nbrp && op->nbrp->peer && !op->l3dgw_port) {
             struct ovn_port *peer = ovn_port_find(ports, op->nbrp->peer);
@@ -8428,7 +8433,7 @@ build_lswitch_arp_nd_responder_skip_local(struct ovn_port *op,
                                           struct hmap *lflows,
                                           struct ds *match)
 {
-    if (op->nbsp && lsp_is_localnet(op->nbsp)) {
+    if (op->nbsp && lsp_is_localnet(op->nbsp) && !op->od->has_arp_proxy_port) {
         ds_clear(match);
         ds_put_format(match, "inport == %s", op->json_key);
         ovn_lflow_add_with_lport_and_hint(lflows, op->od,
