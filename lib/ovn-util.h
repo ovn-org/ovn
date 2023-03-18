@@ -16,6 +16,7 @@
 #ifndef OVN_UTIL_H
 #define OVN_UTIL_H 1
 
+#include "ovsdb-idl.h"
 #include "lib/packets.h"
 #include "include/ovn/version.h"
 
@@ -139,6 +140,9 @@ uint32_t ovn_logical_flow_hash_datapath(const struct uuid *logical_datapath,
                                         uint32_t hash);
 void ovn_conn_show(struct unixctl_conn *conn, int argc OVS_UNUSED,
                    const char *argv[] OVS_UNUSED, void *idl_);
+
+void set_idl_probe_interval(struct ovsdb_idl *idl, const char *remote,
+                            int interval);
 
 #define OVN_MAX_DP_KEY ((1u << 24) - 1)
 #define OVN_MAX_DP_GLOBAL_NUM ((1u << 16) - 1)

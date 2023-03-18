@@ -104,7 +104,6 @@ static unixctl_cb_func debug_ignore_startup_delay;
 
 #define DEFAULT_BRIDGE_NAME "br-int"
 #define DEFAULT_DATAPATH "system"
-#define DEFAULT_PROBE_INTERVAL_MSEC 5000
 #define OFCTRL_DEFAULT_PROBE_INTERVAL_SEC 0
 
 #define CONTROLLER_LOOP_STOPWATCH_NAME "flow-generation"
@@ -595,13 +594,10 @@ update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
     ovsdb_idl_set_remote(ovnsb_idl, remote, true);
 
     /* Set probe interval, based on user configuration and the remote. */
-    int default_interval = (remote && !stream_or_pstream_needs_probes(remote)
-                            ? 0 : DEFAULT_PROBE_INTERVAL_MSEC);
     int interval =
         get_chassis_external_id_value_int(
-            &cfg->external_ids, chassis_id,
-            "ovn-remote-probe-interval", default_interval);
-    ovsdb_idl_set_probe_interval(ovnsb_idl, interval);
+            &cfg->external_ids, chassis_id, "ovn-remote-probe-interval", -1);
+    set_idl_probe_interval(ovnsb_idl, remote, interval);
 
     bool monitor_all =
         get_chassis_external_id_value_bool(

@@ -27,11 +27,15 @@
 #include "ovn-dirs.h"
 #include "ovn-nb-idl.h"
 #include "ovn-sb-idl.h"
+#include "ovsdb-idl.h"
 #include "socket-util.h"
+#include "stream.h"
 #include "svec.h"
 #include "unixctl.h"
 
 VLOG_DEFINE_THIS_MODULE(ovn_util);
+
+#define DEFAULT_PROBE_INTERVAL_MSEC 5000
 
 void ovn_conn_show(struct unixctl_conn *conn, int argc OVS_UNUSED,
                    const char *argv[] OVS_UNUSED, void *idl_)
@@ -41,6 +45,24 @@ void ovn_conn_show(struct unixctl_conn *conn, int argc OVS_UNUSED,
     unixctl_command_reply(
         conn,
         ovsdb_idl_is_connected(idl) ? "connected": "not connected");
+}
+
+/* Set inactivity probe interval for 'idl' and 'remote' to 'interval'.
+ * If 'interval' < 0 (no preference from daemon settings), set it to 5000ms;
+ * if 'remote' needs probing, disable otherwise.
+ * 'interval' value of 0 disables probing.
+ */
+void set_idl_probe_interval(struct ovsdb_idl *idl, const char *remote,
+                            int interval)
+{
+    if (interval < 0) {
+        interval = (remote && !stream_or_pstream_needs_probes(remote)
+                    ? 0 : DEFAULT_PROBE_INTERVAL_MSEC);
+    } else if (interval > 0 && interval < 1000) {
+        interval = 1000;
+    }
+
+    ovsdb_idl_set_probe_interval(idl, interval);
 }
 
 static void

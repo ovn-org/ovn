@@ -71,11 +71,6 @@ static const char *ssl_private_key_file;
 static const char *ssl_certificate_file;
 static const char *ssl_ca_cert_file;
 
-/* Default probe interval for NB and SB DB connections. */
-#define DEFAULT_PROBE_INTERVAL_MSEC 5000
-static int northd_probe_interval_nb = 0;
-static int northd_probe_interval_sb = 0;
-
 static const char *rbac_chassis_auth[] =
     {"name"};
 static const char *rbac_chassis_update[] =
@@ -684,20 +679,6 @@ update_ssl_config(void)
     }
 }
 
-static int
-get_probe_interval(const char *db, const struct nbrec_nb_global *nb)
-{
-    int default_interval = (db && !stream_or_pstream_needs_probes(db)
-                            ? 0 : DEFAULT_PROBE_INTERVAL_MSEC);
-    int interval = smap_get_int(&nb->options,
-                                "northd_probe_interval", default_interval);
-
-    if (interval > 0 && interval < 1000) {
-        interval = 1000;
-    }
-    return interval;
-}
-
 static struct ovsdb_idl_txn *
 run_idl_loop(struct ovsdb_idl_loop *idl_loop, const char *name)
 {
@@ -1014,14 +995,13 @@ main(int argc, char *argv[])
         const struct nbrec_nb_global *nb =
             nbrec_nb_global_first(ovnnb_idl_loop.idl);
         /* Update the probe interval. */
+        int interval = -1;
         if (nb) {
-            northd_probe_interval_nb = get_probe_interval(ovnnb_db, nb);
-            northd_probe_interval_sb = get_probe_interval(ovnsb_db, nb);
+            interval = smap_get_int(&nb->options, "northd_probe_interval",
+                                    interval);
         }
-        ovsdb_idl_set_probe_interval(ovnnb_idl_loop.idl,
-                                     northd_probe_interval_nb);
-        ovsdb_idl_set_probe_interval(ovnsb_idl_loop.idl,
-                                     northd_probe_interval_sb);
+        set_idl_probe_interval(ovnnb_idl_loop.idl, ovnnb_db, interval);
+        set_idl_probe_interval(ovnsb_idl_loop.idl, ovnsb_db, interval);
 
         if (reset_ovnsb_idl_min_index) {
             VLOG_INFO("Resetting southbound database cluster state");
