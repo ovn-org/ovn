@@ -35,6 +35,7 @@
 #include "lib/ovn-util.h"
 #include "memory.h"
 #include "openvswitch/poll-loop.h"
+#include "ovsdb-idl.h"
 #include "simap.h"
 #include "smap.h"
 #include "sset.h"
@@ -1871,6 +1872,31 @@ update_ssl_config(void)
     }
 }
 
+static void
+update_idl_probe_interval(struct ovsdb_idl *ovn_sb_idl,
+                          struct ovsdb_idl *ovn_nb_idl,
+                          struct ovsdb_idl *ovn_icsb_idl,
+                          struct ovsdb_idl *ovn_icnb_idl)
+{
+    const struct nbrec_nb_global *nb = nbrec_nb_global_first(ovn_nb_idl);
+    int interval = -1;
+    if (nb) {
+        interval = smap_get_int(&nb->options, "ic_probe_interval", interval);
+    }
+    set_idl_probe_interval(ovn_sb_idl, ovnsb_db, interval);
+    set_idl_probe_interval(ovn_nb_idl, ovnnb_db, interval);
+
+    const struct icnbrec_ic_nb_global *icnb =
+        icnbrec_ic_nb_global_first(ovn_icnb_idl);
+    int ic_interval = -1;
+    if (icnb) {
+        ic_interval = smap_get_int(&icnb->options, "ic_probe_interval",
+                                   ic_interval);
+    }
+    set_idl_probe_interval(ovn_icsb_idl, ovn_ic_sb_db, ic_interval);
+    set_idl_probe_interval(ovn_icnb_idl, ovn_ic_nb_db, ic_interval);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -2071,6 +2097,8 @@ main(int argc, char *argv[])
     state.paused = false;
     while (!exiting) {
         update_ssl_config();
+        update_idl_probe_interval(ovnsb_idl_loop.idl, ovnnb_idl_loop.idl,
+                                  ovnisb_idl_loop.idl, ovninb_idl_loop.idl);
         memory_run();
         if (memory_should_report()) {
             struct simap usage = SIMAP_INITIALIZER(&usage);
