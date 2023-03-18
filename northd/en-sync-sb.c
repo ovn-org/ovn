@@ -37,11 +37,11 @@ VLOG_DEFINE_THIS_MODULE(en_sync_to_sb);
 static void sync_addr_set(struct ovsdb_idl_txn *ovnsb_txn, const char *name,
                           const char **addrs, size_t n_addrs,
                           struct shash *sb_address_sets);
-static void sync_addr_sets(const struct nbrec_address_set_table *,
+static void sync_addr_sets(struct ovsdb_idl_txn *ovnsb_txn,
+                           const struct nbrec_address_set_table *,
                            const struct nbrec_port_group_table *,
                            const struct sbrec_address_set_table *,
-                           struct ovsdb_idl_txn *ovnsb_txn,
-                           struct hmap *datapaths);
+                           const struct ovn_datapaths *lr_datapaths);
 static const struct sbrec_address_set *sb_address_set_lookup_by_name(
     struct ovsdb_idl_index *, const char *name);
 static void update_sb_addr_set(const char **nb_addresses, size_t n_addresses,
@@ -89,8 +89,8 @@ en_sync_to_sb_addr_set_run(struct engine_node *node, void *data OVS_UNUSED)
     const struct engine_context *eng_ctx = engine_get_context();
     struct northd_data *northd_data = engine_get_input_data("northd", node);
 
-    sync_addr_sets(nb_address_set_table, nb_port_group_table,
-                   sb_address_set_table, eng_ctx->ovnsb_idl_txn,
+    sync_addr_sets(eng_ctx->ovnsb_idl_txn, nb_address_set_table,
+                   nb_port_group_table, sb_address_set_table,
                    &northd_data->lr_datapaths);
 
     engine_set_node_state(node, EN_UPDATED);
@@ -228,10 +228,11 @@ sync_addr_set(struct ovsdb_idl_txn *ovnsb_txn, const char *name,
  * in OVN_Northbound, so that the address sets used in Logical_Flows in
  * OVN_Southbound is checked against the proper set.*/
 static void
-sync_addr_sets(const struct nbrec_address_set_table *nb_address_set_table,
+sync_addr_sets(struct ovsdb_idl_txn *ovnsb_txn,
+               const struct nbrec_address_set_table *nb_address_set_table,
                const struct nbrec_port_group_table *nb_port_group_table,
                const struct sbrec_address_set_table *sb_address_set_table,
-               struct ovsdb_idl_txn *ovnsb_txn, struct hmap *datapaths)
+               const struct ovn_datapaths *lr_datapaths)
 {
     struct shash sb_address_sets = SHASH_INITIALIZER(&sb_address_sets);
 
@@ -271,7 +272,7 @@ sync_addr_sets(const struct nbrec_address_set_table *nb_address_set_table,
 
     /* Sync router load balancer VIP generated address sets. */
     struct ovn_datapath *od;
-    HMAP_FOR_EACH (od, key_node, datapaths) {
+    HMAP_FOR_EACH (od, key_node, &lr_datapaths->datapaths) {
         if (!od->nbr) {
             continue;
         }

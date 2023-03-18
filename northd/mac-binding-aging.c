@@ -109,7 +109,7 @@ en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
                                     "sbrec_mac_binding_by_datapath");
 
     struct ovn_datapath *od;
-    HMAP_FOR_EACH (od, key_node, &northd_data->lr_datapaths) {
+    HMAP_FOR_EACH (od, key_node, &northd_data->lr_datapaths.datapaths) {
         if (od->sb && od->nbr) {
             mac_binding_aging_run_for_datapath(od->sb, od->nbr,
                                                sbrec_mac_binding_by_datapath,

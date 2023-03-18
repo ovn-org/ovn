@@ -73,10 +73,21 @@ struct chassis_features {
     bool ct_lb_related;
 };
 
+/* A collection of datapaths. E.g. all logical switch datapaths, or all
+ * logical router datapaths. */
+struct ovn_datapaths {
+    /* Contains struct ovn_datapath elements. */
+    struct hmap datapaths;
+
+    /* The array index of each element in 'datapaths'. */
+    struct ovn_datapath **array;
+};
+
+
 struct northd_data {
     /* Global state for 'en-northd'. */
-    struct hmap ls_datapaths;
-    struct hmap lr_datapaths;
+    struct ovn_datapaths ls_datapaths;
+    struct ovn_datapaths lr_datapaths;
     struct hmap ls_ports;
     struct hmap lr_ports;
     struct hmap port_groups;
@@ -102,8 +113,8 @@ struct lflow_input {
     /* Indexes */
     struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp;
 
-    const struct hmap *ls_datapaths;
-    const struct hmap *lr_datapaths;
+    const struct ovn_datapaths *ls_datapaths;
+    const struct ovn_datapaths *lr_datapaths;
     const struct hmap *ls_ports;
     const struct hmap *lr_ports;
     const struct hmap *port_groups;
@@ -190,6 +201,9 @@ struct ovn_datapath {
 
     size_t index;   /* A unique index across all datapaths.
                      * Datapath indexes are sequential and start from zero. */
+
+    struct ovn_datapaths *datapaths; /* The collection of datapaths that
+                                        contains this datapath. */
 
     const struct nbrec_logical_switch *nbs;  /* May be NULL. */
     const struct nbrec_logical_router *nbr;  /* May be NULL. */
