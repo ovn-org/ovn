@@ -2091,6 +2091,15 @@ main(int argc, char *argv[])
                                   &icsbrec_route_col_transit_switch,
                                   &icsbrec_route_col_availability_zone);
 
+    unixctl_command_register("nb-connection-status", "", 0, 0,
+                             ovn_conn_show, ovnnb_idl_loop.idl);
+    unixctl_command_register("sb-connection-status", "", 0, 0,
+                             ovn_conn_show, ovnsb_idl_loop.idl);
+    unixctl_command_register("ic-nb-connection-status", "", 0, 0,
+                             ovn_conn_show, ovninb_idl_loop.idl);
+    unixctl_command_register("ic-sb-connection-status", "", 0, 0,
+                             ovn_conn_show, ovnisb_idl_loop.idl);
+
     /* Main loop. */
     exiting = false;
     state.had_lock = false;
