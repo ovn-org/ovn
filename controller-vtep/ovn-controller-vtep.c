@@ -31,6 +31,7 @@
 #include "openvswitch/poll-loop.h"
 #include "simap.h"
 #include "ovsdb-idl.h"
+#include "smap.h"
 #include "stream.h"
 #include "stream-ssl.h"
 #include "unixctl.h"
@@ -86,6 +87,20 @@ check_northd_version(struct ovsdb_idl *vtep_idl, struct ovsdb_idl *ovnsb_idl,
     }
 
     return true;
+}
+
+/* Set probe interval, based on user configuration and the remote. */
+static void
+update_idl_probe_interval(struct ovsdb_idl *ovn_sb_idl,
+                          struct ovsdb_idl *vtep_idl)
+{
+    const struct vteprec_global *cfg = vteprec_global_first(vtep_idl);
+    int interval = -1;
+    if (cfg) {
+        interval = smap_get_int(&cfg->other_config,
+                                "ovn-remote-probe-interval", interval);
+    }
+    set_idl_probe_interval(ovn_sb_idl, ovnsb_remote, interval);
 }
 
 int
@@ -178,6 +193,8 @@ main(int argc, char *argv[])
             memory_report(&usage);
             simap_destroy(&usage);
         }
+
+        update_idl_probe_interval(ovnsb_idl_loop.idl, vtep_idl_loop.idl);
 
         if (ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl) &&
             ovsdb_idl_has_ever_connected(vtep_idl_loop.idl) &&

@@ -96,6 +96,20 @@
         connected <code>hardware_vtep</code> database changes.
         The default value is considered false if this option is not defined.
       </dd>
+
+      <dt><code>other_config:ovn-remote-probe-interval</code></dt>
+      <dd>
+        <p>
+          The inactivity probe interval of the connection to the OVN Southbound
+          database, in milliseconds. If the value is zero, it disables the
+          connection keepalive feature.
+        </p>
+
+        <p>
+          If the value is nonzero, then it will be forced to a value of at
+          least 1000 ms.
+        </p>
+      </dd>
     </dl>
     </p>
 </manpage>
