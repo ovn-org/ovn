@@ -175,6 +175,11 @@ main(int argc, char *argv[])
     char *ovn_version = ovn_get_internal_version();
     VLOG_INFO("OVN internal version is : [%s]", ovn_version);
 
+    unixctl_command_register("sb-connection-status", "", 0, 0,
+                             ovn_conn_show, ovnsb_idl_loop.idl);
+    unixctl_command_register("vtep-connection-status", "", 0, 0,
+                             ovn_conn_show, vtep_idl_loop.idl);
+
     /* Main loop. */
     exiting = false;
     while (!exiting) {
