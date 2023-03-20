@@ -3813,6 +3813,7 @@ AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [
 
 AT_CHECK([grep "lr_out_undnat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=? (lr_out_undnat      ), priority=100  , match=(nd || nd_rs || nd_ra), action=(next;)
   table=? (lr_out_undnat      ), priority=50   , match=(ip), action=(flags.loopback = 1; ct_dnat;)
 ])
 
@@ -3864,6 +3865,7 @@ AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [
 
 AT_CHECK([grep "lr_out_undnat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=? (lr_out_undnat      ), priority=100  , match=(nd || nd_rs || nd_ra), action=(next;)
   table=? (lr_out_undnat      ), priority=50   , match=(ip), action=(flags.loopback = 1; ct_dnat;)
 ])
 
@@ -3929,6 +3931,7 @@ AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [
 
 AT_CHECK([grep "lr_out_undnat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=? (lr_out_undnat      ), priority=100  , match=(nd || nd_rs || nd_ra), action=(next;)
   table=? (lr_out_undnat      ), priority=50   , match=(ip), action=(flags.loopback = 1; ct_dnat;)
 ])
 
@@ -3970,6 +3973,7 @@ AT_CHECK([grep "lr_out_snat" lr0flows | grep skip_snat_for_lb | sed 's/table=./t
 
 AT_CHECK([grep "lr_out_undnat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=? (lr_out_undnat      ), priority=100  , match=(nd || nd_rs || nd_ra), action=(next;)
   table=? (lr_out_undnat      ), priority=50   , match=(ip), action=(flags.loopback = 1; ct_dnat;)
 ])
 
@@ -5315,6 +5319,7 @@ AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sor
 
 AT_CHECK([grep "lr_out_undnat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=? (lr_out_undnat      ), priority=100  , match=(nd || nd_rs || nd_ra), action=(next;)
   table=? (lr_out_undnat      ), priority=50   , match=(ip), action=(flags.loopback = 1; ct_dnat;)
 ])
 
@@ -5380,6 +5385,7 @@ AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sor
 
 AT_CHECK([grep "lr_out_undnat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=? (lr_out_undnat      ), priority=100  , match=(nd || nd_rs || nd_ra), action=(next;)
   table=? (lr_out_undnat      ), priority=50   , match=(ip), action=(flags.loopback = 1; ct_dnat;)
 ])
 
@@ -5450,6 +5456,7 @@ AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sor
 
 AT_CHECK([grep "lr_out_undnat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=? (lr_out_undnat      ), priority=100  , match=(nd || nd_rs || nd_ra), action=(next;)
   table=? (lr_out_undnat      ), priority=50   , match=(ip), action=(flags.loopback = 1; ct_dnat;)
 ])
 
@@ -5533,6 +5540,7 @@ AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sor
 
 AT_CHECK([grep "lr_out_undnat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=? (lr_out_undnat      ), priority=100  , match=(nd || nd_rs || nd_ra), action=(next;)
   table=? (lr_out_undnat      ), priority=50   , match=(ip), action=(flags.loopback = 1; ct_dnat;)
 ])
 
@@ -5595,6 +5603,7 @@ AT_CHECK([grep "lr_out_chk_dnat_local" lr0flows | sed 's/table=./table=?/' | sor
 
 AT_CHECK([grep "lr_out_undnat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=? (lr_out_undnat      ), priority=100  , match=(nd || nd_rs || nd_ra), action=(next;)
   table=? (lr_out_undnat      ), priority=50   , match=(ip), action=(flags.loopback = 1; ct_dnat;)
 ])
 
@@ -8231,6 +8240,8 @@ AT_CHECK([grep "lr_in_lb_aff_check" R1flows | sort], [0], [dnl
 ])
 AT_CHECK([grep "lr_in_lb_aff_learn" R1flows | sort], [0], [dnl
   table=8 (lr_in_lb_aff_learn ), priority=0    , match=(1), action=(next;)
+  table=8 (lr_in_lb_aff_learn ), priority=200  , match=(ip && ct.trk && ct.inv), action=(drop;)
+  table=8 (lr_in_lb_aff_learn ), priority=250  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0))), action=(next;)
 ])
 
 ovn-nbctl --wait=sb set load_balancer lb0 options:affinity_timeout=60
@@ -8277,6 +8288,8 @@ AT_CHECK([grep "lr_in_lb_aff_learn" R1flows | sort], [0], [dnl
   table=8 (lr_in_lb_aff_learn ), priority=0    , match=(1), action=(next;)
   table=8 (lr_in_lb_aff_learn ), priority=100  , match=(reg9[[6]] == 0 && ct.new && ip4 && reg0 == 172.16.0.10 && reg9[[16..31]] == 80 && ip4.dst == 10.0.0.2 && tcp.dst == 80), action=(commit_lb_aff(vip = "172.16.0.10:80", backend = "10.0.0.2:80", proto = tcp, timeout = 60); /* drop */)
   table=8 (lr_in_lb_aff_learn ), priority=100  , match=(reg9[[6]] == 0 && ct.new && ip4 && reg0 == 172.16.0.10 && reg9[[16..31]] == 80 && ip4.dst == 20.0.0.2 && tcp.dst == 80), action=(commit_lb_aff(vip = "172.16.0.10:80", backend = "20.0.0.2:80", proto = tcp, timeout = 60); /* drop */)
+  table=8 (lr_in_lb_aff_learn ), priority=200  , match=(ip && ct.trk && ct.inv), action=(drop;)
+  table=8 (lr_in_lb_aff_learn ), priority=250  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0))), action=(next;)
 ])
 
 AS_BOX([Test LR flows - skip_snat=true])

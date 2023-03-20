@@ -3657,6 +3657,17 @@ icmp6 {
 
     <ul>
       <li>
+        For ICMPv4/ICMPv6 packet too big traffic, a priority-250 flow with
+        action <code>next;</code>.
+      </li>
+
+      <li>
+        If <code>use_ct_inv_match</code> is set, a priority-200 flow
+        matches <code>ip &amp;&amp; ct.trk &amp;&amp; ct.inv</code> with
+        action <code>drop;</code>.
+      </li>
+
+      <li>
         For all the configured load balancing rules for a logical router where
         a positive affinity timeout <var>T</var> is specified in <code>options
         </code> column, that includes a L4 port <var>PORT</var> of protocol
@@ -4716,6 +4727,11 @@ nd_ns {
 
     <ul>
       <li>
+        For IPv6 Neighbor Discovery or Router Solicitation/Advertisement
+        traffic, a priority-100 flow with action <code>next;</code>.
+      </li>
+
+      <li>
         For all IP packets, a priority-50 flow with an action
         <code>flags.loopback = 1; ct_dnat;</code>.
       </li>
@@ -4992,7 +5008,30 @@ nd_ns {
       </li>
     </ul>
 
-    <h3>Egress Table 4: Egress Loopback</h3>
+    <h3>Egress Table 4: Post SNAT</h3>
+
+    <p>
+      Packets reaching this table are processed according to the flows below:
+      <ul>
+        <li>
+          For ICMPv4/ICMPv6 packet too big traffic, a priority-150 flow with
+          action <code>next;</code>.
+        </li>
+
+        <li>
+          If <code>use_ct_inv_match</code> is set, a priority-100 flow
+          matches <code>ip &amp;&amp; ct.trk &amp;&amp; ct.inv</code> with
+          action <code>drop;</code>.
+        </li>
+
+        <li>
+          A priority-0 logical flow that matches all packets not already
+          handled (match <code>1</code>) and action <code>next;</code>.
+        </li>
+      </ul>
+    </p>
+
+    <h3>Egress Table 5: Egress Loopback</h3>
 
     <p>
       For distributed logical routers where one of the logical router
@@ -5064,7 +5103,7 @@ clone {
       </li>
     </ul>
 
-    <h3>Egress Table 5: Delivery</h3>
+    <h3>Egress Table 6: Delivery</h3>
 
     <p>
       Packets that reach this table are ready for delivery.  It contains:

@@ -12254,7 +12254,7 @@ nexthop_mac="f00000010204"
 AS_BOX([Send ip packet from foo1 to 8.8.8.8])
 src_mac="f00000010203"
 dst_mac="000001010203"
-packet=${foo_mac}${foo1_mac}08004500001c0000000040110000${foo1_ip}${dst_ip}0035111100080000
+packet=${foo_mac}${foo1_mac}080045000028000000004006a916${foo1_ip}${dst_ip}0035111112345678000000005002faf069450000
 
 AS_BOX([Wait for GARPs announcing gw IP to arrive])
 OVS_WAIT_UNTIL([
@@ -12265,15 +12265,12 @@ grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
 AS_BOX([Verify VLAN tagged packet on bridge connecting hv1 and hv2])
 # VLAN tagged packet with router port(192.168.1.1) MAC as destination MAC
 # is expected on bridge connecting hv1 and hv2
-expected=${foo_mac}${foo1_mac}8100000208004500001c0000000040110000${foo1_ip}${dst_ip}0035111100080000
+expected=${foo_mac}${foo1_mac}81000002080045000028000000004006a916${foo1_ip}${dst_ip}0035111112345678000000005002faf069450000
 echo $expected > hv1-br-ex_n2.expected
 
 AS_BOX([Verify packet at outside1 i.e nexthop(172.16.1.1) port])
 # Packet to Expect at outside1 i.e nexthop(172.16.1.1) port.
-# As connection tracking not enabled for this test, snat can't be done on the packet.
-# We still see foo1 as the source ip address. But source mac(gateway MAC) and
-# dest mac(nexthop mac) are properly configured.
-expected=${nexthop_mac}${gw_mac}08004500001c000000003f110100${foo1_ip}${dst_ip}0035111100080000
+expected=${nexthop_mac}${gw_mac}080045000028000000003f06beaa${gw_ip}${dst_ip}0035111112345678000000005002faf07dd90000
 echo $expected > hv3-vif1.expected
 
 check as hv1 ovs-appctl revalidator/purge
@@ -12304,7 +12301,7 @@ cat hv1-br-ex_n2.expected > expout
 AT_CHECK([sort hv1-br-ex_n2], [0], [expout])
 
 AS_BOX([Check expected packet on nexthop interface])
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv3/vif1-tx.pcap | grep ${foo1_ip}${dst_ip} | uniq > hv3-vif1
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv3/vif1-tx.pcap | grep ${gw_ip}${dst_ip} | uniq > hv3-vif1
 cat hv3-vif1.expected > expout
 AT_CHECK([sort hv3-vif1], [0], [expout])
 
@@ -19705,7 +19702,7 @@ test_ip_packet_larger() {
     # Set the packet length to 114.
     pkt_len=0072
     packet=${dst_mac}${src_mac}08004500${pkt_len}000000004001c3dd
-    orig_packet_l3=${src_ip}${dst_ip}0304fcfb00000000
+    orig_packet_l3=${src_ip}${dst_ip}0800f7ff00000000
     orig_packet_l3=${orig_packet_l3}000000000000000000000000000000000000
     orig_packet_l3=${orig_packet_l3}000000000000000000000000000000000000
     orig_packet_l3=${orig_packet_l3}000000000000000000000000000000000000
@@ -19729,10 +19726,10 @@ test_ip_packet_larger() {
         # Packet to expect at br-phys.
         src_mac="000020201213"
         dst_mac="00000012af11"
-        src_ip=`ip_to_hex 10 0 0 3`
+        src_ip=`ip_to_hex 172 168 0 100`
         dst_ip=`ip_to_hex 172 168 0 3`
-        expected=${dst_mac}${src_mac}08004500${pkt_len}000000003f01c4dd
-        expected=${expected}${src_ip}${dst_ip}0304fcfb00000000
+        expected=${dst_mac}${src_mac}08004500${pkt_len}000000003f0121d4
+        expected=${expected}${src_ip}${dst_ip}0800f7ff00000000
         expected=${expected}000000000000000000000000000000000000
         expected=${expected}000000000000000000000000000000000000
         expected=${expected}000000000000000000000000000000000000
@@ -19793,7 +19790,7 @@ test_ip_packet_larger_ext() {
     # Set the packet length to 114.
     pkt_len=0072
     packet=${dst_mac}${src_mac}08004500${pkt_len}000000004001${checksum}
-    orig_packet_l3=${src_ip}${dst_ip}0900000000000000
+    orig_packet_l3=${src_ip}${dst_ip}0800f7ff00000000
     orig_packet_l3=${orig_packet_l3}000000000000000000000000000000000000
     orig_packet_l3=${orig_packet_l3}000000000000000000000000000000000000
     orig_packet_l3=${orig_packet_l3}000000000000000000000000000000000000
@@ -19810,7 +19807,7 @@ test_ip_packet_larger_ext() {
     dst_ip=`ip_to_hex 172 168 0 4`
     # pkt len should be 146 (28 (icmp packet) + 118 (orig ip + payload))
     reply_pkt_len=008e
-    ip_csum=f39b
+    ip_csum=$7
     icmp_reply=${src_mac}${dst_mac}08004500${reply_pkt_len}00004000fe01${reply_checksum}
     icmp_reply=${icmp_reply}${src_ip}${dst_ip}0304${ip_csum}0000$(printf "%04x" $mtu)
     icmp_reply=${icmp_reply}4500${pkt_len}000000004001${checksum}
@@ -19985,10 +19982,10 @@ OVS_WAIT_FOR_OUTPUT([
 ])
 
 AS_BOX([testing ingress traffic mtu 100 - IPv4])
-test_ip_packet_larger_ext 1 000020201213 $(ip_to_hex 172 168 0 100) 20cf 100 22b6
+test_ip_packet_larger_ext 1 000020201213 $(ip_to_hex 172 168 0 100) 20d3 100 22b6 fc97
 
 AS_BOX([testing ingress traffic mtu 100 - IPv4 FIP])
-test_ip_packet_larger_ext 2 f00000010204 $(ip_to_hex 172 168 0 110) 20c5 100 22ac
+test_ip_packet_larger_ext 2 f00000010204 $(ip_to_hex 172 168 0 110) 20c5 100 22ac fc9b
 
 AS_BOX([testing ingress traffic mtu 100 - IPv6])
 test_ip6_packet_larger_ext 1 000020201213 20000000000000000000000000000001 100 cc7a
@@ -20055,10 +20052,10 @@ OVS_WAIT_FOR_OUTPUT([
 ])
 
 AS_BOX([testing ingress traffic mtu 100 for gw router - IPv4])
-test_ip_packet_larger_ext 1 000020201213 $(ip_to_hex 172 168 0 100) 20cf 100 22b6
+test_ip_packet_larger_ext 1 000020201213 $(ip_to_hex 172 168 0 100) 20d3 100 22b6 fc97
 
 AS_BOX([testing ingress traffic mtu 100 for gw router - IPv6])
-test_ip6_packet_larger_ext 1 000020201213 20000000000000000000000000000001 100 cc7a
+test_ip6_packet_larger_ext 1 000020201213 20000000000000000000000000000001 100 cc7a fc9b
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
@@ -27284,22 +27281,24 @@ sleep 5
 send_ipv4_pkt() {
     local hv=$1 inport=$2 eth_src=$3 eth_dst=$4
     local ip_src=$5 ip_dst=$6
-    packet=${eth_dst}${eth_src}08004500001c0000000040110000${ip_src}${ip_dst}0035111100080000
+    local ip_cksum=$7 tcp_cksum=$8
+    packet=${eth_dst}${eth_src}080045000028000000004006${ip_cksum}${ip_src}${ip_dst}0035111112345678000000005002faf0${tcp_cksum}0000
     tcpdump_hex $packet
     as $hv ovs-appctl netdev-dummy/receive ${inport} ${packet}
 }
 
 send_icmp6_packet() {
-    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 ipv6_src=$5 ipv6_dst=$6
+    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 ipv6_src=$5 ipv6_dst=$6 tcp_cksum=$7
 
-    local ip6_hdr=6000000000083aff${ipv6_src}${ipv6_dst}
-    local packet=${eth_dst}${eth_src}86dd${ip6_hdr}8000dcb662f00001
+    local ip6_hdr=60000000001406ff${ipv6_src}${ipv6_dst}
+    local packet=${eth_dst}${eth_src}86dd${ip6_hdr}0035111112345678000000005002faf0${tcp_cksum}0000
 
     as $hv ovs-appctl netdev-dummy/receive ${inport} ${packet}
 }
 
 send_ipv4_pkt hv1 hv1-vif1 505400000003 00000000ff01 \
-    $(ip_to_hex 10 0 0 3) $(ip_to_hex 172 168 0 120)
+    $(ip_to_hex 10 0 0 3) $(ip_to_hex 172 168 0 120) \
+    c3ad 83dc
 
 AT_CAPTURE_FILE([offlows2])
 OVS_WAIT_UNTIL([
@@ -27316,7 +27315,8 @@ AT_CHECK([
 
 # Send the pkt from sw0-port2. Packet should not be marked.
 send_ipv4_pkt hv1 hv1-vif2 505400000004 00000000ff01 \
-    $(ip_to_hex 10 0 0 4) $(ip_to_hex 172 168 0 120)
+    $(ip_to_hex 10 0 0 4) $(ip_to_hex 172 168 0 120) \
+    c3ac 83db
 
 AT_CHECK([
     test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
@@ -27350,7 +27350,8 @@ AT_CHECK([
 
 ovn-nbctl set logical_router_policy $pol1 options:pkt_mark=2
 send_ipv4_pkt hv1 hv1-vif1 505400000003 00000000ff01 \
-    $(ip_to_hex 10 0 0 3) $(ip_to_hex 172 168 0 120)
+    $(ip_to_hex 10 0 0 3) $(ip_to_hex 172 168 0 120) \
+    c3ad 83dc
 
 OVS_WAIT_UNTIL([
     test 1 -eq $(as hv1 ovs-ofctl dump-flows br-int table=23 | \
@@ -27383,7 +27384,8 @@ AT_CHECK([
 # Send with src ip 10.0.0.5. The reroute policy should be hit
 # and the packet should be marked with 5.
 send_ipv4_pkt hv1 hv1-vif1 505400000003 00000000ff01 \
-    $(ip_to_hex 10 0 0 5) $(ip_to_hex 172 168 0 120)
+    $(ip_to_hex 10 0 0 5) $(ip_to_hex 172 168 0 120) \
+    c3ab 83da
 
 OVS_WAIT_UNTIL([
     test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
@@ -27395,7 +27397,7 @@ OVS_WAIT_UNTIL([
 src_ip6=aef00000000000000000000000000004
 dst_ip6=bef00000000000000000000000000004
 
-send_icmp6_packet hv1 hv1-vif2 505400000004 00000000ff01 ${src_ip6} ${dst_ip6}
+send_icmp6_packet hv1 hv1-vif2 505400000004 00000000ff01 ${src_ip6} ${dst_ip6} cd16
 
 OVS_WAIT_UNTIL([
     test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
@@ -27415,7 +27417,7 @@ AT_CHECK([
 src_ip6=aef00000000000000000000000000004
 dst_ip6=bef00000000000000000000000000005
 
-send_icmp6_packet hv1 hv1-vif2 505400000004 00000000ff01 ${src_ip6} ${dst_ip6}
+send_icmp6_packet hv1 hv1-vif2 505400000004 00000000ff01 ${src_ip6} ${dst_ip6} cd15
 
 OVS_WAIT_UNTIL([
     test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
@@ -28689,7 +28691,7 @@ src_mac="f00000000102"
 dst_mac="000000000101"
 src_ip=`ip_to_hex 10 0 1 2`
 dst_ip=`ip_to_hex 10 0 1 1`
-packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}${dst_ip}0035111100080000
+packet=${dst_mac}${src_mac}08004500001c00000000401164cf${src_ip}${dst_ip}0035111100080000
 as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
 
 # Even after configuring a router owned IP for SNAT, no packet-ins should
@@ -28715,7 +28717,7 @@ src_mac="f00000000202"
 dst_mac="000000000201"
 src_ip=`ip_to_hex 10 0 2 2`
 dst_ip=`ip_to_hex 10 0 1 1`
-packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}${dst_ip}0035111100080000
+packet=${dst_mac}${src_mac}08004500001c00000000401163cf${src_ip}${dst_ip}0035111100080000
 as hv1 ovs-appctl netdev-dummy/receive hv1-vif2 $packet
 
 # Still no packet-ins should reach ovn-controller.
