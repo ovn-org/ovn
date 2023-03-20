@@ -1881,6 +1881,13 @@ output;
       </li>
 
       <li>
+        A priority-72 flow that outputs all ARP requests and ND packets with
+        an Ethernet broadcast or multicast <code>eth.dst</code> to the
+        <code>MC_FLOOD_L2</code> multicast group if
+        <code>other_config:broadcast-arps-to-all-routers=true</code>.
+      </li>
+
+      <li>
         A priority-70 flow that outputs all packets with an Ethernet broadcast
         or multicast <code>eth.dst</code> to the <code>MC_FLOOD</code>
         multicast group.
