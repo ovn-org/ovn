@@ -34997,7 +34997,8 @@ check ovs-vsctl add-port br-int p1 -- set interface p1 external_ids:iface-id=lsp
 wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
-check ovn-nbctl lb-add lb1 "192.168.0.10" "192.168.10.10,192.168.10.20"
+check ovn-nbctl lb-add lb1 "192.168.0.10" "192.168.10.10,192.168.10.20" \
+    -- set load_balancer lb1 options:ct_flush="true"
 check ovn-nbctl ls-lb-add sw lb1
 
 # Remove a single backend
@@ -35020,7 +35021,8 @@ AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.0.10:0, backend=192.168.
 AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.0.10:0, backend=192.168.10.30:0, protocol=0" hv1/ovn-controller.log], [0])
 
 # Check flush for LB with port and protocol
-check ovn-nbctl lb-add lb1 "192.168.30.10:80" "192.168.40.10:8080,192.168.40.20:8090" udp
+check ovn-nbctl lb-add lb1 "192.168.30.10:80" "192.168.40.10:8080,192.168.40.20:8090" udp \
+    -- set load_balancer lb1 options:ct_flush="true"
 check ovn-nbctl ls-lb-add sw lb1
 check ovn-nbctl lb-del lb1
 check ovn-nbctl --wait=hv sync
@@ -35029,7 +35031,8 @@ AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.30.10:80, backend=192.16
 AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.30.10:80, backend=192.168.40.20:8090, protocol=17" hv1/ovn-controller.log], [0])
 
 # Check recompute when LB is no longer local
-check ovn-nbctl lb-add lb1 "192.168.50.10:80" "192.168.60.10:8080"
+check ovn-nbctl lb-add lb1 "192.168.50.10:80" "192.168.60.10:8080" \
+    -- set load_balancer lb1 options:ct_flush="true"
 check ovn-nbctl ls-lb-add sw lb1
 check ovs-vsctl remove interface p1 external_ids iface-id
 check ovn-appctl inc-engine/recompute
@@ -35037,6 +35040,25 @@ check ovn-nbctl --wait=hv sync
 
 AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.50.10:80, backend=192.168.60.10:8080, protocol=6" hv1/ovn-controller.log], [0])
 
+AT_CHECK([test "$(grep -c "Flushing CT for 5-tuple" hv1/ovn-controller.log)" = "6"], [0])
+
+# Check if CT flush is disabled by default
+check ovn-nbctl lb-del lb1
+check ovn-nbctl lb-add lb1 "192.168.70.10:80" "192.168.80.10:8080,192.168.90.10:8080"
+check ovn-nbctl ls-lb-add sw lb1
+check ovs-vsctl set interface p1 external_ids:iface-id=lsp1
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([test "$(grep -c "Flushing CT for 5-tuple" hv1/ovn-controller.log)" = "6"], [0])
+
+# Remove one backend
+check ovn-nbctl --wait=hv set load_balancer lb1 vips='"192.168.70.10:80"="192.168.80.10:8080"'
+
+AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.70.10:80, backend=192.168.90.10:8080, protocol=6" hv1/ovn-controller.log], [1])
+AT_CHECK([test "$(grep -c "Flushing CT for 5-tuple" hv1/ovn-controller.log)" = "6"], [0])
+
+check ovn-nbctl --wait=hv lb-del lb1
+AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.70.10:80, backend=192.168.80.10:8080, protocol=6" hv1/ovn-controller.log], [1])
 AT_CHECK([test "$(grep -c "Flushing CT for 5-tuple" hv1/ovn-controller.log)" = "6"], [0])
 
 OVN_CLEANUP([hv1])

@@ -2697,7 +2697,8 @@ static void
 lb_data_removed_five_tuples_add(struct ed_type_lb_data *lb_data,
                                 const struct ovn_controller_lb *lb)
 {
-    if (!ovs_feature_is_supported(OVS_CT_TUPLE_FLUSH_SUPPORT)) {
+    if (!ovs_feature_is_supported(OVS_CT_TUPLE_FLUSH_SUPPORT) ||
+        !lb->ct_flush) {
         return;
     }
 
@@ -2716,7 +2717,8 @@ static void
 lb_data_removed_five_tuples_remove(struct ed_type_lb_data *lb_data,
                                    const struct ovn_controller_lb *lb)
 {
-    if (!ovs_feature_is_supported(OVS_CT_TUPLE_FLUSH_SUPPORT)) {
+    if (!ovs_feature_is_supported(OVS_CT_TUPLE_FLUSH_SUPPORT) ||
+        !lb->ct_flush) {
         return;
     }
 

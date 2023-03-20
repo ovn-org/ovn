@@ -9993,11 +9993,13 @@ check ovn-nbctl lsp-add bar bar3 \
 -- lsp-set-addresses bar3 "f0:00:0f:01:02:05 172.16.1.4"
 
 # Config OVN load-balancer with a VIP.
-check ovn-nbctl lb-add lb1 30.0.0.1 "172.16.1.2,172.16.1.3,172.16.1.4"
+check ovn-nbctl lb-add lb1 30.0.0.1 "172.16.1.2,172.16.1.3,172.16.1.4" \
+    -- set load_balancer lb1 options:ct_flush="true"
 check ovn-nbctl ls-lb-add foo lb1
 
 # Create another load-balancer with another VIP.
 lb2_uuid=`ovn-nbctl create load_balancer name=lb2 vips:30.0.0.3="172.16.1.2,172.16.1.3,172.16.1.4"`
+check ovn-nbctl set load_balancer lb2 options:ct_flush="true"
 check ovn-nbctl ls-lb-add foo lb2
 
 # Config OVN load-balancer with another VIP (this time with ports).
@@ -10013,15 +10015,17 @@ OVS_START_L7([bar1], [http])
 OVS_START_L7([bar2], [http])
 OVS_START_L7([bar3], [http])
 
-OVS_WAIT_FOR_OUTPUT([
-    for i in `seq 1 20`; do
-        ip netns exec foo1 wget 30.0.0.1 -t 5 -T 1 --retry-connrefused -v -o wget$i.log;
-    done
-    ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+m4_define([LB1_CT_ENTRIES], [dnl
 tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.3,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
+
+OVS_WAIT_FOR_OUTPUT([
+    for i in `seq 1 20`; do
+        ip netns exec foo1 wget 30.0.0.1 -t 5 -T 1 --retry-connrefused -v -o wget$i.log;
+    done
+    ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [LB1_CT_ENTRIES])
 
 OVS_WAIT_FOR_OUTPUT([
     for i in `seq 1 20`; do
@@ -10095,6 +10099,26 @@ tcp,orig=(src=192.168.1.2,dst=30.0.0.3,sport=<cleared>,dport=<cleared>),reply=(s
 check ovn-nbctl lb-del lb2
 
 OVS_WAIT_UNTIL([test "$(ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.3) | wc -l)" = "0"])
+
+# Check that LB has CT flush disabled by default
+check ovn-nbctl lb-add lb1 30.0.0.1 "172.16.1.2,172.16.1.3,172.16.1.4"
+check ovn-nbctl ls-lb-add foo lb1
+
+OVS_WAIT_FOR_OUTPUT([
+    for i in `seq 1 20`; do
+        ip netns exec foo1 wget 30.0.0.1 -t 5 -T 1 --retry-connrefused -v -o wget$i.log;
+    done
+    ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [LB1_CT_ENTRIES])
+
+# Remove one backend
+check ovn-nbctl --wait=hv set load_balancer lb1 vips='"30.0.0.1"="172.16.1.2,172.16.1.3"'
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [LB1_CT_ENTRIES])
+
+# Remove whole LB
+check ovn-nbctl --wait=hv lb-del lb1
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [LB1_CT_ENTRIES])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 

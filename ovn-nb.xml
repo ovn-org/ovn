@@ -2041,6 +2041,14 @@ or
         the affinity timeslot. Max supported affinity_timeout is 65535
         seconds.
       </column>
+
+      <column name="options" key="ct_flush" type='{"type": "boolean"}'>
+        The value indicates whether ovn-controller should flush CT entries
+        that are related to this LB. The flush happens if the LB is removed,
+        any of the backends is updated/removed or the LB is not considered
+        local anymore by the ovn-controller. This option is set to
+        <code>false</code> by default.
+      </column>
     </group>
   </table>
 
