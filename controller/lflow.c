@@ -1729,6 +1729,7 @@ add_lb_vip_hairpin_flows(const struct ovn_controller_lb *lb,
 
 static void
 add_lb_ct_snat_hairpin_for_dp(const struct ovn_controller_lb *lb,
+                              bool has_vip_port,
                               const struct sbrec_datapath_binding *datapath,
                               const struct hmap *local_datapaths,
                               struct match *dp_match,
@@ -1742,12 +1743,20 @@ add_lb_ct_snat_hairpin_for_dp(const struct ovn_controller_lb *lb,
         match_set_metadata(dp_match, htonll(datapath->tunnel_key));
     }
 
+    uint16_t priority = datapath ? 200 : 100;
+    if (!has_vip_port) {
+        /* If L4 ports are not specified for the current LB, we will decrease
+         * the flow priority in order to not collide with other LBs with more
+         * fine-grained configuration.
+         */
+        priority -= 10;
+    }
     /* A flow added for the "hairpin_snat_ip" case will have an extra
      * datapath match, but it will also match on the less restrictive
      * general case.  Therefore, we set the priority in the
      * "hairpin_snat_ip" case to be higher than the general case. */
     ofctrl_add_flow(flow_table, OFTABLE_CT_SNAT_HAIRPIN,
-                    datapath ? 200 : 100, lb->slb->header_.uuid.parts[0],
+                    priority, lb->slb->header_.uuid.parts[0],
                     dp_match, dp_acts, &lb->slb->header_.uuid);
 }
 
@@ -1834,8 +1843,8 @@ add_lb_ct_snat_hairpin_vip_flow(const struct ovn_controller_lb *lb,
         }
     }
 
-    match_set_nw_proto(&match, lb->proto);
     if (lb_vip->vip_port) {
+        match_set_nw_proto(&match, lb->proto);
         if (!lb->hairpin_orig_tuple) {
             match_set_ct_nw_proto(&match, lb->proto);
             match_set_ct_tp_dst(&match, htons(lb_vip->vip_port));
@@ -1852,18 +1861,20 @@ add_lb_ct_snat_hairpin_vip_flow(const struct ovn_controller_lb *lb,
     }
 
     if (!use_hairpin_snat_ip) {
-        add_lb_ct_snat_hairpin_for_dp(lb, NULL, NULL,
+        add_lb_ct_snat_hairpin_for_dp(lb, !!lb_vip->vip_port, NULL, NULL,
                                       &match, &ofpacts, flow_table);
     } else {
         for (size_t i = 0; i < lb->slb->n_datapaths; i++) {
-            add_lb_ct_snat_hairpin_for_dp(lb, lb->slb->datapaths[i],
-                                          local_datapaths,
-                                          &match, &ofpacts, flow_table);
+            add_lb_ct_snat_hairpin_for_dp(lb, !!lb_vip->vip_port,
+                                          lb->slb->datapaths[i],
+                                          local_datapaths, &match,
+                                          &ofpacts, flow_table);
         }
         if (lb->slb->datapath_group) {
             for (size_t i = 0; i < lb->slb->datapath_group->n_datapaths; i++) {
                 add_lb_ct_snat_hairpin_for_dp(
-                    lb, lb->slb->datapath_group->datapaths[i],
+                    lb, !!lb_vip->vip_port,
+                    lb->slb->datapath_group->datapaths[i],
                     local_datapaths, &match, &ofpacts, flow_table);
             }
         }
