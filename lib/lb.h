@@ -188,6 +188,7 @@ struct ovn_controller_lb {
     bool hairpin_orig_tuple; /* True if ovn-northd stores the original
                               * destination tuple in registers.
                               */
+    bool ct_flush; /* True if we should flush CT after backend removal. */
 
     struct lport_addresses hairpin_snat_ips; /* IP (v4 and/or v6) to be used
                                               * as source for hairpinned
