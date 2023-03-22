@@ -1269,9 +1269,10 @@
 
     <ul>
       <li>
-        Priority-100 flows to skip the ARP responder if inport is of type
-        <code>localnet</code> advances directly to the next table.  ARP
-        requests sent to <code>localnet</code> ports can be received by
+        If the logical switch has no router ports with options:arp_proxy
+        configured add a priority-100 flows to skip the ARP responder if inport
+        is of type <code>localnet</code> advances directly to the next table.
+        ARP requests sent to <code>localnet</code> ports can be received by
         multiple hypervisors.  Now, because the same mac binding rules are
         downloaded to all hypervisors, each of the multiple hypervisors will
         respond.  This will confuse L2 learning on the source of the ARP

@@ -10455,6 +10455,8 @@ AT_SKIP_IF([test $HAVE_TCPDUMP = no])
 ovn_start
 OVS_TRAFFIC_VSWITCHD_START()
 ADD_BR([br-int])
+ADD_BR([br-ext])
+ovs-ofctl add-flow br-ext action=normal
 
 # Set external-ids in br-int needed for ovn-controller
 ovs-vsctl \
@@ -10471,7 +10473,9 @@ start_daemon ovn-controller
 # One LR - R1 and two LSs - foo and bar, R1 has switches foo (192.168.1.0/24) and
 # bar (192.168.2.0/24) connected to it
 #
-#    foo -- R1 -- bar
+#    br-ext -- localnet -- foo -- R1 -- bar
+
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=provider:br-ext
 
 check ovn-nbctl lr-add R1
 check ovn-nbctl ls-add foo
@@ -10480,12 +10484,13 @@ check ovn-nbctl ls-add bar
 # Connect foo to R1
 check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
 check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
-    type=router options:arp_proxy="0a:58:a9:fe:01:01 169.254.239.254 169.254.239.2 169.254.238.0/24 " options:router-port=foo addresses='"router"'
+    type=router options:arp_proxy="0a:58:a9:fe:01:01 169.254.239.254 169.254.239.2 169.254.238.0/24 192.168.1.100" options:router-port=foo addresses='"router"'
 
 # Connect bar to R1
 check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
 check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:arp_proxy="169.254.239.253" options:router-port=bar addresses='"router"'
+
 
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
@@ -10508,12 +10513,20 @@ ADD_VETH(foo3, foo3, br-int, "192.168.1.4/24", "f0:00:00:01:02:05", \
 check ovn-nbctl lsp-add foo foo3 \
 -- lsp-set-addresses foo3 "f0:00:00:01:02:05 192.168.1.4"
 
+# Logical port 'ext1' in switch 'foo'
+ADD_NAMESPACES(ext1)
+ADD_VETH(ext1, ext1, br-ext, "192.168.1.5/24", "f0:00:00:01:02:06", \
+         "192.168.1.100",)
+check ovn-nbctl lsp-add foo ln -- lsp-set-options ln network_name=provider
+check ovn-nbctl lsp-set-type ln localnet
+check ovn-nbctl lsp-set-addresses ln unknown
+
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
-ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:06", \
+ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:07", \
 "169.254.239.253")
 check ovn-nbctl lsp-add bar bar1 \
--- lsp-set-addresses bar1 "f0:00:00:01:02:06 192.168.2.2"
+-- lsp-set-addresses bar1 "f0:00:00:01:02:07 192.168.2.2"
 
 # wait for ovn-controller to catch up.
 check ovn-nbctl --wait=hv sync
@@ -10554,6 +10567,19 @@ NS_CHECK_EXEC([foo3], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
 ])
 OVS_WAIT_UNTIL([
     total_pkts=$(cat foo3-icmp.pcap| wc -l)
+    test "${total_pkts}" = "3"
+])
+
+NETNS_DAEMONIZE([ext1], [tcpdump -l -nn -e -i ext1 'ether dst 0a:58:a9:fe:01:01 and icmp' > ext1-icmp.pcap 2>ext1-tcpdump.stderr], [ext1-icmp-tcpdump.pid])
+OVS_WAIT_UNTIL([grep "listening" ext1-tcpdump.stderr])
+
+# 'ext1' should be able to ping 'bar1'
+NS_CHECK_EXEC([ext1], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+OVS_WAIT_UNTIL([
+    total_pkts=$(cat ext1-icmp.pcap| wc -l)
     test "${total_pkts}" = "3"
 ])
 
