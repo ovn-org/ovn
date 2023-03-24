@@ -3033,7 +3033,7 @@ nbctl_lb_add(struct ctl_context *ctx)
     }
 
     ovn_lb_vip_format(&lb_vip_parsed, &lb_vip_normalized, template);
-    ovn_lb_vip_backends_format(&lb_vip_parsed, &lb_ips_new, template);
+    ovn_lb_vip_backends_format(&lb_vip_parsed, &lb_ips_new);
     ovn_lb_vip_destroy(&lb_vip_parsed);
 
     const struct nbrec_load_balancer *lb = NULL;

@@ -96,6 +96,9 @@ struct ovn_lb_vip {
                           */
     struct ovn_lb_backend *backends;
     size_t n_backends;
+    bool template_backends; /* True if the backends are templates. False if
+                             * they're explicitly specified.
+                             */
     bool empty_backend_rej;
     int address_family;
 };
@@ -211,8 +214,7 @@ char *ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
 void ovn_lb_vip_destroy(struct ovn_lb_vip *vip);
 void ovn_lb_vip_format(const struct ovn_lb_vip *vip, struct ds *s,
                        bool template);
-void ovn_lb_vip_backends_format(const struct ovn_lb_vip *vip, struct ds *s,
-                                bool template);
+void ovn_lb_vip_backends_format(const struct ovn_lb_vip *vip, struct ds *s);
 
 struct ovn_lb_5tuple {
     struct hmap_node hmap_node;
