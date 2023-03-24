@@ -130,7 +130,8 @@ struct ovn_northd_lb_backend {
 };
 
 struct ovn_northd_lb *ovn_northd_lb_create(const struct nbrec_load_balancer *,
-                                           size_t n_datapaths);
+                                           size_t n_ls_datapaths,
+                                           size_t n_lr_datapaths);
 struct ovn_northd_lb *ovn_northd_lb_find(const struct hmap *,
                                          const struct uuid *);
 const struct smap *ovn_northd_lb_get_vips(const struct ovn_northd_lb *);
@@ -157,7 +158,8 @@ struct ovn_lb_group {
 struct ovn_lb_group *ovn_lb_group_create(
     const struct nbrec_load_balancer_group *,
     const struct hmap *lbs,
-    size_t max_datapaths);
+    size_t max_ls_datapaths,
+    size_t max_lr_datapaths);
 void ovn_lb_group_destroy(struct ovn_lb_group *lb_group);
 struct ovn_lb_group *ovn_lb_group_find(const struct hmap *lb_groups,
                                        const struct uuid *);

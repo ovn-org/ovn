@@ -25,8 +25,8 @@
 struct northd_input {
     /* Northbound table references */
     const struct nbrec_nb_global_table *nbrec_nb_global_table;
-    const struct nbrec_logical_switch_table *nbrec_logical_switch;
-    const struct nbrec_logical_router_table *nbrec_logical_router;
+    const struct nbrec_logical_switch_table *nbrec_logical_switch_table;
+    const struct nbrec_logical_router_table *nbrec_logical_router_table;
     const struct nbrec_load_balancer_table *nbrec_load_balancer_table;
     const struct nbrec_load_balancer_group_table
         *nbrec_load_balancer_group_table;
@@ -45,7 +45,7 @@ struct northd_input {
     const struct sbrec_port_binding_table *sbrec_port_binding_table;
     const struct sbrec_mac_binding_table *sbrec_mac_binding_table;
     const struct sbrec_ha_chassis_group_table *sbrec_ha_chassis_group_table;
-    const struct sbrec_chassis_table *sbrec_chassis;
+    const struct sbrec_chassis_table *sbrec_chassis_table;
     const struct sbrec_fdb_table *sbrec_fdb_table;
     const struct sbrec_load_balancer_table *sbrec_load_balancer_table;
     const struct sbrec_service_monitor_table *sbrec_service_monitor_table;
@@ -53,7 +53,6 @@ struct northd_input {
     const struct sbrec_meter_table *sbrec_meter_table;
     const struct sbrec_dns_table *sbrec_dns_table;
     const struct sbrec_ip_multicast_table *sbrec_ip_multicast_table;
-    const struct sbrec_chassis_private_table *sbrec_chassis_private_table;
     const struct sbrec_static_mac_binding_table
         *sbrec_static_mac_binding_table;
     const struct sbrec_chassis_template_var_table
@@ -74,10 +73,23 @@ struct chassis_features {
     bool ct_lb_related;
 };
 
+/* A collection of datapaths. E.g. all logical switch datapaths, or all
+ * logical router datapaths. */
+struct ovn_datapaths {
+    /* Contains struct ovn_datapath elements. */
+    struct hmap datapaths;
+
+    /* The array index of each element in 'datapaths'. */
+    struct ovn_datapath **array;
+};
+
+
 struct northd_data {
     /* Global state for 'en-northd'. */
-    struct hmap datapaths;
-    struct hmap ports;
+    struct ovn_datapaths ls_datapaths;
+    struct ovn_datapaths lr_datapaths;
+    struct hmap ls_ports;
+    struct hmap lr_ports;
     struct hmap port_groups;
     struct shash meter_groups;
     struct hmap lbs;
@@ -101,8 +113,10 @@ struct lflow_input {
     /* Indexes */
     struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp;
 
-    const struct hmap *datapaths;
-    const struct hmap *ports;
+    const struct ovn_datapaths *ls_datapaths;
+    const struct ovn_datapaths *lr_datapaths;
+    const struct hmap *ls_ports;
+    const struct hmap *lr_ports;
     const struct hmap *port_groups;
     const struct shash *meter_groups;
     const struct hmap *lbs;
@@ -187,6 +201,9 @@ struct ovn_datapath {
 
     size_t index;   /* A unique index across all datapaths.
                      * Datapath indexes are sequential and start from zero. */
+
+    struct ovn_datapaths *datapaths; /* The collection of datapaths that
+                                        contains this datapath. */
 
     const struct nbrec_logical_switch *nbs;  /* May be NULL. */
     const struct nbrec_logical_router *nbr;  /* May be NULL. */
@@ -279,10 +296,11 @@ void northd_indices_create(struct northd_data *data,
                            struct ovsdb_idl *ovnsb_idl);
 void build_lflows(struct lflow_input *input_data,
                   struct ovsdb_idl_txn *ovnsb_txn);
-void build_bfd_table(struct lflow_input *input_data,
-                     struct ovsdb_idl_txn *ovnsb_txn,
-                     struct hmap *bfd_connections, struct hmap *ports);
-void bfd_cleanup_connections(struct lflow_input *input_data,
+void build_bfd_table(struct ovsdb_idl_txn *ovnsb_txn,
+                     const struct nbrec_bfd_table *,
+                     const struct sbrec_bfd_table *,
+                     struct hmap *bfd_connections, struct hmap *lr_ports);
+void bfd_cleanup_connections(const struct nbrec_bfd_table *,
                              struct hmap *bfd_map);
 void run_update_worker_pool(int n_threads);
 

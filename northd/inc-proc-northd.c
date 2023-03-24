@@ -43,32 +43,15 @@ static unixctl_cb_func chassis_features_list;
 
 #define NB_NODES \
     NB_NODE(nb_global, "nb_global") \
-    NB_NODE(copp, "copp") \
     NB_NODE(logical_switch, "logical_switch") \
-    NB_NODE(logical_switch_port, "logical_switch_port") \
-    NB_NODE(forwarding_group, "forwarding_group") \
     NB_NODE(address_set, "address_set") \
     NB_NODE(port_group, "port_group") \
     NB_NODE(load_balancer, "load_balancer") \
     NB_NODE(load_balancer_group, "load_balancer_group") \
-    NB_NODE(load_balancer_health_check, "load_balancer_health_check") \
     NB_NODE(acl, "acl") \
     NB_NODE(logical_router, "logical_router") \
-    NB_NODE(qos, "qos") \
     NB_NODE(mirror, "mirror") \
     NB_NODE(meter, "meter") \
-    NB_NODE(meter_band, "meter_band") \
-    NB_NODE(logical_router_port, "logical_router_port") \
-    NB_NODE(logical_router_static_route, "logical_router_static_route") \
-    NB_NODE(logical_router_policy, "logical_router_policy") \
-    NB_NODE(nat, "nat") \
-    NB_NODE(dhcp_options, "dhcp_options") \
-    NB_NODE(connection, "connection") \
-    NB_NODE(dns, "dns") \
-    NB_NODE(ssl, "ssl") \
-    NB_NODE(gateway_chassis, "gateway_chassis") \
-    NB_NODE(ha_chassis_group, "ha_chassis_group") \
-    NB_NODE(ha_chassis, "ha_chassis") \
     NB_NODE(bfd, "bfd") \
     NB_NODE(static_mac_binding, "static_mac_binding") \
     NB_NODE(chassis_template_var, "chassis_template_var")
@@ -92,30 +75,17 @@ static unixctl_cb_func chassis_features_list;
 #define SB_NODES \
     SB_NODE(sb_global, "sb_global") \
     SB_NODE(chassis, "chassis") \
-    SB_NODE(chassis_private, "chassis_private") \
-    SB_NODE(encap, "encap") \
     SB_NODE(address_set, "address_set") \
     SB_NODE(port_group, "port_group") \
     SB_NODE(logical_flow, "logical_flow") \
-    SB_NODE(logical_dp_group, "logical_DP_group") \
     SB_NODE(multicast_group, "multicast_group") \
     SB_NODE(mirror, "mirror") \
     SB_NODE(meter, "meter") \
-    SB_NODE(meter_band, "meter_band") \
     SB_NODE(datapath_binding, "datapath_binding") \
     SB_NODE(port_binding, "port_binding") \
     SB_NODE(mac_binding, "mac_binding") \
-    SB_NODE(dhcp_options, "dhcp_options") \
-    SB_NODE(dhcpv6_options, "dhcpv6_options") \
-    SB_NODE(connection, "connection") \
-    SB_NODE(ssl, "ssl") \
     SB_NODE(dns, "dns") \
-    SB_NODE(rbac_role, "rbac_role") \
-    SB_NODE(rbac_permission, "rbac_permission") \
-    SB_NODE(gateway_chassis, "gateway_chassis") \
-    SB_NODE(ha_chassis, "ha_chassis") \
     SB_NODE(ha_chassis_group, "ha_chassis_group") \
-    SB_NODE(controller_event, "controller_event") \
     SB_NODE(ip_multicast, "ip_multicast") \
     SB_NODE(igmp_group, "igmp_group") \
     SB_NODE(service_monitor, "service_monitor") \
@@ -172,67 +142,39 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     /* Define relationships between nodes where first argument is dependent
      * on the second argument */
     engine_add_input(&en_northd, &en_nb_nb_global, NULL);
-    engine_add_input(&en_northd, &en_nb_copp, NULL);
     engine_add_input(&en_northd, &en_nb_logical_switch, NULL);
-    engine_add_input(&en_northd, &en_nb_logical_switch_port, NULL);
-    engine_add_input(&en_northd, &en_nb_forwarding_group, NULL);
     engine_add_input(&en_northd, &en_nb_port_group, NULL);
     engine_add_input(&en_northd, &en_nb_load_balancer, NULL);
     engine_add_input(&en_northd, &en_nb_load_balancer_group, NULL);
-    engine_add_input(&en_northd, &en_nb_load_balancer_health_check, NULL);
     engine_add_input(&en_northd, &en_nb_acl, NULL);
     engine_add_input(&en_northd, &en_nb_logical_router, NULL);
-    engine_add_input(&en_northd, &en_nb_qos, NULL);
     engine_add_input(&en_northd, &en_nb_mirror, NULL);
     engine_add_input(&en_northd, &en_nb_meter, NULL);
-    engine_add_input(&en_northd, &en_nb_meter_band, NULL);
-    engine_add_input(&en_northd, &en_nb_logical_router_port, NULL);
-    engine_add_input(&en_northd, &en_nb_logical_router_static_route, NULL);
-    engine_add_input(&en_northd, &en_nb_logical_router_policy, NULL);
-    engine_add_input(&en_northd, &en_nb_nat, NULL);
-    engine_add_input(&en_northd, &en_nb_dhcp_options, NULL);
-    engine_add_input(&en_northd, &en_nb_connection, NULL);
-    engine_add_input(&en_northd, &en_nb_dns, NULL);
-    engine_add_input(&en_northd, &en_nb_ssl, NULL);
-    engine_add_input(&en_northd, &en_nb_gateway_chassis, NULL);
-    engine_add_input(&en_northd, &en_nb_ha_chassis_group, NULL);
-    engine_add_input(&en_northd, &en_nb_ha_chassis, NULL);
     engine_add_input(&en_northd, &en_nb_static_mac_binding, NULL);
     engine_add_input(&en_northd, &en_nb_chassis_template_var, NULL);
 
     engine_add_input(&en_northd, &en_sb_sb_global, NULL);
     engine_add_input(&en_northd, &en_sb_chassis, NULL);
-    engine_add_input(&en_northd, &en_sb_chassis_private, NULL);
-    engine_add_input(&en_northd, &en_sb_encap, NULL);
     engine_add_input(&en_northd, &en_sb_port_group, NULL);
-    engine_add_input(&en_northd, &en_sb_logical_dp_group, NULL);
     engine_add_input(&en_northd, &en_sb_mirror, NULL);
     engine_add_input(&en_northd, &en_sb_meter, NULL);
-    engine_add_input(&en_northd, &en_sb_meter_band, NULL);
     engine_add_input(&en_northd, &en_sb_datapath_binding, NULL);
     engine_add_input(&en_northd, &en_sb_port_binding, NULL);
     engine_add_input(&en_northd, &en_sb_mac_binding, NULL);
-    engine_add_input(&en_northd, &en_sb_dhcp_options, NULL);
-    engine_add_input(&en_northd, &en_sb_dhcpv6_options, NULL);
-    engine_add_input(&en_northd, &en_sb_connection, NULL);
-    engine_add_input(&en_northd, &en_sb_ssl, NULL);
     engine_add_input(&en_northd, &en_sb_dns, NULL);
-    engine_add_input(&en_northd, &en_sb_rbac_role, NULL);
-    engine_add_input(&en_northd, &en_sb_rbac_permission, NULL);
-    engine_add_input(&en_northd, &en_sb_gateway_chassis, NULL);
-    engine_add_input(&en_northd, &en_sb_ha_chassis, NULL);
     engine_add_input(&en_northd, &en_sb_ha_chassis_group, NULL);
-    engine_add_input(&en_northd, &en_sb_controller_event, NULL);
     engine_add_input(&en_northd, &en_sb_ip_multicast, NULL);
     engine_add_input(&en_northd, &en_sb_service_monitor, NULL);
     engine_add_input(&en_northd, &en_sb_load_balancer, NULL);
     engine_add_input(&en_northd, &en_sb_fdb, NULL);
     engine_add_input(&en_northd, &en_sb_static_mac_binding, NULL);
     engine_add_input(&en_northd, &en_sb_chassis_template_var, NULL);
+
     engine_add_input(&en_mac_binding_aging, &en_nb_nb_global, NULL);
     engine_add_input(&en_mac_binding_aging, &en_sb_mac_binding, NULL);
     engine_add_input(&en_mac_binding_aging, &en_northd, NULL);
     engine_add_input(&en_mac_binding_aging, &en_mac_binding_aging_waker, NULL);
+
     engine_add_input(&en_lflow, &en_nb_bfd, NULL);
     engine_add_input(&en_lflow, &en_sb_bfd, NULL);
     engine_add_input(&en_lflow, &en_sb_logical_flow, NULL);
