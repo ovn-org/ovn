@@ -38,6 +38,8 @@ void en_lflow_run(struct engine_node *node, void *data OVS_UNUSED)
 
     struct northd_data *northd_data = engine_get_input_data("northd", node);
 
+    struct hmap bfd_connections = HMAP_INITIALIZER(&bfd_connections);
+
     lflow_input.nbrec_bfd_table =
         EN_OVSDB_GET(engine_get_input("NB_bfd", node));
     lflow_input.sbrec_bfd_table =
@@ -61,7 +63,7 @@ void en_lflow_run(struct engine_node *node, void *data OVS_UNUSED)
     lflow_input.port_groups = &northd_data->port_groups;
     lflow_input.meter_groups = &northd_data->meter_groups;
     lflow_input.lbs = &northd_data->lbs;
-    lflow_input.bfd_connections = &northd_data->bfd_connections;
+    lflow_input.bfd_connections = &bfd_connections;
     lflow_input.features = &northd_data->features;
     lflow_input.ovn_internal_version_changed =
                       northd_data->ovn_internal_version_changed;
@@ -70,11 +72,12 @@ void en_lflow_run(struct engine_node *node, void *data OVS_UNUSED)
     build_bfd_table(eng_ctx->ovnsb_idl_txn,
                     lflow_input.nbrec_bfd_table,
                     lflow_input.sbrec_bfd_table,
-                    &northd_data->bfd_connections,
+                    &bfd_connections,
                     &northd_data->lr_ports);
     build_lflows(&lflow_input, eng_ctx->ovnsb_idl_txn);
     bfd_cleanup_connections(lflow_input.nbrec_bfd_table,
-                            &northd_data->bfd_connections);
+                            &bfd_connections);
+    hmap_destroy(&bfd_connections);
     stopwatch_stop(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
 
     engine_set_node_state(node, EN_UPDATED);

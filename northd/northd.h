@@ -94,7 +94,6 @@ struct northd_data {
     struct shash meter_groups;
     struct hmap lbs;
     struct hmap lb_groups;
-    struct hmap bfd_connections;
     struct ovs_list lr_list;
     bool ovn_internal_version_changed;
     struct chassis_features features;
