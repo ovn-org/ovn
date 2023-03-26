@@ -99,6 +99,13 @@ struct northd_data {
     struct chassis_features features;
 };
 
+struct lflow_data {
+    struct hmap lflows;
+};
+
+void lflow_data_init(struct lflow_data *);
+void lflow_data_destroy(struct lflow_data *);
+
 struct lflow_input {
     /* Northbound table references */
     const struct nbrec_bfd_table *nbrec_bfd_table;
@@ -295,8 +302,10 @@ void northd_destroy(struct northd_data *data);
 void northd_init(struct northd_data *data);
 void northd_indices_create(struct northd_data *data,
                            struct ovsdb_idl *ovnsb_idl);
-void build_lflows(struct lflow_input *input_data,
-                  struct ovsdb_idl_txn *ovnsb_txn);
+void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
+                  struct lflow_input *input_data,
+                  struct hmap *lflows);
+
 void build_bfd_table(struct ovsdb_idl_txn *ovnsb_txn,
                      const struct nbrec_bfd_table *,
                      const struct sbrec_bfd_table *,

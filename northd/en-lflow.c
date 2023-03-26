@@ -30,7 +30,7 @@
 
 VLOG_DEFINE_THIS_MODULE(en_lflow);
 
-void en_lflow_run(struct engine_node *node, void *data OVS_UNUSED)
+void en_lflow_run(struct engine_node *node, void *data)
 {
     const struct engine_context *eng_ctx = engine_get_context();
 
@@ -68,13 +68,17 @@ void en_lflow_run(struct engine_node *node, void *data OVS_UNUSED)
     lflow_input.ovn_internal_version_changed =
                       northd_data->ovn_internal_version_changed;
 
+    struct lflow_data *lflow_data = data;
+    lflow_data_destroy(lflow_data);
+    lflow_data_init(lflow_data);
+
     stopwatch_start(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
     build_bfd_table(eng_ctx->ovnsb_idl_txn,
                     lflow_input.nbrec_bfd_table,
                     lflow_input.sbrec_bfd_table,
                     &bfd_connections,
                     &northd_data->lr_ports);
-    build_lflows(&lflow_input, eng_ctx->ovnsb_idl_txn);
+    build_lflows(eng_ctx->ovnsb_idl_txn, &lflow_input, &lflow_data->lflows);
     bfd_cleanup_connections(lflow_input.nbrec_bfd_table,
                             &bfd_connections);
     hmap_destroy(&bfd_connections);
@@ -82,12 +86,16 @@ void en_lflow_run(struct engine_node *node, void *data OVS_UNUSED)
 
     engine_set_node_state(node, EN_UPDATED);
 }
+
 void *en_lflow_init(struct engine_node *node OVS_UNUSED,
                      struct engine_arg *arg OVS_UNUSED)
 {
-    return NULL;
+    struct lflow_data *data = xmalloc(sizeof *data);
+    lflow_data_init(data);
+    return data;
 }
 
-void en_lflow_cleanup(void *data OVS_UNUSED)
+void en_lflow_cleanup(void *data)
 {
+    lflow_data_destroy(data);
 }

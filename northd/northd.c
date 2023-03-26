@@ -15250,6 +15250,22 @@ build_lswitch_and_lrouter_flows(const struct ovn_datapaths *ls_datapaths,
 
 static ssize_t max_seen_lflow_size = 128;
 
+void
+lflow_data_init(struct lflow_data *data)
+{
+    fast_hmap_size_for(&data->lflows, max_seen_lflow_size);
+}
+
+void
+lflow_data_destroy(struct lflow_data *data)
+{
+    struct ovn_lflow *lflow;
+    HMAP_FOR_EACH_SAFE (lflow, hmap_node, &data->lflows) {
+        ovn_lflow_destroy(&data->lflows, lflow);
+    }
+    hmap_destroy(&data->lflows);
+}
+
 void run_update_worker_pool(int n_threads)
 {
     /* If number of threads has been updated (or initially set),
@@ -15279,10 +15295,10 @@ build_mcast_groups(const struct sbrec_igmp_group_table *sbrec_igmp_group_table,
 
 /* Updates the Logical_Flow and Multicast_Group tables in the OVN_SB database,
  * constructing their contents based on the OVN_NB database. */
-void build_lflows(struct lflow_input *input_data,
-                  struct ovsdb_idl_txn *ovnsb_txn)
+void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
+                  struct lflow_input *input_data,
+                  struct hmap *lflows)
 {
-    struct hmap lflows;
     struct hmap mcast_groups;
     struct hmap igmp_groups;
 
@@ -15292,13 +15308,11 @@ void build_lflows(struct lflow_input *input_data,
                        input_data->ls_ports, input_data->lr_ports,
                        &mcast_groups, &igmp_groups);
 
-    fast_hmap_size_for(&lflows, max_seen_lflow_size);
-
     build_lswitch_and_lrouter_flows(input_data->ls_datapaths,
                                     input_data->lr_datapaths,
                                     input_data->ls_ports,
                                     input_data->lr_ports,
-                                    input_data->port_groups, &lflows,
+                                    input_data->port_groups, lflows,
                                     &mcast_groups, &igmp_groups,
                                     input_data->meter_groups, input_data->lbs,
                                     input_data->bfd_connections,
@@ -15311,10 +15325,10 @@ void build_lflows(struct lflow_input *input_data,
     /* Parallel build may result in a suboptimal hash. Resize the
      * hash to a correct size before doing lookups */
 
-    hmap_expand(&lflows);
+    hmap_expand(lflows);
 
-    if (hmap_count(&lflows) > max_seen_lflow_size) {
-        max_seen_lflow_size = hmap_count(&lflows);
+    if (hmap_count(lflows) > max_seen_lflow_size) {
+        max_seen_lflow_size = hmap_count(lflows);
     }
 
     stopwatch_start(LFLOWS_DP_GROUPS_STOPWATCH_NAME, time_msec());
@@ -15332,7 +15346,7 @@ void build_lflows(struct lflow_input *input_data,
     fast_hmap_size_for(&single_dp_lflows, max_seen_lflow_size);
 
     struct ovn_lflow *lflow;
-    HMAP_FOR_EACH_SAFE (lflow, hmap_node, &lflows) {
+    HMAP_FOR_EACH_SAFE (lflow, hmap_node, lflows) {
         struct ovn_datapath **datapaths_array;
         size_t n_datapaths;
 
@@ -15360,7 +15374,7 @@ void build_lflows(struct lflow_input *input_data,
             /* Logical flow should be re-hashed to allow lookups. */
             uint32_t hash = hmap_node_hash(&lflow->hmap_node);
             /* Remove from lflows. */
-            hmap_remove(&lflows, &lflow->hmap_node);
+            hmap_remove(lflows, &lflow->hmap_node);
             hash = ovn_logical_flow_hash_datapath(&lflow->od->sb->header_.uuid,
                                                   hash);
             /* Add to single_dp_lflows. */
@@ -15370,13 +15384,14 @@ void build_lflows(struct lflow_input *input_data,
 
     /* Merge multiple and single dp hashes. */
 
-    fast_hmap_merge(&lflows, &single_dp_lflows);
+    fast_hmap_merge(lflows, &single_dp_lflows);
 
     hmap_destroy(&single_dp_lflows);
 
     stopwatch_stop(LFLOWS_DP_GROUPS_STOPWATCH_NAME, time_msec());
     stopwatch_start(LFLOWS_TO_SB_STOPWATCH_NAME, time_msec());
 
+    struct hmap lflows_temp = HMAP_INITIALIZER(&lflows_temp);
     /* Push changes to the Logical_Flow table to database. */
     const struct sbrec_logical_flow *sbflow;
     SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_SAFE (sbflow,
@@ -15419,7 +15434,7 @@ void build_lflows(struct lflow_input *input_data,
             = !strcmp(sbflow->pipeline, "ingress") ? P_IN : P_OUT;
 
         lflow = ovn_lflow_find(
-            &lflows, dp_group ? NULL : logical_datapath_od,
+            lflows, dp_group ? NULL : logical_datapath_od,
             ovn_stage_build(ovn_datapath_get_type(logical_datapath_od),
                             pipeline, sbflow->table_id),
             sbflow->priority, sbflow->match, sbflow->actions,
@@ -15480,13 +15495,15 @@ void build_lflows(struct lflow_input *input_data,
             }
 
             /* This lflow updated.  Not needed anymore. */
-            ovn_lflow_destroy(&lflows, lflow);
+            hmap_remove(lflows, &lflow->hmap_node);
+            hmap_insert(&lflows_temp, &lflow->hmap_node,
+                        hmap_node_hash(&lflow->hmap_node));
         } else {
             sbrec_logical_flow_delete(sbflow);
         }
     }
 
-    HMAP_FOR_EACH_SAFE (lflow, hmap_node, &lflows) {
+    HMAP_FOR_EACH_SAFE (lflow, hmap_node, lflows) {
         const char *pipeline = ovn_stage_get_pipeline_name(lflow->stage);
         uint8_t table = ovn_stage_get_table(lflow->stage);
         struct hmap *dp_groups;
@@ -15550,10 +15567,12 @@ void build_lflows(struct lflow_input *input_data,
         }
         sbrec_logical_flow_set_external_ids(sbflow, &ids);
         smap_destroy(&ids);
-
-        ovn_lflow_destroy(&lflows, lflow);
+        hmap_remove(lflows, &lflow->hmap_node);
+        hmap_insert(&lflows_temp, &lflow->hmap_node,
+                    hmap_node_hash(&lflow->hmap_node));
     }
-    hmap_destroy(&lflows);
+    hmap_swap(lflows, &lflows_temp);
+    hmap_destroy(&lflows_temp);
 
     stopwatch_stop(LFLOWS_TO_SB_STOPWATCH_NAME, time_msec());
     struct ovn_dp_group *dpg;
