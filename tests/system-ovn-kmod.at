@@ -215,3 +215,139 @@ as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([LB correctly de-fragments traffic])
+AT_KEYWORDS([ovnlb])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-ext])
+
+# Logical network:
+# 2 logical switches "public" (192.168.1.0/24) and "internal" (172.16.1.0/24)
+# connected to a router lr.
+# internal has a server.
+# client is connected through localnet.
+#
+# Load balancer for udp 192.168.1.20:4242 172.16.1.2 4242.
+
+check ovs-ofctl add-flow br-ext action=normal
+# Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true \
+        -- set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext
+
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+check ovn-nbctl lr-add lr
+check ovn-nbctl ls-add internal
+check ovn-nbctl ls-add public
+
+check ovn-nbctl lrp-add lr lr-pub 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lsp-add  public pub-lr -- set Logical_Switch_Port pub-lr \
+    type=router options:router-port=lr-pub addresses=\"00:00:01:01:02:03\"
+
+check ovn-nbctl lrp-add lr lr-internal 00:00:01:01:02:04 172.16.1.1/24
+check ovn-nbctl lsp-add internal internal-lr -- set Logical_Switch_Port internal-lr \
+    type=router options:router-port=lr-internal addresses=\"00:00:01:01:02:04\"
+
+ovn-nbctl lsp-add public ln_port \
+                -- lsp-set-addresses ln_port unknown \
+                -- lsp-set-type ln_port localnet \
+                -- lsp-set-options ln_port network_name=phynet
+
+ADD_NAMESPACES(client)
+ADD_VETH(client, client, br-ext, "192.168.1.2/24", "f0:00:00:01:02:03", \
+         "192.168.1.1")
+
+ADD_NAMESPACES(server)
+ADD_VETH(server, server, br-int, "172.16.1.2/24", "f0:00:0f:01:02:03", \
+         "172.16.1.1")
+check ovn-nbctl lsp-add internal server \
+-- lsp-set-addresses server "f0:00:0f:01:02:03 172.16.1.2"
+
+# Config OVN load-balancer with a VIP.
+check ovn-nbctl lb-add lb1 192.168.1.20:4242 172.16.1.2:4242 udp
+check ovn-nbctl lr-lb-add lr lb1
+check ovn-nbctl set logical_router lr options:chassis=hv1
+check ovn-nbctl set logical_router_port lr-internal options:gateway_mtu=800
+
+ovn-nbctl --wait=hv sync
+
+NETNS_DAEMONIZE([server], [nc -l -u 172.16.1.2 4242 > /dev/null], [server.pid])
+
+# Collect ICMP packets on client side
+NETNS_DAEMONIZE([client], [tcpdump -l -U -i client -vnne \
+icmp > client.pcap 2>client_err], [tcpdump0.pid])
+OVS_WAIT_UNTIL([grep "listening" client_err])
+
+# Collect UDP packets on server side
+NETNS_DAEMONIZE([server], [tcpdump -l -U -i server -vnne \
+'udp and ip[[6:2]] > 0 and not ip[[6]] = 64' > server.pcap 2>server_err], [tcpdump1.pid])
+OVS_WAIT_UNTIL([grep "listening" server_err])
+
+check ip netns exec client python3 << EOF
+import os
+import socket
+import sys
+import time
+
+FILE="client.pcap"
+
+
+def contains_string(file, str):
+    file = open(file, "r")
+    for line in file.readlines():
+        if str in line:
+            return True
+    return False
+
+
+def need_frag_received():
+    for _ in range(20):
+        if os.path.getsize(FILE) and contains_string(FILE, "need to frag"):
+            return True
+        time.sleep(0.5)
+    return False
+
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.sendto(b"x" * 1000, ("192.168.1.20", 4242))
+if need_frag_received():
+    sock.sendto(b"x" * 1000, ("192.168.1.20", 4242))
+else:
+    print("Missing need frag")
+    sys.exit(1)
+EOF
+
+OVS_WAIT_UNTIL([test "$(cat server.pcap | wc -l)" = "4"])
+
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])

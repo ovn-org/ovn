@@ -7096,7 +7096,9 @@ build_lb_rules_pre_stateful(struct hmap *lflows, struct ovn_northd_lb *lb,
  * - load balancing affinity check:
  *   table=lr_in_lb_aff_check, priority=100
  *      match=(new_lb_match)
- *      action=(REGBIT_KNOWN_LB_SESSION = chk_lb_aff(); next;)
+ *      action=(REG_NEXT_HOP_IPV4 = ip4.dst;
+ *              REG_ORIG_TP_DPORT_ROUTER = tcp.dst;
+ *              REGBIT_KNOWN_LB_SESSION = chk_lb_aff(); next;)
  *
  * - load balancing:
  *   table=lr_in_dnat, priority=150
@@ -7137,16 +7139,11 @@ build_lb_affinity_lr_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
         return;
     }
 
-    static char *aff_check = REGBIT_KNOWN_LB_SESSION" = chk_lb_aff(); next;";
-
-    ovn_lflow_add_with_dp_group(
-        lflows, dp_bitmap, S_ROUTER_IN_LB_AFF_CHECK, 100,
-        new_lb_match, aff_check, &lb->nlb->header_);
-
     struct ds aff_action = DS_EMPTY_INITIALIZER;
     struct ds aff_action_learn = DS_EMPTY_INITIALIZER;
     struct ds aff_match = DS_EMPTY_INITIALIZER;
     struct ds aff_match_learn = DS_EMPTY_INITIALIZER;
+    struct ds aff_check_action = DS_EMPTY_INITIALIZER;
 
     bool ipv6 = !IN6_IS_ADDR_V4MAPPED(&lb_vip->vip);
     const char *ip_match = ipv6 ? "ip6" : "ip4";
@@ -7161,6 +7158,20 @@ build_lb_affinity_lr_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
                !strcmp(lb_action, "flags.force_snat_for_lb = 1; ")) {
         ct_flag = "; force_snat";
     }
+
+    /* Create affinity check flow. */
+    ds_put_format(&aff_check_action, "%s = %s.dst; ", reg_vip, ip_match);
+
+    if (lb_vip->port_str) {
+        ds_put_format(&aff_check_action, REG_ORIG_TP_DPORT_ROUTER" = %s.dst; ",
+                      lb->proto);
+    }
+    ds_put_cstr(&aff_check_action, REGBIT_KNOWN_LB_SESSION
+                " = chk_lb_aff(); next;");
+
+    ovn_lflow_add_with_dp_group(
+        lflows, dp_bitmap, S_ROUTER_IN_LB_AFF_CHECK, 100,
+        new_lb_match, ds_cstr(&aff_check_action), &lb->nlb->header_);
 
     /* Prepare common part of affinity LB and affinity learn action. */
     ds_put_format(&aff_action, "%s = %s; ", reg_vip, lb_vip->vip_str);
@@ -7259,6 +7270,7 @@ build_lb_affinity_lr_flows(struct hmap *lflows, struct ovn_northd_lb *lb,
     ds_destroy(&aff_action_learn);
     ds_destroy(&aff_match);
     ds_destroy(&aff_match_learn);
+    ds_destroy(&aff_check_action);
 }
 
 /* Builds the logical switch flows related to load balancer affinity.
@@ -10457,10 +10469,8 @@ enum lrouter_nat_lb_flow_type {
 
 struct lrouter_nat_lb_flows_ctx {
     const char *new_action[LROUTER_NAT_LB_FLOW_MAX];
-    const char *est_action[LROUTER_NAT_LB_FLOW_MAX];
 
     struct ds *new_match;
-    struct ds *est_match;
     struct ds *undnat_match;
 
     struct ovn_lb_vip *lb_vip;
@@ -10478,10 +10488,22 @@ build_distr_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
                                      enum lrouter_nat_lb_flow_type type,
                                      struct ovn_datapath *od)
 {
-    char *gw_action = od->is_gw_router ? "ct_dnat;" : "ct_dnat_in_czone;";
+    const char *undnat_action;
+
+    switch (type) {
+    case LROUTER_NAT_LB_FLOW_FORCE_SNAT:
+        undnat_action = "flags.force_snat_for_lb = 1; next;";
+        break;
+    case LROUTER_NAT_LB_FLOW_SKIP_SNAT:
+        undnat_action = "flags.skip_snat_for_lb = 1; next;";
+        break;
+    case LROUTER_NAT_LB_FLOW_NORMAL:
+    case LROUTER_NAT_LB_FLOW_MAX:
+        undnat_action = od->is_gw_router ? "ct_dnat;" : "ct_dnat_in_czone;";
+        break;
+    }
     /* Store the match lengths, so we can reuse the ds buffer. */
     size_t new_match_len = ctx->new_match->length;
-    size_t est_match_len = ctx->est_match->length;
     size_t undnat_match_len = ctx->undnat_match->length;
 
 
@@ -10494,33 +10516,24 @@ build_distr_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
     if (ctx->lb_vip->n_backends || !ctx->lb_vip->empty_backend_rej) {
         ds_put_format(ctx->new_match, " && is_chassis_resident(%s)",
                       od->l3dgw_ports[0]->cr_port->json_key);
-        ds_put_format(ctx->est_match, " && is_chassis_resident(%s)",
-                      od->l3dgw_ports[0]->cr_port->json_key);
     }
 
     ovn_lflow_add_with_hint__(ctx->lflows, od, S_ROUTER_IN_DNAT, ctx->prio,
                               ds_cstr(ctx->new_match), ctx->new_action[type],
                               NULL, meter, &ctx->lb->nlb->header_);
-    ovn_lflow_add_with_hint(ctx->lflows, od, S_ROUTER_IN_DNAT, ctx->prio,
-                            ds_cstr(ctx->est_match), ctx->est_action[type],
-                            &ctx->lb->nlb->header_);
 
     ds_truncate(ctx->new_match, new_match_len);
-    ds_truncate(ctx->est_match, est_match_len);
 
     if (!ctx->lb_vip->n_backends) {
         return;
     }
-
-    const char *action = (type == LROUTER_NAT_LB_FLOW_NORMAL)
-                         ? gw_action : ctx->est_action[type];
 
     ds_put_format(ctx->undnat_match,
                   ") && outport == %s && is_chassis_resident(%s)",
                   od->l3dgw_ports[0]->json_key,
                   od->l3dgw_ports[0]->cr_port->json_key);
     ovn_lflow_add_with_hint(ctx->lflows, od, S_ROUTER_OUT_UNDNAT, 120,
-                            ds_cstr(ctx->undnat_match), action,
+                            ds_cstr(ctx->undnat_match), undnat_action,
                             &ctx->lb->nlb->header_);
     ds_truncate(ctx->undnat_match, undnat_match_len);
 }
@@ -10563,11 +10576,6 @@ build_gw_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
             ctx->new_action[type], &ctx->lb->nlb->header_);
     }
     bitmap_free(dp_non_meter);
-
-    ovn_lflow_add_with_dp_group(
-        ctx->lflows, dp_bitmap, S_ROUTER_IN_DNAT, ctx->prio,
-        ds_cstr(ctx->est_match), ctx->est_action[type],
-        &ctx->lb->nlb->header_);
 }
 
 static void
@@ -10579,19 +10587,13 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
                                const struct shash *meter_groups,
                                const struct chassis_features *features)
 {
-    const char *ct_natted = features->ct_no_masked_label
-                            ? "ct_mark.natted"
-                            : "ct_label.natted";
-
     bool ipv4 = lb_vip->address_family == AF_INET;
     const char *ip_match = ipv4 ? "ip4" : "ip6";
-    const char *ip_reg = ipv4 ? REG_NEXT_HOP_IPV4 : REG_NEXT_HOP_IPV6;
 
     int prio = 110;
 
     struct ds skip_snat_act = DS_EMPTY_INITIALIZER;
     struct ds force_snat_act = DS_EMPTY_INITIALIZER;
-    struct ds est_match = DS_EMPTY_INITIALIZER;
     struct ds undnat_match = DS_EMPTY_INITIALIZER;
     struct ds unsnat_match = DS_EMPTY_INITIALIZER;
 
@@ -10608,18 +10610,13 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
      * of "ct_lb_mark($targets);". The other flow is for ct.est with
      * an action of "next;".
      */
-    ds_put_format(match, "ct.new && !ct.rel && %s && %s == %s",
-                  ip_match, ip_reg, lb_vip->vip_str);
+    ds_put_format(match, "ct.new && !ct.rel && %s && %s.dst == %s",
+                  ip_match, ip_match, lb_vip->vip_str);
     if (lb_vip->port_str) {
         prio = 120;
-        ds_put_format(match, " && %s && "REG_ORIG_TP_DPORT_ROUTER" == %s",
-                      lb->proto, lb_vip->port_str);
+        ds_put_format(match, " && %s && %s.dst == %s",
+                      lb->proto, lb->proto, lb_vip->port_str);
     }
-
-    ds_put_cstr(&est_match, "ct.est");
-    /* Clone the match after initial "ct.new" (6 bytes). */
-    ds_put_cstr(&est_match, ds_cstr(match) + 6);
-    ds_put_format(&est_match, " && %s == 1", ct_natted);
 
     /* Add logical flows to UNDNAT the load balanced reverse traffic in
      * the router egress pipleine stage - S_ROUTER_OUT_UNDNAT if the logical
@@ -10657,20 +10654,12 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
         .lflows = lflows,
         .meter_groups = meter_groups,
         .new_match = match,
-        .est_match = &est_match,
         .undnat_match = &undnat_match
     };
 
     ctx.new_action[LROUTER_NAT_LB_FLOW_NORMAL] = ds_cstr(action);
-    ctx.est_action[LROUTER_NAT_LB_FLOW_NORMAL] = "next;";
-
     ctx.new_action[LROUTER_NAT_LB_FLOW_SKIP_SNAT] = ds_cstr(&skip_snat_act);
-    ctx.est_action[LROUTER_NAT_LB_FLOW_SKIP_SNAT] =
-                                        "flags.skip_snat_for_lb = 1; next;";
-
     ctx.new_action[LROUTER_NAT_LB_FLOW_FORCE_SNAT] = ds_cstr(&force_snat_act);
-    ctx.est_action[LROUTER_NAT_LB_FLOW_FORCE_SNAT] =
-                                        "flags.force_snat_for_lb = 1; next;";
 
     enum {
         LROUTER_NAT_LB_AFF            = LROUTER_NAT_LB_FLOW_MAX,
@@ -10753,7 +10742,6 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
 
     ds_destroy(&unsnat_match);
     ds_destroy(&undnat_match);
-    ds_destroy(&est_match);
     ds_destroy(&skip_snat_act);
     ds_destroy(&force_snat_act);
 
@@ -10827,39 +10815,19 @@ build_lrouter_defrag_flows_for_lb(struct ovn_northd_lb *lb,
         return;
     }
 
-    struct ds defrag_actions = DS_EMPTY_INITIALIZER;
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
+        bool ipv6 = lb_vip->address_family == AF_INET6;
         int prio = 100;
 
-        ds_clear(&defrag_actions);
         ds_clear(match);
-
-        if (lb_vip->address_family == AF_INET) {
-            ds_put_format(match, "ip && ip4.dst == %s", lb_vip->vip_str);
-            ds_put_format(&defrag_actions, REG_NEXT_HOP_IPV4" = %s; ",
-                          lb_vip->vip_str);
-        } else {
-            ds_put_format(match, "ip && ip6.dst == %s", lb_vip->vip_str);
-            ds_put_format(&defrag_actions, REG_NEXT_HOP_IPV6" = %s; ",
-                          lb_vip->vip_str);
-        }
-
-        if (lb_vip->port_str) {
-            ds_put_format(match, " && %s", lb->proto);
-            prio = 110;
-
-            ds_put_format(&defrag_actions, REG_ORIG_TP_DPORT_ROUTER
-                          " = %s.dst; ", lb->proto);
-        }
-
-        ds_put_format(&defrag_actions, "ct_dnat;");
+        ds_put_format(match, "ip && ip%c.dst == %s", ipv6 ? '6' : '4',
+                      lb_vip->vip_str);
 
         ovn_lflow_add_with_dp_group(
             lflows, lb->nb_lr_map, S_ROUTER_IN_DEFRAG, prio,
-            ds_cstr(match), ds_cstr(&defrag_actions), &lb->nlb->header_);
+            ds_cstr(match), "ct_dnat;", &lb->nlb->header_);
     }
-    ds_destroy(&defrag_actions);
 }
 
 static void
@@ -14246,10 +14214,10 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
     ovn_lflow_add(lflows, od, S_ROUTER_OUT_EGR_LOOP, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 0, "1", "next;");
 
-    /* Ingress DNAT and DEFRAG Table (Priority 50/70).
-     *
-     * The defrag stage needs to have flows for ICMP in order to get
-     * the correct ct_state that can be used by DNAT stage.
+    const char *ct_flag_reg = features->ct_no_masked_label
+                              ? "ct_mark"
+                              : "ct_label";
+    /* Ingress DNAT (Priority 50/70).
      *
      * Allow traffic that is related to an existing conntrack entry.
      * At the same time apply NAT for this traffic.
@@ -14260,15 +14228,9 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
      * that's generated from a non-listening UDP port.  */
     if (od->has_lb_vip && features->ct_lb_related) {
         ds_clear(match);
-        const char *ct_flag_reg = features->ct_no_masked_label
-                                  ? "ct_mark"
-                                  : "ct_label";
 
         ds_put_cstr(match, "ct.rel && !ct.est && !ct.new");
         size_t match_len = match->length;
-
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_DEFRAG, 50, "icmp || icmp6",
-                      "ct_dnat;");
 
         ds_put_format(match, " && %s.skip_snat == 1", ct_flag_reg);
         ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 70, ds_cstr(match),
@@ -14280,10 +14242,34 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
                       "flags.force_snat_for_lb = 1; ct_commit_nat;");
 
         ds_truncate(match, match_len);
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 50,
-                      "ct.rel && !ct.est && !ct.new", "ct_commit_nat;");
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 50, ds_cstr(match),
+                      "ct_commit_nat;");
+    }
 
+    /* Ingress DNAT (Priority 50/70).
+     *
+     * Pass the traffic that is already established to the next table with
+     * proper flags set.
+     */
+    if (od->has_lb_vip) {
         ds_clear(match);
+
+        ds_put_format(match, "ct.est && !ct.rel && !ct.new && %s.natted",
+                      ct_flag_reg);
+        size_t match_len = match->length;
+
+        ds_put_format(match, " && %s.skip_snat == 1", ct_flag_reg);
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 70, ds_cstr(match),
+                      "flags.skip_snat_for_lb = 1; next;");
+
+        ds_truncate(match, match_len);
+        ds_put_format(match, " && %s.force_snat == 1", ct_flag_reg);
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 70, ds_cstr(match),
+                      "flags.force_snat_for_lb = 1; next;");
+
+        ds_truncate(match, match_len);
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 50, ds_cstr(match),
+                      "next;");
     }
 
     /* If the router has load balancer or DNAT rules, re-circulate every packet

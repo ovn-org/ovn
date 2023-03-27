@@ -24374,7 +24374,7 @@ AT_CAPTURE_FILE([sbflows2])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows > sbflows2
    ovn-sbctl dump-flows lr0 | grep ct_lb_mark | grep priority=120 | sed 's/table=..//'], 0,
-  [  (lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80; hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
+  [  (lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80; hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
 ])
 
 # get the svc monitor mac.
@@ -24416,8 +24416,7 @@ AT_CHECK(
 AT_CAPTURE_FILE([sbflows4])
 ovn-sbctl dump-flows lr0 > sbflows4
 AT_CHECK([grep lr_in_dnat sbflows4 | grep priority=120 | sed 's/table=..//' | sort], [0], [dnl
-  (lr_in_dnat         ), priority=120  , match=(ct.est && !ct.rel && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1 && is_chassis_resident("cr-lr0-public")), action=(next;)
-  (lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && is_chassis_resident("cr-lr0-public")), action=(drop;)
+  (lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(drop;)
 ])
 
 # Delete sw0-p1
@@ -24573,7 +24572,7 @@ AT_CAPTURE_FILE([sbflows2])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows > sbflows2
    ovn-sbctl dump-flows lr0 | grep ct_lb_mark | grep priority=120 | sed 's/table=..//'], 0,
-  [  (lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && xxreg0 == 2001::a && tcp && reg9[[16..31]] == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=[[2001::3]]:80,[[2002::3]]:80; hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
+  [  (lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2001::a && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=[[2001::3]]:80,[[2002::3]]:80; hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
 ])
 
 # get the svc monitor mac.
@@ -24615,8 +24614,7 @@ AT_CHECK(
 AT_CAPTURE_FILE([sbflows4])
 ovn-sbctl dump-flows lr0 > sbflows4
 AT_CHECK([grep lr_in_dnat sbflows4 | grep priority=120 | sed 's/table=..//' | sort], [0], [dnl
-  (lr_in_dnat         ), priority=120  , match=(ct.est && !ct.rel && ip6 && xxreg0 == 2001::a && tcp && reg9[[16..31]] == 80 && ct_mark.natted == 1 && is_chassis_resident("cr-lr0-public")), action=(next;)
-  (lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && xxreg0 == 2001::a && tcp && reg9[[16..31]] == 80 && is_chassis_resident("cr-lr0-public")), action=(drop;)
+  (lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2001::a && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(drop;)
 ])
 
 # Delete sw0-p1

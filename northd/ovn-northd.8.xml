@@ -3282,35 +3282,16 @@ icmp6 {
     </p>
 
     <p>
-      If load balancing rules with only virtual IP addresses are configured in
+      For all load balancing rules that are configured in
       <code>OVN_Northbound</code> database for a Gateway router,
       a priority-100 flow is added for each configured virtual IP address
       <var>VIP</var>. For IPv4 <var>VIPs</var> the flow matches
       <code>ip &amp;&amp; ip4.dst == <var>VIP</var></code>.  For IPv6
       <var>VIPs</var>, the flow matches <code>ip &amp;&amp; ip6.dst ==
-      <var>VIP</var></code>. The flow applies the action <code>reg0 =
-      <var>VIP</var>; ct_dnat;</code>  (or <code>xxreg0</code> for IPv6) to
-      send IP packets to the connection tracker for packet de-fragmentation and
-      to dnat the destination IP for the committed connection before sending it
-      to the next table.
-    </p>
-
-    <p>
-      If load balancing rules with virtual IP addresses and ports are
-      configured in <code>OVN_Northbound</code> database for a Gateway router,
-      a priority-110 flow is added for each configured virtual IP address
-      <var>VIP</var>, protocol <var>PROTO</var> and port <var>PORT</var>.
-      For IPv4 <var>VIPs</var> the flow matches
-      <code>ip &amp;&amp; ip4.dst == <var>VIP</var> &amp;&amp;
-      <var>PROTO</var> &amp;&amp; <var>PROTO</var>.dst ==
-      <var>PORT</var></code>. For IPv6 <var>VIPs</var>, the flow matches
-      <code>ip &amp;&amp; ip6.dst == <var>VIP</var> &amp;&amp;
-      <var>PROTO</var> &amp;&amp; <var>PROTO</var>.dst ==
-      <var>PORT</var></code>. The flow applies the action <code>reg0 =
-      <var>VIP</var>; reg9[16..31] = <var>PROTO</var>.dst; ct_dnat;</code>
-      (or <code>xxreg0</code> for IPv6) to send IP packets to the connection
-      tracker for packet de-fragmentation and to dnat the destination IP for
-      the committed connection before sending it to the next table.
+      <var>VIP</var></code>. The flow applies the action <code> ct_dnat;</code>
+      to send IP packets to the connection tracker for packet de-fragmentation
+      and to dnat the destination IP for the committed connection before
+      sending it to the next table.
     </p>
 
     <p>
@@ -3349,10 +3330,11 @@ icmp6 {
         column, that includes a L4 port <var>PORT</var> of protocol
         <var>P</var> and IPv4 or IPv6 address <var>VIP</var>, a priority-100
         flow that matches on <code>ct.new &amp;&amp; ip &amp;&amp;
-        reg0 == <var>VIP</var> &amp;&amp; <var>P</var> &amp;&amp; reg9[16..31]
+        ip.dst == <var>VIP</var> &amp;&amp; <var>P</var> &amp;&amp; P.dst
         == </code> <code><var>PORT</var></code> (<code>xxreg0 == <var>VIP
-        </var></code> in the IPv6 case) with an action of <code>reg9[6] =
-        chk_lb_aff(); next;</code>
+        </var></code> in the IPv6 case) with an action of <code>reg0 = ip.dst;
+        reg9[16..31] = P.dst; reg9[6] = chk_lb_aff(); next;</code>
+        (<code>xxreg0 == <var>ip6.dst</var> </code> in the IPv6 case)
       </li>
 
       <li>
@@ -3385,9 +3367,8 @@ icmp6 {
         column, that includes a L4 port <var>PORT</var> of protocol
         <var>P</var> and IPv4 or IPv6 address <var>VIP</var>, a priority-150
         flow that matches on <code>reg9[6] == 1 &amp;&amp; ct.new &amp;&amp;
-        ip &amp;&amp; reg0 == <var>VIP</var> &amp;&amp; <var>P</var> &amp;&amp;
-        reg9[16..31] == </code> <code><var>PORT</var></code> (<code>xxreg0
-        == <var>VIP</var></code> in the IPv6 case) with an action of
+        ip &amp;&amp; ip.dst == <var>VIP</var> &amp;&amp; <var>P</var> &amp;&amp;
+        P.dst == </code> <code><var>PORT</var></code> with an action of
         <code>ct_lb_mark(<var>args</var>) </code>, where <var>args</var>
         contains comma separated IP addresses (and optional port numbers)
         to load balance to.  The address family of the IP addresses of
@@ -3410,56 +3391,25 @@ icmp6 {
           Router with gateway port in <code>OVN_Northbound</code> database that
           includes a L4 port <var>PORT</var> of protocol <var>P</var> and IPv4
           or IPv6 address <var>VIP</var>, a priority-120 flow that matches on
-          <code>ct.new &amp;&amp; !ct.rel &amp;&amp; ip &amp;&amp; reg0 ==
-          <var>VIP</var> &amp;&amp; <var>P</var> &amp;&amp; reg9[16..31] ==
-          </code> <code><var>PORT</var></code> (<code>xxreg0 == <var>VIP</var>
-          </code> in the IPv6 case) with an action of
+          <code>ct.new &amp;&amp; !ct.rel &amp;&amp; ip &amp;&amp; ip.dst ==
+          <var>VIP</var> &amp;&amp; <var>P</var> &amp;&amp; P.dst ==
+          </code> <code><var>PORT</var></code> with an action of
           <code>ct_lb_mark(<var>args</var>)</code>, where <var>args</var> contains
           comma separated IPv4 or IPv6 addresses (and optional port numbers) to
           load balance to.  If the router is configured to force SNAT any
           load-balanced packets, the above action will be replaced by
-          <code>flags.force_snat_for_lb = 1; ct_lb_mark(<var>args</var>);</code>.
+          <code>flags.force_snat_for_lb = 1; ct_lb_mark(<var>args</var>;
+          force_snat);</code>.
           If the load balancing rule is configured with <code>skip_snat</code>
           set to true, the above action will be replaced by
-          <code>flags.skip_snat_for_lb = 1; ct_lb_mark(<var>args</var>);</code>.
+          <code>flags.skip_snat_for_lb = 1; ct_lb_mark(<var>args</var>;
+          skip_snat);</code>.
           If health check is enabled, then
           <var>args</var> will only contain those endpoints whose service
           monitor status entry in <code>OVN_Southbound</code> db is
           either <code>online</code> or empty.
         </p>
 
-        <p>
-          The previous table <code>lr_in_defrag</code> sets the register
-          <code>reg0</code> (or <code>xxreg0</code> for IPv6) and does
-          <code>ct_dnat</code>.  Hence for established traffic, this
-          table just advances the packet to the next stage.
-        </p>
-      </li>
-
-      <li>
-        <p>
-          For all the configured load balancing rules for a router in
-          <code>OVN_Northbound</code> database that includes a L4 port
-          <var>PORT</var> of protocol <var>P</var> and IPv4 or IPv6 address
-          <var>VIP</var>, a priority-120 flow that matches on
-          <code>ct.est &amp;&amp; !ct.rel &amp;&amp; ip4 &amp;&amp; reg0 ==
-          <var>VIP</var> &amp;&amp; <var>P</var> &amp;&amp; reg9[16..31] ==
-          </code> <code><var>PORT</var></code> (<code>ip6</code> and
-          <code>xxreg0 == <var>VIP</var></code> in the IPv6 case) with an
-          action of <code>next;</code>. If the router is configured to force
-          SNAT any load-balanced packets, the above action will be replaced by
-          <code>flags.force_snat_for_lb = 1; next;</code>. If the load
-          balancing rule is configured with <code>skip_snat</code> set to true,
-          the above action will be replaced by
-          <code>flags.skip_snat_for_lb = 1; next;</code>.
-        </p>
-
-        <p>
-          The previous table <code>lr_in_defrag</code> sets the register
-          <code>reg0</code> (or <code>xxreg0</code> for IPv6) and does
-          <code>ct_dnat</code>.  Hence for established traffic, this
-          table just advances the packet to the next stage.
-        </p>
       </li>
 
       <li>
@@ -3467,42 +3417,17 @@ icmp6 {
           For all the configured load balancing rules for a router in
           <code>OVN_Northbound</code> database that includes just an IP address
           <var>VIP</var> to match on, a priority-110 flow that matches on
-          <code>ct.new &amp;&amp; !ct.rel &amp;&amp; ip4 &amp;&amp; reg0 ==
-          <var>VIP</var></code> (<code>ip6</code> and <code>xxreg0 ==
-          <var>VIP</var></code> in the IPv6 case) with an action of
+          <code>ct.new &amp;&amp; !ct.rel &amp;&amp; ip4 &amp;&amp; ip.dst ==
+          <var>VIP</var></code> with an action of
           <code>ct_lb_mark(<var>args</var>)</code>, where <var>args</var> contains
           comma separated IPv4 or IPv6 addresses.  If the router is configured
           to force SNAT any load-balanced packets, the above action will be
           replaced by <code>flags.force_snat_for_lb = 1;
-          ct_lb_mark(<var>args</var>);</code>.
+          ct_lb_mark(<var>args</var>; force_snat);</code>.
           If the load balancing rule is configured with <code>skip_snat</code>
           set to true, the above action will be replaced by
-          <code>flags.skip_snat_for_lb = 1; ct_lb_mark(<var>args</var>);</code>.
-        </p>
-
-        <p>
-          The previous table <code>lr_in_defrag</code> sets the register
-          <code>reg0</code> (or <code>xxreg0</code> for IPv6) and does
-          <code>ct_dnat</code>.  Hence for established traffic, this
-          table just advances the packet to the next stage.
-        </p>
-      </li>
-
-
-      <li>
-        <p>
-          For all the configured load balancing rules for a router in
-          <code>OVN_Northbound</code> database that includes just an IP address
-          <var>VIP</var> to match on, a priority-110 flow that matches on
-          <code>ct.est &amp;&amp; !ct.rel &amp;&amp; ip4 &amp;&amp; reg0 ==
-          <var>VIP</var></code> (or <code>ip6</code> and
-          <code>xxreg0 == <var>VIP</var></code>) with an action of
-          <code>next;</code>. If the router is configured to force SNAT any
-          load-balanced packets, the above action will be replaced by
-          <code>flags.force_snat_for_lb = 1; next;</code>.
-          If the load balancing rule is configured with <code>skip_snat</code>
-          set to true, the above action will be replaced by
-          <code>flags.skip_snat_for_lb = 1; next;</code>.
+          <code>flags.skip_snat_for_lb = 1; ct_lb_mark(<var>args</var>;
+          skip_snat);</code>.
         </p>
 
         <p>
@@ -3529,7 +3454,20 @@ icmp6 {
             with an action of <code>ct_commit_nat;</code>, if the router
             has load balancer assigned to it. Along with two priority 70 flows
             that match <code>skip_snat</code> and <code>force_snat</code>
-            flags.
+            flags, setting the <code>flags.force_snat_for_lb = 1</code> or
+            <code>flags.skip_snat_for_lb = 1</code> accordingly.
+        </p>
+      </li>
+      <li>
+        <p>
+          For the established traffic, a priority 50 flow that matches
+          <code>ct.est &amp;&amp; !ct.rel &amp;&amp; !ct.new &amp;&amp;
+          ct_mark.natted</code> with an action of <code>next;</code>,
+          if the router has load balancer assigned to it. Along with two
+          priority 70 flows that match <code>skip_snat</code> and
+          <code>force_snat</code> flags, setting the
+          <code>flags.force_snat_for_lb = 1</code> or
+          <code>flags.skip_snat_for_lb = 1</code> accordingly.
         </p>
       </li>
     </ul>
