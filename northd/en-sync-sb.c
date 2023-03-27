@@ -273,9 +273,7 @@ sync_addr_sets(struct ovsdb_idl_txn *ovnsb_txn,
     /* Sync router load balancer VIP generated address sets. */
     struct ovn_datapath *od;
     HMAP_FOR_EACH (od, key_node, &lr_datapaths->datapaths) {
-        if (!od->nbr) {
-            continue;
-        }
+        ovs_assert(od->nbr);
 
         if (sset_count(&od->lb_ips->ips_v4_reachable)) {
             char *ipv4_addrs_name = lr_lb_address_set_name(od->tunnel_key,

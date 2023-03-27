@@ -654,9 +654,7 @@ snat_ip_add(struct ovn_datapath *od, const char *ip, struct ovn_nat *nat_entry)
 static void
 init_nat_entries(struct ovn_datapath *od)
 {
-    if (!od->nbr) {
-        return;
-    }
+    ovs_assert(od->nbr);
 
     shash_init(&od->snat_ips);
     if (get_force_snat_ip(od, "dnat", &od->dnat_force_snat_addrs)) {
@@ -755,9 +753,7 @@ destroy_nat_entries(struct ovn_datapath *od)
 static void
 init_router_external_ips(struct ovn_datapath *od)
 {
-    if (!od->nbr) {
-        return;
-    }
+    ovs_assert(od->nbr);
 
     sset_init(&od->external_ips);
     for (size_t i = 0; i < od->nbr->n_nat; i++) {
@@ -841,10 +837,6 @@ destroy_lb_for_datapath(struct ovn_datapath *od)
 {
     ovn_lb_ip_set_destroy(od->lb_ips);
     od->lb_ips = NULL;
-
-    if (!od->nbs && !od->nbr) {
-        return;
-    }
 }
 
 /* A group of logical router datapaths which are connected - either
@@ -1072,9 +1064,7 @@ init_mcast_info_for_switch_datapath(struct ovn_datapath *od)
 static void
 init_mcast_flow_count(struct ovn_datapath *od)
 {
-    if (od->nbr) {
-        return;
-    }
+    ovs_assert(od->nbs);
 
     struct mcast_switch_info *mcast_sw_info = &od->mcast_info.sw;
     atomic_init(&mcast_sw_info->active_v4_flows, 0);
@@ -3203,9 +3193,7 @@ ovn_update_ipv6_prefix(struct hmap *lr_ports)
 {
     const struct ovn_port *op;
     HMAP_FOR_EACH (op, key_node, lr_ports) {
-        if (!op->nbrp) {
-            continue;
-        }
+        ovs_assert(op->nbrp);
 
         if (!smap_get_bool(&op->nbrp->options, "prefix", false)) {
             continue;
@@ -4097,9 +4085,7 @@ build_lbs(const struct nbrec_load_balancer_table *nbrec_load_balancer_table,
     }
 
     HMAP_FOR_EACH (od, key_node, &lr_datapaths->datapaths) {
-        if (!od->nbr) {
-            continue;
-        }
+        ovs_assert(od->nbr);
 
         /* Checking load balancer groups first, starting from the largest one,
          * to more efficiently copy IP sets. */
@@ -4252,9 +4238,7 @@ build_lrouter_lbs_check(const struct ovn_datapaths *lr_datapaths)
     struct ovn_datapath *od;
 
     HMAP_FOR_EACH (od, key_node, &lr_datapaths->datapaths) {
-        if (!od->nbr) {
-            continue;
-        }
+        ovs_assert(od->nbr);
 
         if (od->has_lb_vip && od->n_l3dgw_ports > 1
                 && !smap_get(&od->nbr->options, "chassis")) {
@@ -6712,7 +6696,9 @@ ovn_update_ipv6_options(struct hmap *lr_ports)
 {
     struct ovn_port *op;
     HMAP_FOR_EACH (op, key_node, lr_ports) {
-        if (!op->nbrp || op->nbrp->peer || !op->peer) {
+        ovs_assert(op->nbrp);
+
+        if (op->nbrp->peer || !op->peer) {
             continue;
         }
 
