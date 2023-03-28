@@ -332,6 +332,7 @@ Rishi Bamba                        rishi.bamba@tcs.com
 Rob Adams                          readams@readams.net
 Robert Åkerblom-Andersson          Robert.nr1@gmail.com
 Robert Wojciechowicz               robertx.wojciechowicz@intel.com
+Roberto Bartzen Acosta             rbartzen@gmail.com
 Rob Hoes                           rob.hoes@citrix.com
 Robin Brämer                       robin.braemer@web.de
 Rohith Basavaraja                  rohith.basavaraja@gmail.com
