@@ -9410,6 +9410,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([load-balancer template IPv4])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
 AT_SKIP_IF([test $HAVE_NC = no])
 AT_KEYWORDS([ovnlb templates])
 
@@ -9436,8 +9437,8 @@ start_daemon ovn-controller
 #         |
 # VM2 ----+
 #
-# A templated load balancer applied on LS1 and GW-Router with
-# VM1 as backend.  The VIP should be accessible from both VM2 and VM3.
+# Four templated load balancer applied on LS1 and GW-Router with
+# VM1 as backend.  The VIPs should be accessible from both VM2 and VM3.
 
 check ovn-nbctl                                                   \
     -- lr-add rtr                                                 \
@@ -9458,15 +9459,34 @@ check ovn-nbctl                                                   \
     -- lsp-set-options ls2-rtr router-port=rtr-ls2                \
     -- lsp-add ls2 vm3 -- lsp-set-addresses vm3 00:00:00:00:00:03
 
-# Add a template LB that eventually expands to:
+# Add a TCP template LB that eventually expands to:
 # VIP=66.66.66.66:666 backends=42.42.42.2:4242 proto=tcp
+# And a UDP template LB that eventually expands to:
+# VIP=66.66.66.66:777 backends=42.42.42.2:4343 proto=udp
 
-AT_CHECK([ovn-nbctl -- create chassis_template_var chassis="hv1" variables="{vip=66.66.66.66,vport=666,backends=\"42.42.42.2:4242\"}"],
+AT_CHECK([ovn-nbctl -- create chassis_template_var chassis="hv1" \
+    variables="{vip=66.66.66.66,vport1=666,backends1=\"42.42.42.2:4242\",vport2=777,backends2=\"42.42.42.2:4343\",vport3=888,vport4=999}"],
          [0], [ignore])
 
-check ovn-nbctl --template lb-add lb-test "^vip:^vport" "^backends" tcp \
-    -- ls-lb-add ls1 lb-test                                            \
-    -- lr-lb-add rtr lb-test
+check ovn-nbctl --template lb-add lb-test-tcp "^vip:^vport1" "^backends1" tcp \
+    -- ls-lb-add ls1 lb-test-tcp                                              \
+    -- lr-lb-add rtr lb-test-tcp
+
+check ovn-nbctl --template lb-add lb-test-udp "^vip:^vport2" "^backends2" udp \
+    -- ls-lb-add ls1 lb-test-udp                                              \
+    -- lr-lb-add rtr lb-test-udp
+
+# Add a TCP template LB with explicit backends that eventually expands to:
+# VIP=66.66.66.66:888 backends=42.42.42.2:4242 proto=tcp
+# And a UDP template LB that eventually expands to:
+# VIP=66.66.66.66:999 backends=42.42.42.2:4343 proto=udp
+check ovn-nbctl --template lb-add lb-test-tcp2 "^vip:^vport3" "42.42.42.2:4242" tcp ipv4 \
+    -- ls-lb-add ls1 lb-test-tcp2                                                        \
+    -- lr-lb-add rtr lb-test-tcp2
+
+check ovn-nbctl --template lb-add lb-test-udp2 "^vip:^vport4" "42.42.42.2:4343" udp ipv4 \
+    -- ls-lb-add ls1 lb-test-udp2                                                        \
+    -- lr-lb-add rtr lb-test-udp2
 
 ADD_NAMESPACES(vm1)
 ADD_VETH(vm1, vm1, br-int, "42.42.42.2/24", "00:00:00:00:00:01", "42.42.42.1")
@@ -9483,24 +9503,50 @@ check ovn-nbctl --wait=hv sync
 
 AT_CHECK([ovn-appctl -t ovn-controller debug/dump-local-template-vars | sort], [0], [dnl
 Local template vars:
-name: 'backends' value: '42.42.42.2:4242'
+name: 'backends1' value: '42.42.42.2:4242'
+name: 'backends2' value: '42.42.42.2:4343'
 name: 'vip' value: '66.66.66.66'
-name: 'vport' value: '666'
+name: 'vport1' value: '666'
+name: 'vport2' value: '777'
+name: 'vport3' value: '888'
+name: 'vport4' value: '999'
 ])
 
 # Start IPv4 TCP server on vm1.
 NETNS_DAEMONIZE([vm1], [nc -k -l 42.42.42.2 4242], [nc-vm1.pid])
+
+NETNS_DAEMONIZE([vm1],
+    [tcpdump -n -i vm1 -nnleX -c6 udp and dst 42.42.42.2 and dst port 4343 > vm1.pcap 2>/dev/null],
+    [tcpdump1.pid])
 
 # Make sure connecting to the VIP works (hairpin, via ls and via lr).
 NS_CHECK_EXEC([vm1], [nc 66.66.66.66 666 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([vm2], [nc 66.66.66.66 666 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([vm3], [nc 66.66.66.66 666 -z], [0], [ignore], [ignore])
 
+NS_CHECK_EXEC([vm1], [echo a | nc -u 66.66.66.66 777 &], [0])
+NS_CHECK_EXEC([vm2], [echo a | nc -u 66.66.66.66 777 &], [0])
+NS_CHECK_EXEC([vm3], [echo a | nc -u 66.66.66.66 777 &], [0])
+
+NS_CHECK_EXEC([vm1], [nc 66.66.66.66 888 -z], [0], [ignore], [ignore])
+NS_CHECK_EXEC([vm2], [nc 66.66.66.66 888 -z], [0], [ignore], [ignore])
+NS_CHECK_EXEC([vm3], [nc 66.66.66.66 888 -z], [0], [ignore], [ignore])
+
+NS_CHECK_EXEC([vm1], [echo a | nc -u 66.66.66.66 999 &], [0])
+NS_CHECK_EXEC([vm2], [echo a | nc -u 66.66.66.66 999 &], [0])
+NS_CHECK_EXEC([vm3], [echo a | nc -u 66.66.66.66 999 &], [0])
+
+OVS_WAIT_UNTIL([
+    requests=`grep "UDP" -c vm1.pcap`
+    test "${requests}" -ge "6"
+])
+
 AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([load-balancer template IPv6])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
 AT_SKIP_IF([test $HAVE_NC = no])
 AT_KEYWORDS([ovnlb templates])
 
@@ -9527,8 +9573,8 @@ start_daemon ovn-controller
 #         |
 # VM2 ----+
 #
-# A templated load balancer applied on LS1 and GW-Router with
-# VM1 as backend.  The VIP should be accessible from both VM2 and VM3.
+# Four templated load balancer applied on LS1 and GW-Router with
+# VM1 as backend.  The VIPs should be accessible from both VM2 and VM3.
 
 check ovn-nbctl                                                   \
     -- lr-add rtr                                                 \
@@ -9550,14 +9596,33 @@ check ovn-nbctl                                                   \
     -- lsp-add ls2 vm3 -- lsp-set-addresses vm3 00:00:00:00:00:03
 
 # Add a template LB that eventually expands to:
-# VIP=6666::1 backends=[4242::2]:4242 proto=tcp
+# VIP=[6666::1]:666 backends=[4242::2]:4242 proto=tcp
+# Add a template LB that eventually expands to:
+# VIP=[6666::1]:777 backends=[4242::2]:4343 proto=udp
 
-AT_CHECK([ovn-nbctl -- create chassis_template_var chassis="hv1" variables="{vip=\"6666::1\",vport=666,backends=\"[[4242::2]]:4242\"}"],
+AT_CHECK([ovn-nbctl -- create chassis_template_var chassis="hv1" \
+    variables="{vip=\"6666::1\",vport1=666,backends1=\"[[4242::2]]:4242\",vport2=777,backends2=\"[[4242::2]]:4343\",vport3=888,vport4=999}"],
          [0], [ignore])
 
-check ovn-nbctl --template lb-add lb-test "^vip:^vport" "^backends" tcp ipv6 \
-    -- ls-lb-add ls1 lb-test                                                 \
-    -- lr-lb-add rtr lb-test
+check ovn-nbctl --template lb-add lb-test-tcp "^vip:^vport1" "^backends1" tcp ipv6 \
+    -- ls-lb-add ls1 lb-test-tcp                                                   \
+    -- lr-lb-add rtr lb-test-tcp
+
+check ovn-nbctl --template lb-add lb-test-udp "^vip:^vport2" "^backends2" udp ipv6 \
+    -- ls-lb-add ls1 lb-test-udp                                                   \
+    -- lr-lb-add rtr lb-test-udp
+
+# Add a TCP template LB with explicit backends that eventually expands to:
+# VIP=[6666::1]:888 backends=[4242::2]:4242 proto=tcp
+# And a UDP template LB that eventually expands to:
+# VIP=[6666::1]:999 backends=[4242::2]:4343 proto=udp
+check ovn-nbctl --template lb-add lb-test-tcp2 "^vip:^vport3" "[[4242::2]]:4242" tcp ipv6 \
+    -- ls-lb-add ls1 lb-test-tcp2                                                         \
+    -- lr-lb-add rtr lb-test-tcp2
+
+check ovn-nbctl --template lb-add lb-test-udp2 "^vip:^vport4" "[[4242::2]]:4343" udp ipv6 \
+    -- ls-lb-add ls1 lb-test-udp2                                                         \
+    -- lr-lb-add rtr lb-test-udp2
 
 ADD_NAMESPACES(vm1)
 ADD_VETH(vm1, vm1, br-int, "4242::2/64", "00:00:00:00:00:01", "4242::1")
@@ -9577,18 +9642,43 @@ check ovn-nbctl --wait=hv sync
 
 AT_CHECK([ovn-appctl -t ovn-controller debug/dump-local-template-vars | sort], [0], [dnl
 Local template vars:
-name: 'backends' value: '[[4242::2]]:4242'
+name: 'backends1' value: '[[4242::2]]:4242'
+name: 'backends2' value: '[[4242::2]]:4343'
 name: 'vip' value: '6666::1'
-name: 'vport' value: '666'
+name: 'vport1' value: '666'
+name: 'vport2' value: '777'
+name: 'vport3' value: '888'
+name: 'vport4' value: '999'
 ])
 
 # Start IPv6 TCP server on vm1.
 NETNS_DAEMONIZE([vm1], [nc -k -l 4242::2 4242], [nc-vm1.pid])
 
+NETNS_DAEMONIZE([vm1],
+    [tcpdump -n -i vm1 -nnleX -c6 udp and dst 4242::2 and dst port 4343 > vm1.pcap 2>/dev/null],
+    [tcpdump1.pid])
+
 # Make sure connecting to the VIP works (hairpin, via ls and via lr).
 NS_CHECK_EXEC([vm1], [nc 6666::1 666 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([vm2], [nc 6666::1 666 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([vm3], [nc 6666::1 666 -z], [0], [ignore], [ignore])
+
+NS_CHECK_EXEC([vm1], [echo a | nc -u 6666::1 777 &], [0])
+NS_CHECK_EXEC([vm2], [echo a | nc -u 6666::1 777 &], [0])
+NS_CHECK_EXEC([vm3], [echo a | nc -u 6666::1 777 &], [0])
+
+NS_CHECK_EXEC([vm1], [nc 6666::1 888 -z], [0], [ignore], [ignore])
+NS_CHECK_EXEC([vm2], [nc 6666::1 888 -z], [0], [ignore], [ignore])
+NS_CHECK_EXEC([vm3], [nc 6666::1 888 -z], [0], [ignore], [ignore])
+
+NS_CHECK_EXEC([vm1], [echo a | nc -u 6666::1 999 &], [0])
+NS_CHECK_EXEC([vm2], [echo a | nc -u 6666::1 999 &], [0])
+NS_CHECK_EXEC([vm3], [echo a | nc -u 6666::1 999 &], [0])
+
+OVS_WAIT_UNTIL([
+    requests=`grep "UDP" -c vm1.pcap`
+    test "${requests}" -ge "6"
+])
 
 AT_CLEANUP
 ])

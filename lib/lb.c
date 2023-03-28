@@ -36,6 +36,7 @@ static const char *lb_neighbor_responder_mode_names[] = {
 static struct nbrec_load_balancer_health_check *
 ovn_lb_get_health_check(const struct nbrec_load_balancer *nbrec_lb,
                         const char *vip_port_str, bool template);
+static void ovn_lb_backends_clear(struct ovn_lb_vip *vip);
 
 struct ovn_lb_ip_set *
 ovn_lb_ip_set_create(void)
@@ -236,6 +237,8 @@ ovn_lb_backends_init_template(struct ovn_lb_vip *lb_vip, const char *value_)
             ds_put_format(&errors, "%s: should be a template of the form: "
                           "'^backendip_variable1[:^port_variable1|:port]', ",
                           atom);
+            free(backend_port);
+            free(backend_ip);
         }
         free(atom);
     }
@@ -283,8 +286,27 @@ ovn_lb_vip_init_template(struct ovn_lb_vip *lb_vip, const char *lb_key_,
                          lb_key_);
     }
 
+    /* Backends can either be templates or explicit IPs and ports. */
     lb_vip->address_family = address_family;
-    return ovn_lb_backends_init_template(lb_vip, lb_value);
+    lb_vip->template_backends = true;
+    char *template_error = ovn_lb_backends_init_template(lb_vip, lb_value);
+
+    if (template_error) {
+        lb_vip->template_backends = false;
+        ovn_lb_backends_clear(lb_vip);
+
+        char *explicit_error = ovn_lb_backends_init_explicit(lb_vip, lb_value);
+        if (explicit_error) {
+            char *error =
+                xasprintf("invalid backend: template (%s) OR explicit (%s)",
+                          template_error, explicit_error);
+            free(explicit_error);
+            free(template_error);
+            return error;
+        }
+        free(template_error);
+    }
+    return NULL;
 }
 
 /* Returns NULL on success, an error string on failure.  The caller is
@@ -302,15 +324,29 @@ ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
                                        address_family);
 }
 
+static void
+ovn_lb_backends_destroy(struct ovn_lb_vip *vip)
+{
+    for (size_t i = 0; i < vip->n_backends; i++) {
+        free(vip->backends[i].ip_str);
+        free(vip->backends[i].port_str);
+    }
+}
+
+static void
+ovn_lb_backends_clear(struct ovn_lb_vip *vip)
+{
+    ovn_lb_backends_destroy(vip);
+    vip->backends = NULL;
+    vip->n_backends = 0;
+}
+
 void
 ovn_lb_vip_destroy(struct ovn_lb_vip *vip)
 {
     free(vip->vip_str);
     free(vip->port_str);
-    for (size_t i = 0; i < vip->n_backends; i++) {
-        free(vip->backends[i].ip_str);
-        free(vip->backends[i].port_str);
-    }
+    ovn_lb_backends_destroy(vip);
     free(vip->backends);
 }
 
@@ -355,11 +391,10 @@ ovn_lb_vip_format(const struct ovn_lb_vip *vip, struct ds *s, bool template)
 }
 
 void
-ovn_lb_vip_backends_format(const struct ovn_lb_vip *vip, struct ds *s,
-                           bool template)
+ovn_lb_vip_backends_format(const struct ovn_lb_vip *vip, struct ds *s)
 {
     bool needs_brackets = vip->address_family == AF_INET6 && vip->port_str
-                          && !template;
+                          && !vip->template_backends;
     for (size_t i = 0; i < vip->n_backends; i++) {
         struct ovn_lb_backend *backend = &vip->backends[i];
 

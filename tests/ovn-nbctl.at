@@ -1473,6 +1473,32 @@ UUID                                    LB                  PROTO      VIP      
 
 dnl ---------------------------------------------------------------------
 
+OVN_NBCTL_TEST([ovn_nbctl_template_lbs], [Template LBs], [
+check ovn-nbctl --template lb-add lb0 ^vip ^backend
+check ovn-nbctl --template lb-add lb1 ^vip:^vport ^backend udp
+check ovn-nbctl --template lb-add lb2 ^vip:^vport ^backend udp ipv4
+check ovn-nbctl --template lb-add lb3 ^vip:^vport ^backend udp ipv6
+check ovn-nbctl --template lb-add lb4 ^vip:^vport ^backend:^bport udp ipv4
+check ovn-nbctl --template lb-add lb5 ^vip:^vport ^backend:^bport udp ipv6
+check ovn-nbctl --template lb-add lb6 ^vip:^vport 1.1.1.1:111 udp ipv4
+check ovn-nbctl --template lb-add lb7 ^vip:^vport [[1::1]]:111 udp ipv6
+
+AT_CHECK([ovn-nbctl lb-list | uuidfilt], [0], [dnl
+UUID                                    LB                  PROTO      VIP            IPs
+<0>    lb0                 tcp        ^vip           ^backend
+<1>    lb1                 udp        ^vip:^vport    ^backend
+<2>    lb2                 udp        ^vip:^vport    ^backend
+<3>    lb3                 udp        ^vip:^vport    ^backend
+<4>    lb4                 udp        ^vip:^vport    ^backend:^bport
+<5>    lb5                 udp        ^vip:^vport    ^backend:^bport
+<6>    lb6                 udp        ^vip:^vport    1.1.1.1:111
+<7>    lb7                 udp        ^vip:^vport    [[1::1]]:111
+])
+
+])
+
+dnl ---------------------------------------------------------------------
+
 OVN_NBCTL_TEST([ovn_nbctl_basic_lr], [basic logical router commands], [
 AT_CHECK([ovn-nbctl lr-add lr0])
 AT_CHECK([ovn-nbctl lr-list | uuidfilt], [0], [dnl
