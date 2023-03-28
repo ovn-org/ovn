@@ -1151,7 +1151,7 @@
     <h2>NAT Commands</h2>
 
     <dl>
-      <dt>[<code>--may-exist</code>] [<code>--stateless</code>] [<code>--gateway_port</code>=<var>GATEWAY_PORT</var>] <code>lr-nat-add</code> <var>router</var> <var>type</var> <var>external_ip</var> <var>logical_ip</var> [<var>logical_port</var> <var>external_mac</var>]</dt>
+      <dt>[<code>--may-exist</code>] [<code>--stateless</code>] [<code>--gateway-port</code>=<var>GATEWAY_PORT</var>] <code>lr-nat-add</code> <var>router</var> <var>type</var> <var>external_ip</var> <var>logical_ip</var> [<var>logical_port</var> <var>external_mac</var>]</dt>
       <dd>
         <p>
           Adds the specified NAT to <var>router</var>.
