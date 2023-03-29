@@ -4850,9 +4850,9 @@ NS_CHECK_EXEC([lsp], [tcpdump -l -nn -c 3 -i lsp ${filter} > lsp.pcap 2>tcpdump_
 OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
 
 # Generate IPv4 UDP hairpin traffic.
-NS_CHECK_EXEC([lsp], [echo a | nc -u 88.88.88.88 4040 &], [0])
-NS_CHECK_EXEC([lsp], [echo a | nc -u 88.88.88.89 4040 &], [0])
-NS_CHECK_EXEC([lsp], [echo a | nc -u 88.88.88.90 2021 &], [0])
+NS_CHECK_EXEC([lsp], [echo a | nc -u 88.88.88.88 4040], [ignore], [ignore], [ignore])
+NS_CHECK_EXEC([lsp], [echo a | nc -u 88.88.88.89 4040], [ignore], [ignore], [ignore])
+NS_CHECK_EXEC([lsp], [echo a | nc -u 88.88.88.90 2021], [ignore], [ignore], [ignore])
 
 # Check hairpin traffic.
 OVS_WAIT_UNTIL([
@@ -4949,9 +4949,9 @@ NS_CHECK_EXEC([lsp], [tcpdump -l -nn -c 3 -i lsp $filter > lsp.pcap 2>tcpdump_er
 OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
 
 # Generate IPv6 UDP hairpin traffic.
-NS_CHECK_EXEC([lsp], [echo a | nc -u 8800::0088 4040 &], [0])
-NS_CHECK_EXEC([lsp], [echo a | nc -u 8800::0089 4040 &], [0])
-NS_CHECK_EXEC([lsp], [echo a | nc -u 8800::0090 2021 &], [0])
+NS_CHECK_EXEC([lsp], [echo a | nc -u 8800::0088 4040], [ignore], [ignore], [ignore])
+NS_CHECK_EXEC([lsp], [echo a | nc -u 8800::0089 4040], [ignore], [ignore], [ignore])
+NS_CHECK_EXEC([lsp], [echo a | nc -u 8800::0090 2021], [ignore], [ignore], [ignore])
 
 # Check hairpin traffic.
 OVS_WAIT_UNTIL([
@@ -9132,17 +9132,17 @@ NS_CHECK_EXEC([vm1], [nc 66.66.66.66 666 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([vm2], [nc 66.66.66.66 666 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([vm3], [nc 66.66.66.66 666 -z], [0], [ignore], [ignore])
 
-NS_CHECK_EXEC([vm1], [echo a | nc -u 66.66.66.66 777 &], [0])
-NS_CHECK_EXEC([vm2], [echo a | nc -u 66.66.66.66 777 &], [0])
-NS_CHECK_EXEC([vm3], [echo a | nc -u 66.66.66.66 777 &], [0])
+NS_CHECK_EXEC([vm1], [echo a | nc -u 66.66.66.66 777], [ignore], [ignore], [ignore])
+NS_CHECK_EXEC([vm2], [echo a | nc -u 66.66.66.66 777], [ignore], [ignore], [ignore])
+NS_CHECK_EXEC([vm3], [echo a | nc -u 66.66.66.66 777], [ignore], [ignore], [ignore])
 
 NS_CHECK_EXEC([vm1], [nc 66.66.66.66 888 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([vm2], [nc 66.66.66.66 888 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([vm3], [nc 66.66.66.66 888 -z], [0], [ignore], [ignore])
 
-NS_CHECK_EXEC([vm1], [echo a | nc -u 66.66.66.66 999 &], [0])
-NS_CHECK_EXEC([vm2], [echo a | nc -u 66.66.66.66 999 &], [0])
-NS_CHECK_EXEC([vm3], [echo a | nc -u 66.66.66.66 999 &], [0])
+NS_CHECK_EXEC([vm1], [echo a | nc -u 66.66.66.66 999], [ignore], [ignore], [ignore])
+NS_CHECK_EXEC([vm2], [echo a | nc -u 66.66.66.66 999], [ignore], [ignore], [ignore])
+NS_CHECK_EXEC([vm3], [echo a | nc -u 66.66.66.66 999], [ignore], [ignore], [ignore])
 
 OVS_WAIT_UNTIL([
     requests=`grep "UDP" -c vm1.pcap`
@@ -9271,17 +9271,17 @@ NS_CHECK_EXEC([vm1], [nc 6666::1 666 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([vm2], [nc 6666::1 666 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([vm3], [nc 6666::1 666 -z], [0], [ignore], [ignore])
 
-NS_CHECK_EXEC([vm1], [echo a | nc -u 6666::1 777 &], [0])
-NS_CHECK_EXEC([vm2], [echo a | nc -u 6666::1 777 &], [0])
-NS_CHECK_EXEC([vm3], [echo a | nc -u 6666::1 777 &], [0])
+NS_CHECK_EXEC([vm1], [echo a | nc -u 6666::1 777], [ignore], [ignore], [ignore])
+NS_CHECK_EXEC([vm2], [echo a | nc -u 6666::1 777], [ignore], [ignore], [ignore])
+NS_CHECK_EXEC([vm3], [echo a | nc -u 6666::1 777], [ignore], [ignore], [ignore])
 
 NS_CHECK_EXEC([vm1], [nc 6666::1 888 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([vm2], [nc 6666::1 888 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([vm3], [nc 6666::1 888 -z], [0], [ignore], [ignore])
 
-NS_CHECK_EXEC([vm1], [echo a | nc -u 6666::1 999 &], [0])
-NS_CHECK_EXEC([vm2], [echo a | nc -u 6666::1 999 &], [0])
-NS_CHECK_EXEC([vm3], [echo a | nc -u 6666::1 999 &], [0])
+NS_CHECK_EXEC([vm1], [echo a | nc -u 6666::1 999], [ignore], [ignore], [ignore])
+NS_CHECK_EXEC([vm2], [echo a | nc -u 6666::1 999], [ignore], [ignore], [ignore])
+NS_CHECK_EXEC([vm3], [echo a | nc -u 6666::1 999], [ignore], [ignore], [ignore])
 
 OVS_WAIT_UNTIL([
     requests=`grep "UDP" -c vm1.pcap`
