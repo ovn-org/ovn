@@ -10525,6 +10525,7 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
                                        lb->selection_fields, false,
                                        features->ct_no_masked_label);
     bool drop = !!strncmp(ds_cstr(action), "ct_lb", strlen("ct_lb"));
+    const char *enclose = drop ? "" : ");";
     if (!drop) {
         /* Remove the trailing ");". */
         ds_truncate(action, action->length - 2);
@@ -10548,8 +10549,8 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
         const char *skip_snat = features->ct_lb_related && !drop
                                 ? "; skip_snat"
                                 : "";
-        skip_snat_new_action = xasprintf("flags.skip_snat_for_lb = 1; %s%s);",
-                                         ds_cstr(action), skip_snat);
+        skip_snat_new_action = xasprintf("flags.skip_snat_for_lb = 1; %s%s%s",
+                                         ds_cstr(action), skip_snat, enclose);
         skip_snat_est_action = xasprintf("flags.skip_snat_for_lb = 1; "
                                          "next;");
     }
@@ -10685,8 +10686,8 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     const char *force_snat = features->ct_lb_related && !drop
                              ? "; force_snat"
                              : "";
-    char *new_actions = xasprintf("flags.force_snat_for_lb = 1; %s%s);",
-                                  ds_cstr(action), force_snat);
+    char *new_actions = xasprintf("flags.force_snat_for_lb = 1; %s%s%s",
+                                  ds_cstr(action), force_snat, enclose);
     build_gw_lrouter_nat_flows_for_lb(lb, gw_router_force_snat,
             n_gw_router_force_snat, reject, new_match,
             new_actions, est_match,
@@ -10701,9 +10702,7 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
                                lb_aff_force_snat_router,
                                n_lb_aff_force_snat_router);
 
-    if (!drop) {
-        ds_put_cstr(action, ");");
-    }
+    ds_put_cstr(action, enclose);
 
     build_gw_lrouter_nat_flows_for_lb(lb, gw_router, n_gw_router,
             reject, new_match, ds_cstr(action), est_match,
