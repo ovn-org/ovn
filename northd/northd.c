@@ -3912,6 +3912,10 @@ build_lb_vip_actions(struct ovn_lb_vip *lb_vip,
         }
     } else if (lb_vip->empty_backend_rej && !lb_vip->n_backends) {
         reject = true;
+    } else if (!lb_vip->empty_backend_rej && !lb_vip->n_backends) {
+        ds_clear(action);
+        ds_put_cstr(action, debug_drop_action());
+        skip_hash_fields = true;
     } else {
         ds_put_format(action, "%s(backends=%s);", ct_lb_action,
                       lb_vip_nb->backend_ips);
