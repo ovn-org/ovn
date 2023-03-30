@@ -9481,3 +9481,61 @@ AT_CHECK([ovn-sbctl lflow-list sw | grep ls_out_pre_lb | grep priority=110 | gre
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LSP incremental processing])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+ovs-vsctl add-port br-int lsp0-0 -- set interface lsp0-0 external_ids:iface-id=lsp0-0
+ovs-vsctl add-port br-int lsp0-1 -- set interface lsp0-1 external_ids:iface-id=lsp0-1
+ovs-vsctl add-port br-int lsp0-2 -- set interface lsp0-2 external_ids:iface-id=lsp0-2
+
+check ovn-nbctl --wait=hv ls-add ls0
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=hv lsp-add ls0 lsp0-0 -- lsp-set-addresses lsp0-0 "unknown"
+OVS_WAIT_UNTIL([test `as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd recompute` = 5])
+OVS_WAIT_UNTIL([test `as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow recompute` = 5])
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=hv lsp-add ls0 lsp0-1 -- lsp-set-addresses lsp0-1 "aa:aa:aa:00:00:01 192.168.0.11"
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd recompute], [0], [3
+])
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow recompute], [0], [6
+])
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=hv lsp-add ls0 lsp0-2 -- lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:02 192.168.0.12"
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd recompute], [0], [3
+])
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow recompute], [0], [6
+])
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=hv lsp-del lsp0-1
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd recompute], [0], [1
+])
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow recompute], [0], [2
+])
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=hv lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:88 192.168.0.88"
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd recompute], [0], [1
+])
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow recompute], [0], [2
+])
+
+# No change, no recompute
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb sync
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd recompute], [0], [0
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])

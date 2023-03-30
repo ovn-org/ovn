@@ -65,6 +65,7 @@ struct northd_input {
     struct ovsdb_idl_index *sbrec_ha_chassis_grp_by_name;
     struct ovsdb_idl_index *sbrec_ip_mcast_by_dp;
     struct ovsdb_idl_index *sbrec_static_mac_binding_by_lport_ip;
+    struct ovsdb_idl_index *sbrec_fdb_by_dp_and_port;
 };
 
 struct chassis_features {
@@ -83,6 +84,22 @@ struct ovn_datapaths {
     struct ovn_datapath **array;
 };
 
+/* Track what's changed for a single LS.
+ * Now only track port changes. */
+struct ls_change {
+    struct ovs_list list_node;
+    struct ovn_datapath *od;
+    struct ovs_list added_ports;
+    struct ovs_list deleted_ports;
+    struct ovs_list updated_ports;
+};
+
+/* Track what's changed for logical switches.
+ * Now only track updated ones (added or deleted may be supported in the
+ * future). */
+struct tracked_ls_changes {
+    struct ovs_list updated; /* Contains struct ls_change */
+};
 
 struct northd_data {
     /* Global state for 'en-northd'. */
@@ -98,6 +115,8 @@ struct northd_data {
     bool ovn_internal_version_changed;
     struct chassis_features features;
     struct sset svc_monitor_lsps;
+    bool change_tracked;
+    struct tracked_ls_changes tracked_ls_changes;
 };
 
 struct lflow_data {
@@ -292,13 +311,19 @@ struct ovn_datapath {
     /* Port groups related to the datapath, used only when nbs is NOT NULL. */
     struct hmap nb_pgs;
 
-    struct ovs_list port_list;
+    /* Map of ovn_port objects belonging to this datapath.
+     * This map doesn't include derived ports. */
+    struct hmap ports;
 };
 
 void northd_run(struct northd_input *input_data,
                 struct northd_data *data,
                 struct ovsdb_idl_txn *ovnnb_txn,
                 struct ovsdb_idl_txn *ovnsb_txn);
+bool northd_handle_ls_changes(struct ovsdb_idl_txn *,
+                              const struct northd_input *,
+                              struct northd_data *);
+void destroy_northd_data_tracked_changes(struct northd_data *);
 void northd_destroy(struct northd_data *data);
 void northd_init(struct northd_data *data);
 void northd_indices_create(struct northd_data *data,

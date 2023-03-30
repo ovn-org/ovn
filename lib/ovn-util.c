@@ -720,6 +720,21 @@ ovn_allocate_tnlid(struct hmap *set, const char *name, uint32_t min,
     return 0;
 }
 
+bool
+ovn_free_tnlid(struct hmap *tnlids, uint32_t tnlid)
+{
+    uint32_t hash = hash_int(tnlid, 0);
+    struct tnlid_node *node;
+    HMAP_FOR_EACH_IN_BUCKET (node, hmap_node, hash, tnlids) {
+        if (node->tnlid == tnlid) {
+            hmap_remove(tnlids, &node->hmap_node);
+            free(node);
+            return true;
+        }
+    }
+    return false;
+}
+
 char *
 ovn_chassis_redirect_name(const char *port_name)
 {

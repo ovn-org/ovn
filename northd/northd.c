@@ -19,6 +19,7 @@
 
 #include "debug.h"
 #include "bitmap.h"
+#include "coverage.h"
 #include "dirs.h"
 #include "ipam.h"
 #include "openvswitch/dynamic-string.h"
@@ -58,6 +59,8 @@
 #include "openvswitch/vlog.h"
 
 VLOG_DEFINE_THIS_MODULE(northd);
+
+COVERAGE_DEFINE(northd_run);
 
 static bool controller_event_en;
 static bool lflow_hash_lock_initialized = false;
@@ -807,12 +810,19 @@ ovn_datapath_create(struct hmap *datapaths, const struct uuid *key,
     od->port_key_hint = 0;
     hmap_insert(datapaths, &od->key_node, uuid_hash(&od->key));
     od->lr_group = NULL;
-    ovs_list_init(&od->port_list);
+    hmap_init(&od->ports);
     return od;
 }
 
 static void ovn_ls_port_group_destroy(struct hmap *nb_pgs);
 static void destroy_mcast_info_for_datapath(struct ovn_datapath *od);
+
+static void
+destroy_ports_for_datapath(struct ovn_datapath *od)
+{
+    ovs_assert(hmap_is_empty(&od->ports));
+    hmap_destroy(&od->ports);
+}
 
 static void
 ovn_datapath_destroy(struct hmap *datapaths, struct ovn_datapath *od)
@@ -834,6 +844,7 @@ ovn_datapath_destroy(struct hmap *datapaths, struct ovn_datapath *od)
         free(od->l3dgw_ports);
         ovn_ls_port_group_destroy(&od->nb_pgs);
         destroy_mcast_info_for_datapath(od);
+        destroy_ports_for_datapath(od);
 
         free(od);
     }
@@ -1480,6 +1491,9 @@ struct ovn_port {
     struct lport_addresses *ps_addrs;   /* Port security addresses. */
     unsigned int n_ps_addrs;
 
+    bool lsp_can_be_inc_processed; /* If it can be incrementally processed when
+                                      the port changes. */
+
     /* Logical router port data. */
     const struct nbrec_logical_router_port *nbrp; /* May be NULL. */
 
@@ -1521,10 +1535,15 @@ struct ovn_port {
 
     struct ovs_list list;       /* In list of similar records. */
 
-    struct ovs_list dp_node;
+    struct hmap_node dp_node;   /* Node in od->ports. */
 
     struct lport_addresses proxy_arp_addrs;
+
+    /* Temporarily used for traversing a list (or hmap) of ports. */
+    bool visited;
 };
+
+static bool lsp_can_be_inc_processed(const struct nbrec_logical_switch_port *);
 
 static bool
 is_l3dgw_port(const struct ovn_port *op)
@@ -1585,6 +1604,9 @@ ovn_port_set_nb(struct ovn_port *op,
                 const struct nbrec_logical_router_port *nbrp)
 {
     op->nbsp = nbsp;
+    if (nbsp) {
+        op->lsp_can_be_inc_processed = lsp_can_be_inc_processed(nbsp);
+    }
     op->nbrp = nbrp;
     init_mcast_port_info(&op->mcast_info, op->nbsp, op->nbrp);
 }
@@ -1610,35 +1632,46 @@ ovn_port_create(struct hmap *ports, const char *key,
 }
 
 static void
+ovn_port_destroy_orphan(struct ovn_port *port)
+{
+    if (port->tunnel_key) {
+        ovs_assert(port->od);
+        ovn_free_tnlid(&port->od->port_tnlids, port->tunnel_key);
+    }
+    for (int i = 0; i < port->n_lsp_addrs; i++) {
+        destroy_lport_addresses(&port->lsp_addrs[i]);
+    }
+    free(port->lsp_addrs);
+
+    if (port->peer) {
+        port->peer->peer = NULL;
+    }
+
+    for (int i = 0; i < port->n_ps_addrs; i++) {
+        destroy_lport_addresses(&port->ps_addrs[i]);
+    }
+    free(port->ps_addrs);
+
+    destroy_routable_addresses(&port->routables);
+
+    destroy_lport_addresses(&port->lrp_networks);
+    destroy_lport_addresses(&port->proxy_arp_addrs);
+    free(port->json_key);
+    free(port->key);
+    free(port);
+}
+
+static void
 ovn_port_destroy(struct hmap *ports, struct ovn_port *port)
 {
     if (port) {
-        /* Don't remove port->list.  It is used within build_ports() as a
-         * private list and once we've exited that function it is not safe to
-         * use it. */
+        /* Don't remove port->list. The node should be removed from such lists
+         * before calling this function. */
         hmap_remove(ports, &port->key_node);
-
-        if (port->peer) {
-            port->peer->peer = NULL;
+        if (port->od && !port->l3dgw_port) {
+            hmap_remove(&port->od->ports, &port->dp_node);
         }
-
-        for (int i = 0; i < port->n_lsp_addrs; i++) {
-            destroy_lport_addresses(&port->lsp_addrs[i]);
-        }
-        free(port->lsp_addrs);
-
-        for (int i = 0; i < port->n_ps_addrs; i++) {
-            destroy_lport_addresses(&port->ps_addrs[i]);
-        }
-        free(port->ps_addrs);
-
-        destroy_routable_addresses(&port->routables);
-
-        destroy_lport_addresses(&port->lrp_networks);
-        destroy_lport_addresses(&port->proxy_arp_addrs);
-        free(port->json_key);
-        free(port->key);
-        free(port);
+        ovn_port_destroy_orphan(port);
     }
 }
 
@@ -2409,6 +2442,53 @@ tag_alloc_create_new_tag(struct hmap *tag_alloc_table,
 
 
 static void
+parse_lsp_addrs(struct ovn_port *op)
+{
+    const struct nbrec_logical_switch_port *nbsp = op->nbsp;
+    ovs_assert(nbsp);
+    op->lsp_addrs
+        = xmalloc(sizeof *op->lsp_addrs * nbsp->n_addresses);
+    for (size_t j = 0; j < nbsp->n_addresses; j++) {
+        if (!strcmp(nbsp->addresses[j], "unknown")) {
+            op->has_unknown = true;
+            continue;
+        }
+        if (!strcmp(nbsp->addresses[j], "router")) {
+            continue;
+        }
+        if (is_dynamic_lsp_address(nbsp->addresses[j])) {
+            continue;
+        } else if (!extract_lsp_addresses(nbsp->addresses[j],
+                               &op->lsp_addrs[op->n_lsp_addrs])) {
+            static struct vlog_rate_limit rl
+                = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_INFO_RL(&rl, "invalid syntax '%s' in logical "
+                              "switch port addresses. No MAC "
+                              "address found",
+                              op->nbsp->addresses[j]);
+            continue;
+        }
+        op->n_lsp_addrs++;
+    }
+    op->n_lsp_non_router_addrs = op->n_lsp_addrs;
+
+    op->ps_addrs
+        = xmalloc(sizeof *op->ps_addrs * nbsp->n_port_security);
+    for (size_t j = 0; j < nbsp->n_port_security; j++) {
+        if (!extract_lsp_addresses(nbsp->port_security[j],
+                                   &op->ps_addrs[op->n_ps_addrs])) {
+            static struct vlog_rate_limit rl
+                = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_INFO_RL(&rl, "invalid syntax '%s' in port "
+                              "security. No MAC address found",
+                              op->nbsp->port_security[j]);
+            continue;
+        }
+        op->n_ps_addrs++;
+    }
+}
+
+static void
 join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
                    struct hmap *ls_datapaths, struct hmap *lr_datapaths,
                    struct hmap *ports, unsigned long *queue_id_bitmap,
@@ -2504,49 +2584,11 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
                 od->has_vtep_lports = true;
             }
 
-            op->lsp_addrs
-                = xmalloc(sizeof *op->lsp_addrs * nbsp->n_addresses);
-            for (size_t j = 0; j < nbsp->n_addresses; j++) {
-                if (!strcmp(nbsp->addresses[j], "unknown")) {
-                    op->has_unknown = true;
-                    continue;
-                }
-                if (!strcmp(nbsp->addresses[j], "router")) {
-                    continue;
-                }
-                if (is_dynamic_lsp_address(nbsp->addresses[j])) {
-                    continue;
-                } else if (!extract_lsp_addresses(nbsp->addresses[j],
-                                       &op->lsp_addrs[op->n_lsp_addrs])) {
-                    static struct vlog_rate_limit rl
-                        = VLOG_RATE_LIMIT_INIT(1, 1);
-                    VLOG_INFO_RL(&rl, "invalid syntax '%s' in logical "
-                                      "switch port addresses. No MAC "
-                                      "address found",
-                                      op->nbsp->addresses[j]);
-                    continue;
-                }
-                op->n_lsp_addrs++;
-            }
-            op->n_lsp_non_router_addrs = op->n_lsp_addrs;
-
-            op->ps_addrs
-                = xmalloc(sizeof *op->ps_addrs * nbsp->n_port_security);
-            for (size_t j = 0; j < nbsp->n_port_security; j++) {
-                if (!extract_lsp_addresses(nbsp->port_security[j],
-                                           &op->ps_addrs[op->n_ps_addrs])) {
-                    static struct vlog_rate_limit rl
-                        = VLOG_RATE_LIMIT_INIT(1, 1);
-                    VLOG_INFO_RL(&rl, "invalid syntax '%s' in port "
-                                      "security. No MAC address found",
-                                      op->nbsp->port_security[j]);
-                    continue;
-                }
-                op->n_ps_addrs++;
-            }
+            parse_lsp_addrs(op);
 
             op->od = od;
-            ovs_list_push_back(&od->port_list, &op->dp_node);
+            hmap_insert(&od->ports, &op->dp_node,
+                        hmap_node_hash(&op->key_node));
             tag_alloc_add_existing_tags(tag_alloc_table, nbsp);
         }
     }
@@ -2593,7 +2635,8 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
 
             op->lrp_networks = lrp_networks;
             op->od = od;
-            ovs_list_push_back(&od->port_list, &op->dp_node);
+            hmap_insert(&od->ports, &op->dp_node,
+                        hmap_node_hash(&op->key_node));
 
             if (!od->redirect_bridged) {
                 const char *redirect_type =
@@ -3314,6 +3357,10 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
         struct smap new;
         smap_init(&new);
         if (is_cr_port(op)) {
+            ovs_assert(sbrec_chassis_by_name);
+            ovs_assert(sbrec_chassis_by_hostname);
+            ovs_assert(sbrec_ha_chassis_grp_by_name);
+            ovs_assert(active_ha_chassis_grps);
             const char *redirect_type = smap_get(&op->nbrp->options,
                                                  "redirect-type");
 
@@ -3423,8 +3470,10 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
             struct smap options;
 
             if (has_qos && !queue_id) {
+                ovs_assert(queue_id_bitmap);
                 queue_id = allocate_queueid(queue_id_bitmap);
             } else if (!has_qos && queue_id) {
+                ovs_assert(queue_id_bitmap);
                 bitmap_set0(queue_id_bitmap, queue_id);
                 queue_id = 0;
             }
@@ -3473,6 +3522,10 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
             sbrec_port_binding_set_nat_addresses(op->sb, NULL, 0);
 
             if (!strcmp(op->nbsp->type, "external")) {
+                ovs_assert(sbrec_chassis_by_name);
+                ovs_assert(sbrec_chassis_by_hostname);
+                ovs_assert(sbrec_ha_chassis_grp_by_name);
+                ovs_assert(active_ha_chassis_grps);
                 if (op->nbsp->ha_chassis_group) {
                     sync_ha_chassis_group_for_sbpb(
                         ovnsb_txn, sbrec_chassis_by_name,
@@ -3729,6 +3782,24 @@ cleanup_stale_fdb_entries(const struct sbrec_fdb_table *sbrec_fdb_table,
     }
 }
 
+static void
+delete_fdb_entry(struct ovsdb_idl_index *sbrec_fdb_by_dp_and_port,
+                 uint32_t dp_key, uint32_t port_key)
+{
+    struct sbrec_fdb *target =
+        sbrec_fdb_index_init_row(sbrec_fdb_by_dp_and_port);
+    sbrec_fdb_index_set_dp_key(target, dp_key);
+    sbrec_fdb_index_set_port_key(target, port_key);
+
+    struct sbrec_fdb *fdb_e = sbrec_fdb_index_find(sbrec_fdb_by_dp_and_port,
+                                                   target);
+    sbrec_fdb_index_destroy_row(target);
+
+    if (fdb_e) {
+        sbrec_fdb_delete(fdb_e);
+    }
+}
+
 struct service_monitor_info {
     struct hmap_node hmap_node;
     const struct sbrec_service_monitor *sbrec_mon;
@@ -3820,13 +3891,14 @@ ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn, struct ovn_northd_lb *lb,
             }
             ds_destroy(&key);
 
-            backend_nb->op = op;
-            backend_nb->svc_mon_src_ip = svc_mon_src_ip;
-
             if (!lb_vip_nb->lb_health_check || !op || !svc_mon_src_ip ||
                 !lsp_is_enabled(op->nbsp)) {
+                free(svc_mon_src_ip);
                 continue;
             }
+
+            backend_nb->op = op;
+            backend_nb->svc_mon_src_ip = svc_mon_src_ip;
 
             const char *protocol = lb->nlb->protocol;
             if (!protocol || !protocol[0]) {
@@ -4155,7 +4227,7 @@ build_lrouter_lb_reachable_ips(struct ovn_datapath *od,
             ovs_be32 vip_ip4 = in6_addr_get_mapped_ipv4(&lb->vips[i].vip);
             struct ovn_port *op;
 
-            LIST_FOR_EACH (op, dp_node, &od->port_list) {
+            HMAP_FOR_EACH (op, dp_node, &od->ports) {
                 if (lrouter_port_ipv4_reachable(op, vip_ip4)) {
                     sset_add(&od->lb_ips->ips_v4_reachable,
                              lb->vips[i].vip_str);
@@ -4165,7 +4237,7 @@ build_lrouter_lb_reachable_ips(struct ovn_datapath *od,
         } else {
             struct ovn_port *op;
 
-            LIST_FOR_EACH (op, dp_node, &od->port_list) {
+            HMAP_FOR_EACH (op, dp_node, &od->ports) {
                 if (lrouter_port_ipv6_reachable(op, &lb->vips[i].vip)) {
                     sset_add(&od->lb_ips->ips_v6_reachable,
                              lb->vips[i].vip_str);
@@ -4538,7 +4610,10 @@ ovn_port_add_tnlid(struct ovn_port *op, uint32_t tunnel_key)
     return added;
 }
 
-static void
+/* Returns false if the requested key is confict with another allocated key, so
+ * that the I-P engine can fallback to recompute if needed; otherwise return
+ * true (even if the key is not allocated). */
+static bool
 ovn_port_assign_requested_tnl_id(
     const struct sbrec_chassis_table *sbrec_chassis_table, struct ovn_port *op)
 {
@@ -4553,7 +4628,7 @@ ovn_port_assign_requested_tnl_id(
             VLOG_WARN_RL(&rl, "Tunnel key %"PRIu32" for port %s "
                          "is incompatible with VXLAN",
                          tunnel_key, op_get_name(op));
-            return;
+            return true;
         }
         if (!ovn_port_add_tnlid(op, tunnel_key)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
@@ -4561,11 +4636,13 @@ ovn_port_assign_requested_tnl_id(
                          "%"PRIu32" as another LSP or LRP",
                          op->nbsp ? "switch" : "router",
                          op_get_name(op), tunnel_key);
+            return false;
         }
     }
+    return true;
 }
 
-static void
+static bool
 ovn_port_allocate_key(const struct sbrec_chassis_table *sbrec_chassis_table,
                       struct hmap *ports,
                       struct ovn_port *op)
@@ -4581,8 +4658,10 @@ ovn_port_allocate_key(const struct sbrec_chassis_table *sbrec_chassis_table,
             }
             ovs_list_remove(&op->list);
             ovn_port_destroy(ports, op);
+            return false;
         }
     }
+    return true;
 }
 
 /* Updates the southbound Port_Binding table so that it contains the logical
@@ -4605,6 +4684,8 @@ build_ports(struct ovsdb_idl_txn *ovnsb_txn,
     struct hmap *ls_ports, struct hmap *lr_ports)
 {
     struct ovs_list sb_only, nb_only, both;
+    /* XXX: Add tag_alloc_table and queue_id_bitmap as part of northd_data
+     * to improve I-P. */
     struct hmap tag_alloc_table = HMAP_INITIALIZER(&tag_alloc_table);
     unsigned long *queue_id_bitmap = bitmap_allocate(QDISC_MAX_QUEUE_ID + 1);
     bitmap_set1(queue_id_bitmap, 0);
@@ -4709,6 +4790,329 @@ build_ports(struct ovsdb_idl_txn *ovnsb_txn,
     cleanup_sb_ha_chassis_groups(sbrec_ha_chassis_group_table,
                                  &active_ha_chassis_grps);
     sset_destroy(&active_ha_chassis_grps);
+}
+
+void
+destroy_northd_data_tracked_changes(struct northd_data *nd)
+{
+    struct ls_change *ls_change;
+    LIST_FOR_EACH_SAFE (ls_change, list_node,
+                        &nd->tracked_ls_changes.updated) {
+        struct ovn_port *op;
+        LIST_FOR_EACH (op, list, &ls_change->added_ports) {
+            ovs_list_remove(&op->list);
+        }
+        LIST_FOR_EACH (op, list, &ls_change->updated_ports) {
+            ovs_list_remove(&op->list);
+        }
+        LIST_FOR_EACH_SAFE (op, list, &ls_change->deleted_ports) {
+            ovs_list_remove(&op->list);
+            ovn_port_destroy_orphan(op);
+        }
+        ovs_list_remove(&ls_change->list_node);
+        free(ls_change);
+    }
+
+    nd->change_tracked = false;
+}
+
+/* Check if a changed LSP can be handled incrementally within the I-P engine
+ * node en_northd.
+ */
+static bool
+lsp_can_be_inc_processed(const struct nbrec_logical_switch_port *nbsp)
+{
+    /* Support only normal VIF for now. */
+    if (nbsp->type[0]) {
+        return false;
+    }
+
+    /* Tag allocation is not supported for now. */
+    if ((nbsp->parent_name && nbsp->parent_name[0]) || nbsp->tag ||
+        nbsp->tag_request) {
+        return false;
+    }
+
+    /* Port with qos settings is not supported for now (need special handling
+     * for qdisc_queue_id sync). */
+    if (port_has_qos_params(&nbsp->options)) {
+        return false;
+    }
+
+    for (size_t j = 0; j < nbsp->n_addresses; j++) {
+        /* Dynamic address handling is not supported for now. */
+        if (is_dynamic_lsp_address(nbsp->addresses[j])) {
+            return false;
+        }
+        /* "unknown" address handling is not supported for now.  XXX: Need to
+         * handle od->has_unknown change and track it when the first LSP with
+         * 'unknown' is added or when the last one is removed. */
+        if (!strcmp(nbsp->addresses[j], "unknown")) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool
+ls_port_has_changed(const struct nbrec_logical_switch_port *old,
+                    const struct nbrec_logical_switch_port *new)
+{
+    if (old != new) {
+        return true;
+    }
+    /* XXX: Need a better OVSDB IDL interface for this check. */
+    return (nbrec_logical_switch_port_row_get_seqno(new,
+                                OVSDB_IDL_CHANGE_MODIFY) > 0);
+}
+
+static struct ovn_port *
+ovn_port_find_in_datapath(struct ovn_datapath *od, const char *name)
+{
+    struct ovn_port *op;
+    HMAP_FOR_EACH_WITH_HASH (op, dp_node, hash_string(name, 0), &od->ports) {
+        if (!strcmp(op->key, name)) {
+            return op;
+        }
+    }
+    return NULL;
+}
+
+static struct ovn_port *
+ls_port_create(struct ovsdb_idl_txn *ovnsb_txn, struct hmap *ls_ports,
+               const char *key, const struct nbrec_logical_switch_port *nbsp,
+               struct ovn_datapath *od, const struct sbrec_port_binding *sb,
+               const struct sbrec_mirror_table *sbrec_mirror_table,
+               const struct sbrec_chassis_table *sbrec_chassis_table,
+               struct ovsdb_idl_index *sbrec_chassis_by_name,
+               struct ovsdb_idl_index *sbrec_chassis_by_hostname)
+{
+    struct ovn_port *op = ovn_port_create(ls_ports, key, nbsp, NULL,
+                                          NULL);
+    parse_lsp_addrs(op);
+    op->od = od;
+    hmap_insert(&od->ports, &op->dp_node, hmap_node_hash(&op->key_node));
+
+    /* Assign explicitly requested tunnel ids first. */
+    if (!ovn_port_assign_requested_tnl_id(sbrec_chassis_table, op)) {
+        return NULL;
+    }
+    if (sb) {
+        op->sb = sb;
+        /* Keep nonconflicting tunnel IDs that are already assigned. */
+        if (!op->tunnel_key) {
+            ovn_port_add_tnlid(op, op->sb->tunnel_key);
+        }
+    } else {
+        /* XXX: the new SB port_binding will change in IDL, so need to handle
+         * SB port_binding updates incrementally to achieve end-to-end
+         * incremental processing. */
+        op->sb = sbrec_port_binding_insert(ovnsb_txn);
+        sbrec_port_binding_set_logical_port(op->sb, op->key);
+    }
+    /* Assign new tunnel ids where needed. */
+    if (!ovn_port_allocate_key(sbrec_chassis_table, ls_ports, op)) {
+        return NULL;
+    }
+    ovn_port_update_sbrec(ovnsb_txn, sbrec_chassis_by_name,
+                          sbrec_chassis_by_hostname, NULL, sbrec_mirror_table,
+                          op, NULL, NULL);
+    return op;
+}
+
+static bool
+check_ls_changes_other_than_lsp(const struct nbrec_logical_switch *ls)
+{
+    /* Check if the columns are changed in this row. */
+    enum nbrec_logical_switch_column_id col;
+    for (col = 0; col < NBREC_LOGICAL_SWITCH_N_COLUMNS; col++) {
+        if (nbrec_logical_switch_is_updated(ls, col) &&
+            col != NBREC_LOGICAL_SWITCH_COL_PORTS) {
+            return true;
+        }
+    }
+
+    /* Check if the referenced rows are changed.
+       XXX: Need a better OVSDB IDL interface for this check. */
+    for (size_t i = 0; i < ls->n_acls; i++) {
+        if (nbrec_acl_row_get_seqno(ls->acls[i],
+                                OVSDB_IDL_CHANGE_MODIFY) > 0) {
+            return true;
+        }
+    }
+    if (ls->copp && nbrec_copp_row_get_seqno(ls->copp,
+                                OVSDB_IDL_CHANGE_MODIFY) > 0) {
+        return true;
+    }
+    for (size_t i = 0; i < ls->n_dns_records; i++) {
+        if (nbrec_dns_row_get_seqno(ls->dns_records[i],
+                                OVSDB_IDL_CHANGE_MODIFY) > 0) {
+            return true;
+        }
+    }
+    for (size_t i = 0; i < ls->n_forwarding_groups; i++) {
+        if (nbrec_forwarding_group_row_get_seqno(ls->forwarding_groups[i],
+                                OVSDB_IDL_CHANGE_MODIFY) > 0) {
+            return true;
+        }
+    }
+    for (size_t i = 0; i < ls->n_load_balancer; i++) {
+        if (nbrec_load_balancer_row_get_seqno(ls->load_balancer[i],
+                                OVSDB_IDL_CHANGE_MODIFY) > 0) {
+            return true;
+        }
+    }
+    for (size_t i = 0; i < ls->n_load_balancer_group; i++) {
+        if (nbrec_load_balancer_group_row_get_seqno(ls->load_balancer_group[i],
+                                OVSDB_IDL_CHANGE_MODIFY) > 0) {
+            return true;
+        }
+    }
+    for (size_t i = 0; i < ls->n_qos_rules; i++) {
+        if (nbrec_qos_row_get_seqno(ls->qos_rules[i],
+                                OVSDB_IDL_CHANGE_MODIFY) > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Return true if changes are handled incrementally, false otherwise.
+ * When there are any changes, try to track what's exactly changed and set
+ * northd_data->change_tracked accordingly: change tracked - true, otherwise,
+ * false. */
+bool
+northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                         const struct northd_input *ni,
+                         struct northd_data *nd)
+{
+    const struct nbrec_logical_switch *changed_ls;
+    struct ls_change *ls_change = NULL;
+
+    NBREC_LOGICAL_SWITCH_TABLE_FOR_EACH_TRACKED (changed_ls,
+                                             ni->nbrec_logical_switch_table) {
+        ls_change = NULL;
+        if (nbrec_logical_switch_is_new(changed_ls) ||
+            nbrec_logical_switch_is_deleted(changed_ls)) {
+            goto fail;
+        }
+        struct ovn_datapath *od = ovn_datapath_find(
+                                    &nd->ls_datapaths.datapaths,
+                                    &changed_ls->header_.uuid);
+        if (!od) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_WARN_RL(&rl, "Internal error: a tracked updated LS doesn't "
+                         "exist in ls_datapaths: "UUID_FMT,
+                         UUID_ARGS(&changed_ls->header_.uuid));
+            goto fail;
+        }
+
+        /* Now only able to handle lsp changes. */
+        if (check_ls_changes_other_than_lsp(changed_ls)) {
+            goto fail;
+        }
+
+        ls_change = xzalloc(sizeof *ls_change);
+        ls_change->od = od;
+        ovs_list_init(&ls_change->added_ports);
+        ovs_list_init(&ls_change->deleted_ports);
+        ovs_list_init(&ls_change->updated_ports);
+
+        struct ovn_port *op;
+        HMAP_FOR_EACH (op, dp_node, &od->ports) {
+            op->visited = false;
+        }
+
+        /* Compare the individual ports in the old and new Logical Switches */
+        for (size_t j = 0; j < changed_ls->n_ports; ++j) {
+            struct nbrec_logical_switch_port *new_nbsp = changed_ls->ports[j];
+            op = ovn_port_find_in_datapath(od, new_nbsp->name);
+
+            if (!op) {
+                if (!lsp_can_be_inc_processed(new_nbsp)) {
+                    goto fail;
+                }
+                op = ls_port_create(ovnsb_idl_txn, &nd->ls_ports,
+                                    new_nbsp->name, new_nbsp, od, NULL,
+                                    ni->sbrec_mirror_table,
+                                    ni->sbrec_chassis_table,
+                                    ni->sbrec_chassis_by_name,
+                                    ni->sbrec_chassis_by_hostname);
+                if (!op) {
+                    goto fail;
+                }
+                ovs_list_push_back(&ls_change->added_ports,
+                                   &op->list);
+            } else if (ls_port_has_changed(op->nbsp, new_nbsp)) {
+                /* Existing port updated */
+                bool temp = false;
+                if (lsp_is_type_changed(op->sb, new_nbsp, &temp) ||
+                    !op->lsp_can_be_inc_processed ||
+                    !lsp_can_be_inc_processed(new_nbsp)) {
+                    goto fail;
+                }
+                const struct sbrec_port_binding *sb = op->sb;
+                if (sset_contains(&nd->svc_monitor_lsps, new_nbsp->name)) {
+                    /* This port is used for svc monitor, which may be impacted
+                     * by this change. Fallback to recompute. */
+                    goto fail;
+                }
+                ovn_port_destroy(&nd->ls_ports, op);
+                op = ls_port_create(ovnsb_idl_txn, &nd->ls_ports,
+                                    new_nbsp->name, new_nbsp, od, sb,
+                                    ni->sbrec_mirror_table,
+                                    ni->sbrec_chassis_table,
+                                    ni->sbrec_chassis_by_name,
+                                    ni->sbrec_chassis_by_hostname);
+                if (!op) {
+                    goto fail;
+                }
+                ovs_list_push_back(&ls_change->updated_ports, &op->list);
+            }
+            op->visited = true;
+        }
+
+        /* Check for deleted ports */
+        HMAP_FOR_EACH_SAFE (op, dp_node, &od->ports) {
+            if (!op->visited) {
+                if (!op->lsp_can_be_inc_processed) {
+                    goto fail;
+                }
+                if (sset_contains(&nd->svc_monitor_lsps, op->key)) {
+                    /* This port was used for svc monitor, which may be
+                     * impacted by this deletion. Fallback to recompute. */
+                    goto fail;
+                }
+                ovs_list_push_back(&ls_change->deleted_ports,
+                                   &op->list);
+                hmap_remove(&nd->ls_ports, &op->key_node);
+                hmap_remove(&od->ports, &op->dp_node);
+                sbrec_port_binding_delete(op->sb);
+                delete_fdb_entry(ni->sbrec_fdb_by_dp_and_port, od->tunnel_key,
+                                 op->tunnel_key);
+            }
+        }
+
+        if (!ovs_list_is_empty(&ls_change->added_ports) ||
+            !ovs_list_is_empty(&ls_change->updated_ports) ||
+            !ovs_list_is_empty(&ls_change->deleted_ports)) {
+            ovs_list_push_back(&nd->tracked_ls_changes.updated,
+                               &ls_change->list_node);
+        } else {
+            free(ls_change);
+        }
+    }
+
+    if (!ovs_list_is_empty(&nd->tracked_ls_changes.updated)) {
+        nd->change_tracked = true;
+    }
+    return true;
+
+fail:
+    free(ls_change);
+    destroy_northd_data_tracked_changes(nd);
+    return false;
 }
 
 struct multicast_group {
@@ -6072,7 +6476,7 @@ build_interconn_mcast_snoop_flows(struct ovn_datapath *od,
 
     struct ovn_port *op;
 
-    LIST_FOR_EACH (op, dp_node, &od->port_list) {
+    HMAP_FOR_EACH (op, dp_node, &od->ports) {
         if (!lsp_is_remote(op->nbsp)) {
             continue;
         }
@@ -12394,7 +12798,7 @@ build_mcast_lookup_flows_for_lrouter(
          * own mac addresses.
          */
         struct ovn_port *op;
-        LIST_FOR_EACH (op, dp_node, &od->port_list) {
+        HMAP_FOR_EACH (op, dp_node, &od->ports) {
             ds_clear(match);
             ds_put_format(match, "eth.src == %s && igmp",
                           op->lrp_networks.ea_s);
@@ -16476,9 +16880,6 @@ destroy_datapaths_and_ports(struct ovn_datapaths *ls_datapaths,
         }
     }
 
-    ovn_datapaths_destroy(ls_datapaths);
-    ovn_datapaths_destroy(lr_datapaths);
-
     struct ovn_port *port;
     HMAP_FOR_EACH_SAFE (port, key_node, ls_ports) {
         ovn_port_destroy(ls_ports, port);
@@ -16489,6 +16890,9 @@ destroy_datapaths_and_ports(struct ovn_datapaths *ls_datapaths,
         ovn_port_destroy(lr_ports, port);
     }
     hmap_destroy(lr_ports);
+
+    ovn_datapaths_destroy(ls_datapaths);
+    ovn_datapaths_destroy(lr_datapaths);
 }
 
 void
@@ -16510,6 +16914,8 @@ northd_init(struct northd_data *data)
     };
     data->ovn_internal_version_changed = false;
     sset_init(&data->svc_monitor_lsps);
+    data->change_tracked = false;
+    ovs_list_init(&data->tracked_ls_changes.updated);
 }
 
 void
@@ -16976,6 +17382,7 @@ void northd_run(struct northd_input *input_data,
                 struct ovsdb_idl_txn *ovnnb_txn,
                 struct ovsdb_idl_txn *ovnsb_txn)
 {
+    COVERAGE_INC(northd_run);
     stopwatch_start(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
     ovnnb_db_run(input_data, data, ovnnb_txn, ovnsb_txn);
     stopwatch_stop(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());

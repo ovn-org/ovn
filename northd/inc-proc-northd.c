@@ -128,7 +128,7 @@ enum sb_engine_node {
 
 /* Define engine nodes for other nodes. They should be defined as static to
  * avoid sparse errors. */
-static ENGINE_NODE(northd, "northd");
+static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(northd, "northd");
 static ENGINE_NODE(lflow, "lflow");
 static ENGINE_NODE(mac_binding_aging, "mac_binding_aging");
 static ENGINE_NODE(mac_binding_aging_waker, "mac_binding_aging_waker");
@@ -143,7 +143,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
      * on the second argument */
     engine_add_input(&en_northd, &en_nb_nb_global,
                      northd_nb_nb_global_handler);
-    engine_add_input(&en_northd, &en_nb_logical_switch, NULL);
+    engine_add_input(&en_northd, &en_nb_logical_switch,
+                     northd_nb_logical_switch_handler);
     engine_add_input(&en_northd, &en_nb_port_group, NULL);
     engine_add_input(&en_northd, &en_nb_load_balancer, NULL);
     engine_add_input(&en_northd, &en_nb_load_balancer_group, NULL);
@@ -251,6 +252,13 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_ovsdb_node_add_index(&en_sb_address_set,
                                 "sbrec_address_set_by_name",
                                 sbrec_address_set_by_name);
+
+    struct ovsdb_idl_index *sbrec_fdb_by_dp_and_port
+        = ovsdb_idl_index_create2(sb->idl, &sbrec_fdb_col_dp_key,
+                                  &sbrec_fdb_col_port_key);
+    engine_ovsdb_node_add_index(&en_sb_fdb,
+                                "sbrec_fdb_by_dp_and_port",
+                                sbrec_fdb_by_dp_and_port);
 
     struct northd_data *northd_data =
         engine_get_internal_data(&en_northd);

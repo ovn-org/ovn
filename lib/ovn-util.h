@@ -167,6 +167,7 @@ bool ovn_add_tnlid(struct hmap *set, uint32_t tnlid);
 bool ovn_tnlid_present(struct hmap *tnlids, uint32_t tnlid);
 uint32_t ovn_allocate_tnlid(struct hmap *set, const char *name, uint32_t min,
                             uint32_t max, uint32_t *hint);
+bool ovn_free_tnlid(struct hmap *tnlids, uint32_t tnlid);
 
 static inline void
 get_unique_lport_key(uint64_t dp_tunnel_key, uint64_t lport_tunnel_key,
