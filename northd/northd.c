@@ -9898,6 +9898,7 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
                                        lb->selection_fields, false,
                                        features->ct_no_masked_label);
     bool drop = !!strncmp(ds_cstr(action), "ct_lb", strlen("ct_lb"));
+    const char *enclose = drop ? "" : ");";
     if (!drop) {
         /* Remove the trailing ");". */
         ds_truncate(action, action->length - 2);
@@ -9923,8 +9924,8 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
         const char *skip_snat = features->ct_lb_related && !drop
                                 ? "; skip_snat"
                                 : "";
-        skip_snat_new_action = xasprintf("flags.skip_snat_for_lb = 1; %s%s);",
-                                         ds_cstr(action), skip_snat);
+        skip_snat_new_action = xasprintf("flags.skip_snat_for_lb = 1; %s%s%s",
+                                         ds_cstr(action), skip_snat, enclose);
         skip_snat_est_action = xasprintf("flags.skip_snat_for_lb = 1; "
                                          "next;");
     }
@@ -9987,11 +9988,9 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     const char *force_snat = features->ct_lb_related && !drop
                              ? "; force_snat"
                              : "";
-    force_snat_new_action = xasprintf("flags.force_snat_for_lb = 1; %s%s);",
-                                      ds_cstr(action), force_snat);
-    if (!drop) {
-        ds_put_cstr(action, ");");
-    }
+    force_snat_new_action = xasprintf("flags.force_snat_for_lb = 1; %s%s%s",
+                                      ds_cstr(action), force_snat, enclose);
+    ds_put_cstr(action, enclose);
 
     for (size_t i = 0; i < lb->n_nb_lr; i++) {
         struct ovn_datapath *od = lb->nb_lr[i];
