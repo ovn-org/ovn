@@ -2271,8 +2271,8 @@ add_lb_ct_snat_hairpin_vip_flow(struct ovn_controller_lb *lb,
         }
     }
 
-    match_set_nw_proto(&match, lb_proto);
     if (lb_vip->vip_port) {
+        match_set_nw_proto(&match, lb_proto);
         if (!lb->hairpin_orig_tuple) {
             match_set_ct_nw_proto(&match, lb_proto);
             match_set_ct_tp_dst(&match, htons(lb_vip->vip_port));
@@ -2280,6 +2280,12 @@ add_lb_ct_snat_hairpin_vip_flow(struct ovn_controller_lb *lb,
             match_set_reg_masked(&match, MFF_LOG_LB_ORIG_TP_DPORT - MFF_REG0,
                                  lb_vip->vip_port, UINT16_MAX);
         }
+    } else {
+        /* If L4 ports are not specified for the current LB, we will decrease
+         * the flow priority in order to not collide with other LBs with more
+         * fine-grained configuration.
+         */
+        priority -= 10;
     }
 
     /* We need to "add_or_append" flows because this match may form part
