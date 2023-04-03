@@ -70,15 +70,23 @@ jobs:
       if: github.event_name == 'schedule'
       uses: actions/checkout@v3
 
-    # Weekly runs test using OVS master instead of the
-    # submodule.
-    - name: checkout OVS master
+    # Weekly runs test using the tip of the most recent stable OVS branch
+    # instead of the submodule.
+    - name: checkout OVS
       if: github.event_name == 'schedule'
       uses: actions/checkout@v3
       with:
         repository: 'openvswitch/ovs'
+        fetch-depth: 0
         path: 'ovs'
-        ref: 'master'
+
+    - name: checkout OVS most recent stable branch.
+      if: github.event_name == 'schedule'
+      run: |
+        git checkout \
+          $(git branch -a -l '*branch-*' | sed 's/remotes\/origin\///' | \
+            sort -V | tail -1)
+      working-directory: ovs
 
     - name: update APT cache
       run:  sudo apt update
@@ -156,15 +164,22 @@ jobs:
     - name: checkout without submodule
       if: github.event_name == 'schedule'
       uses: actions/checkout@v3
-    # Weekly runs test using OVS master instead of the
-    # submodule.
-    - name: checkout OVS master
+    # Weekly runs test using the tip of the most recent stable OVS branch
+    # instead of the submodule.
+    - name: checkout OVS
       if: github.event_name == 'schedule'
       uses: actions/checkout@v3
       with:
         repository: 'openvswitch/ovs'
+        fetch-depth: 0
         path: 'ovs'
-        ref: 'master'
+    - name: checkout OVS most recent stable branch.
+      if: github.event_name == 'schedule'
+      run: |
+        git checkout \
+          $(git branch -a -l '*branch-*' | sed 's/remotes\/origin\///' | \
+            sort -V | tail -1)
+      working-directory: ovs
     - name: install dependencies
       run:  brew install automake libtool
     - name: update PATH
