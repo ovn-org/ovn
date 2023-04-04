@@ -559,7 +559,7 @@ free_chassis_queueid(struct hmap *set, const struct uuid *uuid,
 static inline bool
 port_has_qos_params(const struct smap *opts)
 {
-    return (smap_get(opts, "qos_max_rate") ||
+    return (smap_get(opts, "qos_max_rate") || smap_get(opts, "qos_min_rate") ||
             smap_get(opts, "qos_burst"));
 }
 
