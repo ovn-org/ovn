@@ -15,21 +15,23 @@
  */
 
 #include <config.h>
+#include "bitmap.h"
 #include "byte-order.h"
-#include "openvswitch/json.h"
+#include "hmapx.h"
 #include "nx-match.h"
 #include "openvswitch/dynamic-string.h"
+#include "openvswitch/json.h"
 #include "openvswitch/match.h"
 #include "openvswitch/ofp-actions.h"
-#include "openvswitch/vlog.h"
 #include "openvswitch/shash.h"
+#include "openvswitch/vlog.h"
+#include "ovn-util.h"
 #include "ovn/expr.h"
 #include "ovn/lex.h"
 #include "ovn/logical-fields.h"
 #include "simap.h"
 #include "sset.h"
 #include "util.h"
-#include "ovn-util.h"
 
 VLOG_DEFINE_THIS_MODULE(expr);
 
@@ -2520,6 +2522,198 @@ crush_and_string(struct expr *expr, const struct expr_symbol *symbol)
     return expr_fix(expr);
 }
 
+static int
+compare_cmps_3way(const struct expr *a, const struct expr *b)
+{
+    ovs_assert(a->cmp.symbol == b->cmp.symbol);
+    if (!a->cmp.symbol->width) {
+        return strcmp(a->cmp.string, b->cmp.string);
+    } else if (a->cmp.mask_n_bits != b->cmp.mask_n_bits) {
+        return a->cmp.mask_n_bits < b->cmp.mask_n_bits ? -1 : 1;
+    } else {
+        int d = memcmp(&a->cmp.value, &b->cmp.value, sizeof a->cmp.value);
+        if (!d) {
+            d = memcmp(&a->cmp.mask, &b->cmp.mask, sizeof a->cmp.mask);
+        }
+        return d;
+    }
+}
+
+static int
+compare_cmps_cb(const void *a_, const void *b_)
+{
+    const struct expr *const *ap = a_;
+    const struct expr *const *bp = b_;
+    const struct expr *a = *ap;
+    const struct expr *b = *bp;
+    return compare_cmps_3way(a, b);
+}
+
+/* Similar to mf_subvalue_intersect(), but only checks the possibility of
+ * intersection without producing a result. */
+static bool
+expr_bitmap_intersect_check(const unsigned long *a_value,
+                            const unsigned long *a_mask,
+                            const unsigned long *b_value,
+                            const unsigned long *b_mask,
+                            size_t bit_width)
+{
+    for (size_t i = 0; i < bitmap_n_longs(bit_width); i++) {
+        if ((a_value[i] ^ b_value[i]) & (a_mask[i] & b_mask[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* This function expects an OR expression with already crushed sub
+ * expressions, so they are plain comparisons.  Result is the same
+ * expression, but with unnecessary sub-expressions removed. */
+static struct expr *
+crush_or_supersets(struct expr *expr, const struct expr_symbol *symbol)
+{
+    ovs_assert(expr->type == EXPR_T_OR);
+
+    /* Calculate offset within subfield and a width that can be used
+     * in a bitmap. */
+    const size_t sz = CHAR_BIT * sizeof expr->cmp.value.be64[0];
+    const size_t bit_width = ROUND_UP(symbol->width, sz);
+    const size_t ofs = ARRAY_SIZE(expr->cmp.value.be64) - bit_width / sz;
+
+    /* Sort subexpressions by number of bits in the mask, value and the mask
+     * itself, to bring together duplicates and have expressions ordered by
+     * mask sizes. */
+    size_t n = ovs_list_size(&expr->andor);
+    struct expr **subs = xmalloc(n * sizeof *subs);
+    bool modified = false;
+    /* Linked list over the 'subs' array to quickly skip deleted elements,
+     * i.e. the index of the next potentially non-NULL element. */
+    size_t *next = xmalloc(n * sizeof *next);
+
+    size_t i = 0, j, max_n_bits = 0;
+    struct expr *sub;
+    LIST_FOR_EACH (sub, node, &expr->andor) {
+        if (symbol->width) {
+            const unsigned long *sub_mask;
+
+            sub_mask = (unsigned long *) &sub->cmp.mask.be64[ofs];
+            sub->cmp.mask_n_bits = bitmap_count1(sub_mask, bit_width);
+            max_n_bits = MAX(max_n_bits, sub->cmp.mask_n_bits);
+        }
+        next[i] = i + 1; /* Link 'i' -> 'i + 1'. */
+        subs[i++] = sub;
+    }
+    ovs_assert(i == n);
+
+    qsort(subs, n, sizeof *subs, compare_cmps_cb);
+
+    /* Eliminate duplicates. */
+    size_t last = 0;
+    for (i = 1; i < n; i++) {
+        if (compare_cmps_3way(subs[last], subs[i])) {
+            next[last] = i;
+            last = i;
+        } else {
+            expr_destroy(subs[i]);
+            subs[i] = NULL;
+            modified = true;
+        }
+    }
+
+    if (!symbol->width || symbol->level != EXPR_L_ORDINAL
+        || (!modified && expr->as_name)) {
+        /* Not a fully maskable field or this expression is tracking an
+         * address set.  Don't try to optimize to preserve address set I-P. */
+        goto done;
+    }
+
+    /* Build a mask size index.  'mask_index[n_bits]' is an index in 'subs',
+     * where expressions with 'n_bits' bits in mask start. */
+    size_t *mask_index, n_bits;
+    size_t index_size = (max_n_bits + 2) * sizeof *mask_index;
+
+    mask_index = xmalloc(index_size);
+    /* Initialize to maximum unsigned values. */
+    memset(mask_index, 0xff, index_size);
+
+    for (i = 0; i < n; i = next[i]) {
+        if (subs[i]) {
+            n_bits = subs[i]->cmp.mask_n_bits;
+            mask_index[n_bits] = MIN(mask_index[n_bits], i);
+        }
+    }
+
+    /* Fill the gaps, so they point to an index with more bits. */
+    for (i = max_n_bits; i > 0; i--) {
+        mask_index[i] = MIN(mask_index[i], mask_index[i + 1]);
+    }
+
+    /* Find and eliminate supersets. */
+    for (i = 0; i < n; i = next[i]) {
+        if (!subs[i]) {
+            continue;
+        }
+        /* 'subs' are sorted based on the number of bits in the mask.
+         * For an expression to be a subset, it has to have more bits. */
+        n_bits = subs[i]->cmp.mask_n_bits;
+        if (mask_index[n_bits + 1] > n) {
+            break;
+        }
+        for (last = 0, j = mask_index[n_bits + 1]; j < n; j = next[j]) {
+            struct expr *a = subs[i], *b = subs[j];
+
+            ovs_assert(i != j);
+            if (!b) {
+                continue;
+            }
+
+            const unsigned long *a_value, *a_mask, *b_value, *b_mask;
+            a_value = (unsigned long *) &a->cmp.value.be64[ofs];
+            b_value = (unsigned long *) &b->cmp.value.be64[ofs];
+            a_mask  = (unsigned long *) &a->cmp.mask.be64[ofs];
+            b_mask  = (unsigned long *) &b->cmp.mask.be64[ofs];
+
+            if (expr_bitmap_intersect_check(a_value, a_mask, b_value, b_mask,
+                                            bit_width)
+                && bitmap_is_superset(b_mask, a_mask, bit_width)) {
+                /* 'a' is the same expression with a smaller mask. */
+                expr_destroy(subs[j]);
+                subs[j] = NULL;
+                modified = true;
+
+                /* Shorten the path for the next round. */
+                if (last) {
+                    next[last] = next[j]; /* Skip the 'j'. */
+                } else {
+                    /* The first element with 'n_bits + 1' bits was removed. */
+                    mask_index[n_bits + 1] = next[j];
+                }
+            } else {
+                last = j; /* 'j' is the last non-NULL element seen. */
+            }
+        }
+    }
+    free(mask_index);
+
+done:
+    ovs_list_init(&expr->andor);
+    for (i = 0; i < n; i++) {
+        if (subs[i]) {
+            ovs_list_push_back(&expr->andor, &subs[i]->node);
+        }
+    }
+
+    if (modified) {
+        /* Members modified, so untrack address set. */
+        free(expr->as_name);
+        expr->as_name = NULL;
+    }
+
+    free(next);
+    free(subs);
+    return expr;
+}
+
 /* Implementation of crush_cmps() for expr->type == EXPR_T_AND and a
  * numeric-typed 'symbol'. */
 static struct expr *
@@ -2679,31 +2873,6 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
     }
 }
 
-static int
-compare_cmps_3way(const struct expr *a, const struct expr *b)
-{
-    ovs_assert(a->cmp.symbol == b->cmp.symbol);
-    if (!a->cmp.symbol->width) {
-        return strcmp(a->cmp.string, b->cmp.string);
-    } else {
-        int d = memcmp(&a->cmp.value, &b->cmp.value, sizeof a->cmp.value);
-        if (!d) {
-            d = memcmp(&a->cmp.mask, &b->cmp.mask, sizeof a->cmp.mask);
-        }
-        return d;
-    }
-}
-
-static int
-compare_cmps_cb(const void *a_, const void *b_)
-{
-    const struct expr *const *ap = a_;
-    const struct expr *const *bp = b_;
-    const struct expr *a = *ap;
-    const struct expr *b = *bp;
-    return compare_cmps_3way(a, b);
-}
-
 /* Implementation of crush_cmps() for expr->type == EXPR_T_OR. */
 static struct expr *
 crush_or(struct expr *expr, const struct expr_symbol *symbol)
@@ -2723,34 +2892,8 @@ crush_or(struct expr *expr, const struct expr_symbol *symbol)
         return expr;
     }
 
-    /* Sort subexpressions by value and mask, to bring together duplicates. */
-    size_t n = ovs_list_size(&expr->andor);
-    struct expr **subs = xmalloc(n * sizeof *subs);
+    expr = crush_or_supersets(expr, symbol);
 
-    size_t i = 0;
-    LIST_FOR_EACH (sub, node, &expr->andor) {
-        subs[i++] = sub;
-    }
-    ovs_assert(i == n);
-
-    qsort(subs, n, sizeof *subs, compare_cmps_cb);
-
-    /* Eliminate duplicates. */
-    ovs_list_init(&expr->andor);
-    ovs_list_push_back(&expr->andor, &subs[0]->node);
-    for (i = 1; i < n; i++) {
-        struct expr *a = expr_from_node(ovs_list_back(&expr->andor));
-        struct expr *b = subs[i];
-        if (compare_cmps_3way(a, b)) {
-            ovs_list_push_back(&expr->andor, &b->node);
-        } else {
-            expr_destroy(b);
-            /* Member modified, so untrack address set. */
-            free(expr->as_name);
-            expr->as_name = NULL;
-        }
-    }
-    free(subs);
     return expr_fix(expr);
 }
 

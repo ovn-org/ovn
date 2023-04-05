@@ -822,6 +822,18 @@ ip,nw_src=10.0.0.1,nw_dst=172.27.0.65
 ip,nw_src=10.0.0.2,nw_dst=172.27.0.65
 ip,nw_src=10.0.0.3,nw_dst=172.27.0.65
 ])
+AT_CHECK([expr_to_flow 'ip4.src == 172.168.13.0/16 && ip4.src != {172.168.13.0/24, 172.168.14.0/24}'], [0], [dnl
+ip,nw_src=172.168.0.0/255.255.3.0
+ip,nw_src=172.168.0.0/255.255.4.0
+ip,nw_src=172.168.0.0/255.255.8.0
+ip,nw_src=172.168.128.0/17
+ip,nw_src=172.168.16.0/255.255.16.0
+ip,nw_src=172.168.3.0/255.255.3.0
+ip,nw_src=172.168.32.0/255.255.32.0
+ip,nw_src=172.168.64.0/255.255.64.0
+])
+dnl Negative match flow explosion.
+AT_CHECK([test $(expr_to_flow 'ip4.src != {172.168.13.0/24, 172.168.14.0/24, 172.168.15.0/24}' | wc -l) -le 30])
 AT_CLEANUP
 
 AT_SETUP([converting expressions to flows -- port groups])

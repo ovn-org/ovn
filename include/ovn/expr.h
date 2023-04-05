@@ -384,6 +384,7 @@ struct expr {
                 struct {
                     union mf_subvalue value;
                     union mf_subvalue mask;
+                    size_t mask_n_bits;
                 };
             };
         } cmp;
