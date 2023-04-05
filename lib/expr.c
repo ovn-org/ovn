@@ -3003,7 +3003,7 @@ expr_sort(struct expr *expr)
     }
     free(subs);
 
-    return expr;
+    return expr ? expr : expr_create_boolean(true);
 }
 
 static struct expr *expr_normalize_or(struct expr *expr);
