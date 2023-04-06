@@ -386,6 +386,21 @@ chassis_tzones_overlap(const struct sset *transport_zones,
     return false;
 }
 
+static void
+clear_old_tunnels(const struct ovsrec_bridge *old_br_int, const char *prefix,
+                  size_t prefix_len)
+{
+    for (size_t i = 0; i < old_br_int->n_ports; i++) {
+        const struct ovsrec_port *port = old_br_int->ports[i];
+        const char *id = smap_get(&port->external_ids, "ovn-chassis-id");
+        if (id && !strncmp(port->name, prefix, prefix_len)) {
+            VLOG_DBG("Clearing old tunnel port \"%s\" (%s) from bridge "
+                     "\"%s\".", port->name, id, old_br_int->name);
+            ovsrec_bridge_update_ports_delvalue(old_br_int, port);
+        }
+    }
+}
+
 void
 encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
            const struct ovsrec_bridge *br_int,
@@ -393,10 +408,37 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
            const struct sbrec_chassis *this_chassis,
            const struct sbrec_sb_global *sbg,
            const struct ovsrec_open_vswitch_table *ovs_table,
-           const struct sset *transport_zones)
+           const struct sset *transport_zones,
+           const struct ovsrec_bridge_table *bridge_table,
+           const char *br_int_name)
 {
     if (!ovs_idl_txn || !br_int) {
         return;
+    }
+
+    if (!br_int_name) {
+        /* The controller has just started, we need to look through all
+         * bridges for old tunnel ports. */
+        char *tunnel_prefix = xasprintf("ovn%s-", get_chassis_idx(ovs_table));
+        size_t prefix_len = strlen(tunnel_prefix);
+
+        const struct ovsrec_bridge *br;
+        OVSREC_BRIDGE_TABLE_FOR_EACH (br, bridge_table) {
+            if (!strcmp(br->name, br_int->name)) {
+                continue;
+            }
+            clear_old_tunnels(br, tunnel_prefix, prefix_len);
+        }
+
+        free(tunnel_prefix);
+    } else if (strcmp(br_int_name, br_int->name)) {
+        /* The integration bridge was changed, clear tunnel ports from
+         * the old one. */
+        const struct ovsrec_bridge *old_br_int =
+            get_bridge(bridge_table, br_int_name);
+        if (old_br_int) {
+            clear_old_tunnels(old_br_int, "", 0);
+        }
     }
 
     const struct sbrec_chassis *chassis_rec;
