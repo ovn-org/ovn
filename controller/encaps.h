@@ -35,7 +35,9 @@ void encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
                 const struct sbrec_chassis *,
                 const struct sbrec_sb_global *,
                 const struct ovsrec_open_vswitch_table *,
-                const struct sset *transport_zones);
+                const struct sset *transport_zones,
+                const struct ovsrec_bridge_table *bridge_table,
+                const char *br_int_name);
 
 bool encaps_cleanup(struct ovsdb_idl_txn *ovs_idl_txn,
                     const struct ovsrec_bridge *br_int);
