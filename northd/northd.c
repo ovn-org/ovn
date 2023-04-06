@@ -10491,15 +10491,10 @@ copy_ra_to_sb(struct ovn_port *op, const char *address_mode)
 }
 
 static inline bool
-lrouter_nat_is_stateless(const struct nbrec_nat *nat)
+lrouter_dnat_and_snat_is_stateless(const struct nbrec_nat *nat)
 {
-    const char *stateless = smap_get(&nat->options, "stateless");
-
-    if (stateless && !strcmp(stateless, "true")) {
-        return true;
-    }
-
-    return false;
+    return smap_get_bool(&nat->options, "stateless", false) &&
+           !strcmp(nat->type, "dnat_and_snat");
 }
 
 /* Handles the match criteria and actions in logical flow
@@ -12279,8 +12274,7 @@ build_gateway_redirect_flows_for_lrouter(
         for (int j = 0; j < od->n_nat_entries; j++) {
             const struct ovn_nat *nat = &od->nat_entries[j];
 
-            if (!lrouter_nat_is_stateless(nat->nb) ||
-                strcmp(nat->nb->type, "dnat_and_snat") ||
+            if (!lrouter_dnat_and_snat_is_stateless(nat->nb) ||
                 (!nat->nb->allowed_ext_ips && !nat->nb->exempted_ext_ips)) {
                 continue;
             }
@@ -13056,13 +13050,13 @@ build_lrouter_in_unsnat_flow(struct hmap *lflows, struct ovn_datapath *od,
         return;
     }
 
-    bool stateless = lrouter_nat_is_stateless(nat);
+    bool stateless = lrouter_dnat_and_snat_is_stateless(nat);
     if (od->is_gw_router) {
         ds_clear(match);
         ds_clear(actions);
         ds_put_format(match, "ip && ip%s.dst == %s",
                       is_v6 ? "6" : "4", nat->external_ip);
-        if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
+        if (stateless) {
             ds_put_format(actions, "next;");
         } else {
             ds_put_cstr(actions, "ct_snat;");
@@ -13087,7 +13081,7 @@ build_lrouter_in_unsnat_flow(struct hmap *lflows, struct ovn_datapath *od,
                           l3dgw_port->cr_port->json_key);
         }
 
-        if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
+        if (stateless) {
             ds_put_format(actions, "next;");
         } else {
             ds_put_cstr(actions, "ct_snat_in_czone;");
@@ -13129,7 +13123,7 @@ build_lrouter_in_dnat_flow(struct hmap *lflows, struct ovn_datapath *od,
     * IP address that needs to be DNATted from a external IP address
     * to a logical IP address. */
     if (!strcmp(nat->type, "dnat") || !strcmp(nat->type, "dnat_and_snat")) {
-        bool stateless = lrouter_nat_is_stateless(nat);
+        bool stateless = lrouter_dnat_and_snat_is_stateless(nat);
 
         if (od->is_gw_router) {
             /* Packet when it goes from the initiator to destination.
@@ -13151,7 +13145,7 @@ build_lrouter_in_dnat_flow(struct hmap *lflows, struct ovn_datapath *od,
                 ds_put_format(actions, "flags.force_snat_for_dnat = 1; ");
             }
 
-            if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
+            if (stateless) {
                 ds_put_format(actions, "flags.loopback = 1; "
                               "ip%s.dst=%s; next;",
                               is_v6 ? "6" : "4", nat->logical_ip);
@@ -13241,8 +13235,7 @@ build_lrouter_out_undnat_flow(struct hmap *lflows, struct ovn_datapath *od,
                       ETH_ADDR_ARGS(mac));
     }
 
-    if (!strcmp(nat->type, "dnat_and_snat") &&
-        lrouter_nat_is_stateless(nat)) {
+    if (lrouter_dnat_and_snat_is_stateless(nat)) {
         ds_put_format(actions, "next;");
     } else {
         ds_put_format(actions,
@@ -13298,7 +13291,7 @@ build_lrouter_out_snat_flow(struct hmap *lflows, struct ovn_datapath *od,
         return;
     }
 
-    bool stateless = lrouter_nat_is_stateless(nat);
+    bool stateless = lrouter_dnat_and_snat_is_stateless(nat);
     if (od->is_gw_router) {
         ds_clear(match);
         ds_put_format(match, "ip && ip%s.src == %s",
@@ -13364,7 +13357,7 @@ build_lrouter_out_snat_flow(struct hmap *lflows, struct ovn_datapath *od,
                           ETH_ADDR_ARGS(mac));
         }
 
-        if (!strcmp(nat->type, "dnat_and_snat") && stateless) {
+        if (stateless) {
             ds_put_format(actions, "ip%s.src=%s; next;",
                           is_v6 ? "6" : "4", nat->external_ip);
         } else {
