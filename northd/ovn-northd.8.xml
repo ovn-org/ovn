@@ -3603,17 +3603,6 @@ icmp6 {
 
     <ul>
       <li>
-        For ICMPv4/ICMPv6 packet too big traffic, a priority-250 flow with
-        action <code>next;</code>.
-      </li>
-
-      <li>
-        If <code>use_ct_inv_match</code> is set, a priority-200 flow
-        matches <code>ip &amp;&amp; ct.trk &amp;&amp; ct.inv</code> with
-        action <code>drop;</code>.
-      </li>
-
-      <li>
         For all the configured load balancing rules for a logical router where
         a positive affinity timeout <var>T</var> is specified in <code>options
         </code> column, that includes a L4 port <var>PORT</var> of protocol
@@ -4959,17 +4948,6 @@ nd_ns {
     <p>
       Packets reaching this table are processed according to the flows below:
       <ul>
-        <li>
-          For ICMPv4/ICMPv6 packet too big traffic, a priority-150 flow with
-          action <code>next;</code>.
-        </li>
-
-        <li>
-          If <code>use_ct_inv_match</code> is set, a priority-100 flow
-          matches <code>ip &amp;&amp; ct.trk &amp;&amp; ct.inv</code> with
-          action <code>drop;</code>.
-        </li>
-
         <li>
           A priority-0 logical flow that matches all packets not already
           handled (match <code>1</code>) and action <code>next;</code>.
