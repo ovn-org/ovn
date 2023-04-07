@@ -13805,28 +13805,6 @@ build_lrouter_out_is_dnat_local(struct hmap *lflows, struct ovn_datapath *od,
 }
 
 static void
-build_lrouter_drop_ct_inv_flow(struct ovn_datapath *od, struct hmap *lflows)
-{
-    if (od->nbr && use_ct_inv_match) {
-        /* Advance ICMP Destination Unreachable - Fragmentation Needed
-         * packets and drop other packets which are ct tracked and invalid. */
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_LB_AFF_LEARN, 250,
-                      "((ip4 && icmp4.type == 3 && icmp4.code == 4) ||"
-                      " (ip6 && icmp6.type == 2 && icmp6.code == 0))",
-                      "next;");
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_LB_AFF_LEARN, 200,
-                      "ip && ct.trk && ct.inv", debug_drop_action());
-
-        ovn_lflow_add(lflows, od, S_ROUTER_OUT_POST_SNAT, 150,
-                      "((ip4 && icmp4.type == 3 && icmp4.code == 4) ||"
-                      " (ip6 && icmp6.type == 2 && icmp6.code == 0))",
-                      "next;");
-        ovn_lflow_add(lflows, od, S_ROUTER_OUT_POST_SNAT, 100,
-                      "ip && ct.trk && ct.inv", debug_drop_action());
-    }
-}
-
-static void
 build_lrouter_out_snat_flow(struct hmap *lflows, struct ovn_datapath *od,
                             const struct nbrec_nat *nat, struct ds *match,
                             struct ds *actions, bool distributed,
@@ -14613,7 +14591,6 @@ build_lswitch_and_lrouter_iterate_by_od(struct ovn_datapath *od,
     build_lrouter_nat_defrag_and_lb(od, lsi->lflows, lsi->ports, &lsi->match,
                                     &lsi->actions, lsi->meter_groups,
                                     lsi->features);
-    build_lrouter_drop_ct_inv_flow(od, lsi->lflows);
     build_lb_affinity_default_flows(od, lsi->lflows);
 }
 
