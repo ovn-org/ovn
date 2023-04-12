@@ -944,3 +944,169 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([SNAT in separate zone from DNAT])
+
+AT_SKIP_IF([test $HAVE_NC = no])
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# The goal of this test is to ensure that when traffic is first DNATted
+# (by way of a load balancer), and then SNATted, the SNAT happens in a
+# separate conntrack zone from the DNAT.
+
+start_daemon ovn-controller
+
+check ovn-nbctl ls-add public
+
+check ovn-nbctl lr-add r1
+check ovn-nbctl lrp-add r1 r1_public 00:de:ad:ff:00:01 172.16.0.1/16
+check ovn-nbctl lrp-add r1 r1_s1 00:de:ad:fe:00:01 173.0.1.1/24
+check ovn-nbctl lrp-set-gateway-chassis r1_public hv1
+
+check ovn-nbctl lb-add r1_lb 30.0.0.1 172.16.0.102
+check ovn-nbctl lr-lb-add r1 r1_lb
+
+check ovn-nbctl ls-add s1
+check ovn-nbctl lsp-add s1 s1_r1
+check ovn-nbctl lsp-set-type s1_r1 router
+check ovn-nbctl lsp-set-addresses s1_r1 router
+check ovn-nbctl lsp-set-options s1_r1 router-port=r1_s1
+
+check ovn-nbctl lsp-add s1 vm1
+check ovn-nbctl lsp-set-addresses vm1 "00:de:ad:01:00:01 173.0.1.2"
+
+check ovn-nbctl lsp-add public public_r1
+check ovn-nbctl lsp-set-type public_r1 router
+check ovn-nbctl lsp-set-addresses public_r1 router
+check ovn-nbctl lsp-set-options public_r1 router-port=r1_public nat-addresses=router
+
+check ovn-nbctl lr-add r2
+check ovn-nbctl lrp-add r2 r2_public 00:de:ad:ff:00:02 172.16.0.2/16
+check ovn-nbctl lrp-add r2 r2_s2 00:de:ad:fe:00:02 173.0.2.1/24
+check ovn-nbctl lr-nat-add r2 dnat_and_snat 172.16.0.102 173.0.2.2
+check ovn-nbctl lrp-set-gateway-chassis r2_public hv1
+
+check ovn-nbctl ls-add s2
+check ovn-nbctl lsp-add s2 s2_r2
+check ovn-nbctl lsp-set-type s2_r2 router
+check ovn-nbctl lsp-set-addresses s2_r2 router
+check ovn-nbctl lsp-set-options s2_r2 router-port=r2_s2
+
+check ovn-nbctl lsp-add s2 vm2
+check ovn-nbctl lsp-set-addresses vm2 "00:de:ad:01:00:02 173.0.2.2"
+
+check ovn-nbctl lsp-add public public_r2
+check ovn-nbctl lsp-set-type public_r2 router
+check ovn-nbctl lsp-set-addresses public_r2 router
+check ovn-nbctl lsp-set-options public_r2 router-port=r2_public nat-addresses=router
+
+ADD_NAMESPACES(vm1)
+ADD_VETH(vm1, vm1, br-int, "173.0.1.2/24", "00:de:ad:01:00:01", \
+         "173.0.1.1")
+ADD_NAMESPACES(vm2)
+ADD_VETH(vm2, vm2, br-int, "173.0.2.2/24", "00:de:ad:01:00:02", \
+         "173.0.2.1")
+
+check ovn-nbctl lr-nat-add r1 dnat_and_snat 172.16.0.101 173.0.1.2 vm1 00:00:00:01:02:03
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Create service that listens for TCP and UDP
+NETNS_DAEMONIZE([vm2], [nc -l -u 1234], [nc0.pid])
+NETNS_DAEMONIZE([vm2], [nc -l -k 1235], [nc1.pid])
+
+test_icmp() {
+    # Make sure that a ping works as expected
+    NS_CHECK_EXEC([vm1], [ping -c 3 -i 0.3 -w 2 30.0.0.1 | FORMAT_PING], \
+    [0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+    # Finally, make sure that conntrack shows two separate zones being used for
+    # DNAT and SNAT
+    AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | \
+    sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=173.0.1.2,dst=30.0.0.1,id=<cleared>,type=8,code=0),reply=(src=172.16.0.102,dst=173.0.1.2,id=<cleared>,type=0,code=0),zone=<cleared>,mark=2
+])
+
+    AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.0.102) | \
+    sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=172.16.0.101,dst=172.16.0.102,id=<cleared>,type=8,code=0),reply=(src=173.0.2.2,dst=172.16.0.101,id=<cleared>,type=0,code=0),zone=<cleared>
+icmp,orig=(src=173.0.1.2,dst=172.16.0.102,id=<cleared>,type=8,code=0),reply=(src=172.16.0.102,dst=172.16.0.101,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+}
+
+test_udp() {
+    NS_CHECK_EXEC([vm1], [nc -u 30.0.0.1 1234 -p 1222 -z])
+
+    AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | \
+    sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+udp,orig=(src=173.0.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.0.102,dst=173.0.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2
+])
+
+    AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.0.102) | \
+    sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+udp,orig=(src=172.16.0.101,dst=172.16.0.102,sport=<cleared>,dport=<cleared>),reply=(src=173.0.2.2,dst=172.16.0.101,sport=<cleared>,dport=<cleared>),zone=<cleared>
+udp,orig=(src=173.0.1.2,dst=172.16.0.102,sport=<cleared>,dport=<cleared>),reply=(src=172.16.0.102,dst=172.16.0.101,sport=<cleared>,dport=<cleared>),zone=<cleared>
+])
+}
+
+test_tcp() {
+    NS_CHECK_EXEC([vm1], [nc 30.0.0.1 1235 -z])
+
+    AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | \
+    sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+tcp,orig=(src=173.0.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.0.102,dst=173.0.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+])
+
+    AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.0.102) | \
+    sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+tcp,orig=(src=172.16.0.101,dst=172.16.0.102,sport=<cleared>,dport=<cleared>),reply=(src=173.0.2.2,dst=172.16.0.101,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=173.0.1.2,dst=172.16.0.102,sport=<cleared>,dport=<cleared>),reply=(src=172.16.0.102,dst=172.16.0.101,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+}
+
+for type in icmp udp tcp; do
+    AS_BOX([Testing $type])
+    # First time, when the packet needs to pass through pinctrl buffering
+    check ovs-appctl dpctl/flush-conntrack
+    ovn-sbctl --all destroy mac_binding
+    wait_row_count mac_binding 0
+    test_$type
+
+    # Second time with MAC binding being already set
+    check ovs-appctl dpctl/flush-conntrack
+    wait_row_count mac_binding 1 ip="172.16.0.102"
+    test_$type
+done
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])

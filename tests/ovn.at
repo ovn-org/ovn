@@ -33597,6 +33597,9 @@ check ovn-nbctl lrp-set-gateway-chassis lr0-ext hv1
 check ovn-nbctl lr-nat-add lr0 snat 172.16.0.2 10.0.0.0/24
 check ovn-nbctl lr-nat-add lr0 dnat 172.16.0.2 10.0.0.2
 
+# Use common zone
+check ovn-nbctl set nb_global . options:use_common_zone="true"
+
 check ovn-nbctl --wait=hv sync
 # Use constants so that if tables or registers change, this test can
 # be updated easily.

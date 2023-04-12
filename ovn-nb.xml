@@ -314,6 +314,15 @@
         </p>
       </column>
 
+      <column name="options" key="use_common_zone" type='{"type": "boolean"}'>
+        Default value is <code>false</code>. If set to <code>true</code>
+        the SNAT and DNAT happens in common zone, instead of happening in
+        separate zones, depending on the configuration. However, this option
+        breaks traffic when there is configuration of DGP + LB + SNAT on
+        this LR. The value <code>true</code> should be used only in case
+        of HWOL compatibility with GDP.
+      </column>
+
       <group title="Options for configuring interconnection route advertisement">
         <p>
           These options control how routes are advertised between OVN
