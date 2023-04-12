@@ -201,3 +201,53 @@ jobs:
       with:
         name: logs-osx-clang---disable-ssl
         path: config.log
+
+  build-linux-rpm:
+    name: linux rpm fedora
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+
+    steps:
+      - name: install dependencies
+        run: dnf install -y dnf-plugins-core git rpm-build
+
+      - name: checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: install build dependencies
+        run: |
+          sed -e 's/@VERSION@/0.0.1/' rhel/ovn-fedora.spec.in \
+          > /tmp/ovn.spec
+          dnf builddep -y /tmp/ovn.spec
+
+      - name: configure OvS
+        run: ./boot.sh && ./configure
+        working-directory: ovs
+
+      - name: make dist OvS
+        run: make dist
+        working-directory: ovs
+
+      - name: configure OVN
+        run:  ./boot.sh && ./configure
+
+      - name: make dist OVN
+        run: make dist
+
+      - name: build RPM
+        run:  make rpm-fedora
+
+      - name: upload rpm packages
+        uses: actions/upload-artifact@v3
+        with:
+          name: rpm-packages
+          path: |
+            rpm/rpmbuild/SRPMS/*.rpm
+            rpm/rpmbuild/RPMS/*/*.rpm
+          retention-days: 14
