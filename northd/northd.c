@@ -5875,7 +5875,8 @@ build_pre_acls(struct ovn_datapath *od, const struct hmap *port_groups,
         }
         for (size_t i = 0; i < od->n_localnet_ports; i++) {
             skip_port_from_conntrack(od, od->localnet_ports[i],
-                                     S_SWITCH_IN_PRE_ACL, S_SWITCH_OUT_PRE_ACL,
+                                     S_SWITCH_IN_PRE_ACL,
+                                     S_SWITCH_OUT_PRE_ACL,
                                      110, lflows);
         }
 
@@ -6002,10 +6003,17 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows)
                                  S_SWITCH_IN_PRE_LB, S_SWITCH_OUT_PRE_LB,
                                  110, lflows);
     }
-    for (size_t i = 0; i < od->n_localnet_ports; i++) {
-        skip_port_from_conntrack(od, od->localnet_ports[i],
-                                 S_SWITCH_IN_PRE_LB, S_SWITCH_OUT_PRE_LB,
-                                 110, lflows);
+    /* Localnet ports have no need for going through conntrack, unless
+     * the logical switch has a load balancer. Then, conntrack is necessary
+     * so that traffic arriving via the localnet port can be load
+     * balanced.
+     */
+    if (!od->has_lb_vip) {
+        for (size_t i = 0; i < od->n_localnet_ports; i++) {
+            skip_port_from_conntrack(od, od->localnet_ports[i],
+                                     S_SWITCH_IN_PRE_LB, S_SWITCH_OUT_PRE_LB,
+                                     110, lflows);
+        }
     }
 
     /* 'REGBIT_CONNTRACK_NAT' is set to let the pre-stateful table send
