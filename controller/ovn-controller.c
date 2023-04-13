@@ -668,7 +668,7 @@ get_snat_ct_zone(const struct sbrec_datapath_binding *dp)
 }
 
 static void
-update_ct_zones(const struct shash *binding_lports,
+update_ct_zones(const struct sset *local_lports,
                 const struct hmap *local_datapaths,
                 struct simap *ct_zones, unsigned long *ct_zone_bitmap,
                 struct shash *pending_ct_zones)
@@ -681,9 +681,9 @@ update_ct_zones(const struct shash *binding_lports,
     unsigned long unreq_snat_zones_map[BITMAP_N_LONGS(MAX_CT_ZONES)];
     struct simap unreq_snat_zones = SIMAP_INITIALIZER(&unreq_snat_zones);
 
-    struct shash_node *shash_node;
-    SHASH_FOR_EACH (shash_node, binding_lports) {
-        sset_add(&all_users, shash_node->name);
+    const char *local_lport;
+    SSET_FOR_EACH (local_lport, local_lports) {
+        sset_add(&all_users, local_lport);
     }
 
     /* Local patched datapath (gateway routers) need zones assigned. */
@@ -2328,7 +2328,7 @@ en_ct_zones_run(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("OVS_bridge", node));
 
     restore_ct_zones(bridge_table, ovs_table, ct_zones_data);
-    update_ct_zones(&rt_data->lbinding_data.lports, &rt_data->local_datapaths,
+    update_ct_zones(&rt_data->local_lports, &rt_data->local_datapaths,
                     &ct_zones_data->current, ct_zones_data->bitmap,
                     &ct_zones_data->pending);
 
@@ -2418,8 +2418,10 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
         SHASH_FOR_EACH (shash_node, &tdp->lports) {
             struct tracked_lport *t_lport = shash_node->data;
             if (strcmp(t_lport->pb->type, "")
-                && strcmp(t_lport->pb->type, "localport")) {
-                /* We allocate zone-id's only to VIF and localport lports. */
+                && strcmp(t_lport->pb->type, "localport")
+                && strcmp(t_lport->pb->type, "localnet")) {
+                /* We allocate zone-id's only to VIF, localport, and localnet
+                 * lports. */
                 continue;
             }
 
