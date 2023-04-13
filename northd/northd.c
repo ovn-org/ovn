@@ -12349,6 +12349,24 @@ build_misc_local_traffic_drop_flows_for_lrouter(
         ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 50,
                       "eth.bcast", "drop;");
 
+        /* Avoid ICMP time exceeded for multicast, silent drop instead.
+         * See RFC1812 section 5.3.1:
+         *  If the TTL is reduced to zero (or less), the packet MUST be
+         *  discarded, and if the destination is NOT A MULTICAST address the
+         *  router MUST send an ICMP Time Exceeded message ...
+         *
+         * The reason behind is that TTL has special meanings for multicast.
+         * For example, TTL = 1 means restricted to the same subnet, not
+         * forwarded by the router. So it is very common to see multicast
+         * packets with ttl = 1, and generating ICMP for such packets is
+         * harmful from both slowpath performance and functionality point of
+         * view.
+         *
+         * (priority-31 flows will send ICMP time exceeded) */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 32,
+                      "ip.ttl == {0, 1} && !ip.later_frag && "
+                      "(ip4.mcast || ip6.mcast)", "drop;");
+
         /* TTL discard */
         ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 30,
                       "ip.ttl == {0, 1}", "drop;");
@@ -12535,7 +12553,7 @@ build_ipv6_input_flows_for_lrouter_port(
                           "outport = %s; flags.loopback = 1; output; };",
                           ds_cstr(&ip_ds), op->json_key);
             ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                    100, ds_cstr(match), ds_cstr(actions), NULL,
+                    31, ds_cstr(match), ds_cstr(actions), NULL,
                     copp_meter_get(COPP_ICMP6_ERR, op->od->nbr->copp,
                                    meter_groups),
                     &op->nbrp->header_);
@@ -12663,7 +12681,7 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
                           "outport = %s; flags.loopback = 1; output; };",
                           ds_cstr(&ip_ds), op->json_key);
             ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                    100, ds_cstr(match), ds_cstr(actions), NULL,
+                    31, ds_cstr(match), ds_cstr(actions), NULL,
                     copp_meter_get(COPP_ICMP4_ERR, op->od->nbr->copp,
                                    meter_groups),
                     &op->nbrp->header_);
