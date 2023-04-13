@@ -13,7 +13,6 @@ RUN apt update -y \
         clang \
         ethtool \
         gcc \
-        gcc-multilib \
         git \
         init \
         iproute2 \
