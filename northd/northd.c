@@ -13109,7 +13109,7 @@ build_misc_local_traffic_drop_flows_for_lrouter(
 
     /* TTL discard */
     ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 30,
-                  "ip4 && ip.ttl == {0, 1}", debug_drop_action());
+                  "ip.ttl == {0, 1}", debug_drop_action());
 
     /* Pass other traffic not already handled to the next table for
      * routing. */

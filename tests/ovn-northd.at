@@ -6785,7 +6785,7 @@ AT_CHECK([grep -e 'lr_in_ip_input    ' lrflows | grep -e 'igmp' -e 'mld' -e 'ip.
   table=??(lr_in_ip_input     ), priority=100  , match=(inport == "lrp1" && ip6 && ip6.src == 1010::/64 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp6 {eth.dst <-> eth.src; ip6.dst = ip6.src; ip6.src = 1010::1 ; ip.ttl = 254; icmp6.type = 3; /* Time exceeded */ icmp6.code = 0; /* TTL exceeded in transit */ outport = "lrp1"; flags.loopback = 1; output; };)
   table=??(lr_in_ip_input     ), priority=100  , match=(inport == "lrp2" && ip4 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp4 {eth.dst <-> eth.src; icmp4.type = 11; /* Time exceeded */ icmp4.code = 0; /* TTL exceeded in transit */ ip4.dst = ip4.src; ip4.src = 20.20.20.1 ; ip.ttl = 254; outport = "lrp2"; flags.loopback = 1; output; };)
   table=??(lr_in_ip_input     ), priority=100  , match=(inport == "lrp2" && ip6 && ip6.src == 2020::/64 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp6 {eth.dst <-> eth.src; ip6.dst = ip6.src; ip6.src = 2020::1 ; ip.ttl = 254; icmp6.type = 3; /* Time exceeded */ icmp6.code = 0; /* TTL exceeded in transit */ outport = "lrp2"; flags.loopback = 1; output; };)
-  table=??(lr_in_ip_input     ), priority=30   , match=(ip4 && ip.ttl == {0, 1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=30   , match=(ip.ttl == {0, 1}), action=(drop;)
 ])
 
 dnl Flows to "route" (statically forward) without decrementing TTL for
