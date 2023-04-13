@@ -8808,3 +8808,62 @@ mac_binding_timestamp: true
 
 AT_CLEANUP
 ])
+
+AT_SETUP([Localnet ports on LS with LB])
+ovn_start
+# In the past, traffic arriving on localnet ports has skipped conntrack.
+# This test ensures that we still skip conntrack for localnet ports,
+# *except* for the case where the logical switch has a load balancer
+# configured. In this case, the localnet port will not skip conntrack,
+# allowing for traffic to be load balanced on the localnet port.
+
+check ovn-nbctl ls-add sw
+check ovn-nbctl lsp-add sw sw-ln
+check ovn-nbctl lsp-set-type sw-ln localnet
+check ovn-nbctl lsp-set-addresses sw-ln unknown
+check ovn-nbctl --wait=sb sync
+
+# Since this test is only concerned with logical flows, we don't need to
+# configure anything else that we normally would with regards to localnet
+# ports
+
+
+# First, ensure that conntrack is skipped for the localnet port since there
+# isn't a load balancer configured.
+
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_pre_lb | grep priority=110 | grep sw-ln | sed 's/table=../table=??/'], [0], [dnl
+  table=??(ls_in_pre_lb       ), priority=110  , match=(ip && inport == "sw-ln"), action=(next;)
+])
+
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_out_pre_lb | grep priority=110 | grep sw-ln | sed 's/table=../table=??/'], [0], [dnl
+  table=??(ls_out_pre_lb      ), priority=110  , match=(ip && outport == "sw-ln"), action=(ct_clear; next;)
+])
+
+# Now add a load balancer and ensure that we no longer are skipping conntrack
+# for the localnet port
+
+check ovn-nbctl lb-add lb 10.0.0.1:80 10.0.0.100:8080 tcp
+check ovn-nbctl ls-lb-add sw lb
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_pre_lb | grep priority=110 | grep sw-ln | sed 's/table=../table=??/'], [0], [dnl
+])
+
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_out_pre_lb | grep priority=110 | grep sw-ln | sed 's/table=../table=??/'], [0], [dnl
+])
+
+# And ensure that removing the load balancer from the switch results in skipping
+# conntrack again
+check ovn-nbctl ls-lb-del sw lb
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_pre_lb | grep priority=110 | grep sw-ln | sed 's/table=../table=??/'], [0], [dnl
+  table=??(ls_in_pre_lb       ), priority=110  , match=(ip && inport == "sw-ln"), action=(next;)
+])
+
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_out_pre_lb | grep priority=110 | grep sw-ln | sed 's/table=../table=??/'], [0], [dnl
+  table=??(ls_out_pre_lb      ), priority=110  , match=(ip && outport == "sw-ln"), action=(ct_clear; next;)
+])
+
+AT_CLEANUP
+])
