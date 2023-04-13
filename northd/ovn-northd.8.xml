@@ -3092,9 +3092,17 @@ nd.tll = <var>external_mac</var>;
       </li>
 
       <li>
+        Avoid ICMP time exceeded for multicast.  A priority-32 flow with match
+        <code>ip.ttl == {0, 1} &amp;&amp; !ip.later_frag &amp;&amp;
+        (ip4.mcast || ip6.mcast)</code> and actions <code>drop;</code> drops
+        multicast packets whose TTL has expired without sending ICMP time
+        exceeded.
+      </li>
+
+      <li>
         <p>
           ICMP time exceeded.  For each router port <var>P</var>, whose IP
-          address is <var>A</var>, a priority-100 flow with match <code>inport
+          address is <var>A</var>, a priority-31 flow with match <code>inport
           == <var>P</var> &amp;&amp; ip.ttl == {0, 1} &amp;&amp;
           !ip.later_frag</code> matches packets whose TTL has expired, with the
           following actions to send an ICMP time exceeded reply for IPv4 and
