@@ -34,6 +34,12 @@ function configure_gcc()
         # Adding m32 flag directly to CC to avoid any possible issues
         # with API/ABI difference on 'configure' and 'make' stages.
         export CC="$CC -m32"
+        if which apt; then
+            # We should install gcc-multilib for x86 build, we cannot
+            # do it directly because gcc-multilib is not available
+            # for arm64
+            sudo apt install -y gcc-multilib
+        fi
     fi
 }
 
@@ -80,6 +86,7 @@ function execute_system_tests()
           exit 1
       fi
 }
+
 
 configure_$CC
 
