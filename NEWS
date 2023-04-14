@@ -1,5 +1,7 @@
 OVN v22.06.2 - xx xxx xxxx
 --------------------------
+  - Always allow IPv6 Router Discovery, Neighbor Discovery, and Multicast
+    Listener Discovery protocols, regardless of ACLs defined.
 
 OVN v22.06.1 - 20 Dec 2022
 --------------------------
