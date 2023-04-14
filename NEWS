@@ -12,6 +12,8 @@ Post v23.03.0
     target mac address matches. Arp requests matching no Logical Router will
     only be forwarded to non-router ports. Default is true which keeps the
     existing behaviour of flooding these arp requests to all attached Ports.
+  - Always allow IPv6 Router Discovery, Neighbor Discovery, and Multicast
+    Listener Discovery protocols, regardless of ACLs defined.
 
 OVN v23.03.0 - 03 Mar 2023
 --------------------------

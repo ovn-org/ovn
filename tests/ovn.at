@@ -13899,6 +13899,133 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([allow IPv6 RA / NA / MLD by default])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+lsp_mac_prefix=50:64:00:00:00:0
+lsp_ip_prefix=10.0.0.
+lsp_ip6_prefix=aef0::5264:00ff:fe00:000
+
+check ovn-nbctl ls-add ls0
+for i in 1 2; do
+  check ovn-nbctl lsp-add ls0 lsp$i
+  check ovn-nbctl lsp-set-addresses lsp$i \
+    "${lsp_mac_prefix}$i ${lsp_ip_prefix}$i ${lsp_ip6_prefix}$i"
+
+  # forbid all traffic for the ports
+  check ovn-nbctl acl-add ls0 \
+      from-lport 1000 "inport == \"lsp$i\"" drop
+  check ovn-nbctl --apply-after-lb acl-add ls0\
+      from-lport 1000 "inport == \"lsp$i\"" drop
+  check ovn-nbctl acl-add ls0 \
+      to-lport 1000 "outport == \"lsp$i\"" drop
+
+  check ovs-vsctl -- add-port br-int vif$i -- \
+      set interface vif$i external-ids:iface-id=lsp$i \
+      options:tx_pcap=hv1/vif$i-tx.pcap \
+      options:rxq_pcap=hv1/vif$i-rx.pcap
+  : > $i.expected
+done
+
+router_mac=fa:16:3e:00:00:01
+router_prefix=fdad:1234:5678::
+router_ip=${router_prefix}1
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lrp0 ${router_mac} ${router_ip}/64
+check ovn-nbctl set Logical_Router_Port lrp0 ipv6_ra_configs:address_mode="slaac"
+check ovn-nbctl \
+    -- lsp-add ls0 rp0 \
+    -- set Logical_Switch_Port rp0 type=router \
+                     options:router-port=lrp0 \
+                     addresses='"${router_mac} ${router_ip}"'
+
+wait_for_ports_up
+
+test_ns_na() {
+    local inport=$1 src_mac=$2 dst_mac=$3 src_ip=$4 dst_ip=$5
+
+    packet=$(fmt_pkt "
+        Ether(dst='ff:ff:ff:ff:ff:ff', src='${src_mac}') /
+        IPv6(src='${src_ip}', dst='ff02::1:ff00:2') /
+        ICMPv6ND_NS(tgt='${dst_ip}')
+    ")
+    as hv1 ovs-appctl netdev-dummy/receive vif${inport} $packet
+
+    expected_packet=$(fmt_pkt "
+        Ether(dst='${src_mac}', src='${dst_mac}') /
+        IPv6(src='${dst_ip}', dst='${src_ip}') /
+        ICMPv6ND_NA(tgt='${dst_ip}', R=0, S=1) /
+        ICMPv6NDOptDstLLAddr(lladdr='${dst_mac}')
+    ")
+    echo $expected_packet >> $inport.expected
+}
+
+test_rs_ra() {
+    local inport=$1 src_mac=$2 src_ip=$3
+    local router_mac=$4 router_prefix=$5 router_ip=$6
+
+    packet=$(fmt_pkt "
+        Ether(dst='ff:ff:ff:ff:ff:ff', src='${src_mac}') /
+        IPv6(src='${src_ip}', dst='ff02::2') /
+        ICMPv6ND_RS()
+    ")
+    as hv1 ovs-appctl netdev-dummy/receive vif${inport} $packet
+
+    expected_packet=$(fmt_pkt "
+        Ether(dst='${src_mac}', src='${router_mac}') /
+        IPv6(src='${router_ip}', dst='${src_ip}') /
+        ICMPv6ND_RA(chlim=255, prf=0, routerlifetime=65535) /
+        ICMPv6NDOptSrcLLAddr(lladdr='${router_mac}') /
+        ICMPv6NDOptPrefixInfo(prefix='${router_prefix}')
+    ")
+    echo $expected_packet >> $inport.expected
+}
+
+test_mldv2() {
+    local inport=$1 outport=$2 src_mac=$3 src_ip=$4
+
+    packet=$(fmt_pkt "
+        Ether(dst='ff:ff:ff:ff:ff:ff', src='${src_mac}') /
+        IPv6(src='${src_ip}', dst='ff02::2') /
+        ICMPv6MLQuery2()
+    ")
+    as hv1 ovs-appctl netdev-dummy/receive vif${inport} $packet
+
+    expected_packet=$packet
+    echo $expected_packet >> $outport.expected
+}
+
+src_mac=${lsp_mac_prefix}1
+dst_mac=${lsp_mac_prefix}2
+src_ip=${lsp_ip6_prefix}1
+dst_ip=${lsp_ip6_prefix}2
+
+as hv1
+test_ns_na 1 $src_mac $dst_mac $src_ip $dst_ip
+
+as hv1
+router_local_ip=fe80::f816:3eff:fe00:1
+test_rs_ra 1 $src_mac $src_ip $router_mac $router_prefix $router_local_ip
+
+as hv1
+src_ip=fe80::1
+test_mldv2 1 2 $src_mac $src_ip
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [2.expected])
+
+OVN_CLEANUP([hv1])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([IPv6 Neighbor Solicitation for unknown MAC])
 AT_KEYWORDS([ovn-nd_ns for unknown mac])
 ovn_start

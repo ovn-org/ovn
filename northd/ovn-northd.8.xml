@@ -749,6 +749,12 @@
     </p>
 
     <p>
+      A priority-65532 flow is added to allow IPv6 Neighbor solicitation,
+      Neighbor discover, Router solicitation, Router advertisement and MLD
+      packets regardless of other ACLs defined.
+    </p>
+
+    <p>
       If the logical datapath has a stateful ACL or a load balancer with VIP
       configured, the following flows will also be added:
     </p>
@@ -823,12 +829,6 @@
         should no longer be allowed due to a policy change.  Packets
         in the request direction are skipped here to let a newly created
         ACL re-allow this connection.
-      </li>
-
-      <li>
-        A priority-65532 flow that allows IPv6 Neighbor solicitation,
-        Neighbor discover, Router solicitation, Router advertisement and MLD
-        packets.
       </li>
     </ul>
 
@@ -2121,6 +2121,12 @@ output;
     <p>
       This is similar to ingress table <code>ACLs</code> except for
       <code>to-lport</code> ACLs.
+    </p>
+
+    <p>
+      Similar to ingress table, a priority-65532 flow is added to allow IPv6
+      Neighbor solicitation, Neighbor discover, Router solicitation, Router
+      advertisement and MLD packets regardless of other ACLs defined.
     </p>
 
     <p>
