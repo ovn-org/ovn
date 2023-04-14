@@ -817,6 +817,29 @@ ovn_trace_client() {
     ovs-appctl -t $target trace "$@" | tee trace | sed '/^# /d'
 }
 
+# Receives a string with scapy python code that represents a packet.
+# Returns a hex-string that contains bytes that reflect the packet symbolic
+# description.
+#
+# Scapy docs: https://scapy.readthedocs.io/en/latest/usage.html
+#
+# Example of usage:
+#
+# packet=$(fmt_pkt "
+#     Ether(dst='ff:ff:ff:ff:ff:ff', src='50:64:00:00:00:01') /
+#     IPv6(src='abed::1', dst='ff02::1:ff00:2') /
+#     ICMPv6ND_NS(tgt='abed::2')
+# ")
+#
+# ovs-appctl netdev-dummy/receive $vif $packet
+#
+fmt_pkt() {
+    echo "from scapy.all import *; \
+          import binascii; \
+          out = binascii.hexlify(raw($1)); \
+          print(out.decode())" | $PYTHON3
+}
+
 OVS_END_SHELL_HELPERS
 
 m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
