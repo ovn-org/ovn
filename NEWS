@@ -3,6 +3,8 @@ OVN v23.03.1 - xx xxx xxxx
   - CT entries are not flushed by default anymore whenever a load balancer
     backend is removed.  A new, per-LB, option 'ct_flush' can be used to
     restore the previous behavior.  Disabled by default.
+  - Always allow IPv6 Router Discovery, Neighbor Discovery, and Multicast
+    Listener Discovery protocols, regardless of ACLs defined.
 
 OVN v23.03.0 - 03 Mar 2023
 --------------------------
