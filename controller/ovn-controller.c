@@ -537,21 +537,6 @@ process_br_int(struct ovsdb_idl_txn *ovs_idl_txn,
 }
 
 static void
-consider_br_int_change(const struct ovsrec_bridge *br_int, char **current_name)
-{
-    ovs_assert(current_name);
-
-    if (!*current_name) {
-        *current_name = xstrdup(br_int->name);
-    }
-
-    if (strcmp(*current_name, br_int->name)) {
-        free(*current_name);
-        *current_name = xstrdup(br_int->name);
-    }
-}
-
-static void
 update_ssl_config(const struct ovsrec_ssl_table *ssl_table)
 {
     const struct ovsrec_ssl *ssl = ovsrec_ssl_table_first(ssl_table);
@@ -4933,8 +4918,6 @@ main(int argc, char *argv[])
     char *ovn_version = ovn_get_internal_version();
     VLOG_INFO("OVN internal version is : [%s]", ovn_version);
 
-    char *current_br_int_name = NULL;
-
     /* Main loop. */
     exiting = false;
     restart = false;
@@ -5088,8 +5071,7 @@ main(int argc, char *argv[])
                                sbrec_sb_global_first(ovnsb_idl_loop.idl),
                                ovs_table,
                                &transport_zones,
-                               bridge_table,
-                               current_br_int_name);
+                               bridge_table);
 
                     stopwatch_start(CONTROLLER_LOOP_STOPWATCH_NAME,
                                     time_msec());
@@ -5276,10 +5258,6 @@ main(int argc, char *argv[])
                     stopwatch_stop(IF_STATUS_MGR_RUN_STOPWATCH_NAME,
                                    time_msec());
                 }
-                /* The name needs to be reflected at the end of the block.
-                 * This allows us to detect br-int changes and act
-                 * accordingly. */
-                consider_br_int_change(br_int, &current_br_int_name);
             }
 
             if (!engine_has_run()) {
@@ -5463,7 +5441,6 @@ loop_done:
     }
 
     free(ovn_version);
-    free(current_br_int_name);
     unixctl_server_destroy(unixctl);
     lflow_destroy();
     ofctrl_destroy();
@@ -5471,6 +5448,7 @@ loop_done:
     binding_destroy();
     patch_destroy();
     mirror_destroy();
+    encaps_destroy();
     if_status_mgr_destroy(if_mgr);
     shash_destroy(&vif_plug_deleted_iface_ids);
     shash_destroy(&vif_plug_changed_iface_ids);

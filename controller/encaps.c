@@ -36,6 +36,8 @@ VLOG_DEFINE_THIS_MODULE(encaps);
  */
 #define	OVN_MVTEP_CHASSISID_DELIM '@'
 
+static char *current_br_int_name = NULL;
+
 void
 encaps_register_ovs_idl(struct ovsdb_idl *ovs_idl)
 {
@@ -409,14 +411,13 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
            const struct sbrec_sb_global *sbg,
            const struct ovsrec_open_vswitch_table *ovs_table,
            const struct sset *transport_zones,
-           const struct ovsrec_bridge_table *bridge_table,
-           const char *br_int_name)
+           const struct ovsrec_bridge_table *bridge_table)
 {
     if (!ovs_idl_txn || !br_int) {
         return;
     }
 
-    if (!br_int_name) {
+    if (!current_br_int_name) {
         /* The controller has just started, we need to look through all
          * bridges for old tunnel ports. */
         char *tunnel_prefix = xasprintf("ovn%s-", get_chassis_idx(ovs_table));
@@ -431,14 +432,18 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
         }
 
         free(tunnel_prefix);
-    } else if (strcmp(br_int_name, br_int->name)) {
+        current_br_int_name = xstrdup(br_int->name);
+    } else if (strcmp(current_br_int_name, br_int->name)) {
         /* The integration bridge was changed, clear tunnel ports from
          * the old one. */
         const struct ovsrec_bridge *old_br_int =
-            get_bridge(bridge_table, br_int_name);
+            get_bridge(bridge_table, current_br_int_name);
         if (old_br_int) {
             clear_old_tunnels(old_br_int, "", 0);
         }
+
+        free(current_br_int_name);
+        current_br_int_name = xstrdup(br_int->name);
     }
 
     const struct sbrec_chassis *chassis_rec;
@@ -552,4 +557,10 @@ encaps_cleanup(struct ovsdb_idl_txn *ovs_idl_txn,
     free(ports);
 
     return !any_changes;
+}
+
+void
+encaps_destroy(void)
+{
+    free(current_br_int_name);
 }
