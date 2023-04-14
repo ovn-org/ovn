@@ -6656,6 +6656,8 @@ build_port_group_lswitches(struct northd_input *input_data,
     }
 }
 
+#define IPV6_CT_OMIT_MATCH "nd || nd_ra || nd_rs || mldv1 || mldv2"
+
 static void
 build_acls(struct ovn_datapath *od, const struct chassis_features *features,
            struct hmap *lflows, const struct hmap *port_groups,
@@ -6776,15 +6778,21 @@ build_acls(struct ovn_datapath *od, const struct chassis_features *features,
                       ds_cstr(&match), ct_acl_action);
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, UINT16_MAX - 3,
                       ds_cstr(&match), ct_acl_action);
-
-        /* Ingress and Egress ACL Table (Priority 65532).
-         *
-         * Not to do conntrack on ND packets. */
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, UINT16_MAX - 3,
-                      "nd || nd_ra || nd_rs || mldv1 || mldv2", "next;");
-        ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, UINT16_MAX - 3,
-                      "nd || nd_ra || nd_rs || mldv1 || mldv2", "next;");
     }
+
+    /* Ingress and Egress ACL Table (Priority 65532).
+     *
+     * Always allow service IPv6 protocols regardless of other ACLs defined.
+     *
+     * Also, don't send them to conntrack because session tracking
+     * for these protocols is not working properly:
+     * https://bugzilla.kernel.org/show_bug.cgi?id=11797. */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL, UINT16_MAX - 3,
+                  IPV6_CT_OMIT_MATCH, "next;");
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL, UINT16_MAX - 3,
+                  IPV6_CT_OMIT_MATCH, "next;");
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_AFTER_LB, UINT16_MAX - 3,
+                  IPV6_CT_OMIT_MATCH, "next;");
 
     /* Ingress or Egress ACL Table (Various priorities). */
     for (size_t i = 0; i < od->nbs->n_acls; i++) {
