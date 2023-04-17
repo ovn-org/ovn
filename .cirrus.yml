@@ -1,7 +1,7 @@
 arm_unit_tests_task:
 
   arm_container:
-    image: quay.io/fedora/fedora:37
+    image: ghcr.io/ovn-org/ovn-tests:fedora
     memory: 4G
     cpu: 2
 
@@ -9,10 +9,6 @@ arm_unit_tests_task:
     ARCH: aarch64
     CIRRUS_CLONE_SUBMODULES: true
     PATH: ${HOME}/bin:${HOME}/.local/bin:${PATH}
-    DEPENDENCIES: autoconf automake clang curl ethtool gcc git
-      glibc-langpack-en groff iproute iproute-tc iputils libcap-ng-devel
-      libtool net-tools nmap-ncat openssl openssl-devel python3-devel
-      python3-pip python3-sphinx tcpdump unbound unbound-devel wget
     matrix:
       - CC: gcc
         TESTSUITE: test
@@ -34,13 +30,6 @@ arm_unit_tests_task:
         TEST_RANGE: 1001-
 
   name: ARM64 ${CC} ${TESTSUITE} ${TEST_RANGE}
-
-  dependencies_script:
-    - dnf -y update
-    - dnf -y install ${DEPENDENCIES}
-
-  prepare_script:
-    - ./.ci/linux-prepare.sh
 
   build_script:
     - ./.ci/linux-build.sh
