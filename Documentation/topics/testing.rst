@@ -113,6 +113,9 @@ And from another window, one can execute ovs-xxx commands like::
 
 Once done with investigation, press ENTER to perform cleanup operation.
 
+OVS_PAUSE_TEST=1 only pauses failed tests when run with '-v' option.
+Tests run without '-v', or successful tests, are not paused.
+
 .. _testing-coverage:
 
 Coverage

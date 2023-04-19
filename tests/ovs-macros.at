@@ -68,7 +68,8 @@ ovs_pause() {
 }
 
 ovs_on_exit () {
-    if [ ! -z "${OVS_PAUSE_TEST}" ] && [ -z $at_verbose ]; then
+    rv=$?
+    if [ ! -z "${OVS_PAUSE_TEST}" ] && [ -z $at_verbose ] && [ $rv != 0 ]; then
         trap '' INT
         ovs_pause
     fi
