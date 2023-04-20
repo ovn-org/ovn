@@ -4204,8 +4204,7 @@ print_routing_policy(const struct nbrec_logical_router_policy *policy,
                       policy->match, policy->action);
         for (int i = 0; i < policy->n_nexthops; i++) {
             char *next_hop = normalize_prefix_str(policy->nexthops[i]);
-            char *fmt = i ? ", %s" : " %25s";
-            ds_put_format(s, fmt, next_hop);
+            ds_put_format(s, i ? ", %s" : " %25s", next_hop ? next_hop : "");
             free(next_hop);
         }
     } else {
@@ -6586,18 +6585,17 @@ print_route(const struct nbrec_logical_router_static_route *route,
 {
 
     char *prefix = normalize_prefix_str(route->ip_prefix);
-    char *next_hop = "";
+    char *next_hop = NULL;
 
     if (!strcmp(route->nexthop, "discard")) {
         next_hop = xasprintf("discard");
     } else if (route->nexthop[0]) {
         next_hop = normalize_prefix_str(route->nexthop);
     }
-    ds_put_format(s, "%25s %25s", prefix, next_hop);
+    ds_put_format(s, "%25s %25s", prefix ? prefix : "",
+                  next_hop ? next_hop : "");
     free(prefix);
-    if (next_hop[0]) {
-        free(next_hop);
-    }
+    free(next_hop);
 
     if (route->policy) {
         ds_put_format(s, " %s", route->policy);
