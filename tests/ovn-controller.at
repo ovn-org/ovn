@@ -493,7 +493,8 @@ check ovn-nbctl --wait=hv sync
 
 # And check that it gets propagated to br-int external_ids.
 as hv1
-OVS_WAIT_UNTIL([ovs-vsctl get Bridge br-int external_ids:ovn-nb-cfg], [0], [1])
+OVS_WAIT_FOR_OUTPUT([ovs-vsctl get Bridge br-int external_ids:ovn-nb-cfg], [0], ["1"
+])
 
 nb_cfg_ts=$(fetch_column Chassis_Private nb_cfg_timestamp name=hv1)
 as hv1
@@ -672,22 +673,26 @@ check ovs-vsctl del-ssl
 start_daemon ovn-controller -p $key -c $cert -C $cacert
 
 # SSL should not connect because of key and cert mismatch
-OVS_WAIT_UNTIL([ovn-appctl -t ovn-controller connection-status], [0], [not connected])
+OVS_WAIT_FOR_OUTPUT([ovn-appctl -t ovn-controller connection-status], [0], [not connected
+])
 
 # Modify the files with the correct key and cert, and reconnect should succeed
 cp $PKIDIR/$key $key
 cp $PKIDIR/$cert $cert
 
-OVS_WAIT_UNTIL([ovn-appctl -t ovn-controller connection-status], [0], [connected])
+OVS_WAIT_FOR_OUTPUT([ovn-appctl -t ovn-controller connection-status], [0], [connected
+])
 
 # Remove the files and expect the connection to drop
 rm $key $cert
-OVS_WAIT_UNTIL([ovn-appctl -t ovn-controller connection-status], [0], [not connected])
+OVS_WAIT_FOR_OUTPUT([ovn-appctl -t ovn-controller connection-status], [0], [not connected
+])
 
 # Restore the files again and expect the connection to recover
 cp $PKIDIR/$key $key
 cp $PKIDIR/$cert $cert
-OVS_WAIT_UNTIL([ovn-appctl -t ovn-controller connection-status], [0], [connected])
+OVS_WAIT_FOR_OUTPUT([ovn-appctl -t ovn-controller connection-status], [0], [connected
+])
 
 cat hv1/ovn-controller.log
 
@@ -2161,7 +2166,7 @@ AT_CHECK([ovs-ofctl dump-flows br-int | grep 10.1.2.3], [0], [ignore])
 sleep 5
 
 # Check after the wait
-OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 10.1.2.4], [0], [ignore])
+OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 10.1.2.4])
 lflow_run_2=$(ovn-appctl -t ovn-controller coverage/read-counter lflow_run)
 
 # Verify that the flow compute completed during the wait (after the wait it
@@ -2172,7 +2177,7 @@ AT_CHECK_UNQUOTED([echo $lflow_run_1], [0], [$lflow_run_2
 # Restart OVS this time, and wait until flows are reinstalled
 OVS_APP_EXIT_AND_WAIT([ovs-vswitchd])
 start_daemon ovs-vswitchd --enable-dummy=system -vvconn -vofproto_dpif -vunixctl
-OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 10.1.2.4], [0], [ignore])
+OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 10.1.2.4])
 
 check ovn-nbctl --wait=hv lb-add lb3 2.2.2.2 10.1.2.5 \
 -- ls-lb-add ls1 lb3
