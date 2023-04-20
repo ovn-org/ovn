@@ -256,6 +256,13 @@ ovs_wait () {
     ovs_wait_failed
     AT_FAIL_IF([:])
 }
+
+check_ovs_wait_until_args() {
+   AT_FAIL_IF([test $1 -ge 3])
+   dnl The second argument should not be a number (confused with AT_CHECK ?).
+   AT_FAIL_IF([test $1 -eq 2 && test "$2" -eq "$2" 2>/dev/null])
+}
+
 OVS_END_SHELL_HELPERS
 m4_define([OVS_WAIT], [dnl
 ovs_wait_cond () {
@@ -276,7 +283,8 @@ dnl zero code within reasonable time limit, then
 dnl the test fails.  In that case, runs IF-FAILED
 dnl before aborting.
 m4_define([OVS_WAIT_UNTIL],
-  [OVS_WAIT([$1], [$2], [AT_LINE], [until $1])])
+  [check_ovs_wait_until_args "$#" "$2"
+   OVS_WAIT([$1], [$2], [AT_LINE], [until $1])])
 
 dnl OVS_WAIT_FOR_OUTPUT(COMMAND, EXIT-STATUS, STDOUT, STDERR)
 dnl OVS_WAIT_FOR_OUTPUT_UNQUOTED(COMMAND, EXIT-STATUS, STDOUT, STDERR)
