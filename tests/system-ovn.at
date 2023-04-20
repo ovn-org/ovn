@@ -7190,7 +7190,7 @@ NS_EXEC([sw01], [tcpdump -l -n -i sw01 icmp -Q in > reject.pcap &])
 check ovn-nbctl --may-exist meter-add acl-meter drop 10 pktps 0
 ip netns exec sw01 scapy -H <<-EOF
 p = IP(src="192.168.1.2", dst="192.168.1.1") / UDP(dport = 12345) / Raw(b"X"*64)
-send (p, iface='sw01', loop = 0, verbose = 0, count = 100)
+send (p, iface='sw01', loop = 0, verbose = 0, count = 40)
 EOF
 
 # 10pps
