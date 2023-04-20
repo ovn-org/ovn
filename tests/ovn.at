@@ -21236,7 +21236,7 @@ check_virtual_offlows_not_present hv2
 send_garp 1 1 $eth_src $eth_dst $spa $tpa
 
 OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=sw0-vir) = x$hv1_ch_uuid], [0], [])
+logical_port=sw0-vir) = x$hv1_ch_uuid])
 
 AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
 logical_port=sw0-vir) = xsw0-p1])
@@ -21304,7 +21304,7 @@ tpa=$(ip_to_hex 10 0 0 10)
 send_garp 1 2 $eth_src $eth_dst $spa $tpa
 
 OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=sw0-vir) = x$hv1_ch_uuid], [0], [])
+logical_port=sw0-vir) = x$hv1_ch_uuid])
 
 OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
 logical_port=sw0-vir) = xsw0-p3])
@@ -21332,7 +21332,7 @@ tpa=$(ip_to_hex 10 0 0 10)
 send_garp 2 1 $eth_src $eth_dst $spa $tpa
 
 OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=sw0-vir) = x$hv2_ch_uuid], [0], [])
+logical_port=sw0-vir) = x$hv2_ch_uuid])
 
 AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
 logical_port=sw0-vir) = xsw0-p2])
@@ -21359,7 +21359,7 @@ tpa=$(ip_to_hex 10 0 0 4)
 send_arp_reply 1 1 $eth_src $eth_dst $spa $tpa
 
 OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=sw0-vir) = x$hv1_ch_uuid], [0], [])
+logical_port=sw0-vir) = x$hv1_ch_uuid])
 sleep 1
 
 AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
@@ -21382,7 +21382,7 @@ check_virtual_offlows_not_present hv2
 as hv1 ovs-vsctl del-port hv1-vif1
 
 OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=sw0-vir) = x], [0], [])
+logical_port=sw0-vir) = x])
 sleep 1
 
 AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
@@ -21412,7 +21412,7 @@ send_arp_reply 2 1 $eth_src $eth_dst $spa $tpa
 sleep 1
 
 OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=sw0-vir) = x$hv2_ch_uuid], [0], [])
+logical_port=sw0-vir) = x$hv2_ch_uuid])
 sleep 1
 AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
 logical_port=sw0-vir) = xsw0-p2])
@@ -21434,7 +21434,7 @@ check_virtual_offlows_not_present hv1
 ovn-nbctl lsp-del sw0-p2
 
 OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
-logical_port=sw0-vir) = x], [0], [])
+logical_port=sw0-vir) = x])
 AT_CHECK([test x$(ovn-sbctl --bare --columns virtual_parent find port_binding \
 logical_port=sw0-vir) = x])
 
@@ -23836,7 +23836,7 @@ send_garp 1 1 $eth_src $eth_dst $spa $tpa
 
 wait_row_count MAC_Binding 1
 
-OVS_WAIT_UNTIL([ovn-sbctl --format=csv --bare --columns logical_port,ip,mac \
+OVS_WAIT_FOR_OUTPUT([ovn-sbctl --format=csv --bare --columns logical_port,ip,mac \
 list mac_binding], [0], [lr0-sw0
 10.0.0.30
 50:54:00:00:00:03
@@ -23883,7 +23883,7 @@ grep table_id=10 | wc -l`])
 
 check_row_count MAC_Binding 1
 
-OVS_WAIT_UNTIL([ovn-sbctl --format=csv --bare --columns logical_port,ip,mac \
+OVS_WAIT_FOR_OUTPUT([ovn-sbctl --format=csv --bare --columns logical_port,ip,mac \
 list mac_binding], [0], [lr0-sw0
 10.0.0.30
 50:54:00:00:00:13
@@ -23912,7 +23912,7 @@ OVS_WAIT_UNTIL(
 | wc -l`]
 )
 
-OVS_WAIT_UNTIL([ovn-sbctl --format=csv --bare --columns logical_port,ip,mac \
+OVS_WAIT_FOR_OUTPUT([ovn-sbctl --format=csv --bare --columns logical_port,ip,mac \
 find mac_binding ip=10.0.0.50], [0], [lr0-sw0
 10.0.0.50
 50:54:00:00:00:33
@@ -27263,7 +27263,7 @@ ovn_attach n1 br-phys 192.168.0.1
 
 # Chassis hv1 should add flows for the ls1 datapath in table 8 (ls_in_port_sec_l2).
 dp_key=$(ovn-sbctl --bare --columns tunnel_key list Datapath_Binding ls1)
-OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=8.*metadata=0x${dp_key}"], [0], [ignore])
+OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=8.*metadata=0x${dp_key}"])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
@@ -27289,7 +27289,7 @@ ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
 
 # Port_Binding should be released.
-OVS_WAIT_UNTIL([test 0 = $(ovn-sbctl show | grep Port_Binding -c)], [0])
+OVS_WAIT_UNTIL([test 0 = $(ovn-sbctl show | grep Port_Binding -c)])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
