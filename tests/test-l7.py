@@ -74,29 +74,20 @@ def get_tftpd():
 
 
 def get_sctp():
-    try:
-        import socket
-        import sctp
-    except ImportError:
-        print("Failed to import for SCTP")
-        server = None
-        pass
-    else:
-        class OVSSCTPServer(object):
-            def __init__(self, listen, handler=None):
-                self.sock = sctp.sctpsocket_tcp(socket.AF_INET)
-                self.sock.bind(listen)
-                self.sock.listen()
+    class OVSSCTPServer(object):
+        def __init__(self, listen, handler=None):
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM,
+                                      socket.IPPROTO_SCTP)
+            self.sock.bind(listen)
+            self.sock.listen()
 
-            def serve_forever(self):
-                while True:
-                    client, _ = self.sock.accept()
-                    client.send(b"SCRAM\r\n")
-                    client.close()
+        def serve_forever(self):
+            while True:
+                client, _ = self.sock.accept()
+                client.sendall(b"SCRAM\r\n")
+                client.close()
 
-        server = [OVSSCTPServer, None, 12345]
-
-    return server
+    return [OVSSCTPServer, None, 12345]
 
 
 def main():

@@ -330,6 +330,19 @@ m4_define([OVS_CHECK_CT_CLEAR],
 m4_define([OVS_CHECK_CT_ZERO_SNAT],
     [AT_SKIP_IF([! grep -q "Datapath supports ct_zero_snat" ovs-vswitchd.log])])
 
+# LOAD_MODULE([name])
+#
+# Tries to load specified kernel module and removes it after
+# if it wasn't loaded before this call.
+#
+m4_define([LOAD_MODULE],
+    [if ! lsmod | grep -q $1; then
+         on_exit 'modprobe -q -r $1'
+     fi
+     AT_CHECK([modprobe $1])
+    ]
+)
+
 # OVN_TEST_IPV6_PREFIX_DELEGATION()
 m4_define([OVN_TEST_IPV6_PREFIX_DELEGATION],
 [
