@@ -744,6 +744,10 @@
         reject bit and advance to the next table.
       </li>
       <li>
+        <code>pass</code> ACLs translate into logical flows that do not set the
+        allow, drop, or reject bit and advance to the next table.
+      </li>
+      <li>
         Other ACLs set the drop bit and advance to the next table for new or
         untracked connections. For known connections, they set the drop bit,
         as well as running the <code>ct_commit(ct_label=1/1);</code> action.
@@ -1222,6 +1226,11 @@
       <li>
         <code>reject</code> apply-after-lb ACLs translate into logical
         flows that set the reject bit and advance to the next table.
+      </li>
+      <li>
+        <code>pass</code> apply-after-lb ACLs translate into logical flows that
+        do not set the allow, drop, or reject bit and advance to the next
+        table.
       </li>
       <li>
         Other apply-after-lb ACLs set the drop bit for new or untracked

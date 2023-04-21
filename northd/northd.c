@@ -6377,6 +6377,8 @@ build_acl_log(struct ds *actions, const struct nbrec_acl *acl,
         ds_put_cstr(actions, "verdict=drop, ");
     } else if (!strcmp(acl->action, "reject")) {
         ds_put_cstr(actions, "verdict=reject, ");
+    } else if (!strcmp(acl->action, "pass")) {
+        ds_put_cstr(actions, "verdict=pass, ");
     } else if (!strcmp(acl->action, "allow")
         || !strcmp(acl->action, "allow-related")
         || !strcmp(acl->action, "allow-stateless")) {
@@ -6415,6 +6417,8 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
         verdict = REGBIT_ACL_VERDICT_DROP " = 1; ";
     } else if (!strcmp(acl->action, "reject")) {
         verdict = REGBIT_ACL_VERDICT_REJECT " = 1; ";
+    } else if (!strcmp(acl->action, "pass")) {
+        verdict = "";
     } else {
         verdict = REGBIT_ACL_VERDICT_ALLOW " = 1; ";
     }
@@ -6434,7 +6438,9 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
         match_tier_len = match->length;
     }
 
-    if (!has_stateful || !strcmp(acl->action, "allow-stateless")) {
+    if (!has_stateful
+        || !strcmp(acl->action, "pass")
+        || !strcmp(acl->action, "allow-stateless")) {
         ds_put_cstr(actions, "next;");
         ds_put_format(match, "(%s)", acl->match);
         ovn_lflow_add_with_hint(lflows, od, stage, priority,

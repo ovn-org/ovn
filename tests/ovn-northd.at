@@ -9379,3 +9379,49 @@ acl_test to-lport "" pg ls_out_acl_eval ls_out_acl_action 4
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([ACL "pass" logical flows])
+AT_KEYWORDS([acl])
+
+ovn_start
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add ls lsp
+check ovn-nbctl pg-add pg lsp
+
+m4_define([ACL_FLOWS], [grep -w $1 lflows | grep "$2" | sed 's/table=../table=??/' | sed "s/\($1[[^)]]*\)/$1/" | sort])
+
+acl_test() {
+    direction=$1
+    options=$2
+    thing=$3
+    eval_stage=$4
+
+    # Baseline. Ensure no ACL eval flows are present.
+    ovn-sbctl lflow-list ls > lflows
+    AT_CHECK([ACL_FLOWS([$eval_stage], [priority=2000])], [0], [])
+
+    # Add an ACL with the "pass" verdict. Ensure that it is in the logical flow
+    # table and that it simply moves to the next table without setting a specific
+    # verdict bit.
+    check ovn-nbctl --wait=sb $options acl-add $thing $direction 1000 "ip4.addr == 80.111.111.112" pass
+    ovn-sbctl lflow-list ls > lflows
+    AT_CHECK_UNQUOTED([ACL_FLOWS([$eval_stage], [priority=2000])], [0], [dnl
+  table=??($eval_stage), priority=2000 , match=((ip4.addr == 80.111.111.112)), action=(next;)
+])
+
+    # Remove the ACL with the "pass" verdict. Ensure that no eval flows are present.
+    check ovn-nbctl acl-del $thing
+    ovn-sbctl lflow-list ls > lflows
+    AT_CHECK([ACL_FLOWS([$eval_stage], [priority=2000])], [0], [])
+}
+
+acl_test from-lport "" ls ls_in_acl_eval
+acl_test from-lport "--apply-after-lb" ls ls_in_acl_after_lb_eval
+acl_test to-lport "" ls ls_out_acl_eval
+acl_test from-lport "" pg ls_in_acl_eval
+acl_test from-lport "--apply-after-lb" pg ls_in_acl_after_lb_eval
+acl_test to-lport "" pg ls_out_acl_eval
+
+AT_CLEANUP
+])

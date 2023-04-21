@@ -2348,7 +2348,7 @@ nbctl_acl_add(struct ctl_context *ctx)
     /* Validate action. */
     if (strcmp(action, "allow") && strcmp(action, "allow-related")
         && strcmp(action, "allow-stateless") && strcmp(action, "drop")
-        && strcmp(action, "reject")) {
+        && strcmp(action, "reject") && strcmp(action, "pass")) {
         ctl_error(ctx, "%s: action must be one of \"allow\", "
                   "\"allow-related\", \"allow-stateless\", \"drop\", "
                   "and \"reject\"", action);

@@ -2281,6 +2281,16 @@ or
           ICMPv4/ICMPv6 unreachable message for other IPv4/IPv6-based
           protocols.
         </li>
+
+        <li>
+          <code>pass</code>: Pass to the next ACL tier. If using multiple ACL
+          tiers, a match on this ACL will stop evaluating ACLs at the current
+          tier and move to the next one. If not using ACL tiers or if a
+          <code>pass</code> ACL is matched at the final tier, then the
+          <ref column="options" key="default_acl_drop" table="NB_Global" />
+          option from the <ref table="NB_Global" /> table is used to
+          determine how to proceed.
+        </li>
       </ul>
     </column>
 
