@@ -8799,7 +8799,7 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
                 ea_s);
 
             ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_ARP_ND_RSP,
-                50, ds_cstr(match), ds_cstr(actions), &op->nbsp->header_);
+                30, ds_cstr(match), ds_cstr(actions), &op->nbsp->header_);
         }
 
         /* Add IPv6 NDP responses.
@@ -8843,7 +8843,7 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
                     ea_s,
                     ea_s);
             ovn_lflow_add_with_hint__(lflows, op->od,
-                                      S_SWITCH_IN_ARP_ND_RSP, 50,
+                                      S_SWITCH_IN_ARP_ND_RSP, 30,
                                       ds_cstr(match),
                                       ds_cstr(actions),
                                       NULL,
