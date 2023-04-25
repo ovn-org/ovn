@@ -38,7 +38,7 @@ function container_shell() {
 
 function archive_logs() {
     if [ -z "$archive_logs" ]; then
-        return 1;
+        return 0;
     fi
 
     log_dir=$CONTAINER_WORKSPACE/logs/
