@@ -5482,7 +5482,7 @@ check ovn-nbctl --wait=hv sync
 packet="inport==\"ls1-lp1\" && eth.src==$ls1_lp1_mac && eth.dst==$rp_ls1_mac &&
         ip4 && ip.ttl==64 && ip4.src==$ls1_lp1_ip && ip4.dst==$ls2_lp1_ip &&
         udp && udp.src==53 && udp.dst==4369"
-AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 
 echo "---------NB dump-----"
@@ -5532,7 +5532,7 @@ packet="inport==\"ls1-lp1\" && eth.src==$ls1_lp1_mac && eth.dst==$rp_ls1_mac &&
         ip4 && ip.ttl==64 && ip4.src==$ls1_lp1_ip && ip4.dst==$ls2_lp1_ip &&
         udp && udp.src==53 && udp.dst==4369"
 
-as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 # The 2nd packet sent shound not be received.
 OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
 
@@ -7499,7 +7499,7 @@ packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
        ip4 && ip.ttl==64 && ip4.src==$ls1_p1_ip && ip4.dst==$ls2_p1_ip &&
        udp && udp.src==53 && udp.dst==4369"
 
-as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Check if packet hit the drop policy
 AT_CHECK([ovs-ofctl dump-flows br-int | \
@@ -7526,7 +7526,7 @@ AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | grep "192.168.1.0" | wc -l]
 packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
        ip4 && ip.ttl==64 && ip4.src==$ls1_p1_ip && ip4.dst==$ls2_p1_ip &&
        udp && udp.src==53 && udp.dst==4369"
-as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Check if packet hit the allow policy
 sleep 1
@@ -7558,7 +7558,7 @@ AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | \
 packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
        ip4 && ip.ttl==64 && ip4.src==$ls1_p1_ip && ip4.dst==$ls2_p1_ip &&
        udp && udp.src==53 && udp.dst==4369"
-as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 sleep 1
 
 echo "southbound flows"
@@ -7686,7 +7686,7 @@ packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
        ip6 && ip.ttl==64 && ip6.src==$ls1_p1_ip && ip6.dst==$ls2_p1_ip &&
        udp && udp.src==53 && udp.dst==4369"
 
-as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Check if packet hit the drop policy
 AT_CHECK([ovs-ofctl dump-flows br-int | \
@@ -7714,7 +7714,7 @@ AT_CHECK([grep lr_in_policy sbflows2 | grep "2001" | wc -l], [0], [dnl
 packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
        ip6 && ip.ttl==64 && ip6.src==$ls1_p1_ip && ip6.dst==$ls2_p1_ip &&
        udp && udp.src==53 && udp.dst==4369"
-as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Check if packet hit the allow policy
 ovn-sbctl dump-flows > sbflows3
@@ -7749,7 +7749,7 @@ AT_CHECK([grep lr_in_policy sbflows4 | \
 packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
        ip6 && ip.ttl==64 && ip6.src==$ls1_p1_ip && ip6.dst==$ls2_p1_ip &&
        udp && udp.src==53 && udp.dst==4369"
-as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 sleep 1
 
 ovn-sbctl dump-flows > sbflows5
@@ -9278,73 +9278,73 @@ AT_CAPTURE_FILE([sbflows])
 packet="inport==\"lp1\" && eth.src==$lp1_mac && eth.dst==$lp2_mac &&
         ip4 && ip.ttl==64 && ip4.src==$lp1_ip && ip4.dst==$lp2_ip &&
         tcp && tcp.flags==2 && tcp.src==4360 && tcp.dst==80"
-as hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Send packet that should be dropped with logging in the ingress pipeline.
 packet="inport==\"lp1\" && eth.src==$lp1_mac && eth.dst==$lp2_mac &&
         ip4 && ip.ttl==64 && ip4.src==$lp1_ip && ip4.dst==$lp2_ip &&
         tcp && tcp.flags==2 && tcp.src==4361 && tcp.dst==81"
-as hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Send packet that should be dropped without logging in the eggress pipeline.
 packet="inport==\"lp1\" && eth.src==$lp1_mac && eth.dst==$lp2_mac &&
         ip4 && ip.ttl==64 && ip4.src==$lp1_ip && ip4.dst==$lp2_ip &&
         tcp && tcp.flags==2 && tcp.src==4360 && tcp.dst==180"
-as hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Send packet that should be dropped with logging in the egress pipeline.
 packet="inport==\"lp1\" && eth.src==$lp1_mac && eth.dst==$lp2_mac &&
         ip4 && ip.ttl==64 && ip4.src==$lp1_ip && ip4.dst==$lp2_ip &&
         tcp && tcp.flags==2 && tcp.src==4361 && tcp.dst==181"
-as hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Send packet that should be allowed without logging.
 packet="inport==\"lp1\" && eth.src==$lp1_mac && eth.dst==$lp2_mac &&
         ip4 && ip.ttl==64 && ip4.src==$lp1_ip && ip4.dst==$lp2_ip &&
         tcp && tcp.flags==2 && tcp.src==4362 && tcp.dst==82"
-as hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Send packet that should be allowed with logging.
 packet="inport==\"lp1\" && eth.src==$lp1_mac && eth.dst==$lp2_mac &&
         ip4 && ip.ttl==64 && ip4.src==$lp1_ip && ip4.dst==$lp2_ip &&
         tcp && tcp.flags==2 && tcp.src==4363 && tcp.dst==83"
-as hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Send packet that should allow related flows without logging.
 packet="inport==\"lp1\" && eth.src==$lp1_mac && eth.dst==$lp2_mac &&
         ip4 && ip.ttl==64 && ip4.src==$lp1_ip && ip4.dst==$lp2_ip &&
         tcp && tcp.flags==2 && tcp.src==4364 && tcp.dst==84"
-as hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Send packet that should allow related flows with logging.
 packet="inport==\"lp1\" && eth.src==$lp1_mac && eth.dst==$lp2_mac &&
         ip4 && ip.ttl==64 && ip4.src==$lp1_ip && ip4.dst==$lp2_ip &&
         tcp && tcp.flags==2 && tcp.src==4365 && tcp.dst==85"
-as hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Send packet that should be rejected without logging in the ingress pipeline.
 packet="inport==\"lp1\" && eth.src==$lp1_mac && eth.dst==$lp2_mac &&
         ip4 && ip.ttl==64 && ip4.src==$lp1_ip && ip4.dst==$lp2_ip &&
         tcp && tcp.flags==2 && tcp.src==4366 && tcp.dst==86"
-as hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Send packet that should be rejected with logging in the ingress pipeline.
 packet="inport==\"lp1\" && eth.src==$lp1_mac && eth.dst==$lp2_mac &&
         ip4 && ip.ttl==64 && ip4.src==$lp1_ip && ip4.dst==$lp2_ip &&
         tcp && tcp.flags==2 && tcp.src==4367 && tcp.dst==87"
-as hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Send packet that should be rejected without logging in the egress pipeline.
 packet="inport==\"lp1\" && eth.src==$lp1_mac && eth.dst==$lp2_mac &&
         ip4 && ip.ttl==64 && ip4.src==$lp1_ip && ip4.dst==$lp2_ip &&
         tcp && tcp.flags==2 && tcp.src==4366 && tcp.dst==186"
-as hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Send packet that should be rejected with logging in the egress pipeline.
 packet="inport==\"lp1\" && eth.src==$lp1_mac && eth.dst==$lp2_mac &&
         ip4 && ip.ttl==64 && ip4.src==$lp1_ip && ip4.dst==$lp2_ip &&
         tcp && tcp.flags==2 && tcp.src==4367 && tcp.dst==187"
-as hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 OVS_WAIT_UNTIL([ test 8 = $(grep -c 'acl_log' hv/ovn-controller.log) ])
 
@@ -15322,7 +15322,7 @@ test_icmp() {
                   icmp4.code==0"
     shift; shift; shift; shift; shift; shift
     hv=hv`vif_to_hv $inport`
-    as $hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+    OVS_WAIT_UNTIL([as $hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
     in_ls=`vif_to_ls $inport`
     in_lrp=`vif_to_lrp $inport`
     for outport; do
@@ -16782,7 +16782,7 @@ packet="inport==\"sw1-p1\" && eth.src==$sw1_p1_mac && eth.dst==$sw1_ro_mac &&
        udp && udp.src==53 && udp.dst==4369"
 
 # Start by Sending the packet and make sure it makes it there as expected
-as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Expected packet has TTL decreased by 1
 expected="eth.src==$sw2_ro_mac && eth.dst==$sw2_p1_mac &&
@@ -16796,7 +16796,7 @@ OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
 as hv2 ovs-appctl -t ovn-controller exit
 
 # Now send the packet again. This time, it should not arrive.
-as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
 
@@ -17685,7 +17685,7 @@ packet="inport==\"sw1-p1\" && eth.src==$sw1_p1_mac && eth.dst==$sw1_ro_mac &&
        udp && udp.src==53 && udp.dst==4369"
 
 # Start by Sending the packet and make sure it makes it there as expected
-as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Expected packet has TTL decreased by 1
 expected="eth.src==$sw2_ro_mac && eth.dst==$sw2_p1_mac &&
@@ -17699,7 +17699,7 @@ OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
 as hv2 ovs-appctl -t ovn-controller exit --restart
 
 # Now send the packet again. This time, it should still arrive
-as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 cat expected expected > expected2
 
@@ -19653,7 +19653,7 @@ AT_CAPTURE_FILE([offlows])
 packet0="inport==\"sw0-p11\" && eth.src==00:00:00:00:00:11 && eth.dst==00:00:00:00:00:21 &&
          ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==192.168.1.100 &&
          tcp && tcp.src==10000 && tcp.dst==80"
-as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet0"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet0"])
 
 ovn-sbctl list controller_event > events
 AT_CAPTURE_FILE([events])
@@ -19681,7 +19681,7 @@ packet1="inport==\"sw1-p0\" && eth.src==00:00:00:00:00:33 && eth.dst==00:00:00:0
          ip4 && ip.ttl==64 && ip4.src==192.168.2.11 && ip4.dst==192.168.2.100 &&
          tcp && tcp.src==10000 && tcp.dst==80"
 
-as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet1"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet1"])
 ovn-sbctl list controller_event
 uuid=$(ovn-sbctl list controller_event | awk '/_uuid/{print $3}')
 AT_CHECK([ovn-sbctl get controller_event $uuid event_type], [0], [dnl
@@ -19696,7 +19696,7 @@ packet2="inport==\"sw0-p11\" && eth.src==00:00:00:00:00:11 && eth.dst==00:00:00:
          ip6 && ip.ttl==64 && ip6.src==2001::11 && ip6.dst==2001::10 &&
          tcp && tcp.src==10000 && tcp.dst==50051"
 
-as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet2"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet2"])
 ovn-sbctl list controller_event
 uuid=$(ovn-sbctl list controller_event | awk '/_uuid/{print $3}')
 
@@ -23244,7 +23244,7 @@ for s_az in $(seq 1 $n_az); do
                     udp && udp.src==53 && udp.dst==4369"
             echo "sending: $packet"
             AT_CHECK([ovn_trace --ovs "$packet" > ${s_az}-${d_az}-$i.ovn-trace])
-            AT_CHECK([ovs-appctl -t ovn-controller inject-pkt "$packet"])
+            OVS_WAIT_UNTIL([ovs-appctl -t ovn-controller inject-pkt "$packet"])
             ovs_inport=$(ovs-vsctl --bare --columns=ofport find Interface external-ids:iface-id="$ovn_inport")
 
             ovs_packet=$(echo $packet | ovstest test-ovn expr-to-packets)
@@ -23571,7 +23571,7 @@ for i in $(seq 5001 5010); do
     packet="inport==\"lsp11\" && eth.src==f0:00:00:00:01:11 && eth.dst==00:00:00:01:01:01 &&
             ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==10.0.0.123 &&
             tcp && tcp.src==$i && tcp.dst==80"
-    AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+    OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
     for j in 1 2; do
         # Assume all packets go to lsp2${j}.
@@ -23690,7 +23690,7 @@ wait_for_ports_up
 # Test 1
 packet="inport==\"lsp11\" && eth.src==f0:00:00:00:01:11 && eth.dst==00:00:00:01:01:01 &&
         ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==2.2.2.2 && icmp"
-AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Assume no packets go neither to lsp21 nor to lsp22.
 > expected_lsp21
@@ -23720,7 +23720,7 @@ done
 # Test 2
 packet="inport==\"lsp11\" && eth.src==f0:00:00:00:01:11 && eth.dst==00:00:00:01:01:01 &&
         ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==1.1.1.1 && icmp"
-AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Assume all packets go to lsp22.
 exp_packet="eth.src==00:00:00:01:02:01 && eth.dst==f0:00:00:00:02:22 &&
@@ -23750,7 +23750,7 @@ done
 # Test 3
 packet="inport==\"lsp21\" && eth.src==f0:00:00:00:02:21 && eth.dst==00:00:00:01:02:01 &&
         ip4 && ip.ttl==64 && ip4.src==192.168.2.21 && ip4.dst==2.2.2.2 && icmp"
-AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Assume all packets go to lsp21.
 exp_packet="eth.src==00:00:00:01:02:01 && eth.dst==f0:00:00:00:02:21 &&
@@ -23847,7 +23847,7 @@ wait_for_ports_up
 # test 1
 packet="inport==\"lsp11\" && eth.src==f0:00:00:00:01:11 && eth.dst==00:00:00:01:01:01 &&
         ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==192.168.2.21 && icmp"
-AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Assume all packets go to lsp21.
 exp_packet="eth.src==00:00:00:01:02:01 && eth.dst==f0:00:00:00:02:21 && ip4 &&
@@ -23881,7 +23881,7 @@ ovs-vsctl set interface hv1-vif2 options:tx_pcap=hv1/vif2-tx.pcap
 # test 2
 packet="inport==\"lsp11\" && eth.src==f0:00:00:00:01:11 && eth.dst==00:00:00:01:01:01 &&
         ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==192.168.2.200 && icmp"
-AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Assume all packets go to lsp11.
 exp_packet="eth.src==00:00:00:01:01:01 && eth.dst==f0:00:00:00:01:11 && ip4 &&
@@ -23986,7 +23986,7 @@ for i in $(seq 1 2); do
     packet="inport==\"lsp${i}1\" && eth.src==f0:00:00:00:0${i}:1${i} &&
             eth.dst==00:00:00:01:0${i}:01 && ip4 && ip.ttl==64 &&
             ip4.src==192.168.${i}.${i}1 && ip4.dst==10.0.0.1 && icmp"
-    AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+    OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
     # Assume all packets go to lsp${di}1.
     exp_packet="eth.src==00:00:00:01:0${di}:01 && eth.dst==f0:00:00:00:0${di}:1${di} &&
@@ -24099,7 +24099,7 @@ for i in $(seq 1 2); do
     packet="inport==\"lsp${i}1\" && eth.src==f0:00:00:00:0${i}:1${i} &&
             eth.dst==00:00:00:01:0${i}:01 && ip6 && ip.ttl==64 &&
             ip6.src==2001:db8:${i}::${i}1 && ip6.dst==2001:db8:2000::1 && icmp6"
-    AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+    OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
     # Assume all packets go to lsp${di}1.
     exp_packet="eth.src==00:00:00:01:0${di}:01 && eth.dst==f0:00:00:00:0${di}:1${di} && ip6 &&
@@ -24219,7 +24219,7 @@ dst_ip=172.16.1.11
 packet="inport==\"lsp11\" && eth.src==$src_mac && eth.dst==$dst_mac &&
         ip4 && ip.ttl==64 && ip4.src==$src_ip && ip4.dst==$dst_ip &&
         udp && udp.src==53 && udp.dst==4369"
-check as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Check if the packet hit the forwarding group policy
 AT_CAPTURE_FILE([offlows2])
@@ -29415,7 +29415,7 @@ packet="inport==\"sw1-lp1\" && eth.src==00:00:04:01:02:03 &&
        ip4.src==10.0.0.100 && ip4.dst==20.0.0.200 &&
        udp && udp.src==53 && udp.dst==4369"
 
-as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Check if packet hit the drop rule
 AT_CHECK([ovs-ofctl dump-flows br-int | grep "nw_dst=20.0.0.0/24" | \
@@ -29442,7 +29442,7 @@ packet="inport==\"sw1-lp1\" && eth.src==00:00:04:01:02:03 &&
        ip4.src==10.0.0.100 && ip4.dst==20.0.0.200 &&
        udp && udp.src==53 && udp.dst==4369"
 
-as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Check if packet hit the drop rule
 AT_CHECK([ovs-ofctl dump-flows br-int "nw_src=10.0.0.0/24" | \
@@ -29529,7 +29529,7 @@ packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$bcast_mac &&
        arp.op==1 && arp.sha==$ls1_p1_mac && arp.spa==$ls1_p1_ip &&
        arp.tha==$bcast_mac && arp.tpa==$proxy_ip1"
 
-as hv1 ovn-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([as hv1 ovn-appctl -t ovn-controller inject-pkt "$packet"])
 
 as hv1 ovs-ofctl dump-flows br-int| grep 169.254.239.254 | grep priority=50 > debug1
 AT_CAPTURE_FILE([debug1])
