@@ -7190,7 +7190,9 @@ bfd_monitor_send_msg(struct rconn *swconn, long long int *bfd_time)
         pinctrl_send_bfd_tx_msg(swconn, entry, false);
 
         tx_timeout = MAX(entry->local_min_tx, entry->remote_min_rx);
-        tx_timeout -= random_range((tx_timeout * 25) / 100);
+        if (tx_timeout >= 4) {
+            tx_timeout -= random_range(tx_timeout / 4);
+        }
         entry->next_tx = cur_time + tx_timeout;
 next:
         if (*bfd_time > entry->next_tx) {
