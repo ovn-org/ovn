@@ -5225,6 +5225,9 @@ main(int argc, char *argv[])
                     stopwatch_start(IF_STATUS_MGR_UPDATE_STOPWATCH_NAME,
                                     time_msec());
                     if_status_mgr_update(if_mgr, binding_data, chassis,
+                                         ovsrec_interface_table_get(
+                                                    ovs_idl_loop.idl),
+                                         !ovs_idl_txn,
                                          !ovnsb_idl_txn);
                     stopwatch_stop(IF_STATUS_MGR_UPDATE_STOPWATCH_NAME,
                                    time_msec());
@@ -5254,6 +5257,8 @@ main(int argc, char *argv[])
                     stopwatch_start(IF_STATUS_MGR_RUN_STOPWATCH_NAME,
                                     time_msec());
                     if_status_mgr_run(if_mgr, binding_data, chassis,
+                                      ovsrec_interface_table_get(
+                                                  ovs_idl_loop.idl),
                                       !ovnsb_idl_txn, !ovs_idl_txn);
                     stopwatch_stop(IF_STATUS_MGR_RUN_STOPWATCH_NAME,
                                    time_msec());

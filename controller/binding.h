@@ -159,6 +159,14 @@ bool local_binding_is_up(struct shash *local_bindings, const char *pb_name,
 bool local_binding_is_down(struct shash *local_bindings, const char *pb_name,
                            const struct sbrec_chassis *);
 
+bool local_binding_is_ovn_installed(struct shash *local_bindings,
+                                    const char *pb_name);
+void local_binding_remove_ovn_installed(
+        struct shash *local_bindings,
+        const struct ovsrec_interface_table *iface_table,
+        const char *pb_name,
+        bool ovs_readonly);
+
 void local_binding_set_up(struct shash *local_bindings, const char *pb_name,
                           const struct sbrec_chassis *chassis_rec,
                           const char *ts_now_str, bool sb_readonly,
@@ -194,6 +202,9 @@ bool is_additional_chassis(const struct sbrec_port_binding *pb,
 void set_pb_chassis_in_sbrec(const struct sbrec_port_binding *pb,
                              const struct sbrec_chassis *chassis_rec,
                              bool is_set);
+
+void remove_ovn_installed_for_uuid(const struct ovsrec_interface_table *,
+                                   const struct uuid *);
 
 /* Corresponds to each Port_Binding.type. */
 enum en_lport_type {
