@@ -5227,6 +5227,8 @@ main(int argc, char *argv[])
                     if_status_mgr_update(if_mgr, binding_data, chassis,
                                          ovsrec_interface_table_get(
                                                     ovs_idl_loop.idl),
+                                         sbrec_port_binding_table_get(
+                                                    ovnsb_idl_loop.idl),
                                          !ovs_idl_txn,
                                          !ovnsb_idl_txn);
                     stopwatch_stop(IF_STATUS_MGR_UPDATE_STOPWATCH_NAME,
