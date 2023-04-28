@@ -32437,7 +32437,6 @@ ovn-nbctl lrp-set-gateway-chassis DR-S3 hv4
 
 ovn-nbctl --wait=sb sync
 OVN_POPULATE_ARP
-
 vif_to_ls () {
     case ${1} in dnl (
         vif?[[11]]) echo ls ;; dnl (
@@ -32551,6 +32550,9 @@ echo "Send Dummy ARP"
 sip=`ip_to_hex 172 16 1 10`
 tip=`ip_to_hex 172 16 1 50`
 test_arp vif-north1 f0f000000011 $sip $tip
+OVS_WAIT_UNTIL(
+    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=67 | grep dl_src=f0:f0:00:00:00:11 | wc -l`]
+)
 
 echo "Send traffic North to South"
 sip=`ip_to_hex 172 16 1 10`
@@ -32571,6 +32573,9 @@ echo "Send Dummy ARP"
 sip=`ip_to_hex 10 0 0 10`
 tip=`ip_to_hex 10 0 0 50`
 test_arp vif-north2 f0f000000022 $sip $tip
+OVS_WAIT_UNTIL(
+    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=67 | grep dl_src=f0:f0:00:00:00:22 | wc -l`]
+)
 
 echo "Send traffic South to North2"
 sip=`ip_to_hex 20 0 0 10`
@@ -32584,6 +32589,9 @@ echo "Send Dummy ARP"
 sip=`ip_to_hex 192 168 0 10`
 tip=`ip_to_hex 192 168 0 50`
 test_arp vif-north3 f0f000000033 $sip $tip
+OVS_WAIT_UNTIL(
+    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=67 | grep dl_src=f0:f0:00:00:00:33 | wc -l`]
+)
 
 echo "Send traffic South to North3"
 sip=`ip_to_hex 20 0 0 10`
