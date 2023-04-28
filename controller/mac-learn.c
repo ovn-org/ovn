@@ -27,16 +27,8 @@
 
 VLOG_DEFINE_THIS_MODULE(mac_learn);
 
-#define MAX_MAC_BINDINGS 1000
 #define MAX_FDB_ENTRIES  1000
-#define MAX_MAC_BINDING_DELAY_MSEC 50
 
-static size_t mac_binding_hash(uint32_t dp_key, uint32_t port_key,
-                               struct in6_addr *);
-static struct mac_binding *mac_binding_find(struct hmap *mac_bindings,
-                                            uint32_t dp_key,
-                                            uint32_t port_key,
-                                            struct in6_addr *ip, size_t hash);
 static size_t fdb_entry_hash(uint32_t dp_key, struct eth_addr *);
 
 static struct fdb_entry *fdb_entry_find(struct hmap *fdbs, uint32_t dp_key,
@@ -44,43 +36,44 @@ static struct fdb_entry *fdb_entry_find(struct hmap *fdbs, uint32_t dp_key,
 
 /* mac_binding functions. */
 void
-ovn_mac_bindings_init(struct hmap *mac_bindings)
+ovn_mac_bindings_map_init(struct mac_bindings_map *mac_bindings,
+                          size_t max_size)
 {
-    hmap_init(mac_bindings);
+    mac_bindings->max_size = max_size;
+    hmap_init(&mac_bindings->map);
 }
 
 void
-ovn_mac_bindings_destroy(struct hmap *mac_bindings)
+ovn_mac_bindings_map_destroy(struct mac_bindings_map *mac_bindings)
 {
     struct mac_binding *mb;
-    HMAP_FOR_EACH_POP (mb, hmap_node, mac_bindings) {
+
+    HMAP_FOR_EACH_POP (mb, hmap_node, &mac_bindings->map) {
         free(mb);
     }
-    hmap_destroy(mac_bindings);
+    hmap_destroy(&mac_bindings->map);
 }
 
 struct mac_binding *
-ovn_mac_binding_add(struct hmap *mac_bindings, uint32_t dp_key,
+ovn_mac_binding_add(struct mac_bindings_map *mac_bindings, uint32_t dp_key,
                     uint32_t port_key, struct in6_addr *ip,
-                    struct eth_addr mac, bool is_unicast)
+                    struct eth_addr mac, uint32_t timeout_ms)
 {
-    uint32_t hash = mac_binding_hash(dp_key, port_key, ip);
+    uint32_t hash = keys_ip_hash(dp_key, port_key, ip);
 
     struct mac_binding *mb =
-        mac_binding_find(mac_bindings, dp_key, port_key, ip, hash);
+        ovn_mac_binding_find(mac_bindings, dp_key, port_key, ip, hash);
+    size_t max_size = mac_bindings->max_size;
     if (!mb) {
-        if (hmap_count(mac_bindings) >= MAX_MAC_BINDINGS) {
+        if (max_size && hmap_count(&mac_bindings->map) >= max_size) {
             return NULL;
         }
-
-        uint32_t delay = is_unicast
-            ? 0 : random_range(MAX_MAC_BINDING_DELAY_MSEC) + 1;
         mb = xmalloc(sizeof *mb);
         mb->dp_key = dp_key;
         mb->port_key = port_key;
         mb->ip = *ip;
-        mb->commit_at_ms = time_msec() + delay;
-        hmap_insert(mac_bindings, &mb->hmap_node, hash);
+        mb->timeout_at_ms = time_msec() + timeout_ms;
+        hmap_insert(&mac_bindings->map, &mb->hmap_node, hash);
     }
     mb->mac = mac;
 
@@ -89,26 +82,54 @@ ovn_mac_binding_add(struct hmap *mac_bindings, uint32_t dp_key,
 
 /* This is called from ovn-controller main context */
 void
-ovn_mac_binding_wait(struct hmap *mac_bindings)
+ovn_mac_bindings_map_wait(struct mac_bindings_map *mac_bindings)
 {
+    if (hmap_is_empty(&mac_bindings->map)) {
+        return;
+    }
+
     struct mac_binding *mb;
 
-    HMAP_FOR_EACH (mb, hmap_node, mac_bindings) {
-        poll_timer_wait_until(mb->commit_at_ms);
+    HMAP_FOR_EACH (mb, hmap_node, &mac_bindings->map) {
+        poll_timer_wait_until(mb->timeout_at_ms);
     }
 }
 
 void
-ovn_mac_binding_remove(struct mac_binding *mb, struct hmap *mac_bindings)
+ovn_mac_binding_remove(struct mac_binding *mb,
+                       struct mac_bindings_map *mac_bindings)
 {
-    hmap_remove(mac_bindings, &mb->hmap_node);
+    hmap_remove(&mac_bindings->map, &mb->hmap_node);
     free(mb);
 }
 
 bool
-ovn_mac_binding_can_commit(const struct mac_binding *mb, long long now)
+ovn_mac_binding_timed_out(const struct mac_binding *mb, long long now)
 {
-    return now >= mb->commit_at_ms;
+    return now >= mb->timeout_at_ms;
+}
+
+size_t
+keys_ip_hash(uint32_t dp_key, uint32_t port_key, struct in6_addr *ip)
+{
+    return hash_bytes(ip, sizeof *ip, hash_2words(dp_key, port_key));
+}
+
+struct mac_binding *
+ovn_mac_binding_find(const struct mac_bindings_map *mac_bindings,
+                     uint32_t dp_key, uint32_t port_key, struct in6_addr *ip,
+                     size_t hash)
+{
+    struct mac_binding *mb;
+
+    HMAP_FOR_EACH_WITH_HASH (mb, hmap_node, hash, &mac_bindings->map) {
+        if (mb->dp_key == dp_key && mb->port_key == port_key &&
+            IN6_ARE_ADDR_EQUAL(&mb->ip, ip)) {
+            return mb;
+        }
+    }
+
+    return NULL;
 }
 
 /* fdb functions. */
@@ -156,29 +177,6 @@ ovn_fdb_add(struct hmap *fdbs, uint32_t dp_key, struct eth_addr mac,
 
     return fdb_e;
 
-}
-
-/* mac_binding related static functions. */
-
-static size_t
-mac_binding_hash(uint32_t dp_key, uint32_t port_key, struct in6_addr *ip)
-{
-    return hash_bytes(ip, sizeof *ip, hash_2words(dp_key, port_key));
-}
-
-static struct mac_binding *
-mac_binding_find(struct hmap *mac_bindings, uint32_t dp_key,
-                   uint32_t port_key, struct in6_addr *ip, size_t hash)
-{
-    struct mac_binding *mb;
-    HMAP_FOR_EACH_WITH_HASH (mb, hmap_node, hash, mac_bindings) {
-        if (mb->dp_key == dp_key && mb->port_key == port_key &&
-            IN6_ARE_ADDR_EQUAL(&mb->ip, ip)) {
-            return mb;
-        }
-    }
-
-    return NULL;
 }
 
 /* fdb related static functions. */
