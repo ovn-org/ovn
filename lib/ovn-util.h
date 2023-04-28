@@ -190,6 +190,7 @@ void ovn_set_pidfile(const char *name);
 
 bool ip46_parse_cidr(const char *str, struct in6_addr *prefix,
                      unsigned int *plen);
+bool ip46_parse(const char *ip_str, struct in6_addr *ip);
 
 char *normalize_ipv4_prefix(ovs_be32 ipv4, unsigned int plen);
 char *normalize_ipv6_prefix(const struct in6_addr *ipv6, unsigned int plen);

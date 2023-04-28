@@ -4955,22 +4955,6 @@ ovn_igmp_group_add(struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp,
     return igmp_group;
 }
 
-static bool
-ovn_igmp_group_get_address(const struct sbrec_igmp_group *sb_igmp_group,
-                           struct in6_addr *address)
-{
-    ovs_be32 ipv4;
-
-    if (ip_parse(sb_igmp_group->address, &ipv4)) {
-        *address = in6_addr_mapped_ipv4(ipv4);
-        return true;
-    }
-    if (!ipv6_parse(sb_igmp_group->address, address)) {
-        return false;
-    }
-    return true;
-}
-
 static struct ovn_port **
 ovn_igmp_group_get_ports(const struct sbrec_igmp_group *sb_igmp_group,
                          size_t *n_ports, const struct hmap *ls_ports)
@@ -8582,16 +8566,8 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
             return;
         }
 
-        bool is_ipv4 = strchr(virtual_ip, '.') ? true : false;
-        if (is_ipv4) {
-            ovs_be32 ipv4;
-            if (!ip_parse(virtual_ip, &ipv4)) {
-                 return;
-            }
-        } else {
-            if (!ipv6_parse(virtual_ip, &ip)) {
-                 return;
-            }
+        if (!ip46_parse(virtual_ip, &ip)) {
+            return;
         }
 
         char *tokstr = xstrdup(virtual_parents);
@@ -8606,7 +8582,7 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
                 continue;
             }
 
-            if (is_ipv4) {
+            if (!addr_is_ipv6(virtual_ip)) {
                 ds_clear(match);
                 ds_put_format(match, "inport == \"%s\" && "
                         "((arp.op == 1 && arp.spa == %s && "
@@ -16225,7 +16201,7 @@ build_mcast_groups(const struct sbrec_igmp_group_table *sbrec_igmp_group_table,
         if (!strcmp(sb_igmp->address, OVN_IGMP_GROUP_MROUTERS)) {
             /* Use all-zeros IP to denote a group corresponding to mrouters. */
             memset(&group_address, 0, sizeof group_address);
-        } else if (!ovn_igmp_group_get_address(sb_igmp, &group_address)) {
+        } else if (!ip46_parse(sb_igmp->address, &group_address)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
             VLOG_WARN_RL(&rl, "invalid IGMP group address: %s",
                          sb_igmp->address);

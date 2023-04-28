@@ -4457,10 +4457,7 @@ run_buffered_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         }
 
         struct in6_addr ip;
-        ovs_be32 ip4;
-        if (ip_parse(mb->ip, &ip4)) {
-            ip = in6_addr_mapped_ipv4(ip4);
-        } else if (!ipv6_parse(mb->ip, &ip)) {
+        if (!ip46_parse(mb->ip, &ip)) {
             continue;
         }
 
@@ -5320,7 +5317,6 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
      * - or the group has expired.
      */
     SBREC_IGMP_GROUP_FOR_EACH_BYINDEX (sbrec_igmp, sbrec_igmp_groups) {
-        ovs_be32 group_v4_addr;
         struct in6_addr group_addr;
 
         if (!sbrec_igmp->datapath) {
@@ -5350,9 +5346,7 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
         if (!strcmp(sbrec_igmp->address, OVN_IGMP_GROUP_MROUTERS)) {
             continue;
-        } else if (ip_parse(sbrec_igmp->address, &group_v4_addr)) {
-            group_addr = in6_addr_mapped_ipv4(group_v4_addr);
-        } else if (!ipv6_parse(sbrec_igmp->address, &group_addr)) {
+        } else if (!ip46_parse(sbrec_igmp->address, &group_addr)) {
             continue;
         }
 

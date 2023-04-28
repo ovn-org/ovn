@@ -1125,10 +1125,7 @@ read_mac_bindings(void)
         }
 
         struct in6_addr ip6;
-        ovs_be32 ip4;
-        if (ip_parse(sbmb->ip, &ip4)) {
-            ip6 = in6_addr_mapped_ipv4(ip4);
-        } else if (!ipv6_parse(sbmb->ip, &ip6)) {
+        if (!ip46_parse(sbmb->ip, &ip6)) {
             VLOG_WARN("%s: bad IP address", sbmb->ip);
             continue;
         }

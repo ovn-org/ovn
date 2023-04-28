@@ -745,6 +745,18 @@ ip46_parse_cidr(const char *str, struct in6_addr *prefix, unsigned int *plen)
     return false;
 }
 
+bool
+ip46_parse(const char *ip_str, struct in6_addr *ip)
+{
+    ovs_be32 ipv4;
+    if (ip_parse(ip_str, &ipv4)) {
+        *ip = in6_addr_mapped_ipv4(ipv4);
+        return true;
+    }
+
+    return ipv6_parse(ip_str, ip);
+}
+
 /* The caller must free the returned string. */
 char *
 normalize_ipv4_prefix(ovs_be32 ipv4, unsigned int plen)
