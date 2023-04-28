@@ -8899,11 +8899,11 @@ wait_column '20.0.0.4' Address_Set addresses name=pg1_ip4
 recompute_stat=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_addr_set recompute)
 AT_CHECK([test $recompute_stat -ge 1])
 
-# Any change to northd engine node should result in full recompute of sync_to_sb_addr_set node.
+# No change, no recompute
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb sync
-recompute_stat=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_addr_set recompute)
-AT_CHECK([test $recompute_stat -ge 1])
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_addr_set recompute], [0], [0
+])
 
 AT_CLEANUP
 ])

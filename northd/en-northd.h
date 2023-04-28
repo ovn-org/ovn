@@ -13,5 +13,6 @@ void en_northd_run(struct engine_node *node OVS_UNUSED, void *data OVS_UNUSED);
 void *en_northd_init(struct engine_node *node OVS_UNUSED,
                      struct engine_arg *arg);
 void en_northd_cleanup(void *data);
+bool northd_nb_nb_global_handler(struct engine_node *, void *data OVS_UNUSED);
 
 #endif /* EN_NORTHD_H */

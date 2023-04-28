@@ -141,7 +141,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
 {
     /* Define relationships between nodes where first argument is dependent
      * on the second argument */
-    engine_add_input(&en_northd, &en_nb_nb_global, NULL);
+    engine_add_input(&en_northd, &en_nb_nb_global,
+                     northd_nb_nb_global_handler);
     engine_add_input(&en_northd, &en_nb_logical_switch, NULL);
     engine_add_input(&en_northd, &en_nb_port_group, NULL);
     engine_add_input(&en_northd, &en_nb_load_balancer, NULL);

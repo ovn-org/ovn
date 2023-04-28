@@ -20,6 +20,7 @@
 
 #include "en-northd.h"
 #include "lib/inc-proc-eng.h"
+#include "lib/ovn-nb-idl.h"
 #include "openvswitch/list.h" /* TODO This is needed for ovn-parallel-hmap.h.
                                * lib/ovn-parallel-hmap.h should be updated
                                * to include this dependency itself */
@@ -122,6 +123,31 @@ void en_northd_run(struct engine_node *node, void *data)
     engine_set_node_state(node, EN_UPDATED);
 
 }
+
+bool
+northd_nb_nb_global_handler(struct engine_node *node,
+                            void *data OVS_UNUSED)
+{
+    const struct nbrec_nb_global_table *nb_global_table
+        = EN_OVSDB_GET(engine_get_input("NB_nb_global", node));
+
+    const struct nbrec_nb_global *nb =
+        nbrec_nb_global_table_first(nb_global_table);
+
+    if (!nb) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "NB_Global is updated but has no record.");
+        return false;
+    }
+
+    /* We care about the 'options' and 'ipsec' columns only. */
+    if (nbrec_nb_global_is_updated(nb, NBREC_NB_GLOBAL_COL_OPTIONS) ||
+        nbrec_nb_global_is_updated(nb, NBREC_NB_GLOBAL_COL_IPSEC)) {
+        return false;
+    }
+    return true;
+}
+
 void *en_northd_init(struct engine_node *node OVS_UNUSED,
                      struct engine_arg *arg OVS_UNUSED)
 {
