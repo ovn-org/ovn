@@ -1569,7 +1569,6 @@ bar3_ct=$(ovs-appctl dpctl/dump-conntrack | grep 30.0.0.2 | grep 172.16.1.4 -c)
 AT_CHECK([test $(ovs-appctl dpctl/dump-conntrack | grep 30.0.0.2 | grep 172.16.1 -c) -ne 0])
 
 if [[ "$bar1_ct" == "20" ]]; then
-    AT_CHECK([test $bar1_ct -eq 20])
     AT_CHECK([test $bar2_ct -eq 0])
     AT_CHECK([test $bar3_ct -eq 0])
 else
@@ -1577,17 +1576,15 @@ else
 fi
 
 if [[ "$bar2_ct" == "20" ]]; then
-    AT_CHECK([test $bar1_ct -eq 20])
-    AT_CHECK([test $bar2_ct -eq 0])
+    AT_CHECK([test $bar1_ct -eq 0])
     AT_CHECK([test $bar3_ct -eq 0])
 else
     AT_CHECK([test $bar2_ct -eq 0])
 fi
 
 if [[ "$bar3_ct" == "20" ]]; then
-    AT_CHECK([test $bar1_ct -eq 20])
+    AT_CHECK([test $bar1_ct -eq 0])
     AT_CHECK([test $bar2_ct -eq 0])
-    AT_CHECK([test $bar3_ct -eq 0])
 else
     AT_CHECK([test $bar3_ct -eq 0])
 fi
