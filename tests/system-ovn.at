@@ -10936,3 +10936,351 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+# This tests port->up/down and ovn-installed after adding and removing Ports and Interfaces.
+# 3 Conditions x 3 tests:
+# - 3 Conditions:
+#   - In normal conditions
+#   - Remove interface while starting and stopping SB and Controller
+#   - Remove and add back interface while starting and stopping SB and Controller
+# - 3 tests:
+#   - Add/Remove Logical Port
+#   - Add/Remove iface-id
+#   - Add/Remove Interface
+# Each tests/conditions checks for
+# - Port_binding->chassis
+# - Port up or down
+# - ovn-installed
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-install on slow ovsdb])
+AT_KEYWORDS([ovn-install])
+
+OVS_TRAFFIC_VSWITCHD_START()
+# Restart ovsdb-server, this time with tcp
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+start_daemon ovsdb-server --remote=punix:"$OVS_RUNDIR"/db.sock --remote=ptcp:0:127.0.0.1
+
+ovn_start
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+PARSE_LISTENING_PORT([$ovs_base/ovsdb-server.log], [TCP_PORT])
+start_daemon ovn-controller tcp:127.0.0.1:$TCP_PORT
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl set Logical_Switch ls1 other_config:subnet=10.1.0.0/16
+
+check ovn-nbctl --wait=hv sync
+
+add_logical_ports() {
+  echo Adding logical ports
+  check ovn-nbctl lsp-add ls1 lsp1
+  check ovn-nbctl lsp-add ls1 lsp2
+}
+
+remove_logical_ports() {
+  echo Removing logical ports
+  check ovn-nbctl lsp-del lsp1
+  check ovn-nbctl lsp-del lsp2
+}
+
+add_ovs_interface() {
+  echo Adding interface $1 $2
+  ovs-vsctl --no-wait -- add-port br-int $1 \
+                      -- set Interface $1 external_ids:iface-id=$2 \
+                      -- set Interface $1 type=internal
+}
+add_ovs_interfaces() {
+  add_ovs_interface vif1 lsp1
+  add_ovs_interface vif2 lsp2
+}
+remove_ovs_interface() {
+  echo Removing interface $1
+  check ovs-vsctl --no-wait -- del-port $1
+}
+remove_ovs_interfaces() {
+  remove_ovs_interface vif1
+  remove_ovs_interface vif2
+}
+add_iface_ids() {
+  echo Adding iface-id vif1 lsp1
+  ovs-vsctl --no-wait -- set Interface vif1 external_ids:iface-id=lsp1
+  echo Adding iface-id vif2 lsp2
+  ovs-vsctl --no-wait -- set Interface vif2 external_ids:iface-id=lsp2
+}
+remove_iface_id() {
+  echo Removing iface-id $1
+  check ovs-vsctl remove Interface $1 external_ids iface-id
+}
+remove_iface_ids() {
+  remove_iface_id vif1
+  remove_iface_id vif2
+}
+wait_for_local_bindings() {
+  OVS_WAIT_UNTIL(
+      [test `ovs-appctl -t ovn-controller debug/dump-local-bindings | grep interface | wc -l` -eq 2],
+      [kill -CONT $(cat ovn-sb/ovsdb-server.pid)]
+  )
+}
+sleep_sb() {
+  echo SB going to sleep
+  AT_CHECK([kill -STOP $(cat ovn-sb/ovsdb-server.pid)])
+}
+wake_up_sb() {
+  echo SB waking up
+  AT_CHECK([kill -CONT $(cat ovn-sb/ovsdb-server.pid)])
+}
+sleep_controller() {
+  echo Controller going to sleep
+  ovn-appctl debug/pause
+  OVS_WAIT_UNTIL([test x$(ovn-appctl -t ovn-controller debug/status) = "xpaused"])
+}
+
+stop_ovsdb_controller_updates() {
+  TCP_PORT=$1
+  echo Stopping updates from ovn-controller to ovsdb using port $TCP_PORT
+  on_exit 'iptables -C INPUT -p tcp --destination-port $TCP_PORT -j DROP 2>/dev/null && iptables -D INPUT -p tcp --destination-port $TCP_PORT -j DROP'
+  iptables -A INPUT -p tcp --destination-port $TCP_PORT -j DROP
+}
+restart_ovsdb_controller_updates() {
+  TCP_PORT=$1
+  echo Restarting updates from ovn-controller to ovsdb
+  iptables -D INPUT -p tcp --destination-port $TCP_PORT  -j DROP
+}
+wake_up_controller() {
+  echo Controller waking up
+  ovn-appctl debug/resume
+}
+ensure_controller_run() {
+# We want to make sure controller could run at least one full loop.
+# We can't use wait=hv as sb might be sleeping.
+# Use 2 ovn-appctl to guarentee that ovn-controller run the full loop, and not just the unixctl handling
+  OVS_WAIT_UNTIL([test x$(ovn-appctl -t ovn-controller debug/status) = "xrunning"])
+  OVS_WAIT_UNTIL([test x$(ovn-appctl -t ovn-controller debug/status) = "xrunning"])
+}
+sleep_ovsdb() {
+  echo OVSDB going to sleep
+  AT_CHECK([kill -STOP $(cat ovsdb-server.pid)])
+}
+wake_up_ovsdb() {
+  echo OVSDB waking up
+  AT_CHECK([kill -CONT $(cat ovsdb-server.pid)])
+}
+check_ovn_installed() {
+  OVS_WAIT_UNTIL([test `ovs-vsctl get Interface vif1 external_ids:ovn-installed` = '"true"'])
+  OVS_WAIT_UNTIL([test `ovs-vsctl get Interface vif2 external_ids:ovn-installed` = '"true"'])
+}
+check_ovn_uninstalled() {
+  OVS_WAIT_UNTIL([test x`ovs-vsctl get Interface vif2 external_ids:ovn-installed` = x])
+  OVS_WAIT_UNTIL([test x`ovs-vsctl get Interface vif1 external_ids:ovn-installed` = x])
+}
+check_ports_up() {
+  OVS_WAIT_UNTIL([test `ovn-sbctl get Port_Binding lsp1 up` = 'true'])
+  OVS_WAIT_UNTIL([test `ovn-sbctl get Port_Binding lsp2 up` = 'true'])
+}
+check_ports_down() {
+  OVS_WAIT_UNTIL([test `ovn-sbctl get Port_Binding lsp1 up` = 'false'])
+  OVS_WAIT_UNTIL([test `ovn-sbctl get Port_Binding lsp2 up` = 'false'])
+}
+
+check_ports_bound() {
+  ch=$(fetch_column Chassis _uuid name=hv1)
+  wait_row_count Port_Binding 1 logical_port=lsp1 chassis=$ch
+  wait_row_count Port_Binding 1 logical_port=lsp2 chassis=$ch
+}
+check_ports_unbound() {
+  wait_column "" Port_Binding chassis logical_port=lsp1
+  wait_column "" Port_Binding chassis logical_port=lsp2
+}
+add_logical_ports
+add_ovs_interfaces
+wait_for_local_bindings
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+############################################################
+########## Remove interface while removing iface-id ########
+############################################################
+AS_BOX(["Remove interface while removing iface-id"])
+stop_ovsdb_controller_updates $TCP_PORT
+remove_iface_id vif1
+ensure_controller_run
+# OVSDB should be seen as ro now
+remove_iface_id vif2
+ensure_controller_run
+# Controller delaying ovn-install removal for vif2 as ovsdb ro
+sleep_controller
+restart_ovsdb_controller_updates $TCP_PORT
+remove_ovs_interface vif2
+# vif2, for which we want to remove ovn-install, is deleted
+wake_up_controller
+check_ovn_uninstalled
+check_ports_down
+check_ports_unbound
+add_ovs_interface vif2 lsp2
+add_iface_ids
+check_ovn_installed
+check_ports_up
+check_ports_bound
+############################################################
+################### Add/Remove iface-id ####################
+############################################################
+AS_BOX(["iface-id removal and added back (no sleeping sb or controller)"])
+remove_iface_ids
+check_ovn_uninstalled
+check_ports_down
+check_ports_unbound
+add_iface_ids
+check_ovn_installed
+check_ports_up
+check_ports_bound
+
+AS_BOX(["iface-id removal"])
+sleep_sb
+remove_iface_ids
+ensure_controller_run
+sleep_controller
+wake_up_sb
+wake_up_controller
+check_ovn_uninstalled
+# Port_down not always set on iface-id removal
+# check_ports_down
+# Port_Binding(chassis) not always removed on iface-id removal
+# check_ports_unbound
+add_iface_ids
+check ovn-nbctl --wait=hv sync
+
+AS_BOX(["iface-id removal 2"])
+# Block IDL from ovn-controller to OVSDB
+stop_ovsdb_controller_updates $TCP_PORT
+remove_iface_id vif2
+ensure_controller_run
+
+# OVSDB should now be seen as read-only by ovn-controller
+remove_iface_id vif1
+ensure_controller_run
+
+# Restart connection from ovn-controller to OVSDB
+restart_ovsdb_controller_updates $TCP_PORT
+check_ovn_uninstalled
+check_ports_down
+check_ports_unbound
+
+add_iface_ids
+check ovn-nbctl --wait=hv sync
+
+AS_BOX(["iface-id removal and added back"])
+sleep_sb
+remove_iface_ids
+ensure_controller_run
+sleep_controller
+add_iface_ids
+wake_up_sb
+wake_up_controller
+check_ovn_installed
+check_ports_up
+check_ports_bound
+############################################################
+###################### Add/Remove Interface ################
+############################################################
+AS_BOX(["Interface removal and added back (no sleeping sb or controller)"])
+remove_ovs_interfaces
+check_ovn_uninstalled
+check_ports_down
+check_ports_unbound
+add_ovs_interfaces
+check_ovn_installed
+check_ports_up
+check_ports_bound
+check ovn-nbctl --wait=hv sync
+
+AS_BOX(["Interface removal"])
+sleep_sb
+remove_ovs_interfaces
+ensure_controller_run
+sleep_controller
+wake_up_sb
+wake_up_controller
+check_ovn_uninstalled
+# Port_down not always set on Interface removal
+# check_ports_down
+# Port_Binding(chassis) not always removed on Interface removal
+# check_ports_unbound
+add_ovs_interfaces
+check ovn-nbctl --wait=hv sync
+
+AS_BOX(["Interface removal and added back"])
+sleep_sb
+remove_ovs_interfaces
+ensure_controller_run
+sleep_controller
+add_ovs_interfaces
+wake_up_sb
+wake_up_controller
+check_ovn_installed
+check_ports_up
+check_ports_bound
+check ovn-nbctl --wait=hv sync
+############################################################
+###################### Add/Remove Logical Port #############
+############################################################
+AS_BOX(["Logical port removal and added back (no sleeping sb or controller)"])
+remove_logical_ports
+check_ovn_uninstalled
+check_ports_unbound
+sleep_ovsdb
+add_logical_ports
+ensure_controller_run
+wake_up_ovsdb
+check_ovn_installed
+check_ports_up
+check_ports_bound
+check ovn-nbctl --wait=hv sync
+
+AS_BOX(["Logical port removal"])
+sleep_sb
+remove_logical_ports
+ensure_controller_run
+sleep_controller
+wake_up_sb
+wake_up_controller
+check_ovn_uninstalled
+check_ports_unbound
+add_logical_ports
+check ovn-nbctl --wait=hv sync
+
+AS_BOX(["Logical port removal and added back"])
+sleep_sb
+remove_logical_ports
+ensure_controller_run
+sleep_controller
+add_logical_ports
+wake_up_sb
+wake_up_controller
+check_ovn_installed
+check_ports_up
+check_ports_bound
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
