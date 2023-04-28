@@ -54,32 +54,37 @@ VLOG_DEFINE_THIS_MODULE(if_status);
  */
 
 enum if_state {
-    OIF_CLAIMED,       /* Newly claimed interface. pb->chassis update not yet
-                          initiated. */
-    OIF_INSTALL_FLOWS, /* Claimed interface with pb->chassis update sent to
-                        * SB (but update notification not confirmed, so the
-                        * update may be resent in any of the following states)
-                        * and for which flows are still being installed.
-                        */
-    OIF_MARK_UP,       /* Interface with flows successfully installed in OVS
-                        * but not yet marked "up" in the binding module (in
-                        * SB and OVS databases).
-                        */
-    OIF_MARK_DOWN,     /* Released interface but not yet marked "down" in the
-                        * binding module (in SB and/or OVS databases).
-                        */
-    OIF_INSTALLED,     /* Interface flows programmed in OVS and binding marked
-                        * "up" in the binding module.
-                        */
+    OIF_CLAIMED,          /* Newly claimed interface. pb->chassis update not
+                             yet initiated. */
+    OIF_INSTALL_FLOWS,    /* Claimed interface with pb->chassis update sent to
+                           * SB (but update notification not confirmed, so the
+                           * update may be resent in any of the following
+                           * states and for which flows are still being
+                           * installed.
+                           */
+    OIF_REM_OLD_OVN_INST, /* Interface with flows successfully installed in OVS
+                           * but with ovn-installed still in OVSDB.
+                           */
+    OIF_MARK_UP,          /* Interface with flows successfully installed in OVS
+                           * but not yet marked "up" in the binding module (in
+                           * SB and OVS databases).
+                           */
+    OIF_MARK_DOWN,        /* Released interface but not yet marked "down" in
+                           * the binding module (in SB and/or OVS databases).
+                           */
+    OIF_INSTALLED,        /* Interface flows programmed in OVS and binding
+                           * marked "up" in the binding module.
+                           */
     OIF_MAX,
 };
 
 static const char *if_state_names[] = {
-    [OIF_CLAIMED]       = "CLAIMED",
-    [OIF_INSTALL_FLOWS] = "INSTALL_FLOWS",
-    [OIF_MARK_UP]       = "MARK_UP",
-    [OIF_MARK_DOWN]     = "MARK_DOWN",
-    [OIF_INSTALLED]     = "INSTALLED",
+    [OIF_CLAIMED]          = "CLAIMED",
+    [OIF_INSTALL_FLOWS]    = "INSTALL_FLOWS",
+    [OIF_REM_OLD_OVN_INST] = "REM_OLD_OVN_INST",
+    [OIF_MARK_UP]          = "MARK_UP",
+    [OIF_MARK_DOWN]        = "MARK_DOWN",
+    [OIF_INSTALLED]        = "INSTALLED",
 };
 
 /*
@@ -109,11 +114,26 @@ static const char *if_state_names[] = {
  * |     |                      |   - remove ovn-installed from ovsdb    | | |
  * |     |                      |  mgr_update()                          | | |
  * |     +----------------------+   - sbrec_update_chassis if needed     | | |
- * |                    |                                                | | |
- * |                    |  mgr_run(seqno rcvd)                           | | |
- * |                    |  - set port up in sb                           | | |
- * | release_iface      |  - set ovn-installed in ovs                    | | |
- * |                    V                                                | | |
+ * |        |            |                                               | | |
+ * |        |            +----------------------------------------+      | | |
+ * |        |                                                     |      | | |
+ * |        | mgr_run(seqno rcvd, ovn-installed present)          |      | | |
+ * |        V                                                     |      | | |
+ * |    +--------------------+                                    |      | | |
+ * |    |                    |  mgr_run()                         |      | | |
+ * +--- | REM_OLD_OVN_INST   |  - remove ovn-installed in ovs     |      | | |
+ * |    +--------------------+                                    |      | | |
+ * |               |                                              |      | | |
+ * |               |                                              |      | | |
+ * |               | mgr_update( ovn_installed not present)       |      | | |
+ * |               |                                              |      | | |
+ * |               |  +-------------------------------------------+      | | |
+ * |               |  |                                                  | | |
+ * |               |  |  mgr_run(seqno rcvd, ovn-installed not present)  | | |
+ * |               |  |  - set port up in sb                             | | |
+ * |               |  |  - set ovn-installed in ovs                      | | |
+ * |release_iface  |  |                                                  | | |
+ * |               V  V                                                  | | |
  * |   +----------------------+                                          | | |
  * |   |                      |  mgr_run()                               | | |
  * +-- |       MARK_UP        |  - set port up in sb                     | | |
@@ -155,6 +175,9 @@ struct if_status_mgr {
     /* All local interfaces, mapping from 'iface-id' to 'struct ovs_iface'. */
     struct shash ifaces;
 
+    /* local interfaces which need ovn-install removal */
+    struct shash ovn_uninstall_hash;
+
     /* All local interfaces, stored per state. */
     struct hmapx ifaces_per_state[OIF_MAX];
 
@@ -170,15 +193,20 @@ struct if_status_mgr {
 static struct ovs_iface *ovs_iface_create(struct if_status_mgr *,
                                           const char *iface_id,
                                           enum if_state );
+static void add_to_ovn_uninstall_hash(struct if_status_mgr *, const char *,
+                                      const struct uuid *);
 static void ovs_iface_destroy(struct if_status_mgr *, struct ovs_iface *);
+static void ovn_uninstall_hash_destroy(struct if_status_mgr *mgr, char *name);
 static void ovs_iface_set_state(struct if_status_mgr *, struct ovs_iface *,
                                 enum if_state);
 
 static void if_status_mgr_update_bindings(
     struct if_status_mgr *mgr, struct local_binding_data *binding_data,
     const struct sbrec_chassis *,
+    const struct ovsrec_interface_table *iface_table,
     bool sb_readonly, bool ovs_readonly);
 
+static void ovn_uninstall_hash_account_mem(const char *name, bool erase);
 struct if_status_mgr *
 if_status_mgr_create(void)
 {
@@ -189,6 +217,7 @@ if_status_mgr_create(void)
         hmapx_init(&mgr->ifaces_per_state[i]);
     }
     shash_init(&mgr->ifaces);
+    shash_init(&mgr->ovn_uninstall_hash);
     return mgr;
 }
 
@@ -202,6 +231,11 @@ if_status_mgr_clear(struct if_status_mgr *mgr)
     }
     ovs_assert(shash_is_empty(&mgr->ifaces));
 
+    SHASH_FOR_EACH_SAFE (node, &mgr->ovn_uninstall_hash) {
+        ovn_uninstall_hash_destroy(mgr, node->data);
+    }
+    ovs_assert(shash_is_empty(&mgr->ovn_uninstall_hash));
+
     for (size_t i = 0; i < ARRAY_SIZE(mgr->ifaces_per_state); i++) {
         ovs_assert(hmapx_is_empty(&mgr->ifaces_per_state[i]));
     }
@@ -212,6 +246,7 @@ if_status_mgr_destroy(struct if_status_mgr *mgr)
 {
     if_status_mgr_clear(mgr);
     shash_destroy(&mgr->ifaces);
+    shash_destroy(&mgr->ovn_uninstall_hash);
     for (size_t i = 0; i < ARRAY_SIZE(mgr->ifaces_per_state); i++) {
         hmapx_destroy(&mgr->ifaces_per_state[i]);
     }
@@ -238,6 +273,7 @@ if_status_mgr_claim_iface(struct if_status_mgr *mgr,
     switch (iface->state) {
     case OIF_CLAIMED:
     case OIF_INSTALL_FLOWS:
+    case OIF_REM_OLD_OVN_INST:
     case OIF_MARK_UP:
         /* Nothing to do here. */
         break;
@@ -274,6 +310,7 @@ if_status_mgr_release_iface(struct if_status_mgr *mgr, const char *iface_id)
         /* Not yet fully installed interfaces can be safely deleted. */
         ovs_iface_destroy(mgr, iface);
         break;
+    case OIF_REM_OLD_OVN_INST:
     case OIF_MARK_UP:
     case OIF_INSTALLED:
         /* Properly mark interfaces "down" if their flows were already
@@ -305,6 +342,7 @@ if_status_mgr_delete_iface(struct if_status_mgr *mgr, const char *iface_id)
         /* Not yet fully installed interfaces can be safely deleted. */
         ovs_iface_destroy(mgr, iface);
         break;
+    case OIF_REM_OLD_OVN_INST:
     case OIF_MARK_UP:
     case OIF_INSTALLED:
         /* Properly mark interfaces "down" if their flows were already
@@ -346,18 +384,50 @@ if_status_handle_claims(struct if_status_mgr *mgr,
     return rc;
 }
 
+static void
+clean_ovn_installed(struct if_status_mgr *mgr,
+                    const struct ovsrec_interface_table *iface_table)
+{
+    struct shash_node *node;
+
+    SHASH_FOR_EACH_SAFE (node, &mgr->ovn_uninstall_hash) {
+        const struct uuid *iface_uuid = node->data;
+        remove_ovn_installed_for_uuid(iface_table, iface_uuid);
+        free(node->data);
+        char *node_name = shash_steal(&mgr->ovn_uninstall_hash, node);
+        ovn_uninstall_hash_account_mem(node_name, true);
+        free(node_name);
+    }
+}
+
 void
 if_status_mgr_update(struct if_status_mgr *mgr,
                      struct local_binding_data *binding_data,
                      const struct sbrec_chassis *chassis_rec,
+                     const struct ovsrec_interface_table *iface_table,
+                     bool ovs_readonly,
                      bool sb_readonly)
 {
+    if (!ovs_readonly) {
+        clean_ovn_installed(mgr, iface_table);
+    }
     if (!binding_data) {
         return;
     }
 
     struct shash *bindings = &binding_data->bindings;
     struct hmapx_node *node;
+
+    /* Move all interfaces that have been confirmed without ovn-installed,
+     * from OIF_REM_OLD_OVN_INST to OIF_MARK_UP.
+     */
+    HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_REM_OLD_OVN_INST]) {
+        struct ovs_iface *iface = node->data;
+
+        if (!local_binding_is_ovn_installed(bindings, iface->id)) {
+            ovs_iface_set_state(mgr, iface, OIF_MARK_UP);
+        }
+    }
 
     /* Interfaces in OIF_MARK_UP/INSTALL_FLOWS state have already set their
      * pb->chassis. However, the update might still be in fly (confirmation
@@ -451,9 +521,22 @@ if_status_mgr_update(struct if_status_mgr *mgr,
 }
 
 void
+if_status_mgr_remove_ovn_installed(struct if_status_mgr *mgr,
+                                   const char *name,
+                                   const struct uuid *uuid)
+{
+    VLOG_DBG("Adding %s to list of interfaces for which to remove "
+              "ovn-installed", name);
+    if (!shash_find_data(&mgr->ovn_uninstall_hash, name)) {
+        add_to_ovn_uninstall_hash(mgr, name, uuid);
+    }
+}
+
+void
 if_status_mgr_run(struct if_status_mgr *mgr,
                   struct local_binding_data *binding_data,
                   const struct sbrec_chassis *chassis_rec,
+                  const struct ovsrec_interface_table *iface_table,
                   bool sb_readonly, bool ovs_readonly)
 {
     struct ofctrl_acked_seqnos *acked_seqnos =
@@ -471,12 +554,25 @@ if_status_mgr_run(struct if_status_mgr *mgr,
                                           iface->install_seqno)) {
             continue;
         }
-        ovs_iface_set_state(mgr, iface, OIF_MARK_UP);
+        /* Wait for ovn-installed to be absent before moving to MARK_UP state.
+         * Most of the times ovn-installed is already absent and hence we will
+         * not have to wait.
+         * If there is no binding_data, we can't determine if ovn-installed is
+         * present or not; hence also go to the OIF_REM_OLD_OVN_INST state.
+         */
+        if (!binding_data ||
+            local_binding_is_ovn_installed(&binding_data->bindings,
+                                           iface->id)) {
+            ovs_iface_set_state(mgr, iface, OIF_REM_OLD_OVN_INST);
+        } else {
+            ovs_iface_set_state(mgr, iface, OIF_MARK_UP);
+        }
     }
     ofctrl_acked_seqnos_destroy(acked_seqnos);
 
     /* Update binding states. */
     if_status_mgr_update_bindings(mgr, binding_data, chassis_rec,
+                                  iface_table,
                                   sb_readonly, ovs_readonly);
 }
 
@@ -484,6 +580,18 @@ static void
 ovs_iface_account_mem(const char *iface_id, bool erase)
 {
     uint32_t size = (strlen(iface_id) + sizeof(struct ovs_iface) +
+                     sizeof(struct shash_node));
+    if (erase) {
+        ifaces_usage -= size;
+    } else {
+        ifaces_usage += size;
+    }
+}
+
+static void
+ovn_uninstall_hash_account_mem(const char *name, bool erase)
+{
+    uint32_t size = (strlen(name) + sizeof(struct uuid) +
                      sizeof(struct shash_node));
     if (erase) {
         ifaces_usage -= size;
@@ -507,6 +615,16 @@ ovs_iface_create(struct if_status_mgr *mgr, const char *iface_id,
 }
 
 static void
+add_to_ovn_uninstall_hash(struct if_status_mgr *mgr, const char *name,
+                          const struct uuid *uuid)
+{
+    struct uuid *new_uuid = xzalloc(sizeof *new_uuid);
+    memcpy(new_uuid, uuid, sizeof(*new_uuid));
+    shash_add(&mgr->ovn_uninstall_hash, name, new_uuid);
+    ovn_uninstall_hash_account_mem(name, false);
+}
+
+static void
 ovs_iface_destroy(struct if_status_mgr *mgr, struct ovs_iface *iface)
 {
     VLOG_DBG("Interface %s destroy: state %s", iface->id,
@@ -519,6 +637,23 @@ ovs_iface_destroy(struct if_status_mgr *mgr, struct ovs_iface *iface)
     ovs_iface_account_mem(iface->id, true);
     free(iface->id);
     free(iface);
+}
+
+static void
+ovn_uninstall_hash_destroy(struct if_status_mgr *mgr, char *name)
+{
+    struct shash_node *node = shash_find(&mgr->ovn_uninstall_hash, name);
+    char *node_name = NULL;
+    if (node) {
+        free(node->data);
+        VLOG_DBG("Interface name %s destroy", name);
+        node_name = shash_steal(&mgr->ovn_uninstall_hash, node);
+        ovn_uninstall_hash_account_mem(name, true);
+        free(node_name);
+    } else {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "Interface name %s not found", name);
+    }
 }
 
 static void
@@ -539,6 +674,7 @@ static void
 if_status_mgr_update_bindings(struct if_status_mgr *mgr,
                               struct local_binding_data *binding_data,
                               const struct sbrec_chassis *chassis_rec,
+                              const struct ovsrec_interface_table *iface_table,
                               bool sb_readonly, bool ovs_readonly)
 {
     if (!binding_data) {
@@ -558,7 +694,17 @@ if_status_mgr_update_bindings(struct if_status_mgr *mgr,
                                sb_readonly, ovs_readonly);
     }
 
-    /* Notifiy the binding module to set "up" all bindings that have had
+    /* Notify the binding module to remove "ovn-installed" for all bindings
+     * in the OIF_REM_OLD_OVN_INST state.
+     */
+    HMAPX_FOR_EACH (node, &mgr->ifaces_per_state[OIF_REM_OLD_OVN_INST]) {
+        struct ovs_iface *iface = node->data;
+
+        local_binding_remove_ovn_installed(bindings, iface_table, iface->id,
+                                           ovs_readonly);
+    }
+
+    /* Notify the binding module to set "up" all bindings that have had
      * their flows installed but are not yet marked "up" in the binding
      * module.
      */
