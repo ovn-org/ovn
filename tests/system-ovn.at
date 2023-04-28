@@ -11150,10 +11150,8 @@ sleep_controller
 wake_up_sb
 wake_up_controller
 check_ovn_uninstalled
-# Port_down not always set on iface-id removal
-# check_ports_down
-# Port_Binding(chassis) not always removed on iface-id removal
-# check_ports_unbound
+check_ports_down
+check_ports_unbound
 add_iface_ids
 check ovn-nbctl --wait=hv sync
 
@@ -11209,10 +11207,8 @@ sleep_controller
 wake_up_sb
 wake_up_controller
 check_ovn_uninstalled
-# Port_down not always set on Interface removal
-# check_ports_down
-# Port_Binding(chassis) not always removed on Interface removal
-# check_ports_unbound
+check_ports_down
+check_ports_unbound
 add_ovs_interfaces
 check ovn-nbctl --wait=hv sync
 
