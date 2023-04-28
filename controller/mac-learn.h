@@ -19,7 +19,11 @@
 
 #include <sys/types.h>
 #include <netinet/in.h>
+
+#include "dp-packet.h"
 #include "openvswitch/hmap.h"
+#include "openvswitch/list.h"
+#include "openvswitch/ofpbuf.h"
 
 struct mac_binding {
     struct hmap_node hmap_node; /* In a hmap. */
@@ -57,11 +61,6 @@ struct mac_binding *ovn_mac_binding_add(struct mac_bindings_map *mac_bindings,
                                         struct in6_addr *ip,
                                         struct eth_addr mac,
                                         uint32_t timeout_ms);
-size_t keys_ip_hash(uint32_t dp_key, uint32_t port_key, struct in6_addr *ip);
-struct mac_binding *
-ovn_mac_binding_find(const struct mac_bindings_map *mac_bindings,
-                     uint32_t dp_key, uint32_t port_key, struct in6_addr *ip,
-                     size_t hash);
 
 
 struct fdb_entry {
@@ -80,7 +79,55 @@ void ovn_fdbs_flush(struct hmap *fdbs);
 void ovn_fdbs_destroy(struct hmap *fdbs);
 
 struct fdb_entry *ovn_fdb_add(struct hmap *fdbs,
-                                uint32_t dp_key, struct eth_addr mac,
-                                uint32_t port_key);
+                              uint32_t dp_key, struct eth_addr mac,
+                              uint32_t port_key);
+
+#define OVN_BUFFERED_PACKETS_TIMEOUT_MS 10000
+
+struct packet_data {
+    struct ovs_list node;
+
+    struct ofpbuf ofpacts;
+    struct dp_packet *p;
+};
+
+struct buffered_packets {
+    struct hmap_node hmap_node;
+
+    struct in6_addr ip;
+    uint64_t dp_key;
+    uint64_t port_key;
+
+    /* Queue of packet_data associated with this struct. */
+    struct ovs_list queue;
+
+    /* Timestamp in ms when the buffered packet should expire. */
+    long long int expire;
+};
+
+struct buffered_packets_ctx {
+    /* Map of all buffered packets waiting for the MAC address. */
+    struct hmap buffered_packets;
+    /* List of packet data that are ready to be sent. */
+    struct ovs_list ready_packets_data;
+};
+
+struct packet_data *
+ovn_packet_data_create(struct ofpbuf ofpacts,
+                       const struct dp_packet *original_packet);
+void ovn_packet_data_destroy(struct packet_data *pd);
+struct buffered_packets *
+ovn_buffered_packets_add(struct buffered_packets_ctx *ctx, uint64_t dp_key,
+                         uint64_t port_key, struct in6_addr ip);
+void ovn_buffered_packets_packet_data_enqueue(struct buffered_packets *bp,
+                                              struct packet_data *pd);
+void
+ovn_buffered_packets_ctx_run(struct buffered_packets_ctx *ctx,
+                             const struct mac_bindings_map *recent_mbs);
+void ovn_buffered_packets_ctx_init(struct buffered_packets_ctx *ctx);
+void ovn_buffered_packets_ctx_destroy(struct buffered_packets_ctx *ctx);
+bool
+ovn_buffered_packets_ctx_is_ready_to_send(struct buffered_packets_ctx *ctx);
+bool ovn_buffered_packets_ctx_has_packets(struct buffered_packets_ctx *ctx);
 
 #endif /* OVN_MAC_LEARN_H */
