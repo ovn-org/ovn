@@ -273,15 +273,17 @@ QoS commands:\n\
   qos-list SWITCH           print QoS rules for SWITCH\n\
 \n\
 Mirror commands:\n\
-  mirror-add NAME TYPE INDEX FILTER IP\n\
+  mirror-add NAME TYPE [INDEX] FILTER {IP | MIRROR-ID} \n\
                             add a mirror with given name\n\
-                            specify TYPE 'gre' or 'erspan'\n\
+                            specify TYPE 'gre', 'erspan', or 'local'\n\
                             specify the tunnel INDEX value\n\
                                 (indicates key if GRE\n\
                                  erpsan_idx if ERSPAN)\n\
                             specify FILTER for mirroring selection\n\
                                 'to-lport' / 'from-lport'\n\
-                            specify Sink / Destination i.e. Remote IP\n\
+                            specify Sink / Destination i.e. Remote IP, or a\n\
+                                local interface with external-ids:mirror-id\n\
+                                matching MIRROR-ID\n\
   mirror-del [NAME]         remove mirrors\n\
   mirror-list               print mirrors\n\
 \n\
@@ -7406,17 +7408,19 @@ parse_mirror_filter(const char *arg, const char **selection_p)
 }
 
 static char * OVS_WARN_UNUSED_RESULT
-parse_mirror_tunnel_type(const char *arg, const char **type_p)
+parse_mirror_type(const char *arg, const char **type_p)
 {
     /* Validate type.  Only require the first letter. */
     if (arg[0] == 'g') {
         *type_p = "gre";
     } else if (arg[0] == 'e') {
         *type_p = "erspan";
+    } else if (arg[0] == 'l') {
+        *type_p = "local";
     } else {
         *type_p = NULL;
-        return xasprintf("%s: type must be \"gre\" or "
-                         "\"erspan\"", arg);
+        return xasprintf("%s: type must be \"gre\", "
+                         "\"erspan\", or \"local\"", arg);
     }
     return NULL;
 }
@@ -7435,16 +7439,16 @@ static void
 nbctl_mirror_add(struct ctl_context *ctx)
 {
     const char *filter = NULL;
-    const char *sink_ip = NULL;
+    const char *sink = NULL;
     const char *type = NULL;
     const char *name = NULL;
-    char *new_sink_ip = NULL;
     int64_t index;
     char *error = NULL;
     const struct nbrec_mirror *mirror_check = NULL;
+    int pos = 1;
 
     /* Mirror Name */
-    name = ctx->argv[1];
+    name = ctx->argv[pos++];
     NBREC_MIRROR_FOR_EACH (mirror_check, ctx->idl) {
         if (!strcmp(mirror_check->name, name)) {
             ctl_error(ctx, "Mirror with %s name already exists.",
@@ -7453,40 +7457,44 @@ nbctl_mirror_add(struct ctl_context *ctx)
         }
     }
 
-    /* Tunnel Type - GRE/ERSPAN */
-    error = parse_mirror_tunnel_type(ctx->argv[2], &type);
+    /* Type - gre/erspan/local */
+    error = parse_mirror_type(ctx->argv[pos++], &type);
     if (error) {
         ctx->error = error;
         return;
     }
 
-    /* tunnel index / GRE key / ERSPAN idx */
-    if (!str_to_long(ctx->argv[3], 10, (long int *) &index)) {
-        ctl_error(ctx, "Invalid Index");
-        return;
+    if (strcmp(type, "local")) {
+        /* tunnel index / GRE key / ERSPAN idx */
+        if (!str_to_long(ctx->argv[pos++], 10, (long int *) &index)) {
+            ctl_error(ctx, "Invalid Index");
+            return;
+        }
     }
 
     /* Filter for mirroring */
-    error = parse_mirror_filter(ctx->argv[4], &filter);
+    error = parse_mirror_filter(ctx->argv[pos++], &filter);
     if (error) {
         ctx->error = error;
         return;
     }
 
     /* Destination / Sink details */
-    sink_ip = ctx->argv[5];
+    sink = ctx->argv[pos++];
 
-    /* check if it is a valid ip */
-    new_sink_ip = normalize_ipv4_addr_str(sink_ip);
-    if (!new_sink_ip) {
-        new_sink_ip = normalize_ipv6_addr_str(sink_ip);
-    }
+    /* check if it is a valid ip unless it is type 'local' */
+    if (strcmp(type, "local")) {
+        char *new_sink_ip = normalize_ipv4_addr_str(sink);
+        if (!new_sink_ip) {
+            new_sink_ip = normalize_ipv6_addr_str(sink);
+        }
 
-    if (!new_sink_ip) {
-        ctl_error(ctx, "Invalid sink ip: %s", sink_ip);
-        return;
+        if (!new_sink_ip) {
+            ctl_error(ctx, "Invalid sink ip: %s", sink);
+            return;
+        }
+        free(new_sink_ip);
     }
-    free(new_sink_ip);
 
     /* Create the mirror. */
     struct nbrec_mirror *mirror = nbrec_mirror_insert(ctx->txn);
@@ -7494,7 +7502,7 @@ nbctl_mirror_add(struct ctl_context *ctx)
     nbrec_mirror_set_index(mirror, index);
     nbrec_mirror_set_filter(mirror, filter);
     nbrec_mirror_set_type(mirror, type);
-    nbrec_mirror_set_sink(mirror, sink_ip);
+    nbrec_mirror_set_sink(mirror, sink);
 
 }
 
@@ -7672,7 +7680,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
       NULL, "", RO },
 
     /* mirror commands. */
-    { "mirror-add", 5, 5,
+    { "mirror-add", 4, 5,
       "NAME TYPE INDEX FILTER IP",
       nbctl_pre_mirror_add, nbctl_mirror_add, NULL, "--may-exist", RW },
     { "mirror-del", 0, 1, "[NAME]",

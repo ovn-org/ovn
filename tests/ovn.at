@@ -16483,7 +16483,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([Mirror])
+AT_SETUP([Mirror - remote])
 AT_KEYWORDS([Mirror])
 ovn_start
 
@@ -16708,6 +16708,101 @@ check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([test 0 = $(as hv1 ovs-vsctl list Mirror | wc -l)])
 
 OVN_CLEANUP([hv1], [hv2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Mirror - local])
+AT_KEYWORDS([Mirror])
+ovn_start
+
+ovn-nbctl ls-add ls1
+# Create logical port ls1-lp1 in ls1
+ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "00:00:00:01:01:02 10.0.0.2"
+ovn-nbctl lsp-add ls1 ls1-lp2 \
+-- lsp-set-addresses ls1-lp2 "00:00:00:01:01:03 10.0.0.3"
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys -- set bridge br-phys other-config:hwaddr=\"00:00:00:01:02:00\"
+ovn_attach n1 br-phys 192.168.1.11
+ovn-appctl -t ovn-controller vlog/set file:dbg
+
+ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=ls1-lp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-int vif2 -- \
+    set interface vif2 external-ids:iface-id=ls1-lp2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+
+# Add two ports as mirroring target
+ovs-vsctl -- add-port br-int mirror1 -- \
+    set interface mirror1 external-ids:mirror-id=sink1 \
+    options:tx_pcap=hv1/mirror1-tx.pcap \
+    options:rxq_pcap=hv1/mirror1-rx.pcap \
+    ofport-request=3
+ovs-vsctl -- add-port br-int mirror2 -- \
+    set interface mirror2 external-ids:mirror-id=sink2 \
+    options:tx_pcap=hv1/mirror2-tx.pcap \
+    options:rxq_pcap=hv1/mirror2-rx.pcap \
+    ofport-request=4
+
+# Create a NB mirror use DB 'create' command.
+uuid1=$(ovn-nbctl create mirror name=mirror-from-lp1 type=local sink=sink1 filter=from-lport)
+check ovn-nbctl lsp-attach-mirror ls1-lp1 mirror-from-lp1
+
+# Create another NB mirror use 'mirror-add' command.
+check ovn-nbctl mirror-add mirror-to-lp2 local to-lport sink2
+check ovn-nbctl lsp-attach-mirror ls1-lp2 mirror-to-lp2
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+AT_CHECK([ovs-vsctl --data=bare --no-heading --columns=name list mirror | grep mirror | sort], [0], [dnl
+mirror-from-lp1
+mirror-to-lp2
+])
+
+# Update to wrong mirror-id, the mirror should be deleted.
+check ovn-nbctl set mirror $uuid1 sink=xxx
+check ovn-nbctl --wait=hv sync
+AT_CHECK([ovs-vsctl --data=bare --no-heading --columns=name list mirror | grep mirror | sort], [0], [dnl
+mirror-to-lp2
+])
+
+# Change back, and the mirror should be created back
+check ovn-nbctl set mirror $uuid1 sink=sink1
+check ovn-nbctl --wait=hv sync
+AT_CHECK([ovs-vsctl --data=bare --no-heading --columns=name list mirror | grep mirror | sort], [0], [dnl
+mirror-from-lp1
+mirror-to-lp2
+])
+
+# Send a packet from lp1 to lp2, should be mirrored to both mirror ports.
+packet="inport==\"ls1-lp1\" && eth.src==00:00:00:01:01:02 && eth.dst==00:00:00:01:01:03 &&
+        ip4 && ip.ttl==64 && ip4.src==10.0.0.2 && ip4.dst==10.0.0.3 && icmp"
+AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+exp_packet="eth.src==00:00:00:01:01:02 && eth.dst==00:00:00:01:01:03 && ip4 &&
+            ip.ttl==64 && ip4.src==10.0.0.2 && ip4.dst==10.0.0.3 && icmp"
+echo $exp_packet | ovstest test-ovn expr-to-packets | sort > expout
+
+OVS_WAIT_UNTIL([
+    rcv_mirror1=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/mirror1-tx.pcap > mirror1.packets && cat mirror1.packets | wc -l`
+    rcv_mirror2=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/mirror2-tx.pcap > mirror2.packets && cat mirror2.packets | wc -l`
+    echo $rcv_mirror1 $rcv_mirror2
+    test $rcv_mirror1 -eq 1 -a $rcv_mirror2 -eq 1])
+
+AT_CHECK([cat mirror1.packets | sort], [0], [expout])
+AT_CHECK([cat mirror2.packets | sort], [0], [expout])
+
+OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 

@@ -1546,7 +1546,7 @@
     <h2> Mirror commands</h2>
     <dl>
       <dt><code>mirror-add</code> <var>m</var> <var>type</var>
-      <var>index</var> <var>filter</var> <var>dest</var></dt>
+      [<var>index</var>] <var>filter</var> <var>dest</var></dt>
       <dd>
         <p>
           Creates a new mirror in the <code>Mirror</code>
@@ -1556,12 +1556,13 @@
 
         <p>
           <var>type</var> specifies the mirror type - <code>gre</code>
-          or <code>erspan</code>.
+          , <code>erspan</code> or <code>local</code>.
         </p>
 
         <p>
           <var>index</var> specifies the tunnel index value (which is
-          an integer).
+          an integer) if the <var>type</var> is <code>gre</code> or
+          <code>erspan</code>.
         </p>
 
         <p>
@@ -1570,7 +1571,12 @@
         </p>
 
         <p>
-          <var>dest</var> specifies the mirror destination IP (v4 or v6).
+          <var>dest</var> specifies the mirror destination IP (v4 or v6)
+          if the <var>type</var> is <code>gre</code> or <code>erspan</code>.
+          For a <var>type</var> of <code>local</code>, this field defines a
+          local interface on the OVS integration bridge to be used as the
+          mirror destination. The interface must possess external-ids:mirror-id
+          that matches this string.
         </p>
       </dd>
 

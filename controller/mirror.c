@@ -55,10 +55,12 @@ static struct ovn_mirror *ovn_mirror_find(struct shash *ovn_mirrors,
 static void ovn_mirror_delete(struct ovn_mirror *);
 static void ovn_mirror_add_lport(struct ovn_mirror *, struct local_binding *);
 static void sync_ovn_mirror(struct ovn_mirror *, struct ovsdb_idl_txn *,
-                            const struct ovsrec_bridge *);
+                            const struct ovsrec_bridge *,
+                            struct shash *ovs_mirror_ports);
 
 static void create_ovs_mirror(struct ovn_mirror *, struct ovsdb_idl_txn *,
-                              const struct ovsrec_bridge *);
+                              const struct ovsrec_bridge *,
+                              struct shash *ovs_mirror_ports);
 static void sync_ovs_mirror_ports(struct ovn_mirror *,
                                   const struct ovsrec_bridge *);
 static void delete_ovs_mirror(struct ovn_mirror *,
@@ -71,6 +73,9 @@ static const struct ovsrec_port *get_iface_port(
     const struct ovsrec_interface *, const struct ovsrec_bridge *);
 
 char *get_mirror_tunnel_type(const struct sbrec_mirror *);
+
+static void build_ovs_mirror_ports(const struct ovsrec_bridge *,
+                                   struct shash *ovs_mirror_ports);
 
 void
 mirror_register_ovs_idl(struct ovsdb_idl *ovs_idl)
@@ -107,7 +112,8 @@ mirror_run(struct ovsdb_idl_txn *ovs_idl_txn,
     }
 
     struct shash ovn_mirrors = SHASH_INITIALIZER(&ovn_mirrors);
-    struct shash tmp_mirrors = SHASH_INITIALIZER(&tmp_mirrors);
+    struct shash ovs_local_mirror_ports =
+        SHASH_INITIALIZER(&ovs_local_mirror_ports);
 
     /* Iterate through sb mirrors and build the 'ovn_mirrors'. */
     const struct sbrec_mirror *sb_mirror;
@@ -139,6 +145,8 @@ mirror_run(struct ovsdb_idl_txn *ovs_idl_txn,
         return;
     }
 
+    build_ovs_mirror_ports(br_int, &ovs_local_mirror_ports);
+
     /* Iterate through the local bindings and if the local binding's 'pb' has
      * mirrors associated, add it to the ovn_mirror. */
     struct shash_node *node;
@@ -163,7 +171,7 @@ mirror_run(struct ovsdb_idl_txn *ovs_idl_txn,
      * create/update or delete the ovsrec mirror(s). */
      SHASH_FOR_EACH (node, &ovn_mirrors) {
         struct ovn_mirror *m = node->data;
-        sync_ovn_mirror(m, ovs_idl_txn, br_int);
+        sync_ovn_mirror(m, ovs_idl_txn, br_int, &ovs_local_mirror_ports);
      }
 
     SHASH_FOR_EACH_SAFE (node, &ovn_mirrors) {
@@ -172,9 +180,52 @@ mirror_run(struct ovsdb_idl_txn *ovs_idl_txn,
     }
 
     shash_destroy(&ovn_mirrors);
+    shash_destroy(&ovs_local_mirror_ports);
 }
 
 /* Static functions. */
+
+/* Builds mapping from mirror-id to ovsrec_port.
+ */
+static void
+build_ovs_mirror_ports(const struct ovsrec_bridge *br_int,
+                       struct shash *ovs_mirror_ports)
+{
+    int i;
+    for (i = 0; i < br_int->n_ports; i++) {
+        const struct ovsrec_port *port_rec = br_int->ports[i];
+        int j;
+
+        if (!strcmp(port_rec->name, br_int->name)) {
+            continue;
+        }
+
+        for (j = 0; j < port_rec->n_interfaces; j++) {
+            const struct ovsrec_interface *iface_rec;
+
+            iface_rec = port_rec->interfaces[j];
+            const char *mirror_id = smap_get(&iface_rec->external_ids,
+                                             "mirror-id");
+            if (mirror_id) {
+                const struct ovsrec_port *p = shash_find_data(ovs_mirror_ports,
+                                                              mirror_id);
+                if (!p) {
+                    shash_add(ovs_mirror_ports, mirror_id, port_rec);
+                } else {
+                    static struct vlog_rate_limit rl =
+                        VLOG_RATE_LIMIT_INIT(1, 5);
+                    VLOG_WARN_RL(
+                        &rl,
+                        "Invalid configuration: same mirror-id [%s] is "
+                        "configured on interfaces of ports: [%s] and [%s]. "
+                        "Ignoring the configuration on interface [%s]",
+                        mirror_id, port_rec->name, p->name, iface_rec->name);
+                }
+            }
+        }
+    }
+}
+
 static struct ovn_mirror *
 ovn_mirror_create(char *mirror_name)
 {
@@ -270,7 +321,8 @@ check_and_update_interface_table(const struct sbrec_mirror *sb_mirror,
 
 static void
 sync_ovn_mirror(struct ovn_mirror *m, struct ovsdb_idl_txn *ovs_idl_txn,
-                const struct ovsrec_bridge *br_int)
+                const struct ovsrec_bridge *br_int,
+                struct shash *ovs_mirror_ports)
 {
     if (should_delete_ovs_mirror(m)) {
         /* Delete the ovsrec mirror. */
@@ -285,9 +337,31 @@ sync_ovn_mirror(struct ovn_mirror *m, struct ovsdb_idl_txn *ovs_idl_txn,
     }
 
     if (m->sb_mirror && !m->ovs_mirror) {
-        create_ovs_mirror(m, ovs_idl_txn, br_int);
-    } else {
+        create_ovs_mirror(m, ovs_idl_txn, br_int, ovs_mirror_ports);
+        if (!m->ovs_mirror) {
+            return;
+        }
+    } else if (strcmp(m->sb_mirror->type, "local")) {
         check_and_update_interface_table(m->sb_mirror, m->ovs_mirror);
+
+        /* For upgradability, set the "ovn-owned" in case it was not set when
+         * the port was created. */
+        if (!smap_get_bool(&m->ovs_mirror->output_port->external_ids,
+                                   "ovn-owned", false)) {
+            ovsrec_port_update_external_ids_setkey(m->ovs_mirror->output_port,
+                                                   "ovn-owned", "true");
+        }
+    } else {
+        /* type is local, check mirror-id */
+        const struct ovsrec_port *mirror_port =
+            shash_find_data(ovs_mirror_ports, m->sb_mirror->sink);
+        if (!mirror_port) {
+            delete_ovs_mirror(m, br_int);
+            return;
+        }
+        if (mirror_port != m->ovs_mirror->output_port) {
+            ovsrec_mirror_set_output_port(m->ovs_mirror, mirror_port);
+        }
     }
 
     sync_ovs_mirror_ports(m, br_int);
@@ -325,28 +399,42 @@ get_iface_port(const struct ovsrec_interface *iface,
 
 static void
 create_ovs_mirror(struct ovn_mirror *m, struct ovsdb_idl_txn *ovs_idl_txn,
-                  const struct ovsrec_bridge *br_int)
+                  const struct ovsrec_bridge *br_int,
+                  struct shash *ovs_mirror_ports)
 {
-    struct ovsrec_interface *iface = ovsrec_interface_insert(ovs_idl_txn);
-    char *port_name = xasprintf("ovn-%s", m->name);
+    const struct ovsrec_port *mirror_port;
+    if (!strcmp(m->sb_mirror->type, "local")) {
+        mirror_port = shash_find_data(ovs_mirror_ports, m->sb_mirror->sink);
+        if (!mirror_port) {
+            return;
+        }
+    } else {
+        struct ovsrec_interface *iface = ovsrec_interface_insert(ovs_idl_txn);
+        char *port_name = xasprintf("ovn-%s", m->name);
 
-    ovsrec_interface_set_name(iface, port_name);
+        ovsrec_interface_set_name(iface, port_name);
 
-    char *type = get_mirror_tunnel_type(m->sb_mirror);
-    ovsrec_interface_set_type(iface, type);
-    set_mirror_iface_options(iface, m->sb_mirror);
-    free(type);
+        char *type = get_mirror_tunnel_type(m->sb_mirror);
+        ovsrec_interface_set_type(iface, type);
+        set_mirror_iface_options(iface, m->sb_mirror);
+        free(type);
 
-    struct ovsrec_port *port = ovsrec_port_insert(ovs_idl_txn);
-    ovsrec_port_set_name(port, port_name);
-    ovsrec_port_set_interfaces(port, &iface, 1);
-    ovsrec_bridge_update_ports_addvalue(br_int, port);
+        struct ovsrec_port *port = ovsrec_port_insert(ovs_idl_txn);
+        ovsrec_port_set_name(port, port_name);
+        ovsrec_port_set_interfaces(port, &iface, 1);
+        ovsrec_bridge_update_ports_addvalue(br_int, port);
 
-    free(port_name);
+        const struct smap port_external_ids =
+            SMAP_CONST1(&port_external_ids, "ovn-owned", "true");
+        ovsrec_port_set_external_ids(port, &port_external_ids);
+
+        free(port_name);
+        mirror_port = port;
+    }
 
     m->ovs_mirror = ovsrec_mirror_insert(ovs_idl_txn);
     ovsrec_mirror_set_name(m->ovs_mirror, m->name);
-    ovsrec_mirror_set_output_port(m->ovs_mirror, port);
+    ovsrec_mirror_set_output_port(m->ovs_mirror, mirror_port);
 
     const struct smap external_ids =
         SMAP_CONST1(&external_ids, "ovn-owned", "true");
@@ -400,8 +488,13 @@ sync_ovs_mirror_ports(struct ovn_mirror *m, const struct ovsrec_bridge *br_int)
 static void
 delete_ovs_mirror(struct ovn_mirror *m, const struct ovsrec_bridge *br_int)
 {
-    ovsrec_bridge_update_ports_delvalue(br_int, m->ovs_mirror->output_port);
     ovsrec_bridge_update_mirrors_delvalue(br_int, m->ovs_mirror);
-    ovsrec_port_delete(m->ovs_mirror->output_port);
+    bool ovn_owned = smap_get_bool(&m->ovs_mirror->output_port->external_ids,
+                                   "ovn-owned", false);
+    if (ovn_owned) {
+        ovsrec_bridge_update_ports_delvalue(br_int,
+                                            m->ovs_mirror->output_port);
+        ovsrec_port_delete(m->ovs_mirror->output_port);
+    }
     ovsrec_mirror_delete(m->ovs_mirror);
 }

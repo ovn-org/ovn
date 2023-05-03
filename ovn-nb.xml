@@ -2693,14 +2693,19 @@ or
     <column name="sink">
       <p>
         The value of this field represents the destination/sink of the mirror.
-        The value it takes is an IP address of the sink port.
+        If the <var>type</var> is <code>gre</code> or <code>erspan</code>,
+        the value indicates the tunnel remote IP (either IPv4 or IPv6).
+        For a <var>type</var> of <code>local</code>, this field defines a
+        local interface on the OVS integration bridge to be used as the
+        mirror destination. The interface must possess external-ids:mirror-id
+        that matches this string.
       </p>
     </column>
 
     <column name="type">
       <p>
-        The value of this field represents the type of the tunnel used for
-        sending the mirrored packets.
+        The value of this field specifies the mirror type - <code>gre</code>,
+        <code>erspan</code> or <code>local</code>.
       </p>
     </column>
 
@@ -2710,6 +2715,7 @@ or
         tunnel type is <code>gre</code>, this field represents the
         <code>GRE</code> key value and if the configured tunnel type is
         <code>erspan</code> it represents the <code>erspan_idx</code> value.
+        It is ignored if the type is <code>local</code>.
       </p>
     </column>
 
