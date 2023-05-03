@@ -171,16 +171,14 @@
         </p>
 
         <p>
-          Supported tunnel types for connecting hypervisors
-          are <code>geneve</code> and <code>stt</code>.  Gateways may
-          use <code>geneve</code>, <code>vxlan</code>, or
-          <code>stt</code>.
+          Supported tunnel types for connecting hypervisors and gateways
+          are <code>geneve</code>, <code>vxlan</code>, and <code>stt</code>.
         </p>
 
         <p>
           Due to the limited amount of metadata in <code>vxlan</code>,
-          the capabilities and performance of connected gateways will be
-          reduced versus other tunnel formats.
+          the capabilities and performance of connected gateways and
+          hypervisors will be reduced versus other tunnel formats.
         </p>
       </dd>
 
