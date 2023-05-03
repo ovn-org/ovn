@@ -30,6 +30,7 @@ struct nbrec_load_balancer_group;
 struct sbrec_load_balancer;
 struct sbrec_datapath_binding;
 struct ovn_datapath;
+struct ovn_dp_group;
 struct ovn_port;
 struct uuid;
 
@@ -83,6 +84,8 @@ struct ovn_northd_lb {
 
     size_t n_nb_lr;
     unsigned long *nb_lr_map;
+
+    struct ovn_dp_group *dpg;
 };
 
 struct ovn_lb_vip {

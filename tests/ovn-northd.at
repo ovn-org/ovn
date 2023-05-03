@@ -2668,6 +2668,81 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Logical Flow Datapath Groups])
+ovn_start
+
+dnl No groups initially.
+check_row_count sb:logical_dp_group 0
+
+check ovn-nbctl --wait=sb ls-add sw0
+sw0_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=sw0)
+
+dnl Still no groups after addition of the first datapath (switch).
+check_row_count sb:logical_dp_group 0
+
+dnl One group with both datapaths after addition of the second switch.
+check ovn-nbctl --wait=sb ls-add sw1
+sw1_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=sw1)
+check_row_count sb:logical_dp_group 1
+
+echo "$sw0_sb_uuid" > sw_sb_uuids
+echo "$sw1_sb_uuid" >> sw_sb_uuids
+
+ls_dpg_uuid=$(ovn-sbctl --bare --columns _uuid list Logical_DP_Group .)
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $ls_dpg_uuid | tail -1 | tr ' ' '\n' | sort], [0], [dnl
+$(cat sw_sb_uuids | sort)
+])
+
+dnl The same one group after the third switch, but with 3 datapaths.
+check ovn-nbctl --wait=sb ls-add sw2
+sw2_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=sw2)
+check_row_count sb:logical_dp_group 1
+
+echo "$sw2_sb_uuid" >> sw_sb_uuids
+
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $ls_dpg_uuid | tail -1 | tr ' ' '\n' | sort], [0], [dnl
+$(cat sw_sb_uuids | sort)
+])
+
+dnl Add two routers and check that they are in their new separate group.
+check ovn-nbctl --wait=sb lr-add lr0 -- lr-add lr1
+lr0_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
+lr1_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=lr1)
+check_row_count sb:logical_dp_group 2
+
+echo "$lr0_sb_uuid" > lr_sb_uuids
+echo "$lr1_sb_uuid" >> lr_sb_uuids
+
+lr_dpg_uuid=$(ovn-sbctl --bare --columns _uuid list Logical_DP_Group dnl
+                | grep -v $ls_dpg_uuid)
+
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $ls_dpg_uuid | tail -1 | tr ' ' '\n' | sort], [0], [dnl
+$(cat sw_sb_uuids | sort)
+])
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lr_dpg_uuid | tail -1 | tr ' ' '\n' | sort], [0], [dnl
+$(cat lr_sb_uuids | sort)
+])
+
+dnl Remove switch sw1 and check that the group was modified correctly.
+check ovn-nbctl --wait=sb ls-del sw1
+check_row_count sb:logical_dp_group 2
+
+echo "$sw0_sb_uuid" > sw_sb_uuids
+echo "$sw2_sb_uuid" >> sw_sb_uuids
+
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $ls_dpg_uuid | tail -1 | tr ' ' '\n' | sort], [0], [dnl
+$(cat sw_sb_uuids | sort)
+])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([NB to SB load balancer sync])
 ovn_start
 
@@ -2738,7 +2813,6 @@ check ovn-nbctl --wait=sb lr-lb-add lr0 lb0
 
 echo
 echo "__file__:__line__: Check that SB lb0 has only sw0 in datapaths column."
-lb0_dp_group=$(fetch_column sb:load_balancer datapath_group name=lb0)
 AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
                     | grep -A1 $lb0_dp_group | tail -1], [0], [dnl
 $sw0_sb_uuid
@@ -2746,7 +2820,6 @@ $sw0_sb_uuid
 
 echo
 echo "__file__:__line__: Check that SB lbg0 has only sw0 in datapaths column."
-lbg0_dp_group=$(fetch_column sb:load_balancer datapath_group name=lbg0)
 AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
                     | grep -A1 $lbg0_dp_group | tail -1], [0], [dnl
 $sw0_sb_uuid
@@ -2761,7 +2834,6 @@ echo "$sw1_sb_uuid" >> sw_sb_uuids
 
 echo
 echo "__file__:__line__: Check that SB lb0 has sw0 and sw1 in datapaths column."
-lb0_dp_group=$(fetch_column sb:load_balancer datapath_group name=lb0)
 AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
                     | grep -A1 $lb0_dp_group | tail -1 | tr ' ' '\n' | sort], [0], [dnl
 $(cat sw_sb_uuids | sort)
@@ -2769,7 +2841,6 @@ $(cat sw_sb_uuids | sort)
 
 echo
 echo "__file__:__line__: Check that SB lbg0 has sw0 and sw1 in datapaths column."
-lbg0_dp_group=$(fetch_column sb:load_balancer datapath_group name=lbg0)
 AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
                     | grep -A1 $lbg0_dp_group | tail -1 | tr ' ' '\n' | sort], [0], [dnl
 $(cat sw_sb_uuids | sort)
@@ -2836,6 +2907,24 @@ echo "__file__:__line__: Delete load balancers lb1 and lbg1 and check that datap
 
 ovn-nbctl --wait=sb lb-del lb1 -- lb-del lbg1
 check_column "" sb:datapath_binding load_balancers external_ids:name=sw1
+
+echo
+echo "__file__:__line__: Delete switch sw0."
+check ovn-nbctl --wait=sb ls-del sw0
+
+echo
+echo "__file__:__line__: Check that SB lb0 has only sw1 in datapaths column."
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lb0_dp_group | tail -1], [0], [dnl
+$sw1_sb_uuid
+])
+
+echo
+echo "__file__:__line__: Check that SB lbg0 has only sw1 in datapaths column."
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lbg0_dp_group | tail -1], [0], [dnl
+$sw1_sb_uuid
+])
 AT_CLEANUP
 ])
 

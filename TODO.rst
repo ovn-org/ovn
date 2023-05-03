@@ -167,6 +167,8 @@ OVN To-do List
     local OVS interfaces and the ofport numbers. Move this to the engine data
     of the engine data node - ed_type_pflow_output.
 
+  * Implement I-P for datapath groups.
+
 * ovn-northd parallel logical flow processing
 
   * Multi-threaded logical flow computation was optimized for the case
