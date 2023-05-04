@@ -1679,6 +1679,10 @@ ovn_port_destroy(struct hmap *ports, struct ovn_port *port)
          * use it. */
         hmap_remove(ports, &port->key_node);
 
+        if (port->peer) {
+            port->peer->peer = NULL;
+        }
+
         for (int i = 0; i < port->n_lsp_addrs; i++) {
             destroy_lport_addresses(&port->lsp_addrs[i]);
         }
