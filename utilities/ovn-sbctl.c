@@ -150,6 +150,20 @@ Other options:\n\
  * gracefully.  */
 #define ctl_fatal dont_use_ctl_fatal_use_ctl_error_and_return
 
+static int
+get_inactivity_probe(struct ovsdb_idl *idl)
+{
+    const struct sbrec_sb_global *sb = sbrec_sb_global_first(idl);
+    int interval = DEFAULT_UTILS_PROBE_INTERVAL_MSEC;
+
+    if (sb) {
+        interval = smap_get_int(&sb->options, "sbctl_probe_interval",
+                                interval);
+    }
+
+    return interval;
+}
+
 /* ovs-sbctl specific context.  Inherits the 'struct ctl_context' as base. */
 struct sbctl_context {
     struct ctl_context base;
@@ -1590,6 +1604,7 @@ main(int argc, char *argv[])
         .add_base_prerequisites = sbctl_add_base_prerequisites,
         .pre_execute = sbctl_pre_execute,
         .post_execute = NULL,
+        .get_inactivity_probe = get_inactivity_probe,
 
         .ctx_create = sbctl_ctx_create,
         .ctx_destroy = sbctl_ctx_destroy,

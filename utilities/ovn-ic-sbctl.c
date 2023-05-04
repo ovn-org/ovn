@@ -25,6 +25,7 @@
 #include "command-line.h"
 #include "compiler.h"
 #include "db-ctl-base.h"
+#include "ovn-dbctl.h"
 #include "dirs.h"
 #include "fatal-signal.h"
 #include "openvswitch/dynamic-string.h"
@@ -115,6 +116,10 @@ main(int argc, char *argv[])
     ovsdb_idl_set_remote(idl, db, false);
     ovsdb_idl_set_db_change_aware(idl, false);
     ovsdb_idl_set_leader_only(idl, leader_only);
+
+    /* Set reasonable high probe interval. */
+    set_idl_probe_interval(idl, db, DEFAULT_UTILS_PROBE_INTERVAL_MSEC);
+
     run_prerequisites(commands, n_commands, idl);
 
     /* Execute the commands.

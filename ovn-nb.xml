@@ -215,6 +215,24 @@
         </p>
       </column>
 
+      <column name="options" key="nbctl_probe_interval">
+        <p>
+          The inactivity probe interval of the connection to the OVN Northbound
+          database from <code>ovn-nbctl</code> utility, in milliseconds.
+          If the value is zero, it disables the connection keepalive feature.
+        </p>
+
+        <p>
+          If the value is nonzero, then it will be forced to a value of
+          at least 1000 ms.
+        </p>
+
+        <p>
+          If the value is less than zero, then the default inactivity probe
+          interval for <code>ovn-nbctl</code> would be left intact (120000 ms).
+        </p>
+      </column>
+
       <column name="options" key="northd_trim_timeout">
         <p>
           When used, this configuration value specifies the time, in

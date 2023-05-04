@@ -153,6 +153,20 @@ nbctl_post_execute(struct ovsdb_idl *idl, struct ovsdb_idl_txn *txn,
     }
 }
 
+static int
+get_inactivity_probe(struct ovsdb_idl *idl)
+{
+    const struct nbrec_nb_global *nb = nbrec_nb_global_first(idl);
+    int interval = DEFAULT_UTILS_PROBE_INTERVAL_MSEC;
+
+    if (nb) {
+        interval = smap_get_int(&nb->options, "nbctl_probe_interval",
+                                interval);
+    }
+
+    return interval;
+}
+
 static char * OVS_WARN_UNUSED_RESULT dhcp_options_get(
     struct ctl_context *ctx, const char *id, bool must_exist,
     const struct nbrec_dhcp_options **);
@@ -7943,6 +7957,7 @@ main(int argc, char *argv[])
         .add_base_prerequisites = nbctl_add_base_prerequisites,
         .pre_execute = nbctl_pre_execute,
         .post_execute = nbctl_post_execute,
+        .get_inactivity_probe = get_inactivity_probe,
 
         .ctx_create = nbctl_ctx_create,
         .ctx_destroy = nbctl_ctx_destroy,

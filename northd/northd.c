@@ -16660,6 +16660,15 @@ ovnnb_db_run(struct northd_input *input_data,
     } else {
         smap_remove(&options, "lb_hairpin_use_ct_mark");
     }
+
+    /* Hackaround SB_global.options overwrite by NB_Global.options for
+     * 'sbctl_probe_interval' option.
+     */
+    const char *sip = smap_get(&sb->options, "sbctl_probe_interval");
+    if (sip) {
+        smap_replace(&options, "sbctl_probe_interval", sip);
+    }
+
     if (!smap_equal(&sb->options, &options)) {
         sbrec_sb_global_set_options(sb, &options);
     }

@@ -205,6 +205,9 @@ ovn_dbctl_main(int argc, char *argv[],
     ovsdb_idl_set_remote(idl, db, daemon_mode);
     ovsdb_idl_set_leader_only(idl, leader_only);
 
+    /* Set reasonable high probe interval. */
+    set_idl_probe_interval(idl, db, DEFAULT_UTILS_PROBE_INTERVAL_MSEC);
+
     if (daemon_mode) {
         server_loop(dbctl_options, idl, argc, argv_);
     } else {
@@ -1095,6 +1098,13 @@ out:
 }
 
 static void
+update_inactivity_probe(struct server_cmd_run_ctx *ctx)
+{
+    set_idl_probe_interval(ctx->idl, db,
+                           ctx->dbctl_options->get_inactivity_probe(ctx->idl));
+}
+
+static void
 server_loop(const struct ovn_dbctl_options *dbctl_options,
             struct ovsdb_idl *idl, int argc, char *argv[])
 {
@@ -1125,6 +1135,10 @@ server_loop(const struct ovn_dbctl_options *dbctl_options,
 
     for (;;) {
         update_ssl_config();
+
+        /* Configure inactivity probe from connected DB. */
+        update_inactivity_probe(&server_cmd_run_ctx);
+
         memory_run();
         if (memory_should_report()) {
             struct simap usage = SIMAP_INITIALIZER(&usage);
