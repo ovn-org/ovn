@@ -1567,7 +1567,8 @@
 
         <p>
           <var>filter</var> specifies the mirror source selection.
-          Can be <code>from-lport</code> or <code>to-lport</code>.
+          Can be <code>from-lport</code>, <code>to-lport</code> or
+          <code>both</code>.
         </p>
 
         <p>

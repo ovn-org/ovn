@@ -280,7 +280,7 @@ Mirror commands:\n\
                                 (indicates key if GRE\n\
                                  erpsan_idx if ERSPAN)\n\
                             specify FILTER for mirroring selection\n\
-                                'to-lport' / 'from-lport'\n\
+                                'to-lport' / 'from-lport' / 'both'\n\
                             specify Sink / Destination i.e. Remote IP, or a\n\
                                 local interface with external-ids:mirror-id\n\
                                 matching MIRROR-ID\n\
@@ -7399,10 +7399,12 @@ parse_mirror_filter(const char *arg, const char **selection_p)
         *selection_p = "to-lport";
     } else if (arg[0] == 'f') {
         *selection_p = "from-lport";
+    } else if (arg[0] == 'b') {
+        *selection_p = "both";
     } else {
         *selection_p = NULL;
-        return xasprintf("%s: selection must be \"to-lport\" or "
-                         "\"from-lport\"", arg);
+        return xasprintf("%s: selection must be \"to-lport\", "
+                         "\"from-lport\", or \"both\"", arg);
     }
     return NULL;
 }

@@ -16787,7 +16787,7 @@ mirror-to-lp2
 # Send a packet from lp1 to lp2, should be mirrored to both mirror ports.
 packet="inport==\"ls1-lp1\" && eth.src==00:00:00:01:01:02 && eth.dst==00:00:00:01:01:03 &&
         ip4 && ip.ttl==64 && ip4.src==10.0.0.2 && ip4.dst==10.0.0.3 && icmp"
-AT_CHECK([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 exp_packet="eth.src==00:00:00:01:01:02 && eth.dst==00:00:00:01:01:03 && ip4 &&
             ip.ttl==64 && ip4.src==10.0.0.2 && ip4.dst==10.0.0.3 && icmp"
@@ -16801,6 +16801,13 @@ OVS_WAIT_UNTIL([
 
 AT_CHECK([cat mirror1.packets | sort], [0], [expout])
 AT_CHECK([cat mirror2.packets | sort], [0], [expout])
+
+port_src_old=$(ovs-vsctl get mirror mirror-from-lp1 select_src_port)
+check ovn-nbctl set mirror $uuid1 filter=both
+port_src_new=$(ovs-vsctl get mirror mirror-from-lp1 select_src_port)
+port_dst_new=$(ovs-vsctl get mirror mirror-from-lp1 select_dst_port)
+AT_CHECK([test $port_src_old = $port_src_new], [0], [])
+AT_CHECK([test $port_src_old = $port_dst_new], [0], [])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

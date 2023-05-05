@@ -2687,6 +2687,7 @@ or
         The value of this field represents selection criteria of the mirror.
         <code>to-lport</code> mirrors the packets coming into logical port.
         <code>from-lport</code> mirrors the packets going out of logical port.
+        <code>both</code> mirrors for both directions.
       </p>
     </column>
 

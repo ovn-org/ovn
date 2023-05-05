@@ -16,7 +16,8 @@ Post v23.03.0
     Listener Discovery protocols, regardless of ACLs defined.
   - Add IPv6 iPXE support introducing "bootfile_name" (59) and
     "bootfile_name_alt" (254) options to ovn dhcpv6 server.
-  - Support using local OVS port as port-mirroring target.
+  - Support using local OVS port as port-mirroring target, and also support
+    'both' directions for the 'filter' field.
 
 OVN v23.03.0 - 03 Mar 2023
 --------------------------

@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "7.0.1",
-    "cksum": "441625132 33536",
+    "version": "7.0.2",
+    "cksum": "190109735 33605",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -311,7 +311,8 @@
                 "name": {"type": "string"},
                 "filter": {"type": {"key": {"type": "string",
                                             "enum": ["set", ["from-lport",
-                                                             "to-lport"]]}}},
+                                                             "to-lport",
+                                                             "both"]]}}},
                 "sink":{"type": "string"},
                 "type": {"type": {"key": {"type": "string",
                                           "enum": ["set", ["gre",

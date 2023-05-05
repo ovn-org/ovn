@@ -267,11 +267,17 @@ ovn_mirror_delete(struct ovn_mirror *m)
 static void
 ovn_mirror_add_lport(struct ovn_mirror *m, struct local_binding *lbinding)
 {
-    struct mirror_lport *m_lport = xzalloc(sizeof *m_lport);
-    m_lport->lbinding = lbinding;
-    if (!strcmp(m->sb_mirror->filter, "from-lport")) {
+    if (!strcmp(m->sb_mirror->filter, "from-lport") ||
+        !strcmp(m->sb_mirror->filter, "both")) {
+        struct mirror_lport *m_lport = xzalloc(sizeof *m_lport);
+        m_lport->lbinding = lbinding;
         ovs_list_push_back(&m->mirror_src_lports, &m_lport->list_node);
-    } else {
+    }
+
+    if (!strcmp(m->sb_mirror->filter, "to-lport") ||
+        !strcmp(m->sb_mirror->filter, "both")) {
+        struct mirror_lport *m_lport = xzalloc(sizeof *m_lport);
+        m_lport->lbinding = lbinding;
         ovs_list_push_back(&m->mirror_dst_lports, &m_lport->list_node);
     }
 }

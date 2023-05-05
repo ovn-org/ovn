@@ -1,7 +1,7 @@
 {
     "name": "OVN_Southbound",
-    "version": "20.27.1",
-    "cksum": "1439763681 30400",
+    "version": "20.27.2",
+    "cksum": "1291808617 30462",
     "tables": {
         "SB_Global": {
             "columns": {
@@ -148,7 +148,8 @@
                 "filter": {"type": {"key": {"type": "string",
                                             "enum": ["set",
                                                      ["from-lport",
-                                                      "to-lport"]]}}},
+                                                      "to-lport",
+                                                      "both"]]}}},
                 "sink":{"type": "string"},
                 "type": {"type": {"key": {"type": "string",
                                           "enum": ["set", ["gre",
