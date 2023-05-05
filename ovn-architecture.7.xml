@@ -1318,7 +1318,7 @@
         output port is known. These pieces of information are obtained
         from the tunnel encapsulation metadata (see <code>Tunnel
         Encapsulations</code> for encoding details). Then the actions resubmit
-        to table 33 to enter the logical egress pipeline.
+        to table 38 to enter the logical egress pipeline.
       </p>
     </li>
 
