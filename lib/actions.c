@@ -2882,26 +2882,26 @@ static void
 encode_put_dhcpv6_option(const struct ovnact_gen_option *o,
                          struct ofpbuf *ofpacts)
 {
-    struct dhcp_opt6_header *opt = ofpbuf_put_uninit(ofpacts, sizeof *opt);
+    struct dhcpv6_opt_header *opt = ofpbuf_put_uninit(ofpacts, sizeof *opt);
     const union expr_constant *c = o->value.values;
     size_t n_values = o->value.n_values;
     size_t size;
 
-    opt->opt_code = htons(o->option->code);
+    opt->code = htons(o->option->code);
 
     if (!strcmp(o->option->type, "ipv6")) {
         size = n_values * sizeof(struct in6_addr);
-        opt->size = htons(size);
+        opt->len = htons(size);
         for (size_t i = 0; i < n_values; i++) {
             ofpbuf_put(ofpacts, &c[i].value.ipv6, sizeof(struct in6_addr));
         }
     } else if (!strcmp(o->option->type, "mac")) {
         size = sizeof(struct eth_addr);
-        opt->size = htons(size);
+        opt->len = htons(size);
         ofpbuf_put(ofpacts, &c->value.mac, size);
     } else if (!strcmp(o->option->type, "str")) {
         size = strlen(c->string);
-        opt->size = htons(size);
+        opt->len = htons(size);
         ofpbuf_put(ofpacts, c->string, size);
     }
 }
