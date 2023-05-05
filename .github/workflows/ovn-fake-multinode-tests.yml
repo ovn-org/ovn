@@ -166,13 +166,15 @@ jobs:
         cd ovn
         ./.ci/linux-prepare.sh
         ./.ci/linux-build.sh
-        sudo make check-multinode  || :
-        sudo podman exec -it ovn-central ovn-nbctl show || :
-        sudo podman exec -it ovn-central ovn-sbctl show || :
-        sudo podman exec -it ovn-chassis-1 ovs-vsctl show || :
-        sudo podman exec -it ovn-chassis-1 ip netns || :
-        sudo podman exec -it ovn-chassis-1 cat /var/log/ovn/ovn-controller.log || :
-        sudo cat tests/multinode-testsuite.dir/1/multinode-testsuite.log || :
+        if ! sudo make check-multinode; then
+          sudo podman exec -it ovn-central ovn-nbctl show || :
+          sudo podman exec -it ovn-central ovn-sbctl show || :
+          sudo podman exec -it ovn-chassis-1 ovs-vsctl show || :
+          sudo podman exec -it ovn-chassis-1 ip netns || :
+          sudo podman exec -it ovn-chassis-1 cat /var/log/ovn/ovn-controller.log || :
+          sudo cat tests/multinode-testsuite.dir/multinode-testsuite.log || :
+          exit 1
+        fi
 
     - name: copy logs on failure
       if: failure() || cancelled()
