@@ -13,7 +13,7 @@ concurrency:
 jobs:
   build:
     name: Build ovn-fake-multinode image
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         cfg:
@@ -69,7 +69,7 @@ jobs:
         path: /tmp/_output/ovn_${{ matrix.cfg.branch }}_image.tar
 
   multinode-tests:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [build]
     strategy:
