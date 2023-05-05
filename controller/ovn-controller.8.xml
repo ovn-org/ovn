@@ -121,11 +121,11 @@
           that is needed in the current chassis.
         </p>
         <p>
-          It is more optimal to set it to <code>true</code> in use cases when
-          the chassis would anyway need to monitor most of the records in
-          <var>ovs-database</var>, which would save the overhead of conditions
-          processing, especially for server side.  Typically, set it to
-          <code>true</code> for environments that all workloads need to be
+          It is more efficient to set it to <code>true</code> in use cases
+          where the chassis would anyway need to monitor most of the records in
+          <var>OVN Southbound</var> database, which would save the overhead of
+          conditions processing, especially for server side.  Typically, set it
+          to <code>true</code> for environments that all workloads need to be
           reachable from each other.
         </p>
         <p>
