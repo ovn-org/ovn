@@ -240,12 +240,6 @@ struct dhcp_opt_header {
 #define DHCP_OPT_PAYLOAD(hdr) \
     (void *)((char *)hdr + sizeof(struct dhcp_opt_header))
 
-/* Used in the OpenFlow PACKET_IN userdata */
-struct dhcp_opt6_header {
-    ovs_be16 opt_code;
-    ovs_be16 size;
-};
-
 /* These are not defined in ovs/lib/dhcp.h, hence defining here. */
 #define OVN_DHCP_MSG_DECLINE        4
 #define OVN_DHCP_MSG_RELEASE        7
