@@ -54,7 +54,7 @@ jobs:
         set -x
         sudo -E ./ovn_cluster.sh build
         mkdir -p /tmp/_output
-        sudo podman save ovn/ovn-multi-node:latest > /tmp/_output/ovn_main_image.tar
+        sudo podman save ovn/ovn-multi-node:main > /tmp/_output/ovn_main_image.tar
       working-directory: ovn-fake-multinode
 
     - name: Checkout ovn branch-22.03
@@ -69,7 +69,7 @@ jobs:
         set -x
         sudo -E ./ovn_cluster.sh build
         mkdir -p /tmp/_output
-        sudo podman tag ovn/ovn-multi-node:latest ovn/ovn-multi-node:22.03
+        sudo podman tag ovn/ovn-multi-node:main ovn/ovn-multi-node:22.03
         sudo podman save ovn/ovn-multi-node:22.03 > /tmp/_output/ovn_22_03_image.tar
       working-directory: ovn-fake-multinode
 
@@ -90,6 +90,7 @@ jobs:
       RUNC_CMD: podman
       OS_IMAGE: "fedora:37"
       CENTRAL_IMAGE: ${{ matrix.cfg.central_image }}
+      CHASSIS_IMAGE: "ovn/ovn-multi-node:main"
       # Disable SSL for now. Revisit this if required.
       ENABLE_SSL: no
       CC: gcc
@@ -108,7 +109,7 @@ jobs:
       fail-fast: false
       matrix:
         cfg:
-        - { central_image: "ovn/ovn-multi-node:latest" }
+        - { central_image: "ovn/ovn-multi-node:main" }
         - { central_image: "ovn/ovn-multi-node:22.03" }
 
     steps:
