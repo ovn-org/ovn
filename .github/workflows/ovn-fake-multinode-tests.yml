@@ -172,7 +172,7 @@ jobs:
           sudo podman exec -it ovn-chassis-1 ovs-vsctl show || :
           sudo podman exec -it ovn-chassis-1 ip netns || :
           sudo podman exec -it ovn-chassis-1 cat /var/log/ovn/ovn-controller.log || :
-          sudo cat tests/multinode-testsuite.dir/multinode-testsuite.log || :
+          sudo cat tests/multinode-testsuite.log || :
           exit 1
         fi
 
@@ -186,8 +186,8 @@ jobs:
         mkdir logs
         cp ovn/config.log ./logs/
         # multinode tests are run as root, need to adjust permissions.
-        sudo chmod -R +r ovn/tests/multinode-testsuite.dir.* || true
-        cp -r ovn/tests/multinode-testsuite.dir.* ./logs/ || true
+        sudo chmod -R +r ovn/tests/multinode-testsuite.* || true
+        cp -r ovn/tests/multinode-testsuite.* ./logs/ || true
         tar -czvf logs.tgz logs/
 
     - name: upload logs on failure
