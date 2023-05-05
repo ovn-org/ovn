@@ -12,14 +12,18 @@ concurrency:
 
 jobs:
   build:
+    name: Build ovn-fake-multinode image
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        cfg:
+        - { branch: "main" }
+        - { branch: "branch-22.03" }
     env:
       RUNC_CMD: podman
       OS_IMAGE: "fedora:37"
       # https://github.com/actions/runner-images/issues/6282
       XDG_RUNTIME_DIR: ''
-
-    name: Build ovn-fake-multinode image
-    runs-on: ubuntu-20.04
     steps:
     - name: Check out ovn-fake-multi-node
       uses: actions/checkout@v3
@@ -31,12 +35,6 @@ jobs:
     # Check out ovn and ovs separately inside ovn-fake-multinode/ovn and ovn-fake-multinode/ovs
     # ovn-fake-multinode builds and installs ovs from ovn-fake-multinode/ovs
     # and it builds and installs ovn from ovn-fake-multinode/ovn. It uses the ovs submodule for ovn compilation.
-    - name: Check out ovn
-      uses: actions/checkout@v3
-      with:
-        path: 'ovn-fake-multinode/ovn'
-        submodules: recursive
-
     - name: Check out ovs master
       uses: actions/checkout@v3
       with:
@@ -44,53 +42,50 @@ jobs:
         repository: 'openvswitch/ovs'
         ref: 'master'
 
+    - name: Check out ovn ${{ matrix.cfg.branch }}
+      uses: actions/checkout@v3
+      with:
+        path: 'ovn-fake-multinode/ovn'
+        submodules: recursive
+        ref: ${{ matrix.cfg.branch }}
+
     - name: Install dependencies
       run: |
         sudo apt update
         sudo apt-get install -y podman
 
-    - name: Build ovn-fake-multi-node main image
+    - name: Build ovn-fake-multi-node ${{ matrix.cfg.branch }} image
       run: |
         set -x
         sudo -E ./ovn_cluster.sh build
         mkdir -p /tmp/_output
-        sudo podman save ovn/ovn-multi-node:main > /tmp/_output/ovn_main_image.tar
-      working-directory: ovn-fake-multinode
-
-    - name: Checkout ovn branch-22.03
-      uses: actions/checkout@v3
-      with:
-        path: 'ovn-fake-multinode/ovn'
-        submodules: recursive
-        ref: 'branch-22.03'
-
-    - name: Build ovn-fake-multi-node 22.03 image
-      run: |
-        set -x
-        sudo -E ./ovn_cluster.sh build
-        mkdir -p /tmp/_output
-        sudo podman tag ovn/ovn-multi-node:main ovn/ovn-multi-node:22.03
-        sudo podman save ovn/ovn-multi-node:22.03 > /tmp/_output/ovn_22_03_image.tar
+        sudo podman tag ovn/ovn-multi-node:latest ovn/ovn-multi-node:${{ matrix.cfg.branch }}
+        sudo podman save ovn/ovn-multi-node:${{ matrix.cfg.branch }} > /tmp/_output/ovn_${{ matrix.cfg.branch }}_image.tar
       working-directory: ovn-fake-multinode
 
     - uses: actions/upload-artifact@v3
       with:
-        name: test-main-image
-        path: /tmp/_output/ovn_main_image.tar
-
-    - uses: actions/upload-artifact@v3
-      with:
-        name: test-22-03-image
-        path: /tmp/_output/ovn_22_03_image.tar
+        name: test-${{ matrix.cfg.branch }}-image
+        path: /tmp/_output/ovn_${{ matrix.cfg.branch }}_image.tar
 
   multinode-tests:
     runs-on: ubuntu-20.04
     timeout-minutes: 15
+    needs: [build]
+    strategy:
+      fail-fast: false
+      matrix:
+        cfg:
+        - { branch: "main" }
+        - { branch: "branch-22.03" }
+    name: multinode tests ${{ join(matrix.cfg.*, ' ') }}
     env:
       RUNC_CMD: podman
       OS_IMAGE: "fedora:37"
-      CENTRAL_IMAGE: ${{ matrix.cfg.central_image }}
+      CENTRAL_IMAGE: "ovn/ovn-multi-node:${{ matrix.cfg.branch }}"
       CHASSIS_IMAGE: "ovn/ovn-multi-node:main"
+      RELAY_IMAGE: "ovn/ovn-multi-node:main"
+      GW_IMAGE: "ovn/ovn-multi-node:main"
       # Disable SSL for now. Revisit this if required.
       ENABLE_SSL: no
       CC: gcc
@@ -102,15 +97,6 @@ jobs:
         podman openvswitch-switch libunbound-dev libunwind-dev
       # https://github.com/actions/runner-images/issues/6282
       XDG_RUNTIME_DIR: ''
-
-    name: multinode tests ${{ join(matrix.cfg.*, ' ') }}
-    needs: [build]
-    strategy:
-      fail-fast: false
-      matrix:
-        cfg:
-        - { central_image: "ovn/ovn-multi-node:main" }
-        - { central_image: "ovn/ovn-multi-node:22.03" }
 
     steps:
     - name: install required dependencies
@@ -125,12 +111,12 @@ jobs:
 
     - uses: actions/download-artifact@v3
       with:
-        name: test-22-03-image
+        name: test-branch-22.03-image
 
     - name: Load podman image
       run: |
         sudo podman load --input ovn_main_image.tar
-        sudo podman load --input ovn_22_03_image.tar
+        sudo podman load --input ovn_branch-22.03_image.tar
 
     - name: Check out ovn-fake-multi-node
       uses: actions/checkout@v3
