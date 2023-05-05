@@ -4,6 +4,7 @@ set -o errexit
 set -x
 
 ARCH=${ARCH:-"x86_64"}
+USE_SPARSE=${USE_SPARSE:-"yes"}
 COMMON_CFLAGS=""
 OVN_CFLAGS=""
 OPTS="$OPTS --enable-Werror"
@@ -27,7 +28,7 @@ function configure_ovn()
 
 function configure_gcc()
 {
-    if [ "$ARCH" = "x86_64" ]; then
+    if [ "$ARCH" = "x86_64" ] && [ "$USE_SPARSE" = "yes" ]; then
         # Enable sparse only for x86_64 architecture.
         OPTS="$OPTS --enable-sparse"
     elif [ "$ARCH" = "x86" ]; then

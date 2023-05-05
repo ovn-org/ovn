@@ -159,13 +159,16 @@ jobs:
         path: 'ovn'
         submodules: recursive
 
-    - name: Build OVN and trigger fake-multinode system tests
+    - name: Build OVN (for running fake-multinode system tests)
       run: |
-        set -x
-        pwd
-        cd ovn
-        ./.ci/linux-prepare.sh
-        ./.ci/linux-build.sh
+        pip3 install --disable-pip-version-check --user wheel
+        pip3 install --disable-pip-version-check --user \
+          -r utilities/containers/py-requirements.txt
+        USE_SPARSE=no ./.ci/linux-build.sh
+      working-directory: ovn
+
+    - name: Run fake-multinode system tests
+      run: |
         if ! sudo make check-multinode; then
           sudo podman exec -it ovn-central ovn-nbctl show || :
           sudo podman exec -it ovn-central ovn-sbctl show || :
@@ -175,6 +178,7 @@ jobs:
           sudo cat tests/multinode-testsuite.log || :
           exit 1
         fi
+      working-directory: ovn
 
     - name: copy logs on failure
       if: failure() || cancelled()
