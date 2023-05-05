@@ -264,10 +264,13 @@ struct dhcp_opt_header {
 #define DHCPV6_OPT_IA_NA_CODE            3
 #define DHCPV6_OPT_IA_ADDR_CODE          5
 #define DHCPV6_OPT_STATUS_CODE           13
+#define DHCPV6_OPT_USER_CLASS            15
 #define DHCPV6_OPT_DNS_SERVER_CODE       23
 #define DHCPV6_OPT_DOMAIN_SEARCH_CODE    24
 #define DHCPV6_OPT_IA_PD                 25
 #define DHCPV6_OPT_IA_PREFIX             26
+#define DHCPV6_OPT_BOOT_FILE_URL         59
+#define DHCPV6_OPT_BOOT_FILE_URL_ALT    254
 
 #define DHCPV6_OPT_SERVER_ID \
     DHCP_OPTION("server_id", DHCPV6_OPT_SERVER_ID_CODE, "mac")
@@ -280,6 +283,12 @@ struct dhcp_opt_header {
 
 #define DHCPV6_OPT_DOMAIN_SEARCH \
     DHCP_OPTION("domain_search", DHCPV6_OPT_DOMAIN_SEARCH_CODE, "str")
+
+#define DHCPV6_OPT_BOOTFILE_NAME \
+    DHCP_OPTION("bootfile_name", DHCPV6_OPT_BOOT_FILE_URL, "str")
+
+#define DHCPV6_OPT_BOOTFILE_NAME_ALT \
+    DHCP_OPTION("bootfile_name_alt", DHCPV6_OPT_BOOT_FILE_URL_ALT, "str")
 
 OVS_PACKED(
 struct dhcpv6_opt_header {

@@ -2441,7 +2441,8 @@ exit:
 
 static bool
 compose_out_dhcpv6_opts(struct ofpbuf *userdata,
-                        struct ofpbuf *out_dhcpv6_opts, ovs_be32 iaid)
+                        struct ofpbuf *out_dhcpv6_opts,
+                        ovs_be32 iaid, bool ipxe_req)
 {
     while (userdata->size) {
         struct dhcpv6_opt_header *userdata_opt = ofpbuf_try_pull(
@@ -2543,6 +2544,27 @@ compose_out_dhcpv6_opts(struct ofpbuf *userdata,
             break;
         }
 
+        case DHCPV6_OPT_BOOT_FILE_URL:
+            if (ipxe_req) {
+                struct dhcpv6_opt_header *opt_dsl = ofpbuf_put_zeros(
+                    out_dhcpv6_opts, sizeof *opt_dsl);
+                opt_dsl->code = htons(DHCPV6_OPT_BOOT_FILE_URL);
+                opt_dsl->len = htons(size);
+                ofpbuf_put(out_dhcpv6_opts, userdata_opt_data, size);
+            }
+            break;
+
+        case DHCPV6_OPT_BOOT_FILE_URL_ALT: {
+            if (!ipxe_req) {
+                struct dhcpv6_opt_header *opt_dsl = ofpbuf_put_zeros(
+                    out_dhcpv6_opts, sizeof *opt_dsl);
+                opt_dsl->code = htons(DHCPV6_OPT_BOOT_FILE_URL);
+                opt_dsl->len = htons(size);
+                ofpbuf_put(out_dhcpv6_opts, userdata_opt_data, size);
+            }
+            break;
+        }
+
         default:
             return false;
         }
@@ -2630,6 +2652,7 @@ pinctrl_handle_put_dhcpv6_opts(
     size_t udp_len = ntohs(in_udp->udp_len);
     size_t l4_len = dp_packet_l4_size(pkt_in);
     uint8_t *end = (uint8_t *)in_udp + MIN(udp_len, l4_len);
+    bool ipxe_req = false;
     while (in_dhcpv6_data < end) {
         struct dhcpv6_opt_header const *in_opt =
              (struct dhcpv6_opt_header *)in_dhcpv6_data;
@@ -2645,6 +2668,14 @@ pinctrl_handle_put_dhcpv6_opts(
         case DHCPV6_OPT_CLIENT_ID_CODE:
             in_opt_client_id = in_opt;
             break;
+
+        case DHCPV6_OPT_USER_CLASS: {
+            char *user_class = (char *)(in_opt + 1);
+            if (!strcmp(user_class + 2, "iPXE")) {
+                ipxe_req = true;
+            }
+            break;
+        }
 
         default:
             break;
@@ -2668,7 +2699,8 @@ pinctrl_handle_put_dhcpv6_opts(
     struct ofpbuf out_dhcpv6_opts =
         OFPBUF_STUB_INITIALIZER(out_ofpacts_dhcpv6_opts_stub);
 
-    if (!compose_out_dhcpv6_opts(userdata, &out_dhcpv6_opts, iaid)) {
+    if (!compose_out_dhcpv6_opts(userdata, &out_dhcpv6_opts,
+                                 iaid, ipxe_req)) {
         VLOG_WARN_RL(&rl, "Invalid userdata");
         goto exit;
     }
