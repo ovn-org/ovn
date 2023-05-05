@@ -22,6 +22,7 @@
 
 /* OVS includes. */
 #include "lib/vswitch-idl.h"
+#include "lib/socket-util.h"
 #include "include/openvswitch/shash.h"
 #include "openvswitch/vlog.h"
 
@@ -69,6 +70,7 @@ static void set_mirror_iface_options(struct ovsrec_interface *,
 static const struct ovsrec_port *get_iface_port(
     const struct ovsrec_interface *, const struct ovsrec_bridge *);
 
+char *get_mirror_tunnel_type(const struct sbrec_mirror *);
 
 void
 mirror_register_ovs_idl(struct ovsdb_idl *ovs_idl)
@@ -244,24 +246,26 @@ set_mirror_iface_options(struct ovsrec_interface *iface,
     smap_destroy(&options);
 }
 
+char *
+get_mirror_tunnel_type(const struct sbrec_mirror *sb_mirror)
+{
+    bool is_ipv6 = addr_is_ipv6(sb_mirror->sink);
+
+    return xasprintf(is_ipv6 ? "ip6%s" : "%s", sb_mirror->type);
+}
+
 static void
 check_and_update_interface_table(const struct sbrec_mirror *sb_mirror,
                                  const struct ovsrec_mirror *ovs_mirror)
 {
-    char *type;
-    struct ovsrec_interface *iface =
-                          ovs_mirror->output_port->interfaces[0];
-    struct smap *opts = &iface->options;
-    const char *erspan_ver = smap_get(opts, "erspan_ver");
-    if (erspan_ver) {
-        type = "erspan";
-    } else {
-        type = "gre";
-    }
-    if (strcmp(type, sb_mirror->type)) {
-        ovsrec_interface_set_type(iface, sb_mirror->type);
+    struct ovsrec_interface *iface = ovs_mirror->output_port->interfaces[0];
+    char *type = get_mirror_tunnel_type(sb_mirror);
+
+    if (strcmp(type, iface->type)) {
+        ovsrec_interface_set_type(iface, type);
     }
     set_mirror_iface_options(iface, sb_mirror);
+    free(type);
 }
 
 static void
@@ -327,8 +331,11 @@ create_ovs_mirror(struct ovn_mirror *m, struct ovsdb_idl_txn *ovs_idl_txn,
     char *port_name = xasprintf("ovn-%s", m->name);
 
     ovsrec_interface_set_name(iface, port_name);
-    ovsrec_interface_set_type(iface, m->sb_mirror->type);
+
+    char *type = get_mirror_tunnel_type(m->sb_mirror);
+    ovsrec_interface_set_type(iface, type);
     set_mirror_iface_options(iface, m->sb_mirror);
+    free(type);
 
     struct ovsrec_port *port = ovsrec_port_insert(ovs_idl_txn);
     ovsrec_port_set_name(port, port_name);

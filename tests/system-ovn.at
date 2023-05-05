@@ -11009,3 +11009,170 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn mirroring])
+AT_KEYWORDS([mirror])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-mirror])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+ovs-ofctl add-flow br-mirror action=normal
+
+ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
+
+ovn-nbctl ls-add foo
+ovn-nbctl ls-add bar
+
+# Connect foo to R1
+ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24 2001::1/64
+ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+    type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
+
+# Connect bar to R1
+ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24 2002::1/64
+ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+    type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
+
+# Logical port 'foo1' in switch 'foo'.
+ADD_NAMESPACES(foo1)
+ADD_VETH(foo1, foo1, br-int, "2001::2/64", "f0:00:00:01:02:03", \
+         "2001::1", "nodad", "192.168.1.2/24", "192.168.1.1")
+ovn-nbctl lsp-add foo foo1 \
+-- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2 2001::2"
+
+# Logical port 'bar1' in switch 'bar'.
+ADD_NAMESPACES(bar1)
+ADD_VETH(bar1, bar1, br-int, "2002::2/64", "f0:00:00:01:02:05", \
+         "2002::1", "nodad", "192.168.2.2/24", "192.168.2.1")
+ovn-nbctl lsp-add bar bar1 \
+-- lsp-set-addresses bar1 "f0:00:00:01:02:05 192.168.2.2 2002::2"
+
+ovn-nbctl mirror-add mirror0 gre 1 to-lport 172.16.0.100
+ovn-nbctl lsp-attach-mirror bar1 mirror0
+
+ADD_NAMESPACES(mirror)
+ADD_VETH(mirror, mirror, br-mirror, "2003::b/64", "f0:00:00:01:07:06", \
+         "2003::1", "nodad", "172.16.0.100/24", "172.16.0.1")
+AT_CHECK([ip addr add 172.16.0.101/24 dev br-mirror])
+AT_CHECK([ip addr add 2003::a/64 dev br-mirror nodad])
+AT_CHECK([ip link set dev br-mirror up])
+
+NS_CHECK_EXEC([mirror], [tcpdump -l -c 3 -neei mirror proto GRE > gre_mirror4.pcap 2>gre_mirror4_error &])
+OVS_WAIT_UNTIL([grep "listening" gre_mirror4_error])
+
+NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+OVS_WAIT_UNTIL([
+    n_packets=$(grep "GRE" -c gre_mirror4.pcap)
+    test "${n_packets}" = "3"
+])
+
+killall tcpdump
+
+ovn-nbctl mirror-del mirror0
+ovn-nbctl mirror-add mirror1 gre 2 to-lport 2003::b
+ovn-nbctl lsp-attach-mirror bar1 mirror1
+
+NS_CHECK_EXEC([mirror], [tcpdump -l -c 3 -neei mirror proto GRE > gre_mirror6.pcap 2>gre_mirror6_error &])
+OVS_WAIT_UNTIL([grep "listening" gre_mirror6_error])
+
+NS_CHECK_EXEC([foo1], [ping6 -q -c 3 -i 0.3 -w 2 2002::2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+OVS_WAIT_UNTIL([
+    n_packets=$(grep "GRE" -c gre_mirror6.pcap)
+    test "${n_packets}" = "3"
+])
+
+killall tcpdump
+
+ovn-nbctl mirror-del mirror1
+ovn-nbctl mirror-add mirror2 erspan 3 to-lport 172.16.0.100
+ovn-nbctl lsp-attach-mirror bar1 mirror2
+
+NS_CHECK_EXEC([mirror], [tcpdump -l -c 3 -neei mirror ip[[22:2]]=0x88be > erspan_mirror4.pcap 2>erspan_mirror4_error &])
+OVS_WAIT_UNTIL([grep "listening" erspan_mirror4_error])
+
+NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+OVS_WAIT_UNTIL([
+    n_packets=$(grep "gre-proto-0x88be" -c erspan_mirror4.pcap)
+    test "${n_packets}" = "3"
+])
+
+killall tcpdump
+
+ovn-nbctl mirror-del mirror2
+ovn-nbctl mirror-add mirror3 erspan 4 to-lport 2003::b
+ovn-nbctl lsp-attach-mirror bar1 mirror3
+
+NS_CHECK_EXEC([mirror], [tcpdump -l -c 3 -neei mirror ip6[[42:2]]=0x88be > erspan_mirror6.pcap 2>erspan_mirror6_error &])
+OVS_WAIT_UNTIL([grep "listening" erspan_mirror6_error])
+
+NS_CHECK_EXEC([foo1], [ping6 -q -c 3 -i 0.3 -w 2 2002::2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+OVS_WAIT_UNTIL([
+    n_packets=$(grep "gre-proto-0x88be" -c erspan_mirror6.pcap)
+    test "${n_packets}" = "3"
+])
+
+killall tcpdump
+
+uuid=$(fetch_column nb:mirror _uuid name="mirror3")
+ovn-nbctl set mirror $uuid type=gre
+
+NS_CHECK_EXEC([mirror], [tcpdump -c 3 -l -neei mirror proto GRE > gre_mirror6.pcap 2>gre_mirror6_error &])
+OVS_WAIT_UNTIL([grep "listening" gre_mirror6_error])
+
+NS_CHECK_EXEC([foo1], [ping6 -q -c 3 -i 0.3 -w 2 2002::2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+OVS_WAIT_UNTIL([
+    n_packets=$(grep "GRE" -c gre_mirror6.pcap)
+    test "${n_packets}" = "3"
+])
+
+killall tcpdump
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
