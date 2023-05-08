@@ -410,7 +410,7 @@ wangqianyu                         wang.qianyu@zte.com.cn
 wangchuanlei                       wangchuanlei@inspur.com
 Wang Sheng-Hui                     shhuiw@gmail.com
 Wang Zhike                         wangzhike@jd.com
-Wei Li                             liw@dtdream.com
+Wei Li                             liw@yusur.tech
 Wei Yongjun                        yjwei@cn.fujitsu.com
 Wenyu Zhang                        wenyuz@vmware.com
 William Fulton
