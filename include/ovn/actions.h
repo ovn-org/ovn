@@ -755,12 +755,6 @@ struct action_header {
 };
 BUILD_ASSERT_DECL(sizeof(struct action_header) == 8);
 
-OVS_PACKED(
-struct ovnfield_act_header {
-    ovs_be16 id; /* one of enum ovnfield_id. */
-    ovs_be16 len; /* Length of the ovnfield data. */
-});
-
 struct ovnact_parse_params {
     /* A table of "struct expr_symbol"s to support (as one would provide to
      * expr_parse()). */
