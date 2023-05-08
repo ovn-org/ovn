@@ -30,43 +30,49 @@
 
 VLOG_DEFINE_THIS_MODULE(en_lflow);
 
+static void
+lflow_get_input_data(struct engine_node *node,
+                     struct lflow_input *lflow_input)
+{
+    struct northd_data *northd_data = engine_get_input_data("northd", node);
+    lflow_input->nbrec_bfd_table =
+        EN_OVSDB_GET(engine_get_input("NB_bfd", node));
+    lflow_input->sbrec_bfd_table =
+        EN_OVSDB_GET(engine_get_input("SB_bfd", node));
+    lflow_input->sbrec_logical_flow_table =
+        EN_OVSDB_GET(engine_get_input("SB_logical_flow", node));
+    lflow_input->sbrec_multicast_group_table =
+        EN_OVSDB_GET(engine_get_input("SB_multicast_group", node));
+    lflow_input->sbrec_igmp_group_table =
+        EN_OVSDB_GET(engine_get_input("SB_igmp_group", node));
+
+    lflow_input->sbrec_mcast_group_by_name_dp =
+           engine_ovsdb_node_get_index(
+                          engine_get_input("SB_multicast_group", node),
+                         "sbrec_mcast_group_by_name");
+
+    lflow_input->ls_datapaths = &northd_data->ls_datapaths;
+    lflow_input->lr_datapaths = &northd_data->lr_datapaths;
+    lflow_input->ls_ports = &northd_data->ls_ports;
+    lflow_input->lr_ports = &northd_data->lr_ports;
+    lflow_input->port_groups = &northd_data->port_groups;
+    lflow_input->meter_groups = &northd_data->meter_groups;
+    lflow_input->lbs = &northd_data->lbs;
+    lflow_input->features = &northd_data->features;
+    lflow_input->ovn_internal_version_changed =
+                      northd_data->ovn_internal_version_changed;
+    lflow_input->bfd_connections = NULL;
+}
+
 void en_lflow_run(struct engine_node *node, void *data)
 {
     const struct engine_context *eng_ctx = engine_get_context();
 
     struct lflow_input lflow_input;
-
-    struct northd_data *northd_data = engine_get_input_data("northd", node);
+    lflow_get_input_data(node, &lflow_input);
 
     struct hmap bfd_connections = HMAP_INITIALIZER(&bfd_connections);
-
-    lflow_input.nbrec_bfd_table =
-        EN_OVSDB_GET(engine_get_input("NB_bfd", node));
-    lflow_input.sbrec_bfd_table =
-        EN_OVSDB_GET(engine_get_input("SB_bfd", node));
-    lflow_input.sbrec_logical_flow_table =
-        EN_OVSDB_GET(engine_get_input("SB_logical_flow", node));
-    lflow_input.sbrec_multicast_group_table =
-        EN_OVSDB_GET(engine_get_input("SB_multicast_group", node));
-    lflow_input.sbrec_igmp_group_table =
-        EN_OVSDB_GET(engine_get_input("SB_igmp_group", node));
-
-    lflow_input.sbrec_mcast_group_by_name_dp =
-           engine_ovsdb_node_get_index(
-                          engine_get_input("SB_multicast_group", node),
-                         "sbrec_mcast_group_by_name");
-
-    lflow_input.ls_datapaths = &northd_data->ls_datapaths;
-    lflow_input.lr_datapaths = &northd_data->lr_datapaths;
-    lflow_input.ls_ports = &northd_data->ls_ports;
-    lflow_input.lr_ports = &northd_data->lr_ports;
-    lflow_input.port_groups = &northd_data->port_groups;
-    lflow_input.meter_groups = &northd_data->meter_groups;
-    lflow_input.lbs = &northd_data->lbs;
     lflow_input.bfd_connections = &bfd_connections;
-    lflow_input.features = &northd_data->features;
-    lflow_input.ovn_internal_version_changed =
-                      northd_data->ovn_internal_version_changed;
 
     struct lflow_data *lflow_data = data;
     lflow_data_destroy(lflow_data);
@@ -76,8 +82,8 @@ void en_lflow_run(struct engine_node *node, void *data)
     build_bfd_table(eng_ctx->ovnsb_idl_txn,
                     lflow_input.nbrec_bfd_table,
                     lflow_input.sbrec_bfd_table,
-                    &bfd_connections,
-                    &northd_data->lr_ports);
+                    lflow_input.lr_ports,
+                    &bfd_connections);
     build_lflows(eng_ctx->ovnsb_idl_txn, &lflow_input, &lflow_data->lflows);
     bfd_cleanup_connections(lflow_input.nbrec_bfd_table,
                             &bfd_connections);
@@ -85,6 +91,30 @@ void en_lflow_run(struct engine_node *node, void *data)
     stopwatch_stop(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
 
     engine_set_node_state(node, EN_UPDATED);
+}
+
+bool
+lflow_northd_handler(struct engine_node *node,
+                     void *data)
+{
+    struct northd_data *northd_data = engine_get_input_data("northd", node);
+    if (!northd_data->change_tracked) {
+        return false;
+    }
+    const struct engine_context *eng_ctx = engine_get_context();
+    struct lflow_data *lflow_data = data;
+
+    struct lflow_input lflow_input;
+    lflow_get_input_data(node, &lflow_input);
+
+    if (!lflow_handle_northd_ls_changes(eng_ctx->ovnsb_idl_txn,
+                                        &northd_data->tracked_ls_changes,
+                                        &lflow_input, &lflow_data->lflows)) {
+        return false;
+    }
+
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
 }
 
 void *en_lflow_init(struct engine_node *node OVS_UNUSED,

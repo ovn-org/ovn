@@ -9506,14 +9506,14 @@ check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=hv lsp-add ls0 lsp0-1 -- lsp-set-addresses lsp0-1 "aa:aa:aa:00:00:01 192.168.0.11"
 AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd recompute], [0], [3
 ])
-AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow recompute], [0], [6
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow recompute], [0], [5
 ])
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=hv lsp-add ls0 lsp0-2 -- lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:02 192.168.0.12"
 AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd recompute], [0], [3
 ])
-AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow recompute], [0], [6
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow recompute], [0], [5
 ])
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats

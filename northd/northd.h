@@ -331,11 +331,15 @@ void northd_indices_create(struct northd_data *data,
 void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
                   struct lflow_input *input_data,
                   struct hmap *lflows);
+bool lflow_handle_northd_ls_changes(struct ovsdb_idl_txn *ovnsb_txn,
+                                    struct tracked_ls_changes *,
+                                    struct lflow_input *, struct hmap *lflows);
 
 void build_bfd_table(struct ovsdb_idl_txn *ovnsb_txn,
                      const struct nbrec_bfd_table *,
                      const struct sbrec_bfd_table *,
-                     struct hmap *bfd_connections, struct hmap *lr_ports);
+                     const struct hmap *lr_ports,
+                     struct hmap *bfd_connections);
 void bfd_cleanup_connections(const struct nbrec_bfd_table *,
                              struct hmap *bfd_map);
 void run_update_worker_pool(int n_threads);
