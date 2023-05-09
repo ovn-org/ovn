@@ -1077,31 +1077,34 @@ compose_prefixd_packet(struct dp_packet *b, struct ipv6_prefixd_state *pfd)
     } else {
         *dhcp_hdr = DHCPV6_MSG_TYPE_SOLICIT;
     }
+    dhcp_hdr += 4;
 
-    struct dhcpv6_opt_server_id *opt_client_id =
-        (struct dhcpv6_opt_server_id *)(dhcp_hdr + 4);
-    opt_client_id->opt.code = htons(DHCPV6_OPT_CLIENT_ID_CODE);
-    opt_client_id->opt.len = htons(sizeof(struct dhcpv6_opt_server_id) -
-                                   sizeof(struct dhcpv6_opt_header));
-    opt_client_id->duid_type = htons(DHCPV6_DUID_LL);
-    opt_client_id->hw_type = htons(DHCPV6_HW_TYPE_ETH);
-    opt_client_id->mac = pfd->cmac;
+    struct dhcpv6_opt_server_id opt_client_id = {
+        .opt.code = htons(DHCPV6_OPT_CLIENT_ID_CODE),
+        .opt.len = htons(sizeof(struct dhcpv6_opt_server_id) -
+                         sizeof(struct dhcpv6_opt_header)),
+        .duid_type = htons(DHCPV6_DUID_LL),
+        .hw_type = htons(DHCPV6_HW_TYPE_ETH),
+        .mac = pfd->cmac,
+    };
+    memcpy(dhcp_hdr, &opt_client_id, sizeof(struct dhcpv6_opt_server_id));
+    dhcp_hdr += sizeof(struct dhcpv6_opt_server_id);
 
-    unsigned char *ptr = (unsigned char *)(opt_client_id + 1);
     if (pfd->uuid.len) {
-        struct dhcpv6_opt_header *in_opt = (struct dhcpv6_opt_header *)ptr;
+        struct dhcpv6_opt_header *in_opt =
+            (struct dhcpv6_opt_header *) dhcp_hdr;
         in_opt->code = htons(DHCPV6_OPT_SERVER_ID_CODE);
         in_opt->len = htons(pfd->uuid.len);
 
-        ptr += sizeof *in_opt;
-        memcpy(ptr, pfd->uuid.data, pfd->uuid.len);
-        ptr += pfd->uuid.len;
+        dhcp_hdr += sizeof *in_opt;
+        memcpy(dhcp_hdr, pfd->uuid.data, pfd->uuid.len);
+        dhcp_hdr += pfd->uuid.len;
     }
 
     if (!ipv6_addr_is_set(&pfd->prefix)) {
         pfd->aid = random_uint16();
     }
-    struct dhcpv6_opt_ia_na *ia_pd = (struct dhcpv6_opt_ia_na *)ptr;
+    struct dhcpv6_opt_ia_na *ia_pd = (struct dhcpv6_opt_ia_na *) dhcp_hdr;
     ia_pd->opt.code = htons(DHCPV6_OPT_IA_PD);
     int opt_len = sizeof(struct dhcpv6_opt_ia_na) -
                   sizeof(struct dhcpv6_opt_header);
@@ -2306,16 +2309,17 @@ compose_out_dhcpv6_opts(struct ofpbuf *userdata,
              *
              * We use DUID Based on Link-layer Address [DUID-LL].
              */
-
-            struct dhcpv6_opt_server_id *opt_server_id = ofpbuf_put_zeros(
-                out_dhcpv6_opts, sizeof *opt_server_id);
-
-            opt_server_id->opt.code = htons(DHCPV6_OPT_SERVER_ID_CODE);
-            opt_server_id->opt.len = htons(size + 4);
-            opt_server_id->duid_type = htons(DHCPV6_DUID_LL);
-            opt_server_id->hw_type = htons(DHCPV6_HW_TYPE_ETH);
-            memcpy(&opt_server_id->mac, userdata_opt_data,
+            struct dhcpv6_opt_server_id opt_server_id = {
+                .opt.code = htons(DHCPV6_OPT_SERVER_ID_CODE),
+                .opt.len = htons(size + 4),
+                .duid_type = htons(DHCPV6_DUID_LL),
+                .hw_type = htons(DHCPV6_HW_TYPE_ETH),
+            };
+            memcpy(&opt_server_id.mac, userdata_opt_data,
                     sizeof(struct eth_addr));
+            void *ptr = ofpbuf_put_zeros(out_dhcpv6_opts,
+                                         sizeof(struct dhcpv6_opt_server_id));
+            memcpy(ptr, &opt_server_id, sizeof(struct dhcpv6_opt_server_id));
             break;
         }
 

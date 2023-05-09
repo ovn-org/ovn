@@ -296,14 +296,15 @@ struct dhcpv6_opt_header {
     ovs_be16 len;
 });
 
-OVS_PACKED(
+#define DHCP6_OPT_SERVER_ID_LEN 14
 struct dhcpv6_opt_server_id {
     struct dhcpv6_opt_header opt;
     ovs_be16 duid_type;
     ovs_be16 hw_type;
     struct eth_addr mac;
-});
-
+};
+BUILD_ASSERT_DECL(DHCP6_OPT_SERVER_ID_LEN ==
+                  sizeof(struct dhcpv6_opt_server_id));
 
 #define DHCP6_OPT_IA_ADDR_LEN 28
 struct dhcpv6_opt_ia_addr {
