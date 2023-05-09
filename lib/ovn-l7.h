@@ -305,13 +305,14 @@ struct dhcpv6_opt_server_id {
 });
 
 
-OVS_PACKED(
+#define DHCP6_OPT_IA_ADDR_LEN 28
 struct dhcpv6_opt_ia_addr {
     struct dhcpv6_opt_header opt;
     struct in6_addr ipv6;
     ovs_be32 t1;
     ovs_be32 t2;
-});
+};
+BUILD_ASSERT_DECL(DHCP6_OPT_IA_ADDR_LEN == sizeof(struct dhcpv6_opt_ia_addr));
 
 OVS_PACKED(
 struct dhcpv6_opt_ia_na {
