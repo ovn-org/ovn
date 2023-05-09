@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "coverage.h"
 #include "en-northd.h"
 #include "lib/inc-proc-eng.h"
 #include "lib/ovn-nb-idl.h"
@@ -25,11 +26,14 @@
                                * lib/ovn-parallel-hmap.h should be updated
                                * to include this dependency itself */
 #include "lib/ovn-parallel-hmap.h"
+#include "stopwatch.h"
+#include "lib/stopwatch-names.h"
 #include "northd.h"
 #include "lib/util.h"
 #include "openvswitch/vlog.h"
 
 VLOG_DEFINE_THIS_MODULE(en_northd);
+COVERAGE_DEFINE(northd_run);
 
 static void
 northd_get_input_data(struct engine_node *node,
@@ -128,9 +132,11 @@ en_northd_run(struct engine_node *node, void *data)
     northd_init(data);
 
     northd_get_input_data(node, &input_data);
-    northd_run(&input_data, data,
-               eng_ctx->ovnnb_idl_txn,
-               eng_ctx->ovnsb_idl_txn);
+    COVERAGE_INC(northd_run);
+    stopwatch_start(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
+    ovnnb_db_run(&input_data, data, eng_ctx->ovnnb_idl_txn,
+                 eng_ctx->ovnsb_idl_txn);
+    stopwatch_stop(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
     engine_set_node_state(node, EN_UPDATED);
 
 }

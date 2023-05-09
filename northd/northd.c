@@ -60,8 +60,6 @@
 
 VLOG_DEFINE_THIS_MODULE(northd);
 
-COVERAGE_DEFINE(northd_run);
-
 static bool controller_event_en;
 static bool lflow_hash_lock_initialized = false;
 
@@ -17123,7 +17121,7 @@ northd_destroy(struct northd_data *data)
     sset_destroy(&data->svc_monitor_lsps);
 }
 
-static void
+void
 ovnnb_db_run(struct northd_input *input_data,
              struct northd_data *data,
              struct ovsdb_idl_txn *ovnnb_txn,
@@ -17347,16 +17345,16 @@ struct ha_chassis_group_node {
 };
 
 static void
-update_sb_ha_group_ref_chassis(struct northd_input *input_data,
-                               struct shash *ha_ref_chassis_map)
+update_sb_ha_group_ref_chassis(
+    const struct sbrec_ha_chassis_group_table *sb_ha_ch_grp_table,
+    struct shash *ha_ref_chassis_map)
 {
     struct hmap ha_ch_grps = HMAP_INITIALIZER(&ha_ch_grps);
     struct ha_chassis_group_node *ha_ch_grp_node;
 
     /* Initialize a set of all ha_chassis_groups in SB. */
     const struct sbrec_ha_chassis_group *ha_ch_grp;
-    SBREC_HA_CHASSIS_GROUP_TABLE_FOR_EACH (ha_ch_grp,
-                                    input_data->sbrec_ha_chassis_group_table) {
+    SBREC_HA_CHASSIS_GROUP_TABLE_FOR_EACH (ha_ch_grp, sb_ha_ch_grp_table) {
         ha_ch_grp_node = xzalloc(sizeof *ha_ch_grp_node);
         ha_ch_grp_node->ha_ch_grp = ha_ch_grp;
         hmap_insert(&ha_ch_grps, &ha_ch_grp_node->hmap_node,
@@ -17418,7 +17416,7 @@ update_sb_ha_group_ref_chassis(struct northd_input *input_data,
  *  - 'ref_chassis' of hagrp1.
  */
 static void
-build_ha_chassis_group_ref_chassis(struct northd_input *input_data,
+build_ha_chassis_group_ref_chassis(struct ovsdb_idl_index *ha_ch_grp_by_name,
                                    const struct sbrec_port_binding *sb,
                                    struct ovn_port *op,
                                    struct shash *ha_ref_chassis_map)
@@ -17444,7 +17442,7 @@ build_ha_chassis_group_ref_chassis(struct northd_input *input_data,
     SSET_FOR_EACH (ha_group_name, &lr_group->ha_chassis_groups) {
         const struct sbrec_ha_chassis_group *sb_ha_chassis_grp;
         sb_ha_chassis_grp = ha_chassis_group_lookup_by_name(
-            input_data->sbrec_ha_chassis_grp_by_name, ha_group_name);
+            ha_ch_grp_by_name, ha_group_name);
 
         if (sb_ha_chassis_grp) {
             struct ha_ref_chassis_info *ref_ch_info =
@@ -17459,17 +17457,18 @@ build_ha_chassis_group_ref_chassis(struct northd_input *input_data,
  * this column is not empty, it means we need to set the corresponding logical
  * port as 'up' in the northbound DB. */
 static void
-handle_port_binding_changes(struct northd_input *input_data,
-                            struct ovsdb_idl_txn *ovnsb_txn,
-                            struct hmap *ports,
-                            struct shash *ha_ref_chassis_map)
+handle_port_binding_changes(struct ovsdb_idl_txn *ovnsb_txn,
+                const struct sbrec_port_binding_table *sb_pb_table,
+                const struct sbrec_ha_chassis_group_table *sb_ha_ch_grp_table,
+                struct ovsdb_idl_index *sb_ha_ch_grp_by_name,
+                struct hmap *ls_ports,
+                struct shash *ha_ref_chassis_map)
 {
     const struct sbrec_port_binding *sb;
     bool build_ha_chassis_ref = false;
     if (ovnsb_txn) {
         const struct sbrec_ha_chassis_group *ha_ch_grp;
-        SBREC_HA_CHASSIS_GROUP_TABLE_FOR_EACH (ha_ch_grp,
-                                    input_data->sbrec_ha_chassis_group_table) {
+        SBREC_HA_CHASSIS_GROUP_TABLE_FOR_EACH (ha_ch_grp, sb_ha_ch_grp_table) {
             if (ha_ch_grp->n_ha_chassis > 1) {
                 struct ha_ref_chassis_info *ref_ch_info =
                     xzalloc(sizeof *ref_ch_info);
@@ -17480,9 +17479,8 @@ handle_port_binding_changes(struct northd_input *input_data,
         }
     }
 
-    SBREC_PORT_BINDING_TABLE_FOR_EACH (sb,
-                                       input_data->sbrec_port_binding_table) {
-        struct ovn_port *op = ovn_port_find(ports, sb->logical_port);
+    SBREC_PORT_BINDING_TABLE_FOR_EACH (sb, sb_pb_table) {
+        struct ovn_port *op = ovn_port_find(ls_ports, sb->logical_port);
 
         if (!op || !op->nbsp) {
             /* The logical port doesn't exist for this port binding.  This can
@@ -17509,18 +17507,20 @@ handle_port_binding_changes(struct northd_input *input_data,
         if (build_ha_chassis_ref && ovnsb_txn && sb->chassis) {
             /* Check and add the chassis which has claimed this 'sb'
              * to the ha chassis group's ref_chassis if required. */
-            build_ha_chassis_group_ref_chassis(input_data, sb, op,
+            build_ha_chassis_group_ref_chassis(sb_ha_ch_grp_by_name, sb, op,
                                                ha_ref_chassis_map);
         }
     }
 }
 
 /* Handle a fairly small set of changes in the southbound database. */
-static void
-ovnsb_db_run(struct northd_input *input_data,
-             struct ovsdb_idl_txn *ovnnb_txn,
+void
+ovnsb_db_run(struct ovsdb_idl_txn *ovnnb_txn,
              struct ovsdb_idl_txn *ovnsb_txn,
-             struct hmap *ports)
+             const struct sbrec_port_binding_table *sb_pb_table,
+             const struct sbrec_ha_chassis_group_table *sb_ha_ch_grp_table,
+             struct ovsdb_idl_index *sb_ha_ch_grp_by_name,
+             struct hmap *ls_ports)
 {
     if (!ovnnb_txn ||
         !ovsdb_idl_has_ever_connected(ovsdb_idl_txn_get_idl(ovnsb_txn))) {
@@ -17528,27 +17528,14 @@ ovnsb_db_run(struct northd_input *input_data,
     }
 
     struct shash ha_ref_chassis_map = SHASH_INITIALIZER(&ha_ref_chassis_map);
-    handle_port_binding_changes(input_data,
-                                ovnsb_txn, ports, &ha_ref_chassis_map);
+    handle_port_binding_changes(ovnsb_txn, sb_pb_table, sb_ha_ch_grp_table,
+                                sb_ha_ch_grp_by_name, ls_ports,
+                                &ha_ref_chassis_map);
     if (ovnsb_txn) {
-        update_sb_ha_group_ref_chassis(input_data,
+        update_sb_ha_group_ref_chassis(sb_ha_ch_grp_table,
                                        &ha_ref_chassis_map);
     }
     shash_destroy(&ha_ref_chassis_map);
-}
-
-void northd_run(struct northd_input *input_data,
-                struct northd_data *data,
-                struct ovsdb_idl_txn *ovnnb_txn,
-                struct ovsdb_idl_txn *ovnsb_txn)
-{
-    COVERAGE_INC(northd_run);
-    stopwatch_start(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
-    ovnnb_db_run(input_data, data, ovnnb_txn, ovnsb_txn);
-    stopwatch_stop(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
-    stopwatch_start(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
-    ovnsb_db_run(input_data, ovnnb_txn, ovnsb_txn, &data->ls_ports);
-    stopwatch_stop(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
 }
 
 const char *

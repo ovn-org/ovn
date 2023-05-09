@@ -34,6 +34,7 @@
 #include "en-lflow.h"
 #include "en-northd-output.h"
 #include "en-sync-sb.h"
+#include "en-sync-from-sb.h"
 #include "unixctl.h"
 #include "util.h"
 
@@ -129,6 +130,7 @@ enum sb_engine_node {
 /* Define engine nodes for other nodes. They should be defined as static to
  * avoid sparse errors. */
 static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(northd, "northd");
+static ENGINE_NODE(sync_from_sb, "sync_from_sb");
 static ENGINE_NODE(lflow, "lflow");
 static ENGINE_NODE(mac_binding_aging, "mac_binding_aging");
 static ENGINE_NODE(mac_binding_aging_waker, "mac_binding_aging_waker");
@@ -196,6 +198,13 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
      * Right now this engine only syncs the SB Address_Set table.
      */
     engine_add_input(&en_sync_to_sb, &en_sync_to_sb_addr_set, NULL);
+
+    engine_add_input(&en_sync_from_sb, &en_northd,
+                     sync_from_sb_northd_handler);
+    engine_add_input(&en_sync_from_sb, &en_sb_port_binding, NULL);
+    engine_add_input(&en_sync_from_sb, &en_sb_ha_chassis_group, NULL);
+
+    engine_add_input(&en_northd_output, &en_sync_from_sb, NULL);
     engine_add_input(&en_northd_output, &en_sync_to_sb,
                      northd_output_sync_to_sb_handler);
     engine_add_input(&en_northd_output, &en_lflow,
