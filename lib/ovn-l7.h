@@ -231,11 +231,12 @@ dhcp_opts_clear(struct hmap *dhcp_opts)
     gen_opts_clear(dhcp_opts);
 }
 
-OVS_PACKED(
+#define DHCP_OPT_HEADER_LEN 2
 struct dhcp_opt_header {
     uint8_t code;
     uint8_t len;
-});
+};
+BUILD_ASSERT_DECL(DHCP_OPT_HEADER_LEN == sizeof(struct dhcp_opt_header));
 
 #define DHCP_OPT_PAYLOAD(hdr) \
     (void *)((char *)hdr + sizeof(struct dhcp_opt_header))
