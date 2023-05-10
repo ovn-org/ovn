@@ -4979,6 +4979,44 @@ check_ls_changes_other_than_lsp(const struct nbrec_logical_switch *ls)
     return false;
 }
 
+static bool
+check_lsp_changes_other_than_up(const struct nbrec_logical_switch_port *nbsp)
+{
+    /* Check if the columns are changed in this row. */
+    enum nbrec_logical_switch_port_column_id col;
+    for (col = 0; col < NBREC_LOGICAL_SWITCH_PORT_N_COLUMNS; col++) {
+        if (nbrec_logical_switch_port_is_updated(nbsp, col) &&
+            col != NBREC_LOGICAL_SWITCH_PORT_COL_UP) {
+            return true;
+        }
+    }
+
+    /* Check if the referenced rows are changed.
+       XXX: Need a better OVSDB IDL interface for this check. */
+    if (nbsp->dhcpv4_options &&
+        nbrec_dhcp_options_row_get_seqno(nbsp->dhcpv4_options,
+                                         OVSDB_IDL_CHANGE_MODIFY) > 0) {
+        return true;
+    }
+    if (nbsp->dhcpv6_options &&
+        nbrec_dhcp_options_row_get_seqno(nbsp->dhcpv6_options,
+                                         OVSDB_IDL_CHANGE_MODIFY) > 0) {
+        return true;
+    }
+    if (nbsp->ha_chassis_group &&
+        nbrec_ha_chassis_group_row_get_seqno(nbsp->ha_chassis_group,
+                                             OVSDB_IDL_CHANGE_MODIFY) > 0) {
+        return true;
+    }
+    for (size_t i = 0; i < nbsp->n_mirror_rules; i++) {
+        if (nbrec_mirror_row_get_seqno(nbsp->mirror_rules[i],
+                                       OVSDB_IDL_CHANGE_MODIFY) > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Return true if changes are handled incrementally, false otherwise.
  * When there are any changes, try to track what's exactly changed and set
  * northd_data->change_tracked accordingly: change tracked - true, otherwise,
@@ -5058,6 +5096,14 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
                     /* This port is used for svc monitor, which may be impacted
                      * by this change. Fallback to recompute. */
                     goto fail;
+                }
+                if (!check_lsp_is_up &&
+                    !check_lsp_changes_other_than_up(new_nbsp)) {
+                    /* If the only change is the "up" column while the
+                     * "ignore_lsp_down" is set to true, just ignore this
+                     * change. */
+                    op->visited = true;
+                    continue;
                 }
                 ovn_port_destroy(&nd->ls_ports, op);
                 op = ls_port_create(ovnsb_idl_txn, &nd->ls_ports,
