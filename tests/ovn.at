@@ -7741,7 +7741,6 @@ ls3_p1_mac=00:00:00:01:02:05
 check ovn-nbctl --wait=hv lr-policy-add R1 10 "ip4.src==192.168.1.0/24 && ip4.dst==172.16.1.0/24" drop
 
 # Check logical flow
-ovn-sbctl dump-flows > sbflows
 AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | grep "192.168.1.0" | wc -l], [0], [dnl
 1
 ])
@@ -7754,12 +7753,9 @@ packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
 OVS_WAIT_UNTIL([as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Check if packet hit the drop policy
-AT_CHECK([ovs-ofctl dump-flows br-int | \
+OVS_WAIT_UNTIL([test "1" = "$(ovs-ofctl dump-flows br-int | \
     grep "nw_src=192.168.1.0/24,nw_dst=172.16.1.0/24 actions=drop" | \
-    grep "priority=10" | \
-    grep "n_packets=1" | wc -l], [0], [dnl
-1
-])
+    grep "priority=10" | grep "n_packets=1" -c)"])
 
 # Expected to drop the packet.
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" pbr-hv/vif2-tx.pcap > vif2.packets
@@ -7770,7 +7766,7 @@ AT_FAIL_IF([test "$rcvd_packet" != ""])
 check ovn-nbctl --wait=hv lr-policy-add R1 20 "ip4.src==192.168.1.0/24 && ip4.dst==172.16.1.0/24" allow
 
 # Check logical flow
-AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | grep "192.168.1.0" | wc -l], [0], [dnl
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | grep "192.168.1.0" -c], [0], [dnl
 2
 ])
 
@@ -7781,12 +7777,9 @@ packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
 OVS_WAIT_UNTIL([as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Check if packet hit the allow policy
-sleep 1
-AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | \
-    grep "192.168.1.0" | \
-    grep "priority=20" | wc -l], [0], [dnl
-1
-])
+OVS_WAIT_UNTIL([test "1" = "$(ovs-ofctl dump-flows br-int | \
+    grep "nw_src=192.168.1.0/24,nw_dst=172.16.1.0/24" | \
+    grep "priority=20" | grep "n_packets=1" -c)"])
 
 # Expected packet has TTL decreased by 1
 expected="eth.src==$ls2_ro_mac && eth.dst==$ls2_p1_mac &&
@@ -7802,7 +7795,7 @@ check ovn-nbctl --wait=hv lr-policy-add R1 30 "ip4.src==192.168.1.0/24 && ip4.ds
 # Check logical flow
 AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | \
     grep "192.168.1.0" | \
-    grep "priority=30" | wc -l], [0], [dnl
+    grep "priority=30" -c], [0], [dnl
 1
 ])
 
@@ -7811,20 +7804,11 @@ packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
        ip4 && ip.ttl==64 && ip4.src==$ls1_p1_ip && ip4.dst==$ls2_p1_ip &&
        udp && udp.src==53 && udp.dst==4369"
 OVS_WAIT_UNTIL([as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
-sleep 1
 
-echo "southbound flows"
-ovn-sbctl --ovs dump-flows > sbflows
-AT_CAPTURE_FILE([sbflows])
-echo "ovs flows"
-ovs-ofctl dump-flows br-int > brflows
-AT_CAPTURE_FILE([brflows])
 # Check if packet hit the allow policy
-AT_CHECK([grep "nw_src=192.168.1.0/24,nw_dst=172.16.1.0/24" brflows | \
-    grep "priority=30" | \
-    grep "n_packets=1" | wc -l], [0], [dnl
-1
-])
+OVS_WAIT_UNTIL([test "1" = "$(ovs-ofctl dump-flows br-int | \
+    grep "nw_src=192.168.1.0/24,nw_dst=172.16.1.0/24" | \
+    grep "priority=30" | grep "n_packets=1" -c)"])
 echo "packet hit reroute policy"
 
 # Expected packet has TTL decreased by 1
@@ -7927,9 +7911,7 @@ ls3_p1_mac=00:00:00:01:02:05
 check ovn-nbctl --wait=sb lr-policy-add R1 10 "ip6.src==2001::/64 && ip6.dst==2002::/64" drop
 
 # Check logical flow
-ovn-sbctl dump-flows > sbflows
-AT_CAPTURE_FILE([sbflows])
-AT_CHECK([grep lr_in_policy sbflows | grep "2001" | wc -l], [0], [dnl
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | grep "2001" -c], [0], [dnl
 1
 ])
 
@@ -7941,12 +7923,9 @@ packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
 OVS_WAIT_UNTIL([as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Check if packet hit the drop policy
-AT_CHECK([ovs-ofctl dump-flows br-int | \
+OVS_WAIT_UNTIL([test "1" = "$(ovs-ofctl dump-flows br-int | \
     grep "ipv6_src=2001::/64,ipv6_dst=2002::/64 actions=drop" | \
-    grep "priority=10" | \
-    grep "n_packets=1" | wc -l], [0], [dnl
-1
-])
+    grep "priority=10" | grep "n_packets=1" -c)"])
 
 # Expected to drop the packet.
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" pbr-hv/vif2-tx.pcap > vif2.packets
@@ -7956,9 +7935,7 @@ AT_FAIL_IF([test -s vif2.packets])
 check ovn-nbctl --wait=sb lr-policy-add R1 20 "ip6.src==2001::/64 && ip6.dst==2002::/64" allow
 
 # Check logical flow
-ovn-sbctl dump-flows > sbflows2
-AT_CAPTURE_FILE([sbflows2])
-AT_CHECK([grep lr_in_policy sbflows2 | grep "2001" | wc -l], [0], [dnl
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | grep "2001" -c], [0], [dnl
 2
 ])
 
@@ -7969,13 +7946,9 @@ packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
 OVS_WAIT_UNTIL([as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
 
 # Check if packet hit the allow policy
-ovn-sbctl dump-flows > sbflows3
-AT_CAPTURE_FILE([sbflows3])
-AT_CHECK([grep lr_in_policy sbflows3 | \
-    grep "2001" | \
-    grep "priority=20" | wc -l], [0], [dnl
-1
-])
+OVS_WAIT_UNTIL([test "1" = "$(ovs-ofctl dump-flows br-int | \
+    grep "ipv6_src=2001::/64,ipv6_dst=2002::/64"  | \
+    grep "priority=20" | grep "n_packets=1" -c)"])
 
 # Expected packet has TTL decreased by 1
 expected="eth.src==$ls2_ro_mac && eth.dst==$ls2_p1_mac &&
@@ -7989,11 +7962,9 @@ OVN_CHECK_PACKETS([pbr-hv/vif2-tx.pcap], [expected])
 check ovn-nbctl --wait=sb lr-policy-add R1 30 "ip6.src==2001::/64 && ip6.dst==2002::/64" reroute 2003::2
 
 # Check logical flow
-ovn-sbctl dump-flows > sbflows4
-AT_CAPTURE_FILE([sbflows4])
-AT_CHECK([grep lr_in_policy sbflows4 | \
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | \
     grep "2001" | \
-    grep "priority=30" | wc -l], [0], [dnl
+    grep "priority=30" -c], [0], [dnl
 1
 ])
 
@@ -8002,18 +7973,11 @@ packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
        ip6 && ip.ttl==64 && ip6.src==$ls1_p1_ip && ip6.dst==$ls2_p1_ip &&
        udp && udp.src==53 && udp.dst==4369"
 OVS_WAIT_UNTIL([as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
-sleep 1
 
-ovn-sbctl dump-flows > sbflows5
-ovs-ofctl dump-flows br-int > offlows5
-AT_CAPTURE_FILE([sbflows5])
-AT_CAPTURE_FILE([offlows5])
 # Check if packet hit the allow policy
-AT_CHECK([grep "ipv6_src=2001::/64,ipv6_dst=2002::/64" offlows5 | \
-    grep "priority=30" | \
-    grep "n_packets=1" | wc -l], [0], [dnl
-1
-])
+OVS_WAIT_UNTIL([test "1" = "$(ovs-ofctl dump-flows br-int | \
+    grep "ipv6_src=2001::/64,ipv6_dst=2002::/64"  | \
+    grep "priority=30" | grep "n_packets=1" -c)"])
 
 # Expected packet has TTL decreased by 1
 expected="eth.src==$ls3_ro_mac && eth.dst==$ls3_p1_mac &&
