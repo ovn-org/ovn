@@ -143,10 +143,6 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
 {
     /* Define relationships between nodes where first argument is dependent
      * on the second argument */
-    engine_add_input(&en_northd, &en_nb_nb_global,
-                     northd_nb_nb_global_handler);
-    engine_add_input(&en_northd, &en_nb_logical_switch,
-                     northd_nb_logical_switch_handler);
     engine_add_input(&en_northd, &en_nb_port_group, NULL);
     engine_add_input(&en_northd, &en_nb_load_balancer, NULL);
     engine_add_input(&en_northd, &en_nb_load_balancer_group, NULL);
@@ -163,7 +159,6 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_sb_mirror, NULL);
     engine_add_input(&en_northd, &en_sb_meter, NULL);
     engine_add_input(&en_northd, &en_sb_datapath_binding, NULL);
-    engine_add_input(&en_northd, &en_sb_port_binding, NULL);
     engine_add_input(&en_northd, &en_sb_mac_binding, NULL);
     engine_add_input(&en_northd, &en_sb_dns, NULL);
     engine_add_input(&en_northd, &en_sb_ha_chassis_group, NULL);
@@ -173,6 +168,13 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_sb_fdb, NULL);
     engine_add_input(&en_northd, &en_sb_static_mac_binding, NULL);
     engine_add_input(&en_northd, &en_sb_chassis_template_var, NULL);
+
+    engine_add_input(&en_northd, &en_sb_port_binding,
+                     northd_sb_port_binding_handler);
+    engine_add_input(&en_northd, &en_nb_nb_global,
+                     northd_nb_nb_global_handler);
+    engine_add_input(&en_northd, &en_nb_logical_switch,
+                     northd_nb_logical_switch_handler);
 
     engine_add_input(&en_mac_binding_aging, &en_nb_nb_global, NULL);
     engine_add_input(&en_mac_binding_aging, &en_sb_mac_binding, NULL);

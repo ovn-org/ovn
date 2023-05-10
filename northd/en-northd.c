@@ -187,6 +187,24 @@ northd_nb_logical_switch_handler(struct engine_node *node,
     return true;
 }
 
+bool
+northd_sb_port_binding_handler(struct engine_node *node,
+                               void *data)
+{
+    struct northd_data *nd = data;
+
+    struct northd_input input_data;
+
+    northd_get_input_data(node, &input_data);
+
+    if (!northd_handle_sb_port_binding_changes(
+        input_data.sbrec_port_binding_table, &nd->ls_ports)) {
+        return false;
+    }
+
+    return true;
+}
+
 void
 *en_northd_init(struct engine_node *node OVS_UNUSED,
                 struct engine_arg *arg OVS_UNUSED)

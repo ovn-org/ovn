@@ -5116,6 +5116,58 @@ fail:
     return false;
 }
 
+bool
+northd_handle_sb_port_binding_changes(
+    const struct sbrec_port_binding_table *sbrec_port_binding_table,
+    struct hmap *ls_ports)
+{
+    const struct sbrec_port_binding *pb;
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+    SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb, sbrec_port_binding_table) {
+        struct ovn_port *op = ovn_port_find(ls_ports, pb->logical_port);
+        if (op && !op->lsp_can_be_inc_processed) {
+            return false;
+        }
+        if (sbrec_port_binding_is_new(pb)) {
+            /* Most likely the PB was created by northd and this is the
+             * notification of that trasaction. So we just update the sb
+             * pointer in northd data. Fallback to recompute otherwise. */
+            if (!op) {
+                VLOG_WARN_RL(&rl, "A port-binding for %s is created but the "
+                            "LSP is not found.", pb->logical_port);
+                return false;
+            }
+            op->sb = pb;
+        } else if (sbrec_port_binding_is_deleted(pb)) {
+            /* Most likely the PB was deleted by northd and this is the
+             * notification of that transaction, and we can ignore in this
+             * case. Fallback to recompute otherwise, to avoid dangling
+             * sb idl pointers and other unexpected behavior. */
+            if (op) {
+                VLOG_WARN_RL(&rl, "A port-binding for %s is deleted but the "
+                            "LSP still exists.", pb->logical_port);
+                return false;
+            }
+        } else {
+            /* The PB is updated, most likely because of binding/unbinding
+             * to/from a chassis, and we can ignore the change (updating NB
+             * "up" will be handled in the engine node "sync_from_sb").
+             * Fallback to recompute for anything unexpected. */
+            if (!op) {
+                VLOG_WARN_RL(&rl, "A port-binding for %s is updated but the "
+                            "LSP is not found.", pb->logical_port);
+                return false;
+            }
+            if (op->sb != pb) {
+                VLOG_WARN_RL(&rl, "A port-binding for %s is updated with a new"
+                             "IDL row, which is unusual.", pb->logical_port);
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 struct multicast_group {
     const char *name;
     uint16_t key;               /* OVN_MIN_MULTICAST...OVN_MAX_MULTICAST. */
