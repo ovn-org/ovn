@@ -3499,6 +3499,9 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
                 smap_add(&options, "vlan-passthru", "true");
             }
 
+            ovn_port_update_sbrec_chassis(sbrec_chassis_by_name,
+                                          sbrec_chassis_by_hostname, op);
+
             /* Retain activated chassis flags. */
             if (op->sb->requested_additional_chassis) {
                 const char *activated_str = smap_get(
@@ -3545,9 +3548,6 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
                  * ha_chassis_group cleared in the same transaction. */
                 sbrec_port_binding_set_ha_chassis_group(op->sb, NULL);
             }
-
-            ovn_port_update_sbrec_chassis(sbrec_chassis_by_name,
-                                          sbrec_chassis_by_hostname, op);
         } else {
             const char *chassis = NULL;
             if (op->peer && op->peer->od && op->peer->od->nbr) {
