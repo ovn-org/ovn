@@ -3770,7 +3770,8 @@ create_or_get_service_mon(struct ovsdb_idl_txn *ovnsb_txn,
 
 static void
 ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn, struct ovn_northd_lb *lb,
-                  struct hmap *monitor_map, struct hmap *ls_ports)
+                  struct hmap *monitor_map, struct hmap *ls_ports,
+                  struct sset *svc_monitor_lsps)
 {
     if (lb->template) {
         return;
@@ -3801,6 +3802,7 @@ ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn, struct ovn_northd_lb *lb,
                 if (p) {
                     *p = 0;
                     p++;
+                    sset_add(svc_monitor_lsps, port_name);
                     op = ovn_port_find(ls_ports, port_name);
                     struct sockaddr_storage svc_mon_src_addr;
                     if (!inet_parse_address(p, &svc_mon_src_addr)) {
@@ -4082,8 +4084,7 @@ static void
 build_lb_svcs(
     struct ovsdb_idl_txn *ovnsb_txn,
     const struct sbrec_service_monitor_table *sbrec_service_monitor_table,
-    struct hmap *ls_ports,
-    struct hmap *lbs)
+    struct hmap *ls_ports, struct hmap *lbs, struct sset *svc_monitor_lsps)
 {
     struct hmap monitor_map = HMAP_INITIALIZER(&monitor_map);
 
@@ -4101,7 +4102,8 @@ build_lb_svcs(
 
     struct ovn_northd_lb *lb;
     HMAP_FOR_EACH (lb, hmap_node, lbs) {
-        ovn_lb_svc_create(ovnsb_txn, lb, &monitor_map, ls_ports);
+        ovn_lb_svc_create(ovnsb_txn, lb, &monitor_map, ls_ports,
+                          svc_monitor_lsps);
     }
 
     struct service_monitor_info *mon_info;
@@ -4280,11 +4282,12 @@ build_lb_port_related_data(
     struct ovsdb_idl_txn *ovnsb_txn,
     const struct sbrec_service_monitor_table *sbrec_service_monitor_table,
     struct ovn_datapaths *lr_datapaths, struct hmap *ls_ports,
-    struct hmap *lbs, struct hmap *lb_groups)
+    struct hmap *lbs, struct hmap *lb_groups, struct sset *svc_monitor_lsps)
 {
     build_lrouter_lbs_check(lr_datapaths);
     build_lrouter_lbs_reachable_ips(lr_datapaths, lbs, lb_groups);
-    build_lb_svcs(ovnsb_txn, sbrec_service_monitor_table, ls_ports, lbs);
+    build_lb_svcs(ovnsb_txn, sbrec_service_monitor_table, ls_ports, lbs,
+                  svc_monitor_lsps);
     build_lswitch_lbs_from_lrouter(lr_datapaths, lbs, lb_groups);
 }
 
@@ -16506,6 +16509,7 @@ northd_init(struct northd_data *data)
         .ct_lb_related = true,
     };
     data->ovn_internal_version_changed = false;
+    sset_init(&data->svc_monitor_lsps);
 }
 
 void
@@ -16549,6 +16553,8 @@ northd_destroy(struct northd_data *data)
                                 &data->ls_ports, &data->lr_ports,
                                 &data->lr_list);
     destroy_debug_config();
+
+    sset_destroy(&data->svc_monitor_lsps);
 }
 
 static void
@@ -16660,7 +16666,8 @@ ovnnb_db_run(struct northd_input *input_data,
     build_lb_port_related_data(ovnsb_txn,
                                input_data->sbrec_service_monitor_table,
                                &data->lr_datapaths, &data->ls_ports,
-                               &data->lbs, &data->lb_groups);
+                               &data->lbs, &data->lb_groups,
+                               &data->svc_monitor_lsps);
     build_lb_count_dps(&data->lbs,
                        ods_size(&data->ls_datapaths),
                        ods_size(&data->lr_datapaths));

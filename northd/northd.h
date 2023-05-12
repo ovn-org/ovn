@@ -97,6 +97,7 @@ struct northd_data {
     struct ovs_list lr_list;
     bool ovn_internal_version_changed;
     struct chassis_features features;
+    struct sset svc_monitor_lsps;
 };
 
 struct lflow_data {
