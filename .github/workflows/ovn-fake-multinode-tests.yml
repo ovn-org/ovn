@@ -51,7 +51,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        sudo apt update
+        sudo apt update || true
         sudo apt-get install -y podman
 
     - name: Build ovn-fake-multi-node ${{ matrix.cfg.branch }} image
@@ -100,7 +100,9 @@ jobs:
 
     steps:
     - name: install required dependencies
-      run:  sudo apt install -y ${{ env.dependencies }}
+      run:  |
+        sudo apt update || true
+        sudo apt install -y ${{ env.dependencies }}
 
     - name: Free up disk space
       run: sudo eatmydata apt-get remove --auto-remove -y aspnetcore-* dotnet-* libmono-* mono-* msbuild php-* php7* ghc-* zulu-*
