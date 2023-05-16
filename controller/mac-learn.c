@@ -23,12 +23,16 @@
 #include "lib/packets.h"
 #include "lib/smap.h"
 #include "lib/timeval.h"
+#include "lport.h"
+#include "ovn-sb-idl.h"
 
 VLOG_DEFINE_THIS_MODULE(mac_learn);
 
-#define MAX_FDB_ENTRIES      1000
-#define MAX_BUFFERED_PACKETS 1000
-#define BUFFER_QUEUE_DEPTH   4
+#define MAX_FDB_ENTRIES             1000
+#define MAX_BUFFERED_PACKETS        1000
+#define BUFFER_QUEUE_DEPTH          4
+#define BUFFERED_PACKETS_TIMEOUT_MS 10000
+#define BUFFERED_PACKETS_LOOKUP_MS  100
 
 static size_t keys_ip_hash(uint32_t dp_key, uint32_t port_key,
                            struct in6_addr *ip);
@@ -45,6 +49,13 @@ buffered_packets_find(struct buffered_packets_ctx *ctx, uint64_t dp_key,
                       uint64_t port_key, struct in6_addr *ip, uint32_t hash);
 static void ovn_buffered_packets_remove(struct buffered_packets_ctx *ctx,
                                         struct buffered_packets *bp);
+static void
+buffered_packets_db_lookup(struct buffered_packets *bp,
+                           struct ds *ip, struct eth_addr *mac,
+                           struct ovsdb_idl_index *sbrec_pb_by_key,
+                           struct ovsdb_idl_index *sbrec_dp_by_key,
+                           struct ovsdb_idl_index *sbrec_pb_by_name,
+                           struct ovsdb_idl_index *sbrec_mb_by_lport_ip);
 
 /* mac_binding functions. */
 void
@@ -119,6 +130,23 @@ bool
 ovn_mac_binding_timed_out(const struct mac_binding *mb, long long now)
 {
     return now >= mb->timeout_at_ms;
+}
+
+const struct sbrec_mac_binding *
+ovn_mac_binding_lookup(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+                       const char *logical_port, const char *ip)
+{
+    struct sbrec_mac_binding *mb =
+        sbrec_mac_binding_index_init_row(sbrec_mac_binding_by_lport_ip);
+    sbrec_mac_binding_index_set_logical_port(mb, logical_port);
+    sbrec_mac_binding_index_set_ip(mb, ip);
+
+    const struct sbrec_mac_binding *retval =
+        sbrec_mac_binding_index_find(sbrec_mac_binding_by_lport_ip, mb);
+
+    sbrec_mac_binding_index_destroy_row(mb);
+
+    return retval;
 }
 
 /* fdb functions. */
@@ -212,10 +240,13 @@ ovn_buffered_packets_add(struct buffered_packets_ctx *ctx, uint64_t dp_key,
         bp->ip = ip;
         bp->dp_key = dp_key;
         bp->port_key = port_key;
+        /* Schedule the freshly added buffered packet to do lookup
+         * immediately. */
+        bp->lookup_at_ms = 0;
         ovs_list_init(&bp->queue);
     }
 
-    bp->expire = time_msec() + OVN_BUFFERED_PACKETS_TIMEOUT_MS;
+    bp->expire_at_ms = time_msec() + BUFFERED_PACKETS_TIMEOUT_MS;
 
     return bp;
 }
@@ -235,15 +266,21 @@ ovn_buffered_packets_packet_data_enqueue(struct buffered_packets *bp,
 
 void
 ovn_buffered_packets_ctx_run(struct buffered_packets_ctx *ctx,
-                             const struct mac_bindings_map *recent_mbs)
+                             const struct mac_bindings_map *recent_mbs,
+                             struct ovsdb_idl_index *sbrec_pb_by_key,
+                             struct ovsdb_idl_index *sbrec_dp_by_key,
+                             struct ovsdb_idl_index *sbrec_pb_by_name,
+                             struct ovsdb_idl_index *sbrec_mb_by_lport_ip)
 {
+    struct ds ip = DS_EMPTY_INITIALIZER;
     long long now = time_msec();
 
     struct buffered_packets *bp;
 
     HMAP_FOR_EACH_SAFE (bp, hmap_node, &ctx->buffered_packets) {
+        struct eth_addr mac = eth_addr_zero;
         /* Remove expired buffered packets. */
-        if (now > bp->expire) {
+        if (now > bp->expire_at_ms) {
             ovn_buffered_packets_remove(ctx, bp);
             continue;
         }
@@ -252,20 +289,34 @@ ovn_buffered_packets_ctx_run(struct buffered_packets_ctx *ctx,
         struct mac_binding *mb = mac_binding_find(recent_mbs, bp->dp_key,
                                                   bp->port_key, &bp->ip, hash);
 
-        if (!mb) {
+        if (mb) {
+            mac = mb->mac;
+        } else if (now >= bp->lookup_at_ms) {
+            /* Check if we can do a full lookup. */
+            buffered_packets_db_lookup(bp, &ip, &mac, sbrec_pb_by_key,
+                                       sbrec_dp_by_key, sbrec_pb_by_name,
+                                       sbrec_mb_by_lport_ip);
+            /* Schedule next lookup even if we found the MAC address,
+             * if the address was found this struct will be deleted anyway. */
+            bp->lookup_at_ms = now + BUFFERED_PACKETS_LOOKUP_MS;
+        }
+
+        if (eth_addr_is_zero(mac)) {
             continue;
         }
 
         struct packet_data *pd;
         LIST_FOR_EACH_POP (pd, node, &bp->queue) {
             struct eth_header *eth = dp_packet_data(pd->p);
-            eth->eth_dst = mb->mac;
+            eth->eth_dst = mac;
 
             ovs_list_push_back(&ctx->ready_packets_data, &pd->node);
         }
 
         ovn_buffered_packets_remove(ctx, bp);
     }
+
+    ds_destroy(&ip);
 }
 
 bool
@@ -378,4 +429,42 @@ ovn_buffered_packets_remove(struct buffered_packets_ctx *ctx,
 
     hmap_remove(&ctx->buffered_packets, &bp->hmap_node);
     free(bp);
+}
+
+static void
+buffered_packets_db_lookup(struct buffered_packets *bp, struct ds *ip,
+                           struct eth_addr *mac,
+                           struct ovsdb_idl_index *sbrec_pb_by_key,
+                           struct ovsdb_idl_index *sbrec_dp_by_key,
+                           struct ovsdb_idl_index *sbrec_pb_by_name,
+                           struct ovsdb_idl_index *sbrec_mb_by_lport_ip)
+{
+    const struct sbrec_port_binding *pb = lport_lookup_by_key(sbrec_dp_by_key,
+                                                              sbrec_pb_by_key,
+                                                              bp->dp_key,
+                                                              bp->port_key);
+    if (!pb) {
+        return;
+    }
+
+    if (!strcmp(pb->type, "chassisredirect")) {
+        const char *dgp_name =
+            smap_get_def(&pb->options, "distributed-port", "");
+        pb = lport_lookup_by_name(sbrec_pb_by_name, dgp_name);
+        if (!pb) {
+            return;
+        }
+    }
+
+    ipv6_format_mapped(&bp->ip, ip);
+    const struct sbrec_mac_binding *smb =
+        ovn_mac_binding_lookup(sbrec_mb_by_lport_ip, pb->logical_port,
+                               ds_cstr_ro(ip));
+    ds_clear(ip);
+
+    if (!smb) {
+        return;
+    }
+
+    eth_addr_from_string(smb->mac, mac);
 }

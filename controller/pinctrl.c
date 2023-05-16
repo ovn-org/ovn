@@ -181,8 +181,11 @@ static struct pinctrl pinctrl;
 static void init_buffered_packets_ctx(void);
 static void destroy_buffered_packets_ctx(void);
 static void
-run_buffered_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                     const struct sbrec_mac_binding_table *mac_binding_table)
+run_buffered_binding(const struct sbrec_mac_binding_table *mac_binding_table,
+                     struct ovsdb_idl_index *sbrec_port_binding_by_key,
+                     struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
+                     struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip)
     OVS_REQUIRES(pinctrl_mutex);
 
 static void pinctrl_handle_put_mac_binding(const struct flow *md,
@@ -3504,7 +3507,10 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                   sbrec_port_binding_by_key,
                   sbrec_igmp_groups,
                   sbrec_ip_multicast_opts);
-    run_buffered_binding(sbrec_port_binding_by_name, mac_binding_table);
+    run_buffered_binding(mac_binding_table, sbrec_port_binding_by_key,
+                         sbrec_datapath_binding_by_key,
+                         sbrec_port_binding_by_name,
+                         sbrec_mac_binding_by_lport_ip);
     sync_svc_monitors(ovnsb_idl_txn, svc_mon_table, sbrec_port_binding_by_name,
                       chassis);
     bfd_monitor_run(ovnsb_idl_txn, bfd_table, sbrec_port_binding_by_name,
@@ -4138,25 +4144,6 @@ send_mac_binding_buffered_pkts(struct rconn *swconn)
     ovs_list_init(&buffered_packets_ctx.ready_packets_data);
 }
 
-static const struct sbrec_mac_binding *
-mac_binding_lookup(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
-                   const char *logical_port,
-                   const char *ip)
-{
-    struct sbrec_mac_binding *mb = sbrec_mac_binding_index_init_row(
-        sbrec_mac_binding_by_lport_ip);
-    sbrec_mac_binding_index_set_logical_port(mb, logical_port);
-    sbrec_mac_binding_index_set_ip(mb, ip);
-
-    const struct sbrec_mac_binding *retval
-        = sbrec_mac_binding_index_find(sbrec_mac_binding_by_lport_ip,
-                                       mb);
-
-    sbrec_mac_binding_index_destroy_row(mb);
-
-    return retval;
-}
-
 /* Update or add an IP-MAC binding for 'logical_port'.
  * Caller should make sure that 'ovnsb_idl_txn' is valid. */
 static void
@@ -4172,7 +4159,8 @@ mac_binding_add_to_sb(struct ovsdb_idl_txn *ovnsb_idl_txn,
     snprintf(mac_string, sizeof mac_string, ETH_ADDR_FMT, ETH_ADDR_ARGS(ea));
 
     const struct sbrec_mac_binding *b =
-        mac_binding_lookup(sbrec_mac_binding_by_lport_ip, logical_port, ip);
+        ovn_mac_binding_lookup(sbrec_mac_binding_by_lport_ip,
+                               logical_port, ip);
     if (!b) {
         if (update_only) {
             return;
@@ -4295,8 +4283,11 @@ run_put_mac_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn,
 }
 
 static void
-run_buffered_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                     const struct sbrec_mac_binding_table *mac_binding_table)
+run_buffered_binding(const struct sbrec_mac_binding_table *mac_binding_table,
+                     struct ovsdb_idl_index *sbrec_port_binding_by_key,
+                     struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
+                     struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip)
     OVS_REQUIRES(pinctrl_mutex)
 {
     if (!ovn_buffered_packets_ctx_has_packets(&buffered_packets_ctx)) {
@@ -4345,7 +4336,11 @@ run_buffered_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                             pb->tunnel_key, &ip, mac, 0);
     }
 
-    ovn_buffered_packets_ctx_run(&buffered_packets_ctx, &recent_mbs);
+    ovn_buffered_packets_ctx_run(&buffered_packets_ctx, &recent_mbs,
+                                 sbrec_port_binding_by_key,
+                                 sbrec_datapath_binding_by_key,
+                                 sbrec_port_binding_by_name,
+                                 sbrec_mac_binding_by_lport_ip);
 
     ovn_mac_bindings_map_destroy(&recent_mbs);
 

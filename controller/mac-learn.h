@@ -25,6 +25,8 @@
 #include "openvswitch/list.h"
 #include "openvswitch/ofpbuf.h"
 
+struct ovsdb_idl_index;
+
 struct mac_binding {
     struct hmap_node hmap_node; /* In a hmap. */
 
@@ -61,6 +63,9 @@ struct mac_binding *ovn_mac_binding_add(struct mac_bindings_map *mac_bindings,
                                         struct in6_addr *ip,
                                         struct eth_addr mac,
                                         uint32_t timeout_ms);
+const struct sbrec_mac_binding *
+ovn_mac_binding_lookup(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+                       const char *logical_port, const char *ip);
 
 
 struct fdb_entry {
@@ -82,7 +87,6 @@ struct fdb_entry *ovn_fdb_add(struct hmap *fdbs,
                               uint32_t dp_key, struct eth_addr mac,
                               uint32_t port_key);
 
-#define OVN_BUFFERED_PACKETS_TIMEOUT_MS 10000
 
 struct packet_data {
     struct ovs_list node;
@@ -102,7 +106,10 @@ struct buffered_packets {
     struct ovs_list queue;
 
     /* Timestamp in ms when the buffered packet should expire. */
-    long long int expire;
+    long long int expire_at_ms;
+
+    /* Timestamp in ms when the buffered packet should do full SB lookup.*/
+    long long int lookup_at_ms;
 };
 
 struct buffered_packets_ctx {
@@ -123,7 +130,11 @@ void ovn_buffered_packets_packet_data_enqueue(struct buffered_packets *bp,
                                               struct packet_data *pd);
 void
 ovn_buffered_packets_ctx_run(struct buffered_packets_ctx *ctx,
-                             const struct mac_bindings_map *recent_mbs);
+                             const struct mac_bindings_map *recent_mbs,
+                             struct ovsdb_idl_index *sbrec_pb_by_key,
+                             struct ovsdb_idl_index *sbrec_dp_by_key,
+                             struct ovsdb_idl_index *sbrec_pb_by_name,
+                             struct ovsdb_idl_index *sbrec_mb_by_lport_ip);
 void ovn_buffered_packets_ctx_init(struct buffered_packets_ctx *ctx);
 void ovn_buffered_packets_ctx_destroy(struct buffered_packets_ctx *ctx);
 bool
