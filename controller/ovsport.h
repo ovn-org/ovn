@@ -33,6 +33,7 @@ struct ovsrec_bridge;
 struct ovsrec_port;
 struct ovsrec_interface;
 struct ovsdb_idl_index;
+struct ovsrec_qos;
 
 void ovsport_create(struct ovsdb_idl_txn *ovs_idl_txn,
                     const struct ovsrec_bridge *bridge,
@@ -56,5 +57,7 @@ const struct ovsrec_port * ovsport_lookup_by_interfaces(
         const size_t n_interfaces);
 const struct ovsrec_port * ovsport_lookup_by_interface(
         struct ovsdb_idl_index *, struct ovsrec_interface *);
+const struct ovsrec_port * ovsport_lookup_by_qos(
+        struct ovsdb_idl_index *, const struct ovsrec_qos *);
 
 #endif /* lib/ovsport.h */

@@ -1499,9 +1499,6 @@ init_binding_ctx(struct engine_node *node,
         = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
     ovs_assert(chassis);
 
-    const struct ovsrec_port_table *port_table =
-        EN_OVSDB_GET(engine_get_input("OVS_port", node));
-
     struct ed_type_ovs_interface_shadow *iface_shadow =
         engine_get_input_data("ovs_interface_shadow", node);
 
@@ -1526,6 +1523,10 @@ init_binding_ctx(struct engine_node *node,
                 engine_get_input("SB_port_binding", node),
                 "datapath");
 
+    struct ovsdb_idl_index *ovsrec_port_by_qos =
+        engine_ovsdb_node_get_index(
+                engine_get_input("OVS_port", node), "qos");
+
     struct controller_engine_ctx *ctrl_ctx = engine_get_context()->client_ctx;
 
     b_ctx_in->ovnsb_idl_txn = engine_get_context()->ovnsb_idl_txn;
@@ -1533,7 +1534,7 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_in->sbrec_datapath_binding_by_key = sbrec_datapath_binding_by_key;
     b_ctx_in->sbrec_port_binding_by_datapath = sbrec_port_binding_by_datapath;
     b_ctx_in->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
-    b_ctx_in->port_table = port_table;
+    b_ctx_in->ovsrec_port_by_qos = ovsrec_port_by_qos;
     b_ctx_in->iface_table = iface_shadow->iface_table;
     b_ctx_in->iface_table_external_ids_old =
         &iface_shadow->iface_table_external_ids_old;
@@ -4479,6 +4480,9 @@ main(int argc, char *argv[])
     struct ovsdb_idl_index *ovsrec_port_by_name
         = ovsdb_idl_index_create1(ovs_idl_loop.idl,
                                   &ovsrec_port_col_name);
+    struct ovsdb_idl_index *ovsrec_port_by_qos
+        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
+                                  &ovsrec_port_col_qos);
     struct ovsdb_idl_index *ovsrec_flow_sample_collector_set_by_id
         = ovsdb_idl_index_create2(ovs_idl_loop.idl,
                                   &ovsrec_flow_sample_collector_set_col_bridge,
@@ -4833,6 +4837,7 @@ main(int argc, char *argv[])
                                 sbrec_chassis_template_var_index_by_chassis);
     engine_ovsdb_node_add_index(&en_ovs_flow_sample_collector_set, "id",
                                 ovsrec_flow_sample_collector_set_by_id);
+    engine_ovsdb_node_add_index(&en_ovs_port, "qos", ovsrec_port_by_qos);
 
     struct ed_type_lflow_output *lflow_output_data =
         engine_get_internal_data(&en_lflow_output);
