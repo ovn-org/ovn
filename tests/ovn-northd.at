@@ -8154,6 +8154,7 @@ sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_out_check_port_sec), priority=0    , match=(1), action=(reg0[[15]] = check_out_port_sec(); next;)
   table=??(ls_out_check_port_sec), priority=100  , match=(eth.mcast), action=(reg0[[15]] = 0; next;)
   table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
+  table=??(ls_out_apply_port_sec), priority=110  , match=(outport == "localnetport" && inport == "sw0p2"), action=(set_queue(10); output;)
   table=??(ls_out_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
 ])
 
@@ -8184,6 +8185,7 @@ sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_out_check_port_sec), priority=100  , match=(eth.mcast), action=(reg0[[15]] = 0; next;)
   table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
   table=??(ls_out_apply_port_sec), priority=100  , match=(outport == "localnetport"), action=(set_queue(10); output;)
+  table=??(ls_out_apply_port_sec), priority=110  , match=(outport == "localnetport" && inport == "sw0p2"), action=(set_queue(10); output;)
   table=??(ls_out_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
 ])
 

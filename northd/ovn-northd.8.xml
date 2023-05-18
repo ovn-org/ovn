@@ -2225,6 +2225,18 @@ output;
     <ul>
       <li>
         <p>
+        For each port configured with egress qos in the
+        <ref column="options:qdisc_queue_id" table="Logical_Switch_Port"
+        db="OVN_Northbound"/> column of <ref table="Logical_Switch_Port"
+        db="OVN_Northbound"/>, running a localnet port on the same logical
+        switch, a priority 110 flow is added which matches on the localnet
+        <code>outport</code> and on the port <code>inport</code> and
+        applies the action <code>set_queue(id); output;"</code>.
+        </p>
+      </li>
+
+      <li>
+        <p>
         For each localnet port configured with egress qos in the
         <ref column="options:qdisc_queue_id" table="Logical_Switch_Port"
         db="OVN_Northbound"/> column of <ref table="Logical_Switch_Port"

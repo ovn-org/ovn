@@ -202,9 +202,9 @@ get_qos_egress_port_interface(struct shash *bridge_mappings,
                 continue;
             }
 
-            bool is_egress_iface = smap_get_bool(&iface->external_ids,
-                                                 "ovn-egress-iface", false);
-            if (is_egress_iface) {
+            if (smap_get_bool(&iface->external_ids,
+                              "ovn-egress-iface", false) ||
+                !strcmp(iface->type, "")) {
                 *pport = port;
                 return iface;
             }
