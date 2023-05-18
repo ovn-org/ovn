@@ -557,6 +557,22 @@ netdev_dummy_receive() {
     fi
 }
 
+# Wrapper on top of ovn-trace, stripping some things and storing the trace
+# output to a file called 'trace'.  For now it strips the rows starting
+# with a '#'.  This should correspond to the flow key and might be displayed
+# differently by different OVS library versions.
+ovn_trace() {
+    AT_CAPTURE_FILE([trace])
+    ovn-trace "$@" | tee trace | sed '/^# /d'
+}
+
+# Same as ovn_trace() except that it connects to an ovn-trace daemon.
+ovn_trace_client() {
+    target=$1; shift
+    AT_CAPTURE_FILE([trace])
+    ovs-appctl -t $target trace "$@" | tee trace | sed '/^# /d'
+}
+
 OVS_END_SHELL_HELPERS
 
 m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])

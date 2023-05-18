@@ -2627,8 +2627,7 @@ test_packet() {
         echo "output(\"lp$outport\");"
     done > expout
 
-    AT_CAPTURE_FILE([trace])
-    AT_CHECK([ovs-appctl -t ovn-trace trace --all lsw0 "$uflow" | tee trace | sed '1,/Minimal trace/d'], [0], [expout])
+    AT_CHECK([ovn_trace_client ovn-trace --minimal lsw0 "$uflow"], [0], [expout])
 }
 
 # test_arp INPORT SHA SPA TPA [REPLY_HA]
@@ -2671,8 +2670,7 @@ output(\"lp$inport\");
 "
     fi
 
-    AT_CAPTURE_FILE([trace])
-    AT_CHECK_UNQUOTED([ovs-appctl -t ovn-trace trace --all lsw0 "$request" | tee trace | sed '1,/Minimal trace/d'], [0], [$reply])
+    AT_CHECK_UNQUOTED([ovn_trace_client ovn-trace --minimal lsw0 "$request"], [0], [$reply])
 }
 
 # Send packets between all pairs of source and destination ports:
@@ -2921,8 +2919,7 @@ test_packet() {
     if test $lout != drop; then
         echo "output(\"$lout\");"
     fi > expout
-    AT_CAPTURE_FILE([trace])
-    AT_CHECK([ovn-trace --all $(lsp_to_ls lp$inport) "$uflow" | tee trace | sed '1,/Minimal trace/d'], [0], [expout])
+    AT_CHECK([ovn_trace --minimal $(lsp_to_ls lp$inport) "$uflow"], [0], [expout])
 
     # Then actually send a packet, for an end-to-end test.
     local packet=$(echo $dst$src | sed 's/://g')${eth}
@@ -3092,8 +3089,7 @@ test_packet() {
 
     # First try tracing the packet.
     uflow="inport==\"lp-$inport\" && eth.dst==$dst && eth.src==$src && eth.type==0x$eth"
-    AT_CAPTURE_FILE([trace])
-    AT_CHECK([ovn-trace --all ls-${hv}0 "$uflow" | tee trace | sed '1,/Minimal trace/d'], [0], [expout])
+    AT_CHECK([ovn_trace --minimal ls-${hv}0 "$uflow"], [0], [expout])
 
     # Then actually send a packet, for an end-to-end test.
     local packet=$(echo $dst$src | sed 's/://g')${eth}
@@ -3225,8 +3221,7 @@ test_packet() {
 
     # First try tracing the packet.
     uflow="inport==\"lp-$inport\" && eth.dst==$dst && eth.src==$src && eth.type==0x$eth"
-    AT_CAPTURE_FILE([trace])
-    AT_CHECK([ovn-trace --all ls-${hv}0 "$uflow" | tee trace | sed '1,/Minimal trace/d' | sort], [0], [expout])
+    AT_CHECK([ovn_trace --minimal ls-${hv}0 "$uflow" | sort], [0], [expout])
 
     # Then actually send a packet, for an end-to-end test.
     local packet=$(echo $dst$src | sed 's/://g')${eth}
@@ -3354,8 +3349,7 @@ test_packet() {
 
     # First try tracing the packet.
     uflow="inport==\"lp-$inport\" && eth.dst==$dst && eth.src==$src && eth.type==0x$eth"
-    AT_CAPTURE_FILE([trace])
-    AT_CHECK([ovn-trace --all ls-$inport "$uflow" | tee trace | sed '1,/Minimal trace/d'], [0], [expout])
+    AT_CHECK([ovn_trace --minimal ls-$inport "$uflow"], [0], [expout])
 
     # Then actually send a packet, for an end-to-end test.
     local packet=$(echo $dst$src | sed 's/://g')${eth}
@@ -3569,8 +3563,7 @@ test_packet() {
     # First try tracing the packet.
     uflow="inport==\"lsp$inport\" && eth.dst==$dst && eth.src==$src && eth.type==0x$eth && vlan.present==1"
     echo "output(\"$lout\");" > expout
-    AT_CAPTURE_FILE([trace])
-    AT_CHECK([ovn-trace --all ls "$uflow" | tee trace | sed '1,/Minimal trace/d'], [0], [expout])
+    AT_CHECK([ovn_trace --minimal ls "$uflow"], [0], [expout])
 
     # Then actually send a packet, for an end-to-end test.
     local packet=$(echo $dst$src | sed 's/://g')${eth}fefefefe
@@ -3647,8 +3640,7 @@ test_packet() {
     # First try tracing the packet.
     uflow="inport==\"lsp$inport\" && eth.dst==$dst && eth.src==$src && eth.type==0x$eth && vlan.present==1"
     echo "output(\"$lout\");" > expout
-    AT_CAPTURE_FILE([trace])
-    AT_CHECK([ovn-trace --all ls "$uflow" | tee trace | sed '1,/Minimal trace/d'], [0], [expout])
+    AT_CHECK([ovn_trace --minimal ls "$uflow"], [0], [expout])
 
     # Then actually send a packet, for an end-to-end test.
     payload=fefefefe
@@ -3721,8 +3713,7 @@ test_packet() {
     # First try tracing the packet.
     uflow="inport==\"lsp$inport\" && eth.dst==$dst && eth.src==$src && eth.type==0x$eth && vlan.present==1"
     echo "output(\"$lout\");" > expout
-    AT_CAPTURE_FILE([trace])
-    AT_CHECK([ovn-trace --all ls "$uflow" | tee trace | sed '1,/Minimal trace/d'], [0], [expout])
+    AT_CHECK([ovn_trace --minimal ls "$uflow"], [0], [expout])
 
     # Then actually send a packet, for an end-to-end test.
     local packet=$(echo $dst$src | sed 's/://g')${eth}fefefefe
@@ -3772,8 +3763,7 @@ test_packet() {
     # First try tracing the packet.
     uflow="inport==\"lsp$inport\" && eth.dst==$dst && eth.src==$src && eth.type==0x$eth && vlan.present==1"
     echo "output(\"$lout\");" > expout
-    AT_CAPTURE_FILE([trace])
-    AT_CHECK([ovn-trace --all ls "$uflow" | tee trace | sed '1,/Minimal trace/d'], [0], [expout])
+    AT_CHECK([ovn_trace --minimal ls "$uflow"], [0], [expout])
 
     # Then actually send a packet, for an end-to-end test.
     local packet=$(echo $dst$src | sed 's/://g')${eth}fefefefe
@@ -3822,7 +3812,7 @@ test_packet() {
 
     # First try tracing the packet.
     uflow="inport==\"lsp$inport\" && eth.dst==$dst && eth.src==$src && eth.type==0x$eth && vlan.present==1"
-    AT_CHECK([ovn-trace --all ls "$uflow" | grep drop], [0], [ignore])
+    AT_CHECK([ovn_trace ls "$uflow" | grep -q drop], [0])
 
     # Then actually send a packet, for an end-to-end test.
     local packet=$(echo $dst$src | sed 's/://g')${eth}fefefefe
@@ -3955,8 +3945,7 @@ test_packet() {
     # First try tracing the packet.
     uflow="inport==\"lp-$inport\" && eth.dst==$dst && eth.src==$src && eth.type==0x$eth"
     echo "output(\"$lout\");" > expout
-    AT_CAPTURE_FILE([trace])
-    AT_CHECK([ovn-trace --all ls1 "$uflow" | tee trace | sed '1,/Minimal trace/d'], [0], [expout])
+    AT_CHECK([ovn_trace --minimal ls1 "$uflow"], [0], [expout])
 
     # Then actually send a packet, for an end-to-end test.
     local packet=$(echo $dst$src | sed 's/://g')${eth}
@@ -9240,7 +9229,7 @@ as hv ovs-appctl -t ovn-controller inject-pkt "$packet"
 
 OVS_WAIT_UNTIL([ test 8 = $(grep -c 'acl_log' hv/ovn-controller.log) ])
 
-AT_CHECK([grep 'acl_log' hv/ovn-controller.log | sed 's/.*name=/name=/'], [0], [dnl
+AT_CHECK([grep 'acl_log' hv/ovn-controller.log | sed 's/.*name=/name=/' | strip_nw_frag], [0], [dnl
 name="drop-flow", verdict=drop, severity=alert, direction=from-lport: tcp,vlan_tci=0x0000,dl_src=f0:00:00:00:00:01,dl_dst=f0:00:00:00:00:02,nw_src=192.168.1.2,nw_dst=192.168.1.3,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=4361,tp_dst=81,tcp_flags=syn
 name="drop-flow", verdict=drop, severity=alert, direction=to-lport: tcp,vlan_tci=0x0000,dl_src=f0:00:00:00:00:01,dl_dst=f0:00:00:00:00:02,nw_src=192.168.1.2,nw_dst=192.168.1.3,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=4361,tp_dst=181,tcp_flags=syn
 name="allow-flow", verdict=allow, severity=info, direction=from-lport: tcp,vlan_tci=0x0000,dl_src=f0:00:00:00:00:01,dl_dst=f0:00:00:00:00:02,nw_src=192.168.1.2,nw_dst=192.168.1.3,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=4363,tp_dst=83,tcp_flags=syn
@@ -9428,11 +9417,6 @@ check ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id
 check ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=lp2 options:tx_pcap=vif2-tx.pcap options:rxq_pcap=vif2-rx.pcap ofport-request=2
 wait_for_ports_up lp1 lp2
 
-AT_CAPTURE_FILE([trace])
-ovn_trace () {
-    ovn-trace --all "$@" | tee trace | sed '1,/Minimal trace/d'
-}
-
 # Extracts nw_tos from the final flow from ofproto/trace output and prints
 # it on stdout.  Prints "none" if no nw_tos was included.
 get_final_nw_tos() {
@@ -9456,7 +9440,7 @@ check_tos() {
     echo "checking for tos $1"
     (if test $1 != 0; then echo "ip.dscp = $1;"; fi;
      echo 'output("lp2");') > expout
-    AT_CHECK_UNQUOTED([ovn_trace lsw0 'inport == "lp1" && eth.src == f0:00:00:00:00:01 && eth.dst == f0:00:00:00:00:02 && ip4.src == 1.1.1.1 && ip4.dst == 1.1.1.2'], [0], [expout])
+    AT_CHECK_UNQUOTED([ovn_trace --minimal lsw0 'inport == "lp1" && eth.src == f0:00:00:00:00:01 && eth.dst == f0:00:00:00:00:02 && ip4.src == 1.1.1.1 && ip4.dst == 1.1.1.2'], [0], [expout])
 
     # Then re-check with ofproto/trace for a physical packet.
     AT_CHECK([ovs-appctl ofproto/trace br-int 'in_port=1,dl_src=f0:00:00:00:00:01,dl_dst=f0:00:00:00:00:02,dl_type=0x800,nw_src=1.1.1.1,nw_dst=1.1.1.2'], [0], [stdout-nolog])
@@ -9465,7 +9449,7 @@ check_tos() {
 }
 
 # check at L2
-AT_CHECK([ovn_trace lsw0 'inport == "lp1" && eth.src == f0:00:00:00:00:01 && eth.dst == f0:00:00:00:00:02'], [0], [output("lp2");
+AT_CHECK([ovn_trace --minimal lsw0 'inport == "lp1" && eth.src == f0:00:00:00:00:01 && eth.dst == f0:00:00:00:00:02'], [0], [output("lp2");
 ])
 AT_CHECK([ovs-appctl ofproto/trace br-int 'in_port=1,dl_src=f0:00:00:00:00:01,dl_dst=f0:00:00:00:00:02'], [0], [stdout-nolog])
 AT_CHECK([get_final_nw_tos], [0], [none
@@ -11509,16 +11493,11 @@ echo $expected >> hv3-vif1.expected
 OVN_CHECK_PACKETS([hv3/vif1-tx.pcap], [hv3-vif1.expected])
 
 #Check ovn-trace over "chassisredirect" port
-AT_CAPTURE_FILE([trace])
-ovn_trace () {
-    ovn-trace --all "$@" | tee trace | sed '1,/Minimal trace/d'
-}
-
 echo 'ip.ttl--;' > expout
 echo 'eth.src = 00:00:02:01:02:03;' >> expout
 echo 'eth.dst = f0:00:00:01:02:04;' >> expout
 echo 'output("ln-alice");' >> expout
-AT_CHECK_UNQUOTED([ovn_trace foo 'inport == "foo1" && eth.src == f0:00:00:01:02:03 && eth.dst == 00:00:01:01:02:03 && ip4.src == 192.168.1.2 && ip4.dst == 172.16.1.3 && ip.ttl == 0xff'], [0], [expout])
+AT_CHECK_UNQUOTED([ovn_trace --minimal foo 'inport == "foo1" && eth.src == f0:00:00:01:02:03 && eth.dst == 00:00:01:01:02:03 && ip4.src == 192.168.1.2 && ip4.dst == 172.16.1.3 && ip.ttl == 0xff'], [0], [expout])
 
 # Create logical port alice1 in alice on hv1
 as hv1 ovs-vsctl -- add-port br-int hv1-vif2 -- \
@@ -12492,8 +12471,7 @@ test_packet() {
     if test $lout != drop; then
         echo "output(\"$lout\");"
     fi > expout
-    AT_CAPTURE_FILE([trace])
-    AT_CHECK([ovn-trace --all ls1 "$uflow" | tee trace | sed '1,/Minimal trace/d'], [0], [expout])
+    AT_CHECK([ovn_trace --minimal ls1 "$uflow"], [0], [expout])
 
     # Then actually send a packet, for an end-to-end test.
     local packet=$(echo $dst$src | sed 's/://g')${eth}
@@ -19332,7 +19310,7 @@ AT_CHECK_UNQUOTED([ovn-sbctl get controller_event $uuid event_info:load_balancer
 "$uuid_lb2"
 ])
 
-AT_CHECK_UNQUOTED([ovn-trace sw0 'inport == "sw0-p11" && eth.src == 00:00:00:00:00:11 && ip4.dst == 192.168.1.100 && tcp && tcp.dst == 80' | grep -q 'event = "empty_lb_backends"'], [0])
+AT_CHECK_UNQUOTED([ovn_trace sw0 'inport == "sw0-p11" && eth.src == 00:00:00:00:00:11 && ip4.dst == 192.168.1.100 && tcp && tcp.dst == 80' | grep -q 'event = "empty_lb_backends"'], [0])
 
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
@@ -22994,7 +22972,7 @@ wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 # Trace with --ovs should see ovs flow related to the ACL
-AT_CHECK([ovn-trace --ovs lsw0 'inport == "lp1" && eth.type == 0x1234' | grep "dl_type=0x1234" | grep "cookie"], [0], [ignore])
+AT_CHECK([ovn_trace --ovs lsw0 'inport == "lp1" && eth.type == 0x1234' | grep "dl_type=0x1234" | grep "cookie"], [0], [ignore])
 
 # Replace the ACL with same match but different action.
 ovn-nbctl acl-del lsw0 -- \
@@ -23004,7 +22982,7 @@ check ovn-nbctl --wait=hv sync
 
 # Trace with --ovs should still see the ovs flow related to the ACL, which
 # means the OVS flow is updated with new cookie corresponding to the new lflow.
-AT_CHECK([ovn-trace --ovs lsw0 'inport == "lp1" && eth.type == 0x1234' | grep "dl_type=0x1234 actions="], [0], [ignore])
+AT_CHECK([ovn_trace --ovs lsw0 'inport == "lp1" && eth.type == 0x1234' | grep "dl_type=0x1234 actions="], [0], [ignore])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
@@ -23170,7 +23148,7 @@ for s_az in $(seq 1 $n_az); do
                     ip4 && ip.ttl==64 && ip4.src==$lsp_sip && ip4.dst==$lsp_dip &&
                     udp && udp.src==53 && udp.dst==4369"
             echo "sending: $packet"
-            AT_CHECK([ovn-trace --ovs "$packet" > ${s_az}-${d_az}-$i.ovn-trace])
+            AT_CHECK([ovn_trace --ovs "$packet" > ${s_az}-${d_az}-$i.ovn-trace])
             AT_CHECK([ovs-appctl -t ovn-controller inject-pkt "$packet"])
             ovs_inport=$(ovs-vsctl --bare --columns=ofport find Interface external-ids:iface-id="$ovn_inport")
 

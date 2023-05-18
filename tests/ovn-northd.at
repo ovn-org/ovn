@@ -2865,8 +2865,7 @@ lsp1_inport=$(fetch_column Port_Binding tunnel_key logical_port=lsp1)
 
 # TCP packets should go to conntrack.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
-AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
-# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_next(ct_state=new|trk) {
     ct_next(ct_state=new|trk) {
         output("lsp2");
@@ -2876,8 +2875,7 @@ ct_next(ct_state=new|trk) {
 
 # UDP packets should go to conntrack.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
-AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
-# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_next(ct_state=new|trk) {
     ct_next(ct_state=new|trk) {
         output("lsp2");
@@ -2893,15 +2891,13 @@ ovn-nbctl --wait=sb sync
 
 # TCP packets should not go to conntrack anymore.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
-AT_CHECK_UNQUOTED([ovn-trace --minimal ls "${flow}"], [0], [dnl
-# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+AT_CHECK_UNQUOTED([ovn_trace --minimal ls "${flow}"], [0], [dnl
 output("lsp2");
 ])
 
 # UDP packets still go to conntrack.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
-AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
-# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_next(ct_state=new|trk) {
     ct_next(ct_state=new|trk) {
         output("lsp2");
@@ -2921,8 +2917,7 @@ ovn-nbctl --wait=sb sync
 
 # TCP packets should go to conntrack.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
-AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
-# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_lb_mark {
     ct_lb_mark {
         reg0[[6]] = 0;
@@ -2937,8 +2932,7 @@ ct_lb_mark {
 
 # UDP packets should go to conntrack.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
-AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
-# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_lb_mark {
     ct_lb_mark {
         reg0[[6]] = 0;
@@ -2959,8 +2953,7 @@ ovn-nbctl --wait=sb sync
 
 # TCP packets should go to conntrack for load balancing.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
-AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
-# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_lb_mark {
     ct_lb_mark {
         reg0[[6]] = 0;
@@ -2975,8 +2968,7 @@ ct_lb_mark {
 
 # UDP packets still go to conntrack.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
-AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
-# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_lb_mark {
     ct_lb_mark {
         reg0[[6]] = 0;
@@ -3021,8 +3013,7 @@ flow_udp='udp && udp.dst == 80'
 
 # TCP packets should go to conntrack.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
-AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
-# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_next(ct_state=new|trk) {
     ct_next(ct_state=new|trk) {
         output("lsp2");
@@ -3032,8 +3023,7 @@ ct_next(ct_state=new|trk) {
 
 # UDP packets should go to conntrack.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
-AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
-# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_next(ct_state=new|trk) {
     ct_next(ct_state=new|trk) {
         output("lsp2");
@@ -3049,15 +3039,13 @@ ovn-nbctl --wait=sb sync
 
 # TCP packets should not go to conntrack anymore.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
-AT_CHECK_UNQUOTED([ovn-trace --minimal ls "${flow}"], [0], [dnl
-# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+AT_CHECK_UNQUOTED([ovn_trace --minimal ls "${flow}"], [0], [dnl
 output("lsp2");
 ])
 
 # UDP packets still go to conntrack.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
-AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
-# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_next(ct_state=new|trk) {
     ct_next(ct_state=new|trk) {
         output("lsp2");
@@ -3077,8 +3065,7 @@ ovn-nbctl --wait=sb sync
 
 # TCP packets should go to conntrack.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
-AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
-# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_lb_mark {
     ct_lb_mark {
         reg0[[6]] = 0;
@@ -3093,8 +3080,7 @@ ct_lb_mark {
 
 # UDP packets should go to conntrack.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
-AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
-# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_lb_mark {
     ct_lb_mark {
         reg0[[6]] = 0;
@@ -3115,8 +3101,7 @@ ovn-nbctl --wait=sb sync
 
 # TCP packets should go to conntrack for load balancing.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
-AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
-# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_lb_mark {
     ct_lb_mark {
         reg0[[6]] = 0;
@@ -3131,8 +3116,7 @@ ct_lb_mark {
 
 # UDP packets still go to conntrack.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
-AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
-# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_lb_mark {
     ct_lb_mark {
         reg0[[6]] = 0;
@@ -3173,8 +3157,7 @@ lsp1_inport=$(fetch_column Port_Binding tunnel_key logical_port=lsp1)
 
 # TCP packets should go to conntrack.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
-AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
-# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_next(ct_state=new|trk) {
     ct_next(ct_state=new|trk) {
         output("lsp2");
@@ -3191,15 +3174,13 @@ ovn-nbctl --wait=sb sync
 
 # TCP packets should not go to conntrack anymore.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
-AT_CHECK_UNQUOTED([ovn-trace --minimal ls "${flow}"], [0], [dnl
-# tcp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80,tcp_flags=0
+AT_CHECK_UNQUOTED([ovn_trace --minimal ls "${flow}"], [0], [dnl
 output("lsp2");
 ])
 
 # UDP packets should not go to conntrack anymore.
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
-AT_CHECK_UNQUOTED([ovn-trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
-# udp,reg14=0x${lsp1_inport},vlan_tci=0x0000,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,nw_src=42.42.42.1,nw_dst=66.66.66.66,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=80
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 output("lsp2");
 ])
 
@@ -4281,15 +4262,13 @@ check ovn-nbctl lsp-set-options lrp1-attachment router-port=lrp1
 check ovn-nbctl lr-nat-add lr0 dnat 42.42.42.42 192.168.0.2
 check ovn-nbctl --wait=sb sync
 
-ovn-trace --minimal 'inport == "sw1-port1" && eth.src == 50:54:00:00:00:03 && eth.dst == 00:00:00:00:ff:02 && ip4.dst == 42.42.42.42 && ip4.src == 11.0.0.2 && ip.ttl == 64'
-
-AT_CHECK([ovn-trace --minimal 'inport == "sw1-port1" && eth.src == 50:54:00:00:00:03 && eth.dst == 00:00:00:00:ff:02 && ip4.dst == 42.42.42.42 && ip4.src == 11.0.0.2 && ip.ttl == 64' | grep "output(\"sw0-port1\")"], [0], [ignore])
+AT_CHECK([ovn_trace --minimal 'inport == "sw1-port1" && eth.src == 50:54:00:00:00:03 && eth.dst == 00:00:00:00:ff:02 && ip4.dst == 42.42.42.42 && ip4.src == 11.0.0.2 && ip.ttl == 64' | grep "output(\"sw0-port1\")"], [0], [ignore])
 
 dnl If we remove the DNAT entry we will be unable to trace to the DNAT address
 check ovn-nbctl lr-nat-del lr0 dnat 42.42.42.42
 check ovn-nbctl --wait=sb sync
 
-AT_CHECK([ovn-trace --minimal 'inport == "sw1-port1" && eth.src == 50:54:00:00:00:03 && eth.dst == 00:00:00:00:ff:02 && ip4.dst == 42.42.42.42 && ip4.src == 11.0.0.2 && ip.ttl == 64' | grep "output(\"sw0-port1\")"], [1], [ignore])
+AT_CHECK([ovn_trace --minimal 'inport == "sw1-port1" && eth.src == 50:54:00:00:00:03 && eth.dst == 00:00:00:00:ff:02 && ip4.dst == 42.42.42.42 && ip4.src == 11.0.0.2 && ip.ttl == 64' | grep "output(\"sw0-port1\")"], [1], [ignore])
 
 AT_CLEANUP
 ])
@@ -4322,13 +4301,13 @@ check ovn-nbctl lsp-set-options lrp1-attachment router-port=lrp1
 check ovn-nbctl lr-nat-add lr0 dnat fd42::42 fd68::2
 check ovn-nbctl --wait=sb sync
 
-AT_CHECK([ovn-trace --minimal 'inport == "sw1-port1" && eth.src == 50:54:00:00:00:03 && eth.dst == 00:00:00:00:ff:02 && ip6.dst == fd42::42 && ip6.src == fd11::2 && ip.ttl == 64' | grep "output(\"sw0-port1\")"], [0], [ignore])
+AT_CHECK([ovn_trace --minimal 'inport == "sw1-port1" && eth.src == 50:54:00:00:00:03 && eth.dst == 00:00:00:00:ff:02 && ip6.dst == fd42::42 && ip6.src == fd11::2 && ip.ttl == 64' | grep "output(\"sw0-port1\")"], [0], [ignore])
 
 dnl If we remove the DNAT entry we will be unable to trace to the DNAT address
 check ovn-nbctl lr-nat-del lr0 dnat fd42::42
 check ovn-nbctl --wait=sb sync
 
-AT_CHECK([ovn-trace --minimal 'inport == "sw1-port1" && eth.src == 50:54:00:00:00:03 && eth.dst == 00:00:00:00:ff:02 && ip6.dst == fd42::42 && ip6.src == fd11::2 && ip.ttl == 64' | grep "output(\"sw0-port1\")"], [1], [ignore])
+AT_CHECK([ovn_trace --minimal 'inport == "sw1-port1" && eth.src == 50:54:00:00:00:03 && eth.dst == 00:00:00:00:ff:02 && ip6.dst == fd42::42 && ip6.src == fd11::2 && ip.ttl == 64' | grep "output(\"sw0-port1\")"], [1], [ignore])
 
 AT_CLEANUP
 ])
@@ -5964,8 +5943,7 @@ check ovn-nbctl --wait=sb sync
 
 flow="eth.dst == 00:00:00:00:01:00 && inport == \"rtr-ls\" && ip4.src == 42.42.42.42 && ip4.dst == 43.43.43.43 && ip.ttl == 64 && tcp && tcp.dst == 4343"
 
-AT_CHECK_UNQUOTED([ovn-trace --ct new --minimal "${flow}" --lb-dst 42.42.42.42:4242], [0], [dnl
-# tcp,reg14=0x1,vlan_tci=0x0000,dl_src=00:00:00:00:00:00,dl_dst=00:00:00:00:01:00,nw_src=42.42.42.42,nw_dst=43.43.43.43,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=4343,tcp_flags=0
+AT_CHECK_UNQUOTED([ovn_trace --ct new --minimal "${flow}" --lb-dst 42.42.42.42:4242], [0], [dnl
 ct_dnat /* assuming no un-dnat entry, so no change */ {
     ct_lb_mark /* default (use --ct to customize) */ {
         ip.ttl--;
@@ -5982,8 +5960,7 @@ ct_dnat /* assuming no un-dnat entry, so no change */ {
 };
 ])
 
-AT_CHECK_UNQUOTED([ovn-trace --minimal "${flow}" --lb-dst 42.42.42.42:4242], [0], [dnl
-# tcp,reg14=0x1,vlan_tci=0x0000,dl_src=00:00:00:00:00:00,dl_dst=00:00:00:00:01:00,nw_src=42.42.42.42,nw_dst=43.43.43.43,nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=0,tp_dst=4343,tcp_flags=0
+AT_CHECK_UNQUOTED([ovn_trace --minimal "${flow}" --lb-dst 42.42.42.42:4242], [0], [dnl
 ct_dnat /* assuming no un-dnat entry, so no change */ /* default (use --ct to customize) */;
 ])
 
