@@ -472,39 +472,6 @@ sbrec_get_port_encap(const struct sbrec_chassis *chassis_rec,
     return best_encap;
 }
 
-static void
-add_localnet_egress_interface_mappings(
-        const struct sbrec_port_binding *port_binding,
-        struct shash *bridge_mappings, struct sset *egress_ifaces)
-{
-    const char *network = smap_get(&port_binding->options, "network_name");
-    if (!network) {
-        return;
-    }
-
-    struct ovsrec_bridge *br_ln = shash_find_data(bridge_mappings, network);
-    if (!br_ln) {
-        return;
-    }
-
-    /* Add egress-ifaces from the connected bridge */
-    for (size_t i = 0; i < br_ln->n_ports; i++) {
-        const struct ovsrec_port *port_rec = br_ln->ports[i];
-
-        for (size_t j = 0; j < port_rec->n_interfaces; j++) {
-            const struct ovsrec_interface *iface_rec;
-
-            iface_rec = port_rec->interfaces[j];
-            bool is_egress_iface = smap_get_bool(&iface_rec->external_ids,
-                                                 "ovn-egress-iface", false);
-            if (!is_egress_iface) {
-                continue;
-            }
-            sset_add(egress_ifaces, iface_rec->name);
-        }
-    }
-}
-
 static bool
 is_network_plugged(const struct sbrec_port_binding *binding_rec,
                    struct shash *bridge_mappings)
@@ -545,16 +512,12 @@ update_ld_multichassis_ports(const struct sbrec_port_binding *binding_rec,
 static void
 update_ld_localnet_port(const struct sbrec_port_binding *binding_rec,
                         struct shash *bridge_mappings,
-                        struct sset *egress_ifaces,
                         struct hmap *local_datapaths)
 {
     /* Ignore localnet ports for unplugged networks. */
     if (!is_network_plugged(binding_rec, bridge_mappings)) {
         return;
     }
-
-    add_localnet_egress_interface_mappings(binding_rec,
-            bridge_mappings, egress_ifaces);
 
     struct local_datapath *ld
         = get_local_datapath(local_datapaths,
@@ -2125,7 +2088,6 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
     struct lport *lnet_lport;
     LIST_FOR_EACH_POP (lnet_lport, list_node, &localnet_lports) {
         update_ld_localnet_port(lnet_lport->pb, &bridge_mappings,
-                                b_ctx_out->egress_ifaces,
                                 b_ctx_out->local_datapaths);
         free(lnet_lport);
     }
@@ -2928,7 +2890,6 @@ handle_updated_port(struct binding_ctx_in *b_ctx_in,
                                 b_ctx_in->bridge_table,
                                 &bridge_mappings);
         update_ld_localnet_port(pb, &bridge_mappings,
-                                b_ctx_out->egress_ifaces,
                                 b_ctx_out->local_datapaths);
         shash_destroy(&bridge_mappings);
         break;
@@ -3124,7 +3085,6 @@ delete_done:
                 enum en_lport_type lport_type = get_lport_type(pb);
                 if (lport_type == LP_LOCALNET) {
                     update_ld_localnet_port(pb, &bridge_mappings,
-                                            b_ctx_out->egress_ifaces,
                                             b_ctx_out->local_datapaths);
                 } else if (lport_type == LP_EXTERNAL) {
                     update_ld_external_ports(pb, b_ctx_out->local_datapaths);
