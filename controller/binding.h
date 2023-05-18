@@ -92,6 +92,7 @@ struct binding_ctx_out {
     bool non_vif_ports_changed;
 
     struct sset *egress_ifaces;
+    struct hmap *qos_map;
     /* smap of OVS interface name as key and
      * OVS interface external_ids:iface-id as value. */
     struct smap *local_iface_ids;
@@ -259,5 +260,7 @@ void binding_wait(void);
 
 /* Clean up module state. */
 void binding_destroy(void);
+
+void destroy_qos_map(struct hmap *);
 
 #endif /* controller/binding.h */
