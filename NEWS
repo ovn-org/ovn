@@ -25,6 +25,12 @@ Post v23.03.0
     databases for ovn-nbctl and ovn-sbctl respectively.  See man ovn-nb and
     man ovn-sb for 'nbctl_probe_interval' and 'sbctl_probe_interval'
     options for more details.
+  - Rework OVN egress QoS implementation in order to rely on OvS interface
+    instead of directly running tc from OVN. Get rid of traffic shaping on the
+    tunnel interfaces. Now for LSPs running on a LogicalSwitch with a localnet
+    port is possible to define QoS rules to apply to the local egress localnet
+    port. Please note now the QoS will be applied just to the local localnet
+    port and not to all localnet port marked with ovn-egress iface.
 
 OVN v23.03.0 - 03 Mar 2023
 --------------------------
