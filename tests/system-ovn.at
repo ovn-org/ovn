@@ -6530,8 +6530,10 @@ ovn_start
 OVS_TRAFFIC_VSWITCHD_START()
 
 ADD_BR([br-int])
+ADD_BR([br-public])
 ADD_BR([br-ext])
 
+ovs-ofctl add-flow br-public action=normal
 ovs-ofctl add-flow br-ext action=normal
 # Set external-ids in br-int needed for ovn-controller
 ovs-vsctl \
@@ -6551,30 +6553,85 @@ ADD_VETH(sw01, sw01, br-int, "192.168.1.2/24", "f0:00:00:01:02:03")
 ovn-nbctl lsp-add sw0 sw01 \
     -- lsp-set-addresses sw01 "f0:00:00:01:02:03 192.168.1.2"
 
-ADD_NAMESPACES(public)
-ADD_VETH(public, public, br-ext, "192.168.2.2/24", "f0:00:00:01:02:05")
+ovn-nbctl ls-add sw1
 
-AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext])
+ADD_NAMESPACES(sw11)
+ADD_VETH(sw11, sw11, br-int, "192.168.4.2/24", "f0:00:00:01:04:03")
+ovn-nbctl lsp-add sw1 sw11 \
+    -- lsp-set-addresses sw11 "f0:00:00:01:04:03 192.168.4.2"
+
+ADD_NAMESPACES(public)
+ADD_VETH(public, public, br-public, "192.168.2.2/24", "f0:00:00:01:02:05")
+AT_CHECK([ovs-vsctl remove interface ovs-public external-ids iface-id=public])
+
+ADD_NAMESPACES(ext)
+ADD_VETH(ext, ext, br-ext, "192.168.3.2/24", "f0:00:00:01:02:06")
+AT_CHECK([ovs-vsctl remove interface ovs-ext external-ids iface-id=ext])
+
+AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=public:br-public,ext:br-ext])
 ovn-nbctl lsp-add sw0 public \
         -- lsp-set-addresses public unknown \
         -- lsp-set-type public localnet \
-        -- lsp-set-options public network_name=phynet
+        -- lsp-set-options public network_name=public
+
+ovn-nbctl lsp-add sw1 ext \
+        -- lsp-set-addresses ext unknown \
+        -- lsp-set-type ext localnet \
+        -- lsp-set-options ext network_name=ext
 
 AT_CHECK([ovn-nbctl set Logical_Switch_Port public options:qos_min_rate=200000])
 AT_CHECK([ovn-nbctl set Logical_Switch_Port public options:qos_max_rate=300000])
 AT_CHECK([ovn-nbctl set Logical_Switch_Port public options:qos_burst=3000000])
 AT_CHECK([ovs-vsctl set interface ovs-public external-ids:ovn-egress-iface=true])
+
+AT_CHECK([ovn-nbctl set Logical_Switch_Port ext options:qos_min_rate=400000])
+AT_CHECK([ovn-nbctl set Logical_Switch_Port ext options:qos_max_rate=600000])
+AT_CHECK([ovn-nbctl set Logical_Switch_Port ext options:qos_burst=6000000])
+AT_CHECK([ovs-vsctl set interface ovs-ext external-ids:ovn-egress-iface=true])
+
 OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-public'])
 OVS_WAIT_UNTIL([tc class show dev ovs-public | \
                 grep -q 'class htb .* rate 200Kbit ceil 300Kbit burst 375000b cburst 375000b'])
 
-
-AT_CHECK([ovn-nbctl remove Logical_Switch_Port public options qos_max_rate=300000])
-OVS_WAIT_UNTIL([tc class show dev ovs-public | \
-                grep -q 'class htb .* rate 200Kbit ceil 34359Mbit burst 375000b .*'])
+OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-ext'])
+OVS_WAIT_UNTIL([tc class show dev ovs-ext | \
+                grep -q 'class htb .* rate 400Kbit ceil 600Kbit burst 750000b cburst 750000b'])
 
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port public options qos_min_rate=200000])
+AT_CHECK([ovn-nbctl remove Logical_Switch_Port public options qos_max_rate=300000])
+
+OVS_WAIT_UNTIL([tc class show dev ovs-public | \
+                grep -q 'class htb .* rate 12Kbit ceil 34359Mbit burst 375000b cburst 373662b'])
+
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port public options qos_burst=3000000])
+OVS_WAIT_UNTIL([test "$(tc qdisc show | grep 'htb 1: dev ovs-public')" = ""])
+
+AT_CHECK([ovn-nbctl set Logical_Switch_Port ext options:qos_max_rate=800000])
+OVS_WAIT_UNTIL([tc class show dev ovs-ext | \
+                grep -q 'class htb .* rate 400Kbit ceil 800Kbit burst 750000b cburst 750000b'])
+
+AT_CHECK([ovn-nbctl set Logical_Switch_Port public options:qos_min_rate=400000])
+AT_CHECK([ovn-nbctl set Logical_Switch_Port public options:qos_max_rate=800000])
+AT_CHECK([ovn-nbctl set Logical_Switch_Port public options:qos_burst=6000000])
+
+OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-public'])
+OVS_WAIT_UNTIL([tc class show dev ovs-public | \
+                grep -q 'class htb .* rate 400Kbit ceil 800Kbit burst 750000b cburst 750000b'])
+
+AT_CHECK([ovn-nbctl remove Logical_Switch_Port ext options qos_min_rate=400000])
+AT_CHECK([ovn-nbctl remove Logical_Switch_Port ext options qos_max_rate=800000])
+AT_CHECK([ovn-nbctl remove Logical_Switch_Port ext options qos_burst=6000000])
+
+OVS_WAIT_UNTIL([test "$(tc qdisc show | grep 'htb 1: dev ovs-ext')" = ""])
+
+OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-public'])
+OVS_WAIT_UNTIL([tc class show dev ovs-public | \
+                grep -q 'class htb .* rate 400Kbit ceil 800Kbit burst 750000b cburst 750000b'])
+
+AT_CHECK([ovn-nbctl remove Logical_Switch_Port public options qos_min_rate=400000])
+AT_CHECK([ovn-nbctl remove Logical_Switch_Port public options qos_max_rate=800000])
+AT_CHECK([ovn-nbctl remove Logical_Switch_Port public options qos_burst=6000000])
+
 OVS_WAIT_UNTIL([test "$(tc qdisc show | grep 'htb 1: dev ovs-public')" = ""])
 
 kill $(pidof ovn-controller)

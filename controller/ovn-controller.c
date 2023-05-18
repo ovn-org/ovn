@@ -1045,6 +1045,13 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_datapath);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_datapath_col_capabilities);
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_flow_sample_collector_set);
+    ovsdb_idl_add_table(ovs_idl, &ovsrec_table_qos);
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_qos_col_other_config);
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_qos_col_external_ids);
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_qos_col_queues);
+    ovsdb_idl_add_table(ovs_idl, &ovsrec_table_queue);
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_queue_col_other_config);
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_queue_col_external_ids);
 
     chassis_register_ovs_idl(ovs_idl);
     encaps_register_ovs_idl(ovs_idl);
@@ -1059,6 +1066,7 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_type);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_options);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_ofport);
+    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_external_ids);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_name);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_interfaces);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_external_ids);

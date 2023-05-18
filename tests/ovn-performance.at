@@ -559,11 +559,6 @@ OVN_CONTROLLER_EXPECT_NO_HIT(
     [ovn-nbctl --wait=hv set Logical_Switch_Port ln-public options:qos_burst=1000]
 )
 
-OVN_CONTROLLER_EXPECT_HIT(
-    [hv3], [lflow_run],
-    [as hv3 ovs-vsctl set interface vgw3 external-ids:ovn-egress-iface=true]
-)
-
 ovn-nbctl --wait=hv meter-add meter0 drop 100 pktps 10
 
 OVN_CONTROLLER_EXPECT_NO_HIT(
