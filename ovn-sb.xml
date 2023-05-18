@@ -3691,6 +3691,11 @@ tcp.flags = RST;
         interface, in bits.
       </column>
 
+      <column name="options" key="qos_physical_network">
+        If set, indicates the name of the egress network name where traffic
+        shaping will be applied.
+      </column>
+
       <column name="options" key="qdisc_queue_id"
               type='{"type": "integer", "minInteger": 1, "maxInteger": 61440}'>
         Indicates the queue number on the physical device. This is same as the

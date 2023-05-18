@@ -3505,7 +3505,17 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
             }
 
             smap_clone(&options, &op->nbsp->options);
+
             if (queue_id) {
+                if (op->od->n_localnet_ports) {
+                    struct ovn_port *port = op->od->localnet_ports[0];
+                    const char *physical_network = smap_get(
+                            &port->nbsp->options, "network_name");
+                    if (physical_network) {
+                        smap_add(&options, "qos_physical_network",
+                                 physical_network);
+                    }
+                }
                 smap_add_format(&options,
                                 "qdisc_queue_id", "%d", queue_id);
             }

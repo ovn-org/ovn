@@ -142,6 +142,7 @@ static void update_lport_tracking(const struct sbrec_port_binding *pb,
 struct qos_queue {
     struct hmap_node node;
 
+    char *network;
     char *port;
 
     uint32_t queue_id;
@@ -165,6 +166,7 @@ find_qos_queue(struct hmap *queue_map, uint32_t hash, const char *port)
 static void
 qos_queue_erase_entry(struct qos_queue *q)
 {
+    free(q->network);
     free(q->port);
     free(q);
 }
@@ -186,6 +188,7 @@ get_qos_queue(const struct sbrec_port_binding *pb, struct hmap *queue_map)
     uint32_t max_rate = smap_get_int(&pb->options, "qos_max_rate", 0);
     uint32_t burst = smap_get_int(&pb->options, "qos_burst", 0);
     uint32_t queue_id = smap_get_int(&pb->options, "qdisc_queue_id", 0);
+    const char *network = smap_get(&pb->options, "qos_physical_network");
 
     if ((!min_rate && !max_rate && !burst) || !queue_id) {
         /* Qos is not configured for this port. */
@@ -200,6 +203,9 @@ get_qos_queue(const struct sbrec_port_binding *pb, struct hmap *queue_map)
         q->port = xstrdup(pb->logical_port);
         q->queue_id = queue_id;
     }
+
+    free(q->network);
+    q->network = network ? xstrdup(network) : NULL;
     q->min_rate = min_rate;
     q->max_rate = max_rate;
     q->burst = burst;

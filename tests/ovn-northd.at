@@ -9064,3 +9064,25 @@ mac_binding_timestamp: true
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([check OVN QoS])
+AT_KEYWORDS([OVN-QoS])
+ovn_start
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add ls public
+check ovn-nbctl lsp-set-type public localnet
+check ovn-nbctl lsp-set-addresses public unknown
+
+check_column "" sb:Port_Binding options logical_port=public
+
+check ovn-nbctl --wait=sb set Logical_Switch_Port public options:qos_min_rate=200000
+AT_CHECK([fetch_column sb:Port_Binding options logical_port=public |grep -q 'qos_min_rate=200000'])
+AT_CHECK([fetch_column sb:Port_Binding options logical_port=public |grep -q 'qos_physical_network'],[1])
+
+check ovn-nbctl --wait=sb set Logical_Switch_Port public options:qos_min_rate=200000 options:network_name=phys
+AT_CHECK([fetch_column sb:Port_Binding options logical_port=public |grep -q 'qos_physical_network=phys'])
+
+AT_CLEANUP
+])
