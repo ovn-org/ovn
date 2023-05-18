@@ -1,5 +1,5 @@
-Post v23.03.0
--------------
+OVN v23.06.0 - xx xxx xxxx
+--------------------------
   - Enhance LSP.options:arp_proxy to support IPv6, configurable MAC
     addresses and CIDRs.
   - CT entries are not flushed by default anymore whenever a load balancer
