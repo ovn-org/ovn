@@ -1938,15 +1938,6 @@ build_local_bindings(struct binding_ctx_in *b_ctx_in,
                 smap_replace(b_ctx_out->local_iface_ids, iface_rec->name,
                              iface_id);
             }
-
-            /* Check if this is a tunnel interface. */
-            if (smap_get(&iface_rec->options, "remote_ip")) {
-                const char *tunnel_iface
-                    = smap_get(&iface_rec->status, "tunnel_egress_iface");
-                if (tunnel_iface) {
-                    sset_add(b_ctx_out->egress_ifaces, tunnel_iface);
-                }
-            }
         }
     }
 }
