@@ -7827,37 +7827,30 @@ static void
 build_vtep_hairpin(struct ovn_datapath *od, struct hmap *lflows)
 {
     /* Ingress Pre-ARP flows for VTEP hairpining traffic. Priority 1000:
-     * Packets that received from non-VTEP ports should continue processing. */
-
+     * Packets received from VTEP ports must go directly to L2LKP table.
+     */
     char *action = xasprintf("next(pipeline=ingress, table=%d);",
                              ovn_stage_get_table(S_SWITCH_IN_L2_LKUP));
-    /* send all traffic from VTEP directly to L2LKP table. */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_HAIRPIN, 1000,
                   REGBIT_FROM_RAMP" == 1", action);
     free(action);
-
-    struct ds match = DS_EMPTY_INITIALIZER;
-    size_t n_ports = od->n_router_ports;
-    bool dp_has_l3dgw_ports = false;
-    for (int i = 0; i < n_ports; i++) {
-        if (is_l3dgw_port(od->router_ports[i]->peer)) {
-            ds_put_format(&match, "%sis_chassis_resident(%s)%s",
-                          i == 0 ? REGBIT_FROM_RAMP" == 1 && (" : "",
-                          od->router_ports[i]->peer->cr_port->json_key,
-                          i < n_ports - 1 ? " || " : ")");
-            dp_has_l3dgw_ports = true;
-        }
-    }
 
     /* Ingress pre-arp flow for traffic from VTEP (ramp) switch.
     * Priority 2000: Packets, that were received from VTEP (ramp) switch and
     * router ports of current datapath are l3dgw ports and they reside on
     * current chassis, should be passed to next table for ARP/ND hairpin
-    * processing.
-    */
-    if (dp_has_l3dgw_ports) {
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_HAIRPIN, 2000, ds_cstr(&match),
-                      "next;");
+    * processing. */
+    struct ds match = DS_EMPTY_INITIALIZER;
+    for (int i = 0; i < od->n_router_ports; i++) {
+        struct ovn_port *op = od->router_ports[i]->peer;
+        if (is_l3dgw_port(op)) {
+            ds_clear(&match);
+            ds_put_format(&match,
+                          REGBIT_FROM_RAMP" == 1 && is_chassis_resident(%s)",
+                          op->cr_port->json_key);
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_HAIRPIN, 2000,
+                          ds_cstr(&match), "next;");
+        }
     }
     ds_destroy(&match);
 }

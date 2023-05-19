@@ -4432,23 +4432,12 @@ response=${sha}${lrpmac}08060001080006040002${lrpmac}${tpa}${sha}${spa}
 echo $response >> 3.expected
 
 # First ensure basic flow contents are as we expect.
-AT_CHECK([ovn-sbctl lflow-list lsw0 | grep 'reg0[\[14\]]' | sort | sed 's/table=../table=??/g' | sed 's/is_chassis_resident([[^)]]*)/is_chassis_resident("??")/g'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list lsw0 | grep 'reg0[\[14\]]' | sort | sed 's/table=../table=??/g'], [0], [dnl
   table=??(ls_in_check_port_sec), priority=70   , match=(inport == "lp-vtep"), action=(reg0[[14]] = 1; next(pipeline=ingress, table=??);)
   table=??(ls_in_hairpin      ), priority=1000 , match=(reg0[[14]] == 1), action=(next(pipeline=ingress, table=??);)
-  table=??(ls_in_hairpin      ), priority=2000 , match=(reg0[[14]] == 1 && (is_chassis_resident("??") || is_chassis_resident("??"))), action=(next;)
+  table=??(ls_in_hairpin      ), priority=2000 , match=(reg0[[14]] == 1 && is_chassis_resident("cr-lrp1")), action=(next;)
+  table=??(ls_in_hairpin      ), priority=2000 , match=(reg0[[14]] == 1 && is_chassis_resident("cr-lrp2")), action=(next;)
 ])
-
-# We've ensured that the expected hairpin flows are present
-# and that the expected number of "is_chassis_resident" fields are in
-# the flow. Now we need to ensure the contents are correct.
-# Unfortunately, the order of the "is_chassis_resident" fields is
-# unpredictable. Therefore we sort them so the order is predictable.
-actual_chassis=$(ovn-sbctl lflow-list lsw0 | grep 'ls_in_hairpin' | grep 'priority=2000' | grep -o 'is_chassis_resident([[^)]]*)' | sort)
-
-expected_chassis='is_chassis_resident("cr-lrp1")
-is_chassis_resident("cr-lrp2")'
-
-check test "$expected_chassis" = "$actual_chassis"
 
 # dump information with counters
 echo "------ OVN dump ------"
