@@ -32018,11 +32018,12 @@ check ovn-nbctl --wait=hv sync
 dp_key=$(fetch_column Datapath_Binding tunnel_key external_ids:name=ls)
 rtr_port_key=$(fetch_column Port_Binding tunnel_key logical_port=ls_lr)
 
-ovs-ofctl dump-flows br-int table=16 | grep "reg14=0x${rtr_port_key},metadata=0x${dp_key},nw_dst=42.42.42.42 actions=load:0x1->OXM_OF_PKT_REG4[49],resubmit(,17)"
+ovs-ofctl dump-flows br-int table=16 | grep "reg14=0x${rtr_port_key},metadata=0x${dp_key},nw_dst=42.42.42.42"
 # Check that ovn-controller adds a flow to drop packets with dest IP
 # 42.42.42.42 coming from the router port.
-AT_CHECK([ovs-ofctl dump-flows br-int table=16 | grep "reg14=0x${rtr_port_key},metadata=0x${dp_key},nw_dst=42.42.42.42 actions=load:0x1->OXM_OF_PKT_REG4\[\[49\]\],resubmit(,17)" -c], [0], [dnl
-1
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=16 | ofctl_strip_all | \
+    grep "reg14=0x${rtr_port_key},metadata=0x${dp_key},nw_dst=42.42.42.42"], [0], [dnl
+ table=16, priority=1001,ip,reg14=0x${rtr_port_key},metadata=0x${dp_key},nw_dst=42.42.42.42 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,17)
 ])
 
 OVN_CLEANUP([hv1])
