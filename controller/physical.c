@@ -1705,6 +1705,13 @@ chassis_is_vtep(const struct sbrec_chassis *chassis)
 }
 
 static void
+local_output_pb(int64_t tunnel_key, struct ofpbuf *ofpacts)
+{
+    put_load(tunnel_key, MFF_LOG_OUTPORT, 0, 32, ofpacts);
+    put_resubmit(OFTABLE_CHECK_LOOPBACK, ofpacts);
+}
+
+static void
 consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                   enum mf_field_id mff_ovn_geneve,
                   const struct simap *ct_zones,
@@ -1773,13 +1780,9 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
         if (!strcmp(port->type, "patch")) {
             if (ldp->is_transit_switch) {
-                put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
-                         &ofpacts);
-                put_resubmit(OFTABLE_CHECK_LOOPBACK, &ofpacts);
+                local_output_pb(port->tunnel_key, &ofpacts);
             } else {
-                put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
-                         &remote_ofpacts);
-                put_resubmit(OFTABLE_CHECK_LOOPBACK, &remote_ofpacts);
+                local_output_pb(port->tunnel_key, &remote_ofpacts);
             }
         } if (!strcmp(port->type, "remote")) {
             if (port->chassis) {
@@ -1790,18 +1793,14 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                                   port->tunnel_key, &remote_ofpacts);
             }
         } else if (!strcmp(port->type, "localport")) {
-            put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
-                     &remote_ofpacts);
-            put_resubmit(OFTABLE_CHECK_LOOPBACK, &remote_ofpacts);
+            local_output_pb(port->tunnel_key, &remote_ofpacts);
         } else if ((port->chassis == chassis
                     || is_additional_chassis(port, chassis))
                    && (local_binding_get_primary_pb(local_bindings, lport_name)
                        || !strcmp(port->type, "l3gateway"))) {
-            put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
-            put_resubmit(OFTABLE_CHECK_LOOPBACK, &ofpacts);
+            local_output_pb(port->tunnel_key, &ofpacts);
         } else if (simap_contains(patch_ofports, port->logical_port)) {
-            put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
-            put_resubmit(OFTABLE_CHECK_LOOPBACK, &ofpacts);
+            local_output_pb(port->tunnel_key, &ofpacts);
         } else if (!strcmp(port->type, "chassisredirect")
                    && port->chassis == chassis) {
             const char *distributed_port = smap_get(&port->options,
@@ -1812,9 +1811,7 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                                            distributed_port);
                 if (distributed_binding
                     && port->datapath == distributed_binding->datapath) {
-                    put_load(distributed_binding->tunnel_key, MFF_LOG_OUTPORT,
-                             0, 32, &ofpacts);
-                    put_resubmit(OFTABLE_CHECK_LOOPBACK, &ofpacts);
+                    local_output_pb(distributed_binding->tunnel_key, &ofpacts);
                 }
             }
         } else if (!get_localnet_port(local_datapaths,
