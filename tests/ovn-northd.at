@@ -2961,7 +2961,6 @@ AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_nat_hairpin | sort | sed 's/tabl
 AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_hairpin | sort | sed 's/table=../table=??/g'], [0], [dnl
   table=??(ls_in_hairpin      ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_hairpin      ), priority=1    , match=((reg0[[6]] == 1 || reg0[[12]] == 1)), action=(eth.dst <-> eth.src; outport = inport; flags.loopback = 1; output;)
-  table=??(ls_in_hairpin      ), priority=1000 , match=(reg0[[14]] == 1), action=(next(pipeline=ingress, table=??);)
 ])
 
 check ovn-nbctl -- ls-lb-del sw0 lb0
@@ -2977,7 +2976,6 @@ AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_nat_hairpin | sort | sed 's/tabl
 
 AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_hairpin | sort | sed 's/table=../table=??/g'], [0], [dnl
   table=??(ls_in_hairpin      ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_hairpin      ), priority=1000 , match=(reg0[[14]] == 1), action=(next(pipeline=ingress, table=??);)
 ])
 
 check ovn-nbctl -- add load_balancer_group $lbg load_balancer $lb0
@@ -2998,7 +2996,6 @@ AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_nat_hairpin | sort | sed 's/tabl
 AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_hairpin | sort | sed 's/table=../table=??/g'], [0], [dnl
   table=??(ls_in_hairpin      ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_hairpin      ), priority=1    , match=((reg0[[6]] == 1 || reg0[[12]] == 1)), action=(eth.dst <-> eth.src; outport = inport; flags.loopback = 1; output;)
-  table=??(ls_in_hairpin      ), priority=1000 , match=(reg0[[14]] == 1), action=(next(pipeline=ingress, table=??);)
 ])
 
 AT_CLEANUP

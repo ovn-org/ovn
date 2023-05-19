@@ -1143,9 +1143,10 @@
     <ul>
       <li>
         <p>
-          For each distributed gateway router port <var>RP</var> attached to
-          the logical switch and has chassis redirect port <var>cr-RP</var>, a
-          priority-2000 flow is added with the match
+          If logical switch has attached logical switch port of <var>vtep</var>
+          type, then for each distributed gateway router port <var>RP</var>
+          attached to this logical switch and has chassis redirect port
+          <var>cr-RP</var>, a priority-2000 flow is added with the match
           <pre>
 <code>reg0[14] == 1 &amp;&amp; is_chassis_resident(<var>cr-RP</var>)</code>
           </pre>
@@ -1159,9 +1160,11 @@
       </li>
 
       <li>
-        A priority-1000 flow that matches on <code>reg0[14]</code> register
-        bit for the traffic received from HW VTEP (ramp) ports.  This traffic
-        is passed to ingress table ls_in_l2_lkup.
+        If logical switch has attached logical switch port of <var>vtep</var>
+        type, then a priority-1000 flow that matches on
+        <code>reg0[14]</code> register bit for the traffic received from HW
+        VTEP (ramp) ports.  This traffic is passed to ingress table
+        ls_in_l2_lkup.
       </li>
       <li>
         A priority-1 flow that hairpins traffic matched by non-default
