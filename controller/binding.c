@@ -2092,7 +2092,7 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
         free(lnet_lport);
     }
 
-    /* Run through external lport list to see if these are external ports
+    /* Run through external lport list to see if there are external ports
      * on local datapaths discovered from above loop, and update the
      * corresponding local datapath accordingly. */
     struct lport *ext_lport;
@@ -2101,7 +2101,7 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
         free(ext_lport);
     }
 
-    /* Run through multichassis lport list to see if these are ports
+    /* Run through multichassis lport list to see if there are ports
      * on local datapaths discovered from above loop, and update the
      * corresponding local datapath accordingly. */
     struct lport *multichassis_lport;
