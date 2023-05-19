@@ -1144,16 +1144,17 @@
       <li>
         <p>
           For each distributed gateway router port <var>RP</var> attached to
-          the logical switch, a priority-2000 flow is added with the match
-          <code>reg0[14] == 1 &amp;&amp; is_chassis_resident(<var>RP</var>)
-          </code> and action <code>next;</code> to pass the traffic to the
-          next table to respond to the ARP requests for the router port IPs.
+          the logical switch and has chassis redirect port <var>cr-RP</var>, a
+          priority-2000 flow is added with the match
+          <pre>
+<code>reg0[14] == 1 &amp;&amp; is_chassis_resident(<var>cr-RP</var>)</code>
+          </pre>
+          and action <code>next;</code>.
         </p>
 
         <p>
           <code>reg0[14]</code> register bit is set in the ingress L2 port
-           security check table for traffic received from HW VTEP (ramp)
-           ports.
+          security check table for traffic received from HW VTEP (ramp) ports.
         </p>
       </li>
 
