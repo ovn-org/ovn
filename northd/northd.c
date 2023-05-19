@@ -7688,6 +7688,11 @@ build_lb_hairpin(struct ovn_datapath *od, struct hmap *lflows)
 static void
 build_vtep_hairpin(struct ovn_datapath *od, struct hmap *lflows)
 {
+    if (!od->has_vtep_lports) {
+        /* There is no need in these flows if datapath has no vtep lports. */
+        return;
+    }
+
     /* Ingress Pre-ARP flows for VTEP hairpining traffic. Priority 1000:
      * Packets received from VTEP ports must go directly to L2LKP table.
      */
