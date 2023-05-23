@@ -202,6 +202,10 @@ bool is_additional_chassis(const struct sbrec_port_binding *pb,
 void set_pb_chassis_in_sbrec(const struct sbrec_port_binding *pb,
                              const struct sbrec_chassis *chassis_rec,
                              bool is_set);
+void
+set_pb_additional_chassis_in_sbrec(const struct sbrec_port_binding *pb,
+                                   const struct sbrec_chassis *chassis_rec,
+                                   bool is_set);
 
 void remove_ovn_installed_for_uuid(const struct ovsrec_interface_table *,
                                    const struct uuid *);
