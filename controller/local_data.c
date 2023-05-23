@@ -22,6 +22,7 @@
 #include "lib/util.h"
 #include "lib/vswitch-idl.h"
 #include "openvswitch/vlog.h"
+#include "socket-util.h"
 
 /* OVN includes. */
 #include "encaps.h"
@@ -447,6 +448,7 @@ local_nonvif_data_run(const struct ovsrec_bridge *br_int,
                 tun->chassis_id = xstrdup(tunnel_id);
                 tun->ofport = u16_to_ofp(ofport);
                 tun->type = tunnel_type;
+                tun->is_ipv6 = ip ? addr_is_ipv6(ip) : false;
 
                 free(hash_id);
                 free(ip);
