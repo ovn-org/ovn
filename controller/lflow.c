@@ -397,7 +397,7 @@ consider_lflow_for_added_as_ips__(
                             : OFTABLE_LOG_EGRESS_PIPELINE);
     uint8_t ptable = first_ptable + lflow->table_id;
     uint8_t output_ptable = (ingress
-                             ? OFTABLE_REMOTE_OUTPUT
+                             ? OFTABLE_OUTPUT_INIT
                              : OFTABLE_SAVE_INPORT);
 
     uint64_t ovnacts_stub[1024 / 8];
@@ -1067,7 +1067,7 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
                             : OFTABLE_LOG_EGRESS_PIPELINE);
     uint8_t ptable = first_ptable + lflow->table_id;
     uint8_t output_ptable = (ingress
-                             ? OFTABLE_REMOTE_OUTPUT
+                             ? OFTABLE_OUTPUT_INIT
                              : OFTABLE_SAVE_INPORT);
 
     /* Parse OVN logical actions.
