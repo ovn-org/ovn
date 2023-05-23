@@ -37,6 +37,12 @@ OVN v23.06.0 - xx xxx xxxx
   - Support for tiered ACLs has been added. This allows for ACLs to be layered
     into separate tiers of priority. For more information, please see the
     ovn-nb and ovn-northd manpages.
+  - Send ICMP Fragmentation Needed packets back to offending ports when
+    communicating with multichassis ports using frames that don't fit through a
+    tunnel. This is done only for logical switches that are attached to a
+    physical network via a localnet port, in which case multichassis ports may
+    have an effective MTU different from regular ports and hence may need this
+    mechanism to maintain connectivity with other peers in the network.
 
 OVN v23.03.0 - 03 Mar 2023
 --------------------------
