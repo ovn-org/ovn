@@ -2015,7 +2015,11 @@ addr_sets_update(const struct sbrec_address_set_table *address_set_table,
         if (sbrec_address_set_is_deleted(as)) {
             expr_const_sets_remove(addr_sets, as->name);
             sset_add(deleted, as->name);
-        } else {
+        }
+    }
+
+    SBREC_ADDRESS_SET_TABLE_FOR_EACH_TRACKED (as, address_set_table) {
+        if (!sbrec_address_set_is_deleted(as)) {
             struct expr_constant_set *cs_old = shash_find_data(addr_sets,
                                                                as->name);
             if (!cs_old) {

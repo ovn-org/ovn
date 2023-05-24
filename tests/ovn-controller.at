@@ -2065,6 +2065,57 @@ AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
+AT_SETUP([ovn-controller - address set del-and-add])
+
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=ls1-lp1
+
+check ovn-nbctl ls-add ls1
+
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "f0:00:00:00:00:01"
+
+wait_for_ports_up
+ovn-appctl -t ovn-controller vlog/set file:dbg
+
+ovn-nbctl create address_set name=as1 addresses=8.8.8.8
+check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1' drop
+check ovn-nbctl --wait=hv sync
+AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [1
+])
+
+# pause ovn-northd
+check as northd ovn-appctl -t ovn-northd pause
+check as northd-backup ovn-appctl -t ovn-northd pause
+
+# Simulate a SB address set "del and add" notification to ovn-controller in the
+# same IDL iteration. The flows programmed by ovn-controller should reflect the
+# newly added address set. In reality it can happen when CMS deletes an
+# address-set and immediately creates a new address-set with the same name
+# (with same or different content). The notification of the changes can come to
+# ovn-controller in one shot and the order of the "del" and "add" in the IDL is
+# undefined. This test runs the scenario ten times to make sure different
+# orders are covered and handled properly.
+
+flow_count=$(ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100")
+for i in $(seq 10); do
+    # Delete and recreate the SB address set with same name and an extra IP.
+    addrs_=$(fetch_column address_set addresses name=as1)
+    addrs=${addrs_// /,}
+    AT_CHECK([ovn-sbctl destroy address_set as1 -- create address_set name=as1 addresses=$addrs,1.1.1.$i], [0], [ignore])
+    OVS_WAIT_UNTIL([test $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100") = "$(($i + 1))"])
+done
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+
 AT_SETUP([ovn-controller - I-P handle lb_hairpin_use_ct_mark change])
 
 ovn_start --backup-northd=none
