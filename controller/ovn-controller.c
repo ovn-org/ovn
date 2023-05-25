@@ -4039,8 +4039,14 @@ main(int argc, char *argv[])
 
             if (br_int) {
                 ct_zones_data = engine_get_data(&en_ct_zones);
-                if (ct_zones_data) {
-                    ofctrl_run(br_int, ovs_table, &ct_zones_data->pending);
+                if (ct_zones_data && ofctrl_run(br_int, ovs_table,
+                                                &ct_zones_data->pending)) {
+                    static struct vlog_rate_limit rl
+                            = VLOG_RATE_LIMIT_INIT(1, 1);
+
+                    VLOG_INFO_RL(&rl, "OVS OpenFlow connection reconnected,"
+                                      "force recompute.");
+                    engine_set_force_recompute(true);
                 }
 
                 if (chassis) {
