@@ -762,13 +762,18 @@ ofctrl_get_mf_field_id(void)
 
 /* Runs the OpenFlow state machine against 'br_int', which is local to the
  * hypervisor on which we are running.  Attempts to negotiate a Geneve option
- * field for class OVN_GENEVE_CLASS, type OVN_GENEVE_TYPE. */
-void
+ * field for class OVN_GENEVE_CLASS, type OVN_GENEVE_TYPE.
+ *
+ * Returns 'true' if an OpenFlow reconnect happened; 'false' otherwise.
+ */
+bool
 ofctrl_run(const struct ovsrec_bridge *br_int,
            const struct ovsrec_open_vswitch_table *ovs_table,
            struct shash *pending_ct_zones)
 {
     char *target = xasprintf("unix:%s/%s.mgmt", ovs_rundir(), br_int->name);
+    bool reconnected = false;
+
     if (strcmp(target, rconn_get_target(swconn))) {
         VLOG_INFO("%s: connecting to switch", target);
         rconn_connect(swconn, target, target);
@@ -778,10 +783,12 @@ ofctrl_run(const struct ovsrec_bridge *br_int,
     rconn_run(swconn);
 
     if (!rconn_is_connected(swconn)) {
-        return;
+        return reconnected;
     }
+
     if (seqno != rconn_get_connection_seqno(swconn)) {
         seqno = rconn_get_connection_seqno(swconn);
+        reconnected = true;
         state = S_NEW;
 
         /* Reset the state of any outstanding ct flushes to resend them. */
@@ -851,6 +858,8 @@ ofctrl_run(const struct ovsrec_bridge *br_int,
          * point, so ensure that we come back again without waiting. */
         poll_immediate_wake();
     }
+
+    return reconnected;
 }
 
 void
@@ -905,6 +914,7 @@ ofctrl_recv(const struct ofp_header *oh, enum ofptype type)
     } else if (type == OFPTYPE_ERROR) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(30, 300);
         log_openflow_rl(&rl, VLL_INFO, oh, "OpenFlow error");
+        rconn_reconnect(swconn);
     } else {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(30, 300);
         log_openflow_rl(&rl, VLL_DBG, oh, "OpenFlow packet ignored");
