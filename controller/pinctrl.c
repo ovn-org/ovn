@@ -2867,6 +2867,13 @@ pinctrl_handle_dns_lookup(
         goto exit;
     }
 
+    /* Check if there is an additional record present, which is unsupported */
+    if (in_dns_header->arcount) {
+        VLOG_DBG_RL(&rl, "Received DNS query with additional records, which"
+                    " is unsupported");
+        goto exit;
+    }
+
     struct udp_header *in_udp = dp_packet_l4(pkt_in);
     size_t udp_len = ntohs(in_udp->udp_len);
     size_t l4_len = dp_packet_l4_size(pkt_in);
