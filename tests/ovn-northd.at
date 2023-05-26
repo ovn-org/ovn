@@ -9953,6 +9953,29 @@ AT_CHECK([ovn-sbctl lflow-list sw | grep ls_out_pre_lb | grep priority=110 | gre
 AT_CLEANUP
 ])
 
+
+# This test checks the compute/recompute stats of sync_to_sb_lb engine node
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([sync_to_sb_lb incremental processing])
+ovn_start
+
+check ovn-nbctl ls-add sw
+check ovn-nbctl lsp-add sw p1
+
+check ovn-nbctl --wait=sb sync
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+
+check ovn-nbctl --wait=sb lsp-set-options p1 foo=bar
+sb_lb_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_lb recompute)
+AT_CHECK([test x$sb_lb_recomp = x0])
+
+check ovn-nbctl --wait=sb lsp-set-type p1 external
+sb_lb_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_lb recompute)
+AT_CHECK([test x$sb_lb_recomp != x0])
+
+AT_CLEANUP
+])
+
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([LSP incremental processing])
 ovn_start

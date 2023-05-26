@@ -16,6 +16,7 @@
 
 #include "ovsdb-idl.h"
 
+#include "lib/ovn-sb-idl.h"
 #include "lib/ovn-util.h"
 #include "lib/ovs-atomic.h"
 #include "lib/sset.h"
@@ -45,7 +46,6 @@ struct northd_input {
     const struct sbrec_ha_chassis_group_table *sbrec_ha_chassis_group_table;
     const struct sbrec_chassis_table *sbrec_chassis_table;
     const struct sbrec_fdb_table *sbrec_fdb_table;
-    const struct sbrec_load_balancer_table *sbrec_load_balancer_table;
     const struct sbrec_service_monitor_table *sbrec_service_monitor_table;
     const struct sbrec_dns_table *sbrec_dns_table;
     const struct sbrec_ip_multicast_table *sbrec_ip_multicast_table;
@@ -350,4 +350,7 @@ const char *northd_get_svc_monitor_mac(void);
 
 const struct ovn_datapath *northd_get_datapath_for_port(
     const struct hmap *ls_ports, const char *port_name);
+void sync_lbs(struct ovsdb_idl_txn *, const struct sbrec_load_balancer_table *,
+              struct ovn_datapaths *ls_datapaths, struct hmap *lbs);
+
 #endif /* NORTHD_H */
