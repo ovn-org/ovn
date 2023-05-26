@@ -95,8 +95,6 @@ northd_get_input_data(struct engine_node *node,
         EN_OVSDB_GET(engine_get_input("SB_chassis", node));
     input_data->sbrec_fdb_table =
         EN_OVSDB_GET(engine_get_input("SB_fdb", node));
-    input_data->sbrec_load_balancer_table =
-        EN_OVSDB_GET(engine_get_input("SB_load_balancer", node));
     input_data->sbrec_service_monitor_table =
         EN_OVSDB_GET(engine_get_input("SB_service_monitor", node));
     input_data->sbrec_dns_table =
