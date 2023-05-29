@@ -11205,6 +11205,9 @@ ovn-nbctl lsp-add bar bar1 \
 ovn-nbctl mirror-add mirror0 gre 1 to-lport 172.16.0.100
 ovn-nbctl lsp-attach-mirror bar1 mirror0
 
+OVN_POPULATE_ARP
+check ovn-nbctl --wait=hv sync
+
 ADD_NAMESPACES(mirror)
 ADD_VETH(mirror, mirror, br-mirror, "2003::b/64", "f0:00:00:01:07:06", \
          "2003::1", "nodad", "172.16.0.100/24", "172.16.0.1")
@@ -11228,7 +11231,8 @@ killall tcpdump
 
 ovn-nbctl mirror-del mirror0
 ovn-nbctl mirror-add mirror1 gre 2 to-lport 2003::b
-ovn-nbctl lsp-attach-mirror bar1 mirror1
+
+ovn-nbctl --wait=hv lsp-attach-mirror bar1 mirror1
 
 NS_CHECK_EXEC([mirror], [tcpdump -l -c 3 -neei mirror proto GRE > gre_mirror6.pcap 2>gre_mirror6_error &])
 OVS_WAIT_UNTIL([grep "listening" gre_mirror6_error])
@@ -11247,7 +11251,7 @@ killall tcpdump
 
 ovn-nbctl mirror-del mirror1
 ovn-nbctl mirror-add mirror2 erspan 3 to-lport 172.16.0.100
-ovn-nbctl lsp-attach-mirror bar1 mirror2
+ovn-nbctl --wait=hv lsp-attach-mirror bar1 mirror2
 
 NS_CHECK_EXEC([mirror], [tcpdump -l -c 3 -neei mirror ip[[22:2]]=0x88be > erspan_mirror4.pcap 2>erspan_mirror4_error &])
 OVS_WAIT_UNTIL([grep "listening" erspan_mirror4_error])
@@ -11265,7 +11269,7 @@ killall tcpdump
 
 ovn-nbctl mirror-del mirror2
 ovn-nbctl mirror-add mirror3 erspan 4 to-lport 2003::b
-ovn-nbctl lsp-attach-mirror bar1 mirror3
+ovn-nbctl --wait=hv lsp-attach-mirror bar1 mirror3
 
 NS_CHECK_EXEC([mirror], [tcpdump -l -c 3 -neei mirror ip6[[42:2]]=0x88be > erspan_mirror6.pcap 2>erspan_mirror6_error &])
 OVS_WAIT_UNTIL([grep "listening" erspan_mirror6_error])
@@ -11282,7 +11286,7 @@ OVS_WAIT_UNTIL([
 killall tcpdump
 
 uuid=$(fetch_column nb:mirror _uuid name="mirror3")
-ovn-nbctl set mirror $uuid type=gre
+ovn-nbctl --wait=hv set mirror $uuid type=gre
 
 NS_CHECK_EXEC([mirror], [tcpdump -c 3 -l -neei mirror proto GRE > gre_mirror6.pcap 2>gre_mirror6_error &])
 OVS_WAIT_UNTIL([grep "listening" gre_mirror6_error])
