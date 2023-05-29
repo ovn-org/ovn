@@ -11361,7 +11361,7 @@ acl_test() {
 0% packet loss
 ])
     # Add an untiered drop ACL. This should cause pings to fail.
-    check ovn-nbctl --wait=sb $options acl-add $thing $direction 1000 "ip4.dst == 10.0.0.2" drop
+    check ovn-nbctl --wait=hv $options acl-add $thing $direction 1000 "ip4.dst == 10.0.0.2" drop
     acl1_uuid=$(ovn-nbctl --bare --columns _uuid find ACL priority=1000)
     NS_CHECK_EXEC([lsp1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | PING_PCT], \
 [0], [dnl
@@ -11370,7 +11370,7 @@ acl_test() {
 
     # Change the tier to 3. Despite there being "holes" in tiers 0, 1, and 2,
     # the ACL should still apply, and pings should fail.
-    check ovn-nbctl --wait=sb set ACL $acl1_uuid tier=3
+    check ovn-nbctl --wait=hv set ACL $acl1_uuid tier=3
     NS_CHECK_EXEC([lsp1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | PING_PCT], \
 [0], [dnl
 100% packet loss
@@ -11387,21 +11387,21 @@ acl_test() {
     # Add a higher-priority tier-0 ACL that passes. This should cause the traffic
     # to pass over the lower-priority tier-0 "allow" ACL, and move to the tier-3
     # ACL that drops the traffic.
-    check ovn-nbctl --wait=sb $options acl-add $thing $direction 1000 "ip4.dst == 10.0.0.2" pass
+    check ovn-nbctl --wait=hv $options acl-add $thing $direction 1000 "ip4.dst == 10.0.0.2" pass
     NS_CHECK_EXEC([lsp1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | PING_PCT], \
 [0], [dnl
 100% packet loss
 ])
 
     # Remove the "pass" ACL, and the "allow" rule should kick back in.
-    check ovn-nbctl --wait=sb --tier=0 acl-del $thing $direction 1000 "ip4.dst == 10.0.0.2"
+    check ovn-nbctl --wait=hv --tier=0 acl-del $thing $direction 1000 "ip4.dst == 10.0.0.2"
     NS_CHECK_EXEC([lsp1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | PING_PCT], \
 [0], [dnl
 0% packet loss
 ])
 
     # Removing the remaining 0-tier ACL should make traffic go back to being dropped.
-    check ovn-nbctl --wait=sb acl-del $thing $direction 4 "ip4.dst == 10.0.0.2"
+    check ovn-nbctl --wait=hv acl-del $thing $direction 4 "ip4.dst == 10.0.0.2"
     NS_CHECK_EXEC([lsp1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | PING_PCT], \
 [0], [dnl
 100% packet loss
@@ -11410,14 +11410,14 @@ acl_test() {
     # Adding a higher-priority "pass" ACL at tier 3 should result in using the
     # default ACL action. Currently, the default is to allow traffic, so the
     # traffic should be allowed.
-    check ovn-nbctl --wait=sb --tier=3 $options acl-add $thing $direction 2000 "ip4.dst == 10.0.0.2" pass
+    check ovn-nbctl --wait=hv --tier=3 $options acl-add $thing $direction 2000 "ip4.dst == 10.0.0.2" pass
     NS_CHECK_EXEC([lsp1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | PING_PCT], \
 [0], [dnl
 0% packet loss
 ])
 
     # Change the default ACL action to drop, and now the traffic should be dropped.
-    check ovn-nbctl set NB_Global . options:default_acl_drop=true
+    check ovn-nbctl --wait=hv set NB_Global . options:default_acl_drop=true
     NS_CHECK_EXEC([lsp1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | PING_PCT], \
 [0], [dnl
 100% packet loss
@@ -11426,7 +11426,7 @@ acl_test() {
     # Removing all ACLs (and setting the default acl drop back to false) should
     # make traffic go back to passing.
     check ovn-nbctl clear NB_Global . options
-    check ovn-nbctl --wait=sb acl-del $thing
+    check ovn-nbctl --wait=hv acl-del $thing
     NS_CHECK_EXEC([lsp1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | PING_PCT], \
 [0], [dnl
 0% packet loss
