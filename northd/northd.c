@@ -9124,7 +9124,7 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
     ovs_assert(od->nbs);
 
     ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 110,
-                  "eth.dst == $svc_monitor_mac",
+                  "eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)",
                   "handle_svc_check(inport);");
 
     struct mcast_switch_info *mcast_sw_info = &od->mcast_info.sw;
