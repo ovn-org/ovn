@@ -2088,7 +2088,7 @@ ovn-appctl -t ovn-controller vlog/set file:dbg
 ovn-nbctl create address_set name=as1 addresses=8.8.8.8
 check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1' drop
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [1
 ])
 
 # pause ovn-northd
@@ -2104,13 +2104,13 @@ check as northd-backup ovn-appctl -t ovn-northd pause
 # undefined. This test runs the scenario ten times to make sure different
 # orders are covered and handled properly.
 
-flow_count=$(ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100")
+flow_count=$(ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100")
 for i in $(seq 10); do
     # Delete and recreate the SB address set with same name and an extra IP.
     addrs_=$(fetch_column address_set addresses name=as1)
     addrs=${addrs_// /,}
     AT_CHECK([ovn-sbctl destroy address_set as1 -- create address_set name=as1 addresses=$addrs,1.1.1.$i], [0], [ignore])
-    OVS_WAIT_UNTIL([test $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100") = "$(($i + 1))"])
+    OVS_WAIT_UNTIL([test $(as hv1 ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100") = "$(($i + 1))"])
 done
 
 OVN_CLEANUP([hv1])
