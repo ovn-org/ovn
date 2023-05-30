@@ -4726,7 +4726,7 @@ check ovn-nbctl lsp-set-options ls2-ro2 router-port=ro2-ls2
 ovn-sbctl lflow-list ls1 > ls1_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
-  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
@@ -4738,7 +4738,7 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], 
 ovn-sbctl lflow-list ls2 > ls2_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls2_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
-  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:01), action=(outport = "ls2-ro2"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "vm2"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
@@ -4758,7 +4758,7 @@ check ovn-nbctl --wait=sb lr-nat-add ro2 snat 20.0.0.200 192.168.2.200/30
 ovn-sbctl lflow-list ls1 > ls1_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
-  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
@@ -4771,7 +4771,7 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], 
 ovn-sbctl lflow-list ls2 > ls2_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls2_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
-  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:01), action=(outport = "ls2-ro2"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "vm2"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
@@ -4792,7 +4792,7 @@ check ovn-nbctl --wait=sb lr-nat-add ro2 snat 40.0.0.200 192.168.2.148/30
 ovn-sbctl lflow-list ls1 > ls1_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
-  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
@@ -4806,7 +4806,7 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], 
 ovn-sbctl lflow-list ls2 > ls2_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls2_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
-  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:01), action=(outport = "ls2-ro2"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "vm2"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
@@ -4825,7 +4825,7 @@ ovn-nbctl --wait=sb lr-lb-add ro1 lb1
 ovn-sbctl lflow-list ls1 > ls1_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
-  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
@@ -4843,7 +4843,7 @@ ovn-nbctl --wait=sb lb-add lb1 192.168.4.100:80 10.0.0.10:80
 ovn-sbctl lflow-list ls1 > ls1_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
-  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
@@ -4867,7 +4867,7 @@ ovn-nbctl --wait=sb lrp-set-gateway-chassis ro1-ls1 chassis-1 30
 ovn-sbctl lflow-list ls1 > ls1_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
-  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
@@ -7462,7 +7462,7 @@ sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
   table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
-  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(drop;)
@@ -7487,7 +7487,7 @@ sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
   table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
-  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:01), action=(outport = "sw0p1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:02), action=(outport = "sw0p2"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
@@ -7513,7 +7513,7 @@ sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
   table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
-  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:01), action=(outport = "sw0p1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:02), action=(outport = "sw0p2"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
@@ -7540,7 +7540,7 @@ sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
   table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
-  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:01), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:02), action=(outport = "sw0p2"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
@@ -7567,7 +7567,7 @@ sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
   table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
-  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:01), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:02), action=(outport = "sw0p2"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
@@ -7597,7 +7597,7 @@ sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
   table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
-  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:01), action=(outport = "sw0p1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:02), action=(outport = "sw0p2"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
