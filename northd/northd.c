@@ -8398,6 +8398,16 @@ build_vtep_hairpin(struct ovn_datapath *od, struct hmap *lflows)
                           ds_cstr(&match), "next;");
         }
     }
+
+    /* ARP/Neighbor Solicitation requests must skip ls_in_arp_rsp table for
+     * packets arrived from HW VTEP (ramp) switch.
+     * Neighbor resolution for router ports is done in logical router ingress
+     * pipeline.  ARP resolution for vif lports is done directly by vif ports.
+     */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_ARP_ND_RSP, 65535,
+                  REGBIT_FROM_RAMP" == 1 && (arp || nd_ns)",
+                  "flags.loopback = 1; next;");
+
     ds_destroy(&match);
 }
 

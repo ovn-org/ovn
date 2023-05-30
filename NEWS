@@ -5,6 +5,8 @@ Post v23.06.0
     "fdb_age_threshold".
   - Add DHCPv6 "fqdn" (39) option, that works similarly to
     DHCPv4 "hostname" (12) option.
+  - Support to create/update MAC_Binding when GARP received from VTEP (RAMP)
+    switch on l3dgw port.
 
 OVN v23.06.0 - 01 Jun 2023
 --------------------------

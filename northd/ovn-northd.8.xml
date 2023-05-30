@@ -1379,6 +1379,12 @@
 
     <ul>
       <li>
+        If packet was received from HW VTEP (ramp switch), and this packet is
+        ARP or Neighbor Solicitation, such packet is passed to next table with
+        max proirity.  ARP/ND requests from HW VTEP must be handled in logical
+        router ingress pipeline.
+      </li>
+      <li>
         If the logical switch has no router ports with options:arp_proxy
         configured add a priority-100 flows to skip the ARP responder if inport
         is of type <code>localnet</code> advances directly to the next table.

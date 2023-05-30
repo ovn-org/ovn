@@ -196,6 +196,15 @@ get_localnet_port(const struct hmap *local_datapaths, int64_t tunnel_key)
 }
 
 
+static const struct sbrec_port_binding *
+get_vtep_port(const struct hmap *local_datapaths, int64_t tunnel_key)
+{
+    const struct local_datapath *ld = get_local_datapath(local_datapaths,
+                                                         tunnel_key);
+    return ld ? ld->vtep_port : NULL;
+}
+
+
 static struct zone_ids
 get_zone_ids(const struct sbrec_port_binding *binding,
              const struct simap *ct_zones)
@@ -1997,10 +2006,10 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
      *      set the output port to be the router patch port for which
      *      the redirect port was added.
      */
-    struct ofpbuf ofpacts;
+    struct ofpbuf ofpacts, remote_ofpacts, remote_ofpacts_ramp;
     ofpbuf_init(&ofpacts, 0);
-    struct ofpbuf remote_ofpacts;
     ofpbuf_init(&remote_ofpacts, 0);
+    ofpbuf_init(&remote_ofpacts_ramp, 0);
     for (size_t i = 0; i < mc->n_ports; i++) {
         struct sbrec_port_binding *port = mc->ports[i];
 
@@ -2025,6 +2034,7 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                 local_output_pb(port->tunnel_key, &ofpacts);
             } else {
                 local_output_pb(port->tunnel_key, &remote_ofpacts);
+                local_output_pb(port->tunnel_key, &remote_ofpacts_ramp);
             }
         } if (!strcmp(port->type, "remote")) {
             if (port->chassis) {
@@ -2108,6 +2118,36 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
              * multicast group as the logical output port. */
             put_load(mc->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
                      &remote_ofpacts);
+
+            if (get_vtep_port(local_datapaths, mc->datapath->tunnel_key)) {
+                struct match match_ramp;
+                match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0, 0,
+                                     MLF_RCV_FROM_RAMP);
+
+                put_load(mc->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
+                         &remote_ofpacts_ramp);
+
+                /* MCAST traffic which was originally received from RAMP_SWITCH
+                 * is not allowed to be re-sent to remote_chassis.
+                 * Process "patch" port binding for routing in
+                 * OFTABLE_REMOTE_OUTPUT and resubmit packets to
+                 * OFTABLE_LOCAL_OUTPUT for local delivery. */
+
+                match_outport_dp_and_port_keys(&match_ramp, dp_key,
+                                               mc->tunnel_key);
+
+                /* Match packets coming from RAMP_SWITCH and allowed for
+                * loopback processing (including routing). */
+                match_set_reg_masked(&match_ramp, MFF_LOG_FLAGS - MFF_REG0,
+                                     MLF_RCV_FROM_RAMP | MLF_ALLOW_LOOPBACK,
+                                     MLF_RCV_FROM_RAMP | MLF_ALLOW_LOOPBACK);
+
+                put_resubmit(OFTABLE_LOCAL_OUTPUT, &remote_ofpacts_ramp);
+
+                ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 120,
+                                mc->header_.uuid.parts[0], &match_ramp,
+                                &remote_ofpacts_ramp, &mc->header_.uuid);
+            }
         }
 
         fanout_to_chassis(mff_ovn_geneve, &remote_chassis, chassis_tunnels,
@@ -2128,6 +2168,7 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     }
     ofpbuf_uninit(&ofpacts);
     ofpbuf_uninit(&remote_ofpacts);
+    ofpbuf_uninit(&remote_ofpacts_ramp);
     sset_destroy(&remote_chassis);
     sset_destroy(&vtep_chassis);
 }

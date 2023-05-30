@@ -4270,7 +4270,7 @@ ovn_start
 ovn-nbctl ls-add lsw0
 
 ovn-nbctl lsp-add lsw0 lp1
-ovn-nbctl lsp-set-addresses lp1 f0:00:00:00:00:01
+ovn-nbctl lsp-set-addresses lp1 'f0:00:00:00:00:01 192.168.1.24'
 
 ovn-nbctl lsp-add lsw0 lp2
 ovn-nbctl lsp-set-addresses lp2 f0:00:00:00:00:02
@@ -4291,7 +4291,6 @@ ovn-nbctl set Logical_Switch_Port lpr \
 ovn-nbctl lrp-set-gateway-chassis lrp1 hv1
 
 ovn-nbctl lsp-add lsw0 lpr2
-ovn-nbctl lr-add lr2
 ovn-nbctl lrp-add lr lrp2 f0:00:00:00:00:f2 192.168.1.254/24
 ovn-nbctl set Logical_Switch_Port lpr2 \
     type=router \
@@ -4424,6 +4423,7 @@ spa=`ip_to_hex 192 168 1 2`
 tpa=`ip_to_hex 192 168 1 1`
 request=ffffffffffff${sha}08060001080006040001${sha}${spa}ffffffffffff${tpa}
 as hv3 ovs-appctl netdev-dummy/receive vif3 $request
+echo $request >> 1.expected
 echo $request >> 2.expected
 
 lrpmac=f000000000f1
@@ -4434,12 +4434,107 @@ response=${sha}${lrpmac}08060001080006040002${lrpmac}${tpa}${sha}${spa}
 # we expect arp reply packet on hv3
 echo $response >> 3.expected
 
+# Ensure there is no MAC_Binding, send GARP from vtep side,
+# check that GARP was received by vif1, vif2 and MAC_Binding was created.
+wait_row_count MAC_Binding 0 ip="192.168.1.200" mac='"f0:00:00:00:00:12"'
+
+sha=0200000000ff
+tha=ffffffffffff
+spa=`ip_to_hex 192 168 1 200`
+tpa=$spa
+garp=ffffffffffff${sha}08060001080006040002${sha}${spa}${tha}${tpa}
+as hv3 ovs-appctl netdev-dummy/receive vif3 $garp
+echo $garp >> 1.expected
+echo $garp >> 2.expected
+
+wait_row_count MAC_Binding 2 ip="192.168.1.200" mac='"02:00:00:00:00:ff"'
+
+# Send same GARP with changed SHA and ensure MAC_Binding was updated.
+sha=0200000000ee
+garp=ffffffffffff${sha}08060001080006040002${sha}${spa}${tha}${tpa}
+as hv3 ovs-appctl netdev-dummy/receive vif3 $garp
+echo $garp >> 1.expected
+echo $garp >> 2.expected
+
+wait_row_count MAC_Binding 2 ip="192.168.1.200" mac='"02:00:00:00:00:ee"'
+
+# Remove local ports on hv1 and check that ARP logic is stil working. -->
+check as hv1 ovs-vsctl remove interface vif1 external_ids iface-id
+hv_uuid=$(fetch_column Chassis _uuid name=hv1)
+wait_row_count Port_Binding 0 chassis="$hv_uuid" type="''"
+
+# Cleanup MAC_Bindings after previous checks.
+check ovn-sbctl --all destroy MAC_Binding
+
+# ARP request from VTEP to LRP should be responded by ARP responder.
+sha=f00000000003
+spa=`ip_to_hex 192 168 1 2`
+tpa=`ip_to_hex 192 168 1 1`
+request=ffffffffffff${sha}08060001080006040001${sha}${spa}ffffffffffff${tpa}
+as hv3 ovs-appctl netdev-dummy/receive vif3 $request
+echo $request >> 2.expected
+
+lrpmac=f000000000f1
+response=${sha}${lrpmac}08060001080006040002${lrpmac}${tpa}${sha}${spa}
+# since lrp1 has gateway chassis set on hv1, hv1 will suppress arp request and
+# answer with arp reply by OVS directly to vtep lport. all other lports,
+# except lport from which this request was initiated, will receive arp request.
+# we expect arp reply packet on hv3
+echo $response >> 3.expected
+
+# Ensure there is no MAC_Binding, send GARP from vtep side,
+# check that GARP was received by vif1, vif2 and MAC_Binding was created.
+wait_row_count MAC_Binding 0 ip="192.168.1.200" mac='"f0:00:00:00:00:12"'
+
+sha=0200000000ff
+tha=ffffffffffff
+spa=`ip_to_hex 192 168 1 200`
+tpa=$spa
+garp=ffffffffffff${sha}08060001080006040002${sha}${spa}${tha}${tpa}
+as hv3 ovs-appctl netdev-dummy/receive vif3 $garp
+echo $garp >> 2.expected
+
+wait_row_count MAC_Binding 2 ip="192.168.1.200" mac='"02:00:00:00:00:ff"'
+
+# Send same GARP with changed SHA and ensure MAC_Binding was updated.
+sha=0200000000ee
+garp=ffffffffffff${sha}08060001080006040002${sha}${spa}${tha}${tpa}
+as hv3 ovs-appctl netdev-dummy/receive vif3 $garp
+echo $garp >> 2.expected
+
+wait_row_count MAC_Binding 2 ip="192.168.1.200" mac='"02:00:00:00:00:ee"'
+
+# Restore.
+check as hv1 ovs-vsctl set interface vif1 external_ids:iface-id=lp1
+wait_row_count Port_Binding 1 chassis="$hv_uuid" type='""'
+# <--
+
+# Check ARP response to request for IP on VIF port sent from vtep.
+# ARP request from VTEP to LSP's IP must be answered only by LSP vif1 (lp1).
+sha=f00000000003
+spa=`ip_to_hex 192 168 1 2`
+tpa=`ip_to_hex 192 168 1 24`
+request=ffffffffffff${sha}08060001080006040001${sha}${spa}ffffffffffff${tpa}
+as hv3 ovs-appctl netdev-dummy/receive vif3 $request
+echo $request >> 1.expected
+echo $request >> 2.expected
+
+# Simulate response from vif.
+sha=f00000000001
+tha=f00000000003
+spa=`ip_to_hex 192 168 1 200`
+tpa=`ip_to_hex 192 168 1 2`
+response=${tha}${sha}08060001080006040002${sha}${spa}${tha}${tpa}
+as hv1 ovs-appctl netdev-dummy/receive vif1 $response
+echo $response >> 3.expected
+
 # First ensure basic flow contents are as we expect.
 AT_CHECK([ovn-sbctl lflow-list lsw0 | grep 'reg0[\[14\]]' | sort | sed 's/table=../table=??/g'], [0], [dnl
   table=??(ls_in_check_port_sec), priority=70   , match=(inport == "lp-vtep"), action=(reg0[[14]] = 1; next(pipeline=ingress, table=??);)
   table=??(ls_in_hairpin      ), priority=1000 , match=(reg0[[14]] == 1), action=(next(pipeline=ingress, table=??);)
   table=??(ls_in_hairpin      ), priority=2000 , match=(reg0[[14]] == 1 && is_chassis_resident("cr-lrp1")), action=(next;)
   table=??(ls_in_hairpin      ), priority=2000 , match=(reg0[[14]] == 1 && is_chassis_resident("cr-lrp2")), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=65535, match=(reg0[[14]] == 1 && (arp || nd_ns)), action=(flags.loopback = 1; next;)
 ])
 
 # dump information with counters

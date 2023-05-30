@@ -50,6 +50,9 @@ struct local_datapath {
     /* The localnet port in this datapath, if any (at most one is allowed). */
     const struct sbrec_port_binding *localnet_port;
 
+    /* The vtep port in this datapath, if any (at most one is allowed). */
+    const struct sbrec_port_binding *vtep_port;
+
     struct {
         const struct sbrec_port_binding *local;
         const struct sbrec_port_binding *remote;

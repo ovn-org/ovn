@@ -514,6 +514,30 @@ update_ld_multichassis_ports(const struct sbrec_port_binding *binding_rec,
 }
 
 static void
+update_ld_vtep_port(const struct sbrec_port_binding *binding_rec,
+                    struct hmap *local_datapaths)
+{
+    struct local_datapath *ld
+        = get_local_datapath(local_datapaths,
+                             binding_rec->datapath->tunnel_key);
+    if (!ld) {
+        return;
+    }
+
+    if (ld->vtep_port && strcmp(ld->vtep_port->logical_port,
+                                binding_rec->logical_port)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "vtep port '%s' already set for datapath "
+                     "'%"PRId64"', skipping the new port '%s'.",
+                     ld->vtep_port->logical_port,
+                     binding_rec->datapath->tunnel_key,
+                     binding_rec->logical_port);
+        return;
+    }
+    ld->vtep_port = binding_rec;
+}
+
+static void
 update_ld_localnet_port(const struct sbrec_port_binding *binding_rec,
                         struct shash *bridge_mappings,
                         struct hmap *local_datapaths)
@@ -1999,6 +2023,7 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
     struct ovs_list external_lports = OVS_LIST_INITIALIZER(&external_lports);
     struct ovs_list multichassis_ports = OVS_LIST_INITIALIZER(
                                                         &multichassis_ports);
+    struct ovs_list vtep_lports = OVS_LIST_INITIALIZER(&vtep_lports);
 
     struct lport {
         struct ovs_list list_node;
@@ -2022,8 +2047,13 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
 
         switch (lport_type) {
         case LP_PATCH:
+            update_related_lport(pb, b_ctx_out);
+            break;
         case LP_VTEP:
             update_related_lport(pb, b_ctx_out);
+            struct lport *vtep_lport = xmalloc(sizeof *vtep_lport);
+            vtep_lport->pb = pb;
+            ovs_list_push_back(&vtep_lports, &vtep_lport->list_node);
             break;
 
         case LP_LOCALPORT:
@@ -2123,6 +2153,15 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
         free(multichassis_lport);
     }
 
+    /* Run through vtep lport list to see if there are vtep ports
+     * on local datapaths discovered from above loop, and update the
+     * corresponding local datapath accordingly. */
+    struct lport *vtep_lport;
+    LIST_FOR_EACH_POP (vtep_lport, list_node, &vtep_lports) {
+        update_ld_vtep_port(vtep_lport->pb, b_ctx_out->local_datapaths);
+        free(vtep_lport);
+    }
+
     shash_destroy(&bridge_mappings);
     /* Remove stale QoS entries. */
     ovs_qos_entries_gc(b_ctx_in->ovs_idl_txn, b_ctx_in->ovsrec_port_by_qos,
@@ -2187,6 +2226,11 @@ remove_pb_from_local_datapath(const struct sbrec_port_binding *pb,
         }
     } else if (!strcmp(pb->type, "external")) {
         remove_local_datapath_external_port(ld, pb->logical_port);
+    } else if (!strcmp(pb->type, "vtep")) {
+        if (ld->vtep_port && !strcmp(ld->vtep_port->logical_port,
+                                     pb->logical_port)) {
+            ld->vtep_port = NULL;
+        }
     }
     remove_local_datapath_multichassis_port(ld, pb->logical_port);
 }
@@ -2848,6 +2892,7 @@ handle_updated_port(struct binding_ctx_in *b_ctx_in,
 
     case LP_VTEP:
         update_related_lport(pb, b_ctx_out);
+        update_ld_vtep_port(pb, b_ctx_out->local_datapaths);
         /* VTEP lports are claimed/released by ovn-controller-vteps.
          * We are not sure what changed. */
         b_ctx_out->non_vif_ports_changed = true;
@@ -3100,6 +3145,8 @@ delete_done:
                                             b_ctx_out->local_datapaths);
                 } else if (lport_type == LP_EXTERNAL) {
                     update_ld_external_ports(pb, b_ctx_out->local_datapaths);
+                } else if (lport_type == LP_VTEP) {
+                    update_ld_vtep_port(pb, b_ctx_out->local_datapaths);
                 } else if (pb->n_additional_chassis) {
                     update_ld_multichassis_ports(pb,
                                                  b_ctx_out->local_datapaths);
