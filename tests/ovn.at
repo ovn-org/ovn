@@ -34136,6 +34136,7 @@ m4_define([MULTIPLE_OVS_INT],
        ovs-ofctl dump-flows br-int | grep $cookie |
            sed -e 's/duration=[[0-9.]]*s, //g' |
            sed -e 's/idle_age=[[0-9]]*, //g' |
+           sed -e 's/hard_age=[[0-9]]*, //g' |
            sed -e 's/n_packets=[[0-9]]*, //g' |
            sed -e 's/n_bytes=[[0-9]]*, //g'
    }
