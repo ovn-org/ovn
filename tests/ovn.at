@@ -10150,14 +10150,21 @@ AT_CHECK([test ! -z $foo2_zoneid])
 bar2_zoneid=$(as hv2 ovs-vsctl get bridge br-int external_ids:ct-zone-bar2)
 AT_CHECK([test ! -z $bar2_zoneid])
 
-ovn-nbctl lsp-del bar2
+# When a port is removed from a logical switch, the ct-zone is flushed, then
+# the ct-zone-id is removed from external_ids. This is done in two steps(
+# ct-zone-id is removed when the transaction flushing the ct_zone is complete).
+# ovn-nbctl --wait=hv sync does not take this into account, and hence we need
+# two "wait=hv" before we are sure that the ct-zone-id is removed from
+# external_ids.
+ovn-nbctl --wait=hv lsp-del bar2
 ovn-nbctl --wait=hv sync
 
 bar2_zoneid=$(as hv2 ovs-vsctl get bridge br-int external_ids:ct-zone-bar2)
 AT_CHECK([test  -z $bar2_zoneid])
 
 # Add back bar2
-ovn-nbctl lsp-add bar bar2 vm2 1 \
+# Same comment as above: two "wait=hv" are needed.
+ovn-nbctl --wait=hv lsp-add bar bar2 vm2 1 \
 -- lsp-set-addresses bar2 "f0:00:00:01:02:08 192.168.2.3"
 wait_for_ports_up
 ovn-nbctl --wait=hv sync
