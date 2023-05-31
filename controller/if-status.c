@@ -18,12 +18,14 @@
 #include "binding.h"
 #include "if-status.h"
 #include "ofctrl-seqno.h"
+#include "ovsport.h"
 #include "simap.h"
 
 #include "lib/hmapx.h"
 #include "lib/util.h"
 #include "timeval.h"
 #include "openvswitch/vlog.h"
+#include "lib/vswitch-idl.h"
 #include "lib/ovn-sb-idl.h"
 
 VLOG_DEFINE_THIS_MODULE(if_status);
@@ -181,6 +183,7 @@ struct ovs_iface {
                              * be fully programmed in OVS.  Only used in state
                              * OIF_INSTALL_FLOWS.
                              */
+    uint16_t mtu;           /* Extracted from OVS interface.mtu field. */
 };
 
 static uint64_t ifaces_usage;
@@ -205,9 +208,10 @@ struct if_status_mgr {
     uint32_t iface_seqno;
 };
 
-static struct ovs_iface *ovs_iface_create(struct if_status_mgr *,
-                                          const char *iface_id,
-                                          enum if_state );
+static struct ovs_iface *
+ovs_iface_create(struct if_status_mgr *, const char *iface_id,
+                 const struct ovsrec_interface *iface_rec,
+                 enum if_state);
 static void add_to_ovn_uninstall_hash(struct if_status_mgr *, const char *,
                                       const struct uuid *);
 static void ovs_iface_destroy(struct if_status_mgr *, struct ovs_iface *);
@@ -272,13 +276,14 @@ void
 if_status_mgr_claim_iface(struct if_status_mgr *mgr,
                           const struct sbrec_port_binding *pb,
                           const struct sbrec_chassis *chassis_rec,
+                          const struct ovsrec_interface *iface_rec,
                           bool sb_readonly)
 {
     const char *iface_id = pb->logical_port;
     struct ovs_iface *iface = shash_find_data(&mgr->ifaces, iface_id);
 
     if (!iface) {
-        iface = ovs_iface_create(mgr, iface_id, OIF_CLAIMED);
+        iface = ovs_iface_create(mgr, iface_id, iface_rec, OIF_CLAIMED);
     }
 
     memcpy(&iface->pb_uuid, &pb->header_.uuid, sizeof(iface->pb_uuid));
@@ -639,8 +644,34 @@ ovn_uninstall_hash_account_mem(const char *name, bool erase)
     }
 }
 
+uint16_t
+if_status_mgr_iface_get_mtu(const struct if_status_mgr *mgr,
+                            const char *iface_id)
+{
+    const struct ovs_iface *iface = shash_find_data(&mgr->ifaces, iface_id);
+    return iface ? iface->mtu : 0;
+}
+
+bool
+if_status_mgr_iface_update(const struct if_status_mgr *mgr,
+                           const struct ovsrec_interface *iface_rec)
+{
+    const char *iface_id = smap_get(&iface_rec->external_ids, "iface-id");
+    if (!iface_id) {
+        return false;
+    }
+    uint16_t mtu = get_iface_mtu(iface_rec);
+    struct ovs_iface *iface = shash_find_data(&mgr->ifaces, iface_id);
+    if (iface && iface->mtu != mtu) {
+        iface->mtu = mtu;
+        return true;
+    }
+    return false;
+}
+
 static struct ovs_iface *
 ovs_iface_create(struct if_status_mgr *mgr, const char *iface_id,
+                 const struct ovsrec_interface *iface_rec,
                  enum if_state state)
 {
     struct ovs_iface *iface = xzalloc(sizeof *iface);
@@ -650,6 +681,7 @@ ovs_iface_create(struct if_status_mgr *mgr, const char *iface_id,
     shash_add_nocopy(&mgr->ifaces, iface->id, iface);
     ovs_iface_set_state(mgr, iface, state);
     ovs_iface_account_mem(iface_id, false);
+    if_status_mgr_iface_update(mgr, iface_rec);
     return iface;
 }
 

@@ -52,11 +52,13 @@ struct physical_ctx {
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
     struct ovsdb_idl_index *sbrec_port_binding_by_datapath;
     const struct sbrec_port_binding_table *port_binding_table;
+    const struct ovsrec_interface_table *ovs_interface_table;
     const struct sbrec_multicast_group_table *mc_group_table;
     const struct ovsrec_bridge *br_int;
     const struct sbrec_chassis_table *chassis_table;
     const struct sbrec_chassis *chassis;
     const struct sset *active_tunnels;
+    const struct if_status_mgr *if_mgr;
     struct hmap *local_datapaths;
     struct sset *local_lports;
     const struct simap *ct_zones;
