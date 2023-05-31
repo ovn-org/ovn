@@ -57,6 +57,10 @@ struct claimed_port {
 static struct shash _claimed_ports = SHASH_INITIALIZER(&_claimed_ports);
 static struct sset _postponed_ports = SSET_INITIALIZER(&_postponed_ports);
 
+static void
+remove_additional_chassis(const struct sbrec_port_binding *pb,
+                          const struct sbrec_chassis *chassis_rec);
+
 struct sset *
 get_postponed_ports(void)
 {
@@ -1073,6 +1077,26 @@ set_pb_chassis_in_sbrec(const struct sbrec_port_binding *pb,
     }
 }
 
+void
+set_pb_additional_chassis_in_sbrec(const struct sbrec_port_binding *pb,
+                                   const struct sbrec_chassis *chassis_rec,
+                                   bool is_set)
+{
+    if (!is_additional_chassis(pb, chassis_rec)) {
+        VLOG_INFO("Claiming lport %s for this additional chassis.",
+                  pb->logical_port);
+        for (size_t i = 0; i < pb->n_mac; i++) {
+            VLOG_INFO("%s: Claiming %s", pb->logical_port, pb->mac[i]);
+        }
+        sbrec_port_binding_update_additional_chassis_addvalue(pb, chassis_rec);
+        if (pb->chassis == chassis_rec) {
+            sbrec_port_binding_set_chassis(pb, NULL);
+        }
+    } else if (!is_set) {
+        remove_additional_chassis(pb, chassis_rec);
+    }
+}
+
 bool
 local_bindings_pb_chassis_is_set(struct shash *local_bindings,
                                  const char *pb_name,
@@ -1274,7 +1298,7 @@ claim_lport(const struct sbrec_port_binding *pb,
                 set_pb_chassis_in_sbrec(pb, chassis_rec, true);
             } else {
                 if_status_mgr_claim_iface(if_mgr, pb, chassis_rec, iface_rec,
-                                          sb_readonly);
+                                          sb_readonly, can_bind);
             }
             register_claim_timestamp(pb->logical_port, now);
             sset_find_and_delete(postponed_ports, pb->logical_port);
@@ -1288,27 +1312,15 @@ claim_lport(const struct sbrec_port_binding *pb,
                     !smap_get_bool(&iface_rec->external_ids,
                                    OVN_INSTALLED_EXT_ID, false)) {
                     if_status_mgr_claim_iface(if_mgr, pb, chassis_rec,
-                                              iface_rec, sb_readonly);
+                                              iface_rec, sb_readonly,
+                                              can_bind);
                 }
             }
         }
     } else if (can_bind == CAN_BIND_AS_ADDITIONAL) {
         if (!is_additional_chassis(pb, chassis_rec)) {
-            if (sb_readonly) {
-                return false;
-            }
-
-            VLOG_INFO("Claiming lport %s for this additional chassis.",
-                      pb->logical_port);
-            for (size_t i = 0; i < pb->n_mac; i++) {
-                VLOG_INFO("%s: Claiming %s", pb->logical_port, pb->mac[i]);
-            }
-
-            sbrec_port_binding_update_additional_chassis_addvalue(pb,
-                                                                  chassis_rec);
-            if (pb->chassis == chassis_rec) {
-                sbrec_port_binding_set_chassis(pb, NULL);
-            }
+            if_status_mgr_claim_iface(if_mgr, pb, chassis_rec, iface_rec,
+                                      sb_readonly, can_bind);
             update_tracked = true;
         }
     }
