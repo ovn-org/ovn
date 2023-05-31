@@ -14196,10 +14196,12 @@ wait_column "$hv1_uuid" Port_Binding requested_chassis logical_port=lsp0
 wait_column "$hv2_uuid" Port_Binding additional_chassis logical_port=lsp0
 wait_column "$hv2_uuid" Port_Binding requested_additional_chassis logical_port=lsp0
 
-# Check ovn-installed updated for main chassis
+# Check ovn-installed updated for both chassis
 wait_for_ports_up
-OVS_WAIT_UNTIL([test `as hv1 ovs-vsctl get Interface lsp0 external_ids:ovn-installed` = '"true"'])
-OVS_WAIT_UNTIL([test x`as hv2 ovs-vsctl get Interface lsp0 external_ids:ovn-installed` = x])
+
+for hv in hv1 hv2; do
+    OVS_WAIT_UNTIL([test `as $hv ovs-vsctl get Interface lsp0 external_ids:ovn-installed` = '"true"'])
+done
 
 # Check that setting iface:encap-ip populates Port_Binding:additional_encap
 wait_row_count Encap 2 chassis_name=hv1
@@ -14226,7 +14228,7 @@ wait_column "$hv2_uuid" Port_Binding requested_chassis logical_port=lsp0
 wait_column "" Port_Binding additional_chassis logical_port=lsp0
 wait_column "" Port_Binding requested_additional_chassis logical_port=lsp0
 
-# Check ovn-installed updated for main chassis and not for other chassis
+# Check ovn-installed updated for main chassis and removed from additional chassis
 wait_for_ports_up
 OVS_WAIT_UNTIL([test `as hv2 ovs-vsctl get Interface lsp0 external_ids:ovn-installed` = '"true"'])
 OVS_WAIT_UNTIL([test x`as hv1 ovs-vsctl get Interface lsp0 external_ids:ovn-installed` = x])
