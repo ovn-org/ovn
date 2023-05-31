@@ -5,6 +5,12 @@ OVN v23.03.1 - xx xxx xxxx
     restore the previous behavior.  Disabled by default.
   - Always allow IPv6 Router Discovery, Neighbor Discovery, and Multicast
     Listener Discovery protocols, regardless of ACLs defined.
+  - Send ICMP Fragmentation Needed packets back to offending ports when
+    communicating with multichassis ports using frames that don't fit through a
+    tunnel. This is done only for logical switches that are attached to a
+    physical network via a localnet port, in which case multichassis ports may
+    have an effective MTU different from regular ports and hence may need this
+    mechanism to maintain connectivity with other peers in the network.
 
 OVN v23.03.0 - 03 Mar 2023
 --------------------------

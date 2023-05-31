@@ -15168,6 +15168,327 @@ OVN_CLEANUP([hv1],[hv2],[hv3])
 AT_CLEANUP
 ])
 
+m4_define([MULTICHASSIS_PATH_MTU_DISCOVERY_TEST],
+  [OVN_FOR_EACH_NORTHD([
+   AT_SETUP([localnet connectivity with multiple requested-chassis, path mtu discovery (ip=$1, tunnel=$2, mtu=$3)])
+   AT_KEYWORDS([multi-chassis])
+   AT_SKIP_IF([test $HAVE_SCAPY = no])
+
+   ovn_start
+
+   net_add n1
+   for i in 1 2; do
+       sim_add hv$i
+       as hv$i
+       check ovs-vsctl add-br br-phys
+       if test "x$1" = "xipv6"; then
+           ovn_attach n1 br-phys fd00::$i 64 $2
+       else
+           ovn_attach n1 br-phys 192.168.0.$i 24 $2
+       fi
+       check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+   done
+
+   first_mac=00:00:00:00:00:01
+   second_mac=00:00:00:00:00:02
+   multi1_mac=00:00:00:00:00:f0
+   multi2_mac=00:00:00:00:00:f1
+   first_ip=10.0.0.1
+   second_ip=10.0.0.2
+   multi1_ip=10.0.0.10
+   multi2_ip=10.0.0.20
+   first_ip6=abcd::1
+   second_ip6=abcd::2
+   multi1_ip6=abcd::f0
+   multi2_ip6=abcd::f1
+
+   check ovn-nbctl ls-add ls0
+   check ovn-nbctl lsp-add ls0 first
+   check ovn-nbctl lsp-add ls0 second
+   check ovn-nbctl lsp-add ls0 multi1
+   check ovn-nbctl lsp-add ls0 multi2
+   check ovn-nbctl lsp-set-addresses first "${first_mac} ${first_ip} ${first_ip6}"
+   check ovn-nbctl lsp-set-addresses second "${second_mac} ${second_ip} ${second_ip6}"
+   check ovn-nbctl lsp-set-addresses multi1 "${multi1_mac} ${multi1_ip} ${multi1_ip6}"
+   check ovn-nbctl lsp-set-addresses multi2 "${multi2_mac} ${multi2_ip} ${multi2_ip6}"
+
+   check ovn-nbctl lsp-add ls0 public
+   check ovn-nbctl lsp-set-type public localnet
+   check ovn-nbctl lsp-set-addresses public unknown
+   check ovn-nbctl lsp-set-options public network_name=phys
+
+   check ovn-nbctl lsp-set-options first requested-chassis=hv1
+   check ovn-nbctl lsp-set-options second requested-chassis=hv2
+   check ovn-nbctl lsp-set-options multi1 requested-chassis=hv1,hv2
+   check ovn-nbctl lsp-set-options multi2 requested-chassis=hv1,hv2
+
+   as hv1 check ovs-vsctl -- add-port br-int first -- \
+       set Interface first external-ids:iface-id=first \
+       options:tx_pcap=hv1/first-tx.pcap \
+       options:rxq_pcap=hv1/first-rx.pcap \
+       ofport-request=1
+   as hv2 check ovs-vsctl -- add-port br-int second -- \
+       set Interface second external-ids:iface-id=second \
+       options:tx_pcap=hv2/second-tx.pcap \
+       options:rxq_pcap=hv2/second-rx.pcap \
+       ofport-request=2
+
+   # Create interfaces for multichassis ports on both hv1 and hv2
+   for hv in hv1 hv2; do
+       for i in 1 2; do
+           as $hv check ovs-vsctl -- add-port br-int multi${i} -- \
+               set Interface multi${i} external-ids:iface-id=multi${i} \
+               options:tx_pcap=$hv/multi${i}-tx.pcap \
+               options:rxq_pcap=$hv/multi${i}-rx.pcap \
+               ofport-request=${i}00
+       done
+   done
+
+   send_ip_packet() {
+       local inport=${1} hv=${2} eth_src=${3} eth_dst=${4} ipv4_src=${5} ipv4_dst=${6} data=${7} fail=${8} mtu=${9:-$3}
+       packet=$(fmt_pkt "
+           Ether(dst='${eth_dst}', src='${eth_src}') /
+           IP(src='${ipv4_src}', dst='${ipv4_dst}') /
+           ICMP(type=8) / bytes.fromhex('${data}')
+       ")
+       as hv${hv} ovs-appctl netdev-dummy/receive ${inport} ${packet}
+       if [[ x"${fail}" != x0 ]]; then
+         original_ip_frame=$(fmt_pkt "
+           IP(src='${ipv4_src}', dst='${ipv4_dst}') /
+           ICMP(type=8) / bytes.fromhex('${data}')
+         ")
+         # IP(flags=2) means DF (Don't Fragment) = 1
+         # ICMP(type=3, code=4) means Destination Unreachable, Fragmentation Needed
+         packet=$(fmt_pkt "
+             Ether(dst='${eth_src}', src='${eth_dst}') /
+             IP(src='${ipv4_dst}', dst='${ipv4_src}', ttl=255, flags=2, id=0) /
+             ICMP(type=3, code=4, nexthopmtu=${mtu}) /
+             bytes.fromhex('${original_ip_frame:0:$((534 * 2))}')
+         ")
+       fi
+       echo ${packet}
+   }
+
+   send_ip6_packet() {
+       local inport=${1} hv=${2} eth_src=${3} eth_dst=${4} ipv6_src=${5} ipv6_dst=${6} data=${7} fail=${8} mtu=${9:-$3}
+       packet=$(fmt_pkt "
+           Ether(dst='${eth_dst}', src='${eth_src}') /
+           IPv6(src='${ipv6_src}', dst='${ipv6_dst}') /
+           ICMPv6EchoRequest() / bytes.fromhex('${data}')
+       ")
+       as hv${hv} ovs-appctl netdev-dummy/receive ${inport} ${packet}
+       if [[ x"${fail}" != x0 ]]; then
+         original_ip_frame=$(fmt_pkt "
+           IPv6(src='${ipv6_src}', dst='${ipv6_dst}') /
+           ICMPv6EchoRequest() / bytes.fromhex('${data}')
+         ")
+         packet=$(fmt_pkt "
+             Ether(dst='${eth_src}', src='${eth_dst}') /
+             IPv6(src='${ipv6_dst}', dst='${ipv6_src}', hlim=255) /
+             ICMPv6PacketTooBig(mtu=${mtu}) /
+             bytes.fromhex('${original_ip_frame:0:$((1218 * 2))}')
+         ")
+       fi
+       echo ${packet}
+   }
+
+   reset_env() {
+       for port in first multi1 multi2; do
+           as hv1 reset_pcap_file $port hv1/$port
+       done
+       for port in second multi1 multi2; do
+           as hv2 reset_pcap_file $port hv2/$port
+       done
+       for port in hv1/multi1 hv2/multi1 hv1/multi2 hv2/multi2 hv1/first hv2/second; do
+           : > $port.expected
+       done
+   }
+
+   check_pkts() {
+       for port in hv1/multi1 hv2/multi1 hv1/multi2 hv2/multi2 hv1/first hv2/second; do
+           OVN_CHECK_PACKETS_REMOVE_BROADCAST([${port}-tx.pcap], [${port}.expected])
+       done
+   }
+
+   payload() {
+       echo $(cat /dev/urandom | tr -cd 'a-f0-9' | head -c ${1})
+   }
+
+   wait_for_ports_up
+   OVN_POPULATE_ARP
+
+   reset_env
+
+   AS_BOX([Packets of proper size are delivered from multichassis to regular ports])
+
+   len=1000
+   packet=$(send_ip_packet multi1 1 $multi1_mac $first_mac $multi1_ip $first_ip $(payload $len) 0)
+   echo $packet >> hv1/first.expected
+
+   packet=$(send_ip_packet multi1 1 $multi1_mac $second_mac $multi1_ip $second_ip $(payload $len) 0)
+   echo $packet >> hv2/second.expected
+
+   packet=$(send_ip6_packet multi1 1 $multi1_mac $first_mac $multi1_ip6 $first_ip6 $(payload $len) 0)
+   echo $packet >> hv1/first.expected
+
+   packet=$(send_ip6_packet multi1 1 $multi1_mac $second_mac $multi1_ip6 $second_ip6 $(payload $len) 0)
+   echo $packet >> hv2/second.expected
+
+   check_pkts
+   reset_env
+
+   AS_BOX([Oversized packets are not delivered from multichassis to regular ports])
+
+   len=3000
+   packet=$(send_ip_packet multi1 1 $multi1_mac $first_mac $multi1_ip $first_ip $(payload $len) 1)
+   echo $packet >> hv1/multi1.expected
+
+   packet=$(send_ip_packet multi1 1 $multi1_mac $second_mac $multi1_ip $second_ip $(payload $len) 1)
+   echo $packet >> hv1/multi1.expected
+
+   packet=$(send_ip6_packet multi1 1 $multi1_mac $first_mac $multi1_ip6 $first_ip6 $(payload $len) 1)
+   echo $packet >> hv1/multi1.expected
+
+   packet=$(send_ip6_packet multi1 1 $multi1_mac $second_mac $multi1_ip6 $second_ip6 $(payload $len) 1)
+   echo $packet >> hv1/multi1.expected
+
+   check_pkts
+   reset_env
+
+   AS_BOX([Packets of proper size are delivered from regular to multichassis ports])
+
+   len=1000
+   packet=$(send_ip_packet first 1 $first_mac $multi1_mac $first_ip $multi1_ip $(payload $len) 0)
+   echo $packet >> hv1/multi1.expected
+   echo $packet >> hv2/multi1.expected
+
+   packet=$(send_ip_packet second 2 $second_mac $multi1_mac $second_ip $multi1_ip $(payload $len) 0)
+   echo $packet >> hv1/multi1.expected
+   echo $packet >> hv2/multi1.expected
+
+   packet=$(send_ip6_packet first 1 $first_mac $multi1_mac $first_ip6 $multi1_ip6 $(payload $len) 0)
+   echo $packet >> hv1/multi1.expected
+   echo $packet >> hv2/multi1.expected
+
+   packet=$(send_ip6_packet second 2 $second_mac $multi1_mac $second_ip6 $multi1_ip6 $(payload $len) 0)
+   echo $packet >> hv1/multi1.expected
+   echo $packet >> hv2/multi1.expected
+
+   check_pkts
+   reset_env
+
+   AS_BOX([Oversized packets are not delivered from regular to multichassis ports])
+
+   len=3000
+   packet=$(send_ip_packet first 1 $first_mac $multi1_mac $first_ip $multi1_ip $(payload $len) 1)
+   echo $packet >> hv1/first.expected
+
+   packet=$(send_ip_packet second 2 $second_mac $multi1_mac $second_ip $multi1_ip $(payload $len) 1)
+   echo $packet >> hv2/second.expected
+
+   packet=$(send_ip6_packet first 1 $first_mac $multi1_mac $first_ip6 $multi1_ip6 $(payload $len) 1)
+   echo $packet >> hv1/first.expected
+
+   packet=$(send_ip6_packet second 2 $second_mac $multi1_mac $second_ip6 $multi1_ip6 $(payload $len) 1)
+   echo $packet >> hv2/second.expected
+
+   check_pkts
+   reset_env
+
+   AS_BOX([Packets of proper size are delivered from multichassis to multichassis ports])
+
+   len=1000
+   packet=$(send_ip_packet multi1 1 $multi1_mac $multi2_mac $multi1_ip $multi2_ip $(payload $len) 0)
+   echo $packet >> hv1/multi2.expected
+   echo $packet >> hv2/multi2.expected
+
+   packet=$(send_ip6_packet multi1 1 $multi1_mac $multi2_mac $multi1_ip6 $multi2_ip6 $(payload $len) 0)
+   echo $packet >> hv1/multi2.expected
+   echo $packet >> hv2/multi2.expected
+
+   check_pkts
+   reset_env
+
+   AS_BOX([Oversized packets are not delivered from multichassis to multichassis ports])
+
+   len=3000
+   packet=$(send_ip_packet multi1 1 $multi1_mac $multi2_mac $multi1_ip $multi2_ip $(payload $len) 1)
+   echo $packet >> hv1/multi1.expected
+
+   packet=$(send_ip6_packet multi1 1 $multi1_mac $multi2_mac $multi1_ip6 $multi2_ip6 $(payload $len) 1)
+   echo $packet >> hv1/multi1.expected
+
+   check_pkts
+   reset_env
+
+   AS_BOX([MTU updates are honored in ICMP Path MTU calculation])
+
+   set_mtu() {
+       local hv=${1} iface=${2} new_mtu=${3}
+
+       iface_uuid=$(as ${hv} ovs-vsctl --bare --columns _uuid find Interface name=${iface})
+       check as ${hv} ovs-vsctl set interface ${iface_uuid} mtu_request=${new_mtu}
+   }
+
+   set_mtu_for_all_ports() {
+       for port in multi1 multi2 first; do
+           set_mtu hv1 ${port} ${1}
+       done
+       for port in multi1 multi2 second; do
+           set_mtu hv2 ${port} ${1}
+       done
+   }
+
+   initial_mtu=1500  # all interfaces are 1500 by default
+   new_mtu=1400
+   set_mtu_for_all_ports ${new_mtu}
+   mtu_diff=$((${initial_mtu} - ${new_mtu}))
+
+   len=3000
+   expected_ip_mtu=$(($3 - ${mtu_diff}))
+   packet=$(send_ip_packet first 1 $first_mac $multi1_mac $first_ip $multi1_ip $(payload $len) 1 ${expected_ip_mtu})
+   echo $packet >> hv1/first.expected
+
+   packet=$(send_ip_packet second 2 $second_mac $multi1_mac $second_ip $multi1_ip $(payload $len) 1 ${expected_ip_mtu})
+   echo $packet >> hv2/second.expected
+
+   packet=$(send_ip6_packet first 1 $first_mac $multi1_mac $first_ip6 $multi1_ip6 $(payload $len) 1 ${expected_ip_mtu})
+   echo $packet >> hv1/first.expected
+
+   packet=$(send_ip6_packet second 2 $second_mac $multi1_mac $second_ip6 $multi1_ip6 $(payload $len) 1 ${expected_ip_mtu})
+   echo $packet >> hv2/second.expected
+
+   packet=$(send_ip_packet multi1 1 $multi1_mac $first_mac $multi1_ip $first_ip $(payload $len) 1 ${expected_ip_mtu})
+   echo $packet >> hv1/multi1.expected
+
+   packet=$(send_ip_packet multi1 1 $multi1_mac $second_mac $multi1_ip $second_ip $(payload $len) 1 ${expected_ip_mtu})
+   echo $packet >> hv1/multi1.expected
+
+   packet=$(send_ip6_packet multi1 1 $multi1_mac $first_mac $multi1_ip6 $first_ip6 $(payload $len) 1 ${expected_ip_mtu})
+   echo $packet >> hv1/multi1.expected
+
+   packet=$(send_ip6_packet multi1 1 $multi1_mac $second_mac $multi1_ip6 $second_ip6 $(payload $len) 1 ${expected_ip_mtu})
+   echo $packet >> hv1/multi1.expected
+
+   packet=$(send_ip_packet multi1 1 $multi1_mac $multi2_mac $multi1_ip $multi2_ip $(payload $len) 1 ${expected_ip_mtu})
+   echo $packet >> hv1/multi1.expected
+
+   packet=$(send_ip6_packet multi1 1 $multi1_mac $multi2_mac $multi1_ip6 $multi2_ip6 $(payload $len) 1 ${expected_ip_mtu})
+   echo $packet >> hv1/multi1.expected
+
+   check_pkts
+
+   OVN_CLEANUP([hv1],[hv2])
+
+   AT_CLEANUP
+   ])])
+
+# NOTE(ihar) no STT variants because it's not supported by upstream kernels
+MULTICHASSIS_PATH_MTU_DISCOVERY_TEST([ipv4], [geneve], [1424])
+MULTICHASSIS_PATH_MTU_DISCOVERY_TEST([ipv6], [geneve], [1404])
+MULTICHASSIS_PATH_MTU_DISCOVERY_TEST([ipv4], [vxlan], [1432])
+MULTICHASSIS_PATH_MTU_DISCOVERY_TEST([ipv6], [vxlan], [1412])
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([options:activation-strategy for logical port])
 AT_KEYWORDS([multi-chassis])
