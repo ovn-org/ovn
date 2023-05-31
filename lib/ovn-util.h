@@ -28,6 +28,13 @@
 #define ROUTE_ORIGIN_CONNECTED "connected"
 #define ROUTE_ORIGIN_STATIC "static"
 
+#define ETH_CRC_LENGTH 4
+#define ETHERNET_OVERHEAD (ETH_HEADER_LEN + ETH_CRC_LENGTH)
+
+#define GENEVE_TUNNEL_OVERHEAD 38
+#define STT_TUNNEL_OVERHEAD 18
+#define VXLAN_TUNNEL_OVERHEAD 30
+
 struct nbrec_logical_router_port;
 struct sbrec_logical_flow;
 struct svec;

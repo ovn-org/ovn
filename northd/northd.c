@@ -238,6 +238,8 @@ enum ovn_stage {
  * one of the logical router's own IP addresses. */
 #define REGBIT_EGRESS_LOOPBACK  "reg9[0]"
 /* Register to store the result of check_pkt_larger action. */
+/* This register is also used by ovn-controller in
+ * OFTABLE_OUTPUT_LARGE_PKT_DETECT table, for a similar goal. */
 #define REGBIT_PKT_LARGER        "reg9[1]"
 #define REGBIT_LOOKUP_NEIGHBOR_RESULT "reg9[2]"
 #define REGBIT_LOOKUP_NEIGHBOR_IP_RESULT "reg9[3]"

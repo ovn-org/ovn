@@ -79,7 +79,7 @@ ovnact_init(struct ovnact *ovnact, enum ovnact_type type, size_t len)
     ovnact->len = len;
 }
 
-static size_t
+size_t
 encode_start_controller_op(enum action_opcode opcode, bool pause,
                            uint32_t meter_id, struct ofpbuf *ofpacts)
 {
@@ -100,7 +100,7 @@ encode_start_controller_op(enum action_opcode opcode, bool pause,
     return ofs;
 }
 
-static void
+void
 encode_finish_controller_op(size_t ofs, struct ofpbuf *ofpacts)
 {
     struct ofpact_controller *oc = ofpbuf_at_assert(ofpacts, ofs, sizeof *oc);
