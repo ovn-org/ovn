@@ -264,3 +264,12 @@ maintain_interface_smap_column(
         }
     }
 }
+
+uint16_t
+get_iface_mtu(const struct ovsrec_interface *iface)
+{
+    if (!iface || !iface->n_mtu || iface->mtu[0] <= 0) {
+        return 0;
+    }
+    return (uint16_t) iface->mtu[0];
+}
