@@ -628,7 +628,7 @@ set_actions_and_enqueue_msg(struct rconn *swconn,
 }
 
 /* Forwards a packet to 'out_port_key' even if that's on a remote
- * hypervisor, i.e., the packet is re-injected in table OFTABLE_REMOTE_OUTPUT.
+ * hypervisor, i.e., the packet is re-injected in table OFTABLE_OUTPUT_INIT.
  */
 static void
 pinctrl_forward_pkt(struct rconn *swconn, int64_t dp_key,
@@ -645,7 +645,7 @@ pinctrl_forward_pkt(struct rconn *swconn, int64_t dp_key,
 
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
-    resubmit->table_id = OFTABLE_REMOTE_OUTPUT;
+    resubmit->table_id = OFTABLE_OUTPUT_INIT;
 
     struct ofputil_packet_out po = {
         .packet = dp_packet_data(pkt),
@@ -871,7 +871,7 @@ pinctrl_parse_dhcpv6_advt(struct rconn *swconn, const struct flow *ip_flow,
              0, 32, &ofpacts);
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
-    resubmit->table_id = OFTABLE_REMOTE_OUTPUT;
+    resubmit->table_id = OFTABLE_OUTPUT_INIT;
 
     struct ofputil_packet_out po = {
         .packet = dp_packet_data(&packet),
@@ -1497,7 +1497,7 @@ buffered_push_packet(struct buffered_packets *bp,
 
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&bi->ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
-    resubmit->table_id = OFTABLE_REMOTE_OUTPUT;
+    resubmit->table_id = OFTABLE_OUTPUT_INIT;
 
     bi->p = packet;
 

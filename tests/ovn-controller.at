@@ -867,7 +867,7 @@ meta=$(ovn-sbctl get datapath ls1 tunnel_key)
 port=$(ovn-sbctl get port_binding ls1-rp tunnel_key)
 check ovn-nbctl lrp-add lr0 rp-ls1 00:00:01:01:02:03 192.168.1.254/24
 
-OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int | grep table=38 | grep -q "reg15=0x${port},metadata=0x${meta}"])
+OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int | grep table=41 | grep -q "reg15=0x${port},metadata=0x${meta}"])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
@@ -911,14 +911,14 @@ for i in $(seq 10); do
     check ovn-nbctl add address_set as1 addresses 10.0.0.$i
     check ovn-nbctl --wait=hv sync
     if test "$i" = 3; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=drop
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.2 actions=drop
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3 actions=drop
 ])
     fi
-    AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$i
+    AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$i
 ])
 done
 
@@ -933,15 +933,15 @@ for i in $(seq 10); do
     check ovn-nbctl remove address_set as1 addresses 10.0.0.$i
     check ovn-nbctl --wait=hv sync
     if test "$i" = 9; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}'], [0], [dnl
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10 actions=drop
 ])
     fi
     if test "$i" = 10; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep "priority=1100"], [1], [ignore])
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep "priority=1100"], [1], [ignore])
     else
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$((10 - $i))
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$((10 - $i))
 ])
     fi
 done
@@ -959,7 +959,7 @@ for i in $(seq 10); do
     check ovn-nbctl add address_set as1 addresses 10.0.0.$i,10.0.1.$i
     check ovn-nbctl --wait=hv sync
     if test "$i" = 3; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=drop
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.2 actions=drop
@@ -969,7 +969,7 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.1.2 actions=dr
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.1.3 actions=drop
 ])
     fi
-    AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$(($i * 2))
+    AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$(($i * 2))
 ])
 done
 
@@ -986,11 +986,11 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl add address_set as1 addresses 10.0.0.21,10.0.0.22 -- \
                 remove address_set as1 addresses 10.0.0.10
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.21], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep -c 10\.0\.0\.21], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.22], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep -c 10\.0\.0\.22], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.10], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep 10\.0\.0\.10], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
 AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
@@ -1002,9 +1002,9 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl remove address_set as1 addresses 10.0.0.21,10.0.0.22 -- \
                 add address_set as1 addresses 10.0.0.10
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.21], [1], [ignore])
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.22], [1], [ignore])
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.10], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep 10\.0\.0\.21], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep 10\.0\.0\.22], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep -c 10\.0\.0\.10], [0], [1
 ])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
@@ -1017,9 +1017,9 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl add address_set as1 addresses 10.0.0.21 -- \
                 remove address_set as1 addresses 10.0.0.10
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.21], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep -c 10\.0\.0\.21], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.10], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep 10\.0\.0\.10], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
 AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
@@ -1031,12 +1031,12 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl add address_set as1 addresses 10.0.0.22,10.0.0.23 -- \
                 remove address_set as1 addresses 10.0.0.9,10.0.0.8
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.22], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep -c 10\.0\.0\.22], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.23], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep -c 10\.0\.0\.23], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.8], [1], [ignore])
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.9], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep 10\.0\.0\.8], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep 10\.0\.0\.9], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
 AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
@@ -1084,7 +1084,7 @@ for i in $(seq 10); do
     check ovn-nbctl add address_set as1 addresses 10.0.0.$i
     check ovn-nbctl --wait=hv sync
     if test "$i" = 1; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,tp_dst=111 actions=drop
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,tp_dst=222 actions=drop
@@ -1092,12 +1092,12 @@ priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,tp_dst=33
 ])
     else
         # (1 conj_id flow + 3 tp_dst flows) = 4 extra flows
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$(($i + 4))
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$(($i + 4))
 ])
     fi
 
     if test "$i" = 3; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | \
             sed -r 's/conjunction.*,/conjunction,/' | \
             sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
@@ -1123,17 +1123,17 @@ for i in $(seq 10); do
     check ovn-nbctl remove address_set as1 addresses 10.0.0.$i
     check ovn-nbctl --wait=hv sync
     if test "$i" = 10; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep "priority=1100"], [1], [ignore])
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep "priority=1100"], [1], [ignore])
     elif test "$i" = 9; then
         # no conjunction left
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,tp_dst=111 actions=drop
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,tp_dst=222 actions=drop
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,tp_dst=333 actions=drop
 ])
     else
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$((14 - $i))
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$((14 - $i))
 ])
     fi
 done
@@ -1149,7 +1149,7 @@ for i in $(seq 10); do
     check ovn-nbctl add address_set as1 addresses 10.0.0.$i,10.0.1.$i
     check ovn-nbctl --wait=hv sync
     if test "$i" = 3; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | \
             sed -r 's/conjunction.*,/conjunction,/' | \
             sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
@@ -1165,7 +1165,7 @@ priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,tp_dst=222 actions=conjun
 priority=1100,tcp,reg15=0x$port_key,metadata=0x$dp_key,tp_dst=333 actions=conjunction,2/2)
 ])
     fi
-    AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$(($i * 2 + 4))
+    AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$(($i * 2 + 4))
 ])
 done
 
@@ -1181,11 +1181,11 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl add address_set as1 addresses 10.0.0.21,10.0.0.22 -- \
                 remove address_set as1 addresses 10.0.0.10
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.21], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep -c 10\.0\.0\.21], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.22], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep -c 10\.0\.0\.22], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.10], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep 10\.0\.0\.10], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
 AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
@@ -1197,9 +1197,9 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl remove address_set as1 addresses 10.0.0.21,10.0.0.22 -- \
                 add address_set as1 addresses 10.0.0.10
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.21], [1], [ignore])
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.22], [1], [ignore])
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.10], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep 10\.0\.0\.21], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep 10\.0\.0\.22], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep -c 10\.0\.0\.10], [0], [1
 ])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
@@ -1212,9 +1212,9 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl add address_set as1 addresses 10.0.0.21 -- \
                 remove address_set as1 addresses 10.0.0.10
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.21], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep -c 10\.0\.0\.21], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.10], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep 10\.0\.0\.10], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
 AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
@@ -1226,12 +1226,12 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl add address_set as1 addresses 10.0.0.22,10.0.0.23 -- \
                 remove address_set as1 addresses 10.0.0.9,10.0.0.8
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.22], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep -c 10\.0\.0\.22], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c 10\.0\.0\.23], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep -c 10\.0\.0\.23], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.8], [1], [ignore])
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep 10\.0\.0\.9], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep 10\.0\.0\.8], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep 10\.0\.0\.9], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
 AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
@@ -1281,18 +1281,18 @@ for i in $(seq 10); do
                     add address_set as2 addresses 10.0.0.$j
     check ovn-nbctl --wait=hv sync
     if test "$i" = 1; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,nw_dst=10.0.0.6 actions=drop
 ])
     else
         # (1 conj_id + nw_src * i + nw_dst * i) = 1 + i*2 flows
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$(($i*2 + 1))
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$(($i*2 + 1))
 ])
     fi
 
     if test "$i" = 3; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | \
             sed -r 's/conjunction.*,/conjunction,/' | \
             sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
@@ -1320,15 +1320,15 @@ for i in $(seq 10); do
                     remove address_set as2 addresses 10.0.0.$j
     check ovn-nbctl --wait=hv sync
     if test "$i" = 10; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep "priority=1100"], [1], [ignore])
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep "priority=1100"], [1], [ignore])
     elif test "$i" = 9; then
         # no conjunction left
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10.0.0.15 actions=drop
 ])
     else
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$((21 - $i*2))
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$((21 - $i*2))
 ])
     fi
 done
@@ -1349,14 +1349,14 @@ for i in $(seq 2 10); do
     check ovn-nbctl add address_set as1 addresses 10.0.0.$i
     check ovn-nbctl --wait=hv sync
     if test "$i" = 3; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,nw_dst=10.0.0.6 actions=drop
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.2,nw_dst=10.0.0.6 actions=drop
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3,nw_dst=10.0.0.6 actions=drop
 ])
     fi
-    AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$i
+    AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$i
 ])
 done
 
@@ -1375,16 +1375,16 @@ for i in $(seq 10); do
     check ovn-nbctl remove address_set as1 addresses 10.0.0.$i
     check ovn-nbctl --wait=hv sync
     if test "$i" = 9; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}'], [0], [dnl
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10.0.0.6 actions=drop
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10.0.0.7 actions=drop
 ])
     elif test "$i" = 10; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep "priority=1100"], [1], [ignore])
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep "priority=1100"], [1], [ignore])
     else
         # 2 dst + (10 - i) src + 1 conj_id
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$((10 - $i + 3))
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$((10 - $i + 3))
 ])
     fi
 done
@@ -1438,18 +1438,18 @@ for i in $(seq 10); do
                     add address_set as2 addresses 10.0.0.$j
     check ovn-nbctl --wait=hv sync
     if test "$i" = 1; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_dst=10.0.0.6 actions=drop
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=drop
 ])
     else
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$(($i*2))
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$(($i*2))
 ])
     fi
 
     if test "$i" = 3; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | \
             sed -r 's/conjunction.*,/conjunction,/' | \
             sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
@@ -1476,9 +1476,9 @@ for i in $(seq 10); do
                     remove address_set as2 addresses 10.0.0.$j
     check ovn-nbctl --wait=hv sync
     if test "$i" = 10; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep "priority=1100"], [1], [ignore])
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep "priority=1100"], [1], [ignore])
     else
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$((20 - $i*2))
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$((20 - $i*2))
 ])
     fi
 done
@@ -1534,21 +1534,21 @@ for i in $(seq 10); do
                     add address_set as2 addresses 10.0.0.$j
     check ovn-nbctl --wait=hv sync
     if test "$i" = 1; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1 actions=drop
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.6 actions=drop
 ])
     elif test "$i" -lt 6; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$(($i*2))
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$(($i*2))
 ])
     else
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$((5 + $i))
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$((5 + $i))
 ])
     fi
 
     if test "$i" = 3; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | \
             sed -r 's/conjunction.*,/conjunction,/' | \
             sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
@@ -1575,12 +1575,12 @@ for i in $(seq 10); do
                     remove address_set as2 addresses 10.0.0.$j
     check ovn-nbctl --wait=hv sync
     if test "$i" = 10; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep "priority=1100"], [1], [ignore])
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep "priority=1100"], [1], [ignore])
     elif test "$i" -lt 6; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$((15 - $i))
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$((15 - $i))
 ])
     else
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$((10 - ($i - 5)*2))
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$((10 - ($i - 5)*2))
 ])
     fi
 done
@@ -1632,18 +1632,18 @@ for i in $(seq 10); do
     check ovn-nbctl add address_set as1 addresses 10.0.0.$i
     check ovn-nbctl --wait=hv sync
     if test "$i" = 1; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.1,nw_dst=10.0.0.1 actions=drop
 ])
     else
         # (1 conj_id + nw_src * i + nw_dst * i) = 1 + i*2 flows
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$(($i*2 + 1))
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$(($i*2 + 1))
 ])
     fi
 
     if test "$i" = 3; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | \
             sed -r 's/conjunction.*,/conjunction,/' | \
             sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
@@ -1669,15 +1669,15 @@ for i in $(seq 10); do
     check ovn-nbctl remove address_set as1 addresses 10.0.0.$i
     check ovn-nbctl --wait=hv sync
     if test "$i" = 10; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep "priority=1100"], [1], [ignore])
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep "priority=1100"], [1], [ignore])
     elif test "$i" = 9; then
         # no conjunction left
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10.0.0.10 actions=drop
 ])
     else
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$((21 - $i*2))
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$((21 - $i*2))
 ])
     fi
 done
@@ -1693,7 +1693,7 @@ for i in $(seq 10); do
     check ovn-nbctl add address_set as1 addresses 10.0.0.$i,10.0.1.$i
     check ovn-nbctl --wait=hv sync
     if test "$i" = 3; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | \
             sed -r 's/conjunction.*,/conjunction,/' | \
             sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
@@ -1712,7 +1712,7 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.1.2 actions=co
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.1.3 actions=conjunction,2/2)
 ])
     fi
-    AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$(($i * 4 + 1))
+    AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$(($i * 4 + 1))
 ])
 done
 
@@ -1733,7 +1733,7 @@ check ovn-nbctl --wait=hv sync
 reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl add address_set as1 addresses 10.0.0.4,10.0.0.5
 check ovn-nbctl --wait=hv sync
-AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
     grep -v reply | awk '{print $7, $8}' | \
     sed -r 's/conjunction.*,/conjunction,/' | \
     sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
@@ -1757,7 +1757,7 @@ AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [1
 # Delete 2 IPs
 reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl --wait=hv remove address_set as1 addresses 10.0.0.4,10.0.0.5
-AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
     grep -v reply | awk '{print $7, $8}' | \
     sed -r 's/conjunction.*,/conjunction,/' | \
     sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
@@ -1815,7 +1815,7 @@ check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as
 check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as2 && tcp && tcp.dst == {201, 202}' drop
 
 check ovn-nbctl --wait=hv sync
-AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
     grep -v reply | awk '{print $7, $8}' | \
     sed -r 's/conjunction.[[0-9]]*,/conjunction,/g' | \
     sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
@@ -1840,7 +1840,7 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl add address_set as1 addresses 10.0.0.14,10.0.0.33 -- \
                 add address_set as2 addresses 10.0.0.24,10.0.0.33
 check ovn-nbctl --wait=hv sync
-AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
     grep -v reply | awk '{print $7, $8}' | \
     sed -r 's/conjunction.[[0-9]]*,/conjunction,/g' | \
     sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
@@ -1871,7 +1871,7 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl remove address_set as1 addresses 10.0.0.14,10.0.0.33 -- \
                 remove address_set as2 addresses 10.0.0.24,10.0.0.33
 check ovn-nbctl --wait=hv sync
-AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
     grep -v reply | awk '{print $7, $8}' | \
     sed -r 's/conjunction.[[0-9]]*,/conjunction,/g' | \
     sed -r 's/conj_id=.*,/conj_id=,/' | sort], [0], [dnl
@@ -1936,14 +1936,14 @@ for i in $(seq 5); do
     check ovn-nbctl add address_set as1 addresses "aa\:aa\:aa\:aa\:aa\:0$i"
     check ovn-nbctl --wait=hv sync
     if test "$i" = 3; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
 priority=1100,reg15=0x$port_key,metadata=0x$dp_key,dl_src=aa:aa:aa:aa:aa:01 actions=drop
 priority=1100,reg15=0x$port_key,metadata=0x$dp_key,dl_src=aa:aa:aa:aa:aa:02 actions=drop
 priority=1100,reg15=0x$port_key,metadata=0x$dp_key,dl_src=aa:aa:aa:aa:aa:03 actions=drop
 ])
     fi
-    AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$i
+    AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$i
 ])
 done
 
@@ -1957,17 +1957,17 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 for i in $(seq 5); do
     check ovn-nbctl remove address_set as1 addresses "aa\:aa\:aa\:aa\:aa\:0$i"
     check ovn-nbctl --wait=hv sync
-    ovs-ofctl dump-flows br-int table=44 | grep "priority=1100"
+    ovs-ofctl dump-flows br-int table=47 | grep "priority=1100"
     if test "$i" = 4; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}'], [0], [dnl
 priority=1100,reg15=0x$port_key,metadata=0x$dp_key,dl_src=aa:aa:aa:aa:aa:05 actions=drop
 ])
     fi
     if test "$i" = 5; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep "priority=1100"], [1], [ignore])
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep "priority=1100"], [1], [ignore])
     else
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$((5 - $i))
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$((5 - $i))
 ])
     fi
 done
@@ -2017,14 +2017,14 @@ for i in $(seq 5); do
     check ovn-nbctl add address_set as1 addresses "ff\:\:0$i"
     check ovn-nbctl --wait=hv sync
     if test "$i" = 3; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
 priority=1100,ipv6,reg15=0x$port_key,metadata=0x$dp_key,ipv6_src=ff::1 actions=drop
 priority=1100,ipv6,reg15=0x$port_key,metadata=0x$dp_key,ipv6_src=ff::2 actions=drop
 priority=1100,ipv6,reg15=0x$port_key,metadata=0x$dp_key,ipv6_src=ff::3 actions=drop
 ])
     fi
-    AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$i
+    AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$i
 ])
 done
 
@@ -2039,15 +2039,15 @@ for i in $(seq 5); do
     check ovn-nbctl remove address_set as1 addresses "ff\:\:0$i"
     check ovn-nbctl --wait=hv sync
     if test "$i" = 4; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44,reg15=0x$port_key | \
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47,reg15=0x$port_key | \
             grep -v reply | awk '{print $7, $8}'], [0], [dnl
 priority=1100,ipv6,reg15=0x$port_key,metadata=0x$dp_key,ipv6_src=ff::5 actions=drop
 ])
     fi
     if test "$i" = 5; then
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep "priority=1100"], [1], [ignore])
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep "priority=1100"], [1], [ignore])
     else
-        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [$((5 - $i))
+        AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [$((5 - $i))
 ])
     fi
 done
@@ -2082,7 +2082,7 @@ ovn-appctl -t ovn-controller vlog/set file:dbg
 ovn-nbctl create address_set name=as1 addresses=8.8.8.8
 check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1' drop
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100"], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100"], [0], [1
 ])
 
 # pause ovn-northd
@@ -2098,13 +2098,13 @@ check as northd-backup ovn-appctl -t ovn-northd pause
 # undefined. This test runs the scenario ten times to make sure different
 # orders are covered and handled properly.
 
-flow_count=$(ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100")
+flow_count=$(ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100")
 for i in $(seq 10); do
     # Delete and recreate the SB address set with same name and an extra IP.
     addrs_=$(fetch_column address_set addresses name=as1)
     addrs=${addrs_// /,}
     AT_CHECK([ovn-sbctl destroy address_set as1 -- create address_set name=as1 addresses=$addrs,1.1.1.$i], [0], [ignore])
-    OVS_WAIT_UNTIL([test $(as hv1 ovs-ofctl dump-flows br-int table=44 | grep -c "priority=1100") = "$(($i + 1))"])
+    OVS_WAIT_UNTIL([test $(as hv1 ovs-ofctl dump-flows br-int table=47 | grep -c "priority=1100") = "$(($i + 1))"])
 done
 
 OVN_CLEANUP([hv1])

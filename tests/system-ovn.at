@@ -2243,7 +2243,7 @@ ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:80,192.16
 
 ovn-nbctl list load_balancer
 ovn-sbctl dump-flows R2
-OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=43 | \
+OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=46 | \
 grep 'nat(src=20.0.0.2)'])
 
 check ovs-appctl dpctl/flush-conntrack
@@ -2282,7 +2282,7 @@ ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:80,192.16
 
 ovn-nbctl list load_balancer
 ovn-sbctl dump-flows R2
-OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=43 | \
+OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=46 | \
 grep 'nat(src=20.0.0.2)'])
 
 rm -f wget*.log
@@ -4899,7 +4899,7 @@ OVS_WAIT_UNTIL([
 ])
 
 OVS_WAIT_UNTIL([
-    n_pkt=$(ovs-ofctl dump-flows br-int table=44 | grep -v n_packets=0 | \
+    n_pkt=$(ovs-ofctl dump-flows br-int table=47 | grep -v n_packets=0 | \
 grep controller | grep tp_dst=84 -c)
     test $n_pkt -eq 1
 ])
@@ -5140,7 +5140,7 @@ OVS_WAIT_UNTIL([
 ])
 
 OVS_WAIT_UNTIL([
-    n_pkt=$(ovs-ofctl dump-flows br-int table=44 | grep -v n_packets=0 | \
+    n_pkt=$(ovs-ofctl dump-flows br-int table=47 | grep -v n_packets=0 | \
 grep controller | grep tp_dst=84 -c)
     test $n_pkt -eq 1
 ])

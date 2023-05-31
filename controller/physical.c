@@ -845,12 +845,12 @@ put_local_common_flows(uint32_t dp_key,
 
     uint32_t port_key = pb->tunnel_key;
 
-    /* Table 38, priority 100.
+    /* Table 41, priority 100.
      * =======================
      *
      * Implements output to local hypervisor.  Each flow matches a
      * logical output port on the local hypervisor, and resubmits to
-     * table 39.
+     * table 42.
      */
 
     ofpbuf_clear(ofpacts_p);
@@ -860,13 +860,13 @@ put_local_common_flows(uint32_t dp_key,
 
     put_zones_ofpacts(zone_ids, ofpacts_p);
 
-    /* Resubmit to table 39. */
+    /* Resubmit to table 42. */
     put_resubmit(OFTABLE_CHECK_LOOPBACK, ofpacts_p);
     ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100,
                     pb->header_.uuid.parts[0], &match, ofpacts_p,
                     &pb->header_.uuid);
 
-    /* Table 39, Priority 100.
+    /* Table 42, Priority 100.
      * =======================
      *
      * Drop packets whose logical inport and outport are the same
@@ -1200,12 +1200,12 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             || ha_chassis_group_is_active(binding->ha_chassis_group,
                                           active_tunnels, chassis))) {
 
-        /* Table 38, priority 100.
+        /* Table 41, priority 100.
          * =======================
          *
          * Implements output to local hypervisor.  Each flow matches a
          * logical output port on the local hypervisor, and resubmits to
-         * table 39.  For ports of type "chassisredirect", the logical
+         * table 42.  For ports of type "chassisredirect", the logical
          * output port is changed from the "chassisredirect" port to the
          * underlying distributed port. */
 
@@ -1242,7 +1242,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                                                     ct_zones);
             put_zones_ofpacts(&zone_ids, ofpacts_p);
 
-            /* Resubmit to table 39. */
+            /* Resubmit to table 42. */
             put_resubmit(OFTABLE_CHECK_LOOPBACK, ofpacts_p);
         }
 
@@ -1458,7 +1458,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                                               ofport, flow_table);
         }
 
-        /* Table 39, priority 160.
+        /* Table 42, priority 160.
          * =======================
          *
          * Do not forward local traffic from a localport to a localnet port.
@@ -1526,13 +1526,13 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             }
         }
 
-        /* Table 37, priority 150.
+        /* Table 40, priority 150.
          * =======================
          *
          * Handles packets received from ports of type "localport".  These
          * ports are present on every hypervisor.  Traffic that originates at
          * one should never go over a tunnel to a remote hypervisor,
-         * so resubmit them to table 38 for local delivery. */
+         * so resubmit them to table 41 for local delivery. */
         if (!strcmp(binding->type, "localport")) {
             ofpbuf_clear(ofpacts_p);
             put_resubmit(OFTABLE_LOCAL_OUTPUT, ofpacts_p);
@@ -1546,7 +1546,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         }
     } else if (access_type == PORT_LOCALNET) {
         /* Remote port connected by localnet port */
-        /* Table 38, priority 100.
+        /* Table 41, priority 100.
          * =======================
          *
          * Implements switching to localnet port. Each flow matches a
@@ -1561,7 +1561,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
         put_load(localnet_port->tunnel_key, MFF_LOG_OUTPORT, 0, 32, ofpacts_p);
 
-        /* Resubmit to table 38. */
+        /* Resubmit to table 41. */
         put_resubmit(OFTABLE_LOCAL_OUTPUT, ofpacts_p);
         ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100,
                         binding->header_.uuid.parts[0],
@@ -1578,7 +1578,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const char *redirect_type = smap_get(&binding->options,
                                          "redirect-type");
 
-    /* Table 38, priority 100.
+    /* Table 41, priority 100.
      * =======================
      *
      * Handles traffic that needs to be sent to a remote hypervisor.  Each
@@ -1806,7 +1806,7 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         }
     }
 
-    /* Table 38, priority 100.
+    /* Table 41, priority 100.
      * =======================
      *
      * Handle output to the local logical ports in the multicast group, if
@@ -1822,7 +1822,7 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                         &match, &ofpacts, &mc->header_.uuid);
     }
 
-    /* Table 37, priority 100.
+    /* Table 40, priority 100.
      * =======================
      *
      * Handle output to the remote chassis in the multicast group, if
@@ -1998,7 +1998,7 @@ physical_run(struct physical_ctx *p_ctx,
                               p_ctx->chassis, flow_table, &ofpacts);
     }
 
-    /* Handle output to multicast groups, in tables 37 and 38. */
+    /* Handle output to multicast groups, in tables 40 and 41. */
     const struct sbrec_multicast_group *mc;
     SBREC_MULTICAST_GROUP_TABLE_FOR_EACH (mc, p_ctx->mc_group_table) {
         consider_mc_group(p_ctx->sbrec_port_binding_by_name,
@@ -2019,7 +2019,7 @@ physical_run(struct physical_ctx *p_ctx,
      * encapsulations have metadata about the ingress and egress logical ports.
      * VXLAN encapsulations have metadata about the egress logical port only.
      * We set MFF_LOG_DATAPATH, MFF_LOG_INPORT, and MFF_LOG_OUTPORT from the
-     * tunnel key data where possible, then resubmit to table 38 to handle
+     * tunnel key data where possible, then resubmit to table 41 to handle
      * packets to the local hypervisor. */
     struct chassis_tunnel *tun;
     HMAP_FOR_EACH (tun, hmap_node, p_ctx->chassis_tunnels) {
@@ -2114,27 +2114,50 @@ physical_run(struct physical_ctx *p_ctx,
         }
     }
 
-    /* Table 37, priority 150.
+    /* Table 34-36, priority 0.
+     * ========================
+     *
+     * Default resubmit actions for OFTABLE_OUTPUT_LARGE_PKT_* tables.
+     */
+    struct match match;
+    match_init_catchall(&match);
+    ofpbuf_clear(&ofpacts);
+    put_resubmit(OFTABLE_OUTPUT_LARGE_PKT_DETECT, &ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_OUTPUT_INIT, 0, 0, &match,
+                    &ofpacts, hc_uuid);
+
+    match_init_catchall(&match);
+    ofpbuf_clear(&ofpacts);
+    put_resubmit(OFTABLE_REMOTE_OUTPUT, &ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_OUTPUT_LARGE_PKT_DETECT, 0, 0, &match,
+                    &ofpacts, hc_uuid);
+
+    match_init_catchall(&match);
+    ofpbuf_clear(&ofpacts);
+    put_resubmit(OFTABLE_REMOTE_OUTPUT, &ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_OUTPUT_LARGE_PKT_PROCESS, 0, 0, &match,
+                    &ofpacts, hc_uuid);
+
+    /* Table 40, priority 150.
      * =======================
      *
      * Handles packets received from a VXLAN tunnel which get resubmitted to
      * OFTABLE_LOG_INGRESS_PIPELINE due to lack of needed metadata in VXLAN,
-     * explicitly skip sending back out any tunnels and resubmit to table 38
+     * explicitly skip sending back out any tunnels and resubmit to table 41
      * for local delivery, except packets which have MLF_ALLOW_LOOPBACK bit
      * set.
      */
-    struct match match;
     match_init_catchall(&match);
     match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0, MLF_RCV_FROM_RAMP,
                          MLF_RCV_FROM_RAMP | MLF_ALLOW_LOOPBACK);
 
-    /* Resubmit to table 38. */
+    /* Resubmit to table 41. */
     ofpbuf_clear(&ofpacts);
     put_resubmit(OFTABLE_LOCAL_OUTPUT, &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 150, 0,
                     &match, &ofpacts, hc_uuid);
 
-    /* Table 37, priority 150.
+    /* Table 40, priority 150.
      * =======================
      *
      * Packets that should not be sent to other hypervisors.
@@ -2142,13 +2165,13 @@ physical_run(struct physical_ctx *p_ctx,
     match_init_catchall(&match);
     match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
                          MLF_LOCAL_ONLY, MLF_LOCAL_ONLY);
-    /* Resubmit to table 38. */
+    /* Resubmit to table 41. */
     ofpbuf_clear(&ofpacts);
     put_resubmit(OFTABLE_LOCAL_OUTPUT, &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 150, 0,
                     &match, &ofpacts, hc_uuid);
 
-    /* Table 37, Priority 0.
+    /* Table 40, Priority 0.
      * =======================
      *
      * Resubmit packets that are not directed at tunnels or part of a
@@ -2159,11 +2182,11 @@ physical_run(struct physical_ctx *p_ctx,
     ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 0, 0, &match,
                     &ofpacts, hc_uuid);
 
-    /* Table 39, Priority 0.
+    /* Table 42, Priority 0.
      * =======================
      *
      * Resubmit packets that don't output to the ingress port (already checked
-     * in table 38) to the logical egress pipeline, clearing the logical
+     * in table 41) to the logical egress pipeline, clearing the logical
      * registers (for consistent behavior with packets that get tunneled). */
     match_init_catchall(&match);
     ofpbuf_clear(&ofpacts);
