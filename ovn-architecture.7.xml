@@ -1441,8 +1441,13 @@
       <p>
         OpenFlow tables 37 through 42 implement the <code>output</code> action
         in the logical ingress pipeline.  Specifically, table 37 serves as an
-        entry point to egress pipeline. Tables 38 and 39 are, for now,
-        placeholders for Path MTU Discovery implementation.
+        entry point to egress pipeline. Table 38 detects IP packets that are
+        too big for a corresponding interface. Table 39 produces ICMPv4
+        Fragmentation Needed (or ICMPv6 Too Big) errors and deliver them back
+        to the offending port. table 40 handles packets to remote hypervisors,
+        table 41 handles packets to the local hypervisor, and table 42 checks
+        whether packets whose logical ingress and egress port are the same
+        should be discarded.
       </p>
 
       <p>
