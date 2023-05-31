@@ -57,4 +57,6 @@ const struct ovsrec_port * ovsport_lookup_by_interfaces(
 const struct ovsrec_port * ovsport_lookup_by_interface(
         struct ovsdb_idl_index *, struct ovsrec_interface *);
 
+uint16_t get_iface_mtu(const struct ovsrec_interface *);
+
 #endif /* lib/ovsport.h */

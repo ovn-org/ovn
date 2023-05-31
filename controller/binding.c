@@ -1273,7 +1273,7 @@ claim_lport(const struct sbrec_port_binding *pb,
                 }
                 set_pb_chassis_in_sbrec(pb, chassis_rec, true);
             } else {
-                if_status_mgr_claim_iface(if_mgr, pb, chassis_rec,
+                if_status_mgr_claim_iface(if_mgr, pb, chassis_rec, iface_rec,
                                           sb_readonly);
             }
             register_claim_timestamp(pb->logical_port, now);
@@ -1288,7 +1288,7 @@ claim_lport(const struct sbrec_port_binding *pb,
                     !smap_get_bool(&iface_rec->external_ids,
                                    OVN_INSTALLED_EXT_ID, false)) {
                     if_status_mgr_claim_iface(if_mgr, pb, chassis_rec,
-                                              sb_readonly);
+                                              iface_rec, sb_readonly);
                 }
             }
         }

@@ -30,6 +30,7 @@ void if_status_mgr_destroy(struct if_status_mgr *);
 void if_status_mgr_claim_iface(struct if_status_mgr *,
                                const struct sbrec_port_binding *pb,
                                const struct sbrec_chassis *chassis_rec,
+                               const struct ovsrec_interface *iface_rec,
                                bool sb_readonly);
 void if_status_mgr_release_iface(struct if_status_mgr *, const char *iface_id);
 void if_status_mgr_delete_iface(struct if_status_mgr *, const char *iface_id);
@@ -56,5 +57,9 @@ bool if_status_handle_claims(struct if_status_mgr *mgr,
 void if_status_mgr_remove_ovn_installed(struct if_status_mgr *mgr,
                                         const char *name,
                                         const struct uuid *uuid);
+uint16_t if_status_mgr_iface_get_mtu(const struct if_status_mgr *mgr,
+                                     const char *iface_id);
+bool if_status_mgr_iface_update(const struct if_status_mgr *mgr,
+                                const struct ovsrec_interface *iface_rec);
 
 # endif /* controller/if-status.h */
