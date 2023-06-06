@@ -404,4 +404,9 @@ bool flow_collector_ids_lookup(const struct flow_collector_ids *, uint32_t);
 void flow_collector_ids_destroy(struct flow_collector_ids *);
 void flow_collector_ids_clear(struct flow_collector_ids *);
 
+/* The DNS format is 2 bytes longer than the "domain".
+ * It replaces every '.' with len of the next name.
+ * The returned pointer has to be freed by caller. */
+char *encode_fqdn_string(const char *fqdn, size_t *len);
+
 #endif /* OVN_UTIL_H */

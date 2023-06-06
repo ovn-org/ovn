@@ -270,6 +270,7 @@ BUILD_ASSERT_DECL(DHCP_OPT_HEADER_LEN == sizeof(struct dhcp_opt_header));
 #define DHCPV6_OPT_DOMAIN_SEARCH_CODE    24
 #define DHCPV6_OPT_IA_PD                 25
 #define DHCPV6_OPT_IA_PREFIX             26
+#define DHCPV6_OPT_FQDN_CODE             39
 #define DHCPV6_OPT_BOOT_FILE_URL         59
 #define DHCPV6_OPT_BOOT_FILE_URL_ALT    254
 
@@ -290,6 +291,15 @@ BUILD_ASSERT_DECL(DHCP_OPT_HEADER_LEN == sizeof(struct dhcp_opt_header));
 
 #define DHCPV6_OPT_BOOTFILE_NAME_ALT \
     DHCP_OPTION("bootfile_name_alt", DHCPV6_OPT_BOOT_FILE_URL_ALT, "str")
+
+#define DHCPV6_OPT_FQDN \
+    DHCP_OPTION("fqdn", DHCPV6_OPT_FQDN_CODE, "domain")
+
+/* DHCPv6 FQDN flags. RFC 4704 */
+#define DHCPV6_FQDN_FLAGS_UNDEFINED 0xff
+#define DHCPV6_FQDN_FLAGS_S 1 << 0
+#define DHCPV6_FQDN_FLAGS_O 1 << 1
+#define DHCPV6_FQDN_FLAGS_N 1 << 2
 
 OVS_PACKED(
 struct dhcpv6_opt_header {

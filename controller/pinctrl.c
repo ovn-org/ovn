@@ -2289,7 +2289,7 @@ exit:
 static bool
 compose_out_dhcpv6_opts(struct ofpbuf *userdata,
                         struct ofpbuf *out_dhcpv6_opts,
-                        ovs_be32 iaid, bool ipxe_req)
+                        ovs_be32 iaid, bool ipxe_req, uint8_t fqdn_flags)
 {
     while (userdata->size) {
         struct dhcpv6_opt_header *userdata_opt = ofpbuf_try_pull(
@@ -2413,6 +2413,24 @@ compose_out_dhcpv6_opts(struct ofpbuf *userdata,
             break;
         }
 
+        case DHCPV6_OPT_FQDN_CODE: {
+            if (fqdn_flags != DHCPV6_FQDN_FLAGS_UNDEFINED) {
+                struct dhcpv6_opt_header *header =
+                        ofpbuf_put_zeros(out_dhcpv6_opts, sizeof *header);
+                header->code = htons(DHCPV6_OPT_FQDN_CODE);
+                header->len = htons(size + 1);
+                uint8_t *flags = ofpbuf_put_zeros(out_dhcpv6_opts, 1);
+                /* Always set N to 1, if client requested S inform him that it
+                 * was overwritten by the server. */
+                *flags |= DHCPV6_FQDN_FLAGS_N;
+                if (fqdn_flags & DHCPV6_FQDN_FLAGS_S) {
+                    *flags |= DHCPV6_FQDN_FLAGS_O;
+                }
+                ofpbuf_put(out_dhcpv6_opts, userdata_opt_data, size);
+            }
+            break;
+        }
+
         default:
             return false;
         }
@@ -2501,6 +2519,7 @@ pinctrl_handle_put_dhcpv6_opts(
     size_t l4_len = dp_packet_l4_size(pkt_in);
     uint8_t *end = (uint8_t *)in_udp + MIN(udp_len, l4_len);
     bool ipxe_req = false;
+    uint8_t fqdn_flags = DHCPV6_FQDN_FLAGS_UNDEFINED;
     while (in_dhcpv6_data < end) {
         struct dhcpv6_opt_header const *in_opt =
              (struct dhcpv6_opt_header *)in_dhcpv6_data;
@@ -2525,6 +2544,10 @@ pinctrl_handle_put_dhcpv6_opts(
             break;
         }
 
+        case DHCPV6_OPT_FQDN_CODE:
+            fqdn_flags = *(in_dhcpv6_data + sizeof *in_opt);
+            break;
+
         default:
             break;
         }
@@ -2548,7 +2571,7 @@ pinctrl_handle_put_dhcpv6_opts(
         OFPBUF_STUB_INITIALIZER(out_ofpacts_dhcpv6_opts_stub);
 
     if (!compose_out_dhcpv6_opts(userdata, &out_dhcpv6_opts,
-                                 iaid, ipxe_req)) {
+                                 iaid, ipxe_req, fqdn_flags)) {
         VLOG_WARN_RL(&rl, "Invalid userdata");
         goto exit;
     }
@@ -2763,48 +2786,16 @@ dns_build_ptr_answer(
     struct ofpbuf *dns_answer, const uint8_t *in_queryname,
     uint16_t query_length, const char *answer_data)
 {
-    char *encoded_answer;
-    uint16_t encoded_answer_length;
-
     dns_build_base_answer(dns_answer, in_queryname, query_length,
                           DNS_QUERY_TYPE_PTR);
 
-    /* Initialize string 2 chars longer than real answer:
-     * first label length and terminating zero-length label.
-     * If the answer_data is - vm1tst.ovn.org, it will be encoded as
-     *  - 0010 (Total length which is 16)
-     *  - 06766d31747374 (vm1tst)
-     *  - 036f766e (ovn)
-     *  - 036f7267 (org
-     *  - 00 (zero length field) */
-    encoded_answer_length = strlen(answer_data) + 2;
-    encoded_answer = (char *)xzalloc(encoded_answer_length);
+    size_t encoded_len = 0;
+    char *encoded = encode_fqdn_string(answer_data, &encoded_len);
 
-    put_be16(dns_answer, htons(encoded_answer_length));
-    uint8_t label_len_index = 0;
-    uint16_t label_len = 0;
-    char *encoded_answer_ptr = (char *)encoded_answer + 1;
-    while (*answer_data) {
-        if (*answer_data == '.') {
-            /* Label has ended.  Update the length of the label. */
-            encoded_answer[label_len_index] = label_len;
-            label_len_index += (label_len + 1);
-            label_len = 0; /* Init to 0 for the next label. */
-        } else {
-            *encoded_answer_ptr =  *answer_data;
-            label_len++;
-        }
-        encoded_answer_ptr++;
-        answer_data++;
-    }
+    put_be16(dns_answer, htons(encoded_len));
+    ofpbuf_put(dns_answer, encoded, encoded_len);
 
-    /* This is required for the last label if it doesn't end with '.' */
-    if (label_len) {
-        encoded_answer[label_len_index] = label_len;
-    }
-
-    ofpbuf_put(dns_answer, encoded_answer, encoded_answer_length);
-    free(encoded_answer);
+    free(encoded);
 }
 
 /* Called with in the pinctrl_handler thread context. */

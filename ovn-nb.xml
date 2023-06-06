@@ -4206,6 +4206,13 @@ or
             way. Default value for this option is false.
           </p>
         </column>
+
+        <column name="options" key="fqdn">
+          <p>
+            The DHCPv6 option code for this option is 39.
+            If set, indicates the DHCPv6 option "FQDN".
+          </p>
+        </column>
       </group>
     </group>
 

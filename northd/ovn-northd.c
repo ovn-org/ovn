@@ -274,7 +274,8 @@ static struct gen_opts_map supported_dhcpv6_opts[] = {
     DHCPV6_OPT_DOMAIN_SEARCH,
     DHCPV6_OPT_DNS_SERVER,
     DHCPV6_OPT_BOOTFILE_NAME,
-    DHCPV6_OPT_BOOTFILE_NAME_ALT
+    DHCPV6_OPT_BOOTFILE_NAME_ALT,
+    DHCPV6_OPT_FQDN,
 };
 
 static bool

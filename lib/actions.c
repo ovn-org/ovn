@@ -2470,7 +2470,8 @@ parse_gen_opt(struct action_context *ctx, struct ovnact_gen_option *o,
     }
 
     if (!strcmp(o->option->type, "str") ||
-        !strcmp(o->option->type, "domains")) {
+        !strcmp(o->option->type, "domains") ||
+        !strcmp(o->option->type, "domain")) {
         if (o->value.type != EXPR_C_STRING) {
             lexer_error(ctx->lexer, "%s option %s requires string value.",
                         opts_type, o->option->name);
@@ -2903,6 +2904,12 @@ encode_put_dhcpv6_option(const struct ovnact_gen_option *o,
         size = strlen(c->string);
         opt->len = htons(size);
         ofpbuf_put(ofpacts, c->string, size);
+    } else if (!strcmp(o->option->type, "domain")) {
+        char *encoded = encode_fqdn_string(c->string, &size);
+        opt->len = htons(size);
+        ofpbuf_put(ofpacts, encoded, size);
+
+        free(encoded);
     }
 }
 

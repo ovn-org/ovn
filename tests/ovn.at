@@ -1697,6 +1697,9 @@ reg1[0] = put_dhcpv6_opts(bootfile_name="https://127.0.0.1/boot.ipxe");
 reg1[0] = put_dhcpv6_opts(bootfile_name_alt="https://127.0.0.1/boot.ipxe");
     formats as reg1[0] = put_dhcpv6_opts(bootfile_name_alt = "https://127.0.0.1/boot.ipxe");
     encodes as controller(userdata=00.00.00.05.00.00.00.00.00.01.de.10.00.00.00.40.00.fe.00.1b.68.74.74.70.73.3a.2f.2f.31.32.37.2e.30.2e.30.2e.31.2f.62.6f.6f.74.2e.69.70.78.65,pause)
+reg1[0] = put_dhcpv6_opts(fqdn="ovn.org");
+    formats as reg1[0] = put_dhcpv6_opts(fqdn = "ovn.org");
+    encodes as controller(userdata=00.00.00.05.00.00.00.00.00.01.de.10.00.00.00.40.00.27.00.09.03.6f.76.6e.03.6f.72.67.00,pause)
 
 # lookup_nd
 reg2[0] = lookup_nd(inport, ip6.dst, eth.src);
@@ -7109,6 +7112,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([dhcpv6 : 1 HV, 2 LS, 5 LSPs])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -7197,61 +7201,56 @@ trim_zeros() {
 # packet should be received twice (one from ovn-controller and the other
 # from the "ovs-ofctl monitor br-int resume"
 test_dhcpv6() {
-    local inport=$1 src_mac=$2 src_lla=$3 msg_code=$4 offer_ip=$5 ipxe=$6
-    if test $ipxe -eq 2; then
-        req_len=34
-    elif test $msg_code != 0b; then
-        req_len=2a
-    else
-        req_len=1a
-    fi
-    local request=ffffffffffff${src_mac}86dd6000000000${req_len}1101${src_lla}
-    # dst ip ff02::1:2
-    request=${request}ff020000000000000000000000010002
-    # udp header and dhcpv6 header
-    request=${request}0222022300${req_len}ffff${msg_code}010203
-    # Client identifier
-    request=${request}0001000a00030001${src_mac}
+    local inport=$1 src_mac=$2 src_lla=$3 msg_code=$4 offer_ip=$5 boot_file=$6
+    local fqdn=$7
+
+    local req_scapy="Ether(dst='ff:ff:ff:ff:ff:ff', src='${src_mac}')/ \
+                     IPv6(dst='ff02::1:2', src='${src_lla}')/ \
+                     UDP(sport=546, dport=547)/ \
+                     DHCP6(msgtype=${msg_code}, trid=0x010203)/ \
+                     DHCP6OptClientId(duid=DUID_LL(lladdr='${src_mac}'))"
+
     # Add IA-NA (Identity Association for Non Temporary Address) if msg_code
     # is not 11 (information request packet)
-    if test $msg_code != 0b; then
-        request=${request}0003000c0102030400000e1000001518
+    if test $msg_code != 11; then
+        req_scapy="${req_scapy}/DHCP6OptIA_NA(iaid=0x01020304, T1=3600, T2=5400)"
     fi
-    if test $ipxe -eq 2; then
-        request=${request}000f0006000669505845
+    if test "$boot_file" = "bootfile_name"; then
+        local uc_data="USER_CLASS_DATA(data=b'iPXE')"
+        req_scapy="${req_scapy}/DHCP6OptUserClass(userclassdata=[[${uc_data}]])"
     fi
-    shift; shift; shift; shift; shift; shift;
+    if test -n "$fqdn"; then
+        req_scapy="${req_scapy}/DHCP6OptClientFQDN(flags=0x01, fqdn=b'test')"
+    fi
+    request=$(fmt_pkt "${req_scapy}")
+    shift; shift; shift; shift; shift; shift; shift;
     if test $offer_ip != 0; then
-        local server_mac=000000100001
-        local server_lla=fe80000000000000020000fffe100001
-        local reply_code=07
-        if test $msg_code = 01; then
-            reply_code=02
+        local reply_code=7
+        if test $msg_code = 1; then
+            reply_code=2
         fi
-        local msg_len=54
-        if test $ipxe -eq 1; then
-            msg_len=69
-        elif test $ipxe -eq 2; then
-            msg_len=65
-        elif test $offer_ip = 1; then
-            msg_len=28
-        fi
-        local reply=${src_mac}${server_mac}86dd6000000000${msg_len}1101${server_lla}${src_lla}
-        # udp header and dhcpv6 header
-        reply=${reply}0223022200${msg_len}ffff${reply_code}010203
-        # Client identifier
-        reply=${reply}0001000a00030001${src_mac}
-        # IA-NA
+
+        local rep_scapy="Ether(dst='${src_mac}', src='00:00:00:10:00:01')/ \
+                         IPv6(dst='${src_lla}', src='fe80::0200:00ff:fe10:0001')/ \
+                         UDP(sport=547, dport=546)/ \
+                         DHCP6(msgtype=${reply_code}, trid=0x010203)/ \
+                         DHCP6OptClientId(duid=DUID_LL(lladdr='${src_mac}'))"
+
         if test $offer_ip != 1; then
-            reply=${reply}0003002801020304ffffffffffffffff00050018${offer_ip}ffffffffffffffff
+            local ip_scapy="DHCP6OptIAAddress(addr='${offer_ip}', \
+                            preflft=0xffffffff, validlft=0xffffffff)"
+            rep_scapy="${rep_scapy}/ \
+                       DHCP6OptIA_NA(iaid=0x01020304, T1=0xffffffff, \
+                       T2=0xffffffff, ianaopts=[[${ip_scapy}]])"
         fi
-        if test $ipxe -eq 1; then
-            reply=${reply}003b0011626f6f7466696c655f6e616d655f616c74
-        elif test $ipxe -eq 2; then
-            reply=${reply}003b000d626f6f7466696c655f6e616d65
+        if test -n "$boot_file"; then
+            rep_scapy="${rep_scapy}/DHCP6OptBootFileUrl(optdata=b'${boot_file}')"
         fi
-        # Server identifier
-        reply=${reply}0002000a00030001${server_mac}
+        if test -n "$fqdn"; then
+            rep_scapy="${rep_scapy}/DHCP6OptClientFQDN(flags=0x06, fqdn=b'${fqdn}')"
+        fi
+        rep_scapy="${rep_scapy}/DHCP6OptServerId(duid=DUID_LL(lladdr='00:00:00:10:00:01'))"
+        reply=$(fmt_pkt "${rep_scapy}")
         echo $reply | trim_zeros >> $inport.expected
     else
         for outport; do
@@ -7275,16 +7274,16 @@ echo "---------------------"
 ovn-sbctl list logical_flow
 echo "---------------------"
 
-ovn-sbctl dump-flows > sbflows
+#ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
 
 echo "------ hv1 dump ----------"
 as hv1 ovs-ofctl dump-flows br-int
 
-src_mac=f00000000001
-src_lla=fe80000000000000f20000fffe000001
-offer_ip=ae700000000000000000000000000004
-test_dhcpv6 1 $src_mac $src_lla 01 $offer_ip 0
+src_mac="f0:00:00:00:00:01"
+src_lla="fe80::f200:00ff:fe00:0001"
+offer_ip="ae70::4"
+test_dhcpv6 1 $src_mac $src_lla 1 $offer_ip "" ""
 
 # NXT_RESUMEs should be 1.
 OVS_WAIT_UNTIL([test 1 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -7307,12 +7306,12 @@ rm  1.expected
 reset_pcap_file hv1-vif1 hv1/vif1
 reset_pcap_file hv1-vif2 hv1/vif2
 
-src_mac=f00000000002
-src_lla=fe80000000000000f20000fffe000002
-offer_ip=ae700000000000000000000000000005
+src_mac="f0:00:00:00:00:02"
+src_lla="fe80::f200:00ff:fe00:0002"
+offer_ip="ae70::5"
 # Set invalid msg_type
 
-test_dhcpv6 2 $src_mac $src_lla 10 0 0 1 1
+test_dhcpv6 2 $src_mac $src_lla 16 0 "" "" 1 1
 
 # NXT_RESUMEs should be 2.
 OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -7331,9 +7330,9 @@ AT_CHECK([cat 1.packets], [0], [expout])
 # There should be no DHCPv6 reply from ovn-controller and the request packet
 # should be received by ls2-lp2.
 
-src_mac=f00000000003
-src_lla=fe80000000000000f20000fffe000003
-test_dhcpv6 3 $src_mac $src_lla 01 0 0 4
+src_mac="f0:00:00:00:00:03"
+src_lla="fe80::f200:00ff:fe00:0003"
+test_dhcpv6 3 $src_mac $src_lla 1 0 "" "" 4
 
 # NXT_RESUMEs should be 2 only.
 OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -7349,10 +7348,10 @@ AT_CHECK([cat 4.packets], [0], [expout])
 
 # Send DHCPv6 packet on ls1-lp3. native DHCPv6 works as stateless mode for this port.
 # The DHCPv6 reply shouldn't contain offer_ip.
-src_mac=f00000000022
-src_lla=fe80000000000000f20000fffe000022
+src_mac="f0:00:00:00:00:22"
+src_lla="fe80::f200:00ff:fe00:0022"
 reset_pcap_file hv1-vif5 hv1/vif5
-test_dhcpv6 5 $src_mac $src_lla 01 1 0 5
+test_dhcpv6 5 $src_mac $src_lla 1 1 "" "" 5
 
 # NXT_RESUMEs should be 3.
 OVS_WAIT_UNTIL([test 3 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -7364,11 +7363,11 @@ AT_CHECK([cat 5.packets | cut -c 1-120,125- ], [0], [expout])
 
 # Send DHCPv6 information request (code 11) on ls1-lp3. The DHCPv6 reply
 # shouldn't contain offer_ip
-src_mac=f00000000022
-src_lla=fe80000000000000f20000fffe000022
+src_mac="f0:00:00:00:00:22"
+src_lla="fe80::f200:00ff:fe00:0022"
 reset_pcap_file hv1-vif5 hv1/vif5
 rm -f 5.expected
-test_dhcpv6 5 $src_mac $src_lla 0b 1 0 5
+test_dhcpv6 5 $src_mac $src_lla 11 1 "" "" 5
 
 # NXT_RESUMEs should be 4.
 OVS_WAIT_UNTIL([test 4 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
@@ -7389,11 +7388,11 @@ ovn-nbctl lsp-set-dhcpv6-options ls1-lp2 ${d1}
 
 reset_pcap_file hv1-vif2 hv1/vif2
 
-src_mac=f00000000002
-src_lla=fe80000000000000f20000fffe000002
-offer_ip=ae700000000000000000000000000005
+src_mac="f0:00:00:00:00:02"
+src_lla="fe80::f200:00ff:fe00:0002"
+offer_ip="ae70::5"
 
-test_dhcpv6 2 $src_mac $src_lla 01 $offer_ip 1
+test_dhcpv6 2 $src_mac $src_lla 1 $offer_ip "bootfile_name_alt" ""
 # NXT_RESUMEs should be 5.
 OVS_WAIT_UNTIL([test 5 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
@@ -7407,9 +7406,27 @@ AT_CHECK([cat 2.packets | cut -c 1-120,125- ], [0], [expout])
 reset_pcap_file hv1-vif2 hv1/vif2
 rm 2.packets 2.expected
 
-test_dhcpv6 2 $src_mac $src_lla 01 $offer_ip 2
+test_dhcpv6 2 $src_mac $src_lla 1 $offer_ip "bootfile_name" ""
 # NXT_RESUMEs should be 6.
 OVS_WAIT_UNTIL([test 6 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap | trim_zeros > 2.packets
+cat 2.expected | cut -c 1-120,125- > expout
+AT_CHECK([cat 2.packets | cut -c 1-120,125- ], [0], [expout])
+
+ovn-nbctl --all destroy dhcp-option
+d1="$(ovn-nbctl create DHCP_Options cidr="ae70\:\:/64")"
+ovn-nbctl dhcp-options-set-options $d1 \
+    server_id=00:00:00:10:00:01 \
+    fqdn=\"ovn.org\"
+ovn-nbctl --wait=hv lsp-set-dhcpv6-options ls1-lp2 ${d1}
+
+reset_pcap_file hv1-vif2 hv1/vif2
+rm 2.packets 2.expected
+
+test_dhcpv6 2 $src_mac $src_lla 1 $offer_ip "" "ovn.org"
+# NXT_RESUMEs should be 7.
+OVS_WAIT_UNTIL([test 7 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap | trim_zeros > 2.packets
 cat 2.expected | cut -c 1-120,125- > expout

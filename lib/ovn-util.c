@@ -1141,3 +1141,30 @@ void flow_collector_ids_clear(struct flow_collector_ids *ids)
     flow_collector_ids_destroy(ids);
     flow_collector_ids_init(ids);
 }
+
+char *
+encode_fqdn_string(const char *fqdn, size_t *len)
+{
+
+    size_t domain_len = strlen(fqdn);
+    *len = domain_len + 2;
+    char *encoded = xzalloc(*len);
+
+    int8_t label_len = 0;
+    for (size_t i = 0; i < domain_len; i++) {
+        if (fqdn[i] == '.') {
+            encoded[i - label_len] = label_len;
+            label_len = 0;
+        } else {
+            encoded[i + 1] = fqdn[i];
+            label_len++;
+        }
+    }
+
+    /* This is required for the last label if it doesn't end with '.' */
+    if (label_len) {
+        encoded[domain_len - label_len] = label_len;
+    }
+
+    return encoded;
+}
