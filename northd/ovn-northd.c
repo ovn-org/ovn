@@ -33,6 +33,7 @@
 #include "lib/ovn-l7.h"
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-sb-idl.h"
+#include "lib/ovs-rcu.h"
 #include "openvswitch/poll-loop.h"
 #include "simap.h"
 #include "stopwatch.h"
@@ -1030,6 +1031,8 @@ main(int argc, char *argv[])
     ovsdb_idl_loop_destroy(&ovnnb_idl_loop);
     ovsdb_idl_loop_destroy(&ovnsb_idl_loop);
     service_stop();
+    run_update_worker_pool(0);
+    ovsrcu_exit();
 
     exit(res);
 }

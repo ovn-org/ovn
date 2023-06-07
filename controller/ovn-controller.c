@@ -5620,6 +5620,7 @@ loop_done:
         free(cli_system_id);
     }
     service_stop();
+    ovsrcu_exit();
 
     exit(retval);
 }
