@@ -42,23 +42,21 @@ within OVN, but is broadly applied in the following fashion:
   development branch.
 - Maintainers backport changes from a development branch to release branches.
 
-With regards to OVN user space code and code that does not comprise
-the Linux datapath and compat code, the development branch is `main` in the
-OVN repository. Patches are applied first to this branch, then to the
-most recent `branch-X.Y`, then earlier `branch-X.Z`, and so on. The most common
-kind of patch in this category is a bugfix which affects main and other
-branches.
+The development branch is `main` in the OVN repository. Patches are applied
+first to this branch, then to the most recent `branch-X.Y`, then earlier
+`branch-X.Z`, and so on. The most common kind of patch in this category is
+a bugfix which affects main and other branches.
 
-Changes to userspace components
--------------------------------
+Backport Policy
+---------------
 
 Patches which are fixing bugs should be considered for backporting from
 `main` to release branches. OVN contributors submit their patches
-targeted to the `main` branch, using the ``Fixes`` tag described in
+targeted to the `main` branch, using the ``Fixes`` tag desribed in
 :doc:`submitting-patches`. The maintainer first applies the patch to `main`,
-then backports the patch to each older affected tree, as far back as it goes or
-at least to all currently supported branches. This is usually each branch back
-to the most recent LTS release branch.
+then backports the patch to each older affected tree, as far back as it goes
+or at least to all currently supported branches. This is usually each branch
+back to the most recent LTS release branch.
 
 If the fix only affects a particular branch and not `main`, contributors
 should submit the change with the target branch listed in the subject line of
@@ -79,39 +77,7 @@ Submission
 ~~~~~~~~~~
 
 Once the patches are all assembled and working on the OVN tree, they
-need to be formatted again using ``git format-patch``. The common format for
-commit messages for Linux backport patches is as follows:
-
-::
-
-    datapath: Remove incorrect WARN_ONCE().
-
-    Upstream commit:
-        commit c6b2aafffc6934be72d96855c9a1d88970597fbc
-        Author: Jarno Rajahalme <jarno@ovn.org>
-        Date:   Mon Aug 1 19:08:29 2016 -0700
-
-        openvswitch: Remove incorrect WARN_ONCE().
-
-        ovs_ct_find_existing() issues a warning if an existing conntrack entry
-        classified as IP_CT_NEW is found, with the premise that this should
-        not happen.  However, a newly confirmed, non-expected conntrack entry
-        remains IP_CT_NEW as long as no reply direction traffic is seen.  This
-        has resulted into somewhat confusing kernel log messages.  This patch
-        removes this check and warning.
-
-        Fixes: 289f2253 ("openvswitch: Find existing conntrack entry after upcall.")
-        Suggested-by: Joe Stringer <joe@ovn.org>
-        Signed-off-by: Jarno Rajahalme <jarno@ovn.org>
-        Acked-by: Joe Stringer <joe@ovn.org>
-
-    Signed-off-by: Jarno Rajahalme <jarno@ovn.org>
-
-The upstream commit SHA should be the one that appears in Linus' tree so that
-reviewers can compare the backported patch with the one upstream.  Note that
-the subject line for the backported patch replaces the original patch's
-``openvswitch`` prefix with ``datapath``. Patches which only affect the
-``datapath/linux/compat`` directory should be prefixed with ``compat``.
+need to be formatted again using ``git format-patch``.
 
 The contents of a backport should be equivalent to the changes made by the
 original patch; explain any variations from the original patch in the commit
