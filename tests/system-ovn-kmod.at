@@ -176,7 +176,7 @@ ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:12345,192
 
 ovn-nbctl list load_balancer
 ovn-sbctl dump-flows R2
-OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=46 | grep 'nat(src=20.0.0.2)'])
+OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=45 | grep 'nat(src=20.0.0.2)'])
 
 dnl Test load-balancing that includes L4 ports in NAT.
 for i in `seq 1 20`; do
