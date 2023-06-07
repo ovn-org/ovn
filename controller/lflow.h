@@ -67,15 +67,17 @@ struct uuid;
 
 /* Start of LOG_PIPELINE_LEN tables. */
 #define OFTABLE_LOG_INGRESS_PIPELINE      8
-#define OFTABLE_OUTPUT_INIT              37
-#define OFTABLE_OUTPUT_LARGE_PKT_DETECT  38
-#define OFTABLE_OUTPUT_LARGE_PKT_PROCESS 39
-#define OFTABLE_REMOTE_OUTPUT            40
-#define OFTABLE_LOCAL_OUTPUT             41
-#define OFTABLE_CHECK_LOOPBACK           42
+#define OFTABLE_OUTPUT_LARGE_PKT_DETECT  37
+#define OFTABLE_OUTPUT_LARGE_PKT_PROCESS 38
+#define OFTABLE_REMOTE_OUTPUT            39
+#define OFTABLE_LOCAL_OUTPUT             40
+#define OFTABLE_CHECK_LOOPBACK           41
+
+/* Start of the OUTPUT section of the pipeline. */
+#define OFTABLE_OUTPUT_INIT OFTABLE_OUTPUT_LARGE_PKT_DETECT
 
 /* Start of LOG_PIPELINE_LEN tables. */
-#define OFTABLE_LOG_EGRESS_PIPELINE      43
+#define OFTABLE_LOG_EGRESS_PIPELINE      42
 #define OFTABLE_SAVE_INPORT              64
 #define OFTABLE_LOG_TO_PHY               65
 #define OFTABLE_MAC_BINDING              66
