@@ -22,7 +22,6 @@
 #include "openvswitch/util.h"
 
 #include "en-sync-sb.h"
-#include "include/ovn/expr.h"
 #include "lib/inc-proc-eng.h"
 #include "lib/lb.h"
 #include "lib/ovn-nb-idl.h"
@@ -34,8 +33,15 @@
 
 VLOG_DEFINE_THIS_MODULE(en_sync_to_sb);
 
+/* This is just a type wrapper to enforce that it has to be sorted. */
+struct sorted_addresses {
+    const char **arr;
+    size_t n;
+};
+
+
 static void sync_addr_set(struct ovsdb_idl_txn *ovnsb_txn, const char *name,
-                          const char **addrs, size_t n_addrs,
+                          struct sorted_addresses *addresses,
                           struct shash *sb_address_sets);
 static void sync_addr_sets(struct ovsdb_idl_txn *ovnsb_txn,
                            const struct nbrec_address_set_table *,
@@ -44,11 +50,17 @@ static void sync_addr_sets(struct ovsdb_idl_txn *ovnsb_txn,
                            const struct ovn_datapaths *lr_datapaths);
 static const struct sbrec_address_set *sb_address_set_lookup_by_name(
     struct ovsdb_idl_index *, const char *name);
-static void update_sb_addr_set(const char **nb_addresses, size_t n_addresses,
+static void update_sb_addr_set(struct sorted_addresses *,
                                const struct sbrec_address_set *);
 static void build_port_group_address_set(const struct nbrec_port_group *,
                                          struct svec *ipv4_addrs,
                                          struct svec *ipv6_addrs);
+static struct sorted_addresses
+sorted_addresses_from_nbrec(const struct nbrec_address_set *nb_as);
+static struct sorted_addresses
+sorted_addresses_from_svec(struct svec *addresses);
+static struct sorted_addresses
+sorted_addresses_from_sset(struct sset *addresses);
 
 void *
 en_sync_to_sb_init(struct engine_node *node OVS_UNUSED,
@@ -133,8 +145,9 @@ sync_to_sb_addr_set_nb_address_set_handler(struct engine_node *node,
         if (!sb_addr_set) {
             return false;
         }
-        update_sb_addr_set((const char **) nb_addr_set->addresses,
-                           nb_addr_set->n_addresses, sb_addr_set);
+        struct sorted_addresses addrs =
+                sorted_addresses_from_nbrec(nb_addr_set);
+        update_sb_addr_set(&addrs, sb_addr_set);
     }
 
     return true;
@@ -180,10 +193,14 @@ sync_to_sb_addr_set_nb_port_group_handler(struct engine_node *node,
         struct svec ipv4_addrs = SVEC_EMPTY_INITIALIZER;
         struct svec ipv6_addrs = SVEC_EMPTY_INITIALIZER;
         build_port_group_address_set(nb_pg, &ipv4_addrs, &ipv6_addrs);
-        update_sb_addr_set((const char **) ipv4_addrs.names, ipv4_addrs.n,
-                           sb_addr_set_v4);
-        update_sb_addr_set((const char **) ipv6_addrs.names, ipv6_addrs.n,
-                           sb_addr_set_v6);
+
+        struct sorted_addresses ipv4_addrs_sorted =
+                sorted_addresses_from_svec(&ipv4_addrs);
+        struct sorted_addresses ipv6_addrs_sorted =
+                sorted_addresses_from_svec(&ipv6_addrs);
+
+        update_sb_addr_set(&ipv4_addrs_sorted, sb_addr_set_v4);
+        update_sb_addr_set(&ipv6_addrs_sorted, sb_addr_set_v6);
 
         free(ipv4_addrs_name);
         free(ipv6_addrs_name);
@@ -197,7 +214,7 @@ sync_to_sb_addr_set_nb_port_group_handler(struct engine_node *node,
 /* static functions. */
 static void
 sync_addr_set(struct ovsdb_idl_txn *ovnsb_txn, const char *name,
-              const char **addrs, size_t n_addrs,
+              struct sorted_addresses *addresses,
               struct shash *sb_address_sets)
 {
     const struct sbrec_address_set *sb_address_set;
@@ -206,10 +223,10 @@ sync_addr_set(struct ovsdb_idl_txn *ovnsb_txn, const char *name,
     if (!sb_address_set) {
         sb_address_set = sbrec_address_set_insert(ovnsb_txn);
         sbrec_address_set_set_name(sb_address_set, name);
-        sbrec_address_set_set_addresses(sb_address_set,
-                                        addrs, n_addrs);
+        sbrec_address_set_set_addresses(sb_address_set, addresses->arr,
+                                        addresses->n);
     } else {
-        update_sb_addr_set(addrs, n_addrs, sb_address_set);
+        update_sb_addr_set(addresses, sb_address_set);
     }
 }
 
@@ -244,8 +261,11 @@ sync_addr_sets(struct ovsdb_idl_txn *ovnsb_txn,
 
     /* Service monitor MAC. */
     const char *svc_monitor_macp = northd_get_svc_monitor_mac();
-    sync_addr_set(ovnsb_txn, "svc_monitor_mac", &svc_monitor_macp, 1,
-                     &sb_address_sets);
+    struct sorted_addresses svc = {
+            .arr = &svc_monitor_macp,
+            .n = 1,
+    };
+    sync_addr_set(ovnsb_txn, "svc_monitor_mac", &svc, &sb_address_sets);
 
     /* sync port group generated address sets first */
     const struct nbrec_port_group *nb_port_group;
@@ -256,14 +276,16 @@ sync_addr_sets(struct ovsdb_idl_txn *ovnsb_txn,
         build_port_group_address_set(nb_port_group, &ipv4_addrs, &ipv6_addrs);
         char *ipv4_addrs_name = xasprintf("%s_ip4", nb_port_group->name);
         char *ipv6_addrs_name = xasprintf("%s_ip6", nb_port_group->name);
+
+        struct sorted_addresses ipv4_addrs_sorted =
+                sorted_addresses_from_svec(&ipv4_addrs);
+        struct sorted_addresses ipv6_addrs_sorted =
+                sorted_addresses_from_svec(&ipv6_addrs);
+
         sync_addr_set(ovnsb_txn, ipv4_addrs_name,
-                      /* "char **" is not compatible with "const char **" */
-                      (const char **) ipv4_addrs.names,
-                      ipv4_addrs.n, &sb_address_sets);
+                      &ipv4_addrs_sorted, &sb_address_sets);
         sync_addr_set(ovnsb_txn, ipv6_addrs_name,
-                      /* "char **" is not compatible with "const char **" */
-                      (const char **) ipv6_addrs.names,
-                      ipv6_addrs.n, &sb_address_sets);
+                      &ipv6_addrs_sorted, &sb_address_sets);
         free(ipv4_addrs_name);
         free(ipv6_addrs_name);
         svec_destroy(&ipv4_addrs);
@@ -278,27 +300,26 @@ sync_addr_sets(struct ovsdb_idl_txn *ovnsb_txn,
         if (sset_count(&od->lb_ips->ips_v4_reachable)) {
             char *ipv4_addrs_name = lr_lb_address_set_name(od->tunnel_key,
                                                            AF_INET);
-            const char **ipv4_addrs =
-                sset_array(&od->lb_ips->ips_v4_reachable);
 
-            sync_addr_set(ovnsb_txn, ipv4_addrs_name, ipv4_addrs,
-                          sset_count(&od->lb_ips->ips_v4_reachable),
-                          &sb_address_sets);
+            struct sorted_addresses ipv4_addrs_sorted =
+                    sorted_addresses_from_sset(&od->lb_ips->ips_v4_reachable);
+
+            sync_addr_set(ovnsb_txn, ipv4_addrs_name,
+                          &ipv4_addrs_sorted, &sb_address_sets);
+            free(ipv4_addrs_sorted.arr);
             free(ipv4_addrs_name);
-            free(ipv4_addrs);
         }
 
         if (sset_count(&od->lb_ips->ips_v6_reachable)) {
             char *ipv6_addrs_name = lr_lb_address_set_name(od->tunnel_key,
                                                            AF_INET6);
-            const char **ipv6_addrs =
-                sset_array(&od->lb_ips->ips_v6_reachable);
+            struct sorted_addresses ipv6_addrs_sorted =
+                    sorted_addresses_from_sset(&od->lb_ips->ips_v6_reachable);
 
-            sync_addr_set(ovnsb_txn, ipv6_addrs_name, ipv6_addrs,
-                          sset_count(&od->lb_ips->ips_v6_reachable),
-                          &sb_address_sets);
+            sync_addr_set(ovnsb_txn, ipv6_addrs_name,
+                          &ipv6_addrs_sorted, &sb_address_sets);
+            free(ipv6_addrs_sorted.arr);
             free(ipv6_addrs_name);
-            free(ipv6_addrs);
         }
     }
 
@@ -307,10 +328,10 @@ sync_addr_sets(struct ovsdb_idl_txn *ovnsb_txn,
     const struct nbrec_address_set *nb_address_set;
     NBREC_ADDRESS_SET_TABLE_FOR_EACH (nb_address_set,
                                       nb_address_set_table) {
+        struct sorted_addresses addrs =
+                sorted_addresses_from_nbrec(nb_address_set);
         sync_addr_set(ovnsb_txn, nb_address_set->name,
-            /* "char **" is not compatible with "const char **" */
-            (const char **) nb_address_set->addresses,
-            nb_address_set->n_addresses, &sb_address_sets);
+                      &addrs, &sb_address_sets);
     }
 
     struct shash_node *node;
@@ -322,48 +343,39 @@ sync_addr_sets(struct ovsdb_idl_txn *ovnsb_txn,
 }
 
 static void
-update_sb_addr_set(const char **nb_addresses, size_t n_addresses,
+update_sb_addr_set(struct sorted_addresses *nb_addresses,
                    const struct sbrec_address_set *sb_as)
 {
-    struct expr_constant_set *cs_nb_as =
-        expr_constant_set_create_integers(
-            (const char *const *) nb_addresses, n_addresses);
-    struct expr_constant_set *cs_sb_as =
-        expr_constant_set_create_integers(
-            (const char *const *) sb_as->addresses, sb_as->n_addresses);
+    size_t nb_index, sb_index;
 
-    struct expr_constant_set *addr_added = NULL;
-    struct expr_constant_set *addr_deleted = NULL;
-    expr_constant_set_integers_diff(cs_sb_as, cs_nb_as, &addr_added,
-                                    &addr_deleted);
+    const char **nb_arr = nb_addresses->arr;
+    char **sb_arr = sb_as->addresses;
+    size_t nb_n = nb_addresses->n;
+    size_t sb_n = sb_as->n_addresses;
 
-    struct ds ds = DS_EMPTY_INITIALIZER;
-    if (addr_added && addr_added->n_values) {
-        for (size_t i = 0; i < addr_added->n_values; i++) {
-            ds_clear(&ds);
-            expr_constant_format(&addr_added->values[i], EXPR_C_INTEGER, &ds);
-            sbrec_address_set_update_addresses_addvalue(sb_as, ds_cstr(&ds));
+    for (nb_index = sb_index = 0; nb_index < nb_n && sb_index < sb_n;) {
+        int cmp = strcmp(nb_arr[nb_index], sb_arr[sb_index]);
+        if (cmp < 0) {
+            sbrec_address_set_update_addresses_addvalue(sb_as,
+                                                        nb_arr[nb_index]);
+            nb_index++;
+        } else if (cmp > 0) {
+            sbrec_address_set_update_addresses_delvalue(sb_as,
+                                                        sb_arr[sb_index]);
+            sb_index++;
+        } else {
+            nb_index++;
+            sb_index++;
         }
     }
 
-    if (addr_deleted && addr_deleted->n_values) {
-        for (size_t i = 0; i < addr_deleted->n_values; i++) {
-            ds_clear(&ds);
-            expr_constant_format(&addr_deleted->values[i],
-                                 EXPR_C_INTEGER, &ds);
-            sbrec_address_set_update_addresses_delvalue(sb_as, ds_cstr(&ds));
-        }
+    for (; nb_index < nb_n; nb_index++) {
+        sbrec_address_set_update_addresses_addvalue(sb_as, nb_arr[nb_index]);
     }
 
-    ds_destroy(&ds);
-    expr_constant_set_destroy(cs_nb_as);
-    free(cs_nb_as);
-    expr_constant_set_destroy(cs_sb_as);
-    free(cs_sb_as);
-    expr_constant_set_destroy(addr_added);
-    free(addr_added);
-    expr_constant_set_destroy(addr_deleted);
-    free(addr_deleted);
+    for (; sb_index < sb_n; sb_index++) {
+        sbrec_address_set_update_addresses_delvalue(sb_as, sb_arr[sb_index]);
+    }
 }
 
 static void
@@ -401,4 +413,33 @@ sb_address_set_lookup_by_name(struct ovsdb_idl_index *sbrec_addr_set_by_name,
     sbrec_address_set_index_destroy_row(target);
 
     return retval;
+}
+
+static struct sorted_addresses
+sorted_addresses_from_nbrec(const struct nbrec_address_set *nb_as)
+{
+    /* The DB is already sorted. */
+    return (struct sorted_addresses) {
+        .arr = (const char **) nb_as->addresses,
+        .n = nb_as->n_addresses,
+    };
+}
+
+static struct sorted_addresses
+sorted_addresses_from_svec(struct svec *addresses)
+{
+    svec_sort(addresses);
+    return (struct sorted_addresses) {
+        .arr = (const char **) addresses->names,
+        .n = addresses->n,
+    };
+}
+
+static struct sorted_addresses
+sorted_addresses_from_sset(struct sset *addresses)
+{
+    return (struct sorted_addresses) {
+        .arr = sset_sort(addresses),
+        .n = sset_count(addresses),
+    };
 }
