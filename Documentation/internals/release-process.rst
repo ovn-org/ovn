@@ -152,6 +152,20 @@ approximate:
 | T + 6         | Sep 1, Mar 1, ...   | Release version x.y.0                |
 +---------------+---------------------+--------------------------------------+
 
+Subsequent Releases
+~~~~~~~~~~~~~~~~~~~
+
+Beyond the .0 release of an OVN version, we will schedule further regular
+releases from its development branch. The most recent release branch, as well
+as the current LTS branch, will receive new releases every two months. If the
+most recent release branch is an LTS branch, then that branch alone will have
+releases made every two months. Other standard-term support branches that are
+still under support  will receive new releases every three months. If for some
+reason, no changes occur to a supported OVN branch during a release period,
+then no release will be made on that branch for that period. Therefore, there
+is no guarantee about the exact number of releases to be expected for any given
+OVN version.
+
 Release Calendar
 ----------------
 
