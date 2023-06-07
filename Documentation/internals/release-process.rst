@@ -120,19 +120,19 @@ with an unspecified date.
 Release Scheduling
 ------------------
 
-OVN makes releases at the following three-month cadence.  All dates are
+OVN makes releases at the following six-month cadence.  All dates are
 approximate:
 
 +---------------+---------------------+--------------------------------------+
 | Time (months) | Example Dates       | Stage                                |
 +---------------+---------------------+--------------------------------------+
-| T             | Dec 1, Mar 1, ...   | Begin x.y release cycle              |
+| T             | Mar 1, Sep 1, ...   | Begin x.y release cycle              |
 +---------------+---------------------+--------------------------------------+
-| T + 2         | Feb 1, May 1, ...   | "Soft freeze" main for x.y release   |
+| T + 4.5       | Jul 15, Jan 15, ... | "Soft freeze" main for x.y release   |
 +---------------+---------------------+--------------------------------------+
-| T + 2.5       | Feb 15, May 15, ... | Fork branch-x.y from main            |
+| T + 5         | Aug 1, Feb 1, ...   | Fork branch-x.y from main            |
 +---------------+---------------------+--------------------------------------+
-| T + 3         | Mar 1, Jun 1, ...   | Release version x.y.0                |
+| T + 6         | Sep 1, Mar 1, ...   | Release version x.y.0                |
 +---------------+---------------------+--------------------------------------+
 
 Release Calendar
@@ -140,7 +140,8 @@ Release Calendar
 
 The 2023 timetable is shown below. Note that these dates are not set in stone.
 If extenuating circumstances arise, a release may be delayed from its target
-date.
+date. Also note that the release policy changed partway through 2023, which is
+why the release dates and timetables do not line up with the example above.
 
 +---------+-------------+-----------------+---------+
 | Release | Soft Freeze | Branch Creation | Release |
@@ -151,21 +152,15 @@ date.
 +---------+-------------+-----------------+---------+
 | 23.09.0 | Aug 4       | Aug 18          | Sep 1   |
 +---------+-------------+-----------------+---------+
-| 23.12.0 | Nov 3       | Nov 17          | Dec 1   |
-+---------+-------------+-----------------+---------+
 
 Below is the 2024 timetable
 
 +---------+-------------+-----------------+---------+
 | Release | Soft Freeze | Branch Creation | Release |
 +---------+-------------+-----------------+---------+
-| 24.03.0 | Feb 2       | Feb 16          | Mar 1   |
+| 24.03.0 | Jan 19      | Feb 2           | Mar 1   |
 +---------+-------------+-----------------+---------+
-| 24.06.0 | May 10      | May 24          | Jun 7   |
-+---------+-------------+-----------------+---------+
-| 24.09.0 | Aug 9       | Aug 23          | Sep 6   |
-+---------+-------------+-----------------+---------+
-| 24.12.0 | Nov 8       | Nov 22          | Dec 6   |
+| 24.09.0 | Jul 19      | Aug 2           | Sep 6   |
 +---------+-------------+-----------------+---------+
 
 Contact
