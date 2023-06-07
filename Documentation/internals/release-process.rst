@@ -84,12 +84,13 @@ The OVN project will periodically designate a release branch as
 "long-term support" or LTS for short. An LTS branch has the distinction of
 being maintained for longer than a standard branch.
 
-LTS branches will receive bug fixes until the point that another LTS is
-released. At that point, the old LTS will receive an additional year of
-critical and security fixes. Critical fixes are those that are required to
-ensure basic operation (e.g. memory leak fixes, crash fixes). Security fixes
-are those that address concerns about exploitable flaws in OVN and that have a
-corresponding CVE report.
+LTS branches will receive bug fixes and have releases made regularly until the
+point that another LTS is released. At that point, the old LTS will receive an
+additional year of critical and security fixes. Critical fixes are those that
+are required to ensure basic operation (e.g. memory leak fixes, crash fixes).
+Security fixes are those that address concerns about exploitable flaws in OVN
+and that have a corresponding CVE report. Whenever such a fix is applied, a new
+release will be made for the LTS version.
 
 LTS branches are scheduled to be created once every two years. This means
 that any given LTS will receive bug fix support for two years, followed by
