@@ -77,21 +77,21 @@ Scheduling`_ for the timing of each stage:
 
 .. _long-term-support:
 
-Long-term Support Releases
+Long-term Support Branches
 --------------------------
 
-The OVN project will periodically designate a release as "long-term support" or
-LTS for short. An LTS release has the distinction of being maintained for
-longer than a standard release.
+The OVN project will periodically designate a release branch as
+"long-term support" or LTS for short. An LTS branch has the distinction of
+being maintained for longer than a standard branch.
 
-LTS releases will receive bug fixes until the point that another LTS is
+LTS branches will receive bug fixes until the point that another LTS is
 released. At that point, the old LTS will receive an additional year of
 critical and security fixes. Critical fixes are those that are required to
 ensure basic operation (e.g. memory leak fixes, crash fixes). Security fixes
 are those that address concerns about exploitable flaws in OVN and that have a
 corresponding CVE report.
 
-LTS releases are scheduled to be released once every two years. This means
+LTS branches are scheduled to be created once every two years. This means
 that any given LTS will receive bug fix support for two years, followed by
 one year of critical bug fixes and security fixes.
 
