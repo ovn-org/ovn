@@ -5056,6 +5056,7 @@ loop_done:
     ovs_feature_support_destroy();
     free(ovs_remote);
     service_stop();
+    ovsrcu_exit();
 
     exit(retval);
 }
