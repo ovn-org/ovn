@@ -99,6 +99,22 @@ one year of critical bug fixes and security fixes.
 The current LTS version is documented on the `Long Term Support Releases`__
 page of `ovn.org`__.
 
+Standard-term Support Versions
+------------------------------
+
+Versions of OVN that are not designated as LTS versions are standard-term
+support releases.
+
+Standard term support versions will have releases made regularly for one year.
+There are no additional windows for which releases will be made for critical
+or security fixes.
+
+The branches for standard term support versions may receive bug fixes and
+critical and security fixes after the OVN team has stopped creating regular
+releases. This is strictly to facilitate easy backporting of fixes to LTS
+versions that are still receiving regular releases. Even though the branch may
+receive additional fixes, no releases will be made with these fixes.
+
 Release Numbering
 -----------------
 
