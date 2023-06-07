@@ -73,6 +73,88 @@ not a trivial cherry-pick, then the maintainer may opt to submit the backport
 for the older branch on the mailing list for further review. This should be done
 in the same manner as described above.
 
+Supported Versions
+~~~~~~~~~~~~~~~~~~
+
+As documented in :doc:`release-process`, standard term support branches receive
+regular releases for a year, and LTS branches receive regular releases for two
+years, plus an additional year of critical and security fixes.
+
+To make things easy, maintainers should simply backport all bugfixes to the
+previous four branches before main. This is guaranteed to get the fix into all
+supported standard-support branches as well as the current LTS branch. This
+will mean that maintainers will backport bugfixes to branches representing
+branches that are not currently supported.
+
+Critical and security fixes should be handled differently. Maintainers should
+determine what is the oldest LTS branch that currently is supported for
+critical and security fixes. Maintainers should backport these fixes to all
+branches between main and that LTS branch. This will mean that maintainers
+will backport critical and security fixes into branches for which no further
+releases are being made.
+
+The reason for backporting fixes into unsupported branches is twofold:
+
+- Backporting bugfixes into unsupported branches likely makes it easier to
+  backport critical and security fixes into older branches when necessary.
+- Backporting critical and security fixes into unsupported branches allows for
+  users that are not ready to upgrade to a version in a supported branch to
+  continue using the branch tip until they are ready to fully upgrade.
+
+Example
++++++++
+
+Consider the following release timeline.
+
++---------+----------+--------------+
+| Branch  | Date     | Release Type |
++---------+----------+--------------+
+| 24.03   | Mar 2024 | LTS          |
++---------+----------+--------------+
+| 24.09   | Sep 2024 | Standard     |
++---------+----------+--------------+
+| 25.03   | Mar 2025 | Standard     |
++---------+----------+--------------+
+| 25.09   | Sep 2025 | Standard     |
++---------+----------+--------------+
+| 26.03   | Mar 2026 | LTS          |
++---------+----------+--------------+
+| 26.09   | Sep 2026 | Standard     |
++---------+----------+--------------+
+
+In our hypothetical world it is October 2026, so the current status of each
+release is:
+
++---------+------------------------------+
+| Branch  | Support Status               |
++---------+------------------------------+
+| 24.03   | Critical/Security fixes only |
++---------+------------------------------+
+| 24.09   | Unsupported since Sep 2025   |
++---------+------------------------------+
+| 25.03   | Unsupported since Mar 2026   |
++---------+------------------------------+
+| 25.09   | Unsupported since Sep 2026   |
++---------+------------------------------+
+| 26.03   | Supported                    |
++---------+------------------------------+
+| 26.09   | Supported                    |
++---------+------------------------------+
+
+Let's say that a bug fix is committed to main. Our policy would be to backport
+the fix to 26.09, 26.03, 25.09, and 25.03. The fix will eventually appear in
+releases of 26.03 and 26.09. Even though the fix is in the development branches
+for 25.03 and 25.09, the fix will never appear in a release.
+
+Now let's say that a security issue is committed to main. Our policy would be
+to backport the fix to 24.03, 24.09, 25.03, 25.09, 26.03, and 26.09. 24.03 is
+the oldest LTS branch that still is receiving critical and security fixes, so
+we backport the fix to all branches between main and that branch. The security
+fix will appear in releases of 24.03, 26.03, and 26.09. The security fix will
+be present in the 24.09, 25.03, and 25.09 development branches, but will never
+appear in a release.
+
+
 Submission
 ~~~~~~~~~~
 
