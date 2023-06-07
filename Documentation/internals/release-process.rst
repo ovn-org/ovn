@@ -50,7 +50,7 @@ Scheduling`_ for the timing of each stage:
    Please propose and discuss exceptions on ovs-dev.
  
 2. Fork a release branch from main, named for the expected release number,
-   e.g. "branch-2019.10" for the branch that will yield OVN 2019.10.x.
+   e.g. "branch-25.09" for the branch that will yield OVN 25.09.x.
 
    Release branches are intended for testing and stabilization.  At this stage
    and in later stages, they should receive only bug fixes, not new features.
@@ -65,14 +65,14 @@ Scheduling`_ for the timing of each stage:
    and risk and discussed on ovs-dev before creating the branch.
 
 3. When committers come to rough consensus that the release is ready, they
-   release the .0 release on its branch, e.g. 2019.10.0 for branch-2019.10.  To
+   release the .0 release on its branch, e.g. 25.09.0 for branch-25.09.  To
    make the actual release, a committer pushes a signed tag named, e.g.
-   v2019.10.0, to the OVN repository, makes a release tarball available on
+   v25.09.0, to the OVN repository, makes a release tarball available on
    openvswitch.org, and posts a release announcement to ovs-announce.
 
 4. As bug fixes accumulate, or after important bugs or vulnerabilities are
-   fixed, committers may make additional releases from a branch: 2019.10.1,
-   2019.10.2, and so on.  The process is the same for these additional release
+   fixed, committers may make additional releases from a branch: 25.09.1,
+   25.09.2, and so on.  The process is the same for these additional release
    as for a .0 release.
 
 .. _long-term-support:
