@@ -9499,3 +9499,76 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Traffic to router port via LLA])
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-phys], [set Bridge br-phys fail-mode=standalone])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-ls0 00:00:00:00:00:01 fd00::1/64
+
+check ovn-nbctl ls-add ls0
+check ovn-nbctl lsp-add ls0 vif0 \
+    -- lsp-set-addresses vif0 "00:00:00:00:00:02 fd00::2"
+check ovn-nbctl lsp-add ls0 ls0-lr0 \
+    -- lsp-set-type ls0-lr0 router \
+    -- lsp-set-addresses ls0-lr0 router \
+    -- lsp-set-options ls0-lr0 router-port=lr0-ls0
+
+ADD_NAMESPACES(vif0)
+ADD_VETH(vif0, vif0, br-int, "fd00::2/64", "00:00:00:00:00:02", "fd00::1")
+OVS_WAIT_UNTIL([test "$(ip netns exec vif0 ip a | grep fe80:: | grep tentative)" = ""])
+
+check ovn-nbctl set logical_router lr0 options:always_learn_from_arp_request=false
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=sb sync
+
+NS_CHECK_EXEC([vif0], [ping -q -c 3 -i 0.3 -w 2 fe80::200:ff:fe00:1 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+check_row_count mac_binding 1 mac=\"00:00:00:00:00:02\"
+ovn-sbctl --all destroy mac_binding
+
+ovn-nbctl --wait=hv set logical_router lr0 options:always_learn_from_arp_request=true
+
+NS_CHECK_EXEC([vif0], [ping -q -c 3 -i 0.3 -w 2 fe80::200:ff:fe00:1 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+check_row_count mac_binding 1 mac=\"00:00:00:00:00:02\"
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
