@@ -5062,6 +5062,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([IP relocation using GARP request])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 
 # Logical network:
@@ -5161,7 +5162,9 @@ done
 test_ip() {
     # This packet has bad checksums but logical L3 routing doesn't check.
     local inport=$1 src_mac=$2 dst_mac=$3 src_ip=$4 dst_ip=$5
-    local packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}${dst_ip}0035111100080000
+    local packet=$(fmt_pkt "Ether(dst='${dst_mac}', src='${src_mac}')/ \
+                            IP(dst='${dst_ip}', src='${src_ip}')/ \
+                            UDP(sport=53, dport=4369)")
     shift; shift; shift; shift; shift
     hv=hv`vif_to_hv $inport`
     as $hv ovs-appctl netdev-dummy/receive vif$inport $packet
@@ -5176,7 +5179,9 @@ test_ip() {
             # Routing decrements TTL and updates source and dest MAC
             # (and checksum).
             out_lrp=`vif_to_lrp $outport`
-            echo f000000000${outport}00000000ff0${out_lrp}08004500001c00000000"3f1101"00${src_ip}${dst_ip}0035111100080000
+            echo $(fmt_pkt "Ether(dst='f0:00:00:00:00:${outport}', src='00:00:00:00:ff:${out_lrp}')/ \
+                            IP(src='${src_ip}', dst='${dst_ip}', ttl=63)/ \
+                            UDP(sport=53, dport=4369)")
         fi >> $outport.expected
     done
 }
@@ -5192,8 +5197,10 @@ test_ip() {
 # SHA and REPLY_HA are each 12 hex digits.
 # SPA and TPA are each 8 hex digits.
 test_arp() {
-    local inport=$1 sha=$2 spa=$3 tpa=$4 reply_ha=$5
-    local request=ffffffffffff${sha}08060001080006040001${sha}${spa}ffffffffffff${tpa}
+    local inport=$1 sha=$2 spa=$3 tpa=$3
+    local request=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                             ARP(hwsrc='${sha}', hwdst='ff:ff:ff:ff:ff:ff', psrc='${spa}', pdst='${tpa}')")
+
     hv=hv`vif_to_hv $inport`
     as $hv ovs-appctl netdev-dummy/receive vif$inport $request
 
@@ -5206,53 +5213,72 @@ test_arp() {
             echo $request >> $i$j$k.expected
         fi
     done
-
-    # Expect to receive the reply, if any.
-    if test X$reply_ha != X; then
-        lrp=`vif_to_lrp $inport`
-        local reply=${sha}00000000ff0${lrp}08060001080006040002${reply_ha}${tpa}${sha}${spa}
-        echo $reply >> $inport.expected
-    fi
 }
 
-# lp11 send GARP request to announce ownership of 192.168.1.100.
+test_na() {
+    local inport=$1 sha=$2 spa=$3
+    local request=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                             IPv6(dst='ff01::1', src='${spa}')/ \
+                             ICMPv6ND_NA(tgt='${spa}')")
 
-sha=f00000000011
-spa=`ip_to_hex 192 168 1 100`
-tpa=$spa
+    hv=hv`vif_to_hv $inport`
+    as $hv ovs-appctl netdev-dummy/receive vif$inport $request
+
+    # Expect to receive the broadcast ARP on the other logical switch ports if
+    # IP address is not configured to the switch patch port.
+    local i=`vif_to_ls $inport`
+    local j
+    for j in 1 2; do
+        if test $i$j != $inport; then
+            echo $request >> $i$j$k.expected
+        fi
+    done
+}
+
+# lp11 send GARP request to announce ownership of 192.168.1.100 and fe80::abcd:1.
+
+sha="f0:00:00:00:00:11"
+spa="192.168.1.100"
+spa6="fe80::abcd:1"
 
 # When always_learn_from_arp_request=false, the new mac-binding will not be learned
 # through GARP request.
 ovn-nbctl --wait=hv set logical_router lr0 options:always_learn_from_arp_request=false
 
-test_arp 11 $sha $spa $tpa
+test_arp 11 $sha $spa
+test_na 11 $sha $spa6
 sleep 1
-check_row_count MAC_Binding 0 ip="192.168.1.100"
+check_row_count MAC_Binding 0 ip="$spa"
+check_row_count MAC_Binding 0 ip=\"$spa6\"
 
 # When always_learn_from_arp_request=true, the new mac-binding will be learned.
 ovn-nbctl --wait=hv set logical_router lr0 options:always_learn_from_arp_request=true
 
-test_arp 11 $sha $spa $tpa
-OVS_WAIT_UNTIL([test `ovn-sbctl find mac_binding ip="192.168.1.100" | wc -l` -gt 0])
+test_arp 11 $sha $spa
+test_na 11 $sha $spa6
+wait_row_count MAC_Binding 1 ip="$spa" mac=\"$sha\"
+wait_row_count MAC_Binding 1 ip=\"$spa6\" mac=\"$sha\"
 ovn-nbctl --wait=hv sync
 
 # Send an IP packet from lp21 to 192.168.1.100, which should go to lp11.
 
-smac=f00000000021
-dmac=00000000ff02
-sip=`ip_to_hex 192 168 2 11`
-dip=`ip_to_hex 192 168 1 100`
+smac="f0:00:00:00:00:21"
+dmac="00:00:00:00:ff:02"
+sip="192.168.2.11"
+dip="192.168.1.100"
 test_ip 21 $smac $dmac $sip $dip 11
 
-# lp12 send GARP request to announce ownership of 192.168.1.100.
+# lp12 send GARP request to announce ownership of 192.168.1.100 and fe80::abcd:1.
 
 # Even when always_learn_from_arp_request=false, the existing mac-binding should be
 # updated through GARP request.
 ovn-nbctl --wait=hv set logical_router lr0 options:always_learn_from_arp_request=false
 
-sha=f00000000012
-test_arp 12 $sha $spa $tpa
-wait_row_count MAC_Binding 1 ip="192.168.1.100" mac='"f0:00:00:00:00:12"'
+sha="f0:00:00:00:00:12"
+test_arp 12 $sha $spa
+test_na 11 $sha $spa6
+wait_row_count MAC_Binding 1 ip="$spa" mac=\"$sha\"
+wait_row_count MAC_Binding 1 ip=\"$spa6\" mac=\"$sha\"
 ovn-nbctl --wait=hv sync
 # give to the hv the time to send queued ip packets
 sleep 1
