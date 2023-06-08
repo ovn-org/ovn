@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-#ifndef MAC_BINDING_AGING_H
-#define MAC_BINDING_AGING_H 1
+#ifndef AGING_H
+#define AGING_H 1
 
 #include "lib/inc-proc-eng.h"
 
@@ -30,4 +30,4 @@ void *en_mac_binding_aging_waker_init(struct engine_node *node,
                                       struct engine_arg *arg);
 void en_mac_binding_aging_waker_cleanup(void *data);
 
-#endif /* northd/mac-binding-aging.h */
+#endif /* northd/aging.h */

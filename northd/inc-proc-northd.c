@@ -26,7 +26,7 @@
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-sb-idl.h"
 #include "mcast-group-index.h"
-#include "northd/mac-binding-aging.h"
+#include "northd/aging.h"
 #include "openvswitch/poll-loop.h"
 #include "openvswitch/vlog.h"
 #include "inc-proc-northd.h"
