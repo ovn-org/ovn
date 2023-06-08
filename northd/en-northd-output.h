@@ -15,5 +15,7 @@ bool northd_output_lflow_handler(struct engine_node *node,
                                  void *data OVS_UNUSED);
 bool northd_output_mac_binding_aging_handler(struct engine_node *node,
                                              void *data OVS_UNUSED);
+bool northd_output_fdb_aging_handler(struct engine_node *node,
+                                     void *data OVS_UNUSED);
 
 #endif

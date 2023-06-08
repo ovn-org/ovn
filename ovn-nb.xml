@@ -170,6 +170,14 @@
         5 s.
       </column>
 
+      <column name="options" key="fdb_removal_limit"
+              type='{"type": "integer", "minInteger": 0, "maxInteger": 4294967295}'>
+        FDB aging bulk removal limit. This limits how many rows
+        can expire in a single transaction. Default value is 0 which
+        is unlimited. When we hit the limit next batch removal is delayed by
+        5 s.
+      </column>
+
       <column name="options" key="controller_event" type='{"type": "boolean"}'>
         Value set by the CMS to enable/disable ovn-controller event reporting.
         Traffic into OVS can raise a 'controller' event that results in a
@@ -662,6 +670,13 @@
       <column name="other_config" key="mac_only" type='{"type": "boolean"}'>
         Value used to request to assign L2 address only if neither subnet
         nor ipv6_prefix are specified
+      </column>
+
+      <column name="other_config" key="fdb_age_threshold"
+              type='{"type": "integer", "minInteger": 0, "maxInteger": 4294967295}'>
+        FDB aging <code>threshold</code> value in seconds. FDB exceeding
+        this timeout will be automatically removed. The value defaults
+        to 0, which means disabled.
       </column>
     </group>
 

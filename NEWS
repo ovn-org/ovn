@@ -1,5 +1,8 @@
 Post v23.06.0
 -------------
+  - Added FDB aging mechanism, that is disabled by default.
+    It can be enabled per logical switch with other_config
+    "fdb_age_threshold".
 
 OVN v23.06.0 - 01 Jun 2023
 --------------------------

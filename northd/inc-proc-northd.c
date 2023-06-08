@@ -137,6 +137,8 @@ static ENGINE_NODE(mac_binding_aging_waker, "mac_binding_aging_waker");
 static ENGINE_NODE(northd_output, "northd_output");
 static ENGINE_NODE(sync_to_sb, "sync_to_sb");
 static ENGINE_NODE(sync_to_sb_addr_set, "sync_to_sb_addr_set");
+static ENGINE_NODE(fdb_aging, "fdb_aging");
+static ENGINE_NODE(fdb_aging_waker, "fdb_aging_waker");
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb)
@@ -181,6 +183,11 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_mac_binding_aging, &en_northd, NULL);
     engine_add_input(&en_mac_binding_aging, &en_mac_binding_aging_waker, NULL);
 
+    engine_add_input(&en_fdb_aging, &en_nb_nb_global, NULL);
+    engine_add_input(&en_fdb_aging, &en_sb_fdb, NULL);
+    engine_add_input(&en_fdb_aging, &en_northd, NULL);
+    engine_add_input(&en_fdb_aging, &en_fdb_aging_waker, NULL);
+
     engine_add_input(&en_lflow, &en_nb_bfd, NULL);
     engine_add_input(&en_lflow, &en_sb_bfd, NULL);
     engine_add_input(&en_lflow, &en_sb_logical_flow, NULL);
@@ -213,6 +220,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                      northd_output_lflow_handler);
     engine_add_input(&en_northd_output, &en_mac_binding_aging,
                      northd_output_mac_binding_aging_handler);
+    engine_add_input(&en_northd_output, &en_fdb_aging,
+                     northd_output_fdb_aging_handler);
 
     struct engine_arg engine_arg = {
         .nb_idl = nb->idl,
@@ -233,6 +242,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
         = static_mac_binding_index_create(sb->idl);
     struct ovsdb_idl_index *sbrec_mac_binding_by_datapath
         = mac_binding_by_datapath_index_create(sb->idl);
+    struct ovsdb_idl_index *fdb_by_dp_key =
+        ovsdb_idl_index_create1(sb->idl, &sbrec_fdb_col_dp_key);
 
     engine_init(&en_northd_output, &engine_arg);
 
@@ -257,6 +268,9 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_ovsdb_node_add_index(&en_sb_mac_binding,
                                 "sbrec_mac_binding_by_datapath",
                                 sbrec_mac_binding_by_datapath);
+    engine_ovsdb_node_add_index(&en_sb_fdb,
+                                "fdb_by_dp_key",
+                                fdb_by_dp_key);
 
     struct ovsdb_idl_index *sbrec_address_set_by_name
         = ovsdb_idl_index_create1(sb->idl, &sbrec_address_set_col_name);

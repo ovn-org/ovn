@@ -111,6 +111,7 @@ get_removal_limit(struct engine_node *node, const char *name)
     return smap_get_uint(&nb->options, name, 0);
 }
 
+/* MAC binding aging */
 static void
 mac_binding_aging_run_for_datapath(const struct sbrec_datapath_binding *dp,
                                    struct ovsdb_idl_index *mb_by_datapath,
@@ -236,5 +237,130 @@ en_mac_binding_aging_waker_init(struct engine_node *node OVS_UNUSED,
 
 void
 en_mac_binding_aging_waker_cleanup(void *data OVS_UNUSED)
+{
+}
+
+/* FDB aging */
+static void
+fdb_run_for_datapath(const struct sbrec_datapath_binding *dp,
+                     struct ovsdb_idl_index *fdb_by_dp_key,
+                     struct aging_context *ctx)
+{
+    if (!ctx->threshold) {
+        return;
+    }
+
+    struct sbrec_fdb *fdb_index_row = sbrec_fdb_index_init_row(fdb_by_dp_key);
+    sbrec_fdb_index_set_dp_key(fdb_index_row, dp->tunnel_key);
+
+    const struct sbrec_fdb *fdb;
+    SBREC_FDB_FOR_EACH_EQUAL (fdb, fdb_index_row, fdb_by_dp_key) {
+        if (aging_context_handle_timestamp(ctx, fdb->timestamp)) {
+            sbrec_fdb_delete(fdb);
+            if (aging_context_is_at_limit(ctx)) {
+                break;
+            }
+        }
+    }
+    sbrec_fdb_index_destroy_row(fdb_index_row);
+}
+
+void
+en_fdb_aging_run(struct engine_node *node, void *data OVS_UNUSED)
+{
+    const struct engine_context *eng_ctx = engine_get_context();
+    struct northd_data *northd_data = engine_get_input_data("northd", node);
+    struct aging_waker *waker = engine_get_input_data("fdb_aging_waker", node);
+
+    if (!eng_ctx->ovnsb_idl_txn ||
+        !northd_data->features.fdb_timestamp ||
+        time_msec() < waker->next_wake_msec) {
+        return;
+    }
+
+    uint32_t limit = get_removal_limit(node, "fdb_removal_limit");
+    struct aging_context ctx = aging_context_init(limit);
+
+    struct ovsdb_idl_index *sbrec_fdb_by_dp_key =
+            engine_ovsdb_node_get_index(engine_get_input("SB_fdb", node),
+                                        "fdb_by_dp_key");
+
+    struct ovn_datapath *od;
+    HMAP_FOR_EACH (od, key_node, &northd_data->ls_datapaths.datapaths) {
+        ovs_assert(od->nbs);
+
+        if (!od->sb) {
+            continue;
+        }
+
+        uint64_t threshold =
+                smap_get_uint(&od->nbs->other_config, "fdb_age_threshold", 0);
+        aging_context_set_threshold(&ctx, threshold * 1000);
+
+        fdb_run_for_datapath(od->sb, sbrec_fdb_by_dp_key, &ctx);
+        if (aging_context_is_at_limit(&ctx)) {
+            /* Schedule the next run after specified delay. */
+            ctx.next_wake_ms = AGING_BULK_REMOVAL_DELAY_MSEC;
+            break;
+        }
+    }
+
+    aging_waker_schedule_next_wake(waker, ctx.next_wake_ms);
+
+    engine_set_node_state(node, EN_UPDATED);
+}
+
+void *
+en_fdb_aging_init(struct engine_node *node OVS_UNUSED,
+                  struct engine_arg *arg OVS_UNUSED)
+{
+    return NULL;
+}
+
+void
+en_fdb_aging_cleanup(void *data OVS_UNUSED)
+{
+}
+
+/* The waker node is an input node, but the data about when to wake up
+ * the aging node are populated by the aging node.
+ * The reason being that engine periodically runs input nodes to check
+ * if we there are updates, so it could process the other nodes, however
+ * the waker cannot be dependent on other node because it wouldn't be
+ * input node anymore. */
+void
+en_fdb_aging_waker_run(struct engine_node *node, void *data)
+{
+    struct aging_waker *waker = data;
+
+    engine_set_node_state(node, EN_UNCHANGED);
+
+    if (!waker->should_schedule) {
+        return;
+    }
+
+    if (time_msec() >= waker->next_wake_msec) {
+        waker->should_schedule = false;
+        engine_set_node_state(node, EN_UPDATED);
+        return;
+    }
+
+    poll_timer_wait_until(waker->next_wake_msec);
+}
+
+void *
+en_fdb_aging_waker_init(struct engine_node *node OVS_UNUSED,
+                                struct engine_arg *arg OVS_UNUSED)
+{
+    struct aging_waker *waker = xmalloc(sizeof *waker);
+
+    waker->should_schedule = false;
+    waker->next_wake_msec = 0;
+
+    return waker;
+}
+
+void
+en_fdb_aging_waker_cleanup(void *data OVS_UNUSED)
 {
 }
