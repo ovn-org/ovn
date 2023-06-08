@@ -96,7 +96,7 @@ static const char *rbac_controller_event_update[] =
 static const char *rbac_fdb_auth[] =
     {""};
 static const char *rbac_fdb_update[] =
-    {"dp_key", "mac", "port_key"};
+    {"dp_key", "mac", "port_key", "timestamp"};
 
 static const char *rbac_port_binding_auth[] =
     {""};

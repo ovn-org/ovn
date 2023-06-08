@@ -5006,6 +5006,11 @@ tcp.flags = RST;
     <column name="port_key">
       The key of the port binding on which this FDB was learnt.
     </column>
+
+    <column name="timestamp">
+      The timestamp in msec when the FDB was added or updated.
+      Records that existed before this column will have 0.
+    </column>
   </table>
 
   <table name="Static_MAC_Binding" title="IP to MAC bindings">

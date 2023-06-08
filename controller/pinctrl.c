@@ -174,6 +174,7 @@ struct pinctrl {
     /* Latch to destroy the 'pinctrl_thread' */
     struct latch pinctrl_thread_exit;
     bool mac_binding_can_timestamp;
+    bool fdb_can_timestamp;
 };
 
 static struct pinctrl pinctrl;
@@ -3458,12 +3459,22 @@ pinctrl_update(const struct ovsdb_idl *idl, const char *br_int_name)
     ovs_mutex_lock(&pinctrl_mutex);
     pinctrl_set_br_int_name_(br_int_name);
 
-    bool can_timestamp = sbrec_server_has_mac_binding_table_col_timestamp(idl);
-    if (can_timestamp != pinctrl.mac_binding_can_timestamp) {
-        pinctrl.mac_binding_can_timestamp = can_timestamp;
+    bool can_mb_timestamp =
+            sbrec_server_has_mac_binding_table_col_timestamp(idl);
+    if (can_mb_timestamp != pinctrl.mac_binding_can_timestamp) {
+        pinctrl.mac_binding_can_timestamp = can_mb_timestamp;
 
         /* Notify pinctrl_handler that mac binding timestamp column
          * availability has changed. */
+        notify_pinctrl_handler();
+    }
+
+    bool can_fdb_timestamp = sbrec_server_has_fdb_table_col_timestamp(idl);
+    if (can_fdb_timestamp != pinctrl.fdb_can_timestamp) {
+        pinctrl.fdb_can_timestamp = can_fdb_timestamp;
+
+        /* Notify pinctrl_handler that fdb timestamp column
+       * availability has changed. */
         notify_pinctrl_handler();
     }
 
@@ -8104,6 +8115,12 @@ run_put_fdb(struct ovsdb_idl_txn *ovnsb_idl_txn,
         sbrec_fdb_set_mac(sb_fdb, mac_string);
     }
     sbrec_fdb_set_port_key(sb_fdb, fdb_e->port_key);
+
+    /* For backward compatibility check if timestamp column is available
+     * in SB DB. */
+    if (pinctrl.fdb_can_timestamp) {
+        sbrec_fdb_set_timestamp(sb_fdb, time_wall_msec());
+    }
 }
 
 static void
