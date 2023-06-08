@@ -28,24 +28,95 @@
 
 VLOG_DEFINE_THIS_MODULE(mac_binding_aging);
 
-#define MAC_BINDING_BULK_REMOVAL_DELAY_MSEC 5000
+#define AGING_BULK_REMOVAL_DELAY_MSEC 5000
 
-struct mac_binding_waker {
+struct aging_waker {
     bool should_schedule;
     long long next_wake_msec;
 };
 
 static void
-mac_binding_aging_run_for_datapath(const struct sbrec_datapath_binding *dp,
-                                   const struct nbrec_logical_router *nbr,
-                                   struct ovsdb_idl_index *mb_by_datapath,
-                                   int64_t now, int64_t *wake_delay,
-                                   uint32_t removal_limit, uint32_t *removed_n)
+aging_waker_schedule_next_wake(struct aging_waker *waker, int64_t next_wake_ms)
 {
-    uint64_t threshold = smap_get_uint(&nbr->options,
-                                       "mac_binding_age_threshold",
-                                       0) * 1000;
-    if (!threshold) {
+    waker->should_schedule = false;
+
+    if (next_wake_ms < INT64_MAX) {
+        waker->should_schedule = true;
+        waker->next_wake_msec = time_msec() + next_wake_ms;
+        poll_timer_wait_until(waker->next_wake_msec);
+    }
+}
+
+struct aging_context {
+    int64_t next_wake_ms;
+    int64_t time_wall_now;
+    uint32_t removal_limit;
+    uint32_t n_removed;
+    uint64_t threshold;
+};
+
+static struct aging_context
+aging_context_init(uint32_t removal_limit)
+{
+    struct aging_context ctx = {
+           .next_wake_ms = INT64_MAX,
+           .time_wall_now = time_wall_msec(),
+           .removal_limit = removal_limit,
+           .n_removed = 0,
+           .threshold = 0,
+    };
+    return ctx;
+}
+
+static void
+aging_context_set_threshold(struct aging_context *ctx, uint64_t threshold)
+{
+    ctx->threshold = threshold;
+}
+
+static bool
+aging_context_is_at_limit(struct aging_context *ctx)
+{
+    return ctx->removal_limit && ctx->n_removed == ctx->removal_limit;
+}
+
+static bool
+aging_context_handle_timestamp(struct aging_context *ctx, int64_t timestamp)
+{
+    int64_t elapsed = ctx->time_wall_now - timestamp;
+    if (elapsed < 0) {
+        return false;
+    }
+
+    if (elapsed >= ctx->threshold) {
+        ctx->n_removed++;
+        return true;
+    }
+
+    ctx->next_wake_ms = MIN(ctx->next_wake_ms, (ctx->threshold - elapsed));
+    return false;
+}
+
+static uint32_t
+get_removal_limit(struct engine_node *node, const char *name)
+{
+    const struct nbrec_nb_global_table *nb_global_table =
+            EN_OVSDB_GET(engine_get_input("NB_nb_global", node));
+    const struct nbrec_nb_global *nb =
+            nbrec_nb_global_table_first(nb_global_table);
+    if (!nb) {
+        return 0;
+    }
+
+    return smap_get_uint(&nb->options, name, 0);
+}
+
+static void
+mac_binding_aging_run_for_datapath(const struct sbrec_datapath_binding *dp,
+                                   struct ovsdb_idl_index *mb_by_datapath,
+                                   struct aging_context *ctx)
+{
+    if (!ctx->threshold) {
         return;
     }
 
@@ -55,35 +126,14 @@ mac_binding_aging_run_for_datapath(const struct sbrec_datapath_binding *dp,
 
     const struct sbrec_mac_binding *mb;
     SBREC_MAC_BINDING_FOR_EACH_EQUAL (mb, mb_index_row, mb_by_datapath) {
-        int64_t elapsed = now - mb->timestamp;
-
-        if (elapsed < 0) {
-            continue;
-        } else if (elapsed >= threshold) {
+        if (aging_context_handle_timestamp(ctx, mb->timestamp)) {
             sbrec_mac_binding_delete(mb);
-            (*removed_n)++;
-            if (removal_limit && *removed_n == removal_limit) {
+            if (aging_context_is_at_limit(ctx)) {
                 break;
             }
-        } else {
-            *wake_delay = MIN(*wake_delay, threshold - elapsed);
         }
     }
     sbrec_mac_binding_index_destroy_row(mb_index_row);
-}
-
-static uint32_t
-get_removal_limit(struct engine_node *node)
-{
-    const struct nbrec_nb_global_table *nb_global_table =
-        EN_OVSDB_GET(engine_get_input("NB_nb_global", node));
-    const struct nbrec_nb_global *nb =
-        nbrec_nb_global_table_first(nb_global_table);
-    if (!nb) {
-       return 0;
-    }
-
-    return smap_get_uint(&nb->options, "mac_binding_removal_limit", 0);
 }
 
 void
@@ -91,7 +141,7 @@ en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct engine_context *eng_ctx = engine_get_context();
     struct northd_data *northd_data = engine_get_input_data("northd", node);
-    struct mac_binding_waker *waker =
+    struct aging_waker *waker =
         engine_get_input_data("mac_binding_aging_waker", node);
 
     if (!eng_ctx->ovnsb_idl_txn ||
@@ -100,10 +150,9 @@ en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
         return;
     }
 
-    int64_t next_expire_msec = INT64_MAX;
-    int64_t now = time_wall_msec();
-    uint32_t removal_limit = get_removal_limit(node);
-    uint32_t removed_n = 0;
+    uint32_t limit = get_removal_limit(node, "mac_binding_removal_limit");
+    struct aging_context ctx = aging_context_init(limit);
+
     struct ovsdb_idl_index *sbrec_mac_binding_by_datapath =
         engine_ovsdb_node_get_index(engine_get_input("SB_mac_binding", node),
                                     "sbrec_mac_binding_by_datapath");
@@ -112,26 +161,25 @@ en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
     HMAP_FOR_EACH (od, key_node, &northd_data->lr_datapaths.datapaths) {
         ovs_assert(od->nbr);
 
-        if (od->sb) {
-            mac_binding_aging_run_for_datapath(od->sb, od->nbr,
-                                               sbrec_mac_binding_by_datapath,
-                                               now, &next_expire_msec,
-                                               removal_limit, &removed_n);
-            if (removal_limit && removed_n == removal_limit) {
-                /* Schedule the next run after specified delay. */
-                next_expire_msec = MAC_BINDING_BULK_REMOVAL_DELAY_MSEC;
-                break;
-            }
+        if (!od->sb) {
+            continue;
+        }
+
+        uint64_t threshold = smap_get_uint(&od->nbr->options,
+                                           "mac_binding_age_threshold", 0);
+        aging_context_set_threshold(&ctx, threshold * 1000);
+
+        mac_binding_aging_run_for_datapath(od->sb,
+                                           sbrec_mac_binding_by_datapath,
+                                           &ctx);
+        if (aging_context_is_at_limit(&ctx)) {
+            /* Schedule the next run after specified delay. */
+            ctx.next_wake_ms = AGING_BULK_REMOVAL_DELAY_MSEC;
+            break;
         }
     }
 
-    if (next_expire_msec < INT64_MAX) {
-        waker->should_schedule = true;
-        waker->next_wake_msec = time_msec() + next_expire_msec;
-        poll_timer_wait_until(waker->next_wake_msec);
-    } else {
-        waker->should_schedule = false;
-    }
+    aging_waker_schedule_next_wake(waker, ctx.next_wake_ms);
 
     engine_set_node_state(node, EN_UPDATED);
 }
@@ -157,7 +205,7 @@ en_mac_binding_aging_cleanup(void *data OVS_UNUSED)
 void
 en_mac_binding_aging_waker_run(struct engine_node *node, void *data)
 {
-    struct mac_binding_waker *waker = data;
+    struct aging_waker *waker = data;
 
     engine_set_node_state(node, EN_UNCHANGED);
 
@@ -178,7 +226,7 @@ void *
 en_mac_binding_aging_waker_init(struct engine_node *node OVS_UNUSED,
                                 struct engine_arg *arg OVS_UNUSED)
 {
-    struct mac_binding_waker *waker = xmalloc(sizeof *waker);
+    struct aging_waker *waker = xmalloc(sizeof *waker);
 
     waker->should_schedule = false;
     waker->next_wake_msec = 0;
