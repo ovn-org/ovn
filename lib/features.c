@@ -29,10 +29,9 @@
 #include "openvswitch/ofp-meter.h"
 #include "openvswitch/ofp-util.h"
 #include "ovn/features.h"
+#include "controller/ofctrl.h"
 
 VLOG_DEFINE_THIS_MODULE(features);
-
-#define FEATURES_DEFAULT_PROBE_INTERVAL_SEC 5
 
 /* Parses 'cap_name' from 'ovs_capabilities' and returns whether the
  * type of capability is supported or not. */
@@ -112,8 +111,7 @@ static void
 ovs_feature_rconn_setup(const char *br_name)
 {
     if (!swconn) {
-        swconn = rconn_create(FEATURES_DEFAULT_PROBE_INTERVAL_SEC, 0,
-                              DSCP_DEFAULT, 1 << OFP15_VERSION);
+        swconn = rconn_create(0, 0, DSCP_DEFAULT, 1 << OFP15_VERSION);
     }
 
     if (!rconn_is_connected(swconn)) {
@@ -124,7 +122,6 @@ ovs_feature_rconn_setup(const char *br_name)
         }
         free(target);
     }
-    rconn_set_probe_interval(swconn, FEATURES_DEFAULT_PROBE_INTERVAL_SEC);
 }
 
 static bool

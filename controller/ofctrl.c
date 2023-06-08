@@ -418,11 +418,9 @@ static void ofctrl_recv(const struct ofp_header *, enum ofptype);
 
 void
 ofctrl_init(struct ovn_extend_table *group_table,
-            struct ovn_extend_table *meter_table,
-            int inactivity_probe_interval)
+            struct ovn_extend_table *meter_table)
 {
-    swconn = rconn_create(inactivity_probe_interval, 0,
-                          DSCP_DEFAULT, 1 << OFP15_VERSION);
+    swconn = rconn_create(0, 0, DSCP_DEFAULT, 1 << OFP15_VERSION);
     tx_counter = rconn_packet_counter_create();
     hmap_init(&installed_lflows);
     hmap_init(&installed_pflows);
@@ -3075,14 +3073,6 @@ bool
 ofctrl_is_connected(void)
 {
     return rconn_is_connected(swconn);
-}
-
-void
-ofctrl_set_probe_interval(int probe_interval)
-{
-    if (swconn) {
-        rconn_set_probe_interval(swconn, probe_interval);
-    }
 }
 
 void

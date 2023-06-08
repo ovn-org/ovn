@@ -106,7 +106,6 @@ static unixctl_cb_func debug_ignore_startup_delay;
 
 #define DEFAULT_BRIDGE_NAME "br-int"
 #define DEFAULT_DATAPATH "system"
-#define OFCTRL_DEFAULT_PROBE_INTERVAL_SEC 0
 
 #define CONTROLLER_LOOP_STOPWATCH_NAME "flow-generation"
 #define OFCTRL_PUT_STOPWATCH_NAME "flow-installation"
@@ -585,22 +584,6 @@ update_ssl_config(const struct ovsrec_ssl_table *ssl_table)
             stream_ssl_set_ca_cert_file(ssl_ca_cert_file, false);
         }
     }
-}
-
-static int
-get_ofctrl_probe_interval(struct ovsdb_idl *ovs_idl)
-{
-    const struct ovsrec_open_vswitch *cfg = ovsrec_open_vswitch_first(ovs_idl);
-    if (!cfg) {
-        return OFCTRL_DEFAULT_PROBE_INTERVAL_SEC;
-    }
-
-    const struct ovsrec_open_vswitch_table *ovs_table =
-        ovsrec_open_vswitch_table_get(ovs_idl);
-    const char *chassis_id = get_ovs_chassis_id(ovs_table);
-    return get_chassis_external_id_value_int(
-        &cfg->external_ids, chassis_id,
-        "ovn-openflow-probe-interval", OFCTRL_DEFAULT_PROBE_INTERVAL_SEC);
 }
 
 /* Retrieves the pointer to the OVN Southbound database from 'ovs_idl' and
@@ -5434,8 +5417,7 @@ main(int argc, char *argv[])
             engine_get_internal_data(&en_mac_cache);
 
     ofctrl_init(&lflow_output_data->group_table,
-                &lflow_output_data->meter_table,
-                get_ofctrl_probe_interval(ovs_idl_loop.idl));
+                &lflow_output_data->meter_table);
     ofctrl_seqno_init();
 
     unixctl_command_register("group-table-list", "", 0, 0,
@@ -5561,7 +5543,6 @@ main(int argc, char *argv[])
                      &reset_ovnsb_idl_min_index,
                      &ctrl_engine_ctx, &ovnsb_expected_cond_seqno);
         update_ssl_config(ovsrec_ssl_table_get(ovs_idl_loop.idl));
-        ofctrl_set_probe_interval(get_ofctrl_probe_interval(ovs_idl_loop.idl));
 
         struct ovsdb_idl_txn *ovnsb_idl_txn
             = ovsdb_idl_loop_run(&ovnsb_idl_loop);
