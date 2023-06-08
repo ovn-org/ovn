@@ -481,6 +481,15 @@ build_chassis_features(const struct sbrec_chassis_table *sbrec_chassis_table,
             chassis_features->ct_lb_related) {
             chassis_features->ct_lb_related = false;
         }
+
+        bool fdb_timestamp =
+            smap_get_bool(&chassis->other_config,
+                          OVN_FEATURE_FDB_TIMESTAMP,
+                          false);
+        if (!fdb_timestamp &&
+            chassis_features->fdb_timestamp) {
+            chassis_features->fdb_timestamp = false;
+        }
     }
 }
 
@@ -17185,6 +17194,7 @@ northd_init(struct northd_data *data)
         .ct_no_masked_label = true,
         .mac_binding_timestamp = true,
         .ct_lb_related = true,
+        .fdb_timestamp = true,
     };
     data->ovn_internal_version_changed = false;
     sset_init(&data->svc_monitor_lsps);
