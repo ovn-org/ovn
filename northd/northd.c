@@ -17630,6 +17630,14 @@ handle_port_binding_changes(struct ovsdb_idl_txn *ovnsb_txn,
             nbrec_logical_switch_port_set_up(op->nbsp, &up, 1);
         }
 
+        /* ovn-controller will update 'Port_Binding.up' only if it was
+         * explicitly set to 'false'.
+         */
+        if (!op->sb->n_up) {
+            up = false;
+            sbrec_port_binding_set_up(op->sb, &up, 1);
+        }
+
         if (build_ha_chassis_ref && ovnsb_txn && sb->chassis) {
             /* Check and add the chassis which has claimed this 'sb'
              * to the ha chassis group's ref_chassis if required. */
