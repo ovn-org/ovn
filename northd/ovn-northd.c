@@ -820,6 +820,10 @@ main(int argc, char *argv[])
     ovsdb_idl_track_add_all(ovnsb_idl_loop.idl);
     ovsdb_idl_set_write_changed_only_all(ovnsb_idl_loop.idl, true);
 
+    /* Omit unused columns. */
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_sb_global_col_connections);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_sb_global_col_ssl);
+
     /* Disable alerting for pure write-only columns. */
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_sb_global_col_nb_cfg);
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_address_set_col_name);
