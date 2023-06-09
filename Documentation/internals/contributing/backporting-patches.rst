@@ -76,9 +76,9 @@ in the same manner as described above.
 Supported Versions
 ~~~~~~~~~~~~~~~~~~
 
-As documented in :doc:`release-process`, standard term support branches receive
-regular releases for a year, and LTS branches receive regular releases for two
-years, plus an additional year of critical and security fixes.
+As documented in :doc:`../release-process`, standard term support branches
+receive regular releases for a year, and LTS branches receive regular releases
+for two years, plus an additional year of critical and security fixes.
 
 To make things easy, maintainers should simply backport all bugfixes to the
 previous four branches before main. This is guaranteed to get the fix into all
