@@ -108,7 +108,7 @@ northd_get_input_data(struct engine_node *node,
     struct ed_type_lb_data *lb_data =
         engine_get_input_data("lb_data", node);
     input_data->lbs = &lb_data->lbs;
-    input_data->lb_groups = &lb_data->lb_groups;
+    input_data->lbgrps = &lb_data->lbgrps;
 }
 
 void
@@ -193,6 +193,28 @@ northd_sb_port_binding_handler(struct engine_node *node,
         return false;
     }
 
+    return true;
+}
+
+bool
+northd_lb_data_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_lb_data *lb_data = engine_get_input_data("lb_data", node);
+
+    if (!lb_data->tracked) {
+        return false;
+    }
+
+    struct northd_data *nd = data;
+    if (!northd_handle_lb_data_changes(&lb_data->tracked_lb_data,
+                                       &nd->ls_datapaths,
+                                       &nd->lr_datapaths,
+                                       &nd->lb_datapaths_map,
+                                       &nd->lb_group_datapaths_map)) {
+        return false;
+    }
+
+    engine_set_node_state(node, EN_UPDATED);
     return true;
 }
 

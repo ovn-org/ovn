@@ -54,7 +54,7 @@ struct northd_input {
 
     /* Northd lb data node inputs*/
     const struct hmap *lbs;
-    const struct hmap *lb_groups;
+    const struct hmap *lbgrps;
 
     /* Indexes */
     struct ovsdb_idl_index *sbrec_chassis_by_name;
@@ -339,6 +339,13 @@ bool lflow_handle_northd_ls_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                     struct lflow_input *, struct hmap *lflows);
 bool northd_handle_sb_port_binding_changes(
     const struct sbrec_port_binding_table *, struct hmap *ls_ports);
+
+struct tracked_lb_data;
+bool northd_handle_lb_data_changes(struct tracked_lb_data *,
+                                   struct ovn_datapaths *ls_datapaths,
+                                   struct ovn_datapaths *lr_datapaths,
+                                   struct hmap *lb_datapaths_map,
+                                   struct hmap *lb_group_datapaths_map);
 
 void build_bfd_table(struct ovsdb_idl_txn *ovnsb_txn,
                      const struct nbrec_bfd_table *,

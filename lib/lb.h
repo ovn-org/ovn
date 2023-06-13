@@ -77,6 +77,9 @@ struct ovn_northd_lb {
 
     struct sset ips_v4;
     struct sset ips_v6;
+
+    /* Indicates if the load balancer has health checks configured. */
+    bool health_checks;
 };
 
 struct ovn_lb_vip {
@@ -130,6 +133,8 @@ struct ovn_northd_lb *ovn_northd_lb_find(const struct hmap *,
                                          const struct uuid *);
 const struct smap *ovn_northd_lb_get_vips(const struct ovn_northd_lb *);
 void ovn_northd_lb_destroy(struct ovn_northd_lb *);
+void ovn_northd_lb_reinit(struct ovn_northd_lb *,
+                          const struct nbrec_load_balancer *);
 
 void build_lrouter_lb_ips(struct ovn_lb_ip_set *,
                           const struct ovn_northd_lb *);
@@ -148,6 +153,10 @@ struct ovn_lb_group *ovn_lb_group_create(
 void ovn_lb_group_destroy(struct ovn_lb_group *lb_group);
 struct ovn_lb_group *ovn_lb_group_find(const struct hmap *lb_groups,
                                        const struct uuid *);
+void ovn_lb_group_reinit(
+    struct ovn_lb_group *lb_group,
+    const struct nbrec_load_balancer_group *,
+    const struct hmap *lbs);
 
 struct ovn_lb_datapaths {
     struct hmap_node hmap_node;
