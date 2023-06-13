@@ -59,7 +59,6 @@ struct ovn_northd_lb {
     struct hmap_node hmap_node;
 
     const struct nbrec_load_balancer *nlb; /* May be NULL. */
-    const struct sbrec_load_balancer *slb; /* May be NULL. */
     const char *proto;
     char *selection_fields;
     struct ovn_lb_vip *vips;
@@ -78,14 +77,6 @@ struct ovn_northd_lb {
 
     struct sset ips_v4;
     struct sset ips_v6;
-
-    size_t n_nb_ls;
-    unsigned long *nb_ls_map;
-
-    size_t n_nb_lr;
-    unsigned long *nb_lr_map;
-
-    struct ovn_dp_group *dpg;
 };
 
 struct ovn_lb_vip {
@@ -129,23 +120,19 @@ struct ovn_northd_lb_vip {
 };
 
 struct ovn_northd_lb_backend {
-    struct ovn_port *op; /* Logical port to which the ip belong to. */
     bool health_check;
+    char *logical_port; /* Logical port to which the ip belong to. */
     char *svc_mon_src_ip; /* Source IP to use for monitoring. */
-    const struct sbrec_service_monitor *sbrec_monitor;
 };
 
-struct ovn_northd_lb *ovn_northd_lb_create(const struct nbrec_load_balancer *,
-                                           size_t n_ls_datapaths,
-                                           size_t n_lr_datapaths);
+struct ovn_northd_lb *ovn_northd_lb_create(const struct nbrec_load_balancer *);
 struct ovn_northd_lb *ovn_northd_lb_find(const struct hmap *,
                                          const struct uuid *);
 const struct smap *ovn_northd_lb_get_vips(const struct ovn_northd_lb *);
 void ovn_northd_lb_destroy(struct ovn_northd_lb *);
-void ovn_northd_lb_add_lr(struct ovn_northd_lb *lb, size_t n,
-                          struct ovn_datapath **ods);
-void ovn_northd_lb_add_ls(struct ovn_northd_lb *lb, size_t n,
-                          struct ovn_datapath **ods);
+
+void build_lrouter_lb_ips(struct ovn_lb_ip_set *,
+                          const struct ovn_northd_lb *);
 
 struct ovn_lb_group {
     struct hmap_node hmap_node;
@@ -153,35 +140,70 @@ struct ovn_lb_group {
     size_t n_lbs;
     struct ovn_northd_lb **lbs;
     struct ovn_lb_ip_set *lb_ips;
+};
 
-    /* Datapaths to which this LB group is applied. */
+struct ovn_lb_group *ovn_lb_group_create(
+    const struct nbrec_load_balancer_group *,
+    const struct hmap *lbs);
+void ovn_lb_group_destroy(struct ovn_lb_group *lb_group);
+struct ovn_lb_group *ovn_lb_group_find(const struct hmap *lb_groups,
+                                       const struct uuid *);
+
+struct ovn_lb_datapaths {
+    struct hmap_node hmap_node;
+
+    const struct ovn_northd_lb *lb;
+    size_t n_nb_ls;
+    unsigned long *nb_ls_map;
+
+    size_t n_nb_lr;
+    unsigned long *nb_lr_map;
+};
+
+struct ovn_lb_datapaths *ovn_lb_datapaths_create(const struct ovn_northd_lb *,
+                                                 size_t n_ls_datapaths,
+                                                 size_t n_lr_datapaths);
+struct ovn_lb_datapaths *ovn_lb_datapaths_find(const struct hmap *,
+                                               const struct uuid *);
+void ovn_lb_datapaths_destroy(struct ovn_lb_datapaths *);
+void ovn_lb_datapaths_add_lr(struct ovn_lb_datapaths *, size_t n,
+                             struct ovn_datapath **);
+void ovn_lb_datapaths_add_ls(struct ovn_lb_datapaths *, size_t n,
+                             struct ovn_datapath **);
+
+struct ovn_lb_group_datapaths {
+    struct hmap_node hmap_node;
+
+    const struct ovn_lb_group *lb_group;
+
+    /* Datapaths to which 'lb_group' is applied. */
     size_t n_ls;
     struct ovn_datapath **ls;
     size_t n_lr;
     struct ovn_datapath **lr;
 };
 
-struct ovn_lb_group *ovn_lb_group_create(
-    const struct nbrec_load_balancer_group *,
-    const struct hmap *lbs,
-    size_t max_ls_datapaths,
+struct ovn_lb_group_datapaths *ovn_lb_group_datapaths_create(
+    const struct ovn_lb_group *, size_t max_ls_datapaths,
     size_t max_lr_datapaths);
-void ovn_lb_group_destroy(struct ovn_lb_group *lb_group);
-struct ovn_lb_group *ovn_lb_group_find(const struct hmap *lb_groups,
-                                       const struct uuid *);
+
+void ovn_lb_group_datapaths_destroy(struct ovn_lb_group_datapaths *);
+struct ovn_lb_group_datapaths *ovn_lb_group_datapaths_find(
+    const struct hmap *lb_group_dps, const struct uuid *);
 
 static inline void
-ovn_lb_group_add_ls(struct ovn_lb_group *lb_group, size_t n,
-                    struct ovn_datapath **ods)
+ovn_lb_group_datapaths_add_ls(struct ovn_lb_group_datapaths *lbg_dps, size_t n,
+                               struct ovn_datapath **ods)
 {
-    memcpy(&lb_group->ls[lb_group->n_ls], ods, n * sizeof *ods);
-    lb_group->n_ls += n;
+    memcpy(&lbg_dps->ls[lbg_dps->n_ls], ods, n * sizeof *ods);
+    lbg_dps->n_ls += n;
 }
 
 static inline void
-ovn_lb_group_add_lr(struct ovn_lb_group *lb_group, struct ovn_datapath *lr)
+ovn_lb_group_datapaths_add_lr(struct ovn_lb_group_datapaths *lbg_dps,
+                               struct ovn_datapath *lr)
 {
-    lb_group->lr[lb_group->n_lr++] = lr;
+    lbg_dps->lr[lbg_dps->n_lr++] = lr;
 }
 
 struct ovn_controller_lb {

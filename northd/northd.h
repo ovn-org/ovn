@@ -29,9 +29,6 @@ struct northd_input {
     const struct nbrec_nb_global_table *nbrec_nb_global_table;
     const struct nbrec_logical_switch_table *nbrec_logical_switch_table;
     const struct nbrec_logical_router_table *nbrec_logical_router_table;
-    const struct nbrec_load_balancer_table *nbrec_load_balancer_table;
-    const struct nbrec_load_balancer_group_table
-        *nbrec_load_balancer_group_table;
     const struct nbrec_static_mac_binding_table
         *nbrec_static_mac_binding_table;
     const struct nbrec_chassis_template_var_table
@@ -54,6 +51,10 @@ struct northd_input {
     const struct sbrec_chassis_template_var_table
         *sbrec_chassis_template_var_table;
     const struct sbrec_mirror_table *sbrec_mirror_table;
+
+    /* Northd lb data node inputs*/
+    const struct hmap *lbs;
+    const struct hmap *lb_groups;
 
     /* Indexes */
     struct ovsdb_idl_index *sbrec_chassis_by_name;
@@ -105,12 +106,13 @@ struct northd_data {
     struct ovn_datapaths lr_datapaths;
     struct hmap ls_ports;
     struct hmap lr_ports;
-    struct hmap lbs;
-    struct hmap lb_groups;
+    struct hmap lb_datapaths_map;
+    struct hmap lb_group_datapaths_map;
     struct ovs_list lr_list;
     bool ovn_internal_version_changed;
     struct chassis_features features;
     struct sset svc_monitor_lsps;
+    struct hmap svc_monitor_map;
     bool change_tracked;
     struct tracked_ls_changes tracked_ls_changes;
 };
@@ -141,9 +143,10 @@ struct lflow_input {
     const struct hmap *lr_ports;
     const struct ls_port_group_table *ls_port_groups;
     const struct shash *meter_groups;
-    const struct hmap *lbs;
+    const struct hmap *lb_datapaths_map;
     const struct hmap *bfd_connections;
     const struct chassis_features *features;
+    const struct hmap *svc_monitor_map;
     bool ovn_internal_version_changed;
 };
 
