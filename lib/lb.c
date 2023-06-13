@@ -606,13 +606,13 @@ ovn_lb_get_health_check(const struct nbrec_load_balancer *nbrec_lb,
     return NULL;
 }
 
-struct ovn_northd_lb *
-ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
+static void
+ovn_northd_lb_init(struct ovn_northd_lb *lb,
+                   const struct nbrec_load_balancer *nbrec_lb)
 {
     bool template = smap_get_bool(&nbrec_lb->options, "template", false);
     bool is_udp = nullable_string_is_equal(nbrec_lb->protocol, "udp");
     bool is_sctp = nullable_string_is_equal(nbrec_lb->protocol, "sctp");
-    struct ovn_northd_lb *lb = xzalloc(sizeof *lb);
     int address_family = !strcmp(smap_get_def(&nbrec_lb->options,
                                               "address-family", "ipv4"),
                                  "ipv4")
@@ -668,6 +668,10 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
                                                   "reject", false);
         ovn_northd_lb_vip_init(lb_vip_nb, lb_vip, nbrec_lb,
                                node->key, node->value, template);
+        if (lb_vip_nb->lb_health_check) {
+            lb->health_checks = true;
+        }
+
         if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
             sset_add(&lb->ips_v4, lb_vip->vip_str);
         } else {
@@ -711,6 +715,13 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
         ds_chomp(&sel_fields, ',');
         lb->selection_fields = ds_steal_cstr(&sel_fields);
     }
+}
+
+struct ovn_northd_lb *
+ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
+{
+    struct ovn_northd_lb *lb = xzalloc(sizeof *lb);
+    ovn_northd_lb_init(lb, nbrec_lb);
     return lb;
 }
 
@@ -736,8 +747,8 @@ ovn_northd_lb_get_vips(const struct ovn_northd_lb *lb)
     return &lb->nlb->vips;
 }
 
-void
-ovn_northd_lb_destroy(struct ovn_northd_lb *lb)
+static void
+ovn_northd_lb_cleanup(struct ovn_northd_lb *lb)
 {
     for (size_t i = 0; i < lb->n_vips; i++) {
         ovn_lb_vip_destroy(&lb->vips[i]);
@@ -745,24 +756,36 @@ ovn_northd_lb_destroy(struct ovn_northd_lb *lb)
     }
     free(lb->vips);
     free(lb->vips_nb);
+    lb->vips = NULL;
+    lb->vips_nb = NULL;
     smap_destroy(&lb->template_vips);
     sset_destroy(&lb->ips_v4);
     sset_destroy(&lb->ips_v6);
     free(lb->selection_fields);
+    lb->selection_fields = NULL;
+    lb->health_checks = false;
+}
+
+void
+ovn_northd_lb_destroy(struct ovn_northd_lb *lb)
+{
+    ovn_northd_lb_cleanup(lb);
     free(lb);
 }
 
-/* Constructs a new 'struct ovn_lb_group' object from the Nb LB Group record
- * and an array of 'struct ovn_northd_lb' objects for its associated
- * load balancers. */
-struct ovn_lb_group *
-ovn_lb_group_create(const struct nbrec_load_balancer_group *nbrec_lb_group,
-                    const struct hmap *lbs)
+void
+ovn_northd_lb_reinit(struct ovn_northd_lb *lb,
+                     const struct nbrec_load_balancer *nbrec_lb)
 {
-    struct ovn_lb_group *lb_group;
+    ovn_northd_lb_cleanup(lb);
+    ovn_northd_lb_init(lb, nbrec_lb);
+}
 
-    lb_group = xzalloc(sizeof *lb_group);
-    lb_group->uuid = nbrec_lb_group->header_.uuid;
+static void
+ovn_lb_group_init(struct ovn_lb_group *lb_group,
+                  const struct nbrec_load_balancer_group *nbrec_lb_group,
+                  const struct hmap *lbs)
+{
     lb_group->n_lbs = nbrec_lb_group->n_load_balancer;
     lb_group->lbs = xmalloc(lb_group->n_lbs * sizeof *lb_group->lbs);
     lb_group->lb_ips = ovn_lb_ip_set_create();
@@ -772,8 +795,27 @@ ovn_lb_group_create(const struct nbrec_load_balancer_group *nbrec_lb_group,
             &nbrec_lb_group->load_balancer[i]->header_.uuid;
         lb_group->lbs[i] = ovn_northd_lb_find(lbs, lb_uuid);
     }
+}
 
+/* Constructs a new 'struct ovn_lb_group' object from the Nb LB Group record
+ * and an array of 'struct ovn_northd_lb' objects for its associated
+ * load balancers. */
+struct ovn_lb_group *
+ovn_lb_group_create(const struct nbrec_load_balancer_group *nbrec_lb_group,
+                    const struct hmap *lbs)
+{
+    struct ovn_lb_group *lb_group = xzalloc(sizeof *lb_group);
+    lb_group->uuid = nbrec_lb_group->header_.uuid;
+    ovn_lb_group_init(lb_group, nbrec_lb_group, lbs);
     return lb_group;
+}
+
+static void
+ovn_lb_group_cleanup(struct ovn_lb_group *lb_group)
+{
+    ovn_lb_ip_set_destroy(lb_group->lb_ips);
+    lb_group->lb_ips = NULL;
+    free(lb_group->lbs);
 }
 
 void
@@ -783,9 +825,17 @@ ovn_lb_group_destroy(struct ovn_lb_group *lb_group)
         return;
     }
 
-    ovn_lb_ip_set_destroy(lb_group->lb_ips);
-    free(lb_group->lbs);
+    ovn_lb_group_cleanup(lb_group);
     free(lb_group);
+}
+
+void
+ovn_lb_group_reinit(struct ovn_lb_group *lb_group,
+                    const struct nbrec_load_balancer_group *nbrec_lb_group,
+                    const struct hmap *lbs)
+{
+    ovn_lb_group_cleanup(lb_group);
+    ovn_lb_group_init(lb_group, nbrec_lb_group, lbs);
 }
 
 struct ovn_lb_group *
