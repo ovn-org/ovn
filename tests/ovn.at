@@ -36181,6 +36181,7 @@ OVS_WAIT_UNTIL([test $(as hv-1 ovs-vsctl list queue | grep -c 'burst="8000000000
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([FDB aging])
 ovn_start
 
