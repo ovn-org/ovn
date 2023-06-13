@@ -26,6 +26,7 @@
 #include "openvswitch/vlog.h"
 #include "lib/bitmap.h"
 #include "lib/smap.h"
+#include "socket-util.h"
 
 VLOG_DEFINE_THIS_MODULE(lb);
 
@@ -431,11 +432,62 @@ void ovn_northd_lb_vip_init(struct ovn_northd_lb_vip *lb_vip_nb,
         ovn_lb_get_health_check(nbrec_lb, vip_port_str, template);
 }
 
+static void
+ovn_lb_vip_backends_health_check_init(const struct ovn_northd_lb *lb,
+                                      const struct ovn_lb_vip *lb_vip,
+                                      struct ovn_northd_lb_vip *lb_vip_nb)
+{
+    struct ds key = DS_EMPTY_INITIALIZER;
+
+    for (size_t j = 0; j < lb_vip->n_backends; j++) {
+        struct ovn_lb_backend *backend = &lb_vip->backends[j];
+        ds_clear(&key);
+        ds_put_format(&key, IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)
+                      ? "%s" : "[%s]", backend->ip_str);
+
+        const char *s = smap_get(&lb->nlb->ip_port_mappings, ds_cstr(&key));
+        if (!s) {
+            continue;
+        }
+
+        char *svc_mon_src_ip = NULL;
+        char *port_name = xstrdup(s);
+        char *p = strstr(port_name, ":");
+        if (p) {
+            *p = 0;
+            p++;
+            struct sockaddr_storage svc_mon_src_addr;
+            if (!inet_parse_address(p, &svc_mon_src_addr)) {
+                static struct vlog_rate_limit rl =
+                    VLOG_RATE_LIMIT_INIT(5, 1);
+                VLOG_WARN_RL(&rl, "Invalid svc mon src IP %s", p);
+            } else {
+                struct ds src_ip_s = DS_EMPTY_INITIALIZER;
+                ss_format_address_nobracks(&svc_mon_src_addr,
+                                            &src_ip_s);
+                svc_mon_src_ip = ds_steal_cstr(&src_ip_s);
+            }
+        }
+
+        if (svc_mon_src_ip) {
+            struct ovn_northd_lb_backend *backend_nb =
+                &lb_vip_nb->backends_nb[j];
+            backend_nb->health_check = true;
+            backend_nb->logical_port = xstrdup(port_name);
+            backend_nb->svc_mon_src_ip = svc_mon_src_ip;
+        }
+        free(port_name);
+    }
+
+    ds_destroy(&key);
+}
+
 static
 void ovn_northd_lb_vip_destroy(struct ovn_northd_lb_vip *vip)
 {
     free(vip->backend_ips);
     for (size_t i = 0; i < vip->n_backends; i++) {
+        free(vip->backends_nb[i].logical_port);
         free(vip->backends_nb[i].svc_mon_src_ip);
     }
     free(vip->backends_nb);
@@ -555,8 +607,7 @@ ovn_lb_get_health_check(const struct nbrec_load_balancer *nbrec_lb,
 }
 
 struct ovn_northd_lb *
-ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb,
-                     size_t n_ls_datapaths, size_t n_lr_datapaths)
+ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb)
 {
     bool template = smap_get_bool(&nbrec_lb->options, "template", false);
     bool is_udp = nullable_string_is_equal(nbrec_lb->protocol, "udp");
@@ -595,9 +646,6 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb,
     }
     lb->affinity_timeout = affinity_timeout;
 
-    lb->nb_ls_map = bitmap_allocate(n_ls_datapaths);
-    lb->nb_lr_map = bitmap_allocate(n_lr_datapaths);
-
     sset_init(&lb->ips_v4);
     sset_init(&lb->ips_v6);
     struct smap_node *node;
@@ -632,6 +680,10 @@ ovn_northd_lb_create(const struct nbrec_load_balancer *nbrec_lb,
                             xstrdup(node->value));
         }
         n_vips++;
+
+        if (lb_vip_nb->lb_health_check) {
+            ovn_lb_vip_backends_health_check_init(lb, lb_vip, lb_vip_nb);
+        }
     }
 
     /* It's possible that parsing VIPs fails.  Update the lb->n_vips to the
@@ -685,24 +737,6 @@ ovn_northd_lb_get_vips(const struct ovn_northd_lb *lb)
 }
 
 void
-ovn_northd_lb_add_lr(struct ovn_northd_lb *lb, size_t n,
-                     struct ovn_datapath **ods)
-{
-    for (size_t i = 0; i < n; i++) {
-        bitmap_set1(lb->nb_lr_map, ods[i]->index);
-    }
-}
-
-void
-ovn_northd_lb_add_ls(struct ovn_northd_lb *lb, size_t n,
-                     struct ovn_datapath **ods)
-{
-    for (size_t i = 0; i < n; i++) {
-        bitmap_set1(lb->nb_ls_map, ods[i]->index);
-    }
-}
-
-void
 ovn_northd_lb_destroy(struct ovn_northd_lb *lb)
 {
     for (size_t i = 0; i < lb->n_vips; i++) {
@@ -715,20 +749,15 @@ ovn_northd_lb_destroy(struct ovn_northd_lb *lb)
     sset_destroy(&lb->ips_v4);
     sset_destroy(&lb->ips_v6);
     free(lb->selection_fields);
-    bitmap_free(lb->nb_lr_map);
-    bitmap_free(lb->nb_ls_map);
     free(lb);
 }
 
 /* Constructs a new 'struct ovn_lb_group' object from the Nb LB Group record
- * and a hash map of all existing 'struct ovn_northd_lb' objects.  Space will
- * be allocated for 'max_ls_datapaths' logical switches and 'max_lr_datapaths'
- * logical routers to which this LB Group is applied.  Can be filled later
- * with ovn_lb_group_add_ls() and ovn_lb_group_add_lr() respectively. */
+ * and an array of 'struct ovn_northd_lb' objects for its associated
+ * load balancers. */
 struct ovn_lb_group *
 ovn_lb_group_create(const struct nbrec_load_balancer_group *nbrec_lb_group,
-                    const struct hmap *lbs, size_t max_ls_datapaths,
-                    size_t max_lr_datapaths)
+                    const struct hmap *lbs)
 {
     struct ovn_lb_group *lb_group;
 
@@ -736,8 +765,6 @@ ovn_lb_group_create(const struct nbrec_load_balancer_group *nbrec_lb_group,
     lb_group->uuid = nbrec_lb_group->header_.uuid;
     lb_group->n_lbs = nbrec_lb_group->n_load_balancer;
     lb_group->lbs = xmalloc(lb_group->n_lbs * sizeof *lb_group->lbs);
-    lb_group->ls = xmalloc(max_ls_datapaths * sizeof *lb_group->ls);
-    lb_group->lr = xmalloc(max_lr_datapaths * sizeof *lb_group->lr);
     lb_group->lb_ips = ovn_lb_ip_set_create();
 
     for (size_t i = 0; i < nbrec_lb_group->n_load_balancer; i++) {
@@ -758,8 +785,6 @@ ovn_lb_group_destroy(struct ovn_lb_group *lb_group)
 
     ovn_lb_ip_set_destroy(lb_group->lb_ips);
     free(lb_group->lbs);
-    free(lb_group->ls);
-    free(lb_group->lr);
     free(lb_group);
 }
 
@@ -942,4 +967,114 @@ ovn_lb_5tuples_destroy(struct hmap *tuples)
     }
 
     hmap_destroy(tuples);
+}
+
+void
+build_lrouter_lb_ips(struct ovn_lb_ip_set *lb_ips,
+                     const struct ovn_northd_lb *lb)
+{
+    const char *ip_address;
+
+    SSET_FOR_EACH (ip_address, &lb->ips_v4) {
+        sset_add(&lb_ips->ips_v4, ip_address);
+        if (lb->routable) {
+            sset_add(&lb_ips->ips_v4_routable, ip_address);
+        }
+    }
+    SSET_FOR_EACH (ip_address, &lb->ips_v6) {
+        sset_add(&lb_ips->ips_v6, ip_address);
+        if (lb->routable) {
+            sset_add(&lb_ips->ips_v6_routable, ip_address);
+        }
+    }
+}
+
+/* lb datapaths functions */
+struct  ovn_lb_datapaths *
+ovn_lb_datapaths_create(const struct ovn_northd_lb *lb, size_t n_ls_datapaths,
+                        size_t n_lr_datapaths)
+{
+    struct ovn_lb_datapaths *lb_dps = xzalloc(sizeof *lb_dps);
+    lb_dps->lb = lb;
+    lb_dps->nb_ls_map = bitmap_allocate(n_ls_datapaths);
+    lb_dps->nb_lr_map = bitmap_allocate(n_lr_datapaths);
+
+    return lb_dps;
+}
+
+struct ovn_lb_datapaths *
+ovn_lb_datapaths_find(const struct hmap *lb_dps_map,
+                      const struct uuid *lb_uuid)
+{
+    struct ovn_lb_datapaths *lb_dps;
+    size_t hash = uuid_hash(lb_uuid);
+    HMAP_FOR_EACH_WITH_HASH (lb_dps, hmap_node, hash, lb_dps_map) {
+        if (uuid_equals(&lb_dps->lb->nlb->header_.uuid, lb_uuid)) {
+            return lb_dps;
+        }
+    }
+    return NULL;
+}
+
+void
+ovn_lb_datapaths_destroy(struct ovn_lb_datapaths *lb_dps)
+{
+    bitmap_free(lb_dps->nb_lr_map);
+    bitmap_free(lb_dps->nb_ls_map);
+    free(lb_dps);
+}
+
+void
+ovn_lb_datapaths_add_lr(struct ovn_lb_datapaths *lb_dps, size_t n,
+                        struct ovn_datapath **ods)
+{
+    for (size_t i = 0; i < n; i++) {
+        bitmap_set1(lb_dps->nb_lr_map, ods[i]->index);
+    }
+}
+
+void
+ovn_lb_datapaths_add_ls(struct ovn_lb_datapaths *lb_dps, size_t n,
+                        struct ovn_datapath **ods)
+{
+    for (size_t i = 0; i < n; i++) {
+        bitmap_set1(lb_dps->nb_ls_map, ods[i]->index);
+    }
+}
+
+struct ovn_lb_group_datapaths *
+ovn_lb_group_datapaths_create(const struct ovn_lb_group *lb_group,
+                              size_t max_ls_datapaths,
+                              size_t max_lr_datapaths)
+{
+    struct ovn_lb_group_datapaths *lb_group_dps =
+        xzalloc(sizeof *lb_group_dps);
+    lb_group_dps->lb_group = lb_group;
+    lb_group_dps->ls = xmalloc(max_ls_datapaths * sizeof *lb_group_dps->ls);
+    lb_group_dps->lr = xmalloc(max_lr_datapaths * sizeof *lb_group_dps->lr);
+
+    return lb_group_dps;
+}
+
+void
+ovn_lb_group_datapaths_destroy(struct ovn_lb_group_datapaths *lb_group_dps)
+{
+    free(lb_group_dps->ls);
+    free(lb_group_dps->lr);
+    free(lb_group_dps);
+}
+
+struct ovn_lb_group_datapaths *
+ovn_lb_group_datapaths_find(const struct hmap *lb_group_dps_map,
+                            const struct uuid *lb_group_uuid)
+{
+    struct ovn_lb_group_datapaths *lb_group_dps;
+    size_t hash = uuid_hash(lb_group_uuid);
+
+    HMAP_FOR_EACH_WITH_HASH (lb_group_dps, hmap_node, hash, lb_group_dps_map) {
+        if (uuid_equals(&lb_group_dps->lb_group->uuid, lb_group_uuid)) {
+            return lb_group_dps;
+        }
+    }
+    return NULL;
 }

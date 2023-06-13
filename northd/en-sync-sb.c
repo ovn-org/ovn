@@ -220,7 +220,7 @@ en_sync_to_sb_lb_run(struct engine_node *node, void *data OVS_UNUSED)
     struct northd_data *northd_data = engine_get_input_data("northd", node);
 
     sync_lbs(eng_ctx->ovnsb_idl_txn, sb_load_balancer_table,
-             &northd_data->ls_datapaths, &northd_data->lbs);
+             &northd_data->ls_datapaths, &northd_data->lb_datapaths_map);
     engine_set_node_state(node, EN_UPDATED);
 }
 
