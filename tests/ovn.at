@@ -36340,3 +36340,121 @@ wait_row_count fdb 0 mac='"00:00:00:00:10:20"'
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([DNAT_SNAT and LB traffic])
+AT_KEYWORDS([dnat-snat-lb])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+test_ip_req_packet() {
+    local src_mac="50:54:00:00:00:88"
+    local dst_mac="$1"
+    local src_ip="172.168.0.200"
+    local dst_ip="$2"
+
+    local packet=$(fmt_pkt "Ether(dst='${dst_mac}', src='${src_mac}')/
+                    IP(dst='${dst_ip}', src='${src_ip}')/ \
+                    UDP(sport=53, dport=4369)")
+
+    as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+    as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+    check as hv2 ovs-appctl netdev-dummy/receive hv2-vif1 $packet
+}
+
+test_ip_rep_packet() {
+    local src_mac="50:54:00:00:00:01"
+    local dst_mac="00:00:00:00:ff:01"
+    local src_ip="10.0.0.2"
+    local dst_ip="172.168.0.200"
+
+    local packet=$(fmt_pkt "Ether(dst='${dst_mac}', src='${src_mac}')/
+                    IP(dst='${dst_ip}', src='${src_ip}')/ \
+                    UDP(sport=4369, dport=53)")
+
+    check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
+}
+
+net_add n
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n br-phys 192.168.0.1
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-port1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n br-phys 192.168.0.2
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+check ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=public-port1 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-port1
+check ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:01 10.0.0.2"
+
+check ovn-nbctl ls-add public
+check ovn-nbctl lsp-add public ln-public
+check ovn-nbctl lsp-set-type ln-public localnet
+check ovn-nbctl lsp-set-addresses ln-public unknown
+check ovn-nbctl lsp-set-options ln-public network_name=phys
+check ovn-nbctl lsp-add public public-port1
+check ovn-nbctl lsp-set-addresses public-port1 "50:54:00:00:00:88 172.168.0.200"
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 router
+check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.1/24
+check ovn-nbctl lsp-add public public-lr0
+check ovn-nbctl lsp-set-type public-lr0 router
+check ovn-nbctl lsp-set-addresses public-lr0 router
+check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+
+check ovn-nbctl lrp-set-gateway-chassis lr0-public hv2 20
+
+check ovn-nbctl lr-nat-add lr0 snat 172.168.0.1 10.0.0.0/24
+check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.168.0.110 10.0.0.2 sw0-port1 f0:00:00:01:02:03
+
+wait_for_ports_up
+OVN_POPULATE_ARP
+
+# send UDP request to the FIP associated to sw0-port1
+test_ip_req_packet "f0:00:00:01:02:03" "172.168.0.110"
+OVS_WAIT_UNTIL([test $($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | wc -l) -ge 1])
+# send UDP reply from sw0-port1
+test_ip_rep_packet
+# packet sent by the FIP
+fip_packet=$(fmt_pkt "Ether(dst='50:54:00:00:00:88', src='f0:00:00:01:02:03')/
+                      IP(dst='172.168.0.200', src='172.168.0.110', ttl=63)/ \
+                      UDP(sport=4369, dport=53)")
+echo $fip_packet > expected
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv2/vif1-tx.pcap], [expected])
+
+check ovn-nbctl lb-add lb0 172.168.0.1:4369 10.0.0.2:4369 udp
+check ovn-nbctl lr-lb-add lr0 lb0
+
+# send UDP request to the load-balancer VIP
+test_ip_req_packet "00:00:20:20:12:13" "172.168.0.1"
+OVS_WAIT_UNTIL([test $($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | wc -l) -ge 1])
+# send UDP reply from sw0-port1
+test_ip_rep_packet
+# packet sent by the load balancer VIP
+packet=$(fmt_pkt "Ether(dst='50:54:00:00:00:88', src='00:00:20:20:12:13')/
+                      IP(dst='172.168.0.200', src='172.168.0.1', ttl=63)/ \
+                      UDP(sport=4369, dport=53)")
+echo $packet > expected
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv2/vif1-tx.pcap], [expected])
+
+AT_CLEANUP
+])

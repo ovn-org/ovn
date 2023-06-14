@@ -11242,6 +11242,7 @@ struct lrouter_nat_lb_flows_ctx {
 
     struct ds *new_match;
     struct ds *undnat_match;
+    struct ds *gw_redir_action;
 
     struct ovn_lb_vip *lb_vip;
     struct ovn_northd_lb *lb;
@@ -11308,6 +11309,20 @@ build_distr_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
     if (!ctx->lb_vip->n_backends) {
         return;
     }
+
+    /* We need to centralize the LB traffic to properly perform
+     * the undnat stage.
+     */
+    ds_put_format(ctx->undnat_match, ") && outport == %s", dgp->json_key);
+    ds_clear(ctx->gw_redir_action);
+    ds_put_format(ctx->gw_redir_action, "outport = %s; next;",
+                  dgp->cr_port->json_key);
+
+    ovn_lflow_add_with_hint(ctx->lflows, od, S_ROUTER_IN_GW_REDIRECT,
+                            200, ds_cstr(ctx->undnat_match),
+                            ds_cstr(ctx->gw_redir_action),
+                            &ctx->lb->nlb->header_);
+    ds_truncate(ctx->undnat_match, undnat_match_len);
 
     ds_put_format(ctx->undnat_match, ") && (inport == %s || outport == %s)"
                   " && is_chassis_resident(%s)", dgp->json_key, dgp->json_key,
@@ -11379,6 +11394,7 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     struct ds force_snat_act = DS_EMPTY_INITIALIZER;
     struct ds undnat_match = DS_EMPTY_INITIALIZER;
     struct ds unsnat_match = DS_EMPTY_INITIALIZER;
+    struct ds gw_redir_action = DS_EMPTY_INITIALIZER;
 
     ds_clear(match);
     ds_clear(action);
@@ -11437,7 +11453,8 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
         .lflows = lflows,
         .meter_groups = meter_groups,
         .new_match = match,
-        .undnat_match = &undnat_match
+        .undnat_match = &undnat_match,
+        .gw_redir_action = &gw_redir_action,
     };
 
     ctx.new_action[LROUTER_NAT_LB_FLOW_NORMAL] = ds_cstr(action);
@@ -11531,6 +11548,7 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     ds_destroy(&undnat_match);
     ds_destroy(&skip_snat_act);
     ds_destroy(&force_snat_act);
+    ds_destroy(&gw_redir_action);
 
     for (size_t i = 0; i < LROUTER_NAT_LB_FLOW_MAX + 2; i++) {
         bitmap_free(dp_bitmap[i]);

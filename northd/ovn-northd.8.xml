@@ -4589,6 +4589,22 @@ icmp6 {
 
     <ul>
       <li>
+        For all the configured load balancing rules that include an IPv4
+        address <var>VIP</var>, and a list of IPv4 backend addresses
+        <var>B0</var>, <var>B1</var> .. <var>Bn</var> defined for the
+        <var>VIP</var> a priority-200 flow is added that matches <code>
+        ip4 &amp;&amp; (ip4.src == <var>B0</var> || ip4.src == <var>B1</var>
+        || ... || ip4.src == <var>Bn</var>)</code> with an action <code>
+        outport = <var>CR</var>; next;</code> where <var>CR</var> is the
+        <code>chassisredirect</code> port representing the instance of the
+        logical router distributed gateway port on the gateway chassis.
+        If the backend IPv4 address <var>Bx</var> is also configured with
+        L4 port <var>PORT</var> of protocol <var>P</var>, then the match
+        also includes <code>P.src</code> == <var>PORT</var>.
+        Similar flows are added for IPv6.
+      </li>
+
+      <li>
         For each NAT rule in the OVN Northbound database that can
         be handled in a distributed manner, a priority-100 logical
         flow with match <code>ip4.src == <var>B</var> &amp;&amp;

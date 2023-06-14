@@ -9558,3 +9558,53 @@ AT_CHECK([test $fail_count -le 3])
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([check fip and lb flows])
+AT_KEYWORDS([fip-lb-flows])
+ovn_start
+
+check ovn-nbctl lr-add R1
+check ovn-nbctl lrp-add R1 R1-S0 02:ac:10:01:00:01 10.0.0.1/24 1000::a/64
+check ovn-nbctl lrp-add R1 R1-PUB 02:ac:20:01:01:01 172.16.0.1/24 3000::a/64
+check ovn-nbctl lrp-set-gateway-chassis R1-PUB hv1 20
+
+check ovn-nbctl ls-add S0
+check ovn-nbctl lsp-add S0 S0-R1
+check ovn-nbctl lsp-set-type S0-R1 router
+check ovn-nbctl lsp-set-addresses S0-R1 02:ac:10:01:00:01
+check ovn-nbctl lsp-set-options S0-R1 router-port=R1-S0
+check ovn-nbctl lsp-add S0 S0-P0
+check ovn-nbctl lsp-set-addresses S0-P0 "50:54:00:00:00:03 10.0.0.3 1000::3"
+
+check ovn-nbctl lr-nat-add R1 dnat_and_snat 172.16.0.110 10.0.0.3 S0-P0 30:54:00:00:00:03
+check ovn-nbctl lr-nat-add R1 dnat_and_snat 3000::c 1000::3 S0-P0 40:54:00:00:00:03
+
+ovn-sbctl dump-flows R1 > R1flows
+AT_CAPTURE_FILE([R1flows])
+
+AT_CHECK([grep "lr_in_gw_redirect" R1flows | sed s'/table=../table=??/' |sort], [0], [dnl
+  table=??(lr_in_gw_redirect  ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_gw_redirect  ), priority=100  , match=(ip4.src == 10.0.0.3 && outport == "R1-PUB" && is_chassis_resident("S0-P0")), action=(eth.src = 30:54:00:00:00:03; reg1 = 172.16.0.110; next;)
+  table=??(lr_in_gw_redirect  ), priority=100  , match=(ip6.src == 1000::3 && outport == "R1-PUB" && is_chassis_resident("S0-P0")), action=(eth.src = 40:54:00:00:00:03; xxreg1 = 3000::c; next;)
+  table=??(lr_in_gw_redirect  ), priority=50   , match=(outport == "R1-PUB"), action=(outport = "cr-R1-PUB"; next;)
+])
+
+check ovn-nbctl lb-add lb_tcp4 172.16.0.100:50001 10.0.0.2:50001,10.0.0.3:50001,10.0.0.4:50001 tcp
+check ovn-nbctl lb-add lb_tcp6 [[1000::1]]:50001 [[1000::3]]:8080
+check ovn-nbctl --wait=sb lr-lb-add R1 lb_tcp4
+check ovn-nbctl --wait=sb lr-lb-add R1 lb_tcp6
+
+ovn-sbctl dump-flows R1 > R1flows
+AT_CAPTURE_FILE([R1flows])
+AT_CHECK([grep "lr_in_gw_redirect" R1flows |sed s'/table=../table=??/' |sort], [0], [dnl
+  table=??(lr_in_gw_redirect  ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_gw_redirect  ), priority=100  , match=(ip4.src == 10.0.0.3 && outport == "R1-PUB" && is_chassis_resident("S0-P0")), action=(eth.src = 30:54:00:00:00:03; reg1 = 172.16.0.110; next;)
+  table=??(lr_in_gw_redirect  ), priority=100  , match=(ip6.src == 1000::3 && outport == "R1-PUB" && is_chassis_resident("S0-P0")), action=(eth.src = 40:54:00:00:00:03; xxreg1 = 3000::c; next;)
+  table=??(lr_in_gw_redirect  ), priority=200  , match=(ip4 && ((ip4.src == 10.0.0.2 && tcp.src == 50001) || (ip4.src == 10.0.0.3 && tcp.src == 50001) || (ip4.src == 10.0.0.4 && tcp.src == 50001)) && outport == "R1-PUB"), action=(outport = "cr-R1-PUB"; next;)
+  table=??(lr_in_gw_redirect  ), priority=200  , match=(ip6 && ((ip6.src == 1000::3 && tcp.src == 8080)) && outport == "R1-PUB"), action=(outport = "cr-R1-PUB"; next;)
+  table=??(lr_in_gw_redirect  ), priority=50   , match=(outport == "R1-PUB"), action=(outport = "cr-R1-PUB"; next;)
+])
+
+AT_CLEANUP
+])
