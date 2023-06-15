@@ -16308,6 +16308,115 @@ void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
     hmap_destroy(&mcast_groups);
 }
 
+static void
+sync_lsp_lflows_to_sb(struct ovsdb_idl_txn *ovnsb_txn,
+                      struct lflow_input *lflow_input,
+                      struct hmap *lflows,
+                      struct ovn_lflow *lflow)
+{
+    size_t n_datapaths;
+    struct ovn_datapath **datapaths_array;
+    if (ovn_stage_to_datapath_type(lflow->stage) == DP_SWITCH) {
+        n_datapaths = ods_size(lflow_input->ls_datapaths);
+        datapaths_array = lflow_input->ls_datapaths->array;
+    } else {
+        n_datapaths = ods_size(lflow_input->lr_datapaths);
+        datapaths_array = lflow_input->lr_datapaths->array;
+    }
+    uint32_t n_ods = bitmap_count1(lflow->dpg_bitmap, n_datapaths);
+    ovs_assert(n_ods == 1);
+    /* There is only one datapath, so it should be moved out of the
+     * group to a single 'od'. */
+    size_t index = bitmap_scan(lflow->dpg_bitmap, true, 0,
+                               n_datapaths);
+
+    bitmap_set0(lflow->dpg_bitmap, index);
+    lflow->od = datapaths_array[index];
+
+    /* Logical flow should be re-hashed to allow lookups. */
+    uint32_t hash = hmap_node_hash(&lflow->hmap_node);
+    /* Remove from lflows. */
+    hmap_remove(lflows, &lflow->hmap_node);
+    hash = ovn_logical_flow_hash_datapath(&lflow->od->sb->header_.uuid,
+                                          hash);
+    /* Add back. */
+    hmap_insert(lflows, &lflow->hmap_node, hash);
+
+    /* Sync to SB. */
+    const struct sbrec_logical_flow *sbflow;
+    /* Note: uuid_random acquires a global mutex. If we parallelize the sync to
+     * SB this may become a bottleneck. */
+    lflow->sb_uuid = uuid_random();
+    sbflow = sbrec_logical_flow_insert_persist_uuid(ovnsb_txn,
+                                                    &lflow->sb_uuid);
+    const char *pipeline = ovn_stage_get_pipeline_name(lflow->stage);
+    uint8_t table = ovn_stage_get_table(lflow->stage);
+    sbrec_logical_flow_set_logical_datapath(sbflow, lflow->od->sb);
+    sbrec_logical_flow_set_logical_dp_group(sbflow, NULL);
+    sbrec_logical_flow_set_pipeline(sbflow, pipeline);
+    sbrec_logical_flow_set_table_id(sbflow, table);
+    sbrec_logical_flow_set_priority(sbflow, lflow->priority);
+    sbrec_logical_flow_set_match(sbflow, lflow->match);
+    sbrec_logical_flow_set_actions(sbflow, lflow->actions);
+    if (lflow->io_port) {
+        struct smap tags = SMAP_INITIALIZER(&tags);
+        smap_add(&tags, "in_out_port", lflow->io_port);
+        sbrec_logical_flow_set_tags(sbflow, &tags);
+        smap_destroy(&tags);
+    }
+    sbrec_logical_flow_set_controller_meter(sbflow, lflow->ctrl_meter);
+    /* Trim the source locator lflow->where, which looks something like
+     * "ovn/northd/northd.c:1234", down to just the part following the
+     * last slash, e.g. "northd.c:1234". */
+    const char *slash = strrchr(lflow->where, '/');
+#if _WIN32
+    const char *backslash = strrchr(lflow->where, '\\');
+    if (!slash || backslash > slash) {
+        slash = backslash;
+    }
+#endif
+    const char *where = slash ? slash + 1 : lflow->where;
+
+    struct smap ids = SMAP_INITIALIZER(&ids);
+    smap_add(&ids, "stage-name", ovn_stage_to_str(lflow->stage));
+    smap_add(&ids, "source", where);
+    if (lflow->stage_hint) {
+        smap_add(&ids, "stage-hint", lflow->stage_hint);
+    }
+    sbrec_logical_flow_set_external_ids(sbflow, &ids);
+    smap_destroy(&ids);
+}
+
+static bool
+delete_lflow_for_lsp(struct ovn_port *op, bool is_update,
+                     const struct sbrec_logical_flow_table *sb_lflow_table,
+                     struct hmap *lflows)
+{
+    struct lflow_ref_node *lfrn;
+    const char *operation = is_update ? "updated" : "deleted";
+    LIST_FOR_EACH_SAFE (lfrn, lflow_list_node, &op->lflows) {
+        VLOG_DBG("Deleting SB lflow "UUID_FMT" for %s port %s",
+                 UUID_ARGS(&lfrn->lflow->sb_uuid), operation, op->key);
+
+        const struct sbrec_logical_flow *sblflow =
+            sbrec_logical_flow_table_get_for_uuid(sb_lflow_table,
+                                              &lfrn->lflow->sb_uuid);
+        if (sblflow) {
+            sbrec_logical_flow_delete(sblflow);
+        } else {
+            static struct vlog_rate_limit rl =
+                VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_WARN_RL(&rl, "SB lflow "UUID_FMT" not found when handling "
+                         "%s port %s. Recompute.",
+                         UUID_ARGS(&lfrn->lflow->sb_uuid), operation, op->key);
+            return false;
+        }
+
+        ovn_lflow_destroy(lflows, lfrn->lflow);
+    }
+    return true;
+}
+
 bool lflow_handle_northd_ls_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                     struct tracked_ls_changes *ls_changes,
                                     struct lflow_input *lflow_input,
@@ -16315,13 +16424,6 @@ bool lflow_handle_northd_ls_changes(struct ovsdb_idl_txn *ovnsb_txn,
 {
     struct ls_change *ls_change;
     LIST_FOR_EACH (ls_change, list_node, &ls_changes->updated) {
-        if (!ovs_list_is_empty(&ls_change->updated_ports) ||
-            !ovs_list_is_empty(&ls_change->deleted_ports)) {
-            /* XXX: implement lflow index so that we can handle updated and
-             * deleted LSPs incrementally. */
-            return false;
-        }
-
         const struct sbrec_multicast_group *sbmc_flood =
             mcast_group_lookup(lflow_input->sbrec_mcast_group_by_name_dp,
                                MC_FLOOD, ls_change->od->sb);
@@ -16333,6 +16435,47 @@ bool lflow_handle_northd_ls_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                MC_UNKNOWN, ls_change->od->sb);
 
         struct ovn_port *op;
+        LIST_FOR_EACH (op, list, &ls_change->deleted_ports) {
+            if (!delete_lflow_for_lsp(op, false,
+                                      lflow_input->sbrec_logical_flow_table,
+                                      lflows)) {
+                return false;
+            }
+
+            /* No need to update SB multicast groups, thanks to weak
+             * references. */
+        }
+
+        LIST_FOR_EACH (op, list, &ls_change->updated_ports) {
+            /* Delete old lflows. */
+            if (!delete_lflow_for_lsp(op, true,
+                                      lflow_input->sbrec_logical_flow_table,
+                                      lflows)) {
+                return false;
+            }
+
+            /* Generate new lflows. */
+            struct ds match = DS_EMPTY_INITIALIZER;
+            struct ds actions = DS_EMPTY_INITIALIZER;
+            build_lswitch_and_lrouter_iterate_by_lsp(op, lflow_input->ls_ports,
+                                                     lflow_input->lr_ports,
+                                                     lflow_input->meter_groups,
+                                                     &match, &actions,
+                                                     lflows);
+            ds_destroy(&match);
+            ds_destroy(&actions);
+
+            /* SB port_binding is not deleted, so don't update SB multicast
+             * groups. */
+
+            /* Sync the new flows to SB. */
+            struct lflow_ref_node *lfrn;
+            LIST_FOR_EACH (lfrn, lflow_list_node, &op->lflows) {
+                sync_lsp_lflows_to_sb(ovnsb_txn, lflow_input, lflows,
+                                      lfrn->lflow);
+            }
+        }
+
         LIST_FOR_EACH (op, list, &ls_change->added_ports) {
             struct ds match = DS_EMPTY_INITIALIZER;
             struct ds actions = DS_EMPTY_INITIALIZER;
@@ -16343,6 +16486,8 @@ bool lflow_handle_northd_ls_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                                      lflows);
             ds_destroy(&match);
             ds_destroy(&actions);
+
+            /* Update SB multicast groups for the new port. */
             if (!sbmc_flood) {
                 sbmc_flood = create_sb_multicast_group(ovnsb_txn,
                     ls_change->od->sb, MC_FLOOD, OVN_MCAST_FLOOD_TUNNEL_KEY);
@@ -16369,80 +16514,8 @@ bool lflow_handle_northd_ls_changes(struct ovsdb_idl_txn *ovnsb_txn,
             /* Sync the newly added flows to SB. */
             struct lflow_ref_node *lfrn;
             LIST_FOR_EACH (lfrn, lflow_list_node, &op->lflows) {
-                struct ovn_lflow *lflow = lfrn->lflow;
-                size_t n_datapaths;
-                struct ovn_datapath **datapaths_array;
-                if (ovn_stage_to_datapath_type(lflow->stage) == DP_SWITCH) {
-                    n_datapaths = ods_size(lflow_input->ls_datapaths);
-                    datapaths_array = lflow_input->ls_datapaths->array;
-                } else {
-                    n_datapaths = ods_size(lflow_input->lr_datapaths);
-                    datapaths_array = lflow_input->lr_datapaths->array;
-                }
-                uint32_t n_ods = bitmap_count1(lflow->dpg_bitmap, n_datapaths);
-                ovs_assert(n_ods == 1);
-                /* There is only one datapath, so it should be moved out of the
-                 * group to a single 'od'. */
-                size_t index = bitmap_scan(lflow->dpg_bitmap, true, 0,
-                                           n_datapaths);
-
-                bitmap_set0(lflow->dpg_bitmap, index);
-                lflow->od = datapaths_array[index];
-
-                /* Logical flow should be re-hashed to allow lookups. */
-                uint32_t hash = hmap_node_hash(&lflow->hmap_node);
-                /* Remove from lflows. */
-                hmap_remove(lflows, &lflow->hmap_node);
-                hash = ovn_logical_flow_hash_datapath(
-                                          &lflow->od->sb->header_.uuid, hash);
-                /* Add back. */
-                hmap_insert(lflows, &lflow->hmap_node, hash);
-
-                /* Sync to SB. */
-                const struct sbrec_logical_flow *sbflow;
-                /* Note: uuid_random acquires a global mutex. If we parallelize
-                 * the sync to SB this may become a bottleneck. */
-                lflow->sb_uuid = uuid_random();
-                sbflow = sbrec_logical_flow_insert_persist_uuid(
-                                                ovnsb_txn, &lflow->sb_uuid);
-                const char *pipeline = ovn_stage_get_pipeline_name(
-                                                               lflow->stage);
-                uint8_t table = ovn_stage_get_table(lflow->stage);
-                sbrec_logical_flow_set_logical_datapath(sbflow, lflow->od->sb);
-                sbrec_logical_flow_set_logical_dp_group(sbflow, NULL);
-                sbrec_logical_flow_set_pipeline(sbflow, pipeline);
-                sbrec_logical_flow_set_table_id(sbflow, table);
-                sbrec_logical_flow_set_priority(sbflow, lflow->priority);
-                sbrec_logical_flow_set_match(sbflow, lflow->match);
-                sbrec_logical_flow_set_actions(sbflow, lflow->actions);
-                if (lflow->io_port) {
-                    struct smap tags = SMAP_INITIALIZER(&tags);
-                    smap_add(&tags, "in_out_port", lflow->io_port);
-                    sbrec_logical_flow_set_tags(sbflow, &tags);
-                    smap_destroy(&tags);
-                }
-                sbrec_logical_flow_set_controller_meter(sbflow,
-                                                        lflow->ctrl_meter);
-                /* Trim the source locator lflow->where, which looks something
-                 * like "ovn/northd/northd.c:1234", down to just the part
-                 * following the last slash, e.g. "northd.c:1234". */
-                const char *slash = strrchr(lflow->where, '/');
-#if _WIN32
-                const char *backslash = strrchr(lflow->where, '\\');
-                if (!slash || backslash > slash) {
-                    slash = backslash;
-                }
-#endif
-                const char *where = slash ? slash + 1 : lflow->where;
-
-                struct smap ids = SMAP_INITIALIZER(&ids);
-                smap_add(&ids, "stage-name", ovn_stage_to_str(lflow->stage));
-                smap_add(&ids, "source", where);
-                if (lflow->stage_hint) {
-                    smap_add(&ids, "stage-hint", lflow->stage_hint);
-                }
-                sbrec_logical_flow_set_external_ids(sbflow, &ids);
-                smap_destroy(&ids);
+                sync_lsp_lflows_to_sb(ovnsb_txn, lflow_input, lflows,
+                                      lfrn->lflow);
             }
         }
     }

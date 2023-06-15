@@ -9540,11 +9540,11 @@ for i in $(seq 10); do
 
     check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
     check ovn-nbctl --wait=hv lsp-del lsp${i}-1
-    check_recompute_counter 0 1 || continue
+    check_recompute_counter 0 0 || continue
 
     check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
     check ovn-nbctl --wait=hv lsp-set-addresses lsp${i}-2 "aa:aa:aa:00:00:88 192.168.0.88"
-    check_recompute_counter 0 1 || continue
+    check_recompute_counter 0 0 || continue
 
     # No change, no recompute
     check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
