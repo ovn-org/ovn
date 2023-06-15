@@ -5597,6 +5597,8 @@ struct ovn_lflow {
                                   * 'dpg_bitmap'. */
     struct ovn_dp_group *dpg;    /* Link to unique Sb datapath group. */
     const char *where;
+
+    struct uuid sb_uuid;         /* SB DB row uuid, specified by northd. */
 };
 
 static void ovn_lflow_destroy(struct hmap *lflows, struct ovn_lflow *lflow);
@@ -5654,6 +5656,7 @@ ovn_lflow_init(struct ovn_lflow *lflow, struct ovn_datapath *od,
     lflow->ctrl_meter = ctrl_meter;
     lflow->dpg = NULL;
     lflow->where = where;
+    lflow->sb_uuid = UUID_ZERO;
 }
 
 /* The lflow_hash_lock is a mutex array that protects updates to the shared
@@ -16025,6 +16028,7 @@ void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
             size_t n_datapaths;
             bool is_switch;
 
+            lflow->sb_uuid = sbflow->header_.uuid;
             is_switch = ovn_stage_to_datapath_type(lflow->stage) == DP_SWITCH;
             if (is_switch) {
                 n_datapaths = ods_size(input_data->ls_datapaths);
@@ -16100,7 +16104,9 @@ void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
             dp_groups = &lr_dp_groups;
         }
 
-        sbflow = sbrec_logical_flow_insert(ovnsb_txn);
+        lflow->sb_uuid = uuid_random();
+        sbflow = sbrec_logical_flow_insert_persist_uuid(ovnsb_txn,
+                                                        &lflow->sb_uuid);
         if (lflow->od) {
             sbrec_logical_flow_set_logical_datapath(sbflow, lflow->od->sb);
         } else {
@@ -16310,7 +16316,11 @@ bool lflow_handle_northd_ls_changes(struct ovsdb_idl_txn *ovnsb_txn,
 
             /* Sync to SB. */
             const struct sbrec_logical_flow *sbflow;
-            sbflow = sbrec_logical_flow_insert(ovnsb_txn);
+            /* Note: uuid_random acquires a global mutex. If we parallelize the
+             * sync to SB this may become a bottleneck. */
+            lflow->sb_uuid = uuid_random();
+            sbflow = sbrec_logical_flow_insert_persist_uuid(ovnsb_txn,
+                                                            &lflow->sb_uuid);
             const char *pipeline = ovn_stage_get_pipeline_name(lflow->stage);
             uint8_t table = ovn_stage_get_table(lflow->stage);
             sbrec_logical_flow_set_logical_datapath(sbflow, lflow->od->sb);
