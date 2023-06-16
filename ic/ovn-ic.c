@@ -1051,11 +1051,16 @@ prefix_is_black_listed(const struct smap *nb_options,
             }
         } else {
             struct in6_addr mask = ipv6_create_mask(bl_plen);
+            bool ipv6_matched = true;
             for (int i = 0; i < 16 && mask.s6_addr[i] != 0; i++) {
                 if ((prefix->s6_addr[i] & mask.s6_addr[i])
                     != (bl_prefix.s6_addr[i] & mask.s6_addr[i])) {
-                    continue;
+                    ipv6_matched=false;
+                    break;
                 }
+            }
+            if (!ipv6_matched) {
+                continue;
             }
         }
         matched = true;
