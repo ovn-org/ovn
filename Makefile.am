@@ -87,6 +87,8 @@ EXTRA_DIST = \
 	NOTICE \
 	.cirrus.yml \
 	.ci/ci.sh \
+	.ci/dpdk-build.sh \
+	.ci/dpdk-prepare.sh \
 	.ci/linux-build.sh \
 	.ci/osx-build.sh \
 	.ci/osx-prepare.sh \

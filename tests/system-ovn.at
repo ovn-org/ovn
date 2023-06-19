@@ -4267,7 +4267,7 @@ done
 # Enable IGMP snooping on sw1.
 ovn-nbctl set Logical_Switch sw1 other_config:mcast_querier="false"
 ovn-nbctl set Logical_Switch sw1 other_config:mcast_snoop="true"
-
+ovn-nbctl --wait=hv sync
 
 group_v4="239.0.1.68"
 # Inject IGMP Join for v4 group on sw1-p1.

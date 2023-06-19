@@ -10,13 +10,54 @@ OVN_CFLAGS=""
 OPTS="$OPTS --enable-Werror"
 JOBS=${JOBS:-"-j4"}
 
+function install_dpdk()
+{
+    local VERSION_FILE="dpdk-dir/cached-version"
+    local DPDK_LIB=$(pwd)/dpdk-dir/build/lib/x86_64-linux-gnu
+
+    # Export the following path for pkg-config to find the .pc file.
+    export PKG_CONFIG_PATH=$DPDK_LIB/pkgconfig/:$PKG_CONFIG_PATH
+
+    if [ ! -f "${VERSION_FILE}" ]; then
+        echo "Could not find DPDK in $(pwd)/dpdk-dir"
+        return 1
+    fi
+
+    # As we build inside a container we need to update the prefix.
+    sed -i -E "s|^prefix=.*|prefix=$(pwd)/dpdk-dir/build|" \
+        "$DPDK_LIB/pkgconfig/libdpdk-libs.pc"
+
+    # Update the library paths.
+    sudo ldconfig
+    echo "Found cached DPDK $(cat ${VERSION_FILE}) build in $(pwd)/dpdk-dir"
+}
+
 function configure_ovs()
 {
+    if [ "$DPDK" ]; then
+        # When DPDK is enabled, we need to build OVS twice. Once to have
+        # ovs-vswitchd with DPDK. But OVN does not like the OVS libraries to
+        # be compiled with DPDK enabled, hence we need a final clean build
+        # with this disabled.
+        install_dpdk
+
+        pushd ovs
+        ./boot.sh && ./configure CFLAGS="${COMMON_CFLAGS}" --with-dpdk=static \
+            $* || { cat config.log; exit 1; }
+        make $JOBS || { cat config.log; exit 1; }
+        cp vswitchd/ovs-vswitchd vswitchd/ovs-vswitchd_with_dpdk
+        popd
+    fi
+
     pushd ovs
     ./boot.sh && ./configure CFLAGS="${COMMON_CFLAGS}" $* || \
-    { cat config.log; exit 1; }
+        { cat config.log; exit 1; }
     make $JOBS || { cat config.log; exit 1; }
     popd
+
+    if [ "$DPDK" ]; then
+        cp ovs/vswitchd/ovs-vswitchd_with_dpdk ovs/vswitchd/ovs-vswitchd
+    fi
 }
 
 function configure_ovn()
@@ -103,6 +144,12 @@ if [ "$TESTSUITE" ]; then
         "system-test-userspace")
         execute_system_tests "check-system-userspace" \
             "system-userspace-testsuite.log"
+        ;;
+
+        "system-test-dpdk")
+        # The dpdk tests need huge page memory, so reserve some 2M pages.
+        sudo bash -c "echo 2048 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages"
+        execute_system_tests "check-system-dpdk" "system-dpdk-testsuite.log"
         ;;
     esac
 else
