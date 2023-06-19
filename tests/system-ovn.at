@@ -4189,7 +4189,7 @@ icmp,orig=(src=192.168.1.10,dst=192.168.1.20,id=<cleared>,type=8,code=0),reply=(
 check ovs-vsctl clear interface ovs-p1 external_ids
 
 # check conntrack zone is flushed
-check ovs-appctl dpctl/dump-conntrack zone=$zone_id
+OVS_WAIT_WHILE([ovs-appctl dpctl/dump-conntrack zone=$zone_id | grep .])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
@@ -6573,6 +6573,9 @@ ovn-nbctl lsp-add sw1 sw12 \
 ADD_NAMESPACES(public)
 ADD_VETH(public, public, br-public, "192.168.2.2/24", "f0:00:00:01:02:05")
 AT_CHECK([ovs-vsctl remove interface ovs-public external-ids iface-id=public])
+
+# Skip this test if the datapath interface does not support linux-htb
+AT_SKIP_IF([! ovs-appctl qos/show-types ovs-public | grep -q linux-htb])
 
 ADD_NAMESPACES(ext)
 ADD_VETH(ext, ext, br-ext, "192.168.3.2/24", "f0:00:00:01:02:06")
@@ -11201,6 +11204,12 @@ ADD_VETH(bar1, bar1, br-int, "2002::2/64", "f0:00:00:01:02:05", \
          "2002::1", "nodad", "192.168.2.2/24", "192.168.2.1")
 ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 192.168.2.2 2002::2"
+
+# Warm up the datapath (needed to make the DPDK datapth happy)
+NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
 
 ovn-nbctl mirror-add mirror0 gre 1 to-lport 172.16.0.100
 ovn-nbctl lsp-attach-mirror bar1 mirror0

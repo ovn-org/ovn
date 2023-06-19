@@ -2,11 +2,13 @@ EXTRA_DIST += \
 	$(COMMON_MACROS_AT) \
 	$(TESTSUITE_AT) \
 	$(SYSTEM_TESTSUITE_AT) \
+	$(SYSTEM_DPDK_TESTSUITE_AT) \
 	$(SYSTEM_KMOD_TESTSUITE_AT) \
 	$(SYSTEM_USERSPACE_TESTSUITE_AT) \
 	$(PERF_TESTSUITE_AT) \
 	$(MULTINODE_TESTSUITE_AT) \
 	$(TESTSUITE) \
+	$(SYSTEM_DPDK_TESTSUITE) \
 	$(SYSTEM_KMOD_TESTSUITE) \
 	$(SYSTEM_USERSPACE_TESTSUITE) \
 	$(PERF_TESTSUITE) \
@@ -44,20 +46,22 @@ TESTSUITE_AT = \
 	tests/ovn-ipsec.at \
 	tests/ovn-vif-plug.at
 
+SYSTEM_DPDK_TESTSUITE_AT = \
+	tests/system-dpdk-testsuite.at \
+	tests/system-dpdk-macros.at
+
 SYSTEM_KMOD_TESTSUITE_AT = \
-	tests/system-common-macros.at \
+	tests/system-kmod-macros.at \
 	tests/system-kmod-testsuite.at \
-	tests/system-kmod-macros.at
+	tests/system-ovn-kmod.at
 
 SYSTEM_USERSPACE_TESTSUITE_AT = \
 	tests/system-userspace-testsuite.at \
-	tests/system-ovn.at \
 	tests/system-userspace-macros.at
 
 SYSTEM_TESTSUITE_AT = \
 	tests/system-common-macros.at \
-	tests/system-ovn.at \
-	tests/system-ovn-kmod.at
+	tests/system-ovn.at
 
 PERF_TESTSUITE_AT = \
 	tests/perf-testsuite.at \
@@ -73,6 +77,7 @@ check_SCRIPTS += tests/atlocal
 TESTSUITE = $(srcdir)/tests/testsuite
 TESTSUITE_PATCH = $(srcdir)/tests/testsuite.patch
 TESTSUITE_DIR = $(abs_top_builddir)/tests/testsuite.dir
+SYSTEM_DPDK_TESTSUITE = $(srcdir)/tests/system-dpdk-testsuite
 SYSTEM_KMOD_TESTSUITE = $(srcdir)/tests/system-kmod-testsuite
 SYSTEM_USERSPACE_TESTSUITE = $(srcdir)/tests/system-userspace-testsuite
 PERF_TESTSUITE = $(srcdir)/tests/perf-testsuite
@@ -180,6 +185,10 @@ check-userspace-valgrind: all $(valgrind_wrappers) $(check_DATA)
 check-helgrind: all $(valgrind_wrappers) $(check_DATA)
 	-$(SHELL) '$(TESTSUITE)' -C tests CHECK_VALGRIND=true VALGRIND='$(HELGRIND)' AUTOTEST_PATH='tests/valgrind:$(AUTOTEST_PATH)' -d $(TESTSUITEFLAGS)
 
+check-system-dpdk: all
+	set $(SHELL) '$(SYSTEM_DPDK_TESTSUITE)' -C tests  AUTOTEST_PATH='$(AUTOTEST_PATH)'; \
+	$(SUDO) "$$@" $(TESTSUITEFLAGS) -j1 || (test X'$(RECHECK)' = Xyes && $(SUDO) "$$@" --recheck)
+
 # Run kmod tests. Assume kernel modules has been installed or linked into the kernel
 check-kernel: all
 	set $(SHELL) '$(SYSTEM_KMOD_TESTSUITE)' -C tests  AUTOTEST_PATH='$(AUTOTEST_PATH)'; \
@@ -231,6 +240,10 @@ $(TESTSUITE): package.m4 $(TESTSUITE_AT) $(COMMON_MACROS_AT)
 	$(AM_V_GEN)$(AUTOTEST) -I '$(srcdir)' -o $@.tmp $@.at
 	$(AM_V_at)mv $@.tmp $@
 endif
+
+$(SYSTEM_DPDK_TESTSUITE): package.m4 $(SYSTEM_TESTSUITE_AT) $(SYSTEM_DPDK_TESTSUITE_AT) $(COMMON_MACROS_AT)
+	$(AM_V_GEN)$(AUTOTEST) -I '$(srcdir)' -o $@.tmp $@.at
+	$(AM_V_at)mv $@.tmp $@
 
 $(SYSTEM_KMOD_TESTSUITE): package.m4 $(SYSTEM_TESTSUITE_AT) $(SYSTEM_KMOD_TESTSUITE_AT) $(COMMON_MACROS_AT)
 	$(AM_V_GEN)$(AUTOTEST) -I '$(srcdir)' -o $@.tmp $@.at
