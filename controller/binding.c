@@ -362,7 +362,7 @@ configure_qos(const struct sbrec_port_binding *pb,
     struct qos_queue *q = find_qos_queue(b_ctx_out->qos_map, hash,
                                          pb->logical_port);
     if (!q || q->min_rate != min_rate || q->max_rate != max_rate ||
-        q->burst != burst) {
+        q->burst != burst || (network && strcmp(network, q->network))) {
         struct shash bridge_mappings = SHASH_INITIALIZER(&bridge_mappings);
         add_ovs_bridge_mappings(b_ctx_in->ovs_table, b_ctx_in->bridge_table,
                                 &bridge_mappings);
@@ -378,22 +378,20 @@ configure_qos(const struct sbrec_port_binding *pb,
             add_ovs_qos_table_entry(b_ctx_in->ovs_idl_txn, port, min_rate,
                                     max_rate, burst, queue_id,
                                     pb->logical_port);
+            if (!q) {
+                q = xzalloc(sizeof *q);
+                hmap_insert(b_ctx_out->qos_map, &q->node, hash);
+                q->port = xstrdup(pb->logical_port);
+                q->queue_id = queue_id;
+            }
+            free(q->network);
+            q->network = network ? xstrdup(network) : NULL;
+            q->min_rate = min_rate;
+            q->max_rate = max_rate;
+            q->burst = burst;
         }
         shash_destroy(&bridge_mappings);
     }
-
-    if (!q) {
-        q = xzalloc(sizeof *q);
-        hmap_insert(b_ctx_out->qos_map, &q->node, hash);
-        q->port = xstrdup(pb->logical_port);
-        q->queue_id = queue_id;
-    }
-
-    free(q->network);
-    q->network = network ? xstrdup(network) : NULL;
-    q->min_rate = min_rate;
-    q->max_rate = max_rate;
-    q->burst = burst;
 }
 
 static const struct ovsrec_queue *
