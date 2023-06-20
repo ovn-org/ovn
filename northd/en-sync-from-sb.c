@@ -70,10 +70,12 @@ sync_from_sb_northd_handler(struct engine_node *node,
 {
     struct northd_data *nd = engine_get_input_data("northd", node);
     if (nd->change_tracked) {
-        /* There are only NB LSP related changes and the only field this node
-         * cares about is the "up" column, which is considered write-only to
-         * this node, so it is safe to ignore the change. (The real change
-         * matters to this node is always from the SB DB.) */
+        /* So far the changes tracked in northd don't impact this node.
+         *
+         * In particular, for the LS related changes, the only field this node
+         * cares about is the "up" column of LSP, which is considered
+         * write-only to this node, so it is safe to ignore the change. (The
+         * real change matters to this node is always from the SB DB.) */
         return true;
     }
     return false;

@@ -73,7 +73,7 @@ static bool install_ls_lb_from_router;
 /* Use common zone for SNAT and DNAT if this option is set to "true". */
 static bool use_common_zone = false;
 
-/* MAC allocated for service monitor usage. Just one mac is allocated
+/* MAC allocated for service monitor usage. Just one mac is allocatedg5534
  * for this purpose and ovn-controller's on each chassis will make use
  * of this mac when sending out the packets to monitor the services
  * defined in Service_Monitor Southbound table. Since these packets
@@ -852,7 +852,6 @@ ovn_datapath_destroy(struct hmap *datapaths, struct ovn_datapath *od)
         free(od->l3dgw_ports);
         destroy_mcast_info_for_datapath(od);
         destroy_ports_for_datapath(od);
-
         free(od);
     }
 }
@@ -4959,6 +4958,7 @@ destroy_northd_data_tracked_changes(struct northd_data *nd)
     }
 
     nd->change_tracked = false;
+    nd->lb_changed = false;
 }
 
 /* Check if a changed LSP can be handled incrementally within the I-P engine
@@ -5074,6 +5074,7 @@ ls_port_create(struct ovsdb_idl_txn *ovnsb_txn, struct hmap *ls_ports,
  * incrementally handled.
  * Presently supports i-p for the below changes:
  *    - logical switch ports.
+ *    - load balancers.
  */
 static bool
 ls_changes_can_be_handled(
@@ -5084,7 +5085,8 @@ ls_changes_can_be_handled(
     for (col = 0; col < NBREC_LOGICAL_SWITCH_N_COLUMNS; col++) {
         if (nbrec_logical_switch_is_updated(ls, col)) {
             if (col == NBREC_LOGICAL_SWITCH_COL_ACLS ||
-                col == NBREC_LOGICAL_SWITCH_COL_PORTS) {
+                col == NBREC_LOGICAL_SWITCH_COL_PORTS ||
+                col == NBREC_LOGICAL_SWITCH_COL_LOAD_BALANCER) {
                 continue;
             }
             return false;
@@ -5105,12 +5107,6 @@ ls_changes_can_be_handled(
     }
     for (size_t i = 0; i < ls->n_forwarding_groups; i++) {
         if (nbrec_forwarding_group_row_get_seqno(ls->forwarding_groups[i],
-                                OVSDB_IDL_CHANGE_MODIFY) > 0) {
-            return false;
-        }
-    }
-    for (size_t i = 0; i < ls->n_load_balancer; i++) {
-        if (nbrec_load_balancer_row_get_seqno(ls->load_balancer[i],
                                 OVSDB_IDL_CHANGE_MODIFY) > 0) {
             return false;
         }
@@ -5365,6 +5361,7 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
     if (!ovs_list_is_empty(&nd->tracked_ls_changes.updated)) {
         nd->change_tracked = true;
     }
+
     return true;
 
 fail:
@@ -5431,9 +5428,20 @@ northd_handle_sb_port_binding_changes(
     return true;
 }
 
-/* Handler for lb_data engine changes.  For every tracked lb_data
- * it creates or deletes the ovn_lb_datapaths/ovn_lb_group_datapaths
- * from the lb_datapaths hmap and lb_group_datapaths hmap. */
+/* Handler for lb_data engine changes.  It does the following
+ * For every tracked 'lb' and 'lb_group'
+ *  - it creates or deletes the ovn_lb_datapaths/ovn_lb_group_datapaths
+ *    from the lb_datapaths hmap and lb_group_datapaths hmap.
+ *
+ *  - For any changes to a logical switch (in 'trk_lb_data->crupdated_ls_lbs')
+ *    due to association of a load balancer (eg. ovn-nbctl ls-lb-add sw0 lb1),
+ *    the logical switch datapath is added to the load balancer (represented
+ *    by 'struct ovn_lb_datapaths') by calling ovn_lb_datapaths_add_ls().
+ *
+ *  - For every 'lb' in the tracked data (trk_lb_data->crupdated_lbs) ,
+ *    it gets the associated logical switches and for each switch it
+ *    re-evaluates 'od->has_lb_vip' to reflect any changes to the lb vips.
+ * */
 bool
 northd_handle_lb_data_changes(struct tracked_lb_data *trk_lb_data,
                               struct ovn_datapaths *ls_datapaths,
@@ -5459,8 +5467,21 @@ northd_handle_lb_data_changes(struct tracked_lb_data *trk_lb_data,
         return false;
     }
 
+    /* Fall back to recompute if any load balancer has been disassociated from
+     * a logical switch or router. */
+    if (trk_lb_data->has_dissassoc_lbs_from_od) {
+        return false;
+    }
+
+    /* Fall back to recompute if any logical switch or router was deleted which
+     * had load balancer or lb group association. */
+    if (!hmapx_is_empty(&trk_lb_data->deleted_od_lb_data)) {
+        return false;
+    }
+
     struct ovn_lb_datapaths *lb_dps;
     struct ovn_northd_lb *lb;
+    struct ovn_datapath *od;
     struct hmapx_node *hmapx_node;
     HMAPX_FOR_EACH (hmapx_node, &trk_lb_data->deleted_lbs) {
         lb = hmapx_node->data;
@@ -5468,10 +5489,22 @@ northd_handle_lb_data_changes(struct tracked_lb_data *trk_lb_data,
 
         lb_dps = ovn_lb_datapaths_find(lb_datapaths_map, lb_uuid);
         ovs_assert(lb_dps);
+
+        /* Re-evaluate 'od->has_lb_vip for od's associated with the
+         * deleted lb. */
+        size_t index;
+        BITMAP_FOR_EACH_1 (index, ods_size(ls_datapaths),
+                           lb_dps->nb_ls_map) {
+            od = ls_datapaths->array[index];
+            init_lb_for_datapath(od);
+        }
+
         hmap_remove(lb_datapaths_map, &lb_dps->hmap_node);
         ovn_lb_datapaths_destroy(lb_dps);
     }
 
+    /* Create the 'lb_dps' if not already created for each
+     * 'lb' in the trk_lb_data->crupdated_lbs. */
     struct crupdated_lb *clb;
     HMAP_FOR_EACH (clb, hmap_node, &trk_lb_data->crupdated_lbs) {
         lb = clb->lb;
@@ -5501,6 +5534,37 @@ northd_handle_lb_data_changes(struct tracked_lb_data *trk_lb_data,
                 lbgrp, ods_size(ls_datapaths), ods_size(lr_datapaths));
             hmap_insert(lbgrp_datapaths_map, &lbgrp_dps->hmap_node,
                         uuid_hash(lb_uuid));
+        }
+    }
+
+    struct crupdated_od_lb_data *codlb;
+    LIST_FOR_EACH (codlb, list_node, &trk_lb_data->crupdated_ls_lbs) {
+        od = ovn_datapath_find(&ls_datapaths->datapaths, &codlb->od_uuid);
+        ovs_assert(od);
+
+        struct uuidset_node *uuidnode;
+        UUIDSET_FOR_EACH (uuidnode, &codlb->assoc_lbs) {
+            lb_dps = ovn_lb_datapaths_find(lb_datapaths_map, &uuidnode->uuid);
+            ovs_assert(lb_dps);
+            ovn_lb_datapaths_add_ls(lb_dps, 1, &od);
+        }
+
+        /* Re-evaluate 'od->has_lb_vip' */
+        init_lb_for_datapath(od);
+    }
+
+    HMAP_FOR_EACH (clb, hmap_node, &trk_lb_data->crupdated_lbs) {
+        lb = clb->lb;
+        const struct uuid *lb_uuid = &lb->nlb->header_.uuid;
+
+        lb_dps = ovn_lb_datapaths_find(lb_datapaths_map, lb_uuid);
+        ovs_assert(lb_dps);
+        size_t index;
+        BITMAP_FOR_EACH_1 (index, ods_size(ls_datapaths),
+                           lb_dps->nb_ls_map) {
+            od = ls_datapaths->array[index];
+            /* Re-evaluate 'od->has_lb_vip' */
+            init_lb_for_datapath(od);
         }
     }
 
@@ -16529,6 +16593,7 @@ bool lflow_handle_northd_ls_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                     struct hmap *lflows)
 {
     struct ls_change *ls_change;
+
     LIST_FOR_EACH (ls_change, list_node, &ls_changes->updated) {
         const struct sbrec_multicast_group *sbmc_flood =
             mcast_group_lookup(lflow_input->sbrec_mcast_group_by_name_dp,

@@ -155,6 +155,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                      lb_data_load_balancer_handler);
     engine_add_input(&en_lb_data, &en_nb_load_balancer_group,
                      lb_data_load_balancer_group_handler);
+    engine_add_input(&en_lb_data, &en_nb_logical_switch,
+                     lb_data_logical_switch_handler);
 
     engine_add_input(&en_northd, &en_nb_logical_router, NULL);
     engine_add_input(&en_northd, &en_nb_mirror, NULL);

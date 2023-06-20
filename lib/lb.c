@@ -1088,7 +1088,10 @@ ovn_lb_datapaths_add_ls(struct ovn_lb_datapaths *lb_dps, size_t n,
                         struct ovn_datapath **ods)
 {
     for (size_t i = 0; i < n; i++) {
-        bitmap_set1(lb_dps->nb_ls_map, ods[i]->index);
+        if (!bitmap_is_set(lb_dps->nb_ls_map, ods[i]->index)) {
+            bitmap_set1(lb_dps->nb_ls_map, ods[i]->index);
+            lb_dps->n_nb_ls++;
+        }
     }
 }
 

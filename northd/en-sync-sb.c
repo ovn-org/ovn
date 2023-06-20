@@ -234,14 +234,18 @@ bool
 sync_to_sb_lb_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     struct northd_data *nd = engine_get_input_data("northd", node);
-    if (nd->change_tracked) {
-        /* There are only NB LSP related changes and these can be safely
-         * ignore and returned true.  However in case the northd engine
-         * tracking data includes other changes, we need to do additional
-         * checks before safely ignoring. */
-        return true;
+
+    if (!nd->change_tracked || nd->lb_changed) {
+        /* Return false if no tracking data or if lbs changed. */
+        return false;
     }
-    return false;
+
+
+    /* There are only NB LSP related changes and these can be safely
+     * ignore and returned true.  However in case the northd engine
+     * tracking data includes other changes, we need to do additional
+     * checks before safely ignoring. */
+    return true;
 }
 
 /* static functions. */
