@@ -107,6 +107,12 @@ lflow_northd_handler(struct engine_node *node,
     if (!northd_data->change_tracked) {
         return false;
     }
+
+    /* Fall back to recompute if lb related data has changed. */
+    if (northd_data->lb_changed) {
+        return false;
+    }
+
     const struct engine_context *eng_ctx = engine_get_context();
     struct lflow_data *lflow_data = data;
 
