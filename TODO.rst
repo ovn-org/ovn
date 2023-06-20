@@ -29,27 +29,12 @@ OVN To-do List
   for gateway logical routers and logical routers with distributed gateway
   port.
 
-* Get incremental updates in ovn-controller and ovn-northd in some
-  sensible way.
-
-* Live migration.
-
-  Russell Bryant: "When you're ready to have the destination take over, you
-  have to remove the iface-id from the source and add it at the destination and
-  I think it'd typically be configured on both ends, since it's a clone of the
-  source VM (and it's config)."
-
 * VLAN trunk ports.
 
   Russell Bryant: "Today that would require creating 4096 ports for the VM and
   attach to 4096 OVN networks, so doable, but not quite ideal."
 
 * Service function chaining.
-
-* MAC learning.
-
-  Han Zhou: "To support VMs that hosts workloads with their own macs, e.g.
-  containers, if not using OVN native container support."
 
 * Hitless upgrade, especially for data plane.
 
@@ -58,47 +43,11 @@ OVN To-do List
   OVN has basic support for establishing IP to MAC bindings dynamically, using
   ARP.
 
-  * Ratelimiting.
-
-    From casual observation, Linux appears to generate at most one ARP per
-    second per destination.
-
-    This might be supported by adding a new OVN logical action for
-    rate-limiting.
-
-  * Tracking queries
-
-     It's probably best to only record in the database responses to queries
-     actually issued by an L3 logical router, so somehow they have to be
-     tracked, probably by putting a tentative binding without a MAC address
-     into the database.
-
-  * Renewal and expiration.
-
-    Something needs to make sure that bindings remain valid and expire those
-    that become stale.
-
-    One way to do this might be to add some support for time to the database
-    server itself.
-
   * Table size limiting.
 
     The table of MAC bindings must not be allowed to grow unreasonably large.
 
 * MTU handling (fragmentation on output)
-
-* ovsdb-server
-
-  ovsdb-server should have adequate features for OVN but it probably needs work
-  for scale and possibly for availability as deployments grow.  Here are some
-  thoughts.
-
-  * Multithreading.
-
-    If it turns out that other changes don't let ovsdb-server scale
-    adequately, we can multithread ovsdb-server.  Initially one might
-    only break protocol handling into separate threads, leaving the
-    actual database work serialized through a lock.
 
 * Support multiple tunnel encapsulations in Chassis.
 
@@ -133,11 +82,9 @@ OVN To-do List
 
   * Support FTP ALGs.
 
-  * Support reject action.
-
 * OVN Interconnection
 
-  * Packaging for RHEL, Debian, etc.
+  * Packaging for Debian.
 
 * ovn-controller: Remove backwards compatibility for Southbound DB Port_Group
   names in expr.c a few releases after the 20.09 version. Right now
@@ -162,10 +109,6 @@ OVN To-do List
     in the router pipeline.
 
 * ovn-controller Incremental processing
-
-  * physical.c has a global simap -localvif_to_ofport which stores the
-    local OVS interfaces and the ofport numbers. Move this to the engine data
-    of the engine data node - ed_type_pflow_output.
 
   * Implement I-P for datapath groups.
 
