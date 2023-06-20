@@ -10995,20 +10995,6 @@ wait_for_local_bindings() {
       [kill -CONT $(cat ovn-sb/ovsdb-server.pid)]
   )
 }
-sleep_sb() {
-  echo SB going to sleep
-  AT_CHECK([kill -STOP $(cat ovn-sb/ovsdb-server.pid)])
-}
-wake_up_sb() {
-  echo SB waking up
-  AT_CHECK([kill -CONT $(cat ovn-sb/ovsdb-server.pid)])
-}
-sleep_controller() {
-  echo Controller going to sleep
-  ovn-appctl debug/pause
-  OVS_WAIT_UNTIL([test x$(ovn-appctl -t ovn-controller debug/status) = "xpaused"])
-}
-
 stop_ovsdb_controller_updates() {
   TCP_PORT=$1
   echo Stopping updates from ovn-controller to ovsdb using port $TCP_PORT
@@ -11019,10 +11005,6 @@ restart_ovsdb_controller_updates() {
   TCP_PORT=$1
   echo Restarting updates from ovn-controller to ovsdb
   iptables -D INPUT -p tcp --destination-port $TCP_PORT  -j DROP
-}
-wake_up_controller() {
-  echo Controller waking up
-  ovn-appctl debug/resume
 }
 ensure_controller_run() {
 # We want to make sure controller could run at least one full loop.
