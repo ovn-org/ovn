@@ -86,14 +86,6 @@ OVN To-do List
 
   * Packaging for Debian.
 
-* ovn-controller: Remove backwards compatibility for Southbound DB Port_Group
-  names in expr.c a few releases after the 20.09 version. Right now
-  ovn-controller maintains backwards compatibility when connecting to a
-  SB database that doesn't store Port_Group.name as
-  <Logical_Datapath.tunnel_key_NB-Port_Group.name>. This causes an additional
-  hashtable lookup in parse_port_group() which can be avoided when we are sure
-  that the Southbound DB uses the new format.
-
 * ovn-northd-ddlog: Calls to warn() and err() from DDlog code would be
   better refactored to use the Warning[] relation (and introduce an
   Error[] relation once we want to issue some errors that way).  This

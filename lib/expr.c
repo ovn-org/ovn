@@ -845,18 +845,6 @@ parse_port_group(struct expr_context *ctx, struct expr_constant_set *cs,
 
     if (ctx->port_groups) {
         port_group = shash_find_data(ctx->port_groups, ds_cstr(&sb_name));
-        if (!port_group) {
-            /* For backwards compatibility (e.g., ovn-controller was
-             * upgraded but ovn-northd not yet), perform an additional
-             * lookup because the NB Port_Group.name might have been
-             * stored as is in the SB Port_Group.name field.
-             */
-            port_group = shash_find_data(ctx->port_groups,
-                                         ctx->lexer->token.s);
-            if (ctx->port_groups_ref) {
-                sset_add(ctx->port_groups_ref, ctx->lexer->token.s);
-            }
-        }
     }
     ds_destroy(&sb_name);
 
