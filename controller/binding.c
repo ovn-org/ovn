@@ -396,9 +396,23 @@ configure_qos(const struct sbrec_port_binding *pb,
     q->burst = burst;
 }
 
+static const struct ovsrec_queue *
+find_qos_queue_by_external_ids(const struct smap *external_ids,
+    struct ovsdb_idl_index *ovsrec_queue_by_external_ids)
+{
+    const struct ovsrec_queue *queue =
+        ovsrec_queue_index_init_row(ovsrec_queue_by_external_ids);
+    ovsrec_queue_index_set_external_ids(queue, external_ids);
+    const struct ovsrec_queue *retval =
+        ovsrec_queue_index_find(ovsrec_queue_by_external_ids, queue);
+    ovsrec_queue_index_destroy_row(queue);
+    return retval;
+}
+
 static void
 ovs_qos_entries_gc(struct ovsdb_idl_txn *ovs_idl_txn,
                    struct ovsdb_idl_index *ovsrec_port_by_qos,
+                   struct ovsdb_idl_index *ovsrec_queue_by_external_ids,
                    const struct ovsrec_qos_table *qos_table,
                    struct hmap *queue_map)
 {
@@ -412,6 +426,13 @@ ovs_qos_entries_gc(struct ovsdb_idl_txn *ovs_idl_txn,
         for (size_t i = 0; i < n_queues; i++) {
             struct ovsrec_queue *queue = qos->value_queues[i];
             if (!queue) {
+                continue;
+            }
+            const struct ovsrec_queue *ovsrec_queue =
+                find_qos_queue_by_external_ids(&queue->external_ids,
+                                               ovsrec_queue_by_external_ids);
+            if (!ovsrec_queue) {
+                VLOG_DBG("queue already deleted !");
                 continue;
             }
 
@@ -2134,6 +2155,7 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
     shash_destroy(&bridge_mappings);
     /* Remove stale QoS entries. */
     ovs_qos_entries_gc(b_ctx_in->ovs_idl_txn, b_ctx_in->ovsrec_port_by_qos,
+                       b_ctx_in->ovsrec_queue_by_external_ids,
                        b_ctx_in->qos_table, b_ctx_out->qos_map);
 
     cleanup_claimed_port_timestamps();

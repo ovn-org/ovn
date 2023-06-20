@@ -1116,6 +1116,7 @@ enum sb_engine_node {
     OVS_NODE(port, "port") \
     OVS_NODE(interface, "interface") \
     OVS_NODE(qos, "qos") \
+    OVS_NODE(queue, "queue") \
     OVS_NODE(flow_sample_collector_set, "flow_sample_collector_set")
 
 enum ovs_engine_node {
@@ -1576,6 +1577,10 @@ init_binding_ctx(struct engine_node *node,
         engine_ovsdb_node_get_index(
                 engine_get_input("OVS_port", node), "qos");
 
+    struct ovsdb_idl_index *ovsrec_queue_by_external_ids =
+        engine_ovsdb_node_get_index(
+                engine_get_input("OVS_queue", node), "external_ids");
+
     struct controller_engine_ctx *ctrl_ctx = engine_get_context()->client_ctx;
 
     b_ctx_in->ovnsb_idl_txn = engine_get_context()->ovnsb_idl_txn;
@@ -1584,6 +1589,7 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_in->sbrec_port_binding_by_datapath = sbrec_port_binding_by_datapath;
     b_ctx_in->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
     b_ctx_in->ovsrec_port_by_qos = ovsrec_port_by_qos;
+    b_ctx_in->ovsrec_queue_by_external_ids = ovsrec_queue_by_external_ids;
     b_ctx_in->iface_table = iface_shadow->iface_table;
     b_ctx_in->iface_table_external_ids_old =
         &iface_shadow->iface_table_external_ids_old;
@@ -4599,6 +4605,9 @@ main(int argc, char *argv[])
     struct ovsdb_idl_index *ovsrec_port_by_qos
         = ovsdb_idl_index_create1(ovs_idl_loop.idl,
                                   &ovsrec_port_col_qos);
+    struct ovsdb_idl_index *ovsrec_queue_by_external_ids
+        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
+                                  &ovsrec_queue_col_external_ids);
     struct ovsdb_idl_index *ovsrec_flow_sample_collector_set_by_id
         = ovsdb_idl_index_create2(ovs_idl_loop.idl,
                                   &ovsrec_flow_sample_collector_set_col_bridge,
@@ -4899,6 +4908,7 @@ main(int argc, char *argv[])
     engine_add_input(&en_runtime_data, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_runtime_data, &en_ovs_bridge, NULL);
     engine_add_input(&en_runtime_data, &en_ovs_qos, NULL);
+    engine_add_input(&en_runtime_data, &en_ovs_queue, NULL);
 
     engine_add_input(&en_runtime_data, &en_sb_chassis, NULL);
     engine_add_input(&en_runtime_data, &en_sb_datapath_binding,
@@ -4960,6 +4970,8 @@ main(int argc, char *argv[])
     engine_ovsdb_node_add_index(&en_ovs_flow_sample_collector_set, "id",
                                 ovsrec_flow_sample_collector_set_by_id);
     engine_ovsdb_node_add_index(&en_ovs_port, "qos", ovsrec_port_by_qos);
+    engine_ovsdb_node_add_index(&en_ovs_queue, "external_ids",
+                                ovsrec_queue_by_external_ids);
 
     struct ed_type_lflow_output *lflow_output_data =
         engine_get_internal_data(&en_lflow_output);
