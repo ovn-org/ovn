@@ -1302,7 +1302,15 @@
       <column name="parent_name">
         The VM interface through which the nested container sends its network
         traffic.  This must match the <ref column="name"/> column for some
-        other <ref table="Logical_Switch_Port"/>.
+        other <ref table="Logical_Switch_Port"/>.  Note: for performance
+        of the OVN Southbound database conditional monitoring, unlike
+        for regular VIFs, <code>ovn-controller</code> will register
+        to get updates about all OVN Southbound database
+        <ref db="OVN_Southbound" table="Port_Binding"/> table records
+        that correspond to nested container ports even if
+        <code>external_ids:ovn-monitor-all</code> is set to
+        <code>false</code>.  See <code>ovn-controller</code>(8) for more
+        information.
       </column>
 
       <column name="tag_request">

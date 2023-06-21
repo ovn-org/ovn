@@ -7,6 +7,9 @@ Post v23.06.0
     DHCPv4 "hostname" (12) option.
   - Support to create/update MAC_Binding when GARP received from VTEP (RAMP)
     switch on l3dgw port.
+  - To allow optimizing ovn-controller's monitor conditions for the regular
+    VIF case, ovn-controller now unconditionally monitors all sub-ports
+    (ports with parent_port set).
 
 OVN v23.06.0 - 01 Jun 2023
 --------------------------

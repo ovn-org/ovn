@@ -124,3 +124,9 @@ OVN To-do List
 * Load Balancer templates
 
   * Support combining the VIP IP and port into a single template variable.
+
+* ovn-controller conditional monitoring
+
+  * Improve sub-ports (with parent_port set) conditional monitoring; these
+    are currently unconditionally monitored, even if ovn-monitor-all is
+    set to false.

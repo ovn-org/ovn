@@ -785,7 +785,7 @@ local_binding_data_destroy(struct local_binding_data *lbinding_data)
 }
 
 const struct sbrec_port_binding *
-local_binding_get_primary_pb(struct shash *local_bindings,
+local_binding_get_primary_pb(const struct shash *local_bindings,
                              const char *pb_name)
 {
     struct local_binding *lbinding =

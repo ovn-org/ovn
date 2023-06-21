@@ -199,6 +199,7 @@ static unsigned int
 update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
                    const struct sbrec_chassis *chassis,
                    const struct sset *local_ifaces,
+                   const struct shash *local_bindings,
                    struct hmap *local_datapaths,
                    bool monitor_all)
 {
@@ -297,10 +298,21 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
 
     if (local_ifaces) {
         const char *name;
+
+        ovs_assert(local_bindings);
         SSET_FOR_EACH (name, local_ifaces) {
+            /* Skip the VIFs we bound already, we should have a local datapath
+             * for those. */
+            const struct sbrec_port_binding *local_pb
+                = local_binding_get_primary_pb(local_bindings, name);
+            if (local_pb && get_lport_type(local_pb) == LP_VIF) {
+                continue;
+            }
             sbrec_port_binding_add_clause_logical_port(&pb, OVSDB_F_EQ, name);
-            sbrec_port_binding_add_clause_parent_port(&pb, OVSDB_F_EQ, name);
         }
+        /* Monitor all sub-ports unconditionally; we don't expect a lot of
+         * them in the SB database. */
+        sbrec_port_binding_add_clause_parent_port(&pb, OVSDB_F_NE, NULL);
     }
     if (local_datapaths) {
         const struct local_datapath *ld;
@@ -609,7 +621,7 @@ update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
          * extra cost. Instead, it is called after the engine execution only
          * when it is necessary. */
         unsigned int next_cond_seqno =
-            update_sb_monitors(ovnsb_idl, NULL, NULL, NULL, true);
+            update_sb_monitors(ovnsb_idl, NULL, NULL, NULL, NULL, true);
         if (sb_cond_seqno) {
             *sb_cond_seqno = next_cond_seqno;
         }
@@ -4712,7 +4724,7 @@ main(int argc, char *argv[])
     ovsdb_idl_omit(ovnsb_idl_loop.idl,
                    &sbrec_chassis_private_col_external_ids);
 
-    update_sb_monitors(ovnsb_idl_loop.idl, NULL, NULL, NULL, false);
+    update_sb_monitors(ovnsb_idl_loop.idl, NULL, NULL, NULL, NULL, false);
 
     stopwatch_create(CONTROLLER_LOOP_STOPWATCH_NAME, SW_MS);
     stopwatch_create(OFCTRL_PUT_STOPWATCH_NAME, SW_MS);
@@ -5355,6 +5367,7 @@ main(int argc, char *argv[])
                                 update_sb_monitors(
                                     ovnsb_idl_loop.idl, chassis,
                                     &runtime_data->local_lports,
+                                    &runtime_data->lbinding_data.bindings,
                                     &runtime_data->local_datapaths,
                                     sb_monitor_all);
                         }
