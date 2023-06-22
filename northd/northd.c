@@ -3527,8 +3527,6 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
         ds_destroy(&s);
 
         sbrec_port_binding_set_external_ids(op->sb, &op->nbrp->external_ids);
-
-        sbrec_port_binding_set_nat_addresses(op->sb, NULL, 0);
     } else {
         if (!lsp_is_router(op->nbsp)) {
             uint32_t queue_id = smap_get_int(
@@ -3672,116 +3670,6 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
             } else {
                 sbrec_port_binding_set_options(op->sb, NULL);
             }
-            const char *nat_addresses = smap_get(&op->nbsp->options,
-                                           "nat-addresses");
-            size_t n_nats = 0;
-            char **nats = NULL;
-            bool l3dgw_ports = op->peer && op->peer->od &&
-                               op->peer->od->n_l3dgw_ports;
-            if (nat_addresses && !strcmp(nat_addresses, "router")) {
-                if (op->peer && op->peer->od
-                    && (chassis || op->peer->od->n_l3dgw_ports)) {
-                    bool exclude_lb_vips = smap_get_bool(&op->nbsp->options,
-                            "exclude-lb-vips-from-garp", false);
-                    nats = get_nat_addresses(op->peer, &n_nats, false,
-                                             !exclude_lb_vips);
-                }
-            } else if (nat_addresses && (chassis || l3dgw_ports)) {
-                struct lport_addresses laddrs;
-                if (!extract_lsp_addresses(nat_addresses, &laddrs)) {
-                    static struct vlog_rate_limit rl =
-                        VLOG_RATE_LIMIT_INIT(1, 1);
-                    VLOG_WARN_RL(&rl, "Error extracting nat-addresses.");
-                } else {
-                    destroy_lport_addresses(&laddrs);
-                    n_nats = 1;
-                    nats = xcalloc(1, sizeof *nats);
-                    struct ds nat_addr = DS_EMPTY_INITIALIZER;
-                    ds_put_format(&nat_addr, "%s", nat_addresses);
-                    if (l3dgw_ports) {
-                        const struct ovn_port *l3dgw_port = (
-                            is_l3dgw_port(op->peer)
-                            ? op->peer
-                            : op->peer->od->l3dgw_ports[0]);
-                        ds_put_format(&nat_addr, " is_chassis_resident(%s)",
-                            l3dgw_port->cr_port->json_key);
-                    }
-                    nats[0] = xstrdup(ds_cstr(&nat_addr));
-                    ds_destroy(&nat_addr);
-                }
-            }
-
-            /* Add the router mac and IPv4 addresses to
-             * Port_Binding.nat_addresses so that GARP is sent for these
-             * IPs by the ovn-controller on which the distributed gateway
-             * router port resides if:
-             *
-             * -  op->peer has 'reside-on-redirect-chassis' set and the
-             *    the logical router datapath has distributed router port.
-             *
-             * -  op->peer is distributed gateway router port.
-             *
-             * -  op->peer's router is a gateway router and op has a localnet
-             *    port.
-             *
-             * Note: Port_Binding.nat_addresses column is also used for
-             * sending the GARPs for the router port IPs.
-             * */
-            bool add_router_port_garp = false;
-            if (op->peer && op->peer->nbrp && op->peer->od->n_l3dgw_ports) {
-                if (is_l3dgw_port(op->peer)) {
-                    add_router_port_garp = true;
-                } else if (smap_get_bool(&op->peer->nbrp->options,
-                               "reside-on-redirect-chassis", false)) {
-                    if (op->peer->od->n_l3dgw_ports == 1) {
-                        add_router_port_garp = true;
-                    } else {
-                        static struct vlog_rate_limit rl =
-                            VLOG_RATE_LIMIT_INIT(1, 1);
-                        VLOG_WARN_RL(&rl, "\"reside-on-redirect-chassis\" is "
-                                     "set on logical router port %s, which "
-                                     "is on logical router %s, which has %"
-                                     PRIuSIZE" distributed gateway ports. This"
-                                     "option can only be used when there is "
-                                     "a single distributed gateway port.",
-                                     op->peer->key, op->peer->od->nbr->name,
-                                     op->peer->od->n_l3dgw_ports);
-                    }
-                }
-            } else if (chassis && op->od->n_localnet_ports) {
-                add_router_port_garp = true;
-            }
-
-            if (add_router_port_garp) {
-                struct ds garp_info = DS_EMPTY_INITIALIZER;
-                ds_put_format(&garp_info, "%s", op->peer->lrp_networks.ea_s);
-
-                for (size_t i = 0; i < op->peer->lrp_networks.n_ipv4_addrs;
-                     i++) {
-                    ds_put_format(&garp_info, " %s",
-                                  op->peer->lrp_networks.ipv4_addrs[i].addr_s);
-                }
-
-                if (op->peer->od->n_l3dgw_ports) {
-                    const struct ovn_port *l3dgw_port = (
-                        is_l3dgw_port(op->peer)
-                        ? op->peer
-                        : op->peer->od->l3dgw_ports[0]);
-                    ds_put_format(&garp_info, " is_chassis_resident(%s)",
-                                  l3dgw_port->cr_port->json_key);
-                }
-
-                n_nats++;
-                nats = xrealloc(nats, (n_nats * sizeof *nats));
-                nats[n_nats - 1] = ds_steal_cstr(&garp_info);
-                ds_destroy(&garp_info);
-            }
-            sbrec_port_binding_set_nat_addresses(op->sb,
-                                                 (const char **) nats, n_nats);
-            for (size_t i = 0; i < n_nats; i++) {
-                free(nats[i]);
-            }
-            free(nats);
         }
 
         sbrec_port_binding_set_parent_port(op->sb, op->nbsp->parent_name);
@@ -4733,6 +4621,168 @@ sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
             sbrec_datapath_binding_set_load_balancers(od->sb, NULL, 0);
         }
     }
+}
+
+/* Syncs the SB port binding for the ovn_port 'op'.  Caller should make sure
+ * that the OVN SB IDL txn is not NULL.  Presently it only syncs the nat
+ * column of port binding corresponding to the 'op->nbsp' */
+static void
+sync_pb_for_op(struct ovn_port *op)
+{
+    if (lsp_is_router(op->nbsp)) {
+        const char *chassis = NULL;
+        if (op->peer && op->peer->od && op->peer->od->nbr) {
+            chassis = smap_get(&op->peer->od->nbr->options, "chassis");
+        }
+
+        const char *nat_addresses = smap_get(&op->nbsp->options,
+                                                "nat-addresses");
+        size_t n_nats = 0;
+        char **nats = NULL;
+        bool l3dgw_ports = op->peer && op->peer->od &&
+                            op->peer->od->n_l3dgw_ports;
+        if (nat_addresses && !strcmp(nat_addresses, "router")) {
+            if (op->peer && op->peer->od
+                && (chassis || op->peer->od->n_l3dgw_ports)) {
+                bool exclude_lb_vips = smap_get_bool(&op->nbsp->options,
+                        "exclude-lb-vips-from-garp", false);
+                nats = get_nat_addresses(op->peer, &n_nats, false,
+                                            !exclude_lb_vips);
+            }
+        } else if (nat_addresses && (chassis || l3dgw_ports)) {
+            struct lport_addresses laddrs;
+            if (!extract_lsp_addresses(nat_addresses, &laddrs)) {
+                static struct vlog_rate_limit rl =
+                    VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_WARN_RL(&rl, "Error extracting nat-addresses.");
+            } else {
+                destroy_lport_addresses(&laddrs);
+                n_nats = 1;
+                nats = xcalloc(1, sizeof *nats);
+                struct ds nat_addr = DS_EMPTY_INITIALIZER;
+                ds_put_format(&nat_addr, "%s", nat_addresses);
+                if (l3dgw_ports) {
+                    const struct ovn_port *l3dgw_port = (
+                        is_l3dgw_port(op->peer)
+                        ? op->peer
+                        : op->peer->od->l3dgw_ports[0]);
+                    ds_put_format(&nat_addr, " is_chassis_resident(%s)",
+                        l3dgw_port->cr_port->json_key);
+                }
+                nats[0] = xstrdup(ds_cstr(&nat_addr));
+                ds_destroy(&nat_addr);
+            }
+        }
+
+        /* Add the router mac and IPv4 addresses to
+            * Port_Binding.nat_addresses so that GARP is sent for these
+            * IPs by the ovn-controller on which the distributed gateway
+            * router port resides if:
+            *
+            * -  op->peer has 'reside-on-redirect-chassis' set and the
+            *    the logical router datapath has distributed router port.
+            *
+            * -  op->peer is distributed gateway router port.
+            *
+            * -  op->peer's router is a gateway router and op has a localnet
+            *    port.
+            *
+            * Note: Port_Binding.nat_addresses column is also used for
+            * sending the GARPs for the router port IPs.
+            * */
+        bool add_router_port_garp = false;
+        if (op->peer && op->peer->nbrp && op->peer->od->n_l3dgw_ports) {
+            if (is_l3dgw_port(op->peer)) {
+                add_router_port_garp = true;
+            } else if (smap_get_bool(&op->peer->nbrp->options,
+                            "reside-on-redirect-chassis", false)) {
+                if (op->peer->od->n_l3dgw_ports == 1) {
+                    add_router_port_garp = true;
+                } else {
+                    static struct vlog_rate_limit rl =
+                        VLOG_RATE_LIMIT_INIT(1, 1);
+                    VLOG_WARN_RL(&rl, "\"reside-on-redirect-chassis\" is "
+                                    "set on logical router port %s, which "
+                                    "is on logical router %s, which has %"
+                                    PRIuSIZE" distributed gateway ports. This"
+                                    "option can only be used when there is "
+                                    "a single distributed gateway port.",
+                                    op->peer->key, op->peer->od->nbr->name,
+                                    op->peer->od->n_l3dgw_ports);
+                }
+            }
+        } else if (chassis && op->od->n_localnet_ports) {
+            add_router_port_garp = true;
+        }
+
+        if (add_router_port_garp) {
+            struct ds garp_info = DS_EMPTY_INITIALIZER;
+            ds_put_format(&garp_info, "%s", op->peer->lrp_networks.ea_s);
+
+            for (size_t i = 0; i < op->peer->lrp_networks.n_ipv4_addrs;
+                    i++) {
+                ds_put_format(&garp_info, " %s",
+                                op->peer->lrp_networks.ipv4_addrs[i].addr_s);
+            }
+
+            if (op->peer->od->n_l3dgw_ports) {
+                const struct ovn_port *l3dgw_port = (
+                    is_l3dgw_port(op->peer)
+                    ? op->peer
+                    : op->peer->od->l3dgw_ports[0]);
+                ds_put_format(&garp_info, " is_chassis_resident(%s)",
+                                l3dgw_port->cr_port->json_key);
+            }
+
+            n_nats++;
+            nats = xrealloc(nats, (n_nats * sizeof *nats));
+            nats[n_nats - 1] = ds_steal_cstr(&garp_info);
+            ds_destroy(&garp_info);
+        }
+        sbrec_port_binding_set_nat_addresses(op->sb,
+                                                (const char **) nats, n_nats);
+        for (size_t i = 0; i < n_nats; i++) {
+            free(nats[i]);
+        }
+        free(nats);
+    } else {
+        sbrec_port_binding_set_nat_addresses(op->sb, NULL, 0);
+    }
+}
+
+/* Sync the SB Port bindings which needs to be updated.
+ * Presently it syncs the nat column of port bindings corresponding to
+ * the logical switch ports. */
+void
+sync_pbs(struct ovsdb_idl_txn *ovnsb_idl_txn, struct hmap *ls_ports)
+{
+    ovs_assert(ovnsb_idl_txn);
+
+    struct ovn_port *op;
+    HMAP_FOR_EACH (op, key_node, ls_ports) {
+        sync_pb_for_op(op);
+    }
+}
+
+/* Sync the SB Port bindings for the added and updated logical switch ports
+ *  of the tracked logical switches (from the northd engine node). */
+bool
+sync_pbs_for_northd_ls_changes(struct tracked_ls_changes *ls_changes)
+{
+    struct ls_change *ls_change;
+    LIST_FOR_EACH (ls_change, list_node, &ls_changes->updated) {
+        struct ovn_port *op;
+
+        LIST_FOR_EACH (op, list, &ls_change->added_ports) {
+            sync_pb_for_op(op);
+        }
+
+        LIST_FOR_EACH (op, list, &ls_change->updated_ports) {
+            sync_pb_for_op(op);
+        }
+    }
+
+    return true;
 }
 
 static bool
