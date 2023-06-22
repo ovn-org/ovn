@@ -365,4 +365,7 @@ const struct ovn_datapath *northd_get_datapath_for_port(
 void sync_lbs(struct ovsdb_idl_txn *, const struct sbrec_load_balancer_table *,
               struct ovn_datapaths *ls_datapaths, struct hmap *lbs);
 
+void sync_pbs(struct ovsdb_idl_txn *, struct hmap *ls_ports);
+bool sync_pbs_for_northd_ls_changes(struct tracked_ls_changes *);
+
 #endif /* NORTHD_H */
