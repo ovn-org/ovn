@@ -29409,6 +29409,8 @@ for i in $(seq 1 $n); do
     ovn_attach n1 br-phys 192.168.0.$i
 done
 
+wait_row_count Chassis $n
+
 # get_cfg IDX
 #
 # Fetches data fields into shell variables:
