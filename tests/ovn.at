@@ -13827,9 +13827,13 @@ wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 OVN_WAIT_PATCH_PORT_FLOWS(["ln_port"], ["hv2"] ["hv3"])
 
-as hv1 reset_pcap_file snoopvif hv1/snoopvif
+# reset hv1/snoopvif after hv2/br-phys_n1 and hv3/br-phys_n1 as we wait
+# for packets to be received on hv1/snoopvif-tx.
+# Otherwise, after we received a packet on hv1/snoopvif it might get reset
+# in hv2/br-phys_n1 or hv3/br-phys_n1.
 as hv2 reset_pcap_file br-phys_n1 hv2/br-phys_n1
 as hv3 reset_pcap_file br-phys_n1 hv3/br-phys_n1
+as hv1 reset_pcap_file snoopvif hv1/snoopvif
 # add nat-addresses option
 ovn-nbctl --wait=hv lsp-set-options lrp0-rp router-port=lrp0 nat-addresses="router"
 
@@ -13875,10 +13879,9 @@ ovn-nbctl --wait=hv \
                     name=outside_gw2 chassis_name=hv3 priority=10 -- \
           set Logical_Router_Port lrp0 'gateway_chassis=[@gc0,@gc1]'
 
-
-as hv1 reset_pcap_file snoopvif hv1/snoopvif
 as hv2 reset_pcap_file br-phys_n1 hv2/br-phys_n1
 as hv3 reset_pcap_file br-phys_n1 hv3/br-phys_n1
+as hv1 reset_pcap_file snoopvif hv1/snoopvif
 
 trim_zeros() {
     sed 's/\(00\)\{1,\}$//'
@@ -13917,9 +13920,9 @@ ovn-nbctl --wait=hv clear logical_switch_port lrp0-rp options
 OVS_WAIT_UNTIL([test 0 = `ovn-sbctl --bare --columns nat_addresses find port_binding \
 logical_port=lrp0-rp | grep is_chassis | wc -l`])
 
-as hv1 reset_pcap_file snoopvif hv1/snoopvif
 as hv2 reset_pcap_file br-phys_n1 hv2/br-phys_n1
 as hv3 reset_pcap_file br-phys_n1 hv3/br-phys_n1
+as hv1 reset_pcap_file snoopvif hv1/snoopvif
 
 ovn-nbctl --wait=hv lsp-set-options lrp0-rp router-port=lrp0 nat-addresses="router"
 
