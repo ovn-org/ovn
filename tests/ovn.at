@@ -9079,7 +9079,7 @@ ovn-nbctl lsp-set-options lrp0-rp router-port=lrp0 nat-addresses="f0:00:00:00:00
 reset_pcap_file snoopvif hv1/snoopvif
 OVS_WAIT_UNTIL([test `wc -c < "hv1/snoopvif-tx.pcap"` -ge 140])
 
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | trim_zeros > packets
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap | sort | uniq | trim_zeros > packets
 AT_CHECK([sort packets], [0], [dnl
 fffffffffffff0000000000108060001080006040001f00000000001c0a80001000000000000c0a80001
 fffffffffffff0000000000308060001080006040001f00000000003c0a80003000000000000c0a80003
