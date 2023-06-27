@@ -36090,6 +36090,9 @@ rm -f ${OVN_SYSCONFDIR}/system-id-override
 
 check ovn-appctl -t ovn-controller exit --restart
 
+# Make sure ovn-controller stopped before restarting it
+OVS_WAIT_UNTIL([test x$(ovn-appctl -t ovn-controller debug/status) != "xrunning"])
+
 # for some reason SSL ovsdb configuration overrides CLI, so
 # delete ssl config from ovsdb to give CLI arguments priority
 ovs-vsctl del-ssl
