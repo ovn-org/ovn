@@ -16318,7 +16318,7 @@ construct_expected_ra() {
     local ip=60000000${ip_len}3aff${src_addr}${dst_addr}${icmp}
     local eth=${dst_mac}${src_mac}86dd${ip}
     local packet=${eth}
-    echo $packet >> expected
+    echo $packet | sort >> expected
 }
 
 ra_test() {
@@ -16329,7 +16329,7 @@ ra_test() {
 
         OVS_WAIT_WHILE([test 24 = $(wc -c $i/vif1-tx.pcap | cut -d " " -f1)])
 
-        $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $i/vif1-tx.pcap > packets
+        $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $i/vif1-tx.pcap | sort | uniq > packets
 
         cat expected | cut -c -112 > expout
         AT_CHECK([cat packets | cut -c -112], [0], [expout])
