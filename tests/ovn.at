@@ -4507,6 +4507,8 @@ wait_row_count MAC_Binding 2 ip="192.168.1.200" mac='"02:00:00:00:00:ee"'
 # Restore.
 check as hv1 ovs-vsctl set interface vif1 external_ids:iface-id=lp1
 wait_row_count Port_Binding 1 chassis="$hv_uuid" type='""'
+# Make sure flows added by port claim are installed
+check ovn-nbctl --wait=hv sync
 # <--
 
 # Check ARP response to request for IP on VIF port sent from vtep.
