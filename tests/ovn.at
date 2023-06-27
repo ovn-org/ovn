@@ -25079,13 +25079,14 @@ OVS_WAIT_FOR_OUTPUT(
 svc_mon_src_mac=`ovn-nbctl get NB_Global . options:svc_monitor_mac | \
 sed s/":"//g | sed s/\"//g`
 
+# If the system is overloaded and the test runs slowly, we might get multiple similar packets (just varying by src port)
 OVS_WAIT_UNTIL(
-    [test 1 = `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | \
+    [test 1 -le `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | \
 grep "505400000003${svc_mon_src_mac}" | wc -l`]
 )
 
 OVS_WAIT_UNTIL(
-    [test 1 = `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/vif1-tx.pcap | \
+    [test 1 -le `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/vif1-tx.pcap | \
 grep "405400000003${svc_mon_src_mac}" | wc -l`]
 )
 
@@ -25093,12 +25094,12 @@ check ovn-nbctl set load_balancer_health_check 10.0.0.10:80 options:failure_coun
 wait_row_count Service_Monitor 2 status=offline
 
 OVS_WAIT_UNTIL(
-    [test 2 = `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | \
+    [test 2 -le `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | \
 grep "505400000003${svc_mon_src_mac}" | wc -l`]
 )
 
 OVS_WAIT_UNTIL(
-    [test 2 = `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/vif1-tx.pcap | \
+    [test 2 -le `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/vif1-tx.pcap | \
 grep "405400000003${svc_mon_src_mac}" | wc -l`]
 )
 
@@ -25278,12 +25279,12 @@ svc_mon_src_mac=`ovn-nbctl get NB_Global . options:svc_monitor_mac | \
 sed s/":"//g | sed s/\"//g`
 
 OVS_WAIT_UNTIL(
-    [test 1 = `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | \
+    [test 1 -le `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | \
 grep "505400000003${svc_mon_src_mac}" | wc -l`]
 )
 
 OVS_WAIT_UNTIL(
-    [test 1 = `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/vif1-tx.pcap | \
+    [test 1 -le `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/vif1-tx.pcap | \
 grep "405400000003${svc_mon_src_mac}" | wc -l`]
 )
 
@@ -25291,12 +25292,12 @@ check ovn-nbctl set load_balancer_health_check [[2001::a]]:80 options:failure_co
 wait_row_count Service_Monitor 2 status=offline
 
 OVS_WAIT_UNTIL(
-    [test 2 = `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | \
+    [test 2 -le `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | \
 grep "505400000003${svc_mon_src_mac}" | wc -l`]
 )
 
 OVS_WAIT_UNTIL(
-    [test 2 = `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/vif1-tx.pcap | \
+    [test 2 -le `$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/vif1-tx.pcap | \
 grep "405400000003${svc_mon_src_mac}" | wc -l`]
 )
 
