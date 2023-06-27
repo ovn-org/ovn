@@ -1164,7 +1164,9 @@ local_bindings_pb_chassis_is_set(struct shash *local_bindings,
         local_binding_find(local_bindings, pb_name);
     struct binding_lport *b_lport = local_binding_get_primary_lport(lbinding);
 
-    if (b_lport && b_lport->pb && b_lport->pb->chassis == chassis_rec) {
+    if (b_lport && b_lport->pb &&
+       ((b_lport->pb->chassis == chassis_rec) ||
+         is_additional_chassis(b_lport->pb, chassis_rec))) {
         return true;
     }
     return false;
@@ -1173,14 +1175,20 @@ local_bindings_pb_chassis_is_set(struct shash *local_bindings,
 void
 local_binding_set_pb(struct shash *local_bindings, const char *pb_name,
                      const struct sbrec_chassis *chassis_rec,
-                     struct hmap *tracked_datapaths, bool is_set)
+                     struct hmap *tracked_datapaths, bool is_set,
+                     enum can_bind bind_type)
 {
     struct local_binding *lbinding =
         local_binding_find(local_bindings, pb_name);
     struct binding_lport *b_lport = local_binding_get_primary_lport(lbinding);
 
     if (b_lport) {
-        set_pb_chassis_in_sbrec(b_lport->pb, chassis_rec, is_set);
+        if (bind_type == CAN_BIND_AS_MAIN) {
+            set_pb_chassis_in_sbrec(b_lport->pb, chassis_rec, is_set);
+        } else  if (bind_type == CAN_BIND_AS_ADDITIONAL) {
+            set_pb_additional_chassis_in_sbrec(b_lport->pb, chassis_rec,
+                                               is_set);
+        }
         if (tracked_datapaths) {
             update_lport_tracking(b_lport->pb, tracked_datapaths, true);
         }

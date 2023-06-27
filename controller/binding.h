@@ -23,6 +23,7 @@
 #include "openvswitch/uuid.h"
 #include "openvswitch/list.h"
 #include "sset.h"
+#include "lport.h"
 
 struct hmap;
 struct ovsdb_idl;
@@ -177,7 +178,7 @@ void local_binding_set_down(struct shash *local_bindings, const char *pb_name,
 void local_binding_set_pb(struct shash *local_bindings, const char *pb_name,
                           const struct sbrec_chassis *chassis_rec,
                           struct hmap *tracked_datapaths,
-                          bool is_set);
+                          bool is_set, enum can_bind);
 bool local_bindings_pb_chassis_is_set(struct shash *local_bindings,
                                       const char *pb_name,
                                       const struct sbrec_chassis *chassis_rec);
