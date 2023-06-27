@@ -23540,6 +23540,10 @@ check ovs-vsctl -- add-port br-int hv2-vif2 -- \
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
+# Wait for pinctrl thread to be connected
+OVS_WAIT_UNTIL([grep pinctrl hv1/ovn-controller.log | grep -c connected])
+OVS_WAIT_UNTIL([grep pinctrl hv2/ovn-controller.log | grep -c connected])
+
 AT_CAPTURE_FILE([exp])
 AT_CAPTURE_FILE([rcv])
 check_packets() {
@@ -34401,6 +34405,10 @@ ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
 OVN_POPULATE_ARP
 wait_for_ports_up
 AT_CHECK([ovn-nbctl --wait=hv sync])
+
+# Wait for pinctrl thread to be connected
+OVS_WAIT_UNTIL([grep pinctrl hv1/ovn-controller.log | grep -c connected])
+OVS_WAIT_UNTIL([grep pinctrl hv2/ovn-controller.log | grep -c connected])
 
 send_garp() {
     hv=$1
