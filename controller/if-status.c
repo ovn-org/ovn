@@ -184,6 +184,7 @@ struct ovs_iface {
                              * OIF_INSTALL_FLOWS.
                              */
     uint16_t mtu;           /* Extracted from OVS interface.mtu field. */
+    enum can_bind bind_type;/* CAN_BIND_AS_MAIN or CAN_BIND_AS_ADDITIONAL */
 };
 
 static uint64_t ifaces_usage;
@@ -285,6 +286,7 @@ if_status_mgr_claim_iface(struct if_status_mgr *mgr,
     if (!iface) {
         iface = ovs_iface_create(mgr, iface_id, iface_rec, OIF_CLAIMED);
     }
+    iface->bind_type = bind_type;
 
     memcpy(&iface->pb_uuid, &pb->header_.uuid, sizeof(iface->pb_uuid));
     if (!sb_readonly) {
@@ -406,7 +408,7 @@ if_status_handle_claims(struct if_status_mgr *mgr,
         struct ovs_iface *iface = node->data;
         VLOG_INFO("if_status_handle_claims for %s", iface->id);
         local_binding_set_pb(bindings, iface->id, chassis_rec,
-                             tracked_datapath, true);
+                             tracked_datapath, true, iface->bind_type);
         rc = true;
     }
     return rc;
@@ -473,7 +475,7 @@ if_status_mgr_update(struct if_status_mgr *mgr,
             chassis_rec)) {
             if (!sb_readonly) {
                 local_binding_set_pb(bindings, iface->id, chassis_rec,
-                                     NULL, true);
+                                     NULL, true, iface->bind_type);
             } else {
                 continue;
             }
@@ -495,7 +497,7 @@ if_status_mgr_update(struct if_status_mgr *mgr,
         }
         if (!sb_readonly) {
             local_binding_set_pb(bindings, iface->id, chassis_rec,
-                                 NULL, false);
+                                 NULL, false, iface->bind_type);
         }
         if (local_binding_is_down(bindings, iface->id, chassis_rec)) {
             ovs_iface_destroy(mgr, iface);
@@ -512,7 +514,7 @@ if_status_mgr_update(struct if_status_mgr *mgr,
             if (!local_bindings_pb_chassis_is_set(bindings, iface->id,
                 chassis_rec)) {
                 local_binding_set_pb(bindings, iface->id, chassis_rec,
-                                     NULL, true);
+                                     NULL, true, iface->bind_type);
             }
         }
     }
