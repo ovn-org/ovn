@@ -16864,6 +16864,10 @@ OVN_POPULATE_ARP
 wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
+# Wait for pinctrl thread to be connected
+OVS_WAIT_UNTIL([grep pinctrl hv1/ovn-controller.log | grep -c connected])
+OVS_WAIT_UNTIL([grep pinctrl hv2/ovn-controller.log | grep -c connected])
+
 ovn-sbctl dump-flows sw0 > sw0-flows
 AT_CAPTURE_FILE([sw0-flows])
 
@@ -16881,33 +16885,22 @@ ipv6_dst=10000000000000000000000000000004
 
 send_icmp_packet 1 1 $eth_src $eth_dst $ip_src $ip_dst c4c9 0000000000000000000000
 send_icmp6_packet 1 1 $eth_src $eth_dst $ipv6_src $ipv6_dst
-sleep 2
 
 # Get total number of ipv4 packets that received on ovs
 
 # sender side
-flow=$(as hv1 ovs-ofctl dump-flows br-int table=46 | grep priority=2002|grep ip,metadata=0x1)
-n_pkts="$(echo $flow|awk -F',' '{ print $4 }'|awk -F'=' '{ print $2 }')"
-check test $n_pkts -eq 1
+OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int table=46 | grep priority=2002 | grep ip,metadata=0x1 | grep -c n_packets=1`])
 
 # receiver side
-flow=$(as hv2 ovs-ofctl dump-flows br-int table=46 | grep priority=2002|grep ip,metadata=0x1)
-n_pkts="$(echo $flow|awk -F',' '{ print $4 }'|awk -F'=' '{ print $2 }')"
-check test $n_pkts -eq 1
+OVS_WAIT_UNTIL([test 1 = `as hv2 ovs-ofctl dump-flows br-int table=46 | grep priority=2002 | grep ip,metadata=0x1 | grep -c n_packets=1`])
 
 # Get total number of ipv6 packets that received on ovs
 
 # sender side
-flow=$(as hv1 ovs-ofctl dump-flows br-int table=46 | grep priority=2002|grep ipv6,metadata=0x1)
-n_pkts="$(echo $flow|awk -F',' '{ print $4 }'|awk -F'=' '{ print $2 }')"
-check test $n_pkts -eq 1
-
+OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int table=46 | grep priority=2002 | grep ipv6,metadata=0x1 | grep -c n_packets=1`])
 
 # receiver side
-flow=$(as hv2 ovs-ofctl dump-flows br-int table=46 | grep priority=2002|grep ipv6,metadata=0x1)
-n_pkts="$(echo $flow|awk -F',' '{ print $4 }'|awk -F'=' '{ print $2 }')"
-check test $n_pkts -eq 1
-
+OVS_WAIT_UNTIL([test 1 = `as hv2 ovs-ofctl dump-flows br-int table=46 | grep priority=2002 | grep ipv6,metadata=0x1 | grep -c n_packets=1`])
 
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
