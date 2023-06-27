@@ -7752,6 +7752,8 @@ ls2_p1_ip=172.16.1.2
 
 ls3_p1_mac=00:00:00:01:02:05
 
+wait_for_ports_up
+
 # Create a drop policy
 check ovn-nbctl --wait=hv lr-policy-add R1 10 "ip4.src==192.168.1.0/24 && ip4.dst==172.16.1.0/24" drop
 
@@ -7921,6 +7923,8 @@ ls2_p1_mac=00:00:00:01:02:04
 ls2_p1_ip=2002::2
 
 ls3_p1_mac=00:00:00:01:02:05
+
+wait_for_ports_up
 
 # Create a drop policy
 check ovn-nbctl --wait=sb lr-policy-add R1 10 "ip6.src==2001::/64 && ip6.dst==2002::/64" drop
@@ -26967,6 +26971,8 @@ for i in $(seq 1 4); do
         options:rxq_pcap=hv1/vif${i}-rx.pcap \
         ofport-request=${i}
 done
+
+wait_for_ports_up
 
 # wait for earlier changes to take effect
 AT_CHECK([ovn-nbctl --timeout=3 --wait=hv sync], [0], [ignore])
