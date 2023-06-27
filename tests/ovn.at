@@ -7150,7 +7150,7 @@ test_dhcpv6() {
 }
 
 AT_CAPTURE_FILE([ofctl_monitor0.log])
-as hv1 ovs-ofctl monitor br-int resume --detach --no-chdir \
+as hv1 ovs-ofctl monitor br-int resume --timeout=120 --detach --no-chdir \
 --pidfile=ovs-ofctl0.pid 2> ofctl_monitor0.log
 
 echo "---------NB dump-----"
@@ -18843,15 +18843,15 @@ test_dhcpv6() {
 }
 
 AT_CAPTURE_FILE([ofctl_monitor0_hv1.log])
-as hv1 ovs-ofctl monitor br-int resume --detach --no-chdir \
+as hv1 ovs-ofctl monitor br-int resume --timeout=120 --detach --no-chdir \
 --pidfile=ovs-ofctl0.pid 2> ofctl_monitor0_hv1.log
 
 AT_CAPTURE_FILE([ofctl_monitor0_hv2.log])
-as hv2 ovs-ofctl monitor br-int resume --detach --no-chdir \
+as hv2 ovs-ofctl monitor br-int resume --timeout=120 --detach --no-chdir \
 --pidfile=ovs-ofctl0.pid 2> ofctl_monitor0_hv2.log
 
 AT_CAPTURE_FILE([ofctl_monitor0_hv3.log])
-as hv3 ovs-ofctl monitor br-int resume --detach --no-chdir \
+as hv3 ovs-ofctl monitor br-int resume --timeout=120 --detach --no-chdir \
 --pidfile=ovs-ofctl0.pid 2> ofctl_monitor0_hv3.log
 
 as hv1
