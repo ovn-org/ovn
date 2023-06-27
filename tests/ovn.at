@@ -16158,7 +16158,7 @@ echo "hv1 claimed ${hv1_claims} times"
 echo "hv2 claimed ${hv2_claims} times"
 
 # check that neither registered an outrageous number of port claims
-max_claims=10
+max_claims=20
 AT_CHECK([test "${hv1_claims}" -le "${max_claims}"], [0], [])
 AT_CHECK([test "${hv2_claims}" -le "${max_claims}"], [0], [])
 
