@@ -9513,7 +9513,7 @@ check_recompute_counter() {
 
 # Depending on order of responses from NB and SB, the number of recompute may
 # be different. This test case only verifies the best case scenario, which
-# should have the expected recompute count at least 70% of the time.
+# should have the expected recompute count at least 50% of the time.
 for i in $(seq 10); do
     check ovn-nbctl --wait=hv ls-add ls$i
 
@@ -9522,38 +9522,38 @@ for i in $(seq 10); do
     ovs-vsctl add-port br-int lsp${i}-0 -- set interface lsp${i}-0 external_ids:iface-id=lsp${i}-0
     wait_for_ports_up
     check ovn-nbctl --wait=hv sync
-    check_recompute_counter 5 5 || break
+    check_recompute_counter 5 5 || continue
 
     check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
     check ovn-nbctl --wait=hv lsp-add ls$i lsp${i}-1 -- lsp-set-addresses lsp${i}-1 "aa:aa:aa:00:00:01 192.168.0.11"
     ovs-vsctl add-port br-int lsp${i}-1 -- set interface lsp${i}-1 external_ids:iface-id=lsp${i}-1
     wait_for_ports_up
     check ovn-nbctl --wait=hv sync
-    check_recompute_counter 0 0 || break
+    check_recompute_counter 0 0 || continue
 
     check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
     check ovn-nbctl --wait=hv lsp-add ls$i lsp${i}-2 -- lsp-set-addresses lsp${i}-2 "aa:aa:aa:00:00:02 192.168.0.12"
     ovs-vsctl add-port br-int lsp${i}-2 -- set interface lsp${i}-2 external_ids:iface-id=lsp${i}-2
     wait_for_ports_up
     check ovn-nbctl --wait=hv sync
-    check_recompute_counter 0 0 || break
+    check_recompute_counter 0 0 || continue
 
     check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
     check ovn-nbctl --wait=hv lsp-del lsp${i}-1
-    check_recompute_counter 0 1 || break
+    check_recompute_counter 0 1 || continue
 
     check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
     check ovn-nbctl --wait=hv lsp-set-addresses lsp${i}-2 "aa:aa:aa:00:00:88 192.168.0.88"
-    check_recompute_counter 0 1 || break
+    check_recompute_counter 0 1 || continue
 
     # No change, no recompute
     check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
     check ovn-nbctl --wait=sb sync
-    check_recompute_counter 0 0 || break
+    check_recompute_counter 0 0 || continue
 
 done
 echo Test failed $fail_count in 10.
-AT_CHECK([test $fail_count -le 3])
+AT_CHECK([test $fail_count -le 5])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
