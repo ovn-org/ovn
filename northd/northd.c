@@ -5037,6 +5037,7 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
 {
     const struct nbrec_logical_switch *changed_ls;
     struct ls_change *ls_change = NULL;
+    struct ovn_port *op;
 
     NBREC_LOGICAL_SWITCH_TABLE_FOR_EACH_TRACKED (changed_ls,
                                              ni->nbrec_logical_switch_table) {
@@ -5067,7 +5068,6 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
         ovs_list_init(&ls_change->deleted_ports);
         ovs_list_init(&ls_change->updated_ports);
 
-        struct ovn_port *op;
         HMAP_FOR_EACH (op, dp_node, &od->ports) {
             op->visited = false;
         }
@@ -5133,12 +5133,12 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
         HMAP_FOR_EACH_SAFE (op, dp_node, &od->ports) {
             if (!op->visited) {
                 if (!op->lsp_can_be_inc_processed) {
-                    goto fail;
+                    goto fail_clean_deleted;
                 }
                 if (sset_contains(&nd->svc_monitor_lsps, op->key)) {
                     /* This port was used for svc monitor, which may be
                      * impacted by this deletion. Fallback to recompute. */
-                    goto fail;
+                    goto fail_clean_deleted;
                 }
                 ovs_list_push_back(&ls_change->deleted_ports,
                                    &op->list);
@@ -5164,6 +5164,11 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
         nd->change_tracked = true;
     }
     return true;
+
+fail_clean_deleted:
+    LIST_FOR_EACH_POP (op, list, &ls_change->deleted_ports) {
+        ovn_port_destroy_orphan(op);
+    }
 
 fail:
     free(ls_change);

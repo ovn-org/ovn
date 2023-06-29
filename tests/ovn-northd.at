@@ -9560,6 +9560,52 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LSP incremental processing fallback to recompute])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+
+check ovn-nbctl --wait=hv ls-add ls0
+
+# Add ports that should be incrementally processed
+n=9
+for i in $(seq $n); do
+    check ovn-nbctl --wait=hv lsp-add ls0 lsp0-$i -- lsp-set-addresses lsp0-$i "aa:aa:aa:00:00:0$i 192.168.0.1$i"
+    ovs-vsctl add-port br-int lsp0-$i -- set interface lsp0-$i external_ids:iface-id=lsp0-$i
+done
+
+# Add a port that should not be incrementally processed (because of the
+# "unknown" that is not supported by i-p for now).
+check ovn-nbctl --wait=hv lsp-add ls0 lsp0-foo -- lsp-set-addresses lsp0-foo "unknown"
+ovs-vsctl add-port br-int lsp0-foo -- set interface lsp0-foo external_ids:iface-id=lsp0-foo
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+wait_row_count port_binding $(($n + 1))
+
+# Delete multiple ports, and one of them not incrementally processible. This is
+# to trigger partial I-P and then fall back to recompute.
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+args="--wait=hv lsp-del lsp0-foo"
+for i in $(seq $n); do
+    args="$args -- lsp-del lsp0-$i"
+done
+check ovn-nbctl $args
+
+wait_row_count Port_Binding 0
+northd_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd recompute)
+echo northd_recomp $northd_recomp
+AT_CHECK([test $northd_recomp -ge 1])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check fip and lb flows])
 AT_KEYWORDS([fip-lb-flows])
 ovn_start
