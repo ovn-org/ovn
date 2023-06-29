@@ -59,6 +59,9 @@ static void sync_ovn_mirror(struct ovn_mirror *, struct ovsdb_idl_txn *,
 
 static void create_ovs_mirror(struct ovn_mirror *, struct ovsdb_idl_txn *,
                               const struct ovsrec_bridge *);
+static struct ovsrec_port *create_mirror_port(struct ovn_mirror *,
+                                              struct ovsdb_idl_txn *,
+                                              const struct ovsrec_bridge *);
 static void sync_ovs_mirror_ports(struct ovn_mirror *,
                                   const struct ovsrec_bridge *);
 static void delete_ovs_mirror(struct ovn_mirror *,
@@ -255,16 +258,23 @@ get_mirror_tunnel_type(const struct sbrec_mirror *sb_mirror)
 }
 
 static void
-check_and_update_interface_table(const struct sbrec_mirror *sb_mirror,
-                                 const struct ovsrec_mirror *ovs_mirror)
+check_and_update_interface_table(struct ovn_mirror *m,
+                                 struct ovsdb_idl_txn *ovs_idl_txn,
+                                 const struct ovsrec_bridge *br_int)
 {
-    struct ovsrec_interface *iface = ovs_mirror->output_port->interfaces[0];
-    char *type = get_mirror_tunnel_type(sb_mirror);
+    if (!m->ovs_mirror->output_port) {
+        const struct ovsrec_port *mirror_port =
+            create_mirror_port(m, ovs_idl_txn, br_int);
+        ovsrec_mirror_set_output_port(m->ovs_mirror, mirror_port);
+        return;
+    }
+    struct ovsrec_interface *iface = m->ovs_mirror->output_port->interfaces[0];
+    char *type = get_mirror_tunnel_type(m->sb_mirror);
 
     if (strcmp(type, iface->type)) {
         ovsrec_interface_set_type(iface, type);
     }
-    set_mirror_iface_options(iface, sb_mirror);
+    set_mirror_iface_options(iface, m->sb_mirror);
     free(type);
 }
 
@@ -287,7 +297,7 @@ sync_ovn_mirror(struct ovn_mirror *m, struct ovsdb_idl_txn *ovs_idl_txn,
     if (m->sb_mirror && !m->ovs_mirror) {
         create_ovs_mirror(m, ovs_idl_txn, br_int);
     } else {
-        check_and_update_interface_table(m->sb_mirror, m->ovs_mirror);
+        check_and_update_interface_table(m, ovs_idl_txn, br_int);
     }
 
     sync_ovs_mirror_ports(m, br_int);
@@ -323,9 +333,9 @@ get_iface_port(const struct ovsrec_interface *iface,
     return NULL;
 }
 
-static void
-create_ovs_mirror(struct ovn_mirror *m, struct ovsdb_idl_txn *ovs_idl_txn,
-                  const struct ovsrec_bridge *br_int)
+static struct ovsrec_port *
+create_mirror_port(struct ovn_mirror *m, struct ovsdb_idl_txn *ovs_idl_txn,
+                   const struct ovsrec_bridge *br_int)
 {
     struct ovsrec_interface *iface = ovsrec_interface_insert(ovs_idl_txn);
     char *port_name = xasprintf("ovn-%s", m->name);
@@ -343,7 +353,15 @@ create_ovs_mirror(struct ovn_mirror *m, struct ovsdb_idl_txn *ovs_idl_txn,
     ovsrec_bridge_update_ports_addvalue(br_int, port);
 
     free(port_name);
+    return port;
+}
 
+static void
+create_ovs_mirror(struct ovn_mirror *m, struct ovsdb_idl_txn *ovs_idl_txn,
+                  const struct ovsrec_bridge *br_int)
+{
+    const struct ovsrec_port *port = create_mirror_port(m, ovs_idl_txn,
+                                                        br_int);
     m->ovs_mirror = ovsrec_mirror_insert(ovs_idl_txn);
     ovsrec_mirror_set_name(m->ovs_mirror, m->name);
     ovsrec_mirror_set_output_port(m->ovs_mirror, port);
@@ -400,8 +418,11 @@ sync_ovs_mirror_ports(struct ovn_mirror *m, const struct ovsrec_bridge *br_int)
 static void
 delete_ovs_mirror(struct ovn_mirror *m, const struct ovsrec_bridge *br_int)
 {
-    ovsrec_bridge_update_ports_delvalue(br_int, m->ovs_mirror->output_port);
+    if (m->ovs_mirror->output_port) {
+        ovsrec_bridge_update_ports_delvalue(br_int,
+                                            m->ovs_mirror->output_port);
+        ovsrec_port_delete(m->ovs_mirror->output_port);
+    }
     ovsrec_bridge_update_mirrors_delvalue(br_int, m->ovs_mirror);
-    ovsrec_port_delete(m->ovs_mirror->output_port);
     ovsrec_mirror_delete(m->ovs_mirror);
 }
