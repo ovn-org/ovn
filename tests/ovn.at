@@ -17131,6 +17131,20 @@ check ovn-nbctl --wait=hv sync
 
 OVS_WAIT_UNTIL([test 0 = $(as hv1 ovs-vsctl list Mirror | wc -l)])
 
+# Create the vif1 again, and mirror should be recreated.
+ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=ls1-lp1
+OVS_WAIT_UNTIL([test $(as hv1 ovs-vsctl get Mirror mirror0 name) = "mirror0"])
+
+# Delete the mirror port, should recreate.
+check ovs-vsctl del-port ovn-mirror0
+OVS_WAIT_UNTIL([ovs-vsctl list port ovn-mirror0 | grep ovn-mirror0])
+
+# Delete the mirror port and vif1 at the same time, mirror should be deleted
+# properly (without crash)
+ovs-vsctl del-port ovn-mirror0 -- del-port vif1
+OVS_WAIT_UNTIL([test 0 = $(as hv1 ovs-vsctl list Mirror | wc -l)])
+
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
 ])
