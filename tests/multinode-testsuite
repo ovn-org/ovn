@@ -59,17 +59,17 @@ elif (test "X`printf %s $as_echo`" = "X$as_echo") 2>/dev/null; then
   as_echo='printf %s\n'
   as_echo_n='printf %s'
 else
-  if test "X`(/usr/ucb/echo -n -n $as_echo) 2>/dev/null`" = "X-n $as_echo"; then
-    as_echo_body='eval /usr/ucb/echo -n "$1$as_nl"'
-    as_echo_n='/usr/ucb/echo -n'
+  if test "X`(/usr/ucb/printf -n -n $as_echo) 2>/dev/null`" = "X-n $as_echo"; then
+    as_echo_body='eval /usr/ucb/printf -n "$1$as_nl"'
+    as_echo_n='/usr/ucb/printf -n'
   else
     as_echo_body='eval expr "X$1" : "X\\(.*\\)"'
     as_echo_n_body='eval
       arg=$1;
       case $arg in #(
       *"$as_nl"*)
-	expr "X$arg" : "X\\(.*\\)$as_nl";
-	arg=`expr "X$arg" : ".*$as_nl\\(.*\\)"`;;
+  expr "X$arg" : "X\\(.*\\)$as_nl";
+  arg=`expr "X$arg" : ".*$as_nl\\(.*\\)"`;;
       esac;
       expr "X$arg" : "X\\(.*\\)" | tr -d "$as_nl"
     '
@@ -199,23 +199,23 @@ do
   test -z "$as_dir" && as_dir=.
   as_found=:
   case $as_dir in #(
-	 /*)
-	   for as_base in sh bash ksh sh5; do
-	     # Try only shells that exist, to save several forks.
-	     as_shell=$as_dir/$as_base
-	     if { test -f "$as_shell" || test -f "$as_shell.exe"; } &&
-		    { $as_echo "$as_bourne_compatible""$as_required" | as_run=a "$as_shell"; } 2>/dev/null; then :
+   /*)
+     for as_base in sh bash ksh sh5; do
+       # Try only shells that exist, to save several forks.
+       as_shell=$as_dir/$as_base
+       if { test -f "$as_shell" || test -f "$as_shell.exe"; } &&
+        { $as_echo "$as_bourne_compatible""$as_required" | as_run=a "$as_shell"; } 2>/dev/null; then :
   CONFIG_SHELL=$as_shell as_have_required=yes
-		   if { $as_echo "$as_bourne_compatible""$as_suggested" | as_run=a "$as_shell"; } 2>/dev/null; then :
+       if { $as_echo "$as_bourne_compatible""$as_suggested" | as_run=a "$as_shell"; } 2>/dev/null; then :
   break 2
 fi
 fi
-	   done;;
+     done;;
        esac
   as_found=false
 done
 $as_found || { if { test -f "$SHELL" || test -f "$SHELL.exe"; } &&
-	      { $as_echo "$as_bourne_compatible""$as_required" | as_run=a "$SHELL"; } 2>/dev/null; then :
+        { $as_echo "$as_bourne_compatible""$as_required" | as_run=a "$SHELL"; } 2>/dev/null; then :
   CONFIG_SHELL=$SHELL as_have_required=yes
 fi; }
 IFS=$as_save_IFS
@@ -314,27 +314,27 @@ as_fn_mkdir_p ()
       as_dirs="'$as_qdir' $as_dirs"
       as_dir=`$as_dirname -- "$as_dir" ||
 $as_expr X"$as_dir" : 'X\(.*[^/]\)//*[^/][^/]*/*$' \| \
-	 X"$as_dir" : 'X\(//\)[^/]' \| \
-	 X"$as_dir" : 'X\(//\)$' \| \
-	 X"$as_dir" : 'X\(/\)' \| . 2>/dev/null ||
+   X"$as_dir" : 'X\(//\)[^/]' \| \
+   X"$as_dir" : 'X\(//\)$' \| \
+   X"$as_dir" : 'X\(/\)' \| . 2>/dev/null ||
 $as_echo X"$as_dir" |
     sed '/^X\(.*[^/]\)\/\/*[^/][^/]*\/*$/{
-	    s//\1/
-	    q
-	  }
-	  /^X\(\/\/\)[^/].*/{
-	    s//\1/
-	    q
-	  }
-	  /^X\(\/\/\)$/{
-	    s//\1/
-	    q
-	  }
-	  /^X\(\/\).*/{
-	    s//\1/
-	    q
-	  }
-	  s/.*/./; q'`
+      s//\1/
+      q
+    }
+    /^X\(\/\/\)[^/].*/{
+      s//\1/
+      q
+    }
+    /^X\(\/\/\)$/{
+      s//\1/
+      q
+    }
+    /^X\(\/\).*/{
+      s//\1/
+      q
+    }
+    s/.*/./; q'`
       test -d "$as_dir" && break
     done
     test -z "$as_dirs" || eval "mkdir $as_dirs"
@@ -417,22 +417,22 @@ fi
 
 as_me=`$as_basename -- "$0" ||
 $as_expr X/"$0" : '.*/\([^/][^/]*\)/*$' \| \
-	 X"$0" : 'X\(//\)$' \| \
-	 X"$0" : 'X\(/\)' \| . 2>/dev/null ||
+   X"$0" : 'X\(//\)$' \| \
+   X"$0" : 'X\(/\)' \| . 2>/dev/null ||
 $as_echo X/"$0" |
     sed '/^.*\/\([^/][^/]*\)\/*$/{
-	    s//\1/
-	    q
-	  }
-	  /^X\/\(\/\/\)$/{
-	    s//\1/
-	    q
-	  }
-	  /^X\/\(\/\).*/{
-	    s//\1/
-	    q
-	  }
-	  s/.*/./; q'`
+      s//\1/
+      q
+    }
+    /^X\/\(\/\/\)$/{
+      s//\1/
+      q
+    }
+    /^X\/\(\/\).*/{
+      s//\1/
+      q
+    }
+    s/.*/./; q'`
 
 if (as_dir=`dirname -- /` && test "X$as_dir" = X/) >/dev/null 2>&1; then
   as_dirname=dirname
@@ -484,7 +484,7 @@ as_cr_alnum=$as_cr_Letters$as_cr_digits
 }
 
 ECHO_C= ECHO_N= ECHO_T=
-case `echo -n x` in #(((((
+case `printf -n x` in #(((((
 -n*)
   case `echo 'xy\c'` in
   *c*) ECHO_T='	';;	# ECHO_T is single tab character.
@@ -625,11 +625,11 @@ at_fn_validate_ranges ()
     fi
     case $at_value in
       0*) # We want to treat leading 0 as decimal, like expr and test, but
-	  # AS_VAR_ARITH treats it as octal if it uses $(( )).
-	  # With XSI shells, ${at_value#${at_value%%[1-9]*}} avoids the
-	  # expr fork, but it is not worth the effort to determine if the
-	  # shell supports XSI when the user can just avoid leading 0.
-	  eval $at_grp='`expr $at_value + 0`' ;;
+    # AS_VAR_ARITH treats it as octal if it uses $(( )).
+    # With XSI shells, ${at_value#${at_value%%[1-9]*}} avoids the
+    # expr fork, but it is not worth the effort to determine if the
+    # shell supports XSI when the user can just avoid leading 0.
+    eval $at_grp='`expr $at_value + 0`' ;;
     esac
   done
 }
@@ -660,74 +660,74 @@ do
 
   case $at_option in
     --help | -h )
-	at_help_p=:
-	;;
+  at_help_p=:
+  ;;
 
     --list | -l )
-	at_list_p=:
-	;;
+  at_list_p=:
+  ;;
 
     --version | -V )
-	at_version_p=:
-	;;
+  at_version_p=:
+  ;;
 
     --clean | -c )
-	at_clean=:
-	;;
+  at_clean=:
+  ;;
 
     --color )
-	at_color=always
-	;;
+  at_color=always
+  ;;
     --color=* )
-	case $at_optarg in
-	no | never | none) at_color=never ;;
-	auto | tty | if-tty) at_color=auto ;;
-	always | yes | force) at_color=always ;;
-	*) at_optname=`echo " $at_option" | sed 's/^ //; s/=.*//'`
-	   as_fn_error $? "unrecognized argument to $at_optname: $at_optarg" ;;
-	esac
-	;;
+  case $at_optarg in
+  no | never | none) at_color=never ;;
+  auto | tty | if-tty) at_color=auto ;;
+  always | yes | force) at_color=always ;;
+  *) at_optname=`echo " $at_option" | sed 's/^ //; s/=.*//'`
+     as_fn_error $? "unrecognized argument to $at_optname: $at_optarg" ;;
+  esac
+  ;;
 
     --debug | -d )
-	at_debug_p=:
-	;;
+  at_debug_p=:
+  ;;
 
     --errexit | -e )
-	at_debug_p=:
-	at_errexit_p=:
-	;;
+  at_debug_p=:
+  at_errexit_p=:
+  ;;
 
     --verbose | -v )
-	at_verbose=; at_quiet=:
-	;;
+  at_verbose=; at_quiet=:
+  ;;
 
     --trace | -x )
-	at_traceon='set -x'
-	at_trace_echo=echo
-	at_check_filter_trace=at_fn_filter_trace
-	;;
+  at_traceon='set -x'
+  at_trace_echo=echo
+  at_check_filter_trace=at_fn_filter_trace
+  ;;
 
     [0-9] | [0-9][0-9] | [0-9][0-9][0-9] | [0-9][0-9][0-9][0-9])
-	at_fn_validate_ranges at_option
-	as_fn_append at_groups "$at_option$as_nl"
-	;;
+  at_fn_validate_ranges at_option
+  as_fn_append at_groups "$at_option$as_nl"
+  ;;
 
     # Ranges
     [0-9]- | [0-9][0-9]- | [0-9][0-9][0-9]- | [0-9][0-9][0-9][0-9]-)
-	at_range_start=`echo $at_option |tr -d X-`
-	at_fn_validate_ranges at_range_start
-	at_range=`$as_echo "$at_groups_all" | \
-	  sed -ne '/^'$at_range_start'$/,$p'`
-	as_fn_append at_groups "$at_range$as_nl"
-	;;
+  at_range_start=`echo $at_option |tr -d X-`
+  at_fn_validate_ranges at_range_start
+  at_range=`$as_echo "$at_groups_all" | \
+    sed -ne '/^'$at_range_start'$/,$p'`
+  as_fn_append at_groups "$at_range$as_nl"
+  ;;
 
     -[0-9] | -[0-9][0-9] | -[0-9][0-9][0-9] | -[0-9][0-9][0-9][0-9])
-	at_range_end=`echo $at_option |tr -d X-`
-	at_fn_validate_ranges at_range_end
-	at_range=`$as_echo "$at_groups_all" | \
-	  sed -ne '1,/^'$at_range_end'$/p'`
-	as_fn_append at_groups "$at_range$as_nl"
-	;;
+  at_range_end=`echo $at_option |tr -d X-`
+  at_fn_validate_ranges at_range_end
+  at_range=`$as_echo "$at_groups_all" | \
+    sed -ne '1,/^'$at_range_end'$/p'`
+  as_fn_append at_groups "$at_range$as_nl"
+  ;;
 
     [0-9]-[0-9] | [0-9]-[0-9][0-9] | [0-9]-[0-9][0-9][0-9] | \
     [0-9]-[0-9][0-9][0-9][0-9] | [0-9][0-9]-[0-9][0-9] | \
@@ -735,107 +735,107 @@ do
     [0-9][0-9][0-9]-[0-9][0-9][0-9] | \
     [0-9][0-9][0-9]-[0-9][0-9][0-9][0-9] | \
     [0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9] )
-	at_range_start=`expr $at_option : '\(.*\)-'`
-	at_range_end=`expr $at_option : '.*-\(.*\)'`
-	if test $at_range_start -gt $at_range_end; then
-	  at_tmp=$at_range_end
-	  at_range_end=$at_range_start
-	  at_range_start=$at_tmp
-	fi
-	at_fn_validate_ranges at_range_start at_range_end
-	at_range=`$as_echo "$at_groups_all" | \
-	  sed -ne '/^'$at_range_start'$/,/^'$at_range_end'$/p'`
-	as_fn_append at_groups "$at_range$as_nl"
-	;;
+  at_range_start=`expr $at_option : '\(.*\)-'`
+  at_range_end=`expr $at_option : '.*-\(.*\)'`
+  if test $at_range_start -gt $at_range_end; then
+    at_tmp=$at_range_end
+    at_range_end=$at_range_start
+    at_range_start=$at_tmp
+  fi
+  at_fn_validate_ranges at_range_start at_range_end
+  at_range=`$as_echo "$at_groups_all" | \
+    sed -ne '/^'$at_range_start'$/,/^'$at_range_end'$/p'`
+  as_fn_append at_groups "$at_range$as_nl"
+  ;;
 
     # Directory selection.
     --directory | -C )
-	at_prev=--directory
-	;;
+  at_prev=--directory
+  ;;
     --directory=* )
-	at_change_dir=:
-	at_dir=$at_optarg
-	if test x- = "x$at_dir" ; then
-	  at_dir=./-
-	fi
-	;;
+  at_change_dir=:
+  at_dir=$at_optarg
+  if test x- = "x$at_dir" ; then
+    at_dir=./-
+  fi
+  ;;
 
     # Parallel execution.
     --jobs | -j )
-	at_jobs=0
-	;;
+  at_jobs=0
+  ;;
     --jobs=* | -j[0-9]* )
-	if test -n "$at_optarg"; then
-	  at_jobs=$at_optarg
-	else
-	  at_jobs=`expr X$at_option : 'X-j\(.*\)'`
-	fi
-	case $at_jobs in *[!0-9]*)
-	  at_optname=`echo " $at_option" | sed 's/^ //; s/[0-9=].*//'`
-	  as_fn_error $? "non-numeric argument to $at_optname: $at_jobs" ;;
-	esac
-	;;
+  if test -n "$at_optarg"; then
+    at_jobs=$at_optarg
+  else
+    at_jobs=`expr X$at_option : 'X-j\(.*\)'`
+  fi
+  case $at_jobs in *[!0-9]*)
+    at_optname=`echo " $at_option" | sed 's/^ //; s/[0-9=].*//'`
+    as_fn_error $? "non-numeric argument to $at_optname: $at_jobs" ;;
+  esac
+  ;;
 
     # Keywords.
     --keywords | -k )
-	at_prev=--keywords
-	;;
+  at_prev=--keywords
+  ;;
     --keywords=* )
-	at_groups_selected=$at_help_all
-	at_save_IFS=$IFS
-	IFS=,
-	set X $at_optarg
-	shift
-	IFS=$at_save_IFS
-	for at_keyword
-	do
-	  at_invert=
-	  case $at_keyword in
-	  '!'*)
-	    at_invert="-v"
-	    at_keyword=`expr "X$at_keyword" : 'X!\(.*\)'`
-	    ;;
-	  esac
-	  # It is on purpose that we match the test group titles too.
-	  at_groups_selected=`$as_echo "$at_groups_selected" |
-	      grep -i $at_invert "^[1-9][^;]*;.*[; ]$at_keyword[ ;]"`
-	done
-	# Smash the keywords.
-	at_groups_selected=`$as_echo "$at_groups_selected" | sed 's/;.*//'`
-	as_fn_append at_groups "$at_groups_selected$as_nl"
-	;;
+  at_groups_selected=$at_help_all
+  at_save_IFS=$IFS
+  IFS=,
+  set X $at_optarg
+  shift
+  IFS=$at_save_IFS
+  for at_keyword
+  do
+    at_invert=
+    case $at_keyword in
+    '!'*)
+      at_invert="-v"
+      at_keyword=`expr "X$at_keyword" : 'X!\(.*\)'`
+      ;;
+    esac
+    # It is on purpose that we match the test group titles too.
+    at_groups_selected=`$as_echo "$at_groups_selected" |
+        grep -i $at_invert "^[1-9][^;]*;.*[; ]$at_keyword[ ;]"`
+  done
+  # Smash the keywords.
+  at_groups_selected=`$as_echo "$at_groups_selected" | sed 's/;.*//'`
+  as_fn_append at_groups "$at_groups_selected$as_nl"
+  ;;
     --recheck)
-	at_recheck=:
-	;;
+  at_recheck=:
+  ;;
     --rebuild )
-	at_optarg=:
-	at_arg_rebuild=:
-	at_arg_given_rebuild=:
-		;;
+  at_optarg=:
+  at_arg_rebuild=:
+  at_arg_given_rebuild=:
+    ;;
     --no-rebuild )
-	at_optarg=false
-	at_arg_rebuild=false
-	at_arg_given_rebuild=:
-		;;
+  at_optarg=false
+  at_arg_rebuild=false
+  at_arg_given_rebuild=:
+    ;;
 
 
     *=*)
-	at_envvar=`expr "x$at_option" : 'x\([^=]*\)='`
-	# Reject names that are not valid shell variable names.
-	case $at_envvar in
-	  '' | [0-9]* | *[!_$as_cr_alnum]* )
-	    as_fn_error $? "invalid variable name: \`$at_envvar'" ;;
-	esac
-	at_value=`$as_echo "$at_optarg" | sed "s/'/'\\\\\\\\''/g"`
-	# Export now, but save eval for later and for debug scripts.
-	export $at_envvar
-	as_fn_append at_debug_args " $at_envvar='$at_value'"
-	;;
+  at_envvar=`expr "x$at_option" : 'x\([^=]*\)='`
+  # Reject names that are not valid shell variable names.
+  case $at_envvar in
+    '' | [0-9]* | *[!_$as_cr_alnum]* )
+      as_fn_error $? "invalid variable name: \`$at_envvar'" ;;
+  esac
+  at_value=`$as_echo "$at_optarg" | sed "s/'/'\\\\\\\\''/g"`
+  # Export now, but save eval for later and for debug scripts.
+  export $at_envvar
+  as_fn_append at_debug_args " $at_envvar='$at_value'"
+  ;;
 
      *) $as_echo "$as_me: invalid option: $at_option" >&2
-	$as_echo "Try \`$0 --help' for more information." >&2
-	exit 1
-	;;
+  $as_echo "Try \`$0 --help' for more information." >&2
+  exit 1
+  ;;
   esac
 done
 
@@ -854,10 +854,10 @@ else
   if test -n "$at_recheck" && test -r "$at_suite_log"; then
     at_oldfails=`sed -n '
       /^Failed tests:$/,/^Skipped tests:$/{
-	s/^[ ]*\([1-9][0-9]*\):.*/\1/p
+  s/^[ ]*\([1-9][0-9]*\):.*/\1/p
       }
       /^Unexpected passes:$/,/^## Detailed failed tests/{
-	s/^[ ]*\([1-9][0-9]*\):.*/\1/p
+  s/^[ ]*\([1-9][0-9]*\):.*/\1/p
       }
       /^## Detailed failed tests/q
       ' "$at_suite_log"`
@@ -953,35 +953,35 @@ _ATEOF
   # Pass an empty line as separator between selected groups and help.
   $as_echo "$at_groups$as_nl$as_nl$at_help_all" |
     awk 'NF == 1 && FS != ";" {
-	   selected[$ 1] = 1
-	   next
-	 }
-	 /^$/ { FS = ";" }
-	 NF > 0 {
-	   if (selected[$ 1]) {
-	     printf " %3d: %-18s %s\n", $ 1, $ 2, $ 3
-	     if ($ 4) {
-	       lmax = 79
-	       indent = "     "
-	       line = indent
-	       len = length (line)
-	       n = split ($ 4, a, " ")
-	       for (i = 1; i <= n; i++) {
-		 l = length (a[i]) + 1
-		 if (i > 1 && len + l > lmax) {
-		   print line
-		   line = indent " " a[i]
-		   len = length (line)
-		 } else {
-		   line = line " " a[i]
-		   len += l
-		 }
-	       }
-	       if (n)
-		 print line
-	     }
-	   }
-	 }' || at_write_fail=1
+     selected[$ 1] = 1
+     next
+   }
+   /^$/ { FS = ";" }
+   NF > 0 {
+     if (selected[$ 1]) {
+       printf " %3d: %-18s %s\n", $ 1, $ 2, $ 3
+       if ($ 4) {
+         lmax = 79
+         indent = "     "
+         line = indent
+         len = length (line)
+         n = split ($ 4, a, " ")
+         for (i = 1; i <= n; i++) {
+     l = length (a[i]) + 1
+     if (i > 1 && len + l > lmax) {
+       print line
+       line = indent " " a[i]
+       len = length (line)
+     } else {
+       line = line " " a[i]
+       len += l
+     }
+         }
+         if (n)
+     print line
+       }
+     }
+   }' || at_write_fail=1
   exit $at_write_fail
 fi
 if $at_version_p; then
@@ -1340,7 +1340,7 @@ at_fn_check_skip ()
 {
   case $1 in
     99) echo 99 > "$at_status_file"; at_failed=:
-	$as_echo "$2: hard failure"; exit 99;;
+  $as_echo "$2: hard failure"; exit 99;;
     77) echo 77 > "$at_status_file"; exit 77;;
   esac
 }
@@ -1357,7 +1357,7 @@ at_fn_check_status ()
     $1 ) ;;
     77) echo 77 > "$at_status_file"; exit 77;;
     99) echo 99 > "$at_status_file"; at_failed=:
-	$as_echo "$3: hard failure"; exit 99;;
+  $as_echo "$3: hard failure"; exit 99;;
     *) $as_echo "$3: exit code was $2, expected $1"
       at_failed=:;;
   esac
@@ -3151,35 +3151,35 @@ _ATEOF
   $as_echo_n "$at_group. $at_setup_line: " >> "$at_group_log"
   case $at_xfail:$at_status in
     yes:0)
-	at_msg="UNEXPECTED PASS"
-	at_res=xpass
-	at_errexit=$at_errexit_p
-	at_color=$at_red
-	;;
+  at_msg="UNEXPECTED PASS"
+  at_res=xpass
+  at_errexit=$at_errexit_p
+  at_color=$at_red
+  ;;
     no:0)
-	at_msg="ok"
-	at_res=pass
-	at_errexit=false
-	at_color=$at_grn
-	;;
+  at_msg="ok"
+  at_res=pass
+  at_errexit=false
+  at_color=$at_grn
+  ;;
     *:77)
-	at_msg='skipped ('`cat "$at_check_line_file"`')'
-	at_res=skip
-	at_errexit=false
-	at_color=$at_blu
-	;;
+  at_msg='skipped ('`cat "$at_check_line_file"`')'
+  at_res=skip
+  at_errexit=false
+  at_color=$at_blu
+  ;;
     no:* | *:99)
-	at_msg='FAILED ('`cat "$at_check_line_file"`')'
-	at_res=fail
-	at_errexit=$at_errexit_p
-	at_color=$at_red
-	;;
+  at_msg='FAILED ('`cat "$at_check_line_file"`')'
+  at_res=fail
+  at_errexit=$at_errexit_p
+  at_color=$at_red
+  ;;
     yes:*)
-	at_msg='expected failure ('`cat "$at_check_line_file"`')'
-	at_res=xfail
-	at_errexit=false
-	at_color=$at_lgn
-	;;
+  at_msg='expected failure ('`cat "$at_check_line_file"`')'
+  at_res=xfail
+  at_errexit=false
+  at_color=$at_lgn
+  ;;
   esac
   echo "$at_res" > "$at_job_dir/$at_res"
   # In parallel mode, output the summary line only afterwards.
@@ -3197,8 +3197,8 @@ _ATEOF
       # is written in the global log separately.  But we also
       # write to the group log in case they're using -d.
       if test -f "$at_times_file"; then
-	at_log_msg="$at_log_msg     ("`sed 1d "$at_times_file"`')'
-	rm -f "$at_times_file"
+  at_log_msg="$at_log_msg     ("`sed 1d "$at_times_file"`')'
+  rm -f "$at_times_file"
       fi
       $as_echo "$at_log_msg" >> "$at_group_log"
       $as_echo "$at_log_msg" >&5
@@ -3206,16 +3206,16 @@ _ATEOF
       # Cleanup the group directory, unless the user wants the files
       # or the success was unexpected.
       if $at_debug_p || test $at_res = xpass; then
-	at_fn_create_debugging_script
-	if test $at_res = xpass && $at_errexit; then
-	  echo stop > "$at_stop_file"
-	fi
+  at_fn_create_debugging_script
+  if test $at_res = xpass && $at_errexit; then
+    echo stop > "$at_stop_file"
+  fi
       else
-	if test -d "$at_group_dir"; then
-	  find "$at_group_dir" -type d ! -perm -700 -exec chmod u+rwx \{\} \;
-	  rm -fr "$at_group_dir"
-	fi
-	rm -f "$at_test_source"
+  if test -d "$at_group_dir"; then
+    find "$at_group_dir" -type d ! -perm -700 -exec chmod u+rwx \{\} \;
+    rm -fr "$at_group_dir"
+  fi
+  rm -f "$at_test_source"
       fi
       ;;
     *)
@@ -3228,7 +3228,7 @@ _ATEOF
       # the debugging script.  With -e, do not start any further tests.
       at_fn_create_debugging_script
       if $at_errexit; then
-	echo stop > "$at_stop_file"
+  echo stop > "$at_stop_file"
       fi
       ;;
   esac
@@ -3249,26 +3249,26 @@ fi
 
 for at_signal in 1 2 15; do
   trap 'set +x; set +e
-	$at_job_control_off
-	at_signal='"$at_signal"'
-	echo stop > "$at_stop_file"
-	trap "" $at_signal
-	at_pgids=
-	for at_pgid in `jobs -p 2>/dev/null`; do
-	  at_pgids="$at_pgids $at_job_group$at_pgid"
-	done
-	test -z "$at_pgids" || kill -$at_signal $at_pgids 2>/dev/null
-	wait
-	if test "$at_jobs" -eq 1 || test -z "$at_verbose"; then
-	  echo >&2
-	fi
-	at_signame=`kill -l $at_signal 2>&1 || echo $at_signal`
-	set x $at_signame
-	test 0 -gt 2 && at_signame=$at_signal
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: caught signal $at_signame, bailing out" >&5
+  $at_job_control_off
+  at_signal='"$at_signal"'
+  echo stop > "$at_stop_file"
+  trap "" $at_signal
+  at_pgids=
+  for at_pgid in `jobs -p 2>/dev/null`; do
+    at_pgids="$at_pgids $at_job_group$at_pgid"
+  done
+  test -z "$at_pgids" || kill -$at_signal $at_pgids 2>/dev/null
+  wait
+  if test "$at_jobs" -eq 1 || test -z "$at_verbose"; then
+    echo >&2
+  fi
+  at_signame=`kill -l $at_signal 2>&1 || echo $at_signal`
+  set x $at_signame
+  test 0 -gt 2 && at_signame=$at_signal
+  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: caught signal $at_signame, bailing out" >&5
 $as_echo "$as_me: WARNING: caught signal $at_signame, bailing out" >&2;}
-	as_fn_arith 128 + $at_signal && exit_status=$as_val
-	as_fn_exit $exit_status' $at_signal
+  as_fn_arith 128 + $at_signal && exit_status=$as_val
+  as_fn_exit $exit_status' $at_signal
 done
 
 rm -f "$at_stop_file"
@@ -3282,16 +3282,16 @@ then
   # FIFO job dispatcher.
 
   trap 'at_pids=
-	for at_pid in `jobs -p`; do
-	  at_pids="$at_pids $at_job_group$at_pid"
-	done
-	if test -n "$at_pids"; then
-	  at_sig=TSTP
-	  test "${TMOUT+set}" = set && at_sig=STOP
-	  kill -$at_sig $at_pids 2>/dev/null
-	fi
-	kill -STOP $$
-	test -z "$at_pids" || kill -CONT $at_pids 2>/dev/null' TSTP
+  for at_pid in `jobs -p`; do
+    at_pids="$at_pids $at_job_group$at_pid"
+  done
+  if test -n "$at_pids"; then
+    at_sig=TSTP
+    test "${TMOUT+set}" = set && at_sig=STOP
+    kill -$at_sig $at_pids 2>/dev/null
+  fi
+  kill -STOP $$
+  test -z "$at_pids" || kill -CONT $at_pids 2>/dev/null' TSTP
 
   echo
   # Turn jobs into a list of numbers, starting from 1.
@@ -3305,23 +3305,23 @@ then
       # Start one test group.
       $at_job_control_off
       if $at_first; then
-	exec 7>"$at_job_fifo"
+  exec 7>"$at_job_fifo"
       else
-	exec 6<&-
+  exec 6<&-
       fi
       trap 'set +x; set +e
-	    trap "" PIPE
-	    echo stop > "$at_stop_file"
-	    echo >&7
-	    as_fn_exit 141' PIPE
+      trap "" PIPE
+      echo stop > "$at_stop_file"
+      echo >&7
+      as_fn_exit 141' PIPE
       at_fn_group_prepare
       if cd "$at_group_dir" &&
-	 at_fn_test $at_group &&
-	 . "$at_test_source"
+   at_fn_test $at_group &&
+   . "$at_test_source"
       then :; else
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: unable to parse test group: $at_group" >&5
+  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: unable to parse test group: $at_group" >&5
 $as_echo "$as_me: WARNING: unable to parse test group: $at_group" >&2;}
-	at_failed=:
+  at_failed=:
       fi
       at_fn_group_postprocess
       echo >&7
@@ -3376,9 +3376,9 @@ at_pass_list=`for f in */pass; do echo $f; done | sed '/\*/d; s,/pass,,'`
 at_skip_list=`for f in */skip; do echo $f; done | sed '/\*/d; s,/skip,,'`
 at_xfail_list=`for f in */xfail; do echo $f; done | sed '/\*/d; s,/xfail,,'`
 at_xpass_list=`for f in ?/xpass ??/xpass ???/xpass ????/xpass; do
-		 echo $f; done | sed '/?/d; s,/xpass,,'`
+     echo $f; done | sed '/?/d; s,/xpass,,'`
 at_fail_list=`for f in ?/fail ??/fail ???/fail ????/fail; do
-		echo $f; done | sed '/?/d; s,/fail,,'`
+    echo $f; done | sed '/?/d; s,/fail,,'`
 
 set X $at_pass_list $at_xpass_list $at_xfail_list $at_fail_list $at_skip_list
 shift; at_group_count=$#
@@ -3525,7 +3525,7 @@ else
       echo
       for at_group in $at_fail_list
       do
-	at_group_normalized=$at_group
+  at_group_normalized=$at_group
 
   eval 'while :; do
     case $at_group_normalized in #(
@@ -3534,8 +3534,8 @@ else
     at_group_normalized=0$at_group_normalized
   done'
 
-	cat "$at_suite_dir/$at_group_normalized/$as_me.log"
-	echo
+  cat "$at_suite_dir/$at_group_normalized/$as_me.log"
+  echo
       done
       echo
     fi
