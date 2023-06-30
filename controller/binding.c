@@ -218,6 +218,39 @@ get_qos_egress_port_interface(struct shash *bridge_mappings,
     return NULL;
 }
 
+
+static const struct ovsrec_interface *
+get_qos_egress_port_interface_mod(struct shash *bridge_mappings,
+                              const struct ovsrec_port **pport,
+                              const char *network)
+{
+    struct ovsrec_bridge *br_ln = shash_find_data(bridge_mappings, network);
+    if (!br_ln) {
+        return NULL;
+    }
+
+    /* Add egress-ifaces from the connected bridge */
+    for (size_t i = 0; i < br_ln->n_ports; i++) {
+        const struct ovsrec_port *port = br_ln->ports[i];
+        for (size_t j = 0; j < port->n_interfaces; j++) {
+            const struct ovsrec_interface *iface = port->interfaces[j];
+
+            if (smap_get(&iface->external_ids, "iface-id")) {
+                continue;
+            }
+
+            if (smap_get_bool(&iface->external_ids,
+                              "ovn-egress-iface", false) ||
+                !strcmp(iface->type, "")) {
+                *pport = port;
+                return iface;
+            }
+        }
+    }
+
+    return NULL;
+}
+
 /* 34359738360 == (2^32 - 1) * 8.  netdev_set_qos() doesn't support
  * 64-bit rate netlink attributes, so the maximum value is 2^32 - 1
  * bytes. The 'max-rate' config option is in bits, so multiplying by 8.
@@ -236,9 +269,12 @@ add_ovs_qos_table_entry(struct ovsdb_idl_txn *ovs_idl_txn,
     struct smap external_ids = SMAP_INITIALIZER(&external_ids);
     struct smap other_config = SMAP_INITIALIZER(&other_config);
 
+    
+
     const struct ovsrec_qos *qos = port->qos;
     if (qos && !smap_get_bool(&qos->external_ids, "ovn_qos", false)) {
         /* External configured QoS, do not overwrite it. */
+        // VLOG_INFO("External QoS...............");
         return;
     }
 
@@ -277,6 +313,8 @@ add_ovs_qos_table_entry(struct ovsdb_idl_txn *ovs_idl_txn,
     ovsrec_queue_verify_other_config(queue);
     ovsrec_queue_set_other_config(queue, &other_config);
     smap_destroy(&other_config);
+
+    VLOG_INFO("Queue Implemet....");
 
     smap_add(&external_ids, "ovn_port", ovn_port);
     ovsrec_queue_verify_external_ids(queue);
@@ -357,7 +395,12 @@ configure_qos(const struct sbrec_port_binding *pb,
         return;
     }
 
+    VLOG_INFO("MIM:%llu  MAX:%llu BST:%llu queue:%u lport:%s" ,
+    min_rate,max_rate,burst,queue_id,pb->logical_port);
+
     const char *network = smap_get(&pb->options, "qos_physical_network");
+
+    VLOG_INFO("net:%s",network);
     uint32_t hash = hash_string(pb->logical_port, 0);
     struct qos_queue *q = find_qos_queue(b_ctx_out->qos_map, hash,
                                          pb->logical_port);
@@ -378,6 +421,47 @@ configure_qos(const struct sbrec_port_binding *pb,
             add_ovs_qos_table_entry(b_ctx_in->ovs_idl_txn, port, min_rate,
                                     max_rate, burst, queue_id,
                                     pb->logical_port);
+        }
+        else{
+            // iface = get_qos_egress_port_interface_mod(&bridge_mappings, &port,
+                                                //    network);
+
+
+            int i;
+            for (i = 0; i < b_ctx_in->br_int->n_ports; i++) {
+                const struct ovsrec_port *port_rec = b_ctx_in->br_int->ports[i];
+                const char *iface_id;
+                int j;
+                bool qos_install = false;
+
+                if (!strcmp(port_rec->name, b_ctx_in->br_int->name)) {
+                    continue;
+                }
+                
+                for (j = 0; j < port_rec->n_interfaces; j++) {
+                    const struct ovsrec_interface *iface_rec;
+
+                    iface_rec = port_rec->interfaces[j];
+                    iface_id = smap_get(&iface_rec->external_ids, "iface-id");
+                    int64_t ofport = iface_rec->n_ofport ? *iface_rec->ofport : 0;
+                    int64_t linkspeed = iface_rec->n_link_speed ? *iface_rec->link_speed : 0;
+                    if (iface_id && ofport > 0 && !strcmp(iface_id,pb->logical_port)) {
+                        VLOG_INFO("Install qos... link speed: %"PRId64 "\n",linkspeed);
+
+                        // VLOG_INFO("Install qos... link speed: %"PRId64 "\n",*iface_rec->link_speed);
+                        add_ovs_qos_table_entry(b_ctx_in->ovs_idl_txn, port_rec, min_rate,
+                                    max_rate, burst, queue_id,
+                                    pb->logical_port);
+                        qos_install = true;
+                        break;
+                    }
+                }
+                if(qos_install==true){
+                    break;
+                }
+            }
+                        
+            // add qos
         }
         shash_destroy(&bridge_mappings);
     }

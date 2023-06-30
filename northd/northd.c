@@ -6302,7 +6302,7 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct hmap *lflows,
                                           ds_cstr(match), ds_cstr(actions),
                                           op->key, &op->nbsp->header_);
 
-        if (!lsp_is_localnet(op->nbsp) && !op->od->n_localnet_ports) {
+        if (!lsp_is_localnet(op->nbsp) && !op->od->n_localnet_ports && !lsp_is_up(op->nbsp)) {
             return;
         }
 
@@ -6325,6 +6325,13 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct hmap *lflows,
                     ds_cstr(match), ds_cstr(actions),
                     op->od->localnet_ports[0]->key,
                     &op->od->localnet_ports[0]->nbsp->header_);
+        } else if(lsp_is_up(op->nbsp)){
+            ds_put_format(match, "outport == %s", op->json_key);
+            ovn_lflow_add_with_lport_and_hint(lflows, op->od,
+                                              S_SWITCH_OUT_APPLY_PORT_SEC, 100,
+                                              ds_cstr(match), ds_cstr(actions),
+                                              op->key, &op->nbsp->header_);
+
         }
     }
 }
