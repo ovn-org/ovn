@@ -364,8 +364,9 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/; s/src=192.168.[[0-9]].2/src=192.168.<cl
 tcp,orig=(src=172.16.1.2,dst=172.16.1.100,sport=<cleared>,dport=<cleared>),reply=(src=192.168.<cleared>.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
-AT_CHECK([ovs-ofctl dump-flows br-int table=78 |grep cookie |sed -e 's/duration=[[0-9]]*.[[0-9]]*s/duration=<cleared>/; s/load:0xc0a80[[0-9]]02/load:0xc0a80<cleared>02/; s/n_packets=[[0-9]]*/n_packets=<cleared>/; s/n_bytes=[[0-9]]*/n_bytes=<cleared>/; s/idle_age=[[0-9]]*/idle_age=<cleared>/; s/hard_age=[[0-9]]*, //'], [0], [dnl
- cookie=0x0, duration=<cleared>, table=78, n_packets=<cleared>, n_bytes=<cleared>, idle_timeout=60, idle_age=<cleared>, tcp,metadata=0x2,nw_src=172.16.1.2,nw_dst=172.16.1.100,tp_dst=8080 actions=load:0x1->NXM_NX_REG10[[14]],load:0xc0a80<cleared>02->NXM_NX_REG4[[]],load:0x50->NXM_NX_REG8[[0..15]]
+dp_key=$(printf "0x%x" $(fetch_column datapath tunnel_key external_ids:name=R2))
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=78 --no-stats | sed -e 's/load:0xc0a80[[0-9]]02/load:0xc0a80<cleared>02/'], [0], [dnl
+ table=78, idle_timeout=60, tcp,metadata=$dp_key,nw_src=172.16.1.2,nw_dst=172.16.1.100,tp_dst=8080 actions=load:0x1->NXM_NX_REG10[[14]],load:0xc0a80<cleared>02->NXM_NX_REG4[[]],load:0x50->NXM_NX_REG8[[0..15]]
 ])
 
 check_affinity_flows () {
@@ -664,8 +665,9 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/; s/src=fd1[[0-9]]::2/src=fd1<cleared>::2
 tcp,orig=(src=fd72::2,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd1<cleared>::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
-AT_CHECK([ovs-ofctl dump-flows br-int table=78 |grep cookie |sed -e 's/duration=[[0-9]]*.[[0-9]]*s/duration=<cleared>/; s/load:0xfd1[[0-9]]000000000000/load:0xfd1<cleared>000000000000/; s/n_packets=[[0-9]]*/n_packets=<cleared>/; s/n_bytes=[[0-9]]*/n_bytes=<cleared>/; s/idle_age=[[0-9]]*/idle_age=<cleared>/; s/hard_age=[[0-9]]*, //'], [0], [dnl
- cookie=0x0, duration=<cleared>, table=78, n_packets=<cleared>, n_bytes=<cleared>, idle_timeout=60, idle_age=<cleared>, tcp6,metadata=0x2,ipv6_src=fd72::2,ipv6_dst=fd30::1,tp_dst=8080 actions=load:0x1->NXM_NX_REG10[[14]],load:0x2->NXM_NX_XXREG1[[0..63]],load:0xfd1<cleared>000000000000->NXM_NX_XXREG1[[64..127]],load:0x50->NXM_NX_REG8[[0..15]]
+dp_key=$(printf "0x%x" $(fetch_column datapath tunnel_key external_ids:name=R2))
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=78 --no-stats | sed -e 's/load:0xfd1[[0-9]]000000000000/load:0xfd1<cleared>000000000000/'], [0], [dnl
+ table=78, idle_timeout=60, tcp6,metadata=$dp_key,ipv6_src=fd72::2,ipv6_dst=fd30::1,tp_dst=8080 actions=load:0x1->NXM_NX_REG10[[14]],load:0x2->NXM_NX_XXREG1[[0..63]],load:0xfd1<cleared>000000000000->NXM_NX_XXREG1[[64..127]],load:0x50->NXM_NX_REG8[[0..15]]
 ])
 
 check_affinity_flows () {
