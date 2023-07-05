@@ -5819,6 +5819,21 @@ tcp,orig=(src=42.42.42.3,dst=42.42.42.2,sport=<clnt_s_port>,dport=4242),reply=(s
 tcp,orig=(src=42.42.42.3,dst=66.66.66.66,sport=<clnt_s_port>,dport=666),reply=(src=42.42.42.2,dst=42.42.42.3,sport=4242,dport=<clnt_s_port>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
 AT_CLEANUP
 ])
 
@@ -5914,6 +5929,21 @@ tcp,orig=(src=4242::3,dst=4242::2,sport=<clnt_s_port>,dport=4242),reply=(src=424
 tcp,orig=(src=4242::3,dst=4242::2,sport=<clnt_s_port>,dport=4242),reply=(src=4242::2,dst=4242::3,sport=4242,dport=<rnd_port>),zone=<cleared>,protoinfo=(state=<cleared>)
 tcp,orig=(src=4242::3,dst=6666::1,sport=<clnt_s_port>,dport=666),reply=(src=4242::2,dst=4242::3,sport=4242,dport=<clnt_s_port>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
 
 AT_CLEANUP
 ])
@@ -6716,7 +6746,7 @@ AT_CHECK([ovn-nbctl set Logical_Switch_Port sw02 options:qos_burst=1000000])
 OVS_WAIT_UNTIL([tc class show dev ovs-public | \
                 grep -q 'class htb .* prio 0 rate 5Gbit ceil 6Gbit burst 125000b cburst 124500b'])
 
-kill $(pidof ovn-controller)
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -6867,7 +6897,7 @@ Allowing connections from 1000::a
 wait_column "up" nb:bfd status logical_port=rp-public
 ovn-nbctl destroy bfd $uuid_v6
 
-kill $(pidof ovn-controller)
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -7121,7 +7151,7 @@ NS_CHECK_EXEC([vm2], [ping -q -c 3 -i 0.3 -w 2 172.18.2.10 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-kill $(pidof ovn-controller)
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -7237,6 +7267,21 @@ NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 172.18.2.12 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
 
 AT_CLEANUP
 ])
@@ -7421,7 +7466,7 @@ OVS_WAIT_UNTIL([
 ])
 kill $(pidof tcpdump)
 
-kill $(pidof ovn-controller)
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -8494,6 +8539,16 @@ tcp,orig=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),reply=
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
@@ -8646,6 +8701,16 @@ NS_CHECK_EXEC([ls1p1], [ping6 -q -c 3 -i 0.3 -w 2 1711::1  | FORMAT_PING], \
 ])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d
@@ -9168,6 +9233,21 @@ OVS_WAIT_UNTIL([
     test "${requests}" -ge "6"
 ])
 
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
 AT_CLEANUP
 ])
 
@@ -9306,6 +9386,21 @@ OVS_WAIT_UNTIL([
     requests=`grep "UDP" -c vm1.pcap`
     test "${requests}" -ge "6"
 ])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
 
 AT_CLEANUP
 ])
