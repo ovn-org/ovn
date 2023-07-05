@@ -287,6 +287,7 @@ check_logs () {
 /timeval.*context switches: [[0-9]]* voluntary, [[0-9]]* involuntary/d
 /ovs_rcu.*blocked [[0-9]]* ms waiting for .* to quiesce/d
 /Dropped [[0-9]]* log messages/d
+/.*Trying to release unknown interface.*/d
 /|WARN|/p
 /|ERR|/p
 /|EMER|/p" ${logs}
