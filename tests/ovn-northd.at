@@ -1,5 +1,30 @@
 AT_BANNER([OVN northd])
 
+# _DUMP_DB_TABLES FILENAME
+# Dumps important incremental processing related tables to FILENAME.
+# More tables can be added based on CHECK_NO_CHANGE_AFTER_RECOMPUTE's needs.
+m4_define([_DUMP_DB_TABLES], [
+    ovn-nbctl list logical_switch_port > $1
+    echo ======= >> $1
+    ovn-sbctl list logical_flow >> $1
+    ovn-sbctl list port_binding >> $1
+    ovn-sbctl list address_set >> $1
+])
+
+# CHECK_NO_CHANGE_AFTER_RECOMPUTE
+# Triggers a northd recompute and compares the DB content of certain tables
+# related to incremental processing before and after the recompute, to make
+# sure nothing is changed by the recompute. It is used for ensuring the
+# correctness of incremental processing.
+m4_define([CHECK_NO_CHANGE_AFTER_RECOMPUTE], [
+    _DUMP_DB_TABLES(before)
+    check as northd ovn-appctl -t NORTHD_TYPE inc-engine/recompute
+    check ovn-nbctl --wait=sb sync
+    _DUMP_DB_TABLES(after)
+    AT_CHECK([as northd diff before after], [0], [dnl
+])
+])
+
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check from NBDB to SBDB])
 ovn_start
@@ -8842,11 +8867,13 @@ wait_column '1.1.1.1 1.1.1.2 1.1.1.3 1.1.2.1/4' Address_Set addresses name=foo
 # There should be no recompute of the sync_to_sb_addr_set engine node .
 AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_addr_set recompute], [0], [0
 ])
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 AT_CHECK([grep transact northd/ovn-northd.log | grep Address_Set | \
 grep -c mutate], [0], [1
 ])
 
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl add address_set $foo_as_uuid addresses 1.1.1.4 -- \
                 remove address_set $foo_as_uuid addresses 1.1.1.1 -- \
                 remove address_set $foo_as_uuid addresses 1.1.2.1/4
@@ -8855,6 +8882,7 @@ wait_column '1.1.1.2 1.1.1.3 1.1.1.4' Address_Set addresses name=foo
 # There should be no recompute of the sync_to_sb_addr_set engine node .
 AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_addr_set recompute], [0], [0
 ])
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 AT_CHECK([grep transact northd/ovn-northd.log | grep Address_Set | \
 grep -c mutate], [0], [2
@@ -9551,6 +9579,7 @@ for i in $(seq 10); do
     check ovn-nbctl --wait=sb sync
     check_recompute_counter 0 0 || continue
 
+    CHECK_NO_CHANGE_AFTER_RECOMPUTE
 done
 echo Test failed $fail_count in 10.
 AT_CHECK([test $fail_count -le 5])
