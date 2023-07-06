@@ -9522,67 +9522,65 @@ as hv1
 ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.11
 
-fail_count=0
 check_recompute_counter() {
     northd_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd recompute)
-    if test x$northd_recomp != x$1; then
-        fail_count=$(($fail_count + 1))
-        echo check northd recompute failed: expected $1, got $northd_recomp
-        return 1
-    fi
+    AT_CHECK([test x$northd_recomp = x$1])
+
     lflow_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow recompute)
-    if test x$lflow_recomp != x$2; then
-        fail_count=$(($fail_count + 1))
-        echo check lflow recompute failed: expected $2, got $lflow_recomp
-        return 1
-    fi
-    return 0
+    AT_CHECK([test x$lflow_recomp = x$2])
 }
 
-# Depending on order of responses from NB and SB, the number of recompute may
-# be different. This test case only verifies the best case scenario, which
-# should have the expected recompute count at least 50% of the time.
+check ovn-nbctl --wait=hv ls-add ls0
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=hv lsp-add ls0 lsp0-0 -- lsp-set-addresses lsp0-0 "unknown"
+ovs-vsctl add-port br-int lsp0-0 -- set interface lsp0-0 external_ids:iface-id=lsp0-0
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+check_recompute_counter 5 5
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=hv lsp-add ls0 lsp0-1 -- lsp-set-addresses lsp0-1 "aa:aa:aa:00:00:01 192.168.0.11"
+ovs-vsctl add-port br-int lsp0-1 -- set interface lsp0-1 external_ids:iface-id=lsp0-1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+check_recompute_counter 0 0
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=hv lsp-add ls0 lsp0-2 -- lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:02 192.168.0.12"
+ovs-vsctl add-port br-int lsp0-2 -- set interface lsp0-2 external_ids:iface-id=lsp0-2
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+check_recompute_counter 0 0
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=hv lsp-del lsp0-1
+check_recompute_counter 0 0
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=hv lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:88 192.168.0.88"
+check_recompute_counter 0 0
+
+# Delete and re-add a LSP for several times continuously, to ensure
+# frequent operations do not trigger recompute when there are in-flight
+# transcations.
 for i in $(seq 10); do
-    check ovn-nbctl --wait=hv ls-add ls$i
+    # wait for sb but not wait for hv
+    check ovn-nbctl --wait=sb lsp-del lsp0-2
+    check ovn-nbctl --wait=sb lsp-add ls0 lsp0-2 -- lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:02 192.168.0.12"
 
-    check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-    check ovn-nbctl --wait=hv lsp-add ls$i lsp${i}-0 -- lsp-set-addresses lsp${i}-0 "unknown"
-    ovs-vsctl add-port br-int lsp${i}-0 -- set interface lsp${i}-0 external_ids:iface-id=lsp${i}-0
-    wait_for_ports_up
-    check ovn-nbctl --wait=hv sync
-    check_recompute_counter 5 5 || continue
-
-    check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-    check ovn-nbctl --wait=hv lsp-add ls$i lsp${i}-1 -- lsp-set-addresses lsp${i}-1 "aa:aa:aa:00:00:01 192.168.0.11"
-    ovs-vsctl add-port br-int lsp${i}-1 -- set interface lsp${i}-1 external_ids:iface-id=lsp${i}-1
-    wait_for_ports_up
-    check ovn-nbctl --wait=hv sync
-    check_recompute_counter 0 0 || continue
-
-    check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-    check ovn-nbctl --wait=hv lsp-add ls$i lsp${i}-2 -- lsp-set-addresses lsp${i}-2 "aa:aa:aa:00:00:02 192.168.0.12"
-    ovs-vsctl add-port br-int lsp${i}-2 -- set interface lsp${i}-2 external_ids:iface-id=lsp${i}-2
-    wait_for_ports_up
-    check ovn-nbctl --wait=hv sync
-    check_recompute_counter 0 0 || continue
-
-    check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-    check ovn-nbctl --wait=hv lsp-del lsp${i}-1
-    check_recompute_counter 0 0 || continue
-
-    check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-    check ovn-nbctl --wait=hv lsp-set-addresses lsp${i}-2 "aa:aa:aa:00:00:88 192.168.0.88"
-    check_recompute_counter 0 0 || continue
-
-    # No change, no recompute
-    check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-    check ovn-nbctl --wait=sb sync
-    check_recompute_counter 0 0 || continue
-
-    CHECK_NO_CHANGE_AFTER_RECOMPUTE
+    # even without waiting for sb
+    check ovn-nbctl lsp-del lsp0-2
+    check ovn-nbctl lsp-add ls0 lsp0-2 -- lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:02 192.168.0.12"
 done
-echo Test failed $fail_count in 10.
-AT_CHECK([test $fail_count -le 5])
+check_recompute_counter 0 0
+
+# No change, no recompute
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb sync
+check_recompute_counter 0 0
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

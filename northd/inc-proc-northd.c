@@ -296,6 +296,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
 bool inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
                          struct ovsdb_idl_txn *ovnsb_txn,
                          bool recompute) {
+    ovs_assert(ovnnb_txn && ovnsb_txn);
     engine_init_run();
 
     /* Force a full recompute if instructed to, for example, after a NB/SB
@@ -312,10 +313,7 @@ bool inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
     };
 
     engine_set_context(&eng_ctx);
-
-    if (ovnnb_txn && ovnsb_txn) {
-        engine_run(true);
-    }
+    engine_run(true);
 
     if (!engine_has_run()) {
         if (engine_need_run()) {
