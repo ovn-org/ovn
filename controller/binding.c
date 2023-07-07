@@ -150,6 +150,7 @@ struct qos_queue {
     char *network;
     char *port;
 
+    char *match;
     uint32_t queue_id;
     unsigned long long min_rate;
     unsigned long long max_rate;
@@ -478,6 +479,190 @@ configure_qos(const struct sbrec_port_binding *pb,
     q->min_rate = min_rate;
     q->max_rate = max_rate;
     q->burst = burst;
+}
+
+/* 34359738360 == (2^32 - 1) * 8.  netdev_set_qos() doesn't support
+ * 64-bit rate netlink attributes, so the maximum value is 2^32 - 1
+ * bytes. The 'max-rate' config option is in bits, so multiplying by 8.
+ * Without setting max-rate the reported link speed will be used, which
+ * can be unrecognized for certain NICs or reported too low for virtual
+ * interfaces. */
+#define OVN_QOS_MAX_RATE    34359738360ULL
+static void
+add_ovs_qos_table_entry_queue(struct ovsdb_idl_txn *ovs_idl_txn,
+                        const struct ovsrec_port *port,
+                        unsigned long long min_rate,
+                        unsigned long long max_rate,
+                        unsigned long long burst,
+                        uint32_t queue_id, const char *ovn_port,
+                        const char *match)
+{
+    struct smap external_ids = SMAP_INITIALIZER(&external_ids);
+    struct smap other_config = SMAP_INITIALIZER(&other_config);
+
+    
+
+    const struct ovsrec_qos *qos = port->qos;
+    if (qos && !smap_get_bool(&qos->external_ids, "ovn_qos", false)) {
+        /* External configured QoS, do not overwrite it. */
+        // VLOG_INFO("External QoS...............");
+        return;
+    }
+
+    if (!qos) {
+        qos = ovsrec_qos_insert(ovs_idl_txn);
+        ovsrec_qos_set_type(qos, OVN_QOS_TYPE);
+        ovsrec_port_set_qos(port, qos);
+        smap_add_format(&other_config, "max-rate", "%lld", OVN_QOS_MAX_RATE);
+        ovsrec_qos_set_other_config(qos, &other_config);
+        smap_clear(&other_config);
+
+        smap_add(&external_ids, "ovn_qos", "true");
+        ovsrec_qos_set_external_ids(qos, &external_ids);
+        smap_clear(&external_ids);
+    }
+
+    struct ovsrec_queue *queue;
+    size_t i;
+    for (i = 0; i < qos->n_queues; i++) {
+        queue = qos->value_queues[i];
+
+        const char *p = smap_get(&queue->external_ids, "ovn_port");
+        if (p && !strcmp(p, ovn_port)) {
+            break;
+        }
+    }
+
+    if (i == qos->n_queues) {
+        queue = ovsrec_queue_insert(ovs_idl_txn);
+        ovsrec_qos_update_queues_setkey(qos, queue_id, queue);
+    }
+
+    smap_add_format(&other_config, "max-rate", "%llu", max_rate);
+    smap_add_format(&other_config, "min-rate", "%llu", min_rate);
+    smap_add_format(&other_config, "burst", "%llu", burst);
+    smap_add_format(&other_config, "match", "%s", match);
+    ovsrec_queue_verify_other_config(queue);
+    ovsrec_queue_set_other_config(queue, &other_config);
+    smap_destroy(&other_config);
+
+    VLOG_INFO("Queue Implemet....");
+
+    smap_add(&external_ids, "ovn_port", ovn_port);
+    ovsrec_queue_verify_external_ids(queue);
+    ovsrec_queue_set_external_ids(queue, &external_ids);
+    smap_destroy(&external_ids);
+}
+
+
+static void
+configure_queue_rule(const struct sbrec_port_binding *pb,
+              struct binding_ctx_in *b_ctx_in,
+              struct binding_ctx_out *b_ctx_out)
+{   const struct sbrec_queue *queue;
+    for (size_t k = 0; k < pb->n_queue_rules; k++) { 
+        queue = pb->queue_rules[k];
+
+        int64_t min_rate = queue->value_bandwidth_min[0];
+        int64_t max_rate = queue->value_bandwidth_max[0];
+        int64_t  burst = queue->value_bandwidth_max[1];
+
+        int64_t queue_id = queue->id_queue;
+        char *match = queue->match;
+
+        if ((!min_rate && !max_rate && !burst) || !queue_id) {
+            /* Qos is not configured for this port. */
+            remove_stale_qos_entry(b_ctx_in->ovs_idl_txn, pb,
+                                b_ctx_in->ovsrec_port_by_qos,
+                                b_ctx_in->qos_table, b_ctx_out->qos_map);
+            return;
+        }
+
+        VLOG_INFO("MIM:'%"PRId64"' MAX:'%"PRId64"' BST:'%"PRId64"' queue:'%"PRId64"' lport:%s" ,
+        min_rate,max_rate,burst,queue_id,pb->logical_port);
+
+        const char *network = smap_get(&pb->options, "qos_physical_network");
+
+        uint32_t hash = hash_string(pb->logical_port, 0);
+        struct qos_queue *q = find_qos_queue(b_ctx_out->qos_map, hash,
+                                            pb->logical_port);
+        if (!q || q->min_rate != min_rate || q->max_rate != max_rate ||
+            q->burst != burst || q->match != match) {
+            struct shash bridge_mappings = SHASH_INITIALIZER(&bridge_mappings);
+            add_ovs_bridge_mappings(b_ctx_in->ovs_table, b_ctx_in->bridge_table,
+                                    &bridge_mappings);
+
+            const struct ovsrec_port *port = NULL;
+            const struct ovsrec_interface *iface = NULL;
+            if (network) {
+                iface = get_qos_egress_port_interface(&bridge_mappings, &port,
+                                                    network);
+            }
+            if (iface) {
+                /* Add new QoS entries. */
+                add_ovs_qos_table_entry(b_ctx_in->ovs_idl_txn, port, min_rate,
+                                        max_rate, burst, queue_id,
+                                        pb->logical_port);
+            }
+            else{
+                // iface = get_qos_egress_port_interface_mod(&bridge_mappings, &port,
+                                                    //    network);
+
+
+                int i;
+                for (i = 0; i < b_ctx_in->br_int->n_ports; i++) {
+                    const struct ovsrec_port *port_rec = b_ctx_in->br_int->ports[i];
+                    const char *iface_id;
+                    int j;
+                    bool qos_install = false;
+
+                    if (!strcmp(port_rec->name, b_ctx_in->br_int->name)) {
+                        continue;
+                    }
+                    
+                    for (j = 0; j < port_rec->n_interfaces; j++) {
+                        const struct ovsrec_interface *iface_rec;
+
+                        iface_rec = port_rec->interfaces[j];
+                        iface_id = smap_get(&iface_rec->external_ids, "iface-id");
+                        int64_t ofport = iface_rec->n_ofport ? *iface_rec->ofport : 0;
+                        int64_t linkspeed = iface_rec->n_link_speed ? *iface_rec->link_speed : 0;
+                        if (iface_id && ofport > 0 && !strcmp(iface_id,pb->logical_port)) {
+                            VLOG_INFO("Install qos... link speed: %"PRId64 "\n",linkspeed);
+
+                            // VLOG_INFO("Install qos... link speed: %"PRId64 "\n",*iface_rec->link_speed);
+                            add_ovs_qos_table_entry_queue(b_ctx_in->ovs_idl_txn, port_rec, min_rate,
+                                        max_rate, burst, queue_id,
+                                        pb->logical_port,match);
+                            qos_install = true;
+                            break;
+                        }
+                    }
+                    if(qos_install==true){
+                        break;
+                    }
+                }
+                            
+                // add qos
+            }
+            shash_destroy(&bridge_mappings);
+        }
+
+        if (!q) {
+            q = xzalloc(sizeof *q);
+            hmap_insert(b_ctx_out->qos_map, &q->node, hash);
+            q->port = xstrdup(pb->logical_port);
+            q->queue_id = queue_id;
+        }
+
+        free(q->network);
+        q->network = network ? xstrdup(network) : NULL;
+        q->min_rate = min_rate;
+        q->max_rate = max_rate;
+        q->match = match;
+        q->burst = burst;
+    }
+    
 }
 
 static void
@@ -1657,6 +1842,7 @@ consider_vif_lport_(const struct sbrec_port_binding *pb,
             }
             if (b_lport->lbinding->iface && b_ctx_in->ovs_idl_txn) {
                 configure_qos(pb, b_ctx_in, b_ctx_out);
+                configure_queue_rule(pb, b_ctx_in, b_ctx_out);
             }
         } else {
             /* We could, but can't claim the lport. */
