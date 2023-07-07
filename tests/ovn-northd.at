@@ -9532,6 +9532,13 @@ check_recompute_counter() {
 
 check ovn-nbctl --wait=hv ls-add ls0
 
+# Create a pilot port and wait it up to make sure we are ready for the real
+# tests, so that the counters measured are accurate.
+check ovn-nbctl --wait=hv lsp-add ls0 lsp-pilot -- lsp-set-addresses lsp-pilot "unknown"
+ovs-vsctl add-port br-int lsp-pilot -- set interface lsp-pilot external_ids:iface-id=lsp-pilot
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=hv lsp-add ls0 lsp0-0 -- lsp-set-addresses lsp0-0 "unknown"
 ovs-vsctl add-port br-int lsp0-0 -- set interface lsp0-0 external_ids:iface-id=lsp0-0
