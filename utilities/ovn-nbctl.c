@@ -3013,6 +3013,18 @@ nbctl_queue_add(struct ctl_context *ctx)
         
     }
 
+
+    const struct nbrec_queue *iter;
+    
+
+    const char *match = ctx->argv[4];
+    NBREC_QUEUE_FOR_EACH (iter, ctx->idl) {
+        if (!strcmp(iter->match, match)) {       
+                ctl_error(ctx, "queue with match \"%s\" already exists", match);
+                return;     
+        }
+    }
+
     /* Create the qos. */
     struct nbrec_queue *queue = nbrec_queue_insert(ctx->txn);
     nbrec_queue_set_priority(queue, priority);
@@ -3079,12 +3091,20 @@ nbctl_queue_del(struct ctl_context *ctx)
         return;
     }
 
-    if (ctx->argc == 2) {
+    if (ctx->argc == 2 || ctx->argc == 1 ) {
         /* If direction, priority, and match are not specified, delete
          * all QoS rules. */
+        for (size_t i = 0; i < lsp->n_queue_rules; i++) {
+            // nbrec_logical_switch_port_update_queue_rules_delvalue(
+                // lsp, lsp->queue_rules[i]);
+            nbrec_queue_delete(lsp->queue_rules[i]);  
+            }
+            
         nbrec_logical_switch_port_verify_queue_rules(lsp);
+        
         nbrec_logical_switch_port_set_queue_rules(lsp, NULL, 0);
         return;
+        
     }
 
     const char *direction;
@@ -3111,6 +3131,9 @@ nbctl_queue_del(struct ctl_context *ctx)
                                 &(lsp->queue_rules[i]->header_.uuid))) {
                     nbrec_logical_switch_port_update_queue_rules_delvalue(
                         lsp, lsp->queue_rules[i]);
+
+                    nbrec_queue_delete(lsp->queue_rules[i]);
+                        
                     break;
                 }
             }
@@ -3125,10 +3148,14 @@ nbctl_queue_del(struct ctl_context *ctx)
                 if (!strcmp(direction, lsp->queue_rules[i]->direction)) {
                     nbrec_logical_switch_port_update_queue_rules_delvalue(
                         lsp, lsp->queue_rules[i]);
+                    nbrec_queue_delete(lsp->queue_rules[i]);
                 }
             }
         }
         return;
+
+
+
     }
 
     if (queue_rule_uuid) {
@@ -3155,9 +3182,12 @@ nbctl_queue_del(struct ctl_context *ctx)
         if (priority == queue->priority && !strcmp(ctx->argv[4], queue->match) &&
              !strcmp(direction, queue->direction)) {
             nbrec_logical_switch_port_update_queue_rules_delvalue(lsp, queue);
+            nbrec_queue_delete(lsp->queue_rules[i]);
             return;
         }
     }
+
+    
 }
 
 
