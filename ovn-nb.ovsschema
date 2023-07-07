@@ -184,7 +184,7 @@
                 "external_ids": {
                     "type": {"key": "string", "value": "string",
                              "min": 0, "max": "unlimited"}}},
-            "isRoot": false},
+            "isRoot": true},
         "Forwarding_Group": {
             "columns": {
                 "name": {"type": "string"},

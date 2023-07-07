@@ -315,7 +315,7 @@
                 "external_ids": {
                     "type": {"key": "string", "value": "string",
                              "min": 0, "max": "unlimited"}}},
-            "isRoot": false},
+            "isRoot": true},
         "MAC_Binding": {
             "columns": {
                 "logical_port": {"type": "string"},
