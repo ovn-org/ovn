@@ -3551,18 +3551,22 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
                 bitmap_set0(queue_id_bitmap, queue_id);
                 queue_id = 0;
             }
-            int64_t prev_queue = 0;            
+            int64_t largest_queue = 0; 
+            for (size_t i = 0; i < op->nbsp->n_queue_rules; i++) { 
+                if (op->nbsp->queue_rules[i]->id_queue > largest_queue){
+                    largest_queue = op->nbsp->queue_rules[i]->id_queue;
+                }
+            }
+            // VLOG_INFO("LARGEST: %"PRId64,largest_queue);
             for (size_t i = 0; i < op->nbsp->n_queue_rules; i++) {                
                 struct nbrec_queue *queue = op->nbsp->queue_rules[i];
-                if(i==0){
-                    prev_queue=queue->id_queue;
-                }
+    
                 
-                if (op->nbsp->n_queue_rules>0){
+                if (op->nbsp->n_queue_rules > 0){
                     queue_id_rule = queue->id_queue;
                     if ( !queue_id_rule) {
-                        prev_queue++;
-                        queue_id_rule = prev_queue;
+                        largest_queue++;
+                        queue_id_rule = largest_queue;
                     } 
                 }
 
