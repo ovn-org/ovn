@@ -3131,6 +3131,96 @@ tcp.flags = RST;
     </group>
   </table>
 
+
+  <table name="Queue" title="Queue rule">
+    <p>
+      Each row in this table represents one Queue rule for a logical switch
+      that points to it through its <ref column="qos_rules"/> column.
+      Two types of QoS are supported: DSCP marking and metering.  A
+      <ref column="match"/> with the highest-<ref column="priority"/>
+      will have QoS applied to it.  If the <ref column="action"/> column is
+      specified, then matching packets will have DSCP marking applied.
+      If the <ref column="bandwidth"/> column is specified, then matching
+      packets will have metering applied.  <ref column="action"/> and
+      <ref column="bandwidth"/> are not exclusive, so both marking and
+      metering by defined for the same QoS entry. If no row matches,
+      packets will not have any QoS applied.
+    </p>
+
+    <column name="priority">
+      <p>
+        The QoS rule's priority.  Rules with numerically higher priority
+        take precedence over those with lower.  If two QoS rules with
+        the same priority both match, then the one actually applied to a
+        packet is undefined.
+      </p>
+    </column>
+
+    <column name="direction">
+      <p>
+        The value of this field is similar to <ref colun="direction"
+        table="ACL" db="OVN_Northbound"/> column in the OVN Northbound
+        database's <ref table="ACL" db="OVN_Northbound"/> table.
+      </p>
+    </column>
+
+    <column name="match">
+      <p>
+        The packets that the QoS rules should match, in the same expression
+        language used for the <ref column="match" table="Logical_Flow"
+        db="OVN_Southbound"/> column in the OVN Southbound database's
+        <ref table="Logical_Flow" db="OVN_Southbound"/> table.  The
+        <code>outport</code> logical port is only available in the
+        <code>to-lport</code> direction (the <code>inport</code> is
+        available in both directions).
+      </p>
+    </column>
+
+    <column name="action">
+      <p>When specified, matching flows will have DSCP marking applied.</p>
+      <ul>
+        <li>
+          <code>dscp</code>: The value of this action should be in the
+          range of 0 to 63 (inclusive).
+        </li>
+      </ul>
+    </column>
+
+    <column name="bandwidth_max">
+      <p>
+         When specified, matching packets will have bandwidth metering
+         applied.  Traffic over the limit will be dropped.
+      </p>
+      <ul>
+        <li>
+          <code>rate</code>: The value of rate limit in bps.
+        </li>
+        <li>
+          <code>burst</code>: The value of burst rate limit in kilobits.
+          This is optional and needs to specify the <code>rate</code>.
+        </li>
+      </ul>
+    </column>
+
+
+    <column name="bandwidth_min">
+      <p>
+         When specified, matching packets will have bandwidth metering
+         applied.  Traffic over the limit will be dropped.
+      </p>
+      <ul>
+        <li>
+          <code>min</code>: The value of min bw in bps.
+        </li>
+      </ul>
+    </column>
+
+    <column name="external_ids">
+      See <em>External IDs</em> at the beginning of this document.
+    </column>
+  </table>
+
+
   <table name="Port_Binding" title="Physical-Logical Port Bindings">
     <p>
       Each row in this table binds a logical port to a realization.  For most
@@ -3260,6 +3350,10 @@ tcp.flags = RST;
           </dd>
         </dl>
 
+      </column>
+      <column name="queue_rules">
+      The entry is reference to
+        a <ref table="Queue"/> record.
       </column>
 
       <column name="additional_chassis">

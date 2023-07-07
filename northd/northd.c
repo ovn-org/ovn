@@ -510,7 +510,7 @@ allocate_queueid(unsigned long *queue_id_bitmap)
 
 static inline bool
 port_has_qos_params(const struct smap *opts)
-{
+{   
     return (smap_get(opts, "qos_max_rate") || smap_get(opts, "qos_min_rate") ||
             smap_get(opts, "qos_burst"));
 }
@@ -1540,6 +1540,7 @@ struct ovn_port {
 
     struct ovn_datapath *od;
 
+
     struct ovs_list list;       /* In list of similar records. */
 
     struct hmap_node dp_node;   /* Node in od->ports. */
@@ -1609,7 +1610,7 @@ static void
 ovn_port_set_nb(struct ovn_port *op,
                 const struct nbrec_logical_switch_port *nbsp,
                 const struct nbrec_logical_router_port *nbrp)
-{
+{  
     op->nbsp = nbsp;
     if (nbsp) {
         op->lsp_can_be_inc_processed = lsp_can_be_inc_processed(nbsp);
@@ -1622,7 +1623,8 @@ static struct ovn_port *
 ovn_port_create(struct hmap *ports, const char *key,
                 const struct nbrec_logical_switch_port *nbsp,
                 const struct nbrec_logical_router_port *nbrp,
-                const struct sbrec_port_binding *sb)
+                const struct sbrec_port_binding *sb
+               )
 {
     struct ovn_port *op = xzalloc(sizeof *op);
 
@@ -3128,6 +3130,8 @@ sync_ha_chassis_group_for_sbpb(
     sbrec_port_binding_set_ha_chassis_group(pb, sb_ha_grp);
 }
 
+
+
 /* This functions translates the gw chassis on the nb database
  * to HA chassis group in the sb database entries.
  */
@@ -3333,6 +3337,64 @@ sbrec_port_binding_update_mirror_rules(
     check_and_do_sb_mirror_addition(sbrec_mirror_table, op);
 }
 
+
+static void
+check_and_do_sb_queue_deletion(const struct ovn_port *op)
+{
+    size_t i = 0;
+    struct shash nb_queue_rules = SHASH_INITIALIZER(&nb_queue_rules);
+
+    for (i = 0; i < op->nbsp->n_queue_rules; i++) {
+        shash_add(&nb_queue_rules,
+                  op->nbsp->queue_rules[i]->match,
+                  op->nbsp->queue_rules[i]);
+    }
+
+    for (i = 0; i < op->sb->n_queue_rules; i++) {
+        if (!shash_find(&nb_queue_rules,
+                        op->sb->queue_rules[i]->match)) {
+            /* Delete from SB since its not present in NB*/
+            sbrec_port_binding_update_queue_rules_delvalue(op->sb,
+                                             op->sb->queue_rules[i]);
+        }
+    }
+
+    struct shash_node *node, *next;
+    SHASH_FOR_EACH_SAFE (node, next, &nb_queue_rules) {
+        shash_delete(&nb_queue_rules, node);
+    }
+    shash_destroy(&nb_queue_rules);
+}
+
+static void
+check_and_do_sb_queue_addition(
+    const struct sbrec_queue_table *sbrec_queue_table,
+    const struct ovn_port *op)
+{
+    for (size_t i = 0; i < op->nbsp->n_queue_rules; i++) {
+        const struct sbrec_queue *sb_queue;
+        SBREC_QUEUE_TABLE_FOR_EACH (sb_queue,
+                                     sbrec_queue_table) {
+            if (!strcmp(sb_queue->match,
+                        op->nbsp->queue_rules[i]->match)) {
+                /* Add the value to SB */
+                sbrec_port_binding_update_queue_rules_addvalue(op->sb,
+                                                                sb_queue);
+            }
+        }
+    }
+}
+
+
+static void
+sbrec_port_binding_update_queue_rules(
+    const struct sbrec_queue_table *sbrec_queue_table,
+    const struct ovn_port *op)
+{
+    check_and_do_sb_queue_deletion(op);
+    check_and_do_sb_queue_addition(sbrec_queue_table, op);
+}
+
 /* Return true if given ovn_port has peer and this peer's ovn_datapath
  * has_vtep_lports set to true. False otherwise. */
 static bool
@@ -3347,6 +3409,7 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
                       struct ovsdb_idl_index *sbrec_chassis_by_hostname,
                       struct ovsdb_idl_index *sbrec_ha_chassis_grp_by_name,
                       const struct sbrec_mirror_table *sbrec_mirror_table,
+                      const struct sbrec_queue_table *sbrec_queue_table,
                       const struct ovn_port *op,
                       unsigned long *queue_id_bitmap,
                       struct sset *active_ha_chassis_grps)
@@ -3722,6 +3785,15 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
         } else {
             /* Check if SB DB update needed */
             sbrec_port_binding_update_mirror_rules(sbrec_mirror_table, op);
+        }
+
+
+        if (!op->nbsp->n_queue_rules) {
+            /* Nothing is set. Clear mirror_rules from pb. */
+            sbrec_port_binding_set_queue_rules(op->sb, NULL, 0);
+        } else {
+            /* Check if SB DB update needed */
+            sbrec_port_binding_update_queue_rules(sbrec_queue_table, op);
         }
 
     }
@@ -4685,6 +4757,7 @@ build_ports(struct ovsdb_idl_txn *ovnsb_txn,
     const struct sbrec_port_binding_table *sbrec_port_binding_table,
     const struct sbrec_chassis_table *sbrec_chassis_table,
     const struct sbrec_mirror_table *sbrec_mirror_table,
+    const struct sbrec_queue_table *sbrec_queue_table,
     const struct sbrec_mac_binding_table *sbrec_mac_binding_table,
     const struct sbrec_ha_chassis_group_table *sbrec_ha_chassis_group_table,
     struct ovsdb_idl_index *sbrec_chassis_by_name,
@@ -4756,6 +4829,7 @@ build_ports(struct ovsdb_idl_txn *ovnsb_txn,
                               sbrec_chassis_by_hostname,
                               sbrec_ha_chassis_grp_by_name,
                               sbrec_mirror_table,
+                              sbrec_queue_table,
                               op, queue_id_bitmap,
                               &active_ha_chassis_grps);
     }
@@ -4767,6 +4841,7 @@ build_ports(struct ovsdb_idl_txn *ovnsb_txn,
                               sbrec_chassis_by_hostname,
                               sbrec_ha_chassis_grp_by_name,
                               sbrec_mirror_table,
+                              sbrec_queue_table,
                               op, queue_id_bitmap,
                               &active_ha_chassis_grps);
         sbrec_port_binding_set_logical_port(op->sb, op->key);
@@ -4894,6 +4969,7 @@ ls_port_create(struct ovsdb_idl_txn *ovnsb_txn, struct hmap *ls_ports,
                const char *key, const struct nbrec_logical_switch_port *nbsp,
                struct ovn_datapath *od, const struct sbrec_port_binding *sb,
                const struct sbrec_mirror_table *sbrec_mirror_table,
+               const struct sbrec_queue_table *sbrec_queue_table,
                const struct sbrec_chassis_table *sbrec_chassis_table,
                struct ovsdb_idl_index *sbrec_chassis_by_name,
                struct ovsdb_idl_index *sbrec_chassis_by_hostname)
@@ -4926,7 +5002,7 @@ ls_port_create(struct ovsdb_idl_txn *ovnsb_txn, struct hmap *ls_ports,
         return NULL;
     }
     ovn_port_update_sbrec(ovnsb_txn, sbrec_chassis_by_name,
-                          sbrec_chassis_by_hostname, NULL, sbrec_mirror_table,
+                          sbrec_chassis_by_hostname, NULL, sbrec_mirror_table,sbrec_queue_table,
                           op, NULL, NULL);
     return op;
 }
@@ -5023,6 +5099,13 @@ check_lsp_changes_other_than_up(const struct nbrec_logical_switch_port *nbsp)
             return true;
         }
     }
+
+    for (size_t i = 0; i < nbsp->n_queue_rules; i++) {
+        if (nbrec_queue_row_get_seqno(nbsp->queue_rules[i],
+                                       OVSDB_IDL_CHANGE_MODIFY) > 0) {
+            return true;
+        }
+    }
     return false;
 }
 
@@ -5084,6 +5167,7 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 op = ls_port_create(ovnsb_idl_txn, &nd->ls_ports,
                                     new_nbsp->name, new_nbsp, od, NULL,
                                     ni->sbrec_mirror_table,
+                                    ni->sbrec_queue_table,
                                     ni->sbrec_chassis_table,
                                     ni->sbrec_chassis_by_name,
                                     ni->sbrec_chassis_by_hostname);
@@ -5118,6 +5202,7 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 op = ls_port_create(ovnsb_idl_txn, &nd->ls_ports,
                                     new_nbsp->name, new_nbsp, od, sb,
                                     ni->sbrec_mirror_table,
+                                    ni->sbrec_queue_table,
                                     ni->sbrec_chassis_table,
                                     ni->sbrec_chassis_by_name,
                                     ni->sbrec_chassis_by_hostname);
@@ -6310,6 +6395,7 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct hmap *lflows,
         ds_put_format(actions, "set_queue(%s); output;", queue_id);
 
         ds_clear(match);
+        VLOG_INFO("\tPORT_OF_INSEC: %s",op->json_key);
         if (lsp_is_localnet(op->nbsp)) {
             ds_put_format(match, "outport == %s", op->json_key);
             ovn_lflow_add_with_lport_and_hint(lflows, op->od,
@@ -7684,6 +7770,101 @@ build_acls(struct ovn_datapath *od, const struct chassis_features *features,
 
     ds_destroy(&match);
     ds_destroy(&actions);
+}
+
+
+static void
+build_queue(struct ovn_port *op, struct hmap *lflows) {
+    struct ds action = DS_EMPTY_INITIALIZER;
+    struct ovn_datapath *od = op->od;
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_QOS_MARK, 0, "1", "next;");
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_QOS_MARK, 0, "1", "next;");
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_QOS_METER, 0, "1", "next;");
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_QOS_METER, 0, "1", "next;");
+
+    for (size_t i = 0; i < op->nbsp->n_queue_rules; i++) {
+        struct nbrec_queue *queue = op->nbsp->queue_rules[i];
+        bool ingress = !strcmp(queue->direction, "from-lport") ? true :false;
+        enum ovn_stage stage = ingress ? S_SWITCH_IN_QOS_MARK : S_SWITCH_OUT_QOS_MARK;
+        int64_t rate = 0;
+        int64_t burst = 0;
+        int64_t min = 0;
+
+        for (size_t j = 0; j < queue->n_action; j++) {
+            if (!strcmp(queue->key_action[j], "dscp")) {
+                ds_clear(&action);
+                ds_put_format(&action, "ip.dscp = %"PRId64"; next;",
+                              queue->value_action[j]);
+                ovn_lflow_add_with_hint(lflows, od, stage,
+                                        queue->priority,
+                                        queue->match, ds_cstr(&action),
+                                        &queue->header_);
+            }
+        }
+        for (size_t n = 0; n < queue->n_bandwidth_min; n++) {
+            if (!strcmp(queue->key_bandwidth_min[n], "min")) {
+                min = queue->value_bandwidth_min[n];
+            } 
+        }
+
+        // if (min || rate){
+            
+        //     uint32_t queue_id = smap_get_int(
+        //             &op->sb->queue_rules, "qdisc_queue_id", 0);
+        //     bool has_qos = port_has_qos_params(&op->nbsp->options);
+        //     struct smap options;
+        // }
+
+        if (min) {
+            stage = ingress ? S_SWITCH_IN_QOS_METER : S_SWITCH_OUT_QOS_METER;
+            ds_clear(&action);
+            
+                ds_put_format(&action,
+                              "set_queue(%"PRId64"); next;",
+                              min);
+           
+
+            /* Ingress and Egress Queue Table.
+             *
+             * We limit the bandwidth of this flow by adding a meter table.
+             */
+            ovn_lflow_add_with_hint(lflows, od, stage,
+                                    queue->priority,
+                                    queue->match, ds_cstr(&action),
+                                    &queue->header_);
+        }
+
+        for (size_t n = 0; n < queue->n_bandwidth_max; n++) {
+            if (!strcmp(queue->key_bandwidth_max[n], "rate")) {
+                rate = queue->value_bandwidth_max[n];
+            } else if (!strcmp(queue->key_bandwidth_max[n], "burst")) {
+                burst = queue->value_bandwidth_max[n];
+            }
+        }
+        if (rate) {
+            stage = ingress ? S_SWITCH_IN_QOS_METER : S_SWITCH_OUT_QOS_METER;
+            ds_clear(&action);
+            if (burst) {
+                ds_put_format(&action,
+                              "set_queue(%"PRId64", %"PRId64"); next;",
+                              rate, burst);
+            } else {
+                ds_put_format(&action,
+                              "set_queue(%"PRId64"); next;",
+                              rate);
+            }
+
+            /* Ingress and Egress QoS Meter Table.
+             *
+             * We limit the bandwidth of this flow by adding a meter table.
+             */
+            ovn_lflow_add_with_hint(lflows, od, stage,
+                                    queue->priority,
+                                    queue->match, ds_cstr(&action),
+                                    &queue->header_);
+        }
+    }
+    ds_destroy(&action);
 }
 
 static void
@@ -15497,7 +15678,7 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
     build_lswitch_dhcp_options_and_response(op, lflows, meter_groups);
     build_lswitch_external_port(op, lflows);
     build_lswitch_ip_unicast_lookup(op, lflows, actions, match);
-
+    build_queue(op, lflows);
     /* Build Logical Router Flows. */
     build_ip_routing_flows_for_router_type_lsp(op, lr_ports, lflows);
     build_arp_resolve_flows_for_lsp(op, lflows, lr_ports, match, actions);
@@ -16671,6 +16852,120 @@ sync_mirrors(struct ovsdb_idl_txn *ovnsb_txn,
     shash_destroy(&sb_mirrors);
 }
 
+
+static bool
+queue_needs_update(const struct nbrec_queue *nb_queue,
+                    const struct sbrec_queue *sb_queue)
+{
+
+    if (nb_queue->n_bandwidth_min != sb_queue->n_bandwidth_min || 
+        nb_queue->n_bandwidth_max != sb_queue->n_bandwidth_max ||
+        nb_queue->n_action != sb_queue->n_action ) {
+        return true;
+    } else if (strcmp(nb_queue->direction, sb_queue->direction)) {
+        return true;
+    }
+
+    if (nb_queue->n_bandwidth_min == 1){
+        return !(nb_queue->value_bandwidth_min[0] == sb_queue->value_bandwidth_min[0]);
+    }
+
+    if (nb_queue->n_bandwidth_max == 2){
+        return !(nb_queue->value_bandwidth_max[0] == sb_queue->value_bandwidth_max[0]
+        && nb_queue->value_bandwidth_max[1] == sb_queue->value_bandwidth_max[1] );
+    }
+
+    return false;
+}
+
+static void
+sync_queues_iterate_nb_queue(struct ovsdb_idl_txn *ovnsb_txn,
+                               const char *queue_match,
+                               const struct nbrec_queue *nb_queue,
+                               struct shash *sb_queues)
+{
+    const struct sbrec_queue *sb_queue;
+    bool new_sb_queue = false;
+    // VLOG_INFO("BERFORE:%d",sbrec_server_has_queue_table_col_bandwidth_max(ovnsb_txn))
+
+    sb_queue = shash_find_data(sb_queues, queue_match);
+    if (!sb_queue) {
+        sb_queue = sbrec_queue_insert(ovnsb_txn);
+        sbrec_queue_set_match(sb_queue, queue_match);
+        shash_add(sb_queues, sb_queue->match, sb_queue);
+        // VLOG_INFO("match: %s" ,sb_queue->match);
+        new_sb_queue = true;
+    }
+
+    if (new_sb_queue || queue_needs_update(nb_queue, sb_queue)) {
+        sbrec_queue_set_priority(sb_queue, nb_queue->priority);
+        sbrec_queue_set_direction(sb_queue, nb_queue->direction);
+        const char **sb_key_action = xcalloc(nb_queue->n_action, sizeof *sb_key_action);
+        // const int64_t *value_action = xcalloc(nb_queue->n_action, sizeof*value_action);
+        for (size_t i = 0; i < nb_queue->n_action; i++) {
+                sb_key_action[i] = nb_queue->key_action[i];
+        }
+        
+        sbrec_queue_set_action(sb_queue,sb_key_action, nb_queue->value_action,nb_queue->n_action);
+        free(sb_key_action);
+
+        const char **sb_key_bandwidth_min = xcalloc(nb_queue->n_bandwidth_min, sizeof *sb_key_bandwidth_min);
+        // const int64_t *value_action = xcalloc(nb_queue->n_action, sizeof*value_action);
+        for (size_t i = 0; i < nb_queue->n_bandwidth_min; i++) {
+                sb_key_bandwidth_min[i] = nb_queue->key_bandwidth_min[i];
+                
+        }
+        sbrec_queue_set_bandwidth_min(sb_queue,sb_key_bandwidth_min, nb_queue->value_bandwidth_min,nb_queue->n_bandwidth_min);
+        free(sb_key_bandwidth_min);
+
+        const char **sb_key_bandwidth_max = xcalloc(nb_queue->n_bandwidth_max, sizeof *sb_key_bandwidth_max);
+        // const int64_t *value_action = xcalloc(nb_queue->n_action, sizeof*value_action);
+        for (size_t i = 0; i < nb_queue->n_bandwidth_max; i++) {
+                sb_key_bandwidth_max[i] = nb_queue->key_bandwidth_max[i];
+        }
+        sbrec_queue_set_bandwidth_max(sb_queue,sb_key_bandwidth_max, nb_queue->value_bandwidth_max,nb_queue->n_bandwidth_max);
+        
+        free(sb_key_bandwidth_max);
+        VLOG_INFO("queue_make: %" PRId64,sb_queue->value_bandwidth_max[0]);
+        
+
+        
+    }
+}
+
+static void
+sync_queue(struct ovsdb_idl_txn *ovnsb_txn,
+             const struct nbrec_queue_table *nbrec_queue_table,
+             const struct sbrec_queue_table *sbrec_queue_table)
+{
+    struct shash sb_queues = SHASH_INITIALIZER(&sb_queues);
+
+    const struct sbrec_queue *sb_queue;
+    SBREC_QUEUE_TABLE_FOR_EACH (sb_queue, sbrec_queue_table) {
+        shash_add(&sb_queues, sb_queue->match, sb_queue);
+    }
+
+    const struct nbrec_queue *nb_queue;
+    NBREC_QUEUE_TABLE_FOR_EACH (nb_queue, nbrec_queue_table) {
+        sync_queues_iterate_nb_queue(ovnsb_txn, nb_queue->match, nb_queue,
+                                       &sb_queues);
+        shash_find_and_delete(&sb_queues, nb_queue->match);
+    }
+
+    struct shash_node *node, *next;
+    SHASH_FOR_EACH_SAFE (node, next, &sb_queues) {
+        sbrec_queue_delete(node->data);
+        shash_delete(&sb_queues, node);
+    }
+    shash_destroy(&sb_queues);
+}
+
+
+
+
+
+
+
 /*
  * struct 'dns_info' is used to sync the DNS records between OVN Northbound db
  * and Southbound db.
@@ -17080,6 +17375,9 @@ build_meter_groups(const struct nbrec_meter_table *nbrec_meter_table,
     }
 }
 
+
+
+
 static const struct nbrec_static_mac_binding *
 static_mac_binding_by_port_ip(
     const struct nbrec_static_mac_binding_table *nbrec_static_mb_table,
@@ -17381,6 +17679,7 @@ ovnnb_db_run(struct northd_input *input_data,
                 input_data->sbrec_port_binding_table,
                 input_data->sbrec_chassis_table,
                 input_data->sbrec_mirror_table,
+                input_data->sbrec_queue_table,
                 input_data->sbrec_mac_binding_table,
                 input_data->sbrec_ha_chassis_group_table,
                 input_data->sbrec_chassis_by_name,
@@ -17423,6 +17722,8 @@ ovnnb_db_run(struct northd_input *input_data,
                 &data->meter_groups);
     sync_mirrors(ovnsb_txn, input_data->nbrec_mirror_table,
                  input_data->sbrec_mirror_table);
+    sync_queue(ovnsb_txn, input_data->nbrec_queue_table,
+                 input_data->sbrec_queue_table);
     sync_dns_entries(ovnsb_txn, input_data->sbrec_dns_table,
                      &data->ls_datapaths.datapaths);
     sync_template_vars(ovnsb_txn, input_data->nbrec_chassis_template_var_table,

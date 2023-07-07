@@ -513,7 +513,7 @@ Options:\n\
   --oneline                   print exactly one line of output per command\n",
            ctl_get_db_cmd_usage(),
            ctl_list_db_tables_usage(), default_nb_db());
-    table_usage();
+    table_usage();                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
     daemon_usage();
     vlog_usage();
     printf("\
@@ -2244,6 +2244,27 @@ qos_cmp(const void *qos1_, const void *qos2_)
     }
 }
 
+static int
+queue_cmp(const void *qos1_, const void *qos2_)
+{
+    const struct nbrec_queue *const *qos1p = qos1_;
+    const struct nbrec_queue *const *qos2p = qos2_;
+    const struct nbrec_queue *qos1 = *qos1p;
+    const struct nbrec_queue *qos2 = *qos2p;
+
+    int dir1 = dir_encode(qos1->direction);
+    int dir2 = dir_encode(qos2->direction);
+
+    if (dir1 != dir2) {
+        return dir1 < dir2 ? -1 : 1;
+    } else if (qos1->priority != qos2->priority) {
+        return qos1->priority > qos2->priority ? -1 : 1;
+    } else {
+        return strcmp(qos1->match, qos2->match);
+    }
+}
+
+
 static char * OVS_WARN_UNUSED_RESULT
 parse_direction(const char *arg, const char **direction_p)
 {
@@ -2832,6 +2853,310 @@ nbctl_qos_del(struct ctl_context *ctx)
         }
     }
 }
+
+
+
+
+static void
+nbctl_pre_queue_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_queue_rules);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_queue_col_direction);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_queue_col_priority);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_queue_col_match);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_queue_col_bandwidth_min);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_queue_col_bandwidth_max);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_queue_col_action);
+}
+
+static void
+nbctl_queue_list(struct ctl_context *ctx)
+{
+    const struct nbrec_logical_switch_port *lsp;
+    const struct nbrec_queue **queue_rules;
+    size_t i;
+
+    char *error = lsp_by_name_or_uuid(ctx, ctx->argv[1], true, &lsp);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    queue_rules = xmalloc(sizeof *queue_rules * lsp->n_queue_rules);
+    for (i = 0; i < lsp->n_queue_rules; i++) {
+        queue_rules[i] = lsp->queue_rules[i];
+    }
+
+    qsort(queue_rules, lsp->n_queue_rules, sizeof *queue_rules, queue_cmp);
+
+    for (i = 0; i < lsp->n_queue_rules; i++) {
+        const struct nbrec_queue *queue_rule = queue_rules[i];
+        ds_put_format(&ctx->output, "%10s %5"PRId64" (%s)",
+                      queue_rule->direction, queue_rule->priority,
+                      queue_rule->match);
+        for (size_t j = 0; j < queue_rule->n_bandwidth_min; j++) {
+            if (!strcmp(queue_rule->key_bandwidth_min[j], "min")) {
+                ds_put_format(&ctx->output, " min=%"PRId64"",
+                              queue_rule->value_bandwidth_min[j]);
+            }
+        }
+        for (size_t j = 0; j < queue_rule->n_bandwidth_max; j++) {
+            if (!strcmp(queue_rule->key_bandwidth_max[j], "rate")) {
+                ds_put_format(&ctx->output, " rate=%"PRId64"",
+                              queue_rule->value_bandwidth_max[j]);
+            }
+        }
+        for (size_t j = 0; j < queue_rule->n_bandwidth_max; j++) {
+            if (!strcmp(queue_rule->key_bandwidth_max[j], "burst")) {
+                ds_put_format(&ctx->output, " burst=%"PRId64"",
+                              queue_rule->value_bandwidth_max[j]);
+            }
+        }
+        for (size_t j = 0; j < queue_rule->n_action; j++) {
+            if (!strcmp(queue_rule->key_action[j], "dscp")) {
+                ds_put_format(&ctx->output, " dscp=%"PRId64"",
+                              queue_rule->value_action[j]);
+            }
+        }
+        ds_put_cstr(&ctx->output, "\n");
+    }
+
+    free(queue_rules);
+}
+
+static void
+nbctl_pre_queue_add(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_queue_rules);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_queue_col_direction);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_queue_col_priority);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_queue_col_match);
+}
+
+static void
+nbctl_queue_add(struct ctl_context *ctx)
+{
+    const struct nbrec_logical_switch_port *lsp;
+    const char *direction;
+    int64_t priority;
+    int64_t dscp = -1;
+    int64_t min = 0;
+    int64_t rate = 0;
+    int64_t burst = 0;
+    char *error;
+
+    error = parse_direction(ctx->argv[2], &direction);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+    error = parse_priority(ctx->argv[3], &priority);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+    error = lsp_by_name_or_uuid(ctx, ctx->argv[1], true, &lsp);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    for (int i = 5; i < ctx->argc; i++) {
+        if (!strncmp(ctx->argv[i], "dscp=", 5)) {
+            if (!ovs_scan(ctx->argv[i] + 5, "%"SCNd64, &dscp)
+                || dscp < 0 || dscp > 63) {
+                ctl_error(ctx, "%s: dscp must be in the range 0...63",
+                          ctx->argv[i] + 5);
+                return;
+            }
+        }
+        else if (!strncmp(ctx->argv[i], "min=", 5)) {
+            if (!ovs_scan(ctx->argv[i] + 5, "%"SCNd64, &min)
+                || min < 1 || min > UINT32_MAX) {
+                ctl_error(ctx, "%s: min must be in the range 1...4294967295",
+                          ctx->argv[i] + 5);
+                return;
+            }
+        }
+        else if (!strncmp(ctx->argv[i], "rate=", 5)) {
+            if (!ovs_scan(ctx->argv[i] + 5, "%"SCNd64, &rate)
+                || rate < 1 || rate > UINT32_MAX) {
+                ctl_error(ctx, "%s: rate must be in the range 1...4294967295",
+                          ctx->argv[i] + 5);
+                return;
+            }
+        }
+        else if (!strncmp(ctx->argv[i], "burst=", 6)) {
+            if (!ovs_scan(ctx->argv[i] + 6, "%"SCNd64, &burst)
+                || burst < 1 || burst > UINT32_MAX) {
+                ctl_error(ctx, "%s: burst must be in the range 1...4294967295",
+                          ctx->argv[i] + 6);
+                return;
+            }
+        } else {
+            ctl_error(ctx, "%s: supported arguments are \"dscp=\", \"rate=\", "
+                      "and \"burst=\"", ctx->argv[i]);
+            return;
+        }
+    }
+
+    /* Validate rate and dscp. */
+    if (-1 == dscp && !rate) {
+        ctl_error(ctx, "Either \"rate\" and/or \"dscp\" must be specified");
+        return;
+    }
+
+    /* Create the qos. */
+    struct nbrec_queue *queue = nbrec_queue_insert(ctx->txn);
+    nbrec_queue_set_priority(queue, priority);
+    nbrec_queue_set_direction(queue, direction);
+    nbrec_queue_set_match(queue, ctx->argv[4]);
+    if (-1 != dscp) {
+        const char *dscp_key = "dscp";
+        nbrec_queue_set_action(queue, &dscp_key, &dscp, 1);
+    }
+    if (rate) {
+        const char *bandwidth_key[2] = {"rate", "burst"};
+        const int64_t bandwidth_value[2] = {rate, burst};
+        size_t n_bandwidth = 1;
+        if (burst) {
+            n_bandwidth = 2;
+        }
+        nbrec_queue_set_bandwidth_max(queue, bandwidth_key, bandwidth_value,
+                                n_bandwidth);
+    }
+
+    if (min) {
+        const char *bandwidth_key[2] = {"min"};
+        const int64_t bandwidth_value[2] = {min};
+        size_t n_bandwidth = 1;
+        nbrec_queue_set_bandwidth_min(queue, bandwidth_key, bandwidth_value,
+                                n_bandwidth);
+    }
+
+    /* Check if same qos rule already exists for the ls */
+    for (size_t i = 0; i < lsp->n_queue_rules; i++) {
+        if (!queue_cmp(&lsp->queue_rules[i], &queue)) {
+            bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
+            if (!may_exist) {
+                ctl_error(ctx, "Same queue already existed on the lsp %s.",
+                          ctx->argv[1]);
+                return;
+            }
+            return;
+        }
+    }
+
+    /* Insert the qos rule the logical switch. */
+    nbrec_logical_switch_port_update_queue_rules_addvalue(lsp, queue);
+}
+
+static void
+nbctl_pre_queue_del(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_queue_rules);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_queue_col_direction);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_queue_col_priority);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_queue_col_match);
+}
+
+static void
+nbctl_queue_del(struct ctl_context *ctx)
+{
+    const struct nbrec_logical_switch_port *lsp;
+    char *error = lsp_by_name_or_uuid(ctx, ctx->argv[1], true, &lsp);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    if (ctx->argc == 2) {
+        /* If direction, priority, and match are not specified, delete
+         * all QoS rules. */
+        nbrec_logical_switch_port_verify_queue_rules(lsp);
+        nbrec_logical_switch_port_set_queue_rules(lsp, NULL, 0);
+        return;
+    }
+
+    const char *direction;
+    const struct uuid *queue_rule_uuid = NULL;
+    struct uuid uuid_from_cmd;
+    if (uuid_from_string(&uuid_from_cmd, ctx->argv[2])) {
+        queue_rule_uuid = &uuid_from_cmd;
+    } else {
+        error = parse_direction(ctx->argv[2], &direction);
+        if (error) {
+            ctx->error = error;
+            return;
+        }
+    }
+
+    /* If uuid was specified, delete qos_rule with the
+     * specified uuid. */
+    if (ctx->argc == 3) {
+        size_t i;
+
+        if (queue_rule_uuid) {
+            for (i = 0; i < lsp->n_queue_rules; i++) {
+                if (uuid_equals(queue_rule_uuid,
+                                &(lsp->queue_rules[i]->header_.uuid))) {
+                    nbrec_logical_switch_port_update_queue_rules_delvalue(
+                        lsp, lsp->queue_rules[i]);
+                    break;
+                }
+            }
+            if (i == lsp->n_queue_rules) {
+                ctl_error(ctx, "uuid is not found");
+            }
+
+        /* If priority and match are not specified, delete all qos_rules
+         * with the specified direction. */
+        } else {
+            for (i = 0; i < lsp->n_queue_rules; i++) {
+                if (!strcmp(direction, lsp->queue_rules[i]->direction)) {
+                    nbrec_logical_switch_port_update_queue_rules_delvalue(
+                        lsp, lsp->queue_rules[i]);
+                }
+            }
+        }
+        return;
+    }
+
+    if (queue_rule_uuid) {
+        ctl_error(ctx, "uuid must be the only argument");
+        return;
+    }
+
+    int64_t priority;
+    error = parse_priority(ctx->argv[3], &priority);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    if (ctx->argc == 4) {
+        ctl_error(ctx, "cannot specify priority without match");
+        return;
+    }
+
+    /* Remove the matching rule. */
+    for (size_t i = 0; i < lsp->n_queue_rules; i++) {
+        struct nbrec_queue *queue = lsp->queue_rules[i];
+
+        if (priority == queue->priority && !strcmp(ctx->argv[4], queue->match) &&
+             !strcmp(direction, queue->direction)) {
+            nbrec_logical_switch_port_update_queue_rules_delvalue(lsp, queue);
+            return;
+        }
+    }
+}
+
 
 static int
 meter_cmp(const void *meter1_, const void *meter2_)
@@ -7744,6 +8069,15 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     { "qos-del", 1, 4, "SWITCH [{DIRECTION | UUID} [PRIORITY MATCH]]",
       nbctl_pre_qos_del, nbctl_qos_del, NULL, "", RW },
     { "qos-list", 1, 1, "SWITCH", nbctl_pre_qos_list, nbctl_qos_list,
+      NULL, "", RO },
+
+      /* queue commands. */
+    { "queue-add", 5, 7,
+      "SWITCH DIRECTION PRIORITY MATCH [rate=RATE [burst=BURST]] [dscp=DSCP]",
+      nbctl_pre_queue_add, nbctl_queue_add, NULL, "--may-exist", RW },
+    { "queue-del", 1, 4, "SWITCH [{DIRECTION | UUID} [PRIORITY MATCH]]",
+      nbctl_pre_queue_del, nbctl_queue_del, NULL, "", RW },
+    { "queue-list", 1, 1, "SWITCH", nbctl_pre_queue_list, nbctl_queue_list,
       NULL, "", RO },
 
     /* mirror commands. */

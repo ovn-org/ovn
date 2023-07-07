@@ -53,6 +53,7 @@ static unixctl_cb_func chassis_features_list;
     NB_NODE(logical_router, "logical_router") \
     NB_NODE(mirror, "mirror") \
     NB_NODE(meter, "meter") \
+    NB_NODE(queue, "queue") \
     NB_NODE(bfd, "bfd") \
     NB_NODE(static_mac_binding, "static_mac_binding") \
     NB_NODE(chassis_template_var, "chassis_template_var")
@@ -82,6 +83,7 @@ static unixctl_cb_func chassis_features_list;
     SB_NODE(multicast_group, "multicast_group") \
     SB_NODE(mirror, "mirror") \
     SB_NODE(meter, "meter") \
+    SB_NODE(queue, "queue") \
     SB_NODE(datapath_binding, "datapath_binding") \
     SB_NODE(port_binding, "port_binding") \
     SB_NODE(mac_binding, "mac_binding") \
@@ -152,6 +154,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_nb_logical_router, NULL);
     engine_add_input(&en_northd, &en_nb_mirror, NULL);
     engine_add_input(&en_northd, &en_nb_meter, NULL);
+    engine_add_input(&en_northd, &en_nb_queue, NULL);
     engine_add_input(&en_northd, &en_nb_static_mac_binding, NULL);
     engine_add_input(&en_northd, &en_nb_chassis_template_var, NULL);
 
@@ -160,6 +163,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_sb_port_group, NULL);
     engine_add_input(&en_northd, &en_sb_mirror, NULL);
     engine_add_input(&en_northd, &en_sb_meter, NULL);
+    engine_add_input(&en_northd, &en_sb_queue, NULL);
     engine_add_input(&en_northd, &en_sb_datapath_binding, NULL);
     engine_add_input(&en_northd, &en_sb_mac_binding, NULL);
     engine_add_input(&en_northd, &en_sb_dns, NULL);
