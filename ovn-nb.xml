@@ -2700,6 +2700,12 @@ or
       </p>
     </column>
 
+    <column name="id_queue">
+      <p>
+        id_queue
+      </p>
+    </column>
+
     <column name="match">
       <p>
         The packets that the QoS rules should match, in the same expression

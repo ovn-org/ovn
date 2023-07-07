@@ -2966,7 +2966,14 @@ nbctl_queue_add(struct ctl_context *ctx)
     }
 
     for (int i = 5; i < ctx->argc; i++) {
-        if (!strncmp(ctx->argv[i], "dscp=", 5)) {
+         if (!strncmp(ctx->argv[i], "minr=", 5)) {
+            if (!ovs_scan(ctx->argv[i] + 5, "%"SCNd64, &min)
+                || min < 1 || min > UINT32_MAX) {
+                ctl_error(ctx, "%s: minr must be in the range 1...4294967295",
+                          ctx->argv[i] + 5);
+                return;
+            }
+        }else if (!strncmp(ctx->argv[i], "dscp=", 5)) {
             if (!ovs_scan(ctx->argv[i] + 5, "%"SCNd64, &dscp)
                 || dscp < 0 || dscp > 63) {
                 ctl_error(ctx, "%s: dscp must be in the range 0...63",
@@ -2974,14 +2981,7 @@ nbctl_queue_add(struct ctl_context *ctx)
                 return;
             }
         }
-        else if (!strncmp(ctx->argv[i], "min=", 5)) {
-            if (!ovs_scan(ctx->argv[i] + 5, "%"SCNd64, &min)
-                || min < 1 || min > UINT32_MAX) {
-                ctl_error(ctx, "%s: min must be in the range 1...4294967295",
-                          ctx->argv[i] + 5);
-                return;
-            }
-        }
+        
         else if (!strncmp(ctx->argv[i], "rate=", 5)) {
             if (!ovs_scan(ctx->argv[i] + 5, "%"SCNd64, &rate)
                 || rate < 1 || rate > UINT32_MAX) {
@@ -3005,9 +3005,12 @@ nbctl_queue_add(struct ctl_context *ctx)
     }
 
     /* Validate rate and dscp. */
-    if (-1 == dscp && !rate) {
-        ctl_error(ctx, "Either \"rate\" and/or \"dscp\" must be specified");
-        return;
+    if (-1 == dscp && !rate ) {
+        if(!min){
+            ctl_error(ctx, "Either \"rate\" and/or \"dscp\" must be specified");
+            return;
+        }
+        
     }
 
     /* Create the qos. */
@@ -3031,8 +3034,8 @@ nbctl_queue_add(struct ctl_context *ctx)
     }
 
     if (min) {
-        const char *bandwidth_key[2] = {"min"};
-        const int64_t bandwidth_value[2] = {min};
+        const char *bandwidth_key[1] = {"min"};
+        const int64_t bandwidth_value[1] = {min};
         size_t n_bandwidth = 1;
         nbrec_queue_set_bandwidth_min(queue, bandwidth_key, bandwidth_value,
                                 n_bandwidth);
@@ -8062,23 +8065,27 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     { "acl-list", 1, 1, "{SWITCH | PORTGROUP}",
       nbctl_pre_acl_list, nbctl_acl_list, NULL, "--type=", RO },
 
+
+    /* queue commands. */
+    { "queue-add", 5, 8,
+      "SWITCH DIRECTION PRIORITY MATCH [dscp=DSCP] [minr=MIN] [rate=RATE [burst=BURST]]",
+      nbctl_pre_queue_add, nbctl_queue_add, NULL, "--may-exist", RW },
+    { "queue-del", 1, 4, "SWITCH [{DIRECTION | UUID} [PRIORITY MATCH]]",
+      nbctl_pre_queue_del, nbctl_queue_del, NULL, "", RW },
+    { "queue-list", 1, 1, "SWITCH", nbctl_pre_queue_list, nbctl_queue_list,
+      NULL, "", RO },
+
+
     /* qos commands. */
     { "qos-add", 5, 7,
-      "SWITCH DIRECTION PRIORITY MATCH [rate=RATE [burst=BURST]] [dscp=DSCP]",
+      "SWITCH DIRECTION PRIORITY MATCH [rate=RATE [burst=BURST]] [dscp=DSCP] ",
       nbctl_pre_qos_add, nbctl_qos_add, NULL, "--may-exist", RW },
     { "qos-del", 1, 4, "SWITCH [{DIRECTION | UUID} [PRIORITY MATCH]]",
       nbctl_pre_qos_del, nbctl_qos_del, NULL, "", RW },
     { "qos-list", 1, 1, "SWITCH", nbctl_pre_qos_list, nbctl_qos_list,
       NULL, "", RO },
 
-      /* queue commands. */
-    { "queue-add", 5, 7,
-      "SWITCH DIRECTION PRIORITY MATCH [rate=RATE [burst=BURST]] [dscp=DSCP]",
-      nbctl_pre_queue_add, nbctl_queue_add, NULL, "--may-exist", RW },
-    { "queue-del", 1, 4, "SWITCH [{DIRECTION | UUID} [PRIORITY MATCH]]",
-      nbctl_pre_queue_del, nbctl_queue_del, NULL, "", RW },
-    { "queue-list", 1, 1, "SWITCH", nbctl_pre_queue_list, nbctl_queue_list,
-      NULL, "", RO },
+      
 
     /* mirror commands. */
     { "mirror-add", 4, 5,

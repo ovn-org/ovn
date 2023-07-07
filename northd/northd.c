@@ -3539,6 +3539,7 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
         if (!lsp_is_router(op->nbsp)) {
             uint32_t queue_id = smap_get_int(
                     &op->sb->options, "qdisc_queue_id", 0);
+            uint32_t queue_id_rule = 0;
             bool has_qos = port_has_qos_params(&op->nbsp->options);
             struct smap options;
 
@@ -3550,6 +3551,27 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
                 bitmap_set0(queue_id_bitmap, queue_id);
                 queue_id = 0;
             }
+            int64_t prev_queue = 0;            
+            for (size_t i = 0; i < op->nbsp->n_queue_rules; i++) {                
+                struct nbrec_queue *queue = op->nbsp->queue_rules[i];
+                if(i==0){
+                    prev_queue=queue->id_queue;
+                }
+                
+                if (op->nbsp->n_queue_rules>0){
+                    queue_id_rule = queue->id_queue;
+                    if ( !queue_id_rule) {
+                        prev_queue++;
+                        queue_id_rule = prev_queue;
+                    } 
+                }
+
+                if (queue_id_rule) {
+                    nbrec_queue_set_id_queue(queue, queue_id_rule);
+                }
+                
+            }
+
 
             smap_clone(&options, &op->nbsp->options);
 
@@ -3566,6 +3588,8 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
                 smap_add_format(&options,
                                 "qdisc_queue_id", "%d", queue_id);
             }
+
+            
 
             if (smap_get_bool(&op->od->nbs->other_config, "vlan-passthru", false)) {
                 smap_add(&options, "vlan-passthru", "true");
@@ -7782,12 +7806,12 @@ build_queue(struct ovn_port *op, struct hmap *lflows) {
     ovn_lflow_add(lflows, od, S_SWITCH_IN_QOS_METER, 0, "1", "next;");
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_QOS_METER, 0, "1", "next;");
 
+
     for (size_t i = 0; i < op->nbsp->n_queue_rules; i++) {
         struct nbrec_queue *queue = op->nbsp->queue_rules[i];
         bool ingress = !strcmp(queue->direction, "from-lport") ? true :false;
         enum ovn_stage stage = ingress ? S_SWITCH_IN_QOS_MARK : S_SWITCH_OUT_QOS_MARK;
         int64_t rate = 0;
-        int64_t burst = 0;
         int64_t min = 0;
 
         for (size_t j = 0; j < queue->n_action; j++) {
@@ -7806,62 +7830,65 @@ build_queue(struct ovn_port *op, struct hmap *lflows) {
                 min = queue->value_bandwidth_min[n];
             } 
         }
+        
 
-        // if (min || rate){
-            
-        //     uint32_t queue_id = smap_get_int(
-        //             &op->sb->queue_rules, "qdisc_queue_id", 0);
-        //     bool has_qos = port_has_qos_params(&op->nbsp->options);
-        //     struct smap options;
-        // }
-
-        if (min) {
-            stage = ingress ? S_SWITCH_IN_QOS_METER : S_SWITCH_OUT_QOS_METER;
-            ds_clear(&action);
-            
-                ds_put_format(&action,
-                              "set_queue(%"PRId64"); next;",
-                              min);
-           
-
-            /* Ingress and Egress Queue Table.
-             *
-             * We limit the bandwidth of this flow by adding a meter table.
-             */
-            ovn_lflow_add_with_hint(lflows, od, stage,
-                                    queue->priority,
-                                    queue->match, ds_cstr(&action),
-                                    &queue->header_);
-        }
+        
 
         for (size_t n = 0; n < queue->n_bandwidth_max; n++) {
             if (!strcmp(queue->key_bandwidth_max[n], "rate")) {
                 rate = queue->value_bandwidth_max[n];
-            } else if (!strcmp(queue->key_bandwidth_max[n], "burst")) {
-                burst = queue->value_bandwidth_max[n];
-            }
+            } 
         }
-        if (rate) {
-            stage = ingress ? S_SWITCH_IN_QOS_METER : S_SWITCH_OUT_QOS_METER;
-            ds_clear(&action);
-            if (burst) {
+        
+        if (min || rate){
+            
+            // uint32_t queue_id = smap_get_int(
+            //         &op->sb->queue_rules, "qdisc_queue_id", 0);
+            // bool has_qos = port_has_qos_params(&op->nbsp->options);
+            // struct smap options;
+            
+            
+           
+            // bool has_qos = port_has_qos_params(&op->nbsp->options);
+            // struct smap options;
+        
+
+            if (rate) {
+                stage = ingress ? S_SWITCH_IN_QOS_METER : S_SWITCH_OUT_QOS_METER;
+                ds_clear(&action);
+                
                 ds_put_format(&action,
-                              "set_queue(%"PRId64", %"PRId64"); next;",
-                              rate, burst);
-            } else {
-                ds_put_format(&action,
-                              "set_queue(%"PRId64"); next;",
-                              rate);
+                                "set_queue(%"PRId64"); next;",
+                                queue->id_queue);
+                /* Ingress and Egress QoS Meter Table.
+                *
+                * We limit the bandwidth of this flow by adding a meter table.
+                */
+                ovn_lflow_add_with_hint(lflows, od, stage,
+                                        queue->priority,
+                                        queue->match, ds_cstr(&action),
+                                        &queue->header_);
             }
 
-            /* Ingress and Egress QoS Meter Table.
-             *
-             * We limit the bandwidth of this flow by adding a meter table.
-             */
-            ovn_lflow_add_with_hint(lflows, od, stage,
-                                    queue->priority,
-                                    queue->match, ds_cstr(&action),
-                                    &queue->header_);
+
+            if (min) {
+                stage = ingress ? S_SWITCH_IN_QOS_METER : S_SWITCH_OUT_QOS_METER;
+                ds_clear(&action);
+                
+                    ds_put_format(&action,
+                                "set_queue(%"PRId64"); next;",
+                                queue->id_queue);
+            
+
+                /* Ingress and Egress Queue Table.
+                *
+                * We limit the bandwidth of this flow by adding a meter table.
+                */
+                ovn_lflow_add_with_hint(lflows, od, stage,
+                                        queue->priority,
+                                        queue->match, ds_cstr(&action),
+                                        &queue->header_);
+            }
         }
     }
     ds_destroy(&action);
@@ -16864,6 +16891,8 @@ queue_needs_update(const struct nbrec_queue *nb_queue,
         return true;
     } else if (strcmp(nb_queue->direction, sb_queue->direction)) {
         return true;
+    } else if (nb_queue->id_queue != sb_queue->id_queue) {
+        return true;
     }
 
     if (nb_queue->n_bandwidth_min == 1){
@@ -16900,6 +16929,7 @@ sync_queues_iterate_nb_queue(struct ovsdb_idl_txn *ovnsb_txn,
     if (new_sb_queue || queue_needs_update(nb_queue, sb_queue)) {
         sbrec_queue_set_priority(sb_queue, nb_queue->priority);
         sbrec_queue_set_direction(sb_queue, nb_queue->direction);
+        sbrec_queue_set_id_queue(sb_queue, nb_queue->id_queue);
         const char **sb_key_action = xcalloc(nb_queue->n_action, sizeof *sb_key_action);
         // const int64_t *value_action = xcalloc(nb_queue->n_action, sizeof*value_action);
         for (size_t i = 0; i < nb_queue->n_action; i++) {
