@@ -129,6 +129,12 @@
           reachable from each other.
         </p>
         <p>
+          NOTE: for efficiency and scalability in common scenarios
+          <code>ovn-controller</code> unconditionally monitors all sub-ports
+          (ports with <code>parent_port</code> set) regardless of the
+          <code>ovn-monitor-all</code> value.
+        </p>
+        <p>
           Default value is <var>false</var>.
         </p>
       </dd>

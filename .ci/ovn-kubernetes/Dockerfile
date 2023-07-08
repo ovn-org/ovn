@@ -1,5 +1,5 @@
 ARG OVNKUBE_COMMIT=master
-ARG LIBOVSDB_COMMIT=a6a173993830
+ARG GO_VERSION
 
 FROM fedora:37 AS ovnbuilder
 
@@ -34,12 +34,9 @@ RUN rm rpm/rpmbuild/RPMS/x86_64/*debug*
 RUN rm rpm/rpmbuild/RPMS/x86_64/*docker*
 
 # Build ovn-kubernetes
-FROM golang:1.18 as ovnkubebuilder
+ARG GO_VERSION
+FROM golang:$GO_VERSION as ovnkubebuilder
 ARG OVNKUBE_COMMIT
-ARG LIBOVSDB_COMMIT
-
-# Get a working version of libovsdb (for modelgen).
-RUN GO111MODULE=on go install github.com/ovn-org/libovsdb/cmd/modelgen@${LIBOVSDB_COMMIT}
 
 # Clone OVN Kubernetes and build the binary based on the commit passed as argument
 WORKDIR /root
@@ -52,9 +49,14 @@ RUN git checkout ${OVNKUBE_COMMIT} && git log -n 1
 RUN mkdir -p /tmp/ovn/.ci/ovn-kubernetes
 COPY .ci/ovn-kubernetes /tmp/ovn/.ci/ovn-kubernetes
 WORKDIR /tmp/ovn
-RUN .ci/ovn-kubernetes/prepare.sh /root/ovn-kubernetes
+RUN .ci/ovn-kubernetes/prepare.sh /root/ovn-kubernetes /dev/null
 
 WORKDIR /root/ovn-kubernetes/go-controller
+# Get a working version of libovsdb (for modelgen).
+RUN GO111MODULE=on go install github.com/ovn-org/libovsdb/cmd/modelgen@$( \
+    go list -mod=mod -m -f '{{ .Version }}' github.com/ovn-org/libovsdb \
+)
+
 # Make sure we use the OVN NB/SB schema from the local code.
 COPY --from=ovnbuilder /tmp/ovn/ovn-nb.ovsschema pkg/nbdb/ovn-nb.ovsschema
 COPY --from=ovnbuilder /tmp/ovn/ovn-sb.ovsschema pkg/sbdb/ovn-sb.ovsschema

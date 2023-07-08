@@ -12,11 +12,81 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build-dpdk:
+    env:
+      dependencies: gcc libnuma-dev ninja-build
+      CC: gcc
+      DPDK_GIT: https://dpdk.org/git/dpdk-stable
+      DPDK_VER: 22.11.1
+    name: dpdk gcc
+    outputs:
+      dpdk_key: ${{ steps.gen_dpdk_key.outputs.key }}
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v3
+
+    - name: update PATH
+      run: |
+        echo "$HOME/bin"        >> $GITHUB_PATH
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: create ci signature file for the dpdk cache key
+      # This will collect most of DPDK related lines, so hash will be different
+      # if something changed in a way we're building DPDK including DPDK_VER.
+      # This also allows us to use cache from any branch as long as version
+      # and a way we're building DPDK stays the same.
+      run: |
+        grep -irE 'RTE_|DPDK|meson|ninja' .ci/dpdk-* > dpdk-ci-signature
+        grep -rwE 'DPDK_GIT|DPDK_VER' .github/ >> dpdk-ci-signature
+        if [ "${DPDK_VER##refs/*/}" != "${DPDK_VER}" ]; then
+            git ls-remote --heads $DPDK_GIT $DPDK_VER >> dpdk-ci-signature
+        fi
+        cat dpdk-ci-signature
+
+    - name: generate ci DPDK key
+      id: gen_dpdk_key
+      env:
+        ci_key: ${{ hashFiles('dpdk-ci-signature') }}
+      run: echo 'key=dpdk-${{ env.ci_key }}' >> $GITHUB_OUTPUT
+
+    - name: cache
+      id: dpdk_cache
+      uses: actions/cache@v3
+      with:
+        path: dpdk-dir
+        key: ${{ steps.gen_dpdk_key.outputs.key }}
+
+    - name: set up python
+      if: steps.dpdk_cache.outputs.cache-hit != 'true'
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: update APT cache
+      if: steps.dpdk_cache.outputs.cache-hit != 'true'
+      run: sudo apt update || true
+    - name: install common dependencies
+      if: steps.dpdk_cache.outputs.cache-hit != 'true'
+      run: sudo apt install -y ${{ env.dependencies }}
+
+    - name: prepare
+      if: steps.dpdk_cache.outputs.cache-hit != 'true'
+      run: ./.ci/dpdk-prepare.sh
+
+    - name: build
+      if: steps.dpdk_cache.outputs.cache-hit != 'true'
+      run: ./.ci/dpdk-build.sh
+
   build-linux:
+    needs: build-dpdk
     env:
       IMAGE_NAME:  ghcr.io/ovn-org/ovn-tests:ubuntu
       ARCH:        ${{ matrix.cfg.arch }}
       CC:          ${{ matrix.cfg.compiler }}
+      DPDK:        ${{ matrix.cfg.dpdk }}
       LIBS:        ${{ matrix.cfg.libs }}
       OPTS:        ${{ matrix.cfg.opts }}
       TESTSUITE:   ${{ matrix.cfg.testsuite }}
@@ -43,6 +113,9 @@ jobs:
         - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "-500" }
         - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "501-1000" }
         - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "1001-" }
+        - { compiler: gcc, testsuite: system-test-dpdk, dpdk: dpdk, test_range: "-100" }
+        - { compiler: gcc, testsuite: system-test-dpdk, dpdk: dpdk, test_range: "101-200" }
+        - { compiler: gcc, testsuite: system-test-dpdk, dpdk: dpdk, test_range: "201-" }
         - { compiler: gcc, testsuite: system-test-userspace, test_range: "-100" }
         - { compiler: gcc, testsuite: system-test-userspace, test_range: "101-200" }
         - { compiler: gcc, testsuite: system-test-userspace, test_range: "201-" }
@@ -83,6 +156,13 @@ jobs:
           $(git branch -a -l '*branch-*' | sed 's/remotes\/origin\///' | \
             sort -V | tail -1)
       working-directory: ovs
+
+    - name: cache
+      if: matrix.cfg.dpdk != ''
+      uses: actions/cache@v3
+      with:
+        path: dpdk-dir
+        key: ${{ needs.build-dpdk.outputs.dpdk_key }}
 
     - name: build
       if: ${{ startsWith(matrix.cfg.testsuite, 'system-test') }}

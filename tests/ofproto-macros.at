@@ -218,11 +218,12 @@ m4_define([_OVS_VSWITCHD_START],
 /ofproto|INFO|using datapath ID/d
 /netdev_linux|INFO|.*device has unknown hardware address family/d
 /ofproto|INFO|datapath ID changed to fedcba9876543210/d
-/dpdk|INFO|DPDK Disabled - Use other_config:dpdk-init to enable/d
 /netlink_socket|INFO|netlink: could not enable listening to all nsid/d
 /netdev: Flow API/d
 /probe tc:/d
-/tc: Using policy/d']])
+/tc: Using policy/d
+/dpdk|INFO|/d
+/dpdk|WARN|/d']])
 ])
 
 # OVS_VSWITCHD_START([vsctl-args], [vsctl-output], [=override],
@@ -247,7 +248,7 @@ m4_define([OVS_VSWITCHD_START],
    AT_CHECK([add_of_br 0 $1 m4_if([$2], [], [], [| uuidfilt])], [0], [$2])
 ])
 
-# check_logs scans through all *.log files (except '*.log' and testsuite.log)
+# check_logs scans through all *.log files (except '*.log' and '*testsuite.log')
 # and reports all WARN, ERR, EMER log entries.  User can add custom sed filters
 # in $1.
 m4_divert_push([PREPARE_TESTS])
@@ -255,7 +256,7 @@ check_logs () {
     local logs
     for log in *.log; do
         case ${log} in # (
-            '*.log'|testsuite.log) ;; # (
+            '*.log'|*testsuite.log) ;; # (
             *) logs="${logs} ${log}" ;;
         esac
     done
