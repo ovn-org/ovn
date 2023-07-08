@@ -526,15 +526,34 @@ add_ovs_qos_table_entry_queue(struct ovsdb_idl_txn *ovs_idl_txn,
         smap_clear(&external_ids);
     }
 
+    unsigned long long curr_max_rate = 0;
+    bool new_def_rate = false;
     struct ovsrec_queue *queue;
     size_t i;
     for (i = 0; i < qos->n_queues; i++) {
         queue = qos->value_queues[i];
+         unsigned long long loop_max_rate = smap_get_ullong(
+            &queue->other_config, "max-rate", 0);
+        if(curr_max_rate < loop_max_rate){
+            curr_max_rate = loop_max_rate;
+            new_def_rate = true;
+        }
+       
 
         const char *p = smap_get(&queue->external_ids, "ovn_port");
         if (p && !strcmp(p, ovn_port)) {
             break;
         }
+    }
+
+    if(new_def_rate){
+        smap_add_format(&other_config, "max-rate", "%lld", curr_max_rate);
+        ovsrec_qos_set_other_config(qos, &other_config);
+        smap_clear(&other_config);
+
+        smap_add(&external_ids, "ovn_qos", "true");
+        ovsrec_qos_set_external_ids(qos, &external_ids);
+        smap_clear(&external_ids);
     }
 
     if (i == qos->n_queues) {

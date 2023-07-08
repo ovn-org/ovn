@@ -1858,7 +1858,7 @@ check_logs () {
     local logs
     for log in *.log; do
         case ${log} in # (
-            '*.log'|testsuite.log) ;; # (
+            '*.log'|*testsuite.log) ;; # (
             *) logs="${logs} ${log}" ;;
         esac
     done
