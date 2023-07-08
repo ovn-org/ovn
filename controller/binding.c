@@ -513,7 +513,11 @@ add_ovs_qos_table_entry_queue(struct ovsdb_idl_txn *ovs_idl_txn,
         qos = ovsrec_qos_insert(ovs_idl_txn);
         ovsrec_qos_set_type(qos, OVN_QOS_TYPE);
         ovsrec_port_set_qos(port, qos);
-        smap_add_format(&other_config, "max-rate", "%lld", OVN_QOS_MAX_RATE);
+        if (max_rate > 20000){
+            smap_add_format(&other_config, "max-rate", "%lld", max_rate);
+        }else{
+            smap_add_format(&other_config, "max-rate", "%lld", OVN_QOS_MAX_RATE);
+        }
         ovsrec_qos_set_other_config(qos, &other_config);
         smap_clear(&other_config);
 
