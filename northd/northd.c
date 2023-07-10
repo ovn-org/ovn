@@ -8120,68 +8120,6 @@ build_acls(struct ovn_datapath *od, const struct chassis_features *features,
         }
     }
 
-    /* Add 34000 priority flow to allow DHCP reply from ovn-controller to all
-     * logical ports of the datapath if the CMS has configured DHCPv4 options.
-     * */
-    for (size_t i = 0; i < od->nbs->n_ports; i++) {
-        if (lsp_is_external(od->nbs->ports[i])) {
-            continue;
-        }
-
-        if (od->nbs->ports[i]->dhcpv4_options) {
-            const char *server_id = smap_get(
-                &od->nbs->ports[i]->dhcpv4_options->options, "server_id");
-            const char *server_mac = smap_get(
-                &od->nbs->ports[i]->dhcpv4_options->options, "server_mac");
-            const char *lease_time = smap_get(
-                &od->nbs->ports[i]->dhcpv4_options->options, "lease_time");
-            if (server_id && server_mac && lease_time) {
-                const char *dhcp_actions =
-                    has_stateful ? REGBIT_ACL_VERDICT_ALLOW" = 1; "
-                                   "ct_commit; next;"
-                                 : REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
-                ds_clear(&match);
-                ds_put_format(&match, "outport == \"%s\" && eth.src == %s "
-                              "&& ip4.src == %s && udp && udp.src == 67 "
-                              "&& udp.dst == 68", od->nbs->ports[i]->name,
-                              server_mac, server_id);
-                ovn_lflow_add_with_lport_and_hint(
-                    lflows, od, S_SWITCH_OUT_ACL_EVAL, 34000, ds_cstr(&match),
-                    dhcp_actions, od->nbs->ports[i]->name,
-                    &od->nbs->ports[i]->dhcpv4_options->header_);
-            }
-        }
-
-        if (od->nbs->ports[i]->dhcpv6_options) {
-            const char *server_mac = smap_get(
-                &od->nbs->ports[i]->dhcpv6_options->options, "server_id");
-            struct eth_addr ea;
-            if (server_mac && eth_addr_from_string(server_mac, &ea)) {
-                /* Get the link local IP of the DHCPv6 server from the
-                 * server MAC. */
-                struct in6_addr lla;
-                in6_generate_lla(ea, &lla);
-
-                char server_ip[INET6_ADDRSTRLEN + 1];
-                ipv6_string_mapped(server_ip, &lla);
-
-                const char *dhcp6_actions =
-                    has_stateful ? REGBIT_ACL_VERDICT_ALLOW" = 1; "
-                                   "ct_commit; next;"
-                                 : REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
-                ds_clear(&match);
-                ds_put_format(&match, "outport == \"%s\" && eth.src == %s "
-                              "&& ip6.src == %s && udp && udp.src == 547 "
-                              "&& udp.dst == 546", od->nbs->ports[i]->name,
-                              server_mac, server_ip);
-                ovn_lflow_add_with_lport_and_hint(
-                    lflows, od, S_SWITCH_OUT_ACL_EVAL, 34000, ds_cstr(&match),
-                    dhcp6_actions, od->nbs->ports[i]->name,
-                    &od->nbs->ports[i]->dhcpv6_options->header_);
-            }
-        }
-    }
-
     /* Add a 34000 priority flow to advance the DNS reply from ovn-controller,
      * if the CMS has configured DNS records for the datapath.
      */
@@ -9478,6 +9416,33 @@ build_dhcpv4_options_flows(struct ovn_port *op,
             ds_destroy(&options_action);
             ds_destroy(&response_action);
             ds_destroy(&ipv4_addr_match);
+
+            /* Add 34000 priority flow to allow DHCP reply from ovn-controller
+             * to the ogical port of the datapath if the CMS has configured
+             * DHCPv4 options.
+             * */
+            if (!is_external) {
+                const char *server_id = smap_get(
+                    &op->nbsp->dhcpv4_options->options, "server_id");
+                const char *server_mac = smap_get(
+                    &op->nbsp->dhcpv4_options->options, "server_mac");
+                const char *lease_time = smap_get(
+                    &op->nbsp->dhcpv4_options->options, "lease_time");
+                ovs_assert(server_id && server_mac && lease_time);
+                const char *dhcp_actions =
+                    (op->od->has_stateful_acl || op->od->has_lb_vip)
+                     ? REGBIT_ACL_VERDICT_ALLOW" = 1; ct_commit; next;"
+                     : REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
+                ds_clear(&match);
+                ds_put_format(&match, "outport == %s && eth.src == %s "
+                              "&& ip4.src == %s && udp && udp.src == 67 "
+                              "&& udp.dst == 68",op->json_key,
+                              server_mac, server_id);
+                ovn_lflow_add_with_lport_and_hint(
+                    lflows, op->od, S_SWITCH_OUT_ACL_EVAL, 34000,
+                    ds_cstr(&match),dhcp_actions, op->key,
+                    &op->nbsp->dhcpv4_options->header_);
+            }
             break;
         }
     }
@@ -9530,6 +9495,39 @@ build_dhcpv6_options_flows(struct ovn_port *op,
                 &op->nbsp->dhcpv6_options->header_);
             ds_destroy(&options_action);
             ds_destroy(&response_action);
+
+            /* Add 34000 priority flow to allow DHCP reply from ovn-controller
+             * to the ogical port of the datapath if the CMS has configured
+             * DHCPv6 options.
+             * */
+            if (!is_external) {
+                const char *server_mac = smap_get(
+                    &op->nbsp->dhcpv6_options->options, "server_id");
+                struct eth_addr ea;
+                ovs_assert(server_mac &&
+                           eth_addr_from_string(server_mac, &ea));
+                /* Get the link local IP of the DHCPv6 server from the
+                * server MAC. */
+                struct in6_addr lla;
+                in6_generate_lla(ea, &lla);
+
+                char server_ip[INET6_ADDRSTRLEN + 1];
+                ipv6_string_mapped(server_ip, &lla);
+
+                const char *dhcp6_actions =
+                    (op->od->has_stateful_acl || op->od->has_lb_vip)
+                        ? REGBIT_ACL_VERDICT_ALLOW" = 1; ct_commit; next;"
+                        : REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
+                ds_clear(&match);
+                ds_put_format(&match, "outport == %s && eth.src == %s "
+                              "&& ip6.src == %s && udp && udp.src == 547 "
+                              "&& udp.dst == 546", op->json_key,
+                              server_mac, server_ip);
+                ovn_lflow_add_with_lport_and_hint(
+                    lflows, op->od, S_SWITCH_OUT_ACL_EVAL, 34000,
+                    ds_cstr(&match),dhcp6_actions, op->key,
+                    &op->nbsp->dhcpv6_options->header_);
+            }
             break;
         }
     }

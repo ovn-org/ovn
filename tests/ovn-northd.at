@@ -10061,6 +10061,31 @@ check_recompute_counter 0 0 0
 
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
+# Associate DHCP for lsp0-2
+ovn-nbctl dhcp-options-create 192.168.0.0/24
+
+CIDR_UUID=$(ovn-nbctl --bare --columns=_uuid find dhcp_options cidr="192.168.0.0/24")
+ovn-nbctl dhcp-options-set-options $CIDR_UUID   lease_time=3600  router=192.168.0.1   server_id=192.168.0.1   server_mac=c0:ff:ee:00:00:01 hostname="\"foo\""
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+ovn-nbctl --wait=sb lsp-set-dhcpv4-options lsp0-2 $CIDR_UUID
+check_recompute_counter 0 0 0
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Add IPv6 address and associate DHCPv6 for lsp0-2
+check ovn-nbctl lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:01 192.168.0.11 aef0::4"
+d1="$(ovn-nbctl create DHCP_Options cidr="aef0\:\:/64" \
+options="\"server_id\"=\"00:00:00:10:00:01\"")"
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+ovn-nbctl --wait=sb lsp-set-dhcpv6-options lsp0-2 ${d1}
+check_recompute_counter 0 0 0
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check ovn-nbctl --wait=hv ls-del ls0
+
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
