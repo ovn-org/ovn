@@ -8932,9 +8932,11 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
 {
     if (od->nbs) {
 
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 110,
-                      "eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)",
-                      "handle_svc_check(inport);");
+        ovn_lflow_metered(lflows, od, S_SWITCH_IN_L2_LKUP, 110, "eth.dst == "
+                          "$svc_monitor_mac && (tcp || icmp || icmp6)",
+                          "handle_svc_check(inport);",
+                          copp_meter_get(COPP_SVC_MONITOR, od->nbs->copp,
+                                         meter_groups));
 
         struct mcast_switch_info *mcast_sw_info = &od->mcast_info.sw;
 

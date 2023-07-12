@@ -38,6 +38,7 @@ static char *copp_proto_names[COPP_PROTO_MAX] = {
     [COPP_ND_RA_OPTS]    = "nd-ra-opts",
     [COPP_TCP_RESET]     = "tcp-reset",
     [COPP_REJECT]        = "reject",
+    [COPP_SVC_MONITOR]   = "svc-monitor",
     [COPP_BFD]           = "bfd",
 };
 
