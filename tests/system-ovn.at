@@ -7469,6 +7469,23 @@ OVS_WAIT_UNTIL([
 ])
 kill $(pidof tcpdump)
 
+check ovn-nbctl set nb_global . options:svc_monitor_mac="33:33:33:33:33:33"
+check ovn-nbctl meter-add svc-meter drop 1 pktps 0
+check ovn-nbctl --wait=hv copp-add copp4 svc-monitor svc-meter
+check ovn-nbctl --wait=hv ls-copp-add copp4 sw0
+check ovn-appctl -t ovn-controller vlog/set vconn:dbg
+AT_CHECK([ovn-nbctl copp-list copp4], [0], [dnl
+svc-monitor: svc-meter
+])
+
+ip netns exec sw01 scapy -H <<-EOF
+p = Ether(dst="33:33:33:33:33:33", src="f0:00:00:01:02:03") /\
+    IP(dst="192.168.1.100", src="192.168.1.2") / TCP(dport=1234, sport=1234)
+sendp(p, iface='sw01', loop=0, verbose=0, count=20)
+EOF
+
+OVS_WAIT_UNTIL([test "1" = "$(grep -c "dl_dst=33:33:33:33:33:33" ovn-controller.log)"])
+
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
 as ovn-sb
@@ -7482,7 +7499,8 @@ OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
-/.*terminating with signal 15.*/d"])
+/.*terminating with signal 15.*/d
+/.*Service monitor not found/d"])
 
 AT_CLEANUP
 ])
