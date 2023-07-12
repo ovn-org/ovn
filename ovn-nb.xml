@@ -429,6 +429,10 @@
     <column name="meters" key="reject">
       Rate limiting meter for packets that trigger a reject action
     </column>
+    <column name="meters" key="svc-monitor">
+      Rate limiting meter for packets that are arriving to service
+      monitor MAC address.
+    </column>
     <column name="external_ids">
       See <em>External IDs</em> at the beginning of this document.
     </column>
