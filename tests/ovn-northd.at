@@ -3362,7 +3362,7 @@ AT_CHECK([ovn-sbctl list logical_flow | grep trigger_event -A 2 | grep -q meter0
 
 # let's try to add an usupported protocol "dhcp"
 AT_CHECK([ovn-nbctl --wait=hv copp-add copp5 dhcp meter1],[1],[],[dnl
-ovn-nbctl: Invalid control protocol. Allowed values: arp, arp-resolve, dhcpv4-opts, dhcpv6-opts, dns, event-elb, icmp4-error, icmp6-error, igmp, nd-na, nd-ns, nd-ns-resolve, nd-ra-opts, tcp-reset, bfd, reject.
+ovn-nbctl: Invalid control protocol. Allowed values: arp, arp-resolve, dhcpv4-opts, dhcpv6-opts, dns, event-elb, icmp4-error, icmp6-error, igmp, nd-na, nd-ns, nd-ns-resolve, nd-ra-opts, tcp-reset, bfd, reject, svc-monitor.
 ])
 
 #Let's try to add a valid protocol to an unknown datapath
