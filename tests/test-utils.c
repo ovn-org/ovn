@@ -61,3 +61,20 @@ test_read_value(struct ovs_cmdl_context *ctx, unsigned int index,
 
     return ctx->argv[index];
 }
+
+bool
+test_read_ullong_value(struct ovs_cmdl_context *ctx, unsigned int index,
+                       const char *descr, unsigned long long int *result)
+{
+    if (index >= ctx->argc) {
+        fprintf(stderr, "Missing %s argument\n", descr);
+        return false;
+    }
+
+    const char *arg = ctx->argv[index];
+    if (!str_to_ullong(arg, 10, result)) {
+        fprintf(stderr, "Invalid %s: %s\n", descr, arg);
+        return false;
+    }
+    return true;
+}

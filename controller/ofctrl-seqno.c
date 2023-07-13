@@ -59,7 +59,7 @@ static struct ofctrl_seqno_state *ofctrl_seqno_states;
 static void ofctrl_acked_seqnos_init(struct ofctrl_acked_seqnos *seqnos,
                                      uint64_t last_acked);
 static void ofctrl_acked_seqnos_add(struct ofctrl_acked_seqnos *seqnos,
-                                    uint32_t val);
+                                    uint64_t val);
 
 /* ofctrl_seqno_update related static function prototypes. */
 static void ofctrl_seqno_update_create__(size_t seqno_type, uint64_t req_cfg);
@@ -106,11 +106,11 @@ ofctrl_acked_seqnos_destroy(struct ofctrl_acked_seqnos *seqnos)
 /* Returns true if 'val' is one of the acked sequence numbers in 'seqnos'. */
 bool
 ofctrl_acked_seqnos_contains(const struct ofctrl_acked_seqnos *seqnos,
-                             uint32_t val)
+                             uint64_t val)
 {
     struct ofctrl_ack_seqno *sn;
 
-    HMAP_FOR_EACH_WITH_HASH (sn, node, hash_int(val, 0), &seqnos->acked) {
+    HMAP_FOR_EACH_WITH_HASH (sn, node, hash_uint64(val), &seqnos->acked) {
         if (sn->seqno == val) {
             return true;
         }
@@ -213,12 +213,12 @@ ofctrl_acked_seqnos_init(struct ofctrl_acked_seqnos *seqnos,
 }
 
 static void
-ofctrl_acked_seqnos_add(struct ofctrl_acked_seqnos *seqnos, uint32_t val)
+ofctrl_acked_seqnos_add(struct ofctrl_acked_seqnos *seqnos, uint64_t val)
 {
     seqnos->last_acked = val;
 
     struct ofctrl_ack_seqno *sn = xmalloc(sizeof *sn);
-    hmap_insert(&seqnos->acked, &sn->node, hash_int(val, 0));
+    hmap_insert(&seqnos->acked, &sn->node, hash_uint64(val));
     sn->seqno = val;
 }
 
