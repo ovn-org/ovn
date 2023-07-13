@@ -14642,6 +14642,11 @@ wait_column "$hv1_uuid" Port_Binding requested_chassis logical_port=migrator
 wait_column "$hv2_uuid" Port_Binding additional_chassis logical_port=migrator
 wait_column "$hv2_uuid" Port_Binding requested_additional_chassis logical_port=migrator
 
+# Port should be up (and flows installed) when migration is completed on hv1.
+# However, neither ports up nor additional_chassis do guarantee that flows on hv2 are fully installed.
+# ovn-installed on hv2 should guarantee that.
+OVS_WAIT_UNTIL([test `as hv2 ovs-vsctl get Interface migrator external_ids:ovn-installed` = '"true"'])
+
 # check that...
 # unicast from First arrives to hv1:Migrator
 # unicast from First arrives to hv2:Migrator
