@@ -24,5 +24,7 @@ bool test_read_uint_hex_value(struct ovs_cmdl_context *ctx, unsigned int index,
                               const char *descr, unsigned int *result);
 const char *test_read_value(struct ovs_cmdl_context *ctx, unsigned int index,
                             const char *descr);
+bool test_read_ullong_value(struct ovs_cmdl_context *ctx, unsigned int index,
+                            const char *descr, unsigned long long int *result);
 
 #endif /* tests/test-utils.h */

@@ -223,4 +223,37 @@ ofctrl-seqno-type: 1
   51
   52
 ])
+
+AS_BOX([Ack seqno that doesn't fit in uint32_t])
+n_types=2
+n_app_seqnos=1
+app_seqnos1="4294967296"
+app_seqnos2="4294967297"
+
+n_acks=1
+acks="1"
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_ack_seqnos true ${n_types} \
+          ${n_app_seqnos} ${app_seqnos1} ${n_app_seqnos} ${app_seqnos2} \
+          ${n_acks} ${acks}], [0], [dnl
+ofctrl-seqno-req-cfg: 2
+ofctrl-seqno-type: 0
+  last-acked 4294967296
+  4294967296
+ofctrl-seqno-type: 1
+  last-acked 0
+])
+
+n_acks=1
+acks="2"
+AT_CHECK([ovstest test-ofctrl-seqno ofctrl_seqno_ack_seqnos true ${n_types} \
+          ${n_app_seqnos} ${app_seqnos1} ${n_app_seqnos} ${app_seqnos2} \
+          ${n_acks} ${acks}], [0], [dnl
+ofctrl-seqno-req-cfg: 2
+ofctrl-seqno-type: 0
+  last-acked 4294967296
+  4294967296
+ofctrl-seqno-type: 1
+  last-acked 4294967297
+  4294967297
+])
 AT_CLEANUP
