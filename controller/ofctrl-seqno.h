@@ -37,7 +37,7 @@ struct ofctrl_ack_seqno {
 struct ofctrl_acked_seqnos *ofctrl_acked_seqnos_get(size_t seqno_type);
 void ofctrl_acked_seqnos_destroy(struct ofctrl_acked_seqnos *seqnos);
 bool ofctrl_acked_seqnos_contains(const struct ofctrl_acked_seqnos *seqnos,
-                                  uint32_t val);
+                                  uint64_t val);
 
 void ofctrl_seqno_init(void);
 size_t ofctrl_seqno_add_type(void);
