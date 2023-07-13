@@ -11726,10 +11726,10 @@ grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
     check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
 
     OVN_CHECK_PACKETS_UNIQ([ext1/vif1-tx.pcap], [ext1-vif1.expected])
-    $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $active_gw/br-phys_n1-tx.pcap  > packets
-    cat packets | grep $expected > exp
-    cat packets | grep $exp_gw_ip_garp | head -1 >> exp
-    AT_CHECK([cat exp], [0], [expout])
+    # We might have to wait for the garp, as it might have been deleted
+    # from the pcap last time we reset it.
+    # We might have BFD packets on br-phys_n1-tx; ignore them.
+    OVN_CHECK_PACKETS_CONTAIN([$active_gw/br-phys_n1-tx.pcap], [ext1-vif1.expected])
 
     $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $backup_gw/br-phys_n1-tx.pcap  > packets
     AT_CHECK([grep $expected packets | sort], [0], [])
