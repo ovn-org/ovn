@@ -1625,6 +1625,12 @@ encode_SELECT(const struct ovnact_select *select,
     struct ds ds = DS_EMPTY_INITIALIZER;
     ds_put_format(&ds, "type=select,selection_method=dp_hash");
 
+    if (ovs_feature_is_supported(OVS_DP_HASH_L4_SYM_SUPPORT)) {
+        /* Select dp-hash l4_symmetric by setting the upper 32bits of
+         * selection_method_param to value 1 (1 << 32): */
+        ds_put_cstr(&ds, ",selection_method_param=0x100000000");
+    }
+
     struct mf_subfield sf = expr_resolve_field(&select->res_field);
 
     for (size_t bucket_id = 0; bucket_id < select->n_dsts; bucket_id++) {
