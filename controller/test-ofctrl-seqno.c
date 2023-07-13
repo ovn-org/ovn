@@ -124,9 +124,10 @@ test_ofctrl_seqno_ack_seqnos(struct ovs_cmdl_context *ctx)
         }
 
         for (unsigned int j = 0; j < n_app_seqnos; j++, n_reqs++) {
-            unsigned int app_seqno;
+            unsigned long long int app_seqno;
 
-            if (!test_read_uint_value(ctx, shift++, "app_seqno", &app_seqno)) {
+            if (!test_read_ullong_value(ctx, shift++, "app_seqno",
+                                        &app_seqno)) {
                 return;
             }
             ofctrl_seqno_update_create(i, app_seqno);
@@ -138,9 +139,9 @@ test_ofctrl_seqno_ack_seqnos(struct ovs_cmdl_context *ctx)
         return;
     }
     for (unsigned int i = 0; i < n_acks; i++) {
-        unsigned int ack_seqno;
+        unsigned long long int ack_seqno;
 
-        if (!test_read_uint_value(ctx, shift++, "ack_seqno", &ack_seqno)) {
+        if (!test_read_ullong_value(ctx, shift++, "ack_seqno", &ack_seqno)) {
             return;
         }
         ofctrl_seqno_run(ack_seqno);
