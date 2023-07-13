@@ -17087,7 +17087,7 @@ rtr_l2_ip=$(ip_to_hex 172 16 1 1)
 l1_ip=$(ip_to_hex 192 168 1 2)
 
 check ovn-nbctl mirror-add mirror0 gre 0 to-lport 192.168.1.12
-check ovn-nbctl lsp-attach-mirror ls1-lp1 mirror0
+check ovn-nbctl --wait=hv lsp-attach-mirror ls1-lp1 mirror0
 
 # Send ping packet and check for mirrored packet of the reply
 test_ipv4_icmp_request 1 000000010203 0000000102f1 $l1_ip $rtr_l2_ip 0000 8510 03ff 8d10 "gre" "to-lport"
@@ -17100,7 +17100,9 @@ as hv1 reset_pcap_file br-phys_n1 hv1/br-phys_n1
 rm -f br-phys_n1.expected
 rm -f vif1.expected
 
-check ovn-nbctl set mirror . type=erspan
+check ovn-nbctl --wait=hv set mirror . type=erspan
+# Wait for port to get updated
+OVS_WAIT_UNTIL([test 1 = `ovs-appctl dpif/show | grep ovn-mirror | grep -c erspan`])
 
 # Send ping packet and check for mirrored packet of the reply
 test_ipv4_icmp_request 1 000000010203 0000000102f1 $l1_ip $rtr_l2_ip 0000 8510 03ff 8d10 "erspan" "to-lport"
@@ -17113,7 +17115,15 @@ as hv1 reset_pcap_file br-phys_n1 hv1/br-phys_n1
 rm -f br-phys_n1.expected
 rm -f vif1.expected
 
-check ovn-nbctl set mirror . filter=from-lport
+check ovn-nbctl --wait=hv set mirror . filter=from-lport
+
+# First make sure conf.db got updated
+vif1=$(ovs-vsctl get Port vif1 _uuid)
+OVS_WAIT_UNTIL([test `ovs-vsctl get mirror mirror0 select_src_port | tr -d "[[]]"` = $vif1])
+# Then make sure ovs-vswitchd got opportunity to run : run some random ovs-apctl command twice, so
+# mirror_run could run
+ovs-appctl dpif/show
+ovs-appctl dpif/show
 
 # Send ping packet and check for mirrored packet of the request
 test_ipv4_icmp_request 1 000000010203 0000000102f1 $l1_ip $rtr_l2_ip 0000 8510 03ff 8d10 "erspan" "from-lport"
@@ -17126,7 +17136,9 @@ as hv1 reset_pcap_file br-phys_n1 hv1/br-phys_n1
 rm -f br-phys_n1.expected
 rm -f vif1.expected
 
-check ovn-nbctl set mirror . type=gre
+check ovn-nbctl --wait=hv set mirror . type=gre
+# Wait for port to get updated
+OVS_WAIT_UNTIL([test 1 = `ovs-appctl dpif/show | grep ovn-mirror | grep -c gre`])
 
 # Send ping packet and check for mirrored packet of the request
 test_ipv4_icmp_request 1 000000010203 0000000102f1 $l1_ip $rtr_l2_ip 0000 8510 03ff 8d10 "gre" "from-lport"
@@ -17272,7 +17284,7 @@ AT_CHECK([cat mirror1.packets | sort], [0], [expout])
 AT_CHECK([cat mirror2.packets | sort], [0], [expout])
 
 port_src_old=$(ovs-vsctl get mirror mirror-from-lp1 select_src_port)
-check ovn-nbctl set mirror $uuid1 filter=both
+check ovn-nbctl --wait=hv set mirror $uuid1 filter=both
 port_src_new=$(ovs-vsctl get mirror mirror-from-lp1 select_src_port)
 port_dst_new=$(ovs-vsctl get mirror mirror-from-lp1 select_dst_port)
 AT_CHECK([test $port_src_old = $port_src_new], [0], [])
