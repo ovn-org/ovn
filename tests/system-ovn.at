@@ -11430,7 +11430,7 @@ check ovn-nbctl ls-add ls
 check ovn-nbctl lsp-add ls lsp1 -- lsp-set-addresses lsp1 "00:00:00:00:00:01 10.0.0.1"
 check ovn-nbctl lsp-add ls lsp2 -- lsp-set-addresses lsp2 "00:00:00:00:00:02 10.0.0.2"
 
-check ovn-nbctl pg-add pg lsp1 lsp2
+check ovn-nbctl --wait=hv pg-add pg lsp1 lsp2
 
 ADD_NAMESPACES(lsp1)
 ADD_VETH(lsp1, lsp1, br-int, "10.0.0.1/24", "00:00:00:00:00:01")
