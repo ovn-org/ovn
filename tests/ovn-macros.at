@@ -371,7 +371,6 @@ start_virtual_controller() {
         -- set bridge $int_bridge fail-mode=secure other-config:disable-in-band=true \
         || return 1
 
-    echo IHAR ${cli_args}
     ovn-controller --enable-dummy-vif-plug ${cli_args} -vconsole:off --detach --no-chdir
 }
 
