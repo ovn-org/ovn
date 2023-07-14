@@ -674,6 +674,14 @@ enum {
     PREFIX_REBIND,
 };
 
+/* According to RFC 8415, section 11:
+ *   A DUID consists of a 2-octet type code represented in network byte
+ *   order, followed by a variable number of octets that make up the
+ *   actual identifier.  The length of the DUID (not including the type
+ *   code) is at least 1 octet and at most 128 octets.
+*/
+#define DHCPV6_MAX_DUID_LEN 130
+
 struct ipv6_prefixd_state {
     long long int next_announce;
     long long int last_complete;
@@ -683,7 +691,7 @@ struct ipv6_prefixd_state {
     struct eth_addr sa;
     /* server_id_info */
     struct {
-        uint8_t *data;
+        uint8_t data[DHCPV6_MAX_DUID_LEN];
         uint8_t len;
     } uuid;
     struct in6_addr ipv6_addr;
@@ -899,7 +907,7 @@ pinctrl_prefixd_state_handler(const struct flow *ip_flow,
                               struct eth_addr sa, struct in6_addr server_addr,
                               char prefix_len, unsigned t1, unsigned t2,
                               unsigned plife_time, unsigned vlife_time,
-                              uint8_t *uuid, uint8_t uuid_len)
+                              const uint8_t *uuid, uint8_t uuid_len)
 {
     struct ipv6_prefixd_state *pfd;
 
@@ -908,7 +916,7 @@ pinctrl_prefixd_state_handler(const struct flow *ip_flow,
         pfd->state = PREFIX_PENDING;
         pfd->server_addr = server_addr;
         pfd->sa = sa;
-        pfd->uuid.data = uuid;
+        memcpy(pfd->uuid.data, uuid, uuid_len);
         pfd->uuid.len = uuid_len;
         pfd->plife_time = plife_time * 1000;
         pfd->vlife_time = vlife_time * 1000;
@@ -933,8 +941,9 @@ pinctrl_parse_dhcpv6_reply(struct dp_packet *pkt_in,
     unsigned char *in_dhcpv6_data = (unsigned char *)(udp_in + 1);
     size_t dlen = MIN(ntohs(udp_in->udp_len), dp_packet_l4_size(pkt_in));
     unsigned t1 = 0, t2 = 0, vlife_time = 0, plife_time = 0;
-    uint8_t *end = (uint8_t *)udp_in + dlen, *uuid = NULL;
+    uint8_t *end = (uint8_t *) udp_in + dlen;
     uint8_t prefix_len = 0, uuid_len = 0;
+    uint8_t uuid[DHCPV6_MAX_DUID_LEN];
     struct in6_addr ipv6 = in6addr_any;
     bool status = false;
     unsigned aid = 0;
@@ -993,8 +1002,7 @@ pinctrl_parse_dhcpv6_reply(struct dp_packet *pkt_in,
             break;
         }
         case DHCPV6_OPT_SERVER_ID_CODE:
-            uuid_len = ntohs(in_opt->len);
-            uuid = xmalloc(uuid_len);
+            uuid_len = MIN(ntohs(in_opt->len), DHCPV6_MAX_DUID_LEN);
             memcpy(uuid, in_opt + 1, uuid_len);
             break;
         default:
@@ -1014,8 +1022,6 @@ pinctrl_parse_dhcpv6_reply(struct dp_packet *pkt_in,
         pinctrl_prefixd_state_handler(ip_flow, ipv6, aid, eth->eth_src,
                                       ip6_src, prefix_len, t1, t2,
                                       plife_time, vlife_time, uuid, uuid_len);
-    } else if (uuid) {
-        free(uuid);
     }
 }
 
@@ -1212,10 +1218,7 @@ static bool ipv6_prefixd_should_inject(void)
         if (pfd->state == PREFIX_RENEW &&
             cur_time > pfd->last_complete + pfd->t2) {
             pfd->state = PREFIX_REBIND;
-            if (pfd->uuid.len) {
-                free(pfd->uuid.data);
-                pfd->uuid.len = 0;
-            }
+            pfd->uuid.len = 0;
             return true;
         }
         if (pfd->state == PREFIX_REBIND &&
@@ -1409,12 +1412,8 @@ prepare_ipv6_prefixd(struct ovsdb_idl_txn *ovnsb_idl_txn,
     SHASH_FOR_EACH_SAFE (iter, &ipv6_prefixd) {
         struct ipv6_prefixd_state *pfd = iter->data;
         if (pfd->last_used + IPV6_PREFIXD_STALE_TIMEOUT < time_msec()) {
-            if (pfd->uuid.len) {
-                free(pfd->uuid.data);
-                pfd->uuid.len = 0;
-            }
-            free(pfd);
             shash_delete(&ipv6_prefixd, iter);
+            free(pfd);
         }
     }
 
