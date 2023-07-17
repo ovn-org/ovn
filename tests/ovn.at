@@ -14499,6 +14499,35 @@ wait_column "$hv1_uuid" Port_Binding requested_additional_chassis logical_port=l
 check ovn-nbctl lsp-set-options lsp0 requested-chassis=hv2
 wait_column "" Port_Binding additional_encap logical_port=lsp0
 
+# Migration with some race conditions
+check ovn-nbctl lsp-set-options lsp0 \
+    requested-chassis=hv2,hv1
+wait_column "$hv2_uuid" Port_Binding chassis logical_port=lsp0
+wait_column "$hv2_uuid" Port_Binding requested_chassis logical_port=lsp0
+wait_column "$hv1_uuid" Port_Binding additional_chassis logical_port=lsp0
+wait_column "$hv1_uuid" Port_Binding requested_additional_chassis logical_port=lsp0
+
+# Check ovn-installed updated for both chassis
+wait_for_ports_up
+
+for hv in hv1 hv2; do
+    OVS_WAIT_UNTIL([test `as $hv ovs-vsctl get Interface lsp0 external_ids:ovn-installed` = '"true"'])
+done
+
+# Complete moving the binding to the new location
+sleep_controller hv2
+check ovn-nbctl lsp-set-options lsp0 requested-chassis=hv1
+
+wait_column "$hv1_uuid" Port_Binding chassis logical_port=lsp0
+wait_column "$hv1_uuid" Port_Binding requested_chassis logical_port=lsp0
+wait_column "" Port_Binding additional_chassis logical_port=lsp0
+wait_column "" Port_Binding requested_additional_chassis logical_port=lsp0
+wake_up_controller hv2
+# Check ovn-installed updated for main chassis and removed from additional chassis
+wait_for_ports_up
+OVS_WAIT_UNTIL([test `as hv1 ovs-vsctl get Interface lsp0 external_ids:ovn-installed` = '"true"'])
+OVS_WAIT_UNTIL([test x`as hv2 ovs-vsctl get Interface lsp0 external_ids:ovn-installed` = x])
+
 OVN_CLEANUP([hv1],[hv2])
 
 AT_CLEANUP

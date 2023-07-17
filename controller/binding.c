@@ -1506,8 +1506,9 @@ release_lport(const struct sbrec_port_binding *pb,
         if (!release_lport_additional_chassis(pb, chassis_rec, sb_readonly)) {
             return false;
         }
+    } else {
+        VLOG_INFO("Releasing lport %s", pb->logical_port);
     }
-
     update_lport_tracking(pb, tracked_datapaths, false);
     if_status_mgr_release_iface(if_mgr, pb->logical_port);
     return true;
@@ -1616,8 +1617,16 @@ consider_vif_lport_(const struct sbrec_port_binding *pb,
     }
 
     if (pb->chassis == b_ctx_in->chassis_rec
-            || is_additional_chassis(pb, b_ctx_in->chassis_rec)) {
+            || is_additional_chassis(pb, b_ctx_in->chassis_rec)
+            || if_status_is_port_claimed(b_ctx_out->if_mgr,
+                                         pb->logical_port)) {
         /* Release the lport if there is no lbinding. */
+       if (lbinding_set && !can_bind) {
+            if_status_mgr_remove_ovn_installed(b_ctx_out->if_mgr,
+                               b_lport->lbinding->iface->name,
+                               &b_lport->lbinding->iface->header_.uuid);
+        }
+
         if (!lbinding_set || !can_bind) {
             return release_lport(pb, b_ctx_in->chassis_rec,
                                  !b_ctx_in->ovnsb_idl_txn,
