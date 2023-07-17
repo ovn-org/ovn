@@ -873,6 +873,15 @@ wake_up_ovs() {
   AT_CHECK([kill -CONT $(cat $hv/ovs-vswitchd.pid)])
 }
 
+sleep_ovsdb() {
+  echo OVSDB $1 going to sleep
+  AT_CHECK([kill -STOP $(cat $1/ovsdb-server.pid)])
+}
+wake_up_ovsdb() {
+  echo OVSDB $1 waking up
+  AT_CHECK([kill -CONT $(cat $1/ovsdb-server.pid)])
+}
+
 OVS_END_SHELL_HELPERS
 
 m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])

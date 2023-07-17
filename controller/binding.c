@@ -2037,6 +2037,14 @@ build_local_bindings(struct binding_ctx_in *b_ctx_in,
                 update_local_lports(iface_id, b_ctx_out);
                 smap_replace(b_ctx_out->local_iface_ids, iface_rec->name,
                              iface_id);
+            } else if (smap_get_bool(&iface_rec->external_ids,
+                       OVN_INSTALLED_EXT_ID, false)) {
+                /* Interface should not be claimed (ovn_installed).
+                 * This can happen if iface-id was removed as we recompute.
+                 */
+                if_status_mgr_remove_ovn_installed(b_ctx_out->if_mgr,
+                                                   iface_rec->name,
+                                                   &iface_rec->header_.uuid);
             }
         }
     }

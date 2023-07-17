@@ -36594,6 +36594,70 @@ wake_up_controller hv-1
 # Make sure ovn-controller is still OK
 ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([test $(as hv-1 ovs-vsctl list qos | grep -c linux-htb) -eq 1])
+AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-install and recomputes])
+AT_KEYWORDS([ovn-install])
+
+ovn_start
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl --wait=sb add Logical-Switch ls1 other_config vlan-passthru=true
+net_add n
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n br-phys 192.168.0.1
+
+check ovn-nbctl --wait=hv sync
+
+check ovn-nbctl lsp-add ls1 lsp1
+check ovn-nbctl lsp-add ls1 lsp2
+as hv1 ovs-vsctl --no-wait -- add-port br-int vif1 \
+                    -- set Interface vif1 external_ids:iface-id=lsp1 \
+                    -- set Interface vif1 type=internal
+as hv1 ovs-vsctl --no-wait -- add-port br-int vif2 \
+                    -- set Interface vif2 external_ids:iface-id=lsp2 \
+                    -- set Interface vif2 type=internal
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+sleep_ovsdb hv1
+
+# Do following operations through one nbctl command
+# Otherwise, they would probably result in multiple sb updates to ovn-controller
+# As ovsdb is sleeping those multiple updates would resulti in requests to ovsdb being
+# postponed as ovsdb becomes ro.
+# Hence, patch port creation would be delayed after ovsdb becomes rw.
+check ovn-nbctl --wait=hv lsp-add ls1 ln1                  \
+                -- lsp-set-addresses ln1 unknown \
+                -- lsp-set-type ln1 localnet     \
+                -- lsp-set-options ln1 network_name=phys
+
+# Controller should now have created the patch port, but is not yet notified of the ofport of those interfaces
+sleep_controller hv1
+wake_up_ovsdb hv1
+check as hv1 ovs-vsctl remove Interface vif1 external_ids iface-id
+
+# Now wake up controller. It should receive patch port ofport and iface vif1 removal notification
+wake_up_controller hv1
+check as hv1 ovs-vsctl --no-wait -- del-port vif2
+
+# Check ovn-install has been removed.
+OVS_WAIT_UNTIL([test x`as hv1 ovs-vsctl get Interface vif2 external_ids:ovn-installed` = x])
+OVS_WAIT_UNTIL([test x`as hv1 ovs-vsctl get Interface vif1 external_ids:ovn-installed` = x])
+
+# Check ports are down
+OVS_WAIT_UNTIL([test `ovn-sbctl get Port_Binding lsp1 up` = 'false'])
+OVS_WAIT_UNTIL([test `ovn-sbctl get Port_Binding lsp2 up` = 'false'])
+
+# Check ports are unbound
+wait_column "" Port_Binding chassis logical_port=lsp1
+wait_column "" Port_Binding chassis logical_port=lsp2
+OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
