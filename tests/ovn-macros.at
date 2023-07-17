@@ -848,8 +848,8 @@ wake_up_sb() {
   AT_CHECK([kill -CONT $(cat ovn-sb/ovsdb-server.pid)])
 }
 sleep_controller() {
-  echo Controller $hv going to sleep
   hv=$1
+  echo Controller $hv going to sleep
   as $hv
   check ovn-appctl debug/pause
   OVS_WAIT_UNTIL([test x$(ovn-appctl -t ovn-controller debug/status) = "xpaused"])
@@ -869,7 +869,7 @@ sleep_ovs() {
 
 wake_up_ovs() {
   hv=$1
-  echo ovs $hv going to sleep
+  echo ovs $hv going to wake-up
   AT_CHECK([kill -CONT $(cat $hv/ovs-vswitchd.pid)])
 }
 
