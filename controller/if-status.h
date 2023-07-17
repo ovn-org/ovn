@@ -62,5 +62,7 @@ uint16_t if_status_mgr_iface_get_mtu(const struct if_status_mgr *mgr,
                                      const char *iface_id);
 bool if_status_mgr_iface_update(const struct if_status_mgr *mgr,
                                 const struct ovsrec_interface *iface_rec);
+bool if_status_is_port_claimed(const struct if_status_mgr *mgr,
+                               const char *iface_id);
 
 # endif /* controller/if-status.h */
