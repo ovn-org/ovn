@@ -10899,6 +10899,7 @@ check ovs-vsctl -- add-port br-int ext1-vif1 -- \
     options:rxq_pcap=ext1/vif1-rx.pcap \
     ofport-request=1
 
+ovn-nbctl --wait=hv set NB_Global . options:"bfd-mult"=15
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
 # packets for ARP resolution (native tunneling doesn't queue packets
 # for ARP resolution).
@@ -11154,6 +11155,7 @@ check ovs-vsctl -- add-port br-int ext1-vif1 -- \
     options:rxq_pcap=ext1/vif1-rx.pcap \
     ofport-request=1
 
+ovn-nbctl --wait=hv set NB_Global . options:"bfd-mult"=15
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
 # packets for ARP resolution (native tunneling doesn't queue packets
 # for ARP resolution).
@@ -13188,12 +13190,12 @@ for chassis in gw1 hv1 hv2; do
 ])
 done
 ovn-nbctl remove NB_Global . options "bfd-min-rx"
-ovn-nbctl --wait=hv set NB_Global . options:"bfd-mult"=5
+ovn-nbctl --wait=hv set NB_Global . options:"bfd-mult"=15
 for chassis in gw1 hv1 hv2; do
     echo "checking gw2 -> $chassis"
     OVS_WAIT_UNTIL([
     bfd_cfg=$(ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0)
-    test "$bfd_cfg" = "enable=true min_tx=1500 mult=5"
+    test "$bfd_cfg" = "enable=true min_tx=1500 mult=15"
 ])
 done
 
@@ -16814,6 +16816,8 @@ net_add n1
 sim_add hv1
 sim_add hv2
 sim_add hv3
+
+ovn-nbctl --wait=hv set NB_Global . options:"bfd-mult"=15
 
 ovn-nbctl ls-add ls1
 ovn-nbctl lsp-add ls1 ls1-lp1 \
