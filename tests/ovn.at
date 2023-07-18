@@ -29580,23 +29580,18 @@ test_arp_response () {
     arp_reply=${src_mac}${router_mac}08060001080006040002${router_mac}
     arp_reply=${arp_reply}${router_ip}${src_mac}${src_ip}
 
-    OVS_WAIT_UNTIL([
-        test $($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/phys1-tx.pcap | wc -l) -ge 1
-    ])
-
     # there is a small race where gw-router-port can be running on both
     # hvs and both of them can reply to the arp request ending up with
     # two arp replies in the pcap file. This is transitory not significant
-    # in a real deployment that can trigger a fail here. Let's use
-    # greq -q instead.
-    AT_CHECK([$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/phys1-tx.pcap | \
-    grep -q $arp_reply], [0])
+    # in a real deployment that can trigger a fail here. Let's check that
+    # we received the expected arp_reply, ignoring other packets such as
+    # duplicates and garps.
+    echo $arp_reply > expected_out
+    OVN_CHECK_PACKETS_CONTAIN([hv2/phys1-tx.pcap], [expected_out])
 
     # $gw phys1-n1 should see the response because $gw ovn-controller responds
     # to arp request.
-    AT_CHECK([$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $gw/br-phys_n1-tx.pcap | \
-    grep -c $arp_reply], [0], [1
-])
+    OVN_CHECK_PACKETS_CONTAIN([$gw/br-phys_n1-tx.pcap], [expected_out])
 
     # $nongw1 and $nongw1 phys1-n1 should not see the response.
     $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $nongw1/br-phys_n1-tx.pcap
