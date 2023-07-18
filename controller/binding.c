@@ -2649,7 +2649,13 @@ handle_deleted_lport(const struct sbrec_port_binding *pb,
     if (ld) {
         remove_pb_from_local_datapath(pb,
                                       b_ctx_out, ld);
-        if_status_mgr_release_iface(b_ctx_out->if_mgr, pb->logical_port);
+        /* Only try to release the port if it was ever claimed.
+         * If a port was added and deleted within the same ovn-controller loop,
+         * it is seen as never claimed.
+         */
+        if (if_status_is_port_claimed(b_ctx_out->if_mgr, pb->logical_port)) {
+            if_status_mgr_release_iface(b_ctx_out->if_mgr, pb->logical_port);
+        }
         return;
     }
 
@@ -2673,7 +2679,9 @@ handle_deleted_lport(const struct sbrec_port_binding *pb,
             remove_pb_from_local_datapath(pb, b_ctx_out,
                                           ld);
         }
-        if_status_mgr_release_iface(b_ctx_out->if_mgr, pb->logical_port);
+        if (if_status_is_port_claimed(b_ctx_out->if_mgr, pb->logical_port)) {
+            if_status_mgr_release_iface(b_ctx_out->if_mgr, pb->logical_port);
+        }
     }
 }
 
