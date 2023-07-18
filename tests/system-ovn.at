@@ -6365,7 +6365,7 @@ AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 # Change bob1 L2 address anche check the reply is properly updated.
 ovn-nbctl set Logical_Router_Port R2_ext mac='"00:00:10:01:02:04"'
-ovn-nbctl set Logical_Switch_Port r2-ext \
+ovn-nbctl --wait=hv set Logical_Switch_Port r2-ext \
      type=router options:router-port=R2_ext addresses='"00:00:10:01:02:04"'
 
 NS_CHECK_EXEC([bob1], [nc -6 -z fd01::2 80], [0])
