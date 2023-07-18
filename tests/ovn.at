@@ -35080,3 +35080,30 @@ wait_column "" Port_Binding chassis logical_port=lsp2
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Add and delete port])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+
+check ovn-nbctl ls-add ls0
+check ovn-nbctl --wait=hv lsp-add ls0 lsp1
+as hv1 check ovs-vsctl -- add-port br-int lsp1 -- \
+    set Interface lsp1 external-ids:iface-id=lsp1
+
+wait_for_ports_up
+sleep_controller hv1
+check ovn-nbctl --wait=sb lsp-add ls0 lsp0
+check ovn-nbctl --wait=sb lsp-del lsp0
+wake_up_controller hv1
+AT_CHECK([check_logs [""] hv1])
+OVN_CLEANUP([hv1])
+
+AT_CLEANUP
+])
