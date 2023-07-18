@@ -250,11 +250,11 @@ m4_define([OVS_VSWITCHD_START],
 
 # check_logs scans through all *.log files (except '*.log' and '*testsuite.log')
 # and reports all WARN, ERR, EMER log entries.  User can add custom sed filters
-# in $1.
+# in $1 and select folder with $2.
 m4_divert_push([PREPARE_TESTS])
 check_logs () {
     local logs
-    for log in *.log; do
+    for log in ./$2/*.log; do
         case ${log} in # (
             '*.log'|*testsuite.log) ;; # (
             *) logs="${logs} ${log}" ;;
