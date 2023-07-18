@@ -47,6 +47,10 @@ m4_define([OVS_TRAFFIC_VSWITCHD_START],
    dnl Add bridges, ports, etc.
    OVS_WAIT_WHILE([ip link show br0])
    AT_CHECK([ovs-vsctl -- _ADD_BR([br0]) -- $1 m4_if([$2], [], [], [| uuidfilt])], [0], [$2])
+
+   if test OVN_MONITOR_ALL = yes; then
+        ovs-vsctl set open . external_ids:ovn-monitor-all=true
+   fi
 ])
 
 # OVS_TRAFFIC_VSWITCHD_STOP([WHITELIST], [extra_cmds])
