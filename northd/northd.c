@@ -11537,6 +11537,10 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
 {
     bool ipv4 = lb_vip->address_family == AF_INET;
     const char *ip_match = ipv4 ? "ip4" : "ip6";
+    char *aff_action[LROUTER_NAT_LB_FLOW_MAX] = {
+        [LROUTER_NAT_LB_FLOW_SKIP_SNAT]  = "flags.skip_snat_for_lb = 1; ",
+        [LROUTER_NAT_LB_FLOW_FORCE_SNAT] = "flags.force_snat_for_lb = 1; ",
+    };
 
     int prio = 110;
 
@@ -11611,15 +11615,13 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     ctx.new_action[LROUTER_NAT_LB_FLOW_SKIP_SNAT] = ds_cstr(&skip_snat_act);
     ctx.new_action[LROUTER_NAT_LB_FLOW_FORCE_SNAT] = ds_cstr(&force_snat_act);
 
-    enum {
-        LROUTER_NAT_LB_AFF            = LROUTER_NAT_LB_FLOW_MAX,
-        LROUTER_NAT_LB_AFF_FORCE_SNAT = LROUTER_NAT_LB_FLOW_MAX + 1,
-    };
-    unsigned long *dp_bitmap[LROUTER_NAT_LB_FLOW_MAX + 2];
+    unsigned long *gw_dp_bitmap[LROUTER_NAT_LB_FLOW_MAX];
+    unsigned long *aff_dp_bitmap[LROUTER_NAT_LB_FLOW_MAX];
 
     size_t bitmap_len = ods_size(lr_datapaths);
-    for (size_t i = 0; i < LROUTER_NAT_LB_FLOW_MAX + 2; i++) {
-        dp_bitmap[i] = bitmap_allocate(bitmap_len);
+    for (size_t i = 0; i < LROUTER_NAT_LB_FLOW_MAX; i++) {
+        gw_dp_bitmap[i] = bitmap_allocate(bitmap_len);
+        aff_dp_bitmap[i] = bitmap_allocate(bitmap_len);
     }
 
     /* Group gw router since we do not have datapath dependency in
@@ -11640,18 +11642,13 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
         }
 
         if (!od->n_l3dgw_ports) {
-            bitmap_set1(dp_bitmap[type], index);
+            bitmap_set1(gw_dp_bitmap[type], index);
         } else {
             build_distr_lrouter_nat_flows_for_lb(&ctx, type, od);
         }
 
         if (lb->affinity_timeout) {
-            if (!lport_addresses_is_empty(&od->lb_force_snat_addrs) ||
-                od->lb_force_snat_router_ip) {
-                bitmap_set1(dp_bitmap[LROUTER_NAT_LB_AFF_FORCE_SNAT], index);
-            } else {
-                bitmap_set1(dp_bitmap[LROUTER_NAT_LB_AFF], index);
-            }
+            bitmap_set1(aff_dp_bitmap[type], index);
         }
 
         if (sset_contains(&od->external_ips, lb_vip->vip_str)) {
@@ -11674,25 +11671,11 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
 
     for (size_t type = 0; type < LROUTER_NAT_LB_FLOW_MAX; type++) {
         build_gw_lrouter_nat_flows_for_lb(&ctx, type, lr_datapaths,
-                                          dp_bitmap[type]);
+                                          gw_dp_bitmap[type]);
+        build_lb_affinity_lr_flows(lflows, lb, lb_vip, ds_cstr(match),
+                                   aff_action[type], aff_dp_bitmap[type],
+                                   lr_datapaths);
     }
-
-    /* LB affinity flows for datapaths where CMS has specified
-     * force_snat_for_lb floag option.
-     */
-    build_lb_affinity_lr_flows(lflows, lb, lb_vip, ds_cstr(match),
-                               "flags.force_snat_for_lb = 1; ",
-                               dp_bitmap[LROUTER_NAT_LB_AFF_FORCE_SNAT],
-                               lr_datapaths);
-
-    /* LB affinity flows for datapaths where CMS has specified
-     * skip_snat_for_lb floag option or regular datapaths.
-     */
-    char *lb_aff_action =
-        lb->skip_snat ? "flags.skip_snat_for_lb = 1; " : NULL;
-    build_lb_affinity_lr_flows(lflows, lb, lb_vip, ds_cstr(match),
-                               lb_aff_action, dp_bitmap[LROUTER_NAT_LB_AFF],
-                               lr_datapaths);
 
     ds_destroy(&unsnat_match);
     ds_destroy(&undnat_match);
@@ -11700,8 +11683,9 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     ds_destroy(&force_snat_act);
     ds_destroy(&gw_redir_action);
 
-    for (size_t i = 0; i < LROUTER_NAT_LB_FLOW_MAX + 2; i++) {
-        bitmap_free(dp_bitmap[i]);
+    for (size_t i = 0; i < LROUTER_NAT_LB_FLOW_MAX; i++) {
+        bitmap_free(gw_dp_bitmap[i]);
+        bitmap_free(aff_dp_bitmap[i]);
     }
 }
 
