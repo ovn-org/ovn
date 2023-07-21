@@ -12804,12 +12804,24 @@ build_ND_RA_flows_for_lrouter_port(
         ds_clear(match);
         ds_put_format(match, "inport == %s && ip6.dst == ff02::2 && "
                       "nd_ra && "REGBIT_ND_RA_OPTS_RESULT, op->json_key);
-
         char ip6_str[INET6_ADDRSTRLEN + 1];
-        struct in6_addr lla;
-        in6_generate_lla(op->lrp_networks.ea, &lla);
-        memset(ip6_str, 0, sizeof(ip6_str));
-        ipv6_string_mapped(ip6_str, &lla);
+        bool ip6_found = false;
+        if (op->peer) {
+            for (size_t i = 0; i < op->peer->proxy_arp_addrs.n_ipv6_addrs; i++) {
+                if (op->peer->proxy_arp_addrs.ipv6_addrs[i].plen == 128 ){
+                    memset(ip6_str, 0, sizeof(ip6_str));
+                    memcpy(ip6_str, op->peer->proxy_arp_addrs.ipv6_addrs[0].addr_s, sizeof(ip6_str));
+                    ip6_found = true;
+                    break;
+                }
+            }
+        }
+        if (!ip6_found) {
+            struct in6_addr lla;
+            in6_generate_lla(op->lrp_networks.ea, &lla);
+            memset(ip6_str, 0, sizeof(ip6_str));
+            ipv6_string_mapped(ip6_str, &lla);
+        }
         ds_put_format(actions, "eth.dst = eth.src; eth.src = %s; "
                       "ip6.dst = ip6.src; ip6.src = %s; "
                       "outport = inport; flags.loopback = 1; "
