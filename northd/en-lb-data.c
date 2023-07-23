@@ -40,20 +40,30 @@ static void build_lbs(const struct nbrec_load_balancer_table *,
                       const struct nbrec_load_balancer_group_table *,
                       struct hmap *lbs, struct hmap *lb_groups);
 static void build_od_lb_map(const struct nbrec_logical_switch_table *,
-                             struct hmap *od_lb_map);
+                            const struct nbrec_logical_router_table *,
+                            struct hmap *ls_lb_map, struct hmap *lr_lb_map);
 static struct od_lb_data *find_od_lb_data(struct hmap *od_lb_map,
                                           const struct uuid *od_uuid);
 static void destroy_od_lb_data(struct od_lb_data *od_lb_data);
 static struct od_lb_data *create_od_lb_data(struct hmap *od_lb_map,
                                             const struct uuid *od_uuid);
+static void handle_od_lb_changes(struct nbrec_load_balancer **,
+                                 size_t n_nbrec_lbs,
+                                 struct od_lb_data *od_lb_data,
+                                 struct ed_type_lb_data *lb_data,
+                                 struct crupdated_od_lb_data *);
+static void handle_od_lbgrp_changes(struct nbrec_load_balancer_group **,
+                                    size_t n_nbrec_lbs,
+                                    struct od_lb_data *,
+                                    struct ed_type_lb_data *lb_data,
+                                    struct crupdated_od_lb_data *);
 
 static struct ovn_lb_group *create_lb_group(
     const struct nbrec_load_balancer_group *, struct hmap *lbs,
     struct hmap *lb_groups);
 static void destroy_tracked_data(struct ed_type_lb_data *);
-static void add_crupdated_lb_to_tracked_data(struct ovn_northd_lb *,
-                                                    struct tracked_lb_data *,
-                                                    bool health_checks);
+static struct crupdated_lb *add_crupdated_lb_to_tracked_data(
+    struct ovn_northd_lb *, struct tracked_lb_data *, bool health_checks);
 static void add_deleted_lb_to_tracked_data(struct ovn_northd_lb *,
                                                   struct tracked_lb_data *,
                                                   bool health_checks);
@@ -64,6 +74,8 @@ static void add_deleted_lbgrp_to_tracked_data(
     struct ovn_lb_group *, struct tracked_lb_data *);
 static bool is_ls_lbs_changed(const struct nbrec_logical_switch *nbs);
 static bool is_ls_lbgrps_changed(const struct nbrec_logical_switch *nbs);
+static bool is_lr_lbs_changed(const struct nbrec_logical_router *);
+static bool is_lr_lbgrps_changed(const struct nbrec_logical_router *);
 
 /* 'lb_data' engine node manages the NB load balancers and load balancer
  * groups.  For each NB LB, it creates 'struct ovn_northd_lb' and
@@ -92,10 +104,13 @@ en_lb_data_run(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("NB_load_balancer_group", node));
     const struct nbrec_logical_switch_table *nb_ls_table =
         EN_OVSDB_GET(engine_get_input("NB_logical_switch", node));
+    const struct nbrec_logical_router_table *nb_lr_table =
+        EN_OVSDB_GET(engine_get_input("NB_logical_router", node));
 
     lb_data->tracked = false;
     build_lbs(nb_lb_table, nb_lbg_table, &lb_data->lbs, &lb_data->lbgrps);
-    build_od_lb_map(nb_ls_table, &lb_data->ls_lb_map);
+    build_od_lb_map(nb_ls_table, nb_lr_table, &lb_data->ls_lb_map,
+                    &lb_data->lr_lb_map);
 
     engine_set_node_state(node, EN_UPDATED);
 }
@@ -137,6 +152,7 @@ lb_data_load_balancer_handler(struct engine_node *node, void *data)
                         uuid_hash(&tracked_lb->header_.uuid));
             add_crupdated_lb_to_tracked_data(lb, trk_lb_data,
                                              lb->health_checks);
+            trk_lb_data->has_routable_lb |= lb->routable;
         } else if (nbrec_load_balancer_is_deleted(tracked_lb)) {
             lb = ovn_northd_lb_find(&lb_data->lbs,
                                     &tracked_lb->header_.uuid);
@@ -144,15 +160,44 @@ lb_data_load_balancer_handler(struct engine_node *node, void *data)
             hmap_remove(&lb_data->lbs, &lb->hmap_node);
             add_deleted_lb_to_tracked_data(lb, trk_lb_data,
                                            lb->health_checks);
+            trk_lb_data->has_routable_lb |= lb->routable;
         } else {
             /* Load balancer updated. */
             lb = ovn_northd_lb_find(&lb_data->lbs,
                                     &tracked_lb->header_.uuid);
             ovs_assert(lb);
             bool health_checks = lb->health_checks;
+            struct sset old_ips_v4 = SSET_INITIALIZER(&old_ips_v4);
+            struct sset old_ips_v6 = SSET_INITIALIZER(&old_ips_v6);
+            sset_swap(&lb->ips_v4, &old_ips_v4);
+            sset_swap(&lb->ips_v6, &old_ips_v6);
             ovn_northd_lb_reinit(lb, tracked_lb);
             health_checks |= lb->health_checks;
-            add_crupdated_lb_to_tracked_data(lb, trk_lb_data, health_checks);
+            struct crupdated_lb *clb = add_crupdated_lb_to_tracked_data(
+                lb, trk_lb_data, health_checks);
+            trk_lb_data->has_routable_lb |= lb->routable;
+
+            /* Determine the inserted and deleted vips and store them in
+             * the tracked data. */
+            const char *vip;
+            SSET_FOR_EACH (vip, &lb->ips_v4) {
+                if (!sset_find_and_delete(&old_ips_v4, vip)) {
+                    sset_add(&clb->inserted_vips_v4, vip);
+                }
+            }
+
+            sset_swap(&old_ips_v4, &clb->deleted_vips_v4);
+
+            SSET_FOR_EACH (vip, &lb->ips_v6) {
+                if (!sset_find_and_delete(&old_ips_v6, vip)) {
+                    sset_add(&clb->inserted_vips_v6, vip);
+                }
+            }
+
+            sset_swap(&old_ips_v6, &clb->deleted_vips_v6);
+
+            sset_destroy(&old_ips_v4);
+            sset_destroy(&old_ips_v6);
         }
     }
 
@@ -181,6 +226,8 @@ lb_data_load_balancer_group_handler(struct engine_node *node, void *data)
             for (size_t i = 0; i < lb_group->n_lbs; i++) {
                 hmapx_add(&clbg->assoc_lbs, lb_group->lbs[i]);
             }
+
+            trk_lb_data->has_routable_lb |= lb_group->has_routable_lb;
         } else if (nbrec_load_balancer_group_is_deleted(tracked_lb_group)) {
             struct ovn_lb_group *lb_group;
             lb_group = ovn_lb_group_find(&lb_data->lbgrps,
@@ -188,6 +235,7 @@ lb_data_load_balancer_group_handler(struct engine_node *node, void *data)
             ovs_assert(lb_group);
             hmap_remove(&lb_data->lbgrps, &lb_group->hmap_node);
             add_deleted_lbgrp_to_tracked_data(lb_group, trk_lb_data);
+            trk_lb_data->has_routable_lb |= lb_group->has_routable_lb;
         } else {
 
             struct ovn_lb_group *lb_group;
@@ -209,6 +257,7 @@ lb_data_load_balancer_group_handler(struct engine_node *node, void *data)
                 build_lrouter_lb_ips(lb_group->lb_ips, lb_group->lbs[i]);
             }
 
+            trk_lb_data->has_routable_lb |= lb_group->has_routable_lb;
             struct crupdated_lbgrp *clbg =
                 add_crupdated_lbgrp_to_tracked_data(lb_group, trk_lb_data);
 
@@ -270,6 +319,7 @@ lb_data_logical_switch_handler(struct engine_node *node, void *data)
             if (!ls_lbs_changed && !ls_lbgrps_changed) {
                 continue;
             }
+            changed = true;
             struct crupdated_od_lb_data *codlb = xzalloc(sizeof *codlb);
             codlb->od_uuid = nbs->header_.uuid;
             uuidset_init(&codlb->assoc_lbs);
@@ -283,66 +333,77 @@ lb_data_logical_switch_handler(struct engine_node *node, void *data)
             }
 
             if (ls_lbs_changed) {
-                struct uuidset *pre_lb_uuids = od_lb_data->lbs;
-                od_lb_data->lbs = xzalloc(sizeof *od_lb_data->lbs);
-                uuidset_init(od_lb_data->lbs);
-
-                for (size_t i = 0; i < nbs->n_load_balancer; i++) {
-                    const struct uuid *lb_uuid =
-                        &nbs->load_balancer[i]->header_.uuid;
-                    uuidset_insert(od_lb_data->lbs, lb_uuid);
-
-                    struct uuidset_node *unode = uuidset_find(pre_lb_uuids,
-                                                            lb_uuid);
-
-                    if (!unode || (nbrec_load_balancer_row_get_seqno(
-                            nbs->load_balancer[i],
-                            OVSDB_IDL_CHANGE_MODIFY) > 0)) {
-                        /* Add this lb to the tracked data. */
-                        uuidset_insert(&codlb->assoc_lbs, lb_uuid);
-                        changed = true;
-                    }
-
-                    if (unode) {
-                        uuidset_delete(pre_lb_uuids, unode);
-                    }
-                }
-                if (!uuidset_is_empty(pre_lb_uuids)) {
-                    trk_lb_data->has_dissassoc_lbs_from_od = true;
-                    changed = true;
-                }
-
-                uuidset_destroy(pre_lb_uuids);
-                free(pre_lb_uuids);
+                handle_od_lb_changes(nbs->load_balancer, nbs->n_load_balancer,
+                                     od_lb_data, lb_data, codlb);
             }
 
             if (ls_lbgrps_changed) {
-                struct uuidset *pre_lbgrp_uuids = od_lb_data->lbgrps;
-                od_lb_data->lbgrps = xzalloc(sizeof *od_lb_data->lbgrps);
-                uuidset_init(od_lb_data->lbgrps);
-                for (size_t i = 0; i < nbs->n_load_balancer_group; i++) {
-                    const struct uuid *lbg_uuid =
-                        &nbs->load_balancer_group[i]->header_.uuid;
-                    uuidset_insert(od_lb_data->lbgrps, lbg_uuid);
-
-                    if (!uuidset_find_and_delete(pre_lbgrp_uuids,
-                                                 lbg_uuid)) {
-                        /* Add this lb group to the tracked data. */
-                        uuidset_insert(&codlb->assoc_lbgrps, lbg_uuid);
-                        changed = true;
-                    }
-                }
-
-                if (!uuidset_is_empty(pre_lbgrp_uuids)) {
-                    trk_lb_data->has_dissassoc_lbgrps_from_od = true;
-                    changed = true;
-                }
-
-                uuidset_destroy(pre_lbgrp_uuids);
-                free(pre_lbgrp_uuids);
+                handle_od_lbgrp_changes(nbs->load_balancer_group,
+                                        nbs->n_load_balancer_group,
+                                        od_lb_data, lb_data, codlb);
             }
 
             ovs_list_insert(&trk_lb_data->crupdated_ls_lbs, &codlb->list_node);
+        }
+    }
+
+    if (changed) {
+        engine_set_node_state(node, EN_UPDATED);
+    }
+    return true;
+}
+
+bool
+lb_data_logical_router_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_lb_data *lb_data = (struct ed_type_lb_data *) data;
+    const struct nbrec_logical_router_table *nbrec_lr_table =
+        EN_OVSDB_GET(engine_get_input("NB_logical_router", node));
+
+    struct tracked_lb_data *trk_lb_data = &lb_data->tracked_lb_data;
+    lb_data->tracked = true;
+
+    bool changed = false;
+    const struct nbrec_logical_router *nbr;
+    NBREC_LOGICAL_ROUTER_TABLE_FOR_EACH_TRACKED (nbr, nbrec_lr_table) {
+        if (nbrec_logical_router_is_deleted(nbr)) {
+            struct od_lb_data *od_lb_data =
+                find_od_lb_data(&lb_data->lr_lb_map, &nbr->header_.uuid);
+            if (od_lb_data) {
+                hmap_remove(&lb_data->lr_lb_map, &od_lb_data->hmap_node);
+                hmapx_add(&trk_lb_data->deleted_od_lb_data, od_lb_data);
+            }
+        } else {
+            bool lr_lbs_changed = is_lr_lbs_changed(nbr);
+            bool lr_lbgrps_changed = is_lr_lbgrps_changed(nbr);
+            if (!lr_lbs_changed && !lr_lbgrps_changed) {
+                continue;
+            }
+            changed = true;
+            struct crupdated_od_lb_data *codlb = xzalloc(sizeof *codlb);
+            codlb->od_uuid = nbr->header_.uuid;
+            uuidset_init(&codlb->assoc_lbs);
+            uuidset_init(&codlb->assoc_lbgrps);
+
+            struct od_lb_data *od_lb_data =
+                find_od_lb_data(&lb_data->lr_lb_map, &nbr->header_.uuid);
+            if (!od_lb_data) {
+                od_lb_data = create_od_lb_data(&lb_data->lr_lb_map,
+                                                &nbr->header_.uuid);
+            }
+
+            if (lr_lbs_changed) {
+                handle_od_lb_changes(nbr->load_balancer, nbr->n_load_balancer,
+                                     od_lb_data, lb_data, codlb);
+            }
+
+            if (lr_lbgrps_changed) {
+                handle_od_lbgrp_changes(nbr->load_balancer_group,
+                                        nbr->n_load_balancer_group,
+                                        od_lb_data, lb_data, codlb);
+            }
+
+            ovs_list_insert(&trk_lb_data->crupdated_lr_lbs, &codlb->list_node);
         }
     }
 
@@ -359,6 +420,7 @@ lb_data_init(struct ed_type_lb_data *lb_data)
     hmap_init(&lb_data->lbs);
     hmap_init(&lb_data->lbgrps);
     hmap_init(&lb_data->ls_lb_map);
+    hmap_init(&lb_data->lr_lb_map);
 
     struct tracked_lb_data *trk_lb_data = &lb_data->tracked_lb_data;
     hmap_init(&trk_lb_data->crupdated_lbs);
@@ -366,6 +428,7 @@ lb_data_init(struct ed_type_lb_data *lb_data)
     hmap_init(&trk_lb_data->crupdated_lbgrps);
     hmapx_init(&trk_lb_data->deleted_lbgrps);
     ovs_list_init(&trk_lb_data->crupdated_ls_lbs);
+    ovs_list_init(&trk_lb_data->crupdated_lr_lbs);
     hmapx_init(&trk_lb_data->deleted_od_lb_data);
 }
 
@@ -389,6 +452,11 @@ lb_data_destroy(struct ed_type_lb_data *lb_data)
         destroy_od_lb_data(od_lb_data);
     }
     hmap_destroy(&lb_data->ls_lb_map);
+
+    HMAP_FOR_EACH_POP (od_lb_data, hmap_node, &lb_data->lr_lb_map) {
+        destroy_od_lb_data(od_lb_data);
+    }
+    hmap_destroy(&lb_data->lr_lb_map);
 
     destroy_tracked_data(lb_data);
     hmap_destroy(&lb_data->tracked_lb_data.crupdated_lbs);
@@ -435,7 +503,8 @@ create_lb_group(const struct nbrec_load_balancer_group *nbrec_lb_group,
 
 static void
 build_od_lb_map(const struct nbrec_logical_switch_table *nbrec_ls_table,
-                 struct hmap *od_lb_map)
+                const struct nbrec_logical_router_table *nbrec_lr_table,
+                struct hmap *ls_lb_map, struct hmap *lr_lb_map)
 {
     const struct nbrec_logical_switch *nbrec_ls;
     NBREC_LOGICAL_SWITCH_TABLE_FOR_EACH (nbrec_ls, nbrec_ls_table) {
@@ -443,15 +512,33 @@ build_od_lb_map(const struct nbrec_logical_switch_table *nbrec_ls_table,
             continue;
         }
 
-        struct od_lb_data *od_lb_data =
-            create_od_lb_data(od_lb_map, &nbrec_ls->header_.uuid);
+        struct od_lb_data *ls_lb_data =
+            create_od_lb_data(ls_lb_map, &nbrec_ls->header_.uuid);
         for (size_t i = 0; i < nbrec_ls->n_load_balancer; i++) {
-            uuidset_insert(od_lb_data->lbs,
+            uuidset_insert(ls_lb_data->lbs,
                            &nbrec_ls->load_balancer[i]->header_.uuid);
         }
         for (size_t i = 0; i < nbrec_ls->n_load_balancer_group; i++) {
-            uuidset_insert(od_lb_data->lbgrps,
+            uuidset_insert(ls_lb_data->lbgrps,
                            &nbrec_ls->load_balancer_group[i]->header_.uuid);
+        }
+    }
+
+    const struct nbrec_logical_router *nbrec_lr;
+    NBREC_LOGICAL_ROUTER_TABLE_FOR_EACH (nbrec_lr, nbrec_lr_table) {
+        if (!nbrec_lr->n_load_balancer && !nbrec_lr->n_load_balancer_group) {
+            continue;
+        }
+
+        struct od_lb_data *lr_lb_data =
+            create_od_lb_data(lr_lb_map, &nbrec_lr->header_.uuid);
+        for (size_t i = 0; i < nbrec_lr->n_load_balancer; i++) {
+            uuidset_insert(lr_lb_data->lbs,
+                           &nbrec_lr->load_balancer[i]->header_.uuid);
+        }
+        for (size_t i = 0; i < nbrec_lr->n_load_balancer_group; i++) {
+            uuidset_insert(lr_lb_data->lbgrps,
+                           &nbrec_lr->load_balancer_group[i]->header_.uuid);
         }
     }
 }
@@ -496,6 +583,84 @@ destroy_od_lb_data(struct od_lb_data *od_lb_data)
 }
 
 static void
+handle_od_lb_changes(struct nbrec_load_balancer **nbrec_lbs,
+                     size_t n_nbrec_lbs, struct od_lb_data *od_lb_data,
+                     struct ed_type_lb_data *lb_data,
+                     struct crupdated_od_lb_data *codlb)
+{
+    struct tracked_lb_data *trk_lb_data = &lb_data->tracked_lb_data;
+    struct uuidset *pre_lb_uuids = od_lb_data->lbs;
+    od_lb_data->lbs = xzalloc(sizeof *od_lb_data->lbs);
+    uuidset_init(od_lb_data->lbs);
+
+    for (size_t i = 0; i < n_nbrec_lbs; i++) {
+        const struct uuid *lb_uuid = &nbrec_lbs[i]->header_.uuid;
+        uuidset_insert(od_lb_data->lbs, lb_uuid);
+
+        struct uuidset_node *unode = uuidset_find(pre_lb_uuids, lb_uuid);
+
+        if (!unode || (nbrec_load_balancer_row_get_seqno(
+                nbrec_lbs[i], OVSDB_IDL_CHANGE_MODIFY) > 0)) {
+            /* Add this lb to the tracked data. */
+            uuidset_insert(&codlb->assoc_lbs, lb_uuid);
+
+            if (!trk_lb_data->has_routable_lb) {
+                struct ovn_northd_lb *lb = ovn_northd_lb_find(&lb_data->lbs,
+                                                              lb_uuid);
+                ovs_assert(lb);
+                trk_lb_data->has_routable_lb |= lb->routable;
+            }
+        }
+
+        if (unode) {
+            uuidset_delete(pre_lb_uuids, unode);
+        }
+    }
+
+    if (!uuidset_is_empty(pre_lb_uuids)) {
+        trk_lb_data->has_dissassoc_lbs_from_od = true;
+    }
+
+    uuidset_destroy(pre_lb_uuids);
+    free(pre_lb_uuids);
+}
+
+static void
+handle_od_lbgrp_changes(struct nbrec_load_balancer_group **nbrec_lbgrps,
+                        size_t n_nbrec_lbgrps, struct od_lb_data *od_lb_data,
+                        struct ed_type_lb_data *lb_data,
+                        struct crupdated_od_lb_data *codlb)
+{
+    struct tracked_lb_data *trk_lb_data = &lb_data->tracked_lb_data;
+    struct uuidset *pre_lbgrp_uuids = od_lb_data->lbgrps;
+    od_lb_data->lbgrps = xzalloc(sizeof *od_lb_data->lbgrps);
+    uuidset_init(od_lb_data->lbgrps);
+    for (size_t i = 0; i < n_nbrec_lbgrps; i++) {
+        const struct uuid *lbgrp_uuid = &nbrec_lbgrps[i]->header_.uuid;
+        uuidset_insert(od_lb_data->lbgrps, lbgrp_uuid);
+
+        if (!uuidset_find_and_delete(pre_lbgrp_uuids, lbgrp_uuid)) {
+            /* Add this lb group to the tracked data. */
+            uuidset_insert(&codlb->assoc_lbgrps, lbgrp_uuid);
+
+            if (!trk_lb_data->has_routable_lb) {
+                struct ovn_lb_group *lbgrp =
+                    ovn_lb_group_find(&lb_data->lbgrps, lbgrp_uuid);
+                ovs_assert(lbgrp);
+                trk_lb_data->has_routable_lb |= lbgrp->has_routable_lb;
+            }
+        }
+    }
+
+    if (!uuidset_is_empty(pre_lbgrp_uuids)) {
+        trk_lb_data->has_dissassoc_lbgrps_from_od = true;
+    }
+
+    uuidset_destroy(pre_lbgrp_uuids);
+    free(pre_lbgrp_uuids);
+}
+
+static void
 destroy_tracked_data(struct ed_type_lb_data *lb_data)
 {
     lb_data->tracked = false;
@@ -503,6 +668,7 @@ destroy_tracked_data(struct ed_type_lb_data *lb_data)
     lb_data->tracked_lb_data.has_dissassoc_lbs_from_lbgrps = false;
     lb_data->tracked_lb_data.has_dissassoc_lbs_from_od = false;
     lb_data->tracked_lb_data.has_dissassoc_lbgrps_from_od = false;
+    lb_data->tracked_lb_data.has_routable_lb = false;
 
     struct hmapx_node *node;
     HMAPX_FOR_EACH_SAFE (node, &lb_data->tracked_lb_data.deleted_lbs) {
@@ -518,6 +684,10 @@ destroy_tracked_data(struct ed_type_lb_data *lb_data)
     struct crupdated_lb *clb;
     HMAP_FOR_EACH_POP (clb, hmap_node,
                        &lb_data->tracked_lb_data.crupdated_lbs) {
+        sset_destroy(&clb->inserted_vips_v4);
+        sset_destroy(&clb->inserted_vips_v6);
+        sset_destroy(&clb->deleted_vips_v4);
+        sset_destroy(&clb->deleted_vips_v6);
         free(clb);
     }
 
@@ -537,13 +707,21 @@ destroy_tracked_data(struct ed_type_lb_data *lb_data)
         free(codlb);
     }
 
+    LIST_FOR_EACH_SAFE (codlb, list_node,
+                        &lb_data->tracked_lb_data.crupdated_lr_lbs) {
+        ovs_list_remove(&codlb->list_node);
+        uuidset_destroy(&codlb->assoc_lbs);
+        uuidset_destroy(&codlb->assoc_lbgrps);
+        free(codlb);
+    }
+
     HMAPX_FOR_EACH_SAFE (node, &lb_data->tracked_lb_data.deleted_od_lb_data) {
         destroy_od_lb_data(node->data);
         hmapx_delete(&lb_data->tracked_lb_data.deleted_od_lb_data, node);
     }
 }
 
-static void
+static struct crupdated_lb *
 add_crupdated_lb_to_tracked_data(struct ovn_northd_lb *lb,
                                  struct tracked_lb_data *tracked_lb_data,
                                  bool health_checks)
@@ -552,9 +730,15 @@ add_crupdated_lb_to_tracked_data(struct ovn_northd_lb *lb,
     clb->lb = lb;
     hmap_insert(&tracked_lb_data->crupdated_lbs, &clb->hmap_node,
                 uuid_hash(&lb->nlb->header_.uuid));
+    sset_init(&clb->inserted_vips_v4);
+    sset_init(&clb->inserted_vips_v6);
+    sset_init(&clb->deleted_vips_v4);
+    sset_init(&clb->deleted_vips_v6);
     if (health_checks) {
         tracked_lb_data->has_health_checks = true;
     }
+
+    return clb;
 }
 
 static void
@@ -599,4 +783,18 @@ is_ls_lbgrps_changed(const struct nbrec_logical_switch *nbs) {
     return ((nbrec_logical_switch_is_new(nbs) && nbs->n_load_balancer_group)
             ||  nbrec_logical_switch_is_updated(nbs,
                         NBREC_LOGICAL_SWITCH_COL_LOAD_BALANCER_GROUP));
+}
+
+static bool
+is_lr_lbs_changed(const struct nbrec_logical_router *nbr) {
+    return ((nbrec_logical_router_is_new(nbr) && nbr->n_load_balancer)
+            ||  nbrec_logical_router_is_updated(nbr,
+                        NBREC_LOGICAL_ROUTER_COL_LOAD_BALANCER));
+}
+
+static bool
+is_lr_lbgrps_changed(const struct nbrec_logical_router *nbr) {
+    return ((nbrec_logical_router_is_new(nbr) && nbr->n_load_balancer_group)
+            ||  nbrec_logical_router_is_updated(nbr,
+                        NBREC_LOGICAL_ROUTER_COL_LOAD_BALANCER_GROUP));
 }

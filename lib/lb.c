@@ -794,6 +794,7 @@ ovn_lb_group_init(struct ovn_lb_group *lb_group,
         const struct uuid *lb_uuid =
             &nbrec_lb_group->load_balancer[i]->header_.uuid;
         lb_group->lbs[i] = ovn_northd_lb_find(lbs, lb_uuid);
+        lb_group->has_routable_lb |= lb_group->lbs[i]->routable;
     }
 }
 
@@ -815,6 +816,7 @@ ovn_lb_group_cleanup(struct ovn_lb_group *lb_group)
 {
     ovn_lb_ip_set_destroy(lb_group->lb_ips);
     lb_group->lb_ips = NULL;
+    lb_group->has_routable_lb = false;
     free(lb_group->lbs);
 }
 
@@ -1023,18 +1025,49 @@ void
 build_lrouter_lb_ips(struct ovn_lb_ip_set *lb_ips,
                      const struct ovn_northd_lb *lb)
 {
+    add_ips_to_lb_ip_set(lb_ips, lb->routable, &lb->ips_v4, &lb->ips_v6);
+}
+
+void
+add_ips_to_lb_ip_set(struct ovn_lb_ip_set *lb_ips,
+                     bool is_routable,
+                     const struct sset *lb_ips_v4,
+                     const struct sset *lb_ips_v6)
+{
     const char *ip_address;
 
-    SSET_FOR_EACH (ip_address, &lb->ips_v4) {
+    SSET_FOR_EACH (ip_address, lb_ips_v4) {
         sset_add(&lb_ips->ips_v4, ip_address);
-        if (lb->routable) {
+        if (is_routable) {
             sset_add(&lb_ips->ips_v4_routable, ip_address);
         }
     }
-    SSET_FOR_EACH (ip_address, &lb->ips_v6) {
+    SSET_FOR_EACH (ip_address, lb_ips_v6) {
         sset_add(&lb_ips->ips_v6, ip_address);
-        if (lb->routable) {
+        if (is_routable) {
             sset_add(&lb_ips->ips_v6_routable, ip_address);
+        }
+    }
+}
+
+void
+remove_ips_from_lb_ip_set(struct ovn_lb_ip_set *lb_ips,
+                          bool is_routable,
+                          const struct sset *lb_ips_v4,
+                          const struct sset *lb_ips_v6)
+{
+    const char *ip_address;
+
+    SSET_FOR_EACH (ip_address, lb_ips_v4) {
+        sset_find_and_delete(&lb_ips->ips_v4, ip_address);
+        if (is_routable) {
+            sset_find_and_delete(&lb_ips->ips_v4_routable, ip_address);
+        }
+    }
+    SSET_FOR_EACH (ip_address, lb_ips_v6) {
+        sset_find_and_delete(&lb_ips->ips_v6, ip_address);
+        if (is_routable) {
+            sset_find_and_delete(&lb_ips->ips_v6_routable, ip_address);
         }
     }
 }
@@ -1079,7 +1112,10 @@ ovn_lb_datapaths_add_lr(struct ovn_lb_datapaths *lb_dps, size_t n,
                         struct ovn_datapath **ods)
 {
     for (size_t i = 0; i < n; i++) {
-        bitmap_set1(lb_dps->nb_lr_map, ods[i]->index);
+        if (!bitmap_is_set(lb_dps->nb_lr_map, ods[i]->index)) {
+            bitmap_set1(lb_dps->nb_lr_map, ods[i]->index);
+            lb_dps->n_nb_lr++;
+        }
     }
 }
 
