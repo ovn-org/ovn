@@ -33,6 +33,7 @@ struct crupdated_od_lb_data {
 
     struct uuid od_uuid;
     struct uuidset assoc_lbs;
+    struct uuidset assoc_lbgrps;
 };
 
 struct tracked_lb_data {
@@ -66,6 +67,9 @@ struct tracked_lb_data {
 
     /* Indicates if a lb was disassociated from a logical switch. */
     bool has_dissassoc_lbs_from_od;
+
+    /* Indicates if a lb group was disassociated from a logical switch. */
+    bool has_dissassoc_lbgrps_from_od;
 };
 
 /* Datapath (logical switch) to lb/lbgrp association data. */
