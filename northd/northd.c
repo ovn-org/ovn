@@ -4167,60 +4167,97 @@ static bool lrouter_port_ipv4_reachable(const struct ovn_port *op,
                                         ovs_be32 addr);
 static bool lrouter_port_ipv6_reachable(const struct ovn_port *op,
                                         const struct in6_addr *addr);
+
 static void
-build_lrouter_lb_reachable_ips(struct ovn_datapath *od,
-                               const struct ovn_northd_lb *lb)
+add_neigh_ips_to_lrouter(struct ovn_datapath *od,
+                         enum lb_neighbor_responder_mode neigh_mode,
+                         const struct sset *lb_ips_v4,
+                         const struct sset *lb_ips_v6)
 {
     /* If configured to not reply to any neighbor requests for all VIPs
      * return early.
      */
-    if (lb->neigh_mode == LB_NEIGH_RESPOND_NONE) {
+    if (neigh_mode == LB_NEIGH_RESPOND_NONE) {
         return;
     }
+
+    const char *ip_address;
 
     /* If configured to reply to neighbor requests for all VIPs force them
      * all to be considered "reachable".
      */
-    if (lb->neigh_mode == LB_NEIGH_RESPOND_ALL) {
-        for (size_t i = 0; i < lb->n_vips; i++) {
-            if (lb->vips[i].address_family == AF_INET) {
-                sset_add(&od->lb_ips->ips_v4_reachable, lb->vips[i].vip_str);
-            } else {
-                sset_add(&od->lb_ips->ips_v6_reachable, lb->vips[i].vip_str);
-            }
+    if (neigh_mode == LB_NEIGH_RESPOND_ALL) {
+        SSET_FOR_EACH (ip_address, lb_ips_v4) {
+            sset_add(&od->lb_ips->ips_v4_reachable, ip_address);
         }
+        SSET_FOR_EACH (ip_address, lb_ips_v6) {
+            sset_add(&od->lb_ips->ips_v6_reachable, ip_address);
+        }
+
         return;
     }
 
     /* Otherwise, a VIP is reachable if there's at least one router
      * subnet that includes it.
      */
-    ovs_assert(lb->neigh_mode == LB_NEIGH_RESPOND_REACHABLE);
-    for (size_t i = 0; i < lb->n_vips; i++) {
-        if (lb->vips[i].address_family == AF_INET) {
-            ovs_be32 vip_ip4 = in6_addr_get_mapped_ipv4(&lb->vips[i].vip);
-            struct ovn_port *op;
+    ovs_assert(neigh_mode == LB_NEIGH_RESPOND_REACHABLE);
 
+    SSET_FOR_EACH (ip_address, lb_ips_v4) {
+        struct ovn_port *op;
+        ovs_be32 vip_ip4;
+        if (ip_parse(ip_address, &vip_ip4)) {
             HMAP_FOR_EACH (op, dp_node, &od->ports) {
                 if (lrouter_port_ipv4_reachable(op, vip_ip4)) {
                     sset_add(&od->lb_ips->ips_v4_reachable,
-                             lb->vips[i].vip_str);
+                             ip_address);
                     break;
                 }
             }
-        } else {
-            struct ovn_port *op;
+        }
+    }
 
+    SSET_FOR_EACH (ip_address, lb_ips_v6) {
+        struct ovn_port *op;
+        struct in6_addr vip;
+        if (ipv6_parse(ip_address, &vip)) {
             HMAP_FOR_EACH (op, dp_node, &od->ports) {
-                if (lrouter_port_ipv6_reachable(op, &lb->vips[i].vip)) {
+                if (lrouter_port_ipv6_reachable(op, &vip)) {
                     sset_add(&od->lb_ips->ips_v6_reachable,
-                             lb->vips[i].vip_str);
+                             ip_address);
                     break;
                 }
             }
         }
     }
 }
+
+static void
+remove_lrouter_lb_reachable_ips(struct ovn_datapath *od,
+                                enum lb_neighbor_responder_mode neigh_mode,
+                                const struct sset *lb_ips_v4,
+                                const struct sset *lb_ips_v6)
+{
+    if (neigh_mode == LB_NEIGH_RESPOND_NONE) {
+        return;
+    }
+
+    const char *ip_address;
+    SSET_FOR_EACH (ip_address, lb_ips_v4) {
+        sset_find_and_delete(&od->lb_ips->ips_v4_reachable, ip_address);
+    }
+    SSET_FOR_EACH (ip_address, lb_ips_v6) {
+        sset_find_and_delete(&od->lb_ips->ips_v6_reachable, ip_address);
+    }
+}
+
+static void
+build_lrouter_lb_reachable_ips(struct ovn_datapath *od,
+                               const struct ovn_northd_lb *lb)
+{
+    add_neigh_ips_to_lrouter(od, lb->neigh_mode, &lb->ips_v4,
+                             &lb->ips_v6);
+}
+
 
 static void
 build_lrouter_lbs_check(const struct ovn_datapaths *lr_datapaths)
@@ -5419,6 +5456,95 @@ fail:
     return false;
 }
 
+/* Returns true if the logical router has changes which can be
+ * incrementally handled.
+ * Presently supports i-p for the below changes:
+ *    - load balancers and load balancer groups.
+ */
+static bool
+lr_changes_can_be_handled(
+    const struct nbrec_logical_router *lr)
+{
+    /* Check if the columns are changed in this row. */
+    enum nbrec_logical_router_column_id col;
+    for (col = 0; col < NBREC_LOGICAL_ROUTER_N_COLUMNS; col++) {
+        if (nbrec_logical_router_is_updated(lr, col)) {
+            if (col == NBREC_LOGICAL_ROUTER_COL_LOAD_BALANCER ||
+                col == NBREC_LOGICAL_ROUTER_COL_LOAD_BALANCER_GROUP) {
+                continue;
+            }
+            return false;
+        }
+    }
+
+    /* Check if the referenced rows are changed.
+       XXX: Need a better OVSDB IDL interface for this check. */
+    for (size_t i = 0; i < lr->n_ports; i++) {
+        if (nbrec_logical_router_port_row_get_seqno(lr->ports[i],
+                                OVSDB_IDL_CHANGE_MODIFY) > 0) {
+            return false;
+        }
+    }
+    if (lr->copp && nbrec_copp_row_get_seqno(lr->copp,
+                                OVSDB_IDL_CHANGE_MODIFY) > 0) {
+        return false;
+    }
+    for (size_t i = 0; i < lr->n_nat; i++) {
+        if (nbrec_nat_row_get_seqno(lr->nat[i],
+                                OVSDB_IDL_CHANGE_MODIFY) > 0) {
+            return false;
+        }
+    }
+    for (size_t i = 0; i < lr->n_policies; i++) {
+        if (nbrec_logical_router_policy_row_get_seqno(lr->policies[i],
+                                OVSDB_IDL_CHANGE_MODIFY) > 0) {
+            return false;
+        }
+    }
+    for (size_t i = 0; i < lr->n_static_routes; i++) {
+        if (nbrec_logical_router_static_route_row_get_seqno(
+            lr->static_routes[i], OVSDB_IDL_CHANGE_MODIFY) > 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Return true if changes are handled incrementally, false otherwise.
+ * When there are any changes, try to track what's exactly changed and set
+ * northd_data->change_tracked accordingly: change tracked - true, otherwise,
+ * false.
+ * Note: Changes to load balancer and load balancer groups associated with
+ * the logical routers are handled separately in the lb_data change
+ * handlers (northd_handle_lb_data_changes_pre_od and
+ * northd_handle_lb_data_changes_post_od).
+ * */
+bool
+northd_handle_lr_changes(const struct northd_input *ni,
+                         struct northd_data *nd)
+{
+    const struct nbrec_logical_router *changed_lr;
+
+    NBREC_LOGICAL_ROUTER_TABLE_FOR_EACH_TRACKED (changed_lr,
+                                             ni->nbrec_logical_router_table) {
+        if (nbrec_logical_router_is_new(changed_lr) ||
+            nbrec_logical_router_is_deleted(changed_lr)) {
+            goto fail;
+        }
+
+        /* Presently only able to handle load balancer and
+         * load balancer group changes. */
+        if (!lr_changes_can_be_handled(changed_lr)) {
+            goto fail;
+        }
+    }
+
+    return true;
+fail:
+    destroy_northd_data_tracked_changes(nd);
+    return false;
+}
+
 bool
 northd_handle_sb_port_binding_changes(
     const struct sbrec_port_binding_table *sbrec_port_binding_table,
@@ -5535,6 +5661,10 @@ northd_handle_lb_data_changes(struct tracked_lb_data *trk_lb_data,
         return false;
     }
 
+    if (trk_lb_data->has_routable_lb) {
+        return false;
+    }
+
     struct ovn_lb_datapaths *lb_dps;
     struct ovn_northd_lb *lb;
     struct ovn_datapath *od;
@@ -5625,6 +5755,45 @@ northd_handle_lb_data_changes(struct tracked_lb_data *trk_lb_data,
         init_lb_for_datapath(od);
     }
 
+    LIST_FOR_EACH (codlb, list_node, &trk_lb_data->crupdated_lr_lbs) {
+        od = ovn_datapath_find(&lr_datapaths->datapaths, &codlb->od_uuid);
+        ovs_assert(od);
+
+        struct uuidset_node *uuidnode;
+        UUIDSET_FOR_EACH (uuidnode, &codlb->assoc_lbs) {
+            lb_dps = ovn_lb_datapaths_find(lb_datapaths_map, &uuidnode->uuid);
+            ovs_assert(lb_dps);
+            ovn_lb_datapaths_add_lr(lb_dps, 1, &od);
+
+            /* Add the lb_ips of lb_dps to the od. */
+            build_lrouter_lb_ips(od->lb_ips, lb_dps->lb);
+            build_lrouter_lb_reachable_ips(od, lb_dps->lb);
+        }
+
+        UUIDSET_FOR_EACH (uuidnode, &codlb->assoc_lbgrps) {
+            lbgrp_dps = ovn_lb_group_datapaths_find(lbgrp_datapaths_map,
+                                                    &uuidnode->uuid);
+            ovs_assert(lbgrp_dps);
+            ovn_lb_group_datapaths_add_lr(lbgrp_dps, od);
+
+            /* Associate all the lbs of the lbgrp to the datapath 'od' */
+            for (size_t j = 0; j < lbgrp_dps->lb_group->n_lbs; j++) {
+                const struct uuid *lb_uuid
+                    = &lbgrp_dps->lb_group->lbs[j]->nlb->header_.uuid;
+                lb_dps = ovn_lb_datapaths_find(lb_datapaths_map, lb_uuid);
+                ovs_assert(lb_dps);
+                ovn_lb_datapaths_add_lr(lb_dps, 1, &od);
+
+                /* Add the lb_ips of lb_dps to the od. */
+                build_lrouter_lb_ips(od->lb_ips, lb_dps->lb);
+                build_lrouter_lb_reachable_ips(od, lb_dps->lb);
+            }
+        }
+
+        /* Re-evaluate 'od->has_lb_vip' */
+        init_lb_for_datapath(od);
+    }
+
     HMAP_FOR_EACH (clb, hmap_node, &trk_lb_data->crupdated_lbs) {
         lb = clb->lb;
         const struct uuid *lb_uuid = &lb->nlb->header_.uuid;
@@ -5637,6 +5806,29 @@ northd_handle_lb_data_changes(struct tracked_lb_data *trk_lb_data,
             od = ls_datapaths->array[index];
             /* Re-evaluate 'od->has_lb_vip' */
             init_lb_for_datapath(od);
+        }
+
+        BITMAP_FOR_EACH_1 (index, ods_size(lr_datapaths),
+                           lb_dps->nb_lr_map) {
+            od = lr_datapaths->array[index];
+            /* Re-evaluate 'od->has_lb_vip' */
+            init_lb_for_datapath(od);
+
+            /* Update the od->lb_ips with the deleted and inserted
+             * vips (if any). */
+            remove_ips_from_lb_ip_set(od->lb_ips, lb->routable,
+                                      &clb->deleted_vips_v4,
+                                      &clb->deleted_vips_v6);
+            add_ips_to_lb_ip_set(od->lb_ips, lb->routable,
+                                 &clb->inserted_vips_v4,
+                                 &clb->inserted_vips_v6);
+
+            remove_lrouter_lb_reachable_ips(od, lb->neigh_mode,
+                                            &clb->deleted_vips_v4,
+                                            &clb->deleted_vips_v6);
+            add_neigh_ips_to_lrouter(od, lb->neigh_mode,
+                                     &clb->inserted_vips_v4,
+                                     &clb->inserted_vips_v6);
         }
     }
 
@@ -5655,8 +5847,19 @@ northd_handle_lb_data_changes(struct tracked_lb_data *trk_lb_data,
             lb_uuid = &lb->nlb->header_.uuid;
             lb_dps = ovn_lb_datapaths_find(lb_datapaths_map, lb_uuid);
             ovs_assert(lb_dps);
+            for (size_t i = 0; i < lbgrp_dps->n_lr; i++) {
+                od = lbgrp_dps->lr[i];
+                ovn_lb_datapaths_add_lr(lb_dps, 1, &od);
+
+                /* Re-evaluate 'od->has_lb_vip' */
+                init_lb_for_datapath(od);
+
+                /* Add the lb_ips of lb_dps to the od. */
+                build_lrouter_lb_ips(od->lb_ips, lb_dps->lb);
+            }
+
             for (size_t i = 0; i < lbgrp_dps->n_ls; i++) {
-                od = lbgrp_dps->ls[i];
+               od = lbgrp_dps->ls[i];
                 ovn_lb_datapaths_add_ls(lb_dps, 1, &od);
 
                 /* Re-evaluate 'od->has_lb_vip' */

@@ -328,6 +328,8 @@ void ovnsb_db_run(struct ovsdb_idl_txn *ovnnb_txn,
 bool northd_handle_ls_changes(struct ovsdb_idl_txn *,
                               const struct northd_input *,
                               struct northd_data *);
+bool northd_handle_lr_changes(const struct northd_input *,
+                              struct northd_data *);
 void destroy_northd_data_tracked_changes(struct northd_data *);
 void northd_destroy(struct northd_data *data);
 void northd_init(struct northd_data *data);

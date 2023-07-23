@@ -138,6 +138,14 @@ void ovn_northd_lb_reinit(struct ovn_northd_lb *,
 
 void build_lrouter_lb_ips(struct ovn_lb_ip_set *,
                           const struct ovn_northd_lb *);
+void add_ips_to_lb_ip_set(struct ovn_lb_ip_set *lb_ips,
+                          bool is_routable,
+                          const struct sset *lb_ips_v4,
+                          const struct sset *lb_ips_v6);
+void remove_ips_from_lb_ip_set(struct ovn_lb_ip_set *lb_ips,
+                               bool is_routable,
+                               const struct sset *lb_ips_v4,
+                               const struct sset *lb_ips_v6);
 
 struct ovn_lb_group {
     struct hmap_node hmap_node;
@@ -145,6 +153,7 @@ struct ovn_lb_group {
     size_t n_lbs;
     struct ovn_northd_lb **lbs;
     struct ovn_lb_ip_set *lb_ips;
+    bool has_routable_lb;
 };
 
 struct ovn_lb_group *ovn_lb_group_create(
