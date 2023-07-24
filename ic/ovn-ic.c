@@ -106,11 +106,16 @@ Options:\n\
                             (default: %s)\n\
   --ovnsb-db=DATABASE       connect to ovn-sb database at DATABASE\n\
                             (default: %s)\n\
+  --ic-nb-db=DATABASE       connect to ovn-ic-nb database at DATABASE\n\
+                            (default: %s)\n\
+  --ic-sb-db=DATABASE       connect to ovn-ic-sb database at DATABASE\n\
+                            (default: %s)\n\
   --unixctl=SOCKET          override default control socket name\n\
   -h, --help                display this help message\n\
   -o, --options             list available options\n\
   -V, --version             display version information\n\
-", program_name, program_name, default_nb_db(), default_sb_db());
+", program_name, program_name, default_nb_db(), default_sb_db(),
+    default_ic_nb_db(), default_ic_sb_db());
     daemon_usage();
     vlog_usage();
     stream_usage("database", true, true, false);
