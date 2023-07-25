@@ -92,5 +92,6 @@ testsuite.tmp.orig
 /tests/lcov/
 /Documentation/_build
 /.venv
+/.vscode/
 /cxx-check
 /*.ovsschema.stamp
