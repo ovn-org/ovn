@@ -1,8 +1,0 @@
-{
-    "files.associations": {
-        "mirror.h": "c",
-        "shash.h": "c",
-        "ovn-sb-idl.h": "c",
-        "queue.h": "c"
-    }
-}
