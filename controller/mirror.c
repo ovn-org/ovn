@@ -93,6 +93,360 @@ mirror_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_add_column(ovs_idl, &ovsrec_mirror_col_external_ids);
 }
 
+
+void
+queue_init(void)
+{
+}
+
+void
+queue_destroy(void)
+{
+}
+
+
+
+/* 34359738360 == (2^32 - 1) * 8.  netdev_set_qos() doesn't support
+ * 64-bit rate netlink attributes, so the maximum value is 2^32 - 1
+ * bytes. The 'max-rate' config option is in bits, so multiplying by 8.
+ * Without setting max-rate the reported link speed will be used, which
+ * can be unrecognized for certain NICs or reported too low for virtual
+ * interfaces. */
+#define OVN_QOS_MAX_RATE    34359738360ULL
+static void
+mod_ovs_qos_table_entry_queue(const struct ovsrec_port *port,const struct sbrec_port_binding *pb, const char *iface_id)
+{
+    struct smap external_ids = SMAP_INITIALIZER(&external_ids);
+    struct smap other_config = SMAP_INITIALIZER(&other_config);
+    
+    const struct ovsrec_qos *qos = port->qos;
+    if (qos && !smap_get_bool(&qos->external_ids, "ovn_qos", false)) {
+        /* External configured QoS, do not overwrite it. */
+        // VLOG_INFO("External QoS...............");
+        return;
+    }
+
+    if (!qos) {
+        return;
+        
+    }
+    // VLOG_INFO("mod");
+
+    unsigned long long curr_max_rate = 0;
+    bool new_def_rate = false;
+    struct ovsrec_queue *queue_qos;
+    for (size_t i = 0; i < qos->n_queues; i++) {
+        // bool check_queue = false;
+        queue_qos = qos->value_queues[i];
+        if (!queue_qos) {
+            continue;
+        }
+        struct sbrec_queue *queue;
+        for (size_t k = 0; k < pb->n_queue_rules; k++) { 
+            if(strcmp(iface_id,pb->logical_port)){
+                continue;
+            }
+            queue = pb->queue_rules[k];
+         
+            int64_t queue_id = queue->id_queue;
+            unsigned long long queue_max_rate = smap_get_ullong(
+            &queue_qos->other_config, "max-rate", 0);
+            if(curr_max_rate < queue_max_rate){
+                curr_max_rate = queue_max_rate;
+                new_def_rate = true;
+            }
+
+            // VLOG_INFO("Port_qos: %ld, Sb_queue: %ld",queue_id,queue->id_queue);
+            if (queue_id != qos->key_queues[i])
+                continue;
+            // check_queue = true;
+
+            char *match = queue->match;
+            const char *match_queue = smap_get(
+            &queue_qos->other_config, "match");
+
+            if(strcmp(match,match_queue))
+                continue;
+
+            
+            unsigned long long  min_rate = queue->value_bandwidth_min[0];
+            unsigned long long  max_rate = queue->value_bandwidth_max[0];
+            unsigned long long   burst = queue->value_bandwidth_max[1];
+
+
+
+            
+            unsigned long long queue_min_rate = smap_get_ullong(
+            &queue_qos->other_config, "min-rate", 0);
+            unsigned long long queue_burst = smap_get_ullong(
+            &queue_qos->other_config, "burst", 0);
+            if (max_rate == queue_max_rate && min_rate == queue_min_rate && burst == queue_burst )
+                continue;
+
+            
+
+            smap_add_format(&other_config, "max-rate", "%llu", max_rate);
+            smap_add_format(&other_config, "min-rate", "%llu", min_rate);
+            smap_add_format(&other_config, "burst", "%llu", burst);
+            smap_add_format(&other_config, "match", "%s", match);
+            ovsrec_queue_verify_other_config(queue_qos);
+            ovsrec_queue_set_other_config(queue_qos, &other_config);
+            smap_add(&external_ids, "ovn_port", pb->logical_port);
+            ovsrec_queue_verify_external_ids(queue_qos);
+            ovsrec_queue_set_external_ids(queue_qos, &external_ids);
+
+            smap_clear(&other_config);
+            smap_clear(&external_ids);
+            VLOG_INFO("mod config");
+
+
+
+            break;
+        }
+        //     if (!check_queue){
+        //         ovsrec_qos_update_queues_delkey(qos, qos->key_queues[i]);
+        //         ovsrec_queue_delete(queue_qos);
+        // }
+        // return;
+    }
+    if(new_def_rate){
+        smap_add_format(&other_config, "max-rate", "%lld", curr_max_rate);
+        ovsrec_qos_set_other_config(qos, &other_config);
+        smap_clear(&other_config);
+
+        smap_add(&external_ids, "ovn_qos", "true");
+        ovsrec_qos_set_external_ids(qos, &external_ids);
+        smap_clear(&external_ids);
+    }
+
+}
+
+static void
+del_ovs_qos_table_entry_queue(const struct ovsrec_port *port)
+{
+    struct smap external_ids = SMAP_INITIALIZER(&external_ids);
+    struct smap other_config = SMAP_INITIALIZER(&other_config);
+
+    
+
+    const struct ovsrec_qos *qos = port->qos;
+    if (qos && !smap_get_bool(&qos->external_ids, "ovn_qos", false)) {
+        /* External configured QoS, do not overwrite it. */
+        // VLOG_INFO("External QoS...............");
+        return;
+    }
+
+    if (!qos) {
+        return;
+        
+    }
+    for (size_t i = 0; i < qos->n_queues; i++) {
+            struct ovsrec_queue *queue = qos->value_queues[i];
+            if (!queue) {
+                continue;
+            }
+            ovsrec_qos_update_queues_delkey(qos, qos->key_queues[i]);
+            ovsrec_queue_delete(queue);
+
+            
+            // return;
+        }
+  
+    VLOG_INFO("NUmber of qos queue ??: %ld",qos->n_queues);
+
+    if (qos->n_queues == 1) {
+       
+            ovsrec_port_set_qos(port, NULL);
+            ovsrec_qos_delete(qos);
+        }
+    if (qos->n_queues == 0){
+        ovsrec_port_set_qos(port, NULL);
+        ovsrec_qos_delete(qos);
+
+    }
+
+}
+
+
+void
+qos_register_ovs_idl(struct ovsdb_idl *ovs_idl)
+{
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_port_col_qos);
+    ovsdb_idl_add_table(ovs_idl, &ovsrec_table_qos);
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_qos_col_external_ids);
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_qos_col_other_config);
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_qos_col_queues);
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_qos_col_type);
+}
+    
+
+
+void
+queue_run(struct ovsdb_idl_txn *ovs_idl_txn,
+             const struct sbrec_port_binding_table *sbrec_pb_table,
+             const struct ovsrec_bridge *br_int)
+{   
+    if (!ovs_idl_txn) {
+        return;
+    }
+    // struct shash ovs_queues = SHASH_INITIALIZER(&sb_queovs_queuesues);
+
+    const struct sbrec_port_binding *pb;
+    SBREC_PORT_BINDING_TABLE_FOR_EACH (pb, sbrec_pb_table) {
+        if ( pb->n_queue_rules == 0){
+            size_t i;
+            for (i = 0; i < br_int->n_ports; i++) {
+                    const struct ovsrec_port *port_rec = br_int->ports[i];
+                    const char *iface_id;
+                    size_t j;
+                    // bool qos_install = false;
+
+                    if (!strcmp(port_rec->name, br_int->name)) {
+                        continue;
+                    }
+                    
+                    for (j = 0; j < port_rec->n_interfaces; j++) {
+                        const struct ovsrec_interface *iface_rec;
+
+                        iface_rec = port_rec->interfaces[j];
+                        iface_id = smap_get(&iface_rec->external_ids, "iface-id");
+                        int64_t ofport = iface_rec->n_ofport ? *iface_rec->ofport : 0;
+                        if (iface_id && ofport > 0 && !strcmp(iface_id,pb->logical_port)) {
+                            del_ovs_qos_table_entry_queue(port_rec);
+                            // VLOG_INFO("Logical: %s",pb->logical_port);
+                            // qos_install = true;
+                            // break;
+                        }
+                    }
+                    // if(qos_install==true){
+                    //     break;
+                    // }
+                }
+            continue;
+        }
+    
+            size_t i;
+            for (i = 0; i < br_int->n_ports; i++) {
+                    const struct ovsrec_port *port_rec = br_int->ports[i];
+                    const char *iface_id;
+                    size_t j;
+
+
+                    if (!strcmp(port_rec->name, br_int->name)) {
+                        continue;
+                    }
+                    
+                    for (j = 0; j < port_rec->n_interfaces; j++) {
+                        const struct ovsrec_interface *iface_rec;
+
+                        iface_rec = port_rec->interfaces[j];
+                        iface_id = smap_get(&iface_rec->external_ids, "iface-id");
+                        int64_t ofport = iface_rec->n_ofport ? *iface_rec->ofport : 0;
+                        if (iface_id && ofport > 0) {
+                            mod_ovs_qos_table_entry_queue(port_rec,pb,iface_id);
+                            // VLOG_INFO("Logical: %s",pb->logical_port);
+
+                        }
+                    }
+                    
+                }
+
+        
+        
+    }
+
+}
+
+
+
+// void
+// queue_run(struct ovsdb_idl_txn *ovs_idl_txn,
+//              const struct ovsrec_bridge *br_int,
+//              struct shash *local_bindings)
+// {   
+//     if (!ovs_idl_txn) {
+//         return;
+//     }
+//     // struct shash ovs_queues = SHASH_INITIALIZER(&sb_queovs_queuesues);
+
+//     struct shash_node *node;
+//     SHASH_FOR_EACH (node, local_bindings) {
+//         struct local_binding *lbinding = node->data;
+//         const struct sbrec_port_binding *pb =
+//             local_binding_get_primary_pb(local_bindings, lbinding->name);
+//         if (!pb) {
+//             continue;
+//         }
+//         if ( pb->n_queue_rules == 0){
+//             size_t i;
+//             for (i = 0; i < br_int->n_ports; i++) {
+//                     const struct ovsrec_port *port_rec = br_int->ports[i];
+//                     const char *iface_id;
+//                     size_t j;
+//                     // bool qos_install = false;
+
+//                     // if (!strcmp(port_rec->name, br_int->name)) {
+//                     //     continue;
+//                     // }
+                    
+//                     for (j = 0; j < port_rec->n_interfaces; j++) {
+//                         const struct ovsrec_interface *iface_rec;
+
+//                         iface_rec = port_rec->interfaces[j];
+//                         iface_id = smap_get(&iface_rec->external_ids, "iface-id");
+//                         // int64_t ofport = iface_rec->n_ofport ? *iface_rec->ofport : 0;
+//                         if (iface_id && !strcmp(iface_id,pb->logical_port)) {
+//                             del_ovs_qos_table_entry_queue(port_rec);
+//                             // qos_install = true;
+//                             // break;
+//                         }
+//                     }
+//                     // if(qos_install==true){
+//                     //     break;
+//                     // }
+//                 }
+//             return;
+//         }
+    
+//             size_t i;
+//             for (i = 0; i < br_int->n_ports; i++) {
+//                     const struct ovsrec_port *port_rec = br_int->ports[i];
+//                     const char *iface_id;
+//                     size_t j;
+
+
+//                     if (!strcmp(port_rec->name, br_int->name)) {
+//                         continue;
+//                     }
+                    
+//                     for (j = 0; j < port_rec->n_interfaces; j++) {
+//                         const struct ovsrec_interface *iface_rec;
+
+//                         iface_rec = port_rec->interfaces[j];
+//                         iface_id = smap_get(&iface_rec->external_ids, "iface-id");
+//                         int64_t ofport = iface_rec->n_ofport ? *iface_rec->ofport : 0;
+//                         if (iface_id && ofport > 0) {
+//                             mod_ovs_qos_table_entry_queue(port_rec,pb,iface_id);
+//                             VLOG_INFO("MOD OR DEL QUEUE");
+
+//                         }
+//                     }
+                    
+//                 }
+
+
+//     }
+
+        
+        
+    
+
+// }
+
+
+
+
+
 void
 mirror_init(void)
 {

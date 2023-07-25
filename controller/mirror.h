@@ -12,6 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#define OVN_QOS_TYPE "linux-hfsc"
 
 #ifndef OVN_MIRROR_H
 #define OVN_MIRROR_H 1
@@ -19,9 +20,22 @@
 struct ovsdb_idl_txn;
 struct ovsrec_mirror_table;
 struct sbrec_mirror_table;
+struct sbrec_port_binding_table;
 struct ovsrec_bridge;
 struct shash;
 
+void qos_register_ovs_idl(struct ovsdb_idl *);
+void queue_init(void);
+void queue_destroy(void);
+void queue_run(struct ovsdb_idl_txn *ovs_idl_txn,
+             const struct sbrec_port_binding_table *,
+             const struct ovsrec_bridge *);
+
+// void queue_run(struct ovsdb_idl_txn *ovs_idl_txn,
+//              const struct ovsrec_bridge *,
+//              struct shash *local_bindings);
+
+             
 void mirror_register_ovs_idl(struct ovsdb_idl *);
 void mirror_init(void);
 void mirror_destroy(void);
@@ -30,4 +44,11 @@ void mirror_run(struct ovsdb_idl_txn *ovs_idl_txn,
                 const struct sbrec_mirror_table *,
                 const struct ovsrec_bridge *,
                 struct shash *local_bindings);
+
+
+
+
+
+
+
 #endif

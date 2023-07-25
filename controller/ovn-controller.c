@@ -84,6 +84,7 @@
 #include "hmapx.h"
 #include "mirror.h"
 
+
 VLOG_DEFINE_THIS_MODULE(main);
 
 static unixctl_cb_func ovn_controller_exit;
@@ -1089,6 +1090,8 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_track_add_column(ovs_idl,
                                &ovsrec_flow_sample_collector_set_col_id);
     mirror_register_ovs_idl(ovs_idl);
+    qos_register_ovs_idl(ovs_idl);
+
 }
 
 #define SB_NODES \
@@ -4595,6 +4598,7 @@ main(int argc, char *argv[])
     pinctrl_init();
     lflow_init();
     mirror_init();
+    queue_init();
     vif_plug_provider_initialize();
 
     /* Connect to OVS OVSDB instance. */
@@ -5359,6 +5363,9 @@ main(int argc, char *argv[])
                                    sbrec_mirror_table_get(ovnsb_idl_loop.idl),
                                    br_int,
                                    &runtime_data->lbinding_data.bindings);
+                        queue_run(ovs_idl_txn,
+                                   sbrec_port_binding_table_get(ovnsb_idl_loop.idl),
+                                   br_int);
                         /* Updating monitor conditions if runtime data or
                          * logical datapath goups changed. */
                         if (engine_node_changed(&en_runtime_data)
@@ -5615,6 +5622,7 @@ loop_done:
     binding_destroy();
     patch_destroy();
     mirror_destroy();
+    queue_destroy();
     encaps_destroy();
     if_status_mgr_destroy(if_mgr);
     shash_destroy(&vif_plug_deleted_iface_ids);

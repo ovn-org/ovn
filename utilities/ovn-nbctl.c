@@ -3014,16 +3014,7 @@ nbctl_queue_add(struct ctl_context *ctx)
     }
 
 
-    const struct nbrec_queue *iter;
-    
 
-    const char *match = ctx->argv[4];
-    NBREC_QUEUE_FOR_EACH (iter, ctx->idl) {
-        if (!strcmp(iter->match, match)) {       
-                ctl_error(ctx, "queue with match \"%s\" already exists", match);
-                return;     
-        }
-    }
 
     /* Create the qos. */
     struct nbrec_queue *queue = nbrec_queue_insert(ctx->txn);
