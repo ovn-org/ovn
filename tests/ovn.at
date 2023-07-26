@@ -26129,6 +26129,19 @@ done
 # XXX This should be more systematic.
 sleep 2
 
+# Populate requested-chassis options for remote lsps
+for az in $(seq 1 $n_az); do
+    ovn_as az${az}
+    for ts in $(seq 1 $n_ts); do
+        for i in $(seq 1 $n_ts); do
+            if [[ $i -eq ${az} ]]; then
+                continue
+            fi
+            check ovn-nbctl lsp-set-options lsp-ts${ts}-lr${i}-${ts} requested-chassis=gw$i
+        done
+    done
+done
+
 ovn-ic-nbctl show > ic-nbctl.dump
 AT_CAPTURE_FILE([ic-nbctl.dump])
 
@@ -26352,6 +26365,13 @@ check ovn-nbctl lsp-add ts ts-lr3 \
 
 wait_for_ports_up
 
+ovn_as az1
+check ovn-nbctl lsp-set-options ts-lr2 requested-chassis=hv2
+check ovn-nbctl lsp-set-options ts-lr3 requested-chassis=hv2
+
+ovn_as az2
+check ovn-nbctl lsp-set-options ts-lr1 requested-chassis=hv1
+
 dnl Enable unregistered IP multicast flooding and IP multicast relay.
 ovn_as az1
 check ovn-nbctl set logical_switch ls1 other_config:mcast_snoop="true" \
@@ -26556,6 +26576,13 @@ check ovn-nbctl lsp-add ts ts-lr3 \
     -- lsp-set-options ts-lr3 router-port=lr3-ts
 
 wait_for_ports_up
+
+ovn_as az1
+check ovn-nbctl lsp-set-options ts-lr2 requested-chassis=hv2
+check ovn-nbctl lsp-set-options ts-lr3 requested-chassis=hv2
+
+ovn_as az2
+check ovn-nbctl lsp-set-options ts-lr1 requested-chassis=hv1
 
 dnl Enable IP multicast snooping and IP multicast relay.  Reports are
 dnl forwarded statically.

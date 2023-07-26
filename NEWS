@@ -10,6 +10,8 @@ Post v23.06.0
   - To allow optimizing ovn-controller's monitor conditions for the regular
     VIF case, ovn-controller now unconditionally monitors all sub-ports
     (ports with parent_port set).
+  - Introduce support for binding remote ports in ovn-northd if the CMS sets
+    requested-chassis option for a remote logical switch port.
 
 OVN v23.06.0 - 01 Jun 2023
 --------------------------

@@ -3517,6 +3517,33 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
 
         sbrec_port_binding_set_nat_addresses(op->sb, NULL, 0);
     } else {
+        if (lsp_is_remote(op->nbsp)) {
+            /* ovn-northd is suppose to set port_binding for remote ports
+             * if requested chassis is a remote chassis. */
+            const struct sbrec_chassis *remote_chassis = NULL;
+            bool is_remote_chassis = false;
+            if (op->sb->requested_chassis) {
+                is_remote_chassis =
+                    smap_get_bool(&op->sb->requested_chassis->other_config,
+                                  "is-remote", false);
+            }
+            if (is_remote_chassis) {
+                remote_chassis = op->sb->requested_chassis;
+            }
+            sbrec_port_binding_set_chassis(op->sb, remote_chassis);
+        } else {
+            /* Its not a remote port but if the chassis is set and if its a
+             * remote chassis then clear it. */
+            if (op->sb->chassis) {
+                bool is_remote_chassis =
+                    smap_get_bool(&op->sb->chassis->other_config,
+                                  "is-remote", false);
+                if (is_remote_chassis) {
+                    sbrec_port_binding_set_chassis(op->sb, NULL);
+                }
+            }
+        }
+
         if (!lsp_is_router(op->nbsp)) {
             uint32_t queue_id = smap_get_int(
                     &op->sb->options, "qdisc_queue_id", 0);
