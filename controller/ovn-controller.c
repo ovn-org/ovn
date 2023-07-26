@@ -732,8 +732,17 @@ update_ct_zones(const struct sset *local_lports,
     HMAP_FOR_EACH (ld, hmap_node, local_datapaths) {
         /* XXX Add method to limit zone assignment to logical router
          * datapaths with NAT */
-        char *dnat = alloc_nat_zone_key(&ld->datapath->header_.uuid, "dnat");
-        char *snat = alloc_nat_zone_key(&ld->datapath->header_.uuid, "snat");
+        const char *name = smap_get(&ld->datapath->external_ids, "name");
+        if (!name) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_ERR_RL(&rl, "Missing name for datapath '"UUID_FMT"' "
+                        "skipping zone assignment.",
+                        UUID_ARGS(&ld->datapath->header_.uuid));
+            continue;
+        }
+
+        char *dnat = alloc_nat_zone_key(name, "dnat");
+        char *snat = alloc_nat_zone_key(name, "snat");
         sset_add(&all_users, dnat);
         sset_add(&all_users, snat);
 
@@ -870,9 +879,66 @@ struct ed_type_ct_zones {
     bool recomputed;
 };
 
+/* Replaces a UUID prefix from 'uuid_zone' (if any) with the
+ * corresponding Datapath_Binding.external_ids.name.  Returns it
+ * as a new string that will be owned by the caller. */
+static char *
+ct_zone_name_from_uuid(const struct sbrec_datapath_binding_table *dp_table,
+                       const char *uuid_zone)
+{
+    struct uuid uuid;
+    if (!uuid_from_string_prefix(&uuid, uuid_zone)) {
+        return NULL;
+    }
+
+    const struct sbrec_datapath_binding *dp =
+            sbrec_datapath_binding_table_get_for_uuid(dp_table, &uuid);
+    if (!dp) {
+        return NULL;
+    }
+
+    const char *entity_name = smap_get(&dp->external_ids, "name");
+    if (!entity_name) {
+        return NULL;
+    }
+
+    return xasprintf("%s%s", entity_name, uuid_zone + UUID_LEN);
+}
+
+static void
+ct_zone_restore(const struct sbrec_datapath_binding_table *dp_table,
+                struct ed_type_ct_zones *ct_zones_data, const char *name,
+                int zone)
+{
+    VLOG_DBG("restoring ct zone %"PRId32" for '%s'", zone, name);
+
+    char *new_name = ct_zone_name_from_uuid(dp_table, name);
+    const char *current_name = name;
+    if (new_name) {
+        VLOG_DBG("ct zone %"PRId32" replace uuid name '%s' with '%s'",
+                  zone, name, new_name);
+
+        /* Make sure we remove the uuid one in the next OvS DB commit without
+         * flush. */
+        add_pending_ct_zone_entry(&ct_zones_data->pending, CT_ZONE_DB_QUEUED,
+                                  zone, false, name);
+        /* Store the zone in OvS DB with name instead of uuid without flush.
+         * */
+        add_pending_ct_zone_entry(&ct_zones_data->pending, CT_ZONE_DB_QUEUED,
+                                  zone, true, new_name);
+        current_name = new_name;
+    }
+
+    simap_put(&ct_zones_data->current, current_name, zone);
+    bitmap_set1(ct_zones_data->bitmap, zone);
+
+    free(new_name);
+}
+
 static void
 restore_ct_zones(const struct ovsrec_bridge_table *bridge_table,
                  const struct ovsrec_open_vswitch_table *ovs_table,
+                 const struct sbrec_datapath_binding_table *dp_table,
                  struct ed_type_ct_zones *ct_zones_data)
 {
     memset(ct_zones_data->bitmap, 0, sizeof ct_zones_data->bitmap);
@@ -883,10 +949,8 @@ restore_ct_zones(const struct ovsrec_bridge_table *bridge_table,
         struct ct_zone_pending_entry *ctpe = pending_node->data;
 
         if (ctpe->add) {
-            VLOG_DBG("restoring ct zone %"PRId32" for '%s'", ctpe->zone,
-                     pending_node->name);
-            bitmap_set1(ct_zones_data->bitmap, ctpe->zone);
-            simap_put(&ct_zones_data->current, pending_node->name, ctpe->zone);
+            ct_zone_restore(dp_table, ct_zones_data,
+                            pending_node->name, ctpe->zone);
         }
     }
 
@@ -924,9 +988,7 @@ restore_ct_zones(const struct ovsrec_bridge_table *bridge_table,
             continue;
         }
 
-        VLOG_DBG("restoring ct zone %"PRId32" for '%s'", zone, user);
-        bitmap_set1(ct_zones_data->bitmap, zone);
-        simap_put(&ct_zones_data->current, user, zone);
+        ct_zone_restore(dp_table, ct_zones_data, user, zone);
     }
 }
 
@@ -1077,6 +1139,10 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_track_add_column(ovs_idl,
                                &ovsrec_flow_sample_collector_set_col_id);
     mirror_register_ovs_idl(ovs_idl);
+    /* XXX: There is a potential bug in CT zone I-P node,
+     * the fact that we have to call recompute for the change of
+     * OVS.bridge.external_ids be reflected. Currently, we don't
+     * track that column which should be addressed in the future. */
 }
 
 #define SB_NODES \
@@ -2404,18 +2470,14 @@ out:
 }
 
 static void *
-en_ct_zones_init(struct engine_node *node, struct engine_arg *arg OVS_UNUSED)
+en_ct_zones_init(struct engine_node *node OVS_UNUSED,
+                 struct engine_arg *arg OVS_UNUSED)
 {
     struct ed_type_ct_zones *data = xzalloc(sizeof *data);
-    const struct ovsrec_open_vswitch_table *ovs_table =
-        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
-    const struct ovsrec_bridge_table *bridge_table =
-        EN_OVSDB_GET(engine_get_input("OVS_bridge", node));
 
     shash_init(&data->pending);
     simap_init(&data->current);
 
-    restore_ct_zones(bridge_table, ovs_table, data);
     return data;
 }
 
@@ -2446,8 +2508,10 @@ en_ct_zones_run(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
     const struct ovsrec_bridge_table *bridge_table =
         EN_OVSDB_GET(engine_get_input("OVS_bridge", node));
+    const struct sbrec_datapath_binding_table *dp_table =
+            EN_OVSDB_GET(engine_get_input("SB_datapath_binding", node));
 
-    restore_ct_zones(bridge_table, ovs_table, ct_zones_data);
+    restore_ct_zones(bridge_table, ovs_table, dp_table, ct_zones_data);
     update_ct_zones(&rt_data->local_lports, &rt_data->local_datapaths,
                     &ct_zones_data->current, ct_zones_data->bitmap,
                     &ct_zones_data->pending);
@@ -2495,7 +2559,15 @@ ct_zones_datapath_binding_handler(struct engine_node *node, void *data)
         /* Check if the requested snat zone has changed for the datapath
          * or not.  If so, then fall back to full recompute of
          * ct_zone engine. */
-        char *snat_dp_zone_key = alloc_nat_zone_key(&dp->header_.uuid, "snat");
+        const char *name = smap_get(&dp->external_ids, "name");
+        if (!name) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_ERR_RL(&rl, "Missing name for datapath '"UUID_FMT"' skipping"
+                        "zone check.", UUID_ARGS(&dp->header_.uuid));
+            continue;
+        }
+
+        char *snat_dp_zone_key = alloc_nat_zone_key(name, "snat");
         struct simap_node *simap_node = simap_find(&ct_zones_data->current,
                                                    snat_dp_zone_key);
         free(snat_dp_zone_key);

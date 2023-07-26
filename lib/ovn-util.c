@@ -485,9 +485,9 @@ split_addresses(const char *addresses, struct svec *ipv4_addrs,
  *
  * It is the caller's responsibility to free the allocated memory. */
 char *
-alloc_nat_zone_key(const struct uuid *key, const char *type)
+alloc_nat_zone_key(const char *name, const char *type)
 {
-    return xasprintf(UUID_FMT"_%s", UUID_ARGS(key), type);
+    return xasprintf("%s_%s", name, type);
 }
 
 const char *

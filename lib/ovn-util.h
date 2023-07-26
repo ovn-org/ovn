@@ -118,7 +118,7 @@ const char *find_lport_address(const struct lport_addresses *laddrs,
 void split_addresses(const char *addresses, struct svec *ipv4_addrs,
                      struct svec *ipv6_addrs);
 
-char *alloc_nat_zone_key(const struct uuid *key, const char *type);
+char *alloc_nat_zone_key(const char *name, const char *type);
 
 const char *default_nb_db(void);
 const char *default_sb_db(void);
