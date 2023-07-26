@@ -2446,8 +2446,7 @@ echo "$ct_zones"
 port1_zone=$(get_zone_num "$ct_zones" ls0-hv1)
 port2_zone=$(get_zone_num "$ct_zones" ls0-hv2)
 
-lr_uuid=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
-snat_zone=$(get_zone_num "$ct_zones" ${lr_uuid}_snat)
+snat_zone=$(get_zone_num "$ct_zones" lr0_snat)
 echo "snat_zone is $snat_zone"
 
 check test "$port1_zone" -ne "$port2_zone"
@@ -2456,7 +2455,7 @@ check test "$port1_zone" -ne "$snat_zone"
 
 OVS_WAIT_UNTIL([check_ovsdb_zone ls0-hv1 $port1_zone])
 OVS_WAIT_UNTIL([check_ovsdb_zone ls0-hv2 $port2_zone])
-OVS_WAIT_UNTIL([check_ovsdb_zone ${lr_uuid}_snat $snat_zone])
+OVS_WAIT_UNTIL([check_ovsdb_zone lr0_snat $snat_zone])
 
 # Now purposely request an SNAT zone for lr0 that conflicts with a zone
 # currently assigned to a logical port
@@ -2470,7 +2469,7 @@ echo "$ct_zones"
 
 port1_zone=$(get_zone_num "$ct_zones" ls0-hv1)
 port2_zone=$(get_zone_num "$ct_zones" ls0-hv2)
-snat_zone=$(get_zone_num "$ct_zones" ${lr_uuid}_snat)
+snat_zone=$(get_zone_num "$ct_zones" lr0_snat)
 
 check test "$snat_zone" -eq "$snat_req_zone"
 check test "$port1_zone" -ne "$port2_zone"
@@ -2479,7 +2478,7 @@ check test "$port1_zone" -ne "$snat_zone"
 
 OVS_WAIT_UNTIL([check_ovsdb_zone ls0-hv1 $port1_zone])
 OVS_WAIT_UNTIL([check_ovsdb_zone ls0-hv2 $port2_zone])
-OVS_WAIT_UNTIL([check_ovsdb_zone ${lr_uuid}_snat $snat_zone])
+OVS_WAIT_UNTIL([check_ovsdb_zone lr0_snat $snat_zone])
 
 # Now create a conflict in the OVSDB and restart ovn-controller.
 
@@ -2493,7 +2492,7 @@ echo "$ct_zones"
 
 port1_zone=$(get_zone_num "$ct_zones" ls0-hv1)
 port2_zone=$(get_zone_num "$ct_zones" ls0-hv2)
-snat_zone=$(get_zone_num "$ct_zones" ${lr_uuid}_snat)
+snat_zone=$(get_zone_num "$ct_zones" lr0_snat)
 
 check test "$snat_zone" -eq "$snat_req_zone"
 check test "$port1_zone" -ne "$port2_zone"
@@ -2502,7 +2501,7 @@ check test "$port1_zone" -ne "$snat_zone"
 
 OVS_WAIT_UNTIL([check_ovsdb_zone ls0-hv1 $port1_zone])
 OVS_WAIT_UNTIL([check_ovsdb_zone ls0-hv2 $port2_zone])
-OVS_WAIT_UNTIL([check_ovsdb_zone ${lr_uuid}_snat $snat_zone])
+OVS_WAIT_UNTIL([check_ovsdb_zone lr0_snat $snat_zone])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
@@ -2575,9 +2574,8 @@ check ovn-nbctl lrp-set-gateway-chassis lrp-gw hv1
 
 check ovn-nbctl --wait=hv sync
 
-lr_uuid=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
 ct_zones=$(ovn-appctl -t ovn-controller ct-zone-list)
-zone_num=$(printf "$ct_zones" | grep ${lr_uuid}_snat | cut -d ' ' -f 2)
+zone_num=$(printf "$ct_zones" | grep lr0_snat | cut -d ' ' -f 2)
 
 check test "$zone_num" -eq 666
 

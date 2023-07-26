@@ -209,17 +209,24 @@ static struct zone_ids
 get_zone_ids(const struct sbrec_port_binding *binding,
              const struct simap *ct_zones)
 {
-    struct zone_ids zone_ids;
+    struct zone_ids zone_ids = {
+        .ct = simap_get(ct_zones, binding->logical_port)
+    };
 
-    zone_ids.ct = simap_get(ct_zones, binding->logical_port);
+    const char *name = smap_get(&binding->datapath->external_ids, "name");
+    if (!name) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_ERR_RL(&rl, "Missing name for datapath '"UUID_FMT"'",
+                    UUID_ARGS(&binding->datapath->header_.uuid));
 
-    const struct uuid *key = &binding->datapath->header_.uuid;
+        return zone_ids;
+    }
 
-    char *dnat = alloc_nat_zone_key(key, "dnat");
+    char *dnat = alloc_nat_zone_key(name, "dnat");
     zone_ids.dnat = simap_get(ct_zones, dnat);
     free(dnat);
 
-    char *snat = alloc_nat_zone_key(key, "snat");
+    char *snat = alloc_nat_zone_key(name, "snat");
     zone_ids.snat = simap_get(ct_zones, snat);
     free(snat);
 
