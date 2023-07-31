@@ -34614,6 +34614,8 @@ AT_CHECK_UNQUOTED([as hv1 ovs-ofctl dump-flows br-int table=79 --no-stats | stri
  table=79, priority=100,ip,reg14=${port_key},metadata=${dp_key},dl_src=00:00:00:00:10:20,nw_src=192.168.10.20 actions=drop
 ])
 
+timestamp=$(fetch_column mac_binding timestamp ip="192.168.10.20")
+
 send_udp hv1 ext1 10
 send_udp hv2 ext2 20
 
@@ -34621,16 +34623,27 @@ OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int table=79 | grep "192.168.10.1
 OVS_WAIT_UNTIL([as hv2 ovs-ofctl dump-flows br-int table=79 | grep "192.168.10.20" | grep -q "n_packets=1"])
 
 # Set the MAC binding aging threshold
-AT_CHECK([ovn-nbctl set logical_router gw options:mac_binding_age_threshold=1])
-AT_CHECK([fetch_column nb:logical_router options | grep -q mac_binding_age_threshold=1])
+AT_CHECK([ovn-nbctl set logical_router gw options:mac_binding_age_threshold=5])
+AT_CHECK([fetch_column nb:logical_router options | grep -q mac_binding_age_threshold=5])
 AT_CHECK([ovn-nbctl --wait=sb sync])
 
+# Wait send few packets for "192.168.10.20" to indicate that it is still in use
+send_udp hv2 ext2 20
+sleep 1
+send_udp hv2 ext2 20
+
 # Set the timeout for OVS_WAIT* functions to 5 seconds
-OVS_CTL_TIMEOUT=5
+OVS_CTL_TIMEOUT=10
+OVS_WAIT_UNTIL([
+    test "$timestamp" != "$(fetch_column mac_binding timestamp ip='192.168.10.20')"
+])
+check $(test "$(fetch_column mac_binding timestamp ip='192.168.10.20')" != "")
+
 # Check if the records are removed after some inactivity
 OVS_WAIT_UNTIL([
     test "0" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.10')"
 ])
+# The second one takes longer because it got refreshed
 OVS_WAIT_UNTIL([
     test "0" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.20')"
 ])
@@ -35313,8 +35326,8 @@ as hv1
 check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
 
-dnl Ensure that there are at least 3 openflow connections.
-OVS_WAIT_UNTIL([test "$(grep -c 'negotiated OpenFlow version' hv1/ovs-vswitchd.log)" -eq "3"])
+dnl Ensure that there are 4 openflow connections.
+OVS_WAIT_UNTIL([test "$(grep -c 'negotiated OpenFlow version' hv1/ovs-vswitchd.log)" -eq "4"])
 
 dnl "Wait" 3 times 60 seconds and ensure ovn-controller writes to the
 dnl openflow connections in the meantime.  This should allow ovs-vswitchd

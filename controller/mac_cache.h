@@ -80,4 +80,11 @@ void mac_cache_mac_binding_remove(struct mac_cache_data *data,
 void mac_cache_mac_bindings_clear(struct mac_cache_data *data);
 bool mac_cache_sb_mac_binding_updated(const struct sbrec_mac_binding *mb);
 
+void
+mac_cache_mb_stats_process_flow_stats(struct ovs_list *stats_list,
+                                      struct ofputil_flow_stats *ofp_stats);
+void mac_cache_mb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
+                            void *data);
+void mac_cache_stats_destroy(struct ovs_list *stats_list);
+
 #endif /* controller/mac_cache.h */

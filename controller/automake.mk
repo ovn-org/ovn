@@ -45,7 +45,9 @@ controller_ovn_controller_SOURCES = \
 	controller/mirror.h \
 	controller/mirror.c \
 	controller/mac_cache.h \
-	controller/mac_cache.c
+	controller/mac_cache.c \
+	controller/statctrl.h \
+	controller/statctrl.c
 
 controller_ovn_controller_LDADD = lib/libovn.la $(OVS_LIBDIR)/libopenvswitch.la
 man_MANS += controller/ovn-controller.8
