@@ -1150,6 +1150,13 @@ ovn_datapath_update_external_ids(struct ovn_datapath *od)
         if (!learn_from_arp_request) {
             smap_add(&ids, "always_learn_from_arp_request", "false");
         }
+
+        uint32_t age_threshold = smap_get_uint(&od->nbr->options,
+                                               "mac_binding_age_threshold", 0);
+        if (age_threshold) {
+            smap_add_format(&ids, "mac_binding_age_threshold",
+                            "%u", age_threshold);
+        }
     }
 
     sbrec_datapath_binding_set_external_ids(od->sb, &ids);
