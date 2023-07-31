@@ -887,6 +887,7 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
         .fdb_lookup_ptable = OFTABLE_LOOKUP_FDB,
         .in_port_sec_ptable = OFTABLE_CHK_IN_PORT_SEC,
         .out_port_sec_ptable = OFTABLE_CHK_OUT_PORT_SEC,
+        .mac_cache_use_table = OFTABLE_MAC_CACHE_USE,
         .ctrl_meter_id = ctrl_meter_id,
         .common_nat_ct_zone = get_common_nat_zone(ldp),
     };

@@ -2790,6 +2790,14 @@ tcp.flags = RST;
             </dd>
           </dl>
         </dd>
+
+        <dt><code>mac_cache_use;</code></dt>
+        <dd>
+          <p>
+            This action resubmits to corresponding table which updates the
+            use statistics of MAC cache.
+          </p>
+        </dd>
       </dl>
     </column>
 

@@ -2253,6 +2253,10 @@ sample(probability=0,collector_set=200,obs_domain=300,obs_point=foo);
 sample(probability=10,foo=bar,obs_domain=0,obs_point=1000);
     Syntax error at `foo' unknown argument.
 
+# mac_cache_use
+mac_cache_use;
+    encodes as resubmit(,79)
+
 # Miscellaneous negative tests.
 ;
     Syntax error at `;'.

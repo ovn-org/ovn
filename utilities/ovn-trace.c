@@ -3353,6 +3353,8 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
             break;
         case OVNACT_SAMPLE:
             break;
+        case OVNACT_MAC_CACHE_USE:
+            break;
         }
     }
     ofpbuf_uninit(&stack);

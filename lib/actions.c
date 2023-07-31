@@ -5230,6 +5230,20 @@ encode_CHK_LB_AFF(const struct ovnact_result *res,
                            MLF_USE_LB_AFF_SESSION_BIT, ofpacts);
 }
 
+static void
+format_MAC_CACHE_USE(const struct ovnact_null *null OVS_UNUSED, struct ds *s)
+{
+    ds_put_cstr(s, "mac_cache_use;");
+}
+
+static void
+encode_MAC_CACHE_USE(const struct ovnact_null *null OVS_UNUSED,
+                     const struct ovnact_encode_params *ep,
+                     struct ofpbuf *ofpacts)
+{
+    emit_resubmit(ofpacts, ep->mac_cache_use_table);
+}
+
 /* Parses an assignment or exchange or put_dhcp_opts action. */
 static void
 parse_set_action(struct action_context *ctx)
@@ -5435,6 +5449,8 @@ parse_action(struct action_context *ctx)
         parse_commit_lb_aff(ctx, ovnact_put_COMMIT_LB_AFF(ctx->ovnacts));
     } else if (lexer_match_id(ctx->lexer, "sample")) {
         parse_sample(ctx);
+    } else if (lexer_match_id(ctx->lexer, "mac_cache_use")) {
+        ovnact_put_MAC_CACHE_USE(ctx->ovnacts);
     } else {
         lexer_syntax_error(ctx->lexer, "expecting action");
     }

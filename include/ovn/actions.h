@@ -126,6 +126,7 @@ struct collector_set_ids;
     OVNACT(COMMIT_LB_AFF,     ovnact_commit_lb_aff)   \
     OVNACT(CHK_LB_AFF,        ovnact_result)          \
     OVNACT(SAMPLE,            ovnact_sample)          \
+    OVNACT(MAC_CACHE_USE,     ovnact_null)            \
 
 /* enum ovnact_type, with a member OVNACT_<ENUM> for each action. */
 enum OVS_PACKED_ENUM ovnact_type {
@@ -879,6 +880,8 @@ struct ovnact_encode_params {
                                    sends packets to controller. */
     uint32_t common_nat_ct_zone; /* When performing NAT in a common CT zone,
                                     this determines which CT zone to use */
+    uint32_t mac_cache_use_table; /* OpenFlow table for 'mac_cache_use'
+                                   * to resubmit. */
 };
 
 void ovnacts_encode(const struct ovnact[], size_t ovnacts_len,
