@@ -112,6 +112,13 @@ mac_cache_mb_stats_process_flow_stats(struct ovs_list *stats_list,
                                       struct ofputil_flow_stats *ofp_stats);
 void mac_cache_mb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
                             void *data);
+
+void
+mac_cache_fdb_stats_process_flow_stats(struct ovs_list *stats_list,
+                                       struct ofputil_flow_stats *ofp_stats);
+void mac_cache_fdb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
+                             void *data);
+
 void mac_cache_stats_destroy(struct ovs_list *stats_list);
 
 #endif /* controller/mac_cache.h */

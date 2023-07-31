@@ -38,6 +38,7 @@ VLOG_DEFINE_THIS_MODULE(statctrl);
 
 enum stat_type {
     STATS_MAC_BINDING = 0,
+    STATS_FDB,
     STATS_MAX,
 };
 
@@ -137,6 +138,16 @@ statctrl_init(void)
     STATS_NODE(MAC_BINDING, mac_binding_request, mac_cache_stats_destroy,
                mac_cache_mb_stats_process_flow_stats, mac_cache_mb_stats_run);
 
+    struct ofputil_flow_stats_request fdb_request = {
+            .cookie = htonll(0),
+            .cookie_mask = htonll(0),
+            .out_port = OFPP_ANY,
+            .out_group = OFPG_ANY,
+            .table_id = OFTABLE_LOOKUP_FDB,
+    };
+    STATS_NODE(FDB, fdb_request, mac_cache_stats_destroy,
+               mac_cache_fdb_stats_process_flow_stats,
+               mac_cache_fdb_stats_run);
 
     statctrl_ctx.thread = ovs_thread_create("ovn_statctrl",
                                             statctrl_thread_handler,
@@ -151,7 +162,7 @@ statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
         return;
     }
 
-    void *node_data[STATS_MAX] = {mac_cache_data};
+    void *node_data[STATS_MAX] = {mac_cache_data, mac_cache_data};
 
     bool schedule_updated = false;
     long long now = time_msec();

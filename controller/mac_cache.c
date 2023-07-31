@@ -316,6 +316,56 @@ mac_cache_mb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
 }
 
 void
+mac_cache_fdb_stats_process_flow_stats(struct ovs_list *stats_list,
+                                       struct ofputil_flow_stats *ofp_stats)
+{
+    struct mac_cache_stats *stats = xmalloc(sizeof *stats);
+
+    stats->idle_age_ms = ofp_stats->idle_age * 1000;
+    stats->data.fdb = (struct mac_cache_fdb_data) {
+            .port_key = ofp_stats->match.flow.regs[MFF_LOG_INPORT - MFF_REG0],
+            .dp_key = ntohll(ofp_stats->match.flow.metadata),
+            .mac = ofp_stats->match.flow.dl_src
+    };
+
+    ovs_list_push_back(stats_list, &stats->list_node);
+}
+
+void
+mac_cache_fdb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
+                        void *data)
+{
+    struct mac_cache_data *cache_data = data;
+    struct hmap *thresholds = &cache_data->thresholds[MAC_CACHE_FDB];
+    long long timewall_now = time_wall_msec();
+
+    struct mac_cache_stats *stats;
+    LIST_FOR_EACH_POP (stats, list_node, stats_list) {
+        struct mac_cache_fdb *mc_fdb = mac_cache_fdb_find(cache_data,
+                                                          &stats->data.fdb);
+        if (!mc_fdb) {
+            free(stats);
+            continue;
+        }
+
+        struct mac_cache_threshold *threshold =
+                mac_cache_threshold_find(thresholds, &mc_fdb->dp_uuid);
+        /* If "idle_age" is under threshold it means that the mac binding is
+         * used on this chassis. Also make sure that we don't update the
+         * timestamp more than once during the dump period. */
+        if (stats->idle_age_ms < threshold->value &&
+            (timewall_now - mc_fdb->sbrec_fdb->timestamp) >=
+            threshold->dump_period) {
+            sbrec_fdb_set_timestamp(mc_fdb->sbrec_fdb, timewall_now);
+        }
+
+        free(stats);
+    }
+
+    mac_cache_update_req_delay(thresholds, req_delay);
+}
+
+void
 mac_cache_stats_destroy(struct ovs_list *stats_list)
 {
     struct mac_cache_stats *stats;

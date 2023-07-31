@@ -36460,14 +36460,27 @@ send_packet() {
 # Send packet to create FDB row
 send_packet 20
 wait_row_count fdb 1 mac='"00:00:00:00:10:20"'
+timestamp=$(fetch_column fdb timestamp mac='"00:00:00:00:10:20"')
 
 # Set the FDB aging threshold
-check ovn-nbctl set logical_switch ls0 other_config:fdb_age_threshold=1
-AT_CHECK([fetch_column nb:logical_switch other_config | grep -q fdb_age_threshold=1])
+check ovn-nbctl set logical_switch ls0 other_config:fdb_age_threshold=5
+AT_CHECK([fetch_column nb:logical_switch other_config | grep -q fdb_age_threshold=5])
 check ovn-nbctl --wait=sb sync
 
+# Send few packets for "00:00:00:00:10:20" to indicate that it is still in use
+send_packet 20
+sleep 1
+send_packet 20
+
 # Set the timeout for OVS_WAIT* functions to 5 seconds
-OVS_CTL_TIMEOUT=5
+OVS_CTL_TIMEOUT=10
+OVS_WAIT_UNTIL([
+    curr_timestamp=$(fetch_column fdb timestamp mac='"00:00:00:00:10:20"')
+    test "$timestamp" != "$curr_timestamp"
+])
+timestamp=$(fetch_column fdb timestamp mac='"00:00:00:00:10:20"')
+check $(test "$timestamp" != "")
+
 # Check if the records are removed after some inactivity
 wait_row_count fdb 0 mac='"00:00:00:00:10:20"'
 
