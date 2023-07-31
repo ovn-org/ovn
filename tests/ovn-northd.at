@@ -7432,7 +7432,7 @@ AT_CHECK([cat lrflows | grep -e lr_in_lookup_neighbor -e lr_in_learn_neighbor | 
   table=1 (lr_in_lookup_neighbor), priority=100  , match=(nd_na), action=(reg9[[2]] = lookup_nd(inport, nd.target, nd.tll); next;)
   table=1 (lr_in_lookup_neighbor), priority=100  , match=(nd_ns), action=(reg9[[2]] = lookup_nd(inport, ip6.src, nd.sll); next;)
   table=2 (lr_in_learn_neighbor), priority=0    , match=(1), action=(drop;)
-  table=2 (lr_in_learn_neighbor), priority=100  , match=(reg9[[2]] == 1), action=(next;)
+  table=2 (lr_in_learn_neighbor), priority=100  , match=(reg9[[2]] == 1), action=(mac_cache_use; next;)
   table=2 (lr_in_learn_neighbor), priority=90   , match=(arp), action=(put_arp(inport, arp.spa, arp.sha); next;)
   table=2 (lr_in_learn_neighbor), priority=90   , match=(nd_na), action=(put_nd(inport, nd.target, nd.tll); next;)
   table=2 (lr_in_learn_neighbor), priority=90   , match=(nd_ns), action=(put_nd(inport, ip6.src, nd.sll); next;)

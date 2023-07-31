@@ -12654,7 +12654,7 @@ build_neigh_learning_flows_for_lrouter(
                   learn_from_arp_request ? "" :
                   " || "REGBIT_LOOKUP_NEIGHBOR_IP_RESULT" == 0");
     ovn_lflow_add(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR, 100,
-                  ds_cstr(match), "next;");
+                  ds_cstr(match), "mac_cache_use; next;");
 
     ovn_lflow_metered(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR, 90,
                       "arp", "put_arp(inport, arp.spa, arp.sha); next;",
