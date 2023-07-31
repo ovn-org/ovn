@@ -105,7 +105,7 @@ struct northd_data {
     struct ovn_datapaths lr_datapaths;
     struct hmap ls_ports;
     struct hmap lr_ports;
-    struct hmap port_groups;
+    struct hmap ls_port_groups;         /* Stores struct ls_port_group. */
     struct hmap lbs;
     struct hmap lb_groups;
     struct ovs_list lr_list;
@@ -140,7 +140,7 @@ struct lflow_input {
     const struct ovn_datapaths *lr_datapaths;
     const struct hmap *ls_ports;
     const struct hmap *lr_ports;
-    const struct hmap *port_groups;
+    const struct hmap *ls_port_groups;
     const struct shash *meter_groups;
     const struct hmap *lbs;
     const struct hmap *bfd_connections;
@@ -305,12 +305,27 @@ struct ovn_datapath {
      * Valid only if it is logical router datapath. NULL otherwise. */
     struct lrouter_group *lr_group;
 
-    /* Port groups related to the datapath, used only when nbs is NOT NULL. */
-    struct hmap nb_pgs;
-
     /* Map of ovn_port objects belonging to this datapath.
      * This map doesn't include derived ports. */
     struct hmap ports;
+};
+
+/* Per logical switch port group information. */
+struct ls_port_group {
+    struct hmap_node key_node;  /* Index on 'nbs->header_.uuid'. */
+
+    const struct nbrec_logical_switch *nbs;
+    int64_t sb_datapath_key; /* SB.Datapath_Binding.tunnel_key. */
+
+    /* Port groups with ports attached to 'nbs'. */
+    struct hmap nb_pgs; /* Stores struct ls_port_group_record. */
+};
+
+struct ls_port_group_record {
+    struct hmap_node key_node;  /* Index on 'nb_pg->header_.uuid'. */
+
+    const struct nbrec_port_group *nb_pg;
+    struct sset ports;          /* Subset of 'nb_pg' ports in this record. */
 };
 
 void ovnnb_db_run(struct northd_input *input_data,

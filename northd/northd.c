@@ -816,7 +816,6 @@ ovn_datapath_create(struct hmap *datapaths, const struct uuid *key,
     od->nbs = nbs;
     od->nbr = nbr;
     hmap_init(&od->port_tnlids);
-    hmap_init(&od->nb_pgs);
     od->port_key_hint = 0;
     hmap_insert(datapaths, &od->key_node, uuid_hash(&od->key));
     od->lr_group = NULL;
@@ -824,7 +823,6 @@ ovn_datapath_create(struct hmap *datapaths, const struct uuid *key,
     return od;
 }
 
-static void ovn_ls_port_group_destroy(struct hmap *nb_pgs);
 static void destroy_mcast_info_for_datapath(struct ovn_datapath *od);
 
 static void
@@ -852,7 +850,6 @@ ovn_datapath_destroy(struct hmap *datapaths, struct ovn_datapath *od)
         free(od->nat_entries);
         free(od->localnet_ports);
         free(od->l3dgw_ports);
-        ovn_ls_port_group_destroy(&od->nb_pgs);
         destroy_mcast_info_for_datapath(od);
         destroy_ports_for_datapath(od);
 
@@ -6261,83 +6258,87 @@ build_dhcpv6_action(struct ovn_port *op, struct in6_addr *offer_ip,
     return true;
 }
 
-struct ovn_port_group_ls {
-    struct hmap_node key_node;  /* Index on 'key'. */
-    struct uuid key;            /* nb_ls->header_.uuid. */
-    struct ovn_datapath *od;
-
-    struct ovn_port **ports; /* Ports in 'od' referrenced by the PG. */
-    size_t n_ports;
-    size_t n_allocated_ports;
-};
-
-struct ovn_port_group {
-    struct hmap_node key_node;  /* Index on 'key'. */
-    struct uuid key;            /* nb_pg->header_.uuid. */
-    const struct nbrec_port_group *nb_pg;
-    struct hmap nb_lswitches;   /* NB lswitches related to the port group */
-};
-
-static struct ovn_port_group_ls *
-ovn_port_group_ls_add(struct ovn_port_group *pg, struct ovn_datapath *od)
+static struct ls_port_group_record *
+ls_port_group_record_add(struct hmap *nb_pgs,
+                         const struct nbrec_port_group *nb_pg,
+                         const char *port_name)
 {
-    struct ovn_port_group_ls *pg_ls = xzalloc(sizeof *pg_ls);
-    pg_ls->key = od->nbs->header_.uuid;
-    pg_ls->od = od;
-    hmap_insert(&pg->nb_lswitches, &pg_ls->key_node, uuid_hash(&pg_ls->key));
-    return pg_ls;
+    struct ls_port_group_record *ls_pg_rec = NULL;
+    size_t hash = uuid_hash(&nb_pg->header_.uuid);
+
+    HMAP_FOR_EACH_WITH_HASH (ls_pg_rec, key_node, hash, nb_pgs) {
+        if (ls_pg_rec->nb_pg == nb_pg) {
+            goto done;
+        }
+    }
+
+    ls_pg_rec = xzalloc(sizeof *ls_pg_rec);
+    *ls_pg_rec = (struct ls_port_group_record) {
+        .nb_pg = nb_pg,
+        .ports = SSET_INITIALIZER(&ls_pg_rec->ports),
+    };
+    hmap_insert(nb_pgs, &ls_pg_rec->key_node, hash);
+done:
+    sset_add(&ls_pg_rec->ports, port_name);
+    return ls_pg_rec;
 }
 
-static struct ovn_port_group_ls *
-ovn_port_group_ls_find(struct ovn_port_group *pg, const struct uuid *ls_uuid)
+static void
+ls_port_group_record_destroy(struct hmap *nb_pgs,
+                             struct ls_port_group_record *ls_pg_rec)
 {
-    struct ovn_port_group_ls *pg_ls;
+    if (ls_pg_rec) {
+        hmap_remove(nb_pgs, &ls_pg_rec->key_node);
+        sset_destroy(&ls_pg_rec->ports);
+        free(ls_pg_rec);
+    }
+}
 
-    HMAP_FOR_EACH_WITH_HASH (pg_ls, key_node, uuid_hash(ls_uuid),
-                             &pg->nb_lswitches) {
-        if (uuid_equals(ls_uuid, &pg_ls->key)) {
-            return pg_ls;
+
+static struct ls_port_group *
+ls_port_group_create(struct hmap *ls_port_groups,
+                     const struct nbrec_logical_switch *nbs,
+                     const struct sbrec_datapath_binding *dp)
+{
+    struct ls_port_group *ls_pg = xmalloc(sizeof *ls_pg);
+
+    *ls_pg = (struct ls_port_group) {
+        .nbs = nbs,
+        .sb_datapath_key = dp->tunnel_key,
+        .nb_pgs = HMAP_INITIALIZER(&ls_pg->nb_pgs),
+    };
+    hmap_insert(ls_port_groups, &ls_pg->key_node,
+                uuid_hash(&nbs->header_.uuid));
+    return ls_pg;
+}
+
+static void
+ls_port_group_destroy(struct hmap *ls_port_groups, struct ls_port_group *ls_pg)
+{
+    if (ls_pg) {
+        struct ls_port_group_record *ls_pg_rec;
+        HMAP_FOR_EACH_SAFE (ls_pg_rec, key_node, &ls_pg->nb_pgs) {
+            ls_port_group_record_destroy(&ls_pg->nb_pgs, ls_pg_rec);
+        }
+        hmap_destroy(&ls_pg->nb_pgs);
+        hmap_remove(ls_port_groups, &ls_pg->key_node);
+        free(ls_pg);
+    }
+}
+
+static struct ls_port_group *
+ls_port_group_find(const struct hmap *ls_port_groups,
+                   const struct nbrec_logical_switch *nbs)
+{
+    struct ls_port_group *ls_pg;
+
+    HMAP_FOR_EACH_WITH_HASH (ls_pg, key_node, uuid_hash(&nbs->header_.uuid),
+                             ls_port_groups) {
+        if (nbs == ls_pg->nbs) {
+            return ls_pg;
         }
     }
     return NULL;
-}
-
-static void
-ovn_port_group_ls_add_port(struct ovn_port_group_ls *pg_ls,
-                           struct ovn_port *op)
-{
-    if (pg_ls->n_ports == pg_ls->n_allocated_ports) {
-        pg_ls->ports = x2nrealloc(pg_ls->ports,
-                                  &pg_ls->n_allocated_ports,
-                                  sizeof *pg_ls->ports);
-    }
-    pg_ls->ports[pg_ls->n_ports++] = op;
-}
-
-struct ovn_ls_port_group {
-    struct hmap_node key_node;  /* Index on 'key'. */
-    struct uuid key;            /* nb_pg->header_.uuid. */
-    const struct nbrec_port_group *nb_pg;
-};
-
-static void
-ovn_ls_port_group_add(struct hmap *nb_pgs,
-                      const struct nbrec_port_group *nb_pg)
-{
-    struct ovn_ls_port_group *ls_pg = xzalloc(sizeof *ls_pg);
-    ls_pg->key = nb_pg->header_.uuid;
-    ls_pg->nb_pg = nb_pg;
-    hmap_insert(nb_pgs, &ls_pg->key_node, uuid_hash(&ls_pg->key));
-}
-
-static void
-ovn_ls_port_group_destroy(struct hmap *nb_pgs)
-{
-    struct ovn_ls_port_group *ls_pg;
-    HMAP_FOR_EACH_POP (ls_pg, key_node, nb_pgs) {
-        free(ls_pg);
-    }
-    hmap_destroy(nb_pgs);
 }
 
 static bool
@@ -6371,7 +6372,7 @@ od_set_acl_flags(struct ovn_datapath *od, struct nbrec_acl **acls,
 }
 
 static void
-ls_get_acl_flags(struct ovn_datapath *od)
+ls_get_acl_flags(struct ovn_datapath *od, const struct hmap *ls_port_groups)
 {
     od->has_acls = false;
     od->has_stateful_acl = false;
@@ -6381,9 +6382,18 @@ ls_get_acl_flags(struct ovn_datapath *od)
         return;
     }
 
-    struct ovn_ls_port_group *ls_pg;
-    HMAP_FOR_EACH (ls_pg, key_node, &od->nb_pgs) {
-        if (od_set_acl_flags(od, ls_pg->nb_pg->acls, ls_pg->nb_pg->n_acls)) {
+    const struct ls_port_group *ls_pg;
+
+    ls_pg = ls_port_group_find(ls_port_groups, od->nbs);
+    if (!ls_pg) {
+        return;
+    }
+
+
+    struct ls_port_group_record *ls_pg_rec;
+    HMAP_FOR_EACH (ls_pg_rec, key_node, &ls_pg->nb_pgs) {
+        if (od_set_acl_flags(od, ls_pg_rec->nb_pg->acls,
+                             ls_pg_rec->nb_pg->n_acls)) {
             return;
         }
     }
@@ -6589,7 +6599,7 @@ build_stateless_filter(struct ovn_datapath *od,
 
 static void
 build_stateless_filters(struct ovn_datapath *od,
-                        const struct hmap *port_groups,
+                        const struct hmap *ls_port_groups,
                         struct hmap *lflows)
 {
     for (size_t i = 0; i < od->nbs->n_acls; i++) {
@@ -6599,21 +6609,26 @@ build_stateless_filters(struct ovn_datapath *od,
         }
     }
 
-    struct ovn_port_group *pg;
-    HMAP_FOR_EACH (pg, key_node, port_groups) {
-        if (ovn_port_group_ls_find(pg, &od->nbs->header_.uuid)) {
-            for (size_t i = 0; i < pg->nb_pg->n_acls; i++) {
-                const struct nbrec_acl *acl = pg->nb_pg->acls[i];
-                if (!strcmp(acl->action, "allow-stateless")) {
-                    build_stateless_filter(od, acl, lflows);
-                }
+    const struct ls_port_group *ls_pg = ls_port_group_find(ls_port_groups,
+                                                           od->nbs);
+    if (!ls_pg) {
+        return;
+    }
+
+    const struct ls_port_group_record *ls_pg_rec;
+    HMAP_FOR_EACH (ls_pg_rec, key_node, &ls_pg->nb_pgs) {
+        for (size_t i = 0; i < ls_pg_rec->nb_pg->n_acls; i++) {
+            const struct nbrec_acl *acl = ls_pg_rec->nb_pg->acls[i];
+
+            if (!strcmp(acl->action, "allow-stateless")) {
+                build_stateless_filter(od, acl, lflows);
             }
         }
     }
 }
 
 static void
-build_pre_acls(struct ovn_datapath *od, const struct hmap *port_groups,
+build_pre_acls(struct ovn_datapath *od, const struct hmap *ls_port_groups,
                struct hmap *lflows)
 {
     /* Ingress and Egress Pre-ACL Table (Priority 0): Packets are
@@ -6644,7 +6659,7 @@ build_pre_acls(struct ovn_datapath *od, const struct hmap *port_groups,
         }
 
         /* stateless filters always take precedence over stateful ACLs. */
-        build_stateless_filters(od, port_groups, lflows);
+        build_stateless_filters(od, ls_port_groups, lflows);
 
         /* Ingress and Egress Pre-ACL Table (Priority 110).
          *
@@ -6678,7 +6693,7 @@ build_pre_acls(struct ovn_datapath *od, const struct hmap *port_groups,
     } else if (od->has_lb_vip) {
         /* We'll build stateless filters if there are LB rules so that
          * the stateless flows are not tracked in pre-lb. */
-         build_stateless_filters(od, port_groups, lflows);
+         build_stateless_filters(od, ls_port_groups, lflows);
     }
 }
 
@@ -7220,33 +7235,6 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
     }
 }
 
-static struct ovn_port_group *
-ovn_port_group_create(struct hmap *pgs,
-                      const struct nbrec_port_group *nb_pg)
-{
-    struct ovn_port_group *pg = xzalloc(sizeof *pg);
-    pg->key = nb_pg->header_.uuid;
-    pg->nb_pg = nb_pg;
-    hmap_init(&pg->nb_lswitches);
-    hmap_insert(pgs, &pg->key_node, uuid_hash(&pg->key));
-    return pg;
-}
-
-static void
-ovn_port_group_destroy(struct hmap *pgs, struct ovn_port_group *pg)
-{
-    if (pg) {
-        hmap_remove(pgs, &pg->key_node);
-        struct ovn_port_group_ls *ls;
-        HMAP_FOR_EACH_POP (ls, key_node, &pg->nb_lswitches) {
-            free(ls->ports);
-            free(ls);
-        }
-        hmap_destroy(&pg->nb_lswitches);
-        free(pg);
-    }
-}
-
 static void
 copy_ra_to_sb(struct ovn_port *op, const char *address_mode);
 
@@ -7318,13 +7306,12 @@ ovn_update_ipv6_options(struct hmap *lr_ports)
 static void
 build_port_group_lswitches(
     const struct nbrec_port_group_table *nbrec_port_group_table,
-    struct hmap *pgs, struct hmap *ls_ports)
+    struct hmap *ls_pgs, struct hmap *ls_ports)
 {
-    hmap_init(pgs);
+    hmap_init(ls_pgs);
 
     const struct nbrec_port_group *nb_pg;
     NBREC_PORT_GROUP_TABLE_FOR_EACH (nb_pg, nbrec_port_group_table) {
-        struct ovn_port_group *pg = ovn_port_group_create(pgs, nb_pg);
         for (size_t i = 0; i < nb_pg->n_ports; i++) {
             struct ovn_port *op = ovn_port_find(ls_ports,
                                                 nb_pg->ports[i]->name);
@@ -7344,13 +7331,12 @@ build_port_group_lswitches(
                 continue;
             }
 
-            struct ovn_port_group_ls *pg_ls =
-                ovn_port_group_ls_find(pg, &op->od->nbs->header_.uuid);
-            if (!pg_ls) {
-                pg_ls = ovn_port_group_ls_add(pg, op->od);
-                ovn_ls_port_group_add(&op->od->nb_pgs, nb_pg);
+            struct ls_port_group *ls_pg =
+                ls_port_group_find(ls_pgs, op->od->nbs);
+            if (!ls_pg) {
+                ls_pg = ls_port_group_create(ls_pgs, op->od->nbs, op->od->sb);
             }
-            ovn_port_group_ls_add_port(pg_ls, op);
+            ls_port_group_record_add(&ls_pg->nb_pgs, nb_pg, op->key);
         }
     }
 }
@@ -7507,7 +7493,7 @@ build_acl_log_related_flows(struct ovn_datapath *od, struct hmap *lflows,
 
 static void
 build_acls(struct ovn_datapath *od, const struct chassis_features *features,
-           struct hmap *lflows, const struct hmap *port_groups,
+           struct hmap *lflows, const struct hmap *ls_port_groups,
            const struct shash *meter_groups)
 {
     const char *default_acl_action = default_acl_drop
@@ -7693,11 +7679,15 @@ build_acls(struct ovn_datapath *od, const struct chassis_features *features,
                      features->ct_no_masked_label,
                      meter_groups, &match, &actions);
     }
-    struct ovn_port_group *pg;
-    HMAP_FOR_EACH (pg, key_node, port_groups) {
-        if (ovn_port_group_ls_find(pg, &od->nbs->header_.uuid)) {
-            for (size_t i = 0; i < pg->nb_pg->n_acls; i++) {
-                const struct nbrec_acl *acl = pg->nb_pg->acls[i];
+
+    const struct ls_port_group *ls_pg = ls_port_group_find(ls_port_groups,
+                                                           od->nbs);
+    if (ls_pg) {
+        const struct ls_port_group_record *ls_pg_rec;
+        HMAP_FOR_EACH (ls_pg_rec, key_node, &ls_pg->nb_pgs) {
+            for (size_t i = 0; i < ls_pg_rec->nb_pg->n_acls; i++) {
+                const struct nbrec_acl *acl = ls_pg_rec->nb_pg->acls[i];
+
                 build_acl_log_related_flows(od, lflows, acl, has_stateful,
                                             features->ct_no_masked_label,
                                             meter_groups, &match, &actions);
@@ -9203,19 +9193,19 @@ build_lswitch_lflows_l2_unknown(struct ovn_datapath *od,
  * Ingress tables 3 through 10.  Egress tables 0 through 7. */
 static void
 build_lswitch_lflows_pre_acl_and_acl(struct ovn_datapath *od,
-                                     const struct hmap *port_groups,
+                                     const struct hmap *ls_port_groups,
                                      const struct chassis_features *features,
                                      struct hmap *lflows,
                                      const struct shash *meter_groups)
 {
     ovs_assert(od->nbs);
-    ls_get_acl_flags(od);
+    ls_get_acl_flags(od, ls_port_groups);
 
-    build_pre_acls(od, port_groups, lflows);
+    build_pre_acls(od, ls_port_groups, lflows);
     build_pre_lb(od, meter_groups, lflows);
     build_pre_stateful(od, features, lflows);
     build_acl_hints(od, features, lflows);
-    build_acls(od, features, lflows, port_groups, meter_groups);
+    build_acls(od, features, lflows, ls_port_groups, meter_groups);
     build_qos(od, lflows);
     build_stateful(od, features, lflows);
     build_lb_hairpin(od, lflows);
@@ -15502,7 +15492,7 @@ struct lswitch_flow_build_info {
     const struct ovn_datapaths *lr_datapaths;
     const struct hmap *ls_ports;
     const struct hmap *lr_ports;
-    const struct hmap *port_groups;
+    const struct hmap *ls_port_groups;
     struct hmap *lflows;
     struct hmap *igmp_groups;
     const struct shash *meter_groups;
@@ -15526,7 +15516,7 @@ build_lswitch_and_lrouter_iterate_by_ls(struct ovn_datapath *od,
                                         struct lswitch_flow_build_info *lsi)
 {
     ovs_assert(od->nbs);
-    build_lswitch_lflows_pre_acl_and_acl(od, lsi->port_groups,
+    build_lswitch_lflows_pre_acl_and_acl(od, lsi->ls_port_groups,
                                          lsi->features,
                                          lsi->lflows,
                                          lsi->meter_groups);
@@ -15800,7 +15790,7 @@ build_lswitch_and_lrouter_flows(const struct ovn_datapaths *ls_datapaths,
                                 const struct ovn_datapaths *lr_datapaths,
                                 const struct hmap *ls_ports,
                                 const struct hmap *lr_ports,
-                                const struct hmap *port_groups,
+                                const struct hmap *ls_port_groups,
                                 struct hmap *lflows,
                                 struct hmap *igmp_groups,
                                 const struct shash *meter_groups,
@@ -15828,7 +15818,7 @@ build_lswitch_and_lrouter_flows(const struct ovn_datapaths *ls_datapaths,
             lsiv[index].lr_datapaths = lr_datapaths;
             lsiv[index].ls_ports = ls_ports;
             lsiv[index].lr_ports = lr_ports;
-            lsiv[index].port_groups = port_groups;
+            lsiv[index].ls_port_groups = ls_port_groups;
             lsiv[index].igmp_groups = igmp_groups;
             lsiv[index].meter_groups = meter_groups;
             lsiv[index].lbs = lbs;
@@ -15861,7 +15851,7 @@ build_lswitch_and_lrouter_flows(const struct ovn_datapaths *ls_datapaths,
             .lr_datapaths = lr_datapaths,
             .ls_ports = ls_ports,
             .lr_ports = lr_ports,
-            .port_groups = port_groups,
+            .ls_port_groups = ls_port_groups,
             .lflows = lflows,
             .igmp_groups = igmp_groups,
             .meter_groups = meter_groups,
@@ -16005,7 +15995,8 @@ void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
                                     input_data->lr_datapaths,
                                     input_data->ls_ports,
                                     input_data->lr_ports,
-                                    input_data->port_groups, lflows,
+                                    input_data->ls_port_groups,
+                                    lflows,
                                     &igmp_groups,
                                     input_data->meter_groups, input_data->lbs,
                                     input_data->bfd_connections,
@@ -16552,7 +16543,7 @@ bool lflow_handle_northd_ls_changes(struct ovsdb_idl_txn *ovnsb_txn,
 static void
 sync_port_groups(struct ovsdb_idl_txn *ovnsb_txn,
                  const struct sbrec_port_group_table *sbrec_port_group_table,
-                 struct hmap *pgs)
+                 struct hmap *ls_pgs)
 {
     struct shash sb_port_groups = SHASH_INITIALIZER(&sb_port_groups);
 
@@ -16563,12 +16554,13 @@ sync_port_groups(struct ovsdb_idl_txn *ovnsb_txn,
 
     struct ds sb_name = DS_EMPTY_INITIALIZER;
 
-    struct ovn_port_group *pg;
-    HMAP_FOR_EACH (pg, key_node, pgs) {
+    struct ls_port_group *ls_pg;
+    HMAP_FOR_EACH (ls_pg, key_node, ls_pgs) {
+        struct ls_port_group_record *ls_pg_rec;
 
-        struct ovn_port_group_ls *pg_ls;
-        HMAP_FOR_EACH (pg_ls, key_node, &pg->nb_lswitches) {
-            get_sb_port_group_name(pg->nb_pg->name, pg_ls->od->sb->tunnel_key,
+        HMAP_FOR_EACH (ls_pg_rec, key_node, &ls_pg->nb_pgs) {
+            get_sb_port_group_name(ls_pg_rec->nb_pg->name,
+                                   ls_pg->sb_datapath_key,
                                    &sb_name);
             sb_port_group = shash_find_and_delete(&sb_port_groups,
                                                   ds_cstr(&sb_name));
@@ -16577,14 +16569,10 @@ sync_port_groups(struct ovsdb_idl_txn *ovnsb_txn,
                 sbrec_port_group_set_name(sb_port_group, ds_cstr(&sb_name));
             }
 
-            const char **nb_port_names = xcalloc(pg_ls->n_ports,
-                                                 sizeof *nb_port_names);
-            for (size_t i = 0; i < pg_ls->n_ports; i++) {
-                nb_port_names[i] = pg_ls->ports[i]->nbsp->name;
-            }
+            const char **nb_port_names = sset_array(&ls_pg_rec->ports);
             sbrec_port_group_set_ports(sb_port_group,
                                        nb_port_names,
-                                       pg_ls->n_ports);
+                                       sset_count(&ls_pg_rec->ports));
             free(nb_port_names);
         }
     }
@@ -17208,7 +17196,7 @@ northd_init(struct northd_data *data)
     ovn_datapaths_init(&data->lr_datapaths);
     hmap_init(&data->ls_ports);
     hmap_init(&data->lr_ports);
-    hmap_init(&data->port_groups);
+    hmap_init(&data->ls_port_groups);
     hmap_init(&data->lbs);
     hmap_init(&data->lb_groups);
     ovs_list_init(&data->lr_list);
@@ -17239,12 +17227,11 @@ northd_destroy(struct northd_data *data)
     }
     hmap_destroy(&data->lb_groups);
 
-    struct ovn_port_group *pg;
-    HMAP_FOR_EACH_SAFE (pg, key_node, &data->port_groups) {
-        ovn_port_group_destroy(&data->port_groups, pg);
+    struct ls_port_group *ls_pg;
+    HMAP_FOR_EACH_SAFE (ls_pg, key_node, &data->ls_port_groups) {
+        ls_port_group_destroy(&data->ls_port_groups, ls_pg);
     }
-
-    hmap_destroy(&data->port_groups);
+    hmap_destroy(&data->ls_port_groups);
 
     /* XXX Having to explicitly clean up macam here
      * is a bit strange. We don't explicitly initialize
@@ -17379,7 +17366,8 @@ ovnnb_db_run(struct northd_input *input_data,
                        ods_size(&data->lr_datapaths));
     build_ipam(&data->ls_datapaths.datapaths, &data->ls_ports);
     build_port_group_lswitches(input_data->nbrec_port_group_table,
-                               &data->port_groups, &data->ls_ports);
+                               &data->ls_port_groups,
+                               &data->ls_ports);
     build_lrouter_groups(&data->lr_ports, &data->lr_list);
     build_ip_mcast(ovnsb_txn, input_data->sbrec_ip_multicast_table,
                    input_data->sbrec_ip_mcast_by_dp,
@@ -17397,7 +17385,7 @@ ovnnb_db_run(struct northd_input *input_data,
     sync_lbs(ovnsb_txn, input_data->sbrec_load_balancer_table,
              &data->ls_datapaths, &data->lbs);
     sync_port_groups(ovnsb_txn, input_data->sbrec_port_group_table,
-                     &data->port_groups);
+                     &data->ls_port_groups);
     sync_mirrors(ovnsb_txn, input_data->nbrec_mirror_table,
                  input_data->sbrec_mirror_table);
     sync_dns_entries(ovnsb_txn, input_data->sbrec_dns_table,
