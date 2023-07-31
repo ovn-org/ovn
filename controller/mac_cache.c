@@ -37,6 +37,17 @@ static bool
 mac_cache_mb_data_from_sbrec(struct mac_cache_mb_data *data,
                               const struct sbrec_mac_binding *mb,
                               struct ovsdb_idl_index *sbrec_pb_by_name);
+static uint32_t
+mac_cache_fdb_data_hash(const struct mac_cache_fdb_data *fdb_data);
+static inline bool
+mac_cache_fdb_data_equals(const struct mac_cache_fdb_data *a,
+                          const struct mac_cache_fdb_data *b);
+static bool
+mac_cache_fdb_data_from_sbrec(struct mac_cache_fdb_data *data,
+                              const struct sbrec_fdb *fdb);
+static struct mac_cache_fdb *
+mac_cache_fdb_find(struct mac_cache_data *data,
+                   const struct mac_cache_fdb_data *fdb_data);
 static struct mac_cache_threshold *
 mac_cache_threshold_find(struct hmap *thresholds, const struct uuid *uuid);
 static uint64_t
@@ -169,6 +180,70 @@ mac_cache_mac_bindings_clear(struct mac_cache_data *data)
     }
 }
 
+void
+mac_cache_fdb_add(struct mac_cache_data *data, const struct sbrec_fdb *fdb,
+                  struct uuid dp_uuid)
+{
+    struct mac_cache_fdb_data fdb_data;
+    if (!mac_cache_fdb_data_from_sbrec(&fdb_data, fdb)) {
+        return;
+    }
+
+    struct mac_cache_fdb *mc_fdb = mac_cache_fdb_find(data, &fdb_data);
+
+    if (!mc_fdb) {
+        mc_fdb = xmalloc(sizeof *mc_fdb);
+        hmap_insert(&data->fdbs, &mc_fdb->hmap_node,
+                    mac_cache_fdb_data_hash(&fdb_data));
+    }
+
+    mc_fdb->sbrec_fdb = fdb;
+    mc_fdb->data = fdb_data;
+    mc_fdb->dp_uuid = dp_uuid;
+}
+
+void
+mac_cache_fdb_remove(struct mac_cache_data *data, const struct sbrec_fdb *fdb)
+{
+    struct mac_cache_fdb_data fdb_data;
+    if (!mac_cache_fdb_data_from_sbrec(&fdb_data, fdb)) {
+        return;
+    }
+
+    struct mac_cache_fdb *mc_fdb = mac_cache_fdb_find(data, &fdb_data);
+    if (!mc_fdb) {
+        return;
+    }
+
+    hmap_remove(&data->fdbs, &mc_fdb->hmap_node);
+    free(mc_fdb);
+}
+
+bool
+mac_cache_sb_fdb_updated(const struct sbrec_fdb *fdb)
+{
+    bool updated = false;
+    for (size_t i = 0; i < SBREC_FDB_N_COLUMNS; i++) {
+        /* Ignore timestamp update as this does not affect the existing nodes
+         * at all. */
+        if (i == SBREC_FDB_COL_TIMESTAMP) {
+            continue;
+        }
+        updated |= sbrec_fdb_is_updated(fdb, i);
+    }
+
+    return updated || sbrec_fdb_is_deleted(fdb);
+}
+
+void
+mac_cache_fdbs_clear(struct mac_cache_data *data)
+{
+    struct mac_cache_fdb *mc_fdb;
+    HMAP_FOR_EACH_POP (mc_fdb, hmap_node, &data->fdbs) {
+        free(mc_fdb);
+    }
+}
+
 struct mac_cache_stats {
     struct ovs_list list_node;
 
@@ -177,6 +252,8 @@ struct mac_cache_stats {
     union {
         /* Common data to identify MAC binding. */
         struct mac_cache_mb_data mb;
+        /* Common data to identify FDB. */
+        struct mac_cache_fdb_data fdb;
     } data;
 };
 
@@ -308,6 +385,60 @@ mac_cache_mac_binding_find(struct mac_cache_data *data,
     return NULL;
 }
 
+static uint32_t
+mac_cache_fdb_data_hash(const struct mac_cache_fdb_data *fdb_data)
+{
+    uint32_t hash = 0;
+
+    hash = hash_add(hash, fdb_data->port_key);
+    hash = hash_add(hash, fdb_data->dp_key);
+    hash = hash_add64(hash, eth_addr_to_uint64(fdb_data->mac));
+
+    return hash_finish(hash, 16);
+}
+
+static inline bool
+mac_cache_fdb_data_equals(const struct mac_cache_fdb_data *a,
+                          const struct mac_cache_fdb_data *b)
+{
+    return a->port_key == b->port_key &&
+           a->dp_key == b->dp_key &&
+           eth_addr_equals(a->mac, b->mac);
+}
+
+static bool
+mac_cache_fdb_data_from_sbrec(struct mac_cache_fdb_data *data,
+                              const struct sbrec_fdb *fdb)
+{
+
+    if (!eth_addr_from_string(fdb->mac, &data->mac)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "Couldn't parse FDB: mac=%s", fdb->mac);
+        return false;
+    }
+
+    data->dp_key = fdb->dp_key;
+    data->port_key = fdb->port_key;
+
+    return true;
+}
+
+static struct mac_cache_fdb *
+mac_cache_fdb_find(struct mac_cache_data *data,
+                   const struct mac_cache_fdb_data *fdb_data)
+{
+    uint32_t hash = mac_cache_fdb_data_hash(fdb_data);
+
+    struct mac_cache_fdb *fdb;
+    HMAP_FOR_EACH_WITH_HASH (fdb, hmap_node, hash, &data->fdbs) {
+        if (mac_cache_fdb_data_equals(&fdb->data, fdb_data)) {
+            return fdb;
+        }
+    }
+
+    return NULL;
+}
+
 static struct mac_cache_threshold *
 mac_cache_threshold_find(struct hmap *thresholds, const struct uuid *uuid)
 {
@@ -330,8 +461,11 @@ mac_cache_threshold_get_value_ms(const struct sbrec_datapath_binding *dp,
     uint64_t value = 0;
     switch (type) {
     case MAC_CACHE_MAC_BINDING:
-        value = smap_get_uint(&dp->external_ids,
-                              "mac_binding_age_threshold", 0);
+        value = smap_get_uint(&dp->external_ids, "mac_binding_age_threshold",
+                              0);
+        break;
+    case MAC_CACHE_FDB:
+        value = smap_get_uint(&dp->external_ids, "fdb_age_threshold", 0);
         break;
     case MAC_CACHE_MAX:
     default:

@@ -24,6 +24,7 @@
 
 enum mac_cache_type {
     MAC_CACHE_MAC_BINDING,
+    MAC_CACHE_FDB,
     MAC_CACHE_MAX
 };
 
@@ -33,6 +34,9 @@ struct mac_cache_data {
     /* 'struct mac_cache_mac_binding' by 'struct mac_cache_mb_data' that are
      * local and have threshold > 0. */
     struct hmap mac_bindings;
+    /* 'struct mac_cache_fdb' by 'struct mac_cache_fdb_data' that are
+     * local and have threshold > 0. */
+    struct hmap fdbs;
 };
 
 struct mac_cache_threshold {
@@ -60,6 +64,22 @@ struct mac_cache_mac_binding {
     const struct sbrec_mac_binding *sbrec_mb;
 };
 
+struct mac_cache_fdb_data {
+    uint32_t port_key;
+    uint32_t dp_key;
+    struct eth_addr mac;
+};
+
+struct mac_cache_fdb {
+    struct hmap_node hmap_node;
+    /* Common data to identify FDB. */
+    struct mac_cache_fdb_data data;
+    /* Reference to the SB FDB record. */
+    const struct sbrec_fdb *sbrec_fdb;
+    /* UUID of datapath for this FDB record. */
+    struct uuid dp_uuid;
+};
+
 bool mac_cache_threshold_add(struct mac_cache_data *data,
                              const struct sbrec_datapath_binding *dp,
                              enum mac_cache_type type);
@@ -79,6 +99,13 @@ void mac_cache_mac_binding_remove(struct mac_cache_data *data,
                                   struct ovsdb_idl_index *sbrec_pb_by_name);
 void mac_cache_mac_bindings_clear(struct mac_cache_data *data);
 bool mac_cache_sb_mac_binding_updated(const struct sbrec_mac_binding *mb);
+
+void mac_cache_fdb_add(struct mac_cache_data *data,
+                       const struct sbrec_fdb *fdb, struct uuid dp_uuid);
+void mac_cache_fdb_remove(struct mac_cache_data *data,
+                          const struct sbrec_fdb *fdb);
+bool mac_cache_sb_fdb_updated(const struct sbrec_fdb *fdb);
+void mac_cache_fdbs_clear(struct mac_cache_data *data);
 
 void
 mac_cache_mb_stats_process_flow_stats(struct ovs_list *stats_list,
