@@ -83,6 +83,7 @@
 #include "lib/ovn-l7.h"
 #include "hmapx.h"
 #include "mirror.h"
+#include "mac_cache.h"
 
 VLOG_DEFINE_THIS_MODULE(main);
 
@@ -3248,6 +3249,214 @@ en_lb_data_cleanup(void *data)
     uuidset_destroy(&lb_data->new);
 }
 
+static void
+mac_cache_mb_handle_for_datapath(struct mac_cache_data *data,
+                                 const struct sbrec_datapath_binding *dp,
+                                 struct ovsdb_idl_index *sbrec_mb_by_dp,
+                                 struct ovsdb_idl_index *sbrec_pb_by_name)
+{
+    bool has_threshold =
+            mac_cache_threshold_replace(data, dp, MAC_CACHE_MAC_BINDING);
+
+    struct sbrec_mac_binding *mb_index_row =
+            sbrec_mac_binding_index_init_row(sbrec_mb_by_dp);
+    sbrec_mac_binding_index_set_datapath(mb_index_row, dp);
+
+    const struct sbrec_mac_binding *mb;
+    SBREC_MAC_BINDING_FOR_EACH_EQUAL (mb, mb_index_row, sbrec_mb_by_dp) {
+        if (has_threshold) {
+            mac_cache_mac_binding_add(data, mb, sbrec_pb_by_name);
+        } else {
+            mac_cache_mac_binding_remove(data, mb, sbrec_pb_by_name);
+        }
+    }
+
+    sbrec_mac_binding_index_destroy_row(mb_index_row);
+}
+
+static void *
+en_mac_cache_init(struct engine_node *node OVS_UNUSED,
+                   struct engine_arg *arg OVS_UNUSED)
+{
+    struct mac_cache_data *cache_data = xzalloc(sizeof *cache_data);
+
+    for (size_t i = 0; i < MAC_CACHE_MAX; i++) {
+        hmap_init(&cache_data->thresholds[i]);
+    }
+    hmap_init(&cache_data->mac_bindings);
+
+    return cache_data;
+}
+
+static void
+en_mac_cache_run(struct engine_node *node, void *data)
+{
+    struct mac_cache_data *cache_data = data;
+    struct ed_type_runtime_data *rt_data =
+            engine_get_input_data("runtime_data", node);
+    const struct sbrec_mac_binding_table *mb_table =
+            EN_OVSDB_GET(engine_get_input("SB_mac_binding", node));
+    struct ovsdb_idl_index *sbrec_pb_by_name =
+            engine_ovsdb_node_get_index(
+                    engine_get_input("SB_port_binding", node),
+                    "name");
+
+    mac_cache_thresholds_clear(cache_data);
+    mac_cache_mac_bindings_clear(cache_data);
+
+    const struct sbrec_mac_binding *sbrec_mb;
+    SBREC_MAC_BINDING_TABLE_FOR_EACH (sbrec_mb, mb_table) {
+        if (!get_local_datapath(&rt_data->local_datapaths,
+                                sbrec_mb->datapath->tunnel_key)) {
+            continue;
+        }
+
+        if (mac_cache_threshold_add(cache_data, sbrec_mb->datapath,
+                                    MAC_CACHE_MAC_BINDING)) {
+            mac_cache_mac_binding_add(cache_data, sbrec_mb, sbrec_pb_by_name);
+        }
+    }
+
+    engine_set_node_state(node, EN_UPDATED);
+}
+
+static bool
+mac_cache_sb_mac_binding_handler(struct engine_node *node, void *data)
+{
+    struct mac_cache_data *cache_data = data;
+    struct ed_type_runtime_data *rt_data =
+            engine_get_input_data("runtime_data", node);
+    const struct sbrec_mac_binding_table *mb_table =
+            EN_OVSDB_GET(engine_get_input("SB_mac_binding", node));
+    struct ovsdb_idl_index *sbrec_pb_by_name =
+            engine_ovsdb_node_get_index(
+                    engine_get_input("SB_port_binding", node),
+                    "name");
+
+    size_t previous_size = hmap_count(&cache_data->mac_bindings);
+
+    const struct sbrec_mac_binding *sbrec_mb;
+    SBREC_MAC_BINDING_TABLE_FOR_EACH_TRACKED (sbrec_mb, mb_table) {
+        if (!mac_cache_sb_mac_binding_updated(sbrec_mb)) {
+            continue;
+        }
+
+        if (!sbrec_mac_binding_is_new(sbrec_mb)) {
+            mac_cache_mac_binding_remove(cache_data, sbrec_mb,
+                                         sbrec_pb_by_name);
+        }
+
+        if (sbrec_mac_binding_is_deleted(sbrec_mb) ||
+            !get_local_datapath(&rt_data->local_datapaths,
+                                sbrec_mb->datapath->tunnel_key)) {
+            continue;
+        }
+
+        if (mac_cache_threshold_add(cache_data, sbrec_mb->datapath,
+                                    MAC_CACHE_MAC_BINDING)) {
+            mac_cache_mac_binding_add(cache_data, sbrec_mb, sbrec_pb_by_name);
+        }
+    }
+
+    if (hmap_count(&cache_data->mac_bindings) != previous_size) {
+        engine_set_node_state(node, EN_UPDATED);
+    }
+
+    return true;
+}
+
+static bool
+mac_cache_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
+{
+    struct mac_cache_data *cache_data = data;
+    struct ed_type_runtime_data *rt_data =
+            engine_get_input_data("runtime_data", node);
+    struct ovsdb_idl_index *sbrec_mb_by_dp =
+            engine_ovsdb_node_get_index(
+                    engine_get_input("SB_mac_binding", node),
+                    "datapath");
+    struct ovsdb_idl_index *sbrec_pb_by_name =
+            engine_ovsdb_node_get_index(
+                    engine_get_input("SB_port_binding", node),
+                    "name");
+
+    /* There are no tracked data. Fall back to full recompute. */
+    if (!rt_data->tracked) {
+        return false;
+    }
+
+    size_t previous_size = hmap_count(&cache_data->mac_bindings);
+
+    struct tracked_datapath *tdp;
+    HMAP_FOR_EACH (tdp, node, &rt_data->tracked_dp_bindings) {
+        if (tdp->tracked_type != TRACKED_RESOURCE_NEW) {
+            continue;
+        }
+
+        mac_cache_mb_handle_for_datapath(cache_data, tdp->dp,
+                                         sbrec_mb_by_dp, sbrec_pb_by_name);
+    }
+
+    if (hmap_count(&cache_data->mac_bindings) != previous_size) {
+        engine_set_node_state(node, EN_UPDATED);
+    }
+
+    return true;
+}
+
+static bool
+mac_cache_sb_datapath_binding_handler(struct engine_node *node, void *data)
+{
+    struct mac_cache_data *cache_data = data;
+    struct ed_type_runtime_data *rt_data =
+            engine_get_input_data("runtime_data", node);
+    const struct sbrec_datapath_binding_table *dp_table =
+            EN_OVSDB_GET(engine_get_input("SB_datapath_binding", node));
+    struct ovsdb_idl_index *sbrec_mb_by_dp =
+            engine_ovsdb_node_get_index(
+                    engine_get_input("SB_mac_binding", node),
+                    "datapath");
+    struct ovsdb_idl_index *sbrec_pb_by_name =
+            engine_ovsdb_node_get_index(
+                    engine_get_input("SB_port_binding", node),
+                    "name");
+
+    size_t previous_size = hmap_count(&cache_data->mac_bindings);
+
+    const struct sbrec_datapath_binding *sbrec_dp;
+    SBREC_DATAPATH_BINDING_TABLE_FOR_EACH (sbrec_dp, dp_table) {
+        if (sbrec_datapath_binding_is_new(sbrec_dp) ||
+            sbrec_datapath_binding_is_deleted(sbrec_dp) ||
+            !get_local_datapath(&rt_data->local_datapaths,
+                                sbrec_dp->tunnel_key)) {
+            continue;
+        }
+
+        mac_cache_mb_handle_for_datapath(cache_data, sbrec_dp,
+                                         sbrec_mb_by_dp, sbrec_pb_by_name);
+    }
+
+    if (hmap_count(&cache_data->mac_bindings) != previous_size) {
+        engine_set_node_state(node, EN_UPDATED);
+    }
+
+    return true;
+}
+
+
+static void
+en_mac_cache_cleanup(void *data)
+{
+    struct mac_cache_data *cache_data = data;
+
+    mac_cache_thresholds_clear(cache_data);
+    for (size_t i = 0; i < MAC_CACHE_MAX; i++) {
+        hmap_destroy(&cache_data->thresholds[i]);
+    }
+    mac_cache_mac_bindings_clear(cache_data);
+    hmap_destroy(&cache_data->mac_bindings);
+}
+
 /* Engine node which is used to handle the Non VIF data like
  *   - OVS patch ports
  *   - Tunnel ports and the related chassis information.
@@ -4572,6 +4781,14 @@ controller_output_lflow_output_handler(struct engine_node *node,
     return true;
 }
 
+static bool
+controller_output_mac_cache_handler(struct engine_node *node,
+                                    void *data OVS_UNUSED)
+{
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
+}
+
 struct ovn_controller_exit_args {
     bool *exiting;
     bool *restart;
@@ -4851,6 +5068,7 @@ main(int argc, char *argv[])
     ENGINE_NODE(dhcp_options, "dhcp_options");
     ENGINE_NODE(if_status_mgr, "if_status_mgr");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lb_data, "lb_data");
+    ENGINE_NODE(mac_cache, "mac_cache");
 
 #define SB_NODE(NAME, NAME_STR) ENGINE_NODE_SB(NAME, NAME_STR);
     SB_NODES
@@ -5029,10 +5247,21 @@ main(int argc, char *argv[])
     engine_add_input(&en_runtime_data, &en_ovs_interface_shadow,
                      runtime_data_ovs_interface_shadow_handler);
 
+    engine_add_input(&en_mac_cache, &en_runtime_data,
+                     engine_noop_handler);
+    engine_add_input(&en_mac_cache, &en_sb_mac_binding,
+                     mac_cache_sb_mac_binding_handler);
+    engine_add_input(&en_mac_cache, &en_sb_datapath_binding,
+                     mac_cache_sb_datapath_binding_handler);
+    engine_add_input(&en_mac_cache, &en_sb_port_binding,
+                     engine_noop_handler);
+
     engine_add_input(&en_controller_output, &en_lflow_output,
                      controller_output_lflow_output_handler);
     engine_add_input(&en_controller_output, &en_pflow_output,
                      controller_output_pflow_output_handler);
+    engine_add_input(&en_controller_output, &en_mac_cache,
+                     controller_output_mac_cache_handler);
 
     struct engine_arg engine_arg = {
         .sb_idl = ovnsb_idl_loop.idl,
