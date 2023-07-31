@@ -2360,6 +2360,21 @@ consider_iface_claim(const struct ovsrec_interface *iface_rec,
     /* Get the (updated) b_lport again for the lbinding. */
     b_lport = local_binding_get_primary_lport(lbinding);
 
+    /*
+     * Update the tracked_dp_bindings whenever an ofport
+     * on a specific ovs port changes.
+     * This update will trigger flow recomputation during
+     * the incremental processing run which updates the local
+     * flows in_port filed.
+     */
+    if (b_lport && ovsrec_interface_is_updated(iface_rec,
+                                    OVSREC_INTERFACE_COL_OFPORT)) {
+        tracked_datapath_lport_add(b_lport->pb, TRACKED_RESOURCE_UPDATED,
+                                   b_ctx_out->tracked_dp_bindings);
+        b_ctx_out->local_lports_changed = true;
+    }
+
+
     /* Update the child local_binding's iface (if any children) and try to
      *  claim the container lbindings. */
     LIST_FOR_EACH (b_lport, list_node, &lbinding->binding_lports) {
