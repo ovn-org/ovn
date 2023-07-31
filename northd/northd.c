@@ -1134,6 +1134,13 @@ ovn_datapath_update_external_ids(struct ovn_datapath *od)
         if (ts) {
             smap_add(&ids, "interconn-ts", ts);
         }
+
+        uint32_t age_threshold = smap_get_uint(&od->nbs->other_config,
+                                               "fdb_age_threshold", 0);
+        if (age_threshold) {
+            smap_add_format(&ids, "fdb_age_threshold",
+                            "%u", age_threshold);
+        }
     }
 
     /* Set snat-ct-zone */
