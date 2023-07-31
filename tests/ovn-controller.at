@@ -2606,3 +2606,48 @@ AT_CHECK([ovn-sbctl get chassis $chassis_id other_config:unsupported], [1], [ign
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - ovs iface change ofport])
+AT_KEYWORDS([ovn])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+
+ovn-nbctl ls-add sw0
+
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3 1000::3"
+
+wait_for_ports_up
+ovn-nbctl --wait=hv sync
+
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c in_port=1], [0],[dnl
+1
+])
+
+# update the ovs interface ofport from 1 to 24
+check as hv1 ovs-vsctl set Interface hv1-vif1 ofport-request=24
+OVS_WAIT_UNTIL([test x`as hv1 ovs-vsctl get Interface hv1-vif1 ofport` = x24])
+
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c in_port=24], [0],[dnl
+1
+])
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c in_port=1], [1],[dnl
+0
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
