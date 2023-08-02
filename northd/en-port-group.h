@@ -60,4 +60,25 @@ void ls_port_group_table_build(struct ls_port_group_table *ls_port_groups,
 void ls_port_group_table_sync(const struct ls_port_group_table *ls_port_groups,
                               const struct sbrec_port_group_table *,
                               struct ovsdb_idl_txn *ovnsb_txn);
+
+/* Incremental processing implementation. */
+struct port_group_input {
+    /* Northbound table references. */
+    const struct nbrec_port_group_table *nbrec_port_group_table;
+
+    /* Southbound table references. */
+    const struct sbrec_port_group_table *sbrec_port_group_table;
+
+    /* northd node references. */
+    const struct hmap *ls_ports;
+};
+
+struct port_group_data {
+    struct ls_port_group_table ls_port_groups;
+};
+
+void *en_port_group_init(struct engine_node *, struct engine_arg *);
+void en_port_group_cleanup(void *data);
+void en_port_group_run(struct engine_node *, void *data);
+
 #endif /* EN_PORT_GROUP_H */

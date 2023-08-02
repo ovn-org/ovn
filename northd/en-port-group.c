@@ -17,8 +17,10 @@
 #include <config.h>
 
 #include "openvswitch/vlog.h"
+#include "stopwatch.h"
 
 #include "en-port-group.h"
+#include "lib/stopwatch-names.h"
 #include "northd.h"
 
 VLOG_DEFINE_THIS_MODULE(en_port_group);
@@ -235,3 +237,57 @@ ls_port_group_record_destroy(struct ls_port_group *ls_pg,
     }
 }
 
+/* Incremental processing implementation. */
+static struct port_group_input
+port_group_get_input_data(struct engine_node *node)
+{
+    struct northd_data *northd_data = engine_get_input_data("northd", node);
+
+    return (struct port_group_input) {
+        .nbrec_port_group_table =
+            EN_OVSDB_GET(engine_get_input("NB_port_group", node)),
+        .sbrec_port_group_table =
+            EN_OVSDB_GET(engine_get_input("SB_port_group", node)),
+        .ls_ports = &northd_data->ls_ports,
+    };
+}
+
+void *
+en_port_group_init(struct engine_node *node OVS_UNUSED,
+                   struct engine_arg *arg OVS_UNUSED)
+{
+    struct port_group_data *pg_data = xmalloc(sizeof *pg_data);
+
+    ls_port_group_table_init(&pg_data->ls_port_groups);
+    return pg_data;
+}
+
+void
+en_port_group_cleanup(void *data_)
+{
+    struct port_group_data *data = data_;
+
+    ls_port_group_table_destroy(&data->ls_port_groups);
+}
+
+void
+en_port_group_run(struct engine_node *node, void *data_)
+{
+    const struct engine_context *eng_ctx = engine_get_context();
+    struct port_group_input input_data = port_group_get_input_data(node);
+    struct port_group_data *data = data_;
+
+    stopwatch_start(PORT_GROUP_RUN_STOPWATCH_NAME, time_msec());
+
+    ls_port_group_table_clear(&data->ls_port_groups);
+    ls_port_group_table_build(&data->ls_port_groups,
+                              input_data.nbrec_port_group_table,
+                              input_data.ls_ports);
+
+    ls_port_group_table_sync(&data->ls_port_groups,
+                             input_data.sbrec_port_group_table,
+                             eng_ctx->ovnsb_idl_txn);
+
+    stopwatch_stop(PORT_GROUP_RUN_STOPWATCH_NAME, time_msec());
+    engine_set_node_state(node, EN_UPDATED);
+}

@@ -8949,11 +8949,9 @@ check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl add port_group pg1 ports ${p1_uuid}
 wait_column '20.0.0.4' Address_Set addresses name=pg1_ip4
 
-# There should be recompute of the sync_to_sb_addr_set engine node since northd engine changes.
-# There will be another recompute when the update message is received from the sb ovsdb-server.
-# Once we add I-P for Port_Groups, there should be no recompute here.
-recompute_stat=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_addr_set recompute)
-AT_CHECK([test $recompute_stat -ge 1])
+# There should be no recompute of the sync_to_sb_addr_set engine node.
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_addr_set recompute], [0], [0
+])
 
 # No change, no recompute
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
