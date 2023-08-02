@@ -8691,7 +8691,8 @@ ADD_VETH(ext1, ext1, br0, "172.16.1.1/24", "00:ee:00:01:01:01", \
 check ovn-nbctl --wait=hv sync
 wait_for_ports_up
 OVS_WAIT_UNTIL([test "$(ip netns exec ls1p1 ip a | grep 2001::1 | grep tentative)" = ""])
-OVS_WAIT_UNTIL([test "$(ip netns exec ls1p2 ip a | grep 2002::1 | grep tentative)" = ""])
+OVS_WAIT_UNTIL([test "$(ip netns exec ls1p2 ip a | grep 2002::2 | grep tentative)" = ""])
+OVS_WAIT_UNTIL([test "$(ip netns exec ext1 ip a | grep 1711::1 | grep tentative)" = ""])
 
 NS_CHECK_EXEC([ls1p1], [ping -q -c 3 -i 0.3 -w 2  172.16.1.1 | FORMAT_PING], \
 [0], [dnl
