@@ -35368,7 +35368,7 @@ AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42' | ofctl_s
 ])
 
 dnl Remove an IP from AS1 and expect OpenFlows to be correctly updated.
-check ovn-nbctl set address_set as1 addresses=\"1.1.1.1\"
+check ovn-nbctl --wait=hv set address_set as1 addresses=\"1.1.1.1\"
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42' | ofctl_strip_all], [0], [dnl
  table=16, priority=1001,ip,metadata=0x1,nw_src=42.42.42.42,nw_dst=1.1.1.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,17)
 ])
