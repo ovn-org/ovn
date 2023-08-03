@@ -9658,7 +9658,7 @@ check ovn-nbctl lsp-add S0 S0-P0
 check ovn-nbctl lsp-set-addresses S0-P0 "50:54:00:00:00:03 10.0.0.3 1000::3"
 
 check ovn-nbctl lr-nat-add R1 dnat_and_snat 172.16.0.110 10.0.0.3 S0-P0 30:54:00:00:00:03
-check ovn-nbctl lr-nat-add R1 dnat_and_snat 3000::c 1000::3 S0-P0 40:54:00:00:00:03
+check ovn-nbctl --wait=sb lr-nat-add R1 dnat_and_snat 3000::c 1000::3 S0-P0 40:54:00:00:00:03
 
 ovn-sbctl dump-flows R1 > R1flows
 AT_CAPTURE_FILE([R1flows])
