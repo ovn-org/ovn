@@ -9594,6 +9594,46 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LSP incremental processing with only router ports before and after adding a VIF])
+ovn_start
+
+check_recompute_counter() {
+    northd_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd recompute)
+    AT_CHECK([test x$northd_recomp = x$1])
+
+    lflow_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow recompute)
+    AT_CHECK([test x$lflow_recomp = x$2])
+}
+
+check ovn-nbctl ls-add ls0
+check ovn-nbctl --wait=sb lr-add lr0
+ovn-nbctl lrp-add lr0 lr0-ls0 00:00:00:00:ff:01 192.168.0.1/24
+ovn-nbctl lsp-add ls0 ls0-lr0
+ovn-nbctl lsp-set-type ls0-lr0 router
+ovn-nbctl lsp-set-addresses ls0-lr0 router
+check ovn-nbctl --wait=sb lsp-set-options ls0-lr0 router-port=lr0-ls0
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+ovn-nbctl lb-add lb0 192.168.0.10:80 10.0.0.10:8080
+check ovn-nbctl --wait=sb ls-lb-add ls0 lb0
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+# Add a lsp.  northd and lflow engine should recompute since this is
+# the first lsp added after the router ports.
+check ovn-nbctl --wait=hv lsp-add ls0 lsp0-1 -- lsp-set-addresses lsp0-1 "aa:aa:aa:00:00:01 192.168.0.11"
+check_recompute_counter 1 1
+
+# Delete the lsp. northd and lflow engine should recompute as
+# the logical switch is now left with only router ports.
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl lsp-del lsp0-1
+check_recompute_counter 1 1
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([LSP incremental processing fallback to recompute])
 ovn_start
 
