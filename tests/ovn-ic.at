@@ -284,11 +284,10 @@ is-remote=true
 ])
 
 ovs-vsctl set open . external-ids:ovn-is-interconn=false
-AT_CHECK([ovn_as az2 ovn-sbctl show], [0], [dnl
-])
+OVS_WAIT_UNTIL([test "$(ovn_as az2 ovn-sbctl show)" = ""])
 
 ovs-vsctl set open . external-ids:ovn-is-interconn=true
-AT_CHECK([ovn_as az2 ovn-sbctl show | grep gw1], [0], [ignore])
+OVS_WAIT_UNTIL([ovn_as az2 ovn-sbctl show | grep gw1])
 
 OVN_CLEANUP_SBOX(gw1)
 AT_CHECK([ovn_as az2 ovn-sbctl show], [0], [dnl
@@ -393,6 +392,7 @@ for i in 1 2; do
     # Enable route advertising at AZ level
     ovn-nbctl set nb_global . options:ic-route-adv=true
 
+    OVS_WAIT_UNTIL([ovn-nbctl show | grep ts1])
     # Create LRP and connect to TS
     ovn-nbctl lr-add lr$i
     ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
@@ -637,6 +637,8 @@ for i in 1 2; do
     # Enable route advertising at AZ level
     ovn-nbctl set nb_global . options:ic-route-adv=true
 
+    OVS_WAIT_UNTIL([ovn-nbctl show | grep ts1])
+
     # Create LRP and connect to TS
     ovn-nbctl lr-add lr$i
     ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 2001:db8:1::$i/64
@@ -685,6 +687,8 @@ for i in 1 2; do
     ovn-nbctl set nb_global . options:ic-route-learn=true
     # Enable route advertising at AZ level
     ovn-nbctl set nb_global . options:ic-route-adv=true
+
+    OVS_WAIT_UNTIL([ovn-nbctl show | grep ts1])
 
     # Create LRP and connect to TS
     ovn-nbctl lr-add lr$i
