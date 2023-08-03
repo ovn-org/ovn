@@ -35967,7 +35967,10 @@ AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.30.10:80, backend=192.16
 # Check recompute when LB is no longer local
 check ovn-nbctl lb-add lb1 "192.168.50.10:80" "192.168.60.10:8080" \
     -- set load_balancer lb1 options:ct_flush="true"
-check ovn-nbctl ls-lb-add sw lb1
+
+# Make sure (with wait=hv) that lb1 change reached ovn-controller before recompute
+check ovn-nbctl --wait=hv ls-lb-add sw lb1
+
 check ovs-vsctl remove interface p1 external_ids iface-id
 check ovn-appctl inc-engine/recompute
 check ovn-nbctl --wait=hv sync
