@@ -1269,3 +1269,36 @@ is_pb_router_type(const struct sbrec_port_binding *pb)
 
     return false;
 }
+
+void
+sorted_array_apply_diff(const struct sorted_array *a1,
+                        const struct sorted_array *a2,
+                        void (*apply_callback)(const void *arg,
+                                               const char *item,
+                                               bool add),
+                        const void *arg)
+{
+    size_t idx1, idx2;
+
+    for (idx1 = idx2 = 0; idx1 < a1->n && idx2 < a2->n;) {
+        int cmp = strcmp(a1->arr[idx1], a2->arr[idx2]);
+        if (cmp < 0) {
+            apply_callback(arg, a1->arr[idx1], true);
+            idx1++;
+        } else if (cmp > 0) {
+            apply_callback(arg, a2->arr[idx2], false);
+            idx2++;
+        } else {
+            idx1++;
+            idx2++;
+        }
+    }
+
+    for (; idx1 < a1->n; idx1++) {
+        apply_callback(arg, a1->arr[idx1], true);
+    }
+
+    for (; idx2 < a2->n; idx2++) {
+        apply_callback(arg, a2->arr[idx2], false);
+    }
+}
