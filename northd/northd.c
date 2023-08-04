@@ -8853,7 +8853,7 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
      */
 
     const char *ip_addr;
-    SSET_FOR_EACH (ip_addr, &op->od->lb_ips->ips_v4) {
+    SSET_FOR_EACH (ip_addr, &op->od->lb_ips->ips_v4_reachable) {
         ovs_be32 ipv4_addr;
 
         /* Check if the ovn port has a network configured on which we could
@@ -8866,7 +8866,7 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
                 stage_hint);
         }
     }
-    SSET_FOR_EACH (ip_addr, &op->od->lb_ips->ips_v6) {
+    SSET_FOR_EACH (ip_addr, &op->od->lb_ips->ips_v6_reachable) {
         struct in6_addr ipv6_addr;
 
         /* Check if the ovn port has a network configured on which we could
