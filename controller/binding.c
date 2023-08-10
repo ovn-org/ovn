@@ -1929,6 +1929,12 @@ consider_localnet_lport(const struct sbrec_port_binding *pb,
                         struct binding_ctx_in *b_ctx_in,
                         struct binding_ctx_out *b_ctx_out)
 {
+    struct local_datapath *ld
+        = get_local_datapath(b_ctx_out->local_datapaths,
+                             pb->datapath->tunnel_key);
+    if (!ld) {
+        return;
+    }
     /* Add all localnet ports to local_ifaces so that we allocate ct zones
      * for them. */
     update_local_lports(pb->logical_port, b_ctx_out);
@@ -2143,7 +2149,6 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
             break;
 
         case LP_LOCALNET: {
-            consider_localnet_lport(pb, b_ctx_in, b_ctx_out);
             struct lport *lnet_lport = xmalloc(sizeof *lnet_lport);
             lnet_lport->pb = pb;
             ovs_list_push_back(&localnet_lports, &lnet_lport->list_node);
@@ -2169,10 +2174,11 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
                             &bridge_mappings);
 
     /* Run through each localnet lport list to see if it is a localnet port
-     * on local datapaths discovered from above loop, and update the
-     * corresponding local datapath accordingly. */
+     * on local datapaths discovered from above loop, and handles it
+     * accordingly. */
     struct lport *lnet_lport;
     LIST_FOR_EACH_POP (lnet_lport, list_node, &localnet_lports) {
+        consider_localnet_lport(lnet_lport->pb, b_ctx_in, b_ctx_out);
         update_ld_localnet_port(lnet_lport->pb, &bridge_mappings,
                                 b_ctx_out->local_datapaths);
         free(lnet_lport);
@@ -3209,6 +3215,7 @@ delete_done:
                 b_ctx_in->sbrec_port_binding_by_datapath) {
                 enum en_lport_type lport_type = get_lport_type(pb);
                 if (lport_type == LP_LOCALNET) {
+                    consider_localnet_lport(pb, b_ctx_in, b_ctx_out);
                     update_ld_localnet_port(pb, &bridge_mappings,
                                             b_ctx_out->local_datapaths);
                 } else if (lport_type == LP_EXTERNAL) {
