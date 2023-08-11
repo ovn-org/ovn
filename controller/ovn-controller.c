@@ -190,10 +190,14 @@ static char *get_file_system_id(void)
 /* Only set monitor conditions on tables that are available in the
  * server schema.
  */
-#define sb_table_set_monitor_condition(idl, table, cond)   \
-    (sbrec_server_has_##table##_table(idl)              \
-     ? sbrec_##table##_set_condition(idl, cond) \
+#define sb_table_set_opt_mon_condition(idl, table, cond) \
+    (sbrec_server_has_##table##_table(idl)               \
+     ? sbrec_##table##_set_condition(idl, cond)          \
      : 0)
+
+/* Assume the table exists in the server schema and set its condition. */
+#define sb_table_set_req_mon_condition(idl, table, cond) \
+    sbrec_##table##_set_condition(idl, cond)
 
 static unsigned int
 update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
@@ -294,6 +298,14 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         /* During initialization, we monitor all records in Chassis_Private so
          * that we don't try to recreate existing ones. */
         ovsdb_idl_condition_add_clause_true(&chprv);
+        /* Also, to avoid traffic disruption (e.g., conntrack flushing for
+         * zones that are used by OVN but not yet known due to the SB initial
+         * contents not being available), monitor all port bindings
+         * connected to gateways; they might be claimed as soon as the
+         * chassis is available.
+         */
+        sbrec_port_binding_add_clause_type(&pb, OVSDB_F_EQ, "l2gateway");
+        sbrec_port_binding_add_clause_type(&pb, OVSDB_F_EQ, "l3gateway");
     }
 
     if (local_ifaces) {
@@ -342,17 +354,17 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
 
 out:;
     unsigned int cond_seqnos[] = {
-        sb_table_set_monitor_condition(ovnsb_idl, port_binding, &pb),
-        sb_table_set_monitor_condition(ovnsb_idl, logical_flow, &lf),
-        sb_table_set_monitor_condition(ovnsb_idl, logical_dp_group, &ldpg),
-        sb_table_set_monitor_condition(ovnsb_idl, mac_binding, &mb),
-        sb_table_set_monitor_condition(ovnsb_idl, multicast_group, &mg),
-        sb_table_set_monitor_condition(ovnsb_idl, dns, &dns),
-        sb_table_set_monitor_condition(ovnsb_idl, controller_event, &ce),
-        sb_table_set_monitor_condition(ovnsb_idl, ip_multicast, &ip_mcast),
-        sb_table_set_monitor_condition(ovnsb_idl, igmp_group, &igmp),
-        sb_table_set_monitor_condition(ovnsb_idl, chassis_private, &chprv),
-        sb_table_set_monitor_condition(ovnsb_idl, chassis_template_var, &tv),
+        sb_table_set_req_mon_condition(ovnsb_idl, port_binding, &pb),
+        sb_table_set_req_mon_condition(ovnsb_idl, logical_flow, &lf),
+        sb_table_set_req_mon_condition(ovnsb_idl, logical_dp_group, &ldpg),
+        sb_table_set_req_mon_condition(ovnsb_idl, mac_binding, &mb),
+        sb_table_set_req_mon_condition(ovnsb_idl, multicast_group, &mg),
+        sb_table_set_req_mon_condition(ovnsb_idl, dns, &dns),
+        sb_table_set_req_mon_condition(ovnsb_idl, controller_event, &ce),
+        sb_table_set_req_mon_condition(ovnsb_idl, ip_multicast, &ip_mcast),
+        sb_table_set_req_mon_condition(ovnsb_idl, igmp_group, &igmp),
+        sb_table_set_req_mon_condition(ovnsb_idl, chassis_private, &chprv),
+        sb_table_set_opt_mon_condition(ovnsb_idl, chassis_template_var, &tv),
     };
 
     unsigned int expected_cond_seqno = 0;
