@@ -36724,6 +36724,7 @@ ovn_attach n1 br-phys 192.168.0.1
 # sw0-port1 -- sw0 -- lr0
 
 check ovn-nbctl lr-add lr0
+check ovn-nbctl set logical_router lr0 options:chassis=hv1
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 192.168.0.1/24
 check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 11.0.0.1/24
 
@@ -36787,8 +36788,11 @@ check_zones_in_ovsdb() {
 
 AS_BOX([Check newly created are with name only])
 AT_CHECK([ovn-appctl -t ovn-controller ct-zone-list | sed "s/ [[0-9]]*/ ??/" | sort], [0], [dnl
+lr0-sw0 ??
+lr0-sw1 ??
 lr0_dnat ??
 lr0_snat ??
+sw0-lr0 ??
 sw0-port1 ??
 sw0_dnat ??
 sw0_snat ??
@@ -36801,7 +36805,7 @@ check_zones_in_ovsdb "$zone_list" sw0
 
 # Check that we did just the initial zone flush
 AT_CHECK([grep -c "NXT_CT_FLUSH_ZONE" hv1/ovs-vswitchd.log], [0], [dnl
-5
+8
 ])
 
 AS_BOX([Check conversion from UUID - recompute])
@@ -36816,8 +36820,11 @@ ovn-appctl -t ovn-controller inc-engine/recompute
 OVS_WAIT_UNTIL([test "$(grep -c 'ct zone .* replace uuid name' hv1/ovn-controller.log)" = "4"])
 
 AT_CHECK([ovn-appctl -t ovn-controller ct-zone-list | sed "s/ [[0-9]]*/ ??/" | sort], [0], [dnl
+lr0-sw0 ??
+lr0-sw1 ??
 lr0_dnat ??
 lr0_snat ??
+sw0-lr0 ??
 sw0-port1 ??
 sw0_dnat ??
 sw0_snat ??
@@ -36830,7 +36837,7 @@ check_zones_in_ovsdb "$zone_list" sw0
 
 # Check that we did just the initial zone flush
 AT_CHECK([grep -c "NXT_CT_FLUSH_ZONE" hv1/ovs-vswitchd.log], [0], [dnl
-5
+8
 ])
 
 AS_BOX([Check conversion from UUID - restart])
@@ -36846,8 +36853,11 @@ start_daemon ovn-controller --verbose="main:dbg"
 OVS_WAIT_UNTIL([test "$(grep -c 'ct zone .* replace uuid name' hv1/ovn-controller.log)" = "8"])
 
 AT_CHECK([ovn-appctl -t ovn-controller ct-zone-list | sed "s/ [[0-9]]*/ ??/" | sort], [0], [dnl
+lr0-sw0 ??
+lr0-sw1 ??
 lr0_dnat ??
 lr0_snat ??
+sw0-lr0 ??
 sw0-port1 ??
 sw0_dnat ??
 sw0_snat ??
@@ -36860,7 +36870,7 @@ check_zones_in_ovsdb "$zone_list" sw0
 
 # Check that we did just the initial zone flush
 AT_CHECK([grep -c "NXT_CT_FLUSH_ZONE" hv1/ovs-vswitchd.log], [0], [dnl
-5
+8
 ])
 
 OVN_CLEANUP([hv1])
