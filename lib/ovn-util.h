@@ -409,4 +409,25 @@ void flow_collector_ids_clear(struct flow_collector_ids *);
  * The returned pointer has to be freed by caller. */
 char *encode_fqdn_string(const char *fqdn, size_t *len);
 
+/* Corresponds to each Port_Binding.type. */
+enum en_lport_type {
+    LP_UNKNOWN,
+    LP_VIF,
+    LP_CONTAINER,
+    LP_PATCH,
+    LP_L3GATEWAY,
+    LP_LOCALNET,
+    LP_LOCALPORT,
+    LP_L2GATEWAY,
+    LP_VTEP,
+    LP_CHASSISREDIRECT,
+    LP_VIRTUAL,
+    LP_EXTERNAL,
+    LP_REMOTE
+};
+
+enum en_lport_type get_lport_type(const struct sbrec_port_binding *);
+char *get_lport_type_str(enum en_lport_type lport_type);
+bool is_pb_router_type(const struct sbrec_port_binding *);
+
 #endif /* OVN_UTIL_H */

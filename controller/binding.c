@@ -756,7 +756,6 @@ static void binding_lport_clear_port_sec(struct binding_lport *);
 static bool binding_lport_update_port_sec(
     struct binding_lport *, const struct sbrec_port_binding *);
 
-static char *get_lport_type_str(enum en_lport_type lport_type);
 static bool ovs_iface_matches_lport_iface_id_ver(
     const struct ovsrec_interface *,
     const struct sbrec_port_binding *);
@@ -1053,80 +1052,6 @@ binding_dump_local_bindings(struct local_binding_data *lbinding_data,
     }
 
     free(nodes);
-}
-
-static bool
-is_lport_vif(const struct sbrec_port_binding *pb)
-{
-    return !pb->type[0];
-}
-
-enum en_lport_type
-get_lport_type(const struct sbrec_port_binding *pb)
-{
-    if (is_lport_vif(pb)) {
-        if (pb->parent_port && pb->parent_port[0]) {
-            return LP_CONTAINER;
-        }
-        return LP_VIF;
-    } else if (!strcmp(pb->type, "patch")) {
-        return LP_PATCH;
-    } else if (!strcmp(pb->type, "chassisredirect")) {
-        return LP_CHASSISREDIRECT;
-    } else if (!strcmp(pb->type, "l3gateway")) {
-        return LP_L3GATEWAY;
-    } else if (!strcmp(pb->type, "localnet")) {
-        return LP_LOCALNET;
-    } else if (!strcmp(pb->type, "localport")) {
-        return LP_LOCALPORT;
-    } else if (!strcmp(pb->type, "l2gateway")) {
-        return LP_L2GATEWAY;
-    } else if (!strcmp(pb->type, "virtual")) {
-        return LP_VIRTUAL;
-    } else if (!strcmp(pb->type, "external")) {
-        return LP_EXTERNAL;
-    } else if (!strcmp(pb->type, "remote")) {
-        return LP_REMOTE;
-    } else if (!strcmp(pb->type, "vtep")) {
-        return LP_VTEP;
-    }
-
-    return LP_UNKNOWN;
-}
-
-static char *
-get_lport_type_str(enum en_lport_type lport_type)
-{
-    switch (lport_type) {
-    case LP_VIF:
-        return "VIF";
-    case LP_CONTAINER:
-        return "CONTAINER";
-    case LP_VIRTUAL:
-        return "VIRTUAL";
-    case LP_PATCH:
-        return "PATCH";
-    case LP_CHASSISREDIRECT:
-        return "CHASSISREDIRECT";
-    case LP_L3GATEWAY:
-        return "L3GATEWAY";
-    case LP_LOCALNET:
-        return "PATCH";
-    case LP_LOCALPORT:
-        return "LOCALPORT";
-    case LP_L2GATEWAY:
-        return "L2GATEWAY";
-    case LP_EXTERNAL:
-        return "EXTERNAL";
-    case LP_REMOTE:
-        return "REMOTE";
-    case LP_VTEP:
-        return "VTEP";
-    case LP_UNKNOWN:
-        return "UNKNOWN";
-    }
-
-    OVS_NOT_REACHED();
 }
 
 void

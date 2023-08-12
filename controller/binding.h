@@ -22,6 +22,7 @@
 #include "openvswitch/hmap.h"
 #include "openvswitch/uuid.h"
 #include "openvswitch/list.h"
+# include "lib/ovn-util.h"
 #include "sset.h"
 #include "lport.h"
 
@@ -216,25 +217,6 @@ void port_binding_set_down(const struct sbrec_chassis *chassis_rec,
                            const struct sbrec_port_binding_table *pb_table,
                            const char *iface_id,
                            const struct uuid *pb_uuid);
-
-/* Corresponds to each Port_Binding.type. */
-enum en_lport_type {
-    LP_UNKNOWN,
-    LP_VIF,
-    LP_CONTAINER,
-    LP_PATCH,
-    LP_L3GATEWAY,
-    LP_LOCALNET,
-    LP_LOCALPORT,
-    LP_L2GATEWAY,
-    LP_VTEP,
-    LP_CHASSISREDIRECT,
-    LP_VIRTUAL,
-    LP_EXTERNAL,
-    LP_REMOTE
-};
-
-enum en_lport_type get_lport_type(const struct sbrec_port_binding *);
 
 /* This structure represents a logical port (or port binding)
  * which is associated with 'struct local_binding'.

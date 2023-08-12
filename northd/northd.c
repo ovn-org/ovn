@@ -5267,10 +5267,17 @@ northd_handle_sb_port_binding_changes(
     const struct sbrec_port_binding *pb;
     static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
     SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb, sbrec_port_binding_table) {
+        /* Return false if the 'pb' belongs to a router port.  We don't handle
+         * I-P for router ports yet. */
+        if (is_pb_router_type(pb)) {
+            return false;
+        }
+
         struct ovn_port *op = ovn_port_find(ls_ports, pb->logical_port);
         if (op && !op->lsp_can_be_inc_processed) {
             return false;
         }
+
         if (sbrec_port_binding_is_new(pb)) {
             /* Most likely the PB was created by northd and this is the
              * notification of that trasaction. So we just update the sb
