@@ -10,6 +10,10 @@ Post v23.06.0
   - To allow optimizing ovn-controller's monitor conditions for the regular
     VIF case, ovn-controller now unconditionally monitors all sub-ports
     (ports with parent_port set).
+  - ECMP routes use L4_SYM dp-hash by default if the datapath supports it.
+    Existing sessions might get re-hashed to a different ECMP path when
+    OVN detects the algorithm support in the datapath during an upgrade
+    or restart of ovn-controller.
 
 OVN v23.06.0 - 01 Jun 2023
 --------------------------
