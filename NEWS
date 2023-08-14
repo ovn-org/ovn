@@ -11,6 +11,10 @@ OVN v23.03.1 - xx xxx xxxx
     physical network via a localnet port, in which case multichassis ports may
     have an effective MTU different from regular ports and hence may need this
     mechanism to maintain connectivity with other peers in the network.
+  - ECMP routes use L4_SYM dp-hash by default if the datapath supports it.
+    Existing sessions might get re-hashed to a different ECMP path when
+    OVN detects the algorithm support in the datapath during an upgrade
+    or restart of ovn-controller.
 
 OVN v23.03.0 - 03 Mar 2023
 --------------------------
