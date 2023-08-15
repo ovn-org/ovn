@@ -7833,9 +7833,9 @@ sleep 3s
 # Ensure conntrack entry is present and ct_label is set.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(10.0.0.3) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' | \
-sed -e 's/labels=0x4d2[[0-9a-f]]*/labels=0x4d2000000000000000000000000/'], [0], [dnl
-icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>,labels=0x4d2000000000000000000000000
+sed -e 's/labels=0x4d2[[0-9a-f]]*/labels=0x4d2000000000000000000000000/' | sort], [0], [dnl
 icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>
+icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>,labels=0x4d2000000000000000000000000
 ])
 
 # Add a higher priority ACL with different label.
@@ -7849,9 +7849,9 @@ sleep 3s
 # Ensure conntrack entry is updated with new ct_label is set.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(10.0.0.3) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' | \
-sed -e 's/labels=0x4d3[[0-9a-f]]*/labels=0x4d3000000000000000000000000/'], [0], [dnl
-icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>,labels=0x4d3000000000000000000000000
+sed -e 's/labels=0x4d3[[0-9a-f]]*/labels=0x4d3000000000000000000000000/' | sort], [0], [dnl
 icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>
+icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>,labels=0x4d3000000000000000000000000
 ])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
@@ -7934,9 +7934,9 @@ sleep 3s
 # Ensure conntrack entry is present and ct_label is set.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(10.0.0.3) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' | \
-sed -e 's/labels=0x4d2[[0-9a-f]]*/labels=0x4d2000000000000000000000000/'], [0], [dnl
-icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>,labels=0x4d2000000000000000000000000
+sed -e 's/labels=0x4d2[[0-9a-f]]*/labels=0x4d2000000000000000000000000/' | sort], [0], [dnl
 icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>
+icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>,labels=0x4d2000000000000000000000000
 ])
 
 # Add a higher priority ACL with different label.
@@ -7950,9 +7950,9 @@ sleep 3s
 # Ensure conntrack entry is updated with new ct_label is set.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(10.0.0.3) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' | \
-sed -e 's/labels=0x4d3[[0-9a-f]]*/labels=0x4d3000000000000000000000000/'], [0], [dnl
-icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>,labels=0x4d3000000000000000000000000
+sed -e 's/labels=0x4d3[[0-9a-f]]*/labels=0x4d3000000000000000000000000/' | sort], [0], [dnl
 icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>
+icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>,labels=0x4d3000000000000000000000000
 ])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
