@@ -32008,9 +32008,9 @@ AT_CHECK([test $(ovs-ofctl dump-flows br-int table=46 | grep conjunction | wc -l
 
 for i in $(seq 1 10); do
     # Delete and recreate the SB PG with same name and content.
-    sb_pg_name=2_pg1 # dp key + NB pg name
+    sb_pg_name=$(fetch_column port_group name | cut -d ' ' -f1)
     sb_pg_uuid=$(fetch_column port_group _uuid name=$sb_pg_name)
-    ports_=$(fetch_column port_group ports name=2_pg1)
+    ports_=$(fetch_column port_group ports name=$sb_pg_name)
     ports=${ports_/ /,}
     AT_CHECK([ovn-sbctl destroy port_group $sb_pg_uuid -- create port_group name=$sb_pg_name ports=$ports], [0], [ignore])
 
