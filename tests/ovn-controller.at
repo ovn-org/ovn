@@ -562,7 +562,7 @@ primary lport : [[lsp1]]
 ])
 
 # Set the port type to localport
-check ovn-nbctl lsp-set-type lsp1 localport
+check ovn-nbctl --wait=hv lsp-set-type lsp1 localport
 check as hv1 ovs-vsctl set open . external_ids:ovn-cms-options=localport
 OVS_WAIT_UNTIL([test localport = $(ovn-sbctl get chassis . other_config:ovn-cms-options)])
 
