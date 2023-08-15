@@ -1156,7 +1156,7 @@ ovn-nbctl --stateless lr-nat-add DR dnat_and_snat  172.16.1.2 50.0.0.11
 ovn-nbctl --stateless lr-nat-add CR dnat_and_snat  172.16.1.2 50.0.0.11
 
 ovn-nbctl lr-nat-update-ext-ip DR dnat_and_snat 172.16.1.2 allowed_range
-ovn-nbctl lr-nat-update-ext-ip CR dnat_and_snat 172.16.1.2 allowed_range
+check ovn-nbctl --wait=sb lr-nat-update-ext-ip CR dnat_and_snat 172.16.1.2 allowed_range
 
 ovn-sbctl dump-flows DR > drflows5
 AT_CAPTURE_FILE([drflows2])
@@ -4815,7 +4815,7 @@ AS_BOX([Checking that routable NAT flows are installed when gateway chassis exis
 check ovn-nbctl lr-nat-del ro1
 check ovn-nbctl lr-nat-del ro2
 check ovn-nbctl --add-route lr-nat-add ro1 dnat 10.0.0.100 192.168.1.100
-check ovn-nbctl --add-route lr-nat-add ro2 dnat 20.0.0.100 192.168.2.100
+check ovn-nbctl --wait=sb --add-route lr-nat-add ro2 dnat 20.0.0.100 192.168.2.100
 
 check_lflows 1
 
@@ -4846,7 +4846,7 @@ check ovn-nbctl lr-nat-del ro1
 check ovn-nbctl lr-nat-del ro2
 
 check ovn-nbctl lr-nat-add ro1 dnat_and_snat 10.0.0.100 192.168.1.2 vm1 00:00:00:00:00:01
-check ovn-nbctl lr-nat-add ro2 dnat_and_snat 20.0.0.100 192.168.2.2 vm2 00:00:00:00:00:02
+check ovn-nbctl --wait=sb lr-nat-add ro2 dnat_and_snat 20.0.0.100 192.168.2.2 vm2 00:00:00:00:00:02
 
 check_lflows 0
 
@@ -4991,7 +4991,7 @@ check ovn-nbctl lsp-add ls2 ls2-ro2
 check ovn-nbctl lsp-set-type ls2-ro2 router
 check ovn-nbctl lsp-set-addresses ls2-ro2 router
 check ovn-nbctl lsp-set-options ls2-ro2 router-port=ro2-ls2
-
+check ovn-nbctl --wait=sb sync
 
 ovn-sbctl lflow-list ls1 > ls1_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
@@ -5858,6 +5858,7 @@ sm_vip2=$(fetch_column Service_Monitor _uuid logical_port=vip2)
 
 ovn-sbctl set service_monitor $sm_vip1 status=offline
 ovn-sbctl set service_monitor $sm_vip2 status=offline
+check ovn-nbctl --wait=sb sync
 
 AT_CHECK([ovn-sbctl dump-flows lr0 | grep "lr_in_dnat" | sort], [0], [dnl
   table=7 (lr_in_dnat         ), priority=0    , match=(1), action=(next;)
@@ -6689,6 +6690,7 @@ ovn-nbctl lb-add lb0 172.16.1.10:80 10.0.0.1:80
 ovn-nbctl lr-lb-add R1 lb0
 ovn-nbctl lb-add lb1 172.16.1.10:8080 10.0.0.1:8080
 ovn-nbctl lr-lb-add R1 lb1
+ovn-nbctl --wait=sb sync
 
 AT_CHECK([ovn-sbctl get Port_Binding S1-R1 nat_addresses |grep -q 172.16.1.10], [0])
 
@@ -8593,6 +8595,7 @@ lb1_uuid=$(fetch_column nb:load_balancer _uuid name=lb1)
 lbg=$(ovn-nbctl create load_balancer_group name=lbg -- \
     add load_balancer_group lbg load_balancer $lb1_uuid)
 ovn-nbctl add logical_router R1 load_balancer_group $lbg
+ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows S0 > S0flows
 ovn-sbctl dump-flows S1 > S1flows
@@ -8719,6 +8722,7 @@ ovn-nbctl lsp-set-options S1-R1 router-port=R1-S1
 ovn-nbctl lb-add lb0 172.16.0.10:80 10.0.0.2:80,20.0.0.2:80 tcp
 ovn-nbctl lr-lb-add R1 lb0
 ovn-nbctl ls-lb-add S0 lb0
+ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows S0 > S0flows
 ovn-sbctl dump-flows R1 > R1flows
@@ -9438,7 +9442,7 @@ acl_test() {
 ])
 
     # Remove the ACL with the "pass" verdict. Ensure that no eval flows are present.
-    check ovn-nbctl acl-del $thing
+    check ovn-nbctl --wait=sb acl-del $thing
     ovn-sbctl lflow-list ls > lflows
     AT_CHECK([ACL_FLOWS([$eval_stage], [priority=2000])], [0], [])
 }

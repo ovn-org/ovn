@@ -20809,6 +20809,7 @@ ovn-nbctl lsp-set-options public-lr1 router-port=lr1-public
 
 ovn-nbctl lr-nat-add lr1 snat 172.168.0.100 10.0.0.0/24
 ovn-nbctl lr-nat-add lr1 snat 2000::1 1000::/64
+ovn-nbctl --wait=sb sync
 
 dp_uuid=$(ovn-sbctl find datapath_binding | grep sw0 -B2 | grep _uuid | \
 awk '{print $3}')
@@ -21028,6 +21029,7 @@ AT_CAPTURE_FILE([sbflows2])
 check ovn-nbctl lr-policy-add lr0 2000 "ip4.src == 192.168.1.3" allow
 policy=$(fetch_column nb:Logical_Router_Policy _uuid priority=2000)
 check ovn-nbctl set logical_router_policy $policy options:pkt_mark=100
+check ovn-nbctl --wait=hv sync
 as hv2
 # add a flow in egress pipeline to check pkt marking
 ovs-ofctl --protocols=OpenFlow13 add-flow br-int "table=37,priority=200,ip,nw_src=172.16.1.2,pkt_mark=0x64 actions=resubmit(,38)"
@@ -21160,6 +21162,7 @@ check ovn-nbctl --wait=hv sync
 # Recreate two floating IPs, one for each VIF.
 check ovn-nbctl lr-nat-del lr0 dnat_and_snat 172.24.4.100
 check ovn-nbctl lr-nat-del lr1 dnat_and_snat 172.24.4.200
+check ovn-nbctl --wait=hv sync
 
 check ovn-sbctl --all destroy mac_binding
 
@@ -23280,6 +23283,9 @@ send_mld_v2_report hv1-vif1 hv1 \
 # Check IGMP_Group table on both HV.
 wait_row_count IGMP_Group 1 address='"ff0a:dead:beef::1"'
 
+# This gives the ovn-controller nodes a chance to see the updated IGMP_Group.
+check ovn-nbctl --wait=hv sync
+
 # Send traffic and make sure it gets forwarded only on the port that joined.
 as hv1 reset_pcap_file hv1-vif1 hv1/vif1
 as hv2 reset_pcap_file hv2-vif1 hv2/vif1
@@ -23310,6 +23316,9 @@ OVS_WAIT_UNTIL(
 # Flush IP multicast groups.
 check ovn-sbctl ip-multicast-flush sw1
 wait_row_count IGMP_Group 0 address='"ff0a:dead:beef::1"'
+
+# This gives the ovn-controller nodes a chance to see the updated IGMP_Group.
+check ovn-nbctl --wait=hv sync
 
 # Check that traffic for "all-hosts" is flooded even if some hosts register
 # for it.
@@ -28150,7 +28159,7 @@ AT_CHECK([
     grep "n_packets=0" -c)
 ])
 
-ovn-nbctl set logical_router_policy $pol1 options:pkt_mark=2
+ovn-nbctl --wait=hv set logical_router_policy $pol1 options:pkt_mark=2
 send_ipv4_pkt hv1 hv1-vif1 505400000003 00000000ff01 \
     $(ip_to_hex 10 0 0 3) $(ip_to_hex 172 168 0 120) \
     c3ad 83dc
@@ -35980,7 +35989,7 @@ ovn-nbctl --wait=hv sync
 
 check ovn-nbctl lb-add lb1 "192.168.0.10" "192.168.10.10,192.168.10.20" \
     -- set load_balancer lb1 options:ct_flush="true"
-check ovn-nbctl ls-lb-add sw lb1
+check ovn-nbctl --wait=hv ls-lb-add sw lb1
 
 # Remove a single backend
 check ovn-nbctl set load_balancer lb1 vips='"192.168.0.10"="192.168.10.10"'
@@ -36004,9 +36013,8 @@ AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.0.10:0, backend=192.168.
 # Check flush for LB with port and protocol
 check ovn-nbctl lb-add lb1 "192.168.30.10:80" "192.168.40.10:8080,192.168.40.20:8090" udp \
     -- set load_balancer lb1 options:ct_flush="true"
-check ovn-nbctl ls-lb-add sw lb1
-check ovn-nbctl lb-del lb1
-check ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv ls-lb-add sw lb1
+check ovn-nbctl --wait=hv lb-del lb1
 
 AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.30.10:80, backend=192.168.40.10:8080, protocol=17" hv1/ovn-controller.log], [0])
 AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.30.10:80, backend=192.168.40.20:8090, protocol=17" hv1/ovn-controller.log], [0])
@@ -36027,7 +36035,7 @@ AT_CHECK([grep -q "Flushing CT for 5-tuple: vip=192.168.50.10:80, backend=192.16
 AT_CHECK([test "$(grep -c "Flushing CT for 5-tuple" hv1/ovn-controller.log)" = "6"], [0])
 
 # Check if CT flush is disabled by default
-check ovn-nbctl lb-del lb1
+check ovn-nbctl --wait=hv lb-del lb1
 check ovn-nbctl lb-add lb1 "192.168.70.10:80" "192.168.80.10:8080,192.168.90.10:8080"
 check ovn-nbctl ls-lb-add sw lb1
 check ovs-vsctl set interface p1 external_ids:iface-id=lsp1
