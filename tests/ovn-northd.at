@@ -8858,7 +8858,7 @@ AT_CHECK([grep "ls_in_lb " S1flows | sed 's/table=../table=??/' | sort], [0], [d
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
 ])
 
-ovn-nbctl --wait=sb set NB_Global . options:install_ls_lb_from_router=true
+check ovn-nbctl --wait=sb set NB_Global . options:install_ls_lb_from_router=true
 
 ovn-sbctl dump-flows S0 > S0flows
 ovn-sbctl dump-flows S1 > S1flows
@@ -8885,7 +8885,7 @@ AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Gr
 $(cat dp_uuids | sort)
 ])
 
-ovn-nbctl --wait=sb set NB_Global . options:install_ls_lb_from_router=false
+check ovn-nbctl --wait=sb set NB_Global . options:install_ls_lb_from_router=false
 
 ovn-sbctl dump-flows S0 > S0flows
 ovn-sbctl dump-flows S1 > S1flows
@@ -9270,12 +9270,11 @@ $4
 AS_BOX([Create new PG1 and PG2])
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb -- pg-add pg1 -- pg-add pg2
-dnl The northd node should not recompute, it should handle nb_global update
-dnl though, therefore "compute: 1".
+dnl The northd node should not recompute.
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              1
+- compute:              0
 - abort:                0
 ])
 dnl The port_group node recomputes every time a NB port group is added/deleted.
@@ -9308,12 +9307,11 @@ check ovn-nbctl --wait=sb         \
 check_column "sw1.1" sb:Port_Group ports name="${sw1_key}_pg1"
 check_column "sw2.1" sb:Port_Group ports name="${sw2_key}_pg1"
 
-dnl The northd node should not recompute, it should handle nb_global update
-dnl though, therefore "compute: 1".
+dnl The northd node should not recompute.
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              1
+- compute:              0
 - abort:                0
 ])
 dnl The port_group node recomputes also every time a port from a new switch
@@ -9345,12 +9343,11 @@ check_column "sw2.1" sb:Port_Group ports name="${sw2_key}_pg1"
 check_column "sw1.2" sb:Port_Group ports name="${sw1_key}_pg2"
 check_column "sw2.2" sb:Port_Group ports name="${sw2_key}_pg2"
 
-dnl The northd node should not recompute, it should handle nb_global update
-dnl though, therefore "compute: 1".
+dnl The northd node should not recompute.
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              1
+- compute:              0
 - abort:                0
 ])
 dnl The port_group node recomputes also every time a port from a new switch
@@ -9383,12 +9380,11 @@ check_column "sw2.1 sw2.3" sb:Port_Group ports name="${sw2_key}_pg1"
 check_column "sw1.2 sw1.3" sb:Port_Group ports name="${sw1_key}_pg2"
 check_column "sw2.2 sw2.3" sb:Port_Group ports name="${sw2_key}_pg2"
 
-dnl The northd node should not recompute, it should handle nb_global update
-dnl though, therefore "compute: 1".
+dnl The northd node should not recompute.
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              1
+- compute:              0
 - abort:                0
 ])
 dnl We did not change the set of switches a pg is applied to, there should be
@@ -9426,7 +9422,7 @@ dnl though, therefore "compute: 1".
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              1
+- compute:              0
 - abort:                0
 ])
 dnl We did not change the set of switches a pg is applied to, there should be
@@ -9458,12 +9454,11 @@ check_column "sw1.2" sb:Port_Group ports name="${sw1_key}_pg2"
 AT_CHECK([fetch_column sb:Port_Group ports name="${sw2_key}_pg2"], [0], [
 ])
 
-dnl The northd node should not recompute, it should handle nb_global update
-dnl though, therefore "compute: 1".
+dnl The northd node should not recompute.
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              1
+- compute:              0
 - abort:                0
 ])
 dnl We changed the set of switches a pg is applied to, there should be
@@ -9496,12 +9491,11 @@ check_column "sw1.2" sb:Port_Group ports name="${sw1_key}_pg2"
 AT_CHECK([fetch_column sb:Port_Group ports name="${sw2_key}_pg2"], [0], [
 ])
 
-dnl The northd node should not recompute, it should handle nb_global update
-dnl though, therefore "compute: 1".
+dnl The northd node should not recompute.
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              1
+- compute:              0
 - abort:                0
 ])
 dnl We changed the set of switches a pg is applied to, there should be
@@ -9534,12 +9528,11 @@ check_column "sw2.1" sb:Port_Group ports name="${sw2_key}_pg1"
 check_column "sw1.2" sb:Port_Group ports name="${sw1_key}_pg2"
 check_column "sw2.2" sb:Port_Group ports name="${sw2_key}_pg2"
 
-dnl The northd node should not recompute, it should handle nb_global update
-dnl though, therefore "compute: 1".
+dnl The northd node should not recompute.
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              1
+- compute:              0
 - abort:                0
 ])
 dnl We changed the set of switches a pg is applied to, there should be a
@@ -9574,12 +9567,11 @@ check_column "sw1.2" sb:Port_Group ports name="${sw1_key}_pg2"
 AT_CHECK([fetch_column sb:Port_Group ports name="${sw2_key}_pg2"], [0], [
 ])
 
-dnl The northd node should not recompute, it should handle nb_global update
-dnl though, therefore "compute: 1".
+dnl The northd node should not recompute,.
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              1
+- compute:              0
 - abort:                0
 ])
 dnl We changed the set of switches a pg is applied to, there should be a
@@ -12025,3 +12017,177 @@ check_row_count nb:QoS 0
 
 AT_CLEANUP
 ])
+
+AT_SETUP([NB_Global and SB_Global incremental processing])
+
+ovn_start
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 "00:00:20:20:00:03 10.0.0.3"
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:20:20:12:14 10.0.0.1/24
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 router
+check ovn-nbctl --wait=sb lsp-set-options sw0-lr0 router-port=lr0-sw0
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+# This should not result in recomputes.
+check ovn-nbctl --wait=sb set NB_Global . options:foo=bar
+check_engine_stats global_config norecompute compute
+check_engine_stats northd norecompute compute
+check_engine_stats lflow norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+# This should result in recomputes.
+check ovn-sbctl set SB_Global . options:bar=foo
+check_engine_stats global_config recompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Clears an nb option and checks that recomputes were triggered
+# and the option was added back by ovn-northd or not depending
+# on the 'added_back' argument.
+clear_nb_option() {
+  option=$1
+  add_back=$2
+  echo "clearing the nb option - $option"
+  check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+  check ovn-nbctl --wait=sb remove NB_Global . options $option
+  check_engine_stats global_config recompute compute
+  check_engine_stats northd recompute nocompute
+  check_engine_stats lflow recompute nocompute
+
+  local retval=1
+  if [ "$add_back" == "true" ]; then
+    retval=0
+  fi
+  AT_CHECK([ovn-nbctl get NB_Global . options:$option], [$retval], [ignore], [ignore])
+}
+
+# Clear svc_monitor_mac and few other options which result in recompute.
+# and ovn-northd should update the nb options back.
+clear_nb_option svc_monitor_mac true
+clear_nb_option max_tunid true
+clear_nb_option mac_prefix true
+clear_nb_option northd_internal_version true
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set NB_Global . options:ignore_chassis_features=true
+check_engine_stats global_config recompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+clear_nb_option ignore_chassis_features false
+
+set_nb_option_lflow_recompute() {
+  local option=$1
+  local value=$2
+  check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+  check ovn-nbctl --wait=sb set NB_Global . options:$option=$value
+  check_engine_stats global_config norecompute compute
+  check_engine_stats northd recompute nocompute
+  check_engine_stats lflow recompute nocompute
+  check_engine_stats mac_binding_aging recompute nocompute
+  CHECK_NO_CHANGE_AFTER_RECOMPUTE
+}
+
+clear_nb_option_lflow_recompute() {
+  local option=$1
+  check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+  check ovn-nbctl --wait=sb remove NB_Global . options $option
+  check_engine_stats global_config norecompute compute
+  check_engine_stats northd recompute nocompute
+  check_engine_stats lflow recompute nocompute
+  check_engine_stats mac_binding_aging recompute nocompute
+  CHECK_NO_CHANGE_AFTER_RECOMPUTE
+}
+
+set_nb_option_lflow_recompute debug_drop_domain_id 1
+clear_nb_option_lflow_recompute debug_drop_domain_id
+
+set_nb_option_lflow_recompute debug_drop_collector_set 1
+clear_nb_option_lflow_recompute debug_drop_collector_set
+
+set_nb_option_lflow_recompute mac_binding_removal_limit 100
+clear_nb_option_lflow_recompute mac_binding_removal_limit
+
+set_nb_option_lflow_recompute fdb_removal_limit 100
+clear_nb_option_lflow_recompute fdb_removal_limit
+
+set_nb_option_lflow_recompute controller_event true
+clear_nb_option_lflow_recompute controller_event
+
+set_nb_option_lflow_recompute ignore_lsp_down true
+clear_nb_option_lflow_recompute ignore_lsp_down
+
+set_nb_option_lflow_recompute use_ct_inv_match true
+clear_nb_option_lflow_recompute use_ct_inv_match
+
+set_nb_option_lflow_recompute default_acl_drop true
+clear_nb_option_lflow_recompute default_acl_drop
+
+set_nb_option_lflow_recompute use_common_zone true
+clear_nb_option_lflow_recompute use_common_zone
+
+set_nb_option_lflow_recompute install_ls_lb_from_router true
+clear_nb_option_lflow_recompute install_ls_lb_from_router
+
+# Now test changes to chassis for feature changes.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-sbctl chassis-add ch1 geneve 127.0.0.1
+check ovn-nbctl --wait=sb sync
+check_engine_stats global_config recompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-sbctl chassis-add ch2 geneve 127.0.0.2
+check ovn-nbctl --wait=sb sync
+check_engine_stats global_config recompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+AT_CHECK([ovn-nbctl get NB_Global . options:max_tunid | \
+sed s/":"//g | sed s/\"//g], [0], [16711680
+], [])
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-sbctl chassis-del ch2
+check ovn-nbctl --wait=sb sync
+check_engine_stats global_config recompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-sbctl set encap . type=vxlan
+check ovn-nbctl --wait=sb sync
+check_engine_stats global_config recompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+AT_CHECK([ovn-nbctl get NB_Global . options:max_tunid | \
+sed s/":"//g | sed s/\"//g], [0], [4095
+], [])
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-sbctl set chassis . other_config:foo=bar
+check ovn-nbctl --wait=sb sync
+check_engine_stats global_config norecompute compute
+check_engine_stats mac_binding_aging recompute nocompute
+check_engine_stats fdb_aging recompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-sbctl set chassis . other_config:ct-no-masked-label=true
+check ovn-nbctl --wait=sb sync
+check_engine_stats global_config norecompute compute
+check_engine_stats mac_binding_aging recompute nocompute
+check_engine_stats fdb_aging recompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+AT_CLEANUP

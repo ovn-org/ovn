@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "en-global-config.h"
 #include "en-lflow.h"
 #include "en-lr-nat.h"
 #include "en-lr-stateful.h"
@@ -77,10 +78,14 @@ lflow_get_input_data(struct engine_node *node,
     lflow_input->meter_groups = &sync_meters_data->meter_groups;
     lflow_input->lb_datapaths_map = &northd_data->lb_datapaths_map;
     lflow_input->svc_monitor_map = &northd_data->svc_monitor_map;
-    lflow_input->features = &northd_data->features;
-    lflow_input->ovn_internal_version_changed =
-                      northd_data->ovn_internal_version_changed;
     lflow_input->bfd_connections = NULL;
+
+    struct ed_type_global_config *global_config =
+        engine_get_input_data("global_config", node);
+    lflow_input->features = &global_config->features;
+    lflow_input->ovn_internal_version_changed =
+        global_config->ovn_internal_version_changed;
+    lflow_input->svc_monitor_mac = global_config->svc_monitor_mac;
 }
 
 void en_lflow_run(struct engine_node *node, void *data)

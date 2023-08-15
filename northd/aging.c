@@ -15,6 +15,7 @@
 
 #include <config.h>
 
+#include "en-global-config.h"
 #include "lib/inc-proc-eng.h"
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-sb-idl.h"
@@ -347,15 +348,10 @@ aging_context_handle_timestamp(struct aging_context *ctx, int64_t timestamp,
 static uint32_t
 get_removal_limit(struct engine_node *node, const char *name)
 {
-    const struct nbrec_nb_global_table *nb_global_table =
-            EN_OVSDB_GET(engine_get_input("NB_nb_global", node));
-    const struct nbrec_nb_global *nb =
-            nbrec_nb_global_table_first(nb_global_table);
-    if (!nb) {
-        return 0;
-    }
+    struct ed_type_global_config *global_config =
+        engine_get_input_data("global_config", node);
 
-    return smap_get_uint(&nb->options, name, 0);
+    return smap_get_uint(&global_config->nb_options, name, 0);
 }
 
 /* MAC binding aging */
@@ -394,11 +390,14 @@ en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct engine_context *eng_ctx = engine_get_context();
     struct northd_data *northd_data = engine_get_input_data("northd", node);
+    struct ed_type_global_config *global_config =
+        engine_get_input_data("global_config", node);
+
     struct aging_waker *waker =
         engine_get_input_data("mac_binding_aging_waker", node);
 
     if (!eng_ctx->ovnsb_idl_txn ||
-        !northd_data->features.mac_binding_timestamp ||
+        !global_config->features.mac_binding_timestamp ||
         time_msec() < waker->next_wake_msec) {
         return;
     }
@@ -530,9 +529,11 @@ en_fdb_aging_run(struct engine_node *node, void *data OVS_UNUSED)
     const struct engine_context *eng_ctx = engine_get_context();
     struct northd_data *northd_data = engine_get_input_data("northd", node);
     struct aging_waker *waker = engine_get_input_data("fdb_aging_waker", node);
+    struct ed_type_global_config *global_config =
+        engine_get_input_data("global_config", node);
 
     if (!eng_ctx->ovnsb_idl_txn ||
-        !northd_data->features.fdb_timestamp ||
+        !global_config->features.fdb_timestamp ||
         time_msec() < waker->next_wake_msec) {
         return;
     }

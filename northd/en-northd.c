@@ -19,6 +19,7 @@
 #include <stdio.h>
 
 #include "coverage.h"
+#include "en-global-config.h"
 #include "en-northd.h"
 #include "en-lb-data.h"
 #include "lib/inc-proc-eng.h"
@@ -65,8 +66,6 @@ northd_get_input_data(struct engine_node *node,
             engine_get_input("SB_fdb", node),
             "sbrec_fdb_by_dp_and_port");
 
-    input_data->nbrec_nb_global_table =
-        EN_OVSDB_GET(engine_get_input("NB_nb_global", node));
     input_data->nbrec_logical_switch_table =
         EN_OVSDB_GET(engine_get_input("NB_logical_switch", node));
     input_data->nbrec_logical_router_table =
@@ -78,8 +77,6 @@ northd_get_input_data(struct engine_node *node,
     input_data->nbrec_mirror_table =
         EN_OVSDB_GET(engine_get_input("NB_mirror", node));
 
-    input_data->sbrec_sb_global_table =
-        EN_OVSDB_GET(engine_get_input("SB_sb_global", node));
     input_data->sbrec_datapath_binding_table =
         EN_OVSDB_GET(engine_get_input("SB_datapath_binding", node));
     input_data->sbrec_port_binding_table =
@@ -109,6 +106,14 @@ northd_get_input_data(struct engine_node *node,
         engine_get_input_data("lb_data", node);
     input_data->lbs = &lb_data->lbs;
     input_data->lbgrps = &lb_data->lbgrps;
+
+    struct ed_type_global_config *global_config =
+        engine_get_input_data("global_config", node);
+    input_data->nb_options = &global_config->nb_options;
+    input_data->sb_options = &global_config->sb_options;
+    input_data->svc_monitor_mac = global_config->svc_monitor_mac;
+    input_data->svc_monitor_mac_ea = global_config->svc_monitor_mac_ea;
+    input_data->features = &global_config->features;
 }
 
 void
@@ -129,31 +134,6 @@ en_northd_run(struct engine_node *node, void *data)
                  eng_ctx->ovnsb_idl_txn);
     stopwatch_stop(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
     engine_set_node_state(node, EN_UPDATED);
-
-}
-
-bool
-northd_nb_nb_global_handler(struct engine_node *node,
-                            void *data OVS_UNUSED)
-{
-    const struct nbrec_nb_global_table *nb_global_table
-        = EN_OVSDB_GET(engine_get_input("NB_nb_global", node));
-
-    const struct nbrec_nb_global *nb =
-        nbrec_nb_global_table_first(nb_global_table);
-
-    if (!nb) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-        VLOG_WARN_RL(&rl, "NB_Global is updated but has no record.");
-        return false;
-    }
-
-    /* We care about the 'options' and 'ipsec' columns only. */
-    if (nbrec_nb_global_is_updated(nb, NBREC_NB_GLOBAL_COL_OPTIONS) ||
-        nbrec_nb_global_is_updated(nb, NBREC_NB_GLOBAL_COL_IPSEC)) {
-        return false;
-    }
-    return true;
 }
 
 bool
@@ -237,6 +217,20 @@ northd_lb_data_handler(struct engine_node *node, void *data)
 
     if (northd_has_lbs_in_tracked_data(&nd->trk_data)) {
         engine_set_node_state(node, EN_UPDATED);
+    }
+
+    return true;
+}
+
+bool
+northd_global_config_handler(struct engine_node *node, void *data OVS_UNUSED)
+{
+    struct ed_type_global_config *global_config =
+        engine_get_input_data("global_config", node);
+
+    if (!global_config->tracked
+        || global_config->tracked_data.nb_options_changed) {
+        return false;
     }
 
     return true;
