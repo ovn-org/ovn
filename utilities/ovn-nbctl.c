@@ -123,7 +123,9 @@ nbctl_post_execute(struct ovsdb_idl *idl, struct ovsdb_idl_txn *txn,
             int64_t cur_cfg = (wait_type == NBCTL_WAIT_SB
                                ? nb->sb_cfg
                                : MIN(nb->sb_cfg, nb->hv_cfg));
-            if (cur_cfg >= next_cfg) {
+            /* Detect if overflows happened within the cfg update. */
+            int64_t delta = cur_cfg - next_cfg;
+            if (cur_cfg >= next_cfg && delta < INT32_MAX) {
                 if (print_wait_time) {
                     printf("Time spent on processing nb_cfg %"PRId64":\n",
                            next_cfg);
