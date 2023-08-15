@@ -543,6 +543,7 @@ done
 # Create directly-connected routes
 ovn_as az2 ovn-nbctl lrp-add lr12 lrp-lr12-ls2 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
 ovn_as az2 ovn-nbctl lr-route-add lr12 10.10.10.0/24 192.168.0.10
+ovn_as az1 ovn-nbctl --wait=sb sync
 
 echo az1
 ovn_as az1 ovn-nbctl show
@@ -951,7 +952,7 @@ ovn_as az2 ovn-nbctl --route-table=rtb2 lr-route-add lr12 10.10.10.0/24 192.168.
 ovn_as az2 ovn-nbctl --route-table=rtb3 lr-route-add lr12 10.10.10.0/24 192.168.0.12
 
 # Create directly-connected route in VPC2
-ovn_as az2 ovn-nbctl lrp-add lr22 lrp-lr22 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
+ovn_as az2 ovn-nbctl --wait=sb lrp-add lr22 lrp-lr22 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
 
 # Test direct routes from lr12 were learned to lr11
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
@@ -1077,7 +1078,7 @@ ovn_as az2 ovn-nbctl --route-table=rtb2 lr-route-add lr12 2001:db8:aaaa::/64 200
 ovn_as az2 ovn-nbctl --route-table=rtb3 lr-route-add lr12 2001:db8:aaaa::/64 2001:db8:200::12
 
 # Create directly-connected route in VPC2
-ovn_as az2 ovn-nbctl lrp-add lr22 lrp-lr22 aa:aa:aa:aa:bb:01 "2001:db8:200::1/64"
+ovn_as az2 ovn-nbctl --wait=sb lrp-add lr22 lrp-lr22 aa:aa:aa:aa:bb:01 "2001:db8:200::1/64"
 
 # Test direct routes from lr12 were learned to lr11
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 2001:db8:200 |
@@ -1146,7 +1147,7 @@ for i in 1 2; do
     ovn-nbctl lrp-add $lr lrp-local-subnet 00:00:00:00:00:0$i 192.168.$i.1/24
     ovn-nbctl list logical-router-static-route
     check ovn-nbctl lr-route-add $lr 10.0.0.0/24 192.168.$i.10
-    check ovn-nbctl lr-route-add $lr 0.0.0.0/0 192.168.$i.11
+    check ovn-nbctl --wait=sb lr-route-add $lr 0.0.0.0/0 192.168.$i.11
 done
 
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep dst-ip | sort], [0], [dnl
