@@ -518,7 +518,9 @@ update_sequence_numbers(int64_t loop_start_time,
                              chassis_priv->name);
             }
 
-            if (chassis_priv->nb_cfg < hv_cfg) {
+            /* Detect if overflows happened within the cfg update. */
+            int64_t delta = chassis_priv->nb_cfg - hv_cfg;
+            if (chassis_priv->nb_cfg < hv_cfg || delta > INT32_MAX) {
                 hv_cfg = chassis_priv->nb_cfg;
                 hv_cfg_ts = chassis_priv->nb_cfg_timestamp;
             } else if (chassis_priv->nb_cfg == hv_cfg &&
