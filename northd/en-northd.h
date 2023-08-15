@@ -14,7 +14,7 @@ void *en_northd_init(struct engine_node *node OVS_UNUSED,
                      struct engine_arg *arg);
 void en_northd_cleanup(void *data);
 void en_northd_clear_tracked_data(void *data);
-bool northd_nb_nb_global_handler(struct engine_node *, void *data OVS_UNUSED);
+bool northd_global_config_handler(struct engine_node *, void *data OVS_UNUSED);
 bool northd_nb_logical_switch_handler(struct engine_node *, void *data);
 bool northd_nb_logical_router_handler(struct engine_node *, void *data);
 bool northd_sb_port_binding_handler(struct engine_node *, void *data);

@@ -30,6 +30,7 @@
 #include "openvswitch/poll-loop.h"
 #include "openvswitch/vlog.h"
 #include "inc-proc-northd.h"
+#include "en-global-config.h"
 #include "en-lb-data.h"
 #include "en-lr-stateful.h"
 #include "en-lr-nat.h"
@@ -149,6 +150,7 @@ static ENGINE_NODE(fdb_aging, "fdb_aging");
 static ENGINE_NODE(fdb_aging_waker, "fdb_aging_waker");
 static ENGINE_NODE(sync_to_sb_lb, "sync_to_sb_lb");
 static ENGINE_NODE(sync_to_sb_pb, "sync_to_sb_pb");
+static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(global_config, "global_config");
 static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lb_data, "lb_data");
 static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lr_nat, "lr_nat");
 static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lr_stateful, "lr_stateful");
@@ -168,11 +170,17 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_lb_data, &en_nb_logical_router,
                      lb_data_logical_router_handler);
 
+    engine_add_input(&en_global_config, &en_nb_nb_global,
+                     global_config_nb_global_handler);
+    engine_add_input(&en_global_config, &en_sb_sb_global,
+                     global_config_sb_global_handler);
+    engine_add_input(&en_global_config, &en_sb_chassis,
+                     global_config_sb_chassis_handler);
+
     engine_add_input(&en_northd, &en_nb_mirror, NULL);
     engine_add_input(&en_northd, &en_nb_static_mac_binding, NULL);
     engine_add_input(&en_northd, &en_nb_chassis_template_var, NULL);
 
-    engine_add_input(&en_northd, &en_sb_sb_global, NULL);
     engine_add_input(&en_northd, &en_sb_chassis, NULL);
     engine_add_input(&en_northd, &en_sb_mirror, NULL);
     engine_add_input(&en_northd, &en_sb_meter, NULL);
@@ -184,6 +192,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_sb_fdb, NULL);
     engine_add_input(&en_northd, &en_sb_static_mac_binding, NULL);
     engine_add_input(&en_northd, &en_sb_chassis_template_var, NULL);
+    engine_add_input(&en_northd, &en_global_config,
+                     northd_global_config_handler);
 
     /* northd engine node uses the sb mac binding table to
      * cleanup mac binding entries for deleted logical ports
@@ -198,8 +208,6 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
 
     engine_add_input(&en_northd, &en_sb_port_binding,
                      northd_sb_port_binding_handler);
-    engine_add_input(&en_northd, &en_nb_nb_global,
-                     northd_nb_nb_global_handler);
     engine_add_input(&en_northd, &en_nb_logical_switch,
                      northd_nb_logical_switch_handler);
     engine_add_input(&en_northd, &en_nb_logical_router,
@@ -217,15 +225,17 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_ls_stateful, &en_port_group,
                      ls_stateful_port_group_handler);
 
-    engine_add_input(&en_mac_binding_aging, &en_nb_nb_global, NULL);
     engine_add_input(&en_mac_binding_aging, &en_sb_mac_binding, NULL);
     engine_add_input(&en_mac_binding_aging, &en_northd, NULL);
     engine_add_input(&en_mac_binding_aging, &en_mac_binding_aging_waker, NULL);
+    engine_add_input(&en_mac_binding_aging, &en_global_config,
+                     node_global_config_handler);
 
-    engine_add_input(&en_fdb_aging, &en_nb_nb_global, NULL);
     engine_add_input(&en_fdb_aging, &en_sb_fdb, NULL);
     engine_add_input(&en_fdb_aging, &en_northd, NULL);
     engine_add_input(&en_fdb_aging, &en_fdb_aging_waker, NULL);
+    engine_add_input(&en_fdb_aging, &en_global_config,
+                     node_global_config_handler);
 
     engine_add_input(&en_sync_meters, &en_nb_acl, NULL);
     engine_add_input(&en_sync_meters, &en_nb_meter, NULL);
@@ -239,18 +249,22 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_lflow, &en_sb_multicast_group, NULL);
     engine_add_input(&en_lflow, &en_sb_igmp_group, NULL);
     engine_add_input(&en_lflow, &en_sb_logical_dp_group, NULL);
+    engine_add_input(&en_lflow, &en_global_config,
+                     node_global_config_handler);
     engine_add_input(&en_lflow, &en_northd, lflow_northd_handler);
     engine_add_input(&en_lflow, &en_port_group, lflow_port_group_handler);
     engine_add_input(&en_lflow, &en_lr_stateful, lflow_lr_stateful_handler);
     engine_add_input(&en_lflow, &en_ls_stateful, lflow_ls_stateful_handler);
 
+    engine_add_input(&en_sync_to_sb_addr_set, &en_northd, NULL);
+    engine_add_input(&en_sync_to_sb_addr_set, &en_lr_stateful, NULL);
+    engine_add_input(&en_sync_to_sb_addr_set, &en_sb_address_set, NULL);
     engine_add_input(&en_sync_to_sb_addr_set, &en_nb_address_set,
                      sync_to_sb_addr_set_nb_address_set_handler);
     engine_add_input(&en_sync_to_sb_addr_set, &en_nb_port_group,
                      sync_to_sb_addr_set_nb_port_group_handler);
-    engine_add_input(&en_sync_to_sb_addr_set, &en_northd, NULL);
-    engine_add_input(&en_sync_to_sb_addr_set, &en_lr_stateful, NULL);
-    engine_add_input(&en_sync_to_sb_addr_set, &en_sb_address_set, NULL);
+    engine_add_input(&en_sync_to_sb_addr_set, &en_global_config,
+                     node_global_config_handler);
 
     engine_add_input(&en_port_group, &en_nb_port_group,
                      port_group_nb_port_group_handler);
@@ -260,6 +274,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
      * table too (because of the explicit dependency in the schema). */
     engine_add_input(&en_port_group, &en_northd, engine_noop_handler);
 
+    engine_add_input(&en_sync_to_sb_lb, &en_global_config,
+                     node_global_config_handler);
     engine_add_input(&en_sync_to_sb_lb, &en_northd,
                      sync_to_sb_lb_northd_handler);
     engine_add_input(&en_sync_to_sb_lb, &en_sb_load_balancer,
@@ -365,11 +381,11 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                                 "sbrec_fdb_by_dp_and_port",
                                 sbrec_fdb_by_dp_and_port);
 
-    struct northd_data *northd_data =
-        engine_get_internal_data(&en_northd);
+    struct ed_type_global_config *global_config =
+        engine_get_internal_data(&en_global_config);
     unixctl_command_register("debug/chassis-features-list", "", 0, 0,
                              chassis_features_list,
-                             &northd_data->features);
+                             &global_config->features);
 }
 
 /* Returns true if the incremental processing ended up updating nodes. */

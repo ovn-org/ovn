@@ -8,6 +8,8 @@ northd_ovn_northd_SOURCES = \
 	northd/northd.c \
 	northd/northd.h \
 	northd/ovn-northd.c \
+	northd/en-global-config.c \
+	northd/en-global-config.h \
 	northd/en-northd.c \
 	northd/en-northd.h \
 	northd/en-lflow.c \

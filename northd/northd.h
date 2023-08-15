@@ -27,7 +27,6 @@
 
 struct northd_input {
     /* Northbound table references */
-    const struct nbrec_nb_global_table *nbrec_nb_global_table;
     const struct nbrec_logical_switch_table *nbrec_logical_switch_table;
     const struct nbrec_logical_router_table *nbrec_logical_router_table;
     const struct nbrec_static_mac_binding_table
@@ -37,7 +36,6 @@ struct northd_input {
     const struct nbrec_mirror_table *nbrec_mirror_table;
 
     /* Southbound table references */
-    const struct sbrec_sb_global_table *sbrec_sb_global_table;
     const struct sbrec_datapath_binding_table *sbrec_datapath_binding_table;
     const struct sbrec_port_binding_table *sbrec_port_binding_table;
     const struct sbrec_mac_binding_table *sbrec_mac_binding_table;
@@ -57,6 +55,13 @@ struct northd_input {
     const struct hmap *lbs;
     const struct hmap *lbgrps;
 
+    /* Global config data node inputs. */
+    const struct smap *nb_options;
+    const struct smap *sb_options;
+    const char *svc_monitor_mac;
+    struct eth_addr svc_monitor_mac_ea;
+    const struct chassis_features *features;
+
     /* Indexes */
     struct ovsdb_idl_index *sbrec_chassis_by_name;
     struct ovsdb_idl_index *sbrec_chassis_by_hostname;
@@ -64,14 +69,6 @@ struct northd_input {
     struct ovsdb_idl_index *sbrec_ip_mcast_by_dp;
     struct ovsdb_idl_index *sbrec_static_mac_binding_by_lport_ip;
     struct ovsdb_idl_index *sbrec_fdb_by_dp_and_port;
-};
-
-struct chassis_features {
-    bool ct_no_masked_label;
-    bool mac_binding_timestamp;
-    bool ct_lb_related;
-    bool fdb_timestamp;
-    bool ls_dpg_column;
 };
 
 /* A collection of datapaths. E.g. all logical switch datapaths, or all
@@ -156,8 +153,6 @@ struct northd_data {
     struct hmap lb_datapaths_map;
     struct hmap lb_group_datapaths_map;
     struct ovs_list lr_list;
-    bool ovn_internal_version_changed;
-    struct chassis_features features;
     struct sset svc_monitor_lsps;
     struct hmap svc_monitor_map;
 
@@ -194,6 +189,7 @@ struct lflow_input {
     const struct chassis_features *features;
     const struct hmap *svc_monitor_map;
     bool ovn_internal_version_changed;
+    const char *svc_monitor_mac;
 };
 
 extern int parallelization_state;
@@ -722,8 +718,6 @@ void bfd_cleanup_connections(const struct nbrec_bfd_table *,
                              struct hmap *bfd_map);
 void run_update_worker_pool(int n_threads);
 
-const char *northd_get_svc_monitor_mac(void);
-
 const struct ovn_datapath *northd_get_datapath_for_port(
     const struct hmap *ls_ports, const char *port_name);
 
@@ -786,5 +780,7 @@ lr_has_multiple_gw_ports(const struct ovn_datapath *od)
 {
     return od->n_l3dgw_ports > 1 && !od->is_gw_router;
 }
+
+uint32_t get_ovn_max_dp_key_local(const struct sbrec_chassis_table *);
 
 #endif /* NORTHD_H */
