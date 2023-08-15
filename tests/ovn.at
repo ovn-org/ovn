@@ -21759,8 +21759,8 @@ eth_dst=00000000ff01
 ip_src=$(ip_to_hex 10 0 0 10)
 ip_dst=$(ip_to_hex 172 168 0 101)
 send_icmp_packet 1 1 $eth_src $eth_dst $ip_src $ip_dst c4c9 0000000000000000000000
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int metadata=0x$lr0_dp_key | awk '/table=28, n_packets=1, n_bytes=45/{print $7" "$8}'],[0],[dnl
-priority=80,ip,reg15=0x3,metadata=0x3,nw_src=10.0.0.10 actions=drop
+AT_CHECK_UNQUOTED([as hv1 ovs-ofctl dump-flows br-int metadata=0x$lr0_dp_key | awk '/table=28, n_packets=1, n_bytes=45/{print $7" "$8}'],[0],[dnl
+priority=80,ip,reg15=0x$lr0_public_dp_key,metadata=0x$lr0_dp_key,nw_src=10.0.0.10 actions=drop
 ])
 
 # hv1 should remove the flow for the ACL with is_chassis_redirect check for sw0-vir.
@@ -31320,6 +31320,9 @@ sw0_dpkey=$(fetch_column datapath_binding tunnel_key external_ids:name=sw0)
 sw0p1_dpkey=$(fetch_column port_binding tunnel_key logical_port=sw0-p1)
 sw0p3_dpkey=$(fetch_column port_binding tunnel_key logical_port=sw0-p3)
 
+dp_key=$(printf "%x" $sw0_dpkey)
+port_key=$(printf "%x" $sw0p1_dpkey)
+
 check_column '50:54:00:00:00:13' fdb mac
 check_column $sw0_dpkey fdb dp_key
 check_column $sw0p1_dpkey fdb port_key
@@ -31331,12 +31334,12 @@ as hv2 ovs-ofctl dump-flows br-int table=71 > hv2_offlows_table71.txt
 
 AT_CAPTURE_FILE([hv1_offlows_table71.txt])
 AT_CAPTURE_FILE([hv2_offlows_table71.txt])
-AT_CHECK([cat hv1_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,metadata=0x1,dl_dst=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG15[[]]
+AT_CHECK_UNQUOTED([cat hv1_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:13 actions=load:0x$port_key->NXM_NX_REG15[[]]
 ])
 
-AT_CHECK([cat hv2_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,metadata=0x1,dl_dst=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG15[[]]
+AT_CHECK_UNQUOTED([cat hv2_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:13 actions=load:0x$port_key->NXM_NX_REG15[[]]
 ])
 
 as hv1 ovs-ofctl dump-flows br-int table=72 > hv1_offlows_table72.txt
@@ -31344,12 +31347,12 @@ as hv2 ovs-ofctl dump-flows br-int table=72 > hv2_offlows_table72.txt
 
 AT_CAPTURE_FILE([hv1_offlows_table72.txt])
 AT_CAPTURE_FILE([hv2_offlows_table72.txt])
-AT_CHECK([cat hv1_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
+AT_CHECK_UNQUOTED([cat hv1_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
-AT_CHECK([cat hv2_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
+AT_CHECK_UNQUOTED([cat hv2_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
 # Create the logical port sw0-p4 and this should be claimed by
@@ -31368,12 +31371,12 @@ as hv3 ovs-ofctl dump-flows br-int table=72 > hv3_offlows_table72.txt
 AT_CAPTURE_FILE([hv3_offlows_table71.txt])
 AT_CAPTURE_FILE([hv3_offlows_table72.txt])
 
-AT_CHECK([cat hv3_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,metadata=0x1,dl_dst=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG15[[]]
+AT_CHECK_UNQUOTED([cat hv3_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:13 actions=load:0x$port_key->NXM_NX_REG15[[]]
 ])
 
-AT_CHECK([cat hv3_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
+AT_CHECK_UNQUOTED([cat hv3_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
 # Use the src mac 50:54:00:00:00:14 instead of 50:54:00:00:00:03
@@ -31400,19 +31403,19 @@ as hv3 ovs-ofctl dump-flows br-int table=71 > hv3_offlows_table71.txt
 AT_CAPTURE_FILE([hv1_offlows_table71.txt])
 AT_CAPTURE_FILE([hv2_offlows_table71.txt])
 AT_CAPTURE_FILE([hv3_offlows_table71.txt])
-AT_CHECK([cat hv1_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,metadata=0x1,dl_dst=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG15[[]]
-priority=100,metadata=0x1,dl_dst=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG15[[]]
+AT_CHECK_UNQUOTED([cat hv1_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:13 actions=load:0x$port_key->NXM_NX_REG15[[]]
+priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:14 actions=load:0x$port_key->NXM_NX_REG15[[]]
 ])
 
-AT_CHECK([cat hv2_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,metadata=0x1,dl_dst=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG15[[]]
-priority=100,metadata=0x1,dl_dst=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG15[[]]
+AT_CHECK_UNQUOTED([cat hv2_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:13 actions=load:0x$port_key->NXM_NX_REG15[[]]
+priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:14 actions=load:0x$port_key->NXM_NX_REG15[[]]
 ])
 
-AT_CHECK([cat hv3_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,metadata=0x1,dl_dst=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG15[[]]
-priority=100,metadata=0x1,dl_dst=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG15[[]]
+AT_CHECK_UNQUOTED([cat hv3_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:13 actions=load:0x$port_key->NXM_NX_REG15[[]]
+priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:14 actions=load:0x$port_key->NXM_NX_REG15[[]]
 ])
 
 as hv1 ovs-ofctl dump-flows br-int table=72 > hv1_offlows_table72.txt
@@ -31422,19 +31425,19 @@ as hv3 ovs-ofctl dump-flows br-int table=72 > hv3_offlows_table72.txt
 AT_CAPTURE_FILE([hv1_offlows_table72.txt])
 AT_CAPTURE_FILE([hv2_offlows_table72.txt])
 AT_CAPTURE_FILE([hv3_offlows_table72.txt])
-AT_CHECK([cat hv1_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
-priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
+AT_CHECK_UNQUOTED([cat hv1_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
+priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
-AT_CHECK([cat hv2_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
-priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
+AT_CHECK_UNQUOTED([cat hv2_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
+priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
-AT_CHECK([cat hv3_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
-priority=100,reg14=0x1,metadata=0x1,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
+AT_CHECK_UNQUOTED([cat hv3_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
+priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
 as hv1 reset_pcap_file hv1-vif1 hv1/vif1
