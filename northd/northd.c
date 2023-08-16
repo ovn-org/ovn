@@ -5132,21 +5132,8 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
             op->visited = false;
         }
 
-        /* Check if the logical switch has only router ports before this change.
-         * If so, fall back to recompute.
-         * lflow engine node while building the lflows checks if the logical switch
-         * has any router ports and depending on that it adds different flows.
-         * See build_lswitch_rport_arp_req_flow() for more details.
-         * Note: We can definitely handle this scenario incrementally in the
-         * northd engine node and fall back to recompute in lflow engine node
-         * and even handle this incrementally in lflow node.  Until we do that
-         * resort to full recompute of northd node.
-         */
-        bool only_rports = (od->n_router_ports
-                            && (od->n_router_ports == hmap_count(&od->ports)));
-        if (only_rports) {
-            goto fail;
-        }
+        ls_change->had_only_router_ports = (od->n_router_ports
+            && (od->n_router_ports == hmap_count(&od->ports)));
 
         /* Compare the individual ports in the old and new Logical Switches */
         for (size_t j = 0; j < changed_ls->n_ports; ++j) {
@@ -5227,22 +5214,6 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 delete_fdb_entry(ni->sbrec_fdb_by_dp_and_port, od->tunnel_key,
                                  op->tunnel_key);
             }
-        }
-
-        /* Check if the logical switch has only router ports after this change.
-         * If so, fall back to recompute.
-         * lflow engine node while building the lflows checks if the logical switch
-         * has any router ports and depending on that it adds different flows.
-         * See build_lswitch_rport_arp_req_flow() for more details.
-         * Note: We can definitely handle this scenario incrementally in the
-         * northd engine node and fall back to recompute in lflow engine node
-         * and even handle this incrementally in lflow node.  Until we do that
-         * resort to full recompute of northd node.
-         */
-        only_rports = (od->n_router_ports
-                       && (od->n_router_ports == hmap_count(&od->ports)));
-        if (only_rports) {
-            goto fail_clean_deleted;
         }
 
         if (!ovs_list_is_empty(&ls_change->added_ports) ||
@@ -16411,6 +16382,44 @@ bool lflow_handle_northd_ls_changes(struct ovsdb_idl_txn *ovnsb_txn,
             LIST_FOR_EACH (lfrn, lflow_list_node, &op->lflows) {
                 sync_lsp_lflows_to_sb(ovnsb_txn, lflow_input, lflows,
                                       lfrn->lflow);
+            }
+        }
+
+        bool ls_has_only_router_ports = (ls_change->od->n_router_ports &&
+                                         (ls_change->od->n_router_ports ==
+                                          hmap_count(&ls_change->od->ports)));
+
+        if (ls_change->had_only_router_ports != ls_has_only_router_ports) {
+            /* There are lflows related to router ports that depends on whether
+             * there are switch ports on the logical switch (see
+             * build_lswitch_rport_arp_req_flow() for more details). Since this
+             * dependency changed, we need to regenerate lflows for each router
+             * port on this logical switch. */
+            for (size_t i = 0; i < ls_change->od->n_router_ports; i++) {
+                op = ls_change->od->router_ports[i];
+
+                /* Delete old lflows. */
+                if (!delete_lflow_for_lsp(op, "affected router",
+                                      lflow_input->sbrec_logical_flow_table,
+                                      lflows)) {
+                    return false;
+                }
+
+                /* Generate new lflows. */
+                struct ds match = DS_EMPTY_INITIALIZER;
+                struct ds actions = DS_EMPTY_INITIALIZER;
+                build_lswitch_and_lrouter_iterate_by_lsp(op,
+                    lflow_input->ls_ports, lflow_input->lr_ports,
+                    lflow_input->meter_groups, &match, &actions, lflows);
+                ds_destroy(&match);
+                ds_destroy(&actions);
+
+                /* Sync the new flows to SB. */
+                struct lflow_ref_node *lfrn;
+                LIST_FOR_EACH (lfrn, lflow_list_node, &op->lflows) {
+                    sync_lsp_lflows_to_sb(ovnsb_txn, lflow_input, lflows,
+                                          lfrn->lflow);
+                }
             }
         }
     }

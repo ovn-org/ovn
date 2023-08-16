@@ -10060,16 +10060,18 @@ check ovn-nbctl --wait=sb ls-lb-add ls0 lb0
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-# Add a lsp.  northd and lflow engine should recompute since this is
+# Add a lsp.  northd and lflow engine shouldn't recompute even though this is
 # the first lsp added after the router ports.
 check ovn-nbctl --wait=hv lsp-add ls0 lsp0-1 -- lsp-set-addresses lsp0-1 "aa:aa:aa:00:00:01 192.168.0.11"
-check_recompute_counter 1 1
+check_recompute_counter 0 0
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
-# Delete the lsp. northd and lflow engine should recompute as
+# Delete the lsp. northd and lflow engine shouldn't recompute even though
 # the logical switch is now left with only router ports.
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-check ovn-nbctl lsp-del lsp0-1
-check_recompute_counter 1 1
+check ovn-nbctl --wait=hv lsp-del lsp0-1
+check_recompute_counter 0 0
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 AT_CLEANUP
 ])

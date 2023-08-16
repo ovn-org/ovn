@@ -89,6 +89,7 @@ struct ls_change {
     struct ovs_list added_ports;
     struct ovs_list deleted_ports;
     struct ovs_list updated_ports;
+    bool had_only_router_ports;
 };
 
 /* Track what's changed for logical switches.
