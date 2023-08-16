@@ -412,7 +412,7 @@ AC_DEFUN([OVN_CHECK_OVS], [
   fi
   OVSDIR=$(cd "$(eval echo "$with_ovs_source")"; pwd)
   if test ! -f "$OVSDIR/vswitchd/bridge.c"; then
-    AC_ERROR([$OVSDIR is not an OVS source directory])
+    AC_MSG_ERROR([$OVSDIR is not an OVS source directory])
   fi
 
   AC_MSG_RESULT([$OVSDIR])
@@ -426,13 +426,16 @@ AC_DEFUN([OVN_CHECK_OVS], [
       *) OVSBUILDDIR=`pwd`/$OVSBUILDDIR ;;
     esac
     if test ! -f "$OVSBUILDDIR/config.h"; then
-      AC_ERROR([$OVSBUILDDIR is not a configured OVS build directory])
+      AC_MSG_ERROR([$OVSBUILDDIR is not a configured OVS build directory])
     fi
   elif test -f "$OVSDIR/config.h"; then
     # If separate build dir is not specified, use src dir.
     OVSBUILDDIR=$OVSDIR
   else
-    AC_ERROR([OVS source dir $OVSDIR is not configured as a build directory (either run configure there or use --with-ovs-build to point to the build directory)])
+    AC_MSG_ERROR(m4_normalize([
+        OVS source dir $OVSDIR is not configured as a build directory
+        (either run configure there or use --with-ovs-build to point
+        to the build directory)]))
   fi
   AC_MSG_RESULT([$OVSBUILDDIR])
   AC_SUBST(OVSBUILDDIR)
