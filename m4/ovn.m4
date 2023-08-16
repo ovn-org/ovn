@@ -21,7 +21,7 @@ AC_DEFUN([OVN_CHECK_COVERAGE],
   [AC_REQUIRE([AC_PROG_CC])
    AC_ARG_ENABLE(
      [coverage],
-     [AC_HELP_STRING([--enable-coverage],
+     [AS_HELP_STRING([--enable-coverage],
                      [Enable gcov coverage tool.])],
      [case "${enableval}" in
         (yes) coverage=true ;;
@@ -50,7 +50,7 @@ dnl Checks for --enable-ndebug and defines NDEBUG if it is specified.
 AC_DEFUN([OVS_CHECK_NDEBUG],
   [AC_ARG_ENABLE(
      [ndebug],
-     [AC_HELP_STRING([--enable-ndebug],
+     [AS_HELP_STRING([--enable-ndebug],
                      [Disable debugging features for max performance])],
      [case "${enableval}" in
         (yes) ndebug=true ;;
@@ -197,7 +197,7 @@ dnl Checks for OpenSSL.
 AC_DEFUN([OVS_CHECK_OPENSSL],
   [AC_ARG_ENABLE(
      [ssl],
-     [AC_HELP_STRING([--disable-ssl], [Disable OpenSSL support])],
+     [AS_HELP_STRING([--disable-ssl], [Disable OpenSSL support])],
      [case "${enableval}" in
         (yes) ssl=true ;;
         (no)  ssl=false ;;
@@ -249,7 +249,7 @@ dnl Checks for the directory in which to store the PKI.
 AC_DEFUN([OVS_CHECK_PKIDIR],
   [AC_ARG_WITH(
      [pkidir],
-     AC_HELP_STRING([--with-pkidir=DIR],
+     AS_HELP_STRING([--with-pkidir=DIR],
                     [PKI hierarchy directory [[LOCALSTATEDIR/lib/openvswitch/pki]]]),
      [PKIDIR=$withval],
      [PKIDIR='${localstatedir}/lib/openvswitch/pki'])
@@ -259,7 +259,7 @@ dnl Checks for the directory in which to store pidfiles.
 AC_DEFUN([OVN_CHECK_RUNDIR],
   [AC_ARG_WITH(
      [rundir],
-     AC_HELP_STRING([--with-rundir=DIR],
+     AS_HELP_STRING([--with-rundir=DIR],
                     [directory used for pidfiles
                     [[LOCALSTATEDIR/run/ovn]]]),
      [OVN_RUNDIR=$withval],
@@ -270,7 +270,7 @@ dnl Checks for the directory in which to store logs.
 AC_DEFUN([OVN_CHECK_LOGDIR],
   [AC_ARG_WITH(
      [logdir],
-     AC_HELP_STRING([--with-logdir=DIR],
+     AS_HELP_STRING([--with-logdir=DIR],
                     [directory used for logs [[LOCALSTATEDIR/log/PACKAGE]]]),
      [LOGDIR=$withval],
      [LOGDIR='${localstatedir}/log/${PACKAGE}'])
@@ -280,7 +280,7 @@ dnl Checks for the directory in which to store the OVN database.
 AC_DEFUN([OVN_CHECK_DBDIR],
   [AC_ARG_WITH(
      [dbdir],
-     AC_HELP_STRING([--with-dbdir=DIR],
+     AS_HELP_STRING([--with-dbdir=DIR],
                     [directory used for conf.db [[SYSCONFDIR/PACKAGE]]]),
      [DBDIR=$withval],
      [DBDIR='${sysconfdir}/${PACKAGE}'])
@@ -581,7 +581,7 @@ dnl Checks for --enable-ddlog-fast-build and updates DDLOG_EXTRA_RUSTFLAGS.
 AC_DEFUN([OVS_CHECK_DDLOG_FAST_BUILD],
   [AC_ARG_ENABLE(
      [ddlog_fast_build],
-     [AC_HELP_STRING([--enable-ddlog-fast-build],
+     [AS_HELP_STRING([--enable-ddlog-fast-build],
                      [Build ddlog programs faster, but generate slower code])],
      [case "${enableval}" in
         (yes) ddlog_fast_build=true ;;

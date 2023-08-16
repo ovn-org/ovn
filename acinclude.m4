@@ -18,7 +18,7 @@ dnl OVS_ENABLE_WERROR
 AC_DEFUN([OVS_ENABLE_WERROR],
   [AC_ARG_ENABLE(
      [Werror],
-     [AC_HELP_STRING([--enable-Werror], [Add -Werror to CFLAGS])],
+     [AS_HELP_STRING([--enable-Werror], [Add -Werror to CFLAGS])],
      [], [enable_Werror=no])
    AC_CONFIG_COMMANDS_PRE(
      [if test "X$enable_Werror" = Xyes; then
@@ -54,7 +54,7 @@ AC_DEFUN([OVS_CHECK_DDLOG], [
   AC_ARG_VAR([DDLOG_HOME], [Root of the DDlog installation])
   AC_ARG_WITH(
     [ddlog],
-    [AC_HELP_STRING([--with-ddlog[[=INSTALLDIR|LIBDIR]]], [Enables DDlog])],
+    [AS_HELP_STRING([--with-ddlog[[=INSTALLDIR|LIBDIR]]], [Enables DDlog])],
     [DDLOG_PATH=$PATH
      if test "$withval" = yes; then
        # --with-ddlog: $DDLOG_HOME must be set
@@ -321,7 +321,7 @@ AC_DEFUN([OVS_ENABLE_SPARSE],
 
    AC_ARG_ENABLE(
      [sparse],
-     [AC_HELP_STRING([--enable-sparse], [Run "sparse" by default])],
+     [AS_HELP_STRING([--enable-sparse], [Run "sparse" by default])],
      [], [enable_sparse=no])
    AM_CONDITIONAL([ENABLE_SPARSE_BY_DEFAULT], [test $enable_sparse = yes])])
 
@@ -400,10 +400,10 @@ dnl
 dnl Check for OVS sources
 AC_DEFUN([OVN_CHECK_OVS], [
   AC_ARG_WITH([ovs-source],
-              [AC_HELP_STRING([--with-ovs-source=/path/to/ovs/src/dir],
+              [AS_HELP_STRING([--with-ovs-source=/path/to/ovs/src/dir],
                               [Specify the OVS src directory])])
   AC_ARG_WITH([ovs-build],
-              [AC_HELP_STRING([--with-ovs-build=/path/to/ovs/build/dir],
+              [AS_HELP_STRING([--with-ovs-build=/path/to/ovs/build/dir],
                               [Specify the OVS build directory])])
 
   AC_MSG_CHECKING([for OVS source directory])
@@ -449,7 +449,7 @@ AC_DEFUN([OVN_CHECK_VIF_PLUG_PROVIDER], [
   AC_ARG_VAR([VIF_PLUG_PROVIDER])
   AC_ARG_WITH(
     [vif-plug-provider],
-    [AC_HELP_STRING([--with-vif-plug-provider=/path/to/provider/repository],
+    [AS_HELP_STRING([--with-vif-plug-provider=/path/to/provider/repository],
                     [Specify path to a configured and built VIF plug provider repository])],
     [if test "$withval" = yes; then
        if test -z "$VIF_PLUG_PROVIDER"; then
@@ -482,7 +482,7 @@ dnl Enable built-in plug providers
 AC_DEFUN([OVN_ENABLE_VIF_PLUG], [
     AC_ARG_ENABLE(
       [vif-plug-providers],
-      [AC_HELP_STRING([--enable-vif-plug-providers], [Enable building of built-in VIF plug providers])],
+      [AS_HELP_STRING([--enable-vif-plug-providers], [Enable building of built-in VIF plug providers])],
       [], [enable_vif_plug=no])
     AM_CONDITIONAL([ENABLE_VIF_PLUG], [test "$enable_vif_plug" != no])
     if test "$enable_vif_plug" != no; then
