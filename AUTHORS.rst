@@ -364,8 +364,7 @@ Shashank Ram                       rams@vmware.com
 Shashwat Srivastava                shashwat.srivastava@tcs.com
 Shih-Hao Li                        shihli@vmware.com
 Shu Shen                           shu.shen@radisys.com
-Simon Horman                       horms@verge.net.au
-Simon Horman                       simon.horman@netronome.com
+Simon Horman                       horms@ovn.org
 Sorin Vinturis                     svinturis@cloudbasesolutions.com
 Steffen Gebert                     steffen.gebert@informatik.uni-wuerzburg.de
 Sten Spans                         sten@blinkenlights.nl
