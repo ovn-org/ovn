@@ -16632,9 +16632,9 @@ band_cmp(const void *band1_, const void *band2_)
     const struct band_entry *band2p = band2_;
 
     if (band1p->rate != band2p->rate) {
-        return band1p->rate > band2p->rate ? -1 : 1;
+        return band1p->rate - band2p->rate;
     } else if (band1p->burst_size != band2p->burst_size) {
-        return band1p->burst_size > band2p->burst_size ? -1 : 1;
+        return band1p->burst_size - band2p->burst_size;
     } else {
         return strcmp(band1p->action, band2p->action);
     }
@@ -16646,17 +16646,6 @@ bands_need_update(const struct nbrec_meter *nb_meter,
 {
     if (nb_meter->n_bands != sb_meter->n_bands) {
         return true;
-    }
-
-    /* A single band is the most common scenario, so speed up that
-     * check. */
-    if (nb_meter->n_bands == 1) {
-        struct nbrec_meter_band *nb_band = nb_meter->bands[0];
-        struct sbrec_meter_band *sb_band = sb_meter->bands[0];
-
-        return !(nb_band->rate == sb_band->rate
-                 && nb_band->burst_size == sb_band->burst_size
-                 && !strcmp(sb_band->action, nb_band->action));
     }
 
     /* Place the Northbound entries in sorted order. */
@@ -16685,15 +16674,12 @@ bands_need_update(const struct nbrec_meter *nb_meter,
 
     bool need_update = false;
     for (size_t i = 0; i < nb_meter->n_bands; i++) {
-        if (nb_bands[i].rate != sb_bands[i].rate
-            || nb_bands[i].burst_size != sb_bands[i].burst_size
-            || strcmp(nb_bands[i].action, sb_bands[i].action)) {
+        if (band_cmp(&nb_bands[i], &sb_bands[i])) {
             need_update = true;
-            goto done;
+            break;
         }
     }
 
-done:
     free(nb_bands);
     free(sb_bands);
 
