@@ -20,6 +20,7 @@
 
 #include "en-lflow.h"
 #include "en-northd.h"
+#include "en-meters.h"
 
 #include "lib/inc-proc-eng.h"
 #include "northd.h"
@@ -35,6 +36,8 @@ lflow_get_input_data(struct engine_node *node,
                      struct lflow_input *lflow_input)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
+    struct sync_meters_data *sync_meters_data =
+        engine_get_input_data("sync_meters", node);
     lflow_input->nbrec_bfd_table =
         EN_OVSDB_GET(engine_get_input("NB_bfd", node));
     lflow_input->sbrec_bfd_table =
@@ -56,7 +59,7 @@ lflow_get_input_data(struct engine_node *node,
     lflow_input->ls_ports = &northd_data->ls_ports;
     lflow_input->lr_ports = &northd_data->lr_ports;
     lflow_input->port_groups = &northd_data->port_groups;
-    lflow_input->meter_groups = &northd_data->meter_groups;
+    lflow_input->meter_groups = &sync_meters_data->meter_groups;
     lflow_input->lbs = &northd_data->lbs;
     lflow_input->features = &northd_data->features;
     lflow_input->ovn_internal_version_changed =

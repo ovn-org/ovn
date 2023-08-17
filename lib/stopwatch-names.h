@@ -30,5 +30,6 @@
 #define LFLOWS_IGMP_STOPWATCH_NAME "lflows_igmp"
 #define LFLOWS_DP_GROUPS_STOPWATCH_NAME "lflows_dp_groups"
 #define LFLOWS_TO_SB_STOPWATCH_NAME "lflows_to_sb"
+#define SYNC_METERS_RUN_STOPWATCH_NAME "sync_meters_run"
 
 #endif

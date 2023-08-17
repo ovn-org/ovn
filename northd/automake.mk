@@ -12,6 +12,8 @@ northd_ovn_northd_SOURCES = \
 	northd/en-northd.h \
 	northd/en-lflow.c \
 	northd/en-lflow.h \
+	northd/en-meters.c \
+	northd/en-meters.h \
 	northd/en-northd-output.c \
 	northd/en-northd-output.h \
 	northd/en-sync-sb.c \

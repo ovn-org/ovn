@@ -33,6 +33,7 @@
 #include "en-northd.h"
 #include "en-lflow.h"
 #include "en-northd-output.h"
+#include "en-meters.h"
 #include "en-sync-sb.h"
 #include "en-sync-from-sb.h"
 #include "unixctl.h"
@@ -135,6 +136,7 @@ static ENGINE_NODE(lflow, "lflow");
 static ENGINE_NODE(mac_binding_aging, "mac_binding_aging");
 static ENGINE_NODE(mac_binding_aging_waker, "mac_binding_aging_waker");
 static ENGINE_NODE(northd_output, "northd_output");
+static ENGINE_NODE(sync_meters, "sync_meters");
 static ENGINE_NODE(sync_to_sb, "sync_to_sb");
 static ENGINE_NODE(sync_to_sb_addr_set, "sync_to_sb_addr_set");
 static ENGINE_NODE(fdb_aging, "fdb_aging");
@@ -148,10 +150,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_nb_port_group, NULL);
     engine_add_input(&en_northd, &en_nb_load_balancer, NULL);
     engine_add_input(&en_northd, &en_nb_load_balancer_group, NULL);
-    engine_add_input(&en_northd, &en_nb_acl, NULL);
     engine_add_input(&en_northd, &en_nb_logical_router, NULL);
     engine_add_input(&en_northd, &en_nb_mirror, NULL);
-    engine_add_input(&en_northd, &en_nb_meter, NULL);
     engine_add_input(&en_northd, &en_nb_static_mac_binding, NULL);
     engine_add_input(&en_northd, &en_nb_chassis_template_var, NULL);
 
@@ -188,7 +188,13 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_fdb_aging, &en_northd, NULL);
     engine_add_input(&en_fdb_aging, &en_fdb_aging_waker, NULL);
 
+    engine_add_input(&en_sync_meters, &en_nb_acl, NULL);
+    engine_add_input(&en_sync_meters, &en_nb_meter, NULL);
+    engine_add_input(&en_sync_meters, &en_sb_meter, NULL);
+
     engine_add_input(&en_lflow, &en_nb_bfd, NULL);
+    engine_add_input(&en_lflow, &en_nb_acl, NULL);
+    engine_add_input(&en_lflow, &en_sync_meters, NULL);
     engine_add_input(&en_lflow, &en_sb_bfd, NULL);
     engine_add_input(&en_lflow, &en_sb_logical_flow, NULL);
     engine_add_input(&en_lflow, &en_sb_multicast_group, NULL);
@@ -204,9 +210,11 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
 
     /* en_sync_to_sb engine node syncs the SB database tables from
      * the NB database tables.
-     * Right now this engine only syncs the SB Address_Set table.
+     * Right now this engine syncs the SB Address_Set table and
+     * SB Meter/Meter_Band tables.
      */
     engine_add_input(&en_sync_to_sb, &en_sync_to_sb_addr_set, NULL);
+    engine_add_input(&en_sync_to_sb, &en_sync_meters, NULL);
 
     engine_add_input(&en_sync_from_sb, &en_northd,
                      sync_from_sb_northd_handler);

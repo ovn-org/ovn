@@ -9,6 +9,8 @@ m4_define([_DUMP_DB_TABLES], [
     ovn-sbctl list logical_flow >> $1
     ovn-sbctl list port_binding >> $1
     ovn-sbctl list address_set >> $1
+    ovn-sbctl list meter >> $1
+    ovn-sbctl list meter_band >> $1
 ])
 
 # CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -9700,6 +9702,40 @@ echo northd_recomp $northd_recomp
 AT_CHECK([test $northd_recomp -ge 1])
 
 OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([ACL/Meter incremental processing - no northd recompute])
+ovn_start
+
+check_recompute_counter() {
+    northd_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd recompute)
+    AT_CHECK([test x$northd_recomp = x$1])
+
+    lflow_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow recompute)
+    AT_CHECK([test x$lflow_recomp = x$2])
+
+    sync_meters_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_meters recompute)
+    AT_CHECK([test x$sync_meters_recomp = x$3])
+}
+
+check ovn-nbctl --wait=sb ls-add ls
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb meter-add m drop 1 pktps
+check ovn-nbctl --wait=sb acl-add ls from-lport 1 1 allow
+dnl Only triggers recompute of the sync_meters and lflow nodes.
+check_recompute_counter 0 2 2
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb meter-del m
+check ovn-nbctl --wait=sb acl-del ls
+dnl Only triggers recompute of the sync_meters and lflow nodes.
+check_recompute_counter 0 2 2
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
 AT_CLEANUP
 ])
 
