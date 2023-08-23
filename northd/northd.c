@@ -7869,7 +7869,8 @@ build_lrouter_groups(struct hmap *ports, struct ovs_list *lr_list)
             od->lr_group = xzalloc(sizeof *od->lr_group);
             /* Each logical router group can have max
              * 'n_router_dps'. So allocate enough memory. */
-            od->lr_group->router_dps = xcalloc(sizeof *od, n_router_dps);
+            od->lr_group->router_dps =
+                xcalloc(n_router_dps, sizeof *od->lr_group->router_dps);
             od->lr_group->router_dps[0] = od;
             od->lr_group->n_router_dps = 1;
             sset_init(&od->lr_group->ha_chassis_groups);
