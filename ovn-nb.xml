@@ -349,6 +349,15 @@
         of HWOL compatibility with GDP.
       </column>
 
+      <column name="options" key="northd-backoff-interval-ms">
+        Maximum interval that the northd incremental engine is delayed by
+        in milliseconds. Setting the value to nonzero delays the next northd
+        engine run by the previous run time, capped by the specified value.
+        If the value is zero the engine won't be delayed at all.
+        The recommended period is smaller than 500 ms, beyond that the latency
+        of SB changes would be very noticeable.
+      </column>
+
       <group title="Options for configuring interconnection route advertisement">
         <p>
           These options control how routes are advertised between OVN

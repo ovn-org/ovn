@@ -295,16 +295,18 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
 /* Returns true if the incremental processing ended up updating nodes. */
 bool inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
                          struct ovsdb_idl_txn *ovnsb_txn,
-                         bool recompute) {
+                         struct northd_engine_context *ctx) {
     ovs_assert(ovnnb_txn && ovnsb_txn);
+
+    int64_t start = time_msec();
     engine_init_run();
 
     /* Force a full recompute if instructed to, for example, after a NB/SB
      * reconnect event.  However, make sure we don't overwrite an existing
      * force-recompute request if 'recompute' is false.
      */
-    if (recompute) {
-        engine_set_force_recompute(recompute);
+    if (ctx->recompute) {
+        engine_set_force_recompute(ctx->recompute);
     }
 
     struct engine_context eng_ctx = {
@@ -330,6 +332,12 @@ bool inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
     } else {
         engine_set_force_recompute(false);
     }
+
+    int64_t now = time_msec();
+    /* Postpone the next run by length of current run with maximum capped
+     * by "northd-backoff-interval-ms" interval. */
+    ctx->next_run_ms = now + MIN(now - start, ctx->backoff_ms);
+
     return engine_has_updated();
 }
 
@@ -337,6 +345,19 @@ void inc_proc_northd_cleanup(void)
 {
     engine_cleanup();
     engine_set_context(NULL);
+}
+
+bool
+inc_proc_northd_can_run(struct northd_engine_context *ctx)
+{
+    if (ctx->recompute || time_msec() >= ctx->next_run_ms ||
+        ctx->nb_idl_duration_ms >= IDL_LOOP_MAX_DURATION_MS ||
+        ctx->sb_idl_duration_ms >= IDL_LOOP_MAX_DURATION_MS) {
+        return true;
+    }
+
+    poll_timer_wait_until(ctx->next_run_ms);
+    return false;
 }
 
 static void

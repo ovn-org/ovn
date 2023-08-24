@@ -14,6 +14,8 @@ Post v23.06.0
     Existing sessions might get re-hashed to a different ECMP path when
     OVN detects the algorithm support in the datapath during an upgrade
     or restart of ovn-controller.
+  - Add "northd-backoff-interval-ms" config option to delay northd engine
+    runs capped at the set value.
 
 OVN v23.06.0 - 01 Jun 2023
 --------------------------

@@ -686,7 +686,8 @@ update_ssl_config(void)
 }
 
 static struct ovsdb_idl_txn *
-run_idl_loop(struct ovsdb_idl_loop *idl_loop, const char *name)
+run_idl_loop(struct ovsdb_idl_loop *idl_loop, const char *name,
+             uint64_t *idl_duration)
 {
     unsigned long long duration, start = time_msec();
     unsigned int seqno = UINT_MAX;
@@ -694,9 +695,9 @@ run_idl_loop(struct ovsdb_idl_loop *idl_loop, const char *name)
     int n = 0;
 
     /* Accumulate database changes as long as there are some,
-     * but no longer than half a second. */
+     * but no longer than "IDL_LOOP_MAX_DURATION_MS". */
     while (seqno != ovsdb_idl_get_seqno(idl_loop->idl)
-           && time_msec() - start < 500) {
+           && time_msec() - start < IDL_LOOP_MAX_DURATION_MS) {
         seqno = ovsdb_idl_get_seqno(idl_loop->idl);
         ovsdb_idl_run(idl_loop->idl);
         n++;
@@ -705,13 +706,15 @@ run_idl_loop(struct ovsdb_idl_loop *idl_loop, const char *name)
     txn = ovsdb_idl_loop_run(idl_loop);
 
     duration = time_msec() - start;
+    *idl_duration = duration;
     /* ovsdb_idl_run() is called at least 2 times.  Once directly and
      * once in the ovsdb_idl_loop_run().  n > 2 means that we received
      * data on at least 2 subsequent calls. */
     if (n > 2 || duration > 100) {
-        VLOG(duration > 500 ? VLL_INFO : VLL_DBG,
+        VLOG(duration > IDL_LOOP_MAX_DURATION_MS ? VLL_INFO : VLL_DBG,
              "%s IDL run: %d iterations in %lld ms", name, n + 1, duration);
     }
+
     return txn;
 }
 
@@ -870,7 +873,8 @@ main(int argc, char *argv[])
     /* Main loop. */
     exiting = false;
 
-    bool recompute = false;
+    struct northd_engine_context eng_ctx = {};
+
     while (!exiting) {
         update_ssl_config();
         memory_run();
@@ -896,26 +900,28 @@ main(int argc, char *argv[])
                 ovsdb_idl_set_lock(ovnsb_idl_loop.idl, "ovn_northd");
             }
 
-            struct ovsdb_idl_txn *ovnnb_txn = run_idl_loop(&ovnnb_idl_loop,
-                                                           "OVN_Northbound");
+            struct ovsdb_idl_txn *ovnnb_txn =
+                    run_idl_loop(&ovnnb_idl_loop, "OVN_Northbound",
+                                 &eng_ctx.nb_idl_duration_ms);
             unsigned int new_ovnnb_cond_seqno =
                         ovsdb_idl_get_condition_seqno(ovnnb_idl_loop.idl);
             if (new_ovnnb_cond_seqno != ovnnb_cond_seqno) {
                 if (!new_ovnnb_cond_seqno) {
                     VLOG_INFO("OVN NB IDL reconnected, force recompute.");
-                    recompute = true;
+                    eng_ctx.recompute = true;
                 }
                 ovnnb_cond_seqno = new_ovnnb_cond_seqno;
             }
 
-            struct ovsdb_idl_txn *ovnsb_txn = run_idl_loop(&ovnsb_idl_loop,
-                                                           "OVN_Southbound");
+            struct ovsdb_idl_txn *ovnsb_txn =
+                    run_idl_loop(&ovnsb_idl_loop, "OVN_Southbound",
+                                 &eng_ctx.sb_idl_duration_ms);
             unsigned int new_ovnsb_cond_seqno =
                         ovsdb_idl_get_condition_seqno(ovnsb_idl_loop.idl);
             if (new_ovnsb_cond_seqno != ovnsb_cond_seqno) {
                 if (!new_ovnsb_cond_seqno) {
                     VLOG_INFO("OVN SB IDL reconnected, force recompute.");
-                    recompute = true;
+                    eng_ctx.recompute = true;
                 }
                 ovnsb_cond_seqno = new_ovnsb_cond_seqno;
             }
@@ -934,11 +940,12 @@ main(int argc, char *argv[])
 
             if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
                 bool activity = false;
-                if (ovnnb_txn && ovnsb_txn) {
+                if (ovnnb_txn && ovnsb_txn &&
+                    inc_proc_northd_can_run(&eng_ctx)) {
                     int64_t loop_start_time = time_wall_msec();
                     activity = inc_proc_northd_run(ovnnb_txn, ovnsb_txn,
-                                                        recompute);
-                    recompute = false;
+                                                   &eng_ctx);
+                    eng_ctx.recompute = false;
                     check_and_add_supported_dhcp_opts_to_sb_db(
                                  ovnsb_txn, ovnsb_idl_loop.idl);
                     check_and_add_supported_dhcpv6_opts_to_sb_db(
@@ -951,7 +958,7 @@ main(int argc, char *argv[])
                                             ovnsb_idl_loop.idl,
                                             ovnnb_txn, ovnsb_txn,
                                             &ovnsb_idl_loop);
-                } else if (!recompute) {
+                } else if (!eng_ctx.recompute) {
                     clear_idl_track = false;
                 }
 
@@ -960,13 +967,13 @@ main(int argc, char *argv[])
                 if (!ovsdb_idl_loop_commit_and_wait(&ovnnb_idl_loop)) {
                     VLOG_INFO("OVNNB commit failed, "
                               "force recompute next time.");
-                    recompute = true;
+                    eng_ctx.recompute = true;
                 }
 
                 if (!ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop)) {
                     VLOG_INFO("OVNSB commit failed, "
                               "force recompute next time.");
-                    recompute = true;
+                    eng_ctx.recompute = true;
                 }
                 run_memory_trimmer(ovnnb_idl_loop.idl, activity);
             } else {
@@ -975,7 +982,7 @@ main(int argc, char *argv[])
                 ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop);
 
                 /* Force a full recompute next time we become active. */
-                recompute = true;
+                eng_ctx.recompute = true;
             }
         } else {
             /* ovn-northd is paused
@@ -999,7 +1006,7 @@ main(int argc, char *argv[])
             ovsdb_idl_wait(ovnsb_idl_loop.idl);
 
             /* Force a full recompute next time we become active. */
-            recompute = true;
+            eng_ctx.recompute = true;
         }
 
         if (clear_idl_track) {
@@ -1021,6 +1028,9 @@ main(int argc, char *argv[])
         if (nb) {
             interval = smap_get_int(&nb->options, "northd_probe_interval",
                                     interval);
+            eng_ctx.backoff_ms =
+                    smap_get_uint(&nb->options, "northd-backoff-interval-ms",
+                                  0);
         }
         set_idl_probe_interval(ovnnb_idl_loop.idl, ovnnb_db, interval);
         set_idl_probe_interval(ovnsb_idl_loop.idl, ovnsb_db, interval);
