@@ -336,6 +336,7 @@ ovn-nbctl lsp-set-addresses lsp-ts1-lr1 router
 ovn-nbctl lsp-set-type lsp-ts1-lr1 router
 ovn-nbctl --wait=hv lsp-set-options lsp-ts1-lr1 router-port=lrp-lr1-ts1
 
+ovn_as az2 ovn-nbctl lsp-set-options lsp-ts1-lr1 requested-chassis=gw1
 AT_CHECK([ovn_as az2 ovn-nbctl show | uuidfilt], [0], [dnl
 switch <0> (ts1)
     port lsp-ts1-lr1
@@ -350,6 +351,7 @@ lsp-ts1-lr1,remote
 ovn-nbctl lrp-set-gateway-chassis lrp-lr1-ts1 gw1
 OVS_WAIT_UNTIL([ovn_as az2 ovn-sbctl show | grep lsp-ts1-lr1])
 
+ovn_as az2 ovn-nbctl lsp-set-options lsp-ts1-lr1 requested-chassis=""
 ovn-nbctl lrp-del-gateway-chassis lrp-lr1-ts1 gw1
 OVS_WAIT_WHILE([ovn_as az2 ovn-sbctl show | grep lsp-ts1-lr1])
 

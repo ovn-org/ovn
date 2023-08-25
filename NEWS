@@ -18,6 +18,8 @@ Post v23.06.0
     runs capped at the set value.
   - Add "garp-max-timeout-sec" config option to vswitchd external-ids to
     cap the time between when ovn-controller sends gARP packets.
+  - Introduce support for binding remote ports in ovn-northd if the CMS sets
+    requested-chassis option for a remote logical switch port.
 
 OVN v23.06.0 - 01 Jun 2023
 --------------------------

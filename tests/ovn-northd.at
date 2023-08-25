@@ -10205,3 +10205,70 @@ AT_CHECK([grep "lr_in_gw_redirect" R1flows |sed s'/table=../table=??/' |sort], [
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Remote port binding])
+AT_KEYWORDS([remote-port-binding])
+ovn_start
+
+check ovn-sbctl chassis-add remote-ch0 geneve 127.0.0.1
+check ovn-sbctl set chassis remote-ch0 other_config:is-remote=true
+
+check ovn-sbctl chassis-add local-ch0 geneve 127.0.0.2
+wait_row_count Chassis 2
+
+remote_chassis_uuid=$(fetch_column Chassis _uuid name=remote-ch0)
+as northd ovn-appctl -t NORTHD_TYPE vlog/set dbg
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-r1 -- lsp-set-type sw0-r1 remote
+check ovn-nbctl lsp-set-options sw0-r1 requested-chassis=remote-ch0
+wait_for_ports_up sw0-r1
+
+# Make sure it is bound by remote-ch0
+check_column $remote_chassis_uuid Port_Binding chassis logical_port=sw0-r1
+
+check ovn-nbctl remove logical_switch_port sw0-r1 options requested-chassis
+wait_row_count nb:Logical_Switch_Port 1 up=false name=sw0-r1
+
+check_column '' Port_Binding chassis logical_port=sw0-r1
+
+# Set the requested-chassis to local-ch0. ovn-northd should not
+# bind it. But before that bind again to remote-ch0.  This becomes
+# easier to test for the local-ch0 scenario.
+check ovn-nbctl lsp-set-options sw0-r1 requested-chassis=remote-ch0
+wait_for_ports_up sw0-r1
+check_column $remote_chassis_uuid Port_Binding chassis logical_port=sw0-r1
+check ovn-nbctl lsp-set-options sw0-r1 requested-chassis=local-ch0
+wait_row_count nb:Logical_Switch_Port 1 up=false name=sw0-r1
+check_column '' Port_Binding chassis logical_port=sw0-r1
+
+# Set the requested-chassis to unknown chassis. ovn-northd should not
+# bind it. But before that bind again to remote-ch0.  This becomes
+# easier to test for the local-ch0 scenario.
+check ovn-nbctl lsp-set-options sw0-r1 requested-chassis=remote-ch0
+wait_for_ports_up sw0-r1
+check_column $remote_chassis_uuid Port_Binding chassis logical_port=sw0-r1
+check ovn-nbctl lsp-set-options sw0-r1 requested-chassis=foo
+wait_row_count nb:Logical_Switch_Port 1 up=false name=sw0-r1
+check_column '' Port_Binding chassis logical_port=sw0-r1
+
+# Change the port type to normal and ovn-northd should not bind it.
+check ovn-nbctl lsp-set-options sw0-r1 requested-chassis=remote-ch0
+wait_for_ports_up sw0-r1
+check_column $remote_chassis_uuid Port_Binding chassis logical_port=sw0-r1
+check ovn-nbctl lsp-set-type sw0-r1 ''
+wait_row_count nb:Logical_Switch_Port 1 up=false name=sw0-r1
+check_column '' Port_Binding chassis logical_port=sw0-r1
+
+# Change back to type to remote and ovn-northd should bind it.
+check ovn-nbctl lsp-set-type sw0-r1 remote
+wait_for_ports_up sw0-r1
+check_column $remote_chassis_uuid Port_Binding chassis logical_port=sw0-r1
+
+# Set the type to router and ovn-northd should not claim it.
+check ovn-nbctl lsp-set-type sw0-r1 router
+check_column '' Port_Binding chassis logical_port=sw0-r1
+
+AT_CLEANUP
+])

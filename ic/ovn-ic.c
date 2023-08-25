@@ -651,6 +651,11 @@ sync_remote_port(struct ic_context *ctx,
     /* Sync tunnel key from ISB to NB */
     sync_lsp_tnl_key(lsp, isb_pb->tunnel_key);
 
+    /* Skip port binding if it is already requested by the CMS. */
+    if (smap_get(&lsp->options, "requested-chassis")) {
+        return;
+    }
+
     /* Sync gateway from ISB to SB */
     if (isb_pb->gateway[0]) {
         if (!sb_pb->chassis || strcmp(sb_pb->chassis->name, isb_pb->gateway)) {

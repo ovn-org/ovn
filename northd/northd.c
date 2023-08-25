@@ -3580,6 +3580,28 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
                 }
             }
 
+            if (lsp_is_remote(op->nbsp)) {
+                /* ovn-northd is supposed to set port_binding for remote ports
+                 * if requested chassis is marked as remote. */
+                if (op->sb->requested_chassis &&
+                    smap_get_bool(&op->sb->requested_chassis->other_config,
+                                  "is-remote", false)) {
+                    sbrec_port_binding_set_chassis(op->sb,
+                                                   op->sb->requested_chassis);
+                    smap_add(&options, "is-remote-nb-bound", "true");
+                } else if (smap_get_bool(&op->sb->options,
+                                         "is-remote-nb-bound", false)) {
+                    sbrec_port_binding_set_chassis(op->sb, NULL);
+                    smap_add(&options, "is-remote-nb-bound", "false");
+                }
+            } else if (op->sb->chassis &&
+                       smap_get_bool(&op->sb->chassis->other_config,
+                                     "is-remote", false)) {
+                /* Its not a remote port but if the chassis is set and if its a
+                 * remote chassis then clear it. */
+                sbrec_port_binding_set_chassis(op->sb, NULL);
+            }
+
             sbrec_port_binding_set_options(op->sb, &options);
             smap_destroy(&options);
             if (ovn_is_known_nb_lsp_type(op->nbsp->type)) {
@@ -3617,6 +3639,12 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
                 sbrec_port_binding_set_ha_chassis_group(op->sb, NULL);
             }
         } else {
+            if (op->sb->chassis &&
+                smap_get_bool(&op->sb->chassis->other_config,
+                              "is-remote", false)) {
+                sbrec_port_binding_set_chassis(op->sb, NULL);
+            }
+
             const char *chassis = NULL;
             if (op->peer && op->peer->od && op->peer->od->nbr) {
                 chassis = smap_get(&op->peer->od->nbr->options, "chassis");
