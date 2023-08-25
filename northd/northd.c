@@ -857,6 +857,8 @@ struct lrouter_group {
     int n_router_dps;
     /* Set of ha_chassis_groups which are associated with the router dps. */
     struct sset ha_chassis_groups;
+    /* Temporary storage for chassis references while computing HA groups. */
+    struct hmapx tmp_ha_chassis;
 };
 
 static struct ovn_datapath *
@@ -7874,6 +7876,7 @@ build_lrouter_groups(struct hmap *ports, struct ovs_list *lr_list)
             od->lr_group->router_dps[0] = od;
             od->lr_group->n_router_dps = 1;
             sset_init(&od->lr_group->ha_chassis_groups);
+            hmapx_init(&od->lr_group->tmp_ha_chassis);
             build_lrouter_groups__(ports, od);
         }
     }
@@ -15783,6 +15786,7 @@ destroy_datapaths_and_ports(struct hmap *datapaths, struct hmap *ports,
 
             free(lr_group->router_dps);
             sset_destroy(&lr_group->ha_chassis_groups);
+            hmapx_destroy(&lr_group->tmp_ha_chassis);
             free(lr_group);
         }
     }
@@ -16319,38 +16323,27 @@ ovnnb_db_run(struct northd_input *input_data,
     smap_destroy(&options);
 }
 
-/* Stores the list of chassis which references an ha_chassis_group.
+/* Stores the set of chassis which references an ha_chassis_group.
  */
 struct ha_ref_chassis_info {
     const struct sbrec_ha_chassis_group *ha_chassis_group;
-    struct sbrec_chassis **ref_chassis;
-    size_t n_ref_chassis;
-    size_t free_slots;
+    struct hmapx ref_chassis;
 };
 
 static void
 add_to_ha_ref_chassis_info(struct ha_ref_chassis_info *ref_ch_info,
-                           const struct sbrec_chassis *chassis)
+                           const struct hmapx *chassis)
 {
-    for (size_t j = 0; j < ref_ch_info->n_ref_chassis; j++) {
-        if (ref_ch_info->ref_chassis[j] == chassis) {
-           return;
+    if (!hmapx_count(&ref_ch_info->ref_chassis)) {
+        hmapx_destroy(&ref_ch_info->ref_chassis);
+        hmapx_clone(&ref_ch_info->ref_chassis, chassis);
+    } else {
+        struct hmapx_node *node;
+
+        HMAPX_FOR_EACH (node, chassis) {
+            hmapx_add(&ref_ch_info->ref_chassis, node->data);
         }
     }
-
-    /* Allocate space for 3 chassis at a time. */
-    if (!ref_ch_info->free_slots) {
-        ref_ch_info->ref_chassis =
-            xrealloc(ref_ch_info->ref_chassis,
-                     sizeof *ref_ch_info->ref_chassis *
-                     (ref_ch_info->n_ref_chassis + 3));
-        ref_ch_info->free_slots = 3;
-    }
-
-    ref_ch_info->ref_chassis[ref_ch_info->n_ref_chassis] =
-        CONST_CAST(struct sbrec_chassis *, chassis);
-    ref_ch_info->n_ref_chassis++;
-    ref_ch_info->free_slots--;
 }
 
 struct ha_chassis_group_node {
@@ -16379,9 +16372,20 @@ update_sb_ha_group_ref_chassis(struct northd_input *input_data,
     struct shash_node *node;
     SHASH_FOR_EACH_SAFE (node, ha_ref_chassis_map) {
         struct ha_ref_chassis_info *ha_ref_info = node->data;
+        size_t n = hmapx_count(&ha_ref_info->ref_chassis);
+        struct sbrec_chassis **ref_chassis;
+        struct hmapx_node *chassis_node;
+
+        ref_chassis = xmalloc(n * sizeof *ref_chassis);
+
+        n = 0;
+        HMAPX_FOR_EACH (chassis_node, &ha_ref_info->ref_chassis) {
+            ref_chassis[n++] = chassis_node->data;
+        }
+
         sbrec_ha_chassis_group_set_ref_chassis(ha_ref_info->ha_chassis_group,
-                                               ha_ref_info->ref_chassis,
-                                               ha_ref_info->n_ref_chassis);
+                                               ref_chassis, n);
+        free(ref_chassis);
 
         /* Remove the updated group from the set. */
         HMAP_FOR_EACH_WITH_HASH (ha_ch_grp_node, hmap_node,
@@ -16393,7 +16397,7 @@ update_sb_ha_group_ref_chassis(struct northd_input *input_data,
                 break;
             }
         }
-        free(ha_ref_info->ref_chassis);
+        hmapx_destroy(&ha_ref_info->ref_chassis);
         free(ha_ref_info);
         shash_delete(ha_ref_chassis_map, node);
     }
@@ -16430,10 +16434,9 @@ update_sb_ha_group_ref_chassis(struct northd_input *input_data,
  *  - 'ref_chassis' of hagrp1.
  */
 static void
-build_ha_chassis_group_ref_chassis(struct northd_input *input_data,
-                                   const struct sbrec_port_binding *sb,
-                                   struct ovn_port *op,
-                                   struct shash *ha_ref_chassis_map)
+collect_lb_groups_for_ha_chassis_groups(const struct sbrec_port_binding *sb,
+                                        struct ovn_port *op,
+                                        struct hmapx *lr_groups)
 {
     struct lrouter_group *lr_group = NULL;
     for (size_t i = 0; i < op->od->n_router_ports; i++) {
@@ -16452,18 +16455,39 @@ build_ha_chassis_group_ref_chassis(struct northd_input *input_data,
         return;
     }
 
-    const char *ha_group_name;
-    SSET_FOR_EACH (ha_group_name, &lr_group->ha_chassis_groups) {
-        const struct sbrec_ha_chassis_group *sb_ha_chassis_grp;
-        sb_ha_chassis_grp = ha_chassis_group_lookup_by_name(
-            input_data->sbrec_ha_chassis_grp_by_name, ha_group_name);
+    hmapx_add(lr_groups, lr_group);
+    hmapx_add(&lr_group->tmp_ha_chassis, sb->chassis);
+}
 
-        if (sb_ha_chassis_grp) {
+static void
+build_ha_chassis_group_ref_chassis(struct ovsdb_idl_index *ha_ch_grp_by_name,
+                                   struct hmapx *lr_groups,
+                                   struct shash *ha_ref_chassis_map)
+{
+    struct hmapx_node *node;
+
+    HMAPX_FOR_EACH (node, lr_groups) {
+        struct lrouter_group *lr_group = node->data;
+        const char *ha_group_name;
+
+        SSET_FOR_EACH (ha_group_name, &lr_group->ha_chassis_groups) {
+            const struct sbrec_ha_chassis_group *sb_ha_chassis_grp;
+
+            sb_ha_chassis_grp = ha_chassis_group_lookup_by_name(
+                                    ha_ch_grp_by_name, ha_group_name);
+            if (!sb_ha_chassis_grp) {
+                continue;
+            }
+
             struct ha_ref_chassis_info *ref_ch_info =
-            shash_find_data(ha_ref_chassis_map, sb_ha_chassis_grp->name);
+                shash_find_data(ha_ref_chassis_map, sb_ha_chassis_grp->name);
             ovs_assert(ref_ch_info);
-            add_to_ha_ref_chassis_info(ref_ch_info, sb->chassis);
+
+            add_to_ha_ref_chassis_info(ref_ch_info, &lr_group->tmp_ha_chassis);
         }
+
+        hmapx_destroy(&lr_group->tmp_ha_chassis);
+        hmapx_init(&lr_group->tmp_ha_chassis);
     }
 }
 
@@ -16476,16 +16500,20 @@ handle_port_binding_changes(struct northd_input *input_data,
                             struct hmap *ports,
                             struct shash *ha_ref_chassis_map)
 {
+    struct hmapx lr_groups = HMAPX_INITIALIZER(&lr_groups);
     const struct sbrec_port_binding *sb;
     bool build_ha_chassis_ref = false;
+
     if (ovnsb_txn) {
         const struct sbrec_ha_chassis_group *ha_ch_grp;
         SBREC_HA_CHASSIS_GROUP_TABLE_FOR_EACH (ha_ch_grp,
                                     input_data->sbrec_ha_chassis_group_table) {
             if (ha_ch_grp->n_ha_chassis > 1) {
-                struct ha_ref_chassis_info *ref_ch_info =
-                    xzalloc(sizeof *ref_ch_info);
+                struct ha_ref_chassis_info *ref_ch_info;
+
+                ref_ch_info = xzalloc(sizeof *ref_ch_info);
                 ref_ch_info->ha_chassis_group = ha_ch_grp;
+                hmapx_init(&ref_ch_info->ref_chassis);
                 build_ha_chassis_ref = true;
                 shash_add(ha_ref_chassis_map, ha_ch_grp->name, ref_ch_info);
             }
@@ -16519,12 +16547,17 @@ handle_port_binding_changes(struct northd_input *input_data,
         }
 
         if (build_ha_chassis_ref && ovnsb_txn && sb->chassis) {
-            /* Check and add the chassis which has claimed this 'sb'
-             * to the ha chassis group's ref_chassis if required. */
-            build_ha_chassis_group_ref_chassis(input_data, sb, op,
-                                               ha_ref_chassis_map);
+            /* Check and collect the chassis which has claimed this 'sb'
+             * in relation to LR groups. */
+            collect_lb_groups_for_ha_chassis_groups(sb, op, &lr_groups);
         }
     }
+
+    /* Update ha chassis group's ref_chassis if required. */
+    build_ha_chassis_group_ref_chassis(
+                            input_data->sbrec_ha_chassis_grp_by_name,
+                            &lr_groups, ha_ref_chassis_map);
+    hmapx_destroy(&lr_groups);
 }
 
 /* Handle a fairly small set of changes in the southbound database. */
