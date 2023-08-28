@@ -17058,6 +17058,17 @@ destroy_datapaths_and_ports(struct ovn_datapaths *ls_datapaths,
     ovn_datapaths_destroy(lr_datapaths);
 }
 
+static void
+northd_enable_all_features(struct northd_data *data)
+{
+    data->features = (struct chassis_features) {
+        .ct_no_masked_label = true,
+        .mac_binding_timestamp = true,
+        .ct_lb_related = true,
+        .fdb_timestamp = true,
+    };
+}
+
 void
 northd_init(struct northd_data *data)
 {
@@ -17068,12 +17079,7 @@ northd_init(struct northd_data *data)
     hmap_init(&data->lbs);
     hmap_init(&data->lb_groups);
     ovs_list_init(&data->lr_list);
-    data->features = (struct chassis_features) {
-        .ct_no_masked_label = true,
-        .mac_binding_timestamp = true,
-        .ct_lb_related = true,
-        .fdb_timestamp = true,
-    };
+    northd_enable_all_features(data);
     data->ovn_internal_version_changed = false;
     sset_init(&data->svc_monitor_lsps);
     data->change_tracked = false;
@@ -17192,7 +17198,12 @@ ovnnb_db_run(struct northd_input *input_data,
                                               false);
     use_common_zone = smap_get_bool(&nb->options, "use_common_zone", false);
 
-    build_chassis_features(input_data->sbrec_chassis_table, &data->features);
+    if (smap_get_bool(&nb->options, "ignore_chassis_features", false)) {
+        northd_enable_all_features(data);
+    } else {
+        build_chassis_features(input_data->sbrec_chassis_table,
+                               &data->features);
+    }
 
     init_debug_config(nb);
 

@@ -157,6 +157,29 @@
         </column>
       </group>
 
+       <column name="options" key="ignore_chassis_features">
+        <p>
+          When set to <code>false</code>, the <code>ovn-northd</code> will
+          evaluate the features supported by each chassis and will only
+          activate features that are universally supported by all chassis. This
+          approach is crucial for maintaining backward compatibility during an
+          upgrade when the <code>ovn-northd</code> is updated prior to the
+          <code>ovn-controller</code>. However, if any chassis is poorly
+          managed and the upgrade is unsuccessful, it will restrict
+          <code>ovn-northd</code> from activating the new features.
+        </p>
+        <p>
+          Alternatively, setting this option to <code>true</code> instructs
+          <code>ovn-northd</code> to bypass the support status of features on
+          each chassis and to directly implement the latest features. This
+          approach safeguards the operation of <code>ovn-northd</code> from
+          being adversely affected by a mismatched configuration of a chassis.
+        </p>
+        <p>
+          The default setting for this option is <code>false</code>.
+        </p>
+      </column>
+
       <column name="options" key="mac_prefix">
         Configure a given OUI to be used as prefix when L2 address is
         dynamically assigned, e.g. <code>00:11:22</code>
