@@ -1,5 +1,6 @@
-OVN v23.03.1 - xx xxx xxxx
+OVN v23.03.1 - 29 Aug 2023
 --------------------------
+   - Bug fixes
   - CT entries are not flushed by default anymore whenever a load balancer
     backend is removed.  A new, per-LB, option 'ct_flush' can be used to
     restore the previous behavior.  Disabled by default.
@@ -15,6 +16,7 @@ OVN v23.03.1 - xx xxx xxxx
     Existing sessions might get re-hashed to a different ECMP path when
     OVN detects the algorithm support in the datapath during an upgrade
     or restart of ovn-controller.
+  - Add CoPP for the svc_monitor_mac. This addresses CVE-2023-3153.
 
 OVN v23.03.0 - 03 Mar 2023
 --------------------------
