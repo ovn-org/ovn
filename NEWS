@@ -1,7 +1,9 @@
-OVN v22.03.3 - xx xxx xxxx
+OVN v22.03.3 - 29 Aug 2023
 --------------------------
+  - Bug fixes
   - Always allow IPv6 Router Discovery, Neighbor Discovery, and Multicast
     Listener Discovery protocols, regardless of ACLs defined.
+  - Add CoPP for the svc_monitor_mac. This addresses CVE-2023-3153.
 
 OVN v22.03.2 - 20 Dec 2022
 --------------------------
