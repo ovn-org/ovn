@@ -1,9 +1,11 @@
-OVN v23.06.1 - xx xxx xxxx
+OVN v23.06.1 - 29 Aug 2023
 --------------------------
+  - Bug fixes
   - ECMP routes use L4_SYM dp-hash by default if the datapath supports it.
     Existing sessions might get re-hashed to a different ECMP path when
     OVN detects the algorithm support in the datapath during an upgrade
     or restart of ovn-controller.
+  - Add CoPP for the svc_monitor_mac. This addresses CVE-2023-3153.
 
 OVN v23.06.0 - 01 Jun 2023
 --------------------------
