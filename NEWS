@@ -4,6 +4,8 @@ OVN v22.12.3 - xx xxx xxxx
     Existing sessions might get re-hashed to a different ECMP path when
     OVN detects the algorithm support in the datapath during an upgrade
     or restart of ovn-controller.
+  - Add "garp-max-timeout-sec" config option to vswitchd external-ids to
+    cap the time between when ovn-controller sends gARP packets.
 
 OVN v22.12.2 - 15 Sep 2023
 --------------------------
