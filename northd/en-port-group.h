@@ -18,6 +18,7 @@
 
 #include <stdint.h>
 
+#include "lib/hmapx.h"
 #include "lib/inc-proc-eng.h"
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-sb-idl.h"
@@ -54,9 +55,33 @@ struct ls_port_group *ls_port_group_table_find(
     const struct ls_port_group_table *,
     const struct nbrec_logical_switch *);
 
-void ls_port_group_table_build(struct ls_port_group_table *ls_port_groups,
-                               const struct nbrec_port_group_table *,
-                               const struct hmap *ls_ports);
+/* Per port group map of datapaths with ports in the group. */
+struct port_group_ls_table {
+    struct hmap entries; /* Stores struct port_group_ls_record. */
+};
+
+struct port_group_ls_record {
+    struct hmap_node key_node; /* Index on 'pg->header_.uuid'. */
+
+    const struct nbrec_port_group *nb_pg;
+
+    /* Map of 'struct nbrec_logical_switch *' with ports in the group. */
+    struct hmapx switches;
+};
+
+void port_group_ls_table_init(struct port_group_ls_table *);
+void port_group_ls_table_clear(struct port_group_ls_table *);
+void port_group_ls_table_destroy(struct port_group_ls_table *);
+
+struct port_group_ls_record *port_group_ls_table_find(
+    const struct port_group_ls_table *,
+    const struct nbrec_port_group *);
+
+void ls_port_group_table_build(
+    struct ls_port_group_table *ls_port_groups,
+    struct port_group_ls_table *port_group_lses,
+    const struct nbrec_port_group_table *,
+    const struct hmap *ls_ports);
 void ls_port_group_table_sync(const struct ls_port_group_table *ls_port_groups,
                               const struct sbrec_port_group_table *,
                               struct ovsdb_idl_txn *ovnsb_txn);
@@ -75,10 +100,15 @@ struct port_group_input {
 
 struct port_group_data {
     struct ls_port_group_table ls_port_groups;
+    struct port_group_ls_table port_groups_lses;
+    bool ls_port_groups_sets_changed;
 };
 
 void *en_port_group_init(struct engine_node *, struct engine_arg *);
 void en_port_group_cleanup(void *data);
+void en_port_group_clear_tracked_data(void *data);
 void en_port_group_run(struct engine_node *, void *data);
+
+bool port_group_nb_port_group_handler(struct engine_node *, void *data);
 
 #endif /* EN_PORT_GROUP_H */

@@ -139,7 +139,7 @@ static ENGINE_NODE(northd_output, "northd_output");
 static ENGINE_NODE(sync_meters, "sync_meters");
 static ENGINE_NODE(sync_to_sb, "sync_to_sb");
 static ENGINE_NODE(sync_to_sb_addr_set, "sync_to_sb_addr_set");
-static ENGINE_NODE(port_group, "port_group");
+static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(port_group, "port_group");
 static ENGINE_NODE(fdb_aging, "fdb_aging");
 static ENGINE_NODE(fdb_aging_waker, "fdb_aging_waker");
 
@@ -199,7 +199,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_lflow, &en_sb_multicast_group, NULL);
     engine_add_input(&en_lflow, &en_sb_igmp_group, NULL);
     engine_add_input(&en_lflow, &en_northd, lflow_northd_handler);
-    engine_add_input(&en_lflow, &en_port_group, NULL);
+    engine_add_input(&en_lflow, &en_port_group, lflow_port_group_handler);
 
     engine_add_input(&en_sync_to_sb_addr_set, &en_nb_address_set,
                      sync_to_sb_addr_set_nb_address_set_handler);
@@ -208,7 +208,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_sync_to_sb_addr_set, &en_northd, NULL);
     engine_add_input(&en_sync_to_sb_addr_set, &en_sb_address_set, NULL);
 
-    engine_add_input(&en_port_group, &en_nb_port_group, NULL);
+    engine_add_input(&en_port_group, &en_nb_port_group,
+                     port_group_nb_port_group_handler);
     engine_add_input(&en_port_group, &en_sb_port_group, NULL);
     /* No need for an explicit handler for northd changes.  Port changes
      * that affect port_groups trigger updates to the NB.Port_Group
@@ -293,6 +294,12 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_ovsdb_node_add_index(&en_sb_address_set,
                                 "sbrec_address_set_by_name",
                                 sbrec_address_set_by_name);
+
+    struct ovsdb_idl_index *sbrec_port_group_by_name
+        = ovsdb_idl_index_create1(sb->idl, &sbrec_port_group_col_name);
+    engine_ovsdb_node_add_index(&en_sb_port_group,
+                                "sbrec_port_group_by_name",
+                                sbrec_port_group_by_name);
 
     struct ovsdb_idl_index *sbrec_fdb_by_dp_and_port
         = ovsdb_idl_index_create2(sb->idl, &sbrec_fdb_col_dp_key,

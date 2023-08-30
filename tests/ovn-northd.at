@@ -11,6 +11,7 @@ m4_define([_DUMP_DB_TABLES], [
     ovn-sbctl list address_set >> $1
     ovn-sbctl list meter >> $1
     ovn-sbctl list meter_band >> $1
+    ovn-sbctl list port_group_set >> $1
 ])
 
 # CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -8958,6 +8959,376 @@ check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb sync
 AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_addr_set recompute], [0], [0
 ])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Port group incremental processing])
+ovn_start
+
+check ovn-nbctl ls-add sw1 \
+  -- lsp-add sw1 sw1.1     \
+  -- lsp-add sw1 sw1.2     \
+  -- lsp-add sw1 sw1.3     \
+  -- ls-add sw2            \
+  -- lsp-add sw2 sw2.1     \
+  -- lsp-add sw2 sw2.2     \
+  -- lsp-add sw2 sw2.3
+
+check ovn-nbctl --wait=sb sync
+sw1_key=$(fetch_column Datapath_Binding tunnel_key external_ids:name=sw1)
+sw2_key=$(fetch_column Datapath_Binding tunnel_key external_ids:name=sw2)
+
+check_acl_lflows() {
+AT_CHECK_UNQUOTED([ovn-sbctl lflow-list sw1 | grep ls_in_acl_eval | grep eth.src==41:41:41:41:41:41 -c], [ignore], [dnl
+$1
+])
+AT_CHECK_UNQUOTED([ovn-sbctl lflow-list sw1 | grep ls_in_acl_eval | grep eth.src==42:42:42:42:42:42 -c], [ignore], [dnl
+$2
+])
+AT_CHECK_UNQUOTED([ovn-sbctl lflow-list sw2 | grep ls_in_acl_eval | grep eth.src==41:41:41:41:41:41 -c], [ignore], [dnl
+$3
+])
+AT_CHECK_UNQUOTED([ovn-sbctl lflow-list sw2 | grep ls_in_acl_eval | grep eth.src==42:42:42:42:42:42 -c], [ignore], [dnl
+$4
+])
+}
+
+AS_BOX([Create new PG1 and PG2])
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb -- pg-add pg1 -- pg-add pg2
+dnl The northd node should not recompute, it should handle nb_global update
+dnl though, therefore "compute: 1".
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd], [0], [dnl
+Node: northd
+- recompute:            0
+- compute:              1
+- abort:                0
+])
+dnl The port_group node recomputes every time a NB port group is added/deleted.
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats port_group], [0], [dnl
+Node: port_group
+- recompute:            1
+- compute:              0
+- abort:                0
+])
+dnl The port_group node is an input for the lflow node.  Port_group
+dnl recompute/compute triggers lflow recompute.
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow], [0], [dnl
+Node: lflow
+- recompute:            1
+- compute:              0
+- abort:                0
+])
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AS_BOX([Add ACLs on PG1 and PG2])
+check ovn-nbctl --wait=sb             \
+  -- acl-add pg1 from-lport 1 eth.src==41:41:41:41:41:41 allow \
+  -- acl-add pg2 from-lport 1 eth.src==42:42:42:42:42:42 allow
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AS_BOX([Add one port from the two switches to PG1])
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb         \
+  -- pg-set-ports pg1 sw1.1 sw2.1
+check_column "sw1.1" sb:Port_Group ports name="${sw1_key}_pg1"
+check_column "sw2.1" sb:Port_Group ports name="${sw2_key}_pg1"
+
+dnl The northd node should not recompute, it should handle nb_global update
+dnl though, therefore "compute: 1".
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd], [0], [dnl
+Node: northd
+- recompute:            0
+- compute:              1
+- abort:                0
+])
+dnl The port_group node recomputes also every time a port from a new switch
+dnl is added to the group.
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats port_group], [0], [dnl
+Node: port_group
+- recompute:            1
+- compute:              0
+- abort:                0
+])
+dnl The port_group node is an input for the lflow node.  Port_group
+dnl recompute/compute triggers lflow recompute.
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow], [0], [dnl
+Node: lflow
+- recompute:            1
+- compute:              0
+- abort:                0
+])
+dnl Expect ACL1 on sw1 and sw2
+check_acl_lflows 1 0 1 0
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AS_BOX([Add one port from the two switches to PG2])
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb \
+  -- pg-set-ports pg2 sw1.2 sw2.2
+check_column "sw1.1" sb:Port_Group ports name="${sw1_key}_pg1"
+check_column "sw2.1" sb:Port_Group ports name="${sw2_key}_pg1"
+check_column "sw1.2" sb:Port_Group ports name="${sw1_key}_pg2"
+check_column "sw2.2" sb:Port_Group ports name="${sw2_key}_pg2"
+
+dnl The northd node should not recompute, it should handle nb_global update
+dnl though, therefore "compute: 1".
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd], [0], [dnl
+Node: northd
+- recompute:            0
+- compute:              1
+- abort:                0
+])
+dnl The port_group node recomputes also every time a port from a new switch
+dnl is added to the group.
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats port_group], [0], [dnl
+Node: port_group
+- recompute:            1
+- compute:              0
+- abort:                0
+])
+dnl The port_group node is an input for the lflow node.  Port_group
+dnl recompute/compute triggers lflow recompute (for ACLs).
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow], [0], [dnl
+Node: lflow
+- recompute:            1
+- compute:              0
+- abort:                0
+])
+dnl Expect both ACLs on sw1 and sw2
+check_acl_lflows 1 1 1 1
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AS_BOX([Add one more port from the two switches to PG1 and PG2])
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb                     \
+  -- pg-set-ports pg1 sw1.1 sw2.1 sw1.3 sw2.3 \
+  -- pg-set-ports pg2 sw1.2 sw2.2 sw1.3 sw2.3
+check_column "sw1.1 sw1.3" sb:Port_Group ports name="${sw1_key}_pg1"
+check_column "sw2.1 sw2.3" sb:Port_Group ports name="${sw2_key}_pg1"
+check_column "sw1.2 sw1.3" sb:Port_Group ports name="${sw1_key}_pg2"
+check_column "sw2.2 sw2.3" sb:Port_Group ports name="${sw2_key}_pg2"
+
+dnl The northd node should not recompute, it should handle nb_global update
+dnl though, therefore "compute: 1".
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd], [0], [dnl
+Node: northd
+- recompute:            0
+- compute:              1
+- abort:                0
+])
+dnl We did not change the set of switches a pg is applied to, there should be
+dnl no recompute.
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats port_group], [0], [dnl
+Node: port_group
+- recompute:            0
+- compute:              1
+- abort:                0
+])
+dnl We did not change the set of switches a pg is applied to, there should be
+dnl no recompute.
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow], [0], [dnl
+Node: lflow
+- recompute:            0
+- compute:              1
+- abort:                0
+])
+dnl Expect both ACLs on sw1 and sw2
+check_acl_lflows 1 1 1 1
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AS_BOX([Remove the last port from PG1 and PG2])
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb         \
+  -- pg-set-ports pg1 sw1.1 sw2.1 \
+  -- pg-set-ports pg2 sw1.2 sw2.2
+check_column "sw1.1" sb:Port_Group ports name="${sw1_key}_pg1"
+check_column "sw2.1" sb:Port_Group ports name="${sw2_key}_pg1"
+check_column "sw1.2" sb:Port_Group ports name="${sw1_key}_pg2"
+check_column "sw2.2" sb:Port_Group ports name="${sw2_key}_pg2"
+
+dnl The northd node should not recompute, it should handle nb_global update
+dnl though, therefore "compute: 1".
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd], [0], [dnl
+Node: northd
+- recompute:            0
+- compute:              1
+- abort:                0
+])
+dnl We did not change the set of switches a pg is applied to, there should be
+dnl no recompute.
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats port_group], [0], [dnl
+Node: port_group
+- recompute:            0
+- compute:              1
+- abort:                0
+])
+dnl We did not change the set of switches a pg is applied to, there should be
+dnl no recompute.
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow], [0], [dnl
+Node: lflow
+- recompute:            0
+- compute:              1
+- abort:                0
+])
+dnl Expect both ACLs on sw1 and sw2
+check_acl_lflows 1 1 1 1
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AS_BOX([Remove the second port from PG2])
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb pg-set-ports pg2 sw1.2
+check_column "sw1.1" sb:Port_Group ports name="${sw1_key}_pg1"
+check_column "sw2.1" sb:Port_Group ports name="${sw2_key}_pg1"
+check_column "sw1.2" sb:Port_Group ports name="${sw1_key}_pg2"
+AT_CHECK([fetch_column sb:Port_Group ports name="${sw2_key}_pg2"], [0], [
+])
+
+dnl The northd node should not recompute, it should handle nb_global update
+dnl though, therefore "compute: 1".
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd], [0], [dnl
+Node: northd
+- recompute:            0
+- compute:              1
+- abort:                0
+])
+dnl We changed the set of switches a pg is applied to, there should be
+dnl a recompute.
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats port_group], [0], [dnl
+Node: port_group
+- recompute:            1
+- compute:              0
+- abort:                0
+])
+dnl We changed the set of switches a pg is applied to, there should be
+dnl a recompute (for ACLs).
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow], [0], [dnl
+Node: lflow
+- recompute:            1
+- compute:              0
+- abort:                0
+])
+dnl Expect both ACLs on sw1 and only the first one on sw2.
+check_acl_lflows 1 1 1 0
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AS_BOX([Remove the second port from PG1])
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb pg-set-ports pg1 sw1.1
+check_column "sw1.1" sb:Port_Group ports name="${sw1_key}_pg1"
+AT_CHECK([fetch_column sb:Port_Group ports name="${sw2_key}_pg1"], [0], [
+])
+check_column "sw1.2" sb:Port_Group ports name="${sw1_key}_pg2"
+AT_CHECK([fetch_column sb:Port_Group ports name="${sw2_key}_pg2"], [0], [
+])
+
+dnl The northd node should not recompute, it should handle nb_global update
+dnl though, therefore "compute: 1".
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd], [0], [dnl
+Node: northd
+- recompute:            0
+- compute:              1
+- abort:                0
+])
+dnl We changed the set of switches a pg is applied to, there should be
+dnl a recompute.
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats port_group], [0], [dnl
+Node: port_group
+- recompute:            1
+- compute:              0
+- abort:                0
+])
+dnl We changed the set of switches a pg is applied to, there should be
+dnl a recompute (for ACLs).
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow], [0], [dnl
+Node: lflow
+- recompute:            1
+- compute:              0
+- abort:                0
+])
+dnl Expect both ACLs on sw1 and not on sw2.
+check_acl_lflows 1 1 0 0
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AS_BOX([Add second port to both PGs])
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb         \
+  -- pg-set-ports pg1 sw1.1 sw2.1 \
+  -- pg-set-ports pg2 sw1.2 sw2.2
+check_column "sw1.1" sb:Port_Group ports name="${sw1_key}_pg1"
+check_column "sw2.1" sb:Port_Group ports name="${sw2_key}_pg1"
+check_column "sw1.2" sb:Port_Group ports name="${sw1_key}_pg2"
+check_column "sw2.2" sb:Port_Group ports name="${sw2_key}_pg2"
+
+dnl The northd node should not recompute, it should handle nb_global update
+dnl though, therefore "compute: 1".
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd], [0], [dnl
+Node: northd
+- recompute:            0
+- compute:              1
+- abort:                0
+])
+dnl We changed the set of switches a pg is applied to, there should be a
+dnl recompute.
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats port_group], [0], [dnl
+Node: port_group
+- recompute:            1
+- compute:              0
+- abort:                0
+])
+dnl We changed the set of switches a pg is applied to, there should be a
+dnl recompute.
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow], [0], [dnl
+Node: lflow
+- recompute:            1
+- compute:              0
+- abort:                0
+])
+dnl Expect both ACLs on sw1 and sw2
+check_acl_lflows 1 1 1 1
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AS_BOX([Remove second port from both PGs])
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb         \
+  -- pg-set-ports pg1 sw1.1 \
+  -- pg-set-ports pg2 sw1.2
+check_column "sw1.1" sb:Port_Group ports name="${sw1_key}_pg1"
+AT_CHECK([fetch_column sb:Port_Group ports name="${sw2_key}_pg1"], [0], [
+])
+check_column "sw1.2" sb:Port_Group ports name="${sw1_key}_pg2"
+AT_CHECK([fetch_column sb:Port_Group ports name="${sw2_key}_pg2"], [0], [
+])
+
+dnl The northd node should not recompute, it should handle nb_global update
+dnl though, therefore "compute: 1".
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd], [0], [dnl
+Node: northd
+- recompute:            0
+- compute:              1
+- abort:                0
+])
+dnl We changed the set of switches a pg is applied to, there should be a
+dnl recompute.
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats port_group], [0], [dnl
+Node: port_group
+- recompute:            1
+- compute:              0
+- abort:                0
+])
+dnl We changed the set of switches a pg is applied to, there should be a
+dnl recompute.
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow], [0], [dnl
+Node: lflow
+- recompute:            1
+- compute:              0
+- abort:                0
+])
+dnl Expect both ACLs on sw1 and no ACLs on sw2
+check_acl_lflows 1 1 0 0
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 AT_CLEANUP
 ])
