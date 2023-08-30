@@ -2535,10 +2535,10 @@ build_in_port_sec_default_flows(const struct sbrec_port_binding *pb,
      *       investigation.
      *
      * Eg.  If there are below OF rules in the same table
-     * (1) priority=90,icmp6,reg14=0x1,metadata=0x1,nw_ttl=225,icmp_type=135,
+     * (1) priority=90,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135,
      *     icmp_code=0,nd_sll=fa:16:3e:94:05:98
      *     actions=load:0->NXM_NX_REG10[12]
-     * (2) priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=225,icmp_type=135,
+     * (2) priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135,
      *     icmp_code=0 actions=load:1->NXM_NX_REG10[12]
      *
      * An IPv6 NS packet with nd_sll = fa:16:3e:94:05:98 is matching on the
@@ -2823,7 +2823,7 @@ build_in_port_sec_nd_flows(const struct sbrec_port_binding *pb,
     reset_match_for_port_sec_flows(pb, MFF_LOG_INPORT, m);
     match_set_dl_type(m, htons(ETH_TYPE_IPV6));
     match_set_nw_proto(m, IPPROTO_ICMPV6);
-    match_set_nw_ttl(m, 225);
+    match_set_nw_ttl(m, 255);
     match_set_icmp_type(m, 135);
     match_set_icmp_code(m, 0);
 
