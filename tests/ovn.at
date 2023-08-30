@@ -9098,6 +9098,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([send gratuitous arp for l3gateway only on selected chassis])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
 ovn_start
 
 # Create logical switch
@@ -9186,6 +9187,21 @@ OVS_WAIT_UNTIL([
 sleep 2
 OVN_CHECK_PACKETS_CONTAIN([hv2/snoopvif-tx.pcap], [arp_expected])
 OVN_CHECK_PACKETS([hv1/snoopvif-tx.pcap], [empty_expected])
+
+# Temporarily remove lr0 chassis
+AT_CHECK([ovn-nbctl --wait=hv remove logical_router lr0 options chassis])
+
+as hv1 reset_pcap_file snoopvif hv1/snoopvif
+as hv2 reset_pcap_file snoopvif hv2/snoopvif
+
+AT_CHECK([ovn-nbctl --wait=hv set logical_router lr0 options:chassis=hv1])
+# set garp max timeout to 2s
+AT_CHECK([as hv1 ovs-vsctl set Open_vSwitch . external-ids:garp-max-timeout-sec=2])
+
+OVS_WAIT_UNTIL([
+n_arp=$(tcpdump -c 10 -ner hv1/snoopvif-tx.pcap arp | wc -l)
+test "$n_arp" = 10
+])
 
 OVN_CLEANUP([hv1],[hv2])
 

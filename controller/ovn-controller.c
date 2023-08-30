@@ -5787,7 +5787,9 @@ main(int argc, char *argv[])
                                     &runtime_data->local_datapaths,
                                     &runtime_data->active_tunnels,
                                     &runtime_data->local_active_ports_ipv6_pd,
-                                    &runtime_data->local_active_ports_ras);
+                                    &runtime_data->local_active_ports_ras,
+                                    ovsrec_open_vswitch_table_get(
+                                            ovs_idl_loop.idl));
                         stopwatch_stop(PINCTRL_RUN_STOPWATCH_NAME,
                                        time_msec());
                         mirror_run(ovs_idl_txn,
