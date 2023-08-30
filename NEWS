@@ -1,6 +1,8 @@
 OVN v23.06.3 - xx xxx xxxx
 --------------------------
   - Enable PMTU discovery on geneve tunnels for E/W traffic.
+  - Add "garp-max-timeout-sec" config option to vswitchd external-ids to
+    cap the time between when ovn-controller sends gARP packets.
 
 OVN v23.06.2 - 15 Sep 2023
 --------------------------
