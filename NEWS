@@ -1,5 +1,7 @@
 OVN v23.03.3 - xx xxx xxxx
 --------------------------
+  - Add "garp-max-timeout-sec" config option to vswitchd external-ids to
+    cap the time between when ovn-controller sends gARP packets.
 
 OVN v23.03.2 - 15 Sep 2023
 --------------------------
