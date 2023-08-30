@@ -10669,6 +10669,10 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
         xcalloc(lb->n_nb_lr, sizeof *distributed_router);
     int n_distributed_router = 0;
 
+    struct ovn_datapath **lb_aff_skip_snat_router =
+        xcalloc(lb->n_nb_lr, sizeof *lb_aff_skip_snat_router);
+    int n_lb_aff_skip_snat_router = 0;
+
     struct ovn_datapath **lb_aff_force_snat_router =
         xcalloc(lb->n_nb_lr, sizeof *lb_aff_force_snat_router);
     int n_lb_aff_force_snat_router = 0;
@@ -10695,7 +10699,9 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
             distributed_router[n_distributed_router++] = od;
         }
 
-        if (!lport_addresses_is_empty(&od->lb_force_snat_addrs) ||
+        if (lb->skip_snat) {
+            lb_aff_skip_snat_router[n_lb_aff_skip_snat_router++] = od;
+        } else if (!lport_addresses_is_empty(&od->lb_force_snat_addrs) ||
             od->lb_force_snat_router_ip) {
             lb_aff_force_snat_router[n_lb_aff_force_snat_router++] = od;
         } else {
@@ -10752,11 +10758,14 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
             "next;", lflows, prio, meter_groups);
 
     /* LB affinity flows for datapaths where CMS has specified
-     * skip_snat_for_lb floag option or regular datapaths.
+     * skip_snat_for_lb flag option.
      */
-    char *lb_aff_action =
-        lb->skip_snat ? "flags.skip_snat_for_lb = 1; " : NULL;
-    build_lb_affinity_lr_flows(lflows, lb, lb_vip, new_match, lb_aff_action,
+    build_lb_affinity_lr_flows(lflows, lb, lb_vip, new_match,
+                               "flags.skip_snat_for_lb = 1; ",
+                               lb_aff_skip_snat_router,
+                               n_lb_aff_skip_snat_router);
+
+    build_lb_affinity_lr_flows(lflows, lb, lb_vip, new_match, NULL,
                                lb_aff_router, n_lb_aff_router);
 
     /* Distributed router logic */
@@ -10852,6 +10861,7 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     free(gw_router_force_snat);
     free(gw_router_skip_snat);
     free(distributed_router);
+    free(lb_aff_skip_snat_router);
     free(lb_aff_force_snat_router);
     free(lb_aff_router);
     free(gw_router);
