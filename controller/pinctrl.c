@@ -1765,14 +1765,14 @@ pinctrl_handle_sctp_abort(struct rconn *swconn, const struct flow *ip_flow,
         return;
     }
 
-    if (sh_in_chunk->sctp_chunk_type == SCTP_CHUNK_TYPE_ABORT) {
+    if (sh_in_chunk->type == SCTP_CHUNK_TYPE_ABORT) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
         VLOG_WARN_RL(&rl, "sctp_abort action on incoming SCTP ABORT.");
         return;
     }
 
     const struct sctp_16aligned_init_chunk *sh_in_init = NULL;
-    if (sh_in_chunk->sctp_chunk_type == SCTP_CHUNK_TYPE_INIT) {
+    if (sh_in_chunk->type == SCTP_CHUNK_TYPE_INIT) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
         sh_in_init = dp_packet_at(pkt_in, pkt_in->l4_ofs +
                                           SCTP_HEADER_LEN +
@@ -1828,9 +1828,9 @@ pinctrl_handle_sctp_abort(struct rconn *swconn, const struct flow *ip_flow,
 
     struct sctp_chunk_header *ah =
         ALIGNED_CAST(struct sctp_chunk_header *, sh + 1);
-    ah->sctp_chunk_type = SCTP_CHUNK_TYPE_ABORT;
-    ah->sctp_chunk_flags = tag_reflected ? SCTP_ABORT_CHUNK_FLAG_T : 0,
-    ah->sctp_chunk_len = htons(SCTP_CHUNK_HEADER_LEN),
+    ah->type = SCTP_CHUNK_TYPE_ABORT;
+    ah->flags = tag_reflected ? SCTP_ABORT_CHUNK_FLAG_T : 0,
+    ah->length = htons(SCTP_CHUNK_HEADER_LEN),
 
     put_16aligned_be32(&sh->sctp_csum, crc32c((void *) sh,
                                               dp_packet_l4_size(&packet)));

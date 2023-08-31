@@ -285,13 +285,6 @@ char *ovn_get_internal_version(void);
  * packets.h file. For the time being, they live here because OVN uses them
  * and OVS does not.
  */
-#define SCTP_CHUNK_HEADER_LEN 4
-struct sctp_chunk_header {
-    uint8_t sctp_chunk_type;
-    uint8_t sctp_chunk_flags;
-    ovs_be16 sctp_chunk_len;
-};
-BUILD_ASSERT_DECL(SCTP_CHUNK_HEADER_LEN == sizeof(struct sctp_chunk_header));
 
 #define SCTP_INIT_CHUNK_LEN 16
 struct sctp_16aligned_init_chunk {

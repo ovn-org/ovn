@@ -1917,7 +1917,7 @@ main(int argc, char *argv[])
     service_start(&argc, &argv);
     parse_options(argc, argv);
 
-    daemonize_start(false);
+    daemonize_start(false, false);
 
     char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
     retval = unixctl_server_create(abs_unixctl_path, &unixctl);

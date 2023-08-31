@@ -1112,7 +1112,7 @@ server_loop(const struct ovn_dbctl_options *dbctl_options,
     bool exiting = false;
 
     service_start(&argc, &argv);
-    daemonize_start(false);
+    daemonize_start(false, false);
 
     char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
     int error = unixctl_server_create(abs_unixctl_path, &server);

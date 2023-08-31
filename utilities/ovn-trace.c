@@ -127,7 +127,7 @@ main(int argc, char *argv[])
     struct unixctl_server *server = NULL;
     bool exiting = false;
     if (get_detach()) {
-        daemonize_start(false);
+        daemonize_start(false, false);
 
         char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
         int error = unixctl_server_create(abs_unixctl_path, &server);

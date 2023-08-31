@@ -4988,7 +4988,7 @@ main(int argc, char *argv[])
     char *ovs_remote = parse_options(argc, argv);
     fatal_ignore_sigpipe();
 
-    daemonize_start(true);
+    daemonize_start(true, false);
 
     char *abs_unixctl_path = get_abs_unix_ctl_path(NULL);
     retval = unixctl_server_create(abs_unixctl_path, &unixctl);
