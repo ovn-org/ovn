@@ -1,5 +1,5 @@
-Post v23.06.0
--------------
+OVN v23.09.0 - xx xxx xxxx
+----------------------------
   - Added FDB aging mechanism, that is disabled by default.
     It can be enabled per logical switch with other_config
     "fdb_age_threshold".
