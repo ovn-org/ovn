@@ -245,7 +245,6 @@ enum ovn_stage {
 #define REGBIT_LOOKUP_NEIGHBOR_RESULT "reg9[2]"
 #define REGBIT_LOOKUP_NEIGHBOR_IP_RESULT "reg9[3]"
 #define REGBIT_DST_NAT_IP_LOCAL "reg9[4]"
-#define REGBIT_KNOWN_ECMP_NH    "reg9[5]"
 #define REGBIT_KNOWN_LB_SESSION "reg9[6]"
 
 /* Register to store the eth address associated to a router port for packets
@@ -353,8 +352,7 @@ enum ovn_stage {
  * |     |   EGRESS_LOOPBACK/        | G |     UNUSED      |
  * | R9  |   PKT_LARGER/             | 4 |                 |
  * |     |   LOOKUP_NEIGHBOR_RESULT/ |   |                 |
- * |     |   SKIP_LOOKUP_NEIGHBOR/   |   |                 |
- * |     |   KNOWN_ECMP_NH}          |   |                 |
+ * |     |   SKIP_LOOKUP_NEIGHBOR}   |   |                 |
  * |     |                           |   |                 |
  * |     | REG_ORIG_TP_DPORT_ROUTER  |   |                 |
  * |     |                           |   |                 |
@@ -10105,15 +10103,13 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
                   cidr);
     free(cidr);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DEFRAG, 100,
-            ds_cstr(&base_match),
-            REGBIT_KNOWN_ECMP_NH" = chk_ecmp_nh_mac(); ct_next;",
-            &st_route->header_);
+                             ds_cstr(&base_match), "ct_next;",
+                             &st_route->header_);
 
     /* And packets that go out over an ECMP route need conntrack */
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DEFRAG, 100,
-            ds_cstr(route_match),
-            REGBIT_KNOWN_ECMP_NH" = chk_ecmp_nh(); ct_next;",
-            &st_route->header_);
+                             ds_cstr(route_match), "ct_next;",
+                             &st_route->header_);
 
     /* Save src eth and inport in ct_label for packets that arrive over
      * an ECMP route.
@@ -10126,9 +10122,8 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
     ds_put_format(&actions,
             "ct_commit { ct_label.ecmp_reply_eth = eth.src; "
             " %s = %" PRId64 ";}; "
-            "commit_ecmp_nh(ipv6 = %s, proto = tcp); next;",
-            ct_ecmp_reply_port_match, out_port->sb->tunnel_key,
-            IN6_IS_ADDR_V4MAPPED(&route->prefix) ? "false" : "true");
+            "next;",
+            ct_ecmp_reply_port_match, out_port->sb->tunnel_key);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 100,
                             ds_cstr(&match), ds_cstr(&actions),
                             &st_route->header_);
@@ -10139,9 +10134,8 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
     ds_put_format(&actions,
             "ct_commit { ct_label.ecmp_reply_eth = eth.src; "
             " %s = %" PRId64 ";}; "
-            "commit_ecmp_nh(ipv6 = %s, proto = udp); next;",
-            ct_ecmp_reply_port_match, out_port->sb->tunnel_key,
-            IN6_IS_ADDR_V4MAPPED(&route->prefix) ? "false" : "true");
+            "next;",
+            ct_ecmp_reply_port_match, out_port->sb->tunnel_key);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 100,
                             ds_cstr(&match), ds_cstr(&actions),
                             &st_route->header_);
@@ -10152,53 +10146,49 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
     ds_put_format(&actions,
             "ct_commit { ct_label.ecmp_reply_eth = eth.src; "
             " %s = %" PRId64 ";}; "
-            "commit_ecmp_nh(ipv6 = %s, proto = sctp); next;",
-            ct_ecmp_reply_port_match, out_port->sb->tunnel_key,
-            IN6_IS_ADDR_V4MAPPED(&route->prefix) ? "false" : "true");
+            "next;",
+            ct_ecmp_reply_port_match, out_port->sb->tunnel_key);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 100,
                             ds_cstr(&match), ds_cstr(&actions),
                             &st_route->header_);
 
     ds_clear(&match);
     ds_put_format(&match,
-            "%s && (!ct.rpl && ct.est) && tcp && "REGBIT_KNOWN_ECMP_NH" == 0",
+            "%s && (!ct.rpl && ct.est) && tcp",
             ds_cstr(&base_match));
     ds_clear(&actions);
     ds_put_format(&actions,
             "ct_commit { ct_label.ecmp_reply_eth = eth.src; "
             " %s = %" PRId64 ";}; "
-            "commit_ecmp_nh(ipv6 = %s, proto = tcp); next;",
-            ct_ecmp_reply_port_match, out_port->sb->tunnel_key,
-            IN6_IS_ADDR_V4MAPPED(&route->prefix) ? "false" : "true");
+            "next;",
+            ct_ecmp_reply_port_match, out_port->sb->tunnel_key);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 100,
                             ds_cstr(&match), ds_cstr(&actions),
                             &st_route->header_);
 
     ds_clear(&match);
     ds_put_format(&match,
-            "%s && (!ct.rpl && ct.est) && udp && "REGBIT_KNOWN_ECMP_NH" == 0",
+            "%s && (!ct.rpl && ct.est) && udp",
             ds_cstr(&base_match));
     ds_clear(&actions);
     ds_put_format(&actions,
             "ct_commit { ct_label.ecmp_reply_eth = eth.src; "
             " %s = %" PRId64 ";}; "
-            "commit_ecmp_nh(ipv6 = %s, proto = udp); next;",
-            ct_ecmp_reply_port_match, out_port->sb->tunnel_key,
-            IN6_IS_ADDR_V4MAPPED(&route->prefix) ? "false" : "true");
+            "next;",
+            ct_ecmp_reply_port_match, out_port->sb->tunnel_key);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 100,
                             ds_cstr(&match), ds_cstr(&actions),
                             &st_route->header_);
     ds_clear(&match);
     ds_put_format(&match,
-            "%s && (!ct.rpl && ct.est) && sctp && "REGBIT_KNOWN_ECMP_NH" == 0",
+            "%s && (!ct.rpl && ct.est) && sctp",
             ds_cstr(&base_match));
     ds_clear(&actions);
     ds_put_format(&actions,
             "ct_commit { ct_label.ecmp_reply_eth = eth.src; "
             " %s = %" PRId64 ";}; "
-            "commit_ecmp_nh(ipv6 = %s, proto = sctp); next;",
-            ct_ecmp_reply_port_match, out_port->sb->tunnel_key,
-            IN6_IS_ADDR_V4MAPPED(&route->prefix) ? "false" : "true");
+            "next;",
+            ct_ecmp_reply_port_match, out_port->sb->tunnel_key);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 100,
                             ds_cstr(&match), ds_cstr(&actions),
                             &st_route->header_);
@@ -10207,7 +10197,7 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
      * for where to route the packet.
      */
     ds_put_format(&ecmp_reply,
-                  "ct.rpl && "REGBIT_KNOWN_ECMP_NH" == 1 && %s == %"PRId64,
+                  "ct.rpl && %s == %"PRId64,
                   ct_ecmp_reply_port_match, out_port->sb->tunnel_key);
     ds_clear(&match);
     ds_put_format(&match, "%s && %s", ds_cstr(&ecmp_reply),
