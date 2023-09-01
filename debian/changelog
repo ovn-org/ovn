@@ -1,3 +1,9 @@
+ovn (23.09.90-1) unstable; urgency=low
+
+   * New upstream version
+
+ -- OVN team <dev@openvswitch.org>  Fri, 01 Sep 2023 12:14:56 -0400
+
 ovn (23.09.0-1) unstable; urgency=low
 
    * New upstream version
