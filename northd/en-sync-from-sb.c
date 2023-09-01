@@ -60,7 +60,7 @@ en_sync_from_sb_run(struct engine_node *node, void *data OVS_UNUSED)
     stopwatch_start(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
     ovnsb_db_run(eng_ctx->ovnnb_idl_txn, eng_ctx->ovnsb_idl_txn,
                  sb_pb_table, sb_ha_ch_grp_table, sb_ha_ch_grp_by_name,
-                 &nd->ls_ports);
+                 &nd->ls_ports, &nd->lr_ports);
     stopwatch_stop(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
 }
 

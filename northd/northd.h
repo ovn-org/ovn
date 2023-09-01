@@ -317,7 +317,8 @@ void ovnsb_db_run(struct ovsdb_idl_txn *ovnnb_txn,
                   const struct sbrec_port_binding_table *,
                   const struct sbrec_ha_chassis_group_table *,
                   struct ovsdb_idl_index *sb_ha_ch_grp_by_name,
-                  struct hmap *ls_ports);
+                  struct hmap *ls_ports,
+                  struct hmap *lr_ports);
 bool northd_handle_ls_changes(struct ovsdb_idl_txn *,
                               const struct northd_input *,
                               struct northd_data *);

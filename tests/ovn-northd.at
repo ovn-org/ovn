@@ -173,6 +173,52 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([check Logical Router Port hosting-chassis status])
+ovn_start
+
+check ovn-sbctl chassis-add ch1 geneve 127.0.0.2
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp1 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 lsp1 -- \
+    lsp-set-addresses lsp1 router -- \
+    lsp-set-type lsp1 router -- \
+    lsp-set-options lsp1 router-port=lrp1
+
+# Make lrp a cr-port
+check ovn-nbctl lrp-set-gateway-chassis lrp1 ch1
+
+check ovn-nbctl --wait=sb sync
+
+wait_row_count Port_Binding 1 logical_port=cr-lrp1 \
+    options:always-redirect="true" options:distributed-port="lrp1"
+
+# Simulate cr-port being bound to ch1
+ch1_uuid=`ovn-sbctl --bare --columns _uuid find Chassis name="ch1"`
+check ovn-sbctl set Port_Binding cr-lrp1 chassis=${ch1_uuid}
+
+check ovn-nbctl --wait=sb sync
+
+# Check for the hosting-chassis status being set by northd
+wait_row_count nb:Logical_Router_Port 1 name=lrp1 status:hosting-chassis=ch1
+
+# Clear the hosting-chassis status from LRP and assert northd repopulates it
+check ovn-nbctl remove logical_router_port lrp1 status hosting-chassis
+check ovn-nbctl --wait=sb sync
+wait_row_count nb:Logical_Router_Port 1 name=lrp1 status:hosting-chassis=ch1
+
+# Now remove the chassis from the port binding record and assert that the
+# hosting-chassis status was removed by northd
+check ovn-sbctl clear Port_Binding cr-lrp1 chassis
+check ovn-nbctl --wait=sb sync
+
+wait_row_count nb:Logical_Router_Port 0 name=lrp1 status:hosting-chassis=ch1
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check LRP external id propagation to SBDB])
 ovn_start
 

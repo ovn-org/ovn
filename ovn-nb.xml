@@ -3359,6 +3359,25 @@ or
         </p>
       </column>
     </group>
+
+    <group title="Status">
+      <p>
+        Additional status about the logical router port.
+      </p>
+      <column name="status" key="hosting-chassis">
+        <p>
+          This option is populated by <code>ovn-northd</code>.
+        </p>
+
+        <p>
+          When a distributed gateway port is bound to a location in
+          the OVN Southbound database
+          <ref db="OVN_Southbound" table="Port_Binding"/>
+          <code>ovn-northd</code> will populate this key with the
+          name of the Chassis that is currently hosting this port.
+        </p>
+      </column>
+    </group>
   </table>
 
   <table name="Logical_Router_Static_Route" title="Logical router static routes">
