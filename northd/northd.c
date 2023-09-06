@@ -4098,13 +4098,12 @@ build_lb_vip_actions(struct ovn_lb_vip *lb_vip,
     const char *enclose = is_lb_action ? ");" : "";
 
     if (!ls_dp) {
-        bool flag_supported = is_lb_action && features->ct_lb_related;
         ds_put_format(skip_snat_action, "flags.skip_snat_for_lb = 1; %s%s",
                       ds_cstr(action),
-                      flag_supported ? "; skip_snat);" : enclose);
+                      is_lb_action ? "; skip_snat);" : enclose);
         ds_put_format(force_snat_action, "flags.force_snat_for_lb = 1; %s%s",
                       ds_cstr(action),
-                      flag_supported ? "; force_snat);" : enclose);
+                      is_lb_action ? "; force_snat);" : enclose);
     }
 
     ds_put_cstr(action, enclose);
