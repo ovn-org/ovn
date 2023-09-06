@@ -41,232 +41,50 @@ def open_spell_check_dict():
     import enchant
 
     try:
-        extra_keywords = [
-            'ovs',
-            'vswitch',
-            'vswitchd',
-            'ovs-vswitchd',
-            'netdev',
-            'selinux',
-            'ovs-ctl',
-            'dpctl',
-            'ofctl',
-            'openvswitch',
-            'dpdk',
-            'hugepage',
-            'hugepages',
-            'pmd',
-            'upcall',
-            'vhost',
-            'rx',
-            'tx',
-            'vhostuser',
-            'openflow',
-            'qsort',
-            'rxq',
-            'txq',
-            'perf',
-            'stats',
-            'struct',
-            'int',
-            'char',
-            'bool',
-            'upcalls',
-            'nicira',
-            'bitmask',
-            'ipv4',
-            'ipv6',
-            'tcp',
-            'tcp4',
-            'tcpv4',
-            'udp',
-            'udp4',
-            'udpv4',
-            'icmp',
-            'icmp4',
-            'icmpv6',
-            'vlan',
-            'vxlan',
-            'cksum',
-            'csum',
-            'checksum',
-            'ofproto',
-            'numa',
-            'mempool',
-            'mempools',
-            'mbuf',
-            'mbufs',
-            'hmap',
-            'cmap',
-            'smap',
-            'dhcpv4',
-            'dhcp',
-            'dhcpv6',
-            'opts',
-            'metadata',
-            'geneve',
-            'mutex',
-            'netdev',
-            'netdevs',
-            'subtable',
-            'virtio',
-            'qos',
-            'policer',
-            'datapath',
-            'tunctl',
-            'attr',
-            'ethernet',
-            'ether',
-            'defrag',
-            'defragment',
-            'loopback',
-            'sflow',
-            'acl',
-            'initializer',
-            'recirc',
-            'xlated',
-            'unclosed',
-            'netlink',
-            'msec',
-            'usec',
-            'nsec',
-            'ms',
-            'us',
-            'ns',
-            'kilobits',
-            'kbps',
-            'kilobytes',
-            'megabytes',
-            'mbps',
-            'gigabytes',
-            'gbps',
-            'megabits',
-            'gigabits',
-            'pkts',
-            'tuple',
-            'miniflow',
-            'megaflow',
-            'conntrack',
-            'vlans',
-            'vxlans',
-            'arg',
-            'tpid',
-            'xbundle',
-            'xbundles',
-            'mbundle',
-            'mbundles',
-            'netflow',
-            'localnet',
-            'odp',
-            'pre',
-            'dst',
-            'dest',
-            'src',
-            'ethertype',
-            'cvlan',
-            'ips',
-            'msg',
-            'msgs',
-            'liveness',
-            'userspace',
-            'eventmask',
-            'datapaths',
-            'slowpath',
-            'fastpath',
-            'multicast',
-            'unicast',
-            'revalidation',
-            'namespace',
-            'qdisc',
-            'uuid',
-            'ofport',
-            'subnet',
-            'revalidation',
-            'revalidator',
-            'revalidate',
-            'l2',
-            'l3',
-            'l4',
-            'openssl',
-            'mtu',
-            'ifindex',
-            'enum',
-            'enums',
-            'http',
-            'https',
-            'num',
-            'vconn',
-            'vconns',
-            'conn',
-            'nat',
-            'memset',
-            'memcmp',
-            'strcmp',
-            'strcasecmp',
-            'tc',
-            'ufid',
-            'api',
-            'ofpbuf',
-            'ofpbufs',
-            'hashmaps',
-            'hashmap',
-            'deref',
-            'dereference',
-            'hw',
-            'prio',
-            'sendmmsg',
-            'sendmsg',
-            'malloc',
-            'free',
-            'alloc',
-            'pid',
-            'ppid',
-            'pgid',
-            'uid',
-            'gid',
-            'sid',
-            'utime',
-            'stime',
-            'cutime',
-            'cstime',
-            'vsize',
-            'rss',
-            'rsslim',
-            'whcan',
-            'gtime',
-            'eip',
-            'rip',
-            'cgtime',
-            'dbg',
-            'gw',
-            'sbrec',
-            'bfd',
-            'sizeof',
-            'pmds',
-            'nic',
-            'nics',
-            'hwol',
-            'encap',
-            'decap',
-            'tlv',
-            'tlvs',
-            'decapsulation',
-            'fd',
-            'cacheline',
-            'xlate',
-            'skiplist',
-            'idl',
-            'comparator',
-            'natting',
-            'alg',
-            'pasv',
-            'epasv',
-            'wildcard',
-            'nated',
-            'amd64',
-            'x86_64',
-            'recirculation',
-        ]
+        extra_keywords = ['ovs', 'vswitch', 'vswitchd', 'ovs-vswitchd',
+                          'netdev', 'selinux', 'ovs-ctl', 'dpctl', 'ofctl',
+                          'openvswitch', 'dpdk', 'hugepage', 'hugepages',
+                          'pmd', 'upcall', 'vhost', 'rx', 'tx', 'vhostuser',
+                          'openflow', 'qsort', 'rxq', 'txq', 'perf', 'stats',
+                          'struct', 'int', 'char', 'bool', 'upcalls', 'nicira',
+                          'bitmask', 'ipv4', 'ipv6', 'tcp', 'tcp4', 'tcpv4',
+                          'udp', 'udp4', 'udpv4', 'icmp', 'icmp4', 'icmpv6',
+                          'vlan', 'vxlan', 'cksum', 'csum', 'checksum',
+                          'ofproto', 'numa', 'mempool', 'mempools', 'mbuf',
+                          'mbufs', 'hmap', 'cmap', 'smap', 'dhcpv4', 'dhcp',
+                          'dhcpv6', 'opts', 'metadata', 'geneve', 'mutex',
+                          'netdev', 'netdevs', 'subtable', 'virtio', 'qos',
+                          'policer', 'datapath', 'tunctl', 'attr', 'ethernet',
+                          'ether', 'defrag', 'defragment', 'loopback', 'sflow',
+                          'acl', 'initializer', 'recirc', 'xlated', 'unclosed',
+                          'netlink', 'msec', 'usec', 'nsec', 'ms', 'us', 'ns',
+                          'kilobits', 'kbps', 'kilobytes', 'megabytes', 'mbps',
+                          'gigabytes', 'gbps', 'megabits', 'gigabits', 'pkts',
+                          'tuple', 'miniflow', 'megaflow', 'conntrack',
+                          'vlans', 'vxlans', 'arg', 'tpid', 'xbundle',
+                          'xbundles', 'mbundle', 'mbundles', 'netflow',
+                          'localnet', 'odp', 'pre', 'dst', 'dest', 'src',
+                          'ethertype', 'cvlan', 'ips', 'msg', 'msgs',
+                          'liveness', 'userspace', 'eventmask', 'datapaths',
+                          'slowpath', 'fastpath', 'multicast', 'unicast',
+                          'revalidation', 'namespace', 'qdisc', 'uuid',
+                          'ofport', 'subnet', 'revalidation', 'revalidator',
+                          'revalidate', 'l2', 'l3', 'l4', 'openssl', 'mtu',
+                          'ifindex', 'enum', 'enums', 'http', 'https', 'num',
+                          'vconn', 'vconns', 'conn', 'nat', 'memset', 'memcmp',
+                          'strcmp', 'strcasecmp', 'tc', 'ufid', 'api',
+                          'ofpbuf', 'ofpbufs', 'hashmaps', 'hashmap', 'deref',
+                          'dereference', 'hw', 'prio', 'sendmmsg', 'sendmsg',
+                          'malloc', 'free', 'alloc', 'pid', 'ppid', 'pgid',
+                          'uid', 'gid', 'sid', 'utime', 'stime', 'cutime',
+                          'cstime', 'vsize', 'rss', 'rsslim', 'whcan', 'gtime',
+                          'eip', 'rip', 'cgtime', 'dbg', 'gw', 'sbrec', 'bfd',
+                          'sizeof', 'pmds', 'nic', 'nics', 'hwol', 'encap',
+                          'decap', 'tlv', 'tlvs', 'decapsulation', 'fd',
+                          'cacheline', 'xlate', 'skiplist', 'idl',
+                          'comparator', 'natting', 'alg', 'pasv', 'epasv',
+                          'wildcard', 'nated', 'amd64', 'x86_64',
+                          'recirculation']
 
         global spell_check_dict
         spell_check_dict = enchant.Dict("en_US")
@@ -333,21 +151,16 @@ __regex_leading_with_whitespace_at_all = re.compile(r'^\s+')
 __regex_leading_with_spaces = re.compile(r'^ +[\S]+')
 __regex_trailing_whitespace = re.compile(r'[^\S]+$')
 __regex_single_line_feed = re.compile(r'^\f$')
-__regex_for_if_missing_whitespace = re.compile(
-    r' +(%s)[\(]' % __parenthesized_constructs
-)
-__regex_for_if_too_much_whitespace = re.compile(
-    r' +(%s)  +[\(]' % __parenthesized_constructs
-)
-__regex_for_if_parens_whitespace = re.compile(
-    r' +(%s) \( +[\s\S]+\)' % __parenthesized_constructs
-)
-__regex_is_for_if_single_line_bracket = re.compile(
-    r'^ +(%s) \(.*\)' % __parenthesized_constructs
-)
-__regex_ends_with_bracket = re.compile(
-    r'[^\s]\) {(\s+/\*[\s\Sa-zA-Z0-9\.,\?\*/+-]*)?$'
-)
+__regex_for_if_missing_whitespace = re.compile(r' +(%s)[\(]'
+                                               % __parenthesized_constructs)
+__regex_for_if_too_much_whitespace = re.compile(r' +(%s)  +[\(]'
+                                                % __parenthesized_constructs)
+__regex_for_if_parens_whitespace = \
+    re.compile(r' +(%s) \( +[\s\S]+\)' % __parenthesized_constructs)
+__regex_is_for_if_single_line_bracket = \
+    re.compile(r'^ +(%s) \(.*\)' % __parenthesized_constructs)
+__regex_ends_with_bracket = \
+    re.compile(r'[^\s]\) {(\s+/\*[\s\Sa-zA-Z0-9\.,\?\*/+-]*)?$')
 __regex_ptr_declaration_missing_whitespace = re.compile(r'[a-zA-Z0-9]\*[^*]')
 __regex_is_comment_line = re.compile(r'^\s*(/\*|\*\s)')
 __regex_has_comment = re.compile(r'.*(/\*|\*\s)')
@@ -357,12 +170,10 @@ __regex_conditional_else_bracing = re.compile(r'^\s*else\s*{?$')
 __regex_conditional_else_bracing2 = re.compile(r'^\s*}\selse\s*$')
 __regex_has_xxx_mark = re.compile(r'.*xxx.*', re.IGNORECASE)
 __regex_added_doc_rst = re.compile(
-    r'\ndiff .*Documentation/.*rst\nnew file mode'
-)
+                    r'\ndiff .*Documentation/.*rst\nnew file mode')
 __regex_empty_return = re.compile(r'\s*return;')
-__regex_if_macros = re.compile(
-    r'^ +(%s) \([\S]([\s\S]+[\S])*\) { +\\' % __parenthesized_constructs
-)
+__regex_if_macros = re.compile(r'^ +(%s) \([\S]([\s\S]+[\S])*\) { +\\' %
+                               __parenthesized_constructs)
 
 skip_leading_whitespace_check = False
 skip_trailing_whitespace_check = False
@@ -374,15 +185,13 @@ skip_signoff_check = False
 #
 # Python isn't checked as flake8 performs these checks during build.
 line_length_blacklist = re.compile(
-    r'\.(am|at|etc|in|m4|mk|patch|py|yml)$|^debian/.*$'
-)
+    r'\.(am|at|etc|in|m4|mk|patch|py|dl)$|debian/rules')
 
 # Don't enforce a requirement that leading whitespace be all spaces on
 # files that include these characters in their name, since these kinds
 # of files need lines with leading tabs.
 leading_whitespace_blacklist = re.compile(
-    r'\.(mk|am|at)$|debian/rules|\.gitmodules$'
-)
+    r'\.(mk|am|at)$|debian/rules|\.gitmodules$')
 
 
 def is_subtracted_line(line):
@@ -391,7 +200,8 @@ def is_subtracted_line(line):
 
 
 def is_added_line(line):
-    """Returns TRUE if the line in question is an added line."""
+    """Returns TRUE if the line in question is an added line.
+    """
     global checking_file
     return __regex_added_line.search(line) is not None or checking_file
 
@@ -405,44 +215,41 @@ def added_line(line):
 
 
 def leading_whitespace_is_spaces(line):
-    """Returns TRUE if the leading whitespace in added lines is spaces"""
+    """Returns TRUE if the leading whitespace in added lines is spaces
+    """
     if skip_leading_whitespace_check:
         return True
-    if (
-        __regex_leading_with_whitespace_at_all.search(line) is not None
-        and __regex_single_line_feed.search(line) is None
-    ):
+    if (__regex_leading_with_whitespace_at_all.search(line) is not None and
+            __regex_single_line_feed.search(line) is None):
         return __regex_leading_with_spaces.search(line) is not None
 
     return True
 
 
 def trailing_whitespace_or_crlf(line):
-    """Returns TRUE if the trailing characters is whitespace"""
+    """Returns TRUE if the trailing characters is whitespace
+    """
     if skip_trailing_whitespace_check:
         return False
-    return (
-        __regex_trailing_whitespace.search(line) is not None
-        and __regex_single_line_feed.search(line) is None
-    )
+    return (__regex_trailing_whitespace.search(line) is not None and
+            __regex_single_line_feed.search(line) is None)
 
 
 def if_and_for_whitespace_checks(line):
-    """Return TRUE if there is appropriate whitespace after if, for, while"""
+    """Return TRUE if there is appropriate whitespace after if, for, while
+    """
     if skip_block_whitespace_check:
         return True
-    if (
-        __regex_for_if_missing_whitespace.search(line) is not None
-        or __regex_for_if_too_much_whitespace.search(line) is not None
-        or __regex_for_if_parens_whitespace.search(line)
-    ):
+    if (__regex_for_if_missing_whitespace.search(line) is not None or
+            __regex_for_if_too_much_whitespace.search(line) is not None or
+            __regex_for_if_parens_whitespace.search(line)):
         return False
     return True
 
 
 def if_and_for_end_with_bracket_check(line):
     """Return TRUE if there is a bracket at the end of an if, for, while
-    block which fits on a single line ie: 'if (foo)'"""
+       block which fits on a single line ie: 'if (foo)'"""
 
     def balanced_parens(line):
         """This is a rather naive counter - it won't deal with quotes"""
@@ -463,10 +270,8 @@ def if_and_for_end_with_bracket_check(line):
         if len(line) == MAX_LINE_LEN - 1 and line[-1] == ')':
             return True
 
-        if (
-            __regex_ends_with_bracket.search(line) is None
-            and __regex_if_macros.match(line) is None
-        ):
+        if __regex_ends_with_bracket.search(line) is None and \
+           __regex_if_macros.match(line) is None:
             return False
     if __regex_conditional_else_bracing.match(line) is not None:
         return False
@@ -477,17 +282,15 @@ def if_and_for_end_with_bracket_check(line):
 
 def pointer_whitespace_check(line):
     """Return TRUE if there is no space between a pointer name and the
-    asterisk that denotes this is a apionter type, ie: 'struct foo*'"""
+       asterisk that denotes this is a apionter type, ie: 'struct foo*'"""
     return __regex_ptr_declaration_missing_whitespace.search(line) is not None
 
 
 def line_length_check(line):
     """Return TRUE if the line length is too long"""
     if len(line) > MAX_LINE_LEN:
-        print_warning(
-            "Line is %d characters long (recommended limit is %d)"
-            % (len(line), MAX_LINE_LEN)
-        )
+        print_warning("Line is %d characters long (recommended limit is %d)"
+                      % (len(line), MAX_LINE_LEN))
         return True
     return False
 
@@ -499,7 +302,7 @@ def is_comment_line(line):
 
 def has_comment(line):
     """Returns TRUE if the current line contains a comment or is part of
-    a block comment."""
+       a block comment."""
     return __regex_has_comment.match(line) is not None
 
 
@@ -584,12 +387,8 @@ def check_comment_spelling(line):
         skip = False
         strword = re.subn(r'\W+', '', word)[0].replace(',', '')
         if len(strword) and not spell_check_dict.check(strword.lower()):
-            if any(
-                [
-                    check_char in word
-                    for check_char in ['=', '(', '-', '_', '/', '\'']
-                ]
-            ):
+            if any([check_char in word
+                    for check_char in ['=', '(', '-', '_', '/', '\'']]):
                 skip = True
 
             # special case the '.'
@@ -597,9 +396,8 @@ def check_comment_spelling(line):
                 skip = True
 
             # skip proper nouns and references to macros
-            if strword.isupper() or (
-                strword[0].isupper() and strword[1:].islower()
-            ):
+            if strword.isupper() or (strword[0].isupper() and
+                                     strword[1:].islower()):
                 skip = True
 
             # skip words that start with numbers
@@ -607,9 +405,8 @@ def check_comment_spelling(line):
                 skip = True
 
             if not skip:
-                print_warning(
-                    "Check for spelling mistakes (e.g. \"%s\")" % strword
-                )
+                print_warning("Check for spelling mistakes (e.g. \"%s\")"
+                              % strword)
                 return True
 
     return False
@@ -647,8 +444,8 @@ def __check_doc_is_listed(text, doctype, docdir, docfile):
 
 def __check_new_docs(text, doctype):
     """Check if the documentation is listed properly. If doctype is 'rst' then
-    the index.rst is checked. If the doctype is 'automake' then automake.mk
-    is checked. Returns TRUE if the new file is not listed."""
+       the index.rst is checked. If the doctype is 'automake' then automake.mk
+       is checked. Returns TRUE if the new file is not listed."""
     failed = False
     new_docs = __regex_added_doc_rst.findall(text)
     for doc in new_docs:
@@ -664,20 +461,14 @@ def __check_new_docs(text, doctype):
 
         if __check_doc_is_listed(text, doctype, docdir, docfile):
             if doctype == 'rst':
-                print_warning(
-                    "New doc {} not listed in {}/index.rst".format(
-                        docfile, docdir
-                    )
-                )
+                print_warning("New doc {} not listed in {}/index.rst".format(
+                              docfile, docdir))
             elif doctype == 'automake':
-                print_warning(
-                    "New doc {} not listed in "
-                    "Documentation/automake.mk".format(docfile)
-                )
+                print_warning("New doc {} not listed in "
+                              "Documentation/automake.mk".format(docfile))
             else:
-                raise NotImplementedError(
-                    "Invalid doctype: {}".format(doctype)
-                )
+                raise NotImplementedError("Invalid doctype: {}".format(
+                                          doctype))
 
             failed = True
 
@@ -694,22 +485,19 @@ def check_new_docs_index(text):
 
 def empty_return_with_brace(line):
     """Returns TRUE if a function contains a return; followed
-    by one or more line feeds and terminates with a '}'
-    at start of line"""
+       by one or more line feeds and terminates with a '}'
+       at start of line"""
 
     def empty_return(line):
         """Returns TRUE if a function has a 'return;'"""
         return __regex_empty_return.match(line) is not None
 
     global empty_return_check_state
-    if (
-        empty_return_check_state == RETURN_CHECK_INITIAL_STATE
-        and empty_return(line)
-    ):
+    if empty_return_check_state == RETURN_CHECK_INITIAL_STATE \
+       and empty_return(line):
         empty_return_check_state = RETURN_CHECK_STATE_WITH_RETURN
-    elif empty_return_check_state == RETURN_CHECK_STATE_WITH_RETURN and (
-        re.match(r'^}$', line) or len(line) == 0
-    ):
+    elif empty_return_check_state == RETURN_CHECK_STATE_WITH_RETURN \
+         and (re.match(r'^}$', line) or len(line) == 0):
         if re.match('^}$', line):
             empty_return_check_state = RETURN_CHECK_AWAITING_BRACE
     else:
@@ -723,93 +511,68 @@ def empty_return_with_brace(line):
 
 
 file_checks = [
-    {'regex': __regex_added_doc_rst, 'check': check_new_docs_index},
-    {'regex': __regex_added_doc_rst, 'check': check_doc_docs_automake},
+        {'regex': __regex_added_doc_rst,
+         'check': check_new_docs_index},
+        {'regex': __regex_added_doc_rst,
+         'check': check_doc_docs_automake}
 ]
 
 checks = [
-    {
-        'regex': None,
-        'match_name': lambda x: not line_length_blacklist.search(x),
-        'check': lambda x: line_length_check(x),
-    },
-    {
-        'regex': None,
-        'match_name': lambda x: not leading_whitespace_blacklist.search(x),
-        'check': lambda x: not leading_whitespace_is_spaces(x),
-        'print': lambda: print_warning(
-            "Line has non-spaces leading whitespace"
-        ),
-    },
-    {
-        'regex': None,
-        'match_name': None,
-        'check': lambda x: trailing_whitespace_or_crlf(x),
-        'print': lambda: print_warning("Line has trailing whitespace"),
-    },
-    {
-        'regex': r'(\.c|\.h)(\.in)?$',
-        'match_name': None,
-        'prereq': lambda x: not is_comment_line(x),
-        'check': lambda x: not if_and_for_whitespace_checks(x),
-        'print': lambda: print_error(
-            "Improper whitespace around control block"
-        ),
-    },
-    {
-        'regex': r'(\.c|\.h)(\.in)?$',
-        'match_name': None,
-        'prereq': lambda x: not is_comment_line(x),
-        'check': lambda x: not if_and_for_end_with_bracket_check(x),
-        'print': lambda: print_error("Inappropriate bracing around statement"),
-    },
-    {
-        'regex': r'(\.c|\.h)(\.in)?$',
-        'match_name': None,
-        'prereq': lambda x: not is_comment_line(x),
-        'check': lambda x: pointer_whitespace_check(x),
-        'print': lambda: print_error(
-            "Inappropriate spacing in pointer declaration"
-        ),
-    },
-    {
-        'regex': r'(\.c|\.h)(\.in)?$',
-        'match_name': None,
-        'prereq': lambda x: not is_comment_line(x),
-        'check': lambda x: trailing_operator(x),
-        'print': lambda: print_error(
-            "Line has '?' or ':' operator at end of line"
-        ),
-    },
-    {
-        'regex': r'(\.c|\.h)(\.in)?$',
-        'match_name': None,
-        'prereq': lambda x: has_comment(x),
-        'check': lambda x: has_xxx_mark(x),
-        'print': lambda: print_warning("Comment with 'xxx' marker"),
-    },
-    {
-        'regex': r'(\.c|\.h)(\.in)?$',
-        'match_name': None,
-        'prereq': lambda x: not is_comment_line(x),
-        'check': lambda x: has_c99_comment(x),
-        'print': lambda: print_error("C99 style comment"),
-    },
-    {
-        'regex': r'(\.c|\.h)(\.in)?$',
-        'match_name': None,
-        'prereq': lambda x: has_comment(x),
-        'check': lambda x: check_comment_spelling(x),
-    },
-    {
-        'regex': r'(\.c|\.h)(\.in)?$',
-        'match_name': None,
-        'check': lambda x: empty_return_with_brace(x),
-        'interim_line': True,
-        'print': lambda: print_warning(
-            "Empty return followed by brace, consider omitting"
-        ),
-    },
+    {'regex': None,
+     'match_name': lambda x: not line_length_blacklist.search(x),
+     'check': lambda x: line_length_check(x)},
+
+    {'regex': None,
+     'match_name': lambda x: not leading_whitespace_blacklist.search(x),
+     'check': lambda x: not leading_whitespace_is_spaces(x),
+     'print': lambda: print_warning("Line has non-spaces leading whitespace")},
+
+    {'regex': None, 'match_name': None,
+     'check': lambda x: trailing_whitespace_or_crlf(x),
+     'print': lambda: print_warning("Line has trailing whitespace")},
+
+    {'regex': r'(\.c|\.h)(\.in)?$', 'match_name': None,
+     'prereq': lambda x: not is_comment_line(x),
+     'check': lambda x: not if_and_for_whitespace_checks(x),
+     'print': lambda: print_error("Improper whitespace around control block")},
+
+    {'regex': r'(\.c|\.h)(\.in)?$', 'match_name': None,
+     'prereq': lambda x: not is_comment_line(x),
+     'check': lambda x: not if_and_for_end_with_bracket_check(x),
+     'print': lambda: print_error("Inappropriate bracing around statement")},
+
+    {'regex': r'(\.c|\.h)(\.in)?$', 'match_name': None,
+     'prereq': lambda x: not is_comment_line(x),
+     'check': lambda x: pointer_whitespace_check(x),
+     'print':
+     lambda: print_error("Inappropriate spacing in pointer declaration")},
+
+    {'regex': r'(\.c|\.h)(\.in)?$', 'match_name': None,
+     'prereq': lambda x: not is_comment_line(x),
+     'check': lambda x: trailing_operator(x),
+     'print':
+     lambda: print_error("Line has '?' or ':' operator at end of line")},
+
+    {'regex': r'(\.c|\.h)(\.in)?$', 'match_name': None,
+     'prereq': lambda x: has_comment(x),
+     'check': lambda x: has_xxx_mark(x),
+     'print': lambda: print_warning("Comment with 'xxx' marker")},
+
+    {'regex': r'(\.c|\.h)(\.in)?$', 'match_name': None,
+     'prereq': lambda x: not is_comment_line(x),
+     'check': lambda x: has_c99_comment(x),
+     'print': lambda: print_error("C99 style comment")},
+
+    {'regex': r'(\.c|\.h)(\.in)?$', 'match_name': None,
+     'prereq': lambda x: has_comment(x),
+     'check': lambda x: check_comment_spelling(x)},
+
+    {'regex': r'(\.c|\.h)(\.in)?$', 'match_name': None,
+     'check': lambda x: empty_return_with_brace(x),
+     'interim_line': True,
+     'print':
+     lambda: print_warning("Empty return followed by brace, consider omitting")
+     },
 ]
 
 
@@ -823,31 +586,28 @@ def regex_error_factory(description):
 
 
 std_functions = [
-    ('malloc', 'Use xmalloc() in place of malloc()'),
-    ('calloc', 'Use xcalloc() in place of calloc()'),
-    ('realloc', 'Use xrealloc() in place of realloc()'),
-    ('strdup', 'Use xstrdup() in place of strdup()'),
-    ('asprintf', 'Use xasprintf() in place of asprintf()'),
-    ('vasprintf', 'Use xvasprintf() in place of vasprintf()'),
-    ('strcpy', 'Use ovs_strlcpy() in place of strcpy()'),
-    ('strlcpy', 'Use ovs_strlcpy() in place of strlcpy()'),
-    ('strncpy', 'Use ovs_strzcpy() in place of strncpy()'),
-    ('strerror', 'Use ovs_strerror() in place of strerror()'),
-    ('sleep', 'Use xsleep() in place of sleep()'),
-    ('abort', 'Use ovs_abort() in place of abort()'),
-    ('assert', 'Use ovs_assert() in place of assert()'),
-    ('error', 'Use ovs_error() in place of error()'),
+        ('malloc', 'Use xmalloc() in place of malloc()'),
+        ('calloc', 'Use xcalloc() in place of calloc()'),
+        ('realloc', 'Use xrealloc() in place of realloc()'),
+        ('strdup', 'Use xstrdup() in place of strdup()'),
+        ('asprintf', 'Use xasprintf() in place of asprintf()'),
+        ('vasprintf', 'Use xvasprintf() in place of vasprintf()'),
+        ('strcpy', 'Use ovs_strlcpy() in place of strcpy()'),
+        ('strlcpy', 'Use ovs_strlcpy() in place of strlcpy()'),
+        ('strncpy', 'Use ovs_strzcpy() in place of strncpy()'),
+        ('strerror', 'Use ovs_strerror() in place of strerror()'),
+        ('sleep', 'Use xsleep() in place of sleep()'),
+        ('abort', 'Use ovs_abort() in place of abort()'),
+        ('assert', 'Use ovs_assert() in place of assert()'),
+        ('error', 'Use ovs_error() in place of error()'),
 ]
 checks += [
-    {
-        'regex': r'(\.c|\.h)(\.in)?$',
-        'match_name': None,
-        'prereq': lambda x: not is_comment_line(x),
-        'check': regex_function_factory(function_name),
-        'print': regex_error_factory(description),
-    }
-    for (function_name, description) in std_functions
-]
+    {'regex': r'(\.c|\.h)(\.in)?$',
+     'match_name': None,
+     'prereq': lambda x: not is_comment_line(x),
+     'check': regex_function_factory(function_name),
+     'print': regex_error_factory(description)}
+    for (function_name, description) in std_functions]
 
 
 def regex_operator_factory(operator):
@@ -855,69 +615,36 @@ def regex_operator_factory(operator):
     return lambda x: regex.search(filter_comments(x)) is not None
 
 
-infix_operators = [
-    re.escape(op)
-    for op in [
-        '%',
-        '<<',
-        '>>',
-        '<=',
-        '>=',
-        '==',
-        '!=',
-        '^',
-        '|',
-        '&&',
-        '||',
-        '?:',
-        '=',
-        '+=',
-        '-=',
-        '*=',
-        '/=',
-        '%=',
-        '&=',
-        '^=',
-        '|=',
-        '<<=',
-        '>>=',
-    ]
-] + [
-    r'[^<" ]<[^=" ]',
-    r'[^\->" ]>[^=" ]',
-    r'[^ !()/"]\*[^/]',
-    r'[^ !&()"]&',
-    r'[^" +(]\+[^"+;]',
-    r'[^" \-(]\-[^"\->;]',
-    r'[^" <>=!^|+\-*/%&]=[^"=]',
-    r'[^* ]/[^* ]',
-]
+infix_operators = \
+    [re.escape(op) for op in ['%', '<<', '>>', '<=', '>=', '==', '!=',
+            '^', '|', '&&', '||', '?:', '=', '+=', '-=', '*=', '/=', '%=',
+            '&=', '^=', '|=', '<<=', '>>=']] \
+    + [r'[^<" ]<[^=" ]',
+       r'[^\->" ]>[^=" ]',
+       r'[^ !()/"]\*[^/]',
+       r'[^ !&()"]&',
+       r'[^" +(]\+[^"+;]',
+       r'[^" \-(]\-[^"\->;]',
+       r'[^" <>=!^|+\-*/%&]=[^"=]',
+       r'[^* ]/[^* ]']
 checks += [
-    {
-        'regex': r'(\.c|\.h)(\.in)?$',
-        'match_name': None,
-        'prereq': lambda x: not is_comment_line(x),
-        'check': regex_operator_factory(operator),
-        'print': lambda: print_warning(
-            "Line lacks whitespace around operator"
-        ),
-    }
-    for operator in infix_operators
-]
+    {'regex': r'(\.c|\.h)(\.in)?$', 'match_name': None,
+     'prereq': lambda x: not is_comment_line(x),
+     'check': regex_operator_factory(operator),
+     'print': lambda: print_warning("Line lacks whitespace around operator")}
+    for operator in infix_operators]
 
 
 def get_file_type_checks(filename):
     """Returns the list of checks for a file based on matching the filename
-    against regex."""
+       against regex."""
     global checks
     checkList = []
     for check in checks:
         if check['regex'] is None and check['match_name'] is None:
             checkList.append(check)
-        if (
-            check['regex'] is not None
-            and re.compile(check['regex']).search(filename) is not None
-        ):
+        if check['regex'] is not None and \
+           re.compile(check['regex']).search(filename) is not None:
             checkList.append(check)
         elif check['match_name'] is not None and check['match_name'](filename):
             checkList.append(check)
@@ -926,7 +653,7 @@ def get_file_type_checks(filename):
 
 def run_checks(current_file, line, lineno):
     """Runs the various checks for the particular line.  This will take
-    filename into account."""
+       filename into account."""
     global checking_file, total_line
     print_line = False
     for check in get_file_type_checks(current_file):
@@ -947,8 +674,8 @@ def run_checks(current_file, line, lineno):
 
 def interim_line_check(current_file, line, lineno):
     """Runs the various checks for the particular interim line.  This will
-    take filename into account, and will check for the 'interim_line'
-    key before running the check."""
+       take filename into account, and will check for the 'interim_line'
+       key before running the check."""
     global checking_file, total_line
     print_line = False
     for check in get_file_type_checks(current_file):
@@ -976,7 +703,8 @@ def run_file_checks(text):
 
 
 def ovs_checkpatch_parse(text, filename, author=None, committer=None):
-    global print_file_name, total_line, checking_file, empty_return_check_state
+    global print_file_name, total_line, checking_file, \
+        empty_return_check_state
 
     PARSE_STATE_HEADING = 0
     PARSE_STATE_DIFF_HEADER = 1
@@ -991,15 +719,15 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
     seppatch = re.compile(r'^---([\w]*| \S+)$')
     hunks = re.compile(r'^(---|\+\+\+) (\S+)')
     hunk_differences = re.compile(
-        r'^@@ ([0-9-+]+),([0-9-+]+) ([0-9-+]+),([0-9-+]+) @@'
-    )
+        r'^@@ ([0-9-+]+),([0-9-+]+) ([0-9-+]+),([0-9-+]+) @@')
     is_author = re.compile(r'^(Author|From): (.*)$', re.I | re.M | re.S)
     is_committer = re.compile(r'^(Commit: )(.*)$', re.I | re.M | re.S)
-    is_signature = re.compile(r'^(Signed-off-by: )(.*)$', re.I | re.M | re.S)
-    is_co_author = re.compile(r'^(Co-authored-by: )(.*)$', re.I | re.M | re.S)
-    is_gerrit_change_id = re.compile(
-        r'(\s*(change-id: )(.*))$', re.I | re.M | re.S
-    )
+    is_signature = re.compile(r'^(Signed-off-by: )(.*)$',
+                              re.I | re.M | re.S)
+    is_co_author = re.compile(r'^(Co-authored-by: )(.*)$',
+                              re.I | re.M | re.S)
+    is_gerrit_change_id = re.compile(r'(\s*(change-id: )(.*))$',
+                                     re.I | re.M | re.S)
 
     reset_counters()
 
@@ -1050,14 +778,11 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
                         if ca not in signatures:
                             print_error("Co-author %s needs to sign off." % ca)
                             break
-                    if (
-                        committer
+                    if (committer
                         and author != committer
-                        and committer not in signatures
-                    ):
-                        print_error(
-                            "Committer %s needs to sign off." % committer
-                        )
+                        and committer not in signatures):
+                        print_error("Committer %s needs to sign off."
+                                    % committer)
 
                     # Check for signatures that we do not expect.
                     # This is only a warning because there can be,
@@ -1067,19 +792,15 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
                     # a single extra sign-off, then do not warn
                     # because that extra sign-off is probably the
                     # committer.
-                    extra_sigs = [
-                        x
-                        for x in signatures
-                        if x not in co_authors
-                        and x != author
-                        and x != committer
-                    ]
+                    extra_sigs = [x for x in signatures
+                                  if x not in co_authors
+                                  and x != author
+                                  and x != committer]
                     if len(extra_sigs) > 1 or (committer and extra_sigs):
-                        print_warning(
-                            "Unexpected sign-offs from developers "
-                            "who are not authors or co-authors or "
-                            "committers: %s" % ", ".join(extra_sigs)
-                        )
+                        print_warning("Unexpected sign-offs from developers "
+                                      "who are not authors or co-authors or "
+                                      "committers: %s"
+                                      % ", ".join(extra_sigs))
             elif is_committer.match(line):
                 committer = is_committer.match(line).group(2)
             elif is_author.match(line):
@@ -1092,8 +813,7 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
                 co_authors.append(m.group(2))
             elif is_gerrit_change_id.match(line):
                 print_error(
-                    "Remove Gerrit Change-Id's before submitting upstream."
-                )
+                    "Remove Gerrit Change-Id's before submitting upstream.")
                 print("%d: %s\n" % (lineno, line))
         elif parse == PARSE_STATE_CHANGE_BODY:
             newfile = hunks.match(line)
@@ -1139,8 +859,7 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
 
 
 def usage():
-    print(
-        """\
+    print("""\
 Open vSwitch checkpatch.py
 Checks a patch for trivial mistakes.
 usage:
@@ -1158,18 +877,15 @@ Check options:
 -s|--skip-signoff-lines        Tolerate missing Signed-off-by line
 -S|--spellcheck-comments       Check C comments for possible spelling mistakes
 -t|--skip-trailing-whitespace  Skips the trailing whitespace test"""
-        % sys.argv[0]
-    )
+          % sys.argv[0])
 
 
 def ovs_checkpatch_print_result():
     global quiet, __warnings, __errors, total_line
 
     if __errors or __warnings:
-        print(
-            "Lines checked: %d, Warnings: %d, Errors: %d\n"
-            % (total_line, __warnings, __errors)
-        )
+        print("Lines checked: %d, Warnings: %d, Errors: %d\n" %
+              (total_line, __warnings, __errors))
     elif not quiet:
         print("Lines checked: %d, no obvious problems found\n" % (total_line))
 
@@ -1184,12 +900,9 @@ def ovs_checkpatch_file(filename):
     for part in mail.walk():
         if part.get_content_maintype() == 'multipart':
             continue
-    result = ovs_checkpatch_parse(
-        part.get_payload(decode=False),
-        filename,
-        mail.get('Author', mail['From']),
-        mail['Commit'],
-    )
+    result = ovs_checkpatch_parse(part.get_payload(decode=False), filename,
+                                  mail.get('Author', mail['From']),
+                                  mail['Commit'])
     ovs_checkpatch_print_result()
     return result
 
@@ -1209,25 +922,19 @@ def partition(pred, iterable):
 
 if __name__ == '__main__':
     try:
-        numeric_options, args = partition(
-            lambda s: re.match('-[0-9]+$', s), sys.argv[1:]
-        )
+        numeric_options, args = partition(lambda s: re.match('-[0-9]+$', s),
+                                          sys.argv[1:])
         n_patches = int(numeric_options[-1][1:]) if numeric_options else 0
 
-        optlist, args = getopt.getopt(
-            args,
-            'bhlstfSq',
-            [
-                "check-file",
-                "help",
-                "skip-block-whitespace",
-                "skip-leading-whitespace",
-                "skip-signoff-lines",
-                "skip-trailing-whitespace",
-                "spellcheck-comments",
-                "quiet",
-            ],
-        )
+        optlist, args = getopt.getopt(args, 'bhlstfSq',
+                                      ["check-file",
+                                       "help",
+                                       "skip-block-whitespace",
+                                       "skip-leading-whitespace",
+                                       "skip-signoff-lines",
+                                       "skip-trailing-whitespace",
+                                       "spellcheck-comments",
+                                       "quiet"])
     except:
         print("Unknown option encountered. Please rerun with -h for help.")
         sys.exit(EXIT_FAILURE)
@@ -1270,16 +977,12 @@ if __name__ == '__main__':
 
         for i in reversed(range(0, n_patches)):
             revision, name = commits[i].split(" ", 1)
-            f = os.popen(
-                '''git format-patch -1 --stdout --pretty=format:"\
+            f = os.popen('''git format-patch -1 --stdout --pretty=format:"\
 Author: %an <%ae>
 Commit: %cn <%ce>
 Subject: %s
 
-%b" '''
-                + revision,
-                'r',
-            )
+%b" ''' + revision, 'r')
             patch = f.read()
             f.close()
 
