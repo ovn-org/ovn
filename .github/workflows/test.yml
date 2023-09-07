@@ -102,29 +102,23 @@ jobs:
         cfg:
         - { compiler: gcc, opts: --disable-ssl }
         - { compiler: clang, opts: --disable-ssl }
-        - { compiler: gcc, testsuite: test, test_range: "-500" }
-        - { compiler: gcc, testsuite: test, test_range: "501-1000" }
-        - { compiler: gcc, testsuite: test, test_range: "1001-" }
+        - { compiler: gcc, testsuite: test, test_range: "-300" }
+        - { compiler: gcc, testsuite: test, test_range: "301-600" }
+        - { compiler: gcc, testsuite: test, test_range: "601-" }
         - { compiler: clang, testsuite: test, sanitizers: sanitizers, test_range: "-300" }
         - { compiler: clang, testsuite: test, sanitizers: sanitizers, test_range: "301-600" }
-        - { compiler: clang, testsuite: test, sanitizers: sanitizers, test_range: "601-900" }
-        - { compiler: clang, testsuite: test, sanitizers: sanitizers, test_range: "901-1200" }
-        - { compiler: clang, testsuite: test, sanitizers: sanitizers, test_range: "1201-" }
-        - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "-500" }
-        - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "501-1000" }
-        - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "1001-" }
+        - { compiler: clang, testsuite: test, sanitizers: sanitizers, test_range: "601-" }
+        - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "-300" }
+        - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "301-600" }
+        - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "601-" }
         - { compiler: gcc, testsuite: system-test-dpdk, dpdk: dpdk, test_range: "-100" }
-        - { compiler: gcc, testsuite: system-test-dpdk, dpdk: dpdk, test_range: "101-200" }
-        - { compiler: gcc, testsuite: system-test-dpdk, dpdk: dpdk, test_range: "201-" }
+        - { compiler: gcc, testsuite: system-test-dpdk, dpdk: dpdk, test_range: "101-" }
         - { compiler: gcc, testsuite: system-test-userspace, test_range: "-100" }
-        - { compiler: gcc, testsuite: system-test-userspace, test_range: "101-200" }
-        - { compiler: gcc, testsuite: system-test-userspace, test_range: "201-" }
+        - { compiler: gcc, testsuite: system-test-userspace, test_range: "101-" }
         - { compiler: gcc, testsuite: system-test, test_range: "-100" }
-        - { compiler: gcc, testsuite: system-test, test_range: "101-200" }
-        - { compiler: gcc, testsuite: system-test, test_range: "201-" }
+        - { compiler: gcc, testsuite: system-test, test_range: "101-" }
         - { compiler: clang, testsuite: system-test, sanitizers: sanitizers, test_range: "-100" }
-        - { compiler: clang, testsuite: system-test, sanitizers: sanitizers, test_range: "101-200" }
-        - { compiler: clang, testsuite: system-test, sanitizers: sanitizers, test_range: "201-" }
+        - { compiler: clang, testsuite: system-test, sanitizers: sanitizers, test_range: "101-" }
         - { arch: x86, compiler: gcc, opts: --disable-ssl }
 
     steps:

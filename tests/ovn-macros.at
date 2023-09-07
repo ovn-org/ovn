@@ -887,21 +887,28 @@ OVS_END_SHELL_HELPERS
 m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
 
 # Defines versions of the test with all combinations of northd,
-# parallelization on/off and conditional monitoring on/off.
+# parallelization enabled and conditional monitoring on/off.
 m4_define([OVN_FOR_EACH_NORTHD],
   [m4_foreach([NORTHD_TYPE], [ovn-northd],
-     [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes, no],
+     [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes],
        [m4_foreach([OVN_MONITOR_ALL], [yes, no], [$1
 ])])])])
 
 # Defines versions of the test with all combinations of northd and
-# parallelization on/off.  To be used when the ovn-controller configuration
+# parallelization enabled. To be used when the ovn-controller configuration
 # is not relevant.
 m4_define([OVN_FOR_EACH_NORTHD_NO_HV],
   [m4_foreach([NORTHD_TYPE], [ovn-northd],
-     [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes, no], [$1
+     [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes], [$1
 ])])])
 
+# Defines versions of the test with all combinations of northd and
+# parallelization on/off. To be used when the ovn-controller configuration
+# is not relevant and we want to test parallelization permutations.
+m4_define([OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION],
+  [m4_foreach([NORTHD_TYPE], [ovn-northd],
+     [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes, no], [$1
+])])])
 
 # OVN_NBCTL(NBCTL_COMMAND) adds NBCTL_COMMAND to list of commands to be run by RUN_OVN_NBCTL().
 m4_define([OVN_NBCTL], [

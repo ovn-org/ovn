@@ -3870,7 +3870,7 @@ wait_row_count nb:Logical_Switch_Port 1 up=false name=lsp1
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([Load Balancers and lb_force_snat_ip for Gateway Routers])
 ovn_start
 
@@ -4409,7 +4409,7 @@ AT_CHECK([ovn-sbctl dump-flows sw0 | grep "ls_in_lb " | sed 's/table=../table=??
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([ovn -- ACL label usage])
 ovn_start
 
@@ -4502,7 +4502,7 @@ AT_CHECK([grep "ls_out_stateful" sw0flows | sed 's/table=../table=??/' | sort], 
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([ovn -- ct.inv usage])
 ovn_start
 
@@ -5001,7 +5001,7 @@ check_lflows 0
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([ovn -- ARP flows for unreachable addresses - NAT and LB])
 ovn_start
 
@@ -5207,7 +5207,7 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | grep "192.168.4.100" | grep -v clone
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([ovn -- LR NAT flows])
 ovn_start
 
@@ -6001,7 +6001,7 @@ AT_CHECK([ovn-sbctl dump-flows lr0 | grep "lr_in_dnat" | sort], [0], [dnl
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([Load Balancer SB duplicates])
 ovn_start
 
@@ -6652,7 +6652,7 @@ ct_dnat /* assuming no un-dnat entry, so no change */ /* default (use --ct to cu
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([route tables -- flows])
 AT_KEYWORDS([route-tables-flows])
 ovn_start
@@ -7079,7 +7079,7 @@ AT_CHECK([grep -e 'lr_in_ip_routing   ' lrflows | grep -e 'igmp' -e 'mld' | sed 
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([ACLs after lb])
 AT_KEYWORDS([acl])
 ovn_start
@@ -7256,7 +7256,7 @@ AT_CHECK([grep -e "ls_in_stateful" lsflows | sed 's/table=../table=??/' | sort],
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([ovn-northd -- lr multiple gw ports NAT])
 AT_KEYWORDS([multiple-l3dgw-ports])
 ovn_start
@@ -7495,7 +7495,7 @@ AT_CHECK([cat lrflows | grep -e lr_in_lookup_neighbor -e lr_in_learn_neighbor | 
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([LS default ACL drop])
 AT_KEYWORDS([acl])
 
