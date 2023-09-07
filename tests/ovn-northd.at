@@ -6279,6 +6279,23 @@ AT_CHECK([grep "lr_in_admission" lr0flows | grep -e "check_pkt_larger" | sort], 
   table=0 (lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
 ])
 
+# tag 0 requires a parent port
+check ovn-nbctl --wait=sb set Logical_Switch_Port ext-port tag_request=0
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep "lr_in_admission" lr0flows | grep -e "check_pkt_larger" | sort], [0], [dnl
+  table=0 (lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:20:20:12:13 && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
+  table=0 (lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
+])
+
+check ovn-nbctl --wait=sb set Logical_Switch_Port ext-port parent_name=ext-parent-port
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep "lr_in_admission" lr0flows | grep -e "check_pkt_larger" | sort], [0], [dnl
+  table=0 (lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:20:20:12:13 && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
+  table=0 (lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
+])
+
 AT_CLEANUP
 ])
 

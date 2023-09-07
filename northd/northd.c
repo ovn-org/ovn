@@ -12844,7 +12844,13 @@ build_gateway_get_l2_hdr_size(struct ovn_port *op)
             struct ovn_port *localnet_port = peer->od->localnet_ports[i];
             const struct nbrec_logical_switch_port *nbsp = localnet_port->nbsp;
 
-            if (nbsp && nbsp->n_tag_request > 0) {
+            if (!nbsp || !nbsp->tag_request) {
+                continue;
+            }
+
+            if (nbsp->tag_request[0] ||
+                (nbsp->parent_name && nbsp->parent_name[0])) {
+                /* Valid tag. */
                 return VLAN_ETH_HEADER_LEN;
             }
         }
