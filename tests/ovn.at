@@ -7292,6 +7292,9 @@ OVN_POPULATE_ARP
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
+# Start with 0 because the first request will not have NXT_RESUME
+n_resume=0
+
 trim_zeros() {
     sed 's/\(00\)\{1,\}$//'
 }
@@ -7360,6 +7363,59 @@ test_dhcpv6() {
     fi
 
     as hv1 ovs-appctl netdev-dummy/receive hv1-vif$inport $request
+    OVS_WAIT_UNTIL([test $n_resume = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+    n_resume=$((n_resume + 1))
+}
+
+test_dhcpv6_release() {
+    local inport=$1 src_mac=$2 src_lla=$3 offer_ip=$4
+
+    local ip_scapy="DHCP6OptIAAddress(addr='${offer_ip}', preflft=0xffffffff, validlft=0xffffffff)"
+    local req_scapy="Ether(dst='00:00:00:10:00:01', src='${src_mac}')/ \
+                     IPv6(dst='ff02::1:2', src='${src_lla}')/ \
+                     UDP(sport=546, dport=547)/ \
+                     DHCP6(msgtype=8, trid=0x010203)/ \
+                     DHCP6OptClientId(duid=DUID_LL(lladdr='${src_mac}'))/ \
+                     DHCP6OptServerId(duid=DUID_LL(lladdr='00:00:00:10:00:01'))/ \
+                     DHCP6OptIA_NA(iaid=0x01020304, T1=0xffffffff, T2=0xffffffff, ianaopts=[[${ip_scapy}]])"
+
+    request=$(fmt_pkt "${req_scapy}")
+
+    local rep_scapy="Ether(dst='${src_mac}', src='00:00:00:10:00:01')/ \
+                     IPv6(dst='${src_lla}', src='fe80::0200:00ff:fe10:0001')/ \
+                     UDP(sport=547, dport=546)/ \
+                     DHCP6(msgtype=7, trid=0x010203)/ \
+                     DHCP6OptClientId(duid=DUID_LL(lladdr='${src_mac}'))/ \
+                     DHCP6OptServerId(duid=DUID_LL(lladdr='00:00:00:10:00:01'))/ \
+                     DHCP6OptStatusCode(statuscode=0)"
+
+    reply=$(fmt_pkt "${rep_scapy}")
+    echo $reply | trim_zeros >> $inport.expected
+
+    as hv1 ovs-appctl netdev-dummy/receive hv1-vif$inport $request
+    OVS_WAIT_UNTIL([test $n_resume = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+    n_resume=$((n_resume + 1))
+}
+
+check_packets() {
+    local port=$1
+
+    $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif$port-tx.pcap | trim_zeros > $port.packets
+    # Skipping UDP checksum
+    cat $port.expected | cut -c 1-120,125- > expout
+    AT_CHECK([cat $port.packets | cut -c 1-120,125- ], [0], [expout])
+
+    rm $port.packets
+    rm $port.expected
+}
+
+check_empty_packets() {
+    local port=$1
+
+    $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif$port-tx.pcap | trim_zeros > $port.packets
+    AT_CHECK([cat $port.packets], [0], [])
+
+    rm $port.packets
 }
 
 AT_CAPTURE_FILE([ofctl_monitor0.log])
@@ -7381,23 +7437,31 @@ AT_CAPTURE_FILE([sbflows])
 echo "------ hv1 dump ----------"
 as hv1 ovs-ofctl dump-flows br-int
 
+# Send DHCPv6 packet on ls2-lp1. native DHCPv6 is disabled on this port.
+# There should be no DHCPv6 reply from ovn-controller and the request packet
+# should be received by ls2-lp2.
+
+src_mac="f0:00:00:00:00:03"
+src_lla="fe80::f200:00ff:fe00:0003"
+test_dhcpv6 3 $src_mac $src_lla 1 0 "" "" 4
+
+# vif3-tx.pcap should not have received the DHCPv6 reply packet
+check_empty 3
+
+# vif4-tx.pcap should have received the DHCPv6 request packet
+check_packets 4
+
 src_mac="f0:00:00:00:00:01"
 src_lla="fe80::f200:00ff:fe00:0001"
 offer_ip="ae70::4"
+
 test_dhcpv6 1 $src_mac $src_lla 1 $offer_ip "" ""
+check_packets 1
 
-# NXT_RESUMEs should be 1.
-OVS_WAIT_UNTIL([test 1 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+reset_pcap_file hv1-vif1 hv1/vif1
 
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | trim_zeros > 1.packets
-# cat 1.expected | trim_zeros > expout
-cat 1.expected | cut -c -120 > expout
-AT_CHECK([cat 1.packets | cut -c -120], [0], [expout])
-# Skipping the UDP checksum
-cat 1.expected | cut -c 125- > expout
-AT_CHECK([cat 1.packets | cut -c 125-], [0], [expout])
-
-rm  1.expected
+test_dhcpv6_release 1 $src_mac $src_lla $offer_ip
+check_packets 1
 
 # Send invalid packet on ls1-lp2. ovn-controller should resume the packet
 # without any modifications and the packet should be received by ls1-lp1.
@@ -7414,70 +7478,29 @@ offer_ip="ae70::5"
 
 test_dhcpv6 2 $src_mac $src_lla 16 0 "" "" 1 1
 
-# NXT_RESUMEs should be 2.
-OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
-
 # vif2-tx.pcap should not have received the DHCPv6 reply packet
-rm 2.packets
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap | trim_zeros > 2.packets
-AT_CHECK([cat 2.packets], [0], [])
+check_empty 2
 
 # vif1-tx.pcap should have received the DHCPv6 (invalid) request packet
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | trim_zeros > 1.packets
-cat 1.expected > expout
-AT_CHECK([cat 1.packets], [0], [expout])
-
-# Send DHCPv6 packet on ls2-lp1. native DHCPv6 is disabled on this port.
-# There should be no DHCPv6 reply from ovn-controller and the request packet
-# should be received by ls2-lp2.
-
-src_mac="f0:00:00:00:00:03"
-src_lla="fe80::f200:00ff:fe00:0003"
-test_dhcpv6 3 $src_mac $src_lla 1 0 "" "" 4
-
-# NXT_RESUMEs should be 2 only.
-OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
-
-# vif3-tx.pcap should not have received the DHCPv6 reply packet
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif3-tx.pcap | trim_zeros > 3.packets
-AT_CHECK([cat 3.packets], [0], [])
-
-# vif4-tx.pcap should have received the DHCPv6 request packet
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif4-tx.pcap | trim_zeros > 4.packets
-cat 4.expected > expout
-AT_CHECK([cat 4.packets], [0], [expout])
+check_packets 1
 
 # Send DHCPv6 packet on ls1-lp3. native DHCPv6 works as stateless mode for this port.
 # The DHCPv6 reply shouldn't contain offer_ip.
 src_mac="f0:00:00:00:00:22"
 src_lla="fe80::f200:00ff:fe00:0022"
 reset_pcap_file hv1-vif5 hv1/vif5
+
 test_dhcpv6 5 $src_mac $src_lla 1 1 "" "" 5
-
-# NXT_RESUMEs should be 3.
-OVS_WAIT_UNTIL([test 3 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif5-tx.pcap | trim_zeros > 5.packets
-# Skipping the UDP checksum
-cat 5.expected | cut -c 1-120,125- > expout
-AT_CHECK([cat 5.packets | cut -c 1-120,125- ], [0], [expout])
+check_packets 5
 
 # Send DHCPv6 information request (code 11) on ls1-lp3. The DHCPv6 reply
 # shouldn't contain offer_ip
 src_mac="f0:00:00:00:00:22"
 src_lla="fe80::f200:00ff:fe00:0022"
 reset_pcap_file hv1-vif5 hv1/vif5
-rm -f 5.expected
+
 test_dhcpv6 5 $src_mac $src_lla 11 1 "" "" 5
-
-# NXT_RESUMEs should be 4.
-OVS_WAIT_UNTIL([test 4 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif5-tx.pcap |
-trim_zeros > 5.packets
-# Skipping the UDP checksum
-cat 5.expected | cut -c 1-120,125- > expout
-AT_CHECK([cat 5.packets | cut -c 1-120,125- ], [0], [expout])
+check_packets 5
 
 ovn-nbctl --all destroy dhcp-option
 d1="$(ovn-nbctl create DHCP_Options cidr="ae70\:\:/64")"
@@ -7494,26 +7517,22 @@ src_lla="fe80::f200:00ff:fe00:0002"
 offer_ip="ae70::5"
 
 test_dhcpv6 2 $src_mac $src_lla 1 $offer_ip "bootfile_name_alt" ""
-# NXT_RESUMEs should be 5.
-OVS_WAIT_UNTIL([test 5 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
-
-# vif2-tx.pcap should not have received the DHCPv6 reply packet
-rm 2.packets
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap | trim_zeros > 2.packets
-# Skipping the UDP checksum
-cat 2.expected | cut -c 1-120,125- > expout
-AT_CHECK([cat 2.packets | cut -c 1-120,125- ], [0], [expout])
+check_packets 2
 
 reset_pcap_file hv1-vif2 hv1/vif2
-rm 2.packets 2.expected
+
+test_dhcpv6_release 2 $src_mac $src_lla $offer_ip
+check_packets 2
+
+reset_pcap_file hv1-vif2 hv1/vif2
 
 test_dhcpv6 2 $src_mac $src_lla 1 $offer_ip "bootfile_name" ""
-# NXT_RESUMEs should be 6.
-OVS_WAIT_UNTIL([test 6 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+check_packets 2
 
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap | trim_zeros > 2.packets
-cat 2.expected | cut -c 1-120,125- > expout
-AT_CHECK([cat 2.packets | cut -c 1-120,125- ], [0], [expout])
+reset_pcap_file hv1-vif2 hv1/vif2
+
+test_dhcpv6_release 2 $src_mac $src_lla $offer_ip
+check_packets 2
 
 ovn-nbctl --all destroy dhcp-option
 d1="$(ovn-nbctl create DHCP_Options cidr="ae70\:\:/64")"
@@ -7523,15 +7542,14 @@ ovn-nbctl dhcp-options-set-options $d1 \
 ovn-nbctl --wait=hv lsp-set-dhcpv6-options ls1-lp2 ${d1}
 
 reset_pcap_file hv1-vif2 hv1/vif2
-rm 2.packets 2.expected
 
 test_dhcpv6 2 $src_mac $src_lla 1 $offer_ip "" "ovn.org"
-# NXT_RESUMEs should be 7.
-OVS_WAIT_UNTIL([test 7 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+check_packets 2
 
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap | trim_zeros > 2.packets
-cat 2.expected | cut -c 1-120,125- > expout
-AT_CHECK([cat 2.packets | cut -c 1-120,125- ], [0], [expout])
+reset_pcap_file hv1-vif2 hv1/vif2
+
+test_dhcpv6_release 2 $src_mac $src_lla $offer_ip
+check_packets 2
 
 OVN_CLEANUP([hv1])
 
