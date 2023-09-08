@@ -20,6 +20,8 @@ OVN v23.09.0 - xx xxx xxxx
     cap the time between when ovn-controller sends gARP packets.
   - Introduce support for binding remote ports in ovn-northd if the CMS sets
     requested-chassis option for a remote logical switch port.
+  - Added support to reply success for DHCPv6 Release messages.
+
 
 OVN v23.06.0 - 01 Jun 2023
 --------------------------

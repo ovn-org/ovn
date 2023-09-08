@@ -255,6 +255,7 @@ BUILD_ASSERT_DECL(DHCP_OPT_HEADER_LEN == sizeof(struct dhcp_opt_header));
 #define DHCPV6_MSG_TYPE_REBIND      6
 
 #define DHCPV6_MSG_TYPE_REPLY       7
+#define DHCPV6_MSG_TYPE_RELEASE     8
 #define DHCPV6_MSG_TYPE_DECLINE     9
 #define DHCPV6_MSG_TYPE_INFO_REQ    11
 
@@ -273,6 +274,9 @@ BUILD_ASSERT_DECL(DHCP_OPT_HEADER_LEN == sizeof(struct dhcp_opt_header));
 #define DHCPV6_OPT_FQDN_CODE             39
 #define DHCPV6_OPT_BOOT_FILE_URL         59
 #define DHCPV6_OPT_BOOT_FILE_URL_ALT    254
+
+/* DHCPv6 Status codes */
+#define DHCPV6_STATUS_CODE_SUCCESS 0
 
 #define DHCPV6_OPT_SERVER_ID \
     DHCP_OPTION("server_id", DHCPV6_OPT_SERVER_ID_CODE, "mac")
@@ -301,11 +305,13 @@ BUILD_ASSERT_DECL(DHCP_OPT_HEADER_LEN == sizeof(struct dhcp_opt_header));
 #define DHCPV6_FQDN_FLAGS_O 1 << 1
 #define DHCPV6_FQDN_FLAGS_N 1 << 2
 
+#define DHCP6_OPT_HEADER_LEN 4
 OVS_PACKED(
 struct dhcpv6_opt_header {
     ovs_be16 code;
     ovs_be16 len;
 });
+BUILD_ASSERT_DECL(DHCP6_OPT_HEADER_LEN == sizeof(struct dhcpv6_opt_header));
 
 #define DHCP6_OPT_SERVER_ID_LEN 14
 struct dhcpv6_opt_server_id {
@@ -377,12 +383,14 @@ struct dhcpv6_opt_ia_prefix {
     struct in6_addr ipv6;
 });
 
+#define DHCP6_OPT_STATUS_LEN 6
 OVS_PACKED(
 struct dhcpv6_opt_status {
     struct dhcpv6_opt_header opt;
     ovs_be16 status_code;
     uint8_t msg[];
 });
+BUILD_ASSERT_DECL(DHCP6_OPT_STATUS_LEN == sizeof(struct dhcpv6_opt_status));
 
 #define DHCPV6_DUID_LL      3
 #define DHCPV6_HW_TYPE_ETH  1

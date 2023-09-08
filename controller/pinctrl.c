@@ -2290,6 +2290,26 @@ exit:
     }
 }
 
+static void
+encode_dhcpv6_server_id_opt(struct ofpbuf *opts, struct eth_addr *mac)
+{
+    /* The Server Identifier option carries a DUID
+     * identifying a server between a client and a server.
+     * See RFC 3315 Sec 9 and Sec 22.3.
+     *
+     * We use DUID Based on Link-layer Address [DUID-LL].
+     */
+    struct dhcpv6_opt_server_id *server_id =
+            ofpbuf_put_zeros(opts, sizeof *server_id);
+    *server_id = (struct dhcpv6_opt_server_id) {
+            .opt.code = htons(DHCPV6_OPT_SERVER_ID_CODE),
+            .opt.len = htons(DHCP6_OPT_SERVER_ID_LEN - DHCP6_OPT_HEADER_LEN),
+            .duid_type = htons(DHCPV6_DUID_LL),
+            .hw_type = htons(DHCPV6_HW_TYPE_ETH),
+            .mac = *mac
+    };
+}
+
 static bool
 compose_out_dhcpv6_opts(struct ofpbuf *userdata,
                         struct ofpbuf *out_dhcpv6_opts,
@@ -2303,33 +2323,15 @@ compose_out_dhcpv6_opts(struct ofpbuf *userdata,
         }
 
         size_t size = ntohs(userdata_opt->len);
-        uint8_t *userdata_opt_data = ofpbuf_try_pull(userdata, size);
+        void *userdata_opt_data = ofpbuf_try_pull(userdata, size);
         if (!userdata_opt_data) {
             return false;
         }
 
         switch (ntohs(userdata_opt->code)) {
         case DHCPV6_OPT_SERVER_ID_CODE:
-        {
-            /* The Server Identifier option carries a DUID
-             * identifying a server between a client and a server.
-             * See RFC 3315 Sec 9 and Sec 22.3.
-             *
-             * We use DUID Based on Link-layer Address [DUID-LL].
-             */
-            struct dhcpv6_opt_server_id opt_server_id = {
-                .opt.code = htons(DHCPV6_OPT_SERVER_ID_CODE),
-                .opt.len = htons(size + 4),
-                .duid_type = htons(DHCPV6_DUID_LL),
-                .hw_type = htons(DHCPV6_HW_TYPE_ETH),
-            };
-            memcpy(&opt_server_id.mac, userdata_opt_data,
-                    sizeof(struct eth_addr));
-            void *ptr = ofpbuf_put_zeros(out_dhcpv6_opts,
-                                         sizeof(struct dhcpv6_opt_server_id));
-            memcpy(ptr, &opt_server_id, sizeof(struct dhcpv6_opt_server_id));
+            encode_dhcpv6_server_id_opt(out_dhcpv6_opts, userdata_opt_data);
             break;
-        }
 
         case DHCPV6_OPT_IA_ADDR_CODE:
         {
@@ -2442,6 +2444,40 @@ compose_out_dhcpv6_opts(struct ofpbuf *userdata,
     return true;
 }
 
+static bool
+compose_dhcpv6_status(struct ofpbuf *userdata, struct ofpbuf *opts)
+{
+    while (userdata->size) {
+        struct dhcpv6_opt_header *userdata_opt = ofpbuf_try_pull(
+                userdata, sizeof *userdata_opt);
+        if (!userdata_opt) {
+            return false;
+        }
+
+        size_t size = ntohs(userdata_opt->len);
+        void *userdata_opt_data = ofpbuf_try_pull(userdata, size);
+        if (!userdata_opt_data) {
+            return false;
+        }
+
+        /* We care only about server id. Ignore everything else. */
+        if (ntohs(userdata_opt->code) == DHCPV6_OPT_SERVER_ID_CODE) {
+            encode_dhcpv6_server_id_opt(opts, userdata_opt_data);
+            break;
+        }
+    }
+
+    /* Put success status code to the end. */
+    struct dhcpv6_opt_status *status = ofpbuf_put_zeros(opts, sizeof *status);
+    *status = (struct dhcpv6_opt_status) {
+        .opt.code = htons(DHCPV6_OPT_STATUS_CODE),
+        .opt.len = htons(DHCP6_OPT_STATUS_LEN - DHCP6_OPT_HEADER_LEN),
+        .status_code = htons(DHCPV6_STATUS_CODE_SUCCESS),
+    };
+
+    return true;
+}
+
 /* Called with in the pinctrl_handler thread context. */
 static void
 pinctrl_handle_put_dhcpv6_opts(
@@ -2492,6 +2528,7 @@ pinctrl_handle_put_dhcpv6_opts(
 
     uint8_t out_dhcpv6_msg_type;
     uint8_t in_dhcpv6_msg_type = *in_dhcpv6_data;
+    bool status_only = false;
     switch (in_dhcpv6_msg_type) {
     case DHCPV6_MSG_TYPE_SOLICIT:
         out_dhcpv6_msg_type = DHCPV6_MSG_TYPE_ADVT;
@@ -2504,11 +2541,15 @@ pinctrl_handle_put_dhcpv6_opts(
         out_dhcpv6_msg_type = DHCPV6_MSG_TYPE_REPLY;
         break;
 
+    case DHCPV6_MSG_TYPE_RELEASE:
+        out_dhcpv6_msg_type = DHCPV6_MSG_TYPE_REPLY;
+        status_only = true;
+        break;
+
     default:
         /* Invalid or unsupported DHCPv6 message type */
         goto exit;
     }
-
     /* Skip 4 bytes (message type (1 byte) + transaction ID (3 bytes). */
     in_dhcpv6_data += 4;
     /* We need to extract IAID from the IA-NA option of the client's DHCPv6
@@ -2574,8 +2615,15 @@ pinctrl_handle_put_dhcpv6_opts(
     struct ofpbuf out_dhcpv6_opts =
         OFPBUF_STUB_INITIALIZER(out_ofpacts_dhcpv6_opts_stub);
 
-    if (!compose_out_dhcpv6_opts(userdata, &out_dhcpv6_opts,
-                                 iaid, ipxe_req, fqdn_flags)) {
+    bool compose = false;
+    if (status_only) {
+        compose = compose_dhcpv6_status(userdata, &out_dhcpv6_opts);
+    } else {
+        compose = compose_out_dhcpv6_opts(userdata, &out_dhcpv6_opts, iaid,
+                                          ipxe_req, fqdn_flags);
+    }
+
+    if (!compose) {
         VLOG_WARN_RL(&rl, "Invalid userdata");
         goto exit;
     }
