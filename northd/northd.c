@@ -13996,6 +13996,43 @@ build_lrouter_arp_nd_for_datapath(struct ovn_datapath *od,
 
 /* Logical router ingress table 3: IP Input for IPv4. */
 static void
+add_time_exceeded_flow_for_dnat_and_snat(struct ovn_port *op,
+                                         struct hmap *lflows, struct ds *ip_ds,
+                                         struct ds *match, struct ds *actions,
+                                         const struct shash *meter_groups)
+{
+    if (is_l3dgw_port(op)) {
+        for (int i = 0; i < op->od->nbr->n_nat; i++) {
+            ds_clear(match);
+            ds_clear(actions);
+            ds_clear(ip_ds);
+            struct ovn_nat *nat_entry = &op->od->nat_entries[i];
+            if (!strcmp(nat_entry->nb->type, "dnat_and_snat")) {
+                ds_put_format(match, "ip4.src == %s && ", nat_entry->nb->external_ip);
+                ds_put_cstr(ip_ds, "ip4.dst <-> ip4.src");
+                ds_put_format(match,
+                              "inport == %s && ip4 && "
+                              "ip.ttl == {0, 1} && !ip.later_frag", op->json_key);
+                ds_put_format(actions,
+                              "icmp4 {"
+                              "eth.dst <-> eth.src; "
+                              "icmp4.type = 11; /* Time exceeded */ "
+                              "icmp4.code = 0; /* TTL exceeded in transit */ "
+                              "%s ; ip.ttl = 254; "
+                              "outport = %s; flags.loopback = 1; output; };",
+                              ds_cstr(ip_ds), op->json_key);
+                ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
+                    32, ds_cstr(match), ds_cstr(actions), NULL,
+                    copp_meter_get(COPP_ICMP4_ERR, op->od->nbr->copp,
+                                   meter_groups),
+                    &op->nbrp->header_);
+            }
+        }
+    }
+}
+
+/* Logical router ingress table 3: IP Input for IPv4. */
+static void
 build_lrouter_ipv4_ip_input(struct ovn_port *op,
                             struct hmap *lflows,
                             struct ds *match, struct ds *actions,
@@ -14044,16 +14081,14 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
 
     /* ICMP time exceeded */
     struct ds ip_ds = DS_EMPTY_INITIALIZER;
+    add_time_exceeded_flow_for_dnat_and_snat(op, lflows, &ip_ds,
+                                             match, actions, meter_groups);
     for (int i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
         ds_clear(match);
         ds_clear(actions);
         ds_clear(&ip_ds);
-        if (is_l3dgw_port(op)) {
-            ds_put_cstr(&ip_ds, "ip4.dst <-> ip4.src");
-        } else {
-            ds_put_format(&ip_ds, "ip4.dst = ip4.src; ip4.src = %s",
-                          op->lrp_networks.ipv4_addrs[i].addr_s);
-        }
+        ds_put_format(&ip_ds, "ip4.dst = ip4.src; ip4.src = %s",
+                      op->lrp_networks.ipv4_addrs[i].addr_s);
         ds_put_format(match,
                       "inport == %s && ip4 && "
                       "ip.ttl == {0, 1} && !ip.later_frag", op->json_key);
