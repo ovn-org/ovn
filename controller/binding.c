@@ -2272,6 +2272,134 @@ consider_patch_port_for_local_datapaths(const struct sbrec_port_binding *pb,
     }
 }
 
+static bool
+handle_updated_port(struct binding_ctx_in *b_ctx_in,
+                    struct binding_ctx_out *b_ctx_out,
+                    const struct sbrec_port_binding *pb,
+                    struct hmap *qos_map_ptr)
+{
+    /* Loop to handle create and update changes only. */
+    if (sbrec_port_binding_is_deleted(pb)) {
+        return true;
+    }
+
+    update_active_pb_ras_pd(pb, b_ctx_out->local_datapaths,
+                            b_ctx_out->local_active_ports_ipv6_pd,
+                            "ipv6_prefix_delegation");
+
+    update_active_pb_ras_pd(pb, b_ctx_out->local_datapaths,
+                            b_ctx_out->local_active_ports_ras,
+                            "ipv6_ra_send_periodic");
+
+    enum en_lport_type lport_type = get_lport_type(pb);
+
+    struct binding_lport *b_lport =
+        binding_lport_find(&b_ctx_out->lbinding_data->lports,
+                           pb->logical_port);
+    if (b_lport) {
+        ovs_assert(b_lport->pb == pb);
+
+        if (b_lport->type != lport_type) {
+            b_lport->type = lport_type;
+        }
+
+        if (b_lport->lbinding) {
+            if (!local_binding_handle_stale_binding_lports(
+                    b_lport->lbinding, b_ctx_in, b_ctx_out, qos_map_ptr)) {
+                return false;
+            }
+        }
+    }
+
+    bool handled = true;
+
+    switch (lport_type) {
+    case LP_VIF:
+    case LP_CONTAINER:
+    case LP_VIRTUAL:
+        handled = handle_updated_vif_lport(pb, lport_type, b_ctx_in,
+                                           b_ctx_out, qos_map_ptr);
+        break;
+
+    case LP_LOCALPORT:
+        handled = consider_localport(pb, b_ctx_in, b_ctx_out);
+        break;
+
+    case LP_PATCH:
+        update_related_lport(pb, b_ctx_out);
+        consider_patch_port_for_local_datapaths(pb, b_ctx_in, b_ctx_out);
+        break;
+
+    case LP_VTEP:
+        update_related_lport(pb, b_ctx_out);
+        /* VTEP lports are claimed/released by ovn-controller-vteps.
+         * We are not sure what changed. */
+        b_ctx_out->non_vif_ports_changed = true;
+        break;
+
+    case LP_L2GATEWAY:
+        handled = consider_l2gw_lport(pb, b_ctx_in, b_ctx_out);
+        break;
+
+    case LP_L3GATEWAY:
+        handled = consider_l3gw_lport(pb, b_ctx_in, b_ctx_out);
+        break;
+
+    case LP_CHASSISREDIRECT:
+        handled = consider_cr_lport(pb, b_ctx_in, b_ctx_out);
+        if (!handled) {
+            break;
+        }
+        const char *distributed_port = smap_get(&pb->options,
+                                                "distributed-port");
+        if (!distributed_port) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_WARN_RL(&rl, "No distributed-port option set for "
+                         "chassisredirect port %s", pb->logical_port);
+            break;
+        }
+        const struct sbrec_port_binding *distributed_pb
+            = lport_lookup_by_name(b_ctx_in->sbrec_port_binding_by_name,
+                                   distributed_port);
+        if (!distributed_pb) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_WARN_RL(&rl, "No port binding record for distributed "
+                         "port %s referred by chassisredirect port %s",
+                         distributed_port, pb->logical_port);
+            break;
+        }
+        consider_patch_port_for_local_datapaths(distributed_pb, b_ctx_in,
+                                                b_ctx_out);
+        break;
+
+    case LP_EXTERNAL:
+        handled = consider_external_lport(pb, b_ctx_in, b_ctx_out);
+        update_ld_external_ports(pb, b_ctx_out->local_datapaths);
+        break;
+
+    case LP_LOCALNET: {
+        consider_localnet_lport(pb, b_ctx_in, b_ctx_out, qos_map_ptr);
+
+        struct shash bridge_mappings =
+            SHASH_INITIALIZER(&bridge_mappings);
+        add_ovs_bridge_mappings(b_ctx_in->ovs_table,
+                                b_ctx_in->bridge_table,
+                                &bridge_mappings);
+        update_ld_localnet_port(pb, &bridge_mappings,
+                                b_ctx_out->egress_ifaces,
+                                b_ctx_out->local_datapaths);
+        shash_destroy(&bridge_mappings);
+        break;
+    }
+
+    case LP_REMOTE:
+    case LP_UNKNOWN:
+        break;
+    }
+
+    return handled;
+}
+
 /* Returns true if the port binding changes resulted in local binding
  * updates, false otherwise.
  */
@@ -2397,125 +2525,7 @@ delete_done:
 
     SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb,
                                                b_ctx_in->port_binding_table) {
-        /* Loop to handle create and update changes only. */
-        if (sbrec_port_binding_is_deleted(pb)) {
-            continue;
-        }
-
-        update_active_pb_ras_pd(pb, b_ctx_out->local_datapaths,
-                                b_ctx_out->local_active_ports_ipv6_pd,
-                                "ipv6_prefix_delegation");
-
-        update_active_pb_ras_pd(pb, b_ctx_out->local_datapaths,
-                                b_ctx_out->local_active_ports_ras,
-                                "ipv6_ra_send_periodic");
-
-        enum en_lport_type lport_type = get_lport_type(pb);
-
-        struct binding_lport *b_lport =
-            binding_lport_find(&b_ctx_out->lbinding_data->lports,
-                               pb->logical_port);
-        if (b_lport) {
-            ovs_assert(b_lport->pb == pb);
-
-            if (b_lport->type != lport_type) {
-                b_lport->type = lport_type;
-            }
-
-            if (b_lport->lbinding) {
-                handled = local_binding_handle_stale_binding_lports(
-                    b_lport->lbinding, b_ctx_in, b_ctx_out, qos_map_ptr);
-                if (!handled) {
-                    /* Backout from the handling. */
-                    break;
-                }
-            }
-        }
-
-        switch (lport_type) {
-        case LP_VIF:
-        case LP_CONTAINER:
-        case LP_VIRTUAL:
-            handled = handle_updated_vif_lport(pb, lport_type, b_ctx_in,
-                                               b_ctx_out, qos_map_ptr);
-            break;
-
-        case LP_LOCALPORT:
-            handled = consider_localport(pb, b_ctx_in, b_ctx_out);
-            break;
-
-        case LP_PATCH:
-            update_related_lport(pb, b_ctx_out);
-            consider_patch_port_for_local_datapaths(pb, b_ctx_in, b_ctx_out);
-            break;
-
-        case LP_VTEP:
-            update_related_lport(pb, b_ctx_out);
-            /* VTEP lports are claimed/released by ovn-controller-vteps.
-             * We are not sure what changed. */
-            b_ctx_out->non_vif_ports_changed = true;
-            break;
-
-        case LP_L2GATEWAY:
-            handled = consider_l2gw_lport(pb, b_ctx_in, b_ctx_out);
-            break;
-
-        case LP_L3GATEWAY:
-            handled = consider_l3gw_lport(pb, b_ctx_in, b_ctx_out);
-            break;
-
-        case LP_CHASSISREDIRECT:
-            handled = consider_cr_lport(pb, b_ctx_in, b_ctx_out);
-            if (!handled) {
-                break;
-            }
-            const char *distributed_port = smap_get(&pb->options,
-                                                    "distributed-port");
-            if (!distributed_port) {
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-                VLOG_WARN_RL(&rl, "No distributed-port option set for "
-                             "chassisredirect port %s", pb->logical_port);
-                break;
-            }
-            const struct sbrec_port_binding *distributed_pb
-                = lport_lookup_by_name(b_ctx_in->sbrec_port_binding_by_name,
-                                       distributed_port);
-            if (!distributed_pb) {
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-                VLOG_WARN_RL(&rl, "No port binding record for distributed "
-                             "port %s referred by chassisredirect port %s",
-                             distributed_port, pb->logical_port);
-                break;
-            }
-            consider_patch_port_for_local_datapaths(distributed_pb, b_ctx_in,
-                                                    b_ctx_out);
-            break;
-
-        case LP_EXTERNAL:
-            handled = consider_external_lport(pb, b_ctx_in, b_ctx_out);
-            update_ld_external_ports(pb, b_ctx_out->local_datapaths);
-            break;
-
-        case LP_LOCALNET: {
-            consider_localnet_lport(pb, b_ctx_in, b_ctx_out, qos_map_ptr);
-
-            struct shash bridge_mappings =
-                SHASH_INITIALIZER(&bridge_mappings);
-            add_ovs_bridge_mappings(b_ctx_in->ovs_table,
-                                    b_ctx_in->bridge_table,
-                                    &bridge_mappings);
-            update_ld_localnet_port(pb, &bridge_mappings,
-                                    b_ctx_out->egress_ifaces,
-                                    b_ctx_out->local_datapaths);
-            shash_destroy(&bridge_mappings);
-            break;
-        }
-
-        case LP_REMOTE:
-        case LP_UNKNOWN:
-            break;
-        }
-
+        handled = handle_updated_port(b_ctx_in, b_ctx_out, pb, qos_map_ptr);
         if (!handled) {
             break;
         }
