@@ -22,6 +22,8 @@ northd_ovn_northd_SOURCES = \
 	northd/en-sync-sb.h \
 	northd/en-sync-from-sb.c \
 	northd/en-sync-from-sb.h \
+	northd/en-lb-data.c \
+	northd/en-lb-data.h \
 	northd/inc-proc-northd.c \
 	northd/inc-proc-northd.h \
 	northd/ipam.c \

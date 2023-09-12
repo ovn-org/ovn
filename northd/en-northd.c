@@ -20,6 +20,7 @@
 
 #include "coverage.h"
 #include "en-northd.h"
+#include "en-lb-data.h"
 #include "lib/inc-proc-eng.h"
 #include "lib/ovn-nb-idl.h"
 #include "openvswitch/list.h" /* TODO This is needed for ovn-parallel-hmap.h.
@@ -70,10 +71,6 @@ northd_get_input_data(struct engine_node *node,
         EN_OVSDB_GET(engine_get_input("NB_logical_switch", node));
     input_data->nbrec_logical_router_table =
         EN_OVSDB_GET(engine_get_input("NB_logical_router", node));
-    input_data->nbrec_load_balancer_table =
-        EN_OVSDB_GET(engine_get_input("NB_load_balancer", node));
-    input_data->nbrec_load_balancer_group_table =
-        EN_OVSDB_GET(engine_get_input("NB_load_balancer_group", node));
     input_data->nbrec_static_mac_binding_table =
         EN_OVSDB_GET(engine_get_input("NB_static_mac_binding", node));
     input_data->nbrec_chassis_template_var_table =
@@ -95,8 +92,6 @@ northd_get_input_data(struct engine_node *node,
         EN_OVSDB_GET(engine_get_input("SB_chassis", node));
     input_data->sbrec_fdb_table =
         EN_OVSDB_GET(engine_get_input("SB_fdb", node));
-    input_data->sbrec_load_balancer_table =
-        EN_OVSDB_GET(engine_get_input("SB_load_balancer", node));
     input_data->sbrec_service_monitor_table =
         EN_OVSDB_GET(engine_get_input("SB_service_monitor", node));
     input_data->sbrec_dns_table =
@@ -109,6 +104,11 @@ northd_get_input_data(struct engine_node *node,
         EN_OVSDB_GET(engine_get_input("SB_chassis_template_var", node));
     input_data->sbrec_mirror_table =
         EN_OVSDB_GET(engine_get_input("SB_mirror", node));
+
+    struct ed_type_lb_data *lb_data =
+        engine_get_input_data("lb_data", node);
+    input_data->lbs = &lb_data->lbs;
+    input_data->lbgrps = &lb_data->lbgrps;
 }
 
 void
@@ -122,6 +122,7 @@ en_northd_run(struct engine_node *node, void *data)
     northd_init(data);
 
     northd_get_input_data(node, &input_data);
+
     COVERAGE_INC(northd_run);
     stopwatch_start(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
     ovnnb_db_run(&input_data, data, eng_ctx->ovnnb_idl_txn,
@@ -192,6 +193,28 @@ northd_sb_port_binding_handler(struct engine_node *node,
         return false;
     }
 
+    return true;
+}
+
+bool
+northd_lb_data_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_lb_data *lb_data = engine_get_input_data("lb_data", node);
+
+    if (!lb_data->tracked) {
+        return false;
+    }
+
+    struct northd_data *nd = data;
+    if (!northd_handle_lb_data_changes(&lb_data->tracked_lb_data,
+                                       &nd->ls_datapaths,
+                                       &nd->lr_datapaths,
+                                       &nd->lb_datapaths_map,
+                                       &nd->lb_group_datapaths_map)) {
+        return false;
+    }
+
+    engine_set_node_state(node, EN_UPDATED);
     return true;
 }
 

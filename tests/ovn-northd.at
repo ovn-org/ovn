@@ -1287,7 +1287,8 @@ ovn-nbctl --wait=sb lsp-add sw1 sw1-p1 -- lsp-set-addresses sw1-p1 \
 "02:00:00:00:00:03 20.0.0.3"
 
 # service_monitors state online requires corresponding port_binding to be "up"
-ovn-sbctl chassis-add hv1 geneve 127.0.0.1
+ovn-sbctl chassis-add hv1 geneve 127.0.0.1 -- \
+    set chassis hv1 other_config:ct-no-masked-label=true
 ovn-sbctl lsp-bind sw0-p1 hv1
 ovn-sbctl lsp-bind sw1-p1 hv1
 wait_row_count nb:Logical_Switch_Port 1 name=sw0-p1 'up=true'
@@ -1306,7 +1307,7 @@ check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
 AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows | grep 'priority=120.*backends' | sed 's/table=..//'], 0, [dnl
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 # disabled LSPs should not be a backend of Load Balancer
@@ -1315,7 +1316,7 @@ check ovn-nbctl lsp-set-enabled sw0-p1 disabled
 AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows | grep 'priority=120.*backends' | sed 's/table=..//'], 0, [dnl
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb(backends=20.0.0.3:80);)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=20.0.0.3:80);)
 ])
 wait_row_count Service_Monitor 1
 
@@ -1324,7 +1325,7 @@ check ovn-nbctl lsp-set-enabled sw0-p1 enabled
 AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows | grep 'priority=120.*backends' | sed 's/table=..//'], 0, [dnl
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 wait_row_count Service_Monitor 2
 
@@ -1335,7 +1336,7 @@ wait_row_count Service_Monitor 0
 AT_CAPTURE_FILE([sbflows2])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows2 | grep 'priority=120.*backends' | sed 's/table=..//'], [0],
-[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Create the Load_Balancer_Health_Check again.])
@@ -1347,7 +1348,7 @@ check ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows sw0 | grep backends | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt | sed 's/table=..//'], [0], [dnl
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Get the uuid of both the service_monitor])
@@ -1357,7 +1358,7 @@ sm_sw1_p1=$(fetch_column Service_Monitor _uuid logical_port=sw1-p1)
 AT_CAPTURE_FILE([sbflows3])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows 3 | grep 'priority=120.*backends' | sed 's/table=..//'], [0],
-[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Set the service monitor for sw1-p1 to offline])
@@ -1368,7 +1369,7 @@ check ovn-nbctl --wait=sb sync
 AT_CAPTURE_FILE([sbflows4])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows4 | grep 'priority=120.*backends' | sed 's/table=..//'], [0],
-[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb(backends=10.0.0.3:80);)
+[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80);)
 ])
 
 AS_BOX([Set the service monitor for sw0-p1 to offline])
@@ -1397,7 +1398,7 @@ check ovn-nbctl --wait=sb sync
 AT_CAPTURE_FILE([sbflows7])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows7 | grep backends | grep priority=120 | sed 's/table=..//'], 0,
-[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
+[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Set the service monitor for sw1-p1 to error])
@@ -1408,7 +1409,7 @@ check ovn-nbctl --wait=sb sync
 ovn-sbctl dump-flows sw0 | grep "ip4.dst == 10.0.0.10 && tcp.dst == 80" \
 | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt | grep ls_in_lb | sed 's/table=..//'], [0], [dnl
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb(backends=10.0.0.3:80);)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80);)
 ])
 
 AS_BOX([Add one more vip to lb1])
@@ -1434,8 +1435,8 @@ AT_CAPTURE_FILE([sbflows9])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows9 | grep backends | grep priority=120 | sed 's/table=..//' | sort],
   0,
-[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb(backends=10.0.0.3:80);)
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg0[[1]] = 0; ct_lb(backends=10.0.0.3:1000);)
+[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80);)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:1000);)
 ])
 
 AS_BOX([Set the service monitor for sw1-p1 to online])
@@ -1448,8 +1449,8 @@ AT_CAPTURE_FILE([sbflows10])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows10 | grep backends | grep priority=120 | sed 's/table=..//' | sort],
   0,
-[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg0[[1]] = 0; ct_lb(backends=10.0.0.3:1000,20.0.0.3:80);)
+[  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:1000,20.0.0.3:80);)
 ])
 
 AS_BOX([Associate lb1 to sw1])
@@ -1458,8 +1459,8 @@ AT_CAPTURE_FILE([sbflows11])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw1 | tee sbflows11 | grep backends | grep priority=120 | sed 's/table=..//' | sort],
   0, [dnl
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb(backends=10.0.0.3:80,20.0.0.3:80);)
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg0[[1]] = 0; ct_lb(backends=10.0.0.3:1000,20.0.0.3:80);)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:1000,20.0.0.3:80);)
 ])
 
 AS_BOX([Now create lb2 same as lb1 but udp protocol.])
@@ -3869,7 +3870,7 @@ wait_row_count nb:Logical_Switch_Port 1 up=false name=lsp1
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([Load Balancers and lb_force_snat_ip for Gateway Routers])
 ovn_start
 
@@ -4408,7 +4409,7 @@ AT_CHECK([ovn-sbctl dump-flows sw0 | grep "ls_in_lb " | sed 's/table=../table=??
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([ovn -- ACL label usage])
 ovn_start
 
@@ -4501,7 +4502,7 @@ AT_CHECK([grep "ls_out_stateful" sw0flows | sed 's/table=../table=??/' | sort], 
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([ovn -- ct.inv usage])
 ovn_start
 
@@ -5000,7 +5001,7 @@ check_lflows 0
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([ovn -- ARP flows for unreachable addresses - NAT and LB])
 ovn_start
 
@@ -5206,7 +5207,7 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | grep "192.168.4.100" | grep -v clone
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([ovn -- LR NAT flows])
 ovn_start
 
@@ -6000,7 +6001,7 @@ AT_CHECK([ovn-sbctl dump-flows lr0 | grep "lr_in_dnat" | sort], [0], [dnl
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([Load Balancer SB duplicates])
 ovn_start
 
@@ -6310,24 +6311,16 @@ AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.
   table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
 ])
 
-AT_CHECK([grep -e "lr_in_ecmp_stateful".*commit_ecmp_nh lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
-  table=??(lr_in_ecmp_stateful), priority=100  , match=(inport == "lr0-public" && ip4.src == 1.0.0.1 && (!ct.rpl && ct.est) && sctp && reg9[[5]] == 0), action=(ct_commit { ct_label.ecmp_reply_eth = eth.src;  ct_label.ecmp_reply_port = 1;}; commit_ecmp_nh(ipv6 = false, proto = sctp); next;)
-  table=??(lr_in_ecmp_stateful), priority=100  , match=(inport == "lr0-public" && ip4.src == 1.0.0.1 && (!ct.rpl && ct.est) && tcp && reg9[[5]] == 0), action=(ct_commit { ct_label.ecmp_reply_eth = eth.src;  ct_label.ecmp_reply_port = 1;}; commit_ecmp_nh(ipv6 = false, proto = tcp); next;)
-  table=??(lr_in_ecmp_stateful), priority=100  , match=(inport == "lr0-public" && ip4.src == 1.0.0.1 && (!ct.rpl && ct.est) && udp && reg9[[5]] == 0), action=(ct_commit { ct_label.ecmp_reply_eth = eth.src;  ct_label.ecmp_reply_port = 1;}; commit_ecmp_nh(ipv6 = false, proto = udp); next;)
-  table=??(lr_in_ecmp_stateful), priority=100  , match=(inport == "lr0-public" && ip4.src == 1.0.0.1 && (ct.new && !ct.est) && sctp), action=(ct_commit { ct_label.ecmp_reply_eth = eth.src;  ct_label.ecmp_reply_port = 1;}; commit_ecmp_nh(ipv6 = false, proto = sctp); next;)
-  table=??(lr_in_ecmp_stateful), priority=100  , match=(inport == "lr0-public" && ip4.src == 1.0.0.1 && (ct.new && !ct.est) && tcp), action=(ct_commit { ct_label.ecmp_reply_eth = eth.src;  ct_label.ecmp_reply_port = 1;}; commit_ecmp_nh(ipv6 = false, proto = tcp); next;)
-  table=??(lr_in_ecmp_stateful), priority=100  , match=(inport == "lr0-public" && ip4.src == 1.0.0.1 && (ct.new && !ct.est) && udp), action=(ct_commit { ct_label.ecmp_reply_eth = eth.src;  ct_label.ecmp_reply_port = 1;}; commit_ecmp_nh(ipv6 = false, proto = udp); next;)
-])
-
-AT_CHECK([grep -e "lr_in_defrag".*chk_ecmp_nh* lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
-  table=??(lr_in_defrag       ), priority=100  , match=(inport == "lr0-public" && ip4.src == 1.0.0.1), action=(reg9[[5]] = chk_ecmp_nh_mac(); ct_next;)
-  table=??(lr_in_defrag       ), priority=100  , match=(reg7 == 0 && ip4.dst == 1.0.0.1/32), action=(reg9[[5]] = chk_ecmp_nh(); ct_next;)
+AT_CHECK([grep -e "lr_in_defrag" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_defrag       ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_defrag       ), priority=100  , match=(inport == "lr0-public" && ip4.src == 1.0.0.1), action=(ct_next;)
+  table=??(lr_in_defrag       ), priority=100  , match=(reg7 == 0 && ip4.dst == 1.0.0.1/32), action=(ct_next;)
 ])
 
 dnl The chassis was created with other_config:ct-no-masked-label=false, the flows
 dnl should be using ct_label.ecmp_reply_port.
 AT_CHECK([grep -e "lr_in_arp_resolve.*ecmp" lr0flows | sed 's/table=../table=??/'], [0], [dnl
-  table=??(lr_in_arp_resolve  ), priority=200  , match=(ct.rpl && reg9[[5]] == 1 && ct_label.ecmp_reply_port == 1), action=(push(xxreg1); xxreg1 = ct_label; eth.dst = xxreg1[[32..79]]; pop(xxreg1); next;)
+  table=??(lr_in_arp_resolve  ), priority=200  , match=(ct.rpl && ct_label.ecmp_reply_port == 1), action=(push(xxreg1); xxreg1 = ct_label; eth.dst = xxreg1[[32..79]]; pop(xxreg1); next;)
 ])
 
 dnl Simulate an ovn-controller upgrade to a version that supports
@@ -6337,7 +6330,7 @@ check ovn-sbctl set chassis ch1 other_config:ct-no-masked-label=true
 check ovn-nbctl --wait=sb sync
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CHECK([grep -e "lr_in_arp_resolve.*ecmp" lr0flows | sed 's/table=../table=??/'], [0], [dnl
-  table=??(lr_in_arp_resolve  ), priority=200  , match=(ct.rpl && reg9[[5]] == 1 && ct_mark.ecmp_reply_port == 1), action=(push(xxreg1); xxreg1 = ct_label; eth.dst = xxreg1[[32..79]]; pop(xxreg1); next;)
+  table=??(lr_in_arp_resolve  ), priority=200  , match=(ct.rpl && ct_mark.ecmp_reply_port == 1), action=(push(xxreg1); xxreg1 = ct_label; eth.dst = xxreg1[[32..79]]; pop(xxreg1); next;)
 ])
 
 # add ecmp route with wrong nexthop
@@ -6651,7 +6644,7 @@ ct_dnat /* assuming no un-dnat entry, so no change */ /* default (use --ct to cu
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([route tables -- flows])
 AT_KEYWORDS([route-tables-flows])
 ovn_start
@@ -7078,7 +7071,7 @@ AT_CHECK([grep -e 'lr_in_ip_routing   ' lrflows | grep -e 'igmp' -e 'mld' | sed 
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([ACLs after lb])
 AT_KEYWORDS([acl])
 ovn_start
@@ -7255,7 +7248,7 @@ AT_CHECK([grep -e "ls_in_stateful" lsflows | sed 's/table=../table=??/' | sort],
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([ovn-northd -- lr multiple gw ports NAT])
 AT_KEYWORDS([multiple-l3dgw-ports])
 ovn_start
@@ -7494,7 +7487,7 @@ AT_CHECK([cat lrflows | grep -e lr_in_lookup_neighbor -e lr_in_learn_neighbor | 
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([LS default ACL drop])
 AT_KEYWORDS([acl])
 
@@ -8461,7 +8454,7 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e natted -e ct_lb], [0], [dnl
 
 check ovn-nbctl --wait=sb set logical_router lr options:lb_force_snat_ip="42.42.42.1"
 AT_CHECK([ovn-sbctl lflow-list | grep lr_in_dnat], [0], [dnl
-  table=7 (lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 66.66.66.66), action=(flags.force_snat_for_lb = 1; ct_lb(backends=42.42.42.2);)
+  table=7 (lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 66.66.66.66), action=(flags.force_snat_for_lb = 1; ct_lb(backends=42.42.42.2; force_snat);)
   table=7 (lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && ct_label.natted && ct_label.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
   table=7 (lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && ct_label.natted && ct_label.skip_snat == 1), action=(flags.skip_snat_for_lb = 1; next;)
   table=7 (lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && ct_label.natted), action=(next;)
@@ -8471,7 +8464,7 @@ check ovn-nbctl remove logical_router lr options lb_force_snat_ip
 
 check ovn-nbctl --wait=sb set load_balancer lb-test options:skip_snat="true"
 AT_CHECK([ovn-sbctl lflow-list | grep lr_in_dnat], [0], [dnl
-  table=7 (lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 66.66.66.66), action=(flags.skip_snat_for_lb = 1; ct_lb(backends=42.42.42.2);)
+  table=7 (lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 66.66.66.66), action=(flags.skip_snat_for_lb = 1; ct_lb(backends=42.42.42.2; skip_snat);)
   table=7 (lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && ct_label.natted && ct_label.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
   table=7 (lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && ct_label.natted && ct_label.skip_snat == 1), action=(flags.skip_snat_for_lb = 1; next;)
   table=7 (lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && ct_label.natted), action=(next;)
@@ -9597,7 +9590,7 @@ AT_CHECK([grep -e "lr_in_defrag" -e "lr_in_dnat" lflows1], [0], [dnl
 
 check ovn-nbctl --wait=sb set logical_router lr options:lb_force_snat_ip="192.168.1.1"
 AT_CHECK([ovn-sbctl lflow-list | grep lr_in_dnat], [0], [dnl
-  table=7 (lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 192.168.0.1), action=(flags.force_snat_for_lb = 1; ct_lb(backends=192.168.1.10);)
+  table=7 (lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 192.168.0.1), action=(flags.force_snat_for_lb = 1; ct_lb(backends=192.168.1.10; force_snat);)
   table=7 (lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && ct_label.natted && ct_label.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
   table=7 (lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && ct_label.natted && ct_label.skip_snat == 1), action=(flags.skip_snat_for_lb = 1; next;)
   table=7 (lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && ct_label.natted), action=(next;)
@@ -9607,7 +9600,7 @@ check ovn-nbctl remove logical_router lr options lb_force_snat_ip
 
 check ovn-nbctl --wait=sb set load_balancer lb-test options:skip_snat="true"
 AT_CHECK([ovn-sbctl lflow-list | grep lr_in_dnat], [0], [dnl
-  table=7 (lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 192.168.0.1), action=(flags.skip_snat_for_lb = 1; ct_lb(backends=192.168.1.10);)
+  table=7 (lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 192.168.0.1), action=(flags.skip_snat_for_lb = 1; ct_lb(backends=192.168.1.10; skip_snat);)
   table=7 (lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && ct_label.natted && ct_label.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
   table=7 (lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && ct_label.natted && ct_label.skip_snat == 1), action=(flags.skip_snat_for_lb = 1; next;)
   table=7 (lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && ct_label.natted), action=(next;)
@@ -9953,6 +9946,29 @@ AT_CHECK([ovn-sbctl lflow-list sw | grep ls_out_pre_lb | grep priority=110 | gre
 AT_CLEANUP
 ])
 
+
+# This test checks the compute/recompute stats of sync_to_sb_lb engine node
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([sync_to_sb_lb incremental processing])
+ovn_start
+
+check ovn-nbctl ls-add sw
+check ovn-nbctl lsp-add sw p1
+
+check ovn-nbctl --wait=sb sync
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+
+check ovn-nbctl --wait=sb lsp-set-options p1 foo=bar
+sb_lb_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_lb recompute)
+AT_CHECK([test x$sb_lb_recomp = x0])
+
+check ovn-nbctl --wait=sb lsp-set-type p1 external
+sb_lb_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_lb recompute)
+AT_CHECK([test x$sb_lb_recomp != x0])
+
+AT_CLEANUP
+])
+
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([LSP incremental processing])
 ovn_start
@@ -10269,6 +10285,463 @@ check_column $remote_chassis_uuid Port_Binding chassis logical_port=sw0-r1
 # Set the type to router and ovn-northd should not claim it.
 check ovn-nbctl lsp-set-type sw0-r1 router
 check_column '' Port_Binding chassis logical_port=sw0-r1
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Load balancer incremental processing])
+ovn_start
+
+check_engine_stats() {
+  node=$1
+  recompute=$2
+  compute=$3
+
+  echo "__file__:__line__: Checking engine stats for node $node : recompute - \
+$recompute : compute - $compute"
+
+  node_stat=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats $node)
+  # node_stat will be of this format :
+  #     - Node: lflow - recompute: 3 - compute: 0 - abort: 0
+  node_recompute_ct=$(echo $node_stat | cut -d '-' -f2 | cut -d ':' -f2)
+  node_compute_ct=$(echo $node_stat | cut -d '-' -f3 | cut -d ':' -f2)
+
+  if [[ "$recompute" == "norecompute" ]]; then
+    # node should not be recomputed
+    echo "Expecting $node recompute count - $node_recompute_ct to be 0"
+    check test "$node_recompute_ct" -eq "0"
+  else
+    echo "Expecting $node recompute count - $node_recompute_ct not to be 0"
+    check test "$node_recompute_ct" -ne "0"
+  fi
+
+  if [[ "$compute" == "nocompute" ]]; then
+    # node should not be computed
+    echo "Expecting $node compute count - $node_compute_ct to be 0"
+    check test "$node_compute_ct" -eq "0"
+  else
+    echo "Expecting $node compute count - $node_compute_ct not to be 0"
+    check test "$node_compute_ct" -ne "0"
+  fi
+}
+
+# Test I-P for load balancers.
+# Presently ovn-northd handles I-P for NB LBs in northd_lb_data engine node
+# only.
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb lb-add lb1 10.0.0.10:80 10.0.0.3:80
+
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+
+check ovn-nbctl --wait=sb set load_balancer . options:foo=bar
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+
+check ovn-nbctl --wait=sb -- lb-add lb2 20.0.0.10:80 20.0.0.20:80 -- lb-add lb3 30.0.0.10:80 30.0.0.20:80
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+
+check ovn-nbctl --wait=sb -- lb-del lb2 -- lb-del lb3
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+
+AT_CHECK([ovn-nbctl --wait=sb \
+          -- --id=@hc create Load_Balancer_Health_Check vip="10.0.0.10\:80" \
+             options:failure_count=100 \
+          -- add Load_Balancer . health_check @hc | uuidfilt], [0], [<0>
+])
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+# Any change to load balancer health check should also result in full recompute
+# of northd node (but not northd_lb_data node)
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb set load_balancer_health_check . options:foo=bar1
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+# Delete the health check from the load balancer.  northd engine node should do a full recompute.
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb clear Load_Balancer . health_check
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl ls-add sw0
+check ovn-nbctl --wait=sb lr-add lr0
+ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+ovn-nbctl lsp-add sw0 sw0-lr0
+ovn-nbctl lsp-set-type sw0-lr0 router
+ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+ovn-nbctl --wait=sb lsp-set-options sw0-lr0 router-port=lr0-sw0
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+# Associate lb1 to sw0. There should be a full recompute of northd engine node
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+# Modify the backend of the lb1 vip
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb set load_balancer lb1 vips:'"10.0.0.10:80"'='"10.0.0.100:80"'
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Cleanup the vip of lb1.
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb clear load_Balancer lb1 vips
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Set the vips of lb1 back
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb lb-add lb1 10.0.0.10:80 10.0.0.3:80
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Add another vip to lb1
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb lb-add lb1 10.0.0.20:80 10.0.0.30:8080
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Disassociate lb1 from sw0. There should be a full recompute of northd engine node.
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb ls-lb-del sw0 lb1
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Add lb1 to lr0 and then disassociate
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-lb-add lr0 lb1
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Modify the backend of the lb1 vip
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb set load_balancer lb1 vips:'"10.0.0.10:80"'='"10.0.0.100:80"'
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Cleanup the vip of lb1.
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb clear load_Balancer lb1 vips
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Set the vips of lb1 back
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb lb-add lb1 10.0.0.10:80 10.0.0.3:80
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Add another vip to lb1
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb lb-add lb1 10.0.0.20:80 10.0.0.30:8080
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-lb-del lr0 lb1
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Test load balancer group now
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+lbg1_uuid=$(ovn-nbctl create load_balancer_group name=lbg1)
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+
+lb1_uuid=$(fetch_column nb:Load_Balancer _uuid)
+
+# Add lb to the lbg1 group
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl add load_balancer_group . load_Balancer $lb1_uuid
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl clear load_balancer_group . load_Balancer
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+# Add back lb to the lbg1 group
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl add load_balancer_group . load_Balancer $lb1_uuid
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl add logical_switch sw0 load_balancer_group $lbg1_uuid
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+# Update lb and this should result in recompute
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb set load_balancer . options:bar=foo
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+# Modify the backend of the lb1 vip
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb set load_balancer lb1 vips:'"10.0.0.10:80"'='"10.0.0.100:80"'
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Cleanup the vip of lb1.
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb clear load_Balancer lb1 vips
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Set the vips of lb1 back
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb lb-add lb1 10.0.0.10:80 10.0.0.3:80
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Add another vip to lb1
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb lb-add lb1 10.0.0.20:80 10.0.0.30:8080
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl clear logical_switch sw0 load_balancer_group
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl add logical_router lr0 load_balancer_group $lbg1_uuid
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Modify the backend of the lb1 vip
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb set load_balancer lb1 vips:'"10.0.0.10:80"'='"10.0.0.100:80"'
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Cleanup the vip of lb1.
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb clear load_Balancer lb1 vips
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Set the vips of lb1 back
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb lb-add lb1 10.0.0.10:80 10.0.0.3:80
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Add another vip to lb1
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb lb-add lb1 10.0.0.20:80 10.0.0.30:8080
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl clear logical_router lr0 load_balancer_group
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+# Add back lb group to logical switch and then delete it.
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl add logical_switch sw0 load_balancer_group $lbg1_uuid
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl clear logical_switch sw0 load_balancer_group -- \
+    destroy load_balancer_group $lbg1_uuid
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Test the scenario where a load balancer is associated to
+# a logical switch sw0 and also to a lb group lbg1 and lbg1
+# is also associated to the logical switch sw0 and logical
+# router lr1
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lb-add lb2 20.0.0.20:80 30.0.0.30:8080
+check ovn-nbctl lb-add lb3 30.0.0.20:80 30.0.0.30:8080
+check ovn-nbctl --wait=sb lb-add lb4 40.0.0.20:80 30.0.0.30:8080
+
+lb2_uuid=$(fetch_column nb:Load_Balancer _uuid name=lb2)
+lb3_uuid=$(fetch_column nb:Load_Balancer _uuid name=lb3)
+lb4_uuid=$(fetch_column nb:Load_Balancer _uuid name=lb4)
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+lbg1_uuid=$(ovn-nbctl create load_balancer_group name=lbg1)
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl set load_balancer_group . load_balancer="$lb2_uuid,$lb3_uuid,$lb4_uuid"
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl set logical_switch sw0 load_balancer_group=$lbg1_uuid
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl set logical_router lr1 load_balancer_group=$lbg1_uuid
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb ls-lb-add sw0 lb2
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb ls-lb-add sw0 lb3
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-lb-add lr1 lb1
+check ovn-nbctl --wait=sb lr-lb-add lr1 lb2
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb ls-lb-del sw0 lb2
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-lb-del lr1 lb2
+check_engine_stats lb_data norecompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Deleting lb4 should not result in lflow recompute as it is
+# only associated with logical switch sw0.
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb lb-del lb4
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Deleting lb2 should result in lflow recompute as it is
+# associated with logical router lr1 through lb group.
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb lb-del lb2
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb remove load_balancer_group . load_balancer $lb3_uuid
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 AT_CLEANUP
 ])

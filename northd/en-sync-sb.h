@@ -16,4 +16,10 @@ bool sync_to_sb_addr_set_nb_address_set_handler(struct engine_node *,
 bool sync_to_sb_addr_set_nb_port_group_handler(struct engine_node *,
                                                void *data);
 
+
+void *en_sync_to_sb_lb_init(struct engine_node *, struct engine_arg *);
+void en_sync_to_sb_lb_run(struct engine_node *, void *data);
+void en_sync_to_sb_lb_cleanup(void *data);
+bool sync_to_sb_lb_northd_handler(struct engine_node *, void *data OVS_UNUSED);
+
 #endif /* end of EN_SYNC_SB_H */

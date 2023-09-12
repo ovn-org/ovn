@@ -62,7 +62,8 @@ lflow_get_input_data(struct engine_node *node,
     lflow_input->lr_ports = &northd_data->lr_ports;
     lflow_input->ls_port_groups = &pg_data->ls_port_groups;
     lflow_input->meter_groups = &sync_meters_data->meter_groups;
-    lflow_input->lbs = &northd_data->lbs;
+    lflow_input->lb_datapaths_map = &northd_data->lb_datapaths_map;
+    lflow_input->svc_monitor_map = &northd_data->svc_monitor_map;
     lflow_input->features = &northd_data->features;
     lflow_input->ovn_internal_version_changed =
                       northd_data->ovn_internal_version_changed;

@@ -16,6 +16,7 @@
 
 #include "ovsdb-idl.h"
 
+#include "lib/ovn-sb-idl.h"
 #include "lib/ovn-util.h"
 #include "lib/ovs-atomic.h"
 #include "lib/sset.h"
@@ -28,9 +29,6 @@ struct northd_input {
     const struct nbrec_nb_global_table *nbrec_nb_global_table;
     const struct nbrec_logical_switch_table *nbrec_logical_switch_table;
     const struct nbrec_logical_router_table *nbrec_logical_router_table;
-    const struct nbrec_load_balancer_table *nbrec_load_balancer_table;
-    const struct nbrec_load_balancer_group_table
-        *nbrec_load_balancer_group_table;
     const struct nbrec_static_mac_binding_table
         *nbrec_static_mac_binding_table;
     const struct nbrec_chassis_template_var_table
@@ -45,7 +43,6 @@ struct northd_input {
     const struct sbrec_ha_chassis_group_table *sbrec_ha_chassis_group_table;
     const struct sbrec_chassis_table *sbrec_chassis_table;
     const struct sbrec_fdb_table *sbrec_fdb_table;
-    const struct sbrec_load_balancer_table *sbrec_load_balancer_table;
     const struct sbrec_service_monitor_table *sbrec_service_monitor_table;
     const struct sbrec_dns_table *sbrec_dns_table;
     const struct sbrec_ip_multicast_table *sbrec_ip_multicast_table;
@@ -54,6 +51,10 @@ struct northd_input {
     const struct sbrec_chassis_template_var_table
         *sbrec_chassis_template_var_table;
     const struct sbrec_mirror_table *sbrec_mirror_table;
+
+    /* Northd lb data node inputs*/
+    const struct hmap *lbs;
+    const struct hmap *lbgrps;
 
     /* Indexes */
     struct ovsdb_idl_index *sbrec_chassis_by_name;
@@ -105,12 +106,13 @@ struct northd_data {
     struct ovn_datapaths lr_datapaths;
     struct hmap ls_ports;
     struct hmap lr_ports;
-    struct hmap lbs;
-    struct hmap lb_groups;
+    struct hmap lb_datapaths_map;
+    struct hmap lb_group_datapaths_map;
     struct ovs_list lr_list;
     bool ovn_internal_version_changed;
     struct chassis_features features;
     struct sset svc_monitor_lsps;
+    struct hmap svc_monitor_map;
     bool change_tracked;
     struct tracked_ls_changes tracked_ls_changes;
 };
@@ -141,9 +143,10 @@ struct lflow_input {
     const struct hmap *lr_ports;
     const struct ls_port_group_table *ls_port_groups;
     const struct shash *meter_groups;
-    const struct hmap *lbs;
+    const struct hmap *lb_datapaths_map;
     const struct hmap *bfd_connections;
     const struct chassis_features *features;
+    const struct hmap *svc_monitor_map;
     bool ovn_internal_version_changed;
 };
 
@@ -337,6 +340,13 @@ bool lflow_handle_northd_ls_changes(struct ovsdb_idl_txn *ovnsb_txn,
 bool northd_handle_sb_port_binding_changes(
     const struct sbrec_port_binding_table *, struct hmap *ls_ports);
 
+struct tracked_lb_data;
+bool northd_handle_lb_data_changes(struct tracked_lb_data *,
+                                   struct ovn_datapaths *ls_datapaths,
+                                   struct ovn_datapaths *lr_datapaths,
+                                   struct hmap *lb_datapaths_map,
+                                   struct hmap *lb_group_datapaths_map);
+
 void build_bfd_table(struct ovsdb_idl_txn *ovnsb_txn,
                      const struct nbrec_bfd_table *,
                      const struct sbrec_bfd_table *,
@@ -350,4 +360,7 @@ const char *northd_get_svc_monitor_mac(void);
 
 const struct ovn_datapath *northd_get_datapath_for_port(
     const struct hmap *ls_ports, const char *port_name);
+void sync_lbs(struct ovsdb_idl_txn *, const struct sbrec_load_balancer_table *,
+              struct ovn_datapaths *ls_datapaths, struct hmap *lbs);
+
 #endif /* NORTHD_H */
