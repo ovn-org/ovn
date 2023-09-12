@@ -102,6 +102,8 @@ struct binding_ctx_out {
     struct hmap *tracked_dp_bindings;
 
     struct if_status_mgr *if_mgr;
+
+    struct sset *postponed_ports;
 };
 
 /* Local bindings. binding.c module binds the logical port (represented by
@@ -192,5 +194,13 @@ enum en_lport_type {
 };
 
 enum en_lport_type get_lport_type(const struct sbrec_port_binding *);
+
+struct sset *get_postponed_ports(void);
+
+/* Schedule any pending binding work. */
+void binding_wait(void);
+
+/* Clean up module state. */
+void binding_destroy(void);
 
 #endif /* controller/binding.h */

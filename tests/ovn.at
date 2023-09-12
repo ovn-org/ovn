@@ -13903,6 +13903,47 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([tug-of-war between two chassis for the same port])
+ovn_start
+
+ovn-nbctl ls-add ls0
+ovn-nbctl lsp-add ls0 lsp0
+
+net_add n1
+for i in 1 2; do
+    sim_add hv$i
+    as hv$i
+    ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys 192.168.0.$i
+done
+
+for i in 1 2; do
+    as hv$i
+    ovs-vsctl -- add-port br-int vif \
+              -- set Interface vif external-ids:iface-id=lsp0
+done
+
+# give controllers some time to fight for the port binding
+sleep 3
+
+# calculate the number of port claims registered by each fighting chassis
+hv1_claims=$(as hv1 grep -c 'Claiming\|Changing chassis' hv1/ovn-controller.log)
+hv2_claims=$(as hv2 grep -c 'Claiming\|Changing chassis' hv2/ovn-controller.log)
+
+echo "hv1 claimed ${hv1_claims} times"
+echo "hv2 claimed ${hv2_claims} times"
+
+# check that neither registered an outrageous number of port claims
+max_claims=10
+AT_CHECK([test "${hv1_claims}" -le "${max_claims}"], [0], [])
+AT_CHECK([test "${hv2_claims}" -le "${max_claims}"], [0], [])
+
+OVN_CLEANUP([hv1],[hv2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([options:requested-chassis with hostname])
 
 ovn_start
