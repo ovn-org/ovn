@@ -8974,6 +8974,9 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
         }
     }
 
+    struct sset snat_ips_v4 = SSET_INITIALIZER(&snat_ips_v4);
+    struct sset snat_ips_v6 = SSET_INITIALIZER(&snat_ips_v6);
+
     for (size_t i = 0; i < op->od->nbr->n_nat; i++) {
         struct ovn_nat *nat_entry = &op->od->nat_entries[i];
         const struct nbrec_nat *nat = nat_entry->nb;
@@ -8983,7 +8986,17 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
         }
 
         if (!strcmp(nat->type, "snat")) {
-            continue;
+            if (nat_entry_is_v6(nat_entry)) {
+                if (sset_contains(&snat_ips_v6, nat->external_ip)) {
+                    continue;
+                }
+                sset_add(&snat_ips_v6, nat->external_ip);
+            } else {
+                if (sset_contains(&snat_ips_v4, nat->external_ip)) {
+                    continue;
+                }
+                sset_add(&snat_ips_v4, nat->external_ip);
+            }
         }
 
         /* Check if the ovn port has a network configured on which we could
