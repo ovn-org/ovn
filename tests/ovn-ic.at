@@ -1240,12 +1240,14 @@ AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
 AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr21 | grep 192.168 |
              grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
 192.168.0.0/24 169.254.10.11
+192.168.2.0/24 169.254.10.22
 ])
 
 # Test direct routes from lr11 and lr21 were learned to lr22
 AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr22 | grep 192.168 |
              grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
 192.168.0.0/24 169.254.10.11
+192.168.1.0/24 169.254.10.21
 ])
 
 OVN_CLEANUP_IC([az1], [az2])
