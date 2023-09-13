@@ -18016,7 +18016,7 @@ collect_lr_groups_for_ha_chassis_groups(const struct sbrec_port_binding *sb,
         break;
     }
 
-    if (!lr_group) {
+    if (!lr_group || sset_is_empty(&lr_group->ha_chassis_groups)) {
         return;
     }
 
@@ -18025,8 +18025,7 @@ collect_lr_groups_for_ha_chassis_groups(const struct sbrec_port_binding *sb,
 }
 
 static void
-build_ha_chassis_group_ref_chassis(struct ovsdb_idl_index *ha_ch_grp_by_name,
-                                   struct hmapx *lr_groups,
+build_ha_chassis_group_ref_chassis(struct hmapx *lr_groups,
                                    struct shash *ha_ref_chassis_map)
 {
     struct hmapx_node *node;
@@ -18036,16 +18035,8 @@ build_ha_chassis_group_ref_chassis(struct ovsdb_idl_index *ha_ch_grp_by_name,
         const char *ha_group_name;
 
         SSET_FOR_EACH (ha_group_name, &lr_group->ha_chassis_groups) {
-            const struct sbrec_ha_chassis_group *sb_ha_chassis_grp;
-
-            sb_ha_chassis_grp = ha_chassis_group_lookup_by_name(
-                                    ha_ch_grp_by_name, ha_group_name);
-            if (!sb_ha_chassis_grp) {
-                continue;
-            }
-
             struct ha_ref_chassis_info *ref_ch_info =
-                shash_find_data(ha_ref_chassis_map, sb_ha_chassis_grp->name);
+                shash_find_data(ha_ref_chassis_map, ha_group_name);
             ovs_assert(ref_ch_info);
 
             add_to_ha_ref_chassis_info(ref_ch_info,
@@ -18082,7 +18073,6 @@ static void
 handle_port_binding_changes(struct ovsdb_idl_txn *ovnsb_txn,
                 const struct sbrec_port_binding_table *sb_pb_table,
                 const struct sbrec_ha_chassis_group_table *sb_ha_ch_grp_table,
-                struct ovsdb_idl_index *sb_ha_ch_grp_by_name,
                 struct hmap *ls_ports,
                 struct hmap *lr_ports,
                 struct shash *ha_ref_chassis_map)
@@ -18155,8 +18145,7 @@ handle_port_binding_changes(struct ovsdb_idl_txn *ovnsb_txn,
     }
 
     /* Update ha chassis group's ref_chassis if required. */
-    build_ha_chassis_group_ref_chassis(sb_ha_ch_grp_by_name, &lr_groups,
-                                       ha_ref_chassis_map);
+    build_ha_chassis_group_ref_chassis(&lr_groups, ha_ref_chassis_map);
     hmapx_destroy(&lr_groups);
 }
 
@@ -18166,7 +18155,6 @@ ovnsb_db_run(struct ovsdb_idl_txn *ovnnb_txn,
              struct ovsdb_idl_txn *ovnsb_txn,
              const struct sbrec_port_binding_table *sb_pb_table,
              const struct sbrec_ha_chassis_group_table *sb_ha_ch_grp_table,
-             struct ovsdb_idl_index *sb_ha_ch_grp_by_name,
              struct hmap *ls_ports,
              struct hmap *lr_ports)
 {
@@ -18177,8 +18165,7 @@ ovnsb_db_run(struct ovsdb_idl_txn *ovnnb_txn,
 
     struct shash ha_ref_chassis_map = SHASH_INITIALIZER(&ha_ref_chassis_map);
     handle_port_binding_changes(ovnsb_txn, sb_pb_table, sb_ha_ch_grp_table,
-                                sb_ha_ch_grp_by_name, ls_ports, lr_ports,
-                                &ha_ref_chassis_map);
+                                ls_ports, lr_ports, &ha_ref_chassis_map);
     if (ovnsb_txn) {
         update_sb_ha_group_ref_chassis(sb_ha_ch_grp_table,
                                        &ha_ref_chassis_map);
