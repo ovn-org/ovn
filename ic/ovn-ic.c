@@ -1592,9 +1592,9 @@ build_ts_routes_to_adv(struct ic_context *ctx,
 }
 
 static void
-advertise_lr_routes(struct ic_context *ctx,
-                    const struct icsbrec_availability_zone *az,
-                    struct ic_router_info *ic_lr)
+collect_lr_routes(struct ic_context *ctx,
+                  struct ic_router_info *ic_lr,
+                  struct shash *routes_ad_by_ts)
 {
     const struct nbrec_nb_global *nb_global =
         nbrec_nb_global_first(ctx->ovnnb_idl);
@@ -1605,7 +1605,7 @@ advertise_lr_routes(struct ic_context *ctx,
     struct lport_addresses ts_port_addrs;
     const struct icnbrec_transit_switch *key;
 
-    struct hmap routes_ad = HMAP_INITIALIZER(&routes_ad);
+    struct hmap *routes_ad;
     for (int i = 0; i < ic_lr->n_isb_pbs; i++) {
         isb_pb = ic_lr->isb_pbs[i];
         key = icnbrec_transit_switch_index_init_row(
@@ -1614,6 +1614,12 @@ advertise_lr_routes(struct ic_context *ctx,
         ts_name = icnbrec_transit_switch_index_find(
             ctx->icnbrec_transit_switch_by_name, key)->name;
         icnbrec_transit_switch_index_destroy_row(key);
+        routes_ad = shash_find_data(routes_ad_by_ts, ts_name);
+        if (!routes_ad) {
+            routes_ad = xzalloc(sizeof *routes_ad);
+            hmap_init(routes_ad);
+            shash_add(routes_ad_by_ts, ts_name, routes_ad);
+        }
 
         if (!extract_lsp_addresses(isb_pb->address, &ts_port_addrs)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
@@ -1625,12 +1631,10 @@ advertise_lr_routes(struct ic_context *ctx,
         }
         lrp_name = get_lrp_name_by_ts_port_name(ctx, isb_pb->logical_port);
         route_table = get_route_table_by_lrp_name(ctx, lrp_name);
-        build_ts_routes_to_adv(ctx, ic_lr, &routes_ad, &ts_port_addrs,
+        build_ts_routes_to_adv(ctx, ic_lr, routes_ad, &ts_port_addrs,
                                nb_global, route_table);
-        advertise_routes(ctx, az, ts_name, &routes_ad);
         destroy_lport_addresses(&ts_port_addrs);
     }
-    hmap_destroy(&routes_ad);
 }
 
 static void
@@ -1731,14 +1735,21 @@ route_run(struct ic_context *ctx,
     icsbrec_port_binding_index_destroy_row(isb_pb_key);
 
     struct ic_router_info *ic_lr;
+    struct shash routes_ad_by_ts = SHASH_INITIALIZER(&routes_ad_by_ts);
     HMAP_FOR_EACH_SAFE (ic_lr, node, &ic_lrs) {
-        advertise_lr_routes(ctx, az, ic_lr);
+        collect_lr_routes(ctx, ic_lr, &routes_ad_by_ts);
         sync_learned_routes(ctx, az, ic_lr);
         free(ic_lr->isb_pbs);
         hmap_destroy(&ic_lr->routes_learned);
         hmap_remove(&ic_lrs, &ic_lr->node);
         free(ic_lr);
     }
+    struct shash_node *node;
+    SHASH_FOR_EACH (node, &routes_ad_by_ts) {
+        advertise_routes(ctx, az, node->name, node->data);
+        hmap_destroy(node->data);
+    }
+    shash_destroy_free_data(&routes_ad_by_ts);
     hmap_destroy(&ic_lrs);
 }
 

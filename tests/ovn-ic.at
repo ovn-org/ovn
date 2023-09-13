@@ -1166,3 +1166,89 @@ AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr12 | grep dst-ip | sort], [0], [d
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- route sync -- multiple logical routers])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+
+    # Enable route learning at AZ level
+    ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level
+    ovn-nbctl set nb_global . options:ic-route-adv=true
+done
+
+# Create new transit switches and LRs. Test topology is next:
+#
+# logical router (lr11) - transit switch (ts1) - logical router (lr21)
+#                                              \- logical router (lr22)
+#
+# each LR has one connected subnet except TS port
+
+
+# create lr11, lr21, lr22, ts1 and connect them
+ovn-ic-nbctl ts-add ts1
+
+ovn_as az1
+
+lr=lr11
+ovn-nbctl lr-add $lr
+
+lrp=lrp-$lr-ts1
+lsp=lsp-ts1-$lr
+# Create LRP and connect to TS
+ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a1:01 169.254.10.11/24
+ovn-nbctl lsp-add ts1 $lsp \
+        -- lsp-set-addresses $lsp router \
+        -- lsp-set-type $lsp router \
+        -- lsp-set-options $lsp router-port=$lrp
+
+ovn_as az2
+for i in 1 2; do
+    lr=lr2$i
+    ovn-nbctl lr-add $lr
+
+    lrp=lrp-$lr-ts1
+    lsp=lsp-ts1-$lr
+    # Create LRP and connect to TS
+    ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a2:0$i 169.254.10.2$i/24
+    ovn-nbctl lsp-add ts1 $lsp \
+            -- lsp-set-addresses $lsp router \
+            -- lsp-set-type $lsp router \
+            -- lsp-set-options $lsp router-port=$lrp
+done
+
+
+# Create directly-connected routes
+ovn_as az1 ovn-nbctl lrp-add lr11 lrp-lr11 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
+ovn_as az2 ovn-nbctl lrp-add lr21 lrp-lr21 aa:aa:aa:aa:bc:01 "192.168.1.1/24"
+ovn_as az2 ovn-nbctl lrp-add lr22 lrp-lr22 aa:aa:aa:aa:bc:02 "192.168.2.1/24"
+
+# Test direct routes from lr21 and lr22 were learned to lr11
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.1.0/24 169.254.10.21
+192.168.2.0/24 169.254.10.22
+])
+
+# Test direct routes from lr11 and lr22 were learned to lr21
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr21 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.10.11
+])
+
+# Test direct routes from lr11 and lr21 were learned to lr22
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr22 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.10.11
+])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])
