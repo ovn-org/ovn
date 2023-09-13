@@ -801,7 +801,7 @@ struct lrouter_group {
     /* Set of ha_chassis_groups which are associated with the router dps. */
     struct sset ha_chassis_groups;
     /* Temporary storage for chassis references while computing HA groups. */
-    struct hmapx tmp_ha_chassis;
+    struct hmapx tmp_ha_ref_chassis;
 };
 
 static struct ovn_datapath *
@@ -9064,7 +9064,7 @@ build_lrouter_groups(struct hmap *lr_ports, struct ovs_list *lr_list)
             od->lr_group->router_dps[0] = od;
             od->lr_group->n_router_dps = 1;
             sset_init(&od->lr_group->ha_chassis_groups);
-            hmapx_init(&od->lr_group->tmp_ha_chassis);
+            hmapx_init(&od->lr_group->tmp_ha_ref_chassis);
             build_lrouter_groups__(lr_ports, od);
         }
     }
@@ -17619,7 +17619,7 @@ destroy_datapaths_and_ports(struct ovn_datapaths *ls_datapaths,
 
             free(lr_group->router_dps);
             sset_destroy(&lr_group->ha_chassis_groups);
-            hmapx_destroy(&lr_group->tmp_ha_chassis);
+            hmapx_destroy(&lr_group->tmp_ha_ref_chassis);
             free(lr_group);
         }
     }
@@ -17978,27 +17978,28 @@ update_sb_ha_group_ref_chassis(
     hmap_destroy(&ha_ch_grps);
 }
 
-/* This function checks if the port binding 'sb' references
- * a HA chassis group.
- * Eg. Suppose a distributed logical router port - lr0-public
- * uses an HA chassis group - hagrp1 and if hagrp1 has 3 ha
- * chassis - gw1, gw2 and gw3.
- * Or
- * If the distributed logical router port - lr0-public has
- * 3 gateway chassis - gw1, gw2 and gw3.
- * ovn-northd creates ha chassis group - hagrp1 in SB DB
- * and adds gw1, gw2 and gw3 to its ha_chassis list.
+/* This function and the next function build_ha_chassis_group_ref_chassis
+ * build the reference chassis 'ref_chassis' for each HA chassis group.
  *
- * If port binding 'sb' represents a logical switch port 'p1'
- * and its logical switch is connected to the logical router
- * 'lr0' directly or indirectly (i.e p1's logical switch is
- *  connected to a router 'lr1' and 'lr1' has a path to lr0 via
- *  transit logical switches) and 'sb' is claimed by chassis - 'c1' then
- * this function adds c1 to the list of the reference chassis
- *  - 'ref_chassis' of hagrp1.
+ * Suppose a distributed logical router port - lr0-public uses an HA chassis
+ * group - hagrp1 and if hagrp1 has 3 ha chassis - gw1, gw2 and gw3.
+ * Or
+ * If the distributed logical router port - lr0-public has 3 gateway chassis -
+ * gw1, gw2 and gw3.
+ *
+ * ovn-northd creates ha chassis group - hagrp1 in SB DB and adds gw1, gw2 and
+ * gw3 to its ha_chassis list.
+ *
+ * If port binding 'sb' represents a logical switch port 'p1' and its logical
+ * switch is connected to the logical router 'lr0' directly or indirectly (i.e
+ * p1's logical switch is connected to a router 'lr1' and 'lr1' has a path to
+ * lr0 via transit logical switches) and 'sb' is claimed by chassis - 'c1' then
+ * this function adds c1 to the 'tmp_ha_ref_chassis' of lr_group, and later the
+ * function build_ha_chassis_group_ref_chassis will add these chassis to the
+ * list of the reference chassis - 'ref_chassis' of hagrp1.
  */
 static void
-collect_lb_groups_for_ha_chassis_groups(const struct sbrec_port_binding *sb,
+collect_lr_groups_for_ha_chassis_groups(const struct sbrec_port_binding *sb,
                                         struct ovn_port *op,
                                         struct hmapx *lr_groups)
 {
@@ -18020,7 +18021,7 @@ collect_lb_groups_for_ha_chassis_groups(const struct sbrec_port_binding *sb,
     }
 
     hmapx_add(lr_groups, lr_group);
-    hmapx_add(&lr_group->tmp_ha_chassis, sb->chassis);
+    hmapx_add(&lr_group->tmp_ha_ref_chassis, sb->chassis);
 }
 
 static void
@@ -18047,11 +18048,12 @@ build_ha_chassis_group_ref_chassis(struct ovsdb_idl_index *ha_ch_grp_by_name,
                 shash_find_data(ha_ref_chassis_map, sb_ha_chassis_grp->name);
             ovs_assert(ref_ch_info);
 
-            add_to_ha_ref_chassis_info(ref_ch_info, &lr_group->tmp_ha_chassis);
+            add_to_ha_ref_chassis_info(ref_ch_info,
+                                       &lr_group->tmp_ha_ref_chassis);
         }
 
-        hmapx_destroy(&lr_group->tmp_ha_chassis);
-        hmapx_init(&lr_group->tmp_ha_chassis);
+        hmapx_destroy(&lr_group->tmp_ha_ref_chassis);
+        hmapx_init(&lr_group->tmp_ha_ref_chassis);
     }
 }
 
@@ -18148,7 +18150,7 @@ handle_port_binding_changes(struct ovsdb_idl_txn *ovnsb_txn,
         if (build_ha_chassis_ref && ovnsb_txn && sb->chassis) {
             /* Check and collect the chassis which has claimed this 'sb'
              * in relation to LR groups. */
-            collect_lb_groups_for_ha_chassis_groups(sb, op, &lr_groups);
+            collect_lr_groups_for_ha_chassis_groups(sb, op, &lr_groups);
         }
     }
 
