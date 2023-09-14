@@ -833,10 +833,18 @@ ovn_trace_client() {
 # ovs-appctl netdev-dummy/receive $vif $packet
 #
 fmt_pkt() {
-    echo "from scapy.all import *; \
-          import binascii; \
-          out = binascii.hexlify(raw($1)); \
-          print(out.decode())" | $PYTHON3
+    ctlfile=$ovs_base/scapy.ctl
+    if [[ ! -e $ctlfile ]]; then
+        start_scapy_server
+    fi
+    echo $(ovs-appctl -t $ctlfile payload "$1")
+}
+
+start_scapy_server() {
+    pidfile=$ovs_base/scapy.pid
+    ctlfile=$ovs_base/scapy.ctl
+    "$top_srcdir"/tests/scapy-server --pidfile=$pidfile --unixctl=$ctlfile --detach
+    on_exit "test -e \"$pidfile\" && ovs-appctl -t $ctlfile exit"
 }
 
 sleep_sb() {

@@ -310,7 +310,8 @@ CHECK_PYFILES = \
 	tests/test-l7.py \
 	tests/uuidfilt.py \
 	tests/test-tcp-rst.py \
-	tests/check_acl_log.py
+	tests/check_acl_log.py \
+	tests/scapy-server
 
 EXTRA_DIST += $(CHECK_PYFILES)
 PYCOV_CLEAN_FILES += $(CHECK_PYFILES:.py=.py,cover) .coverage
