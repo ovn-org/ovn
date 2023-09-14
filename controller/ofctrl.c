@@ -1276,6 +1276,37 @@ ofctrl_add_flow_metered(struct ovn_desired_flow_table *desired_flows,
                                       meter_id, as_info, true);
 }
 
+struct ofpact_ref {
+    struct hmap_node hmap_node;
+    struct ofpact *ofpact;
+};
+
+static struct ofpact_ref *
+ofpact_ref_find(const struct hmap *refs, const struct ofpact *ofpact)
+{
+    uint32_t hash = hash_bytes(ofpact, ofpact->len, 0);
+
+    struct ofpact_ref *ref;
+    HMAP_FOR_EACH_WITH_HASH (ref, hmap_node, hash, refs) {
+        if (ofpacts_equal(ref->ofpact, ref->ofpact->len,
+                          ofpact, ofpact->len)) {
+            return ref;
+        }
+    }
+
+    return NULL;
+}
+
+static void
+ofpact_refs_destroy(struct hmap *refs)
+{
+    struct ofpact_ref *ref;
+    HMAP_FOR_EACH_POP (ref, hmap_node, refs) {
+        free(ref);
+    }
+    hmap_destroy(refs);
+}
+
 /* Either add a new flow, or append actions on an existing flow. If the
  * flow existed, a new link will also be created between the new sb_uuid
  * and the existing flow. */
@@ -1295,6 +1326,21 @@ ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
                            meter_id);
     existing = desired_flow_lookup_conjunctive(desired_flows, &f->flow);
     if (existing) {
+        struct hmap existing_conj = HMAP_INITIALIZER(&existing_conj);
+
+        struct ofpact *ofpact;
+        OFPACT_FOR_EACH (ofpact, existing->flow.ofpacts,
+                         existing->flow.ofpacts_len) {
+            if (ofpact->type != OFPACT_CONJUNCTION) {
+                continue;
+            }
+
+            struct ofpact_ref *ref = xmalloc(sizeof *ref);
+            ref->ofpact = ofpact;
+            uint32_t hash = hash_bytes(ofpact, ofpact->len, 0);
+            hmap_insert(&existing_conj, &ref->hmap_node, hash);
+        }
+
         /* There's already a flow with this particular match and action
          * 'conjunction'. Append the action to that flow rather than
          * adding a new flow.
@@ -1304,7 +1350,15 @@ ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
         ofpbuf_use_stub(&compound, compound_stub, sizeof(compound_stub));
         ofpbuf_put(&compound, existing->flow.ofpacts,
                    existing->flow.ofpacts_len);
-        ofpbuf_put(&compound, f->flow.ofpacts, f->flow.ofpacts_len);
+
+        OFPACT_FOR_EACH (ofpact, f->flow.ofpacts, f->flow.ofpacts_len) {
+            if (ofpact->type != OFPACT_CONJUNCTION ||
+                !ofpact_ref_find(&existing_conj, ofpact)) {
+                ofpbuf_put(&compound, ofpact, OFPACT_ALIGN(ofpact->len));
+            }
+        }
+
+        ofpact_refs_destroy(&existing_conj);
 
         mem_stats.desired_flow_usage -= desired_flow_size(existing);
         free(existing->flow.ofpacts);
