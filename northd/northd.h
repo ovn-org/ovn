@@ -83,22 +83,44 @@ struct ovn_datapaths {
     struct ovn_datapath **array;
 };
 
-/* Track what's changed for a single LS.
- * Now only track port changes. */
-struct ls_change {
-    struct ovs_list list_node;
-    struct ovn_datapath *od;
-    struct ovs_list added_ports;
-    struct ovs_list deleted_ports;
-    struct ovs_list updated_ports;
-    bool had_only_router_ports;
+struct tracked_ovn_ports {
+    /* tracked created ports.
+     * hmapx node data is 'struct ovn_port *' */
+    struct hmapx created;
+
+    /* tracked updated ports.
+     * hmapx node data is 'struct ovn_port *' */
+    struct hmapx updated;
+
+    /* tracked deleted ports.
+     * hmapx node data is 'struct ovn_port *' */
+    struct hmapx deleted;
 };
 
-/* Track what's changed for logical switches.
- * Now only track updated ones (added or deleted may be supported in the
- * future). */
-struct tracked_ls_changes {
-    struct ovs_list updated; /* Contains struct ls_change */
+struct tracked_lbs {
+    /* Tracked created or updated load balancers.
+     * hmapx node data is 'struct ovn_lb_datapaths' */
+    struct hmapx crupdated;
+
+    /* Tracked deleted lbs.
+     * hmapx node data is 'struct ovn_lb_datapaths' */
+    struct hmapx deleted;
+};
+
+enum northd_tracked_data_type {
+    NORTHD_TRACKED_NONE,
+    NORTHD_TRACKED_PORTS = (1 << 0),
+    NORTHD_TRACKED_LBS   = (1 << 1),
+};
+
+/* Track what's changed in the northd engine node.
+ * Now only tracks ovn_ports (of vif type) - created, updated
+ * and deleted. */
+struct northd_tracked_data {
+    /* Indicates the type of data tracked.  One or all of NORTHD_TRACKED_*. */
+    enum northd_tracked_data_type type;
+    struct tracked_ovn_ports trk_lsps;
+    struct tracked_lbs trk_lbs;
 };
 
 struct northd_data {
@@ -114,10 +136,9 @@ struct northd_data {
     struct chassis_features features;
     struct sset svc_monitor_lsps;
     struct hmap svc_monitor_map;
-    bool change_tracked;
-    struct tracked_ls_changes tracked_ls_changes;
-    bool lb_changed; /* Indicates if load balancers changed or association of
-                      * load balancer to logical switch/router changed. */
+
+    /* Change tracking data. */
+    struct northd_tracked_data trk_data;
 };
 
 struct lflow_data {
@@ -338,9 +359,10 @@ void northd_indices_create(struct northd_data *data,
 void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
                   struct lflow_input *input_data,
                   struct hmap *lflows);
-bool lflow_handle_northd_ls_changes(struct ovsdb_idl_txn *ovnsb_txn,
-                                    struct tracked_ls_changes *,
-                                    struct lflow_input *, struct hmap *lflows);
+bool lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
+                                      struct tracked_ovn_ports *,
+                                      struct lflow_input *,
+                                      struct hmap *lflows);
 bool northd_handle_sb_port_binding_changes(
     const struct sbrec_port_binding_table *, struct hmap *ls_ports);
 
@@ -349,7 +371,8 @@ bool northd_handle_lb_data_changes(struct tracked_lb_data *,
                                    struct ovn_datapaths *ls_datapaths,
                                    struct ovn_datapaths *lr_datapaths,
                                    struct hmap *lb_datapaths_map,
-                                   struct hmap *lbgrp_datapaths_map);
+                                   struct hmap *lbgrp_datapaths_map,
+                                   struct northd_tracked_data *);
 
 void build_bfd_table(struct ovsdb_idl_txn *ovnsb_txn,
                      const struct nbrec_bfd_table *,
@@ -372,6 +395,23 @@ void sync_lbs(struct ovsdb_idl_txn *, const struct sbrec_load_balancer_table *,
 bool check_sb_lb_duplicates(const struct sbrec_load_balancer_table *);
 
 void sync_pbs(struct ovsdb_idl_txn *, struct hmap *ls_ports);
-bool sync_pbs_for_northd_ls_changes(struct tracked_ls_changes *);
+bool sync_pbs_for_northd_changed_ovn_ports( struct tracked_ovn_ports *);
+
+static inline bool
+northd_has_tracked_data(struct northd_tracked_data *trk_nd_changes) {
+    return trk_nd_changes->type != NORTHD_TRACKED_NONE;
+}
+
+static inline bool
+northd_has_lbs_in_tracked_data(struct northd_tracked_data *trk_nd_changes)
+{
+    return trk_nd_changes->type & NORTHD_TRACKED_LBS;
+}
+
+static inline bool
+northd_has_lsps_in_tracked_data(struct northd_tracked_data *trk_nd_changes)
+{
+    return trk_nd_changes->type & NORTHD_TRACKED_PORTS;
+}
 
 #endif /* NORTHD_H */

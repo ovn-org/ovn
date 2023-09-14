@@ -10656,9 +10656,8 @@ check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 lbg1_uuid=$(ovn-nbctl --wait=sb create load_balancer_group name=lbg1)
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
-check_engine_stats lflow recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
-
+check_engine_stats lflow norecompute nocompute
+check_engine_stats sync_to_sb_lb norecompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 
@@ -10686,7 +10685,6 @@ check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_lb recompute nocompute
-
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
@@ -10834,8 +10832,8 @@ check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 lbg1_uuid=$(ovn-nbctl --wait=sb create load_balancer_group name=lbg1)
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
-check_engine_stats lflow recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats lflow norecompute nocompute
+check_engine_stats sync_to_sb_lb norecompute nocompute
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb set load_balancer_group . load_balancer="$lb2_uuid,$lb3_uuid,$lb4_uuid"

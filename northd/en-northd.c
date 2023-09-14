@@ -171,7 +171,7 @@ northd_nb_logical_switch_handler(struct engine_node *node,
         return false;
     }
 
-    if (nd->change_tracked) {
+    if (northd_has_lsps_in_tracked_data(&nd->trk_data)) {
         engine_set_node_state(node, EN_UPDATED);
     }
 
@@ -209,10 +209,6 @@ northd_nb_logical_router_handler(struct engine_node *node,
         return false;
     }
 
-    if (nd->change_tracked) {
-        engine_set_node_state(node, EN_UPDATED);
-    }
-
     return true;
 }
 
@@ -230,15 +226,15 @@ northd_lb_data_handler(struct engine_node *node, void *data)
                                        &nd->ls_datapaths,
                                        &nd->lr_datapaths,
                                        &nd->lb_datapaths_map,
-                                       &nd->lb_group_datapaths_map)) {
+                                       &nd->lb_group_datapaths_map,
+                                       &nd->trk_data)) {
         return false;
     }
 
-    /* Indicate the depedendant engine nodes that load balancer/group
-     * related data has changed (including association to logical
-     * switch/router). */
-    nd->lb_changed = true;
-    engine_set_node_state(node, EN_UPDATED);
+    if (northd_has_lbs_in_tracked_data(&nd->trk_data)) {
+        engine_set_node_state(node, EN_UPDATED);
+    }
+
     return true;
 }
 

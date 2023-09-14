@@ -236,7 +236,8 @@ sync_to_sb_lb_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     struct northd_data *nd = engine_get_input_data("northd", node);
 
-    if (!nd->change_tracked || nd->lb_changed) {
+    if (!northd_has_tracked_data(&nd->trk_data) ||
+            northd_has_lbs_in_tracked_data(&nd->trk_data)) {
         /* Return false if no tracking data or if lbs changed. */
         return false;
     }
@@ -306,11 +307,13 @@ sync_to_sb_pb_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
     }
 
     struct northd_data *nd = engine_get_input_data("northd", node);
-    if (!nd->change_tracked) {
+    if (!northd_has_tracked_data(&nd->trk_data) ||
+            northd_has_lbs_in_tracked_data(&nd->trk_data)) {
+        /* Return false if no tracking data or if lbs changed. */
         return false;
     }
 
-    if (!sync_pbs_for_northd_ls_changes(&nd->tracked_ls_changes)) {
+    if (!sync_pbs_for_northd_changed_ovn_ports(&nd->trk_data.trk_lsps)) {
         return false;
     }
 

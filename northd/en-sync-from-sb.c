@@ -65,7 +65,7 @@ sync_from_sb_northd_handler(struct engine_node *node,
                             void *data OVS_UNUSED)
 {
     struct northd_data *nd = engine_get_input_data("northd", node);
-    if (nd->change_tracked) {
+    if (northd_has_tracked_data(&nd->trk_data)) {
         /* So far the changes tracked in northd don't impact this node.
          *
          * In particular, for the LS related changes, the only field this node
