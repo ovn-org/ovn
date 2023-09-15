@@ -6226,6 +6226,12 @@ pinctrl_handle_put_nd_ra_opts(
 
     /* Set the IPv6 payload length and calculate the ICMPv6 checksum. */
     struct ovs_16aligned_ip6_hdr *nh = dp_packet_l3(&pkt_out);
+
+    /* Set the source to "ff02::1" if the original source is "::". */
+    if (!memcmp(&nh->ip6_src, &in6addr_any, sizeof in6addr_any)) {
+        memcpy(&nh->ip6_src, &in6addr_all_hosts, sizeof in6addr_all_hosts);
+    }
+
     nh->ip6_plen = htons(userdata->size);
     struct ovs_ra_msg *ra = dp_packet_l4(&pkt_out);
     ra->icmph.icmp6_cksum = 0;

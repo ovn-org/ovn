@@ -12643,76 +12643,122 @@ ovs-vsctl -- add-port br-int hv1-vif3 -- \
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
+n_resume=1
+
 # Make sure that ovn-controller has installed the corresponding OF Flow.
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int | grep -c "ipv6_dst=ff02::2,nw_ttl=255,icmp_type=133,icmp_code=0"`])
 
 # This shell function sends a Router Solicitation packet.
-# test_ipv6_ra INPORT SRC_MAC SRC_LLA ADDR_MODE MTU RA_PREFIX_OPT RDNSS DNSSL ROUTE_INFO
+# test_ipv6_ra INPORT SRC_MAC SRC_LLA RA_OPT MTU PREFIX RDNSS DNSSL ROUTES
 test_ipv6_ra() {
-    local inport=$1 src_mac=$2 src_lla=$3 addr_mode=$4 mtu=$5 prefix_opt=$6
-    local rdnss=$7 dnssl=$8 route_info=$9
-    local request=333300000002${src_mac}86dd6000000000103aff${src_lla}ff02000000000000000000000000000285000efc000000000101${src_mac}
+    local inport=$1 src_mac=$2 src_ip=$3 ra=$4 mtu=$5 prefix=$6
+    local rdnss=$7 dnssl=$8 routes=$9
 
-    local len=24
-    local mtu_opt=""
-    if test $mtu != 0; then
-        len=`expr $len + 8`
-        mtu_opt=05010000${mtu}
+    local request=$(fmt_pkt "Ether(dst='33:33:00:00:00:02', src='${src_mac}')/ \
+                             IPv6(dst='ff02::2', src='${src_ip}')/ \
+                             ICMPv6ND_RS()/ \
+                             ICMPv6NDOptSrcLLAddr(lladdr='${src_mac}')")
+
+    local reply_dst=$src_ip
+    if test "${reply_dst}" = "::"; then
+        reply_dst="ff02::1"
     fi
 
-    if test ${#rdnss} != 0; then
-        len=`expr $len + ${#rdnss} / 2`
+    local rep_scapy="Ether(dst='${src_mac}', src='fa:16:3e:00:00:01')/ \
+                     IPv6(dst='${reply_dst}', src='fe80::f816:3eff:fe00:1')/ \
+                     ${ra}/ \
+                     ICMPv6NDOptSrcLLAddr(lladdr='fa:16:3e:00:00:01')"
+
+    if test "${mtu}" != "0"; then
+        rep_scapy="${rep_scapy}/ICMPv6NDOptMTU(mtu=${mtu})"
     fi
 
-    if test ${#dnssl} != 0; then
-        len=`expr $len + ${#dnssl} / 2`
+    if test -n "${rdnss}"; then
+        rep_scapy="${rep_scapy}/ICMPv6NDOptRDNSS(dns=[['${rdnss}']])"
     fi
 
-    if test ${#route_info} != 0; then
-        len=`expr $len + ${#route_info} / 2`
+    if test -n "${dnssl}"; then
+        rep_scapy="${rep_scapy}/ICMPv6NDOptDNSSL(searchlist=[['${dnssl}']])"
     fi
 
-    if test ${#prefix_opt} != 0; then
-        prefix_opt=${prefix_opt}fdad1234567800000000000000000000
-        len=`expr $len + ${#prefix_opt} / 2`
+    if test -n "${routes}"; then
+        rep_scapy="${rep_scapy}/${routes}"
     fi
 
-    len=$(printf "%x" $len)
-    local lrp_mac=fa163e000001
-    local lrp_lla=fe80000000000000f8163efffe000001
-    local reply=${src_mac}${lrp_mac}86dd6000000000${len}3aff${lrp_lla}${src_lla}8600XXXXff${addr_mode}ffff00000000000000000101${lrp_mac}${mtu_opt}${rdnss}${dnssl}${route_info}${prefix_opt}
+    if test -n "${prefix}"; then
+        local a_flag=$(echo $ra | grep -vc "M=1")
+        rep_scapy="${rep_scapy}/ICMPv6NDOptPrefixInfo(prefix='${prefix}', A=${a_flag})"
+    fi
+
+    local reply=$(fmt_pkt "${rep_scapy}")
     echo $reply >> $inport.expected
 
     as hv1 ovs-appctl netdev-dummy/receive hv1-vif${inport} $request
+
+    OVS_WAIT_UNTIL([test $n_resume = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+    n_resume=$((n_resume + 1))
+}
+
+check_packets() {
+    local port=$1
+
+    $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif$port-tx.pcap > $port.packets
+    # Skipping UDP checksum
+    cat $port.expected | cut -c 1-112,117- > expout
+    AT_CHECK([cat $port.packets | cut -c 1-112,117- ], [0], [expout])
+
+    rm $port.packets
+    rm $port.expected
+
+    reset_pcap_file hv1-vif1 hv1/vif1
+    reset_pcap_file hv1-vif2 hv1/vif2
+    reset_pcap_file hv1-vif3 hv1/vif3
+}
+
+prepare_ra_opt() {
+    local mode=$1 priority=$2
+
+    if test "${mode}" = "stateful"; then
+        echo "ICMPv6ND_RA(chlim=255, routerlifetime=65535, M=1, prf=${priority})"
+    elif test "${mode}" = "stateless"; then
+        echo "ICMPv6ND_RA(chlim=255, routerlifetime=65535, O=1, prf=${priority})"
+    else
+        echo "ICMPv6ND_RA(chlim=255, routerlifetime=65535, prf=${priority})"
+    fi
+}
+
+prepare_route_opt() {
+    local prefix=$1 priority=$2 plen=$3
+
+    local len=2
+    if test $plen -gt 64; then
+        len=3
+    fi
+
+    echo "ICMPv6NDOptRouteInfo(len=$len, prf=${priority}, prefix='${prefix}', plen=$plen)"
 }
 
 AT_CAPTURE_FILE([ofctl_monitor0.log])
 as hv1 ovs-ofctl monitor br-int resume --detach --no-chdir \
 --pidfile=ovs-ofctl0.pid 2> ofctl_monitor0.log
 
+prefix="fdad:1234:5678::"
+
 # MTU is not set and the address mode is set to slaac
-addr_mode=00
-default_prefix_option_config=030440c0ffffffffffffffff00000000
-src_mac=fa163e000002
-src_lla=fe80000000000000f8163efffe000002
-test_ipv6_ra 1 $src_mac $src_lla $addr_mode 0 $default_prefix_option_config
+ra=$(prepare_ra_opt "" 0)
+src_mac="fa:16:3e:00:00:02"
+src_lla="fe80::f816:3eff:fe00:2"
 
-# NXT_RESUME should be 1.
-OVS_WAIT_UNTIL([test 1 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+test_ipv6_ra 1 $src_mac $src_lla "$ra" 0 $prefix "" "" ""
+check_packets 1
 
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap  > 1.packets
+# Check with RA with src being "::".
+ovn-nbctl --wait=hv lsp-set-port-security lp1 ""
 
-cat 1.expected | cut -c -112 > expout
-AT_CHECK([cat 1.packets | cut -c -112], [0], [expout])
+test_ipv6_ra 1 $src_mac "::" "$ra" 0 $prefix "" "" ""
+check_packets 1
 
-# Skipping the ICMPv6 checksum.
-cat 1.expected | cut -c 117- > expout
-AT_CHECK([cat 1.packets | cut -c 117-], [0], [expout])
-
-rm -f *.expected
-reset_pcap_file hv1-vif1 hv1/vif1
-reset_pcap_file hv1-vif2 hv1/vif2
-reset_pcap_file hv1-vif3 hv1/vif3
+ovn-nbctl --wait=hv lsp-set-port-security lp1 "fa:16:3e:00:00:02 10.0.0.12 fdad:1234:5678:0:f816:3eff:fe:2"
 
 # Set the MTU to 1500, send_periodic to false, preference to LOW
 ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:mtu=1500
@@ -12726,33 +12772,14 @@ ovn-nbctl --wait=hv set Logical_Router_port lrp0 ipv6_ra_configs:route_info=HIGH
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int | grep -c "ipv6_dst=ff02::2,nw_ttl=255,icmp_type=133,icmp_code=0"`])
 
 # addr_mode byte also includes router preference information
-addr_mode=18
-default_prefix_option_config=030440c0ffffffffffffffff00000000
-src_mac=fa163e000003
-src_lla=fe80000000000000f8163efffe000003
-mtu=000005dc
-rdnss=19030000ffffffff10000000000000000000000000000011
-dnssl=1f030000ffffffff02616102626202636300000000000000
-route_info=18023008ffffffff100100000000000018036018ffffffff10020000000000000000000000000000
+ra=$(prepare_ra_opt "" 3)
+routes=$(prepare_route_opt '1001::' 1 48)
+routes="${routes}/$(prepare_route_opt '1002::' 3 96)"
+src_mac="fa:16:3e:00:00:03"
+src_lla="fe80::f816:3eff:fe00:3"
 
-test_ipv6_ra 2 $src_mac $src_lla $addr_mode $mtu $default_prefix_option_config $rdnss $dnssl $route_info
-
-# NXT_RESUME should be 2.
-OVS_WAIT_UNTIL([test 2 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap  > 2.packets
-
-cat 2.expected | cut -c -112 > expout
-AT_CHECK([cat 2.packets | cut -c -112], [0], [expout])
-
-# Skipping the ICMPv6 checksum.
-cat 2.expected | cut -c 117- > expout
-AT_CHECK([cat 2.packets | cut -c 117-], [0], [expout])
-
-rm -f *.expected
-reset_pcap_file hv1-vif1 hv1/vif1
-reset_pcap_file hv1-vif2 hv1/vif2
-reset_pcap_file hv1-vif3 hv1/vif3
+test_ipv6_ra 2 $src_mac $src_lla "$ra" 1500 $prefix "1000::11" "aa.bb.cc" "$routes"
+check_packets 2
 
 # Set the address mode to dhcpv6_stateful, router_preference to HIGH
 ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:address_mode=dhcpv6_stateful
@@ -12763,30 +12790,12 @@ ovn-nbctl --wait=hv remove Logical_Router_Port lrp0 ipv6_ra_configs route_info
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int | grep -c "ipv6_dst=ff02::2,nw_ttl=255,icmp_type=133,icmp_code=0"`])
 
 # addr_mode byte also includes router preference information
-addr_mode=88
-default_prefix_option_config=03044080ffffffffffffffff00000000
-src_mac=fa163e000004
-src_lla=fe80000000000000f8163efffe000004
-mtu=000005dc
+ra=$(prepare_ra_opt "stateful" 1)
+src_mac="fa:16:3e:00:00:04"
+src_lla="fe80::f816:3eff:fe00:4"
 
-test_ipv6_ra 3 $src_mac $src_lla $addr_mode $mtu $default_prefix_option_config "" $dnssl
-
-# NXT_RESUME should be 3.
-OVS_WAIT_UNTIL([test 3 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif3-tx.pcap  > 3.packets
-
-cat 3.expected | cut -c -112 > expout
-AT_CHECK([cat 3.packets | cut -c -112], [0], [expout])
-
-# Skipping the ICMPv6 checksum.
-cat 3.expected | cut -c 117- > expout
-AT_CHECK([cat 3.packets | cut -c 117-], [0], [expout])
-
-rm -f *.expected
-reset_pcap_file hv1-vif1 hv1/vif1
-reset_pcap_file hv1-vif2 hv1/vif2
-reset_pcap_file hv1-vif3 hv1/vif3
+test_ipv6_ra 3 $src_mac $src_lla "$ra" 1500 $prefix "" "aa.bb.cc" ""
+check_packets 3
 
 # Set the address mode to dhcpv6_stateless, reset router preference to default
 ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:address_mode=dhcpv6_stateless
@@ -12795,46 +12804,27 @@ ovn-nbctl --wait=hv remove Logical_Router_Port lrp0 ipv6_ra_configs dnssl
 # Make sure that ovn-controller has installed the corresponding OF Flow.
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int | grep -c "ipv6_dst=ff02::2,nw_ttl=255,icmp_type=133,icmp_code=0"`])
 
-addr_mode=40
-default_prefix_option_config=030440c0ffffffffffffffff00000000
-src_mac=fa163e000002
-src_lla=fe80000000000000f8163efffe000002
-mtu=000005dc
+ra=$(prepare_ra_opt "stateless" 0)
+src_mac="fa:16:3e:00:00:02"
+src_lla="fe80::f816:3eff:fe00:2"
 
-test_ipv6_ra 1 $src_mac $src_lla $addr_mode $mtu $default_prefix_option_config
-
-# NXT_RESUME should be 4.
-OVS_WAIT_UNTIL([test 4 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
-
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap  > 1.packets
-
-cat 1.expected | cut -c -112 > expout
-AT_CHECK([cat 1.packets | cut -c -112], [0], [expout])
-
-# Skipping the ICMPv6 checksum.
-cat 1.expected | cut -c 117- > expout
-AT_CHECK([cat 1.packets | cut -c 117-], [0], [expout])
-
-rm -f *.expected
-reset_pcap_file hv1-vif1 hv1/vif1
-reset_pcap_file hv1-vif2 hv1/vif2
-reset_pcap_file hv1-vif3 hv1/vif3
+test_ipv6_ra 1 $src_mac $src_lla "$ra" 1500 $prefix "" "" ""
+check_packets 1
 
 # Set the address mode to invalid.
 ovn-nbctl --wait=hv set Logical_Router_Port lrp0 ipv6_ra_configs:address_mode=invalid
 # Make sure that ovn-controller has not installed any OF Flow for IPv6 ND RA.
 OVS_WAIT_UNTIL([test 0 = `as hv1 ovs-ofctl dump-flows br-int | grep -c "ipv6_dst=ff02::2,nw_ttl=255,icmp_type=133,icmp_code=0"`])
 
-addr_mode=40
-default_prefix_option_config=""
-src_mac=fa163e000002
-src_lla=fe80000000000000f8163efffe000002
-mtu=000005dc
+ra=$(prepare_ra_opt "stateless" 0)
 
-test_ipv6_ra 1 $src_mac $src_lla $addr_mode $mtu $default_prefix_option_config
+src_mac="fa:16:3e:00:00:02"
+src_lla="fe80::f816:3eff:fe00:2"
 
-# NXT_RESUME should be 4 only.
-OVS_WAIT_UNTIL([test 4 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+# This shouldn't produce any NXT_RESUME.
+n_resume=$((n_resume - 1))
+
+test_ipv6_ra 1 $src_mac $src_lla "$ra" 1500 "" "" "" ""
 
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap  > 1.packets
 AT_CHECK([cat 1.packets], [0], [])
