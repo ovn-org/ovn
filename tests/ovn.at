@@ -36728,7 +36728,6 @@ check ovn-nbctl lsp-add ls2 public2
 check ovn-nbctl lsp-set-addresses public2 unknown
 check ovn-nbctl lsp-set-type public2 localnet
 check ovn-nbctl --wait=sb set Logical_Switch_Port public2 options:qos_min_rate=6000000000 options:qos_max_rate=7000000000 options:qos_burst=8000000000 options:network_name=phys
-check ovn-nbctl --wait=sb lsp-set-options public2 qos_min_rate=6000000000 qos_max_rate=7000000000 qos_burst=8000000000
 
 # Let's now send ovn controller to sleep, so it will receive both ofport notification and ls deletion simultaneously
 sleep_controller hv-1
