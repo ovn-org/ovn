@@ -1,4 +1,4 @@
-OVN v23.09.0 - xx xxx xxxx
+OVN v23.09.0 - 15 Sep 2023
 ----------------------------
   - Added FDB aging mechanism, that is disabled by default.
     It can be enabled per logical switch with other_config
