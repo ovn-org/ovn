@@ -11,7 +11,7 @@ m4_define([_DUMP_DB_TABLES], [
     ovn-sbctl list address_set >> $1
     ovn-sbctl list meter >> $1
     ovn-sbctl list meter_band >> $1
-    ovn-sbctl list port_group_set >> $1
+    ovn-sbctl list port_group >> $1
 ])
 
 # CHECK_NO_CHANGE_AFTER_RECOMPUTE
