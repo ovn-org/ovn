@@ -820,6 +820,10 @@ start_scapy_server() {
     on_exit "test -e \"$pidfile\" && ovs-appctl -t $ctlfile exit"
 }
 
+trim_zeros() {
+    sed 's/\(00\)\{1,\}$//'
+}
+
 OVS_END_SHELL_HELPERS
 
 m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
