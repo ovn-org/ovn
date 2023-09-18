@@ -18633,6 +18633,46 @@ for sf in 0 1; do
     done
 done
 
+check_packets() {
+    n_allowed=$1
+    > expected
+    > received
+    for i in 1 2 3; do
+        echo "--- hv$i vif${i}1" | tee -a expected >> received
+        sort ${i}1.expected >> expected
+        $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv$i/vif${i}1-tx.pcap | sort >> received
+        echo | tee -a expected >> received
+    done
+
+    # need to verify the log for ACL hit as well, since in the allow case
+    # (unlike the drop case) it is tricky to pass just with the expected;
+    # since with the stateful rule the packet will still get by (default
+    # rule) even if it doesn't hit the allow rule.
+    # The hit count for the ACL is 6 (1 unicast + 2 non-unicast) * 2
+    # (with/without stateful rule) for hv1 and hv2, each.
+    cat >>expected <<EOF
+--- acl logging
+hv1_drop hit 6
+hv2_drop hit 6
+hv1_allow hit $n_allowed
+hv2_allow hit $n_allowed
+EOF
+
+cat >>received <<EOF
+--- acl logging
+hv1_drop hit `grep -c 'acl_log.*|INFO|name="drop-acl"' hv1/ovn-controller.log`
+hv2_drop hit `grep -c 'acl_log.*|INFO|name="drop-acl"' hv2/ovn-controller.log`
+hv1_allow hit `grep -c 'acl_log.*|INFO|name="allow-acl"' hv1/ovn-controller.log`
+hv2_allow hit `grep -c 'acl_log.*|INFO|name="allow-acl"' hv2/ovn-controller.log`
+EOF
+
+    $at_diff expected received >/dev/null
+}
+
+# We need to wait and check here that packets are received as they should as otherwise packets
+# which were just sent might by handled after setting next ACL (allow) rules.
+OVS_WAIT_UNTIL([check_packets 0], [$at_diff -F'^---' expected received])
+
 # Test allow rule
 #----------------
 ovn-nbctl acl-del lsw0
@@ -18681,41 +18721,7 @@ as hv3 ovs-ofctl -O OpenFlow13 dump-flows br-int > offlows3
 # Now check the packets actually received against the ones expected.
 AT_CAPTURE_FILE([expected])
 AT_CAPTURE_FILE([received])
-check_packets() {
-    > expected
-    > received
-    for i in 1 2 3; do
-        echo "--- hv$i vif${i}1" | tee -a expected >> received
-        sort ${i}1.expected >> expected
-        $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv$i/vif${i}1-tx.pcap | sort >> received
-        echo | tee -a expected >> received
-    done
-
-    # need to verify the log for ACL hit as well, since in the allow case
-    # (unlike the drop case) it is tricky to pass just with the expected;
-    # since with the stateful rule the packet will still get by (default
-    # rule) even if it doesn't hit the allow rule.
-    # The hit count for the ACL is 6 (1 unicast + 2 non-unicast) * 2
-    # (with/without stateful rule) for hv1 and hv2, each.
-    cat >>expected <<EOF
---- acl logging
-hv1_drop hit 6
-hv2_drop hit 6
-hv1_allow hit 6
-hv2_allow hit 6
-EOF
-
-cat >>received <<EOF
---- acl logging
-hv1_drop hit `grep -c 'acl_log.*|INFO|name="drop-acl"' hv1/ovn-controller.log`
-hv2_drop hit `grep -c 'acl_log.*|INFO|name="drop-acl"' hv2/ovn-controller.log`
-hv1_allow hit `grep -c 'acl_log.*|INFO|name="allow-acl"' hv1/ovn-controller.log`
-hv2_allow hit `grep -c 'acl_log.*|INFO|name="allow-acl"' hv2/ovn-controller.log`
-EOF
-
-    $at_diff expected received >/dev/null
-}
-OVS_WAIT_UNTIL([check_packets], [$at_diff -F'^---' expected received])
+OVS_WAIT_UNTIL([check_packets 6], [$at_diff -F'^---' expected received])
 
 OVN_CLEANUP([hv1],[hv2],[hv3])
 
