@@ -28119,9 +28119,10 @@ OVS_WAIT_UNTIL([
 ])
 
 as hv1 check ovs-ofctl del-flows br-phys
+
 AT_DATA([flows.txt], [dnl
-table=0, priority=0 actions=NORMAL
 table=0, priority=200 arp,actions=drop
+table=0, priority=0 actions=NORMAL
 table=0, priority=100, pkt_mark=0x64 actions=drop
 table=0, priority=100, pkt_mark=0x2 actions=drop
 table=0, priority=100, pkt_mark=0x3 actions=drop
