@@ -18051,13 +18051,15 @@ static void
 handle_cr_port_binding_changes(const struct sbrec_port_binding *sb,
                 struct ovn_port *orp)
 {
+    const struct nbrec_logical_router_port *nbrec_lrp = orp->l3dgw_port->nbrp;
+
     if (sb->chassis) {
-        nbrec_logical_router_port_update_status_setkey(
-            orp->l3dgw_port->nbrp, "hosting-chassis",
-            sb->chassis->name);
-    } else {
-        nbrec_logical_router_port_update_status_delkey(
-            orp->l3dgw_port->nbrp, "hosting-chassis");
+        nbrec_logical_router_port_update_status_setkey(nbrec_lrp,
+                                                       "hosting-chassis",
+                                                       sb->chassis->name);
+    } else if (smap_get(&nbrec_lrp->status, "hosting-chassis")) {
+        nbrec_logical_router_port_update_status_delkey(nbrec_lrp,
+                                                       "hosting-chassis");
     }
 }
 
