@@ -34576,6 +34576,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([MAC binding aging])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 
 net_add n1
