@@ -335,8 +335,9 @@ ovn-nbctl lsp-add ts1 lsp-ts1-lr1
 ovn-nbctl lsp-set-addresses lsp-ts1-lr1 router
 ovn-nbctl lsp-set-type lsp-ts1-lr1 router
 ovn-nbctl --wait=hv lsp-set-options lsp-ts1-lr1 router-port=lrp-lr1-ts1
-
 ovn_as az2 ovn-nbctl lsp-set-options lsp-ts1-lr1 requested-chassis=gw1
+
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl show | grep "aa:aa:aa:aa:aa:01 169.254.100.1/24"])
 AT_CHECK([ovn_as az2 ovn-nbctl show | uuidfilt], [0], [dnl
 switch <0> (ts1)
     port lsp-ts1-lr1
@@ -551,6 +552,9 @@ echo az1
 ovn_as az1 ovn-nbctl show
 echo az2
 ovn_as az2 ovn-nbctl show
+
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep learned | grep 192.168])
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep learned | grep 10.10.10])
 
 # Test routes from lr12 were learned to lr11
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 |
@@ -1083,6 +1087,7 @@ ovn_as az2 ovn-nbctl --route-table=rtb3 lr-route-add lr12 2001:db8:aaaa::/64 200
 ovn_as az2 ovn-nbctl --wait=sb lrp-add lr22 lrp-lr22 aa:aa:aa:aa:bb:01 "2001:db8:200::1/64"
 
 # Test direct routes from lr12 were learned to lr11
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 2001:db8:3::2])
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 2001:db8:200 |
              grep learned | awk '{print $1, $2, $5}' | sort], [0], [dnl
 2001:db8:200::/64 2001:db8:1::2 ecmp
@@ -1091,16 +1096,19 @@ AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 2001:db8:200 |
 ])
 
 # Test static routes from lr12 rtbs rtb1,rtb2,rtb3 were learned to lr11
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl --route-table=rtb1 lr-route-list lr11 | grep learned])
 AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb1 lr-route-list lr11], [0], [dnl
 IPv6 Routes
 Route Table rtb1:
        2001:db8:aaaa::/64             2001:db8:1::2 dst-ip (learned)
 ])
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl --route-table=rtb2 lr-route-list lr11 | grep learned])
 AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb2 lr-route-list lr11], [0], [dnl
 IPv6 Routes
 Route Table rtb2:
        2001:db8:aaaa::/64             2001:db8:2::2 dst-ip (learned)
 ])
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl --route-table=rtb3 lr-route-list lr11 | grep learned])
 AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb3 lr-route-list lr11], [0], [dnl
 IPv6 Routes
 Route Table rtb3:
@@ -1152,11 +1160,15 @@ for i in 1 2; do
     check ovn-nbctl --wait=sb lr-route-add $lr 0.0.0.0/0 192.168.$i.11
 done
 
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep learned])
+
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep dst-ip | sort], [0], [dnl
                 0.0.0.0/0              192.168.1.11 dst-ip
               10.0.0.0/24              192.168.1.10 dst-ip
            192.168.2.0/24             169.254.100.2 dst-ip (learned)
 ])
+
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr12 | grep learned])
 
 AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr12 | grep dst-ip | sort], [0], [dnl
                 0.0.0.0/0              192.168.2.11 dst-ip
