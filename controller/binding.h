@@ -268,4 +268,6 @@ void binding_destroy(void);
 
 void destroy_qos_map(struct hmap *);
 
+bool lport_maybe_postpone(const char *port_name, long long int now,
+                          struct sset *postponed_ports);
 #endif /* controller/binding.h */
