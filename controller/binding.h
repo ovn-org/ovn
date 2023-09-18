@@ -265,4 +265,6 @@ void binding_wait(void);
 /* Clean up module state. */
 void binding_destroy(void);
 
+bool lport_maybe_postpone(const char *port_name, long long int now,
+                          struct sset *postponed_ports);
 #endif /* controller/binding.h */

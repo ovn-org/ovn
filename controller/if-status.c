@@ -474,6 +474,11 @@ if_status_mgr_update(struct if_status_mgr *mgr,
         if (!local_bindings_pb_chassis_is_set(bindings, iface->id,
             chassis_rec)) {
             if (!sb_readonly) {
+                long long int now = time_msec();
+                if (lport_maybe_postpone(iface->id, now,
+                                         get_postponed_ports())) {
+                    continue;
+                }
                 local_binding_set_pb(bindings, iface->id, chassis_rec,
                                      NULL, true, iface->bind_type);
             } else {
@@ -510,9 +515,13 @@ if_status_mgr_update(struct if_status_mgr *mgr,
     if (!sb_readonly) {
         HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_INSTALL_FLOWS]) {
             struct ovs_iface *iface = node->data;
-
             if (!local_bindings_pb_chassis_is_set(bindings, iface->id,
                 chassis_rec)) {
+                long long int now = time_msec();
+                if (lport_maybe_postpone(iface->id, now,
+                                         get_postponed_ports())) {
+                    continue;
+                }
                 local_binding_set_pb(bindings, iface->id, chassis_rec,
                                      NULL, true, iface->bind_type);
             }
