@@ -7008,7 +7008,7 @@ ovn-nbctl dhcp-options-set-options $d3 \
    lease_time=3600 router=10.0.0.1 bootfile_name_alt=\"bootfile_name_alt\" \
    bootfile_name=\"bootfile\"
 
-ovn-nbctl lsp-set-dhcpv4-options ls1-lp1 $d3
+ovn-nbctl --wait=hv lsp-set-dhcpv4-options ls1-lp1 $d3
 
 offer_ip=`ip_to_hex 10 0 0 4`
 server_ip=`ip_to_hex 10 0 0 1`
@@ -14641,6 +14641,10 @@ wait_column "$hv2_uuid" Port_Binding requested_additional_chassis logical_port=m
 # ovn-installed on hv2 should guarantee that.
 OVS_WAIT_UNTIL([test `as hv2 ovs-vsctl get Interface migrator external_ids:ovn-installed` = '"true"'])
 
+# Still, this does not guarantee that all flows are installed on hv3: hv3 (might) still need to receive and handle
+# additional_chassis for migrator port
+ovn-nbctl --wait=hv sync
+
 # check that...
 # unicast from First arrives to hv1:Migrator
 # unicast from First arrives to hv2:Migrator
@@ -14726,6 +14730,9 @@ wait_column "" Port_Binding requested_additional_chassis logical_port=migrator
 # Previous wait_for_ports_up does not guarantee that the flows are already properly installed.
 # For instance, migrator port might still be up from prior to complete migration to hv2
 OVS_WAIT_UNTIL([test `as hv2 ovs-vsctl get Interface migrator external_ids:ovn-installed` = '"true"'])
+
+# Give time for hv3 to handle the change of Port_Binding  for migrator port
+ovn-nbctl --wait=hv sync
 
 # check that...
 # unicast from Third doesn't arrive to hv1:Migrator
@@ -23108,7 +23115,7 @@ check ovn-nbctl set Logical_Switch sw2 \
     other_config:mcast_querier="false"
 
 # Enable multicast snooping on sw3.
-check ovn-nbctl --wait=sb set Logical_Switch sw3       \
+check ovn-nbctl --wait=hv set Logical_Switch sw3       \
     other_config:mcast_querier="false" \
     other_config:mcast_snoop="true"
 
@@ -23147,7 +23154,7 @@ OVS_WAIT_UNTIL(
   [$at_diff -F'^---' exp rcv])
 
 # Enable multicast relay on rtr
-check ovn-nbctl --wait=sb set logical_router rtr options:mcast_relay="true"
+check ovn-nbctl --wait=hv set logical_router rtr options:mcast_relay="true"
 
 AT_CAPTURE_FILE([sbflows6])
 ovn-sbctl dump-flows > sbflows6
