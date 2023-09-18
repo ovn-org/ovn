@@ -258,4 +258,7 @@ void update_qos(struct ovsdb_idl_index * sbrec_port_binding_by_name,
                 const struct ovsrec_open_vswitch_table *ovs_table,
                 const struct ovsrec_bridge_table *bridge_table);
 
+bool lport_maybe_postpone(const char *port_name, long long int now,
+                          struct sset *postponed_ports);
+
 #endif /* controller/binding.h */

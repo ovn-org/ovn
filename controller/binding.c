@@ -1299,7 +1299,7 @@ remove_additional_chassis(const struct sbrec_port_binding *pb,
     remove_additional_encap_for_chassis(pb, chassis_rec);
 }
 
-static bool
+bool
 lport_maybe_postpone(const char *port_name, long long int now,
                      struct sset *postponed_ports)
 {
