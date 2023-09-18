@@ -10340,7 +10340,7 @@ wait_for_ports_up sw0-r1
 check_column $remote_chassis_uuid Port_Binding chassis logical_port=sw0-r1
 
 # Set the type to router and ovn-northd should not claim it.
-check ovn-nbctl lsp-set-type sw0-r1 router
+check ovn-nbctl --wait=hv lsp-set-type sw0-r1 router
 check_column '' Port_Binding chassis logical_port=sw0-r1
 
 AT_CLEANUP
