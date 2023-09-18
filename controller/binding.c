@@ -1362,6 +1362,7 @@ claim_lport(const struct sbrec_port_binding *pb,
             register_claim_timestamp(pb->logical_port, now);
             sset_find_and_delete(postponed_ports, pb->logical_port);
         } else {
+            update_tracked = true;
             if (!notify_up) {
                 if (!claimed_lport_set_up(pb, parent_pb, sb_readonly)) {
                     return false;
