@@ -13868,9 +13868,6 @@ AT_CHECK([grep $garp hv3_br_phys_tx | sort], [0], [])
 
 # at this point, we invert the priority of the gw chassis between hv2 and hv3
 
-# Reset hv2/br-phys_n1 before inverting gw chassis, as otherwise packets might
-# be reset (while not resetting hv1/snoopvif because not yet sent).
-as hv2 reset_pcap_file br-phys_n1 hv2/br-phys_n1
 ovn-nbctl --wait=hv \
           --id=@gc0 create Gateway_Chassis \
                     name=outside_gw1 chassis_name=hv2 priority=1 -- \
@@ -13878,6 +13875,11 @@ ovn-nbctl --wait=hv \
                     name=outside_gw2 chassis_name=hv3 priority=10 -- \
           set Logical_Router_Port lrp0 'gateway_chassis=[@gc0,@gc1]'
 
+# We expect not to receive garp on hv2 after inverting the priority.
+# Hence  reset hv2 after inverting priority as otherwise a garp might
+# be received on hv2 between the reset and the priority change.
+
+as hv2 reset_pcap_file br-phys_n1 hv2/br-phys_n1
 as hv3 reset_pcap_file br-phys_n1 hv3/br-phys_n1
 as hv1 reset_pcap_file snoopvif hv1/snoopvif
 
