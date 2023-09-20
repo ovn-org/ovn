@@ -1115,3 +1115,155 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([LR with SNAT fragmentation needed for external server])
+AT_KEYWORDS([ovnlb])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-ext])
+
+dnl Logical network:
+dnl 2 logical switches "public" (192.168.1.0/24) and "internal" (172.16.1.0/24)
+dnl connected to a router lr.
+dnl internal has a client.
+dnl server is connected through localnet.
+dnl
+dnl Server IP 192.168.1.2 MTU 900
+dnl Client IP  172.16.1.2 MTU 800
+dnl
+dnl SNAT for internal 172.16.1.2/24 with router ip 192.168.1.1.
+
+check ovs-ofctl add-flow br-ext action=normal
+# Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true \
+        -- set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext
+
+dnl Start ovn-controller
+start_daemon ovn-controller
+
+check ovn-nbctl lr-add lr
+check ovn-nbctl ls-add internal
+check ovn-nbctl ls-add public
+
+check ovn-nbctl lrp-add lr lr-pub 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lsp-add  public pub-lr -- set Logical_Switch_Port pub-lr \
+    type=router options:router-port=lr-pub addresses=\"00:00:01:01:02:03\"
+
+check ovn-nbctl lrp-add lr lr-internal 00:00:01:01:02:04 172.16.1.1/24
+check ovn-nbctl lsp-add internal internal-lr -- set Logical_Switch_Port internal-lr \
+    type=router options:router-port=lr-internal addresses=\"00:00:01:01:02:04\"
+
+ovn-nbctl lsp-add public ln_port \
+                -- lsp-set-addresses ln_port unknown \
+                -- lsp-set-type ln_port localnet \
+                -- lsp-set-options ln_port network_name=phynet
+
+ADD_NAMESPACES(server)
+ADD_VETH([server], [server], [br-ext], ["192.168.1.2/24"],
+         ["f0:00:00:01:02:03"], ["192.168.1.1"])
+NS_EXEC([server], [ip l set dev server mtu 900])
+NS_EXEC([server], [ip l show dev server])
+
+ADD_NAMESPACES(client)
+ADD_VETH([client], [client], [br-int], ["172.16.1.2/24"],
+         ["f0:00:0f:01:02:03"], ["172.16.1.1"])
+NS_EXEC([client], [ip l set dev client mtu 800])
+NS_EXEC([client], [ip l show dev client])
+check ovn-nbctl lsp-add internal client \
+  -- lsp-set-addresses client "f0:00:0f:01:02:03 172.16.1.2"
+
+dnl Config OVN load-balancer with a VIP.  (not necessary, but if we do not
+dnl have a load balancer and comment out snat, we will receive a stray fragment
+dnl on the client side.)
+dnl check ovn-nbctl lb-add lb1 192.168.1.20:4242 172.16.1.2:4242 udp
+dnl check ovn-nbctl lr-lb-add lr lb1
+check ovn-nbctl set logical_router lr options:chassis=hv1
+check ovn-nbctl set logical_router_port lr-internal options:gateway_mtu=800
+
+check ovn-nbctl lr-nat-add lr snat 192.168.1.1 172.16.1.2/24
+
+check ovn-nbctl --wait=hv sync
+
+ovn-nbctl show
+ovs-vsctl show
+ovn-appctl -t ovn-controller vlog/set vconn:file:dbg pinctrl:file:dbg
+
+AT_DATA([server.py], [dnl
+import socket
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+server_address = '192.168.1.2'
+server_port = 4242
+
+server = (server_address, server_port)
+sock.bind(server)
+print("Listening on ", server_address, ":", str(server_port), flush=True)
+
+while True:
+  payload, client_address = sock.recvfrom(1000)
+  print("Received data from ", str(client_address), ": ", payload)
+  sent = sock.sendto(b"x" * 1017, client_address)
+  print("Sent back: ", str(sent), "bytes", flush=True)
+])
+NETNS_DAEMONIZE([server], [$PYTHON3 ./server.py > server.log], [server.pid])
+
+dnl Collect packets on server side.
+NETNS_DAEMONIZE([server], [tcpdump -l -U -i server -vnne \
+          'icmp or udp' > server.tcpdump 2>server_err], [tcpdump0.pid])
+OVS_WAIT_UNTIL([grep "listening" server_err])
+
+dnl Collect packets on client side.
+NETNS_DAEMONIZE([client], [tcpdump -l -U -i client -vnne \
+          'icmp or udp' > client.tcpdump 2>client_err], [tcpdump1.pid])
+OVS_WAIT_UNTIL([grep "listening" client_err])
+
+dnl Send two packets to the server with a short interval.
+dnl First packet should generate 'needs frag', the second should result in
+dnl corectly fragmented reply.
+AT_DATA([client.py], [dnl
+import socket
+import time
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.sendto(b"x" * 7, ("192.168.1.2", 4242))
+time.sleep(1)
+sock.sendto(b"x" * 7, ("192.168.1.2", 4242))
+time.sleep(5)
+])
+NS_CHECK_EXEC([client], [$PYTHON3 ./client.py])
+
+dnl Expecting 2 outgoing packets and 2 fragments back - 8 lines total.
+OVS_WAIT_UNTIL([test "$(cat client.tcpdump | wc -l)" = "8"])
+
+ovn-appctl -t ovn-controller vlog/set info
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["
+  /failed to query port patch-.*/d
+  /connection dropped.*/d
+"])
+AT_CLEANUP
+])
