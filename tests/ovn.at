@@ -4870,7 +4870,6 @@ test_ip() {
     shift; shift; shift; shift; shift
     hv=hv`vif_to_hv $inport`
     as $hv ovs-appctl netdev-dummy/receive vif$inport $packet
-    #as $hv ovs-appctl ofproto/trace br-int in_port=$inport $packet
     in_ls=`vif_to_ls $inport`
     in_lrp=`vif_to_lrp $inport`
     for outport; do
@@ -4903,7 +4902,6 @@ test_arp() {
     local request=ffffffffffff${sha}08060001080006040001${sha}${spa}ffffffffffff${tpa}
     hv=hv`vif_to_hv $inport`
     as $hv ovs-appctl netdev-dummy/receive vif$inport $request
-    as $hv ovs-appctl ofproto/trace br-int in_port=$inport $request > trace
 
     # Expect to receive the broadcast ARP on the other logical switch ports if
     # IP address is not configured to the switch patch port.
@@ -5477,7 +5475,6 @@ test_ip() {
     shift; shift; shift; shift; shift
     hv=`vif_to_hv $inport`
     as $hv ovs-appctl netdev-dummy/receive vif$inport $packet
-    #as $hv ovs-appctl ofproto/trace br-int in_port=$inport $packet
     for outport; do
         echo $packet >> $outport.expected
     done
@@ -5498,7 +5495,6 @@ test_arp() {
     local request=ffffffffffff${smac}08060001080006040001${sha}${spa}ffffffffffff${tpa}
     hv=`vif_to_hv $inport`
     as $hv ovs-appctl netdev-dummy/receive vif$inport $request
-    #as $hv ovs-appctl ofproto/trace br-int in_port=$inport $request
     if test $drop != 1; then
         if test X$reply_ha = X; then
             # Expect to receive the broadcast ARP on the other logical switch ports
@@ -5528,7 +5524,6 @@ test_ipv6() {
     shift; shift; shift; shift; shift
     hv=`vif_to_hv $inport`
     as $hv ovs-appctl netdev-dummy/receive vif$inport $packet
-    #as $hv ovs-appctl ofproto/trace br-int in_port=$inport $packet
     for outport; do
         echo $packet >> $outport.expected
     done
@@ -5543,7 +5538,6 @@ test_icmpv6() {
     shift; shift; shift; shift; shift; shift
     hv=`vif_to_hv $inport`
     as $hv ovs-appctl netdev-dummy/receive vif$inport $packet
-    #as $hv ovs-appctl ofproto/trace br-int in_port=$inport $packet
     for outport; do
         echo $packet >> $outport.expected
     done
@@ -17787,7 +17781,6 @@ test_ip() {
     shift; shift; shift; shift; shift
     hv=hv`vif_to_hv $inport`
     as $hv ovs-appctl netdev-dummy/receive vif$inport $packet
-    #as $hv ovs-appctl ofproto/trace br-int in_port=$inport $packet
     in_ls=`vif_to_ls $inport`
     in_lrp=`vif_to_lrp $inport`
     for outport; do
@@ -21582,7 +21575,6 @@ test_ip() {
     hv_num=`hv_to_num $hv`
     chassis_mac=`hv_to_chassis_mac $hv`
     as $hv ovs-appctl netdev-dummy/receive $inport $packet
-    #as $hv ovs-appctl ofproto/trace br-int in_port=$inport $packet
     in_ls=`vif_to_ls $inport`
     in_lrp=`vif_to_lrp $inport`
     for outport; do
