@@ -364,7 +364,8 @@ bool lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                       struct lflow_input *,
                                       struct hmap *lflows);
 bool northd_handle_sb_port_binding_changes(
-    const struct sbrec_port_binding_table *, struct hmap *ls_ports);
+    const struct sbrec_port_binding_table *, struct hmap *ls_ports,
+    struct hmap *lr_ports);
 
 struct tracked_lb_data;
 bool northd_handle_lb_data_changes(struct tracked_lb_data *,
@@ -394,7 +395,8 @@ void sync_lbs(struct ovsdb_idl_txn *, const struct sbrec_load_balancer_table *,
               struct chassis_features *chassis_features);
 bool check_sb_lb_duplicates(const struct sbrec_load_balancer_table *);
 
-void sync_pbs(struct ovsdb_idl_txn *, struct hmap *ls_ports);
+void sync_pbs(struct ovsdb_idl_txn *, struct hmap *ls_ports,
+              struct hmap *lr_ports);
 bool sync_pbs_for_northd_changed_ovn_ports( struct tracked_ovn_ports *);
 
 static inline bool

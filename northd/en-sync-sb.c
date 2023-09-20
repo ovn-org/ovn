@@ -288,7 +288,8 @@ en_sync_to_sb_pb_run(struct engine_node *node, void *data OVS_UNUSED)
     const struct engine_context *eng_ctx = engine_get_context();
     struct northd_data *northd_data = engine_get_input_data("northd", node);
 
-    sync_pbs(eng_ctx->ovnsb_idl_txn, &northd_data->ls_ports);
+    sync_pbs(eng_ctx->ovnsb_idl_txn, &northd_data->ls_ports,
+             &northd_data->lr_ports);
     engine_set_node_state(node, EN_UPDATED);
 }
 
