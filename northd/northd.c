@@ -13895,7 +13895,15 @@ build_icmperr_pkt_big_flows(struct ovn_port *op, int mtu, struct hmap *lflows,
                                               outport->json_key)
                                   : NULL;
 
-    if (op->lrp_networks.ipv4_addrs) {
+    char *ip4_src = NULL;
+
+    if (outport && outport->lrp_networks.ipv4_addrs) {
+        ip4_src = outport->lrp_networks.ipv4_addrs[0].addr_s;
+    } else if (op->lrp_networks.ipv4_addrs) {
+        ip4_src = op->lrp_networks.ipv4_addrs[0].addr_s;
+    }
+
+    if (ip4_src) {
         ds_clear(match);
         ds_put_format(match, "inport == %s && %sip4 && "REGBIT_PKT_LARGER
                       " && "REGBIT_EGRESS_LOOPBACK" == 0", op->json_key,
@@ -13915,9 +13923,8 @@ build_icmperr_pkt_big_flows(struct ovn_port *op, int mtu, struct hmap *lflows,
             "icmp4.code = 4; /* Frag Needed and DF was Set. */ "
             "icmp4.frag_mtu = %d; "
             "next(pipeline=ingress, table=%d); };",
-            op->lrp_networks.ea_s,
-            op->lrp_networks.ipv4_addrs[0].addr_s,
-            mtu, ovn_stage_get_table(S_ROUTER_IN_ADMISSION));
+            op->lrp_networks.ea_s, ip4_src, mtu,
+            ovn_stage_get_table(S_ROUTER_IN_ADMISSION));
         ovn_lflow_add_with_hint__(lflows, op->od, stage, 150,
                                   ds_cstr(match), ds_cstr(actions),
                                   NULL,
@@ -13928,7 +13935,15 @@ build_icmperr_pkt_big_flows(struct ovn_port *op, int mtu, struct hmap *lflows,
                                   &op->nbrp->header_);
     }
 
-    if (op->lrp_networks.ipv6_addrs) {
+    char *ip6_src = NULL;
+
+    if (outport && outport->lrp_networks.ipv6_addrs) {
+        ip6_src = outport->lrp_networks.ipv6_addrs[0].addr_s;
+    } else if (op->lrp_networks.ipv6_addrs) {
+        ip6_src = op->lrp_networks.ipv6_addrs[0].addr_s;
+    }
+
+    if (ip6_src) {
         ds_clear(match);
         ds_put_format(match, "inport == %s && %sip6 && "REGBIT_PKT_LARGER
                       " && "REGBIT_EGRESS_LOOPBACK" == 0", op->json_key,
@@ -13948,9 +13963,8 @@ build_icmperr_pkt_big_flows(struct ovn_port *op, int mtu, struct hmap *lflows,
             "icmp6.code = 0; "
             "icmp6.frag_mtu = %d; "
             "next(pipeline=ingress, table=%d); };",
-            op->lrp_networks.ea_s,
-            op->lrp_networks.ipv6_addrs[0].addr_s,
-            mtu, ovn_stage_get_table(S_ROUTER_IN_ADMISSION));
+            op->lrp_networks.ea_s, ip6_src, mtu,
+            ovn_stage_get_table(S_ROUTER_IN_ADMISSION));
         ovn_lflow_add_with_hint__(lflows, op->od, stage, 150,
                                   ds_cstr(match), ds_cstr(actions),
                                   NULL,
