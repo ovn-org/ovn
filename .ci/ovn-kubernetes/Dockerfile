@@ -81,6 +81,7 @@ RUN dnf install -y *.rpm && rm -f *.rpm
 # install ovn-kubernetes binaries built in previous stage
 RUN mkdir -p /usr/libexec/cni/
 COPY --from=ovnkubebuilder /root/ovn-kubernetes/go-controller/_output/go/bin/ovnkube /usr/bin/
+COPY --from=ovnkubebuilder /root/ovn-kubernetes/go-controller/_output/go/bin/ovnkube-identity /usr/bin/
 COPY --from=ovnkubebuilder /root/ovn-kubernetes/go-controller/_output/go/bin/ovn-kube-util /usr/bin/
 COPY --from=ovnkubebuilder /root/ovn-kubernetes/go-controller/_output/go/bin/ovndbchecker /usr/bin/
 COPY --from=ovnkubebuilder /root/ovn-kubernetes/go-controller/_output/go/bin/ovn-k8s-cni-overlay /usr/libexec/cni/ovn-k8s-cni-overlay
