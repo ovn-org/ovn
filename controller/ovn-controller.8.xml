@@ -363,7 +363,10 @@
         The boolean flag indicates if <code>ovn-controller</code> when create
         tunnel ports should set <code>local_ip</code> parameter.  Can be
         heplful to pin source outer IP for the tunnel when multiple interfaces
-        are used on the host for overlay traffic.
+        are used on the host for overlay traffic. This is also useful when
+        running multiple <code>ovn-controller</code> instances on the same
+        chassis, in which case this setting will guarantee that their tunnel
+        ports have unique configuration and can exist in parallel.
       </dd>
       <dt><code>external_ids:garp-max-timeout-sec</code></dt>
       <dd>
@@ -398,9 +401,11 @@
         names on the same host using the same <code>vswitchd</code> instance.
         This may be useful when running a hybrid setup with more than one CMS
         managing ports on the host, or to use different datapath types on the
-        same host. Note that this ability is highly experimental and has known
-        limitations (for example, stateful ACLs are not supported). Use at your
-        own risk.
+        same host. Make sure you also set
+        <code>external_ids:ovn-set-local-ip</code> when using such
+        configuration. Also note that this ability is highly experimental and
+        has known limitations (for example, stateful ACLs are not supported).
+        Use at your own risk.
     </p>
 
     <p>
