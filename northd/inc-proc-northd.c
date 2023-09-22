@@ -31,6 +31,7 @@
 #include "openvswitch/vlog.h"
 #include "inc-proc-northd.h"
 #include "en-lb-data.h"
+#include "en-lr-nat.h"
 #include "en-northd.h"
 #include "en-lflow.h"
 #include "en-northd-output.h"
@@ -146,6 +147,7 @@ static ENGINE_NODE(fdb_aging_waker, "fdb_aging_waker");
 static ENGINE_NODE(sync_to_sb_lb, "sync_to_sb_lb");
 static ENGINE_NODE(sync_to_sb_pb, "sync_to_sb_pb");
 static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lb_data, "lb_data");
+static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lr_nat, "lr_nat");
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb)
@@ -189,6 +191,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                      northd_nb_logical_router_handler);
     engine_add_input(&en_northd, &en_lb_data, northd_lb_data_handler);
 
+    engine_add_input(&en_lr_nat, &en_northd, lr_nat_northd_handler);
+
     engine_add_input(&en_mac_binding_aging, &en_nb_nb_global, NULL);
     engine_add_input(&en_mac_binding_aging, &en_sb_mac_binding, NULL);
     engine_add_input(&en_mac_binding_aging, &en_northd, NULL);
@@ -212,6 +216,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_lflow, &en_sb_igmp_group, NULL);
     engine_add_input(&en_lflow, &en_northd, lflow_northd_handler);
     engine_add_input(&en_lflow, &en_port_group, lflow_port_group_handler);
+    engine_add_input(&en_lflow, &en_lr_nat, NULL);
 
     engine_add_input(&en_sync_to_sb_addr_set, &en_nb_address_set,
                      sync_to_sb_addr_set_nb_address_set_handler);
@@ -235,6 +240,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
 
     engine_add_input(&en_sync_to_sb_pb, &en_northd,
                      sync_to_sb_pb_northd_handler);
+    engine_add_input(&en_sync_to_sb_pb, &en_lr_nat, NULL);
 
     /* en_sync_to_sb engine node syncs the SB database tables from
      * the NB database tables.

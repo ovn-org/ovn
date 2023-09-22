@@ -878,6 +878,7 @@ main(int argc, char *argv[])
     stopwatch_create(LFLOWS_TO_SB_STOPWATCH_NAME, SW_MS);
     stopwatch_create(PORT_GROUP_RUN_STOPWATCH_NAME, SW_MS);
     stopwatch_create(SYNC_METERS_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(LR_NAT_RUN_STOPWATCH_NAME, SW_MS);
 
     /* Initialize incremental processing engine for ovn-northd */
     inc_proc_northd_init(&ovnnb_idl_loop, &ovnsb_idl_loop);

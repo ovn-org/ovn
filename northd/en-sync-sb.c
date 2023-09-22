@@ -21,6 +21,7 @@
 #include "lib/svec.h"
 #include "openvswitch/util.h"
 
+#include "en-lr-nat.h"
 #include "en-sync-sb.h"
 #include "lib/inc-proc-eng.h"
 #include "lib/lb.h"
@@ -287,9 +288,10 @@ en_sync_to_sb_pb_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct engine_context *eng_ctx = engine_get_context();
     struct northd_data *northd_data = engine_get_input_data("northd", node);
-
+    struct ed_type_lr_nat_data *lr_nat_data =
+        engine_get_input_data("lr_nat", node);
     sync_pbs(eng_ctx->ovnsb_idl_txn, &northd_data->ls_ports,
-             &northd_data->lr_ports);
+             &northd_data->lr_ports, &lr_nat_data->lr_nats);
     engine_set_node_state(node, EN_UPDATED);
 }
 

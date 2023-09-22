@@ -11382,6 +11382,7 @@ check ovn-nbctl --wait=sb lsp-add sw0 sw0p1 -- lsp-set-addresses sw0p1 "00:00:20
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-add lr0
 check_engine_stats northd recompute nocompute
+check_engine_stats lr_nat recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
 check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -11393,6 +11394,7 @@ check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
 # first it will be recompute to handle lr0-sw0 and then a compute
 # for the SB port binding change.
 check_engine_stats northd recompute compute
+check_engine_stats lr_nat recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
 check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -11403,6 +11405,7 @@ check ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lsp-set-options sw0-lr0 router-port=lr0-sw0
 check_engine_stats northd recompute compute
+check_engine_stats lr_nat recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
 check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -11427,16 +11430,18 @@ check ovn-nbctl --wait=hv lrp-set-gateway-chassis lr0-public hv1 20
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl set logical_router_port lr0-sw0 options:foo=bar
 check_engine_stats northd recompute nocompute
+check_engine_stats lr_nat recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
 check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Do checks for NATs.
-# Add a NAT. This should not result in recompute of both northd and lflow
-# engine nodes.
+# Add a NAT. This should not result in recompute of northd, but
+# recompute of lflow node.
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-nat-add lr0 dnat_and_snat  172.168.0.110 10.0.0.4
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
+check_engine_stats lr_nat norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -11444,7 +11449,8 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 # Update the NAT options column
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb set NAT . options:foo=bar
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
+check_engine_stats lr_nat norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -11452,7 +11458,8 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 # Update the NAT external_ip column
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb set NAT . external_ip=172.168.0.120
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
+check_engine_stats lr_nat norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -11460,7 +11467,8 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 # Update the NAT logical_ip column
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb set NAT . logical_ip=10.0.0.10
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
+check_engine_stats lr_nat norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -11468,7 +11476,8 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 # Update the NAT type
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb set NAT . type=snat
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
+check_engine_stats lr_nat norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -11476,7 +11485,8 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 # Create a dnat_and_snat NAT with external_mac and logical_port
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-nat-add lr0 dnat_and_snat 172.168.0.110 10.0.0.4 sw0p1 30:54:00:00:00:03
-check_engine_stats northd recompute compute
+check_engine_stats northd norecompute compute
+check_engine_stats lr_nat norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -11485,7 +11495,8 @@ nat2_uuid=$(ovn-nbctl --bare --columns _uuid find nat logical_ip=10.0.0.4)
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb set NAT $nat2_uuid external_mac='"30:54:00:00:00:04"'
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
+check_engine_stats lr_nat norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -11500,28 +11511,32 @@ check ovn-nbctl lr-lb-add lr0 lb2
 # is a lb vip.
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-nat-add lr0 dnat_and_snat 172.168.0.140 10.0.0.20
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
+check_engine_stats lr_nat norecompute compute
 check_engine_stats sync_to_sb_pb recompute nocompute
 check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-nat-add lr0 dnat_and_snat 172.168.0.150 10.0.0.41
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
+check_engine_stats lr_nat norecompute compute
 check_engine_stats sync_to_sb_pb recompute nocompute
 check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-nat-del lr0 dnat_and_snat 172.168.0.150
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
+check_engine_stats lr_nat norecompute compute
 check_engine_stats sync_to_sb_pb recompute nocompute
 check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-nat-del lr0 dnat_and_snat 172.168.0.140
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
+check_engine_stats lr_nat norecompute compute
 check_engine_stats sync_to_sb_pb recompute nocompute
 check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -11529,7 +11544,8 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 # Delete the NAT
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb clear logical_router lr0 nat
-check_engine_stats northd recompute compute
+check_engine_stats northd norecompute compute
+check_engine_stats lr_nat norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -11538,6 +11554,7 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-policy-add lr0  10 "ip4.src == 10.0.0.3" reroute 172.168.0.101,172.168.0.102
 check_engine_stats northd recompute nocompute
+check_engine_stats lr_nat recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
 check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -11545,6 +11562,7 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-policy-del lr0  10 "ip4.src == 10.0.0.3"
 check_engine_stats northd recompute nocompute
+check_engine_stats lr_nat recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
 check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE

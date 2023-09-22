@@ -209,6 +209,10 @@ northd_nb_logical_router_handler(struct engine_node *node,
         return false;
     }
 
+    if (northd_has_lr_nats_in_tracked_data(&nd->trk_data)) {
+        engine_set_node_state(node, EN_UPDATED);
+    }
+
     return true;
 }
 

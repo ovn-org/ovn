@@ -83,6 +83,12 @@ struct ovn_datapaths {
     struct ovn_datapath **array;
 };
 
+static inline size_t
+ods_size(const struct ovn_datapaths *datapaths)
+{
+    return hmap_count(&datapaths->datapaths);
+}
+
 struct tracked_ovn_ports {
     /* tracked created ports.
      * hmapx node data is 'struct ovn_port *' */
@@ -109,8 +115,9 @@ struct tracked_lbs {
 
 enum northd_tracked_data_type {
     NORTHD_TRACKED_NONE,
-    NORTHD_TRACKED_PORTS = (1 << 0),
-    NORTHD_TRACKED_LBS   = (1 << 1),
+    NORTHD_TRACKED_PORTS    = (1 << 0),
+    NORTHD_TRACKED_LBS      = (1 << 1),
+    NORTHD_TRACKED_LR_NATS  = (1 << 2),
 };
 
 /* Track what's changed in the northd engine node.
@@ -121,6 +128,10 @@ struct northd_tracked_data {
     enum northd_tracked_data_type type;
     struct tracked_ovn_ports trk_lsps;
     struct tracked_lbs trk_lbs;
+
+    /* Tracked logical routers whose NATs have changed.
+     * hmapx node is 'struct ovn_datapath *'. */
+    struct hmapx trk_nat_lrs;
 };
 
 struct northd_data {
@@ -148,6 +159,8 @@ struct lflow_data {
 void lflow_data_init(struct lflow_data *);
 void lflow_data_destroy(struct lflow_data *);
 
+struct lr_nat_table;
+
 struct lflow_input {
     /* Northbound table references */
     const struct nbrec_bfd_table *nbrec_bfd_table;
@@ -166,6 +179,7 @@ struct lflow_input {
     const struct hmap *ls_ports;
     const struct hmap *lr_ports;
     const struct ls_port_group_table *ls_port_groups;
+    const struct lr_nat_table *lr_nats;
     const struct shash *meter_groups;
     const struct hmap *lb_datapaths_map;
     const struct hmap *bfd_connections;
@@ -302,23 +316,8 @@ struct ovn_datapath {
     struct ovn_port **l3dgw_ports;
     size_t n_l3dgw_ports;
 
-    /* NAT entries configured on the router. */
-    struct ovn_nat *nat_entries;
-    size_t n_nat_entries;
-
-    bool has_distributed_nat;
     /* router datapath has a logical port with redirect-type set to bridged. */
     bool redirect_bridged;
-
-    /* Set of nat external ips on the router. */
-    struct sset external_ips;
-
-    /* SNAT IPs owned by the router (shash of 'struct ovn_snat_ip'). */
-    struct shash snat_ips;
-
-    struct lport_addresses dnat_force_snat_addrs;
-    struct lport_addresses lb_force_snat_addrs;
-    bool lb_force_snat_router_ip;
 
     /* Load Balancer vIPs relevant for this datapath. */
     struct ovn_lb_ip_set *lb_ips;
@@ -335,6 +334,9 @@ struct ovn_datapath {
      * This map doesn't include derived ports. */
     struct hmap ports;
 };
+
+const struct ovn_datapath *ovn_datapath_find(const struct hmap *datapaths,
+                                             const struct uuid *uuid);
 
 void ovnnb_db_run(struct northd_input *input_data,
                   struct northd_data *data,
@@ -396,8 +398,8 @@ void sync_lbs(struct ovsdb_idl_txn *, const struct sbrec_load_balancer_table *,
 bool check_sb_lb_duplicates(const struct sbrec_load_balancer_table *);
 
 void sync_pbs(struct ovsdb_idl_txn *, struct hmap *ls_ports,
-              struct hmap *lr_ports);
-bool sync_pbs_for_northd_changed_ovn_ports( struct tracked_ovn_ports *);
+              struct hmap *lr_ports, const struct lr_nat_table *);
+bool sync_pbs_for_northd_changed_ovn_ports(struct tracked_ovn_ports *);
 
 static inline bool
 northd_has_tracked_data(struct northd_tracked_data *trk_nd_changes) {
@@ -414,6 +416,12 @@ static inline bool
 northd_has_lsps_in_tracked_data(struct northd_tracked_data *trk_nd_changes)
 {
     return trk_nd_changes->type & NORTHD_TRACKED_PORTS;
+}
+
+static inline bool
+northd_has_lr_nats_in_tracked_data(struct northd_tracked_data *trk_nd_changes)
+{
+    return trk_nd_changes->type & NORTHD_TRACKED_LR_NATS;
 }
 
 #endif /* NORTHD_H */

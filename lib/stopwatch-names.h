@@ -29,5 +29,6 @@
 #define LFLOWS_TO_SB_STOPWATCH_NAME "lflows_to_sb"
 #define PORT_GROUP_RUN_STOPWATCH_NAME "port_group_run"
 #define SYNC_METERS_RUN_STOPWATCH_NAME "sync_meters_run"
+#define LR_NAT_RUN_STOPWATCH_NAME "lr_nat_run"
 
 #endif

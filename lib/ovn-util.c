@@ -385,9 +385,15 @@ extract_sbrec_binding_first_mac(const struct sbrec_port_binding *binding,
 }
 
 bool
-lport_addresses_is_empty(struct lport_addresses *laddrs)
+lport_addresses_is_empty(const struct lport_addresses *laddrs)
 {
     return !laddrs->n_ipv4_addrs && !laddrs->n_ipv6_addrs;
+}
+
+void
+init_lport_addresses(struct lport_addresses *laddrs)
+{
+    *laddrs = (struct lport_addresses) { 0 };
 }
 
 void
