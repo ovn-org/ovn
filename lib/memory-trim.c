@@ -71,13 +71,14 @@ memory_trimmer_can_run(struct memory_trimmer *mt)
     }
 
     long long int now = time_msec();
-    if (now < mt->last_active_ms || now < mt->trim_timeout_ms) {
+    if (now < mt->last_active_ms) {
         VLOG_WARN_RL(&rl, "Detected last active timestamp overflow");
         mt->recently_active = false;
         return true;
     }
 
-    if (now - mt->trim_timeout_ms >= mt->last_active_ms) {
+    if (now > mt->trim_timeout_ms
+        && now - mt->trim_timeout_ms >= mt->last_active_ms) {
         VLOG_INFO_RL(&rl, "Detected inactivity "
                     "(last active %lld ms ago): trimming memory",
                     now - mt->last_active_ms);
