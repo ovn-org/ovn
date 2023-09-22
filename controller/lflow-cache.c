@@ -332,21 +332,15 @@ lflow_cache_run(struct lflow_cache *lc)
     }
 
     long long int now = time_msec();
-    if (now < lc->last_active_ms || now < lc->trim_timeout_ms) {
+    if (now < lc->last_active_ms) {
         VLOG_WARN_RL(&rl, "Detected cache last active timestamp overflow");
         lc->recently_active = false;
         lflow_cache_trim__(lc, true);
         return;
     }
 
-    if (now < lc->trim_timeout_ms) {
-        VLOG_WARN_RL(&rl, "Detected very large trim timeout: "
-                     "now %lld ms timeout %"PRIu32" ms",
-                     now, lc->trim_timeout_ms);
-        return;
-    }
-
-    if (now - lc->trim_timeout_ms >= lc->last_active_ms) {
+    if (now > lc->trim_timeout_ms
+        && now - lc->trim_timeout_ms >= lc->last_active_ms) {
         VLOG_INFO_RL(&rl, "Detected cache inactivity "
                     "(last active %lld ms ago): trimming cache",
                     now - lc->last_active_ms);
