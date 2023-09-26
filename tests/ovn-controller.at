@@ -526,6 +526,10 @@ OVS_WAIT_UNTIL([
     test "$(ovn-sbctl get chassis hv1 other_config:port-up-notif)" = '"true"'
 ])
 
+OVS_WAIT_UNTIL([
+    test "$(ovn-sbctl get chassis hv1 other_config:ls-dpg-column)" = '"true"'
+])
+
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])

@@ -661,8 +661,16 @@ lb_is_local(const struct sbrec_load_balancer *sbrec_lb,
         }
     }
 
+    /* datapath_group column is deprecated. */
     struct sbrec_logical_dp_group *dp_group = sbrec_lb->datapath_group;
+    for (size_t i = 0; dp_group && i < dp_group->n_datapaths; i++) {
+        if (get_local_datapath(local_datapaths,
+                               dp_group->datapaths[i]->tunnel_key)) {
+            return true;
+        }
+    }
 
+    dp_group = sbrec_lb->ls_datapath_group;
     for (size_t i = 0; dp_group && i < dp_group->n_datapaths; i++) {
         if (get_local_datapath(local_datapaths,
                                dp_group->datapaths[i]->tunnel_key)) {

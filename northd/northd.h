@@ -70,6 +70,7 @@ struct chassis_features {
     bool mac_binding_timestamp;
     bool ct_lb_related;
     bool fdb_timestamp;
+    bool ls_dpg_column;
 };
 
 /* A collection of datapaths. E.g. all logical switch datapaths, or all
@@ -366,7 +367,8 @@ const struct ovn_datapath *northd_get_datapath_for_port(
 void sync_lbs(struct ovsdb_idl_txn *, const struct sbrec_load_balancer_table *,
               struct ovn_datapaths *ls_datapaths,
               struct ovn_datapaths *lr_datapaths,
-              struct hmap *lbs);
+              struct hmap *lbs,
+              struct chassis_features *chassis_features);
 
 void sync_pbs(struct ovsdb_idl_txn *, struct hmap *ls_ports);
 bool sync_pbs_for_northd_ls_changes(struct tracked_ls_changes *);

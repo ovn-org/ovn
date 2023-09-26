@@ -221,7 +221,7 @@ en_sync_to_sb_lb_run(struct engine_node *node, void *data OVS_UNUSED)
 
     sync_lbs(eng_ctx->ovnsb_idl_txn, sb_load_balancer_table,
              &northd_data->ls_datapaths, &northd_data->lr_datapaths,
-             &northd_data->lb_datapaths_map);
+             &northd_data->lb_datapaths_map, &northd_data->features);
     engine_set_node_state(node, EN_UPDATED);
 }
 
