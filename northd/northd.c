@@ -4510,6 +4510,7 @@ struct sb_lb {
 
     const struct sbrec_load_balancer *slb;
     struct ovn_dp_group *dpg;
+    struct ovn_dp_group *lr_dpg;
     struct uuid lb_uuid;
 };
 
@@ -4532,10 +4533,12 @@ find_slb_in_sb_lbs(struct hmap *sb_lbs, const struct uuid *lb_uuid)
 void
 sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
          const struct sbrec_load_balancer_table *sbrec_load_balancer_table,
-         struct ovn_datapaths *ls_datapaths, struct hmap *lb_dps_map)
+         struct ovn_datapaths *ls_datapaths,
+         struct ovn_datapaths *lr_datapaths,
+         struct hmap *lb_dps_map)
 {
-    struct hmap dp_groups = HMAP_INITIALIZER(&dp_groups);
-    size_t bitmap_len = ods_size(ls_datapaths);
+    struct hmap ls_dp_groups = HMAP_INITIALIZER(&ls_dp_groups);
+    struct hmap lr_dp_groups = HMAP_INITIALIZER(&lr_dp_groups);
     struct ovn_lb_datapaths *lb_dps;
     struct hmap sb_lbs = HMAP_INITIALIZER(&sb_lbs);
 
@@ -4553,7 +4556,8 @@ sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
         }
 
         /* Delete any SB load balancer entries that refer to NB load balancers
-         * that don't exist anymore or are not applied to switches anymore.
+         * that don't exist anymore or are not applied to switches/routers
+         * anymore.
          *
          * There is also a special case in which duplicate LBs might be created
          * in the SB, e.g., due to the fact that OVSDB only ensures
@@ -4561,7 +4565,8 @@ sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
          * are not indexed in any way.
          */
         lb_dps = ovn_lb_datapaths_find(lb_dps_map, &lb_uuid);
-        if (!lb_dps || !lb_dps->n_nb_ls || !hmapx_add(&existing_lbs, lb_dps)) {
+        if (!lb_dps || (!lb_dps->n_nb_ls && !lb_dps->n_nb_lr) ||
+            !hmapx_add(&existing_lbs, lb_dps)) {
             sbrec_load_balancer_delete(sbrec_lb);
             continue;
         }
@@ -4572,12 +4577,22 @@ sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
         hmap_insert(&sb_lbs, &sb_lb->hmap_node, uuid_hash(&lb_uuid));
 
         /* Find or create datapath group for this load balancer. */
-        sb_lb->dpg = ovn_dp_group_get_or_create(ovnsb_txn, &dp_groups,
-                                                sb_lb->slb->datapath_group,
-                                                lb_dps->n_nb_ls,
-                                                lb_dps->nb_ls_map,
-                                                bitmap_len, true,
-                                                ls_datapaths, NULL);
+        if (lb_dps->n_nb_ls) {
+            sb_lb->dpg = ovn_dp_group_get_or_create(
+                    ovnsb_txn, &ls_dp_groups,
+                    sb_lb->slb->datapath_group,
+                    lb_dps->n_nb_ls, lb_dps->nb_ls_map,
+                    ods_size(ls_datapaths), true,
+                    ls_datapaths, NULL);
+        }
+        if (lb_dps->n_nb_lr) {
+            sb_lb->lr_dpg = ovn_dp_group_get_or_create(
+                    ovnsb_txn, &lr_dp_groups,
+                    sb_lb->slb->lr_datapath_group,
+                    lb_dps->n_nb_lr, lb_dps->nb_lr_map,
+                    ods_size(lr_datapaths), false,
+                    NULL, lr_datapaths);
+        }
     }
     hmapx_destroy(&existing_lbs);
 
@@ -4585,7 +4600,7 @@ sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
      * the SB load balancer columns. */
     HMAP_FOR_EACH (lb_dps, hmap_node, lb_dps_map) {
 
-        if (!lb_dps->n_nb_ls) {
+        if (!lb_dps->n_nb_ls && !lb_dps->n_nb_lr) {
             continue;
         }
 
@@ -4598,8 +4613,8 @@ sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
 
         struct sb_lb *sb_lb = find_slb_in_sb_lbs(&sb_lbs,
                                             &lb_dps->lb->nlb->header_.uuid);
-        ovs_assert(!sb_lb || (sb_lb->slb && sb_lb->dpg));
-        struct ovn_dp_group *lb_dpg = NULL;
+        ovs_assert(!sb_lb || (sb_lb->slb && (sb_lb->dpg || sb_lb->lr_dpg)));
+        struct ovn_dp_group *lb_dpg = NULL, *lb_lr_dpg = NULL;
         if (!sb_lb) {
             sbrec_lb = sbrec_load_balancer_insert(ovnsb_txn);
             char *lb_id = xasprintf(
@@ -4611,15 +4626,25 @@ sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
         } else {
             sbrec_lb = sb_lb->slb;
             lb_dpg = sb_lb->dpg;
+            lb_lr_dpg = sb_lb->lr_dpg;
         }
 
         /* Find or create datapath group for this load balancer. */
-        if (!lb_dpg) {
-            lb_dpg = ovn_dp_group_get_or_create(ovnsb_txn, &dp_groups,
-                                                sbrec_lb->datapath_group,
-                                                lb_dps->n_nb_ls,
-                                                lb_dps->nb_ls_map, bitmap_len,
-                                                true, ls_datapaths, NULL);
+        if (!lb_dpg && lb_dps->n_nb_ls) {
+            lb_dpg = ovn_dp_group_get_or_create(
+                    ovnsb_txn, &ls_dp_groups,
+                    sbrec_lb->datapath_group,
+                    lb_dps->n_nb_ls, lb_dps->nb_ls_map,
+                    ods_size(ls_datapaths), true,
+                    ls_datapaths, NULL);
+        }
+        if (!lb_lr_dpg && lb_dps->n_nb_lr) {
+            lb_lr_dpg = ovn_dp_group_get_or_create(
+                    ovnsb_txn, &lr_dp_groups,
+                    sbrec_lb->lr_datapath_group,
+                    lb_dps->n_nb_lr, lb_dps->nb_lr_map,
+                    ods_size(lr_datapaths), false,
+                    NULL, lr_datapaths);
         }
 
         /* Update columns. */
@@ -4627,7 +4652,12 @@ sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
         sbrec_load_balancer_set_vips(sbrec_lb,
                                      ovn_northd_lb_get_vips(lb_dps->lb));
         sbrec_load_balancer_set_protocol(sbrec_lb, lb_dps->lb->nlb->protocol);
-        sbrec_load_balancer_set_datapath_group(sbrec_lb, lb_dpg->dp_group);
+        sbrec_load_balancer_set_datapath_group(
+            sbrec_lb, lb_dpg ? lb_dpg->dp_group : NULL
+        );
+        sbrec_load_balancer_set_lr_datapath_group(
+            sbrec_lb, lb_lr_dpg ? lb_lr_dpg->dp_group : NULL
+        );
         sbrec_load_balancer_set_options(sbrec_lb, &options);
         /* Clearing 'datapaths' column, since 'dp_group' is in use. */
         sbrec_load_balancer_set_datapaths(sbrec_lb, NULL, 0);
@@ -4635,11 +4665,17 @@ sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
     }
 
     struct ovn_dp_group *dpg;
-    HMAP_FOR_EACH_POP (dpg, node, &dp_groups) {
+    HMAP_FOR_EACH_POP (dpg, node, &ls_dp_groups) {
         bitmap_free(dpg->bitmap);
         free(dpg);
     }
-    hmap_destroy(&dp_groups);
+    hmap_destroy(&ls_dp_groups);
+
+    HMAP_FOR_EACH_POP (dpg, node, &lr_dp_groups) {
+        bitmap_free(dpg->bitmap);
+        free(dpg);
+    }
+    hmap_destroy(&lr_dp_groups);
 
     struct sb_lb *sb_lb;
     HMAP_FOR_EACH_POP (sb_lb, hmap_node, &sb_lbs) {
@@ -4653,6 +4689,13 @@ sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
     struct ovn_datapath *od;
     HMAP_FOR_EACH (od, key_node, &ls_datapaths->datapaths) {
         ovs_assert(od->nbs);
+
+        if (od->sb->n_load_balancers) {
+            sbrec_datapath_binding_set_load_balancers(od->sb, NULL, 0);
+        }
+    }
+    HMAP_FOR_EACH (od, key_node, &lr_datapaths->datapaths) {
+        ovs_assert(od->nbr);
 
         if (od->sb->n_load_balancers) {
             sbrec_datapath_binding_set_load_balancers(od->sb, NULL, 0);

@@ -2898,6 +2898,15 @@ sb:load_balancer vips,protocol name=lbg0
 
 check ovn-nbctl lr-add lr0 -- add logical_router lr0 load_balancer_group $lbg
 check ovn-nbctl --wait=sb lr-lb-add lr0 lb0
+check_row_count sb:load_balancer 2
+
+lr0_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
+lb0_lr_dp_group=$(fetch_column sb:load_balancer lr_datapath_group name=lb0)
+
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lb0_lr_dp_group | tail -1], [0], [dnl
+$lr0_sb_uuid
+])
 
 echo
 echo "__file__:__line__: Check that SB lb0 has only sw0 in datapaths column."
@@ -2943,7 +2952,13 @@ check_row_count sb:load_balancer 2
 lbg1=$(fetch_column nb:load_balancer _uuid name=lbg1)
 check ovn-nbctl add load_balancer_group $lbg load_balancer $lbg1
 check ovn-nbctl --wait=sb lr-lb-add lr0 lb1
-check_row_count sb:load_balancer 3
+check_row_count sb:load_balancer 4
+
+lb1_lr_dp_group=$(fetch_column sb:load_balancer lr_datapath_group name=lb1)
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lb1_lr_dp_group | tail -1], [0], [dnl
+$lr0_sb_uuid
+])
 
 echo
 echo "__file__:__line__: Associate lb1 to sw1 and check that lb1 is created in SB DB."

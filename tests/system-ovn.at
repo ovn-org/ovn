@@ -11751,3 +11751,117 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ct_flush on logical router load balancer])
+AT_KEYWORDS([ct-lr-flush])
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+check ovn-nbctl lr-add R1
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add public
+
+check ovn-nbctl lrp-add R1 rp-sw0 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lrp-add R1 rp-public 00:00:02:01:02:03 172.16.1.1/24
+
+check ovn-nbctl set logical_router R1 options:chassis=hv1
+
+check ovn-nbctl lsp-add sw0 sw0-rp -- set Logical_Switch_Port sw0-rp \
+    type=router options:router-port=rp-sw0 \
+    -- lsp-set-addresses sw0-rp router
+
+check ovn-nbctl lsp-add sw0 sw0-vm \
+    -- lsp-set-addresses sw0-vm "00:00:01:01:02:04 192.168.1.2/24"
+
+check ovn-nbctl lsp-add public public-rp -- set Logical_Switch_Port public-rp \
+    type=router options:router-port=rp-public \
+    -- lsp-set-addresses public-rp router
+
+check ovn-nbctl lsp-add public public-vm \
+   -- lsp-set-addresses public-vm "00:00:02:01:02:04 172.16.1.2/24"
+
+ADD_NAMESPACES(sw0-vm)
+ADD_VETH(sw0-vm, sw0-vm, br-int, "192.168.1.2/24", "00:00:01:01:02:04", \
+         "192.168.1.1")
+
+ADD_NAMESPACES(public-vm)
+ADD_VETH(public-vm, public-vm, br-int, "172.16.1.2/24", "00:00:02:01:02:04", \
+         "172.16.1.1")
+
+# Start webservers in 'server'.
+OVS_START_L7([sw0-vm], [http])
+
+# Create a load balancer and associate to R1
+check ovn-nbctl lb-add lb1 172.16.1.150:80 192.168.1.2:80 \
+    -- set load_balancer lb1 options:ct_flush="true"
+check ovn-nbctl lr-lb-add R1 lb1
+
+check ovn-nbctl --wait=hv sync
+
+for i in $(seq 1 5); do
+    echo Request $i
+    NS_CHECK_EXEC([public-vm], [wget 172.16.1.150 -t 5 -T 1 --retry-connrefused -v -o wget$i.log])
+done
+
+OVS_WAIT_FOR_OUTPUT([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.1.150) | wc -l ], [0], [dnl
+1
+])
+
+check ovn-nbctl --wait=hv lb-del lb1
+
+OVS_WAIT_FOR_OUTPUT([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.1.150) | wc -l ], [0], [dnl
+0
+])
+
+check ovn-nbctl lb-add lb2 172.16.1.151:80 192.168.1.2:80
+check ovn-nbctl lr-lb-add R1 lb2
+
+check ovn-nbctl --wait=hv sync
+
+for i in $(seq 1 5); do
+    echo Request $i
+    NS_CHECK_EXEC([public-vm], [wget 172.16.1.151 -t 5 -T 1 --retry-connrefused -v -o wget$i.log])
+done
+
+OVS_WAIT_FOR_OUTPUT([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.1.151) | wc -l ], [0], [dnl
+1
+])
+
+check ovn-nbctl --wait=hv lb-del lb2
+
+OVS_WAIT_FOR_OUTPUT([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.1.151) | wc -l ], [0], [dnl
+1
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/Failed to acquire.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])

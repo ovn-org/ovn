@@ -2815,6 +2815,12 @@ load_balancers_by_dp_init(const struct hmap *local_datapaths,
                                          lb->datapath_group->datapaths[i],
                                          lb, lbs);
         }
+        for (size_t i = 0; lb->lr_datapath_group
+                           && i < lb->lr_datapath_group->n_datapaths; i++) {
+            load_balancers_by_dp_add_one(local_datapaths,
+                                         lb->lr_datapath_group->datapaths[i],
+                                         lb, lbs);
+        }
     }
     return lbs;
 }
