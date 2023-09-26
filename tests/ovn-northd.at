@@ -2860,7 +2860,7 @@ lbg0_uuid=$(fetch_column sb:load_balancer _uuid name=lbg0)
 echo
 echo "__file__:__line__: Check that SB lb0 has sw0 in datapaths column."
 
-lb0_dp_group=$(fetch_column sb:load_balancer datapath_group name=lb0)
+lb0_dp_group=$(fetch_column sb:load_balancer ls_datapath_group name=lb0)
 AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
                     | grep -A1 $lb0_dp_group | tail -1], [0], [dnl
 $sw0_sb_uuid
@@ -2871,7 +2871,7 @@ check_column "" sb:datapath_binding load_balancers external_ids:name=sw0
 echo
 echo "__file__:__line__: Check that SB lbg0 has sw0 in datapaths column."
 
-lbg0_dp_group=$(fetch_column sb:load_balancer datapath_group name=lbg0)
+lbg0_dp_group=$(fetch_column sb:load_balancer ls_datapath_group name=lbg0)
 AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
                     | grep -A1 $lbg0_dp_group | tail -1], [0], [dnl
 $sw0_sb_uuid
@@ -2897,6 +2897,15 @@ sb:load_balancer vips,protocol name=lbg0
 
 check ovn-nbctl lr-add lr0 -- add logical_router lr0 load_balancer_group $lbg
 check ovn-nbctl --wait=sb lr-lb-add lr0 lb0
+check_row_count sb:load_balancer 2
+
+lr0_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
+lb0_lr_dp_group=$(fetch_column sb:load_balancer lr_datapath_group name=lb0)
+
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lb0_lr_dp_group | tail -1], [0], [dnl
+$lr0_sb_uuid
+])
 
 echo
 echo "__file__:__line__: Check that SB lb0 has only sw0 in datapaths column."
@@ -2942,7 +2951,13 @@ check_row_count sb:load_balancer 2
 lbg1=$(fetch_column nb:load_balancer _uuid name=lbg1)
 check ovn-nbctl add load_balancer_group $lbg load_balancer $lbg1
 check ovn-nbctl --wait=sb lr-lb-add lr0 lb1
-check_row_count sb:load_balancer 3
+check_row_count sb:load_balancer 4
+
+lb1_lr_dp_group=$(fetch_column sb:load_balancer lr_datapath_group name=lb1)
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lb1_lr_dp_group | tail -1], [0], [dnl
+$lr0_sb_uuid
+])
 
 echo
 echo "__file__:__line__: Associate lb1 to sw1 and check that lb1 is created in SB DB."
@@ -2959,7 +2974,7 @@ echo "__file__:__line__: Check that SB lbg1 has vips and protocol columns are se
 check_column "20.0.0.30:80=20.0.0.50:8080 udp" sb:load_balancer vips,protocol name=lbg1
 
 lb1_uuid=$(fetch_column sb:load_balancer _uuid name=lb1)
-lb1_dp_group=$(fetch_column sb:load_balancer datapath_group name=lb1)
+lb1_dp_group=$(fetch_column sb:load_balancer ls_datapath_group name=lb1)
 
 echo
 echo "__file__:__line__: Check that SB lb1 has sw1 in datapaths column."
@@ -2970,7 +2985,7 @@ $sw1_sb_uuid
 ])
 
 lbg1_uuid=$(fetch_column sb:load_balancer _uuid name=lbg1)
-lbg1_dp_group=$(fetch_column sb:load_balancer datapath_group name=lbg1)
+lbg1_dp_group=$(fetch_column sb:load_balancer ls_datapath_group name=lbg1)
 
 echo
 echo "__file__:__line__: Check that SB lbg1 has sw0 and sw1 in datapaths column."
@@ -6019,9 +6034,9 @@ ovn_start
 check ovn-nbctl ls-add ls -- lb-add lb1 10.0.0.1:80 10.0.0.2:80 -- ls-lb-add ls lb1
 check ovn-nbctl --wait=sb sync
 
-dps=$(fetch_column Load_Balancer datapath_group)
+dps=$(fetch_column Load_Balancer ls_datapath_group)
 nlb=$(fetch_column nb:Load_Balancer _uuid)
-AT_CHECK([ovn-sbctl create Load_Balancer name=lb1 datapath_group="$dps" external_ids="lb_id=$nlb"], [0], [ignore])
+AT_CHECK([ovn-sbctl create Load_Balancer name=lb1 ls_datapath_group="$dps" external_ids="lb_id=$nlb"], [0], [ignore])
 
 check ovn-nbctl --wait=sb sync
 check_row_count Load_Balancer 1
@@ -8702,7 +8717,7 @@ AT_CHECK([grep "ls_in_lb " S1flows | sed 's/table=../table=??/' | sort], [0], [d
 
 ovn-sbctl get datapath S0 _uuid > dp_uuids
 ovn-sbctl get datapath S1 _uuid >> dp_uuids
-lb_dp_group=$(ovn-sbctl --bare --columns datapath_group find Load_Balancer name=lb0)
+lb_dp_group=$(ovn-sbctl --bare --columns ls_datapath_group find Load_Balancer name=lb0)
 AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
                     | grep -A1 $lb_dp_group | tail -1 | tr ' ' '\n' | sort], [0], [dnl
 $(cat dp_uuids | sort)
@@ -10552,8 +10567,7 @@ check ovn-nbctl --wait=sb lr-lb-add lr0 lb1
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
-# LBs applied to routers are not synced to the SB yet.
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Modify the backend of the lb1 vip
@@ -10562,7 +10576,7 @@ check ovn-nbctl --wait=sb set load_balancer lb1 vips:'"10.0.0.10:80"'='"10.0.0.1
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Cleanup the vip of lb1.
@@ -10571,7 +10585,7 @@ check ovn-nbctl --wait=sb clear load_Balancer lb1 vips
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Set the vips of lb1 back
@@ -10580,7 +10594,7 @@ check ovn-nbctl --wait=sb lb-add lb1 10.0.0.10:80 10.0.0.3:80
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Add another vip to lb1
@@ -10589,7 +10603,7 @@ check ovn-nbctl --wait=sb lb-add lb1 10.0.0.20:80 10.0.0.30:8080
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
@@ -10597,7 +10611,7 @@ check ovn-nbctl --wait=sb lr-lb-del lr0 lb1
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Test load balancer group now
@@ -10701,7 +10715,7 @@ check ovn-nbctl add logical_router lr0 load_balancer_group $lbg1_uuid
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Modify the backend of the lb1 vip
@@ -10710,7 +10724,7 @@ check ovn-nbctl --wait=sb set load_balancer lb1 vips:'"10.0.0.10:80"'='"10.0.0.1
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Cleanup the vip of lb1.
@@ -10719,7 +10733,7 @@ check ovn-nbctl --wait=sb clear load_Balancer lb1 vips
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Set the vips of lb1 back
@@ -10728,7 +10742,7 @@ check ovn-nbctl --wait=sb lb-add lb1 10.0.0.10:80 10.0.0.3:80
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Add another vip to lb1
@@ -10737,7 +10751,7 @@ check ovn-nbctl --wait=sb lb-add lb1 10.0.0.20:80 10.0.0.30:8080
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
@@ -10745,7 +10759,7 @@ check ovn-nbctl --wait=sb clear logical_router lr0 load_balancer_group
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 
 # Add back lb group to logical switch and then delete it.
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
@@ -10806,7 +10820,7 @@ check ovn-nbctl --wait=sb set logical_router lr1 load_balancer_group=$lbg1_uuid
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
@@ -10831,7 +10845,7 @@ check ovn-nbctl --wait=sb lr-lb-add lr1 lb2
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
@@ -10875,7 +10889,7 @@ check ovn-nbctl --wait=sb remove load_balancer_group . load_balancer $lb3_uuid
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 AT_CLEANUP
