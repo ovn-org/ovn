@@ -1892,11 +1892,21 @@ add_lb_ct_snat_hairpin_vip_flow(const struct ovn_controller_lb *lb,
                                           local_datapaths, &match,
                                           &ofpacts, flow_table);
         }
+        /* datapath_group column is deprecated. */
         if (lb->slb->datapath_group) {
             for (size_t i = 0; i < lb->slb->datapath_group->n_datapaths; i++) {
                 add_lb_ct_snat_hairpin_for_dp(
                     lb, !!lb_vip->vip_port,
                     lb->slb->datapath_group->datapaths[i],
+                    local_datapaths, &match, &ofpacts, flow_table);
+            }
+        }
+        if (lb->slb->ls_datapath_group) {
+            for (size_t i = 0;
+                 i < lb->slb->ls_datapath_group->n_datapaths; i++) {
+                add_lb_ct_snat_hairpin_for_dp(
+                    lb, !!lb_vip->vip_port,
+                    lb->slb->ls_datapath_group->datapaths[i],
                     local_datapaths, &match, &ofpacts, flow_table);
             }
         }

@@ -396,7 +396,9 @@ pre_get_info(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &sbrec_mac_binding_col_mac);
 
     ovsdb_idl_add_column(ctx->idl, &sbrec_load_balancer_col_datapaths);
+    /* datapath_group column is deprecated. */
     ovsdb_idl_add_column(ctx->idl, &sbrec_load_balancer_col_datapath_group);
+    ovsdb_idl_add_column(ctx->idl, &sbrec_load_balancer_col_ls_datapath_group);
     ovsdb_idl_add_column(ctx->idl, &sbrec_load_balancer_col_vips);
     ovsdb_idl_add_column(ctx->idl, &sbrec_load_balancer_col_name);
     ovsdb_idl_add_column(ctx->idl, &sbrec_load_balancer_col_protocol);
@@ -932,9 +934,14 @@ cmd_lflow_list_load_balancers(struct ctl_context *ctx, struct vconn *vconn,
                     break;
                 }
             }
+            /* datapath_group column is deprecated. */
             if (lb->datapath_group && !dp_found) {
                 dp_found = datapath_group_contains_datapath(lb->datapath_group,
                                                             datapath);
+            }
+            if (lb->ls_datapath_group && !dp_found) {
+                dp_found = datapath_group_contains_datapath(
+                        lb->ls_datapath_group, datapath);
             }
             if (!dp_found) {
                 continue;
@@ -954,9 +961,15 @@ cmd_lflow_list_load_balancers(struct ctl_context *ctx, struct vconn *vconn,
                 print_vflow_datapath_name(lb->datapaths[i], true,
                                           &ctx->output);
             }
+            /* datapath_group column is deprecated. */
             for (size_t i = 0; lb->datapath_group
                                && i < lb->datapath_group->n_datapaths; i++) {
                 print_vflow_datapath_name(lb->datapath_group->datapaths[i],
+                                          true, &ctx->output);
+            }
+            for (size_t i = 0; lb->ls_datapath_group
+                    && i < lb->ls_datapath_group->n_datapaths; i++) {
+                print_vflow_datapath_name(lb->ls_datapath_group->datapaths[i],
                                           true, &ctx->output);
             }
         }

@@ -4888,6 +4888,12 @@ tcp.flags = RST;
     </column>
 
     <column name="datapath_group">
+      Deprecated. The group of datapaths to which this load balancer applies
+      to. This means that the same load balancer applies to all datapaths in
+      a group.
+    </column>
+
+    <column name="ls_datapath_group">
       The group of datapaths to which this load balancer applies to.  This
       means that the same load balancer applies to all datapaths in a group.
     </column>

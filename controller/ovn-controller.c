@@ -2809,10 +2809,17 @@ load_balancers_by_dp_init(const struct hmap *local_datapaths,
             load_balancers_by_dp_add_one(local_datapaths,
                                          lb->datapaths[i], lb, lbs);
         }
+        /* datapath_group column is deprecated. */
         for (size_t i = 0; lb->datapath_group
                            && i < lb->datapath_group->n_datapaths; i++) {
             load_balancers_by_dp_add_one(local_datapaths,
                                          lb->datapath_group->datapaths[i],
+                                         lb, lbs);
+        }
+        for (size_t i = 0; lb->ls_datapath_group
+                           && i < lb->ls_datapath_group->n_datapaths; i++) {
+            load_balancers_by_dp_add_one(local_datapaths,
+                                         lb->ls_datapath_group->datapaths[i],
                                          lb, lbs);
         }
         for (size_t i = 0; lb->lr_datapath_group

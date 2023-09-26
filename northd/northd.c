@@ -491,6 +491,15 @@ build_chassis_features(const struct sbrec_chassis_table *sbrec_chassis_table,
             chassis_features->fdb_timestamp) {
             chassis_features->fdb_timestamp = false;
         }
+
+        bool ls_dpg_column =
+            smap_get_bool(&chassis->other_config,
+                          OVN_FEATURE_LS_DPG_COLUMN,
+                          false);
+        if (!ls_dpg_column &&
+            chassis_features->ls_dpg_column) {
+            chassis_features->ls_dpg_column = false;
+        }
     }
 }
 
@@ -4536,7 +4545,8 @@ sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
          const struct sbrec_load_balancer_table *sbrec_load_balancer_table,
          struct ovn_datapaths *ls_datapaths,
          struct ovn_datapaths *lr_datapaths,
-         struct hmap *lb_dps_map)
+         struct hmap *lb_dps_map,
+         struct chassis_features *chassis_features)
 {
     struct hmap ls_dp_groups = HMAP_INITIALIZER(&ls_dp_groups);
     struct hmap lr_dp_groups = HMAP_INITIALIZER(&lr_dp_groups);
@@ -4579,9 +4589,13 @@ sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
 
         /* Find or create datapath group for this load balancer. */
         if (lb_dps->n_nb_ls) {
+            struct sbrec_logical_dp_group *ls_datapath_group
+                = chassis_features->ls_dpg_column
+                    ? sb_lb->slb->ls_datapath_group
+                    : sb_lb->slb->datapath_group; /* deprecated */
             sb_lb->dpg = ovn_dp_group_get_or_create(
                     ovnsb_txn, &ls_dp_groups,
-                    sb_lb->slb->datapath_group,
+                    ls_datapath_group,
                     lb_dps->n_nb_ls, lb_dps->nb_ls_map,
                     ods_size(ls_datapaths), true,
                     ls_datapaths, NULL);
@@ -4632,9 +4646,13 @@ sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
 
         /* Find or create datapath group for this load balancer. */
         if (!lb_dpg && lb_dps->n_nb_ls) {
+            struct sbrec_logical_dp_group *ls_datapath_group
+                = chassis_features->ls_dpg_column
+                    ? sbrec_lb->ls_datapath_group
+                    : sbrec_lb->datapath_group; /* deprecated */
             lb_dpg = ovn_dp_group_get_or_create(
                     ovnsb_txn, &ls_dp_groups,
-                    sbrec_lb->datapath_group,
+                    ls_datapath_group,
                     lb_dps->n_nb_ls, lb_dps->nb_ls_map,
                     ods_size(ls_datapaths), true,
                     ls_datapaths, NULL);
@@ -4653,9 +4671,19 @@ sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
         sbrec_load_balancer_set_vips(sbrec_lb,
                                      ovn_northd_lb_get_vips(lb_dps->lb));
         sbrec_load_balancer_set_protocol(sbrec_lb, lb_dps->lb->nlb->protocol);
-        sbrec_load_balancer_set_datapath_group(
-            sbrec_lb, lb_dpg ? lb_dpg->dp_group : NULL
-        );
+
+        if (chassis_features->ls_dpg_column) {
+            sbrec_load_balancer_set_ls_datapath_group(
+                sbrec_lb, lb_dpg ? lb_dpg->dp_group : NULL
+            );
+            sbrec_load_balancer_set_datapath_group(sbrec_lb, NULL);
+        } else {
+            /* datapath_group column is deprecated. */
+            sbrec_load_balancer_set_datapath_group(
+                sbrec_lb, lb_dpg ? lb_dpg->dp_group : NULL
+            );
+        }
+
         sbrec_load_balancer_set_lr_datapath_group(
             sbrec_lb, lb_lr_dpg ? lb_lr_dpg->dp_group : NULL
         );
@@ -17731,6 +17759,7 @@ northd_init(struct northd_data *data)
         .mac_binding_timestamp = true,
         .ct_lb_related = true,
         .fdb_timestamp = true,
+        .ls_dpg_column = true,
     };
     data->ovn_internal_version_changed = false;
     sset_init(&data->svc_monitor_lsps);
