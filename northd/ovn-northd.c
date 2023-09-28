@@ -873,6 +873,7 @@ main(int argc, char *argv[])
     stopwatch_create(LFLOWS_DATAPATHS_STOPWATCH_NAME, SW_MS);
     stopwatch_create(LFLOWS_PORTS_STOPWATCH_NAME, SW_MS);
     stopwatch_create(LFLOWS_LBS_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(LFLOWS_LR_STATEFUL_STOPWATCH_NAME, SW_MS);
     stopwatch_create(LFLOWS_IGMP_STOPWATCH_NAME, SW_MS);
     stopwatch_create(LFLOWS_DP_GROUPS_STOPWATCH_NAME, SW_MS);
     stopwatch_create(LFLOWS_TO_SB_STOPWATCH_NAME, SW_MS);

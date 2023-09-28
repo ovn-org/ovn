@@ -42,8 +42,6 @@ lflow_get_input_data(struct engine_node *node,
         engine_get_input_data("port_group", node);
     struct sync_meters_data *sync_meters_data =
         engine_get_input_data("sync_meters", node);
-    struct ed_type_lr_nat_data *lr_nat_data =
-        engine_get_input_data("lr_nat", node);
     struct ed_type_lr_stateful *lr_stateful_data =
         engine_get_input_data("lr_stateful", node);
 
@@ -68,7 +66,6 @@ lflow_get_input_data(struct engine_node *node,
     lflow_input->ls_ports = &northd_data->ls_ports;
     lflow_input->lr_ports = &northd_data->lr_ports;
     lflow_input->ls_port_groups = &pg_data->ls_port_groups;
-    lflow_input->lr_nats = &lr_nat_data->lr_nats;
     lflow_input->lr_stateful_table = &lr_stateful_data->table;
     lflow_input->meter_groups = &sync_meters_data->meter_groups;
     lflow_input->lb_datapaths_map = &northd_data->lb_datapaths_map;
