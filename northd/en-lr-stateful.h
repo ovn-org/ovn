@@ -73,6 +73,10 @@ struct lr_stateful_table {
 #define LR_STATEFUL_TABLE_FOR_EACH(LR_LB_NAT_REC, TABLE) \
     HMAP_FOR_EACH (LR_LB_NAT_REC, key_node, &(TABLE)->entries)
 
+#define LR_STATEFUL_TABLE_FOR_EACH_IN_P(LR_STATEFUL_REC, JOBID, TABLE) \
+    HMAP_FOR_EACH_IN_PARALLEL (LR_STATEFUL_REC, key_node, JOBID, \
+                               &(TABLE)->entries)
+
 struct lr_stateful_tracked_data {
     /* Created or updated logical router with LB and/or NAT data. */
     struct hmapx crupdated; /* Stores 'struct lr_stateful_record'. */

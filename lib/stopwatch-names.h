@@ -24,6 +24,7 @@
 #define LFLOWS_DATAPATHS_STOPWATCH_NAME "lflows_datapaths"
 #define LFLOWS_PORTS_STOPWATCH_NAME "lflows_ports"
 #define LFLOWS_LBS_STOPWATCH_NAME "lflows_lbs"
+#define LFLOWS_LR_STATEFUL_STOPWATCH_NAME "lflows_lr_stateful"
 #define LFLOWS_IGMP_STOPWATCH_NAME "lflows_igmp"
 #define LFLOWS_DP_GROUPS_STOPWATCH_NAME "lflows_dp_groups"
 #define LFLOWS_TO_SB_STOPWATCH_NAME "lflows_to_sb"
