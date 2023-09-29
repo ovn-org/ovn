@@ -171,7 +171,7 @@ northd_nb_logical_switch_handler(struct engine_node *node,
         return false;
     }
 
-    if (northd_has_lsps_in_tracked_data(&nd->trk_data)) {
+    if (northd_has_tracked_data(&nd->trk_data)) {
         engine_set_node_state(node, EN_UPDATED);
     }
 
