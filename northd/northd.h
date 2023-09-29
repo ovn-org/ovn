@@ -89,6 +89,8 @@ ods_size(const struct ovn_datapaths *datapaths)
     return hmap_count(&datapaths->datapaths);
 }
 
+bool od_has_lb_vip(const struct ovn_datapath *od);
+
 struct tracked_ovn_ports {
     /* tracked created ports.
      * hmapx node data is 'struct ovn_port *' */
@@ -118,6 +120,8 @@ enum northd_tracked_data_type {
     NORTHD_TRACKED_PORTS    = (1 << 0),
     NORTHD_TRACKED_LBS      = (1 << 1),
     NORTHD_TRACKED_LR_NATS  = (1 << 2),
+    NORTHD_TRACKED_LS_LBS   = (1 << 3),
+    NORTHD_TRACKED_LS_ACLS  = (1 << 4),
 };
 
 /* Track what's changed in the northd engine node.
@@ -132,6 +136,14 @@ struct northd_tracked_data {
     /* Tracked logical routers whose NATs have changed.
      * hmapx node is 'struct ovn_datapath *'. */
     struct hmapx trk_nat_lrs;
+
+    /* Tracked logical switches whose load balancers have changed.
+     * hmapx node is 'struct ovn_datapath *'. */
+    struct hmapx ls_with_changed_lbs;
+
+    /* Tracked logical switches whose ACLs have changed.
+     * hmapx node is 'struct ovn_datapath *'. */
+    struct hmapx ls_with_changed_acls;
 };
 
 struct northd_data {
@@ -180,6 +192,7 @@ struct lflow_input {
     const struct hmap *lr_ports;
     const struct ls_port_group_table *ls_port_groups;
     const struct lr_stateful_table *lr_stateful_table;
+    const struct ls_stateful_table *ls_stateful_table;
     const struct shash *meter_groups;
     const struct hmap *lb_datapaths_map;
     const struct hmap *bfd_connections;
@@ -289,11 +302,7 @@ struct ovn_datapath {
     struct hmap port_tnlids;
     uint32_t port_key_hint;
 
-    bool has_stateful_acl;
-    bool has_lb_vip;
     bool has_unknown;
-    bool has_acls;
-    uint64_t max_acl_tier;
     bool has_vtep_lports;
     bool has_arp_proxy_port;
 
@@ -548,6 +557,18 @@ northd_has_lr_nats_in_tracked_data(struct northd_tracked_data *trk_nd_changes)
     return trk_nd_changes->type & NORTHD_TRACKED_LR_NATS;
 }
 
+static inline bool
+northd_has_ls_lbs_in_tracked_data(struct northd_tracked_data *trk_nd_changes)
+{
+    return trk_nd_changes->type & NORTHD_TRACKED_LS_LBS;
+}
+
+static inline bool
+northd_has_ls_acls_in_tracked_data(struct northd_tracked_data *trk_nd_changes)
+{
+    return trk_nd_changes->type & NORTHD_TRACKED_LS_ACLS;
+}
+
 /* Returns 'true' if the IPv4 'addr' is on the same subnet with one of the
  * IPs configured on the router port.
  */
@@ -558,5 +579,11 @@ bool lrouter_port_ipv4_reachable(const struct ovn_port *, ovs_be32 addr);
  */
 bool lrouter_port_ipv6_reachable(const struct ovn_port *,
                                  const struct in6_addr *);
+
+static inline bool
+lr_has_multiple_gw_ports(const struct ovn_datapath *od)
+{
+    return od->n_l3dgw_ports > 1 && !od->is_gw_router;
+}
 
 #endif /* NORTHD_H */

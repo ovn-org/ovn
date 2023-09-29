@@ -56,6 +56,8 @@ struct lr_stateful_record {
     /* This lrnat_rec comes from the en_lrnat engine node data. */
     const struct lr_nat_record *lrnat_rec;
 
+    bool has_lb_vip;
+
     /* Load Balancer vIPs relevant for this datapath. */
     struct ovn_lb_ip_set *lb_ips;
 
@@ -112,6 +114,12 @@ static inline bool
 lr_stateful_has_tracked_data(struct lr_stateful_tracked_data *trk_data)
 {
     return !hmapx_is_empty(&trk_data->crupdated);
+}
+
+static inline bool
+lr_stateful_rec_has_lb_vip(const struct lr_stateful_record *lr_stateful_rec)
+{
+    return lr_stateful_rec && lr_stateful_rec->has_lb_vip;
 }
 
 #endif /* EN_lr_stateful_H */

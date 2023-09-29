@@ -311,7 +311,12 @@ lr_stateful_lb_data_handler(struct engine_node *node, void *data_)
         struct hmapx_node *hmapx_node;
 
         HMAPX_FOR_EACH (hmapx_node, &data->trk_data.crupdated) {
-            lr_stateful_rebuild_vip_nats(hmapx_node->data);
+            struct lr_stateful_record *lr_stateful_rec = hmapx_node->data;
+            lr_stateful_rebuild_vip_nats(lr_stateful_rec);
+            const struct ovn_datapath *od =
+                ovn_datapaths_find_by_index(input_data.lr_datapaths,
+                                            lr_stateful_rec->lr_index);
+            lr_stateful_rec->has_lb_vip = od_has_lb_vip(od);
         }
 
         engine_set_node_state(node, EN_UPDATED);
@@ -510,11 +515,25 @@ lr_stateful_record_create(struct lr_stateful_table *table,
     if (nbr->n_nat) {
         lr_stateful_rebuild_vip_nats(lr_stateful_rec);
     }
+    lr_stateful_rec->has_lb_vip = od_has_lb_vip(od);
 
     hmap_insert(&table->entries, &lr_stateful_rec->key_node,
                 uuid_hash(&lr_stateful_rec->nbr_uuid));
 
     table->array[od->index] = lr_stateful_rec;
+
+    /* Load balancers are not supported (yet) if a logical router has multiple
+     * distributed gateway port.  Log a warning. */
+    if (lr_stateful_rec->has_lb_vip && lr_has_multiple_gw_ports(od)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "Load-balancers are configured on logical "
+                     "router %s, which has %"PRIuSIZE" distributed "
+                     "gateway ports. Load-balancer is not supported "
+                     "yet when there is more than one distributed "
+                     "gateway port on the router.",
+                     od->nbr->name, od->n_l3dgw_ports);
+    }
+
     return lr_stateful_rec;
 }
 

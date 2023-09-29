@@ -48,6 +48,9 @@ struct ls_port_group_record {
     struct sset ports;          /* Subset of 'nb_pg' ports in this record. */
 };
 
+#define LS_PORT_GROUP_TABLE_FOR_EACH(LS_PG, TABLE) \
+    HMAP_FOR_EACH (LS_PG, key_node, &(TABLE)->entries)
+
 void ls_port_group_table_init(struct ls_port_group_table *);
 void ls_port_group_table_clear(struct ls_port_group_table *);
 void ls_port_group_table_destroy(struct ls_port_group_table *);
