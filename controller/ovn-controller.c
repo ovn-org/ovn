@@ -211,8 +211,8 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
 {
     /* Monitor Port_Bindings rows for local interfaces and local datapaths.
      *
-     * Monitor Logical_Flow, MAC_Binding, Multicast_Group, and DNS tables for
-     * local datapaths.
+     * Monitor Logical_Flow, MAC_Binding, FDB, Multicast_Group, and DNS tables
+     * for local datapaths.
      *
      * Monitor Controller_Event rows for local chassis.
      *
@@ -230,6 +230,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
     struct ovsdb_idl_condition lf = OVSDB_IDL_CONDITION_INIT(&lf);
     struct ovsdb_idl_condition ldpg = OVSDB_IDL_CONDITION_INIT(&ldpg);
     struct ovsdb_idl_condition mb = OVSDB_IDL_CONDITION_INIT(&mb);
+    struct ovsdb_idl_condition fdb = OVSDB_IDL_CONDITION_INIT(&fdb);
     struct ovsdb_idl_condition mg = OVSDB_IDL_CONDITION_INIT(&mg);
     struct ovsdb_idl_condition dns = OVSDB_IDL_CONDITION_INIT(&dns);
     struct ovsdb_idl_condition ce =  OVSDB_IDL_CONDITION_INIT(&ce);
@@ -248,6 +249,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         ovsdb_idl_condition_add_clause_true(&pb);
         ovsdb_idl_condition_add_clause_true(&lf);
         ovsdb_idl_condition_add_clause_true(&mb);
+        ovsdb_idl_condition_add_clause_true(&fdb);
         ovsdb_idl_condition_add_clause_true(&mg);
         ovsdb_idl_condition_add_clause_true(&dns);
         ovsdb_idl_condition_add_clause_true(&ce);
@@ -337,6 +339,8 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
             sbrec_logical_flow_add_clause_logical_datapath(&lf, OVSDB_F_EQ,
                                                            uuid);
             sbrec_mac_binding_add_clause_datapath(&mb, OVSDB_F_EQ, uuid);
+            sbrec_fdb_add_clause_dp_key(&fdb, OVSDB_F_EQ,
+                                        ld->datapath->tunnel_key);
             sbrec_multicast_group_add_clause_datapath(&mg, OVSDB_F_EQ, uuid);
             sbrec_dns_add_clause_datapaths(&dns, OVSDB_F_INCLUDES, &uuid, 1);
             sbrec_ip_multicast_add_clause_datapath(&ip_mcast, OVSDB_F_EQ,
@@ -360,6 +364,7 @@ out:;
         sb_table_set_req_mon_condition(ovnsb_idl, logical_flow, &lf),
         sb_table_set_req_mon_condition(ovnsb_idl, logical_dp_group, &ldpg),
         sb_table_set_req_mon_condition(ovnsb_idl, mac_binding, &mb),
+        sb_table_set_req_mon_condition(ovnsb_idl, fdb, &fdb),
         sb_table_set_req_mon_condition(ovnsb_idl, multicast_group, &mg),
         sb_table_set_req_mon_condition(ovnsb_idl, dns, &dns),
         sb_table_set_req_mon_condition(ovnsb_idl, controller_event, &ce),
@@ -378,6 +383,7 @@ out:;
     ovsdb_idl_condition_destroy(&lf);
     ovsdb_idl_condition_destroy(&ldpg);
     ovsdb_idl_condition_destroy(&mb);
+    ovsdb_idl_condition_destroy(&fdb);
     ovsdb_idl_condition_destroy(&mg);
     ovsdb_idl_condition_destroy(&dns);
     ovsdb_idl_condition_destroy(&ce);
