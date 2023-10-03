@@ -588,31 +588,27 @@ ovn-nbctl lr-route-add R2 fd12::/64 fd20::1
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "fd11::2/64", "f0:00:00:01:02:03", \
-         "fd11::1")
-OVS_WAIT_UNTIL([test "$(ip -n foo1 a | grep fd11::2 | grep tentative)" = ""])
+         "fd11::1", "nodad")
 ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 fd11::2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "fd72::2/64", "f0:00:00:01:02:04", \
-         "fd72::1")
-OVS_WAIT_UNTIL([test "$(ip -n alice1 a | grep fd72::2 | grep tentative)" = ""])
+         "fd72::1", "nodad")
 ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 fd72::2"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "fd12::2/64", "f0:00:00:01:02:05", \
-"fd12::1")
-OVS_WAIT_UNTIL([test "$(ip -n bar1 a | grep fd12::2 | grep tentative)" = ""])
+         "fd12::1", "nodad")
 ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 fd12::2"
 
 ADD_NAMESPACES(bar2)
 ADD_VETH(bar2, bar2, br-int, "fd12::3/64", "e0:00:00:01:02:05", \
-"fd12::1")
-OVS_WAIT_UNTIL([test "$(ip -n bar2 a | grep fd12::3 | grep tentative)" = ""])
+         "fd12::1", "nodad")
 ovn-nbctl lsp-add bar bar2 \
 -- lsp-set-addresses bar2 "e0:00:00:01:02:05 fd12::3"
 
