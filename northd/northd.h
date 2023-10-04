@@ -23,6 +23,7 @@
 #include "northd/en-port-group.h"
 #include "northd/ipam.h"
 #include "openvswitch/hmap.h"
+#include "ovs-thread.h"
 
 struct northd_input {
     /* Northbound table references */
@@ -164,13 +165,6 @@ struct northd_data {
     struct northd_tracked_data trk_data;
 };
 
-struct lflow_data {
-    struct hmap lflows;
-};
-
-void lflow_data_init(struct lflow_data *);
-void lflow_data_destroy(struct lflow_data *);
-
 struct lr_nat_table;
 
 struct lflow_input {
@@ -182,6 +176,7 @@ struct lflow_input {
     const struct sbrec_logical_flow_table *sbrec_logical_flow_table;
     const struct sbrec_multicast_group_table *sbrec_multicast_group_table;
     const struct sbrec_igmp_group_table *sbrec_igmp_group_table;
+    const struct sbrec_logical_dp_group_table *sbrec_logical_dp_group_table;
 
     /* Indexes */
     struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp;
@@ -200,6 +195,15 @@ struct lflow_input {
     const struct hmap *svc_monitor_map;
     bool ovn_internal_version_changed;
 };
+
+extern int parallelization_state;
+enum {
+    STATE_NULL,               /* parallelization is off */
+    STATE_INIT_HASH_SIZES,    /* parallelization is on; hashes sizing needed */
+    STATE_USE_PARALLELIZATION /* parallelization is on */
+};
+
+extern thread_local size_t thread_lflow_counter;
 
 /*
  * Multicast snooping and querier per datapath configuration.
@@ -351,6 +355,179 @@ ovn_datapaths_find_by_index(const struct ovn_datapaths *ovn_datapaths,
     return ovn_datapaths->array[od_index];
 }
 
+struct ovn_datapath *ovn_datapath_from_sbrec(
+    const struct hmap *ls_datapaths, const struct hmap *lr_datapaths,
+    const struct sbrec_datapath_binding *);
+
+static inline bool
+ovn_datapath_is_stale(const struct ovn_datapath *od)
+{
+    return !od->nbr && !od->nbs;
+};
+
+/* Pipeline stages. */
+
+/* The two purposes for which ovn-northd uses OVN logical datapaths. */
+enum ovn_datapath_type {
+    DP_SWITCH,                  /* OVN logical switch. */
+    DP_ROUTER                   /* OVN logical router. */
+};
+
+/* Returns an "enum ovn_stage" built from the arguments.
+ *
+ * (It's better to use ovn_stage_build() for type-safety reasons, but inline
+ * functions can't be used in enums or switch cases.) */
+#define OVN_STAGE_BUILD(DP_TYPE, PIPELINE, TABLE) \
+    (((DP_TYPE) << 9) | ((PIPELINE) << 8) | (TABLE))
+
+/* A stage within an OVN logical switch or router.
+ *
+ * An "enum ovn_stage" indicates whether the stage is part of a logical switch
+ * or router, whether the stage is part of the ingress or egress pipeline, and
+ * the table within that pipeline.  The first three components are combined to
+ * form the stage's full name, e.g. S_SWITCH_IN_PORT_SEC_L2,
+ * S_ROUTER_OUT_DELIVERY. */
+enum ovn_stage {
+#define PIPELINE_STAGES                                                   \
+    /* Logical switch ingress stages. */                                  \
+    PIPELINE_STAGE(SWITCH, IN,  CHECK_PORT_SEC, 0, "ls_in_check_port_sec")   \
+    PIPELINE_STAGE(SWITCH, IN,  APPLY_PORT_SEC, 1, "ls_in_apply_port_sec")   \
+    PIPELINE_STAGE(SWITCH, IN,  LOOKUP_FDB ,    2, "ls_in_lookup_fdb")    \
+    PIPELINE_STAGE(SWITCH, IN,  PUT_FDB,        3, "ls_in_put_fdb")       \
+    PIPELINE_STAGE(SWITCH, IN,  PRE_ACL,        4, "ls_in_pre_acl")       \
+    PIPELINE_STAGE(SWITCH, IN,  PRE_LB,         5, "ls_in_pre_lb")        \
+    PIPELINE_STAGE(SWITCH, IN,  PRE_STATEFUL,   6, "ls_in_pre_stateful")  \
+    PIPELINE_STAGE(SWITCH, IN,  ACL_HINT,       7, "ls_in_acl_hint")      \
+    PIPELINE_STAGE(SWITCH, IN,  ACL_EVAL,       8, "ls_in_acl_eval")      \
+    PIPELINE_STAGE(SWITCH, IN,  ACL_ACTION,     9, "ls_in_acl_action")    \
+    PIPELINE_STAGE(SWITCH, IN,  QOS_MARK,      10, "ls_in_qos_mark")      \
+    PIPELINE_STAGE(SWITCH, IN,  QOS_METER,     11, "ls_in_qos_meter")     \
+    PIPELINE_STAGE(SWITCH, IN,  LB_AFF_CHECK,  12, "ls_in_lb_aff_check")  \
+    PIPELINE_STAGE(SWITCH, IN,  LB,            13, "ls_in_lb")            \
+    PIPELINE_STAGE(SWITCH, IN,  LB_AFF_LEARN,  14, "ls_in_lb_aff_learn")  \
+    PIPELINE_STAGE(SWITCH, IN,  PRE_HAIRPIN,   15, "ls_in_pre_hairpin")   \
+    PIPELINE_STAGE(SWITCH, IN,  NAT_HAIRPIN,   16, "ls_in_nat_hairpin")   \
+    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       17, "ls_in_hairpin")       \
+    PIPELINE_STAGE(SWITCH, IN,  ACL_AFTER_LB_EVAL,  18, \
+                   "ls_in_acl_after_lb_eval")  \
+    PIPELINE_STAGE(SWITCH, IN,  ACL_AFTER_LB_ACTION,  19, \
+                   "ls_in_acl_after_lb_action")  \
+    PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      20, "ls_in_stateful")      \
+    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    21, "ls_in_arp_rsp")       \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  22, "ls_in_dhcp_options")  \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 23, "ls_in_dhcp_response") \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    24, "ls_in_dns_lookup")    \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  25, "ls_in_dns_response")  \
+    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 26, "ls_in_external_port") \
+    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       27, "ls_in_l2_lkup")       \
+    PIPELINE_STAGE(SWITCH, IN,  L2_UNKNOWN,    28, "ls_in_l2_unknown")    \
+                                                                          \
+    /* Logical switch egress stages. */                                   \
+    PIPELINE_STAGE(SWITCH, OUT, PRE_ACL,      0, "ls_out_pre_acl")        \
+    PIPELINE_STAGE(SWITCH, OUT, PRE_LB,       1, "ls_out_pre_lb")         \
+    PIPELINE_STAGE(SWITCH, OUT, PRE_STATEFUL, 2, "ls_out_pre_stateful")   \
+    PIPELINE_STAGE(SWITCH, OUT, ACL_HINT,     3, "ls_out_acl_hint")       \
+    PIPELINE_STAGE(SWITCH, OUT, ACL_EVAL,     4, "ls_out_acl_eval")       \
+    PIPELINE_STAGE(SWITCH, OUT, ACL_ACTION,   5, "ls_out_acl_action")     \
+    PIPELINE_STAGE(SWITCH, OUT, QOS_MARK,     6, "ls_out_qos_mark")       \
+    PIPELINE_STAGE(SWITCH, OUT, QOS_METER,    7, "ls_out_qos_meter")      \
+    PIPELINE_STAGE(SWITCH, OUT, STATEFUL,     8, "ls_out_stateful")       \
+    PIPELINE_STAGE(SWITCH, OUT, CHECK_PORT_SEC,  9, "ls_out_check_port_sec") \
+    PIPELINE_STAGE(SWITCH, OUT, APPLY_PORT_SEC, 10, "ls_out_apply_port_sec") \
+                                                                      \
+    /* Logical router ingress stages. */                              \
+    PIPELINE_STAGE(ROUTER, IN,  ADMISSION,       0, "lr_in_admission")    \
+    PIPELINE_STAGE(ROUTER, IN,  LOOKUP_NEIGHBOR, 1, "lr_in_lookup_neighbor") \
+    PIPELINE_STAGE(ROUTER, IN,  LEARN_NEIGHBOR,  2, "lr_in_learn_neighbor") \
+    PIPELINE_STAGE(ROUTER, IN,  IP_INPUT,        3, "lr_in_ip_input")     \
+    PIPELINE_STAGE(ROUTER, IN,  UNSNAT,          4, "lr_in_unsnat")       \
+    PIPELINE_STAGE(ROUTER, IN,  DEFRAG,          5, "lr_in_defrag")       \
+    PIPELINE_STAGE(ROUTER, IN,  LB_AFF_CHECK,    6, "lr_in_lb_aff_check") \
+    PIPELINE_STAGE(ROUTER, IN,  DNAT,            7, "lr_in_dnat")         \
+    PIPELINE_STAGE(ROUTER, IN,  LB_AFF_LEARN,    8, "lr_in_lb_aff_learn") \
+    PIPELINE_STAGE(ROUTER, IN,  ECMP_STATEFUL,   9, "lr_in_ecmp_stateful") \
+    PIPELINE_STAGE(ROUTER, IN,  ND_RA_OPTIONS,   10, "lr_in_nd_ra_options") \
+    PIPELINE_STAGE(ROUTER, IN,  ND_RA_RESPONSE,  11, "lr_in_nd_ra_response") \
+    PIPELINE_STAGE(ROUTER, IN,  IP_ROUTING_PRE,  12, "lr_in_ip_routing_pre")  \
+    PIPELINE_STAGE(ROUTER, IN,  IP_ROUTING,      13, "lr_in_ip_routing")      \
+    PIPELINE_STAGE(ROUTER, IN,  IP_ROUTING_ECMP, 14, "lr_in_ip_routing_ecmp") \
+    PIPELINE_STAGE(ROUTER, IN,  POLICY,          15, "lr_in_policy")          \
+    PIPELINE_STAGE(ROUTER, IN,  POLICY_ECMP,     16, "lr_in_policy_ecmp")     \
+    PIPELINE_STAGE(ROUTER, IN,  ARP_RESOLVE,     17, "lr_in_arp_resolve")     \
+    PIPELINE_STAGE(ROUTER, IN,  CHK_PKT_LEN,     18, "lr_in_chk_pkt_len")     \
+    PIPELINE_STAGE(ROUTER, IN,  LARGER_PKTS,     19, "lr_in_larger_pkts")     \
+    PIPELINE_STAGE(ROUTER, IN,  GW_REDIRECT,     20, "lr_in_gw_redirect")     \
+    PIPELINE_STAGE(ROUTER, IN,  ARP_REQUEST,     21, "lr_in_arp_request")     \
+                                                                      \
+    /* Logical router egress stages. */                               \
+    PIPELINE_STAGE(ROUTER, OUT, CHECK_DNAT_LOCAL,   0,                       \
+                   "lr_out_chk_dnat_local")                                  \
+    PIPELINE_STAGE(ROUTER, OUT, UNDNAT,             1, "lr_out_undnat")      \
+    PIPELINE_STAGE(ROUTER, OUT, POST_UNDNAT,        2, "lr_out_post_undnat") \
+    PIPELINE_STAGE(ROUTER, OUT, SNAT,               3, "lr_out_snat")        \
+    PIPELINE_STAGE(ROUTER, OUT, POST_SNAT,          4, "lr_out_post_snat")   \
+    PIPELINE_STAGE(ROUTER, OUT, EGR_LOOP,           5, "lr_out_egr_loop")    \
+    PIPELINE_STAGE(ROUTER, OUT, DELIVERY,           6, "lr_out_delivery")
+
+#define PIPELINE_STAGE(DP_TYPE, PIPELINE, STAGE, TABLE, NAME)   \
+    S_##DP_TYPE##_##PIPELINE##_##STAGE                          \
+        = OVN_STAGE_BUILD(DP_##DP_TYPE, P_##PIPELINE, TABLE),
+    PIPELINE_STAGES
+#undef PIPELINE_STAGE
+};
+
+enum ovn_datapath_type ovn_stage_to_datapath_type(enum ovn_stage stage);
+
+
+/* Returns 'od''s datapath type. */
+static inline enum ovn_datapath_type
+ovn_datapath_get_type(const struct ovn_datapath *od)
+{
+    return od->nbs ? DP_SWITCH : DP_ROUTER;
+}
+
+/* Returns an "enum ovn_stage" built from the arguments. */
+static inline enum ovn_stage
+ovn_stage_build(enum ovn_datapath_type dp_type, enum ovn_pipeline pipeline,
+                uint8_t table)
+{
+    return OVN_STAGE_BUILD(dp_type, pipeline, table);
+}
+
+/* Returns the pipeline to which 'stage' belongs. */
+static inline enum ovn_pipeline
+ovn_stage_get_pipeline(enum ovn_stage stage)
+{
+    return (stage >> 8) & 1;
+}
+
+/* Returns the pipeline name to which 'stage' belongs. */
+static inline const char *
+ovn_stage_get_pipeline_name(enum ovn_stage stage)
+{
+    return ovn_stage_get_pipeline(stage) == P_IN ? "ingress" : "egress";
+}
+
+/* Returns the table to which 'stage' belongs. */
+static inline uint8_t
+ovn_stage_get_table(enum ovn_stage stage)
+{
+    return stage & 0xff;
+}
+
+/* Returns a string name for 'stage'. */
+static inline const char *
+ovn_stage_to_str(enum ovn_stage stage)
+{
+    switch (stage) {
+#define PIPELINE_STAGE(DP_TYPE, PIPELINE, STAGE, TABLE, NAME)       \
+        case S_##DP_TYPE##_##PIPELINE##_##STAGE: return NAME;
+    PIPELINE_STAGES
+#undef PIPELINE_STAGE
+        default: return "<unknown>";
+    }
+}
+
 /* A logical switch port or logical router port.
  *
  * In steady state, an ovn_port points to a northbound Logical_Switch_Port
@@ -441,8 +618,10 @@ struct ovn_port {
     /* Temporarily used for traversing a list (or hmap) of ports. */
     bool visited;
 
-    /* List of struct lflow_ref_node that points to the lflows generated by
-     * this ovn_port.
+    /* Only used for the router type LSP whose peer is l3dgw_port */
+    bool enable_router_port_acl;
+
+    /* Reference of lflows generated for this ovn_port.
      *
      * This data is initialized and destroyed by the en_northd node, but
      * populated and used only by the en_lflow node. Ideally this data should
@@ -460,11 +639,19 @@ struct ovn_port {
      * Adding the list here is more straightforward. The drawback is that we
      * need to keep in mind that this data belongs to en_lflow node, so never
      * access it from any other nodes.
+     *
+     * 'lflow_ref' is used to reference generic logical flows generated for
+     *  this ovn_port.
+     *
+     * 'stateful_lflow_ref' is used for logical switch ports of type
+     * 'patch/router' to reference logical flows generated fo this ovn_port
+     *  from the 'lr_stateful' record of the peer port's datapath.
+     *
+     * Note: lflow_ref is not thread safe.  Only one thread should
+     * access ovn_ports->lflow_ref at any given time.
      */
-    struct ovs_list lflows;
-
-    /* Only used for the router type LSP whose peer is l3dgw_port */
-    bool enable_router_port_acl;
+    struct lflow_ref *lflow_ref;
+    struct lflow_ref *stateful_lflow_ref;
 };
 
 void ovnnb_db_run(struct northd_input *input_data,
@@ -487,13 +674,17 @@ void northd_destroy(struct northd_data *data);
 void northd_init(struct northd_data *data);
 void northd_indices_create(struct northd_data *data,
                            struct ovsdb_idl *ovnsb_idl);
+
+struct lflow_table;
 void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
                   struct lflow_input *input_data,
-                  struct hmap *lflows);
+                  struct lflow_table *);
+void lflow_reset_northd_refs(struct lflow_input *);
+
 bool lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                       struct tracked_ovn_ports *,
                                       struct lflow_input *,
-                                      struct hmap *lflows);
+                                      struct lflow_table *lflows);
 bool northd_handle_sb_port_binding_changes(
     const struct sbrec_port_binding_table *, struct hmap *ls_ports,
     struct hmap *lr_ports);

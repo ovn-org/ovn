@@ -24,6 +24,7 @@
 #include "en-ls-stateful.h"
 #include "en-northd.h"
 #include "en-meters.h"
+#include "lflow-mgr.h"
 
 #include "lib/inc-proc-eng.h"
 #include "northd.h"
@@ -58,6 +59,8 @@ lflow_get_input_data(struct engine_node *node,
         EN_OVSDB_GET(engine_get_input("SB_multicast_group", node));
     lflow_input->sbrec_igmp_group_table =
         EN_OVSDB_GET(engine_get_input("SB_igmp_group", node));
+    lflow_input->sbrec_logical_dp_group_table =
+        EN_OVSDB_GET(engine_get_input("SB_logical_dp_group", node));
 
     lflow_input->sbrec_mcast_group_by_name_dp =
            engine_ovsdb_node_get_index(
@@ -90,17 +93,19 @@ void en_lflow_run(struct engine_node *node, void *data)
     struct hmap bfd_connections = HMAP_INITIALIZER(&bfd_connections);
     lflow_input.bfd_connections = &bfd_connections;
 
-    struct lflow_data *lflow_data = data;
-    lflow_data_destroy(lflow_data);
-    lflow_data_init(lflow_data);
-
     stopwatch_start(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
+
+    struct lflow_data *lflow_data = data;
+    lflow_table_clear(lflow_data->lflow_table);
+    lflow_reset_northd_refs(&lflow_input);
+
     build_bfd_table(eng_ctx->ovnsb_idl_txn,
                     lflow_input.nbrec_bfd_table,
                     lflow_input.sbrec_bfd_table,
                     lflow_input.lr_ports,
                     &bfd_connections);
-    build_lflows(eng_ctx->ovnsb_idl_txn, &lflow_input, &lflow_data->lflows);
+    build_lflows(eng_ctx->ovnsb_idl_txn, &lflow_input,
+                 lflow_data->lflow_table);
     bfd_cleanup_connections(lflow_input.nbrec_bfd_table,
                             &bfd_connections);
     hmap_destroy(&bfd_connections);
@@ -131,7 +136,8 @@ lflow_northd_handler(struct engine_node *node,
 
     if (!lflow_handle_northd_port_changes(eng_ctx->ovnsb_idl_txn,
                                           &northd_data->trk_data.trk_lsps,
-                                          &lflow_input, &lflow_data->lflows)) {
+                                          &lflow_input,
+                                          lflow_data->lflow_table)) {
         return false;
     }
 
@@ -160,11 +166,13 @@ void *en_lflow_init(struct engine_node *node OVS_UNUSED,
                      struct engine_arg *arg OVS_UNUSED)
 {
     struct lflow_data *data = xmalloc(sizeof *data);
-    lflow_data_init(data);
+    data->lflow_table = lflow_table_alloc();
+    lflow_table_init(data->lflow_table);
     return data;
 }
 
-void en_lflow_cleanup(void *data)
+void en_lflow_cleanup(void *data_)
 {
-    lflow_data_destroy(data);
+    struct lflow_data *data = data_;
+    lflow_table_destroy(data->lflow_table);
 }
