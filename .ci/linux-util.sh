@@ -3,7 +3,7 @@
 function free_up_disk_space_ubuntu()
 {
     local pkgs='azure-cli aspnetcore-* dotnet-* ghc-* firefox*
-                google-chrome-stable google-cloud-sdk libmono-* llvm-*
+                google-chrome-stable google-cloud-cli libmono-* llvm-*
                 microsoft-edge-stable mono-* msbuild mysql-server-core-*
                 php-* php7* powershell* temurin-* zulu-*'
 
