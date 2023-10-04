@@ -124,3 +124,9 @@ OVN To-do List
   * Improve sub-ports (with parent_port set) conditional monitoring; these
     are currently unconditionally monitored, even if ovn-monitor-all is
     set to false.
+
+* ovn-northd parallel build
+
+  * Move the lflow build parallel processing from northd.c to lflow-mgr.c
+    This would also ensure that the variables declared in northd.c
+    (eg. thread_lflow_counter) are not externed in lflow-mgr.c.
