@@ -90,6 +90,7 @@ EXTRA_DIST = \
 	.ci/dpdk-build.sh \
 	.ci/dpdk-prepare.sh \
 	.ci/linux-build.sh \
+	.ci/linux-util.sh \
 	.ci/osx-build.sh \
 	.ci/osx-prepare.sh \
 	.ci/ovn-kubernetes/Dockerfile \

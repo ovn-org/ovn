@@ -95,17 +95,13 @@ jobs:
       KIND_IPV6_SUPPORT: "${{ matrix.ipfamily == 'IPv6' || matrix.ipfamily == 'dualstack' }}"
     steps:
 
-    - name: Free up disk space
-      run: |
-        sudo eatmydata apt-get purge --auto-remove -y \
-          azure-cli aspnetcore-* dotnet-* ghc-* firefox \
-          google-chrome-stable google-cloud-sdk \
-          llvm-* microsoft-edge-stable mono-* \
-          msbuild mysql-server-core-* php-* php7* \
-          powershell temurin-* zulu-*
-
     - name: Check out ovn
       uses: actions/checkout@v3
+
+    - name: Free up disk space
+      run: |
+        . .ci/linux-util.sh
+        free_up_disk_space_ubuntu
 
     - name: Check out ovn-kubernetes
       uses: actions/checkout@v3
