@@ -341,7 +341,7 @@ get_remote_tunnels(const struct sbrec_port_binding *binding,
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
             VLOG_WARN_RL(
                 &rl, "Failed to locate tunnel to reach main chassis %s "
-                     "for port %s. Cloning packets disabled for the chassis.",
+                     "for port %s.",
                 binding->chassis->name, binding->logical_port);
         } else {
             struct tunnel *tun_elem = xmalloc(sizeof *tun_elem);
@@ -363,7 +363,7 @@ get_remote_tunnels(const struct sbrec_port_binding *binding,
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
             VLOG_WARN_RL(
                 &rl, "Failed to locate tunnel to reach additional chassis %s "
-                     "for port %s. Cloning packets disabled for the chassis.",
+                     "for port %s.",
                 binding->additional_chassis[i]->name, binding->logical_port);
             continue;
         }
