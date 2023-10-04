@@ -12,4 +12,8 @@ function free_up_disk_space_ubuntu()
     local pkgs=$(echo $pkgs | sed 's/[^ ]* */~n&/g')
 
     sudo apt update && sudo apt-get --auto-remove -y purge $pkgs
+
+    local paths='/usr/local/lib/android/ /usr/share/dotnet/ /opt/ghc/
+                 /usr/local/share/boost/'
+    sudo rm -rf $paths
 }
