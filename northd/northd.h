@@ -369,6 +369,7 @@ void sync_lbs(struct ovsdb_idl_txn *, const struct sbrec_load_balancer_table *,
               struct ovn_datapaths *lr_datapaths,
               struct hmap *lbs,
               struct chassis_features *chassis_features);
+bool check_sb_lb_duplicates(const struct sbrec_load_balancer_table *);
 
 void sync_pbs(struct ovsdb_idl_txn *, struct hmap *ls_ports);
 bool sync_pbs_for_northd_ls_changes(struct tracked_ls_changes *);
