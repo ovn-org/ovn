@@ -4661,6 +4661,26 @@ sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
     }
 }
 
+bool
+check_sb_lb_duplicates(const struct sbrec_load_balancer_table *table)
+{
+    struct sset existing_nb_lb_uuids =
+        SSET_INITIALIZER(&existing_nb_lb_uuids);
+    const struct sbrec_load_balancer *sbrec_lb;
+    bool duplicates = false;
+
+    SBREC_LOAD_BALANCER_TABLE_FOR_EACH (sbrec_lb, table) {
+        const char *nb_lb_uuid = smap_get(&sbrec_lb->external_ids, "lb_id");
+        if (nb_lb_uuid && !sset_add(&existing_nb_lb_uuids, nb_lb_uuid)) {
+            duplicates = true;
+            break;
+        }
+    }
+
+    sset_destroy(&existing_nb_lb_uuids);
+    return duplicates;
+}
+
 /* Syncs the SB port binding for the ovn_port 'op'.  Caller should make sure
  * that the OVN SB IDL txn is not NULL.  Presently it only syncs the nat
  * column of port binding corresponding to the 'op->nbsp' */
