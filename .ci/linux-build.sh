@@ -80,7 +80,7 @@ function configure_gcc()
             # We should install gcc-multilib for x86 build, we cannot
             # do it directly because gcc-multilib is not available
             # for arm64
-            sudo apt install -y gcc-multilib
+            sudo apt update && sudo apt install -y gcc-multilib
         fi
     fi
 }
