@@ -44,7 +44,6 @@
 
 VLOG_DEFINE_THIS_MODULE(ovn_northd);
 
-static unixctl_cb_func ovn_northd_exit;
 static unixctl_cb_func ovn_northd_pause;
 static unixctl_cb_func ovn_northd_resume;
 static unixctl_cb_func ovn_northd_is_paused;
@@ -680,7 +679,7 @@ main(int argc, char *argv[])
     int res = EXIT_SUCCESS;
     struct unixctl_server *unixctl;
     int retval;
-    bool exiting;
+    struct ovn_exit_args exit_args = {};
     struct northd_state state = {
         .had_lock = false,
         .paused = false
@@ -701,7 +700,8 @@ main(int argc, char *argv[])
     if (retval) {
         exit(EXIT_FAILURE);
     }
-    unixctl_command_register("exit", "", 0, 0, ovn_northd_exit, &exiting);
+    unixctl_command_register("exit", "", 0, 0, ovn_exit_command_callback,
+                             &exit_args);
     unixctl_command_register("pause", "", 0, 0, ovn_northd_pause, &state);
     unixctl_command_register("resume", "", 0, 0, ovn_northd_resume, &state);
     unixctl_command_register("is-paused", "", 0, 0, ovn_northd_is_paused,
@@ -775,10 +775,9 @@ main(int argc, char *argv[])
     unsigned int ovnsb_cond_seqno = UINT_MAX;
 
     /* Main loop. */
-    exiting = false;
 
     bool recompute = false;
-    while (!exiting) {
+    while (!exit_args.exiting) {
         update_ssl_config();
         memory_run();
         if (memory_should_report()) {
@@ -910,7 +909,7 @@ main(int argc, char *argv[])
         unixctl_server_run(unixctl);
         unixctl_server_wait(unixctl);
         memory_wait();
-        if (exiting) {
+        if (exit_args.exiting) {
             poll_immediate_wake();
         }
 
@@ -941,28 +940,19 @@ main(int argc, char *argv[])
         stopwatch_stop(NORTHD_LOOP_STOPWATCH_NAME, time_msec());
         poll_block();
         if (should_service_stop()) {
-            exiting = true;
+            exit_args.exiting = true;
         }
         stopwatch_start(NORTHD_LOOP_STOPWATCH_NAME, time_msec());
     }
     inc_proc_northd_cleanup();
 
-    unixctl_server_destroy(unixctl);
     ovsdb_idl_loop_destroy(&ovnnb_idl_loop);
     ovsdb_idl_loop_destroy(&ovnsb_idl_loop);
+    ovn_exit_args_finish(&exit_args);
+    unixctl_server_destroy(unixctl);
     service_stop();
 
     exit(res);
-}
-
-static void
-ovn_northd_exit(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                const char *argv[] OVS_UNUSED, void *exiting_)
-{
-    bool *exiting = exiting_;
-    *exiting = true;
-
-    unixctl_command_reply(conn, NULL);
 }
 
 static void
