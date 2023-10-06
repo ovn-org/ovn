@@ -1126,3 +1126,34 @@ void flow_collector_ids_clear(struct flow_collector_ids *ids)
     flow_collector_ids_destroy(ids);
     flow_collector_ids_init(ids);
 }
+
+/* Call for the unixctl command that will store the connection and
+ * set the appropriate conditions. */
+void
+ovn_exit_command_callback(struct unixctl_conn *conn, int argc,
+                          const char *argv[], void *exit_args_)
+{
+    struct ovn_exit_args *exit_args = exit_args_;
+
+    exit_args->n_conns++;
+    exit_args->conns = xrealloc(exit_args->conns,
+                                exit_args->n_conns * sizeof *exit_args->conns);
+
+    exit_args->exiting = true;
+    exit_args->conns[exit_args->n_conns - 1] = conn;
+
+    if (!exit_args->restart) {
+        exit_args->restart = argc == 2 && !strcmp(argv[1], "--restart");
+    }
+}
+
+/* Reply to all waiting unixctl connections and free the connection array.
+ * This function should be called after the heaviest cleanup has finished. */
+void
+ovn_exit_args_finish(struct ovn_exit_args *exit_args)
+{
+    for (size_t i = 0; i < exit_args->n_conns; i++) {
+        unixctl_command_reply(exit_args->conns[i], NULL);
+    }
+    free(exit_args->conns);
+}
