@@ -474,4 +474,17 @@ void sorted_array_apply_diff(const struct sorted_array *a1,
                                                     const char *item,
                                                     bool add),
                              const void *arg);
+
+/* Utilities around properly handling exit command. */
+struct ovn_exit_args {
+    struct unixctl_conn **conns;
+    size_t n_conns;
+    bool exiting;
+    bool restart;
+};
+
+void ovn_exit_command_callback(struct unixctl_conn *conn, int argc,
+                               const char *argv[], void *exit_args_);
+void ovn_exit_args_finish(struct ovn_exit_args *exit_args);
+
 #endif /* OVN_UTIL_H */
