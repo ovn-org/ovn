@@ -86,7 +86,6 @@
 
 VLOG_DEFINE_THIS_MODULE(main);
 
-static unixctl_cb_func ovn_controller_exit;
 static unixctl_cb_func ct_zone_list;
 static unixctl_cb_func extend_table_list;
 static unixctl_cb_func inject_pkt;
@@ -4482,11 +4481,6 @@ flow_output_lflow_output_handler(struct engine_node *node,
     return true;
 }
 
-struct ovn_controller_exit_args {
-    bool *exiting;
-    bool *restart;
-};
-
 /* Handles sbrec_chassis changes.
  * If a new chassis is added or removed return false, so that
  * flows are recomputed.  For any updates, there is no need for
@@ -4561,9 +4555,7 @@ int
 main(int argc, char *argv[])
 {
     struct unixctl_server *unixctl;
-    bool exiting;
-    bool restart;
-    struct ovn_controller_exit_args exit_args = {&exiting, &restart};
+    struct ovn_exit_args exit_args = {};
     int retval;
 
     /* Read from system-id-override file once on startup. */
@@ -4583,7 +4575,7 @@ main(int argc, char *argv[])
     if (retval) {
         exit(EXIT_FAILURE);
     }
-    unixctl_command_register("exit", "", 0, 1, ovn_controller_exit,
+    unixctl_command_register("exit", "", 0, 1, ovn_exit_command_callback,
                              &exit_args);
 
     daemonize_complete();
@@ -5068,10 +5060,8 @@ main(int argc, char *argv[])
     VLOG_INFO("OVN internal version is : [%s]", ovn_version);
 
     /* Main loop. */
-    exiting = false;
-    restart = false;
     bool sb_monitor_all = false;
-    while (!exiting) {
+    while (!exit_args.exiting) {
         memory_run();
         if (memory_should_report()) {
             struct simap usage = SIMAP_INITIALIZER(&usage);
@@ -5492,7 +5482,7 @@ main(int argc, char *argv[])
         unixctl_server_run(unixctl);
 
         unixctl_server_wait(unixctl);
-        if (exiting || pending_pkt.conn) {
+        if (exit_args.exiting || pending_pkt.conn) {
             poll_immediate_wake();
         }
 
@@ -5543,7 +5533,7 @@ loop_done:
         memory_wait();
         poll_block();
         if (should_service_stop()) {
-            exiting = true;
+            exit_args.exiting = true;
         }
     }
 
@@ -5551,7 +5541,7 @@ loop_done:
     engine_cleanup();
 
     /* It's time to exit.  Clean up the databases if we are not restarting */
-    if (!restart) {
+    if (!exit_args.restart) {
         bool done = !ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl);
         while (!done) {
             update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl,
@@ -5603,7 +5593,6 @@ loop_done:
     }
 
     free(ovn_version);
-    unixctl_server_destroy(unixctl);
     lflow_destroy();
     ofctrl_destroy();
     pinctrl_destroy();
@@ -5627,6 +5616,8 @@ loop_done:
     if (cli_system_id) {
         free(cli_system_id);
     }
+    ovn_exit_args_finish(&exit_args);
+    unixctl_server_destroy(unixctl);
     service_stop();
     ovsrcu_exit();
 
@@ -5748,16 +5739,6 @@ usage(void)
            "  -h, --help              display this help message\n"
            "  -V, --version           display version information\n");
     exit(EXIT_SUCCESS);
-}
-
-static void
-ovn_controller_exit(struct unixctl_conn *conn, int argc,
-             const char *argv[], void *exit_args_)
-{
-    struct ovn_controller_exit_args *exit_args = exit_args_;
-    *exit_args->exiting = true;
-    *exit_args->restart = argc == 2 && !strcmp(argv[1], "--restart");
-    unixctl_command_reply(conn, NULL);
 }
 
 static void
