@@ -337,4 +337,16 @@ int64_t daemon_startup_ts(void);
 char *lr_lb_address_set_name(uint32_t lr_tunnel_key, int addr_family);
 char *lr_lb_address_set_ref(uint32_t lr_tunnel_key, int addr_family);
 
+/* Utilities around properly handling exit command. */
+struct ovn_exit_args {
+    struct unixctl_conn **conns;
+    size_t n_conns;
+    bool exiting;
+    bool restart;
+};
+
+void ovn_exit_command_callback(struct unixctl_conn *conn, int argc,
+                               const char *argv[], void *exit_args_);
+void ovn_exit_args_finish(struct ovn_exit_args *exit_args);
+
 #endif /* OVN_UTIL_H */
