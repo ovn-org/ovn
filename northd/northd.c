@@ -4678,6 +4678,7 @@ sync_lbs(struct ovsdb_idl_txn *ovnsb_txn,
             sbrec_load_balancer_set_datapath_group(sbrec_lb, NULL);
         } else {
             /* datapath_group column is deprecated. */
+            sbrec_load_balancer_set_ls_datapath_group(sbrec_lb, NULL);
             sbrec_load_balancer_set_datapath_group(
                 sbrec_lb, lb_dpg ? lb_dpg->dp_group : NULL
             );
