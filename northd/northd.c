@@ -15251,6 +15251,7 @@ build_lrouter_out_snat_in_czone_flow(struct hmap *lflows,
         ds_put_format(&zone_actions, "eth.src = "ETH_ADDR_FMT"; ",
                       ETH_ADDR_ARGS(mac));
     }
+    ds_put_format(match, " && (!ct.trk || !ct.rpl)");
 
     ds_put_cstr(&zone_actions, REGBIT_DST_NAT_IP_LOCAL" = 0; ");
 
@@ -15309,10 +15310,8 @@ build_lrouter_out_snat_flow(struct hmap *lflows, struct ovn_datapath *od,
             ds_put_format(actions, "eth.src = "ETH_ADDR_FMT"; ",
                           ETH_ADDR_ARGS(mac));
         }
-    } else {
-        /* Gateway router. */
-        ds_put_cstr(match, " && (!ct.trk || !ct.rpl)");
     }
+    ds_put_cstr(match, " && (!ct.trk || !ct.rpl)");
 
     ds_put_format(actions, "ct_snat(%s", nat->external_ip);
     if (nat->external_port_range[0]) {
