@@ -34420,7 +34420,7 @@ dnat_zone=$(ovs-ofctl dump-flows br-int table=$DNAT_TABLE,metadata=0x${lr0_dp_ke
 if test -n "$dnat_zone"; then
   dnat_zone=${dnat_zone::-1}
 fi
-snat_zone=$(ovs-ofctl dump-flows br-int table=$SNAT_TABLE,metadata=0x${lr0_dp_key} | grep priority=153 | grep -o zone=.*, | cut -d '=' -f 2)
+snat_zone=$(ovs-ofctl dump-flows br-int table=$SNAT_TABLE,metadata=0x${lr0_dp_key} | grep priority=153 | grep ct_state=-trk | grep -o zone=.*, | cut -d '=' -f 2)
 if test -n "$snat_zone"; then
   snat_zone=${snat_zone::-1}
 fi
@@ -34437,7 +34437,7 @@ dnat_zone=$(ovs-ofctl dump-flows br-int table=$DNAT_TABLE,metadata=0x${lr0_dp_ke
 if test -n "$dnat_zone"; then
   dnat_zone=${dnat_zone::-1}
 fi
-snat_zone=$(ovs-ofctl dump-flows br-int table=$SNAT_TABLE,metadata=0x${lr0_dp_key} | grep priority=153 | grep -o zone=.*, | cut -d '=' -f 2)
+snat_zone=$(ovs-ofctl dump-flows br-int table=$SNAT_TABLE,metadata=0x${lr0_dp_key} | grep priority=153 | grep ct_state=-trk | grep -o zone=.*, | cut -d '=' -f 2)
 if test -n "$snat_zone"; then
   snat_zone=${snat_zone::-1}
 fi
