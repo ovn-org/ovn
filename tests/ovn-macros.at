@@ -288,10 +288,43 @@ net_attach () {
         || return 1
 }
 
+ovn_wait_for_encaps() {
+    local systemid=$1
+
+    if [[ -f "${OVN_SYSCONFDIR}/system-id-override" ]]; then
+        systemid=$(cat ${OVN_SYSCONFDIR}/system-id-override)
+    fi
+
+    local encap=$(ovs-vsctl get Open_vSwitch . external_ids:ovn-encap-type-$systemid)
+    if [[ -z "$encap" ]]; then
+        encap=$(ovs-vsctl get Open_vSwitch . external_ids:ovn-encap-type)
+    fi
+    encap=$(tr -d '"' <<< $encap)
+
+    local ip=$(ovs-vsctl get Open_vSwitch . external_ids:ovn-encap-ip-$systemid)
+    if [[ -z "$ip" ]]; then
+        ip=$(ovs-vsctl get Open_vSwitch . external_ids:ovn-encap-ip)
+    fi
+    ip=$(tr -d '"' <<< $ip)
+
+    IFS="," read -r -a encap_types <<< "$encap"
+    for e in "${encap_types[[@]]}"; do
+        wait_column "$ip" sb:Encap ip chassis_name="$systemid" type="$e"
+    done
+}
+
 # ovn_az_attach AZ NETWORK BRIDGE IP [MASKLEN] [ENCAP]
 ovn_az_attach() {
-    local az=$1 net=$2 bridge=$3 ip=$4 masklen=${5-24} encap=${6-geneve,vxlan} systemid=${7-$sandbox} cli_args=${@:8}
+    local az=$1 net=$2 bridge=$3 ip=$4 masklen=${5-24} encap=${6-geneve,vxlan}
+    local systemid=${7-$sandbox} systemid_override=$8
     net_attach $net $bridge || return 1
+
+    local expected_encap_id=$systemid
+    local cli_args=""
+    if [[ -n "$systemid_override" ]]; then
+        cli_args="-n $systemid_override"
+        expected_encap_id=$systemid_override
+    fi
 
     mac=`ovs-vsctl get Interface $bridge mac_in_use | sed s/\"//g`
     arp_table="$arp_table $sandbox,$bridge,$ip,$mac"
@@ -332,6 +365,11 @@ ovn_az_attach() {
     fi
 
     start_daemon ovn-controller --enable-dummy-vif-plug ${cli_args} || return 1
+    if test X"$az" = XNONE; then
+        ovn_wait_for_encaps $expected_encap_id
+    else
+        ovn_as $az ovn_wait_for_encaps $expected_encap_id
+    fi
 }
 
 # ovn_attach NETWORK BRIDGE IP [MASKLEN] [ENCAP]
@@ -372,6 +410,7 @@ start_virtual_controller() {
         || return 1
 
     ovn-controller --enable-dummy-vif-plug ${cli_args} -vconsole:off --detach --no-chdir
+    ovn_wait_for_encaps $systemid
 }
 
 # ovn_setenv AZ
