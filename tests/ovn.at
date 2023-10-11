@@ -27936,8 +27936,9 @@ ovn-nbctl ls-add ls1
 ovn-nbctl --wait=sb lsp-add ls1 lsp1
 
 # Simulate the fact that lsp1 had been previously bound on hv1.
-ovn-sbctl --id=@e create encap chassis_name=hv1 ip="192.168.0.1" type="geneve" \
-    -- --id=@c create chassis name=hv1 encaps=@e \
+ovn-sbctl --id=@e1 create encap chassis_name=hv1 ip="192.168.0.1" type="geneve" \
+    --id=@e2 create encap chassis_name=hv1 ip="192.168.0.1" type="vxlan" \
+    -- --id=@c create chassis name=hv1 encaps=@e1,@e2 \
     -- set Port_Binding lsp1 chassis=@c
 
 as hv1
@@ -27963,8 +27964,9 @@ ovn-nbctl ls-add ls1
 ovn-nbctl --wait=sb lsp-add ls1 lsp1
 
 # Simulate the fact that lsp1 had been previously bound on hv1.
-ovn-sbctl --id=@e create encap chassis_name=hv1 ip="192.168.0.1" type="geneve" \
-    -- --id=@c create chassis hostname=hv1 name=hv1 encaps=@e \
+ovn-sbctl --id=@e1 create encap chassis_name=hv1 ip="192.168.0.1" type="geneve" \
+    --id=@e2 create encap chassis_name=hv1 ip="192.168.0.1" type="vxlan" \
+    -- --id=@c create chassis name=hv1 encaps=@e1,@e2 \
     -- set Port_Binding lsp1 chassis=@c
 
 as hv1
@@ -35745,7 +35747,7 @@ as hv1 ovs-vsctl set-ssl \
 echo hv3 > ${OVN_SYSCONFDIR}/test_hv
 
 # the last argument is passed to ovn-controller through cli
-ovn_attach n1 br-phys 192.168.0.1 24 vxlan hv1 -n hv3
+ovn_attach n1 br-phys 192.168.0.1 24 vxlan hv1 hv3
 
 sim_add hv2
 as hv2
