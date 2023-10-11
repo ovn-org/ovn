@@ -25,6 +25,7 @@
 
 /* OVN includes */
 #include "en-lb-data.h"
+#include "lb.h"
 #include "lib/inc-proc-eng.h"
 #include "lib/lb.h"
 #include "lib/ovn-nb-idl.h"

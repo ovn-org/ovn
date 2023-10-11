@@ -31,6 +31,7 @@
 #include "openvswitch/hmap.h"
 #include "openvswitch/json.h"
 #include "ovn/lex.h"
+#include "lb.h"
 #include "lib/chassis-index.h"
 #include "lib/ip-mcast-index.h"
 #include "lib/static-mac-binding-index.h"
