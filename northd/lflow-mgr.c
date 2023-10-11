@@ -537,7 +537,15 @@ struct lflow_ref_node {
     /* The lflow. */
     struct ovn_lflow *lflow;
 
-    /* Index id of the datapath this lflow_ref_node belongs to. */
+    /* Indicates whether the lflow was added with a dp_group using the
+     * ovn_lflow_add_with_dp_group() macro. */
+    bool dpgrp_lflow;
+    /* dpgrp bitmap and bitmap length.  Valid only of dpgrp_lflow is true. */
+    unsigned long *dpgrp_bitmap;
+    size_t dpgrp_bitmap_len;
+
+    /* Index id of the datapath this lflow_ref_node belongs to.
+     * Valid only if dpgrp_lflow is false. */
     size_t dp_index;
 
     /* Indicates if the lflow_ref_node for an lflow - L(M, A) is linked
@@ -575,7 +583,9 @@ lflow_ref_destroy(struct lflow_ref *lflow_ref)
 
 /* Unlinks the lflows referenced by the 'lflow_ref'.
  * For each lflow_ref_node (lrn) in the lflow_ref, it basically clears
- * the datapath id (lrn->dp_index) from the lrn->lflow's dpg bitmap.
+ * the datapath id (lrn->dp_index) or all the datapath id bits in the
+ * dp group bitmap (set when ovn_lflow_add_with_dp_group macro was used)
+ * from the lrn->lflow's dpg bitmap
  */
 void
 lflow_ref_unlink_lflows(struct lflow_ref *lflow_ref)
@@ -583,9 +593,19 @@ lflow_ref_unlink_lflows(struct lflow_ref *lflow_ref)
     struct lflow_ref_node *lrn;
 
     HMAP_FOR_EACH (lrn, ref_node, &lflow_ref->lflow_ref_nodes) {
-        if (dp_refcnt_release(&lrn->lflow->dp_refcnts_map,
-                              lrn->dp_index)) {
-            bitmap_set0(lrn->lflow->dpg_bitmap, lrn->dp_index);
+        if (lrn->dpgrp_lflow) {
+            size_t index;
+            BITMAP_FOR_EACH_1 (index, lrn->dpgrp_bitmap_len,
+                               lrn->dpgrp_bitmap) {
+                if (dp_refcnt_release(&lrn->lflow->dp_refcnts_map, index)) {
+                    bitmap_set0(lrn->lflow->dpg_bitmap, index);
+                }
+            }
+        } else {
+            if (dp_refcnt_release(&lrn->lflow->dp_refcnts_map,
+                                  lrn->dp_index)) {
+                bitmap_set0(lrn->lflow->dpg_bitmap, lrn->dp_index);
+            }
         }
 
         lrn->linked = false;
@@ -675,17 +695,25 @@ lflow_table_add_lflow(struct lflow_table *lflow_table,
                          io_port, ctrl_meter, stage_hint, where);
 
     if (lflow_ref) {
-        /* lflow referencing is only supported if 'od' is not NULL. */
-        ovs_assert(od);
-
         struct lflow_ref_node *lrn =
             lflow_ref_node_find(&lflow_ref->lflow_ref_nodes, lflow, hash);
         if (!lrn) {
             lrn = xzalloc(sizeof *lrn);
             lrn->lflow = lflow;
             lrn->lflow_ref = lflow_ref;
-            lrn->dp_index = od->index;
-            dp_refcnt_use(&lflow->dp_refcnts_map, lrn->dp_index);
+            lrn->dpgrp_lflow = !od;
+            if (lrn->dpgrp_lflow) {
+                lrn->dpgrp_bitmap = bitmap_clone(dp_bitmap, dp_bitmap_len);
+                lrn->dpgrp_bitmap_len = dp_bitmap_len;
+
+                size_t index;
+                BITMAP_FOR_EACH_1 (index, dp_bitmap_len, dp_bitmap) {
+                    dp_refcnt_use(&lflow->dp_refcnts_map, index);
+                }
+            } else {
+                lrn->dp_index = od->index;
+                dp_refcnt_use(&lflow->dp_refcnts_map, lrn->dp_index);
+            }
             ovs_list_insert(&lflow->referenced_by, &lrn->ref_list_node);
             hmap_insert(&lflow_ref->lflow_ref_nodes, &lrn->ref_node, hash);
         }
@@ -1418,5 +1446,8 @@ lflow_ref_node_destroy(struct lflow_ref_node *lrn)
 {
     hmap_remove(&lrn->lflow_ref->lflow_ref_nodes, &lrn->ref_node);
     ovs_list_remove(&lrn->ref_list_node);
+    if (lrn->dpgrp_lflow) {
+        bitmap_free(lrn->dpgrp_bitmap);
+    }
     free(lrn);
 }

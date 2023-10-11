@@ -128,6 +128,7 @@ void ovn_lb_group_reinit(
     const struct nbrec_load_balancer_group *,
     const struct hmap *lbs);
 
+struct lflow_ref;
 struct ovn_lb_datapaths {
     struct hmap_node hmap_node;
 
@@ -137,6 +138,33 @@ struct ovn_lb_datapaths {
 
     size_t n_nb_lr;
     unsigned long *nb_lr_map;
+
+    /* Reference of lflows generated for this load balancer.
+     *
+     * This data is initialized and destroyed by the en_northd node, but
+     * populated and used only by the en_lflow node. Ideally this data should
+     * be maintained as part of en_lflow's data (struct lflow_data): a hash
+     * index from ovn_port key to lflows.  However, it would be less efficient
+     * and more complex:
+     *
+     * 1. It would require an extra search (using the index) to find the
+     * lflows.
+     *
+     * 2. Building the index needs to be thread-safe, using either a global
+     * lock which is obviously less efficient, or hash-based lock array which
+     * is more complex.
+     *
+     * Maintaining the lflow_ref here is more straightforward. The drawback is
+     * that we need to keep in mind that this data belongs to en_lflow node,
+     * so never access it from any other nodes.
+     *
+     * 'lflow_ref' is used to reference logical flows generated for this
+     *  load balancer.
+     *
+     * Note: lflow_ref is not thread safe.  Only one thread should
+     * access ovn_lb_datapaths->lflow_ref at any given time.
+     */
+    struct lflow_ref *lflow_ref;
 };
 
 struct ovn_lb_datapaths *ovn_lb_datapaths_create(const struct ovn_northd_lb *,

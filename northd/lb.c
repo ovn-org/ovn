@@ -23,7 +23,8 @@
 
 /* OVN includes */
 #include "lb.h"
-#include "lib/ovn-nb-idl.h"
+#include "lflow-mgr.h"
+#include "lib/lb.h"
 #include "northd.h"
 #include "ovn/lex.h"
 
@@ -563,6 +564,7 @@ ovn_lb_datapaths_create(const struct ovn_northd_lb *lb, size_t n_ls_datapaths,
     lb_dps->lb = lb;
     lb_dps->nb_ls_map = bitmap_allocate(n_ls_datapaths);
     lb_dps->nb_lr_map = bitmap_allocate(n_lr_datapaths);
+    lb_dps->lflow_ref = lflow_ref_create();
 
     return lb_dps;
 }
@@ -572,6 +574,7 @@ ovn_lb_datapaths_destroy(struct ovn_lb_datapaths *lb_dps)
 {
     bitmap_free(lb_dps->nb_lr_map);
     bitmap_free(lb_dps->nb_ls_map);
+    lflow_ref_destroy(lb_dps->lflow_ref);
     free(lb_dps);
 }
 
