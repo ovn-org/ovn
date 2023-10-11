@@ -24,6 +24,7 @@
 #include "en-lr-nat.h"
 #include "en-lr-stateful.h"
 #include "en-sync-sb.h"
+#include "lb.h"
 #include "lib/inc-proc-eng.h"
 #include "lib/lb.h"
 #include "lib/ovn-nb-idl.h"

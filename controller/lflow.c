@@ -18,6 +18,7 @@
 #include "lflow.h"
 #include "coverage.h"
 #include "ha-chassis.h"
+#include "lb.h"
 #include "lflow-cache.h"
 #include "local_data.h"
 #include "lport.h"
