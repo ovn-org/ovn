@@ -88,41 +88,27 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
 /* Adds a row with the specified contents to the Logical_Flow table. */
 #define ovn_lflow_add_with_hint__(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, \
                                   ACTIONS, IN_OUT_PORT, CTRL_METER, \
-                                  STAGE_HINT) \
-    lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
-                          ACTIONS, IN_OUT_PORT, CTRL_METER, STAGE_HINT, \
-                          OVS_SOURCE_LOCATOR, NULL)
-
-#define ovn_lflow_add_with_lflow_ref_hint__(LFLOW_TABLE, OD, STAGE, PRIORITY, \
-                                            MATCH, ACTIONS, IN_OUT_PORT, \
-                                            CTRL_METER, STAGE_HINT, LFLOW_REF)\
+                                  STAGE_HINT, LFLOW_REF) \
     lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
                           ACTIONS, IN_OUT_PORT, CTRL_METER, STAGE_HINT, \
                           OVS_SOURCE_LOCATOR, LFLOW_REF)
 
 #define ovn_lflow_add_with_hint(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, \
-                                ACTIONS, STAGE_HINT) \
-    lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
-                          ACTIONS, NULL, NULL, STAGE_HINT,  \
-                          OVS_SOURCE_LOCATOR, NULL)
-
-#define ovn_lflow_add_with_lflow_ref_hint(LFLOW_TABLE, OD, STAGE, PRIORITY, \
-                                          MATCH, ACTIONS, STAGE_HINT, \
-                                          LFLOW_REF) \
+                                ACTIONS, STAGE_HINT, LFLOW_REF) \
     lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
                           ACTIONS, NULL, NULL, STAGE_HINT,  \
                           OVS_SOURCE_LOCATOR, LFLOW_REF)
 
 #define ovn_lflow_add_with_dp_group(LFLOW_TABLE, DP_BITMAP, DP_BITMAP_LEN, \
                                     STAGE, PRIORITY, MATCH, ACTIONS, \
-                                    STAGE_HINT) \
+                                    STAGE_HINT, LFLOW_REF) \
     lflow_table_add_lflow(LFLOW_TABLE, NULL, DP_BITMAP, DP_BITMAP_LEN, STAGE, \
                           PRIORITY, MATCH, ACTIONS, NULL, NULL, STAGE_HINT, \
-                          OVS_SOURCE_LOCATOR, NULL)
+                          OVS_SOURCE_LOCATOR, LFLOW_REF)
 
-#define ovn_lflow_add_default_drop(LFLOW_TABLE, OD, STAGE)                    \
+#define ovn_lflow_add_default_drop(LFLOW_TABLE, OD, STAGE, LFLOW_REF)   \
     lflow_table_add_lflow_default_drop(LFLOW_TABLE, OD, STAGE, \
-                                       OVS_SOURCE_LOCATOR, NULL)
+                                       OVS_SOURCE_LOCATOR, LFLOW_REF)
 
 
 /* This macro is similar to ovn_lflow_add_with_hint, except that it requires
@@ -142,20 +128,16 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
                           ACTIONS, IN_OUT_PORT, NULL, STAGE_HINT, \
                           OVS_SOURCE_LOCATOR, LFLOW_REF)
 
-#define ovn_lflow_add(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, ACTIONS) \
-    lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
-                          ACTIONS, NULL, NULL, NULL, OVS_SOURCE_LOCATOR, NULL)
-
-#define ovn_lflow_add_with_lflow_ref(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, \
-                                     ACTIONS, LFLOW_REF) \
+#define ovn_lflow_add(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, ACTIONS, \
+                      LFLOW_REF) \
     lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
                           ACTIONS, NULL, NULL, NULL, OVS_SOURCE_LOCATOR, \
                           LFLOW_REF)
 
 #define ovn_lflow_metered(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, ACTIONS, \
-                          CTRL_METER) \
+                          CTRL_METER, LFLOW_REF) \
     ovn_lflow_add_with_hint__(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, \
-                              ACTIONS, NULL, CTRL_METER, NULL)
+                              ACTIONS, NULL, CTRL_METER, NULL, LFLOW_REF)
 
 struct sbrec_logical_dp_group;
 
