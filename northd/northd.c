@@ -7477,7 +7477,7 @@ build_lb_rules_pre_stateful(struct lflow_table *lflows,
         ovn_lflow_add_with_dp_group(
             lflows, lb_dps->nb_ls_map, ods_size(ls_datapaths),
             S_SWITCH_IN_PRE_STATEFUL, 120, ds_cstr(match), ds_cstr(action),
-            &lb->nlb->header_, NULL);
+            &lb->nlb->header_, lb_dps->lflow_ref);
     }
 }
 
@@ -7924,7 +7924,7 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
         }
 
         build_lb_affinity_ls_flows(lflows, lb_dps, lb_vip, ls_datapaths,
-                                   NULL);
+                                   lb_dps->lflow_ref);
 
         unsigned long *dp_non_meter = NULL;
         bool build_non_meter = false;
@@ -7948,7 +7948,7 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
                         lflows, od, S_SWITCH_IN_LB, priority,
                         ds_cstr(match), ds_cstr(action),
                         NULL, meter, &lb->nlb->header_,
-                        NULL);
+                        lb_dps->lflow_ref);
             }
         }
         if (!reject || build_non_meter) {
@@ -7956,7 +7956,7 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
                 lflows, dp_non_meter ? dp_non_meter : lb_dps->nb_ls_map,
                 ods_size(ls_datapaths), S_SWITCH_IN_LB, priority,
                 ds_cstr(match), ds_cstr(action), &lb->nlb->header_,
-                NULL);
+                lb_dps->lflow_ref);
         }
         bitmap_free(dp_non_meter);
     }
@@ -9314,12 +9314,13 @@ build_lswitch_arp_nd_responder_default(struct ovn_datapath *od,
 /* Ingress table 19: ARP/ND responder for service monitor source ip.
  * (priority 110)*/
 static void
-build_lswitch_arp_nd_service_monitor(const struct ovn_northd_lb *lb,
+build_lswitch_arp_nd_service_monitor(const struct ovn_lb_datapaths *lb_dps,
                                      const struct hmap *ls_ports,
                                      struct lflow_table *lflows,
                                      struct ds *actions,
                                      struct ds *match)
 {
+    const struct ovn_northd_lb *lb = lb_dps->lb;
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[i];
         if (!lb_vip_nb->lb_health_check) {
@@ -9383,7 +9384,7 @@ build_lswitch_arp_nd_service_monitor(const struct ovn_northd_lb *lb,
                                     S_SWITCH_IN_ARP_ND_RSP, 110,
                                     ds_cstr(match), ds_cstr(actions),
                                     &lb->nlb->header_,
-                                    NULL);
+                                    lb_dps->lflow_ref);
         }
     }
 }
@@ -11483,7 +11484,8 @@ build_lrouter_nat_flows_for_lb(
         if (!od->n_l3dgw_ports) {
             bitmap_set1(gw_dp_bitmap[type], index);
         } else {
-            build_distr_lrouter_nat_flows_for_lb(&ctx, type, od, NULL);
+            build_distr_lrouter_nat_flows_for_lb(&ctx, type, od,
+                                                 lb_dps->lflow_ref);
         }
 
         if (lb->affinity_timeout) {
@@ -11504,17 +11506,17 @@ build_lrouter_nat_flows_for_lb(
              * S_ROUTER_IN_DNAT stage. */
             ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_UNSNAT, 120,
                                     ds_cstr(&unsnat_match), "next;",
-                                    &lb->nlb->header_, NULL);
+                                    &lb->nlb->header_, lb_dps->lflow_ref);
         }
     }
 
     for (size_t type = 0; type < LROUTER_NAT_LB_FLOW_MAX; type++) {
         build_gw_lrouter_nat_flows_for_lb(&ctx, type, lr_datapaths,
                                           gw_dp_bitmap[type],
-                                          NULL);
+                                          lb_dps->lflow_ref);
         build_lb_affinity_lr_flows(lflows, lb, lb_vip, ds_cstr(match),
                                    aff_action[type], aff_dp_bitmap[type],
-                                   lr_datapaths, NULL);
+                                   lr_datapaths, lb_dps->lflow_ref);
     }
 
     ds_destroy(&unsnat_match);
@@ -11563,7 +11565,7 @@ build_lswitch_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
                                                      od->nbs->copp,
                                                      meter_groups),
                                       &lb->nlb->header_,
-                                      NULL);
+                                      lb_dps->lflow_ref);
         }
         /* Ignore L4 port information in the key because fragmented packets
          * may not have L4 information.  The pre-stateful table will send
@@ -11613,7 +11615,7 @@ build_lrouter_defrag_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
         ovn_lflow_add_with_dp_group(
             lflows, lb_dps->nb_lr_map, ods_size(lr_datapaths),
             S_ROUTER_IN_DEFRAG, prio, ds_cstr(match), "ct_dnat;",
-            &lb_dps->lb->nlb->header_, NULL);
+            &lb_dps->lb->nlb->header_, lb_dps->lflow_ref);
     }
 }
 
@@ -11655,7 +11657,7 @@ build_lrouter_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
                                       copp_meter_get(COPP_EVENT_ELB,
                                                      od->nbr->copp,
                                                      meter_groups),
-                                      &lb->nlb->header_, NULL);
+                                      &lb->nlb->header_, lb_dps->lflow_ref);
         }
     }
 
@@ -11665,7 +11667,7 @@ build_lrouter_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
 
             ovn_lflow_add(lflows, od, S_ROUTER_OUT_SNAT, 120,
                           "flags.skip_snat_for_lb == 1 && ip", "next;",
-                          NULL);
+                          lb_dps->lflow_ref);
         }
     }
 }
@@ -16060,8 +16062,10 @@ build_lflows_thread(void *arg)
     struct ovn_port *op;
     int bnum;
 
-    /* Note:  lflow_ref is not thread safe.  Ensure that op->lflow_ref
-     * is not accessed by multiple threads at the same time. */
+    /* Note:  lflow_ref is not thread safe.  Ensure that
+     *    - op->lflow_ref
+     *    - lb_dps->lflow_ref
+     * are not accessed by multiple threads at the same time. */
     while (!stop_parallel_processing()) {
         wait_for_work(control);
         lsi = (struct lswitch_flow_build_info *) control->data;
@@ -16139,7 +16143,7 @@ build_lflows_thread(void *arg)
                     if (stop_parallel_processing()) {
                         return NULL;
                     }
-                    build_lswitch_arp_nd_service_monitor(lb_dps->lb,
+                    build_lswitch_arp_nd_service_monitor(lb_dps,
                                                          lsi->ls_ports,
                                                          lsi->lflows,
                                                          &lsi->match,
@@ -16377,7 +16381,7 @@ build_lswitch_and_lrouter_flows(
         stopwatch_stop(LFLOWS_PORTS_STOPWATCH_NAME, time_msec());
         stopwatch_start(LFLOWS_LBS_STOPWATCH_NAME, time_msec());
         HMAP_FOR_EACH (lb_dps, hmap_node, lb_dps_map) {
-            build_lswitch_arp_nd_service_monitor(lb_dps->lb, lsi.ls_ports,
+            build_lswitch_arp_nd_service_monitor(lb_dps, lsi.ls_ports,
                                                  lsi.lflows, &lsi.actions,
                                                  &lsi.match);
             build_lrouter_defrag_flows_for_lb(lb_dps, lsi.lflows,
@@ -16567,6 +16571,7 @@ void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
 void
 lflow_reset_northd_refs(struct lflow_input *lflow_input)
 {
+    struct ovn_lb_datapaths *lb_dps;
     struct ovn_port *op;
 
     HMAP_FOR_EACH (op, key_node, lflow_input->ls_ports) {
@@ -16577,6 +16582,10 @@ lflow_reset_northd_refs(struct lflow_input *lflow_input)
     HMAP_FOR_EACH (op, key_node, lflow_input->lr_ports) {
         lflow_ref_clear(op->lflow_ref);
         lflow_ref_clear(op->stateful_lflow_ref);
+    }
+
+    HMAP_FOR_EACH (lb_dps, hmap_node, lflow_input->lb_datapaths_map) {
+        lflow_ref_clear(lb_dps->lflow_ref);
     }
 }
 
@@ -16729,6 +16738,72 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
             }
             sbrec_multicast_group_update_ports_addvalue(sbmc_unknown,
                                                         op->sb);
+        }
+    }
+
+    return true;
+}
+
+bool
+lflow_handle_northd_lb_changes(struct ovsdb_idl_txn *ovnsb_txn,
+                               struct tracked_lbs *trk_lbs,
+                               struct lflow_input *lflow_input,
+                               struct lflow_table *lflows)
+{
+    struct ovn_lb_datapaths *lb_dps;
+    struct hmapx_node *hmapx_node;
+    HMAPX_FOR_EACH (hmapx_node, &trk_lbs->deleted) {
+        lb_dps = hmapx_node->data;
+
+        lflow_ref_resync_flows(
+            lb_dps->lflow_ref, lflows, ovnsb_txn, lflow_input->ls_datapaths,
+            lflow_input->lr_datapaths,
+            lflow_input->ovn_internal_version_changed,
+            lflow_input->sbrec_logical_flow_table,
+            lflow_input->sbrec_logical_dp_group_table);
+    }
+
+    HMAPX_FOR_EACH (hmapx_node, &trk_lbs->crupdated) {
+        lb_dps = hmapx_node->data;
+
+        /* unlink old lflows. */
+        lflow_ref_unlink_lflows(lb_dps->lflow_ref);
+
+        /* Generate new lflows. */
+        struct ds match = DS_EMPTY_INITIALIZER;
+        struct ds actions = DS_EMPTY_INITIALIZER;
+
+        build_lswitch_arp_nd_service_monitor(lb_dps, lflow_input->ls_ports,
+                                             lflows, &actions,
+                                             &match);
+        build_lrouter_defrag_flows_for_lb(lb_dps, lflows,
+                                          lflow_input->lr_datapaths, &match);
+        build_lrouter_flows_for_lb(lb_dps, lflows,
+                                   lflow_input->meter_groups,
+                                   lflow_input->lr_datapaths,
+                                   lflow_input->lr_stateful_table,
+                                   lflow_input->features,
+                                   lflow_input->svc_monitor_map,
+                                   &match, &actions);
+        build_lswitch_flows_for_lb(lb_dps, lflows,
+                                   lflow_input->meter_groups,
+                                   lflow_input->ls_datapaths,
+                                   lflow_input->features,
+                                   lflow_input->svc_monitor_map,
+                                   &match, &actions);
+
+        ds_destroy(&match);
+        ds_destroy(&actions);
+
+        /* Sync the new flows to SB. */
+        bool handled = lflow_ref_sync_lflows(
+            lb_dps->lflow_ref, lflows, ovnsb_txn, lflow_input->ls_datapaths,
+            lflow_input->lr_datapaths,
+            lflow_input->ovn_internal_version_changed,
+            lflow_input->sbrec_logical_flow_table,
+            lflow_input->sbrec_logical_dp_group_table);
+        if (!handled) {
+            return false;
         }
     }
 
