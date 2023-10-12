@@ -36,6 +36,50 @@ m4_define([CHECK_NO_CHANGE_AFTER_RECOMPUTE], [
 ])
 ])
 
+# Checks if the provided engine node recomputed or not
+# and if it computed or not.
+# 1st argument is the engine node.
+# 2nd argument is the expected recompute state.
+# Possible values are - "norecompute" and "recompute".
+# 3rd argument is the expected compute state.
+# Possible values are - "nocompute" and "compute".
+#
+# Eg. 'check_engine_stats lflow recompute nocompute' will verify
+# that if the lflow engine node recompute stat is > 0 and
+# compute stat is equal to 0.  It fails otherwise.
+check_engine_stats() {
+  node=$1
+  recompute=$2
+  compute=$3
+
+  echo "Checking engine stats for node $node : recompute - \
+$recompute : compute - $compute"
+
+  node_stat=$(as northd ovn-appctl -t ovn-northd inc-engine/show-stats $node)
+  # node_stat will be of this format :
+  #     - Node: lflow - recompute: 3 - compute: 0 - abort: 0
+  node_recompute_ct=$(echo $node_stat | cut -d '-' -f2 | cut -d ':' -f2)
+  node_compute_ct=$(echo $node_stat | cut -d '-' -f3 | cut -d ':' -f2)
+
+  if [[ "$recompute" == "norecompute" ]]; then
+    # node should not be recomputed
+    echo "Expecting $node recompute count - $node_recompute_ct to be 0"
+    check test "$node_recompute_ct" -eq "0"
+  else
+    echo "Expecting $node recompute count - $node_recompute_ct not to be 0"
+    check test "$node_recompute_ct" -ne "0"
+  fi
+
+  if [[ "$compute" == "nocompute" ]]; then
+    # node should not be computed
+    echo "Expecting $node compute count - $node_compute_ct to be 0"
+    check test "$node_compute_ct" -eq "0"
+  else
+    echo "Expecting $node compute count - $node_compute_ct not to be 0"
+    check test "$node_compute_ct" -ne "0"
+  fi
+}
+
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check from NBDB to SBDB])
 ovn_start
@@ -10402,39 +10446,6 @@ OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Load balancer incremental processing])
 ovn_start
 
-check_engine_stats() {
-  node=$1
-  recompute=$2
-  compute=$3
-
-  echo "__file__:__line__: Checking engine stats for node $node : recompute - \
-$recompute : compute - $compute"
-
-  node_stat=$(as northd ovn-appctl -t ovn-northd inc-engine/show-stats $node)
-  # node_stat will be of this format :
-  #     - Node: lflow - recompute: 3 - compute: 0 - abort: 0
-  node_recompute_ct=$(echo $node_stat | cut -d '-' -f2 | cut -d ':' -f2)
-  node_compute_ct=$(echo $node_stat | cut -d '-' -f3 | cut -d ':' -f2)
-
-  if [[ "$recompute" == "norecompute" ]]; then
-    # node should not be recomputed
-    echo "Expecting $node recompute count - $node_recompute_ct to be 0"
-    check test "$node_recompute_ct" -eq "0"
-  else
-    echo "Expecting $node recompute count - $node_recompute_ct not to be 0"
-    check test "$node_recompute_ct" -ne "0"
-  fi
-
-  if [[ "$compute" == "nocompute" ]]; then
-    # node should not be computed
-    echo "Expecting $node compute count - $node_compute_ct to be 0"
-    check test "$node_compute_ct" -eq "0"
-  else
-    echo "Expecting $node compute count - $node_compute_ct not to be 0"
-    check test "$node_compute_ct" -ne "0"
-  fi
-}
-
 # Test I-P for load balancers.
 # Presently ovn-northd handles I-P for NB LBs in northd_lb_data engine node
 # only.
@@ -11103,6 +11114,211 @@ AT_CHECK([ovn-sbctl dump-flows S1 | grep pre_acl | sed 's/table=./table=?/'], [0
   table=? (ls_out_pre_acl     ), priority=0    , match=(1), action=(next;)
 ])
 
+AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Load balancer incremental processing with stateless ACLs])
+ovn_start
+
+# Test I-P for load balancers.
+# Presently ovn-northd handles I-P for NB LBs in northd_lb_data engine node
+# only.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lb-add lb1 10.0.0.10:80 10.0.0.3:80
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl acl-add sw0 from-lport 1 1 allow-stateless
+check ovn-nbctl --wait=sb acl-add sw0 to-lport 1 1 allow-stateless
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Clear the VIPs of lb1
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb clear load_balancer . vips
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lb-del lb1
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Logical router incremental processing for NAT])
+
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+
+ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0p1 -- lsp-set-addresses sw0p1 "00:00:20:20:12:01 10.0.0.4"
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-add lr0
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+# Adding a logical router port should result in recompute
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+# for northd engine there will be both recompute and compute
+# first it will be recompute to handle lr0-sw0 and then a compute
+# for the SB port binding change.
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lsp-set-options sw0-lr0 router-port=lr0-sw0
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+check ovn-nbctl ls-add public
+check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24
+check ovn-nbctl lsp-add public public-lr0
+check ovn-nbctl lsp-set-type public-lr0 router
+check ovn-nbctl lsp-set-addresses public-lr0 router
+check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+
+# localnet port
+check ovn-nbctl lsp-add public ln-public
+check ovn-nbctl lsp-set-type ln-public localnet
+check ovn-nbctl lsp-set-addresses ln-public unknown
+check ovn-nbctl lsp-set-options ln-public network_name=public
+
+# schedule the gw router port to a chassis. Change the name of the chassis
+check ovn-nbctl --wait=hv lrp-set-gateway-chassis lr0-public hv1 20
+
+# Modify a logical router port and it should result in recompute.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl set logical_router_port lr0-sw0 options:foo=bar
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+# Do checks for NATs.
+# Add a NAT. This should not result in recompute of both northd and lflow
+# engine nodes.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-nat-add lr0 dnat_and_snat  172.168.0.110 10.0.0.4
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Update the NAT options column
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set NAT . options:foo=bar
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Update the NAT external_ip column
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set NAT . external_ip=172.168.0.120
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Update the NAT logical_ip column
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set NAT . logical_ip=10.0.0.10
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Update the NAT type
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set NAT . type=snat
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Create a dnat_and_snat NAT with external_mac and logical_port
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-nat-add lr0 dnat_and_snat 172.168.0.110 10.0.0.4 sw0p1 30:54:00:00:00:03
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+nat2_uuid=$(ovn-nbctl --bare --columns _uuid find nat logical_ip=10.0.0.4)
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set NAT $nat2_uuid external_mac='"30:54:00:00:00:04"'
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Create a load balancer and add the lb vip as NAT
+check ovn-nbctl lb-add lb1 172.168.0.140 10.0.0.20
+check ovn-nbctl lb-add lb2 172.168.0.150:80 10.0.0.40:8080
+check ovn-nbctl lr-lb-add lr0 lb1
+check ovn-nbctl lr-lb-add lr0 lb2
+
+# lflow engine should recompute since the nat ip 172.168.0.140
+# is a lb vip.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-nat-add lr0 dnat_and_snat 172.168.0.140 10.0.0.20
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-nat-add lr0 dnat_and_snat 172.168.0.150 10.0.0.41
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-nat-del lr0 dnat_and_snat 172.168.0.150
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-nat-del lr0 dnat_and_snat 172.168.0.140
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Delete the NAT
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb clear logical_router lr0 nat
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_pb recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Create router Policy
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-policy-add lr0  10 "ip4.src == 10.0.0.3" reroute 172.168.0.101,172.168.0.102
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-policy-del lr0  10 "ip4.src == 10.0.0.3"
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
