@@ -190,6 +190,32 @@ lflow_lr_stateful_handler(struct engine_node *node, void *data)
     return true;
 }
 
+bool
+lflow_ls_stateful_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_ls_stateful *ls_sful_data =
+        engine_get_input_data("ls_stateful", node);
+
+    if (!ls_stateful_has_tracked_data(&ls_sful_data->trk_data)) {
+        return false;
+    }
+
+    const struct engine_context *eng_ctx = engine_get_context();
+    struct lflow_data *lflow_data = data;
+    struct lflow_input lflow_input;
+
+    lflow_get_input_data(node, &lflow_input);
+    if (!lflow_handle_ls_stateful_changes(eng_ctx->ovnsb_idl_txn,
+                                          &ls_sful_data->trk_data,
+                                          &lflow_input,
+                                          lflow_data->lflow_table)) {
+        return false;
+    }
+
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
+}
+
 void *en_lflow_init(struct engine_node *node OVS_UNUSED,
                      struct engine_arg *arg OVS_UNUSED)
 {

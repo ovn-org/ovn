@@ -15849,12 +15849,15 @@ build_ls_stateful_flows(const struct ls_stateful_record *ls_stateful_rec,
                         const struct shash *meter_groups,
                         struct lflow_table *lflows)
 {
-    build_ls_stateful_rec_pre_acls(ls_stateful_rec, od, ls_pgs, lflows, NULL);
-    build_ls_stateful_rec_pre_lb(ls_stateful_rec, od, lflows, NULL);
-    build_acl_hints(ls_stateful_rec, od, features, lflows, NULL);
+    build_ls_stateful_rec_pre_acls(ls_stateful_rec, od, ls_pgs, lflows,
+                                   ls_stateful_rec->lflow_ref);
+    build_ls_stateful_rec_pre_lb(ls_stateful_rec, od, lflows,
+                                 ls_stateful_rec->lflow_ref);
+    build_acl_hints(ls_stateful_rec, od, features, lflows,
+                    ls_stateful_rec->lflow_ref);
     build_acls(ls_stateful_rec, od, features, lflows, ls_pgs,
-               meter_groups, NULL);
-    build_lb_hairpin(ls_stateful_rec, od, lflows, NULL);
+               meter_groups, ls_stateful_rec->lflow_ref);
+    build_lb_hairpin(ls_stateful_rec, od, lflows, ls_stateful_rec->lflow_ref);
 }
 
 struct lswitch_flow_build_info {
@@ -16025,6 +16028,7 @@ build_lflows_thread(void *arg)
      *    - op->lflow_ref
      *    - lb_dps->lflow_ref
      *    - lr_stateful_rec->lflow_ref
+     *    - ls_stateful_rec->lflow_ref
      * are not accessed by multiple threads at the same time. */
     while (!stop_parallel_processing()) {
         wait_for_work(control);
@@ -16532,12 +16536,18 @@ void
 lflow_reset_northd_refs(struct lflow_input *lflow_input)
 {
     const struct lr_stateful_record *lr_stateful_rec;
+    struct ls_stateful_record *ls_stateful_rec;
     struct ovn_lb_datapaths *lb_dps;
     struct ovn_port *op;
 
     LR_STATEFUL_TABLE_FOR_EACH (lr_stateful_rec,
                                 lflow_input->lr_stateful_table) {
         lflow_ref_clear(lr_stateful_rec->lflow_ref);
+    }
+
+    LS_STATEFUL_TABLE_FOR_EACH (ls_stateful_rec,
+                                lflow_input->ls_stateful_table) {
+        lflow_ref_clear(ls_stateful_rec->lflow_ref);
     }
 
     HMAP_FOR_EACH (op, key_node, lflow_input->ls_ports) {
@@ -16857,6 +16867,47 @@ exit:
     ds_destroy(&actions);
 
     return handled;
+}
+
+bool
+lflow_handle_ls_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
+                                struct ls_stateful_tracked_data *trk_data,
+                                struct lflow_input *lflow_input,
+                                struct lflow_table *lflows)
+{
+    struct hmapx_node *hmapx_node;
+
+    HMAPX_FOR_EACH (hmapx_node, &trk_data->crupdated) {
+        struct ls_stateful_record *ls_stateful_rec = hmapx_node->data;
+        const struct ovn_datapath *od =
+            ovn_datapaths_find_by_index(lflow_input->ls_datapaths,
+                                        ls_stateful_rec->ls_index);
+        ovs_assert(od->nbs && uuid_equals(&od->nbs->header_.uuid,
+                                          &ls_stateful_rec->nbs_uuid));
+
+        lflow_ref_unlink_lflows(ls_stateful_rec->lflow_ref);
+
+        /* Generate new lflows. */
+        build_ls_stateful_flows(ls_stateful_rec, od,
+                                lflow_input->ls_port_groups,
+                                lflow_input->features,
+                                lflow_input->meter_groups,
+                                lflows);
+
+        /* Sync the new flows to SB. */
+        bool handled = lflow_ref_sync_lflows(
+            ls_stateful_rec->lflow_ref, lflows, ovnsb_txn,
+            lflow_input->ls_datapaths,
+            lflow_input->lr_datapaths,
+            lflow_input->ovn_internal_version_changed,
+            lflow_input->sbrec_logical_flow_table,
+            lflow_input->sbrec_logical_dp_group_table);
+        if (!handled) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 static bool
