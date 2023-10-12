@@ -39,6 +39,7 @@
 #include "lib/ovn-sb-idl.h"
 #include "lib/ovn-util.h"
 #include "lib/stopwatch-names.h"
+#include "lflow-mgr.h"
 #include "northd.h"
 
 VLOG_DEFINE_THIS_MODULE(en_ls_stateful);
@@ -289,6 +290,7 @@ ls_stateful_record_create(struct ls_stateful_table *table,
     ls_stateful_rec->ls_index = od->index;
     ls_stateful_rec->nbs_uuid = od->nbs->header_.uuid;
     ls_stateful_record_init(ls_stateful_rec, od, NULL, ls_pgs);
+    ls_stateful_rec->lflow_ref = lflow_ref_create();
 
     hmap_insert(&table->entries, &ls_stateful_rec->key_node,
                 uuid_hash(&od->nbs->header_.uuid));
@@ -299,14 +301,15 @@ ls_stateful_record_create(struct ls_stateful_table *table,
 static void
 ls_stateful_record_destroy(struct ls_stateful_record *ls_stateful_rec)
 {
+    lflow_ref_destroy(ls_stateful_rec->lflow_ref);
     free(ls_stateful_rec);
 }
 
 static void
 ls_stateful_record_init(struct ls_stateful_record *ls_stateful_rec,
-                        const struct ovn_datapath *od,
-                        const struct ls_port_group *ls_pg,
-                        const struct ls_port_group_table *ls_pgs)
+                      const struct ovn_datapath *od,
+                      const struct ls_port_group *ls_pg,
+                      const struct ls_port_group_table *ls_pgs)
 {
     ls_stateful_rec->has_lb_vip = ls_has_lb_vip(od);
     ls_stateful_record_set_acl_flags(ls_stateful_rec, od, ls_pg, ls_pgs);

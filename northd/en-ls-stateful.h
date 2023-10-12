@@ -31,6 +31,8 @@
 #include "lib/ovn-util.h"
 #include "lib/stopwatch-names.h"
 
+struct lflow_ref;
+
 struct ls_stateful_record {
     struct hmap_node key_node;
 
@@ -45,6 +47,30 @@ struct ls_stateful_record {
     bool has_lb_vip;
     bool has_acls;
     uint64_t max_acl_tier;
+
+    /* 'lflow_ref' is used to reference logical flows generated for
+     * this ls_stateful record.
+     *
+     * This data is initialized and destroyed by the en_ls_stateful node,
+     * but populated and used only by the en_lflow node. Ideally this data
+     * should be maintained as part of en_lflow's data.  However, it would
+     * be less efficient and more complex:
+     *
+     * 1. It would require an extra search (using the index) to find the
+     * lflows.
+     *
+     * 2. Building the index needs to be thread-safe, using either a global
+     * lock which is obviously less efficient, or hash-based lock array which
+     * is more complex.
+     *
+     * Adding the lflow_ref here is more straightforward. The drawback is that
+     * we need to keep in mind that this data belongs to en_lflow node, so
+     * never access it from any other nodes.
+     *
+     * Note: lflow_ref is not thread safe.  Only one thread should
+     * access ls_stateful_record->lflow_ref at any given time.
+     */
+    struct lflow_ref *lflow_ref;
 };
 
 struct ls_stateful_table {
