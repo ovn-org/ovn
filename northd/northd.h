@@ -647,8 +647,9 @@ struct ovn_port {
      * 'patch/router' to reference logical flows generated fo this ovn_port
      *  from the 'lr_stateful' record of the peer port's datapath.
      *
-     * Note: lflow_ref is not thread safe.  Only one thread should
-     * access ovn_ports->lflow_ref at any given time.
+     * Note: lflow_ref and stateful_lflow_ref are not thread safe.  Only one
+     * thread should access ovn_ports->lflow_ref/stateful_lflow_ref at any
+     * given time.
      */
     struct lflow_ref *lflow_ref;
     struct lflow_ref *stateful_lflow_ref;
@@ -676,6 +677,8 @@ void northd_indices_create(struct northd_data *data,
                            struct ovsdb_idl *ovnsb_idl);
 
 struct lflow_table;
+struct lr_stateful_tracked_data;
+
 void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
                   struct lflow_input *input_data,
                   struct lflow_table *);
@@ -689,6 +692,10 @@ bool lflow_handle_northd_lb_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                     struct tracked_lbs *,
                                     struct lflow_input *,
                                     struct lflow_table *lflows);
+bool lflow_handle_lr_stateful_changes(struct ovsdb_idl_txn *,
+                                      struct lr_stateful_tracked_data *,
+                                      struct lflow_input *,
+                                      struct lflow_table *lflows);
 bool northd_handle_sb_port_binding_changes(
     const struct sbrec_port_binding_table *, struct hmap *ls_ports,
     struct hmap *lr_ports);
