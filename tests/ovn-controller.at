@@ -2655,3 +2655,48 @@ OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c in_por
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - multicast group buffer split])
+AT_KEYWORDS([ovn])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+for i in $(seq 1 320); do
+    ovs-vsctl -- add-port br-int hv1-vif$i -- \
+        set interface hv1-vif$i external-ids:iface-id=sw0-p$i \
+        options:tx_pcap=hv1/vif${i}-tx.pcap \
+        options:rxq_pcap=hv1/vif${i}-rx.pcap \
+        ofport-request=$i
+done
+
+
+check ovn-nbctl ls-add sw0
+for i in $(seq 1 320); do
+    check ovn-nbctl lsp-add sw0 sw0-p$i
+    check ovn-nbctl lsp-set-addresses sw0-p$i "unknown"
+done
+
+wait_for_ports_up
+ovn-nbctl --wait=hv sync
+
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=40 | grep reg15=0x8000,metadata=0x1 | grep -c "controller(userdata=00.00.00.1b"], [0],[dnl
+3
+])
+
+for i in $(seq 1 280); do
+    check ovn-nbctl lsp-del sw0-p$i
+done
+ovn-nbctl --wait=hv sync
+
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=40 | grep -q controller], [1])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])

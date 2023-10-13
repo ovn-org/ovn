@@ -211,6 +211,10 @@ static void send_mac_binding_buffered_pkts(struct rconn *swconn)
 
 static void pinctrl_rarp_activation_strategy_handler(const struct match *md);
 
+static void pinctrl_mg_split_buff_handler(
+        struct rconn *swconn, struct dp_packet *pkt,
+        const struct match *md, struct ofpbuf *userdata);
+
 static void init_activated_ports(void);
 static void destroy_activated_ports(void);
 static void wait_activated_ports(void);
@@ -3281,6 +3285,11 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         ovs_mutex_lock(&pinctrl_mutex);
         pinctrl_rarp_activation_strategy_handler(&pin.flow_metadata);
         ovs_mutex_unlock(&pinctrl_mutex);
+        break;
+
+    case ACTION_OPCODE_MG_SPLIT_BUF:
+        pinctrl_mg_split_buff_handler(swconn, &packet, &pin.flow_metadata,
+                                      &userdata);
         break;
 
     default:
@@ -8152,6 +8161,63 @@ pinctrl_rarp_activation_strategy_handler(const struct match *md)
 
     /* Notify main thread on pending additional-chassis-activated updates. */
     notify_pinctrl_main();
+}
+
+static void
+pinctrl_mg_split_buff_handler(struct rconn *swconn, struct dp_packet *pkt,
+                              const struct match *md, struct ofpbuf *userdata)
+{
+    ovs_be32 *index = ofpbuf_try_pull(userdata, sizeof *index);
+    if (!index) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "%s: missing index field", __func__);
+        return;
+    }
+
+    ovs_be32 *mg = ofpbuf_try_pull(userdata, sizeof *mg);
+    if (!mg) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "%s: missing multicast group field", __func__);
+        return;
+    }
+
+    uint8_t *table_id = ofpbuf_try_pull(userdata, sizeof *table_id);
+    if (!table_id) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "%s: missing table_id field", __func__);
+        return;
+    }
+
+    struct ofpbuf ofpacts;
+    ofpbuf_init(&ofpacts, 4096);
+    reload_metadata(&ofpacts, md);
+
+    /* reload pkt_mark field */
+    const struct mf_field *pkt_mark_field = mf_from_id(MFF_PKT_MARK);
+    union mf_value pkt_mark_value;
+    mf_get_value(pkt_mark_field, &md->flow, &pkt_mark_value);
+    ofpact_put_set_field(&ofpacts, pkt_mark_field, &pkt_mark_value, NULL);
+
+    put_load(ntohl(*index), MFF_REG6, 0, 32, &ofpacts);
+    put_load(ntohl(*mg), MFF_LOG_OUTPORT, 0, 32, &ofpacts);
+
+    struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
+    resubmit->in_port = OFPP_CONTROLLER;
+    resubmit->table_id = *table_id;
+
+    struct ofputil_packet_out po = {
+        .packet = dp_packet_data(pkt),
+        .packet_len = dp_packet_size(pkt),
+        .buffer_id = UINT32_MAX,
+        .ofpacts = ofpacts.data,
+        .ofpacts_len = ofpacts.size,
+    };
+    match_set_in_port(&po.flow_metadata, OFPP_CONTROLLER);
+    enum ofp_version version = rconn_get_version(swconn);
+    enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
+    queue_msg(swconn, ofputil_encode_packet_out(&po, proto));
+
+    ofpbuf_uninit(&ofpacts);
 }
 
 static struct hmap put_fdbs;
