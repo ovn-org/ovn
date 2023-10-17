@@ -23,7 +23,7 @@ CONTAINER_WORKDIR="/workspace/ovn-tmp"
 IMAGE_NAME=${IMAGE_NAME:-"ovn-org/ovn-tests"}
 
 # Test variables
-ARCH=${ARCH:-$(uname -i)}
+ARCH=${ARCH:-$(uname -m)}
 CC=${CC:-gcc}
 
 
