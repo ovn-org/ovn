@@ -105,6 +105,16 @@ function run_tests() {
     "
 }
 
+function check_clang_version_ge() {
+    lower=$1
+    version=$(clang --version | head -n1 | cut -d' ' -f3)
+    if ! echo -e "$lower\n$version" | sort -CV; then
+      return 1
+    fi
+
+    return 0
+}
+
 options=$(getopt --options "" \
     --long help,shell,archive-logs,jobs:,ovn-path:,ovs-path:,image-name:\
     -- "${@}")
@@ -149,7 +159,7 @@ while true; do
 done
 
 # Workaround for https://bugzilla.redhat.com/2153359
-if [ "$ARCH" = "aarch64" ]; then
+if [ "$ARCH" = "aarch64" ] && ! check_clang_version_ge "16.0.0"; then
     ASAN_OPTIONS="detect_leaks=0"
 fi
 
