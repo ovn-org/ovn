@@ -2741,3 +2741,56 @@ cp $PKIDIR/$cert $cert
 OVS_WAIT_UNTIL([ovn-appctl -t ovn-nbctl run show])
 
 AT_CLEANUP
+
+dnl ---------------------------------------------------------------------
+
+AT_SETUP([ovn-nbctl - ha-chassis-group-list group])
+OVN_NBCTL_TEST_START daemon
+check ovn-nbctl ha-chassis-group-add chg1
+chg1uuid=$(fetch_column nb:HA_Chassis_Group _uuid name=chg1)
+check ovn-nbctl ha-chassis-group-add chg2
+chg2uuid=$(fetch_column nb:HA_Chassis_Group _uuid name=chg2)
+check ovn-nbctl ha-chassis-group-add-chassis chg1 hv1 1
+check ovn-nbctl ha-chassis-group-add-chassis chg1 hv2 2
+check ovn-nbctl ha-chassis-group-add-chassis chg2 hv3 3
+check ovn-nbctl ha-chassis-group-add-chassis chg2 hv4 4
+AT_CHECK([ovn-nbctl ha-chassis-group-list], [0], [ignore])
+
+AT_CHECK_UNQUOTED([ovn-nbctl ha-chassis-group-list $chg1uuid | grep chg1 | awk '{print $1}'], [0], [dnl
+$chg1uuid
+])
+AT_CHECK([ovn-nbctl ha-chassis-group-list chg1 | awk '{print $2}' | grep chg], [0], [dnl
+(chg1)
+])
+AT_CHECK([ovn-nbctl ha-chassis-group-list chg1 | awk '{print $2}' | grep -A1 hv1], [0], [dnl
+(hv1)
+1
+])
+AT_CHECK([ovn-nbctl ha-chassis-group-list chg1 | awk '{print $2}' | grep -A1 hv2], [0], [dnl
+(hv2)
+2
+])
+
+AT_CHECK_UNQUOTED([ovn-nbctl ha-chassis-group-list $chg2uuid | grep chg2 | awk '{print $1}'], [0], [dnl
+$chg2uuid
+])
+AT_CHECK([ovn-nbctl ha-chassis-group-list chg2 | awk '{print $2}' | grep chg], [0], [dnl
+(chg2)
+])
+AT_CHECK([ovn-nbctl ha-chassis-group-list chg2 | awk '{print $2}' | grep -A1 hv3], [0], [dnl
+(hv3)
+3
+])
+AT_CHECK([ovn-nbctl ha-chassis-group-list chg2 | awk '{print $2}' | grep -A1 hv4], [0], [dnl
+(hv4)
+4
+])
+
+AT_CHECK([ovn-nbctl ha-chassis-group-list negative], [1], [], [dnl
+ovn-nbctl: negative: ha_chassis_group name not found
+])
+AT_CHECK([ovn-nbctl ha-chassis-group-list 11111111-1111-1111-1111-111111111111], [1], [], [dnl
+ovn-nbctl: 11111111-1111-1111-1111-111111111111: ha_chassis_group UUID not found
+])
+OVN_NBCTL_TEST_STOP "/terminating with signal 15/d"
+AT_CLEANUP
