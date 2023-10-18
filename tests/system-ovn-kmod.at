@@ -811,12 +811,11 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([LB correctly de-fragments traffic])
+AT_SETUP([LB correctly handles fragmented traffic])
 AT_KEYWORDS([ovnlb])
 
 CHECK_CONNTRACK()
 CHECK_CONNTRACK_NAT()
-AT_SKIP_IF([test $HAVE_SCAPY = no])
 
 ovn_start
 OVS_TRAFFIC_VSWITCHD_START()
@@ -828,8 +827,6 @@ ADD_BR([br-ext])
 # connected to a router lr.
 # internal has a server.
 # client is connected through localnet.
-#
-# Load balancer for udp 192.168.1.20:4242 172.16.1.2 4242.
 
 check ovs-ofctl add-flow br-ext action=normal
 # Set external-ids in br-int needed for ovn-controller
@@ -865,6 +862,7 @@ ovn-nbctl lsp-add public ln_port \
 ADD_NAMESPACES(client)
 ADD_VETH(client, client, br-ext, "192.168.1.2/24", "f0:00:00:01:02:03", \
          "192.168.1.1")
+NS_EXEC([client], [ip l set dev client mtu 900])
 
 ADD_NAMESPACES(server)
 ADD_VETH(server, server, br-int, "172.16.1.2/24", "f0:00:0f:01:02:03", \
@@ -872,62 +870,73 @@ ADD_VETH(server, server, br-int, "172.16.1.2/24", "f0:00:0f:01:02:03", \
 check ovn-nbctl lsp-add internal server \
 -- lsp-set-addresses server "f0:00:0f:01:02:03 172.16.1.2"
 
-# Config OVN load-balancer with a VIP.
-check ovn-nbctl lb-add lb1 192.168.1.20:4242 172.16.1.2:4242 udp
-check ovn-nbctl lr-lb-add lr lb1
 check ovn-nbctl set logical_router lr options:chassis=hv1
-check ovn-nbctl set logical_router_port lr-internal options:gateway_mtu=800
 
-ovn-nbctl --wait=hv sync
-
-NETNS_DAEMONIZE([server], [nc -l -u 172.16.1.2 4242 > /dev/null], [server.pid])
-
-# Collect ICMP packets on client side
-NETNS_DAEMONIZE([client], [tcpdump -l -U -i client -vnne \
-icmp > client.pcap 2>client_err], [tcpdump0.pid])
-OVS_WAIT_UNTIL([grep "listening" client_err])
-
-# Collect UDP packets on server side
-NETNS_DAEMONIZE([server], [tcpdump -l -U -i server -vnne \
-'udp and ip[[6:2]] > 0 and not ip[[6]] = 64' > server.pcap 2>server_err], [tcpdump1.pid])
-OVS_WAIT_UNTIL([grep "listening" server_err])
-
-check ip netns exec client python3 << EOF
-import os
+AT_DATA([client.py], [dnl
 import socket
-import sys
-import time
-
-FILE="client.pcap"
-
-
-def contains_string(file, str):
-    file = open(file, "r")
-    for line in file.readlines():
-        if str in line:
-            return True
-    return False
-
-
-def need_frag_received():
-    for _ in range(20):
-        if os.path.getsize(FILE) and contains_string(FILE, "need to frag"):
-            return True
-        time.sleep(0.5)
-    return False
-
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.sendto(b"x" * 1000, ("192.168.1.20", 4242))
-if need_frag_received():
-    sock.sendto(b"x" * 1000, ("192.168.1.20", 4242))
-else:
-    print("Missing need frag")
-    sys.exit(1)
-EOF
+sock.sendto(b"x" * 1000, ("172.16.1.20", 4242))
+])
 
-OVS_WAIT_UNTIL([test "$(cat server.pcap | wc -l)" = "4"])
+test_fragmented_traffic() {
+    check ovn-nbctl --wait=hv sync
 
+    check ovs-appctl dpctl/flush-conntrack
+
+    NETNS_DAEMONIZE([server], [nc -l -u 172.16.1.2 4242 > /dev/null], [server.pid])
+
+    # Collect ICMP packets on client side
+    NETNS_DAEMONIZE([client], [tcpdump -l -U -i client -vnne \
+    udp > client.pcap 2>client_err], [tcpdump0.pid])
+    OVS_WAIT_UNTIL([grep "listening" client_err])
+
+    # Collect UDP packets on server side
+    NETNS_DAEMONIZE([server], [tcpdump -l -U -i server -vnne \
+    'udp and ip[[6:2]] > 0 and not ip[[6]] = 64' > server.pcap 2>server_err], [tcpdump1.pid])
+    OVS_WAIT_UNTIL([grep "listening" server_err])
+
+    NS_CHECK_EXEC([client], [$PYTHON3 ./client.py])
+    OVS_WAIT_UNTIL([test "$(cat server.pcap | wc -l)" = "4"])
+
+    check kill $(cat tcpdump0.pid) $(cat tcpdump1.pid) $(cat server.pid)
+}
+
+AS_BOX([LB on router without port and protocol])
+check ovn-nbctl lb-add lb1 172.16.1.20 172.16.1.2
+check ovn-nbctl lr-lb-add lr lb1
+
+test_fragmented_traffic
+
+check ovn-nbctl lr-lb-del lr
+check ovn-nbctl lb-del lb1
+
+AS_BOX([LB on router with port and protocol])
+check ovn-nbctl lb-add lb1 172.16.1.20:4242 172.16.1.2:4242 udp
+check ovn-nbctl lr-lb-add lr lb1
+
+test_fragmented_traffic
+
+check ovn-nbctl lr-lb-del lr
+check ovn-nbctl lb-del lb1
+
+AS_BOX([LB on switch without port and protocol])
+check ovn-nbctl lb-add lb1 172.16.1.20 172.16.1.2
+check ovn-nbctl ls-lb-add public lb1
+
+test_fragmented_traffic
+
+check ovn-nbctl ls-lb-del public
+check ovn-nbctl lb-del lb1
+
+AS_BOX([LB on switch witho port and protocol])
+check ovn-nbctl lb-add lb1 172.16.1.20:4242 172.16.1.2:4242 udp
+check ovn-nbctl ls-lb-add public lb1
+
+test_fragmented_traffic
+
+check ovn-nbctl ls-lb-del public
+check ovn-nbctl lb-del lb1
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
