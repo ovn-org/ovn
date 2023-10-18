@@ -8331,7 +8331,7 @@ build_lb_affinity_ls_flows(struct lflow_table *lflows,
                   ip_match, ip_match, lb_vip->vip_str);
 
     if (lb_vip->port_str) {
-        ds_put_format(&new_lb_match, " && %s && %s.dst == %s",
+        ds_put_format(&new_lb_match, " && ct_%s && ct_%s.dst == %s",
                       lb->proto, lb->proto, lb_vip->port_str);
     }
 
@@ -8495,7 +8495,7 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
                       lb_vip->vip_str);
         int priority = 110;
         if (lb_vip->port_str) {
-            ds_put_format(match, " && %s.dst == %s", lb->proto,
+            ds_put_format(match, " && ct_%s.dst == %s", lb->proto,
                           lb_vip->port_str);
             priority = 120;
         }
@@ -12475,7 +12475,7 @@ build_lrouter_nat_flows_for_lb(
                   ip_match, ip_match, lb_vip->vip_str);
     if (lb_vip->port_str) {
         prio = 120;
-        ds_put_format(match, " && %s && %s.dst == %s",
+        ds_put_format(match, " && ct_%s && ct_%s.dst == %s",
                       lb->proto, lb->proto, lb_vip->port_str);
     }
 

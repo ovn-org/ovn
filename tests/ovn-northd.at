@@ -1475,7 +1475,7 @@ check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
 AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows | grep 'priority=120.*backends' | ovn_strip_lflows], 0, [dnl
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 # disabled LSPs should not be a backend of Load Balancer
@@ -1484,7 +1484,7 @@ check ovn-nbctl lsp-set-enabled sw0-p1 disabled
 AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows | grep 'priority=120.*backends' | ovn_strip_lflows], 0, [dnl
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=20.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=20.0.0.3:80);)
 ])
 wait_row_count Service_Monitor 1
 
@@ -1493,7 +1493,7 @@ check ovn-nbctl lsp-set-enabled sw0-p1 enabled
 AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows | grep 'priority=120.*backends' | ovn_strip_lflows], 0, [dnl
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 wait_row_count Service_Monitor 2
 
@@ -1504,7 +1504,7 @@ wait_row_count Service_Monitor 0
 AT_CAPTURE_FILE([sbflows2])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows2 | grep 'priority=120.*backends' | ovn_strip_lflows], [0],
-[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Create the Load_Balancer_Health_Check again.])
@@ -1516,7 +1516,7 @@ check ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows sw0 | grep backends | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt | ovn_strip_lflows], [0], [dnl
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Get the uuid of both the service_monitor])
@@ -1526,7 +1526,7 @@ sm_sw1_p1=$(fetch_column Service_Monitor _uuid logical_port=sw1-p1)
 AT_CAPTURE_FILE([sbflows3])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows 3 | grep 'priority=120.*backends' | ovn_strip_lflows], [0],
-[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Set the service monitor for sw1-p1 to offline])
@@ -1537,7 +1537,7 @@ check ovn-nbctl --wait=sb sync
 AT_CAPTURE_FILE([sbflows4])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows4 | grep 'priority=120.*backends' | ovn_strip_lflows], [0],
-[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80);)
+[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80);)
 ])
 
 AS_BOX([Set the service monitor for sw0-p1 to offline])
@@ -1552,8 +1552,8 @@ OVS_WAIT_FOR_OUTPUT(
 
 AT_CAPTURE_FILE([sbflows6])
 OVS_WAIT_FOR_OUTPUT(
-  [ovn-sbctl dump-flows sw0 | tee sbflows6 | grep "ip4.dst == 10.0.0.10 && tcp.dst == 80" | grep priority=120 | grep ls_in_lb | ovn_strip_lflows], [0], [dnl
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(drop;)
+  [ovn-sbctl dump-flows sw0 | tee sbflows6 | grep "ip4.dst == 10.0.0.10 && ct_tcp.dst == 80" | grep priority=120 | grep ls_in_lb | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80), action=(drop;)
 ])
 
 AS_BOX([Set the service monitor for sw0-p1 and sw1-p1 to online])
@@ -1566,7 +1566,7 @@ check ovn-nbctl --wait=sb sync
 AT_CAPTURE_FILE([sbflows7])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows7 | grep backends | grep priority=120 | ovn_strip_lflows], 0,
-[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Set the service monitor for sw1-p1 to error])
@@ -1574,10 +1574,10 @@ check ovn-sbctl set service_monitor $sm_sw1_p1 status=error
 wait_row_count Service_Monitor 1 logical_port=sw1-p1 status=error
 check ovn-nbctl --wait=sb sync
 
-ovn-sbctl dump-flows sw0 | grep "ip4.dst == 10.0.0.10 && tcp.dst == 80" \
+ovn-sbctl dump-flows sw0 | grep "ip4.dst == 10.0.0.10 && ct_tcp.dst == 80" \
 | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt | grep ls_in_lb | ovn_strip_lflows], [0], [dnl
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80);)
 ])
 
 AS_BOX([Add one more vip to lb1])
@@ -1603,8 +1603,8 @@ AT_CAPTURE_FILE([sbflows9])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows9 | grep backends | grep priority=120 | ovn_strip_lflows],
   0,
-[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80);)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg4 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb_mark(backends=10.0.0.3:1000);)
+[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && ct_tcp.dst == 1000), action=(reg4 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb_mark(backends=10.0.0.3:1000);)
 ])
 
 AS_BOX([Set the service monitor for sw1-p1 to online])
@@ -1617,8 +1617,8 @@ AT_CAPTURE_FILE([sbflows10])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows10 | grep backends | grep priority=120 | ovn_strip_lflows],
   0,
-[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg4 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb_mark(backends=10.0.0.3:1000,20.0.0.3:80);)
+[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && ct_tcp.dst == 1000), action=(reg4 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb_mark(backends=10.0.0.3:1000,20.0.0.3:80);)
 ])
 
 AS_BOX([Associate lb1 to sw1])
@@ -1627,8 +1627,8 @@ AT_CAPTURE_FILE([sbflows11])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw1 | tee sbflows11 | grep backends | grep priority=120 | ovn_strip_lflows],
   0, [dnl
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg4 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb_mark(backends=10.0.0.3:1000,20.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && ct_tcp.dst == 1000), action=(reg4 = 10.0.0.40; reg2[[0..15]] = 1000; ct_lb_mark(backends=10.0.0.3:1000,20.0.0.3:80);)
 ])
 
 AS_BOX([Now create lb2 same as lb1 but udp protocol.])
@@ -1684,8 +1684,8 @@ check ovn-sbctl set service_monitor $sm_sw1_p1 status=offline
 
 AT_CAPTURE_FILE([sbflows12])
 OVS_WAIT_FOR_OUTPUT(
-  [ovn-sbctl dump-flows sw0 | tee sbflows12 | grep "ip4.dst == 10.0.0.10 && tcp.dst == 80" | grep priority=120 | grep ls_in_lb | ovn_strip_lflows], [0], [dnl
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0 = 0; reject { outport <-> inport; next(pipeline=egress,table=??);};)
+  [ovn-sbctl dump-flows sw0 | tee sbflows12 | grep "ip4.dst == 10.0.0.10 && ct_tcp.dst == 80" | grep priority=120 | grep ls_in_lb | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80), action=(reg0 = 0; reject { outport <-> inport; next(pipeline=egress,table=??);};)
 ])
 
 AT_CLEANUP
@@ -4399,8 +4399,8 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | ovn_strip_lflows], [0], [dnl
 
 AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.4:8080);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.100 && tcp && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.40:8080);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && ct_tcp && ct_tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.4:8080);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.100 && ct_tcp && ct_tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.40:8080);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl), action=(ct_commit_nat;)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
@@ -4430,8 +4430,8 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | ovn_strip_lflows], [0], [dnl
 
 AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080; force_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.100 && tcp && tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.40:8080; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && ct_tcp && ct_tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.100 && ct_tcp && ct_tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.40:8080; force_snat);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl), action=(ct_commit_nat;)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
@@ -4481,8 +4481,8 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | ovn_strip_lflows], [0], [dnl
 
 AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080; force_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.100 && tcp && tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.40:8080; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && ct_tcp && ct_tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.100 && ct_tcp && ct_tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.40:8080; force_snat);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl), action=(ct_commit_nat;)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
@@ -4549,8 +4549,8 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | ovn_strip_lflows], [0], [dnl
 
 AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080; force_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.100 && tcp && tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.40:8080; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && ct_tcp && ct_tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.100 && ct_tcp && ct_tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.40:8080; force_snat);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl), action=(ct_commit_nat;)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
@@ -4604,7 +4604,7 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | ovn_strip_lflows], [0], [dnl
 ])
 
 AT_CHECK([grep "lr_in_dnat" lr0flows | grep skip_snat_for_lb | ovn_strip_lflows], [0], [dnl
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.20 && tcp && tcp.dst == 80), action=(flags.skip_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.40:8080; skip_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.20 && ct_tcp && ct_tcp.dst == 80), action=(flags.skip_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.40:8080; skip_snat);)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.skip_snat == 1), action=(flags.skip_snat_for_lb = 1; next;)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl && ct_mark.skip_snat == 1), action=(flags.skip_snat_for_lb = 1; ct_commit_nat;)
 ])
@@ -4785,8 +4785,8 @@ check_stateful_flows() {
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_lb           ), priority=110  , match=(ct.trk && !ct.rpl && reg0[[19]] == 1 && ip4), action=(reg4 = ct_nw_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
   table=??(ls_in_lb           ), priority=110  , match=(ct.trk && !ct.rpl && reg0[[19]] == 1 && ip6), action=(xxreg1 = ct_ip6_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.4:8080);)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.20 && tcp.dst == 80), action=(reg4 = 10.0.0.20; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.40:8080);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.4:8080);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.20 && ct_tcp.dst == 80), action=(reg4 = 10.0.0.20; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.40:8080);)
 ])
 
     AT_CHECK([grep "ls_in_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
@@ -6040,9 +6040,9 @@ AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
   table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.20 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat_in_czone(10.0.0.3);)
   table=??(lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.200 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.80,10.0.0.81);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.4:8080);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && tcp && tcp.dst == 8082 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.210 && udp && udp.dst == 60 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && ct_tcp && ct_tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.4:8080);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && ct_tcp && ct_tcp.dst == 8082 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.210 && ct_udp && ct_udp.dst == 60 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl), action=(ct_commit_nat;)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
@@ -6110,9 +6110,9 @@ AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
   table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.20 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat(10.0.0.3);)
   table=??(lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.200 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.80,10.0.0.81);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.4:8080);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && tcp && tcp.dst == 8082 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.210 && udp && udp.dst == 60 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && ct_tcp && ct_tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.4:8080);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && ct_tcp && ct_tcp.dst == 8082 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.210 && ct_udp && ct_udp.dst == 60 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl), action=(ct_commit_nat;)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
@@ -6184,9 +6184,9 @@ AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
   table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.20), action=(flags.loopback = 1; ct_dnat(10.0.0.3);)
   table=??(lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.200), action=(ct_lb_mark(backends=10.0.0.80,10.0.0.81);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.4:8080);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && tcp && tcp.dst == 8082), action=(ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.210 && udp && udp.dst == 60), action=(ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && ct_tcp && ct_tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.4:8080);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && ct_tcp && ct_tcp.dst == 8082), action=(ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.210 && ct_udp && ct_udp.dst == 60), action=(ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl), action=(ct_commit_nat;)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
@@ -6247,9 +6247,9 @@ AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
   table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.20), action=(flags.loopback = 1; ct_dnat(10.0.0.3);)
   table=??(lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.200), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.80,10.0.0.81; force_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080; force_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && tcp && tcp.dst == 8082), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82; force_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.210 && udp && udp.dst == 60), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && ct_tcp && ct_tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && ct_tcp && ct_tcp.dst == 8082), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.210 && ct_udp && ct_udp.dst == 60), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062; force_snat);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl), action=(ct_commit_nat;)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
@@ -6314,10 +6314,10 @@ AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
   table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.20), action=(flags.loopback = 1; ct_dnat(10.0.0.3);)
   table=??(lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.200), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.80,10.0.0.81; force_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080; force_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.10 && tcp && tcp.dst == 9082), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82; force_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && tcp && tcp.dst == 8082), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82; force_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.210 && udp && udp.dst == 60), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && ct_tcp && ct_tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.10 && ct_tcp && ct_tcp.dst == 9082), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && ct_tcp && ct_tcp.dst == 8082), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.210 && ct_udp && ct_udp.dst == 60), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062; force_snat);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl), action=(ct_commit_nat;)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
@@ -6393,11 +6393,11 @@ AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
   table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.20), action=(flags.loopback = 1; ct_dnat(10.0.0.3);)
   table=??(lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.200), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.80,10.0.0.81; force_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && tcp && tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080; force_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.10 && tcp && tcp.dst == 9082), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82; force_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && tcp && tcp.dst == 8082), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82; force_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.210 && udp && udp.dst == 60), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062; force_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && ip6.dst == def0::2 && tcp && tcp.dst == 8000), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=[[aef0::2]]:80,[[aef0::3]]:80; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 10.0.0.10 && ct_tcp && ct_tcp.dst == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.4:8080; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.10 && ct_tcp && ct_tcp.dst == 9082), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && ct_tcp && ct_tcp.dst == 8082), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.210 && ct_udp && ct_udp.dst == 60), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && ip6.dst == def0::2 && ct_tcp && ct_tcp.dst == 8000), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=[[aef0::2]]:80,[[aef0::3]]:80; force_snat);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl), action=(ct_commit_nat;)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
@@ -6462,8 +6462,8 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | ovn_strip_lflows], [0], [dnl
 
 AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.210 && tcp && tcp.dst == 60), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062; force_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.210 && udp && udp.dst == 60), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.210 && ct_tcp && ct_tcp.dst == 60), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.210 && ct_udp && ct_udp.dst == 60), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.50:6062,10.0.0.60:6062; force_snat);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl), action=(ct_commit_nat;)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
@@ -9656,13 +9656,13 @@ AT_CAPTURE_FILE([S1flows])
 
 AT_CHECK([grep "ls_in_lb " S0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && tcp.dst == 80), action=(reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80);)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.11 && tcp.dst == 8080), action=(reg4 = 172.16.0.11; reg2[[0..15]] = 8080; ct_lb_mark(backends=10.0.0.2:8080);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && ct_tcp.dst == 80), action=(reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.11 && ct_tcp.dst == 8080), action=(reg4 = 172.16.0.11; reg2[[0..15]] = 8080; ct_lb_mark(backends=10.0.0.2:8080);)
 ])
 AT_CHECK([grep "ls_in_lb " S1flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && tcp.dst == 80), action=(reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80);)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.11 && tcp.dst == 8080), action=(reg4 = 172.16.0.11; reg2[[0..15]] = 8080; ct_lb_mark(backends=10.0.0.2:8080);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && ct_tcp.dst == 80), action=(reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.11 && ct_tcp.dst == 8080), action=(reg4 = 172.16.0.11; reg2[[0..15]] = 8080; ct_lb_mark(backends=10.0.0.2:8080);)
 ])
 
 ovn-sbctl get datapath S0 _uuid > dp_uuids
@@ -9788,13 +9788,13 @@ AT_CAPTURE_FILE([S0flows])
 
 AT_CHECK([grep "ls_in_lb_aff_check" S0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb_aff_check ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_lb_aff_check ), priority=100  , match=(ct.new && ip4 && ip4.dst == 172.16.0.10 && tcp && tcp.dst == 80), action=(reg9[[6]] = chk_lb_aff(); next;)
+  table=??(ls_in_lb_aff_check ), priority=100  , match=(ct.new && ip4 && ip4.dst == 172.16.0.10 && ct_tcp && ct_tcp.dst == 80), action=(reg9[[6]] = chk_lb_aff(); next;)
 ])
 AT_CHECK([grep "ls_in_lb " S0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_lb           ), priority=110  , match=(ct.trk && !ct.rpl && reg0[[19]] == 1 && ip4), action=(reg4 = ct_nw_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
   table=??(ls_in_lb           ), priority=110  , match=(ct.trk && !ct.rpl && reg0[[19]] == 1 && ip6), action=(xxreg1 = ct_ip6_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && tcp.dst == 80), action=(reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && ct_tcp.dst == 80), action=(reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80);)
   table=??(ls_in_lb           ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 10.0.0.2 && reg2[[0..15]] == 80), action=(reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80);)
   table=??(ls_in_lb           ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 20.0.0.2 && reg2[[0..15]] == 80), action=(reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=20.0.0.2:80);)
 ])
@@ -9810,11 +9810,11 @@ AT_CAPTURE_FILE([R1flows])
 
 AT_CHECK([grep "lr_in_lb_aff_check" R1flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_lb_aff_check ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_lb_aff_check ), priority=100  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.16.0.10 && tcp && tcp.dst == 80), action=(reg9[[6]] = chk_lb_aff(); next;)
+  table=??(lr_in_lb_aff_check ), priority=100  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.16.0.10 && ct_tcp && ct_tcp.dst == 80), action=(reg9[[6]] = chk_lb_aff(); next;)
 ])
 AT_CHECK([grep "lr_in_dnat " R1flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.16.0.10 && tcp && tcp.dst == 80), action=(reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.16.0.10 && ct_tcp && ct_tcp.dst == 80), action=(reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80);)
   table=??(lr_in_dnat         ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 10.0.0.2 && reg2[[0..15]] == 80), action=(ct_lb_mark(backends=10.0.0.2:80);)
   table=??(lr_in_dnat         ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 20.0.0.2 && reg2[[0..15]] == 80), action=(ct_lb_mark(backends=20.0.0.2:80);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
@@ -9838,7 +9838,7 @@ AT_CAPTURE_FILE([R1flows_skip_snat])
 
 AT_CHECK([grep "lr_in_dnat " R1flows_skip_snat | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.16.0.10 && tcp && tcp.dst == 80), action=(flags.skip_snat_for_lb = 1; reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80; skip_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.16.0.10 && ct_tcp && ct_tcp.dst == 80), action=(flags.skip_snat_for_lb = 1; reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80; skip_snat);)
   table=??(lr_in_dnat         ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 10.0.0.2 && reg2[[0..15]] == 80), action=(flags.skip_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.2:80; skip_snat);)
   table=??(lr_in_dnat         ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 20.0.0.2 && reg2[[0..15]] == 80), action=(flags.skip_snat_for_lb = 1; ct_lb_mark(backends=20.0.0.2:80; skip_snat);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
@@ -9859,7 +9859,7 @@ AT_CAPTURE_FILE([R1flows_force_snat])
 
 AT_CHECK([grep "lr_in_dnat " R1flows_force_snat | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.16.0.10 && tcp && tcp.dst == 80), action=(flags.force_snat_for_lb = 1; reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.16.0.10 && ct_tcp && ct_tcp.dst == 80), action=(flags.force_snat_for_lb = 1; reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80; force_snat);)
   table=??(lr_in_dnat         ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 10.0.0.2 && reg2[[0..15]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.2:80; force_snat);)
   table=??(lr_in_dnat         ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 20.0.0.2 && reg2[[0..15]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=20.0.0.2:80; force_snat);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
@@ -9879,7 +9879,7 @@ AT_CAPTURE_FILE([R1flows_force_skip_snat])
 
 AT_CHECK([grep "lr_in_dnat " R1flows_force_skip_snat | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.16.0.10 && tcp && tcp.dst == 80), action=(flags.skip_snat_for_lb = 1; reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80; skip_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.16.0.10 && ct_tcp && ct_tcp.dst == 80), action=(flags.skip_snat_for_lb = 1; reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80; skip_snat);)
   table=??(lr_in_dnat         ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 10.0.0.2 && reg2[[0..15]] == 80), action=(flags.skip_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.2:80; skip_snat);)
   table=??(lr_in_dnat         ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 20.0.0.2 && reg2[[0..15]] == 80), action=(flags.skip_snat_for_lb = 1; ct_lb_mark(backends=20.0.0.2:80; skip_snat);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
@@ -9903,8 +9903,8 @@ AT_CAPTURE_FILE([R1flows_2lbs])
 
 AT_CHECK([grep "lr_in_dnat " R1flows_2lbs | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.16.0.10 && tcp && tcp.dst == 80), action=(flags.skip_snat_for_lb = 1; reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80; skip_snat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.16.0.20 && tcp && tcp.dst == 80), action=(flags.force_snat_for_lb = 1; reg4 = 172.16.0.20; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80; force_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.16.0.10 && ct_tcp && ct_tcp.dst == 80), action=(flags.skip_snat_for_lb = 1; reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80; skip_snat);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.16.0.20 && ct_tcp && ct_tcp.dst == 80), action=(flags.force_snat_for_lb = 1; reg4 = 172.16.0.20; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80; force_snat);)
   table=??(lr_in_dnat         ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 10.0.0.2 && reg2[[0..15]] == 80), action=(flags.skip_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.2:80; skip_snat);)
   table=??(lr_in_dnat         ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 20.0.0.2 && reg2[[0..15]] == 80), action=(flags.skip_snat_for_lb = 1; ct_lb_mark(backends=20.0.0.2:80; skip_snat);)
   table=??(lr_in_dnat         ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.20 && reg4 == 10.0.0.2 && reg2[[0..15]] == 80), action=(flags.force_snat_for_lb = 1; ct_lb_mark(backends=10.0.0.2:80; force_snat);)
@@ -12362,7 +12362,7 @@ check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
 check_engine_stats lflow norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
-lb_lflow_uuid=$(fetch_column Logical_flow _uuid match='"ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80"')
+lb_lflow_uuid=$(fetch_column Logical_flow _uuid match='"ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80"')
 sw0_uuid=$(fetch_column Datapath_Binding _uuid external_ids:name=sw0)
 
 lb_lflow_dp=$(ovn-sbctl --bare --columns logical_datapath list logical_flow $lb_lflow_uuid)
@@ -12400,7 +12400,7 @@ check ovn-nbctl --wait=sb set load_balancer lb1 options:foo=bar
 check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
-lb_lflow_uuid=$(fetch_column Logical_flow _uuid match='"ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80"')
+lb_lflow_uuid=$(fetch_column Logical_flow _uuid match='"ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80"')
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb clear load_balancer lb2 vips
@@ -12481,7 +12481,7 @@ check ovn-nbctl --wait=sb clear load_balancer lb1 vips
 
 AT_CHECK([ovn-sbctl --bare --columns logical_datapath list logical_flow $lb_lflow_uuid], [1], [ignore], [ignore])
 
-lb_lflow_uuid=$(fetch_column Logical_flow _uuid match='"ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80"')
+lb_lflow_uuid=$(fetch_column Logical_flow _uuid match='"ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80"')
 AT_CHECK([test "$lb_lflow_uuid" = ""])
 
 
@@ -12498,7 +12498,7 @@ check ovn-nbctl --wait=sb ls-lb-add sw1 lb3
 check_engine_stats lflow norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
-lb_lflow_uuid=$(fetch_column Logical_flow _uuid match='"ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80"')
+lb_lflow_uuid=$(fetch_column Logical_flow _uuid match='"ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80"')
 
 lb_lflow_dp=$(ovn-sbctl --bare --columns logical_datapath list logical_flow $lb_lflow_uuid)
 AT_CHECK([test "$lb_lflow_dp" = ""])
@@ -15975,7 +15975,7 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | ovn_strip_lflows], [0], [dnl
 AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
   table=??(lr_in_dnat         ), priority=10   , match=(ip && ct.new && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_commit_to_zone(dnat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && tcp && tcp.dst == 8082 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && ct_tcp && ct_tcp.dst == 8082 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl), action=(ct_commit_nat;)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
@@ -16019,7 +16019,7 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | ovn_strip_lflows], [0], [dnl
 AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
   table=??(lr_in_dnat         ), priority=10   , match=(ip && ct.new && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_commit_to_zone(dnat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && tcp && tcp.dst == 8082 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && ct_tcp && ct_tcp.dst == 8082 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl), action=(ct_commit_nat;)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
@@ -16065,7 +16065,7 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | ovn_strip_lflows], [0], [dnl
 AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
   table=??(lr_in_dnat         ), priority=10   , match=(ip && ct.new), action=(ct_commit_to_zone(dnat);)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && tcp && tcp.dst == 8082), action=(ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && ct_tcp && ct_tcp.dst == 8082), action=(ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl), action=(ct_commit_nat;)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
@@ -16106,7 +16106,7 @@ AT_CHECK([grep "lr_in_defrag" lr0flows | ovn_strip_lflows], [0], [dnl
 
 AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && tcp && tcp.dst == 8082), action=(ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.100 && ct_tcp && ct_tcp.dst == 8082), action=(ct_lb_mark(backends=10.0.0.50:82,10.0.0.60:82);)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
   table=??(lr_in_dnat         ), priority=50   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl), action=(ct_commit_nat;)
   table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
