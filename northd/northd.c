@@ -15765,7 +15765,7 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
         !lport_addresses_is_empty(&od->lb_force_snat_addrs);
 
     for (int i = 0; i < od->nbr->n_nat; i++) {
-        const struct nbrec_nat *nat = nat = od->nbr->nat[i];
+        const struct nbrec_nat *nat = od->nbr->nat[i];
         struct eth_addr mac = eth_addr_broadcast;
         bool is_v6, distributed_nat;
         ovs_be32 mask;

@@ -2202,7 +2202,7 @@ ofctrl_meter_bands_alloc(const struct sbrec_meter *sb_meter,
                          struct ovn_extend_table_info *entry,
                          struct ovs_list *msgs)
 {
-    struct meter_band_entry *mb = mb = xzalloc(sizeof *mb);
+    struct meter_band_entry *mb = xzalloc(sizeof *mb);
     mb->n_bands = sb_meter->n_bands;
     mb->bands = xcalloc(mb->n_bands, sizeof *mb->bands);
     for (int i = 0; i < sb_meter->n_bands; i++) {
