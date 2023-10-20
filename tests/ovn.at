@@ -12544,6 +12544,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([IPv6 ND Router Solicitation responder])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 AT_KEYWORDS([ovn-nd_ra])
 ovn_start
 
