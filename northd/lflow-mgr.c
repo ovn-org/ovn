@@ -60,21 +60,6 @@ static struct ovs_mutex *lflow_hash_lock(const struct hmap *lflow_table,
                                          uint32_t hash);
 static void lflow_hash_unlock(struct ovs_mutex *hash_lock);
 
-static struct ovn_dp_group *ovn_dp_group_get(
-    struct hmap *dp_groups, size_t desired_n,
-    const unsigned long *desired_bitmap,
-    size_t bitmap_len);
-static struct ovn_dp_group *ovn_dp_group_create(
-    struct ovsdb_idl_txn *ovnsb_txn, struct hmap *dp_groups,
-    struct sbrec_logical_dp_group *, size_t desired_n,
-    const unsigned long *desired_bitmap,
-    size_t bitmap_len, bool is_switch,
-    const struct ovn_datapaths *ls_datapaths,
-    const struct ovn_datapaths *lr_datapaths);
-static struct ovn_dp_group *ovn_dp_group_get(
-    struct hmap *dp_groups, size_t desired_n,
-    const unsigned long *desired_bitmap,
-    size_t bitmap_len);
 static struct sbrec_logical_dp_group *ovn_sb_insert_or_update_logical_dp_group(
     struct ovsdb_idl_txn *ovnsb_txn,
     struct sbrec_logical_dp_group *,
@@ -737,31 +722,81 @@ lflow_table_add_lflow_default_drop(struct lflow_table *lflow_table,
                           where, lflow_ref);
 }
 
-/* Given a desired bitmap, finds a datapath group in 'dp_groups'.  If it
- * doesn't exist, creates a new one and adds it to 'dp_groups'.
- * If 'sb_group' is provided, function will try to re-use this group by
- * either taking it directly, or by modifying, if it's not already in use. */
 struct ovn_dp_group *
-ovn_dp_group_get_or_create(struct ovsdb_idl_txn *ovnsb_txn,
-                           struct hmap *dp_groups,
-                           struct sbrec_logical_dp_group *sb_group,
-                           size_t desired_n,
-                           const unsigned long *desired_bitmap,
-                           size_t bitmap_len,
-                           bool is_switch,
-                           const struct ovn_datapaths *ls_datapaths,
-                           const struct ovn_datapaths *lr_datapaths)
+ovn_dp_group_get(struct hmap *dp_groups, size_t desired_n,
+                 const unsigned long *desired_bitmap,
+                 size_t bitmap_len)
+{
+    uint32_t hash;
+
+    hash = hash_int(desired_n, 0);
+    return ovn_dp_group_find(dp_groups, desired_bitmap, bitmap_len, hash);
+}
+
+/* Creates a new datapath group and adds it to 'dp_groups'.
+ * If 'sb_group' is provided, function will try to re-use this group by
+ * either taking it directly, or by modifying, if it's not already in use.
+ * Caller should first call ovn_dp_group_get() before calling this function. */
+struct ovn_dp_group *
+ovn_dp_group_create(struct ovsdb_idl_txn *ovnsb_txn,
+                    struct hmap *dp_groups,
+                    struct sbrec_logical_dp_group *sb_group,
+                    size_t desired_n,
+                    const unsigned long *desired_bitmap,
+                    size_t bitmap_len,
+                    bool is_switch,
+                    const struct ovn_datapaths *ls_datapaths,
+                    const struct ovn_datapaths *lr_datapaths)
 {
     struct ovn_dp_group *dpg;
 
-    dpg = ovn_dp_group_get(dp_groups, desired_n, desired_bitmap, bitmap_len);
-    if (dpg) {
-        return dpg;
+    bool update_dp_group = false, can_modify = false;
+    unsigned long *dpg_bitmap;
+    size_t i, n = 0;
+
+    dpg_bitmap = sb_group ? bitmap_allocate(bitmap_len) : NULL;
+    for (i = 0; sb_group && i < sb_group->n_datapaths; i++) {
+        struct ovn_datapath *datapath_od;
+
+        datapath_od = ovn_datapath_from_sbrec(
+                        ls_datapaths ? &ls_datapaths->datapaths : NULL,
+                        lr_datapaths ? &lr_datapaths->datapaths : NULL,
+                        sb_group->datapaths[i]);
+        if (!datapath_od || ovn_datapath_is_stale(datapath_od)) {
+            break;
+        }
+        bitmap_set1(dpg_bitmap, datapath_od->index);
+        n++;
+    }
+    if (!sb_group || i != sb_group->n_datapaths) {
+        /* No group or stale group.  Not going to be used. */
+        update_dp_group = true;
+        can_modify = true;
+    } else if (!bitmap_equal(dpg_bitmap, desired_bitmap, bitmap_len)) {
+        /* The group in Sb is different. */
+        update_dp_group = true;
+        /* We can modify existing group if it's not already in use. */
+        can_modify = !ovn_dp_group_find(dp_groups, dpg_bitmap,
+                                        bitmap_len, hash_int(n, 0));
     }
 
-    return ovn_dp_group_create(ovnsb_txn, dp_groups, sb_group, desired_n,
-                               desired_bitmap, bitmap_len, is_switch,
-                               ls_datapaths, lr_datapaths);
+    bitmap_free(dpg_bitmap);
+
+    dpg = xzalloc(sizeof *dpg);
+    dpg->bitmap = bitmap_clone(desired_bitmap, bitmap_len);
+    if (!update_dp_group) {
+        dpg->dp_group = sb_group;
+    } else {
+        dpg->dp_group = ovn_sb_insert_or_update_logical_dp_group(
+                            ovnsb_txn,
+                            can_modify ? sb_group : NULL,
+                            desired_bitmap,
+                            is_switch ? ls_datapaths : lr_datapaths);
+    }
+    dpg->dpg_uuid = dpg->dp_group->header_.uuid;
+    hmap_insert(dp_groups, &dpg->node, hash_int(desired_n, 0));
+
+    return dpg;
 }
 
 void
@@ -1202,83 +1237,6 @@ ovn_sb_insert_or_update_logical_dp_group(
     free(sb);
 
     return dp_group;
-}
-
-static struct ovn_dp_group *
-ovn_dp_group_get(struct hmap *dp_groups, size_t desired_n,
-                 const unsigned long *desired_bitmap,
-                 size_t bitmap_len)
-{
-    uint32_t hash;
-
-    hash = hash_int(desired_n, 0);
-    return ovn_dp_group_find(dp_groups, desired_bitmap, bitmap_len, hash);
-}
-
-/* Creates a new datapath group and adds it to 'dp_groups'.
- * If 'sb_group' is provided, function will try to re-use this group by
- * either taking it directly, or by modifying, if it's not already in use.
- * Caller should first call ovn_dp_group_get() before calling this function. */
-static struct ovn_dp_group *
-ovn_dp_group_create(struct ovsdb_idl_txn *ovnsb_txn,
-                    struct hmap *dp_groups,
-                    struct sbrec_logical_dp_group *sb_group,
-                    size_t desired_n,
-                    const unsigned long *desired_bitmap,
-                    size_t bitmap_len,
-                    bool is_switch,
-                    const struct ovn_datapaths *ls_datapaths,
-                    const struct ovn_datapaths *lr_datapaths)
-{
-    struct ovn_dp_group *dpg;
-
-    bool update_dp_group = false, can_modify = false;
-    unsigned long *dpg_bitmap;
-    size_t i, n = 0;
-
-    dpg_bitmap = sb_group ? bitmap_allocate(bitmap_len) : NULL;
-    for (i = 0; sb_group && i < sb_group->n_datapaths; i++) {
-        struct ovn_datapath *datapath_od;
-
-        datapath_od = ovn_datapath_from_sbrec(
-                        ls_datapaths ? &ls_datapaths->datapaths : NULL,
-                        lr_datapaths ? &lr_datapaths->datapaths : NULL,
-                        sb_group->datapaths[i]);
-        if (!datapath_od || ovn_datapath_is_stale(datapath_od)) {
-            break;
-        }
-        bitmap_set1(dpg_bitmap, datapath_od->index);
-        n++;
-    }
-    if (!sb_group || i != sb_group->n_datapaths) {
-        /* No group or stale group.  Not going to be used. */
-        update_dp_group = true;
-        can_modify = true;
-    } else if (!bitmap_equal(dpg_bitmap, desired_bitmap, bitmap_len)) {
-        /* The group in Sb is different. */
-        update_dp_group = true;
-        /* We can modify existing group if it's not already in use. */
-        can_modify = !ovn_dp_group_find(dp_groups, dpg_bitmap,
-                                        bitmap_len, hash_int(n, 0));
-    }
-
-    bitmap_free(dpg_bitmap);
-
-    dpg = xzalloc(sizeof *dpg);
-    dpg->bitmap = bitmap_clone(desired_bitmap, bitmap_len);
-    if (!update_dp_group) {
-        dpg->dp_group = sb_group;
-    } else {
-        dpg->dp_group = ovn_sb_insert_or_update_logical_dp_group(
-                            ovnsb_txn,
-                            can_modify ? sb_group : NULL,
-                            desired_bitmap,
-                            is_switch ? ls_datapaths : lr_datapaths);
-    }
-    dpg->dpg_uuid = dpg->dp_group->header_.uuid;
-    hmap_insert(dp_groups, &dpg->node, hash_int(desired_n, 0));
-
-    return dpg;
 }
 
 /* Adds an OVN datapath to a datapath group of existing logical flow.

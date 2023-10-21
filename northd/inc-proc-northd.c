@@ -264,6 +264,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                      sync_to_sb_lb_northd_handler);
     engine_add_input(&en_sync_to_sb_lb, &en_sb_load_balancer,
                      sync_to_sb_lb_sb_load_balancer);
+    engine_add_input(&en_sync_to_sb_lb, &en_sb_logical_dp_group, NULL);
 
     engine_add_input(&en_sync_to_sb_pb, &en_northd,
                      sync_to_sb_pb_northd_handler);
