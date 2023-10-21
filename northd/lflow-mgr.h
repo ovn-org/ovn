@@ -157,12 +157,33 @@ ovn_dp_groups_init(struct hmap *dp_groups)
 
 void ovn_dp_groups_clear(struct hmap *dp_groups);
 void ovn_dp_groups_destroy(struct hmap *dp_groups);
-struct ovn_dp_group *ovn_dp_group_get_or_create(
+struct ovn_dp_group *ovn_dp_group_get(struct hmap *dp_groups, size_t desired_n,
+                                      const unsigned long *desired_bitmap,
+                                      size_t bitmap_len);
+struct ovn_dp_group *ovn_dp_group_create(
     struct ovsdb_idl_txn *ovnsb_txn, struct hmap *dp_groups,
     struct sbrec_logical_dp_group *sb_group,
     size_t desired_n, const unsigned long *desired_bitmap,
     size_t bitmap_len, bool is_switch,
     const struct ovn_datapaths *ls_datapaths,
     const struct ovn_datapaths *lr_datapaths);
+
+static inline void
+inc_ovn_dp_group_ref(struct ovn_dp_group *dpg)
+{
+    dpg->refcnt++;
+}
+
+static inline void
+dec_ovn_dp_group_ref(struct hmap *dp_groups, struct ovn_dp_group *dpg)
+{
+    dpg->refcnt--;
+
+    if (!dpg->refcnt) {
+        hmap_remove(dp_groups, &dpg->node);
+        free(dpg->bitmap);
+        free(dpg);
+    }
+}
 
 #endif /* LFLOW_MGR_H */

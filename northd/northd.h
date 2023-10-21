@@ -726,12 +726,6 @@ const char *northd_get_svc_monitor_mac(void);
 
 const struct ovn_datapath *northd_get_datapath_for_port(
     const struct hmap *ls_ports, const char *port_name);
-void sync_lbs(struct ovsdb_idl_txn *, const struct sbrec_load_balancer_table *,
-              struct ovn_datapaths *ls_datapaths,
-              struct ovn_datapaths *lr_datapaths,
-              struct hmap *lbs,
-              struct chassis_features *chassis_features);
-bool check_sb_lb_duplicates(const struct sbrec_load_balancer_table *);
 
 struct lr_stateful_table;
 void sync_pbs(struct ovsdb_idl_txn *, struct hmap *ls_ports,
