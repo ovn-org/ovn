@@ -2686,10 +2686,65 @@ or
       </column>
 
       <column name="options" key="mac_binding_age_threshold"
-              type='{"type": "integer", "minInteger": 0, "maxInteger": 4294967295}'>
-        MAC binding aging <code>threshold</code> value in seconds. MAC binding
-        exceeding this timeout will be automatically removed. The value
-        defaults to 0, which means disabled.
+              type='{"type": "string"}'>
+        <p>
+            Specifies the MAC binding aging thresholds based on CIDRs, with the
+            format: <var>entry</var>[<code>;</code><var>entry</var>[...]],
+            where each <var>entry</var> has the format:
+            [<var>cidr</var><code>:</code>]<var>threshold</var>
+        </p>
+
+        <ul>
+          <li>
+            <var>cidr</var>: Can be either an IPv4 or IPv6 CIDR.
+          </li>
+          <li>
+            <var>threshold</var>: Threshold value in seconds. MAC bindings with
+            IP addresses matching the specified CIDR that exceed this timeout
+            will be automatically removed.
+          </li>
+        </ul>
+
+        <p>
+            If an <var>entry</var> is provided without an CIDR (just the
+            threshold value), it specifies the default threshold for MAC
+            bindings that don't match any of the given CIDRs. If there are
+            multiple default threshold entries in the option, the behavior is
+            undefined.
+        </p>
+
+        <p>
+            If there are multiple CIDRs matching a MAC binding IP, the one with
+            the longest prefix length takes effect. If there are multiple
+            entries with the same CIDR in the option, the behavior is
+            undefined.
+        </p>
+
+        <p>
+            If no matching CIDR is found for a MAC binding IP, and no default
+            threshold is specified, the behavior defaults to the original: the
+            binding will not be removed based on age.
+        </p>
+
+        <p>
+            The value can also default to an empty string, which means that the
+            aging threshold is disabled. Any string not in the above format is
+            regarded as invalid and the aging is disabled.
+        </p>
+
+        <p>
+            Example:
+            <code>192.168.0.0/16:300;192.168.10.0/24:0;fe80::/10:600;1200</code>
+        </p>
+
+        <p>
+            This sets a threshold of 300 seconds for MAC bindings with IP
+            addresses in the 192.168.0.0/16 range, excluding the 192.168.1.0/24
+            range (for which the aging is disabled), a threshold of 600 seconds
+            for MAC bindings with IP addresses in the fe80::/10 IPv6 range, and
+            a default threshold of 1200 seconds for all other MAC bindings.
+        </p>
+
       </column>
     </group>
 

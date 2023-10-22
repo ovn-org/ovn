@@ -34717,6 +34717,66 @@ OVS_WAIT_UNTIL([
 
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=79 --no-stats | strip_cookie], [0], [])
 
+# Test CIDR-based threshold configuration
+check ovn-nbctl set logical_router gw options:mac_binding_age_threshold="192.168.10.0/255.255.255.0:2;192.168.10.64/26:0;192.168.10.20:0"
+check ovn-nbctl --wait=sb sync
+uuid=$(fetch_column datapath _uuid external_ids:name=gw)
+AT_CHECK([ovn-sbctl get datapath $uuid external_ids:mac_binding_age_threshold], [0], [dnl
+"2"
+])
+
+# Send GARP to populate MAC binding table records
+send_garp hv1 ext1 10 # belong to 192.168.10.0/24
+send_garp hv2 ext2 20 # belong to 192.168.10.20/32
+send_garp hv2 ext2 65 # belong to 192.168.10.64/26
+
+OVS_WAIT_UNTIL([ovn-sbctl list mac_binding | grep -q "192.168.10.10"])
+OVS_WAIT_UNTIL([ovn-sbctl list mac_binding | grep -q "192.168.10.20"])
+OVS_WAIT_UNTIL([ovn-sbctl list mac_binding | grep -q "192.168.10.65"])
+
+OVS_WAIT_UNTIL([
+    test "0" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.10')"
+])
+# The other two should remain because the corresponding prefixes have threshold 0
+AT_CHECK([ovn-sbctl list mac_binding | grep -q "192.168.10.20"])
+AT_CHECK([ovn-sbctl list mac_binding | grep -q "192.168.10.65"])
+check ovn-sbctl --all destroy mac_binding
+
+# Set the aging threshold mixed with IPv6 prefixes and default threshold
+check ovn-nbctl set logical_router gw options:mac_binding_age_threshold="2;192.168.10.64/26:0;ff00:1234::/32:888;ff00::abcd:1"
+check ovn-nbctl --wait=sb sync
+uuid=$(fetch_column datapath _uuid external_ids:name=gw)
+AT_CHECK([ovn-sbctl get datapath $uuid external_ids:mac_binding_age_threshold], [0], [dnl
+"1"
+])
+
+# Send GARP to populate MAC binding table records
+send_garp hv1 ext1 10 # belong to default
+send_garp hv2 ext2 65 # belong to 192.168.10.64/26
+
+OVS_WAIT_UNTIL([ovn-sbctl list mac_binding | grep -q "192.168.10.10"])
+OVS_WAIT_UNTIL([ovn-sbctl list mac_binding | grep -q "192.168.10.65"])
+
+OVS_WAIT_UNTIL([
+    test "0" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.10')"
+])
+AT_CHECK([ovn-sbctl list mac_binding | grep -q "192.168.10.65"])
+check ovn-sbctl --all destroy mac_binding
+
+# Set the aging threshold with invalid format
+check ovn-nbctl set logical_router gw options:mac_binding_age_threshold="1;abc/26:0"
+check ovn-nbctl --wait=sb sync
+uuid=$(fetch_column datapath _uuid external_ids:name=gw)
+AT_CHECK([ovn-sbctl get datapath $uuid external_ids:mac_binding_age_threshold], [1], [ignore], [ignore])
+
+# Send GARP to populate MAC binding table records
+send_garp hv1 ext1 10
+
+OVS_WAIT_UNTIL([ovn-sbctl list mac_binding | grep -q "192.168.10.10"])
+# The record is not deleted
+sleep 5
+AT_CHECK([ovn-sbctl list mac_binding | grep -q "192.168.10.10"])
+
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
 ])

@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "aging.h"
 #include "debug.h"
 #include "bitmap.h"
 #include "coverage.h"
@@ -1166,8 +1167,14 @@ ovn_datapath_update_external_ids(struct ovn_datapath *od)
             smap_add(&ids, "always_learn_from_arp_request", "false");
         }
 
-        uint32_t age_threshold = smap_get_uint(&od->nbr->options,
-                                               "mac_binding_age_threshold", 0);
+        /* For timestamp refreshing, the smallest threshold of the option is
+         * set to SB to make sure all entries are refreshed in time.
+         * XXX: This approach simplifies processing in ovn-controller, but it
+         * may be enhanced, if necessary, to parse the complete CIDR-based
+         * threshold configurations to SB to reduce unnecessary refreshes. */
+        uint32_t age_threshold = min_mac_binding_age_threshold(
+                                       smap_get(&od->nbr->options,
+                                               "mac_binding_age_threshold"));
         if (age_threshold) {
             smap_add_format(&ids, "mac_binding_age_threshold",
                             "%u", age_threshold);
