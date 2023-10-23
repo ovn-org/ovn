@@ -730,7 +730,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-northd restart])
-ovn_start --backup-northd=none
+ovn_start
 
 # Check that ovn-northd is active, by verifying that it creates and
 # destroys southbound datapaths as one would expect.
@@ -749,7 +749,7 @@ sleep 5
 check_row_count Datapath_Binding 1
 
 # Now resume ovn-northd.  Changes should catch up.
-ovn_start_northd primary
+ovn_start_northd
 wait_row_count Datapath_Binding 2
 
 AT_CLEANUP
@@ -758,7 +758,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD_WITHOUT_DP_GROUPS([
 AT_SETUP([northbound database reconnection])
 
-ovn_start --backup-northd=none
+ovn_start
 
 # Check that ovn-northd is active, by verifying that it creates and
 # destroys southbound datapaths as one would expect.
@@ -790,7 +790,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD_WITHOUT_DP_GROUPS([
 AT_SETUP([southbound database reconnection])
 
-ovn_start --backup-northd=none
+ovn_start
 
 # Check that ovn-northd is active, by verifying that it creates and
 # destroys southbound datapaths as one would expect.
@@ -4237,7 +4237,7 @@ AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
 AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"
 \\]]"])
-ovn_start --backup-northd=none
+ovn_start
 
 as northd
 OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])

@@ -188,16 +188,16 @@ ovn_start_northd() {
 # ovn-sbctl and ovn-nbctl use them by default, and starts ovn-northd running
 # against them.
 #
-# Normally this starts an active northd and a backup northd.  The following
+# Normally this starts only an active northd and no backup northd.  The following
 # options are accepted to adjust that:
-#   --backup-northd=none    Don't start a backup northd.
+#   --backup-northd         Start a backup northd.
 #   --backup-northd=paused  Start the backup northd in the paused state.
 ovn_start () {
-    local backup_northd=:
+    local backup_northd=false
     local backup_northd_options=
     case $1 in
-        --backup-northd=none) backup_northd=false; shift ;;
-        --backup-northd=paused) backup_northd_options=--paused; shift ;;
+        --backup-northd) backup_northd=true; shift ;;
+        --backup-northd=paused) backup_northd=true; backup_northd_options=--paused; shift ;;
     esac
     local AZ=$1
     local msg_prefix=${AZ:+$AZ: }
