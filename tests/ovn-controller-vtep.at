@@ -653,9 +653,6 @@ AT_CHECK([grep -c $northd_version vtep1/ovn-controller-vtep.log], [0], [1
 as northd
 OVS_APP_EXIT_AND_WAIT([ovn-northd])
 
-as northd-backup
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
-
 check ovn-sbctl set SB_Global . options:northd_internal_version=foo
 check ovn-sbctl set Chassis vtep1 vtep_logical_switches=foo
 
