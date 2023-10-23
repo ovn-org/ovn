@@ -2176,10 +2176,19 @@ main(int argc, char *argv[])
                 ovn_db_run(&ctx);
             }
 
-            ovsdb_idl_loop_commit_and_wait(&ovnnb_idl_loop);
-            ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop);
-            ovsdb_idl_loop_commit_and_wait(&ovninb_idl_loop);
-            ovsdb_idl_loop_commit_and_wait(&ovnisb_idl_loop);
+            int rc1 = ovsdb_idl_loop_commit_and_wait(&ovnnb_idl_loop);
+            int rc2 = ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop);
+            int rc3 = ovsdb_idl_loop_commit_and_wait(&ovninb_idl_loop);
+            int rc4 = ovsdb_idl_loop_commit_and_wait(&ovnisb_idl_loop);
+            if (!rc1 || !rc2 || !rc3 || !rc4) {
+                VLOG_DBG(" a transaction failed in: %s %s %s %s",
+                         !rc1 ? "nb" : "", !rc2 ? "sb" : "",
+                         !rc3 ? "ic_nb" : "", rc4 ? "ic_sb" : "");
+                /* A transaction failed. Wake up immediately to give
+                 * opportunity to send the proper transaction
+                 */
+                poll_immediate_wake();
+            }
         } else {
             /* ovn-ic is paused
              *    - we still want to handle any db updates and update the
