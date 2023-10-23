@@ -1630,13 +1630,18 @@ collect_lr_routes(struct ic_context *ctx,
     const struct icnbrec_transit_switch *key;
 
     struct hmap *routes_ad;
+    const struct icnbrec_transit_switch *t_sw;
     for (int i = 0; i < ic_lr->n_isb_pbs; i++) {
         isb_pb = ic_lr->isb_pbs[i];
         key = icnbrec_transit_switch_index_init_row(
             ctx->icnbrec_transit_switch_by_name);
         icnbrec_transit_switch_index_set_name(key, isb_pb->transit_switch);
-        ts_name = icnbrec_transit_switch_index_find(
-            ctx->icnbrec_transit_switch_by_name, key)->name;
+        t_sw = icnbrec_transit_switch_index_find(
+             ctx->icnbrec_transit_switch_by_name, key);
+        if (!t_sw) {
+            continue;
+        }
+        ts_name = t_sw->name;
         icnbrec_transit_switch_index_destroy_row(key);
         routes_ad = shash_find_data(routes_ad_by_ts, ts_name);
         if (!routes_ad) {
