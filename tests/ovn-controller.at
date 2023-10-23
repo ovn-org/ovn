@@ -60,7 +60,6 @@ check_bridge_mappings () {
 # the RBAC rules programmed into the SB-DB. The test instruments the SB-DB
 # directly and we need to stop northd to avoid overwriting the instrumentation.
 kill `cat northd/ovn-northd.pid`
-kill `cat northd-backup/ovn-northd.pid`
 kill `cat ovn-nb/ovsdb-server.pid`
 
 # Initially there should be no patch ports.
@@ -579,10 +578,8 @@ localport lport : [[lsp1]]
 
 # pause ovn-northd
 check as northd ovn-appctl -t ovn-northd pause
-check as northd-backup ovn-appctl -t ovn-northd pause
 
 as northd ovn-appctl -t ovn-northd status
-as northd-backup ovn-appctl -t ovn-northd status
 
 pb_types=(patch chassisredirect l3gateway localnet localport l2gateway
           virtual external remote vtep)
@@ -2097,7 +2094,6 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=46 | grep -c "priority=1100"], [0], 
 
 # pause ovn-northd
 check as northd ovn-appctl -t ovn-northd pause
-check as northd-backup ovn-appctl -t ovn-northd pause
 
 # Simulate a SB address set "del and add" notification to ovn-controller in the
 # same IDL iteration. The flows programmed by ovn-controller should reflect the
@@ -2122,7 +2118,7 @@ AT_CLEANUP
 
 AT_SETUP([ovn-controller - I-P handle lb_hairpin_use_ct_mark change])
 
-ovn_start --backup-northd=none
+ovn_start
 
 net_add n1
 sim_add hv1
