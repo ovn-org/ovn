@@ -7168,9 +7168,6 @@ compare_dhcp_packets 1
 as northd
 OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
 
-as northd-backup
-OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
-
 northd_version=$(ovn-sbctl get SB_Global . options:northd_internal_version | sed s/\"//g)
 echo "northd version = $northd_version"
 
@@ -30635,7 +30632,6 @@ check ovn-nbctl --wait=hv ls-lb-del sw0 lb-ipv6
 # original destination tuple.
 #
 # ovn-controller should fall back to matching on ct_nw_dst()/ct_tp_dst().
-as northd-backup ovn-appctl -t NORTHD_TYPE pause
 as northd ovn-appctl -t NORTHD_TYPE pause
 
 check ovn-sbctl \
@@ -30686,7 +30682,6 @@ OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=70 | ofctl_strip_a
 
 # Resume ovn-northd.
 as northd ovn-appctl -t NORTHD_TYPE resume
-as northd-backup ovn-appctl -t NORTHD_TYPE resume
 check ovn-nbctl --wait=hv sync
 
 as hv2 ovs-vsctl del-port hv2-vif1
@@ -30805,9 +30800,6 @@ AT_CHECK([grep -c $northd_version hv1/ovn-controller.log], [0], [1
 
 # Stop ovn-northd so that we can modify the northd_version.
 as northd
-OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
-
-as northd-backup
 OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
 
 check ovn-sbctl set SB_Global . options:northd_internal_version=foo
@@ -30951,7 +30943,6 @@ AS_BOX([ovn-controller should not reset Port_Binding.up without northd])
 # Pause northd and clear the "up" field to simulate older ovn-northd
 # versions writing to the Southbound DB.
 as northd ovn-appctl -t NORTHD_TYPE pause
-as northd-backup ovn-appctl -t NORTHD_TYPE pause
 
 as hv1 ovn-appctl -t ovn-controller debug/pause
 check ovn-sbctl clear Port_Binding lsp1 up
@@ -30967,7 +30958,6 @@ check_column "" Port_Binding up logical_port=lsp1
 # Once northd should explicitly set the Port_Binding.up field to 'false' and
 # ovn-controller sets it to 'true' as soon as the update is processed.
 as northd ovn-appctl -t NORTHD_TYPE resume
-as northd-backup ovn-appctl -t NORTHD_TYPE resume
 wait_column "true" Port_Binding up logical_port=lsp1
 wait_column "true" nb:Logical_Switch_Port up name=lsp1
 
@@ -31122,7 +31112,6 @@ check ovn-nbctl lsp-set-addresses sw0-p4 "00:00:00:00:00:04 192.168.47.4"
 # will be sent in one transaction.
 
 check as northd ovn-appctl -t NORTHD_TYPE pause
-check as northd-backup ovn-appctl -t NORTHD_TYPE pause
 
 check ovn-nbctl lsp-add sw0 sw0-p1
 check ovn-nbctl lsp-set-addresses sw0-p1 "00:00:00:00:00:01 192.168.47.1"
@@ -33573,7 +33562,6 @@ check as hv1 ovn-appctl -t ovn-controller exit
 
 # Pause northd to guarantee that ovn-controller starts before requested_chassis
 # column is filled.
-check as northd-backup ovn-appctl -t ovn-northd pause
 check as northd ovn-appctl -t ovn-northd pause
 
 # Wait until requested_chassis is empty
@@ -33587,7 +33575,6 @@ wait_column "hv1" Chassis name
 
 # Start northd and wait for events to be processed
 check as northd ovn-appctl -t ovn-northd resume
-check as northd-backup ovn-appctl -t ovn-northd resume
 
 wait_for_ports_up lsp1
 

@@ -813,7 +813,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn-northd restart])
-ovn_start --backup-northd=none
+ovn_start
 
 # Check that ovn-northd is active, by verifying that it creates and
 # destroys southbound datapaths as one would expect.
@@ -832,7 +832,7 @@ sleep 5
 check_row_count Datapath_Binding 1
 
 # Now resume ovn-northd.  Changes should catch up.
-ovn_start_northd primary
+ovn_start_northd
 wait_row_count Datapath_Binding 2
 
 AT_CLEANUP
@@ -841,7 +841,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([northbound database reconnection])
 
-ovn_start --backup-northd=none
+ovn_start
 
 # Check that ovn-northd is active, by verifying that it creates and
 # destroys southbound datapaths as one would expect.
@@ -873,7 +873,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([southbound database reconnection])
 
-ovn_start --backup-northd=none
+ovn_start
 
 # Check that ovn-northd is active, by verifying that it creates and
 # destroys southbound datapaths as one would expect.
@@ -4612,7 +4612,7 @@ AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
 AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"
 \\]]"])
-ovn_start --backup-northd=none
+ovn_start
 
 as northd
 OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
@@ -9002,7 +9002,6 @@ grep -c mutate], [0], [2
 # Pause ovn-northd and add/remove few addresses.  when it is resumed
 # it should use mutate for updating the address sets.
 check as northd ovn-appctl -t NORTHD_TYPE pause
-check as northd-backup ovn-appctl -t NORTHD_TYPE pause
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl add address_set $foo_as_uuid addresses 1.1.1.5
