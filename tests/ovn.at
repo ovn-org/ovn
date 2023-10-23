@@ -4671,6 +4671,12 @@ OVN_POPULATE_ARP
 
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
+OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv1"],["hv2"])
+OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv2"],["hv1"])
+OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv1"],["hv_gw"])
+OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv_gw"],["hv1"])
+OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv2"],["hv_gw"])
+OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv_gw"],["hv2"])
 
 # test_packet INPORT DST SRC ETHTYPE OUTPORT...
 #
@@ -4869,6 +4875,13 @@ check ovn-nbctl --wait=hv sync
 # packets for ARP resolution (native tunneling doesn't queue packets
 # for ARP resolution).
 OVN_POPULATE_ARP
+
+OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv1"],["hv2"])
+OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv2"],["hv1"])
+OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv2"],["hv3"])
+OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv3"],["hv2"])
+OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv1"],["hv3"])
+OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv3"],["hv1"])
 
 # test_ip INPORT SRC_MAC DST_MAC SRC_IP DST_IP OUTPORT...
 #
@@ -7645,6 +7658,9 @@ ovn-nbctl lsp-add alice alice1 \
 
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
+
+OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv1"],["hv2"])
+OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv2"],["hv1"])
 
 # Send ip packets between foo1 and alice1
 src_mac="f00000010203"
