@@ -48,11 +48,11 @@ ovn-nbctl set nb_global . options:ipsec_encapsulation=true
 
 check ovn-nbctl --wait=hv sync
 
-AT_CHECK([as hv2 ovs-vsctl get Interface ovn-hv1-0 options:remote_ip | tr -d '"\n'], [0], [192.168.0.1])
+OVS_WAIT_UNTIL([test x`as hv2 ovs-vsctl get Interface ovn-hv1-0 options:remote_ip | tr -d '"\n'` = x192.168.0.1])
 AT_CHECK([as hv2 ovs-vsctl get Interface ovn-hv1-0 options:local_ip | tr -d '"\n'], [0], [192.168.0.2])
 AT_CHECK([as hv2 ovs-vsctl get Interface ovn-hv1-0 options:remote_name | tr -d '\n'], [0], [hv1])
 AT_CHECK([as hv2 ovs-vsctl get Interface ovn-hv1-0 options:ipsec_encapsulation | tr -d '\n'], [0], [yes])
-AT_CHECK([as hv1 ovs-vsctl get Interface ovn-hv2-0 options:remote_ip | tr -d '"\n'], [0], [192.168.0.2])
+OVS_WAIT_UNTIL([test x`as hv1 ovs-vsctl get Interface ovn-hv2-0 options:remote_ip | tr -d '"\n'` = x192.168.0.2])
 AT_CHECK([as hv1 ovs-vsctl get Interface ovn-hv2-0 options:local_ip | tr -d '"\n'], [0], [192.168.0.1])
 AT_CHECK([as hv1 ovs-vsctl get Interface ovn-hv2-0 options:remote_name | tr -d '\n'], [0], [hv2])
 AT_CHECK([as hv1 ovs-vsctl get Interface ovn-hv2-0 options:ipsec_encapsulation | tr -d '\n'], [0], [yes])
