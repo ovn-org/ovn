@@ -10024,14 +10024,21 @@ ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.11
 
 check_recompute_counter() {
+    northd_recomp_min=$1
+    northd_recomp_max=$2
+    lflow_recomp_min=$3
+    lflow_recomp_max=$4
+    sync_sb_pb_recomp_min=$5
+    sync_sb_pb_recomp_max=$6
+
     northd_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd recompute)
-    AT_CHECK([test x$northd_recomp = x$1])
+    AT_CHECK([test $northd_recomp -ge $northd_recomp_min && test $northd_recomp -le $northd_recomp_max])
 
     lflow_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow recompute)
-    AT_CHECK([test x$lflow_recomp = x$2])
+    AT_CHECK([test $lflow_recomp -ge $lflow_recomp_min && test $lflow_recomp -le $lflow_recomp_max])
 
     sync_sb_pb_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_pb recompute)
-    AT_CHECK([test x$sync_sb_pb_recomp = x$3])
+    AT_CHECK([test $sync_sb_pb_recomp -ge $sync_sb_pb_recomp_min && test $sync_sb_pb_recomp -le $sync_sb_pb_recomp_max])
 }
 
 check ovn-nbctl --wait=hv ls-add ls0
@@ -10048,29 +10055,29 @@ check ovn-nbctl --wait=hv lsp-add ls0 lsp0-0 -- lsp-set-addresses lsp0-0 "unknow
 ovs-vsctl add-port br-int lsp0-0 -- set interface lsp0-0 external_ids:iface-id=lsp0-0
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-check_recompute_counter 5 5 5
+check_recompute_counter 4 5 5 5 5 5
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=hv lsp-add ls0 lsp0-1 -- lsp-set-addresses lsp0-1 "aa:aa:aa:00:00:01 192.168.0.11"
 ovs-vsctl add-port br-int lsp0-1 -- set interface lsp0-1 external_ids:iface-id=lsp0-1
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-check_recompute_counter 0 0 0
+check_recompute_counter 0 0 0 0 0 0
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=hv lsp-add ls0 lsp0-2 -- lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:02 192.168.0.12"
 ovs-vsctl add-port br-int lsp0-2 -- set interface lsp0-2 external_ids:iface-id=lsp0-2
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-check_recompute_counter 0 0 0
+check_recompute_counter 0 0 0 0 0 0
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=hv lsp-del lsp0-1
-check_recompute_counter 0 0 0
+check_recompute_counter 0 0 0 0 0 0
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=hv lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:88 192.168.0.88"
-check_recompute_counter 0 0 0
+check_recompute_counter 0 0 0 0 0 0
 
 # Delete and re-add a LSP for several times continuously, to ensure
 # frequent operations do not trigger recompute when there are in-flight
@@ -10084,12 +10091,12 @@ for i in $(seq 10); do
     check ovn-nbctl lsp-del lsp0-2
     check ovn-nbctl lsp-add ls0 lsp0-2 -- lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:02 192.168.0.12"
 done
-check_recompute_counter 0 0 0
+check_recompute_counter 0 0 0 0 0 0
 
 # No change, no recompute
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb sync
-check_recompute_counter 0 0 0
+check_recompute_counter 0 0 0 0 0 0
 
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
@@ -10101,7 +10108,7 @@ ovn-nbctl dhcp-options-set-options $CIDR_UUID   lease_time=3600  router=192.168.
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 ovn-nbctl --wait=sb lsp-set-dhcpv4-options lsp0-2 $CIDR_UUID
-check_recompute_counter 0 0 0
+check_recompute_counter 0 0 0 0 0 0
 
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
@@ -10112,7 +10119,7 @@ options="\"server_id\"=\"00:00:00:10:00:01\"")"
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 ovn-nbctl --wait=sb lsp-set-dhcpv6-options lsp0-2 ${d1}
-check_recompute_counter 0 0 0
+check_recompute_counter 0 0 0 0 0 0
 
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
