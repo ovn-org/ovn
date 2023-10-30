@@ -2392,7 +2392,7 @@ consider_iface_release(const struct ovsrec_interface *iface_rec,
 
     lbinding = local_binding_find(local_bindings, iface_id);
 
-   if (lbinding) {
+    if (lbinding) {
         if (lbinding->multiple_bindings) {
             VLOG_INFO("Multiple bindings for %s: force recompute to clean up",
                       iface_id);
@@ -2412,52 +2412,50 @@ consider_iface_release(const struct ovsrec_interface *iface_rec,
                 return true;
             }
         }
-    }
 
-    struct binding_lport *b_lport =
-        local_binding_get_primary_or_localport_lport(lbinding);
-    if (is_binding_lport_this_chassis(b_lport, b_ctx_in->chassis_rec)) {
-        struct local_datapath *ld =
-            get_local_datapath(b_ctx_out->local_datapaths,
-                               b_lport->pb->datapath->tunnel_key);
-        if (ld) {
-            remove_pb_from_local_datapath(b_lport->pb,
-                                          b_ctx_out, ld);
-        }
+        struct binding_lport *b_lport =
+            local_binding_get_primary_or_localport_lport(lbinding);
 
-        add_or_del_qos_port(b_lport->pb->logical_port, false);
-
-        /* Release the primary binding lport and other children lports if
-         * any. */
-        LIST_FOR_EACH (b_lport, list_node, &lbinding->binding_lports) {
-            if (!release_binding_lport(b_ctx_in->chassis_rec, b_lport,
-                                       !b_ctx_in->ovnsb_idl_txn,
-                                       b_ctx_out)) {
-                return false;
+        if (is_binding_lport_this_chassis(b_lport, b_ctx_in->chassis_rec)) {
+            struct local_datapath *ld =
+                get_local_datapath(b_ctx_out->local_datapaths,
+                                   b_lport->pb->datapath->tunnel_key);
+            if (ld) {
+                remove_pb_from_local_datapath(b_lport->pb,
+                                              b_ctx_out, ld);
             }
-        }
-        if (lbinding->iface && lbinding->iface->name) {
-            if_status_mgr_remove_ovn_installed(b_ctx_out->if_mgr,
-                                               lbinding->iface->name,
-                                               &lbinding->iface->header_.uuid);
+            add_or_del_qos_port(b_lport->pb->logical_port, false);
+
+            /* Release the primary binding lport and other children lports if
+             * any. */
+            LIST_FOR_EACH (b_lport, list_node, &lbinding->binding_lports) {
+                if (!release_binding_lport(b_ctx_in->chassis_rec, b_lport,
+                                           !b_ctx_in->ovnsb_idl_txn,
+                                           b_ctx_out)) {
+                    return false;
+                }
+            }
+            if (lbinding->iface && lbinding->iface->name) {
+                if_status_mgr_remove_ovn_installed(b_ctx_out->if_mgr,
+                                           lbinding->iface->name,
+                                           &lbinding->iface->header_.uuid);
+            }
+
+        } else if (b_lport && b_lport->type == LP_LOCALPORT) {
+            /* lbinding is associated with a localport.  Remove it from the
+             * related lports. */
+            remove_related_lport(b_lport->pb, b_ctx_out);
         }
 
-    } else if (lbinding && b_lport && b_lport->type == LP_LOCALPORT) {
-        /* lbinding is associated with a localport.  Remove it from the
-         * related lports. */
-        remove_related_lport(b_lport->pb, b_ctx_out);
-    }
-
-    if (lbinding) {
         /* Clear the iface of the local binding. */
         lbinding->iface = NULL;
-    }
 
-    /* Check if the lbinding has children of type PB_CONTAINER.
-     * If so, don't delete the local_binding. */
-    if (lbinding && !is_lbinding_container_parent(lbinding)) {
-        local_binding_delete(lbinding, local_bindings, binding_lports,
-                             b_ctx_out->if_mgr);
+        /* Check if the lbinding has children of type PB_CONTAINER.
+         * If so, don't delete the local_binding. */
+        if (!is_lbinding_container_parent(lbinding)) {
+            local_binding_delete(lbinding, local_bindings, binding_lports,
+                                 b_ctx_out->if_mgr);
+        }
     }
 
     remove_local_lports(iface_id, b_ctx_out);
