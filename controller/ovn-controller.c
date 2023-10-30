@@ -2642,9 +2642,10 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
             struct tracked_lport *t_lport = shash_node->data;
             if (strcmp(t_lport->pb->type, "")
                 && strcmp(t_lport->pb->type, "localport")
+                && strcmp(t_lport->pb->type, "l3gateway")
                 && strcmp(t_lport->pb->type, "localnet")) {
-                /* We allocate zone-id's only to VIF, localport, and localnet
-                 * lports. */
+                /* We allocate zone-id's only to VIF, localport, l3gateway,
+                 * and localnet lports. */
                 continue;
             }
 
