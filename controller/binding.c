@@ -1193,33 +1193,22 @@ local_binding_set_pb(struct shash *local_bindings, const char *pb_name,
  * - set the 'pb.up' field to true if 'parent_pb.up' is 'true' (e.g., for
  *   container and virtual ports).
  *
- * Returns false if lport is not claimed due to 'sb_readonly'.
- * Returns true otherwise.
- *
  * Note:
  *   Updates the 'pb->up' field only if it's explicitly set to 'false'.
  *   This is to ensure compatibility with older versions of ovn-northd.
  */
-static bool
+void
 claimed_lport_set_up(const struct sbrec_port_binding *pb,
-                     const struct sbrec_port_binding *parent_pb,
-                     bool sb_readonly)
+                     const struct sbrec_port_binding *parent_pb)
 {
-    /* When notify_up is false in claim_port(), no state is created
-     * by if_status_mgr. In such cases, return false (i.e. trigger recompute)
-     * if we can't update sb (because it is readonly).
-     */
     bool up = true;
     if (!parent_pb || (parent_pb->n_up && parent_pb->up[0])) {
-        if (!sb_readonly) {
-            if (pb->n_up) {
-                sbrec_port_binding_set_up(pb, &up, 1);
-            }
-        } else if (pb->n_up && !pb->up[0]) {
-            return false;
+        if (pb->n_up) {
+            VLOG_INFO("Setting lport %s up in Southbound",
+                      pb->logical_port);
+            sbrec_port_binding_set_up(pb, &up, 1);
         }
     }
-    return true;
 }
 
 typedef void (*set_func)(const struct sbrec_port_binding *pb,
@@ -1322,7 +1311,7 @@ claim_lport(const struct sbrec_port_binding *pb,
             const struct sbrec_port_binding *parent_pb,
             const struct sbrec_chassis *chassis_rec,
             const struct ovsrec_interface *iface_rec,
-            bool sb_readonly, bool notify_up,
+            bool sb_readonly, bool is_vif,
             struct hmap *tracked_datapaths,
             struct if_status_mgr *if_mgr,
             struct sset *postponed_ports)
@@ -1347,40 +1336,27 @@ claim_lport(const struct sbrec_port_binding *pb,
             }
             update_tracked = true;
 
-            if (!notify_up) {
-                if (!claimed_lport_set_up(pb, parent_pb, sb_readonly)) {
-                    return false;
-                }
-                if (sb_readonly) {
-                    return false;
-                }
-                set_pb_chassis_in_sbrec(pb, chassis_rec, true);
-            } else {
-                if_status_mgr_claim_iface(if_mgr, pb, chassis_rec, iface_rec,
-                                          sb_readonly, can_bind);
-            }
+            if_status_mgr_claim_iface(if_mgr, pb, chassis_rec, iface_rec,
+                                      sb_readonly, can_bind, is_vif,
+                                      parent_pb);
             register_claim_timestamp(pb->logical_port, now);
             sset_find_and_delete(postponed_ports, pb->logical_port);
         } else {
             update_tracked = true;
-            if (!notify_up) {
-                if (!claimed_lport_set_up(pb, parent_pb, sb_readonly)) {
-                    return false;
-                }
-            } else {
-                if ((pb->n_up && !pb->up[0]) ||
-                    !smap_get_bool(&iface_rec->external_ids,
-                                   OVN_INSTALLED_EXT_ID, false)) {
-                    if_status_mgr_claim_iface(if_mgr, pb, chassis_rec,
-                                              iface_rec, sb_readonly,
-                                              can_bind);
-                }
+            if ((pb->n_up && !pb->up[0]) ||
+                (is_vif && !smap_get_bool(&iface_rec->external_ids,
+                                          OVN_INSTALLED_EXT_ID, false))) {
+                if_status_mgr_claim_iface(if_mgr, pb, chassis_rec,
+                                          iface_rec, sb_readonly,
+                                          can_bind, is_vif,
+                                          parent_pb);
             }
         }
     } else if (can_bind == CAN_BIND_AS_ADDITIONAL) {
         if (!is_additional_chassis(pb, chassis_rec)) {
             if_status_mgr_claim_iface(if_mgr, pb, chassis_rec, iface_rec,
-                                      sb_readonly, can_bind);
+                                      sb_readonly, can_bind, is_vif,
+                                      parent_pb);
             update_tracked = true;
         }
     }
@@ -2447,14 +2423,14 @@ consider_iface_release(const struct ovsrec_interface *iface_rec,
             remove_related_lport(b_lport->pb, b_ctx_out);
         }
 
-        /* Clear the iface of the local binding. */
-        lbinding->iface = NULL;
-
         /* Check if the lbinding has children of type PB_CONTAINER.
          * If so, don't delete the local_binding. */
         if (!is_lbinding_container_parent(lbinding)) {
             local_binding_delete(lbinding, local_bindings, binding_lports,
                                  b_ctx_out->if_mgr);
+        } else {
+            /* Clear the iface of the local binding. */
+            lbinding->iface = NULL;
         }
     }
 
@@ -3248,7 +3224,7 @@ local_binding_delete(struct local_binding *lbinding,
                      struct if_status_mgr *if_mgr)
 {
     shash_find_and_delete(local_bindings, lbinding->name);
-    if_status_mgr_delete_iface(if_mgr, lbinding->name);
+    if_status_mgr_delete_iface(if_mgr, lbinding->name, lbinding->iface);
     local_binding_destroy(lbinding, binding_lports);
 }
 
@@ -3463,6 +3439,80 @@ port_binding_set_down(const struct sbrec_chassis *chassis_rec,
             VLOG_INFO("Setting lport %s down in Southbound", pb->logical_port);
             set_pb_chassis_in_sbrec(pb, chassis_rec, false);
         }
+}
+
+void
+port_binding_set_up(const struct sbrec_chassis *chassis_rec,
+                    const struct sbrec_port_binding_table *pb_table,
+                    const char *iface_id,
+                    const struct uuid *pb_uuid)
+{
+    const struct sbrec_port_binding *pb =
+        sbrec_port_binding_table_get_for_uuid(pb_table, pb_uuid);
+    if (!pb) {
+        VLOG_DBG("port_binding already deleted for %s", iface_id);
+        return;
+    }
+    if (pb->n_up && !pb->up[0]) {
+        bool up = true;
+        sbrec_port_binding_set_up(pb, &up, 1);
+        VLOG_INFO("Setting lport %s up in Southbound", pb->logical_port);
+        set_pb_chassis_in_sbrec(pb, chassis_rec, true);
+    }
+}
+
+void
+port_binding_set_pb(const struct sbrec_chassis *chassis_rec,
+                    const struct sbrec_port_binding_table *pb_table,
+                    const char *iface_id,
+                    const struct uuid *pb_uuid,
+                    enum can_bind bind_type)
+{
+    const struct sbrec_port_binding *pb =
+        sbrec_port_binding_table_get_for_uuid(pb_table, pb_uuid);
+    if (!pb) {
+        VLOG_DBG("port_binding already deleted for %s", iface_id);
+        return;
+    }
+    if (bind_type == CAN_BIND_AS_MAIN) {
+        set_pb_chassis_in_sbrec(pb, chassis_rec, true);
+    } else  if (bind_type == CAN_BIND_AS_ADDITIONAL) {
+        set_pb_additional_chassis_in_sbrec(pb, chassis_rec, true);
+    }
+}
+
+bool
+port_binding_pb_chassis_is_set(
+    const struct sbrec_chassis *chassis_rec,
+    const struct sbrec_port_binding_table *pb_table,
+    const struct uuid *pb_uuid)
+{
+    const struct sbrec_port_binding *pb =
+        sbrec_port_binding_table_get_for_uuid(pb_table, pb_uuid);
+
+    if (pb && ((pb->chassis == chassis_rec) ||
+        is_additional_chassis(pb, chassis_rec))) {
+        return true;
+    }
+    return false;
+}
+
+bool
+port_binding_is_up(const struct sbrec_chassis *chassis_rec,
+                   const struct sbrec_port_binding_table *pb_table,
+                   const struct uuid *pb_uuid)
+{
+    const struct sbrec_port_binding *pb =
+        sbrec_port_binding_table_get_for_uuid(pb_table, pb_uuid);
+
+    if (!pb || pb->chassis != chassis_rec) {
+        return false;
+    }
+
+    if (pb->n_up && !pb->up[0]) {
+        return false;
+    }
+    return true;
 }
 
 static void

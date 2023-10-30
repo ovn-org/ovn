@@ -32,9 +32,12 @@ void if_status_mgr_claim_iface(struct if_status_mgr *,
                                const struct sbrec_port_binding *pb,
                                const struct sbrec_chassis *chassis_rec,
                                const struct ovsrec_interface *iface_rec,
-                               bool sb_readonly, enum can_bind bind_type);
+                               bool sb_readonly, enum can_bind bind_type,
+                               bool notify_up,
+                               const struct sbrec_port_binding *parent_pb);
 void if_status_mgr_release_iface(struct if_status_mgr *, const char *iface_id);
-void if_status_mgr_delete_iface(struct if_status_mgr *, const char *iface_id);
+void if_status_mgr_delete_iface(struct if_status_mgr *, const char *iface_id,
+                                const struct ovsrec_interface *iface_rec);
 
 void if_status_mgr_update(struct if_status_mgr *, struct local_binding_data *,
                           const struct sbrec_chassis *chassis,
@@ -45,6 +48,7 @@ void if_status_mgr_update(struct if_status_mgr *, struct local_binding_data *,
 void if_status_mgr_run(struct if_status_mgr *mgr, struct local_binding_data *,
                        const struct sbrec_chassis *,
                        const struct ovsrec_interface_table *iface_table,
+                       const struct sbrec_port_binding_table *pb_table,
                        bool sb_readonly, bool ovs_readonly);
 void if_status_mgr_get_memory_usage(struct if_status_mgr *mgr,
                                     struct simap *usage);
@@ -54,6 +58,7 @@ bool if_status_handle_claims(struct if_status_mgr *mgr,
                              struct local_binding_data *binding_data,
                              const struct sbrec_chassis *chassis_rec,
                              struct hmap *tracked_datapath,
+                             const struct sbrec_port_binding_table *pb_table,
                              bool sb_readonly);
 void if_status_mgr_remove_ovn_installed(struct if_status_mgr *mgr,
                                         const char *name,

@@ -1803,6 +1803,8 @@ runtime_data_sb_ro_handler(struct engine_node *node, void *data)
         engine_ovsdb_node_get_index(
                 engine_get_input("SB_chassis", node),
                 "name");
+    const struct sbrec_port_binding_table *pb_table =
+        EN_OVSDB_GET(engine_get_input("SB_port_binding", node));
 
     if (chassis_id) {
         chassis = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
@@ -1817,7 +1819,7 @@ runtime_data_sb_ro_handler(struct engine_node *node, void *data)
                                     &rt_data->lbinding_data,
                                     chassis,
                                     &rt_data->tracked_dp_bindings,
-                                    sb_readonly)) {
+                                    pb_table, sb_readonly)) {
             engine_set_node_state(node, EN_UPDATED);
             rt_data->tracked = true;
         }
@@ -5862,6 +5864,8 @@ main(int argc, char *argv[])
                     if_status_mgr_run(if_mgr, binding_data, chassis,
                                       ovsrec_interface_table_get(
                                                   ovs_idl_loop.idl),
+                                      sbrec_port_binding_table_get(
+                                                 ovnsb_idl_loop.idl),
                                       !ovnsb_idl_txn, !ovs_idl_txn);
                     stopwatch_stop(IF_STATUS_MGR_RUN_STOPWATCH_NAME,
                                    time_msec());
