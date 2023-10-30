@@ -217,6 +217,18 @@ void port_binding_set_down(const struct sbrec_chassis *chassis_rec,
                            const struct sbrec_port_binding_table *pb_table,
                            const char *iface_id,
                            const struct uuid *pb_uuid);
+void port_binding_set_up(const struct sbrec_chassis *chassis_rec,
+                         const struct sbrec_port_binding_table *,
+                         const char *iface_id,
+                         const struct uuid *pb_uuid);
+void port_binding_set_pb(const struct sbrec_chassis *chassis_rec,
+                         const struct sbrec_port_binding_table *,
+                         const char *iface_id,
+                         const struct uuid *pb_uuid,
+                         enum can_bind bind_type);
+bool port_binding_pb_chassis_is_set(const struct sbrec_chassis *chassis_rec,
+                                    const struct sbrec_port_binding_table *,
+                                    const struct uuid *pb_uuid);
 
 /* This structure represents a logical port (or port binding)
  * which is associated with 'struct local_binding'.
@@ -261,4 +273,9 @@ void update_qos(struct ovsdb_idl_index * sbrec_port_binding_by_name,
 bool lport_maybe_postpone(const char *port_name, long long int now,
                           struct sset *postponed_ports);
 
+void claimed_lport_set_up(const struct sbrec_port_binding *pb,
+                          const struct sbrec_port_binding *parent_pb);
+bool port_binding_is_up(const struct sbrec_chassis *chassis_rec,
+                        const struct sbrec_port_binding_table *,
+                        const struct uuid *pb_uuid);
 #endif /* controller/binding.h */
