@@ -1840,8 +1840,10 @@ consider_nonvif_lport_(const struct sbrec_port_binding *pb,
                            b_ctx_out->postponed_ports);
     }
 
-    if (pb->chassis == b_ctx_in->chassis_rec ||
-            is_additional_chassis(pb, b_ctx_in->chassis_rec)) {
+    if (pb->chassis == b_ctx_in->chassis_rec
+            || is_additional_chassis(pb, b_ctx_in->chassis_rec)
+            || if_status_is_port_claimed(b_ctx_out->if_mgr,
+                                         pb->logical_port)) {
         return release_lport(pb, b_ctx_in->chassis_rec,
                              !b_ctx_in->ovnsb_idl_txn,
                              b_ctx_out->tracked_dp_bindings,
