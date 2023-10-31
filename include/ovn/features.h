@@ -49,5 +49,8 @@ void ovs_feature_support_destroy(void);
 bool ovs_feature_is_supported(enum ovs_feature_value feature);
 bool ovs_feature_support_run(const struct smap *ovs_capabilities,
                              const char *br_name);
+bool ovs_feature_set_discovered(void);
+uint32_t ovs_feature_max_meters_get(void);
+uint32_t ovs_feature_max_select_groups_get(void);
 
 #endif
