@@ -136,12 +136,14 @@
     <p><code>--db-nb-cluster-remote-addr=<var>IP ADDRESS</var></code></p>
     <p><code>--db-nb-cluster-remote-port=<var>PORT NUMBER</var></code></p>
     <p><code>--db-nb-cluster-remote-proto=<var>PROTO (tcp/ssl)</var></code></p>
+    <p><code>--db-nb-election-timer=<var>Timeout in milliseconds</var></code></p>
     <p><code>--db-sb-cluster-local-addr=<var>IP ADDRESS</var></code></p>
     <p><code>--db-sb-cluster-local-port=<var>PORT NUMBER</var></code></p>
     <p><code>--db-sb-cluster-local-proto=<var>PROTO (tcp/ssl)</var></code></p>
     <p><code>--db-sb-cluster-remote-addr=<var>IP ADDRESS</var></code></p>
     <p><code>--db-sb-cluster-remote-port=<var>PORT NUMBER</var></code></p>
     <p><code>--db-sb-cluster-remote-proto=<var>PROTO (tcp/ssl)</var></code></p>
+    <p><code>--db-sb-election-timer=<var>Timeout in milliseconds</var></code></p>
     <p><code>--db-ic-nb-cluster-local-addr=<var>IP ADDRESS</var></code></p>
     <p><code>--db-ic-nb-cluster-local-port=<var>PORT NUMBER</var></code></p>
     <p><code>--db-ic-nb-cluster-local-proto=<var>PROTO (tcp/ssl)</var></code></p>
