@@ -1300,11 +1300,11 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
 
     /* Initialize group ids. */
     struct ovn_extend_table group_table;
-    ovn_extend_table_init(&group_table);
+    ovn_extend_table_init(&group_table, "group-table", OFPG_MAX);
 
     /* Initialize meter ids for QoS. */
     struct ovn_extend_table meter_table;
-    ovn_extend_table_init(&meter_table);
+    ovn_extend_table_init(&meter_table, "meter-table", OFPM13_MAX);
 
     /* Initialize collector sets. */
     struct flow_collector_ids collector_ids;
