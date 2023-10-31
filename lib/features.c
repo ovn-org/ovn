@@ -27,6 +27,7 @@
 #include "openvswitch/rconn.h"
 #include "openvswitch/ofp-msgs.h"
 #include "openvswitch/ofp-meter.h"
+#include "openvswitch/ofp-group.h"
 #include "openvswitch/ofp-util.h"
 #include "ovn/features.h"
 
@@ -80,6 +81,18 @@ static struct ovs_feature all_ovs_features[] = {
 
 /* A bitmap of OVS features that have been detected as 'supported'. */
 static uint32_t supported_ovs_features;
+
+/* Last set of received feature replies. */
+static struct ofputil_meter_features ovs_meter_features_reply;
+static struct ofputil_group_features ovs_group_features_reply;
+
+/* Currently discovered set of features. */
+static struct ofputil_meter_features ovs_meter_features;
+static struct ofputil_group_features ovs_group_features;
+
+/* Number of features replies still expected to receive for the requests
+ * we sent already. */
+static uint32_t n_features_reply_expected;
 
 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 5);
 
@@ -145,11 +158,19 @@ ovs_feature_get_openflow_cap(const char *br_name)
 
     /* send new requests just after reconnect. */
     if (conn_seq_no != rconn_get_connection_seqno(swconn)) {
-        /* dump datapath meter capabilities. */
+        n_features_reply_expected = 0;
+
+        /* Dump OpenFlow switch meter capabilities. */
         msg = ofpraw_alloc(OFPRAW_OFPST13_METER_FEATURES_REQUEST,
                            rconn_get_version(swconn), 0);
         rconn_send(swconn, msg, NULL);
+        n_features_reply_expected++;
+        /* Dump OpenFlow switch group capabilities. */
+        msg = ofputil_encode_group_features_request(rconn_get_version(swconn));
+        rconn_send(swconn, msg, NULL);
+        n_features_reply_expected++;
     }
+    conn_seq_no = rconn_get_connection_seqno(swconn);
 
     bool ret = false;
     for (int i = 0; i < 50; i++) {
@@ -163,21 +184,13 @@ ovs_feature_get_openflow_cap(const char *br_name)
         ofptype_decode(&type, oh);
 
         if (type == OFPTYPE_METER_FEATURES_STATS_REPLY) {
-            struct ofputil_meter_features mf;
-            ofputil_decode_meter_features(oh, &mf);
-
-            bool old_state = supported_ovs_features & OVS_DP_METER_SUPPORT;
-            bool new_state = mf.max_meters > 0;
-
-            if (old_state != new_state) {
-                ret = true;
-                if (new_state) {
-                    supported_ovs_features |= OVS_DP_METER_SUPPORT;
-                } else {
-                    supported_ovs_features &= ~OVS_DP_METER_SUPPORT;
-                }
-            }
-            conn_seq_no = rconn_get_connection_seqno(swconn);
+            ofputil_decode_meter_features(oh, &ovs_meter_features_reply);
+            ovs_assert(n_features_reply_expected);
+            n_features_reply_expected--;
+        } else if (type == OFPTYPE_GROUP_FEATURES_STATS_REPLY) {
+            ofputil_decode_group_features_reply(oh, &ovs_group_features_reply);
+            ovs_assert(n_features_reply_expected);
+            n_features_reply_expected--;
         } else if (type == OFPTYPE_ECHO_REQUEST) {
             rconn_send(swconn, ofputil_encode_echo_reply(oh), NULL);
         }
@@ -185,6 +198,26 @@ ovs_feature_get_openflow_cap(const char *br_name)
     }
     rconn_run_wait(swconn);
     rconn_recv_wait(swconn);
+
+    /* If all feature replies were received, update the set of supported
+     * features. */
+    if (!n_features_reply_expected) {
+        if (memcmp(&ovs_meter_features, &ovs_meter_features_reply,
+                   sizeof ovs_meter_features_reply)) {
+            ovs_meter_features = ovs_meter_features_reply;
+            if (ovs_meter_features.max_meters) {
+                supported_ovs_features |= OVS_DP_METER_SUPPORT;
+            } else {
+                supported_ovs_features &= ~OVS_DP_METER_SUPPORT;
+            }
+            ret = true;
+        }
+        if (memcmp(&ovs_group_features, &ovs_group_features_reply,
+                   sizeof ovs_group_features_reply)) {
+            ovs_group_features = ovs_group_features_reply;
+            ret = true;
+        }
+    }
 
     return ret;
 }
@@ -228,4 +261,27 @@ ovs_feature_support_run(const struct smap *ovs_capabilities,
         }
     }
     return updated;
+}
+
+bool
+ovs_feature_set_discovered(void)
+{
+    /* The supported feature set has been discovered if we're connected
+     * to OVS and it replied to all our feature request messages. */
+    return swconn && rconn_is_connected(swconn) &&
+           n_features_reply_expected == 0;
+}
+
+/* Returns the number of meters the OVS datapath supports. */
+uint32_t
+ovs_feature_max_meters_get(void)
+{
+    return ovs_meter_features.max_meters;
+}
+
+/* Returns the number of select groups the OVS datapath supports. */
+uint32_t
+ovs_feature_max_select_groups_get(void)
+{
+    return ovs_group_features.max_groups[OFPGT11_SELECT];
 }

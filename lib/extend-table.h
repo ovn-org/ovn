@@ -17,18 +17,21 @@
 #ifndef EXTEND_TABLE_H
 #define EXTEND_TABLE_H 1
 
-#define MAX_EXT_TABLE_ID 65535
 #define EXT_TABLE_ID_INVALID 0
 
 #include "openvswitch/hmap.h"
 #include "openvswitch/list.h"
 #include "openvswitch/uuid.h"
 
+struct id_pool;
+
 /* Used to manage expansion tables associated with Flow table,
  * such as the Group Table or Meter Table. */
 struct ovn_extend_table {
-    unsigned long *table_ids;  /* Used as a bitmap with value set
-                                * for allocated ids in either desired or
+    char *name; /* Used to identify this table in a user friendly way,
+                 * e.g., for logging. */
+    uint32_t n_ids;
+    struct id_pool *table_ids; /* Used to allocate ids in either desired or
                                 * existing (or both).  If the same "name"
                                 * exists in both desired and existing tables,
                                 * they must share the same ID.  The "peer"
@@ -81,7 +84,9 @@ struct ovn_extend_table_lflow_ref {
     struct ovn_extend_table_info *desired;
 };
 
-void ovn_extend_table_init(struct ovn_extend_table *);
+void ovn_extend_table_init(struct ovn_extend_table *, const char *table_name,
+                           uint32_t n_ids);
+void ovn_extend_table_reinit(struct ovn_extend_table *, uint32_t n_ids);
 
 void ovn_extend_table_destroy(struct ovn_extend_table *);
 
