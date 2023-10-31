@@ -17,9 +17,9 @@
 #include <config.h>
 #include <string.h>
 
-#include "bitmap.h"
 #include "extend-table.h"
 #include "hash.h"
+#include "id-pool.h"
 #include "lib/uuid.h"
 #include "openvswitch/vlog.h"
 
@@ -30,13 +30,28 @@ ovn_extend_table_delete_desired(struct ovn_extend_table *table,
                                 struct ovn_extend_table_lflow_to_desired *l);
 
 void
-ovn_extend_table_init(struct ovn_extend_table *table)
+ovn_extend_table_init(struct ovn_extend_table *table, const char *table_name,
+                      uint32_t n_ids)
 {
-    table->table_ids = bitmap_allocate(MAX_EXT_TABLE_ID);
-    bitmap_set1(table->table_ids, 0); /* table id 0 is invalid. */
-    hmap_init(&table->desired);
-    hmap_init(&table->lflow_to_desired);
-    hmap_init(&table->existing);
+    *table = (struct ovn_extend_table) {
+        .name = xstrdup(table_name),
+        .n_ids = n_ids,
+        /* Table id 0 is invalid, set id-pool base to 1. */
+        .table_ids = id_pool_create(1, n_ids),
+        .desired = HMAP_INITIALIZER(&table->desired),
+        .lflow_to_desired = HMAP_INITIALIZER(&table->lflow_to_desired),
+        .existing = HMAP_INITIALIZER(&table->existing),
+    };
+}
+
+void
+ovn_extend_table_reinit(struct ovn_extend_table *table, uint32_t n_ids)
+{
+    if (n_ids != table->n_ids) {
+        id_pool_destroy(table->table_ids);
+        table->table_ids = id_pool_create(1, n_ids);
+        table->n_ids = n_ids;
+    }
 }
 
 static struct ovn_extend_table_info *
@@ -117,13 +132,13 @@ ovn_extend_table_add_desired_to_lflow(struct ovn_extend_table *table,
         ovs_list_init(&l->desired);
         hmap_insert(&table->lflow_to_desired, &l->hmap_node,
                     uuid_hash(lflow_uuid));
-        VLOG_DBG("%s: add new lflow_to_desired entry "UUID_FMT,
-                 __func__, UUID_ARGS(lflow_uuid));
+        VLOG_DBG("%s: table %s: add new lflow_to_desired entry "UUID_FMT,
+                 __func__, table->name, UUID_ARGS(lflow_uuid));
     }
 
     ovs_list_insert(&l->desired, &r->list_node);
-    VLOG_DBG("%s: lflow "UUID_FMT" use new item %s, id %"PRIu32,
-             __func__, UUID_ARGS(lflow_uuid), r->desired->name,
+    VLOG_DBG("%s: table %s: lflow "UUID_FMT" use new item %s, id %"PRIu32,
+             __func__, table->name, UUID_ARGS(lflow_uuid), r->desired->name,
              r->desired->table_id);
 }
 
@@ -160,10 +175,11 @@ ovn_extend_info_add_lflow_ref(struct ovn_extend_table *table,
 }
 
 static void
-ovn_extend_info_del_lflow_ref(struct ovn_extend_table_lflow_ref *r)
+ovn_extend_info_del_lflow_ref(struct ovn_extend_table *table,
+                              struct ovn_extend_table_lflow_ref *r)
 {
-    VLOG_DBG("%s: name %s, lflow "UUID_FMT" n %"PRIuSIZE, __func__,
-             r->desired->name, UUID_ARGS(&r->lflow_uuid),
+    VLOG_DBG("%s: table %s: name %s, lflow "UUID_FMT" n %"PRIuSIZE, __func__,
+             table->name, r->desired->name, UUID_ARGS(&r->lflow_uuid),
              hmap_count(&r->desired->references));
     hmap_remove(&r->desired->references, &r->hmap_node);
     ovs_list_remove(&r->list_node);
@@ -191,8 +207,8 @@ ovn_extend_table_clear(struct ovn_extend_table *table, bool existing)
         if (g->peer) {
             g->peer->peer = NULL;
         } else {
-            /* Unset the bitmap because the peer is deleted already. */
-            bitmap_set0(table->table_ids, g->table_id);
+            /* Unset the id because the peer is deleted already. */
+            id_pool_free_id(table->table_ids, g->table_id);
         }
         ovn_extend_table_info_destroy(g);
     }
@@ -206,7 +222,8 @@ ovn_extend_table_destroy(struct ovn_extend_table *table)
     hmap_destroy(&table->lflow_to_desired);
     ovn_extend_table_clear(table, true);
     hmap_destroy(&table->existing);
-    bitmap_free(table->table_ids);
+    id_pool_destroy(table->table_ids);
+    free(table->name);
 }
 
 /* Remove an entry from existing table */
@@ -221,7 +238,7 @@ ovn_extend_table_remove_existing(struct ovn_extend_table *table,
         existing->peer->peer = NULL;
     } else {
         /* Dealloc the ID. */
-        bitmap_set0(table->table_ids, existing->table_id);
+        id_pool_free_id(table->table_ids, existing->table_id);
     }
     ovn_extend_table_info_destroy(existing);
 }
@@ -234,15 +251,15 @@ ovn_extend_table_delete_desired(struct ovn_extend_table *table,
     struct ovn_extend_table_lflow_ref *r;
     LIST_FOR_EACH_SAFE (r, list_node, &l->desired) {
         struct ovn_extend_table_info *e = r->desired;
-        ovn_extend_info_del_lflow_ref(r);
+        ovn_extend_info_del_lflow_ref(table, r);
         if (hmap_is_empty(&e->references)) {
-            VLOG_DBG("%s: %s, "UUID_FMT, __func__,
-                     e->name, UUID_ARGS(&l->lflow_uuid));
+            VLOG_DBG("%s: table %s: %s, "UUID_FMT, __func__,
+                     table->name, e->name, UUID_ARGS(&l->lflow_uuid));
             hmap_remove(&table->desired, &e->hmap_node);
             if (e->peer) {
                 e->peer->peer = NULL;
             } else {
-                bitmap_set0(table->table_ids, e->table_id);
+                id_pool_free_id(table->table_ids, e->table_id);
             }
             ovn_extend_table_info_destroy(e);
         }
@@ -284,7 +301,7 @@ ovn_extend_table_sync(struct ovn_extend_table *table)
     }
 }
 
-/* Assign a new table ID for the table information from the bitmap.
+/* Assign a new table ID for the table information from the ID pool.
  * If it already exists, return the old ID. */
 uint32_t
 ovn_extend_table_assign_id(struct ovn_extend_table *table, const char *name,
@@ -298,9 +315,9 @@ ovn_extend_table_assign_id(struct ovn_extend_table *table, const char *name,
     /* Check whether we have non installed but allocated group_id. */
     HMAP_FOR_EACH_WITH_HASH (table_info, hmap_node, hash, &table->desired) {
         if (!strcmp(table_info->name, name)) {
-            VLOG_DBG("ovn_externd_table_assign_id: reuse old id %"PRIu32
-                     " for %s, used by lflow "UUID_FMT,
-                     table_info->table_id, table_info->name,
+            VLOG_DBG("ovn_extend_table_assign_id: table %s: "
+                     "reuse old id %"PRIu32" for %s, used by lflow "UUID_FMT,
+                     table->name, table_info->table_id, table_info->name,
                      UUID_ARGS(&lflow_uuid));
             ovn_extend_info_add_lflow_ref(table, table_info, &lflow_uuid);
             return table_info->table_id;
@@ -320,15 +337,13 @@ ovn_extend_table_assign_id(struct ovn_extend_table *table, const char *name,
 
     if (!existing_info) {
         /* Reserve a new id. */
-        table_id = bitmap_scan(table->table_ids, 0, 1, MAX_EXT_TABLE_ID + 1);
-    }
+        if (!id_pool_alloc_id(table->table_ids, &table_id)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
 
-    if (table_id == MAX_EXT_TABLE_ID + 1) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-        VLOG_ERR_RL(&rl, "%"PRIu32" out of table ids.", table_id);
-        return EXT_TABLE_ID_INVALID;
+            VLOG_ERR_RL(&rl, "table %s: out of table ids.", table->name);
+            return EXT_TABLE_ID_INVALID;
+        }
     }
-    bitmap_set1(table->table_ids, table_id);
 
     table_info = ovn_extend_table_info_alloc(name, table_id, existing_info,
                                              hash);

@@ -3061,8 +3061,8 @@ en_lflow_output_init(struct engine_node *node OVS_UNUSED,
 {
     struct ed_type_lflow_output *data = xzalloc(sizeof *data);
     ovn_desired_flow_table_init(&data->flow_table);
-    ovn_extend_table_init(&data->group_table);
-    ovn_extend_table_init(&data->meter_table);
+    ovn_extend_table_init(&data->group_table, "group-table", 0);
+    ovn_extend_table_init(&data->meter_table, "meter-table", 0);
     objdep_mgr_init(&data->lflow_deps_mgr);
     objdep_mgr_init(&data->lb_deps_mgr);
     lflow_conj_ids_init(&data->conj_ids);
@@ -4654,7 +4654,7 @@ main(int argc, char *argv[])
                 engine_set_force_recompute(true);
             }
 
-            if (br_int) {
+            if (br_int && ovs_feature_set_discovered()) {
                 ct_zones_data = engine_get_data(&en_ct_zones);
                 if (ct_zones_data && ofctrl_run(br_int, ovs_table,
                                                 &ct_zones_data->pending)) {
