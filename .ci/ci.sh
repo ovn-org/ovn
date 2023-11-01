@@ -101,7 +101,7 @@ function run_tests() {
         && \
         ARCH=$ARCH CC=$CC LIBS=$LIBS OPTS=$OPTS TESTSUITE=$TESTSUITE \
         TEST_RANGE=$TEST_RANGE SANITIZERS=$SANITIZERS DPDK=$DPDK \
-        ./.ci/linux-build.sh
+        RECHECK=$RECHECK UNSTABLE=$UNSTABLE ./.ci/linux-build.sh
     "
 }
 

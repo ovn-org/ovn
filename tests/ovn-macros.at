@@ -971,3 +971,8 @@ m4_define([RUN_OVN_NBCTL], [
     check ovn-nbctl ${command}
     unset command
 ])
+
+m4_define([TAG_UNSTABLE], [
+    AT_KEYWORDS([unstable])
+    AT_SKIP_IF([test X"$SKIP_UNSTABLE" = Xyes])
+])

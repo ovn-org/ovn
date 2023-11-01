@@ -92,6 +92,7 @@ jobs:
       TESTSUITE:   ${{ matrix.cfg.testsuite }}
       TEST_RANGE:  ${{ matrix.cfg.test_range }}
       SANITIZERS:  ${{ matrix.cfg.sanitizers }}
+      UNSTABLE:    ${{ matrix.cfg.unstable }}
 
     name: linux ${{ join(matrix.cfg.*, ' ') }}
     runs-on: ubuntu-22.04
@@ -104,21 +105,21 @@ jobs:
         - { compiler: clang, opts: --disable-ssl }
         - { compiler: gcc, testsuite: test, test_range: "-300" }
         - { compiler: gcc, testsuite: test, test_range: "301-600" }
-        - { compiler: gcc, testsuite: test, test_range: "601-" }
+        - { compiler: gcc, testsuite: test, test_range: "601-", unstable: unstable }
         - { compiler: clang, testsuite: test, sanitizers: sanitizers, test_range: "-300" }
         - { compiler: clang, testsuite: test, sanitizers: sanitizers, test_range: "301-600" }
-        - { compiler: clang, testsuite: test, sanitizers: sanitizers, test_range: "601-" }
+        - { compiler: clang, testsuite: test, sanitizers: sanitizers, test_range: "601-", unstable: unstable }
         - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "-300" }
         - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "301-600" }
-        - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "601-" }
+        - { compiler: gcc, testsuite: test, libs: -ljemalloc, test_range: "601-", unstable: unstable }
         - { compiler: gcc, testsuite: system-test-dpdk, dpdk: dpdk, test_range: "-100" }
-        - { compiler: gcc, testsuite: system-test-dpdk, dpdk: dpdk, test_range: "101-" }
+        - { compiler: gcc, testsuite: system-test-dpdk, dpdk: dpdk, test_range: "101-", unstable: unstable }
         - { compiler: gcc, testsuite: system-test-userspace, test_range: "-100" }
-        - { compiler: gcc, testsuite: system-test-userspace, test_range: "101-" }
+        - { compiler: gcc, testsuite: system-test-userspace, test_range: "101-", unstable: unstable }
         - { compiler: gcc, testsuite: system-test, test_range: "-100" }
-        - { compiler: gcc, testsuite: system-test, test_range: "101-" }
+        - { compiler: gcc, testsuite: system-test, test_range: "101-", unstable: unstable }
         - { compiler: clang, testsuite: system-test, sanitizers: sanitizers, test_range: "-100" }
-        - { compiler: clang, testsuite: system-test, sanitizers: sanitizers, test_range: "101-" }
+        - { compiler: clang, testsuite: system-test, sanitizers: sanitizers, test_range: "101-", unstable: unstable }
         - { arch: x86, compiler: gcc, opts: --disable-ssl }
 
     steps:

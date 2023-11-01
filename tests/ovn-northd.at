@@ -4616,6 +4616,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([northd ssl file change])
+TAG_UNSTABLE
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
 AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"

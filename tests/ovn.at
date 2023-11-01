@@ -6084,6 +6084,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([1 HV, 2 LSs, 1 lport/LS, 1 LR])
 AT_KEYWORDS([router-admin-state])
+TAG_UNSTABLE
 ovn_start
 
 # Logical network:
@@ -7892,6 +7893,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([policy-based routing: 1 HVs, 2 LSs, 1 lport/LS, 1 LR])
 AT_KEYWORDS([policy-based-routing])
+TAG_UNSTABLE
 ovn_start
 
 # Logical network:
@@ -8064,6 +8066,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([policy-based routing IPv6: 1 HVs, 3 LSs, 1 lport/LS, 1 LR])
 AT_KEYWORDS([policy-based-routing])
+TAG_UNSTABLE
 ovn_start
 
 # Logical network:
@@ -14395,6 +14398,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([options:multiple requested-chassis for logical port])
 AT_KEYWORDS([multi-chassis])
+TAG_UNSTABLE
 ovn_start
 
 net_add n1
@@ -14526,6 +14530,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([options:multiple requested-chassis for logical port: change chassis role])
 AT_KEYWORDS([multi-chassis])
+TAG_UNSTABLE
 ovn_start
 
 net_add n1
@@ -14576,6 +14581,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([options:multiple requested-chassis for logical port: unclaimed behavior])
 AT_KEYWORDS([multi-chassis])
+TAG_UNSTABLE
 ovn_start
 
 net_add n1
@@ -16161,6 +16167,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([tug-of-war between two chassis for the same port])
+TAG_UNSTABLE
 ovn_start
 
 ovn-nbctl ls-add ls0
@@ -29565,6 +29572,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([nb_cfg timestamp])
+TAG_UNSTABLE
 ovn_start
 
 check ovn-nbctl ls-add s2
@@ -29666,6 +29674,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ARP replies for SNAT external ips])
 AT_KEYWORDS([slowtest])
+TAG_UNSTABLE
 ovn_start
 
 net_add n1
@@ -30027,6 +30036,7 @@ AT_CLEANUP
 # It is to cover a corner case when flows are re-processed in the I-P
 # iteration, combined with the scenario of conflicting ACLs.
 AT_SETUP([conflict ACLs with address set])
+TAG_UNSTABLE
 ovn_start
 
 ovn-nbctl ls-add ls1
@@ -30222,6 +30232,7 @@ AT_CLEANUP
 #
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([multi-vtep SB Chassis encap updates])
+TAG_UNSTABLE
 ovn_start
 
 net_add n1
@@ -32402,6 +32413,7 @@ AT_CLEANUP
 # - 2 for expanding the port group @pg1 to the 2 locally bound lports.
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ACL with Port Group conjunction flow efficiency])
+TAG_UNSTABLE
 ovn_start
 
 net_add n1
@@ -34693,6 +34705,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([recomputes])
+TAG_UNSTABLE
 ovn_start
 
 net_add n1
@@ -35127,6 +35140,7 @@ MULTIPLE_OVS_INT([])
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([Check default openflow flows])
+TAG_UNSTABLE
 ovn_start
 
 # Check that every table has a default (i.e: priority=0) flow.
