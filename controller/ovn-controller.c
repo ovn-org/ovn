@@ -4973,7 +4973,7 @@ int
 main(int argc, char *argv[])
 {
     struct unixctl_server *unixctl;
-    struct ovn_exit_args exit_args = {};
+    struct ovn_exit_args exit_args = {0};
     int retval;
 
     /* Read from system-id-override file once on startup. */

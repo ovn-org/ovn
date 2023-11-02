@@ -751,7 +751,7 @@ main(int argc, char *argv[])
     int res = EXIT_SUCCESS;
     struct unixctl_server *unixctl;
     int retval;
-    struct ovn_exit_args exit_args = {};
+    struct ovn_exit_args exit_args = {0};
     int n_threads = 1;
     struct northd_state state = {
         .had_lock = false,
@@ -878,7 +878,7 @@ main(int argc, char *argv[])
     run_update_worker_pool(n_threads);
 
     /* Main loop. */
-    struct northd_engine_context eng_ctx = {};
+    struct northd_engine_context eng_ctx = {0};
 
     while (!exit_args.exiting) {
         update_ssl_config();

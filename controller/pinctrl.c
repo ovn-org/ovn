@@ -1314,7 +1314,7 @@ fill_ipv6_prefix_state(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 pfd->prefix = in6addr_any;
             }
         } else if (pfd->state == PREFIX_PENDING && ovnsb_idl_txn) {
-            char prefix_str[INET6_ADDRSTRLEN + 1] = {};
+            char prefix_str[INET6_ADDRSTRLEN + 1] = {0};
             if (!ipv6_string_mapped(prefix_str, &pfd->prefix)) {
                 goto out;
             }
@@ -3797,7 +3797,7 @@ packet_put_ra_dnssl_opt(struct dp_packet *b, ovs_be32 lifetime,
                         char *dnssl_data)
 {
     size_t prev_l4_size = dp_packet_l4_size(b);
-    char dnssl[255] = {};
+    char dnssl[255] = {0};
     int size;
 
     size = encode_ra_dnssl_opt(dnssl_data, dnssl, sizeof(dnssl));
