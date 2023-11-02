@@ -5181,23 +5181,21 @@ lsp_can_be_inc_processed(const struct nbrec_logical_switch_port *nbsp)
 }
 
 static bool
-ls_port_has_changed(const struct nbrec_logical_switch_port *old,
-                    const struct nbrec_logical_switch_port *new)
+ls_port_has_changed(const struct nbrec_logical_switch_port *new)
 {
-    if (old != new) {
-        return true;
-    }
     /* XXX: Need a better OVSDB IDL interface for this check. */
     return (nbrec_logical_switch_port_row_get_seqno(new,
                                 OVSDB_IDL_CHANGE_MODIFY) > 0);
 }
 
 static struct ovn_port *
-ovn_port_find_in_datapath(struct ovn_datapath *od, const char *name)
+ovn_port_find_in_datapath(struct ovn_datapath *od,
+                          const struct nbrec_logical_switch_port *nbsp)
 {
     struct ovn_port *op;
-    HMAP_FOR_EACH_WITH_HASH (op, dp_node, hash_string(name, 0), &od->ports) {
-        if (!strcmp(op->key, name)) {
+    HMAP_FOR_EACH_WITH_HASH (op, dp_node, hash_string(nbsp->name, 0),
+                             &od->ports) {
+        if (!strcmp(op->key, nbsp->name) && op->nbsp == nbsp) {
             return op;
         }
     }
@@ -5382,7 +5380,7 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
     /* Compare the individual ports in the old and new Logical Switches */
     for (size_t j = 0; j < changed_ls->n_ports; ++j) {
         struct nbrec_logical_switch_port *new_nbsp = changed_ls->ports[j];
-        op = ovn_port_find_in_datapath(od, new_nbsp->name);
+        op = ovn_port_find_in_datapath(od, new_nbsp);
 
         if (!op) {
             if (!lsp_can_be_inc_processed(new_nbsp)) {
@@ -5399,7 +5397,7 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
             }
             ovs_list_push_back(&ls_change->added_ports,
                                 &op->list);
-        } else if (ls_port_has_changed(op->nbsp, new_nbsp)) {
+        } else if (ls_port_has_changed(new_nbsp)) {
             /* Existing port updated */
             bool temp = false;
             if (lsp_is_type_changed(op->sb, new_nbsp, &temp) ||
@@ -5672,9 +5670,9 @@ northd_handle_sb_port_binding_changes(
              * notification of that transaction, and we can ignore in this
              * case. Fallback to recompute otherwise, to avoid dangling
              * sb idl pointers and other unexpected behavior. */
-            if (op) {
-                VLOG_WARN_RL(&rl, "A port-binding for %s is deleted but the "
-                            "LSP still exists.", pb->logical_port);
+            if (op && op->sb == pb) {
+                VLOG_WARN_RL(&rl, "A port-binding for %s is deleted but "
+                            "the LSP still exists.", pb->logical_port);
                 return false;
             }
         } else {

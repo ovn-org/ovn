@@ -37232,3 +37232,48 @@ check_flow_count hv2 12
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([port up with slow northd])
+ovn_start
+
+sleep_northd() {
+  echo northd going to sleep
+  AT_CHECK([kill -STOP $(cat northd/ovn-northd.pid)])
+}
+
+wake_up_northd() {
+  echo northd going to sleep
+  AT_CHECK([kill -CONT $(cat northd/ovn-northd.pid)])
+}
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+
+check ovn-nbctl --wait=hv ls-add ls0
+# Create a pilot port and wait it up to make sure we are ready for the real
+# tests, so that the counters measured are accurate.
+check ovn-nbctl --wait=hv lsp-add ls0 lsp-pilot -- lsp-set-addresses lsp-pilot "unknown"
+ovs-vsctl add-port br-int lsp-pilot -- set interface lsp-pilot external_ids:iface-id=lsp-pilot
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+check ovn-nbctl --wait=hv lsp-add ls0 lsp0-2 -- lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:02 192.168.0.12"
+ovs-vsctl add-port br-int lsp0-2 -- set interface lsp0-2 external_ids:iface-id=lsp0-2
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+sleep_northd
+check ovn-nbctl lsp-del lsp0-2
+check ovn-nbctl lsp-add ls0 lsp0-2 -- lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:02 192.168.0.12"
+wake_up_northd
+
+check ovn-nbctl --wait=sb sync
+wait_for_ports_up
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
