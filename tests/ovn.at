@@ -8159,6 +8159,7 @@ check_dynamic_addresses() {
     check_row_count nb:Logical_Switch_Port 1 name="$1" dynamic_addresses="$arg"
 }
 
+check ovn-nbctl --wait=sb sync
 # Add a port to a switch that does not have a subnet set, then set the
 # subnet which should result in an address being allocated for the port.
 ovn-nbctl --wait=hv set NB_Global . options:mac_prefix="0a:00:00:00:00:00"
@@ -8474,7 +8475,7 @@ OVN_FOR_EACH_NORTHD([
 AT_SETUP([ipam connectivity])
 ovn_start
 
-ovn-nbctl lr-add R1
+ovn-nbctl --wait=sb lr-add R1
 
 # Test for a ping using dynamically allocated addresses.
 ovn-nbctl --wait=hv set NB_Global . options:mac_prefix="0a:00:00:00:00:00"
@@ -20125,6 +20126,7 @@ OVN_FOR_EACH_NORTHD([
 AT_SETUP([ipam to non-ipam])
 ovn_start
 
+check ovn-nbctl --wait=sb sync
 ovn-nbctl --wait=hv set NB_Global . options:mac_prefix="0a:00:00:00:00:00"
 ovn-nbctl ls-add sw0
 ovn-nbctl lsp-add sw0 p0 -- lsp-set-addresses p0 dynamic
