@@ -2102,7 +2102,7 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                 remote_ramp_ports = true;
                 remote_ports = true;
             }
-        } if (!strcmp(port->type, "remote")) {
+        } else if (!strcmp(port->type, "remote")) {
             if (port->chassis) {
                 remote_ports = true;
             }
