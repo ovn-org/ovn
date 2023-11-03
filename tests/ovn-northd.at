@@ -20,6 +20,14 @@ m4_define([_DUMP_DB_TABLES], [
 # sure nothing is changed by the recompute. It is used for ensuring the
 # correctness of incremental processing.
 m4_define([CHECK_NO_CHANGE_AFTER_RECOMPUTE], [
+    wait_port_up=$1
+    if test X$wait_port_up = X1; then
+        # Wait for hv to have received all previous commands
+        # Make sure ports are up as otherwise it might come as a difference after recompute
+        echo "waiting for ports up"
+        check ovn-nbctl --wait=hv sync
+        wait_for_ports_up
+    fi
     _DUMP_DB_TABLES(before)
     check as northd ovn-appctl -t NORTHD_TYPE inc-engine/recompute
     check ovn-nbctl --wait=sb sync
@@ -10098,7 +10106,7 @@ check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb sync
 check_recompute_counter 0 0 0 0 0 0
 
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 # Associate DHCP for lsp0-2
 ovn-nbctl dhcp-options-create 192.168.0.0/24
@@ -10110,7 +10118,7 @@ check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 ovn-nbctl --wait=sb lsp-set-dhcpv4-options lsp0-2 $CIDR_UUID
 check_recompute_counter 0 0 0 0 0 0
 
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 # Add IPv6 address and associate DHCPv6 for lsp0-2
 check ovn-nbctl lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:01 192.168.0.11 aef0::4"
@@ -10121,7 +10129,7 @@ check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 ovn-nbctl --wait=sb lsp-set-dhcpv6-options lsp0-2 ${d1}
 check_recompute_counter 0 0 0 0 0 0
 
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 check ovn-nbctl --wait=hv ls-del ls0
 
@@ -10148,11 +10156,11 @@ ovn-nbctl lsp-add ls0 ls0-lr0
 ovn-nbctl lsp-set-type ls0-lr0 router
 ovn-nbctl lsp-set-addresses ls0-lr0 router
 check ovn-nbctl --wait=sb lsp-set-options ls0-lr0 router-port=lr0-ls0
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 ovn-nbctl lb-add lb0 192.168.0.10:80 10.0.0.10:8080
 check ovn-nbctl --wait=sb ls-lb-add ls0 lb0
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 # Add a lsp.  northd and lflow engine shouldn't recompute even though this is
@@ -10239,14 +10247,14 @@ check ovn-nbctl --wait=sb meter-add m drop 1 pktps
 check ovn-nbctl --wait=sb acl-add ls from-lport 1 1 allow
 dnl Only triggers recompute of the sync_meters and lflow nodes.
 check_recompute_counter 0 2 2
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb meter-del m
 check ovn-nbctl --wait=sb acl-del ls
 dnl Only triggers recompute of the sync_meters and lflow nodes.
 check_recompute_counter 0 2 2
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 AT_CLEANUP
 ])
@@ -10416,7 +10424,7 @@ check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_lb recompute nocompute
 
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 
 check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
@@ -10437,7 +10445,7 @@ check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_lb recompute nocompute
 
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 
 check ovn-nbctl --wait=sb -- lb-del lb2 -- lb-del lb3
@@ -10446,7 +10454,7 @@ check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_lb recompute nocompute
 
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 
 AT_CHECK([ovn-nbctl --wait=sb \
@@ -10500,7 +10508,7 @@ check_engine_stats lflow recompute nocompute
 # - a recompute in the first iteration (handling northd change)
 # - a compute in the second iteration (handling SB update)
 check_engine_stats sync_to_sb_lb recompute compute
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 # Modify the backend of the lb1 vip
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
@@ -10509,7 +10517,7 @@ check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_lb recompute compute
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 # Cleanup the vip of lb1.
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
@@ -10518,7 +10526,7 @@ check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_lb recompute compute
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 # Set the vips of lb1 back
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
@@ -10527,7 +10535,7 @@ check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_lb recompute compute
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 # Add another vip to lb1
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
@@ -10536,7 +10544,7 @@ check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_lb recompute compute
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 # Disassociate lb1 from sw0. There should be a full recompute of northd engine node.
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
@@ -10545,7 +10553,7 @@ check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_to_sb_lb recompute compute
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 # Associate lb1 to sw0 and also create a port sw0p1.  This should not result in
 # full recompute of northd, but should rsult in full recompute of lflow node.
