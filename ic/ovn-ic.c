@@ -1638,11 +1638,11 @@ collect_lr_routes(struct ic_context *ctx,
         icnbrec_transit_switch_index_set_name(key, isb_pb->transit_switch);
         t_sw = icnbrec_transit_switch_index_find(
              ctx->icnbrec_transit_switch_by_name, key);
+        icnbrec_transit_switch_index_destroy_row(key);
         if (!t_sw) {
             continue;
         }
         ts_name = t_sw->name;
-        icnbrec_transit_switch_index_destroy_row(key);
         routes_ad = shash_find_data(routes_ad_by_ts, ts_name);
         if (!routes_ad) {
             routes_ad = xzalloc(sizeof *routes_ad);
