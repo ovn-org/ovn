@@ -1226,12 +1226,12 @@ NETNS_DAEMONIZE([server], [$PYTHON3 ./server.py > server.log], [server.pid])
 
 dnl Collect packets on server side.
 NETNS_DAEMONIZE([server], [tcpdump -l -U -i server -vnne \
-          'icmp or udp' > server.tcpdump 2>server_err], [tcpdump0.pid])
+          'ip and (icmp or udp)' > server.tcpdump 2>server_err], [tcpdump0.pid])
 OVS_WAIT_UNTIL([grep "listening" server_err])
 
 dnl Collect packets on client side.
 NETNS_DAEMONIZE([client], [tcpdump -l -U -i client -vnne \
-          'icmp or udp' > client.tcpdump 2>client_err], [tcpdump1.pid])
+          'ip and (icmp or udp)' > client.tcpdump 2>client_err], [tcpdump1.pid])
 OVS_WAIT_UNTIL([grep "listening" client_err])
 
 dnl Send two packets to the server with a short interval.
