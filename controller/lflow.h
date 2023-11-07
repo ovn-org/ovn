@@ -125,6 +125,8 @@ struct lflow_ctx_in {
     const struct controller_event_options *controller_event_opts;
     const struct smap *template_vars;
     bool lb_hairpin_use_ct_mark;
+    bool localnet_learn_fdb;
+    bool localnet_learn_fdb_changed;
 };
 
 struct lflow_ctx_out {
