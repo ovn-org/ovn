@@ -43,6 +43,10 @@ const struct sbrec_port_binding *lport_lookup_by_key(
     struct ovsdb_idl_index *sbrec_port_binding_by_key,
     uint64_t dp_key, uint64_t port_key);
 
+const struct sbrec_port_binding *lport_lookup_by_key_with_dp(
+    struct ovsdb_idl_index *sbrec_port_binding_by_key,
+    const struct sbrec_datapath_binding *dp, uint64_t port_key);
+
 enum can_bind {
     CANNOT_BIND = 0,
     CAN_BIND_AS_MAIN,
