@@ -7827,7 +7827,6 @@ pinctrl_handle_tcp_svc_check(struct rconn *swconn,
         return false;
     }
 
-    uint32_t tcp_seq = ntohl(get_16aligned_be32(&th->tcp_seq));
     uint32_t tcp_ack = ntohl(get_16aligned_be32(&th->tcp_ack));
 
     if (th->tcp_dst != svc_mon->tp_src) {
@@ -7845,9 +7844,9 @@ pinctrl_handle_tcp_svc_check(struct rconn *swconn,
         svc_mon->state = SVC_MON_S_ONLINE;
 
         /* Send RST-ACK packet. */
-        svc_monitor_send_tcp_health_check__(swconn, svc_mon, TCP_RST | TCP_ACK,
-                                            htonl(tcp_ack + 1),
-                                            htonl(tcp_seq + 1), th->tcp_dst);
+        svc_monitor_send_tcp_health_check__(swconn, svc_mon, TCP_RST,
+                                            htonl(tcp_ack),
+                                            htonl(0), th->tcp_dst);
         /* Calculate next_send_time. */
         svc_mon->next_send_time = time_msec() + svc_mon->interval;
         return true;
