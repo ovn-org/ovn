@@ -1419,6 +1419,8 @@ struct ed_type_runtime_data {
     /* Tracked data. See below for more details and comments. */
     bool tracked;
     bool local_lports_changed;
+    bool localnet_learn_fdb;
+    bool localnet_learn_fdb_changed;
     struct hmap tracked_dp_bindings;
 
     struct shash local_active_ports_ipv6_pd;
@@ -1623,6 +1625,8 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_out->postponed_ports = rt_data->postponed_ports;
     b_ctx_out->tracked_dp_bindings = NULL;
     b_ctx_out->if_mgr = ctrl_ctx->if_mgr;
+    b_ctx_out->localnet_learn_fdb = rt_data->localnet_learn_fdb;
+    b_ctx_out->localnet_learn_fdb_changed = false;
 }
 
 static void
@@ -1680,6 +1684,7 @@ en_runtime_data_run(struct engine_node *node, void *data)
     }
 
     binding_run(&b_ctx_in, &b_ctx_out);
+    rt_data->localnet_learn_fdb = b_ctx_out.localnet_learn_fdb;
 
     engine_set_node_state(node, EN_UPDATED);
 }
@@ -1792,9 +1797,12 @@ runtime_data_sb_port_binding_handler(struct engine_node *node, void *data)
     }
 
     rt_data->local_lports_changed = b_ctx_out.local_lports_changed;
+    rt_data->localnet_learn_fdb = b_ctx_out.localnet_learn_fdb;
+    rt_data->localnet_learn_fdb_changed = b_ctx_out.localnet_learn_fdb_changed;
     if (b_ctx_out.related_lports_changed ||
             b_ctx_out.non_vif_ports_changed ||
             b_ctx_out.local_lports_changed ||
+            b_ctx_out.localnet_learn_fdb_changed ||
             !hmap_is_empty(b_ctx_out.tracked_dp_bindings)) {
         engine_set_node_state(node, EN_UPDATED);
     }
@@ -3507,6 +3515,8 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->active_tunnels = &rt_data->active_tunnels;
     l_ctx_in->related_lport_ids = &rt_data->related_lports.lport_ids;
     l_ctx_in->binding_lports = &rt_data->lbinding_data.lports;
+    l_ctx_in->localnet_learn_fdb = rt_data->localnet_learn_fdb;
+    l_ctx_in->localnet_learn_fdb_changed = rt_data->localnet_learn_fdb_changed;
     l_ctx_in->chassis_tunnels = &non_vif_data->chassis_tunnels;
     l_ctx_in->lb_hairpin_use_ct_mark = n_opts->lb_hairpin_use_ct_mark;
     l_ctx_in->nd_ra_opts = &fo->nd_ra_opts;
