@@ -106,6 +106,9 @@ struct binding_ctx_out {
     struct if_status_mgr *if_mgr;
 
     struct sset *postponed_ports;
+
+    bool localnet_learn_fdb;
+    bool localnet_learn_fdb_changed;
 };
 
 /* Local bindings. binding.c module binds the logical port (represented by

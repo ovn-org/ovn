@@ -30226,12 +30226,10 @@ as hv2 ovs-ofctl dump-flows br-int table=72 > hv2_offlows_table72.txt
 AT_CAPTURE_FILE([hv1_offlows_table72.txt])
 AT_CAPTURE_FILE([hv2_offlows_table72.txt])
 AT_CHECK_UNQUOTED([cat hv1_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
 AT_CHECK_UNQUOTED([cat hv2_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
@@ -30256,7 +30254,6 @@ priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:13 actions=load:0x$port_ke
 ])
 
 AT_CHECK_UNQUOTED([cat hv3_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
@@ -30307,22 +30304,16 @@ AT_CAPTURE_FILE([hv1_offlows_table72.txt])
 AT_CAPTURE_FILE([hv2_offlows_table72.txt])
 AT_CAPTURE_FILE([hv3_offlows_table72.txt])
 AT_CHECK_UNQUOTED([cat hv1_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
-priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
 AT_CHECK_UNQUOTED([cat hv2_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
-priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
 AT_CHECK_UNQUOTED([cat hv3_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
-priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
-priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
@@ -34092,8 +34083,8 @@ for i in 2 3; do
 done
 wait_column "$vif21_key" fdb port_key mac='"00:00:00:00:10:21"'
 
-check_flow_count hv1 4
-check_flow_count hv2 4
+check_flow_count hv1 2
+check_flow_count hv2 2
 
 # We now enable localnet_learn_fdb
 # We check how it behaves with existing vif entries in fdb
