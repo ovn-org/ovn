@@ -8066,7 +8066,7 @@ AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | sort 
 AT_CHECK([ovn-nbctl --wait=sb lsp-set-options ln_port localnet_learn_fdb=true])
 AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | sort | sed 's/table=./table=?/'], [0], [dnl
   table=? (ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
-  table=? (ls_in_lookup_fdb   ), priority=100  , match=(inport == "ln_port"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=? (ls_in_lookup_fdb   ), priority=100  , match=(inport == "ln_port"), action=(flags.localnet = 1; reg0[[11]] = lookup_fdb(inport, eth.src); next;)
   table=? (ls_in_put_fdb      ), priority=0    , match=(1), action=(next;)
   table=? (ls_in_put_fdb      ), priority=100  , match=(inport == "ln_port" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
 ])

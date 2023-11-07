@@ -2917,6 +2917,11 @@ init_lflow_ctx(struct engine_node *node,
                 engine_get_input("SB_port_binding", node),
                 "name");
 
+    struct ovsdb_idl_index *sbrec_port_binding_by_key =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_port_binding", node),
+                "key");
+
     struct ovsdb_idl_index *sbrec_logical_flow_by_dp =
         engine_ovsdb_node_get_index(
                 engine_get_input("SB_logical_flow", node),
@@ -3016,6 +3021,7 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->sbrec_logical_flow_by_logical_dp_group =
         sbrec_logical_flow_by_dp_group;
     l_ctx_in->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
+    l_ctx_in->sbrec_port_binding_by_key = sbrec_port_binding_by_key;
     l_ctx_in->sbrec_fdb_by_dp_key = sbrec_fdb_by_dp_key;
     l_ctx_in->sbrec_mac_binding_by_datapath = sbrec_mac_binding_by_datapath;
     l_ctx_in->sbrec_static_mac_binding_by_datapath =
