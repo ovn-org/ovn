@@ -7770,7 +7770,9 @@ svc_monitors_run(struct rconn *swconn,
             if (svc_mon->n_success >= svc_mon->success_count) {
                 svc_mon->status = SVC_MON_ST_ONLINE;
                 svc_mon->n_success = 0;
+                svc_mon->n_failures = 0;
             }
+
             if (current_time >= svc_mon->next_send_time) {
                 svc_monitor_send_health_check(swconn, svc_mon);
                 next_run_time = svc_mon->wait_time;
@@ -7782,6 +7784,7 @@ svc_monitors_run(struct rconn *swconn,
         case SVC_MON_S_OFFLINE:
             if (svc_mon->n_failures >= svc_mon->failure_count) {
                 svc_mon->status = SVC_MON_ST_OFFLINE;
+                svc_mon->n_success = 0;
                 svc_mon->n_failures = 0;
             }
 
