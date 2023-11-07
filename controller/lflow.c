@@ -2065,11 +2065,16 @@ lflow_handle_changed_static_mac_bindings(
 static void
 consider_fdb_flows(const struct sbrec_fdb *fdb,
                    const struct hmap *local_datapaths,
-                   struct ovn_desired_flow_table *flow_table)
+                   struct ovn_desired_flow_table *flow_table,
+                   struct ovsdb_idl_index *sbrec_port_binding_by_key)
 {
-    if (!get_local_datapath(local_datapaths, fdb->dp_key)) {
+    struct local_datapath *ld = get_local_datapath(local_datapaths,
+                                                   fdb->dp_key);
+    if (!ld) {
         return;
     }
+    const struct sbrec_port_binding *pb = lport_lookup_by_key_with_dp(
+        sbrec_port_binding_by_key, ld->datapath, fdb->port_key);
 
     struct eth_addr mac;
     if (!eth_addr_from_string(fdb->mac, &mac)) {
@@ -2091,6 +2096,7 @@ consider_fdb_flows(const struct sbrec_fdb *fdb,
     ofpbuf_clear(&ofpacts);
 
     uint8_t value = 1;
+    uint8_t is_vif =  pb ? !strcmp(pb->type, "") : 0;
     put_load(&value, sizeof value, MFF_LOG_FLAGS,
              MLF_LOOKUP_FDB_BIT, 1, &ofpacts);
 
@@ -2101,6 +2107,18 @@ consider_fdb_flows(const struct sbrec_fdb *fdb,
     ofctrl_add_flow(flow_table, OFTABLE_LOOKUP_FDB, 100,
                     fdb->header_.uuid.parts[0], &lookup_match, &ofpacts,
                     &fdb->header_.uuid);
+
+    if (is_vif) {
+        struct match lookup_match_vif = MATCH_CATCHALL_INITIALIZER;
+        match_set_metadata(&lookup_match_vif, htonll(fdb->dp_key));
+        match_set_dl_src(&lookup_match_vif, mac);
+        match_set_reg_masked(&lookup_match_vif, MFF_LOG_FLAGS - MFF_REG0,
+                             MLF_LOCALNET, MLF_LOCALNET);
+
+        ofctrl_add_flow(flow_table, OFTABLE_LOOKUP_FDB, 100,
+                        fdb->header_.uuid.parts[0], &lookup_match_vif,
+                        &ofpacts, &fdb->header_.uuid);
+    }
     ofpbuf_uninit(&ofpacts);
 }
 
@@ -2109,11 +2127,13 @@ consider_fdb_flows(const struct sbrec_fdb *fdb,
 static void
 add_fdb_flows(const struct sbrec_fdb_table *fdb_table,
               const struct hmap *local_datapaths,
-              struct ovn_desired_flow_table *flow_table)
+              struct ovn_desired_flow_table *flow_table,
+              struct ovsdb_idl_index *sbrec_port_binding_by_key)
 {
     const struct sbrec_fdb *fdb;
     SBREC_FDB_TABLE_FOR_EACH (fdb, fdb_table) {
-        consider_fdb_flows(fdb, local_datapaths, flow_table);
+        consider_fdb_flows(fdb, local_datapaths, flow_table,
+                           sbrec_port_binding_by_key);
     }
 }
 
@@ -2136,7 +2156,8 @@ lflow_run(struct lflow_ctx_in *l_ctx_in, struct lflow_ctx_out *l_ctx_out)
                          l_ctx_in->lb_hairpin_use_ct_mark,
                          l_ctx_out->flow_table);
     add_fdb_flows(l_ctx_in->fdb_table, l_ctx_in->local_datapaths,
-                  l_ctx_out->flow_table);
+                  l_ctx_out->flow_table,
+                  l_ctx_in->sbrec_port_binding_by_key);
     add_port_sec_flows(l_ctx_in->binding_lports, l_ctx_in->chassis,
                        l_ctx_out->flow_table);
 }
@@ -2226,7 +2247,8 @@ lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *dp,
     SBREC_FDB_FOR_EACH_EQUAL (fdb_row, fdb_index_row,
                               l_ctx_in->sbrec_fdb_by_dp_key) {
         consider_fdb_flows(fdb_row, l_ctx_in->local_datapaths,
-                           l_ctx_out->flow_table);
+                           l_ctx_out->flow_table,
+                           l_ctx_in->sbrec_port_binding_by_key);
     }
     sbrec_fdb_index_destroy_row(fdb_index_row);
 
@@ -2419,7 +2441,8 @@ lflow_handle_changed_fdbs(struct lflow_ctx_in *l_ctx_in,
         VLOG_DBG("Add fdb flows for fdb "UUID_FMT,
                  UUID_ARGS(&fdb->header_.uuid));
         consider_fdb_flows(fdb, l_ctx_in->local_datapaths,
-                           l_ctx_out->flow_table);
+                           l_ctx_out->flow_table,
+                           l_ctx_in->sbrec_port_binding_by_key);
     }
 
     return true;

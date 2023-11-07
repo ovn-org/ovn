@@ -7045,6 +7045,9 @@ build_lswitch_learn_fdb_op(
         ds_clear(match);
         ds_clear(actions);
         ds_put_format(match, "inport == %s", op->json_key);
+        if (lsp_is_localnet(op->nbsp)) {
+            ds_put_cstr(actions, "flags.localnet = 1; ");
+        }
         ds_put_format(actions, REGBIT_LKUP_FDB
                       " = lookup_fdb(inport, eth.src); next;");
         ovn_lflow_add_with_lport_and_hint(lflows, op->od,
