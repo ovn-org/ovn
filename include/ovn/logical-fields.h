@@ -71,6 +71,7 @@ enum mff_log_flags_bits {
     MLF_USE_SNAT_ZONE = 11,
     MLF_CHECK_PORT_SEC_BIT = 12,
     MLF_LOOKUP_COMMIT_ECMP_NH_BIT = 13,
+    MLF_LOCALNET_BIT = 15,
 };
 
 /* MFF_LOG_FLAGS_REG flag assignments */
@@ -116,6 +117,9 @@ enum mff_log_flags {
     MLF_LOCALPORT = (1 << MLF_LOCALPORT_BIT),
 
     MLF_LOOKUP_COMMIT_ECMP_NH = (1 << MLF_LOOKUP_COMMIT_ECMP_NH_BIT),
+
+    /* Indicate that the port is localnet. */
+    MLF_LOCALNET = (1 << MLF_LOCALNET_BIT),
 };
 
 /* OVN logical fields
