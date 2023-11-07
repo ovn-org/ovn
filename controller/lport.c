@@ -44,13 +44,10 @@ lport_lookup_by_name(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 }
 
 const struct sbrec_port_binding *
-lport_lookup_by_key(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
-                    struct ovsdb_idl_index *sbrec_port_binding_by_key,
-                    uint64_t dp_key, uint64_t port_key)
+lport_lookup_by_key_with_dp(struct ovsdb_idl_index *sbrec_port_binding_by_key,
+                            const struct sbrec_datapath_binding *db,
+                            uint64_t port_key)
 {
-    /* Lookup datapath corresponding to dp_key. */
-    const struct sbrec_datapath_binding *db = datapath_lookup_by_key(
-        sbrec_datapath_binding_by_key, dp_key);
     if (!db) {
         return NULL;
     }
@@ -67,6 +64,19 @@ lport_lookup_by_key(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
     sbrec_port_binding_index_destroy_row(pb);
 
     return retval;
+}
+
+const struct sbrec_port_binding *
+lport_lookup_by_key(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
+                    struct ovsdb_idl_index *sbrec_port_binding_by_key,
+                    uint64_t dp_key, uint64_t port_key)
+{
+    /* Lookup datapath corresponding to dp_key. */
+    const struct sbrec_datapath_binding *db = datapath_lookup_by_key(
+        sbrec_datapath_binding_by_key, dp_key);
+
+    return lport_lookup_by_key_with_dp(sbrec_port_binding_by_key, db,
+                                       port_key);
 }
 
 bool
