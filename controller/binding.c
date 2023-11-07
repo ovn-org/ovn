@@ -1906,6 +1906,17 @@ consider_localnet_lport(const struct sbrec_port_binding *pb,
                         struct binding_ctx_in *b_ctx_in,
                         struct binding_ctx_out *b_ctx_out)
 {
+    bool pb_localnet_learn_fdb = smap_get_bool(&pb->options,
+                                               "localnet_learn_fdb", false);
+    if (pb_localnet_learn_fdb != b_ctx_out->localnet_learn_fdb) {
+        b_ctx_out->localnet_learn_fdb = pb_localnet_learn_fdb;
+        if (b_ctx_out->tracked_dp_bindings) {
+            b_ctx_out->localnet_learn_fdb_changed = true;
+            tracked_datapath_lport_add(pb, TRACKED_RESOURCE_UPDATED,
+                                       b_ctx_out->tracked_dp_bindings);
+        }
+    }
+
     /* Add all localnet ports to local_ifaces so that we allocate ct zones
      * for them. */
     update_local_lports(pb->logical_port, b_ctx_out);
