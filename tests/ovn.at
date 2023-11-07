@@ -31222,10 +31222,12 @@ as hv2 ovs-ofctl dump-flows br-int table=72 > hv2_offlows_table72.txt
 AT_CAPTURE_FILE([hv1_offlows_table72.txt])
 AT_CAPTURE_FILE([hv2_offlows_table72.txt])
 AT_CHECK_UNQUOTED([cat hv1_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
 AT_CHECK_UNQUOTED([cat hv2_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
@@ -31250,6 +31252,7 @@ priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:13 actions=load:0x$port_ke
 ])
 
 AT_CHECK_UNQUOTED([cat hv3_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
@@ -31300,16 +31303,22 @@ AT_CAPTURE_FILE([hv1_offlows_table72.txt])
 AT_CAPTURE_FILE([hv2_offlows_table72.txt])
 AT_CAPTURE_FILE([hv3_offlows_table72.txt])
 AT_CHECK_UNQUOTED([cat hv1_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
+priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
 AT_CHECK_UNQUOTED([cat hv2_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
+priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
 
 AT_CHECK_UNQUOTED([cat hv3_offlows_table72.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
+priority=100,reg10=0x8000/0x8000,metadata=0x$dp_key,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:13 actions=load:0x1->NXM_NX_REG10[[8]]
 priority=100,reg14=0x$port_key,metadata=0x$dp_key,dl_src=50:54:00:00:00:14 actions=load:0x1->NXM_NX_REG10[[8]]
 ])
@@ -36419,6 +36428,306 @@ check_zones_in_ovsdb "$zone_list" sw0
 AT_CHECK([grep -c "NXT_CT_FLUSH_ZONE" hv1/ovs-vswitchd.log], [0], [dnl
 8
 ])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([pod to pod with localnet_learn_fdb])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+
+# 6 VIFs, 3 per HV: vif11, vif12, vif13 on hv1.
+# vif11 will exchange packets with vif21, vif12 w/ vif22 and so on.
+#
+ovn_start
+net_add n1
+
+check ovn-nbctl ls-add ls0
+
+check ovn-nbctl lsp-add ls0 ln_port -- \
+      lsp-set-addresses ln_port unknown -- \
+      lsp-set-type ln_port localnet -- \
+      lsp-set-options ln_port network_name=physnet1
+
+for i in $(seq 1 3); do
+    check ovn-nbctl lsp-add ls0 vif1$i -- \
+          lsp-set-addresses vif1$i unknown
+    check ovn-nbctl lsp-add ls0 vif2$i -- \
+          lsp-set-addresses vif2$i unknown
+done
+
+n_pkt=(0 0 0 0 0 0)
+
+for hv in 1 2; do
+    sim_add hv${hv}
+    as hv${hv}
+    ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys 192.168.0.${hv}
+
+    for i in $(seq 1 3); do
+        ovs-vsctl -- add-port br-int vif${hv}${i} -- \
+            set interface vif${hv}${i} external-ids:iface-id=vif${hv}${i} \
+            options:tx_pcap=hv${hv}/vif${hv}${i}-tx.pcap \
+            options:rxq_pcap=hv${hv}/vif${hv}${i}-rx.pcap \
+            ofport-request=$i
+    done
+    ovs-vsctl -- add-port br-phys ext0 -- \
+        set interface ext0 \
+        options:tx_pcap=hv${hv}/ext0-tx.pcap \
+        options:rxq_pcap=hv${hv}/ext0-rx.pcap \
+        ofport-request=4
+    ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
+done
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+ln_port_key=$(fetch_column port_binding tunnel_key logical_port=ln_port)
+vif11_key=$(fetch_column port_binding tunnel_key logical_port=vif11)
+vif12_key=$(fetch_column port_binding tunnel_key logical_port=vif12)
+vif13_key=$(fetch_column port_binding tunnel_key logical_port=vif13)
+vif21_key=$(fetch_column port_binding tunnel_key logical_port=vif21)
+vif22_key=$(fetch_column port_binding tunnel_key logical_port=vif22)
+vif23_key=$(fetch_column port_binding tunnel_key logical_port=vif23)
+
+ensure_controller_run() {
+# We want to make sure controller could run at least one full loop.
+# We can't use wait=hv as sb might be sleeping.
+# Use 2 ovn-appctl to guarentee that ovn-controller run the full loop, and not just the unixctl handling
+  hv=$1
+  OVS_WAIT_UNTIL([test x$(as $hv ovn-appctl -t ovn-controller debug/status) = "xrunning"])
+  OVS_WAIT_UNTIL([test x$(as $hv ovn-appctl -t ovn-controller debug/status) = "xrunning"])
+}
+
+wait_for_packets() {
+    local hv=$1
+    local vif=$2
+    counter=$(((${hv:2} - 1) * 3 + ${vif:4} - 1))
+    n_pkt[[$counter]]=$((${n_pkt[[$counter]]} + 1))
+    echo "waiting for ${n_pkt[[$counter]]} packets on ${hv}/${vif} using counter $counter"
+    OVS_WAIT_UNTIL([test $(tcpdump ip -nnner ${hv}/${vif}-tx.pcap | wc -l) -eq ${n_pkt[[$counter]]}])
+}
+
+check_no_packets() {
+    local hv=$1
+    local vif=$2
+    counter=$(((${hv:2} - 1) * 3 + ${vif:4} - 1))
+    echo "waiting for ${n_pkt[[$counter]]} packets on ${hv}/${vif} using counter $counter"
+    OVS_WAIT_UNTIL([test $(tcpdump ip -nnner ${hv}/${vif}-tx.pcap | wc -l) -eq ${n_pkt[[$counter]]}])
+}
+
+send_packet() {
+    hv=$1
+    a_src=$2
+    a_dst=$3
+    dev=vif$2
+    AS_BOX([$(date +%H:%M:%S.%03N) sending packet from $dev in $hv $a_src to $a_dst])
+    packet=$(fmt_pkt "
+            Ether(dst='00:00:00:00:10:${a_dst}', src='00:00:00:00:10:${a_src}') /
+            IP(src='192.168.10.${a_src}', dst='192.168.10.${a_dst}') /
+            UDP(sport=1234, dport=1235)
+           ")
+    as $hv ovs-appctl netdev-dummy/receive $dev $packet
+}
+
+check_flow_count() {
+    hv=$1
+    count=$2
+    echo "Checking flow count for $hv is $count"
+    OVS_WAIT_UNTIL([test $count = $(as $hv ovs-ofctl dump-flows br-int table=72 | grep -v "NXST_FLOW reply" | wc -l)])
+}
+
+# Sending packet in both direction. Should create FDB entries for vifs
+# No localnet_learn_fdb yet
+AS_BOX([$(date +%H:%M:%S.%03N) vif11 <=> vif21])
+send_packet hv1 11 21
+for i in 1 2 3; do
+    wait_for_packets hv2 vif2${i}
+done
+for i in 2 3; do
+    wait_for_packets hv1 vif1${i}
+done
+# vif11 should now own the mac
+wait_column "$vif11_key" fdb port_key mac='"00:00:00:00:10:11"'
+
+send_packet hv2 21 11
+wait_for_packets hv1 vif11
+for i in 2 3; do
+    check_no_packets hv1 vif1${i}
+done
+wait_column "$vif21_key" fdb port_key mac='"00:00:00:00:10:21"'
+
+check_flow_count hv1 4
+check_flow_count hv2 4
+
+# We now enable localnet_learn_fdb
+# We check how it behaves with existing vif entries in fdb
+check ovn-nbctl --wait=hv set logical_switch_port ln_port options:localnet_learn_fdb=true
+
+AS_BOX([$(date +%H:%M:%S.%03N) vif11 <=> vif21 after learn_fdb])
+send_packet hv1 11 21
+
+wait_for_packets hv2 vif21
+for i in 2 3; do
+    check_no_packets hv2 vif2${i}
+done
+wait_column "$vif11_key" fdb port_key mac='"00:00:00:00:10:11"'
+
+send_packet hv2 21 11
+wait_for_packets hv1 vif11
+for i in 2 3; do
+    check_no_packets hv1 vif1${i}
+done
+wait_column "$vif21_key" fdb port_key mac='"00:00:00:00:10:21"'
+
+# In both controllers,
+# - 1st packet (in both dir) should have reached controller for the vif, not for localnet (as learn_fdb disabled for localnet)
+# - 2nd packet should not cause any upcall to controller as vif already owns the mac.
+AT_CHECK([test 1 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+AT_CHECK([test 1 = `cat hv2/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+
+check_flow_count hv1 4
+check_flow_count hv2 4
+
+# Send a few more packets
+send_packet hv1 11 21
+send_packet hv2 21 11
+
+for hv in 1 2; do
+    wait_for_packets hv${hv} vif${hv}1
+    for i in 2 3; do
+        echo CHECK
+        check_no_packets hv${hv} vif${hv}${i}
+    done
+done
+
+# The last packets should have gone through the fast path
+AT_CHECK([test 1 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+AT_CHECK([test 1 = `cat hv2/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+
+# Check that there are no bad surprises
+wait_column "$vif11_key" fdb port_key mac='"00:00:00:00:10:11"'
+wait_column "$vif21_key" fdb port_key mac='"00:00:00:00:10:21"'
+
+# We will now create fdb entries AFTER enabing localnet_learn_fdb
+# We make ovn_controller (hv1 or hv2) to sleep to control who writes first to fdb
+# as otherwise no guarentee.
+AS_BOX([$(date +%H:%M:%S.%03N) vif12 <=> vif22])
+# We make sure that the fdb update by the vif is done after the localnet update
+sleep_controller hv1
+send_packet hv1 12 22
+for i in 1 3; do
+    wait_for_packets hv1 vif1${i}
+done
+for i in 1 2 3; do
+    wait_for_packets hv2 vif2${i}
+done
+
+# ln_port should own the mac as vif not written yet
+wait_column "$ln_port_key" fdb port_key mac='"00:00:00:00:10:12"'
+
+wake_up_controller hv1
+# vif1 should now own the mac
+wait_column "$vif12_key" fdb port_key mac='"00:00:00:00:10:12"'
+
+sleep_controller hv2
+send_packet hv2 22 12
+wait_for_packets hv1 vif12
+for i in 1 3; do
+    check_no_packets hv1 vif1${i}
+done
+wait_column "$ln_port_key" fdb port_key mac='"00:00:00:00:10:22"'
+
+wake_up_controller hv2
+wait_column "$vif22_key" fdb port_key mac='"00:00:00:00:10:22"'
+
+check_flow_count hv1 8
+check_flow_count hv2 8
+
+AS_BOX([$(date +%H:%M:%S.%03N) vif13 <=> vif23 ])
+# Now we do the other way around: we make sure that the localnet update is done after the vif update.
+# So, when packet is sent from vif1 to vif2, vif1 will be learnt (by hv1) and written in sb
+# Then, when we wake up ovn-controller on hv2, it will learn on localnet.
+# This used to cause localnet entry to overwrite vif entry in sb
+sleep_controller hv2
+send_packet hv1 13 23
+for i in 1 2; do
+    wait_for_packets hv1 vif1${i}
+done
+for i in 1 2 3; do
+    wait_for_packets hv2 vif2${i}
+done
+
+wait_column "$vif13_key" fdb port_key mac='"00:00:00:00:10:13"'
+
+
+# At this point, FDB contains vif1 entry for mac 00:00:00:00:10:13.
+# However, as hv2 controller is sleeping, the flows in hv2 do not
+# contain the flows related to that fdb entry.
+# Hence, the packet which went through still failed the lookup.
+wake_up_controller hv2
+
+# FDB shoud not have changed. Just make sure controller has run and check fdb
+ensure_controller_run hv2
+wait_column "$vif13_key" fdb port_key mac='"00:00:00:00:10:13"'
+
+sleep_controller hv1
+send_packet hv2 23 13
+wait_for_packets hv1 vif13
+for i in 1 2; do
+    check_no_packets hv2 vif2${i}
+done
+for i in 1 2; do
+    check_no_packets hv1 vif1${i}
+done
+wait_column "$vif23_key" fdb port_key mac='"00:00:00:00:10:23"'
+
+wake_up_controller hv1
+ensure_controller_run hv1
+wait_column "$vif23_key" fdb port_key mac='"00:00:00:00:10:23"'
+
+# In both controllers
+# - vif11 <=> vif21: 1 PACKET_IN
+# - vif12 <=> vif22: 2 PACKET_IN
+# - vif13 <=> vif23: 2 PACKET_IN
+# controller + .
+AT_CHECK([test 5 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+AT_CHECK([test 5 = `cat hv2/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+
+# Send a few more packets
+send_packet hv1 13 23
+send_packet hv2 23 13
+wait_for_packets hv2 vif23
+wait_for_packets hv1 vif13
+for i in 1 2; do
+    check_no_packets hv1 vif1${i}
+    check_no_packets hv2 vif2${i}
+done
+send_packet hv1 13 23
+send_packet hv2 23 13
+wait_for_packets hv2 vif23
+wait_for_packets hv1 vif13
+for i in 1 2; do
+    check_no_packets hv1 vif1${i}
+    check_no_packets hv2 vif2${i}
+done
+
+# The last packets should have gone through the fast path
+AT_CHECK([test 5 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+AT_CHECK([test 5 = `cat hv2/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+
+# Check that there are no bad surprises
+wait_column "$vif11_key" fdb port_key mac='"00:00:00:00:10:11"'
+wait_column "$vif12_key" fdb port_key mac='"00:00:00:00:10:12"'
+wait_column "$vif13_key" fdb port_key mac='"00:00:00:00:10:13"'
+wait_column "$vif21_key" fdb port_key mac='"00:00:00:00:10:21"'
+wait_column "$vif22_key" fdb port_key mac='"00:00:00:00:10:22"'
+wait_column "$vif23_key" fdb port_key mac='"00:00:00:00:10:23"'
+
+check_flow_count hv1 12
+check_flow_count hv2 12
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

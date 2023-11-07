@@ -1721,9 +1721,12 @@
 
           <p>
             Looks up <var>A</var> in fdb table. If an entry is found
-            and the the logical port key is <var>P</var>, <code>P</code>,
+            and the logical port key is <var>P</var>, <code>P</code>,
             stores <code>1</code> in the 1-bit subfield
-            <var>R</var>, else 0.
+            <var>R</var>, else 0. If <code>flags.localnet</code> is set
+            then <code>1</code> is stored if an entry is found and the
+            logical port key is <var>P</var> or if an entry is found and
+            the entry port type is VIF.
           </p>
 
           <p>

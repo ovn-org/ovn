@@ -399,14 +399,16 @@
     <p>
       This table looks up the MAC learning table of the logical switch
       datapath to check if the <code>port-mac</code> pair is present
-      or not. MAC is learnt only for logical switch VIF ports whose
-      port security is disabled and 'unknown' address set.
+      or not. MAC is learnt for logical switch VIF ports whose
+      port security is disabled and 'unknown' address setn as well as
+      for localnet ports with option localnet_learn_fdb. A localnet
+      port entry does not overwrite a VIF port entry.
     </p>
 
     <ul>
       <li>
         <p>
-          For each such logical port <var>p</var> whose port security
+          For each such VIF logical port <var>p</var> whose port security
           is disabled and 'unknown' address set following flow
           is added.
         </p>
@@ -421,6 +423,22 @@
       </li>
 
       <li>
+        <p>
+          For each such localnet logical port <var>p</var> following flow
+          is added.
+        </p>
+
+        <ul>
+          <li>
+            Priority 100 flow with the match
+            <code>inport == <var>p</var></code> and action
+            <code>flags.localnet = 1;</code>
+            <code>reg0[11] = lookup_fdb(inport, eth.src); next;</code>
+          </li>
+        </ul>
+      </li>
+
+      <li>
         One priority-0 fallback flow that matches all packets and advances to
         the next table.
       </li>
@@ -429,17 +447,20 @@
     <h3>Ingress Table 3: Learn MAC of 'unknown' ports.</h3>
 
     <p>
-      This table learns the MAC addresses seen on the logical ports
-      whose port security is disabled and 'unknown' address set
+      This table learns the MAC addresses seen on the VIF logical ports
+      whose port security is disabled and 'unknown' address set as well
+      as on localnet ports with localnet_learn_fdb option set
       if the <code>lookup_fdb</code> action returned false in the
-      previous table.
+      previous table. For localnet ports (with flags.localnet = 1),
+      lookup_fdb returns true if (port, mac) is found or if a mac
+      is found for a port of type vif.
     </p>
 
     <ul>
       <li>
         <p>
-          For each such logical port <var>p</var> whose port security
-          is disabled and 'unknown' address set following flow
+          For each such VIF logical port <var>p</var> whose port security is
+          disabled and 'unknown' address set and localnet port following flow
           is added.
         </p>
 
