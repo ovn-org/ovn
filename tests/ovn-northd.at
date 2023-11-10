@@ -4768,8 +4768,7 @@ AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | sort | sed 's/table=../table=??/'], [0], [dnl
   table=??(ls_in_dhcp_options ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "foo", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
-  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && ip4.src == 10.0.0.2 && ip4.dst == {10.0.0.1, 255.255.255.255} && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "foo", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
+  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && (ip4.src == {10.0.0.2, 0.0.0.0} && ip4.dst == {10.0.0.1, 255.255.255.255}) && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "foo", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
 ])
 
 check ovn-nbctl --wait=sb lsp-set-options sw0-port1 hostname="\"port1\""
@@ -4778,8 +4777,7 @@ AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | sort | sed 's/table=../table=??/'], [0], [dnl
   table=??(ls_in_dhcp_options ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "port1", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
-  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && ip4.src == 10.0.0.2 && ip4.dst == {10.0.0.1, 255.255.255.255} && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "port1", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
+  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && (ip4.src == {10.0.0.2, 0.0.0.0} && ip4.dst == {10.0.0.1, 255.255.255.255}) && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "port1", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
 ])
 
 ovn-nbctl dhcp-options-set-options $CIDR_UUID  lease_time=3600   router=10.0.0.1   server_id=10.0.0.1   server_mac=c0:ff:ee:00:00:01
@@ -4789,8 +4787,7 @@ AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | sort | sed 's/table=../table=??/'], [0], [dnl
   table=??(ls_in_dhcp_options ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "bar", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
-  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && ip4.src == 10.0.0.2 && ip4.dst == {10.0.0.1, 255.255.255.255} && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "bar", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
+  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && (ip4.src == {10.0.0.2, 0.0.0.0} && ip4.dst == {10.0.0.1, 255.255.255.255}) && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "bar", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
 ])
 
 AT_CLEANUP

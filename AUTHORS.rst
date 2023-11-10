@@ -550,6 +550,7 @@ Hyojoon Kim                     joonk@gatech.edu
 Igor Ganichev
 Igor Sever                      igor@xorops.com
 Jacob Cherkas                   cherkasj@vmware.com
+Jacob Tanenbaum                 jtanenba@redhat.com
 Jad Naous                       jnaous@gmail.com
 Jamal Hadi Salim                hadi@cyberus.ca
 James Schmidt                   jschmidt@vmware.com

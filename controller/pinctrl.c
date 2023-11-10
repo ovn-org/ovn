@@ -2043,6 +2043,11 @@ pinctrl_handle_put_dhcp_opts(
     switch (*in_dhcp_msg_type) {
     case DHCP_MSG_DISCOVER:
         msg_type = DHCP_MSG_OFFER;
+        if (in_flow->nw_dst != htonl(INADDR_BROADCAST)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_WARN_RL(&rl, "DHCP DISCOVER must be Broadcast");
+            goto exit;
+        }
         break;
     case DHCP_MSG_REQUEST: {
         msg_type = DHCP_MSG_ACK;

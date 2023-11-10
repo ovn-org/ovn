@@ -6805,7 +6805,8 @@ build_dhcpv4_action(struct ovn_port *op, ovs_be32 offer_ip,
                   server_mac, server_ip);
 
     ds_put_format(ipv4_addr_match,
-                  "ip4.src == "IP_FMT" && ip4.dst == {%s, 255.255.255.255}",
+                  "(ip4.src == {"IP_FMT", 0.0.0.0} "
+                  "&& ip4.dst == {%s, 255.255.255.255})",
                   IP_ARGS(offer_ip), server_ip);
     smap_destroy(&dhcpv4_options);
     return true;
@@ -9441,27 +9442,7 @@ build_dhcpv4_options_flows(struct ovn_port *op,
                 op, lsp_addrs->ipv4_addrs[j].addr,
                 &options_action, &response_action, &ipv4_addr_match)) {
             ds_clear(&match);
-            ds_put_format(
-                &match, "inport == %s && eth.src == %s && "
-                "ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && "
-                "udp.src == 68 && udp.dst == 67",
-                inport->json_key, lsp_addrs->ea_s);
 
-            if (is_external) {
-                ds_put_format(&match, " && is_chassis_resident(%s)",
-                              op->json_key);
-            }
-
-            ovn_lflow_add_with_hint__(lflows, op->od,
-                                      S_SWITCH_IN_DHCP_OPTIONS, 100,
-                                      ds_cstr(&match),
-                                      ds_cstr(&options_action),
-                                      inport->key,
-                                      copp_meter_get(COPP_DHCPV4_OPTS,
-                                                     op->od->nbs->copp,
-                                                     meter_groups),
-                                      &op->nbsp->dhcpv4_options->header_);
-            ds_clear(&match);
             /* Allow ip4.src = OFFER_IP and
              * ip4.dst = {SERVER_IP, 255.255.255.255} for the below
              * cases

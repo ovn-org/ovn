@@ -19639,7 +19639,7 @@ wait_for_ports_up ls1-lp_ext1
 as hv1 ovs-ofctl dump-flows br-int > brintflows
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | \
 grep controller | grep "0a.00.00.06" | grep reg14=0x$ln_public_key | \
-wc -l], [0], [3
+wc -l], [0], [1
 ])
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | \
 grep controller | grep tp_src=546 | grep \
@@ -19891,7 +19891,7 @@ wait_for_ports_up ls1-lp_ext1
 # There should be OF flows for DHCP4/v6 for the ls1-lp_ext1 port in hv2
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | \
 grep controller | grep "0a.00.00.06" | grep reg14=0x$ln_public_key | \
-wc -l], [0], [3
+wc -l], [0], [1
 ])
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | \
 grep controller | grep tp_src=546 | grep \
