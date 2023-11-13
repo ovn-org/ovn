@@ -12,16 +12,14 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
+import importlib
 import string
 import sys
 
-try:
-    import ovs_sphinx_theme
-    use_ovs_theme = True
-except ImportError:
-    print("Cannot find 'ovs-sphinx-theme' package. "
+use_rtd_theme = importlib.util.find_spec('sphinx_rtd_theme') is not None
+if not use_rtd_theme:
+    print("Cannot find 'sphinx_rtd_theme' package. "
           "Falling back to default theme.")
-    use_ovs_theme = False
 
 # -- General configuration ------------------------------------------------
 
@@ -48,7 +46,7 @@ master_doc = 'contents'
 
 # General information about the project.
 project = u'Open Virtual Network (OVN)'
-copyright = u'2020, The Open Virtual Network (OVN) Development Community'
+copyright = u'2020-2023, The Open Virtual Network (OVN) Development Community'
 author = u'The Open Virtual Network (OVN) Development Community'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -89,14 +87,8 @@ linkcheck_anchors = False
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-if use_ovs_theme:
-    html_theme = 'ovs'
-
-# Add any paths that contain custom themes here, relative to this directory.
-if use_ovs_theme:
-    html_theme_path = [ovs_sphinx_theme.get_theme_dir()]
-else:
-    html_theme_path = []
+if use_rtd_theme:
+    html_theme = 'sphinx_rtd_theme'
 
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.
