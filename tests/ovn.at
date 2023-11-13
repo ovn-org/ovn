@@ -11283,6 +11283,71 @@ reset_pcap_file hv1-vif2 hv1/vif2
 rm -f 1.expected
 rm -f 2.expected
 
+# send AAAA query for a server known domain that don't have
+# any IPV6 address associated with this domain, and expected
+# server refused DNS reply to save the sender time of waiting for timeout.
+AS_BOX([Test IPv6 (AAAA records) NO timeout.])
+# Add back the DNS options for ls1-lp1 without ipv6.
+check ovn-nbctl remove DNS $DNS1 records vm1.ovn.org
+check ovn-nbctl set DNS $DNS1 records:vm1.ovn.org="10.0.0.4"
+check ovn-nbctl --wait=hv set DNS $DNS1 options:ovn-owned=true
+ovn-sbctl list DNS > dns6
+AT_CAPTURE_FILE([dns6])
+ovn-sbctl dump-flows > sbflows6
+AT_CAPTURE_FILE([sbflows6])
+
+set_dns_params vm1_ipv6_only
+src_ip=`ip_to_hex 10 0 0 6`
+dst_ip=`ip_to_hex 10 0 0 1`
+dns_reply=1
+test_dns 2 f00000000002 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data $dns_resp_data
+
+# NXT_RESUMEs should be 13.
+OVS_WAIT_UNTIL([test 13 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+# dns hdr with server refuse RCODE
+echo "01028125"  > expout
+# only check for the DNS HDR flags since we are not getting any DNS answer
+AT_CHECK([cat 2.packets | cut -c -92 | cut -c 85-], [0], [expout])
+
+reset_pcap_file hv1-vif1 hv1/vif1
+reset_pcap_file hv1-vif2 hv1/vif2
+rm -f 1.expected
+rm -f 2.expected
+
+# send A query for a server known domain that don't have
+# any IPv4 address associated with this domain, and expected
+# server refused DNS reply to save the sender time of waiting for timeout.
+AS_BOX([Test IPv4 (A records) NO timeout.])
+# Add back the DNS options for ls1-lp1 without ipv4.
+check ovn-nbctl remove DNS $DNS1 records vm1.ovn.org
+check ovn-nbctl set DNS $DNS1 records:vm1.ovn.org="aef0::4"
+check ovn-nbctl --wait=hv set DNS $DNS1 options:ovn-owned=true
+ovn-sbctl list DNS > dns7
+AT_CAPTURE_FILE([dns7])
+ovn-sbctl dump-flows > sbflows7
+AT_CAPTURE_FILE([sbflows7])
+
+set_dns_params vm1
+src_ip=`ip_to_hex 10 0 0 6`
+dst_ip=`ip_to_hex 10 0 0 1`
+dns_reply=1
+test_dns 2 f00000000002 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data $dns_resp_data
+
+# NXT_RESUMEs should be 14.
+OVS_WAIT_UNTIL([test 14 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > 2.packets
+# dns hdr with server refuse RCODE
+echo "01028125"  > expout
+# only check for the DNS HDR flags since we are not getting any DNS answer
+AT_CHECK([cat 2.packets | cut -c -92 | cut -c 85-], [0], [expout])
+
+reset_pcap_file hv1-vif1 hv1/vif1
+reset_pcap_file hv1-vif2 hv1/vif2
+rm -f 1.expected
+rm -f 2.expected
 OVN_CLEANUP([hv1])
 
 AT_CLEANUP

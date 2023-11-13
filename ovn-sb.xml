@@ -4500,6 +4500,12 @@ tcp.flags = RST;
       in this column.
     </column>
 
+    <column name="options" key="ovn-owned">
+      This column indicates that all the <code>Domains</code> in this table
+      are owned by OVN, and all <code>DNS queries</code> for those domains
+      will be answered locally by either an IP address or
+      <code>DNS rejection</code>.
+</column>
     <group title="Common Columns">
       <column name="external_ids">
         See <em>External IDs</em> at the beginning of this document.

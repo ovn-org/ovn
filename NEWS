@@ -1,5 +1,9 @@
 Post v23.09.0
 -------------
+  - DNS now have an "options" column for configuration of extra options.
+  - A new DNS option "ovn-owned" has been added to allow defining domains
+    that are owned only by ovn, queries for that domain will not be processed
+    externally.
   - Disable OpenFlow inactivity probing between ovn-controller and OVS.
     OF connection is established over unix socket, which is a reliable
     connection method and doesn't require additional probing.

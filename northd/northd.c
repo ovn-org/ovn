@@ -17301,6 +17301,19 @@ sync_dns_entries(struct ovsdb_idl_txn *ovnsb_txn,
             free(dns_id);
         }
 
+        /* Copy DNS options to SB*/
+        struct smap options = SMAP_INITIALIZER(&options);
+        if (!smap_is_empty(&dns_info->sb_dns->options)) {
+            smap_clone(&options, &dns_info->sb_dns->options);
+        }
+
+        bool ovn_owned = smap_get_bool(&dns_info->nb_dns->options,
+                                       "ovn-owned", false);
+        smap_replace(&options, "ovn-owned",
+                 ovn_owned? "true" : "false");
+        sbrec_dns_set_options(dns_info->sb_dns, &options);
+        smap_destroy(&options);
+
         /* Set the datapaths and records. If nothing has changed, then
          * this will be a no-op.
          */
