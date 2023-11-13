@@ -41,17 +41,13 @@ variety of other output formats but also allows for things like
 cross-referencing and indexing. for more information on the two, refer to the
 :doc:`contributing/documentation-style`.
 
-ovs-sphinx-theme
+sphinx_rtd_theme
 ----------------
 
-The documentation uses its own theme, `ovs-sphinx-theme`, which can be found on
-GitHub__ and is published on pypi__. This is shared by Open vSwitch and OVN.
-It is packaged separately to ensure all documentation gets the latest version
-of the theme (assuming there are no major version bumps in that package). If
-building locally and the package is installed, it will be used. If the package
-is not installed, Sphinx will fallback to the default theme.
-
-The package is currently maintained by Stephen Finucane and Russell Bryant.
+The documentation uses `sphinx_rtd_theme`, which can be found on GitHub__ and
+is published on pypi__.  It is also packaged in major distributions.
+If building locally and the package is installed, it will be used.  If the
+package is not installed, Sphinx will fallback to the default theme.
 
 Read the Docs
 -------------
@@ -72,6 +68,6 @@ modifications to this site, refer to the `GitHub project`__.
 
 __ http://docutils.sourceforge.net/rst.html
 __ http://www.sphinx-doc.org/
-__ https://github.com/openvswitch/ovs-sphinx-theme
-__ https://pypi.python.org/pypi/ovs-sphinx-theme
+__ https://github.com/readthedocs/sphinx_rtd_theme
+__ https://pypi.python.org/pypi/sphinx_rtd_theme
 __ https://github.com/ovn-org/ovn-org.github.io
