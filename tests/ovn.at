@@ -2318,6 +2318,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- allows ACLs to match against vlan-transparent double tagged traffic L3 fields])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 
 for i in 1 2; do
@@ -2356,8 +2357,11 @@ done
 
 test_tcp_packet() {
     local inport=$1 eth_dst=$2 eth_src=$3 ip_dst=$4 ip_src=$5 eout=$6 lout=$7 fail=$8
-    tag=810000ff
-    local packet=${eth_dst}${eth_src}${tag}${tag}08004500002800004000ff060000${ip_src}${ip_dst}0001000100000001000000005000ffff00000000
+    local packet=$(fmt_pkt "Ether(dst='${eth_dst}', src='${eth_src}')/ \
+                            Dot1Q()/ \
+                            Dot1Q()/ \
+                            IP(dst='${ip_dst}', src='${ip_src}')/ \
+                            TCP()")
     as hv-$inport ovs-appctl netdev-dummy/receive vif$inport $packet
     if [[ $fail -eq 0 ]]; then
         echo $packet >> ${eout#lp}.expected
@@ -2370,8 +2374,8 @@ for i in 1 2; do
 done
 check ovn-nbctl --wait=hv sync
 
-test_tcp_packet 1 f00000000002 f00000000001 0a000002 0a000001 lp2 lp2 1
-test_tcp_packet 2 f00000000001 f00000000002 0a000001 0a000002 lp1 lp1 1
+test_tcp_packet 1 f0:00:00:00:00:02 f0:00:00:00:00:01 10.0.0.2 10.0.0.1 lp2 lp2 1
+test_tcp_packet 2 f0:00:00:00:00:01 f0:00:00:00:00:02 10.0.0.1 10.0.0.2 lp1 lp1 1
 
 for i in 1 2; do
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([vif$i-tx.pcap], [$i.expected])
@@ -2384,8 +2388,8 @@ for i in 1 2; do
 done
 check ovn-nbctl --wait=hv sync
 
-test_tcp_packet 2 f00000000001 f00000000002 0a000001 0a000002 lp1 lp1 0
-test_tcp_packet 1 f00000000002 f00000000001 0a000002 0a000001 lp2 lp2 0
+test_tcp_packet 2 f0:00:00:00:00:01 f0:00:00:00:00:02 10.0.0.1 10.0.0.2 lp1 lp1 0
+test_tcp_packet 1 f0:00:00:00:00:02 f0:00:00:00:00:01 10.0.0.2 10.0.0.1 lp2 lp2 0
 
 for i in 1 2; do
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([vif$i-tx.pcap], [$i.expected])
