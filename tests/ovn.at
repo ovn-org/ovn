@@ -7641,6 +7641,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([2 HVs, 2 LRs connected via LS, gateway router])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 
 # Logical network:
@@ -7732,11 +7733,13 @@ OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv1"],["hv2"])
 OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv2"],["hv1"])
 
 # Send ip packets between foo1 and alice1
-src_mac="f00000010203"
-dst_mac="000001010203"
-src_ip=`ip_to_hex 192 168 1 2`
-dst_ip=`ip_to_hex 172 16 1 2`
-packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}${dst_ip}0035111100080000
+src_mac="f0:00:00:01:02:03"
+dst_mac="00:00:01:01:02:03"
+src_ip=192.168.1.2
+dst_ip=172.16.1.2
+packet=$(fmt_pkt "Ether(dst='${dst_mac}', src='${src_mac}')/ \
+                  IP(src='${src_ip}', dst='${dst_ip}')/ \
+                  UDP(sport=53, dport=4369)")
 
 echo "---------NB dump-----"
 ovn-nbctl show
@@ -7758,11 +7761,13 @@ ovn-sbctl list encap
 echo "---------------------"
 
 # Packet to Expect at alice1
-src_mac="000002010203"
-dst_mac="f00000010204"
-src_ip=`ip_to_hex 192 168 1 2`
-dst_ip=`ip_to_hex 172 16 1 2`
-expected=${dst_mac}${src_mac}08004500001c000000003e110200${src_ip}${dst_ip}0035111100080000
+src_mac="00:00:02:01:02:03"
+dst_mac="f0:00:00:01:02:04"
+src_ip=192.168.1.2
+dst_ip=172.16.1.2
+expected=$(fmt_pkt "Ether(dst='${dst_mac}', src='${src_mac}')/ \
+                  IP(src='${src_ip}', dst='${dst_ip}', ttl=0x3e)/ \
+                  UDP(sport=53, dport=4369)")
 
 
 as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
