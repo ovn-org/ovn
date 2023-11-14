@@ -24,7 +24,7 @@ env:
 jobs:
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
     - name: Enable Docker experimental features
       run: |
@@ -62,7 +62,7 @@ jobs:
   e2e:
     name: e2e
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 220
     strategy:
       fail-fast: false

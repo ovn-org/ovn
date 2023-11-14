@@ -24,7 +24,7 @@ jobs:
       SANITIZERS:  ${{ matrix.cfg.sanitizers }}
 
     name: linux ${{ join(matrix.cfg.*, ' ') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     strategy:
       fail-fast: false
@@ -145,7 +145,7 @@ jobs:
     - name: set up python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.x'
+        python-version: '3.11'
     - name: prepare
       run:  ./.ci/osx-prepare.sh
     - name: build
@@ -159,8 +159,8 @@ jobs:
 
   build-linux-rpm:
     name: linux rpm fedora
-    runs-on: ubuntu-latest
-    container: fedora:latest
+    runs-on: ubuntu-22.04
+    container: fedora:38
     timeout-minutes: 30
 
     strategy:
