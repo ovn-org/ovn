@@ -3676,6 +3676,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([VLAN transparency, passthru=true, ARP responder disabled])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 
 net_add net
@@ -3724,12 +3725,15 @@ done
 
 test_arp() {
     local inport=$1 outport=$2 sha=$3 spa=$4 tpa=$5 reply_ha=$6
-    tag=8100fefe
-    local request=ffffffffffff${sha}${tag}08060001080006040001${sha}${spa}ffffffffffff${tpa}
+    local request=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                             Dot1Q(vlan=0xefe)/ \
+                             ARP(hwsrc='${sha}', hwdst='ff:ff:ff:ff:ff:ff', psrc='${spa}', pdst='${tpa}')")
     as hv-$inport ovs-appctl netdev-dummy/receive vif$inport $request
     echo $request >> $outport.expected
 
-    local reply=${sha}${reply_ha}${tag}08060001080006040002${reply_ha}${tpa}${sha}${spa}
+    local reply=$(fmt_pkt "Ether(dst='${sha}', src='${reply_ha}')/ \
+                           Dot1Q(vlan=0xefe)/ \
+                           ARP(op=2, hwsrc='${reply_ha}', hwdst='${sha}', psrc='${tpa}', pdst='${spa}')")
     as hv-$outport ovs-appctl netdev-dummy/receive vif$outport $reply
     echo $reply >> $inport.expected
 }
@@ -3739,8 +3743,8 @@ test_arp() {
 # for ARP resolution).
 OVN_POPULATE_ARP
 
-test_arp 1 2 f00000000001 0a000001 0a000002 f00000000002
-test_arp 2 1 f00000000002 0a000002 0a000001 f00000000001
+test_arp 1 2 f0:00:00:00:00:01 10.0.0.1 10.0.0.2 f0:00:00:00:00:02
+test_arp 2 1 f0:00:00:00:00:02 10.0.0.2 10.0.0.1 f0:00:00:00:00:01
 
 for i in 1 2; do
     OVN_CHECK_PACKETS([vif$i-tx.pcap], [$i.expected])
