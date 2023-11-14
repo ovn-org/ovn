@@ -4795,6 +4795,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([3 HVs, 3 LS, 3 lports/LS, 1 LR])
 AT_KEYWORDS([slowtest])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 
 # Logical network:
@@ -4926,7 +4927,9 @@ done
 test_ip() {
     # This packet has bad checksums but logical L3 routing doesn't check.
     local inport=$1 src_mac=$2 dst_mac=$3 src_ip=$4 dst_ip=$5
-    local packet=${dst_mac}${src_mac}08004500001c0000000040110000${src_ip}${dst_ip}0035111100080000
+    local packet=$(fmt_pkt "Ether(dst='${dst_mac}', src='${src_mac}')/ \
+                            IP(src='${src_ip}', dst='${dst_ip}', ttl=0x40)/ \
+                            UDP(sport=53, dport=4369)")
     shift; shift; shift; shift; shift
     hv=hv`vif_to_hv $inport`
     as $hv ovs-appctl netdev-dummy/receive vif$inport $packet
@@ -4941,7 +4944,9 @@ test_ip() {
             # Routing decrements TTL and updates source and dest MAC
             # (and checksum).
             out_lrp=`vif_to_lrp $outport`
-            echo f00000000${outport}00000000ff${out_lrp}08004500001c00000000"3f1101"00${src_ip}${dst_ip}0035111100080000
+            echo $(fmt_pkt "Ether(dst='f0:00:00:00:0$out_ls:${outport#?}', src='00:00:00:00:ff:${out_lrp}')/ \
+                            IP(src='${src_ip}', dst='${dst_ip}', ttl=0x3f)/ \
+                            UDP(sport=53, dport=4369)")
         fi >> $outport.expected
     done
 }
@@ -4959,7 +4964,8 @@ test_ip() {
 test_arp() {
     echo "$@"
     local inport=$1 sha=$2 spa=$3 tpa=$4 reply_ha=$5
-    local request=ffffffffffff${sha}08060001080006040001${sha}${spa}ffffffffffff${tpa}
+    local request=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                             ARP(hwsrc='${sha}', hwdst='ff:ff:ff:ff:ff:ff', psrc='${spa}', pdst='${tpa}')")
     hv=hv`vif_to_hv $inport`
     as $hv ovs-appctl netdev-dummy/receive vif$inport $request
 
@@ -4971,7 +4977,7 @@ test_arp() {
         for k in 1 2 3; do
             # 192.168.33.254 is configured to the switch patch port for lrp33,
             # so no ARP flooding expected for it.
-            if test $i$j$k != $inport && test $tpa != `ip_to_hex 192 168 33 254`; then
+            if test $i$j$k != $inport && test $tpa != 192.168.33.254; then
                 echo $request >> $i$j$k.expected
             fi
         done
@@ -4980,7 +4986,8 @@ test_arp() {
     # Expect to receive the reply, if any.
     if test X$reply_ha != X; then
         lrp=`vif_to_lrp $inport`
-        local reply=${sha}00000000ff${lrp}08060001080006040002${reply_ha}${tpa}${sha}${spa}
+        local reply=$(fmt_pkt "Ether(dst='${sha}', src='00:00:00:00:ff:${lrp}')/ \
+                               ARP(op=2, hwsrc='${reply_ha}', hwdst='${sha}', psrc='${tpa}', pdst='${spa}')")
         echo $reply >> $inport.expected
     fi
 }
@@ -5007,23 +5014,23 @@ for is in 1 2 3; do
     for ks in 1 2 3; do
       bcast=
       s=$is$js$ks
-      smac=f00000000$s
-      sip=`ip_to_hex 192 168 $is$js $ks`
+      smac=f0:00:00:00:0$is:$js$ks
+      sip=192.168.$is$js.$ks
       for id in 1 2 3; do
           for jd in 1 2 3; do
               for kd in 1 2 3; do
                 d=$id$jd$kd
-                dip=`ip_to_hex 192 168 $id$jd $kd`
-                if test $is = $id; then dmac=f00000000$d; else dmac=00000000ff$is$js; fi
+                dip=192.168.$id$jd.$kd
+                if test $is = $id; then dmac=f0:00:00:00:0$id:$jd$kd; else dmac=00:00:00:00:ff:$is$js; fi
                 if test $d != $s; then unicast=$d; else unicast=; fi
 
-                test_ip $s $smac $dmac $sip $dip $unicast & #1
+                test_ip $s $smac $dmac $sip $dip $unicast #1
 
                 if test $id = $is && test $d != $s; then bcast="$bcast $d"; fi
               done
           done
         done
-      test_ip $s $smac ffffffffffff $sip ffffffff $bcast & #2
+      test_ip $s $smac ff:ff:ff:ff:ff:ff $sip 255.255.255.255 $bcast #2
       done
   done
   wait
@@ -5040,8 +5047,8 @@ for is in 1 2 3; do
   for js in 1 2 3; do
     for ks in 1 2 3; do
       s=$is$js$ks
-      smac=f00000000$s
-      sip=`ip_to_hex 192 168 $is$js $ks`
+      smac=f0:00:00:00:0$is:$js$ks
+      sip=192.168.$is$js.$ks
       for id in 1 2 3; do
         for jd in 1 2 3; do
           if test $is$js = $id$jd; then
@@ -5049,41 +5056,43 @@ for is in 1 2 3; do
           fi
 
           # Send the packet.
-          dmac=00000000ff$is$js
+          dmac=00:00:00:00:ff:$is$js
           # Calculate a 4th octet for the destination that is
           # unique per $s, avoids the .1 .2 .3 and .254 IP addresses
           # that have static MAC bindings, and fits in the range
           # 0-255.
           o4=`expr $is '*' 9 + $js '*' 3 + $ks + 10`
-          dip=`ip_to_hex 192 168 $id$jd $o4`
+          dip=192.168.$id$jd.$o4
           test_ip $s $smac $dmac $sip $dip
 
           # Every LP on the destination subnet's lswitch should
           # receive the ARP request.
-          lrmac=00000000ff$id$jd
-          lrip=`ip_to_hex 192 168 $id$jd 254`
-          arp=ffffffffffff${lrmac}08060001080006040001${lrmac}${lrip}000000000000${dip}
+          lrmac=00:00:00:00:ff:$id$jd
+          lrip=192.168.$id$jd.254
+          arp=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${lrmac}')/ \
+                         ARP(hwsrc='${lrmac}', hwdst='00:00:00:00:00:00', psrc='${lrip}', pdst='${dip}')")
           for jd2 in 1 2 3; do
             for kd in 1 2 3; do
               echo $arp >> $id$jd2$kd.expected
             done
           done
 
-          hmac=8000000000$o4
-          rmac=00000000ff$id$jd
-          echo ${hmac}${rmac}08004500001c00000000"3f1101"00${sip}${dip}0035111100080000 >> ${id}11.expected
+          hmac=80:00:00:00:00:$o4
+          rmac=00:00:00:00:ff:$id$jd
+          echo $(fmt_pkt "Ether(dst='${hmac}', src='${rmac}')/ \
+                          IP(src='${sip}', dst='${dip}', ttl=0x3f)/ \
+                          UDP(sport=53, dport=4369)") >> ${id}11.expected
 
-          host_mac=8000000000$o4
-          lrmac=00000000ff$id$jd
+          host_mac=80:00:00:00:00:$o4
+          lrmac=00:00:00:00:ff:$id$jd
 
-          arp_reply=${lrmac}${host_mac}08060001080006040002${host_mac}${dip}${lrmac}${lrip}
+          arp_reply=$(fmt_pkt "Ether(dst='${lrmac}', src='${host_mac}')/ \
+                               ARP(op=2, hwsrc='${host_mac}', hwdst='${lrmac}', psrc='${dip}', pdst='${lrip}')")
 
           hv=hv`vif_to_hv ${id}${jd}1`
           as $hv ovs-appctl netdev-dummy/receive vif${id}${jd}1 $arp_reply
 
-          host_ip_pretty=192.168.$id$jd.$o4
-          host_mac_pretty=80:00:00:00:00:$o4
-          echo lrp$id$jd,$host_ip_pretty,$host_mac_pretty >> mac_bindings.expected
+          echo lrp$id$jd,$dip,$hmac >> mac_bindings.expected
         done
       done
     done
@@ -5103,12 +5112,12 @@ done
 for i in 1 2 3; do
   for j in 1 2 3; do
     for k in 1 2 3; do
-      smac=f00000000$i$j$k               # Source MAC
-      sip=`ip_to_hex 192 168 $i$j $k`    # Source IP
-      rip=`ip_to_hex 192 168 $i$j 254`   # Router IP
-      rmac=00000000ff$i$j                # Router MAC
-      otherip=`ip_to_hex 192 168 $i$j 55` # Some other IP in subnet
-      externalip=`ip_to_hex 1 2 3 4`      # Some other IP not in subnet
+      smac=f0:00:00:00:0$i:$j$k               # Source MAC
+      sip=192.168.$i$j.$k    # Source IP
+      rip=192.168.$i$j.254   # Router IP
+      rmac=00:00:00:00:ff:$i$j                # Router MAC
+      otherip=192.168.$i$j.55 # Some other IP in subnet
+      externalip=1.2.3.4      # Some other IP not in subnet
 
       test_arp $i$j$k $smac $sip        $rip        $rmac      #4
       test_arp $i$j$k $smac $otherip    $rip        $rmac      #5
@@ -5124,18 +5133,14 @@ for i in 1 2 3; do
       test_arp $i$j$k $smac $externalip $rip        $lrp33_rsp #7
 
       # MAC binding should be learned from ARP request.
-      host_mac_pretty=f0:00:00:00:0$i:$j$k
-
-      host_ip_pretty=192.168.$i$j.$k
-      echo lrp$i$j,$host_ip_pretty,$host_mac_pretty >> mac_bindings.expected
+      echo lrp$i$j,$sip,$smac >> mac_bindings.expected
 
       # mac_binding is learned and overwritten so only the last one remains.
       if test $k = 3; then
           # lrp33 will not learn from ARP request, because 192.168.33.254 is
           # configured to switch peer port for lrp33.
           if test $i != 3 || test $j != 3; then
-              host_ip_pretty=192.168.$i$j.55
-              echo lrp$i$j,$host_ip_pretty,$host_mac_pretty >> mac_bindings.expected
+              echo lrp$i$j,$otherip,$smac >> mac_bindings.expected
           fi
       fi
 
@@ -5158,8 +5163,8 @@ for is in 1 2 3; do
   for js in 1 2 3; do
     for ks in 1 2 3; do
       s=$is$js$ks
-      smac=f00000000$s
-      sip=`ip_to_hex 192 168 $is$js $ks`
+      smac=f0:00:00:00:0$is:$js$ks
+      sip=192.168.$is$js.$ks
       for id in 1 2 3; do
         for jd in 1 2 3; do
           if test $is$js = $id$jd; then
@@ -5167,20 +5172,22 @@ for is in 1 2 3; do
           fi
 
           # Send the packet.
-          dmac=00000000ff$is$js
+          dmac=00:00:00:00:ff:$is$js
           # Calculate a 4th octet for the destination that is
           # unique per $s, avoids the .1 .2 .3 and .254 IP addresses
           # that have static MAC bindings, and fits in the range
           # 0-255.
           o4=`expr $is '*' 9 + $js '*' 3 + $ks + 10`
-          dip=`ip_to_hex 192 168 $id$jd $o4`
+          dip=192.168.$id$jd.$o4
           test_ip $s $smac $dmac $sip $dip
 
           # Expect the packet egress.
-          host_mac=8000000000$o4
+          host_mac=80:00:00:00:00:$o4
           outport=${id}11
           out_lrp=$id$jd
-          echo ${host_mac}00000000ff${out_lrp}08004500001c00000000"3f1101"00${sip}${dip}0035111100080000 >> $outport.expected
+          echo $(fmt_pkt "Ether(dst='${host_mac}', src='00:00:00:00:ff:$id$jd')/ \
+                          IP(src='${sip}', dst='${dip}', ttl=0x3f)/ \
+                          UDP(sport=53, dport=4369)") >> $outport.expected
         done
       done
     done
