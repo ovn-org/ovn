@@ -7,6 +7,7 @@ import ovs.unixctl
 import ovs.unixctl.server
 
 import binascii
+from socket import *  # noqa: F401,F403
 from scapy.all import *  # noqa: F401,F403
 from scapy.all import raw
 

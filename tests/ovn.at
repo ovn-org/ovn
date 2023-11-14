@@ -3755,6 +3755,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([VLAN transparency, passthru=true, ND/NA responder disabled])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 
 net_add net
@@ -3787,22 +3788,25 @@ AT_CHECK([grep -w "ls_in_arp_rsp" lsflows | sed 's/table=../table=??/' | sort], 
 
 test_nd_na() {
     local inport=$1 outport=$2 sha=$3 spa=$4 tpa=$5 reply_ha=$6
-    tag=8100fefe
-    icmp_type=87
-    local request=ffffffffffff${sha}${tag}86dd6000000000183aff${spa}ff0200000000000000000001ff${tpa: -6}${icmp_type}007ea100000000${tpa}
+    local request=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                             Dot1Q(vlan=0xefe)/ \
+                             IPv6(src='${spa}', dst=inet_ntop(AF_INET6, in6_getnsma(inet_pton(AF_INET6, '${tpa}'))))/ \
+                             ICMPv6ND_NS(tgt='${tpa}')")
     ovs-appctl netdev-dummy/receive vif$inport $request
     echo $request >> $outport.expected
     echo $request
 
-    icmp_type=88
-    local reply=${sha}${reply_ha}${tag}86dd6000000000183aff${tpa}${spa}${icmp_type}003da540000000${tpa}
+    local reply=$(fmt_pkt "Ether(dst='${sha}', src='${reply_ha}')/ \
+                           Dot1Q(vlan=0xefe)/ \
+                           IPv6(src='${tpa}', dst='${spa}')/ \
+                           ICMPv6ND_NA(tgt='${tpa}')")
     ovs-appctl netdev-dummy/receive vif$outport $reply
     echo $reply >> $inport.expected
     echo $reply
 }
 
-test_nd_na 1 2 f00000000001 fe000000000000000000000000000001 fe000000000000000000000000000002 f00000000002
-test_nd_na 2 1 f00000000002 fe000000000000000000000000000002 fe000000000000000000000000000001 f00000000001
+test_nd_na 1 2 f0:00:00:00:00:01 fe00::1 fe00::2 f0:00:00:00:00:02
+test_nd_na 2 1 f0:00:00:00:00:02 fe00::2 fe00::1 f0:00:00:00:00:01
 
 for i in 1 2; do
     OVN_CHECK_PACKETS([vif$i-tx.pcap], [$i.expected])
