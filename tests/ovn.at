@@ -2403,6 +2403,7 @@ OVN_FOR_EACH_NORTHD([
 AT_SETUP([3 HVs, 1 LS, 3 lports/HV])
 AT_KEYWORDS([ovnarp])
 AT_KEYWORDS([slowtest])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 
 # Create hypervisors hv[123].
@@ -2496,7 +2497,8 @@ test_packet() {
 # SPA and TPA are each 8 hex digits.
 test_arp() {
     local inport=$1 sha=$2 spa=$3 tpa=$4 reply_ha=$5
-    local request=ffffffffffff${sha}08060001080006040001${sha}${spa}ffffffffffff${tpa}
+    local request=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                             ARP(hwsrc='${sha}', hwdst='ff:ff:ff:ff:ff:ff', psrc='${spa}', pdst='${tpa}')")
     hv=`vif_to_hv $inport`
     as $hv ovs-appctl netdev-dummy/receive vif$inport $request
 
@@ -2513,7 +2515,8 @@ test_arp() {
         done
     else
         # Expect to receive the reply, if any.
-        local reply=${sha}${reply_ha}08060001080006040002${reply_ha}${tpa}${sha}${spa}
+        local reply=$(fmt_pkt "Ether(dst='${sha}', src='${reply_ha}') /
+                               ARP(op=2, hwsrc='${reply_ha}', hwdst='${sha}', psrc='${tpa}', pdst='${spa}')")
         echo $reply >> $inport.expected
     fi
 }
@@ -2601,23 +2604,23 @@ for is in 1 2 3; do
                 bacl2="$bacl2 $acl2"
                 bacl3="$bacl3 $acl3"
 
-                sip=`ip_to_hex 192 168 0 $is$js`
-                tip=`ip_to_hex 192 168 0 $id$jd`
-                tip_unknown=`ip_to_hex 11 11 11 11`
+                sip="192.168.0.$is$js"
+                tip="192.168.0.$id$jd"
+                tip_unknown="11.11.11.11"
                 reply_ha=;
                 if test $d != $s; then
                     if test $jd != 1; then
-                        reply_ha=f000000000$d
+                        reply_ha="f0:00:00:00:00:$d"
                     fi
                 fi
 
-                test_arp $s f000000000$s $sip $tip $reply_ha               #9
-                test_arp $s f000000000$s $sip $tip_unknown                 #10
+                test_arp $s f0:00:00:00:00:$s $sip $tip $reply_ha               #9
+                test_arp $s f0:00:00:00:00:$s $sip $tip_unknown                 #10
 
                 if test $jd = 3; then
                     # lsp[123]3 has an additional ip 192.169.0.[123]3.
-                    tip=`ip_to_hex 192 169 0 $id$jd`
-                    test_arp $s f000000000$s $sip $tip $reply_ha           #9
+                    tip="192.169.0.$id$jd"
+                    test_arp $s f0:00:00:00:00:$s $sip $tip $reply_ha           #9
                 fi
             done
         done
@@ -2647,13 +2650,13 @@ done
 # lp13 should be configured with only 192.168.0.13.
 check ovn-nbctl --wait=hv lsp-set-addresses lp13 "f0:00:00:00:00:13 192.168.0.13 invalid 192.169.0.13"
 
-sip=`ip_to_hex 192 168 0 11`
-tip=`ip_to_hex 192 168 0 13`
-test_arp 11 f00000000011  $sip $tip f00000000013
+sip="192.168.0.11"
+tip="192.168.0.13"
+test_arp 11 f0:00:00:00:00:11  $sip $tip f0:00:00:00:00:13
 
-tip=`ip_to_hex 192 169 0 13`
+tip="192.169.0.13"
 #arp request for 192.169.0.13 should be flooded
-test_arp 11 f00000000011  $sip $tip
+test_arp 11 f0:00:00:00:00:11  $sip $tip
 
 # dump information and flows with counters
 ovn-sbctl dump-flows -- list multicast_group > sbflows
