@@ -4304,6 +4304,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([vtep: 3 HVs, 1 VIFs/HV, 1 GW, 1 LS])
 AT_KEYWORDS([vtep])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 
 # Configure the Northbound database
@@ -4458,16 +4459,18 @@ for s in 1 2 3; do
 done
 
 # ARP request from VTEP to LRP should be responded by ARP responder.
-sha=f00000000003
-spa=`ip_to_hex 192 168 1 2`
-tpa=`ip_to_hex 192 168 1 1`
-request=ffffffffffff${sha}08060001080006040001${sha}${spa}ffffffffffff${tpa}
+sha=f0:00:00:00:00:03
+spa=192.168.1.2
+tpa=192.168.1.1
+request=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                   ARP(hwsrc='${sha}', hwdst='ff:ff:ff:ff:ff:ff', psrc='${spa}', pdst='${tpa}')")
 as hv3 ovs-appctl netdev-dummy/receive vif3 $request
 echo $request >> 1.expected
 echo $request >> 2.expected
 
-lrpmac=f000000000f1
-response=${sha}${lrpmac}08060001080006040002${lrpmac}${tpa}${sha}${spa}
+lrpmac=f0:00:00:00:00:f1
+response=$(fmt_pkt "Ether(dst='${sha}', src='${lrpmac}')/ \
+                    ARP(op=2, hwsrc='${lrpmac}', hwdst='${sha}', psrc='${tpa}', pdst='${spa}')")
 # since lrp1 has gateway chassis set on hv1, hv1 will suppress arp request and
 # answer with arp reply by OVS directly to vtep lport. all other lports,
 # except lport from which this request was initiated, will receive arp request.
@@ -4478,11 +4481,12 @@ echo $response >> 3.expected
 # check that GARP was received by vif1, vif2 and MAC_Binding was created.
 wait_row_count MAC_Binding 0 ip="192.168.1.200" mac='"f0:00:00:00:00:12"'
 
-sha=0200000000ff
-tha=ffffffffffff
-spa=`ip_to_hex 192 168 1 200`
+sha=02:00:00:00:00:ff
+tha=ff:ff:ff:ff:ff:ff
+spa=192.168.1.200
 tpa=$spa
-garp=ffffffffffff${sha}08060001080006040002${sha}${spa}${tha}${tpa}
+garp=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                ARP(op=2, hwsrc='${sha}', hwdst='${tha}', psrc='${spa}', pdst='${tpa}')")
 as hv3 ovs-appctl netdev-dummy/receive vif3 $garp
 echo $garp >> 1.expected
 echo $garp >> 2.expected
@@ -4490,8 +4494,9 @@ echo $garp >> 2.expected
 wait_row_count MAC_Binding 2 ip="192.168.1.200" mac='"02:00:00:00:00:ff"'
 
 # Send same GARP with changed SHA and ensure MAC_Binding was updated.
-sha=0200000000ee
-garp=ffffffffffff${sha}08060001080006040002${sha}${spa}${tha}${tpa}
+sha=02:00:00:00:00:ee
+garp=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                ARP(op=2, hwsrc='${sha}', hwdst='${tha}', psrc='${spa}', pdst='${tpa}')")
 as hv3 ovs-appctl netdev-dummy/receive vif3 $garp
 echo $garp >> 1.expected
 echo $garp >> 2.expected
@@ -4507,15 +4512,17 @@ wait_row_count Port_Binding 0 chassis="$hv_uuid" type="''"
 check ovn-sbctl --all destroy MAC_Binding
 
 # ARP request from VTEP to LRP should be responded by ARP responder.
-sha=f00000000003
-spa=`ip_to_hex 192 168 1 2`
-tpa=`ip_to_hex 192 168 1 1`
-request=ffffffffffff${sha}08060001080006040001${sha}${spa}ffffffffffff${tpa}
+sha=f0:00:00:00:00:03
+spa=192.168.1.2
+tpa=192.168.1.1
+request=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                   ARP(hwsrc='${sha}', hwdst='ff:ff:ff:ff:ff:ff', psrc='${spa}', pdst='${tpa}')")
 as hv3 ovs-appctl netdev-dummy/receive vif3 $request
 echo $request >> 2.expected
 
-lrpmac=f000000000f1
-response=${sha}${lrpmac}08060001080006040002${lrpmac}${tpa}${sha}${spa}
+lrpmac=f0:00:00:00:00:f1
+response=$(fmt_pkt "Ether(dst='${sha}', src='${lrpmac}')/ \
+                    ARP(op=2, hwsrc='${lrpmac}', hwdst='${sha}', psrc='${tpa}', pdst='${spa}')")
 # since lrp1 has gateway chassis set on hv1, hv1 will suppress arp request and
 # answer with arp reply by OVS directly to vtep lport. all other lports,
 # except lport from which this request was initiated, will receive arp request.
@@ -4526,19 +4533,21 @@ echo $response >> 3.expected
 # check that GARP was received by vif1, vif2 and MAC_Binding was created.
 wait_row_count MAC_Binding 0 ip="192.168.1.200" mac='"f0:00:00:00:00:12"'
 
-sha=0200000000ff
-tha=ffffffffffff
-spa=`ip_to_hex 192 168 1 200`
+sha=02:00:00:00:00:ff
+tha=ff:ff:ff:ff:ff:ff
+spa=192.168.1.200
 tpa=$spa
-garp=ffffffffffff${sha}08060001080006040002${sha}${spa}${tha}${tpa}
+garp=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                ARP(op=2, hwsrc='${sha}', hwdst='${tha}', psrc='${spa}', pdst='${tpa}')")
 as hv3 ovs-appctl netdev-dummy/receive vif3 $garp
 echo $garp >> 2.expected
 
 wait_row_count MAC_Binding 2 ip="192.168.1.200" mac='"02:00:00:00:00:ff"'
 
 # Send same GARP with changed SHA and ensure MAC_Binding was updated.
-sha=0200000000ee
-garp=ffffffffffff${sha}08060001080006040002${sha}${spa}${tha}${tpa}
+sha=02:00:00:00:00:ee
+garp=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                ARP(op=2, hwsrc='${sha}', hwdst='${tha}', psrc='${spa}', pdst='${tpa}')")
 as hv3 ovs-appctl netdev-dummy/receive vif3 $garp
 echo $garp >> 2.expected
 
@@ -4553,20 +4562,22 @@ check ovn-nbctl --wait=hv sync
 
 # Check ARP response to request for IP on VIF port sent from vtep.
 # ARP request from VTEP to LSP's IP must be answered only by LSP vif1 (lp1).
-sha=f00000000003
-spa=`ip_to_hex 192 168 1 2`
-tpa=`ip_to_hex 192 168 1 24`
-request=ffffffffffff${sha}08060001080006040001${sha}${spa}ffffffffffff${tpa}
+sha=f0:00:00:00:00:03
+spa=192.168.1.2
+tpa=192.168.1.24
+request=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                   ARP(hwsrc='${sha}', hwdst='ff:ff:ff:ff:ff:ff', psrc='${spa}', pdst='${tpa}')")
 as hv3 ovs-appctl netdev-dummy/receive vif3 $request
 echo $request >> 1.expected
 echo $request >> 2.expected
 
 # Simulate response from vif.
-sha=f00000000001
-tha=f00000000003
-spa=`ip_to_hex 192 168 1 200`
-tpa=`ip_to_hex 192 168 1 2`
-response=${tha}${sha}08060001080006040002${sha}${spa}${tha}${tpa}
+sha=f0:00:00:00:00:01
+tha=f0:00:00:00:00:03
+spa=192.168.1.200
+tpa=192.168.1.2
+response=$(fmt_pkt "Ether(dst='${tha}', src='${sha}')/ \
+                    ARP(op=2, hwsrc='${sha}', hwdst='${tha}', psrc='${spa}', pdst='${tpa}')")
 as hv1 ovs-appctl netdev-dummy/receive vif1 $response
 echo $response >> 3.expected
 
