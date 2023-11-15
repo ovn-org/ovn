@@ -233,7 +233,7 @@ statctrl_thread_handler(void *arg)
     struct statctrl_ctx *ctx = arg;
 
     /* OpenFlow connection to the switch. */
-    struct rconn *swconn = rconn_create(5, 0, DSCP_DEFAULT,
+    struct rconn *swconn = rconn_create(0, 0, DSCP_DEFAULT,
                                         1 << OFP15_VERSION);
 
     while (!latch_is_set(&ctx->exit_latch)) {
