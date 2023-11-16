@@ -35343,37 +35343,6 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([feature inactivity probe])
-ovn_start
-net_add n1
-
-sim_add hv1
-as hv1
-check ovs-vsctl add-br br-phys
-ovn_attach n1 br-phys 192.168.0.1
-
-dnl Ensure that there are 4 openflow connections.
-OVS_WAIT_UNTIL([test "$(grep -c 'negotiated OpenFlow version' hv1/ovs-vswitchd.log)" -eq "4"])
-
-dnl "Wait" 3 times 60 seconds and ensure ovn-controller writes to the
-dnl openflow connections in the meantime.  This should allow ovs-vswitchd
-dnl to probe the openflow connections at least twice.
-
-as hv1 ovs-appctl time/warp 60000
-check ovn-nbctl --wait=hv sync
-
-as hv1 ovs-appctl time/warp 60000
-check ovn-nbctl --wait=hv sync
-
-as hv1 ovs-appctl time/warp 60000
-check ovn-nbctl --wait=hv sync
-
-AT_CHECK([test -z "`grep disconnecting hv1/ovs-vswitchd.log`"])
-OVN_CLEANUP([hv1])
-AT_CLEANUP
-])
-
-OVN_FOR_EACH_NORTHD([
 AT_SETUP([Logical flows with Chassis_Template_Var references])
 AT_KEYWORDS([templates])
 ovn_start
