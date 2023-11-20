@@ -7792,7 +7792,7 @@ pinctrl_handle_tcp_svc_check(struct rconn *swconn,
         svc_mon->n_success++;
         svc_mon->state = SVC_MON_S_ONLINE;
 
-        /* Send RST-ACK packet. */
+        /* Send RST packet. */
         svc_monitor_send_tcp_health_check__(swconn, svc_mon, TCP_RST,
                                             htonl(tcp_ack),
                                             htonl(0), th->tcp_dst);
