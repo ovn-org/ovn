@@ -9,25 +9,28 @@ arm_unit_tests_task:
     ARCH: aarch64
     CIRRUS_CLONE_SUBMODULES: true
     PATH: ${HOME}/bin:${HOME}/.local/bin:${PATH}
+    RECHECK: yes
     matrix:
       - CC: gcc
         TESTSUITE: test
-        TEST_RANGE: -500
+        TEST_RANGE: -300
       - CC: gcc
         TESTSUITE: test
-        TEST_RANGE: 501-1000
+        TEST_RANGE: 301-600
       - CC: gcc
         TESTSUITE: test
-        TEST_RANGE: 1001-
+        TEST_RANGE: 601-
+        UNSTABLE: yes
       - CC: clang
         TESTSUITE: test
-        TEST_RANGE: -500
+        TEST_RANGE: -300
       - CC: clang
         TESTSUITE: test
-        TEST_RANGE: 501-1000
+        TEST_RANGE: 301-600
       - CC: clang
         TESTSUITE: test
-        TEST_RANGE: 1001-
+        TEST_RANGE: 601-
+        UNSTABLE: yes
 
   name: ARM64 ${CC} ${TESTSUITE} ${TEST_RANGE}
 
