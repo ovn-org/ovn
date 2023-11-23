@@ -12,9 +12,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-linux:
+  prepare-container:
     env:
-      IMAGE_NAME:  ghcr.io/ovn-org/ovn-tests:ubuntu
+      DEPENDENCIES: podman
+    name: Prepare container
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Update APT cache
+        run: sudo apt update
+
+      - name: Install dependencies
+        run: sudo apt install -y ${{ env.DEPENDENCIES }}
+
+      - name: Build container
+        run: make ubuntu
+        working-directory: utilities/containers
+
+      - name: Export image
+        run: podman save -o /tmp/image.tar ovn-org/ovn-tests
+
+      - name: Cache image
+        id: image_cache
+        uses: actions/cache@v3
+        with:
+          path: /tmp/image.tar
+          key: ${{ github.sha }}
+
+  build-linux:
+    needs: prepare-container
+    env:
       ARCH:        ${{ matrix.cfg.arch }}
       CC:          ${{ matrix.cfg.compiler }}
       LIBS:        ${{ matrix.cfg.libs }}
@@ -83,6 +112,18 @@ jobs:
           $(git branch -a -l '*branch-*' | sed 's/remotes\/origin\///' | \
             sort -V | tail -1)
       working-directory: ovs
+
+    - name: image cache
+      uses: actions/cache@v3
+      with:
+        path: /tmp/image.tar
+        key: ${{ github.sha }}
+
+    - name: load image
+      run: |
+        sudo podman load -i /tmp/image.tar
+        podman load -i /tmp/image.tar
+        rm -rf /tmp/image.tar
 
     - name: build
       if: ${{ startsWith(matrix.cfg.testsuite, 'system-test') }}
