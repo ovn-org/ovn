@@ -64,6 +64,10 @@ Scheduling`_ for the timing of each stage:
    branch.  Features to be added to release branches should be limited in scope
    and risk and discussed on ovs-dev before creating the branch.
 
+   In order to keep the CI stable on the new release branch, the Ubuntu
+   container should be pinned to the current LTS version in the Dockerfile
+   e.g. registry.hub.docker.com/library/ubuntu:22.04.
+
 3. When committers come to rough consensus that the release is ready, they
    release the .0 release on its branch, e.g. 25.09.0 for branch-25.09.  To
    make the actual release, a committer pushes a signed tag named, e.g.
