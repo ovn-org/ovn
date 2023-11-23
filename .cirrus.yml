@@ -1,15 +1,34 @@
-arm_unit_tests_task:
+compute_engine_instance:
+  image_project: ubuntu-os-cloud
+  image: family/ubuntu-2304-arm64
+  architecture: arm64
+  platform: linux
+  memory: 4G
 
-  arm_container:
-    image: ghcr.io/ovn-org/ovn-tests:fedora
-    memory: 4G
-    cpu: 2
+# Run separate task for the image build, so it's running only once outside
+# the test matrix.
+build_image_task:
+  install_dependencies_script:
+    - sudo apt update
+    - sudo apt install -y podman make
+
+  build_container_script:
+    - cd utilities/containers
+    - make ubuntu
+    - podman save -o /tmp/image.tar ovn-org/ovn-tests:ubuntu
+
+  upload_image_script:
+    - curl -s -X POST -T /tmp/image.tar http://$CIRRUS_HTTP_CACHE_HOST/${CIRRUS_CHANGE_IN_REPO}
+
+arm_unit_tests_task:
+  depends_on:
+    - build_image
 
   env:
-    ARCH: aarch64
     CIRRUS_CLONE_SUBMODULES: true
     PATH: ${HOME}/bin:${HOME}/.local/bin:${PATH}
     RECHECK: yes
+    IMAGE_NAME: ovn-org/ovn-tests:ubuntu
     matrix:
       - CC: gcc
         TESTSUITE: test
@@ -34,5 +53,16 @@ arm_unit_tests_task:
 
   name: ARM64 ${CC} ${TESTSUITE} ${TEST_RANGE}
 
+  install_dependencies_script:
+    - sudo apt update
+    - sudo apt install -y podman
+
+  download_cache_script:
+    - curl http://$CIRRUS_HTTP_CACHE_HOST/${CIRRUS_CHANGE_IN_REPO} -o /tmp/image.tar
+
+  load_image_script:
+    - podman load -i /tmp/image.tar
+    - rm -rf /tmp/image.tar
+
   build_script:
-    - ./.ci/linux-build.sh
+    - ./.ci/ci.sh --archive-logs
