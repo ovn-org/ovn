@@ -74,6 +74,12 @@ m4_define([PERF_RECORD_STOP], [
     PERF_RECORD_STOPWATCH(ovnsb_db_run, ["Short term average"], [Average (SB in msec)])
     PERF_RECORD_STOPWATCH(ovn-northd-loop, ["Maximum"], [Maximum (northd-loop in msec)])
     PERF_RECORD_STOPWATCH(ovn-northd-loop, ["Short term average"], [Average (northd-loop in msec)])
+    PERF_RECORD_STOPWATCH(build_lflows, ["Maximum"], [Maximum (lflows in msec)])
+    PERF_RECORD_STOPWATCH(build_lflows, ["Short term average"], [Average (lflows in msec)])
+    PERF_RECORD_STOPWATCH(port_group_run, ["Maximum"], [Maximum (port_group in msec)])
+    PERF_RECORD_STOPWATCH(port_group_run, ["Short term average"], [Average (port_group in msec)])
+    PERF_RECORD_STOPWATCH(sync_meters_run, ["Maximum"], [Maximum (sync_meters in msec)])
+    PERF_RECORD_STOPWATCH(sync_meters_run, ["Short term average"], [Average (sync_meters in msec)])
 ])
 
 OVS_START_SHELL_HELPERS
