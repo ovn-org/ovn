@@ -169,7 +169,7 @@ m4_define([OVN_BASIC_SCALE_CONFIG], [
     done
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn-northd basic scale test -- 200 Hypervisors, 200 Logical Ports/Hypervisor])
 PERF_RECORD_START()
 
@@ -181,7 +181,7 @@ PERF_RECORD_STOP()
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn-northd basic scale test -- 500 Hypervisors, 50 Logical Ports/Hypervisor])
 PERF_RECORD_START()
 
