@@ -9,6 +9,18 @@ m4_define([CACHE_NBDB],[
     cp -f ${ovs_base}/ovn-nb/ovn-nb.db ${at_suite_dir}/cached/${at_group}/
 ])
 
+# MEASURE_RECOMPUTE()
+#
+# Triggers a full ovn-northd recompute and records performance
+# (stopwatch) counters.
+#
+m4_define([MEASURE_RECOMPUTE],[
+    PERF_RECORD_START(Measure northd recompute)
+    ovn-appctl -t northd/NORTHD_TYPE inc-engine/recompute
+    ovn-nbctl --wait=sb sync
+    PERF_RECORD_STOP()
+])
+
 # BUILD_NBDB([COMMANDS])
 #
 # Configure the northbound database using COMMANDS.
@@ -19,6 +31,7 @@ m4_define([CACHE_NBDB],[
 # northbound database.
 #
 m4_define([BUILD_NBDB],[
+    PERF_RECORD_START(Build NB)
     if [[ ! -f ${at_suite_dir}/cached/${at_group}/ovn-nb.db ]] || [[ $at_arg_rebuild != false ]]; then
         echo "Rebuild NBDB"
         $1
@@ -30,15 +43,19 @@ m4_define([BUILD_NBDB],[
         ovn-appctl -t ovn-nb/ovsdb-server ovsdb-server/add-db ${at_suite_dir}/cached/${at_group}/ovn-nb.db
     fi
     ovn-nbctl --wait=sb sync
+    PERF_RECORD_STOP()
+
+    MEASURE_RECOMPUTE()
 ])
 
-# PERF_RECORD_BANNER()
+# PERF_RECORD_BANNER([DESCRIPTION])
 #
 # Append standard banner to performance results.
 #
 m4_define([PERF_RECORD_START],[
     echo >> ${at_suite_dir}/results
     echo "$at_desc_line" >> ${at_suite_dir}/results
+    echo "  Results for '$1'" >> ${at_suite_dir}/results
     echo "  ---" >> ${at_suite_dir}/results
 ])
 
@@ -80,6 +97,8 @@ m4_define([PERF_RECORD_STOP], [
     PERF_RECORD_STOPWATCH(port_group_run, ["Short term average"], [Average (port_group in msec)])
     PERF_RECORD_STOPWATCH(sync_meters_run, ["Maximum"], [Maximum (sync_meters in msec)])
     PERF_RECORD_STOPWATCH(sync_meters_run, ["Short term average"], [Average (sync_meters in msec)])
+
+    ovn-appctl -t northd/NORTHD_TYPE stopwatch/reset
 ])
 
 OVS_START_SHELL_HELPERS
@@ -177,24 +196,16 @@ m4_define([OVN_BASIC_SCALE_CONFIG], [
 
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn-northd basic scale test -- 200 Hypervisors, 200 Logical Ports/Hypervisor])
-PERF_RECORD_START()
-
 ovn_start
 
 BUILD_NBDB(OVN_BASIC_SCALE_CONFIG(200, 200))
-
-PERF_RECORD_STOP()
 AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn-northd basic scale test -- 500 Hypervisors, 50 Logical Ports/Hypervisor])
-PERF_RECORD_START()
-
 ovn_start
 
 BUILD_NBDB(OVN_BASIC_SCALE_CONFIG(500, 50))
-
-PERF_RECORD_STOP()
 AT_CLEANUP
 ])
