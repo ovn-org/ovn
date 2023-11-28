@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import time
 
 import ovs.daemon
 import ovs.unixctl
@@ -23,15 +24,24 @@ def exit(conn, argv, aux):
 
 
 def process(data):
+    start_time = time.perf_counter()
+    vlog.info(f"received payload request: {data}")
     try:
         data = data.replace('\n', '')
         return binascii.hexlify(raw(eval(data))).decode()
-    except Exception:
+    except Exception as e:
+        vlog.exception(f"failed to process payload request: {e}")
         return ""
+    finally:
+        total_time = (time.perf_counter() - start_time) * 1000
+        vlog.info(f"took {total_time:.2f}ms to process payload request")
 
 
 def payload(conn, argv, aux):
-    conn.reply(process(argv[0]))
+    try:
+        conn.reply(process(argv[0]))
+    except Exception as e:
+        vlog.exception(f"failed to reply to payload request: {e}")
 
 
 def main():
@@ -54,6 +64,8 @@ def main():
     ovs.unixctl.command_register("exit", "", 0, 0, exit, None)
     ovs.unixctl.command_register("payload", "", 1, 1, payload, None)
     ovs.daemon.daemonize_complete()
+
+    vlog.info("scapy server ready")
 
     poller = ovs.poller.Poller()
     while not exiting:
