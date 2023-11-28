@@ -882,7 +882,10 @@ fmt_pkt() {
 start_scapy_server() {
     pidfile=$ovs_base/scapy.pid
     ctlfile=$ovs_base/scapy.ctl
-    "$top_srcdir"/tests/scapy-server.py --pidfile=$pidfile --unixctl=$ctlfile --detach
+    logfile=$ovs_base/scapy.log
+
+    "$top_srcdir"/tests/scapy-server.py \
+        --pidfile=$pidfile --unixctl=$ctlfile --log-file=$logfile --detach
     on_exit "test -e \"$pidfile\" && ovs-appctl -t $ctlfile exit"
 }
 
