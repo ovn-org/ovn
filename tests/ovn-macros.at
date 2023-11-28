@@ -876,6 +876,7 @@ fmt_pkt() {
     if [[ ! -S $ctlfile ]]; then
         start_scapy_server
     fi
+    while [[ ! -S $ctlfile ]]; do sleep 0.1; done
     ovs-appctl -t $ctlfile payload "$1"
 }
 
@@ -883,10 +884,11 @@ start_scapy_server() {
     pidfile=$ovs_base/scapy.pid
     ctlfile=$ovs_base/scapy.ctl
     logfile=$ovs_base/scapy.log
+    lockfile=$ovs_base/scapy.lock
 
-    "$top_srcdir"/tests/scapy-server.py \
-        --pidfile=$pidfile --unixctl=$ctlfile --log-file=$logfile --detach
-    on_exit "test -e \"$pidfile\" && ovs-appctl -t $ctlfile exit"
+    flock -n $lockfile "$top_srcdir"/tests/scapy-server.py \
+        --pidfile=$pidfile --unixctl=$ctlfile --log-file=$logfile --detach \
+    && on_exit "test -e \"$pidfile\" && ovs-appctl -t $ctlfile exit"
 }
 
 sleep_sb() {
