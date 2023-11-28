@@ -876,7 +876,7 @@ fmt_pkt() {
     if [[ ! -e $ctlfile ]]; then
         start_scapy_server
     fi
-    echo $(ovs-appctl -t $ctlfile payload "$1")
+    ovs-appctl -t $ctlfile payload "$1"
 }
 
 start_scapy_server() {
