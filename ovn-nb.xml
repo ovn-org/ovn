@@ -1107,6 +1107,14 @@
           should have a route to forward packets sent to configured proxy ARP
           MAC/IPs to an appropriate destination.
         </column>
+
+        <column name="options" key="enable_router_port_acl"
+                type='{"type": "boolean"}'>
+          Optional. Enable conntrack for the router port whose peer is
+          l3dgw_port if set to <code>true</code>. The default value is
+          <code>false</code>.
+        </column>
+
       </group>
 
       <group title="Options for localnet ports">

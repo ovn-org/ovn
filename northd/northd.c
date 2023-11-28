@@ -1612,6 +1612,9 @@ struct ovn_port {
      * access it from any other nodes.
      */
     struct ovs_list lflows;
+
+    /* Only used for the router type LSP whose peer is l3dgw_port */
+    bool enable_router_port_acl;
 };
 
 static bool lsp_can_be_inc_processed(const struct nbrec_logical_switch_port *);
@@ -2826,6 +2829,20 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
                         arp_proxy, op->nbsp->name);
                 }
             }
+
+            /* Only used for the router type LSP whose peer is l3dgw_port */
+            if (smap_get(&op->nbsp->options, "enable_router_port_acl")) {
+                if (op->peer && is_l3dgw_port(op->peer)) {
+                    op->enable_router_port_acl = smap_get_bool(&op->nbsp->options,
+                                              "enable_router_port_acl", false);
+                } else {
+                    static struct vlog_rate_limit rl =
+                        VLOG_RATE_LIMIT_INIT(5, 1);
+                    VLOG_WARN_RL(&rl, "enable_router_port_acl option is not "
+                                      "supported on logical port %s",
+                                      op->nbsp->name);
+                }
+            }
         } else if (op->nbrp && op->nbrp->peer && !op->l3dgw_port) {
             struct ovn_port *peer = ovn_port_find(ports, op->nbrp->peer);
             if (peer) {
@@ -2842,6 +2859,13 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
                     VLOG_WARN_RL(&rl, "Bad configuration: The peer of router "
                                  "port %s is a switch port", op->key);
                 }
+            }
+        } else if (op->nbsp && !lsp_is_router(op->nbsp)) {
+            /* Only used for the router type LSP whose peer is l3dgw_port */
+            if (smap_get(&op->nbsp->options, "enable_router_port_acl")) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+                VLOG_WARN_RL(&rl, "enable_router_port_acl option is not supported "
+                                    "on logical port %s", op->nbsp->name);
             }
         }
     }
@@ -7207,7 +7231,11 @@ build_pre_acls(struct ovn_datapath *od,
      * which handles defragmentation, in order to match L4 headers. */
     if (od->has_stateful_acl) {
         for (size_t i = 0; i < od->n_router_ports; i++) {
-            skip_port_from_conntrack(od, od->router_ports[i],
+            struct ovn_port *op = od->router_ports[i];
+            if (op->enable_router_port_acl) {
+                continue;
+            }
+            skip_port_from_conntrack(od, op,
                                      S_SWITCH_IN_PRE_ACL, S_SWITCH_OUT_PRE_ACL,
                                      110, lflows);
         }

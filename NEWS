@@ -12,6 +12,8 @@ Post v23.09.0
   - Support CIDR based MAC binding aging threshold. See ovn-nb(5) for
     'mac_binding_age_threshold' for more details.
   - ovn-northd-ddlog has been removed.
+  - A new LSP option "enable_router_port_acl" has been added to enable
+    conntrack for the router port whose peer is l3dgw_port if set it true.
 
 OVN v23.09.0 - 15 Sep 2023
 --------------------------
