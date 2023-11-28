@@ -873,7 +873,7 @@ ovn_trace_client() {
 #
 fmt_pkt() {
     ctlfile=$ovs_base/scapy.ctl
-    if [[ ! -e $ctlfile ]]; then
+    if [[ ! -S $ctlfile ]]; then
         start_scapy_server
     fi
     ovs-appctl -t $ctlfile payload "$1"
