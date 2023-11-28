@@ -438,7 +438,12 @@
       <code>Pre-stateful</code> to send IP packets to the connection tracker
       before eventually advancing to ingress table <code>ACLs</code>. If
       special ports such as route ports or localnet ports can't use ct(), a
-      priority-110 flow is added to skip over stateful ACLs. Multicast, IPv6
+      priority-110 flow is added to skip over stateful ACLs.  This
+      priority-110 flow is not addd for router ports if the option
+      enable_router_port_acl is set to true in
+      <ref column="options:enable_router_port_acl"
+      table="Logical_Switch_Port" db="OVN_Northbound"/> column of
+      <ref table="Logical_Switch_Port" db="OVN_Northbound"/>.  Multicast, IPv6
       Neighbor Discovery and MLD traffic also skips stateful ACLs. For
       "allow-stateless" ACLs, a flow is added to bypass setting the hint for
       connection tracker processing when there are stateful ACLs or LB rules;
