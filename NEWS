@@ -1,5 +1,6 @@
 OVN v23.06.3 - xx xxx xxxx
 --------------------------
+  - Enable PMTU discovery on geneve tunnels for E/W traffic.
 
 OVN v23.06.2 - 15 Sep 2023
 --------------------------
