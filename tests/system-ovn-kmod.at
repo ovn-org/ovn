@@ -128,10 +128,9 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
-sed -e 's/vtag_orig=[[0-9]]*/vtag_orig=<cleared>/' |
-sed -e 's/vtag_reply=[[0-9]]*/vtag_reply=<cleared>/' | uniq], [0], [dnl
-sctp,orig=(src=172.16.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>,vtag_orig=<cleared>,vtag_reply=<cleared>)
-sctp,orig=(src=172.16.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>,vtag_orig=<cleared>,vtag_reply=<cleared>)
+sed 's/,protoinfo=.*$//' | uniq], [0], [dnl
+sctp,orig=(src=172.16.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2
+sctp,orig=(src=172.16.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2
 ])
 
 dnl Test load-balancing that includes L4 ports in NAT.
@@ -143,10 +142,9 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.2) |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
-sed -e 's/vtag_orig=[[0-9]]*/vtag_orig=<cleared>/' |
-sed -e 's/vtag_reply=[[0-9]]*/vtag_reply=<cleared>/' | uniq], [0], [dnl
-sctp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>,vtag_orig=<cleared>,vtag_reply=<cleared>)
-sctp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>,vtag_orig=<cleared>,vtag_reply=<cleared>)
+sed 's/,protoinfo=.*$//' | uniq], [0], [dnl
+sctp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2
+sctp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2
 ])
 
 check_est_flows () {
@@ -187,18 +185,16 @@ done
 dnl Each server should have at least one connection.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.2) |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
-sed -e 's/vtag_orig=[[0-9]]*/vtag_orig=<cleared>/' |
-sed -e 's/vtag_reply=[[0-9]]*/vtag_reply=<cleared>/' | uniq], [0], [dnl
-sctp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=10,protoinfo=(state=<cleared>,vtag_orig=<cleared>,vtag_reply=<cleared>)
-sctp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=10,protoinfo=(state=<cleared>,vtag_orig=<cleared>,vtag_reply=<cleared>)
+sed 's/,protoinfo=.*$//' | uniq], [0], [dnl
+sctp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=10
+sctp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=10
 ])
 
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(20.0.0.2) |
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
-sed -e 's/vtag_orig=[[0-9]]*/vtag_orig=<cleared>/' |
-sed -e 's/vtag_reply=[[0-9]]*/vtag_reply=<cleared>/' | uniq], [0], [dnl
-sctp,orig=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=20.0.0.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>,vtag_orig=<cleared>,vtag_reply=<cleared>)
-sctp,orig=(src=172.16.1.2,dst=192.168.2.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=20.0.0.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>,vtag_orig=<cleared>,vtag_reply=<cleared>)
+sed 's/,protoinfo=.*$//' | uniq], [0], [dnl
+sctp,orig=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=20.0.0.2,sport=<cleared>,dport=<cleared>),zone=<cleared>
+sctp,orig=(src=172.16.1.2,dst=192.168.2.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=20.0.0.2,sport=<cleared>,dport=<cleared>),zone=<cleared>
 ])
 
 OVS_WAIT_UNTIL([check_est_flows 0xa], [check established flows])
