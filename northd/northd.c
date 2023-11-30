@@ -12765,6 +12765,28 @@ build_lrouter_force_snat_flows(struct hmap *lflows, struct ovn_datapath *od,
     ds_destroy(&actions);
 }
 
+/* Following flows are used to manage traffic redirected by the kernel
+ * (e.g. ICMP errors packets) that enter the cluster from the geneve ports
+ */
+static void
+build_lrouter_redirected_traffic_flows(
+        struct ovn_port *op, struct hmap *lflows,
+        struct ds *match, struct ds *actions)
+{
+    ovs_assert(op->nbrp);
+    if (!is_l3dgw_port(op)) {
+        return;
+    }
+
+    ds_clear(match);
+    ds_put_format(match, "inport == %s && !is_chassis_resident(%s)",
+                  op->cr_port->json_key, op->cr_port->json_key);
+    ds_clear(actions);
+    ds_put_format(actions, "inport = %s; next;", op->json_key);
+    ovn_lflow_add(lflows, op->od, S_ROUTER_IN_ADMISSION, 120,
+                  ds_cstr(match), ds_cstr(actions));
+}
+
 static void
 build_lrouter_force_snat_flows_op(struct ovn_port *op,
                                   struct hmap *lflows,
@@ -16168,6 +16190,8 @@ build_lswitch_and_lrouter_iterate_by_lrp(struct ovn_port *op,
                                 &lsi->match, &lsi->actions, lsi->meter_groups);
     build_lrouter_force_snat_flows_op(op, lsi->lflows, &lsi->match,
                                       &lsi->actions);
+    build_lrouter_redirected_traffic_flows(op, lsi->lflows, &lsi->match,
+                                           &lsi->actions);
 }
 
 static void *

@@ -6480,6 +6480,9 @@ AT_CAPTURE_FILE([lrflows])
 
 # Check the flows in lr_in_admission stage
 AT_CHECK([grep lr_in_admission lrflows | grep cr-DR | sort], [0], [dnl
+  table=0 (lr_in_admission    ), priority=120  , match=(inport == "cr-DR-S1" && !is_chassis_resident("cr-DR-S1")), action=(inport = "DR-S1"; next;)
+  table=0 (lr_in_admission    ), priority=120  , match=(inport == "cr-DR-S2" && !is_chassis_resident("cr-DR-S2")), action=(inport = "DR-S2"; next;)
+  table=0 (lr_in_admission    ), priority=120  , match=(inport == "cr-DR-S3" && !is_chassis_resident("cr-DR-S3")), action=(inport = "DR-S3"; next;)
   table=0 (lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "DR-S1" && is_chassis_resident("cr-DR-S1")), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
   table=0 (lr_in_admission    ), priority=50   , match=(eth.dst == 03:ac:10:01:00:01 && inport == "DR-S2" && is_chassis_resident("cr-DR-S2")), action=(xreg0[[0..47]] = 03:ac:10:01:00:01; next;)
   table=0 (lr_in_admission    ), priority=50   , match=(eth.dst == 04:ac:10:01:00:01 && inport == "DR-S3" && is_chassis_resident("cr-DR-S3")), action=(xreg0[[0..47]] = 04:ac:10:01:00:01; next;)
@@ -6539,6 +6542,7 @@ AT_CAPTURE_FILE([lrflows])
 
 # Check the flows in lr_in_admission stage
 AT_CHECK([grep lr_in_admission lrflows | grep lrp1 | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_admission    ), priority=120  , match=(inport == "cr-lrp1" && !is_chassis_resident("cr-lrp1")), action=(inport = "lrp1"; next;)
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1")), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
   table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
 ])
@@ -6560,6 +6564,7 @@ AT_CAPTURE_FILE([lrflows])
 
 # Check the flows in lr_in_admission stage
 AT_CHECK([grep lr_in_admission lrflows | grep lrp1 | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_admission    ), priority=120  , match=(inport == "cr-lrp1" && !is_chassis_resident("cr-lrp1")), action=(inport = "lrp1"; next;)
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:00:01 && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
   table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
 ])
@@ -6578,6 +6583,7 @@ AT_CAPTURE_FILE([lrflows])
 
 # Check the flows in lr_in_admission stage
 AT_CHECK([grep lr_in_admission lrflows | grep lrp1 | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_admission    ), priority=120  , match=(inport == "cr-lrp1" && !is_chassis_resident("cr-lrp1")), action=(inport = "lrp1"; next;)
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1")), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
   table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
 ])

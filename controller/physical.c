@@ -2446,6 +2446,51 @@ physical_run(struct physical_ctx *p_ctx,
                         &ofpacts, hc_uuid);
     }
 
+    /* Add specif flows for E/W ICMPv{4,6} packets if tunnelled packets do not
+     * fit path MTU.
+     */
+    HMAP_FOR_EACH (tun, hmap_node, p_ctx->chassis_tunnels) {
+        ofpbuf_clear(&ofpacts);
+        if (tun->type == GENEVE) {
+            put_move(MFF_TUN_ID, 0, MFF_LOG_DATAPATH, 0, 24, &ofpacts);
+            put_move(p_ctx->mff_ovn_geneve, 16, MFF_LOG_OUTPORT, 0, 16,
+                     &ofpacts);
+            put_move(p_ctx->mff_ovn_geneve, 0, MFF_LOG_INPORT, 0, 15,
+                     &ofpacts);
+        } else if (tun->type == STT) {
+            put_move(MFF_TUN_ID, 0, MFF_LOG_DATAPATH, 0, 24, &ofpacts);
+            put_move(MFF_TUN_ID, 40, MFF_LOG_OUTPORT,  0, 16, &ofpacts);
+            put_move(MFF_TUN_ID, 24, MFF_LOG_INPORT, 0, 15, &ofpacts);
+        } else if (tun->type == VXLAN) {
+            put_move(MFF_TUN_ID, 0, MFF_LOG_DATAPATH, 0, 12, &ofpacts);
+            put_move(MFF_TUN_ID, 12, MFF_LOG_INPORT, 0, 12, &ofpacts);
+        } else {
+            OVS_NOT_REACHED();
+        }
+        put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, &ofpacts);
+
+        /* IPv4 */
+        struct match match = MATCH_CATCHALL_INITIALIZER;
+        match_set_in_port(&match, tun->ofport);
+        match_set_dl_type(&match, htons(ETH_TYPE_IP));
+        match_set_nw_proto(&match, IPPROTO_ICMP);
+        match_set_icmp_type(&match, 3);
+        match_set_icmp_code(&match, 4);
+
+        ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 120, 0, &match,
+                        &ofpacts, hc_uuid);
+        /* IPv6 */
+        match_init_catchall(&match);
+        match_set_in_port(&match, tun->ofport);
+        match_set_dl_type(&match, htons(ETH_TYPE_IPV6));
+        match_set_nw_proto(&match, IPPROTO_ICMPV6);
+        match_set_icmp_type(&match, 2);
+        match_set_icmp_code(&match, 0);
+
+        ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 120, 0, &match,
+                        &ofpacts, hc_uuid);
+    }
+
     /* Add VXLAN specific rules to transform port keys
      * from 12 bits to 16 bits used elsewhere. */
     HMAP_FOR_EACH (tun, hmap_node, p_ctx->chassis_tunnels) {
