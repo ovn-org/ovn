@@ -675,13 +675,11 @@ run_S_CLEAR_FLOWS(void)
     /* Clear existing groups, to match the state of the switch. */
     if (groups) {
         ovn_extend_table_clear(groups, true);
-        ovn_extend_table_reinit(groups, ovs_feature_max_select_groups_get());
     }
 
     /* Clear existing meters, to match the state of the switch. */
     if (meters) {
         ovn_extend_table_clear(meters, true);
-        ovn_extend_table_reinit(meters, ovs_feature_max_meters_get());
         ofctrl_meter_bands_clear();
     }
 
