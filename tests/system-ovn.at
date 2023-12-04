@@ -9213,8 +9213,9 @@ name: 'vport4' value: '999'
 NETNS_DAEMONIZE([vm1], [nc -k -l 42.42.42.2 4242], [nc-vm1.pid])
 
 NETNS_DAEMONIZE([vm1],
-    [tcpdump -n -i vm1 -nnleX -c6 udp and dst 42.42.42.2 and dst port 4343 > vm1.pcap 2>/dev/null],
+    [tcpdump -n -i vm1 -nnleX -c6 udp and dst 42.42.42.2 and dst port 4343 > vm1.pcap 2> vm1.pcap.stderr],
     [tcpdump1.pid])
+OVS_WAIT_UNTIL([grep "listening" vm1.pcap.stderr])
 
 # Make sure connecting to the VIP works (hairpin, via ls and via lr).
 NS_CHECK_EXEC([vm1], [nc 66.66.66.66 666 -z], [0], [ignore], [ignore])
@@ -9364,8 +9365,9 @@ name: 'vport4' value: '999'
 NETNS_DAEMONIZE([vm1], [nc -k -l 4242::2 4242], [nc-vm1.pid])
 
 NETNS_DAEMONIZE([vm1],
-    [tcpdump -n -i vm1 -nnleX -c6 udp and dst 4242::2 and dst port 4343 > vm1.pcap 2>/dev/null],
+    [tcpdump -n -i vm1 -nnleX -c6 udp and dst 4242::2 and dst port 4343 > vm1.pcap 2> vm1.pcap.stderr],
     [tcpdump1.pid])
+OVS_WAIT_UNTIL([grep "listening" vm1.pcap.stderr])
 
 # Make sure connecting to the VIP works (hairpin, via ls and via lr).
 NS_CHECK_EXEC([vm1], [nc 6666::1 666 -z], [0], [ignore], [ignore])
