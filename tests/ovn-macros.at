@@ -891,6 +891,16 @@ start_scapy_server() {
     && on_exit "test -e \"$pidfile\" && ovs-appctl -t $ctlfile exit"
 }
 
+sleep_northd() {
+  echo Northd going to sleep
+  AT_CHECK([kill -STOP $(cat northd/ovn-northd.pid)])
+}
+
+wake_up_northd() {
+  echo Northd waking up
+  AT_CHECK([kill -CONT $(cat northd/ovn-northd.pid)])
+}
+
 sleep_sb() {
   echo SB going to sleep
   AT_CHECK([kill -STOP $(cat ovn-sb/ovsdb-server.pid)])
