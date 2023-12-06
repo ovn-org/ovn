@@ -144,6 +144,12 @@ lb_data_load_balancer_handler(struct engine_node *node, void *data)
 
     const struct nbrec_load_balancer *tracked_lb;
     NBREC_LOAD_BALANCER_TABLE_FOR_EACH_TRACKED (tracked_lb, nb_lb_table) {
+        /* "New" + "Deleted" is a no-op. */
+        if (nbrec_load_balancer_is_new(tracked_lb)
+            && nbrec_load_balancer_is_deleted(tracked_lb)) {
+            continue;
+        }
+
         struct ovn_northd_lb *lb;
         if (nbrec_load_balancer_is_new(tracked_lb)) {
             /* New load balancer. */
@@ -153,19 +159,22 @@ lb_data_load_balancer_handler(struct engine_node *node, void *data)
             add_crupdated_lb_to_tracked_data(lb, trk_lb_data,
                                              lb->health_checks);
             trk_lb_data->has_routable_lb |= lb->routable;
-        } else if (nbrec_load_balancer_is_deleted(tracked_lb)) {
-            lb = ovn_northd_lb_find(&lb_data->lbs,
-                                    &tracked_lb->header_.uuid);
-            ovs_assert(lb);
+            continue;
+        }
+
+        /* Protect against "spurious" deletes reported by the IDL. */
+        lb = ovn_northd_lb_find(&lb_data->lbs, &tracked_lb->header_.uuid);
+        if (!lb) {
+            continue;
+        }
+
+        if (nbrec_load_balancer_is_deleted(tracked_lb)) {
             hmap_remove(&lb_data->lbs, &lb->hmap_node);
             add_deleted_lb_to_tracked_data(lb, trk_lb_data,
                                            lb->health_checks);
             trk_lb_data->has_routable_lb |= lb->routable;
         } else {
             /* Load balancer updated. */
-            lb = ovn_northd_lb_find(&lb_data->lbs,
-                                    &tracked_lb->header_.uuid);
-            ovs_assert(lb);
             bool health_checks = lb->health_checks;
             struct sset old_ips_v4 = SSET_INITIALIZER(&old_ips_v4);
             struct sset old_ips_v6 = SSET_INITIALIZER(&old_ips_v6);
@@ -217,6 +226,12 @@ lb_data_load_balancer_group_handler(struct engine_node *node, void *data)
     const struct nbrec_load_balancer_group *tracked_lb_group;
     NBREC_LOAD_BALANCER_GROUP_TABLE_FOR_EACH_TRACKED (tracked_lb_group,
                                                       nb_lbg_table) {
+        /* "New" + "Deleted" is a no-op. */
+        if (nbrec_load_balancer_group_is_new(tracked_lb_group)
+            && nbrec_load_balancer_group_is_deleted(tracked_lb_group)) {
+            continue;
+        }
+
         if (nbrec_load_balancer_group_is_new(tracked_lb_group)) {
             struct ovn_lb_group *lb_group =
                 create_lb_group(tracked_lb_group, &lb_data->lbs,
@@ -228,21 +243,22 @@ lb_data_load_balancer_group_handler(struct engine_node *node, void *data)
             }
 
             trk_lb_data->has_routable_lb |= lb_group->has_routable_lb;
-        } else if (nbrec_load_balancer_group_is_deleted(tracked_lb_group)) {
-            struct ovn_lb_group *lb_group;
-            lb_group = ovn_lb_group_find(&lb_data->lbgrps,
-                                         &tracked_lb_group->header_.uuid);
-            ovs_assert(lb_group);
+            continue;
+        }
+
+        /* Protect against "spurious" deletes reported by the IDL. */
+        struct ovn_lb_group *lb_group;
+        lb_group = ovn_lb_group_find(&lb_data->lbgrps,
+                                     &tracked_lb_group->header_.uuid);
+        if (!lb_group) {
+            continue;
+        }
+
+        if (nbrec_load_balancer_group_is_deleted(tracked_lb_group)) {
             hmap_remove(&lb_data->lbgrps, &lb_group->hmap_node);
             add_deleted_lbgrp_to_tracked_data(lb_group, trk_lb_data);
             trk_lb_data->has_routable_lb |= lb_group->has_routable_lb;
         } else {
-
-            struct ovn_lb_group *lb_group;
-            lb_group = ovn_lb_group_find(&lb_data->lbgrps,
-                                         &tracked_lb_group->header_.uuid);
-            ovs_assert(lb_group);
-
             /* Determine the lbs which are added or deleted for this
              * lb group and add them to tracked data.
              * Eg.  If an lb group lbg1 before the update had [lb1, lb2, lb3]

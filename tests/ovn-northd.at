@@ -10914,3 +10914,56 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Load balancer incremental processing - batched updates])
+ovn_start
+
+# Check the scenario when a LB is created and quickly deleted (northd
+# processes this in a single iteration).
+
+check ovn-nbctl ls-add sw0
+lbg_uuid=$(ovn-nbctl --wait=sb create load_balancer_group name=lbg)
+check ovn-nbctl --wait=sb add logical_switch sw0 load_balancer_group $lbg_uuid
+
+# Pause ovn-northd.
+sleep_northd
+
+check ovn-nbctl lb-add lb-temp 50.0.0.10:80 50.0.0.20:8080
+lb_temp_uuid=$(fetch_column nb:Load_Balancer _uuid name=lb-temp)
+check ovn-nbctl add load_balancer_group $lbg_uuid load_balancer $lb_temp_uuid
+check ovn-nbctl lb-del lb-temp
+
+# Let ovn-northd process all the updates that happened since it went to sleep.
+wake_up_northd
+
+# Add a new load balancer to make sure northd still functions properly.
+check ovn-nbctl lb-add lb1 50.0.0.10:80 50.0.0.30:8080
+lb1_uuid=$(fetch_column nb:Load_Balancer _uuid name=lb1)
+check ovn-nbctl add load_balancer_group $lbg_uuid load_balancer $lb1_uuid
+
+check ovn-nbctl --wait=sb sync
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Re-check the same scenario but now also batch the additional LB creation.
+sleep_northd
+check ovn-nbctl lb-add lb-temp 50.0.0.10:80 50.0.0.20:8080
+lb_temp_uuid=$(fetch_column nb:Load_Balancer _uuid name=lb-temp)
+check ovn-nbctl add load_balancer_group $lbg_uuid load_balancer $lb_temp_uuid
+check ovn-nbctl lb-del lb-temp
+
+# Add a new load balancer to make sure northd still functions properly.
+check ovn-nbctl lb-add lb2 50.0.0.10:80 50.0.0.30:8080
+lb2_uuid=$(fetch_column nb:Load_Balancer _uuid name=lb2)
+check ovn-nbctl add load_balancer_group $lbg_uuid load_balancer $lb2_uuid
+
+wake_up_northd
+check ovn-nbctl --wait=sb sync
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE status], [0], [dnl
+Status: active
+])
+
+AT_CLEANUP
+])
