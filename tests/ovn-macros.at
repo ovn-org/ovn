@@ -847,6 +847,7 @@ start_scapy_server() {
 sleep_sb() {
   echo SB going to sleep
   AT_CHECK([kill -STOP $(cat ovn-sb/ovsdb-server.pid)])
+  on_exit "kill -CONT $(cat ovn-sb/ovsdb-server.pid)"
 }
 wake_up_sb() {
   echo SB waking up
@@ -870,6 +871,7 @@ sleep_ovs() {
   hv=$1
   echo ovs $hv going to sleep
   AT_CHECK([kill -STOP $(cat $hv/ovs-vswitchd.pid)])
+  on_exit "kill -CONT $(cat $hv/ovs-vswitchd.pid)"
 }
 
 wake_up_ovs() {
@@ -881,6 +883,7 @@ wake_up_ovs() {
 sleep_ovsdb() {
   echo OVSDB $1 going to sleep
   AT_CHECK([kill -STOP $(cat $1/ovsdb-server.pid)])
+  on_exit "kill -CONT $(cat $1/ovsdb-server.pid)"
 }
 wake_up_ovsdb() {
   echo OVSDB $1 waking up
