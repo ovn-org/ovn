@@ -102,13 +102,6 @@ need the following software:
   The environment variable OVS_RESOLV_CONF can be used to specify DNS server
   configuration file (the default file on Linux is /etc/resolv.conf).
 
-- `DDlog <https://github.com/vmware/differential-datalog>`, if you
-  want to build ``ovn-northd-ddlog``, an alternate implementation of
-  ``ovn-northd`` that scales better to large deployments.  The NEWS
-  file specifies the right version of DDlog to use with this release.
-  Building with DDlog supports requires Rust to be installed (see
-  https://www.rust-lang.org/tools/install).
-
 If you are working from a Git tree or snapshot (instead of from a distribution
 tarball), or if you modify the OVN build system or the database
 schema, you will also need the following software:
@@ -209,37 +202,6 @@ the default database directory, add options as shown here::
   OVN installed with packages like .rpm (e.g. via
   ``yum install`` or ``rpm -ivh``) and .deb (e.g. via
   ``apt-get install`` or ``dpkg -i``) use the above configure options.
-
-Use ``--with-ddlog`` to build with DDlog support.  To build with
-DDlog, the build system needs to be able to find the ``ddlog`` and
-``ovsdb2ddlog`` binaries and the DDlog library directory (the
-directory that contains ``ddlog_std.dl``).  This option supports a
-few ways to do that:
-
-  * If binaries are in $PATH, use the library directory as argument,
-    e.g. ``--with-ddlog=$HOME/differential-datalog/lib``.  This is
-    suitable if DDlog was installed from source via ``stack install`` or
-    from (hypothetical) distribution packaging.
-
-    The DDlog documentation recommends pointing $DDLOG_HOME to the
-    DDlog source directory.  If you did this, so that $DDLOG_HOME/lib
-    is the library directory, you may use ``--with-ddlog`` without an
-    argument.
-
-  * If the binaries and libraries are in the ``bin`` and ``lib``
-    subdirectories of an installation directory, use the installation
-    directory as the argument.  This is suitable if DDlog was
-    installed from one of the binary tarballs published by the DDlog
-    developers.
-
-.. note::
-
-   Building with DDLog adds a few minutes to the build because the
-   Rust compiler is slow.  Add ``--enable-ddlog-fast-build`` to make
-   this about 2x faster.  This disables some Rust compiler
-   optimizations, making a much slower ``ovn-northd-ddlog``
-   executable, so it should not be used for production builds or for
-   profiling.
 
 By default, static libraries are built and linked against. If you want to use
 shared libraries instead::
@@ -418,14 +380,6 @@ An example after install might be::
     $ ovn-ctl start_northd
     $ ovn-ctl start_controller
 
-If you built with DDlog support, then you can start
-``ovn-northd-ddlog`` instead of ``ovn-northd`` by adding
-``--ovn-northd-ddlog=yes``, e.g.::
-
-    $ export PATH=$PATH:/usr/local/share/ovn/scripts
-    $ ovn-ctl --ovn-northd-ddlog=yes start_northd
-    $ ovn-ctl start_controller
-
 Starting OVN Central services
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -480,11 +434,6 @@ Start ``ovn-northd``, telling it to connect to the OVN db servers same
 Unix domain socket::
 
     $ ovn-northd --pidfile --detach --log-file
-
-If you built with DDlog support, you can start ``ovn-northd-ddlog``
-instead, the same way::
-
-    $ ovn-northd-ddlog --pidfile --detach --log-file
 
 Starting OVN Central services in containers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -5,13 +5,11 @@ m4_include([m4/compat.m4])
 
 dnl Make AT_SETUP automatically do some things for us:
 dnl - Run the ovs_init() shell function as the first step in every test.
-dnl - If NORTHD_TYPE is defined, then append it to the test name and
+dnl - If NORTHD_USE_DP_GROUPS is defined, then append it to the test name and
 dnl   set it as a shell variable as well.
 m4_rename([AT_SETUP], [OVS_AT_SETUP])
 m4_define([AT_SETUP],
-  [OVS_AT_SETUP($@[]m4_ifdef([NORTHD_TYPE], [ -- NORTHD_TYPE])[]m4_ifdef([NORTHD_USE_PARALLELIZATION], [ -- parallelization=NORTHD_USE_PARALLELIZATION])[]m4_ifdef([OVN_MONITOR_ALL], [ -- ovn_monitor_all=OVN_MONITOR_ALL]))
-m4_ifdef([NORTHD_TYPE], [[NORTHD_TYPE]=NORTHD_TYPE
-])dnl
+  [OVS_AT_SETUP($@[]m4_ifdef([NORTHD_USE_PARALLELIZATION], [ -- parallelization=NORTHD_USE_PARALLELIZATION])[]m4_ifdef([OVN_MONITOR_ALL], [ -- ovn_monitor_all=OVN_MONITOR_ALL]))
 m4_ifdef([NORTHD_USE_PARALLELIZATION], [[NORTHD_USE_PARALLELIZATION]=NORTHD_USE_PARALLELIZATION
 ])dnl
 m4_ifdef([NORTHD_DUMMY_NUMA], [[NORTHD_DUMMY_NUMA]=NORTHD_DUMMY_NUMA

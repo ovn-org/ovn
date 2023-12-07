@@ -786,7 +786,6 @@ set_defaults () {
     OVN_CONTROLLER_WRAPPER=
     OVSDB_NB_WRAPPER=
     OVSDB_SB_WRAPPER=
-    OVN_NORTHD_DDLOG=no
 
     OVSDB_DISABLE_FILE_COLUMN_DIFF=no
 
@@ -1031,9 +1030,6 @@ Options:
   --db-sb-relay-remote           Specifies upstream cluster/server remote for ovsdb relay
   --db-sb-relay-use-remote-in-db=no|yes
                                  OVN_Sorthbound db listen on target connection table (default: $DB_SB_RELAY_USE_REMOTE_IN_DB)
-
-  --ovn-northd-ddlog=yes|no      whether we should run the DDlog version
-                                 of ovn-northd.  The default is "no".
   -h, --help                     display this help message
 
 File location options:
@@ -1212,11 +1208,7 @@ do
     esac
 done
 
-if test X"$OVN_NORTHD_DDLOG" = Xyes; then
-    OVN_NORTHD_BIN=ovn-northd-ddlog
-else
-    OVN_NORTHD_BIN=ovn-northd
-fi
+OVN_NORTHD_BIN=ovn-northd
 
 case $command in
     start_northd)

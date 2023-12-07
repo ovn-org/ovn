@@ -7248,7 +7248,7 @@ compare_dhcp_packets 1
 
 # Stop ovn-northd so that we can modify the northd_version.
 as northd
-OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
 
 northd_version=$(ovn-sbctl get SB_Global . options:northd_internal_version | sed s/\"//g)
 echo "northd version = $northd_version"
@@ -8805,7 +8805,7 @@ as ovn-nb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
 as northd
-OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
 AT_CLEANUP
 ])
 
@@ -9611,8 +9611,8 @@ check test "$c6_tag" != "$c3_tag"
 
 AS_BOX([restart northd and make sure tag allocation is stable])
 as northd
-OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
-start_daemon NORTHD_TYPE \
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+start_daemon ovn-northd \
     --ovnnb-db=unix:"$ovs_base"/ovn-nb/ovn-nb.sock \
     --ovnsb-db=unix:"$ovs_base"/ovn-sb/ovn-sb.sock
 
@@ -25547,7 +25547,7 @@ check_row_count Service_Monitor 0
 # Let's also be sure the warning message about SCTP load balancers is
 # is in the ovn-northd log
 
-AT_CHECK([test 1 = `grep -c "SCTP load balancers do not currently support health checks" northd/NORTHD_TYPE.log`])
+AT_CHECK([test 1 = `grep -c "SCTP load balancers do not currently support health checks" northd/ovn-northd.log`])
 
 AT_CLEANUP
 ])
@@ -30791,7 +30791,7 @@ check ovn-nbctl --wait=hv ls-lb-del sw0 lb-ipv6
 # original destination tuple.
 #
 # ovn-controller should fall back to matching on ct_nw_dst()/ct_tp_dst().
-as northd ovn-appctl -t NORTHD_TYPE pause
+as northd ovn-appctl -t ovn-northd pause
 
 check ovn-sbctl \
     -- remove load_balancer lb-ipv4-tcp options hairpin_orig_tuple \
@@ -30840,7 +30840,7 @@ OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=70 | ofctl_strip_a
 ])
 
 # Resume ovn-northd.
-as northd ovn-appctl -t NORTHD_TYPE resume
+as northd ovn-appctl -t ovn-northd resume
 check ovn-nbctl --wait=hv sync
 
 as hv2 ovs-vsctl del-port hv2-vif1
@@ -30959,7 +30959,7 @@ AT_CHECK([grep -c $northd_version hv1/ovn-controller.log], [0], [1
 
 # Stop ovn-northd so that we can modify the northd_version.
 as northd
-OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
 
 check ovn-sbctl set SB_Global . options:northd_internal_version=foo
 
@@ -31101,7 +31101,7 @@ OVS_WAIT_UNTIL([test `ovs-vsctl get Interface lsp2 external_ids:ovn-installed` =
 AS_BOX([ovn-controller should not reset Port_Binding.up without northd])
 # Pause northd and clear the "up" field to simulate older ovn-northd
 # versions writing to the Southbound DB.
-as northd ovn-appctl -t NORTHD_TYPE pause
+as northd ovn-appctl -t ovn-northd pause
 
 as hv1 ovn-appctl -t ovn-controller debug/pause
 check ovn-sbctl clear Port_Binding lsp1 up
@@ -31116,7 +31116,7 @@ check_column "" Port_Binding up logical_port=lsp1
 
 # Once northd should explicitly set the Port_Binding.up field to 'false' and
 # ovn-controller sets it to 'true' as soon as the update is processed.
-as northd ovn-appctl -t NORTHD_TYPE resume
+as northd ovn-appctl -t ovn-northd resume
 wait_column "true" Port_Binding up logical_port=lsp1
 wait_column "true" nb:Logical_Switch_Port up name=lsp1
 
@@ -31270,7 +31270,7 @@ check ovn-nbctl lsp-set-addresses sw0-p4 "00:00:00:00:00:04 192.168.47.4"
 # Pause ovn-northd. When it is resumed, all the below NB updates
 # will be sent in one transaction.
 
-check as northd ovn-appctl -t NORTHD_TYPE pause
+check as northd ovn-appctl -t ovn-northd pause
 
 check ovn-nbctl lsp-add sw0 sw0-p1
 check ovn-nbctl lsp-set-addresses sw0-p1 "00:00:00:00:00:01 192.168.47.1"
@@ -31282,7 +31282,7 @@ check ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4 && ip4.src == 
 
 # resume ovn-northd now. This should result in a single update message
 # from SB ovsdb-server to ovn-controller for all the above NB updates.
-check as northd ovn-appctl -t NORTHD_TYPE resume
+check as northd ovn-appctl -t ovn-northd resume
 
 AS_BOX([Wait for sw0-p1 and sw0-p2 to be up])
 wait_for_ports_up sw0-p1 sw0-p2

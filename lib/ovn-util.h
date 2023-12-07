@@ -311,11 +311,6 @@ BUILD_ASSERT_DECL(
 /* The number of tables for the ingress and egress pipelines. */
 #define LOG_PIPELINE_LEN 29
 
-#ifdef DDLOG
-void ddlog_warn(const char *msg);
-void ddlog_err(const char *msg);
-#endif
-
 static inline uint32_t
 hash_add_in6_addr(uint32_t hash, const struct in6_addr *addr)
 {

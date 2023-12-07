@@ -305,36 +305,26 @@ bool
 extract_lrp_networks(const struct nbrec_logical_router_port *lrp,
                      struct lport_addresses *laddrs)
 {
-    return extract_lrp_networks__(lrp->mac, lrp->networks, lrp->n_networks,
-                                  laddrs);
-}
-
-/* Separate out the body of 'extract_lrp_networks()' for use from DDlog,
- * which does not know the 'nbrec_logical_router_port' type. */
-bool
-extract_lrp_networks__(char *mac, char **networks, size_t n_networks,
-                       struct lport_addresses *laddrs)
-{
     memset(laddrs, 0, sizeof *laddrs);
 
-    if (!eth_addr_from_string(mac, &laddrs->ea)) {
+    if (!eth_addr_from_string(lrp->mac, &laddrs->ea)) {
         laddrs->ea = eth_addr_zero;
         return false;
     }
     snprintf(laddrs->ea_s, sizeof laddrs->ea_s, ETH_ADDR_FMT,
              ETH_ADDR_ARGS(laddrs->ea));
 
-    for (int i = 0; i < n_networks; i++) {
+    for (int i = 0; i < lrp->n_networks; i++) {
         ovs_be32 ip4;
         struct in6_addr ip6;
         unsigned int plen;
         char *error;
 
-        error = ip_parse_cidr(networks[i], &ip4, &plen);
+        error = ip_parse_cidr(lrp->networks[i], &ip4, &plen);
         if (!error) {
             if (!ip4) {
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_WARN_RL(&rl, "bad 'networks' %s", networks[i]);
+                VLOG_WARN_RL(&rl, "bad 'networks' %s", lrp->networks[i]);
                 continue;
             }
 
@@ -343,13 +333,13 @@ extract_lrp_networks__(char *mac, char **networks, size_t n_networks,
         }
         free(error);
 
-        error = ipv6_parse_cidr(networks[i], &ip6, &plen);
+        error = ipv6_parse_cidr(lrp->networks[i], &ip6, &plen);
         if (!error) {
             add_ipv6_netaddr(laddrs, ip6, plen);
         } else {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
             VLOG_INFO_RL(&rl, "invalid syntax '%s' in networks",
-                         networks[i]);
+                         lrp->networks[i]);
             free(error);
         }
     }
@@ -888,21 +878,6 @@ ovn_get_internal_version(void)
                      sbrec_get_db_version(),
                      N_OVNACTS, OVN_INTERNAL_MINOR_VER);
 }
-
-#ifdef DDLOG
-/* Callbacks used by the ddlog northd code to print warnings and errors. */
-void
-ddlog_warn(const char *msg)
-{
-    VLOG_WARN("%s", msg);
-}
-
-void
-ddlog_err(const char *msg)
-{
-    VLOG_ERR("%s", msg);
-}
-#endif
 
 uint32_t
 get_tunnel_type(const char *name)

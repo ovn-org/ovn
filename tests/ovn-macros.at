@@ -47,11 +47,11 @@ m4_define([OVN_CLEANUP],[
     OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
     as northd
-    OVS_APP_EXIT_AND_WAIT([[$NORTHD_TYPE]])
+    OVS_APP_EXIT_AND_WAIT([ovn-northd])
 
     if test -d northd-backup; then
         as northd-backup
-        OVS_APP_EXIT_AND_WAIT([[$NORTHD_TYPE]])
+        OVS_APP_EXIT_AND_WAIT([ovn-northd])
     fi
 
     OVN_CLEANUP_VSWITCH([main])
@@ -71,11 +71,11 @@ m4_define([OVN_CLEANUP_AZ],[
     OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
     as $1/northd
-    OVS_APP_EXIT_AND_WAIT([[$NORTHD_TYPE]])
+    OVS_APP_EXIT_AND_WAIT([ovn-northd])
 
     if test -d $1/northd-backup; then
         as $1/northd-backup
-        OVS_APP_EXIT_AND_WAIT([[$NORTHD_TYPE]])
+        OVS_APP_EXIT_AND_WAIT([ovn-northd])
     fi
 
     as $1/ic
@@ -165,11 +165,6 @@ ovn_start_northd() {
         backup) suffix=-backup ;;
     esac
 
-    case ${NORTHD_TYPE:=ovn-northd} in
-        ovn-northd) ;;
-        ovn-northd-ddlog) northd_args="$northd_args --ddlog-record=${AZ:+$AZ/}northd$suffix/replay.dat -v" ;;
-    esac
-
     if test X$NORTHD_USE_PARALLELIZATION = Xyes; then
         northd_args="$northd_args --n-threads=4"
     fi
@@ -177,7 +172,7 @@ ovn_start_northd() {
     local name=${d_prefix}northd${suffix}
     echo "${prefix}starting $name"
     test -d "$ovs_base/$name" || mkdir "$ovs_base/$name"
-    as $name start_daemon $NORTHD_TYPE $northd_args -vjsonrpc \
+    as $name start_daemon ovn-northd $northd_args -vjsonrpc \
                --ovnnb-db=$OVN_NB_DB --ovnsb-db=$OVN_SB_DB
 }
 
@@ -219,10 +214,7 @@ ovn_start () {
     fi
 
     if test X$HAVE_OPENSSL = Xyes; then
-        # Create the SB DB pssl+RBAC connection. Ideally we could pre-create
-        # SB_Global and Connection with ovsdb-tool transact at DB creation
-        # time, but unfortunately that does not work, northd-ddlog will replace
-        # the SB_Global record on startup.
+        # Create the SB DB pssl+RBAC connection.
         ovn-sbctl \
             -- --id=@c create connection \
                 target=\"pssl:0:127.0.0.1\" role=ovn-controller \
@@ -959,26 +951,23 @@ m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
 # Defines versions of the test with all combinations of northd,
 # parallelization enabled and conditional monitoring on/off.
 m4_define([OVN_FOR_EACH_NORTHD],
-  [m4_foreach([NORTHD_TYPE], [ovn-northd],
-     [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes],
-       [m4_foreach([OVN_MONITOR_ALL], [yes, no], [$1
-])])])])
+  [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes],
+     [m4_foreach([OVN_MONITOR_ALL], [yes, no], [$1
+])])])
 
 # Defines versions of the test with all combinations of northd and
 # parallelization enabled. To be used when the ovn-controller configuration
 # is not relevant.
 m4_define([OVN_FOR_EACH_NORTHD_NO_HV],
-  [m4_foreach([NORTHD_TYPE], [ovn-northd],
-     [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes], [$1
-])])])
+  [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes], [$1
+])])
 
 # Defines versions of the test with all combinations of northd and
 # parallelization on/off. To be used when the ovn-controller configuration
 # is not relevant and we want to test parallelization permutations.
 m4_define([OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION],
-  [m4_foreach([NORTHD_TYPE], [ovn-northd],
-     [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes, no], [$1
-])])])
+  [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes, no], [$1
+])])
 
 # OVN_NBCTL(NBCTL_COMMAND) adds NBCTL_COMMAND to list of commands to be run by RUN_OVN_NBCTL().
 m4_define([OVN_NBCTL], [

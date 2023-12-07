@@ -45,4 +45,3 @@ vSwitch.
    ovn-ovsdb-relay
    ovn-ipsec
    ovn-interconnection
-   ddlog-new-feature

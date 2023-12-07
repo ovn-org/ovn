@@ -16,7 +16,7 @@ m4_define([CACHE_NBDB],[
 #
 m4_define([MEASURE_RECOMPUTE],[
     PERF_RECORD_START(Measure northd recompute)
-    ovn-appctl -t northd/NORTHD_TYPE inc-engine/recompute
+    ovn-appctl -t northd/ovn-northd inc-engine/recompute
     ovn-nbctl --wait=sb sync
     PERF_RECORD_STOP()
 ])
@@ -77,7 +77,7 @@ m4_define([PARSE_STOPWATCH], [
 # to performance results.
 #
 m4_define([PERF_RECORD_STOPWATCH], [
-    PERF_RECORD_RESULT($3, [`ovn-appctl -t northd/NORTHD_TYPE stopwatch/show $1 | PARSE_STOPWATCH($2)`])
+    PERF_RECORD_RESULT($3, [`ovn-appctl -t northd/ovn-northd stopwatch/show $1 | PARSE_STOPWATCH($2)`])
 ])
 
 # PERF_RECORD()
@@ -98,7 +98,7 @@ m4_define([PERF_RECORD_STOP], [
     PERF_RECORD_STOPWATCH(sync_meters_run, ["Maximum"], [Maximum (sync_meters in msec)])
     PERF_RECORD_STOPWATCH(sync_meters_run, ["Short term average"], [Average (sync_meters in msec)])
 
-    ovn-appctl -t northd/NORTHD_TYPE stopwatch/reset
+    ovn-appctl -t northd/ovn-northd stopwatch/reset
 ])
 
 OVS_START_SHELL_HELPERS

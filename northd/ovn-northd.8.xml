@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manpage program="ovn-northd" section="8" title="ovn-northd">
     <h1>Name</h1>
-    <p>ovn-northd and ovn-northd-ddlog -- Open Virtual Network central control daemon</p>
+    <p>ovn-northd -- Open Virtual Network central control daemon</p>
 
     <h1>Synopsis</h1>
     <p><code>ovn-northd</code> [<var>options</var>]</p>
@@ -16,14 +16,6 @@
       from the OVN Northbound Database (see <code>ovn-nb</code>(5)),
       into logical datapath flows in the OVN Southbound Database (see
       <code>ovn-sb</code>(5)) below it.
-    </p>
-
-    <p>
-      <code>ovn-northd</code> is implemented in C.
-      <code>ovn-northd-ddlog</code> is a compatible implementation written in
-      DDlog, a language for incremental database processing.  This
-      documentation applies to both implementations, with differences indicated
-      where relevant.
     </p>
 
     <h1>Options</h1>
@@ -42,16 +34,6 @@
         as the default.  Otherwise, the default is
         <code>unix:@RUNDIR@/ovnsb_db.sock</code>.
       </dd>
-      <dt><code>--ddlog-record=<var>file</var></code></dt>
-      <dd>
-        This option is for <code>ovn-north-ddlog</code> only.  It causes the
-        daemon to record the initial database state and later changes to
-        <var>file</var> in the text-based DDlog command format.  The
-        <code>ovn_northd_cli</code> program can later replay these changes for
-        debugging purposes.  This option has a performance impact.  See
-        <code>debugging-ddlog.rst</code> in the OVN documentation for more
-        details.
-      </dd>
       <dt><code>--dry-run</code></dt>
       <dd>
         <p>
@@ -60,12 +42,6 @@
           although it continues to monitor them.  For more information, see the
           <code>pause</code> command, under <code>Runtime Management
           Commands</code> below.
-        </p>
-
-        <p>
-          For <code>ovn-northd-ddlog</code>, one could use this option with
-          <code>--ddlog-record</code> to generate a replay log without
-          restarting a process or disturbing a running system.
         </p>
       </dd>
       <dt><code>n-threads N</code></dt>
@@ -84,10 +60,6 @@
           and a warning is logged.
           If N is more than 256, then N is set to 256, parallelization is
           enabled (with 256 threads) and a warning is logged.
-        </p>
-
-        <p>
-          ovn-northd-ddlog does not support this option.
         </p>
       </dd>
     </dl>
@@ -240,32 +212,6 @@
 
       </dl>
     </p>
-
-    <p>
-      Only <code>ovn-northd-ddlog</code> supports the following commands:
-    </p>
-
-    <dl>
-      <dt><code>enable-cpu-profiling</code></dt>
-      <dt><code>disable-cpu-profiling</code></dt>
-      <dd>
-        Enables or disables profiling of CPU time used by the DDlog engine.
-        When CPU profiling is enabled, the <code>profile</code> command (see
-        below) will include DDlog CPU usage statistics in its output.  Enabling
-        CPU profiling will slow <code>ovn-northd-ddlog</code>.  Disabling CPU
-        profiling does not clear any previously recorded statistics.
-      </dd>
-
-      <dt><code>profile</code></dt>
-      <dd>
-        Outputs a profile of the current and peak sizes of arrangements inside
-        DDlog.  This profiling data can be useful for optimizing DDlog code.
-        If CPU profiling was previously enabled (even if it was later
-        disabled), the output also includes a CPU time profile.  See
-        <code>Profiling</code> inside the tutorial in the DDlog repository for
-        an introduction to profiling DDlog.
-      </dd>
-    </dl>
 
     <h1>Active-Standby for High Availability</h1>
     <p>

@@ -11,6 +11,7 @@ Post v23.09.0
     ovn-controller no longer matters and is ignored.
   - Support CIDR based MAC binding aging threshold. See ovn-nb(5) for
     'mac_binding_age_threshold' for more details.
+  - ovn-northd-ddlog has been removed.
 
 OVN v23.09.0 - 15 Sep 2023
 --------------------------

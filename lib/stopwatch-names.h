@@ -15,9 +15,6 @@
 #ifndef STOPWATCH_NAMES_H
 #define STOPWATCH_NAMES_H 1
 
-/* In order to not duplicate names for stopwatches between ddlog and non-ddlog
- * we define them in a common header file.
- */
 #define NORTHD_LOOP_STOPWATCH_NAME "ovn-northd-loop"
 #define OVNNB_DB_RUN_STOPWATCH_NAME "ovnnb_db_run"
 #define OVNSB_DB_RUN_STOPWATCH_NAME "ovnsb_db_run"
