@@ -8275,6 +8275,37 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
         }
     }
 
+    struct shash_node *snat_snode;
+    SHASH_FOR_EACH (snat_snode, &op->od->snat_ips) {
+        struct ovn_snat_ip *snat_ip = snat_snode->data;
+
+        if (ovs_list_is_empty(&snat_ip->snat_entries)) {
+            continue;
+        }
+
+        struct ovn_nat *nat_entry =
+            CONTAINER_OF(ovs_list_front(&snat_ip->snat_entries),
+                         struct ovn_nat, ext_addr_list_node);
+        const struct nbrec_nat *nat = nat_entry->nb;
+
+        /* Check if the ovn port has a network configured on which we could
+         * expect ARP requests/NS for the SNAT external_ip.
+         */
+        if (nat_entry_is_v6(nat_entry)) {
+            if (!sset_contains(&op->od->lb_ips->ips_v6, nat->external_ip)) {
+                build_lswitch_rport_arp_req_flow(
+                    nat->external_ip, AF_INET6, sw_op, sw_od, 80, lflows,
+                    stage_hint);
+            }
+        } else {
+            if (!sset_contains(&op->od->lb_ips->ips_v4, nat->external_ip)) {
+                build_lswitch_rport_arp_req_flow(
+                    nat->external_ip, AF_INET, sw_op, sw_od, 80, lflows,
+                    stage_hint);
+            }
+        }
+    }
+
     for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
         build_lswitch_rport_arp_req_flow(
             op->lrp_networks.ipv4_addrs[i].addr_s, AF_INET, sw_op, sw_od, 80,
