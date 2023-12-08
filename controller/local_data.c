@@ -55,6 +55,20 @@ static bool datapath_is_transit_switch(const struct sbrec_datapath_binding *);
 
 static uint64_t local_datapath_usage;
 
+/* To be used when hmap_node.hash might be wrong e.g. tunnel_key got updated */
+struct local_datapath *
+get_local_datapath_no_hash(const struct hmap *local_datapaths,
+                           uint32_t tunnel_key)
+{
+    struct local_datapath *ld;
+    HMAP_FOR_EACH (ld, hmap_node, local_datapaths) {
+        if (ld->datapath->tunnel_key == tunnel_key) {
+            return ld;
+        }
+    }
+    return NULL;
+}
+
 struct local_datapath *
 get_local_datapath(const struct hmap *local_datapaths, uint32_t tunnel_key)
 {
