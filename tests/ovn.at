@@ -36127,3 +36127,46 @@ OVN_CLEANUP([hv1])
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Changing tunnel_key])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+
+check ovn-nbctl --wait=hv ls-add ls \
+          -- lsp-add ls lsp1 \
+          -- lsp-add ls ls-lr \
+          -- lr-add lr \
+          -- lrp-add lr lr-ls f0:00:00:00:00:f1 192.168.1.1/24 \
+          -- set Logical_Switch_Port ls-lr \
+               type=router \
+               options:router-port=lr-ls \
+               addresses=router \
+          -- lrp-set-gateway-chassis lr-ls hv1
+
+sleep_controller hv1
+
+check ovn-nbctl --wait=sb set Logical_Switch ls other_config:requested-tnl-key=1000
+check ovn-nbctl --wait=sb ls-del ls
+wake_up_controller hv1
+
+check ovn-nbctl --wait=hv sync
+
+check ovn-nbctl --wait=hv ls-add ls1 \
+      -- lsp-add ls1 ls1-lr \
+      -- lrp-add lr lr-ls1 f0:00:00:00:00:f2 192.168.2.1/24 \
+      -- set Logical_Switch_Port ls1-lr type=router options:router-port=lr-ls1 addresses=router \
+      -- lrp-set-gateway-chassis lr-ls1 hv1
+
+check ovn-nbctl --wait=hv set Logical_Switch ls1 other_config:requested-tnl-key=1001
+
+OVN_CLEANUP([hv1])
+
+AT_CLEANUP
+])
