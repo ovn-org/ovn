@@ -28,6 +28,7 @@ struct lport_index;
 struct ovsdb_idl_index;
 struct ovsdb_idl_txn;
 struct ovsrec_bridge;
+struct ovsrec_open_vswitch_table;
 struct sbrec_chassis;
 struct sbrec_dns_table;
 struct sbrec_controller_event_table;
@@ -52,7 +53,8 @@ void pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                  const struct hmap *local_datapaths,
                  const struct sset *active_tunnels,
                  const struct shash *local_active_ports_ipv6_pd,
-                 const struct shash *local_active_ports_ras);
+                 const struct shash *local_active_ports_ras,
+                 const struct ovsrec_open_vswitch_table *ovs_table);
 void pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn);
 void pinctrl_destroy(void);
 void pinctrl_set_br_int_name(char *br_int_name);

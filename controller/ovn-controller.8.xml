@@ -338,6 +338,17 @@
         of how many entries there are in the cache.  By default this is set to
         30000 (30 seconds).
       </dd>
+      <dt><code>external_ids:garp-max-timeout-sec</code></dt>
+      <dd>
+        When used, this configuration value specifies the maximum timeout
+        (in seconds) between two consecutive GARP packets sent by
+        <code>ovn-controller</code>.
+        <code>ovn-controller</code> by default sends just 4 GARP packets
+        with an exponential backoff timeout.
+        Setting <code>external_ids:garp-max-timeout-sec</code> allows to
+        cap for the exponential backoff used by <code>ovn-controller</code>
+        to send GARPs packets.
+      </dd>
     </dl>
 
     <p>

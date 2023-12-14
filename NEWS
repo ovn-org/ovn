@@ -3,6 +3,8 @@ OVN v21.12.3 - xx xxx xxxx
   - A new ACL option, "log-related" has been added that allows for reply and
     related traffic to be logged for an ACL in addition to the traffic that
     directly matches the ACL.
+  - Add "garp-max-timeout-sec" config option to vswitchd external-ids to
+    cap the time between when ovn-controller sends gARP packets.
 
 OVN v21.12.2 - 03 Jun 2022
 --------------------------
