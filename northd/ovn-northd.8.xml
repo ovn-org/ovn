@@ -2464,14 +2464,6 @@ output;
         </p>
 
         <p>
-          For each gateway port <var>GW</var> on a distributed logical router
-          a priority-120 flow that matches <code>inport == <var>cr-GW</var>
-          &amp;&amp; !is_chassis_resident(<var>cr-GW</var>)</code> where
-          <var>cr-GW</var> is the chassis resident port of <var>GW</var>,
-          stores <var>GW</var> as inport and advances to the next table.
-        </p>
-
-        <p>
           For a distributed logical router or for gateway router where
           the port is configured with <code>options:gateway_mtu</code>
           the action of the above flow is modified adding
