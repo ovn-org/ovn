@@ -506,6 +506,7 @@ Christian Stigen Larsen         cslarsen@gmail.com
 Christopher Paggen              cpaggen@cisco.com
 Chunhe Li                       lichunhe@huawei.com
 Daniel Badea                    daniel.badea@windriver.com
+Daniel Ding                     danieldin186@gmail.com
 Darragh O'Reilly                darragh.oreilly@hpe.com
 Dave Walker                     DaveWalker@ubuntu.com
 David Evans                     davidjoshuaevans@gmail.com
