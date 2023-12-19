@@ -1124,7 +1124,7 @@
 
         <column name="options" key="ethtype">
           Optional. VLAN EtherType field value for encapsulating VLAN
-          headers. Supported values: 802.11q (default), 802.11ad.
+          headers. Supported values: 802.1q (default), 802.1ad.
         </column>
 
         <column name="options" key="localnet_learn_fdb"
