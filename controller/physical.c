@@ -584,22 +584,33 @@ put_replace_chassis_mac_flows(const struct simap *ct_zones,
     }
 }
 
-#define VLAN_80211AD_ETHTYPE 0x88a8
-#define VLAN_80211Q_ETHTYPE 0x8100
+#define VLAN_8021AD_ETHTYPE 0x88a8
+#define VLAN_8021Q_ETHTYPE 0x8100
 
 static void
 ofpact_put_push_vlan(struct ofpbuf *ofpacts, const struct smap *options, int tag)
 {
     const char *ethtype_opt = options ? smap_get(options, "ethtype") : NULL;
 
-    int ethtype = VLAN_80211Q_ETHTYPE;
+    int ethtype = VLAN_8021Q_ETHTYPE;
     if (ethtype_opt) {
-        if (!strcasecmp(ethtype_opt, "802.11ad")) {
-            ethtype = VLAN_80211AD_ETHTYPE;
-        } else if (strcasecmp(ethtype_opt, "802.11q")) {
+      if (!strcasecmp(ethtype_opt, "802.11ad")
+          || !strcasecmp(ethtype_opt, "802.1ad")) {
+        ethtype = VLAN_8021AD_ETHTYPE;
+      } else if (!strcasecmp(ethtype_opt, "802.11q")
+                 || !strcasecmp(ethtype_opt, "802.1q")) {
+        ethtype = VLAN_8021Q_ETHTYPE;
+      } else {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
             VLOG_WARN_RL(&rl, "Unknown port ethtype: %s", ethtype_opt);
-        }
+      }
+      if (!strcasecmp(ethtype_opt, "802.11ad")
+          || !strcasecmp(ethtype_opt, "802.11q")) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "Using incorrect value ethtype: %s for either "
+                          "802.1q or 802.1ad please correct this value",
+                          ethtype_opt);
+      }
     }
 
     struct ofpact_push_vlan *push_vlan;

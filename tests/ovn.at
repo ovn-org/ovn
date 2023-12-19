@@ -3595,7 +3595,7 @@ OVN_FOR_EACH_NORTHD([
 AT_SETUP([VLAN transparency, passthru=true, multiple hosts, custom ethtype])
 ovn_start
 
-ethtype=802.11ad
+ethtype=802.1ad
 
 check ovn-nbctl ls-add ls
 check ovn-nbctl --wait=sb add Logical-Switch ls other_config vlan-passthru=true
