@@ -31,10 +31,12 @@ VLOG_DEFINE_THIS_MODULE(encaps);
 
 /*
  * Given there could be multiple tunnels with different IPs to the same
- * chassis we annotate the ovn-chassis-id with
- * <chassis_name>OVN_MVTEP_CHASSISID_DELIM<IP>.
+ * chassis we annotate the external_ids:ovn-chassis-id in tunnel port with
+ * <chassis_name>OVN_MVTEP_CHASSISID_DELIM<IP>. The external_id key
+ * "ovn-chassis-id" is kept for backward compatibility.
  */
 #define	OVN_MVTEP_CHASSISID_DELIM '@'
+#define OVN_TUNNEL_ID "ovn-chassis-id"
 
 static char *current_br_int_name = NULL;
 
@@ -55,8 +57,9 @@ encaps_register_ovs_idl(struct ovsdb_idl *ovs_idl)
 
 /* Enough context to create a new tunnel, using tunnel_add(). */
 struct tunnel_ctx {
-    /* Maps from a chassis name to "struct chassis_node *". */
-    struct shash chassis;
+    /* Maps from a tunnel-id (stored in external_ids:ovn-chassis-id) to
+     * "struct tunnel_node *". */
+    struct shash tunnel;
 
     /* Names of all ports in the bridge, to allow checking uniqueness when
      * adding a new tunnel. */
@@ -68,7 +71,7 @@ struct tunnel_ctx {
     const struct sbrec_chassis *this_chassis;
 };
 
-struct chassis_node {
+struct tunnel_node {
     const struct ovsrec_port *port;
     const struct ovsrec_bridge *bridge;
 };
@@ -104,7 +107,7 @@ encaps_tunnel_id_create(const char *chassis_id, const char *encap_ip)
 /*
  * Parses a 'tunnel_id' of the form <chassis_name><delimiter><IP>.
  * If the 'chassis_id' argument is not NULL the function will allocate memory
- * and store the chassis-id part of the tunnel-id at '*chassis_id'.
+ * and store the chassis_name part of the tunnel-id at '*chassis_id'.
  * If the 'encap_ip' argument is not NULL the function will allocate memory
  * and store the encapsulation IP part of the tunnel-id at '*encap_ip'.
  */
@@ -169,7 +172,7 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
 
     /*
      * Since a chassis may have multiple encap-ip, we can't just add the
-     * chassis name as as the "ovn-chassis-id" for the port; we use the
+     * chassis name as the OVN_TUNNEL_ID for the port; we use the
      * combination of the chassis_name and the encap-ip to identify
      * a specific tunnel to the chassis.
      */
@@ -260,25 +263,25 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
         }
     }
 
-    /* If there's an existing chassis record that does not need any change,
+    /* If there's an existing tunnel record that does not need any change,
      * keep it.  Otherwise, create a new record (if there was an existing
      * record, the new record will supplant it and encaps_run() will delete
      * it). */
-    struct chassis_node *chassis = shash_find_data(&tc->chassis,
-                                                   tunnel_entry_id);
-    if (chassis
-        && chassis->port->n_interfaces == 1
-        && !strcmp(chassis->port->interfaces[0]->type, encap->type)
-        && smap_equal(&chassis->port->interfaces[0]->options, &options)) {
-        shash_find_and_delete(&tc->chassis, tunnel_entry_id);
-        free(chassis);
+    struct tunnel_node *tunnel = shash_find_data(&tc->tunnel,
+                                                 tunnel_entry_id);
+    if (tunnel
+        && tunnel->port->n_interfaces == 1
+        && !strcmp(tunnel->port->interfaces[0]->type, encap->type)
+        && smap_equal(&tunnel->port->interfaces[0]->options, &options)) {
+        shash_find_and_delete(&tc->tunnel, tunnel_entry_id);
+        free(tunnel);
         goto exit;
     }
 
     /* Choose a name for the new port.  If we're replacing an old port, reuse
      * its name, otherwise generate a new, unique name. */
-    char *port_name = (chassis
-                       ? xstrdup(chassis->port->name)
+    char *port_name = (tunnel
+                       ? xstrdup(tunnel->port->name)
                        : tunnel_create_name(tc, new_chassis_id));
     if (!port_name) {
         VLOG_WARN("Unable to allocate unique name for '%s' tunnel",
@@ -294,7 +297,7 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
     struct ovsrec_port *port = ovsrec_port_insert(tc->ovs_txn);
     ovsrec_port_set_name(port, port_name);
     ovsrec_port_set_interfaces(port, &iface, 1);
-    const struct smap id = SMAP_CONST1(&id, "ovn-chassis-id", tunnel_entry_id);
+    const struct smap id = SMAP_CONST1(&id, OVN_TUNNEL_ID, tunnel_entry_id);
     ovsrec_port_set_external_ids(port, &id);
 
     ovsrec_bridge_update_ports_addvalue(tc->br_int, port);
@@ -394,7 +397,7 @@ clear_old_tunnels(const struct ovsrec_bridge *old_br_int, const char *prefix,
 {
     for (size_t i = 0; i < old_br_int->n_ports; i++) {
         const struct ovsrec_port *port = old_br_int->ports[i];
-        const char *id = smap_get(&port->external_ids, "ovn-chassis-id");
+        const char *id = smap_get(&port->external_ids, OVN_TUNNEL_ID);
         if (id && !strncmp(port->name, prefix, prefix_len)) {
             VLOG_DBG("Clearing old tunnel port \"%s\" (%s) from bridge "
                      "\"%s\".", port->name, id, old_br_int->name);
@@ -449,7 +452,7 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
     const struct sbrec_chassis *chassis_rec;
 
     struct tunnel_ctx tc = {
-        .chassis = SHASH_INITIALIZER(&tc.chassis),
+        .tunnel = SHASH_INITIALIZER(&tc.tunnel),
         .port_names = SSET_INITIALIZER(&tc.port_names),
         .br_int = br_int,
         .this_chassis = this_chassis,
@@ -468,19 +471,15 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
         const struct ovsrec_port *port = br_int->ports[i];
         sset_add(&tc.port_names, port->name);
 
-        /*
-         * note that the id here is not just the chassis name, but the
-         * combination of <chassis_name><delim><encap_ip>
-         */
-        const char *id = smap_get(&port->external_ids, "ovn-chassis-id");
+        const char *id = smap_get(&port->external_ids, OVN_TUNNEL_ID);
         if (id) {
-            if (!shash_find(&tc.chassis, id)) {
-                struct chassis_node *chassis = xzalloc(sizeof *chassis);
-                chassis->bridge = br_int;
-                chassis->port = port;
-                shash_add_assert(&tc.chassis, id, chassis);
+            if (!shash_find(&tc.tunnel, id)) {
+                struct tunnel_node *tunnel = xzalloc(sizeof *tunnel);
+                tunnel->bridge = br_int;
+                tunnel->port = port;
+                shash_add_assert(&tc.tunnel, id, tunnel);
             } else {
-                /* Duplicate port for ovn-chassis-id.  Arbitrarily choose
+                /* Duplicate port for tunnel-id.  Arbitrarily choose
                  * to delete this one. */
                 ovsrec_bridge_update_ports_delvalue(br_int, port);
             }
@@ -517,13 +516,13 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
 
     /* Delete any existing OVN tunnels that were not still around. */
     struct shash_node *node;
-    SHASH_FOR_EACH_SAFE (node, &tc.chassis) {
-        struct chassis_node *chassis = node->data;
-        ovsrec_bridge_update_ports_delvalue(chassis->bridge, chassis->port);
-        shash_delete(&tc.chassis, node);
-        free(chassis);
+    SHASH_FOR_EACH_SAFE (node, &tc.tunnel) {
+        struct tunnel_node *tunnel = node->data;
+        ovsrec_bridge_update_ports_delvalue(tunnel->bridge, tunnel->port);
+        shash_delete(&tc.tunnel, node);
+        free(tunnel);
     }
-    shash_destroy(&tc.chassis);
+    shash_destroy(&tc.tunnel);
     sset_destroy(&tc.port_names);
 }
 
@@ -542,7 +541,7 @@ encaps_cleanup(struct ovsdb_idl_txn *ovs_idl_txn,
         = xmalloc(sizeof *br_int->ports * br_int->n_ports);
     size_t n = 0;
     for (size_t i = 0; i < br_int->n_ports; i++) {
-        if (!smap_get(&br_int->ports[i]->external_ids, "ovn-chassis-id")) {
+        if (!smap_get(&br_int->ports[i]->external_ids, OVN_TUNNEL_ID)) {
             ports[n++] = br_int->ports[i];
         }
     }

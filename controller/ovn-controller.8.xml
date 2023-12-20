@@ -178,7 +178,8 @@
       <dd>
         The IP address that a chassis should use to connect to this node
         using encapsulation types specified by
-        <code>external_ids:ovn-encap-type</code>.
+        <code>external_ids:ovn-encap-type</code>. Multiple encapsulation IPs
+        may be specified with a comma-separated list.
       </dd>
 
       <dt><code>external_ids:ovn-encap-df_default</code></dt>
