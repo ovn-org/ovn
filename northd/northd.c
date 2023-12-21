@@ -10772,13 +10772,25 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
             meter = copp_meter_get(COPP_REJECT, od->nbr->copp, meter_groups);
         }
 
+        int l3dgw_ports_index = 0;
         if (lb_vip->n_backends || !lb_vip->empty_backend_rej) {
+            for (size_t j = 0; j < od->n_l3dgw_ports; j++) {
+                if (find_lrp_member_ip(od->l3dgw_ports[j], lb_vip->vip_str)) {
+                    l3dgw_ports_index = j;
+                    break;
+                } else {
+                    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+                    VLOG_WARN_RL(&rl,
+                                 "No matched LRP's subnet for VIP %s",
+                                 lb_vip->vip_str);
+                }
+            }
             new_match_p = xasprintf("%s && is_chassis_resident(%s)",
                                     new_match,
-                                    od->l3dgw_ports[0]->cr_port->json_key);
+                                    od->l3dgw_ports[l3dgw_ports_index]->cr_port->json_key);
             est_match_p = xasprintf("%s && is_chassis_resident(%s)",
                                     est_match,
-                                    od->l3dgw_ports[0]->cr_port->json_key);
+                                    od->l3dgw_ports[l3dgw_ports_index]->cr_port->json_key);
         }
 
         if (lb->skip_snat) {
@@ -10819,8 +10831,9 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
         char *undnat_match_p = xasprintf(
             "%s) && outport == %s && is_chassis_resident(%s)",
             ds_cstr(&undnat_match),
-            od->l3dgw_ports[0]->json_key,
-            od->l3dgw_ports[0]->cr_port->json_key);
+            od->l3dgw_ports[l3dgw_ports_index]->json_key,
+            od->l3dgw_ports[l3dgw_ports_index]->cr_port->json_key);
+
         if (lb->skip_snat) {
             ovn_lflow_add_with_hint(lflows, od, S_ROUTER_OUT_UNDNAT, 120,
                                     undnat_match_p, skip_snat_est_action,
