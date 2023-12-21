@@ -75,7 +75,7 @@ bfd_calculate_active_tunnels(const struct ovsrec_bridge *br_int,
                             char *chassis_name = NULL;
 
                             if (encaps_tunnel_id_parse(id, &chassis_name,
-                                                       NULL)) {
+                                                       NULL, NULL)) {
                                 if (!sset_contains(active_tunnels,
                                                    chassis_name)) {
                                     sset_add(active_tunnels, chassis_name);
@@ -204,7 +204,7 @@ bfd_run(const struct ovsrec_interface_table *interface_table,
 
             sset_add(&tunnels, port_name);
 
-            if (encaps_tunnel_id_parse(tunnel_id, &chassis_name, NULL)) {
+            if (encaps_tunnel_id_parse(tunnel_id, &chassis_name, NULL, NULL)) {
                 if (sset_contains(&bfd_chassis, chassis_name)) {
                     sset_add(&bfd_ifaces, port_name);
                 }

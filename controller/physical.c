@@ -137,16 +137,18 @@ put_resubmit(uint8_t table_id, struct ofpbuf *ofpacts)
  * port.
  */
 static struct chassis_tunnel *
-get_port_binding_tun(const struct sbrec_encap *encap,
+get_port_binding_tun(const struct sbrec_encap *remote_encap,
+                     const struct sbrec_encap *local_encap,
                      const struct sbrec_chassis *chassis,
                      const struct hmap *chassis_tunnels)
 {
     struct chassis_tunnel *tun = NULL;
-    if (encap) {
-        tun = chassis_tunnel_find(chassis_tunnels, chassis->name, encap->ip);
-    }
+    tun = chassis_tunnel_find(chassis_tunnels, chassis->name,
+                              remote_encap ? remote_encap->ip : NULL,
+                              local_encap ? local_encap->ip : NULL);
+
     if (!tun) {
-        tun = chassis_tunnel_find(chassis_tunnels, chassis->name, NULL);
+        tun = chassis_tunnel_find(chassis_tunnels, chassis->name, NULL, NULL);
     }
     return tun;
 }
@@ -335,7 +337,7 @@ get_remote_tunnels(const struct sbrec_port_binding *binding,
     ovs_list_init(tunnels);
 
     if (binding->chassis && binding->chassis != chassis) {
-        tun = get_port_binding_tun(binding->encap, binding->chassis,
+        tun = get_port_binding_tun(binding->encap, NULL, binding->chassis,
                                    chassis_tunnels);
         if (!tun) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
@@ -356,7 +358,7 @@ get_remote_tunnels(const struct sbrec_port_binding *binding,
         }
         const struct sbrec_encap *additional_encap;
         additional_encap = find_additional_encap_for_chassis(binding, chassis);
-        tun = get_port_binding_tun(additional_encap,
+        tun = get_port_binding_tun(additional_encap, NULL,
                                    binding->additional_chassis[i],
                                    chassis_tunnels);
         if (!tun) {
@@ -432,10 +434,10 @@ put_remote_port_redirect_overlay_ha_remote(
             continue;
         }
         if (!tun) {
-            tun = chassis_tunnel_find(chassis_tunnels, ch->name, NULL);
+            tun = chassis_tunnel_find(chassis_tunnels, ch->name, NULL, NULL);
         } else {
             struct chassis_tunnel *chassis_tunnel =
-                chassis_tunnel_find(chassis_tunnels, ch->name, NULL);
+                chassis_tunnel_find(chassis_tunnels, ch->name, NULL, NULL);
             if (chassis_tunnel &&
                 tun->type != chassis_tunnel->type) {
                 static struct vlog_rate_limit rl =
@@ -469,7 +471,7 @@ put_remote_port_redirect_overlay_ha_remote(
         if (!ch) {
             continue;
         }
-        tun = chassis_tunnel_find(chassis_tunnels, ch->name, NULL);
+        tun = chassis_tunnel_find(chassis_tunnels, ch->name, NULL, NULL);
         if (!tun) {
             continue;
         }
@@ -1930,7 +1932,7 @@ tunnel_to_chassis(enum mf_field_id mff_ovn_geneve,
                   uint16_t outport, struct ofpbuf *remote_ofpacts)
 {
     const struct chassis_tunnel *tun
-        = chassis_tunnel_find(chassis_tunnels, chassis_name, NULL);
+        = chassis_tunnel_find(chassis_tunnels, chassis_name, NULL, NULL);
     if (!tun) {
         return;
     }
@@ -1953,7 +1955,7 @@ fanout_to_chassis(enum mf_field_id mff_ovn_geneve,
     const struct chassis_tunnel *prev = NULL;
     SSET_FOR_EACH (chassis_name, remote_chassis) {
         const struct chassis_tunnel *tun
-            = chassis_tunnel_find(chassis_tunnels, chassis_name, NULL);
+            = chassis_tunnel_find(chassis_tunnels, chassis_name, NULL, NULL);
         if (!tun) {
             continue;
         }
@@ -2520,7 +2522,7 @@ physical_run(struct physical_ctx *p_ctx,
 
             if (!binding->chassis ||
                 !encaps_tunnel_id_match(tun->chassis_id,
-                                        binding->chassis->name, NULL)) {
+                                        binding->chassis->name, NULL, NULL)) {
                 continue;
             }
 

@@ -402,7 +402,7 @@ local_nonvif_data_run(const struct ovsrec_bridge *br_int,
                                          "ovn-chassis-id");
         if (tunnel_id && encaps_tunnel_id_match(tunnel_id,
                                                 chassis_rec->name,
-                                                NULL)) {
+                                                NULL, NULL)) {
             continue;
         }
 
@@ -453,7 +453,7 @@ local_nonvif_data_run(const struct ovsrec_bridge *br_int,
                 char *hash_id = NULL;
                 char *ip = NULL;
 
-                if (!encaps_tunnel_id_parse(tunnel_id, &hash_id, &ip)) {
+                if (!encaps_tunnel_id_parse(tunnel_id, &hash_id, &ip, NULL)) {
                     continue;
                 }
                 struct chassis_tunnel *tun = xmalloc(sizeof *tun);
@@ -491,11 +491,10 @@ local_nonvif_data_handle_ovs_iface_changes(
 
 bool
 get_chassis_tunnel_ofport(const struct hmap *chassis_tunnels,
-                          const char *chassis_name, char *encap_ip,
-                          ofp_port_t *ofport)
+                          const char *chassis_name, ofp_port_t *ofport)
 {
     struct chassis_tunnel *tun = NULL;
-    tun = chassis_tunnel_find(chassis_tunnels, chassis_name, encap_ip);
+    tun = chassis_tunnel_find(chassis_tunnels, chassis_name, NULL, NULL);
     if (!tun) {
         return false;
     }
@@ -529,7 +528,7 @@ chassis_tunnels_destroy(struct hmap *chassis_tunnels)
  */
 struct chassis_tunnel *
 chassis_tunnel_find(const struct hmap *chassis_tunnels, const char *chassis_id,
-                    char *encap_ip)
+                    char *remote_encap_ip, char *local_encap_ip)
 {
     /*
      * If the specific encap_ip is given, look for the chassisid_ip entry,
@@ -538,7 +537,8 @@ chassis_tunnel_find(const struct hmap *chassis_tunnels, const char *chassis_id,
     struct chassis_tunnel *tun = NULL;
     HMAP_FOR_EACH_WITH_HASH (tun, hmap_node, hash_string(chassis_id, 0),
                              chassis_tunnels) {
-        if (encaps_tunnel_id_match(tun->chassis_id, chassis_id, encap_ip)) {
+        if (encaps_tunnel_id_match(tun->chassis_id, chassis_id,
+                                   remote_encap_ip, local_encap_ip)) {
             return tun;
         }
     }

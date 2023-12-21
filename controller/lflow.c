@@ -164,7 +164,7 @@ tunnel_ofport_cb(const void *aux_, const char *port_name, ofp_port_t *ofport)
     }
 
     if (!get_chassis_tunnel_ofport(aux->chassis_tunnels, pb->chassis->name,
-                                   NULL, ofport)) {
+                                   ofport)) {
         return false;
     }
 

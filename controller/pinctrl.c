@@ -5780,7 +5780,7 @@ get_localnet_vifs_l3gwports(
         const char *tunnel_id = smap_get(&port_rec->external_ids,
                                           "ovn-chassis-id");
         if (tunnel_id &&
-                encaps_tunnel_id_match(tunnel_id, chassis->name, NULL)) {
+                encaps_tunnel_id_match(tunnel_id, chassis->name, NULL, NULL)) {
             continue;
         }
         const char *localnet = smap_get(&port_rec->external_ids,

@@ -30352,6 +30352,54 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([multiple encap ips tunnel creation])
+ovn_start
+net_add n1
+
+# 2 HVs, each with 2 encap-ips.
+for i in 1 2; do
+    sim_add hv$i
+    as hv$i
+    ovs-vsctl add-br br-phys-$j
+    ovn_attach n1 br-phys-$j 192.168.0.${i}1
+    ovs-vsctl set open . external_ids:ovn-encap-ip=192.168.0.${i}1,192.168.0.${i}2
+done
+
+check ovn-nbctl --wait=hv sync
+
+check_tunnel_port() {
+    local hv=$1
+    local br=$2
+    local id=$3
+
+    as $hv
+    OVS_WAIT_UNTIL([
+        test "$(ovs-vsctl --format=table --no-headings find port external_ids:ovn-chassis-id="$id" | wc -l)" = "1"
+    ])
+    local tunnel_id=$(ovs-vsctl --bare --columns _uuid find port external_ids:ovn-chassis-id="$id")
+    AT_CHECK([ovs-vsctl --bare --columns ports find bridge name="$br" | grep -q "$tunnel_id"])
+}
+
+# Check that both chassis have tunnels.
+# 'tunnel_id' in the format:
+#   <chassis_id>@<remote_encap_ip>%<local_encap_ip>
+check_tunnel_port hv1 br-int hv2@192.168.0.21%192.168.0.11
+check_tunnel_port hv1 br-int hv2@192.168.0.22%192.168.0.11
+check_tunnel_port hv1 br-int hv2@192.168.0.21%192.168.0.12
+check_tunnel_port hv1 br-int hv2@192.168.0.22%192.168.0.12
+
+check_tunnel_port hv2 br-int hv1@192.168.0.11%192.168.0.21
+check_tunnel_port hv2 br-int hv1@192.168.0.12%192.168.0.21
+check_tunnel_port hv2 br-int hv1@192.168.0.11%192.168.0.22
+check_tunnel_port hv2 br-int hv1@192.168.0.12%192.168.0.22
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])
+
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([Load Balancer LS hairpin OF flows])
 ovn_start
@@ -36193,14 +36241,14 @@ check_tunnel_port() {
 }
 
 # Check that both chassis have tunnel
-check_tunnel_port hv1 br-int hv2@192.168.0.2
-check_tunnel_port hv2 br-int hv1@192.168.0.1
+check_tunnel_port hv1 br-int hv2@192.168.0.2%192.168.0.1
+check_tunnel_port hv2 br-int hv1@192.168.0.1%192.168.0.2
 
 # Stop ovn-controller on hv1
 check as hv1 ovn-appctl -t ovn-controller exit --restart
 
 # The tunnel should remain intact
-check_tunnel_port hv1 br-int hv2@192.168.0.2
+check_tunnel_port hv1 br-int hv2@192.168.0.2%192.168.0.1
 
 # Change the bridge to br-int1 on hv1
 as hv1
@@ -36210,8 +36258,8 @@ start_daemon ovn-controller --verbose="encaps:dbg"
 check ovn-nbctl --wait=hv sync
 
 # Check that the tunnel was created on br-int1 instead
-check_tunnel_port hv1 br-int1 hv2@192.168.0.2
-check grep -q "Clearing old tunnel port \"ovn-hv2-0\" (hv2@192.168.0.2) from bridge \"br-int\"" hv1/ovn-controller.log
+check_tunnel_port hv1 br-int1 hv2@192.168.0.2%192.168.0.1
+check grep -q "Clearing old tunnel port \"ovn-hv2-0\" (hv2@192.168.0.2%192.168.0.1) from bridge \"br-int\"" hv1/ovn-controller.log
 
 # Change the bridge to br-int1 on hv2
 as hv2
@@ -36222,21 +36270,21 @@ check ovn-nbctl --wait=hv sync
 
 
 # Check that the tunnel was created on br-int1 instead
-check_tunnel_port hv2 br-int1 hv1@192.168.0.1
-check grep -q "Clearing old tunnel port \"ovn-hv1-0\" (hv1@192.168.0.1) from bridge \"br-int\"" hv2/ovn-controller.log
+check_tunnel_port hv2 br-int1 hv1@192.168.0.1%192.168.0.2
+check grep -q "Clearing old tunnel port \"ovn-hv1-0\" (hv1@192.168.0.1%192.168.0.2) from bridge \"br-int\"" hv2/ovn-controller.log
 
 # Stop ovn-controller on hv1
 check as hv1 ovn-appctl -t ovn-controller exit --restart
 
 # The tunnel should remain intact
-check_tunnel_port hv1 br-int1 hv2@192.168.0.2
-prev_id=$(ovs-vsctl --bare --columns _uuid find port external_ids:ovn-chassis-id="hv2@192.168.0.2")
+check_tunnel_port hv1 br-int1 hv2@192.168.0.2%192.168.0.1
+prev_id=$(ovs-vsctl --bare --columns _uuid find port external_ids:ovn-chassis-id="hv2@192.168.0.2%192.168.0.1")
 
 # Start the controller again
 start_daemon ovn-controller --verbose="encaps:dbg"
 check ovn-nbctl --wait=hv sync
-check_tunnel_port hv1 br-int1 hv2@192.168.0.2
-current_id=$(ovs-vsctl --bare --columns _uuid find port external_ids:ovn-chassis-id="hv2@192.168.0.2")
+check_tunnel_port hv1 br-int1 hv2@192.168.0.2%192.168.0.1
+current_id=$(ovs-vsctl --bare --columns _uuid find port external_ids:ovn-chassis-id="hv2@192.168.0.2%192.168.0.1")
 
 # The tunnel should be the same after restart
 check test "$current_id" = "$prev_id"
@@ -36295,10 +36343,10 @@ check_tunnel_port() {
     AT_CHECK([ovs-vsctl --bare --columns ports find bridge name="$br" | grep -q "$tunnel_id"])
 }
 
-check_tunnel_port hv1 br-int hv2@192.168.0.2
-check_tunnel_port hv1 br-int-2 hv1@192.168.0.1
-prev_id1=$(ovs-vsctl --bare --columns _uuid find port external_ids:ovn-chassis-id="hv1@192.168.0.1")
-prev_id2=$(ovs-vsctl --bare --columns _uuid find port external_ids:ovn-chassis-id="hv2@192.168.0.2")
+check_tunnel_port hv1 br-int hv2@192.168.0.2%192.168.0.1
+check_tunnel_port hv1 br-int-2 hv1@192.168.0.1%192.168.0.2
+prev_id1=$(ovs-vsctl --bare --columns _uuid find port external_ids:ovn-chassis-id="hv1@192.168.0.1%192.168.0.2")
+prev_id2=$(ovs-vsctl --bare --columns _uuid find port external_ids:ovn-chassis-id="hv2@192.168.0.2%192.168.0.1")
 
 # The hv2 is running we can remove the override file
 rm -f ${OVN_SYSCONFDIR}/system-id-override
@@ -36319,13 +36367,13 @@ start_daemon ovn-controller --verbose="encaps:dbg" \
 
 check ovn-nbctl --wait=hv sync
 
-check_tunnel_port hv1 br-int hv2@192.168.0.2
-check_tunnel_port hv1 br-int-2 hv1@192.168.0.1
-current_id1=$(ovs-vsctl --bare --columns _uuid find port external_ids:ovn-chassis-id="hv1@192.168.0.1")
-current_id2=$(ovs-vsctl --bare --columns _uuid find port external_ids:ovn-chassis-id="hv2@192.168.0.2")
+check_tunnel_port hv1 br-int hv2@192.168.0.2%192.168.0.1
+check_tunnel_port hv1 br-int-2 hv1@192.168.0.1%192.168.0.2
+current_id1=$(ovs-vsctl --bare --columns _uuid find port external_ids:ovn-chassis-id="hv1@192.168.0.1%192.168.0.2")
+current_id2=$(ovs-vsctl --bare --columns _uuid find port external_ids:ovn-chassis-id="hv2@192.168.0.2%192.168.0.1")
 
 # Check that restart of hv1 ovn-controller did not interfere with hv2
-AT_CHECK([grep -q "Clearing old tunnel port \"ovn0-hv1-0\" (hv1@192.168.0.1) from bridge \"br-int-2\"" hv1/ovn-controller.log], [1])
+AT_CHECK([grep -q "Clearing old tunnel port \"ovn0-hv1-0\" (hv1@192.168.0.1%192.168.0.2) from bridge \"br-int-2\"" hv1/ovn-controller.log], [1])
 check test "$current_id1" = "$prev_id1"
 check test "$current_id2" = "$prev_id2"
 

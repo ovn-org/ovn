@@ -153,10 +153,11 @@ bool local_nonvif_data_handle_ovs_iface_changes(
 
 struct chassis_tunnel *chassis_tunnel_find(const struct hmap *chassis_tunnels,
                                            const char *chassis_id,
-                                           char *encap_ip);
+                                           char *remote_encap_ip,
+                                           char *local_encap_ip);
 
 bool get_chassis_tunnel_ofport(const struct hmap *chassis_tunnels,
-                               const char *chassis_name, char *encap_ip,
+                               const char *chassis_name,
                                ofp_port_t *ofport);
 
 void chassis_tunnels_destroy(struct hmap *chassis_tunnels);
