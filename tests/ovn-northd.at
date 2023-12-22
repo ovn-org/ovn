@@ -7105,6 +7105,109 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([ovn-northd -- lr multiple gw ports Load Balancer])
+AT_KEYWORDS([multiple-l3dgw-ports])
+ovn_start
+
+# Logical network:
+# 1 Logical Router, 3 bridged Logical Switches,
+# 1 gateway chassis attached to each corresponding LRP.
+#
+#                | S1 (gw1)
+#                |
+#      ls  ----  DR -- S3 (gw3)
+# (20.0.0.0/24)  |
+#                | S2 (gw2)
+#
+# Validate SNAT, DNAT and DNAT_AND_SNAT behavior with multiple
+# distributed gateway LRPs.
+
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+check ovn-sbctl chassis-add gw2 geneve 128.0.0.1
+check ovn-sbctl chassis-add gw3 geneve 129.0.0.1
+
+check ovn-nbctl lr-add DR
+check ovn-nbctl lrp-add DR DR-S1 02:ac:10:01:00:01 172.16.1.1/24
+check ovn-nbctl lrp-add DR DR-S2 03:ac:10:01:00:01 10.0.0.1/24
+check ovn-nbctl lrp-add DR DR-S3 04:ac:10:01:00:01 192.168.0.1/24
+check ovn-nbctl lrp-add DR DR-ls 05:ac:10:01:00:01 20.0.0.1/24
+
+check ovn-nbctl ls-add S1
+check ovn-nbctl lsp-add S1 S1-DR
+check ovn-nbctl lsp-set-type S1-DR router
+check ovn-nbctl lsp-set-addresses S1-DR router
+check ovn-nbctl --wait=sb lsp-set-options S1-DR router-port=DR-S1
+
+check ovn-nbctl ls-add S2
+check ovn-nbctl lsp-add S2 S2-DR
+check ovn-nbctl lsp-set-type S2-DR router
+check ovn-nbctl lsp-set-addresses S2-DR router
+check ovn-nbctl --wait=sb lsp-set-options S2-DR router-port=DR-S2
+
+check ovn-nbctl ls-add S3
+check ovn-nbctl lsp-add S3 S3-DR
+check ovn-nbctl lsp-set-type S3-DR router
+check ovn-nbctl lsp-set-addresses S3-DR router
+check ovn-nbctl --wait=sb lsp-set-options S3-DR router-port=DR-S3
+
+check ovn-nbctl ls-add  ls
+check ovn-nbctl lsp-add ls ls-DR
+check ovn-nbctl lsp-set-type ls-DR router
+check ovn-nbctl lsp-set-addresses ls-DR router
+check ovn-nbctl --wait=sb lsp-set-options ls-DR router-port=DR-ls
+
+check ovn-nbctl lrp-set-gateway-chassis DR-S1 gw1
+check ovn-nbctl lrp-set-gateway-chassis DR-S2 gw2
+check ovn-nbctl lrp-set-gateway-chassis DR-S3 gw3
+
+check ovn-nbctl lb-add lb1 172.16.1.10:80 20.0.0.10:80
+check ovn-nbctl lb-add lb2 10.0.0.10:80 20.0.0.20:80
+check ovn-nbctl lb-add lb3 192.168.0.10:80 20.0.0.30:80
+
+check ovn-nbctl lr-lb-add DR lb1
+check ovn-nbctl lr-lb-add DR lb2
+check ovn-nbctl lr-lb-add DR lb3
+
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows DR > lrflows
+AT_CAPTURE_FILE([lrflows])
+
+AT_CHECK([grep lr_in_defrag lrflows | sort], [0], [dnl
+  table=5 (lr_in_defrag       ), priority=0    , match=(1), action=(next;)
+  table=5 (lr_in_defrag       ), priority=110  , match=(ip && ip4.dst == 10.0.0.10 && tcp), action=(reg0 = 10.0.0.10; reg9[[16..31]] = tcp.dst; ct_dnat;)
+  table=5 (lr_in_defrag       ), priority=110  , match=(ip && ip4.dst == 172.16.1.10 && tcp), action=(reg0 = 172.16.1.10; reg9[[16..31]] = tcp.dst; ct_dnat;)
+  table=5 (lr_in_defrag       ), priority=110  , match=(ip && ip4.dst == 192.168.0.10 && tcp), action=(reg0 = 192.168.0.10; reg9[[16..31]] = tcp.dst; ct_dnat;)
+])
+
+AT_CHECK([grep lr_in_dnat lrflows | sort], [0], [dnl
+  table=7 (lr_in_dnat         ), priority=0    , match=(1), action=(next;)
+  table=7 (lr_in_dnat         ), priority=120  , match=(ct.est && !ct.rel && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1 && is_chassis_resident("cr-DR-S2")), action=(next;)
+  table=7 (lr_in_dnat         ), priority=120  , match=(ct.est && !ct.rel && ip4 && reg0 == 172.16.1.10 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1 && is_chassis_resident("cr-DR-S1")), action=(next;)
+  table=7 (lr_in_dnat         ), priority=120  , match=(ct.est && !ct.rel && ip4 && reg0 == 192.168.0.10 && tcp && reg9[[16..31]] == 80 && ct_label.natted == 1 && is_chassis_resident("cr-DR-S3")), action=(next;)
+  table=7 (lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && reg0 == 10.0.0.10 && tcp && reg9[[16..31]] == 80 && is_chassis_resident("cr-DR-S2")), action=(ct_lb(backends=20.0.0.20:80);)
+  table=7 (lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && reg0 == 172.16.1.10 && tcp && reg9[[16..31]] == 80 && is_chassis_resident("cr-DR-S1")), action=(ct_lb(backends=20.0.0.10:80);)
+  table=7 (lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && reg0 == 192.168.0.10 && tcp && reg9[[16..31]] == 80 && is_chassis_resident("cr-DR-S3")), action=(ct_lb(backends=20.0.0.30:80);)
+])
+
+AT_CHECK([grep lr_out_undnat lrflows | sort], [0], [dnl
+  table=1 (lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=1 (lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 20.0.0.10 && tcp.src == 80)) && outport == "DR-S1" && is_chassis_resident("cr-DR-S1")), action=(ct_dnat_in_czone;)
+  table=1 (lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 20.0.0.20 && tcp.src == 80)) && outport == "DR-S2" && is_chassis_resident("cr-DR-S2")), action=(ct_dnat_in_czone;)
+  table=1 (lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 20.0.0.30 && tcp.src == 80)) && outport == "DR-S3" && is_chassis_resident("cr-DR-S3")), action=(ct_dnat_in_czone;)
+])
+
+check ovn-nbctl lr-lb-del DR lb1
+check ovn-nbctl lr-lb-del DR lb2
+check ovn-nbctl lr-lb-del DR lb3
+
+AT_CHECK([ovn-sbctl dump-flows DR | grep -e lr_in_dnat -e lr_out_undnat | grep -v priority=0 | wc -l], [0], [0
+])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([LR neighbor lookup and learning flows])
 ovn_start
 
