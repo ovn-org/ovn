@@ -92,6 +92,7 @@ check ovn-nbctl lr-add lr1
 check ovn-nbctl lrp-add lr1 lrp1 00:00:00:00:00:01 10.0.0.1/24
 check ovn-nbctl lrp-set-gateway-chassis lrp1 gw-az1
 
+OVS_WAIT_UNTIL([ovn-nbctl show | grep switch | grep ts1])
 check ovn-nbctl lsp-add ts1 lsp1 -- \
     lsp-set-addresses lsp1 router -- \
     lsp-set-type lsp1 router -- \
@@ -156,6 +157,7 @@ create_ic_infra() {
     ovn_as $az
 
     check ovn-ic-nbctl ts-add $ts
+    OVS_WAIT_UNTIL([ovn-nbctl show | grep switch | grep $ts])
     check ovn-nbctl lr-add $lr
     check ovn-nbctl lrp-add $lr $lrp 00:00:00:00:00:0$az_id 10.0.$az_id.1/24
     check ovn-nbctl lrp-set-gateway-chassis $lrp gw-$az
@@ -227,6 +229,7 @@ for i in 1 2; do
     check ovn-nbctl lrp-add lr1 lrp$i 00:00:00:00:0$i:01 10.0.$i.1/24
     check ovn-nbctl lrp-set-gateway-chassis lrp$i gw-az$i
 
+    OVS_WAIT_UNTIL([ovn-nbctl show | grep switch | grep ts1])
     check ovn-nbctl lsp-add ts1 lsp$i -- \
         lsp-set-addresses lsp$i router -- \
         lsp-set-type lsp$i router -- \
@@ -290,7 +293,7 @@ ovs-vsctl set open . external-ids:ovn-is-interconn=true
 OVS_WAIT_UNTIL([ovn_as az2 ovn-sbctl show | grep gw1])
 
 OVN_CLEANUP_SBOX(gw1)
-AT_CHECK([ovn_as az2 ovn-sbctl show], [0], [dnl
+OVS_WAIT_FOR_OUTPUT([ovn_as az2 ovn-sbctl show], [0], [dnl
 ])
 
 # Test encap change
@@ -335,16 +338,17 @@ ovn-nbctl lsp-add ts1 lsp-ts1-lr1
 ovn-nbctl lsp-set-addresses lsp-ts1-lr1 router
 ovn-nbctl lsp-set-type lsp-ts1-lr1 router
 ovn-nbctl --wait=hv lsp-set-options lsp-ts1-lr1 router-port=lrp-lr1-ts1
-
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl show | grep lsp-ts1-lr1])
 ovn_as az2 ovn-nbctl lsp-set-options lsp-ts1-lr1 requested-chassis=gw1
-AT_CHECK([ovn_as az2 ovn-nbctl show | uuidfilt], [0], [dnl
+
+OVS_WAIT_FOR_OUTPUT([ovn_as az2 ovn-nbctl show | uuidfilt], [0], [dnl
 switch <0> (ts1)
     port lsp-ts1-lr1
         type: remote
         addresses: [["aa:aa:aa:aa:aa:01 169.254.100.1/24"]]
 ])
 
-AT_CHECK([ovn_as az2 ovn-sbctl -f csv -d bare --no-headings --columns logical_port,type list port_binding], [0], [dnl
+OVS_WAIT_FOR_OUTPUT([ovn_as az2 ovn-sbctl -f csv -d bare --no-headings --columns logical_port,type list port_binding], [0], [dnl
 lsp-ts1-lr1,remote
 ])
 
@@ -529,6 +533,7 @@ for i in 1 2; do
     for j in 1 2; do
         ts=ts$j$j
         ovn-ic-nbctl --may-exist ts-add $ts
+        OVS_WAIT_UNTIL([ovn-nbctl show | grep switch | grep $ts])
 
         # Create LRP and connect to TS
         lr=lr$j$i
@@ -551,6 +556,9 @@ echo az1
 ovn_as az1 ovn-nbctl show
 echo az2
 ovn_as az2 ovn-nbctl show
+
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep learned | grep 192.168])
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep learned | grep 10.10.10])
 
 # Test routes from lr12 were learned to lr11
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 |
@@ -584,6 +592,7 @@ for i in 1 2; do
     # Create LRP and connect to TS
     ovn-nbctl lr-add lr$i
     ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
+    OVS_WAIT_UNTIL([ovn-nbctl show | grep switch | grep ts1])
     ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
             -- lsp-set-addresses lsp-ts1-lr$i router \
             -- lsp-set-type lsp-ts1-lr$i router \
@@ -909,6 +918,7 @@ for i in 1 2; do
     for j in 1 2 3; do
         ts=ts1$j
         ovn-ic-nbctl --may-exist ts-add $ts
+        OVS_WAIT_UNTIL([ovn-nbctl show | grep switch | grep $ts])
 
         lrp=lrp-$lr-$ts
         lsp=lsp-$ts-$lr
@@ -934,6 +944,7 @@ for i in 1 2; do
     for j in 1 2; do
         ts=ts2$j
         ovn-ic-nbctl --may-exist ts-add $ts
+        OVS_WAIT_UNTIL([ovn-nbctl show | grep switch | grep $ts])
 
         lrp=lrp-$lr-$ts
         lsp=lsp-$ts-$lr
@@ -957,7 +968,7 @@ ovn_as az2 ovn-nbctl --route-table=rtb3 lr-route-add lr12 10.10.10.0/24 192.168.
 ovn_as az2 ovn-nbctl --wait=sb lrp-add lr22 lrp-lr22 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
 
 # Test direct routes from lr12 were learned to lr11
-AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
              grep learned | awk '{print $1, $2, $5}' | sort ], [0], [dnl
 192.168.0.0/24 169.254.101.2 ecmp
 192.168.0.0/24 169.254.102.2 ecmp
@@ -965,24 +976,24 @@ AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
 ])
 
 # Test static routes from lr12 rtbs rtb1,rtb2,rtb3 were learned to lr11
-AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb1 lr-route-list lr11], [0], [dnl
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl --route-table=rtb1 lr-route-list lr11], [0], [dnl
 IPv4 Routes
 Route Table rtb1:
             10.10.10.0/24             169.254.101.2 dst-ip (learned)
 ])
-AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb2 lr-route-list lr11], [0], [dnl
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl --route-table=rtb2 lr-route-list lr11], [0], [dnl
 IPv4 Routes
 Route Table rtb2:
             10.10.10.0/24             169.254.102.2 dst-ip (learned)
 ])
-AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb3 lr-route-list lr11], [0], [dnl
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl --route-table=rtb3 lr-route-list lr11], [0], [dnl
 IPv4 Routes
 Route Table rtb3:
             10.10.10.0/24             169.254.103.2 dst-ip (learned)
 ])
 
 # Test routes from lr12 didn't leak as learned to lr21
-AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr21 | grep 192.168 | sort], [0], [dnl
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr21 | grep 192.168 | sort], [0], [dnl
            192.168.0.0/24             169.254.101.2 dst-ip (learned) ecmp
            192.168.0.0/24             169.254.102.2 dst-ip (learned) ecmp
 ])
@@ -1035,6 +1046,7 @@ for i in 1 2; do
     for j in 1 2 3; do
         ts=ts1$j
         ovn-ic-nbctl --may-exist ts-add $ts
+        OVS_WAIT_UNTIL([ovn-nbctl show | grep switch | grep $ts])
 
         lrp=lrp-$lr-$ts
         lsp=lsp-$ts-$lr
@@ -1060,6 +1072,7 @@ for i in 1 2; do
     for j in 1 2; do
         ts=ts2$j
         ovn-ic-nbctl --may-exist ts-add $ts
+        OVS_WAIT_UNTIL([ovn-nbctl show | grep switch | grep $ts])
 
         lrp=lrp-$lr-$ts
         lsp=lsp-$ts-$lr
@@ -1083,6 +1096,7 @@ ovn_as az2 ovn-nbctl --route-table=rtb3 lr-route-add lr12 2001:db8:aaaa::/64 200
 ovn_as az2 ovn-nbctl --wait=sb lrp-add lr22 lrp-lr22 aa:aa:aa:aa:bb:01 "2001:db8:200::1/64"
 
 # Test direct routes from lr12 were learned to lr11
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 2001:db8:3::2])
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 2001:db8:200 |
              grep learned | awk '{print $1, $2, $5}' | sort], [0], [dnl
 2001:db8:200::/64 2001:db8:1::2 ecmp
@@ -1091,16 +1105,19 @@ AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 2001:db8:200 |
 ])
 
 # Test static routes from lr12 rtbs rtb1,rtb2,rtb3 were learned to lr11
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl --route-table=rtb1 lr-route-list lr11 | grep learned])
 AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb1 lr-route-list lr11], [0], [dnl
 IPv6 Routes
 Route Table rtb1:
        2001:db8:aaaa::/64             2001:db8:1::2 dst-ip (learned)
 ])
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl --route-table=rtb2 lr-route-list lr11 | grep learned])
 AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb2 lr-route-list lr11], [0], [dnl
 IPv6 Routes
 Route Table rtb2:
        2001:db8:aaaa::/64             2001:db8:2::2 dst-ip (learned)
 ])
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl --route-table=rtb3 lr-route-list lr11 | grep learned])
 AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb3 lr-route-list lr11], [0], [dnl
 IPv6 Routes
 Route Table rtb3:
@@ -1108,6 +1125,7 @@ Route Table rtb3:
 ])
 
 # Test routes from lr12 didn't leak as learned to lr21
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl lr-route-list lr21 | grep "2001:db8:2::2" | grep learned])
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr21 | grep 2001 | sort], [0], [dnl
         2001:db8:200::/64             2001:db8:1::2 dst-ip (learned) ecmp
         2001:db8:200::/64             2001:db8:2::2 dst-ip (learned) ecmp
@@ -1127,6 +1145,7 @@ ovn-ic-nbctl ts-add ts1
 for i in 1 2; do
     ovn_start az$i
     ovn_as az$i
+    OVS_WAIT_UNTIL([ovn-nbctl show | grep switch | grep ts1])
 
     # Enable route learning at AZ level
     ovn-nbctl set nb_global . options:ic-route-learn=true
@@ -1152,17 +1171,106 @@ for i in 1 2; do
     check ovn-nbctl --wait=sb lr-route-add $lr 0.0.0.0/0 192.168.$i.11
 done
 
-AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep dst-ip | sort], [0], [dnl
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep dst-ip | sort] , [0], [dnl
                 0.0.0.0/0              192.168.1.11 dst-ip
               10.0.0.0/24              192.168.1.10 dst-ip
            192.168.2.0/24             169.254.100.2 dst-ip (learned)
 ])
 
-AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr12 | grep dst-ip | sort], [0], [dnl
+OVS_WAIT_FOR_OUTPUT([ovn_as az2 ovn-nbctl lr-route-list lr12 | grep dst-ip | sort], [0], [dnl
                 0.0.0.0/0              192.168.2.11 dst-ip
               10.0.0.0/24              192.168.2.10 dst-ip
            192.168.1.0/24             169.254.100.1 dst-ip (learned)
 ])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- route sync -- multiple logical routers])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+
+    # Enable route learning at AZ level
+    ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level
+    ovn-nbctl set nb_global . options:ic-route-adv=true
+done
+
+# Create new transit switches and LRs. Test topology is next:
+#
+# logical router (lr11) - transit switch (ts1) - logical router (lr21)
+#                                              \- logical router (lr22)
+#
+# each LR has one connected subnet except TS port
+
+
+# create lr11, lr21, lr22 and connect them
+
+ovn_as az1
+OVS_WAIT_UNTIL([ovn-nbctl show | grep switch | grep ts1])
+
+lr=lr11
+ovn-nbctl lr-add $lr
+
+lrp=lrp-$lr-ts1
+lsp=lsp-ts1-$lr
+# Create LRP and connect to TS
+ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a1:01 169.254.10.11/24
+ovn-nbctl lsp-add ts1 $lsp \
+        -- lsp-set-addresses $lsp router \
+        -- lsp-set-type $lsp router \
+        -- lsp-set-options $lsp router-port=$lrp
+
+ovn_as az2
+OVS_WAIT_UNTIL([ovn-nbctl show | grep switch | grep ts1])
+for i in 1 2; do
+    lr=lr2$i
+    ovn-nbctl lr-add $lr
+
+    lrp=lrp-$lr-ts1
+    lsp=lsp-ts1-$lr
+    # Create LRP and connect to TS
+    ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a2:0$i 169.254.10.2$i/24
+    ovn-nbctl lsp-add ts1 $lsp \
+            -- lsp-set-addresses $lsp router \
+            -- lsp-set-type $lsp router \
+            -- lsp-set-options $lsp router-port=$lrp
+done
+
+
+# Create directly-connected routes
+ovn_as az1 ovn-nbctl lrp-add lr11 lrp-lr11 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
+ovn_as az2 ovn-nbctl lrp-add lr21 lrp-lr21 aa:aa:aa:aa:bc:01 "192.168.1.1/24"
+ovn_as az2 ovn-nbctl lrp-add lr22 lrp-lr22 aa:aa:aa:aa:bc:02 "192.168.2.1/24"
+
+# Test direct routes from lr21 and lr22 were learned to lr11
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.1.0/24 169.254.10.21
+192.168.2.0/24 169.254.10.22
+])
+
+# Test direct routes from lr11 and lr22 were learned to lr21
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr21 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.10.11
+192.168.2.0/24 169.254.10.22
+])
+
+# Test direct routes from lr11 and lr21 were learned to lr22
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr22 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.10.11
+192.168.1.0/24 169.254.10.21
+])
+
+OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
 ])

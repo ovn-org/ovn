@@ -11,7 +11,7 @@ m4_define([_DUMP_DB_TABLES], [
     ovn-sbctl list address_set >> $1
     ovn-sbctl list meter >> $1
     ovn-sbctl list meter_band >> $1
-    ovn-sbctl list port_group_set >> $1
+    ovn-sbctl list port_group >> $1
 ])
 
 # CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -20,6 +20,14 @@ m4_define([_DUMP_DB_TABLES], [
 # sure nothing is changed by the recompute. It is used for ensuring the
 # correctness of incremental processing.
 m4_define([CHECK_NO_CHANGE_AFTER_RECOMPUTE], [
+    wait_port_up=$1
+    if test X$wait_port_up = X1; then
+        # Wait for hv to have received all previous commands
+        # Make sure ports are up as otherwise it might come as a difference after recompute
+        echo "waiting for ports up"
+        check ovn-nbctl --wait=hv sync
+        wait_for_ports_up
+    fi
     _DUMP_DB_TABLES(before)
     check as northd ovn-appctl -t NORTHD_TYPE inc-engine/recompute
     check ovn-nbctl --wait=sb sync
@@ -813,7 +821,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn-northd restart])
-ovn_start --backup-northd=none
+ovn_start
 
 # Check that ovn-northd is active, by verifying that it creates and
 # destroys southbound datapaths as one would expect.
@@ -832,7 +840,7 @@ sleep 5
 check_row_count Datapath_Binding 1
 
 # Now resume ovn-northd.  Changes should catch up.
-ovn_start_northd primary
+ovn_start_northd
 wait_row_count Datapath_Binding 2
 
 AT_CLEANUP
@@ -841,7 +849,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([northbound database reconnection])
 
-ovn_start --backup-northd=none
+ovn_start
 
 # Check that ovn-northd is active, by verifying that it creates and
 # destroys southbound datapaths as one would expect.
@@ -873,7 +881,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([southbound database reconnection])
 
-ovn_start --backup-northd=none
+ovn_start
 
 # Check that ovn-northd is active, by verifying that it creates and
 # destroys southbound datapaths as one would expect.
@@ -1100,7 +1108,7 @@ AT_CAPTURE_FILE([crflows])
 AT_CHECK([grep -e "lr_out_snat" drflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
-  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 50.0.0.11 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1") && ip4.dst == $allowed_range), action=(ct_snat(172.16.1.1);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 50.0.0.11 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1") && ip4.dst == $allowed_range && (!ct.trk || !ct.rpl)), action=(ct_snat(172.16.1.1);)
 ])
 
 AT_CHECK([grep -e "lr_out_snat" crflows | sed 's/table=../table=??/' | sort], [0], [dnl
@@ -1130,7 +1138,7 @@ AT_CAPTURE_FILE([crflows2])
 AT_CHECK([grep -e "lr_out_snat" drflows2 | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
-  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 50.0.0.11 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1")), action=(ct_snat(172.16.1.1);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 50.0.0.11 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.16.1.1);)
   table=??(lr_out_snat        ), priority=163  , match=(ip && ip4.src == 50.0.0.11 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1") && ip4.dst == $disallowed_range), action=(next;)
 ])
 
@@ -1159,7 +1167,7 @@ AT_CAPTURE_FILE([crflows2])
 AT_CHECK([grep -e "lr_out_snat" drflows3 | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
-  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 50.0.0.11 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1") && ip4.dst == $allowed_range), action=(ct_snat(172.16.1.2);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 50.0.0.11 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1") && ip4.dst == $allowed_range && (!ct.trk || !ct.rpl)), action=(ct_snat(172.16.1.2);)
 ])
 
 AT_CHECK([grep -e "lr_out_snat" crflows3 | sed 's/table=../table=??/' | sort], [0], [dnl
@@ -1186,7 +1194,7 @@ AT_CAPTURE_FILE([crflows2])
 AT_CHECK([grep -e "lr_out_snat" drflows4 | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
-  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 50.0.0.11 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1")), action=(ct_snat(172.16.1.2);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 50.0.0.11 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.16.1.2);)
   table=??(lr_out_snat        ), priority=163  , match=(ip && ip4.src == 50.0.0.11 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1") && ip4.dst == $disallowed_range), action=(next;)
 ])
 
@@ -2191,6 +2199,18 @@ check ovn-nbctl --wait=sb sync
 AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 | sort], [0], [dnl
 ])
 
+# Now associate vip again to lb4 and then delete it.
+check ovn-nbctl set load_balancer $lb4 vips:"10.0.0.13"="10.0.0.6"
+check ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 | sort], [0], [dnl
+  table=1 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[2]] = 1; next;)
+])
+
+check ovn-nbctl lb-del $lb4
+check ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list | grep "ls_out_pre_lb.*priority=100" | grep reg0 | sort], [0], [dnl
+])
+
 AT_CLEANUP
 ])
 
@@ -2849,7 +2869,7 @@ lbg0_uuid=$(fetch_column sb:load_balancer _uuid name=lbg0)
 echo
 echo "__file__:__line__: Check that SB lb0 has sw0 in datapaths column."
 
-lb0_dp_group=$(fetch_column sb:load_balancer datapath_group name=lb0)
+lb0_dp_group=$(fetch_column sb:load_balancer ls_datapath_group name=lb0)
 AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
                     | grep -A1 $lb0_dp_group | tail -1], [0], [dnl
 $sw0_sb_uuid
@@ -2860,7 +2880,7 @@ check_column "" sb:datapath_binding load_balancers external_ids:name=sw0
 echo
 echo "__file__:__line__: Check that SB lbg0 has sw0 in datapaths column."
 
-lbg0_dp_group=$(fetch_column sb:load_balancer datapath_group name=lbg0)
+lbg0_dp_group=$(fetch_column sb:load_balancer ls_datapath_group name=lbg0)
 AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
                     | grep -A1 $lbg0_dp_group | tail -1], [0], [dnl
 $sw0_sb_uuid
@@ -2886,6 +2906,15 @@ sb:load_balancer vips,protocol name=lbg0
 
 check ovn-nbctl lr-add lr0 -- add logical_router lr0 load_balancer_group $lbg
 check ovn-nbctl --wait=sb lr-lb-add lr0 lb0
+check_row_count sb:load_balancer 2
+
+lr0_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
+lb0_lr_dp_group=$(fetch_column sb:load_balancer lr_datapath_group name=lb0)
+
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lb0_lr_dp_group | tail -1], [0], [dnl
+$lr0_sb_uuid
+])
 
 echo
 echo "__file__:__line__: Check that SB lb0 has only sw0 in datapaths column."
@@ -2931,7 +2960,13 @@ check_row_count sb:load_balancer 2
 lbg1=$(fetch_column nb:load_balancer _uuid name=lbg1)
 check ovn-nbctl add load_balancer_group $lbg load_balancer $lbg1
 check ovn-nbctl --wait=sb lr-lb-add lr0 lb1
-check_row_count sb:load_balancer 3
+check_row_count sb:load_balancer 4
+
+lb1_lr_dp_group=$(fetch_column sb:load_balancer lr_datapath_group name=lb1)
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lb1_lr_dp_group | tail -1], [0], [dnl
+$lr0_sb_uuid
+])
 
 echo
 echo "__file__:__line__: Associate lb1 to sw1 and check that lb1 is created in SB DB."
@@ -2948,7 +2983,7 @@ echo "__file__:__line__: Check that SB lbg1 has vips and protocol columns are se
 check_column "20.0.0.30:80=20.0.0.50:8080 udp" sb:load_balancer vips,protocol name=lbg1
 
 lb1_uuid=$(fetch_column sb:load_balancer _uuid name=lb1)
-lb1_dp_group=$(fetch_column sb:load_balancer datapath_group name=lb1)
+lb1_dp_group=$(fetch_column sb:load_balancer ls_datapath_group name=lb1)
 
 echo
 echo "__file__:__line__: Check that SB lb1 has sw1 in datapaths column."
@@ -2959,7 +2994,7 @@ $sw1_sb_uuid
 ])
 
 lbg1_uuid=$(fetch_column sb:load_balancer _uuid name=lbg1)
-lbg1_dp_group=$(fetch_column sb:load_balancer datapath_group name=lbg1)
+lbg1_dp_group=$(fetch_column sb:load_balancer ls_datapath_group name=lbg1)
 
 echo
 echo "__file__:__line__: Check that SB lbg1 has sw0 and sw1 in datapaths column."
@@ -4581,11 +4616,12 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([northd ssl file change])
+TAG_UNSTABLE
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
 AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"
 \\]]"])
-ovn_start --backup-northd=none
+ovn_start
 
 as northd
 OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
@@ -4732,8 +4768,7 @@ AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | sort | sed 's/table=../table=??/'], [0], [dnl
   table=??(ls_in_dhcp_options ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "foo", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
-  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && ip4.src == 10.0.0.2 && ip4.dst == {10.0.0.1, 255.255.255.255} && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "foo", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
+  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && (ip4.src == {10.0.0.2, 0.0.0.0} && ip4.dst == {10.0.0.1, 255.255.255.255}) && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "foo", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
 ])
 
 check ovn-nbctl --wait=sb lsp-set-options sw0-port1 hostname="\"port1\""
@@ -4742,8 +4777,7 @@ AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | sort | sed 's/table=../table=??/'], [0], [dnl
   table=??(ls_in_dhcp_options ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "port1", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
-  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && ip4.src == 10.0.0.2 && ip4.dst == {10.0.0.1, 255.255.255.255} && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "port1", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
+  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && (ip4.src == {10.0.0.2, 0.0.0.0} && ip4.dst == {10.0.0.1, 255.255.255.255}) && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "port1", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
 ])
 
 ovn-nbctl dhcp-options-set-options $CIDR_UUID  lease_time=3600   router=10.0.0.1   server_id=10.0.0.1   server_mac=c0:ff:ee:00:00:01
@@ -4753,8 +4787,7 @@ AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | sort | sed 's/table=../table=??/'], [0], [dnl
   table=??(ls_in_dhcp_options ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "bar", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
-  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && ip4.src == 10.0.0.2 && ip4.dst == {10.0.0.1, 255.255.255.255} && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "bar", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
+  table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && (ip4.src == {10.0.0.2, 0.0.0.0} && ip4.dst == {10.0.0.1, 255.255.255.255}) && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "bar", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
 ])
 
 AT_CLEANUP
@@ -5084,6 +5117,7 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], 
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.200), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.1), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:101), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
 ])
@@ -5098,6 +5132,7 @@ AT_CHECK([grep "ls_in_l2_lkup" ls2_lflows | sed 's/table=../table=??/' | sort], 
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:02:01} && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.2.1), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 20.0.0.100), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 20.0.0.200), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:201), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
 ])
 
@@ -5118,8 +5153,10 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], 
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.200), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.1), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 30.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 30.0.0.200), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:101), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
 ])
 
@@ -5133,7 +5170,9 @@ AT_CHECK([grep "ls_in_l2_lkup" ls2_lflows | sed 's/table=../table=??/' | sort], 
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:02:01} && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.2.1), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 20.0.0.100), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 20.0.0.200), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 40.0.0.100), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 40.0.0.200), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:201), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
 ])
 
@@ -5151,9 +5190,11 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], 
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.200), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.1), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 30.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 30.0.0.200), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:101), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
 ])
 
@@ -5169,9 +5210,11 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], 
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.200), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.1), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 30.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 30.0.0.200), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:101), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
 ])
 
@@ -5193,9 +5236,11 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], 
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.200), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.1), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 30.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 30.0.0.200), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:101), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
 ])
 
@@ -5353,12 +5398,12 @@ AT_CHECK([grep "lr_out_post_undnat" lr0flows | sed 's/table=./table=?/' | sort],
 AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=? (lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
-  table=? (lr_out_snat        ), priority=153  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat_in_czone(172.168.0.10);)
-  table=? (lr_out_snat        ), priority=154  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && reg9[[4]] == 1), action=(reg9[[4]] = 0; ct_snat(172.168.0.10);)
-  table=? (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat_in_czone(172.168.0.30);)
-  table=? (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat_in_czone(172.168.0.20);)
-  table=? (lr_out_snat        ), priority=162  , match=(ip && ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && reg9[[4]] == 1), action=(reg9[[4]] = 0; ct_snat(172.168.0.30);)
-  table=? (lr_out_snat        ), priority=162  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && reg9[[4]] == 1), action=(reg9[[4]] = 0; ct_snat(172.168.0.20);)
+  table=? (lr_out_snat        ), priority=153  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat_in_czone(172.168.0.10);)
+  table=? (lr_out_snat        ), priority=154  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl) && reg9[[4]] == 1), action=(reg9[[4]] = 0; ct_snat(172.168.0.10);)
+  table=? (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat_in_czone(172.168.0.30);)
+  table=? (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat_in_czone(172.168.0.20);)
+  table=? (lr_out_snat        ), priority=162  , match=(ip && ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl) && reg9[[4]] == 1), action=(reg9[[4]] = 0; ct_snat(172.168.0.30);)
+  table=? (lr_out_snat        ), priority=162  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl) && reg9[[4]] == 1), action=(reg9[[4]] = 0; ct_snat(172.168.0.20);)
 ])
 
 # Separate zones for DGP
@@ -5401,9 +5446,9 @@ AT_CHECK([grep "lr_out_post_undnat" lr0flows | sed 's/table=./table=?/' | sort],
 AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=? (lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
-  table=? (lr_out_snat        ), priority=153  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat(172.168.0.10);)
-  table=? (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat(172.168.0.30);)
-  table=? (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat(172.168.0.20);)
+  table=? (lr_out_snat        ), priority=153  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.10);)
+  table=? (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.30);)
+  table=? (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.20);)
 ])
 
 # Associate load balancer to lr0
@@ -5483,12 +5528,12 @@ AT_CHECK([grep "lr_out_post_undnat" lr0flows | sed 's/table=./table=?/' | sort],
 AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=? (lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
-  table=? (lr_out_snat        ), priority=153  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat_in_czone(172.168.0.10);)
-  table=? (lr_out_snat        ), priority=154  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && reg9[[4]] == 1), action=(reg9[[4]] = 0; ct_snat(172.168.0.10);)
-  table=? (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat_in_czone(172.168.0.30);)
-  table=? (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat_in_czone(172.168.0.20);)
-  table=? (lr_out_snat        ), priority=162  , match=(ip && ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && reg9[[4]] == 1), action=(reg9[[4]] = 0; ct_snat(172.168.0.30);)
-  table=? (lr_out_snat        ), priority=162  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && reg9[[4]] == 1), action=(reg9[[4]] = 0; ct_snat(172.168.0.20);)
+  table=? (lr_out_snat        ), priority=153  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat_in_czone(172.168.0.10);)
+  table=? (lr_out_snat        ), priority=154  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl) && reg9[[4]] == 1), action=(reg9[[4]] = 0; ct_snat(172.168.0.10);)
+  table=? (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat_in_czone(172.168.0.30);)
+  table=? (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat_in_czone(172.168.0.20);)
+  table=? (lr_out_snat        ), priority=162  , match=(ip && ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl) && reg9[[4]] == 1), action=(reg9[[4]] = 0; ct_snat(172.168.0.30);)
+  table=? (lr_out_snat        ), priority=162  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl) && reg9[[4]] == 1), action=(reg9[[4]] = 0; ct_snat(172.168.0.20);)
 ])
 
 # Separate zones for DGP
@@ -5549,9 +5594,9 @@ AT_CHECK([grep "lr_out_post_undnat" lr0flows | sed 's/table=./table=?/' | sort],
 AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [dnl
   table=? (lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=? (lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
-  table=? (lr_out_snat        ), priority=153  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat(172.168.0.10);)
-  table=? (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat(172.168.0.30);)
-  table=? (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat(172.168.0.20);)
+  table=? (lr_out_snat        ), priority=153  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.10);)
+  table=? (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.30);)
+  table=? (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.20);)
 ])
 
 # Make the logical router as Gateway router
@@ -6008,9 +6053,9 @@ ovn_start
 check ovn-nbctl ls-add ls -- lb-add lb1 10.0.0.1:80 10.0.0.2:80 -- ls-lb-add ls lb1
 check ovn-nbctl --wait=sb sync
 
-dps=$(fetch_column Load_Balancer datapath_group)
+dps=$(fetch_column Load_Balancer ls_datapath_group)
 nlb=$(fetch_column nb:Load_Balancer _uuid)
-AT_CHECK([ovn-sbctl create Load_Balancer name=lb1 datapath_group="$dps" external_ids="lb_id=$nlb"], [0], [ignore])
+AT_CHECK([ovn-sbctl create Load_Balancer name=lb1 ls_datapath_group="$dps" external_ids="lb_id=$nlb"], [0], [ignore])
 
 check ovn-nbctl --wait=sb sync
 check_row_count Load_Balancer 1
@@ -6094,10 +6139,10 @@ AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sed 's/table=.
   table=??(lr_in_chk_pkt_len  ), priority=0    , match=(1), action=(next;)
   table=??(lr_in_chk_pkt_len  ), priority=50   , match=(outport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); next;)
   table=??(lr_in_larger_pkts  ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
 ])
 
 AT_CHECK([grep -E "lr_in_admission.*check_pkt_larger" lr0flows | sort], [0], [dnl
@@ -6125,10 +6170,10 @@ AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sed 's/table=.
   table=??(lr_in_chk_pkt_len  ), priority=0    , match=(1), action=(next;)
   table=??(lr_in_chk_pkt_len  ), priority=50   , match=(outport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); next;)
   table=??(lr_in_larger_pkts  ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
 ])
 
 AT_CHECK([grep -E "lr_in_admission.*check_pkt_larger" lr0flows | sort], [0], [dnl
@@ -6154,10 +6199,10 @@ AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sed 's/table=.
   table=??(lr_in_chk_pkt_len  ), priority=50   , match=(outport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); next;)
   table=??(lr_in_chk_pkt_len  ), priority=55   , match=(outport == "lr0-public" && (tcp)), action=(next;)
   table=??(lr_in_larger_pkts  ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
 ])
 
 AT_CHECK([grep "lr_in_admission" lr0flows | grep -e "check_pkt_larger" -e "tcp" | sort], [0], [dnl
@@ -6179,14 +6224,14 @@ AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sed 's/table=.
   table=??(lr_in_chk_pkt_len  ), priority=50   , match=(outport == "lr0-sw0"), action=(reg9[[1]] = check_pkt_larger(1414); next;)
   table=??(lr_in_chk_pkt_len  ), priority=55   , match=(outport == "lr0-public" && (tcp)), action=(next;)
   table=??(lr_in_larger_pkts  ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
 ])
 
 AT_CHECK([grep "lr_in_admission.*check_pkt_larger" lr0flows | sort], [0], [dnl
@@ -6218,14 +6263,14 @@ AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sed 's/table=.
   table=??(lr_in_chk_pkt_len  ), priority=55   , match=(outport == "lr0-public" && (tcp)), action=(next;)
   table=??(lr_in_chk_pkt_len  ), priority=55   , match=(outport == "lr0-sw0" && (tcp)), action=(next;)
   table=??(lr_in_larger_pkts  ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw0" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:01; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-public" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1500; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
 ])
 
 AT_CHECK([grep "lr_in_admission" lr0flows | grep -e "check_pkt_larger" -e "tcp" | sort], [0], [dnl
@@ -6244,15 +6289,16 @@ check ovn-nbctl --wait=sb clear logical_router_port lr0-public options
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CAPTURE_FILE([lr0flows])
 
+grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sed 's/table=../table=??/' | sort
 AT_CHECK([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_in_chk_pkt_len  ), priority=0    , match=(1), action=(next;)
   table=??(lr_in_chk_pkt_len  ), priority=50   , match=(outport == "lr0-sw0"), action=(reg9[[1]] = check_pkt_larger(1414); next;)
   table=??(lr_in_chk_pkt_len  ), priority=55   , match=(outport == "lr0-sw0" && (tcp)), action=(next;)
   table=??(lr_in_larger_pkts  ), priority=0    , match=(1), action=(next;)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip4.dst = ip4.src; ip4.src = 172.168.0.100; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip6.dst = ip6.src; ip6.src = fe80::200:20ff:fe20:1213; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 20.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
-  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff02; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:20:20:12:13; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip4 && reg9[[1]] && reg9[[0]] == 0), action=(icmp4_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip4.dst = ip4.src; ip4.src = 10.0.0.1; ip.ttl = 255; icmp4.type = 3; /* Destination Unreachable. */ icmp4.code = 4; /* Frag Needed and DF was Set. */ icmp4.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
+  table=??(lr_in_larger_pkts  ), priority=150  , match=(inport == "lr0-sw1" && outport == "lr0-sw0" && ip6 && reg9[[1]] && reg9[[0]] == 0), action=(icmp6_error {reg9[[0]] = 1; reg9[[1]] = 0; eth.dst = 00:00:00:00:ff:02; ip6.dst = ip6.src; ip6.src = fe80::200:ff:fe00:ff01; ip.ttl = 255; icmp6.type = 2; /* Packet Too Big. */ icmp6.code = 0; icmp6.frag_mtu = 1400; next(pipeline=ingress, table=0); };)
 ])
 
 check ovn-nbctl --wait=sb clear logical_router_port lr0-sw0 options
@@ -6263,6 +6309,23 @@ check ovn-nbctl lsp-set-type ext-port localnet
 check ovn-nbctl --wait=sb set Logical_Switch_Port ext-port tag_request=2
 ovn-sbctl dump-flows lr0 > lr0flows
 
+AT_CHECK([grep "lr_in_admission" lr0flows | grep -e "check_pkt_larger" | sort], [0], [dnl
+  table=0 (lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:20:20:12:13 && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
+  table=0 (lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
+])
+
+# tag 0 requires a parent port
+check ovn-nbctl --wait=sb set Logical_Switch_Port ext-port tag_request=0
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep "lr_in_admission" lr0flows | grep -e "check_pkt_larger" | sort], [0], [dnl
+  table=0 (lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:20:20:12:13 && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
+  table=0 (lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
+])
+
+check ovn-nbctl --wait=sb set Logical_Switch_Port ext-port parent_name=ext-parent-port
+
+ovn-sbctl dump-flows lr0 > lr0flows
 AT_CHECK([grep "lr_in_admission" lr0flows | grep -e "check_pkt_larger" | sort], [0], [dnl
   table=0 (lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:20:20:12:13 && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
   table=0 (lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
@@ -7333,9 +7396,9 @@ AT_CHECK([grep lr_in_unsnat lrflows | grep ct_snat | sed 's/table=../table=??/' 
 ])
 
 AT_CHECK([grep lr_out_snat lrflows | grep ct_snat | sed 's/table=../table=??/' | sort], [0], [dnl
-  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1")), action=(ct_snat(172.16.1.10);)
-  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S2" && is_chassis_resident("cr-DR-S2")), action=(ct_snat(10.0.0.10);)
-  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S3" && is_chassis_resident("cr-DR-S3")), action=(ct_snat(192.168.0.10);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.16.1.10);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S2" && is_chassis_resident("cr-DR-S2") && (!ct.trk || !ct.rpl)), action=(ct_snat(10.0.0.10);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S3" && is_chassis_resident("cr-DR-S3") && (!ct.trk || !ct.rpl)), action=(ct_snat(192.168.0.10);)
 ])
 
 check ovn-nbctl --wait=sb lr-nat-del DR snat 20.0.0.10
@@ -7409,9 +7472,9 @@ AT_CHECK([grep lr_in_unsnat lrflows | grep ct_snat | sed 's/table=../table=??/' 
 ])
 
 AT_CHECK([grep lr_out_snat lrflows | grep ct_snat | sed 's/table=../table=??/' | sort], [0], [dnl
-  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1")), action=(ct_snat(172.16.1.10);)
-  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S2" && is_chassis_resident("cr-DR-S2")), action=(ct_snat(10.0.0.10);)
-  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S3" && is_chassis_resident("cr-DR-S3")), action=(ct_snat(192.168.0.10);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S1" && is_chassis_resident("cr-DR-S1") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.16.1.10);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S2" && is_chassis_resident("cr-DR-S2") && (!ct.trk || !ct.rpl)), action=(ct_snat(10.0.0.10);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.10 && outport == "DR-S3" && is_chassis_resident("cr-DR-S3") && (!ct.trk || !ct.rpl)), action=(ct_snat(192.168.0.10);)
 ])
 
 AT_CHECK([grep lr_in_dnat lrflows | grep ct_dnat | sed 's/table=../table=??/' | sort], [0], [dnl
@@ -8590,7 +8653,7 @@ AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | sort 
 AT_CHECK([ovn-nbctl --wait=sb lsp-set-options ln_port localnet_learn_fdb=true])
 AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | sort | sed 's/table=./table=?/'], [0], [dnl
   table=? (ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
-  table=? (ls_in_lookup_fdb   ), priority=100  , match=(inport == "ln_port"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=? (ls_in_lookup_fdb   ), priority=100  , match=(inport == "ln_port"), action=(flags.localnet = 1; reg0[[11]] = lookup_fdb(inport, eth.src); next;)
   table=? (ls_in_put_fdb      ), priority=0    , match=(1), action=(next;)
   table=? (ls_in_put_fdb      ), priority=100  , match=(inport == "ln_port" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
 ])
@@ -8673,7 +8736,7 @@ AT_CHECK([grep "ls_in_lb " S1flows | sed 's/table=../table=??/' | sort], [0], [d
 
 ovn-sbctl get datapath S0 _uuid > dp_uuids
 ovn-sbctl get datapath S1 _uuid >> dp_uuids
-lb_dp_group=$(ovn-sbctl --bare --columns datapath_group find Load_Balancer name=lb0)
+lb_dp_group=$(ovn-sbctl --bare --columns ls_datapath_group find Load_Balancer name=lb0)
 AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
                     | grep -A1 $lb_dp_group | tail -1 | tr ' ' '\n' | sort], [0], [dnl
 $(cat dp_uuids | sort)
@@ -8957,7 +9020,6 @@ grep -c mutate], [0], [2
 # Pause ovn-northd and add/remove few addresses.  when it is resumed
 # it should use mutate for updating the address sets.
 check as northd ovn-appctl -t NORTHD_TYPE pause
-check as northd-backup ovn-appctl -t NORTHD_TYPE pause
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl add address_set $foo_as_uuid addresses 1.1.1.5
@@ -9980,11 +10042,21 @@ ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.11
 
 check_recompute_counter() {
+    northd_recomp_min=$1
+    northd_recomp_max=$2
+    lflow_recomp_min=$3
+    lflow_recomp_max=$4
+    sync_sb_pb_recomp_min=$5
+    sync_sb_pb_recomp_max=$6
+
     northd_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats northd recompute)
-    AT_CHECK([test x$northd_recomp = x$1])
+    AT_CHECK([test $northd_recomp -ge $northd_recomp_min && test $northd_recomp -le $northd_recomp_max])
 
     lflow_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats lflow recompute)
-    AT_CHECK([test x$lflow_recomp = x$2])
+    AT_CHECK([test $lflow_recomp -ge $lflow_recomp_min && test $lflow_recomp -le $lflow_recomp_max])
+
+    sync_sb_pb_recomp=$(as northd ovn-appctl -t NORTHD_TYPE inc-engine/show-stats sync_to_sb_pb recompute)
+    AT_CHECK([test $sync_sb_pb_recomp -ge $sync_sb_pb_recomp_min && test $sync_sb_pb_recomp -le $sync_sb_pb_recomp_max])
 }
 
 check ovn-nbctl --wait=hv ls-add ls0
@@ -10001,29 +10073,29 @@ check ovn-nbctl --wait=hv lsp-add ls0 lsp0-0 -- lsp-set-addresses lsp0-0 "unknow
 ovs-vsctl add-port br-int lsp0-0 -- set interface lsp0-0 external_ids:iface-id=lsp0-0
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-check_recompute_counter 5 5
+check_recompute_counter 4 5 5 5 5 5
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=hv lsp-add ls0 lsp0-1 -- lsp-set-addresses lsp0-1 "aa:aa:aa:00:00:01 192.168.0.11"
 ovs-vsctl add-port br-int lsp0-1 -- set interface lsp0-1 external_ids:iface-id=lsp0-1
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-check_recompute_counter 0 0
+check_recompute_counter 0 0 0 0 0 0
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=hv lsp-add ls0 lsp0-2 -- lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:02 192.168.0.12"
 ovs-vsctl add-port br-int lsp0-2 -- set interface lsp0-2 external_ids:iface-id=lsp0-2
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-check_recompute_counter 0 0
+check_recompute_counter 0 0 0 0 0 0
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=hv lsp-del lsp0-1
-check_recompute_counter 0 0
+check_recompute_counter 0 0 0 0 0 0
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=hv lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:88 192.168.0.88"
-check_recompute_counter 0 0
+check_recompute_counter 0 0 0 0 0 0
 
 # Delete and re-add a LSP for several times continuously, to ensure
 # frequent operations do not trigger recompute when there are in-flight
@@ -10037,14 +10109,39 @@ for i in $(seq 10); do
     check ovn-nbctl lsp-del lsp0-2
     check ovn-nbctl lsp-add ls0 lsp0-2 -- lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:02 192.168.0.12"
 done
-check_recompute_counter 0 0
+check_recompute_counter 0 0 0 0 0 0
 
 # No change, no recompute
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb sync
-check_recompute_counter 0 0
+check_recompute_counter 0 0 0 0 0 0
 
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
+
+# Associate DHCP for lsp0-2
+ovn-nbctl dhcp-options-create 192.168.0.0/24
+
+CIDR_UUID=$(ovn-nbctl --bare --columns=_uuid find dhcp_options cidr="192.168.0.0/24")
+ovn-nbctl dhcp-options-set-options $CIDR_UUID   lease_time=3600  router=192.168.0.1   server_id=192.168.0.1   server_mac=c0:ff:ee:00:00:01 hostname="\"foo\""
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+ovn-nbctl --wait=sb lsp-set-dhcpv4-options lsp0-2 $CIDR_UUID
+check_recompute_counter 0 0 0 0 0 0
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
+
+# Add IPv6 address and associate DHCPv6 for lsp0-2
+check ovn-nbctl lsp-set-addresses lsp0-2 "aa:aa:aa:00:00:01 192.168.0.11 aef0::4"
+d1="$(ovn-nbctl create DHCP_Options cidr="aef0\:\:/64" \
+options="\"server_id\"=\"00:00:00:10:00:01\"")"
+
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+ovn-nbctl --wait=sb lsp-set-dhcpv6-options lsp0-2 ${d1}
+check_recompute_counter 0 0 0 0 0 0
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
+
+check ovn-nbctl --wait=hv ls-del ls0
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
@@ -10069,11 +10166,11 @@ ovn-nbctl lsp-add ls0 ls0-lr0
 ovn-nbctl lsp-set-type ls0-lr0 router
 ovn-nbctl lsp-set-addresses ls0-lr0 router
 check ovn-nbctl --wait=sb lsp-set-options ls0-lr0 router-port=lr0-ls0
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 ovn-nbctl lb-add lb0 192.168.0.10:80 10.0.0.10:8080
 check ovn-nbctl --wait=sb ls-lb-add ls0 lb0
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 # Add a lsp.  northd and lflow engine shouldn't recompute even though this is
@@ -10160,14 +10257,14 @@ check ovn-nbctl --wait=sb meter-add m drop 1 pktps
 check ovn-nbctl --wait=sb acl-add ls from-lport 1 1 allow
 dnl Only triggers recompute of the sync_meters and lflow nodes.
 check_recompute_counter 0 2 2
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb meter-del m
 check ovn-nbctl --wait=sb acl-del ls
 dnl Only triggers recompute of the sync_meters and lflow nodes.
 check_recompute_counter 0 2 2
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 AT_CLEANUP
 ])
@@ -10283,7 +10380,7 @@ wait_for_ports_up sw0-r1
 check_column $remote_chassis_uuid Port_Binding chassis logical_port=sw0-r1
 
 # Set the type to router and ovn-northd should not claim it.
-check ovn-nbctl lsp-set-type sw0-r1 router
+check ovn-nbctl --wait=hv lsp-set-type sw0-r1 router
 check_column '' Port_Binding chassis logical_port=sw0-r1
 
 AT_CLEANUP
@@ -10335,34 +10432,39 @@ check ovn-nbctl --wait=sb lb-add lb1 10.0.0.10:80 10.0.0.3:80
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 
 check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 
 check ovn-nbctl --wait=sb set load_balancer . options:foo=bar
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 
 check ovn-nbctl --wait=sb -- lb-add lb2 20.0.0.10:80 20.0.0.20:80 -- lb-add lb3 30.0.0.10:80 30.0.0.20:80
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 
 check ovn-nbctl --wait=sb -- lb-del lb2 -- lb-del lb3
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 
 AT_CHECK([ovn-nbctl --wait=sb \
@@ -10373,6 +10475,7 @@ AT_CHECK([ovn-nbctl --wait=sb \
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 
 # Any change to load balancer health check should also result in full recompute
 # of northd node (but not northd_lb_data node)
@@ -10381,6 +10484,7 @@ check ovn-nbctl --wait=sb set load_balancer_health_check . options:foo=bar1
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 
 # Delete the health check from the load balancer.  northd engine node should do a full recompute.
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
@@ -10388,6 +10492,7 @@ check ovn-nbctl --wait=sb clear Load_Balancer . health_check
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl ls-add sw0
@@ -10398,110 +10503,149 @@ ovn-nbctl lsp-set-type sw0-lr0 router
 ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 ovn-nbctl --wait=sb lsp-set-options sw0-lr0 router-port=lr0-sw0
-check_engine_stats lb_data norecompute nocompute
+check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 
-# Associate lb1 to sw0. There should be a full recompute of northd engine node
+# Associate lb1 to sw0. There should be no recompute of northd engine node
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
-check_engine_stats lb_data norecompute nocompute
-check_engine_stats northd recompute nocompute
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+# A LB applied to a switch/router triggers:
+# - a recompute in the first iteration (handling northd change)
+# - a compute in the second iteration (handling SB update)
+check_engine_stats sync_to_sb_lb recompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 # Modify the backend of the lb1 vip
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb set load_balancer lb1 vips:'"10.0.0.10:80"'='"10.0.0.100:80"'
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check_engine_stats sync_to_sb_lb recompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 # Cleanup the vip of lb1.
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb clear load_Balancer lb1 vips
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check_engine_stats sync_to_sb_lb recompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 # Set the vips of lb1 back
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb lb-add lb1 10.0.0.10:80 10.0.0.3:80
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check_engine_stats sync_to_sb_lb recompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 # Add another vip to lb1
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb lb-add lb1 10.0.0.20:80 10.0.0.30:8080
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check_engine_stats sync_to_sb_lb recompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 # Disassociate lb1 from sw0. There should be a full recompute of northd engine node.
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb ls-lb-del sw0 lb1
-check_engine_stats lb_data norecompute nocompute
+check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
+
+# Associate lb1 to sw0 and also create a port sw0p1.  This should not result in
+# full recompute of northd, but should rsult in full recompute of lflow node.
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb ls-lb-add sw0 lb1 -- lsp-add sw0 sw0p1
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+
+# Disassociate lb1 from sw0. There should be a recompute of northd engine node.
+check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
+check ovn-nbctl --wait=sb ls-lb-del sw0 lb1
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Add lb1 to lr0 and then disassociate
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-lb-add lr0 lb1
-check_engine_stats lb_data norecompute nocompute
-check_engine_stats northd recompute nocompute
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Modify the backend of the lb1 vip
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb set load_balancer lb1 vips:'"10.0.0.10:80"'='"10.0.0.100:80"'
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Cleanup the vip of lb1.
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb clear load_Balancer lb1 vips
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Set the vips of lb1 back
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb lb-add lb1 10.0.0.10:80 10.0.0.3:80
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Add another vip to lb1
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb lb-add lb1 10.0.0.20:80 10.0.0.30:8080
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-lb-del lr0 lb1
-check_engine_stats lb_data norecompute nocompute
+check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Test load balancer group now
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-lbg1_uuid=$(ovn-nbctl create load_balancer_group name=lbg1)
+lbg1_uuid=$(ovn-nbctl --wait=sb create load_balancer_group name=lbg1)
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
@@ -10510,135 +10654,153 @@ lb1_uuid=$(fetch_column nb:Load_Balancer _uuid)
 
 # Add lb to the lbg1 group
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-check ovn-nbctl add load_balancer_group . load_Balancer $lb1_uuid
+check ovn-nbctl --wait=sb add load_balancer_group . load_Balancer $lb1_uuid
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-check ovn-nbctl clear load_balancer_group . load_Balancer
+check ovn-nbctl --wait=sb clear load_balancer_group . load_Balancer
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 
 # Add back lb to the lbg1 group
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-check ovn-nbctl add load_balancer_group . load_Balancer $lb1_uuid
+check ovn-nbctl --wait=sb add load_balancer_group . load_Balancer $lb1_uuid
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-check ovn-nbctl add logical_switch sw0 load_balancer_group $lbg1_uuid
-check_engine_stats lb_data norecompute nocompute
-check_engine_stats northd recompute nocompute
+check ovn-nbctl --wait=sb add logical_switch sw0 load_balancer_group $lbg1_uuid
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 
-# Update lb and this should result in recompute
+# Update lb and this should not result in northd recompute
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb set load_balancer . options:bar=foo
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 
 # Modify the backend of the lb1 vip
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb set load_balancer lb1 vips:'"10.0.0.10:80"'='"10.0.0.100:80"'
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Cleanup the vip of lb1.
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb clear load_Balancer lb1 vips
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Set the vips of lb1 back
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb lb-add lb1 10.0.0.10:80 10.0.0.3:80
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Add another vip to lb1
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb lb-add lb1 10.0.0.20:80 10.0.0.30:8080
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-check ovn-nbctl clear logical_switch sw0 load_balancer_group
-check_engine_stats lb_data norecompute nocompute
+check ovn-nbctl --wait=sb clear logical_switch sw0 load_balancer_group
+check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl add logical_router lr0 load_balancer_group $lbg1_uuid
-check_engine_stats lb_data norecompute nocompute
-check_engine_stats northd recompute nocompute
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Modify the backend of the lb1 vip
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb set load_balancer lb1 vips:'"10.0.0.10:80"'='"10.0.0.100:80"'
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Cleanup the vip of lb1.
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb clear load_Balancer lb1 vips
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Set the vips of lb1 back
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb lb-add lb1 10.0.0.10:80 10.0.0.3:80
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Add another vip to lb1
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb lb-add lb1 10.0.0.20:80 10.0.0.30:8080
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-check ovn-nbctl clear logical_router lr0 load_balancer_group
-check_engine_stats lb_data norecompute nocompute
+check ovn-nbctl --wait=sb clear logical_router lr0 load_balancer_group
+check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 
 # Add back lb group to logical switch and then delete it.
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-check ovn-nbctl add logical_switch sw0 load_balancer_group $lbg1_uuid
-check_engine_stats lb_data norecompute nocompute
-check_engine_stats northd recompute nocompute
+check ovn-nbctl --wait=sb add logical_switch sw0 load_balancer_group $lbg1_uuid
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-check ovn-nbctl clear logical_switch sw0 load_balancer_group -- \
+check ovn-nbctl --wait=sb clear logical_switch sw0 load_balancer_group -- \
     destroy load_balancer_group $lbg1_uuid
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb compute compute
 
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
@@ -10657,65 +10819,74 @@ lb3_uuid=$(fetch_column nb:Load_Balancer _uuid name=lb3)
 lb4_uuid=$(fetch_column nb:Load_Balancer _uuid name=lb4)
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-lbg1_uuid=$(ovn-nbctl create load_balancer_group name=lbg1)
+lbg1_uuid=$(ovn-nbctl --wait=sb create load_balancer_group name=lbg1)
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-check ovn-nbctl set load_balancer_group . load_balancer="$lb2_uuid,$lb3_uuid,$lb4_uuid"
+check ovn-nbctl --wait=sb set load_balancer_group . load_balancer="$lb2_uuid,$lb3_uuid,$lb4_uuid"
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-check ovn-nbctl set logical_switch sw0 load_balancer_group=$lbg1_uuid
-check_engine_stats lb_data norecompute nocompute
-check_engine_stats northd recompute nocompute
+check ovn-nbctl --wait=sb set logical_switch sw0 load_balancer_group=$lbg1_uuid
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
-check ovn-nbctl set logical_router lr1 load_balancer_group=$lbg1_uuid
-check_engine_stats lb_data norecompute nocompute
-check_engine_stats northd recompute nocompute
+check ovn-nbctl --wait=sb set logical_router lr1 load_balancer_group=$lbg1_uuid
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb ls-lb-add sw0 lb2
-check_engine_stats lb_data norecompute nocompute
-check_engine_stats northd recompute nocompute
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb ls-lb-add sw0 lb3
-check_engine_stats lb_data norecompute nocompute
-check_engine_stats northd recompute nocompute
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-lb-add lr1 lb1
 check ovn-nbctl --wait=sb lr-lb-add lr1 lb2
-check_engine_stats lb_data norecompute nocompute
-check_engine_stats northd recompute nocompute
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb ls-lb-del sw0 lb2
-check_engine_stats lb_data norecompute nocompute
+check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-lb-del lr1 lb2
-check_engine_stats lb_data norecompute nocompute
+check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Deleting lb4 should not result in lflow recompute as it is
@@ -10723,8 +10894,9 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb lb-del lb4
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Deleting lb2 should result in lflow recompute as it is
@@ -10732,8 +10904,9 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
 check ovn-nbctl --wait=sb lb-del lb2
 check_engine_stats lb_data norecompute compute
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t NORTHD_TYPE inc-engine/clear-stats
@@ -10741,7 +10914,61 @@ check ovn-nbctl --wait=sb remove load_balancer_group . load_balancer $lb3_uuid
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Load balancer incremental processing - batched updates])
+ovn_start
+
+# Check the scenario when a LB is created and quickly deleted (northd
+# processes this in a single iteration).
+
+check ovn-nbctl ls-add sw0
+lbg_uuid=$(ovn-nbctl --wait=sb create load_balancer_group name=lbg)
+check ovn-nbctl --wait=sb add logical_switch sw0 load_balancer_group $lbg_uuid
+
+# Pause ovn-northd.
+sleep_northd
+
+check ovn-nbctl lb-add lb-temp 50.0.0.10:80 50.0.0.20:8080
+lb_temp_uuid=$(fetch_column nb:Load_Balancer _uuid name=lb-temp)
+check ovn-nbctl add load_balancer_group $lbg_uuid load_balancer $lb_temp_uuid
+check ovn-nbctl lb-del lb-temp
+
+# Let ovn-northd process all the updates that happened since it went to sleep.
+wake_up_northd
+
+# Add a new load balancer to make sure northd still functions properly.
+check ovn-nbctl lb-add lb1 50.0.0.10:80 50.0.0.30:8080
+lb1_uuid=$(fetch_column nb:Load_Balancer _uuid name=lb1)
+check ovn-nbctl add load_balancer_group $lbg_uuid load_balancer $lb1_uuid
+
+check ovn-nbctl --wait=sb sync
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Re-check the same scenario but now also batch the additional LB creation.
+sleep_northd
+check ovn-nbctl lb-add lb-temp 50.0.0.10:80 50.0.0.20:8080
+lb_temp_uuid=$(fetch_column nb:Load_Balancer _uuid name=lb-temp)
+check ovn-nbctl add load_balancer_group $lbg_uuid load_balancer $lb_temp_uuid
+check ovn-nbctl lb-del lb-temp
+
+# Add a new load balancer to make sure northd still functions properly.
+check ovn-nbctl lb-add lb2 50.0.0.10:80 50.0.0.30:8080
+lb2_uuid=$(fetch_column nb:Load_Balancer _uuid name=lb2)
+check ovn-nbctl add load_balancer_group $lbg_uuid load_balancer $lb2_uuid
+
+wake_up_northd
+check ovn-nbctl --wait=sb sync
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AT_CHECK([as northd ovn-appctl -t NORTHD_TYPE status], [0], [dnl
+Status: active
+])
 
 AT_CLEANUP
 ])

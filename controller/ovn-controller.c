@@ -88,7 +88,6 @@
 
 VLOG_DEFINE_THIS_MODULE(main);
 
-static unixctl_cb_func ovn_controller_exit;
 static unixctl_cb_func ct_zone_list;
 static unixctl_cb_func extend_table_list;
 static unixctl_cb_func inject_pkt;
@@ -107,7 +106,6 @@ static unixctl_cb_func debug_ignore_startup_delay;
 
 #define DEFAULT_BRIDGE_NAME "br-int"
 #define DEFAULT_DATAPATH "system"
-#define OFCTRL_DEFAULT_PROBE_INTERVAL_SEC 0
 
 #define CONTROLLER_LOOP_STOPWATCH_NAME "flow-generation"
 #define OFCTRL_PUT_STOPWATCH_NAME "flow-installation"
@@ -211,8 +209,8 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
 {
     /* Monitor Port_Bindings rows for local interfaces and local datapaths.
      *
-     * Monitor Logical_Flow, MAC_Binding, Multicast_Group, and DNS tables for
-     * local datapaths.
+     * Monitor Logical_Flow, MAC_Binding, FDB, Multicast_Group, and DNS tables
+     * for local datapaths.
      *
      * Monitor Controller_Event rows for local chassis.
      *
@@ -230,6 +228,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
     struct ovsdb_idl_condition lf = OVSDB_IDL_CONDITION_INIT(&lf);
     struct ovsdb_idl_condition ldpg = OVSDB_IDL_CONDITION_INIT(&ldpg);
     struct ovsdb_idl_condition mb = OVSDB_IDL_CONDITION_INIT(&mb);
+    struct ovsdb_idl_condition fdb = OVSDB_IDL_CONDITION_INIT(&fdb);
     struct ovsdb_idl_condition mg = OVSDB_IDL_CONDITION_INIT(&mg);
     struct ovsdb_idl_condition dns = OVSDB_IDL_CONDITION_INIT(&dns);
     struct ovsdb_idl_condition ce =  OVSDB_IDL_CONDITION_INIT(&ce);
@@ -248,6 +247,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         ovsdb_idl_condition_add_clause_true(&pb);
         ovsdb_idl_condition_add_clause_true(&lf);
         ovsdb_idl_condition_add_clause_true(&mb);
+        ovsdb_idl_condition_add_clause_true(&fdb);
         ovsdb_idl_condition_add_clause_true(&mg);
         ovsdb_idl_condition_add_clause_true(&dns);
         ovsdb_idl_condition_add_clause_true(&ce);
@@ -337,6 +337,8 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
             sbrec_logical_flow_add_clause_logical_datapath(&lf, OVSDB_F_EQ,
                                                            uuid);
             sbrec_mac_binding_add_clause_datapath(&mb, OVSDB_F_EQ, uuid);
+            sbrec_fdb_add_clause_dp_key(&fdb, OVSDB_F_EQ,
+                                        ld->datapath->tunnel_key);
             sbrec_multicast_group_add_clause_datapath(&mg, OVSDB_F_EQ, uuid);
             sbrec_dns_add_clause_datapaths(&dns, OVSDB_F_INCLUDES, &uuid, 1);
             sbrec_ip_multicast_add_clause_datapath(&ip_mcast, OVSDB_F_EQ,
@@ -360,6 +362,7 @@ out:;
         sb_table_set_req_mon_condition(ovnsb_idl, logical_flow, &lf),
         sb_table_set_req_mon_condition(ovnsb_idl, logical_dp_group, &ldpg),
         sb_table_set_req_mon_condition(ovnsb_idl, mac_binding, &mb),
+        sb_table_set_req_mon_condition(ovnsb_idl, fdb, &fdb),
         sb_table_set_req_mon_condition(ovnsb_idl, multicast_group, &mg),
         sb_table_set_req_mon_condition(ovnsb_idl, dns, &dns),
         sb_table_set_req_mon_condition(ovnsb_idl, controller_event, &ce),
@@ -378,6 +381,7 @@ out:;
     ovsdb_idl_condition_destroy(&lf);
     ovsdb_idl_condition_destroy(&ldpg);
     ovsdb_idl_condition_destroy(&mb);
+    ovsdb_idl_condition_destroy(&fdb);
     ovsdb_idl_condition_destroy(&mg);
     ovsdb_idl_condition_destroy(&dns);
     ovsdb_idl_condition_destroy(&ce);
@@ -580,22 +584,6 @@ update_ssl_config(const struct ovsrec_ssl_table *ssl_table)
             stream_ssl_set_ca_cert_file(ssl_ca_cert_file, false);
         }
     }
-}
-
-static int
-get_ofctrl_probe_interval(struct ovsdb_idl *ovs_idl)
-{
-    const struct ovsrec_open_vswitch *cfg = ovsrec_open_vswitch_first(ovs_idl);
-    if (!cfg) {
-        return OFCTRL_DEFAULT_PROBE_INTERVAL_SEC;
-    }
-
-    const struct ovsrec_open_vswitch_table *ovs_table =
-        ovsrec_open_vswitch_table_get(ovs_idl);
-    const char *chassis_id = get_ovs_chassis_id(ovs_table);
-    return get_chassis_external_id_value_int(
-        &cfg->external_ids, chassis_id,
-        "ovn-openflow-probe-interval", OFCTRL_DEFAULT_PROBE_INTERVAL_SEC);
 }
 
 /* Retrieves the pointer to the OVN Southbound database from 'ovs_idl' and
@@ -1499,6 +1487,8 @@ struct ed_type_runtime_data {
     /* Tracked data. See below for more details and comments. */
     bool tracked;
     bool local_lports_changed;
+    bool localnet_learn_fdb;
+    bool localnet_learn_fdb_changed;
     struct hmap tracked_dp_bindings;
 
     struct shash local_active_ports_ipv6_pd;
@@ -1709,6 +1699,8 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_out->postponed_ports = rt_data->postponed_ports;
     b_ctx_out->tracked_dp_bindings = NULL;
     b_ctx_out->if_mgr = ctrl_ctx->if_mgr;
+    b_ctx_out->localnet_learn_fdb = rt_data->localnet_learn_fdb;
+    b_ctx_out->localnet_learn_fdb_changed = false;
 }
 
 static void
@@ -1766,6 +1758,7 @@ en_runtime_data_run(struct engine_node *node, void *data)
     }
 
     binding_run(&b_ctx_in, &b_ctx_out);
+    rt_data->localnet_learn_fdb = b_ctx_out.localnet_learn_fdb;
 
     engine_set_node_state(node, EN_UPDATED);
 }
@@ -1815,6 +1808,8 @@ runtime_data_sb_ro_handler(struct engine_node *node, void *data)
         engine_ovsdb_node_get_index(
                 engine_get_input("SB_chassis", node),
                 "name");
+    const struct sbrec_port_binding_table *pb_table =
+        EN_OVSDB_GET(engine_get_input("SB_port_binding", node));
 
     if (chassis_id) {
         chassis = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
@@ -1829,7 +1824,7 @@ runtime_data_sb_ro_handler(struct engine_node *node, void *data)
                                     &rt_data->lbinding_data,
                                     chassis,
                                     &rt_data->tracked_dp_bindings,
-                                    sb_readonly)) {
+                                    pb_table, sb_readonly)) {
             engine_set_node_state(node, EN_UPDATED);
             rt_data->tracked = true;
         }
@@ -1878,9 +1873,12 @@ runtime_data_sb_port_binding_handler(struct engine_node *node, void *data)
     }
 
     rt_data->local_lports_changed = b_ctx_out.local_lports_changed;
+    rt_data->localnet_learn_fdb = b_ctx_out.localnet_learn_fdb;
+    rt_data->localnet_learn_fdb_changed = b_ctx_out.localnet_learn_fdb_changed;
     if (b_ctx_out.related_lports_changed ||
             b_ctx_out.non_vif_ports_changed ||
             b_ctx_out.local_lports_changed ||
+            b_ctx_out.localnet_learn_fdb_changed ||
             !hmap_is_empty(b_ctx_out.tracked_dp_bindings)) {
         engine_set_node_state(node, EN_UPDATED);
     }
@@ -2637,9 +2635,10 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
             struct tracked_lport *t_lport = shash_node->data;
             if (strcmp(t_lport->pb->type, "")
                 && strcmp(t_lport->pb->type, "localport")
+                && strcmp(t_lport->pb->type, "l3gateway")
                 && strcmp(t_lport->pb->type, "localnet")) {
-                /* We allocate zone-id's only to VIF, localport, and localnet
-                 * lports. */
+                /* We allocate zone-id's only to VIF, localport, l3gateway,
+                 * and localnet lports. */
                 continue;
             }
 
@@ -2803,10 +2802,23 @@ load_balancers_by_dp_init(const struct hmap *local_datapaths,
             load_balancers_by_dp_add_one(local_datapaths,
                                          lb->datapaths[i], lb, lbs);
         }
+        /* datapath_group column is deprecated. */
         for (size_t i = 0; lb->datapath_group
                            && i < lb->datapath_group->n_datapaths; i++) {
             load_balancers_by_dp_add_one(local_datapaths,
                                          lb->datapath_group->datapaths[i],
+                                         lb, lbs);
+        }
+        for (size_t i = 0; lb->ls_datapath_group
+                           && i < lb->ls_datapath_group->n_datapaths; i++) {
+            load_balancers_by_dp_add_one(local_datapaths,
+                                         lb->ls_datapath_group->datapaths[i],
+                                         lb, lbs);
+        }
+        for (size_t i = 0; lb->lr_datapath_group
+                           && i < lb->lr_datapath_group->n_datapaths; i++) {
+            load_balancers_by_dp_add_one(local_datapaths,
+                                         lb->lr_datapath_group->datapaths[i],
                                          lb, lbs);
         }
     }
@@ -3788,6 +3800,11 @@ init_lflow_ctx(struct engine_node *node,
                 engine_get_input("SB_port_binding", node),
                 "name");
 
+    struct ovsdb_idl_index *sbrec_port_binding_by_key =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_port_binding", node),
+                "key");
+
     struct ovsdb_idl_index *sbrec_logical_flow_by_dp =
         engine_ovsdb_node_get_index(
                 engine_get_input("SB_logical_flow", node),
@@ -3887,6 +3904,7 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->sbrec_logical_flow_by_logical_dp_group =
         sbrec_logical_flow_by_dp_group;
     l_ctx_in->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
+    l_ctx_in->sbrec_port_binding_by_key = sbrec_port_binding_by_key;
     l_ctx_in->sbrec_fdb_by_dp_key = sbrec_fdb_by_dp_key;
     l_ctx_in->sbrec_mac_binding_by_datapath = sbrec_mac_binding_by_datapath;
     l_ctx_in->sbrec_static_mac_binding_by_datapath =
@@ -3905,6 +3923,8 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->active_tunnels = &rt_data->active_tunnels;
     l_ctx_in->related_lport_ids = &rt_data->related_lports.lport_ids;
     l_ctx_in->binding_lports = &rt_data->lbinding_data.lports;
+    l_ctx_in->localnet_learn_fdb = rt_data->localnet_learn_fdb;
+    l_ctx_in->localnet_learn_fdb_changed = rt_data->localnet_learn_fdb_changed;
     l_ctx_in->chassis_tunnels = &non_vif_data->chassis_tunnels;
     l_ctx_in->lb_hairpin_use_ct_mark = n_opts->lb_hairpin_use_ct_mark;
     l_ctx_in->nd_ra_opts = &fo->nd_ra_opts;
@@ -3930,8 +3950,8 @@ en_lflow_output_init(struct engine_node *node OVS_UNUSED,
 {
     struct ed_type_lflow_output *data = xzalloc(sizeof *data);
     ovn_desired_flow_table_init(&data->flow_table);
-    ovn_extend_table_init(&data->group_table);
-    ovn_extend_table_init(&data->meter_table);
+    ovn_extend_table_init(&data->group_table, "group-table", 0);
+    ovn_extend_table_init(&data->meter_table, "meter-table", 0);
     objdep_mgr_init(&data->lflow_deps_mgr);
     lflow_conj_ids_init(&data->conj_ids);
     uuidset_init(&data->objs_processed);
@@ -4895,11 +4915,6 @@ controller_output_mac_cache_handler(struct engine_node *node,
     return true;
 }
 
-struct ovn_controller_exit_args {
-    bool *exiting;
-    bool *restart;
-};
-
 /* Handles sbrec_chassis changes.
  * If a new chassis is added or removed return false, so that
  * flows are recomputed.  For any updates, there is no need for
@@ -4974,9 +4989,7 @@ int
 main(int argc, char *argv[])
 {
     struct unixctl_server *unixctl;
-    bool exiting;
-    bool restart;
-    struct ovn_controller_exit_args exit_args = {&exiting, &restart};
+    struct ovn_exit_args exit_args = {0};
     int retval;
 
     /* Read from system-id-override file once on startup. */
@@ -4996,7 +5009,7 @@ main(int argc, char *argv[])
     if (retval) {
         exit(EXIT_FAILURE);
     }
-    unixctl_command_register("exit", "", 0, 1, ovn_controller_exit,
+    unixctl_command_register("exit", "", 0, 1, ovn_exit_command_callback,
                              &exit_args);
 
     daemonize_complete();
@@ -5423,8 +5436,7 @@ main(int argc, char *argv[])
             engine_get_internal_data(&en_mac_cache);
 
     ofctrl_init(&lflow_output_data->group_table,
-                &lflow_output_data->meter_table,
-                get_ofctrl_probe_interval(ovs_idl_loop.idl));
+                &lflow_output_data->meter_table);
     ofctrl_seqno_init();
 
     unixctl_command_register("group-table-list", "", 0, 0,
@@ -5508,10 +5520,8 @@ main(int argc, char *argv[])
     VLOG_INFO("OVN internal version is : [%s]", ovn_version);
 
     /* Main loop. */
-    exiting = false;
-    restart = false;
     bool sb_monitor_all = false;
-    while (!exiting) {
+    while (!exit_args.exiting) {
         memory_run();
         if (memory_should_report()) {
             struct simap usage = SIMAP_INITIALIZER(&usage);
@@ -5552,7 +5562,6 @@ main(int argc, char *argv[])
                      &reset_ovnsb_idl_min_index,
                      &ctrl_engine_ctx, &ovnsb_expected_cond_seqno);
         update_ssl_config(ovsrec_ssl_table_get(ovs_idl_loop.idl));
-        ofctrl_set_probe_interval(get_ofctrl_probe_interval(ovs_idl_loop.idl));
 
         struct ovsdb_idl_txn *ovnsb_idl_txn
             = ovsdb_idl_loop_run(&ovnsb_idl_loop);
@@ -5645,9 +5654,20 @@ main(int argc, char *argv[])
                                            br_int ? br_int->name : NULL)) {
                 VLOG_INFO("OVS feature set changed, force recompute.");
                 engine_set_force_recompute(true);
+                if (ovs_feature_set_discovered()) {
+                    uint32_t max_groups = ovs_feature_max_select_groups_get();
+                    uint32_t max_meters = ovs_feature_max_meters_get();
+                    struct ed_type_lflow_output *lflow_out_data =
+                        engine_get_internal_data(&en_lflow_output);
+
+                    ovn_extend_table_reinit(&lflow_out_data->group_table,
+                                            max_groups);
+                    ovn_extend_table_reinit(&lflow_out_data->meter_table,
+                                            max_meters);
+                }
             }
 
-            if (br_int) {
+            if (br_int && ovs_feature_set_discovered()) {
                 ct_zones_data = engine_get_data(&en_ct_zones);
                 if (ct_zones_data && ofctrl_run(br_int, ovs_table,
                                                 &ct_zones_data->pending)) {
@@ -5809,6 +5829,13 @@ main(int argc, char *argv[])
                                     &runtime_data->local_datapaths,
                                     sb_monitor_all);
                         }
+                        if (ovs_idl_txn) {
+                            update_qos(sbrec_port_binding_by_name, ovs_idl_txn,
+                                       ovsrec_port_by_qos,
+                                       ovsrec_qos_table_get(ovs_idl_loop.idl),
+                                       &runtime_data->qos_map,
+                                       ovs_table, bridge_table);
+                        }
                     }
 
                     if (mac_cache_data) {
@@ -5864,6 +5891,8 @@ main(int argc, char *argv[])
                     if_status_mgr_run(if_mgr, binding_data, chassis,
                                       ovsrec_interface_table_get(
                                                   ovs_idl_loop.idl),
+                                      sbrec_port_binding_table_get(
+                                                 ovnsb_idl_loop.idl),
                                       !ovnsb_idl_txn, !ovs_idl_txn);
                     stopwatch_stop(IF_STATUS_MGR_RUN_STOPWATCH_NAME,
                                    time_msec());
@@ -5941,7 +5970,7 @@ main(int argc, char *argv[])
         unixctl_server_run(unixctl);
 
         unixctl_server_wait(unixctl);
-        if (exiting || pending_pkt.conn) {
+        if (exit_args.exiting || pending_pkt.conn) {
             poll_immediate_wake();
         }
 
@@ -5992,7 +6021,7 @@ loop_done:
         memory_wait();
         poll_block();
         if (should_service_stop()) {
-            exiting = true;
+            exit_args.exiting = true;
         }
     }
 
@@ -6000,7 +6029,7 @@ loop_done:
     engine_cleanup();
 
     /* It's time to exit.  Clean up the databases if we are not restarting */
-    if (!restart) {
+    if (!exit_args.restart) {
         bool done = !ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl);
         while (!done) {
             update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl,
@@ -6052,7 +6081,6 @@ loop_done:
     }
 
     free(ovn_version);
-    unixctl_server_destroy(unixctl);
     lflow_destroy();
     ofctrl_destroy();
     pinctrl_destroy();
@@ -6077,6 +6105,8 @@ loop_done:
     if (cli_system_id) {
         free(cli_system_id);
     }
+    ovn_exit_args_finish(&exit_args);
+    unixctl_server_destroy(unixctl);
     service_stop();
     ovsrcu_exit();
 
@@ -6198,16 +6228,6 @@ usage(void)
            "  -h, --help              display this help message\n"
            "  -V, --version           display version information\n");
     exit(EXIT_SUCCESS);
-}
-
-static void
-ovn_controller_exit(struct unixctl_conn *conn, int argc,
-             const char *argv[], void *exit_args_)
-{
-    struct ovn_controller_exit_args *exit_args = exit_args_;
-    *exit_args->exiting = true;
-    *exit_args->restart = argc == 2 && !strcmp(argv[1], "--restart");
-    unixctl_command_reply(conn, NULL);
 }
 
 static void

@@ -1,4 +1,4 @@
-/*
+    /*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at:
@@ -197,6 +197,26 @@ northd_sb_port_binding_handler(struct engine_node *node,
 }
 
 bool
+northd_nb_logical_router_handler(struct engine_node *node,
+                                 void *data)
+{
+    struct northd_data *nd = data;
+    struct northd_input input_data;
+
+    northd_get_input_data(node, &input_data);
+
+    if (!northd_handle_lr_changes(&input_data, nd)) {
+        return false;
+    }
+
+    if (nd->change_tracked) {
+        engine_set_node_state(node, EN_UPDATED);
+    }
+
+    return true;
+}
+
+bool
 northd_lb_data_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lb_data *lb_data = engine_get_input_data("lb_data", node);
@@ -214,6 +234,10 @@ northd_lb_data_handler(struct engine_node *node, void *data)
         return false;
     }
 
+    /* Indicate the depedendant engine nodes that load balancer/group
+     * related data has changed (including association to logical
+     * switch/router). */
+    nd->lb_changed = true;
     engine_set_node_state(node, EN_UPDATED);
     return true;
 }

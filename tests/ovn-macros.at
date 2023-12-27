@@ -188,16 +188,16 @@ ovn_start_northd() {
 # ovn-sbctl and ovn-nbctl use them by default, and starts ovn-northd running
 # against them.
 #
-# Normally this starts an active northd and a backup northd.  The following
+# Normally this starts only an active northd and no backup northd.  The following
 # options are accepted to adjust that:
-#   --backup-northd=none    Don't start a backup northd.
+#   --backup-northd         Start a backup northd.
 #   --backup-northd=paused  Start the backup northd in the paused state.
 ovn_start () {
-    local backup_northd=:
+    local backup_northd=false
     local backup_northd_options=
     case $1 in
-        --backup-northd=none) backup_northd=false; shift ;;
-        --backup-northd=paused) backup_northd_options=--paused; shift ;;
+        --backup-northd) backup_northd=true; shift ;;
+        --backup-northd=paused) backup_northd=true; backup_northd_options=--paused; shift ;;
     esac
     local AZ=$1
     local msg_prefix=${AZ:+$AZ: }
@@ -288,10 +288,43 @@ net_attach () {
         || return 1
 }
 
+ovn_wait_for_encaps() {
+    local systemid=$1
+
+    if [[ -f "${OVN_SYSCONFDIR}/system-id-override" ]]; then
+        systemid=$(cat ${OVN_SYSCONFDIR}/system-id-override)
+    fi
+
+    local encap=$(ovs-vsctl get Open_vSwitch . external_ids:ovn-encap-type-$systemid)
+    if [[ -z "$encap" ]]; then
+        encap=$(ovs-vsctl get Open_vSwitch . external_ids:ovn-encap-type)
+    fi
+    encap=$(tr -d '"' <<< $encap)
+
+    local ip=$(ovs-vsctl get Open_vSwitch . external_ids:ovn-encap-ip-$systemid)
+    if [[ -z "$ip" ]]; then
+        ip=$(ovs-vsctl get Open_vSwitch . external_ids:ovn-encap-ip)
+    fi
+    ip=$(tr -d '"' <<< $ip)
+
+    IFS="," read -r -a encap_types <<< "$encap"
+    for e in "${encap_types[[@]]}"; do
+        wait_column "$ip" sb:Encap ip chassis_name="$systemid" type="$e"
+    done
+}
+
 # ovn_az_attach AZ NETWORK BRIDGE IP [MASKLEN] [ENCAP]
 ovn_az_attach() {
-    local az=$1 net=$2 bridge=$3 ip=$4 masklen=${5-24} encap=${6-geneve,vxlan} systemid=${7-$sandbox} cli_args=${@:8}
+    local az=$1 net=$2 bridge=$3 ip=$4 masklen=${5-24} encap=${6-geneve,vxlan}
+    local systemid=${7-$sandbox} systemid_override=$8
     net_attach $net $bridge || return 1
+
+    local expected_encap_id=$systemid
+    local cli_args=""
+    if [[ -n "$systemid_override" ]]; then
+        cli_args="-n $systemid_override"
+        expected_encap_id=$systemid_override
+    fi
 
     mac=`ovs-vsctl get Interface $bridge mac_in_use | sed s/\"//g`
     arp_table="$arp_table $sandbox,$bridge,$ip,$mac"
@@ -332,6 +365,11 @@ ovn_az_attach() {
     fi
 
     start_daemon ovn-controller --enable-dummy-vif-plug ${cli_args} || return 1
+    if test X"$az" = XNONE; then
+        ovn_wait_for_encaps $expected_encap_id
+    else
+        ovn_as $az ovn_wait_for_encaps $expected_encap_id
+    fi
 }
 
 # ovn_attach NETWORK BRIDGE IP [MASKLEN] [ENCAP]
@@ -372,6 +410,7 @@ start_virtual_controller() {
         || return 1
 
     ovn-controller --enable-dummy-vif-plug ${cli_args} -vconsole:off --detach --no-chdir
+    ovn_wait_for_encaps $systemid
 }
 
 # ovn_setenv AZ
@@ -833,15 +872,40 @@ ovn_trace_client() {
 # ovs-appctl netdev-dummy/receive $vif $packet
 #
 fmt_pkt() {
-    echo "from scapy.all import *; \
-          import binascii; \
-          out = binascii.hexlify(raw($1)); \
-          print(out.decode())" | $PYTHON3
+    ctlfile=$ovs_base/scapy.ctl
+    if [[ ! -S $ctlfile ]]; then
+        start_scapy_server
+    fi
+    while [[ ! -S $ctlfile ]]; do sleep 0.1; done
+    ovs-appctl -t $ctlfile payload "$1"
+}
+
+start_scapy_server() {
+    pidfile=$ovs_base/scapy.pid
+    ctlfile=$ovs_base/scapy.ctl
+    logfile=$ovs_base/scapy.log
+    lockfile=$ovs_base/scapy.lock
+
+    flock -n $lockfile "$top_srcdir"/tests/scapy-server.py \
+        --pidfile=$pidfile --unixctl=$ctlfile --log-file=$logfile --detach \
+    && on_exit "test -e \"$pidfile\" && ovs-appctl -t $ctlfile exit"
+}
+
+sleep_northd() {
+  echo Northd going to sleep
+  AT_CHECK([kill -STOP $(cat northd/ovn-northd.pid)])
+  on_exit "kill -CONT $(cat northd/ovn-northd.pid)"
+}
+
+wake_up_northd() {
+  echo Northd waking up
+  AT_CHECK([kill -CONT $(cat northd/ovn-northd.pid)])
 }
 
 sleep_sb() {
   echo SB going to sleep
   AT_CHECK([kill -STOP $(cat ovn-sb/ovsdb-server.pid)])
+  on_exit "kill -CONT $(cat ovn-sb/ovsdb-server.pid)"
 }
 wake_up_sb() {
   echo SB waking up
@@ -865,6 +929,7 @@ sleep_ovs() {
   hv=$1
   echo ovs $hv going to sleep
   AT_CHECK([kill -STOP $(cat $hv/ovs-vswitchd.pid)])
+  on_exit "kill -CONT $(cat $hv/ovs-vswitchd.pid)"
 }
 
 wake_up_ovs() {
@@ -876,10 +941,15 @@ wake_up_ovs() {
 sleep_ovsdb() {
   echo OVSDB $1 going to sleep
   AT_CHECK([kill -STOP $(cat $1/ovsdb-server.pid)])
+  on_exit "kill -CONT $(cat $1/ovsdb-server.pid)"
 }
 wake_up_ovsdb() {
   echo OVSDB $1 waking up
   AT_CHECK([kill -CONT $(cat $1/ovsdb-server.pid)])
+}
+
+trim_zeros() {
+    sed 's/\(00\)\{1,\}$//'
 }
 
 OVS_END_SHELL_HELPERS
@@ -919,4 +989,9 @@ m4_define([OVN_NBCTL], [
 m4_define([RUN_OVN_NBCTL], [
     check ovn-nbctl ${command}
     unset command
+])
+
+m4_define([TAG_UNSTABLE], [
+    AT_KEYWORDS([unstable])
+    AT_SKIP_IF([test X"$SKIP_UNSTABLE" = Xyes])
 ])

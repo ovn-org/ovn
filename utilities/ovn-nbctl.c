@@ -464,9 +464,10 @@ Port group commands:\n\
   pg-set-ports PG PORTS       Set PORTS on port group PG\n\
   pg-del PG                   Delete port group PG\n\
 HA chassis group commands:\n\
-  ha-chassis-group-add GRP  Create an HA chassis group GRP\n\
-  ha-chassis-group-del GRP  Delete the HA chassis group GRP\n\
-  ha-chassis-group-list     List the HA chassis groups\n\
+  ha-chassis-group-add GRP    Create an HA chassis group GRP\n\
+  ha-chassis-group-del GRP    Delete the HA chassis group GRP\n\
+  ha-chassis-group-list [GRP] Print the supplied HA chassis group or all\n\
+                              if none supplied\n\
   ha-chassis-group-add-chassis GRP CHASSIS PRIORITY Adds an HA\
 chassis with mandatory PRIORITY to the HA chassis group GRP\n\
   ha-chassis-group-remove-chassis GRP CHASSIS Removes the HA chassis\
@@ -7260,7 +7261,7 @@ ha_chassis_group_by_name_or_uuid(struct ctl_context *ctx, const char *id,
     }
 
     if (!ha_ch_grp && must_exist) {
-        ctx->error = xasprintf("%s: ha_chassi_group %s not found",
+        ctx->error = xasprintf("%s: ha_chassis_group %s not found",
                                id, is_uuid ? "UUID" : "name");
     }
 
@@ -7306,23 +7307,45 @@ pre_ha_ch_grp_list(struct ctl_context *ctx)
 }
 
 static void
-cmd_ha_ch_grp_list(struct ctl_context *ctx)
+ha_ch_grp_info_print(struct ctl_context *ctx,
+                     const struct nbrec_ha_chassis_group *ha_ch_grp)
+{
+    ds_put_format(&ctx->output, UUID_FMT " (%s)\n",
+                  UUID_ARGS(&ha_ch_grp->header_.uuid), ha_ch_grp->name);
+    const struct nbrec_ha_chassis *ha_ch;
+    for (size_t i = 0; i < ha_ch_grp->n_ha_chassis; i++) {
+        ha_ch = ha_ch_grp->ha_chassis[i];
+        ds_put_format(&ctx->output,
+                      "    "UUID_FMT " (%s)\n"
+                      "    priority %"PRId64"\n\n",
+                      UUID_ARGS(&ha_ch->header_.uuid), ha_ch->chassis_name,
+                      ha_ch->priority);
+    }
+    ds_put_cstr(&ctx->output, "\n");
+}
+
+static void
+ha_ch_grp_list_all(struct ctl_context *ctx)
 {
     const struct nbrec_ha_chassis_group *ha_ch_grp;
 
     NBREC_HA_CHASSIS_GROUP_FOR_EACH (ha_ch_grp, ctx->idl) {
-        ds_put_format(&ctx->output, UUID_FMT " (%s)\n",
-                      UUID_ARGS(&ha_ch_grp->header_.uuid), ha_ch_grp->name);
-        const struct nbrec_ha_chassis *ha_ch;
-        for (size_t i = 0; i < ha_ch_grp->n_ha_chassis; i++) {
-            ha_ch = ha_ch_grp->ha_chassis[i];
-            ds_put_format(&ctx->output,
-                          "    "UUID_FMT " (%s)\n"
-                          "    priority %"PRId64"\n\n",
-                          UUID_ARGS(&ha_ch->header_.uuid), ha_ch->chassis_name,
-                          ha_ch->priority);
+        ha_ch_grp_info_print(ctx, ha_ch_grp);
+    }
+}
+
+static void
+cmd_ha_ch_grp_list(struct ctl_context *ctx)
+{
+    if (ctx->argc == 1) {
+        ha_ch_grp_list_all(ctx);
+    } else if (ctx->argc == 2) {
+        const char *name_or_id = ctx->argv[1];
+        const struct nbrec_ha_chassis_group *ha_ch_grp =
+            ha_chassis_group_by_name_or_uuid(ctx, name_or_id, true);
+        if (ha_ch_grp) {
+            ha_ch_grp_info_print(ctx, ha_ch_grp);
         }
-        ds_put_cstr(&ctx->output, "\n");
     }
 }
 
@@ -7966,7 +7989,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
      NULL, cmd_ha_ch_grp_add, NULL, "", RW },
     {"ha-chassis-group-del", 1, 1, "[CHASSIS GROUP]",
      pre_ha_ch_grp_del, cmd_ha_ch_grp_del, NULL, "", RW },
-    {"ha-chassis-group-list", 0, 0, "[CHASSIS GROUP]",
+    {"ha-chassis-group-list", 0, 1, "[CHASSIS GROUP]",
      pre_ha_ch_grp_list, cmd_ha_ch_grp_list, NULL, "", RO },
     {"ha-chassis-group-add-chassis", 3, 3, "[CHASSIS GROUP]",
      pre_ha_ch_grp_add_chassis, cmd_ha_ch_grp_add_chassis, NULL, "", RW },

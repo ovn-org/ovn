@@ -23,7 +23,7 @@ CONTAINER_WORKDIR="/workspace/ovn-tmp"
 IMAGE_NAME=${IMAGE_NAME:-"ovn-org/ovn-tests"}
 
 # Test variables
-ARCH=${ARCH:-$(uname -i)}
+ARCH=${ARCH:-$(uname -m)}
 CC=${CC:-gcc}
 
 
@@ -101,8 +101,18 @@ function run_tests() {
         && \
         ARCH=$ARCH CC=$CC LIBS=$LIBS OPTS=$OPTS TESTSUITE=$TESTSUITE \
         TEST_RANGE=$TEST_RANGE SANITIZERS=$SANITIZERS DPDK=$DPDK \
-        ./.ci/linux-build.sh
+        RECHECK=$RECHECK UNSTABLE=$UNSTABLE ./.ci/linux-build.sh
     "
+}
+
+function check_clang_version_ge() {
+    lower=$1
+    version=$(clang --version | head -n1 | cut -d' ' -f3)
+    if ! echo -e "$lower\n$version" | sort -CV; then
+      return 1
+    fi
+
+    return 0
 }
 
 options=$(getopt --options "" \
@@ -149,7 +159,7 @@ while true; do
 done
 
 # Workaround for https://bugzilla.redhat.com/2153359
-if [ "$ARCH" = "aarch64" ]; then
+if [ "$ARCH" = "aarch64" ] && ! check_clang_version_ge "16.0.0"; then
     ASAN_OPTIONS="detect_leaks=0"
 fi
 

@@ -1,7 +1,7 @@
-flake8
-hacking>=3.0
+flake8>=6.1.0
 scapy
 sphinx
 setuptools
 pyelftools
 pyOpenSSL
+pycodestyle>=2.11.0

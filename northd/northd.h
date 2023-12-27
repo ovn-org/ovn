@@ -70,6 +70,7 @@ struct chassis_features {
     bool mac_binding_timestamp;
     bool ct_lb_related;
     bool fdb_timestamp;
+    bool ls_dpg_column;
 };
 
 /* A collection of datapaths. E.g. all logical switch datapaths, or all
@@ -115,6 +116,8 @@ struct northd_data {
     struct hmap svc_monitor_map;
     bool change_tracked;
     struct tracked_ls_changes tracked_ls_changes;
+    bool lb_changed; /* Indicates if load balancers changed or association of
+                      * load balancer to logical switch/router changed. */
 };
 
 struct lflow_data {
@@ -320,11 +323,12 @@ void ovnsb_db_run(struct ovsdb_idl_txn *ovnnb_txn,
                   struct ovsdb_idl_txn *ovnsb_txn,
                   const struct sbrec_port_binding_table *,
                   const struct sbrec_ha_chassis_group_table *,
-                  struct ovsdb_idl_index *sb_ha_ch_grp_by_name,
                   struct hmap *ls_ports,
                   struct hmap *lr_ports);
 bool northd_handle_ls_changes(struct ovsdb_idl_txn *,
                               const struct northd_input *,
+                              struct northd_data *);
+bool northd_handle_lr_changes(const struct northd_input *,
                               struct northd_data *);
 void destroy_northd_data_tracked_changes(struct northd_data *);
 void northd_destroy(struct northd_data *data);
@@ -345,7 +349,7 @@ bool northd_handle_lb_data_changes(struct tracked_lb_data *,
                                    struct ovn_datapaths *ls_datapaths,
                                    struct ovn_datapaths *lr_datapaths,
                                    struct hmap *lb_datapaths_map,
-                                   struct hmap *lb_group_datapaths_map);
+                                   struct hmap *lbgrp_datapaths_map);
 
 void build_bfd_table(struct ovsdb_idl_txn *ovnsb_txn,
                      const struct nbrec_bfd_table *,
@@ -361,6 +365,13 @@ const char *northd_get_svc_monitor_mac(void);
 const struct ovn_datapath *northd_get_datapath_for_port(
     const struct hmap *ls_ports, const char *port_name);
 void sync_lbs(struct ovsdb_idl_txn *, const struct sbrec_load_balancer_table *,
-              struct ovn_datapaths *ls_datapaths, struct hmap *lbs);
+              struct ovn_datapaths *ls_datapaths,
+              struct ovn_datapaths *lr_datapaths,
+              struct hmap *lbs,
+              struct chassis_features *chassis_features);
+bool check_sb_lb_duplicates(const struct sbrec_load_balancer_table *);
+
+void sync_pbs(struct ovsdb_idl_txn *, struct hmap *ls_ports);
+bool sync_pbs_for_northd_ls_changes(struct tracked_ls_changes *);
 
 #endif /* NORTHD_H */

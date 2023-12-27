@@ -13,7 +13,7 @@ concurrency:
 jobs:
   build:
     name: Build ovn-fake-multinode image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         cfg:
@@ -69,7 +69,7 @@ jobs:
         path: /tmp/_output/ovn_${{ matrix.cfg.branch }}_image.tar
 
   multinode-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     needs: [build]
     strategy:
@@ -99,13 +99,18 @@ jobs:
       XDG_RUNTIME_DIR: ''
 
     steps:
+    - name: Check out ovn
+      uses: actions/checkout@v3
+
     - name: install required dependencies
       run:  |
         sudo apt update || true
         sudo apt install -y ${{ env.dependencies }}
 
     - name: Free up disk space
-      run: sudo eatmydata apt-get remove --auto-remove -y aspnetcore-* dotnet-* libmono-* mono-* msbuild php-* php7* ghc-* zulu-*
+      run: |
+        . .ci/linux-util.sh
+        free_up_disk_space_ubuntu
 
     - uses: actions/download-artifact@v3
       with:
@@ -153,7 +158,7 @@ jobs:
     - name: set up python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.x'
+        python-version: '3.12'
 
     - name: Check out ovn
       uses: actions/checkout@v3

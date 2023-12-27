@@ -220,7 +220,8 @@ en_sync_to_sb_lb_run(struct engine_node *node, void *data OVS_UNUSED)
     struct northd_data *northd_data = engine_get_input_data("northd", node);
 
     sync_lbs(eng_ctx->ovnsb_idl_txn, sb_load_balancer_table,
-             &northd_data->ls_datapaths, &northd_data->lb_datapaths_map);
+             &northd_data->ls_datapaths, &northd_data->lr_datapaths,
+             &northd_data->lb_datapaths_map, &northd_data->features);
     engine_set_node_state(node, EN_UPDATED);
 }
 
@@ -234,14 +235,87 @@ bool
 sync_to_sb_lb_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     struct northd_data *nd = engine_get_input_data("northd", node);
-    if (nd->change_tracked) {
-        /* There are only NB LSP related changes and these can be safely
-         * ignore and returned true.  However in case the northd engine
-         * tracking data includes other changes, we need to do additional
-         * checks before safely ignoring. */
-        return true;
+
+    if (!nd->change_tracked || nd->lb_changed) {
+        /* Return false if no tracking data or if lbs changed. */
+        return false;
     }
-    return false;
+
+
+    /* There are only NB LSP related changes and these can be safely
+     * ignore and returned true.  However in case the northd engine
+     * tracking data includes other changes, we need to do additional
+     * checks before safely ignoring. */
+    return true;
+}
+
+bool
+sync_to_sb_lb_sb_load_balancer(struct engine_node *node, void *data OVS_UNUSED)
+{
+    const struct sbrec_load_balancer_table *sb_load_balancer_table =
+        EN_OVSDB_GET(engine_get_input("SB_load_balancer", node));
+
+    /* The only reason to handle SB.Load_Balancer updates is to detect
+     * spurious records being created in clustered databases due to
+     * lack of indexing on the SB.Load_Balancer table.  All other changes
+     * are valid and performed by northd, the only write-client for
+     * this table. */
+    if (check_sb_lb_duplicates(sb_load_balancer_table)) {
+        return false;
+    }
+    return true;
+}
+
+/* sync_to_sb_pb engine node functions.
+ * This engine node syncs the SB Port Bindings (partly).
+ * en_northd engine create the SB Port binding rows and
+ * updates most of the columns.
+ * This engine node updates the port binding columns which
+ * needs to be updated after northd engine is run.
+ */
+
+void *
+en_sync_to_sb_pb_init(struct engine_node *node OVS_UNUSED,
+                      struct engine_arg *arg OVS_UNUSED)
+{
+    return NULL;
+}
+
+void
+en_sync_to_sb_pb_run(struct engine_node *node, void *data OVS_UNUSED)
+{
+    const struct engine_context *eng_ctx = engine_get_context();
+    struct northd_data *northd_data = engine_get_input_data("northd", node);
+
+    sync_pbs(eng_ctx->ovnsb_idl_txn, &northd_data->ls_ports);
+    engine_set_node_state(node, EN_UPDATED);
+}
+
+void
+en_sync_to_sb_pb_cleanup(void *data OVS_UNUSED)
+{
+
+}
+
+bool
+sync_to_sb_pb_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
+{
+    const struct engine_context *eng_ctx = engine_get_context();
+    if (!eng_ctx->ovnsb_idl_txn) {
+        return false;
+    }
+
+    struct northd_data *nd = engine_get_input_data("northd", node);
+    if (!nd->change_tracked) {
+        return false;
+    }
+
+    if (!sync_pbs_for_northd_ls_changes(&nd->tracked_ls_changes)) {
+        return false;
+    }
+
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
 }
 
 /* static functions. */

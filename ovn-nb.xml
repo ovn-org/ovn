@@ -4542,6 +4542,22 @@ or
       <p><b>Example: </b> "4.0.0.10.in-addr.arpa" = "vm1.ovn.org"</p>
     </column>
 
+    <column name="options" key="ovn-owned">
+      If set to true, then the OVN will be the main responsible for
+      <code>DNS Records</code> within this row.
+
+      <p>
+        A <code>DNS</code> row with this option set to <code>true</code>
+        can be created for domains that the user needs to configure
+        locally and don't care about IPv6 only interested in IPv4 or
+        vice versa.
+
+        This will let ovn send IPv4 DNS reply and reject/ignore IPv6
+        queries to save the waiting for a timeout on those uninteresting
+        queries.
+      </p>
+    </column>
+
     <column name="external_ids">
       See <em>External IDs</em> at the beginning of this document.
     </column>

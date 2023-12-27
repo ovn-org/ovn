@@ -90,6 +90,7 @@ EXTRA_DIST = \
 	.ci/dpdk-build.sh \
 	.ci/dpdk-prepare.sh \
 	.ci/linux-build.sh \
+	.ci/linux-util.sh \
 	.ci/osx-build.sh \
 	.ci/osx-prepare.sh \
 	.ci/ovn-kubernetes/Dockerfile \
@@ -99,6 +100,7 @@ EXTRA_DIST = \
 	.github/workflows/test.yml \
 	.github/workflows/ovn-kubernetes.yml \
 	.github/workflows/ovn-fake-multinode-tests.yml \
+	.readthedocs.yaml \
 	boot.sh \
 	$(MAN_FRAGMENTS) \
 	$(MAN_ROOTS) \
@@ -414,16 +416,10 @@ ALL_LOCAL += flake8-check
 #   F811 redefinition of unused <name> from line <N> (only from flake8 v2.0)
 # D*** -- warnings from flake8-docstrings plugin
 # H*** -- warnings from flake8 hacking plugin (custom style checks beyond PEP8)
-#   H231 Python 3.x incompatible 'except x,y:' construct
-#   H232 Python 3.x incompatible octal 077 should be written as 0o77
-#   H233 Python 3.x incompatible use of print operator
-#   H238 old style class declaration, use new style (inherit from `object`)
-FLAKE8_SELECT = H231,H232,H233,H238
 FLAKE8_IGNORE = E121,E123,E125,E126,E127,E128,E129,E131,E722,W503,W504,F811,D,H,I
 flake8-check: $(FLAKE8_PYFILES)
 	$(FLAKE8_WERROR)$(AM_V_GEN) \
 	  src='$^' && \
-	  flake8 $$src --select=$(FLAKE8_SELECT) $(FLAKE8_FLAGS) && \
 	  flake8 $$src --ignore=$(FLAKE8_IGNORE) $(FLAKE8_FLAGS) && \
 	  touch $@
 endif

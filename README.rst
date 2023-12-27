@@ -5,6 +5,17 @@
 OVN
 ===
 
+.. image:: https://github.com/ovn-org/ovn/actions/workflows/test.yml/badge.svg
+    :target: https://github.com/ovn-org/ovn/actions/workflows/test.yml
+.. image:: https://github.com/ovn-org/ovn/actions/workflows/ovn-kubernetes.yml/badge.svg
+    :target: https://github.com/ovn-org/ovn/actions/workflows/ovn-kubernetes.yml
+.. image:: https://github.com/ovn-org/ovn/actions/workflows/ovn-fake-multinode-tests.yml/badge.svg
+    :target: https://github.com/ovn-org/ovn/actions/workflows/ovn-fake-multinode-tests.yml
+.. image:: https://api.cirrus-ci.com/github/ovn-org/ovn.svg
+    :target: https://cirrus-ci.com/github/ovn-org/ovn
+.. image:: https://readthedocs.org/projects/ovn/badge/?version=latest
+    :target: https://docs.ovn.org/en/latest/
+
 What is OVN?
 ---------------------
 

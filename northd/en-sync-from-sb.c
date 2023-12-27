@@ -53,13 +53,9 @@ en_sync_from_sb_run(struct engine_node *node, void *data OVS_UNUSED)
         EN_OVSDB_GET(engine_get_input("SB_port_binding", node));
     const struct sbrec_ha_chassis_group_table *sb_ha_ch_grp_table =
         EN_OVSDB_GET(engine_get_input("SB_ha_chassis_group", node));
-    struct ovsdb_idl_index *sb_ha_ch_grp_by_name =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_ha_chassis_group", node),
-            "sbrec_ha_chassis_grp_by_name");
     stopwatch_start(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
     ovnsb_db_run(eng_ctx->ovnnb_idl_txn, eng_ctx->ovnsb_idl_txn,
-                 sb_pb_table, sb_ha_ch_grp_table, sb_ha_ch_grp_by_name,
+                 sb_pb_table, sb_ha_ch_grp_table,
                  &nd->ls_ports, &nd->lr_ports);
     stopwatch_stop(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
 }
@@ -70,10 +66,12 @@ sync_from_sb_northd_handler(struct engine_node *node,
 {
     struct northd_data *nd = engine_get_input_data("northd", node);
     if (nd->change_tracked) {
-        /* There are only NB LSP related changes and the only field this node
-         * cares about is the "up" column, which is considered write-only to
-         * this node, so it is safe to ignore the change. (The real change
-         * matters to this node is always from the SB DB.) */
+        /* So far the changes tracked in northd don't impact this node.
+         *
+         * In particular, for the LS related changes, the only field this node
+         * cares about is the "up" column of LSP, which is considered
+         * write-only to this node, so it is safe to ignore the change. (The
+         * real change matters to this node is always from the SB DB.) */
         return true;
     }
     return false;

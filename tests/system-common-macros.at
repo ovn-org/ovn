@@ -372,7 +372,7 @@ ADD_VETH(sw11, sw11, br-int, "192.168.2.2/24", "f0:00:00:02:02:03", \
          "192.168.2.1")
 ADD_NAMESPACES(server)
 ADD_VETH(s1, server, br-ext, "2001:1db8:3333::2/64", "f0:00:00:01:02:05", \
-         "2001:1db8:3333::1")
+         "2001:1db8:3333::1", "nodad")
 
 if test X"$1" = X"GR"; then
    ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
@@ -408,9 +408,6 @@ ovn-nbctl lsp-add sw0 sw01 \
 
 ovn-nbctl lsp-add sw1 sw11 \
     -- lsp-set-addresses sw11 "f0:00:00:02:02:03 192.168.2.2"
-
-OVS_WAIT_UNTIL([test "$(ip netns exec server ip a | grep 2001:1db8:3333::2 | grep tentative)" = ""])
-OVS_WAIT_UNTIL([test "$(ip netns exec server ip a | grep fe80 | grep tentative)" = ""])
 
 AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext])
 ovn-nbctl lsp-add public public1 \

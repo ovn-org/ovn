@@ -16,6 +16,7 @@
 #include <config.h>
 #include "bitmap.h"
 #include "byte-order.h"
+#include "coverage.h"
 #include "dirs.h"
 #include "dp-packet.h"
 #include "flow.h"
@@ -54,6 +55,8 @@
 #include "vswitch-idl.h"
 
 VLOG_DEFINE_THIS_MODULE(ofctrl);
+
+COVERAGE_DEFINE(ofctrl_msg_too_long);
 
 /* An OpenFlow flow. */
 struct ovn_flow {
@@ -415,11 +418,9 @@ static void ofctrl_recv(const struct ofp_header *, enum ofptype);
 
 void
 ofctrl_init(struct ovn_extend_table *group_table,
-            struct ovn_extend_table *meter_table,
-            int inactivity_probe_interval)
+            struct ovn_extend_table *meter_table)
 {
-    swconn = rconn_create(inactivity_probe_interval, 0,
-                          DSCP_DEFAULT, 1 << OFP15_VERSION);
+    swconn = rconn_create(0, 0, DSCP_DEFAULT, 1 << OFP15_VERSION);
     tx_counter = rconn_packet_counter_create();
     hmap_init(&installed_lflows);
     hmap_init(&installed_pflows);
@@ -1273,6 +1274,37 @@ ofctrl_add_flow_metered(struct ovn_desired_flow_table *desired_flows,
                                       meter_id, as_info, true);
 }
 
+struct ofpact_ref {
+    struct hmap_node hmap_node;
+    struct ofpact *ofpact;
+};
+
+static struct ofpact_ref *
+ofpact_ref_find(const struct hmap *refs, const struct ofpact *ofpact)
+{
+    uint32_t hash = hash_bytes(ofpact, ofpact->len, 0);
+
+    struct ofpact_ref *ref;
+    HMAP_FOR_EACH_WITH_HASH (ref, hmap_node, hash, refs) {
+        if (ofpacts_equal(ref->ofpact, ref->ofpact->len,
+                          ofpact, ofpact->len)) {
+            return ref;
+        }
+    }
+
+    return NULL;
+}
+
+static void
+ofpact_refs_destroy(struct hmap *refs)
+{
+    struct ofpact_ref *ref;
+    HMAP_FOR_EACH_POP (ref, hmap_node, refs) {
+        free(ref);
+    }
+    hmap_destroy(refs);
+}
+
 /* Either add a new flow, or append actions on an existing flow. If the
  * flow existed, a new link will also be created between the new sb_uuid
  * and the existing flow. */
@@ -1292,6 +1324,21 @@ ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
                            meter_id);
     existing = desired_flow_lookup_conjunctive(desired_flows, &f->flow);
     if (existing) {
+        struct hmap existing_conj = HMAP_INITIALIZER(&existing_conj);
+
+        struct ofpact *ofpact;
+        OFPACT_FOR_EACH (ofpact, existing->flow.ofpacts,
+                         existing->flow.ofpacts_len) {
+            if (ofpact->type != OFPACT_CONJUNCTION) {
+                continue;
+            }
+
+            struct ofpact_ref *ref = xmalloc(sizeof *ref);
+            ref->ofpact = ofpact;
+            uint32_t hash = hash_bytes(ofpact, ofpact->len, 0);
+            hmap_insert(&existing_conj, &ref->hmap_node, hash);
+        }
+
         /* There's already a flow with this particular match and action
          * 'conjunction'. Append the action to that flow rather than
          * adding a new flow.
@@ -1301,7 +1348,15 @@ ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
         ofpbuf_use_stub(&compound, compound_stub, sizeof(compound_stub));
         ofpbuf_put(&compound, existing->flow.ofpacts,
                    existing->flow.ofpacts_len);
-        ofpbuf_put(&compound, f->flow.ofpacts, f->flow.ofpacts_len);
+
+        OFPACT_FOR_EACH (ofpact, f->flow.ofpacts, f->flow.ofpacts_len) {
+            if (ofpact->type != OFPACT_CONJUNCTION ||
+                !ofpact_ref_find(&existing_conj, ofpact)) {
+                ofpbuf_put(&compound, ofpact, OFPACT_ALIGN(ofpact->len));
+            }
+        }
+
+        ofpact_refs_destroy(&existing_conj);
 
         mem_stats.desired_flow_usage -= desired_flow_size(existing);
         free(existing->flow.ofpacts);
@@ -1770,6 +1825,18 @@ ovn_flow_log(const struct ovn_flow *f, const char *action)
 }
 
 static void
+ovn_flow_log_size_err(const struct ovn_flow *f)
+{
+    COVERAGE_INC(ofctrl_msg_too_long);
+
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
+    char *s = ovn_flow_to_string(f);
+    VLOG_ERR_RL(&rl, "The FLOW_MOD message is too big: %s", s);
+    free(s);
+}
+
+static void
 ovn_flow_uninit(struct ovn_flow *f)
 {
     minimatch_destroy(&f->match);
@@ -1888,15 +1955,27 @@ encode_bundle_add(struct ofpbuf *msg, struct ofputil_bundle_ctrl_msg *bc)
     return ofputil_encode_bundle_add(OFP15_VERSION, &bam);
 }
 
-static void
+static bool
 add_flow_mod(struct ofputil_flow_mod *fm,
              struct ofputil_bundle_ctrl_msg *bc,
              struct ovs_list *msgs)
 {
     struct ofpbuf *msg = encode_flow_mod(fm);
     struct ofpbuf *bundle_msg = encode_bundle_add(msg, bc);
+
+    uint32_t flow_mod_len = msg->size;
+    uint32_t bundle_len = bundle_msg->size;
+
     ofpbuf_delete(msg);
+
+    if (flow_mod_len > UINT16_MAX || bundle_len > UINT16_MAX) {
+        ofpbuf_delete(bundle_msg);
+
+        return false;
+    }
+
     ovs_list_push_back(msgs, &bundle_msg->list_node);
+    return true;
 }
 
 /* group_table. */
@@ -2121,7 +2200,7 @@ ofctrl_meter_bands_alloc(const struct sbrec_meter *sb_meter,
                          struct ovn_extend_table_info *entry,
                          struct ovs_list *msgs)
 {
-    struct meter_band_entry *mb = mb = xzalloc(sizeof *mb);
+    struct meter_band_entry *mb = xzalloc(sizeof *mb);
     mb->n_bands = sb_meter->n_bands;
     mb->bands = xcalloc(mb->n_bands, sizeof *mb->bands);
     for (int i = 0; i < sb_meter->n_bands; i++) {
@@ -2235,7 +2314,10 @@ installed_flow_add(struct ovn_flow *d,
         .new_cookie = htonll(d->cookie),
         .command = OFPFC_ADD,
     };
-    add_flow_mod(&fm, bc, msgs);
+
+    if (!add_flow_mod(&fm, bc, msgs)) {
+        ovn_flow_log_size_err(d);
+    }
 }
 
 static void
@@ -2259,7 +2341,7 @@ installed_flow_mod(struct ovn_flow *i, struct ovn_flow *d,
         /* Use OFPFC_ADD so that cookie can be updated. */
         fm.command = OFPFC_ADD;
     }
-    add_flow_mod(&fm, bc, msgs);
+    bool result = add_flow_mod(&fm, bc, msgs);
 
     /* Replace 'i''s actions and cookie by 'd''s. */
     mem_stats.installed_flow_usage -= i->ofpacts_len - d->ofpacts_len;
@@ -2267,6 +2349,10 @@ installed_flow_mod(struct ovn_flow *i, struct ovn_flow *d,
     i->ofpacts = xmemdup(d->ofpacts, d->ofpacts_len);
     i->ofpacts_len = d->ofpacts_len;
     i->cookie = d->cookie;
+
+    if (!result) {
+        ovn_flow_log_size_err(i);
+    }
 }
 
 static void
@@ -2280,7 +2366,10 @@ installed_flow_del(struct ovn_flow *i,
         .table_id = i->table_id,
         .command = OFPFC_DELETE_STRICT,
     };
-    add_flow_mod(&fm, bc, msgs);
+
+    if (!add_flow_mod(&fm, bc, msgs)) {
+        ovn_flow_log_size_err(i);
+    }
 }
 
 static void
@@ -2984,14 +3073,6 @@ bool
 ofctrl_is_connected(void)
 {
     return rconn_is_connected(swconn);
-}
-
-void
-ofctrl_set_probe_interval(int probe_interval)
-{
-    if (swconn) {
-        rconn_set_probe_interval(swconn, probe_interval);
-    }
 }
 
 void

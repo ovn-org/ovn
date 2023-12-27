@@ -60,7 +60,6 @@ check_bridge_mappings () {
 # the RBAC rules programmed into the SB-DB. The test instruments the SB-DB
 # directly and we need to stop northd to avoid overwriting the instrumentation.
 kill `cat northd/ovn-northd.pid`
-kill `cat northd-backup/ovn-northd.pid`
 kill `cat ovn-nb/ovsdb-server.pid`
 
 # Initially there should be no patch ports.
@@ -526,6 +525,10 @@ OVS_WAIT_UNTIL([
     test "$(ovn-sbctl get chassis hv1 other_config:port-up-notif)" = '"true"'
 ])
 
+OVS_WAIT_UNTIL([
+    test "$(ovn-sbctl get chassis hv1 other_config:ls-dpg-column)" = '"true"'
+])
+
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
@@ -575,10 +578,8 @@ localport lport : [[lsp1]]
 
 # pause ovn-northd
 check as northd ovn-appctl -t ovn-northd pause
-check as northd-backup ovn-appctl -t ovn-northd pause
 
 as northd ovn-appctl -t ovn-northd status
-as northd-backup ovn-appctl -t ovn-northd status
 
 pb_types=(patch chassisredirect l3gateway localnet localport l2gateway
           virtual external remote vtep)
@@ -2093,7 +2094,6 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=46 | grep -c "priority=1100"], [0], 
 
 # pause ovn-northd
 check as northd ovn-appctl -t ovn-northd pause
-check as northd-backup ovn-appctl -t ovn-northd pause
 
 # Simulate a SB address set "del and add" notification to ovn-controller in the
 # same IDL iteration. The flows programmed by ovn-controller should reflect the
@@ -2118,7 +2118,7 @@ AT_CLEANUP
 
 AT_SETUP([ovn-controller - I-P handle lb_hairpin_use_ct_mark change])
 
-ovn_start --backup-northd=none
+ovn_start
 
 net_add n1
 sim_add hv1
@@ -2202,6 +2202,10 @@ OVS_APP_EXIT_AND_WAIT([ovn-controller])
 # The old OVS flows should remain (this is regardless of the configuration)
 AT_CHECK([ovs-ofctl dump-flows br-int | grep 10.1.2.3], [0], [ignore])
 
+# We should have 2 flows with groups.
+AT_CHECK([ovs-ofctl dump-flows br-int | grep group -c], [0], [2
+])
+
 # Make a change to the ls1-lp1's IP
 check ovn-nbctl --wait=sb lsp-set-addresses ls1-lp1 "f0:00:00:00:00:01 10.1.2.4"
 
@@ -2214,10 +2218,18 @@ sleep 2
 lflow_run_1=$(ovn-appctl -t ovn-controller coverage/read-counter lflow_run)
 AT_CHECK([ovs-ofctl dump-flows br-int | grep 10.1.2.3], [0], [ignore])
 
+# We should have 2 flows with groups.
+AT_CHECK([ovs-ofctl dump-flows br-int | grep group -c], [0], [2
+])
+
 sleep 5
 
 # Check after the wait
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 10.1.2.4])
+
+# We should have 2 flows with groups.
+AT_CHECK([ovs-ofctl dump-flows br-int | grep group -c], [0], [2
+])
 lflow_run_2=$(ovn-appctl -t ovn-controller coverage/read-counter lflow_run)
 
 # Verify that the flow compute completed during the wait (after the wait it
@@ -2230,12 +2242,16 @@ OVS_APP_EXIT_AND_WAIT([ovs-vswitchd])
 start_daemon ovs-vswitchd --enable-dummy=system -vvconn -vofproto_dpif -vunixctl
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 10.1.2.4])
 
-check ovn-nbctl --wait=hv lb-add lb3 2.2.2.2 10.1.2.5 \
+check ovn-nbctl --wait=hv lb-add lb3 3.3.3.3 10.1.2.5 \
 -- ls-lb-add ls1 lb3
 
 # There should be 3 group IDs allocated (this is to ensure the group ID
 # allocation is correct after ofctrl state reset.
 AT_CHECK([ovn-appctl -t ovn-controller group-table-list | awk '{print $2}' | sort | uniq | wc -l], [0], [3
+])
+
+# We should have 3 flows with groups.
+AT_CHECK([ovs-ofctl dump-flows br-int | grep group -c], [0], [3
 ])
 
 OVN_CLEANUP([hv1])
@@ -2647,6 +2663,51 @@ OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c in_por
 OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c in_port=1], [1],[dnl
 0
 ])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - multicast group buffer split])
+AT_KEYWORDS([ovn])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+for i in $(seq 1 320); do
+    ovs-vsctl -- add-port br-int hv1-vif$i -- \
+        set interface hv1-vif$i external-ids:iface-id=sw0-p$i \
+        options:tx_pcap=hv1/vif${i}-tx.pcap \
+        options:rxq_pcap=hv1/vif${i}-rx.pcap \
+        ofport-request=$i
+done
+
+
+check ovn-nbctl ls-add sw0
+for i in $(seq 1 320); do
+    check ovn-nbctl lsp-add sw0 sw0-p$i
+    check ovn-nbctl lsp-set-addresses sw0-p$i "unknown"
+done
+
+wait_for_ports_up
+ovn-nbctl --wait=hv sync
+
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=40 | grep reg15=0x8000,metadata=0x1 | grep -c "controller(userdata=00.00.00.1b"], [0],[dnl
+3
+])
+
+for i in $(seq 1 280); do
+    check ovn-nbctl lsp-del sw0-p$i
+done
+ovn-nbctl --wait=hv sync
+
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=40 | grep -q controller], [1])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

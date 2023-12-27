@@ -225,6 +225,7 @@ m4_define([OVN_CONTROLLER_EXPECT_HIT_COND],[
 ])
 
 AT_SETUP([ovn-controller incremental processing])
+TAG_UNSTABLE
 # Check which operations the trigger full logical flow processing.
 #
 # Create and destroy logical routers, switches, ports, address sets and ACLs
