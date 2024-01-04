@@ -5821,6 +5821,7 @@ parse_options(int argc, char *argv[])
             break;
 
         case 'n':
+            free(cli_system_id);
             cli_system_id = xstrdup(optarg);
             break;
 
