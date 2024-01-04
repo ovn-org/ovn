@@ -1017,6 +1017,7 @@ convert_match_to_expr(const struct sbrec_logical_flow *lflow,
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
         VLOG_WARN_RL(&rl, "error parsing match \"%s\": %s",
                     lflow->match, error);
+        expr_destroy(e);
         free(error);
         return NULL;
     }

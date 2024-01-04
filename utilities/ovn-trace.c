@@ -983,6 +983,7 @@ parse_lflow_for_datapath(const struct sbrec_logical_flow *sblf,
         if (error) {
             VLOG_WARN("%s: parsing expression failed (%s)",
                       sblf->match, error);
+            expr_destroy(match);
             free(error);
             return;
         }

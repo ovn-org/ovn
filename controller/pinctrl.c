@@ -6349,26 +6349,31 @@ pinctrl_handle_empty_lb_backends_opts(struct ofpbuf *userdata)
     char *protocol = NULL;
     char *load_balancer = NULL;
 
+    struct empty_lb_backends_event *event = NULL;
+
     while (userdata->size) {
         userdata_opt = ofpbuf_try_pull(userdata, sizeof opt_hdr);
         if (!userdata_opt) {
-            return false;
+            goto cleanup;
         }
         memcpy(&opt_hdr, userdata_opt, sizeof opt_hdr);
 
         size_t size = ntohs(opt_hdr.size);
         char *userdata_opt_data = ofpbuf_try_pull(userdata, size);
         if (!userdata_opt_data) {
-            return false;
+            goto cleanup;
         }
         switch (ntohs(opt_hdr.opt_code)) {
         case EMPTY_LB_VIP:
+            free(vip);
             vip = xmemdup0(userdata_opt_data, size);
             break;
         case EMPTY_LB_PROTOCOL:
+            free(protocol);
             protocol = xmemdup0(userdata_opt_data, size);
             break;
         case EMPTY_LB_LOAD_BALANCER:
+            free(load_balancer);
             load_balancer = xmemdup0(userdata_opt_data, size);
             break;
         default:
@@ -6379,36 +6384,39 @@ pinctrl_handle_empty_lb_backends_opts(struct ofpbuf *userdata)
     if (!vip || !protocol || !load_balancer) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
         VLOG_WARN_RL(&rl, "missing lb parameters in userdata");
-        free(vip);
-        free(protocol);
-        free(load_balancer);
-        return false;
+        goto cleanup;
     }
-
-    struct empty_lb_backends_event *event;
 
     event = pinctrl_find_empty_lb_backends_event(vip, protocol,
                                                  load_balancer, hash);
-    if (!event) {
-        if (hmap_count(&event_table[OVN_EVENT_EMPTY_LB_BACKENDS]) >= 1000) {
-            COVERAGE_INC(pinctrl_drop_controller_event);
-            return false;
-        }
-
-        event = xzalloc(sizeof *event);
-        hmap_insert(&event_table[OVN_EVENT_EMPTY_LB_BACKENDS],
-                    &event->hmap_node, hash);
-        event->vip = vip;
-        event->protocol = protocol;
-        event->load_balancer = load_balancer;
-        event->timestamp = time_msec();
-        notify_pinctrl_main();
-    } else {
-        free(vip);
-        free(protocol);
-        free(load_balancer);
+    if (event) {
+        goto cleanup;
     }
-    return true;
+
+    if (hmap_count(&event_table[OVN_EVENT_EMPTY_LB_BACKENDS]) >= 1000) {
+        COVERAGE_INC(pinctrl_drop_controller_event);
+        goto cleanup;
+    }
+
+    event = xzalloc(sizeof *event);
+    hmap_insert(&event_table[OVN_EVENT_EMPTY_LB_BACKENDS],
+                &event->hmap_node, hash);
+    event->vip = vip;
+    event->protocol = protocol;
+    event->load_balancer = load_balancer;
+    event->timestamp = time_msec();
+    notify_pinctrl_main();
+
+    vip = NULL;
+    protocol = NULL;
+    load_balancer = NULL;
+
+cleanup:
+    free(vip);
+    free(protocol);
+    free(load_balancer);
+
+    return event != NULL;
 }
 
 static void
