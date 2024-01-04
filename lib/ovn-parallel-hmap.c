@@ -427,10 +427,8 @@ ovn_update_hashrow_locks(struct hmap *lflows, struct hashrow_locks *hrl)
 {
     int i;
     if (hrl->mask != lflows->mask) {
-        if (hrl->row_locks) {
-            free(hrl->row_locks);
-        }
-        hrl->row_locks = xcalloc(sizeof(struct ovs_mutex), lflows->mask + 1);
+        hrl->row_locks = xrealloc(hrl->row_locks,
+                                  sizeof *hrl->row_locks * (lflows->mask + 1));
         hrl->mask = lflows->mask;
         for (i = 0; i <= lflows->mask; i++) {
             ovs_mutex_init(&hrl->row_locks[i]);

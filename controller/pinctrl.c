@@ -1282,10 +1282,7 @@ fill_ipv6_prefix_state(struct ovsdb_idl_txn *ovnsb_idl_txn,
         struct ipv6_prefixd_state *pfd;
 
         if (!smap_get_bool(&pb->options, "ipv6_prefix", false)) {
-            pfd = shash_find_and_delete(&ipv6_prefixd, pb->logical_port);
-            if (pfd) {
-                free(pfd);
-            }
+            free(shash_find_and_delete(&ipv6_prefixd, pb->logical_port));
             continue;
         }
 

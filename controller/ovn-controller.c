@@ -688,9 +688,7 @@ add_pending_ct_zone_entry(struct shash *pending_ct_zones,
      */
     struct ct_zone_pending_entry *existing =
         shash_replace(pending_ct_zones, name, pending);
-    if (existing) {
-        free(existing);
-    }
+    free(existing);
 }
 
 static bool
@@ -6099,12 +6097,8 @@ loop_done:
 
     ovs_feature_support_destroy();
     free(ovs_remote);
-    if (file_system_id) {
-        free(file_system_id);
-    }
-    if (cli_system_id) {
-        free(cli_system_id);
-    }
+    free(file_system_id);
+    free(cli_system_id);
     ovn_exit_args_finish(&exit_args);
     unixctl_server_destroy(unixctl);
     service_stop();

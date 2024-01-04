@@ -179,17 +179,13 @@ expr_combine(enum expr_type type, struct expr *a, struct expr *b)
         } else {
             ovs_list_push_back(&a->andor, &b->node);
         }
-        if (a->as_name) {
-            free(a->as_name);
-            a->as_name = NULL;
-        }
+        free(a->as_name);
+        a->as_name = NULL;
         return a;
     } else if (b->type == type) {
         ovs_list_push_front(&b->andor, &a->node);
-        if (b->as_name) {
-            free(b->as_name);
-            b->as_name = NULL;
-        }
+        free(b->as_name);
+        b->as_name = NULL;
         return b;
     } else {
         struct expr *e = expr_create_andor(type);
@@ -879,12 +875,10 @@ parse_constant(struct expr_context *ctx, struct expr_constant_set *cs,
                                 sizeof *cs->values);
     }
 
-    if (cs->as_name) {
-        /* Combining other values to the constant set that is tracking an
-         * address set, so untrack it. */
-        free(cs->as_name);
-        cs->as_name = NULL;
-    }
+    /* Combining other values to the constant set that is tracking an
+     * address set, so untrack it. */
+    free(cs->as_name);
+    cs->as_name = NULL;
 
     if (ctx->lexer->token.type == LEX_T_TEMPLATE) {
         lexer_error(ctx->lexer, "Unexpanded template.");

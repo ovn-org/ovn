@@ -44,7 +44,7 @@ void
 destroy_ipam_info(struct ipam_info *info)
 {
     bitmap_free(info->allocated_ipv4s);
-    free((char *) info->id);
+    free(CONST_CAST(char *, info->id));
 }
 
 bool

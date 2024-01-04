@@ -142,15 +142,9 @@ destroy_port_ctx(struct vif_plug_port_ctx *ctx)
 {
     smap_destroy(&ctx->vif_plug_port_ctx_in.lport_options);
     smap_destroy(&ctx->vif_plug_port_ctx_in.iface_options);
-    if (ctx->vif_plug_port_ctx_in.lport_name) {
-        free((char *)ctx->vif_plug_port_ctx_in.lport_name);
-    }
-    if (ctx->vif_plug_port_ctx_in.iface_name) {
-        free((char *)ctx->vif_plug_port_ctx_in.iface_name);
-    }
-    if (ctx->vif_plug_port_ctx_in.iface_type) {
-        free((char *)ctx->vif_plug_port_ctx_in.iface_type);
-    }
+    free(CONST_CAST(char *, ctx->vif_plug_port_ctx_in.lport_name));
+    free(CONST_CAST(char *, ctx->vif_plug_port_ctx_in.iface_name));
+    free(CONST_CAST(char *, ctx->vif_plug_port_ctx_in.iface_type));
     /* Note that data associated with ctx->vif_plug_port_ctx_out must be
      * destroyed by the plug provider implementation with a call to
      * vif_plug_port_ctx_destroy prior to calling this function */
