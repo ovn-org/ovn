@@ -306,10 +306,12 @@ parse_options(int argc, char *argv[])
 
         switch (c) {
         case 'd':
+            free(ovnsb_remote);
             ovnsb_remote = xstrdup(optarg);
             break;
 
         case 'D':
+            free(vtep_remote);
             vtep_remote = xstrdup(optarg);
             break;
 
