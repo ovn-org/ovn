@@ -125,6 +125,8 @@ static unixctl_cb_func debug_ignore_startup_delay;
 static char *parse_options(int argc, char *argv[]);
 OVS_NO_RETURN static void usage(void);
 
+static const char *unixctl_path;
+
 /* SSL options */
 static const char *ssl_private_key_file;
 static const char *ssl_certificate_file;
@@ -5003,7 +5005,7 @@ main(int argc, char *argv[])
 
     daemonize_start(true, false);
 
-    char *abs_unixctl_path = get_abs_unix_ctl_path(NULL);
+    char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
     retval = unixctl_server_create(abs_unixctl_path, &unixctl);
     free(abs_unixctl_path);
     if (retval) {
@@ -6128,6 +6130,7 @@ parse_options(int argc, char *argv[])
     static struct option long_options[] = {
         {"help", no_argument, NULL, 'h'},
         {"version", no_argument, NULL, 'V'},
+        {"unixctl", required_argument, NULL, 'u'},
         VLOG_LONG_OPTIONS,
         OVN_DAEMON_LONG_OPTIONS,
         STREAM_SSL_LONG_OPTIONS,
@@ -6187,6 +6190,10 @@ parse_options(int argc, char *argv[])
 
         case 'n':
             cli_system_id = xstrdup(optarg);
+            break;
+
+        case 'u':
+            unixctl_path = optarg;
             break;
 
         case '?':
