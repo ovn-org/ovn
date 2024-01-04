@@ -4487,6 +4487,7 @@ static void
             nexthop = normalize_prefix_str(ctx->argv[3]);
             if (!nexthop) {
                 ctl_error(ctx, "bad nexthop argument: %s", ctx->argv[3]);
+                free(prefix);
                 return;
             }
         }
