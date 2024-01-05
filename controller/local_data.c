@@ -528,7 +528,7 @@ chassis_tunnels_destroy(struct hmap *chassis_tunnels)
  */
 struct chassis_tunnel *
 chassis_tunnel_find(const struct hmap *chassis_tunnels, const char *chassis_id,
-                    char *remote_encap_ip, char *local_encap_ip)
+                    char *remote_encap_ip, const char *local_encap_ip)
 {
     /*
      * If the specific encap_ip is given, look for the chassisid_ip entry,

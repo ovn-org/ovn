@@ -15,6 +15,9 @@ Post v23.09.0
   - A new LSP option "enable_router_port_acl" has been added to enable
     conntrack for the router port whose peer is l3dgw_port if set it true.
   - Enable PMTU discovery on geneve/vxlan tunnels for E/W traffic.
+  - Support selecting encapsulation IP based on the source/destination VIF's
+    settting. See ovn-controller(8) 'external_ids:ovn-encap-ip' for more
+    details.
 
 OVN v23.09.0 - 15 Sep 2023
 --------------------------

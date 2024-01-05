@@ -154,7 +154,7 @@ bool local_nonvif_data_handle_ovs_iface_changes(
 struct chassis_tunnel *chassis_tunnel_find(const struct hmap *chassis_tunnels,
                                            const char *chassis_id,
                                            char *remote_encap_ip,
-                                           char *local_encap_ip);
+                                           const char *local_encap_ip);
 
 bool get_chassis_tunnel_ofport(const struct hmap *chassis_tunnels,
                                const char *chassis_name,

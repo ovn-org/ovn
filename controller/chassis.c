@@ -61,7 +61,7 @@ struct ovs_chassis_cfg {
 
     /* Set of encap types parsed from the 'ovn-encap-type' external-id. */
     struct sset encap_type_set;
-    /* Set of encap IPs parsed from the 'ovn-encap-type' external-id. */
+    /* Set of encap IPs parsed from the 'ovn-encap-ip' external-id. */
     struct sset encap_ip_set;
     /* Interface type list formatted in the OVN-SB Chassis required format. */
     struct ds iface_types;

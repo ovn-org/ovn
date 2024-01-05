@@ -176,10 +176,32 @@
 
       <dt><code>external_ids:ovn-encap-ip</code></dt>
       <dd>
-        The IP address that a chassis should use to connect to this node
-        using encapsulation types specified by
-        <code>external_ids:ovn-encap-type</code>. Multiple encapsulation IPs
-        may be specified with a comma-separated list.
+        <p>
+          The IP address that a chassis should use to connect to this node
+          using encapsulation types specified by
+          <code>external_ids:ovn-encap-type</code>. Multiple encapsulation IPs
+          may be specified with a comma-separated list.
+        </p>
+        <p>
+          In scenarios where multiple encapsulation IPs are present, distinct
+          tunnels are established for each remote chassis. These tunnels are
+          differentiated by setting unique <code>options:local_ip</code> and
+          <code>options:remote_ip</code> values in the tunnel interface. When
+          transmitting a packet to a remote chassis, the selection of local_ip
+          is guided by the <code>Interface:external_ids:encap-ip</code> from
+          the local OVSDB, corresponding to the VIF originating the packet, if
+          specified. The <code>Interface:external_ids:encap-ip</code> setting
+          of the VIF is also populated to the <code>Port_Binding</code>
+          table in the OVN SB database via the <code>encap</code> column.
+          Consequently, when a remote chassis needs to send a packet to a
+          port-binding associated with this VIF, it utilizes the tunnel with
+          the appropriate <code>options:remote_ip</code> that matches the
+          <code>ip</code> in <code>Port_Binding:encap</code>. This mechanism
+          is particularly beneficial for chassis with multiple physical
+          interfaces designated for tunneling, where each interface is
+          optimized for handling specific traffic associated with particular
+          VIFs.
+        </p>
       </dd>
 
       <dt><code>external_ids:ovn-encap-df_default</code></dt>

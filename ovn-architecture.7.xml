@@ -1247,8 +1247,8 @@
       chassis.  This is initialized to 0 at the beginning of the logical
         <!-- Keep the following in sync with MFF_LOG_CT_ZONE in
              ovn/lib/logical-fields.h. -->
-      ingress pipeline.  OVN stores this in Open vSwitch extension register
-      number 13.
+      ingress pipeline.  OVN stores this in the lower 16 bits of the Open
+      vSwitch extension register number 13.
     </dd>
 
     <dt>conntrack zone fields for routers</dt>
@@ -1261,6 +1261,20 @@
         MFF_LOG_SNAT_ZONE in ovn/lib/logical-fields.h. -->
       extension register number 11 and zone information for south to north
       traffic (for SNATing) in Open vSwitch extension register number 12.
+    </dd>
+
+    <dt>Encap ID for logical ports</dt>
+    <dd>
+      A field that records an ID that indicates which encapsulation IP should
+      be used when sending packets to a remote chassis, according to the
+      original input logical port. This is useful when there are multiple IPs
+      available for encapsulation. The value only has local significance and is
+      not meaningful between chassis. This is initialized to 0 at the beginning
+      of the logical
+        <!-- Keep the following in sync with MFF_LOG_ENCAP_ID in
+             ovn/lib/logical-fields.h. -->
+      ingress pipeline.  OVN stores this in the higher 16 bits of the Open
+      vSwitch extension register number 13.
     </dd>
 
     <dt>logical flow flags</dt>

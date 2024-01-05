@@ -66,6 +66,8 @@ struct physical_ctx {
     struct shash *local_bindings;
     struct simap *patch_ofports;
     struct hmap *chassis_tunnels;
+    size_t n_encap_ips;
+    const char **encap_ips;
     struct physical_debug debug;
 };
 
