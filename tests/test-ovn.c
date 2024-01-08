@@ -999,7 +999,7 @@ test_tree_shape_exhaustively(struct expr *expr, struct shash *symtab,
 
             if (operation >= OP_FLOW) {
                 bool found = classifier_lookup(&cls, OVS_VERSION_MIN,
-                                               &f, NULL) != NULL;
+                                               &f, NULL, NULL) != NULL;
                 if (expected != found) {
                     struct ds expr_s, modified_s;
 
@@ -1238,7 +1238,7 @@ test_expr_to_packets(struct ovs_cmdl_context *ctx OVS_UNUSED)
         uint64_t packet_stub[128 / 8];
         struct dp_packet packet;
         dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
-        flow_compose(&packet, &uflow, NULL, 64);
+        flow_compose(&packet, &uflow, NULL, 64, false);
 
         struct ds output = DS_EMPTY_INITIALIZER;
         const uint8_t *buf = dp_packet_data(&packet);
