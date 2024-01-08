@@ -36739,3 +36739,67 @@ check_flow_count hv2 12
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([gratuitous arp max timeout])
+AT_KEYWORDS([slowtest])
+TAG_UNSTABLE
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+ovn_start
+
+check ovn-nbctl ls-add ls0
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-ls0 f0:00:00:00:00:01 192.168.0.1/24
+check ovn-nbctl lsp-add ls0 ls0-lr0 -- set Logical_Switch_Port ls0-lr0 \
+    type=router options:router-port=lr0-ls0 addresses='"f0:00:00:00:00:01"'
+
+check ovn-nbctl lsp-add ls0 ln_port
+check ovn-nbctl lsp-set-addresses ln_port unknown
+check ovn-nbctl lsp-set-type ln_port localnet
+check ovn-nbctl --wait=hv lsp-set-options ln_port network_name=physnet1
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl \
+    -- add-br br-phys \
+    -- add-br br-eth0
+
+ovn_attach n1 br-phys 192.168.0.10
+
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1:br-eth0
+check ovs-vsctl add-port br-eth0 snoopvif -- set Interface snoopvif options:tx_pcap=hv1/snoopvif-tx.pcap options:rxq_pcap=hv1/snoopvif-rx.pcap
+
+# set garp max timeout to 2s
+as hv1 check ovs-vsctl set Open_vSwitch . external-ids:garp-max-timeout-sec=2
+
+# Wait until the patch ports are created in hv1 to connect br-int to br-eth0
+check ovn-nbctl set logical_router lr0 options:chassis=hv1
+OVN_WAIT_PATCH_PORT_FLOWS(["ln_port"], ["hv1"])
+
+# sleep for 12s to get a garp every ~ 2s
+sleep 12
+
+n_arp=$(tcpdump -ner hv1/snoopvif-tx.pcap arp | wc -l)
+AT_CHECK([test $n_arp -ge 5 -a $n_arp -lt 10])
+
+# Temporarily remove lr0 chassis
+# Wait for hv confirmation to make sure chassis is removed before we reset pcap
+# Otherwise a garp might be sent after pcap have been reset but before chassis is removed
+check ovn-nbctl --wait=hv remove logical_router lr0 options chassis
+
+as hv1 reset_pcap_file snoopvif hv1/snoopvif
+# set garp max timeout to 1s
+as hv1 check ovs-vsctl set Open_vSwitch . external-ids:garp-max-timeout-sec=1
+check ovn-nbctl set logical_router lr0 options:chassis=hv1
+
+# sleep for 7s to get a garp every ~ 1s
+sleep 7
+
+n_arp=$(tcpdump -ner hv1/snoopvif-tx.pcap arp | wc -l)
+AT_CHECK([test $n_arp -ge 5 -a $n_arp -lt 10])
+
+OVN_CLEANUP([hv1])
+
+AT_CLEANUP
+])
