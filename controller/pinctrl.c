@@ -1286,11 +1286,25 @@ fill_ipv6_prefix_state(struct ovsdb_idl_txn *ovnsb_idl_txn,
             continue;
         }
 
+        /* To reach this point, the port binding must be a logical router
+         * port. LRPs are configured with a single MAC that is always non-NULL.
+         * Therefore, as long as we are working with a port_binding that was
+         * inserted into the southbound database by northd, we can always
+         * safely extract pb->mac[0] since it will be non-NULL.
+         *
+         * However, if a port_binding was inserted by someone else, then we
+         * need to double-check our assumption first.
+         */
+        if (pb->n_mac != 1) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_ERR_RL(&rl, "Port binding "UUID_FMT" has %"PRIuSIZE" MACs "
+                        "instead of 1", UUID_ARGS(&pb->header_.uuid),
+                        pb->n_mac);
+            continue;
+        }
         struct lport_addresses c_addrs;
-        for (size_t j = 0; j < pb->n_mac; j++) {
-            if (extract_lsp_addresses(pb->mac[j], &c_addrs)) {
-                    break;
-            }
+        if (!extract_lsp_addresses(pb->mac[0], &c_addrs)) {
+            continue;
         }
 
         pfd = shash_find_data(&ipv6_prefixd, pb->logical_port);
