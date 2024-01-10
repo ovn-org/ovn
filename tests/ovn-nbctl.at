@@ -2736,11 +2736,17 @@ check ovn-appctl -t ovn-nbctl run init
 # Overwrite with mismatched key and cert
 cp $PKIDIR/$key2 $key
 cp $PKIDIR/$cert3 $cert
+
+# Wakeup the ovn-nbctl loop
+ovn-appctl -t ovn-nbctl run show
 OVS_WAIT_UNTIL([grep mismatch ovn-nbctl.log])
 
 cp $PKIDIR/$key $key
 cp $PKIDIR/$cert $cert
 OVS_WAIT_UNTIL([ovn-appctl -t ovn-nbctl run show])
+AT_CHECK([grep -c mismatch ovn-nbctl.log], [0], [dnl
+1
+])
 
 AT_CLEANUP
 
