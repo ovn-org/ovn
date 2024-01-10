@@ -7355,7 +7355,8 @@ rm -f reject.pcap
 
 # Let's update the meter
 NS_EXEC([sw01], [tcpdump -l -n -i sw01 icmp -Q in > reject.pcap &])
-check ovn-nbctl --may-exist --wait=hv meter-add acl-meter drop 10 pktps 0
+check ovn-nbctl --may-exist --wait=hv meter-add acl-meter drop 5 pktps 0
+OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow15 meter-stats br-int | grep -q packet_count:0])
 ip netns exec sw01 scapy -H <<-EOF
 p = IP(src="192.168.1.2", dst="192.168.1.1") / UDP(dport = 12345) / Raw(b"X"*64)
 send (p, iface='sw01', loop = 0, verbose = 0, count = 40)
@@ -7364,7 +7365,7 @@ EOF
 # 10pps
 OVS_WAIT_UNTIL([
     n_reject=$(grep unreachable reject.pcap | wc -l)
-    test "${n_reject}" = "10"
+    test "${n_reject}" = "5"
 ])
 
 kill $(pidof tcpdump)
