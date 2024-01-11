@@ -8625,7 +8625,7 @@ tcp,orig=(src=172.16.1.2,dst=172.16.1.100,sport=<cleared>,dport=<cleared>),reply
 ])
 
 dp_key=$(printf "0x%x" $(fetch_column datapath tunnel_key external_ids:name=R2))
-AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=78 --no-stats | sed -e 's/load:0xc0a80[[0-9]]02/load:0xc0a80<cleared>02/'], [0], [dnl
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=78 --no-stats | strip_cookie | sed -e 's/load:0xc0a80[[0-9]]02/load:0xc0a80<cleared>02/'], [0], [dnl
  table=78, idle_timeout=60, tcp,metadata=$dp_key,nw_src=172.16.1.2,nw_dst=172.16.1.100,tp_dst=8080 actions=load:0x1->NXM_NX_REG10[[14]],load:0xc0a80<cleared>02->NXM_NX_REG4[[]],load:0x50->NXM_NX_REG8[[0..15]]
 ])
 
@@ -8922,7 +8922,7 @@ tcp,orig=(src=fd72::2,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd
 ])
 
 dp_key=$(printf "0x%x" $(fetch_column datapath tunnel_key external_ids:name=R2))
-AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=78 --no-stats | sed -e 's/load:0xfd1[[0-9]]000000000000/load:0xfd1<cleared>000000000000/'], [0], [dnl
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=78 --no-stats | strip_cookie | sed -e 's/load:0xfd1[[0-9]]000000000000/load:0xfd1<cleared>000000000000/'], [0], [dnl
  table=78, idle_timeout=60, tcp6,metadata=$dp_key,ipv6_src=fd72::2,ipv6_dst=fd30::1,tp_dst=8080 actions=load:0x1->NXM_NX_REG10[[14]],load:0x2->NXM_NX_XXREG1[[0..63]],load:0xfd1<cleared>000000000000->NXM_NX_XXREG1[[64..127]],load:0x50->NXM_NX_REG8[[0..15]]
 ])
 
@@ -11047,6 +11047,95 @@ OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
 as northd
 OVS_APP_EXIT_AND_WAIT([NORTHD_TYPE])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([load balancing affinity sessions - auto clear learnt flows])
+AT_SKIP_IF([test $HAVE_NC = no])
+AT_KEYWORDS([lb])
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+check ovn-nbctl lr-add lr
+check ovn-nbctl lrp-add lr lr-ls 00:00:00:00:01:00 42.42.42.3/24
+check ovn-nbctl ls-add ls
+
+check ovn-nbctl lsp-add ls ls-lr
+check ovn-nbctl lsp-set-addresses ls-lr 00:00:00:00:01:00
+check ovn-nbctl lsp-set-type ls-lr router
+check ovn-nbctl lsp-set-options ls-lr router-port=lr-ls
+check ovn-nbctl lsp-add ls vm1
+check ovn-nbctl lsp-set-addresses vm1 00:00:00:00:00:01
+check ovn-nbctl lsp-add ls vm2
+check ovn-nbctl lsp-set-addresses vm2 00:00:00:00:00:02
+check ovn-nbctl lb-add lb-test 43.43.43.43:80 42.42.42.1:8080,42.42.42.2:8080 tcp \
+    -- set load_balancer lb-test options:affinity_timeout=65535 \
+    -- ls-lb-add ls lb-test
+
+dnl Start a server on vm1.
+ADD_NAMESPACES(vm1)
+ADD_VETH(vm1, vm1, br-int, "42.42.42.1/24", "00:00:00:00:00:01", "42.42.42.3")
+NETNS_DAEMONIZE([vm1], [nc -l -k 42.42.42.1 8080], [vm1.pid])
+
+dnl Start a server on vm2.
+ADD_NAMESPACES(vm2)
+ADD_VETH(vm2, vm2, br-int, "42.42.42.2/24", "00:00:00:00:00:02", "42.42.42.3")
+NETNS_DAEMONIZE([vm2], [nc -l -k 42.42.42.2 8080], [vm2.pid])
+
+dnl Wait for ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl Test the connection.
+OVS_WAIT_UNTIL([
+    ip netns exec vm1 nc -z 43.43.43.43 80 &> /dev/null
+])
+
+OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int | grep 'table=78, n_packets' -c) -eq 1])
+
+dnl Find the backend that was hit.
+backend=$(ovs-ofctl dump-flows br-int table=78 | \
+    grep -oE 'load:0x2a2a2a0[[12]]' | sed -n 's/load:0x2a2a2a0\(.*\)/\1/p')
+
+dnl Remove the backend that was hit.
+if [[ "$backend" == "1" ]]; then
+    check ovn-nbctl set load_balancer lb-test vip:\"43.43.43.43:80\"=\"42.42.42.2:8080\"
+else
+    check ovn-nbctl set load_balancer lb-test vip:\"43.43.43.43:80\"=\"42.42.42.1:8080\"
+fi
+check ovn-nbctl --wait=hv sync
+
+dnl The learnt flow should also be auto deleted.
+AT_CHECK([ovs-ofctl dump-flows br-int | grep 'table=78, n_packets' -c], [1], [dnl
+0
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
