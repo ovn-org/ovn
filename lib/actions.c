@@ -5004,6 +5004,7 @@ encode_COMMIT_LB_AFF(const struct ovnact_commit_lb_aff *lb_aff,
     ol->hard_timeout = OFP_FLOW_PERMANENT;
     ol->priority = OFP_DEFAULT_PRIORITY;
     ol->table_id = OFTABLE_CHK_LB_AFFINITY;
+    ol->cookie = htonll(ep->lflow_uuid.parts[0]);
 
     /* Match on metadata of the packet that created the new table. */
     ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);

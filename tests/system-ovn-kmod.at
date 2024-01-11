@@ -146,7 +146,7 @@ tcp,orig=(src=172.16.1.2,dst=172.16.1.100,sport=<cleared>,dport=<cleared>),reply
 ])
 
 dp_key=$(printf "0x%x" $(fetch_column datapath tunnel_key external_ids:name=R2))
-AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=78 --no-stats | sed -e 's/load:0xc0a80[[0-9]]02/load:0xc0a80<cleared>02/'], [0], [dnl
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=78 --no-stats | strip_cookie | sed -e 's/load:0xc0a80[[0-9]]02/load:0xc0a80<cleared>02/'], [0], [dnl
  table=78, idle_timeout=60, tcp,metadata=$dp_key,nw_src=172.16.1.2,nw_dst=172.16.1.100,tp_dst=8080 actions=load:0x1->NXM_NX_REG10[[14]],load:0xc0a80<cleared>02->NXM_NX_REG4[[]],load:0x50->NXM_NX_REG8[[0..15]]
 ])
 
@@ -443,7 +443,7 @@ tcp,orig=(src=fd72::2,dst=fd30::1,sport=<cleared>,dport=<cleared>),reply=(src=fd
 ])
 
 dp_key=$(printf "0x%x" $(fetch_column datapath tunnel_key external_ids:name=R2))
-AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=78 --no-stats | sed -e 's/load:0xfd1[[0-9]]000000000000/load:0xfd1<cleared>000000000000/'], [0], [dnl
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=78 --no-stats | strip_cookie | sed -e 's/load:0xfd1[[0-9]]000000000000/load:0xfd1<cleared>000000000000/'], [0], [dnl
  table=78, idle_timeout=60, tcp6,metadata=$dp_key,ipv6_src=fd72::2,ipv6_dst=fd30::1,tp_dst=8080 actions=load:0x1->NXM_NX_REG10[[14]],load:0x2->NXM_NX_XXREG1[[0..63]],load:0xfd1<cleared>000000000000->NXM_NX_XXREG1[[64..127]],load:0x50->NXM_NX_REG8[[0..15]]
 ])
 

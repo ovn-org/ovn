@@ -2219,13 +2219,13 @@ reg9[5] = chk_ecmp_nh();
 
 # commit_lb_aff
 commit_lb_aff(vip = "172.16.0.123:8080", backend = "10.0.0.3:8080", proto = tcp, timeout = 30);
-    encodes as learn(table=78,idle_timeout=30,delete_learned,OXM_OF_METADATA[],eth_type=0x800,NXM_OF_IP_SRC[],ip_dst=172.16.0.123,nw_proto=6,tcp_dst=8080,load:0x1->NXM_NX_REG10[14],load:0xa000003->NXM_NX_REG4[],load:0x1f90->NXM_NX_REG8[0..15])
+    encodes as learn(table=78,idle_timeout=30,delete_learned,cookie=0xaaaaaaaa,OXM_OF_METADATA[],eth_type=0x800,NXM_OF_IP_SRC[],ip_dst=172.16.0.123,nw_proto=6,tcp_dst=8080,load:0x1->NXM_NX_REG10[14],load:0xa000003->NXM_NX_REG4[],load:0x1f90->NXM_NX_REG8[0..15])
 
 commit_lb_aff(vip = "172.16.0.123", backend = "10.0.0.3", timeout = 30);
-    encodes as learn(table=78,idle_timeout=30,delete_learned,OXM_OF_METADATA[],eth_type=0x800,NXM_OF_IP_SRC[],ip_dst=172.16.0.123,load:0x1->NXM_NX_REG10[14],load:0xa000003->NXM_NX_REG4[])
+    encodes as learn(table=78,idle_timeout=30,delete_learned,cookie=0xaaaaaaaa,OXM_OF_METADATA[],eth_type=0x800,NXM_OF_IP_SRC[],ip_dst=172.16.0.123,load:0x1->NXM_NX_REG10[14],load:0xa000003->NXM_NX_REG4[])
 
 commit_lb_aff(vip = "[::1]:8080", backend = "[::2]:8080", proto = tcp, timeout = 30);
-    encodes as learn(table=78,idle_timeout=30,delete_learned,OXM_OF_METADATA[],eth_type=0x86dd,NXM_NX_IPV6_SRC[],ipv6_dst=::1,nw_proto=6,tcp_dst=8080,load:0x1->NXM_NX_REG10[14],load:0x2->NXM_NX_XXREG0[],load:0x1f90->NXM_NX_REG8[0..15])
+    encodes as learn(table=78,idle_timeout=30,delete_learned,cookie=0xaaaaaaaa,OXM_OF_METADATA[],eth_type=0x86dd,NXM_NX_IPV6_SRC[],ipv6_dst=::1,nw_proto=6,tcp_dst=8080,load:0x1->NXM_NX_REG10[14],load:0x2->NXM_NX_XXREG0[],load:0x1f90->NXM_NX_REG8[0..15])
 
 # chk_lb_aff()
 reg9[6] = chk_lb_aff();
