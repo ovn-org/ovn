@@ -184,6 +184,7 @@ start_ovsdb__() {
     local ovn_db_ssl_cacert
     local ovn_db_election_timer
     local relay_mode
+    local cluster_db_upgrade
     eval db_pid_file=\$DB_${DB}_PIDFILE
     eval cluster_local_addr=\$DB_${DB}_CLUSTER_LOCAL_ADDR
     eval cluster_local_port=\$DB_${DB}_CLUSTER_LOCAL_PORT
@@ -212,6 +213,7 @@ start_ovsdb__() {
     eval ovn_db_election_timer=\$DB_${DB}_ELECTION_TIMER
     eval relay_mode=\$RELAY_MODE
     eval relay_remote=\$DB_${DB}_REMOTE
+    eval cluster_db_upgrade=\$DB_CLUSTER_SCHEMA_UPGRADE
 
     ovn_install_dir "$OVN_RUNDIR"
     ovn_install_dir "$ovn_logdir"
@@ -347,7 +349,7 @@ $cluster_remote_port
         $(echo ovn-${db}ctl | tr _ -) --no-leader-only --db="unix:$sock" init
     fi
 
-    if test $mode = cluster; then
+    if test $mode = cluster && test X"$cluster_db_upgrade" = Xyes; then
         upgrade_cluster "$schema" "unix:$sock"
     fi
 
@@ -898,6 +900,8 @@ set_defaults () {
     OVN_SB_RELAY_DB_SSL_CERT=""
     OVN_SB_RELAY_DB_SSL_CA_CERT=""
     DB_SB_RELAY_USE_REMOTE_IN_DB="yes"
+
+    DB_CLUSTER_SCHEMA_UPGRADE="yes"
 }
 
 set_option () {
@@ -1148,6 +1152,7 @@ File location options:
   --ovn-sb-relay-db-ssl-key=KEY OVN_Southbound DB relay SSL private key file
   --ovn-sb-relay-db-ssl-cert=CERT OVN_Southbound DB relay SSL certificate file
   --ovn-sb-relay-db-ssl-ca-cert=CERT OVN OVN_Southbound DB relay SSL CA certificate file
+  --db-cluster-schema-upgrade=yes|no (default: $DB_CLUSTER_SCHEMA_UPGRADE)
 
 Default directories with "configure" option and environment variable override:
   logs: /usr/local/var/log/ovn (--with-logdir, OVN_LOGDIR)
