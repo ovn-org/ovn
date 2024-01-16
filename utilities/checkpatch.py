@@ -41,6 +41,15 @@ def open_spell_check_dict():
     import enchant
 
     try:
+        import codespell_lib
+        codespell_dir = os.path.dirname(codespell_lib.__file__)
+        codespell_file = os.path.join(codespell_dir, 'data', 'dictionary.txt')
+        if not os.path.exists(codespell_file):
+            codespell_file = ''
+    except:
+        codespell_file = ''
+
+    try:
         extra_keywords = ['ovs', 'vswitch', 'vswitchd', 'ovs-vswitchd',
                           'netdev', 'selinux', 'ovs-ctl', 'dpctl', 'ofctl',
                           'openvswitch', 'dpdk', 'hugepage', 'hugepages',
@@ -92,9 +101,18 @@ def open_spell_check_dict():
                           'syscall', 'lacp', 'ipf', 'skb', 'valgrind']
 
         global spell_check_dict
+
         spell_check_dict = enchant.Dict("en_US")
+
+        if codespell_file:
+            with open(codespell_file) as f:
+                for line in f.readlines():
+                    words = line.strip().split('>')[1].strip(', ').split(',')
+                    for word in words:
+                        spell_check_dict.add_to_session(word.strip())
+
         for kw in extra_keywords:
-            spell_check_dict.add(kw)
+            spell_check_dict.add_to_session(kw)
 
         return True
     except:
@@ -190,6 +208,7 @@ skip_trailing_whitespace_check = False
 skip_gerrit_change_id_check = False
 skip_block_whitespace_check = False
 skip_signoff_check = False
+skip_committer_signoff_check = False
 
 # Don't enforce character limit on files that include these characters in their
 # name, as they may have legitimate reasons to have longer lines.
@@ -282,9 +301,13 @@ def if_and_for_end_with_bracket_check(line):
         if len(line) == MAX_LINE_LEN - 1 and line[-1] == ')':
             return True
 
-        if __regex_ends_with_bracket.search(line) is None and \
-           __regex_if_macros.match(line) is None:
-            return False
+        if __regex_ends_with_bracket.search(line) is None:
+            if line.endswith("\\") and \
+               __regex_if_macros.match(line) is not None:
+                return True
+            else:
+                return False
+
     if __regex_conditional_else_bracing.match(line) is not None:
         return False
     if __regex_conditional_else_bracing2.match(line) is not None:
@@ -410,8 +433,14 @@ def check_spelling(line, comment):
     if not spell_check_dict or not spellcheck:
         return False
 
+    if line.startswith('Fixes: '):
+        return False
+
     words = filter_comments(line, True) if comment else line
     words = words.replace(':', ' ').split(' ')
+
+    flagged_words = []
+    num_suggestions = 3
 
     for word in words:
         skip = False
@@ -437,9 +466,15 @@ def check_spelling(line, comment):
                 skip = True
 
             if not skip:
-                print_warning("Check for spelling mistakes (e.g. \"%s\")"
-                              % strword)
-                return True
+                flagged_words.append(strword)
+
+    if len(flagged_words) > 0:
+        for mistake in flagged_words:
+            print_warning("Possible misspelled word: \"%s\"" % mistake)
+            print("Did you mean: ",
+                  spell_check_dict.suggest(mistake)[:num_suggestions])
+
+        return True
 
     return False
 
@@ -780,6 +815,36 @@ def run_file_checks(text):
             check['check'](text)
 
 
+def run_subject_checks(subject, spellcheck=False):
+    warnings = False
+
+    if spellcheck and check_spelling(subject, False):
+        warnings = True
+
+    summary = subject[subject.rindex(': ') + 2:]
+    area_summary = subject[subject.index(': ') + 2:]
+    area_summary_len = len(area_summary)
+    if area_summary_len > 70:
+        print_warning("The subject, '<area>: <summary>', is over 70 "
+                      "characters, i.e., %u." % area_summary_len)
+        warnings = True
+
+    if summary[0].isalpha() and summary[0].islower():
+        print_warning(
+            "The subject summary should start with a capital.")
+        warnings = True
+
+    if subject[-1] not in [".", "?", "!"]:
+        print_warning(
+            "The subject summary should end with a dot.")
+        warnings = True
+
+    if warnings:
+        print(subject)
+
+    return warnings
+
+
 def ovs_checkpatch_parse(text, filename, author=None, committer=None):
     global print_file_name, total_line, checking_file, \
         empty_return_check_state
@@ -800,6 +865,7 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
         r'^@@ ([0-9-+]+),([0-9-+]+) ([0-9-+]+),([0-9-+]+) @@')
     is_author = re.compile(r'^(Author|From): (.*)$', re.I | re.M | re.S)
     is_committer = re.compile(r'^(Commit: )(.*)$', re.I | re.M | re.S)
+    is_subject = re.compile(r'^(Subject: )(.*)$', re.I | re.M | re.S)
     is_signature = re.compile(r'^(Signed-off-by: )(.*)$',
                               re.I | re.M | re.S)
     is_co_author = re.compile(r'^(Co-authored-by: )(.*)$',
@@ -874,7 +940,8 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
                             break
                     if (committer
                         and author != committer
-                        and committer not in signatures):
+                        and committer not in signatures
+                        and not skip_committer_signoff_check):
                         print_error("Committer %s needs to sign off."
                                     % committer)
 
@@ -899,6 +966,8 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
                 committer = is_committer.match(line).group(2)
             elif is_author.match(line):
                 author = is_author.match(line).group(2)
+            elif is_subject.match(line):
+                run_subject_checks(line, spellcheck)
             elif is_signature.match(line):
                 m = is_signature.match(line)
                 signatures.append(m.group(2))
@@ -990,7 +1059,8 @@ Check options:
 -S|--spellcheck                Check C comments and commit-message for possible
                                spelling mistakes
 -t|--skip-trailing-whitespace  Skips the trailing whitespace test
-   --skip-gerrit-change-id     Skips the gerrit change id test"""
+   --skip-gerrit-change-id     Skips the gerrit change id test
+   --skip-committer-signoff    Skips the committer sign-off test"""
           % sys.argv[0])
 
 
@@ -1017,6 +1087,19 @@ def ovs_checkpatch_file(filename):
     result = ovs_checkpatch_parse(part.get_payload(decode=False), filename,
                                   mail.get('Author', mail['From']),
                                   mail['Commit'])
+
+    if not mail['Subject'] or not mail['Subject'].strip():
+        if mail['Subject']:
+            mail.replace_header('Subject', sys.argv[-1])
+        else:
+            mail.add_header('Subject', sys.argv[-1])
+
+        print("Subject missing! Your provisional subject is",
+              mail['Subject'])
+
+    if run_subject_checks('Subject: ' + mail['Subject'], spellcheck):
+        result = True
+
     ovs_checkpatch_print_result()
     return result
 
@@ -1048,6 +1131,7 @@ if __name__ == '__main__':
                                        "skip-signoff-lines",
                                        "skip-trailing-whitespace",
                                        "skip-gerrit-change-id",
+                                       "skip-committer-signoff",
                                        "spellcheck",
                                        "quiet"])
     except:
@@ -1068,6 +1152,8 @@ if __name__ == '__main__':
             skip_trailing_whitespace_check = True
         elif o in ("--skip-gerrit-change-id"):
             skip_gerrit_change_id_check = True
+        elif o in ("--skip-committer-signoff"):
+            skip_committer_signoff_check = True
         elif o in ("-f", "--check-file"):
             checking_file = True
         elif o in ("-S", "--spellcheck"):
