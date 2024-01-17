@@ -1846,6 +1846,14 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
             ssl_ca_cert_file = optarg;
             break;
 
+        case OPT_SSL_PROTOCOLS:
+            stream_ssl_set_protocols(optarg);
+            break;
+
+        case OPT_SSL_CIPHERS:
+            stream_ssl_set_ciphers(optarg);
+            break;
+
         case 'd':
             ovnsb_db = optarg;
             break;
