@@ -610,6 +610,14 @@ apply_options_direct(const struct ovn_dbctl_options *dbctl_options,
             ssl_ca_cert_file = optarg;
             break;
 
+        case OPT_SSL_PROTOCOLS:
+            stream_ssl_set_protocols(optarg);
+            break;
+
+        case OPT_SSL_CIPHERS:
+            stream_ssl_set_ciphers(optarg);
+            break;
+
         case OPT_BOOTSTRAP_CA_CERT:
             stream_ssl_set_ca_cert_file(po->arg, true);
             break;
