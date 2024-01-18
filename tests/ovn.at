@@ -5385,10 +5385,11 @@ test_arp() {
 }
 
 test_na() {
-    local inport=$1 sha=$2 spa=$3
+    local inport=$1 sha=$2 spa=$3 src=${4-$3}
     local request=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
-                             IPv6(dst='ff01::1', src='${spa}')/ \
-                             ICMPv6ND_NA(tgt='${spa}')")
+                             IPv6(dst='ff01::1', src='${src}')/ \
+                             ICMPv6ND_NA(tgt='${spa}')/ \
+                             ICMPv6NDOptDstLLAddr(lladdr='${sha}')")
 
     hv=hv`vif_to_hv $inport`
     as $hv ovs-appctl netdev-dummy/receive vif$inport $request
@@ -5463,6 +5464,24 @@ for i in 1 2; do
                           [$i$j.expected])
     done
 done
+
+# Make sure that we can update existing entry with
+# "always_learn_from_arp_request=false" even when the source of NA src is LLA.
+check ovn-sbctl --all destroy mac_binding
+check ovn-nbctl --wait=hv set logical_router lr0 options:always_learn_from_arp_request=false
+
+sha="f0:00:00:00:00:11"
+spa6="fd00::abcd:1"
+
+test_na 11 $sha $spa6
+wait_row_count MAC_Binding 1 ip=\"$spa6\" mac=\"$sha\"
+
+sha="f0:00:00:00:00:12"
+lla6="fe80::abcd:1"
+
+test_na 11 $sha $spa6 $lla6
+wait_row_count MAC_Binding 1 ip=\"$spa6\" mac=\"$sha\"
+check_row_count MAC_Binding 0 ip=\"$lla6\"
 
 # Gracefully terminate daemons
 OVN_CLEANUP([hv1], [hv2])
