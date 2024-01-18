@@ -815,26 +815,6 @@ str_tolower(const char *orig)
     return copy;
 }
 
-/* This is a wrapper function which get the value associated with 'key' in
- * 'smap' and converts it to an unsigned int. If 'key' is not in 'smap' or a
- * valid unsigned integer can't be parsed from it's value, returns 'def'.
- *
- * Note: Remove this function once OpenvSwitch library (lib/smap.h) has this
- * helper function.
- */
-unsigned int
-ovn_smap_get_uint(const struct smap *smap, const char *key, unsigned int def)
-{
-    const char *value = smap_get(smap, key);
-    unsigned int u_value;
-
-    if (!value || !str_to_uint(value, 10, &u_value)) {
-        return def;
-    }
-
-    return u_value;
-}
-
 /* For a 'key' of the form "IP:port" or just "IP", sets 'port',
  * 'ip_address' and 'ip' ('struct in6_addr' IPv6 or IPv4 mapped address).
  * The caller must free() the memory allocated for 'ip_address'.

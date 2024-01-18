@@ -11019,7 +11019,7 @@ build_routing_policy_flow(struct hmap *lflows, struct ovn_datapath *od,
                          rule->priority, nexthop);
             return;
         }
-        uint32_t pkt_mark = ovn_smap_get_uint(&rule->options, "pkt_mark", 0);
+        uint32_t pkt_mark = smap_get_uint(&rule->options, "pkt_mark", 0);
         if (pkt_mark) {
             ds_put_format(&actions, "pkt.mark = %u; ", pkt_mark);
         }
@@ -11042,7 +11042,7 @@ build_routing_policy_flow(struct hmap *lflows, struct ovn_datapath *od,
     } else if (!strcmp(rule->action, "drop")) {
         ds_put_cstr(&actions, debug_drop_action());
     } else if (!strcmp(rule->action, "allow")) {
-        uint32_t pkt_mark = ovn_smap_get_uint(&rule->options, "pkt_mark", 0);
+        uint32_t pkt_mark = smap_get_uint(&rule->options, "pkt_mark", 0);
         if (pkt_mark) {
             ds_put_format(&actions, "pkt.mark = %u; ", pkt_mark);
         }
@@ -11106,7 +11106,7 @@ build_ecmp_routing_policy_flows(struct hmap *lflows, struct ovn_datapath *od,
         }
 
         ds_clear(&actions);
-        uint32_t pkt_mark = ovn_smap_get_uint(&rule->options, "pkt_mark", 0);
+        uint32_t pkt_mark = smap_get_uint(&rule->options, "pkt_mark", 0);
         if (pkt_mark) {
             ds_put_format(&actions, "pkt.mark = %u; ", pkt_mark);
         }
