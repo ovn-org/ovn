@@ -13171,9 +13171,9 @@ build_neigh_learning_flows_for_lrouter(
          *   address, the all-nodes multicast address. */
         ds_clear(actions);
         ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
-                               " = lookup_nd(inport, ip6.src, nd.tll); "
+                               " = lookup_nd(inport, nd.target, nd.tll); "
                                REGBIT_LOOKUP_NEIGHBOR_IP_RESULT
-                               " = lookup_nd_ip(inport, ip6.src); next;");
+                               " = lookup_nd_ip(inport, nd.target); next;");
         ovn_lflow_add(lflows, od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 110,
                       "nd_na && ip6.src == fe80::/10 && ip6.dst == ff00::/8",
                       ds_cstr(actions));
