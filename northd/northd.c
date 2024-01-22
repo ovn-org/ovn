@@ -1257,6 +1257,20 @@ ovn_port_find(const struct hmap *ports, const char *name)
     return ovn_port_find__(ports, name, false);
 }
 
+static bool
+lsp_is_clone_to_unknown(const struct nbrec_logical_switch_port *nbsp)
+{
+    if (!nbsp->type[0]) {
+        /* Check this option only for VIF logical port. */
+        const char *pkt_clone_type = smap_get(&nbsp->options,
+                                              "pkt_clone_type");
+        if (pkt_clone_type && !strcasecmp(pkt_clone_type, "mc_unknown")) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static struct ovn_port *
 ovn_port_find_bound(const struct hmap *ports, const char *name)
 {
@@ -9440,14 +9454,21 @@ build_lswitch_ip_unicast_lookup(struct ovn_port *op,
                                           &op->nbsp->header_);
     }
 
+    bool lsp_clone_to_unknown = lsp_is_clone_to_unknown(op->nbsp);
+
     for (size_t i = 0; i < op->nbsp->n_addresses; i++) {
         /* Addresses are owned by the logical port.
          * Ethernet address followed by zero or more IPv4
          * or IPv6 addresses (or both). */
         struct eth_addr mac;
         bool lsp_enabled = lsp_is_enabled(op->nbsp);
-        const char *action = lsp_enabled ? "outport = %s; output;" :
-                                           debug_drop_action();
+        const char *action = lsp_enabled
+                             ? ((lsp_clone_to_unknown && op->od->has_unknown)
+                                ? "clone {outport = %s; output; };"
+                                  "outport = \""MC_UNKNOWN "\"; output;"
+                                : "outport = %s; output;")
+                             : debug_drop_action();
+
         if (ovs_scan(op->nbsp->addresses[i],
                     ETH_ADDR_SCAN_FMT, ETH_ADDR_SCAN_ARGS(mac))) {
             ds_clear(match);

@@ -6837,6 +6837,48 @@ wait_row_count Port_binding 1 logical-port=S1-vm2 requested_chassis=$ch2_uuid
 AT_CLEANUP
 ])
 
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([check options:pkt_clone_type for LSP])
+ovn_start NORTHD_TYPE
+ovn-nbctl ls-add S1
+ovn-nbctl --wait=sb lsp-add S1 S1-vm1
+ovn-nbctl --wait=sb lsp-add S1 S1-vm2
+ovn-nbctl --wait=sb lsp-set-addresses S1-vm1 "50:54:00:00:00:01 192.168.0.1"
+ovn-nbctl --wait=sb lsp-set-addresses S1-vm2 "unknown"
+
+ovn-sbctl dump-flows S1 > S1flows
+AT_CAPTURE_FILE([S1flows])
+
+AT_CHECK([grep -e "ls_in_l2_lkup.*S1-vm1" S1flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 50:54:00:00:00:01), action=(outport = "S1-vm1"; output;)
+])
+
+#Set the pkt_clone_type option and verify the flow
+ovn-nbctl --wait=sb set logical_switch_port S1-vm1 options:pkt_clone_type=mc_unknown
+
+ovn-sbctl dump-flows S1 > S1flows
+AT_CAPTURE_FILE([S1flows])
+
+AT_CHECK([grep -e "ls_in_l2_lkup.*S1-vm1" S1flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 50:54:00:00:00:01), action=(clone {outport = "S1-vm1"; output; };outport = "_MC_unknown"; output;)
+])
+
+#Set the pkt_clone_type option to an invalid value
+ovn-nbctl --wait=sb set logical_switch_port S1-vm1 options:pkt_clone_type=foo
+
+ovn-sbctl dump-flows S1 > S1flows
+AT_CAPTURE_FILE([S1flows])
+
+AT_CHECK([grep -e "ls_in_l2_lkup.*S1-vm1" S1flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 50:54:00:00:00:01), action=(outport = "S1-vm1"; output;)
+])
+
+AT_CLEANUP
+])
+
+
+
 # Duplicated datapaths shouldn't be created, but in case it is created because
 # of bug or dirty data, it should be properly deleted instead of causing
 # permanent failure in northd.

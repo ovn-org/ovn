@@ -1262,6 +1262,12 @@
           </p>
         </column>
 
+        <column name="options" key="pkt_clone_type"
+                type='{"type": "string", "enum": ["set", ["mc_unknown"]]}'>
+          If set to mc_unknown, packets going to this VIF get cloned to all
+          unknown ports connected to the same Logical Switch.
+        </column>
+
         <group title="VIF Plugging Options">
           <column name="options" key="vif-plug-type">
             If set, OVN will attempt to perform plugging of this VIF.  In order

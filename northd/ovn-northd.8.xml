@@ -2017,7 +2017,10 @@ output;
           One priority-50 flow that matches each known Ethernet address against
           <code>eth.dst</code>.  Action of this flow outputs the packet to the
           single associated output port if it is enabled. <code>drop;</code>
-          action is applied if LSP is disabled.
+          action is applied if LSP is disabled.  If the logical switch port
+          of type VIF has the option <code>options:pkt_clone_type</code>
+          is set to the value <code>mc_unknown</code>, then the packet is
+          also forwarded to the  <code>MC_UNKNOWN</code> multicast group.
         </p>
 
         <p>
