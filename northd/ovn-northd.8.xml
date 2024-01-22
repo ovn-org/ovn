@@ -1458,8 +1458,9 @@ output;
           ignore_lsp_down</code> is configured as true in <code>options</code>
           column of <code>NB_Global</code> table of the <code>Northbound</code>
           database), for logical ports of type <code>virtual</code>, for
-          logical ports with 'unknown' address set and for logical ports of
-          a logical switch configured with
+          logical ports with 'unknown' address set, for logical ports with
+          the <code>options:disable_arp_nd_rsp=true</code> and for logical
+          ports of a logical switch configured with
           <code>other_config:vlan-passthru=true</code>.
         </p>
 

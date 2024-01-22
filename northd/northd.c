@@ -1330,6 +1330,12 @@ localnet_can_learn_mac(const struct nbrec_logical_switch_port *nbsp)
 }
 
 static bool
+lsp_disable_arp_nd_rsp(const struct nbrec_logical_switch_port *nbsp)
+{
+    return smap_get_bool(&nbsp->options, "disable_arp_nd_rsp", false);
+}
+
+static bool
 lsp_is_type_changed(const struct sbrec_port_binding *sb,
                 const struct nbrec_logical_switch_port *nbsp,
                 bool *update_sbrec)
@@ -8815,7 +8821,8 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
     } else {
         /*
          * Add ARP/ND reply flows if either the
-         *  - port is up and it doesn't have 'unknown' address defined or
+         *  - port is up and it doesn't have 'unknown' address defined or it
+         *    doesn't have the option disable_arp_nd_rsp=true.
          *  - port type is router or
          *  - port type is localport
          */
@@ -8825,7 +8832,8 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
             return;
         }
 
-        if (lsp_is_external(op->nbsp) || op->has_unknown) {
+        if (lsp_is_external(op->nbsp) || op->has_unknown ||
+           (!op->nbsp->type[0] && lsp_disable_arp_nd_rsp(op->nbsp))) {
             return;
         }
 
