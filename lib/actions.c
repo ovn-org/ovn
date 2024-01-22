@@ -1131,8 +1131,20 @@ encode_ct_nat(const struct ovnact_ct_nat *cn,
     }
 
     if (cn->port_range.exists) {
-       nat->range.proto.min = cn->port_range.port_lo;
-       nat->range.proto.max = cn->port_range.port_hi;
+        nat->range.proto.min = cn->port_range.port_lo;
+        nat->range.proto.max = cn->port_range.port_hi;
+
+        /* Explicitly set the port selection algorithm to "random".  Otherwise
+         * it's up to the datapath to choose how to select the port and that
+         * might create unexpected behavior changes when the datapath defaults
+         * change.
+         *
+         * NOTE: for the userspace datapath the "random" function doesn't
+         * really generate random ports, it uses "hash" under the hood:
+         * https://issues.redhat.com/browse/FDP-269. */
+        if (nat->range.proto.min && nat->range.proto.max) {
+            nat->flags |= NX_NAT_F_PROTO_RANDOM;
+        }
     }
 
     ofpacts->header = ofpbuf_push_uninit(ofpacts, nat_offset);
