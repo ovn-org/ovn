@@ -8384,12 +8384,12 @@ build_lb_rules_pre_stateful(struct hmap *lflows,
  *
  * - load balancing:
  *   table=lr_in_dnat, priority=150
- *      match=(REGBIT_KNOWN_LB_SESSION == 1 && ct.new && ip4
+ *      match=(REGBIT_KNOWN_LB_SESSION == 1 && ct.new && ip4.dst == V
  *             && REG_LB_AFF_BACKEND_IP4 == B1 && REG_LB_AFF_MATCH_PORT == BP1)
  *      action=(REG_NEXT_HOP_IPV4 = V; lb_action;
  *              ct_lb_mark(backends=B1:BP1; ct_flag);)
  *   table=lr_in_dnat, priority=150
- *      match=(REGBIT_KNOWN_LB_SESSION == 1 && ct.new && ip4
+ *      match=(REGBIT_KNOWN_LB_SESSION == 1 && ct.new && ip4.dst == V
  *             && REG_LB_AFF_BACKEND_IP4 == B2 && REG_LB_AFF_MATCH_PORT == BP2)
  *      action=(REG_NEXT_HOP_IPV4 = V; lb_action;
  *              ct_lb_mark(backends=B2:BP2; ct_flag);)
@@ -8488,7 +8488,8 @@ build_lb_affinity_lr_flows(struct hmap *lflows, const struct ovn_northd_lb *lb,
 
     /* Prepare common part of affinity match. */
     ds_put_format(&aff_match, REGBIT_KNOWN_LB_SESSION" == 1 && "
-                  "ct.new && %s && %s == ", ip_match, reg_backend);
+                  "ct.new && %s.dst == %s && %s == ", ip_match,
+                  lb_vip->vip_str, reg_backend);
 
     /* Store the common part length. */
     size_t aff_action_len = aff_action.length;
@@ -8567,13 +8568,13 @@ build_lb_affinity_lr_flows(struct hmap *lflows, const struct ovn_northd_lb *lb,
  *
  * - load balancing:
  *   table=ls_in_lb, priority=150
- *      match=(REGBIT_KNOWN_LB_SESSION == 1 && ct.new && ip4
+ *      match=(REGBIT_KNOWN_LB_SESSION == 1 && ct.new && ip4.dst == V
  *             && REG_LB_AFF_BACKEND_IP4 == B1 && REG_LB_AFF_MATCH_PORT == BP1)
  *      action=(REGBIT_CONNTRACK_COMMIT = 0;
  *              REG_ORIG_DIP_IPV4 = V; REG_ORIG_TP_DPORT = VP;
  *              ct_lb_mark(backends=B1:BP1);)
  *   table=ls_in_lb, priority=150
- *      match=(REGBIT_KNOWN_LB_SESSION == 1 && ct.new && ip4
+ *      match=(REGBIT_KNOWN_LB_SESSION == 1 && ct.new && ip4.dst == V
  *             && REG_LB_AFF_BACKEND_IP4 == B2 && REG_LB_AFF_MATCH_PORT == BP2)
  *      action=(REGBIT_CONNTRACK_COMMIT = 0;
  *              REG_ORIG_DIP_IPV4 = V;
@@ -8676,7 +8677,8 @@ build_lb_affinity_ls_flows(struct hmap *lflows,
 
     /* Prepare common part of affinity match. */
     ds_put_format(&aff_match, REGBIT_KNOWN_LB_SESSION" == 1 && "
-                  "ct.new && %s && %s == ", ip_match, reg_backend);
+                  "ct.new && %s.dst == %s && %s == ", ip_match,
+                  lb_vip->vip_str, reg_backend);
 
     /* Store the common part length. */
     size_t aff_action_len = aff_action.length;
