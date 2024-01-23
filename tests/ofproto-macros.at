@@ -200,14 +200,14 @@ m4_define([_OVS_VSWITCHD_START],
    AT_CHECK([[sed < stderr '
 /vlog|INFO|opened log file/d
 /ovsdb_server|INFO|ovsdb-server (Open vSwitch)/d']])
-   AT_CAPTURE_FILE([ovsdb-server.log])
+  # AT_CAPTURE_FILE([ovsdb-server.log])
 
    dnl Initialize database.
    AT_CHECK([ovs-vsctl --no-wait init $2])
 
    dnl Start ovs-vswitchd.
    AT_CHECK([ovs-vswitchd $1 --detach --no-chdir --pidfile --log-file -vvconn -vofproto_dpif -vunixctl], [0], [], [stderr])
-   AT_CAPTURE_FILE([ovs-vswitchd.log])
+   #AT_CAPTURE_FILE([ovs-vswitchd.log])
    on_exit "kill_ovs_vswitchd `cat ovs-vswitchd.pid`"
    AT_CHECK([[sed < stderr '
 /ovs_numa|INFO|Discovered /d
