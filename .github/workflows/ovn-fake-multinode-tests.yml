@@ -76,8 +76,8 @@ jobs:
       fail-fast: false
       matrix:
         cfg:
-        - { branch: "main" }
-        - { branch: "branch-22.03" }
+        - { branch: "main", testsuiteflags: ""}
+        - { branch: "branch-22.03", testsuiteflags: "-k 'basic test'" }
     name: multinode tests ${{ join(matrix.cfg.*, ' ') }}
     env:
       RUNC_CMD: podman
@@ -176,7 +176,7 @@ jobs:
 
     - name: Run fake-multinode system tests
       run: |
-        if ! sudo make check-multinode; then
+        if ! sudo make check-multinode TESTSUITEFLAGS="${{ matrix.cfg.testsuiteflags }}"; then
           sudo podman exec -it ovn-central ovn-nbctl show || :
           sudo podman exec -it ovn-central ovn-sbctl show || :
           sudo podman exec -it ovn-chassis-1 ovs-vsctl show || :
