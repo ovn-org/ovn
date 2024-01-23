@@ -133,6 +133,8 @@ ovn_init_symtab(struct shash *symtab)
              MLF_LOCALNET_BIT);
     expr_symtab_add_subfield(symtab, "flags.localnet", NULL,
                              flags_str);
+    snprintf(flags_str, sizeof flags_str, "flags[%d]", MLF_RX_FROM_TUNNEL_BIT);
+    expr_symtab_add_subfield(symtab, "flags.tunnel_rx", NULL, flags_str);
 
     /* Connection tracking state. */
     expr_symtab_add_field_scoped(symtab, "ct_mark", MFF_CT_MARK, NULL, false,

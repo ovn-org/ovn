@@ -6492,6 +6492,9 @@ AT_CAPTURE_FILE([lrflows])
 
 # Check the flows in lr_in_admission stage
 AT_CHECK([grep lr_in_admission lrflows | grep cr-DR | sort], [0], [dnl
+  table=0 (lr_in_admission    ), priority=120  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.dst == 02:ac:10:01:00:01 && !is_chassis_resident("cr-DR-S1") && flags.tunnel_rx == 1), action=(outport <-> inport; inport = "DR-S1"; next;)
+  table=0 (lr_in_admission    ), priority=120  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.dst == 03:ac:10:01:00:01 && !is_chassis_resident("cr-DR-S2") && flags.tunnel_rx == 1), action=(outport <-> inport; inport = "DR-S2"; next;)
+  table=0 (lr_in_admission    ), priority=120  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.dst == 04:ac:10:01:00:01 && !is_chassis_resident("cr-DR-S3") && flags.tunnel_rx == 1), action=(outport <-> inport; inport = "DR-S3"; next;)
   table=0 (lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "DR-S1" && is_chassis_resident("cr-DR-S1")), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
   table=0 (lr_in_admission    ), priority=50   , match=(eth.dst == 03:ac:10:01:00:01 && inport == "DR-S2" && is_chassis_resident("cr-DR-S2")), action=(xreg0[[0..47]] = 03:ac:10:01:00:01; next;)
   table=0 (lr_in_admission    ), priority=50   , match=(eth.dst == 04:ac:10:01:00:01 && inport == "DR-S3" && is_chassis_resident("cr-DR-S3")), action=(xreg0[[0..47]] = 04:ac:10:01:00:01; next;)
@@ -6551,6 +6554,7 @@ AT_CAPTURE_FILE([lrflows])
 
 # Check the flows in lr_in_admission stage
 AT_CHECK([grep lr_in_admission lrflows | grep lrp1 | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_admission    ), priority=120  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.dst == 00:00:00:00:00:01 && !is_chassis_resident("cr-lrp1") && flags.tunnel_rx == 1), action=(outport <-> inport; inport = "lrp1"; next;)
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1")), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
   table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
 ])
@@ -6572,6 +6576,7 @@ AT_CAPTURE_FILE([lrflows])
 
 # Check the flows in lr_in_admission stage
 AT_CHECK([grep lr_in_admission lrflows | grep lrp1 | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_admission    ), priority=120  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.dst == 00:00:00:00:00:01 && !is_chassis_resident("cr-lrp1") && flags.tunnel_rx == 1), action=(outport <-> inport; inport = "lrp1"; next;)
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:00:01 && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
   table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
 ])
@@ -6590,6 +6595,7 @@ AT_CAPTURE_FILE([lrflows])
 
 # Check the flows in lr_in_admission stage
 AT_CHECK([grep lr_in_admission lrflows | grep lrp1 | sed 's/table=../table=??/' | sort], [0], [dnl
+  table=??(lr_in_admission    ), priority=120  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.dst == 00:00:00:00:00:01 && !is_chassis_resident("cr-lrp1") && flags.tunnel_rx == 1), action=(outport <-> inport; inport = "lrp1"; next;)
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1")), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
   table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lrp1"), action=(xreg0[[0..47]] = 00:00:00:00:00:01; next;)
 ])
@@ -8318,6 +8324,7 @@ AT_CHECK([cat sw0flows | grep -e port_sec -e ls_in_l2_lkup -e ls_in_l2_unknown |
 sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_check_port_sec), priority=100  , match=(eth.src[[40]]), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
+  table=??(ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
   table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
@@ -8343,6 +8350,7 @@ AT_CHECK([cat sw0flows | grep -e port_sec -e ls_in_l2_lkup -e ls_in_l2_unknown |
 sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_check_port_sec), priority=100  , match=(eth.src[[40]]), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
+  table=??(ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
   table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
@@ -8369,6 +8377,7 @@ AT_CHECK([cat sw0flows | grep -e port_sec -e ls_in_l2_lkup -e ls_in_l2_unknown |
 sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_check_port_sec), priority=100  , match=(eth.src[[40]]), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
+  table=??(ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
   table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
@@ -8396,6 +8405,7 @@ sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_check_port_sec), priority=100  , match=(eth.src[[40]]), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(inport == "sw0p1"), action=(reg0[[15]] = 1; next;)
   table=??(ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
+  table=??(ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
   table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
@@ -8422,6 +8432,7 @@ sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_check_port_sec), priority=100  , match=(eth.src[[40]]), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(inport == "sw0p1"), action=(reg0[[15]] = 1; next;)
   table=??(ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
+  table=??(ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_check_port_sec), priority=70   , match=(inport == "sw0p2"), action=(set_queue(10); reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
@@ -8451,6 +8462,7 @@ AT_CHECK([cat sw0flows | grep -e port_sec -e ls_in_l2_lkup -e ls_in_l2_unknown |
 sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_check_port_sec), priority=100  , match=(eth.src[[40]]), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
+  table=??(ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_check_port_sec), priority=70   , match=(inport == "localnetport"), action=(set_queue(10); reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_check_port_sec), priority=70   , match=(inport == "sw0p1"), action=(reg0[[14]] = 1; next(pipeline=ingress, table=17);)

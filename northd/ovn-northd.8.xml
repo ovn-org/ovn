@@ -287,7 +287,7 @@
       <li>
         For each (enabled) vtep logical port, a priority 70 flow is added which
         matches on all packets and applies the action
-        <code>next(pipeline=ingress, table=S_SWITCH_IN_L2_LKUP) = 1;</code>
+        <code>next(pipeline=ingress, table=S_SWITCH_IN_L3_LKUP) = 1;</code>
         to skip most stages of ingress pipeline and go directly to ingress L2
         lookup table to determine the output port. Packets from VTEP (RAMP)
         switch should not be subjected to any ACL checks. Egress pipeline will
@@ -317,6 +317,30 @@
     </ul>
 
     <h3>Ingress Table 1: Ingress Port Security - Apply</h3>
+
+    <p>
+      For each logical switch port <var>P</var> of type router connected to a
+      gw router a priority-120 flow that matches 'recirculated' icmp{4,6} error
+      'packet too big' and <code>eth.src == <var>D</var> &amp;&amp;
+      outport == <var>P</var> &amp;&amp; flags.tunnel_rx == 1</code> where
+      <var>D</var> is the peer logical router port <var>RP</var> mac address,
+      swaps inport and outport and applies the action <code>
+      next(pipeline=S_SWITCH_IN_L2_LKUP)</code>.
+    </p>
+
+    <p>
+      For each logical switch port <var>P</var> of type router connected to a
+      distributed router a priority-120 flow that matches 'recirculated'
+      icmp{4,6} error 'packet too big' and <code>eth.dst == <var>D</var>
+      &amp;&amp; flags.tunnel_rx == 1</code> where <var>D</var> is the peer
+      logical router port <var>RP</var> mac address, swaps inport and outport
+      and applies the action <code> next(pipeline=S_SWITCH_IN_L2_LKUP)</code>.
+    </p>
+
+    <p>
+      This table adds a priority-110 flow that matches 'recirculated' icmp{4,6}
+      error 'packet too big' to drop the packet.
+    </p>
 
     <p>
       This table drops the packets if the port security check failed
@@ -2412,6 +2436,21 @@ output;
           the <code>is_chassis_resident()</code> part is not added to lflow to
           allow traffic originated from logical switch to reach LR services
           (LBs, NAT).
+        </p>
+
+        <p>
+          For each gateway port <var>GW</var> on a distributed logical router
+          a priority-120 flow that matches 'recirculated' icmp{4,6} error
+          'packet too big' and <code>eth.dst == <var>D</var> &amp;&amp;
+          !is_chassis_resident(<var> cr-GW</var>)</code> where <var>D</var>
+          is the gateway port mac address and <var>cr-GW</var> is the chassis
+          resident port of <var>GW</var>, swap inport and outport and stores
+          <var>GW</var> as inport.
+        </p>
+
+        <p>
+          This table adds a priority-110 flow that matches 'recirculated'
+          icmp{4,6} error 'packet too big' to drop the packet.
         </p>
 
         <p>

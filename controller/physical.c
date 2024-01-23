@@ -2452,8 +2452,36 @@ physical_run(struct physical_ctx *p_ctx,
         }
 
         put_resubmit(OFTABLE_LOCAL_OUTPUT, &ofpacts);
-
         ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 100, 0, &match,
+                        &ofpacts, hc_uuid);
+
+        /* Set allow rx from tunnel bit. */
+        put_load(1, MFF_LOG_FLAGS, MLF_RX_FROM_TUNNEL_BIT, 1, &ofpacts);
+
+        /* Add specif flows for E/W ICMPv{4,6} packets if tunnelled packets
+         * do not fit path MTU.
+         */
+        put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, &ofpacts);
+
+        /* IPv4 */
+        match_init_catchall(&match);
+        match_set_in_port(&match, tun->ofport);
+        match_set_dl_type(&match, htons(ETH_TYPE_IP));
+        match_set_nw_proto(&match, IPPROTO_ICMP);
+        match_set_icmp_type(&match, 3);
+        match_set_icmp_code(&match, 4);
+
+        ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 120, 0, &match,
+                        &ofpacts, hc_uuid);
+        /* IPv6 */
+        match_init_catchall(&match);
+        match_set_in_port(&match, tun->ofport);
+        match_set_dl_type(&match, htons(ETH_TYPE_IPV6));
+        match_set_nw_proto(&match, IPPROTO_ICMPV6);
+        match_set_icmp_type(&match, 2);
+        match_set_icmp_code(&match, 0);
+
+        ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 120, 0, &match,
                         &ofpacts, hc_uuid);
     }
 
