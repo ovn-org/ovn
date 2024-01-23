@@ -28,7 +28,31 @@ availability-zone az3
 ])
 
 OVN_CLEANUP_IC([az1], [az2])
+AT_CLEANUP
+])
 
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- AZ update in GW])
+ovn_init_ic_db
+net_add n1
+
+ovn_start az1
+sim_add gw-az1
+as gw-az1
+
+check ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.1.1
+check ovs-vsctl set open . external-ids:ovn-is-interconn=true
+
+az_uuid=$(fetch_column ic-sb:availability-zone _uuid name="az1")
+ovn_as az1 ovn-nbctl set NB_Global . name="az2"
+wait_column "$az_uuid" ic-sb:availability-zone _uuid name="az2"
+
+# make sure that gateway still point to the same AZ with new name
+wait_column "$az_uuid" ic-sb:gateway availability_zone name="gw-az1"
+
+OVN_CLEANUP_IC([az1])
 AT_CLEANUP
 ])
 
