@@ -1,10 +1,12 @@
 {
     "name": "OVN_IC_Northbound",
-    "version": "1.0.0",
-    "cksum": "45589876 3383",
+    "version": "1.1.0",
+    "cksum": "3964083684 3501",
     "tables": {
         "IC_NB_Global": {
             "columns": {
+                "nb_ic_cfg": {"type": {"key": "integer"}},
+                "sb_ic_cfg": {"type": {"key": "integer"}},
                 "external_ids": {
                     "type": {"key": "string", "value": "string",
                              "min": 0, "max": "unlimited"}},

@@ -36,6 +36,23 @@
       one row.
     </p>
 
+    <group title="Status">
+      These columns allow a client to track the overall configuration state of
+      the system.
+
+      <column name="nb_ic_cfg">
+        Sequence number for client to increment. When a client modifies the
+        interconnect northbound database configuration and wishes to wait for
+        <code>OVN-ICs</code> to handle this change and update the Interconnect
+        southbound database, it may increment this sequence number.
+      </column>
+      <column name="sb_ic_cfg">
+        Sequence number that one <code>OVN-IC</code> sets to the value of
+        <ref column="nb_ic_cfg"/> after waiting to all the <code>OVN-ICs</code>
+        finish applying their changes to interconnect southbound database.
+      </column>
+    </group>
+
     <group title="Common Columns">
       <column name="external_ids">
         See <em>External IDs</em> at the beginning of this document.

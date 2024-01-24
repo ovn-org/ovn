@@ -69,6 +69,21 @@
       one row.
     </p>
 
+    <group title="Status">
+      This column allow a client to track the overall configuration state of
+      the system.
+
+      <column name="nb_ic_cfg">
+        Sequence number for the configuration. When a CMS or
+        <code>ovn-ic-nbctl</code> updates the Interconnect northbound database,
+        it increments the <code>nb_ic_cfg</code> column in the
+        <code>NB_IC_Global</code> table in the Interconnect northbound
+        database. when <code>OVN-ICs</code> updates the southbound database to
+        bring it up to date with these changes, one <code>OVN-IC</code> updates
+        this column to the same value.
+      </column>
+    </group>
+
     <group title="Common Columns">
       <column name="external_ids">
         See <em>External IDs</em> at the beginning of this document.
@@ -102,6 +117,12 @@
     <column name="name">
       A name that uniquely identifies the availability zone.
     </column>
+
+    <column name="nb_ic_cfg">
+      This column is used by the <code>OVN-IC</code> to inform
+      that this IC instance is aligned with the changes in INB
+    </column>
+
   </table>
 
   <table name="Gateway" title="Interconnection Gateway Information">
