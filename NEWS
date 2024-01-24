@@ -21,6 +21,14 @@ OVN v24.03.0 - xx xxx xxxx
   - Introduce next-hop BFD availability check for OVN reroute policies.
   - Add the capability to mark (through pkt.mark) incoming/outgoing packets
     in the logical switch datapath according to user configured QoS rule.
+  - OVN Interconnection:
+    * INB provides basic feedback to the CMS about the ISB changes
+      handling status.
+    * IC_NB_Global now have "nb_ic_cfg" and "sb_ic_cfg" columns for
+      for ISB informational status.
+    * IC_SB_Global now have "nb_ic_cfg" column for ISB informational status.
+    * Availability_Zone now have "nb_ic_cfg" column for local AZ
+      informational status.
 
 OVN v23.09.0 - 15 Sep 2023
 --------------------------
