@@ -58,6 +58,13 @@ static bool oneline;
 /* --dry-run: Do not commit any changes. */
 static bool dry_run;
 
+/* --wait=TYPE: Wait for configuration change to take effect? */
+static enum nbctl_wait_type wait_type = NBCTL_WAIT_NONE;
+
+/* Should we wait (if specified by 'wait_type') even if the commands don't
+ * change the database at all */
+static bool force_wait = false;
+
 /* --timeout: Time to wait for a connection to 'db'. */
 static unsigned int timeout;
 
@@ -161,6 +168,8 @@ parse_options(int argc, char *argv[], struct shash *local_options)
         OPT_DB = UCHAR_MAX + 1,
         OPT_ONELINE,
         OPT_NO_SYSLOG,
+        OPT_NO_WAIT,
+        OPT_WAIT,
         OPT_DRY_RUN,
         OPT_LOCAL,
         OPT_COMMANDS,
@@ -173,6 +182,8 @@ parse_options(int argc, char *argv[], struct shash *local_options)
     static const struct option global_long_options[] = {
         {"db", required_argument, NULL, OPT_DB},
         {"no-syslog", no_argument, NULL, OPT_NO_SYSLOG},
+        {"no-wait", no_argument, NULL, OPT_NO_WAIT},
+        {"wait", required_argument, NULL, OPT_WAIT},
         {"dry-run", no_argument, NULL, OPT_DRY_RUN},
         {"oneline", no_argument, NULL, OPT_ONELINE},
         {"timeout", required_argument, NULL, 't'},
@@ -234,7 +245,19 @@ parse_options(int argc, char *argv[], struct shash *local_options)
         case OPT_DRY_RUN:
             dry_run = true;
             break;
-
+        case OPT_NO_WAIT:
+            wait_type = NBCTL_WAIT_NONE;
+            break;
+        case OPT_WAIT:
+            if (!strcmp(optarg, "none")) {
+                wait_type = NBCTL_WAIT_NONE;
+            } else if (!strcmp(optarg, "sb")) {
+                wait_type = NBCTL_WAIT_SB;
+            } else {
+                ctl_fatal("argument to --wait must be "
+                          "\"none\", \"sb\" ");
+            }
+            break;
         case OPT_LOCAL:
             if (shash_find(local_options, options[idx].name)) {
                 ctl_fatal("'%s' option specified multiple times",
@@ -329,9 +352,14 @@ set the SSL configuration\n\
 %s\
 %s\
 \n\
+Synchronization command (use with --wait=sb):\n\
+  sync                     wait even for earlier changes to take effect\n\
+\n\
 Options:\n\
   --db=DATABASE               connect to DATABASE\n\
                               (default: %s)\n\
+  --no-wait, --wait=none      do not wait for OVN reconfiguration (default)\n\
+  --wait=sb                   wait for southbound database update\n\
   --no-leader-only            accept any cluster member, not just the leader\n\
   -t, --timeout=SECS          wait at most SECS seconds\n\
   --dry-run                   do not commit changes to database\n\
@@ -378,6 +406,12 @@ static struct cmd_show_table cmd_show_tables[] = {
 static void
 ic_nbctl_init(struct ctl_context *ctx OVS_UNUSED)
 {
+}
+
+static void
+ic_nbctl_pre_sync(struct ctl_context *base OVS_UNUSED)
+{
+    force_wait = true;
 }
 
 static void
@@ -706,6 +740,33 @@ ic_nbctl_context_done_command(struct ic_nbctl_context *ic_nbctl_ctx,
 }
 
 static void
+ic_nbctl_validate_sequence_numbers(int expected_cfg,
+                                   struct ovsdb_idl *idl)
+{
+    if (wait_type == NBCTL_WAIT_NONE) {
+        if (force_wait) {
+            VLOG_INFO("\"sync\" command has no effect without --wait");
+        }
+        return;
+    }
+
+    const struct icnbrec_ic_nb_global *inb = icnbrec_ic_nb_global_first(idl);
+    ovsdb_idl_enable_reconnect(idl);
+    for (;;) {
+        ovsdb_idl_run(idl);
+        ICNBREC_IC_NB_GLOBAL_FOR_EACH (inb, idl) {
+            int64_t cur_cfg = inb->sb_ic_cfg;
+            int64_t delta = cur_cfg - expected_cfg;
+            if (cur_cfg >= expected_cfg && delta < INT32_MAX) {
+                return;
+            }
+        }
+        ovsdb_idl_wait(idl);
+        poll_block();
+    }
+}
+
+static void
 ic_nbctl_context_done(struct ic_nbctl_context *ic_nbctl_ctx,
                    struct ctl_command *command)
 {
@@ -748,6 +809,7 @@ do_ic_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
     struct ic_nbctl_context ic_nbctl_ctx;
     struct ctl_command *c;
     struct shash_node *node;
+    int64_t next_cfg = 0;
 
     txn = the_idl_txn = ovsdb_idl_txn_create(idl);
     if (dry_run) {
@@ -760,6 +822,17 @@ do_ic_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
     if (!inb) {
         /* XXX add verification that table is empty */
         icnbrec_ic_nb_global_insert(txn);
+    }
+
+    if (wait_type != NBCTL_WAIT_NONE) {
+
+        /* Deal with potential overflows. */
+        if (inb->nb_ic_cfg == LLONG_MAX) {
+            icnbrec_ic_nb_global_set_nb_ic_cfg(inb, 0);
+        }
+        ovsdb_idl_txn_increment(txn, &inb->header_,
+                                &icnbrec_ic_nb_global_col_nb_ic_cfg,
+                                force_wait);
     }
 
     symtab = ovsdb_symbol_table_create();
@@ -807,6 +880,10 @@ do_ic_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
     }
 
     status = ovsdb_idl_txn_commit_block(txn);
+    if (wait_type != NBCTL_WAIT_NONE && status == TXN_SUCCESS) {
+        next_cfg = ovsdb_idl_txn_get_increment_new_value(txn);
+    }
+
     if (status == TXN_UNCHANGED || status == TXN_SUCCESS) {
         for (c = commands; c < &commands[n_commands]; c++) {
             if (c->syntax->postprocess) {
@@ -884,6 +961,11 @@ do_ic_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
         shash_destroy_free_data(&c->options);
     }
     free(commands);
+
+    if (status != TXN_UNCHANGED) {
+        ic_nbctl_validate_sequence_numbers(next_cfg, idl);
+    }
+
     ovsdb_idl_txn_destroy(txn);
     ovsdb_idl_destroy(idl);
 
@@ -924,7 +1006,7 @@ ic_nbctl_exit(int status)
 
 static const struct ctl_command_syntax ic_nbctl_commands[] = {
     { "init", 0, 0, "", NULL, ic_nbctl_init, NULL, "", RW },
-
+    { "sync", 0, 0, "", ic_nbctl_pre_sync, NULL, NULL, "", RO },
     /* transit switch commands. */
     { "ts-add", 1, 1, "SWITCH", NULL, ic_nbctl_ts_add, NULL, "--may-exist", RW },
     { "ts-del", 1, 1, "SWITCH", NULL, ic_nbctl_ts_del, NULL, "--if-exists", RW },

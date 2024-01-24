@@ -123,9 +123,58 @@
       </dd>
     </dl>
 
+    <h1>Synchronization Commands</h1>
+
+    <dl>
+      <dt>sync</dt>
+      <dd>
+        Ordinarily, <code>--wait=sb</code> only waits for changes by the
+        current <code>ovn-ic-nbctl</code> invocation to take effect.
+        This means that, if none of the commands supplied to
+        <code>ovn-ic-nbctl</code> change the database, then the command does
+        not wait at all.  With the <code>sync</code> command, however,
+        <code>ovn-ic-nbctl</code> waits even for earlier changes to the
+        database to propagate down to the southbound database, according to the
+        argument of <code>--wait</code>.
+      </dd>
+    </dl>
+
     <h1>Options</h1>
 
     <dl>
+      <dt><code>--no-wait</code> | <code>--wait=none</code></dt>
+      <dt><code>--wait=sb</code></dt>
+
+      <dd>
+        <p>
+          These options control whether and how <code>ovn-ic-nbctl</code> waits
+          for the OVN system to become up-to-date with changes made in an
+          <code>ovn-ic-nbctl</code> invocation.
+        </p>
+
+        <p>
+          By default, or if <code>--no-wait</code> or <code>--wait=none</code>,
+          <code>ovn-ic-nbctl</code> exits immediately after confirming that
+          changes have been committed to the Interconnect northbound database,
+          without waiting.
+        </p>
+
+        <p>
+          With <code>--wait=sb</code>, before <code>ovn-ic-nbctl</code> exits,
+          it waits for <code>ovn-ics</code> to bring the Interconnect
+          southbound database up-to-date with the Interconnect northbound
+          database updates.
+        </p>
+
+        <p>
+          Ordinarily, <code>--wait=sb</code> only waits for changes by the
+          current <code>ovn-ic-nbctl</code> invocation to take effect.
+          This means that, if none of the commands supplied to
+          <code>ovn-ic-nbctl</code> change the database, then the command
+          does not wait at all.
+          Use the <code>sync</code> command to override this behavior.
+        </p>
+      </dd>
     <dt><code>--db</code> <var>database</var></dt>
     <dd>
       The OVSDB database remote to contact.  If the <env>OVN_IC_NB_DB</env>
