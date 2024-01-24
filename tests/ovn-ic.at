@@ -1298,3 +1298,46 @@ OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- sync ISB status to INB])
+ovn_init_ic_db
+net_add n1
+
+ovn_start az1
+sim_add gw-az1
+as gw-az1
+
+check ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.1.1
+check ovs-vsctl set open . external-ids:ovn-is-interconn=true
+as az1
+
+# pause ovn-ic instance
+check ovn-appctl -t ic/ovn-ic pause
+
+# run sync command in the background this commands
+# supposed to stuck since ovn-ic is paused.
+ovn-ic-nbctl --wait=sb sync &
+
+OVS_WAIT_UNTIL([test $(ovn-ic-nbctl get ic_nb_global . nb_ic_cfg) -gt $(ovn-ic-nbctl get ic_nb_global . sb_ic_cfg)])
+AT_CHECK([ovn-ic-nbctl get ic_nb_global . nb_ic_cfg], [0], [dnl
+1
+])
+AT_CHECK([ovn-ic-nbctl get ic_nb_global . sb_ic_cfg], [0], [dnl
+0
+])
+
+# resume ovn-ic instance
+check ovn-appctl -t ic/ovn-ic resume
+OVS_WAIT_UNTIL([test $(ovn-ic-nbctl get ic_nb_global . nb_ic_cfg) -eq $(ovn-ic-nbctl get ic_nb_global . sb_ic_cfg)])
+AT_CHECK([ovn-ic-nbctl get ic_nb_global . nb_ic_cfg], [0], [dnl
+1
+])
+AT_CHECK([ovn-ic-nbctl get ic_nb_global . sb_ic_cfg], [0], [dnl
+1
+])
+
+OVN_CLEANUP_IC([az1])
+AT_CLEANUP
+])
