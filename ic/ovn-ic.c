@@ -1786,16 +1786,95 @@ route_run(struct ic_context *ctx,
     hmap_destroy(&ic_lrs);
 }
 
+/*
+ * This function implements a sequence number protocol that can be used by
+ * the INB end user to verify that ISB is synced with all the changes that
+ * are done be the user/AZs-controllers:
+ *
+ * Since we have multiple IC instances running in different regions
+ * we can't rely on one of them to update the ISB and sync that update
+ * to INB since other ICs can make changes in parallel.
+ * So to have a sequence number protocol working properly we must
+ * make sure that all the IC instances are synced with the ISB first
+ * and then update the INB.
+ *
+ * To guarantee that all instances are synced with ISB first, each IC
+ * will do the following steps:
+ *
+ * 1. when local ovn-ic sees that INB:nb_ic_cfg has updated we will set
+ *    the ic_sb_loop->next_cfg to match the INB:nb_ic_cfg and increment
+ *    the value of AZ:nb_ic_cfg and wait until we get confirmation from
+ *    the server.
+ *
+ * 2. once this IC instance changes for ISB are committed successfully
+ *    (next loop), the value of cur_cfg will be updated to match
+ *    the INB:nb_ic_cfg that indicate that our local instance is up to date
+ *    and no more changes need to be done for ISB.
+ *
+ * 3. validate that the AZ:nb_ic_cfg to match the INB:nb_ic_cfg.
+ *
+ * 4. Go through all the AZs and check if all have the same value of
+ *    AZ:nb_ic_cfg that means all the AZs are done with ISB changes and ISB are
+ *    up to date with INB, so we can set the values of ISB:nb_ic_cfg to
+ *    INB:nb_ic_cfg and INB:sb_ic_cfg to INB:nb_ic_cfg.
+ */
 static void
-ovn_db_run(struct ic_context *ctx)
+update_sequence_numbers(const struct icsbrec_availability_zone *az,
+                        struct ic_context *ctx,
+                        struct ovsdb_idl_loop *ic_sb_loop)
 {
-    const struct icsbrec_availability_zone *az = az_run(ctx);
-    VLOG_DBG("Availability zone: %s", az ? az->name : "not created yet.");
-
-    if (!az) {
+    if (!ctx->ovnisb_txn || !ctx->ovninb_txn) {
         return;
     }
 
+    const struct icnbrec_ic_nb_global *ic_nb = icnbrec_ic_nb_global_first(
+                                               ctx->ovninb_idl);
+    if (!ic_nb) {
+        ic_nb = icnbrec_ic_nb_global_insert(ctx->ovninb_txn);
+    }
+    const struct icsbrec_ic_sb_global *ic_sb = icsbrec_ic_sb_global_first(
+                                               ctx->ovnisb_idl);
+    if (!ic_sb) {
+        ic_sb = icsbrec_ic_sb_global_insert(ctx->ovnisb_txn);
+    }
+
+    if ((ic_nb->nb_ic_cfg != ic_sb->nb_ic_cfg) &&
+                          (ic_nb->nb_ic_cfg != az->nb_ic_cfg)) {
+        /* Deal with potential overflows. */
+        if (az->nb_ic_cfg == LLONG_MAX) {
+            icsbrec_availability_zone_set_nb_ic_cfg(az, 0);
+        }
+        ic_sb_loop->next_cfg = ic_nb->nb_ic_cfg;
+        ovsdb_idl_txn_increment(ctx->ovnisb_txn, &az->header_,
+                           &icsbrec_availability_zone_col_nb_ic_cfg, true);
+        return;
+    }
+
+    /* handle cases where accidentally AZ:ic_nb_cfg exceeds
+     * the INB:ic_nb_cfg.
+     */
+    if (az->nb_ic_cfg != ic_sb_loop->cur_cfg) {
+        icsbrec_availability_zone_set_nb_ic_cfg(az, ic_sb_loop->cur_cfg);
+        return;
+    }
+
+    const struct icsbrec_availability_zone *other_az;
+    ICSBREC_AVAILABILITY_ZONE_FOR_EACH (other_az, ctx->ovnisb_idl) {
+        if (other_az->nb_ic_cfg != az->nb_ic_cfg) {
+            return;
+        }
+    }
+    /* All the AZs are updated successfully, update SB/NB counter. */
+    if (ic_nb->nb_ic_cfg != ic_sb->nb_ic_cfg) {
+        icsbrec_ic_sb_global_set_nb_ic_cfg(ic_sb, az->nb_ic_cfg);
+        icnbrec_ic_nb_global_set_sb_ic_cfg(ic_nb, az->nb_ic_cfg);
+    }
+}
+
+static void
+ovn_db_run(struct ic_context *ctx,
+           const struct icsbrec_availability_zone *az)
+{
     ts_run(ctx);
     gateway_run(ctx, az);
     port_binding_run(ctx, az);
@@ -2230,7 +2309,13 @@ main(int argc, char *argv[])
                 ovsdb_idl_has_ever_connected(ctx.ovnsb_idl) &&
                 ovsdb_idl_has_ever_connected(ctx.ovninb_idl) &&
                 ovsdb_idl_has_ever_connected(ctx.ovnisb_idl)) {
-                ovn_db_run(&ctx);
+                const struct icsbrec_availability_zone *az = az_run(&ctx);
+                VLOG_DBG("Availability zone: %s", az ? az->name :
+                                               "not created yet.");
+                if (az) {
+                    ovn_db_run(&ctx, az);
+                    update_sequence_numbers(az, &ctx, &ovnisb_idl_loop);
+                }
             }
 
             int rc1 = ovsdb_idl_loop_commit_and_wait(&ovnnb_idl_loop);
