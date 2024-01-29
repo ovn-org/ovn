@@ -500,6 +500,15 @@ build_chassis_features(const struct sbrec_chassis_table *sbrec_chassis_table,
             chassis_features->ls_dpg_column) {
             chassis_features->ls_dpg_column = false;
         }
+
+        bool ct_commit_nat_v2 =
+                smap_get_bool(&chassis->other_config,
+                              OVN_FEATURE_CT_COMMIT_NAT_V2,
+                              false);
+        if (!ct_commit_nat_v2 &&
+            chassis_features->ct_commit_nat_v2) {
+            chassis_features->ct_commit_nat_v2 = false;
+        }
     }
 }
 
@@ -14091,96 +14100,103 @@ build_arp_resolve_flows_for_lsp(
     }
 }
 
+#define ICMP4_NEED_FRAG_FORMAT                           \
+    "icmp4_error {"                                      \
+    "%s"                                                 \
+    REGBIT_EGRESS_LOOPBACK" = 1; "                       \
+    REGBIT_PKT_LARGER" = 0; "                            \
+    "eth.dst = %s; "                                     \
+    "ip4.dst = ip4.src; "                                \
+    "ip4.src = %s; "                                     \
+    "ip.ttl = 255; "                                     \
+    "icmp4.type = 3; /* Destination Unreachable. */ "    \
+    "icmp4.code = 4; /* Frag Needed and DF was Set. */ " \
+    "icmp4.frag_mtu = %d; "                              \
+    "next(pipeline=ingress, table=%d); };"               \
+
+#define ICMP6_NEED_FRAG_FORMAT               \
+    "icmp6_error {"                          \
+    "%s"                                     \
+    REGBIT_EGRESS_LOOPBACK" = 1; "           \
+    REGBIT_PKT_LARGER" = 0; "                \
+    "eth.dst = %s; "                         \
+    "ip6.dst = ip6.src; "                    \
+    "ip6.src = %s; "                         \
+    "ip.ttl = 255; "                         \
+    "icmp6.type = 2; /* Packet Too Big. */ " \
+    "icmp6.code = 0; "                       \
+    "icmp6.frag_mtu = %d; "                  \
+    "next(pipeline=ingress, table=%d); };"
+
+static void
+create_icmp_need_frag_lflow(const struct ovn_port *op, int mtu,
+                            struct ds *actions, struct ds *match,
+                            const char *meter, struct hmap *lflows,
+                            enum ovn_stage stage, uint16_t priority,
+                            bool is_ipv6, const char *extra_match,
+                            const char *extra_action)
+{
+    if ((is_ipv6 && !op->lrp_networks.ipv6_addrs) ||
+        (!is_ipv6 && !op->lrp_networks.ipv4_addrs)) {
+        return;
+    }
+
+    const char *ip = is_ipv6
+                     ? op->lrp_networks.ipv6_addrs[0].addr_s
+                     : op->lrp_networks.ipv4_addrs[0].addr_s;
+    size_t match_len = match->length;
+
+    ds_put_format(match, " && ip%c && "REGBIT_PKT_LARGER
+                  " && "REGBIT_EGRESS_LOOPBACK" == 0", is_ipv6 ? '6' : '4');
+
+    if (*extra_match) {
+        ds_put_format(match, " && %s", extra_match);
+    }
+
+    ds_clear(actions);
+    ds_put_format(actions,
+                  is_ipv6 ? ICMP6_NEED_FRAG_FORMAT : ICMP4_NEED_FRAG_FORMAT,
+                  extra_action, op->lrp_networks.ea_s, ip,
+                  mtu, ovn_stage_get_table(S_ROUTER_IN_ADMISSION));
+
+    ovn_lflow_add_with_hint__(lflows, op->od, stage, priority,
+                              ds_cstr(match), ds_cstr(actions),
+                              NULL, meter, &op->nbrp->header_);
+
+    ds_truncate(match, match_len);
+}
+
 static void
 build_icmperr_pkt_big_flows(struct ovn_port *op, int mtu, struct hmap *lflows,
                             const struct shash *meter_groups, struct ds *match,
                             struct ds *actions, enum ovn_stage stage,
                             struct ovn_port *outport)
 {
-    char *outport_match = outport ? xasprintf("outport == %s && ",
-                                              outport->json_key)
-                                  : NULL;
+    const char *ipv4_meter = copp_meter_get(COPP_ICMP4_ERR, op->od->nbr->copp,
+                                            meter_groups);
+    const char *ipv6_meter = copp_meter_get(COPP_ICMP6_ERR, op->od->nbr->copp,
+                                            meter_groups);
 
-    char *ip4_src = NULL;
+    ds_clear(match);
+    ds_put_format(match, "inport == %s", op->json_key);
 
-    if (outport && outport->lrp_networks.ipv4_addrs) {
-        ip4_src = outport->lrp_networks.ipv4_addrs[0].addr_s;
-    } else if (op->lrp_networks.ipv4_addrs) {
-        ip4_src = op->lrp_networks.ipv4_addrs[0].addr_s;
+    if (outport) {
+        ds_put_format(match, " && outport == %s", outport->json_key);
+
+        create_icmp_need_frag_lflow(op, mtu, actions, match, ipv4_meter,
+                                    lflows, stage, 160, false,
+                                    "ct.trk && ct.rpl && ct.dnat",
+                                    "flags.icmp_snat = 1; ");
+        create_icmp_need_frag_lflow(op, mtu, actions, match, ipv6_meter,
+                                    lflows, stage, 160, true,
+                                    "ct.trk && ct.rpl && ct.dnat",
+                                    "flags.icmp_snat = 1; ");
     }
 
-    if (ip4_src) {
-        ds_clear(match);
-        ds_put_format(match, "inport == %s && %sip4 && "REGBIT_PKT_LARGER
-                      " && "REGBIT_EGRESS_LOOPBACK" == 0", op->json_key,
-                      outport ? outport_match : "");
-
-        ds_clear(actions);
-        /* Set icmp4.frag_mtu to gw_mtu */
-        ds_put_format(actions,
-            "icmp4_error {"
-            REGBIT_EGRESS_LOOPBACK" = 1; "
-            REGBIT_PKT_LARGER" = 0; "
-            "eth.dst = %s; "
-            "ip4.dst = ip4.src; "
-            "ip4.src = %s; "
-            "ip.ttl = 255; "
-            "icmp4.type = 3; /* Destination Unreachable. */ "
-            "icmp4.code = 4; /* Frag Needed and DF was Set. */ "
-            "icmp4.frag_mtu = %d; "
-            "next(pipeline=ingress, table=%d); };",
-            op->lrp_networks.ea_s, ip4_src, mtu,
-            ovn_stage_get_table(S_ROUTER_IN_ADMISSION));
-        ovn_lflow_add_with_hint__(lflows, op->od, stage, 150,
-                                  ds_cstr(match), ds_cstr(actions),
-                                  NULL,
-                                  copp_meter_get(
-                                        COPP_ICMP4_ERR,
-                                        op->od->nbr->copp,
-                                        meter_groups),
-                                  &op->nbrp->header_);
-    }
-
-    char *ip6_src = NULL;
-
-    if (outport && outport->lrp_networks.ipv6_addrs) {
-        ip6_src = outport->lrp_networks.ipv6_addrs[0].addr_s;
-    } else if (op->lrp_networks.ipv6_addrs) {
-        ip6_src = op->lrp_networks.ipv6_addrs[0].addr_s;
-    }
-
-    if (ip6_src) {
-        ds_clear(match);
-        ds_put_format(match, "inport == %s && %sip6 && "REGBIT_PKT_LARGER
-                      " && "REGBIT_EGRESS_LOOPBACK" == 0", op->json_key,
-                      outport ? outport_match : "");
-
-        ds_clear(actions);
-        /* Set icmp6.frag_mtu to gw_mtu */
-        ds_put_format(actions,
-            "icmp6_error {"
-            REGBIT_EGRESS_LOOPBACK" = 1; "
-            REGBIT_PKT_LARGER" = 0; "
-            "eth.dst = %s; "
-            "ip6.dst = ip6.src; "
-            "ip6.src = %s; "
-            "ip.ttl = 255; "
-            "icmp6.type = 2; /* Packet Too Big. */ "
-            "icmp6.code = 0; "
-            "icmp6.frag_mtu = %d; "
-            "next(pipeline=ingress, table=%d); };",
-            op->lrp_networks.ea_s, ip6_src, mtu,
-            ovn_stage_get_table(S_ROUTER_IN_ADMISSION));
-        ovn_lflow_add_with_hint__(lflows, op->od, stage, 150,
-                                  ds_cstr(match), ds_cstr(actions),
-                                  NULL,
-                                  copp_meter_get(
-                                        COPP_ICMP6_ERR,
-                                        op->od->nbr->copp,
-                                        meter_groups),
-                                  &op->nbrp->header_);
-    }
-    free(outport_match);
+    create_icmp_need_frag_lflow(op, mtu, actions, match, ipv4_meter, lflows,
+                                stage, 150, false, "", "");
+    create_icmp_need_frag_lflow(op, mtu, actions, match, ipv6_meter, lflows,
+                                stage, 150, true, "", "");
 }
 
 static void
@@ -14188,8 +14204,8 @@ build_check_pkt_len_flows_for_lrp(struct ovn_port *op,
                                   struct hmap *lflows,
                                   const struct hmap *lr_ports,
                                   const struct shash *meter_groups,
-                                  struct ds *match,
-                                  struct ds *actions)
+                                  struct ds *match, struct ds *actions,
+                                  const struct chassis_features *features)
 {
     int gw_mtu = smap_get_int(&op->nbrp->options, "gateway_mtu", 0);
     if (gw_mtu <= 0) {
@@ -14218,6 +14234,12 @@ build_check_pkt_len_flows_for_lrp(struct ovn_port *op,
                                     match, actions, S_ROUTER_IN_LARGER_PKTS,
                                     op);
     }
+
+    if (features->ct_commit_nat_v2) {
+        ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_OUT_POST_SNAT, 100,
+                                "icmp && flags.icmp_snat == 1",
+                                "ct_commit_nat(snat);", &op->nbrp->header_);
+    }
 }
 
 /* Local router ingress table CHK_PKT_LEN: Check packet length.
@@ -14238,7 +14260,8 @@ build_check_pkt_len_flows_for_lrouter(
         struct ovn_datapath *od, struct hmap *lflows,
         const struct hmap *lr_ports,
         struct ds *match, struct ds *actions,
-        const struct shash *meter_groups)
+        const struct shash *meter_groups,
+        const struct chassis_features *features)
 {
     ovs_assert(od->nbr);
 
@@ -14255,7 +14278,7 @@ build_check_pkt_len_flows_for_lrouter(
             continue;
         }
         build_check_pkt_len_flows_for_lrp(rp, lflows, lr_ports, meter_groups,
-                                          match, actions);
+                                          match, actions, features);
     }
 }
 
@@ -16225,7 +16248,7 @@ build_lswitch_and_lrouter_iterate_by_lr(struct ovn_datapath *od,
     build_arp_resolve_flows_for_lrouter(od, lsi->lflows);
     build_check_pkt_len_flows_for_lrouter(od, lsi->lflows, lsi->lr_ports,
                                           &lsi->match, &lsi->actions,
-                                          lsi->meter_groups);
+                                          lsi->meter_groups, lsi->features);
     build_gateway_redirect_flows_for_lrouter(od, lsi->lflows, &lsi->match,
                                              &lsi->actions);
     build_arp_request_flows_for_lrouter(od, lsi->lflows, &lsi->match,
@@ -17878,6 +17901,7 @@ northd_init(struct northd_data *data)
         .ct_lb_related = true,
         .fdb_timestamp = true,
         .ls_dpg_column = true,
+        .ct_commit_nat_v2 = true,
     };
     data->ovn_internal_version_changed = false;
     sset_init(&data->svc_monitor_lsps);
