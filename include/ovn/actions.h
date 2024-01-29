@@ -75,7 +75,7 @@ struct collector_set_ids;
     OVNACT(CT_LB_MARK,        ovnact_ct_lb)           \
     OVNACT(SELECT,            ovnact_select)          \
     OVNACT(CT_CLEAR,          ovnact_null)            \
-    OVNACT(CT_COMMIT_NAT,     ovnact_ct_nat)          \
+    OVNACT(CT_COMMIT_NAT,     ovnact_ct_commit_nat)   \
     OVNACT(CLONE,             ovnact_nest)            \
     OVNACT(ARP,               ovnact_nest)            \
     OVNACT(ICMP4,             ovnact_nest)            \
@@ -274,7 +274,7 @@ enum ovnact_ct_nat_type {
     OVNACT_CT_NAT_UNSPEC,
 };
 
-/* OVNACT_CT_DNAT, OVNACT_CT_SNAT, OVNACT_CT_COMMIT_NAT. */
+/* OVNACT_CT_DNAT, OVNACT_CT_SNAT. */
 struct ovnact_ct_nat {
     struct ovnact ovnact;
     int family;
@@ -294,6 +294,14 @@ struct ovnact_ct_nat {
     bool commit;                /* Explicit commit action. */
 
     uint8_t ltable;             /* Logical table ID of next table. */
+};
+
+/* OVNACT_CT_COMMIT_NAT. */
+struct ovnact_ct_commit_nat {
+    struct ovnact ovnact;
+
+    bool dnat_zone;
+    uint8_t ltable;
 };
 
 enum ovnact_ct_lb_flag {
