@@ -5473,10 +5473,14 @@ pinctrl_ip_mcast_handle_igmp(struct rconn *swconn,
     ovs_rwlock_wrlock(&ip_ms->ms->rwlock);
     switch (ntohs(ip_flow->tp_src)) {
     case IGMP_HOST_MEMBERSHIP_REPORT:
+        group_change =
+            mcast_snooping_add_group4(ip_ms->ms, ip4, IP_MCAST_VLAN,
+                                      port_key_data, MCAST_GROUP_IGMPV1);
+        break;
     case IGMPV2_HOST_MEMBERSHIP_REPORT:
         group_change =
             mcast_snooping_add_group4(ip_ms->ms, ip4, IP_MCAST_VLAN,
-                                      port_key_data);
+                                      port_key_data, MCAST_GROUP_IGMPV2);
         break;
     case IGMP_HOST_LEAVE_MESSAGE:
         group_change =
