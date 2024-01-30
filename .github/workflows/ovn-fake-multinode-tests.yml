@@ -26,7 +26,7 @@ jobs:
       XDG_RUNTIME_DIR: ''
     steps:
     - name: Check out ovn-fake-multi-node
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: 'ovn-org/ovn-fake-multinode'
         path: 'ovn-fake-multinode'
@@ -36,14 +36,14 @@ jobs:
     # ovn-fake-multinode builds and installs ovs from ovn-fake-multinode/ovs
     # and it builds and installs ovn from ovn-fake-multinode/ovn. It uses the ovs submodule for ovn compilation.
     - name: Check out ovs master
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         path: 'ovn-fake-multinode/ovs'
         repository: 'openvswitch/ovs'
         ref: 'master'
 
     - name: Check out ovn ${{ matrix.cfg.branch }}
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         path: 'ovn-fake-multinode/ovn'
         submodules: recursive
@@ -63,7 +63,7 @@ jobs:
         sudo podman save ovn/ovn-multi-node:${{ matrix.cfg.branch }} > /tmp/_output/ovn_${{ matrix.cfg.branch }}_image.tar
       working-directory: ovn-fake-multinode
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: test-${{ matrix.cfg.branch }}-image
         path: /tmp/_output/ovn_${{ matrix.cfg.branch }}_image.tar
@@ -100,7 +100,7 @@ jobs:
 
     steps:
     - name: Check out ovn
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: install required dependencies
       run:  |
@@ -112,11 +112,11 @@ jobs:
         . .ci/linux-util.sh
         free_up_disk_space_ubuntu
 
-    - uses: actions/download-artifact@v3
+    - uses: actions/download-artifact@v4
       with:
         name: test-main-image
 
-    - uses: actions/download-artifact@v3
+    - uses: actions/download-artifact@v4
       with:
         name: test-branch-22.03-image
 
@@ -126,7 +126,7 @@ jobs:
         sudo podman load --input ovn_branch-22.03_image.tar
 
     - name: Check out ovn-fake-multi-node
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: 'ovn-org/ovn-fake-multinode'
         path: 'ovn-fake-multinode'
@@ -156,12 +156,12 @@ jobs:
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: set up python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.12'
 
     - name: Check out ovn
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         path: 'ovn'
         submodules: recursive
@@ -190,9 +190,9 @@ jobs:
     - name: copy logs on failure
       if: failure() || cancelled()
       run: |
-        # upload-artifact@v3 throws exceptions if it tries to upload socket
+        # upload-artifact throws exceptions if it tries to upload socket
         # files and we could have some socket files in testsuite.dir.
-        # Also, upload-artifact@v3 doesn't work well enough with wildcards.
+        # Also, upload-artifact doesn't work well enough with wildcards.
         # So, we're just archiving everything here to avoid any issues.
         mkdir logs
         cp ovn/config.log ./logs/
@@ -203,7 +203,7 @@ jobs:
 
     - name: upload logs on failure
       if: failure() || cancelled()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: logs-linux-${{ join(matrix.cfg.*, '-') }}
         path: logs.tgz
