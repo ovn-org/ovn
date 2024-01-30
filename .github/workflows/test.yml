@@ -59,20 +59,20 @@ jobs:
     steps:
     - name: checkout
       if: github.event_name == 'push' || github.event_name == 'pull_request'
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       with:
         submodules: recursive
 
     # For weekly runs, don't update submodules
     - name: checkout without submodule
       if: github.event_name == 'schedule'
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
     # Weekly runs test using OVS master instead of the
     # submodule.
     - name: checkout OVS master
       if: github.event_name == 'schedule'
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       with:
         repository: 'openvswitch/ovs'
         path: 'ovs'
@@ -101,7 +101,7 @@ jobs:
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: set up python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
@@ -128,7 +128,7 @@ jobs:
 
     - name: upload logs on failure
       if: failure() || cancelled()
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: logs-linux-${{ join(matrix.cfg.*, '-') }}
         path: logs.tgz
@@ -147,18 +147,18 @@ jobs:
     steps:
     - name: checkout
       if: github.event_name == 'push' || github.event_name == 'pull_request'
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       with:
         submodules: recursive
     # For weekly runs, don't update submodules
     - name: checkout without submodule
       if: github.event_name == 'schedule'
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
     # Weekly runs test using OVS master instead of the
     # submodule.
     - name: checkout OVS master
       if: github.event_name == 'schedule'
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       with:
         repository: 'openvswitch/ovs'
         path: 'ovs'
@@ -170,7 +170,7 @@ jobs:
         echo "$HOME/bin"        >> $GITHUB_PATH
         echo "$HOME/.local/bin" >> $GITHUB_PATH
     - name: set up python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
     - name: prepare
@@ -179,7 +179,7 @@ jobs:
       run:  ./.ci/osx-build.sh
     - name: upload logs on failure
       if: failure()
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: logs-osx-clang---disable-ssl
         path: config.log
