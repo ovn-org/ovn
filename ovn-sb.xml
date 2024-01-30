@@ -4815,6 +4815,10 @@ tcp.flags = RST;
         Source IPv4 address to use in the service monitor packet.
       </column>
 
+      <column name="chassis_name">
+        The name of the chassis where the logical port is bound.
+      </column>
+
       <column name="options" key="interval" type='{"type": "integer"}'>
         The interval, in seconds, between service monitor checks.
       </column>
