@@ -32,12 +32,12 @@ jobs:
         sudo service docker restart
 
     - name: Check out ovn
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         submodules: recursive
 
     - name: Check out ovn-kubernetes
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
           path: src/github.com/ovn-org/ovn-kubernetes
           repository: ovn-org/ovn-kubernetes
@@ -54,7 +54,7 @@ jobs:
         mkdir /tmp/_output
         docker save ovn-daemonset-f:dev > /tmp/_output/image.tar
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: test-image
         path: /tmp/_output/image.tar
@@ -96,7 +96,7 @@ jobs:
     steps:
 
     - name: Check out ovn
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Free up disk space
       run: |
@@ -104,7 +104,7 @@ jobs:
         free_up_disk_space_ubuntu
 
     - name: Check out ovn-kubernetes
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
           path: src/github.com/ovn-org/ovn-kubernetes
           repository: ovn-org/ovn-kubernetes
@@ -114,9 +114,10 @@ jobs:
         .ci/ovn-kubernetes/prepare.sh src/github.com/ovn-org/ovn-kubernetes $GITHUB_ENV
 
     - name: Set up Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v5
       with:
         go-version: ${{ env.GO_VERSION }}
+        cache-dependency-path: "**/*.sum"
       id: go
 
     - name: Set up GOPATH
@@ -131,7 +132,7 @@ jobs:
       run: |
         sudo ufw disable
 
-    - uses: actions/download-artifact@v3
+    - uses: actions/download-artifact@v4
       with:
         name: test-image
 
@@ -155,7 +156,7 @@ jobs:
 
     - name: Upload Junit Reports
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: kind-junit-${{ env.JOB_NAME }}-${{ github.run_id }}
         path: 'src/github.com/ovn-org/ovn-kubernetes/test/_artifacts/*.xml'
@@ -169,7 +170,7 @@ jobs:
 
     - name: Upload logs
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: kind-logs-${{ env.JOB_NAME }}-${{ github.run_id }}
         path: /tmp/kind/logs

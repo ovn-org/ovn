@@ -26,7 +26,7 @@ jobs:
 
     steps:
     - name: checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: update PATH
       run: |
@@ -54,14 +54,14 @@ jobs:
 
     - name: cache
       id: dpdk_cache
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: dpdk-dir
         key: ${{ steps.gen_dpdk_key.outputs.key }}
 
     - name: set up python
       if: steps.dpdk_cache.outputs.cache-hit != 'true'
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.9'
 
@@ -96,7 +96,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Update APT cache
         run: sudo apt update
@@ -128,7 +128,7 @@ jobs:
 
       - name: Cache image
         id: image_cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: /tmp/image.tar
           key: ${{ github.sha }}
@@ -177,20 +177,20 @@ jobs:
     steps:
     - name: checkout
       if: github.event_name == 'push' || github.event_name == 'pull_request'
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         submodules: recursive
 
     # For weekly runs, don't update submodules
     - name: checkout without submodule
       if: github.event_name == 'schedule'
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     # Weekly runs test using the tip of the most recent stable OVS branch
     # instead of the submodule.
     - name: checkout OVS
       if: github.event_name == 'schedule'
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: 'openvswitch/ovs'
         fetch-depth: 0
@@ -206,13 +206,13 @@ jobs:
 
     - name: cache dpdk
       if: matrix.cfg.dpdk != ''
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: dpdk-dir
         key: ${{ needs.build-dpdk.outputs.dpdk_key }}
 
     - name: image cache
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: /tmp/image.tar
         key: ${{ github.sha }}
@@ -233,7 +233,7 @@ jobs:
 
     - name: upload logs on failure
       if: failure() || cancelled()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: logs-linux-${{ join(matrix.cfg.*, '-') }}
         path: logs.tgz
@@ -252,18 +252,18 @@ jobs:
     steps:
     - name: checkout
       if: github.event_name == 'push' || github.event_name == 'pull_request'
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         submodules: recursive
     # For weekly runs, don't update submodules
     - name: checkout without submodule
       if: github.event_name == 'schedule'
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     # Weekly runs test using the tip of the most recent stable OVS branch
     # instead of the submodule.
     - name: checkout OVS
       if: github.event_name == 'schedule'
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: 'openvswitch/ovs'
         fetch-depth: 0
@@ -282,7 +282,7 @@ jobs:
         echo "$HOME/bin"        >> $GITHUB_PATH
         echo "$HOME/.local/bin" >> $GITHUB_PATH
     - name: set up python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.12'
     - name: prepare
@@ -291,7 +291,7 @@ jobs:
       run:  ./.ci/osx-build.sh
     - name: upload logs on failure
       if: failure()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: logs-osx-clang---disable-ssl
         path: config.log
@@ -310,7 +310,7 @@ jobs:
         run: dnf install -y dnf-plugins-core git rpm-build
 
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -338,7 +338,7 @@ jobs:
         run:  make rpm-fedora
 
       - name: upload rpm packages
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: rpm-packages
           path: |
