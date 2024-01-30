@@ -178,6 +178,7 @@ struct pinctrl {
     /* Latch to destroy the 'pinctrl_thread' */
     struct latch pinctrl_thread_exit;
     bool mac_binding_can_timestamp;
+    bool igmp_group_has_chassis_name;
 };
 
 static struct pinctrl pinctrl;
@@ -3503,6 +3504,13 @@ pinctrl_update(const struct ovsdb_idl *idl, const char *br_int_name)
         notify_pinctrl_handler();
     }
 
+    bool igmp_group_has_chassis_name =
+        sbrec_server_has_igmp_group_table_col_chassis_name(idl);
+    if (igmp_group_has_chassis_name != pinctrl.igmp_group_has_chassis_name) {
+        pinctrl.igmp_group_has_chassis_name = igmp_group_has_chassis_name;
+        notify_pinctrl_handler();
+    }
+
     ovs_mutex_unlock(&pinctrl_mutex);
 }
 
@@ -5308,8 +5316,9 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
             sbrec_igmp = igmp_group_lookup(sbrec_igmp_groups, &mc_group->addr,
                                            local_dp->datapath, chassis);
             if (!sbrec_igmp) {
-                sbrec_igmp = igmp_group_create(ovnsb_idl_txn, &mc_group->addr,
-                                               local_dp->datapath, chassis);
+                sbrec_igmp = igmp_group_create(
+                    ovnsb_idl_txn, &mc_group->addr, local_dp->datapath,
+                    chassis, pinctrl.igmp_group_has_chassis_name);
             }
 
             igmp_group_update_ports(sbrec_igmp, sbrec_datapath_binding_by_key,
@@ -5324,7 +5333,8 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
         if (!sbrec_ip_mrouter) {
             sbrec_ip_mrouter = igmp_mrouter_create(ovnsb_idl_txn,
                                                    local_dp->datapath,
-                                                   chassis);
+                                                   chassis,
+                                                   pinctrl.igmp_group_has_chassis_name);
         }
         igmp_mrouter_update_ports(sbrec_ip_mrouter,
                                   sbrec_datapath_binding_by_key,

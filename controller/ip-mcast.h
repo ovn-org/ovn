@@ -39,11 +39,13 @@ struct sbrec_igmp_group *igmp_group_create(
     struct ovsdb_idl_txn *idl_txn,
     const struct in6_addr *address,
     const struct sbrec_datapath_binding *datapath,
-    const struct sbrec_chassis *chassis);
+    const struct sbrec_chassis *chassis,
+    bool igmp_group_has_chassis_name);
 struct sbrec_igmp_group *igmp_mrouter_create(
     struct ovsdb_idl_txn *idl_txn,
     const struct sbrec_datapath_binding *datapath,
-    const struct sbrec_chassis *chassis);
+    const struct sbrec_chassis *chassis,
+    bool igmp_group_has_chassis_name);
 
 void igmp_group_update_ports(const struct sbrec_igmp_group *g,
                              struct ovsdb_idl_index *datapaths,
@@ -61,6 +63,7 @@ igmp_mrouter_update_ports(const struct sbrec_igmp_group *g,
 void igmp_group_delete(const struct sbrec_igmp_group *g);
 
 bool igmp_group_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
-                        struct ovsdb_idl_index *igmp_groups);
+                        struct ovsdb_idl_index *igmp_groups,
+                        const struct sbrec_chassis *chassis);
 
 #endif /* controller/ip-mcast.h */
