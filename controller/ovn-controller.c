@@ -5086,7 +5086,8 @@ loop_done:
             done = chassis_cleanup(ovnsb_idl_txn,
                                    chassis, chassis_private) && done;
             done = encaps_cleanup(ovs_idl_txn, br_int) && done;
-            done = igmp_group_cleanup(ovnsb_idl_txn, sbrec_igmp_group) && done;
+            done = igmp_group_cleanup(ovnsb_idl_txn, sbrec_igmp_group, chassis)
+                   && done;
             if (done) {
                 poll_immediate_wake();
             }
