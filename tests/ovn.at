@@ -30435,7 +30435,7 @@ check_packet_tunnel() {
     as $hv
     echo "vif$src -> vif$dst should go through tunnel $local_encap_ip -> $remote_encap_ip"
     tunnel_ofport=$(ovs-vsctl --bare --column=ofport find interface options:local_ip=$local_encap_ip options:remote_ip=$remote_encap_ip)
-    AT_CHECK([test $(ovs-appctl ofproto/trace br-int in_port=vif$src $packet | grep "output\:" | awk -F ':' '{ print $2 }') == $tunnel_ofport])
+    AT_CHECK([test $(ovs-appctl ofproto/trace br-int in_port=vif$src $packet | grep "output:" | awk -F ':' '{ print $2 }') == $tunnel_ofport])
 }
 
 for i in 1 2; do
