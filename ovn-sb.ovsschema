@@ -1,7 +1,7 @@
 {
     "name": "OVN_Southbound",
-    "version": "20.32.0",
-    "cksum": "1262133774 31276",
+    "version": "20.33.0",
+    "cksum": "4076371179 31328",
     "tables": {
         "SB_Global": {
             "columns": {
@@ -578,7 +578,8 @@
                              "min": 0, "max": "unlimited"}},
                 "options": {
                     "type": {"key": "string", "value": "string",
-                             "min": 0, "max": "unlimited"}}},
+                             "min": 0, "max": "unlimited"}},
+                "chassis_name": {"type": "string"}},
             "indexes": [["logical_port", "dst_ip", "src_port", "disc"]],
             "isRoot": true},
         "FDB": {

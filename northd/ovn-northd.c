@@ -122,7 +122,7 @@ static const char *rbac_igmp_group_auth[] =
 static const char *rbac_igmp_group_update[] =
     {"address", "chassis", "datapath", "ports"};
 static const char *rbac_bfd_auth[] =
-    {""};
+    {"chassis_name"};
 static const char *rbac_bfd_update[] =
     {"status"};
 
