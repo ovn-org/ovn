@@ -38,7 +38,8 @@ static struct sbrec_igmp_group *
 igmp_group_create_(struct ovsdb_idl_txn *idl_txn,
                    const char *addr_str,
                    const struct sbrec_datapath_binding *datapath,
-                   const struct sbrec_chassis *chassis);
+                   const struct sbrec_chassis *chassis,
+                   bool igmp_group_has_chassis_name);
 
 struct ovsdb_idl_index *
 igmp_group_index_create(struct ovsdb_idl *idl)
@@ -86,7 +87,8 @@ struct sbrec_igmp_group *
 igmp_group_create(struct ovsdb_idl_txn *idl_txn,
                   const struct in6_addr *address,
                   const struct sbrec_datapath_binding *datapath,
-                  const struct sbrec_chassis *chassis)
+                  const struct sbrec_chassis *chassis,
+                  bool igmp_group_has_chassis_name)
 {
     char addr_str[INET6_ADDRSTRLEN];
 
@@ -94,16 +96,18 @@ igmp_group_create(struct ovsdb_idl_txn *idl_txn,
         return NULL;
     }
 
-    return igmp_group_create_(idl_txn, addr_str, datapath, chassis);
+    return igmp_group_create_(idl_txn, addr_str, datapath, chassis,
+                              igmp_group_has_chassis_name);
 }
 
 struct sbrec_igmp_group *
 igmp_mrouter_create(struct ovsdb_idl_txn *idl_txn,
                     const struct sbrec_datapath_binding *datapath,
-                    const struct sbrec_chassis *chassis)
+                    const struct sbrec_chassis *chassis,
+                    bool igmp_group_has_chassis_name)
 {
     return igmp_group_create_(idl_txn, OVN_IGMP_GROUP_MROUTERS, datapath,
-                              chassis);
+                              chassis, igmp_group_has_chassis_name);
 }
 
 void
@@ -211,7 +215,8 @@ igmp_group_delete(const struct sbrec_igmp_group *g)
 
 bool
 igmp_group_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
-                   struct ovsdb_idl_index *igmp_groups)
+                   struct ovsdb_idl_index *igmp_groups,
+                   const struct sbrec_chassis *chassis)
 {
     const struct sbrec_igmp_group *g;
 
@@ -220,6 +225,9 @@ igmp_group_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
     }
 
     SBREC_IGMP_GROUP_FOR_EACH_BYINDEX (g, igmp_groups) {
+        if (chassis != g->chassis) {
+            continue;
+        }
         igmp_group_delete(g);
     }
 
@@ -249,13 +257,17 @@ static struct sbrec_igmp_group *
 igmp_group_create_(struct ovsdb_idl_txn *idl_txn,
                    const char *addr_str,
                    const struct sbrec_datapath_binding *datapath,
-                   const struct sbrec_chassis *chassis)
+                   const struct sbrec_chassis *chassis,
+                   bool igmp_group_has_chassis_name)
 {
     struct sbrec_igmp_group *g = sbrec_igmp_group_insert(idl_txn);
 
     sbrec_igmp_group_set_address(g, addr_str);
     sbrec_igmp_group_set_datapath(g, datapath);
     sbrec_igmp_group_set_chassis(g, chassis);
+    if (igmp_group_has_chassis_name) {
+        sbrec_igmp_group_set_chassis_name(g, chassis->name);
+    }
 
     return g;
 }
