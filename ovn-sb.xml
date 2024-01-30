@@ -4767,6 +4767,11 @@ tcp.flags = RST;
     <column name="ports">
       The destination port bindings for this IGMP group.
     </column>
+
+    <column name="chassis_name">
+      The chassis that inserted this record. This column is used for RBAC
+      purposes only.
+    </column>
   </table>
 
   <table name="Service_Monitor">

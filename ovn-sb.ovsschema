@@ -1,7 +1,7 @@
 {
     "name": "OVN_Southbound",
-    "version": "20.31.0",
-    "cksum": "2473562445 31224",
+    "version": "20.32.0",
+    "cksum": "1262133774 31276",
     "tables": {
         "SB_Global": {
             "columns": {
@@ -493,7 +493,8 @@
                 "ports": {"type": {"key": {"type": "uuid",
                                            "refTable": "Port_Binding",
                                            "refType": "weak"},
-                                   "min": 0, "max": "unlimited"}}},
+                                   "min": 0, "max": "unlimited"}},
+                "chassis_name": {"type": "string"}},
             "indexes": [["address", "datapath", "chassis"]],
             "isRoot": true},
         "Service_Monitor": {

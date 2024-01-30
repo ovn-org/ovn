@@ -22951,7 +22951,7 @@ wait_row_count Chassis 1 name=hv3 other_config:ovn-monitor-all='"true"'
 # Inject a fake IGMP_Group entry.
 dp=$(fetch_column Datapath_Binding _uuid external_ids:name=sw2)
 ch=$(fetch_column Chassis _uuid name=hv3)
-ovn-sbctl create IGMP_Group address=239.0.1.42 datapath=$dp chassis=$ch
+ovn-sbctl create IGMP_Group address=239.0.1.42 datapath=$dp chassis=$ch chassis_name=hv3
 
 ovn-nbctl --wait=hv sync
 wait_row_count IGMP_Group 2 address=239.0.1.68

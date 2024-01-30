@@ -118,7 +118,7 @@ static const char *rbac_svc_monitor_auth[] =
 static const char *rbac_svc_monitor_auth_update[] =
     {"status"};
 static const char *rbac_igmp_group_auth[] =
-    {""};
+    {"chassis_name"};
 static const char *rbac_igmp_group_update[] =
     {"address", "chassis", "datapath", "ports"};
 static const char *rbac_bfd_auth[] =
