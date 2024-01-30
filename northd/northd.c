@@ -3752,10 +3752,9 @@ struct service_monitor_info {
 
 
 static struct service_monitor_info *
-create_or_get_service_mon(struct ovsdb_idl_txn *ovnsb_txn,
-                          struct hmap *monitor_map,
-                          const char *ip, const char *logical_port,
-                          uint16_t service_port, const char *protocol)
+get_service_mon(struct hmap *monitor_map,
+                const char *ip, const char *logical_port,
+                uint16_t service_port, const char *protocol)
 {
     uint32_t hash = service_port;
     hash = hash_string(ip, hash);
@@ -3771,12 +3770,43 @@ create_or_get_service_mon(struct ovsdb_idl_txn *ovnsb_txn,
         }
     }
 
+    return NULL;
+}
+
+static struct service_monitor_info *
+create_or_get_service_mon(struct ovsdb_idl_txn *ovnsb_txn,
+                          struct hmap *monitor_map,
+                          const char *ip, const char *logical_port,
+                          uint16_t service_port, const char *protocol,
+                          const char *chassis_name)
+{
+    struct service_monitor_info *mon_info =
+        get_service_mon(monitor_map, ip, logical_port, service_port,
+                        protocol);
+
+    if (mon_info) {
+        if (chassis_name && strcmp(mon_info->sbrec_mon->chassis_name,
+                                   chassis_name)) {
+            sbrec_service_monitor_set_chassis_name(mon_info->sbrec_mon,
+                                                   chassis_name);
+        }
+        return mon_info;
+    }
+
+    /* get_service_mon() also calculates the hash the same way. */
+    uint32_t hash = service_port;
+    hash = hash_string(ip, hash);
+    hash = hash_string(logical_port, hash);
+
     struct sbrec_service_monitor *sbrec_mon =
         sbrec_service_monitor_insert(ovnsb_txn);
     sbrec_service_monitor_set_ip(sbrec_mon, ip);
     sbrec_service_monitor_set_port(sbrec_mon, service_port);
     sbrec_service_monitor_set_logical_port(sbrec_mon, logical_port);
     sbrec_service_monitor_set_protocol(sbrec_mon, protocol);
+    if (chassis_name) {
+        sbrec_service_monitor_set_chassis_name(sbrec_mon, chassis_name);
+    }
     mon_info = xzalloc(sizeof *mon_info);
     mon_info->sbrec_mon = sbrec_mon;
     hmap_insert(monitor_map, &mon_info->hmap_node, hash);
@@ -3846,12 +3876,19 @@ ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn, struct ovn_northd_lb *lb,
                 protocol = "tcp";
             }
             backend_nb->health_check = true;
+
+            const char *chassis_name = NULL;
+            if (op->sb && op->sb->chassis) {
+                chassis_name = op->sb->chassis->name;
+            }
+
             struct service_monitor_info *mon_info =
                 create_or_get_service_mon(ovnsb_txn, monitor_map,
                                           backend->ip_str,
                                           backend_nb->op->nbsp->name,
                                           backend->port,
-                                          protocol);
+                                          protocol,
+                                          chassis_name);
             ovs_assert(mon_info);
             sbrec_service_monitor_set_options(
                 mon_info->sbrec_mon, &lb_vip_nb->lb_health_check->options);
