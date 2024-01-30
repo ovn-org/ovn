@@ -4920,6 +4920,10 @@ tcp.flags = RST;
         receiving system in Asynchronous mode.
       </column>
 
+      <column name="chassis_name">
+        The name of the chassis where the logical port is bound.
+      </column>
+
       <column name="options">
         Reserved for future use.
       </column>

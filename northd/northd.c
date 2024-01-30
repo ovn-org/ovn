@@ -9440,6 +9440,7 @@ build_bfd_table(struct lflow_input *input_data,
             nbrec_bfd_set_status(nb_bt, "admin_down");
         }
 
+        struct ovn_port *op = ovn_port_find(ports, nb_bt->logical_port);
         bfd_e = bfd_port_lookup(&sb_only, nb_bt->logical_port, nb_bt->dst_ip);
         if (!bfd_e) {
             int udp_src = bfd_get_unused_port(bfd_src_ports);
@@ -9453,6 +9454,9 @@ build_bfd_table(struct lflow_input *input_data,
             sbrec_bfd_set_disc(sb_bt, 1 + random_uint32());
             sbrec_bfd_set_src_port(sb_bt, udp_src);
             sbrec_bfd_set_status(sb_bt, nb_bt->status);
+            if (op && op->sb && op->sb->chassis) {
+                sbrec_bfd_set_chassis_name(sb_bt, op->sb->chassis->name);
+            }
 
             int min_tx = nb_bt->n_min_tx ? nb_bt->min_tx[0] : BFD_DEF_MINTX;
             sbrec_bfd_set_min_tx(sb_bt, min_tx);
@@ -9471,6 +9475,10 @@ build_bfd_table(struct lflow_input *input_data,
                 }
             }
             build_bfd_update_sb_conf(nb_bt, bfd_e->sb_bt);
+            if (op && op->sb && op->sb->chassis &&
+                strcmp(op->sb->chassis->name, sb_bt->chassis_name)) {
+                sbrec_bfd_set_chassis_name(sb_bt, op->sb->chassis->name);
+            }
 
             hmap_remove(&sb_only, &bfd_e->hmap_node);
             bfd_e->ref = false;
@@ -9479,7 +9487,6 @@ build_bfd_table(struct lflow_input *input_data,
             hmap_insert(bfd_connections, &bfd_e->hmap_node, hash);
         }
 
-        struct ovn_port *op = ovn_port_find(ports, nb_bt->logical_port);
         if (op) {
             op->has_bfd = true;
         }
