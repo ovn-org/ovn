@@ -114,7 +114,7 @@ static const char *rbac_mac_binding_update[] =
     {"logical_port", "ip", "mac", "datapath", "timestamp"};
 
 static const char *rbac_svc_monitor_auth[] =
-    {""};
+    {"chassis_name"};
 static const char *rbac_svc_monitor_auth_update[] =
     {"status"};
 static const char *rbac_igmp_group_auth[] =
