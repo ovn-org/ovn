@@ -20,7 +20,7 @@ jobs:
       matrix:
         distro: [ fedora, ubuntu ]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Update APT cache
         run: sudo apt update
