@@ -10404,6 +10404,8 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 # Make lrp a gateway port
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lrp-set-gateway-chassis lrp hv1
+wait_column "hosting-chassis=hv1" nb:Logical_Router_Port status name=lrp
+
 # There will be 3 recomputes of northd engine node
 #   1. missing handler for input NB_logical_router
 #   2. missing handler for input SB_ha_chassis_group
