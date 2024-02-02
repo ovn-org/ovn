@@ -6831,7 +6831,7 @@ route_uuid=$(fetch_column nb:logical_router_static_route _uuid ip_prefix="100.0.
 check ovn-nbctl --wait=hv sync
 
 wait_column "up" nb:bfd status logical_port=rp-public
-OVS_WAIT_UNTIL([ovn-sbctl dump-flows R1 | grep 'match=(ip4.dst == 100.0.0.0/8)' | grep -q 172.16.1.50])
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows R1 |grep lr_in_ip_routing |grep 'ip4.dst == 100.0.0.0/8' |grep -q 172.16.1.50])
 
 # un-associate the bfd connection and the static route
 check ovn-nbctl clear logical_router_static_route $route_uuid bfd
@@ -6861,7 +6861,7 @@ stopping
 ])
 
 wait_column "down" nb:bfd status logical_port=rp-public
-OVS_WAIT_UNTIL([test "$(ovn-sbctl dump-flows R1 | grep 'match=(ip4.dst == 100.0.0.0/8)' | grep 172.16.1.50)" = ""])
+OVS_WAIT_UNTIL([test "$(ovn-sbctl dump-flows R1 |grep lr_in_ip_routing |grep 'ip4.dst == 100.0.0.0/8' |grep 172.16.1.50)" = ""])
 
 # remove bfd entry
 ovn-nbctl destroy bfd $uuid
