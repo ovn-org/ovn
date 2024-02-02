@@ -36,6 +36,7 @@ m4_define([CHECK_NO_CHANGE_AFTER_RECOMPUTE], [
 ])
 ])
 
+m4_divert_push([PREPARE_TESTS])
 # Checks if the provided engine node recomputed or not
 # and if it computed or not.
 # 1st argument is the engine node.
@@ -79,6 +80,7 @@ $recompute : compute - $compute"
     check test "$node_compute_ct" -ne "0"
   fi
 }
+m4_divert_pop([PREPARE_TESTS])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check from NBDB to SBDB])
