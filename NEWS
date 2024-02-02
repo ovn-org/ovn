@@ -18,6 +18,7 @@ Post v23.09.0
   - Support selecting encapsulation IP based on the source/destination VIF's
     settting. See ovn-controller(8) 'external_ids:ovn-encap-ip' for more
     details.
+  - Introduce next-hop BFD availability check for OVN reroute policies.
 
 OVN v23.09.0 - 15 Sep 2023
 --------------------------

@@ -1119,6 +1119,14 @@
           duplicated routing policy results in error.
         </p>
 
+        <p>
+          <code>--bfd</code> option is used to link a BFD session to the
+          OVN reroute policy. OVN will look for an already running BFD
+          session using next-hop as lookup key in the BFD table.
+          If the lookup fails, a new entry in the BFD table will be created
+          using the <var>nexthop</var> as <var>dst_ip</var>.
+        </p>
+
           <p>
           The following example shows a policy to lr1, which will drop packets
           from<code>192.168.100.0/24</code>.

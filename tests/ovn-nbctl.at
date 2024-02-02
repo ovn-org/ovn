@@ -2189,6 +2189,12 @@ AT_CHECK([ovn-nbctl lr-policy-add lr0 100 "ip4.src == 1.1.2.0/24" allow pkt_mark
 AT_CHECK([ovn-nbctl lr-policy-add lr0 101 "ip4.src == 2.1.1.0/24" allow])
 AT_CHECK([ovn-nbctl lr-policy-add lr0 101 "ip4.src == 2.1.2.0/24" drop])
 AT_CHECK([ovn-nbctl lr-policy-add lr0 101 "ip6.src == 2002::/64" drop])
+AT_CHECK([ovn-nbctl --bfd lr-policy-add lr0 103 "ip4.src == 1.2.3.0/24" reroute 192.168.1.1], [1], [],
+  [ovn-nbctl: out lrp not found for 192.168.1.1 nexthop
+])
+AT_CHECK([ovn-nbctl --bfd lr-policy-add lr0 103 "ip4.src == 1.2.3.0/24" drop], [1], [],
+  [ovn-nbctl: BFD is valid only with reroute action.
+])
 
 dnl Incomplete option set.
 AT_CHECK([ovn-nbctl lr-policy-add lr0 200 "ip4.src == 1.1.4.0/24" reroute 192.168.0.10 foo], [1], [],

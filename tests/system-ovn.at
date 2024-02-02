@@ -6837,6 +6837,15 @@ OVS_WAIT_UNTIL([ovn-sbctl dump-flows R1 |grep lr_in_ip_routing |grep 'ip4.dst ==
 check ovn-nbctl clear logical_router_static_route $route_uuid bfd
 wait_column "admin_down" nb:bfd status logical_port=rp-public
 OVS_WAIT_UNTIL([ip netns exec server bfdd-control status | grep -qi state=Down])
+
+check ovn-nbctl --bfd lr-policy-add R1 100 "ip4.src == 200.0.0.0/8" reroute 172.16.1.50
+wait_column "up" nb:bfd status logical_port=rp-public
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows R1 |grep lr_in_policy |grep 'ip4.src == 200.0.0.0/8' |grep -q 172.16.1.50])
+
+check ovn-nbctl lr-policy-del R1
+wait_column "admin_down" nb:bfd status logical_port=rp-public
+OVS_WAIT_UNTIL([ip netns exec server bfdd-control status | grep -qi state=Down])
+
 NS_CHECK_EXEC([server], [tcpdump -nni s1 udp port 3784 -Q in > bfd.pcap &])
 sleep 5
 kill $(pidof tcpdump)
@@ -6844,24 +6853,56 @@ AT_CHECK([grep -qi bfd bfd.pcap],[1])
 
 # restart the connection
 check ovn-nbctl set logical_router_static_route $route_uuid bfd=$uuid
+check ovn-nbctl --bfd lr-policy-add R1 100 "ip4.src == 200.0.0.0/8" reroute 172.16.1.50
 wait_column "up" nb:bfd status logical_port=rp-public
 
-# switch to gw router configuration
-check ovn-nbctl clear logical_router_static_route $route_uuid bfd
-wait_column "admin_down" nb:bfd status logical_port=rp-public
-OVS_WAIT_UNTIL([ip netns exec server bfdd-control status | grep -qi state=Down])
-check ovn-nbctl clear logical_router_port rp-public gateway_chassis
-check ovn-nbctl set logical_router R1 options:chassis=hv1
-check ovn-nbctl set logical_router_static_route $route_uuid bfd=$uuid
-wait_column "up" nb:bfd status logical_port=rp-public
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows R1 |grep lr_in_ip_routing |grep 'ip4.dst == 100.0.0.0/8' |grep -q 172.16.1.50])
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows R1 |grep lr_in_policy |grep 'ip4.src == 200.0.0.0/8' |grep -q 172.16.1.50])
 
 # stop bfd endpoint
 NS_CHECK_EXEC([server], [bfdd-control stop], [0], [dnl
 stopping
 ])
-
 wait_column "down" nb:bfd status logical_port=rp-public
 OVS_WAIT_UNTIL([test "$(ovn-sbctl dump-flows R1 |grep lr_in_ip_routing |grep 'ip4.dst == 100.0.0.0/8' |grep 172.16.1.50)" = ""])
+OVS_WAIT_UNTIL([test "$(ovn-sbctl dump-flows R1 |grep lr_in_policy |grep 'ip4.src == 200.0.0.0/8' |grep 172.16.1.50)" = ""])
+
+# switch to gw router configuration
+check ovn-nbctl clear logical_router_static_route $route_uuid bfd
+check ovn-nbctl lr-policy-del R1
+check ovn-nbctl clear logical_router_port rp-public gateway_chassis
+check ovn-nbctl set logical_router R1 options:chassis=hv1
+check ovn-nbctl set logical_router_static_route $route_uuid bfd=$uuid
+
+# restart bfdd
+NS_CHECK_EXEC([server], [bfdd-beacon --listen=172.16.1.50], [0])
+NS_CHECK_EXEC([server], [bfdd-control allow 172.16.1.1], [0], [dnl
+Allowing connections from 172.16.1.1
+])
+
+wait_column "up" nb:bfd status logical_port=rp-public
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows R1 |grep lr_in_ip_routing |grep 'ip4.dst == 100.0.0.0/8' |grep -q 172.16.1.50])
+
+check ovn-nbctl clear logical_router_static_route $route_uuid bfd
+wait_column "admin_down" nb:bfd status logical_port=rp-public
+OVS_WAIT_UNTIL([ip netns exec server bfdd-control status | grep -qi state=Down])
+ovn-nbctl destroy bfd $uuid
+check_row_count bfd 0
+
+# create reroute route policy
+check ovn-nbctl --bfd lr-policy-add R1 100 "ip4.src == 210.0.0.0/8" reroute 172.16.1.50
+wait_column "up" nb:bfd status logical_port=rp-public
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows R1 |grep lr_in_policy |grep 'ip4.src == 210.0.0.0/8' |grep -q 172.16.1.50])
+
+check ovn-nbctl lr-policy-del R1
+wait_column "admin_down" nb:bfd status logical_port=rp-public
+OVS_WAIT_UNTIL([ip netns exec server bfdd-control status | grep -qi state=Down])
+uuid=$(fetch_column nb:bfd _uuid logical_port="rp-public")
+
+# stop bfd endpoint
+NS_CHECK_EXEC([server], [bfdd-control stop], [0], [dnl
+stopping
+])
 
 # remove bfd entry
 ovn-nbctl destroy bfd $uuid

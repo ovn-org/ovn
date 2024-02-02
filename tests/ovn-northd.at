@@ -3624,7 +3624,7 @@ AT_KEYWORDS([northd-bfd])
 ovn_start
 
 check ovn-nbctl --wait=sb lr-add r0
-for i in $(seq 1 7); do
+for i in $(seq 1 9); do
     check ovn-nbctl --wait=sb lrp-add r0 r0-sw$i 00:00:00:00:00:0$i 192.168.$i.1/24
     check ovn-nbctl --wait=sb ls-add sw$i
     check ovn-nbctl --wait=sb lsp-add sw$i sw$i-r0
@@ -3687,6 +3687,24 @@ wait_column down nb:bfd status logical_port=r0-sw2
 bfd2_uuid=$(fetch_column bfd _uuid logical_port=r0-sw2)
 check ovn-sbctl set bfd $bfd2_uuid status=up
 wait_column up nb:bfd status logical_port=r0-sw2
+
+# Create reroute policies associated with BFD sessions
+check ovn-nbctl lr-route-del r0
+check ovn-nbctl --bfd lr-policy-add r0 100 "ip4.src == 1.2.3.0/24" reroute 192.168.8.2
+wait_column down bfd status logical_port=r0-sw8
+
+bfd_route_policy_uuid=$(fetch_column nb:bfd _uuid logical_port=r0-sw8)
+AT_CHECK([ovn-nbctl list logical_router_policy | grep -q $bfd_route_policy_uuid])
+
+check ovn-nbctl lr-policy-del r0
+check ovn-nbctl --bfd lr-policy-add r0 100 "ip4.src == 2.3.4.0/24" reroute 192.168.9.2,192.168.9.3,192.168.9.4
+
+wait_column down bfd status dst_ip=192.168.9.2
+wait_column down bfd status dst_ip=192.168.9.3
+wait_column down bfd status dst_ip=192.168.9.4
+
+bfd_route_policy_uuid=$(fetch_column nb:bfd _uuid logical_port=r0-sw9)
+AT_CHECK([ovn-nbctl list logical_router_policy | sed s/,//g | grep -q "$bfd_route_policy_uuid"])
 
 AT_CLEANUP
 ])

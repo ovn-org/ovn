@@ -4014,14 +4014,26 @@ normalize_addr_str(const char *orig_addr)
     return ret;
 }
 
+static bool
+ip_in_lrp_networks(const struct nbrec_logical_router_port *lrp,
+                   const char *ip_s);
+
 static void
 nbctl_pre_lr_policy_add(struct ctl_context *ctx)
 {
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_ports);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_policies);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_mac);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_networks);
 
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_priority);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_match);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_bfd_col_dst_ip);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_bfd_col_logical_port);
 }
 
 static void
@@ -4158,6 +4170,81 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
 
     nbrec_logical_router_update_policies_addvalue(lr, policy);
 
+    struct shash_node *bfd = shash_find(&ctx->options, "--bfd");
+    const struct nbrec_bfd **bfd_sessions = NULL;
+
+    if (bfd) {
+        if (!reroute) {
+            ctl_error(ctx, "BFD is valid only with reroute action.");
+            goto free_nexthops;
+        }
+
+        bfd_sessions = xcalloc(n_nexthops, sizeof *bfd_sessions);
+        size_t j, n_bfd_sessions = 0;
+
+        for (i = 0; i < n_nexthops; i++) {
+            for (j = 0; j < lr->n_ports; j++) {
+                if (ip_in_lrp_networks(lr->ports[j], nexthops[i])) {
+                    break;
+                }
+            }
+
+            if (j == lr->n_ports) {
+                ctl_error(ctx, "out lrp not found for %s nexthop",
+                          nexthops[i]);
+                goto free_nexthops;
+            }
+
+            struct in6_addr nexthop_v6;
+            bool is_nexthop_v6 = ipv6_parse(nexthops[i], &nexthop_v6);
+            const struct nbrec_bfd *iter, *nb_bt = NULL;
+
+            NBREC_BFD_FOR_EACH (iter, ctx->idl) {
+                struct in6_addr dst_ipv6;
+                bool is_dst_v6 = ipv6_parse(iter->dst_ip, &dst_ipv6);
+
+                if (is_nexthop_v6 ^ is_dst_v6) {
+                    continue;
+                }
+
+                /* match endpoint ip. */
+                if ((is_nexthop_v6 &&
+                     !ipv6_addr_equals(&nexthop_v6, &dst_ipv6)) ||
+                    strcmp(iter->dst_ip, nexthops[i])) {
+                    continue;
+                }
+
+                /* match outport. */
+                if (strcmp(iter->logical_port, lr->ports[j]->name)) {
+                    continue;
+                }
+
+                nb_bt = iter;
+                break;
+            }
+
+            /* Create the BFD session if it does not already exist. */
+            if (!nb_bt) {
+                nb_bt = nbrec_bfd_insert(ctx->txn);
+                nbrec_bfd_set_dst_ip(nb_bt, nexthops[i]);
+                nbrec_bfd_set_logical_port(nb_bt, lr->ports[j]->name);
+            }
+
+            for (j = 0; j < n_bfd_sessions; j++) {
+                if (bfd_sessions[j] == nb_bt) {
+                    break;
+                }
+            }
+            if (j == n_bfd_sessions) {
+                bfd_sessions[n_bfd_sessions++] = nb_bt;
+            }
+        }
+        nbrec_logical_router_policy_set_bfd_sessions(
+                policy, (struct nbrec_bfd **) bfd_sessions, n_bfd_sessions);
+    }
+
+free_nexthops:
+    free(bfd_sessions);
     for (i = 0; i < n_nexthops; i++) {
         free(nexthops[i]);
     }
@@ -4282,8 +4369,11 @@ print_routing_policy(const struct nbrec_logical_router_policy *policy,
                       policy->match, policy->action);
     }
 
-    if (!smap_is_empty(&policy->options)) {
+    if (!smap_is_empty(&policy->options) || policy->n_bfd_sessions) {
         ds_put_format(s, "%15s", "");
+        if (policy->n_bfd_sessions) {
+            ds_put_cstr(s, "bfd,");
+        }
         struct smap_node *node;
         SMAP_FOR_EACH (node, &policy->options) {
             ds_put_format(s, "%s=%s,", node->key, node->value);
@@ -4305,6 +4395,8 @@ nbctl_pre_lr_policy_list(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_nexthops);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_action);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_options);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_policy_col_bfd_sessions);
 }
 
 static void
@@ -7900,7 +7992,8 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     /* Policy commands */
     { "lr-policy-add", 4, INT_MAX,
      "ROUTER PRIORITY MATCH ACTION [NEXTHOP] [OPTIONS - KEY=VALUE ...]",
-     nbctl_pre_lr_policy_add, nbctl_lr_policy_add, NULL, "--may-exist", RW },
+     nbctl_pre_lr_policy_add, nbctl_lr_policy_add, NULL, "--may-exist,--bfd?",
+     RW },
     { "lr-policy-del", 1, 3, "ROUTER [{PRIORITY | UUID} [MATCH]]",
       nbctl_pre_lr_policy_del, nbctl_lr_policy_del, NULL, "--if-exists", RW },
     { "lr-policy-list", 1, 1, "ROUTER", nbctl_pre_lr_policy_list,

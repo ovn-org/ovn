@@ -3682,6 +3682,13 @@ or
       </p>
     </column>
 
+    <column name="bfd_sessions">
+      <p>
+        Reference to <ref table="BFD"/> row if the route policy has associated
+        some BFD sessions.
+      </p>
+    </column>
+
     <column name="options" key="pkt_mark">
       <p>
         Marks the packet with the value specified when the router policy
