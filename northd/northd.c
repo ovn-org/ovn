@@ -8399,11 +8399,6 @@ build_qos(struct ovn_datapath *od, struct hmap *lflows) {
 
         ds_clear(&action);
         for (size_t j = 0; j < qos->n_action; j++) {
-            if (strcmp(qos->key_action[j], "dscp") &&
-                strcmp(qos->key_action[j], "mark")) {
-                continue;
-            }
-
             if (!strcmp(qos->key_action[j], "dscp")) {
                 if (qos->value_action[j] > QOS_MAX_DSCP) {
                     VLOG_WARN_RL(&rl, "Bad 'dscp' value %"PRId64" in qos "
