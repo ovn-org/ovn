@@ -463,7 +463,7 @@
 
     <h2>Logical Switch QoS Rule Commands</h2>
     <dl>
-      <dt>[<code>--may-exist</code>] <code>qos-add</code> <var>switch</var> <var>direction</var> <var>priority</var> <var>match</var> [<code>dscp=</code><var>dscp</var>] [<code>rate=</code><var>rate</var> [<code>burst=</code><var>burst</var>]]</dt>
+        <dt>[<code>--may-exist</code>] <code>qos-add</code> <var>switch</var> <var>direction</var> <var>priority</var> <var>match</var> [<code>mark=</code><var>mark</var>] [<code>dscp=</code><var>dscp</var>] [<code>rate=</code><var>rate</var> [<code>burst=</code><var>burst</var>]]</dt>
       <dd>
         <p>
           Adds QoS marking and metering rules to <var>switch</var>.
@@ -482,6 +482,9 @@
           <code>burst=</code><var>burst</var> specifies the burst rate
           limit in kilobits.  <code>dscp</code> and/or <code>rate</code>
           are required arguments.
+          If <code>mark=</code><var>mark</var> is specified, then matching
+          packets will be marked (through <code>pkt.mark</code>).
+          <var>mark</var> must be a positive integer.
         </p>
 
         <p>

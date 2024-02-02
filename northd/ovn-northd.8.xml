@@ -916,6 +916,12 @@
       </li>
 
       <li>
+        For every qos_rules entry in a logical switch with packet marking
+        enabled, a flow will be added at the priority mentioned in the
+        QoS table.
+      </li>
+
+      <li>
         One priority-0 fallback flow that matches all packets and advances to
         the next table.
       </li>

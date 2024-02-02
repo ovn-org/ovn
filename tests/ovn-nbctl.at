@@ -316,6 +316,8 @@ AT_CHECK([ovn-nbctl qos-add ls0 from-lport 400 tcp dscp=0 rate=300 burst=3000])
 AT_CHECK([ovn-nbctl qos-add ls0 to-lport 300 tcp dscp=48])
 AT_CHECK([ovn-nbctl qos-add ls0 to-lport 200 ip rate=101])
 AT_CHECK([ovn-nbctl qos-add ls0 to-lport 100 ip4 dscp=13 rate=301 burst=30000])
+AT_CHECK([ovn-nbctl qos-add ls0 to-lport 101 ip4 mark=15])
+AT_CHECK([ovn-nbctl qos-add ls0 to-lport 102 ip4 dscp=16 mark=17])
 
 dnl Add duplicated qos
 AT_CHECK([ovn-nbctl qos-add ls0 to-lport 100 ip4 dscp=11 rate=302 burst=30002], [1], [], [stderr])
@@ -328,6 +330,8 @@ from-lport   500 (udp) rate=100 burst=1000
 from-lport   400 (tcp) rate=300 burst=3000 dscp=0
   to-lport   300 (tcp) dscp=48
   to-lport   200 (ip) rate=101
+  to-lport   102 (ip4) dscp=16 mark=17
+  to-lport   101 (ip4) mark=15
   to-lport   100 (ip4) rate=301 burst=30000 dscp=13
 ])
 
@@ -371,11 +375,11 @@ AT_CHECK([ovn-nbctl qos-add ls0 from-lport 600 ip dscp=-1], [1], [],
 ])
 
 AT_CHECK([ovn-nbctl qos-add ls0 from-lport 600 ip dscpa=-1], [1], [],
-[ovn-nbctl: dscpa=-1: supported arguments are "dscp=", "rate=", and "burst="
+[ovn-nbctl: dscpa=-1: supported arguments are "dscp=", "rate=", "burst=" and "mark="
 ])
 
 AT_CHECK([ovn-nbctl qos-add ls0 from-lport 600 ip burst=123], [1], [],
-[ovn-nbctl: Either "rate" and/or "dscp" must be specified
+[ovn-nbctl: Either "mark", "rate" and/or "dscp" must be specified
 ])])
 
 dnl ---------------------------------------------------------------------

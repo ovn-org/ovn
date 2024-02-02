@@ -37929,3 +37929,86 @@ AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
 
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 AT_CLEANUP
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([QoS packet marking])
+AT_KEYWORDS([ovn-qos-pkt-marking])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl ls-add ls0
+check ovn-nbctl ls-add ls1
+
+check ovn-nbctl lrp-add lr0 lrp0 f0:00:00:00:00:10 10.0.0.254/24
+check ovn-nbctl lsp-add ls0 lrp-s0 -- \
+    set Logical_Switch_Port lrp-s0 type=router \
+    options:router-port=lrp0 addresses='"f0:00:00:00:00:10"'
+check ovn-nbctl lrp-add lr0 lrp1 f0:00:00:00:00:20 20.0.0.254/24
+check ovn-nbctl lsp-add ls1 lrp-s1 -- \
+    set Logical_Switch_Port lrp-s1 type=router \
+    options:router-port=lrp1 addresses='"f0:00:00:00:00:20"'
+
+check ovn-nbctl --wait=sb lsp-add ls0 lp0
+check ovn-nbctl lsp-set-addresses lp0 f0:00:00:00:00:01
+check ovn-nbctl --wait=sb lsp-add ls0 lp1
+check ovn-nbctl lsp-set-addresses lp1 f0:00:00:00:00:02
+
+check ovn-nbctl --wait=sb lsp-add ls1 lp2
+check ovn-nbctl lsp-set-addresses lp2 f0:00:00:00:00:11
+check ovn-nbctl --wait=sb sync
+
+net_add n1
+sim_add hv
+
+as hv
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovs-vsctl add-port br-int vif0 -- \
+    set Interface vif0 external-ids:iface-id=lp0 \
+    options:tx_pcap=hv/vif0-tx.pcap \
+    options:rxq_pcap=hv/vif0-rx.pcap \
+    ofport-request=1
+check ovs-vsctl add-port br-int vif1 -- \
+    set Interface vif1 external-ids:iface-id=lp1 \
+    options:tx_pcap=hv/vif1-tx.pcap \
+    options:rxq_pcap=hv/vif1-rx.pcap \
+    ofport-request=2
+check ovs-vsctl add-port br-int vif2 -- \
+    set Interface vif2 external-ids:iface-id=lp2 \
+    options:tx_pcap=hv/vif2-tx.pcap \
+    options:rxq_pcap=hv/vif2-rx.pcap \
+    ofport-request=3
+
+# Create QoS rules for packet marking.
+check ovn-nbctl qos-add ls0 from-lport 100 "inport==\"lp0\" && udp" mark=48
+check ovn-nbctl qos-add ls0 to-lport 100 "outport==\"lrp-s0\" && udp" mark=49
+check_row_count nb:QoS 2
+
+# Create some flows to count pkt marking.
+check ovn-nbctl acl-add ls0 to-lport 1002 "outport==\"lp1\" && pkt.mark == 48" drop
+check ovn-nbctl lr-policy-add lr0 200 "pkt.mark == 49" drop
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+send_udp_packet() {
+    local inport=$1 eth_src=$2 eth_dst=$3 ipv4_src=$4 ipv4_dst=$5
+    local packet=$(fmt_pkt "Ether(dst='${eth_dst}', src='${eth_src}')/ \
+                            IP(src='${ipv4_src}', dst='${ipv4_dst}', ttl=0x40)/ \
+                            UDP(sport=4242, dport=4343)")
+    as hv ovs-appctl netdev-dummy/receive vif$inport $packet
+}
+
+ls0_dp_key=$(printf "0x%x" $(fetch_column Datapath_Binding tunnel_key external_ids:name=ls0))
+lr0_dp_key=$(printf "0x%x" $(fetch_column Datapath_Binding tunnel_key external_ids:name=lr0))
+
+send_udp_packet 0 f0:00:00:00:00:01 f0:00:00:00:00:02 10.0.0.1 10.0.0.2
+OVS_WAIT_UNTIL([test 1 = $(as hv ovs-ofctl dump-flows br-int | grep -E "pkt_mark=0x30.*metadata=$ls0_dp_key" | grep -c n_packets=1)])
+
+send_udp_packet 0 f0:00:00:00:00:01 f0:00:00:00:00:10 10.0.0.1 10.0.0.10
+OVS_WAIT_UNTIL([test 1 = $(as hv ovs-ofctl dump-flows br-int | grep -E "pkt_mark=0x31.*metadata=$lr0_dp_key" | grep -c n_packets=1)])
+
+OVN_CLEANUP([hv])
+AT_CLEANUP
+])

@@ -19,6 +19,8 @@ Post v23.09.0
     settting. See ovn-controller(8) 'external_ids:ovn-encap-ip' for more
     details.
   - Introduce next-hop BFD availability check for OVN reroute policies.
+  - Add the capability to mark (through pkt.mark) incoming/outgoing packets
+    in the logical switch datapath according to user configured QoS rule.
 
 OVN v23.09.0 - 15 Sep 2023
 --------------------------
