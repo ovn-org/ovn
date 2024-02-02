@@ -4779,8 +4779,7 @@ tcp.flags = RST;
       Each row in this table configures monitoring a service for its liveness.
       The service can be an IPv4 TCP or UDP
       service. <code>ovn-controller</code> periodically sends out service
-      monitor packets and updates the status of the service. Service monitoring
-      for IPv6 services is not supported.
+      monitor packets and updates the status of the service.
     </p>
 
     <p>
@@ -4817,7 +4816,7 @@ tcp.flags = RST;
       </column>
 
       <column name="src_ip">
-        Source IPv4 address to use in the service monitor packet.
+        Source IPv4 or IPv6 address to use in the service monitor packet.
       </column>
 
       <column name="chassis_name">
