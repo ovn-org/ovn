@@ -4394,6 +4394,7 @@ nbctl_pre_lr_route_add(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
 
     ovsdb_idl_add_column(ctx->idl, &nbrec_bfd_col_dst_ip);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_bfd_col_logical_port);
 
     ovsdb_idl_add_column(ctx->idl,
                          &nbrec_logical_router_static_route_col_ip_prefix);
