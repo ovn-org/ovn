@@ -9581,7 +9581,6 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
                                struct ds *route_match)
 {
     const struct nbrec_logical_router_static_route *st_route = route->route;
-    struct ds base_match = DS_EMPTY_INITIALIZER;
     struct ds match = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
     struct ds ecmp_reply = DS_EMPTY_INITIALIZER;
@@ -9593,14 +9592,14 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
     /* If symmetric ECMP replies are enabled, then packets that arrive over
      * an ECMP route need to go through conntrack.
      */
-    ds_put_format(&base_match, "inport == %s && ip%s.%s == %s",
+    ds_put_format(&match, "inport == %s && ip%s.%s == %s",
                   out_port->json_key,
                   IN6_IS_ADDR_V4MAPPED(&route->prefix) ? "4" : "6",
                   route->is_src_route ? "dst" : "src",
                   cidr);
     free(cidr);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DEFRAG, 100,
-                             ds_cstr(&base_match), "ct_next;",
+                             ds_cstr(&match), "ct_next;",
                              &st_route->header_);
 
     /* And packets that go out over an ECMP route need conntrack */
@@ -9614,73 +9613,7 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
      * NOTE: we purposely are not clearing match before this
      * ds_put_cstr() call. The previous contents are needed.
      */
-    ds_put_format(&match, "%s && (ct.new && !ct.est) && tcp",
-                  ds_cstr(&base_match));
-    ds_put_format(&actions,
-            "ct_commit { ct_label.ecmp_reply_eth = eth.src; "
-            " %s = %" PRId64 ";}; "
-            "next;",
-            ct_ecmp_reply_port_match, out_port->sb->tunnel_key);
-    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 100,
-                            ds_cstr(&match), ds_cstr(&actions),
-                            &st_route->header_);
-    ds_clear(&match);
-    ds_put_format(&match, "%s && (ct.new && !ct.est) && udp",
-                  ds_cstr(&base_match));
-    ds_clear(&actions);
-    ds_put_format(&actions,
-            "ct_commit { ct_label.ecmp_reply_eth = eth.src; "
-            " %s = %" PRId64 ";}; "
-            "next;",
-            ct_ecmp_reply_port_match, out_port->sb->tunnel_key);
-    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 100,
-                            ds_cstr(&match), ds_cstr(&actions),
-                            &st_route->header_);
-    ds_clear(&match);
-    ds_put_format(&match, "%s && (ct.new && !ct.est) && sctp",
-                  ds_cstr(&base_match));
-    ds_clear(&actions);
-    ds_put_format(&actions,
-            "ct_commit { ct_label.ecmp_reply_eth = eth.src; "
-            " %s = %" PRId64 ";}; "
-            "next;",
-            ct_ecmp_reply_port_match, out_port->sb->tunnel_key);
-    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 100,
-                            ds_cstr(&match), ds_cstr(&actions),
-                            &st_route->header_);
-
-    ds_clear(&match);
-    ds_put_format(&match,
-            "%s && (!ct.rpl && ct.est) && tcp",
-            ds_cstr(&base_match));
-    ds_clear(&actions);
-    ds_put_format(&actions,
-            "ct_commit { ct_label.ecmp_reply_eth = eth.src; "
-            " %s = %" PRId64 ";}; "
-            "next;",
-            ct_ecmp_reply_port_match, out_port->sb->tunnel_key);
-    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 100,
-                            ds_cstr(&match), ds_cstr(&actions),
-                            &st_route->header_);
-
-    ds_clear(&match);
-    ds_put_format(&match,
-            "%s && (!ct.rpl && ct.est) && udp",
-            ds_cstr(&base_match));
-    ds_clear(&actions);
-    ds_put_format(&actions,
-            "ct_commit { ct_label.ecmp_reply_eth = eth.src; "
-            " %s = %" PRId64 ";}; "
-            "next;",
-            ct_ecmp_reply_port_match, out_port->sb->tunnel_key);
-    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 100,
-                            ds_cstr(&match), ds_cstr(&actions),
-                            &st_route->header_);
-    ds_clear(&match);
-    ds_put_format(&match,
-            "%s && (!ct.rpl && ct.est) && sctp",
-            ds_cstr(&base_match));
-    ds_clear(&actions);
+    ds_put_cstr(&match, " && !ct.rpl && (ct.new || ct.est)");
     ds_put_format(&actions,
             "ct_commit { ct_label.ecmp_reply_eth = eth.src; "
             " %s = %" PRId64 ";}; "
@@ -9730,7 +9663,6 @@ add_ecmp_symmetric_reply_flows(struct hmap *lflows,
                             200, ds_cstr(&ecmp_reply),
                             action, &st_route->header_);
 
-    ds_destroy(&base_match);
     ds_destroy(&match);
     ds_destroy(&actions);
     ds_destroy(&ecmp_reply);
