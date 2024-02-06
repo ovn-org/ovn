@@ -11544,7 +11544,7 @@ hv1_gw1_ofport=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=ov
 hv1_gw2_ofport=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=ovn-gw2-0)
 
 OVS_WAIT_UNTIL([
-    test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=39 | grep -c "active_backup,ofport,members:$hv1_gw1_ofport,$hv1_gw2_ofport")
+    test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | grep -c "active_backup,ofport,members:$hv1_gw1_ofport,$hv1_gw2_ofport")
 ])
 
 test_ip_packet()
@@ -11631,7 +11631,7 @@ AT_CHECK(
 ])
 
 OVS_WAIT_UNTIL([
-    test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=39 | grep -c "active_backup,ofport,members:$hv1_gw2_ofport,$hv1_gw1_ofport")
+    test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | grep -c "active_backup,ofport,members:$hv1_gw2_ofport,$hv1_gw1_ofport")
 ])
 
 test_ip_packet gw2 gw1 0
@@ -11810,7 +11810,7 @@ hv1_gw1_ofport=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=ov
 hv1_gw2_ofport=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=ovn-gw2-0)
 
 OVS_WAIT_UNTIL([
-    test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=39 | grep -c "active_backup,ofport,members:$hv1_gw1_ofport,$hv1_gw2_ofport")
+    test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | grep -c "active_backup,ofport,members:$hv1_gw1_ofport,$hv1_gw2_ofport")
 ])
 
 test_ip_packet()
@@ -11890,7 +11890,7 @@ AT_CHECK([ovn-nbctl --wait=hv \
 ])
 
 OVS_WAIT_UNTIL([
-    test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=39 | grep -c "active_backup,ofport,members:$hv1_gw2_ofport,$hv1_gw1_ofport")
+    test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | grep -c "active_backup,ofport,members:$hv1_gw2_ofport,$hv1_gw1_ofport")
 ])
 
 test_ip_packet gw2 gw1
@@ -12060,8 +12060,8 @@ AT_CHECK(
    grep table=40 hv2flows | grep =0x3,metadata=0x1 | grep load:0x2- | wc -l
 
    # Check that hv1 sends chassisredirect port traffic to hv2
-   grep table=39 hv1flows | grep =0x3,metadata=0x1 | grep output | wc -l
-   grep table=39 hv2flows | grep =0x3,metadata=0x1 | wc -l
+   grep table=OFTABLE_REMOTE_OUTPUT hv1flows | grep =0x3,metadata=0x1 | grep output | wc -l
+   grep table=OFTABLE_REMOTE_OUTPUT hv2flows | grep =0x3,metadata=0x1 | wc -l
 
    # Check that arp reply on distributed gateway port is only programmed on hv2
    grep arp hv1flows | grep load:0x2- | grep =0x2,metadata=0x1 | wc -l
@@ -12578,7 +12578,7 @@ as hv1 ovs-appctl ofproto/trace br-int in_port=hv1-vif1 $packet
 sleep 2
 
 AS_BOX([On hv1, table 40 check that no packet goes via the tunnel port])
-OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=39 \
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT \
 | grep "NXM_NX_TUN_ID" | grep -v n_packets=0 | wc -l], [0], [[0
 ]])
 
@@ -13542,20 +13542,20 @@ echo $hv2_gw1_ofport
 echo $hv2_gw2_ofport
 
 echo "--- hv1 ---"
-as hv1 ovs-ofctl dump-flows br-int table=39
+as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT
 
 echo "--- hv2 ---"
-as hv2 ovs-ofctl dump-flows br-int table=39
+as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT
 
 gw1_chassis=$(fetch_column Chassis _uuid name=gw1)
 gw2_chassis=$(fetch_column Chassis _uuid name=gw2)
 
-OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=39 | \
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | \
 grep active_backup | grep members:$hv1_gw1_ofport,$hv1_gw2_ofport \
 | wc -l], [0], [1
 ])
 
-OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=39 | \
+OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | \
 grep active_backup | grep members:$hv2_gw1_ofport,$hv2_gw2_ofport \
 | wc -l], [0], [1
 ])
@@ -13598,12 +13598,12 @@ wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 # we make sure that the hypervisors noticed, and inverted the slave ports
-OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=39 | \
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | \
 grep active_backup | grep members:$hv1_gw2_ofport,$hv1_gw1_ofport \
 | wc -l], [0], [1
 ])
 
-OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=39 | \
+OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | \
 grep active_backup | grep members:$hv2_gw2_ofport,$hv2_gw1_ofport \
 | wc -l], [0], [1
 ])
@@ -13754,12 +13754,12 @@ ovn-nbctl set Logical_Router_Port outside ha_chassis_group=$hagrp1_uuid
 wait_row_count HA_Chassis_Group 1
 wait_row_count HA_Chassis 2
 
-OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=39 | \
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | \
 grep active_backup | grep members:$hv1_gw1_ofport,$hv1_gw2_ofport \
 | wc -l], [0], [0
 ])
 
-OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=39 | \
+OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | \
 grep active_backup | grep members:$hv2_gw1_ofport,$hv2_gw2_ofport \
 | wc -l], [0], [0
 ])
@@ -13777,12 +13777,12 @@ done
 # Re-add gw2
 as gw2 ovn_attach n1 br-phys 192.168.0.1
 
-OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=39 | \
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | \
 grep active_backup | grep members:$hv1_gw1_ofport,$hv1_gw2_ofport \
 | wc -l], [0], [1
 ])
 
-OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=39 | \
+OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | \
 grep active_backup | grep members:$hv2_gw1_ofport,$hv2_gw2_ofport \
 | wc -l], [0], [1
 ])
@@ -13810,12 +13810,12 @@ wait_column "$exp_ref_ch_list" HA_Chassis_Group ref_chassis
 # Increase the priority of gw2
 ovn-nbctl --wait=sb ha-chassis-group-add-chassis hagrp1 gw2 40
 
-OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=39 | \
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | \
 grep active_backup | grep members:$hv1_gw2_ofport,$hv1_gw1_ofport \
 | wc -l], [0], [1
 ])
 
-OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=39 | \
+OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | \
 grep active_backup | grep members:$hv2_gw2_ofport,$hv2_gw1_ofport \
 | wc -l], [0], [1
 ])
@@ -24424,7 +24424,7 @@ m4_define([DVR_N_S_PING],
    OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv4/vif-north-tx.pcap], [vif-north.expected])
 
    # Confirm that packets did not go out via tunnel port.
-   AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=39 | grep NXM_NX_TUN_METADATA0 | grep n_packets=0 | wc -l], [0], [[0
+   AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep table=OFTABLE_REMOTE_OUTPUT | grep NXM_NX_TUN_METADATA0 | grep n_packets=0 | wc -l], [0], [[0
 ]])
 
    # Confirm that packet went out via localnet port
