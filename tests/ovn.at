@@ -34271,12 +34271,14 @@ sw0_dp_key=$(printf "%x" $(fetch_column Datapath_Binding tunnel_key external_ids
 sw0p1_key=$(printf "%x" $(fetch_column Port_Binding tunnel_key logical_port=sw0p1))
 sw0p2_key=$(printf "%x" $(fetch_column Port_Binding tunnel_key logical_port=sw0p2))
 
-# There should be no flows in table 73, 74 and 75 in hv1 and hv2
-> hv1_t73_flows.expected
+in_port_sec=OFTABLE_CHK_IN_PORT_SEC
+
+# There should be no flows in table OFTABLE_CHK_IN_PORT_SEC, 74 and 75 in hv1 and hv2
+> hv1_t${in_port_sec}_flows.expected
 > hv1_t74_flows.expected
 > hv1_t75_flows.expected
 
-> hv2_t73_flows.expected
+> hv2_t${in_port_sec}_flows.expected
 > hv2_t74_flows.expected
 > hv2_t75_flows.expected
 
@@ -34288,22 +34290,22 @@ check_port_sec_offlows() {
     AT_CHECK([diff -u ${hv}_t${t}_flows.actual ${hv}_t${t}_flows.expected])
 }
 
-check_port_sec_offlows hv1 73
+check_port_sec_offlows hv1 OFTABLE_CHK_IN_PORT_SEC
 check_port_sec_offlows hv1 74
 check_port_sec_offlows hv1 75
 
-check_port_sec_offlows hv2 73
+check_port_sec_offlows hv2 OFTABLE_CHK_IN_PORT_SEC
 check_port_sec_offlows hv2 74
 check_port_sec_offlows hv2 75
 
 # Set port security for sw0p1
 check ovn-nbctl --wait=hv lsp-set-port-security sw0p1 "00:00:00:00:00:03"
 
-echo " table=73, priority=80,reg14=0x$sw0p1_key,metadata=0x$sw0_dp_key actions=load:0x1->NXM_NX_REG10[[12]]
- table=73, priority=90,reg14=0x$sw0p1_key,metadata=0x$sw0_dp_key,dl_src=00:00:00:00:00:03 actions=resubmit(,74)
- table=73, priority=95,arp,reg14=0x$sw0p1_key,metadata=0x$sw0_dp_key actions=resubmit(,74)" > hv1_t73_flows.expected
+echo " table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x$sw0p1_key,metadata=0x$sw0_dp_key actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x$sw0p1_key,metadata=0x$sw0_dp_key,dl_src=00:00:00:00:00:03 actions=resubmit(,74)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x$sw0p1_key,metadata=0x$sw0_dp_key actions=resubmit(,74)" > hv1_t${in_port_sec}_flows.expected
 
-check_port_sec_offlows hv1 73
+check_port_sec_offlows hv1 OFTABLE_CHK_IN_PORT_SEC
 
 echo " table=74, priority=80,arp,reg14=0x$sw0p1_key,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
  table=74, priority=80,icmp6,reg14=0x$sw0p1_key,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0->NXM_NX_REG10[[12]]
@@ -34321,25 +34323,25 @@ echo " table=75, priority=80,reg15=0x$sw0p1_key,metadata=0x1 actions=load:0x1->N
 
 check_port_sec_offlows hv1 75
 
-> hv2_t73_flows.expected
+> hv2_t${in_port_sec}_flows.expected
 > hv2_t74_flows.expected
 > hv2_t75_flows.expected
 
-check_port_sec_offlows hv2 73
+check_port_sec_offlows hv2 OFTABLE_CHK_IN_PORT_SEC
 check_port_sec_offlows hv2 74
 check_port_sec_offlows hv2 75
 
 # Add IPv4 addresses to sw0p1
 check ovn-nbctl --wait=hv lsp-set-port-security sw0p1 "00:00:00:00:00:03 10.0.0.3" "00:00:00:00:00:13 10.0.0.13"
 
-echo " table=73, priority=80,reg14=0x$sw0p1_key,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
- table=73, priority=90,ip,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:03,nw_src=10.0.0.3 actions=load:0->NXM_NX_REG10[[12]]
- table=73, priority=90,ip,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:13,nw_src=10.0.0.13 actions=load:0->NXM_NX_REG10[[12]]
- table=73, priority=90,udp,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:03,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
- table=73, priority=90,udp,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:13,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
- table=73, priority=95,arp,reg14=0x$sw0p1_key,metadata=0x1 actions=resubmit(,74)" > hv1_t73_flows.expected
+echo " table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x$sw0p1_key,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:03,nw_src=10.0.0.3 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:13,nw_src=10.0.0.13 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,udp,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:03,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,udp,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:13,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x$sw0p1_key,metadata=0x1 actions=resubmit(,74)" > hv1_t${in_port_sec}_flows.expected
 
-check_port_sec_offlows hv1 73
+check_port_sec_offlows hv1 OFTABLE_CHK_IN_PORT_SEC
 
 echo " table=74, priority=80,arp,reg14=0x$sw0p1_key,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
  table=74, priority=80,icmp6,reg14=0x$sw0p1_key,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0->NXM_NX_REG10[[12]]
@@ -34371,7 +34373,7 @@ echo " table=75, priority=80,reg15=0x$sw0p1_key,metadata=0x1 actions=load:0x1->N
 
 check_port_sec_offlows hv1 75
 
-check_port_sec_offlows hv2 73
+check_port_sec_offlows hv2 OFTABLE_CHK_IN_PORT_SEC
 check_port_sec_offlows hv2 74
 check_port_sec_offlows hv2 75
 
@@ -34379,11 +34381,11 @@ check_port_sec_offlows hv2 75
 check ovn-nbctl --wait=hv lsp-set-port-security sw0p2 "00:00:00:00:00:04 10.0.0.4 20.0.0.4/24 30.0.0.0/16 1000::4 2000::/64" "00:00:00:00:00:13 aef0::4"
 
 # There should be no changes in hv1 and hv2 as sw0p2 is not claimed.
-check_port_sec_offlows hv1 73
+check_port_sec_offlows hv1 OFTABLE_CHK_IN_PORT_SEC
 check_port_sec_offlows hv1 74
 check_port_sec_offlows hv1 75
 
-check_port_sec_offlows hv2 73
+check_port_sec_offlows hv2 OFTABLE_CHK_IN_PORT_SEC
 check_port_sec_offlows hv2 74
 check_port_sec_offlows hv2 75
 
@@ -34393,30 +34395,30 @@ set Interface hv2-vif0 external-ids:iface-id=sw0p2 ofport-request=1
 
 wait_for_ports_up
 # There should be no changes in hv1
-check_port_sec_offlows hv1 73
+check_port_sec_offlows hv1 OFTABLE_CHK_IN_PORT_SEC
 check_port_sec_offlows hv1 74
 check_port_sec_offlows hv1 75
 
 #hv2 ovn-controller should program flows.
-echo " table=73, priority=80,reg14=0x$sw0p2_key,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
- table=73, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
- table=73, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,74)
- table=73, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
- table=73, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:13,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
- table=73, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:13,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,74)
- table=73, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:13,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
- table=73, priority=90,ip,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,nw_src=10.0.0.4 actions=load:0->NXM_NX_REG10[[12]]
- table=73, priority=90,ip,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,nw_src=20.0.0.4 actions=load:0->NXM_NX_REG10[[12]]
- table=73, priority=90,ip,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,nw_src=30.0.0.0/16 actions=load:0->NXM_NX_REG10[[12]]
- table=73, priority=90,ipv6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=1000::4 actions=resubmit(,74)
- table=73, priority=90,ipv6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=2000::/64 actions=resubmit(,74)
- table=73, priority=90,ipv6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=fe80::200:ff:fe00:4 actions=resubmit(,74)
- table=73, priority=90,ipv6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:13,ipv6_src=aef0::4 actions=resubmit(,74)
- table=73, priority=90,ipv6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:13,ipv6_src=fe80::200:ff:fe00:13 actions=resubmit(,74)
- table=73, priority=90,udp,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
- table=73, priority=95,arp,reg14=0x$sw0p2_key,metadata=0x1 actions=resubmit(,74)" > hv2_t73_flows.expected
+echo " table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x$sw0p2_key,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,74)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:13,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:13,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,74)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:13,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,nw_src=10.0.0.4 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,nw_src=20.0.0.4 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,nw_src=30.0.0.0/16 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=1000::4 actions=resubmit(,74)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=2000::/64 actions=resubmit(,74)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,ipv6_src=fe80::200:ff:fe00:4 actions=resubmit(,74)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:13,ipv6_src=aef0::4 actions=resubmit(,74)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:13,ipv6_src=fe80::200:ff:fe00:13 actions=resubmit(,74)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,udp,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x$sw0p2_key,metadata=0x1 actions=resubmit(,74)" > hv2_t${in_port_sec}_flows.expected
 
-check_port_sec_offlows hv2 73
+check_port_sec_offlows hv2 OFTABLE_CHK_IN_PORT_SEC
 
 echo " table=74, priority=80,arp,reg14=0x$sw0p2_key,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
  table=74, priority=80,icmp6,reg14=0x$sw0p2_key,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0->NXM_NX_REG10[[12]]
@@ -34465,42 +34467,42 @@ check_port_sec_offlows hv2 75
 
 check ovn-nbctl --wait=hv lsp-set-port-security sw0p2 ""
 
-check_port_sec_offlows hv1 73
+check_port_sec_offlows hv1 OFTABLE_CHK_IN_PORT_SEC
 check_port_sec_offlows hv1 74
 check_port_sec_offlows hv1 75
 
-> hv2_t73_flows.expected
+> hv2_t${in_port_sec}_flows.expected
 > hv2_t74_flows.expected
 > hv2_t75_flows.expected
 
-check_port_sec_offlows hv2 73
+check_port_sec_offlows hv2 OFTABLE_CHK_IN_PORT_SEC
 check_port_sec_offlows hv2 74
 check_port_sec_offlows hv2 75
 
 check ovn-nbctl --wait=hv lsp-set-port-security sw0p2 "00:00:00:00:00:04"
 
-check_port_sec_offlows hv1 73
+check_port_sec_offlows hv1 OFTABLE_CHK_IN_PORT_SEC
 check_port_sec_offlows hv1 74
 check_port_sec_offlows hv1 75
 
-echo " table=73, priority=80,reg14=0x$sw0p2_key,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
- table=73, priority=90,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04 actions=resubmit(,74)
- table=73, priority=95,arp,reg14=0x$sw0p2_key,metadata=0x1 actions=resubmit(,74)" > hv2_t73_flows.expected
+echo " table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x$sw0p2_key,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04 actions=resubmit(,74)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x$sw0p2_key,metadata=0x1 actions=resubmit(,74)" > hv2_t${in_port_sec}_flows.expected
 
-check_port_sec_offlows hv2 73
+check_port_sec_offlows hv2 OFTABLE_CHK_IN_PORT_SEC
 
 # Delete sw0p2
 check ovn-nbctl --wait=hv lsp-del sw0p2
 
-> hv2_t73_flows.expected
+> hv2_t${in_port_sec}_flows.expected
 > hv2_t74_flows.expected
 > hv2_t75_flows.expected
 
-check_port_sec_offlows hv1 73
+check_port_sec_offlows hv1 OFTABLE_CHK_IN_PORT_SEC
 check_port_sec_offlows hv1 74
 check_port_sec_offlows hv1 75
 
-check_port_sec_offlows hv2 73
+check_port_sec_offlows hv2 OFTABLE_CHK_IN_PORT_SEC
 check_port_sec_offlows hv2 74
 check_port_sec_offlows hv2 75
 
@@ -34509,15 +34511,15 @@ as hv1 ovs-vsctl del-port hv1-vif0
 
 wait_column '' Port_Binding chassis logical_port=sw0p1
 
-> hv1_t73_flows.expected
+> hv1_t${in_port_sec}_flows.expected
 > hv1_t74_flows.expected
 > hv1_t75_flows.expected
 
-check_port_sec_offlows hv1 73
+check_port_sec_offlows hv1 OFTABLE_CHK_IN_PORT_SEC
 check_port_sec_offlows hv1 74
 check_port_sec_offlows hv1 75
 
-check_port_sec_offlows hv2 73
+check_port_sec_offlows hv2 OFTABLE_CHK_IN_PORT_SEC
 check_port_sec_offlows hv2 74
 check_port_sec_offlows hv2 75
 
