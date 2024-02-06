@@ -9719,18 +9719,18 @@ as hv1
 AT_CHECK([ovs-vsctl add-port br-int localvif1 -- set Interface localvif1 external_ids:iface-id=localvif1])
 
 # On hv1, check that there are no flows outputting bcast to tunnel
-OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=37 | ofctl_strip | grep output | wc -l` -eq 0])
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | ofctl_strip | grep output | wc -l` -eq 0])
 
 # On hv2, check that no flow outputs bcast to tunnel to hv1.
 as hv2
-OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=37 | ofctl_strip | grep output | wc -l` -eq 0])
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | ofctl_strip | grep output | wc -l` -eq 0])
 
 # Now bind vif2 on hv2.
 AT_CHECK([ovs-vsctl add-port br-int localvif2 -- set Interface localvif2 external_ids:iface-id=localvif2])
 
 # At this point, the broadcast flow on vif2 should be deleted.
-# because, there is now a localnet vif bound (table=37 programming logic)
-OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=37 | ofctl_strip | grep output | wc -l` -eq 0])
+# because, there is now a localnet vif bound (table=OFTABLE_OUTPUT_LARGE_PKT_DETECT programming logic)
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | ofctl_strip | grep output | wc -l` -eq 0])
 
 # Verify that the local net patch port exists on hv2.
 OVS_WAIT_UNTIL([test `ovs-vsctl show | grep "Port patch-br-int-to-ln_port" | wc -l` -eq 1])
@@ -21078,7 +21078,7 @@ check ovn-nbctl set logical_router_policy $policy options:pkt_mark=100
 check ovn-nbctl --wait=hv sync
 as hv2
 # add a flow in egress pipeline to check pkt marking
-ovs-ofctl --protocols=OpenFlow13 add-flow br-int "table=37,priority=200,ip,nw_src=172.16.1.2,pkt_mark=0x64 actions=resubmit(,38)"
+ovs-ofctl --protocols=OpenFlow13 add-flow br-int "table=OFTABLE_OUTPUT_LARGE_PKT_DETECT,priority=200,ip,nw_src=172.16.1.2,pkt_mark=0x64 actions=resubmit(,38)"
 
 dst_ip=$(ip_to_hex 172 16 2 10)
 fip_ip=$(ip_to_hex 172 16 1 2)
@@ -21090,7 +21090,7 @@ echo $(get_arp_req f00000010204 $fip_ip $gw_router_ip) >> expected
 send_arp_reply 2 1 $gw_router_mac f00000010204 $gw_router_ip $fip_ip
 echo "${gw_router_mac}f0000001020408004500001c00004000fe0121b4${fip_ip}${dst_ip}${data}" >> expected
 
-OVS_WAIT_UNTIL([test 1 = `as hv2 ovs-ofctl dump-flows br-int table=37 | grep pkt_mark=0x64 | grep -c n_packets=1`])
+OVS_WAIT_UNTIL([test 1 = `as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep pkt_mark=0x64 | grep -c n_packets=1`])
 
 OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
 
@@ -21851,7 +21851,7 @@ check_virtual_offlows_present() {
 
     AT_CHECK_UNQUOTED([as $hv ovs-ofctl dump-flows br-int table=11 | ofctl_strip_all | \
     grep "priority=92" | grep 172.168.0.50], [0], [dnl
- table=11, priority=92,arp,reg14=0x$lr0_public_dp_key,metadata=0x$lr0_dp_key,arp_tpa=172.168.0.50,arp_op=1 actions=move:NXM_OF_ETH_SRC[[]]->NXM_OF_ETH_DST[[]],mod_dl_src:10:54:00:00:00:10,load:0x2->NXM_OF_ARP_OP[[]],move:NXM_NX_ARP_SHA[[]]->NXM_NX_ARP_THA[[]],load:0x105400000010->NXM_NX_ARP_SHA[[]],push:NXM_OF_ARP_SPA[[]],push:NXM_OF_ARP_TPA[[]],pop:NXM_OF_ARP_SPA[[]],pop:NXM_OF_ARP_TPA[[]],move:NXM_NX_REG14[[]]->NXM_NX_REG15[[]],load:0x1->NXM_NX_REG10[[0]],resubmit(,37)
+ table=11, priority=92,arp,reg14=0x$lr0_public_dp_key,metadata=0x$lr0_dp_key,arp_tpa=172.168.0.50,arp_op=1 actions=move:NXM_OF_ETH_SRC[[]]->NXM_OF_ETH_DST[[]],mod_dl_src:10:54:00:00:00:10,load:0x2->NXM_OF_ARP_OP[[]],move:NXM_NX_ARP_SHA[[]]->NXM_NX_ARP_THA[[]],load:0x105400000010->NXM_NX_ARP_SHA[[]],push:NXM_OF_ARP_SPA[[]],push:NXM_OF_ARP_TPA[[]],pop:NXM_OF_ARP_SPA[[]],pop:NXM_OF_ARP_TPA[[]],move:NXM_NX_REG14[[]]->NXM_NX_REG15[[]],load:0x1->NXM_NX_REG10[[0]],resubmit(,OFTABLE_OUTPUT_LARGE_PKT_DETECT)
 ])
 }
 
