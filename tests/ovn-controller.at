@@ -874,7 +874,7 @@ meta=$(ovn-sbctl get datapath ls1 tunnel_key)
 port=$(ovn-sbctl get port_binding ls1-rp tunnel_key)
 check ovn-nbctl lrp-add lr0 rp-ls1 00:00:01:01:02:03 192.168.1.254/24
 
-OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int | grep table=40 | grep -q "reg15=0x${port},metadata=0x${meta}"])
+OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int | grep table=OFTABLE_LOCAL_OUTPUT | grep -q "reg15=0x${port},metadata=0x${meta}"])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
@@ -2698,7 +2698,7 @@ done
 wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
-OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=40 | grep reg15=0x8000,metadata=0x1 | grep -c "controller(userdata=00.00.00.1b"], [0],[dnl
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT | grep reg15=0x8000,metadata=0x1 | grep -c "controller(userdata=00.00.00.1b"], [0],[dnl
 3
 ])
 
@@ -2707,7 +2707,7 @@ for i in $(seq 1 280); do
 done
 ovn-nbctl --wait=hv sync
 
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=40 | grep -q controller], [1])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT | grep -q controller], [1])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

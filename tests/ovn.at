@@ -12056,8 +12056,8 @@ AT_CAPTURE_FILE([hv2flows])
 
 AT_CHECK(
   [# Check that redirect mapping is programmed only on hv2
-   grep table=40 hv1flows | grep =0x3,metadata=0x1 | wc -l
-   grep table=40 hv2flows | grep =0x3,metadata=0x1 | grep load:0x2- | wc -l
+   grep table=OFTABLE_LOCAL_OUTPUT hv1flows | grep =0x3,metadata=0x1 | wc -l
+   grep table=OFTABLE_LOCAL_OUTPUT hv2flows | grep =0x3,metadata=0x1 | grep load:0x2- | wc -l
 
    # Check that hv1 sends chassisredirect port traffic to hv2
    grep table=OFTABLE_REMOTE_OUTPUT hv1flows | grep =0x3,metadata=0x1 | grep output | wc -l
@@ -28817,22 +28817,22 @@ AT_CHECK([test ! -z $p1_zoneid])
 p2_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p2 | sed 's/"//g')
 AT_CHECK([test ! -z $p2_zoneid])
 
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=40,metadata=${sw0_dpkey},\
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT,metadata=${sw0_dpkey},\
 reg15=0x${p1_dpkey} | grep REG13 | wc -l) -eq 1])
 
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=40,metadata=${sw0_dpkey},\
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT,metadata=${sw0_dpkey},\
 reg15=0x${p1_dpkey} | grep "load:0x${p1_zoneid}->NXM_NX_REG13" | wc -l) -eq 1])
 
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=40,metadata=${sw1_dpkey},\
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT,metadata=${sw1_dpkey},\
 reg15=0x${p2_dpkey} | grep REG13 | wc -l) -eq 1])
 
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=40,metadata=${sw1_dpkey},\
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT,metadata=${sw1_dpkey},\
 reg15=0x${p2_dpkey} | grep "load:0x${p2_zoneid}->NXM_NX_REG13" | wc -l) -eq 1])
 
 ovs-vsctl set interface hv1-vif1 external_ids:iface-id=foo
 OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1) = xdown])
 
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=40,metadata=${sw0_dpkey},\
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT,metadata=${sw0_dpkey},\
 reg15=0x${p1_dpkey} | grep REG13 | wc -l) -eq 0])
 
 p1_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p1 | sed 's/"//g')
@@ -28844,16 +28844,16 @@ OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1) = xup])
 p1_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p1 | sed 's/"//g')
 AT_CHECK([test ! -z $p1_zoneid])
 
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=40,metadata=${sw0_dpkey},\
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT,metadata=${sw0_dpkey},\
 reg15=0x${p1_dpkey} | grep REG13 | wc -l) -eq 1])
 
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=40,metadata=${sw0_dpkey},\
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT,metadata=${sw0_dpkey},\
 reg15=0x${p1_dpkey} | grep "load:0x${p1_zoneid}->NXM_NX_REG13" | wc -l) -eq 1])
 
 ovs-vsctl del-port hv1-vif2
 OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p2) = xdown])
 
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=40,metadata=${sw0_dpkey},\
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT,metadata=${sw0_dpkey},\
 reg15=0x${p2_dpkey} | grep REG13 | wc -l) -eq 0])
 
 p2_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p2 | sed 's/"//g')
@@ -28861,7 +28861,7 @@ AT_CHECK([test -z $p2_zoneid])
 
 ovn-nbctl lsp-del sw0-p1
 
-OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=40,metadata=${sw0_dpkey},\
+OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT,metadata=${sw0_dpkey},\
 reg15=0x${p1_dpkey} | grep REG13 | wc -l) -eq 0])
 
 p1_zoneid=$(as hv1 ovs-vsctl get bridge br-int external_ids:ct-zone-sw0-p1 | sed 's/"//g')
@@ -37179,7 +37179,7 @@ check ovn-nbctl --wait=hv sync
 wait_for_ports_up
 OVN_POPULATE_ARP
 
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=40 | grep -c controller], [0],[dnl
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT | grep -c controller], [0],[dnl
 9
 ])
 
