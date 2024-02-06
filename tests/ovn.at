@@ -4582,12 +4582,12 @@ as hv1 ovs-appctl netdev-dummy/receive vif1 $response
 echo $response >> 3.expected
 
 # First ensure basic flow contents are as we expect.
-AT_CHECK([ovn-sbctl lflow-list lsw0 | grep 'reg0[\[14\]]' | sort | sed 's/table=../table=??/g'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list lsw0 | grep 'reg0[\[14\]]' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=65535, match=(reg0[[14]] == 1 && (arp || nd_ns)), action=(flags.loopback = 1; next;)
   table=??(ls_in_check_port_sec), priority=70   , match=(inport == "lp-vtep"), action=(reg0[[14]] = 1; next(pipeline=ingress, table=??);)
   table=??(ls_in_hairpin      ), priority=1000 , match=(reg0[[14]] == 1), action=(next(pipeline=ingress, table=??);)
   table=??(ls_in_hairpin      ), priority=2000 , match=(reg0[[14]] == 1 && is_chassis_resident("cr-lrp1")), action=(next;)
   table=??(ls_in_hairpin      ), priority=2000 , match=(reg0[[14]] == 1 && is_chassis_resident("cr-lrp2")), action=(next;)
-  table=??(ls_in_arp_rsp      ), priority=65535, match=(reg0[[14]] == 1 && (arp || nd_ns)), action=(flags.loopback = 1; next;)
 ])
 
 # dump information with counters

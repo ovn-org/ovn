@@ -3169,19 +3169,19 @@ check ovn-nbctl \
     -- ls-lb-add sw0 lb0
 check ovn-nbctl --wait=sb sync
 
-AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_pre_hairpin | sort | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_pre_hairpin | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_pre_hairpin  ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_pre_hairpin  ), priority=100  , match=(ip && ct.trk), action=(reg0[[6]] = chk_lb_hairpin(); reg0[[12]] = chk_lb_hairpin_reply(); next;)
 ])
 
-AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_nat_hairpin | sort | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_nat_hairpin | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_nat_hairpin  ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_nat_hairpin  ), priority=100  , match=(ip && ct.est && ct.trk && reg0[[6]] == 1), action=(ct_snat;)
   table=??(ls_in_nat_hairpin  ), priority=100  , match=(ip && ct.new && ct.trk && reg0[[6]] == 1), action=(ct_snat_to_vip; next;)
   table=??(ls_in_nat_hairpin  ), priority=90   , match=(ip && reg0[[12]] == 1), action=(ct_snat;)
 ])
 
-AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_hairpin | sort | sed 's/table=../table=??/g'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_hairpin | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_hairpin      ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_hairpin      ), priority=1    , match=((reg0[[6]] == 1 || reg0[[12]] == 1)), action=(eth.dst <-> eth.src; outport = inport; flags.loopback = 1; output;)
 ])
@@ -3189,34 +3189,34 @@ AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_hairpin | sort | sed 's/table=..
 check ovn-nbctl -- ls-lb-del sw0 lb0
 check ovn-nbctl --wait=sb sync
 
-AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_pre_hairpin | sort | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_pre_hairpin | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_pre_hairpin  ), priority=0    , match=(1), action=(next;)
 ])
 
-AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_nat_hairpin | sort | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_nat_hairpin | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_nat_hairpin  ), priority=0    , match=(1), action=(next;)
 ])
 
-AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_hairpin | sort | sed 's/table=../table=??/g'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_hairpin | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_hairpin      ), priority=0    , match=(1), action=(next;)
 ])
 
 check ovn-nbctl -- add load_balancer_group $lbg load_balancer $lb0
 check ovn-nbctl --wait=sb sync
 
-AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_pre_hairpin | sort | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_pre_hairpin | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_pre_hairpin  ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_pre_hairpin  ), priority=100  , match=(ip && ct.trk), action=(reg0[[6]] = chk_lb_hairpin(); reg0[[12]] = chk_lb_hairpin_reply(); next;)
 ])
 
-AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_nat_hairpin | sort | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_nat_hairpin | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_nat_hairpin  ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_nat_hairpin  ), priority=100  , match=(ip && ct.est && ct.trk && reg0[[6]] == 1), action=(ct_snat;)
   table=??(ls_in_nat_hairpin  ), priority=100  , match=(ip && ct.new && ct.trk && reg0[[6]] == 1), action=(ct_snat_to_vip; next;)
   table=??(ls_in_nat_hairpin  ), priority=90   , match=(ip && reg0[[12]] == 1), action=(ct_snat;)
 ])
 
-AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_hairpin | sort | sed 's/table=../table=??/g'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw0 | grep ls_in_hairpin | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_hairpin      ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_hairpin      ), priority=1    , match=((reg0[[6]] == 1 || reg0[[12]] == 1)), action=(eth.dst <-> eth.src; outport = inport; flags.loopback = 1; output;)
 ])
@@ -4446,31 +4446,31 @@ check_stateful_flows() {
     ovn-sbctl dump-flows sw0 > sw0flows
     AT_CAPTURE_FILE([sw0flows])
 
-    AT_CHECK([grep "ls_in_pre_lb" sw0flows | sort | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_pre_lb       ), priority=0    , match=(1), action=(next;)
-  table=? (ls_in_pre_lb       ), priority=100  , match=(ip), action=(reg0[[2]] = 1; next;)
-  table=? (ls_in_pre_lb       ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
-  table=? (ls_in_pre_lb       ), priority=110  , match=(eth.mcast), action=(next;)
-  table=? (ls_in_pre_lb       ), priority=110  , match=(ip && inport == "sw0-lr0"), action=(next;)
-  table=? (ls_in_pre_lb       ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2), action=(next;)
-  table=? (ls_in_pre_lb       ), priority=110  , match=(reg0[[16]] == 1), action=(next;)
+    AT_CHECK([grep "ls_in_pre_lb" sw0flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_lb       ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_pre_lb       ), priority=100  , match=(ip), action=(reg0[[2]] = 1; next;)
+  table=??(ls_in_pre_lb       ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
+  table=??(ls_in_pre_lb       ), priority=110  , match=(eth.mcast), action=(next;)
+  table=??(ls_in_pre_lb       ), priority=110  , match=(ip && inport == "sw0-lr0"), action=(next;)
+  table=??(ls_in_pre_lb       ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2), action=(next;)
+  table=??(ls_in_pre_lb       ), priority=110  , match=(reg0[[16]] == 1), action=(next;)
 ])
 
-    AT_CHECK([grep "ls_in_pre_stateful" sw0flows | sort | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_pre_stateful ), priority=0    , match=(1), action=(next;)
-  table=? (ls_in_pre_stateful ), priority=100  , match=(reg0[[0]] == 1), action=(ct_next;)
-  table=? (ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
-  table=? (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark;)
-  table=? (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4.dst == 10.0.0.20 && tcp.dst == 80), action=(reg1 = 10.0.0.20; reg2[[0..15]] = 80; ct_lb_mark;)
+    AT_CHECK([grep "ls_in_pre_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_stateful ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_pre_stateful ), priority=100  , match=(reg0[[0]] == 1), action=(ct_next;)
+  table=??(ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4.dst == 10.0.0.20 && tcp.dst == 80), action=(reg1 = 10.0.0.20; reg2[[0..15]] = 80; ct_lb_mark;)
 ])
 
-    AT_CHECK([grep "ls_in_lb " sw0flows | sort | sed 's/table=../table=??/'], [0], [dnl
+    AT_CHECK([grep "ls_in_lb " sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.4:8080);)
   table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.20 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.40:8080);)
 ])
 
-    AT_CHECK([grep "ls_in_stateful" sw0flows | sort | sed 's/table=../table=??/'], [0], [dnl
+    AT_CHECK([grep "ls_in_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
   table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
@@ -4517,26 +4517,26 @@ check ovn-nbctl --wait=sb sync
 ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
-AT_CHECK([grep "ls_in_pre_lb" sw0flows | sort | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_pre_lb       ), priority=0    , match=(1), action=(next;)
-  table=? (ls_in_pre_lb       ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
-  table=? (ls_in_pre_lb       ), priority=110  , match=(eth.mcast), action=(next;)
-  table=? (ls_in_pre_lb       ), priority=110  , match=(ip && inport == "sw0-lr0"), action=(next;)
-  table=? (ls_in_pre_lb       ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2), action=(next;)
-  table=? (ls_in_pre_lb       ), priority=110  , match=(reg0[[16]] == 1), action=(next;)
+AT_CHECK([grep "ls_in_pre_lb" sw0flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_lb       ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_pre_lb       ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
+  table=??(ls_in_pre_lb       ), priority=110  , match=(eth.mcast), action=(next;)
+  table=??(ls_in_pre_lb       ), priority=110  , match=(ip && inport == "sw0-lr0"), action=(next;)
+  table=??(ls_in_pre_lb       ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2), action=(next;)
+  table=??(ls_in_pre_lb       ), priority=110  , match=(reg0[[16]] == 1), action=(next;)
 ])
 
-AT_CHECK([grep "ls_in_pre_stateful" sw0flows | sort | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_pre_stateful ), priority=0    , match=(1), action=(next;)
-  table=? (ls_in_pre_stateful ), priority=100  , match=(reg0[[0]] == 1), action=(ct_next;)
-  table=? (ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
+AT_CHECK([grep "ls_in_pre_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_stateful ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_pre_stateful ), priority=100  , match=(reg0[[0]] == 1), action=(ct_next;)
+  table=??(ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
 ])
 
-AT_CHECK([grep "ls_in_lb " sw0flows | sort | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep "ls_in_lb " sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
 ])
 
-AT_CHECK([grep "ls_in_stateful" sw0flows | sort | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep "ls_in_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
   table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
@@ -4588,11 +4588,11 @@ check ovn-nbctl --wait=sb --label=1234 acl-add sw0 from-lport 1002 tcp allow-rel
 ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
-AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 2002 | sort | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_acl_eval     ), priority=2002 , match=(reg0[[7]] == 1 && (tcp)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
-  table=? (ls_in_acl_eval     ), priority=2002 , match=(reg0[[8]] == 1 && (tcp)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
+AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 2002 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[7]] == 1 && (tcp)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[8]] == 1 && (tcp)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
 ])
-AT_CHECK([grep "ls_in_stateful" sw0flows | sort | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep "ls_in_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
   table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
@@ -4615,13 +4615,13 @@ check ovn-nbctl --wait=sb acl-add sw0 from-lport 1002 udp allow-related
 ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
-AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 2002 | sort | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_acl_eval     ), priority=2002 , match=(reg0[[7]] == 1 && (tcp)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
-  table=? (ls_in_acl_eval     ), priority=2002 , match=(reg0[[7]] == 1 && (udp)), action=(reg8[[16]] = 1; reg0[[1]] = 1; next;)
-  table=? (ls_in_acl_eval     ), priority=2002 , match=(reg0[[8]] == 1 && (tcp)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
-  table=? (ls_in_acl_eval     ), priority=2002 , match=(reg0[[8]] == 1 && (udp)), action=(reg8[[16]] = 1; next;)
+AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 2002 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[7]] == 1 && (tcp)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[7]] == 1 && (udp)), action=(reg8[[16]] = 1; reg0[[1]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[8]] == 1 && (tcp)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg0[[13]] = 1; reg3 = 1234; next;)
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[8]] == 1 && (udp)), action=(reg8[[16]] = 1; next;)
 ])
-AT_CHECK([grep "ls_in_stateful" sw0flows | sort | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep "ls_in_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
   table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
@@ -4646,11 +4646,11 @@ check ovn-nbctl --wait=sb acl-del sw0 from-lport 1002 tcp
 ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
-AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 2002 | sort | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_acl_eval     ), priority=2002 , match=(reg0[[7]] == 1 && (udp)), action=(reg8[[16]] = 1; reg0[[1]] = 1; next;)
-  table=? (ls_in_acl_eval     ), priority=2002 , match=(reg0[[8]] == 1 && (udp)), action=(reg8[[16]] = 1; next;)
+AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 2002 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[7]] == 1 && (udp)), action=(reg8[[16]] = 1; reg0[[1]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[8]] == 1 && (udp)), action=(reg8[[16]] = 1; next;)
 ])
-AT_CHECK([grep "ls_in_stateful" sw0flows | sort | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep "ls_in_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
   table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
@@ -4680,18 +4680,18 @@ check ovn-nbctl --wait=sb acl-add sw0 to-lport 1002 ip allow-related
 ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
-AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 6553 | sort | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
-  table=? (ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
-  table=? (ls_in_acl_eval     ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
-  table=? (ls_in_acl_eval     ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
+AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 6553 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
 ])
 
-AT_CHECK([grep -w "ls_out_acl_eval" sw0flows | grep 6553 | sort | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
-  table=? (ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
-  table=? (ls_out_acl_eval    ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
-  table=? (ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
+AT_CHECK([grep -w "ls_out_acl_eval" sw0flows | grep 6553 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
 ])
 
 # Disable ct.inv usage.
@@ -4700,18 +4700,18 @@ check ovn-nbctl --wait=sb set NB_Global . options:use_ct_inv_match=false
 ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
-AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 6553 | sort | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
-  table=? (ls_in_acl_eval     ), priority=65532, match=((ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
-  table=? (ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && !ct.new && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
-  table=? (ls_in_acl_eval     ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
+AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 6553 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=((ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && !ct.new && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
 ])
 
-AT_CHECK([grep -w "ls_out_acl_eval" sw0flows | grep 6553 | sort | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
-  table=? (ls_out_acl_eval    ), priority=65532, match=((ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
-  table=? (ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && !ct.new && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
-  table=? (ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
+AT_CHECK([grep -w "ls_out_acl_eval" sw0flows | grep 6553 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=((ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && !ct.new && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
 ])
 
 AT_CHECK([grep -c "ct.inv" sw0flows], [1], [dnl
@@ -4724,18 +4724,18 @@ check ovn-nbctl --wait=sb set NB_Global . options:use_ct_inv_match=true
 ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
-AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 6553 | sort | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
-  table=? (ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
-  table=? (ls_in_acl_eval     ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
-  table=? (ls_in_acl_eval     ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
+AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 6553 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
 ])
 
-AT_CHECK([grep -w "ls_out_acl_eval" sw0flows | grep 6553 | sort | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
-  table=? (ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
-  table=? (ls_out_acl_eval    ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
-  table=? (ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
+AT_CHECK([grep -w "ls_out_acl_eval" sw0flows | grep 6553 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
 ])
 
 AT_CHECK([grep -c "ct.inv" sw0flows], [0], [dnl
@@ -4897,7 +4897,7 @@ ovn-nbctl --wait=sb lsp-set-dhcpv4-options sw0-port1 $CIDR_UUID
 ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
-AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | sort | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_dhcp_options ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && (ip4.src == {10.0.0.2, 0.0.0.0} && ip4.dst == {10.0.0.1, 255.255.255.255}) && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "foo", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
 ])
@@ -4906,7 +4906,7 @@ check ovn-nbctl --wait=sb lsp-set-options sw0-port1 hostname="\"port1\""
 ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
-AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | sort | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_dhcp_options ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && (ip4.src == {10.0.0.2, 0.0.0.0} && ip4.dst == {10.0.0.1, 255.255.255.255}) && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "port1", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
 ])
@@ -4916,7 +4916,7 @@ check ovn-nbctl --wait=sb lsp-set-options sw0-port1 hostname="\"bar\""
 ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
-AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | sort | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_dhcp_options ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && (ip4.src == {10.0.0.2, 0.0.0.0} && ip4.dst == {10.0.0.1, 255.255.255.255}) && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "bar", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
 ])
@@ -8452,20 +8452,20 @@ ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([cat sw0flows | grep -e port_sec -e ls_in_l2_lkup -e ls_in_l2_unknown | \
-sort | sed 's/table=../table=??/' ], [0], [dnl
+ovn_strip_lflows ], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(eth.src[[40]]), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
   table=??(ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
-  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
-  table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
-  table=??(ls_out_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(drop;)
+  table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
+  table=??(ls_out_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_out_check_port_sec), priority=0    , match=(1), action=(reg0[[15]] = check_out_port_sec(); next;)
   table=??(ls_out_check_port_sec), priority=100  , match=(eth.mcast), action=(reg0[[15]] = 0; next;)
 ])
@@ -8478,15 +8478,13 @@ ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([cat sw0flows | grep -e port_sec -e ls_in_l2_lkup -e ls_in_l2_unknown | \
-sort | sed 's/table=../table=??/' ], [0], [dnl
+ovn_strip_lflows ], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(eth.src[[40]]), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
   table=??(ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
-  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
-  table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
-  table=??(ls_out_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:01), action=(outport = "sw0p1"; output;)
@@ -8494,6 +8492,8 @@ sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(drop;)
+  table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
+  table=??(ls_out_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_out_check_port_sec), priority=0    , match=(1), action=(reg0[[15]] = check_out_port_sec(); next;)
   table=??(ls_out_check_port_sec), priority=100  , match=(eth.mcast), action=(reg0[[15]] = 0; next;)
 ])
@@ -8505,15 +8505,13 @@ ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([cat sw0flows | grep -e port_sec -e ls_in_l2_lkup -e ls_in_l2_unknown | \
-sort | sed 's/table=../table=??/' ], [0], [dnl
+ovn_strip_lflows ], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(eth.src[[40]]), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
   table=??(ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
-  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
-  table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
-  table=??(ls_out_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:01), action=(outport = "sw0p1"; output;)
@@ -8521,6 +8519,8 @@ sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(drop;)
+  table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
+  table=??(ls_out_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_out_check_port_sec), priority=0    , match=(1), action=(reg0[[15]] = check_out_port_sec(); next;)
   table=??(ls_out_check_port_sec), priority=100  , match=(eth.mcast), action=(reg0[[15]] = 0; next;)
 ])
@@ -8532,16 +8532,14 @@ ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([cat sw0flows | grep -e port_sec -e ls_in_l2_lkup -e ls_in_l2_unknown | \
-sort | sed 's/table=../table=??/' ], [0], [dnl
+ovn_strip_lflows ], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(eth.src[[40]]), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(inport == "sw0p1"), action=(reg0[[15]] = 1; next;)
   table=??(ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
   table=??(ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
-  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
-  table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
-  table=??(ls_out_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:01), action=(drop;)
@@ -8550,6 +8548,8 @@ sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(drop;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "sw0p1"), action=(drop;)
+  table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
+  table=??(ls_out_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_out_check_port_sec), priority=0    , match=(1), action=(reg0[[15]] = check_out_port_sec(); next;)
   table=??(ls_out_check_port_sec), priority=100  , match=(eth.mcast), action=(reg0[[15]] = 0; next;)
 ])
@@ -8559,18 +8559,15 @@ ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([cat sw0flows | grep -e port_sec -e ls_in_l2_lkup -e ls_in_l2_unknown | \
-sort | sed 's/table=../table=??/' ], [0], [dnl
+ovn_strip_lflows ], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(eth.src[[40]]), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(inport == "sw0p1"), action=(reg0[[15]] = 1; next;)
   table=??(ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
   table=??(ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_check_port_sec), priority=70   , match=(inport == "sw0p2"), action=(set_queue(10); reg0[[15]] = check_in_port_sec(); next;)
-  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
-  table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
-  table=??(ls_out_apply_port_sec), priority=110  , match=(outport == "localnetport" && inport == "sw0p2"), action=(set_queue(10); output;)
-  table=??(ls_out_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:01), action=(drop;)
@@ -8579,6 +8576,9 @@ sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(drop;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "sw0p1"), action=(drop;)
+  table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
+  table=??(ls_out_apply_port_sec), priority=110  , match=(outport == "localnetport" && inport == "sw0p2"), action=(set_queue(10); output;)
+  table=??(ls_out_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_out_check_port_sec), priority=0    , match=(1), action=(reg0[[15]] = check_out_port_sec(); next;)
   table=??(ls_out_check_port_sec), priority=100  , match=(eth.mcast), action=(reg0[[15]] = 0; next;)
 ])
@@ -8590,20 +8590,16 @@ ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([cat sw0flows | grep -e port_sec -e ls_in_l2_lkup -e ls_in_l2_unknown | \
-sort | sed 's/table=../table=??/' ], [0], [dnl
+ovn_strip_lflows ], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(eth.src[[40]]), action=(drop;)
   table=??(ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
   table=??(ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_check_port_sec), priority=70   , match=(inport == "localnetport"), action=(set_queue(10); reg0[[15]] = check_in_port_sec(); next;)
-  table=??(ls_in_check_port_sec), priority=70   , match=(inport == "sw0p1"), action=(reg0[[14]] = 1; next(pipeline=ingress, table=17);)
+  table=??(ls_in_check_port_sec), priority=70   , match=(inport == "sw0p1"), action=(reg0[[14]] = 1; next(pipeline=ingress, table=??);)
   table=??(ls_in_check_port_sec), priority=70   , match=(inport == "sw0p2"), action=(set_queue(10); reg0[[15]] = check_in_port_sec(); next;)
-  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
-  table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
-  table=??(ls_out_apply_port_sec), priority=100  , match=(outport == "localnetport"), action=(set_queue(10); output;)
-  table=??(ls_out_apply_port_sec), priority=110  , match=(outport == "localnetport" && inport == "sw0p2"), action=(set_queue(10); output;)
-  table=??(ls_out_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:01), action=(outport = "sw0p1"; output;)
@@ -8611,6 +8607,10 @@ sort | sed 's/table=../table=??/' ], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(drop;)
+  table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
+  table=??(ls_out_apply_port_sec), priority=100  , match=(outport == "localnetport"), action=(set_queue(10); output;)
+  table=??(ls_out_apply_port_sec), priority=110  , match=(outport == "localnetport" && inport == "sw0p2"), action=(set_queue(10); output;)
+  table=??(ls_out_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_out_check_port_sec), priority=0    , match=(1), action=(reg0[[15]] = check_out_port_sec(); next;)
   table=??(ls_out_check_port_sec), priority=100  , match=(eth.mcast), action=(reg0[[15]] = 0; next;)
 ])
@@ -8787,25 +8787,25 @@ AT_CHECK([ovn-nbctl lsp-set-options ln_port network_name=phys])
 AT_CHECK([ovn-nbctl --wait=sb sync])
 
 # Check MAC learning flows with 'localnet_learn_fdb' default (false)
-AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | sort | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
-  table=? (ls_in_put_fdb      ), priority=0    , match=(1), action=(next;)
+AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_put_fdb      ), priority=0    , match=(1), action=(next;)
 ])
 
 # Enable 'localnet_learn_fdb' and check the flows
 AT_CHECK([ovn-nbctl --wait=sb lsp-set-options ln_port localnet_learn_fdb=true])
-AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | sort | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
-  table=? (ls_in_lookup_fdb   ), priority=100  , match=(inport == "ln_port"), action=(flags.localnet = 1; reg0[[11]] = lookup_fdb(inport, eth.src); next;)
-  table=? (ls_in_put_fdb      ), priority=0    , match=(1), action=(next;)
-  table=? (ls_in_put_fdb      ), priority=100  , match=(inport == "ln_port" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_lookup_fdb   ), priority=100  , match=(inport == "ln_port"), action=(flags.localnet = 1; reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=??(ls_in_put_fdb      ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_put_fdb      ), priority=100  , match=(inport == "ln_port" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
 ])
 
 # Disable 'localnet_learn_fdb' and check the flows
 AT_CHECK([ovn-nbctl --wait=sb lsp-set-options ln_port localnet_learn_fdb=false])
-AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | sort | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
-  table=? (ls_in_put_fdb      ), priority=0    , match=(1), action=(next;)
+AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_put_fdb      ), priority=0    , match=(1), action=(next;)
 ])
 
 AT_CLEANUP
