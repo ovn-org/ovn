@@ -28013,7 +28013,7 @@ ovn_attach n1 br-phys 192.168.0.1
 
 # Chassis hv1 should add flows for the ls1 datapath in table 8 (ls_in_port_sec_l2).
 dp_key=$(ovn-sbctl --bare --columns tunnel_key list Datapath_Binding ls1)
-OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=8.*metadata=0x${dp_key}"])
+OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int | grep -E "table=OFTABLE_LOG_INGRESS_PIPELINE.*metadata=0x${dp_key}"])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

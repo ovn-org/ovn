@@ -600,7 +600,7 @@ OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep 'pri
 AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep 'priority=110' | \
           awk '{print $(NF-1), $NF}' | sed -e 's/in_port=[[0-9]]\+/in_port=<>/g' | \
           sed -e 's/0x[[0-9a-f]]\+/0x<>/g'], [0], [dnl
-priority=110,tun_id=0x<>,in_port=<> actions=move:NXM_NX_TUN_ID[[0..23]]->OXM_OF_METADATA[[0..23]],load:0x<>->NXM_NX_REG14[[0..14]],load:0x<>->NXM_NX_REG10[[1]],resubmit(,8)
+priority=110,tun_id=0x<>,in_port=<> actions=move:NXM_NX_TUN_ID[[0..23]]->OXM_OF_METADATA[[0..23]],load:0x<>->NXM_NX_REG14[[0..14]],load:0x<>->NXM_NX_REG10[[1]],resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
 ])
 
 # cleanup
@@ -625,7 +625,7 @@ OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep 'pri
 AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep 'priority=110' | \
           awk '{print $(NF-1), $NF}' | sed -e 's/in_port=[[0-9]]\+/in_port=<>/g' | \
           sed -e 's/0x[[0-9a-f]]\+/0x<>/g'], [0], [dnl
-priority=110,tun_id=0x<>,in_port=<> actions=move:NXM_NX_TUN_ID[[0..23]]->OXM_OF_METADATA[[0..23]],load:0x<>->NXM_NX_REG14[[0..14]],load:0x<>->NXM_NX_REG10[[1]],resubmit(,8)
+priority=110,tun_id=0x<>,in_port=<> actions=move:NXM_NX_TUN_ID[[0..23]]->OXM_OF_METADATA[[0..23]],load:0x<>->NXM_NX_REG14[[0..14]],load:0x<>->NXM_NX_REG10[[1]],resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
 ])
 
 OVN_CLEANUP([hv1])
