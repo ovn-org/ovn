@@ -31638,8 +31638,8 @@ AT_CHECK_UNQUOTED([cat hv2_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- 
 priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:13 actions=load:0x$port_key->NXM_NX_REG15[[]]
 ])
 
-as hv1 ovs-ofctl dump-flows br-int table=72 > hv1_offlows_table72.txt
-as hv2 ovs-ofctl dump-flows br-int table=72 > hv2_offlows_table72.txt
+as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOOKUP_FDB > hv1_offlows_table72.txt
+as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_LOOKUP_FDB > hv2_offlows_table72.txt
 
 AT_CAPTURE_FILE([hv1_offlows_table72.txt])
 AT_CAPTURE_FILE([hv2_offlows_table72.txt])
@@ -31661,7 +31661,7 @@ wait_for_ports_up sw0-p4
 check ovn-nbctl --wait=hv sync
 
 as hv3 ovs-ofctl dump-flows br-int table=OFTABLE_GET_FDB > hv3_offlows_table71.txt
-as hv3 ovs-ofctl dump-flows br-int table=72 > hv3_offlows_table72.txt
+as hv3 ovs-ofctl dump-flows br-int table=OFTABLE_LOOKUP_FDB > hv3_offlows_table72.txt
 
 
 AT_CAPTURE_FILE([hv3_offlows_table71.txt])
@@ -31714,9 +31714,9 @@ priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:13 actions=load:0x$port_ke
 priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:14 actions=load:0x$port_key->NXM_NX_REG15[[]]
 ])
 
-as hv1 ovs-ofctl dump-flows br-int table=72 > hv1_offlows_table72.txt
-as hv2 ovs-ofctl dump-flows br-int table=72 > hv2_offlows_table72.txt
-as hv3 ovs-ofctl dump-flows br-int table=72 > hv3_offlows_table72.txt
+as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOOKUP_FDB > hv1_offlows_table72.txt
+as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_LOOKUP_FDB > hv2_offlows_table72.txt
+as hv3 ovs-ofctl dump-flows br-int table=OFTABLE_LOOKUP_FDB > hv3_offlows_table72.txt
 
 AT_CAPTURE_FILE([hv1_offlows_table72.txt])
 AT_CAPTURE_FILE([hv2_offlows_table72.txt])
@@ -31907,8 +31907,8 @@ AT_CHECK([cat hv1_offlows_table71.txt | grep -v NXST], [1], [dnl
 AT_CHECK([cat hv2_offlows_table71.txt | grep -v NXST], [1], [dnl
 ])
 
-as hv1 ovs-ofctl dump-flows br-int table=72 > hv1_offlows_table72.txt
-as hv2 ovs-ofctl dump-flows br-int table=72 > hv2_offlows_table72.txt
+as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOOKUP_FDB > hv1_offlows_table72.txt
+as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_LOOKUP_FDB > hv2_offlows_table72.txt
 
 AT_CAPTURE_FILE([hv1_offlows_table72.txt])
 AT_CAPTURE_FILE([hv2_offlows_table72.txt])
@@ -37399,7 +37399,7 @@ check_flow_count() {
     hv=$1
     count=$2
     echo "Checking flow count for $hv is $count"
-    OVS_WAIT_UNTIL([test $count = $(as $hv ovs-ofctl dump-flows br-int table=72 | grep -v "NXST_FLOW reply" | wc -l)])
+    OVS_WAIT_UNTIL([test $count = $(as $hv ovs-ofctl dump-flows br-int table=OFTABLE_LOOKUP_FDB | grep -v "NXST_FLOW reply" | wc -l)])
 }
 
 # Sending packet in both direction. Should create FDB entries for vifs
