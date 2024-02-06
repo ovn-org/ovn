@@ -3715,7 +3715,7 @@ OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv-2"],["hv-1"])
 ovn-sbctl dump-flows ls > lsflows
 AT_CAPTURE_FILE([lsflows])
 
-AT_CHECK([grep -w "ls_in_arp_rsp" lsflows | sed 's/table=../table=??/' | sort], [0], [dnl
+AT_CHECK([grep -w "ls_in_arp_rsp" lsflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_arp_rsp      ), priority=0    , match=(1), action=(next;)
 ])
 
@@ -3782,7 +3782,7 @@ wait_for_ports_up
 ovn-sbctl dump-flows ls > lsflows
 AT_CAPTURE_FILE([lsflows])
 
-AT_CHECK([grep -w "ls_in_arp_rsp" lsflows | sed 's/table=../table=??/' | sort], [0], [dnl
+AT_CHECK([grep -w "ls_in_arp_rsp" lsflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_arp_rsp      ), priority=0    , match=(1), action=(next;)
 ])
 
@@ -16989,8 +16989,8 @@ OVS_WAIT_UNTIL([grep pinctrl hv2/ovn-controller.log | grep -c connected])
 ovn-sbctl dump-flows sw0 > sw0-flows
 AT_CAPTURE_FILE([sw0-flows])
 
-AT_CHECK([grep -E 'ls_out_acl' sw0-flows | grep reject | sed 's/table=../table=??/' | sort], [0], [dnl
-  table=??(ls_out_acl_action  ), priority=1000 , match=(reg8[[18]] == 1), action=(reg8[[16]] = 0; reg8[[17]] = 0; reg8[[18]] = 0; reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=27); };)
+AT_CHECK([grep -E 'ls_out_acl' sw0-flows | grep reject | ovn_strip_lflows], [0], [dnl
+  table=??(ls_out_acl_action  ), priority=1000 , match=(reg8[[18]] == 1), action=(reg8[[16]] = 0; reg8[[17]] = 0; reg8[[18]] = 0; reg0 = 0; reject { /* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ outport <-> inport; next(pipeline=ingress,table=??); };)
 ])
 
 
@@ -21802,7 +21802,7 @@ ovn-nbctl --wait=hv sync
 ovn-sbctl dump-flows sw0 > sw0-flows
 AT_CAPTURE_FILE([sw0-flows])
 
-AT_CHECK([grep ls_in_arp_rsp sw0-flows | grep bind_vport | sed 's/table=../table=??/' | sort], [0], [dnl
+AT_CHECK([grep ls_in_arp_rsp sw0-flows | grep bind_vport | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p1" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
   table=??(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p1" && ((nd_ns && ip6.dst == {1000::61d1, ff02::1:ff00:61d1} && nd.target == 1000::61d1) ||(nd_na && nd.target == 1000::61d1))), action=(bind_vport("sw0-vir6", inport); next;)
   table=??(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p2" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
@@ -22195,7 +22195,7 @@ ovn-nbctl --wait=hv sync
 ovn-sbctl dump-flows sw0 > sw0-flows
 AT_CAPTURE_FILE([sw0-flows])
 
-AT_CHECK([grep ls_in_arp_rsp sw0-flows | grep bind_vport | sed 's/table=../table=??/' | sort], [0], [dnl
+AT_CHECK([grep ls_in_arp_rsp sw0-flows | grep bind_vport | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p1" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
   table=??(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p3" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
 ])
@@ -28324,31 +28324,31 @@ AT_CHECK([
     grep "n_packets=1" -c)
 ])
 
-AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sed 's/table=../table=??/' | sort], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_policy       ), priority=1001 , dnl
 match=(ip6), action=(pkt.mark = 4294967295; reg8[[0..15]] = 0; next;)
 ])
 
 ovn-nbctl --wait=hv set logical_router_policy $pol5 options:pkt_mark=-1
-AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sed 's/table=../table=??/' | sort], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_policy       ), priority=1001 , dnl
 match=(ip6), action=(reg8[[0..15]] = 0; next;)
 ])
 
 ovn-nbctl --wait=hv set logical_router_policy $pol5 options:pkt_mark=2147483648
-AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sed 's/table=../table=??/' | sort], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_policy       ), priority=1001 , dnl
 match=(ip6), action=(pkt.mark = 2147483648; reg8[[0..15]] = 0; next;)
 ])
 
 ovn-nbctl --wait=hv set logical_router_policy $pol5 options:pkt_mark=foo
-AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sed 's/table=../table=??/' | sort], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_policy       ), priority=1001 , dnl
 match=(ip6), action=(reg8[[0..15]] = 0; next;)
 ])
 
 ovn-nbctl --wait=hv set logical_router_policy $pol5 options:pkt_mark=4294967296
-AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | sed 's/table=../table=??/' | sort], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list | grep -E "lr_in_policy.*priority=1001" | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_policy       ), priority=1001 , dnl
 match=(ip6), action=(reg8[[0..15]] = 0; next;)
 ])
