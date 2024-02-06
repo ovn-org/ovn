@@ -24564,16 +24564,16 @@ grep opcode=PUT_ARP | grep OF_Table_ID=10 | wc -l`])
 AT_CHECK([test 1 = `as hv1 ovs-ofctl dump-flows br-int table=10 | grep arp | \
 grep controller | grep -v n_packets=0 | wc -l`])
 
-# Wait for an entry in table=67
+# Wait for an entry in table=OFTABLE_MAC_LOOKUP
 OVS_WAIT_UNTIL(
-    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=67 | grep n_packets=0 \
+    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep n_packets=0 \
 | wc -l`]
 )
 
 # Send garp again. This time the packet should not be sent to ovn-controller.
 send_garp 1 1 $eth_src $eth_dst $spa $tpa
-# Wait for an entry in table=67
-OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int table=67 | grep n_packets=1 | wc -l`])
+# Wait for an entry in table=OFTABLE_MAC_LOOKUP
+OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep n_packets=1 | wc -l`])
 
 # The packet should not be sent to ovn-controller. The packet
 # count should be 1 only.
@@ -24621,7 +24621,7 @@ OVS_WAIT_UNTIL([test 3 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | \
 grep table_id=10 | wc -l`])
 
 OVS_WAIT_UNTIL(
-    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=67 | grep dl_src=50:54:00:00:00:33 \
+    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep dl_src=50:54:00:00:00:33 \
 | wc -l`]
 )
 
@@ -24635,7 +24635,7 @@ find mac_binding ip=10.0.0.50], [0], [lr0-sw0
 send_garp 1 1 $eth_src $eth_dst $spa $tpa
 
 OVS_WAIT_UNTIL(
-    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=67 | grep dl_src=50:54:00:00:00:33 \
+    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep dl_src=50:54:00:00:00:33 \
 | grep n_packets=1 | wc -l`]
 )
 
@@ -24660,17 +24660,17 @@ send_arp_reply 1 1 $eth_src $eth_dst $spa $tpa
 OVS_WAIT_UNTIL([test 4 = `cat hv1/ovn-controller.log | grep NXT_PACKET_IN2 | \
 grep table_id=10 | wc -l`])
 
-# Wait for an entry in table=67 for the learnt mac_binding entry.
+# Wait for an entry in table=OFTABLE_MAC_LOOKUP for the learnt mac_binding entry.
 
 OVS_WAIT_UNTIL(
-    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=67 | grep dl_src=50:54:00:00:00:23 \
+    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep dl_src=50:54:00:00:00:23 \
 | wc -l`]
 )
 
 # Send the same garp reply. This time it should not be sent to ovn-controller.
 send_arp_reply 1 1 $eth_src $eth_dst $spa $tpa
 OVS_WAIT_UNTIL(
-    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=67 | grep dl_src=50:54:00:00:00:23 \
+    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep dl_src=50:54:00:00:00:23 \
 | grep n_packets=1 | wc -l`]
 )
 
@@ -24679,7 +24679,7 @@ grep table_id=10 | wc -l`])
 
 send_arp_reply 1 1 $eth_src $eth_dst $spa $tpa
 OVS_WAIT_UNTIL(
-    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=67 | grep dl_src=50:54:00:00:00:23 \
+    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep dl_src=50:54:00:00:00:23 \
 | grep n_packets=2 | wc -l`]
 )
 
@@ -33399,7 +33399,7 @@ sip=`ip_to_hex 172 16 1 10`
 tip=`ip_to_hex 172 16 1 50`
 test_arp vif-north1 f0f000000011 $sip $tip
 OVS_WAIT_UNTIL(
-    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=67 | grep dl_src=f0:f0:00:00:00:11 | wc -l`]
+    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep dl_src=f0:f0:00:00:00:11 | wc -l`]
 )
 
 echo "Send traffic North to South"
@@ -33422,7 +33422,7 @@ sip=`ip_to_hex 10 0 0 10`
 tip=`ip_to_hex 10 0 0 50`
 test_arp vif-north2 f0f000000022 $sip $tip
 OVS_WAIT_UNTIL(
-    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=67 | grep dl_src=f0:f0:00:00:00:22 | wc -l`]
+    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep dl_src=f0:f0:00:00:00:22 | wc -l`]
 )
 
 echo "Send traffic South to North2"
@@ -33438,7 +33438,7 @@ sip=`ip_to_hex 192 168 0 10`
 tip=`ip_to_hex 192 168 0 50`
 test_arp vif-north3 f0f000000033 $sip $tip
 OVS_WAIT_UNTIL(
-    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=67 | grep dl_src=f0:f0:00:00:00:33 | wc -l`]
+    [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep dl_src=f0:f0:00:00:00:33 | wc -l`]
 )
 
 echo "Send traffic South to North3"
