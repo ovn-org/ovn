@@ -12128,10 +12128,10 @@ OVS_WAIT_UNTIL([
     ip netns exec vm1 nc -z 43.43.43.43 80 &> /dev/null
 ])
 
-OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int | grep 'table=78, n_packets' -c) -eq 1])
+OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int | grep 'table=OFTABLE_CHK_LB_AFFINITY, n_packets' -c) -eq 1])
 
 dnl Find the backend that was hit.
-backend=$(ovs-ofctl dump-flows br-int table=78 | \
+backend=$(ovs-ofctl dump-flows br-int table=OFTABLE_CHK_LB_AFFINITY | \
     grep -oE 'load:0x2a2a2a0[[12]]' | sed -n 's/load:0x2a2a2a0\(.*\)/\1/p')
 
 dnl Remove the backend that was hit.
@@ -12143,7 +12143,7 @@ fi
 check ovn-nbctl --wait=hv sync
 
 dnl The learnt flow should also be auto deleted.
-AT_CHECK([ovs-ofctl dump-flows br-int | grep 'table=78, n_packets' -c], [1], [dnl
+AT_CHECK([ovs-ofctl dump-flows br-int | grep 'table=OFTABLE_CHK_LB_AFFINITY, n_packets' -c], [1], [dnl
 0
 ])
 
