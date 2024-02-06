@@ -988,3 +988,5 @@ m4_define([TAG_UNSTABLE], [
     AT_KEYWORDS([unstable])
     AT_SKIP_IF([test X"$SKIP_UNSTABLE" = Xyes])
 ])
+
+m4_define([OFTABLE_PHY_TO_LOG], [0])

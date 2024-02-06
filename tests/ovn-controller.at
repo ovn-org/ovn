@@ -2649,7 +2649,7 @@ check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3 1000::3"
 wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
-OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c in_port=1], [0],[dnl
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep -c in_port=1], [0],[dnl
 1
 ])
 
@@ -2657,10 +2657,10 @@ OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c in_por
 check as hv1 ovs-vsctl set Interface hv1-vif1 ofport-request=24
 OVS_WAIT_UNTIL([test x`as hv1 ovs-vsctl get Interface hv1-vif1 ofport` = x24])
 
-OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c in_port=24], [0],[dnl
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep -c in_port=24], [0],[dnl
 1
 ])
-OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c in_port=1], [1],[dnl
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep -c in_port=1], [1],[dnl
 0
 ])
 

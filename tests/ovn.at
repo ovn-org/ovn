@@ -9557,7 +9557,7 @@ for i in `seq 1 3`; do
     -- lsp-set-addresses bar$i "f0:00:0a:01:02:$i 172.16.1.$ip"
 done
 
-OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=0 | grep REG13 | wc -l` -eq 4])
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep REG13 | wc -l` -eq 4])
 
 OVN_CLEANUP([hv1])
 
@@ -16205,7 +16205,7 @@ OVS_WAIT_UNTIL([test 1 = $(grep -c "Not claiming lport lsp0" hv2/ovn-controller.
 wait_row_count Port_Binding 1 logical_port=lsp0 'chassis=[[]]'
 
 # (2) Chassis hv2 should not add flows in OFTABLE_PHY_TO_LOG and OFTABLE_LOG_TO_PHY tables.
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=0 | grep in_port=1], [1], [])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep in_port=1], [1], [])
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=65 | grep output], [1], [])
 
 # (3) Chassis hv1 should bind lsp0 when physical to logical mapping exists on hv1.
@@ -16218,7 +16218,7 @@ wait_column "$hv1_uuid" Port_Binding chassis logical_port=lsp0
 
 # (4) Chassis hv1 should add flows in OFTABLE_PHY_TO_LOG and OFTABLE_LOG_TO_PHY tables.
 as hv1 ovs-ofctl dump-flows br-int
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep in_port=1], [0], [ignore])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep in_port=1], [0], [ignore])
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=65 | grep actions=output:1], [0], [ignore])
 
 # (5) Chassis hv1 should release lsp0 binding and chassis hv2 should bind lsp0 when
@@ -16232,10 +16232,10 @@ OVS_WAIT_UNTIL([test 1 -le $(grep -c "Releasing lport lsp0" hv1/ovn-controller.l
 wait_column "$hv2_uuid" Port_Binding chassis logical_port=lsp0
 
 # (6) Chassis hv2 should add flows and hv1 should not.
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=0 | grep in_port=1], [0], [ignore])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep in_port=1], [0], [ignore])
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=65 | grep actions=output:1], [0], [ignore])
 
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep in_port=1], [1], [])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep in_port=1], [1], [])
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=65 | grep output], [1], [])
 
 OVN_CLEANUP([hv1],[hv2])
@@ -16312,14 +16312,14 @@ hv1_uuid=$(fetch_column Chassis _uuid name=hv1)
 echo "hv1_uuid=${hv1_uuid}"
 OVS_WAIT_UNTIL([test 1 = $(grep -c "Claiming lport lsp0" hv1/ovn-controller.log)])
 wait_column "$hv1_uuid" Port_Binding chassis logical_port=lsp0
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep in_port=1], [0], [ignore])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep in_port=1], [0], [ignore])
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=65 | grep actions=output:1], [0], [ignore])
 
 check ovn-nbctl --wait=hv lsp-set-options lsp0 requested-chassis=non-existant-chassis
 OVS_WAIT_UNTIL([test 1 -le $(grep -c "Releasing lport lsp0" hv1/ovn-controller.log)])
 check ovn-nbctl --wait=hv sync
 wait_column '' Port_Binding chasssi logical_port=lsp0
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep in_port=1], [1], [])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep in_port=1], [1], [])
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=65 | grep output], [1], [])
 
 OVN_CLEANUP([hv1])
@@ -28195,13 +28195,13 @@ send_ipv4_pkt hv1 hv1-vif1 505400000003 00000000ff01 \
 
 AT_CAPTURE_FILE([offlows2])
 OVS_WAIT_UNTIL([
-    as hv1 ovs-ofctl dump-flows br-phys table=0 > offlows2
+    as hv1 ovs-ofctl dump-flows br-phys table=OFTABLE_PHY_TO_LOG > offlows2
     test 1 -eq $(grep "priority=100,pkt_mark=0x64" offlows2 | \
                  grep -c "n_packets=1")
 ])
 
 AT_CHECK([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=OFTABLE_PHY_TO_LOG | \
     grep priority=0 | \
     grep "n_packets=0" -c)
 ])
@@ -28212,31 +28212,31 @@ send_ipv4_pkt hv1 hv1-vif2 505400000004 00000000ff01 \
     c3ac 83db
 
 AT_CHECK([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=OFTABLE_PHY_TO_LOG | \
     grep priority=0 | \
     grep "n_packets=1" -c)
 ])
 
 AT_CHECK([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=OFTABLE_PHY_TO_LOG | \
     grep "priority=100,pkt_mark=0x64" | \
     grep "n_packets=1" -c)
 ])
 
 AT_CHECK([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=OFTABLE_PHY_TO_LOG | \
     grep "priority=100,pkt_mark=0x3" | \
     grep "n_packets=0" -c)
 ])
 
 AT_CHECK([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=OFTABLE_PHY_TO_LOG | \
     grep "priority=100,pkt_mark=0x4" | \
     grep "n_packets=0" -c)
 ])
 
 AT_CHECK([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=OFTABLE_PHY_TO_LOG | \
     grep "priority=100,pkt_mark=0xffffffff" | \
     grep "n_packets=0" -c)
 ])
@@ -28257,19 +28257,19 @@ AT_CHECK([
 ])
 
 AT_CHECK([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=OFTABLE_PHY_TO_LOG | \
     grep "priority=100,pkt_mark=0x2" | \
     grep "n_packets=1" -c)
 ])
 
 AT_CHECK([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=OFTABLE_PHY_TO_LOG | \
     grep priority=0 | \
     grep "n_packets=1" -c)
 ])
 
 AT_CHECK([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=OFTABLE_PHY_TO_LOG | \
     grep "priority=100,pkt_mark=0x3" | \
     grep "n_packets=0" -c)
 ])
@@ -28281,7 +28281,7 @@ send_ipv4_pkt hv1 hv1-vif1 505400000003 00000000ff01 \
     c3ab 83da
 
 OVS_WAIT_UNTIL([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=OFTABLE_PHY_TO_LOG | \
     grep "priority=100,pkt_mark=0x3" | \
     grep "n_packets=1" -c)
 ])
@@ -28293,13 +28293,13 @@ dst_ip6=bef00000000000000000000000000004
 send_icmp6_packet hv1 hv1-vif2 505400000004 00000000ff01 ${src_ip6} ${dst_ip6} cd16
 
 OVS_WAIT_UNTIL([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=OFTABLE_PHY_TO_LOG | \
     grep "priority=100,pkt_mark=0xffffffff" | \
     grep "n_packets=1" -c)
 ])
 
 AT_CHECK([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=OFTABLE_PHY_TO_LOG | \
     grep "priority=100,pkt_mark=0x4" | \
     grep "n_packets=0" -c)
 ])
@@ -28313,13 +28313,13 @@ dst_ip6=bef00000000000000000000000000005
 send_icmp6_packet hv1 hv1-vif2 505400000004 00000000ff01 ${src_ip6} ${dst_ip6} cd15
 
 OVS_WAIT_UNTIL([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=OFTABLE_PHY_TO_LOG | \
     grep "priority=100,pkt_mark=0x4" | \
     grep "n_packets=1" -c)
 ])
 
 AT_CHECK([
-    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=0 | \
+    test 1 -eq $(as hv1 ovs-ofctl dump-flows br-phys table=OFTABLE_PHY_TO_LOG | \
     grep "priority=100,pkt_mark=0xffffffff" | \
     grep "n_packets=1" -c)
 ])
@@ -31086,7 +31086,7 @@ check ovs-vsctl set interface vif2 external_ids:iface-id=foo
 # is not true.
 wait_row_count Port_Binding 1 logical_port=sw0-p2 'chassis=[[]]'
 
-as hv1 ovs-ofctl dump-flows br-int table=0 > offlows_table0.txt
+as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG > offlows_table0.txt
 AT_CAPTURE_FILE([offlows_table0.txt])
 AT_CHECK_UNQUOTED([grep -c "in_port=2" offlows_table0.txt], [1], [dnl
 0
@@ -31109,7 +31109,7 @@ check ovs-vsctl set interface vif2 external_ids:iface-id=sw0-p2
 as hv1 ovn-appctl -t ovn-controller recompute
 wait_row_count Port_Binding 1 logical_port=sw0-p2 'chassis=[[]]'
 
-as hv1 ovs-ofctl dump-flows br-int table=0 > offlows_table0.txt
+as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG > offlows_table0.txt
 AT_CAPTURE_FILE([offlows_table0.txt])
 AT_CHECK_UNQUOTED([grep -c "in_port=2" offlows_table0.txt], [1], [dnl
 0
@@ -31120,7 +31120,7 @@ check ovn-sbctl set SB_Global . options:northd_internal_version=$northd_version
 # It should claim sw0-p2
 wait_row_count Port_Binding 1 logical_port=sw0-p2 chassis=$ch
 
-as hv1 ovs-ofctl dump-flows br-int table=0 > offlows_table0.txt
+as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG > offlows_table0.txt
 AT_CAPTURE_FILE([offlows_table0.txt])
 AT_CHECK_UNQUOTED([grep -c "in_port=2" offlows_table0.txt], [0], [dnl
 1
@@ -31133,7 +31133,7 @@ check ovs-vsctl set interface vif2 external_ids:iface-id=foo
 
 # ovn-controller is not connected to the SB DB. Even though it
 # releases sw0-p2, it will not delete the OF flows.
-as hv1 ovs-ofctl dump-flows br-int table=0 > offlows_table0.txt
+as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG > offlows_table0.txt
 AT_CAPTURE_FILE([offlows_table0.txt])
 AT_CHECK_UNQUOTED([grep -c "in_port=2" offlows_table0.txt], [0], [dnl
 1
@@ -31147,7 +31147,7 @@ check ovs-vsctl set open . external_ids:ovn-remote=$ovn_remote
 
 sleep 1
 
-as hv1 ovs-ofctl dump-flows br-int table=0 > offlows_table0.txt
+as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG > offlows_table0.txt
 AT_CAPTURE_FILE([offlows_table0.txt])
 AT_CHECK_UNQUOTED([grep -c "in_port=2" offlows_table0.txt], [0], [dnl
 1
@@ -31166,7 +31166,7 @@ as hv1
 check ovs-vsctl set open . external_ids:ovn-remote=$ovn_remote
 
 wait_row_count Port_Binding 1 logical_port=sw0-p2 'chassis=[[]]'
-as hv1 ovs-ofctl dump-flows br-int table=0 > offlows_table0.txt
+as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG > offlows_table0.txt
 AT_CAPTURE_FILE([offlows_table0.txt])
 AT_CHECK_UNQUOTED([grep -c "in_port=2" offlows_table0.txt], [1], [dnl
 0
@@ -32104,11 +32104,11 @@ check as hv1 ovs-vsctl set Interface vm2 external_ids:iface-id=vm2
 
 wait_for_ports_up
 
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c dl_vlan=1], [0], [dnl
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep -c dl_vlan=1], [0], [dnl
 1
 ])
 
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c dl_vlan=2], [0], [dnl
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep -c dl_vlan=2], [0], [dnl
 1
 ])
 
@@ -32121,15 +32121,15 @@ wait_for_ports_up
 
 check ovn-nbctl --wait=hv sync
 
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c dl_vlan=1], [1], [dnl
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep -c dl_vlan=1], [1], [dnl
 0
 ])
 
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c dl_vlan=2], [0], [dnl
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep -c dl_vlan=2], [0], [dnl
 1
 ])
 
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -c dl_vlan=3], [0], [dnl
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep -c dl_vlan=3], [0], [dnl
 1
 ])
 
@@ -33698,7 +33698,7 @@ check as hv1 ovs-vsctl add-port br-int vif13 \
     -- set interface vif13 external_ids:iface-id=sw0-port2 ofport-request=13
 
 ovn-nbctl --wait=hv sync
-OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=0 | grep "in_port=13" | wc -l` -eq 1])
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep "in_port=13" | wc -l` -eq 1])
 
 # There should be ct zone for sw0-port2 (localport).
 AT_CHECK([as hv1 ovn-appctl -t ovn-controller ct-zone-list | \
@@ -33791,13 +33791,13 @@ wait_for_ports_up sw0-vm1 sw0-vm2
 # Check that flows are generated for the localport
 OVS_WAIT_UNTIL([
     as hv1 \
-    ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 \
+    ovs-ofctl -O OpenFlow15 dump-flows br-int table=OFTABLE_PHY_TO_LOG \
     | tee 1-hv1-br-int-table-0.txt \
     && grep -q in_port=13 1-hv1-br-int-table-0.txt
 ])
 OVS_WAIT_UNTIL([
     as hv2 \
-    ovs-ofctl -O OpenFlow15 dump-flows br-int table=0 \
+    ovs-ofctl -O OpenFlow15 dump-flows br-int table=OFTABLE_PHY_TO_LOG \
     | tee 1-hv2-br-int-table-0.txt \
     && grep in_port=13 1-hv2-br-int-table-0.txt
 ])
