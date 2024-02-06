@@ -31625,8 +31625,8 @@ check_column $sw0p1_dpkey fdb port_key
 
 # Make sure that OVS tables 71 and 72 are populated on both hv1 and hv2.
 AS_BOX([Check that ovn-controller programs the flows for FDB])
-as hv1 ovs-ofctl dump-flows br-int table=71 > hv1_offlows_table71.txt
-as hv2 ovs-ofctl dump-flows br-int table=71 > hv2_offlows_table71.txt
+as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_GET_FDB > hv1_offlows_table71.txt
+as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_GET_FDB > hv2_offlows_table71.txt
 
 AT_CAPTURE_FILE([hv1_offlows_table71.txt])
 AT_CAPTURE_FILE([hv2_offlows_table71.txt])
@@ -31660,7 +31660,7 @@ wait_for_ports_up sw0-p4
 #as hv3 ovn-appctl -t ovn-controller recompute
 check ovn-nbctl --wait=hv sync
 
-as hv3 ovs-ofctl dump-flows br-int table=71 > hv3_offlows_table71.txt
+as hv3 ovs-ofctl dump-flows br-int table=OFTABLE_GET_FDB > hv3_offlows_table71.txt
 as hv3 ovs-ofctl dump-flows br-int table=72 > hv3_offlows_table72.txt
 
 
@@ -31692,9 +31692,9 @@ check_column "$sw0_dpkey $sw0_dpkey" fdb dp_key
 check_column "$sw0p1_dpkey $sw0p1_dpkey" fdb port_key
 
 # Make sure that OVS tables 71 and 72 are populated on hv1, hv2 and hv3.
-as hv1 ovs-ofctl dump-flows br-int table=71 > hv1_offlows_table71.txt
-as hv2 ovs-ofctl dump-flows br-int table=71 > hv2_offlows_table71.txt
-as hv3 ovs-ofctl dump-flows br-int table=71 > hv3_offlows_table71.txt
+as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_GET_FDB > hv1_offlows_table71.txt
+as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_GET_FDB > hv2_offlows_table71.txt
+as hv3 ovs-ofctl dump-flows br-int table=OFTABLE_GET_FDB > hv3_offlows_table71.txt
 
 AT_CAPTURE_FILE([hv1_offlows_table71.txt])
 AT_CAPTURE_FILE([hv2_offlows_table71.txt])
@@ -31896,8 +31896,8 @@ OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
 OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected])
 
 # Make sure that OVS tables 71 and 72 are empty.
-as hv1 ovs-ofctl dump-flows br-int table=71 > hv1_offlows_table71.txt
-as hv2 ovs-ofctl dump-flows br-int table=71 > hv2_offlows_table71.txt
+as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_GET_FDB > hv1_offlows_table71.txt
+as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_GET_FDB > hv2_offlows_table71.txt
 
 AT_CAPTURE_FILE([hv1_offlows_table71.txt])
 AT_CAPTURE_FILE([hv2_offlows_table71.txt])
