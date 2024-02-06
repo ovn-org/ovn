@@ -21914,7 +21914,7 @@ wait_row_count nb:Logical_Switch_Port 1 up=false name=sw0-vir
 check ovn-nbctl --wait=hv sync
 
 # verify the traffic from virtual port is discarded if the port is not claimed
-AT_CHECK([grep lr_in_gw_redirect lr0-flows2 | grep "ip4.src == 10.0.0.10" | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep lr_in_gw_redirect lr0-flows2 | grep "ip4.src == 10.0.0.10" | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_gw_redirect  ), priority=100  , match=(ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("sw0-vir")), action=(eth.src = 10:54:00:00:00:10; reg1 = 172.168.0.50; next;)
   table=??(lr_in_gw_redirect  ), priority=80   , match=(ip4.src == 10.0.0.10 && outport == "lr0-public"), action=(drop;)
 ])
@@ -22157,7 +22157,7 @@ ovn-nbctl --wait=hv set logical_switch_port sw0-vir options:virtual-ip=10.0.0.10
 check ovn-nbctl --wait=hv sync
 ovn-sbctl dump-flows sw0 > sw0-flows3
 AT_CAPTURE_FILE([sw0-flows3])
-AT_CHECK([grep ls_in_arp_rsp sw0-flows3 | grep bind_vport | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep ls_in_arp_rsp sw0-flows3 | grep bind_vport | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p1" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
   table=??(ls_in_arp_rsp      ), priority=100  , match=(inport == "sw0-p3" && ((arp.op == 1 && arp.spa == 10.0.0.10 && arp.tpa == 10.0.0.10) || (arp.op == 2 && arp.spa == 10.0.0.10))), action=(bind_vport("sw0-vir", inport); next;)
 ])
@@ -25217,9 +25217,9 @@ AT_CAPTURE_FILE([sbflows3])
 ovn-sbctl dump-flows sw0 > sbflows3
 AT_CHECK(
   [grep "ip4.dst == 10.0.0.10 && tcp.dst == 80" sbflows3 | grep priority=120 |\
-   sed 's/table=../table=??/'], [0], [dnl
-  table=??(ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark;)
+   ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(drop;)
+  table=??(ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark;)
 ])
 
 AT_CAPTURE_FILE([sbflows4])
@@ -25415,9 +25415,9 @@ AT_CAPTURE_FILE([sbflows3])
 ovn-sbctl dump-flows sw0 > sbflows3
 AT_CHECK(
   [grep "ip6.dst == 2001::a && tcp.dst == 80" sbflows3 | grep priority=120 |\
-   sed 's/table=../table=??/'], [0], [dnl
-  table=??(ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6.dst == 2001::a && tcp.dst == 80), action=(xxreg1 = 2001::a; reg2[[0..15]] = 80; ct_lb_mark;)
+   ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip6.dst == 2001::a && tcp.dst == 80), action=(drop;)
+  table=??(ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6.dst == 2001::a && tcp.dst == 80), action=(xxreg1 = 2001::a; reg2[[0..15]] = 80; ct_lb_mark;)
 ])
 
 AT_CAPTURE_FILE([sbflows4])
@@ -32936,7 +32936,7 @@ AT_CAPTURE_FILE([sbflows])
 AT_CHECK([ovn-sbctl dump-flows |
           grep ls_in_arp_rsp |
           grep "${arp_proxy_ls1[[1]]}" |
-          sed 's/table=../table=??/'], [0], [dnl
+          ovn_strip_lflows], [0], [dnl
   table=??(ls_in_arp_rsp      ), priority=30   , match=(arp.op == 1 && dnl
 arp.tpa == {169.254.238.0/24,169.254.239.2/32}), dnl
 action=(eth.dst = eth.src; eth.src = 00:00:00:01:02:f1; arp.op = 2; dnl
@@ -32948,7 +32948,7 @@ arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
 AT_CHECK([ovn-sbctl dump-flows |
           grep ls_in_arp_rsp |
           grep "${arp_proxy_ls1[[3]]}" |
-          sed 's/table=../table=??/'], [0], [dnl
+          ovn_strip_lflows], [0], [dnl
   table=??(ls_in_arp_rsp      ), priority=30   , dnl
 match=(nd_ns && ip6.dst == { fd7b:6b4d:7b25:d22d::/64, ff02::1:ff00:0/64, dnl
 fd7b:6b4d:7b25:d22f::1/128, ff02::1:ff00:1/128 } && dnl
@@ -32962,7 +32962,7 @@ flags.loopback = 1; output; };)
 AT_CHECK([ovn-sbctl dump-flows |
           grep ls_in_arp_rsp |
           grep "${arp_proxy_ls2[[2]]}" |
-          sed 's/table=../table=??/'], [0], [dnl
+          ovn_strip_lflows], [0], [dnl
   table=??(ls_in_arp_rsp      ), priority=30   , dnl
 match=(arp.op == 1 && arp.tpa == {169.254.236.0/24,169.254.237.2/32}), dnl
 action=(eth.dst = eth.src; eth.src = 00:00:00:02:02:f1; arp.op = 2; dnl
@@ -32974,7 +32974,7 @@ arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
 AT_CHECK([ovn-sbctl dump-flows |
           grep ls_in_arp_rsp |
           grep "${arp_proxy_ls2[[4]]}" |
-          sed 's/table=../table=??/'], [0], [dnl
+          ovn_strip_lflows], [0], [dnl
   table=??(ls_in_arp_rsp      ), priority=30   , dnl
 match=(nd_ns && ip6.dst == { fd7b:6b4d:7b25:d22b::/64, ff02::1:ff00:0/64, dnl
 fd7b:6b4d:7b25:d22c::1/128, ff02::1:ff00:1/128 } && dnl
@@ -32988,7 +32988,7 @@ flags.loopback = 1; output; };)
 AT_CHECK([ovn-sbctl dump-flows |
           grep ls_in_l2_lkup |
           grep "${arp_proxy_ls2[[0]]}" |
-          sed 's/table=../table=??/'], [0], [dnl
+          ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , dnl
 match=(eth.dst == { 00:00:00:02:02:f1, 00:00:00:01:02:f1 }), dnl
 action=(outport = "rp-ls2"; output;)
@@ -32998,7 +32998,7 @@ action=(outport = "rp-ls2"; output;)
 AT_CHECK([ovn-sbctl dump-flows |
           grep lr_in_admission |
           grep "${arp_proxy_ls2[[0]]}" |
-          sed 's/table=../table=??/'], [0], [dnl
+          ovn_strip_lflows], [0], [dnl
   table=??(lr_in_admission    ), priority=50   , dnl
 match=(eth.dst == { 00:00:00:02:02:f1, 00:00:00:01:02:f1 } && dnl
 inport == "ls1"), action=(xreg0[[0..47]] = 00:00:00:01:02:f1; next;)

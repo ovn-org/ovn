@@ -6513,7 +6513,7 @@ AT_CHECK([grep -e "lr_in_defrag" lr0flows | ovn_strip_lflows], [0], [dnl
 
 dnl The chassis was created with other_config:ct-no-masked-label=false, the flows
 dnl should be using ct_label.ecmp_reply_port.
-AT_CHECK([grep -e "lr_in_arp_resolve.*ecmp" lr0flows | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep -e "lr_in_arp_resolve.*ecmp" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_arp_resolve  ), priority=200  , match=(ct.rpl && ct_label.ecmp_reply_port == 1), action=(push(xxreg1); xxreg1 = ct_label; eth.dst = xxreg1[[32..79]]; pop(xxreg1); next;)
 ])
 
@@ -6523,7 +6523,7 @@ dnl ct-no-masked-label.  ovn-northd should start using ct_mark.ecmp_reply_port.
 check ovn-sbctl set chassis ch1 other_config:ct-no-masked-label=true
 check ovn-nbctl --wait=sb sync
 ovn-sbctl dump-flows lr0 > lr0flows
-AT_CHECK([grep -e "lr_in_arp_resolve.*ecmp" lr0flows | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep -e "lr_in_arp_resolve.*ecmp" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_arp_resolve  ), priority=200  , match=(ct.rpl && ct_mark.ecmp_reply_port == 1), action=(push(xxreg1); xxreg1 = ct_label; eth.dst = xxreg1[[32..79]]; pop(xxreg1); next;)
 ])
 
@@ -6867,7 +6867,7 @@ check ovn-nbctl --wait=sb sync
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CAPTURE_FILE([lr0flows])
 
-AT_CHECK([grep -e "lr_in_ip_routing_pre.*match=(1)" lr0flows | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep -e "lr_in_ip_routing_pre.*match=(1)" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_ip_routing_pre), priority=0    , match=(1), action=(reg7 = 0; next;)
 ])
 
@@ -7245,27 +7245,27 @@ ovn-sbctl dump-flows lr > lrflows
 AT_CAPTURE_FILE([lrflows])
 
 dnl Flows to skip TTL == {0, 1} check for IGMP and MLD packets.
-AT_CHECK([grep -e 'lr_in_ip_input    ' lrflows | grep -e 'igmp' -e 'mld' -e 'ip.ttl == {0, 1}' | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep -e 'lr_in_ip_input    ' lrflows | grep -e 'igmp' -e 'mld' -e 'ip.ttl == {0, 1}' | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_ip_input     ), priority=120  , match=((mldv1 || mldv2) && ip.ttl == 1), action=(next;)
   table=??(lr_in_ip_input     ), priority=120  , match=(igmp && ip.ttl == 1), action=(next;)
-  table=??(lr_in_ip_input     ), priority=32   , match=(ip.ttl == {0, 1} && !ip.later_frag && (ip4.mcast || ip6.mcast)), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=30   , match=(ip.ttl == {0, 1}), action=(drop;)
   table=??(lr_in_ip_input     ), priority=31   , match=(inport == "lrp1" && ip4 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp4 {eth.dst <-> eth.src; icmp4.type = 11; /* Time exceeded */ icmp4.code = 0; /* TTL exceeded in transit */ ip4.dst = ip4.src; ip4.src = 10.10.10.1 ; ip.ttl = 254; outport = "lrp1"; flags.loopback = 1; output; };)
   table=??(lr_in_ip_input     ), priority=31   , match=(inport == "lrp1" && ip6 && ip6.src == 1010::/64 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp6 {eth.dst <-> eth.src; ip6.dst = ip6.src; ip6.src = 1010::1 ; ip.ttl = 254; icmp6.type = 3; /* Time exceeded */ icmp6.code = 0; /* TTL exceeded in transit */ outport = "lrp1"; flags.loopback = 1; output; };)
   table=??(lr_in_ip_input     ), priority=31   , match=(inport == "lrp2" && ip4 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp4 {eth.dst <-> eth.src; icmp4.type = 11; /* Time exceeded */ icmp4.code = 0; /* TTL exceeded in transit */ ip4.dst = ip4.src; ip4.src = 20.20.20.1 ; ip.ttl = 254; outport = "lrp2"; flags.loopback = 1; output; };)
   table=??(lr_in_ip_input     ), priority=31   , match=(inport == "lrp2" && ip6 && ip6.src == 2020::/64 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp6 {eth.dst <-> eth.src; ip6.dst = ip6.src; ip6.src = 2020::1 ; ip.ttl = 254; icmp6.type = 3; /* Time exceeded */ icmp6.code = 0; /* TTL exceeded in transit */ outport = "lrp2"; flags.loopback = 1; output; };)
-  table=??(lr_in_ip_input     ), priority=30   , match=(ip.ttl == {0, 1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=32   , match=(ip.ttl == {0, 1} && !ip.later_frag && (ip4.mcast || ip6.mcast)), action=(drop;)
 ])
 
 dnl Flows to "route" (statically forward) without decrementing TTL for
 dnl IGMP and MLD packets.  Also, flows to drop potentially looping IGMP/MLD
 dnl packets.
-AT_CHECK([grep -e 'lr_in_ip_routing   ' lrflows | grep -e 'igmp' -e 'mld' | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep -e 'lr_in_ip_routing   ' lrflows | grep -e 'igmp' -e 'mld' | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=10460, match=(igmp), action=(clone { outport = "_MC_static"; next; };)
+  table=??(lr_in_ip_routing   ), priority=10460, match=(mldv1 || mldv2), action=(clone { outport = "_MC_static"; next; };)
   table=??(lr_in_ip_routing   ), priority=10550, match=(eth.src == 00:00:00:00:00:01 && (mldv1 || mldv2)), action=(drop;)
   table=??(lr_in_ip_routing   ), priority=10550, match=(eth.src == 00:00:00:00:00:01 && igmp), action=(drop;)
   table=??(lr_in_ip_routing   ), priority=10550, match=(eth.src == 00:00:00:00:00:02 && (mldv1 || mldv2)), action=(drop;)
   table=??(lr_in_ip_routing   ), priority=10550, match=(eth.src == 00:00:00:00:00:02 && igmp), action=(drop;)
-  table=??(lr_in_ip_routing   ), priority=10460, match=(igmp), action=(clone { outport = "_MC_static"; next; };)
-  table=??(lr_in_ip_routing   ), priority=10460, match=(mldv1 || mldv2), action=(clone { outport = "_MC_static"; next; };)
 ])
 
 AT_CLEANUP
@@ -9954,19 +9954,19 @@ check ovn-nbctl qos-add ls to-lport 102 ip4 dscp=16
 check ovn-nbctl qos-add ls to-lport 103 ip4 dscp=17 mark=18
 check ovn-nbctl --wait=sb sync
 
-AT_CHECK([ovn-sbctl lflow-list ls | grep qos | sed 's/table=../table=??/'], [0], [dnl
-  table=??(ls_in_qos_mark     ), priority=103  , match=(ip4), action=(ip.dscp = 17; pkt.mark = 18; next;)
-  table=??(ls_in_qos_mark     ), priority=102  , match=(ip4), action=(ip.dscp = 16; next;)
-  table=??(ls_in_qos_mark     ), priority=101  , match=(ip4), action=(pkt.mark = 15; next;)
+AT_CHECK([ovn-sbctl lflow-list ls | grep qos | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_qos_mark     ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_qos_meter    ), priority=100  , match=(ip4), action=(set_meter(100, 1000); next;)
+  table=??(ls_in_qos_mark     ), priority=101  , match=(ip4), action=(pkt.mark = 15; next;)
+  table=??(ls_in_qos_mark     ), priority=102  , match=(ip4), action=(ip.dscp = 16; next;)
+  table=??(ls_in_qos_mark     ), priority=103  , match=(ip4), action=(ip.dscp = 17; pkt.mark = 18; next;)
   table=??(ls_in_qos_meter    ), priority=0    , match=(1), action=(next;)
-  table=??(ls_out_qos_mark    ), priority=103  , match=(ip4), action=(ip.dscp = 17; pkt.mark = 18; next;)
-  table=??(ls_out_qos_mark    ), priority=102  , match=(ip4), action=(ip.dscp = 16; next;)
-  table=??(ls_out_qos_mark    ), priority=101  , match=(ip4), action=(pkt.mark = 15; next;)
+  table=??(ls_in_qos_meter    ), priority=100  , match=(ip4), action=(set_meter(100, 1000); next;)
   table=??(ls_out_qos_mark    ), priority=0    , match=(1), action=(next;)
-  table=??(ls_out_qos_meter   ), priority=100  , match=(ip4), action=(set_meter(100, 1000); next;)
+  table=??(ls_out_qos_mark    ), priority=101  , match=(ip4), action=(pkt.mark = 15; next;)
+  table=??(ls_out_qos_mark    ), priority=102  , match=(ip4), action=(ip.dscp = 16; next;)
+  table=??(ls_out_qos_mark    ), priority=103  , match=(ip4), action=(ip.dscp = 17; pkt.mark = 18; next;)
   table=??(ls_out_qos_meter   ), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_qos_meter   ), priority=100  , match=(ip4), action=(set_meter(100, 1000); next;)
 ])
 
 AT_CLEANUP
@@ -9981,7 +9981,7 @@ check ovn-nbctl ls-add ls
 check ovn-nbctl lsp-add ls lsp
 check ovn-nbctl pg-add pg lsp
 
-m4_define([ACL_FLOWS], [grep -w $1 lflows | grep "$2" | sed 's/table=../table=??/' | sed "s/\($1[[^)]]*\)/$1/" | sort])
+m4_define([ACL_FLOWS], [grep -w $1 lflows | grep "$2" | ovn_strip_lflows | sed "s/\($1[[^)]]*\)/$1/"])
 
 acl_test() {
     direction=$1
@@ -9989,7 +9989,6 @@ acl_test() {
     thing=$3
     eval_stage=$4
     action_stage=$5
-    eval_stage_table=$6
 
     if test "$direction" = "from-lport" ; then
         pipeline=ingress
@@ -10036,7 +10035,7 @@ acl_test() {
 ])
 
     AT_CHECK_UNQUOTED([ACL_FLOWS([$action_stage], [priority=500])], [0], [dnl
-  table=??($action_stage), priority=500  , match=(reg8[[30..31]] == 0), action=(reg8[[30..31]] = 1; next(pipeline=$pipeline,table=$eval_stage_table);)
+  table=??($action_stage), priority=500  , match=(reg8[[30..31]] == 0), action=(reg8[[30..31]] = 1; next(pipeline=$pipeline,table=??);)
 ])
 
     # Change the ACL to tier 3. Ensure the tier match on the ACL has been
@@ -10049,9 +10048,9 @@ acl_test() {
 ])
 
     AT_CHECK_UNQUOTED([ACL_FLOWS([$action_stage], [priority=500])], [0], [dnl
-  table=??($action_stage), priority=500  , match=(reg8[[30..31]] == 0), action=(reg8[[30..31]] = 1; next(pipeline=$pipeline,table=$eval_stage_table);)
-  table=??($action_stage), priority=500  , match=(reg8[[30..31]] == 1), action=(reg8[[30..31]] = 2; next(pipeline=$pipeline,table=$eval_stage_table);)
-  table=??($action_stage), priority=500  , match=(reg8[[30..31]] == 2), action=(reg8[[30..31]] = 3; next(pipeline=$pipeline,table=$eval_stage_table);)
+  table=??($action_stage), priority=500  , match=(reg8[[30..31]] == 0), action=(reg8[[30..31]] = 1; next(pipeline=$pipeline,table=??);)
+  table=??($action_stage), priority=500  , match=(reg8[[30..31]] == 1), action=(reg8[[30..31]] = 2; next(pipeline=$pipeline,table=??);)
+  table=??($action_stage), priority=500  , match=(reg8[[30..31]] == 2), action=(reg8[[30..31]] = 3; next(pipeline=$pipeline,table=??);)
 ])
 
     # Add an untiered ACL. Ensure that it matches on tier 0, but otherwise,
@@ -10064,9 +10063,9 @@ acl_test() {
 ])
 
     AT_CHECK_UNQUOTED([ACL_FLOWS([$action_stage], [priority=500])], [0], [dnl
-  table=??($action_stage), priority=500  , match=(reg8[[30..31]] == 0), action=(reg8[[30..31]] = 1; next(pipeline=$pipeline,table=$eval_stage_table);)
-  table=??($action_stage), priority=500  , match=(reg8[[30..31]] == 1), action=(reg8[[30..31]] = 2; next(pipeline=$pipeline,table=$eval_stage_table);)
-  table=??($action_stage), priority=500  , match=(reg8[[30..31]] == 2), action=(reg8[[30..31]] = 3; next(pipeline=$pipeline,table=$eval_stage_table);)
+  table=??($action_stage), priority=500  , match=(reg8[[30..31]] == 0), action=(reg8[[30..31]] = 1; next(pipeline=$pipeline,table=??);)
+  table=??($action_stage), priority=500  , match=(reg8[[30..31]] == 1), action=(reg8[[30..31]] = 2; next(pipeline=$pipeline,table=??);)
+  table=??($action_stage), priority=500  , match=(reg8[[30..31]] == 2), action=(reg8[[30..31]] = 3; next(pipeline=$pipeline,table=??);)
 ])
 
     # Remove the tier 3 ACL. The remaining ACL is untiered, and there are no
@@ -10089,12 +10088,12 @@ acl_test() {
     AT_CHECK([ACL_FLOWS([$action_stage], [priority=500])], [0], [])
 }
 
-acl_test from-lport "" ls ls_in_acl_eval ls_in_acl_action 8
-acl_test from-lport "--apply-after-lb" ls ls_in_acl_after_lb_eval ls_in_acl_after_lb_action 18
-acl_test to-lport "" ls ls_out_acl_eval ls_out_acl_action 4
-acl_test from-lport "" pg ls_in_acl_eval ls_in_acl_action 8
-acl_test from-lport "--apply-after-lb" pg ls_in_acl_after_lb_eval ls_in_acl_after_lb_action 18
-acl_test to-lport "" pg ls_out_acl_eval ls_out_acl_action 4
+acl_test from-lport "" ls ls_in_acl_eval ls_in_acl_action
+acl_test from-lport "--apply-after-lb" ls ls_in_acl_after_lb_eval ls_in_acl_after_lb_action
+acl_test to-lport "" ls ls_out_acl_eval ls_out_acl_action
+acl_test from-lport "" pg ls_in_acl_eval ls_in_acl_action
+acl_test from-lport "--apply-after-lb" pg ls_in_acl_after_lb_eval ls_in_acl_after_lb_action
+acl_test to-lport "" pg ls_out_acl_eval ls_out_acl_action
 
 AT_CLEANUP
 ])
@@ -10108,7 +10107,7 @@ check ovn-nbctl ls-add ls
 check ovn-nbctl lsp-add ls lsp
 check ovn-nbctl pg-add pg lsp
 
-m4_define([ACL_FLOWS], [grep -w $1 lflows | grep "$2" | sed 's/table=../table=??/' | sed "s/\($1[[^)]]*\)/$1/" | sort])
+m4_define([ACL_FLOWS], [grep -w $1 lflows | grep "$2" | ovn_strip_lflows | sed "s/\($1[[^)]]*\)/$1/" ])
 
 acl_test() {
     direction=$1
@@ -10167,11 +10166,11 @@ check ovn-nbctl --wait=sb sync
 # First, ensure that conntrack is skipped for the localnet port since there
 # isn't a load balancer configured.
 
-AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_pre_lb | grep priority=110 | grep sw-ln | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_pre_lb | grep priority=110 | grep sw-ln | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_pre_lb       ), priority=110  , match=(ip && inport == "sw-ln"), action=(next;)
 ])
 
-AT_CHECK([ovn-sbctl lflow-list sw | grep ls_out_pre_lb | grep priority=110 | grep sw-ln | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_out_pre_lb | grep priority=110 | grep sw-ln | ovn_strip_lflows], [0], [dnl
   table=??(ls_out_pre_lb      ), priority=110  , match=(ip && outport == "sw-ln"), action=(ct_clear; next;)
 ])
 
@@ -10182,10 +10181,10 @@ check ovn-nbctl lb-add lb 10.0.0.1:80 10.0.0.100:8080 tcp
 check ovn-nbctl ls-lb-add sw lb
 check ovn-nbctl --wait=sb sync
 
-AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_pre_lb | grep priority=110 | grep sw-ln | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_pre_lb | grep priority=110 | grep sw-ln | ovn_strip_lflows], [0], [dnl
 ])
 
-AT_CHECK([ovn-sbctl lflow-list sw | grep ls_out_pre_lb | grep priority=110 | grep sw-ln | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_out_pre_lb | grep priority=110 | grep sw-ln | ovn_strip_lflows], [0], [dnl
 ])
 
 # And ensure that removing the load balancer from the switch results in skipping
@@ -10193,11 +10192,11 @@ AT_CHECK([ovn-sbctl lflow-list sw | grep ls_out_pre_lb | grep priority=110 | gre
 check ovn-nbctl ls-lb-del sw lb
 check ovn-nbctl --wait=sb sync
 
-AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_pre_lb | grep priority=110 | grep sw-ln | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_in_pre_lb | grep priority=110 | grep sw-ln | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_pre_lb       ), priority=110  , match=(ip && inport == "sw-ln"), action=(next;)
 ])
 
-AT_CHECK([ovn-sbctl lflow-list sw | grep ls_out_pre_lb | grep priority=110 | grep sw-ln | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([ovn-sbctl lflow-list sw | grep ls_out_pre_lb | grep priority=110 | grep sw-ln | ovn_strip_lflows], [0], [dnl
   table=??(ls_out_pre_lb      ), priority=110  , match=(ip && outport == "sw-ln"), action=(ct_clear; next;)
 ])
 
@@ -11365,34 +11364,34 @@ check ovn-nbctl acl-add pg_dgw from-lport 1002 "inport == @pg_dgw && ip4" allow-
 check ovn-nbctl acl-add pg_dgw to-lport 1003 "outport == @pg_dgw && ip4" allow-related
 
 # Check skip conntrack option with 'enable_router_port_acl' default (false)
-AT_CHECK([ovn-sbctl dump-flows S1 | grep pre_acl | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_pre_acl      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=110  , match=(eth.mcast), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=110  , match=(ip && inport == "S1-R1"), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
-  table=? (ls_in_pre_acl      ), priority=0    , match=(1), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(eth.mcast), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(ip && outport == "S1-R1"), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
-  table=? (ls_out_pre_acl     ), priority=0    , match=(1), action=(next;)
+AT_CHECK([ovn-sbctl dump-flows S1 | grep pre_acl | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_acl      ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(eth.mcast), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(ip && inport == "S1-R1"), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(eth.mcast), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(ip && outport == "S1-R1"), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
 ])
 
 # Enable 'enable_router_port_acl' and check the flows
 check ovn-nbctl --wait=sb lsp-set-options S1-R1 router-port=R1-S1 enable_router_port_acl=true
-AT_CHECK([ovn-sbctl dump-flows S1 | grep pre_acl | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_pre_acl      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=110  , match=(eth.mcast), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
-  table=? (ls_in_pre_acl      ), priority=0    , match=(1), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(eth.mcast), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
-  table=? (ls_out_pre_acl     ), priority=0    , match=(1), action=(next;)
+AT_CHECK([ovn-sbctl dump-flows S1 | grep pre_acl | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_acl      ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(eth.mcast), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(eth.mcast), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
 ])
 
 # ICMP packets from router port to external network should go to conntrack
@@ -11410,50 +11409,50 @@ ct_next(ct_state=est|trk) {
 
 # Disable 'enable_router_port_acl' and check the flows
 check ovn-nbctl --wait=sb lsp-set-options S1-R1 router-port=R1-S1 enable_router_port_acl=false
-AT_CHECK([ovn-sbctl dump-flows S1 | grep pre_acl | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_pre_acl      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=110  , match=(eth.mcast), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=110  , match=(ip && inport == "S1-R1"), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
-  table=? (ls_in_pre_acl      ), priority=0    , match=(1), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(eth.mcast), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(ip && outport == "S1-R1"), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
-  table=? (ls_out_pre_acl     ), priority=0    , match=(1), action=(next;)
+AT_CHECK([ovn-sbctl dump-flows S1 | grep pre_acl | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_acl      ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(eth.mcast), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(ip && inport == "S1-R1"), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(eth.mcast), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(ip && outport == "S1-R1"), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
 ])
 
 # Clear the option 'enable_router_port_acl' and check the flows.  Before that enable the option.
 check ovn-nbctl --wait=sb lsp-set-options S1-R1 router-port=R1-S1 enable_router_port_acl=true
-AT_CHECK([ovn-sbctl dump-flows S1 | grep pre_acl | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_pre_acl      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=110  , match=(eth.mcast), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
-  table=? (ls_in_pre_acl      ), priority=0    , match=(1), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(eth.mcast), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
-  table=? (ls_out_pre_acl     ), priority=0    , match=(1), action=(next;)
+AT_CHECK([ovn-sbctl dump-flows S1 | grep pre_acl | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_acl      ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(eth.mcast), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(eth.mcast), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
 ])
 
 check ovn-nbctl --wait=sb lsp-set-options S1-R1 router-port=R1-S1
-AT_CHECK([ovn-sbctl dump-flows S1 | grep pre_acl | sed 's/table=./table=?/'], [0], [dnl
-  table=? (ls_in_pre_acl      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=110  , match=(eth.mcast), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=110  , match=(ip && inport == "S1-R1"), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
-  table=? (ls_in_pre_acl      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
-  table=? (ls_in_pre_acl      ), priority=0    , match=(1), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(eth.mcast), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(ip && outport == "S1-R1"), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
-  table=? (ls_out_pre_acl     ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
-  table=? (ls_out_pre_acl     ), priority=0    , match=(1), action=(next;)
+AT_CHECK([ovn-sbctl dump-flows S1 | grep pre_acl | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_acl      ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(eth.mcast), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(ip && inport == "S1-R1"), action=(next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(eth.mcast), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(ip && outport == "S1-R1"), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(nd || nd_rs || nd_ra || mldv1 || mldv2 || (udp && udp.src == 546 && udp.dst == 547)), action=(next;)
 ])
 
 AT_CLEANUP
