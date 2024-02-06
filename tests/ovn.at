@@ -31574,21 +31574,21 @@ wait_for_ports_up
 ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
-AT_CHECK([grep "ls_in_lookup_fdb" sw0flows | sort], [0], [dnl
-  table=2 (ls_in_lookup_fdb   ), priority=0    , dnl
+AT_CHECK([grep "ls_in_lookup_fdb" sw0flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_lookup_fdb   ), priority=0    , dnl
 match=(1), action=(next;)
-  table=2 (ls_in_lookup_fdb   ), priority=100  , dnl
+  table=??(ls_in_lookup_fdb   ), priority=100  , dnl
 match=(inport == "sw0-p1"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
-  table=2 (ls_in_lookup_fdb   ), priority=100  , dnl
+  table=??(ls_in_lookup_fdb   ), priority=100  , dnl
 match=(inport == "sw0-p3"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
 ])
 
-AT_CHECK([grep "ls_in_put_fdb" sw0flows | sort], [0], [dnl
-  table=3 (ls_in_put_fdb      ), priority=0    , dnl
+AT_CHECK([grep "ls_in_put_fdb" sw0flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_put_fdb      ), priority=0    , dnl
 match=(1), action=(next;)
-  table=3 (ls_in_put_fdb      ), priority=100  , dnl
+  table=??(ls_in_put_fdb      ), priority=100  , dnl
 match=(inport == "sw0-p1" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
-  table=3 (ls_in_put_fdb      ), priority=100  , dnl
+  table=??(ls_in_put_fdb      ), priority=100  , dnl
 match=(inport == "sw0-p3" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
 ])
 
