@@ -34796,9 +34796,9 @@ wait_row_count mac_binding 1 ip="192.168.10.20"
 dp_key=$(printf "0x%x" $(as hv1 fetch_column datapath tunnel_key external_ids:name=gw))
 port_key=$(printf "0x%x" $(as hv1 fetch_column port_binding tunnel_key logical_port=gw-public))
 
-AT_CHECK_UNQUOTED([as hv1 ovs-ofctl dump-flows br-int table=79 --no-stats | strip_cookie | sort], [0], [dnl
- table=79, priority=100,ip,reg14=${port_key},metadata=${dp_key},dl_src=00:00:00:00:10:10,nw_src=192.168.10.10 actions=drop
- table=79, priority=100,ip,reg14=${port_key},metadata=${dp_key},dl_src=00:00:00:00:10:20,nw_src=192.168.10.20 actions=drop
+AT_CHECK_UNQUOTED([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE --no-stats | strip_cookie | sort], [0], [dnl
+ table=OFTABLE_MAC_CACHE_USE, priority=100,ip,reg14=${port_key},metadata=${dp_key},dl_src=00:00:00:00:10:10,nw_src=192.168.10.10 actions=drop
+ table=OFTABLE_MAC_CACHE_USE, priority=100,ip,reg14=${port_key},metadata=${dp_key},dl_src=00:00:00:00:10:20,nw_src=192.168.10.20 actions=drop
 ])
 
 timestamp=$(fetch_column mac_binding timestamp ip="192.168.10.20")
@@ -34806,8 +34806,8 @@ timestamp=$(fetch_column mac_binding timestamp ip="192.168.10.20")
 send_udp hv1 ext1 10
 send_udp hv2 ext2 20
 
-OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int table=79 | grep "192.168.10.10" | grep -q "n_packets=1"])
-OVS_WAIT_UNTIL([as hv2 ovs-ofctl dump-flows br-int table=79 | grep "192.168.10.20" | grep -q "n_packets=1"])
+OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | grep "192.168.10.10" | grep -q "n_packets=1"])
+OVS_WAIT_UNTIL([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | grep "192.168.10.20" | grep -q "n_packets=1"])
 
 # Set the MAC binding aging threshold
 AT_CHECK([ovn-nbctl set logical_router gw options:mac_binding_age_threshold=5])
@@ -34835,7 +34835,7 @@ OVS_WAIT_UNTIL([
     test "0" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.20')"
 ])
 
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=79 --no-stats | strip_cookie], [0], [])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE --no-stats | strip_cookie], [0], [])
 
 # Test CIDR-based threshold configuration
 check ovn-nbctl set logical_router gw options:mac_binding_age_threshold="192.168.10.0/255.255.255.0:2;192.168.10.64/26:0;192.168.10.20:0"
