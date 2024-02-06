@@ -11579,7 +11579,7 @@ test_ip_packet()
     AT_CAPTURE_FILE([offlows])
     OVS_WAIT_UNTIL([
         as $active_gw ovs-ofctl dump-flows br-int > offlows
-        test `grep table=66 offlows | grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
+        test `grep table=OFTABLE_MAC_BINDING offlows | grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
     ])
 
     # Packet to Expect at ext1 chassis, outside1 port
@@ -11842,7 +11842,7 @@ test_ip_packet()
     check as ext1 ovs-appctl netdev-dummy/receive ext1-vif1 $arp_reply
 
     OVS_WAIT_UNTIL([
-        test `as $active_gw ovs-ofctl dump-flows br-int | grep table=66 | \
+        test `as $active_gw ovs-ofctl dump-flows br-int | grep table=OFTABLE_MAC_BINDING | \
 grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
     ])
 
@@ -12554,7 +12554,7 @@ packet=${foo_mac}${foo1_mac}080045000028000000004006a916${foo1_ip}${dst_ip}00351
 
 AS_BOX([Wait for GARPs announcing gw IP to arrive])
 OVS_WAIT_UNTIL([
-    test `as hv2 ovs-ofctl dump-flows br-int | grep table=66 | \
+    test `as hv2 ovs-ofctl dump-flows br-int | grep table=OFTABLE_MAC_BINDING | \
 grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
     ])
 
@@ -31834,7 +31834,7 @@ ovn-sbctl create mac_binding ip=10.0.0.14 logical_port=lr0-sw0 \
 mac="50\:54\:00\:00\:00\:14" datapath=$lr0_dp_uuid
 
 # Wait till the mac_binding flows appear in hv1
-OVS_WAIT_UNTIL([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=66 \
+OVS_WAIT_UNTIL([test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING \
 | grep -c  reg0=0xa00000e)])
 
 src_mac=405400000004
@@ -34118,7 +34118,7 @@ ovn-nbctl --wait=hv lr-route-add lr0 0.0.0.0/0 172.16.1.1
 
 test_mac_binding_flows() {
     local priority=$1 mac=$2 count=$3
-    OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int | grep table=66 | grep priority=${priority} | grep actions=mod_dl_dst:${mac} | wc -l) -eq ${count}])
+    OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int | grep table=OFTABLE_MAC_BINDING | grep priority=${priority} | grep actions=mod_dl_dst:${mac} | wc -l) -eq ${count}])
 }
 # Create SB MAC_Binding entry on external gateway port
 lr0_dp_uuid=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
@@ -34216,7 +34216,7 @@ check ovn-nbctl --wait=sb sync
 
 test_mac_binding_flows() {
     local hv=$1 mac=$2 count=$3
-    OVS_WAIT_UNTIL([test $(as $hv ovs-ofctl dump-flows br-int | grep table=66 | grep priority=100 | grep -c actions=mod_dl_dst:${mac}) -eq ${count}])
+    OVS_WAIT_UNTIL([test $(as $hv ovs-ofctl dump-flows br-int | grep table=OFTABLE_MAC_BINDING | grep priority=100 | grep -c actions=mod_dl_dst:${mac}) -eq ${count}])
 }
 
 # Create SB MAC_Binding entry on external gateway port
