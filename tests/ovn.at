@@ -21078,7 +21078,7 @@ check ovn-nbctl set logical_router_policy $policy options:pkt_mark=100
 check ovn-nbctl --wait=hv sync
 as hv2
 # add a flow in egress pipeline to check pkt marking
-ovs-ofctl --protocols=OpenFlow13 add-flow br-int "table=OFTABLE_OUTPUT_LARGE_PKT_DETECT,priority=200,ip,nw_src=172.16.1.2,pkt_mark=0x64 actions=resubmit(,38)"
+ovs-ofctl --protocols=OpenFlow13 add-flow br-int "table=OFTABLE_OUTPUT_LARGE_PKT_DETECT,priority=200,ip,nw_src=172.16.1.2,pkt_mark=0x64 actions=resubmit(,OFTABLE_OUTPUT_LARGE_PKT_PROCESS)"
 
 dst_ip=$(ip_to_hex 172 16 2 10)
 fip_ip=$(ip_to_hex 172 16 1 2)
