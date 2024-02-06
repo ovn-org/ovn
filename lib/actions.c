@@ -117,6 +117,32 @@ encode_controller_op(enum action_opcode opcode, uint32_t meter_id,
     encode_finish_controller_op(ofs, ofpacts);
 }
 
+size_t
+encode_start_ovn_field_note(enum ovn_field_id id, struct ofpbuf *ofpacts)
+{
+    size_t offset = ofpacts->size;
+
+    ofpact_put_NOTE(ofpacts);
+    struct ovn_field_note_header *hdr = ofpbuf_put_zeros(ofpacts, sizeof *hdr);
+    *hdr = (struct ovn_field_note_header) {
+        .magic = OVN_FIELD_NOTE_MAGIC,
+        .type = htons(id),
+    };
+
+    return offset;
+}
+
+void
+encode_finish_ovn_field_note(size_t offset, struct ofpbuf *ofpacts)
+{
+    struct ofpact_note *note = ofpbuf_at_assert(ofpacts, offset, sizeof *note);
+
+    ofpacts->header = note;
+    note->length = ofpacts->size - (offset + sizeof *note);
+
+    ofpact_finish_NOTE(ofpacts, &note);
+}
+
 static void
 init_stack(struct ofpact_stack *stack, enum mf_field_id field)
 {
@@ -3808,31 +3834,27 @@ format_OVNFIELD_LOAD(const struct ovnact_load *load , struct ds *s)
 
 static void
 encode_OVNFIELD_LOAD(const struct ovnact_load *load,
-            const struct ovnact_encode_params *ep,
-            struct ofpbuf *ofpacts)
+                     const struct ovnact_encode_params *ep OVS_UNUSED,
+                     struct ofpbuf *ofpacts)
 {
     const struct ovn_field *f = ovn_field_from_name(load->dst.symbol->name);
+    size_t offset = encode_start_ovn_field_note(f->id, ofpacts);
+
     switch (f->id) {
     case OVN_ICMP4_FRAG_MTU: {
-        size_t oc_offset = encode_start_controller_op(
-            ACTION_OPCODE_PUT_ICMP4_FRAG_MTU, true,
-            ep->ctrl_meter_id, ofpacts);
         ofpbuf_put(ofpacts, &load->imm.value.be16_int, sizeof(ovs_be16));
-        encode_finish_controller_op(oc_offset, ofpacts);
         break;
     }
     case OVN_ICMP6_FRAG_MTU: {
-        size_t oc_offset = encode_start_controller_op(
-            ACTION_OPCODE_PUT_ICMP6_FRAG_MTU, true,
-            ep->ctrl_meter_id, ofpacts);
         ofpbuf_put(ofpacts, &load->imm.value.be32_int, sizeof(ovs_be32));
-        encode_finish_controller_op(oc_offset, ofpacts);
         break;
     }
     case OVN_FIELD_N_IDS:
     default:
         OVS_NOT_REACHED();
     }
+
+    encode_finish_ovn_field_note(offset, ofpacts);
 }
 
 static void

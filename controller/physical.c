@@ -1277,7 +1277,7 @@ reply_imcp_error_if_pkt_too_big(struct ovn_desired_flow_table *flow_table,
     ip_ttl->ttl = 255;
 
     uint16_t frag_mtu = mtu - ETHERNET_OVERHEAD;
-    size_t frag_mtu_oc_offset;
+    size_t note_offset;
     if (is_ipv6) {
         /* icmp6.type = 2 (Packet Too Big) */
         /* icmp6.code = 0 */
@@ -1289,9 +1289,8 @@ reply_imcp_error_if_pkt_too_big(struct ovn_desired_flow_table *flow_table,
             &inner_ofpacts, mf_from_id(MFF_ICMPV6_CODE), &icmp_code, NULL);
 
         /* icmp6.frag_mtu */
-        frag_mtu_oc_offset = encode_start_controller_op(
-            ACTION_OPCODE_PUT_ICMP6_FRAG_MTU, true, NX_CTLR_NO_METER,
-            &inner_ofpacts);
+        note_offset = encode_start_ovn_field_note(OVN_ICMP6_FRAG_MTU,
+                                                  &inner_ofpacts);
         ovs_be32 frag_mtu_ovs = htonl(frag_mtu);
         ofpbuf_put(&inner_ofpacts, &frag_mtu_ovs, sizeof(frag_mtu_ovs));
     } else {
@@ -1305,13 +1304,12 @@ reply_imcp_error_if_pkt_too_big(struct ovn_desired_flow_table *flow_table,
             &inner_ofpacts, mf_from_id(MFF_ICMPV4_CODE), &icmp_code, NULL);
 
         /* icmp4.frag_mtu = */
-        frag_mtu_oc_offset = encode_start_controller_op(
-            ACTION_OPCODE_PUT_ICMP4_FRAG_MTU, true, NX_CTLR_NO_METER,
-            &inner_ofpacts);
+        note_offset = encode_start_ovn_field_note(OVN_ICMP4_FRAG_MTU,
+                                                  &inner_ofpacts);
         ovs_be16 frag_mtu_ovs = htons(frag_mtu);
         ofpbuf_put(&inner_ofpacts, &frag_mtu_ovs, sizeof(frag_mtu_ovs));
     }
-    encode_finish_controller_op(frag_mtu_oc_offset, &inner_ofpacts);
+    encode_finish_ovn_field_note(note_offset, &inner_ofpacts);
 
     /* Finally, submit the ICMP error back to the ingress pipeline */
     put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, &inner_ofpacts);
