@@ -6159,7 +6159,7 @@ OVS_WAIT_UNTIL([
 test $(ovs-ofctl dump-flows br-int | grep -c 'table=OFTABLE_ECMP_NH_MAC, n_packets') -eq 0
 ])
 OVS_WAIT_UNTIL([
-test $(ovs-ofctl dump-flows br-int | grep -c 'table=77, n_packets') -eq 0
+test $(ovs-ofctl dump-flows br-int | grep -c 'table=OFTABLE_ECMP_NH, n_packets') -eq 0
 ])
 
 ovs-ofctl dump-flows br-int
@@ -6352,7 +6352,7 @@ OVS_WAIT_UNTIL([
 test $(ovs-ofctl dump-flows br-int | grep -c 'table=OFTABLE_ECMP_NH_MAC, n_packets') -eq 0
 ])
 OVS_WAIT_UNTIL([
-test $(ovs-ofctl dump-flows br-int | grep -c 'table=77, n_packets') -eq 0
+test $(ovs-ofctl dump-flows br-int | grep -c 'table=OFTABLE_ECMP_NH, n_packets') -eq 0
 ])
 
 ovs-ofctl dump-flows br-int
