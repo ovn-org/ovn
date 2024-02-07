@@ -2463,7 +2463,7 @@ execute_ct_nat(const struct ovnact_ct_nat *ct_nat,
 }
 
 static void
-execute_ct_commit_nat(const struct ovnact_ct_nat *ct_nat,
+execute_ct_commit_nat(const struct ovnact_ct_commit_nat *ct_nat,
                       const struct ovntrace_datapath *dp, struct flow *uflow,
                       enum ovnact_pipeline pipeline, struct ovs_list *super)
 {
