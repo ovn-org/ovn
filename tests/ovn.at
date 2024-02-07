@@ -74,7 +74,7 @@ m4_divert_text([PREPARE_TESTS],
      if [[ -n "$4" ]]; then
        cmd=$4
      else
-       cmd=:
+       cmd=cat
      fi
      OVS_WAIT_UNTIL(
        [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
@@ -169,7 +169,7 @@ m4_define([OVN_CHECK_PACKETS_REMOVE_BROADCAST],
    AT_CHECK([sort $rcv_text], [0], [expout], [ignore], [dump_diff__ "$1" "$2"])])
 
 m4_define([OVN_CHECK_PACKETS_CONTAIN],
-  [ovn_wait_packets__ "$1" "$2" "__file__:__line__"])
+  [ovn_wait_packets__ "$1" "$2" "__file__:__line__" $3])
 
 # OVN_CHECK_PACKETS_UNIQ succeeds if some expected packets are duplicated.
 # It fails if unexpected packets are received.
