@@ -288,6 +288,8 @@ lr_nat_record_init(struct lr_nat_record *lrnat_rec,
         struct ovn_nat *nat_entry = &lrnat_rec->nat_entries[i];
 
         nat_entry->nb = nat;
+        nat_entry->is_router_ip = false;
+
         if (!extract_ip_addresses(nat->external_ip,
                                   &nat_entry->ext_addrs) ||
                 !nat_entry_is_valid(nat_entry)) {
@@ -302,6 +304,10 @@ lr_nat_record_init(struct lr_nat_record *lrnat_rec,
 
         /* If this is a SNAT rule add the IP to the set of unique SNAT IPs. */
         if (!strcmp(nat->type, "snat")) {
+            if (sset_contains(&od->router_ips, nat->external_ip)) {
+                nat_entry->is_router_ip = true;
+            }
+
             if (!nat_entry_is_v6(nat_entry)) {
                 snat_ip_add(lrnat_rec,
                             nat_entry->ext_addrs.ipv4_addrs[0].addr_s,

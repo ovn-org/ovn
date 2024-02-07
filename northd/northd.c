@@ -431,6 +431,7 @@ ovn_datapath_create(struct hmap *datapaths, const struct uuid *key,
     hmap_insert(datapaths, &od->key_node, uuid_hash(&od->key));
     od->lr_group = NULL;
     hmap_init(&od->ports);
+    sset_init(&od->router_ips);
     return od;
 }
 
@@ -459,6 +460,7 @@ ovn_datapath_destroy(struct hmap *datapaths, struct ovn_datapath *od)
         free(od->l3dgw_ports);
         destroy_mcast_info_for_datapath(od);
         destroy_ports_for_datapath(od);
+        sset_destroy(&od->router_ips);
         free(od);
     }
 }
@@ -2190,6 +2192,19 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
 
             op->lrp_networks = lrp_networks;
             op->od = od;
+
+            for (size_t j = 0; j < op->lrp_networks.n_ipv4_addrs; j++) {
+                sset_add(&op->od->router_ips,
+                         op->lrp_networks.ipv4_addrs[j].addr_s);
+            }
+            for (size_t j = 0; j < op->lrp_networks.n_ipv6_addrs; j++) {
+                /* Exclude the LLA. */
+                if (!in6_is_lla(&op->lrp_networks.ipv6_addrs[j].addr)) {
+                    sset_add(&op->od->router_ips,
+                             op->lrp_networks.ipv6_addrs[j].addr_s);
+                }
+            }
+
             hmap_insert(&od->ports, &op->dp_node,
                         hmap_node_hash(&op->key_node));
 
@@ -8302,22 +8317,27 @@ build_lswitch_rport_arp_req_flows_for_lbnats(
         struct ovn_nat *nat_entry =
             CONTAINER_OF(ovs_list_front(&snat_ip->snat_entries),
                          struct ovn_nat, ext_addr_list_node);
+        if (nat_entry->is_router_ip) {
+            /* If its a router ip, then there is no need to add the ARP
+             * request forwarder flows as it will be added by
+             * build_lswitch_rport_arp_req_flows(). */
+            continue;
+        }
+
         const struct nbrec_nat *nat = nat_entry->nb;
 
         /* Check if the ovn port has a network configured on which we could
          * expect ARP requests/NS for the SNAT external_ip.
          */
         if (nat_entry_is_v6(nat_entry)) {
-            if (!lr_stateful_rec ||
-                !sset_contains(&lr_stateful_rec->lb_ips->ips_v6,
+            if (!sset_contains(&lr_stateful_rec->lb_ips->ips_v6,
                                nat->external_ip)) {
                 build_lswitch_rport_arp_req_flow(
                     nat->external_ip, AF_INET6, sw_op, sw_od, 80, lflows,
                     stage_hint, lflow_ref);
             }
         } else {
-            if (!lr_stateful_rec ||
-                !sset_contains(&lr_stateful_rec->lb_ips->ips_v4,
+            if (!sset_contains(&lr_stateful_rec->lb_ips->ips_v4,
                                nat->external_ip)) {
                 build_lswitch_rport_arp_req_flow(
                     nat->external_ip, AF_INET, sw_op, sw_od, 80, lflows,

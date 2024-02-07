@@ -293,6 +293,7 @@ struct ovn_datapath {
     struct ovn_datapath **ls_peers;
     size_t n_ls_peers;
     size_t n_allocated_ls_peers;
+    struct sset router_ips; /* Router port IPs except the IPv6 LLAs. */
 
     /* Logical switch data. */
     struct ovn_port **router_ports;

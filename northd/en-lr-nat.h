@@ -37,6 +37,8 @@ struct ovn_nat {
                                          * list of nat entries. Currently
                                          * only used for SNAT.
                                          */
+    bool is_router_ip; /* Indicates if the NAT external_ip is also one of
+                        * router's lrp ip.  Can be 'true' only for SNAT. */
 };
 
 /* Stores the list of SNAT entries referencing a unique SNAT IP address.
