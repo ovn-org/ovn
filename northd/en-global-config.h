@@ -19,6 +19,7 @@ struct chassis_features {
     bool ct_lb_related;
     bool fdb_timestamp;
     bool ls_dpg_column;
+    bool ct_commit_nat_v2;
 };
 
 struct global_config_tracked_data {

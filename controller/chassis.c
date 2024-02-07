@@ -370,6 +370,7 @@ chassis_build_other_config(const struct ovs_chassis_cfg *ovs_cfg,
     smap_replace(config, OVN_FEATURE_CT_LB_RELATED, "true");
     smap_replace(config, OVN_FEATURE_FDB_TIMESTAMP, "true");
     smap_replace(config, OVN_FEATURE_LS_DPG_COLUMN, "true");
+    smap_replace(config, OVN_FEATURE_CT_COMMIT_NAT_V2, "true");
 }
 
 /*
@@ -509,6 +510,12 @@ chassis_other_config_changed(const struct ovs_chassis_cfg *ovs_cfg,
         return true;
     }
 
+    if (!smap_get_bool(&chassis_rec->other_config,
+                       OVN_FEATURE_CT_COMMIT_NAT_V2,
+                       false)) {
+        return true;
+    }
+
     return false;
 }
 
@@ -640,6 +647,7 @@ update_supported_sset(struct sset *supported)
     sset_add(supported, OVN_FEATURE_CT_LB_RELATED);
     sset_add(supported, OVN_FEATURE_FDB_TIMESTAMP);
     sset_add(supported, OVN_FEATURE_LS_DPG_COLUMN);
+    sset_add(supported, OVN_FEATURE_CT_COMMIT_NAT_V2);
 }
 
 static void

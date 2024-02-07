@@ -369,6 +369,7 @@ northd_enable_all_features(struct ed_type_global_config *data)
         .ct_lb_related = true,
         .fdb_timestamp = true,
         .ls_dpg_column = true,
+        .ct_commit_nat_v2 = true,
     };
 }
 
@@ -428,6 +429,15 @@ build_chassis_features(const struct sbrec_chassis_table *sbrec_chassis_table,
         if (!ls_dpg_column &&
             chassis_features->ls_dpg_column) {
             chassis_features->ls_dpg_column = false;
+        }
+
+        bool ct_commit_nat_v2 =
+                smap_get_bool(&chassis->other_config,
+                              OVN_FEATURE_CT_COMMIT_NAT_V2,
+                              false);
+        if (!ct_commit_nat_v2 &&
+            chassis_features->ct_commit_nat_v2) {
+            chassis_features->ct_commit_nat_v2 = false;
         }
     }
 }
