@@ -162,16 +162,16 @@ to OpenFlow flows programmed by ``ovn-controller``.  See the `ovn-trace(8)`_
 man page for more detail.
 
 
-.. _ovn-architecture: http://openvswitch.org/support/dist-docs/ovn-architecture.7.html
-.. _ovn-nb(5): http://openvswitch.org/support/dist-docs/ovn-nb.5.html
-.. _ovn-sb(5): http://openvswitch.org/support/dist-docs/ovn-sb.5.html
+.. _ovn-architecture: http://www.ovn.org/support/dist-docs/ovn-architecture.7.html
+.. _ovn-nb(5): http://www.ovn.org/support/dist-docs/ovn-nb.5.html
+.. _ovn-sb(5): http://www.ovn.org/support/dist-docs/ovn-sb.5.html
 .. _vtep(5): http://openvswitch.org/support/dist-docs/vtep.5.html
-.. _ovn-northd(8): http://openvswitch.org/support/dist-docs/ovn-northd.8.html
-.. _ovn-controller(8): http://openvswitch.org/support/dist-docs/ovn-controller.8.html
-.. _ovn-controller-vtep(8): http://openvswitch.org/support/dist-docs/ovn-controller-vtep.8.html
+.. _ovn-northd(8): http://www.ovn.org/support/dist-docs/ovn-northd.8.html
+.. _ovn-controller(8): http://www.ovn.org/support/dist-docs/ovn-controller.8.html
+.. _ovn-controller-vtep(8): http://www.ovn.org/support/dist-docs/ovn-controller-vtep.8.html
 .. _vtep-ctl(8): http://openvswitch.org/support/dist-docs/vtep-ctl.8.html
-.. _ovn-nbctl(8): http://openvswitch.org/support/dist-docs/ovn-nbctl.8.html
-.. _ovn-sbctl(8): http://openvswitch.org/support/dist-docs/ovn-sbctl.8.html
-.. _ovn-trace(8): http://openvswitch.org/support/dist-docs/ovn-trace.8.html
+.. _ovn-nbctl(8): http://www.ovn.org/support/dist-docs/ovn-nbctl.8.html
+.. _ovn-sbctl(8): http://www.ovn.org/support/dist-docs/ovn-sbctl.8.html
+.. _ovn-trace(8): http://www.ovn.org/support/dist-docs/ovn-trace.8.html
 .. _ovs-advanced: https://github.com/openvswitch/ovs/blob/master/Documentation/tutorials/ovs-advanced.rst
 
