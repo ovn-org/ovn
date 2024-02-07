@@ -81,6 +81,7 @@ enum mff_log_flags_bits {
     MLF_USE_LB_AFF_SESSION_BIT = 14,
     MLF_LOCALNET_BIT = 15,
     MLF_RX_FROM_TUNNEL_BIT = 16,
+    MLF_ICMP_SNAT_BIT = 17,
 };
 
 /* MFF_LOG_FLAGS_REG flag assignments */
@@ -134,6 +135,8 @@ enum mff_log_flags {
 
     /* Indicate the packet has been received from the tunnel. */
     MLF_RX_FROM_TUNNEL = (1 << MLF_RX_FROM_TUNNEL_BIT),
+
+    MLF_ICMP_SNAT = (1 << MLF_ICMP_SNAT_BIT),
 };
 
 /* OVN logical fields

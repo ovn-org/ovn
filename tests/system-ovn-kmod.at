@@ -977,7 +977,7 @@ dnl check ovn-nbctl lr-lb-add lr lb1
 check ovn-nbctl set logical_router lr options:chassis=hv1
 check ovn-nbctl set logical_router_port lr-internal options:gateway_mtu=800
 
-check ovn-nbctl lr-nat-add lr snat 192.168.1.1 172.16.1.2/24
+check ovn-nbctl lr-nat-add lr snat 192.168.1.1 172.16.1.2
 
 check ovn-nbctl --wait=hv sync
 
@@ -1032,6 +1032,7 @@ NS_CHECK_EXEC([client], [$PYTHON3 ./client.py])
 
 dnl Expecting 2 outgoing packets and 2 fragments back - 8 lines total.
 OVS_WAIT_UNTIL([test "$(cat client.tcpdump | wc -l)" = "8"])
+AT_CHECK([test $(grep -c "need to frag (mtu 800)" server.tcpdump) -eq 1])
 
 ovn-appctl -t ovn-controller vlog/set info
 

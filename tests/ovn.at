@@ -20601,12 +20601,12 @@ test_ip_packet_larger() {
         expected=${expected}0000000000000000000000000000
         echo $expected > br_phys_n1.expected
     else
-        src_ip=`ip_to_hex 172.168.0.100`
+        src_ip=`ip_to_hex 10 0 0 1`
         dst_ip=`ip_to_hex 10 0 0 3`
         # pkt len should be 146 (28 (icmp packet) + 118 (orig ip + payload))
         reply_pkt_len=008e
         ip_csum=fc97
-        icmp_reply=${src_mac}${dst_mac}08004500${reply_pkt_len}00004000fe01c55f
+        icmp_reply=${src_mac}${dst_mac}08004500${reply_pkt_len}00004000fe01686b
         icmp_reply=${icmp_reply}${src_ip}${dst_ip}0304${ip_csum}0000$(printf "%04x" $mtu)
         icmp_reply=${icmp_reply}4500${pkt_len}000000003f01c4dd
         icmp_reply=${icmp_reply}${orig_packet_l3}
@@ -20698,7 +20698,7 @@ test_ip6_packet_larger() {
 
     local ipv6_src=10000000000000000000000000000003
     local ipv6_dst=20000000000000000000000000000002
-    local ipv6_rt=20000000000000000000000000000001
+    local ipv6_rt=10000000000000000000000000000001
 
     local payload=0000000000000000000000000000000000000000
     local payload=${payload}0000000000000000000000000000000000000000
