@@ -1020,16 +1020,29 @@ parse_CT_COMMIT_NAT(struct action_context *ctx)
 
     if (ctx->pp->cur_ltable >= ctx->pp->n_tables) {
         lexer_error(ctx->lexer,
-                    "\"ct_commit_related\" action not allowed in last table.");
+                    "\"ct_commit_nat\" action not allowed in last table.");
         return;
     }
 
-    struct ovnact_ct_nat *cn = ovnact_put_CT_COMMIT_NAT(ctx->ovnacts);
-    cn->commit = true;
+    struct ovnact_ct_commit_nat *cn = ovnact_put_CT_COMMIT_NAT(ctx->ovnacts);
     cn->ltable = ctx->pp->cur_ltable + 1;
-    cn->family = AF_UNSPEC;
-    cn->type = OVNACT_CT_NAT_UNSPEC;
-    cn->port_range.exists = false;
+    cn->dnat_zone = true;
+
+    if (!lexer_match(ctx->lexer, LEX_T_LPAREN)) {
+        return;
+    }
+
+    if (lexer_match_id(ctx->lexer, "dnat")) {
+        cn->dnat_zone = true;
+    } else if (lexer_match_id(ctx->lexer, "snat")) {
+        cn->dnat_zone = false;
+    } else {
+        lexer_error(ctx->lexer, "\"ct_commit_nat\" action accepts"
+                    " only \"dnat\" or \"snat\" parameter.");
+        return;
+    }
+
+    lexer_force_match(ctx->lexer, LEX_T_RPAREN);
 }
 
 static void
@@ -1082,9 +1095,10 @@ format_CT_SNAT_IN_CZONE(const struct ovnact_ct_nat *cn, struct ds *s)
 }
 
 static void
-format_CT_COMMIT_NAT(const struct ovnact_ct_nat *cn OVS_UNUSED, struct ds *s)
+format_CT_COMMIT_NAT(const struct ovnact_ct_commit_nat *cn, struct ds *s)
 {
-    ds_put_cstr(s, "ct_commit_nat;");
+    ds_put_cstr(s, "ct_commit_nat");
+    ds_put_cstr(s, cn->dnat_zone ? "(dnat);" : "(snat);");
 }
 
 static void
@@ -1189,18 +1203,43 @@ encode_CT_SNAT_IN_CZONE(const struct ovnact_ct_nat *cn,
 }
 
 static void
-encode_CT_COMMIT_NAT(const struct ovnact_ct_nat *cn,
-                         const struct ovnact_encode_params *ep,
-                         struct ofpbuf *ofpacts)
+encode_CT_COMMIT_NAT(const struct ovnact_ct_commit_nat *cn,
+                     const struct ovnact_encode_params *ep,
+                     struct ofpbuf *ofpacts)
 {
-    enum mf_field_id zone = ep->is_switch
-                            ? MFF_LOG_CT_ZONE
-                            : MFF_LOG_DNAT_ZONE;
-    encode_ct_nat(cn, ep, zone, ofpacts);
+    const size_t ct_offset = ofpacts->size;
+
+    struct ofpact_conntrack *ct = ofpact_put_CT(ofpacts);
+    ct->recirc_table = cn->ltable + first_ptable(ep, ep->pipeline);
+    ct->zone_src.ofs = 0;
+    ct->zone_src.n_bits = 16;
+    ct->flags = NX_CT_F_COMMIT;
+    ct->alg = 0;
+
+    if (ep->is_switch) {
+        ct->zone_src.field = mf_from_id(MFF_LOG_CT_ZONE);
+    } else {
+        ct->zone_src.field = mf_from_id(cn->dnat_zone
+                                        ? MFF_LOG_DNAT_ZONE
+                                        : MFF_LOG_SNAT_ZONE);
+    }
+
+    struct ofpact_nat *nat = ofpact_put_NAT(ofpacts);
+    nat->range_af = AF_UNSPEC;
+    nat->flags = 0;
+
+    ct = ofpbuf_at_assert(ofpacts, ct_offset, sizeof *ct);
+    ofpacts->header = ct;
+    ofpact_finish_CT(ofpacts, &ct);
 }
 
 static void
 ovnact_ct_nat_free(struct ovnact_ct_nat *ct_nat OVS_UNUSED)
+{
+}
+
+static void
+ovnact_ct_commit_nat_free(struct ovnact_ct_commit_nat *cn OVS_UNUSED)
 {
 }
 
