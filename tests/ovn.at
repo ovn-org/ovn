@@ -13401,7 +13401,7 @@ for chassis in gw1 hv1 hv2; do
     echo "checking gw2 -> $chassis"
     OVS_WAIT_UNTIL([
     bfd_cfg=$(ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0)
-    test "$bfd_cfg" = "enable=true min_rx=2000"
+    test "$bfd_cfg" = "check_tnl_key=true enable=true min_rx=2000"
 ])
 done
 ovn-nbctl --wait=hv set NB_Global . options:"bfd-min-tx"=1500
@@ -13409,7 +13409,7 @@ for chassis in gw1 hv1 hv2; do
     echo "checking gw2 -> $chassis"
     OVS_WAIT_UNTIL([
     bfd_cfg=$(ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0)
-    test "$bfd_cfg" = "enable=true min_rx=2000 min_tx=1500"
+    test "$bfd_cfg" = "check_tnl_key=true enable=true min_rx=2000 min_tx=1500"
 ])
 done
 ovn-nbctl remove NB_Global . options "bfd-min-rx"
@@ -13418,7 +13418,7 @@ for chassis in gw1 hv1 hv2; do
     echo "checking gw2 -> $chassis"
     OVS_WAIT_UNTIL([
     bfd_cfg=$(ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0)
-    test "$bfd_cfg" = "enable=true min_tx=1500 mult=15"
+    test "$bfd_cfg" = "check_tnl_key=true enable=true min_tx=1500 mult=15"
 ])
 done
 
