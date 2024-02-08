@@ -690,19 +690,24 @@ lflow_table_add_lflow(struct lflow_table *lflow_table,
             if (lrn->dpgrp_lflow) {
                 lrn->dpgrp_bitmap = bitmap_clone(dp_bitmap, dp_bitmap_len);
                 lrn->dpgrp_bitmap_len = dp_bitmap_len;
-
-                size_t index;
-                BITMAP_FOR_EACH_1 (index, dp_bitmap_len, dp_bitmap) {
-                    dp_refcnt_use(&lflow->dp_refcnts_map, index);
-                }
             } else {
                 lrn->dp_index = od->index;
-                dp_refcnt_use(&lflow->dp_refcnts_map, lrn->dp_index);
             }
             ovs_list_insert(&lflow->referenced_by, &lrn->ref_list_node);
             hmap_insert(&lflow_ref->lflow_ref_nodes, &lrn->ref_node, hash);
         }
 
+        if (!lrn->linked) {
+            if (lrn->dpgrp_lflow) {
+                ovs_assert(lrn->dpgrp_bitmap_len == dp_bitmap_len);
+                size_t index;
+                BITMAP_FOR_EACH_1 (index, dp_bitmap_len, dp_bitmap) {
+                    dp_refcnt_use(&lflow->dp_refcnts_map, index);
+                }
+            } else {
+                dp_refcnt_use(&lflow->dp_refcnts_map, lrn->dp_index);
+            }
+        }
         lrn->linked = true;
     }
 
