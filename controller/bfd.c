@@ -235,6 +235,9 @@ bfd_run(const struct ovsrec_interface_table *interface_table,
         if (mult) {
             smap_add(&bfd, "mult", mult);
         }
+        /* `check_tnl_key` must always be set to "true" to avoid processing of
+         * BFD control messages originating from a logical port. */
+        smap_add(&bfd, "check_tnl_key", "true");
     }
 
     /* Enable or disable bfd */
