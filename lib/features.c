@@ -150,6 +150,8 @@ ovs_feature_get_openflow_cap(const char *br_name)
 
     rconn_run(swconn);
     if (!rconn_is_connected(swconn)) {
+        rconn_run_wait(swconn);
+        rconn_recv_wait(swconn);
         return false;
     }
 
