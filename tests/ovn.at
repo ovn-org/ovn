@@ -13260,7 +13260,7 @@ as gw1
 for chassis in gw2 hv1 hv2; do
     echo "checking gw1 -> $chassis"
     AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0],[0],
-             [[enable=true
+             [[check_tnl_key=true enable=true
 ]])
 done
 
@@ -13270,7 +13270,7 @@ as gw2
 for chassis in gw1 hv1 hv2; do
     echo "checking gw2 -> $chassis"
     AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0],[0],
-             [[enable=true
+             [[check_tnl_key=true enable=true
 ]])
 done
 
@@ -13279,7 +13279,7 @@ as hv1
 for chassis in gw1 gw2; do
     echo "checking hv1 -> $chassis"
     AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0],[0],
-             [[enable=true
+             [[check_tnl_key=true enable=true
 ]])
 done
 # make sure BFD is not enabled to hv2, we don't need it
@@ -13293,7 +13293,7 @@ as hv2
 for chassis in gw1 gw2; do
     echo "checking hv2 -> $chassis"
     AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0],[0],
-             [[enable=true
+             [[check_tnl_key=true enable=true
 ]])
 done
 # make sure BFD is not enabled to hv1, we don't need it
@@ -13333,7 +13333,7 @@ for chassis in gw1 hv1 hv2; do
     echo "checking gw2 -> $chassis"
     OVS_WAIT_UNTIL([
     bfd_cfg=$(ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0)
-    test "$bfd_cfg" = "enable=true min_rx=2000"
+    test "$bfd_cfg" = "check_tnl_key=true enable=true min_rx=2000"
 ])
 done
 ovn-nbctl --wait=hv set NB_Global . options:"bfd-min-tx"=1500
@@ -13341,7 +13341,7 @@ for chassis in gw1 hv1 hv2; do
     echo "checking gw2 -> $chassis"
     OVS_WAIT_UNTIL([
     bfd_cfg=$(ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0)
-    test "$bfd_cfg" = "enable=true min_rx=2000 min_tx=1500"
+    test "$bfd_cfg" = "check_tnl_key=true enable=true min_rx=2000 min_tx=1500"
 ])
 done
 ovn-nbctl remove NB_Global . options "bfd-min-rx"
@@ -13350,7 +13350,7 @@ for chassis in gw1 hv1 hv2; do
     echo "checking gw2 -> $chassis"
     OVS_WAIT_UNTIL([
     bfd_cfg=$(ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0)
-    test "$bfd_cfg" = "enable=true min_tx=1500 mult=15"
+    test "$bfd_cfg" = "check_tnl_key=true enable=true min_tx=1500 mult=15"
 ])
 done
 
@@ -13486,7 +13486,7 @@ as gw1
 for chassis in gw2 hv1 hv2; do
     echo "checking gw1 -> $chassis"
     AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0],[0],
-             [[enable=true
+             [[check_tnl_key=true enable=true
 ]])
 done
 
@@ -13495,7 +13495,7 @@ as gw2
 for chassis in gw1 hv1 hv2; do
     echo "checking gw2 -> $chassis"
     AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0],[0],
-             [[enable=true
+             [[check_tnl_key=true enable=true
 ]])
 done
 
@@ -13504,7 +13504,7 @@ as hv1
 for chassis in gw1 gw2; do
     echo "checking hv1 -> $chassis"
     AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0],[0],
-             [[enable=true
+             [[check_tnl_key=true enable=true
 ]])
 done
 # make sure BFD is not enabled to hv2, we don't need it
@@ -13517,7 +13517,7 @@ as hv2
 for chassis in gw1 gw2; do
     echo "checking hv2 -> $chassis"
     AT_CHECK([ovs-vsctl --bare --columns bfd find Interface name=ovn-$chassis-0],[0],
-             [[enable=true
+             [[check_tnl_key=true enable=true
 ]])
 done
 # make sure BFD is not enabled to hv1, we don't need it
