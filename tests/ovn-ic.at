@@ -1206,3 +1206,102 @@ OVS_WAIT_FOR_OUTPUT([ovn_as az2 ovn-nbctl lr-route-list lr12 | grep dst-ip | sor
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- route sync -- IPv6 blacklist filter])
+AT_KEYWORDS([IPv6-route-sync-blacklist])
+
+ovn_init_ic_db
+check ovn-ic-nbctl ts-add ts1
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+
+    # Enable route learning at AZ level
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
+    # Enable blacklist single filter for IPv6
+    check ovn-nbctl set nb_global . options:ic-route-blacklist=" \
+            2003:db8:1::/64,2004:aaaa::/32,2005:1234::/21"
+
+    OVS_WAIT_UNTIL([ovn-nbctl show | grep ts1])
+
+    # Create LRP and connect to TS
+    check ovn-nbctl lr-add lr$i
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i \
+            2001:db8:1::$i/64
+    check ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
+            -- lsp-set-addresses lsp-ts1-lr$i router \
+            -- lsp-set-type lsp-ts1-lr$i router \
+            -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
+
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-p$i 00:00:00:00:00:0$i \
+            2002:db8:1::$i/64
+
+    # Create blacklisted LRPs and connect to TS
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-p-ext$i \
+            11:11:11:11:11:1$i 2003:db8:1::$i/64
+
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-p-ext2$i \
+            22:22:22:22:22:2$i 2004:aaaa:bbb::$i/48
+
+    # filtered by 2005:1234::/21 - (2005:1000: - 2005:17ff:)
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-p-ext3$i \
+            33:33:33:33:33:3$i 2005:1734:5678::$i/50
+
+    # additional not filtered prefix -> different subnet bits
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-p-ext4$i \
+            44:44:44:44:44:4$i 2005:1834:5678::$i/50
+done
+
+for i in 1 2; do
+    OVS_WAIT_UNTIL([ovn_as az$i ovn-nbctl lr-route-list lr$i | grep learned])
+done
+
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1 |
+    awk '/learned/{print $1, $2}' ], [0], [dnl
+2002:db8:1::/64 2001:db8:1::2
+2005:1834:5678::/50 2001:db8:1::2
+])
+
+for i in 1 2; do
+    ovn_as az$i
+
+    # Drop blacklist
+    check ovn-nbctl remove nb_global . options ic-route-blacklist
+done
+
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr1 |
+    awk '/learned/{print $1, $2}' | sort ], [0], [dnl
+2002:db8:1::/64 2001:db8:1::2
+2003:db8:1::/64 2001:db8:1::2
+2004:aaaa:bbb::/48 2001:db8:1::2
+2005:1734:5678::/50 2001:db8:1::2
+2005:1834:5678::/50 2001:db8:1::2
+])
+
+for i in 1 2; do
+    ovn_as az$i
+
+    check ovn-nbctl set nb_global . \
+            options:ic-route-blacklist="2003:db8:1::/64,2004:db8:1::/64"
+
+    # Create an 'extra' blacklisted LRP and connect to TS
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-p-ext5$i \
+            55:55:55:55:55:5$i 2004:db8:1::$i/64
+done
+
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr1 |
+    awk '/learned/{print $1, $2}' | sort ], [0], [dnl
+2002:db8:1::/64 2001:db8:1::2
+2004:aaaa:bbb::/48 2001:db8:1::2
+2005:1734:5678::/50 2001:db8:1::2
+2005:1834:5678::/50 2001:db8:1::2
+])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])
