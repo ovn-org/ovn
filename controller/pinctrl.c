@@ -2887,6 +2887,7 @@ dns_build_ptr_answer(
 }
 
 #define DNS_RCODE_SERVER_REFUSE 0x5
+#define DNS_QUERY_TYPE_CLASS_LEN (2 * sizeof(ovs_be16))
 
 /* Called with in the pinctrl_handler thread context. */
 static void
@@ -2950,18 +2951,13 @@ pinctrl_handle_dns_lookup(
         goto exit;
     }
 
-    /* Check if there is an additional record present, which is unsupported */
-    if (in_dns_header->arcount) {
-        VLOG_DBG_RL(&rl, "Received DNS query with additional records, which"
-                    " is unsupported");
-        goto exit;
-    }
-
     struct udp_header *in_udp = dp_packet_l4(pkt_in);
     size_t udp_len = ntohs(in_udp->udp_len);
     size_t l4_len = dp_packet_l4_size(pkt_in);
+    uint8_t *l4_start = (uint8_t *) in_udp;
     uint8_t *end = (uint8_t *)in_udp + MIN(udp_len, l4_len);
     uint8_t *in_dns_data = (uint8_t *)(in_dns_header + 1);
+    uint8_t *in_dns_data_start = in_dns_data;
     uint8_t *in_queryname = in_dns_data;
     uint16_t idx = 0;
     struct ds query_name;
@@ -2985,7 +2981,7 @@ pinctrl_handle_dns_lookup(
     in_dns_data += idx;
 
     /* Query should have TYPE and CLASS fields */
-    if (in_dns_data + (2 * sizeof(ovs_be16)) > end) {
+    if (in_dns_data + DNS_QUERY_TYPE_CLASS_LEN > end) {
         ds_destroy(&query_name);
         goto exit;
     }
@@ -2998,6 +2994,10 @@ pinctrl_handle_dns_lookup(
         ds_destroy(&query_name);
         goto exit;
     }
+
+    uint8_t *rest = in_dns_data + DNS_QUERY_TYPE_CLASS_LEN;
+    uint32_t query_size = rest - in_dns_data_start;
+    uint32_t query_l4_size = rest - l4_start;
 
     uint64_t dp_key = ntohll(pin->flow_metadata.flow.metadata);
     const char *answer_data = NULL;
@@ -3081,7 +3081,7 @@ pinctrl_handle_dns_lookup(
         goto exit;
     }
 
-    uint16_t new_l4_size = ntohs(in_udp->udp_len) +  dns_answer.size;
+    uint16_t new_l4_size = query_l4_size + dns_answer.size;
     size_t new_packet_size = pkt_in->l4_ofs + new_l4_size;
     struct dp_packet pkt_out;
     dp_packet_init(&pkt_out, new_packet_size);
@@ -3118,7 +3118,7 @@ pinctrl_handle_dns_lookup(
     out_dns_header->arcount = 0;
 
     /* Copy the Query section. */
-    dp_packet_put(&pkt_out, dp_packet_data(pkt_in), dp_packet_size(pkt_in));
+    dp_packet_put(&pkt_out, dp_packet_data(pkt_in), query_size);
 
     /* Copy the answer sections. */
     dp_packet_put(&pkt_out, dns_answer.data, dns_answer.size);
