@@ -73,7 +73,8 @@ load_logical_ingress_metadata(const struct sbrec_port_binding *binding,
                               const struct zone_ids *zone_ids,
                               size_t n_encap_ips,
                               const char **encap_ips,
-                              struct ofpbuf *ofpacts_p);
+                              struct ofpbuf *ofpacts_p,
+                              bool load_encap_id);
 static int64_t get_vxlan_port_key(int64_t port_key);
 
 /* UUID to identify OF flows not associated with ovsdb rows. */
@@ -689,7 +690,7 @@ put_replace_chassis_mac_flows(const struct simap *ct_zones,
             ofpact_put_STRIP_VLAN(ofpacts_p);
         }
         load_logical_ingress_metadata(localnet_port, &zone_ids, 0, NULL,
-                                      ofpacts_p);
+                                      ofpacts_p, true);
         replace_mac = ofpact_put_SET_ETH_SRC(ofpacts_p);
         replace_mac->mac = router_port_mac;
 
@@ -1047,7 +1048,8 @@ load_logical_ingress_metadata(const struct sbrec_port_binding *binding,
                               const struct zone_ids *zone_ids,
                               size_t n_encap_ips,
                               const char **encap_ips,
-                              struct ofpbuf *ofpacts_p)
+                              struct ofpbuf *ofpacts_p,
+                              bool load_encap_id)
 {
     put_zones_ofpacts(zone_ids, ofpacts_p);
 
@@ -1057,13 +1059,15 @@ load_logical_ingress_metadata(const struct sbrec_port_binding *binding,
     put_load(dp_key, MFF_LOG_DATAPATH, 0, 64, ofpacts_p);
     put_load(port_key, MFF_LOG_INPORT, 0, 32, ofpacts_p);
 
-    /* Default encap_id 0. */
-    size_t encap_id = 0;
-    if (encap_ips && binding->encap) {
-        encap_id = encap_ip_to_id(n_encap_ips, encap_ips,
-                                  binding->encap->ip);
+    if (load_encap_id) {
+        /* Default encap_id 0. */
+        size_t encap_id = 0;
+        if (encap_ips && binding->encap) {
+            encap_id = encap_ip_to_id(n_encap_ips, encap_ips,
+                                      binding->encap->ip);
+        }
+        put_load(encap_id, MFF_LOG_ENCAP_ID, 16, 16, ofpacts_p);
     }
-    put_load(encap_id, MFF_LOG_ENCAP_ID, 16, 16, ofpacts_p);
 }
 
 static const struct sbrec_port_binding *
@@ -1108,7 +1112,7 @@ setup_rarp_activation_strategy(const struct sbrec_port_binding *binding,
     match_set_dl_type(&match, htons(ETH_TYPE_RARP));
     match_set_in_port(&match, ofport);
 
-    load_logical_ingress_metadata(binding, zone_ids, 0, NULL, &ofpacts);
+    load_logical_ingress_metadata(binding, zone_ids, 0, NULL, &ofpacts, true);
 
     encode_controller_op(ACTION_OPCODE_ACTIVATION_STRATEGY_RARP,
                          NX_CTLR_NO_METER, &ofpacts);
@@ -1522,7 +1526,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         put_load(0, MFF_LOG_CT_ZONE, 0, 16, ofpacts_p);
         struct zone_ids peer_zones = get_zone_ids(peer, ct_zones);
         load_logical_ingress_metadata(peer, &peer_zones, n_encap_ips,
-                                      encap_ips, ofpacts_p);
+                                      encap_ips, ofpacts_p, false);
         put_load(0, MFF_LOG_FLAGS, 0, 32, ofpacts_p);
         put_load(0, MFF_LOG_OUTPORT, 0, 32, ofpacts_p);
         for (int i = 0; i < MFF_N_LOG_REGS; i++) {
@@ -1739,7 +1743,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         uint32_t ofpacts_orig_size = ofpacts_p->size;
 
         load_logical_ingress_metadata(binding, &zone_ids, n_encap_ips,
-                                      encap_ips, ofpacts_p);
+                                      encap_ips, ofpacts_p, true);
 
         if (!strcmp(binding->type, "localport")) {
             /* mark the packet as incoming from a localport */
