@@ -30569,7 +30569,7 @@ AT_CLEANUP
 
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([multiple encap ips selection based on VIF's encap_ip])
+AT_SETUP([multiple encap ips selection based on VIF's encap_ip - L2])
 AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 net_add n1
@@ -30641,6 +30641,87 @@ check_packet_tunnel() {
     local dst_mac=f0:00:00:00:00:$dst
     local src_ip=10.0.0.$src
     local dst_ip=10.0.0.$dst
+    local local_encap_ip=192.168.0.$src
+    local remote_encap_ip=192.168.0.$dst
+    local packet=$(fmt_pkt "Ether(dst='${dst_mac}', src='${src_mac}')/ \
+                            IP(dst='${dst_ip}', src='${src_ip}')/ \
+                            ICMP(type=8)")
+    hv=`vif_to_hv vif$src`
+    as $hv
+    echo "vif$src -> vif$dst should go through tunnel $local_encap_ip -> $remote_encap_ip"
+    tunnel_ofport=$(ovs-vsctl --bare --column=ofport find interface options:local_ip=$local_encap_ip options:remote_ip=$remote_encap_ip)
+    AT_CHECK([test $(ovs-appctl ofproto/trace br-int in_port=vif$src $packet | grep "output:" | awk -F ':' '{ print $2 }') == $tunnel_ofport])
+}
+
+for i in 1 2; do
+    for j in 1 2; do
+        check_packet_tunnel 1$i 2$j
+    done
+done
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])
+
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([multiple encap ips selection based on VIF's encap_ip - L3])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+net_add n1
+
+ovn-nbctl lr-add lr
+
+# 2 HVs, each with 2 encap-ips, and each hosting a separate LS, connected by a LR.
+# lspXY is the Yth LSP on hvX, with encap-ip 192.168.0.XY, with ip 10.0.X.Y
+for i in 1 2; do
+    sim_add hv$i
+    as hv$i
+    ovs-vsctl add-br br-phys-$j
+    ovn_attach n1 br-phys-$j 192.168.0.${i}1
+    ovs-vsctl set open . external_ids:ovn-encap-ip=192.168.0.${i}1,192.168.0.${i}2
+
+    check ovn-nbctl ls-add ls$i -- \
+        lrp-add lr lrp-ls$i f0:00:00:00:88:0$i 10.0.$i.88/24 -- \
+        lsp-add ls$i lsp-lr-$i -- lsp-set-type lsp-lr-$i router -- \
+        lsp-set-addresses lsp-lr-$i router -- \
+        lsp-set-options lsp-lr-$i router-port=lrp-ls$i
+
+    for j in 1 2; do
+        ovs-vsctl add-port br-int vif$i$j -- set Interface vif$i$j \
+            external_ids:iface-id=lsp$i$j \
+            external_ids:encap-ip=192.168.0.$i$j \
+            options:tx_pcap=hv$i/vif$i$j-tx.pcap options:rxq_pcap=hv$i/vif$i$j-rx.pcap
+        ovn-nbctl lsp-add ls$i lsp$i$j -- lsp-set-addresses lsp$i$j "f0:00:00:00:00:$i$j 10.0.$i.$j"
+
+    done
+done
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+vif_to_hv() {
+    case $1 in dnl (
+        vif[[1]]?) echo hv1 ;; dnl (
+        vif[[2]]?) echo hv2 ;; dnl (
+        *) AT_FAIL_IF([:]) ;;
+    esac
+}
+
+vif_to_ip() {
+    vif=$1
+    echo 10.0.${vif:3:1}.${vif:4:1}
+}
+
+# check_packet_tunnel SRC_VIF DST_VIF
+# Verify that a packet from SRC_VIF to DST_VIF goes through the corresponding
+# tunnel that matches the VIFs' encap_ip configurations.
+check_packet_tunnel() {
+    local src=$1 dst=$2
+    local src_mac=f0:00:00:00:00:$src
+    local dst_mac=f0:00:00:00:88:01 # lrp-ls1's MAC
+    local src_ip=$(vif_to_ip vif$src)
+    local dst_ip=$(vif_to_ip vif$dst)
     local local_encap_ip=192.168.0.$src
     local remote_encap_ip=192.168.0.$dst
     local packet=$(fmt_pkt "Ether(dst='${dst_mac}', src='${src_mac}')/ \
