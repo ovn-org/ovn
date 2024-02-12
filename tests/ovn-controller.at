@@ -2193,14 +2193,14 @@ check ovn-nbctl --wait=hv sync
 AT_CHECK([ovn-appctl -t ovn-controller group-table-list | awk '{print $2}' | sort | uniq | wc -l], [0], [2
 ])
 
-# Set 5 seconds wait time before clearing OVS flows.
-check ovs-vsctl set open . external_ids:ovn-ofctrl-wait-before-clear=5000
-
 # Stop ovn-controller
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
+# Set 5 seconds wait time before clearing OVS flows.
+check ovs-vsctl set open . external_ids:ovn-ofctrl-wait-before-clear=5000
+
 # The old OVS flows should remain (this is regardless of the configuration)
-AT_CHECK([ovs-ofctl dump-flows br-int | grep 10.1.2.3], [0], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -F 10.1.2.3], [0], [ignore])
 
 # We should have 2 flows with groups.
 AT_CHECK([ovs-ofctl dump-flows br-int | grep group -c], [0], [2
@@ -2212,11 +2212,16 @@ check ovn-nbctl --wait=sb lsp-set-addresses ls1-lp1 "f0:00:00:00:00:01 10.1.2.4"
 # Start ovn-controller, which should compute new flows but not apply them
 # until the wait time is completed.
 start_daemon ovn-controller
-sleep 2
+
+# Wait for octrl to run - it will handle the wait-before-clear
+OVS_WAIT_UNTIL([grep -q 'wait-before-clear' hv1/ovn-controller.log])
+
+# Check that there is no flow using 10.1.2.4 except the lb one (using 2.2.2.2)
+OVS_WAIT_UNTIL([test 0 = $(ovs-ofctl dump-flows br-int | grep -F 10.1.2.4 | grep -cvF 2.2.2.2)])
 
 # Check in the middle of the wait.
 lflow_run_1=$(ovn-appctl -t ovn-controller coverage/read-counter lflow_run)
-AT_CHECK([ovs-ofctl dump-flows br-int | grep 10.1.2.3], [0], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int | grep -F 10.1.2.3], [0], [ignore])
 
 # We should have 2 flows with groups.
 AT_CHECK([ovs-ofctl dump-flows br-int | grep group -c], [0], [2
@@ -2225,7 +2230,7 @@ AT_CHECK([ovs-ofctl dump-flows br-int | grep group -c], [0], [2
 sleep 5
 
 # Check after the wait
-OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 10.1.2.4])
+OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep -F 10.1.2.4 | grep -vF 2.2.2.2])
 
 # We should have 2 flows with groups.
 AT_CHECK([ovs-ofctl dump-flows br-int | grep group -c], [0], [2
@@ -2240,7 +2245,7 @@ AT_CHECK_UNQUOTED([echo $lflow_run_1], [0], [$lflow_run_2
 # Restart OVS this time, and wait until flows are reinstalled
 OVS_APP_EXIT_AND_WAIT([ovs-vswitchd])
 start_daemon ovs-vswitchd --enable-dummy=system -vvconn -vofproto_dpif -vunixctl
-OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 10.1.2.4])
+OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep -F 10.1.2.4 | grep -vF 2.2.2.2])
 
 check ovn-nbctl --wait=hv lb-add lb3 3.3.3.3 10.1.2.5 \
 -- ls-lb-add ls1 lb3
