@@ -32921,7 +32921,7 @@ for i in 1 2 3 4 5; do
     as hv$i
     ovs-vsctl add-br br-phys
     ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
-    ovn_attach n1 br-phys 192.168.0.$i 24 $encap
+    ovn_attach n1 br-phys 192.168.1.$i 24 $encap
 done
 
 # Add a vif on HV1
