@@ -213,6 +213,13 @@ if test X$HAVE_OPENSSL = Xyes; then
     # TODO implement check for change of certificates in ovn-controller
     # and remove this workaround.
     ovs-vsctl set Open_vSwitch . external-ids:ovn-remote=unix:/dev/null
+    # Make sure that the ovn-remote change is handled by ovn-controller.
+    # Without this, ovn-controller could handle both this change and next ovn-remote change within the same loop,
+    # resulting in no change.
+    # Use 2 ovn-appctl to guarentee that ovn-controller run the full loop, and not just the unixctl handling
+    OVS_WAIT_UNTIL([test x$(ovn-appctl -t ovn-controller debug/status) = "xrunning"])
+    OVS_WAIT_UNTIL([test x$(ovn-appctl -t ovn-controller debug/status) = "xrunning"])
+
 fi
 ovs-vsctl -- set Open_vSwitch . external-ids:hostname="${sysid}" \
           -- set Open_vSwitch . external-ids:system-id="${sysid}" \
