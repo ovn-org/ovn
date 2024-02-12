@@ -2416,6 +2416,7 @@ for i in 1 2; do
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([vif$i-tx.pcap], [$i.expected])
 done
 
+OVN_CLEANUP([hv-1],[hv-2])
 AT_CLEANUP
 ])
 
@@ -3424,7 +3425,18 @@ for hv in 1 2; do
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv-$hv/br-phys${hv}1_n-${hv}1-tx.pcap], [out-$hv.expected])
 done
 
-OVN_CLEANUP([hv-1],[hv-2])
+# ovn-controller started twice (through ovn_attach) for each hv => expect "already running" error.
+OVN_CLEANUP([hv-1
+/ovn-controller.pid: already running as pid/d
+/attempting to add tunnel port with same config as port 'ovn-hv-2-0'/d
+/br-int: could not add port ovn-hv-2-1 (File exists)/d
+/could not add network device ovn-hv-2-1 to ofproto/d
+],[hv-2
+/ovn-controller.pid: already running as pid/d
+/attempting to add tunnel port with same config as port 'ovn-hv-1-0'/d
+/br-int: could not add port ovn-hv-1-1 (File exists)/d
+/could not add network device ovn-hv-1-1 to ofproto/d
+])
 
 AT_CLEANUP
 ])
@@ -3563,7 +3575,19 @@ for hv in 1 2; do
     OVN_CHECK_PACKETS_CONTAIN([hv-$hv/br-phys${hv}1_n-${hv}1-tx.pcap], [out-$hv.expected])
 done
 
-OVN_CLEANUP([hv-1],[hv-2])
+# ovn-controller started twice (through ovn_attach) for each hv => expect "already running" error.
+OVN_CLEANUP([hv-1
+/ovn-controller.pid: already running as pid/d
+/attempting to add tunnel port with same config as port 'ovn-hv-2-0'/d
+/br-int: could not add port ovn-hv-2-1 (File exists)/d
+/could not add network device ovn-hv-2-1 to ofproto/d
+],[hv-2
+/ovn-controller.pid: already running as pid/d
+/attempting to add tunnel port with same config as port 'ovn-hv-1-0'/d
+/br-int: could not add port ovn-hv-1-1 (File exists)/d
+/could not add network device ovn-hv-1-1 to ofproto/d
+])
+
 
 AT_CLEANUP
 ])
@@ -3771,6 +3795,7 @@ for i in 1 2; do
     OVN_CHECK_PACKETS([vif$i-tx.pcap], [$i.expected])
 done
 
+OVN_CLEANUP([hv-1],[hv-2])
 AT_CLEANUP
 ])
 
@@ -3899,6 +3924,7 @@ for i in 1 2; do
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([vif$i-tx.pcap], [$i.expected])
 done
 
+OVN_CLEANUP([hv-1],[hv-2])
 AT_CLEANUP
 ])
 
@@ -3986,6 +4012,7 @@ for i in 1 2; do
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([tap$i-tx.pcap], [tap.expected])
 done
 
+OVN_CLEANUP([hv-1],[hv-2])
 AT_CLEANUP
 ])
 
@@ -4057,6 +4084,7 @@ for i in 1 2; do
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([vif$i-tx.pcap], [$i.expected])
 done
 
+OVN_CLEANUP([hv-1],[hv-2])
 AT_CLEANUP
 ])
 
@@ -4809,6 +4837,10 @@ as hv3 ovs-ofctl -O OpenFlow13 dump-flows br-phys
 for i in 1 2 3; do
     OVN_CHECK_PACKETS([hv$i/vif$i-tx.pcap], [$i.expected])
 done
+as hv3
+OVS_APP_EXIT_AND_WAIT([ovs-vswitchd])
+OVN_CLEANUP([hv1],[hv2],[hv_gw
+/bridge not found for l2gateway port/d])
 AT_CLEANUP
 ])
 
@@ -6452,7 +6484,12 @@ OVN_CHECK_PACKETS_UNIQ([hv/snoopvif-tx.pcap], [expected])
 AT_CHECK([ovs-vsctl del-port localvif1])
 AT_CHECK([ovn-nbctl lsp-del ln_port])
 
-OVN_CLEANUP([hv])
+# Errors "Trying to release unknown interface localvif1" are unexpected and should be investigated
+# Probably due to the fact all ifaces deleted from ifstatus module when ofctrl_is_connected detects disconnect,
+# as a recompute does not recreate ifaces in ifstatus when port is already claimed and up
+OVN_CLEANUP([hv
+/Trying to release unknown interface localvif1/d
+])
 
 AT_CLEANUP
 ])
@@ -7338,7 +7375,6 @@ OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
 as ovn-nb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
 AT_CLEANUP
 ])
 
@@ -9067,7 +9103,9 @@ OVS_WAIT_UNTIL([
     test "${total_flows}" = "${total_flows_after_restart}"
 ])
 
-OVN_CLEANUP([hv1])
+OVN_CLEANUP([hv1
+/Connection refused/d
+])
 AT_CLEANUP
 ])
 
@@ -9513,8 +9551,8 @@ ovn-nbctl lr-add lr0
 ovn-nbctl lrp-add lr0 lrp0 f0:00:00:00:00:01 192.168.0.1/24
 ovn-nbctl lrp-add lr0 lrp1 f0:00:00:00:00:02 192.168.1.1/24
 dp_uuid=$(fetch_column Datapath_Binding _uuid)
-ovn-sbctl create MAC_Binding ip=10.0.0.1 datapath=$dp_uuid logical_port=lrp0 mac="mac1"
-ovn-sbctl create MAC_Binding ip=10.0.0.1 datapath=$dp_uuid logical_port=lrp1 mac="mac2"
+ovn-sbctl create MAC_Binding ip=10.0.0.1 datapath=$dp_uuid logical_port=lrp0 mac="00:00:00:01:00:01"
+ovn-sbctl create MAC_Binding ip=10.0.0.1 datapath=$dp_uuid logical_port=lrp1 mac="00:00:00:01:00:02"
 ovn-sbctl find MAC_Binding
 # Delete port lrp0 and check that its MAC_Binding is deleted.
 ovn-nbctl lrp-del lrp0
@@ -9525,7 +9563,10 @@ ovn-nbctl lr-del lr0
 ovn-sbctl find MAC_Binding
 wait_row_count MAC_Binding 0
 
-OVN_CLEANUP([hv1])
+# Ignore warning from mac_cache trying to remove mb while aging mechanism is disabled and lr0 is not local
+OVN_CLEANUP([hv1
+/parse MAC binding: ip=10.0.0.1/d
+])
 
 AT_CLEANUP
 ])
@@ -11738,7 +11779,9 @@ as gw2
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
-OVN_CLEANUP([hv1],[gw1],[ext1])
+OVN_CLEANUP([hv1],[gw1
+/transaction error/d
+],[ext1])
 
 AT_CLEANUP
 ])
@@ -12302,7 +12345,12 @@ check ovn-nbctl --wait=sb lrp-del-gateway-chassis alice hv2
 
 check_row_count Port_Binding 0 logical_port=cr-alice
 
-OVN_CLEANUP([hv1],[hv2],[hv3])
+# Expect some potential transaction errors for MAC_Binding
+OVN_CLEANUP([hv1
+/transaction error/d
+],[hv2
+/transaction error/d
+],[hv3])
 
 AT_CLEANUP
 ])
@@ -12729,7 +12777,14 @@ sleep 2
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/br-ex_n2-tx.pcap > empty
 AT_CHECK([cat empty], [0], [])
 
-OVN_CLEANUP([hv1],[hv2],[hv3], [hv4])
+# Expect "Bridge not found" error as creating the bridge after creating the ovn mapping.
+OVN_CLEANUP([hv1
+/Bridge 'br-ex' not found for network 'public'/d
+],[hv2
+/Bridge 'br-ex' not found for network 'public'/d
+],[hv3],[hv4
+/Bridge 'br-ex' not found for network 'public'/d
+])
 AT_CLEANUP
 ])
 
@@ -14101,8 +14156,11 @@ OVN_CHECK_PACKETS_CONTAIN([hv3/br-phys_n1-tx.pcap], [expected_out], "trim_zeros"
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap | trim_zeros | only_broadcast_from_lrp1 | uniq > hv2_br_phys_tx
 AT_CHECK([grep $garp hv2_br_phys_tx | sort], [0], [])
 
-OVN_CLEANUP([hv1],[hv2],[hv3])
-
+OVN_CLEANUP([hv1],[hv2
+/No tunnel endpoint found for HA chassis in HA chassis group/d
+],[hv3
+/No tunnel endpoint found for HA chassis in HA chassis group/d
+])
 AT_CLEANUP
 ])
 
@@ -14191,7 +14249,14 @@ wait_row_count Chassis 1 name=gw2
 gw1_chassis=$(fetch_column Chassis _uuid name=gw1)
 wait_row_count Port_Binding 1 logical_port=cr-outside chassis=$gw1_chassis
 
-OVN_CLEANUP([gw1],[gw2],[hv1])
+OVN_CLEANUP([gw1
+/Incorrect your_disc/d
+/No tunnel endpoint found for HA chassis in HA chassis group/d
+],[gw2
+/Incorrect your_disc/d
+],[hv1
+/Incorrect your_disc/d
+])
 
 AT_CLEANUP
 ])
@@ -14540,7 +14605,7 @@ $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/br-phys_n1-tx.pcap | \
 grep -v ffffffffffff | trim_zeros > 2.packets
 AT_CHECK([cat 2.packets], [0], [])
 
-OVN_CLEANUP([hv1])
+OVN_CLEANUP([hv1], [hv2])
 
 AT_CLEANUP
 ])
@@ -17355,7 +17420,10 @@ OVS_WAIT_UNTIL([ovs-vsctl list port ovn-mirror0 | grep ovn-mirror0])
 ovs-vsctl del-port ovn-mirror0 -- del-port vif1
 OVS_WAIT_UNTIL([test 0 = $(as hv1 ovs-vsctl list Mirror | wc -l)])
 
-OVN_CLEANUP([hv1], [hv2])
+# Expect mirror related erroras we delete ovn-mirror0
+OVN_CLEANUP([hv1
+/mirror mirror0 does not specify output/d
+], [hv2])
 AT_CLEANUP
 ])
 
@@ -20399,7 +20467,12 @@ for i in 1 2 3; do
 done
 
 # Gracefully terminate daemons
-OVN_CLEANUP([hv1])
+# Ignore errors "Syntax error at \`$as1\' expecting address set name".
+# Need  to investigate whteher those errors are expected
+OVN_CLEANUP([hv1
+/Syntax error at/d
+])
+
 AT_CLEANUP
 ])
 
@@ -21516,7 +21589,7 @@ ovn-hv3-0
 ovn-hv4-0
 ]])
 
-OVN_CLEANUP([hv1], [hv2], [hv3])
+OVN_CLEANUP([hv1], [hv2], [hv3], [hv4], [hv5])
 AT_CLEANUP
 ])
 
@@ -21723,7 +21796,11 @@ as hv2 ovs-appctl fdb/show br-phys
 
 OVN_CHECK_PACKETS([hv2/vif22-tx.pcap], [vif22.expected])
 
-OVN_CLEANUP([hv1],[hv2])
+OVN_CLEANUP([hv1
+/transaction error/d
+],[hv2
+/transaction error/d
+])
 
 AT_CLEANUP
 ])
@@ -23937,7 +24014,11 @@ OVS_WAIT_UNTIL(
                  'hv2/br-phys-1_n1-tx.pcap expected_empty' ],
   [$at_diff -F'^---' exp rcv])
 
-OVN_CLEANUP([hv1], [hv2])
+OVN_CLEANUP([hv1
+/left allocated/d
+], [hv2
+/left allocated/d
+])
 AT_CLEANUP
 ])
 
@@ -24227,7 +24308,14 @@ m4_define([DVR_N_S_ARP_HANDLING],
    as hv4 ovs-ofctl -O OpenFlow13 dump-flows br-int
    as hv4 ovs-appctl fdb/show br-phys
 
-   OVN_CLEANUP([hv1],[hv2],[hv3],[hv4])
+   # Expect some potential transaction errors for MAC_Binding
+   OVN_CLEANUP([hv1
+   /transaction error/d
+   ],[hv2
+   /transaction error/d
+   ],[hv3
+   /transaction error/d
+   ],[hv4])
 
    AT_CLEANUP])])
 
@@ -24531,7 +24619,13 @@ m4_define([DVR_N_S_PING],
    as hv4 ovs-ofctl show br-phys
    as hv4 ovs-appctl fdb/show br-phys
 
-   OVN_CLEANUP([hv1],[hv2],[hv3],[hv4])
+   OVN_CLEANUP([hv1
+   /transaction error/d
+   ],[hv2
+   /transaction error/d
+   ],[hv3
+   /transaction error/d
+   ],[hv4])
 
    AT_CLEANUP])])
 
@@ -25132,7 +25226,14 @@ as hv4 ovs-ofctl dump-flows br-int
 as hv4 ovs-ofctl show br-phys
 as hv4 ovs-appctl fdb/show br-phys
 
-OVN_CLEANUP([hv1],[hv2],[hv3],[hv4])
+# Expect some potential transaction errors for MAC_Binding
+OVN_CLEANUP([hv1
+/transaction error/d
+],[hv2
+/transaction error/d
+],[hv3
+/transaction error/d
+],[hv4])
 AT_CLEANUP
 ])
 
@@ -25648,6 +25749,7 @@ check_row_count Service_Monitor 0
 
 AT_CHECK([test 1 = `grep -c "SCTP load balancers do not currently support health checks" northd/ovn-northd.log`])
 
+OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
 ])
 
@@ -26590,6 +26692,13 @@ OVS_WAIT_UNTIL(
                  'hv2/vif3-tx.pcap expected_az2_switched'],
   [$at_diff -F'^---' exp rcv])
 
+OVN_CLEANUP_SBOX([hv1],["/IGMP Querier enabled without a valid IPv4 or IPv6 address/d
+/IGMP Querier enabled with invalid ETH src address/d"])
+
+OVN_CLEANUP_SBOX([hv2],["/IGMP Querier enabled without a valid IPv4 or IPv6 address/d
+/IGMP Querier enabled with invalid ETH src address/d"])
+
+OVN_CLEANUP_IC([az1],[az2])
 AT_CLEANUP
 ])
 
@@ -26839,6 +26948,13 @@ OVS_WAIT_UNTIL(
                  'hv2/vif2-tx.pcap expected_az2'],
   [$at_diff -F'^---' exp rcv])
 
+OVN_CLEANUP_SBOX([hv1], ["/IGMP Querier enabled without a valid IPv4/d
+/IGMP Querier enabled with invalid ETH src/d"])
+
+OVN_CLEANUP_SBOX([hv2], ["/IGMP Querier enabled without a valid IPv4/d
+/IGMP Querier enabled with invalid ETH src/d"])
+
+OVN_CLEANUP_IC([az1],[az2])
 AT_CLEANUP
 ])
 
@@ -28122,7 +28238,11 @@ ovn_attach n1 br-phys 192.168.0.1
 # Port_Binding should be released.
 OVS_WAIT_UNTIL([test 0 = $(ovn-sbctl show | grep Port_Binding -c)])
 
-OVN_CLEANUP([hv1])
+# Port was not really bound/claimed, so it is expected to have some warnings trying to release it
+OVN_CLEANUP([hv1
+/Trying to release unknown interface lsp1/d
+])
+
 AT_CLEANUP
 ])
 
@@ -29389,7 +29509,12 @@ check ovn-nbctl --wait=hv sync
 AT_CHECK([test "$expr_cnt" = "$(get_cache_count cache-expr)"], [0], [])
 AT_CHECK([test "$matches_cnt" = "$(get_cache_count cache-matches)"], [0], [])
 
-OVN_CLEANUP([hv1])
+# Ignore errors "Syntax error at \`\@pg2\' expecting port group name"
+# Need  to investigate whteher those errors are expected
+OVN_CLEANUP([hv1
+/Syntax error at/d
+])
+
 AT_CLEANUP
 ])
 
@@ -30075,7 +30200,17 @@ OVS_WAIT_UNTIL([
 test_arp_response 000030303233 $(ip_to_hex 172 16 0 200) hv1 hv2 hv3
 test_arp_response 000030303233 $(ip_to_hex 172 16 0 201) hv1 hv2 hv3
 
-OVN_CLEANUP([hv1],[hv2],[hv3])
+OVN_CLEANUP([hv1
+/parse MAC binding/d
+/unknown logical port/d
+],[hv2
+/parse MAC binding/d
+/unknown logical port/d
+],[hv3
+/parse MAC binding/d
+/unknown logical port/d
+])
+
 AT_CLEANUP
 ])
 
@@ -33528,6 +33663,7 @@ test_ip vif11 f00000000010 06ac10010001 $sip $dip vif-north3
 # Confirm that South to North traffic works fine.
 OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv5/vif-north3-tx.pcap], [vif-north3.expected])
 
+OVN_CLEANUP([hv1],[hv2],[hv3],[hv4],[hv5])
 AT_CLEANUP
 ])
 
@@ -33964,14 +34100,14 @@ check ovn-nbctl lsp-set-addresses lsp1 "f0:00:00:00:00:01 172.16.0.101"
 check ovn-nbctl lsp-set-options lsp1 \
     requested-chassis=hv1 \
     vif-plug-type=dummy \
-    vif-plug-mtu-request=42
+    vif-plug-mtu-request=420
 
 check ovn-nbctl lsp-add lsw0 lsp2
 check ovn-nbctl lsp-set-addresses lsp2 "f0:00:00:00:00:02 172.16.0.102"
 check ovn-nbctl lsp-set-options lsp2 \
     requested-chassis=hv2 \
     vif-plug-type=dummy \
-    vif-plug-mtu-request=42
+    vif-plug-mtu-request=420
 
 wait_for_ports_up lsp1 lsp2
 
@@ -33983,22 +34119,22 @@ iface2_uuid=$(as hv2 ovs-vsctl --bare --columns _uuid find Interface name=lsp2)
 
 # Check that the lport was plugged
 AT_CHECK([test xvalue = x$(as hv1 ovs-vsctl get Interface ${iface1_uuid} options:vif-plug-dummy-option)], [0], [])
-AT_CHECK([test x42 = x$(as hv1 ovs-vsctl get Interface ${iface1_uuid} mtu_request)], [0], [])
+AT_CHECK([test x420 = x$(as hv1 ovs-vsctl get Interface ${iface1_uuid} mtu_request)], [0], [])
 
 # Check that updating the lport updates the local iface
 check ovn-nbctl --wait=hv lsp-set-options lsp1 \
     requested-chassis=hv1 \
     vif-plug-type=dummy \
-    vif-plug-mtu-request=43
+    vif-plug-mtu-request=430
 OVS_WAIT_UNTIL([
-    test x43 = x$(as hv1 ovs-vsctl get Interface ${iface1_uuid} mtu_request)
+    test x430 = x$(as hv1 ovs-vsctl get Interface ${iface1_uuid} mtu_request)
 ])
 
 # Check that local modification of iface will trigger ovn-controller to update
 # the iface record
-check as hv1 ovs-vsctl set interface ${iface1_uuid} mtu_request=44
+check as hv1 ovs-vsctl set interface ${iface1_uuid} mtu_request=440
 OVS_WAIT_UNTIL([
-    test x43 = x$(as hv1 ovs-vsctl get Interface ${iface1_uuid} mtu_request)
+    test x430 = x$(as hv1 ovs-vsctl get Interface ${iface1_uuid} mtu_request)
 ])
 
 as hv1 check ovn-appctl -t ovn-controller debug/ignore-startup-delay
@@ -34061,7 +34197,9 @@ OVS_WAIT_UNTIL([
     grep -q "CMS requested plugging of lport lsp3" hv2/ovn-controller.log
 ])
 
-OVN_CLEANUP([hv1],[hv2])
+OVN_CLEANUP([hv1],[hv2
+/CMS requested plugging of lport lsp3/d
+])
 AT_CLEANUP
 ])
 
@@ -34136,7 +34274,10 @@ check ovn-nbctl meter-del meter2
 check ovn-nbctl --wait=hv sync
 AT_CHECK([as hv1 ovs-ofctl -OOpenFlow15 dump-meters br-int | grep -q rate=100], [1])
 
-OVN_CLEANUP([hv1])
+# Expect error on meter2 not found as meter added after using it.
+OVN_CLEANUP([hv1
+/could not find meter named \"meter2\"/d
+])
 AT_CLEANUP
 ])
 
@@ -35450,7 +35591,9 @@ m4_define([MULTIPLE_OVS_INT],
    flows_after_deletion=$(get_flows $COOKIE)
    check test "$flows_lpnew" = "$flows_after_deletion"
 
-   OVN_CLEANUP([hv1])
+   OVN_CLEANUP([hv1
+   /Invalid configuration: iface-id is configured on interface/d
+   ])
    AT_CLEANUP
    ])])
 
@@ -35719,7 +35862,12 @@ dnl Remove the mapping and expect OpenFlows to be removed.
 check ovn-nbctl --wait=hv clear Chassis_Template_Var hv1 variables
 AT_CHECK([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42'], [1], [])
 
-OVN_CLEANUP([hv1])
+# Ignore errors "Syntax error at `CONDITION' expecting field name" for now
+# Need  to investigate whteher those errors are expected
+OVN_CLEANUP([hv1
+/Syntax error at /d
+])
+
 AT_CLEANUP
 ])
 
@@ -35890,7 +36038,13 @@ AT_CHECK([ovs-ofctl dump-groups br-int | grep 'nat'], [1], [])
 as hv1
 AT_CHECK([ovs-ofctl dump-flows br-int | grep table=OFTABLE_CHK_LB_HAIRPIN | ofctl_strip_all], [0], [])
 
-OVN_CLEANUP([hv1])
+# Ignore errors such as "Syntax error at `BACKENDS31' expecting IP address"
+# Need  to investigate whteher those errors are expected
+OVN_CLEANUP([hv1
+/bad port number/d
+/Syntax error at/d
+])
+
 AT_CLEANUP
 ])
 
@@ -36422,7 +36576,20 @@ current_id=$(ovs-vsctl --bare --columns _uuid find port external_ids:ovn-chassis
 # The tunnel should be the same after restart
 check test "$current_id" = "$prev_id"
 
-OVN_CLEANUP([hv1],[hv2])
+# Expect "fail-mode changed" error as br-int1 not set to secure.
+OVN_CLEANUP([hv1
+/attempting to add tunnel port with same config/d
+/could not add port ovn-hv2-0/d
+/could not add network device ovn-hv2-0/d
+/Integration bridge fail-mode changed/d
+],
+[hv2
+/attempting to add tunnel port with same config/d
+/could not add port ovn-hv1-0/d
+/could not add network device ovn-hv1-0/d
+/Integration bridge fail-mode changed/d
+])
+
 AT_CLEANUP
 ])
 
@@ -36703,6 +36870,9 @@ OVS_WAIT_UNTIL([test $(as hv-1 ovs-vsctl list queue | grep -c 'min-rate="6000000
 OVS_WAIT_UNTIL([test $(as hv-1 ovs-vsctl list queue | grep -c 'max-rate="7000000000"') -eq 0])
 OVS_WAIT_UNTIL([test $(as hv-1 ovs-vsctl list queue | grep -c 'burst="8000000000"') -eq 0])
 
+# Ignore error due to public one added w/o network_name=phys
+OVN_CLEANUP([hv-1
+/Physical network not configured for datapath/d],[hv-2])
 AT_CLEANUP
 ])
 
@@ -36900,6 +37070,7 @@ packet=$(fmt_pkt "Ether(dst='50:54:00:00:00:88', src='00:00:20:20:12:13')/
 echo $packet > expected
 OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv2/vif1-tx.pcap], [expected])
 
+OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
 ])
 
@@ -36969,6 +37140,7 @@ wake_up_controller hv-1
 # Make sure ovn-controller is still OK
 ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([test $(as hv-1 ovs-vsctl list qos | grep -c linux-htb) -eq 1])
+OVN_CLEANUP([hv-1],[hv-2])
 AT_CLEANUP
 ])
 

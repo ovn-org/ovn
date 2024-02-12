@@ -136,9 +136,9 @@ AT_CHECK([ovn-ic-sbctl show | grep -A2 lsp1], [0], [dnl
 # remove transit switch and check if port_binding is deleted
 check ovn-ic-nbctl ts-del ts1
 wait_row_count ic-sb:Port_Binding 0 logical_port=lsp1
-
 for i in 1 2; do
     az=az$i
+    ovn_as $az
     OVN_CLEANUP_SBOX(gw-$az)
     OVN_CLEANUP_AZ([$az])
 done
@@ -213,6 +213,7 @@ ovn-ic-sbctl list route
 
 for i in 1 2; do
     az=az$i
+    ovn_as $az
     OVN_CLEANUP_SBOX(gw-$az)
     OVN_CLEANUP_AZ([$az])
 done
@@ -273,6 +274,7 @@ wait_row_count ic-sb:route 1 ip_prefix=1.1.1.1/32
 
 for i in 1 2; do
     az=az$i
+    ovn_as $az
     OVN_CLEANUP_SBOX(gw-$az)
     OVN_CLEANUP_AZ([$az])
 done

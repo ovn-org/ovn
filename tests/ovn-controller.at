@@ -74,7 +74,7 @@ check_patches
 # won't be created until there's a localnet port on a logical switch with
 # another logical port bound to this chassis.
 ovn-sbctl \
-    -- --id=@dp101 create Datapath_Binding tunnel_key=101 \
+    -- --id=@dp101 create Datapath_Binding tunnel_key=101 external_ids:name=dp101 \
     -- create Port_Binding datapath=@dp101 logical_port=localnet1 tunnel_key=1 \
         type=localnet options:network_name=physnet1
 check_patches
@@ -82,7 +82,7 @@ check_patches
 # Create a localnet port on a logical switch with a port bound to this chassis.
 # Now we should get some patch ports created.
 ovn-sbctl \
-    -- --id=@dp102 create Datapath_Binding tunnel_key=102 \
+    -- --id=@dp102 create Datapath_Binding tunnel_key=102 external_ids:name=dp102 \
     -- create Port_Binding datapath=@dp102 logical_port=localnet2 tunnel_key=1 \
         type=localnet options:network_name=physnet1 \
     -- create Port_Binding datapath=@dp102 logical_port=localvif2 tunnel_key=2
@@ -96,8 +96,8 @@ check_patches \
 # OVN no longer uses OVS patch ports to implement logical patch ports, so
 # the set of OVS patch ports doesn't change.
 AT_CHECK([ovn-sbctl \
-    -- --id=@dp1 create Datapath_Binding tunnel_key=1 \
-    -- --id=@dp2 create Datapath_Binding tunnel_key=2 \
+    -- --id=@dp1 create Datapath_Binding tunnel_key=1 external_ids:name=dp1 \
+    -- --id=@dp2 create Datapath_Binding tunnel_key=2 external_ids:name=dp2 \
     -- create Port_Binding datapath=@dp1 logical_port=foo tunnel_key=1 type=patch options:peer=bar \
     -- create Port_Binding datapath=@dp2 logical_port=bar tunnel_key=2 type=patch options:peer=foo \
     -- create Port_Binding datapath=@dp1 logical_port=dp1vif tunnel_key=3 \
@@ -241,7 +241,20 @@ wait_row_count Chassis_Private 1
 wait_row_count Chassis 1
 
 # Gracefully terminate daemons
-OVN_CLEANUP_SBOX([hv])
+# Ignore  following errors:
+# - Invalid ovn-bridge-mappings configuration: 'foo-mapping'
+# - unknown datapath type foo
+# - could not create datapath br-int of unknown type foo
+# - could not create datapath br-int of unknown type foobar
+# - unknown datapath type bar
+# - could not create datapath br-int of unknown type bar
+# - Transaction causes multiple rows ...
+# - failed to create bridge br-int: Address family not supported by protocol # due to previous errors.
+OVN_CLEANUP_SBOX([hv], ["/foo/d
+/bar/d
+/Transaction causes multiple rows/d
+/failed to create bridge/d"])
+
 OVN_CLEANUP_VSWITCH([main])
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -319,6 +332,8 @@ OVN_CLEANUP_SBOX([hv])
 OVN_CLEANUP_VSWITCH([main])
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
 AT_CLEANUP
 ])
@@ -355,6 +370,8 @@ OVN_CLEANUP_SBOX([hv])
 OVN_CLEANUP_VSWITCH([main])
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
 AT_CLEANUP
 ])
@@ -385,6 +402,8 @@ OVS_WAIT_UNTIL([test xhv = x`ovn-sbctl --columns name --bare find chassis`])
 OVN_CLEANUP_SBOX([hv])
 OVN_CLEANUP_VSWITCH([main])
 as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+as ovn-nb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
 AT_CLEANUP
@@ -647,7 +666,9 @@ primary lport : [[lsp1]]
     done
 done
 
-OVN_CLEANUP([hv1])
+check as northd ovn-appctl -t ovn-northd resume
+OVN_CLEANUP([hv1
+/No distributed-port option set for chassisredirect port lsp1/d])
 AT_CLEANUP
 
 AT_SETUP([ovn-controller - ssl files change when using command line options])
@@ -704,7 +725,16 @@ OVS_WAIT_FOR_OUTPUT([ovn-appctl -t ovn-controller connection-status], [0], [conn
 
 cat hv1/ovn-controller.log
 
-OVN_CLEANUP([hv1])
+# Expect different errors as trying to connect with wrong keys/certificates, or with keys/certificates deleted
+OVN_CLEANUP([hv1
+/SSL_use_PrivateKey_file/d
+/SSL_use_certificate_file/d
+/Private key must be configured to use SSL/d
+/Certificate must be configured to use SSL/d
+/SSL_read: error/d
+/receive error: Input/d
+/connection dropped/d
+])
 AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
@@ -832,9 +862,12 @@ tos_option=$(ovs-vsctl get interface ovn-fakech-0 options)
 AT_CHECK([test "$tos_option" = "$no_tos_options"], [0], [])
 
 # Gracefully terminate daemons
-OVN_CLEANUP_SBOX([hv])
+# Expect invalid TOS 61
+OVN_CLEANUP_SBOX([hv], ["/invalid TOS 61/d"])
 OVN_CLEANUP_VSWITCH([main])
 as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+as ovn-nb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
 AT_CLEANUP
@@ -2120,6 +2153,8 @@ for i in $(seq 10); do
     OVS_WAIT_UNTIL([test $(as hv1 ovs-ofctl dump-flows br-int table=46 | grep -c "priority=1100") = "$(($i + 1))"])
 done
 
+# Resume northd to be able to properly cleanup
+check as northd ovn-appctl -t ovn-northd resume
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
@@ -2294,7 +2329,9 @@ AT_CHECK([grep "Parsing of ovn-chassis-mac-mappings failed" hv1/ovn-controller.l
 AT_CHECK([grep "Parsing of ovn-chassis-mac-mappings failed" hv1/ovn-controller.log | grep -q invalid2])
 AT_CHECK([grep "Parsing of ovn-chassis-mac-mappings failed" hv1/ovn-controller.log | grep -q br1], [1])
 
-OVN_CLEANUP([hv1])
+OVN_CLEANUP([hv1
+/Parsing of ovn-chassis-mac-mappings failed/d
+])
 AT_CLEANUP
 
 AT_SETUP([ovn-controller - localport can be recreated])
@@ -2631,7 +2668,10 @@ OVS_WAIT_UNTIL([grep -q 'Removing unsupported key "unsupported" from chassis rec
 
 AT_CHECK([ovn-sbctl get chassis $chassis_id other_config:unsupported], [1], [ignore], [ignore])
 
-OVN_CLEANUP([hv1])
+OVN_CLEANUP([hv1
+/Removing unsupported key/d
+])
+
 AT_CLEANUP
 ])
 
@@ -2723,7 +2763,11 @@ ovn-nbctl --wait=hv sync
 
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT | grep -q controller], [1])
 
-OVN_CLEANUP([hv1])
+# Since we add many ports in one nbctl command, we might get some warnings on slow systems.
+OVN_CLEANUP([hv1
+/Unreasonably long/d
+/faults:/d
+/context switches/d])
 AT_CLEANUP
 ])
 
