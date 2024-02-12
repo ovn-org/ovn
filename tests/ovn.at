@@ -37245,19 +37245,21 @@ ovn_attach n br-phys 192.168.0.1
 check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 for i in $(seq 1 320); do
-    check ovs-vsctl -- add-port br-int hv1-vif$i -- \
+    OVS_VSCTL( add-port br-int hv1-vif$i -- \
         set interface hv1-vif$i external-ids:iface-id=sw0-port$i \
         options:tx_pcap=hv1/vif$i-tx.pcap \
-        options:rxq_pcap=hv1/vif$i-rx.pcap
+        options:rxq_pcap=hv1/vif$i-rx.pcap)
 done
+RUN_OVS_VSCTL
 
 check ovn-nbctl ls-add sw0
 
 check ovn-nbctl lsp-add sw0 sw0-port1
 check ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:01 10.0.0.2"
 for i in $(seq 2 320); do
-    check ovn-nbctl lsp-add sw0 sw0-port$i -- lsp-set-addresses sw0-port$i "unknown"
+    OVN_NBCTL(lsp-add sw0 sw0-port$i -- lsp-set-addresses sw0-port$i "unknown")
 done
+RUN_OVN_NBCTL
 
 check ovn-nbctl --wait=hv sync
 wait_for_ports_up

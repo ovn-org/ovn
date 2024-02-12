@@ -984,6 +984,17 @@ m4_define([RUN_OVN_NBCTL], [
     unset command
 ])
 
+# OVS_VSCTL(VSCTL_COMMAND) adds VSCTL_COMMAND to list of commands to be run by RUN_OVS_VSCTL().
+m4_define([OVS_VSCTL], [
+    command="${command} -- $1"
+])
+
+# RUN_OVS_VSCTL() executes list of commands built by the OVS_VSCTL() macro.
+m4_define([RUN_OVS_VSCTL], [
+    check ovs-vsctl ${command}
+    unset command
+])
+
 m4_define([TAG_UNSTABLE], [
     AT_KEYWORDS([unstable])
     AT_SKIP_IF([test X"$SKIP_UNSTABLE" = Xyes])

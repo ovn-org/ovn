@@ -2693,19 +2693,20 @@ ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
 
 for i in $(seq 1 320); do
-    ovs-vsctl -- add-port br-int hv1-vif$i -- \
+    OVS_VSCTL(add-port br-int hv1-vif$i -- \
         set interface hv1-vif$i external-ids:iface-id=sw0-p$i \
         options:tx_pcap=hv1/vif${i}-tx.pcap \
         options:rxq_pcap=hv1/vif${i}-rx.pcap \
-        ofport-request=$i
+        ofport-request=$i)
 done
-
+RUN_OVS_VSCTL
 
 check ovn-nbctl ls-add sw0
 for i in $(seq 1 320); do
-    check ovn-nbctl lsp-add sw0 sw0-p$i
-    check ovn-nbctl lsp-set-addresses sw0-p$i "unknown"
+    OVN_NBCTL(lsp-add sw0 sw0-p$i)
+    OVN_NBCTL(lsp-set-addresses sw0-p$i "unknown")
 done
+RUN_OVN_NBCTL
 
 wait_for_ports_up
 ovn-nbctl --wait=hv sync
@@ -2715,8 +2716,9 @@ OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTP
 ])
 
 for i in $(seq 1 280); do
-    check ovn-nbctl lsp-del sw0-p$i
+    OVN_NBCTL(lsp-del sw0-p$i)
 done
+RUN_OVN_NBCTL
 ovn-nbctl --wait=hv sync
 
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT | grep -q controller], [1])
