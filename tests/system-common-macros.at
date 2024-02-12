@@ -418,15 +418,14 @@ ovn-nbctl lsp-add public public1 \
 ovn-nbctl set logical_router_port rp-public options:prefix_delegation=true
 ovn-nbctl set logical_router_port rp-public options:prefix=true
 ovn-nbctl set logical_router_port rp-sw0 options:prefix=true
-ovn-nbctl set logical_router_port rp-sw1 options:prefix=true
 
 OVN_POPULATE_ARP
 
 ovn-nbctl --wait=hv sync
 
 cat > /etc/dhcp/dhcpd.conf <<EOF
-option dhcp-rebinding-time 15;
-option dhcp-renewal-time 10;
+option dhcp-rebinding-time 10;
+option dhcp-renewal-time 5;
 option dhcp6.unicast 2001:1db8:3333::1;
 subnet6 2001:1db8:3333::/64 {
     prefix6 2001:1db8:3333:100:: 2001:1db8:3333:111:: /96;
@@ -445,7 +444,6 @@ ovn-nbctl --wait=hv sync
 
 OVS_WAIT_WHILE([test "$(ovn-nbctl get logical_router_port rp-public ipv6_prefix | cut -c4-15)" = ""])
 OVS_WAIT_WHILE([test "$(ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c4-15)" = ""])
-OVS_WAIT_WHILE([test "$(ovn-nbctl get logical_router_port rp-sw1 ipv6_prefix | cut -c4-15)" = ""])
 
 AT_CHECK([ovn-nbctl get logical_router_port rp-public ipv6_prefix | cut -c3-16], [0], [dnl
 [2001:1db8:3333]
@@ -453,27 +451,39 @@ AT_CHECK([ovn-nbctl get logical_router_port rp-public ipv6_prefix | cut -c3-16],
 AT_CHECK([ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-16], [0], [dnl
 [2001:1db8:3333]
 ])
-AT_CHECK([ovn-nbctl get logical_router_port rp-sw1 ipv6_prefix | cut -c3-16], [0], [dnl
-[2001:1db8:3333]
-])
 
 prefix=$(ovn-nbctl list logical_router_port rp-public | awk -F/ '/ipv6_prefix/{print substr($ 1,25,9)}' | sed 's/://g')
 ovn-nbctl list logical_router_port rp-public > /tmp/rp-public
-ovn-nbctl set logical_router_port rp-sw0 options:prefix=false
-ovn-nbctl set logical_router_port rp-sw1 options:prefix=false
-# Renew message
-NS_CHECK_EXEC([server], [tcpdump -c 1 -nni s1 ip6[[48:1]]=0x05 and ip6[[113:4]]=0x${prefix} > renew.pcap &])
+
+# Wait for 2 renew on each port.
+NS_CHECK_EXEC([server], [tcpdump -c 4 -nni s1 ip6[[48:1]]=0x05 and ip6[[113:4]]=0x${prefix} > renew.pcap &])
 # Reply message with Status OK
-NS_CHECK_EXEC([server], [tcpdump -c 1 -nni s1 ip6[[48:1]]=0x07 and ip6[[81:4]]=0x${prefix} > reply.pcap &])
+NS_CHECK_EXEC([server], [tcpdump -c 4 -nni s1 ip6[[48:1]]=0x07 and ip6[[81:4]]=0x${prefix} > reply.pcap &])
 
 OVS_WAIT_UNTIL([
     total_pkts=$(cat renew.pcap | wc -l)
-    test "${total_pkts}" = "1"
+    test "${total_pkts}" = "4"
 ])
 
 OVS_WAIT_UNTIL([
     total_pkts=$(cat reply.pcap | wc -l)
-    test "${total_pkts}" = "1"
+    test "${total_pkts}" = "4"
+])
+
+ovn-nbctl set logical_router_port rp-public options:prefix=false
+ovn-nbctl set logical_router_port rp-sw0 options:prefix=false
+ovn-nbctl --wait=hv set logical_router_port rp-sw1 options:prefix=true
+sleep_sb
+NS_CHECK_EXEC([server], [tcpdump -c 2 -nni s1 ip6[[48:1]]=0x05 and ip6[[113:4]]=0x${prefix} > renew.pcap &])
+
+# Sleep enough to have solicit and renew being sent, then wait for 2 renew.
+# The reply to the request will usually be received as sb is sleeping.
+# Hence, the reply to the first renew will be received when sb is ro.
+sleep 10
+wake_up_sb
+OVS_WAIT_UNTIL([
+    total_pkts=$(cat renew.pcap | wc -l)
+    test "${total_pkts}" = "2"
 ])
 
 kill $(pidof tcpdump)
