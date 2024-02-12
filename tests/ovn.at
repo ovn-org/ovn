@@ -6031,7 +6031,7 @@ ovs-vsctl -- add-port br-int vif2 -- \
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
-ovs-sbctl dump-flows > sbflows
+ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
 
 # Send ip packets between the two ports.
@@ -6047,7 +6047,7 @@ as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
 #Disable router R1
 ovn-nbctl --wait=hv set Logical_Router R1 enabled=false
 
-ovs-sbctl dump-flows > sbflows2
+ovn-sbctl dump-flows > sbflows2
 AT_CAPTURE_FILE([sbflows2])
 
 as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
