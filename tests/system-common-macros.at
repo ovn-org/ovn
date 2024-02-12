@@ -59,7 +59,7 @@ m4_define([ADD_BR], [ovs-vsctl _ADD_BR([$1]) -- $2])
 # The existing 'port' or 'ovs-port' will be removed before new ones are added.
 #
 m4_define([ADD_VETH],
-    [ AT_CHECK([ip link add $1 type veth peer name ovs-$1 || return 77])
+    [ AT_CHECK([ip link add $1 type veth peer name ovs-$1])
       CONFIGURE_VETH_OFFLOADS([$1])
       AT_CHECK([ip link set $1 netns $2])
       AT_CHECK([ip link set dev ovs-$1 up])
