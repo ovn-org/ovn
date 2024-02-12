@@ -1171,7 +1171,7 @@ ipv6_prefixd_send(struct rconn *swconn, struct ipv6_prefixd_state *pfd)
         return pfd->next_announce;
     }
 
-    if (pfd->state == PREFIX_DONE) {
+    if ((pfd->state == PREFIX_PENDING) || (pfd->state == PREFIX_DONE)) {
         goto out;
     }
 
@@ -1222,33 +1222,58 @@ static bool ipv6_prefixd_should_inject(void)
         struct ipv6_prefixd_state *pfd = iter->data;
         long long int cur_time = time_msec();
 
-        if (pfd->state == PREFIX_SOLICIT) {
+        if (pfd->state == PREFIX_SOLICIT || pfd->state == PREFIX_REQUEST) {
             return true;
         }
         if (pfd->state == PREFIX_DONE &&
             cur_time > pfd->last_complete + pfd->t1) {
-            pfd->state = PREFIX_RENEW;
             return true;
         }
         if (pfd->state == PREFIX_RENEW &&
             cur_time > pfd->last_complete + pfd->t2) {
-            pfd->state = PREFIX_REBIND;
             pfd->uuid.len = 0;
             return true;
         }
         if (pfd->state == PREFIX_REBIND &&
             cur_time > pfd->last_complete + pfd->vlife_time) {
-            pfd->state = PREFIX_SOLICIT;
             return true;
         }
     }
     return false;
 }
 
+static void ipv6_prefixd_update_state(struct ipv6_prefixd_state *pfd)
+{
+    long long int cur_time = time_msec();
+
+    if (pfd->state == PREFIX_DONE &&
+        cur_time > pfd->last_complete + pfd->t1) {
+        pfd->state = PREFIX_RENEW;
+        return;
+    }
+    if (pfd->state == PREFIX_RENEW &&
+        cur_time > pfd->last_complete + pfd->t2) {
+        pfd->state = PREFIX_REBIND;
+        pfd->uuid.len = 0;
+        return;
+    }
+    if (pfd->state == PREFIX_REBIND &&
+        cur_time > pfd->last_complete + pfd->vlife_time) {
+        pfd->state = PREFIX_SOLICIT;
+        return;
+    }
+}
+
 static void
 ipv6_prefixd_wait(long long int timeout)
 {
-    if (ipv6_prefixd_should_inject()) {
+    /* We need to wake up in all states :
+     * - In SOLICIT and REQUEST states we need to wakeup to handle
+     *   next_announce timer.
+     * - In DONE, PENDING, RENEW and REBIND states, we need to wake up to
+     *   handle T1, T2 timers.
+     */
+    if (!shash_is_empty(&ipv6_prefixd)) {
         poll_timer_wait_until(timeout);
     }
 }
@@ -1266,6 +1291,7 @@ send_ipv6_prefixd(struct rconn *swconn, long long int *send_prefixd_time)
         if (*send_prefixd_time > next_msg) {
             *send_prefixd_time = next_msg;
         }
+        ipv6_prefixd_update_state(pfd);
     }
 }
 
