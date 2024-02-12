@@ -35002,8 +35002,8 @@ check ovn-nbctl lsp-add sw0 sw0-p1
 check ovn-nbctl lsp-add sw0 lsp
 check ovn-nbctl lsp-set-type lsp router
 check ovn-nbctl lsp-set-options lsp router-port=lrp
-check ovn-nbctl lsp-set-addresses lsp  00:00:00:00:00:1
-check ovn-nbctl lrp-add ro0 lrp 00:00:00:00:00:1 aef0:0:0:0:0:0:0:1/64
+check ovn-nbctl lsp-set-addresses lsp  00:00:00:00:00:01
+check ovn-nbctl lrp-add ro0 lrp 00:00:00:00:00:01 aef0:0:0:0:0:0:0:1/64
 check ovn-nbctl set Logical_Router_Port lrp ipv6_ra_configs:send_periodic=true \
         -- set Logical_Router_Port lrp ipv6_ra_configs:address_mode=slaac \
         -- set Logical_Router_Port lrp ipv6_ra_configs:mtu=1280 \
@@ -35098,8 +35098,8 @@ check ovn-nbctl lsp-add sw0 sw0-p1
 check ovn-nbctl lsp-add sw0 lsp
 check ovn-nbctl lsp-set-type lsp router
 check ovn-nbctl lsp-set-options lsp router-port=lrp
-check ovn-nbctl lsp-set-addresses lsp  00:00:00:00:00:1
-check ovn-nbctl --wait=hv lrp-add ro0 lrp 00:00:00:00:00:1 aef0:0:0:0:0:0:0:1/64
+check ovn-nbctl lsp-set-addresses lsp  00:00:00:00:00:01
+check ovn-nbctl --wait=hv lrp-add ro0 lrp 00:00:00:00:00:01 aef0:0:0:0:0:0:0:1/64
 check ovn-nbctl --wait=hv lsp-del lsp
 check ovn-nbctl lrp-del lrp
 check ovn-nbctl --wait=hv sync
