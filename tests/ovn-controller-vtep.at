@@ -50,7 +50,7 @@ m4_define([OVN_CONTROLLER_VTEP_START], [
 /vlog|INFO|opened log file/d'
 
    dnl Wait until ovs-vtep starts up.
-   OVS_WAIT_UNTIL([test -n "`vtep-ctl show | grep Physical_Port`"])
+   OVS_WAIT_UNTIL([test 2 -eq "`vtep-ctl show | grep -c Physical_Port`"])
 
    dnl Start ovn-controller-vtep.
    start_daemon ovn-controller-vtep --vtep-db=unix:"$ovs_dir"/db.sock \
