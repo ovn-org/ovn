@@ -10765,6 +10765,8 @@ ovn_start
 # Test I-P for load balancers.
 # Presently ovn-northd handles I-P for NB LBs in northd_lb_data engine node
 # only.
+# Wait for sb to be connected before clearing stats.
+check ovn-nbctl --wait=sb sync
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lb-add lb1 10.0.0.10:80 10.0.0.3:80
 
