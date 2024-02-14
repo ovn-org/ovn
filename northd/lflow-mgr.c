@@ -259,6 +259,9 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
     struct hmap *lflows = &lflow_table->entries;
     struct ovn_lflow *lflow;
 
+    fast_hmap_size_for(&lflows_temp,
+                       lflow_table->max_seen_lflow_size);
+
     /* Push changes to the Logical_Flow table to database. */
     const struct sbrec_logical_flow *sbflow;
     SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_SAFE (sbflow, sb_flow_table) {
