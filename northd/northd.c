@@ -15339,7 +15339,7 @@ build_routable_flows_for_router_port(
         }
 
         if (lrp->nbrp->ha_chassis_group ||
-                lrp->nbrp->n_gateway_chassis) {
+                lrp->nbrp->n_gateway_chassis || lrp->od->is_gw_router) {
             for (size_t j = 0; j < ra.n_addrs; j++) {
                 struct lport_addresses *laddrs = &ra.laddrs[j];
                 for (size_t k = 0; k < laddrs->n_ipv4_addrs; k++) {

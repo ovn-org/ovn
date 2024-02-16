@@ -5052,6 +5052,18 @@ check ovn-nbctl --wait=sb lrp-del-gateway-chassis ro2-sw hv2
 
 check_lflows 0
 
+AS_BOX([Checking that NAT flows are installed for gw routers])
+
+check ovn-nbctl set logical_router ro1 options:chassis=hv1
+check ovn-nbctl --wait=sb set logical_router ro2 options:chassis=hv2
+
+check_lflows 1
+
+check ovn-nbctl clear logical_router ro1 options
+check ovn-nbctl --wait=sb clear logical_router ro2 options
+
+check_lflows 0
+
 AS_BOX([Checking that NAT flows are installed for routers with HA_Chassis_Group])
 
 check ovn-nbctl set logical_router_port ro1-sw ha_chassis_group="$grp1_uuid"
