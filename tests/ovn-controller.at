@@ -2790,3 +2790,47 @@ OVS_WAIT_FOR_OUTPUT([ovn-appctl -t ovn-controller connection-status], [0], [conn
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - tunnel chassis id backward compatibility])
+
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovn-nbctl --wait=sb sync
+wait_row_count Chassis 1 name=hv1
+
+ovn-sbctl chassis-add fakechassis geneve 192.168.0.2
+fakech_tunnel=ovn-fakech-0
+OVS_WAIT_UNTIL([ovs-vsctl list port $fakech_tunnel])
+port_uuid=$(ovs-vsctl get port $fakech_tunnel _uuid)
+
+AT_CHECK([ovs-vsctl get port $fakech_tunnel external_ids:ovn-chassis-id], [0], [dnl
+"fakechassis@192.168.0.2%192.168.0.1"
+])
+
+# Stop ovn-controller without deleting tunnel
+check ovn-appctl -t ovn-controller exit --restart
+
+# Change the tunnel external id to the old format, and then start
+# ovn-controller, pretending we are upgrading from an older version.
+ovs-vsctl set port $fakech_tunnel external_ids:ovn-chassis-id=fakechassis@192.168.0.2
+AT_CHECK([ovs-vsctl get port $fakech_tunnel external_ids:ovn-chassis-id], [0], [dnl
+"fakechassis@192.168.0.2"
+])
+
+start_daemon ovn-controller
+
+# The tunnel id should be updated to the new format but the tunnel's uuid
+# should kept the same (no recreation).
+OVS_WAIT_UNTIL([test x$(ovs-vsctl get port $fakech_tunnel external_ids:ovn-chassis-id) = x\"fakechassis@192.168.0.2%192.168.0.1\"])
+AT_CHECK([test x"$port_uuid"=$(ovs-vsctl get port $fakech_tunnel _uuid)])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
