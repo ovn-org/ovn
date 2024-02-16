@@ -105,39 +105,61 @@ encaps_tunnel_id_create(const char *chassis_id, const char *remote_encap_ip,
 }
 
 /*
+ * The older version of encaps_tunnel_id_create, which doesn't include
+ * local_encap_ip in the ID. This is used for backward compatibility support.
+ */
+static char *
+encaps_tunnel_id_create_legacy(const char *chassis_id,
+                               const char *remote_encap_ip)
+{
+    return xasprintf("%s%c%s", chassis_id, '@', remote_encap_ip);
+}
+
+/*
  * Parses a 'tunnel_id' of the form <chassis_name>@<remote IP>%<local IP>.
  * If the 'chassis_id' argument is not NULL the function will allocate memory
  * and store the chassis_name part of the tunnel-id at '*chassis_id'.
  * Same for remote_encap_ip and local_encap_ip.
+ *
+ * The old form <chassis_name>@<remote IP> is also supported for backward
+ * compatibility during upgrade.
  */
 bool
 encaps_tunnel_id_parse(const char *tunnel_id, char **chassis_id,
                        char **remote_encap_ip, char **local_encap_ip)
 {
-    /* Find the @.  Fail if there is no @ or if any part is empty. */
-    const char *d = strchr(tunnel_id, '@');
-    if (d == tunnel_id || !d || !d[1]) {
-        return false;
+    char *tokstr = xstrdup(tunnel_id);
+    char *saveptr = NULL;
+    bool ret = false;
+
+    char *token_chassis = strtok_r(tokstr, "@", &saveptr);
+    if (!token_chassis) {
+        goto out;
     }
 
-    /* Find the %.  Fail if there is no % or if any part is empty. */
-    const char *d2 = strchr(d + 1, '%');
-    if (d2 == d + 1 || !d2 || !d2[1]) {
-        return false;
+    char *token_remote_ip = strtok_r(NULL, "%", &saveptr);
+    if (!token_remote_ip) {
+        goto out;
     }
+
+    char *token_local_ip = strtok_r(NULL, "", &saveptr);
 
     if (chassis_id) {
-        *chassis_id = xmemdup0(tunnel_id, d - tunnel_id);
+        *chassis_id = xstrdup(token_chassis);
     }
-
     if (remote_encap_ip) {
-        *remote_encap_ip = xmemdup0(d + 1, d2 - (d + 1));
+        *remote_encap_ip = xstrdup(token_remote_ip);
+    }
+    if (local_encap_ip) {
+        /* To support backward compatibility during upgrade, ignore local ip if
+         * it is not encoded in the tunnel id yet. */
+        *local_encap_ip = nullable_xstrdup(token_local_ip);
     }
 
-    if (local_encap_ip) {
-        *local_encap_ip = xstrdup(d2 + 1);
-    }
-    return true;
+    ret = true;
+out:
+    free(tokstr);
+    return ret;
 }
 
 /*
@@ -145,6 +167,10 @@ encaps_tunnel_id_parse(const char *tunnel_id, char **chassis_id,
  *      <chassis_id>@<remote_encap_ip>%<local_encap_ip>
  * contains 'chassis_id' and, if specified, the given 'remote_encap_ip' and
  * 'local_encap_ip'. Returns false otherwise.
+ *
+ * The old format <chassis_id>@<remote_encap_ip> is also supported for backward
+ * compatibility during upgrade, and the local_encap_ip matching is ignored in
+ * that case.
  */
 bool
 encaps_tunnel_id_match(const char *tunnel_id, const char *chassis_id,
@@ -166,8 +192,10 @@ encaps_tunnel_id_match(const char *tunnel_id, const char *chassis_id,
     }
 
     char *token_local_ip = strtok_r(NULL, "", &saveptr);
-    if (local_encap_ip &&
-        (!token_local_ip || strcmp(token_local_ip, local_encap_ip))) {
+    if (!token_local_ip) {
+        /* It is old format. To support backward compatibility during upgrade,
+         * just ignore local_ip. */
+    } else if (local_encap_ip && strcmp(token_local_ip, local_encap_ip)) {
         goto out;
     }
 
@@ -189,6 +217,7 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
     const char *dst_port = smap_get(&encap->options, "dst_port");
     const char *csum = smap_get(&encap->options, "csum");
     char *tunnel_entry_id = NULL;
+    char *tunnel_entry_id_old = NULL;
 
     /*
      * Since a chassis may have multiple encap-ip, we can't just add the
@@ -198,6 +227,8 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
      */
     tunnel_entry_id = encaps_tunnel_id_create(new_chassis_id, encap->ip,
                                               local_ip);
+    tunnel_entry_id_old = encaps_tunnel_id_create_legacy(new_chassis_id,
+                                                         encap->ip);
     if (csum && (!strcmp(csum, "true") || !strcmp(csum, "false"))) {
         smap_add(&options, "csum", csum);
     }
@@ -269,11 +300,28 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
      * it). */
     struct tunnel_node *tunnel = shash_find_data(&tc->tunnel,
                                                  tunnel_entry_id);
+    bool old_id_format = false;
+    if (!tunnel) {
+        tunnel = shash_find_data(&tc->tunnel, tunnel_entry_id_old);
+        old_id_format = true;
+    }
     if (tunnel
         && tunnel->port->n_interfaces == 1
         && !strcmp(tunnel->port->interfaces[0]->type, encap->type)
         && smap_equal(&tunnel->port->interfaces[0]->options, &options)) {
-        shash_find_and_delete(&tc->tunnel, tunnel_entry_id);
+        if (old_id_format) {
+            /* We must be upgrading from an older version. We can reuse the
+             * existing tunnel, but needs to update the tunnel's ID to the new
+             * format. */
+            ovsrec_port_update_external_ids_setkey(tunnel->port, OVN_TUNNEL_ID,
+                                                   tunnel_entry_id);
+            ovsrec_interface_update_external_ids_setkey(
+                tunnel->port->interfaces[0], OVN_TUNNEL_ID, tunnel_entry_id);
+
+            shash_find_and_delete(&tc->tunnel, tunnel_entry_id_old);
+        } else {
+            shash_find_and_delete(&tc->tunnel, tunnel_entry_id);
+        }
         free(tunnel);
         goto exit;
     }
@@ -306,6 +354,7 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
 
 exit:
     free(tunnel_entry_id);
+    free(tunnel_entry_id_old);
     smap_destroy(&options);
 }
 
