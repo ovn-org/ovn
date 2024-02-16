@@ -57,6 +57,12 @@ arm_unit_tests_task:
     - sudo apt update
     - sudo apt install -y podman
 
+  #  XXX This should be removed when native crun >=1.9.1
+  update_crun_script:
+    - crun --version
+    - curl -L "https://github.com/containers/crun/releases/download/1.14.1/crun-1.14.1-linux-arm64" -o /usr/bin/crun
+    - chmod +x /usr/bin/crun
+
   download_cache_script:
     - curl http://$CIRRUS_HTTP_CACHE_HOST/${CIRRUS_CHANGE_IN_REPO} -o /tmp/image.tar
 
