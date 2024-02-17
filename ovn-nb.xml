@@ -1268,6 +1268,13 @@
           unknown ports connected to the same Logical Switch.
         </column>
 
+         <column name="options" key="disable_arp_nd_rsp"
+                type='{"type": "boolean"}'>
+          If set to <code>true</code>, ARP/ND responder flows are not installed
+          for the IP addresses configured on this logical port.
+          Default: <code>false</code>.
+        </column>
+
         <group title="VIF Plugging Options">
           <column name="options" key="vif-plug-type">
             If set, OVN will attempt to perform plugging of this VIF.  In order
