@@ -288,6 +288,7 @@ check_logs () {
 /ovs_rcu.*blocked [[0-9]]* ms waiting for .* to quiesce/d
 /Dropped [[0-9]]* log messages/d
 /.*Trying to release unknown interface.*/d
+/setting extended ack support failed/d
 /|WARN|/p
 /|ERR|/p
 /|EMER|/p" ${logs}
