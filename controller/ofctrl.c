@@ -634,7 +634,6 @@ run_S_WAIT_BEFORE_CLEAR(void)
     if (!wait_before_clear_time ||
         (wait_before_clear_expire &&
          time_msec() >= wait_before_clear_expire)) {
-        wait_before_clear_expire = 0;
         state = S_CLEAR_FLOWS;
         return;
     }
