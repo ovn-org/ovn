@@ -6490,10 +6490,45 @@ struct put_vport_binding {
     uint32_t vport_key;
 
     uint32_t vport_parent_key;
+
+    /* This vport record Only relevant if "new_record" is true. */
+    bool new_record;
 };
 
 /* Contains "struct put_vport_binding"s. */
 static struct hmap put_vport_bindings;
+
+/*
+ * Validate if the vport_binding record that was added
+ * by the pinctrl thread is still relevant and needs
+ * to be updated in the SBDB or not.
+ *
+ * vport_binding record is only relevant and needs to be updated in SB if:
+ *   2. The put_vport_binding:new_record is true:
+ *       The new_record will be set to "true" when this vport record is created
+ *       by function "pinctrl_handle_bind_vport".
+ *
+ *       After the first attempt to bind this vport to the chassis and
+ *       virtual_parent by function "run_put_vport_bindings" we will set the
+ *       value of vpb:new_record to "false" and keep it in "put_vport_bindings"
+ *
+ *       After the second attempt of binding the vpb it will be removed by
+ *       this function.
+ *
+ *       The above guarantees that we will try to bind the vport twice in
+ *       a certain amount of time.
+ *
+*/
+static bool
+is_vport_binding_relevant(struct put_vport_binding *vpb)
+{
+
+    if (vpb->new_record) {
+        vpb->new_record = false;
+        return true;
+    }
+    return false;
+}
 
 static void
 init_put_vport_bindings(void)
@@ -6502,18 +6537,21 @@ init_put_vport_bindings(void)
 }
 
 static void
-flush_put_vport_bindings(void)
+flush_put_vport_bindings(bool force_flush)
 {
     struct put_vport_binding *vport_b;
-    HMAP_FOR_EACH_POP (vport_b, hmap_node, &put_vport_bindings) {
-        free(vport_b);
+    HMAP_FOR_EACH_SAFE (vport_b, hmap_node, &put_vport_bindings) {
+        if (!is_vport_binding_relevant(vport_b) || force_flush) {
+            hmap_remove(&put_vport_bindings, &vport_b->hmap_node);
+            free(vport_b);
+        }
     }
 }
 
 static void
 destroy_put_vport_bindings(void)
 {
-    flush_put_vport_bindings();
+    flush_put_vport_bindings(true);
     hmap_destroy(&put_vport_bindings);
 }
 
@@ -6591,7 +6629,7 @@ run_put_vport_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn,
                               sbrec_port_binding_by_key, chassis, vpb);
     }
 
-    flush_put_vport_bindings();
+    flush_put_vport_bindings(false);
 }
 
 /* Called with in the pinctrl_handler thread context. */
@@ -6629,7 +6667,7 @@ pinctrl_handle_bind_vport(
     vpb->dp_key = dp_key;
     vpb->vport_key = vport_key;
     vpb->vport_parent_key = vport_parent_key;
-
+    vpb->new_record = true;
     notify_pinctrl_main();
 }
 
