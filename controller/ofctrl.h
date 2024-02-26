@@ -58,7 +58,7 @@ void ofctrl_put(struct ovn_desired_flow_table *lflow_table,
                 struct ovn_desired_flow_table *pflow_table,
                 struct shash *pending_ct_zones,
                 struct hmap *pending_lb_tuples,
-                const struct sbrec_meter_table *,
+                struct ovsdb_idl_index *sbrec_meter_by_name,
                 uint64_t nb_cfg,
                 bool lflow_changed,
                 bool pflow_changed);
