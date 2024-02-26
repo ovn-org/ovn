@@ -1,7 +1,7 @@
 {
     "name": "OVN_Southbound",
-    "version": "20.33.0",
-    "cksum": "4076371179 31328",
+    "version": "20.34.0",
+    "cksum": "2786607656 31376",
     "tables": {
         "SB_Global": {
             "columns": {
@@ -480,6 +480,7 @@
         "IGMP_Group": {
             "columns": {
                 "address": {"type": "string"},
+                "protocol": {"type": "string"},
                 "datapath": {"type": {"key": {"type": "uuid",
                                               "refTable": "Datapath_Binding",
                                               "refType": "weak"},

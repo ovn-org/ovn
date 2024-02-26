@@ -5,6 +5,8 @@ Post v24.03.0
     cloned to all unknown ports connected to the same Logical Switch.
   - Added a new logical switch port option "disable_arp_nd_rsp" to
     disable adding the ARP responder flows if set to true.
+  - IGMP_Group has new "protocol" column that displays the the group
+    protocol version.
 
 OVN v24.03.0 - 01 Mar 2024
 --------------------------

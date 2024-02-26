@@ -120,7 +120,7 @@ static const char *rbac_svc_monitor_auth_update[] =
 static const char *rbac_igmp_group_auth[] =
     {"chassis_name"};
 static const char *rbac_igmp_group_update[] =
-    {"address", "chassis", "datapath", "ports"};
+    {"address", "protocol", "chassis", "datapath", "ports"};
 static const char *rbac_bfd_auth[] =
     {"chassis_name"};
 static const char *rbac_bfd_update[] =

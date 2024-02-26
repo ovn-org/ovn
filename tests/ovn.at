@@ -22706,6 +22706,7 @@ send_igmp_v3_report hv2-vif1 hv2 000000000002 $(ip_to_hex 10 0 0 2) f9f9 \
 
 # Check that the IGMP Group is learned on both hv.
 wait_row_count IGMP_Group 2 address=239.0.1.68
+wait_row_count IGMP_Group 2 protocol=IGMPv3
 check ovn-nbctl --wait=hv sync
 
 AT_CAPTURE_FILE([sbflows3])
@@ -22783,6 +22784,7 @@ send_igmp_v3_report hv1-vif1 hv1 \
 
 # Check that the IGMP Group is learned.
 wait_row_count IGMP_Group 1 address=224.0.0.42
+wait_row_count IGMP_Group 1 protocol=IGMPv3
 
 AS_BOX([IGMP traffic test 3])
 # Send traffic and make sure it gets flooded to all ports.
@@ -23444,6 +23446,7 @@ send_mld_v2_report hv2-vif1 hv2 \
 
 # Check that the IP multicast group is learned on both hv.
 wait_row_count IGMP_Group 2 address='"ff0a:dead:beef::1"'
+wait_row_count IGMP_Group 2 protocol=MLDv2
 
 # This gives the ovn-controller nodes a chance to see the new IGMP_Group.
 check ovn-nbctl --wait=hv sync

@@ -4756,6 +4756,10 @@ tcp.flags = RST;
       Destination IPv4 address for the IGMP group.
     </column>
 
+    <column name="protocol">
+      Group protocol version either IGMPv1,v2,v3 or MLDv1,v2.
+    </column>
+
     <column name="datapath">
       Datapath to which this IGMP group belongs.
     </column>
