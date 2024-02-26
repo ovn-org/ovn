@@ -12024,7 +12024,6 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     struct ds skip_snat_act = DS_EMPTY_INITIALIZER;
     struct ds force_snat_act = DS_EMPTY_INITIALIZER;
     struct ds undnat_match = DS_EMPTY_INITIALIZER;
-    struct ds unsnat_match = DS_EMPTY_INITIALIZER;
     struct ds gw_redir_action = DS_EMPTY_INITIALIZER;
 
     ds_clear(match);
@@ -12069,13 +12068,6 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
     }
     /* Remove the trailing " || ". */
     ds_truncate(&undnat_match, undnat_match.length - 4);
-
-    ds_put_format(&unsnat_match, "%s && %s.dst == %s && %s",
-                  ip_match, ip_match, lb_vip->vip_str, lb->proto);
-    if (lb_vip->port_str) {
-        ds_put_format(&unsnat_match, " && %s.dst == %s", lb->proto,
-                      lb_vip->port_str);
-    }
 
     struct lrouter_nat_lb_flows_ctx ctx = {
         .lb_vip = lb_vip,
@@ -12128,23 +12120,6 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
         if (lb->affinity_timeout) {
             bitmap_set1(aff_dp_bitmap[type], index);
         }
-
-        if (sset_contains(&od->external_ips, lb_vip->vip_str)) {
-            /* The load balancer vip is also present in the NAT entries.
-             * So add a high priority lflow to advance the the packet
-             * destined to the vip (and the vip port if defined)
-             * in the S_ROUTER_IN_UNSNAT stage.
-             * There seems to be an issue with ovs-vswitchd. When the new
-             * connection packet destined for the lb vip is received,
-             * it is dnat'ed in the S_ROUTER_IN_DNAT stage in the dnat
-             * conntrack zone. For the next packet, if it goes through
-             * unsnat stage, the conntrack flags are not set properly, and
-             * it doesn't hit the established state flows in
-             * S_ROUTER_IN_DNAT stage. */
-            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_UNSNAT, 120,
-                                    ds_cstr(&unsnat_match), "next;",
-                                    &lb->nlb->header_);
-        }
     }
 
     for (size_t type = 0; type < LROUTER_NAT_LB_FLOW_MAX; type++) {
@@ -12155,7 +12130,6 @@ build_lrouter_nat_flows_for_lb(struct ovn_lb_vip *lb_vip,
                                    lr_datapaths);
     }
 
-    ds_destroy(&unsnat_match);
     ds_destroy(&undnat_match);
     ds_destroy(&skip_snat_act);
     ds_destroy(&force_snat_act);
@@ -15878,12 +15852,7 @@ build_lrouter_nat_defrag_and_lb(struct ovn_datapath *od, struct hmap *lflows,
                                    l3dgw_port, stateless);
 
         /* ARP resolve for NAT IPs. */
-        if (od->is_gw_router) {
-            /* Add the NAT external_ip to the nat_entries for
-             * gateway routers. This is required for adding load balancer
-             * flows.*/
-            sset_add(&nat_entries, nat->external_ip);
-        } else {
+        if (!od->is_gw_router) {
             if (!sset_contains(&nat_entries, nat->external_ip)) {
                 /* Drop packets coming in from external that still has
                  * destination IP equals to the NAT external IP, to avoid loop.
