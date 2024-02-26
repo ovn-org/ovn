@@ -174,8 +174,7 @@ lflow_lr_stateful_handler(struct engine_node *node, void *data)
     struct ed_type_lr_stateful *lr_sful_data =
         engine_get_input_data("lr_stateful", node);
 
-    if (!lr_stateful_has_tracked_data(&lr_sful_data->trk_data)
-        || lr_sful_data->trk_data.vip_nats_changed) {
+    if (!lr_stateful_has_tracked_data(&lr_sful_data->trk_data)) {
         return false;
     }
 

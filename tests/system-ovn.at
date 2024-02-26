@@ -12097,6 +12097,86 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([load balancing in gateway router - client behind LB with SNAT])
+AT_SKIP_IF([test $HAVE_NC = no])
+AT_KEYWORDS([lb])
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+check ovn-nbctl lr-add lr \
+    -- set logical_router lr options:chassis=hv1
+check ovn-nbctl lrp-add lr lr-ls1 00:00:00:00:01:00 41.41.41.2/24
+check ovn-nbctl lrp-add lr lr-ls2 00:00:00:00:02:00 42.42.42.2/24
+check ovn-nbctl ls-add ls1
+check ovn-nbctl ls-add ls2
+
+check ovn-nbctl lsp-add ls1 ls1-lr
+check ovn-nbctl lsp-set-addresses ls1-lr 00:00:00:00:01:00
+check ovn-nbctl lsp-set-type ls1-lr router
+check ovn-nbctl lsp-set-options ls1-lr router-port=lr-ls1
+check ovn-nbctl lsp-add ls1 vm1
+check ovn-nbctl lsp-set-addresses vm1 00:00:00:00:00:01
+
+check ovn-nbctl lsp-add ls2 ls2-lr
+check ovn-nbctl lsp-set-addresses ls2-lr 00:00:00:00:02:00
+check ovn-nbctl lsp-set-type ls2-lr router
+check ovn-nbctl lsp-set-options ls2-lr router-port=lr-ls2
+check ovn-nbctl lsp-add ls2 vm2
+check ovn-nbctl lsp-set-addresses vm2 00:00:00:00:00:02
+
+dnl LB using the router IP connected to vm2 as VIP.
+check ovn-nbctl lb-add lb-test 42.42.42.2:8080 41.41.41.1:8080 tcp \
+    -- lr-lb-add lr lb-test
+
+dnl SNAT everything coming from vm1 to the router IP (towards vm2).
+check ovn-nbctl lr-nat-add lr snat 42.42.42.2 41.41.41.1
+
+ADD_NAMESPACES(vm1)
+ADD_VETH(vm1, vm1, br-int, "41.41.41.1/24", "00:00:00:00:00:01", "41.41.41.2")
+
+ADD_NAMESPACES(vm2)
+ADD_VETH(vm2, vm2, br-int, "42.42.42.1/24", "00:00:00:00:00:02", "42.42.42.2")
+
+dnl Start a server on vm2.
+NETNS_DAEMONIZE([vm2], [nc -l -k 42.42.42.1 80], [vm2.pid])
+
+dnl Wait for ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl Test the connection originating something that uses the same source port
+dnl as the LB VIP.
+NS_CHECK_EXEC([vm1], [nc -z -p 8080 42.42.42.1 80], 0, [ignore], [ignore])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([load balancing affinity sessions - auto clear learnt flows])
 AT_SKIP_IF([test $HAVE_NC = no])
 AT_KEYWORDS([lb])
