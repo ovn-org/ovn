@@ -219,10 +219,6 @@ lr_nat_record_init(struct lr_nat_record *lrnat_rec,
     lrnat_rec->nbr_uuid = od->nbr->header_.uuid;
 
     shash_init(&lrnat_rec->snat_ips);
-    sset_init(&lrnat_rec->external_ips);
-    for (size_t i = 0; i < od->nbr->n_nat; i++) {
-        sset_add(&lrnat_rec->external_ips, od->nbr->nat[i]->external_ip);
-    }
 
     sset_init(&lrnat_rec->external_macs);
     lrnat_rec->has_distributed_nat = false;
@@ -343,7 +339,6 @@ lr_nat_record_clear(struct lr_nat_record *lrnat_rec)
     }
 
     free(lrnat_rec->nat_entries);
-    sset_destroy(&lrnat_rec->external_ips);
     sset_destroy(&lrnat_rec->external_macs);
 }
 

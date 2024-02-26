@@ -64,9 +64,6 @@ struct lr_nat_record {
 
     bool has_distributed_nat;
 
-    /* Set of nat external ips on the router. */
-    struct sset external_ips;
-
     /* Set of nat external macs on the router. */
     struct sset external_macs;
 
