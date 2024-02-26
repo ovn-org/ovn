@@ -5129,6 +5129,8 @@ main(int argc, char *argv[])
         = chassis_private_index_create(ovnsb_idl_loop.idl);
     struct ovsdb_idl_index *sbrec_multicast_group_by_name_datapath
         = mcast_group_index_create(ovnsb_idl_loop.idl);
+    struct ovsdb_idl_index *sbrec_meter_by_name
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl, &sbrec_meter_col_name);
     struct ovsdb_idl_index *sbrec_logical_flow_by_logical_datapath
         = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
                                   &sbrec_logical_flow_col_logical_datapath);
@@ -5942,7 +5944,7 @@ main(int argc, char *argv[])
                                    &pflow_output_data->flow_table,
                                    &ct_zones_data->pending,
                                    &lb_data->removed_tuples,
-                                   sbrec_meter_table_get(ovnsb_idl_loop.idl),
+                                   sbrec_meter_by_name,
                                    ofctrl_seqno_get_req_cfg(),
                                    engine_node_changed(&en_lflow_output),
                                    engine_node_changed(&en_pflow_output));

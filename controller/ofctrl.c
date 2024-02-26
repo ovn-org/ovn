@@ -2257,18 +2257,29 @@ ofctrl_meter_bands_erase(struct ovn_extend_table_info *entry,
     }
 }
 
+static const struct sbrec_meter *
+sb_meter_lookup_by_name(struct ovsdb_idl_index *sbrec_meter_by_name,
+                        const char *name)
+{
+    const struct sbrec_meter *sb_meter;
+    struct sbrec_meter *index_row;
+
+    index_row = sbrec_meter_index_init_row(sbrec_meter_by_name);
+    sbrec_meter_index_set_name(index_row, name);
+    sb_meter = sbrec_meter_index_find(sbrec_meter_by_name, index_row);
+    sbrec_meter_index_destroy_row(index_row);
+
+    return sb_meter;
+}
+
 static void
 ofctrl_meter_bands_sync(struct ovn_extend_table_info *m_existing,
-                        const struct sbrec_meter_table *meter_table,
+                        struct ovsdb_idl_index *sbrec_meter_by_name,
                         struct ovs_list *msgs)
 {
     const struct sbrec_meter *sb_meter;
-    SBREC_METER_TABLE_FOR_EACH (sb_meter, meter_table) {
-        if (!strcmp(m_existing->name, sb_meter->name)) {
-            break;
-        }
-    }
 
+    sb_meter = sb_meter_lookup_by_name(sbrec_meter_by_name, m_existing->name);
     if (sb_meter) {
         /* OFPMC13_ADD or OFPMC13_MODIFY */
         ofctrl_meter_bands_update(sb_meter, m_existing, msgs);
@@ -2280,16 +2291,12 @@ ofctrl_meter_bands_sync(struct ovn_extend_table_info *m_existing,
 
 static void
 add_meter(struct ovn_extend_table_info *m_desired,
-          const struct sbrec_meter_table *meter_table,
+          struct ovsdb_idl_index *sbrec_meter_by_name,
           struct ovs_list *msgs)
 {
     const struct sbrec_meter *sb_meter;
-    SBREC_METER_TABLE_FOR_EACH (sb_meter, meter_table) {
-        if (!strcmp(m_desired->name, sb_meter->name)) {
-            break;
-        }
-    }
 
+    sb_meter = sb_meter_lookup_by_name(sbrec_meter_by_name, m_desired->name);
     if (!sb_meter) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_ERR_RL(&rl, "could not find meter named \"%s\"", m_desired->name);
@@ -2656,7 +2663,7 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
            struct ovn_desired_flow_table *pflow_table,
            struct shash *pending_ct_zones,
            struct hmap *pending_lb_tuples,
-           const struct sbrec_meter_table *meter_table,
+           struct ovsdb_idl_index *sbrec_meter_by_name,
            uint64_t req_cfg,
            bool lflows_changed,
            bool pflows_changed)
@@ -2733,10 +2740,10 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
                  * describes the meter itself. */
                 add_meter_string(m_desired, &msgs);
             } else {
-                add_meter(m_desired, meter_table, &msgs);
+                add_meter(m_desired, sbrec_meter_by_name, &msgs);
             }
         } else {
-            ofctrl_meter_bands_sync(m_existing, meter_table, &msgs);
+            ofctrl_meter_bands_sync(m_existing, sbrec_meter_by_name, &msgs);
         }
     }
 
