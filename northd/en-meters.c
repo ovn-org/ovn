@@ -203,9 +203,13 @@ sync_acl_fair_meter(struct ovsdb_idl_txn *ovnsb_txn,
                     const struct nbrec_acl *acl, struct shash *sb_meters,
                     struct sset *used_sb_meters)
 {
-    const struct nbrec_meter *nb_meter =
-        fair_meter_lookup_by_name(meter_groups, acl->meter);
+    const struct nbrec_meter *nb_meter;
 
+    if (!acl->log || !acl->meter) {
+        return;
+    }
+
+    nb_meter = fair_meter_lookup_by_name(meter_groups, acl->meter);
     if (!nb_meter) {
         return;
     }

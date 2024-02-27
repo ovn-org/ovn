@@ -2432,6 +2432,24 @@ check_acl_lflow acl_two meter_me__${acl2} sw0
 check_acl_lflow acl_three meter_me__${acl3} sw0
 check_acl_lflow acl_three meter_me__${acl3} sw1
 
+AS_BOX([Disable/enable logging for acl3 while still referencing the meter])
+check_row_count meter 4
+check ovn-nbctl --wait=sb set acl $acl3 log=false
+check_row_count meter 3
+check_meter_by_name meter_me meter_me__${acl1} meter_me__${acl2}
+check_meter_by_name NOT meter_me__${acl3}
+check_acl_lflow acl_one meter_me__${acl1} sw0
+check_acl_lflow acl_two meter_me__${acl2} sw0
+
+check ovn-nbctl --wait=sb set acl $acl3 log=true
+check_row_count meter 4
+check_meter_by_name \
+    meter_me meter_me__${acl1} meter_me__${acl2} meter_me__${acl3}
+check_acl_lflow acl_one meter_me__${acl1} sw0
+check_acl_lflow acl_two meter_me__${acl2} sw0
+check_acl_lflow acl_three meter_me__${acl3} sw0
+check_acl_lflow acl_three meter_me__${acl3} sw1
+
 AS_BOX([Stop using meter for acl1])
 check ovn-nbctl --wait=sb clear acl $acl1 meter
 check_meter_by_name meter_me meter_me__${acl2}
