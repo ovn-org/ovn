@@ -217,6 +217,14 @@ jobs:
         path: /tmp/image.tar
         key: ${{ github.sha }}
 
+    # XXX This should be removed when native crun >=1.9.1
+    - name: update crun script
+      run: |
+        crun --version
+        sudo curl -L "https://github.com/containers/crun/releases/download/1.14.1/crun-1.14.1-linux-amd64" -o /usr/bin/crun
+        sudo chmod +x /usr/bin/crun
+        echo "New crun version: "$(crun --version)
+
     - name: load image
       run: |
         sudo podman load -i /tmp/image.tar

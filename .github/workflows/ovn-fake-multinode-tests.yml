@@ -137,6 +137,14 @@ jobs:
         sudo systemctl start openvswitch-switch
         sudo ovs-vsctl show
 
+    # XXX This should be removed when native crun >=1.9.1
+    - name: update crun script
+      run: |
+        crun --version
+        sudo curl -L "https://github.com/containers/crun/releases/download/1.14.1/crun-1.14.1-linux-amd64" -o /usr/bin/crun
+        sudo chmod +x /usr/bin/crun
+        echo "New crun version: "$(crun --version)
+
     - name: Start basic cluster
       run: |
         sudo -E ./ovn_cluster.sh start
