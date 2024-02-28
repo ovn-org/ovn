@@ -38351,3 +38351,56 @@ OVS_WAIT_UNTIL([test 1 = $(as hv ovs-ofctl dump-flows br-int | grep -E "pkt_mark
 OVN_CLEANUP([hv])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - cleanup VIF/CIF related flows/fields when updating requested-chassis])
+ovn_start
+
+net_add n1
+sim_add hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int vif1 -- \
+    set Interface vif1 external-ids:iface-id=lsp1 \
+    ofport-request=8
+
+check ovn-nbctl ls-add lsw0
+
+check ovn-nbctl lsp-add lsw0 lsp1
+check ovn-nbctl lsp-add lsw0 sw0-port1.1 lsp1 7
+
+# wait for the VIF to be claimed to this chassis
+wait_row_count Chassis 1 name=hv1
+hv1_uuid=$(fetch_column Chassis _uuid name=hv1)
+wait_for_ports_up lsp1
+wait_for_ports_up sw0-port1.1
+wait_column "$hv1_uuid" Port_Binding chassis logical_port=lsp1
+wait_column "$hv1_uuid" Port_Binding chassis logical_port=sw0-port1.1
+
+# check that flows is installed
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=0 |grep priority=100 | grep -c in_port=8], [0],[dnl
+1
+])
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=0 |grep priority=150|grep dl_vlan=7| grep -c in_port=8], [0],[dnl
+1
+])
+
+# set lport requested-chassis to differant chassis
+check ovn-nbctl set Logical_Switch_Port lsp1 \
+    options:requested-chassis=foo
+
+OVS_WAIT_UNTIL([test `ovn-sbctl get Port_Binding lsp1 up` = 'false'])
+OVS_WAIT_UNTIL([test `ovn-sbctl get Port_Binding sw0-port1.1 up` = 'false'])
+wait_column "" Port_Binding chassis logical_port=lsp1
+wait_column "" Port_Binding chassis logical_port=sw0-port1.1
+
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=0 |grep priority=100 |grep -c in_port=8], [1],[dnl
+0
+])
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=0 |grep priority=150|grep dl_vlan=7| grep -c in_port=8], [1],[dnl
+0
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
