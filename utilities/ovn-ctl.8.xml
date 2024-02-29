@@ -92,6 +92,22 @@
     <p><code>--ovn-controller-ssl-ca-cert=<var>CERT</var></code></p>
     <p><code>--ovn-controller-ssl-bootstrap-ca-cert=<var>CERT</var></code></p>
 
+    <h1>Protocol and Cipher options</h1>
+    <p><code>--ovn-controller-ssl-protocols=<var>PROTOCOLS</var></code></p>
+    <p><code>--ovn-ic-ssl-protocols=<var>PROTOCOLS</var></code></p>
+    <p><code>--ovn-northd-ssl-protocols=<var>PROTOCOLS</var></code></p>
+    <p><code>--ovn-nb-db-ssl-protocols=<var>PROTOCOLS</var></code></p>
+    <p><code>--ovn-sb-db-ssl-protocols=<var>PROTOCOLS</var></code></p>
+    <p><code>--ovn-ic-nb-db-ssl-protocols=<var>PROTOCOLS</var></code></p>
+    <p><code>--ovn-ic-sb-db-ssl-protocols=<var>PROTOCOLS</var></code></p>
+    <p><code>--ovn-controller-ssl-ciphers=<var>CIPHERS</var></code></p>
+    <p><code>--ovn-ic-ssl-ciphers=<var>CIPHERS</var></code></p>
+    <p><code>--ovn-northd-ssl-ciphers=<var>CIPHERS</var></code></p>
+    <p><code>--ovn-nb-db-ssl-ciphers=<var>CIPHERS</var></code></p>
+    <p><code>--ovn-sb-db-ssl-ciphers=<var>CIPHERS</var></code></p>
+    <p><code>--ovn-ic-nb-db-ssl-ciphers=<var>CIPHERS</var></code></p>
+    <p><code>--ovn-ic-sb-db-ssl-ciphers=<var>CIPHERS</var></code></p>
+
     <h1>Address and port options</h1>
     <p><code>--db-nb-sync-from-addr=<var>IP ADDRESS</var></code></p>
     <p><code>--db-nb-sync-from-port=<var>PORT NUMBER</var></code></p>

@@ -185,6 +185,8 @@ start_ovsdb__() {
     local ovn_db_election_timer
     local relay_mode
     local cluster_db_upgrade
+    local ovn_db_ssl_protocols
+    local ovn_db_ssl_ciphers
     eval db_pid_file=\$DB_${DB}_PIDFILE
     eval cluster_local_addr=\$DB_${DB}_CLUSTER_LOCAL_ADDR
     eval cluster_local_port=\$DB_${DB}_CLUSTER_LOCAL_PORT
@@ -214,6 +216,8 @@ start_ovsdb__() {
     eval relay_mode=\$RELAY_MODE
     eval relay_remote=\$DB_${DB}_REMOTE
     eval cluster_db_upgrade=\$DB_CLUSTER_SCHEMA_UPGRADE
+    eval ovn_db_ssl_protocols=\$OVN_${DB}_DB_SSL_PROTOCOLS
+    eval ovn_db_ssl_ciphers=\$OVN_${DB}_DB_SSL_CIPHERS
 
     ovn_install_dir "$OVN_RUNDIR"
     ovn_install_dir "$ovn_logdir"
@@ -313,8 +317,17 @@ $cluster_remote_port
         set "$@" --ca-cert=db:$schema_name,SSL,ca_cert
     fi
 
-    set "$@" --ssl-protocols=db:$schema_name,SSL,ssl_protocols
-    set "$@" --ssl-ciphers=db:$schema_name,SSL,ssl_ciphers
+    if test X"$ovn_db_ssl_protocols" != X; then
+        set "$@" --ssl-protocols=$ovn_db_ssl_protocols
+    else
+        set "$@" --ssl-protocols=db:$schema_name,SSL,ssl_protocols
+    fi
+
+    if test X"$ovn_db_ssl_ciphers" != X; then
+        set "$@" --ssl-ciphers=$ovn_db_ssl_ciphers
+    else
+        set "$@" --ssl-ciphers=db:$schema_name,SSL,ssl_ciphers
+    fi
 
     if test X"$create_insecure_remote" = Xyes; then
         set "$@" --remote=ptcp:$port:$addr
@@ -523,6 +536,12 @@ start_northd () {
         if test "$OVN_NORTHD_N_THREADS" != 1; then
             set "$@" --n-threads=$OVN_NORTHD_N_THREADS
         fi
+        if test X"$OVN_NORTHD_SSL_PROTOCOLS" != X; then
+            set "$@" --ssl-protocols=$OVN_NORTHD_SSL_PROTOCOLS
+        fi
+        if test X"$OVN_NORTHD_SSL_CIPHERS" != X; then
+            set "$@" --ssl-ciphers=$OVN_NORTHD_SSL_CIPHERS
+        fi
 
         [ "$OVN_USER" != "" ] && set "$@" --user "$OVN_USER"
 
@@ -558,6 +577,12 @@ start_ic () {
         if test X"$OVN_IC_SSL_CA_CERT" != X; then
             set "$@" --ca-cert=$OVN_IC_SSL_CA_CERT
         fi
+        if test X"$OVN_IC_SSL_PROTOCOLS" != X; then
+            set "$@" --ssl-protocols=$OVN_IC_SSL_PROTOCOLS
+        fi
+        if test X"$OVN_IC_SSL_CIPHERS" != X; then
+            set "$@" --ssl-ciphers=$OVN_IC_SSL_CIPHERS
+        fi
 
         [ "$OVN_USER" != "" ] && set "$@" --user "$OVN_USER"
 
@@ -586,6 +611,12 @@ start_controller () {
     if test X"$OVN_CONTROLLER_SSL_BOOTSTRAP_CA_CERT" != X; then
         set "$@" --bootstrap-ca-cert=$OVN_CONTROLLER_SSL_BOOTSTRAP_CA_CERT
     fi
+    if test X"$OVN_CONTROLLER_SSL_PROTOCOLS" != X; then
+        set "$@" --ssl-protocols=$OVN_CONTROLLER_SSL_PROTOCOLS
+    fi
+    if test X"$OVN_CONTROLLER_SSL_CIPHERS" != X; then
+        set "$@" --ssl-ciphers=$OVN_CONTROLLER_SSL_CIPHERS
+    fi
 
     [ "$OVN_USER" != "" ] && set "$@" --user "$OVN_USER"
 
@@ -610,6 +641,12 @@ start_controller_vtep () {
     fi
     if test X"$OVN_CONTROLLER_SSL_BOOTSTRAP_CA_CERT" != X; then
         set "$@" --bootstrap-ca-cert=$OVN_CONTROLLER_SSL_BOOTSTRAP_CA_CERT
+    fi
+    if test X"$OVN_CONTROLLER_SSL_PROTOCOLS" != X; then
+        set "$@" --ssl-protocols=$OVN_CONTROLLER_SSL_PROTOCOLS
+    fi
+    if test X"$OVN_CONTROLLER_SSL_CIPHERS" != X; then
+        set "$@" --ssl-ciphers=$OVN_CONTROLLER_SSL_CIPHERS
     fi
     if test X"$DB_SOCK" != X; then
         set "$@" --vtep-db=$DB_SOCK
@@ -814,14 +851,20 @@ set_defaults () {
     OVN_CONTROLLER_SSL_CERT=""
     OVN_CONTROLLER_SSL_CA_CERT=""
     OVN_CONTROLLER_SSL_BOOTSTRAP_CA_CERT=""
+    OVN_CONTROLLER_SSL_PROTOCOLS=""
+    OVN_CONTROLLER_SSL_CIPHERS=""
 
     OVN_NORTHD_SSL_KEY=""
     OVN_NORTHD_SSL_CERT=""
     OVN_NORTHD_SSL_CA_CERT=""
+    OVN_NORTHD_SSL_PROTOCOLS=""
+    OVN_NORTHD_SSL_CIPHERS=""
 
     OVN_IC_SSL_KEY=""
     OVN_IC_SSL_CERT=""
     OVN_IC_SSL_CA_CERT=""
+    OVN_IC_SSL_PROTOCOLS=""
+    OVN_IC_SSL_CIPHERS=""
 
     DB_SB_CREATE_INSECURE_REMOTE="no"
     DB_NB_CREATE_INSECURE_REMOTE="no"
@@ -878,18 +921,26 @@ set_defaults () {
     OVN_NB_DB_SSL_KEY=""
     OVN_NB_DB_SSL_CERT=""
     OVN_NB_DB_SSL_CA_CERT=""
+    OVN_NB_DB_SSL_PROTOCOLS=""
+    OVN_NB_DB_SSL_CIPHERS=""
 
     OVN_SB_DB_SSL_KEY=""
     OVN_SB_DB_SSL_CERT=""
     OVN_SB_DB_SSL_CA_CERT=""
+    OVN_SB_DB_SSL_PROTOCOLS=""
+    OVN_SB_DB_SSL_CIPHERS=""
 
     OVN_IC_NB_DB_SSL_KEY=""
     OVN_IC_NB_DB_SSL_CERT=""
     OVN_IC_NB_DB_SSL_CA_CERT=""
+    OVN_IC_NB_DB_SSL_PROTOCOLS=""
+    OVN_IC_NB_DB_SSL_CIPHERS=""
 
     OVN_IC_SB_DB_SSL_KEY=""
     OVN_IC_SB_DB_SSL_CERT=""
     OVN_IC_SB_DB_SSL_CA_CERT=""
+    OVN_IC_SB_DB_SSL_PROTOCOLS=""
+    OVN_IC_SB_DB_SSL_CIPHERS=""
 
     RELAY_MODE=no
     DB_SB_RELAY_REMOTE=
@@ -988,15 +1039,23 @@ Options:
   --ovn-controller-ssl-cert=CERT OVN Southbound SSL certificate file
   --ovn-controller-ssl-ca-cert=CERT OVN Southbound SSL CA certificate file
   --ovn-controller-ssl-bootstrap-ca-cert=CERT Bootstrapped OVN Southbound SSL CA certificate file
+  --ovn-controller-ssl-protocols=PROTOCOLS OVN Southbound SSL protocols
+  --ovn-controller-ssl-ciphers=CIPHERS OVN Southbound SSL cipher list
   --ovn-nb-db-ssl-key=KEY OVN Northbound DB SSL private key file
   --ovn-nb-db-ssl-cert=CERT OVN Northbound DB SSL certificate file
   --ovn-nb-db-ssl-ca-cert=CERT OVN Northbound DB SSL CA certificate file
+  --ovn-nb-db-ssl-protocols=PROTOCOLS OVN Northbound DB SSL protocols
+  --ovn-nb-db-ssl-ciphers=CIPHERS OVN Northbound DB SSL cipher list
   --ovn-sb-db-ssl-key=KEY OVN Southbound DB SSL private key file
   --ovn-sb-db-ssl-cert=CERT OVN Southbound DB SSL certificate file
   --ovn-sb-db-ssl-ca-cert=CERT OVN Southbound DB SSL CA certificate file
+  --ovn-sb-db-ssl-protocols=PROTOCOLS OVN Southbound DB SSL protocols
+  --ovn-sb-db-ssl-ciphers=CIPHERS OVN Southbound DB SSL cipher list
   --ovn-northd-ssl-key=KEY OVN Northd SSL private key file
   --ovn-northd-ssl-cert=CERT OVN Northd SSL certificate file
   --ovn-northd-ssl-ca-cert=CERT OVN Northd SSL CA certificate file
+  --ovn-northd-ssl-protocols=PROTOCOLS OVN Northd SSL protocols
+  --ovn-northd-ssl-ciphers=CIPHERS OVN Northd SSL cipher list
   --ovn-manage-ovsdb=yes|no        Whether or not the OVN NB/SB databases should be
                                    automatically started and stopped along
                                    with ovn-northd. The default is "yes". If
@@ -1014,14 +1073,20 @@ Options:
   --ovn-ic-ssl-key=KEY OVN IC SSL private key file
   --ovn-ic-ssl-cert=CERT OVN IC SSL certificate file
   --ovn-ic-ssl-ca-cert=CERT OVN IC SSL CA certificate file
+  --ovn-ic-ssl-protocols=PROTOCOLS OVN IC SSL protocols
+  --ovn-ic-ssl-ciphers=CIPHERS OVN IC SSL cipher list
   --ovn-ic-log=STRING            ovn-ic process logging params (default: $OVN_IC_LOG)
   --ovn-ic-logfile=STRING        ovn-ic process log file (default: $OVN_IC_LOGFILE)
   --ovn-ic-nb-db-ssl-key=KEY OVN IC Northbound DB SSL private key file
   --ovn-ic-nb-db-ssl-cert=CERT OVN IC Northbound DB SSL certificate file
   --ovn-ic-nb-db-ssl-ca-cert=CERT OVN IC Northbound DB SSL CA certificate file
+  --ovn-ic-nb-db-ssl-protocols=PROTOCOLS OVN IC Northbound DB SSL protocols
+  --ovn-ic-nb-db-ssl-ciphers=CIPHERS OVN IC Northbound DB SSL cipher list
   --ovn-ic-sb-db-ssl-key=KEY OVN IC Southbound DB SSL private key file
   --ovn-ic-sb-db-ssl-cert=CERT OVN IC Southbound DB SSL certificate file
   --ovn-ic-sb-db-ssl-ca-cert=CERT OVN IC Southbound DB SSL CA certificate file
+  --ovn-ic-sb-db-ssl-protocols=PROTOCOLS OVN IC Southbound DB SSL protocols
+  --ovn-ic-sb-db-ssl-ciphers=CIPHERS OVN IC Southbound DB SSL cipher list
   --ovn-user="user[:group]"      pass the --user flag to the ovn daemons
   --ovs-user="user[:group]"      pass the --user flag to ovs daemons
   --ovsdb-nb-wrapper=WRAPPER     run with a wrapper like valgrind for debugging
