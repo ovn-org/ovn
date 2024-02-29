@@ -46,7 +46,7 @@ master_doc = 'contents'
 
 # General information about the project.
 project = u'Open Virtual Network (OVN)'
-copyright = u'2020-2023, The Open Virtual Network (OVN) Development Community'
+copyright = u'2020-2024, The Open Virtual Network (OVN) Development Community'
 author = u'The Open Virtual Network (OVN) Development Community'
 
 # The version info for the project you're documenting, acts as replacement for
