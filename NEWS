@@ -1,4 +1,4 @@
-OVN v23.09.2 - xx xxx xxxx
+OVN v23.09.2 - 01 Mar 2024
 --------------------------
   - Bug fixes
   - Enable PMTU discovery on geneve/vxlan tunnels for E/W traffic.
