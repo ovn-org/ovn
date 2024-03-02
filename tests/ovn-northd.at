@@ -4897,6 +4897,11 @@ ovn-nbctl --wait=sb lsp-set-dhcpv4-options sw0-port1 $CIDR_UUID
 ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
+AT_CHECK([grep "_acl_eval" sw0flows | grep sw0-port1 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_acl_eval     ), priority=34000, match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && (ip4.src == {10.0.0.2, 0.0.0.0} && ip4.dst == {10.0.0.1, 255.255.255.255}) && udp.src == 68 && udp.dst == 67), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=34000, match=(outport == "sw0-port1" && eth.src == c0:ff:ee:00:00:01 && ip4.src == 10.0.0.1 && udp && udp.src == 67 && udp.dst == 68), action=(reg8[[16]] = 1; next;)
+])
+
 AT_CHECK([grep -w "ls_in_dhcp_options" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_dhcp_options ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_dhcp_options ), priority=100  , match=(inport == "sw0-port1" && eth.src == 50:54:00:00:00:01 && (ip4.src == {10.0.0.2, 0.0.0.0} && ip4.dst == {10.0.0.1, 255.255.255.255}) && udp.src == 68 && udp.dst == 67), action=(reg0[[3]] = put_dhcp_opts(offerip = 10.0.0.2, hostname = "foo", lease_time = 3600, netmask = 255.255.255.0, router = 10.0.0.1, server_id = 10.0.0.1); next;)
