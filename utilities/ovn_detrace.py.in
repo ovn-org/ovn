@@ -37,6 +37,9 @@ except Exception:
 
 argv0 = sys.argv[0]
 version = "@VERSION@"
+DB_CONNECTION_ERR = ('The connection to {0} DB is not available,'
+                     ' {0} information will be missing from the detrace.')
+
 
 def usage():
     print("""\
@@ -77,6 +80,11 @@ def chassis_str(chassis):
     ch = chassis[0]
     return 'chassis-name "%s", chassis-str "%s"' % (ch.name, ch.hostname)
 
+
+class ConnectionException(Exception):
+    pass
+
+
 class OVSDB(object):
     STREAM_TIMEOUT_MS = 1000
 
@@ -111,7 +119,7 @@ class OVSDB(object):
                 os.strerror(error)))
             strm = None
         if not strm:
-            raise Exception('Unable to connect to %s' % self.remote)
+            raise ConnectionException()
 
         rpc = jsonrpc.Connection(strm)
         req = jsonrpc.Message.create_request('get_schema', [schema_name])
@@ -167,6 +175,8 @@ class CookieHandlerByUUUID(CookieHandler):
         super(CookieHandlerByUUUID, self).__init__(db, table, printer)
 
     def get_records(self, cookie):
+        if not self._db:
+            return []
         # Adjust cookie to include leading zeroes if needed.
         cookie = cookie.zfill(8)
         return self._db.find_rows_by_partial_uuid(self._table, cookie)
@@ -488,8 +498,19 @@ def main():
     if ovs and not ovs_db:
         ovs_db = 'unix:%s/db.sock' % ovs_rundir
 
-    ovsdb_ovnsb = OVSDB(ovnsb_db, 'OVN_Southbound', leader_only=leader_only)
-    ovsdb_ovnnb = OVSDB(ovnnb_db, 'OVN_Northbound', leader_only=leader_only)
+    try:
+        ovsdb_ovnsb = OVSDB(ovnsb_db, 'OVN_Southbound',
+                            leader_only=leader_only)
+    except ConnectionException:
+        print(DB_CONNECTION_ERR.format('SB'), file=sys.stderr)
+        ovsdb_ovnsb = None
+
+    try:
+        ovsdb_ovnnb = OVSDB(ovnnb_db, 'OVN_Northbound',
+                            leader_only=leader_only)
+    except ConnectionException:
+        print(DB_CONNECTION_ERR.format('NB'), file=sys.stderr)
+        ovsdb_ovnnb = None
 
     printer = Printer()
     cookie_handlers = get_cookie_handlers(ovsdb_ovnnb, ovsdb_ovnsb, printer)
