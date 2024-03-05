@@ -203,5 +203,5 @@ Contact
 
 Use dev@openvswitch.org to discuss the OVN development and release process.
 
-__ https://www.ovn.org/en/releases/long_term_support/
+__ https://www.ovn.org/en/releases/#long-term-support
 __ https://www.ovn.org
