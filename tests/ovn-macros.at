@@ -972,3 +972,9 @@ m4_define([RUN_OVN_NBCTL], [
     check ovn-nbctl ${command}
     unset command
 ])
+
+m4_define([OVN_CHECK_SCAPY_EDNS_CLIENT_SUBNET_SUPPORT],
+[
+    AT_SKIP_IF([test $HAVE_SCAPY = no])
+    AT_SKIP_IF([! echo "from scapy.layers.dns import EDNS0ClientSubnet" | python 2>&1 > /dev/null])
+])
