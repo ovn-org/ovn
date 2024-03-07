@@ -849,3 +849,9 @@ m4_define([OVN_FOR_EACH_NORTHD_WITHOUT_DP_GROUPS],
        [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes, no],
          [m4_foreach([OVN_MONITOR_ALL], [yes, no], [$1
 ])])])])])
+
+m4_define([OVN_CHECK_SCAPY_EDNS_CLIENT_SUBNET_SUPPORT],
+[
+    AT_SKIP_IF([test $HAVE_SCAPY = no])
+    AT_SKIP_IF([! echo "from scapy.layers.dns import EDNS0ClientSubnet" | python 2>&1 > /dev/null])
+])
