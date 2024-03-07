@@ -11498,7 +11498,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([dns lookup : EDNS])
-AT_SKIP_IF([test $HAVE_SCAPY = no])
+OVN_CHECK_SCAPY_EDNS_CLIENT_SUBNET_SUPPORT()
 ovn_start
 
 check ovn-nbctl ls-add ls \
