@@ -874,3 +874,9 @@ m4_define([HOST_HAS_LOW_CORES], [
 m4_define([NORTHD_PARALLELIZATION], [
     HOST_HAS_LOW_CORES([OVN_NORTHD_PARALLELIZATION_DUMMY], [OVN_NORTHD_PARALLELIZATION_NO_DUMMY])
 ])
+
+m4_define([OVN_CHECK_SCAPY_EDNS_CLIENT_SUBNET_SUPPORT],
+[
+    AT_SKIP_IF([test $HAVE_SCAPY = no])
+    AT_SKIP_IF([! echo "from scapy.layers.dns import EDNS0ClientSubnet" | python 2>&1 > /dev/null])
+])
