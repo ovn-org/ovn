@@ -51,6 +51,24 @@ RUN git clone git://git.kernel.org/pub/scm/devel/sparse/sparse.git \
     && \
     make -j4 PREFIX=/usr HAVE_LLVM= HAVE_SQLITE= install
 
+# Compile OpenBFDD from source
+WORKDIR /workspace/OpenBFDD
+
+COPY $CONTAINERS_PATH/openbfdd.patch /tmp/openbfdd.patch
+
+RUN git clone https://github.com/dyninc/OpenBFDD.git \
+    /workspace/OpenBFDD \
+    && \
+    git apply /tmp/openbfdd.patch \
+    && \
+    ./autogen.sh \
+    && \
+    ./configure --enable-silent-rules \
+    && \
+    make \
+    && \
+    make install
+
 WORKDIR /workspace
 
 COPY $CONTAINERS_PATH/py-requirements.txt /tmp/py-requirements.txt

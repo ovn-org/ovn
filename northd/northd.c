@@ -9804,8 +9804,9 @@ build_bfd_table(struct ovsdb_idl_txn *ovnsb_txn,
             }
             build_bfd_update_sb_conf(nb_bt, bfd_e->sb_bt);
             if (op && op->sb && op->sb->chassis &&
-                strcmp(op->sb->chassis->name, sb_bt->chassis_name)) {
-                sbrec_bfd_set_chassis_name(sb_bt, op->sb->chassis->name);
+                strcmp(op->sb->chassis->name, bfd_e->sb_bt->chassis_name)) {
+                sbrec_bfd_set_chassis_name(bfd_e->sb_bt,
+                                           op->sb->chassis->name);
             }
 
             hmap_remove(&sb_only, &bfd_e->hmap_node);

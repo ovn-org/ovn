@@ -38,6 +38,7 @@ EXTRA_DIST += \
     utilities/ovndb-servers.ocf \
     utilities/checkpatch.py \
     utilities/containers/Makefile \
+    utilities/containers/openbfdd.patch \
     utilities/containers/py-requirements.txt \
     utilities/containers/fedora/Dockerfile \
     utilities/containers/ubuntu/Dockerfile \
