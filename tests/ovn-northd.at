@@ -10080,6 +10080,7 @@ check ovn-nbctl qos-add ls from-lport 100 ip4 rate=100 burst=1000
 check ovn-nbctl qos-add ls from-lport 101 ip4 mark=15
 check ovn-nbctl qos-add ls from-lport 102 ip4 dscp=16
 check ovn-nbctl qos-add ls from-lport 103 ip4 dscp=17 mark=18
+check ovn-nbctl qos-add ls from-lport 104 ip4 dscp=18 mark=19 rate=100
 
 check ovn-nbctl qos-add ls to-lport 100 ip4 rate=100 burst=1000
 check ovn-nbctl qos-add ls to-lport 101 ip4 mark=15
@@ -10088,18 +10089,17 @@ check ovn-nbctl qos-add ls to-lport 103 ip4 dscp=17 mark=18
 check ovn-nbctl --wait=sb sync
 
 AT_CHECK([ovn-sbctl lflow-list ls | grep qos | ovn_strip_lflows], [0], [dnl
-  table=??(ls_in_qos_mark     ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_qos_mark     ), priority=101  , match=(ip4), action=(pkt.mark = 15; next;)
-  table=??(ls_in_qos_mark     ), priority=102  , match=(ip4), action=(ip.dscp = 16; next;)
-  table=??(ls_in_qos_mark     ), priority=103  , match=(ip4), action=(ip.dscp = 17; pkt.mark = 18; next;)
-  table=??(ls_in_qos_meter    ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_qos_meter    ), priority=100  , match=(ip4), action=(set_meter(100, 1000); next;)
-  table=??(ls_out_qos_mark    ), priority=0    , match=(1), action=(next;)
-  table=??(ls_out_qos_mark    ), priority=101  , match=(ip4), action=(pkt.mark = 15; next;)
-  table=??(ls_out_qos_mark    ), priority=102  , match=(ip4), action=(ip.dscp = 16; next;)
-  table=??(ls_out_qos_mark    ), priority=103  , match=(ip4), action=(ip.dscp = 17; pkt.mark = 18; next;)
-  table=??(ls_out_qos_meter   ), priority=0    , match=(1), action=(next;)
-  table=??(ls_out_qos_meter   ), priority=100  , match=(ip4), action=(set_meter(100, 1000); next;)
+  table=??(ls_in_qos          ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_qos          ), priority=100  , match=(ip4), action=(set_meter(100, 1000); next;)
+  table=??(ls_in_qos          ), priority=101  , match=(ip4), action=(pkt.mark = 15; next;)
+  table=??(ls_in_qos          ), priority=102  , match=(ip4), action=(ip.dscp = 16; next;)
+  table=??(ls_in_qos          ), priority=103  , match=(ip4), action=(ip.dscp = 17; pkt.mark = 18; next;)
+  table=??(ls_in_qos          ), priority=104  , match=(ip4), action=(set_meter(100); ip.dscp = 18; pkt.mark = 19; next;)
+  table=??(ls_out_qos         ), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_qos         ), priority=100  , match=(ip4), action=(set_meter(100, 1000); next;)
+  table=??(ls_out_qos         ), priority=101  , match=(ip4), action=(pkt.mark = 15; next;)
+  table=??(ls_out_qos         ), priority=102  , match=(ip4), action=(ip.dscp = 16; next;)
+  table=??(ls_out_qos         ), priority=103  , match=(ip4), action=(ip.dscp = 17; pkt.mark = 18; next;)
 ])
 
 AT_CLEANUP
