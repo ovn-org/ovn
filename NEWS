@@ -1,5 +1,7 @@
-OVN v22.03.7 - xx xxx xxxx
+OVN v22.03.7 - 12 Mar 2024
 --------------------------
+  - Bug fixes
+  - Security: Fixed vulnerability CVE-2024-2182.
 
 OVN v22.03.6 - 01 Mar 2024
 --------------------------
