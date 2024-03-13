@@ -123,10 +123,10 @@
       <dd>
         Instructs the daemon process to run one or more <code>ovn-sbctl</code>
         commands described above and reply with the results of running these
-        commands. Accepts the <code>--no-wait</code>, <code>--wait</code>,
-        <code>--timeout</code>, <code>--dry-run</code>, <code>--oneline</code>,
-        and the options described under <code>Table Formatting Options</code>
-        in addition to the the command-specific options.
+        commands. Accepts the <code>--timeout</code>, <code>--dry-run</code>,
+        <code>--oneline</code>, and the options described under
+        <code>Table Formatting Options</code> in addition to the the
+        command-specific options.
       </dd>
 
       <dt><code>exit</code></dt>
