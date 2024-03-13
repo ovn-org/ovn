@@ -428,7 +428,7 @@ the first time after you create the databases with ovsdb-tool, though running
 it at any time is harmless::
 
     $ ovn-nbctl --no-wait init
-    $ ovn-sbctl --no-wait init
+    $ ovn-sbctl init
 
 Start ``ovn-northd``, telling it to connect to the OVN db servers same
 Unix domain socket::
