@@ -915,6 +915,12 @@ ovn_datapath_is_stale(const struct ovn_datapath *od)
     return !od->nbr && !od->nbs;
 }
 
+static inline bool
+ovn_datapath_is_transit_switch(const struct ovn_datapath *od)
+{
+    return od->tunnel_key >= OVN_MIN_DP_KEY_GLOBAL;
+}
+
 static struct ovn_datapath *
 ovn_datapath_from_sbrec(const struct hmap *ls_datapaths,
                         const struct hmap *lr_datapaths,
@@ -6210,11 +6216,13 @@ ovn_igmp_group_get_ports(const struct sbrec_igmp_group *sb_igmp_group,
             continue;
         }
 
-        /* If this is already a port of a router on which relay is enabled,
-         * skip it for the group. Traffic is flooded there anyway.
+        /* If this is already a port of a router on which relay is enabled
+         * and it's not a transit switch to router port, skip it for the
+         * group.  Traffic is flooded there anyway.
          */
         if (port->peer && port->peer->od &&
-                port->peer->od->mcast_info.rtr.relay) {
+                port->peer->od->mcast_info.rtr.relay &&
+                !ovn_datapath_is_transit_switch(port->od)) {
             continue;
         }
 
