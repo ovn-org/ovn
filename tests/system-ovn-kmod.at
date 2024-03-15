@@ -112,6 +112,10 @@ NETNS_DAEMONIZE([bar1], [nc -l -k 192.168.2.2 80], [nc-bar1.pid])
 
 # Wait for ovn-controller to catch up.
 ovn-nbctl --wait=hv sync
+
+# Get the OF table numbers
+dnat=$(ovn-debug lflow-stage-to-oftable lr_in_dnat)
+
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=192.168.2.2:80)'])
 
@@ -151,8 +155,8 @@ AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_LB_AFFINITY --n
 ])
 
 check_affinity_flows () {
-n1=$(ovs-ofctl dump-flows br-int table=15 |awk '/priority=150,ct_state=\+new\+trk,ip,reg4=0xc0a80102,.*nw_dst=172.16.1.100/{print substr($4,11,length($4)-11)}')
-n2=$(ovs-ofctl dump-flows br-int table=15 |awk '/priority=150,ct_state=\+new\+trk,ip,reg4=0xc0a80202,.*nw_dst=172.16.1.100/{print substr($4,11,length($4)-11)}')
+n1=$(ovs-ofctl dump-flows br-int table=$dnat |awk '/priority=150,ct_state=\+new\+trk,ip,reg4=0xc0a80102,.*nw_dst=172.16.1.100/{print substr($4,11,length($4)-11)}')
+n2=$(ovs-ofctl dump-flows br-int table=$dnat |awk '/priority=150,ct_state=\+new\+trk,ip,reg4=0xc0a80202,.*nw_dst=172.16.1.100/{print substr($4,11,length($4)-11)}')
 [[ $n1 -gt 0 -a $n2 -eq 0 ]] || [[ $n1 -eq 0 -a $n2 -gt 0 ]]
 echo $?
 }
@@ -404,6 +408,10 @@ ovn-nbctl lr-lb-add R2 lb10-no-aff
 
 # Wait for ovn-controller to catch up.
 ovn-nbctl --wait=hv sync
+
+# Get the OF table numbers
+dnat=$(ovn-debug lflow-stage-to-oftable lr_in_dnat)
+
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=\[[fd11::2\]]:80)'])
 
@@ -448,8 +456,8 @@ AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_LB_AFFINITY --n
 ])
 
 check_affinity_flows () {
-n1=$(ovs-ofctl dump-flows br-int table=15 |awk '/priority=150,ct_state=\+new\+trk,ipv6,reg4=0xfd110000,.*ipv6_dst=fd30::1\s/{print substr($4,11,length($4)-11)}')
-n2=$(ovs-ofctl dump-flows br-int table=15 |awk '/priority=150,ct_state=\+new\+trk,ipv6,reg4=0xfd120000,.*ipv6_dst=fd30::1\s/{print substr($4,11,length($4)-11)}')
+n1=$(ovs-ofctl dump-flows br-int table=$dnat |awk '/priority=150,ct_state=\+new\+trk,ipv6,reg4=0xfd110000,.*ipv6_dst=fd30::1\s/{print substr($4,11,length($4)-11)}')
+n2=$(ovs-ofctl dump-flows br-int table=$dnat |awk '/priority=150,ct_state=\+new\+trk,ipv6,reg4=0xfd120000,.*ipv6_dst=fd30::1\s/{print substr($4,11,length($4)-11)}')
 [[ $n1 -gt 0 -a $n2 -eq 0 ]] || [[ $n1 -eq 0 -a $n2 -gt 0 ]]
 echo $?
 }

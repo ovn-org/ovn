@@ -2168,6 +2168,10 @@ ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.2.2 \
 
 # Wait for ovn-controller to catch up.
 ovn-nbctl --wait=hv sync
+
+# Get the OF table numbers
+snat=$(ovn-debug lflow-stage-to-oftable lr_out_snat)
+
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=192.168.2.2:80)'])
 
@@ -2204,7 +2208,7 @@ tcp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(sr
 ])
 
 check_est_flows () {
-    n=$(ovs-ofctl dump-flows br-int table=13 | grep \
+    n=$(ovs-ofctl dump-flows br-int table=$(ovn-debug lflow-stage-to-oftable lr_in_defrag) | grep \
 "priority=100,tcp,metadata=0x2,nw_dst=30.0.0.2" | grep nat |
 sed -n 's/.*n_packets=\([[0-9]]\{1,\}\).*/\1/p')
 
@@ -2230,7 +2234,7 @@ ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:80,192.16
 
 ovn-nbctl list load_balancer
 ovn-sbctl dump-flows R2
-OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=45 | \
+OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=$snat | \
 grep 'nat(src=20.0.0.2)'])
 
 check ovs-appctl dpctl/flush-conntrack
@@ -2269,7 +2273,7 @@ ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:80,192.16
 
 ovn-nbctl list load_balancer
 ovn-sbctl dump-flows R2
-OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=45 | \
+OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=$snat | \
 grep 'nat(src=20.0.0.2)'])
 
 rm -f wget*.log
@@ -5055,7 +5059,7 @@ OVS_WAIT_UNTIL([
 ])
 
 OVS_WAIT_UNTIL([
-    n_pkt=$(ovs-ofctl dump-flows br-int table=46 | grep -v n_packets=0 | \
+    n_pkt=$(ovs-ofctl dump-flows br-int table=$(ovn-debug lflow-stage-to-oftable ls_out_acl_eval) | grep -v n_packets=0 | \
 grep controller | grep tp_dst=84 -c)
     test $n_pkt -eq 1
 ])
@@ -5302,7 +5306,7 @@ OVS_WAIT_UNTIL([
 ])
 
 OVS_WAIT_UNTIL([
-    n_pkt=$(ovs-ofctl dump-flows br-int table=46 | grep -v n_packets=0 | \
+    n_pkt=$(ovs-ofctl dump-flows br-int table=$(ovn-debug lflow-stage-to-oftable ls_out_acl_eval) | grep -v n_packets=0 | \
 grep controller | grep tp_dst=84 -c)
     test $n_pkt -eq 1
 ])
@@ -8818,7 +8822,7 @@ ovn-sbctl list ip_multicast
 
 wait_igmp_flows_installed()
 {
-    OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int table=35 | \
+    OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int table=$(ovn-debug lflow-stage-to-oftable ls_in_l2_lkup) | \
     grep 'priority=90' | grep "nw_dst=$1"])
 }
 
@@ -12029,7 +12033,7 @@ sctp,orig=(src=172.16.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(s
 ])
 
 check_est_flows () {
-    n=$(ovs-ofctl dump-flows br-int table=15 | grep "+est" \
+    n=$(ovs-ofctl dump-flows br-int table=$(ovn-debug lflow-stage-to-oftable lr_in_dnat) | grep "+est" \
         | grep "ct_mark=$1" | sed -n 's/.*n_packets=\([[0-9]]\{1,\}\).*/\1/p')
 
     echo "n_packets=$n"
@@ -12055,7 +12059,7 @@ ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:12345,192
 
 ovn-nbctl list load_balancer
 ovn-sbctl dump-flows R2
-OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=45 | grep 'nat(src=20.0.0.2)'])
+OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-flows br-int table=$(ovn-debug lflow-stage-to-oftable lr_out_snat) | grep 'nat(src=20.0.0.2)'])
 
 dnl Test load-balancing that includes L4 ports in NAT.
 for i in `seq 1 20`; do
