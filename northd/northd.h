@@ -362,6 +362,12 @@ ovn_datapath_is_stale(const struct ovn_datapath *od)
     return !od->nbr && !od->nbs;
 };
 
+static inline bool
+ovn_datapath_is_transit_switch(const struct ovn_datapath *od)
+{
+    return od->tunnel_key >= OVN_MIN_DP_KEY_GLOBAL;
+}
+
 /* Pipeline stages. */
 
 /* The two purposes for which ovn-northd uses OVN logical datapaths. */
