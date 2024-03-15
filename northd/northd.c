@@ -6071,7 +6071,8 @@ build_interconn_mcast_snoop_flows(struct ovn_datapath *od,
             continue;
         }
         /* Punt IGMP traffic to controller. */
-        char *match = xasprintf("inport == %s && igmp", op->json_key);
+        char *match = xasprintf("inport == %s && igmp && "
+                                "flags.igmp_loopback == 0", op->json_key);
         ovn_lflow_metered(lflows, od, S_SWITCH_OUT_PRE_LB, 120, match,
                           "clone { igmp; }; next;",
                           copp_meter_get(COPP_IGMP, od->nbs->copp,
@@ -6080,7 +6081,8 @@ build_interconn_mcast_snoop_flows(struct ovn_datapath *od,
         free(match);
 
         /* Punt MLD traffic to controller. */
-        match = xasprintf("inport == %s && (mldv1 || mldv2)", op->json_key);
+        match = xasprintf("inport == %s && (mldv1 || mldv2) && "
+                          "flags.igmp_loopback == 0", op->json_key);
         ovn_lflow_metered(lflows, od, S_SWITCH_OUT_PRE_LB, 120, match,
                           "clone { igmp; }; next;",
                           copp_meter_get(COPP_IGMP, od->nbs->copp,
@@ -9265,14 +9267,15 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
         ds_put_cstr(actions, "igmp;");
         /* Punt IGMP traffic to controller. */
         ovn_lflow_metered(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
-                          "igmp", ds_cstr(actions),
+                          "flags.igmp_loopback == 0 && igmp", ds_cstr(actions),
                           copp_meter_get(COPP_IGMP, od->nbs->copp,
                                          meter_groups),
                           lflow_ref);
 
         /* Punt MLD traffic to controller. */
         ovn_lflow_metered(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
-                          "mldv1 || mldv2", ds_cstr(actions),
+                          "flags.igmp_loopback == 0 && (mldv1 || mldv2)",
+                          ds_cstr(actions),
                           copp_meter_get(COPP_IGMP, od->nbs->copp,
                                          meter_groups),
                           lflow_ref);
