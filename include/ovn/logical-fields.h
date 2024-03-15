@@ -78,6 +78,7 @@ enum mff_log_flags_bits {
     MLF_LOOKUP_COMMIT_ECMP_NH_BIT = 13,
     MLF_USE_LB_AFF_SESSION_BIT = 14,
     MLF_LOCALNET_BIT = 15,
+    MLF_IGMP_IGMP_SNOOP_INJECT_BIT = 18,
 };
 
 /* MFF_LOG_FLAGS_REG flag assignments */
@@ -128,6 +129,8 @@ enum mff_log_flags {
 
     /* Indicate that the port is localnet. */
     MLF_LOCALNET = (1 << MLF_LOCALNET_BIT),
+
+    MLF_IGMP_IGMP_SNOOP = (1 << MLF_IGMP_IGMP_SNOOP_INJECT_BIT),
 
 };
 
