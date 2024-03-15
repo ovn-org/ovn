@@ -26903,10 +26903,20 @@ wait_row_count IGMP_Group 2 address=239.0.1.68
 wait_row_count IGMP_Group 2 address='"ff0a:dead:beef::1"'
 check ovn-nbctl --wait=hv sync
 
+#Validate that Multicast Group contains all registered ports for
+# specific igmp group.
+ts_dp=$(fetch_column datapath_binding _uuid external_ids:name=ts)
+ports=$(fetch_column multicast_group ports name="239.0.1.68" datapath=$ts_dp)
+check test X2 = X$(echo $ports | wc -w)
+
+
 ovn_as az2
 wait_row_count IGMP_Group 2 address=239.0.1.68
 wait_row_count IGMP_Group 2 address='"ff0a:dead:beef::1"'
 check ovn-nbctl --wait=hv sync
+ts_dp=$(fetch_column datapath_binding _uuid external_ids:name=ts)
+ports=$(fetch_column multicast_group ports name="239.0.1.68" datapath=$ts_dp)
+check test X2 = X$(echo $ports | wc -w)
 
 # Send an IP multicast packet from LSP2, it should be forwarded
 # to lsp1 and lsp3.
