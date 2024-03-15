@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manpage program="ovn-debug" section="8" title="ovn-debug">
+    <h1>Name</h1>
+    <p>ovn-debug -- Open Virtual Network debug tool</p>
+
+    <h1>Synopsis</h1>
+    <p><code>ovn-debug</code> <var>COMMAND</var> <var>[ARG...]</var></p>
+
+    <h1>Description</h1>
+    <p>
+        <code>ovn-debug</code>, OVN debug tool, is a tool to help with
+        debugging of OVN setup.
+    </p>
+
+    <h1>Commands</h1>
+    <dl>
+        <dt><code>lflow-stage-to-ltable <var>STAGE_NAME</var></code></dt>
+        <dd>
+            Convert the logical flow stage name e.g. <code>ls_in_lb</code> into
+            the logical flow table number e.g. <code>13</code>.
+        </dd>
+        <dt><code>lflow-stage-to-oftable <var>STAGE_NAME</var></code></dt>
+        <dd>
+            Convert the logical flow stage name e.g. <code>ls_in_lb</code> into
+            the OpenFlow table number e.g. <code>21</code>.
+        </dd>
+    </dl>
+</manpage>

@@ -7,6 +7,11 @@ Post v24.03.0
     disable adding the ARP responder flows if set to true.
   - IGMP_Group has new "protocol" column that displays the the group
     protocol version.
+  - Add ovn-debug tool containing two commands.
+    "lflow-stage-to-ltable STAGE_NAME" that converts stage name into logical
+    flow table id.
+    "lflow-stage-to-oftable STAGE_NAME" that converts stage name into OpenFlow
+    table id.
 
 OVN v24.03.0 - 01 Mar 2024
 --------------------------
