@@ -605,3 +605,42 @@ try_checkpatch \
     Subject: netdev: This is a way to long commit summary and therefor it should report a WARNING!"
 
 AT_CLEANUP
+
+AT_SETUP([checkpatch - hardcoded table numbers])
+try_checkpatch \
+   "COMMON_PATCH_HEADER([tests/something.at])
+    +table=12(ls_in_hairpin      ), priority=1000 , match=(reg0[[14]] == 1), action=(next(pipeline=ingress, table=??);)
+    " \
+    "WARNING: Use of hardcoded table=<NUMBER> or resubmit=(,<NUMBER>) is discouraged in tests. Consider using MACRO instead.
+    #8 FILE: tests/something.at:1:
+    table=12(ls_in_hairpin      ), priority=1000 , match=(reg0[[14]] == 1), action=(next(pipeline=ingress, table=??);)
+"
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER([tests/something.at])
+    +table=??(ls_in_hairpin      ), priority=1000 , match=(reg0[[14]] == 1), action=(next(pipeline=ingress, table=13);)
+    " \
+    "WARNING: Use of hardcoded table=<NUMBER> or resubmit=(,<NUMBER>) is discouraged in tests. Consider using MACRO instead.
+    #8 FILE: tests/something.at:1:
+    table=??(ls_in_hairpin      ), priority=1000 , match=(reg0[[14]] == 1), action=(next(pipeline=ingress, table=13);)
+"
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER([tests/something.at])
+    +priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,47)
+    " \
+    "WARNING: Use of hardcoded table=<NUMBER> or resubmit=(,<NUMBER>) is discouraged in tests. Consider using MACRO instead.
+    #8 FILE: tests/something.at:1:
+    priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,47)
+"
+
+try_checkpatch \
+   "COMMON_PATCH_HEADER([tests/something.at])
+    +C_H_E_C_K([as gw1 ovs-ofctl dump-flows br-int table=42 | grep "dl_dst=00:00:02:01:02:04" | wc -l], [0], [[1]])
+    " \
+    "WARNING: Use of hardcoded table=<NUMBER> or resubmit=(,<NUMBER>) is discouraged in tests. Consider using MACRO instead.
+    #8 FILE: tests/something.at:1:
+    C_H_E_C_K([as gw1 ovs-ofctl dump-flows br-int table=42 | grep "dl_dst=00:00:02:01:02:04" | wc -l], [0], [[1]])
+"
+
+AT_CLEANUP

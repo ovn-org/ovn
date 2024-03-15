@@ -202,6 +202,7 @@ __regex_if_macros = re.compile(r'^ +(%s) \([\S]([\s\S]+[\S])*\) { +\\' %
                                __parenthesized_constructs)
 __regex_nonascii_characters = re.compile("[^\u0000-\u007f]")
 __regex_efgrep = re.compile(r'.*[ef]grep.*$')
+__regex_hardcoded_table = re.compile(r'.*(table=[0-9]+)|.*(resubmit\(,[0-9]+\))')
 
 skip_leading_whitespace_check = False
 skip_trailing_whitespace_check = False
@@ -371,6 +372,10 @@ def has_efgrep(line):
     """Returns TRUE if the current line contains 'egrep' or 'fgrep'."""
     return __regex_efgrep.match(line) is not None
 
+def has_hardcoded_table(line):
+    """Return TRUE if the current line contains table=<NUMBER> or
+       resubmit(,<NUMBER>)"""
+    return __regex_hardcoded_table.match(line) is not None
 
 def filter_comments(current_line, keep=False):
     """remove all of the c-style comments in a line"""
@@ -656,6 +661,13 @@ checks = [
      'check': lambda x: has_efgrep(x),
      'print':
      lambda: print_error("grep -E/-F should be used instead of egrep/fgrep")},
+
+    {'regex': r'\.at$', 'match_name': None,
+     'check': lambda x: has_hardcoded_table(x),
+     'print':
+         lambda: print_warning("Use of hardcoded table=<NUMBER> or"
+                               " resubmit=(,<NUMBER>) is discouraged in tests."
+                               " Consider using MACRO instead.")},
 ]
 
 
