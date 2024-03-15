@@ -979,8 +979,8 @@ AT_CLEANUP
 AT_SETUP([action parsing])
 dnl Unindented text is input (a set of OVN logical actions).
 dnl Indented text is expected output.
-AT_DATA([test-cases.txt],
-[[# drop
+AT_DATA([test-cases.txt], [
+# drop
 drop;
     encodes as drop
 drop; next;
@@ -1039,12 +1039,12 @@ tcp.dst=80;
     formats as tcp.dst = 80;
     encodes as set_field:80->tcp_dst
     has prereqs ip.proto == 0x6 && (eth.type == 0x800 || eth.type == 0x86dd)
-eth.dst[40] = 1;
+eth.dst[[40]] = 1;
     encodes as set_field:01:00:00:00:00:00/01:00:00:00:00:00->eth_dst
 vlan.pcp = 2;
     encodes as set_field:0x4000/0xe000->vlan_tci
-    has prereqs vlan.tci[12]
-vlan.tci[13..15] = 2;
+    has prereqs vlan.tci[[12]]
+vlan.tci[[13..15]] = 2;
     encodes as set_field:0x4000/0xe000->vlan_tci
 inport = "";
     encodes as set_field:0->reg14
@@ -1056,11 +1056,11 @@ outport="eth0"; next; outport="LOCAL"; next;
     formats as outport = "eth0"; next; outport = "LOCAL"; next;
     encodes as set_field:0x5->reg15,resubmit(,19),set_field:0xfffe->reg15,resubmit(,19)
 
-inport[1] = 1;
+inport[[1]] = 1;
     Cannot select subfield of string field inport.
-ip.proto[1] = 1;
+ip.proto[[1]] = 1;
     Cannot select subfield of nominal field ip.proto.
-eth.dst[40] == 1;
+eth.dst[[40]] == 1;
     Syntax error at `==' expecting `=' or `<->'.
 ip = 1;
     Predicate symbol ip used where lvalue required.
@@ -1080,50 +1080,50 @@ vlan.present = 0;
 # Moving one field into another.
 reg0=reg1;
     formats as reg0 = reg1;
-    encodes as move:NXM_NX_XXREG0[64..95]->NXM_NX_XXREG0[96..127]
-vlan.pcp = reg0[0..2];
-    encodes as move:NXM_NX_XXREG0[96..98]->NXM_OF_VLAN_TCI[13..15]
-    has prereqs vlan.tci[12]
-reg0[10] = vlan.pcp[1];
-    encodes as move:NXM_OF_VLAN_TCI[14]->NXM_NX_XXREG0[106]
-    has prereqs vlan.tci[12]
+    encodes as move:NXM_NX_XXREG0[[64..95]]->NXM_NX_XXREG0[[96..127]]
+vlan.pcp = reg0[[0..2]];
+    encodes as move:NXM_NX_XXREG0[[96..98]]->NXM_OF_VLAN_TCI[[13..15]]
+    has prereqs vlan.tci[[12]]
+reg0[[10]] = vlan.pcp[[1]];
+    encodes as move:NXM_OF_VLAN_TCI[[14]]->NXM_NX_XXREG0[[106]]
+    has prereqs vlan.tci[[12]]
 outport = inport;
-    encodes as move:NXM_NX_REG14[]->NXM_NX_REG15[]
+    encodes as move:NXM_NX_REG14[[]]->NXM_NX_REG15[[]]
 
-reg0[0] = vlan.present;
+reg0[[0]] = vlan.present;
     Predicate symbol vlan.present used where lvalue required.
-reg0 = reg1[0..10];
+reg0 = reg1[[0..10]];
     Can't assign 11-bit value to 32-bit destination.
 inport = reg0;
     Can't assign integer field (reg0) to string field (inport).
 inport = big_string;
     String fields inport and big_string are incompatible for assignment.
-ip.proto = reg0[0..7];
+ip.proto = reg0[[0..7]];
     Field ip.proto is not modifiable.
 
 # Exchanging fields.
 reg0 <-> reg1;
-    encodes as push:NXM_NX_XXREG0[64..95],push:NXM_NX_XXREG0[96..127],pop:NXM_NX_XXREG0[64..95],pop:NXM_NX_XXREG0[96..127]
-vlan.pcp <-> reg0[0..2];
-    encodes as push:NXM_NX_XXREG0[96..98],push:NXM_OF_VLAN_TCI[13..15],pop:NXM_NX_XXREG0[96..98],pop:NXM_OF_VLAN_TCI[13..15]
-    has prereqs vlan.tci[12]
-reg0[10] <-> vlan.pcp[1];
-    encodes as push:NXM_OF_VLAN_TCI[14],push:NXM_NX_XXREG0[106],pop:NXM_OF_VLAN_TCI[14],pop:NXM_NX_XXREG0[106]
-    has prereqs vlan.tci[12]
+    encodes as push:NXM_NX_XXREG0[[64..95]],push:NXM_NX_XXREG0[[96..127]],pop:NXM_NX_XXREG0[[64..95]],pop:NXM_NX_XXREG0[[96..127]]
+vlan.pcp <-> reg0[[0..2]];
+    encodes as push:NXM_NX_XXREG0[[96..98]],push:NXM_OF_VLAN_TCI[[13..15]],pop:NXM_NX_XXREG0[[96..98]],pop:NXM_OF_VLAN_TCI[[13..15]]
+    has prereqs vlan.tci[[12]]
+reg0[[10]] <-> vlan.pcp[[1]];
+    encodes as push:NXM_OF_VLAN_TCI[[14]],push:NXM_NX_XXREG0[[106]],pop:NXM_OF_VLAN_TCI[[14]],pop:NXM_NX_XXREG0[[106]]
+    has prereqs vlan.tci[[12]]
 outport <-> inport;
-    encodes as push:NXM_NX_REG14[],push:NXM_NX_REG15[],pop:NXM_NX_REG14[],pop:NXM_NX_REG15[]
+    encodes as push:NXM_NX_REG14[[]],push:NXM_NX_REG15[[]],pop:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]]
 
-reg0[0] <-> vlan.present;
+reg0[[0]] <-> vlan.present;
     Predicate symbol vlan.present used where lvalue required.
-reg0 <-> reg1[0..10];
+reg0 <-> reg1[[0..10]];
     Can't exchange 32-bit field with 11-bit field.
 inport <-> reg0;
     Can't exchange string field (inport) with integer field (reg0).
 inport <-> big_string;
     String fields inport and big_string are incompatible for exchange.
-ip.proto <-> reg0[0..7];
+ip.proto <-> reg0[[0..7]];
     Field ip.proto is not modifiable.
-reg0[0..7] <-> ip.proto;
+reg0[[0..7]] <-> ip.proto;
     Field ip.proto is not modifiable.
 
 # TTL decrement.
@@ -1152,35 +1152,35 @@ pkt.mark = "foo";
 
 # load balancing.
 ct_lb;
-    encodes as ct(table=19,zone=NXM_NX_REG13[0..15],nat)
+    encodes as ct(table=19,zone=NXM_NX_REG13[[0..15]],nat)
     has prereqs ip
 ct_lb();
     formats as ct_lb;
-    encodes as ct(table=19,zone=NXM_NX_REG13[0..15],nat)
+    encodes as ct(table=19,zone=NXM_NX_REG13[[0..15]],nat)
     has prereqs ip
 ct_lb(192.168.1.2:80, 192.168.1.3:80);
     Syntax error at `192.168.1.2' expecting backends.
 ct_lb(backends=192.168.1.2:80,192.168.1.3:80);
     encodes as group:1
-    uses group: id(1), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
+    uses group: id(1), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=192.168.1.2:80,192.168.1.3:80; skip_snat);
     encodes as group:2
-    uses group: id(2), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label,set_field:4/4->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label,set_field:4/4->ct_label)))
+    uses group: id(2), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label,set_field:4/4->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label,set_field:4/4->ct_label)))
     has prereqs ip
 ct_lb(backends=192.168.1.2:80,192.168.1.3:80; force_snat);
     encodes as group:3
-    uses group: id(3), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label,set_field:8/8->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label,set_field:8/8->ct_label)))
+    uses group: id(3), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label,set_field:8/8->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label,set_field:8/8->ct_label)))
     has prereqs ip
 ct_lb(backends=192.168.1.2, 192.168.1.3, );
     formats as ct_lb(backends=192.168.1.2,192.168.1.3);
     encodes as group:4
-    uses group: id(4), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
+    uses group: id(4), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2, fd0f::3, );
     formats as ct_lb(backends=fd0f::2,fd0f::3);
     encodes as group:5
-    uses group: id(5), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
+    uses group: id(5), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)))
     has prereqs ip
 
 ct_lb(backends=192.168.1.2:);
@@ -1189,114 +1189,114 @@ ct_lb(backends=192.168.1.2:123456);
     Syntax error at `123456' expecting port number.
 ct_lb(backends=foo);
     Syntax error at `foo' expecting IP address.
-ct_lb(backends=[192.168.1.2]);
+ct_lb(backends=[[192.168.1.2]]);
     Syntax error at `192.168.1.2' expecting IPv6 address.
 
 ct_lb(backends=192.168.1.2:80,192.168.1.3:80; hash_fields=eth_src,eth_dst,ip_src);
     Syntax error at `eth_src' invalid hash_fields.
 ct_lb(backends=192.168.1.2:80,192.168.1.3:80; hash_fields="eth_src,eth_dst,ip_src");
     encodes as group:6
-    uses group: id(6), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
+    uses group: id(6), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,tp_src,tp_dst");
     encodes as group:7
-    uses group: id(7), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tp_src,tp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
+    uses group: id(7), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tp_src,tp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,tcp_src,tcp_dst");
     encodes as group:8
-    uses group: id(8), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tcp_src,tcp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
+    uses group: id(8), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tcp_src,tcp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,udp_src,udp_dst");
     encodes as group:9
-    uses group: id(9), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,udp_src,udp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
+    uses group: id(9), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,udp_src,udp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst");
     encodes as group:10
-    uses group: id(10), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label)))
+    uses group: id(10), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst"; skip_snat);
     encodes as group:11
-    uses group: id(11), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label,set_field:4/4->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label,set_field:4/4->ct_label)))
+    uses group: id(11), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label,set_field:4/4->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label,set_field:4/4->ct_label)))
     has prereqs ip
 ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst"; force_snat);
     encodes as group:12
-    uses group: id(12), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label,set_field:8/8->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_label,set_field:8/8->ct_label)))
+    uses group: id(12), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label,set_field:8/8->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label,set_field:8/8->ct_label)))
     has prereqs ip
 
 ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80);
     encodes as group:13
-    uses group: id(13), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark)))
+    uses group: id(13), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
     has prereqs ip
 ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; skip_snat);
     encodes as group:14
-    uses group: id(14), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)))
+    uses group: id(14), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)))
     has prereqs ip
 ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; force_snat);
     encodes as group:15
-    uses group: id(15), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)))
+    uses group: id(15), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)))
     has prereqs ip
 ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst");
     encodes as group:16
-    uses group: id(16), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark)))
+    uses group: id(16), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
     has prereqs ip
 ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst"; skip_snat);
     encodes as group:17
-    uses group: id(17), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)))
+    uses group: id(17), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)))
     has prereqs ip
 ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst"; force_snat);
     encodes as group:18
-    uses group: id(18), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[0..15],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)))
+    uses group: id(18), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=19,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)))
     has prereqs ip
 
 # ct_next
 ct_next;
-    encodes as ct(table=19,zone=NXM_NX_REG13[0..15])
+    encodes as ct(table=19,zone=NXM_NX_REG13[[0..15]])
     has prereqs ip
 
 # ct_commit
 ct_commit;
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15])
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]])
     has prereqs ip
 ct_commit { };
     formats as ct_commit;
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15])
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]])
     has prereqs ip
 ct_commit { ct_mark=1; };
     formats as ct_commit { ct_mark = 1; };
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0x1->ct_mark))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0x1->ct_mark))
     has prereqs ip
 ct_commit { ct_mark=1/1; };
     formats as ct_commit { ct_mark = 1/1; };
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0x1/0x1->ct_mark))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0x1/0x1->ct_mark))
     has prereqs ip
 ct_commit { ct_label=1; };
     formats as ct_commit { ct_label = 1; };
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0x1->ct_label))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0x1->ct_label))
     has prereqs ip
 ct_commit { ct_label=1/1; };
     formats as ct_commit { ct_label = 1/1; };
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0x1/0x1->ct_label))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0x1/0x1->ct_label))
     has prereqs ip
 ct_commit { ct_mark=1; ct_label=2; };
     formats as ct_commit { ct_mark = 1; ct_label = 2; };
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0x1->ct_mark,set_field:0x2->ct_label))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0x1->ct_mark,set_field:0x2->ct_label))
     has prereqs ip
 
 ct_commit { ct_label=0x01020304050607080910111213141516; };
     formats as ct_commit { ct_label = 0x1020304050607080910111213141516; };
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0x1020304050607080910111213141516->ct_label))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0x1020304050607080910111213141516->ct_label))
     has prereqs ip
 ct_commit { ct_label=0x1000000000000000000000000000000/0x1000000000000000000000000000000; };
     formats as ct_commit { ct_label = 0x1000000000000000000000000000000/0x1000000000000000000000000000000; };
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0x1000000000000000000000000000000/0x1000000000000000000000000000000->ct_label))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0x1000000000000000000000000000000/0x1000000000000000000000000000000->ct_label))
     has prereqs ip
 ct_commit { ct_label=18446744073709551615; };
     formats as ct_commit { ct_label = 18446744073709551615; };
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0xffffffffffffffff->ct_label))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0xffffffffffffffff->ct_label))
     has prereqs ip
-ct_commit { ct_label[0..47] = 0x00000f040201; ct_label[48..63] = 0x0002; };
-    formats as ct_commit { ct_label[0..47] = 0xf040201; ct_label[48..63] = 0x2; };
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0xf040201/0xffffffffffff->ct_label,set_field:0x2000000000000/0xffff000000000000->ct_label))
+ct_commit { ct_label[[0..47]] = 0x00000f040201; ct_label[[48..63]] = 0x0002; };
+    formats as ct_commit { ct_label[[0..47]] = 0xf040201; ct_label[[48..63]] = 0x2; };
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0xf040201/0xffffffffffff->ct_label,set_field:0x2000000000000/0xffff000000000000->ct_label))
     has prereqs ip
 ct_commit { ct_label=18446744073709551616; };
     Decimal constants must be less than 2**64.
@@ -1308,43 +1308,43 @@ ct_commit { ip4.dst = 192.168.0.1; };
 # Legact ct_commit_v1 action.
 ct_commit();
     formats as ct_commit;
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15])
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]])
     has prereqs ip
 ct_commit(ct_mark=1);
     formats as ct_commit(ct_mark=0x1);
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0x1->ct_mark))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0x1->ct_mark))
     has prereqs ip
 ct_commit(ct_mark=1/1);
     formats as ct_commit(ct_mark=0x1/0x1);
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0x1/0x1->ct_mark))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0x1/0x1->ct_mark))
     has prereqs ip
 ct_commit(ct_label=1);
     formats as ct_commit(ct_label=0x1);
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0x1->ct_label))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0x1->ct_label))
     has prereqs ip
 ct_commit(ct_label=1/1);
     formats as ct_commit(ct_label=0x1/0x1);
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0x1/0x1->ct_label))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0x1/0x1->ct_label))
     has prereqs ip
 ct_commit(ct_mark=1, ct_label=2);
     formats as ct_commit(ct_mark=0x1, ct_label=0x2);
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0x1->ct_mark,set_field:0x2->ct_label))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0x1->ct_mark,set_field:0x2->ct_label))
     has prereqs ip
 
 ct_commit(ct_label=0x01020304050607080910111213141516);
     formats as ct_commit(ct_label=0x1020304050607080910111213141516);
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0x1020304050607080910111213141516->ct_label))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0x1020304050607080910111213141516->ct_label))
     has prereqs ip
 ct_commit(ct_label=0x181716151413121110090807060504030201);
     formats as ct_commit(ct_label=0x16151413121110090807060504030201);
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0x16151413121110090807060504030201->ct_label))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0x16151413121110090807060504030201->ct_label))
     has prereqs ip
 ct_commit(ct_label=0x1000000000000000000000000000000/0x1000000000000000000000000000000);
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0x1000000000000000000000000000000/0x1000000000000000000000000000000->ct_label))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0x1000000000000000000000000000000/0x1000000000000000000000000000000->ct_label))
     has prereqs ip
 ct_commit(ct_label=18446744073709551615);
     formats as ct_commit(ct_label=0xffffffffffffffff);
-    encodes as ct(commit,zone=NXM_NX_REG13[0..15],exec(set_field:0xffffffffffffffff->ct_label))
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0xffffffffffffffff->ct_label))
     has prereqs ip
 ct_commit(ct_label=18446744073709551616);
     Decimal constants must be less than 2**64.
@@ -1358,17 +1358,17 @@ ct_label.blocked = 1/1
 
 # ct_dnat
 ct_dnat;
-    encodes as ct(table=19,zone=NXM_NX_REG11[0..15],nat)
+    encodes as ct(table=19,zone=NXM_NX_REG11[[0..15]],nat)
     has prereqs ip
 ct_dnat(192.168.1.2);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(dst=192.168.1.2))
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[[0..15]],nat(dst=192.168.1.2))
     has prereqs ip
 ct_dnat(fd11::2);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(dst=fd11::2))
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[[0..15]],nat(dst=fd11::2))
     has prereqs ip
 ct_dnat(192.168.1.2, 1-3000);
     formats as ct_dnat(192.168.1.2,1-3000);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(dst=192.168.1.2:1-3000,random))
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[[0..15]],nat(dst=192.168.1.2:1-3000,random))
     has prereqs ip
 
 ct_dnat(192.168.1.2, 192.168.1.3);
@@ -1385,24 +1385,24 @@ ct_dnat(192.168.1.2, 1000-foo);
     Syntax error at `foo' expecting Integer for port range.
 ct_dnat(192.168.1.2, 1000);
     formats as ct_dnat(192.168.1.2,1000);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(dst=192.168.1.2:1000))
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[[0..15]],nat(dst=192.168.1.2:1000))
     has prereqs ip
 ct_dnat(192.168.1.2, 1000-100);
     Syntax error at `100' range high should be greater than range low.
 
 # ct_dnat_in_czone
 ct_dnat_in_czone;
-    encodes as ct(table=19,zone=NXM_NX_REG11[0..15],nat)
+    encodes as ct(table=19,zone=NXM_NX_REG11[[0..15]],nat)
     has prereqs ip
 ct_dnat_in_czone(192.168.1.2);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(dst=192.168.1.2))
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[[0..15]],nat(dst=192.168.1.2))
     has prereqs ip
 ct_dnat_in_czone(fd11::2);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(dst=fd11::2))
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[[0..15]],nat(dst=fd11::2))
     has prereqs ip
 ct_dnat_in_czone(192.168.1.2, 1-3000);
     formats as ct_dnat_in_czone(192.168.1.2,1-3000);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(dst=192.168.1.2:1-3000,random))
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[[0..15]],nat(dst=192.168.1.2:1-3000,random))
     has prereqs ip
 
 ct_dnat_in_czone(192.168.1.2, 192.168.1.3);
@@ -1419,24 +1419,24 @@ ct_dnat_in_czone(192.168.1.2, 1000-foo);
     Syntax error at `foo' expecting Integer for port range.
 ct_dnat_in_czone(192.168.1.2, 1000);
     formats as ct_dnat_in_czone(192.168.1.2,1000);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(dst=192.168.1.2:1000))
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[[0..15]],nat(dst=192.168.1.2:1000))
     has prereqs ip
 ct_dnat_in_czone(192.168.1.2, 1000-100);
     Syntax error at `100' range high should be greater than range low.
 
 # ct_snat
 ct_snat;
-    encodes as ct(table=19,zone=NXM_NX_REG12[0..15],nat)
+    encodes as ct(table=19,zone=NXM_NX_REG12[[0..15]],nat)
     has prereqs ip
 ct_snat(192.168.1.2);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG12[0..15],nat(src=192.168.1.2))
+    encodes as ct(commit,table=19,zone=NXM_NX_REG12[[0..15]],nat(src=192.168.1.2))
     has prereqs ip
 ct_snat(fd11::2);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG12[0..15],nat(src=fd11::2))
+    encodes as ct(commit,table=19,zone=NXM_NX_REG12[[0..15]],nat(src=fd11::2))
     has prereqs ip
 ct_snat(192.168.1.2, 1-3000);
     formats as ct_snat(192.168.1.2,1-3000);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG12[0..15],nat(src=192.168.1.2:1-3000,random))
+    encodes as ct(commit,table=19,zone=NXM_NX_REG12[[0..15]],nat(src=192.168.1.2:1-3000,random))
     has prereqs ip
 
 ct_snat(192.168.1.2, 192.168.1.3);
@@ -1453,24 +1453,24 @@ ct_snat(192.168.1.2, 1000-foo);
     Syntax error at `foo' expecting Integer for port range.
 ct_snat(192.168.1.2, 1000);
     formats as ct_snat(192.168.1.2,1000);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG12[0..15],nat(src=192.168.1.2:1000))
+    encodes as ct(commit,table=19,zone=NXM_NX_REG12[[0..15]],nat(src=192.168.1.2:1000))
     has prereqs ip
 ct_snat(192.168.1.2, 1000-100);
     Syntax error at `100' range high should be greater than range low.
 
 # ct_snat_in_czone
 ct_snat_in_czone;
-    encodes as ct(table=19,zone=NXM_NX_REG11[0..15],nat)
+    encodes as ct(table=19,zone=NXM_NX_REG11[[0..15]],nat)
     has prereqs ip
 ct_snat_in_czone(192.168.1.2);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(src=192.168.1.2))
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[[0..15]],nat(src=192.168.1.2))
     has prereqs ip
 ct_snat_in_czone(fd11::2);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(src=fd11::2))
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[[0..15]],nat(src=fd11::2))
     has prereqs ip
 ct_snat_in_czone(192.168.1.2, 1-3000);
     formats as ct_snat_in_czone(192.168.1.2,1-3000);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(src=192.168.1.2:1-3000,random))
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[[0..15]],nat(src=192.168.1.2:1-3000,random))
     has prereqs ip
 
 ct_snat_in_czone(192.168.1.2, 192.168.1.3);
@@ -1487,7 +1487,7 @@ ct_snat_in_czone(192.168.1.2, 1000-foo);
     Syntax error at `foo' expecting Integer for port range.
 ct_snat_in_czone(192.168.1.2, 1000);
     formats as ct_snat_in_czone(192.168.1.2,1000);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG11[0..15],nat(src=192.168.1.2:1000))
+    encodes as ct(commit,table=19,zone=NXM_NX_REG11[[0..15]],nat(src=192.168.1.2:1000))
     has prereqs ip
 ct_snat_in_czone(192.168.1.2, 1000-100);
     Syntax error at `100' range high should be greater than range low.
@@ -1499,15 +1499,15 @@ ct_clear;
 # ct_commit_nat
 ct_commit_nat;
     formats as ct_commit_nat(dnat);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG13[0..15],nat)
+    encodes as ct(commit,table=19,zone=NXM_NX_REG13[[0..15]],nat)
     has prereqs ip
 
 ct_commit_nat(snat);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG13[0..15],nat)
+    encodes as ct(commit,table=19,zone=NXM_NX_REG13[[0..15]],nat)
     has prereqs ip
 
 ct_commit_nat(dnat);
-    encodes as ct(commit,table=19,zone=NXM_NX_REG13[0..15],nat)
+    encodes as ct(commit,table=19,zone=NXM_NX_REG13[[0..15]],nat)
     has prereqs ip
 
 ct_commit_nat(snat, dnat);
@@ -1538,10 +1538,10 @@ arp { };
 
 # get_arp
 get_arp(outport, ip4.dst);
-    encodes as push:NXM_NX_REG0[],push:NXM_OF_IP_DST[],pop:NXM_NX_REG0[],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_REG0[]
+    encodes as push:NXM_NX_REG0[[]],push:NXM_OF_IP_DST[[]],pop:NXM_NX_REG0[[]],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_REG0[[]]
     has prereqs eth.type == 0x800
 get_arp(inport, reg0);
-    encodes as push:NXM_NX_REG15[],push:NXM_NX_REG0[],push:NXM_NX_XXREG0[96..127],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],pop:NXM_NX_REG0[],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_REG0[],pop:NXM_NX_REG15[]
+    encodes as push:NXM_NX_REG15[[]],push:NXM_NX_REG0[[]],push:NXM_NX_XXREG0[[96..127]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_REG0[[]],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_REG0[[]],pop:NXM_NX_REG15[[]]
 
 get_arp;
     Syntax error at `;' expecting `('.
@@ -1554,7 +1554,7 @@ get_arp(inport ip4.dst);
 get_arp(inport, ip4.dst;
     Syntax error at `;' expecting `)'.
 get_arp(inport, eth.dst);
-    Cannot use 48-bit field eth.dst[0..47] where 32-bit field is required.
+    Cannot use 48-bit field eth.dst[[0..47]] where 32-bit field is required.
 get_arp(inport, outport);
     Cannot use string field outport where numeric field is required.
 get_arp(reg0, ip4.dst);
@@ -1562,103 +1562,103 @@ get_arp(reg0, ip4.dst);
 
 # put_arp
 put_arp(inport, arp.spa, arp.sha);
-    encodes as push:NXM_NX_REG0[],push:NXM_OF_ETH_SRC[],push:NXM_NX_ARP_SHA[],push:NXM_OF_ARP_SPA[],pop:NXM_NX_REG0[],pop:NXM_OF_ETH_SRC[],controller(userdata=00.00.00.01.00.00.00.00),pop:NXM_OF_ETH_SRC[],pop:NXM_NX_REG0[]
+    encodes as push:NXM_NX_REG0[[]],push:NXM_OF_ETH_SRC[[]],push:NXM_NX_ARP_SHA[[]],push:NXM_OF_ARP_SPA[[]],pop:NXM_NX_REG0[[]],pop:NXM_OF_ETH_SRC[[]],controller(userdata=00.00.00.01.00.00.00.00),pop:NXM_OF_ETH_SRC[[]],pop:NXM_NX_REG0[[]]
     has prereqs eth.type == 0x806 && eth.type == 0x806
 
 # lookup_arp
-reg0[0] = lookup_arp(inport, ip4.dst, eth.src);
-    encodes as push:NXM_NX_REG0[],push:NXM_OF_IP_DST[],pop:NXM_NX_REG0[],set_field:0/0x40->reg10,resubmit(,67),move:NXM_NX_REG10[6]->NXM_NX_XXREG0[96],pop:NXM_NX_REG0[]
+reg0[[0]] = lookup_arp(inport, ip4.dst, eth.src);
+    encodes as push:NXM_NX_REG0[[]],push:NXM_OF_IP_DST[[]],pop:NXM_NX_REG0[[]],set_field:0/0x40->reg10,resubmit(,67),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[96]],pop:NXM_NX_REG0[[]]
     has prereqs eth.type == 0x800
-reg1[1] = lookup_arp(inport, arp.spa, arp.sha);
-    encodes as push:NXM_NX_REG0[],push:NXM_OF_ETH_SRC[],push:NXM_NX_ARP_SHA[],push:NXM_OF_ARP_SPA[],pop:NXM_NX_REG0[],pop:NXM_OF_ETH_SRC[],set_field:0/0x40->reg10,resubmit(,67),move:NXM_NX_REG10[6]->NXM_NX_XXREG0[65],pop:NXM_OF_ETH_SRC[],pop:NXM_NX_REG0[]
+reg1[[1]] = lookup_arp(inport, arp.spa, arp.sha);
+    encodes as push:NXM_NX_REG0[[]],push:NXM_OF_ETH_SRC[[]],push:NXM_NX_ARP_SHA[[]],push:NXM_OF_ARP_SPA[[]],pop:NXM_NX_REG0[[]],pop:NXM_OF_ETH_SRC[[]],set_field:0/0x40->reg10,resubmit(,67),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[65]],pop:NXM_OF_ETH_SRC[[]],pop:NXM_NX_REG0[[]]
     has prereqs eth.type == 0x806 && eth.type == 0x806
 
 lookup_arp;
     Syntax error at `lookup_arp' expecting action.
-reg0[0] = lookup_arp;
+reg0[[0]] = lookup_arp;
     Syntax error at `lookup_arp' expecting field name.
-reg0[0] = lookup_arp();
+reg0[[0]] = lookup_arp();
     Syntax error at `)' expecting field name.
-reg0[0] = lookup_arp(inport);
+reg0[[0]] = lookup_arp(inport);
     Syntax error at `)' expecting `,'.
-reg0[0] = lookup_arp(inport ip4.dst);
+reg0[[0]] = lookup_arp(inport ip4.dst);
     Syntax error at `ip4.dst' expecting `,'.
-reg0[0] = lookup_arp(inport, ip4.dst;
+reg0[[0]] = lookup_arp(inport, ip4.dst;
     Syntax error at `;' expecting `,'.
-reg0[0] = lookup_arp(inport, ip4.dst, eth.src;
+reg0[[0]] = lookup_arp(inport, ip4.dst, eth.src;
     Syntax error at `;' expecting `)'.
-reg0[0] = lookup_arp(inport, eth.dst);
-    Cannot use 48-bit field eth.dst[0..47] where 32-bit field is required.
-reg0[0] = lookup_arp(inport, ip4.src, ip4.dst);
-    Cannot use 32-bit field ip4.dst[0..31] where 48-bit field is required.
+reg0[[0]] = lookup_arp(inport, eth.dst);
+    Cannot use 48-bit field eth.dst[[0..47]] where 32-bit field is required.
+reg0[[0]] = lookup_arp(inport, ip4.src, ip4.dst);
+    Cannot use 32-bit field ip4.dst[[0..31]] where 48-bit field is required.
 
 # lookup_arp_ip
-reg0[0] = lookup_arp_ip(inport, ip4.dst);
-    encodes as push:NXM_NX_REG15[],push:NXM_NX_REG0[],push:NXM_OF_IP_DST[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],pop:NXM_NX_REG0[],push:NXM_OF_ETH_DST[],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[6]->NXM_NX_XXREG0[96],pop:NXM_OF_ETH_DST[],pop:NXM_NX_REG0[],pop:NXM_NX_REG15[]
+reg0[[0]] = lookup_arp_ip(inport, ip4.dst);
+    encodes as push:NXM_NX_REG15[[]],push:NXM_NX_REG0[[]],push:NXM_OF_IP_DST[[]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_REG0[[]],push:NXM_OF_ETH_DST[[]],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[96]],pop:NXM_OF_ETH_DST[[]],pop:NXM_NX_REG0[[]],pop:NXM_NX_REG15[[]]
     has prereqs eth.type == 0x800
-reg1[1] = lookup_arp_ip(inport, arp.spa);
-    encodes as push:NXM_NX_REG15[],push:NXM_NX_REG0[],push:NXM_OF_ARP_SPA[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],pop:NXM_NX_REG0[],push:NXM_OF_ETH_DST[],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[6]->NXM_NX_XXREG0[65],pop:NXM_OF_ETH_DST[],pop:NXM_NX_REG0[],pop:NXM_NX_REG15[]
+reg1[[1]] = lookup_arp_ip(inport, arp.spa);
+    encodes as push:NXM_NX_REG15[[]],push:NXM_NX_REG0[[]],push:NXM_OF_ARP_SPA[[]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_REG0[[]],push:NXM_OF_ETH_DST[[]],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[65]],pop:NXM_OF_ETH_DST[[]],pop:NXM_NX_REG0[[]],pop:NXM_NX_REG15[[]]
     has prereqs eth.type == 0x806
 
 lookup_arp_ip;
     Syntax error at `lookup_arp_ip' expecting action.
-reg0[0] = lookup_arp_ip;
+reg0[[0]] = lookup_arp_ip;
     Syntax error at `lookup_arp_ip' expecting field name.
-reg0[0] = lookup_arp_ip();
+reg0[[0]] = lookup_arp_ip();
     Syntax error at `)' expecting field name.
-reg0[0] = lookup_arp_ip(inport);
+reg0[[0]] = lookup_arp_ip(inport);
     Syntax error at `)' expecting `,'.
-reg0[0] = lookup_arp_ip(inport ip4.dst);
+reg0[[0]] = lookup_arp_ip(inport ip4.dst);
     Syntax error at `ip4.dst' expecting `,'.
-reg0[0] = lookup_arp_ip(inport, ip4.dst;
+reg0[[0]] = lookup_arp_ip(inport, ip4.dst;
     Syntax error at `;' expecting `)'.
-reg0[0] = lookup_arp_ip(inport, ip4.dst, eth.src;
+reg0[[0]] = lookup_arp_ip(inport, ip4.dst, eth.src;
     Syntax error at `,' expecting `)'.
-reg0[0] = lookup_arp_ip(inport, eth.dst);
-    Cannot use 48-bit field eth.dst[0..47] where 32-bit field is required.
+reg0[[0]] = lookup_arp_ip(inport, eth.dst);
+    Cannot use 48-bit field eth.dst[[0..47]] where 32-bit field is required.
 
 # put_dhcp_opts
-reg1[0] = put_dhcp_opts(offerip = 1.2.3.4, router = 10.0.0.1);
+reg1[[0]] = put_dhcp_opts(offerip = 1.2.3.4, router = 10.0.0.1);
     encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.40.01.02.03.04.03.04.0a.00.00.01,pause)
-reg2[5] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.254.0,mtu=1400,domain_name="ovn.org",wpad="https://example.org",bootfile_name="https://127.0.0.1/boot.ipxe",path_prefix="/tftpboot", next_server=10.0.0.9);
-    formats as reg2[5] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.254.0, mtu = 1400, domain_name = "ovn.org", wpad = "https://example.org", bootfile_name = "https://127.0.0.1/boot.ipxe", path_prefix = "/tftpboot", next_server = 10.0.0.9);
+reg2[[5]] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.254.0,mtu=1400,domain_name="ovn.org",wpad="https://example.org",bootfile_name="https://127.0.0.1/boot.ipxe",path_prefix="/tftpboot", next_server=10.0.0.9);
+    formats as reg2[[5]] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.254.0, mtu = 1400, domain_name = "ovn.org", wpad = "https://example.org", bootfile_name = "https://127.0.0.1/boot.ipxe", path_prefix = "/tftpboot", next_server = 10.0.0.9);
     encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.25.0a.00.00.04.43.1b.68.74.74.70.73.3a.2f.2f.31.32.37.2e.30.2e.30.2e.31.2f.62.6f.6f.74.2e.69.70.78.65.fd.04.0a.00.00.09.03.04.0a.00.00.01.01.04.ff.ff.fe.00.1a.02.05.78.0f.07.6f.76.6e.2e.6f.72.67.fc.13.68.74.74.70.73.3a.2f.2f.65.78.61.6d.70.6c.65.2e.6f.72.67.d2.09.2f.74.66.74.70.62.6f.6f.74,pause)
-reg0[15] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.255.0,mtu=1400,ip_forward_enable=1,default_ttl=121,dns_server={8.8.8.8,7.7.7.7},classless_static_route={30.0.0.0/24,10.0.0.4,40.0.0.0/16,10.0.0.6,0.0.0.0/0,10.0.0.1},ethernet_encap=1,router_discovery=0,tftp_server_address={10.0.0.4,10.0.0.5},arp_cache_timeout=10,tcp_keepalive_interval=10);
-    formats as reg0[15] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.255.0, mtu = 1400, ip_forward_enable = 1, default_ttl = 121, dns_server = {8.8.8.8, 7.7.7.7}, classless_static_route = {30.0.0.0/24, 10.0.0.4, 40.0.0.0/16, 10.0.0.6, 0.0.0.0/0, 10.0.0.1}, ethernet_encap = 1, router_discovery = 0, tftp_server_address = {10.0.0.4, 10.0.0.5}, arp_cache_timeout = 10, tcp_keepalive_interval = 10);
+reg0[[15]] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.255.0,mtu=1400,ip_forward_enable=1,default_ttl=121,dns_server={8.8.8.8,7.7.7.7},classless_static_route={30.0.0.0/24,10.0.0.4,40.0.0.0/16,10.0.0.6,0.0.0.0/0,10.0.0.1},ethernet_encap=1,router_discovery=0,tftp_server_address={10.0.0.4,10.0.0.5},arp_cache_timeout=10,tcp_keepalive_interval=10);
+    formats as reg0[[15]] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.255.0, mtu = 1400, ip_forward_enable = 1, default_ttl = 121, dns_server = {8.8.8.8, 7.7.7.7}, classless_static_route = {30.0.0.0/24, 10.0.0.4, 40.0.0.0/16, 10.0.0.6, 0.0.0.0/0, 10.0.0.1}, ethernet_encap = 1, router_discovery = 0, tftp_server_address = {10.0.0.4, 10.0.0.5}, arp_cache_timeout = 10, tcp_keepalive_interval = 10);
     encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.6f.0a.00.00.04.03.04.0a.00.00.01.01.04.ff.ff.ff.00.1a.02.05.78.13.01.01.17.01.79.06.08.08.08.08.08.07.07.07.07.79.14.18.1e.00.00.0a.00.00.04.10.28.00.0a.00.00.06.00.0a.00.00.01.24.01.01.1f.01.00.96.08.0a.00.00.04.0a.00.00.05.23.04.00.00.00.0a.26.04.00.00.00.0a,pause)
-reg0[15] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.255.0,mtu=1400,ip_forward_enable=1,default_ttl=121,dns_server={8.8.8.8,7.7.7.7},classless_static_route={30.0.0.0/24,10.0.0.4,40.0.0.0/16,10.0.0.6,0.0.0.0/0,10.0.0.1},ethernet_encap=1,router_discovery=0,tftp_server=10.0.0.10,broadcast_address=255.255.255.255);
-    formats as reg0[15] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.255.0, mtu = 1400, ip_forward_enable = 1, default_ttl = 121, dns_server = {8.8.8.8, 7.7.7.7}, classless_static_route = {30.0.0.0/24, 10.0.0.4, 40.0.0.0/16, 10.0.0.6, 0.0.0.0/0, 10.0.0.1}, ethernet_encap = 1, router_discovery = 0, tftp_server = 10.0.0.10, broadcast_address = 255.255.255.255);
+reg0[[15]] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.255.0,mtu=1400,ip_forward_enable=1,default_ttl=121,dns_server={8.8.8.8,7.7.7.7},classless_static_route={30.0.0.0/24,10.0.0.4,40.0.0.0/16,10.0.0.6,0.0.0.0/0,10.0.0.1},ethernet_encap=1,router_discovery=0,tftp_server=10.0.0.10,broadcast_address=255.255.255.255);
+    formats as reg0[[15]] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.255.0, mtu = 1400, ip_forward_enable = 1, default_ttl = 121, dns_server = {8.8.8.8, 7.7.7.7}, classless_static_route = {30.0.0.0/24, 10.0.0.4, 40.0.0.0/16, 10.0.0.6, 0.0.0.0/0, 10.0.0.1}, ethernet_encap = 1, router_discovery = 0, tftp_server = 10.0.0.10, broadcast_address = 255.255.255.255);
     encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.6f.0a.00.00.04.03.04.0a.00.00.01.01.04.ff.ff.ff.00.1a.02.05.78.13.01.01.17.01.79.06.08.08.08.08.08.07.07.07.07.79.14.18.1e.00.00.0a.00.00.04.10.28.00.0a.00.00.06.00.0a.00.00.01.24.01.01.1f.01.00.42.04.0a.00.00.0a.1c.04.ff.ff.ff.ff,pause)
-reg0[15] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.255.0,mtu=1400,ip_forward_enable=1,default_ttl=121,dns_server={8.8.8.8,7.7.7.7},classless_static_route={30.0.0.0/24,10.0.0.4,40.0.0.0/16,10.0.0.6,0.0.0.0/0,10.0.0.1},ethernet_encap=1,router_discovery=0,tftp_server="tftp_server_test");
-    formats as reg0[15] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.255.0, mtu = 1400, ip_forward_enable = 1, default_ttl = 121, dns_server = {8.8.8.8, 7.7.7.7}, classless_static_route = {30.0.0.0/24, 10.0.0.4, 40.0.0.0/16, 10.0.0.6, 0.0.0.0/0, 10.0.0.1}, ethernet_encap = 1, router_discovery = 0, tftp_server = "tftp_server_test");
+reg0[[15]] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.255.0,mtu=1400,ip_forward_enable=1,default_ttl=121,dns_server={8.8.8.8,7.7.7.7},classless_static_route={30.0.0.0/24,10.0.0.4,40.0.0.0/16,10.0.0.6,0.0.0.0/0,10.0.0.1},ethernet_encap=1,router_discovery=0,tftp_server="tftp_server_test");
+    formats as reg0[[15]] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.255.0, mtu = 1400, ip_forward_enable = 1, default_ttl = 121, dns_server = {8.8.8.8, 7.7.7.7}, classless_static_route = {30.0.0.0/24, 10.0.0.4, 40.0.0.0/16, 10.0.0.6, 0.0.0.0/0, 10.0.0.1}, ethernet_encap = 1, router_discovery = 0, tftp_server = "tftp_server_test");
     encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.6f.0a.00.00.04.03.04.0a.00.00.01.01.04.ff.ff.ff.00.1a.02.05.78.13.01.01.17.01.79.06.08.08.08.08.08.07.07.07.07.79.14.18.1e.00.00.0a.00.00.04.10.28.00.0a.00.00.06.00.0a.00.00.01.24.01.01.1f.01.00.42.10.74.66.74.70.5f.73.65.72.76.65.72.5f.74.65.73.74,pause)
-reg2[5] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.254.0,mtu=1400,domain_name="ovn.org",wpad="https://example.org",bootfile_name="https://127.0.0.1/boot.ipxe",path_prefix="/tftpboot",domain_search_list="ovn.org,abc.ovn.org",netbios_name_server={10.0.0.7,10.0.0.8},netbios_node_type=2);
-    formats as reg2[5] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.254.0, mtu = 1400, domain_name = "ovn.org", wpad = "https://example.org", bootfile_name = "https://127.0.0.1/boot.ipxe", path_prefix = "/tftpboot", domain_search_list = "ovn.org,abc.ovn.org", netbios_name_server = {10.0.0.7, 10.0.0.8}, netbios_node_type = 2);
+reg2[[5]] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.254.0,mtu=1400,domain_name="ovn.org",wpad="https://example.org",bootfile_name="https://127.0.0.1/boot.ipxe",path_prefix="/tftpboot",domain_search_list="ovn.org,abc.ovn.org",netbios_name_server={10.0.0.7,10.0.0.8},netbios_node_type=2);
+    formats as reg2[[5]] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.254.0, mtu = 1400, domain_name = "ovn.org", wpad = "https://example.org", bootfile_name = "https://127.0.0.1/boot.ipxe", path_prefix = "/tftpboot", domain_search_list = "ovn.org,abc.ovn.org", netbios_name_server = {10.0.0.7, 10.0.0.8}, netbios_node_type = 2);
     encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.25.0a.00.00.04.43.1b.68.74.74.70.73.3a.2f.2f.31.32.37.2e.30.2e.30.2e.31.2f.62.6f.6f.74.2e.69.70.78.65.03.04.0a.00.00.01.01.04.ff.ff.fe.00.1a.02.05.78.0f.07.6f.76.6e.2e.6f.72.67.fc.13.68.74.74.70.73.3a.2f.2f.65.78.61.6d.70.6c.65.2e.6f.72.67.d2.09.2f.74.66.74.70.62.6f.6f.74.77.0f.03.6f.76.6e.03.6f.72.67.00.03.61.62.63.c0.00.2c.08.0a.00.00.07.0a.00.00.08.2e.01.02,pause)
-reg2[5] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.254.0,mtu=1400,domain_name="ovn.org",wpad="https://example.org",bootfile_name="https://127.0.0.1/boot.ipxe",path_prefix="/tftpboot",domain_search_list="ovn.org,abc.ovn.org,def.ovn.org,ovn.test,def.ovn.test,test.org,abc.com");
-    formats as reg2[5] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.254.0, mtu = 1400, domain_name = "ovn.org", wpad = "https://example.org", bootfile_name = "https://127.0.0.1/boot.ipxe", path_prefix = "/tftpboot", domain_search_list = "ovn.org,abc.ovn.org,def.ovn.org,ovn.test,def.ovn.test,test.org,abc.com");
+reg2[[5]] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.254.0,mtu=1400,domain_name="ovn.org",wpad="https://example.org",bootfile_name="https://127.0.0.1/boot.ipxe",path_prefix="/tftpboot",domain_search_list="ovn.org,abc.ovn.org,def.ovn.org,ovn.test,def.ovn.test,test.org,abc.com");
+    formats as reg2[[5]] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.254.0, mtu = 1400, domain_name = "ovn.org", wpad = "https://example.org", bootfile_name = "https://127.0.0.1/boot.ipxe", path_prefix = "/tftpboot", domain_search_list = "ovn.org,abc.ovn.org,def.ovn.org,ovn.test,def.ovn.test,test.org,abc.com");
     encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.25.0a.00.00.04.43.1b.68.74.74.70.73.3a.2f.2f.31.32.37.2e.30.2e.30.2e.31.2f.62.6f.6f.74.2e.69.70.78.65.03.04.0a.00.00.01.01.04.ff.ff.fe.00.1a.02.05.78.0f.07.6f.76.6e.2e.6f.72.67.fc.13.68.74.74.70.73.3a.2f.2f.65.78.61.6d.70.6c.65.2e.6f.72.67.d2.09.2f.74.66.74.70.62.6f.6f.74.77.35.03.6f.76.6e.03.6f.72.67.00.03.61.62.63.c0.00.03.64.65.66.c0.00.03.6f.76.6e.04.74.65.73.74.00.03.64.65.66.c0.15.04.74.65.73.74.c0.04.03.61.62.63.03.63.6f.6d.00,pause)
-reg2[5] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.254.0,mtu=1400,domain_name="ovn.org",hostname="ip-10-0-0-4");
-    formats as reg2[5] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.254.0, mtu = 1400, domain_name = "ovn.org", hostname = "ip-10-0-0-4");
+reg2[[5]] = put_dhcp_opts(offerip=10.0.0.4,router=10.0.0.1,netmask=255.255.254.0,mtu=1400,domain_name="ovn.org",hostname="ip-10-0-0-4");
+    formats as reg2[[5]] = put_dhcp_opts(offerip = 10.0.0.4, router = 10.0.0.1, netmask = 255.255.254.0, mtu = 1400, domain_name = "ovn.org", hostname = "ip-10-0-0-4");
     encodes as controller(userdata=00.00.00.02.00.00.00.00.00.01.de.10.00.00.00.25.0a.00.00.04.03.04.0a.00.00.01.01.04.ff.ff.fe.00.1a.02.05.78.0f.07.6f.76.6e.2e.6f.72.67.0c.0b.69.70.2d.31.30.2d.30.2d.30.2d.34,pause)
 
-reg1[0..1] = put_dhcp_opts(offerip = 1.2.3.4, router = 10.0.0.1);
-    Cannot use 2-bit field reg1[0..1] where 1-bit field is required.
-reg1[0] = put_dhcp_opts();
+reg1[[0..1]] = put_dhcp_opts(offerip = 1.2.3.4, router = 10.0.0.1);
+    Cannot use 2-bit field reg1[[0..1]] where 1-bit field is required.
+reg1[[0]] = put_dhcp_opts();
     put_dhcp_opts requires offerip to be specified.
-reg1[0] = put_dhcp_opts(x = 1.2.3.4, router = 10.0.0.1);
+reg1[[0]] = put_dhcp_opts(x = 1.2.3.4, router = 10.0.0.1);
     Syntax error at `x' expecting DHCPv4 option name.
-reg1[0] = put_dhcp_opts(router = 10.0.0.1);
+reg1[[0]] = put_dhcp_opts(router = 10.0.0.1);
     put_dhcp_opts requires offerip to be specified.
-reg1[0] = put_dhcp_opts(offerip=1.2.3.4, "hi");
+reg1[[0]] = put_dhcp_opts(offerip=1.2.3.4, "hi");
     Syntax error at `"hi"'.
-reg1[0] = put_dhcp_opts(offerip=1.2.3.4, xyzzy);
+reg1[[0]] = put_dhcp_opts(offerip=1.2.3.4, xyzzy);
     Syntax error at `xyzzy' expecting DHCPv4 option name.
-reg1[0] = put_dhcp_opts(offerip="xyzzy");
+reg1[[0]] = put_dhcp_opts(offerip="xyzzy");
     DHCPv4 option offerip requires numeric value.
-reg1[0] = put_dhcp_opts(offerip=1.2.3.4, domain_name=1.2.3.4);
+reg1[[0]] = put_dhcp_opts(offerip=1.2.3.4, domain_name=1.2.3.4);
     DHCPv4 option domain_name requires string value.
-reg1[0] = put_dhcp_opts(offerip=1.2.3.4, domain_search_list=1.2.3.4);
+reg1[[0]] = put_dhcp_opts(offerip=1.2.3.4, domain_search_list=1.2.3.4);
     DHCPv4 option domain_search_list requires string value.
 
 # nd_ns
@@ -1684,10 +1684,10 @@ nd_na_router { eth.src = 12:34:56:78:9a:bc; nd.tll = 12:34:56:78:9a:bc; outport 
 
 # get_nd
 get_nd(outport, ip6.dst);
-    encodes as push:NXM_NX_XXREG0[],push:NXM_NX_IPV6_DST[],pop:NXM_NX_XXREG0[],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_XXREG0[]
+    encodes as push:NXM_NX_XXREG0[[]],push:NXM_NX_IPV6_DST[[]],pop:NXM_NX_XXREG0[[]],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_XXREG0[[]]
     has prereqs eth.type == 0x86dd
 get_nd(inport, xxreg0);
-    encodes as push:NXM_NX_REG15[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_REG15[]
+    encodes as push:NXM_NX_REG15[[]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_REG15[[]]
 get_nd;
     Syntax error at `;' expecting `('.
 get_nd();
@@ -1699,7 +1699,7 @@ get_nd(inport ip6.dst);
 get_nd(inport, ip6.dst;
     Syntax error at `;' expecting `)'.
 get_nd(inport, eth.dst);
-    Cannot use 48-bit field eth.dst[0..47] where 128-bit field is required.
+    Cannot use 48-bit field eth.dst[[0..47]] where 128-bit field is required.
 get_nd(inport, outport);
     Cannot use string field outport where numeric field is required.
 get_nd(xxreg0, ip6.dst);
@@ -1707,95 +1707,95 @@ get_nd(xxreg0, ip6.dst);
 
 # put_nd
 put_nd(inport, nd.target, nd.sll);
-    encodes as push:NXM_NX_XXREG0[],push:NXM_OF_ETH_SRC[],push:NXM_NX_ND_SLL[],push:NXM_NX_ND_TARGET[],pop:NXM_NX_XXREG0[],pop:NXM_OF_ETH_SRC[],controller(userdata=00.00.00.04.00.00.00.00),pop:NXM_OF_ETH_SRC[],pop:NXM_NX_XXREG0[]
+    encodes as push:NXM_NX_XXREG0[[]],push:NXM_OF_ETH_SRC[[]],push:NXM_NX_ND_SLL[[]],push:NXM_NX_ND_TARGET[[]],pop:NXM_NX_XXREG0[[]],pop:NXM_OF_ETH_SRC[[]],controller(userdata=00.00.00.04.00.00.00.00),pop:NXM_OF_ETH_SRC[[]],pop:NXM_NX_XXREG0[[]]
     has prereqs (icmp6.type == 0x87 || icmp6.type == 0x88) && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && icmp6.code == 0 && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && ip.ttl == 0xff && (eth.type == 0x800 || eth.type == 0x86dd) && icmp6.type == 0x87 && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && icmp6.code == 0 && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && ip.ttl == 0xff && (eth.type == 0x800 || eth.type == 0x86dd)
 
 # put_dhcpv6_opts
-reg1[0] = put_dhcpv6_opts(ia_addr = ae70::4, server_id = 00:00:00:00:10:02);
+reg1[[0]] = put_dhcpv6_opts(ia_addr = ae70::4, server_id = 00:00:00:00:10:02);
     encodes as controller(userdata=00.00.00.05.00.00.00.00.00.01.de.10.00.00.00.40.00.05.00.10.ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.04.00.02.00.06.00.00.00.00.10.02,pause)
-reg1[0] = put_dhcpv6_opts();
+reg1[[0]] = put_dhcpv6_opts();
     encodes as controller(userdata=00.00.00.05.00.00.00.00.00.01.de.10.00.00.00.40,pause)
-reg1[0] = put_dhcpv6_opts(dns_server={ae70::1,ae70::2});
-    formats as reg1[0] = put_dhcpv6_opts(dns_server = {ae70::1, ae70::2});
+reg1[[0]] = put_dhcpv6_opts(dns_server={ae70::1,ae70::2});
+    formats as reg1[[0]] = put_dhcpv6_opts(dns_server = {ae70::1, ae70::2});
     encodes as controller(userdata=00.00.00.05.00.00.00.00.00.01.de.10.00.00.00.40.00.17.00.20.ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.01.ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.02,pause)
-reg1[0] = put_dhcpv6_opts(server_id=12:34:56:78:9a:bc, dns_server={ae70::1,ae89::2});
-    formats as reg1[0] = put_dhcpv6_opts(server_id = 12:34:56:78:9a:bc, dns_server = {ae70::1, ae89::2});
+reg1[[0]] = put_dhcpv6_opts(server_id=12:34:56:78:9a:bc, dns_server={ae70::1,ae89::2});
+    formats as reg1[[0]] = put_dhcpv6_opts(server_id = 12:34:56:78:9a:bc, dns_server = {ae70::1, ae89::2});
     encodes as controller(userdata=00.00.00.05.00.00.00.00.00.01.de.10.00.00.00.40.00.02.00.06.12.34.56.78.9a.bc.00.17.00.20.ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.01.ae.89.00.00.00.00.00.00.00.00.00.00.00.00.00.02,pause)
-reg1[0] = put_dhcpv6_opts(domain_search = "ovn.org");
+reg1[[0]] = put_dhcpv6_opts(domain_search = "ovn.org");
     encodes as controller(userdata=00.00.00.05.00.00.00.00.00.01.de.10.00.00.00.40.00.18.00.07.6f.76.6e.2e.6f.72.67,pause)
-reg1[0] = put_dhcpv6_opts(x = 1.2.3.4);
+reg1[[0]] = put_dhcpv6_opts(x = 1.2.3.4);
     Syntax error at `x' expecting DHCPv6 option name.
-reg1[0] = put_dhcpv6_opts(ia_addr=ae70::4, "hi");
+reg1[[0]] = put_dhcpv6_opts(ia_addr=ae70::4, "hi");
     Syntax error at `"hi"'.
-reg1[0] = put_dhcpv6_opts(ia_addr=ae70::4, xyzzy);
+reg1[[0]] = put_dhcpv6_opts(ia_addr=ae70::4, xyzzy);
     Syntax error at `xyzzy' expecting DHCPv6 option name.
-reg1[0] = put_dhcpv6_opts(ia_addr="ae70::4");
+reg1[[0]] = put_dhcpv6_opts(ia_addr="ae70::4");
     DHCPv6 option ia_addr requires numeric value.
-reg1[0] = put_dhcpv6_opts(ia_addr=ae70::4, domain_search=ae70::1);
+reg1[[0]] = put_dhcpv6_opts(ia_addr=ae70::4, domain_search=ae70::1);
     DHCPv6 option domain_search requires string value.
-reg1[0] = put_dhcpv6_opts(bootfile_name="https://127.0.0.1/boot.ipxe");
-    formats as reg1[0] = put_dhcpv6_opts(bootfile_name = "https://127.0.0.1/boot.ipxe");
+reg1[[0]] = put_dhcpv6_opts(bootfile_name="https://127.0.0.1/boot.ipxe");
+    formats as reg1[[0]] = put_dhcpv6_opts(bootfile_name = "https://127.0.0.1/boot.ipxe");
     encodes as controller(userdata=00.00.00.05.00.00.00.00.00.01.de.10.00.00.00.40.00.3b.00.1b.68.74.74.70.73.3a.2f.2f.31.32.37.2e.30.2e.30.2e.31.2f.62.6f.6f.74.2e.69.70.78.65,pause)
-reg1[0] = put_dhcpv6_opts(bootfile_name_alt="https://127.0.0.1/boot.ipxe");
-    formats as reg1[0] = put_dhcpv6_opts(bootfile_name_alt = "https://127.0.0.1/boot.ipxe");
+reg1[[0]] = put_dhcpv6_opts(bootfile_name_alt="https://127.0.0.1/boot.ipxe");
+    formats as reg1[[0]] = put_dhcpv6_opts(bootfile_name_alt = "https://127.0.0.1/boot.ipxe");
     encodes as controller(userdata=00.00.00.05.00.00.00.00.00.01.de.10.00.00.00.40.00.fe.00.1b.68.74.74.70.73.3a.2f.2f.31.32.37.2e.30.2e.30.2e.31.2f.62.6f.6f.74.2e.69.70.78.65,pause)
-reg1[0] = put_dhcpv6_opts(fqdn="ovn.org");
-    formats as reg1[0] = put_dhcpv6_opts(fqdn = "ovn.org");
+reg1[[0]] = put_dhcpv6_opts(fqdn="ovn.org");
+    formats as reg1[[0]] = put_dhcpv6_opts(fqdn = "ovn.org");
     encodes as controller(userdata=00.00.00.05.00.00.00.00.00.01.de.10.00.00.00.40.00.27.00.09.03.6f.76.6e.03.6f.72.67.00,pause)
 
 # lookup_nd
-reg2[0] = lookup_nd(inport, ip6.dst, eth.src);
-    encodes as push:NXM_NX_XXREG0[],push:NXM_NX_IPV6_DST[],pop:NXM_NX_XXREG0[],set_field:0/0x40->reg10,resubmit(,67),move:NXM_NX_REG10[6]->NXM_NX_XXREG0[32],pop:NXM_NX_XXREG0[]
+reg2[[0]] = lookup_nd(inport, ip6.dst, eth.src);
+    encodes as push:NXM_NX_XXREG0[[]],push:NXM_NX_IPV6_DST[[]],pop:NXM_NX_XXREG0[[]],set_field:0/0x40->reg10,resubmit(,67),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[32]],pop:NXM_NX_XXREG0[[]]
     has prereqs eth.type == 0x86dd
-reg3[0] = lookup_nd(inport, nd.target, nd.tll);
-    encodes as push:NXM_NX_XXREG0[],push:NXM_OF_ETH_SRC[],push:NXM_NX_ND_TLL[],push:NXM_NX_ND_TARGET[],pop:NXM_NX_XXREG0[],pop:NXM_OF_ETH_SRC[],set_field:0/0x40->reg10,resubmit(,67),move:NXM_NX_REG10[6]->NXM_NX_XXREG0[0],pop:NXM_OF_ETH_SRC[],pop:NXM_NX_XXREG0[]
+reg3[[0]] = lookup_nd(inport, nd.target, nd.tll);
+    encodes as push:NXM_NX_XXREG0[[]],push:NXM_OF_ETH_SRC[[]],push:NXM_NX_ND_TLL[[]],push:NXM_NX_ND_TARGET[[]],pop:NXM_NX_XXREG0[[]],pop:NXM_OF_ETH_SRC[[]],set_field:0/0x40->reg10,resubmit(,67),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[0]],pop:NXM_OF_ETH_SRC[[]],pop:NXM_NX_XXREG0[[]]
     has prereqs (icmp6.type == 0x87 || icmp6.type == 0x88) && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && icmp6.code == 0 && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && ip.ttl == 0xff && (eth.type == 0x800 || eth.type == 0x86dd) && icmp6.type == 0x88 && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && icmp6.code == 0 && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && ip.ttl == 0xff && (eth.type == 0x800 || eth.type == 0x86dd)
 
 lookup_nd;
     Syntax error at `lookup_nd' expecting action.
-reg0[0] = lookup_nd;
+reg0[[0]] = lookup_nd;
     Syntax error at `lookup_nd' expecting field name.
-reg0[0] = lookup_nd();
+reg0[[0]] = lookup_nd();
     Syntax error at `)' expecting field name.
-reg0[0] = lookup_nd(inport);
+reg0[[0]] = lookup_nd(inport);
     Syntax error at `)' expecting `,'.
-reg0[0] = lookup_nd(inport ip6.dst);
+reg0[[0]] = lookup_nd(inport ip6.dst);
     Syntax error at `ip6.dst' expecting `,'.
-reg0[0] = lookup_nd(inport, ip6.dst;
+reg0[[0]] = lookup_nd(inport, ip6.dst;
     Syntax error at `;' expecting `,'.
-reg0[0] = lookup_nd(inport, ip6.dst, eth.src;
+reg0[[0]] = lookup_nd(inport, ip6.dst, eth.src;
     Syntax error at `;' expecting `)'.
-reg0[0] = lookup_nd(inport, eth.dst);
-    Cannot use 48-bit field eth.dst[0..47] where 128-bit field is required.
-reg0[0] = lookup_nd(inport, ip4.src, ip4.dst);
-    Cannot use 32-bit field ip4.src[0..31] where 128-bit field is required.
-reg0[0] = lookup_nd(inport, ip6.src, ip6.dst);
-    Cannot use 128-bit field ip6.dst[0..127] where 48-bit field is required.
+reg0[[0]] = lookup_nd(inport, eth.dst);
+    Cannot use 48-bit field eth.dst[[0..47]] where 128-bit field is required.
+reg0[[0]] = lookup_nd(inport, ip4.src, ip4.dst);
+    Cannot use 32-bit field ip4.src[[0..31]] where 128-bit field is required.
+reg0[[0]] = lookup_nd(inport, ip6.src, ip6.dst);
+    Cannot use 128-bit field ip6.dst[[0..127]] where 48-bit field is required.
 
 # lookup_nd_ip
-reg2[0] = lookup_nd_ip(inport, ip6.dst);
-    encodes as push:NXM_NX_REG15[],push:NXM_NX_XXREG0[],push:NXM_NX_IPV6_DST[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],pop:NXM_NX_XXREG0[],push:NXM_OF_ETH_DST[],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[6]->NXM_NX_XXREG0[32],pop:NXM_OF_ETH_DST[],pop:NXM_NX_XXREG0[],pop:NXM_NX_REG15[]
+reg2[[0]] = lookup_nd_ip(inport, ip6.dst);
+    encodes as push:NXM_NX_REG15[[]],push:NXM_NX_XXREG0[[]],push:NXM_NX_IPV6_DST[[]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_XXREG0[[]],push:NXM_OF_ETH_DST[[]],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[32]],pop:NXM_OF_ETH_DST[[]],pop:NXM_NX_XXREG0[[]],pop:NXM_NX_REG15[[]]
     has prereqs eth.type == 0x86dd
-reg3[0] = lookup_nd_ip(inport, nd.target);
-    encodes as push:NXM_NX_REG15[],push:NXM_NX_XXREG0[],push:NXM_NX_ND_TARGET[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],pop:NXM_NX_XXREG0[],push:NXM_OF_ETH_DST[],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[6]->NXM_NX_XXREG0[0],pop:NXM_OF_ETH_DST[],pop:NXM_NX_XXREG0[],pop:NXM_NX_REG15[]
+reg3[[0]] = lookup_nd_ip(inport, nd.target);
+    encodes as push:NXM_NX_REG15[[]],push:NXM_NX_XXREG0[[]],push:NXM_NX_ND_TARGET[[]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_XXREG0[[]],push:NXM_OF_ETH_DST[[]],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[0]],pop:NXM_OF_ETH_DST[[]],pop:NXM_NX_XXREG0[[]],pop:NXM_NX_REG15[[]]
     has prereqs (icmp6.type == 0x87 || icmp6.type == 0x88) && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && icmp6.code == 0 && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && ip.ttl == 0xff && (eth.type == 0x800 || eth.type == 0x86dd)
 
 lookup_nd_ip;
     Syntax error at `lookup_nd_ip' expecting action.
-reg0[0] = lookup_nd_ip;
+reg0[[0]] = lookup_nd_ip;
     Syntax error at `lookup_nd_ip' expecting field name.
-reg0[0] = lookup_nd_ip();
+reg0[[0]] = lookup_nd_ip();
     Syntax error at `)' expecting field name.
-reg0[0] = lookup_nd_ip(inport);
+reg0[[0]] = lookup_nd_ip(inport);
     Syntax error at `)' expecting `,'.
-reg0[0] = lookup_nd_ip(inport ip6.dst);
+reg0[[0]] = lookup_nd_ip(inport ip6.dst);
     Syntax error at `ip6.dst' expecting `,'.
-reg0[0] = lookup_nd_ip(inport, ip6.dst;
+reg0[[0]] = lookup_nd_ip(inport, ip6.dst;
     Syntax error at `;' expecting `)'.
-reg0[0] = lookup_nd_ip(inport, eth.dst);
-    Cannot use 48-bit field eth.dst[0..47] where 128-bit field is required.
-reg0[0] = lookup_nd_ip(inport, ip4.src);
-    Cannot use 32-bit field ip4.src[0..31] where 128-bit field is required.
+reg0[[0]] = lookup_nd_ip(inport, eth.dst);
+    Cannot use 48-bit field eth.dst[[0..47]] where 128-bit field is required.
+reg0[[0]] = lookup_nd_ip(inport, ip4.src);
+    Cannot use 32-bit field ip4.src[[0..31]] where 128-bit field is required.
 
 # set_queue
 set_queue(0);
@@ -1806,10 +1806,10 @@ set_queue(65535);
     Queue ID 65535 for set_queue is not in valid range 0 to 61440.
 
 # dns_lookup
-reg1[0] = dns_lookup();
+reg1[[0]] = dns_lookup();
     encodes as controller(userdata=00.00.00.06.00.00.00.00.00.01.de.10.00.00.00.40,pause)
     has prereqs udp
-reg1[0] = dns_lookup("foo");
+reg1[[0]] = dns_lookup("foo");
     dns_lookup doesn't take any parameters
 
 # set_meter
@@ -1844,36 +1844,36 @@ log(severity=notice);
     Syntax error at `;' expecting verdict.
 
 # put_nd_ra_opts
-reg1[0] = put_nd_ra_opts(addr_mode = "slaac", mtu = 1500, router_preference = "HIGH", prefix = aef0::/64, slla = ae:01:02:03:04:05);
+reg1[[0]] = put_nd_ra_opts(addr_mode = "slaac", mtu = 1500, router_preference = "HIGH", prefix = aef0::/64, slla = ae:01:02:03:04:05);
     encodes as controller(userdata=00.00.00.08.00.00.00.00.00.01.de.10.00.00.00.40.86.00.00.00.ff.08.ff.ff.00.00.00.00.00.00.00.00.05.01.00.00.00.00.05.dc.03.04.40.c0.ff.ff.ff.ff.ff.ff.ff.ff.00.00.00.00.ae.f0.00.00.00.00.00.00.00.00.00.00.00.00.00.00.01.01.ae.01.02.03.04.05,pause)
     has prereqs ip6
-reg1[0] = put_nd_ra_opts(addr_mode = "dhcpv6_stateful", router_preference = "MEDIUM", slla = ae:01:02:03:04:10, mtu = 1450);
+reg1[[0]] = put_nd_ra_opts(addr_mode = "dhcpv6_stateful", router_preference = "MEDIUM", slla = ae:01:02:03:04:10, mtu = 1450);
     encodes as controller(userdata=00.00.00.08.00.00.00.00.00.01.de.10.00.00.00.40.86.00.00.00.ff.80.ff.ff.00.00.00.00.00.00.00.00.01.01.ae.01.02.03.04.10.05.01.00.00.00.00.05.aa,pause)
     has prereqs ip6
-reg1[0] = put_nd_ra_opts(addr_mode = "dhcpv6_stateless", router_preference = "LOW", slla = ae:01:02:03:04:06, prefix = aef0::/64);
+reg1[[0]] = put_nd_ra_opts(addr_mode = "dhcpv6_stateless", router_preference = "LOW", slla = ae:01:02:03:04:06, prefix = aef0::/64);
     encodes as controller(userdata=00.00.00.08.00.00.00.00.00.01.de.10.00.00.00.40.86.00.00.00.ff.58.ff.ff.00.00.00.00.00.00.00.00.01.01.ae.01.02.03.04.06.03.04.40.c0.ff.ff.ff.ff.ff.ff.ff.ff.00.00.00.00.ae.f0.00.00.00.00.00.00.00.00.00.00.00.00.00.00,pause)
     has prereqs ip6
-reg1[0] = put_nd_ra_opts(addr_mode = "slaac", mtu = 1500, prefix = aef0::/64);
+reg1[[0]] = put_nd_ra_opts(addr_mode = "slaac", mtu = 1500, prefix = aef0::/64);
     slla option not present
-reg1[0] = put_nd_ra_opts(addr_mode = "dhcpv6_stateful", mtu = 1450, prefix = aef0::/64, prefix = bef0::/64, slla = ae:01:02:03:04:10);
+reg1[[0]] = put_nd_ra_opts(addr_mode = "dhcpv6_stateful", mtu = 1450, prefix = aef0::/64, prefix = bef0::/64, slla = ae:01:02:03:04:10);
     encodes as controller(userdata=00.00.00.08.00.00.00.00.00.01.de.10.00.00.00.40.86.00.00.00.ff.80.ff.ff.00.00.00.00.00.00.00.00.05.01.00.00.00.00.05.aa.03.04.40.80.ff.ff.ff.ff.ff.ff.ff.ff.00.00.00.00.ae.f0.00.00.00.00.00.00.00.00.00.00.00.00.00.00.03.04.40.80.ff.ff.ff.ff.ff.ff.ff.ff.00.00.00.00.be.f0.00.00.00.00.00.00.00.00.00.00.00.00.00.00.01.01.ae.01.02.03.04.10,pause)
     has prereqs ip6
-reg1[0] = put_nd_ra_opts(addr_mode = "dhcpv6_stateful", mtu = 1450, prefix = aef0::/64, prefix = bef0::/64, slla = ae:01:02:03:04:10);
+reg1[[0]] = put_nd_ra_opts(addr_mode = "dhcpv6_stateful", mtu = 1450, prefix = aef0::/64, prefix = bef0::/64, slla = ae:01:02:03:04:10);
     encodes as controller(userdata=00.00.00.08.00.00.00.00.00.01.de.10.00.00.00.40.86.00.00.00.ff.80.ff.ff.00.00.00.00.00.00.00.00.05.01.00.00.00.00.05.aa.03.04.40.80.ff.ff.ff.ff.ff.ff.ff.ff.00.00.00.00.ae.f0.00.00.00.00.00.00.00.00.00.00.00.00.00.00.03.04.40.80.ff.ff.ff.ff.ff.ff.ff.ff.00.00.00.00.be.f0.00.00.00.00.00.00.00.00.00.00.00.00.00.00.01.01.ae.01.02.03.04.10,pause)
     has prereqs ip6
-reg1[0] = put_nd_ra_opts(addr_mode = "slaac", slla = ae:01:02:03:04:10);
+reg1[[0]] = put_nd_ra_opts(addr_mode = "slaac", slla = ae:01:02:03:04:10);
     prefix option needs to be set when address mode is slaac/dhcpv6_stateless.
-reg1[0] = put_nd_ra_opts(addr_mode = "dhcpv6_stateless", slla = ae:01:02:03:04:10);
+reg1[[0]] = put_nd_ra_opts(addr_mode = "dhcpv6_stateless", slla = ae:01:02:03:04:10);
     prefix option needs to be set when address mode is slaac/dhcpv6_stateless.
-reg1[0] = put_nd_ra_opts(addr_mode = dhcpv6_stateless, prefix = aef0::/64, slla = ae:01:02:03:04:10);
+reg1[[0]] = put_nd_ra_opts(addr_mode = dhcpv6_stateless, prefix = aef0::/64, slla = ae:01:02:03:04:10);
     Syntax error at `dhcpv6_stateless' expecting constant.
-reg1[0] = put_nd_ra_opts(addr_mode = "slaac", mtu = 1500, prefix = aef0::, slla = ae:01:02:03:04:10);
+reg1[[0]] = put_nd_ra_opts(addr_mode = "slaac", mtu = 1500, prefix = aef0::, slla = ae:01:02:03:04:10);
     Invalid value for "prefix" option
-reg1[0] = put_nd_ra_opts(addr_mode = "foo", mtu = 1500, slla = ae:01:02:03:04:10);
+reg1[[0]] = put_nd_ra_opts(addr_mode = "foo", mtu = 1500, slla = ae:01:02:03:04:10);
     Invalid value for "addr_mode" option
-reg1[0] = put_nd_ra_opts(addr_mode = "slaac", mtu = "1500", slla = ae:01:02:03:04:10);
+reg1[[0]] = put_nd_ra_opts(addr_mode = "slaac", mtu = "1500", slla = ae:01:02:03:04:10);
     IPv6 ND RA option mtu requires numeric value.
-reg1[0] = put_nd_ra_opts(addr_mode = "slaac", mtu = 10.0.0.4, slla = ae:01:02:03:04:10);
+reg1[[0]] = put_nd_ra_opts(addr_mode = "slaac", mtu = 10.0.0.4, slla = ae:01:02:03:04:10);
     Invalid value for "mtu" option
 
 # icmp4
@@ -1981,24 +1981,24 @@ igmp;
     encodes as controller(userdata=00.00.00.10.00.00.00.00)
 
 # Contradictionary prerequisites (allowed but not useful):
-ip4.src = ip6.src[0..31];
-    encodes as move:NXM_NX_IPV6_SRC[0..31]->NXM_OF_IP_SRC[]
+ip4.src = ip6.src[[0..31]];
+    encodes as move:NXM_NX_IPV6_SRC[[0..31]]->NXM_OF_IP_SRC[[]]
     has prereqs eth.type == 0x800 && eth.type == 0x86dd
-ip4.src <-> ip6.src[0..31];
-    encodes as push:NXM_NX_IPV6_SRC[0..31],push:NXM_OF_IP_SRC[],pop:NXM_NX_IPV6_SRC[0..31],pop:NXM_OF_IP_SRC[]
+ip4.src <-> ip6.src[[0..31]];
+    encodes as push:NXM_NX_IPV6_SRC[[0..31]],push:NXM_OF_IP_SRC[[]],pop:NXM_NX_IPV6_SRC[[0..31]],pop:NXM_OF_IP_SRC[[]]
     has prereqs eth.type == 0x800 && eth.type == 0x86dd
 
 # check_pkt_larger
-reg0[0] = check_pkt_larger(1500);
-    encodes as check_pkt_larger(1500)->NXM_NX_XXREG0[96]
+reg0[[0]] = check_pkt_larger(1500);
+    encodes as check_pkt_larger(1500)->NXM_NX_XXREG0[[96]]
 
 reg0 = check_pkt_larger(1500);
-    Cannot use 32-bit field reg0[0..31] where 1-bit field is required.
+    Cannot use 32-bit field reg0[[0..31]] where 1-bit field is required.
 
 reg0 = check_pkt_larger(foo);
-    Cannot use 32-bit field reg0[0..31] where 1-bit field is required.
+    Cannot use 32-bit field reg0[[0..31]] where 1-bit field is required.
 
-reg0[0] = check_pkt_larger(foo);
+reg0[[0]] = check_pkt_larger(foo);
     Syntax error at `foo' expecting `;'.
 
 # bind_vport
@@ -2024,7 +2024,7 @@ handle_svc_check(inport);
     encodes as controller(userdata=00.00.00.12.00.00.00.00)
 
 handle_svc_check(outport);
-    encodes as push:NXM_NX_REG14[],push:NXM_NX_REG15[],pop:NXM_NX_REG14[],controller(userdata=00.00.00.12.00.00.00.00),pop:NXM_NX_REG14[]
+    encodes as push:NXM_NX_REG14[[]],push:NXM_NX_REG15[[]],pop:NXM_NX_REG14[[]],controller(userdata=00.00.00.12.00.00.00.00),pop:NXM_NX_REG14[[]]
 
 handle_svc_check();
     Syntax error at `)' expecting field name.
@@ -2033,15 +2033,15 @@ handle_svc_check(reg0);
     Cannot use numeric field reg0 where string field is required.
 
 # select
-reg9[16..31] = select(1=50, 2=100, 3, );
-    formats as reg9[16..31] = select(1=50, 2=100, 3=100);
+reg9[[16..31]] = select(1=50, 2=100, 3, );
+    formats as reg9[[16..31]] = select(1=50, 2=100, 3=100);
     encodes as group:19
-    uses group: id(19), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:50,actions=load:1->xreg4[16..31],resubmit(,19),bucket=bucket_id=1,weight:100,actions=load:2->xreg4[16..31],resubmit(,19),bucket=bucket_id=2,weight:100,actions=load:3->xreg4[16..31],resubmit(,19))
+    uses group: id(19), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:50,actions=load:1->xreg4[[16..31]],resubmit(,19),bucket=bucket_id=1,weight:100,actions=load:2->xreg4[[16..31]],resubmit(,19),bucket=bucket_id=2,weight:100,actions=load:3->xreg4[[16..31]],resubmit(,19))
 
 reg0 = select(1, 2);
     formats as reg0 = select(1=100, 2=100);
     encodes as group:20
-    uses group: id(20), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=load:1->xxreg0[96..127],resubmit(,19),bucket=bucket_id=1,weight:100,actions=load:2->xxreg0[96..127],resubmit(,19))
+    uses group: id(20), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=load:1->xxreg0[[96..127]],resubmit(,19),bucket=bucket_id=1,weight:100,actions=load:2->xxreg0[[96..127]],resubmit(,19))
 
 reg0 = select(1=, 2);
     Syntax error at `,' expecting weight.
@@ -2053,17 +2053,17 @@ reg0 = select(123);
     Syntax error at `;' expecting at least 2 group members.
 ip.proto = select(1, 2, 3);
     Field ip.proto is not modifiable.
-reg0[0..14] = select(1, 2, 3);
-    cannot use 15-bit field reg0[0..14] for "select", which requires at least 16 bits.
+reg0[[0..14]] = select(1, 2, 3);
+    cannot use 15-bit field reg0[[0..14]] for "select", which requires at least 16 bits.
 
 fwd_group(liveness=true, childports="eth0", "lsp1");
     formats as fwd_group(liveness="true", childports="eth0", "lsp1");
     encodes as group:21
-    uses group: id(21), name(type=select,selection_method=dp_hash,bucket=watch_port:5,load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=watch_port:17,load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
+    uses group: id(21), name(type=select,selection_method=dp_hash,bucket=watch_port:5,load=0x5->NXM_NX_REG15[[0..15]],resubmit(,64),bucket=watch_port:17,load=0x17->NXM_NX_REG15[[0..15]],resubmit(,64))
 
 fwd_group(childports="eth0", "lsp1");
     encodes as group:22
-    uses group: id(22), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
+    uses group: id(22), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[[0..15]],resubmit(,64),bucket=load=0x17->NXM_NX_REG15[[0..15]],resubmit(,64))
 
 fwd_group(childports=eth0);
     Syntax error at `eth0' expecting logical switch port.
@@ -2073,7 +2073,7 @@ fwd_group();
 
 fwd_group(childports="eth0", "lsp1");
     encodes as group:22
-    uses group: id(22), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[0..15],resubmit(,64),bucket=load=0x17->NXM_NX_REG15[0..15],resubmit(,64))
+    uses group: id(22), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[[0..15]],resubmit(,64),bucket=load=0x17->NXM_NX_REG15[[0..15]],resubmit(,64))
 
 fwd_group(liveness=xyzzy, childports="eth0", "lsp1");
     Syntax error at `xyzzy' expecting true or false.
@@ -2086,32 +2086,32 @@ handle_dhcpv6_reply;
     encodes as controller(userdata=00.00.00.13.00.00.00.00)
 
 # chk_lb_hairpin
-reg0[0] = chk_lb_hairpin();
-    encodes as set_field:0/0x80->reg10,resubmit(,68),move:NXM_NX_REG10[7]->NXM_NX_XXREG0[96]
+reg0[[0]] = chk_lb_hairpin();
+    encodes as set_field:0/0x80->reg10,resubmit(,68),move:NXM_NX_REG10[[7]]->NXM_NX_XXREG0[[96]]
 
-reg2[2] = chk_lb_hairpin();
-    encodes as set_field:0/0x80->reg10,resubmit(,68),move:NXM_NX_REG10[7]->NXM_NX_XXREG0[34]
+reg2[[2]] = chk_lb_hairpin();
+    encodes as set_field:0/0x80->reg10,resubmit(,68),move:NXM_NX_REG10[[7]]->NXM_NX_XXREG0[[34]]
 
 reg0 = chk_lb_hairpin();
-    Cannot use 32-bit field reg0[0..31] where 1-bit field is required.
+    Cannot use 32-bit field reg0[[0..31]] where 1-bit field is required.
 
-reg0[0] = chk_lb_hairpin(foo);
+reg0[[0]] = chk_lb_hairpin(foo);
     chk_lb_hairpin doesn't take any parameters
 
 chk_lb_hairpin;
     Syntax error at `chk_lb_hairpin' expecting action.
 
 # chk_lb_hairpin_reply
-reg0[0] = chk_lb_hairpin_reply();
-    encodes as set_field:0/0x80->reg10,resubmit(,69),move:NXM_NX_REG10[7]->NXM_NX_XXREG0[96]
+reg0[[0]] = chk_lb_hairpin_reply();
+    encodes as set_field:0/0x80->reg10,resubmit(,69),move:NXM_NX_REG10[[7]]->NXM_NX_XXREG0[[96]]
 
-reg2[2..3] = chk_lb_hairpin_reply();
-    Cannot use 2-bit field reg2[2..3] where 1-bit field is required.
+reg2[[2..3]] = chk_lb_hairpin_reply();
+    Cannot use 2-bit field reg2[[2..3]] where 1-bit field is required.
 
 reg0 = chk_lb_hairpin_reply();
-    Cannot use 32-bit field reg0[0..31] where 1-bit field is required.
+    Cannot use 32-bit field reg0[[0..31]] where 1-bit field is required.
 
-reg0[0] = chk_lb_hairpin_reply(foo);
+reg0[[0]] = chk_lb_hairpin_reply(foo);
     chk_lb_hairpin_reply doesn't take any parameters
 
 chk_lb_hairpin_reply;
@@ -2130,89 +2130,89 @@ handle_bfd_msg();
 
 # put_fdb
 put_fdb(inport, arp.sha);
-    encodes as push:NXM_OF_ETH_SRC[],push:NXM_NX_ARP_SHA[],pop:NXM_OF_ETH_SRC[],controller(userdata=00.00.00.19.00.00.00.00),pop:NXM_OF_ETH_SRC[]
+    encodes as push:NXM_OF_ETH_SRC[[]],push:NXM_NX_ARP_SHA[[]],pop:NXM_OF_ETH_SRC[[]],controller(userdata=00.00.00.19.00.00.00.00),pop:NXM_OF_ETH_SRC[[]]
     has prereqs eth.type == 0x806
 
 put_fdb(inport, eth.src);
     encodes as controller(userdata=00.00.00.19.00.00.00.00)
 
 put_fdb(inport, ip4.src);
-    Cannot use 32-bit field ip4.src[0..31] where 48-bit field is required.
+    Cannot use 32-bit field ip4.src[[0..31]] where 48-bit field is required.
 
 # get_fdb
 outport = get_fdb(eth.dst);
     encodes as set_field:0->reg15,resubmit(,71)
 
 outport = get_fdb(eth.src);
-    encodes as push:NXM_OF_ETH_DST[],push:NXM_OF_ETH_SRC[],pop:NXM_OF_ETH_DST[],set_field:0->reg15,resubmit(,71),pop:NXM_OF_ETH_DST[]
+    encodes as push:NXM_OF_ETH_DST[[]],push:NXM_OF_ETH_SRC[[]],pop:NXM_OF_ETH_DST[[]],set_field:0->reg15,resubmit(,71),pop:NXM_OF_ETH_DST[[]]
 
 inport = get_fdb(arp.sha);
-    encodes as push:NXM_OF_ETH_DST[],push:NXM_NX_ARP_SHA[],pop:NXM_OF_ETH_DST[],set_field:0->reg15,resubmit(,71),pop:NXM_OF_ETH_DST[],move:NXM_NX_REG15[]->NXM_NX_REG14[]
+    encodes as push:NXM_OF_ETH_DST[[]],push:NXM_NX_ARP_SHA[[]],pop:NXM_OF_ETH_DST[[]],set_field:0->reg15,resubmit(,71),pop:NXM_OF_ETH_DST[[]],move:NXM_NX_REG15[[]]->NXM_NX_REG14[[]]
     has prereqs eth.type == 0x806
 
 reg0 = get_fdb(arp.tha);
-    encodes as push:NXM_OF_ETH_DST[],push:NXM_NX_ARP_THA[],pop:NXM_OF_ETH_DST[],set_field:0->reg15,resubmit(,71),pop:NXM_OF_ETH_DST[],move:NXM_NX_REG15[]->NXM_NX_XXREG0[96..127]
+    encodes as push:NXM_OF_ETH_DST[[]],push:NXM_NX_ARP_THA[[]],pop:NXM_OF_ETH_DST[[]],set_field:0->reg15,resubmit(,71),pop:NXM_OF_ETH_DST[[]],move:NXM_NX_REG15[[]]->NXM_NX_XXREG0[[96..127]]
     has prereqs eth.type == 0x806
 
-reg0[1..3] = get_fdb(eth.src);
-    Cannot use 3-bit field reg0[1..3] where 32-bit field is required.
+reg0[[1..3]] = get_fdb(eth.src);
+    Cannot use 3-bit field reg0[[1..3]] where 32-bit field is required.
 
 reg15 = get_fdb(eth.dst);
     Syntax error at `reg15' expecting field name.
 
 outport = get_fdb(ip4.dst);
-    Cannot use 32-bit field ip4.dst[0..31] where 48-bit field is required.
+    Cannot use 32-bit field ip4.dst[[0..31]] where 48-bit field is required.
 
 # lookup_fdb
-reg0[0] = lookup_fdb(inport, eth.src);
-    encodes as set_field:0/0x100->reg10,resubmit(,72),move:NXM_NX_REG10[8]->NXM_NX_XXREG0[96]
+reg0[[0]] = lookup_fdb(inport, eth.src);
+    encodes as set_field:0/0x100->reg10,resubmit(,72),move:NXM_NX_REG10[[8]]->NXM_NX_XXREG0[[96]]
 
-reg1[4] = lookup_fdb(outport, eth.dst);
-    encodes as push:NXM_NX_REG14[],push:NXM_OF_ETH_SRC[],push:NXM_OF_ETH_DST[],push:NXM_NX_REG15[],pop:NXM_NX_REG14[],pop:NXM_OF_ETH_SRC[],set_field:0/0x100->reg10,resubmit(,72),pop:NXM_OF_ETH_SRC[],pop:NXM_NX_REG14[],move:NXM_NX_REG10[8]->NXM_NX_XXREG0[68]
+reg1[[4]] = lookup_fdb(outport, eth.dst);
+    encodes as push:NXM_NX_REG14[[]],push:NXM_OF_ETH_SRC[[]],push:NXM_OF_ETH_DST[[]],push:NXM_NX_REG15[[]],pop:NXM_NX_REG14[[]],pop:NXM_OF_ETH_SRC[[]],set_field:0/0x100->reg10,resubmit(,72),pop:NXM_OF_ETH_SRC[[]],pop:NXM_NX_REG14[[]],move:NXM_NX_REG10[[8]]->NXM_NX_XXREG0[[68]]
 
-reg0[0] = lookup_fdb(outport, arp.sha);
-    encodes as push:NXM_NX_REG14[],push:NXM_OF_ETH_SRC[],push:NXM_NX_ARP_SHA[],push:NXM_NX_REG15[],pop:NXM_NX_REG14[],pop:NXM_OF_ETH_SRC[],set_field:0/0x100->reg10,resubmit(,72),pop:NXM_OF_ETH_SRC[],pop:NXM_NX_REG14[],move:NXM_NX_REG10[8]->NXM_NX_XXREG0[96]
+reg0[[0]] = lookup_fdb(outport, arp.sha);
+    encodes as push:NXM_NX_REG14[[]],push:NXM_OF_ETH_SRC[[]],push:NXM_NX_ARP_SHA[[]],push:NXM_NX_REG15[[]],pop:NXM_NX_REG14[[]],pop:NXM_OF_ETH_SRC[[]],set_field:0/0x100->reg10,resubmit(,72),pop:NXM_OF_ETH_SRC[[]],pop:NXM_NX_REG14[[]],move:NXM_NX_REG10[[8]]->NXM_NX_XXREG0[[96]]
     has prereqs eth.type == 0x806
 
 reg0 = lookup_fdb(outport, arp.sha);
-    Cannot use 32-bit field reg0[0..31] where 1-bit field is required.
+    Cannot use 32-bit field reg0[[0..31]] where 1-bit field is required.
 
 outport = lookup_fdb(outport, arp.sha);
     Cannot use string field outport where numeric field is required.
 
-reg1[1] = lookup_fdb(outport, ip4.src);
-    Cannot use 32-bit field ip4.src[0..31] where 48-bit field is required.
+reg1[[1]] = lookup_fdb(outport, ip4.src);
+    Cannot use 32-bit field ip4.src[[0..31]] where 48-bit field is required.
 
-reg1[1] = lookup_fdb(ip4.src, eth.src);
+reg1[[1]] = lookup_fdb(ip4.src, eth.src);
     Cannot use numeric field ip4.src where string field is required.
 
 # check_in_port_sec
-reg0[0] = check_in_port_sec();
-    encodes as set_field:0/0x1000->reg10,resubmit(,73),move:NXM_NX_REG10[12]->NXM_NX_XXREG0[96]
+reg0[[0]] = check_in_port_sec();
+    encodes as set_field:0/0x1000->reg10,resubmit(,73),move:NXM_NX_REG10[[12]]->NXM_NX_XXREG0[[96]]
 
-reg2[2] = check_in_port_sec();
-    encodes as set_field:0/0x1000->reg10,resubmit(,73),move:NXM_NX_REG10[12]->NXM_NX_XXREG0[34]
+reg2[[2]] = check_in_port_sec();
+    encodes as set_field:0/0x1000->reg10,resubmit(,73),move:NXM_NX_REG10[[12]]->NXM_NX_XXREG0[[34]]
 
 reg0 = check_in_port_sec();
-    Cannot use 32-bit field reg0[0..31] where 1-bit field is required.
+    Cannot use 32-bit field reg0[[0..31]] where 1-bit field is required.
 
-reg0[0] = check_in_port_sec(foo);
+reg0[[0]] = check_in_port_sec(foo);
     check_in_port_sec doesn't take any parameters
 
 check_in_port_sec;
     Syntax error at `check_in_port_sec' expecting action.
 
 # check_out_port_sec
-reg0[0] = check_out_port_sec();
-    encodes as set_field:0/0x1000->reg10,resubmit(,75),move:NXM_NX_REG10[12]->NXM_NX_XXREG0[96]
+reg0[[0]] = check_out_port_sec();
+    encodes as set_field:0/0x1000->reg10,resubmit(,75),move:NXM_NX_REG10[[12]]->NXM_NX_XXREG0[[96]]
 
-reg2[2..3] = check_out_port_sec();
-    Cannot use 2-bit field reg2[2..3] where 1-bit field is required.
+reg2[[2..3]] = check_out_port_sec();
+    Cannot use 2-bit field reg2[[2..3]] where 1-bit field is required.
 
 reg0 = check_out_port_sec();
-    Cannot use 32-bit field reg0[0..31] where 1-bit field is required.
+    Cannot use 32-bit field reg0[[0..31]] where 1-bit field is required.
 
-reg0[0] = check_out_port_sec(foo);
+reg0[[0]] = check_out_port_sec(foo);
     check_out_port_sec doesn't take any parameters
 
 check_out_port_sec;
@@ -2221,41 +2221,41 @@ check_out_port_sec;
 # commit_ecmp_nh
 commit_ecmp_nh(ipv6 = "false", proto = tcp);
     formats as commit_ecmp_nh(ipv6 = false, proto = tcp);
-    encodes as learn(table=76,idle_timeout=20,hard_timeout=30,delete_learned,OXM_OF_METADATA[],NXM_OF_ETH_SRC[],eth_type=0x800,NXM_OF_IP_SRC[],NXM_OF_IP_DST[],nw_proto=6,NXM_OF_TCP_SRC[],NXM_OF_TCP_DST[],load:0x1->NXM_NX_REG10[13]),learn(table=77,idle_timeout=20,hard_timeout=30,delete_learned,OXM_OF_METADATA[],eth_type=0x800,NXM_OF_IP_SRC[]=NXM_OF_IP_DST[0..-1],NXM_OF_IP_DST[]=NXM_OF_IP_SRC[0..-1],nw_proto=6,NXM_OF_TCP_SRC[]=NXM_OF_TCP_DST[0..-1],NXM_OF_TCP_DST[]=NXM_OF_TCP_SRC[0..-1],load:0x1->NXM_NX_REG10[13])
+    encodes as learn(table=76,idle_timeout=20,hard_timeout=30,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_SRC[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],NXM_OF_IP_DST[[]],nw_proto=6,NXM_OF_TCP_SRC[[]],NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[13]]),learn(table=77,idle_timeout=20,hard_timeout=30,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]]=NXM_OF_IP_DST[[0..-1]],NXM_OF_IP_DST[[]]=NXM_OF_IP_SRC[[0..-1]],nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[0..-1]],NXM_OF_TCP_DST[[]]=NXM_OF_TCP_SRC[[0..-1]],load:0x1->NXM_NX_REG10[[13]])
 
 commit_ecmp_nh(ipv6 = "true", proto = udp);
     formats as commit_ecmp_nh(ipv6 = true, proto = udp);
-    encodes as learn(table=76,idle_timeout=20,hard_timeout=30,delete_learned,OXM_OF_METADATA[],NXM_OF_ETH_SRC[],eth_type=0x86dd,NXM_NX_IPV6_SRC[],NXM_NX_IPV6_DST[],nw_proto=17,NXM_OF_UDP_SRC[],NXM_OF_UDP_DST[],load:0x1->NXM_NX_REG10[13]),learn(table=77,idle_timeout=20,hard_timeout=30,delete_learned,OXM_OF_METADATA[],eth_type=0x86dd,NXM_NX_IPV6_SRC[]=NXM_NX_IPV6_DST[0..-1],NXM_NX_IPV6_DST[]=NXM_NX_IPV6_SRC[0..-1],nw_proto=17,NXM_OF_UDP_SRC[]=NXM_OF_UDP_DST[0..-1],NXM_OF_UDP_DST[]=NXM_OF_UDP_SRC[0..-1],load:0x1->NXM_NX_REG10[13])
+    encodes as learn(table=76,idle_timeout=20,hard_timeout=30,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_SRC[[]],eth_type=0x86dd,NXM_NX_IPV6_SRC[[]],NXM_NX_IPV6_DST[[]],nw_proto=17,NXM_OF_UDP_SRC[[]],NXM_OF_UDP_DST[[]],load:0x1->NXM_NX_REG10[[13]]),learn(table=77,idle_timeout=20,hard_timeout=30,delete_learned,OXM_OF_METADATA[[]],eth_type=0x86dd,NXM_NX_IPV6_SRC[[]]=NXM_NX_IPV6_DST[[0..-1]],NXM_NX_IPV6_DST[[]]=NXM_NX_IPV6_SRC[[0..-1]],nw_proto=17,NXM_OF_UDP_SRC[[]]=NXM_OF_UDP_DST[[0..-1]],NXM_OF_UDP_DST[[]]=NXM_OF_UDP_SRC[[0..-1]],load:0x1->NXM_NX_REG10[[13]])
 
 commit_ecmp_nh(proto = sctp);
     Syntax error at `proto' invalid parameter.
 
 # chk_ecmp_nh_mac
-reg9[5] = chk_ecmp_nh_mac();
-    encodes as set_field:0/0x2000->reg10,resubmit(,76),move:NXM_NX_REG10[13]->OXM_OF_PKT_REG4[5]
+reg9[[5]] = chk_ecmp_nh_mac();
+    encodes as set_field:0/0x2000->reg10,resubmit(,76),move:NXM_NX_REG10[[13]]->OXM_OF_PKT_REG4[[5]]
 
 # chk_ecmp_nh
-reg9[5] = chk_ecmp_nh();
-    encodes as set_field:0/0x2000->reg10,resubmit(,77),move:NXM_NX_REG10[13]->OXM_OF_PKT_REG4[5]
+reg9[[5]] = chk_ecmp_nh();
+    encodes as set_field:0/0x2000->reg10,resubmit(,77),move:NXM_NX_REG10[[13]]->OXM_OF_PKT_REG4[[5]]
 
 # commit_lb_aff
 commit_lb_aff(vip = "172.16.0.123:8080", backend = "10.0.0.3:8080", proto = tcp, timeout = 30);
-    encodes as learn(table=78,idle_timeout=30,delete_learned,cookie=0xaaaaaaaa,OXM_OF_METADATA[],eth_type=0x800,NXM_OF_IP_SRC[],ip_dst=172.16.0.123,nw_proto=6,tcp_dst=8080,load:0x1->NXM_NX_REG10[14],load:0xa000003->NXM_NX_REG4[],load:0x1f90->NXM_NX_REG8[0..15])
+    encodes as learn(table=78,idle_timeout=30,delete_learned,cookie=0xaaaaaaaa,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=172.16.0.123,nw_proto=6,tcp_dst=8080,load:0x1->NXM_NX_REG10[[14]],load:0xa000003->NXM_NX_REG4[[]],load:0x1f90->NXM_NX_REG8[[0..15]])
 
 commit_lb_aff(vip = "172.16.0.123", backend = "10.0.0.3", timeout = 30);
-    encodes as learn(table=78,idle_timeout=30,delete_learned,cookie=0xaaaaaaaa,OXM_OF_METADATA[],eth_type=0x800,NXM_OF_IP_SRC[],ip_dst=172.16.0.123,load:0x1->NXM_NX_REG10[14],load:0xa000003->NXM_NX_REG4[])
+    encodes as learn(table=78,idle_timeout=30,delete_learned,cookie=0xaaaaaaaa,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=172.16.0.123,load:0x1->NXM_NX_REG10[[14]],load:0xa000003->NXM_NX_REG4[[]])
 
-commit_lb_aff(vip = "[::1]:8080", backend = "[::2]:8080", proto = tcp, timeout = 30);
-    encodes as learn(table=78,idle_timeout=30,delete_learned,cookie=0xaaaaaaaa,OXM_OF_METADATA[],eth_type=0x86dd,NXM_NX_IPV6_SRC[],ipv6_dst=::1,nw_proto=6,tcp_dst=8080,load:0x1->NXM_NX_REG10[14],load:0x2->NXM_NX_XXREG0[],load:0x1f90->NXM_NX_REG8[0..15])
+commit_lb_aff(vip = "[[::1]]:8080", backend = "[[::2]]:8080", proto = tcp, timeout = 30);
+    encodes as learn(table=78,idle_timeout=30,delete_learned,cookie=0xaaaaaaaa,OXM_OF_METADATA[[]],eth_type=0x86dd,NXM_NX_IPV6_SRC[[]],ipv6_dst=::1,nw_proto=6,tcp_dst=8080,load:0x1->NXM_NX_REG10[[14]],load:0x2->NXM_NX_XXREG0[[]],load:0x1f90->NXM_NX_REG8[[0..15]])
 
 # chk_lb_aff()
-reg9[6] = chk_lb_aff();
-    encodes as set_field:0/0x4000->reg10,resubmit(,78),move:NXM_NX_REG10[14]->OXM_OF_PKT_REG4[6]
+reg9[[6]] = chk_lb_aff();
+    encodes as set_field:0/0x4000->reg10,resubmit(,78),move:NXM_NX_REG10[[14]]->OXM_OF_PKT_REG4[[6]]
 
 # push/pop
-push(xxreg0);push(xxreg1[10..20]);push(eth.src);pop(xxreg0[0..47]);pop(xxreg0[48..57]);pop(xxreg1);
-    formats as push(xxreg0); push(xxreg1[10..20]); push(eth.src); pop(xxreg0[0..47]); pop(xxreg0[48..57]); pop(xxreg1);
-    encodes as push:NXM_NX_XXREG0[],push:NXM_NX_XXREG1[10..20],push:NXM_OF_ETH_SRC[],pop:NXM_NX_XXREG0[0..47],pop:NXM_NX_XXREG0[48..57],pop:NXM_NX_XXREG1[]
+push(xxreg0);push(xxreg1[[10..20]]);push(eth.src);pop(xxreg0[[0..47]]);pop(xxreg0[[48..57]]);pop(xxreg1);
+    formats as push(xxreg0); push(xxreg1[[10..20]]); push(eth.src); pop(xxreg0[[0..47]]); pop(xxreg0[[48..57]]); pop(xxreg1);
+    encodes as push:NXM_NX_XXREG0[[]],push:NXM_NX_XXREG1[[10..20]],push:NXM_OF_ETH_SRC[[]],pop:NXM_NX_XXREG0[[0..47]],pop:NXM_NX_XXREG0[[48..57]],pop:NXM_NX_XXREG1[[]]
 
 pop(eth.type);
     Field eth.type is not modifiable.
@@ -2310,7 +2310,7 @@ next; xyzzy;
     Syntax error at `xyzzy' expecting action.
 next
     Syntax error at end of input expecting `;'.
-]])
+])
 sed '/^[[ 	]]/d' test-cases.txt > input.txt
 cp test-cases.txt expout
 AT_CHECK([ovstest test-ovn parse-actions < input.txt], [0], [expout])
