@@ -48,12 +48,15 @@ m4_define([OVN_CLEANUP_SBOX],[
     # "has no network name*" as localnet network_name is often set "after" creating localnet.
     # "receive tunnel port not found*" happening when closing other hv.
     # "Failed to locate tunnel to reach main chassis" happening when controller started e.g. before ovn-bridge-mappings is set
+    # "Transaction causes multiple rows in \"MAC_Binding\" table to have identical values"
+    #  happening as ovn-controller has a race condition over MAC binding table with other controllers (GARP).
     AT_CHECK([check_logs "
         $error
         /connection failed (No such file or directory)/d
         /has no network name*/d
         /receive tunnel port not found*/d
         /Failed to locate tunnel to reach main chassis/d
+        /Transaction causes multiple rows.*MAC_Binding/d
     " $sbox])
 ])
 
