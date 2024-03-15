@@ -11,7 +11,8 @@ man_MANS += \
     utilities/ovn-ic-sbctl.8 \
     utilities/ovn-trace.8 \
     utilities/ovn-detrace.1 \
-    utilities/ovn-appctl.8
+    utilities/ovn-appctl.8 \
+    utilities/ovn-debug.8
 
 MAN_ROOTS += \
     utilities/ovn-detrace.1.in
@@ -34,6 +35,7 @@ EXTRA_DIST += \
     utilities/ovn-ic-sbctl.8.xml \
     utilities/ovn-appctl.8.xml \
     utilities/ovn-trace.8.xml \
+    utilities/ovn-debug.8.xml \
     utilities/ovn_detrace.py.in \
     utilities/ovndb-servers.ocf \
     utilities/checkpatch.py \
@@ -62,6 +64,7 @@ CLEANFILES += \
     utilities/ovn-ic-nbctl.8 \
     utilities/ovn-ic-sbctl.8 \
     utilities/ovn-trace.8 \
+    utilities/ovn-debug.8 \
     utilities/ovn-detrace.1 \
     utilities/ovn-detrace \
     utilities/ovn_detrace.py \
@@ -118,5 +121,10 @@ ovn-detrace-install:
 UNINSTALL_LOCAL += ovn-detrace-uninstall
 ovn-detrace-uninstall:
 	rm -f $(DESTDIR)$(bindir)/ovn-detrace
+
+# ovn-debug
+bin_PROGRAMS += utilities/ovn-debug
+utilities_ovn_debug_SOURCES = utilities/ovn-debug.c
+utilities_ovn_debug_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBDIR)/libopenvswitch.la
 
 include utilities/bugtool/automake.mk

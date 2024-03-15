@@ -11,3 +11,4 @@ utilities/ovn-ic-nbctl.8
 utilities/ovn-ic-sbctl.8
 utilities/ovn-trace.8
 utilities/ovn-detrace.1
+utilities/ovn-debug.8
