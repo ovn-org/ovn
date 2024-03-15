@@ -56,6 +56,7 @@ The main components of this distribution are:
 - ovn-sbctl, a tool for interfacing with the southbound database.
 - ovn-trace, a debugging utility that allows for tracing of packets through
   the logical network.
+- ovn-debug, a tool to simplify debugging of OVN setup.
 - Scripts and specs for building RPMs.
 
 What other documentation is available?

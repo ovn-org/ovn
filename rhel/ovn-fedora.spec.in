@@ -495,6 +495,7 @@ fi
 %{_bindir}/ovn-appctl
 %{_bindir}/ovn-ic-nbctl
 %{_bindir}/ovn-ic-sbctl
+%{_bindir}/ovn-debug
 %{_datadir}/ovn/scripts/ovn-ctl
 %{_datadir}/ovn/scripts/ovn-lib
 %{_datadir}/ovn/scripts/ovndb-servers.ocf
@@ -515,6 +516,7 @@ fi
 %{_mandir}/man8/ovn-ic.8*
 %{_mandir}/man5/ovn-ic-nb.5*
 %{_mandir}/man5/ovn-ic-sb.5*
+%{_mandir}/man8/ovn-debug.8*
 %{_prefix}/lib/ocf/resource.d/ovn/ovndb-servers
 %config(noreplace) %{_sysconfdir}/logrotate.d/ovn
 %{_unitdir}/ovn-db@.service
