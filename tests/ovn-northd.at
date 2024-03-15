@@ -2144,7 +2144,7 @@ AT_CLEANUP
 
 # This test case tests that when a logical switch has load balancers associated
 # (with VIPs configured), the below logical flow is added by ovn-northd.
-# table=1 (ls_out_pre_lb      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+# table=ls_out_pre_lb, priority=100, match=(ip), action=(reg0[[0]] = 1; next;)
 # This test case is added for the BZ -
 # https://bugzilla.redhat.com/show_bug.cgi?id=1849162
 #

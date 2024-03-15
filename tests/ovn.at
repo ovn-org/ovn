@@ -18499,8 +18499,8 @@ AT_CHECK([cat 2.packets], [0], [expout])
 
 # There should be total of 9 flows present with conjunction action and 2 flows
 # with conj match. Eg.
-# table=44, priority=2001,conj_id=2,metadata=0x1 actions=resubmit(,45)
-# table=44, priority=2001,conj_id=3,metadata=0x1 actions=drop
+# table=ls_out_acl_eval, priority=2001,conj_id=2,metadata=0x1 actions=resubmit(,ls_out_acl_action)
+# table=ls_out_acl_eval, priority=2001,conj_id=3,metadata=0x1 actions=drop
 # priority=2001,ip,metadata=0x1,nw_dst=10.0.0.6 actions=conjunction(2,2/2)
 # priority=2001,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(2,2/2)
 # priority=2001,ip,metadata=0x1,nw_dst=10.0.0.5 actions=conjunction(2,2/2)
@@ -18540,7 +18540,7 @@ AT_CHECK([cat 2.packets], [0], [])
 # properly.
 # There should be total of 6 flows present with conjunction action and 1 flow
 # with conj match. Eg.
-# table=44, priority=2001,conj_id=3,metadata=0x1 actions=drop
+# table=ls_out_acl_eval, priority=2001,conj_id=3,metadata=0x1 actions=drop
 # priority=2001,ip,metadata=0x1,nw_dst=10.0.0.7 actions=conjunction(4,2/2)
 # priority=2001,ip,metadata=0x1,nw_dst=10.0.0.9 actions=conjunction(4,2/2)
 # priority=2001,ip,metadata=0x1,nw_dst=10.0.0.8 actions=conjunction(4,2/2)
@@ -34580,7 +34580,7 @@ in_port_sec=OFTABLE_CHK_IN_PORT_SEC
 in_port_sec_nd=OFTABLE_CHK_IN_PORT_SEC_ND
 out_port_sec=OFTABLE_CHK_OUT_PORT_SEC
 
-# There should be no flows in table OFTABLE_CHK_IN_PORT_SEC, 74 and 75 in hv1 and hv2
+# There should be no flows in table OFTABLE_CHK_IN_PORT_SEC, OFTABLE_CHK_IN_PORT_SEC_ND and OFTABLE_CHK_OUT_PORT_SEC in hv1 and hv2
 > hv1_t${in_port_sec}_flows.expected
 > hv1_t${in_port_sec_nd}_flows.expected
 > hv1_t${out_port_sec}_flows.expected
