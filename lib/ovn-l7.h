@@ -305,6 +305,12 @@ BUILD_ASSERT_DECL(DHCP_OPT_HEADER_LEN == sizeof(struct dhcp_opt_header));
 #define DHCPV6_FQDN_FLAGS_O 1 << 1
 #define DHCPV6_FQDN_FLAGS_N 1 << 2
 
+extern const struct in6_addr in6addr_all_dhcp_agents;
+#define IN6ADDR_ALL_DHCP_AGENTS_INIT { { { 0xff,0x02,0x00,0x00,0x00,0x00,     \
+                                           0x00,0x00,0x00,0x00,0x00,0x00,     \
+                                           0x00,0x01,0x00,0x02 } } }
+
+
 #define DHCP6_OPT_HEADER_LEN 4
 OVS_PACKED(
 struct dhcpv6_opt_header {
