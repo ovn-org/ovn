@@ -364,7 +364,7 @@ OVS_TRAFFIC_VSWITCHD_START()
 ADD_BR([br-int])
 ADD_BR([br-ext])
 
-ovs-ofctl add-flow br-ext action=normal
+ovs-vsctl set-fail-mode br-ext standalone
 # Set external-ids in br-int needed for ovn-controller
 ovs-vsctl \
         -- set Open_vSwitch . external-ids:system-id=hv1 \
@@ -438,7 +438,6 @@ ovn-nbctl --wait=hv sync
 cat > /etc/dhcp/dhcpd.conf <<EOF
 option dhcp-rebinding-time 10;
 option dhcp-renewal-time 5;
-option dhcp6.unicast 2001:1db8:3333::1;
 subnet6 2001:1db8:3333::/64 {
     prefix6 2001:1db8:3333:100:: 2001:1db8:3333:111:: /96;
 }

@@ -18,6 +18,8 @@
 
 #include "ovn-l7.h"
 
+const struct in6_addr in6addr_all_dhcp_agents = IN6ADDR_ALL_DHCP_AGENTS_INIT;
+
 bool
 ipv6_addr_is_routable_multicast(const struct in6_addr *ip)
 {

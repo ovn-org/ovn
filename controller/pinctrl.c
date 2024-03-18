@@ -696,9 +696,6 @@ struct ipv6_prefixd_state {
     long long int next_announce;
     long long int last_complete;
     long long int last_used;
-    /* IPv6 PD server info */
-    struct in6_addr server_addr;
-    struct eth_addr sa;
     /* server_id_info */
     struct {
         uint8_t data[DHCPV6_MAX_DUID_LEN];
@@ -855,12 +852,13 @@ pinctrl_parse_dhcpv6_advt(struct rconn *swconn, const struct flow *ip_flow,
     struct dp_packet packet;
 
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
-    eth_compose(&packet, ip_flow->dl_src, ip_flow->dl_dst, ETH_TYPE_IPV6,
-                IPV6_HEADER_LEN);
+    eth_compose(&packet, (struct eth_addr) ETH_ADDR_C(33,33,00,01,00,02),
+                ip_flow->dl_dst, ETH_TYPE_IPV6, IPV6_HEADER_LEN);
 
     struct udp_header *udp_h = compose_ipv6(&packet, IPPROTO_UDP,
                                             &ip_flow->ipv6_dst,
-                                            &ip_flow->ipv6_src, 0, 0, 255,
+                                            &in6addr_all_dhcp_agents,
+                                            0, 0, 255,
                                             len + UDP_HEADER_LEN + 4);
     udp_h->udp_len = htons(len + UDP_HEADER_LEN + 4);
     udp_h->udp_csum = 0;
@@ -914,7 +912,6 @@ out:
 static void
 pinctrl_prefixd_state_handler(const struct flow *ip_flow,
                               struct in6_addr addr, unsigned aid,
-                              struct eth_addr sa, struct in6_addr server_addr,
                               char prefix_len, unsigned t1, unsigned t2,
                               unsigned plife_time, unsigned vlife_time,
                               const uint8_t *uuid, uint8_t uuid_len)
@@ -924,8 +921,6 @@ pinctrl_prefixd_state_handler(const struct flow *ip_flow,
     pfd = pinctrl_find_prefixd_state(ip_flow, aid);
     if (pfd) {
         pfd->state = PREFIX_PENDING;
-        pfd->server_addr = server_addr;
-        pfd->sa = sa;
         memcpy(pfd->uuid.data, uuid, uuid_len);
         pfd->uuid.len = uuid_len;
         pfd->plife_time = plife_time * 1000;
@@ -943,10 +938,6 @@ pinctrl_parse_dhcpv6_reply(struct dp_packet *pkt_in,
                            const struct flow *ip_flow)
     OVS_REQUIRES(pinctrl_mutex)
 {
-    struct eth_header *eth = dp_packet_eth(pkt_in);
-    struct ovs_16aligned_ip6_hdr *in_ip = dp_packet_l3(pkt_in);
-    struct in6_addr ip6_src;
-    memcpy(&ip6_src, &in_ip->ip6_src, sizeof ip6_src);
     struct udp_header *udp_in = dp_packet_l4(pkt_in);
     unsigned char *in_dhcpv6_data = (unsigned char *)(udp_in + 1);
     size_t dlen = MIN(ntohs(udp_in->udp_len), dp_packet_l4_size(pkt_in));
@@ -1029,8 +1020,7 @@ pinctrl_parse_dhcpv6_reply(struct dp_packet *pkt_in,
             VLOG_DBG_RL(&rl, "Received DHCPv6 reply from %s with prefix %s/%d"
                         " aid %d", ip6_s, prefix, prefix_len, aid);
         }
-        pinctrl_prefixd_state_handler(ip_flow, ipv6, aid, eth->eth_src,
-                                      ip6_src, prefix_len, t1, t2,
+        pinctrl_prefixd_state_handler(ip_flow, ipv6, aid, prefix_len, t1, t2,
                                       plife_time, vlife_time, uuid, uuid_len);
     }
 }
@@ -1063,28 +1053,22 @@ pinctrl_handle_dhcp6_server(struct rconn *swconn, const struct flow *ip_flow,
 static void
 compose_prefixd_packet(struct dp_packet *b, struct ipv6_prefixd_state *pfd)
 {
-    struct in6_addr ipv6_dst;
-    struct eth_addr eth_dst;
-
     int payload = sizeof(struct dhcpv6_opt_server_id) +
                   sizeof(struct dhcpv6_opt_ia_na);
     if (pfd->uuid.len) {
         payload += pfd->uuid.len + sizeof(struct dhcpv6_opt_header);
-        ipv6_dst = pfd->server_addr;
-        eth_dst = pfd->sa;
-    } else {
-        eth_dst = (struct eth_addr) ETH_ADDR_C(33,33,00,01,00,02);
-        ipv6_parse("ff02::1:2", &ipv6_dst);
     }
     if (ipv6_addr_is_set(&pfd->prefix)) {
         payload += sizeof(struct dhcpv6_opt_ia_prefix);
     }
 
-    eth_compose(b, eth_dst, pfd->ea, ETH_TYPE_IPV6, IPV6_HEADER_LEN);
+    eth_compose(b, (struct eth_addr) ETH_ADDR_C(33,33,00,01,00,02), pfd->ea,
+                ETH_TYPE_IPV6, IPV6_HEADER_LEN);
 
     int len = UDP_HEADER_LEN + 4 + payload;
     struct udp_header *udp_h = compose_ipv6(b, IPPROTO_UDP, &pfd->ipv6_addr,
-                                            &ipv6_dst, 0, 0, 255, len);
+                                            &in6addr_all_dhcp_agents,
+                                            0, 0, 255, len);
     udp_h->udp_len = htons(len);
     udp_h->udp_csum = 0;
     packet_set_udp_port(b, htons(546), htons(547));

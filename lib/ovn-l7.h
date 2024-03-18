@@ -291,6 +291,11 @@ BUILD_ASSERT_DECL(DHCP_OPT_HEADER_LEN == sizeof(struct dhcp_opt_header));
 #define DHCPV6_OPT_BOOTFILE_NAME_ALT \
     DHCP_OPTION("bootfile_name_alt", DHCPV6_OPT_BOOT_FILE_URL_ALT, "str")
 
+extern const struct in6_addr in6addr_all_dhcp_agents;
+#define IN6ADDR_ALL_DHCP_AGENTS_INIT { { { 0xff,0x02,0x00,0x00,0x00,0x00,     \
+                                           0x00,0x00,0x00,0x00,0x00,0x00,     \
+                                           0x00,0x01,0x00,0x02 } } }
+
 OVS_PACKED(
 struct dhcpv6_opt_header {
     ovs_be16 code;
