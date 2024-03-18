@@ -11365,10 +11365,11 @@ copy_ra_to_sb(struct ovn_port *op, const char *address_mode)
         ds_put_format(&s, "%s/%u ", addrs->network_s, addrs->plen);
     }
 
-    const char *ra_pd_list = smap_get(&op->sb->options, "ipv6_ra_pd_list");
-    if (ra_pd_list) {
-        ds_put_cstr(&s, ra_pd_list);
+    for (size_t i = 0; i < op->nbrp->n_ipv6_prefix; i++) {
+        ds_put_cstr(&s, op->nbrp->ipv6_prefix[i]);
+        ds_put_char(&s, ' ');
     }
+
     /* Remove trailing space */
     ds_chomp(&s, ' ');
     smap_add(&options, "ipv6_ra_prefixes", ds_cstr(&s));
