@@ -271,6 +271,18 @@ m4_define([OVS_START_L7],
    ]
 )
 
+# NETNS_START_TCPDUMP([namespace], [params], [name])
+#
+# Helper to properly start tcpdump and wait for the startup.
+# The tcpdump output is available in <name>.tcpdump file.
+m4_define([NETNS_START_TCPDUMP],
+    [
+     NETNS_DAEMONIZE([$1], [tcpdump -l $2 >$3.tcpdump 2>$3.stderr], [$3.pid])
+     OVS_WAIT_UNTIL([grep -q "listening" $3.stderr])
+    ]
+)
+
+
 # OVS_CHECK_VXLAN()
 #
 # Do basic check for vxlan functionality, skip the test if it's not there.
@@ -437,8 +449,7 @@ chown root:dhcpd /var/lib/dhcp /var/lib/dhcp/dhcpd6.leases
 chmod 775 /var/lib/dhcp
 chmod 664 /var/lib/dhcp/dhcpd6.leases
 
-NS_CHECK_EXEC([server], [tcpdump -nni s1 > pkt.pcap &])
-
+NETNS_START_TCPDUMP([server], [-nni s1], [server])
 NETNS_DAEMONIZE([server], [dhcpd -6 -f s1 > dhcpd.log 2>&1], [dhcpd.pid])
 ovn-nbctl --wait=hv sync
 
@@ -456,17 +467,17 @@ prefix=$(ovn-nbctl list logical_router_port rp-public | awk -F/ '/ipv6_prefix/{p
 ovn-nbctl list logical_router_port rp-public > /tmp/rp-public
 
 # Wait for 2 renew on each port.
-NS_CHECK_EXEC([server], [tcpdump -c 4 -nni s1 ip6[[48:1]]=0x05 and ip6[[113:4]]=0x${prefix} > renew.pcap &])
+NETNS_START_TCPDUMP([server], [-c 4 -nni s1 ip6[[48:1]]=0x05 and ip6[[113:4]]=0x${prefix}], [renew])
 # Reply message with Status OK
-NS_CHECK_EXEC([server], [tcpdump -c 4 -nni s1 ip6[[48:1]]=0x07 and ip6[[81:4]]=0x${prefix} > reply.pcap &])
+NETNS_START_TCPDUMP([server], [-c 4 -nni s1 ip6[[48:1]]=0x07 and ip6[[81:4]]=0x${prefix}], [reply])
 
 OVS_WAIT_UNTIL([
-    total_pkts=$(cat renew.pcap | wc -l)
+    total_pkts=$(cat renew.tcpdump | wc -l)
     test "${total_pkts}" = "4"
 ])
 
 OVS_WAIT_UNTIL([
-    total_pkts=$(cat reply.pcap | wc -l)
+    total_pkts=$(cat reply.tcpdump | wc -l)
     test "${total_pkts}" = "4"
 ])
 
@@ -474,7 +485,7 @@ ovn-nbctl set logical_router_port rp-public options:prefix=false
 ovn-nbctl set logical_router_port rp-sw0 options:prefix=false
 ovn-nbctl --wait=hv set logical_router_port rp-sw1 options:prefix=true
 sleep_sb
-NS_CHECK_EXEC([server], [tcpdump -c 2 -nni s1 ip6[[48:1]]=0x05 and ip6[[113:4]]=0x${prefix} > renew.pcap &])
+NETNS_START_TCPDUMP([server], [-c 2 -nni s1 ip6[[48:1]]=0x05 and ip6[[113:4]]=0x${prefix}], [renew2])
 
 # Sleep enough to have solicit and renew being sent, then wait for 2 renew.
 # The reply to the request will usually be received as sb is sleeping.
@@ -482,11 +493,9 @@ NS_CHECK_EXEC([server], [tcpdump -c 2 -nni s1 ip6[[48:1]]=0x05 and ip6[[113:4]]=
 sleep 10
 wake_up_sb
 OVS_WAIT_UNTIL([
-    total_pkts=$(cat renew.pcap | wc -l)
+    total_pkts=$(cat renew2.tcpdump | wc -l)
     test "${total_pkts}" = "2"
 ])
-
-kill $(pidof tcpdump)
 
 ovn-nbctl set logical_router_port rp-sw0 options:prefix=false
 ovn-nbctl clear logical_router_port rp-sw0 ipv6_prefix
