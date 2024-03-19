@@ -1112,6 +1112,12 @@ sb_to_flow_size(const struct sb_to_flow *stf)
     return sizeof *stf;
 }
 
+static size_t
+sb_addrset_ref_size(const struct sb_addrset_ref *sar)
+{
+    return sizeof *sar + strlen(sar->name) + 1;
+}
+
 static struct sb_to_flow *
 sb_to_flow_find(struct hmap *uuid_flow_table, const struct uuid *sb_uuid)
 {
@@ -1181,8 +1187,8 @@ link_flow_to_sb(struct ovn_desired_flow_table *flow_table,
     }
     if (!found) {
         sar = xmalloc(sizeof *sar);
-        mem_stats.sb_flow_ref_usage += sizeof *sar;
         sar->name = xstrdup(as_info->name);
+        mem_stats.sb_flow_ref_usage += sb_addrset_ref_size(sar);
         hmap_init(&sar->as_ip_to_flow_map);
         ovs_list_insert(&stf->addrsets, &sar->list_node);
     }
@@ -1568,7 +1574,7 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
             free(itfn);
         }
         hmap_destroy(&sar->as_ip_to_flow_map);
-        mem_stats.sb_flow_ref_usage -= (sizeof *sar + strlen(sar->name) + 1);
+        mem_stats.sb_flow_ref_usage -= sb_addrset_ref_size(sar);
         free(sar->name);
         free(sar);
     }
