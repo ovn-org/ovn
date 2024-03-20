@@ -883,14 +883,11 @@ ovn-nbctl --wait=hv sync
 NETNS_DAEMONIZE([server], [nc -l -u 172.16.1.2 4242 > /dev/null], [server.pid])
 
 # Collect ICMP packets on client side
-NETNS_DAEMONIZE([client], [tcpdump -l -U -i client -vnne \
-icmp > client.pcap 2>client_err], [tcpdump0.pid])
-OVS_WAIT_UNTIL([grep "listening" client_err])
+NETNS_START_TCPDUMP([client], [-U -i client -vnne icmp], [tcpdump-client])
 
 # Collect UDP packets on server side
-NETNS_DAEMONIZE([server], [tcpdump -l -U -i server -vnne \
-'udp and ip[[6:2]] > 0 and not ip[[6]] = 64' > server.pcap 2>server_err], [tcpdump1.pid])
-OVS_WAIT_UNTIL([grep "listening" server_err])
+NETNS_START_TCPDUMP([server], [-U -i server -vnne \
+'udp and ip[[6:2]] > 0 and not ip[[6]] = 64'], [tcpdump-server])
 
 check ip netns exec client python3 << EOF
 import os
@@ -898,7 +895,7 @@ import socket
 import sys
 import time
 
-FILE="client.pcap"
+FILE="tcpdump-client.tcpdump"
 
 
 def contains_string(file, str):
@@ -926,8 +923,7 @@ else:
     sys.exit(1)
 EOF
 
-OVS_WAIT_UNTIL([test "$(cat server.pcap | wc -l)" = "4"])
-
+OVS_WAIT_UNTIL([test "$(cat tcpdump-server.tcpdump | wc -l)" = "4"])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
@@ -1216,14 +1212,10 @@ while True:
 NETNS_DAEMONIZE([server], [$PYTHON3 ./server.py > server.log], [server.pid])
 
 dnl Collect packets on server side.
-NETNS_DAEMONIZE([server], [tcpdump -l -U -i server -vnne \
-          'ip and (icmp or udp)' > server.tcpdump 2>server_err], [tcpdump0.pid])
-OVS_WAIT_UNTIL([grep "listening" server_err])
+NETNS_START_TCPDUMP([server], [-U -i server -vnne 'ip and (icmp or udp)'], [tcpdump-server])
 
 dnl Collect packets on client side.
-NETNS_DAEMONIZE([client], [tcpdump -l -U -i client -vnne \
-          'ip and (icmp or udp)' > client.tcpdump 2>client_err], [tcpdump1.pid])
-OVS_WAIT_UNTIL([grep "listening" client_err])
+NETNS_START_TCPDUMP([client], [-U -i client -vnne 'ip and (icmp or udp)'], [tcpdump-client])
 
 dnl Send two packets to the server with a short interval.
 dnl First packet should generate 'needs frag', the second should result in
@@ -1241,7 +1233,7 @@ time.sleep(5)
 NS_CHECK_EXEC([client], [$PYTHON3 ./client.py])
 
 dnl Expecting 2 outgoing packets and 2 fragments back - 8 lines total.
-OVS_WAIT_UNTIL([test "$(cat client.tcpdump | wc -l)" = "8"])
+OVS_WAIT_UNTIL([test "$(cat tcpdump-client.tcpdump | wc -l)" = "8"])
 
 ovn-appctl -t ovn-controller vlog/set info
 
