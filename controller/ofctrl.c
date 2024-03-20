@@ -787,7 +787,7 @@ ofctrl_run(const struct ovsrec_bridge *br_int,
 
     rconn_run(swconn);
 
-    if (!rconn_is_connected(swconn)) {
+    if (!rconn_is_connected(swconn) || !pending_ct_zones) {
         return reconnected;
     }
 
