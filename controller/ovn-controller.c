@@ -5736,10 +5736,11 @@ main(int argc, char *argv[])
                 }
             }
 
-            if (br_int && ovs_feature_set_discovered()) {
+            if (br_int) {
                 ct_zones_data = engine_get_data(&en_ct_zones);
-                if (ct_zones_data && ofctrl_run(br_int, ovs_table,
-                                                &ct_zones_data->pending)) {
+                if (ofctrl_run(br_int, ovs_table,
+                               ct_zones_data ? &ct_zones_data->pending
+                                             : NULL)) {
                     static struct vlog_rate_limit rl
                             = VLOG_RATE_LIMIT_INIT(1, 1);
 
@@ -5748,7 +5749,7 @@ main(int argc, char *argv[])
                     engine_set_force_recompute(true);
                 }
 
-                if (chassis) {
+                if (chassis && ovs_feature_set_discovered()) {
                     encaps_run(ovs_idl_txn, br_int,
                                sbrec_chassis_table_get(ovnsb_idl_loop.idl),
                                chassis,
