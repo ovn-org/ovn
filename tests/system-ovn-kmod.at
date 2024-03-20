@@ -1023,8 +1023,7 @@ wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 # Create service that listens for TCP and UDP
-NETNS_DAEMONIZE([vm2], [nc -l -u 1234], [nc0.pid])
-NETNS_DAEMONIZE([vm2], [nc -l -k 1235], [nc1.pid])
+NETNS_DAEMONIZE([vm2], [nc -l -k 1235], [nc0.pid])
 
 test_icmp() {
     # Make sure that a ping works as expected
@@ -1048,7 +1047,9 @@ icmp,orig=(src=173.0.1.2,dst=172.16.0.102,id=<cleared>,type=8,code=0),reply=(src
 }
 
 test_udp() {
+    NETNS_DAEMONIZE([vm2], [nc -l -u 1234], [nc1.pid])
     NS_CHECK_EXEC([vm1], [nc -u 30.0.0.1 1234 -p 1222 -z])
+    kill $(cat nc1.pid)
 
     AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | \
     sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
