@@ -1602,12 +1602,11 @@ OVS_WAIT_UNTIL([
 ovn-nbctl --reject lb-add lb3 30.0.0.10:80 ""
 ovn-nbctl ls-lb-add foo lb3
 # Filter reset segments
-NS_CHECK_EXEC([foo1], [tcpdump -l -c 1 -neei foo1 ip[[33:1]]=0x14 > rst.pcap 2>tcpdump_err &])
-OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
+NETNS_START_TCPDUMP([foo1], [-c 1 -neei foo1 ip[[33:1]]=0x14], [rst])
 NS_CHECK_EXEC([foo1], [wget -q 30.0.0.10],[4])
 
 OVS_WAIT_UNTIL([
-    n_reset=$(cat rst.pcap | wc -l)
+    n_reset=$(cat rst.tcpdump | wc -l)
     test "${n_reset}" = "1"
 ])
 
@@ -3564,8 +3563,7 @@ icmp,orig=(src=192.168.2.2,dst=172.16.1.2,id=<cleared>,type=8,code=0),reply=(src
 ])
 
 # Try to ping external network
-NS_CHECK_EXEC([ext-net], [tcpdump -l -n -c 3 -i ext-veth dst 172.16.1.3 and icmp > ext-net.pcap 2>tcpdump_err &])
-OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
+NETNS_START_TCPDUMP([ext-net], [-n -c 3 -i ext-veth dst 172.16.1.3 and icmp], [ext-net])
 AT_CHECK([ovn-nbctl lr-nat-del R1 snat])
 NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.1 | FORMAT_PING], \
 [0], [dnl
@@ -3573,7 +3571,7 @@ NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.1 | FORMAT_PING], \
 ])
 
 OVS_WAIT_UNTIL([
-    total_pkts=$(cat ext-net.pcap | wc -l)
+    total_pkts=$(cat ext-net.tcpdump | wc -l)
     test "${total_pkts}" = "3"
 ])
 
@@ -4316,19 +4314,19 @@ ovn-nbctl set Logical_Switch sw2 \
     other_config:mcast_ip6_src="2000::fe"
 
 # Check that v4 queries are generated.
-NS_CHECK_EXEC([sw2-p1], [tcpdump -n -c 2 -i sw2-p1 igmp > sw2-p1-v4.pcap &])
+NETNS_START_TCPDUMP([sw2-p1], [-n -c 2 -i sw2-p1 igmp], [sw2-p1-v4])
 
 OVS_WAIT_UNTIL([
-    total_queries=`grep "igmp query" -c sw2-p1-v4.pcap`
+    total_queries=`grep "igmp query" -c sw2-p1-v4.tcpdump`
     test "${total_queries}" = "2"
 ])
 
 # Check that v6 queries are generated (ip6 next header == Hop-By-Hop and
 # icmpv6 type == MLD Query).
-NS_CHECK_EXEC([sw2-p1], [tcpdump -n -c 2 -i sw2-p1 ip6[[6]]==0 and ip6[[48]]==0x82 > sw2-p1-v6.pcap &])
+NETNS_START_TCPDUMP([sw2-p1], [-n -c 2 -i sw2-p1 ip6[[6]]==0 and ip6[[48]]==0x82], [sw2-p1-v6])
 
 OVS_WAIT_UNTIL([
-    total_queries=`grep "multicast listener query" -c sw2-p1-v6.pcap`
+    total_queries=`grep "multicast listener query" -c sw2-p1-v6.tcpdump`
     test "${total_queries}" = "2"
 ])
 
@@ -4546,13 +4544,13 @@ service_monitor protocol=udp | sed '/^$/d' | grep offline | wc -l`])
 pid_file=$(cat l7_pid_file)
 NS_CHECK_EXEC([sw1-p1], [kill $(cat $pid_file)])
 
-NS_CHECK_EXEC([sw0-p2], [tcpdump -c 1 -neei sw0-p2 ip[[33:1]]=0x14 > rst.pcap &])
+NETNS_START_TCPDUMP([sw0-p2], [-c 1 -neei sw0-p2 ip[[33:1]]=0x14], [rst])
 OVS_WAIT_UNTIL([test 2 = `ovn-sbctl --bare --columns status find \
 service_monitor protocol=tcp | sed '/^$/d' | grep offline | wc -l`])
 NS_CHECK_EXEC([sw0-p2], [wget 10.0.0.10 -v -o wget$i.log],[4])
 
 OVS_WAIT_UNTIL([
-    n_reset=$(cat rst.pcap | wc -l)
+    n_reset=$(cat rst.tcpdump | wc -l)
     test "${n_reset}" = "1"
 ])
 
@@ -4818,8 +4816,7 @@ NS_CHECK_EXEC([lsp], [nc 88.88.88.90 4041 -z], [0], [ignore], [ignore])
 
 # Capture IPv4 UDP hairpinned packets.
 filter="dst 42.42.42.1 and dst port 2021 and udp"
-NS_CHECK_EXEC([lsp], [tcpdump -l -nn -c 3 -i lsp ${filter} > lsp.pcap 2>tcpdump_err &])
-OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
+NETNS_START_TCPDUMP([lsp], [-nn -c 3 -i lsp ${filter}], [lsp])
 
 # Generate IPv4 UDP hairpin traffic.
 NS_CHECK_EXEC([lsp], [echo a | nc -u 88.88.88.88 4040], [ignore], [ignore], [ignore])
@@ -4828,7 +4825,7 @@ NS_CHECK_EXEC([lsp], [echo a | nc -u 88.88.88.90 2021], [ignore], [ignore], [ign
 
 # Check hairpin traffic.
 OVS_WAIT_UNTIL([
-    total_pkts=$(cat lsp.pcap | wc -l)
+    total_pkts=$(cat lsp.tcpdump | wc -l)
     test "${total_pkts}" = "3"
 ])
 
@@ -4916,8 +4913,7 @@ NS_CHECK_EXEC([lsp], [nc 8800::0090 4041 -z], [0], [ignore], [ignore])
 
 # Capture IPv6 UDP hairpinned packets.
 filter="dst 4200::1 and dst port 2021 and udp"
-NS_CHECK_EXEC([lsp], [tcpdump -l -nn -c 3 -i lsp $filter > lsp.pcap 2>tcpdump_err &])
-OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
+NETNS_START_TCPDUMP([lsp], [-nn -c 3 -i lsp $filter], [lsp])
 
 # Generate IPv6 UDP hairpin traffic.
 NS_CHECK_EXEC([lsp], [echo a | nc -u 8800::0088 4040], [ignore], [ignore], [ignore])
@@ -4926,7 +4922,7 @@ NS_CHECK_EXEC([lsp], [echo a | nc -u 8800::0090 2021], [ignore], [ignore], [igno
 
 # Check hairpin traffic.
 OVS_WAIT_UNTIL([
-    total_pkts=$(cat lsp.pcap | wc -l)
+    total_pkts=$(cat lsp.tcpdump | wc -l)
     test "${total_pkts}" = "3"
 ])
 
@@ -5040,10 +5036,7 @@ ADD_VETH(sw1-p1-rej, sw1-p1-rej, br-int, "20.0.0.3/24", "40:54:00:00:00:03", \
          "20.0.0.1")
 
 # Capture packets in sw0-p1-rej.
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej tcp > sw0-p1-rej-ip4.pcap 2> err &], [0])
-
-#Wait for tcpdump to get started before generating first packets
-OVS_WAIT_UNTIL([test 1 = $(cat err | grep -c listening)])
+NETNS_START_TCPDUMP([sw0-p1-rej], [-nn -i sw0-p1-rej tcp], [sw0-p1-rej-ip4])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -vz 10.0.0.4 80 2>&1 | grep -i 'connection refused'
@@ -5061,17 +5054,12 @@ grep controller | grep tp_dst=84 -c)
 ])
 
 OVS_WAIT_UNTIL([
-    total=`cat sw0-p1-rej-ip4.pcap |  grep "10\.0\.0\.3" | wc -l`
+    total=`cat sw0-p1-rej-ip4.tcpdump |  grep "10\.0\.0\.3" | wc -l`
     echo "total = $total"
     test "${total}" = "4"
 ])
 
-kill $(pidof tcpdump)
-
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej tcp port 80 > sw0-p2-rej-ip6.pcap 2> err &], [0])
-
-#Wait for tcpdump to get started before generating first packets
-OVS_WAIT_UNTIL([test 1 = $(cat err | grep -c listening)])
+NETNS_START_TCPDUMP([sw0-p2-rej], [-nn -i sw0-p2-rej tcp port 80], [sw0-p2-rej-ip6])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -vz6 aef0::3 80 2>&1 | grep -i 'connection refused'
@@ -5079,7 +5067,7 @@ OVS_WAIT_UNTIL([
 
 
 OVS_WAIT_UNTIL([
-    total=`cat sw0-p2-rej-ip6.pcap |  grep "aef0::3\.80" |wc -l`
+    total=`cat sw0-p2-rej-ip6.tcpdump |  grep "aef0::3\.80" |wc -l`
     echo "total = $total"
     test "${total}" = "2"
 ])
@@ -5091,61 +5079,57 @@ OVS_WAIT_UNTIL([
     ip netns exec sw1-p1-rej nc -vz 10.0.0.4 84 2>&1 | grep -i 'connection refused'
 ])
 
-kill $(pidof tcpdump)
-
 
 # Now test for IPv4 UDP.
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej udp port 90 > sw0-p1-rej-udp.pcap 2> err &], [0])
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap 2> err &], [0])
+NETNS_START_TCPDUMP([sw0-p1-rej], [-nn -i sw0-p1-rej udp port 90], [sw0-p1-rej-udp])
+NETNS_START_TCPDUMP([sw0-p1-rej], [-nn -i sw0-p1-rej icmp], [sw0-p1-rej-icmp])
 
 printf '.%.0s' {1..100} > foo
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -u 10.0.0.4 90 < foo
-    c=$(cat sw0-p1-rej-icmp.pcap | grep \
+    c=$(cat sw0-p1-rej-icmp.tcpdump | grep \
 "10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port 90 unreachable" | uniq | wc -l)
     test $c -ge 1
 ])
 
 kill $(pidof tcpdump)
-rm -f *.pcap
+rm -f *.tcpdump
 
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej udp port 94 > sw0-p1-rej-udp.pcap 2> err &], [0])
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap 2> err &], [0])
+NETNS_START_TCPDUMP([sw0-p1-rej], [-nn -i sw0-p1-rej udp port 94], [sw0-p1-rej-udp])
+NETNS_START_TCPDUMP([sw0-p1-rej], [-nn -i sw0-p1-rej icmp], [sw0-p1-rej-icmp])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -u 10.0.0.4 94 < foo
-    c=$(cat sw0-p1-rej-icmp.pcap | grep \
+    c=$(cat sw0-p1-rej-icmp.tcpdump | grep \
 "10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port 94 unreachable" | uniq | wc -l)
     test $c -ge 1
 ])
-kill $(pidof tcpdump)
 
 # Now test for IPv6 UDP.
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej udp port 90 > sw0-p2-rej-ip6-udp.pcap 2> err &], [0])
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap 2> err &], [0])
+NETNS_START_TCPDUMP([sw0-p2-rej], [-nn -i sw0-p2-rej udp port 90], [sw0-p2-rej-ip6-udp])
+NETNS_START_TCPDUMP([sw0-p2-rej], [-nn -i sw0-p2-rej icmp6], [sw0-p2-rej-icmp6])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -u -6 aef0::3 90 < foo
-    c=$(cat sw0-p2-rej-icmp6.pcap | grep \
+    c=$(cat sw0-p2-rej-icmp6.tcpdump | grep \
 "IP6 aef0::3 > aef0::4: ICMP6, destination unreachable, unreachable port, \
 aef0::3 udp port 90" | uniq | wc -l)
     test $c -ge 1
 ])
 
 kill $(pidof tcpdump)
-rm -f *.pcap
+rm -f *.tcpdump
 
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej udp port 94 > sw0-p2-rej-ip6-udp.pcap 2> err &], [0])
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap 2> err &], [0])
+NETNS_START_TCPDUMP([sw0-p2-rej], [-nn -i sw0-p2-rej udp port 94], [sw0-p2-rej-ip6-udp])
+NETNS_START_TCPDUMP([sw0-p2-rej], [-nn -i sw0-p2-rej icmp6], [sw0-p2-rej-icmp6])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -u -6 aef0::3 94 < foo
-    c=$(cat sw0-p2-rej-icmp6.pcap | grep \
+    c=$(cat sw0-p2-rej-icmp6.tcpdump | grep \
 "IP6 aef0::3 > aef0::4: ICMP6, destination unreachable, unreachable port, \
 aef0::3 udp port 94" | uniq | wc -l)
     test $c -ge 1
 ])
-kill $(pidof tcpdump)
 
 # Delete all the ACLs of pg0 and add the ACL with a generic match with reject action.
 ovn-nbctl pg-del pg0
@@ -5160,31 +5144,30 @@ OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -vz6 aef0::3 80 2>&1 | grep -i 'connection refused'
 ])
 
-rm -f *.pcap
+rm -f *.tcpdump
 
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap 2> err &], [0])
+NETNS_START_TCPDUMP([sw0-p1-rej], [-nn -i sw0-p1-rej icmp], [sw0-p1-rej-icmp])
 
 printf '.%.0s' {1..100} > foo
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -u 10.0.0.4 90 < foo
-    c=$(cat sw0-p1-rej-icmp.pcap | grep \
+    c=$(cat sw0-p1-rej-icmp.tcpdump | grep \
 "10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port 90 unreachable" | uniq | wc -l)
     test $c -ge 1
 ])
 
 kill $(pidof tcpdump)
-rm -f *.pcap
+rm -f *.tcpdump
 # Now test for IPv6 UDP.
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap 2> err &], [0])
+NETNS_START_TCPDUMP([sw0-p2-rej], [-nn -i sw0-p2-rej icmp6], [sw0-p2-rej-icmp6])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -u -6 aef0::3 90 < foo
-    c=$(cat sw0-p2-rej-icmp6.pcap | grep \
+    c=$(cat sw0-p2-rej-icmp6.tcpdump | grep \
 "IP6 aef0::3 > aef0::4: ICMP6, destination unreachable, unreachable port, \
 aef0::3 udp port 90" | uniq | wc -l)
     test $c -ge 1
 ])
-kill $(pidof tcpdump)
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
@@ -5287,10 +5270,7 @@ ADD_VETH(sw1-p1-rej, sw1-p1-rej, br-int, "20.0.0.3/24", "40:54:00:00:00:03", \
          "20.0.0.1")
 
 # Capture packets in sw0-p1-rej.
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej tcp > sw0-p1-rej-ip4.pcap 2> err &], [0])
-
-#Wait for tcpdump to get started before generating first packets
-OVS_WAIT_UNTIL([test 1 = $(cat err | grep -c listening)])
+NETNS_START_TCPDUMP([sw0-p1-rej], [-nn -i sw0-p1-rej tcp], [sw0-p1-rej-ip4])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -vz 10.0.0.4 80 2>&1 | grep -i 'connection refused'
@@ -5308,17 +5288,12 @@ grep controller | grep tp_dst=84 -c)
 ])
 
 OVS_WAIT_UNTIL([
-    total=`cat sw0-p1-rej-ip4.pcap |  grep "10\.0\.0\.4" | wc -l`
+    total=`cat sw0-p1-rej-ip4.tcpdump |  grep "10\.0\.0\.4" | wc -l`
     echo "total = $total"
     test "${total}" = "4"
 ])
 
-kill $(pidof tcpdump)
-
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej tcp port 80 > sw0-p2-rej-ip6.pcap 2> err &], [0])
-
-#Wait for tcpdump to get started before generating first packets
-OVS_WAIT_UNTIL([test 1 = $(cat err | grep -c listening)])
+NETNS_START_TCPDUMP([sw0-p2-rej], [-nn -i sw0-p2-rej tcp port 80], [sw0-p2-rej-ip6])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -vz6 aef0::3 80 2>&1 | grep -i 'connection refused'
@@ -5326,7 +5301,7 @@ OVS_WAIT_UNTIL([
 
 
 OVS_WAIT_UNTIL([
-    total=`cat sw0-p2-rej-ip6.pcap | grep "aef0::3\.80" | wc -l`
+    total=`cat sw0-p2-rej-ip6.tcpdump | grep "aef0::3\.80" | wc -l`
     echo "total = $total"
     test "${total}" = "2"
 ])
@@ -5342,53 +5317,51 @@ OVS_WAIT_UNTIL([
 ])
 
 # Now test for IPv4 UDP.
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej udp port 90 > sw0-p1-rej-udp.pcap 2> err &], [0])
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap 2> err &], [0])
+NETNS_START_TCPDUMP([sw0-p1-rej], [-nn -i sw0-p1-rej udp port 90], [sw0-p1-rej-udp])
+NETNS_START_TCPDUMP([sw0-p1-rej], [-nn -i sw0-p1-rej icmp], [sw0-p1-rej-icmp])
 
 printf '.%.0s' {1..100} > foo
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -u 10.0.0.4 90 < foo
-    c=$(cat sw0-p1-rej-icmp.pcap | grep \
+    c=$(cat sw0-p1-rej-icmp.tcpdump | grep \
 "10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port 90 unreachable" | uniq | wc -l)
     test $c -ge 1
 ])
 
 kill $(pidof tcpdump)
-rm -f *.pcap
+rm -f *.tcpdump
 
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej udp port 94 > sw0-p1-rej-udp.pcap 2> err &], [0])
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap 2> err &], [0])
+NETNS_START_TCPDUMP([sw0-p1-rej], [-nn -i sw0-p1-rej udp port 94], [sw0-p1-rej-udp])
+NETNS_START_TCPDUMP([sw0-p1-rej], [-nn -i sw0-p1-rej icmp], [sw0-p1-rej-icmp])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -u 10.0.0.4 94 < foo
-    c=$(cat sw0-p1-rej-icmp.pcap | grep \
+    c=$(cat sw0-p1-rej-icmp.tcpdump | grep \
 "10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port 94 unreachable" | uniq | wc -l)
     test $c -ge 1
 ])
 
-kill $(pidof tcpdump)
-
 # Now test for IPv6 UDP.
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej udp port 90 > sw0-p2-rej-ip6-udp.pcap 2> err &], [0])
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap 2> err &], [0])
+NETNS_START_TCPDUMP([sw0-p2-rej], [-nn -i sw0-p2-rej udp port 90], [sw0-p2-rej-ip6-udp])
+NETNS_START_TCPDUMP([sw0-p2-rej], [-nn -i sw0-p2-rej icmp6], [sw0-p2-rej-icmp6])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -u -6 aef0::3 90 < foo
-    c=$(cat sw0-p2-rej-icmp6.pcap | grep \
+    c=$(cat sw0-p2-rej-icmp6.tcpdump | grep \
 "IP6 aef0::3 > aef0::4: ICMP6, destination unreachable, unreachable port, \
 aef0::3 udp port 90" | uniq | wc -l)
     test $c -ge 1
 ])
 
 kill $(pidof tcpdump)
-rm -f *.pcap
+rm -f *.tcpdump
 
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej udp port 94 > sw0-p2-rej-ip6-udp.pcap 2> err &], [0])
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap 2> err &], [0])
+NETNS_START_TCPDUMP([sw0-p2-rej], [-nn -i sw0-p2-rej udp port 94], [sw0-p2-rej-ip6-udp])
+NETNS_START_TCPDUMP([sw0-p2-rej], [-nn -i sw0-p2-rej icmp6], [sw0-p2-rej-icmp6])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -u -6 aef0::3 94 < foo
-    c=$(cat sw0-p2-rej-icmp6.pcap | grep \
+    c=$(cat sw0-p2-rej-icmp6.tcpdump | grep \
 "IP6 aef0::3 > aef0::4: ICMP6, destination unreachable, unreachable port, \
 aef0::3 udp port 94" | uniq | wc -l)
     test $c -ge 1
@@ -5408,32 +5381,30 @@ OVS_WAIT_UNTIL([
 ])
 
 kill $(pidof tcpdump)
-rm -f *.pcap
+rm -f *.tcpdump
 
-NS_CHECK_EXEC([sw0-p1-rej], [tcpdump -l -nn -i sw0-p1-rej icmp > sw0-p1-rej-icmp.pcap 2> err &], [0])
+NETNS_START_TCPDUMP([sw0-p1-rej], [-nn -i sw0-p1-rej icmp], [sw0-p1-rej-icmp])
 
 printf '.%.0s' {1..100} > foo
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -u 10.0.0.4 90 < foo
-    c=$(cat sw0-p1-rej-icmp.pcap | grep \
+    c=$(cat sw0-p1-rej-icmp.tcpdump | grep \
 "10.0.0.4 > 10.0.0.3: ICMP 10.0.0.4 udp port 90 unreachable" | uniq | wc -l)
     test $c -ge 1
 ])
 
 kill $(pidof tcpdump)
-rm -f *.pcap
+rm -f *.tcpdump
 # Now test for IPv6 UDP.
-NS_CHECK_EXEC([sw0-p2-rej], [tcpdump -l -nn -i sw0-p2-rej icmp6 > sw0-p2-rej-icmp6.pcap 2> err &], [0])
+NETNS_START_TCPDUMP([sw0-p2-rej], [-nn -i sw0-p2-rej icmp6], [sw0-p2-rej-icmp6])
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p2-rej nc -u -6 aef0::3 90 < foo
-    c=$(cat sw0-p2-rej-icmp6.pcap | grep \
+    c=$(cat sw0-p2-rej-icmp6.tcpdump | grep \
 "IP6 aef0::3 > aef0::4: ICMP6, destination unreachable, unreachable port, \
 aef0::3 udp port 90" | uniq | wc -l)
     test $c -ge 1
 ])
-
-kill $(pidof tcpdump)
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
@@ -6858,10 +6829,10 @@ OVS_WAIT_UNTIL([ovn-sbctl dump-flows R1 | grep 'match=(ip4.dst == 100.0.0.0/8)' 
 check ovn-nbctl clear logical_router_static_route $route_uuid bfd
 wait_column "admin_down" nb:bfd status logical_port=rp-public
 OVS_WAIT_UNTIL([ip netns exec server bfdd-control status | grep -qi state=Down])
-NS_CHECK_EXEC([server], [tcpdump -nni s1 udp port 3784 -Q in > bfd.pcap &])
+NETNS_START_TCPDUMP([server], [-nni s1 udp port 3784 -Q in], [bfd])
 sleep 5
 kill $(pidof tcpdump)
-AT_CHECK([grep -qi bfd bfd.pcap],[1])
+AT_CHECK([grep -qi bfd bfd.tcpdump],[1])
 
 # restart the connection
 check ovn-nbctl set logical_router_static_route $route_uuid bfd=$uuid
@@ -6887,10 +6858,10 @@ OVS_WAIT_UNTIL([test "$(ovn-sbctl dump-flows R1 | grep 'match=(ip4.dst == 100.0.
 # remove bfd entry
 ovn-nbctl destroy bfd $uuid
 check_row_count bfd 0
-NS_CHECK_EXEC([server], [tcpdump -nni s1 udp port 3784 -Q in > bfd.pcap &])
+NETNS_START_TCPDUMP([server], [-nni s1 udp port 3784 -Q in], [bfd])
 sleep 5
 kill $(pidof tcpdump)
-AT_CHECK([grep -qi bfd bfd.pcap],[1])
+AT_CHECK([grep -qi bfd bfd.tcpdump],[1])
 
 uuid_v6=$(ovn-nbctl create bfd logical_port=rp-public dst_ip=\"1000::b\")
 check ovn-nbctl lr-route-add R1 2000::/64 1000::b
@@ -7351,7 +7322,7 @@ check ovn-nbctl lsp-add public public1 \
         -- lsp-set-type public1 localnet \
         -- lsp-set-options public1 network_name=phynet
 
-NS_EXEC([sw01], [tcpdump -l -n -i sw01 icmp -Q in > reject.pcap &])
+NETNS_START_TCPDUMP([sw01], [-n -i sw01 icmp -Q in], [reject])
 check ovn-nbctl meter-add acl-meter drop 1 pktps 0
 check ovn-nbctl copp-add copp0 reject acl-meter
 check ovn-nbctl ls-copp-add copp0 sw0
@@ -7368,14 +7339,14 @@ EOF
 
 # 1pps
 OVS_WAIT_UNTIL([
-    n_reject=$(grep unreachable reject.pcap | wc -l)
+    n_reject=$(grep unreachable reject.tcpdump | wc -l)
     test "${n_reject}" = "1"
 ])
 kill $(pidof tcpdump)
-rm -f reject.pcap
+rm -f reject.tcpdump
 
 # Let's update the meter
-NS_EXEC([sw01], [tcpdump -l -n -i sw01 icmp -Q in > reject.pcap &])
+NETNS_START_TCPDUMP([sw01], [-n -i sw01 icmp -Q in], [reject])
 check ovn-nbctl --may-exist --wait=hv meter-add acl-meter drop 10 pktps 0
 ip netns exec sw01 scapy -H <<-EOF
 p = IP(src="192.168.1.2", dst="192.168.1.1") / UDP(dport = 12345) / Raw(b"X"*64)
@@ -7384,14 +7355,14 @@ EOF
 
 # 10pps
 OVS_WAIT_UNTIL([
-    n_reject=$(grep unreachable reject.pcap | wc -l)
+    n_reject=$(grep unreachable reject.tcpdump | wc -l)
     test "${n_reject}" = "10"
 ])
 
 kill $(pidof tcpdump)
-rm -f reject.pcap
+rm -f reject.tcpdump
 
-NS_EXEC([sw01], [tcpdump -l -n -i sw01 icmp -Q in > reject.pcap &])
+NETNS_START_TCPDUMP([sw01], [-n -i sw01 icmp -Q in], [reject])
 check ovn-nbctl --wait=hv copp-del copp0 reject
 
 ip netns exec sw01 scapy -H <<-EOF
@@ -7400,12 +7371,11 @@ send (p, iface='sw01', loop = 0, verbose = 0, count = 20)
 EOF
 
 OVS_WAIT_UNTIL([
-    n_reject=$(grep unreachable reject.pcap | wc -l)
+    n_reject=$(grep unreachable reject.tcpdump | wc -l)
     test "${n_reject}" = "20"
 ])
-kill $(pidof tcpdump)
 
-NS_EXEC([server], [tcpdump -l -n -i s1 arp[[24:4]]=0xac100164 > arp.pcap &])
+NETNS_START_TCPDUMP([server], [-n -i s1 arp[[24:4]]=0xac100164], [arp])
 check ovn-nbctl meter-add arp-meter drop 1 pktps 0
 check ovn-nbctl copp-add copp1 arp-resolve arp-meter
 check ovn-nbctl --wait=hv lr-copp-add copp1 R1
@@ -7420,10 +7390,9 @@ EOF
 
 # 1pps
 OVS_WAIT_UNTIL([
-    n_arp=$(grep ARP arp.pcap | wc -l)
+    n_arp=$(grep ARP arp.tcpdump | wc -l)
     test "${n_arp}" = "1"
 ])
-kill $(pidof tcpdump)
 
 check ovn-nbctl meter-add icmp-meter drop 1 pktps 0
 check ovn-nbctl copp-add copp2 icmp4-error icmp-meter
@@ -7432,7 +7401,7 @@ AT_CHECK([ovn-nbctl copp-list copp2 |grep icmp4-error], [0], [dnl
 icmp4-error: icmp-meter
 ])
 
-NS_EXEC([sw01], [tcpdump -l -n -i sw01 icmp > icmp.pcap &])
+NETNS_START_TCPDUMP([sw01], [-n -i sw01 icmp], [icmp])
 ip netns exec sw01 scapy -H <<-EOF
 p = IP(src="192.168.1.2", dst="172.16.1.100", ttl=1) / TCP(dport = 8080, flags="S") / Raw(b"X"*64)
 send (p, iface='sw01', loop = 0, verbose = 0, count = 100)
@@ -7440,10 +7409,9 @@ EOF
 
 # 1pps
 OVS_WAIT_UNTIL([
-    n_icmp=$(grep ICMP icmp.pcap | wc -l)
+    n_icmp=$(grep ICMP icmp.tcpdump | wc -l)
     test "${n_icmp}" = "1"
 ])
-kill $(pidof tcpdump)
 
 check ovn-nbctl meter-add bfd-meter drop 1 pktps 0
 check ovn-nbctl copp-add copp3 bfd bfd-meter
@@ -7454,7 +7422,7 @@ bfd: bfd-meter
 
 check ovn-nbctl --wait=hv --bfd lr-route-add R1 240.0.0.0/8 172.16.1.50 rp-public
 printf "%08x" $(ovn-sbctl get bfd . disc) > /tmp/disc
-NS_EXEC([server], [tcpdump -l -nn -i s1 udp port 3784 and ip[[29]]==0x90 -Q in > bfd.pcap &])
+NETNS_START_TCPDUMP([server], [-nn -i s1 udp port 3784 and ip[[29]]==0x90 -Q in], [bfd])
 ip netns exec server scapy -H <<-EOF
 import binascii
 f = open("/tmp/disc", "r")
@@ -7469,10 +7437,9 @@ rm /tmp/disc
 
 # 1pps
 OVS_WAIT_UNTIL([
-    n_bfd=$(grep 3784 bfd.pcap | wc -l)
+    n_bfd=$(grep 3784 bfd.tcpdump | wc -l)
     test "${n_bfd}" = "1"
 ])
-kill $(pidof tcpdump)
 
 check ovn-nbctl set nb_global . options:svc_monitor_mac="33:33:33:33:33:33"
 check ovn-nbctl meter-add svc-meter drop 1 pktps 0
@@ -8788,7 +8755,7 @@ ADD_NAMESPACES(vm2)
 ADD_VETH(vm2, vm2, br-int, "42.42.42.2/24", "00:00:00:00:00:02")
 
 ADD_NAMESPACES(vm3)
-NETNS_DAEMONIZE([vm3], [tcpdump -n -i any -nnleX > vm3.pcap 2>/dev/null], [tcpdump3.pid])
+NETNS_START_TCPDUMP([vm3], [-n -i any -nnleX], [vm3])
 
 ADD_VETH(vm3, vm3, br-int, "42.42.42.3/24", "00:00:00:00:00:03", \
          "42.42.42.5")
@@ -8803,11 +8770,11 @@ wait_igmp_flows_installed 228.0.0.1
 NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 228.0.0.1], [ignore], [ignore])
 
 OVS_WAIT_UNTIL([
-    requests=`grep "ICMP echo request" -c vm3.pcap`
+    requests=`grep "ICMP echo request" -c vm3.tcpdump`
     test "${requests}" -ge "3"
 ])
 
-NETNS_DAEMONIZE([vm2], [tcpdump -n -i any -nnleX > vm2.pcap 2>/dev/null], [tcpdump2.pid])
+NETNS_START_TCPDUMP([vm2], [-n -i any -nnleX], [vm2])
 
 for i in `seq 1 40`;do
     NS_CHECK_EXEC([vm2], [ip addr add 228.1.$i.1 dev vm2 autojoin &], [0])
@@ -8826,7 +8793,7 @@ ovn-sbctl list multicast_group
 NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 228.1.1.1], [ignore], [ignore])
 
 OVS_WAIT_UNTIL([
-    requests=`grep "ICMP echo request" -c vm2.pcap`
+    requests=`grep "ICMP echo request" -c vm2.tcpdump`
     test "${requests}" -ge "3"
 ])
 
@@ -9004,15 +8971,12 @@ test_related_traffic() {
 
     check ovs-appctl dpctl/flush-conntrack
 
-    NETNS_DAEMONIZE([client], [tcpdump -l -U -i client -w client.pcap 2>client_err], [tcpdump0.pid])
-    NETNS_DAEMONIZE([server], [tcpdump -l -U -i server -w server.pcap 2>server_err], [tcpdump1.pid])
+    NETNS_START_TCPDUMP([client], [-U -i client -w client.pcap], [tcpdump0])
+    NETNS_START_TCPDUMP([server], [-U -i server -w server.pcap], [tcpdump1])
 
     # Setup a dummy UDP listeners so we don't get "port unreachable".
     NETNS_DAEMONIZE([client], [nc -l -u 1], [nc0.pid])
     NETNS_DAEMONIZE([server], [nc -l -u 2], [nc1.pid])
-
-    OVS_WAIT_UNTIL([grep "listening" client_err])
-    OVS_WAIT_UNTIL([grep "listening" server_err])
 
     # Send UDP client -> server
     check ovs-ofctl packet-out br-int "in_port=ovs-client,packet=$client_udp,actions=resubmit(,0)"
@@ -9232,10 +9196,9 @@ name: 'vport4' value: '999'
 # Start IPv4 TCP server on vm1.
 NETNS_DAEMONIZE([vm1], [nc -k -l 42.42.42.2 4242], [nc-vm1.pid])
 
-NETNS_DAEMONIZE([vm1],
-    [tcpdump -n -i vm1 -nnleX -c6 udp and dst 42.42.42.2 and dst port 4343 > vm1.pcap 2> vm1.pcap.stderr],
-    [tcpdump1.pid])
-OVS_WAIT_UNTIL([grep "listening" vm1.pcap.stderr])
+NETNS_START_TCPDUMP([vm1],
+    [-n -i vm1 -nnleX -c6 udp and dst 42.42.42.2 and dst port 4343],
+    [vm1])
 
 # Make sure connecting to the VIP works (hairpin, via ls and via lr).
 NS_CHECK_EXEC([vm1], [nc 66.66.66.66 666 -z], [0], [ignore], [ignore])
@@ -9255,7 +9218,7 @@ NS_CHECK_EXEC([vm2], [echo a | nc -u 66.66.66.66 999], [ignore], [ignore], [igno
 NS_CHECK_EXEC([vm3], [echo a | nc -u 66.66.66.66 999], [ignore], [ignore], [ignore])
 
 OVS_WAIT_UNTIL([
-    requests=`grep "UDP" -c vm1.pcap`
+    requests=`grep "UDP" -c vm1.tcpdump`
     test "${requests}" -ge "6"
 ])
 
@@ -9384,10 +9347,9 @@ name: 'vport4' value: '999'
 # Start IPv6 TCP server on vm1.
 NETNS_DAEMONIZE([vm1], [nc -k -l 4242::2 4242], [nc-vm1.pid])
 
-NETNS_DAEMONIZE([vm1],
-    [tcpdump -n -i vm1 -nnleX -c6 udp and dst 4242::2 and dst port 4343 > vm1.pcap 2> vm1.pcap.stderr],
-    [tcpdump1.pid])
-OVS_WAIT_UNTIL([grep "listening" vm1.pcap.stderr])
+NETNS_START_TCPDUMP([vm1],
+    [-n -i vm1 -nnleX -c6 udp and dst 4242::2 and dst port 4343],
+    [vm1])
 
 # Make sure connecting to the VIP works (hairpin, via ls and via lr).
 NS_CHECK_EXEC([vm1], [nc 6666::1 666 -z], [0], [ignore], [ignore])
@@ -9407,7 +9369,7 @@ NS_CHECK_EXEC([vm2], [echo a | nc -u 6666::1 999], [ignore], [ignore], [ignore])
 NS_CHECK_EXEC([vm3], [echo a | nc -u 6666::1 999], [ignore], [ignore], [ignore])
 
 OVS_WAIT_UNTIL([
-    requests=`grep "UDP" -c vm1.pcap`
+    requests=`grep "UDP" -c vm1.tcpdump`
     test "${requests}" -ge "6"
 ])
 
@@ -9465,10 +9427,10 @@ ADD_NAMESPACES(remote1)
 ADD_VETH(remote1, remote1, br-ext, "172.16.1.4/24", "f0:00:00:01:02:06", \
          "172.16.1.1")
 
-NETNS_DAEMONIZE([remote], [tcpdump -c 3 -nneei remote -Q in src 192.168.1.2 and dst 172.16.1.2 and icmp > icmp.pcap], [tcpdump0.pid])
-NETNS_DAEMONIZE([remote], [tcpdump -c 1 -nneei remote -Q in arp and arp[[24:4]]==0xac100102 > arp.pcap], [tcpdump1.pid])
-NETNS_DAEMONIZE([remote1], [tcpdump -c 3 -nneei remote1 -Q in src 172.16.1.3 and dst 172.16.1.4 and icmp > icmp1.pcap 2>/dev/null], [tcpdump2.pid])
-NETNS_DAEMONIZE([remote1], [tcpdump -c 1 -nneei remote1 -Q in arp and arp[[24:4]]==0xac100104 > arp1.pcap 2>/dev/null], [tcpdump3.pid])
+NETNS_START_TCPDUMP([remote], [-c 3 -nneei remote -Q in src 192.168.1.2 and dst 172.16.1.2 and icmp], [icmp])
+NETNS_START_TCPDUMP([remote], [-c 1 -nneei remote -Q in arp and arp[[24:4]]==0xac100102], [arp])
+NETNS_START_TCPDUMP([remote1], [-c 3 -nneei remote1 -Q in src 172.16.1.3 and dst 172.16.1.4 and icmp], [icmp1])
+NETNS_START_TCPDUMP([remote1], [-c 1 -nneei remote1 -Q in arp and arp[[24:4]]==0xac100104], [arp1])
 
 check ovn-nbctl lr-add R1 -- set Logical_Router R1 options:chassis=hv1
 check ovn-nbctl ls-add sw0
@@ -9515,12 +9477,12 @@ NS_CHECK_EXEC([sw01], [ping -q -c 3 -i 0.3 -w 2 172.16.1.2 | FORMAT_PING], \
 ])
 
 OVS_WAIT_UNTIL([
-        total_arp_pkts=$(cat arp.pcap | wc -l)
+        total_arp_pkts=$(cat arp.tcpdump | wc -l)
         test "${total_arp_pkts}" = "1"
 ])
 
 OVS_WAIT_UNTIL([
-        total_icmp_pkts=$(cat icmp.pcap | wc -l)
+        total_icmp_pkts=$(cat icmp.tcpdump | wc -l)
         test "${total_icmp_pkts}" = "3"
 ])
 
@@ -9530,12 +9492,12 @@ NS_CHECK_EXEC([sw11], [ping -q -c 3 -i 0.3 -w 2 172.16.1.4 | FORMAT_PING], \
 ])
 
 OVS_WAIT_UNTIL([
-        total_arp1_pkts=$(cat arp1.pcap | wc -l)
+        total_arp1_pkts=$(cat arp1.tcpdump | wc -l)
         test "${total_arp1_pkts}" = "1"
 ])
 
 OVS_WAIT_UNTIL([
-        total_icmp1_pkts=$(cat icmp1.pcap | wc -l)
+        total_icmp1_pkts=$(cat icmp1.tcpdump | wc -l)
         test "${total_icmp1_pkts}" = "3"
 ])
 
@@ -10713,8 +10675,7 @@ check ovn-nbctl lsp-add bar bar1 \
 # wait for ovn-controller to catch up.
 check ovn-nbctl --wait=hv sync
 
-NETNS_DAEMONIZE([foo1], [tcpdump -l -nn -e -i foo1 'ether dst 0a:58:a9:fe:01:01 and icmp' > foo1-icmp.pcap 2>foo1-tcpdump.stderr], [foo1-icmp-tcpdump.pid])
-OVS_WAIT_UNTIL([grep "listening" foo1-tcpdump.stderr])
+NETNS_START_TCPDUMP([foo1], [-nn -e -i foo1 'ether dst 0a:58:a9:fe:01:01 and icmp'], [foo1-icmp])
 
 # 'foo1' should be able to ping 'bar1'
 NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
@@ -10722,12 +10683,11 @@ NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 OVS_WAIT_UNTIL([
-    total_pkts=$(cat foo1-icmp.pcap| wc -l)
+    total_pkts=$(cat foo1-icmp.tcpdump| wc -l)
     test "${total_pkts}" = "3"
 ])
 
-NETNS_DAEMONIZE([foo2], [tcpdump -l -nn -e -i foo2 'ether dst 0a:58:a9:fe:01:01 and icmp' > foo2-icmp.pcap 2>foo2-tcpdump.stderr], [foo2-icmp-tcpdump.pid])
-OVS_WAIT_UNTIL([grep "listening" foo2-tcpdump.stderr])
+NETNS_START_TCPDUMP([foo2], [-nn -e -i foo2 'ether dst 0a:58:a9:fe:01:01 and icmp'], [foo2-icmp])
 
 # 'foo2' should be able to ping 'bar1'
 NS_CHECK_EXEC([foo2], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
@@ -10735,12 +10695,11 @@ NS_CHECK_EXEC([foo2], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 OVS_WAIT_UNTIL([
-    total_pkts=$(cat foo2-icmp.pcap| wc -l)
+    total_pkts=$(cat foo2-icmp.tcpdump| wc -l)
     test "${total_pkts}" = "3"
 ])
 
-NETNS_DAEMONIZE([foo3], [tcpdump -l -nn -e -i foo3 'ether dst 0a:58:a9:fe:01:01 and icmp' > foo3-icmp.pcap 2>foo3-tcpdump.stderr], [foo3-icmp-tcpdump.pid])
-OVS_WAIT_UNTIL([grep "listening" foo3-tcpdump.stderr])
+NETNS_START_TCPDUMP([foo3], [-nn -e -i foo3 'ether dst 0a:58:a9:fe:01:01 and icmp'], [foo3-icmp])
 
 # 'foo3' should be able to ping 'bar1'
 NS_CHECK_EXEC([foo3], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
@@ -10748,12 +10707,11 @@ NS_CHECK_EXEC([foo3], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 OVS_WAIT_UNTIL([
-    total_pkts=$(cat foo3-icmp.pcap| wc -l)
+    total_pkts=$(cat foo3-icmp.tcpdump| wc -l)
     test "${total_pkts}" = "3"
 ])
 
-NETNS_DAEMONIZE([ext1], [tcpdump -l -nn -e -i ext1 'ether dst 0a:58:a9:fe:01:01 and icmp' > ext1-icmp.pcap 2>ext1-tcpdump.stderr], [ext1-icmp-tcpdump.pid])
-OVS_WAIT_UNTIL([grep "listening" ext1-tcpdump.stderr])
+NETNS_START_TCPDUMP([ext1], [-nn -e -i ext1 'ether dst 0a:58:a9:fe:01:01 and icmp'], [ext1-icmp])
 
 # 'ext1' should be able to ping 'bar1'
 NS_CHECK_EXEC([ext1], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
@@ -10761,7 +10719,7 @@ NS_CHECK_EXEC([ext1], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 OVS_WAIT_UNTIL([
-    total_pkts=$(cat ext1-icmp.pcap| wc -l)
+    total_pkts=$(cat ext1-icmp.tcpdump| wc -l)
     test "${total_pkts}" = "3"
 ])
 
@@ -10857,8 +10815,7 @@ check ovn-nbctl --wait=hv sync
 # Force ipv6 nd neighbour solicitation
 NS_EXEC([foo1], [ping6 -c 1 fd12::2])
 
-NETNS_DAEMONIZE([foo1], [tcpdump -vvvv -ttt -l -nn -e -i foo1 'ether dst 0a:58:a9:fe:01:01 and icmp6' > foo1-icmp6.pcap 2> foo1-tcpdump.stderr], [foo1-icmp6-tcpdump.pid])
-OVS_WAIT_UNTIL([grep "listening" foo1-tcpdump.stderr])
+NETNS_START_TCPDUMP([foo1], [-vvvv -ttt -nn -e -i foo1 'ether dst 0a:58:a9:fe:01:01 and icmp6'], [foo1-icmp6])
 
 # 'foo1' should be able to ping 'bar1'
 NS_CHECK_EXEC([foo1], [ping6 -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
@@ -10866,15 +10823,14 @@ NS_CHECK_EXEC([foo1], [ping6 -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 OVS_WAIT_UNTIL([
-    total_pkts=$(cat foo1-icmp6.pcap| grep "echo request" | wc -l)
+    total_pkts=$(cat foo1-icmp6.tcpdump| grep "echo request" | wc -l)
     test "${total_pkts}" = "3"
 ])
 
 # Force ipv6 nd neighbour solicitation
 NS_EXEC([foo2], [ping6 -c 1 fd12::2])
 
-NETNS_DAEMONIZE([foo2], [tcpdump -vvvv -ttt -l -nn -e -i foo2 'ether dst 0a:58:a9:fe:01:01 and icmp6' > foo2-icmp6.pcap 2> foo2-tcpdump.stderr], [foo2-icmp6-tcpdump.pid])
-OVS_WAIT_UNTIL([grep "listening" foo2-tcpdump.stderr])
+NETNS_START_TCPDUMP([foo2], [-vvvv -ttt -nn -e -i foo2 'ether dst 0a:58:a9:fe:01:01 and icmp6'], [foo2-icmp6])
 
 # 'foo2' should be able to ping 'bar1'
 NS_CHECK_EXEC([foo2], [ping6 -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
@@ -10882,15 +10838,14 @@ NS_CHECK_EXEC([foo2], [ping6 -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 OVS_WAIT_UNTIL([
-    total_pkts=$(cat foo2-icmp6.pcap| grep "echo request" | wc -l)
+    total_pkts=$(cat foo2-icmp6.tcpdump| grep "echo request" | wc -l)
     test "${total_pkts}" = "3"
 ])
 
 # Force ipv6 nd neighbour solicitation
 NS_EXEC([foo3], [ping6 -c 1 fd12::2])
 
-NETNS_DAEMONIZE([foo3], [tcpdump -vvvv -ttt -l -nn -e -i foo3 'ether dst 0a:58:a9:fe:01:01 and icmp6' > foo3-icmp6.pcap 2> foo3-tcpdump.stderr], [foo3-icmp6-tcpdump.pid])
-OVS_WAIT_UNTIL([grep "listening" foo3-tcpdump.stderr])
+NETNS_START_TCPDUMP([foo3], [-vvvv -ttt -nn -e -i foo3 'ether dst 0a:58:a9:fe:01:01 and icmp6'], [foo3-icmp6])
 
 # 'foo3' should be able to ping 'bar1'
 NS_CHECK_EXEC([foo3], [ping6 -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
@@ -10898,7 +10853,7 @@ NS_CHECK_EXEC([foo3], [ping6 -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 OVS_WAIT_UNTIL([
-    total_pkts=$(cat foo3-icmp6.pcap| grep "echo request" | wc -l)
+    total_pkts=$(cat foo3-icmp6.tcpdump| grep "echo request" | wc -l)
     test "${total_pkts}" = "3"
 ])
 
@@ -11318,27 +11273,23 @@ AT_CHECK([ip addr add 172.16.0.101/24 dev br-mirror])
 AT_CHECK([ip addr add 2003::a/64 dev br-mirror nodad])
 AT_CHECK([ip link set dev br-mirror up])
 
-NS_CHECK_EXEC([mirror], [tcpdump -l -c 3 -neei mirror proto GRE > gre_mirror4.pcap 2>gre_mirror4_error &])
-OVS_WAIT_UNTIL([grep "listening" gre_mirror4_error])
+NETNS_START_TCPDUMP([mirror], [-c 3 -neei mirror proto GRE], [gre_mirror4])
 
 NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 OVS_WAIT_UNTIL([
-    n_packets=$(grep "GRE" -c gre_mirror4.pcap)
+    n_packets=$(grep "GRE" -c gre_mirror4.tcpdump)
     test "${n_packets}" = "3"
 ])
-
-killall tcpdump
 
 ovn-nbctl mirror-del mirror0
 ovn-nbctl mirror-add mirror1 gre 2 to-lport 2003::b
 
 ovn-nbctl --wait=hv lsp-attach-mirror bar1 mirror1
 
-NS_CHECK_EXEC([mirror], [tcpdump -l -c 3 -neei mirror proto GRE > gre_mirror6.pcap 2>gre_mirror6_error &])
-OVS_WAIT_UNTIL([grep "listening" gre_mirror6_error])
+NETNS_START_TCPDUMP([mirror], [-c 3 -neei mirror proto GRE], [gre_mirror6])
 
 NS_CHECK_EXEC([foo1], [ping6 -q -c 3 -i 0.3 -w 2 2002::2 | FORMAT_PING], \
 [0], [dnl
@@ -11346,53 +11297,44 @@ NS_CHECK_EXEC([foo1], [ping6 -q -c 3 -i 0.3 -w 2 2002::2 | FORMAT_PING], \
 ])
 
 OVS_WAIT_UNTIL([
-    n_packets=$(grep "GRE" -c gre_mirror6.pcap)
+    n_packets=$(grep "GRE" -c gre_mirror6.tcpdump)
     test "${n_packets}" = "3"
 ])
-
-killall tcpdump
 
 ovn-nbctl mirror-del mirror1
 ovn-nbctl mirror-add mirror2 erspan 3 to-lport 172.16.0.100
 ovn-nbctl --wait=hv lsp-attach-mirror bar1 mirror2
 
-NS_CHECK_EXEC([mirror], [tcpdump -l -c 3 -neei mirror ip[[22:2]]=0x88be > erspan_mirror4.pcap 2>erspan_mirror4_error &])
-OVS_WAIT_UNTIL([grep "listening" erspan_mirror4_error])
+NETNS_START_TCPDUMP([mirror], [-c 3 -neei mirror ip[[22:2]]=0x88be], [erspan_mirror4])
 
 NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 OVS_WAIT_UNTIL([
-    n_packets=$(grep "gre-proto-0x88be" -c erspan_mirror4.pcap)
+    n_packets=$(grep "gre-proto-0x88be" -c erspan_mirror4.tcpdump)
     test "${n_packets}" = "3"
 ])
-
-killall tcpdump
 
 ovn-nbctl mirror-del mirror2
 ovn-nbctl mirror-add mirror3 erspan 4 to-lport 2003::b
 ovn-nbctl --wait=hv lsp-attach-mirror bar1 mirror3
 
-NS_CHECK_EXEC([mirror], [tcpdump -l -c 3 -neei mirror ip6[[42:2]]=0x88be > erspan_mirror6.pcap 2>erspan_mirror6_error &])
-OVS_WAIT_UNTIL([grep "listening" erspan_mirror6_error])
+NETNS_START_TCPDUMP([mirror], [-c 3 -neei mirror ip6[[42:2]]=0x88be], [erspan_mirror6])
 
 NS_CHECK_EXEC([foo1], [ping6 -q -c 3 -i 0.3 -w 2 2002::2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 OVS_WAIT_UNTIL([
-    n_packets=$(grep "gre-proto-0x88be" -c erspan_mirror6.pcap)
+    n_packets=$(grep "gre-proto-0x88be" -c erspan_mirror6.tcpdump)
     test "${n_packets}" = "3"
 ])
-
-killall tcpdump
 
 uuid=$(fetch_column nb:mirror _uuid name="mirror3")
 ovn-nbctl --wait=hv set mirror $uuid type=gre
 
-NS_CHECK_EXEC([mirror], [tcpdump -c 3 -l -neei mirror proto GRE > gre_mirror6.pcap 2>gre_mirror6_error &])
-OVS_WAIT_UNTIL([grep "listening" gre_mirror6_error])
+NETNS_START_TCPDUMP([mirror], [-c 3 -neei mirror proto GRE], [gre2_mirror6])
 
 NS_CHECK_EXEC([foo1], [ping6 -q -c 3 -i 0.3 -w 2 2002::2 | FORMAT_PING], \
 [0], [dnl
@@ -11400,11 +11342,9 @@ NS_CHECK_EXEC([foo1], [ping6 -q -c 3 -i 0.3 -w 2 2002::2 | FORMAT_PING], \
 ])
 
 OVS_WAIT_UNTIL([
-    n_packets=$(grep "GRE" -c gre_mirror6.pcap)
+    n_packets=$(grep "GRE" -c gre2_mirror6.tcpdump)
     test "${n_packets}" = "3"
 ])
-
-killall tcpdump
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
