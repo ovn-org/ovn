@@ -1,5 +1,5 @@
-#export OVN_BRANCH=master
-#export OVN_VERSION=2.12
+#export OVN_BRANCH=main
+#export OVN_VERSION=24.03.90
 #export DISTRO=debian
 #export GITHUB_SRC=https://github.com/ovn-org/ovn.git
 #export DOCKER_REPO=ovn-org/ovn

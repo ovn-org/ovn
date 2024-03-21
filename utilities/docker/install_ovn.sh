@@ -12,29 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -e
+
 OVN_BRANCH=$1
 GITHUB_SRC=$2
 
-# get ovs source always from master as its needed as dependency
-mkdir /build; cd /build
-git clone --depth 1 -b master https://github.com/openvswitch/ovs.git
-cd ovs;
-mkdir _gcc;
-
-# build and install
-./boot.sh
-cd _gcc
-../configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
---enable-ssl
-cd ..; make -C _gcc install; cd ..
-
-
-# get ovn source
+# Get ovn source.
 git clone --depth 1 -b $OVN_BRANCH $GITHUB_SRC
 cd ovn
 
-# build and install
+# Get OVS submodule, build and install OVS.
+git submodule update --init
+cd ovs
 ./boot.sh
 ./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
---enable-ssl --with-ovs-source=/build/ovs/ --with-ovs-build=/build/ovs/_gcc
-make -j8; make install
+--enable-ssl
+make -j8 install
+cd ..
+
+# Build and install OVN.
+./boot.sh
+./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
+--enable-ssl
+make -j8 install
