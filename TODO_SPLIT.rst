@@ -50,14 +50,6 @@ Immediate to Short-term tasks
   be removed from the tests/ directory, and we could reference the version in
   the ovs repo instead. There are many other files that this could be done with.
 
-* The ovs-sandbox is in a similar state to the tests directory. That is, the
-  tutorial/ directory contains a copy of the ovs-sandbox script. Rather than
-  copying the script wholesale, it probably makes more sense to refer to the
-  ovs version of the script from the ovn repo. Running the sandbox should
-  also be altered so that the base ovs-sandbox script doesn't do anything
-  ovn-related. Rather, the ovn repo can start the sandbox by calling into
-  ovs and then start the ovn parts after.
-
 * OVN code needs to be removed from the OVS repo. This should be mostly
   straightforward with a couple of exceptions. There is an include/ovn/
   directory in the ovs repo that should be moved to the ovn repo instead of

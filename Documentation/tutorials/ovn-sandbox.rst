@@ -25,7 +25,7 @@
 OVN Sandbox
 ===========
 
-This tutorial shows you how to explore features using ``ovs-sandbox`` as a
+This tutorial shows you how to explore features using ``ovn-sandbox`` as a
 simulated test environment.  It's assumed that you have an understanding of OVS
 before going through this tutorial. Detail about OVN is covered in
 ovn-architecture_, but this tutorial lets you quickly see it in action.
@@ -33,10 +33,11 @@ ovn-architecture_, but this tutorial lets you quickly see it in action.
 Getting Started
 ---------------
 
-For some general information about ``ovs-sandbox``, see the Open vSwitch
-documentaion on ``ovs-sandbox``.
+``ovn-sandbox`` is derived from the Open vSwitch ``ovs-sandbox`` utility.
+For some general information about it, see the "Getting Started" section of
+`ovs-advanced`_ in the Open vSwitch documentation.
 
-``ovs-sandbox`` in the OVN repo includes OVN support by default.  To start it,
+``ovn-sandbox`` in the OVN repo includes OVN support by default.  To start it,
 you would simply need to run::
 
     $ make sandbox
@@ -62,7 +63,7 @@ Using GDB
 ---------
 
 GDB support is not required to go through the tutorial. See the "Using GDB"
-section of `ovs-advanced`_ in Open vSwitch documentation for more info.
+section of `ovs-advanced`_ in the Open vSwitch documentation for more info.
 Additional flags exist for launching the debugger for the OVN programs::
 
     --gdb-ovn-northd
@@ -72,9 +73,9 @@ Additional flags exist for launching the debugger for the OVN programs::
 Creating OVN Resources
 ----------------------
 
-Once you have ``ovs-sandbox`` running with OVN enabled, you can start using OVN
-utilities to create resources in OVN.  As an example, we will create an
-environment that has two logical switches connected by a logical router.
+Once you have ``ovn-sandbox`` running, you can start using OVN utilities to
+create resources.  As an example, we will create an environment that has two
+logical switches connected by a logical router.
 
 Create the first logical switch with one port::
 
@@ -123,7 +124,7 @@ View a summary of OVN's current logical configuration::
                 mac: "00:00:00:00:ff:02"
                 networks: ["11.0.0.1/24"]
 
-The ``tutorial`` directory of the OVS source tree includes a script
+The ``tutorial`` directory of the OVN source tree includes a script
 that runs all of the commands for you::
 
     $ ./ovn-setup.sh
