@@ -6,7 +6,6 @@
 # without warranty of any kind.
 
 EXTRA_DIST += \
-	rhel/README.RHEL.rst \
 	rhel/automake.mk \
 	rhel/etc_logrotate.d_ovn \
 	rhel/ovn-fedora.spec \

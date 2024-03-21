@@ -22,7 +22,7 @@
       Avoid deeper levels because they do not render well.
 
 ===========================================
-Fedora, RHEL 7.x Packaging for OVN
+Fedora, RHEL 7.x+ Packaging for OVN
 ===========================================
 
 This document provides instructions for building and installing OVN
@@ -128,11 +128,6 @@ Installing
 
 RPM packages can be installed by using the command ``rpm -i``. Package
 installation requires superuser privileges.
-
-Refer to the `RHEL README`__ for additional usage and configuration
-information.
-
-__ https://github.com/openvswitch/ovs/blob/master/rhel/README.RHEL.rst
 
 Reporting Bugs
 --------------
