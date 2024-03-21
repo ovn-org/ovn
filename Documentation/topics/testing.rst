@@ -82,7 +82,7 @@ report test failures as bugs and include the ``testsuite.log`` in your report.
 
 .. note::
   Sometimes a few tests may fail on some runs but not others. This is usually a
-  bug in the testsuite, not a bug in Open vSwitch itself. If you find that a
+  bug in the testsuite, not a bug in OVN itself. If you find that a
   test fails intermittently, please report it, since the developers may not
   have noticed. You can make the testsuite automatically rerun tests that fail,
   by adding ``RECHECK=yes`` to the ``make`` command line, e.g.::

@@ -34,4 +34,3 @@ The below guides provide information on contributing to OVN itself.
    backporting-patches
    coding-style
    documentation-style
-   libopenvswitch-abi

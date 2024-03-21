@@ -27,12 +27,11 @@
 Patchwork
 =========
 
-Open vSwitch and OVN use `Patchwork`__ to track the status of patches
-sent to the :doc:`ovs-dev mailing list <mailing-lists>`. Our Patchwork
-instance can be found on `ozlabs.org`__.
+OVN uses `Patchwork`__ to track the status of patches sent to the
+:doc:`ovs-dev mailing list <mailing-lists>`. Our Patchwork instance can be
+found on `ozlabs.org`__.
 
-Patchwork provides a number of useful features for developers working on
-Open vSwitch and OVN:
+Patchwork provides a number of useful features for developers working on OVN:
 
 - Tracking the lifecycle of patches (accepted, rejected, under-review, ...)
 - Assigning reviewers (delegates) to patches
