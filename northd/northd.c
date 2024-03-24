@@ -8414,6 +8414,16 @@ build_dhcpv4_options_flows(struct ovn_port *op,
                                                      meter_groups),
                                       &op->nbsp->dhcpv4_options->header_,
                                       lflow_ref);
+            /* Add 34000 priority flow to allow DHCP request from the lport
+             * if the CMS has enabled native DHCPv4 for this lport.
+             * */
+            ovn_lflow_add_with_lport_and_hint(lflows, op->od,
+                                              S_SWITCH_IN_ACL_EVAL, 34000,
+                                              ds_cstr(&match),
+                                              REGBIT_ACL_VERDICT_ALLOW" = 1; next;",
+                                              op->key,
+                                              &op->nbsp->header_,
+                                              lflow_ref);
             ds_clear(&match);
 
             /* If REGBIT_DHCP_OPTS_RESULT is set, it means the
