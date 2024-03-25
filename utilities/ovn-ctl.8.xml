@@ -70,7 +70,6 @@
     <p><code>--ovsdb-nb-wrapper=<var>WRAPPER</var></code></p>
     <p><code>--ovsdb-sb-wrapper=<var>WRAPPER</var></code></p>
     <p><code>--ovn-user=<var>USER:GROUP</var></code></p>
-    <p><code>--ovs-user=<var>USER:GROUP</var></code></p>
     <p><code>-h</code> | <code>--help</code></p>
 
     <h1>File location options</h1>
