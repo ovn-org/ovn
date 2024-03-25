@@ -48,8 +48,8 @@ LC_ALL=C; export LC_ALL
 ovn_install_dir () {
     DIR="$1"
     INSTALL_MODE="${2:-755}"
-    INSTALL_USER="root"
-    INSTALL_GROUP="root"
+    INSTALL_USER="$(id -un)"
+    INSTALL_GROUP="$(id -gn)"
     [ "$OVN_USER" != "" ] && INSTALL_USER="${OVN_USER%:*}"
     [ "${OVN_USER##*:}" != "" ] && INSTALL_GROUP="${OVN_USER##*:}"
 
