@@ -269,8 +269,8 @@ $cluster_remote_port
     # Set the owner of the ovn_dbdir (with -R option) to OVN_USER if set.
     # This is required because the ovndbs are created with root permission
     # if not present when create_cluster/upgrade_db is called.
-    INSTALL_USER="root"
-    INSTALL_GROUP="root"
+    INSTALL_USER="$(id -un)"
+    INSTALL_GROUP="$(id -gn)"
     [ "$OVN_USER" != "" ] && INSTALL_USER="${OVN_USER%:*}"
     [ "${OVN_USER##*:}" != "" ] && INSTALL_GROUP="${OVN_USER##*:}"
 
@@ -1088,7 +1088,6 @@ Options:
   --ovn-ic-sb-db-ssl-protocols=PROTOCOLS OVN IC Southbound DB SSL protocols
   --ovn-ic-sb-db-ssl-ciphers=CIPHERS OVN IC Southbound DB SSL cipher list
   --ovn-user="user[:group]"      pass the --user flag to the ovn daemons
-  --ovs-user="user[:group]"      pass the --user flag to ovs daemons
   --ovsdb-nb-wrapper=WRAPPER     run with a wrapper like valgrind for debugging
   --ovsdb-sb-wrapper=WRAPPER     run with a wrapper like valgrind for debugging
   --ovsdb-disable-file-column-diff=no|yes
