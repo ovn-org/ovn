@@ -34,7 +34,9 @@ log_verdict_to_string(uint8_t verdict)
         return "drop";
     } else if (verdict == LOG_VERDICT_REJECT) {
         return "reject";
-    } else {
+    } else if (verdict == LOG_VERDICT_PASS) {
+        return "pass";
+    } else  {
         return "<unknown>";
     }
 }
