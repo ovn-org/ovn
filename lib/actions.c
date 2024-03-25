@@ -3596,6 +3596,8 @@ parse_log_arg(struct action_context *ctx, struct ovnact_log *log)
             log->verdict = LOG_VERDICT_REJECT;
         } else if (lexer_match_id(ctx->lexer, "allow")) {
             log->verdict = LOG_VERDICT_ALLOW;
+        } else if (lexer_match_id(ctx->lexer, "pass")) {
+            log->verdict = LOG_VERDICT_PASS;
         } else {
             lexer_syntax_error(ctx->lexer, "unknown verdict");
             return;

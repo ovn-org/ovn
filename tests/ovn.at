@@ -1847,6 +1847,9 @@ log(name="test1", verdict=drop, severity=info, meter="meter1");
 log(verdict=drop);
     formats as log(verdict=drop, severity=info);
     encodes as controller(userdata=00.00.00.07.00.00.00.00.01.06)
+log(verdict=pass);
+    formats as log(verdict=pass, severity=info);
+    encodes as controller(userdata=00.00.00.07.00.00.00.00.03.06)
 log(verdict=bad_verdict, severity=info);
     Syntax error at `bad_verdict' unknown verdict.
 log(verdict=drop, severity=bad_severity);
