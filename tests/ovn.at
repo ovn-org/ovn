@@ -10170,6 +10170,7 @@ get_final_nw_tos() {
 check_tos() {
     # First check with ovn-trace for logical flows.
     echo "checking for tos $1"
+    ovn-sbctl dump-flows lsw0
     (if test $1 != 0; then echo "ip.dscp = $1;"; fi;
      echo 'output("lp2");') > expout
     AT_CHECK_UNQUOTED([ovn_trace --minimal lsw0 'inport == "lp1" && eth.src == f0:00:00:00:00:01 && eth.dst == f0:00:00:00:00:02 && ip4.src == 1.1.1.1 && ip4.dst == 1.1.1.2'], [0], [expout])
@@ -10205,9 +10206,8 @@ check ovn-nbctl --wait=hv set QoS $qos_id bandwidth=rate=100
 # check at hv with a qos meter table
 AT_CHECK([as hv ovs-ofctl dump-meters br-int -O OpenFlow13 | grep rate=100 | wc -l], [0], [1
 ])
-AT_CHECK([as hv ovs-ofctl dump-flows br-int -O OpenFlow13 | grep meter | wc -l], [0], [1
+AT_CHECK([as hv ovs-ofctl dump-flows br-int -O OpenFlow13 | grep meter | wc -l], [0], [2
 ])
-
 # Update the DSCP marking
 check ovn-nbctl --wait=hv set QoS $qos_id action=dscp=63
 check_tos 63
@@ -10218,7 +10218,7 @@ check ovn-nbctl --wait=hv set QoS $qos_id bandwidth=rate=4294967295,burst=429496
 # check at hv with a qos meter table
 AT_CHECK([as hv ovs-ofctl dump-meters br-int -O OpenFlow13 | grep burst_size=4294967295 | wc -l], [0], [1
 ])
-AT_CHECK([as hv ovs-ofctl dump-flows br-int -O OpenFlow13 | grep meter | wc -l], [0], [1
+AT_CHECK([as hv ovs-ofctl dump-flows br-int -O OpenFlow13 | grep meter | wc -l], [0], [2
 ])
 
 check ovn-nbctl --wait=hv set QoS $qos_id match="outport\=\=\"lp2\"" direction="to-lport"
@@ -22071,7 +22071,7 @@ check_row_count Port_Binding 1 logical_port=sw0-vir virtual_parent=sw0-p1
 wait_for_ports_up sw0-vir
 check ovn-nbctl --wait=hv sync
 AT_CHECK([test 2 = `cat hv1/ovn-controller.log | grep "pinctrl received  packet-in" | \
-grep opcode=BIND_VPORT | grep OF_Table_ID=29 | wc -l`])
+grep opcode=BIND_VPORT | grep OF_Table_ID=28 | wc -l`])
 
 wait_row_count Port_Binding 1 logical_port=sw0-vir6 chassis=$hv1_ch_uuid
 check_row_count Port_Binding 1 logical_port=sw0-vir6 virtual_parent=sw0-p1
@@ -37685,7 +37685,7 @@ tpa=$(ip_to_hex 10 0 0 10)
 send_garp 1 1 $eth_src $eth_dst $spa $tpa
 
 OVS_WAIT_UNTIL([test 1 = `cat hv1/ovn-controller.log | grep "pinctrl received  packet-in" | \
-grep opcode=BIND_VPORT | grep OF_Table_ID=29 | wc -l`])
+grep opcode=BIND_VPORT | grep OF_Table_ID=28 | wc -l`])
 
 sleep_controller hv1
 

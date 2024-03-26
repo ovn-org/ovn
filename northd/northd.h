@@ -397,27 +397,26 @@ enum ovn_stage {
     PIPELINE_STAGE(SWITCH, IN,  ACL_HINT,       7, "ls_in_acl_hint")      \
     PIPELINE_STAGE(SWITCH, IN,  ACL_EVAL,       8, "ls_in_acl_eval")      \
     PIPELINE_STAGE(SWITCH, IN,  ACL_ACTION,     9, "ls_in_acl_action")    \
-    PIPELINE_STAGE(SWITCH, IN,  QOS_MARK,      10, "ls_in_qos_mark")      \
-    PIPELINE_STAGE(SWITCH, IN,  QOS_METER,     11, "ls_in_qos_meter")     \
-    PIPELINE_STAGE(SWITCH, IN,  LB_AFF_CHECK,  12, "ls_in_lb_aff_check")  \
-    PIPELINE_STAGE(SWITCH, IN,  LB,            13, "ls_in_lb")            \
-    PIPELINE_STAGE(SWITCH, IN,  LB_AFF_LEARN,  14, "ls_in_lb_aff_learn")  \
-    PIPELINE_STAGE(SWITCH, IN,  PRE_HAIRPIN,   15, "ls_in_pre_hairpin")   \
-    PIPELINE_STAGE(SWITCH, IN,  NAT_HAIRPIN,   16, "ls_in_nat_hairpin")   \
-    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       17, "ls_in_hairpin")       \
-    PIPELINE_STAGE(SWITCH, IN,  ACL_AFTER_LB_EVAL,  18, \
+    PIPELINE_STAGE(SWITCH, IN,  QOS,           10, "ls_in_qos")    \
+    PIPELINE_STAGE(SWITCH, IN,  LB_AFF_CHECK,  11, "ls_in_lb_aff_check")  \
+    PIPELINE_STAGE(SWITCH, IN,  LB,            12, "ls_in_lb")            \
+    PIPELINE_STAGE(SWITCH, IN,  LB_AFF_LEARN,  13, "ls_in_lb_aff_learn")  \
+    PIPELINE_STAGE(SWITCH, IN,  PRE_HAIRPIN,   14, "ls_in_pre_hairpin")   \
+    PIPELINE_STAGE(SWITCH, IN,  NAT_HAIRPIN,   15, "ls_in_nat_hairpin")   \
+    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       16, "ls_in_hairpin")       \
+    PIPELINE_STAGE(SWITCH, IN,  ACL_AFTER_LB_EVAL,  17, \
                    "ls_in_acl_after_lb_eval")  \
-    PIPELINE_STAGE(SWITCH, IN,  ACL_AFTER_LB_ACTION,  19, \
+    PIPELINE_STAGE(SWITCH, IN,  ACL_AFTER_LB_ACTION,  18, \
                    "ls_in_acl_after_lb_action")  \
-    PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      20, "ls_in_stateful")      \
-    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    21, "ls_in_arp_rsp")       \
-    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  22, "ls_in_dhcp_options")  \
-    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 23, "ls_in_dhcp_response") \
-    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    24, "ls_in_dns_lookup")    \
-    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  25, "ls_in_dns_response")  \
-    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 26, "ls_in_external_port") \
-    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       27, "ls_in_l2_lkup")       \
-    PIPELINE_STAGE(SWITCH, IN,  L2_UNKNOWN,    28, "ls_in_l2_unknown")    \
+    PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      19, "ls_in_stateful")      \
+    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    20, "ls_in_arp_rsp")       \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  21, "ls_in_dhcp_options")  \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 22, "ls_in_dhcp_response") \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    23, "ls_in_dns_lookup")    \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  24, "ls_in_dns_response")  \
+    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 25, "ls_in_external_port") \
+    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       26, "ls_in_l2_lkup")       \
+    PIPELINE_STAGE(SWITCH, IN,  L2_UNKNOWN,    27, "ls_in_l2_unknown")    \
                                                                           \
     /* Logical switch egress stages. */                                   \
     PIPELINE_STAGE(SWITCH, OUT, PRE_ACL,      0, "ls_out_pre_acl")        \
@@ -426,11 +425,10 @@ enum ovn_stage {
     PIPELINE_STAGE(SWITCH, OUT, ACL_HINT,     3, "ls_out_acl_hint")       \
     PIPELINE_STAGE(SWITCH, OUT, ACL_EVAL,     4, "ls_out_acl_eval")       \
     PIPELINE_STAGE(SWITCH, OUT, ACL_ACTION,   5, "ls_out_acl_action")     \
-    PIPELINE_STAGE(SWITCH, OUT, QOS_MARK,     6, "ls_out_qos_mark")       \
-    PIPELINE_STAGE(SWITCH, OUT, QOS_METER,    7, "ls_out_qos_meter")      \
-    PIPELINE_STAGE(SWITCH, OUT, STATEFUL,     8, "ls_out_stateful")       \
-    PIPELINE_STAGE(SWITCH, OUT, CHECK_PORT_SEC,  9, "ls_out_check_port_sec") \
-    PIPELINE_STAGE(SWITCH, OUT, APPLY_PORT_SEC, 10, "ls_out_apply_port_sec") \
+    PIPELINE_STAGE(SWITCH, OUT, QOS,          6, "ls_out_qos")       \
+    PIPELINE_STAGE(SWITCH, OUT, STATEFUL,     7, "ls_out_stateful")       \
+    PIPELINE_STAGE(SWITCH, OUT, CHECK_PORT_SEC,  8, "ls_out_check_port_sec") \
+    PIPELINE_STAGE(SWITCH, OUT, APPLY_PORT_SEC, 9, "ls_out_apply_port_sec") \
                                                                       \
     /* Logical router ingress stages. */                              \
     PIPELINE_STAGE(ROUTER, IN,  ADMISSION,       0, "lr_in_admission")    \
