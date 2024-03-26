@@ -21,6 +21,7 @@ EXTRA_DIST += \
 COMMON_MACROS_AT = \
 	tests/ovsdb-macros.at \
 	tests/ovs-macros.at \
+	tests/ovn-macros.at \
 	tests/ofproto-macros.at
 
 TESTSUITE_AT = \
