@@ -3484,7 +3484,7 @@ build_lb_vip_actions(const struct ovn_northd_lb *lb,
     }
 
     if (reject) {
-        int stage = ls_dp ? ovn_stage_get_table(S_SWITCH_OUT_QOS_MARK)
+        int stage = ls_dp ? ovn_stage_get_table(S_SWITCH_OUT_QOS)
                           : ovn_stage_get_table(S_ROUTER_OUT_SNAT);
         ds_clear(action);
         ds_put_format(action, "reg0 = 0; reject { outport <-> inport; "
@@ -6709,7 +6709,7 @@ build_acl_action_lflows(const struct ls_stateful_record *ls_stateful_rec,
             "/* eth.dst <-> eth.src; ip.dst <-> ip.src; is implicit. */ "
             "outport <-> inport; next(pipeline=%s,table=%d); };",
             ingress ? "egress" : "ingress",
-            ingress ? ovn_stage_get_table(S_SWITCH_OUT_QOS_MARK)
+            ingress ? ovn_stage_get_table(S_SWITCH_OUT_QOS)
                 : ovn_stage_get_table(S_SWITCH_IN_L2_LKUP));
 
         ovn_lflow_metered(lflows, od, stage, 1000,
@@ -7085,24 +7085,39 @@ build_qos(struct ovn_datapath *od, struct lflow_table *lflows,
           struct lflow_ref *lflow_ref) {
     struct ds action = DS_EMPTY_INITIALIZER;
 
-    ovn_lflow_add(lflows, od, S_SWITCH_IN_QOS_MARK, 0, "1", "next;",
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_QOS, 0, "1", "next;",
                   lflow_ref);
-    ovn_lflow_add(lflows, od, S_SWITCH_OUT_QOS_MARK, 0, "1", "next;",
-                  lflow_ref);
-    ovn_lflow_add(lflows, od, S_SWITCH_IN_QOS_METER, 0, "1", "next;",
-                  lflow_ref);
-    ovn_lflow_add(lflows, od, S_SWITCH_OUT_QOS_METER, 0, "1", "next;",
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_QOS, 0, "1", "next;",
                   lflow_ref);
 
     for (size_t i = 0; i < od->nbs->n_qos_rules; i++) {
         struct nbrec_qos *qos = od->nbs->qos_rules[i];
         bool ingress = !strcmp(qos->direction, "from-lport") ? true :false;
-        enum ovn_stage stage = ingress ? S_SWITCH_IN_QOS_MARK : S_SWITCH_OUT_QOS_MARK;
+        enum ovn_stage stage = ingress ? S_SWITCH_IN_QOS : S_SWITCH_OUT_QOS;
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         int64_t rate = 0;
         int64_t burst = 0;
 
         ds_clear(&action);
+        for (size_t n = 0; n < qos->n_bandwidth; n++) {
+            if (!strcmp(qos->key_bandwidth[n], "rate")) {
+                rate = qos->value_bandwidth[n];
+            } else if (!strcmp(qos->key_bandwidth[n], "burst")) {
+                burst = qos->value_bandwidth[n];
+            }
+        }
+        if (rate) {
+            stage = ingress ? S_SWITCH_IN_QOS : S_SWITCH_OUT_QOS;
+            if (burst) {
+                ds_put_format(&action,
+                              "set_meter(%"PRId64", %"PRId64"); ",
+                              rate, burst);
+            } else {
+                ds_put_format(&action,
+                              "set_meter(%"PRId64"); ",
+                              rate);
+            }
+        }
         for (size_t j = 0; j < qos->n_action; j++) {
             if (!strcmp(qos->key_action[j], "dscp")) {
                 if (qos->value_action[j] > QOS_MAX_DSCP) {
@@ -7119,43 +7134,11 @@ build_qos(struct ovn_datapath *od, struct lflow_table *lflows,
                               qos->value_action[j]);
             }
         }
-
-        if (action.length) {
             ds_put_cstr(&action, "next;");
-            ovn_lflow_add_with_hint(lflows, od, stage, qos->priority,
-                                    qos->match, ds_cstr(&action),
-                                    &qos->header_, lflow_ref);
-        }
-
-        for (size_t n = 0; n < qos->n_bandwidth; n++) {
-            if (!strcmp(qos->key_bandwidth[n], "rate")) {
-                rate = qos->value_bandwidth[n];
-            } else if (!strcmp(qos->key_bandwidth[n], "burst")) {
-                burst = qos->value_bandwidth[n];
-            }
-        }
-        if (rate) {
-            stage = ingress ? S_SWITCH_IN_QOS_METER : S_SWITCH_OUT_QOS_METER;
-            ds_clear(&action);
-            if (burst) {
-                ds_put_format(&action,
-                              "set_meter(%"PRId64", %"PRId64"); next;",
-                              rate, burst);
-            } else {
-                ds_put_format(&action,
-                              "set_meter(%"PRId64"); next;",
-                              rate);
-            }
-
-            /* Ingress and Egress QoS Meter Table.
-             *
-             * We limit the bandwidth of this flow by adding a meter table.
-             */
             ovn_lflow_add_with_hint(lflows, od, stage,
                                     qos->priority,
                                     qos->match, ds_cstr(&action),
                                     &qos->header_, lflow_ref);
-        }
     }
     ds_destroy(&action);
 }
