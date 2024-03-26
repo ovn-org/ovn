@@ -12294,3 +12294,117 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([MAC_Bindings updates on read-only sb])
+ovn_start --use-tcp-to-sb
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+PARSE_LISTENING_PORT([$ovs_base/ovn-sb/ovsdb-server.log], [TCP_PORT])
+
+# Use tcp to connect to sb
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=tcp:127.0.0.1:$TCP_PORT \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+# Logical network:
+# A public switch (pub) with a localnet port connected to two LRs (lr0 and lr1)
+# each with a distributed gateway port.
+# Two VMs: lp0 on sw0 connected to lr0
+#          lp1 on sw1 connected to lr1
+#
+# This test adds a floating IP on one VM and checks the MAC_Binding entries to be updated properly.
+
+# Create logical switches
+check ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add sw1
+check ovn-nbctl ls-add pub
+
+# Created localnet port on public switch
+check ovn-nbctl lsp-add pub ln-pub
+check ovn-nbctl lsp-set-type ln-pub localnet
+check ovn-nbctl lsp-set-addresses ln-pub unknown
+check ovn-nbctl lsp-set-options ln-pub network_name=phys
+
+# Create logical routers and connect them to public switch
+AT_CHECK([(ovn-nbctl create Logical_Router name=lr0;
+           ovn-nbctl create Logical_Router name=lr1) | uuidfilt], [0], [<0>
+<1>
+])
+check ovn-nbctl lrp-add lr0 lr0-pub f0:00:00:00:00:01 172.24.4.220/24
+check ovn-nbctl lsp-add pub pub-lr0 -- set Logical_Switch_Port pub-lr0 \
+    type=router options:router-port=lr0-pub options:nat-addresses="router" addresses="router"
+check ovn-nbctl lrp-add lr1 lr1-pub f0:00:00:00:01:01 172.24.4.221/24
+check ovn-nbctl lsp-add pub pub-lr1 -- set Logical_Switch_Port pub-lr1 \
+    type=router options:router-port=lr1-pub options:nat-addresses="router" addresses="router"
+
+check ovn-nbctl lrp-set-gateway-chassis lr0-pub hv1 10
+check ovn-nbctl lrp-set-gateway-chassis lr1-pub hv1 10
+
+# Connect sw0 and sw1 to lr0 and lr1
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.254/24
+check ovn-nbctl lsp-add sw0 sw0-lr0 -- set Logical_Switch_Port sw0-lr0 type=router \
+    options:router-port=lr0-sw0 addresses="router"
+check ovn-nbctl lrp-add lr1 lr1-sw1 00:00:00:00:ff:02 20.0.0.254/24
+check ovn-nbctl lsp-add sw1 sw1-lr1 -- set Logical_Switch_Port sw1-lr1 type=router \
+    options:router-port=lr1-sw1 addresses="router"
+
+ADD_BR([br-phys])
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+
+check ovs-vsctl add-port br-int vif0 \
+      -- set Interface vif0 external-ids:iface-id=lp0 \
+      -- set Interface vif0 type=internal
+
+check ovn-nbctl lsp-add sw0 lp0
+check ovn-nbctl lsp-add sw1 lp1
+check ovn-nbctl lsp-set-addresses lp0 "50:54:00:00:00:01 10.0.0.10"
+check ovn-nbctl lsp-set-addresses lp1 "50:54:00:00:00:02 20.0.0.10"
+
+OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lp0` = xup])
+ovn-nbctl --wait=hv sync
+
+# Stopping updates to sb
+# By stopping temporarily updates from controller to sb, we are making sb read-only.
+# We can't just pause sb to make it read-only, as we expect sb to still handle northd changes.
+stop_ovsdb_controller_updates $TCP_PORT
+
+# Adding lp1 : this will make sb read-only
+check ovs-vsctl add-port br-int vif1 \
+      -- set Interface vif1 external-ids:iface-id=lp1 \
+      -- set Interface vif1 type=internal
+
+# Make sure ovn-controller handled vif1 addition. So, at this point ovn-controller did try to update sb
+OVS_WAIT_UNTIL([test x`ovs-vsctl get Interface vif1 external_ids:ovn-installed` = x'"true"'])
+
+# Create floating IP. SB should be read-only, so we should not be enable to update MAC_Bindings now.
+check ovn-nbctl --wait=sb lr-nat-add lr0 dnat_and_snat 172.24.4.100 10.0.0.10
+
+# Restarting updates.
+restart_ovsdb_controller_updates $TCP_PORT
+# Check that the MAC_Binding entries have been properly created as SB is now writable.
+wait_row_count MAC_Binding 1 logical_port=lr1-pub ip=172.24.4.100
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])

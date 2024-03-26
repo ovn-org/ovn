@@ -4604,7 +4604,7 @@ send_garp_rarp_update(struct ovsdb_idl_txn *ovnsb_idl_txn,
                         garp_rarp->announce_time = time_msec() + 1000;
                         garp_rarp->backoff = 1000; /* msec. */
                     }
-                } else {
+                } else if (ovnsb_idl_txn) {
                     add_garp_rarp(name, laddrs->ea,
                                   laddrs->ipv4_addrs[i].addr,
                                   binding_rec->datapath->tunnel_key,
