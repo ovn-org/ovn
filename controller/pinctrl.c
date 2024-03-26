@@ -3531,13 +3531,14 @@ pinctrl_handler(void *arg_)
 
         rconn_run_wait(swconn);
         rconn_recv_wait(swconn);
-        send_garp_rarp_wait(send_garp_rarp_time);
-        ipv6_ra_wait(send_ipv6_ra_time);
-        ip_mcast_querier_wait(send_mcast_query_time);
-        svc_monitors_wait(svc_monitors_next_run_time);
-        ipv6_prefixd_wait(send_prefixd_time);
-        bfd_monitor_wait(bfd_time);
-
+        if (rconn_is_connected(swconn)) {
+            send_garp_rarp_wait(send_garp_rarp_time);
+            ipv6_ra_wait(send_ipv6_ra_time);
+            ip_mcast_querier_wait(send_mcast_query_time);
+            svc_monitors_wait(svc_monitors_next_run_time);
+            ipv6_prefixd_wait(send_prefixd_time);
+            bfd_monitor_wait(bfd_time);
+        }
         seq_wait(pinctrl_handler_seq, new_seq);
 
         latch_wait(&pctrl->pinctrl_thread_exit);
