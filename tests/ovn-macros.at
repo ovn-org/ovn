@@ -220,12 +220,14 @@ ovn_start_northd() {
 # options are accepted to adjust that:
 #   --backup-northd         Start a backup northd.
 #   --backup-northd=paused  Start the backup northd in the paused state.
+#   --use-tcp-to-sb         Use tcp to connect to sb.
 ovn_start () {
     local backup_northd=false
     local backup_northd_options=
     case $1 in
         --backup-northd) backup_northd=true; shift ;;
         --backup-northd=paused) backup_northd=true; backup_northd_options=--paused; shift ;;
+        --use-tcp-to-sb) use_tcp=true; shift ;;
     esac
     local AZ=$1
     local msg_prefix=${AZ:+$AZ: }
@@ -246,7 +248,13 @@ ovn_start () {
         ovn_start_northd $backup_northd_options backup $AZ
     fi
 
-    if test X$HAVE_OPENSSL = Xyes; then
+    if test $use_tcp; then
+        # Create the SB DB ptcp connection.
+        ovn-sbctl \
+            -- --id=@c create connection \
+                target=\"ptcp:0:127.0.0.1\" \
+            -- add SB_Global . connections @c
+    elif test X$HAVE_OPENSSL = Xyes; then
         # Create the SB DB pssl+RBAC connection.
         ovn-sbctl \
             -- --id=@c create connection \
@@ -971,6 +979,22 @@ sleep_ovsdb() {
 wake_up_ovsdb() {
   echo OVSDB $1 waking up
   AT_CHECK([kill -CONT $(cat $1/ovsdb-server.pid)])
+}
+
+stop_ovsdb_controller_updates() {
+  TCP_PORT=$1
+  echo Stopping updates from ovn-controller to ovsdb using port $TCP_PORT
+  on_exit 'nft list tables | grep ovn-test && nft delete table ip ovn-test'
+  nft add table ip ovn-test
+  nft 'add chain ip ovn-test INPUT { type filter hook input priority 0; policy accept; }'
+  nft add rule ip ovn-test INPUT tcp dport $TCP_PORT counter drop
+}
+
+restart_ovsdb_controller_updates() {
+  TCP_PORT=$1
+  echo Restarting updates from ovn-controller to ovsdb
+  nft list ruleset | grep $TCP_PORT
+  nft delete table ip ovn-test
 }
 
 trim_zeros() {
