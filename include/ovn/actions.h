@@ -66,7 +66,7 @@ struct collector_set_ids;
     OVNACT(EXCHANGE,          ovnact_move)            \
     OVNACT(DEC_TTL,           ovnact_null)            \
     OVNACT(CT_NEXT,           ovnact_ct_next)         \
-    OVNACT(CT_COMMIT_V1,      ovnact_ct_commit_v1)    \
+    /* CT_COMMIT_V1 is not supported anymore. */      \
     OVNACT(CT_COMMIT_V2,      ovnact_nest)            \
     OVNACT(CT_DNAT,           ovnact_ct_nat)          \
     OVNACT(CT_SNAT,           ovnact_ct_nat)          \
@@ -258,13 +258,6 @@ struct ovnact_push_pop {
 struct ovnact_ct_next {
     struct ovnact ovnact;
     uint8_t ltable;                /* Logical table ID of next table. */
-};
-
-/* OVNACT_CT_COMMIT_V1. */
-struct ovnact_ct_commit_v1 {
-    struct ovnact ovnact;
-    uint32_t ct_mark, ct_mark_mask;
-    ovs_be128 ct_label, ct_label_mask;
 };
 
 /* Type of NAT used for the particular action.

@@ -724,7 +724,7 @@
       </li>
       <li>
         <code>allow-related</code> ACLs translate into logical flows that set
-        the allow bit and additionally have <code>ct_commit(ct_label=0/1);
+        the allow bit and additionally have <code>ct_commit { ct_label=0/1; };
         next;</code> actions for new connections and <code>reg0[1] = 1;
         next;</code> for existing connections.  In case the <code>ACL</code>
         has a label then <code>reg3</code> is loaded with the label value and
@@ -746,9 +746,9 @@
       <li>
         Other ACLs set the drop bit and advance to the next table for new or
         untracked connections. For known connections, they set the drop bit,
-        as well as running the <code>ct_commit(ct_label=1/1);</code> action.
-        Setting <code>ct_label</code> marks a connection as one that was
-        previously allowed, but should no longer be allowed due to a policy
+        as well as running the <code>ct_commit { ct_label=1/1; };</code>
+        action.  Setting <code>ct_label</code> marks a connection as one that
+        was previously allowed, but should no longer be allowed due to a policy
         change.
       </li>
     </ul>
@@ -1218,10 +1218,11 @@
       </li>
       <li>
         <code>allow-related</code> apply-after-lb ACLs translate into logical
-        flows that set the allow bit and run the <code>ct_commit(ct_label=0/1);
-        next;</code> actions for new connections and <code>reg0[1] = 1;
-        next;</code> for existing connections.  In case the <code>ACL</code>
-        has a label then <code>reg3</code> is loaded with the label value and
+        flows that set the allow bit and run the
+        <code>ct_commit {ct_label=0/1; }; next;</code> actions for new
+        connections and <code>reg0[1] = 1; next;</code> for existing
+        connections.  In case the <code>ACL</code> has a label then
+        <code>reg3</code> is loaded with the label value and
         <code>reg0[13]</code> bit is set to 1 (which acts as a hint for the
         next tables to commit the label to conntrack).
       </li>
@@ -1240,7 +1241,7 @@
       </li>
       <li>
         Other apply-after-lb ACLs set the drop bit for new or untracked
-        connections and <code>ct_commit(ct_label=1/1);</code> for known
+        connections and <code>ct_commit { ct_label=1/1; }</code> for known
         connections.  Setting <code>ct_label</code> marks a connection
         as one that was previously allowed, but should no longer be
         allowed due to a policy change.

@@ -3107,7 +3107,6 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
             execute_ct_next(ovnact_get_CT_NEXT(a), dp, uflow, pipeline, super);
             break;
 
-        case OVNACT_CT_COMMIT_V1:
         case OVNACT_CT_COMMIT_V2:
             /* Nothing to do. */
             break;

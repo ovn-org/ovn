@@ -6568,7 +6568,7 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
          * that this connection is set for deletion.  By not
          * specifying "next;", we implicitly drop the packet after
          * updating conntrack state.  We would normally defer
-         * ct_commit() to the "stateful" stage, but since we're
+         * ct_commit to the "stateful" stage, but since we're
          * rejecting/dropping the packet, we go ahead and do it here.
          */
         ds_truncate(match, match_tier_len);
@@ -6883,7 +6883,7 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
          * set on them.  That's a connection that was disallowed, but is
          * now allowed by policy again since it hit this default-allow flow.
          * We need to set ct_mark.blocked=0 to let the connection continue,
-         * which will be done by ct_commit() in the "stateful" stage.
+         * which will be done by ct_commit in the "stateful" stage.
          * Subsequent packets will hit the flow at priority 0 that just
          * uses "next;". */
         ds_clear(&match);
