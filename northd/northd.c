@@ -641,7 +641,8 @@ init_mcast_info_for_datapath(struct ovn_datapath *od)
     }
 
     hmap_init(&od->mcast_info.group_tnlids);
-    od->mcast_info.group_tnlid_hint = OVN_MIN_IP_MULTICAST;
+    /* allocations start from hint + 1 */
+    od->mcast_info.group_tnlid_hint = OVN_MIN_IP_MULTICAST - 1;
     ovs_list_init(&od->mcast_info.groups);
 
     if (od->nbs) {
