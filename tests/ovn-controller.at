@@ -2325,14 +2325,15 @@ AT_CHECK_UNQUOTED([echo $lflow_run_1], [0], [$lflow_run_2
 ])
 
 # Restart OVS this time. Flows should be reinstalled without waiting.
+# Set the wait-before-clear to a large value (60s) to make the test more reliable.
+check ovs-vsctl set open . external_ids:ovn-ofctrl-wait-before-clear=60000
+check ovn-nbctl --wait=hv sync
+
 OVS_APP_EXIT_AND_WAIT([ovs-vswitchd])
 start_daemon ovs-vswitchd --enable-dummy=system -vvconn -vofproto_dpif -vunixctl
 
-# Sync to make sure ovn-controller is given enough time to install the flows.
-check ovn-nbctl --wait=hv sync
-
-# Flow should be installed without any extra waiting.
-AT_CHECK([ovs-ofctl dump-flows br-int | grep -F 10.1.2.4 | grep -vF 2.2.2.2], [0], [ignore])
+# Flow should be installed without waiting for another 60s.
+OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep -F 10.1.2.4 | grep -vF 2.2.2.2])
 
 check ovn-nbctl --wait=hv lb-add lb3 3.3.3.3 10.1.2.5 \
 -- ls-lb-add ls1 lb3
