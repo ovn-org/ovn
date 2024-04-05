@@ -392,6 +392,7 @@ Route commands:\n\
   [--ecmp]\n\
   [--ecmp-symmetric-reply]\n\
   [--route-table=ROUTE_TABLE]\n\
+  [--bfd]\n\
   lr-route-add ROUTER PREFIX NEXTHOP [PORT]\n\
                             add a route to ROUTER\n\
   [--policy=POLICY]\n\
@@ -402,6 +403,7 @@ Route commands:\n\
   lr-route-list ROUTER      print routes for ROUTER\n\
 \n\
 Policy commands:\n\
+  [--bfd]\n\
   lr-policy-add ROUTER PRIORITY MATCH ACTION [NEXTHOP,[NEXTHOP,...]] \
 [OPTIONS KEY=VALUE ...] \n\
                             add a policy to router\n\
