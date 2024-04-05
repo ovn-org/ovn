@@ -85,6 +85,7 @@
 #include "mirror.h"
 #include "mac_cache.h"
 #include "statctrl.h"
+#include "lib/dns-resolve.h"
 
 VLOG_DEFINE_THIS_MODULE(main);
 
@@ -5090,6 +5091,7 @@ main(int argc, char *argv[])
     mirror_init();
     vif_plug_provider_initialize();
     statctrl_init();
+    dns_resolve_init(true);
 
     /* Connect to OVS OVSDB instance. */
     struct ovsdb_idl_loop ovs_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
@@ -6176,6 +6178,7 @@ loop_done:
     unixctl_server_destroy(unixctl);
     service_stop();
     ovsrcu_exit();
+    dns_resolve_destroy();
 
     exit(retval);
 }
