@@ -10075,19 +10075,30 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
                                 lflow_ref);
     }
 
-    ds_clear(&actions);
-    ds_put_format(&actions, "%s = %"PRIu16
-                  "; %s = select(", REG_ECMP_GROUP_ID, ecmp_group_id,
-                  REG_ECMP_MEMBER_ID);
-
-    for (size_t i = 0; i < n_valid_nexthops; i++) {
-        if (i > 0) {
-            ds_put_cstr(&actions, ", ");
-        }
-
-        ds_put_format(&actions, "%"PRIuSIZE, valid_nexthops[i]);
+    if (!n_valid_nexthops) {
+        goto cleanup;
     }
-    ds_put_cstr(&actions, ");");
+
+    ds_clear(&actions);
+    if (n_valid_nexthops > 1) {
+        ds_put_format(&actions, "%s = %"PRIu16
+                      "; %s = select(", REG_ECMP_GROUP_ID, ecmp_group_id,
+                      REG_ECMP_MEMBER_ID);
+
+        for (size_t i = 0; i < n_valid_nexthops; i++) {
+            if (i > 0) {
+                ds_put_cstr(&actions, ", ");
+            }
+
+            ds_put_format(&actions, "%"PRIuSIZE, valid_nexthops[i]);
+        }
+        ds_put_cstr(&actions, ");");
+    } else {
+        ds_put_format(&actions, "%s = %"PRIu16
+                      "; %s = %"PRIuSIZE"; next;", REG_ECMP_GROUP_ID,
+                      ecmp_group_id, REG_ECMP_MEMBER_ID,
+                      valid_nexthops[0]);
+    }
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_POLICY,
                             rule->priority, rule->match,
                             ds_cstr(&actions), &rule->header_,
