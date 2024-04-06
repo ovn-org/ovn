@@ -6834,18 +6834,23 @@ check ovn-nbctl clear logical_router_static_route $route_uuid bfd
 wait_column "admin_down" nb:bfd status logical_port=rp-public
 OVS_WAIT_UNTIL([ip netns exec server bfdd-control status | grep -qi state=Down])
 
-check ovn-nbctl --bfd lr-policy-add R1 100 "ip4.src == 200.0.0.0/8" reroute 172.16.1.50
-wait_column "up" nb:bfd status logical_port=rp-public
-OVS_WAIT_UNTIL([ovn-sbctl dump-flows R1 |grep lr_in_policy |grep 'ip4.src == 200.0.0.0/8' |grep -q 172.16.1.50])
+check ovn-nbctl --bfd lr-policy-add R1 100 "ip4.src == 200.0.0.0/8" reroute 172.16.1.50,172.16.1.60
+wait_column "up" nb:bfd status dst_ip=172.16.1.50
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows R1 | grep lr_in_policy_ecmp | grep -q 172.16.1.50])
 
 check ovn-nbctl lr-policy-del R1
-wait_column "admin_down" nb:bfd status logical_port=rp-public
+wait_column "admin_down" nb:bfd status dst_ip=172.16.1.50
+wait_column "admin_down" nb:bfd status dst_ip=172.16.1.60
 OVS_WAIT_UNTIL([ip netns exec server bfdd-control status | grep -qi state=Down])
 
 NETNS_START_TCPDUMP([server], [-nni s1 udp port 3784 -Q in], [bfd])
 sleep 5
 kill $(pidof tcpdump)
 AT_CHECK([grep -qi bfd bfd.tcpdump],[1])
+
+uuid=$(fetch_column nb:bfd _uuid dst_ip="172.16.1.60")
+check ovn-nbctl destroy bfd $uuid
+uuid=$(fetch_column nb:bfd _uuid logical_port="rp-public")
 
 # restart the connection
 check ovn-nbctl set logical_router_static_route $route_uuid bfd=$uuid
