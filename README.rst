@@ -91,9 +91,6 @@ license applies to the file in question.
 
 File build-aux/cccl is licensed under the GNU General Public License, version 2.
 
-Files under the xenserver directory are licensed on a file-by-file basis.
-Refer to each file for details.
-
 Contact
 -------
 

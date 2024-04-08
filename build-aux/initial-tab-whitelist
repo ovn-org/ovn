@@ -5,7 +5,6 @@
 \.sln$
 ^ovs/
 ^third-party/
-^xenserver/
 ^debian/rules.modules$
 ^debian/rules$
 ^\.gitmodules$
