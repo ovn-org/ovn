@@ -3540,7 +3540,7 @@ trace(const char *dp_s, const char *flow_s)
     }
     uint32_t in_key = uflow.regs[MFF_LOG_INPORT - MFF_REG0];
     if (!in_key) {
-        VLOG_WARN("microflow does not specify ingress port");
+        return xstrdup("microflow does not specify ingress port");
     }
     const struct ovntrace_port *inport = ovntrace_port_find_by_key(dp, in_key);
     const char *inport_name = inport ? inport->friendly_name : "(unnamed)";
