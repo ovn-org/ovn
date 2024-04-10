@@ -35,12 +35,12 @@ jobs:
     # Check out ovn and ovs separately inside ovn-fake-multinode/ovn and ovn-fake-multinode/ovs
     # ovn-fake-multinode builds and installs ovs from ovn-fake-multinode/ovs
     # and it builds and installs ovn from ovn-fake-multinode/ovn. It uses the ovs submodule for ovn compilation.
-    - name: Check out ovs master
+    - name: Check out ovs main
       uses: actions/checkout@v4
       with:
         path: 'ovn-fake-multinode/ovs'
         repository: 'openvswitch/ovs'
-        ref: 'master'
+        ref: 'main'
 
     - name: Check out ovn ${{ matrix.cfg.branch }}
       uses: actions/checkout@v4

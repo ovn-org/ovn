@@ -174,5 +174,5 @@ man page for more detail.
 .. _ovn-nbctl(8): http://www.ovn.org/support/dist-docs/ovn-nbctl.8.html
 .. _ovn-sbctl(8): http://www.ovn.org/support/dist-docs/ovn-sbctl.8.html
 .. _ovn-trace(8): http://www.ovn.org/support/dist-docs/ovn-trace.8.html
-.. _ovs-advanced: https://github.com/openvswitch/ovs/blob/master/Documentation/tutorials/ovs-advanced.rst
+.. _ovs-advanced: https://github.com/openvswitch/ovs/blob/main/Documentation/tutorials/ovs-advanced.rst
 
