@@ -276,7 +276,7 @@ static bool default_acl_drop;
  * Route offsets implement logic to prioritize traffic for routes with
  * same ip_prefix values:
  *  -  connected route overrides static one;
- *  -  static route overrides connected route. */
+ *  -  static route overrides src-ip route. */
 #define ROUTE_PRIO_OFFSET_MULTIPLIER 3
 #define ROUTE_PRIO_OFFSET_STATIC 1
 #define ROUTE_PRIO_OFFSET_CONNECTED 2
