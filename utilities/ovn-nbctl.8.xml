@@ -1175,7 +1175,7 @@
     <h2>NAT Commands</h2>
 
     <dl>
-      <dt>[<code>--may-exist</code>] [<code>--stateless</code>] [<code>--gateway-port</code>=<var>GATEWAY_PORT</var>] <code>lr-nat-add</code> <var>router</var> <var>type</var> <var>external_ip</var> <var>logical_ip</var> [<var>logical_port</var> <var>external_mac</var>]</dt>
+      <dt>[<code>--may-exist</code>] [<code>--stateless</code>] [<code>--gateway-port</code>=<var>GATEWAY_PORT</var>] [--portrange] <code>lr-nat-add</code> <var>router</var> <var>type</var> <var>external_ip</var> <var>logical_ip</var> [<var>logical_port</var> <var>external_mac</var>] [<var>external_port_range</var>]</dt>
       <dd>
         <p>
           Adds the specified NAT to <var>router</var>.
@@ -1210,6 +1210,18 @@
           distributed gateway ports and the gateway port for this NAT can't
           be inferred from the <var>external_ip</var>, it is an error to not
           specify the <var>GATEWAY_PORT</var>.
+        </p>
+
+        <p>
+          If the <code>--portrange</code> option is specified, then a range of
+          ports may be specified in the <code>external_port_range</code> part
+          of the <code>lr-nat-add</code> command. If this option is omitted,
+          then an external port range may not be specified. The format of the
+          port range is <code>port_low-port_high</code>, where
+          <var>port_low</var> is a lower number than <var>port_high</var>. When
+          the packet is NATted, a random port from the range will be selected
+          as the source port. The range for the
+          <code>external_port_range</code> is <code>1-65535</code>.
         </p>
 
         <p>
