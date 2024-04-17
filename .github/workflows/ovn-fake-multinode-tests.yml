@@ -17,7 +17,7 @@ jobs:
     strategy:
       matrix:
         cfg:
-        - { branch: "main" }
+        - { branch: "${{ github.ref_name }}" }
         - { branch: "branch-22.03" }
     env:
       RUNC_CMD: podman
@@ -76,16 +76,16 @@ jobs:
       fail-fast: false
       matrix:
         cfg:
-        - { branch: "main", testsuiteflags: ""}
+        - { branch: "${{ github.ref_name }}", testsuiteflags: ""}
         - { branch: "branch-22.03", testsuiteflags: "-k 'basic test'" }
     name: multinode tests ${{ join(matrix.cfg.*, ' ') }}
     env:
       RUNC_CMD: podman
       OS_IMAGE: "fedora:37"
       CENTRAL_IMAGE: "ovn/ovn-multi-node:${{ matrix.cfg.branch }}"
-      CHASSIS_IMAGE: "ovn/ovn-multi-node:main"
-      RELAY_IMAGE: "ovn/ovn-multi-node:main"
-      GW_IMAGE: "ovn/ovn-multi-node:main"
+      CHASSIS_IMAGE: "ovn/ovn-multi-node:${{ github.ref_name }}"
+      RELAY_IMAGE: "ovn/ovn-multi-node:${{ github.ref_name }}"
+      GW_IMAGE: "ovn/ovn-multi-node:${{ github.ref_name }}"
       # Disable SSL for now. Revisit this if required.
       ENABLE_SSL: no
       CC: gcc
@@ -114,7 +114,7 @@ jobs:
 
     - uses: actions/download-artifact@v4
       with:
-        name: test-main-image
+        name: test-${{ github.ref_name }}-image
 
     - uses: actions/download-artifact@v4
       with:
@@ -122,7 +122,7 @@ jobs:
 
     - name: Load podman image
       run: |
-        sudo podman load --input ovn_main_image.tar
+        sudo podman load --input ovn_${{ github.ref_name }}_image.tar
         sudo podman load --input ovn_branch-22.03_image.tar
 
     - name: Check out ovn-fake-multi-node
