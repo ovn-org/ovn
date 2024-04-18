@@ -231,6 +231,7 @@ Kevin Lo                           kevlo@FreeBSD.org
 Kevin Traynor                      kevin.traynor@intel.com
 Khem Raj                           raj.khem@gmail.com
 Kmindg G                           kmindg@gmail.com
+Kacper Kamiński                    lampo100@gmail.com
 Kris Murphy                        kriskend@linux.vnet.ibm.com
 Krishna Kondaka                    kkondaka@vmware.com
 Kyle Mestery                       mestery@mestery.com
