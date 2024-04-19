@@ -13,6 +13,9 @@ Post v24.03.0
     "lflow-stage-to-oftable STAGE_NAME" that converts stage name into OpenFlow
     table id.
   - Rename the ovs-sandbox script to ovn-sandbox.
+  - Remove "ovn-set-local-ip" config option from vswitchd
+    external-ids, the option is no longer needed as it became effectively
+    "true" for all scenarios.
 
 OVN v24.03.0 - 01 Mar 2024
 --------------------------

@@ -318,11 +318,6 @@ OVS_WAIT_UNTIL([check_tunnel_property type geneve])
 ovs-vsctl del-port ovn-fakech-0
 OVS_WAIT_UNTIL([check_tunnel_property type geneve])
 
-# set `ovn-set-local-ip` option to true and check if tunnel parameters
-OVS_WAIT_WHILE([check_tunnel_property options:local_ip "\"192.168.0.1\""])
-ovs-vsctl set open . external_ids:ovn-set-local-ip=true
-OVS_WAIT_UNTIL([check_tunnel_property options:local_ip "\"192.168.0.1\""])
-
 # Change the local_ip on the OVS side and check than OVN fixes it
 ovs-vsctl set interface ovn-fakech-0 options:local_ip="1.1.1.1"
 OVS_WAIT_UNTIL([check_tunnel_property options:local_ip "\"192.168.0.1\""])
@@ -817,7 +812,7 @@ check_tunnel_property () {
 }
 
 # without any tos options
-no_tos_options="{csum=\"true\", key=flow, remote_ip=\"192.168.0.2\"}"
+no_tos_options="{csum=\"true\", key=flow, local_ip=\"192.168.0.1\", remote_ip=\"192.168.0.2\"}"
 
 #
 # Start off with a remote chassis supporting geneve
@@ -2878,5 +2873,36 @@ OVS_WAIT_UNTIL([test x$(ovs-vsctl get port $fakech_tunnel external_ids:ovn-chass
 AT_CHECK([test x"$port_uuid"=$(ovs-vsctl get port $fakech_tunnel _uuid)])
 
 OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Encap enforce local_ip])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.12
+
+as hv1
+OVS_WAIT_UNTIL([
+    test $(ovs-vsctl --bare --columns _uuid find interface options:local_ip="192.168.0.11" | wc -l) -eq 1
+])
+
+as hv2
+OVS_WAIT_UNTIL([
+    test $(ovs-vsctl --bare --columns _uuid find interface options:local_ip="192.168.0.12" | wc -l) -eq 1
+])
+
+OVN_CLEANUP([hv1],[hv2])
+
 AT_CLEANUP
 ])

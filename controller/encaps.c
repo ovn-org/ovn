@@ -208,11 +208,12 @@ out:
 static void
 tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
            const char *new_chassis_id, const struct sbrec_encap *encap,
-           bool must_set_local_ip, const char *local_ip,
+           const char *local_ip,
            const struct ovsrec_open_vswitch_table *ovs_table)
 {
     struct smap options = SMAP_INITIALIZER(&options);
     smap_add(&options, "remote_ip", encap->ip);
+    smap_add(&options, "local_ip", local_ip);
     smap_add(&options, "key", "flow");
     const char *dst_port = smap_get(&encap->options, "dst_port");
     const char *csum = smap_get(&encap->options, "csum");
@@ -239,7 +240,6 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
     const struct ovsrec_open_vswitch *cfg =
         ovsrec_open_vswitch_table_first(ovs_table);
 
-    bool set_local_ip = must_set_local_ip;
     if (cfg) {
         /* If the tos option is configured, get it */
         const char *encap_tos =
@@ -259,19 +259,10 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
         if (encap_df) {
             smap_add(&options, "df_default", encap_df);
         }
-
-        if (!set_local_ip) {
-            /* If ovn-set-local-ip option is configured, get it */
-            set_local_ip =
-                get_chassis_external_id_value_bool(
-                    &cfg->external_ids, tc->this_chassis->name,
-                    "ovn-set-local-ip", false);
-        }
     }
 
     /* Add auth info if ipsec is enabled. */
     if (sbg->ipsec) {
-        set_local_ip = true;
         smap_add(&options, "remote_name", new_chassis_id);
 
         /* Force NAT-T traversal via configuration */
@@ -288,10 +279,6 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
         if (forceencaps) {
             smap_add(&options, "ipsec_forceencaps", "yes");
         }
-    }
-
-    if (set_local_ip) {
-        smap_add(&options, "local_ip", local_ip);
     }
 
     /* If there's an existing tunnel record that does not need any change,
@@ -412,18 +399,6 @@ chassis_tunnel_add(const struct sbrec_chassis *chassis_rec,
             continue;
         }
 
-        /* Check if need to pass the local ip. We always set local ip if there
-         * are multiple local IPs for the selected encap type. */
-        int count = 0;
-        bool set_local_ip = false;
-        for (int j = 0; j < this_chassis->n_encaps; j++) {
-            if (pref_type == get_tunnel_type(this_chassis->encaps[j]->type) &&
-                count++ > 0) {
-                set_local_ip = true;
-                break;
-            }
-        }
-
         for (int j = 0; j < this_chassis->n_encaps; j++) {
             if (pref_type != get_tunnel_type(this_chassis->encaps[j]->type)) {
                 continue;
@@ -431,7 +406,7 @@ chassis_tunnel_add(const struct sbrec_chassis *chassis_rec,
             VLOG_DBG("tunnel_add: '%s', local ip: %s", chassis_rec->name,
                      this_chassis->encaps[j]->ip);
             tunnel_add(tc, sbg, chassis_rec->name, chassis_rec->encaps[i],
-                       set_local_ip, this_chassis->encaps[j]->ip, ovs_table);
+                       this_chassis->encaps[j]->ip, ovs_table);
             tuncnt++;
         }
     }
