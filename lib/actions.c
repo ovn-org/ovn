@@ -1836,6 +1836,44 @@ format_REJECT(const struct ovnact_nest *nest, struct ds *s)
     format_nested_action(nest, "reject", s);
 }
 
+static bool
+is_paused_nested_action(enum action_opcode opcode)
+{
+    switch (opcode) {
+    case ACTION_OPCODE_ARP:
+    case ACTION_OPCODE_ND_NS:
+        return true;
+    case ACTION_OPCODE_IGMP:
+    case ACTION_OPCODE_PUT_ARP:
+    case ACTION_OPCODE_PUT_DHCP_OPTS:
+    case ACTION_OPCODE_ND_NA:
+    case ACTION_OPCODE_ND_NA_ROUTER:
+    case ACTION_OPCODE_PUT_ND:
+    case ACTION_OPCODE_PUT_FDB:
+    case ACTION_OPCODE_PUT_DHCPV6_OPTS:
+    case ACTION_OPCODE_DNS_LOOKUP:
+    case ACTION_OPCODE_LOG:
+    case ACTION_OPCODE_PUT_ND_RA_OPTS:
+    case ACTION_OPCODE_ICMP:
+    case ACTION_OPCODE_ICMP4_ERROR:
+    case ACTION_OPCODE_ICMP6_ERROR:
+    case ACTION_OPCODE_TCP_RESET:
+    case ACTION_OPCODE_SCTP_ABORT:
+    case ACTION_OPCODE_REJECT:
+    case ACTION_OPCODE_PUT_ICMP4_FRAG_MTU:
+    case ACTION_OPCODE_PUT_ICMP6_FRAG_MTU:
+    case ACTION_OPCODE_EVENT:
+    case ACTION_OPCODE_BIND_VPORT:
+    case ACTION_OPCODE_DHCP6_SERVER:
+    case ACTION_OPCODE_HANDLE_SVC_CHECK:
+    case ACTION_OPCODE_BFD_MSG:
+    case ACTION_OPCODE_ACTIVATION_STRATEGY_RARP:
+    case ACTION_OPCODE_MG_SPLIT_BUF:
+    default:
+        return false;
+    }
+}
+
 static void
 encode_nested_actions(const struct ovnact_nest *on,
                       const struct ovnact_encode_params *ep,
@@ -1851,7 +1889,8 @@ encode_nested_actions(const struct ovnact_nest *on,
      * converted to OpenFlow, as its userdata.  ovn-controller will convert the
      * packet to ARP or NA and then send the packet and actions back to the
      * switch inside an OFPT_PACKET_OUT message. */
-    size_t oc_offset = encode_start_controller_op(opcode, false,
+    bool pause = is_paused_nested_action(opcode);
+    size_t oc_offset = encode_start_controller_op(opcode, pause,
                                                   ep->ctrl_meter_id, ofpacts);
     ofpacts_put_openflow_actions(inner_ofpacts.data, inner_ofpacts.size,
                                  ofpacts, OFP15_VERSION);
@@ -1867,6 +1906,9 @@ encode_ARP(const struct ovnact_nest *on,
            struct ofpbuf *ofpacts)
 {
     encode_nested_actions(on, ep, ACTION_OPCODE_ARP, ofpacts);
+    if (!ep->explicit_arp_ns_output) {
+        emit_resubmit(ofpacts, ep->output_ptable);
+    }
 }
 
 static void
@@ -1955,6 +1997,9 @@ encode_ND_NS(const struct ovnact_nest *on,
              struct ofpbuf *ofpacts)
 {
     encode_nested_actions(on, ep, ACTION_OPCODE_ND_NS, ofpacts);
+    if (!ep->explicit_arp_ns_output) {
+        emit_resubmit(ofpacts, ep->output_ptable);
+    }
 }
 
 static void

@@ -553,6 +553,10 @@ update_sb_config_options_to_sbrec(struct ed_type_global_config *config_data,
         smap_replace(options, "sbctl_probe_interval", sip);
     }
 
+    /* Adds indication that northd is handling explicit output after
+     * arp/nd_ns action. */
+    smap_add(options, "arp_ns_explicit_output", "true");
+
     if (!smap_equal(&sb->options, options)) {
         sbrec_sb_global_set_options(sb, options);
     }

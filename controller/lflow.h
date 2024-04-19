@@ -130,6 +130,7 @@ struct lflow_ctx_in {
     bool lb_hairpin_use_ct_mark;
     bool localnet_learn_fdb;
     bool localnet_learn_fdb_changed;
+    bool explicit_arp_ns_output;
 };
 
 struct lflow_ctx_out {

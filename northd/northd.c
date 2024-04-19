@@ -13422,7 +13422,7 @@ build_arp_request_flows_for_lrouter(
                       "ip6.dst = %s; "
                       "nd.target = %s; "
                       "output; "
-                      "};", ETH_ADDR_ARGS(eth_dst), sn_addr_s,
+                      "}; output;", ETH_ADDR_ARGS(eth_dst), sn_addr_s,
                       route->nexthop);
 
         ovn_lflow_add_with_hint__(lflows, od, S_ROUTER_IN_ARP_REQUEST, 200,
@@ -13442,7 +13442,7 @@ build_arp_request_flows_for_lrouter(
                       "arp.tpa = " REG_NEXT_HOP_IPV4 "; "
                       "arp.op = 1; " /* ARP request */
                       "output; "
-                      "};",
+                      "}; output;",
                       copp_meter_get(COPP_ARP_RESOLVE, od->nbr->copp,
                                      meter_groups),
                       lflow_ref);
@@ -13451,7 +13451,7 @@ build_arp_request_flows_for_lrouter(
                       "nd_ns { "
                       "nd.target = " REG_NEXT_HOP_IPV6 "; "
                       "output; "
-                      "};",
+                      "}; output;",
                       copp_meter_get(COPP_ND_NS_RESOLVE, od->nbr->copp,
                                      meter_groups),
                       lflow_ref);

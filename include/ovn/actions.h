@@ -854,6 +854,9 @@ struct ovnact_encode_params {
     /* The datapath key. */
     uint32_t dp_key;
 
+    /* Indication if we should add explicit output after arp/nd_ns action. */
+    bool explicit_arp_ns_output;
+
     /* OVN maps each logical flow table (ltable), one-to-one, onto a physical
      * OpenFlow flow table (ptable).  A number of parameters describe this
      * mapping and data related to flow tables:

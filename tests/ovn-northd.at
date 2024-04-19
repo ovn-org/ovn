@@ -6973,6 +6973,9 @@ ct_dnat /* assuming no un-dnat entry, so no change */ {
             arp.op = 1;
             output("rtr-ls");
         };
+        ct_dnat /* assuming no un-dnat entry, so no change */ {
+            output("rtr-ls");
+        };
     };
 };
 ])
