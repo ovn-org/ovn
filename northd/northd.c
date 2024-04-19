@@ -4689,6 +4689,11 @@ fail:
 static bool
 lr_changes_can_be_handled(const struct nbrec_logical_router *lr)
 {
+    /* We can't do I-P processing when the router is disabled. */
+    if (!lrouter_is_enabled(lr)) {
+        return false;
+    }
+
     /* Check if the columns are changed in this row. */
     enum nbrec_logical_router_column_id col;
     for (col = 0; col < NBREC_LOGICAL_ROUTER_N_COLUMNS; col++) {
