@@ -28,6 +28,7 @@
 #define OVN_FEATURE_FDB_TIMESTAMP "fdb-timestamp"
 #define OVN_FEATURE_LS_DPG_COLUMN "ls-dpg-column"
 #define OVN_FEATURE_CT_COMMIT_NAT_V2 "ct-commit-nat-v2"
+#define OVN_FEATURE_CT_COMMIT_TO_ZONE "ct-commit-to-zone"
 
 /* OVS datapath supported features.  Based on availability OVN might generate
  * different types of openflows.

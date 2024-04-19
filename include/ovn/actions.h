@@ -68,6 +68,7 @@ struct collector_set_ids;
     OVNACT(CT_NEXT,           ovnact_ct_next)         \
     /* CT_COMMIT_V1 is not supported anymore. */      \
     OVNACT(CT_COMMIT_V2,      ovnact_nest)            \
+    OVNACT(CT_COMMIT_TO_ZONE, ovnact_ct_commit_to_zone) \
     OVNACT(CT_DNAT,           ovnact_ct_nat)          \
     OVNACT(CT_SNAT,           ovnact_ct_nat)          \
     OVNACT(CT_DNAT_IN_CZONE,  ovnact_ct_nat)          \
@@ -76,7 +77,7 @@ struct collector_set_ids;
     OVNACT(CT_LB_MARK,        ovnact_ct_lb)           \
     OVNACT(SELECT,            ovnact_select)          \
     OVNACT(CT_CLEAR,          ovnact_null)            \
-    OVNACT(CT_COMMIT_NAT,     ovnact_ct_commit_nat)   \
+    OVNACT(CT_COMMIT_NAT,     ovnact_ct_commit_to_zone) \
     OVNACT(CLONE,             ovnact_nest)            \
     OVNACT(ARP,               ovnact_nest)            \
     OVNACT(ICMP4,             ovnact_nest)            \
@@ -290,11 +291,12 @@ struct ovnact_ct_nat {
     uint8_t ltable;             /* Logical table ID of next table. */
 };
 
-/* OVNACT_CT_COMMIT_NAT. */
-struct ovnact_ct_commit_nat {
+/* OVNACT_CT_COMMIT_TO_ZONE, OVNACT_CT_COMMIT_NAT. */
+struct ovnact_ct_commit_to_zone {
     struct ovnact ovnact;
 
     bool dnat_zone;
+    bool do_nat;
     uint8_t ltable;
 };
 

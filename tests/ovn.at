@@ -1316,6 +1316,22 @@ ct_commit { ct_label=0x181716151413121110090807060504030201; };
 ct_commit { ip4.dst = 192.168.0.1; };
     Field ip4.dst is not modifiable.
 
+# ct_commit_to_zone
+ct_commit_to_zone(dnat);
+    encodes as ct(commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]])
+    has prereqs ip
+ct_commit_to_zone(snat);
+    encodes as ct(commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]])
+    has prereqs ip
+ct_commit_to_zone;
+    Syntax error at `;' expecting `('.
+ct_commit_to_zone();
+    "ct_commit_to_zone" action accepts only "dnat" or "snat" parameter.
+ct_commit_to_zone(foo);
+    "ct_commit_to_zone" action accepts only "dnat" or "snat" parameter.
+ct_commit_to_zone(dnat;
+    Syntax error at `;' expecting `)'.
+
 # Legact ct_commit_v1 action.
 ct_commit();
     Syntax error at `(' expecting `;'.
