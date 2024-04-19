@@ -20,6 +20,7 @@ struct chassis_features {
     bool fdb_timestamp;
     bool ls_dpg_column;
     bool ct_commit_nat_v2;
+    bool ct_commit_to_zone;
 };
 
 struct global_config_tracked_data {

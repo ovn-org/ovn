@@ -1432,6 +1432,24 @@
           </p>
         </dd>
 
+        <dt><code>ct_commit_to_zone(dnat);</code></dt>
+        <dt><code>ct_commit_to_zone(snat);</code></dt>
+        <dd>
+          <p>
+            Commit the flow to the specific zone in the connection tracker.
+            The packet is then automatically sent to the next tables as if
+            followed by <code>next;</code> action. The next tables will
+            see the changes in the packet caused by the connection tracker.
+          </p>
+
+          <p>
+            Note that this action is meaningful only in the Logical Router
+            Datapath as the Logical Switch Datapath does not use separate
+            connection tracking zones. Using this action in Logical Switch
+            Datapath falls back to committing the flow into the logical port's
+            conntrack zone.
+          </p>
+        </dd>
         <dt><code>ct_dnat;</code></dt>
         <dt><code>ct_dnat(<var>IP</var>);</code></dt>
         <dd>
