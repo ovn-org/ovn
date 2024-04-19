@@ -4878,6 +4878,13 @@ nd_ns {
     <p>
       <ul>
         <li>
+          A priority-70 logical flow is added that initiates CT state for
+          traffic that is configured to be SNATed on Distributed routers.
+          This allows the next table, <code>lr_out_snat</code>, to
+          effectively match on various CT states.
+        </li>
+
+        <li>
           A priority-50 logical flow is added that commits any untracked flows
           from the previous table <code>lr_out_undnat</code> for Gateway
           routers.  This flow matches on <code>ct.new &amp;&amp; ip</code>
@@ -5070,6 +5077,17 @@ nd_ns {
       </li>
 
       <li>
+        An additional flow is added for traffic that goes in opposite
+        direction (i.e. it enters a network with configured SNAT). Where the
+        flow above matched on <code>ip4.src == <var>A</var> &amp;&amp; outport
+        == <var>GW</var></code>, this flow matches on <code> ip4.dst ==
+        <var>A</var> &amp;&amp; inport == <var>GW</var></code>. A CT state is
+        initiated for this traffic so that the following table, <code>
+        lr_out_post_snat</code>, can identify whether the traffic flow was
+        initiated from the internal or external network.
+      </li>
+
+      <li>
         A priority-0 logical flow with match <code>1</code> has actions
         <code>next;</code>.
       </li>
@@ -5080,6 +5098,16 @@ nd_ns {
     <p>
       Packets reaching this table are processed according to the flows below:
       <ul>
+        <li>
+          Traffic that goes directly into a network configured with SNAT on
+          Distributed routers, and was initiated from an external network (i.e.
+          it matches <code>ct.new</code>), is committed to the SNAT CT zone.
+          This ensures that replies returning from the SNATed network do not
+          have their source address translated. For details about match rules
+          and priority see section "Egress Table 3: SNAT on Distributed
+          Routers".
+        </li>
+
         <li>
           A priority-0 logical flow that matches all packets not already
           handled (match <code>1</code>) and action <code>next;</code>.

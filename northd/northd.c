@@ -14426,19 +14426,26 @@ build_lrouter_out_is_dnat_local(struct lflow_table *lflows,
 static void
 build_lrouter_out_snat_match(struct lflow_table *lflows,
                              const struct ovn_datapath *od,
-                             const struct nbrec_nat *nat, struct ds *match,
-                             bool distributed_nat, int cidr_bits, bool is_v6,
+                             const struct nbrec_nat *nat,
+                             struct ds *match,
+                             bool distributed_nat, int cidr_bits,
+                             bool is_v6,
                              struct ovn_port *l3dgw_port,
-                             struct lflow_ref *lflow_ref)
+                             struct lflow_ref *lflow_ref,
+                             bool is_reverse)
 {
     ds_clear(match);
 
-    ds_put_format(match, "ip && ip%c.src == %s", is_v6 ? '6' : '4',
+    ds_put_format(match, "ip && ip%c.%s == %s",
+                  is_v6 ? '6' : '4',
+                  is_reverse ? "dst" : "src",
                   nat->logical_ip);
 
     if (!od->is_gw_router) {
         /* Distributed router. */
-        ds_put_format(match, " && outport == %s", l3dgw_port->json_key);
+        ds_put_format(match, " && %s == %s",
+                      is_reverse ? "inport" : "outport",
+                      l3dgw_port->json_key);
         if (od->n_l3dgw_ports) {
             ds_put_format(match, " && is_chassis_resident(\"%s\")",
                           distributed_nat
@@ -14449,7 +14456,7 @@ build_lrouter_out_snat_match(struct lflow_table *lflows,
 
     if (nat->allowed_ext_ips || nat->exempted_ext_ips) {
         lrouter_nat_add_ext_ip_match(od, lflows, match, nat,
-                                     is_v6, false, cidr_bits,
+                                     is_v6, is_reverse, cidr_bits,
                                      lflow_ref);
     }
 }
@@ -14476,7 +14483,8 @@ build_lrouter_out_snat_stateless_flow(struct lflow_table *lflows,
     uint16_t priority = cidr_bits + 1;
 
     build_lrouter_out_snat_match(lflows, od, nat, match, distributed_nat,
-                                 cidr_bits, is_v6, l3dgw_port, lflow_ref);
+                                 cidr_bits, is_v6, l3dgw_port, lflow_ref,
+                                 false);
 
     if (!od->is_gw_router) {
         /* Distributed router. */
@@ -14523,7 +14531,7 @@ build_lrouter_out_snat_in_czone_flow(struct lflow_table *lflows,
 
     build_lrouter_out_snat_match(lflows, od, nat, match, distributed_nat,
                                  cidr_bits, is_v6, l3dgw_port,
-                                 lflow_ref);
+                                 lflow_ref, false);
 
     if (od->n_l3dgw_ports) {
         priority += 128;
@@ -14572,7 +14580,8 @@ build_lrouter_out_snat_flow(struct lflow_table *lflows,
                             struct ds *actions, bool distributed_nat,
                             struct eth_addr mac, int cidr_bits, bool is_v6,
                             struct ovn_port *l3dgw_port,
-                            struct lflow_ref *lflow_ref)
+                            struct lflow_ref *lflow_ref,
+                            const struct chassis_features *features)
 {
     if (strcmp(nat->type, "snat") && strcmp(nat->type, "dnat_and_snat")) {
         return;
@@ -14586,7 +14595,9 @@ build_lrouter_out_snat_flow(struct lflow_table *lflows,
     uint16_t priority = cidr_bits + 1;
 
     build_lrouter_out_snat_match(lflows, od, nat, match, distributed_nat,
-                                 cidr_bits, is_v6, l3dgw_port, lflow_ref);
+                                 cidr_bits, is_v6, l3dgw_port, lflow_ref,
+                                 false);
+    size_t original_match_len = match->length;
 
     if (!od->is_gw_router) {
         /* Distributed router. */
@@ -14611,6 +14622,35 @@ build_lrouter_out_snat_flow(struct lflow_table *lflows,
                             priority, ds_cstr(match),
                             ds_cstr(actions), &nat->header_,
                             lflow_ref);
+
+    /* For the SNAT networks, we need to make sure that connections are
+     * properly tracked so we can decide whether to perform SNAT on traffic
+     * exiting the network. */
+    if (features->ct_commit_to_zone && !strcmp(nat->type, "snat") &&
+        !od->is_gw_router) {
+        /* For traffic that comes from SNAT network, initiate CT state before
+         * entering S_ROUTER_OUT_SNAT to allow matching on various CT states.
+         */
+        ds_truncate(match, original_match_len);
+        ovn_lflow_add(lflows, od, S_ROUTER_OUT_POST_UNDNAT, 70,
+                      ds_cstr(match), "ct_snat;",
+                      lflow_ref);
+
+        build_lrouter_out_snat_match(lflows, od, nat, match,
+                                     distributed_nat, cidr_bits, is_v6,
+                                     l3dgw_port, lflow_ref, true);
+
+        /* New traffic that goes into SNAT network is committed to CT to avoid
+         * SNAT-ing replies.*/
+        ovn_lflow_add(lflows, od, S_ROUTER_OUT_SNAT, priority,
+                      ds_cstr(match), "ct_snat;",
+                      lflow_ref);
+
+        ds_put_cstr(match, " && ct.new");
+        ovn_lflow_add(lflows, od, S_ROUTER_OUT_POST_SNAT, priority,
+                      ds_cstr(match), "ct_commit_to_zone(snat);",
+                      lflow_ref);
+    }
 }
 
 static void
@@ -15149,7 +15189,7 @@ build_lrouter_nat_defrag_and_lb(
         } else {
             build_lrouter_out_snat_flow(lflows, od, nat, match, actions,
                                         distributed_nat, mac, cidr_bits, is_v6,
-                                        l3dgw_port, lflow_ref);
+                                        l3dgw_port, lflow_ref, features);
         }
 
         /* S_ROUTER_IN_ADMISSION - S_ROUTER_IN_IP_INPUT */
