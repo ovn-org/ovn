@@ -3686,6 +3686,7 @@ non_vif_data_ovs_iface_handler(struct engine_node *node, void *data OVS_UNUSED)
 
 struct ed_type_northd_options {
     bool lb_hairpin_use_ct_mark;
+    bool explicit_arp_ns_output;
 };
 
 
@@ -3716,6 +3717,13 @@ en_northd_options_run(struct engine_node *node, void *data)
         ? smap_get_bool(&sb_global->options, "lb_hairpin_use_ct_mark",
                         DEFAULT_SB_GLOBAL_LB_HAIRPIN_USE_CT_MARK)
         : DEFAULT_SB_GLOBAL_LB_HAIRPIN_USE_CT_MARK;
+
+    n_opts->explicit_arp_ns_output =
+            sb_global
+            ? smap_get_bool(&sb_global->options, "arp_ns_explicit_output",
+                            false)
+            : false;
+
     engine_set_node_state(node, EN_UPDATED);
 }
 
@@ -3738,6 +3746,18 @@ en_northd_options_sb_sb_global_handler(struct engine_node *node, void *data)
         n_opts->lb_hairpin_use_ct_mark = lb_hairpin_use_ct_mark;
         engine_set_node_state(node, EN_UPDATED);
     }
+
+    bool explicit_arp_ns_output =
+            sb_global
+            ? smap_get_bool(&sb_global->options, "arp_ns_explicit_output",
+                            false)
+            : false;
+
+    if (explicit_arp_ns_output != n_opts->explicit_arp_ns_output) {
+        n_opts->explicit_arp_ns_output = explicit_arp_ns_output;
+        engine_set_node_state(node, EN_UPDATED);
+    }
+
     return true;
 }
 
@@ -3967,6 +3987,7 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->localnet_learn_fdb_changed = rt_data->localnet_learn_fdb_changed;
     l_ctx_in->chassis_tunnels = &non_vif_data->chassis_tunnels;
     l_ctx_in->lb_hairpin_use_ct_mark = n_opts->lb_hairpin_use_ct_mark;
+    l_ctx_in->explicit_arp_ns_output = n_opts->explicit_arp_ns_output;
     l_ctx_in->nd_ra_opts = &fo->nd_ra_opts;
     l_ctx_in->dhcp_opts = &dhcp_opts->v4_opts;
     l_ctx_in->dhcpv6_opts = &dhcp_opts->v6_opts;

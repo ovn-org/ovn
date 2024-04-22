@@ -24,6 +24,7 @@
 #include "openvswitch/hmap.h"
 #include "openvswitch/list.h"
 #include "openvswitch/ofpbuf.h"
+#include "openvswitch/ofp-packet.h"
 
 struct ovsdb_idl_index;
 
@@ -91,8 +92,8 @@ struct fdb_entry *ovn_fdb_add(struct hmap *fdbs,
 struct packet_data {
     struct ovs_list node;
 
-    struct ofpbuf ofpacts;
-    struct dp_packet *p;
+    struct ofpbuf *continuation;
+    struct ofputil_packet_in pin;
 };
 
 struct buffered_packets {
@@ -120,8 +121,8 @@ struct buffered_packets_ctx {
 };
 
 struct packet_data *
-ovn_packet_data_create(struct ofpbuf ofpacts,
-                       const struct dp_packet *original_packet);
+ovn_packet_data_create(const struct ofputil_packet_in *pin,
+                       const struct ofpbuf *continuation);
 void ovn_packet_data_destroy(struct packet_data *pd);
 struct buffered_packets *
 ovn_buffered_packets_add(struct buffered_packets_ctx *ctx, uint64_t dp_key,

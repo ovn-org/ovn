@@ -12274,3 +12274,98 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([LB with first packet buffered])
+AT_KEYWORDS([ovnlb])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-ext])
+
+check ovs-ofctl add-flow br-ext action=normal
+# Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true \
+        -- set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+check ovn-nbctl lr-add lr
+check ovn-nbctl ls-add internal
+check ovn-nbctl ls-add public
+
+check ovn-nbctl lrp-add lr lr-pub 00:00:01:01:02:03 192.168.100.1/24 1000::1/64
+check ovn-nbctl lsp-add  public pub-lr -- set Logical_Switch_Port pub-lr \
+    type=router options:router-port=lr-pub addresses=\"00:00:01:01:02:03\"
+
+check ovn-nbctl lrp-add lr lr-internal 00:00:01:01:02:04 192.168.200.1/24 2000::1/64
+check ovn-nbctl lsp-add internal internal-lr -- set Logical_Switch_Port internal-lr \
+    type=router options:router-port=lr-internal addresses=\"00:00:01:01:02:04\"
+
+check ovn-nbctl lsp-add internal server -- lsp-set-addresses server "unknown"
+
+ovn-nbctl lsp-add public ln_port \
+                -- lsp-set-addresses ln_port unknown \
+                -- lsp-set-type ln_port localnet \
+                -- lsp-set-options ln_port network_name=phynet
+
+check ovn-nbctl set logical_router lr options:chassis=hv1
+
+check ovn-nbctl lb-add lb1 192.168.100.20 192.168.200.10
+check ovn-nbctl lb-add lb2 1000::20 2000::10
+check ovn-nbctl lr-lb-add lr lb1
+check ovn-nbctl lr-lb-add lr lb2
+check ovn-nbctl --wait=hv sync
+
+ADD_NAMESPACES(client)
+ADD_VETH(client, client, br-ext, "1000::10/64", "f0:00:00:01:02:03", \
+         "1000::1", "nodad", "192.168.100.10/24", "192.168.100.1")
+
+ADD_NAMESPACES(server)
+ADD_VETH(server, server, br-int, "2000::10/64", "f0:00:0f:01:02:03", \
+         "2000::1", "nodad", "192.168.200.10/24", "192.168.200.1")
+
+NETNS_DAEMONIZE([server], [nc -l -u 192.168.200.10 4242 > /dev/null], [serverv4.pid])
+NETNS_DAEMONIZE([server], [nc -l -u 2000::10 4243 > /dev/null], [serverv6.pid])
+
+NETNS_START_TCPDUMP([client], [-l -U -i client -vnne udp], [client])
+NETNS_START_TCPDUMP([server], [-l -U -i server -vnne udp], [server])
+
+check ovs-appctl dpctl/flush-conntrack
+
+NS_CHECK_EXEC([client], [nc -z -u 192.168.100.20 4242], [ignore], [ignore], [ignore])
+OVS_WAIT_UNTIL([grep -q "192.168.200.10" server.tcpdump])
+
+NS_CHECK_EXEC([client], [nc -z -u 1000::20 4243])
+OVS_WAIT_UNTIL([grep -q "2000::10" server.tcpdump])
+
+zone_id=$(ovn-appctl -t ovn-controller ct-zone-list | grep lr_dnat | cut -d ' ' -f2)
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep -c "zone=$zone_id"], [0], [2
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])

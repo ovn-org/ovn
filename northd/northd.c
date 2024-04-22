@@ -14362,7 +14362,7 @@ build_arp_request_flows_for_lrouter(
                       "ip6.dst = %s; "
                       "nd.target = %s; "
                       "output; "
-                      "};", ETH_ADDR_ARGS(eth_dst), sn_addr_s,
+                      "}; output;", ETH_ADDR_ARGS(eth_dst), sn_addr_s,
                       route->nexthop);
 
         ovn_lflow_add_with_hint__(lflows, od, S_ROUTER_IN_ARP_REQUEST, 200,
@@ -14381,7 +14381,7 @@ build_arp_request_flows_for_lrouter(
                       "arp.tpa = " REG_NEXT_HOP_IPV4 "; "
                       "arp.op = 1; " /* ARP request */
                       "output; "
-                      "};",
+                      "}; output;",
                       copp_meter_get(COPP_ARP_RESOLVE, od->nbr->copp,
                                      meter_groups));
     ovn_lflow_metered(lflows, od, S_ROUTER_IN_ARP_REQUEST, 100,
@@ -14389,7 +14389,7 @@ build_arp_request_flows_for_lrouter(
                       "nd_ns { "
                       "nd.target = " REG_NEXT_HOP_IPV6 "; "
                       "output; "
-                      "};",
+                      "}; output;",
                       copp_meter_get(COPP_ND_NS_RESOLVE, od->nbr->copp,
                                      meter_groups));
     ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 0, "1", "output;");
@@ -18067,6 +18067,14 @@ ovnnb_db_run(struct northd_input *input_data,
     const char *sip = smap_get(&sb->options, "sbctl_probe_interval");
     if (sip) {
         smap_replace(&options, "sbctl_probe_interval", sip);
+    }
+
+    /* Adds indication that northd is handling explicit output after
+     * arp/nd_ns action. */
+    smap_add(&options, "arp_ns_explicit_output", "true");
+
+    if (!smap_equal(&sb->options, &options)) {
+        sbrec_sb_global_set_options(sb, &options);
     }
 
     if (!smap_equal(&sb->options, &options)) {
