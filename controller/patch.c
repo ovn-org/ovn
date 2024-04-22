@@ -314,6 +314,21 @@ patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
             || smap_get(&port->external_ids, "ovn-l3gateway-port")
             || smap_get(&port->external_ids, "ovn-logical-patch-port")) {
             shash_add(&existing_ports, port->name, port);
+            /* Also add peer ports to the list. */
+            for (size_t j = 0; j < port->n_interfaces; j++) {
+                struct ovsrec_interface *p_iface = port->interfaces[j];
+                if (strcmp(p_iface->type, "patch")) {
+                    continue;
+                }
+                const char *peer_name = smap_get(&p_iface->options, "peer");
+                if (peer_name) {
+                    const struct ovsrec_port *peer_port =
+                        get_port(ovsrec_port_by_name, peer_name);
+                    if (peer_port) {
+                        shash_add(&existing_ports, peer_port->name, peer_port);
+                    }
+                }
+            }
         }
     }
 
@@ -336,23 +351,6 @@ patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
          * ovn-controller.  Otherwise it may cause unncessary dataplane
          * interruption during restart/upgrade. */
         if (!daemon_started_recently()) {
-            /* delete peer patch port first */
-            for (size_t i = 0; i < port->n_interfaces; i++) {
-                struct ovsrec_interface *iface = port->interfaces[i];
-                if (strcmp(iface->type, "patch")) {
-                    continue;
-                }
-                const char *iface_peer = smap_get(&iface->options, "peer");
-                if (iface_peer) {
-                    const struct ovsrec_port *peer_port =
-                        get_port(ovsrec_port_by_name, iface_peer);
-                    if (peer_port) {
-                        remove_port(bridge_table, peer_port);
-                    }
-                }
-            }
-
-            /* now delete integration bridge patch port */
             remove_port(bridge_table, port);
         }
     }
