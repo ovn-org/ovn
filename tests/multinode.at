@@ -70,6 +70,14 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 20.0.0.3 | F
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
+check multinode_nbctl lsp-set-addresses sw1-port1 unknown
+m_wait_for_ports_up sw1-port1
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 20.0.0.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
 AT_CLEANUP
 
 AT_SETUP([ovn multinode pmtu - distributed router - geneve])

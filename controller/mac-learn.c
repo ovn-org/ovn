@@ -199,15 +199,24 @@ ovn_fdb_add(struct hmap *fdbs, uint32_t dp_key, struct eth_addr mac,
 /* packet buffering functions */
 
 struct packet_data *
-ovn_packet_data_create(struct ofpbuf ofpacts,
-                       const struct dp_packet *original_packet)
+ovn_packet_data_create(const struct ofputil_packet_in *pin,
+                       const struct ofpbuf *continuation)
 {
     struct packet_data *pd = xmalloc(sizeof *pd);
 
-    pd->ofpacts = ofpacts;
-    /* clone the packet to send it later with correct L2 address */
-    pd->p = dp_packet_clone_data(dp_packet_data(original_packet),
-                                 dp_packet_size(original_packet));
+    pd->pin = (struct ofputil_packet_in) {
+        .packet = xmemdup(pin->packet, pin->packet_len),
+        .packet_len = pin->packet_len,
+        .flow_metadata = pin->flow_metadata,
+        .reason = pin->reason,
+        .table_id = pin->table_id,
+        .cookie = pin->cookie,
+        /* Userdata are empty on purpose,
+         * it is not needed for the continuation. */
+        .userdata = NULL,
+        .userdata_len = 0,
+    };
+    pd->continuation = ofpbuf_clone(continuation);
 
     return pd;
 }
@@ -216,8 +225,8 @@ ovn_packet_data_create(struct ofpbuf ofpacts,
 void
 ovn_packet_data_destroy(struct packet_data *pd)
 {
-    dp_packet_delete(pd->p);
-    ofpbuf_uninit(&pd->ofpacts);
+    free(pd->pin.packet);
+    ofpbuf_delete(pd->continuation);
     free(pd);
 }
 
@@ -307,7 +316,10 @@ ovn_buffered_packets_ctx_run(struct buffered_packets_ctx *ctx,
 
         struct packet_data *pd;
         LIST_FOR_EACH_POP (pd, node, &bp->queue) {
-            struct eth_header *eth = dp_packet_data(pd->p);
+            struct dp_packet packet;
+            dp_packet_use_const(&packet, pd->pin.packet, pd->pin.packet_len);
+
+            struct eth_header *eth = dp_packet_data(&packet);
             eth->eth_dst = mac;
 
             ovs_list_push_back(&ctx->ready_packets_data, &pd->node);

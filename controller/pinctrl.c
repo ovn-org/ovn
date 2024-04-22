@@ -257,9 +257,9 @@ static void pinctrl_handle_put_nd_ra_opts(
     struct ofpbuf *continuation);
 static void pinctrl_handle_nd_ns(struct rconn *swconn,
                                  const struct flow *ip_flow,
-                                 struct dp_packet *pkt_in,
-                                 const struct match *md,
-                                 struct ofpbuf *userdata);
+                                 const struct ofputil_packet_in *pin,
+                                 struct ofpbuf *userdata,
+                                 const struct ofpbuf *continuation);
 static void pinctrl_handle_put_icmp_frag_mtu(struct rconn *swconn,
                                              const struct flow *in_flow,
                                              struct dp_packet *pkt_in,
@@ -1476,11 +1476,13 @@ destroy_buffered_packets_ctx(void)
 
 /* Called with in the pinctrl_handler thread context. */
 static void
-pinctrl_handle_buffered_packets(struct dp_packet *pkt_in,
-                                const struct match *md, bool is_arp)
+pinctrl_handle_buffered_packets(const struct ofputil_packet_in *pin,
+                                const struct ofpbuf *continuation,
+                                bool is_arp)
 OVS_REQUIRES(pinctrl_mutex)
 {
     struct in6_addr ip;
+    const struct match *md = &pin->flow_metadata;
     uint64_t dp_key = ntohll(md->flow.metadata);
     uint64_t oport_key = md->flow.regs[MFF_LOG_OUTPORT - MFF_REG0];
 
@@ -1498,20 +1500,7 @@ OVS_REQUIRES(pinctrl_mutex)
         return;
     }
 
-    struct ofpbuf ofpacts;
-    ofpbuf_init(&ofpacts, 4096);
-    reload_metadata(&ofpacts, md);
-    /* reload pkt_mark field */
-    const struct mf_field *pkt_mark_field = mf_from_id(MFF_PKT_MARK);
-    union mf_value pkt_mark_value;
-    mf_get_value(pkt_mark_field, &md->flow, &pkt_mark_value);
-    ofpact_put_set_field(&ofpacts, pkt_mark_field, &pkt_mark_value, NULL);
-
-    struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
-    resubmit->in_port = OFPP_CONTROLLER;
-    resubmit->table_id = OFTABLE_OUTPUT_INIT;
-
-    struct packet_data *pd = ovn_packet_data_create(ofpacts, pkt_in);
+    struct packet_data *pd = ovn_packet_data_create(pin, continuation);
     ovn_buffered_packets_packet_data_enqueue(bp, pd);
 
     /* There is a chance that the MAC binding was already created. */
@@ -1521,8 +1510,8 @@ OVS_REQUIRES(pinctrl_mutex)
 /* Called with in the pinctrl_handler thread context. */
 static void
 pinctrl_handle_arp(struct rconn *swconn, const struct flow *ip_flow,
-                   struct dp_packet *pkt_in,
-                   const struct match *md, struct ofpbuf *userdata)
+                   const struct ofputil_packet_in *pin,
+                   struct ofpbuf *userdata, const struct ofpbuf *continuation)
 {
     /* This action only works for IP packets, and the switch should only send
      * us IP packets this way, but check here just to be sure. */
@@ -1534,7 +1523,7 @@ pinctrl_handle_arp(struct rconn *swconn, const struct flow *ip_flow,
     }
 
     ovs_mutex_lock(&pinctrl_mutex);
-    pinctrl_handle_buffered_packets(pkt_in, md, true);
+    pinctrl_handle_buffered_packets(pin, continuation, true);
     ovs_mutex_unlock(&pinctrl_mutex);
 
     /* Compose an ARP packet. */
@@ -1559,7 +1548,8 @@ pinctrl_handle_arp(struct rconn *swconn, const struct flow *ip_flow,
                       ip_flow->vlans[0].tci);
     }
 
-    set_actions_and_enqueue_msg(swconn, &packet, md, userdata);
+    set_actions_and_enqueue_msg(swconn, &packet,
+                                &pin->flow_metadata, userdata);
     dp_packet_uninit(&packet);
 }
 
@@ -3212,8 +3202,7 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
 
     switch (ntohl(ah->opcode)) {
     case ACTION_OPCODE_ARP:
-        pinctrl_handle_arp(swconn, &headers, &packet, &pin.flow_metadata,
-                           &userdata);
+        pinctrl_handle_arp(swconn, &headers, &pin, &userdata, &continuation);
         break;
     case ACTION_OPCODE_IGMP:
         pinctrl_ip_mcast_handle(swconn, &headers, &packet, &pin.flow_metadata,
@@ -3279,8 +3268,7 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         break;
 
     case ACTION_OPCODE_ND_NS:
-        pinctrl_handle_nd_ns(swconn, &headers, &packet, &pin.flow_metadata,
-                             &userdata);
+        pinctrl_handle_nd_ns(swconn, &headers, &pin, &userdata, &continuation);
         break;
 
     case ACTION_OPCODE_ICMP:
@@ -4282,16 +4270,8 @@ send_mac_binding_buffered_pkts(struct rconn *swconn)
 
     struct packet_data *pd;
     LIST_FOR_EACH_POP (pd, node, &buffered_packets_ctx.ready_packets_data) {
-        struct ofputil_packet_out po = {
-            .packet = dp_packet_data(pd->p),
-            .packet_len = dp_packet_size(pd->p),
-            .buffer_id = UINT32_MAX,
-            .ofpacts = pd->ofpacts.data,
-            .ofpacts_len = pd->ofpacts.size,
-        };
-        match_set_in_port(&po.flow_metadata, OFPP_CONTROLLER);
-        queue_msg(swconn, ofputil_encode_packet_out(&po, proto));
-
+        queue_msg(swconn, ofputil_encode_resume(&pd->pin, pd->continuation,
+                                                proto));
         ovn_packet_data_destroy(pd);
     }
 
@@ -6225,8 +6205,9 @@ pinctrl_handle_nd_na(struct rconn *swconn, const struct flow *ip_flow,
 /* Called with in the pinctrl_handler thread context. */
 static void
 pinctrl_handle_nd_ns(struct rconn *swconn, const struct flow *ip_flow,
-                     struct dp_packet *pkt_in,
-                     const struct match *md, struct ofpbuf *userdata)
+                     const struct ofputil_packet_in *pin,
+                     struct ofpbuf *userdata,
+                     const struct ofpbuf *continuation)
 {
     /* This action only works for IPv6 packets. */
     if (get_dl_type(ip_flow) != htons(ETH_TYPE_IPV6)) {
@@ -6236,7 +6217,7 @@ pinctrl_handle_nd_ns(struct rconn *swconn, const struct flow *ip_flow,
     }
 
     ovs_mutex_lock(&pinctrl_mutex);
-    pinctrl_handle_buffered_packets(pkt_in, md, false);
+    pinctrl_handle_buffered_packets(pin, continuation, false);
     ovs_mutex_unlock(&pinctrl_mutex);
 
     uint64_t packet_stub[128 / 8];
@@ -6249,7 +6230,8 @@ pinctrl_handle_nd_ns(struct rconn *swconn, const struct flow *ip_flow,
                   &ip_flow->ipv6_dst);
 
     /* Reload previous packet metadata and set actions from userdata. */
-    set_actions_and_enqueue_msg(swconn, &packet, md, userdata);
+    set_actions_and_enqueue_msg(swconn, &packet,
+                                &pin->flow_metadata, userdata);
     dp_packet_uninit(&packet);
 }
 
