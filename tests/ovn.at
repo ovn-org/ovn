@@ -35645,6 +35645,115 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller update network_name option for localnet port])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+
+# Bridge Topology
+# Initial: br-int and br-phys-1 connected through ovn-localnet patch port.
+#
+# br-phys-1 -- br-int
+#
+# Final: br-int and br-phys-3 connected through ovn-localnet patch port.
+# Similarly br-int-2 and br-hys-2 connected through localnet patch port
+# but not owned by this controller.
+#
+# br-phys-1  br-int -- br-phys-3
+# br-int-2 -- br-phys-2
+
+# Create bridges
+check ovs-vsctl add-br br-int
+check ovs-vsctl add-br br-int-2
+check ovs-vsctl add-br br-phys-1
+check ovs-vsctl add-br br-phys-2
+check ovs-vsctl add-br br-phys-3
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings-hv1=phys-1:br-phys-1,phy-2:br-phys-2,phys-3:br-phys-3
+
+ovn_attach n1 br-phys-1 192.168.1.1 24
+
+check ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=lp1
+
+check ovn-nbctl ls-add ls
+
+check ovn-nbctl lsp-add ls lp1
+check ovn-nbctl lsp-set-addresses lp1 "00:00:00:00:00:01 10.0.0.1"
+
+check ovn-nbctl lsp-add ls ln_port
+check ovn-nbctl lsp-set-addresses ln_port unknown
+check ovn-nbctl lsp-set-type ln_port localnet
+check ovn-nbctl lsp-set-options ln_port network_name=phys-1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Allow controller to immediately clean patch ports up if any.
+check ovn-appctl -t ovn-controller debug/ignore-startup-delay
+
+# check that patch port created on br-int and br-phys-1.
+OVS_WAIT_UNTIL([
+    test 1 = $(ovs-vsctl --columns _uuid --bare find Port name=patch-br-int-to-ln_port | wc -l)
+])
+OVS_WAIT_UNTIL([
+    test 1 = $(ovs-vsctl list-ports br-int | grep patch-br-int-to-ln_port | wc -l)
+])
+OVS_WAIT_UNTIL([
+    test 1 = $(ovs-vsctl --columns _uuid --bare find Port name=patch-ln_port-to-br-int | wc -l)
+])
+OVS_WAIT_UNTIL([
+    test 1 = $(ovs-vsctl list-ports br-phys-1 | grep patch-ln_port-to-br-int | wc -l)
+])
+
+check ovn-appctl debug/pause
+
+# Now move the localnet port from phys-1 to phys-3.
+check ovn-nbctl lsp-set-options ln_port network_name=phys-3
+
+# Also create fake localnet ports on br-int-2
+check ovs-vsctl -- add-port br-int-2 fake-int-2-to-phys-2 -- \
+    set port fake-int-2-to-phys-2 external-ids:ovn-localnet-port=fake-port -- \
+    set interface fake-int-2-to-phys-2 options:peer=fake-phys-2-to-int-2 type=patch
+check ovs-vsctl -- add-port br-phys-2 fake-phys-2-to-int-2 -- \
+    set port fake-phys-2-to-int-2 external-ids:ovn-localnet-port=fake-port -- \
+    set interface fake-phys-2-to-int-2 options:peer=fake-int-2-to-phys-2 type=patch
+
+check ovn-appctl debug/resume
+check ovn-nbctl --wait=hv sync
+
+# patch for port on br-phys-1 is cleanedup.
+OVS_WAIT_UNTIL([
+    test 0 = $(ovs-vsctl list-ports br-phys-1 | grep patch-ln_port-to-br-int | wc -l)
+])
+
+# Patch port created on br-int and br-phy-3
+OVS_WAIT_UNTIL([
+    test 1 = $(ovs-vsctl --columns _uuid --bare find Port name=patch-br-int-to-ln_port | wc -l)
+])
+OVS_WAIT_UNTIL([
+    test 1 = $(ovs-vsctl list-ports br-int | grep patch-br-int-to-ln_port | wc -l)
+])
+OVS_WAIT_UNTIL([
+    test 1 = $(ovs-vsctl --columns _uuid --bare find Port name=patch-ln_port-to-br-int | wc -l)
+])
+OVS_WAIT_UNTIL([
+    test 1 = $(ovs-vsctl list-ports br-phys-3 | grep patch-ln_port-to-br-int | wc -l)
+])
+
+# check that patch port on a different bridge is not touched
+OVS_WAIT_UNTIL([
+    test 1 = $(ovs-vsctl --columns _uuid --bare find Port name=fake-int-2-to-phys-2 | wc -l)
+])
+OVS_WAIT_UNTIL([
+    test 1 = $(ovs-vsctl --columns _uuid --bare find Port name=fake-phys-2-to-int-2 | wc -l)
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
 # NOTE: This test case runs two ovn-controllers inside the same sandbox (hv1).
 # Each controller uses a unique chassis name - hv1 and hv2 - and manage
 # different bridges with different ports. This is why all 'as' commands below
