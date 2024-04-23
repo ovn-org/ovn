@@ -33276,6 +33276,8 @@ check as hv1 ovs-vsctl set interface vif11 external_ids:iface-id-ver=foo
 
 wait_for_ports_up sw0-port1
 
+CHECK_FLOWS_AFTER_RECOMPUTE([hv1], [hv1])
+
 AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-local-bindings], [0], [dnl
 Local bindings:
 name: [[sw0-port1]], OVS interface name : [[vif11]], num binding lports : [[1]]

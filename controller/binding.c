@@ -757,6 +757,8 @@ update_active_pb_ras_pd(const struct sbrec_port_binding *pb,
     }
 }
 
+static bool is_ext_id_changed(const struct smap *a, const struct smap *b,
+                              const char *key);
 static struct local_binding *local_binding_create(
     const char *name, const struct ovsrec_interface *);
 static void local_binding_add(struct shash *local_bindings,
@@ -2309,6 +2311,18 @@ consider_iface_claim(const struct ovsrec_interface *iface_rec,
     if (!pb) {
         /* There is no port_binding row for this local binding. */
         return true;
+    }
+
+    /* Check if iface-id-ver just becomes correct */
+    struct smap *external_ids_old =
+        shash_find_data(b_ctx_in->iface_table_external_ids_old,
+                        iface_rec->name);
+
+    if (external_ids_old &&
+        is_ext_id_changed(&iface_rec->external_ids,
+                          external_ids_old,
+                          "iface-id-ver")) {
+            b_ctx_out->local_lports_changed = true;
     }
 
     /* If multiple bindings to the same port, remove the "old" binding.
