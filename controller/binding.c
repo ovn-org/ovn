@@ -1317,6 +1317,12 @@ lport_maybe_postpone(const char *port_name, long long int now,
     return true;
 }
 
+static bool
+is_postponed_port(const char *port_name)
+{
+    return sset_contains(&_postponed_ports, port_name);
+}
+
 /* Returns false if lport is not claimed due to 'sb_readonly'.
  * Returns true otherwise.
  */
@@ -1491,7 +1497,8 @@ is_binding_lport_this_chassis(struct binding_lport *b_lport,
 {
     return (b_lport && b_lport->pb && chassis &&
             (b_lport->pb->chassis == chassis
-             || is_additional_chassis(b_lport->pb, chassis)));
+             || is_additional_chassis(b_lport->pb, chassis)
+             || is_postponed_port(b_lport->pb->logical_port)));
 }
 
 /* Returns 'true' if the 'lbinding' has binding lports of type LP_CONTAINER,
@@ -1593,6 +1600,7 @@ consider_vif_lport_(const struct sbrec_port_binding *pb,
         }
 
         if (!lbinding_set || !can_bind) {
+            remove_related_lport(pb, b_ctx_out);
             return release_lport(pb, b_ctx_in->chassis_rec,
                                  !b_ctx_in->ovnsb_idl_txn,
                                  b_ctx_out->tracked_dp_bindings,

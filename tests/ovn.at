@@ -38374,3 +38374,58 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Deleting vif while controller fight for port claim])
+ovn_start
+
+ovn-nbctl ls-add ls0
+ovn-nbctl lsp-add ls0 lsp0
+ovn-nbctl lsp-add ls0 lsp1
+
+net_add n1
+for i in 1 2; do
+    sim_add hv$i
+    as hv$i
+    ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys 192.168.0.$i
+done
+
+check ovn-nbctl --wait=hv sync
+hv1_uuid=$(ovn-sbctl --bare --columns _uuid list chassis hv1)
+hv2_uuid=$(ovn-sbctl --bare --columns _uuid list chassis hv2)
+
+as hv1 ovs-vsctl -- add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=lsp1
+as hv1 ovs-vsctl -- add-port br-int vif -- set Interface vif external-ids:iface-id=lsp0
+wait_for_ports_up
+
+# Delete vif => store flows w/ only vif1, and no vif
+as hv1 ovs-vsctl -- del-port br-int vif
+check ovn-nbctl --wait=hv sync
+DUMP_FLOWS([hv1], [oflows1])
+sleep_controller hv1
+as hv2 ovs-vsctl -- add-port br-int vif -- set Interface vif external-ids:iface-id=lsp0
+as hv1 ovs-vsctl -- add-port br-int vif -- set Interface vif external-ids:iface-id=lsp0
+
+OVS_WAIT_UNTIL([
+    chassis=$(ovn-sbctl --bare --columns chassis list port_binding lsp0)
+    test "$chassis" = $hv2_uuid
+])
+
+sleep_sb
+wake_up_controller hv1
+sleep_controller hv2
+
+as hv1 ovs-vsctl -- del-port br-int vif
+wake_up_sb
+wake_up_controller hv2
+
+as hv2 ovs-vsctl -- del-port br-int vif
+check ovn-nbctl --wait=hv sync
+
+DUMP_FLOWS([hv1], [oflows2])
+
+check diff oflows1 oflows2
+OVN_CLEANUP([hv1],[hv2])
+
+AT_CLEANUP
+])
