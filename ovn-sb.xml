@@ -1456,7 +1456,7 @@
           <p>
             <code>ct_dnat</code> sends the packet through the DNAT zone in
             connection tracking table to unDNAT any packet that was DNATed in
-            the opposite direction.  The packet is then automatically sent to
+            the opposite direction.  The packet is then automatically sent
             to the next tables as if followed by <code>next;</code> action.
             The next tables will see the changes in the packet caused by
             the connection tracker.
@@ -1498,7 +1498,7 @@
             <code>ct_dnat_in_czone</code> sends the packet through the common
             NAT zone (used for both DNAT and SNAT) in connection tracking table
             to unDNAT any packet that was DNATed in the opposite direction.
-            The packet is then automatically sent to to the next tables as if
+            The packet is then automatically sent to the next tables as if
             followed by <code>next;</code> action.  The next tables will see
             the changes in the packet caused by the connection tracker.
           </p>
