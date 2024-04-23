@@ -3581,8 +3581,7 @@ test_connectivity_from_ext() {
     local vm=$1; shift
     local ip=$1; shift
 
-    # Start listening daemons for UDP and TCP connections
-    NETNS_DAEMONIZE($vm, [nc -l -u 1234], [nc-$vm-$ip-udp.pid])
+    # Start listening daemon TCP connections.
     NETNS_DAEMONIZE($vm, [nc -l -k 1235], [nc-$vm-$ip-tcp.pid])
 
     # Ensure that vm can be pinged on the specified IP
@@ -3592,8 +3591,13 @@ test_connectivity_from_ext() {
 ])
 
     # Perform two consecutive UDP connections to the specified IP
+    NETNS_DAEMONIZE($vm, [nc -l -u 1234], [nc-$vm-$ip-udp.pid])
     NS_CHECK_EXEC([alice1], [nc -u $ip 1234 -p 2000 -z])
+    kill $(cat nc-$vm-$ip-udp.pid)
+
+    NETNS_DAEMONIZE($vm, [nc -l -u 1234], [nc-$vm-$ip-udp.pid])
     NS_CHECK_EXEC([alice1], [nc -u $ip 1234 -p 2000 -z])
+    kill $(cat nc-$vm-$ip-udp.pid)
 
     # Send data over TCP connection to the specified IP
     NS_CHECK_EXEC([alice1], [echo "TCP test" | nc --send-only $ip 1235])
@@ -3780,9 +3784,8 @@ test_connectivity_from_ext() {
     local vm=$1; shift
     local ip=$1; shift
 
-    # Start listening daemons for UDP and TCP connections
-    NETNS_DAEMONIZE($vm, [nc -l -u 1234], [nc-$vm-$ip-udp.pid])
-    NETNS_DAEMONIZE($vm, [nc -l -k 1235], [nc-$vm-$ip-tcp.pid])
+    # Start listening daemon for TCP connections.
+    NETNS_DAEMONIZE($vm, [nc -6 -l -k 1235], [nc-$vm-$ip-tcp.pid])
 
     # Ensure that vm can be pinged on the specified IP
     NS_CHECK_EXEC([alice1], [ping -q -c 3 -i 0.3 -w 2 $ip | FORMAT_PING], \
@@ -3791,8 +3794,13 @@ test_connectivity_from_ext() {
 ])
 
     # Perform two consecutive UDP connections to the specified IP
+    NETNS_DAEMONIZE($vm, [nc -6 -l -u 1234], [nc-$vm-$ip-udp.pid])
     NS_CHECK_EXEC([alice1], [nc -u $ip 1234 -p 2000 -z])
+    kill $(cat nc-$vm-$ip-udp.pid)
+
+    NETNS_DAEMONIZE($vm, [nc -6 -l -u 1234], [nc-$vm-$ip-udp.pid])
     NS_CHECK_EXEC([alice1], [nc -u $ip 1234 -p 2000 -z])
+    kill $(cat nc-$vm-$ip-udp.pid)
 
     # Send data over TCP connection to the specified IP
     NS_CHECK_EXEC([alice1], [echo "TCP test" | nc --send-only $ip 1235])
