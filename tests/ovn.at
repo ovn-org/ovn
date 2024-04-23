@@ -16450,6 +16450,10 @@ ovn_start
 
 ovn-nbctl ls-add ls0
 ovn-nbctl lsp-add ls0 lsp0
+ovn-nbctl lsp-add ls0 lsp1
+ovn-nbctl lsp-add ls0 lsp2
+check ovn-nbctl lsp-add ls0 lsp-cont1 lsp0 1
+
 
 net_add n1
 for i in 1 2; do
@@ -16463,6 +16467,8 @@ for i in 1 2; do
     as hv$i
     ovs-vsctl -- add-port br-int vif \
               -- set Interface vif external-ids:iface-id=lsp0
+    ovs-vsctl -- add-port br-int vif$i \
+              -- set Interface vif$i external-ids:iface-id=lsp$i
 done
 
 # give controllers some time to fight for the port binding
@@ -16479,6 +16485,10 @@ echo "hv2 claimed ${hv2_claims} times"
 max_claims=20
 AT_CHECK([test "${hv1_claims}" -le "${max_claims}"], [0], [])
 AT_CHECK([test "${hv2_claims}" -le "${max_claims}"], [0], [])
+
+check ovn-nbctl --wait=hv lsp-del lsp0
+CHECK_FLOWS_AFTER_RECOMPUTE([hv1], [hv1])
+CHECK_FLOWS_AFTER_RECOMPUTE([hv2], [hv2])
 
 OVN_CLEANUP([hv1],[hv2])
 
