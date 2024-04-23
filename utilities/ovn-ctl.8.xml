@@ -86,6 +86,11 @@
     <p><code>--db-ic-sb-schema=<var>FILE</var></code></p>
     <p><code>--db-ic-sb-create-insecure-remote=<var>yes|no</var></code></p>
     <p><code>--db-ic-nb-create-insecure-remote=<var>yes|no</var></code></p>
+    <p><code>--db-nb-config-file=<var>FILE</var></code></p>
+    <p><code>--db-sb-config-file=<var>FILE</var></code></p>
+    <p><code>--db-ic-nb-config-file=<var>FILE</var></code></p>
+    <p><code>--db-ic-sb-config-file=<var>FILE</var></code></p>
+    <p><code>--db-sb-relay-config-file=<var>FILE</var></code></p>
     <p><code>--ovn-controller-ssl-key=<var>KEY</var></code></p>
     <p><code>--ovn-controller-ssl-cert=<var>CERT</var></code></p>
     <p><code>--ovn-controller-ssl-ca-cert=<var>CERT</var></code></p>

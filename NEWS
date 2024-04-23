@@ -20,6 +20,7 @@ Post v24.03.0
   - A new LSP option "force_fdb_lookup" has been added to ensure the additional
     MAC addresses configured on the LSP with "unknown", are learnt via the
     OVN native FDB.
+  - Add support for ovsdb-server `--config-file` option in ovn-ctl.
 
 OVN v24.03.0 - 01 Mar 2024
 --------------------------
