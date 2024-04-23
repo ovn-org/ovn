@@ -1107,6 +1107,7 @@ ovn_northd_resume(struct unixctl_conn *conn, int argc OVS_UNUSED,
 {
     struct northd_state *state = state_;
     state->paused = false;
+    poll_immediate_wake();
 
     unixctl_command_reply(conn, NULL);
 }

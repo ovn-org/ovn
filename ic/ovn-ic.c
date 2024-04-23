@@ -2409,7 +2409,7 @@ ovn_ic_resume(struct unixctl_conn *conn, int argc OVS_UNUSED,
 {
     struct ic_state *state = state_;
     state->paused = false;
-
+    poll_immediate_wake();
     unixctl_command_reply(conn, NULL);
 }
 
