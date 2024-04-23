@@ -2759,6 +2759,7 @@ handle_deleted_vif_lport(const struct sbrec_port_binding *pb,
          * deleted 'pb' type is LP_VIF. */
         struct binding_lport *c_lport;
         LIST_FOR_EACH (c_lport, list_node, &lbinding->binding_lports) {
+            remove_local_lports(c_lport->pb->logical_port, b_ctx_out);
             if (!release_binding_lport(b_ctx_in->chassis_rec, c_lport,
                                        !b_ctx_in->ovnsb_idl_txn,
                                        b_ctx_out)) {

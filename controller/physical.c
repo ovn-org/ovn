@@ -1026,7 +1026,8 @@ put_local_common_flows(uint32_t dp_key,
         put_resubmit(OFTABLE_LOG_TO_PHY, ofpacts_p);
         put_stack(MFF_IN_PORT, ofpact_put_STACK_POP(ofpacts_p));
         ofctrl_check_and_add_flow_metered(flow_table, OFTABLE_SAVE_INPORT, 100,
-                                          0, &match, ofpacts_p, hc_uuid,
+                                          parent_pb->header_.uuid.parts[0],
+                                          &match, ofpacts_p, &pb->header_.uuid,
                                           NX_CTLR_NO_METER, NULL, false);
     }
 }

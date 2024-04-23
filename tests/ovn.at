@@ -38329,3 +38329,38 @@ OVN_CLEANUP([hv1
 ])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Delete parent of container port])
+ovn_start
+
+ovn-nbctl ls-add ls0
+ovn-nbctl lsp-add ls0 lsp0
+
+# Add a second logical port, so that deleting lsp0 does not result in deleting
+# the last port of the datapath.
+ovn-nbctl lsp-add ls0 lsp1
+
+check ovn-nbctl lsp-add ls0 lsp-cont1 lsp0 1
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+as hv1
+ovs-vsctl -- add-port br-int vif \
+          -- set Interface vif external-ids:iface-id=lsp0
+ovs-vsctl -- add-port br-int vif1 \
+          -- set Interface vif1 external-ids:iface-id=lsp1
+
+check ovn-nbctl --wait=hv lsp-del lsp0
+CHECK_FLOWS_AFTER_RECOMPUTE([hv1], [hv1])
+
+OVN_CLEANUP([hv1])
+
+AT_CLEANUP
+])
+
