@@ -1824,7 +1824,7 @@ consider_localport(const struct sbrec_port_binding *pb,
  */
 static bool
 consider_nonvif_lport_(const struct sbrec_port_binding *pb,
-                       bool our_chassis,
+                       bool our_chassis, bool is_ha_chassis,
                        struct binding_ctx_in *b_ctx_in,
                        struct binding_ctx_out *b_ctx_out)
 {
@@ -1843,6 +1843,9 @@ consider_nonvif_lport_(const struct sbrec_port_binding *pb,
                            b_ctx_out->tracked_dp_bindings,
                            b_ctx_out->if_mgr,
                            b_ctx_out->postponed_ports);
+    }
+    if (!is_ha_chassis) {
+        remove_related_lport(pb, b_ctx_out);
     }
 
     if (pb->chassis == b_ctx_in->chassis_rec
@@ -1867,7 +1870,7 @@ consider_l2gw_lport(const struct sbrec_port_binding *pb,
     bool our_chassis = chassis_id && !strcmp(chassis_id,
                                              b_ctx_in->chassis_rec->name);
 
-    return consider_nonvif_lport_(pb, our_chassis, b_ctx_in, b_ctx_out);
+    return consider_nonvif_lport_(pb, our_chassis, false, b_ctx_in, b_ctx_out);
 }
 
 static bool
@@ -1879,7 +1882,7 @@ consider_l3gw_lport(const struct sbrec_port_binding *pb,
     bool our_chassis = chassis_id && !strcmp(chassis_id,
                                              b_ctx_in->chassis_rec->name);
 
-    return consider_nonvif_lport_(pb, our_chassis, b_ctx_in, b_ctx_out);
+    return consider_nonvif_lport_(pb, our_chassis, false, b_ctx_in, b_ctx_out);
 }
 
 static void
@@ -1942,7 +1945,8 @@ consider_ha_lport(const struct sbrec_port_binding *pb,
         update_related_lport(pb, b_ctx_out);
     }
 
-    return consider_nonvif_lport_(pb, our_chassis, b_ctx_in, b_ctx_out);
+    return consider_nonvif_lport_(pb, our_chassis, is_ha_chassis, b_ctx_in,
+                                  b_ctx_out);
 }
 
 static bool

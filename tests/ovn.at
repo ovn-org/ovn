@@ -7818,9 +7818,9 @@ ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect alice to R2
-ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
-    type=router options:router-port=alice addresses=\"00:00:02:01:02:03\"
+ovn-nbctl lrp-add R2 R2-alice 00:00:02:01:02:03 172.16.1.1/24
+ovn-nbctl lsp-add alice alice-R2 -- set Logical_Switch_Port alice-R2 \
+    type=router options:router-port=R2-alice addresses=\"00:00:02:01:02:03\"
 
 # Connect R1 to join
 ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24
@@ -7908,11 +7908,13 @@ echo "----------------------------"
 echo $expected > expected
 OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
 
+CHECK_FLOWS_AFTER_RECOMPUTE([hv1], [hv1])
+
 # Delete the router and re-create it. Things should work as before.
 ovn-nbctl  lr-del R2
 ovn-nbctl create Logical_Router name=R2 options:chassis="hv2"
 # Connect alice to R2
-ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24
+ovn-nbctl lrp-add R2 R2-alice 00:00:02:01:02:03 172.16.1.1/24
 # Connect R2 to join
 ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24
 
@@ -7923,6 +7925,8 @@ R2 static_routes @lrt
 # Wait for ovn-controller to catch up.
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
+
+CHECK_FLOWS_AFTER_RECOMPUTE([hv1], [hv1])
 
 # Send the packet again.
 as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
