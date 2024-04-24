@@ -1918,6 +1918,8 @@ is_paused_nested_action(enum action_opcode opcode)
     case ACTION_OPCODE_BFD_MSG:
     case ACTION_OPCODE_ACTIVATION_STRATEGY_RARP:
     case ACTION_OPCODE_MG_SPLIT_BUF:
+    case ACTION_OPCODE_DHCP_RELAY_REQ_CHK:
+    case ACTION_OPCODE_DHCP_RELAY_RESP_CHK:
     default:
         return false;
     }
@@ -2657,6 +2659,111 @@ static void
 ovnact_controller_event_free(struct ovnact_controller_event *event)
 {
     free_gen_options(event->options, event->n_options);
+}
+
+static void
+format_dhcpv4_relay_chk(const char *name,
+                        const struct ovnact_dhcp_relay *dhcp_relay,
+                        struct ds *s)
+{
+    expr_field_format(&dhcp_relay->dst, s);
+    ds_put_format(s, " = %s("IP_FMT", "IP_FMT");",
+                  name,
+                  IP_ARGS(dhcp_relay->relay_ipv4),
+                  IP_ARGS(dhcp_relay->server_ipv4));
+}
+
+static void
+parse_dhcp_relay_chk(struct action_context *ctx,
+                     const struct expr_field *dst,
+                     struct ovnact_dhcp_relay *dhcp_relay)
+{
+    /* Skip dhcp_relay_req_chk/dhcp_relay_resp_chk( */
+    lexer_force_match(ctx->lexer, LEX_T_LPAREN);
+
+    /* Validate that the destination is a 1-bit, modifiable field. */
+    char *error = expr_type_check(dst, 1, true, ctx->scope);
+    if (error) {
+        lexer_error(ctx->lexer, "%s", error);
+        free(error);
+        return;
+    }
+    dhcp_relay->dst = *dst;
+
+    /* Parse relay ip and server ip. */
+    if (ctx->lexer->token.format == LEX_F_IPV4) {
+        dhcp_relay->relay_ipv4 = ctx->lexer->token.value.ipv4;
+        lexer_get(ctx->lexer);
+        lexer_match(ctx->lexer, LEX_T_COMMA);
+        if (ctx->lexer->token.format == LEX_F_IPV4) {
+            dhcp_relay->server_ipv4 = ctx->lexer->token.value.ipv4;
+            lexer_get(ctx->lexer);
+        } else {
+            lexer_syntax_error(ctx->lexer, "expecting IPv4 dhcp server ip");
+            return;
+        }
+    } else {
+        lexer_syntax_error(ctx->lexer, "expecting IPv4 dhcp relay "
+                           "and server ips");
+        return;
+    }
+    lexer_force_match(ctx->lexer, LEX_T_RPAREN);
+}
+
+static void
+encode_dhcpv4_relay_chk(const struct ovnact_dhcp_relay *dhcp_relay,
+                        const struct ovnact_encode_params *ep,
+                        struct ofpbuf *ofpacts,
+                        enum action_opcode dhcp_relay_opcode)
+{
+    struct mf_subfield dst = expr_resolve_field(&dhcp_relay->dst);
+    size_t oc_offset = encode_start_controller_op(dhcp_relay_opcode, true,
+                                                  ep->ctrl_meter_id,
+                                                  ofpacts);
+    nx_put_header(ofpacts, dst.field->id, OFP15_VERSION, false);
+    ovs_be32 ofs = htonl(dst.ofs);
+    ofpbuf_put(ofpacts, &ofs, sizeof ofs);
+    ofpbuf_put(ofpacts, &dhcp_relay->relay_ipv4,
+               sizeof(dhcp_relay->relay_ipv4));
+    ofpbuf_put(ofpacts, &dhcp_relay->server_ipv4,
+               sizeof(dhcp_relay->server_ipv4));
+    encode_finish_controller_op(oc_offset, ofpacts);
+}
+
+static void
+format_DHCPV4_RELAY_REQ_CHK(const struct ovnact_dhcp_relay *dhcp_relay,
+                            struct ds *s)
+{
+    format_dhcpv4_relay_chk("dhcp_relay_req_chk", dhcp_relay, s);
+}
+
+static void
+encode_DHCPV4_RELAY_REQ_CHK(const struct ovnact_dhcp_relay *dhcp_relay,
+                            const struct ovnact_encode_params *ep,
+                            struct ofpbuf *ofpacts)
+{
+    encode_dhcpv4_relay_chk(dhcp_relay, ep, ofpacts,
+                            ACTION_OPCODE_DHCP_RELAY_REQ_CHK);
+}
+
+static void
+format_DHCPV4_RELAY_RESP_CHK(const struct ovnact_dhcp_relay *dhcp_relay,
+                             struct ds *s)
+{
+    format_dhcpv4_relay_chk("dhcp_relay_resp_chk", dhcp_relay, s);
+}
+
+static void
+encode_DHCPV4_RELAY_RESP_CHK(const struct ovnact_dhcp_relay *dhcp_relay,
+                             const struct ovnact_encode_params *ep,
+                             struct ofpbuf *ofpacts)
+{
+    encode_dhcpv4_relay_chk(dhcp_relay, ep, ofpacts,
+                            ACTION_OPCODE_DHCP_RELAY_RESP_CHK);
+}
+
+static void ovnact_dhcp_relay_free(struct ovnact_dhcp_relay *dr OVS_UNUSED)
+{
 }
 
 static void
@@ -5361,6 +5468,12 @@ parse_set_action(struct action_context *ctx)
                    lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
             parse_chk_lb_aff(ctx, &lhs,
                     ovnact_put_CHK_LB_AFF(ctx->ovnacts));
+        } else if (lexer_match_id(ctx->lexer, "dhcp_relay_req_chk")) {
+            parse_dhcp_relay_chk(
+                ctx, &lhs, ovnact_put_DHCPV4_RELAY_REQ_CHK(ctx->ovnacts));
+        } else if (lexer_match_id(ctx->lexer, "dhcp_relay_resp_chk")) {
+            parse_dhcp_relay_chk(
+                ctx, &lhs, ovnact_put_DHCPV4_RELAY_RESP_CHK(ctx->ovnacts));
         } else {
             parse_assignment_action(ctx, false, &lhs);
         }

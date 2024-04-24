@@ -1669,6 +1669,40 @@ reg1[[0]] = put_dhcp_opts(offerip=1.2.3.4, domain_name=1.2.3.4);
 reg1[[0]] = put_dhcp_opts(offerip=1.2.3.4, domain_search_list=1.2.3.4);
     DHCPv4 option domain_search_list requires string value.
 
+#dhcp_relay_req_chk
+reg9[[7]] = dhcp_relay_req_chk(192.168.1.1, 172.16.1.1);
+    encodes as controller(userdata=00.00.00.1c.00.00.00.00.80.01.08.08.00.00.00.07.c0.a8.01.01.ac.10.01.01,pause)
+
+reg9[[7]] = dhcp_relay_req_chk(192.168.1.1,172.16.1.1);
+    formats as reg9[[7]] = dhcp_relay_req_chk(192.168.1.1, 172.16.1.1);
+    encodes as controller(userdata=00.00.00.1c.00.00.00.00.80.01.08.08.00.00.00.07.c0.a8.01.01.ac.10.01.01,pause)
+
+reg9[[7..8]] = dhcp_relay_req_chk(192.168.1.1, 172.16.1.1);
+    Cannot use 2-bit field reg9[[7..8]] where 1-bit field is required.
+
+reg9[[7]] = dhcp_relay_req_chk("192.168.1.1", "172.16.1.1");
+    Syntax error at `"192.168.1.1"' expecting IPv4 dhcp relay and server ips.
+
+reg9[[7]] = dhcp_relay_req_chk(192.168.1, 172.16.1.1);
+    Invalid numeric constant.
+
+#dhcp_relay_resp_chk
+reg9[[8]] = dhcp_relay_resp_chk(192.168.1.1, 172.16.1.1);
+    encodes as controller(userdata=00.00.00.1d.00.00.00.00.80.01.08.08.00.00.00.08.c0.a8.01.01.ac.10.01.01,pause)
+
+reg9[[8]] = dhcp_relay_resp_chk(192.168.1.1,172.16.1.1);
+    formats as reg9[[8]] = dhcp_relay_resp_chk(192.168.1.1, 172.16.1.1);
+    encodes as controller(userdata=00.00.00.1d.00.00.00.00.80.01.08.08.00.00.00.08.c0.a8.01.01.ac.10.01.01,pause)
+
+reg9[[7..8]] = dhcp_relay_resp_chk(192.168.1.1, 172.16.1.1);
+    Cannot use 2-bit field reg9[[7..8]] where 1-bit field is required.
+
+reg9[[8]] = dhcp_relay_resp_chk("192.168.1.1", "172.16.1.1");
+    Syntax error at `"192.168.1.1"' expecting IPv4 dhcp relay and server ips.
+
+reg9[[8]] = dhcp_relay_resp_chk(192.168.1, 172.16.1.1);
+    Invalid numeric constant.
+
 # nd_ns
 nd_ns { nd.target = xxreg0; output; };
     encodes as controller(userdata=00.00.00.09.00.00.00.00.00.1c.00.18.00.80.00.00.00.00.00.00.00.01.de.10.80.00.3e.10.00.00.00.00.ff.ff.00.10.00.00.23.20.00.0e.ff.f8.OFTABLE_SAVE_INPORT_HEX.00.00.00,pause)

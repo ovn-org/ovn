@@ -2819,6 +2819,68 @@ tcp.flags = RST;
             use statistics of MAC cache.
           </p>
         </dd>
+
+        <dt><code><var>R</var> = dhcp_relay_req_chk(<var>relay-ip</var>,
+                                      <var>server-ip</var>);</code></dt>
+        <dd>
+          <p>
+            <b>Parameters</b>: Logical Router Port IP <var>relay-ip</var>, DHCP
+            Server IP <var>server-ip</var>.
+          </p>
+
+          <p>
+            <b>Result</b>: stored to a 1-bit subfield <var>R</var>.
+          </p>
+
+          <p>
+            This action executes on the source node on which the DHCP request
+            (DHCPDISCOVER or DHCPREQUEST) originated.
+          </p>
+
+          <p>
+            When this action applied successfully on the DHCP request packet,
+            it updates GIADDR in the DHCP packet with <var>relay-ip</var> and
+            stores 1 in R.
+          </p>
+
+          <p>
+            When this action failed to apply on the packet, it leaves the
+            packet unchanged and stores 0 in R.
+          </p>
+        </dd>
+
+        <dt><code><var>R</var> = dhcp_relay_resp_chk(<var>relay-ip</var>,
+                                      <var>server-ip</var>);</code></dt>
+        <dd>
+          <p>
+            <b>Parameters</b>: Logical Router Port IP <var>relay-ip</var>, DHCP
+            Server IP <var>server-ip</var>.
+          </p>
+
+          <p>
+            <b>Result</b>: stored to a 1-bit subfield <var>R</var>.
+          </p>
+
+          <p>
+            This action executes on the first node (Redirect Chassis node)
+            which processes the DHCP response(DHCPOFFER, DHCPACK) from the DHCP
+            server.
+          </p>
+
+          <p>
+            When this action applied successfully on the DHCP response packet,
+            it updates the destination MAC and destination IP in the packet and
+            stores 1 in R.
+            <var>relay-ip</var> and <var>server-ip</var> are used to validate
+            GIADDR and SERVER-ID in the DHCP response packet.
+          </p>
+
+          <p>
+            When this action failed to apply on the packet, it leaves the
+            packet unchanged and stores 0 in R.
+          </p>
+        </dd>
+
       </dl>
     </column>
 

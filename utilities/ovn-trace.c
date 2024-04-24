@@ -2330,6 +2330,63 @@ execute_put_dhcp_opts(const struct ovnact_put_opts *pdo,
 }
 
 static void
+execute_dhcpv4_relay_req_chk(const struct ovnact_dhcp_relay *dr,
+                             struct flow *uflow, struct ovs_list *super)
+{
+    ovntrace_node_append(
+        super, OVNTRACE_NODE_ERROR,
+        "/* We assume that this packet is DHCPDISCOVER or DHCPREQUEST. */");
+
+    struct ds s = DS_EMPTY_INITIALIZER;
+    struct mf_subfield dst = expr_resolve_field(&dr->dst);
+    if (!mf_is_register(dst.field->id)) {
+        /* Format assignment. */
+        ds_clear(&s);
+        expr_field_format(&dr->dst, &s);
+        ovntrace_node_append(super, OVNTRACE_NODE_MODIFY,
+                             "%s = 1", ds_cstr(&s));
+    }
+    ds_destroy(&s);
+
+    struct mf_subfield sf = expr_resolve_field(&dr->dst);
+    union mf_subvalue sv = { .u8_val = 1 };
+    mf_write_subfield_flow(&sf, &sv, uflow);
+}
+
+static void
+execute_dhcpv4_relay_resp_chk(const struct ovnact_dhcp_relay *dr,
+                              struct flow *uflow, struct ovs_list *super)
+{
+    ovntrace_node_append(
+        super, OVNTRACE_NODE_ERROR,
+        "/* We assume that this packet is DHCPOFFER or DHCPACK and "
+        "DHCP broadcast flag is set. Dest IP is set to broadcast. "
+        "Dest MAC is set to broadcast but in real network this is unicast "
+        "which is extracted from DHCP header. */");
+
+    /* Assume DHCP broadcast flag is set */
+    uflow->nw_dst = htonl(0xFFFFFFFF);
+    /* Dest MAC is set to broadcast but in real network this is unicast */
+    struct eth_addr bcast_mac = { .ea = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}};
+    uflow->dl_dst = bcast_mac;
+
+    struct ds s = DS_EMPTY_INITIALIZER;
+    struct mf_subfield dst = expr_resolve_field(&dr->dst);
+    if (!mf_is_register(dst.field->id)) {
+        /* Format assignment. */
+        ds_clear(&s);
+        expr_field_format(&dr->dst, &s);
+        ovntrace_node_append(super, OVNTRACE_NODE_MODIFY,
+                             "%s = 1", ds_cstr(&s));
+    }
+    ds_destroy(&s);
+
+    struct mf_subfield sf = expr_resolve_field(&dr->dst);
+    union mf_subvalue sv = { .u8_val = 1 };
+    mf_write_subfield_flow(&sf, &sv, uflow);
+}
+
+static void
 execute_put_nd_ra_opts(const struct ovnact_put_opts *pdo,
                        const char *name, struct flow *uflow,
                        struct ovs_list *super)
@@ -3238,6 +3295,16 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
         case OVNACT_PUT_DHCPV6_OPTS:
             execute_put_dhcp_opts(ovnact_get_PUT_DHCPV6_OPTS(a),
                                   "put_dhcpv6_opts", uflow, super);
+            break;
+
+        case OVNACT_DHCPV4_RELAY_REQ_CHK:
+            execute_dhcpv4_relay_req_chk(ovnact_get_DHCPV4_RELAY_REQ_CHK(a),
+                                         uflow, super);
+            break;
+
+        case OVNACT_DHCPV4_RELAY_RESP_CHK:
+            execute_dhcpv4_relay_resp_chk(ovnact_get_DHCPV4_RELAY_RESP_CHK(a),
+                                          uflow, super);
             break;
 
         case OVNACT_PUT_ND_RA_OPTS:
