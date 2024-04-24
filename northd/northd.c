@@ -153,6 +153,8 @@ static bool default_acl_drop;
 #define REGBIT_LOOKUP_NEIGHBOR_IP_RESULT "reg9[3]"
 #define REGBIT_DST_NAT_IP_LOCAL "reg9[4]"
 #define REGBIT_KNOWN_LB_SESSION "reg9[6]"
+#define REGBIT_DHCP_RELAY_REQ_CHK "reg9[7]"
+#define REGBIT_DHCP_RELAY_RESP_CHK "reg9[8]"
 
 /* Register to store the eth address associated to a router port for packets
  * received in S_ROUTER_IN_ADMISSION.
@@ -168,6 +170,7 @@ static bool default_acl_drop;
 #define REG_NEXT_HOP_IPV6 "xxreg0"
 #define REG_SRC_IPV4 "reg1"
 #define REG_SRC_IPV6 "xxreg1"
+#define REG_DHCP_RELAY_DIP_IPV4 "reg2"
 #define REG_ROUTE_TABLE_ID "reg7"
 
 /* Register used to store backend ipv6 address
@@ -232,7 +235,7 @@ static bool default_acl_drop;
  * | R1  |   SRC_IPV4 for ARP-REQ    | 0 |                 | R |                                    |
  * |     |      (>= IP_INPUT)        |   |                 | E |     NEXT_HOP_IPV6 (>= DEFRAG )     |
  * +-----+---------------------------+---+-----------------+ G |                                    |
- * | R2  |        UNUSED             | X |                 | 0 |                                    |
+ * | R2     REG_DHCP_RELAY_DIP_IPV4  | X |                 | 0 |                                    |
  * |     |                           | R |                 |   |                                    |
  * +-----+---------------------------+ E |     UNUSED      |   |                                    |
  * | R3  |        UNUSED             | G |                 |   |                                    |
@@ -259,7 +262,9 @@ static bool default_acl_drop;
  * |     |   EGRESS_LOOPBACK/        | G |     UNUSED      |
  * | R9  |   PKT_LARGER/             | 4 |                 |
  * |     |   LOOKUP_NEIGHBOR_RESULT/ |   |                 |
- * |     |   SKIP_LOOKUP_NEIGHBOR}   |   |                 |
+ * |     |   SKIP_LOOKUP_NEIGHBOR/   |   |                 |
+ * |     |REGBIT_DHCP_RELAY_REQ_CHK/ |   |                 |
+ * |     |REGBIT_DHCP_RELAY_RESP_CHK}|   |                 |
  * |     |                           |   |                 |
  * |     | REG_ORIG_TP_DPORT_ROUTER  |   |                 |
  * |     |                           |   |                 |
@@ -8548,6 +8553,89 @@ build_dhcpv6_options_flows(struct ovn_port *op,
     ds_destroy(&match);
 }
 
+static const char *
+ls_dhcp_relay_port(const struct ovn_datapath *od)
+{
+    return smap_get(&od->nbs->other_config, "dhcp_relay_port");
+}
+
+static void
+build_lswitch_dhcp_relay_flows(struct ovn_port *op,
+                               const struct hmap *ls_ports,
+                               struct lflow_table *lflows,
+                               struct ds *match,
+                               struct ds *actions)
+{
+    if (op->nbrp || !op->nbsp) {
+        return;
+    }
+
+    /* consider only ports attached to VMs */
+    if (strcmp(op->nbsp->type, "")) {
+        return;
+    }
+
+    if (!op->od || !op->od->n_router_ports || !op->od->nbs) {
+        return;
+    }
+
+    /* configure dhcp relay flows only when peer router  has
+     * relay config enabled */
+    const char *dhcp_relay_port = ls_dhcp_relay_port(op->od);
+    if (!dhcp_relay_port) {
+        return;
+    }
+
+    struct ovn_port *sp = ovn_port_find(ls_ports, dhcp_relay_port);
+
+    if (!sp || !sp->nbsp || !sp->peer) {
+        return;
+    }
+
+    struct ovn_port *rp = sp->peer;
+    if (!rp || !rp->nbrp || !rp->nbrp->dhcp_relay || rp->peer != sp) {
+        return;
+    }
+
+    char *server_ip_str = NULL;
+    uint16_t port;
+    int addr_family;
+    struct in6_addr server_ip;
+    struct nbrec_dhcp_relay *dhcp_relay = rp->nbrp->dhcp_relay;
+
+    if (!ip_address_and_port_from_lb_key(dhcp_relay->servers, &server_ip_str,
+                                         &server_ip, &port, &addr_family)) {
+        return;
+    }
+
+    if (server_ip_str == NULL) {
+        return;
+    }
+
+    ds_clear(match);
+    ds_clear(actions);
+
+    ds_put_format(
+        match, "inport == %s && eth.src == %s && "
+        "ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && "
+        "udp.src == 68 && udp.dst == 67",
+        op->json_key, op->lsp_addrs[0].ea_s);
+    ds_put_format(actions,
+                  "eth.dst = %s; outport = %s; next; /* DHCP_RELAY_REQ */",
+                  rp->lrp_networks.ea_s,sp->json_key);
+    ovn_lflow_add_with_hint__(lflows, op->od,
+                              S_SWITCH_IN_L2_LKUP, 100,
+                              ds_cstr(match),
+                              ds_cstr(actions),
+                              op->key,
+                              NULL,
+                              &op->nbsp->header_,
+                              op->lflow_ref);
+    ds_clear(match);
+    ds_clear(actions);
+    free(server_ip_str);
+}
+
 static void
 build_drop_arp_nd_flows_for_unbound_router_ports(struct ovn_port *op,
                                                  const struct ovn_port *port,
@@ -9146,6 +9234,13 @@ build_lswitch_dhcp_options_and_response(struct ovn_port *op,
     if (!op->nbsp->dhcpv4_options && !op->nbsp->dhcpv6_options) {
         /* CMS has disabled both native DHCPv4 and DHCPv6 for this lport.
          */
+        return;
+    }
+
+    if (op->od && op->od->nbs
+        && ls_dhcp_relay_port(op->od)) {
+        /* Don't add the DHCP server flows if DHCP Relay is enabled on the
+         * logical switch. */
         return;
     }
 
@@ -13629,6 +13724,162 @@ build_dhcpv6_reply_flows_for_lrouter_port(
 }
 
 static void
+build_dhcp_relay_flows_for_lrouter_port(struct ovn_port *op,
+                                        struct lflow_table *lflows,
+                                        struct ds *match, struct ds *actions,
+                                        struct lflow_ref *lflow_ref)
+{
+    if (!op->nbrp || !op->nbrp->dhcp_relay) {
+        return;
+
+    }
+
+    /* configure dhcp relay flows only when peer switch has
+     * relay config enabled */
+    struct ovn_port *sp = op->peer;
+    if (!sp || !sp->nbsp || sp->peer != op ||
+        !sp->od || !ls_dhcp_relay_port(sp->od)) {
+        return;
+    }
+
+    struct nbrec_dhcp_relay *dhcp_relay = op->nbrp->dhcp_relay;
+    if (!dhcp_relay->servers) {
+        return;
+    }
+
+    int addr_family;
+    /* currently not supporting custom port,
+     * dhcp server port is always set to 67 when installing flows */
+    uint16_t port;
+    char *server_ip_str = NULL;
+    struct in6_addr server_ip;
+
+    if (!ip_address_and_port_from_lb_key(dhcp_relay->servers, &server_ip_str,
+                                         &server_ip, &port, &addr_family)) {
+        return;
+    }
+
+    if (server_ip_str == NULL) {
+        return;
+    }
+
+    ds_clear(match);
+    ds_clear(actions);
+
+    ds_put_format(
+        match, "inport == %s && "
+        "ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && "
+        "ip.frag == 0 && udp.src == 68 && udp.dst == 67",
+        op->json_key);
+    ds_put_format(actions,
+                  REGBIT_DHCP_RELAY_REQ_CHK
+                  " = dhcp_relay_req_chk(%s, %s);"
+                  "next; /* DHCP_RELAY_REQ */",
+                  op->lrp_networks.ipv4_addrs[0].addr_s, server_ip_str);
+
+    ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_INPUT, 110,
+                            ds_cstr(match), ds_cstr(actions),
+                            &op->nbrp->header_, lflow_ref);
+
+    ds_clear(match);
+    ds_clear(actions);
+
+    ds_put_format(
+        match, "inport == %s && "
+        "ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && "
+        "udp.src == 68 && udp.dst == 67 && "
+        REGBIT_DHCP_RELAY_REQ_CHK,
+        op->json_key);
+    ds_put_format(actions,
+                  "ip4.src = %s; ip4.dst = %s; udp.src = 67; next; "
+                  "/* DHCP_RELAY_REQ */",
+                  op->lrp_networks.ipv4_addrs[0].addr_s, server_ip_str);
+
+    ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_DHCP_RELAY_REQ, 100,
+                            ds_cstr(match), ds_cstr(actions),
+                            &op->nbrp->header_, lflow_ref);
+
+    ds_clear(match);
+    ds_clear(actions);
+
+    ds_put_format(
+        match, "inport == %s && "
+        "ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && "
+        "udp.src == 68 && udp.dst == 67 && "
+        REGBIT_DHCP_RELAY_REQ_CHK" == 0",
+        op->json_key);
+    ds_put_format(actions, "drop; /* DHCP_RELAY_REQ */");
+
+    ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_DHCP_RELAY_REQ, 1,
+                            ds_cstr(match), ds_cstr(actions),
+                            &op->nbrp->header_, lflow_ref);
+
+    ds_clear(match);
+    ds_clear(actions);
+
+    ds_put_format(
+        match, "ip4.src == %s && ip4.dst == %s && "
+        "ip.frag == 0 && udp.src == 67 && udp.dst == 67",
+        server_ip_str, op->lrp_networks.ipv4_addrs[0].addr_s);
+    ds_put_format(actions, "next; /* DHCP_RELAY_RESP */");
+    ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_INPUT, 110,
+                            ds_cstr(match), ds_cstr(actions),
+                            &op->nbrp->header_, lflow_ref);
+
+    ds_clear(match);
+    ds_clear(actions);
+
+    ds_put_format(
+        match, "ip4.src == %s && ip4.dst == %s && "
+        "udp.src == 67 && udp.dst == 67",
+        server_ip_str, op->lrp_networks.ipv4_addrs[0].addr_s);
+    ds_put_format(actions,
+          REG_DHCP_RELAY_DIP_IPV4" = ip4.dst; "
+          REGBIT_DHCP_RELAY_RESP_CHK
+          " = dhcp_relay_resp_chk(%s, %s); next; /* DHCP_RELAY_RESP */",
+          op->lrp_networks.ipv4_addrs[0].addr_s, server_ip_str);
+
+    ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_DHCP_RELAY_RESP_CHK,
+                            100,
+                            ds_cstr(match), ds_cstr(actions),
+                            &op->nbrp->header_, lflow_ref);
+
+
+    ds_clear(match);
+    ds_clear(actions);
+
+    ds_put_format(
+        match, "ip4.src == %s && "
+        REG_DHCP_RELAY_DIP_IPV4" == %s && "
+        "udp.src == 67 && udp.dst == 67 && "
+        REGBIT_DHCP_RELAY_RESP_CHK,
+        server_ip_str, op->lrp_networks.ipv4_addrs[0].addr_s);
+    ds_put_format(actions,
+                  "ip4.src = %s; udp.dst = 68; "
+                  "outport = %s; output; /* DHCP_RELAY_RESP */",
+                  op->lrp_networks.ipv4_addrs[0].addr_s, op->json_key);
+    ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_DHCP_RELAY_RESP,
+                            100, ds_cstr(match), ds_cstr(actions),
+                            &op->nbrp->header_, lflow_ref);
+
+    ds_clear(match);
+    ds_clear(actions);
+
+    ds_put_format(match, "ip4.src == %s && "
+                  REG_DHCP_RELAY_DIP_IPV4" == %s && "
+                  "udp.src == 67 && udp.dst == 67 && "
+                  REGBIT_DHCP_RELAY_RESP_CHK" == 0",
+                  server_ip_str, op->lrp_networks.ipv4_addrs[0].addr_s);
+    ds_put_format(actions, "drop; /* DHCP_RELAY_RESP */");
+    ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_DHCP_RELAY_RESP,
+                            1, ds_cstr(match), ds_cstr(actions),
+                            &op->nbrp->header_, lflow_ref);
+    ds_clear(match);
+    ds_clear(actions);
+    free(server_ip_str);
+}
+
+static void
 build_ipv6_input_flows_for_lrouter_port(
         struct ovn_port *op, struct lflow_table *lflows,
         struct ds *match, struct ds *actions,
@@ -14938,6 +15189,13 @@ static void build_lr_nat_defrag_and_lb_default_flows(
                   lflow_ref);
     ovn_lflow_add(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 0, "1", "next;",
                   lflow_ref);
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_DHCP_RELAY_REQ, 0, "1",
+                  "next;", lflow_ref);
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_DHCP_RELAY_RESP_CHK, 0, "1",
+                  "next;", lflow_ref);
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_DHCP_RELAY_RESP, 0, "1",
+                  "next;", lflow_ref);
+
 
     /* Send the IPv6 NS packets to next table. When ovn-controller
      * generates IPv6 NS (for the action - nd_ns{}), the injected
@@ -15697,6 +15955,7 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
     build_lswitch_icmp_packet_toobig_admin_flows(op, lflows, match, actions);
     build_lswitch_ip_unicast_lookup(op, lflows, actions,
                                     match);
+    build_lswitch_dhcp_relay_flows(op, ls_ports, lflows, match, actions);
 
     /* Build Logical Router Flows. */
     build_arp_resolve_flows_for_lsp(op, lflows, lr_ports, match, actions);
@@ -15726,6 +15985,8 @@ build_lswitch_and_lrouter_iterate_by_lrp(struct ovn_port *op,
                                                  op->lflow_ref);
     build_dhcpv6_reply_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
                                               op->lflow_ref);
+    build_dhcp_relay_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
+                                            &lsi->actions, op->lflow_ref);
     build_ipv6_input_flows_for_lrouter_port(op, lsi->lflows,
                                             &lsi->match, &lsi->actions,
                                             lsi->meter_groups,

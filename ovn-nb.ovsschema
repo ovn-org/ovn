@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "7.3.0",
-    "cksum": "3546526738 34483",
+    "version": "7.3.1",
+    "cksum": "3899022625 35372",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -436,6 +436,11 @@
                 "ipv6_prefix": {"type": {"key": "string",
                                       "min": 0,
                                       "max": "unlimited"}},
+                "dhcp_relay": {"type": {"key": {"type": "uuid",
+                                            "refTable": "DHCP_Relay",
+                                            "refType": "strong"},
+                                            "min": 0,
+                                            "max": 1}},
                 "external_ids": {
                     "type": {"key": "string", "value": "string",
                              "min": 0, "max": "unlimited"}},
@@ -528,6 +533,18 @@
         "DHCP_Options": {
             "columns": {
                 "cidr": {"type": "string"},
+                "options": {"type": {"key": "string", "value": "string",
+                                     "min": 0, "max": "unlimited"}},
+                "external_ids": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}}},
+            "isRoot": true},
+        "DHCP_Relay": {
+            "columns": {
+                "name": {"type": "string"},
+                "servers": {"type": {"key": "string",
+                                       "min": 0,
+                                       "max": 1}},
                 "options": {"type": {"key": "string", "value": "string",
                                      "min": 0, "max": "unlimited"}},
                 "external_ids": {

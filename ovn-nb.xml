@@ -703,6 +703,13 @@
         </ul>
       </column>
 
+      <column name="other_config" key="dhcp_relay_port">
+        If set to the name of logical switch port of type <code>router</code>
+        then, DHCP Relay is enabled for this logical switch provided the
+        corresponding <ref table="Logical_Router_Port"/> has DHCP Relay
+        configured.
+      </column>
+
       <column name="other_config" key="mac_only" type='{"type": "boolean"}'>
         Value used to request to assign L2 address only if neither subnet
         nor ipv6_prefix are specified
@@ -3066,6 +3073,11 @@ or
       port has all ingress and egress traffic dropped.
     </column>
 
+    <column name="dhcp_relay">
+      This column is used to enabled DHCP Relay. Please refer
+      to <ref table="DHCP_Relay"/> table.
+    </column>
+
     <group title="Distributed Gateway Ports">
       <p>
         Gateways, as documented under <code>Gateways</code> in the OVN
@@ -4372,6 +4384,33 @@ or
       </group>
     </group>
 
+    <group title="Common Columns">
+      <column name="external_ids">
+        See <em>External IDs</em> at the beginning of this document.
+      </column>
+    </group>
+  </table>
+
+  <table name="DHCP_Relay" title="DHCP Relay">
+    <p>
+      OVN implements native DHCPv4 relay support which caters to the common
+      use case of relaying the DHCP requests to external DHCP server.
+    </p>
+    <column name="name">
+      <p>
+        A name for the DHCP Relay.
+      </p>
+    </column>
+    <column name="servers">
+      <p>
+        The DHCPv4 server IP address.
+      </p>
+    </column>
+    <column name="options">
+      <p>
+        Future purpose.
+      </p>
+    </column>
     <group title="Common Columns">
       <column name="external_ids">
         See <em>External IDs</em> at the beginning of this document.

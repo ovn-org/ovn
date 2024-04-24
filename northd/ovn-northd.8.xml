@@ -1935,6 +1935,12 @@ output;
       </li>
 
       <li>
+        A priority-100 flow that forwards all DHCP broadcast packets coming
+        from VIFs to the logical router port's MAC when DHCP relay is enabled
+        on the logical switch.
+      </li>
+
+      <li>
         Priority-90 flows for transit switches that forward registered
         IP multicast traffic to their corresponding multicast group , which
         <code>ovn-northd</code> creates based on learnt
@@ -2866,6 +2872,44 @@ icmp6_error {
 
       <li>
         <p>
+            For each logical router port configured with DHCP relay the
+            following priority-110 flows are added to manage the DHCP relay
+            traffic:
+
+            <ul>
+              <li>
+                <p>
+                  if <code>inport</code> is lrp and <code>ip4.src == 0.0.0.0
+                  </code> and <code>ip4.dst == 255.255.255.255</code> and
+                  <code>ip4.frag == 0 </code> and <code>udp.src == 68</code>
+                  and <code>udp.dst == 67</code>, the <code>dhcp_relay_req_chk
+                  </code> action is executed.
+                </p>
+
+              <pre>
+                reg9[7] = dhcp_relay_req_chk(<var>lrp_ip</var>,
+                                            <var>dhcp_server_ip</var>);next
+              </pre>
+
+              <p>
+                if action is successful then, GIADDR in the dhcp header is
+                updated with lrp ip and stores 1 into reg9[7] else stores 0
+                into reg9[7].
+              </p>
+              </li>
+
+              <li>
+               if <code>ip4.src</code> is DHCP server ip and <code>ip4.dst
+               </code> is lrp IP and <code>udp.src == 67</code> and
+               <code>udp.dst == 67</code>, the packet is advanced to the next
+               pipeline stage.
+              </li>
+            </ul>
+        </p>
+      </li>
+
+      <li>
+        <p>
           L3 admission control: Priority-120 flows allows IGMP and MLD packets
           if the router has logical ports that have
           <ref column="options" table="Logical_Router_Port"/>
@@ -3328,8 +3372,50 @@ icmp6 {
     </ul>
 
 
+    <h3>Ingress Table 4: DHCP Relay Request</h3>
+    <p>
+      This stage process the DHCP request packets on which
+      <code>dhcp_relay_req_chk</code> action is applied in the IP input stage.
+    </p>
+    <ul>
+      <li>
+        <p>
+          A priority-100 logical flow is added for each logical router port
+          configured with DHCP relay that matches <code>inport</code> is lrp
+          and <code>ip4.src == 0.0.0.0</code> and
+          <code>ip4.dst == 255.255.255.255</code> and <code>udp.src == 68
+          </code> and <code>udp.dst == 67</code> and <code>reg9[7] == 1</code>
+          and applies following actions. If <code>reg9[7]</code> is set to 1
+          then, <code>dhcp_relay_req_chk</code> action was successful.
+        </p>
 
-    <h3>Ingress Table 4: UNSNAT</h3>
+        <pre>
+ip4.src=<var>lrp ip</var>;
+ip4.dst=<var>dhcp server ip</var>;
+udp.src = 67;
+next;
+        </pre>
+      </li>
+
+      <li>
+        <p>
+          A priority-1 logical flow is added for each logical router port
+          configured with DHCP relay that matches <code>inport</code> is lrp
+          and <code>ip4.src == 0.0.0.0</code> and
+          <code>ip4.dst == 255.255.255.255</code> and <code>udp.src == 68
+          </code> and <code>udp.dst == 67</code> and <code>reg9[7] == 0</code>
+          and drops the packet. If <code>reg9[7]</code> is set to 0 then,
+          <code>dhcp_relay_req_chk</code> action was unsuccessful.
+        </p>
+      </li>
+
+      <li>
+        A priority-0 flow that matches all packets to advance to the next
+        table.
+      </li>
+    </ul>
+
+    <h3>Ingress Table 5: UNSNAT</h3>
 
     <p>
       This is for already established connections' reverse traffic.
@@ -3338,7 +3424,7 @@ icmp6 {
       unSNATted here.
     </p>
 
-    <p>Ingress Table 4: UNSNAT on Gateway and Distributed Routers</p>
+    <p>Ingress Table 5: UNSNAT on Gateway and Distributed Routers</p>
     <ul>
       <li>
         <p>
@@ -3365,7 +3451,7 @@ icmp6 {
       </li>
     </ul>
 
-    <p>Ingress Table 4: UNSNAT on Gateway Routers</p>
+    <p>Ingress Table 5: UNSNAT on Gateway Routers</p>
 
     <ul>
       <li>
@@ -3414,7 +3500,7 @@ icmp6 {
       </li>
     </ul>
 
-    <p>Ingress Table 4: UNSNAT on Distributed Routers</p>
+    <p>Ingress Table 5: UNSNAT on Distributed Routers</p>
 
     <ul>
       <li>
@@ -3461,7 +3547,7 @@ icmp6 {
       </li>
     </ul>
 
-    <h3>Ingress Table 5: DEFRAG</h3>
+    <h3>Ingress Table 6: DEFRAG</h3>
 
     <p>
       This is to send packets to connection tracker for tracking and
@@ -3504,7 +3590,7 @@ icmp6 {
       this allows potentially related ICMP traffic to pass through CT.
     </p>
 
-    <h3>Ingress Table 6: Load balancing affinity check</h3>
+    <h3>Ingress Table 7: Load balancing affinity check</h3>
 
     <p>
       Load balancing affinity check table contains the following
@@ -3531,7 +3617,7 @@ icmp6 {
       </li>
     </ul>
 
-    <h3>Ingress Table 7: DNAT</h3>
+    <h3>Ingress Table 8: DNAT</h3>
 
     <p>
       Packets enter the pipeline with destination IP address that needs to
@@ -3539,7 +3625,7 @@ icmp6 {
       in the reverse direction needs to be unDNATed.
     </p>
 
-    <p>Ingress Table 7: Load balancing DNAT rules</p>
+    <p>Ingress Table 8: Load balancing DNAT rules</p>
 
     <p>
       Following load balancing DNAT flows are added for Gateway router or
@@ -3660,7 +3746,7 @@ icmp6 {
       </li>
     </ul>
 
-    <p>Ingress Table 7: DNAT on Gateway Routers</p>
+    <p>Ingress Table 8: DNAT on Gateway Routers</p>
 
     <ul>
       <li>
@@ -3702,7 +3788,7 @@ icmp6 {
       </li>
     </ul>
 
-    <p>Ingress Table 7: DNAT on Distributed Routers</p>
+    <p>Ingress Table 8: DNAT on Distributed Routers</p>
 
     <p>
       On distributed routers, the DNAT table only handles packets
@@ -3757,7 +3843,7 @@ icmp6 {
       </li>
     </ul>
 
-    <h3>Ingress Table 8: Load balancing affinity learn</h3>
+    <h3>Ingress Table 9: Load balancing affinity learn</h3>
 
     <p>
       Load balancing affinity learn table contains the following
@@ -3785,7 +3871,7 @@ icmp6 {
       </li>
     </ul>
 
-    <h3>Ingress Table 9: ECMP symmetric reply processing</h3>
+    <h3>Ingress Table 10: ECMP symmetric reply processing</h3>
     <ul>
       <li>
         If ECMP routes with symmetric reply are configured in the
@@ -3804,7 +3890,7 @@ icmp6 {
       </li>
     </ul>
 
-    <h3>Ingress Table 10: IPv6 ND RA option processing</h3>
+    <h3>Ingress Table 11: IPv6 ND RA option processing</h3>
 
     <ul>
       <li>
@@ -3834,7 +3920,7 @@ reg0[5] = put_nd_ra_opts(<var>options</var>);next;
       </li>
     </ul>
 
-    <h3>Ingress Table 11: IPv6 ND RA responder</h3>
+    <h3>Ingress Table 12: IPv6 ND RA responder</h3>
 
     <p>
       This table implements IPv6 ND RA responder for the IPv6 ND RA replies
@@ -3879,7 +3965,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 12: IP Routing Pre</h3>
+    <h3>Ingress Table 13: IP Routing Pre</h3>
 
     <p>
       If a packet arrived at this table from Logical Router Port <var>P</var>
@@ -3909,7 +3995,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 13: IP Routing</h3>
+    <h3>Ingress Table 14: IP Routing</h3>
 
     <p>
       A packet that arrives at this table is an IP packet that should be
@@ -4115,7 +4201,7 @@ select(reg8[16..31], <var>MID1</var>, <var>MID2</var>, ...);
       </li>
     </ul>
 
-    <h3>Ingress Table 14: IP_ROUTING_ECMP</h3>
+    <h3>Ingress Table 15: IP_ROUTING_ECMP</h3>
 
     <p>
       This table implements the second part of IP routing for ECMP routes
@@ -4172,7 +4258,7 @@ outport = <var>P</var>;
       </li>
     </ul>
 
-    <h3>Ingress Table 15: Router policies</h3>
+    <h3>Ingress Table 16: Router policies</h3>
     <p>
       This table adds flows for the logical router policies configured
       on the logical router. Please see the
@@ -4244,7 +4330,7 @@ next;
       </li>
     </ul>
 
-    <h3>Ingress Table 16: ECMP handling for router policies</h3>
+    <h3>Ingress Table 17: ECMP handling for router policies</h3>
     <p>
       This table handles the ECMP for the router policies configured
       with multiple nexthops.
@@ -4293,7 +4379,84 @@ outport = <var>P</var>
       </li>
     </ul>
 
-    <h3>Ingress Table 17: ARP/ND Resolution</h3>
+    <h3>Ingress Table 18: DHCP Relay Response Check</h3>
+    <p>
+      This stage process the DHCP response packets coming from the DHCP server.
+    </p>
+
+    <ul>
+      <li>
+        <p>
+         A priority 100 logical flow is added for each logical router port
+         configured with DHCP relay that matches <code>ip4.src</code> is
+         DHCP server ip and <code>ip4.dst</code> is lrp IP and
+         <code>ip4.frag == 0</code> and <code>udp.src == 67</code> and
+         <code>udp.dst == 67</code> and applies <code>dhcp_relay_resp_chk
+         </code> action. Original destination ip is stored in reg2.
+        </p>
+
+      <pre>
+        reg9[8] = dhcp_relay_resp_chk(<var>lrp_ip</var>,
+                                      <var>dhcp_server_ip</var>);next
+      </pre>
+
+      <p>
+        if action is successful then, dest mac and dest IP addresses are
+        updated in the packet and stores 1 into reg9[8] else stores 0 into
+        reg9[8].
+      </p>
+      </li>
+
+      <li>
+        A priority-0 flow that matches all packets to advance to the next
+        table.
+      </li>
+    </ul>
+
+    <h3>Ingress Table 19: DHCP Relay Response</h3>
+    <p>
+      This stage process the DHCP response packets on which
+      <code>dhcp_relay_resp_chk</code> action is applied in the previous stage.
+    </p>
+    <ul>
+      <li>
+        <p>
+          A priority 100 logical flow is added for each logical router port
+          configured with DHCP relay that matches <code>ip4.src</code> is
+          DHCP server ip and <code>reg2</code> is lrp IP and
+          <code>udp.src == 67</code> and <code>udp.dst == 67</code>
+          and <code>reg9[8] == 1</code> and applies following actions. If
+          <code>reg9[8]</code> is set to 1 then,
+          <code>dhcp_relay_resp_chk</code> was successful.
+        </p>
+
+        <pre>
+ip4.src = <var>lrp ip</var>;
+udp.dst = 68;
+outport = <var>lrp port</var>;
+output;
+        </pre>
+      </li>
+
+      <li>
+        <p>
+          A priority 1 logical flow is added for the logical router port
+          on which DHCP relay is enabled that matches <code>ip4.src</code>
+          is DHCP server ip and <code>reg2</code> is lrp IP and
+          <code>udp.src == 67</code> and <code>udp.dst == 67</code>
+          and <code>reg9[8] == 0</code> and drops the packet. If
+          <code>reg9[8]</code> is set to 0 then,
+          <code>dhcp_relay_resp_chk</code> was unsuccessful.
+        </p>
+      </li>
+
+      <li>
+        A priority-0 flow that matches all packets to advance to the next
+        table.
+      </li>
+    </ul>
+
+    <h3>Ingress Table 20: ARP/ND Resolution</h3>
 
     <p>
       Any packet that reaches this table is an IP packet whose next-hop
@@ -4507,7 +4670,7 @@ outport = <var>P</var>
 
     </ul>
 
-    <h3>Ingress Table 18: Check packet length</h3>
+    <h3>Ingress Table 21: Check packet length</h3>
 
     <p>
       For distributed logical routers or gateway routers with gateway
@@ -4544,7 +4707,7 @@ REGBIT_PKT_LARGER = check_pkt_larger(<var>L</var>); next;
       and advances to the next table.
     </p>
 
-    <h3>Ingress Table 19: Handle larger packets</h3>
+    <h3>Ingress Table 22: Handle larger packets</h3>
 
     <p>
       For distributed logical routers or gateway routers with gateway port
@@ -4607,7 +4770,7 @@ icmp6 {
       and advances to the next table.
     </p>
 
-    <h3>Ingress Table 20: Gateway Redirect</h3>
+    <h3>Ingress Table 23: Gateway Redirect</h3>
 
     <p>
       For distributed logical routers where one or more of the logical router
@@ -4691,7 +4854,7 @@ icmp6 {
       </li>
     </ul>
 
-    <h3>Ingress Table 21: ARP Request</h3>
+    <h3>Ingress Table 24: ARP Request</h3>
 
     <p>
       In the common case where the Ethernet destination has been resolved, this

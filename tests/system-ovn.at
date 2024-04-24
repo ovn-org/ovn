@@ -12588,3 +12588,151 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([DHCP RELAY])
+AT_SKIP_IF([test $HAVE_DHCPD = no])
+AT_SKIP_IF([test $HAVE_DHCLIENT = no])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+
+ADD_BR([br-int])
+ADD_BR([br-ext])
+
+ovs-ofctl add-flow br-ext action=normal
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+ADD_NAMESPACES(sw01)
+ADD_VETH(sw01, sw01, br-int, "0", "f0:00:00:01:02:03")
+ADD_NAMESPACES(sw11)
+ADD_VETH(sw11, sw11, br-int, "0", "f0:00:00:02:02:03")
+ADD_NAMESPACES(server)
+ADD_VETH(s1, server, br-ext, "172.16.1.1/24", "f0:00:00:01:02:05", \
+         "172.16.1.254")
+
+check ovn-nbctl lr-add R1
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add sw1
+check ovn-nbctl ls-add sw-ext
+
+check ovn-nbctl lrp-add R1 rp-sw0 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lrp-add R1 rp-sw1 00:00:03:01:02:03 192.168.2.1/24
+check ovn-nbctl lrp-add R1 rp-ext 00:00:02:01:02:03 172.16.1.254/24
+
+dhcp_relay=$(ovn-nbctl create DHCP_Relay servers=172.16.1.1)
+check ovn-nbctl set Logical_Router_port rp-sw0 dhcp_relay=$dhcp_relay
+check ovn-nbctl set Logical_Router_port rp-sw1 dhcp_relay=$dhcp_relay
+check ovn-nbctl lrp-set-gateway-chassis rp-ext hv1
+
+check ovn-nbctl lsp-add sw0 sw0-rp -- set Logical_Switch_Port sw0-rp \
+    type=router options:router-port=rp-sw0 \
+    -- lsp-set-addresses sw0-rp router
+check ovn-nbctl lsp-add sw1 sw1-rp -- set Logical_Switch_Port sw1-rp \
+    type=router options:router-port=rp-sw1 \
+    -- lsp-set-addresses sw1-rp router
+
+check ovn-nbctl set Logical_Switch sw0 other_config:dhcp_relay_port=sw0-rp
+check ovn-nbctl set Logical_Switch sw1 other_config:dhcp_relay_port=sw1-rp
+
+check ovn-nbctl lsp-add sw-ext ext-rp -- set Logical_Switch_Port ext-rp \
+    type=router options:router-port=rp-ext \
+    -- lsp-set-addresses ext-rp router
+check ovn-nbctl lsp-add sw-ext lnet \
+        -- lsp-set-addresses lnet unknown \
+        -- lsp-set-type lnet localnet \
+        -- lsp-set-options lnet network_name=phynet
+
+check ovn-nbctl lsp-add sw0 sw01 \
+    -- lsp-set-addresses sw01 "f0:00:00:01:02:03"
+
+check ovn-nbctl lsp-add sw1 sw11 \
+    -- lsp-set-addresses sw11 "f0:00:00:02:02:03"
+
+AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext])
+
+OVN_POPULATE_ARP
+
+check ovn-nbctl --wait=hv sync
+
+DHCP_TEST_DIR="/tmp/dhcp-test"
+rm -rf $DHCP_TEST_DIR
+mkdir $DHCP_TEST_DIR
+cat > $DHCP_TEST_DIR/dhcpd.conf <<EOF
+subnet 172.16.1.0 netmask 255.255.255.0 {
+}
+subnet 192.168.1.0 netmask 255.255.255.0 {
+  range 192.168.1.10 192.168.1.10;
+  option routers 192.168.1.1;
+  option broadcast-address 192.168.1.255;
+  default-lease-time 60;
+  max-lease-time 120;
+}
+subnet 192.168.2.0 netmask 255.255.255.0 {
+  range 192.168.2.10 192.168.2.10;
+  option routers 192.168.2.1;
+  option broadcast-address 192.168.2.255;
+  default-lease-time 60;
+  max-lease-time 120;
+}
+EOF
+cat > $DHCP_TEST_DIR/dhclien.conf <<EOF
+timeout 2
+EOF
+
+touch $DHCP_TEST_DIR/dhcpd.leases
+chown root:dhcpd $DHCP_TEST_DIR $DHCP_TEST_DIR/dhcpd.leases
+chmod 775 $DHCP_TEST_DIR
+chmod 664 $DHCP_TEST_DIR/dhcpd.leases
+
+
+NETNS_DAEMONIZE([server], [dhcpd -4 -f -cf $DHCP_TEST_DIR/dhcpd.conf s1 > dhcpd.log 2>&1], [dhcpd.pid])
+
+NS_CHECK_EXEC([server], [tcpdump -l -nvv -i s1  udp > pkt.pcap 2>tcpdump_err &])
+OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
+on_exit 'kill $(pidof tcpdump)'
+
+NS_CHECK_EXEC([sw01], [dhclient -1 -q -lf $DHCP_TEST_DIR/dhclient-sw01.lease -pf $DHCP_TEST_DIR/dhclient-sw01.pid -cf $DHCP_TEST_DIR/dhclien.conf sw01])
+NS_CHECK_EXEC([sw11], [dhclient -1 -q -lf $DHCP_TEST_DIR/dhclient-sw11.lease -pf $DHCP_TEST_DIR/dhclient-sw11.pid -cf $DHCP_TEST_DIR/dhclien.conf sw11])
+
+OVS_WAIT_UNTIL([
+    total_pkts=$(cat pkt.pcap | wc -l)
+    test ${total_pkts} -ge 8
+])
+
+on_exit 'kill `cat $DHCP_TEST_DIR/dhclient-sw01.pid` &&
+kill `cat $DHCP_TEST_DIR/dhclient-sw11.pid` && rm -rf $DHCP_TEST_DIR'
+
+NS_CHECK_EXEC([sw01], [ip addr show sw01 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'], [0], [dnl
+192.168.1.10
+])
+NS_CHECK_EXEC([sw11], [ip addr show sw11 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'], [0], [dnl
+192.168.2.10
+])
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
+/failed to query port patch-.*/d
+/.*terminating with signal 15.*/d"])
+AT_CLEANUP
+])
