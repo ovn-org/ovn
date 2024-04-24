@@ -1993,6 +1993,524 @@ is_dhcp_flags_broadcast(ovs_be16 flags)
     return flags & htons(DHCP_BROADCAST_FLAG);
 }
 
+static const char *dhcp_msg_str[] = {
+    [0] = "INVALID",
+    [DHCP_MSG_DISCOVER] = "DISCOVER",
+    [DHCP_MSG_OFFER] = "OFFER",
+    [DHCP_MSG_REQUEST] = "REQUEST",
+    [OVN_DHCP_MSG_DECLINE] = "DECLINE",
+    [DHCP_MSG_ACK] = "ACK",
+    [DHCP_MSG_NAK] = "NAK",
+    [OVN_DHCP_MSG_RELEASE] = "RELEASE",
+    [OVN_DHCP_MSG_INFORM] = "INFORM"
+};
+
+static bool
+dhcp_relay_is_msg_type_supported(uint8_t msg_type)
+{
+    return (msg_type >= DHCP_MSG_DISCOVER && msg_type <= OVN_DHCP_MSG_RELEASE);
+}
+
+static const char *dhcp_msg_str_get(uint8_t msg_type)
+{
+    if (!dhcp_relay_is_msg_type_supported(msg_type)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "Unknown DHCP msg type: %u", msg_type);
+        return "UNKNOWN";
+    }
+    return dhcp_msg_str[msg_type];
+}
+
+static const struct dhcp_header *
+dhcp_get_hdr_from_pkt(struct dp_packet *pkt_in, const char **in_dhcp_pptr,
+                      const char *end)
+{
+    /* Validate the DHCP request packet.
+     * Format of the DHCP packet is
+     * -----------------------------------------------------------------------
+     *| UDP HEADER | DHCP HEADER | 4 Byte DHCP Cookie | DHCP OPTIONS(var len) |
+     * -----------------------------------------------------------------------
+     */
+
+    *in_dhcp_pptr = dp_packet_get_udp_payload(pkt_in);
+    if (*in_dhcp_pptr == NULL) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP: Invalid or incomplete DHCP packet received");
+        return NULL;
+    }
+
+    const struct dhcp_header *dhcp_hdr
+        = (const struct dhcp_header *) *in_dhcp_pptr;
+    (*in_dhcp_pptr) += sizeof *dhcp_hdr;
+    if (*in_dhcp_pptr > end) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP: Invalid or incomplete DHCP packet received, "
+                     "bad data length");
+        return NULL;
+    }
+
+    if (dhcp_hdr->htype != 0x1) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP: Packet is recieved with "
+                     "unsupported hardware type");
+        return NULL;
+    }
+
+    if (dhcp_hdr->hlen != 0x6) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP: Packet is recieved with "
+                     "unsupported hardware length");
+        return NULL;
+    }
+
+    /* DHCP options follow the DHCP header. The first 4 bytes of the DHCP
+     * options is the DHCP magic cookie followed by the actual DHCP options.
+     */
+    ovs_be32 magic_cookie = htonl(DHCP_MAGIC_COOKIE);
+    if ((*in_dhcp_pptr) + sizeof magic_cookie > end ||
+        get_unaligned_be32((const void *) (*in_dhcp_pptr)) != magic_cookie) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP: Magic cookie not present in the DHCP packet");
+        return NULL;
+    }
+
+    (*in_dhcp_pptr) += sizeof magic_cookie;
+
+    return dhcp_hdr;
+}
+
+/* Parsed DHCP option values which we are interested in. */
+struct parsed_dhcp_options {
+    uint8_t dhcp_msg_type;
+    ovs_be32 request_ip;
+    ovs_be32 server_id;
+    ovs_be32 netmask;
+    ovs_be32 router_ip;
+    bool ipxe_req;
+};
+
+static struct parsed_dhcp_options
+dhcp_parse_options(const char **in_dhcp_pptr, const char *end)
+{
+    struct parsed_dhcp_options parsed_dhcp_opts = {0};
+    while ((*in_dhcp_pptr) < end) {
+        const struct dhcp_opt_header *in_dhcp_opt =
+            (const struct dhcp_opt_header *) *in_dhcp_pptr;
+        if (in_dhcp_opt->code == DHCP_OPT_END) {
+            break;
+        }
+        if (in_dhcp_opt->code == DHCP_OPT_PAD) {
+            (*in_dhcp_pptr) += 1;
+            continue;
+        }
+        (*in_dhcp_pptr) += sizeof *in_dhcp_opt;
+        if ((*in_dhcp_pptr) > end) {
+            break;
+        }
+        (*in_dhcp_pptr) += in_dhcp_opt->len;
+        if ((*in_dhcp_pptr) > end) {
+            break;
+        }
+
+        switch (in_dhcp_opt->code) {
+        case DHCP_OPT_MSG_TYPE:
+            if (in_dhcp_opt->len == 1) {
+                const uint8_t *dhcp_msg_type = DHCP_OPT_PAYLOAD(in_dhcp_opt);
+                parsed_dhcp_opts.dhcp_msg_type = *dhcp_msg_type;
+            }
+            break;
+        case DHCP_OPT_REQ_IP:
+            if (in_dhcp_opt->len == 4) {
+                parsed_dhcp_opts.request_ip = get_unaligned_be32(
+                    DHCP_OPT_PAYLOAD(in_dhcp_opt));
+            }
+            break;
+        case OVN_DHCP_OPT_CODE_SERVER_ID:
+            if (in_dhcp_opt->len == 4) {
+                parsed_dhcp_opts.server_id = get_unaligned_be32(
+                    DHCP_OPT_PAYLOAD(in_dhcp_opt));
+            }
+            break;
+        case OVN_DHCP_OPT_CODE_NETMASK:
+            if (in_dhcp_opt->len == 4) {
+                parsed_dhcp_opts.netmask = get_unaligned_be32(
+                    DHCP_OPT_PAYLOAD(in_dhcp_opt));
+            }
+            break;
+        case OVN_DHCP_OPT_CODE_ROUTER_IP:
+            if (in_dhcp_opt->len == 4) {
+                parsed_dhcp_opts.router_ip = get_unaligned_be32(
+                    DHCP_OPT_PAYLOAD(in_dhcp_opt));
+            }
+            break;
+        case DHCP_OPT_ETHERBOOT:
+            parsed_dhcp_opts.ipxe_req = true;
+            break;
+        default:
+            break;
+        }
+    }
+
+    return parsed_dhcp_opts;
+}
+
+/* Called with in the pinctrl_handler thread context. */
+static void
+pinctrl_handle_dhcp_relay_req_chk(struct rconn *swconn,
+                                  struct dp_packet *pkt_in,
+                                  struct ofputil_packet_in *pin,
+                                  struct ofpbuf *userdata,
+                                  struct ofpbuf *continuation)
+{
+    enum ofp_version version = rconn_get_version(swconn);
+    enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
+    struct dp_packet *pkt_out_ptr = NULL;
+    uint32_t success = 0;
+
+    /* Parse result field. */
+    const struct mf_field *f;
+    enum ofperr ofperr = nx_pull_header(userdata, NULL, &f, NULL);
+    if (ofperr) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP_RELAY_REQ_CHK: bad result OXM (%s)",
+                     ofperr_to_string(ofperr));
+        goto exit;
+    }
+    ovs_be32 *ofsp = ofpbuf_try_pull(userdata, sizeof *ofsp);
+    /* Check that the result is valid and writable. */
+    struct mf_subfield dst = { .field = f, .ofs = ntohl(*ofsp), .n_bits = 1 };
+    ofperr = mf_check_dst(&dst, NULL);
+    if (ofperr) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP_RELAY_REQ_CHK: bad result bit (%s)",
+                     ofperr_to_string(ofperr));
+        goto exit;
+    }
+
+    /* Parse relay IP and server IP. */
+    ovs_be32 *relay_ip = ofpbuf_try_pull(userdata, sizeof *relay_ip);
+    ovs_be32 *server_ip = ofpbuf_try_pull(userdata, sizeof *server_ip);
+    if (!relay_ip || !server_ip) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP_RELAY_REQ_CHK: relay ip or server ip "
+                     "not present in the userdata");
+        goto exit;
+    }
+
+    size_t in_l4_size = dp_packet_l4_size(pkt_in);
+    const char *end = (char *) dp_packet_l4(pkt_in) + in_l4_size;
+    const char *in_dhcp_ptr = NULL;
+    const struct dhcp_header *in_dhcp_data =
+        dhcp_get_hdr_from_pkt(pkt_in, &in_dhcp_ptr, end);
+
+    if (!in_dhcp_data) {
+        goto exit;
+    }
+    ovs_assert(in_dhcp_ptr);
+
+    if (in_dhcp_data->op != DHCP_OP_REQUEST) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP_RELAY_REQ_CHK: invalid opcode in the "
+                     "DHCP packet: %d", in_dhcp_data->op);
+        goto exit;
+    }
+
+    if (in_dhcp_data->giaddr) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP_RELAY_REQ_CHK: giaddr is already set");
+        goto exit;
+    }
+
+    struct parsed_dhcp_options dhcp_opts = dhcp_parse_options(&in_dhcp_ptr,
+                                                              end);
+    if (!dhcp_opts.request_ip) {
+        dhcp_opts.request_ip = in_dhcp_data->ciaddr;
+    }
+
+    /* Check whether the DHCP Message Type (opt 53) is present or not */
+    if (!dhcp_opts.dhcp_msg_type) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP_RELAY_REQ_CHK: missing message type");
+        goto exit;
+    }
+
+    /* Relay the DHCP request packet */
+    uint16_t new_l4_size = in_l4_size;
+    size_t new_packet_size = pkt_in->l4_ofs + new_l4_size;
+
+    struct dp_packet pkt_out;
+    dp_packet_init(&pkt_out, new_packet_size);
+    dp_packet_clear(&pkt_out);
+    dp_packet_prealloc_tailroom(&pkt_out, new_packet_size);
+    pkt_out_ptr = &pkt_out;
+
+    /* Copy the L2 and L3 headers from the pkt_in as they would remain same*/
+    dp_packet_put(
+        &pkt_out, dp_packet_pull(pkt_in, pkt_in->l4_ofs), pkt_in->l4_ofs);
+
+    pkt_out.l2_5_ofs = pkt_in->l2_5_ofs;
+    pkt_out.l2_pad_size = pkt_in->l2_pad_size;
+    pkt_out.l3_ofs = pkt_in->l3_ofs;
+    pkt_out.l4_ofs = pkt_in->l4_ofs;
+
+    struct udp_header *udp = dp_packet_put(
+        &pkt_out, dp_packet_pull(pkt_in, UDP_HEADER_LEN), UDP_HEADER_LEN);
+
+    struct dhcp_header *dhcp_data = dp_packet_put(&pkt_out,
+        dp_packet_pull(pkt_in, new_l4_size - UDP_HEADER_LEN),
+        new_l4_size - UDP_HEADER_LEN);
+
+    uint8_t hops = dhcp_data->hops + 1;
+    if (udp->udp_csum) {
+        udp->udp_csum = recalc_csum16(udp->udp_csum,
+            htons((uint16_t) dhcp_data->hops), htons((uint16_t) hops));
+    }
+    dhcp_data->hops = hops;
+
+    dhcp_data->giaddr = *relay_ip;
+    if (udp->udp_csum) {
+        udp->udp_csum = recalc_csum32(udp->udp_csum,
+            0, dhcp_data->giaddr);
+    }
+    pin->packet = dp_packet_data(&pkt_out);
+    pin->packet_len = dp_packet_size(&pkt_out);
+
+    /* Log the DHCP message. */
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(20, 40);
+    VLOG_INFO_RL(&rl, "DHCP_RELAY_REQ_CHK:: MSG_TYPE:%s MAC:"ETH_ADDR_FMT
+                 " XID:%u"
+                 " REQ_IP:"IP_FMT
+                 " GIADDR:"IP_FMT
+                 " SERVER_ADDR:"IP_FMT,
+                 dhcp_msg_str_get(dhcp_opts.dhcp_msg_type),
+                 ETH_ADDR_BYTES_ARGS(dhcp_data->chaddr), ntohl(dhcp_data->xid),
+                 IP_ARGS(dhcp_opts.request_ip), IP_ARGS(dhcp_data->giaddr),
+                 IP_ARGS(*server_ip));
+    success = 1;
+exit:
+    if (!ofperr) {
+        union mf_subvalue sv;
+        sv.u8_val = success;
+        mf_write_subfield(&dst, &sv, &pin->flow_metadata);
+    }
+    queue_msg(swconn, ofputil_encode_resume(pin, continuation, proto));
+    if (pkt_out_ptr) {
+        dp_packet_uninit(pkt_out_ptr);
+    }
+}
+
+/* Called with in the pinctrl_handler thread context. */
+static void
+pinctrl_handle_dhcp_relay_resp_chk(
+    struct rconn *swconn,
+    struct dp_packet *pkt_in, struct ofputil_packet_in *pin,
+    struct ofpbuf *userdata,
+    struct ofpbuf *continuation)
+{
+    enum ofp_version version = rconn_get_version(swconn);
+    enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
+    struct dp_packet *pkt_out_ptr = NULL;
+    uint32_t success = 0;
+
+    /* Parse result field. */
+    const struct mf_field *f;
+    enum ofperr ofperr = nx_pull_header(userdata, NULL, &f, NULL);
+    if (ofperr) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP_RELAY_RESP_CHK: bad result OXM (%s)",
+                     ofperr_to_string(ofperr));
+        goto exit;
+    }
+    ovs_be32 *ofsp = ofpbuf_try_pull(userdata, sizeof *ofsp);
+    /* Check that the result is valid and writable. */
+    struct mf_subfield dst = { .field = f, .ofs = ntohl(*ofsp), .n_bits = 1 };
+    ofperr = mf_check_dst(&dst, NULL);
+    if (ofperr) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP_RELAY_RESP_CHK: bad result bit (%s)",
+                     ofperr_to_string(ofperr));
+        goto exit;
+    }
+
+    /* Parse relay IP and server IP. */
+    ovs_be32 *relay_ip = ofpbuf_try_pull(userdata, sizeof *relay_ip);
+    ovs_be32 *server_ip = ofpbuf_try_pull(userdata, sizeof *server_ip);
+    if (!relay_ip || !server_ip) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP_RELAY_RESP_CHK: relay ip or server ip "
+                     "not present in the userdata");
+        goto exit;
+    }
+
+    size_t in_l4_size = dp_packet_l4_size(pkt_in);
+    const char *end = (char *) dp_packet_l4(pkt_in) + in_l4_size;
+    const char *in_dhcp_ptr = NULL;
+    const struct dhcp_header *in_dhcp_data = dhcp_get_hdr_from_pkt(
+        pkt_in, &in_dhcp_ptr, end);
+
+    if (!in_dhcp_data) {
+        goto exit;
+    }
+    ovs_assert(in_dhcp_ptr);
+
+    if (in_dhcp_data->op != DHCP_OP_REPLY) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP_RELAY_RESP_CHK: invalid opcode "
+                     "in the packet: %d", in_dhcp_data->op);
+        goto exit;
+    }
+
+    if (!in_dhcp_data->giaddr) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP_RELAY_RESP_CHK: giaddr is "
+                     "not set in request");
+        goto exit;
+    }
+
+    ovs_be32 giaddr = in_dhcp_data->giaddr;
+    if (giaddr != *relay_ip) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP_RELAY_RESP: giaddr mismatch");
+        goto exit;
+    }
+
+    ovs_be32 yiaddr = in_dhcp_data->yiaddr;
+
+    struct parsed_dhcp_options dhcp_opts = dhcp_parse_options(&in_dhcp_ptr,
+                                                              end);
+    if (!dhcp_opts.request_ip) {
+        dhcp_opts.request_ip = in_dhcp_data->ciaddr;
+    }
+
+    /* Check whether the DHCP Message Type (opt 53) is present or not */
+    if (!dhcp_opts.dhcp_msg_type) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP_RELAY_RESP: missing message type");
+        goto exit;
+    }
+
+    if (!dhcp_opts.server_id) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP_RELAY_RESP: missing server identifier");
+        goto exit;
+    }
+
+    if (dhcp_opts.server_id != *server_ip) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "DHCP_RELAY_RESP: server identifier mismatch");
+        goto exit;
+    }
+
+    if (dhcp_opts.dhcp_msg_type == DHCP_MSG_OFFER ||
+        dhcp_opts.dhcp_msg_type == DHCP_MSG_ACK) {
+        if ((yiaddr & dhcp_opts.netmask) != (
+                giaddr & dhcp_opts.netmask)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_INFO_RL(&rl, "DHCP_RELAY_RESP_CHK:: "
+                         "Allocated ip adress and giaddr are not in "
+                         "same subnet. MSG_TYPE:%s MAC:"ETH_ADDR_FMT
+                         " XID:%u"
+                         " YIADDR:"IP_FMT
+                         " GIADDR:"IP_FMT
+                         " SERVER_ADDR:"IP_FMT,
+                         dhcp_msg_str_get(dhcp_opts.dhcp_msg_type),
+                         ETH_ADDR_BYTES_ARGS(in_dhcp_data->chaddr),
+                         ntohl(in_dhcp_data->xid),
+                         IP_ARGS(yiaddr), IP_ARGS(giaddr),
+                         IP_ARGS(dhcp_opts.server_id));
+            goto exit;
+        }
+
+        if (dhcp_opts.router_ip &&
+            dhcp_opts.router_ip != giaddr) {
+            /* Log the default gateway mismatch and continue with rest of the
+             * processing. */
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_INFO_RL(&rl, "DHCP_RELAY_RESP_CHK::"
+                         " Router ip adress and giaddr are not same."
+                         " MSG_TYPE:%s MAC:"ETH_ADDR_FMT
+                         " XID:%u"
+                         " YIADDR:"IP_FMT
+                         " GIADDR:"IP_FMT
+                         " SERVER_ADDR:"IP_FMT,
+                         dhcp_msg_str_get(dhcp_opts.dhcp_msg_type),
+                         ETH_ADDR_BYTES_ARGS(in_dhcp_data->chaddr),
+                         ntohl(in_dhcp_data->xid),
+                         IP_ARGS(yiaddr), IP_ARGS(giaddr),
+                         IP_ARGS(dhcp_opts.server_id));
+        }
+    }
+
+    /* Update destination MAC & IP so that the packet is forward to the
+     * right destination node.
+     */
+    uint16_t new_l4_size = in_l4_size;
+    size_t new_packet_size = pkt_in->l4_ofs + new_l4_size;
+
+    struct dp_packet pkt_out;
+    dp_packet_init(&pkt_out, new_packet_size);
+    dp_packet_clear(&pkt_out);
+    dp_packet_prealloc_tailroom(&pkt_out, new_packet_size);
+    pkt_out_ptr = &pkt_out;
+
+    /* Copy the L2 and L3 headers from the pkt_in as they would remain same*/
+    struct eth_header *eth = dp_packet_put(
+        &pkt_out, dp_packet_pull(pkt_in, pkt_in->l4_ofs), pkt_in->l4_ofs);
+
+    pkt_out.l2_5_ofs = pkt_in->l2_5_ofs;
+    pkt_out.l2_pad_size = pkt_in->l2_pad_size;
+    pkt_out.l3_ofs = pkt_in->l3_ofs;
+    pkt_out.l4_ofs = pkt_in->l4_ofs;
+
+    struct udp_header *udp = dp_packet_put(
+        &pkt_out, dp_packet_pull(pkt_in, UDP_HEADER_LEN), UDP_HEADER_LEN);
+
+    struct dhcp_header *dhcp_data = dp_packet_put(
+        &pkt_out, dp_packet_pull(pkt_in, new_l4_size - UDP_HEADER_LEN),
+        new_l4_size - UDP_HEADER_LEN);
+    memcpy(&eth->eth_dst, dhcp_data->chaddr, sizeof(eth->eth_dst));
+
+    /* Send a broadcast IP frame when BROADCAST flag is set. */
+    struct ip_header *out_ip = dp_packet_l3(&pkt_out);
+    ovs_be32 ip_dst;
+    ovs_be32 ip_dst_orig = get_16aligned_be32(&out_ip->ip_dst);
+    if (!is_dhcp_flags_broadcast(dhcp_data->flags)) {
+        ip_dst = dhcp_data->yiaddr;
+    } else {
+        ip_dst = htonl(0xffffffff);
+    }
+    put_16aligned_be32(&out_ip->ip_dst, ip_dst);
+    out_ip->ip_csum = recalc_csum32(out_ip->ip_csum, ip_dst_orig, ip_dst);
+    if (udp->udp_csum) {
+        udp->udp_csum = recalc_csum32(udp->udp_csum, ip_dst_orig, ip_dst);
+    }
+    pin->packet = dp_packet_data(&pkt_out);
+    pin->packet_len = dp_packet_size(&pkt_out);
+
+    /* Log the DHCP message. */
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(20, 40);
+    VLOG_INFO_RL(&rl, "DHCP_RELAY_RESP_CHK:: MSG_TYPE:%s MAC:"ETH_ADDR_FMT
+                 " XID:%u"
+                 " YIADDR:"IP_FMT
+                 " GIADDR:"IP_FMT
+                 " SERVER_ADDR:"IP_FMT,
+                 dhcp_msg_str_get(dhcp_opts.dhcp_msg_type),
+                 ETH_ADDR_BYTES_ARGS(dhcp_data->chaddr), ntohl(dhcp_data->xid),
+                 IP_ARGS(yiaddr),
+                 IP_ARGS(giaddr), IP_ARGS(dhcp_opts.server_id));
+    success = 1;
+exit:
+    if (!ofperr) {
+        union mf_subvalue sv;
+        sv.u8_val = success;
+        mf_write_subfield(&dst, &sv, &pin->flow_metadata);
+    }
+    queue_msg(swconn, ofputil_encode_resume(pin, continuation, proto));
+    if (pkt_out_ptr) {
+        dp_packet_uninit(pkt_out_ptr);
+    }
+}
+
 /* Called with in the pinctrl_handler thread context. */
 static void
 pinctrl_handle_put_dhcp_opts(
@@ -2040,30 +2558,16 @@ pinctrl_handle_put_dhcp_opts(
         goto exit;
     }
 
-    /* Validate the DHCP request packet.
-     * Format of the DHCP packet is
-     * ------------------------------------------------------------------------
-     *| UDP HEADER  | DHCP HEADER  | 4 Byte DHCP Cookie | DHCP OPTIONS(var len)|
-     * ------------------------------------------------------------------------
-     */
-
     const char *end = (char *)dp_packet_l4(pkt_in) + dp_packet_l4_size(pkt_in);
-    const char *in_dhcp_ptr = dp_packet_get_udp_payload(pkt_in);
-    if (!in_dhcp_ptr) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-        VLOG_WARN_RL(&rl, "Invalid or incomplete DHCP packet received");
-        goto exit;
-    }
+    const char *in_dhcp_ptr = NULL;
+    const struct dhcp_header *in_dhcp_data =
+        dhcp_get_hdr_from_pkt(pkt_in, &in_dhcp_ptr, end);
 
-    const struct dhcp_header *in_dhcp_data
-        = (const struct dhcp_header *) in_dhcp_ptr;
-    in_dhcp_ptr += sizeof *in_dhcp_data;
-    if (in_dhcp_ptr > end) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-        VLOG_WARN_RL(&rl, "Invalid or incomplete DHCP packet received, "
-                     "bad data length");
+    if (!in_dhcp_data) {
         goto exit;
     }
+    ovs_assert(in_dhcp_ptr);
+
     if (in_dhcp_data->op != DHCP_OP_REQUEST) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
         VLOG_WARN_RL(&rl, "Invalid opcode in the DHCP packet: %d",
@@ -2071,63 +2575,16 @@ pinctrl_handle_put_dhcp_opts(
         goto exit;
     }
 
-    /* DHCP options follow the DHCP header. The first 4 bytes of the DHCP
-     * options is the DHCP magic cookie followed by the actual DHCP options.
-     */
-    ovs_be32 magic_cookie = htonl(DHCP_MAGIC_COOKIE);
-    if (in_dhcp_ptr + sizeof magic_cookie > end ||
-        get_unaligned_be32((const void *) in_dhcp_ptr) != magic_cookie) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-        VLOG_WARN_RL(&rl, "DHCP magic cookie not present in the DHCP packet");
-        goto exit;
-    }
-    in_dhcp_ptr += sizeof magic_cookie;
-
-    bool ipxe_req = false;
-    const uint8_t *in_dhcp_msg_type = NULL;
-    ovs_be32 request_ip = in_dhcp_data->ciaddr;
-    while (in_dhcp_ptr < end) {
-        const struct dhcp_opt_header *in_dhcp_opt =
-            (const struct dhcp_opt_header *)in_dhcp_ptr;
-        if (in_dhcp_opt->code == DHCP_OPT_END) {
-            break;
-        }
-        if (in_dhcp_opt->code == DHCP_OPT_PAD) {
-            in_dhcp_ptr += 1;
-            continue;
-        }
-        in_dhcp_ptr += sizeof *in_dhcp_opt;
-        if (in_dhcp_ptr > end) {
-            break;
-        }
-        in_dhcp_ptr += in_dhcp_opt->len;
-        if (in_dhcp_ptr > end) {
-            break;
-        }
-
-        switch (in_dhcp_opt->code) {
-        case DHCP_OPT_MSG_TYPE:
-            if (in_dhcp_opt->len == 1) {
-                in_dhcp_msg_type = DHCP_OPT_PAYLOAD(in_dhcp_opt);
-            }
-            break;
-        case DHCP_OPT_REQ_IP:
-            if (in_dhcp_opt->len == 4) {
-                request_ip = get_unaligned_be32(DHCP_OPT_PAYLOAD(in_dhcp_opt));
-            }
-            break;
-        case DHCP_OPT_ETHERBOOT:
-            ipxe_req = true;
-            break;
-        default:
-            break;
-        }
+    struct parsed_dhcp_options dhcp_opts = dhcp_parse_options(&in_dhcp_ptr,
+                                                              end);
+    if (!dhcp_opts.request_ip) {
+        dhcp_opts.request_ip = in_dhcp_data->ciaddr;
     }
 
     /* Check that the DHCP Message Type (opt 53) is present or not with
      * valid values - DHCP_MSG_DISCOVER or DHCP_MSG_REQUEST.
      */
-    if (!in_dhcp_msg_type) {
+    if (!dhcp_opts.dhcp_msg_type) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
         VLOG_WARN_RL(&rl, "Missing DHCP message type");
         goto exit;
@@ -2136,7 +2593,7 @@ pinctrl_handle_put_dhcp_opts(
     struct ofpbuf *reply_dhcp_opts_ptr = userdata;
     uint8_t msg_type = 0;
 
-    switch (*in_dhcp_msg_type) {
+    switch (dhcp_opts.dhcp_msg_type) {
     case DHCP_MSG_DISCOVER:
         msg_type = DHCP_MSG_OFFER;
         if (in_flow->nw_dst != htonl(INADDR_BROADCAST)) {
@@ -2147,10 +2604,11 @@ pinctrl_handle_put_dhcp_opts(
         break;
     case DHCP_MSG_REQUEST: {
         msg_type = DHCP_MSG_ACK;
-        if (request_ip != *offer_ip) {
+        if (dhcp_opts.request_ip != *offer_ip) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
             VLOG_WARN_RL(&rl, "DHCPREQUEST requested IP "IP_FMT" does not "
-                         "match offer "IP_FMT, IP_ARGS(request_ip),
+                         "match offer "IP_FMT,
+                         IP_ARGS(dhcp_opts.request_ip),
                          IP_ARGS(*offer_ip));
             msg_type = DHCP_MSG_NAK;
         }
@@ -2215,14 +2673,15 @@ pinctrl_handle_put_dhcp_opts(
         break;
     }
     case OVN_DHCP_MSG_DECLINE:
-        if (request_ip == *offer_ip) {
+        if (dhcp_opts.request_ip == *offer_ip) {
             VLOG_INFO("DHCPDECLINE from "ETH_ADDR_FMT ", "IP_FMT" duplicated",
                       ETH_ADDR_ARGS(in_flow->dl_src), IP_ARGS(*offer_ip));
         }
         goto exit;
     default: {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-        VLOG_WARN_RL(&rl, "Invalid DHCP message type: %d", *in_dhcp_msg_type);
+        VLOG_WARN_RL(&rl, "Invalid DHCP message type: %d",
+                     dhcp_opts.dhcp_msg_type);
         goto exit;
     }
     }
@@ -2262,7 +2721,7 @@ pinctrl_handle_put_dhcp_opts(
                 (struct dhcp_opt_header *)(ptr + len);
 
             if (next_dhcp_opt->code == DHCP_OPT_BOOTFILE_ALT_CODE) {
-                if (!ipxe_req) {
+                if (!dhcp_opts.ipxe_req) {
                     ofpbuf_pull(reply_dhcp_opts_ptr, len);
                     next_dhcp_opt->code = DHCP_OPT_BOOTFILE_CODE;
                 } else {
@@ -2322,13 +2781,14 @@ pinctrl_handle_put_dhcp_opts(
         &pkt_out, dp_packet_pull(pkt_in, DHCP_HEADER_LEN), DHCP_HEADER_LEN);
     dhcp_data->op = DHCP_OP_REPLY;
 
-    if (*in_dhcp_msg_type != OVN_DHCP_MSG_INFORM) {
+    if (dhcp_opts.dhcp_msg_type != OVN_DHCP_MSG_INFORM) {
         dhcp_data->yiaddr = (msg_type == DHCP_MSG_NAK) ? 0 : *offer_ip;
         dhcp_data->siaddr = (msg_type == DHCP_MSG_NAK) ? 0 : next_server;
     } else {
         dhcp_data->yiaddr = 0;
     }
 
+    ovs_be32 magic_cookie = htonl(DHCP_MAGIC_COOKIE);
     dp_packet_put(&pkt_out, &magic_cookie, sizeof(ovs_be32));
 
     uint16_t out_dhcp_opts_size = 12;
@@ -3296,6 +3756,16 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         pinctrl_handle_put_mac_binding(&pin.flow_metadata.flow, &headers,
                                        true);
         ovs_mutex_unlock(&pinctrl_mutex);
+        break;
+
+    case ACTION_OPCODE_DHCP_RELAY_REQ_CHK:
+        pinctrl_handle_dhcp_relay_req_chk(swconn, &packet, &pin,
+                                          &userdata, &continuation);
+        break;
+
+    case ACTION_OPCODE_DHCP_RELAY_RESP_CHK:
+        pinctrl_handle_dhcp_relay_resp_chk(swconn, &packet, &pin,
+                                           &userdata, &continuation);
         break;
 
     case ACTION_OPCODE_PUT_DHCP_OPTS:

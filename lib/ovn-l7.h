@@ -68,7 +68,9 @@ struct gen_opts_map {
  * OVN_DHCP_OPT_CODE_<opt_name>.
  */
 #define OVN_DHCP_OPT_CODE_NETMASK      1
+#define OVN_DHCP_OPT_CODE_ROUTER_IP    3
 #define OVN_DHCP_OPT_CODE_LEASE_TIME   51
+#define OVN_DHCP_OPT_CODE_SERVER_ID    54
 #define OVN_DHCP_OPT_CODE_T1           58
 #define OVN_DHCP_OPT_CODE_T2           59
 
