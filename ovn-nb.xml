@@ -1269,6 +1269,17 @@
           </p>
         </column>
 
+        <column name="options" key="force_fdb_lookup"
+                type='{"type": "boolean"}'>
+          This option is supported only if the Logical Switch Port is of
+          default <ref column="type"/> (i.e. type set to empty_string) and also
+          <ref column="addresses"/> column contains <code>unknown</code>.
+          If set to <code>true</code>, MAC addresses (if configured)
+          are not installed in the l2 lookup table but the MAC addresses are
+          learnt and stored in the FDB table.
+          The default value is <code>false</code>.
+        </column>
+
         <column name="options" key="pkt_clone_type"
                 type='{"type": "string", "enum": ["set", ["mc_unknown"]]}'>
           If set to mc_unknown, packets going to this VIF get cloned to all

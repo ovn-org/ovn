@@ -6973,6 +6973,44 @@ AT_CLEANUP
 
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([check options: force_fdb_lookup for LSP])
+ovn_start NORTHD_TYPE
+ovn-nbctl ls-add S1
+ovn-nbctl --wait=sb lsp-add S1 S1-vm1
+ovn-nbctl --wait=sb lsp-add S1 S1-localnet
+ovn-nbctl --wait=sb lsp-set-addresses S1-vm1 "50:54:00:00:00:01 192.168.0.1" unknown
+ovn-nbctl --wait=sb lsp-set-type S1-localnet localnet
+
+#Verify the flows before setting force_fdb_lookup option
+ovn-sbctl dump-flows S1 > S1flows
+AT_CAPTURE_FILE([S1flows])
+
+AT_CHECK([grep -e "ls_in_l2_lkup.*S1-vm1" S1flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 50:54:00:00:00:01), action=(outport = "S1-vm1"; output;)
+])
+
+#Set the force_fdb_lookup option and verify the flows
+ovn-nbctl --wait=sb set logical_switch_port S1-vm1 options:force_fdb_lookup=true
+ovn-nbctl --wait=sb set logical_switch_port S1-localnet options:force_fdb_lookup=true
+
+ovn-sbctl dump-flows S1 > S1flows
+AT_CAPTURE_FILE([S1flows])
+
+#Verify the flows for default port type (VM port)
+AT_CHECK([grep -e "ls_in_l2_lkup.*S1-vm1" S1flows | grep -e "match=(eth.dst == 50:54:00:00:00:01)"], [1], [])
+AT_CHECK([grep -e "ls_in_.*_fdb.*S1-vm1" S1flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_lookup_fdb   ), priority=100  , match=(inport == "S1-vm1"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=??(ls_in_put_fdb      ), priority=100  , match=(inport == "S1-vm1" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+])
+
+#Verify the flows for a non-default port type (localnet port)
+AT_CHECK([grep -e "ls_in_.*_fdb.*S1-localnet" S1flows], [1], [])
+
+AT_CLEANUP
+])
+
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check options:pkt_clone_type for LSP])
 ovn_start NORTHD_TYPE
 ovn-nbctl ls-add S1

@@ -1385,6 +1385,16 @@ lrport_is_enabled(const struct nbrec_logical_router_port *lrport)
     return !lrport->enabled || *lrport->enabled;
 }
 
+static bool
+lsp_force_fdb_lookup(const struct ovn_port *op)
+{
+    /* To enable FDB Table lookup on a logical switch port, it has to be
+     * of 'type' empty_string and "addresses" must have "unknown".
+     */
+    return !op->nbsp->type[0] && op->has_unknown &&
+        smap_get_bool(&op->nbsp->options, "force_fdb_lookup", false);
+}
+
 static struct ovn_port *
 ovn_port_get_peer(const struct hmap *lr_ports, struct ovn_port *op)
 {
@@ -9594,6 +9604,12 @@ build_lswitch_ip_unicast_lookup(struct ovn_port *op,
 
         if (ovs_scan(op->nbsp->addresses[i],
                     ETH_ADDR_SCAN_FMT, ETH_ADDR_SCAN_ARGS(mac))) {
+            /* Skip adding flows related to the MAC address
+             * as force FDB Lookup is enabled on the lsp.
+             */
+            if (lsp_force_fdb_lookup(op)) {
+                continue;
+            }
             ds_clear(match);
             ds_put_format(match, "eth.dst == "ETH_ADDR_FMT,
                           ETH_ADDR_ARGS(mac));

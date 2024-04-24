@@ -2039,6 +2039,12 @@ output;
         </p>
 
         <p>
+          The above flow is not added if the logical switch port is of type
+          VIF, has <code>unknown</code> as one of its address and has the
+          option <code>options:force_fdb_lookup</code> set to true.
+        </p>
+
+        <p>
           For the Ethernet address on a logical switch port of type
           <code>router</code>, when that logical switch port's
           <ref column="addresses" table="Logical_Switch_Port"

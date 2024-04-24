@@ -366,6 +366,7 @@ Shan Wei                           davidshan@tencent.com
 Sharon Krendel                     thekafkaf@gmail.com
 Shashank Ram                       rams@vmware.com
 Shashwat Srivastava                shashwat.srivastava@tcs.com
+Shibir-basak                       shibir.basak@nutanix.com
 Shih-Hao Li                        shihli@vmware.com
 Shu Shen                           shu.shen@radisys.com
 Simon Horman                       horms@ovn.org
