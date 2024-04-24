@@ -324,8 +324,7 @@
       'packet too big' and <code>eth.src == <var>D</var> &amp;&amp;
       outport == <var>P</var> &amp;&amp; flags.tunnel_rx == 1</code> where
       <var>D</var> is the peer logical router port <var>RP</var> mac address,
-      swaps inport and outport and applies the action <code>
-      next(pipeline=S_SWITCH_IN_L2_LKUP)</code>.
+      swaps inport and outport and applies the action <code>next</code>.
     </p>
 
     <p>
@@ -338,7 +337,16 @@
     </p>
 
     <p>
-      This table adds a priority-110 flow that matches 'recirculated' icmp{4,6}
+      For each logical switch port <var>P</var> a priority-110 flow that
+      matches 'recirculated' icmp{4,6} error 'packet too big' and <code>
+      eth.src == <var>D</var> &amp;&amp; outport == <var>P</var> &amp;&amp;
+      !is_chassis_resident("<var>P</var>") &amp;&amp; flags.tunnel_rx == 1
+      </code> where <var>D</var> is the logical switch port mac address,
+      swaps inport and outport and applies the action <code>next</code>.
+    </p>
+
+    <p>
+      This table adds a priority-105 flow that matches 'recirculated' icmp{4,6}
       error 'packet too big' to drop the packet.
     </p>
 
@@ -2462,7 +2470,7 @@ output;
         </p>
 
         <p>
-          This table adds a priority-110 flow that matches 'recirculated'
+          This table adds a priority-105 flow that matches 'recirculated'
           icmp{4,6} error 'packet too big' to drop the packet.
         </p>
 

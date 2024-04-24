@@ -35821,6 +35821,9 @@ m4_define([MULTIPLE_OVS_INT],
    check ovn-nbctl lsp-add ls lp
    if test X$1 != X; then
        check ovn-nbctl lsp-set-type lp $1
+       nb_flows_ref=0
+   else
+       nb_flows_ref=1
    fi
    check ovn-nbctl lsp-set-addresses lp "00:00:00:01:01:02 192.168.1.2"
 
@@ -35902,7 +35905,7 @@ m4_define([MULTIPLE_OVS_INT],
    check ovs-vsctl del-port br-int lpnew
    OVS_WAIT_UNTIL([
        nb_flows=`ovs-ofctl dump-flows br-int | grep $COOKIE | wc -l`
-       test "${nb_flows}" = 0
+       test "${nb_flows}" = $nb_flows_ref
    ])
 
    echo ======================================================
