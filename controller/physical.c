@@ -1498,6 +1498,26 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         return;
     }
 
+    if (get_lport_type(binding) == LP_VIF) {
+        /* Table 80, priority 100.
+         * =======================
+         *
+         * Process ICMP{4,6} error packets too big locally generated from the
+         * kernel in order to lookup proper ct_zone. */
+        struct match match = MATCH_CATCHALL_INITIALIZER;
+        match_set_metadata(&match, htonll(dp_key));
+        match_set_reg(&match, MFF_LOG_INPORT - MFF_REG0, port_key);
+
+        struct zone_ids icmp_zone_ids = get_zone_ids(binding, ct_zones);
+        ofpbuf_clear(ofpacts_p);
+        put_zones_ofpacts(&icmp_zone_ids, ofpacts_p);
+        put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, ofpacts_p);
+        ofctrl_add_flow(flow_table, OFTABLE_CT_ZONE_LOOKUP, 100,
+                        binding->header_.uuid.parts[0], &match,
+                        ofpacts_p, &binding->header_.uuid);
+        ofpbuf_clear(ofpacts_p);
+    }
+
     struct match match;
     if (!strcmp(binding->type, "patch")
         || (!strcmp(binding->type, "l3gateway")
@@ -2464,6 +2484,14 @@ physical_run(struct physical_ctx *p_ctx,
                               flow_table, &ofpacts);
     }
 
+    /* Default flow for CT_ZONE_LOOKUP Table. */
+    struct match ct_look_def_match;
+    match_init_catchall(&ct_look_def_match);
+    ofpbuf_clear(&ofpacts);
+    put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, &ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_CT_ZONE_LOOKUP, 0, 0,
+                    &ct_look_def_match, &ofpacts, hc_uuid);
+
     /* Handle output to multicast groups, in tables 40 and 41. */
     const struct sbrec_multicast_group *mc;
     SBREC_MULTICAST_GROUP_TABLE_FOR_EACH (mc, p_ctx->mc_group_table) {
@@ -2522,7 +2550,7 @@ physical_run(struct physical_ctx *p_ctx,
         /* Add specif flows for E/W ICMPv{4,6} packets if tunnelled packets
          * do not fit path MTU.
          */
-        put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, &ofpacts);
+        put_resubmit(OFTABLE_CT_ZONE_LOOKUP, &ofpacts);
 
         /* IPv4 */
         match_init_catchall(&match);

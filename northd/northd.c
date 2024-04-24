@@ -8780,7 +8780,7 @@ build_lswitch_lflows_admission_control(struct ovn_datapath *od,
     ovs_assert(od->nbs);
 
     /* Default action for recirculated ICMP error 'packet too big'. */
-    ovn_lflow_add(lflows, od, S_SWITCH_IN_CHECK_PORT_SEC, 110,
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_CHECK_PORT_SEC, 105,
                   "((ip4 && icmp4.type == 3 && icmp4.code == 4) ||"
                   " (ip6 && icmp6.type == 2 && icmp6.code == 0)) &&"
                   " flags.tunnel_rx == 1", debug_drop_action(), lflow_ref);
@@ -11989,7 +11989,20 @@ build_lswitch_icmp_packet_toobig_admin_flows(
 {
     ovs_assert(op->nbsp);
 
+    ds_clear(match);
     if (!lsp_is_router(op->nbsp)) {
+        for (size_t i = 0; i < op->n_lsp_addrs; i++) {
+            ds_put_format(match,
+                          "((ip4 && icmp4.type == 3 && icmp4.code == 4) ||"
+                          " (ip6 && icmp6.type == 2 && icmp6.code == 0)) &&"
+                          " eth.src == %s && outport == %s &&"
+                          " !is_chassis_resident(%s) && flags.tunnel_rx == 1",
+                          op->lsp_addrs[i].ea_s, op->json_key,
+                          op->json_key);
+            ovn_lflow_add(lflows, op->od, S_SWITCH_IN_CHECK_PORT_SEC, 110,
+                          ds_cstr(match), "outport <-> inport; next;",
+                          op->lflow_ref);
+        }
         return;
     }
 
@@ -11998,26 +12011,28 @@ build_lswitch_icmp_packet_toobig_admin_flows(
         return;
     }
 
-    ds_clear(match);
     if (peer->od->is_gw_router) {
         ds_put_format(match,
                       "((ip4 && icmp4.type == 3 && icmp4.code == 4) ||"
                       " (ip6 && icmp6.type == 2 && icmp6.code == 0)) && "
                       "eth.src == %s && outport == %s && flags.tunnel_rx == 1",
                       peer->nbrp->mac, op->json_key);
+        ovn_lflow_add(lflows, op->od, S_SWITCH_IN_CHECK_PORT_SEC, 120,
+                      ds_cstr(match), "outport <-> inport; next;",
+                      op->lflow_ref);
     } else {
         ds_put_format(match,
                       "((ip4 && icmp4.type == 3 && icmp4.code == 4) ||"
                       " (ip6 && icmp6.type == 2 && icmp6.code == 0)) && "
                       "eth.dst == %s && flags.tunnel_rx == 1",
                       peer->nbrp->mac);
+        ds_clear(actions);
+        ds_put_format(actions,
+                      "outport <-> inport; next(pipeline=ingress,table=%d);",
+                      ovn_stage_get_table(S_SWITCH_IN_L2_LKUP));
+        ovn_lflow_add(lflows, op->od, S_SWITCH_IN_CHECK_PORT_SEC, 120,
+                      ds_cstr(match), ds_cstr(actions), op->lflow_ref);
     }
-    ds_clear(actions);
-    ds_put_format(actions,
-                  "outport <-> inport; next(pipeline=ingress,table=%d);",
-                  ovn_stage_get_table(S_SWITCH_IN_L2_LKUP));
-    ovn_lflow_add(lflows, op->od, S_SWITCH_IN_CHECK_PORT_SEC, 120,
-                  ds_cstr(match), ds_cstr(actions), op->lflow_ref);
 }
 
 static void

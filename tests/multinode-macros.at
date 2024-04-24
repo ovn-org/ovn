@@ -7,6 +7,13 @@
 m4_define([M_NS_EXEC],
     [podman exec $1 ip netns exec $2 $3])
 
+# M_NS_DAEMONIZE([fake_node],[namespace],[command],[pidfile])
+m4_define([M_NS_DAEMONIZE],
+    [podman exec $1 ip netns exec $2 $3 & echo $! > $4
+     echo "kill \`cat $4\`" >> cleanup
+    ]
+)
+
 # M_NS_CHECK_EXEC([fake_node], [namespace], [command], other_params...)
 #
 # Wrapper for AT_CHECK that executes 'command' inside 'fake_node''s namespace'.

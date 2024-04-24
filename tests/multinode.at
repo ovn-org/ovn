@@ -162,6 +162,11 @@ check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 20.0.0.0/24
 check multinode_nbctl acl-add sw0 from-lport 1002 'ip4 || ip6'  allow-related
 check multinode_nbctl acl-add sw1 from-lport 1002 'ip4 || ip6'  allow-related
 
+# create LB
+check multinode_nbctl lb-add lb0 10.0.0.1:8080 10.0.0.4:8080 udp
+check multinode_nbctl ls-lb-add sw0 lb0
+M_NS_DAEMONIZE([ovn-chassis-2], [sw0p2], [nc -u -l 8080 >/dev/null 2>&1], [nc.pid])
+
 m_as ovn-gw-1 ip netns add ovn-ext0
 m_as ovn-gw-1 ovs-vsctl add-port br-ex ext0 -- set interface ext0 type=internal
 m_as ovn-gw-1 ip link set ext0 netns ovn-ext0
@@ -214,6 +219,12 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 172.20.1.2 |
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
+
+m_as ovn-chassis-1 ip route change 170.168.0.0/16 mtu 1000 dev eth1
+for i in $(seq 30); do
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [sh -c 'dd bs=512 count=2 if=/dev/urandom | nc -u 10.0.0.1 8080'], [ignore], [ignore], [ignore])
+done
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route get 10.0.0.1 dev sw0p1 | grep -q 'mtu 942'])
 
 AT_CLEANUP
 
@@ -704,6 +715,11 @@ check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 20.0.0.0/24
 check multinode_nbctl acl-add sw0 from-lport 1002 'ip4 || ip6'  allow-related
 check multinode_nbctl acl-add sw1 from-lport 1002 'ip4 || ip6'  allow-related
 
+# create LB
+check multinode_nbctl lb-add lb0 10.0.0.1:8080 20.0.0.3:8080 udp
+check multinode_nbctl lr-lb-add lr0 lb0
+M_NS_DAEMONIZE([ovn-chassis-2], [sw1p1], [nc -u -l 8080 >/dev/null 2>&1], [nc.pid])
+
 m_as ovn-gw-1 ip netns add ovn-ext0
 m_as ovn-gw-1 ovs-vsctl add-port br-ex ext0 -- set interface ext0 type=internal
 m_as ovn-gw-1 ip link set ext0 netns ovn-ext0
@@ -757,7 +773,17 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 172.20.1.2 |
 ])
 
 M_NS_CHECK_EXEC([ovn-gw-1], [ovn-ext0], [ip link set dev ext1 mtu 1100])
-M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -c 20 -i 0.5 -s 1300 -M do 172.20.1.2 2>&1 |grep -q "mtu = 1100"])
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -c 20 -i 0.5 -s 1300 -M do 172.20.1.2 2>&1 | grep -q "mtu = 1100"])
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route flush dev sw0p1])
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add 10.0.0.0/24 dev sw0p1])
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add default via 10.0.0.1 dev sw0p1])
+
+m_as ovn-chassis-1 ip route change 170.168.0.0/16 mtu 1000 dev eth1
+for i in $(seq 30); do
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [sh -c 'dd bs=512 count=2 if=/dev/urandom | nc -u 10.0.0.1 8080'], [ignore], [ignore], [ignore])
+done
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route get 10.0.0.1 dev sw0p1 | grep -q 'mtu 942'])
 
 AT_CLEANUP
 
@@ -842,6 +868,11 @@ check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 20.0.0.0/24
 check multinode_nbctl acl-add sw0 from-lport 1002 'ip4 || ip6'  allow-related
 check multinode_nbctl acl-add sw1 from-lport 1002 'ip4 || ip6'  allow-related
 
+# create LB
+check multinode_nbctl lb-add lb0 10.0.0.1:8080 20.0.0.3:8080 udp
+check multinode_nbctl lr-lb-add lr0 lb0
+M_NS_DAEMONIZE([ovn-chassis-2], [sw1p1], [nc -u -l 8080 >/dev/null 2>&1], [nc.pid])
+
 m_as ovn-gw-1 ip netns add ovn-ext0
 m_as ovn-gw-1 ovs-vsctl add-port br-ex ext0 -- set interface ext0 type=internal
 m_as ovn-gw-1 ip link set ext0 netns ovn-ext0
@@ -888,6 +919,118 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 172.20.1.2 |
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -c 20 -i 0.5 -s 1300 -M do 172.20.1.2 2>&1 |grep -q "mtu = 1150"])
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -c 20 -i 0.5 -s 1300 -M do 172.20.1.2 2>&1 | grep -q "mtu = 1150"])
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route flush dev sw0p1])
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add 10.0.0.0/24 dev sw0p1])
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add default via 10.0.0.1 dev sw0p1])
+
+m_as ovn-chassis-1 ip route change 170.168.0.0/16 mtu 1000 dev eth1
+for i in $(seq 30); do
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [sh -c 'dd bs=512 count=2 if=/dev/urandom | nc -u 10.0.0.1 8080'], [ignore], [ignore], [ignore])
+done
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route get 10.0.0.1 dev sw0p1 | grep -q 'mtu 950'])
+
+AT_CLEANUP
+
+AT_SETUP([ovn multinode pmtu - logical switch - geneve])
+
+# Check that ovn-fake-multinode setup is up and running
+check_fake_multinode_setup
+
+# Delete the multinode NB and OVS resources before starting the test.
+cleanup_multinode_resources
+
+m_as ovn-chassis-1 ip link del sw0p1-p
+m_as ovn-chassis-2 ip link del sw0p2-p
+
+# Reset geneve tunnels
+for c in ovn-chassis-1 ovn-chassis-2 ovn-gw-1
+do
+    m_as $c ovs-vsctl set open . external-ids:ovn-encap-type=geneve
+done
+
+OVS_WAIT_UNTIL([m_as ovn-chassis-1 ip link show | grep -q genev_sys])
+OVS_WAIT_UNTIL([m_as ovn-chassis-2 ip link show | grep -q genev_sys])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip link show | grep -q genev_sys])
+
+# Test East-West switching
+check multinode_nbctl ls-add sw0
+check multinode_nbctl lsp-add sw0 sw0-port1
+check multinode_nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3 1000::3"
+check multinode_nbctl lsp-add sw0 sw0-port2
+check multinode_nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 1000::4"
+
+m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
+
+# Create the second logical switch with one port
+check multinode_nbctl ls-add sw1
+check multinode_nbctl lsp-add sw1 sw1-port1
+check multinode_nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3 2000::3"
+
+# Create a logical router and attach both logical switches
+check multinode_nbctl lr-add lr0
+check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
+check multinode_nbctl lsp-add sw0 sw0-lr0
+check multinode_nbctl lsp-set-type sw0-lr0 router
+check multinode_nbctl lsp-set-addresses sw0-lr0 router
+check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
+check multinode_nbctl lsp-add sw1 sw1-lr0
+check multinode_nbctl lsp-set-type sw1-lr0 router
+check multinode_nbctl lsp-set-addresses sw1-lr0 router
+check multinode_nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
+
+check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 10.0.0.0/24
+check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 20.0.0.0/24
+
+check multinode_nbctl lrp-set-gateway-chassis lr0-sw0 ovn-chassis-1 10
+check multinode_nbctl lrp-set-gateway-chassis lr0-sw1 ovn-chassis-2 10
+
+# create some ACLs
+check multinode_nbctl acl-add sw0 from-lport 1002 'ip4 || ip6'  allow-related
+check multinode_nbctl acl-add sw1 from-lport 1002 'ip4 || ip6'  allow-related
+
+check multinode_nbctl lb-add lb0 10.0.0.1:8080 10.0.0.4:8080 udp
+check multinode_nbctl ls-lb-add sw0 lb0
+M_NS_DAEMONIZE([ovn-chassis-2], [sw0p2], [nc -u -l 8080 >/dev/null 2>&1], [nc.pid])
+
+m_wait_for_ports_up
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Change ptmu for the geneve tunnel
+m_as ovn-chassis-1 ip route change 170.168.0.0/16 mtu 1200 dev eth1
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -c 5 -s 1300 -M do 10.0.0.4 2>&1 | grep -q "message too long, mtu=1142"])
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route flush dev sw0p1])
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add 10.0.0.0/24 dev sw0p1])
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add default via 10.0.0.1 dev sw0p1])
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 20.0.0.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Change ptmu for the geneve tunnel
+m_as ovn-chassis-1 ip route change 170.168.0.0/16 mtu 1100 dev eth1
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -c 5 -s 1300 -M do 20.0.0.3 2>&1 | grep -q "message too long, mtu=1042"])
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route flush dev sw0p1])
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add 10.0.0.0/24 dev sw0p1])
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add default via 10.0.0.1 dev sw0p1])
+
+m_as ovn-chassis-1 ip route change 170.168.0.0/16 mtu 1000 dev eth1
+for i in $(seq 30); do
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [sh -c 'dd bs=512 count=2 if=/dev/urandom | nc -u 10.0.0.1 8080'], [ignore], [ignore], [ignore])
+done
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route get 10.0.0.1 dev sw0p1 | grep -q 'mtu 942'])
 
 AT_CLEANUP
