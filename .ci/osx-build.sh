@@ -19,7 +19,7 @@ function configure_ovn()
     ./boot.sh && ./configure $*
 }
 
-configure_ovn $EXTRA_OPTS $*
+configure_ovn $EXTRA_OPTS $OPTS $*
 
 if [ "$CC" = "clang" ]; then
     set make CFLAGS="$CFLAGS -Wno-error=unused-command-line-argument"
