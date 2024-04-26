@@ -4342,7 +4342,7 @@ ls_port_init(struct ovn_port *op, struct ovsdb_idl_txn *ovnsb_txn,
 static struct ovn_port *
 ls_port_create(struct ovsdb_idl_txn *ovnsb_txn, struct hmap *ls_ports,
                const char *key, const struct nbrec_logical_switch_port *nbsp,
-               struct ovn_datapath *od, const struct sbrec_port_binding *sb,
+               struct ovn_datapath *od,
                const struct sbrec_mirror_table *sbrec_mirror_table,
                const struct sbrec_chassis_table *sbrec_chassis_table,
                struct ovsdb_idl_index *sbrec_chassis_by_name,
@@ -4351,7 +4351,7 @@ ls_port_create(struct ovsdb_idl_txn *ovnsb_txn, struct hmap *ls_ports,
     struct ovn_port *op = ovn_port_create(ls_ports, key, nbsp, NULL,
                                           NULL);
     hmap_insert(&od->ports, &op->dp_node, hmap_node_hash(&op->key_node));
-    if (!ls_port_init(op, ovnsb_txn, od, sb,
+    if (!ls_port_init(op, ovnsb_txn, od, NULL,
                       sbrec_mirror_table, sbrec_chassis_table,
                       sbrec_chassis_by_name, sbrec_chassis_by_hostname)) {
         ovn_port_destroy(ls_ports, op);
@@ -4520,7 +4520,7 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 goto fail;
             }
             op = ls_port_create(ovnsb_idl_txn, &nd->ls_ports,
-                                new_nbsp->name, new_nbsp, od, NULL,
+                                new_nbsp->name, new_nbsp, od,
                                 ni->sbrec_mirror_table,
                                 ni->sbrec_chassis_table,
                                 ni->sbrec_chassis_by_name,
