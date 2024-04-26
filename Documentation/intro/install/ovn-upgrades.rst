@@ -74,6 +74,11 @@ To avoid buildup of complexity and technical debt we limit the span of versions
 supported for a rolling upgrade on :ref:`long-term-support` (LTS), and it
 should always be possible to upgrade from the previous LTS version to the next.
 
+The following rolling upgrade paths are supported:
+
+1. LTS to the very next LTS release, or to any non-LTS in between the two.
+2. Any non-LTS to the very next LTS release.
+
 The first LTS version of OVN was 22.03.  If you want to upgrade between other
 versions, you can use the `Fail-safe upgrade`_ procedure.
 
