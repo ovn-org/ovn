@@ -4026,6 +4026,8 @@ en_lflow_output_run(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("OVS_bridge", node));
     const struct ovsrec_bridge *br_int = get_br_int(bridge_table, ovs_table);
     const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    const struct ovsrec_flow_sample_collector_set_table *flow_collector_table =
+        EN_OVSDB_GET(engine_get_input("OVS_flow_sample_collector_set", node));
 
     struct ovsdb_idl_index *sbrec_chassis_by_name =
         engine_ovsdb_node_get_index(
@@ -4038,6 +4040,17 @@ en_lflow_output_run(struct engine_node *node, void *data)
     }
 
     ovs_assert(br_int && chassis);
+
+    const struct ovsrec_flow_sample_collector_set *set;
+    OVSREC_FLOW_SAMPLE_COLLECTOR_SET_TABLE_FOR_EACH (set,
+                                                    flow_collector_table) {
+        if (set->bridge == br_int) {
+            struct ed_type_lflow_output *lfo = data;
+            flow_collector_ids_clear(&lfo->collector_ids);
+            flow_collector_ids_init_from_table(&lfo->collector_ids,
+                                               flow_collector_table);
+        }
+    }
 
     struct ed_type_lflow_output *fo = data;
     struct ovn_desired_flow_table *lflow_table = &fo->flow_table;
