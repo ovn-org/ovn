@@ -2851,7 +2851,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
-AT_SETUP([check tunnel ids exhaustion])
+AT_SETUP([check datapath tunnel ids exhaustion])
 ovn_start
 
 # Create a fake chassis with vxlan encap to lower MAX DP tunnel key to 2^12
@@ -2861,19 +2861,56 @@ ovn-sbctl \
 
 cmd="ovn-nbctl --wait=sb"
 
-for i in {1..4097}; do
+for i in {1..4095}; do
     cmd="${cmd} -- ls-add lsw-${i}"
 done
 
 eval $cmd
 
-check_row_count nb:Logical_Switch 4097
+check_row_count nb:Logical_Switch 4095
+wait_row_count sb:Datapath_Binding 4095
+
+ovn-nbctl ls-add lsw-exhausted
+
+check_row_count nb:Logical_Switch 4096
 wait_row_count sb:Datapath_Binding 4095
 
 OVS_WAIT_UNTIL([grep "all datapath tunnel ids exhausted" northd/ovn-northd.log])
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([check port tunnel ids exhaustion; vxlan chassis pops up midflight])
+ovn_start
+
+cmd="ovn-nbctl --wait=sb"
+
+cmd="${cmd} -- ls-add lsw"
+for i in {1..2048}; do
+    cmd="${cmd} -- lsp-add lsw lsp-${i}"
+done
+
+eval $cmd
+
+check_row_count nb:Logical_Switch_Port 2048
+wait_row_count sb:Port_Binding 2048
+
+# Now create a fake chassis with vxlan encap to lower MAX port tunnel key to 2^11
+ovn-sbctl \
+    --id=@e create encap chassis_name=hv1 ip="192.168.0.1" type="vxlan" \
+    -- --id=@c create chassis name=hv1 encaps=@e
+
+ovn-nbctl lsp-add lsw lsp-exhausted
+
+check_row_count nb:Logical_Switch_Port 2049
+wait_row_count sb:Port_Binding 2048
+
+OVS_WAIT_UNTIL([grep "all port tunnel ids exhausted" northd/ovn-northd.log])
+
+AT_CLEANUP
+])
+
 
 
 OVN_FOR_EACH_NORTHD_NO_HV([
