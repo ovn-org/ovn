@@ -4364,7 +4364,6 @@ ls_port_create(struct ovsdb_idl_txn *ovnsb_txn, struct hmap *ls_ports,
 static bool
 ls_port_reinit(struct ovn_port *op, struct ovsdb_idl_txn *ovnsb_txn,
                 const struct nbrec_logical_switch_port *nbsp,
-                const struct nbrec_logical_router_port *nbrp,
                 struct ovn_datapath *od,
                 const struct sbrec_port_binding *sb,
                 const struct sbrec_mirror_table *sbrec_mirror_table,
@@ -4374,7 +4373,7 @@ ls_port_reinit(struct ovn_port *op, struct ovsdb_idl_txn *ovnsb_txn,
 {
     ovn_port_cleanup(op);
     op->sb = sb;
-    ovn_port_set_nb(op, nbsp, nbrp);
+    ovn_port_set_nb(op, nbsp, NULL);
     op->l3dgw_port = op->cr_port = NULL;
     return ls_port_init(op, ovnsb_txn, od, sb,
                         sbrec_mirror_table, sbrec_chassis_table,
@@ -4552,7 +4551,7 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 continue;
             }
             if (!ls_port_reinit(op, ovnsb_idl_txn,
-                                new_nbsp, NULL,
+                                new_nbsp,
                                 od, sb, ni->sbrec_mirror_table,
                                 ni->sbrec_chassis_table,
                                 ni->sbrec_chassis_by_name,
