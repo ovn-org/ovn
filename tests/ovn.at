@@ -35202,7 +35202,10 @@ check_default_flows() {
 
 # Check that every drop flow gets sampled.
 check_sample_drops() {
-
+    hv=hv$1
+    remote_hv=hv$((${1}%2 + 1))
+    race_condition=$2
+    ovs-vsctl destroy Flow_Sample_Collector_Set 123
     check ovn-nbctl -- remove NB_Global . options debug_drop_collector_set \
                     -- remove NB_Global . options debug_drop_domain_id
     check ovn-nbctl --wait=hv sync
@@ -35212,14 +35215,52 @@ check_sample_drops() {
     # Take match part of flows that contain "drop".
     drop_matches="$(grep 'drop' oflows_nosample | grep -oP 'table=\d*, priority=.* ')"
 
+    if [[ x$race_condition = x"true" ]]; then
+        sleep_controller $hv
+        # Get ofport used by the geneve interface
+        OVS_WAIT_UNTIL([
+            ofport=$(as $hv ovs-vsctl --bare --columns ofport find Interface name=ovn-${remote_hv}-0)
+            test 1 -le $ofport
+        ])
+
+        # Add a vif while ovn-controller sleeps, and make it request the ofport used by the geneve interface.
+        # This is used to cause the geneve interface to change ofport.
+        ovs-vsctl -- add-port br-int vif3 -- set interface vif3\
+            options:tx_pcap=${hv}/vif3-tx.pcap \
+            options:rxq_pcap=${hv}/vif3-rx.pcap \
+            ofport-request=$ofport
+        OVS_WAIT_UNTIL([
+            vif_ofport=$(as $hv ovs-vsctl --bare --columns ofport find Interface name=vif3)
+            test 1 -le $vif_ofport
+        ])
+        # For the geneve interface ofport change to happen...
+        ovs-vsctl -- add-port br-int vif4 -- set interface vif4\
+            options:tx_pcap=${hv}/vif4-tx.pcap \
+            options:rxq_pcap=${hv}/vif4-rx.pcap
+        OVS_WAIT_UNTIL([
+            new_ofport=$(as $hv ovs-vsctl --bare --columns ofport find Interface name=ovn-${remote_hv}-0)
+            test $ofport -ne $new_ofport
+        ])
+    fi
+
     ovs-vsctl --id=@br get Bridge br-int --  \
         --id=@i create IPFIX targets=\"192.168.1.1\"  -- \
         create Flow_Sample_Collector_Set bridge=@br id=123 ipfix=@i
 
     check ovn-nbctl -- set NB_Global . options:debug_drop_collector_set="123" \
                     -- set NB_Global . options:debug_drop_domain_id="1"
-    check ovn-nbctl --wait=hv sync
 
+    if [[ x$race_condition = x"true" ]]; then
+        # Wait sb as ovn-controller sleeps.
+        check ovn-nbctl --wait=sb sync
+        # Wake up ovn-controller. It should most of the times receive non-vif ofport change and sb changes at the same time.
+        wake_up_controller $hv
+        # Check twice ovn-controller is running to guarantee if run a full loop.
+        OVS_WAIT_UNTIL([test x$(as $hv ovn-appctl -t ovn-controller debug/status) = "xrunning"])
+        OVS_WAIT_UNTIL([test x$(as $hv ovn-appctl -t ovn-controller debug/status) = "xrunning"])
+    else
+        check ovn-nbctl --wait=hv sync
+    fi
     ovs-ofctl dump-flows --no-stats br-int > oflows_sample
     AT_CAPTURE_FILE([oflows_sample])
 
@@ -35227,6 +35268,8 @@ check_sample_drops() {
     save_IFS=$IFS
     IFS=$'\n'
     for flow in $drop_matches; do
+        # Restore IFS to avoid "printf %s\n: command not found" errors.
+        IFS=$save_IFS
         AT_CHECK([grep "${flow}actions=.*sample.*" oflows_sample], [0], [ignore], [ignore], [echo "Flow $flow has a drop and did not get sampled"])
     done
     IFS=$save_IFS
@@ -35239,9 +35282,9 @@ check_drops() {
     check_default_flows
 
     as hv1
-    check_sample_drops
+    check_sample_drops 1 $1
     as hv2
-    check_sample_drops
+    check_sample_drops 2 $1
 }
 
 # Logical network:
@@ -35309,7 +35352,8 @@ ovs-vsctl -- add-port br-int hv2-vif1 -- \
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
-check_debug
+check_drops
+check_drops true
 
 # Add stateless ACL
 check ovn-nbctl --wait=sb \
@@ -35317,7 +35361,7 @@ check ovn-nbctl --wait=sb \
 check ovn-nbctl --wait=sb \
                 -- acl-add ls2 from-lport 100 'ip4' allow-stateless
 
-check_debug
+check_drops
 
 check ovn-nbctl --wait=sb acl-del ls1
 check ovn-nbctl --wait=sb acl-del ls2
@@ -35328,7 +35372,7 @@ check ovn-nbctl --wait=sb \
 check ovn-nbctl --wait=sb \
                 -- acl-add ls2 from-lport 100 "udp" allow-related
 
-check_debug
+check_drops
 
 check ovn-nbctl --wait=sb acl-del ls1
 check ovn-nbctl --wait=sb acl-del ls2
