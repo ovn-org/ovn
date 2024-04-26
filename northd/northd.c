@@ -4012,7 +4012,6 @@ ovn_port_assign_requested_tnl_id(
 
 static bool
 ovn_port_allocate_key(const struct sbrec_chassis_table *sbrec_chassis_table,
-                      struct hmap *ports,
                       struct ovn_port *op)
 {
     if (!op->tunnel_key) {
@@ -4021,11 +4020,6 @@ ovn_port_allocate_key(const struct sbrec_chassis_table *sbrec_chassis_table,
                                             1, (1u << (key_bits - 1)) - 1,
                                             &op->od->port_key_hint);
         if (!op->tunnel_key) {
-            if (op->sb) {
-                sbrec_port_binding_delete(op->sb);
-            }
-            ovs_list_remove(&op->list);
-            ovn_port_destroy(ports, op);
             return false;
         }
     }
@@ -4090,10 +4084,17 @@ build_ports(struct ovsdb_idl_txn *ovnsb_txn,
 
     /* Assign new tunnel ids where needed. */
     LIST_FOR_EACH_SAFE (op, list, &both) {
-        ovn_port_allocate_key(sbrec_chassis_table, ports, op);
+        if (!ovn_port_allocate_key(sbrec_chassis_table, op)) {
+            sbrec_port_binding_delete(op->sb);
+            ovs_list_remove(&op->list);
+            ovn_port_destroy(ports, op);
+        }
     }
     LIST_FOR_EACH_SAFE (op, list, &nb_only) {
-        ovn_port_allocate_key(sbrec_chassis_table, ports, op);
+        if (!ovn_port_allocate_key(sbrec_chassis_table, op)) {
+            ovs_list_remove(&op->list);
+            ovn_port_destroy(ports, op);
+        }
     }
 
     /* For logical ports that are in both databases, update the southbound
@@ -4324,7 +4325,12 @@ ls_port_init(struct ovn_port *op, struct ovsdb_idl_txn *ovnsb_txn,
         sbrec_port_binding_set_logical_port(op->sb, op->key);
     }
     /* Assign new tunnel ids where needed. */
-    if (!ovn_port_allocate_key(sbrec_chassis_table, ls_ports, op)) {
+    if (!ovn_port_allocate_key(sbrec_chassis_table, op)) {
+        if (op->sb) {
+            sbrec_port_binding_delete(op->sb);
+        }
+        ovs_list_remove(&op->list);
+        ovn_port_destroy(ls_ports, op);
         return false;
     }
     ovn_port_update_sbrec(ovnsb_txn, sbrec_chassis_by_name,
