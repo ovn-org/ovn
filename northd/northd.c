@@ -4313,22 +4313,25 @@ ls_port_init(struct ovn_port *op, struct ovsdb_idl_txn *ovnsb_txn,
     if (!ovn_port_assign_requested_tnl_id(sbrec_chassis_table, op)) {
         return false;
     }
+    /* Keep nonconflicting tunnel IDs that are already assigned. */
+    if (sb) {
+        if (!op->tunnel_key) {
+            ovn_port_add_tnlid(op, sb->tunnel_key);
+        }
+    }
+    /* Assign new tunnel ids where needed. */
+    if (!ovn_port_allocate_key(sbrec_chassis_table, op)) {
+        return false;
+    }
+    /* Create new binding, if needed. */
     if (sb) {
         op->sb = sb;
-        /* Keep nonconflicting tunnel IDs that are already assigned. */
-        if (!op->tunnel_key) {
-            ovn_port_add_tnlid(op, op->sb->tunnel_key);
-        }
     } else {
         /* XXX: the new SB port_binding will change in IDL, so need to handle
          * SB port_binding updates incrementally to achieve end-to-end
          * incremental processing. */
         op->sb = sbrec_port_binding_insert(ovnsb_txn);
         sbrec_port_binding_set_logical_port(op->sb, op->key);
-    }
-    /* Assign new tunnel ids where needed. */
-    if (!ovn_port_allocate_key(sbrec_chassis_table, op)) {
-        return false;
     }
     ovn_port_update_sbrec(ovnsb_txn, sbrec_chassis_by_name,
                           sbrec_chassis_by_hostname, NULL, sbrec_mirror_table,
@@ -4351,9 +4354,6 @@ ls_port_create(struct ovsdb_idl_txn *ovnsb_txn, struct hmap *ls_ports,
     if (!ls_port_init(op, ovnsb_txn, od, sb,
                       sbrec_mirror_table, sbrec_chassis_table,
                       sbrec_chassis_by_name, sbrec_chassis_by_hostname)) {
-        if (op->sb) {
-            sbrec_port_binding_delete(op->sb);
-        }
         ovn_port_destroy(ls_ports, op);
         return NULL;
     }
@@ -4557,8 +4557,8 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
                                 ni->sbrec_chassis_table,
                                 ni->sbrec_chassis_by_name,
                                 ni->sbrec_chassis_by_hostname)) {
-                if (op->sb) {
-                    sbrec_port_binding_delete(op->sb);
+                if (sb) {
+                    sbrec_port_binding_delete(sb);
                 }
                 ovn_port_destroy(&nd->ls_ports, op);
                 goto fail;
