@@ -1,4 +1,4 @@
-FROM registry.hub.docker.com/library/ubuntu:latest
+FROM registry.hub.docker.com/library/ubuntu:22.04
 
 ARG CONTAINERS_PATH
 
