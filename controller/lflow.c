@@ -278,7 +278,7 @@ lflow_handle_changed_flows(struct lflow_ctx_in *l_ctx_in,
 }
 
 static bool
-as_info_from_expr_const(const char *as_name, const union expr_constant *c,
+as_info_from_expr_const(const char *as_name, const struct expr_constant *c,
                         struct addrset_info *as_info)
 {
     as_info->name = as_name;
@@ -644,14 +644,11 @@ as_update_can_be_handled(const char *as_name, struct addr_set_diff *as_diff,
  *        generated.
  *
  *      - The sub expression of the address set is combined with other sub-
- *        expressions/constants, usually because of disjunctions between
- *        sub-expressions/constants, e.g.:
+ *        expressions/constants on different fields, e.g.:
  *
  *          ip.src == $as1 || ip.dst == $as2
- *          ip.src == {$as1, $as2}
- *          ip.src == {$as1, ip1}
  *
- *        All these could have been split into separate lflows.
+ *        This could have been split into separate lflows.
  *
  *      - Conjunctions overlapping between lflows, which can be caused by
  *        overlapping address sets or same address set used by multiple lflows
@@ -714,7 +711,7 @@ lflow_handle_addr_set_update(const char *as_name,
         if (as_diff->deleted) {
             struct addrset_info as_info;
             for (size_t i = 0; i < as_diff->deleted->n_values; i++) {
-                union expr_constant *c = &as_diff->deleted->values[i];
+                struct expr_constant *c = &as_diff->deleted->values[i];
                 if (!as_info_from_expr_const(as_name, c, &as_info)) {
                     continue;
                 }
