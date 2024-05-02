@@ -368,7 +368,7 @@ bool expr_relop_from_token(enum lex_type type, enum expr_relop *relop);
 struct expr {
     struct ovs_list node;       /* In parent EXPR_T_AND or EXPR_T_OR if any. */
     enum expr_type type;        /* Expression type. */
-    char *as_name;              /* Address set name. Null if it is not an
+    const char *as_name;        /* Address set name. Null if it is not an
                                    address set. */
 
     union {
@@ -505,40 +505,42 @@ enum expr_constant_type {
 };
 
 /* A string or integer constant (one must know which from context). */
-union expr_constant {
-    /* Integer constant.
-     *
-     * The width of a constant isn't always clear, e.g. if you write "1",
-     * there's no way to tell whether you mean for that to be a 1-bit constant
-     * or a 128-bit constant or somewhere in between. */
-    struct {
-        union mf_subvalue value;
-        union mf_subvalue mask; /* Only initialized if 'masked'. */
-        bool masked;
+struct expr_constant {
+    const char *as_name;
 
-        enum lex_format format; /* From the constant's lex_token. */
+    union {
+        /* Integer constant.
+         *
+         * The width of a constant isn't always clear, e.g. if you write "1",
+         * there's no way to tell whether you mean for that to be a 1-bit
+         * constant or a 128-bit constant or somewhere in between. */
+        struct {
+            union mf_subvalue value;
+            union mf_subvalue mask; /* Only initialized if 'masked'. */
+            bool masked;
+
+            enum lex_format format; /* From the constant's lex_token. */
+        };
+
+        /* Null-terminated string constant. */
+        char *string;
     };
-
-    /* Null-terminated string constant. */
-    char *string;
 };
 
 bool expr_constant_parse(struct lexer *,
                          const struct expr_field *,
-                         union expr_constant *);
-void expr_constant_format(const union expr_constant *,
+                         struct expr_constant *);
+void expr_constant_format(const struct expr_constant *,
                           enum expr_constant_type, struct ds *);
-void expr_constant_destroy(const union expr_constant *,
+void expr_constant_destroy(const struct expr_constant *,
                            enum expr_constant_type);
 
 /* A collection of "union expr_constant"s of the same type. */
 struct expr_constant_set {
-    union expr_constant *values;  /* Constants. */
+    struct expr_constant *values; /* Constants. */
     size_t n_values;              /* Number of constants. */
     enum expr_constant_type type; /* Type of the constants. */
     bool in_curlies;              /* Whether the constants were in {}. */
-    char *as_name;                /* Name of an address set. It is NULL if not
-                                     an address set. */
 };
 
 bool expr_constant_set_parse(struct lexer *, struct expr_constant_set *);
