@@ -123,6 +123,11 @@ static unixctl_cb_func debug_ignore_startup_delay;
 #define OVS_NB_CFG_TS_NAME "ovn-nb-cfg-ts"
 #define OVS_STARTUP_TS_NAME "ovn-startup-ts"
 
+struct br_int_remote {
+    char *target;
+    int probe_interval;
+};
+
 static char *parse_options(int argc, char *argv[]);
 OVS_NO_RETURN static void usage(void);
 
@@ -5137,11 +5142,43 @@ check_northd_version(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
     return true;
 }
 
+static void
+br_int_remote_update(struct br_int_remote *remote,
+                     const struct ovsrec_bridge *br_int,
+                     const struct ovsrec_open_vswitch_table *ovs_table)
+{
+    if (!br_int) {
+        return;
+    }
+
+    const struct ovsrec_open_vswitch *cfg =
+            ovsrec_open_vswitch_table_first(ovs_table);
+
+    const char *ext_target =
+            smap_get(&cfg->external_ids, "ovn-bridge-remote");
+    char *target = ext_target
+            ? xstrdup(ext_target)
+            : xasprintf("unix:%s/%s.mgmt", ovs_rundir(), br_int->name);
+
+    if (!remote->target || strcmp(remote->target, target)) {
+        free(remote->target);
+        remote->target = target;
+    } else {
+        free(target);
+    }
+
+    unsigned long long probe_interval =
+            smap_get_ullong(&cfg->external_ids,
+                            "ovn-bridge-remote-probe-interval", 0);
+    remote->probe_interval = MIN(probe_interval / 1000, INT_MAX);
+}
+
 int
 main(int argc, char *argv[])
 {
     struct unixctl_server *unixctl;
     struct ovn_exit_args exit_args = {0};
+    struct br_int_remote br_int_remote = {0};
     int retval;
 
     /* Read from system-id-override file once on startup. */
@@ -5752,6 +5789,11 @@ main(int argc, char *argv[])
                        ovsrec_server_has_datapath_table(ovs_idl_loop.idl)
                        ? &br_int_dp
                        : NULL);
+        br_int_remote_update(&br_int_remote, br_int, ovs_table);
+        statctrl_update_swconn(br_int_remote.target,
+                               br_int_remote.probe_interval);
+        pinctrl_update_swconn(br_int_remote.target,
+                              br_int_remote.probe_interval);
 
         /* Enable ACL matching for double tagged traffic. */
         if (ovs_idl_txn) {
@@ -5806,7 +5848,8 @@ main(int argc, char *argv[])
             if (ovs_idl_txn
                 && ovs_feature_support_run(br_int_dp ?
                                            &br_int_dp->capabilities : NULL,
-                                           br_int ? br_int->name : NULL)) {
+                                           br_int_remote.target,
+                                           br_int_remote.probe_interval)) {
                 VLOG_INFO("OVS feature set changed, force recompute.");
                 engine_set_force_recompute(true);
                 if (ovs_feature_set_discovered()) {
@@ -5824,7 +5867,8 @@ main(int argc, char *argv[])
 
             if (br_int) {
                 ct_zones_data = engine_get_data(&en_ct_zones);
-                if (ofctrl_run(br_int, ovs_table,
+                if (ofctrl_run(br_int_remote.target,
+                               br_int_remote.probe_interval, ovs_table,
                                ct_zones_data ? &ct_zones_data->pending
                                              : NULL)) {
                     static struct vlog_rate_limit rl
@@ -5941,7 +5985,7 @@ main(int argc, char *argv[])
                         }
                         stopwatch_start(PINCTRL_RUN_STOPWATCH_NAME,
                                         time_msec());
-                        pinctrl_update(ovnsb_idl_loop.idl, br_int->name);
+                        pinctrl_update(ovnsb_idl_loop.idl);
                         pinctrl_run(ovnsb_idl_txn,
                                     sbrec_datapath_binding_by_key,
                                     sbrec_port_binding_by_datapath,
@@ -5995,7 +6039,6 @@ main(int argc, char *argv[])
                     }
 
                     if (mac_cache_data) {
-                        statctrl_update(br_int->name);
                         statctrl_run(ovnsb_idl_txn, mac_cache_data);
                     }
 
@@ -6114,13 +6157,6 @@ main(int argc, char *argv[])
             }
 
             binding_wait();
-        }
-
-        if (!northd_version_match && br_int) {
-            /* Set the integration bridge name to pinctrl so that the pinctrl
-             * thread can handle any packet-ins when we are not processing
-             * any DB updates due to version mismatch. */
-            pinctrl_set_br_int_name(br_int->name);
         }
 
         unixctl_server_run(unixctl);
@@ -6255,6 +6291,7 @@ loop_done:
     ovsdb_idl_loop_destroy(&ovnsb_idl_loop);
 
     ovs_feature_support_destroy();
+    free(br_int_remote.target);
     free(ovs_remote);
     free(file_system_id);
     free(cli_system_id);

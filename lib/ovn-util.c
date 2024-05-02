@@ -22,6 +22,7 @@
 #include "daemon.h"
 #include "include/ovn/actions.h"
 #include "openvswitch/ofp-parse.h"
+#include "openvswitch/rconn.h"
 #include "openvswitch/vlog.h"
 #include "lib/vswitch-idl.h"
 #include "ovn-dirs.h"
@@ -1287,4 +1288,29 @@ ovn_exit_args_finish(struct ovn_exit_args *exit_args)
         unixctl_command_reply(exit_args->conns[i], NULL);
     }
     free(exit_args->conns);
+}
+
+bool
+ovn_update_swconn_at(struct rconn *swconn, const char *target,
+                     int probe_interval, const char *where)
+{
+    if (!target) {
+        rconn_disconnect(swconn);
+        return true;
+    }
+
+    bool notify = false;
+
+    if (strcmp(target, rconn_get_target(swconn))) {
+        VLOG_INFO("%s: connecting to switch: \"%s\"", where, target);
+        rconn_connect(swconn, target, target);
+        notify = true;
+    }
+
+    if (probe_interval != rconn_get_probe_interval(swconn)) {
+        rconn_set_probe_interval(swconn, probe_interval);
+        notify = true;
+    }
+
+    return notify;
 }

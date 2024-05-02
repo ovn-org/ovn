@@ -26,15 +26,15 @@ test_ovn_features(struct ovs_cmdl_context *ctx OVS_UNUSED)
     struct smap features = SMAP_INITIALIZER(&features);
 
     smap_add(&features, "ct_zero_snat", "false");
-    ovs_assert(!ovs_feature_support_run(&features, NULL));
+    ovs_assert(!ovs_feature_support_run(&features, NULL, 0));
     ovs_assert(!ovs_feature_is_supported(OVS_CT_ZERO_SNAT_SUPPORT));
 
     smap_replace(&features, "ct_zero_snat", "true");
-    ovs_assert(ovs_feature_support_run(&features, NULL));
+    ovs_assert(ovs_feature_support_run(&features, NULL, 0));
     ovs_assert(ovs_feature_is_supported(OVS_CT_ZERO_SNAT_SUPPORT));
 
     smap_add(&features, "unknown_feature", "true");
-    ovs_assert(!ovs_feature_support_run(&features, NULL));
+    ovs_assert(!ovs_feature_support_run(&features, NULL, 0));
 
     smap_destroy(&features);
 }

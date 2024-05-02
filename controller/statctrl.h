@@ -21,7 +21,8 @@
 void statctrl_init(void);
 void statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                   struct mac_cache_data *mac_cache_data);
-void statctrl_update(const char *br_int_name);
+
+void statctrl_update_swconn(const char *target, int probe_interval);
 void statctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn);
 void statctrl_destroy(void);
 

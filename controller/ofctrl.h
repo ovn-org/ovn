@@ -50,8 +50,8 @@ struct ovn_desired_flow_table {
 /* Interface for OVN main loop. */
 void ofctrl_init(struct ovn_extend_table *group_table,
                  struct ovn_extend_table *meter_table);
-bool ofctrl_run(const struct ovsrec_bridge *br_int,
-                const struct ovsrec_open_vswitch_table *,
+bool ofctrl_run(const char *conn_target, int probe_interval,
+                const struct ovsrec_open_vswitch_table *ovs_table,
                 struct shash *pending_ct_zones);
 enum mf_field_id ofctrl_get_mf_field_id(void);
 void ofctrl_put(struct ovn_desired_flow_table *lflow_table,

@@ -771,19 +771,13 @@ ofctrl_get_mf_field_id(void)
  * Returns 'true' if an OpenFlow reconnect happened; 'false' otherwise.
  */
 bool
-ofctrl_run(const struct ovsrec_bridge *br_int,
+ofctrl_run(const char *conn_target, int probe_interval,
            const struct ovsrec_open_vswitch_table *ovs_table,
            struct shash *pending_ct_zones)
 {
-    char *target = xasprintf("unix:%s/%s.mgmt", ovs_rundir(), br_int->name);
     bool reconnected = false;
 
-    if (strcmp(target, rconn_get_target(swconn))) {
-        VLOG_INFO("%s: connecting to switch", target);
-        rconn_connect(swconn, target, target);
-    }
-    free(target);
-
+    ovn_update_swconn_at(swconn, conn_target, probe_interval, "ofctrl");
     rconn_run(swconn);
 
     if (!rconn_is_connected(swconn) || !pending_ct_zones) {

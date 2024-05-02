@@ -62,8 +62,10 @@ void pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                  const struct ovsrec_open_vswitch_table *ovs_table);
 void pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn);
 void pinctrl_destroy(void);
-void pinctrl_set_br_int_name(const char *br_int_name);
-void pinctrl_update(const struct ovsdb_idl *idl, const char *br_int_name);
+
+void pinctrl_update_swconn(const char *target, int probe_interval);
+
+void pinctrl_update(const struct ovsdb_idl *idl);
 
 struct activated_port {
     uint32_t dp_key;

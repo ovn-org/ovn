@@ -173,7 +173,8 @@ static bool garp_rarp_continuous;
 static void *pinctrl_handler(void *arg);
 
 struct pinctrl {
-    char *br_int_name;
+    /* OpenFlow connection to the switch. */
+    struct rconn *swconn;
     pthread_t pinctrl_thread;
     /* Latch to destroy the 'pinctrl_thread' */
     struct latch pinctrl_thread_exit;
@@ -563,7 +564,7 @@ pinctrl_init(void)
     init_svc_monitors();
     bfd_monitor_init();
     init_fdb_entries();
-    pinctrl.br_int_name = NULL;
+    pinctrl.swconn = rconn_create(0, 0, DSCP_DEFAULT, 1 << OFP15_VERSION);
     pinctrl.mac_binding_can_timestamp = false;
     pinctrl_handler_seq = seq_create();
     pinctrl_main_seq = seq_create();
@@ -3983,30 +3984,13 @@ notify_pinctrl_main(void)
     seq_change(pinctrl_main_seq);
 }
 
-static void
-pinctrl_rconn_setup(struct rconn *swconn, const char *br_int_name)
-    OVS_REQUIRES(pinctrl_mutex)
-{
-    if (br_int_name) {
-        char *target = xasprintf("unix:%s/%s.mgmt", ovs_rundir(), br_int_name);
-
-        if (strcmp(target, rconn_get_target(swconn))) {
-            VLOG_INFO("%s: connecting to switch", target);
-            rconn_connect(swconn, target, target);
-        }
-        free(target);
-    } else {
-        rconn_disconnect(swconn);
-    }
-}
-
 /* pinctrl_handler pthread function. */
 static void *
 pinctrl_handler(void *arg_)
 {
     struct pinctrl *pctrl = arg_;
     /* OpenFlow connection to the switch. */
-    struct rconn *swconn;
+    struct rconn *swconn = pctrl->swconn;
     /* Last seen sequence number for 'swconn'.  When this differs from
      * rconn_get_connection_seqno(rconn), 'swconn' has reconnected. */
     unsigned int conn_seq_no = 0;
@@ -4022,13 +4006,10 @@ pinctrl_handler(void *arg_)
     static long long int svc_monitors_next_run_time = LLONG_MAX;
     static long long int send_prefixd_time = LLONG_MAX;
 
-    swconn = rconn_create(0, 0, DSCP_DEFAULT, 1 << OFP15_VERSION);
-
     while (!latch_is_set(&pctrl->pinctrl_thread_exit)) {
         long long int bfd_time = LLONG_MAX;
 
         ovs_mutex_lock(&pinctrl_mutex);
-        pinctrl_rconn_setup(swconn, pctrl->br_int_name);
         ip_mcast_snoop_run();
         ovs_mutex_unlock(&pinctrl_mutex);
 
@@ -4087,37 +4068,24 @@ pinctrl_handler(void *arg_)
         poll_block();
     }
 
-    rconn_destroy(swconn);
     return NULL;
 }
 
-static void
-pinctrl_set_br_int_name_(const char *br_int_name)
-    OVS_REQUIRES(pinctrl_mutex)
+void
+pinctrl_update_swconn(const char *target, int probe_interval)
 {
-    if (br_int_name && (!pinctrl.br_int_name || strcmp(pinctrl.br_int_name,
-                                                       br_int_name))) {
-        free(pinctrl.br_int_name);
-        pinctrl.br_int_name = xstrdup(br_int_name);
-        /* Notify pinctrl_handler that integration bridge is
-         * set/changed. */
+    if (ovn_update_swconn_at(pinctrl.swconn, target,
+                             probe_interval, "pinctrl")) {
+        /* Notify pinctrl_handler that integration bridge
+         * target is set/changed. */
         notify_pinctrl_handler();
     }
 }
 
 void
-pinctrl_set_br_int_name(const char *br_int_name)
+pinctrl_update(const struct ovsdb_idl *idl)
 {
     ovs_mutex_lock(&pinctrl_mutex);
-    pinctrl_set_br_int_name_(br_int_name);
-    ovs_mutex_unlock(&pinctrl_mutex);
-}
-
-void
-pinctrl_update(const struct ovsdb_idl *idl, const char *br_int_name)
-{
-    ovs_mutex_lock(&pinctrl_mutex);
-    pinctrl_set_br_int_name_(br_int_name);
 
     bool can_mb_timestamp =
             sbrec_server_has_mac_binding_table_col_timestamp(idl);
@@ -4739,7 +4707,7 @@ pinctrl_destroy(void)
     latch_set(&pinctrl.pinctrl_thread_exit);
     pthread_join(pinctrl.pinctrl_thread, NULL);
     latch_destroy(&pinctrl.pinctrl_thread_exit);
-    free(pinctrl.br_int_name);
+    rconn_destroy(pinctrl.swconn);
     destroy_send_garps_rarps();
     destroy_ipv6_ras();
     destroy_ipv6_prefixd();

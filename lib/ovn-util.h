@@ -48,6 +48,7 @@ struct smap;
 struct svec;
 struct uuid;
 struct unixctl_conn;
+struct rconn;
 
 struct ipv4_netaddr {
     ovs_be32 addr;            /* 192.168.10.123 */
@@ -476,5 +477,8 @@ struct ovn_exit_args {
 void ovn_exit_command_callback(struct unixctl_conn *conn, int argc,
                                const char *argv[], void *exit_args_);
 void ovn_exit_args_finish(struct ovn_exit_args *exit_args);
+
+bool ovn_update_swconn_at(struct rconn *swconn, const char *target,
+                          int probe_interval, const char *where);
 
 #endif /* OVN_UTIL_H */

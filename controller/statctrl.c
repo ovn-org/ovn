@@ -80,7 +80,8 @@ struct stats_node {
     };
 
 struct statctrl_ctx {
-    char *br_int;
+    /* OpenFlow connection to the switch. */
+    struct rconn *swconn;
 
     pthread_t thread;
     struct latch exit_latch;
@@ -95,8 +96,6 @@ static struct statctrl_ctx statctrl_ctx;
 static struct ovs_mutex mutex;
 
 static void *statctrl_thread_handler(void *arg);
-static void statctrl_rconn_setup(struct rconn *swconn, char *conn_target)
-    OVS_REQUIRES(mutex);
 static void statctrl_handle_rconn_msg(struct rconn *swconn,
                                       struct statctrl_ctx *ctx,
                                       struct ofpbuf *msg);
@@ -109,8 +108,6 @@ static void statctrl_send_request(struct rconn *swconn,
                                   struct statctrl_ctx *ctx)
     OVS_REQUIRES(mutex);
 static void statctrl_notify_main_thread(struct statctrl_ctx *ctx);
-static void statctrl_set_conn_target(const char *br_int_name)
-    OVS_REQUIRES(mutex);
 static void statctrl_wait_next_request(struct statctrl_ctx *ctx)
     OVS_REQUIRES(mutex);
 static bool statctrl_update_next_request_timestamp(struct stats_node *node,
@@ -121,7 +118,7 @@ static bool statctrl_update_next_request_timestamp(struct stats_node *node,
 void
 statctrl_init(void)
 {
-    statctrl_ctx.br_int = NULL;
+    statctrl_ctx.swconn = rconn_create(0, 0, DSCP_DEFAULT, 1 << OFP15_VERSION);
     latch_init(&statctrl_ctx.exit_latch);
     ovs_mutex_init(&mutex);
     statctrl_ctx.thread_seq = seq_create();
@@ -184,11 +181,14 @@ statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
 }
 
 void
-statctrl_update(const char *br_int_name)
+statctrl_update_swconn(const char *target, int probe_interval)
 {
-    ovs_mutex_lock(&mutex);
-    statctrl_set_conn_target(br_int_name);
-    ovs_mutex_unlock(&mutex);
+    if (ovn_update_swconn_at(statctrl_ctx.swconn, target,
+                             probe_interval, "statctrl")) {
+        /* Notify statctrl thread that integration bridge
+         * target is set/changed. */
+        seq_change(statctrl_ctx.thread_seq);
+    }
 }
 
 void
@@ -216,7 +216,7 @@ statctrl_destroy(void)
     latch_set(&statctrl_ctx.exit_latch);
     pthread_join(statctrl_ctx.thread, NULL);
     latch_destroy(&statctrl_ctx.exit_latch);
-    free(statctrl_ctx.br_int);
+    rconn_destroy(statctrl_ctx.swconn);
     seq_destroy(statctrl_ctx.thread_seq);
     seq_destroy(statctrl_ctx.main_seq);
 
@@ -232,14 +232,9 @@ statctrl_thread_handler(void *arg)
     struct statctrl_ctx *ctx = arg;
 
     /* OpenFlow connection to the switch. */
-    struct rconn *swconn = rconn_create(0, 0, DSCP_DEFAULT,
-                                        1 << OFP15_VERSION);
+    struct rconn *swconn = ctx->swconn;
 
     while (!latch_is_set(&ctx->exit_latch)) {
-        ovs_mutex_lock(&mutex);
-        statctrl_rconn_setup(swconn, ctx->br_int);
-        ovs_mutex_unlock(&mutex);
-
         rconn_run(swconn);
         uint64_t new_seq = seq_read(ctx->thread_seq);
 
@@ -272,27 +267,7 @@ statctrl_thread_handler(void *arg)
         poll_block();
     }
 
-    rconn_destroy(swconn);
     return NULL;
-}
-
-static void
-statctrl_rconn_setup(struct rconn *swconn, char *br_int)
-    OVS_REQUIRES(mutex)
-{
-    if (!br_int) {
-        rconn_disconnect(swconn);
-        return;
-    }
-
-    char *conn_target = xasprintf("unix:%s/%s.mgmt", ovs_rundir(), br_int);
-
-    if (strcmp(conn_target, rconn_get_target(swconn))) {
-        VLOG_INFO("%s: connecting to switch", conn_target);
-        rconn_connect(swconn, conn_target, conn_target);
-    }
-
-    free(conn_target);
 }
 
 static void
@@ -396,23 +371,6 @@ statctrl_notify_main_thread(struct statctrl_ctx *ctx)
             seq_change(ctx->main_seq);
             return;
         }
-    }
-}
-
-static void
-statctrl_set_conn_target(const char *br_int_name)
-    OVS_REQUIRES(mutex)
-{
-    if (!br_int_name) {
-        return;
-    }
-
-
-    if (!statctrl_ctx.br_int || strcmp(statctrl_ctx.br_int, br_int_name)) {
-        free(statctrl_ctx.br_int);
-        statctrl_ctx.br_int = xstrdup(br_int_name);
-        /* Notify statctrl thread that integration bridge is set/changed. */
-        seq_change(statctrl_ctx.thread_seq);
     }
 }
 

@@ -29,8 +29,10 @@
 #include "openvswitch/ofp-meter.h"
 #include "openvswitch/ofp-group.h"
 #include "openvswitch/ofp-util.h"
+#include "openvswitch/rconn.h"
 #include "ovn/features.h"
 #include "controller/ofctrl.h"
+#include "ovn-util.h"
 
 VLOG_DEFINE_THIS_MODULE(features);
 
@@ -120,33 +122,11 @@ ovs_feature_is_supported(enum ovs_feature_value feature)
     return supported_ovs_features & feature;
 }
 
-static void
-ovs_feature_rconn_setup(const char *br_name)
-{
-    if (!swconn) {
-        swconn = rconn_create(0, 0, DSCP_DEFAULT, 1 << OFP15_VERSION);
-    }
-
-    if (!rconn_is_connected(swconn)) {
-        char *target = xasprintf("unix:%s/%s.mgmt", ovs_rundir(), br_name);
-        if (strcmp(target, rconn_get_target(swconn))) {
-            VLOG_INFO("%s: connecting to switch", target);
-            rconn_connect(swconn, target, target);
-        }
-        free(target);
-    }
-}
 
 static bool
-ovs_feature_get_openflow_cap(const char *br_name)
+ovs_feature_get_openflow_cap(void)
 {
     struct ofpbuf *msg;
-
-    if (!br_name) {
-        return false;
-    }
-
-    ovs_feature_rconn_setup(br_name);
 
     rconn_run(swconn);
     if (!rconn_is_connected(swconn)) {
@@ -231,7 +211,7 @@ ovs_feature_support_destroy(void)
 /* Returns 'true' if the set of tracked OVS features has been updated. */
 bool
 ovs_feature_support_run(const struct smap *ovs_capabilities,
-                        const char *br_name)
+                        const char *conn_target, int probe_interval)
 {
     static struct smap empty_caps = SMAP_INITIALIZER(&empty_caps);
     bool updated = false;
@@ -240,7 +220,12 @@ ovs_feature_support_run(const struct smap *ovs_capabilities,
         ovs_capabilities = &empty_caps;
     }
 
-    if (ovs_feature_get_openflow_cap(br_name)) {
+    if (!swconn) {
+        swconn = rconn_create(0, 0, DSCP_DEFAULT, 1 << OFP15_VERSION);
+    }
+    ovn_update_swconn_at(swconn, conn_target, probe_interval, "features");
+
+    if (ovs_feature_get_openflow_cap()) {
         updated = true;
     }
 

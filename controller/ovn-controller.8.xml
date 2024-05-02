@@ -378,6 +378,21 @@
         cap for the exponential backoff used by <code>ovn-controller</code>
         to send GARPs packets.
       </dd>
+      <dt><code>external_ids:ovn-bridge-remote</code></dt>
+      <dd>
+        <p>
+          Connection to the OVN management bridge in OvS. It defaults to
+          <code>unix:<var>br-int</var>.mgmt</code> when not specified.
+        </p>
+      </dd>
+      <dt><code>external_ids:ovn-bridge-remote-probe-interval</code></dt>
+      <dd>
+        <p>
+          The inactivity probe interval of the connection to the OVN management
+          bridge, in milliseconds. It defaults to zero.
+          If the value is zero, it disables the inactivity probe.
+        </p>
+      </dd>
     </dl>
 
     <p>
