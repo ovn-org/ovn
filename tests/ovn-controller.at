@@ -1625,7 +1625,9 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.8 actions=lo
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [10
+# First 2 reprocess are due to change from 1 IP in AS to 2.
+# Last 5 is due to overlap in IP addresses between as1 and as2.
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [7
 ])
 
 # Remove the IPs from as1 and as2, 1 IP each time.
@@ -1648,9 +1650,9 @@ for i in $(seq 10); do
 done
 
 reprocess_count_new=$(read_counter consider_logical_flow)
-# In this case the as1 and as2 are merged to a single OR expr, so we lose track of
-# address set information - can't handle deletion incrementally.
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [10
+# First 5 are due to overlap in IP addresses between as1 and as2.
+# Last 2 are due to change from 2 IP in AS to 1.
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [7
 ])
 
 OVN_CLEANUP([hv1])
@@ -1817,7 +1819,7 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.5 actions=co
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.10.10.10 actions=conjunction,2/2)
 ])
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [1
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
 ])
 
 # Delete 2 IPs
@@ -1837,7 +1839,7 @@ priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.3 actions=co
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.10.10.10 actions=conjunction,2/2)
 ])
 reprocess_count_new=$(read_counter consider_logical_flow)
-AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [1
+AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
 ])
 
 OVN_CLEANUP([hv1])
@@ -2906,3 +2908,68 @@ OVN_CLEANUP([hv1],[hv2])
 
 AT_CLEANUP
 ])
+
+AT_SETUP([ovn-controller - AS I-P and recompute consistency])
+AT_KEYWORDS([as-i-p])
+
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=ls1-lp1
+
+check ovn-nbctl ls-add ls1
+
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "f0:00:00:00:00:01"
+
+wait_for_ports_up
+ovn-appctl -t ovn-controller vlog/set file:dbg
+
+# Get the OF table numbers
+acl_eval=$(ovn-debug lflow-stage-to-oftable ls_out_acl_eval)
+acl_action=$(ovn-debug lflow-stage-to-oftable ls_out_acl_action)
+
+dp_key=$(printf "%x" $(fetch_column datapath tunnel_key external_ids:name=ls1))
+port_key=$(printf "%x" $(fetch_column port_binding tunnel_key logical_port=ls1-lp1))
+
+ovn-nbctl create address_set name=as1
+check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1' drop
+check ovn-nbctl add address_set as1 addresses 10.0.0.0/24
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=$acl_eval,reg15=0x$port_key | grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
+priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.0/24 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,$acl_action)
+])
+
+check ovn-nbctl add address_set as1 addresses 10.0.0.1
+check ovn-nbctl add address_set as1 addresses 10.0.0.2
+check ovn-nbctl add address_set as1 addresses 10.0.0.3
+check ovn-nbctl add address_set as1 addresses 10.0.0.4
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=$acl_eval,reg15=0x$port_key | grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
+priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.0/24 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,$acl_action)
+priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,$acl_action)
+priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.2 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,$acl_action)
+priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.3 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,$acl_action)
+priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.4 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,$acl_action)
+])
+
+
+check ovn-appctl inc-engine/recompute
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=$acl_eval,reg15=0x$port_key | grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
+priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.0/24 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,$acl_action)
+priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,$acl_action)
+priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.2 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,$acl_action)
+priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.3 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,$acl_action)
+priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.4 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,$acl_action)
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP

@@ -241,7 +241,7 @@ struct ovnact_next {
 struct ovnact_load {
     struct ovnact ovnact;
     struct expr_field dst;
-    union expr_constant imm;
+    struct expr_constant imm;
 };
 
 /* OVNACT_MOVE, OVNACT_EXCHANGE. */

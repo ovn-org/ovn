@@ -450,7 +450,7 @@ encode_LOAD(const struct ovnact_load *load,
             const struct ovnact_encode_params *ep,
             struct ofpbuf *ofpacts)
 {
-    const union expr_constant *c = &load->imm;
+    const struct expr_constant *c = &load->imm;
     struct mf_subfield dst = expr_resolve_field(&load->dst);
     struct ofpact_set_field *sf = ofpact_put_set_field(ofpacts, dst.field,
                                                        NULL, NULL);
@@ -2077,7 +2077,7 @@ encode_event_empty_lb_backends_opts(struct ofpbuf *ofpacts,
         /* All empty_lb_backends fields are of type 'str' */
         ovs_assert(!strcmp(o->option->type, "str"));
 
-        const union expr_constant *c = o->value.values;
+        const struct expr_constant *c = o->value.values;
         size_t size = strlen(c->string);
         struct controller_event_opt_header hdr =
             (struct controller_event_opt_header) {
@@ -2553,7 +2553,7 @@ validate_empty_lb_backends(struct action_context *ctx,
 {
     for (size_t i = 0; i < n_options; i++) {
         const struct ovnact_gen_option *o = &options[i];
-        const union expr_constant *c = o->value.values;
+        const struct expr_constant *c = o->value.values;
         struct sockaddr_storage ss;
         struct uuid uuid;
 
@@ -2861,7 +2861,7 @@ encode_put_dhcpv4_option(const struct ovnact_gen_option *o,
     uint8_t *opt_header = ofpbuf_put_zeros(ofpacts, 2);
     opt_header[0] = o->option->code;
 
-    const union expr_constant *c = o->value.values;
+    const struct expr_constant *c = o->value.values;
     size_t n_values = o->value.n_values;
     if (!strcmp(o->option->type, "bool") ||
         !strcmp(o->option->type, "uint8")) {
@@ -3027,7 +3027,7 @@ encode_put_dhcpv6_option(const struct ovnact_gen_option *o,
                          struct ofpbuf *ofpacts)
 {
     struct dhcpv6_opt_header *opt = ofpbuf_put_uninit(ofpacts, sizeof *opt);
-    const union expr_constant *c = o->value.values;
+    const struct expr_constant *c = o->value.values;
     size_t n_values = o->value.n_values;
     size_t size;
 
@@ -3083,7 +3083,7 @@ encode_PUT_DHCPV4_OPTS(const struct ovnact_put_opts *pdo,
         find_opt(pdo->options, pdo->n_options, DHCP_OPT_BOOTFILE_CODE);
     if (boot_opt) {
         uint8_t *opt_header = ofpbuf_put_zeros(ofpacts, 2);
-        const union expr_constant *c = boot_opt->value.values;
+        const struct expr_constant *c = boot_opt->value.values;
         opt_header[0] = boot_opt->option->code;
         opt_header[1] = strlen(c->string);
         ofpbuf_put(ofpacts, c->string, opt_header[1]);
@@ -3093,7 +3093,7 @@ encode_PUT_DHCPV4_OPTS(const struct ovnact_put_opts *pdo,
         find_opt(pdo->options, pdo->n_options, DHCP_OPT_BOOTFILE_ALT_CODE);
     if (boot_alt_opt) {
         uint8_t *opt_header = ofpbuf_put_zeros(ofpacts, 2);
-        const union expr_constant *c = boot_alt_opt->value.values;
+        const struct expr_constant *c = boot_alt_opt->value.values;
         opt_header[0] = boot_alt_opt->option->code;
         opt_header[1] = strlen(c->string);
         ofpbuf_put(ofpacts, c->string, opt_header[1]);
@@ -3103,7 +3103,7 @@ encode_PUT_DHCPV4_OPTS(const struct ovnact_put_opts *pdo,
         pdo->options, pdo->n_options, DHCP_OPT_NEXT_SERVER_CODE);
     if (next_server_opt) {
         uint8_t *opt_header = ofpbuf_put_zeros(ofpacts, 2);
-        const union expr_constant *c = next_server_opt->value.values;
+        const struct expr_constant *c = next_server_opt->value.values;
         opt_header[0] = next_server_opt->option->code;
         opt_header[1] = sizeof(ovs_be32);
         ofpbuf_put(ofpacts, &c->value.ipv4, sizeof(ovs_be32));
@@ -3307,7 +3307,7 @@ parse_put_nd_ra_opts(struct action_context *ctx, const struct expr_field *dst,
     /* Let's validate the options. */
     for (size_t i = 0; i < po->n_options; i++) {
         const struct ovnact_gen_option *o = &po->options[i];
-        const union expr_constant *c = o->value.values;
+        const struct expr_constant *c = o->value.values;
         if (o->value.n_values > 1) {
             lexer_error(ctx->lexer, "Invalid value for \"%s\" option",
                         o->option->name);
@@ -3490,7 +3490,7 @@ static void
 encode_put_nd_ra_option(const struct ovnact_gen_option *o,
                         struct ofpbuf *ofpacts, ptrdiff_t ra_offset)
 {
-    const union expr_constant *c = o->value.values;
+    const struct expr_constant *c = o->value.values;
 
     switch (o->option->code) {
     case ND_RA_FLAG_ADDR_MODE:

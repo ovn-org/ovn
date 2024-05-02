@@ -179,12 +179,10 @@ expr_combine(enum expr_type type, struct expr *a, struct expr *b)
         } else {
             ovs_list_push_back(&a->andor, &b->node);
         }
-        free(a->as_name);
         a->as_name = NULL;
         return a;
     } else if (b->type == type) {
         ovs_list_push_front(&b->andor, &a->node);
-        free(b->as_name);
         b->as_name = NULL;
         return b;
     } else {
@@ -521,12 +519,13 @@ static bool parse_field(struct expr_context *, struct expr_field *);
 
 static struct expr *
 make_cmp__(const struct expr_field *f, enum expr_relop r,
-             const union expr_constant *c)
+             const struct expr_constant *c)
 {
     struct expr *e = xzalloc(sizeof *e);
     e->type = EXPR_T_CMP;
     e->cmp.symbol = f->symbol;
     e->cmp.relop = r;
+    e->as_name = c->as_name;
     if (f->symbol->width) {
         bitwise_copy(&c->value, sizeof c->value, 0,
                      &e->cmp.value, sizeof e->cmp.value, f->ofs,
@@ -547,7 +546,7 @@ make_cmp__(const struct expr_field *f, enum expr_relop r,
 
 /* Returns the minimum reasonable width for integer constant 'c'. */
 static int
-expr_constant_width(const union expr_constant *c)
+expr_constant_width(const struct expr_constant *c)
 {
     if (c->masked) {
         return mf_subvalue_width(&c->mask);
@@ -674,10 +673,7 @@ make_cmp(struct expr_context *ctx,
         e = expr_combine(r == EXPR_R_EQ ? EXPR_T_OR : EXPR_T_AND,
                          e, make_cmp__(f, r, &cs->values[i]));
     }
-    /* Track address set */
-    if (r == EXPR_R_EQ && e->type == EXPR_T_OR && cs->as_name) {
-        e->as_name = xstrdup(cs->as_name);
-    }
+
 exit:
     expr_constant_set_destroy(cs);
     return e;
@@ -797,11 +793,10 @@ parse_addr_sets(struct expr_context *ctx, struct expr_constant_set *cs,
         }
     }
 
-    struct expr_constant_set *addr_sets
-        = (ctx->addr_sets
-           ? shash_find_data(ctx->addr_sets, ctx->lexer->token.s)
-           : NULL);
-    if (!addr_sets) {
+    struct shash_node *node = ctx->addr_sets
+                              ? shash_find(ctx->addr_sets, ctx->lexer->token.s)
+                              : NULL;
+    if (!node) {
         lexer_syntax_error(ctx->lexer, "expecting address set name");
         return false;
     }
@@ -810,17 +805,16 @@ parse_addr_sets(struct expr_context *ctx, struct expr_constant_set *cs,
         return false;
     }
 
-    if (!cs->n_values) {
-        cs->as_name = xstrdup(ctx->lexer->token.s);
-    }
-
+    struct expr_constant_set *addr_sets = node->data;
     size_t n_values = cs->n_values + addr_sets->n_values;
     if (n_values >= *allocated_values) {
         cs->values = xrealloc(cs->values, n_values * sizeof *cs->values);
         *allocated_values = n_values;
     }
     for (size_t i = 0; i < addr_sets->n_values; i++) {
-        cs->values[cs->n_values++] = addr_sets->values[i];
+        struct expr_constant *c = &cs->values[cs->n_values++];
+        *c = addr_sets->values[i];
+        c->as_name = node->name;
     }
 
     return true;
@@ -859,8 +853,9 @@ parse_port_group(struct expr_context *ctx, struct expr_constant_set *cs,
         *allocated_values = n_values;
     }
     for (size_t i = 0; i < port_group->n_values; i++) {
-        cs->values[cs->n_values++].string =
-            xstrdup(port_group->values[i].string);
+        struct expr_constant *c = &cs->values[cs->n_values++];
+        c->string = xstrdup(port_group->values[i].string);
+        c->as_name = NULL;
     }
 
     return true;
@@ -875,11 +870,6 @@ parse_constant(struct expr_context *ctx, struct expr_constant_set *cs,
                                 sizeof *cs->values);
     }
 
-    /* Combining other values to the constant set that is tracking an
-     * address set, so untrack it. */
-    free(cs->as_name);
-    cs->as_name = NULL;
-
     if (ctx->lexer->token.type == LEX_T_TEMPLATE) {
         lexer_error(ctx->lexer, "Unexpanded template.");
         return false;
@@ -887,7 +877,9 @@ parse_constant(struct expr_context *ctx, struct expr_constant_set *cs,
         if (!assign_constant_set_type(ctx, cs, EXPR_C_STRING)) {
             return false;
         }
-        cs->values[cs->n_values++].string = xstrdup(ctx->lexer->token.s);
+        struct expr_constant *c = &cs->values[cs->n_values++];
+        c->string = xstrdup(ctx->lexer->token.s);
+        c->as_name = NULL;
         lexer_get(ctx->lexer);
         return true;
     } else if (ctx->lexer->token.type == LEX_T_INTEGER ||
@@ -896,13 +888,14 @@ parse_constant(struct expr_context *ctx, struct expr_constant_set *cs,
             return false;
         }
 
-        union expr_constant *c = &cs->values[cs->n_values++];
+        struct expr_constant *c = &cs->values[cs->n_values++];
         c->value = ctx->lexer->token.value;
         c->format = ctx->lexer->token.format;
         c->masked = ctx->lexer->token.type == LEX_T_MASKED_INTEGER;
         if (c->masked) {
             c->mask = ctx->lexer->token.mask;
         }
+        c->as_name = NULL;
         lexer_get(ctx->lexer);
         return true;
     } else if (ctx->lexer->token.type == LEX_T_MACRO) {
@@ -961,7 +954,7 @@ parse_constant_set(struct expr_context *ctx, struct expr_constant_set *cs)
  * indeterminate. */
 bool
 expr_constant_parse(struct lexer *lexer, const struct expr_field *f,
-                    union expr_constant *c)
+                    struct expr_constant *c)
 {
     if (lexer->error) {
         return false;
@@ -987,7 +980,7 @@ expr_constant_parse(struct lexer *lexer, const struct expr_field *f,
 /* Appends to 's' a re-parseable representation of constant 'c' with the given
  * 'type'. */
 void
-expr_constant_format(const union expr_constant *c,
+expr_constant_format(const struct expr_constant *c,
                      enum expr_constant_type type, struct ds *s)
 {
     if (type == EXPR_C_STRING) {
@@ -1010,7 +1003,7 @@ expr_constant_format(const union expr_constant *c,
  *
  * Does not free(c). */
 void
-expr_constant_destroy(const union expr_constant *c,
+expr_constant_destroy(const struct expr_constant *c,
                       enum expr_constant_type type)
 {
     if (c && type == EXPR_C_STRING) {
@@ -1043,7 +1036,7 @@ expr_constant_set_format(const struct expr_constant_set *cs, struct ds *s)
         ds_put_char(s, '{');
     }
 
-    for (const union expr_constant *c = cs->values;
+    for (const struct expr_constant *c = cs->values;
          c < &cs->values[cs->n_values]; c++) {
         if (c != cs->values) {
             ds_put_cstr(s, ", ");
@@ -1067,15 +1060,14 @@ expr_constant_set_destroy(struct expr_constant_set *cs)
             }
         }
         free(cs->values);
-        free(cs->as_name);
     }
 }
 
 static int
 compare_expr_constant_integer_cb(const void *a_, const void *b_)
 {
-    const union expr_constant *a = a_;
-    const union expr_constant *b = b_;
+    const struct expr_constant *a = a_;
+    const struct expr_constant *b = b_;
 
     int d = memcmp(&a->value, &b->value, sizeof a->value);
     if (d) {
@@ -1114,7 +1106,7 @@ expr_constant_set_create_integers(const char *const *values, size_t n_values)
             VLOG_WARN("Invalid constant set entry: '%s', token type: %d",
                       values[i], lex.token.type);
         } else {
-            union expr_constant *c = &cs->values[cs->n_values++];
+            struct expr_constant *c = &cs->values[cs->n_values++];
             c->value = lex.token.value;
             c->format = lex.token.format;
             c->masked = lex.token.type == LEX_T_MASKED_INTEGER;
@@ -1135,7 +1127,7 @@ expr_constant_set_create_integers(const char *const *values, size_t n_values)
 
 static void
 expr_constant_set_add_value(struct expr_constant_set **p_cs,
-                            union expr_constant *c, size_t *allocated)
+                            struct expr_constant *c, size_t *allocated)
 {
     struct expr_constant_set *cs = *p_cs;
     if (!cs) {
@@ -1246,7 +1238,7 @@ expr_const_sets_add_strings(struct shash *const_sets, const char *name,
                         values[i], name);
             continue;
         }
-        union expr_constant *c = &cs->values[cs->n_values++];
+        struct expr_constant *c = &cs->values[cs->n_values++];
         c->string = xstrdup(values[i]);
     }
 
@@ -1359,7 +1351,7 @@ expr_parse_primary(struct expr_context *ctx, bool *atomic)
 
             *atomic = true;
 
-            union expr_constant *cst = xzalloc(sizeof *cst);
+            struct expr_constant *cst = xzalloc(sizeof *cst);
             cst->format = LEX_F_HEXADECIMAL;
             cst->masked = false;
 
@@ -1367,7 +1359,6 @@ expr_parse_primary(struct expr_context *ctx, bool *atomic)
             c.values = cst;
             c.n_values = 1;
             c.in_curlies = false;
-            c.as_name = NULL;
             return make_cmp(ctx, &f, EXPR_R_NE, &c);
         } else if (parse_relop(ctx, &r) && parse_constant_set(ctx, &c)) {
             return make_cmp(ctx, &f, r, &c);
@@ -1834,7 +1825,6 @@ expr_symtab_destroy(struct shash *symtab)
 static struct expr *
 expr_clone_cmp(struct expr *expr)
 {
-    ovs_assert(!expr->as_name);
     struct expr *new = xmemdup(expr, sizeof *expr);
     if (!new->cmp.symbol->width) {
         new->cmp.string = xstrdup(new->cmp.string);
@@ -1858,7 +1848,6 @@ expr_clone_andor(struct expr *expr)
 static struct expr *
 expr_clone_condition(struct expr *expr)
 {
-    ovs_assert(!expr->as_name);
     struct expr *new = xmemdup(expr, sizeof *expr);
     new->cond.string = xstrdup(new->cond.string);
     return new;
@@ -1893,8 +1882,6 @@ expr_destroy(struct expr *expr)
     if (!expr) {
         return;
     }
-
-    free(expr->as_name);
 
     struct expr *sub;
 
@@ -2567,7 +2554,7 @@ crush_or_supersets(struct expr *expr, const struct expr_symbol *symbol)
      * mask sizes. */
     size_t n = ovs_list_size(&expr->andor);
     struct expr **subs = xmalloc(n * sizeof *subs);
-    bool modified = false;
+    bool has_addr_set = false;
     /* Linked list over the 'subs' array to quickly skip deleted elements,
      * i.e. the index of the next potentially non-NULL element. */
     size_t *next = xmalloc(n * sizeof *next);
@@ -2575,6 +2562,9 @@ crush_or_supersets(struct expr *expr, const struct expr_symbol *symbol)
     size_t i = 0, j, max_n_bits = 0;
     struct expr *sub;
     LIST_FOR_EACH (sub, node, &expr->andor) {
+        if (sub->as_name) {
+            has_addr_set = true;
+        }
         if (symbol->width) {
             const unsigned long *sub_mask;
 
@@ -2596,14 +2586,14 @@ crush_or_supersets(struct expr *expr, const struct expr_symbol *symbol)
             next[last] = i;
             last = i;
         } else {
+            /* Remove address set reference from the duplicate. */
+            subs[last]->as_name = NULL;
             expr_destroy(subs[i]);
             subs[i] = NULL;
-            modified = true;
         }
     }
 
-    if (!symbol->width || symbol->level != EXPR_L_ORDINAL
-        || (!modified && expr->as_name)) {
+    if (!symbol->width || symbol->level != EXPR_L_ORDINAL || has_addr_set) {
         /* Not a fully maskable field or this expression is tracking an
          * address set.  Don't try to optimize to preserve address set I-P. */
         goto done;
@@ -2658,10 +2648,11 @@ crush_or_supersets(struct expr *expr, const struct expr_symbol *symbol)
             if (expr_bitmap_intersect_check(a_value, a_mask, b_value, b_mask,
                                             bit_width)
                 && bitmap_is_superset(b_mask, a_mask, bit_width)) {
-                /* 'a' is the same expression with a smaller mask. */
+                /* 'a' is the same expression with a smaller mask.
+                 * Remove address set reference from the duplicate. */
+                a->as_name = NULL;
                 expr_destroy(subs[j]);
                 subs[j] = NULL;
-                modified = true;
 
                 /* Shorten the path for the next round. */
                 if (last) {
@@ -2683,12 +2674,6 @@ done:
         if (subs[i]) {
             ovs_list_push_back(&expr->andor, &subs[i]->node);
         }
-    }
-
-    if (modified) {
-        /* Members modified, so untrack address set. */
-        free(expr->as_name);
-        expr->as_name = NULL;
     }
 
     free(next);
@@ -3271,10 +3256,10 @@ add_disjunction(const struct expr *or,
     LIST_FOR_EACH (sub, node, &or->andor) {
         struct expr_match *match = expr_match_new(m, clause, n_clauses,
                                                   conj_id);
-        if (or->as_name) {
+        if (sub->as_name) {
             ovs_assert(sub->type == EXPR_T_CMP);
             ovs_assert(sub->cmp.symbol->width);
-            match->as_name = xstrdup(or->as_name);
+            match->as_name = xstrdup(sub->as_name);
             match->as_ip = sub->cmp.value.ipv6;
             match->as_mask = sub->cmp.mask.ipv6;
         }
