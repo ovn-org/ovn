@@ -2973,3 +2973,41 @@ priority=1100,ip,reg15=0x1,metadata=0x1,nw_src=10.0.0.4 actions=load:0x1->OXM_OF
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+AT_SETUP([ovn-controller - LB remove after disconnect])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=lsp
+
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-remote-probe-interval="5000"
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add ls lsp \
+-- lsp-set-addresses lsp "f0:00:00:00:00:01 172.16.0.10"
+
+check ovn-nbctl lb-add lb 192.168.100.100 172.16.0.10
+check ovn-nbctl ls-lb-add ls lb
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+sleep_sb
+OVS_WAIT_UNTIL([grep -q 'OVNSB commit failed' hv1/ovn-controller.log])
+
+sleep_controller hv1
+wake_up_sb
+
+ovn-nbctl lb-del lb
+
+wake_up_controller hv1
+check ovn-nbctl --wait=hv sync
+
+OVN_CLEANUP([hv1
+/no response to inactivity probe after .* seconds, disconnecting/d])
+AT_CLEANUP
