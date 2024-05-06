@@ -2878,7 +2878,7 @@ lb_data_local_lb_add(struct ed_type_lb_data *lb_data,
 
 static void
 lb_data_local_lb_remove(struct ed_type_lb_data *lb_data,
-                        struct ovn_controller_lb *lb, bool tracked)
+                        struct ovn_controller_lb *lb)
 {
     const struct uuid *uuid = &lb->slb->header_.uuid;
 
@@ -2887,12 +2887,8 @@ lb_data_local_lb_remove(struct ed_type_lb_data *lb_data,
 
     lb_data_removed_five_tuples_add(lb_data, lb);
 
-    if (tracked) {
-        hmap_insert(&lb_data->old_lbs, &lb->hmap_node, uuid_hash(uuid));
-        uuidset_insert(&lb_data->deleted, uuid);
-    } else {
-        ovn_controller_lb_destroy(lb);
-    }
+    hmap_insert(&lb_data->old_lbs, &lb->hmap_node, uuid_hash(uuid));
+    uuidset_insert(&lb_data->deleted, uuid);
 }
 
 static bool
@@ -2917,7 +2913,7 @@ lb_data_handle_changed_ref(enum objdep_type type, const char *res_name,
             continue;
         }
 
-        lb_data_local_lb_remove(lb_data, lb, true);
+        lb_data_local_lb_remove(lb_data, lb);
 
         const struct sbrec_load_balancer *sbrec_lb =
             sbrec_load_balancer_table_get_for_uuid(ctx_in->lb_table, uuid);
@@ -2963,9 +2959,13 @@ en_lb_data_run(struct engine_node *node, void *data)
     const struct sbrec_load_balancer_table *lb_table =
         EN_OVSDB_GET(engine_get_input("SB_load_balancer", node));
 
+    objdep_mgr_clear(&lb_data->deps_mgr);
+
     struct ovn_controller_lb *lb;
     HMAP_FOR_EACH_SAFE (lb, hmap_node, &lb_data->local_lbs) {
-        lb_data_local_lb_remove(lb_data, lb, false);
+        hmap_remove(&lb_data->local_lbs, &lb->hmap_node);
+        lb_data_removed_five_tuples_add(lb_data, lb);
+        ovn_controller_lb_destroy(lb);
     }
 
     const struct sbrec_load_balancer *sbrec_lb;
@@ -3003,7 +3003,7 @@ lb_data_sb_load_balancer_handler(struct engine_node *node, void *data)
                 continue;
             }
 
-            lb_data_local_lb_remove(lb_data, lb, true);
+            lb_data_local_lb_remove(lb_data, lb);
         }
 
         if (sbrec_load_balancer_is_deleted(sbrec_lb) ||
