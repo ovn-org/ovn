@@ -16,6 +16,7 @@
 #include <config.h>
 #include <stdbool.h>
 
+#include "local_data.h"
 #include "lport.h"
 #include "mac-cache.h"
 #include "openvswitch/hmap.h"
@@ -39,11 +40,8 @@ static uint32_t
 fdb_data_hash(const struct fdb_data *fdb_data);
 static inline bool
 fdb_data_equals(const struct fdb_data *a, const struct fdb_data *b);
-static struct mac_cache_threshold *
-mac_cache_threshold_find(struct hmap *thresholds, const struct uuid *uuid);
 static uint64_t
-mac_cache_threshold_get_value_ms(const struct sbrec_datapath_binding *dp,
-                                 enum mac_cache_type type);
+mac_cache_threshold_get_value_ms(const struct sbrec_datapath_binding *dp);
 static void
 mac_cache_threshold_remove(struct hmap *thresholds,
                            struct mac_cache_threshold *threshold);
@@ -67,57 +65,79 @@ buffered_packets_db_lookup(struct buffered_packets *bp,
                            struct ovsdb_idl_index *sbrec_mb_by_lport_ip);
 
 /* Thresholds. */
-bool
+void
 mac_cache_threshold_add(struct mac_cache_data *data,
-                        const struct sbrec_datapath_binding *dp,
-                        enum mac_cache_type type)
+                        const struct sbrec_datapath_binding *dp)
 {
-    struct hmap *thresholds = &data->thresholds[type];
     struct mac_cache_threshold *threshold =
-            mac_cache_threshold_find(thresholds, &dp->header_.uuid);
+            mac_cache_threshold_find(data, dp->tunnel_key);
     if (threshold) {
-        return true;
+        return;
     }
 
-    uint64_t value = mac_cache_threshold_get_value_ms(dp, type);
+    uint64_t value = mac_cache_threshold_get_value_ms(dp);
     if (!value) {
-        return false;
+        return;
     }
 
     threshold = xmalloc(sizeof *threshold);
-    threshold->uuid = dp->header_.uuid;
+    threshold->dp_key = dp->tunnel_key;
     threshold->value = value;
     threshold->dump_period = (3 * value) / 4;
 
-    hmap_insert(thresholds, &threshold->hmap_node,
-                uuid_hash(&dp->header_.uuid));
-
-    return true;
+    hmap_insert(&data->thresholds, &threshold->hmap_node, dp->tunnel_key);
 }
 
-bool
+void
 mac_cache_threshold_replace(struct mac_cache_data *data,
                             const struct sbrec_datapath_binding *dp,
-                            enum mac_cache_type type)
+                            const struct hmap *local_datapaths)
 {
-    struct hmap *thresholds = &data->thresholds[type];
     struct mac_cache_threshold *threshold =
-            mac_cache_threshold_find(thresholds, &dp->header_.uuid);
+            mac_cache_threshold_find(data, dp->tunnel_key);
     if (threshold) {
-        mac_cache_threshold_remove(thresholds, threshold);
+        mac_cache_threshold_remove(&data->thresholds, threshold);
     }
 
-    return mac_cache_threshold_add(data, dp, type);
+    if (!get_local_datapath(local_datapaths, dp->tunnel_key)) {
+        return;
+    }
+
+    mac_cache_threshold_add(data, dp);
+}
+
+
+struct mac_cache_threshold *
+mac_cache_threshold_find(struct mac_cache_data *data, uint32_t dp_key)
+{
+    struct mac_cache_threshold *threshold;
+    HMAP_FOR_EACH_WITH_HASH (threshold, hmap_node, dp_key, &data->thresholds) {
+        if (threshold->dp_key == dp_key) {
+            return threshold;
+        }
+    }
+
+    return NULL;
+}
+
+void
+mac_cache_thresholds_sync(struct mac_cache_data *data,
+                          const struct hmap *local_datapaths)
+{
+    struct mac_cache_threshold *threshold;
+    HMAP_FOR_EACH_SAFE (threshold, hmap_node, &data->thresholds) {
+        if (!get_local_datapath(local_datapaths, threshold->dp_key)) {
+            mac_cache_threshold_remove(&data->thresholds, threshold);
+        }
+    }
 }
 
 void
 mac_cache_thresholds_clear(struct mac_cache_data *data)
 {
-    for (size_t i = 0; i < MAC_CACHE_MAX; i++) {
-        struct mac_cache_threshold *threshold;
-        HMAP_FOR_EACH_POP (threshold, hmap_node, &data->thresholds[i]) {
-            free(threshold);
-        }
+    struct mac_cache_threshold *threshold;
+    HMAP_FOR_EACH_POP (threshold, hmap_node, &data->thresholds) {
+        free(threshold);
     }
 }
 
@@ -231,7 +251,6 @@ fdb_add(struct hmap *map, struct fdb_data fdb_data) {
     if (!fdb) {
         fdb = xmalloc(sizeof *fdb);
         fdb->sbrec_fdb = NULL;
-        fdb->dp_uuid = UUID_ZERO;
         hmap_insert(map, &fdb->hmap_node, fdb_data_hash(&fdb_data));
     }
 
@@ -343,7 +362,6 @@ mac_binding_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
                       void *data)
 {
     struct mac_cache_data *cache_data = data;
-    struct hmap *thresholds = &cache_data->thresholds[MAC_CACHE_MAC_BINDING];
     long long timewall_now = time_wall_msec();
 
     struct mac_cache_stats *stats;
@@ -355,9 +373,8 @@ mac_binding_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
             continue;
         }
 
-        struct uuid *dp_uuid = &mb->sbrec_mb->datapath->header_.uuid;
         struct mac_cache_threshold *threshold =
-                mac_cache_threshold_find(thresholds, dp_uuid);
+                mac_cache_threshold_find(cache_data, mb->data.dp_key);
 
         /* If "idle_age" is under threshold it means that the mac binding is
          * used on this chassis. Also make sure that we don't update the
@@ -371,7 +388,7 @@ mac_binding_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
         free(stats);
     }
 
-    mac_cache_update_req_delay(thresholds, req_delay);
+    mac_cache_update_req_delay(&cache_data->thresholds, req_delay);
 }
 
 /* FDB stat processing. */
@@ -396,7 +413,6 @@ fdb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
               void *data)
 {
     struct mac_cache_data *cache_data = data;
-    struct hmap *thresholds = &cache_data->thresholds[MAC_CACHE_FDB];
     long long timewall_now = time_wall_msec();
 
     struct mac_cache_stats *stats;
@@ -409,7 +425,8 @@ fdb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
         }
 
         struct mac_cache_threshold *threshold =
-                mac_cache_threshold_find(thresholds, &fdb->dp_uuid);
+                mac_cache_threshold_find(cache_data, fdb->data.dp_key);
+
         /* If "idle_age" is under threshold it means that the mac binding is
          * used on this chassis. Also make sure that we don't update the
          * timestamp more than once during the dump period. */
@@ -422,7 +439,7 @@ fdb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
         free(stats);
     }
 
-    mac_cache_update_req_delay(thresholds, req_delay);
+    mac_cache_update_req_delay(&cache_data->thresholds, req_delay);
 }
 
 /* Packet buffering. */
@@ -625,41 +642,22 @@ fdb_data_equals(const struct fdb_data *a, const struct fdb_data *b)
            eth_addr_equals(a->mac, b->mac);
 }
 
-
-static struct mac_cache_threshold *
-mac_cache_threshold_find(struct hmap *thresholds, const struct uuid *uuid)
-{
-    uint32_t hash = uuid_hash(uuid);
-
-    struct mac_cache_threshold *threshold;
-    HMAP_FOR_EACH_WITH_HASH (threshold, hmap_node, hash, thresholds) {
-        if (uuid_equals(&threshold->uuid, uuid)) {
-            return threshold;
-        }
-    }
-
-    return NULL;
-}
-
 static uint64_t
-mac_cache_threshold_get_value_ms(const struct sbrec_datapath_binding *dp,
-                                 enum mac_cache_type type)
+mac_cache_threshold_get_value_ms(const struct sbrec_datapath_binding *dp)
 {
-    uint64_t value = 0;
-    switch (type) {
-    case MAC_CACHE_MAC_BINDING:
-        value = smap_get_uint(&dp->external_ids, "mac_binding_age_threshold",
-                              0);
-        break;
-    case MAC_CACHE_FDB:
-        value = smap_get_uint(&dp->external_ids, "fdb_age_threshold", 0);
-        break;
-    case MAC_CACHE_MAX:
-    default:
-        break;
+    uint64_t mb_value =
+            smap_get_uint(&dp->external_ids, "mac_binding_age_threshold", 0);
+    uint64_t fdb_value =
+            smap_get_uint(&dp->external_ids, "fdb_age_threshold", 0);
+
+    if (mb_value && fdb_value) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "Invalid aging threshold configuration for datapath:"
+                          " "UUID_FMT, UUID_ARGS(&dp->header_.uuid));
+        return 0;
     }
 
-    return value * 1000;
+    return mb_value ? mb_value * 1000 : fdb_value * 1000;
 }
 
 static void

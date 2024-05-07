@@ -34540,7 +34540,7 @@ OVS_CTL_TIMEOUT=10
 OVS_WAIT_UNTIL([
     test "$timestamp" != "$(fetch_column mac_binding timestamp ip='192.168.10.20')"
 ])
-check $(test "$(fetch_column mac_binding timestamp ip='192.168.10.20')" != "")
+check test "$(fetch_column mac_binding timestamp ip='192.168.10.20')" != ""
 
 # Check if the records are removed after some inactivity
 OVS_WAIT_UNTIL([
@@ -36445,7 +36445,7 @@ OVS_WAIT_UNTIL([
     test "$timestamp" != "$curr_timestamp"
 ])
 timestamp=$(fetch_column fdb timestamp mac='"00:00:00:00:10:20"')
-check $(test "$timestamp" != "")
+check test "$timestamp" != ""
 
 # Check if the records are removed after some inactivity
 wait_row_count fdb 0 mac='"00:00:00:00:10:20"'

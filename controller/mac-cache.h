@@ -29,15 +29,9 @@
 
 struct ovsdb_idl_index;
 
-enum mac_cache_type {
-    MAC_CACHE_MAC_BINDING,
-    MAC_CACHE_FDB,
-    MAC_CACHE_MAX
-};
-
 struct mac_cache_data {
-    /* 'struct mac_cache_threshold' by datapath UUID. */
-    struct hmap thresholds[MAC_CACHE_MAX];
+    /* 'struct mac_cache_threshold' by datapath's tunnel_key. */
+    struct hmap thresholds;
     /* 'struct mac_cache_mac_binding' by 'struct mac_cache_mb_data' that are
      * local and have threshold > 0. */
     struct hmap mac_bindings;
@@ -48,8 +42,8 @@ struct mac_cache_data {
 
 struct mac_cache_threshold {
     struct hmap_node hmap_node;
-    /* Datapath UUID. */
-    struct uuid uuid;
+    /* Datapath tunnel key. */
+    uint32_t dp_key;
     /* Aging threshold in ms. */
     uint64_t value;
     /* Statistics dump period. */
@@ -89,8 +83,6 @@ struct fdb {
     struct fdb_data data;
     /* Reference to the SB FDB record. */
     const struct sbrec_fdb *sbrec_fdb;
-    /* UUID of datapath for this FDB record. */
-    struct uuid dp_uuid;
 };
 
 struct bp_packet_data {
@@ -123,12 +115,15 @@ struct buffered_packets_ctx {
 };
 
 /* Thresholds. */
-bool mac_cache_threshold_add(struct mac_cache_data *data,
-                             const struct sbrec_datapath_binding *dp,
-                             enum mac_cache_type type);
-bool mac_cache_threshold_replace(struct mac_cache_data *data,
+void mac_cache_threshold_add(struct mac_cache_data *data,
+                             const struct sbrec_datapath_binding *dp);
+void mac_cache_threshold_replace(struct mac_cache_data *data,
                                  const struct sbrec_datapath_binding *dp,
-                                 enum mac_cache_type type);
+                                 const struct hmap *local_datapaths);
+struct mac_cache_threshold *
+mac_cache_threshold_find(struct mac_cache_data *data, uint32_t dp_key);
+void mac_cache_thresholds_sync(struct mac_cache_data *data,
+                               const struct hmap *local_datapaths);
 void mac_cache_thresholds_clear(struct mac_cache_data *data);
 
 /* MAC binding. */
