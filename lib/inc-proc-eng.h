@@ -342,7 +342,7 @@ bool engine_canceled(void);
  */
 void *engine_get_data(struct engine_node *node);
 
-/* Return a pointer to node data *without* performing any sanity checks on
+/* Return a pointer to node data *without* performing any coherance checks on
  * the state of the node. This may be used only in specific cases when data
  * is guaranteed to be valid, e.g., immediately after initialization and
  * before the first engine_run().

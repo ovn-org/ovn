@@ -7378,7 +7378,7 @@ AT_CHECK([cat log_flows], [0], [dnl
 
 rm log_flows
 
-# And just for sanity's sake, let's remove the allow-related ACL and make sure
+# And just to verify, let's remove the allow-related ACL and make sure
 # all the special log messages are gone.
 check ovn-nbctl acl-del pg2
 check ovn-nbctl --wait=sb sync
@@ -7483,7 +7483,7 @@ AT_CHECK([cat log_flows], [0], [dnl
 
 rm log_flows
 
-# And just for sanity's sake, let's remove the allow-related ACL and make sure
+# And just to verify, let's remove the allow-related ACL and make sure
 # all the special log messages are gone.
 check ovn-nbctl acl-del pg2
 check ovn-nbctl --wait=sb sync

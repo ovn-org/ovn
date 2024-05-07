@@ -5992,7 +5992,7 @@ nbctl_lrp_add(struct ctl_context *ctx)
             return;
         }
 
-        /* Special-case sanity-check of peer ports. */
+        /* Special-case coherance-check of peer ports. */
         const char *peer = NULL;
         for (int i = 0; i < n_settings; i++) {
             if (!strncmp(settings[i], "peer=", 5)) {
