@@ -1029,24 +1029,27 @@ prefix_is_link_local(struct in6_addr *prefix, unsigned int plen)
 }
 
 static bool
-prefix_is_black_listed(const struct smap *nb_options,
-                       struct in6_addr *prefix,
-                       unsigned int plen)
+prefix_is_deny_listed(const struct smap *nb_options,
+                      struct in6_addr *prefix,
+                      unsigned int plen)
 {
-    const char *blacklist = smap_get(nb_options, "ic-route-blacklist");
-    if (!blacklist || !blacklist[0]) {
-        return false;
+    const char *denylist = smap_get(nb_options, "ic-route-denylist");
+    if (!denylist || !denylist[0]) {
+        denylist = smap_get(nb_options, "ic-route-blacklist");
+        if (!denylist || !denylist[0]) {
+            return false;
+        }
     }
     struct in6_addr bl_prefix;
     unsigned int bl_plen;
     char *cur, *next, *start;
-    next = start = xstrdup(blacklist);
+    next = start = xstrdup(denylist);
     bool matched = false;
     while ((cur = strsep(&next, ",")) && *cur) {
         if (!ip46_parse_cidr(cur, &bl_prefix, &bl_plen)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
             VLOG_WARN_RL(&rl, "Bad format in nb_global options:"
-                         "ic-route-blacklist: %s. CIDR expected.", cur);
+                         "ic-route-denylist: %s. CIDR expected.", cur);
             continue;
         }
 
@@ -1109,7 +1112,7 @@ route_need_advertise(const char *policy,
         return false;
     }
 
-    if (prefix_is_black_listed(nb_options, prefix, plen)) {
+    if (prefix_is_deny_listed(nb_options, prefix, plen)) {
         return false;
     }
     return true;
@@ -1281,7 +1284,7 @@ route_need_learn(const struct nbrec_logical_router *lr,
         return false;
     }
 
-    if (prefix_is_black_listed(nb_options, prefix, plen)) {
+    if (prefix_is_deny_listed(nb_options, prefix, plen)) {
         return false;
     }
 

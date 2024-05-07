@@ -57,7 +57,7 @@ m4_define([OVN_CONTROLLER_VTEP_START], [
                                     --ovnsb-db=unix:$ovs_base/ovn-sb/ovn-sb.sock
 ])
 
-# OVN_CONTROLLER_VTEP_STOP(WHITELIST, SIM_NAME)
+# OVN_CONTROLLER_VTEP_STOP(ALLOWLIST, SIM_NAME)
 #
 # $1 - (optional) passed to check_logs()
 # $2 - (optional) simulator name

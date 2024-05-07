@@ -27,6 +27,10 @@ Post v24.03.0
   - Add "ovn-bridge-remote-probe-interval" config option to vswitchd
     external-ids, that sets probe interval for integration bridge connection,
     disabled by default.
+  - The "options:ic-route-blacklist" option in the Northbound NB_Global table
+    has been renamed to "options:ic-route-denylist" in order to comply with
+    inclusive language guidelines. The previous name is still recognized to
+    aid with backwards compatibility.
 
 OVN v24.03.0 - 01 Mar 2024
 --------------------------

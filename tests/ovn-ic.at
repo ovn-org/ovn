@@ -524,14 +524,14 @@ OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 192
 ovn_as az1 ovn-nbctl lrp-del lrp-lr1-ls1
 OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 192.168])
 
-# Test blacklist routes
+# Test denylist routes
 # Add back the directly connected 192.168 route.
 ovn_as az1 ovn-nbctl lrp-add lr1 lrp-lr1-ls1 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
 OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 192.168])
 # Ensure AZ1 learned AZ2's 10.11.2.0 route as well.
 OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep learned | grep 10.11])
 # Now black list 10.11.0.0/16 and 192.168.0.0/16 in AZ2.
-ovn_as az2 ovn-nbctl set nb_global . options:ic-route-blacklist="10.11.0.0/16,192.168.0.0/16"
+ovn_as az2 ovn-nbctl set nb_global . options:ic-route-denylist="10.11.0.0/16,192.168.0.0/16"
 # AZ2 shouldn't learn 192.168 route any more.
 OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 192.168])
 # AZ1 shouldn't learn 10.11 any more.
@@ -554,8 +554,8 @@ for i in 1 2; do
     ovn-nbctl set nb_global . options:ic-route-learn=true
     # Ensure route advertising at AZ level
     ovn-nbctl set nb_global . options:ic-route-adv=true
-    # Drop blacklist
-    ovn-nbctl remove nb_global . options ic-route-blacklist
+    # Drop denylist
+    ovn-nbctl remove nb_global . options ic-route-denylist
 
     for j in 1 2; do
         ts=ts$j$j
@@ -860,12 +860,12 @@ Route Table rtb1:
 ovn_as az1 ovn-nbctl lrp-del lrp-lr1-ls1
 OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 192.168])
 
-# Test blacklist routes
+# Test denylist routes
 # Add back the directly connected 192.168 route.
 ovn_as az1 ovn-nbctl lrp-add lr1 lrp-lr1-ls1 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
 OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 192.168])
-# Now add 10.11.0.0/16 and 192.168.0.0/16 to blacklist in AZ2.
-check ovn_as az2 ovn-nbctl set nb_global . options:ic-route-blacklist="10.11.0.0/16,192.168.0.0/16"
+# Now add 10.11.0.0/16 and 192.168.0.0/16 to denylist in AZ2.
+check ovn_as az2 ovn-nbctl set nb_global . options:ic-route-denylist="10.11.0.0/16,192.168.0.0/16"
 # AZ2 shouldn't learn 192.168 route any more.
 OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 192.168])
 # AZ1 shouldn't learn 10.11 any more.
@@ -1324,8 +1324,8 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn-ic -- route sync -- IPv6 blacklist filter])
-AT_KEYWORDS([IPv6-route-sync-blacklist])
+AT_SETUP([ovn-ic -- route sync -- IPv6 denylist filter])
+AT_KEYWORDS([IPv6-route-sync-denylist])
 
 ovn_init_ic_db
 check ovn-ic-nbctl ts-add ts1
@@ -1338,8 +1338,8 @@ for i in 1 2; do
     check ovn-nbctl set nb_global . options:ic-route-learn=true
     # Enable route advertising at AZ level
     check ovn-nbctl set nb_global . options:ic-route-adv=true
-    # Enable blacklist single filter for IPv6
-    check ovn-nbctl set nb_global . options:ic-route-blacklist=" \
+    # Enable denylist single filter for IPv6
+    check ovn-nbctl set nb_global . options:ic-route-denylist=" \
             2003:db8:1::/64,2004:aaaa::/32,2005:1234::/21"
 
     check ovn-ic-nbctl --wait=sb sync
@@ -1355,7 +1355,7 @@ for i in 1 2; do
     check ovn-nbctl lrp-add lr$i lrp-lr$i-p$i 00:00:00:00:00:0$i \
             2002:db8:1::$i/64
 
-    # Create blacklisted LRPs and connect to TS
+    # Create denylisted LRPs and connect to TS
     check ovn-nbctl lrp-add lr$i lrp-lr$i-p-ext$i \
             11:11:11:11:11:1$i 2003:db8:1::$i/64
 
@@ -1381,8 +1381,8 @@ AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1 |
 for i in 1 2; do
     ovn_as az$i
 
-    # Drop blacklist
-    check ovn-nbctl remove nb_global . options ic-route-blacklist
+    # Drop denylist
+    check ovn-nbctl remove nb_global . options ic-route-denylist
 done
 
 check ovn-ic-nbctl --wait=sb sync
@@ -1399,9 +1399,9 @@ for i in 1 2; do
     ovn_as az$i
 
     check ovn-nbctl set nb_global . \
-            options:ic-route-blacklist="2003:db8:1::/64,2004:db8:1::/64"
+            options:ic-route-denylist="2003:db8:1::/64,2004:db8:1::/64"
 
-    # Create an 'extra' blacklisted LRP and connect to TS
+    # Create an 'extra' denylisted LRP and connect to TS
     check ovn-nbctl lrp-add lr$i lrp-lr$i-p-ext5$i \
             55:55:55:55:55:5$i 2004:db8:1::$i/64
 done

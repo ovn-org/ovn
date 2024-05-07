@@ -442,7 +442,7 @@
           <code>ic-route-learn</code> is <code>true</code>.
         </column>
 
-        <column name="options" key="ic-route-blacklist">
+        <column name="options" key="ic-route-denylist">
           A string value contains a list of CIDRs delimited by ",".  A route
           will not be advertised or learned if the route's prefix belongs to
           any of the CIDRs listed.
