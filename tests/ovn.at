@@ -12798,7 +12798,7 @@ AT_CHECK([uniq packets], [0], [expout])
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv4/br-ex_n2-tx.pcap > empty
 AT_CHECK([cat empty], [0], [])
 
-AS_BOX([Make hv4 master])
+AS_BOX([Make hv4 active])
 as hv1 reset_pcap_file hv1-vif1 hv1/vif1
 as hv4 reset_pcap_file br-ex_n2 hv4/br-ex_n2
 ovn-nbctl --wait=sb ha-chassis-group-add-chassis hagrp1 hv4 40
@@ -14213,7 +14213,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ensure one gw controller restart in HA doesn't bounce the master])
+AT_SETUP([ensure one gw controller restart in HA doesn't bounce the active chassis])
 ovn_start
 
 net_add n1
@@ -20274,7 +20274,7 @@ ovn-nbctl ha-chassis-group-add-chassis hagrp1 hv3 10
 
 ovn_wait_for_bfd_up hv1 hv2 hv3
 
-# hv1 should be master and claim ls1-lp_ext1
+# hv1 should be active and claim ls1-lp_ext1
 wait_row_count Port_Binding 1 logical_port=ls1-lp_ext1 chassis=$hv1_uuid
 wait_for_ports_up ls1-lp_ext1
 
@@ -20342,10 +20342,10 @@ rm -f ext1_v6.expected
 rm -f ext1_v6.packets
 as hv1 reset_pcap_file hv1-ext1 hv1/ext1
 
-# Now increase the priority of hv3 so it becomes master.
+# Now increase the priority of hv3 so it becomes active.
 ovn-nbctl ha-chassis-group-add-chassis hagrp1 hv3 50
 
-# hv3 should be master and claim ls1-lp_ext1
+# hv3 should be active and claim ls1-lp_ext1
 wait_row_count Port_Binding 1 logical_port=ls1-lp_ext1 chassis=$hv3_uuid
 wait_for_ports_up ls1-lp_ext1
 
@@ -20420,7 +20420,7 @@ as hv3
 port=${sandbox}_br-phys
 as main ovs-vsctl del-port n1 $port
 
-# hv1 should be master and claim ls1-lp_ext1
+# hv1 should be active and claim ls1-lp_ext1
 wait_row_count Port_Binding 1 logical_port=ls1-lp_ext1 chassis=$hv1_uuid
 wait_for_ports_up ls1-lp_ext1
 
@@ -20434,7 +20434,7 @@ grep -c "actions=drop"], [0], [1
 as hv1 ovn-appctl -t ovn-controller exit
 as hv3 ovn-appctl -t ovn-controller exit
 
-# hv2 should be master and claim ls1-lp_ext1
+# hv2 should be active and claim ls1-lp_ext1
 wait_row_count Port_Binding 1 logical_port=ls1-lp_ext1 chassis=$hv2_uuid
 wait_for_ports_up ls1-lp_ext1
 

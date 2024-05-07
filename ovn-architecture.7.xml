@@ -1813,7 +1813,7 @@
   <p>
     When multiple chassis have been specified for a gateway, all chassis that
     may send packets to that gateway will enable BFD on tunnels to all
-    configured gateway chassis.  The current master chassis for the gateway
+    configured gateway chassis.  The current active chassis for the gateway
     is the highest priority gateway chassis that is currently viewed as
     active based on BFD status.
   </p>

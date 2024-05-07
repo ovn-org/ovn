@@ -943,7 +943,7 @@
               send any traffic to this port. <code>OVN</code> can support
               native services like DHCPv4/DHCPv6/DNS for this port.
               If <ref column="ha_chassis_group"/> is defined,
-              <code>ovn-controller</code> running in the master chassis of
+              <code>ovn-controller</code> running in the active chassis of
               the HA chassis group will bind this port to provide these native
               services. It is expected that this port belong to a bridged
               logical switch (with a <code>localnet</code> port).
@@ -4805,10 +4805,10 @@ or
       Table representing a group of chassis which can provide high availability
       services. Each chassis in the group is represented by the table
       <ref table="HA_Chassis"/>. The HA chassis with highest priority will
-      be the master of this group. If the master chassis failover is detected,
-      the HA chassis with the next higher priority takes over the
+      be the active chassis of this group. If the active chassis failover is
+      detected, the HA chassis with the next higher priority takes over the
       responsibility of providing the HA. If a distributed gateway router port
-      references a row in this table, then the master HA chassis in this group
+      references a row in this table, then the active HA chassis in this group
       provides the gateway functionality.
     </p>
 
@@ -4841,7 +4841,7 @@ or
     <column name="priority">
       <p>
         Priority of the chassis. Chassis with highest priority will be
-        the master.
+        the active chassis.
       </p>
     </column>
 

@@ -518,8 +518,8 @@ OVN_CONTROLLER_EXPECT_HIT(
     [ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public hv5 10 && ovn-nbctl --wait=hv sync]
 )
 
-# Make hv4 master. There is remote possibility that full recompute
-# triggers for hv1-hv5 after hv4 becomes master because of updates to the
+# Make hv4 active. There is remote possibility that full recompute
+# triggers for hv1-hv5 after hv4 becomes active because of updates to the
 # ovn-hv$i-0 interfaces. Most of the time there will be no recompute.
 ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public hv4 40
 hv4_ch=$(ovn-sbctl --bare --columns _uuid list chassis hv4)

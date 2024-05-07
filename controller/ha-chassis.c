@@ -164,7 +164,7 @@ is_local_chassis_only_candidate(const struct sbrec_ha_chassis_group *ha_ch_grp,
     return (local_chassis_present && n_active_ha_chassis == 1);
 }
 
-/* Returns true if the local_chassis is the master of
+/* Returns true if the local_chassis is the active chassis of
  * the HA chassis group, false otherwise. */
 bool
 ha_chassis_group_is_active(
