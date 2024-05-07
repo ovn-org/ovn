@@ -121,4 +121,4 @@ void mac_cache_fdb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
 
 void mac_cache_stats_destroy(struct ovs_list *stats_list);
 
-#endif /* controller/mac_cache.h */
+#endif /* controller/mac-cache.h */

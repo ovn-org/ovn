@@ -83,7 +83,7 @@
 #include "lib/ovn-l7.h"
 #include "hmapx.h"
 #include "mirror.h"
-#include "mac_cache.h"
+#include "mac-cache.h"
 #include "statctrl.h"
 #include "lib/dns-resolve.h"
 
