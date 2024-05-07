@@ -4550,6 +4550,8 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 op->visited = true;
                 continue;
             }
+
+            uint32_t old_tunnel_key = op->tunnel_key;
             if (!ls_port_reinit(op, ovnsb_idl_txn,
                                 new_nbsp,
                                 od, sb, ni->sbrec_mirror_table,
@@ -4563,6 +4565,11 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 goto fail;
             }
             add_op_to_northd_tracked_ports(&trk_lsps->updated, op);
+
+            if (old_tunnel_key != op->tunnel_key) {
+                delete_fdb_entry(ni->sbrec_fdb_by_dp_and_port, od->tunnel_key,
+                                 old_tunnel_key);
+            }
         }
         op->visited = true;
     }
