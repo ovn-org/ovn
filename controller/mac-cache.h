@@ -18,9 +18,16 @@
 
 #include <stdint.h>
 
+#include "dp-packet.h"
 #include "openvswitch/hmap.h"
-#include "ovn-sb-idl.h"
+#include "openvswitch/hmap.h"
+#include "openvswitch/list.h"
+#include "openvswitch/ofpbuf.h"
 #include "openvswitch/ofp-flow.h"
+#include "openvswitch/ofp-packet.h"
+#include "ovn-sb-idl.h"
+
+struct ovsdb_idl_index;
 
 enum mac_cache_type {
     MAC_CACHE_MAC_BINDING,
@@ -49,37 +56,73 @@ struct mac_cache_threshold {
     uint64_t dump_period;
 };
 
-struct mac_cache_mb_data {
+struct mac_binding_data {
+    /* Keys. */
     uint32_t port_key;
     uint32_t dp_key;
     struct in6_addr ip;
+    /* Value. */
     struct eth_addr mac;
 };
 
-struct mac_cache_mac_binding {
+struct mac_binding {
     struct hmap_node hmap_node;
     /* Common data to identify MAC binding. */
-    struct mac_cache_mb_data data;
-    /* Reference to the SB MAC binding record. */
+    struct mac_binding_data data;
+    /* Reference to the SB MAC binding record (Might be NULL). */
     const struct sbrec_mac_binding *sbrec_mb;
+    /* User specified timestamp (in ms) */
+    long long timestamp;
 };
 
-struct mac_cache_fdb_data {
-    uint32_t port_key;
+struct fdb_data {
+    /* Keys. */
     uint32_t dp_key;
     struct eth_addr mac;
+    /* Value. */
+    uint32_t port_key;
 };
 
-struct mac_cache_fdb {
+struct fdb {
     struct hmap_node hmap_node;
     /* Common data to identify FDB. */
-    struct mac_cache_fdb_data data;
+    struct fdb_data data;
     /* Reference to the SB FDB record. */
     const struct sbrec_fdb *sbrec_fdb;
     /* UUID of datapath for this FDB record. */
     struct uuid dp_uuid;
 };
 
+struct bp_packet_data {
+    struct ovs_list node;
+
+    struct ofpbuf *continuation;
+    struct ofputil_packet_in pin;
+};
+
+struct buffered_packets {
+    struct hmap_node hmap_node;
+
+    struct mac_binding_data mb_data;
+
+    /* Queue of packet_data associated with this struct. */
+    struct ovs_list queue;
+
+    /* Timestamp in ms when the buffered packet should expire. */
+    long long int expire_at_ms;
+
+    /* Timestamp in ms when the buffered packet should do full SB lookup.*/
+    long long int lookup_at_ms;
+};
+
+struct buffered_packets_ctx {
+    /* Map of all buffered packets waiting for the MAC address. */
+    struct hmap buffered_packets;
+    /* List of packet data that are ready to be sent. */
+    struct ovs_list ready_packets_data;
+};
+
+/* Thresholds. */
 bool mac_cache_threshold_add(struct mac_cache_data *data,
                              const struct sbrec_datapath_binding *dp,
                              enum mac_cache_type type);
@@ -87,38 +130,86 @@ bool mac_cache_threshold_replace(struct mac_cache_data *data,
                                  const struct sbrec_datapath_binding *dp,
                                  enum mac_cache_type type);
 void mac_cache_thresholds_clear(struct mac_cache_data *data);
-void mac_cache_mac_binding_add(struct mac_cache_data *data,
-                                const struct sbrec_mac_binding *mb,
-                                struct ovsdb_idl_index *sbrec_pb_by_name);
-struct mac_cache_mac_binding *
-mac_cachce_mac_binding_find(struct mac_cache_data *data,
-                            const struct sbrec_mac_binding *mb,
-                            struct ovsdb_idl_index *sbrec_pb_by_name);
-void mac_cache_mac_binding_remove(struct mac_cache_data *data,
-                                  const struct sbrec_mac_binding *mb,
-                                  struct ovsdb_idl_index *sbrec_pb_by_name);
-void mac_cache_mac_bindings_clear(struct mac_cache_data *data);
-bool mac_cache_sb_mac_binding_updated(const struct sbrec_mac_binding *mb);
 
-void mac_cache_fdb_add(struct mac_cache_data *data,
-                       const struct sbrec_fdb *fdb, struct uuid dp_uuid);
-void mac_cache_fdb_remove(struct mac_cache_data *data,
-                          const struct sbrec_fdb *fdb);
-bool mac_cache_sb_fdb_updated(const struct sbrec_fdb *fdb);
-void mac_cache_fdbs_clear(struct mac_cache_data *data);
+/* MAC binding. */
+struct mac_binding *mac_binding_add(struct hmap *map,
+                                    struct mac_binding_data mb_data,
+                                    long long timestamp);
 
+void mac_binding_remove(struct hmap *map, struct mac_binding *mb);
+
+struct mac_binding *mac_binding_find(const struct hmap *map,
+                                     const struct mac_binding_data *mb_data);
+
+bool mac_binding_data_from_sbrec(struct mac_binding_data *data,
+                                 const struct sbrec_mac_binding *mb,
+                                 struct ovsdb_idl_index *sbrec_pb_by_name);
+
+void mac_bindings_clear(struct hmap *map);
+
+bool sb_mac_binding_updated(const struct sbrec_mac_binding *mb);
+
+const struct sbrec_mac_binding *
+mac_binding_lookup(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+                   const char *logical_port, const char *ip);
+
+/* FDB. */
+struct fdb *fdb_add(struct hmap *map, struct fdb_data fdb_data);
+
+void fdb_remove(struct hmap *map, struct fdb *fdb);
+
+bool fdb_data_from_sbrec(struct fdb_data *data, const struct sbrec_fdb *fdb);
+
+struct fdb *fdb_find(const struct hmap *map, const struct fdb_data *fdb_data);
+
+bool sb_fdb_updated(const struct sbrec_fdb *fdb);
+
+void fdbs_clear(struct hmap *map);
+
+/* MAC binding stat processing. */
 void
-mac_cache_mb_stats_process_flow_stats(struct ovs_list *stats_list,
-                                      struct ofputil_flow_stats *ofp_stats);
-void mac_cache_mb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
-                            void *data);
+mac_binding_stats_process_flow_stats(struct ovs_list *stats_list,
+                                     struct ofputil_flow_stats *ofp_stats);
 
-void
-mac_cache_fdb_stats_process_flow_stats(struct ovs_list *stats_list,
-                                       struct ofputil_flow_stats *ofp_stats);
-void mac_cache_fdb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
-                             void *data);
+void mac_binding_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
+                           void *data);
+
+/* FDB stat processing. */
+void fdb_stats_process_flow_stats(struct ovs_list *stats_list,
+                                  struct ofputil_flow_stats *ofp_stats);
+
+void fdb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
+                   void *data);
 
 void mac_cache_stats_destroy(struct ovs_list *stats_list);
+
+/* Packet buffering. */
+struct bp_packet_data *
+bp_packet_data_create(const struct ofputil_packet_in *pin,
+                      const struct ofpbuf *continuation);
+
+void bp_packet_data_destroy(struct bp_packet_data *pd);
+
+struct buffered_packets *
+buffered_packets_add(struct buffered_packets_ctx *ctx,
+                     struct mac_binding_data mb_data);
+
+void buffered_packets_packet_data_enqueue(struct buffered_packets *bp,
+                                          struct bp_packet_data *pd);
+
+void buffered_packets_ctx_run(struct buffered_packets_ctx *ctx,
+                              const struct hmap *recent_mbs,
+                              struct ovsdb_idl_index *sbrec_pb_by_key,
+                              struct ovsdb_idl_index *sbrec_dp_by_key,
+                              struct ovsdb_idl_index *sbrec_pb_by_name,
+                              struct ovsdb_idl_index *sbrec_mb_by_lport_ip);
+
+void buffered_packets_ctx_init(struct buffered_packets_ctx *ctx);
+
+void buffered_packets_ctx_destroy(struct buffered_packets_ctx *ctx);
+
+bool buffered_packets_ctx_is_ready_to_send(struct buffered_packets_ctx *ctx);
+
+bool buffered_packets_ctx_has_packets(struct buffered_packets_ctx *ctx);
 
 #endif /* controller/mac-cache.h */
