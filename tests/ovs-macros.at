@@ -280,7 +280,7 @@ dnl Executes shell COMMAND in a loop until it returns
 dnl zero return code.  If COMMAND did not return
 dnl zero code within reasonable time limit, then
 dnl the test fails.  In that case, runs IF-FAILED
-dnl before aborting.
+dnl before exiting.
 m4_define([OVS_WAIT_UNTIL],
   [check_ovs_wait_until_args "$#" "$2"
    OVS_WAIT([$1], [$2], [AT_LINE], [until $1])])
@@ -334,7 +334,7 @@ dnl Executes shell COMMAND in a loop until it returns
 dnl non-zero return code.  If COMMAND did not return
 dnl non-zero code within reasonable time limit, then
 dnl the test fails.  In that case, runs IF-FAILED
-dnl before aborting.
+dnl before exiting.
 m4_define([OVS_WAIT_WHILE],
   [OVS_WAIT([if $1; then return 1; else return 0; fi], [$2],
             [AT_LINE], [while $1])])

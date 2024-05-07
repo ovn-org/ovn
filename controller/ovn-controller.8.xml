@@ -777,7 +777,7 @@
             <code>compute</code>
           </li>
           <li>
-            <code>abort</code>
+            <code>cancel</code>
           </li>
         </ul>
       </dd>
@@ -788,7 +788,7 @@
         Display the <code>ovn-controller</code> engine counter(s) for the
         specified <var>engine_node_name</var>.  <var>counter_name</var> is
         optional and can be one of <code>recompute</code>,
-        <code>compute</code> or <code>abort</code>.
+        <code>compute</code> or <code>cancel</code>.
       </p>
       </dd>
 

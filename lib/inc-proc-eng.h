@@ -194,7 +194,7 @@ enum engine_node_state {
     EN_UNCHANGED, /* Data in the node is valid and didn't change during the
                    * last run.
                    */
-    EN_ABORTED,   /* During the last run, processing was aborted for
+    EN_CANCELED,  /* During the last run, processing was canceled for
                    * this node.
                    */
     EN_STATE_MAX,
@@ -203,7 +203,7 @@ enum engine_node_state {
 struct engine_stats {
     uint64_t recompute;
     uint64_t compute;
-    uint64_t abort;
+    uint64_t cancel;
 };
 
 struct engine_node {
@@ -271,7 +271,7 @@ void engine_init_run(void);
 /* Execute the processing, which should be called in the main loop.
  * Updates the engine node's states accordingly. If 'recompute_allowed' is
  * false and a recompute is required by the current engine run then the engine
- * aborts.
+ * cancels its processing.
  */
 void engine_run(bool recompute_allowed);
 
@@ -327,8 +327,8 @@ bool engine_has_run(void);
  * has changed; false if nothing has changed. */
 bool engine_has_updated(void);
 
-/* Returns true if during the last engine run we had to abort processing. */
-bool engine_aborted(void);
+/* Returns true if during the last engine run we had to cancel processing. */
+bool engine_canceled(void);
 
 /* Return a pointer to node data accessible for users outside the processing
  * engine. If the node data is not valid (e.g., last engine_run() failed or

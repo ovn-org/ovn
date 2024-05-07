@@ -421,8 +421,8 @@ bool inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
         } else {
             VLOG_DBG("engine did not run, and it was not needed");
         }
-    } else if (engine_aborted()) {
-        VLOG_DBG("engine was aborted, force recompute next time.");
+    } else if (engine_canceled()) {
+        VLOG_DBG("engine was canceled, force recompute next time.");
         engine_set_force_recompute(true);
         poll_immediate_wake();
     } else {

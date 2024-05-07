@@ -34,7 +34,7 @@
 VLOG_DEFINE_THIS_MODULE(inc_proc_eng);
 
 static bool engine_force_recompute = false;
-static bool engine_run_aborted = false;
+static bool engine_run_canceled = false;
 static const struct engine_context *engine_context;
 
 static struct engine_node **engine_nodes;
@@ -44,7 +44,7 @@ static const char *engine_node_state_name[EN_STATE_MAX] = {
     [EN_STALE]     = "Stale",
     [EN_UPDATED]   = "Updated",
     [EN_UNCHANGED] = "Unchanged",
-    [EN_ABORTED]   = "Aborted",
+    [EN_CANCELED]   = "Canceled",
 };
 
 static long long engine_compute_log_timeout_msec = 500;
@@ -144,16 +144,16 @@ engine_dump_stats(struct unixctl_conn *conn, int argc,
                          "Node: %s\n"
                          "- recompute: %12"PRIu64"\n"
                          "- compute:   %12"PRIu64"\n"
-                         "- abort:     %12"PRIu64"\n",
+                         "- cancel:    %12"PRIu64"\n",
                          node->name, node->stats.recompute,
-                         node->stats.compute, node->stats.abort);
+                         node->stats.compute, node->stats.cancel);
         } else {
             if (!strcmp(dump_stat_type, "recompute")) {
                 ds_put_format(&dump, "%"PRIu64, node->stats.recompute);
             } else if (!strcmp(dump_stat_type, "compute")) {
                 ds_put_format(&dump, "%"PRIu64, node->stats.compute);
-            } else if (!strcmp(dump_stat_type, "abort")) {
-                ds_put_format(&dump, "%"PRIu64, node->stats.abort);
+            } else if (!strcmp(dump_stat_type, "cancel")) {
+                ds_put_format(&dump, "%"PRIu64, node->stats.cancel);
             } else {
                 ds_put_format(&dump, "Invalid stat type : %s", dump_stat_type);
             }
@@ -351,9 +351,9 @@ engine_has_updated(void)
 }
 
 bool
-engine_aborted(void)
+engine_canceled(void)
 {
-    return engine_run_aborted;
+    return engine_run_canceled;
 }
 
 void *
@@ -385,7 +385,7 @@ engine_init_run(void)
 }
 
 /* Do a full recompute (or at least try). If we're not allowed then
- * mark the node as "aborted".
+ * mark the node as "canceled".
  */
 static void
 engine_recompute(struct engine_node *node, bool allowed,
@@ -399,8 +399,8 @@ engine_recompute(struct engine_node *node, bool allowed,
     va_end(reason_args);
 
     if (!allowed) {
-        VLOG_DBG("node: %s, recompute (%s) aborted", node->name, reason);
-        engine_set_node_state(node, EN_ABORTED);
+        VLOG_DBG("node: %s, recompute (%s) canceled", node->name, reason);
+        engine_set_node_state(node, EN_CANCELED);
         goto done;
     }
 
@@ -454,7 +454,7 @@ engine_compute(struct engine_node *node, bool recompute_allowed)
                 engine_recompute(node, recompute_allowed,
                                  "failed handler for input %s",
                                  node->inputs[i].node->name);
-                return (node->state != EN_ABORTED);
+                return (node->state != EN_CANCELED);
             }
         }
     }
@@ -497,7 +497,7 @@ engine_run_node(struct engine_node *node, bool recompute_allowed)
     }
 
     if (need_compute) {
-        /* If we couldn't compute the node we either aborted or triggered
+        /* If we couldn't compute the node we either canceled or triggered
          * a full recompute. In any case, stop processing.
          */
         if (!engine_compute(node, recompute_allowed)) {
@@ -516,20 +516,20 @@ engine_run_node(struct engine_node *node, bool recompute_allowed)
 void
 engine_run(bool recompute_allowed)
 {
-    /* If the last run was aborted skip the incremental run because a
+    /* If the last run was canceled skip the incremental run because a
      * recompute is needed first.
      */
-    if (!recompute_allowed && engine_run_aborted) {
+    if (!recompute_allowed && engine_run_canceled) {
         return;
     }
 
-    engine_run_aborted = false;
+    engine_run_canceled = false;
     for (size_t i = 0; i < engine_n_nodes; i++) {
         engine_run_node(engine_nodes[i], recompute_allowed);
 
-        if (engine_nodes[i]->state == EN_ABORTED) {
-            engine_nodes[i]->stats.abort++;
-            engine_run_aborted = true;
+        if (engine_nodes[i]->state == EN_CANCELED) {
+            engine_nodes[i]->stats.cancel++;
+            engine_run_canceled = true;
             return;
         }
     }

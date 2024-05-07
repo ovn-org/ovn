@@ -80,7 +80,7 @@
     <dl>
       <dt><code>emer</code></dt>
       <dd>
-        A major failure forced a process to abort.
+        A major failure forced a process to hard stop.
       </dd>
 
       <dt><code>err</code></dt>

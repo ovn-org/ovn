@@ -5913,7 +5913,7 @@ main(int argc, char *argv[])
                         /* Even if there's no SB DB transaction available,
                          * try to run the engine so that we can handle any
                          * incremental changes that don't require a recompute.
-                         * If a recompute is required, the engine will abort,
+                         * If a recompute is required, the engine will cancel,
                          * triggerring a full run in the next iteration.
                          */
                         engine_run(false);
@@ -6109,8 +6109,8 @@ main(int argc, char *argv[])
                              " either: br_int %p, chassis %p",
                              br_int, chassis);
                 }
-            } else if (engine_aborted()) {
-                VLOG_DBG("engine was aborted, force recompute next time: "
+            } else if (engine_canceled()) {
+                VLOG_DBG("engine was canceled, force recompute next time: "
                          "br_int %p, chassis %p", br_int, chassis);
                 engine_set_force_recompute(true);
                 poll_immediate_wake();

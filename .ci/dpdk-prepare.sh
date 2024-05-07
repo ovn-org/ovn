@@ -4,7 +4,7 @@ set -ev
 
 # Installing wheel separately because it may be needed to build some
 # of the packages during dependency backtracking and pip >= 22.0 will
-# abort backtracking on build failures:
+# stop backtracking on build failures:
 #     https://github.com/pypa/pip/issues/10655
 pip3 install --disable-pip-version-check --user wheel
 pip3 install --disable-pip-version-check --user pyelftools
