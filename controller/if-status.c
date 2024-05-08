@@ -582,7 +582,7 @@ if_status_mgr_update(struct if_status_mgr *mgr,
     if (!sb_readonly) {
         HMAPX_FOR_EACH_SAFE (node, &mgr->ifaces_per_state[OIF_CLAIMED]) {
             struct ovs_iface *iface = node->data;
-            /* No need to to update pb->chassis as already done
+            /* No need to update pb->chassis as already done
              * in if_status_handle_claims or if_status_mgr_claim_iface
              */
             if (iface->is_vif) {

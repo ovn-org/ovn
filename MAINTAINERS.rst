@@ -26,7 +26,7 @@ Committers
 ==========
 
 OVN committers are the people who have been granted access to push
-changes to to the OVN git repository.
+changes to the OVN git repository.
 
 The responsibilities of an OVN committer are documented here:
 |responsibilities|.
