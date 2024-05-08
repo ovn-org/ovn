@@ -278,7 +278,7 @@ Examples of common tags follow.
 
   ::
 
-      Submitted-at: https://github.com/openvswitch/ovs/pull/92
+      Submitted-at: https://github.com/ovn-org/ovn/pull/138
 
 ``VMware-BZ: #1234567``
 
