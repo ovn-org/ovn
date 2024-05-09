@@ -10,6 +10,50 @@ m4_define([OVN_CLEANUP_VSWITCH],[
     OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 ])
 
+# DUMP_FLOWS(sbox, output_file)
+# Dump openflows to output_file for sbox
+m4_define([DUMP_FLOWS], [
+    sbox=$1
+    output_file=$2
+    as $sbox
+    ovs-ofctl dump-flows br-int |
+          sed 's/cookie=0x[[^,]]*/cookie=xx/g' |
+          sed 's/duration=[[^,]]*/duration=xx/g' |
+          sed 's/idle_age=[[^,]]*/idle_age=xx/g' |
+          sed 's/, hard_age=[[^,]]*//g' |
+          sed 's/n_bytes=[[^,]]*/n_bytes=xx/g' |
+          sed 's/n_packets=[[^,]]*/n_packets=xx/g' |
+          sed 's/conjunction([[^,]]*/conjunction(xx/g' |
+          sort > $output_file
+])
+
+m4_define([CHECK_FLOWS_AFTER_RECOMPUTE], [
+    hv=$1
+    sbox=$2
+    # Make sure I+P has finalized his job before getting flows and comparing them after recompte.
+    # Some tests have northd and ovn-nb ovsdb stopped, so avoid ovn-nbctl for those.
+    if [[ -e ovn-nb/ovn-nb.sock ]] && [[ -e northd/ovn-northd.pid ]]; then
+        # Do wait twice to handle some potential race conditions
+        check ovn-nbctl --wait=hv sync
+        check ovn-nbctl --wait=hv sync
+    fi
+
+    as $sbox
+    if test "$hv" != "vtep"; then
+      # Get flows before and after recompute
+      DUMP_FLOWS([$sbox], [flows-$hv-1])
+
+      check ovn-appctl -t ovn-controller recompute
+      # The recompute might cause some sb changes. Let controller catch up.
+      if [[ -e ovn-nb/ovn-nb.sock ]] && [[ -e northd/ovn-northd.pid ]]; then
+          check ovn-nbctl --wait=hv sync
+      fi
+      DUMP_FLOWS([$sbox], [flows-$hv-2])
+      diff flows-$hv-1 flows-$hv-2 > flow-diff
+      AT_CHECK([test $(diff flows-$hv-1 flows-$hv-2 | wc -l) == 0])
+    fi
+])
+
 # OVN_CLEANUP_CONTROLLER(sbox)
 #
 # Gracefully terminate ovn-controller in the specified
