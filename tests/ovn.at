@@ -37383,6 +37383,8 @@ sim_add hv1
 as hv1
 check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.11
+ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=lsp1
 
 check ovn-nbctl --wait=hv ls-add ls \
           -- lsp-add ls lsp1 \
@@ -37395,6 +37397,56 @@ check ovn-nbctl --wait=hv ls-add ls \
                addresses=router \
           -- lrp-set-gateway-chassis lr-ls hv1
 
+dp_uuid=$(fetch_column datapath _uuid external_ids:name=lr)
+ovn-sbctl create MAC_Binding ip=192.168.1.10 datapath=$dp_uuid logical_port=lr-ls mac='"00:00:00:00:00:01"'
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+create_fdb() {
+    ls_key=$(fetch_column datapath tunnel_key external_ids:name=ls)
+    lsp_key=$(fetch_column port_binding tunnel_key logical_port=lsp1)
+
+    ovn-sbctl create FDB mac='"00:00:00:00:00:01"' dp_key=$ls_key port_key=$lsp_key
+}
+
+AS_BOX([Logical switch tunnel_key change])
+create_fdb
+
+check ovn-nbctl --wait=hv set Logical_Switch ls other_config:requested-tnl-key=10
+ovn-sbctl list datapath
+CHECK_FLOWS_AFTER_RECOMPUTE([hv1], [hv1])
+
+check_row_count FDB 0 mac='"00:00:00:00:00:01"'
+
+AS_BOX([Logical switch port tunnel_key change])
+create_fdb
+
+check ovn-nbctl --wait=hv set Logical_Switch_Port lsp1 options:requested-tnl-key=10
+CHECK_FLOWS_AFTER_RECOMPUTE([hv1], [hv1])
+
+check_row_count FDB 0 mac='"00:00:00:00:00:01"'
+
+AS_BOX([Logical router tunnel_key change])
+check ovn-nbctl --wait=hv set Logical_Router lr options:requested-tnl-key=20
+CHECK_FLOWS_AFTER_RECOMPUTE([hv1], [hv1])
+
+check_row_count Mac_Binding 1 ip=192.168.1.10
+AT_CHECK([ovs-ofctl dump-flows br-int table=67 | grep -c metadata=0x14], [0], [dnl
+1
+])
+
+AS_BOX([Logical router port tunnel_key change])
+check ovn-nbctl --wait=hv set Logical_Router_Port lr-ls options:requested-tnl-key=20
+CHECK_FLOWS_AFTER_RECOMPUTE([hv1], [hv1])
+
+check_row_count Mac_Binding 1 ip=192.168.1.10
+AT_CHECK([ovs-ofctl dump-flows br-int table=67 | grep -c reg14=0x14], [0], [dnl
+1
+])
+
+AS_BOX([Logical switch tunnel_key change, potential segfault])
 sleep_controller hv1
 
 check ovn-nbctl --wait=sb set Logical_Switch ls other_config:requested-tnl-key=1000

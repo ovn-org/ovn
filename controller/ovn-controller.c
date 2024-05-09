@@ -1893,7 +1893,6 @@ runtime_data_sb_datapath_binding_handler(struct engine_node *node OVS_UNUSED,
             engine_get_input("SB_datapath_binding", node));
     const struct sbrec_datapath_binding *dp;
     struct ed_type_runtime_data *rt_data = data;
-    struct local_datapath *ld;
 
     SBREC_DATAPATH_BINDING_TABLE_FOR_EACH_TRACKED (dp, dp_table) {
         if (sbrec_datapath_binding_is_deleted(dp)) {
@@ -1901,27 +1900,19 @@ runtime_data_sb_datapath_binding_handler(struct engine_node *node OVS_UNUSED,
                                    dp->tunnel_key)) {
                 return false;
             }
+
+        }
+
+        if (sbrec_datapath_binding_is_updated(
+                dp, SBREC_DATAPATH_BINDING_COL_TUNNEL_KEY) &&
+            !sbrec_datapath_binding_is_new(dp)) {
             /* If the tunnel key got updated, get_local_datapath will not find
              * the ld. Use get_local_datapath_no_hash which does not
              * rely on the hash.
              */
-            if (sbrec_datapath_binding_is_updated(
-                    dp, SBREC_DATAPATH_BINDING_COL_TUNNEL_KEY)) {
-                if (get_local_datapath_no_hash(&rt_data->local_datapaths,
-                                               dp->tunnel_key)) {
-                    return false;
-                }
-            }
-        } else if (sbrec_datapath_binding_is_updated(
-                        dp, SBREC_DATAPATH_BINDING_COL_TUNNEL_KEY)
-                   && !sbrec_datapath_binding_is_new(dp)) {
-            /* If the tunnel key is updated, remove the entry (with a wrong
-             * hash) from the map. It will be (properly) added back later.
-             */
-            if ((ld = get_local_datapath_no_hash(&rt_data->local_datapaths,
-                                                 dp->tunnel_key))) {
-                hmap_remove(&rt_data->local_datapaths, &ld->hmap_node);
-                local_datapath_destroy(ld);
+            if (get_local_datapath_no_hash(&rt_data->local_datapaths,
+                                           dp->tunnel_key)) {
+                return false;
             }
         }
     }

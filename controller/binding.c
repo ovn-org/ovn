@@ -3126,8 +3126,17 @@ delete_done:
             update_ld_peers(pb, b_ctx_out->local_datapaths);
         }
 
-        handled = handle_updated_port(b_ctx_in, b_ctx_out, pb);
-        if (!handled) {
+        if (!handle_updated_port(b_ctx_in, b_ctx_out, pb)) {
+            handled = false;
+            break;
+        }
+
+        if (!sbrec_port_binding_is_new(pb) &&
+            sbrec_port_binding_is_updated(pb,
+                                          SBREC_PORT_BINDING_COL_TUNNEL_KEY) &&
+            get_local_datapath(b_ctx_out->local_datapaths,
+                               pb->datapath->tunnel_key)) {
+            handled = false;
             break;
         }
     }
