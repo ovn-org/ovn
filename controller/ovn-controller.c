@@ -750,7 +750,7 @@ update_ct_zones(const struct sset *local_lports,
     const char *user;
     struct sset all_users = SSET_INITIALIZER(&all_users);
     struct simap req_snat_zones = SIMAP_INITIALIZER(&req_snat_zones);
-    unsigned long unreq_snat_zones_map[BITMAP_N_LONGS(MAX_CT_ZONES)];
+    unsigned long *unreq_snat_zones_map = bitmap_allocate(MAX_CT_ZONES);
     struct simap unreq_snat_zones = SIMAP_INITIALIZER(&unreq_snat_zones);
 
     const char *local_lport;
@@ -861,6 +861,7 @@ update_ct_zones(const struct sset *local_lports,
     simap_destroy(&req_snat_zones);
     simap_destroy(&unreq_snat_zones);
     sset_destroy(&all_users);
+    bitmap_free(unreq_snat_zones_map);
 }
 
 static void
