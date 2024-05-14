@@ -83,6 +83,9 @@ function configure_gcc()
             # do it directly because gcc-multilib is not available
             # for arm64
             sudo apt update && sudo apt install -y gcc-multilib
+        elif which dnf; then
+            # Install equivalent of gcc-multilib for Fedora.
+            sudo dnf -y install glibc-devel.i686
         fi
     fi
 }

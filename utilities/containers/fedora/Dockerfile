@@ -28,6 +28,7 @@ RUN dnf -y update \
         libtool \
         net-tools \
         nmap-ncat \
+        numactl-devel \
         openssl \
         openssl-devel \
         procps-ng \
