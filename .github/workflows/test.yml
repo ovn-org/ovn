@@ -131,7 +131,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/image.tar
-          key: ${{ github.sha }}
+          key: ${{ github.sha }}/${{ github.event_name }}
 
   build-linux:
     needs: [build-dpdk, prepare-container]
@@ -212,10 +212,11 @@ jobs:
         key: ${{ needs.build-dpdk.outputs.dpdk_key }}
 
     - name: image cache
+      id: image_cache
       uses: actions/cache@v4
       with:
         path: /tmp/image.tar
-        key: ${{ github.sha }}
+        key: ${{ github.sha }}/${{ github.event_name }}
 
     # XXX This should be removed when native crun >=1.9.1
     - name: update crun script
