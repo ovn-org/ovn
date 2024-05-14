@@ -32640,7 +32640,7 @@ AT_CHECK([ovn-sbctl dump-flows |
           grep ls_in_arp_rsp |
           grep "${arp_proxy_ls1[[1]]}" |
           ovn_strip_lflows], [0], [dnl
-  table=??(ls_in_arp_rsp      ), priority=30   , match=(arp.op == 1 && dnl
+  table=??(ls_in_arp_rsp      ), priority=30   , match=(reg0[[18]] == 0 && arp.op == 1 && dnl
 arp.tpa == {169.254.238.0/24,169.254.239.2/32}), dnl
 action=(eth.dst = eth.src; eth.src = 00:00:00:01:02:f1; arp.op = 2; dnl
 /* ARP reply */ arp.tha = arp.sha; arp.sha = 00:00:00:01:02:f1; dnl
@@ -32653,7 +32653,7 @@ AT_CHECK([ovn-sbctl dump-flows |
           grep "${arp_proxy_ls1[[3]]}" |
           ovn_strip_lflows], [0], [dnl
   table=??(ls_in_arp_rsp      ), priority=30   , dnl
-match=(nd_ns && ip6.dst == { fd7b:6b4d:7b25:d22d::/64, ff02::1:ff00:0/64, dnl
+match=(reg0[[18]] == 0 && nd_ns && ip6.dst == { fd7b:6b4d:7b25:d22d::/64, ff02::1:ff00:0/64, dnl
 fd7b:6b4d:7b25:d22f::1/128, ff02::1:ff00:1/128 } && dnl
 nd.target == { fd7b:6b4d:7b25:d22d::/64, fd7b:6b4d:7b25:d22f::1/128 }), dnl
 action=(nd_na_router { eth.src = 00:00:00:01:02:f1; ip6.src = nd.target; dnl
@@ -32667,7 +32667,7 @@ AT_CHECK([ovn-sbctl dump-flows |
           grep "${arp_proxy_ls2[[2]]}" |
           ovn_strip_lflows], [0], [dnl
   table=??(ls_in_arp_rsp      ), priority=30   , dnl
-match=(arp.op == 1 && arp.tpa == {169.254.236.0/24,169.254.237.2/32}), dnl
+match=(reg0[[18]] == 0 && arp.op == 1 && arp.tpa == {169.254.236.0/24,169.254.237.2/32}), dnl
 action=(eth.dst = eth.src; eth.src = 00:00:00:02:02:f1; arp.op = 2; dnl
 /* ARP reply */ arp.tha = arp.sha; arp.sha = 00:00:00:02:02:f1; dnl
 arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
@@ -32679,7 +32679,7 @@ AT_CHECK([ovn-sbctl dump-flows |
           grep "${arp_proxy_ls2[[4]]}" |
           ovn_strip_lflows], [0], [dnl
   table=??(ls_in_arp_rsp      ), priority=30   , dnl
-match=(nd_ns && ip6.dst == { fd7b:6b4d:7b25:d22b::/64, ff02::1:ff00:0/64, dnl
+match=(reg0[[18]] == 0 && nd_ns && ip6.dst == { fd7b:6b4d:7b25:d22b::/64, ff02::1:ff00:0/64, dnl
 fd7b:6b4d:7b25:d22c::1/128, ff02::1:ff00:1/128 } && dnl
 nd.target == { fd7b:6b4d:7b25:d22b::/64, fd7b:6b4d:7b25:d22c::1/128 }), dnl
 action=(nd_na_router { eth.src = 00:00:00:02:02:f1; ip6.src = nd.target; dnl

@@ -10755,7 +10755,7 @@ check ovn-nbctl ls-add bar
 # Connect foo to R1
 check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
 check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
-    type=router options:arp_proxy="0a:58:a9:fe:01:01 169.254.239.254 169.254.239.2 169.254.238.0/24 192.168.1.100" options:router-port=foo addresses='"router"'
+    type=router options:arp_proxy="0a:58:a9:fe:01:01 169.254.239.254 169.254.239.2 169.254.238.0/24 192.168.1.100 192.168.1.200" options:router-port=foo addresses='"router"'
 
 # Connect bar to R1
 check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
@@ -10784,6 +10784,12 @@ ADD_VETH(foo3, foo3, br-int, "192.168.1.4/24", "f0:00:00:01:02:05", \
 check ovn-nbctl lsp-add foo foo3 \
 -- lsp-set-addresses foo3 "f0:00:00:01:02:05 192.168.1.4"
 
+ADD_NAMESPACES(foo4)
+ADD_VETH(foo4, foo4, br-int, "192.168.1.6/24", "f0:00:00:01:02:11", \
+         "192.168.1.1")
+check ovn-nbctl lsp-add foo foo4 \
+-- lsp-set-addresses foo4 "f0:00:00:01:02:11 192.168.1.6"
+
 # Logical port 'ext1' in switch 'foo'
 ADD_NAMESPACES(ext1)
 ADD_VETH(ext1, ext1, br-ext, "192.168.1.5/24", "f0:00:00:01:02:06", \
@@ -10798,6 +10804,12 @@ ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:07", \
 "169.254.239.253")
 check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:07 192.168.2.2"
+
+ADD_NAMESPACES(bar2)
+ADD_VETH(bar2, bar2, br-int, "192.168.2.3/24", "f0:00:00:01:02:10", \
+"192.168.2.1")
+check ovn-nbctl lsp-add bar bar2 \
+-- lsp-set-addresses bar2 "f0:00:00:01:10:10 192.168.2.3"
 
 # wait for ovn-controller to catch up.
 check ovn-nbctl --wait=hv sync
@@ -10850,6 +10862,14 @@ OVS_WAIT_UNTIL([
     test "${total_pkts}" = "3"
 ])
 
+check ovn-nbctl lr-route-add R1 169.254.240.0/24 192.168.1.200
+NETNS_START_TCPDUMP([foo4], [-nn -c 4 -e -i foo4 arp[[24:4]]=0xc0a801c8], [foo4-arp])
+
+NS_CHECK_EXEC([bar2], [ping -q -c 5 -i 0.3 -w 2 169.254.240.10],[ignore],[ignore])
+OVS_WAIT_UNTIL([
+    total_pkts=$(cat foo4-arp.tcpdump| wc -l)
+    test "${total_pkts}" = "4"
+])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
