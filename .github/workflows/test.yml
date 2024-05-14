@@ -315,7 +315,7 @@ jobs:
   build-linux-rpm:
     name: linux rpm fedora
     runs-on: ubuntu-22.04
-    container: fedora:latest
+    container: fedora:40
     timeout-minutes: 30
 
     strategy:
