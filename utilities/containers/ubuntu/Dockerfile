@@ -1,4 +1,4 @@
-FROM registry.hub.docker.com/library/ubuntu:22.04
+FROM registry.hub.docker.com/library/ubuntu:24.04
 
 ARG CONTAINERS_PATH
 
@@ -37,6 +37,7 @@ RUN apt update -y \
         selinux-policy-dev \
         sudo \
         tcpdump \
+        tzdata \
         wget \
     && \
     apt autoremove \
@@ -73,11 +74,18 @@ WORKDIR /workspace
 
 COPY $CONTAINERS_PATH/py-requirements.txt /tmp/py-requirements.txt
 
+# Ubuntu 24.04 marks the Python installation as externally managed, allow pip
+# to install the packages despite that.
+ENV PIP_BREAK_SYSTEM_PACKAGES 1
+
 # Update and install pip dependencies
 RUN python3 -m pip install --upgrade pip \
     && \
     python3 -m pip install wheel \
     && \
     python3 -m pip install -r /tmp/py-requirements.txt
+
+# The Python Babel fails to detect timezone when it is set to UTC only.
+ENV TZ Etc/UTC
 
 CMD ["/sbin/init"]
