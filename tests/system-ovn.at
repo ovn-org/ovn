@@ -1439,7 +1439,7 @@ OVS_START_L7([bar3], [http])
 check ovn-nbctl --apply-after-lb acl-add foo from-lport 1002 "ip4 && ip4.dst == {172.16.1.2,172.16.1.3,172.16.1.4} && ct.new" drop
 check ovn-nbctl --wait=hv sync
 
-AT_CHECK([ip netns exec foo1 wget 30.0.0.1 -t 3 -T 1], [4], [ignore], [ignore])
+AT_CHECK([ip netns exec foo1 curl 30.0.0.1 --retry 3 --max-time 1], [28], [ignore], [ignore])
 
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
@@ -1603,7 +1603,7 @@ ovn-nbctl --reject lb-add lb3 30.0.0.10:80 ""
 ovn-nbctl ls-lb-add foo lb3
 # Filter reset segments
 NETNS_START_TCPDUMP([foo1], [-c 1 -neei foo1 ip[[33:1]]=0x14], [rst])
-NS_CHECK_EXEC([foo1], [wget -q 30.0.0.10],[4])
+NS_CHECK_EXEC([foo1], [curl 30.0.0.10 -s --retry 3 --max-time 1], [7])
 
 OVS_WAIT_UNTIL([
     n_reset=$(cat rst.tcpdump | wc -l)
@@ -4627,7 +4627,7 @@ NS_CHECK_EXEC([sw1-p1], [kill $(cat $pid_file)])
 NETNS_START_TCPDUMP([sw0-p2], [-c 1 -neei sw0-p2 ip[[33:1]]=0x14], [rst])
 OVS_WAIT_UNTIL([test 2 = `ovn-sbctl --bare --columns status find \
 service_monitor protocol=tcp | sed '/^$/d' | grep offline | wc -l`])
-NS_CHECK_EXEC([sw0-p2], [wget 10.0.0.10 -v -o wget$i.log],[4])
+NS_CHECK_EXEC([sw0-p2], [curl 10.0.0.10 -v > curl$i.log 2>&1],[7])
 
 OVS_WAIT_UNTIL([
     n_reset=$(cat rst.tcpdump | wc -l)
@@ -9770,7 +9770,7 @@ OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=192.168.2.2:80)'])
 
 # should not dnat so will not be able to connect
-AT_CHECK([ip netns exec foo1 wget   30.30.30.30  -t 3 -T 1], [4], [ignore], [ignore])
+AT_CHECK([ip netns exec foo1 curl 30.30.30.30 --retry 3 --max-time 1], [28], [ignore], [ignore])
 
 # check conntrack zone has no tcp entry
 AT_CHECK([ovs-appctl dpctl/dump-conntrack zone=$zone_id | \
@@ -9840,14 +9840,14 @@ ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "fd11::2/64", "f0:00:00:01:02:03", \
-         "fd11::1")
+         "fd11::1", "nodad")
 ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 fd11::2"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "fd12::2/64", "f0:00:00:01:02:05", \
-"fd12::1")
+         "fd12::1",  "nodad")
 ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 fd12::2"
 
@@ -9864,7 +9864,6 @@ grep 'nat(dst=\[[fd12::2\]]:80)'])
 zone_id=$(ovn-appctl -t ovn-controller ct-zone-list | grep foo1 | cut -d ' ' -f2)
 
 OVS_START_L7([bar1], [http6])
-
 AT_CHECK([ip netns exec foo1  wget http://[[fd12::2]] -t 3 -T 1], [0], [ignore], [ignore])
 
 # check conntrack zone has tcp entry
@@ -9915,7 +9914,7 @@ OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=\[[fd12::2\]]:80)'])
 
 # should not dnat so will not be able to connect
-AT_CHECK([ip netns exec foo1 wget  http://[[fd30::2]]  -t 3 -T 1], [4], [ignore], [ignore])
+AT_CHECK([ip netns exec foo1 curl http://[[fd30::2]] --retry 3 --max-time 1], [28], [ignore], [ignore])
 #
 # check conntrack zone has no tcp entry
 AT_CHECK([ovs-appctl dpctl/dump-conntrack zone=$zone_id | \

@@ -11,6 +11,7 @@ RUN apt update -y \
         automake \
         bc \
         clang \
+        curl \
         ethtool \
         gcc \
         git \
