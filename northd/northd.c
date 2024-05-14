@@ -225,6 +225,7 @@ enum ovn_stage {
 #define REGBIT_PORT_SEC_DROP      "reg0[15]"
 #define REGBIT_ACL_STATELESS      "reg0[16]"
 #define REGBIT_ACL_HINT_ALLOW_REL "reg0[17]"
+#define REGBIT_FROM_ROUTER_PORT   "reg0[18]"
 
 #define REG_ORIG_DIP_IPV4         "reg1"
 #define REG_ORIG_DIP_IPV6         "xxreg1"
@@ -5834,6 +5835,12 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct hmap *lflows,
                     op->od->localnet_ports[0]->key,
                     &op->od->localnet_ports[0]->nbsp->header_);
         }
+    } else if (lsp_is_router(op->nbsp)) {
+        ds_put_format(actions, REGBIT_FROM_ROUTER_PORT" = 1; next;");
+        ovn_lflow_add_with_lport_and_hint(lflows, op->od,
+                                          S_SWITCH_IN_CHECK_PORT_SEC, 70,
+                                          ds_cstr(match), ds_cstr(actions),
+                                          op->key, &op->nbsp->header_);
     }
 }
 
@@ -8918,7 +8925,9 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
         if (op->proxy_arp_addrs.n_ipv4_addrs) {
             /* Match rule on all proxy ARP IPs. */
             ds_clear(match);
-            ds_put_cstr(match, "arp.op == 1 && arp.tpa == {");
+            ds_put_cstr(match,
+                        REGBIT_FROM_ROUTER_PORT" == 0 "
+                        "&& arp.op == 1 && arp.tpa == {");
 
             for (i = 0; i < op->proxy_arp_addrs.n_ipv4_addrs; i++) {
                 ds_put_format(match, "%s/%u,",
@@ -8968,7 +8977,8 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
             ds_truncate(&nd_target_match, nd_target_match.length - 2);
             ds_clear(match);
             ds_put_format(match,
-                          "nd_ns "
+                          REGBIT_FROM_ROUTER_PORT" == 0 "
+                          "&& nd_ns "
                           "&& ip6.dst == { %s } "
                           "&& nd.target == { %s }",
                           ds_cstr(&ip6_dst_match),
