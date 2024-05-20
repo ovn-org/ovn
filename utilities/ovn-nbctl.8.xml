@@ -1095,7 +1095,8 @@
     <h2>Logical Router Policy Commands</h2>
 
     <dl>
-      <dt>[<code>--may-exist</code>]<code>lr-policy-add</code>
+      <dt>[<code>--may-exist</code>] [<code>--bfd</code>]
+          <code>lr-policy-add</code>
           <var>router</var> <var>priority</var> <var>match</var>
           <var>action</var> [<var>nexthop</var>[,<var>nexthop</var>,...]]
           [<var>options key=value]</var>] </dt>
