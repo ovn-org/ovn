@@ -421,7 +421,7 @@ en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
         if (!parse_aging_threshold(smap_get(&od->nbr->options,
                                             "mac_binding_age_threshold"),
                                    &threshold_config)) {
-            return;
+            continue;
         }
 
         aging_context_set_threshold(&ctx, &threshold_config);

@@ -34414,10 +34414,15 @@ AT_CHECK([ovn-nbctl lsp-set-addresses ln_port unknown])
 AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
 AT_CHECK([ovn-nbctl lsp-set-options ln_port network_name=physnet1])
 
-AT_CHECK([ovn-nbctl lsp-add public public-gw])
-AT_CHECK([ovn-nbctl lsp-set-type public-gw router])
-AT_CHECK([ovn-nbctl lsp-set-addresses public-gw 00:00:00:00:10:00 router])
-AT_CHECK([ovn-nbctl lsp-set-options public-gw router-port=gw-public])
+AT_CHECK([ovn-nbctl lsp-add public public-gw-1])
+AT_CHECK([ovn-nbctl lsp-set-type public-gw-1 router])
+AT_CHECK([ovn-nbctl lsp-set-addresses public-gw-1 00:00:00:00:10:00 router])
+AT_CHECK([ovn-nbctl lsp-set-options public-gw-1 router-port=gw-1-public])
+
+AT_CHECK([ovn-nbctl lsp-add public public-gw-2])
+AT_CHECK([ovn-nbctl lsp-set-type public-gw-2 router])
+AT_CHECK([ovn-nbctl lsp-set-addresses public-gw-2 00:00:00:00:30:00 router])
+AT_CHECK([ovn-nbctl lsp-set-options public-gw-2 router-port=gw-2-public])
 
 AT_CHECK([ovn-nbctl lsp-add internal internal-gw])
 AT_CHECK([ovn-nbctl lsp-set-type internal-gw router])
@@ -34430,9 +34435,12 @@ AT_CHECK([ovn-nbctl lsp-set-addresses vif1 "00:00:00:00:20:10 192.168.20.10"])
 AT_CHECK([ovn-nbctl lsp-add internal vif2])
 AT_CHECK([ovn-nbctl lsp-set-addresses vif2 "00:00:00:00:20:20 192.168.20.20"])
 
-AT_CHECK([ovn-nbctl lr-add gw])
-AT_CHECK([ovn-nbctl lrp-add gw gw-public 00:00:00:00:10:00 192.168.10.1/24])
-AT_CHECK([ovn-nbctl lrp-add gw gw-internal 00:00:00:00:20:00 192.168.20.1/24])
+AT_CHECK([ovn-nbctl lr-add gw-1])
+AT_CHECK([ovn-nbctl lrp-add gw-1 gw-1-public 00:00:00:00:10:00 192.168.10.1/24])
+AT_CHECK([ovn-nbctl lrp-add gw-1 gw-internal 00:00:00:00:20:00 192.168.20.1/24])
+
+AT_CHECK([ovn-nbctl lr-add gw-2])
+AT_CHECK([ovn-nbctl lrp-add gw-2 gw-2-public 00:00:00:00:30:00 192.168.10.2/24])
 
 sim_add hv1
 as hv1
@@ -34500,21 +34508,27 @@ send_udp() {
     as $hv ovs-appctl netdev-dummy/receive $dev $packet
 }
 # Check if the option is not present by default
-AT_CHECK([fetch_column nb:logical_router options name="gw" | grep -q mac_binding_age_threshold], [1])
+AT_CHECK([fetch_column nb:logical_router options name="gw-1" | grep -q mac_binding_age_threshold], [1])
+AT_CHECK([fetch_column nb:logical_router options name="gw-2" | grep -q mac_binding_age_threshold], [1])
 
 # Send GARP to populate MAC binding table records
 send_garp hv1 ext1 10
 send_garp hv2 ext2 20
 
-wait_row_count mac_binding 1 ip="192.168.10.10"
-wait_row_count mac_binding 1 ip="192.168.10.20"
+# Two rows present for each IP, one corresponding to each logical_port
+wait_row_count mac_binding 2 ip="192.168.10.10"
+wait_row_count mac_binding 2 ip="192.168.10.20"
 
-dp_key=$(printf "0x%x" $(as hv1 fetch_column datapath tunnel_key external_ids:name=gw))
-port_key=$(printf "0x%x" $(as hv1 fetch_column port_binding tunnel_key logical_port=gw-public))
+dp_key_1=$(printf "0x%x" $(as hv1 fetch_column datapath tunnel_key external_ids:name=gw-1))
+port_key_1=$(printf "0x%x" $(as hv1 fetch_column port_binding tunnel_key logical_port=gw-1-public))
+dp_key_2=$(printf "0x%x" $(as hv1 fetch_column datapath tunnel_key external_ids:name=gw-2))
+port_key_2=$(printf "0x%x" $(as hv1 fetch_column port_binding tunnel_key logical_port=gw-2-public))
 
 AT_CHECK_UNQUOTED([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE --no-stats | strip_cookie | sort], [0], [dnl
- table=OFTABLE_MAC_CACHE_USE, priority=100,ip,reg14=${port_key},metadata=${dp_key},dl_src=00:00:00:00:10:10,nw_src=192.168.10.10 actions=drop
- table=OFTABLE_MAC_CACHE_USE, priority=100,ip,reg14=${port_key},metadata=${dp_key},dl_src=00:00:00:00:10:20,nw_src=192.168.10.20 actions=drop
+ table=OFTABLE_MAC_CACHE_USE, priority=100,ip,reg14=${port_key_1},metadata=${dp_key_1},dl_src=00:00:00:00:10:10,nw_src=192.168.10.10 actions=drop
+ table=OFTABLE_MAC_CACHE_USE, priority=100,ip,reg14=${port_key_1},metadata=${dp_key_1},dl_src=00:00:00:00:10:20,nw_src=192.168.10.20 actions=drop
+ table=OFTABLE_MAC_CACHE_USE, priority=100,ip,reg14=${port_key_2},metadata=${dp_key_2},dl_src=00:00:00:00:10:10,nw_src=192.168.10.10 actions=drop
+ table=OFTABLE_MAC_CACHE_USE, priority=100,ip,reg14=${port_key_2},metadata=${dp_key_2},dl_src=00:00:00:00:10:20,nw_src=192.168.10.20 actions=drop
 ])
 
 timestamp=$(fetch_column mac_binding timestamp ip="192.168.10.20")
@@ -34525,8 +34539,8 @@ send_udp hv2 ext2 20
 OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | grep "192.168.10.10" | grep -q "n_packets=1"])
 OVS_WAIT_UNTIL([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | grep "192.168.10.20" | grep -q "n_packets=1"])
 
-# Set the MAC binding aging threshold
-AT_CHECK([ovn-nbctl set logical_router gw options:mac_binding_age_threshold=5])
+# Set the MAC binding aging threshold for gw-1 router. No option for gw-2 router.
+AT_CHECK([ovn-nbctl set logical_router gw-1 options:mac_binding_age_threshold=5])
 AT_CHECK([fetch_column nb:logical_router options | grep -q mac_binding_age_threshold=5])
 AT_CHECK([ovn-nbctl --wait=sb sync])
 
@@ -34535,28 +34549,31 @@ send_udp hv2 ext2 20
 sleep 1
 send_udp hv2 ext2 20
 
-# Set the timeout for OVS_WAIT* functions to 5 seconds
+# Set the timeout for OVS_WAIT* functions to 10 seconds
 OVS_CTL_TIMEOUT=10
 OVS_WAIT_UNTIL([
     test "$timestamp" != "$(fetch_column mac_binding timestamp ip='192.168.10.20')"
 ])
 check test "$(fetch_column mac_binding timestamp ip='192.168.10.20')" != ""
 
-# Check if the records are removed after some inactivity
+# Check if the records are removed after some inactivity for gw-1. Only 1 entry should be present for gw-2.
 OVS_WAIT_UNTIL([
-    test "0" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.10')"
+    test "1" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.10')"
 ])
 # The second one takes longer because it got refreshed
 OVS_WAIT_UNTIL([
-    test "0" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.20')"
+    test "1" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.20')"
 ])
 
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE --no-stats | strip_cookie], [0], [])
+AT_CHECK_UNQUOTED([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE --no-stats | strip_cookie | sort], [0], [dnl
+ table=OFTABLE_MAC_CACHE_USE, priority=100,ip,reg14=${port_key_2},metadata=${dp_key_2},dl_src=00:00:00:00:10:10,nw_src=192.168.10.10 actions=drop
+ table=OFTABLE_MAC_CACHE_USE, priority=100,ip,reg14=${port_key_2},metadata=${dp_key_2},dl_src=00:00:00:00:10:20,nw_src=192.168.10.20 actions=drop
+])
 
 # Test CIDR-based threshold configuration
-check ovn-nbctl set logical_router gw options:mac_binding_age_threshold="192.168.10.0/255.255.255.0:2;192.168.10.64/26:0;192.168.10.20:0"
+check ovn-nbctl set logical_router gw-1 options:mac_binding_age_threshold="192.168.10.0/255.255.255.0:2;192.168.10.64/26:0;192.168.10.20:0"
 check ovn-nbctl --wait=sb sync
-uuid=$(fetch_column datapath _uuid external_ids:name=gw)
+uuid=$(fetch_column datapath _uuid external_ids:name=gw-1)
 AT_CHECK([ovn-sbctl get datapath $uuid external_ids:mac_binding_age_threshold], [0], [dnl
 "2"
 ])
@@ -34566,22 +34583,32 @@ send_garp hv1 ext1 10 # belong to 192.168.10.0/24
 send_garp hv2 ext2 20 # belong to 192.168.10.20/32
 send_garp hv2 ext2 65 # belong to 192.168.10.64/26
 
-OVS_WAIT_UNTIL([ovn-sbctl list mac_binding | grep -q "192.168.10.10"])
-OVS_WAIT_UNTIL([ovn-sbctl list mac_binding | grep -q "192.168.10.20"])
-OVS_WAIT_UNTIL([ovn-sbctl list mac_binding | grep -q "192.168.10.65"])
+ip_addresses=("192.168.10.10" "192.168.10.20" "192.168.10.65")
+logical_ports=("gw-1-public" "gw-2-public")
+for ip in "${ip_addresses[@]}"; do
+    for port in "${logical_ports[@]}"; do
+        wait_row_count mac_binding 1 ip=$ip logical_port=$port
+    done
+done
 
 OVS_WAIT_UNTIL([
-    test "0" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.10')"
+    test "1" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.10')"
 ])
+
 # The other two should remain because the corresponding prefixes have threshold 0
-AT_CHECK([ovn-sbctl list mac_binding | grep -q "192.168.10.20"])
-AT_CHECK([ovn-sbctl list mac_binding | grep -q "192.168.10.65"])
+ip_addresses=("192.168.10.20" "192.168.10.65")
+for ip in "${ip_addresses[@]}"; do
+    for port in "${logical_ports[@]}"; do
+        check_row_count mac_binding 1 ip=$ip logical_port=$port
+    done
+done
+
 check ovn-sbctl --all destroy mac_binding
 
 # Set the aging threshold mixed with IPv6 prefixes and default threshold
-check ovn-nbctl set logical_router gw options:mac_binding_age_threshold="2;192.168.10.64/26:0;ff00:1234::/32:888;ff00::abcd:1"
+check ovn-nbctl set logical_router gw-1 options:mac_binding_age_threshold="2;192.168.10.64/26:0;ff00:1234::/32:888;ff00::abcd:1"
 check ovn-nbctl --wait=sb sync
-uuid=$(fetch_column datapath _uuid external_ids:name=gw)
+uuid=$(fetch_column datapath _uuid external_ids:name=gw-1)
 AT_CHECK([ovn-sbctl get datapath $uuid external_ids:mac_binding_age_threshold], [0], [dnl
 "1"
 ])
@@ -34590,28 +34617,69 @@ AT_CHECK([ovn-sbctl get datapath $uuid external_ids:mac_binding_age_threshold], 
 send_garp hv1 ext1 10 # belong to default
 send_garp hv2 ext2 65 # belong to 192.168.10.64/26
 
-OVS_WAIT_UNTIL([ovn-sbctl list mac_binding | grep -q "192.168.10.10"])
-OVS_WAIT_UNTIL([ovn-sbctl list mac_binding | grep -q "192.168.10.65"])
+for ip in "${ip_addresses[@]}"; do
+    for port in "${logical_ports[@]}"; do
+        wait_row_count mac_binding 1 ip=$ip logical_port=$port
+    done
+done
 
 OVS_WAIT_UNTIL([
-    test "0" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.10')"
+    test "1" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.10')"
 ])
-AT_CHECK([ovn-sbctl list mac_binding | grep -q "192.168.10.65"])
+for port in "${logical_ports[@]}"; do
+    check_row_count mac_binding 1 ip="192.168.10.65" logical_port=$port
+done
 check ovn-sbctl --all destroy mac_binding
 
 # Set the aging threshold with invalid format
-check ovn-nbctl set logical_router gw options:mac_binding_age_threshold="1;abc/26:0"
+check ovn-nbctl set logical_router gw-1 options:mac_binding_age_threshold="1;abc/26:0"
 check ovn-nbctl --wait=sb sync
-uuid=$(fetch_column datapath _uuid external_ids:name=gw)
+uuid=$(fetch_column datapath _uuid external_ids:name=gw-1)
 AT_CHECK([ovn-sbctl get datapath $uuid external_ids:mac_binding_age_threshold], [1], [ignore], [ignore])
 
 # Send GARP to populate MAC binding table records
 send_garp hv1 ext1 10
 
-OVS_WAIT_UNTIL([ovn-sbctl list mac_binding | grep -q "192.168.10.10"])
+wait_row_count mac_binding 1 ip="192.168.10.10" logical_port="gw-1-public"
+wait_row_count mac_binding 1 ip="192.168.10.10" logical_port="gw-2-public"
 # The record is not deleted
 sleep 5
-AT_CHECK([ovn-sbctl list mac_binding | grep -q "192.168.10.10"])
+check_row_count mac_binding 1 ip="192.168.10.10" logical_port=gw-1-public
+check_row_count mac_binding 1 ip="192.168.10.10" logical_port=gw-2-public
+check ovn-sbctl --all destroy mac_binding
+
+# Set the aging threshold on both routers and ensure that they are aged out of both the routers
+AT_CHECK([ovn-nbctl set logical_router gw-1 options:mac_binding_age_threshold=5])
+AT_CHECK([ovn-nbctl set logical_router gw-2 options:mac_binding_age_threshold=5])
+check ovn-nbctl --wait=sb sync
+uuid=$(fetch_column datapath _uuid external_ids:name=gw-1)
+AT_CHECK([ovn-sbctl get datapath $uuid external_ids:mac_binding_age_threshold], [0], [dnl
+"5"
+])
+uuid=$(fetch_column datapath _uuid external_ids:name=gw-2)
+AT_CHECK([ovn-sbctl get datapath $uuid external_ids:mac_binding_age_threshold], [0], [dnl
+"5"
+])
+
+# Send GARP to populate MAC binding table records
+send_garp hv1 ext1 10 # belong to 192.168.10.0/24
+send_garp hv2 ext2 20 # belong to 192.168.10.20/32
+
+ip_addresses=("192.168.10.10" "192.168.10.20")
+logical_ports=("gw-1-public" "gw-2-public")
+for ip in "${ip_addresses[@]}"; do
+    for port in "${logical_ports[@]}"; do
+        wait_row_count mac_binding 1 ip=$ip logical_port=$port
+    done
+done
+
+
+OVS_WAIT_UNTIL([
+    test "0" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.10')"
+])
+OVS_WAIT_UNTIL([
+    test "0" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.20')"
+])
 
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
