@@ -9578,132 +9578,85 @@ build_lswitch_ip_unicast_lookup(struct ovn_port *op,
         return;
     }
 
-    /* For ports connected to logical routers add flows to bypass the
-     * broadcast flooding of ARP/ND requests in table 19. We direct the
-     * requests only to the router port that owns the IP address.
-     */
-    if (lsp_is_router(op->nbsp)) {
-        build_lswitch_rport_arp_req_flows(op->peer, op->od, op, lflows,
-                                          &op->nbsp->header_);
+    /* Skip adding the unicast lookup flows if force FDB Lookup is enabled
+     * on the lsp. */
+    if (lsp_force_fdb_lookup(op)) {
+        return;
     }
 
     bool lsp_clone_to_unknown = lsp_is_clone_to_unknown(op->nbsp);
+    bool lsp_enabled = lsp_is_enabled(op->nbsp);
+    const char *action = lsp_enabled
+                         ? ((lsp_clone_to_unknown && op->od->has_unknown)
+                         ? "clone {outport = %s; output; };"
+                           "outport = \""MC_UNKNOWN "\"; output;"
+                         : "outport = %s; output;")
+                         : debug_drop_action();
+    ds_clear(actions);
+    ds_put_format(actions, action, op->json_key);
 
-    for (size_t i = 0; i < op->nbsp->n_addresses; i++) {
-        /* Addresses are owned by the logical port.
-         * Ethernet address followed by zero or more IPv4
-         * or IPv6 addresses (or both). */
-        struct eth_addr mac;
-        bool lsp_enabled = lsp_is_enabled(op->nbsp);
-        const char *action = lsp_enabled
-                             ? ((lsp_clone_to_unknown && op->od->has_unknown)
-                                ? "clone {outport = %s; output; };"
-                                  "outport = \""MC_UNKNOWN "\"; output;"
-                                : "outport = %s; output;")
-                             : debug_drop_action();
+    if (lsp_is_router(op->nbsp) && op->peer && op->peer->nbrp) {
+        /* For ports connected to logical routers add flows to bypass the
+         * broadcast flooding of ARP/ND requests in table 19. We direct the
+         * requests only to the router port that owns the IP address.
+         */
+        build_lswitch_rport_arp_req_flows(op->peer, op->od, op, lflows,
+                                          &op->nbsp->header_);
 
-        if (ovs_scan(op->nbsp->addresses[i],
-                    ETH_ADDR_SCAN_FMT, ETH_ADDR_SCAN_ARGS(mac))) {
-            /* Skip adding flows related to the MAC address
-             * as force FDB Lookup is enabled on the lsp.
-             */
-            if (lsp_force_fdb_lookup(op)) {
-                continue;
-            }
-            ds_clear(match);
-            ds_put_format(match, "eth.dst == "ETH_ADDR_FMT,
-                          ETH_ADDR_ARGS(mac));
+        ds_clear(match);
+        if (!eth_addr_is_zero(op->proxy_arp_addrs.ea)) {
+            ds_put_format(match, "eth.dst == { %s, %s }",
+                          op->proxy_arp_addrs.ea_s,
+                          op->peer->lrp_networks.ea_s);
+        } else {
+            ds_put_format(match, "eth.dst == %s", op->peer->lrp_networks.ea_s);
+        }
 
-            ds_clear(actions);
-            ds_put_format(actions, action, op->json_key);
-            ovn_lflow_add_with_hint(lflows, op->od,
-                                    S_SWITCH_IN_L2_LKUP,
-                                    50, ds_cstr(match),
-                                    ds_cstr(actions),
-                                    &op->nbsp->header_,
-                                    op->lflow_ref);
-        } else if (!strcmp(op->nbsp->addresses[i], "unknown")) {
-            continue;
-        } else if (is_dynamic_lsp_address(op->nbsp->addresses[i])) {
-            if (!op->nbsp->dynamic_addresses
-                || !ovs_scan(op->nbsp->dynamic_addresses,
-                        ETH_ADDR_SCAN_FMT, ETH_ADDR_SCAN_ARGS(mac))) {
-                continue;
-            }
-            ds_clear(match);
-            ds_put_format(match, "eth.dst == "ETH_ADDR_FMT,
-                          ETH_ADDR_ARGS(mac));
-
-            ds_clear(actions);
-            ds_put_format(actions, action, op->json_key);
-            ovn_lflow_add_with_hint(lflows, op->od,
-                                    S_SWITCH_IN_L2_LKUP,
-                                    50, ds_cstr(match),
-                                    ds_cstr(actions),
-                                    &op->nbsp->header_,
-                                    op->lflow_ref);
-        } else if (!strcmp(op->nbsp->addresses[i], "router")) {
-            if (!op->peer || !op->peer->nbrp
-                || !ovs_scan(op->peer->nbrp->mac,
-                        ETH_ADDR_SCAN_FMT, ETH_ADDR_SCAN_ARGS(mac))) {
-                continue;
-            }
-            ds_clear(match);
-            ds_put_cstr(match, "eth.dst == ");
-            if (!eth_addr_is_zero(op->proxy_arp_addrs.ea)) {
-                ds_put_format(match,
-                              "{ %s, "ETH_ADDR_FMT" }",
-                              op->proxy_arp_addrs.ea_s,
-                              ETH_ADDR_ARGS(mac));
+        if (op->peer->od->n_l3dgw_ports && op->od->n_localnet_ports) {
+            bool add_chassis_resident_check = false;
+            const char *json_key;
+            if (is_l3dgw_port(op->peer)) {
+                /* The peer of this port represents a distributed
+                    * gateway port. The destination lookup flow for the
+                    * router's distributed gateway port MAC address should
+                    * only be programmed on the gateway chassis. */
+                add_chassis_resident_check = true;
+                json_key = op->peer->cr_port->json_key;
             } else {
-                ds_put_format(match, ETH_ADDR_FMT, ETH_ADDR_ARGS(mac));
-            }
-            if (op->peer->od->n_l3dgw_ports
-                && op->od->n_localnet_ports) {
-                bool add_chassis_resident_check = false;
-                const char *json_key;
-                if (is_l3dgw_port(op->peer)) {
-                    /* The peer of this port represents a distributed
-                     * gateway port. The destination lookup flow for the
-                     * router's distributed gateway port MAC address should
-                     * only be programmed on the gateway chassis. */
-                    add_chassis_resident_check = true;
-                    json_key = op->peer->cr_port->json_key;
-                } else {
-                    /* Check if the option 'reside-on-redirect-chassis'
-                     * is set to true on the peer port. If set to true
-                     * and if the logical switch has a localnet port, it
-                     * means the router pipeline for the packets from
-                     * this logical switch should be run on the chassis
-                     * hosting the gateway port.
-                     */
-                    add_chassis_resident_check = smap_get_bool(
-                        &op->peer->nbrp->options,
-                        "reside-on-redirect-chassis", false) &&
-                        op->peer->od->n_l3dgw_ports == 1;
-                    json_key =
-                        op->peer->od->l3dgw_ports[0]->cr_port->json_key;
-                }
-
-                if (add_chassis_resident_check) {
-                    ds_put_format(match, " && is_chassis_resident(%s)",
-                                  json_key);
-                }
+                /* Check if the option 'reside-on-redirect-chassis'
+                 * is set to true on the peer port. If set to true
+                 * and if the logical switch has a localnet port, it
+                 * means the router pipeline for the packets from
+                 * this logical switch should be run on the chassis
+                 * hosting the gateway port.
+                 */
+                add_chassis_resident_check = smap_get_bool(
+                    &op->peer->nbrp->options,
+                    "reside-on-redirect-chassis", false) &&
+                    op->peer->od->n_l3dgw_ports == 1;
+                json_key = op->peer->od->l3dgw_ports[0]->cr_port->json_key;
             }
 
-            ds_clear(actions);
-            ds_put_format(actions, action, op->json_key);
+            if (add_chassis_resident_check) {
+                ds_put_format(match, " && is_chassis_resident(%s)", json_key);
+            }
+        }
+
+        ovn_lflow_add_with_hint(lflows, op->od,
+                                S_SWITCH_IN_L2_LKUP, 50,
+                                ds_cstr(match), ds_cstr(actions),
+                                &op->nbsp->header_,
+                                op->lflow_ref);
+    } else {
+        for (size_t i = 0; i < op->n_lsp_addrs; i++) {
+            ds_clear(match);
+            ds_put_format(match, "eth.dst == %s", op->lsp_addrs[i].ea_s);
+
             ovn_lflow_add_with_hint(lflows, op->od,
                                     S_SWITCH_IN_L2_LKUP, 50,
                                     ds_cstr(match), ds_cstr(actions),
                                     &op->nbsp->header_,
                                     op->lflow_ref);
-        } else {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-
-            VLOG_INFO_RL(&rl,
-                         "%s: invalid syntax '%s' in addresses column",
-                         op->nbsp->name, op->nbsp->addresses[i]);
         }
     }
 }
