@@ -6655,6 +6655,9 @@ struct svc_monitor {
     long long int timestamp;
     bool is_ip6;
 
+    struct eth_addr src_mac;
+    struct in6_addr src_ip;
+
     long long int wait_time;
     long long int next_send_time;
 
@@ -6848,6 +6851,9 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 smap_get_int(&svc_mon->options, "failure_count", 1);
             svc_mon->n_success = 0;
             svc_mon->n_failures = 0;
+
+            eth_addr_from_string(sb_svc_mon->src_mac, &svc_mon->src_mac);
+            ip46_parse(sb_svc_mon->src_ip, &svc_mon->src_ip);
 
             hmap_insert(&svc_monitors_map, &svc_mon->hmap_node, hash);
             ovs_list_push_back(&svc_monitors, &svc_mon->list_node);
@@ -7607,19 +7613,14 @@ svc_monitor_send_tcp_health_check__(struct rconn *swconn,
     struct dp_packet packet;
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
 
-    struct eth_addr eth_src;
-    eth_addr_from_string(svc_mon->sb_svc_mon->src_mac, &eth_src);
     if (svc_mon->is_ip6) {
-        struct in6_addr ip6_src;
-        ipv6_parse(svc_mon->sb_svc_mon->src_ip, &ip6_src);
-        pinctrl_compose_ipv6(&packet, eth_src, svc_mon->ea,
-                             &ip6_src, &svc_mon->ip, IPPROTO_TCP,
+        pinctrl_compose_ipv6(&packet, svc_mon->src_mac, svc_mon->ea,
+                             &svc_mon->src_ip, &svc_mon->ip, IPPROTO_TCP,
                              63, TCP_HEADER_LEN);
     } else {
-        ovs_be32 ip4_src;
-        ip_parse(svc_mon->sb_svc_mon->src_ip, &ip4_src);
-        pinctrl_compose_ipv4(&packet, eth_src, svc_mon->ea,
-                             ip4_src, in6_addr_get_mapped_ipv4(&svc_mon->ip),
+        pinctrl_compose_ipv4(&packet, svc_mon->src_mac, svc_mon->ea,
+                             in6_addr_get_mapped_ipv4(&svc_mon->src_ip),
+                             in6_addr_get_mapped_ipv4(&svc_mon->ip),
                              IPPROTO_TCP, 63, TCP_HEADER_LEN);
     }
 
@@ -7675,24 +7676,18 @@ svc_monitor_send_udp_health_check(struct rconn *swconn,
                                   struct svc_monitor *svc_mon,
                                   ovs_be16 udp_src)
 {
-    struct eth_addr eth_src;
-    eth_addr_from_string(svc_mon->sb_svc_mon->src_mac, &eth_src);
-
     uint64_t packet_stub[128 / 8];
     struct dp_packet packet;
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
 
     if (svc_mon->is_ip6) {
-        struct in6_addr ip6_src;
-        ipv6_parse(svc_mon->sb_svc_mon->src_ip, &ip6_src);
-        pinctrl_compose_ipv6(&packet, eth_src, svc_mon->ea,
-                             &ip6_src, &svc_mon->ip, IPPROTO_UDP,
+        pinctrl_compose_ipv6(&packet, svc_mon->src_mac, svc_mon->ea,
+                             &svc_mon->src_ip, &svc_mon->ip, IPPROTO_UDP,
                              63, UDP_HEADER_LEN + 8);
     } else {
-        ovs_be32 ip4_src;
-        ip_parse(svc_mon->sb_svc_mon->src_ip, &ip4_src);
-        pinctrl_compose_ipv4(&packet, eth_src, svc_mon->ea,
-                             ip4_src, in6_addr_get_mapped_ipv4(&svc_mon->ip),
+        pinctrl_compose_ipv4(&packet, svc_mon->src_mac, svc_mon->ea,
+                             in6_addr_get_mapped_ipv4(&svc_mon->src_ip),
+                             in6_addr_get_mapped_ipv4(&svc_mon->ip),
                              IPPROTO_UDP, 63, UDP_HEADER_LEN + 8);
     }
 
