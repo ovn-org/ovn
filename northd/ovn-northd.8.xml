@@ -1443,9 +1443,10 @@
 
       <li>
         <p>
-          Priority-50 flows that match ARP requests to each known IP address
-          <var>A</var> of every logical switch port, and respond with ARP
-          replies directly with corresponding Ethernet address <var>E</var>:
+          Priority-50 flows that match only broadcast ARP requests to each
+          known IPv4 address <var>A</var> of every logical switch port, and
+          respond with ARP replies directly with corresponding Ethernet
+          address <var>E</var>:
         </p>
 
         <pre>
