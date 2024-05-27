@@ -1128,6 +1128,7 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_queue);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_queue_col_other_config);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_queue_col_external_ids);
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_interface_col_link_state);
 
     chassis_register_ovs_idl(ovs_idl);
     encaps_register_ovs_idl(ovs_idl);
