@@ -6343,6 +6343,10 @@ get_localnet_vifs_l3gwports(
             if (!pb || pb->chassis != chassis) {
                 continue;
             }
+            if (!iface_rec->link_state ||
+                    strcmp(iface_rec->link_state, "up")) {
+                continue;
+            }
             struct local_datapath *ld
                 = get_local_datapath(local_datapaths,
                                      pb->datapath->tunnel_key);
