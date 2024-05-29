@@ -11989,9 +11989,9 @@ build_lswitch_icmp_packet_toobig_admin_flows(
 {
     ovs_assert(op->nbsp);
 
-    ds_clear(match);
     if (!lsp_is_router(op->nbsp)) {
         for (size_t i = 0; i < op->n_lsp_addrs; i++) {
+            ds_clear(match);
             ds_put_format(match,
                           "((ip4 && icmp4.type == 3 && icmp4.code == 4) ||"
                           " (ip6 && icmp6.type == 2 && icmp6.code == 0)) &&"
@@ -12011,6 +12011,7 @@ build_lswitch_icmp_packet_toobig_admin_flows(
         return;
     }
 
+    ds_clear(match);
     if (peer->od->is_gw_router) {
         ds_put_format(match,
                       "((ip4 && icmp4.type == 3 && icmp4.code == 4) ||"
