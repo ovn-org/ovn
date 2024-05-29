@@ -11550,6 +11550,25 @@ lrouter_dnat_and_snat_is_stateless(const struct nbrec_nat *nat)
            !strcmp(nat->type, "dnat_and_snat");
 }
 
+static inline uint16_t
+lrouter_nat_get_priority(const struct ovn_datapath *od, bool is_dnat,
+                         uint16_t prefix_len)
+{
+    if (is_dnat) {
+        return 100;
+    }
+
+    /* The priority here is calculated such that the
+     * nat->logical_ip with the longest mask gets a higher
+     * priority. */
+    uint16_t priority = prefix_len + 1;
+    if (!od->is_gw_router && od->n_l3dgw_ports) {
+        priority += 128;
+    }
+
+    return priority;
+}
+
 /* Handles the match criteria and actions in logical flow
  * based on external ip based NAT rule filter.
  *
@@ -11580,7 +11599,6 @@ lrouter_nat_add_ext_ip_match(const struct ovn_datapath *od,
     } else if (exempted_ext_ips) {
         struct ds match_exempt = DS_EMPTY_INITIALIZER;
         enum ovn_stage stage = is_src ? S_ROUTER_IN_DNAT : S_ROUTER_OUT_SNAT;
-        uint16_t priority;
 
         /* Priority of logical flows corresponding to exempted_ext_ips is
          * +2 of the corresponding regular NAT rule.
@@ -11596,17 +11614,8 @@ lrouter_nat_add_ext_ip_match(const struct ovn_datapath *od,
          * lr_out_snat...priority=161, match=(..), action=(ct_snat(....);)
          *
          */
-        if (is_src) {
-            /* S_ROUTER_IN_DNAT uses priority 100 */
-            priority = 100 + 2;
-        } else {
-            /* S_ROUTER_OUT_SNAT uses priority (mask + 1 + 128 + 1) */
-            priority = cidr_bits + 3;
-
-            if (!od->is_gw_router) {
-                priority += 128;
-           }
-        }
+        uint16_t priority =
+                lrouter_nat_get_priority(od, is_src, cidr_bits) + 2;
 
         ds_clone(&match_exempt, match);
         ds_put_format(&match_exempt, " && ip%s.%s == $%s",
@@ -14621,7 +14630,8 @@ build_lrouter_in_dnat_flow(struct lflow_table *lflows,
         ds_put_format(actions, ");");
     }
 
-    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DNAT, 100,
+    ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DNAT,
+                            lrouter_nat_get_priority(od, true, cidr_bits),
                             ds_cstr(match), ds_cstr(actions),
                             &nat->header_, lflow_ref);
 }
@@ -14764,25 +14774,14 @@ build_lrouter_out_snat_stateless_flow(struct lflow_table *lflows,
 
     ds_clear(actions);
 
-    /* The priority here is calculated such that the
-     * nat->logical_ip with the longest mask gets a higher
-     * priority. */
-    uint16_t priority = cidr_bits + 1;
-
+    uint16_t priority = lrouter_nat_get_priority(od, false, cidr_bits);
     build_lrouter_out_snat_match(lflows, od, nat, match, distributed_nat,
                                  cidr_bits, is_v6, l3dgw_port, lflow_ref,
                                  false);
 
-    if (!od->is_gw_router) {
-        /* Distributed router. */
-        if (od->n_l3dgw_ports) {
-            priority += 128;
-        }
-
-        if (distributed_nat) {
-            ds_put_format(actions, "eth.src = "ETH_ADDR_FMT"; ",
-                          ETH_ADDR_ARGS(mac));
-        }
+    if (!od->is_gw_router && distributed_nat) {
+        ds_put_format(actions, "eth.src = "ETH_ADDR_FMT"; ",
+                      ETH_ADDR_ARGS(mac));
     }
 
     ds_put_format(actions, "ip%c.src=%s; next;",
@@ -14810,19 +14809,12 @@ build_lrouter_out_snat_in_czone_flow(struct lflow_table *lflows,
 
     ds_clear(actions);
 
-    /* The priority here is calculated such that the
-     * nat->logical_ip with the longest mask gets a higher
-     * priority. */
-    uint16_t priority = cidr_bits + 1;
+    uint16_t priority = lrouter_nat_get_priority(od, false, cidr_bits);
     struct ds zone_actions = DS_EMPTY_INITIALIZER;
 
     build_lrouter_out_snat_match(lflows, od, nat, match, distributed_nat,
                                  cidr_bits, is_v6, l3dgw_port,
                                  lflow_ref, false);
-
-    if (od->n_l3dgw_ports) {
-        priority += 128;
-    }
 
     if (distributed_nat) {
         ds_put_format(actions, "eth.src = "ETH_ADDR_FMT"; ",
@@ -14876,26 +14868,16 @@ build_lrouter_out_snat_flow(struct lflow_table *lflows,
 
     ds_clear(actions);
 
-    /* The priority here is calculated such that the
-     * nat->logical_ip with the longest mask gets a higher
-     * priority. */
-    uint16_t priority = cidr_bits + 1;
+    uint16_t priority = lrouter_nat_get_priority(od, false, cidr_bits);
 
     build_lrouter_out_snat_match(lflows, od, nat, match, distributed_nat,
                                  cidr_bits, is_v6, l3dgw_port, lflow_ref,
                                  false);
     size_t original_match_len = match->length;
 
-    if (!od->is_gw_router) {
-        /* Distributed router. */
-        if (od->n_l3dgw_ports) {
-            priority += 128;
-        }
-
-        if (distributed_nat) {
-            ds_put_format(actions, "eth.src = "ETH_ADDR_FMT"; ",
-                          ETH_ADDR_ARGS(mac));
-        }
+    if (!od->is_gw_router && distributed_nat) {
+        ds_put_format(actions, "eth.src = "ETH_ADDR_FMT"; ",
+                      ETH_ADDR_ARGS(mac));
     }
     ds_put_cstr(match, " && (!ct.trk || !ct.rpl)");
 
