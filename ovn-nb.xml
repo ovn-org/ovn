@@ -3935,6 +3935,21 @@ or
       </p>
     </column>
 
+    <column name="match">
+      The packets that the NAT rules should match, in addition to the match
+      that is created based on the NAT type, in the same expression
+      language used for the <ref column="match" table="Logical_Flow"
+                                 db="OVN_Southbound"/> column in the OVN
+      Southbound database's <ref table="Logical_Flow" db="OVN_Southbound"/>
+      table.  This allows for more fine-grained control over the NAT rule.
+    </column>
+
+    <column name="priority">
+      The NAT rule's priority.  Rules with numerically higher priority
+      take precedence over those with lower.  The priority is taken into
+      account only if the <code>match</code> is defined.
+    </column>
+
     <column name="options" key="stateless">
       Indicates if a dnat_and_snat rule should lead to connection
       tracking state or not.

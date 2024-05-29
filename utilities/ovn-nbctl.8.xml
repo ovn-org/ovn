@@ -1176,7 +1176,7 @@
     <h2>NAT Commands</h2>
 
     <dl>
-      <dt>[<code>--may-exist</code>] [<code>--stateless</code>] [<code>--gateway-port</code>=<var>GATEWAY_PORT</var>] [--portrange] <code>lr-nat-add</code> <var>router</var> <var>type</var> <var>external_ip</var> <var>logical_ip</var> [<var>logical_port</var> <var>external_mac</var>] [<var>external_port_range</var>]</dt>
+      <dt>[<code>--may-exist</code>] [<code>--stateless</code>] [<code>--gateway-port</code>=<var>GATEWAY_PORT</var>] [--portrange] [<code>--match</code>=<var>MATCH</var>] [<code>--priority</code>=<var>PRIORITY</var>] <code>lr-nat-add</code> <var>router</var> <var>type</var> <var>external_ip</var> <var>logical_ip</var> [<var>logical_port</var> <var>external_mac</var>] [<var>external_port_range</var>]</dt>
       <dd>
         <p>
           Adds the specified NAT to <var>router</var>.
@@ -1223,6 +1223,18 @@
           the packet is NATted, a random port from the range will be selected
           as the source port. The range for the
           <code>external_port_range</code> is <code>1-65535</code>.
+        </p>
+
+        <p>
+          The <code>--match</code> allows to specify the extra match condition.
+          The extra match is for more fine-grained control over the NAT rule.
+        </p>
+
+        <p>
+          The <code>--priority</code> option allows to specify order of NAT
+          rule evaluation. Priority must be between <code>0</code> and
+          <code>32767</code>, inclusive and can be only specified together
+          with <code>--match</code>.
         </p>
 
         <p>
