@@ -1025,8 +1025,20 @@ check_flow_match_sets 2 2 2 0 0 0 0
 ovn-nbctl lr-nat-del R1 dnat_and_snat  172.16.1.1
 
 echo
+echo "IPv4: stateful with match"
+ovn-nbctl --wait=sb --match="udp" lr-nat-add R1 dnat_and_snat  172.16.1.1 50.0.0.11
+check_flow_match_sets 2 2 2 0 0 0 0
+ovn-nbctl lr-nat-del R1 dnat_and_snat  172.16.1.1
+
+echo
 echo "IPv4: stateless"
 ovn-nbctl --wait=sb --stateless lr-nat-add R1 dnat_and_snat  172.16.1.1 50.0.0.11
+check_flow_match_sets 2 0 0 1 1 0 0
+ovn-nbctl lr-nat-del R1 dnat_and_snat  172.16.1.1
+
+echo
+echo "IPv4: stateless with match"
+ovn-nbctl --wait=sb --match="udp" --stateless lr-nat-add R1 dnat_and_snat  172.16.1.1 50.0.0.11
 check_flow_match_sets 2 0 0 1 1 0 0
 ovn-nbctl lr-nat-del R1 dnat_and_snat  172.16.1.1
 
@@ -1037,8 +1049,20 @@ check_flow_match_sets 2 2 2 0 0 0 0
 ovn-nbctl lr-nat-del R1 dnat_and_snat  fd01::1
 
 echo
+echo "IPv6: stateful with match"
+ovn-nbctl --wait=sb --match="udp" lr-nat-add R1 dnat_and_snat fd01::1 fd11::2
+check_flow_match_sets 2 2 2 0 0 0 0
+ovn-nbctl lr-nat-del R1 dnat_and_snat  fd01::1
+
+echo
 echo "IPv6: stateless"
 ovn-nbctl --wait=sb --stateless lr-nat-add R1 dnat_and_snat fd01::1 fd11::2
+check_flow_match_sets 2 0 0 0 0 1 1
+ovn-nbctl lr-nat-del R1 dnat_and_snat fd01::1
+
+echo
+echo "IPv6: stateless with match"
+ovn-nbctl --wait=sb --match="udp" --stateless lr-nat-add R1 dnat_and_snat fd01::1 fd11::2
 check_flow_match_sets 2 0 0 0 0 1 1
 
 AT_CLEANUP
@@ -12613,3 +12637,58 @@ check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
 
 AT_CLEANUP
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([NAT with match])
+ovn_start
+
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.1
+
+check ovn-nbctl lr-add lr -- \
+    lrp-add lr lr-ls 02:ac:10:01:00:01 172.16.1.1/24
+
+check ovn-nbctl ls-add ls -- \
+    lsp-add ls ls-lr -- \
+    lsp-set-type ls-lr router -- \
+    lsp-set-addresses ls-lr router -- \
+    lsp-set-options ls-lr router-port=lr-ls
+
+check ovn-nbctl lr-nat-add lr snat 172.16.1.1 10.0.0.0/24
+check ovn-nbctl --match="udp" --priority=10 lr-nat-add lr snat 172.16.1.2 10.0.0.0/24
+
+check ovn-nbctl lr-nat-add lr dnat 10.0.0.100 10.0.0.10
+check ovn-nbctl --match="udp" --priority=20 lr-nat-add lr dnat 10.0.0.100 10.0.0.20
+
+check ovn-nbctl --wait=sb lrp-set-gateway-chassis lr-ls hv1
+
+AT_CHECK([ovn-sbctl dump-flows lr | grep lr_out_snat | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
+  table=??(lr_out_snat        ), priority=153  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr-ls" && is_chassis_resident("cr-lr-ls") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.16.1.1);)
+  table=??(lr_out_snat        ), priority=310  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr-ls" && is_chassis_resident("cr-lr-ls") && (udp) && (!ct.trk || !ct.rpl)), action=(ct_snat(172.16.1.2);)
+])
+
+AT_CHECK([ovn-sbctl dump-flows lr | grep lr_in_dnat | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 10.0.0.100 && inport == "lr-ls" && is_chassis_resident("cr-lr-ls")), action=(ct_dnat(10.0.0.10);)
+  table=??(lr_in_dnat         ), priority=320  , match=(ip && ip4.dst == 10.0.0.100 && inport == "lr-ls" && is_chassis_resident("cr-lr-ls") && (udp)), action=(ct_dnat(10.0.0.20);)
+])
+
+check ovn-nbctl lrp-del-gateway-chassis lr-ls hv1
+check ovn-nbctl --wait=sb set logical_router lr options:chassis=hv1
+
+AT_CHECK([ovn-sbctl dump-flows lr | grep lr_out_snat | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
+  table=??(lr_out_snat        ), priority=25   , match=(ip && ip4.src == 10.0.0.0/24 && (!ct.trk || !ct.rpl)), action=(ct_snat(172.16.1.1);)
+  table=??(lr_out_snat        ), priority=310  , match=(ip && ip4.src == 10.0.0.0/24 && (udp) && (!ct.trk || !ct.rpl)), action=(ct_snat(172.16.1.2);)
+])
+
+AT_CHECK([ovn-sbctl dump-flows lr | grep lr_in_dnat | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 10.0.0.100), action=(flags.loopback = 1; ct_dnat(10.0.0.10);)
+  table=??(lr_in_dnat         ), priority=320  , match=(ip && ip4.dst == 10.0.0.100 && (udp)), action=(flags.loopback = 1; ct_dnat(10.0.0.20);)
+])
+
+AT_CLEANUP
+])

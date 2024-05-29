@@ -3794,6 +3794,23 @@ next;
           <code>exempted_ext_ips</code>.
         </p>
 
+        <p>
+          For each configuration in the OVN Northbound database, that asks
+          to change the destination IP address of a packet from <var>A</var>
+          to <var>B</var>, match <var>M</var> and priority <var>P</var>,
+          a logical flow that matches <code>ip &amp;&amp; ip4.dst ==
+          <var>A</var></code> or <code>ip &amp;&amp; ip6.dst == <var>A</var>
+          &amp;&amp; (<var>M</var>)</code> with an action
+          <code>flags.loopback = 1; ct_dnat(<var>B</var>);</code>.
+          The priority of the flow is calculated based as
+          <code>300 + <var>P</var></code>.  If the Gateway router is
+          configured to force SNAT any DNATed packet, the above action will
+          be replaced by <code>flags.force_snat_for_dnat = 1;
+          flags.loopback = 1; ct_dnat(<var>B</var>);</code>. If the NAT rule
+          is of type dnat_and_snat and has <code>stateless=true</code> in the
+          options, then the action would be <code>ip4/6.dst=
+          (<var>B</var>)</code>.
+        </p>
       </li>
 
       <li>
@@ -5161,6 +5178,20 @@ nd_ns {
           of type dnat_and_snat and has <code>stateless=true</code> in the
           options, then the action would be <code>ip4/6.src=
           (<var>B</var>)</code>.
+        </p>
+
+        <p>
+          For each configuration in the OVN Northbound database, that asks
+          to change the source IP address of a packet from an IP address of
+          <var>A</var> or to change the source IP address of a packet that
+          belongs to network <var>A</var> to <var>B</var>, match <var>M</var>
+          and priority <var>P</var>, a flow matches <code>ip &amp;&amp;
+          ip4.src == <var>A</var> &amp;&amp; (!ct.trk || !ct.rpl) &amp;&amp;
+          (<var>M</var>)</code> with an action <code>ct_snat(<var>B</var>);
+          </code>.  The priority of the flow is calculated based as
+          <code>300 + <var>P</var></code>.  If the NAT rule is of type
+          dnat_and_snat and has <code>stateless=true</code> in the options,
+          then the action would be <code>ip4/6.src=(<var>B</var>)</code>.
         </p>
       </li>
 
