@@ -1034,3 +1034,361 @@ done
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route get 10.0.0.1 dev sw0p1 | grep -q 'mtu 942'])
 
 AT_CLEANUP
+
+AT_SETUP([ovn provider network - always_tunnel])
+
+# Check that ovn-fake-multinode setup is up and running
+check_fake_multinode_setup
+
+# Delete the multinode NB and OVS resources before starting the test.
+cleanup_multinode_resources
+
+m_as ovn-chassis-1 ip link del sw0p1-p
+m_as ovn-chassis-2 ip link del sw0p2-p
+
+# Reset geneve tunnels
+for c in ovn-chassis-1 ovn-chassis-2 ovn-gw-1
+do
+    m_as $c ovs-vsctl set open . external-ids:ovn-encap-type=geneve
+done
+
+OVS_WAIT_UNTIL([m_as ovn-chassis-1 ip link show | grep -q genev_sys])
+OVS_WAIT_UNTIL([m_as ovn-chassis-2 ip link show | grep -q genev_sys])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip link show | grep -q genev_sys])
+
+# The goal of this test case is to see the traffic works for
+# E-W switching and routing when the logical switches has localnet ports
+# and the option - always_tunnel=true is set.  When this option
+# is set, traffic is tunneled to the destination chassis instead of using
+# localnet ports.
+
+check multinode_nbctl ls-add sw0
+check multinode_nbctl lsp-add sw0 sw0-port1
+check multinode_nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3 1000::3"
+check multinode_nbctl lsp-add sw0 sw0-port2
+check multinode_nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 1000::4"
+
+m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
+
+m_wait_for_ports_up
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Create the second logical switch with one port
+check multinode_nbctl ls-add sw1
+check multinode_nbctl lsp-add sw1 sw1-port1
+check multinode_nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3 2000::3"
+
+# Create a logical router and attach both logical switches
+check multinode_nbctl lr-add lr0
+check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
+check multinode_nbctl lsp-add sw0 sw0-lr0
+check multinode_nbctl lsp-set-type sw0-lr0 router
+check multinode_nbctl lsp-set-addresses sw0-lr0 router
+check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
+check multinode_nbctl lsp-add sw1 sw1-lr0
+check multinode_nbctl lsp-set-type sw1-lr0 router
+check multinode_nbctl lsp-set-addresses sw1-lr0 router
+check multinode_nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
+
+# create exteranl connection for N/S traffic
+check multinode_nbctl ls-add public
+check multinode_nbctl lsp-add public ln-lublic
+check multinode_nbctl lsp-set-type ln-lublic localnet
+check multinode_nbctl lsp-set-addresses ln-lublic unknown
+check multinode_nbctl lsp-set-options ln-lublic network_name=public
+
+check multinode_nbctl lrp-add lr0 lr0-public 00:11:22:00:ff:01 172.20.0.100/24
+check multinode_nbctl lsp-add public public-lr0
+check multinode_nbctl lsp-set-type public-lr0 router
+check multinode_nbctl lsp-set-addresses public-lr0 router
+check multinode_nbctl lsp-set-options public-lr0 router-port=lr0-public
+check multinode_nbctl lrp-set-gateway-chassis lr0-public ovn-gw-1 10
+check multinode_nbctl lr-route-add lr0 0.0.0.0/0 172.20.0.1
+
+check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 10.0.0.0/24
+check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 20.0.0.0/24
+
+# create localnet ports for sw0 and sw1
+check multinode_nbctl lsp-add sw0 ln-sw0
+check multinode_nbctl lsp-set-type ln-sw0 localnet
+check multinode_nbctl lsp-set-addresses ln-sw0 unknown
+check multinode_nbctl lsp-set-options ln-sw0 network_name=public
+check multinode_nbctl set logical_switch_port ln-sw0 tag_request=100
+
+check multinode_nbctl lsp-add sw1 ln-sw1
+check multinode_nbctl lsp-set-type ln-sw1 localnet
+check multinode_nbctl lsp-set-addresses ln-sw1 unknown
+check multinode_nbctl lsp-set-options ln-sw1 network_name=public
+check multinode_nbctl set logical_switch_port ln-sw1 tag_request=101
+
+check multinode_nbctl --wait=hv sync
+
+M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev])
+M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([cat ch1_eth2.tcpdump | cut -d  ' ' -f2-22], [0], [dnl
+50:54:00:00:00:03 > 50:54:00:00:00:04, ethertype 802.1Q (0x8100), length 102: vlan 100, p 0, ethertype IPv4 (0x0800), 10.0.0.3 > 10.0.0.4: ICMP echo request,
+50:54:00:00:00:04 > 50:54:00:00:00:03, ethertype 802.1Q (0x8100), length 102: vlan 100, p 0, ethertype IPv4 (0x0800), 10.0.0.4 > 10.0.0.3: ICMP echo reply,
+])
+
+AT_CHECK([cat ch1_genev.tcpdump], [0], [dnl
+])
+
+m_as ovn-chassis-1 killall tcpdump
+rm -f *.tcpdump
+rm -f *.stderr
+
+M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev])
+M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 20.0.0.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([cat ch1_eth2.tcpdump | cut -d  ' ' -f2-22], [0], [dnl
+00:00:00:00:ff:02 > 40:54:00:00:00:03, ethertype 802.1Q (0x8100), length 102: vlan 101, p 0, ethertype IPv4 (0x0800), 10.0.0.3 > 20.0.0.3: ICMP echo request,
+00:00:00:00:ff:01 > 50:54:00:00:00:03, ethertype 802.1Q (0x8100), length 102: vlan 100, p 0, ethertype IPv4 (0x0800), 20.0.0.3 > 10.0.0.3: ICMP echo reply,
+])
+
+AT_CHECK([cat ch1_genev.tcpdump], [0], [dnl
+])
+
+# Set the option always_tunnel=true.
+# Traffic from sw0p1 to sw0p2 should be tunneled.
+check multinode_nbctl set NB_Global . options:always_tunnel=true
+check multinode_nbctl --wait=hv sync
+
+m_as ovn-chassis-1 killall tcpdump
+rm -f *.tcpdump
+rm -f *.stderr
+
+M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev])
+M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([cat ch1_genev.tcpdump | cut -d  ' ' -f2-15], [0], [dnl
+50:54:00:00:00:03 > 50:54:00:00:00:04, ethertype IPv4 (0x0800), length 98: 10.0.0.3 > 10.0.0.4: ICMP echo request,
+50:54:00:00:00:04 > 50:54:00:00:00:03, ethertype IPv4 (0x0800), length 98: 10.0.0.4 > 10.0.0.3: ICMP echo reply,
+])
+
+AT_CHECK([cat ch1_eth2.tcpdump], [0], [dnl
+])
+
+m_as ovn-chassis-1 killall tcpdump
+rm -f *.tcpdump
+rm -f *.stderr
+
+M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev])
+M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 20.0.0.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([cat ch1_genev.tcpdump | cut -d  ' ' -f2-15], [0], [dnl
+00:00:00:00:ff:02 > 40:54:00:00:00:03, ethertype IPv4 (0x0800), length 98: 10.0.0.3 > 20.0.0.3: ICMP echo request,
+00:00:00:00:ff:01 > 50:54:00:00:00:03, ethertype IPv4 (0x0800), length 98: 20.0.0.3 > 10.0.0.3: ICMP echo reply,
+])
+
+AT_CHECK([cat ch1_eth2.tcpdump], [0], [dnl
+])
+
+m_as ovn-chassis-1 killall tcpdump
+rm -f *.tcpdump
+rm -f *.stderr
+
+# Delete ln-sw1.
+check multinode_nbctl --wait=hv lsp-del ln-sw1
+# Traffic from sw0p1 to sw1p1 should be tunneled.
+
+M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev])
+M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 20.0.0.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([cat ch1_genev.tcpdump | cut -d  ' ' -f2-15], [0], [dnl
+00:00:00:00:ff:02 > 40:54:00:00:00:03, ethertype IPv4 (0x0800), length 98: 10.0.0.3 > 20.0.0.3: ICMP echo request,
+00:00:00:00:ff:01 > 50:54:00:00:00:03, ethertype IPv4 (0x0800), length 98: 20.0.0.3 > 10.0.0.3: ICMP echo reply,
+])
+
+AT_CHECK([cat ch1_eth2.tcpdump], [0], [dnl
+])
+
+m_as ovn-chassis-1 killall tcpdump
+rm -f *.tcpdump
+rm -f *.stderr
+
+# Make sure that traffic from sw0 still goes out of localnet port
+# for IPs not managed by OVN.
+# Create a fake vm in br-ex on ovn-gw-1 with IP - 10.0.0.10
+m_as ovn-gw-1 ip netns add sw0-p10
+m_as ovn-gw-1 ovs-vsctl add-port br-ex sw0-p10 -- set interface sw0-p10 type=internal
+m_as ovn-gw-1 ovs-vsctl set port sw0-p10 tag=100
+m_as ovn-gw-1 ip link set sw0-p10 netns sw0-p10
+m_as ovn-gw-1 ip netns exec sw0-p10 ip link set sw0-p10 up
+m_as ovn-gw-1 ip netns exec sw0-p10 ip link set sw0-p10 address 32:31:8c:da:64:4f
+m_as ovn-gw-1 ip netns exec sw0-p10 ip addr add 10.0.0.10/24 dev sw0-p10
+
+# Ping from sw0p1 (on ovn-chassis-1) tp sw0-p10 which is in ovn-gw-1 on
+# external bridge.  The traffic path is
+# sw0p1 -> br-int -> localnet port (vlan tagged 100) -> br-ex -> eth2 of ovn-chassis-1 to
+# eth2 of ovn-gw-1  -> br-ex -> sw0-p10
+
+M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev])
+M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
+M_START_TCPDUMP([ovn-gw-1], [-c 2 -neei eth2 icmp], [gw1_eth2])
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.10 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+m_as ovn-chassis-1 killall tcpdump
+m_as ovn-gw-1 killall tcpdump
+
+AT_CHECK([cat ch1_eth2.tcpdump | cut -d  ' ' -f2-22], [0], [dnl
+50:54:00:00:00:03 > 32:31:8c:da:64:4f, ethertype 802.1Q (0x8100), length 102: vlan 100, p 0, ethertype IPv4 (0x0800), 10.0.0.3 > 10.0.0.10: ICMP echo request,
+32:31:8c:da:64:4f > 50:54:00:00:00:03, ethertype 802.1Q (0x8100), length 102: vlan 100, p 0, ethertype IPv4 (0x0800), 10.0.0.10 > 10.0.0.3: ICMP echo reply,
+])
+
+AT_CHECK([cat ch1_genev.tcpdump], [0], [dnl
+
+])
+
+AT_CHECK([cat gw1_eth2.tcpdump | cut -d  ' ' -f2-22], [0], [dnl
+50:54:00:00:00:03 > 32:31:8c:da:64:4f, ethertype 802.1Q (0x8100), length 102: vlan 100, p 0, ethertype IPv4 (0x0800), 10.0.0.3 > 10.0.0.10: ICMP echo request,
+32:31:8c:da:64:4f > 50:54:00:00:00:03, ethertype 802.1Q (0x8100), length 102: vlan 100, p 0, ethertype IPv4 (0x0800), 10.0.0.10 > 10.0.0.3: ICMP echo reply,
+])
+
+rm -f *.tcpdump
+rm -f *.stderr
+
+# Add dnat_and_snat entry for 10.0.0.3 <-> 172.20.0.110
+check multinode_nbctl --wait=hv lr-nat-add lr0 dnat_and_snat 172.20.0.110 10.0.0.3 sw0-port1 30:54:00:00:00:03
+
+# Ping from sw1-p1 to 172.20.0.110
+# Traffic path is
+# sw1-p1 in ovn-chassis-2 -> tunnel -> ovn-gw-1 -> In ovn-gw-1 SNAT 20.0.0.3 to 172.20.0.100 ->
+#  -> ln-public -> br-ex -> eth2 -> ovn-chassis-1 -> br-ex -> ln-public -> br-int ->
+#  -> DNAT 172.20.0.110 to 10.0.0.3 -> sw0-p1 with src ip 172.20.0.100 and dst ip 10.0.0.3.
+
+M_START_TCPDUMP([ovn-chassis-2], [-c 2 -neei genev_sys_6081 icmp], [ch2_genev])
+M_START_TCPDUMP([ovn-chassis-2], [-c 2 -neei eth2 icmp], [ch2_eth2])
+M_START_TCPDUMP([ovn-gw-1], [-c 2 -neei genev_sys_6081 icmp], [gw1_geneve])
+M_START_TCPDUMP([ovn-gw-1], [-c 2 -neei eth2 icmp], [gw1_eth2])
+M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev])
+M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
+
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw1p1], [ping -q -c 3 -i 0.3 -w 2 172.20.0.110 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+m_as ovn-chassis-1 killall tcpdump
+m_as ovn-chassis-2 killall tcpdump
+m_as ovn-gw-1 killall tcpdump
+
+AT_CHECK([cat ch2_genev.tcpdump | cut -d  ' ' -f2-15], [0], [dnl
+00:11:22:00:ff:01 > 30:54:00:00:00:03, ethertype IPv4 (0x0800), length 98: 20.0.0.3 > 172.20.0.110: ICMP echo request,
+00:00:00:00:ff:02 > 40:54:00:00:00:03, ethertype IPv4 (0x0800), length 98: 172.20.0.110 > 20.0.0.3: ICMP echo reply,
+])
+
+AT_CHECK([cat gw1_geneve.tcpdump | cut -d  ' ' -f2-15], [0], [dnl
+00:11:22:00:ff:01 > 30:54:00:00:00:03, ethertype IPv4 (0x0800), length 98: 20.0.0.3 > 172.20.0.110: ICMP echo request,
+00:00:00:00:ff:02 > 40:54:00:00:00:03, ethertype IPv4 (0x0800), length 98: 172.20.0.110 > 20.0.0.3: ICMP echo reply,
+])
+
+AT_CHECK([cat gw1_eth2.tcpdump | cut -d  ' ' -f2-15], [0], [dnl
+00:11:22:00:ff:01 > 30:54:00:00:00:03, ethertype IPv4 (0x0800), length 98: 172.20.0.100 > 172.20.0.110: ICMP echo request,
+30:54:00:00:00:03 > 00:11:22:00:ff:01, ethertype IPv4 (0x0800), length 98: 172.20.0.110 > 172.20.0.100: ICMP echo reply,
+])
+
+AT_CHECK([cat ch1_eth2.tcpdump | cut -d  ' ' -f2-15], [0], [dnl
+00:11:22:00:ff:01 > 30:54:00:00:00:03, ethertype IPv4 (0x0800), length 98: 172.20.0.100 > 172.20.0.110: ICMP echo request,
+30:54:00:00:00:03 > 00:11:22:00:ff:01, ethertype IPv4 (0x0800), length 98: 172.20.0.110 > 172.20.0.100: ICMP echo reply,
+])
+
+AT_CHECK([cat ch1_genev.tcpdump], [0], [dnl
+
+])
+
+rm -f *.tcpdump
+rm -f *.stderr
+
+# Now clear the logical_port of dnat_and_snat entry.  ovn-gw-1 should handle the DNAT.
+check multinode_nbctl lr-nat-del lr0 dnat_and_snat 172.20.0.110
+check multinode_nbctl --wait=hv lr-nat-add lr0 dnat_and_snat 172.20.0.110 10.0.0.3
+# Ping from sw1-p1 to 172.20.0.110
+# Traffic path is
+# sw1-p1 in ovn-chassis-2 -> tunnel -> ovn-gw-1 -> In ovn-gw-1 SNAT 20.0.0.3 to 172.20.0.100 ->
+#  DNAT 172.20.0.110 -> 10.0.0.3 -> tunnel -> ovn-chassis-1 -> br-int -> sw0p1
+
+M_START_TCPDUMP([ovn-chassis-2], [-c 2 -neei genev_sys_6081 icmp], [ch2_genev])
+M_START_TCPDUMP([ovn-chassis-2], [-c 2 -neei eth2 icmp], [ch2_eth2])
+M_START_TCPDUMP([ovn-gw-1], [-c 4 -neei genev_sys_6081 icmp], [gw1_geneve])
+M_START_TCPDUMP([ovn-gw-1], [-c 4 -neei eth2 icmp], [gw1_eth2])
+M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev])
+M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
+
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw1p1], [ping -q -c 3 -i 0.3 -w 2 172.20.0.110 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+m_as ovn-chassis-1 killall tcpdump
+m_as ovn-chassis-2 killall tcpdump
+m_as ovn-gw-1 killall tcpdump
+
+AT_CHECK([cat ch2_genev.tcpdump | cut -d  ' ' -f2-15], [0], [dnl
+00:11:22:00:ff:01 > 00:11:22:00:ff:01, ethertype IPv4 (0x0800), length 98: 20.0.0.3 > 172.20.0.110: ICMP echo request,
+00:00:00:00:ff:02 > 40:54:00:00:00:03, ethertype IPv4 (0x0800), length 98: 172.20.0.110 > 20.0.0.3: ICMP echo reply,
+])
+
+AT_CHECK([cat ch1_eth2.tcpdump], [0], [dnl
+
+])
+
+AT_CHECK([cat gw1_geneve.tcpdump | cut -d  ' ' -f2-15], [0], [dnl
+00:11:22:00:ff:01 > 00:11:22:00:ff:01, ethertype IPv4 (0x0800), length 98: 20.0.0.3 > 172.20.0.110: ICMP echo request,
+00:00:00:00:ff:01 > 50:54:00:00:00:03, ethertype IPv4 (0x0800), length 98: 172.20.0.100 > 10.0.0.3: ICMP echo request,
+00:11:22:00:ff:01 > 00:11:22:00:ff:01, ethertype IPv4 (0x0800), length 98: 10.0.0.3 > 172.20.0.100: ICMP echo reply,
+00:00:00:00:ff:02 > 40:54:00:00:00:03, ethertype IPv4 (0x0800), length 98: 172.20.0.110 > 20.0.0.3: ICMP echo reply,
+])
+
+AT_CHECK([cat gw1_eth2.tcpdump], [0], [dnl
+
+])
+
+AT_CHECK([cat ch1_genev.tcpdump | cut -d  ' ' -f2-15], [0], [dnl
+00:00:00:00:ff:01 > 50:54:00:00:00:03, ethertype IPv4 (0x0800), length 98: 172.20.0.100 > 10.0.0.3: ICMP echo request,
+00:11:22:00:ff:01 > 00:11:22:00:ff:01, ethertype IPv4 (0x0800), length 98: 10.0.0.3 > 172.20.0.100: ICMP echo reply,
+])
+
+AT_CHECK([cat ch1_eth2.tcpdump], [0], [dnl
+
+])
+
+AT_CLEANUP

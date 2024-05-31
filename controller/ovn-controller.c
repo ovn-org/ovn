@@ -3349,6 +3349,11 @@ non_vif_data_ovs_iface_handler(struct engine_node *node, void *data OVS_UNUSED)
 
 struct ed_type_northd_options {
     bool explicit_arp_ns_output;
+    bool always_tunnel; /* Indicates if the traffic to the
+                         * logical port of a bridged logical
+                         * switch (i.e with localnet port) should
+                         * be tunnelled or sent via the localnet
+                         * port.  Default value is 'false'. */
 };
 
 
@@ -3380,6 +3385,12 @@ en_northd_options_run(struct engine_node *node, void *data)
                             false)
             : false;
 
+    n_opts->always_tunnel =
+            sb_global
+            ? smap_get_bool(&sb_global->options, "always_tunnel",
+                            false)
+            : false;
+
     engine_set_node_state(node, EN_UPDATED);
 }
 
@@ -3400,6 +3411,17 @@ en_northd_options_sb_sb_global_handler(struct engine_node *node, void *data)
 
     if (explicit_arp_ns_output != n_opts->explicit_arp_ns_output) {
         n_opts->explicit_arp_ns_output = explicit_arp_ns_output;
+        engine_set_node_state(node, EN_UPDATED);
+    }
+
+    bool always_tunnel =
+            sb_global
+            ? smap_get_bool(&sb_global->options, "always_tunnel",
+                            false)
+            : false;
+
+    if (always_tunnel != n_opts->always_tunnel) {
+        n_opts->always_tunnel = always_tunnel;
         engine_set_node_state(node, EN_UPDATED);
     }
 
@@ -4315,6 +4337,9 @@ static void init_physical_ctx(struct engine_node *node,
         engine_get_input_data("ct_zones", node);
     struct simap *ct_zones = &ct_zones_data->ctx.current;
 
+    struct ed_type_northd_options *n_opts =
+        engine_get_input_data("northd_options", node);
+
     parse_encap_ips(ovs_table, &p_ctx->n_encap_ips, &p_ctx->encap_ips);
     p_ctx->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
     p_ctx->sbrec_port_binding_by_datapath = sbrec_port_binding_by_datapath;
@@ -4332,6 +4357,7 @@ static void init_physical_ctx(struct engine_node *node,
     p_ctx->local_bindings = &rt_data->lbinding_data.bindings;
     p_ctx->patch_ofports = &non_vif_data->patch_ofports;
     p_ctx->chassis_tunnels = &non_vif_data->chassis_tunnels;
+    p_ctx->always_tunnel = n_opts->always_tunnel;
 
     struct controller_engine_ctx *ctrl_ctx = engine_get_context()->client_ctx;
     p_ctx->if_mgr = ctrl_ctx->if_mgr;
@@ -5032,6 +5058,7 @@ main(int argc, char *argv[])
      */
     engine_add_input(&en_pflow_output, &en_non_vif_data,
                      NULL);
+    engine_add_input(&en_pflow_output, &en_northd_options, NULL);
     engine_add_input(&en_pflow_output, &en_ct_zones,
                      pflow_output_ct_zones_handler);
     engine_add_input(&en_pflow_output, &en_sb_chassis,

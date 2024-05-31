@@ -38340,6 +38340,163 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([Provider network - always tunnel])
+ovn_start
+net_add n1
+
+for hv in 1 2; do
+    sim_add hv${hv}
+    as hv${hv}
+    ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys 192.168.0.${hv}
+    ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
+done
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 "00:00:10:01:02:03 10.0.0.3"
+check ovn-nbctl lsp-add sw0 sw0-p2 -- lsp-set-addresses sw0-p2 "00:00:04:01:02:04 10.0.0.4"
+
+check ovn-nbctl ls-add sw1
+check ovn-nbctl lsp-add sw1 sw1-p1 -- lsp-set-addresses sw1-p1 "00:00:20:01:02:03 20.0.0.3"
+check ovn-nbctl lsp-add sw1 sw1-p2 -- lsp-set-addresses sw1-p2 "00:00:20:01:02:04 20.0.0.4"
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 router
+check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
+check ovn-nbctl lsp-add sw1 sw1-lr0
+check ovn-nbctl lsp-set-type sw1-lr0 router
+check ovn-nbctl lsp-set-addresses sw1-lr0 router
+check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+
+as hv1
+ovs-vsctl add-port br-int vif11 -- \
+    set Interface vif11 external-ids:iface-id=sw0-p1 \
+                              options:tx_pcap=hv1/vif11-tx.pcap \
+                              options:rxq_pcap=hv1/vif11-rx.pcap \
+                              ofport-request=11
+ovs-vsctl add-port br-int vif12 -- \
+    set Interface vif12 external-ids:iface-id=sw1-p1 \
+                              options:tx_pcap=hv1/vif12-tx.pcap \
+                              options:rxq_pcap=hv1/vif12-rx.pcap \
+                              ofport-request=12
+
+as hv2
+ovs-vsctl add-port br-int vif21 -- \
+    set Interface vif21 external-ids:iface-id=sw0-p2 \
+                              options:tx_pcap=hv1/vif21-tx.pcap \
+                              options:rxq_pcap=hv1/vif21-rx.pcap \
+                              ofport-request=21
+ovs-vsctl add-port br-int vif22 -- \
+    set Interface vif22 external-ids:iface-id=sw1-p2 \
+                              options:tx_pcap=hv1/vif22-tx.pcap \
+                              options:rxq_pcap=hv1/vif22-rx.pcap \
+                              ofport-request=22
+
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up
+
+sw0_dp_key=$(printf "%x" $(fetch_column Datapath_Binding tunnel_key external_ids:name=sw0))
+sw0p1_key=$(printf "%x" $(fetch_column Port_Binding tunnel_key logical_port=sw0-p1))
+sw0p2_key=$(printf "%x" $(fetch_column Port_Binding tunnel_key logical_port=sw0-p2))
+
+sw1_dp_key=$(printf "%x" $(fetch_column Datapath_Binding tunnel_key external_ids:name=sw1))
+sw1p1_key=$(printf "%x" $(fetch_column Port_Binding tunnel_key logical_port=sw1-p1))
+sw1p2_key=$(printf "%x" $(fetch_column Port_Binding tunnel_key logical_port=sw1-p2))
+
+check_output_flows_tunnelled() {
+  hv=$1
+  dp_key=$2
+  dp_rport=$3
+  AT_CHECK_UNQUOTED([as $hv ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT,metadata=0x${dp_key},reg15=0x${dp_rport} | ofctl_strip_all | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_REMOTE_OUTPUT, priority=100,reg13=0/0xffff0000,reg15=0x${dp_rport},metadata=0x${dp_key} actions=load:0x${dp_key}->NXM_NX_TUN_ID[[0..23]],set_field:0x${dp_rport}->tun_metadata0,move:NXM_NX_REG14[[0..14]]->NXM_NX_TUN_METADATA0[[16..30]],output:1,resubmit(,OFTABLE_LOCAL_OUTPUT)
+])
+}
+
+check_output_flows_via_localnet() {
+  hv=$1
+  dp_key=$2
+  dp_rport=$3
+  lnport_key=$4
+  AT_CHECK_UNQUOTED([as $hv ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT,metadata=0x${dp_key},reg15=0x${dp_rport} | ofctl_strip_all | grep -v NXST_FLOW], [1], [dnl
+])
+
+  AT_CHECK_UNQUOTED([as $hv ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT,metadata=0x${dp_key},reg15=0x${dp_rport} | ofctl_strip_all | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_LOCAL_OUTPUT, priority=100,reg15=0x${dp_rport},metadata=0x${dp_key} actions=load:0x${lnport_key}->NXM_NX_REG15[[]],resubmit(,OFTABLE_LOCAL_OUTPUT)
+])
+}
+
+# There are no localnet ports in sw0 and sw1.  So the pkts are tunnelled.
+check_output_flows_tunnelled hv1 ${sw0_dp_key} ${sw0p2_key}
+check_output_flows_tunnelled hv1 ${sw1_dp_key} ${sw1p2_key}
+check_output_flows_tunnelled hv2 ${sw0_dp_key} ${sw0p1_key}
+check_output_flows_tunnelled hv2 ${sw1_dp_key} ${sw1p1_key}
+
+# Add localnet port to sw0
+check ovn-nbctl lsp-add sw0 ln-sw0 -- lsp-set-addresses ln-sw0 unknown -- lsp-set-type ln-sw0 localnet
+check ovn-nbctl --wait=hv lsp-set-options ln-sw0 network_name=physnet1 -- set logical_switch_port ln-sw0 tag_request=100
+lnsw0_key=$(printf "%x" $(fetch_column Port_Binding tunnel_key logical_port=ln-sw0))
+
+# Flows should be installed to use localnet port for sw0.
+check_output_flows_via_localnet hv1 ${sw0_dp_key} ${sw0p2_key} ${lnsw0_key}
+check_output_flows_tunnelled hv1 ${sw1_dp_key} ${sw1p2_key}
+check_output_flows_via_localnet hv2 ${sw0_dp_key} ${sw0p1_key} ${lnsw0_key}
+check_output_flows_tunnelled hv2 ${sw1_dp_key} ${sw1p1_key}
+
+# Add localnet port to sw1
+check ovn-nbctl lsp-add sw1 ln-sw1 -- lsp-set-addresses ln-sw1 unknown -- lsp-set-type ln-sw1 localnet
+check ovn-nbctl --wait=hv lsp-set-options ln-sw1 network_name=physnet1 -- set logical_switch_port ln-sw1 tag_request=101
+lnsw1_key=$(printf "%x" $(fetch_column Port_Binding tunnel_key logical_port=ln-sw1))
+
+# Flows should be installed to use localnet port.
+check_output_flows_via_localnet hv1 ${sw0_dp_key} ${sw0p2_key} ${lnsw0_key}
+check_output_flows_via_localnet hv1 ${sw1_dp_key} ${sw1p2_key} ${lnsw1_key}
+check_output_flows_via_localnet hv2 ${sw0_dp_key} ${sw0p1_key} ${lnsw0_key}
+check_output_flows_via_localnet hv2 ${sw1_dp_key} ${sw1p1_key} ${lnsw1_key}
+
+# Set the always_tunnel option to true.
+check ovn-nbctl set NB_Global . options:always_tunnel=true
+check ovn-nbctl --wait=hv sync
+
+# Flows should be installed to tunnel.
+check_output_flows_tunnelled hv1 ${sw0_dp_key} ${sw0p2_key}
+check_output_flows_tunnelled hv1 ${sw1_dp_key} ${sw1p2_key}
+check_output_flows_tunnelled hv2 ${sw0_dp_key} ${sw0p1_key}
+check_output_flows_tunnelled hv2 ${sw1_dp_key} ${sw1p1_key}
+
+# Set the always_tunnel option to false.
+check ovn-nbctl set NB_Global . options:always_tunnel=false
+check ovn-nbctl --wait=hv sync
+
+# Flows should be installed to use localnet port.
+check_output_flows_via_localnet hv1 ${sw0_dp_key} ${sw0p2_key} ${lnsw0_key}
+check_output_flows_via_localnet hv1 ${sw1_dp_key} ${sw1p2_key} ${lnsw1_key}
+check_output_flows_via_localnet hv2 ${sw0_dp_key} ${sw0p1_key} ${lnsw0_key}
+check_output_flows_via_localnet hv2 ${sw1_dp_key} ${sw1p1_key} ${lnsw1_key}
+
+check ovn-nbctl --wait=hv lsp-del ln-sw0
+
+# Flows should be installed to tunnel for sw0
+check_output_flows_tunnelled hv1 ${sw0_dp_key} ${sw0p2_key}
+check_output_flows_tunnelled hv2 ${sw0_dp_key} ${sw0p1_key}
+
+check ovn-nbctl --wait=hv lsp-del ln-sw1
+# Flows should be installed to tunnel.
+check_output_flows_tunnelled hv1 ${sw0_dp_key} ${sw0p2_key}
+check_output_flows_tunnelled hv1 ${sw1_dp_key} ${sw1p2_key}
+check_output_flows_tunnelled hv2 ${sw0_dp_key} ${sw0p1_key}
+check_output_flows_tunnelled hv2 ${sw1_dp_key} ${sw1p1_key}
+
+OVN_CLEANUP([hv1],[hv2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([Delete parent of container port])
 ovn_start
 

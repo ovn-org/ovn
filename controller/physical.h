@@ -69,6 +69,7 @@ struct physical_ctx {
     size_t n_encap_ips;
     const char **encap_ips;
     struct physical_debug debug;
+    bool always_tunnel;
 };
 
 void physical_register_ovs_idl(struct ovsdb_idl *);

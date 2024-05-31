@@ -22,6 +22,25 @@ m4_define([M_NS_CHECK_EXEC],
     [ AT_CHECK([M_NS_EXEC([$1], [$2], [$3])], m4_shift(m4_shift(m4_shift($@)))) ]
 )
 
+# M_DAEMONIZE([fake_node],[command],[pidfile])
+m4_define([M_DAEMONIZE],
+    [podman exec $1 $2 & echo $! > $3
+     echo "kill \`cat $3\`" >> cleanup
+    ]
+)
+
+# M_START_TCPDUMP([fake_node], [params], [name])
+#
+# Helper to properly start tcpdump and wait for the startup.
+# The tcpdump output is available in <name>.tcpdump file.
+m4_define([M_START_TCPDUMP],
+    [
+     podman exec $1 tcpdump -l $2 >$3.tcpdump 2>$3.stderr &
+     OVS_WAIT_UNTIL([grep -q "listening" $3.stderr])
+    ]
+)
+
+
 OVS_START_SHELL_HELPERS
 
 m_as() {

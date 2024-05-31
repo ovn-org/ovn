@@ -391,6 +391,22 @@
         non-<code>VXLAN mode</code> tunnel IDs allocation logic.
       </column>
 
+      <column name="options" key="always_tunnel"
+           type='{"type": "boolean"}'>
+        <p>
+          If set to true, then the traffic destined to a VIF of a provider
+          logical switch (having a localnet port) will be tunnelled instead
+          of sending it via the localnet port.  This option will be useful
+          if CMS wants to connect overlay logical switches (without
+          localnet port) and provider logical switches to a router.  Without
+          this option set, the traffic path will be a mix of tunnelling and
+          localnet ports (since routing is distributed) resulting in the
+          leakage of the router port mac address to the upstream switches
+          and undefined behavior if NATting is involed.  This option is
+          disabled by default.
+        </p>
+      </column>
+
       <group title="Options for configuring interconnection route advertisement">
         <p>
           These options control how routes are advertised between OVN

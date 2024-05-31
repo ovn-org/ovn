@@ -38,6 +38,10 @@ Post v24.03.0
     ability to disable "VXLAN mode" to extend available tunnel IDs space for
     datapaths from 4095 to 16711680.  For more details see man ovn-nb(5) for
     mentioned option.
+  - Added new global config option NB_Global:options:always_tunnel.  If set to
+    true, the traffic destined to a logical port of a provider logical switch
+    (having a localnet port) will be tunnelled instead of sending it via the
+    localnet port.
 
 OVN v24.03.0 - 01 Mar 2024
 --------------------------
