@@ -515,7 +515,7 @@ def main():
     printer = Printer()
     cookie_handlers = get_cookie_handlers(ovsdb_ovnnb, ovsdb_ovnsb, printer)
 
-    regex_cookie = re.compile(r'^.*cookie 0x([0-9a-fA-F]+)')
+    regex_cookie = re.compile(r'^.*cookie[ =]0x([0-9a-fA-F]+)')
     regex_handlers = [
         (regex_cookie, cookie_handlers)
     ]
@@ -537,7 +537,8 @@ def main():
         line = sys.stdin.readline()
         if len(cookies) > 0:
             # Print record info when the current flow block ends.
-            if regex_table_id.match(line) or line.strip() == '':
+            if regex_table_id.match(line) or line.strip() == '' or \
+                regex_cookie.match(line):
                 for cookie, handlers in cookies:
                     print_record_from_cookie(ovsdb_ovnnb, handlers, cookie)
                 cookies = []

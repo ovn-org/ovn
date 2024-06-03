@@ -76,6 +76,20 @@ lflow_stage_to_table(struct ovs_cmdl_context *ctx)
     exit(EXIT_SUCCESS);
 }
 
+static void
+uuid_to_cookie_str(struct ovs_cmdl_context *ctx)
+{
+    const char *uuid_str = ctx->argv[1];
+    struct uuid uuid = UUID_ZERO;
+
+    if (!uuid_from_string(&uuid, uuid_str)) {
+        ovs_fatal(0, "Couldn't convert UUID string \"%s\" to UUID", uuid_str);
+    }
+
+    printf("%#"PRIx32, uuid.parts[0]);
+    exit(EXIT_SUCCESS);
+}
+
 
 static void
 usage(void)
@@ -88,6 +102,8 @@ lflow-stage-to-ltable STAGE_NAME\n\
   Converts STAGE_NAME into logical flow table number.\n\
 lflow-stage-to-oftable STAGE_NAME\n\
   Converts STAGE_NAME into OpenFlow table number.\n\
+uuid-to-cookie UUID\n\
+  Converts UUID into cookie format.\n\
 \n\
 Options:\n\
   -h, --help                  display this help message\n\
@@ -144,6 +160,8 @@ main(int argc, char *argv[])
             {"lflow-stage-to-oftable", NULL, 1, 1, lflow_stage_to_table,
              OVS_RO},
             {"lflow-stage-to-ltable", NULL, 1, 1, lflow_stage_to_table,
+             OVS_RO},
+            {"uuid-to-cookie", NULL, 1, 1, uuid_to_cookie_str,
              OVS_RO},
             { "help", NULL, 0, INT_MAX, help, OVS_RO },
             {NULL, NULL, 0, 0, NULL, OVS_RO},

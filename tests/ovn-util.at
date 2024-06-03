@@ -1,0 +1,108 @@
+AT_SETUP([ovn-detrace - simple scenario])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int vm0 -- \
+    set interface vm0 external-ids:iface-id=vm0
+
+ovs-vsctl -- add-port br-int vm1 -- \
+    set interface vm1 external-ids:iface-id=vm1
+
+check ovn-nbctl ls-add ls \
+    -- set logical_switch ls other-config:requested-tnl-key=1
+
+check ovn-nbctl lsp-add ls vm0 \
+    -- lsp-set-addresses vm0 "f0:00:00:01:01:00 192.168.1.10" \
+    -- set logical_switch_port vm0 options:requested-tnl-key=10
+check ovn-nbctl lsp-add ls vm1 \
+    -- lsp-set-addresses vm1 "f0:00:00:01:01:01 192.168.1.11" \
+    -- set logical_switch_port vm1 options:requested-tnl-key=11
+
+# Allow some time for ovn-northd and ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+ingress_table=$(ovn-debug lflow-stage-to-ltable ls_in_check_port_sec)
+egress_table=$(ovn-debug lflow-stage-to-ltable ls_out_apply_port_sec)
+dp_uuid=$(fetch_column datapath _uuid external_ids:name=ls)
+pb_vm0=$(ovn-debug uuid-to-cookie $(fetch_column port_binding _uuid \
+    logical_port=vm0))
+pb_vm1=$(ovn-debug uuid-to-cookie $(fetch_column port_binding _uuid \
+    logical_port=vm1))
+ingress=$(ovn-debug uuid-to-cookie $(fetch_column logical_flow _uuid \
+    table_id=$ingress_table pipeline=ingress match="1"))
+egress=$(ovn-debug uuid-to-cookie $(fetch_column logical_flow _uuid \
+    table_id=$egress_table pipeline=egress match="1"))
+
+cat << EOF > trace
+0. in_port=1, priority 100, cookie $pb_vm0
+set_field:0x4/0xffff->reg13
+set_field:0x1->reg11
+set_field:0x1->reg12
+set_field:0x1->metadata
+set_field:0x1->reg14
+set_field:0/0xffff0000->reg13
+resubmit(,??)
+8. metadata=0x1, priority 50, cookie $ingress
+set_field:0/0x1000->reg10
+resubmit(,??)
+51. metadata=0x1, priority 0, cookie $egress
+resubmit(,??)
+65. reg15=0x2,metadata=0x1, priority 100, cookie $pb_vm1
+output:2
+EOF
+
+AT_CHECK_UNQUOTED([cat trace | $PYTHON $top_srcdir/utilities/ovn_detrace.py.in], [0], [dnl
+0. in_port=1, priority 100, cookie $pb_vm0
+set_field:0x4/0xffff->reg13
+set_field:0x1->reg11
+set_field:0x1->reg12
+set_field:0x1->metadata
+set_field:0x1->reg14
+set_field:0/0xffff0000->reg13
+resubmit(,??)
+  * Logical datapath: "ls" ($dp_uuid)
+  * Port Binding: logical_port "vm0", tunnel_key 10, chassis-name "hv1", chassis-str "hv1"
+8. metadata=0x1, priority 50, cookie $ingress
+set_field:0/0x1000->reg10
+resubmit(,??)
+  * Logical datapaths:
+  *     "ls" ($dp_uuid) [[ingress]]
+  * Logical flow: table=$ingress_table (ls_in_check_port_sec), priority=50, match=(1), actions=(reg0[[15]] = check_in_port_sec(); next;)
+51. metadata=0x1, priority 0, cookie $egress
+resubmit(,??)
+  * Logical datapaths:
+  *     "ls" ($dp_uuid) [[egress]]
+  * Logical flow: table=$egress_table (ls_out_apply_port_sec), priority=0, match=(1), actions=(output;)
+65. reg15=0x2,metadata=0x1, priority 100, cookie $pb_vm1
+output:2
+  * Logical datapath: "ls" ($dp_uuid)
+  * Port Binding: logical_port "vm1", tunnel_key 11, chassis-name "hv1", chassis-str "hv1"
+
+])
+
+ovs-ofctl dump-flows br-int table=$(ovn-debug lflow-stage-to-oftable ls_in_check_port_sec),cookie=$ingress/0xffffffff >> flows
+ovs-ofctl dump-flows br-int table=$(ovn-debug lflow-stage-to-oftable ls_out_apply_port_sec),cookie=$egress/0xffffffff >> flows
+
+AT_CHECK_UNQUOTED([cat flows | awk '{print $1, $7, $8}' | grep -v "NXST_FLOW" | \
+                   sed -e "s/resubmit(,[[0-9]]\+)/resubmit(,??)/g" | \
+                   $PYTHON $top_srcdir/utilities/ovn_detrace.py.in], [0], [dnl
+cookie=$ingress, priority=50,metadata=0x1 actions=load:0->NXM_NX_REG10[[12]],resubmit(,??),move:NXM_NX_REG10[[12]]->NXM_NX_XXREG0[[111]],resubmit(,??)
+  * Logical datapaths:
+  *     "ls" ($dp_uuid) [[ingress]]
+  * Logical flow: table=$ingress_table (ls_in_check_port_sec), priority=50, match=(1), actions=(reg0[[15]] = check_in_port_sec(); next;)
+cookie=$egress, priority=0,metadata=0x1 actions=resubmit(,??)
+  * Logical datapaths:
+  *     "ls" ($dp_uuid) [[egress]]
+  * Logical flow: table=$egress_table (ls_out_apply_port_sec), priority=0, match=(1), actions=(output;)
+
+])
+
+OVN_CLEANUP([hv1])
+
+AT_CLEANUP

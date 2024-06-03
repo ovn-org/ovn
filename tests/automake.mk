@@ -45,7 +45,8 @@ TESTSUITE_AT = \
 	tests/ovn-lflow-cache.at \
 	tests/ovn-lflow-conj-ids.at \
 	tests/ovn-ipsec.at \
-	tests/ovn-vif-plug.at
+	tests/ovn-vif-plug.at \
+	tests/ovn-util.at
 
 SYSTEM_DPDK_TESTSUITE_AT = \
 	tests/system-dpdk-testsuite.at \
