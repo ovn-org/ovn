@@ -28866,6 +28866,7 @@ ovn-nbctl ls-add ls1 \
     -- lsp-add ls1 lsp1 \
     -- lsp-add ls1 lsp2 \
     -- pg-add pg1 lsp1 lsp2 \
+    -- pg-add pg2 lsp1 \
     -- create Address_Set name=as1 addresses=\"10.0.0.1\",\"10.0.0.2\"
 check ovn-nbctl --wait=hv sync
 wait_for_ports_up lsp1 lsp2
@@ -28920,11 +28921,7 @@ check ovn-nbctl --wait=hv sync
 AT_CHECK([test "$expr_cnt" = "$(get_cache_count cache-expr)"], [0], [])
 AT_CHECK([test "$matches_cnt" = "$(get_cache_count cache-matches)"], [0], [])
 
-# Ignore errors "Syntax error at \`\@pg2\' expecting port group name"
-# Need  to investigate whteher those errors are expected
-OVN_CLEANUP([hv1
-/Syntax error at/d
-])
+OVN_CLEANUP([hv1])
 
 AT_CLEANUP
 ])
