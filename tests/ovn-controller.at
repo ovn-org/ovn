@@ -1032,11 +1032,11 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl add address_set as1 addresses 10.0.0.21,10.0.0.22 -- \
                 remove address_set as1 addresses 10.0.0.10
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c 10\.0\.0\.21], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c "10\.0\.0\.21"], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c 10\.0\.0\.22], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c "10\.0\.0\.22"], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep 10\.0\.0\.10], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep "10\.0\.0\.10"], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
 AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
@@ -1048,9 +1048,9 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl remove address_set as1 addresses 10.0.0.21,10.0.0.22 -- \
                 add address_set as1 addresses 10.0.0.10
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep 10\.0\.0\.21], [1], [ignore])
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep 10\.0\.0\.22], [1], [ignore])
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c 10\.0\.0\.10], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep "10\.0\.0\.21"], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep "10\.0\.0\.22"], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c "10\.0\.0\.10"], [0], [1
 ])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
@@ -1063,9 +1063,9 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl add address_set as1 addresses 10.0.0.21 -- \
                 remove address_set as1 addresses 10.0.0.10
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c 10\.0\.0\.21], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c "10\.0\.0\.21"], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep 10\.0\.0\.10], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep "10\.0\.0\.10"], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
 AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
@@ -1077,12 +1077,12 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl add address_set as1 addresses 10.0.0.22,10.0.0.23 -- \
                 remove address_set as1 addresses 10.0.0.9,10.0.0.8
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c 10\.0\.0\.22], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c "10\.0\.0\.22"], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c 10\.0\.0\.23], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c "10\.0\.0\.23"], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep 10\.0\.0\.8], [1], [ignore])
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep 10\.0\.0\.9], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep "10\.0\.0\.8"], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep "10\.0\.0\.9"], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
 AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
@@ -1231,11 +1231,11 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl add address_set as1 addresses 10.0.0.21,10.0.0.22 -- \
                 remove address_set as1 addresses 10.0.0.10
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c 10\.0\.0\.21], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c "10\.0\.0\.21"], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c 10\.0\.0\.22], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c "10\.0\.0\.22"], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep 10\.0\.0\.10], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep "10\.0\.0\.10"], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
 AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
@@ -1247,9 +1247,9 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl remove address_set as1 addresses 10.0.0.21,10.0.0.22 -- \
                 add address_set as1 addresses 10.0.0.10
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep 10\.0\.0\.21], [1], [ignore])
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep 10\.0\.0\.22], [1], [ignore])
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c 10\.0\.0\.10], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep "10\.0\.0\.21"], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep "10\.0\.0\.22"], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c "10\.0\.0\.10"], [0], [1
 ])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
@@ -1262,9 +1262,9 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl add address_set as1 addresses 10.0.0.21 -- \
                 remove address_set as1 addresses 10.0.0.10
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c 10\.0\.0\.21], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c "10\.0\.0\.21"], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep 10\.0\.0\.10], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep "10\.0\.0\.10"], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
 AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0
@@ -1276,12 +1276,12 @@ reprocess_count_old=$(read_counter consider_logical_flow)
 check ovn-nbctl add address_set as1 addresses 10.0.0.22,10.0.0.23 -- \
                 remove address_set as1 addresses 10.0.0.9,10.0.0.8
 check ovn-nbctl --wait=hv sync
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c 10\.0\.0\.22], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c "10\.0\.0\.22"], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c 10\.0\.0\.23], [0], [1
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep -c "10\.0\.0\.23"], [0], [1
 ])
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep 10\.0\.0\.8], [1], [ignore])
-AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep 10\.0\.0\.9], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep "10\.0\.0\.8"], [1], [ignore])
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_eval | grep "10\.0\.0\.9"], [1], [ignore])
 
 reprocess_count_new=$(read_counter consider_logical_flow)
 AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [0

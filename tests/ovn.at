@@ -8365,7 +8365,7 @@ AT_FAIL_IF([test -s vif2.packets])
 check ovn-nbctl --wait=sb lr-policy-add R1 20 "ip6.src==2001::/64 && ip6.dst==2002::/64" allow
 
 # Check logical flow
-AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | grep "2001" -c], [0], [dnl
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | grep -F "2001" -c], [0], [dnl
 2
 ])
 
@@ -8393,7 +8393,7 @@ check ovn-nbctl --wait=sb lr-policy-add R1 30 "ip6.src==2001::/64 && ip6.dst==20
 
 # Check logical flow
 AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | \
-    grep "2001" | \
+    grep -F "2001" | \
     grep "priority=30" -c], [0], [dnl
 1
 ])
@@ -20494,21 +20494,21 @@ for i in 1 2 3; do
     ovn-nbctl --wait=hv acl-add ls1 to-lport 200 \
             'outport=="lp1" && ip4 && ip4.src == {$as1, $as2}' allow-related
     ovn-nbctl --wait=hv set addr as1 addresses="10.1.2.10"
-    AT_CHECK([ovs-ofctl dump-flows br-int | grep "10.1.2.10"], [0], [ignore])
+    AT_CHECK([ovs-ofctl dump-flows br-int | grep -F "10.1.2.10"], [0], [ignore])
 
     # Update address set as1
     ovn-nbctl --wait=hv set addr as1 addresses="10.1.2.10 10.1.2.11"
-    AT_CHECK([ovs-ofctl dump-flows br-int | grep "10.1.2.11"], [0], [ignore])
+    AT_CHECK([ovs-ofctl dump-flows br-int | grep -F "10.1.2.11"], [0], [ignore])
 
     # Update address set as2
     ovn-nbctl --wait=hv set addr as2 addresses="10.1.2.12 10.1.2.13"
-    AT_CHECK([ovs-ofctl dump-flows br-int | grep "10.1.2.12"], [0], [ignore])
+    AT_CHECK([ovs-ofctl dump-flows br-int | grep -F "10.1.2.12"], [0], [ignore])
 
     # Add another ACL referencing as1
-    n_flows_before=`ovs-ofctl dump-flows br-int | grep "10.1.2.10" | wc -l`
+    n_flows_before=`ovs-ofctl dump-flows br-int | grep -F "10.1.2.10" | wc -l`
     ovn-nbctl --wait=hv acl-add ls1 to-lport 200 \
             'outport=="lp2" && ip4 && ip4.src == $as1' allow-related
-    n_flows_after=`ovs-ofctl dump-flows br-int | grep "10.1.2.10" | wc -l`
+    n_flows_after=`ovs-ofctl dump-flows br-int | grep -F "10.1.2.10" | wc -l`
     AT_CHECK([test $(expr $n_flows_before \* 2) = $n_flows_after], [0], [ignore])
 
     # Trigger full recompute. Creating a chassis would trigger full recompute.
@@ -20518,7 +20518,7 @@ for i in 1 2 3; do
     # Remove an ACL
     ovn-nbctl --wait=hv acl-del ls1 to-lport 200 \
             'outport=="lp2" && ip4 && ip4.src == $as1'
-    n_flows_after=`ovs-ofctl dump-flows br-int | grep "10.1.2.10" | wc -l`
+    n_flows_after=`ovs-ofctl dump-flows br-int | grep -F "10.1.2.10" | wc -l`
     AT_CHECK([test $n_flows_before = $n_flows_after], [0], [ignore])
 
     # Remove as1 while it is still used by an ACL, the lflows should be reparsed and
@@ -20528,16 +20528,16 @@ for i in 1 2 3; do
     ovn-nbctl --wait=hv destroy addr $as1_uuid
     echo "after del as1"
     ovn-nbctl list addr | grep as1
-    AT_CHECK([ovs-ofctl dump-flows br-int | grep "10.1.2.10"], [1], [ignore])
-    AT_CHECK([ovs-ofctl dump-flows br-int | grep "10.1.2.12"], [1], [ignore])
+    AT_CHECK([ovs-ofctl dump-flows br-int | grep -F "10.1.2.10"], [1], [ignore])
+    AT_CHECK([ovs-ofctl dump-flows br-int | grep -F "10.1.2.12"], [1], [ignore])
 
     # Recreate as1
     as1_uuid=`ovn-nbctl --wait=hv create addr name=as1`
-    AT_CHECK([ovs-ofctl dump-flows br-int | grep "10.1.2.12"], [0], [ignore])
+    AT_CHECK([ovs-ofctl dump-flows br-int | grep -F "10.1.2.12"], [0], [ignore])
 
     # Remove ACLs and address sets
     ovn-nbctl --wait=hv destroy addr $as1_uuid -- destroy addr $as2_uuid
-    AT_CHECK([ovs-ofctl dump-flows br-int | grep "10.1.2.12"], [1], [ignore])
+    AT_CHECK([ovs-ofctl dump-flows br-int | grep -F "10.1.2.12"], [1], [ignore])
 
     ovn-nbctl --wait=hv acl-del ls1
 done
@@ -28817,8 +28817,8 @@ OVN_POPULATE_ARP
 wait_for_ports_up
 ovn-nbctl --wait=hv sync
 
-AT_CHECK([ovn-sbctl lflow-list | grep lr_in_arp_resolve | grep 10.0.0.1], [1], [])
-AT_CHECK([ovn-sbctl lflow-list | grep lr_in_arp_resolve | grep 10.0.0.2], [1], [])
+AT_CHECK([ovn-sbctl lflow-list | grep lr_in_arp_resolve | grep -F 10.0.0.1], [1], [])
+AT_CHECK([ovn-sbctl lflow-list | grep lr_in_arp_resolve | grep -F 10.0.0.2], [1], [])
 
 # Send ip packets from p1 to p2
 src_mac="f00000000102"
@@ -29175,7 +29175,7 @@ arp_resolve=$(ovn-debug lflow-stage-to-oftable lr_in_arp_resolve)
 sw_key=$(ovn-sbctl --bare --columns tunnel_key list datapath_binding r1)
 
 echo sw_key: $sw_key
-AT_CHECK([ovn-sbctl lflow-list | grep lr_in_arp_resolve | grep 10.0.1.1], [1], [])
+AT_CHECK([ovn-sbctl lflow-list | grep lr_in_arp_resolve | grep -F 10.0.1.1], [1], [])
 
 # Send ip packets from p1 to lrp-r1-ext
 src_mac="f00000000102"
@@ -32507,7 +32507,7 @@ ovn-nbctl lr-route-add lr1 20.0.0.0/24 discard
 ovn-nbctl --wait=hv sync
 
 # Check logical flows for drop rule
-AT_CHECK([ovn-sbctl dump-flows | grep lr_in_ip_routing | grep "20.0.0.0/24" | \
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_ip_routing | grep -F "20.0.0.0/24" | \
     grep drop | wc -l], [0], [dnl
 1
 ])
@@ -33218,15 +33218,15 @@ check ovn-nbctl --wait=hv sync
 arp_rsp=$(ovn-debug lflow-stage-to-oftable ls_in_arp_rsp)
 
 # hv0 should see flows for lsp1 but not lsp2
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=$arp_rsp | grep 10.0.1.2], [0], [ignore])
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=$arp_rsp | grep 10.0.2.2], [1])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=$arp_rsp | grep -F 10.0.1.2], [0], [ignore])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=$arp_rsp | grep -F 10.0.2.2], [1])
 # hv2 should see flows for lsp2 but not lsp1
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=$arp_rsp | grep 10.0.2.2], [0], [ignore])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=$arp_rsp | grep 10.0.1.2], [1])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=$arp_rsp | grep -F 10.0.2.2], [0], [ignore])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=$arp_rsp | grep -F 10.0.1.2], [1])
 
 # Change lrp_lr_ls1 to a regular lrp, hv2 should see flows for lsp1
 check ovn-nbctl --wait=hv lrp-del-gateway-chassis lrp_lr_ls1 hv1
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=$arp_rsp | grep 10.0.1.2], [0], [ignore])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=$arp_rsp | grep -F 10.0.1.2], [0], [ignore])
 
 # Change it back, and trigger recompute to make sure extra flows are removed
 # from hv2 (recompute is needed because currently I-P adds local datapaths but
@@ -33234,11 +33234,11 @@ AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=$arp_rsp | grep 10.0.1.2], [0
 check ovn-nbctl --wait=hv lrp-set-gateway-chassis lrp_lr_ls1 hv1 1
 as hv2 check ovn-appctl -t ovn-controller recompute
 ovn-nbctl --wait=hv sync
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=$arp_rsp | grep 10.0.1.2], [1])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=$arp_rsp | grep -F 10.0.1.2], [1])
 
 # Enable dnat_and_snat on lr, and now hv2 should see flows for lsp1.
 AT_CHECK([ovn-nbctl --wait=hv --gateway-port=lrp_lr_ls1 lr-nat-add lr dnat_and_snat 192.168.0.1 10.0.1.3 lsp1 f0:00:00:00:00:03])
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=$arp_rsp | grep 10.0.1.2], [0], [ignore])
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=$arp_rsp | grep -F 10.0.1.2], [0], [ignore])
 
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
