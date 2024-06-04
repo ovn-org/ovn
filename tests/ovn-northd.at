@@ -12101,7 +12101,7 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Adding a logical router port should result in recompute
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
-check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl --wait=sb lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
 # for northd engine there will be both recompute and compute
 # first it will be recompute to handle lr0-sw0 and then a compute
 # for the SB port binding change.
@@ -12131,7 +12131,7 @@ check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24
 check ovn-nbctl lsp-add public public-lr0
 check ovn-nbctl lsp-set-type public-lr0 router
 check ovn-nbctl lsp-set-addresses public-lr0 router
-check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+check ovn-nbctl --wait=sb lsp-set-options public-lr0 router-port=lr0-public
 
 # localnet port
 check ovn-nbctl lsp-add public ln-public
