@@ -22,8 +22,8 @@ m4_define([OVS_TRAFFIC_VSWITCHD_START],
               [modprobe -q mod || echo "Module mod not loaded."
                on_exit 'modprobe -q -r mod'
               ])
-   on_exit 'ovs-dpctl del-dp ovs-system'
-   on_exit 'ovs-appctl dpctl/flush-conntrack'
+   on_exit 'ovs-dpctl show | grep ovs-system && ovs-dpctl del-dp ovs-system'
+   on_exit 'test -e $OVS_RUNDIR/ovs-vswitchd.pid && ovs-appctl dpctl/flush-conntrack'
    _OVS_VSWITCHD_START([])
    dnl Add bridges, ports, etc.
    AT_CHECK([ovs-vsctl -- _ADD_BR([br0]) -- $1 m4_if([$2], [], [], [| uuidfilt])], [0], [$2])
