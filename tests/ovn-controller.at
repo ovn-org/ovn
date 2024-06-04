@@ -2487,7 +2487,8 @@ check ovn-nbctl lsp-add ls-ext lsp-ext \
     -- lsp-set-addresses lsp-ext unknown
 check ovn-nbctl --wait=hv sync
 
-AT_CHECK([ovs-vsctl list-ports br-int | grep patch-br-int-to-lsp-ext], [0], [ignore])
+# Patch port might be created by ovn-controller after handling nb_cfg sync, if ovs db is busy handling command.
+OVS_WAIT_UNTIL([test 1 = $(ovs-vsctl list-ports br-int | grep patch-br-int-to-lsp-ext | wc -l)])
 
 # Stop ovn-controller
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
