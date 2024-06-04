@@ -6,6 +6,8 @@ ovn_init_ic_db
 ovn_start az1
 ovn_start az2
 
+OVS_WAIT_UNTIL([test 2 = `ovn-ic-sbctl show | wc -l`])
+
 check ovn-ic-nbctl --wait=sb sync
 AT_CHECK([ovn-ic-sbctl show], [0], [dnl
 availability-zone az1
