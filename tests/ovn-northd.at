@@ -12463,6 +12463,7 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 # This should result in recomputes.
 check ovn-sbctl set SB_Global . options:bar=foo
+check ovn-nbctl --wait=sb sync
 check_engine_stats global_config recompute compute
 check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
