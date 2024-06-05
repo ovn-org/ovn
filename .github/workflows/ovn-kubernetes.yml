@@ -81,9 +81,11 @@ jobs:
           - {"target": "shard-conformance", "ha": "HA",   "gateway-mode": "shared", "ipfamily": "ipv6",      "disable-snat-multiple-gws": "snatGW"}
           - {"target": "control-plane",     "ha": "HA",   "gateway-mode": "shared", "ipfamily": "ipv4",      "disable-snat-multiple-gws": "noSnatGW"}
           - {"target": "control-plane",     "ha": "HA",   "gateway-mode": "shared", "ipfamily": "ipv4",      "disable-snat-multiple-gws": "snatGW"}
+          - {"target": "kv-live-migration", "ha": "noHA", "gateway-mode": "local",  "ipfamily": "ipv4",      "disable-snat-multiple-gws": "SnatGW", "ic": "ic-disabled", "num-workers": "3"}
+          - {"target": "kv-live-migration", "ha": "noHA", "gateway-mode": "shared", "ipfamily": "dualstack", "disable-snat-multiple-gws": "SnatGW", "ic": "ic-single-node-zones", "num-workers": "3"}
     needs: [build]
     env:
-      JOB_NAME: "${{ matrix.target }}-${{ matrix.ha }}-${{ matrix.gateway-mode }}-${{ matrix.ipfamily }}-${{ matrix.disable-snat-multiple-gws }}-${{ matrix.second-bridge }}"
+      JOB_NAME: "${{ matrix.target }}-${{ matrix.ha }}-${{ matrix.gateway-mode }}-${{ matrix.ipfamily }}-${{ matrix.disable-snat-multiple-gws }}"
       OVN_HYBRID_OVERLAY_ENABLE: "${{ matrix.target == 'control-plane' }}"
       KIND_INSTALL_METALLB: "${{ matrix.target == 'control-plane' }}"
       OVN_MULTICAST_ENABLE:  "${{ matrix.target == 'control-plane' }}"
@@ -93,6 +95,10 @@ jobs:
       OVN_GATEWAY_MODE: "${{ matrix.gateway-mode }}"
       KIND_IPV4_SUPPORT: "${{ matrix.ipfamily == 'IPv4' || matrix.ipfamily == 'dualstack' }}"
       KIND_IPV6_SUPPORT: "${{ matrix.ipfamily == 'IPv6' || matrix.ipfamily == 'dualstack' }}"
+      ENABLE_MULTI_NET: "${{ matrix.target == 'multi-homing' || matrix.target == 'kv-live-migration' }}"
+      KIND_INSTALL_KUBEVIRT: "${{ matrix.target == 'kv-live-migration' }}"
+      OVN_ENABLE_INTERCONNECT: "${{ matrix.ic == 'ic-single-node-zones' ||  matrix.ic == 'ic-multi-node-zones'}}"
+      KIND_NUM_WORKER: "${{ matrix.num-workers }}"
     steps:
 
     - name: Check out ovn
@@ -151,7 +157,12 @@ jobs:
       # set 180 for control-plane tests as these might take a while
       timeout-minutes: ${{ matrix.target == 'control-plane' && 180 || 120 }}
       run: |
-        make -C test ${{ matrix.target }}
+        if [ "${{ matrix.target }}" == "kv-live-migration" ]; then
+          make -C test control-plane WHAT="Kubevirt Virtual Machines"
+        else
+          make -C test ${{ matrix.target }}
+          make -C test conformance
+        fi
       working-directory: src/github.com/ovn-org/ovn-kubernetes
 
     - name: Upload Junit Reports
