@@ -2809,11 +2809,11 @@
   </ul>
 
   <p>
-      When VXLAN is enabled on any hypervisor in a cluster, datapath and egress
-      port identifier ranges are reduced to 12-bits. This is done because only
-      STT and Geneve provide the large space for metadata (over 32 bits per
-      packet). To accommodate for VXLAN, 24 bits available are split as
-      follows:
+    When VXLAN is enabled on any hypervisor in a cluster, datapath and egress
+    port identifier ranges are reduced to 12-bits.  This is done because only
+    STT and Geneve provide the large space for metadata (over 32 bits per
+    packet).  The mode with reduced ranges is called <code>VXLAN mode</code>.
+    To accommodate for VXLAN, 24 bits available are split as follows:
   </p>
 
   <ul>

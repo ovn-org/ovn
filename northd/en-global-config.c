@@ -116,7 +116,8 @@ en_global_config_run(struct engine_node *node , void *data)
     }
 
     char *max_tunid = xasprintf("%d",
-        get_ovn_max_dp_key_local(sbrec_chassis_table));
+                                get_ovn_max_dp_key_local(
+                                    is_vxlan_mode(sbrec_chassis_table)));
     smap_replace(options, "max_tunid", max_tunid);
     free(max_tunid);
 

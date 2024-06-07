@@ -783,6 +783,9 @@ lr_has_multiple_gw_ports(const struct ovn_datapath *od)
     return od->n_l3dgw_ports > 1 && !od->is_gw_router;
 }
 
-uint32_t get_ovn_max_dp_key_local(const struct sbrec_chassis_table *);
+bool
+is_vxlan_mode(const struct sbrec_chassis_table *sbrec_chassis_table);
+
+uint32_t get_ovn_max_dp_key_local(bool _vxlan_mode);
 
 #endif /* NORTHD_H */
