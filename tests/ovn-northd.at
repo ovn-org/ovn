@@ -2873,6 +2873,35 @@ AT_CHECK([test $lsp02 = 3 && test $ls1 = 123])
 
 AT_CLEANUP
 ])
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([check VXLAN mode disabling])
+ovn_start
+
+# Create a fake chassis with vxlan encap to implicitly enable VXLAN mode.
+ovn-sbctl \
+    --id=@e create encap chassis_name=hv1 ip="192.168.0.1" type="vxlan" \
+    -- --id=@c create chassis name=hv1 encaps=@e
+
+cmd="ovn-nbctl --wait=sb"
+for i in {1..4097..1}; do
+    cmd="${cmd} -- ls-add lsw-${i}"
+done
+
+check $cmd
+
+check_row_count nb:Logical_Switch 4097
+wait_row_count sb:Datapath_Binding 4095
+
+OVS_WAIT_UNTIL([grep "all datapath tunnel ids exhausted" northd/ovn-northd.log])
+
+# Explicitly disable VXLAN mode and check that two remaining datapaths were created.
+check ovn-nbctl set NB_Global . options:vxlan_mode=false
+
+check_row_count nb:Logical_Switch 4097
+wait_row_count sb:Datapath_Binding 4097
+
+AT_CLEANUP
+])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check datapath tunnel ids exhaustion])

@@ -381,6 +381,16 @@
         of SB changes would be very noticeable.
       </column>
 
+      <column name="options" key="vxlan_mode">
+        By default if at least one chassis in OVN cluster has VXLAN encap,
+        northd will run in a <code>VXLAN mode</code>. See man
+        ovn-architecture(7) <code>Tunnel Encapsulations</code> paragraph for
+        more details.  In case VXLAN encaps are needed on chassis only to
+        support HW VTEP functionality and main encap type is GENEVE or STT, set
+        this option to <code>false</code> to use default
+        non-<code>VXLAN mode</code> tunnel IDs allocation logic.
+      </column>
+
       <group title="Options for configuring interconnection route advertisement">
         <p>
           These options control how routes are advertised between OVN

@@ -2920,4 +2920,10 @@
     the future, gateways that do not support encapsulations with large amounts
     of metadata may continue to have a reduced feature set.
   </p>
+  <p>
+    <code>VXLAN mode</code> is recommended to be disabled if VXLAN encap at
+    hypervisors is needed only to support HW VTEP L2 Gateway functionality.
+    See man ovn-nb(5) for table <code>NB_Global</code> column
+    <code>options</code> key <code>vxlan_mode</code> for more details.
+  </p>
 </manpage>
