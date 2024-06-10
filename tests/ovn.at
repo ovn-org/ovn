@@ -1315,6 +1315,9 @@ ct_commit { ct_label=0x181716151413121110090807060504030201; };
     141-bit constant is not compatible with 128-bit field ct_label.
 ct_commit { ip4.dst = 192.168.0.1; };
     Field ip4.dst is not modifiable.
+reg8[[17]] = 1; ct_commit { ct_mark.blocked = 1; };
+    encodes as set_field:0x2000000000000/0x2000000000000->xreg4,ct(commit,zone=NXM_NX_REG13[[0..15]],exec(set_field:0x1/0x1->ct_mark))
+    has prereqs ip
 
 # ct_commit_to_zone
 ct_commit_to_zone(dnat);

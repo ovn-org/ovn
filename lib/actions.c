@@ -760,6 +760,9 @@ encode_CT_COMMIT_V2(const struct ovnact_nest *on,
                     const struct ovnact_encode_params *ep OVS_UNUSED,
                     struct ofpbuf *ofpacts)
 {
+    size_t ct_offset = ofpacts->size;
+    ofpbuf_pull(ofpacts, ct_offset);
+
     struct ofpact_conntrack *ct = ofpact_put_CT(ofpacts);
     ct->flags = NX_CT_F_COMMIT;
     ct->recirc_table = NX_CT_RECIRC_NONE;
@@ -791,6 +794,7 @@ encode_CT_COMMIT_V2(const struct ovnact_nest *on,
     ofpacts->header = ofpbuf_push_uninit(ofpacts, set_field_offset);
     ct = ofpacts->header;
     ofpact_finish(ofpacts, &ct->ofpact);
+    ofpbuf_push_uninit(ofpacts, ct_offset);
 }
 
 static void
