@@ -59,6 +59,9 @@ Post v24.03.0
     - Add support for ACL sampling through the new Sample_Collector and Sample
     tables.  Sampling is supported for both traffic that creates new
     connections and for traffic that is part of an existing connection.
+  - Add "external_ids:ovn-encap-ip-default" config for ovn-controller to
+    determine the default encap IP when there are multiple encap IPs
+    configured.
 
 OVN v24.03.0 - 01 Mar 2024
 --------------------------

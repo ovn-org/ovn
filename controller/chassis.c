@@ -63,6 +63,8 @@ struct ovs_chassis_cfg {
     struct sset encap_type_set;
     /* Set of encap IPs parsed from the 'ovn-encap-ip' external-id. */
     struct sset encap_ip_set;
+    /* Default encap IP when there are two or more encap IPs. Optional. */
+    const char *encap_ip_default;
     /* Interface type list formatted in the OVN-SB Chassis required format. */
     struct ds iface_types;
     /* Is this chassis an interconnection gateway. */
@@ -283,6 +285,7 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
                          const struct ovsrec_bridge *br_int,
                          struct ovs_chassis_cfg *ovs_cfg)
 {
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
     const struct ovsrec_open_vswitch *cfg =
         ovsrec_open_vswitch_table_first(ovs_table);
 
@@ -300,7 +303,6 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
         get_chassis_external_id_value(&cfg->external_ids, chassis_id,
                                       "ovn-encap-ip", NULL);
     if (!encap_type || !encap_ips) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
         VLOG_INFO_RL(&rl, "Need to specify an encap type and ip");
         return false;
     }
@@ -335,6 +337,16 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
      * multiple NICs and is assigning SR-IOV VFs to a guest (as logical ports).
      */
     chassis_parse_ovs_encap_ip(encap_ips, &ovs_cfg->encap_ip_set);
+    const char *encap_ip_default =
+        get_chassis_external_id_value(&cfg->external_ids, chassis_id,
+                                      "ovn-encap-ip-default", NULL);
+    if (encap_ip_default &&
+        !sset_contains(&ovs_cfg->encap_ip_set, encap_ip_default)) {
+        VLOG_WARN_RL(&rl, "ovn-encap-ip-default (%s) must be one of the IPs "
+                     "in ovn-encap-ip.", encap_ip_default);
+        encap_ip_default = NULL;
+    }
+    ovs_cfg->encap_ip_default = encap_ip_default;
 
     chassis_parse_ovs_iface_types(cfg->iface_types, cfg->n_iface_types,
                                   &ovs_cfg->iface_types);
@@ -548,6 +560,7 @@ chassis_other_config_changed(const struct ovs_chassis_cfg *ovs_cfg,
 static bool
 chassis_tunnels_changed(const struct sset *encap_type_set,
                         const struct sset *encap_ip_set,
+                        const char *encap_ip_default,
                         const char *encap_csum,
                         const struct sbrec_chassis *chassis_rec)
 {
@@ -573,6 +586,19 @@ chassis_tunnels_changed(const struct sset *encap_type_set,
 
         if (strcmp(smap_get_def(&chassis_rec->encaps[i]->options, "csum", ""),
                    encap_csum)) {
+            changed = true;
+            break;
+        }
+
+        if (smap_get_bool(&chassis_rec->encaps[i]->options,
+                          "is_default", false)) {
+            if (!encap_ip_default || strcmp(encap_ip_default,
+                                            chassis_rec->encaps[i]->ip)) {
+                changed = true;
+                break;
+            }
+        } else if (encap_ip_default && !strcmp(encap_ip_default,
+                                               chassis_rec->encaps[i]->ip)) {
             changed = true;
             break;
         }
@@ -607,6 +633,7 @@ static struct sbrec_encap **
 chassis_build_encaps(struct ovsdb_idl_txn *ovnsb_idl_txn,
                      const struct sset *encap_type_set,
                      const struct sset *encap_ip_set,
+                     const char *encap_ip_default,
                      const char *chassis_id,
                      const char *encap_csum,
                      size_t *n_encap)
@@ -627,7 +654,15 @@ chassis_build_encaps(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
             sbrec_encap_set_type(encap, encap_type);
             sbrec_encap_set_ip(encap, encap_ip);
-            sbrec_encap_set_options(encap, &options);
+            if (encap_ip_default && !strcmp(encap_ip_default, encap_ip)) {
+                struct smap _options;
+                smap_clone(&_options, &options);
+                smap_add(&_options, "is_default", "true");
+                sbrec_encap_set_options(encap, &_options);
+                smap_destroy(&_options);
+            } else {
+                sbrec_encap_set_options(encap, &options);
+            }
             sbrec_encap_set_chassis_name(encap, chassis_id);
 
             encaps[tunnel_count] = encap;
@@ -763,7 +798,9 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
     /* If any of the encaps should change, update them. */
     bool tunnels_changed =
         chassis_tunnels_changed(&ovs_cfg->encap_type_set,
-                                &ovs_cfg->encap_ip_set, ovs_cfg->encap_csum,
+                                &ovs_cfg->encap_ip_set,
+                                ovs_cfg->encap_ip_default,
+                                ovs_cfg->encap_csum,
                                 chassis_rec);
     if (!tunnels_changed) {
         return updated;
@@ -774,7 +811,8 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
 
     encaps =
         chassis_build_encaps(ovnsb_idl_txn, &ovs_cfg->encap_type_set,
-                             &ovs_cfg->encap_ip_set, chassis_id,
+                             &ovs_cfg->encap_ip_set,
+                             ovs_cfg->encap_ip_default, chassis_id,
                              ovs_cfg->encap_csum, &n_encap);
     sbrec_chassis_set_encaps(chassis_rec, encaps, n_encap);
     free(encaps);

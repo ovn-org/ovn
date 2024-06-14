@@ -204,6 +204,12 @@
         </p>
       </dd>
 
+      <dt><code>external_ids:ovn-encap-ip-default</code></dt>
+      <dd>
+        When <code>ovn-encap-ip</code> contains multiple IPs, this field
+        indicates the default one.
+      </dd>
+
       <dt><code>external_ids:ovn-encap-df_default</code></dt>
       <dd>
         indicates the DF flag handling of the encapulation. Set to

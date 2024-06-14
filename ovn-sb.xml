@@ -543,6 +543,16 @@
       </p>
     </column>
 
+    <column name="options" key="is_default" type='{"type": "boolean"}'>
+      <p>
+        When there are multiple encaps for a chassis with different IPs, this
+        option indicates if the encap is the default one that matches the IP in
+        <ref table="Open_vSwitch" column="external_ids:ovn-encap-ip-default"/>
+        column of the Open_vSwitch database's <ref table="Open_vSwitch"
+        db="Open_vSwitch"/> table.
+      </p>
+    </column>
+
     <column name="ip">
       The IPv4 address of the encapsulation tunnel endpoint.
     </column>

@@ -30251,8 +30251,21 @@ check_packet_tunnel() {
     local dst_mac=f0:00:00:00:88:01 # lrp-ls1's MAC
     local src_ip=$(vif_to_ip vif$src)
     local dst_ip=$(vif_to_ip vif$dst)
-    local local_encap_ip=192.168.0.$src
-    local remote_encap_ip=192.168.0.$dst
+
+    local local_encap_ip
+    if test -n "$3"; then
+        local_encap_ip=$3
+    else
+        local_encap_ip=192.168.0.$src
+    fi
+
+    local remote_encap_ip
+    if test -n "$4"; then
+        remote_encap_ip=$4
+    else
+        remote_encap_ip=192.168.0.$dst
+    fi
+
     local packet=$(fmt_pkt "Ether(dst='${dst_mac}', src='${src_mac}')/ \
                             IP(dst='${dst_ip}', src='${src_ip}')/ \
                             ICMP(type=8)")
@@ -30266,6 +30279,26 @@ check_packet_tunnel() {
 for i in 1 2; do
     for j in 1 2; do
         check_packet_tunnel 1$i 2$j
+    done
+done
+
+# Set default encap-ip and remove VIF's encap-ip settings. Packets should go
+# through default encap-ip.
+
+for i in 1 2; do
+    as hv$i
+    check ovs-vsctl set open . external_ids:ovn-encap-ip-default=192.168.0.${i}2
+
+    for j in 1 2; do
+        check ovs-vsctl remove Interface vif$i$j external_ids encap-ip
+    done
+done
+
+check ovn-nbctl --wait=hv sync
+
+for i in 1 2; do
+    for j in 1 2; do
+        check_packet_tunnel 1$i 2$j 192.168.0.12 192.168.0.22
     done
 done
 

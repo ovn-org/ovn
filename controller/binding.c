@@ -520,20 +520,21 @@ static struct sbrec_encap *
 sbrec_get_port_encap(const struct sbrec_chassis *chassis_rec,
                      const struct ovsrec_interface *iface_rec)
 {
-
-    if (!iface_rec) {
+    if (chassis_rec->n_encaps < 2) {
         return NULL;
     }
 
-    const char *encap_ip = smap_get(&iface_rec->external_ids, "encap-ip");
-    if (!encap_ip) {
-        return NULL;
+    const char *encap_ip = NULL;
+    if (iface_rec) {
+        encap_ip = smap_get(&iface_rec->external_ids, "encap-ip");
     }
 
     struct sbrec_encap *best_encap = NULL;
     uint32_t best_type = 0;
     for (int i = 0; i < chassis_rec->n_encaps; i++) {
-        if (!strcmp(chassis_rec->encaps[i]->ip, encap_ip)) {
+        if ((encap_ip && !strcmp(chassis_rec->encaps[i]->ip, encap_ip)) ||
+            (!encap_ip && smap_get_bool(&chassis_rec->encaps[i]->options,
+                                        "is_default", false))) {
             uint32_t tun_type = get_tunnel_type(chassis_rec->encaps[i]->type);
             if (tun_type > best_type) {
                 best_type = tun_type;
