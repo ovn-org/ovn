@@ -31,6 +31,9 @@ Post v24.03.0
     has been renamed to "options:ic-route-denylist" in order to comply with
     inclusive language guidelines. The previous name is still recognized to
     aid with backwards compatibility.
+  - NATs can now be given an arbitrary match condition and priority. This
+    allows for conditional NATs to be configured. See the ovn-nb(5) man
+    page for more information.
 
 OVN v24.03.0 - 01 Mar 2024
 --------------------------
