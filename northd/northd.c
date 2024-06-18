@@ -806,12 +806,6 @@ ovn_datapath_is_stale(const struct ovn_datapath *od)
     return !od->nbr && !od->nbs;
 }
 
-static inline bool
-ovn_datapath_is_transit_switch(const struct ovn_datapath *od)
-{
-    return od->tunnel_key >= OVN_MIN_DP_KEY_GLOBAL;
-}
-
 static struct ovn_datapath *
 ovn_datapath_from_sbrec(const struct hmap *ls_datapaths,
                         const struct hmap *lr_datapaths,
