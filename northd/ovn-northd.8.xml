@@ -1956,13 +1956,13 @@ output;
       </li>
 
       <li>
-        Priority-90 flows for non-transit switches that forward registered
-        IP multicast traffic to their corresponding multicast group, which
-        <code>ovn-northd</code> creates based on learnt
-        <ref table="IGMP_Group" db="OVN_Southbound"/> entries.  The flows
-        also forward packets to the <code>MC_MROUTER_FLOOD</code> multicast
-        group, which <code>ovn-nortdh</code> populates with all the logical
-        ports that are connected to logical routers with
+        Priority-90 flows that forward registered IP multicast traffic to
+        their corresponding multicast group, which <code>ovn-northd</code>
+        creates based on learnt <ref table="IGMP_Group" db="OVN_Southbound"/>
+        entries.  The flows also forward packets to the
+        <code>MC_MROUTER_FLOOD</code> multicast group, which
+        <code>ovn-nortdh</code> populates with all the logical ports that
+        are connected to logical routers with
         <ref column="options" table="Logical_Router"/>:mcast_relay='true'.
       </li>
 
