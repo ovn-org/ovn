@@ -82,7 +82,6 @@ enum mff_log_flags_bits {
     MLF_LOCALNET_BIT = 15,
     MLF_RX_FROM_TUNNEL_BIT = 16,
     MLF_ICMP_SNAT_BIT = 17,
-    MLF_IGMP_IGMP_SNOOP_INJECT_BIT = 18,
 };
 
 /* MFF_LOG_FLAGS_REG flag assignments */
@@ -138,8 +137,6 @@ enum mff_log_flags {
     MLF_RX_FROM_TUNNEL = (1 << MLF_RX_FROM_TUNNEL_BIT),
 
     MLF_ICMP_SNAT = (1 << MLF_ICMP_SNAT_BIT),
-
-    MLF_IGMP_IGMP_SNOOP = (1 << MLF_IGMP_IGMP_SNOOP_INJECT_BIT),
 };
 
 /* OVN logical fields
