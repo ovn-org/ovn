@@ -719,8 +719,6 @@ pinctrl_forward_pkt(struct rconn *swconn, int64_t dp_key,
     put_load(dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
     put_load(in_port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
     put_load(out_port_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
-    /* Avoid re-injecting packet already consumed. */
-    put_load(1, MFF_LOG_FLAGS, MLF_IGMP_IGMP_SNOOP_INJECT_BIT, 1, &ofpacts);
 
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
