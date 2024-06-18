@@ -5434,13 +5434,11 @@ ovn_igmp_group_get_ports(const struct sbrec_igmp_group *sb_igmp_group,
             continue;
         }
 
-        /* If this is already a port of a router on which relay is enabled
-         * and it's not a transit switch to router port, skip it for the
-         * group.  Traffic is flooded there anyway.
+        /* If this is already a port of a router on which relay is enabled,
+         * skip it for the group. Traffic is flooded there anyway.
          */
         if (port->peer && port->peer->od &&
-                port->peer->od->mcast_info.rtr.relay &&
-                !ovn_datapath_is_transit_switch(port->od)) {
+                port->peer->od->mcast_info.rtr.relay) {
             continue;
         }
 
