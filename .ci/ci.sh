@@ -16,7 +16,6 @@
 
 OVN_PATH=${OVN_PATH:-$PWD}
 OVS_PATH=${OVS_PATH:-$OVN_PATH/ovs}
-DPDK_PATH=${DPDK_PATH:-$OVN_PATH/dpdk-dir}
 CONTAINER_CMD=${CONTAINER_CMD:-podman}
 CONTAINER_WORKSPACE="/workspace"
 CONTAINER_WORKDIR="/workspace/ovn-tmp"
@@ -163,17 +162,12 @@ if [ "$ARCH" = "aarch64" ] && ! check_clang_version_ge "16.0.0"; then
     ASAN_OPTIONS="detect_leaks=0"
 fi
 
-if [ -z "$DPDK" ]; then
-   mkdir -p "$DPDK_PATH"
-fi
-
 CONTAINER_ID="$($CONTAINER_CMD run --privileged -d \
     --pids-limit=-1 \
     --env ASAN_OPTIONS=$ASAN_OPTIONS \
     -v /lib/modules/$(uname -r):/lib/modules/$(uname -r):ro \
     -v $OVN_PATH:$CONTAINER_WORKSPACE/ovn:Z \
     -v $OVS_PATH:$CONTAINER_WORKSPACE/ovs:Z \
-    -v $DPDK_PATH:$CONTAINER_WORKSPACE/dpdk-dir:Z \
     $IMAGE_NAME)"
 trap remove_container EXIT
 

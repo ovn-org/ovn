@@ -33,6 +33,7 @@ RUN apt update -y \
         llvm-dev \
         ncat \
         net-tools \
+        ninja-build \
         python3-dev \
         python3-pip \
         selinux-policy-dev \

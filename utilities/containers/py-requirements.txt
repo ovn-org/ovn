@@ -1,4 +1,5 @@
 flake8>=6.1.0
+meson>=1.4,<1.5
 scapy
 sphinx
 setuptools

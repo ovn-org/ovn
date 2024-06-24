@@ -15,10 +15,10 @@ function install_dpdk()
 {
     local DPDK_INSTALL_DIR="$(pwd)/dpdk-dir"
     local VERSION_FILE="${DPDK_INSTALL_DIR}/cached-version"
-    local DPDK_LIB=${DPDK_INSTALL_DIR}/lib/x86_64-linux-gnu
+    local DPDK_PC=$(find $DPDK_INSTALL_DIR -type f -name libdpdk-libs.pc)
 
     # Export the following path for pkg-config to find the .pc file.
-    export PKG_CONFIG_PATH=$DPDK_LIB/pkgconfig/:$PKG_CONFIG_PATH
+    export PKG_CONFIG_PATH="$(dirname $DPDK_PC):$PKG_CONFIG_PATH"
 
     if [ ! -f "${VERSION_FILE}" ]; then
         echo "Could not find DPDK in $DPDK_INSTALL_DIR"
@@ -26,8 +26,7 @@ function install_dpdk()
     fi
 
     # As we build inside a container we need to update the prefix.
-    sed -i -E "s|^prefix=.*|prefix=${DPDK_INSTALL_DIR}|" \
-        "$DPDK_LIB/pkgconfig/libdpdk-libs.pc"
+    sed -i -E "s|^prefix=.*|prefix=${DPDK_INSTALL_DIR}|" $DPDK_PC
 
     # Update the library paths.
     sudo ldconfig

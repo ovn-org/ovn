@@ -12,74 +12,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-dpdk:
-    env:
-      dependencies: gcc libnuma-dev ninja-build
-      CC: gcc
-      DPDK_GIT: https://dpdk.org/git/dpdk
-      DPDK_VER: 23.11
-    name: dpdk gcc
-    outputs:
-      dpdk_key: ${{ steps.gen_dpdk_key.outputs.key }}
-    runs-on: ubuntu-20.04
-    timeout-minutes: 30
-
-    steps:
-    - name: checkout
-      uses: actions/checkout@v4
-
-    - name: update PATH
-      run: |
-        echo "$HOME/bin"        >> $GITHUB_PATH
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-    - name: create ci signature file for the dpdk cache key
-      # This will collect most of DPDK related lines, so hash will be different
-      # if something changed in a way we're building DPDK including DPDK_VER.
-      # This also allows us to use cache from any branch as long as version
-      # and a way we're building DPDK stays the same.
-      run: |
-        grep -irE 'RTE_|DPDK|meson|ninja' .ci/dpdk-* > dpdk-ci-signature
-        grep -rwE 'DPDK_GIT|DPDK_VER' .github/ >> dpdk-ci-signature
-        if [ "${DPDK_VER##refs/*/}" != "${DPDK_VER}" ]; then
-            git ls-remote --heads $DPDK_GIT $DPDK_VER >> dpdk-ci-signature
-        fi
-        cat dpdk-ci-signature
-
-    - name: generate ci DPDK key
-      id: gen_dpdk_key
-      env:
-        ci_key: ${{ hashFiles('dpdk-ci-signature') }}
-      run: echo 'key=dpdk-${{ env.ci_key }}' >> $GITHUB_OUTPUT
-
-    - name: cache
-      id: dpdk_cache
-      uses: actions/cache@v4
-      with:
-        path: dpdk-dir
-        key: ${{ steps.gen_dpdk_key.outputs.key }}
-
-    - name: set up python
-      if: steps.dpdk_cache.outputs.cache-hit != 'true'
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.9'
-
-    - name: update APT cache
-      if: steps.dpdk_cache.outputs.cache-hit != 'true'
-      run: sudo apt update || true
-    - name: install common dependencies
-      if: steps.dpdk_cache.outputs.cache-hit != 'true'
-      run: sudo apt install -y ${{ env.dependencies }}
-
-    - name: prepare
-      if: steps.dpdk_cache.outputs.cache-hit != 'true'
-      run: ./.ci/dpdk-prepare.sh
-
-    - name: build
-      if: steps.dpdk_cache.outputs.cache-hit != 'true'
-      run: ./.ci/dpdk-build.sh
-
   prepare-container:
     # This job has the following matrix, x: Job trigger, y: Branch
     # (scheduled jobs run only on main):
@@ -93,7 +25,7 @@ jobs:
     env:
       DEPENDENCIES: podman
     name: Prepare container
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
@@ -124,7 +56,7 @@ jobs:
         run: podman pull ghcr.io/ovn-org/ovn-tests:${{ env.IMAGE_DISTRO }}
 
       - name: Export image
-        run: podman save -o /tmp/image.tar ovn-org/ovn-tests
+        run: podman save -o /tmp/image.tar ovn-org/ovn-tests:${{ env.IMAGE_DISTRO }}
 
       - name: Cache image
         id: image_cache
@@ -134,7 +66,7 @@ jobs:
           key: ${{ github.sha }}/${{ github.event_name }}
 
   build-linux:
-    needs: [build-dpdk, prepare-container]
+    needs: [prepare-container]
     env:
       ARCH:        ${{ matrix.cfg.arch }}
       CC:          ${{ matrix.cfg.compiler }}
@@ -203,13 +135,6 @@ jobs:
           $(git branch -a -l '*branch-*' | sed 's/remotes\/origin\///' | \
             sort -V | tail -1)
       working-directory: ovs
-
-    - name: cache dpdk
-      if: matrix.cfg.dpdk != ''
-      uses: actions/cache@v4
-      with:
-        path: dpdk-dir
-        key: ${{ needs.build-dpdk.outputs.dpdk_key }}
 
     - name: image cache
       id: image_cache
