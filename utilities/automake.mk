@@ -41,6 +41,7 @@ EXTRA_DIST += \
     utilities/checkpatch.py \
     utilities/containers/Makefile \
     utilities/containers/py-requirements.txt \
+    utilities/containers/prepare.sh \
     utilities/containers/fedora/Dockerfile \
     utilities/containers/ubuntu/Dockerfile \
     utilities/docker/Makefile \
