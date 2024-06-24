@@ -42,6 +42,7 @@ EXTRA_DIST += \
     utilities/containers/Makefile \
     utilities/containers/openbfdd.patch \
     utilities/containers/py-requirements.txt \
+    utilities/containers/prepare.sh \
     utilities/containers/fedora/Dockerfile \
     utilities/containers/ubuntu/Dockerfile \
     utilities/docker/Makefile \
