@@ -7691,7 +7691,7 @@ nbctl_mirror_add(struct ctl_context *ctx)
     const char *sink = NULL;
     const char *type = NULL;
     const char *name = NULL;
-    int64_t index;
+    int64_t index = -1;
     char *error = NULL;
     const struct nbrec_mirror *mirror_check = NULL;
     int pos = 1;
@@ -7824,8 +7824,10 @@ nbctl_mirror_list(struct ctl_context *ctx)
         ds_put_format(&ctx->output, "  Type     :  %s\n", mirror->type);
         ds_put_format(&ctx->output, "  Sink     :  %s\n", mirror->sink);
         ds_put_format(&ctx->output, "  Filter   :  %s\n", mirror->filter);
-        ds_put_format(&ctx->output, "  Index/Key:  %ld\n",
-                      (long int) mirror->index);
+        if (strcmp(mirror->type, "local")) {
+            ds_put_format(&ctx->output, "  Index/Key:  %"PRId64"\n",
+                          mirror->index);
+        }
         ds_put_cstr(&ctx->output, "\n");
     }
 

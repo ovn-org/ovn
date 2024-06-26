@@ -452,6 +452,7 @@ OVN_NBCTL_TEST([ovn_nbctl_mirrors], [mirrors], [
 check ovn-nbctl mirror-add mirror1 gre 0 from-lport 10.10.10.1
 check ovn-nbctl mirror-add mirror2 erspan 1 to-lport 10.10.10.2
 check ovn-nbctl mirror-add mirror3 gre 2 to-lport 10.10.10.3
+check ovn-nbctl mirror-add mirror-local local both 10.10.10.3
 check ovn-nbctl ls-add sw0
 check ovn-nbctl lsp-add sw0 sw0-port1
 check ovn-nbctl lsp-add sw0 sw0-port2
@@ -480,6 +481,11 @@ check_column "$mirror3uuid" nb:Logical_Switch_Port mirror_rules name=sw0-port3
 
 dnl Verify if multiple ports are attached to the same mirror properly
 AT_CHECK([ovn-nbctl mirror-list], [0], [dnl
+mirror-local:
+  Type     :  local
+  Sink     :  10.10.10.3
+  Filter   :  both
+
 mirror1:
   Type     :  gre
   Sink     :  10.10.10.1
@@ -499,6 +505,9 @@ mirror3:
   Index/Key:  2
 
 ])
+
+dnl Remove the local mirror
+check ovn-nbctl mirror-del mirror-local
 
 dnl Detach one source port from mirror
 check ovn-nbctl lsp-detach-mirror sw0-port3 mirror3
