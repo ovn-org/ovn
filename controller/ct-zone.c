@@ -27,6 +27,11 @@ ct_zone_restore(const struct sbrec_datapath_binding_table *dp_table,
 static void ct_zone_add_pending(struct shash *pending_ct_zones,
                                 enum ct_zone_pending_state state,
                                 int zone, bool add, const char *name);
+static int ct_zone_get_snat(const struct sbrec_datapath_binding *dp);
+static bool ct_zone_assign_unused(struct ct_zone_ctx *ctx,
+                                  const char *zone_name, int *scan_start);
+static bool ct_zone_remove(struct ct_zone_ctx *ctx,
+                           struct simap_node *ct_zone);
 
 void
 ct_zones_restore(struct ct_zone_ctx *ctx,
@@ -82,47 +87,6 @@ ct_zones_restore(struct ct_zone_ctx *ctx,
     }
 }
 
-bool
-ct_zone_assign_unused(struct ct_zone_ctx *ctx, const char *zone_name,
-                      int *scan_start)
-{
-    /* We assume that there are 64K zones and that we own them all. */
-    int zone = bitmap_scan(ctx->bitmap, 0, *scan_start, MAX_CT_ZONES + 1);
-    if (zone == MAX_CT_ZONES + 1) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-        VLOG_WARN_RL(&rl, "exhausted all ct zones");
-        return false;
-    }
-
-    *scan_start = zone + 1;
-
-    ct_zone_add_pending(&ctx->pending, CT_ZONE_OF_QUEUED,
-                        zone, true, zone_name);
-
-    bitmap_set1(ctx->bitmap, zone);
-    simap_put(&ctx->current, zone_name, zone);
-    return true;
-}
-
-bool
-ct_zone_remove(struct ct_zone_ctx *ctx, const char *name)
-{
-    struct simap_node *ct_zone = simap_find(&ctx->current, name);
-    if (!ct_zone) {
-        return false;
-    }
-
-    VLOG_DBG("removing ct zone %"PRId32" for '%s'", ct_zone->data,
-             ct_zone->name);
-
-    ct_zone_add_pending(&ctx->pending, CT_ZONE_OF_QUEUED,
-                        ct_zone->data, false, ct_zone->name);
-    bitmap_set0(ctx->bitmap, ct_zone->data);
-    simap_delete(&ctx->current, ct_zone);
-
-    return true;
-}
-
 void
 ct_zones_update(const struct sset *local_lports,
                 const struct hmap *local_datapaths, struct ct_zone_ctx *ctx)
@@ -170,7 +134,7 @@ ct_zones_update(const struct sset *local_lports,
     /* Delete zones that do not exist in above sset. */
     SIMAP_FOR_EACH_SAFE (ct_zone, &ctx->current) {
         if (!sset_contains(&all_users, ct_zone->name)) {
-            ct_zone_remove(ctx, ct_zone->name);
+            ct_zone_remove(ctx, ct_zone);
         } else if (!simap_find(&req_snat_zones, ct_zone->name)) {
             bitmap_set1(unreq_snat_zones_map, ct_zone->data);
             simap_put(&unreq_snat_zones, ct_zone->name, ct_zone->data);
@@ -277,12 +241,6 @@ ct_zones_commit(const struct ovsrec_bridge *br_int,
     }
 }
 
-int
-ct_zone_get_snat(const struct sbrec_datapath_binding *dp)
-{
-    return smap_get_int(&dp->external_ids, "snat-ct-zone", -1);
-}
-
 void
 ct_zones_pending_clear_commited(struct shash *pending)
 {
@@ -294,6 +252,108 @@ ct_zones_pending_clear_commited(struct shash *pending)
             free(ctzpe);
         }
     }
+}
+
+/* Returns "true" when there is no need for full recompute. */
+bool
+ct_zone_handle_dp_update(struct ct_zone_ctx *ctx,
+                         const struct sbrec_datapath_binding *dp)
+{
+    int req_snat_zone = ct_zone_get_snat(dp);
+    if (req_snat_zone == -1) {
+        /* datapath snat ct zone is not set.  This condition will also hit
+         * when CMS clears the snat-ct-zone for the logical router.
+         * In this case there is no harm in using the previosly specified
+         * snat ct zone for this datapath.  Also it is hard to know
+         * if this option was cleared or if this option is never set. */
+        return true;
+    }
+
+    const char *name = smap_get(&dp->external_ids, "name");
+    if (!name) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_ERR_RL(&rl, "Missing name for datapath '"UUID_FMT"' skipping"
+                    "zone check.", UUID_ARGS(&dp->header_.uuid));
+        return true;
+    }
+
+    /* Check if the requested snat zone has changed for the datapath
+     * or not.  If so, then fall back to full recompute of
+     * ct_zone engine. */
+    char *snat_dp_zone_key = alloc_nat_zone_key(name, "snat");
+    struct simap_node *simap_node =
+            simap_find(&ctx->current, snat_dp_zone_key);
+    free(snat_dp_zone_key);
+    if (!simap_node || simap_node->data != req_snat_zone) {
+        /* There is no entry yet or the requested snat zone has changed.
+         * Trigger full recompute of ct_zones engine. */
+        return false;
+    }
+
+    return true;
+}
+
+/* Returns "true" if there was an update to the context. */
+bool
+ct_zone_handle_port_update(struct ct_zone_ctx *ctx, const char *name,
+                           bool updated, int *scan_start)
+{
+    struct simap_node *ct_zone = simap_find(&ctx->current, name);
+    if (updated && !ct_zone) {
+        ct_zone_assign_unused(ctx, name, scan_start);
+        return true;
+    } else if (!updated && ct_zone_remove(ctx, ct_zone)) {
+        return true;
+    }
+
+    return false;
+}
+
+
+static bool
+ct_zone_assign_unused(struct ct_zone_ctx *ctx, const char *zone_name,
+                      int *scan_start)
+{
+    /* We assume that there are 64K zones and that we own them all. */
+    int zone = bitmap_scan(ctx->bitmap, 0, *scan_start, MAX_CT_ZONES + 1);
+    if (zone == MAX_CT_ZONES + 1) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "exhausted all ct zones");
+        return false;
+    }
+
+    *scan_start = zone + 1;
+
+    ct_zone_add_pending(&ctx->pending, CT_ZONE_OF_QUEUED,
+                        zone, true, zone_name);
+
+    bitmap_set1(ctx->bitmap, zone);
+    simap_put(&ctx->current, zone_name, zone);
+    return true;
+}
+
+static bool
+ct_zone_remove(struct ct_zone_ctx *ctx, struct simap_node *ct_zone)
+{
+    if (!ct_zone) {
+        return false;
+    }
+
+    VLOG_DBG("removing ct zone %"PRId32" for '%s'", ct_zone->data,
+             ct_zone->name);
+
+    ct_zone_add_pending(&ctx->pending, CT_ZONE_OF_QUEUED,
+                        ct_zone->data, false, ct_zone->name);
+    bitmap_set0(ctx->bitmap, ct_zone->data);
+    simap_delete(&ctx->current, ct_zone);
+
+    return true;
+}
+
+static int
+ct_zone_get_snat(const struct sbrec_datapath_binding *dp)
+{
+    return smap_get_int(&dp->external_ids, "snat-ct-zone", -1);
 }
 
 static void

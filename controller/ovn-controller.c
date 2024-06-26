@@ -2262,34 +2262,7 @@ ct_zones_datapath_binding_handler(struct engine_node *node, void *data)
             return false;
         }
 
-        int req_snat_zone = ct_zone_get_snat(dp);
-        if (req_snat_zone == -1) {
-            /* datapath snat ct zone is not set.  This condition will also hit
-             * when CMS clears the snat-ct-zone for the logical router.
-             * In this case there is no harm in using the previosly specified
-             * snat ct zone for this datapath.  Also it is hard to know
-             * if this option was cleared or if this option is never set. */
-            continue;
-        }
-
-        /* Check if the requested snat zone has changed for the datapath
-         * or not.  If so, then fall back to full recompute of
-         * ct_zone engine. */
-        const char *name = smap_get(&dp->external_ids, "name");
-        if (!name) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_ERR_RL(&rl, "Missing name for datapath '"UUID_FMT"' skipping"
-                        "zone check.", UUID_ARGS(&dp->header_.uuid));
-            continue;
-        }
-
-        char *snat_dp_zone_key = alloc_nat_zone_key(name, "snat");
-        struct simap_node *simap_node = simap_find(&ct_zones_data->ctx.current,
-                                                   snat_dp_zone_key);
-        free(snat_dp_zone_key);
-        if (!simap_node || simap_node->data != req_snat_zone) {
-            /* There is no entry yet or the requested snat zone has changed.
-             * Trigger full recompute of ct_zones engine. */
+        if (!ct_zone_handle_dp_update(&ct_zones_data->ctx, dp)) {
             return false;
         }
     }
@@ -2334,21 +2307,12 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
                 continue;
             }
 
-            if (t_lport->tracked_type == TRACKED_RESOURCE_NEW ||
-                t_lport->tracked_type == TRACKED_RESOURCE_UPDATED) {
-                if (!simap_contains(&ct_zones_data->ctx.current,
-                                    t_lport->pb->logical_port)) {
-                    ct_zone_assign_unused(&ct_zones_data->ctx,
-                                          t_lport->pb->logical_port,
-                                          &scan_start);
-                    updated = true;
-                }
-            } else if (t_lport->tracked_type == TRACKED_RESOURCE_REMOVED) {
-                if (ct_zone_remove(&ct_zones_data->ctx,
-                                   t_lport->pb->logical_port)) {
-                    updated = true;
-                }
-            }
+            bool port_updated =
+                    t_lport->tracked_type == TRACKED_RESOURCE_NEW ||
+                    t_lport->tracked_type == TRACKED_RESOURCE_UPDATED;
+            updated |= ct_zone_handle_port_update(&ct_zones_data->ctx,
+                                                  t_lport->pb->logical_port,
+                                                  port_updated, &scan_start);
         }
     }
 

@@ -60,15 +60,15 @@ void ct_zones_restore(struct ct_zone_ctx *ctx,
                       const struct ovsrec_open_vswitch_table *ovs_table,
                       const struct sbrec_datapath_binding_table *dp_table,
                       const struct ovsrec_bridge *br_int);
-bool ct_zone_assign_unused(struct ct_zone_ctx *ctx, const char *zone_name,
-                           int *scan_start);
-bool ct_zone_remove(struct ct_zone_ctx *ctx, const char *name);
 void ct_zones_update(const struct sset *local_lports,
                      const struct hmap *local_datapaths,
                      struct ct_zone_ctx *ctx);
 void ct_zones_commit(const struct ovsrec_bridge *br_int,
                      struct shash *pending_ct_zones);
-int ct_zone_get_snat(const struct sbrec_datapath_binding *dp);
 void ct_zones_pending_clear_commited(struct shash *pending);
+bool ct_zone_handle_dp_update(struct ct_zone_ctx *ctx,
+                              const struct sbrec_datapath_binding *dp);
+bool ct_zone_handle_port_update(struct ct_zone_ctx *ctx, const char *name,
+                                bool updated, int *scan_start);
 
 #endif /* controller/ct-zone.h */
