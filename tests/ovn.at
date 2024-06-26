@@ -34395,21 +34395,21 @@ AT_CHECK([ovn-nbctl --wait=hv sync])
 # Learning is disabled, the table should be empty
 send_packet 20
 AT_CHECK([ovn-nbctl --wait=hv sync])
-AT_CHECK([test $(ovn-sbctl list fdb | grep -c "00:00:00:00:10:20") = 0])
+OVS_WAIT_UNTIL([test $(ovn-sbctl list fdb | grep -c "00:00:00:00:10:20") = 0])
 
 # Enable learning on localnet port
 AT_CHECK([ovn-nbctl set logical_switch_port ln_port options:localnet_learn_fdb=true])
 AT_CHECK([ovn-nbctl --wait=hv sync])
 send_packet 20
 AT_CHECK([ovn-nbctl --wait=hv sync])
-AT_CHECK([test $(ovn-sbctl list fdb | grep -c "00:00:00:00:10:20") = 1])
+OVS_WAIT_UNTIL([test $(ovn-sbctl list fdb | grep -c "00:00:00:00:10:20") = 1])
 
 # Disable learning on localnet port
 AT_CHECK([ovn-nbctl set logical_switch_port ln_port options:localnet_learn_fdb=false])
 AT_CHECK([ovn-nbctl --wait=hv sync])
 send_packet 30
 AT_CHECK([ovn-nbctl --wait=hv sync])
-AT_CHECK([test $(ovn-sbctl list fdb | grep -c "00:00:00:00:10:30") = 0])
+OVS_WAIT_UNTIL([test $(ovn-sbctl list fdb | grep -c "00:00:00:00:10:30") = 0])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

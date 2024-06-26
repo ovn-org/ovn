@@ -4737,6 +4737,7 @@ pinctrl_destroy(void)
 /* Buffered "put_mac_binding" operation. */
 
 #define MAX_MAC_BINDING_DELAY_MSEC 50
+#define MAX_FDB_DELAY_MSEC         50
 #define MAX_MAC_BINDINGS           1000
 
 /* Contains "struct mac_binding"s. */
@@ -8958,21 +8959,30 @@ run_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn,
         return;
     }
 
-    const struct fdb *fdb;
-    HMAP_FOR_EACH (fdb, hmap_node, &put_fdbs) {
-        run_put_fdb(ovnsb_idl_txn, sbrec_fdb_by_dp_key_mac,
-                    sbrec_port_binding_by_key,
-                    sbrec_datapath_binding_by_key, fdb);
+    long long now = time_msec();
+    struct fdb *fdb;
+    HMAP_FOR_EACH_SAFE (fdb, hmap_node, &put_fdbs) {
+        if (now >= fdb->timestamp) {
+            run_put_fdb(ovnsb_idl_txn, sbrec_fdb_by_dp_key_mac,
+                        sbrec_port_binding_by_key,
+                        sbrec_datapath_binding_by_key, fdb);
+            fdb_remove(&put_fdbs, fdb);
+        }
     }
-    fdbs_clear(&put_fdbs);
 }
 
 
 static void
 wait_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn)
+    OVS_REQUIRES(pinctrl_mutex)
 {
-    if (ovnsb_idl_txn && !hmap_is_empty(&put_fdbs)) {
-        poll_immediate_wake();
+    if (!ovnsb_idl_txn) {
+        return;
+    }
+
+    struct fdb *fdb;
+    HMAP_FOR_EACH (fdb, hmap_node, &put_fdbs) {
+        poll_timer_wait_until(fdb->timestamp);
     }
 }
 
@@ -8992,6 +9002,8 @@ pinctrl_handle_put_fdb(const struct flow *md, const struct flow *headers)
             .mac = headers->dl_src,
     };
 
-    fdb_add(&put_fdbs, fdb_data);
+    uint32_t delay = random_range(MAX_FDB_DELAY_MSEC) + 1;
+    long long timestamp = time_msec() + delay;
+    fdb_add(&put_fdbs, fdb_data, timestamp);
     notify_pinctrl_main();
 }

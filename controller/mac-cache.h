@@ -83,6 +83,7 @@ struct fdb {
     struct fdb_data data;
     /* Reference to the SB FDB record. */
     const struct sbrec_fdb *sbrec_fdb;
+    long long timestamp;
 };
 
 struct bp_packet_data {
@@ -149,7 +150,8 @@ mac_binding_lookup(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
                    const char *logical_port, const char *ip);
 
 /* FDB. */
-struct fdb *fdb_add(struct hmap *map, struct fdb_data fdb_data);
+struct fdb *fdb_add(struct hmap *map, struct fdb_data fdb_data,
+                    long long timestamp);
 
 void fdb_remove(struct hmap *map, struct fdb *fdb);
 

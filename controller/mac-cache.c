@@ -245,7 +245,8 @@ mac_binding_lookup(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
 
 /* FDB. */
 struct fdb *
-fdb_add(struct hmap *map, struct fdb_data fdb_data) {
+fdb_add(struct hmap *map, struct fdb_data fdb_data, long long timestamp)
+{
     struct fdb *fdb = fdb_find(map, &fdb_data);
 
     if (!fdb) {
@@ -255,6 +256,7 @@ fdb_add(struct hmap *map, struct fdb_data fdb_data) {
     }
 
     fdb->data = fdb_data;
+    fdb->timestamp = timestamp;
 
     return fdb;
 }

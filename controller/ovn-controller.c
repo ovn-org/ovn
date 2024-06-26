@@ -3323,7 +3323,7 @@ fdb_add_sb(struct mac_cache_data *data, const struct sbrec_fdb *sfdb)
         return;
     }
 
-    struct fdb *fdb = fdb_add(&data->fdbs, fdb_data);
+    struct fdb *fdb = fdb_add(&data->fdbs, fdb_data, 0);
 
     fdb->sbrec_fdb = sfdb;
 }
