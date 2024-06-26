@@ -330,7 +330,8 @@ aging_context_handle_timestamp(struct aging_context *ctx, int64_t timestamp,
     }
 
     ovs_assert(ctx->threshold);
-    uint64_t threshold = 1000 * find_threshold_for_ip(ip, ctx->threshold);
+    uint64_t threshold =
+            1000 * (uint64_t) find_threshold_for_ip(ip, ctx->threshold);
 
     if (!threshold) {
         return false;
