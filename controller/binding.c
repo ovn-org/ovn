@@ -401,7 +401,7 @@ configure_qos(const struct sbrec_port_binding *pb,
                     q->queue_id = queue_id;
                 }
                 free(q->network);
-                q->network = network ? xstrdup(network) : NULL;
+                q->network = xstrdup(network);
                 q->min_rate = min_rate;
                 q->max_rate = max_rate;
                 q->burst = burst;

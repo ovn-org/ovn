@@ -4589,8 +4589,7 @@ lflow_output_lb_data_handler(struct engine_node *node, void *data)
     bool handled = lflow_handle_changed_lbs(&l_ctx_in, &l_ctx_out,
                                             &lb_data->deleted,
                                             &lb_data->updated,
-                                            &lb_data->new,
-                                            &lb_data->old_lbs);
+                                            &lb_data->new);
 
     engine_set_node_state(node, EN_UPDATED);
     return handled;

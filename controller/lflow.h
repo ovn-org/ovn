@@ -178,8 +178,7 @@ bool lflow_handle_changed_lbs(struct lflow_ctx_in *l_ctx_in,
                               struct lflow_ctx_out *l_ctx_out,
                               const struct uuidset *deleted_lbs,
                               const struct uuidset *updated_lbs,
-                              const struct uuidset *new_lbs,
-                              const struct hmap *old_lbs);
+                              const struct uuidset *new_lbs);
 bool lflow_handle_changed_fdbs(struct lflow_ctx_in *, struct lflow_ctx_out *);
 void lflow_destroy(void);
 

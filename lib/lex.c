@@ -644,7 +644,6 @@ next:
                     p++;
                 }
             }
-            goto next;
         } else {
             lex_error(token,
                       "`/' is only valid as part of `//' or `/*'.");

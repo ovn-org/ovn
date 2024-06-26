@@ -2388,15 +2388,12 @@ lflow_handle_changed_lbs(struct lflow_ctx_in *l_ctx_in,
                          struct lflow_ctx_out *l_ctx_out,
                          const struct uuidset *deleted_lbs,
                          const struct uuidset *updated_lbs,
-                         const struct uuidset *new_lbs,
-                         const struct hmap *old_lbs)
+                         const struct uuidset *new_lbs)
 {
     const struct ovn_controller_lb *lb;
 
     struct uuidset_node *uuid_node;
     UUIDSET_FOR_EACH (uuid_node, deleted_lbs) {
-        lb = ovn_controller_lb_find(old_lbs, &uuid_node->uuid);
-
         VLOG_DBG("Remove hairpin flows for deleted load balancer "UUID_FMT,
                  UUID_ARGS(&uuid_node->uuid));
         ofctrl_remove_flows(l_ctx_out->flow_table, &uuid_node->uuid);

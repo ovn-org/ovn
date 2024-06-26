@@ -4507,17 +4507,11 @@ ipv6_ra_send(struct rconn *swconn, struct ipv6_ra_state *ra)
 
     uint64_t packet_stub[128 / 8];
     struct dp_packet packet;
-    uint16_t router_lt = IPV6_ND_RA_LIFETIME;
-
-    if (!router_lt) {
-        /* Reset PRF to MEDIUM if router lifetime is not set */
-        ra->config->mo_flags &= ~IPV6_ND_RA_OPT_PRF_LOW;
-    }
 
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
     compose_nd_ra(&packet, ra->config->eth_src, ra->config->eth_dst,
             &ra->config->ipv6_src, &ra->config->ipv6_dst,
-            255, ra->config->mo_flags, htons(router_lt), 0, 0,
+            255, ra->config->mo_flags, htons(IPV6_ND_RA_LIFETIME), 0, 0,
             ra->config->mtu);
 
     for (int i = 0; i < ra->config->prefixes.n_ipv6_addrs; i++) {

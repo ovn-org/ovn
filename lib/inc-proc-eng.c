@@ -131,7 +131,6 @@ engine_dump_stats(struct unixctl_conn *conn, int argc,
     const char *dump_eng_node_name = (argc > 1 ? argv[1] : NULL);
     const char *dump_stat_type = (argc > 2 ? argv[2] : NULL);
 
-    bool success = true;
     for (size_t i = 0; i < engine_n_nodes; i++) {
         struct engine_node *node = engine_nodes[i];
 
@@ -163,11 +162,8 @@ engine_dump_stats(struct unixctl_conn *conn, int argc,
             break;
         }
     }
-    if (success) {
-        unixctl_command_reply(conn, ds_cstr(&dump));
-    } else {
-        unixctl_command_reply_error(conn, "Invalid stat type");
-    }
+
+    unixctl_command_reply(conn, ds_cstr(&dump));
 
     ds_destroy(&dump);
 }

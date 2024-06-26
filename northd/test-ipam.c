@@ -38,7 +38,6 @@ test_ipam_get_unused_ip(struct ovs_cmdl_context *ctx)
     }
     init_ipam_info(&info, &config, "Unused IP test");
 
-    bool fail = false;
     struct ds output = DS_EMPTY_INITIALIZER;
     struct ds err = DS_EMPTY_INITIALIZER;
     for (size_t i = 0; i < num_ips; i++) {
@@ -50,9 +49,6 @@ test_ipam_get_unused_ip(struct ovs_cmdl_context *ctx)
     }
 
     printf("%s", ds_cstr(&output));
-    if (fail) {
-        fprintf(stderr, "%s", ds_cstr(&err));
-    }
 
     smap_destroy(&config);
     destroy_ipam_info(&info);
