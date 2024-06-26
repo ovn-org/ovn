@@ -45,7 +45,6 @@
 #include "lib/crc32c.h"
 
 #include "lib/dhcp.h"
-#include "ovn-controller.h"
 #include "ovn/actions.h"
 #include "ovn/lex.h"
 #include "lib/acl-log.h"
@@ -62,6 +61,7 @@
 #include "vswitch-idl.h"
 #include "lflow.h"
 #include "ip-mcast.h"
+#include "ovn-sb-idl.h"
 
 VLOG_DEFINE_THIS_MODULE(pinctrl);
 

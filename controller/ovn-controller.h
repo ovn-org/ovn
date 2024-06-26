@@ -17,28 +17,9 @@
 #ifndef OVN_CONTROLLER_H
 #define OVN_CONTROLLER_H 1
 
-#include "simap.h"
-#include "lib/ovn-sb-idl.h"
+#include <stdint.h>
 
 struct ovsrec_bridge_table;
-
-/* Linux supports a maximum of 64K zones, which seems like a fine default. */
-#define MAX_CT_ZONES 65535
-
-/* States to move through when a new conntrack zone has been allocated. */
-enum ct_zone_pending_state {
-    CT_ZONE_OF_QUEUED,    /* Waiting to send conntrack flush command. */
-    CT_ZONE_OF_SENT,      /* Sent and waiting for confirmation on flush. */
-    CT_ZONE_DB_QUEUED,    /* Waiting for DB transaction to open. */
-    CT_ZONE_DB_SENT,      /* Sent and waiting for confirmation from DB. */
-};
-
-struct ct_zone_pending_entry {
-    int zone;
-    bool add;             /* Is the entry being added? */
-    ovs_be32 of_xid;      /* Transaction id for barrier. */
-    enum ct_zone_pending_state state;
-};
 
 const struct ovsrec_bridge *get_bridge(const struct ovsrec_bridge_table *,
                                        const char *br_name);

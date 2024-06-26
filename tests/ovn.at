@@ -37004,7 +37004,7 @@ check ovn-nbctl lsp-set-type sw0-lr0 router
 check ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
 check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
 
-check ovn-appctl -t ovn-controller vlog/set dbg:main
+check ovn-appctl -t ovn-controller vlog/set dbg:ct_zone
 
 wait_for_ports_up
 ovn-nbctl --wait=hv sync
@@ -37112,7 +37112,7 @@ OVS_WAIT_UNTIL([test "$(ovn-appctl -t ovn-controller debug/status)" != "running"
 replace_with_uuid lr0
 replace_with_uuid sw0
 
-start_daemon ovn-controller --verbose="main:dbg"
+start_daemon ovn-controller --verbose="ct_zone:dbg"
 
 OVS_WAIT_UNTIL([test "$(grep -c 'ct zone .* replace uuid name' hv1/ovn-controller.log)" = "8"])
 

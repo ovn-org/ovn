@@ -42,7 +42,6 @@
 #include "openvswitch/ofp-util.h"
 #include "openvswitch/ofpbuf.h"
 #include "openvswitch/vlog.h"
-#include "ovn-controller.h"
 #include "ovn/actions.h"
 #include "lib/extend-table.h"
 #include "lib/lb.h"
@@ -53,6 +52,8 @@
 #include "timeval.h"
 #include "util.h"
 #include "vswitch-idl.h"
+#include "ovn-sb-idl.h"
+#include "ct-zone.h"
 
 VLOG_DEFINE_THIS_MODULE(ofctrl);
 
