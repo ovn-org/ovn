@@ -821,7 +821,7 @@ do_ic_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
     const struct icnbrec_ic_nb_global *inb = icnbrec_ic_nb_global_first(idl);
     if (!inb) {
         /* XXX add verification that table is empty */
-        icnbrec_ic_nb_global_insert(txn);
+       inb = icnbrec_ic_nb_global_insert(txn);
     }
 
     if (wait_type != NBCTL_WAIT_NONE) {

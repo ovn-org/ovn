@@ -16176,8 +16176,8 @@ build_lflows_thread(void *arg)
                                                     &lsi->actions);
                 }
             }
+            lsi->thread_lflow_counter = thread_lflow_counter;
         }
-        lsi->thread_lflow_counter = thread_lflow_counter;
         post_completed_work(control);
     }
     return NULL;
