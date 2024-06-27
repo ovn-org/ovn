@@ -54,9 +54,9 @@ function build_dpdk()
           pushd dpdk-src
       fi
 
-      # Switching to 'default' machine to make the dpdk cache usable on
+      # Switching to 'generic' platform to make the dpdk cache usable on
       # different CPUs. We can't be sure that all CI machines are exactly same.
-      DPDK_OPTS="$DPDK_OPTS -Dmachine=default"
+      DPDK_OPTS="$DPDK_OPTS -Dplatform=generic"
 
       # Disable building DPDK unit tests. Not needed for OVS build or tests.
       DPDK_OPTS="$DPDK_OPTS -Dtests=false"
@@ -67,7 +67,9 @@ function build_dpdk()
 
       # OVS compilation and the "ovn-system-dpdk" unit tests (run in the CI)
       # only depend on virtio/tap drivers.
-      # We can disable all remaining drivers to save compilation time.
+      # We can disable all applications and remaining drivers to save
+      # compilation time.
+      DPDK_OPTS="$DPDK_OPTS -Ddisable_apps=*"
       DPDK_OPTS="$DPDK_OPTS -Denable_drivers=net/null,net/tap,net/virtio"
       # OVS depends on the vhost library (and its dependencies).
       # net/tap depends on the gso library.
@@ -76,7 +78,7 @@ function build_dpdk()
       # Install DPDK using prefix.
       DPDK_OPTS="$DPDK_OPTS --prefix=$DPDK_INSTALL_DIR"
 
-      meson $DPDK_OPTS build
+      meson setup $DPDK_OPTS build
       ninja -C build
       ninja -C build install
       popd
