@@ -68,6 +68,7 @@ m4_define([OVS_TRAFFIC_VSWITCHD_START],
 m4_define([OVS_TRAFFIC_VSWITCHD_STOP],
   [OVS_VSWITCHD_STOP([dnl
 $1";/EAL: No \(available\|free\) .*hugepages reported/d
+/EAL: eal_memalloc_alloc_seg_bulk(): couldn't find suitable memseg_list/d
 /TELEMETRY: No legacy callbacks, legacy socket not created/d
 /dpif(revalidator.*)|WARN|netdev@ovs-netdev: failed to.*proto=2.*/d
 /dpif_netdev(revalidator.*)|ERR|internal error parsing flow key.*proto=2.*/d
