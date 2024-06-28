@@ -298,6 +298,7 @@ Nimay Desai                        nimaydesai1@gmail.com
 Nithin Raju                        nithin@vmware.com
 Niti Rohilla                       niti.rohilla@tcs.com
 Nitin Katiyar                      nitin.katiyar@ericsson.com
+Naveen Yerramneni                  naveen.yerramneni@nutanix.com
 Numan Siddique                     nusiddiq@redhat.com
 Nobuhiro MIKI                      nmiki@yahoo-corp.jp
 Ofer Ben-Yacov                     ofer.benyacov@gmail.com
