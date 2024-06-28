@@ -404,6 +404,7 @@ Tony van der Peet                  tony.vanderpeet@alliedtelesis.co.nz
 Tonghao Zhang                      xiangxia.m.yue@gmail.com
 Valient Gough                      vgough@pobox.com
 Vanou Ishii                        ishii.vanou@fujitsu.com
+Vasyl Saienko                      vsaienko@mirantis.com
 Veda Barrenkala                    vedabarrenkala@gmail.com
 Venkata Anil Kommaddi              vkommadi@redhat.com
 Venu Iyer                          venugopali@nvidia.com
