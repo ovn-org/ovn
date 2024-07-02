@@ -45,9 +45,9 @@ Scheduling`_ for the timing of each stage:
 1. "Soft freeze" of the main branch.
 
    During the freeze, we ask committers to refrain from applying patches that
-   add new features unless those patches were already being publicly discussed
-   and reviewed before the freeze began.  Bug fixes are welcome at any time.
-   Please propose and discuss exceptions on ovs-dev.
+   add new features unless those patches were already posted for public review
+   before the freeze began.  Bug fixes are welcome at any time.  Please propose
+   and discuss exceptions on ovs-dev.
  
 2. Fork a release branch from main, named for the expected release number,
    e.g. "branch-25.09" for the branch that will yield OVN 25.09.x.
