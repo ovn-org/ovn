@@ -284,7 +284,7 @@ $cluster_remote_port
     set ovsdb-server
     set "$@" $log --log-file=$logfile
     set "$@" --pidfile=$db_pid_file
-    if test X"$config_file" == X; then
+    if test X"$config_file" = X; then
         set "$@" --remote=punix:$sock
     else
         set "$@" --config-file=$config_file
@@ -304,7 +304,7 @@ $cluster_remote_port
         set exec "$@"
     fi
 
-    if test X"$use_remote_in_db" != Xno && test X"$config_file" == X; then
+    if test X"$use_remote_in_db" != Xno && test X"$config_file" = X; then
         set "$@" --remote=db:$schema_name,$table_name,connections
     fi
 
