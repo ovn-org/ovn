@@ -780,6 +780,16 @@ print_lr(const struct nbrec_logical_router *lr, struct ds *s)
         if (lrp->mac) {
             ds_put_cstr(s, "        mac: ");
             ds_put_format(s, "\"%s\"\n", lrp->mac);
+
+            /* Have the mac address in an array. */
+            struct eth_addr ea;
+            eth_addr_from_string(lrp->mac, &ea);
+            struct in6_addr lla;
+            in6_generate_lla(ea, &lla);
+
+            ds_put_cstr(s, "        ipv6-lla: \"");
+            ipv6_format_addr(&lla, s);
+            ds_put_cstr(s, "\"\n");
         }
         if (lrp->n_networks) {
             ds_put_cstr(s, "        networks: [");
