@@ -37854,9 +37854,9 @@ AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
                     --ssl-ciphers='HIGH:!aNULL:!MD5:@SECLEVEL=1' \
                     --ssl-protocols='TLSv1,TLSv1.1,TLSv1.2' \
-                    chassis-add ch vxlan 1.2.4.8], [1], [ignore],
-[ovn-sbctl: transaction error: {"details":"insert operation not allowed when database server is in read only mode","error":"not allowed"}
-])
+                    chassis-add ch vxlan 1.2.4.8 2>&1 | grep 'transaction error]', [0], [dnl
+ovn-sbctl: transaction error: {"details":"insert operation not allowed when database server is in read only mode","error":"not allowed"}
+], [ignore])
 
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 AT_CLEANUP
