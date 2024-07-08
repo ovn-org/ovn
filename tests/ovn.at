@@ -27054,7 +27054,14 @@ check ovs-vsctl add-port br-int vif3 -- set Interface vif3 external-ids:iface-id
 # Add a forwarding group on ls2 with lsp21 and lsp22 as child ports
 # virtual IP - 172.16.1.11, virtual MAC - 00:11:de:ad:be:ef
 check ovn-nbctl --wait=hv fwd-group-add fwd_grp1 ls2 172.16.1.11 00:11:de:ad:be:ef lsp21 lsp22
+check ovn-nbctl --wait=hv fwd-group-add fwd_grp2 ls2 172.16.2.11 00:22:de:ad:be:ef lsp21 lsp22
 
+# Check logical flow
+AT_CAPTURE_FILE([sbflows])
+ovn-sbctl dump-flows > sbflows
+AT_CHECK([grep ls_in_l2_lkup sbflows | grep fwd_group | wc -l], [0], [2
+])
+check ovn-nbctl --wait=hv fwd-group-del fwd_grp2
 # Check logical flow
 AT_CAPTURE_FILE([sbflows])
 ovn-sbctl dump-flows > sbflows
