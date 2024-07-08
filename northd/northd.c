@@ -7929,6 +7929,9 @@ build_fwd_group_lflows(struct ovn_datapath *od, struct lflow_table *lflows,
             continue;
         }
 
+        ds_clear(&match);
+        ds_clear(&actions);
+
         /* ARP responder for the forwarding group's virtual IP */
         ds_put_format(&match, "arp.tpa == %s && arp.op == 1",
                       fwd_group->vip);
@@ -7959,9 +7962,9 @@ build_fwd_group_lflows(struct ovn_datapath *od, struct lflow_table *lflows,
             ds_put_cstr(&group_ports, "liveness=\"true\",");
         }
         ds_put_cstr(&group_ports, "childports=");
-        for (i = 0; i < (fwd_group->n_child_port - 1); ++i) {
+        for (size_t j = 0; j < (fwd_group->n_child_port - 1); ++j) {
             ds_put_format(&group_ports, "\"%s\",",
-                         fwd_group->child_port[i]);
+                         fwd_group->child_port[j]);
         }
         ds_put_format(&group_ports, "\"%s\"",
                       fwd_group->child_port[fwd_group->n_child_port - 1]);
