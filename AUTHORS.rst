@@ -448,6 +448,7 @@ xushengping                        shengping.xu@huawei.com
 yinpeijun                          yinpeijun@huawei.com
 zangchuanqiang                     zangchuanqiang@huawei.com
 zhang yanxian                      zhangyanxian@pmlabs.com.cn
+zhangqiang45                       zhangqiang45@lenovo.com
 zhaojingjing                       zhao.jingjing1@zte.com.cn
 zhongbaisong                       zhongbaisong@huawei.com
 zhaozhanxu                         zhaozhanxu@163.com
