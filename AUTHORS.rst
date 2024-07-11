@@ -287,6 +287,7 @@ Miguel Angel Ajo                   majopela@redhat.com
 Mijo Safradin                      mijo@linux.vnet.ibm.com
 Mika Vaisanen                      mika.vaisanen@gmail.com
 Minoru TAKAHASHI                   takahashi.minoru7@gmail.com
+MJ Ponsonby                        mj.ponsonby@canonical.com
 Mohammad Heib                      mheib@redhat.com
 Moshe Levi                         moshele@mellanox.com
 Murphy McCauley                    murphy.mccauley@gmail.com
