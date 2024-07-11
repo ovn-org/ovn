@@ -60,7 +60,7 @@ jobs:
         sudo -E ./ovn_cluster.sh build
         mkdir -p /tmp/_output
         sudo podman tag ovn/ovn-multi-node:latest ovn/ovn-multi-node:${{ matrix.cfg.branch }}
-        sudo podman save ovn/ovn-multi-node:${{ matrix.cfg.branch }} > /tmp/_output/ovn_${{ matrix.cfg.branch }}_image.tar
+        sudo podman save --format oci-archive ovn/ovn-multi-node:${{ matrix.cfg.branch }} > /tmp/_output/ovn_${{ matrix.cfg.branch }}_image.tar
       working-directory: ovn-fake-multinode
 
     - uses: actions/upload-artifact@v4

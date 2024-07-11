@@ -56,7 +56,7 @@ jobs:
         run: podman pull ghcr.io/ovn-org/ovn-tests:${{ env.IMAGE_DISTRO }}
 
       - name: Export image
-        run: podman save -o /tmp/image.tar ovn-org/ovn-tests:${{ env.IMAGE_DISTRO }}
+        run: podman save -o /tmp/image.tar --format oci-archive ovn-org/ovn-tests:${{ env.IMAGE_DISTRO }}
 
       - name: Cache image
         id: image_cache

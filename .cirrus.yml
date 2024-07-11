@@ -15,7 +15,7 @@ build_image_task:
   build_container_script:
     - cd utilities/containers
     - make ubuntu
-    - podman save -o /tmp/image.tar ovn-org/ovn-tests:ubuntu
+    - podman save -o /tmp/image.tar --format oci-archive ovn-org/ovn-tests:ubuntu
 
   upload_image_script:
     - curl -s -X POST -T /tmp/image.tar http://$CIRRUS_HTTP_CACHE_HOST/${CIRRUS_CHANGE_IN_REPO}
