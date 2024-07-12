@@ -463,8 +463,6 @@ chassis_features_list(struct unixctl_conn *conn, int argc OVS_UNUSED,
     struct chassis_features *features = features_;
     struct ds ds = DS_EMPTY_INITIALIZER;
 
-    ds_put_format(&ds, "ct_lb_related:         %s\n",
-                  features->ct_lb_related ? "true" : "false");
     ds_put_format(&ds, "mac_binding_timestamp: %s\n",
                   features->mac_binding_timestamp ? "true" : "false");
     unixctl_command_reply(conn, ds_cstr(&ds));

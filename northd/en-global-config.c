@@ -367,7 +367,6 @@ northd_enable_all_features(struct ed_type_global_config *data)
 {
     data->features = (struct chassis_features) {
         .mac_binding_timestamp = true,
-        .ct_lb_related = true,
         .fdb_timestamp = true,
         .ls_dpg_column = true,
         .ct_commit_nat_v2 = true,
@@ -396,15 +395,6 @@ build_chassis_features(const struct sbrec_chassis_table *sbrec_chassis_table,
         if (!mac_binding_timestamp &&
             chassis_features->mac_binding_timestamp) {
             chassis_features->mac_binding_timestamp = false;
-        }
-
-        bool ct_lb_related =
-            smap_get_bool(&chassis->other_config,
-                          OVN_FEATURE_CT_LB_RELATED,
-                          false);
-        if (!ct_lb_related &&
-            chassis_features->ct_lb_related) {
-            chassis_features->ct_lb_related = false;
         }
 
         bool fdb_timestamp =
@@ -565,10 +555,6 @@ chassis_features_changed(const struct chassis_features *present,
                          const struct chassis_features *updated)
 {
     if (present->mac_binding_timestamp != updated->mac_binding_timestamp) {
-        return true;
-    }
-
-    if (present->ct_lb_related != updated->ct_lb_related) {
         return true;
     }
 
