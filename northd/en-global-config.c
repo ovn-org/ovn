@@ -366,7 +366,6 @@ static void
 northd_enable_all_features(struct ed_type_global_config *data)
 {
     data->features = (struct chassis_features) {
-        .ct_no_masked_label = true,
         .mac_binding_timestamp = true,
         .ct_lb_related = true,
         .fdb_timestamp = true,
@@ -388,14 +387,6 @@ build_chassis_features(const struct sbrec_chassis_table *sbrec_chassis_table,
          */
         if (smap_get_bool(&chassis->other_config, "is-remote", false)) {
             continue;
-        }
-
-        bool ct_no_masked_label =
-            smap_get_bool(&chassis->other_config,
-                          OVN_FEATURE_CT_NO_MASKED_LABEL,
-                          false);
-        if (!ct_no_masked_label && chassis_features->ct_no_masked_label) {
-            chassis_features->ct_no_masked_label = false;
         }
 
         bool mac_binding_timestamp =
@@ -552,16 +543,6 @@ update_sb_config_options_to_sbrec(struct ed_type_global_config *config_data,
     smap_destroy(options);
     smap_clone(options, &config_data->nb_options);
 
-    /* Inform ovn-controllers whether LB flows will use ct_mark (i.e., only
-     * if all chassis support it).  If not explicitly present in the database
-     * the default value to be used for this option is 'true'.
-     */
-    if (!config_data->features.ct_no_masked_label) {
-        smap_replace(options, "lb_hairpin_use_ct_mark", "false");
-    } else {
-        smap_remove(options, "lb_hairpin_use_ct_mark");
-    }
-
     /* Hackaround SB_global.options overwrite by NB_Global.options for
      * 'sbctl_probe_interval' option.
      */
@@ -583,10 +564,6 @@ static bool
 chassis_features_changed(const struct chassis_features *present,
                          const struct chassis_features *updated)
 {
-    if (present->ct_no_masked_label != updated->ct_no_masked_label) {
-        return true;
-    }
-
     if (present->mac_binding_timestamp != updated->mac_binding_timestamp) {
         return true;
     }

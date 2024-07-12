@@ -3466,16 +3466,14 @@ build_lb_vip_actions(const struct ovn_northd_lb *lb,
                      struct ds *action, char *selection_fields,
                      struct ds *skip_snat_action,
                      struct ds *force_snat_action,
-                     bool ls_dp, const struct chassis_features *features,
+                     bool ls_dp,
                      const struct hmap *svc_monitor_map)
 {
-    const char *ct_lb_action =
-        features->ct_no_masked_label ? "ct_lb_mark" : "ct_lb";
     bool reject = !lb_vip->n_backends && lb_vip->empty_backend_rej;
     bool drop = !lb_vip->n_backends && !lb_vip->empty_backend_rej;
 
     if (lb_vip_nb->lb_health_check) {
-        ds_put_format(action, "%s(backends=", ct_lb_action);
+        ds_put_cstr(action, "ct_lb_mark(backends=");
 
         size_t n_active_backends = 0;
         for (size_t i = 0; i < lb_vip->n_backends; i++) {
@@ -3516,7 +3514,7 @@ build_lb_vip_actions(const struct ovn_northd_lb *lb,
         drop = !n_active_backends && !lb_vip->empty_backend_rej;
         reject = !n_active_backends && lb_vip->empty_backend_rej;
     } else {
-        ds_put_format(action, "%s(backends=%s", ct_lb_action,
+        ds_put_format(action, "ct_lb_mark(backends=%s",
                       lb_vip_nb->backend_ips);
     }
 
@@ -6268,7 +6266,6 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
 
 static void
 build_pre_stateful(struct ovn_datapath *od,
-                   const struct chassis_features *features,
                    struct lflow_table *lflows,
                    struct lflow_ref *lflow_ref)
 {
@@ -6281,16 +6278,12 @@ build_pre_stateful(struct ovn_datapath *od,
 
     /* Note: priority-120 flows are added in build_lb_rules_pre_stateful(). */
 
-    const char *ct_lb_action = features->ct_no_masked_label
-                               ? "ct_lb_mark;"
-                               : "ct_lb;";
-
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 110,
-                  REGBIT_CONNTRACK_NAT" == 1", ct_lb_action,
+                  REGBIT_CONNTRACK_NAT" == 1", "ct_lb_mark;",
                   lflow_ref);
 
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_STATEFUL, 110,
-                  REGBIT_CONNTRACK_NAT" == 1", ct_lb_action,
+                  REGBIT_CONNTRACK_NAT" == 1", "ct_lb_mark;",
                   lflow_ref);
 
     /* If REGBIT_CONNTRACK_DEFRAG is set as 1, then the packets should be
@@ -6308,7 +6301,6 @@ build_pre_stateful(struct ovn_datapath *od,
 static void
 build_acl_hints(const struct ls_stateful_record *ls_stateful_rec,
                 const struct ovn_datapath *od,
-                const struct chassis_features *features,
                 struct lflow_table *lflows,
                 struct lflow_ref *lflow_ref)
 {
@@ -6332,7 +6324,6 @@ build_acl_hints(const struct ls_stateful_record *ls_stateful_rec,
 
     for (size_t i = 0; i < ARRAY_SIZE(stages); i++) {
         enum ovn_stage stage = stages[i];
-        const char *match;
 
         /* In any case, advance to the next stage. */
         if (!ls_stateful_rec->has_acls && !ls_stateful_rec->has_lb_vip) {
@@ -6364,10 +6355,8 @@ build_acl_hints(const struct ls_stateful_record *ls_stateful_rec,
          *   REGBIT_ACL_HINT_ALLOW_NEW.
          * - drop ACLs.
          */
-        match = features->ct_no_masked_label
-                ? "!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 1"
-                : "!ct.new && ct.est && !ct.rpl && ct_label.blocked == 1";
-        ovn_lflow_add(lflows, od, stage, 6, match,
+        ovn_lflow_add(lflows, od, stage, 6,
+                      "!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 1",
                       REGBIT_ACL_HINT_ALLOW_NEW " = 1; "
                       REGBIT_ACL_HINT_DROP " = 1; "
                       "next;", lflow_ref);
@@ -6386,10 +6375,8 @@ build_acl_hints(const struct ls_stateful_record *ls_stateful_rec,
          *   connection must be committed with ct_mark.blocked set so we set
          *   REGBIT_ACL_HINT_BLOCK.
          */
-        match = features->ct_no_masked_label
-                ? "!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0"
-                : "!ct.new && ct.est && !ct.rpl && ct_label.blocked == 0";
-        ovn_lflow_add(lflows, od, stage, 4, match,
+        ovn_lflow_add(lflows, od, stage, 4,
+                      "!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0",
                       REGBIT_ACL_HINT_ALLOW " = 1; "
                       REGBIT_ACL_HINT_BLOCK " = 1; "
                       "next;", lflow_ref);
@@ -6400,10 +6387,8 @@ build_acl_hints(const struct ls_stateful_record *ls_stateful_rec,
         ovn_lflow_add(lflows, od, stage, 3, "!ct.est",
                       REGBIT_ACL_HINT_DROP " = 1; "
                       "next;", lflow_ref);
-        match = features->ct_no_masked_label
-                ? "ct.est && ct_mark.blocked == 1"
-                : "ct.est && ct_label.blocked == 1";
-        ovn_lflow_add(lflows, od, stage, 2, match,
+        ovn_lflow_add(lflows, od, stage, 2,
+                      "ct.est && ct_mark.blocked == 1",
                       REGBIT_ACL_HINT_DROP " = 1; "
                       "next;", lflow_ref);
 
@@ -6411,10 +6396,8 @@ build_acl_hints(const struct ls_stateful_record *ls_stateful_rec,
          * drop ACLs in which case the connection must be committed with
          * ct_mark.blocked set.
          */
-        match = features->ct_no_masked_label
-                ? "ct.est && ct_mark.blocked == 0"
-                : "ct.est && ct_label.blocked == 0";
-        ovn_lflow_add(lflows, od, stage, 1, match,
+        ovn_lflow_add(lflows, od, stage, 1,
+                      "ct.est && ct_mark.blocked == 0",
                       REGBIT_ACL_HINT_BLOCK " = 1; "
                       "next;", lflow_ref);
     }
@@ -6481,13 +6464,10 @@ build_acl_log(struct ds *actions, const struct nbrec_acl *acl,
 static void
 consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
              const struct nbrec_acl *acl, bool has_stateful,
-             bool ct_masked_mark, const struct shash *meter_groups,
-             uint64_t max_acl_tier, struct ds *match, struct ds *actions,
+             const struct shash *meter_groups, uint64_t max_acl_tier,
+             struct ds *match, struct ds *actions,
              struct lflow_ref *lflow_ref)
 {
-    const char *ct_blocked_match = ct_masked_mark
-                                   ? "ct_mark.blocked"
-                                   : "ct_label.blocked";
     bool ingress = !strcmp(acl->direction, "from-lport") ? true :false;
     enum ovn_stage stage;
 
@@ -6625,8 +6605,7 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
         ds_put_format(match, " && (%s)", acl->match);
 
         ds_truncate(actions, log_verdict_len);
-        ds_put_format(actions, "ct_commit { %s = 1; }; next;",
-                      ct_blocked_match);
+        ds_put_cstr(actions, "ct_commit { ct_mark.blocked = 1; }; next;");
         ovn_lflow_add_with_hint(lflows, od, stage, priority,
                                 ds_cstr(match), ds_cstr(actions),
                                 &acl->header_, lflow_ref);
@@ -6790,7 +6769,6 @@ static void
 build_acl_log_related_flows(const struct ovn_datapath *od,
                             struct lflow_table *lflows,
                             const struct nbrec_acl *acl, bool has_stateful,
-                            bool ct_masked_mark,
                             const struct shash *meter_groups,
                             struct ds *match, struct ds *actions,
                             struct lflow_ref *lflow_ref)
@@ -6807,9 +6785,6 @@ build_acl_log_related_flows(const struct ovn_datapath *od,
      * limitations. In such case the user may choose to avoid using the
      * "log-related" option.
      */
-    const char *ct_blocked_match = ct_masked_mark
-                                   ? "ct_mark.blocked"
-                                   : "ct_label.blocked";
     bool ingress = !strcmp(acl->direction, "from-lport") ? true :false;
     bool log_related = smap_get_bool(&acl->options, "log-related",
                                      false);
@@ -6840,10 +6815,10 @@ build_acl_log_related_flows(const struct ovn_datapath *od,
         S_SWITCH_IN_ACL_EVAL;
     ds_clear(match);
     ds_put_format(match, "ct.est && !ct.rel && !ct.new%s && "
-                  "ct.rpl && %s == 0 && "
+                  "ct.rpl && ct_mark.blocked == 0 && "
                   "ct_label.label == %" PRId64,
                   use_ct_inv_match ? " && !ct.inv" : "",
-                  ct_blocked_match, acl->label);
+                  acl->label);
     ovn_lflow_add_with_hint(lflows, od, log_related_stage,
                             UINT16_MAX - 2,
                             ds_cstr(match), ds_cstr(actions),
@@ -6851,10 +6826,10 @@ build_acl_log_related_flows(const struct ovn_datapath *od,
 
     ds_clear(match);
     ds_put_format(match, "!ct.est && ct.rel && !ct.new%s && "
-                         "%s == 0 && "
+                         "ct_mark.blocked == 0 && "
                          "ct_label.label == %" PRId64,
                          use_ct_inv_match ? " && !ct.inv" : "",
-                         ct_blocked_match, acl->label);
+                         acl->label);
     ovn_lflow_add_with_hint(lflows, od, log_related_stage,
                             UINT16_MAX - 2,
                             ds_cstr(match), ds_cstr(actions),
@@ -6875,9 +6850,6 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
                                      : "next;";
     bool has_stateful = (ls_stateful_rec->has_stateful_acl
                          || ls_stateful_rec->has_lb_vip);
-    const char *ct_blocked_match = features->ct_no_masked_label
-                                   ? "ct_mark.blocked"
-                                   : "ct_label.blocked";
     struct ds match   = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
 
@@ -6936,7 +6908,7 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
          * Subsequent packets will hit the flow at priority 0 that just
          * uses "next;". */
         ds_clear(&match);
-        ds_put_format(&match, "ip && ct.est && %s == 1", ct_blocked_match);
+        ds_put_format(&match, "ip && ct.est && ct_mark.blocked == 1");
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_EVAL, 1,
                       ds_cstr(&match),
                       REGBIT_CONNTRACK_COMMIT" = 1; "
@@ -6964,9 +6936,8 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
          *
          * This is enforced at a higher priority than ACLs can be defined. */
         ds_clear(&match);
-        ds_put_format(&match, "%s(ct.est && ct.rpl && %s == 1)",
-                      use_ct_inv_match ? "ct.inv || " : "",
-                      ct_blocked_match);
+        ds_put_format(&match, "%s(ct.est && ct.rpl && ct_mark.blocked == 1)",
+                      use_ct_inv_match ? "ct.inv || " : "");
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_EVAL, UINT16_MAX - 3,
                       ds_cstr(&match), REGBIT_ACL_VERDICT_DROP " = 1; next;",
                       lflow_ref);
@@ -6985,9 +6956,8 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
          * This is enforced at a higher priority than ACLs can be defined. */
         ds_clear(&match);
         ds_put_format(&match, "ct.est && !ct.rel && !ct.new%s && "
-                      "ct.rpl && %s == 0",
-                      use_ct_inv_match ? " && !ct.inv" : "",
-                      ct_blocked_match);
+                      "ct.rpl && ct_mark.blocked == 0",
+                      use_ct_inv_match ? " && !ct.inv" : "");
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_EVAL, UINT16_MAX - 3,
                       ds_cstr(&match), REGBIT_ACL_HINT_DROP" = 0; "
                       REGBIT_ACL_HINT_BLOCK" = 0; "
@@ -7022,9 +6992,9 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
             ? REGBIT_ACL_VERDICT_ALLOW" = 1; ct_commit_nat;"
             : REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
         ds_clear(&match);
-        ds_put_format(&match, "!ct.est && ct.rel && !ct.new%s && %s == 0",
-                      use_ct_inv_match ? " && !ct.inv" : "",
-                      ct_blocked_match);
+        ds_put_format(&match, "!ct.est && ct.rel && !ct.new%s "
+                              "&& ct_mark.blocked == 0",
+                      use_ct_inv_match ? " && !ct.inv" : "");
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_EVAL, UINT16_MAX - 3,
                       ds_cstr(&match), ct_in_acl_action, lflow_ref);
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL_EVAL, UINT16_MAX - 3,
@@ -7062,11 +7032,9 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
     for (size_t i = 0; i < od->nbs->n_acls; i++) {
         struct nbrec_acl *acl = od->nbs->acls[i];
         build_acl_log_related_flows(od, lflows, acl, has_stateful,
-                                    features->ct_no_masked_label,
                                     meter_groups, &match, &actions,
                                     lflow_ref);
         consider_acl(lflows, od, acl, has_stateful,
-                     features->ct_no_masked_label,
                      meter_groups, ls_stateful_rec->max_acl_tier,
                      &match, &actions, lflow_ref);
     }
@@ -7080,11 +7048,9 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
                 const struct nbrec_acl *acl = ls_pg_rec->nb_pg->acls[i];
 
                 build_acl_log_related_flows(od, lflows, acl, has_stateful,
-                                            features->ct_no_masked_label,
                                             meter_groups, &match, &actions,
                                             lflow_ref);
                 consider_acl(lflows, od, acl, has_stateful,
-                             features->ct_no_masked_label,
                              meter_groups, ls_stateful_rec->max_acl_tier,
                              &match, &actions, lflow_ref);
             }
@@ -7195,7 +7161,6 @@ build_qos(struct ovn_datapath *od, struct lflow_table *lflows,
 static void
 build_lb_rules_pre_stateful(struct lflow_table *lflows,
                             struct ovn_lb_datapaths *lb_dps,
-                            bool ct_lb_mark,
                             const struct ovn_datapaths *ls_datapaths,
                             struct ds *match, struct ds *action)
 {
@@ -7240,7 +7205,7 @@ build_lb_rules_pre_stateful(struct lflow_table *lflows,
             ds_put_format(action, REG_ORIG_TP_DPORT " = %s; ",
                           lb_vip->port_str);
         }
-        ds_put_format(action, "%s;", ct_lb_mark ? "ct_lb_mark" : "ct_lb");
+        ds_put_cstr(action, "ct_lb_mark;");
 
         ds_put_format(match, REGBIT_CONNTRACK_NAT" == 1 && %s.dst == %s",
                       ip_match, lb_vip->vip_str);
@@ -7658,8 +7623,8 @@ build_lrouter_lb_affinity_default_flows(struct ovn_datapath *od,
 static void
 build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
                const struct ovn_datapaths *ls_datapaths,
-               const struct chassis_features *features, struct ds *match,
-               struct ds *action, const struct shash *meter_groups,
+               struct ds *match, struct ds *action,
+               const struct shash *meter_groups,
                const struct hmap *svc_monitor_map)
 {
     const struct ovn_northd_lb *lb = lb_dps->lb;
@@ -7685,7 +7650,7 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
         const char *meter = NULL;
         bool reject = build_lb_vip_actions(lb, lb_vip, lb_vip_nb, action,
                                            lb->selection_fields,
-                                           NULL, NULL, true, features,
+                                           NULL, NULL, true,
                                            svc_monitor_map);
 
         ds_put_format(match, "ct.new && %s.dst == %s", ip_match,
@@ -7737,14 +7702,9 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
 }
 
 static void
-build_stateful(struct ovn_datapath *od,
-               const struct chassis_features *features,
-               struct lflow_table *lflows,
+build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
                struct lflow_ref *lflow_ref)
 {
-    const char *ct_block_action = features->ct_no_masked_label
-                                  ? "ct_mark.blocked"
-                                  : "ct_label.blocked";
     struct ds actions = DS_EMPTY_INITIALIZER;
 
     /* Ingress LB, Ingress and Egress stateful Table (Priority 0): Packets are
@@ -7761,9 +7721,8 @@ build_stateful(struct ovn_datapath *od,
      * We always set ct_mark.blocked to 0 here as
      * any packet that makes it this far is part of a connection we
      * want to allow to continue. */
-    ds_put_format(&actions, "ct_commit { %s = 0; "
-                            "ct_label.label = " REG_LABEL "; }; next;",
-                  ct_block_action);
+    ds_put_cstr(&actions, "ct_commit { ct_mark.blocked = 0; "
+                          "ct_label.label = " REG_LABEL "; }; next;");
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
                   REGBIT_CONNTRACK_COMMIT" == 1 && "
                   REGBIT_ACL_LABEL" == 1",
@@ -7780,7 +7739,7 @@ build_stateful(struct ovn_datapath *od,
      * any packet that makes it this far is part of a connection we
      * want to allow to continue. */
     ds_clear(&actions);
-    ds_put_format(&actions, "ct_commit { %s = 0; }; next;", ct_block_action);
+    ds_put_cstr(&actions, "ct_commit { ct_mark.blocked = 0; }; next;");
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
                   REGBIT_CONNTRACK_COMMIT" == 1 && "
                   REGBIT_ACL_LABEL" == 0",
@@ -8772,7 +8731,6 @@ build_lswitch_lflows_l2_unknown(struct ovn_datapath *od,
 static void
 build_lswitch_lflows_pre_acl_and_acl(
     struct ovn_datapath *od,
-    const struct chassis_features *features,
     struct lflow_table *lflows,
     const struct shash *meter_groups,
     struct lflow_ref *lflow_ref)
@@ -8780,9 +8738,9 @@ build_lswitch_lflows_pre_acl_and_acl(
     ovs_assert(od->nbs);
     build_pre_acls(od, lflows, lflow_ref);
     build_pre_lb(od, meter_groups, lflows, lflow_ref);
-    build_pre_stateful(od, features, lflows, lflow_ref);
+    build_pre_stateful(od, lflows, lflow_ref);
     build_qos(od, lflows, lflow_ref);
-    build_stateful(od, features, lflows, lflow_ref);
+    build_stateful(od, lflows, lflow_ref);
     build_vtep_hairpin(od, lflows, lflow_ref);
 }
 
@@ -10669,7 +10627,6 @@ find_static_route_outport(struct ovn_datapath *od, const struct hmap *lr_ports,
 static void
 add_ecmp_symmetric_reply_flows(struct lflow_table *lflows,
                                struct ovn_datapath *od,
-                               bool ct_masked_mark,
                                const char *port_ip,
                                struct ovn_port *out_port,
                                const struct parsed_route *route,
@@ -10681,9 +10638,6 @@ add_ecmp_symmetric_reply_flows(struct lflow_table *lflows,
     struct ds actions = DS_EMPTY_INITIALIZER;
     struct ds ecmp_reply = DS_EMPTY_INITIALIZER;
     char *cidr = normalize_v46_prefix(&route->prefix, route->plen);
-    const char *ct_ecmp_reply_port_match = ct_masked_mark
-                                           ? "ct_mark.ecmp_reply_port"
-                                           : "ct_label.ecmp_reply_port";
 
     /* If symmetric ECMP replies are enabled, then packets that arrive over
      * an ECMP route need to go through conntrack.
@@ -10712,9 +10666,9 @@ add_ecmp_symmetric_reply_flows(struct lflow_table *lflows,
     ds_put_cstr(&match, " && !ct.rpl && (ct.new || ct.est)");
     ds_put_format(&actions,
             "ct_commit { ct_label.ecmp_reply_eth = eth.src; "
-            " %s = %" PRId64 ";}; "
+            "ct_mark.ecmp_reply_port = %" PRId64 ";}; "
             "next;",
-            ct_ecmp_reply_port_match, out_port->sb->tunnel_key);
+            out_port->sb->tunnel_key);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 100,
                             ds_cstr(&match), ds_cstr(&actions),
                             &st_route->header_,
@@ -10724,8 +10678,8 @@ add_ecmp_symmetric_reply_flows(struct lflow_table *lflows,
      * for where to route the packet.
      */
     ds_put_format(&ecmp_reply,
-                  "ct.rpl && %s == %"PRId64,
-                  ct_ecmp_reply_port_match, out_port->sb->tunnel_key);
+                  "ct.rpl && ct_mark.ecmp_reply_port == %"PRId64,
+                  out_port->sb->tunnel_key);
     ds_clear(&match);
     ds_put_format(&match, "%s && %s", ds_cstr(&ecmp_reply),
                   ds_cstr(route_match));
@@ -10770,8 +10724,7 @@ add_ecmp_symmetric_reply_flows(struct lflow_table *lflows,
 
 static void
 build_ecmp_route_flow(struct lflow_table *lflows, struct ovn_datapath *od,
-                      bool ct_masked_mark, const struct hmap *lr_ports,
-                      struct ecmp_groups_node *eg,
+                      const struct hmap *lr_ports, struct ecmp_groups_node *eg,
                       struct lflow_ref *lflow_ref)
 
 {
@@ -10827,8 +10780,7 @@ build_ecmp_route_flow(struct lflow_table *lflows, struct ovn_datapath *od,
         if (smap_get(&od->nbr->options, "chassis") &&
             route_->ecmp_symmetric_reply && sset_add(&visited_ports,
                                                      out_port->key)) {
-            add_ecmp_symmetric_reply_flows(lflows, od, ct_masked_mark,
-                                           lrp_addr_s, out_port,
+            add_ecmp_symmetric_reply_flows(lflows, od, lrp_addr_s, out_port,
                                            route_, &route_match,
                                            lflow_ref);
         }
@@ -11155,7 +11107,6 @@ build_lrouter_nat_flows_for_lb(
     struct lflow_table *lflows,
     struct ds *match, struct ds *action,
     const struct shash *meter_groups,
-    const struct chassis_features *features,
     const struct hmap *svc_monitor_map)
 {
     const struct ovn_northd_lb *lb = lb_dps->lb;
@@ -11178,7 +11129,7 @@ build_lrouter_nat_flows_for_lb(
 
     bool reject = build_lb_vip_actions(lb, lb_vip, vips_nb, action,
                                        lb->selection_fields, &skip_snat_act,
-                                       &force_snat_act, false, features,
+                                       &force_snat_act, false,
                                        svc_monitor_map);
 
     /* Higher priority rules are added for load-balancing in DNAT
@@ -11300,7 +11251,6 @@ build_lswitch_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
                            struct lflow_table *lflows,
                            const struct shash *meter_groups,
                            const struct ovn_datapaths *ls_datapaths,
-                           const struct chassis_features *features,
                            const struct hmap *svc_monitor_map,
                            struct ds *match, struct ds *action)
 {
@@ -11343,9 +11293,8 @@ build_lswitch_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
      * a higher priority rule for load balancing below also commits the
      * connection, so it is okay if we do not hit the above match on
      * REGBIT_CONNTRACK_COMMIT. */
-    build_lb_rules_pre_stateful(lflows, lb_dps, features->ct_no_masked_label,
-                                ls_datapaths, match, action);
-    build_lb_rules(lflows, lb_dps, ls_datapaths, features, match, action,
+    build_lb_rules_pre_stateful(lflows, lb_dps, ls_datapaths, match, action);
+    build_lb_rules(lflows, lb_dps, ls_datapaths, match, action,
                    meter_groups, svc_monitor_map);
 }
 
@@ -11389,7 +11338,6 @@ build_lrouter_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
                            const struct shash *meter_groups,
                            const struct ovn_datapaths *lr_datapaths,
                            const struct lr_stateful_table *lr_stateful_table,
-                           const struct chassis_features *features,
                            const struct hmap *svc_monitor_map,
                            struct ds *match, struct ds *action)
 {
@@ -11405,7 +11353,7 @@ build_lrouter_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
 
         build_lrouter_nat_flows_for_lb(lb_vip, lb_dps, &lb->vips_nb[i],
                                        lr_datapaths, lr_stateful_table, lflows,
-                                       match, action, meter_groups, features,
+                                       match, action, meter_groups,
                                        svc_monitor_map);
 
         if (!build_empty_lb_event_flow(lb_vip, lb, match, action)) {
@@ -12720,9 +12668,8 @@ build_ip_routing_flows_for_lrp(
 
 static void
 build_static_route_flows_for_lrouter(
-        struct ovn_datapath *od, const struct chassis_features *features,
-        struct lflow_table *lflows, const struct hmap *lr_ports,
-        const struct hmap *bfd_connections,
+        struct ovn_datapath *od, struct lflow_table *lflows,
+        const struct hmap *lr_ports, const struct hmap *bfd_connections,
         struct lflow_ref *lflow_ref)
 {
     ovs_assert(od->nbr);
@@ -12771,8 +12718,7 @@ build_static_route_flows_for_lrouter(
     HMAP_FOR_EACH (group, hmap_node, &ecmp_groups) {
         /* add a flow in IP_ROUTING, and one flow for each member in
          * IP_ROUTING_ECMP. */
-        build_ecmp_route_flow(lflows, od, features->ct_no_masked_label,
-                              lr_ports, group, lflow_ref);
+        build_ecmp_route_flow(lflows, od, lr_ports, group, lflow_ref);
     }
     const struct unique_routes_node *ur;
     HMAP_FOR_EACH (ur, hmap_node, &unique_routes) {
@@ -15225,9 +15171,6 @@ build_lrouter_nat_defrag_and_lb(
     const struct chassis_features *features,
     struct lflow_ref *lflow_ref)
 {
-    const char *ct_flag_reg = features->ct_no_masked_label
-                              ? "ct_mark"
-                              : "ct_label";
     /* Ingress DNAT (Priority 50/70).
      *
      * Allow traffic that is related to an existing conntrack entry.
@@ -15243,13 +15186,13 @@ build_lrouter_nat_defrag_and_lb(
         ds_put_cstr(match, "ct.rel && !ct.est && !ct.new");
         size_t match_len = match->length;
 
-        ds_put_format(match, " && %s.skip_snat == 1", ct_flag_reg);
+        ds_put_cstr(match, " && ct_mark.skip_snat == 1");
         ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 70, ds_cstr(match),
                       "flags.skip_snat_for_lb = 1; ct_commit_nat;",
                       lflow_ref);
 
         ds_truncate(match, match_len);
-        ds_put_format(match, " && %s.force_snat == 1", ct_flag_reg);
+        ds_put_cstr(match, " && ct_mark.force_snat == 1");
         ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 70, ds_cstr(match),
                       "flags.force_snat_for_lb = 1; ct_commit_nat;",
                       lflow_ref);
@@ -15267,17 +15210,16 @@ build_lrouter_nat_defrag_and_lb(
     if (lr_stateful_rec->has_lb_vip) {
         ds_clear(match);
 
-        ds_put_format(match, "ct.est && !ct.rel && !ct.new && %s.natted",
-                      ct_flag_reg);
+        ds_put_cstr(match, "ct.est && !ct.rel && !ct.new && ct_mark.natted");
         size_t match_len = match->length;
 
-        ds_put_format(match, " && %s.skip_snat == 1", ct_flag_reg);
+        ds_put_cstr(match, " && ct_mark.skip_snat == 1");
         ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 70, ds_cstr(match),
                       "flags.skip_snat_for_lb = 1; next;",
                       lflow_ref);
 
         ds_truncate(match, match_len);
-        ds_put_format(match, " && %s.force_snat == 1", ct_flag_reg);
+        ds_put_cstr(match, " && ct_mark.force_snat == 1");
         ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 70, ds_cstr(match),
                       "flags.force_snat_for_lb = 1; next;",
                       lflow_ref);
@@ -15555,10 +15497,7 @@ build_lrouter_nat_defrag_and_lb(
 
     if (use_common_zone && od->nbr->n_nat) {
         ds_clear(match);
-        const char *ct_natted = features->ct_no_masked_label ?
-                                "ct_mark.natted" :
-                                "ct_label.natted";
-        ds_put_format(match, "ip && %s == 1", ct_natted);
+        ds_put_cstr(match, "ip && ct_mark.natted == 1");
         /* This flow is unique since it is in the egress pipeline but checks
          * the value of ct_label.natted, which would have been set in the
          * ingress pipeline. If a change is ever introduced that clears or
@@ -15840,7 +15779,7 @@ build_ls_stateful_flows(const struct ls_stateful_record *ls_stateful_rec,
                                    ls_stateful_rec->lflow_ref);
     build_ls_stateful_rec_pre_lb(ls_stateful_rec, od, lflows,
                                  ls_stateful_rec->lflow_ref);
-    build_acl_hints(ls_stateful_rec, od, features, lflows,
+    build_acl_hints(ls_stateful_rec, od, lflows,
                     ls_stateful_rec->lflow_ref);
     build_acls(ls_stateful_rec, od, features, lflows, ls_pgs,
                meter_groups, ls_stateful_rec->lflow_ref);
@@ -15880,7 +15819,7 @@ build_lswitch_and_lrouter_iterate_by_ls(struct ovn_datapath *od,
                                         struct lswitch_flow_build_info *lsi)
 {
     ovs_assert(od->nbs);
-    build_lswitch_lflows_pre_acl_and_acl(od, lsi->features, lsi->lflows,
+    build_lswitch_lflows_pre_acl_and_acl(od, lsi->lflows,
                                          lsi->meter_groups, NULL);
 
     build_fwd_group_lflows(od, lsi->lflows, NULL);
@@ -15911,8 +15850,7 @@ build_lswitch_and_lrouter_iterate_by_lr(struct ovn_datapath *od,
                                            lsi->meter_groups, NULL);
     build_ND_RA_flows_for_lrouter(od, lsi->lflows, NULL);
     build_ip_routing_pre_flows_for_lrouter(od, lsi->lflows, NULL);
-    build_static_route_flows_for_lrouter(od, lsi->features,
-                                         lsi->lflows, lsi->lr_ports,
+    build_static_route_flows_for_lrouter(od, lsi->lflows, lsi->lr_ports,
                                          lsi->bfd_connections,
                                          NULL);
     build_mcast_lookup_flows_for_lrouter(od, lsi->lflows, &lsi->match,
@@ -16117,13 +16055,11 @@ build_lflows_thread(void *arg)
                                                lsi->meter_groups,
                                                lsi->lr_datapaths,
                                                lsi->lr_stateful_table,
-                                               lsi->features,
                                                lsi->svc_monitor_map,
                                                &lsi->match, &lsi->actions);
                     build_lswitch_flows_for_lb(lb_dps, lsi->lflows,
                                                lsi->meter_groups,
                                                lsi->ls_datapaths,
-                                               lsi->features,
                                                lsi->svc_monitor_map,
                                                &lsi->match, &lsi->actions);
                 }
@@ -16354,10 +16290,10 @@ build_lswitch_and_lrouter_flows(
                                               lsi.lr_datapaths, &lsi.match);
             build_lrouter_flows_for_lb(lb_dps, lsi.lflows, lsi.meter_groups,
                                        lsi.lr_datapaths, lsi.lr_stateful_table,
-                                       lsi.features, lsi.svc_monitor_map,
+                                       lsi.svc_monitor_map,
                                        &lsi.match, &lsi.actions);
             build_lswitch_flows_for_lb(lb_dps, lsi.lflows, lsi.meter_groups,
-                                       lsi.ls_datapaths, lsi.features,
+                                       lsi.ls_datapaths,
                                        lsi.svc_monitor_map,
                                        &lsi.match, &lsi.actions);
         }
@@ -16760,13 +16696,11 @@ lflow_handle_northd_lb_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                    lflow_input->meter_groups,
                                    lflow_input->lr_datapaths,
                                    lflow_input->lr_stateful_table,
-                                   lflow_input->features,
                                    lflow_input->svc_monitor_map,
                                    &match, &actions);
         build_lswitch_flows_for_lb(lb_dps, lflows,
                                    lflow_input->meter_groups,
                                    lflow_input->ls_datapaths,
-                                   lflow_input->features,
                                    lflow_input->svc_monitor_map,
                                    &match, &actions);
 

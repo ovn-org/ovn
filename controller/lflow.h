@@ -128,7 +128,6 @@ struct lflow_ctx_in {
     const struct smap *template_vars;
     const struct flow_collector_ids *collector_ids;
     const struct hmap *local_lbs;
-    bool lb_hairpin_use_ct_mark;
     bool localnet_learn_fdb;
     bool localnet_learn_fdb_changed;
     bool explicit_arp_ns_output;

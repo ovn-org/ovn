@@ -14,7 +14,6 @@ struct nbrec_nb_global;
 struct sbrec_sb_global;
 
 struct chassis_features {
-    bool ct_no_masked_label;
     bool mac_binding_timestamp;
     bool ct_lb_related;
     bool fdb_timestamp;

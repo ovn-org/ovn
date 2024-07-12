@@ -100,7 +100,6 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
 static void
 consider_lb_hairpin_flows(const struct ovn_controller_lb *lb,
                           const struct hmap *local_datapaths,
-                          bool use_ct_mark,
                           struct ovn_desired_flow_table *flow_table);
 
 static void add_port_sec_flows(const struct shash *binding_lports,
@@ -1631,7 +1630,6 @@ static void
 add_lb_vip_hairpin_flows(const struct ovn_controller_lb *lb,
                          struct ovn_lb_vip *lb_vip,
                          struct ovn_lb_backend *lb_backend,
-                         bool use_ct_mark,
                          struct ovn_desired_flow_table *flow_table)
 {
     uint64_t stub[1024 / 8];
@@ -1722,29 +1720,13 @@ add_lb_vip_hairpin_flows(const struct ovn_controller_lb *lb,
      * - packets must have ip.src == ip.dst at this point.
      * - the destination protocol and port must be of a valid backend that
      *   has the same IP as ip.dst.
-     *
-     * During upgrades logical flows might still use the old way of storing
-     * ct.natted in ct_label.  For backwards compatibility, only use ct_mark
-     * if ovn-northd notified ovn-controller to do that.
      */
-    if (use_ct_mark) {
-        uint32_t lb_ct_mark = OVN_CT_NATTED;
-        match_set_ct_mark_masked(&hairpin_match, lb_ct_mark, lb_ct_mark);
+    uint32_t lb_ct_mark = OVN_CT_NATTED;
+    match_set_ct_mark_masked(&hairpin_match, lb_ct_mark, lb_ct_mark);
 
-        ofctrl_add_flow(flow_table, OFTABLE_CHK_LB_HAIRPIN, 100,
-                        lb->slb->header_.uuid.parts[0], &hairpin_match,
-                        &ofpacts, &lb->slb->header_.uuid);
-    } else {
-        match_set_ct_mark_masked(&hairpin_match, 0, 0);
-        ovs_u128 lb_ct_label = {
-            .u64.lo = OVN_CT_NATTED,
-        };
-        match_set_ct_label_masked(&hairpin_match, lb_ct_label, lb_ct_label);
-
-        ofctrl_add_flow(flow_table, OFTABLE_CHK_LB_HAIRPIN, 100,
-                        lb->slb->header_.uuid.parts[0], &hairpin_match,
-                        &ofpacts, &lb->slb->header_.uuid);
-    }
+    ofctrl_add_flow(flow_table, OFTABLE_CHK_LB_HAIRPIN, 100,
+                    lb->slb->header_.uuid.parts[0], &hairpin_match,
+                    &ofpacts, &lb->slb->header_.uuid);
 
     ofpbuf_uninit(&ofpacts);
 }
@@ -1967,7 +1949,6 @@ add_lb_ct_snat_hairpin_flows(const struct ovn_controller_lb *lb,
 static void
 consider_lb_hairpin_flows(const struct ovn_controller_lb *lb,
                           const struct hmap *local_datapaths,
-                          bool use_ct_mark,
                           struct ovn_desired_flow_table *flow_table)
 {
     for (size_t i = 0; i < lb->n_vips; i++) {
@@ -1976,8 +1957,7 @@ consider_lb_hairpin_flows(const struct ovn_controller_lb *lb,
         for (size_t j = 0; j < lb_vip->n_backends; j++) {
             struct ovn_lb_backend *lb_backend = &lb_vip->backends[j];
 
-            add_lb_vip_hairpin_flows(lb, lb_vip, lb_backend,
-                                     use_ct_mark, flow_table);
+            add_lb_vip_hairpin_flows(lb, lb_vip, lb_backend, flow_table);
         }
     }
 
@@ -1989,13 +1969,11 @@ consider_lb_hairpin_flows(const struct ovn_controller_lb *lb,
 static void
 add_lb_hairpin_flows(const struct hmap *local_lbs,
                      const struct hmap *local_datapaths,
-                     bool use_ct_mark,
                      struct ovn_desired_flow_table *flow_table)
 {
     const struct ovn_controller_lb *lb;
     HMAP_FOR_EACH (lb, hmap_node, local_lbs) {
-        consider_lb_hairpin_flows(lb, local_datapaths,
-                                  use_ct_mark, flow_table);
+        consider_lb_hairpin_flows(lb, local_datapaths, flow_table);
     }
 }
 
@@ -2155,7 +2133,6 @@ lflow_run(struct lflow_ctx_in *l_ctx_in, struct lflow_ctx_out *l_ctx_out)
                        l_ctx_out->flow_table);
     add_lb_hairpin_flows(l_ctx_in->local_lbs,
                          l_ctx_in->local_datapaths,
-                         l_ctx_in->lb_hairpin_use_ct_mark,
                          l_ctx_out->flow_table);
     add_fdb_flows(l_ctx_in->fdb_table, l_ctx_in->local_datapaths,
                   l_ctx_out->flow_table,
@@ -2406,7 +2383,6 @@ lflow_handle_changed_lbs(struct lflow_ctx_in *l_ctx_in,
                   UUID_FMT, UUID_ARGS(&uuid_node->uuid));
         ofctrl_remove_flows(l_ctx_out->flow_table, &uuid_node->uuid);
         consider_lb_hairpin_flows(lb, l_ctx_in->local_datapaths,
-                                  l_ctx_in->lb_hairpin_use_ct_mark,
                                   l_ctx_out->flow_table);
     }
 
@@ -2416,7 +2392,6 @@ lflow_handle_changed_lbs(struct lflow_ctx_in *l_ctx_in,
         VLOG_DBG("Add load balancer hairpin flows for "UUID_FMT,
                  UUID_ARGS(&uuid_node->uuid));
         consider_lb_hairpin_flows(lb, l_ctx_in->local_datapaths,
-                                  l_ctx_in->lb_hairpin_use_ct_mark,
                                   l_ctx_out->flow_table);
     }
 

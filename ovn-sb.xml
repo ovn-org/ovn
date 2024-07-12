@@ -229,25 +229,6 @@
         </column>
       </group>
 
-      <group title="Options for configuring Load Balancers">
-        <p>
-          These options apply when <code>ovn-controller</code> configures
-          load balancer related flows.
-        </p>
-
-        <column name="options" key="lb_hairpin_use_ct_mark">
-          By default this option is turned on (even if not present in the
-          database) unless its value is explicitly set to <code>false</code>.
-
-          This value is automatically set to <code>false</code> by
-          <code>ovn-northd</code> when action <code>ct_lb_mark</code> cannot be
-          used for new load balancer sessions and action <code>ct_lb</code>
-          will be used instead.  <code>ovn-controller</code> then
-          knows that it should check <code>ct_label.natted</code> to detect
-          load balanced traffic.
-        </column>
-      </group>
-
       <group title="Options for configuring ovn-sbctl">
         <p>
           These options apply when <code>ovn-sbctl</code> connects to

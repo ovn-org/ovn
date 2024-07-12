@@ -2195,7 +2195,7 @@ check as northd ovn-appctl -t ovn-northd resume
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
-AT_SETUP([ovn-controller - I-P handle lb_hairpin_use_ct_mark change])
+AT_SETUP([ovn-controller - I-P handle arp_ns_explicit_output change])
 
 ovn_start
 
@@ -2226,8 +2226,8 @@ lflow_run_new=$(read_counter lflow_run)
 AT_CHECK([echo $(($lflow_run_new - $lflow_run_old))], [0], [0
 ])
 
-# lb_hairpin_use_ct_mark update in sb_global:options should trigger lflow_run.
-# The below steps should cause lb_hairpin_use_ct_mark change twice. One by
+# arp_ns_explicit_output update in sb_global:options should trigger lflow_run.
+# The below steps should cause arp_ns_explicit_output change twice. One by
 # ovn-sbctl, and the other by ovn-northd to change it back.
 
 # In some cases, both changes are catched by ovn-controller in the same run,
@@ -2235,7 +2235,7 @@ AT_CHECK([echo $(($lflow_run_new - $lflow_run_old))], [0], [0
 
 OVS_WAIT_UNTIL([
     lflow_run_old=$(read_counter lflow_run)
-    check ovn-sbctl set SB_Global . options:lb_hairpin_use_ct_mark=false
+    check ovn-sbctl set SB_Global . options:arp_ns_explicit_output=false
     check ovn-nbctl --wait=hv sync
     lflow_run_new=$(read_counter lflow_run)
     test x"$(($lflow_run_new - $lflow_run_old))" = x2

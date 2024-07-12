@@ -327,13 +327,8 @@ ct.rpl = ct_state[3]
 ct.snat = ct_state[6]
 ct.trk = ct_state[5]
 ct_label = NXM_NX_CT_LABEL
-ct_label.blocked = ct_label[0]
 ct_label.ecmp_reply_eth = ct_label[32..79]
-ct_label.ecmp_reply_port = ct_label[80..95]
-ct_label.force_snat = ct_label[3]
 ct_label.label = ct_label[96..127]
-ct_label.natted = ct_label[1]
-ct_label.skip_snat = ct_label[2]
 ct_mark = NXM_NX_CT_MARK
 ct_mark.blocked = ct_mark[0]
 ct_mark.ecmp_reply_port = ct_mark[16..31]
@@ -1362,10 +1357,10 @@ ct_commit(ct_label=18446744073709551616);
 
 ct_mark = 12345
     Field ct_mark is not modifiable.
+ct_mark.blocked = 1/1
+    Field ct_mark.blocked is not modifiable.
 ct_label = 0xcafe
     Field ct_label is not modifiable.
-ct_label.blocked = 1/1
-    Field ct_label.blocked is not modifiable.
 
 # ct_dnat
 ct_dnat;
