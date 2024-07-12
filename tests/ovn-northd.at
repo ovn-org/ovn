@@ -10211,6 +10211,69 @@ acl_test to-lport "" pg ls_out_acl_eval
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([ACL - ct state clear on router ports])
+AT_KEYWORDS([acl])
+
+ovn_start
+
+dnl Topology: vm1 -- s1 -- r1  -- s2 -- vm2
+dnl - LBs applied on s1 and s2 (all ACLs become stateful)
+dnl - allow ACLs on s1 and s2
+
+check ovn-nbctl                                          \
+  -- lr-add r1                                           \
+  -- lrp-add r1 r1_s1 00:de:ad:fe:00:01 173.0.1.1/24     \
+  -- lrp-add r1 r1_s2 00:de:ad:fe:00:02 173.0.2.1/24     \
+                                                         \
+  -- ls-add s1                                           \
+  -- lsp-add s1 s1_r1                                    \
+  -- lsp-set-type s1_r1 router                           \
+  -- lsp-set-addresses s1_r1 router                      \
+  -- lsp-set-options s1_r1 router-port=r1_s1             \
+                                                         \
+  -- ls-add s2                                           \
+  -- lsp-add s2 s2_r1                                    \
+  -- lsp-set-type s2_r1 router                           \
+  -- lsp-set-addresses s2_r1 router                      \
+  -- lsp-set-options s2_r1 router-port=r1_s2             \
+                                                         \
+  -- lsp-add s1 vm1                                      \
+  -- lsp-set-addresses vm1 "00:de:ad:01:00:01 173.0.1.2" \
+                                                         \
+  -- lsp-add s2 vm2                                      \
+  -- lsp-set-addresses vm2 "00:de:ad:01:00:02 173.0.2.2" \
+                                                         \
+  -- lb-add lb1 30.0.0.1 173.0.2.2                       \
+  -- lb-add lb2 173.0.2.250 173.0.1.3                    \
+  -- ls-lb-add s1 lb1                                    \
+  -- ls-lb-add s2 lb2                                    \
+                                                         \
+  -- acl-add s1 from-lport 1001 "ip" allow               \
+  -- acl-add s1 to-lport 1002 "ip" allow                 \
+  -- acl-add s2 from-lport 1003 "ip" allow               \
+  -- acl-add s2 to-lport 1004 "ip" allow
+
+check ovn-nbctl --wait=sb sync
+
+dnl Simulate a packet going from vm1 -> router -> vm2.
+dnl It should not commit anything in the egress pipeline of S1 or in the
+dnl ingress pipeline of S2.
+flow="inport == \"vm1\" && eth.src == 00:de:ad:01:00:01 && eth.dst == 00:de:ad:fe:00:01 && ip4.src == 173.0.1.2 && ip4.dst == 30.0.0.1 && ip.ttl==64"
+
+dnl Check that we only commit once for ACLs, in the egress ACL pipeline
+dnl (in S2, towards vm2).  The original problem this test is trying to
+dnl cover was that ct_state wasn't cleared when traversing from s1 -> r1
+dnl which caused two additional commits to happen:
+dnl - in the egress pipeline of S1, when sending the packet out on s1_r1
+dnl - in the ingress pipeline of S2, when processing the packet on s2_r1
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --ct new s1 "$flow" | grep -e ls_in_stateful -e ls_out_stateful -A 2 | grep commit], [0], [dnl
+    ct_commit { ct_mark.blocked = 0; };
+])
+
+AT_CLEANUP
+])
+
 AT_SETUP([Localnet ports on LS with LB])
 ovn_start
 # In the past, traffic arriving on localnet ports has skipped conntrack.

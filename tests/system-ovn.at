@@ -10632,11 +10632,6 @@ icmp,orig=(src=173.0.1.2,dst=173.0.2.2,id=<cleared>,type=8,code=0),reply=(src=17
 icmp,orig=(src=173.0.1.2,dst=30.0.0.1,id=<cleared>,type=8,code=0),reply=(src=173.0.2.2,dst=173.0.1.2,id=<cleared>,type=0,code=0),zone=<cleared>,mark=2
 ])
 
-# Now check for multiple ct_commits
-ovs-appctl dpctl/dump-flows > dp_flows
-zone_id=$(ovn-appctl -t ovn-controller ct-zone-list | grep vm1 | cut -d ' ' -f2)
-AT_CHECK([test 1 = `cat dp_flows | grep "commit,zone=$zone_id" | wc -l`])
-
 check ovn-nbctl acl-del s1 from-lport 1001 "ip"
 check ovn-nbctl acl-del s1 to-lport 1002 "ip"
 check ovn-nbctl acl-del s2 from-lport 1003 "ip"
