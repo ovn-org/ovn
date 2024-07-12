@@ -17906,8 +17906,7 @@ handle_port_binding_changes(struct ovsdb_idl_txn *ovnsb_txn,
         if (lsp_is_router(op->nbsp)) {
             up = true;
         } else if (sb->chassis) {
-            up = smap_get_bool(&sb->chassis->other_config,
-                               OVN_FEATURE_PORT_UP_NOTIF, false)
+            up = !smap_get_bool(&sb->chassis->other_config, "is-remote", false)
                  ? sb->n_up && sb->up[0]
                  : true;
         }

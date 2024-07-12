@@ -4168,30 +4168,6 @@ AT_CHECK([grep -qE 'duplicate logical.*port p1' northd/ovn-northd.log], [0])
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD_NO_HV([
-AT_SETUP([Port_Binding.up backwards compatibility])
-ovn_start
-
-ovn-nbctl ls-add ls1
-ovn-nbctl --wait=sb lsp-add ls1 lsp1
-
-# Simulate the fact that lsp1 had been previously bound on hv1 by an
-# ovn-controller running an older version.
-ovn-sbctl \
-    --id=@e create encap chassis_name=hv1 ip="192.168.0.1" type="geneve" \
-    -- --id=@c create chassis name=hv1 encaps=@e \
-    -- set Port_Binding lsp1 chassis=@c
-
-wait_for_ports_up lsp1
-
-# Simulate the fact that hv1 is aware of Port_Binding.up, ovn-northd
-# should transition the port state to down.
-check ovn-sbctl set chassis hv1 other_config:port-up-notif=true
-wait_row_count nb:Logical_Switch_Port 1 up=false name=lsp1
-
-AT_CLEANUP
-])
-
 OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([Load Balancers and lb_force_snat_ip for Gateway Routers])
 ovn_start
