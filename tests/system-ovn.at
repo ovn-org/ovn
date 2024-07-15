@@ -6180,11 +6180,10 @@ tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(sr
 # Ensure datapaths show conntrack states as expected
 # Like with conntrack entries, we shouldn't try to predict
 # port binding tunnel keys. So omit them from expected labels.
-ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x401020400000000/.*)'
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x401020400000000/.*)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est+trk).*ct(.*label=0x401020400000000/.*)' -c], [0], [dnl
 2
 ])
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_label(0x401020400000000)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+trk).*ct_label(0x401020400000000)' -c], [0], [dnl
 2
 ])
 
@@ -6203,10 +6202,10 @@ NS_CHECK_EXEC([bob1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x1001020400000000/.*)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est+trk).*ct(.*label=0x1001020400000000/.*)' -c], [0], [dnl
 2
 ])
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_label(0x1001020400000000)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+trk).*ct_label(0x1001020400000000)' -c], [0], [dnl
 2
 ])
 
@@ -6224,7 +6223,23 @@ OVS_WAIT_UNTIL([
 test $(ovs-ofctl dump-flows br-int | grep -c 'table=OFTABLE_ECMP_NH, n_packets') -eq 0
 ])
 
-ovs-ofctl dump-flows br-int
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+
+NS_CHECK_EXEC([bob1], [ip r d default via 172.16.0.2 dev bob1], [0])
+NS_CHECK_EXEC([bob1], [ip r a default via 172.16.0.3 dev bob1], [0])
+
+NETNS_DAEMONIZE([bob1], [nc -l -k 8080], [bob1.pid])
+NS_CHECK_EXEC([alice1], [nc -z 172.16.0.1 8080], [0])
+NS_CHECK_EXEC([alice1], [ping -q -c 3 -i 0.3 -w 2 172.16.0.1 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 0x401020500000000 | FORMAT_CT(172.16.0.1) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
+sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
+tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x401020500000000,protoinfo=(state=<cleared>)
+])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
@@ -6373,11 +6388,11 @@ NS_CHECK_EXEC([bob1], [ping -q -c 3 -i 0.3 -w 2 fd01::2 | FORMAT_PING], \
 # Ensure datapaths show conntrack states as expected
 # Like with conntrack entries, we shouldn't try to predict
 # port binding tunnel keys. So omit them from expected labels.
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x401020400000000/.*)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est+trk).*ct(.*label=0x401020400000000/.*)' -c], [0], [dnl
 2
 ])
 
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_label(0x401020400000000)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+trk).*ct_label(0x401020400000000)' -c], [0], [dnl
 2
 ])
 
@@ -6405,10 +6420,10 @@ NS_CHECK_EXEC([bob1], [ping -q -c 3 -i 0.3 -w 2 fd01::2 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est-rpl+trk).*ct(.*label=0x1001020400000000/.*)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est+trk).*ct(.*label=0x1001020400000000/.*)' -c], [0], [dnl
 2
 ])
-AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+rpl+trk).*ct_label(0x1001020400000000)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+trk).*ct_label(0x1001020400000000)' -c], [0], [dnl
 2
 ])
 
@@ -6427,7 +6442,20 @@ OVS_WAIT_UNTIL([
 test $(ovs-ofctl dump-flows br-int | grep -c 'table=OFTABLE_ECMP_NH, n_packets') -eq 0
 ])
 
-ovs-ofctl dump-flows br-int
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+
+NETNS_DAEMONIZE([bob1], [nc -6 -l -k 8080], [bob1.pid])
+NS_CHECK_EXEC([alice1], [nc -6 -z fd07::1 8080], [0])
+NS_CHECK_EXEC([alice1], [ping -q -c 3 -i 0.3 -w 2 fd07::1 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 0x1001020400000000 | FORMAT_CT(fd07::1) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
+sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
+tcp,orig=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd07::1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000,protoinfo=(state=<cleared>)
+])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 

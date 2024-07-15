@@ -3686,12 +3686,29 @@ or
       </column>
 
       <column name="options" key="ecmp_symmetric_reply">
-        If true, then new traffic that arrives over this route will have
-        its reply traffic bypass ECMP route selection and will be sent out
-        this route instead. Note that this option overrides any rules set
-        in the <ref table="Logical_Router_policy" /> table. This option
-        only works on gateway routers (routers that have
-        <ref column="options" key="chassis" table="Logical_Router" /> set).
+        <p>
+          If true, then
+        </p>
+        <ul>
+          <li>
+            New ingress-originated traffic that arrives over this route will
+            have its reply traffic bypass ECMP route selection and will be
+            sent out this route instead.
+          </li>
+
+          <li>
+            For the egress-originated traffic, the ingress reply traffic route
+            gets saved.  And the subsequent traffic will bypass ECMP route
+            selection and instead be sent out the same route.
+          </li>
+        </ul>
+
+        <p>
+          Note that this option overrides any rules set in the
+          <ref table="Logical_Router_policy" /> table.  This option only works
+          on gateway routers (routers that have
+          <ref column="options" key="chassis" table="Logical_Router" /> set).
+        </p>
       </column>
 
       <column name="options" key="origin">
