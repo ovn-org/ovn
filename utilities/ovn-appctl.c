@@ -27,6 +27,7 @@
 #include "lib/ovn-dirs.h"
 #include "lib/ovn-util.h"
 #include "openvswitch/dynamic-string.h"
+#include "openvswitch/json.h"
 #include "jsonrpc.h"
 #include "process.h"
 #include "timeval.h"
@@ -37,14 +38,16 @@
 static void usage(void);
 static const char *parse_command_line(int argc, char *argv[]);
 static struct jsonrpc *connect_to_target(const char *target);
+static char *reply_to_string(struct json *);
 
 int
 main(int argc, char *argv[])
 {
-    char *cmd_result, *cmd_error;
+    struct json *cmd_result, *cmd_error;
     struct jsonrpc *client;
     char *cmd, **cmd_argv;
     const char *target;
+    char *msg = NULL;
     int cmd_argc;
     int error;
 
@@ -66,19 +69,23 @@ main(int argc, char *argv[])
 
     if (cmd_error) {
         jsonrpc_close(client);
-        fputs(cmd_error, stderr);
+        msg = reply_to_string(cmd_error);
+        fputs(msg, stderr);
+        free(msg);
         ovs_error(0, "%s: server returned an error", target);
-        free(cmd_error);
+        json_destroy(cmd_error);
         error ? exit(error) : exit(2);
     } else if (cmd_result) {
-        fputs(cmd_result, stdout);
+        msg = reply_to_string(cmd_result);
+        fputs(msg, stdout);
+        free(msg);
     } else {
         OVS_NOT_REACHED();
     }
 
     jsonrpc_close(client);
-    free(cmd_result);
-    free(cmd_error);
+    json_destroy(cmd_result);
+    json_destroy(cmd_error);
     return 0;
 }
 
@@ -239,3 +246,26 @@ connect_to_target(const char *target)
     return client;
 }
 
+/* The caller is responsible for freeing the returned string, with free(), when
+ * it is no longer needed. */
+static char *
+reply_to_string(struct json *reply)
+{
+    ovs_assert(reply);
+
+    if (reply->type != JSON_STRING) {
+        ovs_error(0, "Unexpected reply type in JSON rpc reply: %s",
+                  json_type_to_string(reply->type));
+        exit(2);
+    }
+
+    struct ds ds = DS_EMPTY_INITIALIZER;
+
+    ds_put_cstr(&ds, json_string(reply));
+
+    if (ds_last(&ds) != EOF && ds_last(&ds) != '\n') {
+        ds_put_char(&ds, '\n');
+    }
+
+    return ds_steal_cstr(&ds);
+}

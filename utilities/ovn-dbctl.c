@@ -1181,6 +1181,28 @@ server_loop(const struct ovn_dbctl_options *dbctl_options,
     unixctl_server_destroy(server);
 }
 
+static char *
+reply_to_string(struct json *reply)
+{
+    ovs_assert(reply);
+
+    if (reply->type != JSON_STRING) {
+        ovs_error(0, "Unexpected reply type in JSON rpc reply: %s",
+                  json_type_to_string(reply->type));
+        exit(EXIT_FAILURE);
+    }
+
+    struct ds ds = DS_EMPTY_INITIALIZER;
+
+    ds_put_cstr(&ds, json_string(reply));
+
+    if (ds_last(&ds) != EOF && ds_last(&ds) != '\n') {
+        ds_put_char(&ds, '\n');
+    }
+
+    return ds_steal_cstr(&ds);
+}
+
 static void
 dbctl_client(const struct ovn_dbctl_options *dbctl_options,
              const char *socket_name,
@@ -1264,11 +1286,11 @@ dbctl_client(const struct ovn_dbctl_options *dbctl_options,
 
     ctl_timeout_setup(timeout);
 
-    char *cmd_result = NULL;
-    char *cmd_error = NULL;
+    struct json *cmd_result = NULL;
+    struct json *cmd_error = NULL;
     struct jsonrpc *client;
     int exit_status;
-    char *error_str;
+    char *error_str, *str;
 
     int error = unixctl_client_create(socket_name, &client);
     if (error) {
@@ -1289,12 +1311,16 @@ dbctl_client(const struct ovn_dbctl_options *dbctl_options,
     }
 
     if (cmd_error) {
-        fprintf(stderr, "%s: %s", program_name, cmd_error);
+        str = reply_to_string(cmd_error);
+        fprintf(stderr, "%s: %s", program_name, str);
+        free(str);
         goto error;
     }
 
     exit_status = EXIT_SUCCESS;
-    fputs(cmd_result, stdout);
+    str = reply_to_string(cmd_result);
+    fputs(str, stdout);
+    free(str);
     goto cleanup;
 
 log_error:
@@ -1306,8 +1332,8 @@ error:
     exit_status = EXIT_FAILURE;
 
 cleanup:
-    free(cmd_result);
-    free(cmd_error);
+    json_destroy(cmd_result);
+    json_destroy(cmd_error);
     jsonrpc_close(client);
     svec_destroy(&args);
     destroy_argv(argc, argv);

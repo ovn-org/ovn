@@ -4546,13 +4546,13 @@ encode_SAMPLE(const struct ovnact_sample *sample,
     os = ofpact_put_SAMPLE(ofpacts);
     os->probability = sample->probability;
     os->collector_set_id = sample->collector_set_id;
-    os->obs_domain_id =
+    os->obs_domain_imm =
         (sample->obs_domain_id << 24) | (ep->dp_key & 0xFFFFFF);
 
     if (sample->use_cookie) {
-        os->obs_point_id = ep->lflow_uuid.parts[0];
+        os->obs_point_imm = ep->lflow_uuid.parts[0];
     } else {
-        os->obs_point_id = sample->obs_point_id;
+        os->obs_point_imm = sample->obs_point_id;
     }
     os->sampling_port = OFPP_NONE;
 }
