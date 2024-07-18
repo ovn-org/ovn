@@ -2881,12 +2881,16 @@ ovn-sbctl \
     --id=@e create encap chassis_name=hv1 ip="192.168.0.1" type="vxlan" \
     -- --id=@c create chassis name=hv1 encaps=@e
 
-cmd="ovn-nbctl --wait=sb"
+cmd=""
 for i in {1..4097..1}; do
     cmd="${cmd} -- ls-add lsw-${i}"
+    if test $(($i % 100)) -eq 0; then
+        check ovn-nbctl $cmd
+        cmd=""
+    fi
 done
 
-check $cmd
+check ovn-nbctl --wait=sb $cmd
 
 check_row_count nb:Logical_Switch 4097
 wait_row_count sb:Datapath_Binding 4095
