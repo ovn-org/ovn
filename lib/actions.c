@@ -715,13 +715,18 @@ encode_CT_NEXT(const struct ovnact_ct_next *ct_next,
                 const struct ovnact_encode_params *ep,
                 struct ofpbuf *ofpacts)
 {
+    size_t ct_offset = ofpacts->size;
+
     struct ofpact_conntrack *ct = ofpact_put_CT(ofpacts);
     ct->recirc_table = first_ptable(ep, ep->pipeline) + ct_next->ltable;
     ct->zone_src.field = ep->is_switch ? mf_from_id(MFF_LOG_CT_ZONE)
                             : mf_from_id(MFF_LOG_DNAT_ZONE);
     ct->zone_src.ofs = 0;
     ct->zone_src.n_bits = 16;
-    ofpact_finish(ofpacts, &ct->ofpact);
+
+    ct = ofpbuf_at_assert(ofpacts, ct_offset, sizeof *ct);
+    ofpacts->header = ct;
+    ofpact_finish_CT(ofpacts, &ct);
 }
 
 static void
@@ -761,7 +766,6 @@ encode_CT_COMMIT_V2(const struct ovnact_nest *on,
                     struct ofpbuf *ofpacts)
 {
     size_t ct_offset = ofpacts->size;
-    ofpbuf_pull(ofpacts, ct_offset);
 
     struct ofpact_conntrack *ct = ofpact_put_CT(ofpacts);
     ct->flags = NX_CT_F_COMMIT;
@@ -776,25 +780,17 @@ encode_CT_COMMIT_V2(const struct ovnact_nest *on,
      * collisions at commit time between NATed and firewalled-only sessions.
      */
     if (ovs_feature_is_supported(OVS_CT_ZERO_SNAT_SUPPORT)) {
-        size_t nat_offset = ofpacts->size;
-        ofpbuf_pull(ofpacts, nat_offset);
-
         struct ofpact_nat *nat = ofpact_put_NAT(ofpacts);
         nat->flags = 0;
         nat->range_af = AF_UNSPEC;
         nat->flags |= NX_NAT_F_SRC;
-        ofpacts->header = ofpbuf_push_uninit(ofpacts, nat_offset);
-        ct = ofpacts->header;
     }
 
-    size_t set_field_offset = ofpacts->size;
-    ofpbuf_pull(ofpacts, set_field_offset);
-
     ovnacts_encode(on->nested, on->nested_len, ep, ofpacts);
-    ofpacts->header = ofpbuf_push_uninit(ofpacts, set_field_offset);
-    ct = ofpacts->header;
-    ofpact_finish(ofpacts, &ct->ofpact);
-    ofpbuf_push_uninit(ofpacts, ct_offset);
+
+    ct = ofpbuf_at_assert(ofpacts, ct_offset, sizeof *ct);
+    ofpacts->header = ct;
+    ofpact_finish_CT(ofpacts, &ct);
 }
 
 static void
@@ -1027,20 +1023,16 @@ encode_ct_nat(const struct ovnact_ct_nat *cn,
               enum mf_field_id zone_src, struct ofpbuf *ofpacts)
 {
     const size_t ct_offset = ofpacts->size;
-    ofpbuf_pull(ofpacts, ct_offset);
 
     struct ofpact_conntrack *ct = ofpact_put_CT(ofpacts);
     ct->recirc_table = cn->ltable + first_ptable(ep, ep->pipeline);
     ct->zone_src.field = mf_from_id(zone_src);
     ct->zone_src.ofs = 0;
     ct->zone_src.n_bits = 16;
-    ct->flags = 0;
+    ct->flags = cn->commit ? NX_CT_F_COMMIT : 0;
     ct->alg = 0;
 
     struct ofpact_nat *nat;
-    size_t nat_offset;
-    nat_offset = ofpacts->size;
-    ofpbuf_pull(ofpacts, nat_offset);
 
     nat = ofpact_put_NAT(ofpacts);
     nat->range_af = cn->family;
@@ -1081,13 +1073,9 @@ encode_ct_nat(const struct ovnact_ct_nat *cn,
         }
     }
 
-    ofpacts->header = ofpbuf_push_uninit(ofpacts, nat_offset);
-    ct = ofpacts->header;
-    if (cn->commit) {
-        ct->flags |= NX_CT_F_COMMIT;
-    }
-    ofpact_finish(ofpacts, &ct->ofpact);
-    ofpbuf_push_uninit(ofpacts, ct_offset);
+    ct = ofpbuf_at_assert(ofpacts, ct_offset, sizeof *ct);
+    ofpacts->header = ct;
+    ofpact_finish_CT(ofpacts, &ct);
 }
 
 static void
@@ -1383,11 +1371,9 @@ encode_ct_lb(const struct ovnact_ct_lb *cl,
         /* ct_lb without any destinations means that this is an established
          * connection and we just need to do a NAT. */
         const size_t ct_offset = ofpacts->size;
-        ofpbuf_pull(ofpacts, ct_offset);
 
         struct ofpact_conntrack *ct = ofpact_put_CT(ofpacts);
         struct ofpact_nat *nat;
-        size_t nat_offset;
         ct->zone_src.field = ep->is_switch ? mf_from_id(MFF_LOG_CT_ZONE)
                                 : mf_from_id(MFF_LOG_DNAT_ZONE);
         ct->zone_src.ofs = 0;
@@ -1396,17 +1382,13 @@ encode_ct_lb(const struct ovnact_ct_lb *cl,
         ct->recirc_table = recirc_table;
         ct->alg = 0;
 
-        nat_offset = ofpacts->size;
-        ofpbuf_pull(ofpacts, nat_offset);
-
         nat = ofpact_put_NAT(ofpacts);
         nat->flags = 0;
         nat->range_af = AF_UNSPEC;
 
-        ofpacts->header = ofpbuf_push_uninit(ofpacts, nat_offset);
-        ct = ofpacts->header;
-        ofpact_finish(ofpacts, &ct->ofpact);
-        ofpbuf_push_uninit(ofpacts, ct_offset);
+        ct = ofpbuf_at_assert(ofpacts, ct_offset, sizeof *ct);
+        ofpacts->header = ct;
+        ofpact_finish_CT(ofpacts, &ct);
         return;
     }
 
