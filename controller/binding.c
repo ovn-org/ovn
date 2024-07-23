@@ -2972,6 +2972,13 @@ handle_updated_port(struct binding_ctx_in *b_ctx_in,
     case LP_VIF:
     case LP_CONTAINER:
     case LP_VIRTUAL:
+        /* If port binding type just changed, port might be a "related_lport"
+         * while it should not. Remove it from that set. It will be added
+         * back later if needed.
+         */
+        if (sbrec_port_binding_is_updated(pb, SBREC_PORT_BINDING_COL_TYPE)) {
+            remove_related_lport(pb, b_ctx_out);
+        }
         update_ld_multichassis_ports(pb, b_ctx_out->local_datapaths);
         handled = handle_updated_vif_lport(pb, lport_type, b_ctx_in,
                                            b_ctx_out);
