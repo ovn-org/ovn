@@ -27,6 +27,15 @@ m4_define([DUMP_FLOWS], [
           sort > $output_file
 ])
 
+# DUMP_RELATED_PORTS(sbox, output_file)
+# Dump related ports
+m4_define([DUMP_RELATED_PORTS], [
+    sbox=$1
+    output_file=$2
+    as $sbox
+    ovn-appctl debug/dump-related-ports | sort > $output_file
+])
+
 m4_define([CHECK_FLOWS_AFTER_RECOMPUTE], [
     hv=$1
     sbox=$2
@@ -50,7 +59,76 @@ m4_define([CHECK_FLOWS_AFTER_RECOMPUTE], [
       fi
       DUMP_FLOWS([$sbox], [flows-$hv-2])
       diff flows-$hv-1 flows-$hv-2 > flow-diff
-      AT_CHECK([test $(diff flows-$hv-1 flows-$hv-2 | wc -l) == 0])
+      AT_CHECK([wc -l < flow-diff], [0], [0
+])
+    fi
+])
+
+m4_define([CHECK_RELATED_PORTS_AFTER_RECOMPUTE], [
+    hv=$1
+    sbox=$2
+    related_ports=$3
+    AT_CAPTURE_FILE([related-ports-diff])
+    # Make sure I+P has finalized the job before getting flows and comparing them after recompte.
+    # Some tests have northd and ovn-nb ovsdb stopped, so avoid ovn-nbctl for those.
+    if [[ -e ovn-nb/ovn-nb.sock ]] && [[ -e northd/ovn-northd.pid ]]; then
+        # Do wait twice to handle some potential race conditions
+        check ovn-nbctl --wait=hv sync
+        check ovn-nbctl --wait=hv sync
+    fi
+
+    as $sbox
+    if test "$hv" != "vtep"; then
+      DUMP_RELATED_PORTS([$sbox], [related-ports-$hv-before])
+      check ovn-appctl -t ovn-controller recompute
+      # The recompute might cause some sb changes. Let controller catch up.
+      if [[ -e ovn-nb/ovn-nb.sock ]] && [[ -e northd/ovn-northd.pid ]]; then
+          check ovn-nbctl --wait=hv sync
+      fi
+      DUMP_RELATED_PORTS([$sbox], [related-ports-$hv-after])
+      # Compare and store differences before and after recompute
+      comm -3 related-ports-$hv-before related-ports-$hv-after > related-ports-diff-$hv
+      # Ignore some differences.
+      echo "$related_ports" | comm -2 -3 related-ports-diff-$hv - > related-ports-diff
+      AT_CHECK([wc -l < related-ports-diff], [0], [0
+])
+    fi
+])
+
+m4_define([CHECK_AFTER_RECOMPUTE], [
+    hv=$1
+    sbox=$2
+    related_ports=$3
+    AT_CAPTURE_FILE([related-ports-diff])
+    # Make sure I+P has finalized his job before getting flows and comparing them after recompte.
+    # Some tests have northd and ovn-nb ovsdb stopped, so avoid ovn-nbctl for those.
+    if [[ -e ovn-nb/ovn-nb.sock ]] && [[ -e northd/ovn-northd.pid ]]; then
+        # Do wait twice to handle some potential race conditions
+        check ovn-nbctl --wait=hv sync
+        check ovn-nbctl --wait=hv sync
+    fi
+
+    as $sbox
+    if test "$hv" != "vtep"; then
+      DUMP_RELATED_PORTS([$sbox], [related-ports-$hv-1])
+      DUMP_FLOWS([$sbox], [flows-$hv-1])
+      check ovn-appctl -t ovn-controller recompute
+      # The recompute might cause some sb changes. Let controller catch up.
+      if [[ -e ovn-nb/ovn-nb.sock ]] && [[ -e northd/ovn-northd.pid ]]; then
+          check ovn-nbctl --wait=hv sync
+      fi
+      DUMP_RELATED_PORTS([$sbox], [related-ports-$hv-2])
+      DUMP_FLOWS([$sbox], [flows-$hv-2])
+      # Compare and store differences before and after recompute
+      comm -3 related-ports-$hv-1 related-ports-$hv-2 > related-ports-diff-$hv
+      # Ignore some differences.
+      echo "$related_ports" | comm -2 -3 related-ports-diff-$hv - > related-ports-diff
+      AT_CHECK([wc -l < related-ports-diff], [0], [0
+])
+      diff flows-$hv-1 flows-$hv-2 > flow-diff
+      AT_CHECK([wc -l < flow-diff], [0], [0
+])
+      diff flows-$hv-1 flows-$hv-2 > flow-diff
     fi
 ])
 
