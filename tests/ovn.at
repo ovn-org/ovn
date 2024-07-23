@@ -16482,7 +16482,6 @@ AT_CHECK([test "${hv1_claims}" -le "${max_claims}"], [0], [])
 AT_CHECK([test "${hv2_claims}" -le "${max_claims}"], [0], [])
 
 check ovn-nbctl --wait=hv lsp-del lsp0
-
 CHECK_AFTER_RECOMPUTE([hv1], [hv1])
 
 OVN_CLEANUP([hv1],[hv2])
@@ -16787,7 +16786,11 @@ echo $expected_garp >> hv2/n1.expected
 OVN_CHECK_PACKETS([hv1/br-phys_n1-tx.pcap], [hv1/n1.expected])
 OVN_CHECK_PACKETS_CONTAIN([hv2/br-phys_n1-tx.pcap], [hv2/n1.expected])
 
-OVN_CLEANUP([hv1],[hv2])
+# ls0 is not local to hv1 anymore.
+# So public should not be a related_port.
+OVN_CLEANUP([hv1
+public
+],[hv2])
 
 AT_CLEANUP
 ])
@@ -24387,9 +24390,10 @@ m4_define([DVR_N_S_ARP_HANDLING],
    as hv4 ovs-appctl fdb/show br-phys
 
    # Expect some potential transaction errors for MAC_Binding
+   # Since router-to-underlay moved to hv3, ls-underlay is not local to hv1 anymore and ln3 should not be a related_port.
    OVN_CLEANUP([hv1
    /transaction error/d
-   ],[hv2
+ln3],[hv2
    /transaction error/d
    ],[hv3
    /transaction error/d
@@ -33171,7 +33175,14 @@ test_ip vif11 f00000000010 06ac10010001 $sip $dip vif-north3
 # Confirm that South to North traffic works fine.
 OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv5/vif-north3-tx.pcap], [vif-north3.expected])
 
-OVN_CLEANUP([hv1],[hv2],[hv3],[hv4],[hv5])
+# Since DR-S1, DR-S2 and DR-S3 are gw-chassis on resp. hv2, hv3 and hv4,
+# S1, S2 and S3 should not be local datapaths on hv1, and their localnets
+# should not be related ports.
+OVN_CLEANUP([hv1
+ln1
+ln2
+ln3
+],[hv2],[hv3],[hv4],[hv5])
 AT_CLEANUP
 ])
 
@@ -36946,7 +36957,11 @@ OVS_WAIT_UNTIL([test `ovn-sbctl get Port_Binding lsp2 up` = 'false'])
 # Check ports are unbound
 wait_column "" Port_Binding chassis logical_port=lsp1
 wait_column "" Port_Binding chassis logical_port=lsp2
-OVN_CLEANUP([hv1])
+
+# ls1 should not be a local datapath in hv1 as vif1 iface-id has been removed.
+# Hence ln1 should not be a related port.
+OVN_CLEANUP([hv1
+ln1])
 AT_CLEANUP
 ])
 

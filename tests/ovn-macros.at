@@ -141,9 +141,9 @@ m4_define([CHECK_AFTER_RECOMPUTE], [
 m4_define([OVN_CLEANUP_CONTROLLER],[
     hv=$1
     sbox=$2
+    related_ports=$3
 
-    ovn-nbctl --wait=hv sync
-    as $sbox
+    CHECK_RELATED_PORTS_AFTER_RECOMPUTE([$hv], [$sbox], [$related_ports])
     if test "$hv" = "vtep"; then
         OVS_APP_EXIT_AND_WAIT([ovn-controller-vtep])
         OVS_APP_EXIT_AND_WAIT([ovs-vtep])
@@ -161,8 +161,9 @@ m4_define([OVN_CLEANUP_CONTROLLER],[
 m4_define([OVN_CLEANUP_SBOX],[
     sbox=$1
     error=$2
+    related_ports=$3
     echo "$sbox: clean up sandbox"
-    OVN_CLEANUP_CONTROLLER([$sbox], [$sbox])
+    OVN_CLEANUP_CONTROLLER([$sbox], [$sbox], [$related_ports])
     OVN_CLEANUP_VSWITCH([$sbox])
 
     # Check for errors in logs. Ignore following errors:
@@ -189,8 +190,9 @@ m4_define([OVN_CLEANUP_SBOX],[
 m4_define([OVN_CLEANUP],[
     m4_foreach([sbox_and_error], [$@], [
         sbox=$(echo "sbox_and_error" |sed -n '1p')
-        error=$(echo "sbox_and_error" | sed -n '2,$p')
-        OVN_CLEANUP_SBOX([$sbox], [$error])
+        error=$(echo "sbox_and_error"  | grep '/')
+        related_ports=$(echo "sbox_and_error" | sed -n '2,$p' | grep -v '/')
+        OVN_CLEANUP_SBOX([$sbox], [$error], [$related_ports])
     ])
 
     echo
