@@ -2749,14 +2749,11 @@ handle_deleted_lport(const struct sbrec_port_binding *pb,
         return;
     }
 
-    /*
-     * Remove localport that was part of local datapath that is not
-     * considered to be local anymore.
+    /* Some ports, such a l3gw ports for non local datapaths, can be related
+     * while not belonging to a local datapath. Remove such ports from
+     * related_lports when they are deleted.
      */
-    if (!ld && !strcmp(pb->type, "localport") &&
-        sset_find(&b_ctx_out->related_lports->lport_names, pb->logical_port)) {
-        remove_related_lport(pb, b_ctx_out);
-    }
+    remove_related_lport(pb, b_ctx_out);
 
     /* If the binding is not local, if 'pb' is a L3 gateway port, we should
      * remove its peer, if that one is local.
