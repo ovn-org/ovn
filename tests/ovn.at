@@ -16482,8 +16482,8 @@ AT_CHECK([test "${hv1_claims}" -le "${max_claims}"], [0], [])
 AT_CHECK([test "${hv2_claims}" -le "${max_claims}"], [0], [])
 
 check ovn-nbctl --wait=hv lsp-del lsp0
-CHECK_FLOWS_AFTER_RECOMPUTE([hv1], [hv1])
-CHECK_FLOWS_AFTER_RECOMPUTE([hv2], [hv2])
+
+CHECK_AFTER_RECOMPUTE([hv1], [hv1])
 
 OVN_CLEANUP([hv1],[hv2])
 

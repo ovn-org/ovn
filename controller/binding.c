@@ -1531,8 +1531,10 @@ release_binding_lport(const struct sbrec_chassis *chassis_rec,
                       struct binding_lport *b_lport, bool sb_readonly,
                       struct binding_ctx_out *b_ctx_out)
 {
-    if (is_binding_lport_this_chassis(b_lport, chassis_rec)) {
+    if (b_lport && b_lport->pb) {
         remove_related_lport(b_lport->pb, b_ctx_out);
+    }
+    if (is_binding_lport_this_chassis(b_lport, chassis_rec)) {
         if (!release_lport(b_lport->pb, chassis_rec, sb_readonly,
                            b_ctx_out->tracked_dp_bindings,
                            b_ctx_out->if_mgr)) {
