@@ -202,6 +202,9 @@ void binding_tracked_dp_destroy(struct hmap *tracked_datapaths);
 
 void binding_dump_local_bindings(struct local_binding_data *, struct ds *);
 
+void binding_dump_related_lports(struct related_lports *related_lports,
+                                 struct ds *);
+
 bool is_additional_chassis(const struct sbrec_port_binding *pb,
                            const struct sbrec_chassis *chassis_rec);
 

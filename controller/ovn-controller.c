@@ -99,6 +99,7 @@ static unixctl_cb_func debug_pause_execution;
 static unixctl_cb_func debug_resume_execution;
 static unixctl_cb_func debug_status_execution;
 static unixctl_cb_func debug_dump_local_bindings;
+static unixctl_cb_func debug_dump_related_lports;
 static unixctl_cb_func debug_dump_local_template_vars;
 static unixctl_cb_func debug_dump_lflow_conj_ids;
 static unixctl_cb_func lflow_cache_flush_cmd;
@@ -5326,6 +5327,10 @@ main(int argc, char *argv[])
                              debug_dump_local_bindings,
                              &runtime_data->lbinding_data);
 
+    unixctl_command_register("debug/dump-related-ports", "", 0, 0,
+                             debug_dump_related_lports,
+                             &runtime_data->related_lports);
+
     unixctl_command_register("debug/dump-lflow-conj-ids", "", 0, 0,
                              debug_dump_lflow_conj_ids,
                              &lflow_output_data->conj_ids);
@@ -6235,6 +6240,16 @@ debug_dump_local_bindings(struct unixctl_conn *conn, int argc OVS_UNUSED,
     binding_dump_local_bindings(local_bindings, &binding_data);
     unixctl_command_reply(conn, ds_cstr(&binding_data));
     ds_destroy(&binding_data);
+}
+
+static void
+debug_dump_related_lports(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                          const char *argv[] OVS_UNUSED, void *related_lports)
+{
+    struct ds data = DS_EMPTY_INITIALIZER;
+    binding_dump_related_lports(related_lports, &data);
+    unixctl_command_reply(conn, ds_cstr(&data));
+    ds_destroy(&data);
 }
 
 static void

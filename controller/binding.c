@@ -1038,6 +1038,16 @@ local_binding_set_down(struct shash *local_bindings, const char *pb_name,
 }
 
 void
+binding_dump_related_lports(struct related_lports *related_lports,
+                            struct ds *out_data)
+{
+    const char *name;
+    SSET_FOR_EACH (name, &related_lports->lport_names) {
+        ds_put_format(out_data, "%s\n", name);
+    }
+}
+
+void
 binding_dump_local_bindings(struct local_binding_data *lbinding_data,
                             struct ds *out_data)
 {
