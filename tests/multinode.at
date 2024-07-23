@@ -933,7 +933,17 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route get 10.0.0.1 dev sw0p1 | gre
 
 AT_CLEANUP
 
-AT_SETUP([ovn multinode pmtu - logical switch - geneve])
+m4_define([PMTUD_SWITCH_TESTS],
+  [
+    AT_SETUP([ovn multinode pmtu - logical switch - $1])
+    encap=$1
+    if test "$encap" = "vxlan"; then
+      encap_sys="vxlan_sys"
+      overhead=50
+    else
+      encap_sys="genev_sys"
+      overhead=58
+    fi
 
 # Check that ovn-fake-multinode setup is up and running
 check_fake_multinode_setup
@@ -947,12 +957,12 @@ m_as ovn-chassis-2 ip link del sw0p2-p
 # Reset geneve tunnels
 for c in ovn-chassis-1 ovn-chassis-2 ovn-gw-1
 do
-    m_as $c ovs-vsctl set open . external-ids:ovn-encap-type=geneve
+    m_as $c ovs-vsctl set open . external-ids:ovn-encap-type=$encap
 done
 
-OVS_WAIT_UNTIL([m_as ovn-chassis-1 ip link show | grep -q genev_sys])
-OVS_WAIT_UNTIL([m_as ovn-chassis-2 ip link show | grep -q genev_sys])
-OVS_WAIT_UNTIL([m_as ovn-gw-1 ip link show | grep -q genev_sys])
+OVS_WAIT_UNTIL([m_as ovn-chassis-1 ip link show | grep -q $encap_sys])
+OVS_WAIT_UNTIL([m_as ovn-chassis-2 ip link show | grep -q $encap_sys])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip link show | grep -q $encap_sys])
 
 # Test East-West switching
 check multinode_nbctl ls-add sw0
@@ -1008,7 +1018,8 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.4 | F
 
 # Change ptmu for the geneve tunnel
 m_as ovn-chassis-1 ip route change 170.168.0.0/16 mtu 1200 dev eth1
-M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -c 5 -s 1300 -M do 10.0.0.4 2>&1 | grep -q "message too long, mtu=1142"])
+mtu=$((1200 - overhead))
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -c 5 -s 1300 -M do 10.0.0.4 2>&1 | grep -q "message too long, mtu=$mtu"])
 
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route flush dev sw0p1])
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add 10.0.0.0/24 dev sw0p1])
@@ -1021,19 +1032,25 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 20.0.0.3 | F
 
 # Change ptmu for the geneve tunnel
 m_as ovn-chassis-1 ip route change 170.168.0.0/16 mtu 1100 dev eth1
-M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -c 5 -s 1300 -M do 20.0.0.3 2>&1 | grep -q "message too long, mtu=1042"])
+mtu=$((1100 - overhead))
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -c 5 -s 1300 -M do 20.0.0.3 2>&1 | grep -q "message too long, mtu=$mtu"])
 
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route flush dev sw0p1])
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add 10.0.0.0/24 dev sw0p1])
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add default via 10.0.0.1 dev sw0p1])
 
 m_as ovn-chassis-1 ip route change 170.168.0.0/16 mtu 1000 dev eth1
+mtu=$((1000 - overhead))
 for i in $(seq 30); do
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [sh -c 'dd bs=512 count=2 if=/dev/urandom | nc -u 10.0.0.1 8080'], [ignore], [ignore], [ignore])
 done
-M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route get 10.0.0.1 dev sw0p1 | grep -q 'mtu 942'])
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route get 10.0.0.1 dev sw0p1 | grep -q "mtu $mtu"])
 
 AT_CLEANUP
+])
+
+PMTUD_SWITCH_TESTS(["geneve"])
+PMTUD_SWITCH_TESTS(["vxlan"])
 
 AT_SETUP([Migration of container ports])
 # Migrate vif port between chassis-1 and chassis-3; send packets between

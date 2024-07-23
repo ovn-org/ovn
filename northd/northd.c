@@ -6036,6 +6036,13 @@ build_ls_stateful_rec_pre_acls(
          *
          * 'REGBIT_CONNTRACK_DEFRAG' is set to let the pre-stateful table send
          * it to conntrack for tracking and defragmentation. */
+
+        /* We do not want icmp type=3 code=4 (packet too big) to go to ct */
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_ACL, 110,
+                      "((ip4 && icmp4.type == 3 && icmp4.code == 4) ||"
+                      " (ip6 && icmp6.type == 2 && icmp6.code == 0)) &&"
+                      " flags.tunnel_rx == 1",
+                      "next;", lflow_ref);
         ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_ACL, 100, "ip",
                       REGBIT_CONNTRACK_DEFRAG" = 1; next;",
                       lflow_ref);
@@ -6163,6 +6170,12 @@ build_pre_lb(struct ovn_datapath *od, const struct shash *meter_groups,
                   "next;", lflow_ref);
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB, 110,
                   "nd || nd_rs || nd_ra || mldv1 || mldv2",
+                  "next;", lflow_ref);
+    /* Do not send icmp packet too big to conntrack in ingress */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB, 110,
+                  "((ip4 && icmp4.type == 3 && icmp4.code == 4) ||"
+                  "(ip6 && icmp6.type == 2 && icmp6.code == 0)) &&"
+                  " flags.tunnel_rx == 1",
                   "next;", lflow_ref);
 
     /* Do not send service monitor packets to conntrack. */
