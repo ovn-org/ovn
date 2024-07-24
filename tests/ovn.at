@@ -5882,7 +5882,7 @@ for i in 1 2 3; do
     test_icmpv6 ${i}3 f0:00:00:00:0${i}:${i}3 f0:00:00:00:00:21 $sip ff02::16:0 "ICMPv6EchoRequest()"
 
     # should be dropped
-    sip=ae80::ea2aeafffe2800aa
+    sip=ae80::ea2a:eaff:fe28:00aa
     test_ipv6 ${i}3 f0:00:00:00:0${i}:${i}3 f0:00:00:00:00:21 $sip $tip
 done
 
