@@ -196,7 +196,7 @@ m4_define([_OVS_VSWITCHD_START],
 
    dnl Start ovsdb-server.
    AT_CHECK([ovsdb-server --detach --no-chdir --pidfile --log-file --remote=punix:$OVS_RUNDIR/db.sock], [0], [], [stderr])
-   on_exit "test -e `cat ovsdb-server.pid` && kill `cat ovsdb-server.pid`"
+   on_exit "test -e ovsdb-server.pid && kill `cat ovsdb-server.pid`"
    AT_CHECK([[sed < stderr '
 /vlog|INFO|opened log file/d
 /ovsdb_server|INFO|ovsdb-server (Open vSwitch)/d']])
