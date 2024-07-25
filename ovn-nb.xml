@@ -1329,6 +1329,13 @@
           The default value is <code>false</code>.
         </column>
 
+        <column name="options" key="disable_garp_rarp"
+                type='{"type": "boolean"}'>
+          If set to <code>true</code>, GARP and RARP announcements are not
+          sent when a VIF port is created on a bridged logical switch.
+          The default value is <code>false</code>.
+        </column>
+
         <column name="options" key="pkt_clone_type"
                 type='{"type": "string", "enum": ["set", ["mc_unknown"]]}'>
           If set to mc_unknown, packets going to this VIF get cloned to all

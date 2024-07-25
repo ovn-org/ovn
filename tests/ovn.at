@@ -25013,6 +25013,74 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([Disabling RARP/GARP announcements])
+ovn_start
+
+# In this test case we create 1 switch and bring up 4 VIFs on it.
+# Two VIFs will be assigned MAC addresses only (i.e. without ips)
+# and two VIFs will be assigned IP addresses along with MAC addresses.
+# VIFs with IPs are supposed to send GARPs and VIFs with only MAC
+# addresses are supposed to send RARP. However, we test the lsp
+# option disable_garp_rarp, which when set to true for an lsp does
+# not send the GARP/RARP announcements.
+
+ovn-nbctl ls-add ls1
+ovn-nbctl lsp-add ls1 ln1 "" 101
+ovn-nbctl lsp-set-addresses ln1 unknown
+ovn-nbctl lsp-set-type ln1 localnet
+ovn-nbctl lsp-set-options ln1 network_name=phys
+
+ovn-nbctl lsp-add ls1 lp11
+ovn-nbctl lsp-set-addresses lp11 "f0:00:00:00:00:11"
+
+ovn-nbctl lsp-add ls1 lp12
+ovn-nbctl lsp-set-addresses lp12 "f0:00:00:00:00:12"
+ovn-nbctl set logical_switch_port lp12 options:disable_garp_rarp=true
+
+ovn-nbctl lsp-add ls1 lp13
+ovn-nbctl lsp-set-addresses lp13 "f0:00:00:00:00:13 192.168.1.3"
+
+ovn-nbctl lsp-add ls1 lp14
+ovn-nbctl lsp-set-addresses lp14 "f0:00:00:00:00:14 192.168.1.4"
+ovn-nbctl set logical_switch_port lp14 options:disable_garp_rarp=true
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+AT_CHECK([ovs-vsctl add-port br-phys snoopvif -- set Interface snoopvif options:tx_pcap=hv1/snoopvif-tx.pcap options:rxq_pcap=hv1/snoopvif-rx.pcap])
+
+ovs-vsctl add-port br-int vif11 -- \
+    set Interface vif11 external-ids:iface-id=lp11
+
+ovs-vsctl add-port br-int vif12 -- \
+    set Interface vif12 external-ids:iface-id=lp12
+
+ovs-vsctl add-port br-int vif13 -- \
+    set Interface vif13 external-ids:iface-id=lp13
+
+ovs-vsctl add-port br-int vif14 -- \
+    set Interface vif14 external-ids:iface-id=lp14
+
+wait_for_ports_up
+ovn-nbctl --wait=sb sync
+
+# RARP packet for lp11
+echo "fffffffffffff000000000118100006580350001080006040003f0000000001100000000f0000000001100000000" > expected
+# GARP packet for lp13
+echo "fffffffffffff000000000138100006508060001080006040001f00000000013c0a80103000000000000c0a80103" >> expected
+OVN_CHECK_PACKETS_UNIQ([hv1/snoopvif-tx.pcap], [expected])
+
+OVN_CLEANUP([hv1])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([Stateless Floating IP])
 ovn_start
 
