@@ -11327,7 +11327,25 @@ check_ovn_installed
 check_ports_up
 check_ports_bound
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+AS_BOX(["Leave some ovn-installed while closing ovn-controller"])
+# Block IDL from ovn-controller to OVSDB
+stop_ovsdb_controller_updates $TCP_PORT
+remove_iface_id vif2
+ensure_controller_run
+
+# OVSDB should now be seen as read-only by ovn-controller
+remove_iface_id vif1
+check ovn-nbctl --wait=hv sync
+
+# Stop ovsdb before ovn-controller to ensure it's not updated
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+# Don't use OVS_APP_EXIT... to use --restart to avoid cleaning up the databases.
+TMPPID=$(cat $OVS_RUNDIR/ovn-controller.pid)
+check ovs-appctl -t ovn-controller exit --restart
+OVS_WAIT_WHILE([kill -0 $TMPPID 2>/dev/null])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -11338,9 +11356,6 @@ OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 as northd
 OVS_APP_EXIT_AND_WAIT([ovn-northd])
 
-as
-OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
-/connection dropped.*/d"])
 AT_CLEANUP
 ])
 
