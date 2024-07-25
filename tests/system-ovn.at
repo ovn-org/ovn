@@ -11137,17 +11137,6 @@ wait_for_local_bindings() {
       [kill -CONT $(cat ovn-sb/ovsdb-server.pid)]
   )
 }
-stop_ovsdb_controller_updates() {
-  TCP_PORT=$1
-  echo Stopping updates from ovn-controller to ovsdb using port $TCP_PORT
-  on_exit 'iptables -C INPUT -p tcp --destination-port $TCP_PORT -j DROP 2>/dev/null && iptables -D INPUT -p tcp --destination-port $TCP_PORT -j DROP'
-  iptables -A INPUT -p tcp --destination-port $TCP_PORT -j DROP
-}
-restart_ovsdb_controller_updates() {
-  TCP_PORT=$1
-  echo Restarting updates from ovn-controller to ovsdb
-  iptables -D INPUT -p tcp --destination-port $TCP_PORT  -j DROP
-}
 ensure_controller_run() {
 # We want to make sure controller could run at least one full loop.
 # We can't use wait=hv as sb might be sleeping.
