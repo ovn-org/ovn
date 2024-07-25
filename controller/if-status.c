@@ -219,7 +219,8 @@ ovs_iface_create(struct if_status_mgr *, const char *iface_id,
 static void add_to_ovn_uninstall_hash(struct if_status_mgr *, const char *,
                                       const struct uuid *);
 static void ovs_iface_destroy(struct if_status_mgr *, struct ovs_iface *);
-static void ovn_uninstall_hash_destroy(struct if_status_mgr *mgr, char *name);
+static void ovn_uninstall_hash_destroy(struct if_status_mgr *mgr,
+                                       struct shash_node *node);
 static void ovs_iface_set_state(struct if_status_mgr *, struct ovs_iface *,
                                 enum if_state);
 
@@ -256,7 +257,7 @@ if_status_mgr_clear(struct if_status_mgr *mgr)
     ovs_assert(shash_is_empty(&mgr->ifaces));
 
     SHASH_FOR_EACH_SAFE (node, &mgr->ovn_uninstall_hash) {
-        ovn_uninstall_hash_destroy(mgr, node->data);
+        ovn_uninstall_hash_destroy(mgr, node);
     }
     ovs_assert(shash_is_empty(&mgr->ovn_uninstall_hash));
 
@@ -789,20 +790,13 @@ ovs_iface_destroy(struct if_status_mgr *mgr, struct ovs_iface *iface)
 }
 
 static void
-ovn_uninstall_hash_destroy(struct if_status_mgr *mgr, char *name)
+ovn_uninstall_hash_destroy(struct if_status_mgr *mgr, struct shash_node *node)
 {
-    struct shash_node *node = shash_find(&mgr->ovn_uninstall_hash, name);
-    char *node_name = NULL;
-    if (node) {
-        free(node->data);
-        VLOG_DBG("Interface name %s destroy", name);
-        node_name = shash_steal(&mgr->ovn_uninstall_hash, node);
-        ovn_uninstall_hash_account_mem(name, true);
-        free(node_name);
-    } else {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "Interface name %s not found", name);
-    }
+    free(node->data);
+    VLOG_DBG("Interface name %s destroy", node->name);
+    char *node_name = shash_steal(&mgr->ovn_uninstall_hash, node);
+    ovn_uninstall_hash_account_mem(node_name, true);
+    free(node_name);
 }
 
 static void
