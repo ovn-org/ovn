@@ -475,6 +475,17 @@
       </dd>
 
       <dt>
+        <code>external_ids:ct-zone-range</code> in the
+        <code>Open_vSwitch</code> table
+      </dt>
+      <dd>
+        The presence of this key identifies a minimum and maximum values for
+        ct-zone ids dynamically selected by ovn-controller (boundaries are
+        included in the range). Minimum value is 1 while maximum value is
+        65535.
+      </dd>
+
+      <dt>
         <code>external_ids:ct-zone-*</code> in the <code>Bridge</code> table
       </dt>
       <dd>

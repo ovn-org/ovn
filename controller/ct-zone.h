@@ -56,11 +56,14 @@ struct ct_zone_pending_entry {
     enum ct_zone_pending_state state;
 };
 
+void ct_zones_parse_range(const struct ovsrec_open_vswitch_table *ovs_table,
+                          int *min_ct_zone, int *max_ct_zone);
 void ct_zones_restore(struct ct_zone_ctx *ctx,
                       const struct ovsrec_open_vswitch_table *ovs_table,
                       const struct sbrec_datapath_binding_table *dp_table,
                       const struct ovsrec_bridge *br_int);
 void ct_zones_update(const struct sset *local_lports,
+                     const struct ovsrec_open_vswitch_table *ovs_table,
                      const struct hmap *local_datapaths,
                      struct ct_zone_ctx *ctx);
 void ct_zones_commit(const struct ovsrec_bridge *br_int,
@@ -69,6 +72,7 @@ void ct_zones_pending_clear_commited(struct shash *pending);
 bool ct_zone_handle_dp_update(struct ct_zone_ctx *ctx,
                               const struct sbrec_datapath_binding *dp);
 bool ct_zone_handle_port_update(struct ct_zone_ctx *ctx, const char *name,
-                                bool updated, int *scan_start);
+                                bool updated, int *scan_start,
+                                int min_ct_zone, int max_ct_zone);
 
 #endif /* controller/ct-zone.h */

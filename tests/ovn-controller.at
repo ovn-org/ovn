@@ -3127,3 +3127,70 @@ OVS_WAIT_UNTIL([grep -q 'tcp:127.0.0.1:1235: connected' hv1/ovn-controller.log])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - CT zone min/max boundaries])
+ovn_start
+
+check_ct_zone_min() {
+    min_val=$1
+    OVS_WAIT_UNTIL([test $(ovn-appctl -t ovn-controller ct-zone-list | awk '{print $2}' | sort | head -n1) -ge ${min_val}])
+}
+
+check_ct_zone_max() {
+    max_val=$1
+    AT_CHECK([test $(ovn-appctl -t ovn-controller ct-zone-list | awk '{print $2}' | sort | tail -n1) -le ${max_val}])
+}
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovn-appctl -t ovn-controller vlog/set dbg:ct_zone
+
+check ovs-vsctl add-port br-int lsp0 \
+    -- set Interface lsp0 external-ids:iface-id=lsp0
+
+check ovn-nbctl lr-add lr
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add ls ls-lr
+check ovn-nbctl lsp-set-type ls-lr router
+check ovn-nbctl lsp-set-addresses ls-lr router
+check ovn-nbctl lrp-add lr lr-ls 00:00:00:00:00:01 10.0.0.1
+
+check ovn-nbctl lsp-add ls lsp0
+check ovn-nbctl lsp-set-addresses lsp0 "00:00:00:00:00:02 10.0.0.2"
+
+check ovn-nbctl lrp-add lr lrp-gw 01:00:00:00:00:01 172.16.0.1
+check ovn-nbctl lrp-set-gateway-chassis lrp-gw hv1
+
+# check regular boundaries
+check_ct_zone_min 1
+check_ct_zone_max 10
+
+# increase boundaries
+ovs-vsctl set Open_vSwitch . external_ids:ct-zone-range=\"10-20\"
+check_ct_zone_min 10
+check_ct_zone_max 20
+
+# reset min boundary
+ovs-vsctl set Open_vSwitch . external_ids:ct-zone-range=\"5-20\"
+
+# add a new port to the switch
+check ovs-vsctl add-port br-int lsp1 \
+    -- set Interface lsp1 external-ids:iface-id=lsp1
+check ovn-nbctl lsp-add ls lsp1
+check ovn-nbctl lsp-set-addresses lsp1 "00:00:00:00:00:03 10.0.0.3"
+check_ct_zone_min 5
+check_ct_zone_max 20
+
+check ovn-nbctl set logical_router lr options:snat-ct-zone=2
+check_ct_zone_min 2
+check_ct_zone_max 20
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])

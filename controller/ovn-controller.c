@@ -2227,8 +2227,8 @@ en_ct_zones_run(struct engine_node *node, void *data)
     const struct ovsrec_bridge *br_int = get_br_int(bridge_table, ovs_table);
 
     ct_zones_restore(&ct_zones_data->ctx, ovs_table, dp_table, br_int);
-    ct_zones_update(&rt_data->local_lports, &rt_data->local_datapaths,
-                    &ct_zones_data->ctx);
+    ct_zones_update(&rt_data->local_lports, ovs_table,
+                    &rt_data->local_datapaths, &ct_zones_data->ctx);
 
     ct_zones_data->recomputed = true;
     engine_set_node_state(node, EN_UPDATED);
@@ -2272,6 +2272,8 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
 {
     struct ed_type_runtime_data *rt_data =
         engine_get_input_data("runtime_data", node);
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
 
     /* There is no tracked data. Fall back to full recompute of ct_zones. */
     if (!rt_data->tracked) {
@@ -2281,10 +2283,13 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
     struct ed_type_ct_zones *ct_zones_data = data;
 
     struct hmap *tracked_dp_bindings = &rt_data->tracked_dp_bindings;
+    int scan_start, min_ct_zone, max_ct_zone;
     struct tracked_datapath *tdp;
-    int scan_start = 1;
 
     bool updated = false;
+
+    ct_zones_parse_range(ovs_table, &min_ct_zone, &max_ct_zone);
+    scan_start = min_ct_zone;
 
     HMAP_FOR_EACH (tdp, node, tracked_dp_bindings) {
         if (tdp->tracked_type == TRACKED_RESOURCE_NEW) {
@@ -2309,7 +2314,8 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
                     t_lport->tracked_type == TRACKED_RESOURCE_UPDATED;
             updated |= ct_zone_handle_port_update(&ct_zones_data->ctx,
                                                   t_lport->pb->logical_port,
-                                                  port_updated, &scan_start);
+                                                  port_updated, &scan_start,
+                                                  min_ct_zone, max_ct_zone);
         }
     }
 
