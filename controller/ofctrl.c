@@ -2709,7 +2709,7 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
     SHASH_FOR_EACH(iter, pending_ct_zones) {
         struct ct_zone_pending_entry *ctzpe = iter->data;
         if (ctzpe->state == CT_ZONE_OF_QUEUED) {
-            add_ct_flush_zone(ctzpe->zone, &msgs);
+            add_ct_flush_zone(ctzpe->ct_zone.zone, &msgs);
             ctzpe->state = CT_ZONE_OF_SENT;
             ctzpe->of_xid = 0;
         }

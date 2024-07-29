@@ -17,6 +17,7 @@
 #include "binding.h"
 #include "coverage.h"
 #include "byte-order.h"
+#include "ct-zone.h"
 #include "encaps.h"
 #include "flow.h"
 #include "ha-chassis.h"
@@ -212,10 +213,10 @@ get_vtep_port(const struct hmap *local_datapaths, int64_t tunnel_key)
 
 static struct zone_ids
 get_zone_ids(const struct sbrec_port_binding *binding,
-             const struct simap *ct_zones)
+             const struct shash *ct_zones)
 {
     struct zone_ids zone_ids = {
-        .ct = simap_get(ct_zones, binding->logical_port)
+        .ct = ct_zone_find_zone(ct_zones, binding->logical_port)
     };
 
     const char *name = smap_get(&binding->datapath->external_ids, "name");
@@ -228,11 +229,11 @@ get_zone_ids(const struct sbrec_port_binding *binding,
     }
 
     char *dnat = alloc_nat_zone_key(name, "dnat");
-    zone_ids.dnat = simap_get(ct_zones, dnat);
+    zone_ids.dnat = ct_zone_find_zone(ct_zones, dnat);
     free(dnat);
 
     char *snat = alloc_nat_zone_key(name, "snat");
-    zone_ids.snat = simap_get(ct_zones, snat);
+    zone_ids.snat = ct_zone_find_zone(ct_zones, snat);
     free(snat);
 
     return zone_ids;
@@ -631,7 +632,7 @@ put_chassis_mac_conj_id_flow(const struct sbrec_chassis_table *chassis_table,
 }
 
 static void
-put_replace_chassis_mac_flows(const struct simap *ct_zones,
+put_replace_chassis_mac_flows(const struct shash *ct_zones,
                               const struct
                               sbrec_port_binding *localnet_port,
                               const struct hmap *local_datapaths,
@@ -1477,7 +1478,7 @@ enforce_tunneling_for_multichassis_ports(
 static void
 consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                       enum mf_field_id mff_ovn_geneve,
-                      const struct simap *ct_zones,
+                      const struct shash *ct_zones,
                       const struct sset *active_tunnels,
                       const struct hmap *local_datapaths,
                       const struct shash *local_bindings,
@@ -2116,7 +2117,7 @@ mc_ofctrl_add_flow(const struct sbrec_multicast_group *mc,
 static void
 consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                   enum mf_field_id mff_ovn_geneve,
-                  const struct simap *ct_zones,
+                  const struct shash *ct_zones,
                   const struct hmap *local_datapaths,
                   struct shash *local_bindings,
                   struct simap *patch_ofports,
@@ -2180,7 +2181,7 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             continue;
         }
 
-        int zone_id = simap_get(ct_zones, port->logical_port);
+        int zone_id = ct_zone_find_zone(ct_zones, port->logical_port);
         if (zone_id) {
             put_load(zone_id, MFF_LOG_CT_ZONE, 0, 16, &ofpacts);
         }

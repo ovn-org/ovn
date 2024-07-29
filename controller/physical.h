@@ -61,7 +61,7 @@ struct physical_ctx {
     const struct if_status_mgr *if_mgr;
     struct hmap *local_datapaths;
     struct sset *local_lports;
-    const struct simap *ct_zones;
+    const struct shash *ct_zones;
     enum mf_field_id mff_ovn_geneve;
     struct shash *local_bindings;
     struct simap *patch_ofports;
