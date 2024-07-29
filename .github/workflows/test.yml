@@ -25,6 +25,7 @@ jobs:
     env:
       DEPENDENCIES: podman
     name: Prepare container
+    if: github.repository_owner == 'ovn-org' || github.event_name != 'schedule'
     runs-on: ubuntu-24.04
 
     steps:
@@ -186,6 +187,7 @@ jobs:
       OPTS:  --disable-ssl
 
     name:    osx clang --disable-ssl
+    if: github.repository_owner == 'ovn-org' || github.event_name != 'schedule'
     runs-on: macos-latest
 
     strategy:
@@ -240,6 +242,7 @@ jobs:
 
   build-linux-rpm:
     name: linux rpm fedora
+    if: github.repository_owner == 'ovn-org' || github.event_name != 'schedule'
     runs-on: ubuntu-22.04
     container: fedora:40
     timeout-minutes: 30

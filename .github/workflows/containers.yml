@@ -15,6 +15,7 @@ env:
 
 jobs:
   container:
+    if: github.repository_owner == env.IMAGE_NAMESPACE
     runs-on: ubuntu-24.04
     strategy:
       matrix:

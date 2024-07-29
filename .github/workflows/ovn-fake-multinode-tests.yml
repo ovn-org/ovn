@@ -13,6 +13,7 @@ concurrency:
 jobs:
   build:
     name: Build ovn-fake-multinode image
+    if: github.repository_owner == 'ovn-org' || github.event_name != 'schedule'
     runs-on: ubuntu-22.04
     strategy:
       matrix:
