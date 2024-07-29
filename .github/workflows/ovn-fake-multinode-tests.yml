@@ -18,8 +18,8 @@ jobs:
     strategy:
       matrix:
         cfg:
-        - { branch: "${{ github.ref_name }}" }
-        - { branch: "branch-22.03" }
+        - { repo: "${{ github.repository }}", branch: "${{ github.ref_name }}" }
+        - { repo: ovn-org/ovn, branch: "branch-22.03" }
     env:
       RUNC_CMD: podman
       OS_IMAGE: "fedora:37"
@@ -43,11 +43,12 @@ jobs:
         repository: 'openvswitch/ovs'
         ref: 'main'
 
-    - name: Check out ovn ${{ matrix.cfg.branch }}
+    - name: Check out ovn ${{ matrix.cfg.branch }} of ${{ matrix.cfg.repo }}
       uses: actions/checkout@v4
       with:
         path: 'ovn-fake-multinode/ovn'
         submodules: recursive
+        repository: ${{ matrix.cfg.repo }}
         ref: ${{ matrix.cfg.branch }}
 
     - name: Install dependencies
