@@ -1,6 +1,6 @@
 compute_engine_instance:
   image_project: ubuntu-os-cloud
-  image: family/ubuntu-2310-arm64
+  image: family/ubuntu-2404-lts-arm64
   architecture: arm64
   platform: linux
   memory: 4G
