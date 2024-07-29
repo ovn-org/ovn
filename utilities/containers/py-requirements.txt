@@ -1,7 +1,7 @@
 flake8>=6.1.0
 meson>=1.4,<1.5
 scapy
-sphinx
+sphinx<8.0 # https://github.com/sphinx-doc/sphinx/issues/12711
 setuptools
 pyelftools
 pyOpenSSL
