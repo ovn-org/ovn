@@ -22,6 +22,7 @@
 #include "openvswitch/hmap.h"
 #include "openvswitch/shash.h"
 #include "openvswitch/types.h"
+#include "local_data.h"
 #include "ovn-sb-idl.h"
 #include "simap.h"
 #include "vswitch-idl.h"
@@ -43,6 +44,7 @@ struct ct_zone_ctx {
 
 struct ct_zone {
     uint16_t zone;
+    int64_t limit;
 };
 
 /* States to move through when a new conntrack zone has been allocated. */
@@ -73,13 +75,20 @@ void ct_zones_update(const struct sset *local_lports,
                      const struct hmap *local_datapaths,
                      struct ct_zone_ctx *ctx);
 void ct_zones_commit(const struct ovsrec_bridge *br_int,
-                     struct shash *pending_ct_zones);
+                     const struct ovsrec_datapath *ovs_dp,
+                     struct ovsdb_idl_txn *ovs_idl_txn,
+                     struct ct_zone_ctx *ctx);
 void ct_zones_pending_clear_commited(struct shash *pending);
 bool ct_zone_handle_dp_update(struct ct_zone_ctx *ctx,
-                              const struct sbrec_datapath_binding *dp);
-bool ct_zone_handle_port_update(struct ct_zone_ctx *ctx, const char *name,
+                              const struct local_datapath *local_dp,
+                              const struct shash *local_lports);
+bool ct_zone_handle_port_update(struct ct_zone_ctx *ctx,
+                                const struct sbrec_port_binding *pb,
                                 bool updated, int *scan_start,
                                 int min_ct_zone, int max_ct_zone);
 uint16_t ct_zone_find_zone(const struct shash *ct_zones, const char *name);
+void ct_zones_limits_sync(struct ct_zone_ctx *ctx,
+                          const struct hmap *local_datapaths,
+                          const struct shash *local_lports);
 
 #endif /* controller/ct-zone.h */

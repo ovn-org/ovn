@@ -3194,3 +3194,102 @@ check_ct_zone_max 20
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - CT zone limit])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovn-appctl -t ovn-controller vlog/set dbg:ct_zone
+
+check ovs-vsctl add-port br-int lsp \
+    -- set Interface lsp external-ids:iface-id=lsp
+
+check ovn-nbctl lr-add lr
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add ls ls-lr
+check ovn-nbctl lsp-set-type ls-lr router
+check ovn-nbctl lsp-set-addresses ls-lr router
+check ovn-nbctl lrp-add lr lr-ls 00:00:00:00:00:01 10.0.0.1
+
+check ovn-nbctl lsp-add ls lsp
+check ovn-nbctl lsp-set-addresses lsp "00:00:00:00:00:02 10.0.0.2"
+
+check ovn-nbctl lrp-add lr lrp-gw 01:00:00:00:00:01 172.16.0.1
+check ovn-nbctl lrp-set-gateway-chassis lrp-gw hv1
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+get_zone_num() {
+    output=$1
+    name=$2
+
+    printf "$output" | grep $name | cut -d ' ' -f 2
+}
+
+check_ovs_ct_limit() {
+    zone=$1
+    limit=$2
+
+    AT_CHECK_UNQUOTED([ovs-appctl dpctl/ct-get-limits zone=$zone | sed "s/count=.*/count=?/;s/default limit=.*/default limit=?/" | sort], [0], [dnl
+default limit=?
+zone=$zone,limit=$limit,count=?
+])
+}
+
+wait_ovs_ct_limit_count() {
+    count=$1
+
+    OVS_WAIT_UNTIL([test $count -eq $(ovs-vsctl --no-headings --format=table list CT_Zone | wc -l)])
+}
+
+ct_zones=$(ovn-appctl -t ovn-controller ct-zone-list)
+lr_dnat=$(get_zone_num "$ct_zones" lr_dnat)
+lr_snat=$(get_zone_num "$ct_zones" lr_snat)
+
+ls_dnat=$(get_zone_num "$ct_zones" ls_dnat)
+ls_snat=$(get_zone_num "$ct_zones" ls_snat)
+
+lsp=$(get_zone_num "$ct_zones" lsp)
+
+wait_ovs_ct_limit_count 0
+
+check ovn-nbctl --wait=hv set Logical_Router lr options:ct-zone-limit=5
+wait_ovs_ct_limit_count 2
+check_ovs_ct_limit $lr_dnat 5
+check_ovs_ct_limit $lr_snat 5
+
+check ovn-nbctl --wait=hv remove Logical_Router lr options ct-zone-limit
+wait_ovs_ct_limit_count 0
+
+check ovn-nbctl --wait=hv set Logical_Switch ls other_config:ct-zone-limit=10
+wait_ovs_ct_limit_count 3
+check_ovs_ct_limit $ls_dnat 10
+check_ovs_ct_limit $ls_snat 10
+check_ovs_ct_limit $lsp 10
+
+check ovn-nbctl --wait=hv set Logical_Switch_Port lsp options:ct-zone-limit=5
+wait_ovs_ct_limit_count 3
+check_ovs_ct_limit $ls_dnat 10
+check_ovs_ct_limit $ls_snat 10
+check_ovs_ct_limit $lsp 5
+
+check ovn-nbctl --wait=hv remove Logical_Switch_Port lsp options ct-zone-limit
+wait_ovs_ct_limit_count 3
+check_ovs_ct_limit $ls_dnat 10
+check_ovs_ct_limit $ls_snat 10
+check_ovs_ct_limit $lsp 10
+
+check ovn-nbctl --wait=hv remove Logical_Switch ls other_config ct-zone-limit
+wait_ovs_ct_limit_count 0
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])

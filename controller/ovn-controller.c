@@ -795,6 +795,7 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_add_column(ovs_idl, &ovsrec_ssl_col_private_key);
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_datapath);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_datapath_col_capabilities);
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_datapath_col_ct_zones);
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_flow_sample_collector_set);
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_qos);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_qos_col_other_config);
@@ -804,6 +805,8 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_add_column(ovs_idl, &ovsrec_queue_col_other_config);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_queue_col_external_ids);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_interface_col_link_state);
+    ovsdb_idl_add_table(ovs_idl, &ovsrec_table_ct_zone);
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_ct_zone_col_limit);
 
     chassis_register_ovs_idl(ovs_idl);
     encaps_register_ovs_idl(ovs_idl);
@@ -2227,6 +2230,8 @@ en_ct_zones_run(struct engine_node *node, void *data)
     ct_zones_restore(&ct_zones_data->ctx, ovs_table, dp_table, br_int);
     ct_zones_update(&rt_data->local_lports, ovs_table,
                     &rt_data->local_datapaths, &ct_zones_data->ctx);
+    ct_zones_limits_sync(&ct_zones_data->ctx, &rt_data->local_datapaths,
+                         &rt_data->lbinding_data.lports);
 
     ct_zones_data->recomputed = true;
     engine_set_node_state(node, EN_UPDATED);
@@ -2246,8 +2251,9 @@ ct_zones_datapath_binding_handler(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("SB_datapath_binding", node));
 
     SBREC_DATAPATH_BINDING_TABLE_FOR_EACH_TRACKED (dp, dp_table) {
-        if (!get_local_datapath(&rt_data->local_datapaths,
-                                dp->tunnel_key)) {
+        const struct local_datapath *local_dp=
+                get_local_datapath(&rt_data->local_datapaths, dp->tunnel_key);
+        if (!local_dp) {
             continue;
         }
 
@@ -2257,7 +2263,8 @@ ct_zones_datapath_binding_handler(struct engine_node *node, void *data)
             return false;
         }
 
-        if (!ct_zone_handle_dp_update(&ct_zones_data->ctx, dp)) {
+        if (!ct_zone_handle_dp_update(&ct_zones_data->ctx, local_dp,
+                                      &rt_data->lbinding_data.lports)) {
             return false;
         }
     }
@@ -2311,7 +2318,7 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
                     t_lport->tracked_type == TRACKED_RESOURCE_NEW ||
                     t_lport->tracked_type == TRACKED_RESOURCE_UPDATED;
             updated |= ct_zone_handle_port_update(&ct_zones_data->ctx,
-                                                  t_lport->pb->logical_port,
+                                                  t_lport->pb,
                                                   port_updated, &scan_start,
                                                   min_ct_zone, max_ct_zone);
         }
@@ -5566,8 +5573,8 @@ main(int argc, char *argv[])
                         if (ct_zones_data) {
                             stopwatch_start(CT_ZONE_COMMIT_STOPWATCH_NAME,
                                             time_msec());
-                            ct_zones_commit(br_int,
-                                            &ct_zones_data->ctx.pending);
+                            ct_zones_commit(br_int, br_int_dp, ovs_idl_txn,
+                                            &ct_zones_data->ctx);
                             stopwatch_stop(CT_ZONE_COMMIT_STOPWATCH_NAME,
                                            time_msec());
                         }

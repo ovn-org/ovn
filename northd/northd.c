@@ -741,6 +741,14 @@ ovn_datapath_update_external_ids(struct ovn_datapath *od)
         smap_add(&ids, "name2", name2);
     }
 
+    int64_t ct_zone_limit = ovn_smap_get_llong(od->nbs ?
+                                               &od->nbs->other_config :
+                                               &od->nbr->options,
+                                               "ct-zone-limit", -1);
+    if (ct_zone_limit > 0) {
+        smap_add_format(&ids, "ct-zone-limit", "%"PRId64, ct_zone_limit);
+    }
+
     /* Set interconn-ts. */
     if (od->nbs) {
         const char *ts = smap_get(&od->nbs->other_config, "interconn-ts");

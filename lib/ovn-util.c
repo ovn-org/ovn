@@ -816,6 +816,23 @@ str_tolower(const char *orig)
     return copy;
 }
 
+/* This is a wrapper function which get the value associated with 'key' in
+ * 'smap' and converts it to a long long. If 'key' is not in 'smap' or a
+ * valid unsigned integer can't be parsed from its value, returns 'def'.
+ */
+long long
+ovn_smap_get_llong(const struct smap *smap, const char *key, long long def)
+{
+    const char *value = smap_get(smap, key);
+    long long ll_value;
+
+    if (!value || !str_to_llong(value, 10, &ll_value)) {
+        return def;
+    }
+
+    return ll_value;
+}
+
 /* For a 'key' of the form "IP:port" or just "IP", sets 'port',
  * 'ip_address' and 'ip' ('struct in6_addr' IPv6 or IPv4 mapped address).
  * The caller must free() the memory allocated for 'ip_address'.

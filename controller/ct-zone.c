@@ -16,6 +16,7 @@
 #include <config.h>
 #include <errno.h>
 
+#include "binding.h"
 #include "chassis.h"
 #include "ct-zone.h"
 #include "local_data.h"
@@ -37,6 +38,16 @@ static bool ct_zone_assign_unused(struct ct_zone_ctx *ctx,
 static bool ct_zone_remove(struct ct_zone_ctx *ctx, const char *name);
 static void ct_zone_add(struct ct_zone_ctx *ctx, const char *name,
                         uint16_t zone, bool set_pending);
+static void
+ct_zone_limits_update_per_dp(struct ct_zone_ctx *ctx,
+                             const struct local_datapath *local_dp,
+                             const struct shash *local_lports,
+                             const char *name);
+static bool ct_zone_limit_update(struct ct_zone_ctx *ctx, const char *name,
+                                 int64_t limit);
+static int64_t ct_zone_get_dp_limit(const struct sbrec_datapath_binding *dp);
+static int64_t ct_zone_get_pb_limit(const struct sbrec_port_binding *pb);
+static int64_t ct_zone_limit_normalize(int64_t limit);
 
 void
 ct_zone_ctx_init(struct ct_zone_ctx *ctx)
@@ -265,11 +276,24 @@ ct_zones_update(const struct sset *local_lports,
 
 void
 ct_zones_commit(const struct ovsrec_bridge *br_int,
-                struct shash *pending_ct_zones)
+                const struct ovsrec_datapath *ovs_dp,
+                struct ovsdb_idl_txn *ovs_idl_txn,
+                struct ct_zone_ctx *ctx)
 {
+    if (shash_is_empty(&ctx->pending)) {
+        return;
+    }
+
+    struct ovsrec_ct_zone **all_zones =
+            xzalloc(sizeof *all_zones * (MAX_CT_ZONES + 1));
+    for (size_t i = 0; i < ovs_dp->n_ct_zones; i++) {
+        all_zones[ovs_dp->key_ct_zones[i]] = ovs_dp->value_ct_zones[i];
+    }
+
     struct shash_node *iter;
-    SHASH_FOR_EACH (iter, pending_ct_zones) {
+    SHASH_FOR_EACH (iter, &ctx->pending) {
         struct ct_zone_pending_entry *ctzpe = iter->data;
+        struct ct_zone *ct_zone = &ctzpe->ct_zone;
 
         /* The transaction is open, so any pending entries in the
          * CT_ZONE_DB_QUEUED must be sent and any in CT_ZONE_DB_QUEUED
@@ -281,7 +305,7 @@ ct_zones_commit(const struct ovsrec_bridge *br_int,
 
         char *user_str = xasprintf("ct-zone-%s", iter->name);
         if (ctzpe->add) {
-            char *zone_str = xasprintf("%"PRIu16, ctzpe->ct_zone.zone);
+            char *zone_str = xasprintf("%"PRIu16, ct_zone->zone);
             struct smap_node *node =
                     smap_get_node(&br_int->external_ids, user_str);
             if (!node || strcmp(node->value, zone_str)) {
@@ -296,8 +320,22 @@ ct_zones_commit(const struct ovsrec_bridge *br_int,
         }
         free(user_str);
 
+        struct ovsrec_ct_zone *ovs_zone = all_zones[ct_zone->zone];
+        if ((!ctzpe->add || ct_zone->limit < 0) && ovs_zone) {
+            ovsrec_datapath_update_ct_zones_delkey(ovs_dp, ct_zone->zone);
+        } else if (ctzpe->add && ct_zone->limit >= 0) {
+            if (!ovs_zone) {
+                ovs_zone = ovsrec_ct_zone_insert(ovs_idl_txn);
+                ovsrec_datapath_update_ct_zones_setkey(ovs_dp, ct_zone->zone,
+                                                       ovs_zone);
+            }
+            ovsrec_ct_zone_set_limit(ovs_zone, &ct_zone->limit, 1);
+        }
+
         ctzpe->state = CT_ZONE_DB_SENT;
     }
+
+    free(all_zones);
 }
 
 void
@@ -316,23 +354,27 @@ ct_zones_pending_clear_commited(struct shash *pending)
 /* Returns "true" when there is no need for full recompute. */
 bool
 ct_zone_handle_dp_update(struct ct_zone_ctx *ctx,
-                         const struct sbrec_datapath_binding *dp)
+                         const struct local_datapath *local_dp,
+                         const struct shash *local_lports)
 {
-    int req_snat_zone = ct_zone_get_snat(dp);
+    const char *name = smap_get(&local_dp->datapath->external_ids, "name");
+    if (!name) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_ERR_RL(&rl, "Missing name for datapath '"UUID_FMT"' skipping"
+                    "zone check.",
+                    UUID_ARGS(&local_dp->datapath->header_.uuid));
+        return true;
+    }
+
+    ct_zone_limits_update_per_dp(ctx, local_dp, local_lports, name);
+
+    int req_snat_zone = ct_zone_get_snat(local_dp->datapath);
     if (req_snat_zone == -1) {
         /* datapath snat ct zone is not set.  This condition will also hit
          * when CMS clears the snat-ct-zone for the logical router.
          * In this case there is no harm in using the previosly specified
          * snat ct zone for this datapath.  Also it is hard to know
          * if this option was cleared or if this option is never set. */
-        return true;
-    }
-
-    const char *name = smap_get(&dp->external_ids, "name");
-    if (!name) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_ERR_RL(&rl, "Missing name for datapath '"UUID_FMT"' skipping"
-                    "zone check.", UUID_ARGS(&dp->header_.uuid));
         return true;
     }
 
@@ -351,11 +393,12 @@ ct_zone_handle_dp_update(struct ct_zone_ctx *ctx,
 
 /* Returns "true" if there was an update to the context. */
 bool
-ct_zone_handle_port_update(struct ct_zone_ctx *ctx, const char *name,
+ct_zone_handle_port_update(struct ct_zone_ctx *ctx,
+                           const struct sbrec_port_binding *pb,
                            bool updated, int *scan_start,
                            int min_ct_zone, int max_ct_zone)
 {
-    struct shash_node *node = shash_find(&ctx->current, name);
+    struct shash_node *node = shash_find(&ctx->current, pb->logical_port);
 
     if (node) {
         struct ct_zone *ct_zone = node->data;
@@ -365,10 +408,14 @@ ct_zone_handle_port_update(struct ct_zone_ctx *ctx, const char *name,
         }
     }
 
-    if (updated && !node) {
-        ct_zone_assign_unused(ctx, name, scan_start, max_ct_zone);
+    if (updated) {
+        if (!node) {
+            ct_zone_assign_unused(ctx, pb->logical_port,
+                                  scan_start, max_ct_zone);
+        }
+        ct_zone_limit_update(ctx, pb->logical_port, ct_zone_get_pb_limit(pb));
         return true;
-    } else if (!updated && node && ct_zone_remove(ctx, node->name)) {
+    } else if (node && ct_zone_remove(ctx, node->name)) {
         return true;
     }
 
@@ -382,6 +429,25 @@ ct_zone_find_zone(const struct shash *ct_zones, const char *name)
     return ct_zone ? ct_zone->zone : 0;
 }
 
+void
+ct_zones_limits_sync(struct ct_zone_ctx *ctx,
+                     const struct hmap *local_datapaths,
+                     const struct shash *local_lports)
+{
+    const struct local_datapath *ld;
+    HMAP_FOR_EACH (ld, hmap_node, local_datapaths) {
+        const char *name = smap_get(&ld->datapath->external_ids, "name");
+        if (!name) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_ERR_RL(&rl, "Missing name for datapath '"UUID_FMT"' "
+                        "skipping zone assignment.",
+                        UUID_ARGS(&ld->datapath->header_.uuid));
+            continue;
+        }
+
+        ct_zone_limits_update_per_dp(ctx, ld, local_lports, name);
+    }
+}
 
 static bool
 ct_zone_assign_unused(struct ct_zone_ctx *ctx, const char *zone_name,
@@ -434,7 +500,10 @@ ct_zone_add(struct ct_zone_ctx *ctx, const char *name, uint16_t zone,
         shash_add(&ctx->current, name, ct_zone);
     }
 
-    ct_zone->zone = zone;
+    *ct_zone = (struct ct_zone) {
+        .zone = zone,
+        .limit = -1,
+    };
 
     if (set_pending) {
         ct_zone_add_pending(&ctx->pending, CT_ZONE_OF_QUEUED,
@@ -517,6 +586,7 @@ ct_zone_restore(const struct sbrec_datapath_binding_table *dp_table,
 
         struct ct_zone ct_zone = {
             .zone = zone,
+            .limit = -1,
         };
         /* Make sure we remove the uuid one in the next OvS DB commit without
          * flush. */
@@ -531,4 +601,77 @@ ct_zone_restore(const struct sbrec_datapath_binding_table *dp_table,
 
     ct_zone_add(ctx, current_name, zone, false);
     free(new_name);
+}
+
+static void
+ct_zone_limits_update_per_dp(struct ct_zone_ctx *ctx,
+                             const struct local_datapath *local_dp,
+                             const struct shash *local_lports,
+                             const char *name)
+{
+
+    int64_t dp_limit = ct_zone_get_dp_limit(local_dp->datapath);
+    char *dnat = alloc_nat_zone_key(name, "dnat");
+    char *snat = alloc_nat_zone_key(name, "snat");
+
+    bool zone_updated = ct_zone_limit_update(ctx, dnat, dp_limit);
+    zone_updated |= ct_zone_limit_update(ctx, snat, dp_limit);
+
+    if (local_dp->is_switch && zone_updated) {
+        const struct shash_node *node;
+        SHASH_FOR_EACH (node, local_lports) {
+            const struct binding_lport *lport = node->data;
+
+            if (lport->pb->datapath != local_dp->datapath) {
+                continue;
+            }
+
+            ct_zone_limit_update(ctx, lport->name,
+                                 ct_zone_get_pb_limit(lport->pb));
+        }
+    }
+
+    free(dnat);
+    free(snat);
+}
+
+static bool
+ct_zone_limit_update(struct ct_zone_ctx *ctx, const char *name, int64_t limit)
+{
+    struct ct_zone *ct_zone = shash_find_data(&ctx->current, name);
+
+    if (!ct_zone || ct_zone->limit == limit) {
+        return false;
+    }
+
+    ct_zone->limit = limit;
+    /* Add pending entry only for DB store to avoid flushing the zone. */
+    ct_zone_add_pending(&ctx->pending, CT_ZONE_DB_QUEUED, ct_zone, true, name);
+    VLOG_DBG("setting ct zone %"PRIu16" limit to %"PRId64,
+             ct_zone->zone, ct_zone->limit);
+
+    return true;
+}
+
+static int64_t
+ct_zone_get_dp_limit(const struct sbrec_datapath_binding *dp)
+{
+    int64_t limit = ovn_smap_get_llong(&dp->external_ids, "ct-zone-limit", -1);
+    return ct_zone_limit_normalize(limit);
+}
+
+static int64_t
+ct_zone_get_pb_limit(const struct sbrec_port_binding *pb)
+{
+    int64_t dp_limit = ovn_smap_get_llong(&pb->datapath->external_ids,
+                                          "ct-zone-limit", -1);
+    int64_t limit = ovn_smap_get_llong(&pb->options,
+                                       "ct-zone-limit", dp_limit);
+    return ct_zone_limit_normalize(limit);
+}
+
+static int64_t
+ct_zone_limit_normalize(int64_t limit)
+{
+    return limit >= 0 && limit <= UINT32_MAX ? limit : -1;
 }

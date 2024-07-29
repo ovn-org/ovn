@@ -44,6 +44,9 @@ Post v24.03.0
     localnet port.
   - Added support to define boundaries (min and max values) for selected ct
     zones.
+  - Add support for CT zone limit that can be specified per LR
+    (options:ct-zone-limit), LS (other_config:ct-zone-limit) or LSP
+    (options:ct-zone-limit).
 
 OVN v24.03.0 - 01 Mar 2024
 --------------------------

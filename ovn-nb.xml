@@ -747,6 +747,18 @@
         this timeout will be automatically removed. The value defaults
         to 0, which means disabled.
       </column>
+
+      <column name="other_config" key="ct-zone-limit"
+              type='{"type": "integer", "minInteger": 0,
+                     "maxInteger": 4294967295}'>
+        CT zone <code>limit</code> value for given
+        <ref table="Logical_Switch"/>. This value will be propagated to all
+        <ref table="Logical_Switch_Port"/> when configured, but can be
+        overwritten individually per <ref table="Logical_Switch_Port"/>. The
+        value 0 means unlimited. When the option is not present the limit
+        is not set and the zone limit is derived from OvS default datapath
+        limit.
+      </column>
     </group>
 
     <group title="IP Multicast Snooping Options">
@@ -1146,6 +1158,17 @@
           Optional. Enable conntrack for the router port whose peer is
           l3dgw_port if set to <code>true</code>. The default value is
           <code>false</code>.
+        </column>
+
+        <column name="options" key="ct-zone-limit"
+                type='{"type": "integer", "minInteger": 0,
+                       "maxInteger": 4294967295}'>
+          CT zone <code>limit</code> value for given
+          <ref table="Logical_Switch_Port"/>. This value has priority over
+          limit specified on <ref table="Logical_Switch"/> when configured.
+          The value 0 means unlimited. When the option is not present the limit
+          is not set and the zone limit is derived from OvS default datapath
+          limit.
         </column>
 
       </group>
@@ -2810,6 +2833,15 @@ or
             a default threshold of 1200 seconds for all other MAC bindings.
         </p>
 
+      </column>
+
+      <column name="options" key="ct-zone-limit"
+              type='{"type": "integer", "minInteger": 0,
+                     "maxInteger": 4294967295}'>
+        CT zone <code>limit</code> value for given
+        <ref table="Logical_Router"/>. The value 0 means unlimited. When the
+        option is not present the limit is not set and the zone limit is
+        derived from OvS default datapath limit.
       </column>
     </group>
 
