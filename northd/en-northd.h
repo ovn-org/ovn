@@ -19,5 +19,6 @@ bool northd_nb_logical_switch_handler(struct engine_node *, void *data);
 bool northd_nb_logical_router_handler(struct engine_node *, void *data);
 bool northd_sb_port_binding_handler(struct engine_node *, void *data);
 bool northd_lb_data_handler(struct engine_node *, void *data);
+bool northd_sb_fdb_change_handler(struct engine_node *node, void *data);
 
 #endif /* EN_NORTHD_H */
