@@ -1610,6 +1610,10 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                                                     ct_zones);
             put_zones_ofpacts(&zone_ids, ofpacts_p);
 
+            /* Clear the MFF_INPORT.  Its possible that the same packet may
+             * go out from the same tunnel inport. */
+            put_load(ofp_to_u16(OFPP_NONE), MFF_IN_PORT, 0, 16, ofpacts_p);
+
             /* Resubmit to table 41. */
             put_resubmit(OFTABLE_CHECK_LOOPBACK, ofpacts_p);
         }

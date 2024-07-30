@@ -92,7 +92,7 @@ m_count_rows() {
 m_check_row_count() {
     local db=$(parse_db $1) table=$(parse_table $1); shift
     local count=$1; shift
-    local found=$(m_count_rows $c $db:$table "$@")
+    local found=$(m_count_rows $db:$table "$@")
     echo
     echo "Checking for $count rows in $db $table${1+ with $*}... found $found"
     if test "$count" != "$found"; then

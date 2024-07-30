@@ -50,6 +50,9 @@ Post v24.03.0
   - A new LSP option "disable_garp_rarp" has been added to prevent OVN from
     sending GARP or RARP announcements when a VIF is created on a bridged
     logical switch.
+  - A new LRP option 'centralize_routing' has been added to a
+    distributed gateway port to centralize routing if the logical
+    switch of its peer doesn't have a localnet port.
 
 OVN v24.03.0 - 01 Mar 2024
 --------------------------
