@@ -2642,17 +2642,17 @@ binding_handle_ovs_interface_changes(struct binding_ctx_in *b_ctx_in,
     const struct ovsrec_interface *iface_rec;
     OVSREC_INTERFACE_TABLE_FOR_EACH_TRACKED (iface_rec,
                                              b_ctx_in->iface_table) {
-        if (!is_iface_vif(iface_rec)) {
-            /* Right now we are not handling ovs_interface changes of
-             * other types. This can be enhanced to handle of
-             * types - patch and tunnel. */
+        const char *iface_id = smap_get(&iface_rec->external_ids, "iface-id");
+        const char *old_iface_id = smap_get(b_ctx_out->local_iface_ids,
+                                            iface_rec->name);
+        if (!iface_id && !old_iface_id && !is_iface_vif(iface_rec)) {
+            /* Right now we are not handling ovs_interface changes if the
+             * interface doesn't have iface-id or didn't have it
+             * previously. */
             handled = false;
             break;
         }
 
-        const char *iface_id = smap_get(&iface_rec->external_ids, "iface-id");
-        const char *old_iface_id = smap_get(b_ctx_out->local_iface_ids,
-                                            iface_rec->name);
         const char *cleared_iface_id = NULL;
         if (!ovsrec_interface_is_deleted(iface_rec)) {
             int64_t ofport = iface_rec->n_ofport ? *iface_rec->ofport : 0;
