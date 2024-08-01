@@ -138,6 +138,9 @@ static const char *ssl_private_key_file;
 static const char *ssl_certificate_file;
 static const char *ssl_ca_cert_file;
 
+/* --unixctl-path: Path to use for unixctl server socket. */
+static char *unixctl_path;
+
 /* By default don't set an upper bound for the lflow cache and enable auto
  * trimming above 10K logical flows when reducing cache size by 50%.
  */
@@ -4836,7 +4839,7 @@ main(int argc, char *argv[])
 
     daemonize_start(true, false);
 
-    char *abs_unixctl_path = get_abs_unix_ctl_path(NULL);
+    char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
     retval = unixctl_server_create(abs_unixctl_path, &unixctl);
     free(abs_unixctl_path);
     if (retval) {
@@ -5959,6 +5962,7 @@ parse_options(int argc, char *argv[])
     static struct option long_options[] = {
         {"help", no_argument, NULL, 'h'},
         {"version", no_argument, NULL, 'V'},
+        {"unixctl", required_argument, NULL, 'u'},
         VLOG_LONG_OPTIONS,
         OVN_DAEMON_LONG_OPTIONS,
         STREAM_SSL_LONG_OPTIONS,
@@ -5987,6 +5991,10 @@ parse_options(int argc, char *argv[])
             ovs_print_version(OFP15_VERSION, OFP15_VERSION);
             printf("SB DB Schema %s\n", sbrec_get_db_version());
             exit(EXIT_SUCCESS);
+
+        case 'u':
+            unixctl_path = optarg;
+            break;
 
         VLOG_OPTION_HANDLERS
         OVN_DAEMON_OPTION_HANDLERS
@@ -6063,6 +6071,7 @@ usage(void)
     daemon_usage();
     vlog_usage();
     printf("\nOther options:\n"
+           "  -u, --unixctl=SOCKET    set control socket name\n"
            "  -n                      custom chassis name\n"
            "  -h, --help              display this help message\n"
            "  -V, --version           display version information\n");

@@ -58,6 +58,9 @@ static char *vtep_remote;
 static char *ovnsb_remote;
 static char *default_db_;
 
+/* --unixctl-path: Path to use for unixctl server socket. */
+static char *unixctl_path;
+
 /* Returns true if the northd internal version stored in SB_Global
  * and ovn-controller-vtep internal version match.
  */
@@ -118,7 +121,7 @@ main(int argc, char *argv[])
 
     daemonize_start(false, false);
 
-    char *abs_unixctl_path = get_abs_unix_ctl_path(NULL);
+    char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
     retval = unixctl_server_create(abs_unixctl_path, &unixctl);
     free(abs_unixctl_path);
 
@@ -287,6 +290,7 @@ parse_options(int argc, char *argv[])
         {"vtep-db", required_argument, NULL, 'D'},
         {"help", no_argument, NULL, 'h'},
         {"version", no_argument, NULL, 'V'},
+        {"unixctl", required_argument, NULL, 'u'},
         VLOG_LONG_OPTIONS,
         OVN_DAEMON_LONG_OPTIONS,
         STREAM_SSL_LONG_OPTIONS,
@@ -321,6 +325,10 @@ parse_options(int argc, char *argv[])
         case 'V':
             ovn_print_version(OFP13_VERSION, OFP13_VERSION);
             exit(EXIT_SUCCESS);
+
+        case 'u':
+            unixctl_path = optarg;
+            break;
 
         VLOG_OPTION_HANDLERS
         OVN_DAEMON_OPTION_HANDLERS
@@ -364,6 +372,7 @@ Options:\n\
                             (default: %s)\n\
   --ovnsb-db=DATABASE       connect to ovn-sb database at DATABASE\n\
                             (default: %s)\n\
+  -u, --unixctl=SOCKET      set control socket name\n\
   -h, --help                display this help message\n\
   -o, --options             list available options\n\
   -V, --version             display version information\n\
