@@ -10367,10 +10367,46 @@ build_lswitch_ip_unicast_lookup_for_nats(
 struct bfd_entry {
     struct hmap_node hmap_node;
 
+    const struct nbrec_bfd *nb_bt;
     const struct sbrec_bfd *sb_bt;
 
-    bool ref;
+    char *logical_port;
+    char *dst_ip;
+    char *status;
+    bool stale;
 };
+
+static struct bfd_entry *
+bfd_alloc_entry(struct hmap *bfd_connections,
+                const char *logical_port, const char *dst_ip,
+                const char *status)
+{
+    struct bfd_entry *bfd_e = xzalloc(sizeof *bfd_e);
+    bfd_e->logical_port = xstrdup(logical_port);
+    bfd_e->dst_ip = xstrdup(dst_ip);
+    bfd_e->status = xstrdup(status);
+    uint32_t hash = hash_string(dst_ip, 0);
+    hash = hash_string(logical_port, hash);
+    hmap_insert(bfd_connections, &bfd_e->hmap_node, hash);
+
+    return bfd_e;
+}
+
+static void
+bfd_erase_entry(struct bfd_entry *bfd_e)
+{
+    free(bfd_e->logical_port);
+    free(bfd_e->dst_ip);
+    free(bfd_e->status);
+    free(bfd_e);
+}
+
+static void
+bfd_set_status(struct bfd_entry *bfd_e, const char *status)
+{
+    free(bfd_e->status);
+    bfd_e->status = xstrdup(status);
+}
 
 static struct bfd_entry *
 bfd_port_lookup(const struct hmap *bfd_map, const char *logical_port,
@@ -10382,37 +10418,27 @@ bfd_port_lookup(const struct hmap *bfd_map, const char *logical_port,
     hash = hash_string(dst_ip, 0);
     hash = hash_string(logical_port, hash);
     HMAP_FOR_EACH_WITH_HASH (bfd_e, hmap_node, hash, bfd_map) {
-        if (!strcmp(bfd_e->sb_bt->logical_port, logical_port) &&
-            !strcmp(bfd_e->sb_bt->dst_ip, dst_ip)) {
+        if (!strcmp(bfd_e->logical_port, logical_port) &&
+            !strcmp(bfd_e->dst_ip, dst_ip)) {
             return bfd_e;
         }
     }
+
     return NULL;
 }
 
-void
-bfd_cleanup_connections(const struct nbrec_bfd_table *nbrec_bfd_table,
-                        struct hmap *bfd_map)
+static bool
+bfd_is_port_running(const struct hmap *bfd_map, const char *port)
 {
-    const struct nbrec_bfd *nb_bt;
     struct bfd_entry *bfd_e;
-
-    NBREC_BFD_TABLE_FOR_EACH (nb_bt, nbrec_bfd_table) {
-        bfd_e = bfd_port_lookup(bfd_map, nb_bt->logical_port, nb_bt->dst_ip);
-        if (!bfd_e) {
-            continue;
-        }
-
-        if (!bfd_e->ref && strcmp(nb_bt->status, "admin_down")) {
-            /* no user for this bfd connection */
-            nbrec_bfd_set_status(nb_bt, "admin_down");
+    HMAP_FOR_EACH (bfd_e, hmap_node, bfd_map) {
+        if (!strcmp(bfd_e->logical_port, port)) {
+            return true;
         }
     }
-
-    HMAP_FOR_EACH_POP (bfd_e, hmap_node, bfd_map) {
-        free(bfd_e);
-    }
+    return false;
 }
+
 
 #define BFD_DEF_MINTX       1000 /* 1s */
 #define BFD_DEF_MINRX       1000 /* 1s */
@@ -10474,51 +10500,88 @@ static int bfd_get_unused_port(unsigned long *bfd_src_ports)
     return port + BFD_UDP_SRC_PORT_START;
 }
 
-void
-build_bfd_table(struct ovsdb_idl_txn *ovnsb_txn,
-                const struct nbrec_bfd_table *nbrec_bfd_table,
-                const struct sbrec_bfd_table *sbrec_bfd_table,
-                const struct hmap *lr_ports, struct hmap *bfd_connections)
+static char *
+bfd_get_connection_status(const struct nbrec_bfd *nb_bt,
+                          const struct hmap *rp_bfd_connections,
+                          const struct hmap *sr_bfd_connections)
 {
-    struct hmap sb_only = HMAP_INITIALIZER(&sb_only);
-    const struct sbrec_bfd *sb_bt;
-    unsigned long *bfd_src_ports;
+    struct bfd_entry *bfd_rp, *bfd_sr;
+
+    bfd_rp = bfd_port_lookup(rp_bfd_connections, nb_bt->logical_port,
+                             nb_bt->dst_ip);
+    if (!bfd_rp) {
+        bfd_sr = bfd_port_lookup(sr_bfd_connections, nb_bt->logical_port,
+                                 nb_bt->dst_ip);
+        if (!bfd_sr) {
+            return "admin_down";
+        }
+    }
+
+    return bfd_rp ? bfd_rp->status : bfd_sr->status;
+}
+
+void
+bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
+               const struct nbrec_bfd_table *nbrec_bfd_table,
+               const struct hmap *lr_ports,
+               const struct hmap *bfd_connections,
+               const struct hmap *rp_bfd_connections,
+               const struct hmap *sr_bfd_connections,
+               struct hmap *sync_bfd_connections)
+{
+    if (!ovnsb_txn) {
+        return;
+    }
+
+    unsigned long *bfd_src_ports = bitmap_allocate(BFD_UDP_SRC_PORT_LEN);
+
     struct bfd_entry *bfd_e;
-    uint32_t hash;
-
-    bfd_src_ports = bitmap_allocate(BFD_UDP_SRC_PORT_LEN);
-
-    SBREC_BFD_TABLE_FOR_EACH (sb_bt, sbrec_bfd_table) {
-        bfd_e = xmalloc(sizeof *bfd_e);
-        bfd_e->sb_bt = sb_bt;
-        hash = hash_string(sb_bt->dst_ip, 0);
-        hash = hash_string(sb_bt->logical_port, hash);
-        hmap_insert(&sb_only, &bfd_e->hmap_node, hash);
-        bitmap_set1(bfd_src_ports, sb_bt->src_port - BFD_UDP_SRC_PORT_START);
+    HMAP_FOR_EACH (bfd_e, hmap_node, bfd_connections) {
+        struct bfd_entry *e = bfd_alloc_entry(sync_bfd_connections,
+                                              bfd_e->logical_port,
+                                              bfd_e->dst_ip, bfd_e->status);
+        e->nb_bt = bfd_e->nb_bt;
+        e->sb_bt = bfd_e->sb_bt;
+        e->stale = true;
+        /* we need to check if this entry is even in the BFD nb db table */
+        if (bfd_e->sb_bt) {
+            bitmap_set1(bfd_src_ports,
+                        bfd_e->sb_bt->src_port - BFD_UDP_SRC_PORT_START);
+        }
     }
 
     const struct nbrec_bfd *nb_bt;
     NBREC_BFD_TABLE_FOR_EACH (nb_bt, nbrec_bfd_table) {
-        if (!nb_bt->status) {
-            /* default state is admin_down */
-            nbrec_bfd_set_status(nb_bt, "admin_down");
+        bfd_e = bfd_port_lookup(sync_bfd_connections, nb_bt->logical_port,
+                                nb_bt->dst_ip);
+        if (!bfd_e) {
+            continue;
         }
 
         struct ovn_port *op = ovn_port_find(lr_ports, nb_bt->logical_port);
-        bfd_e = bfd_port_lookup(&sb_only, nb_bt->logical_port, nb_bt->dst_ip);
-        if (!bfd_e) {
+        if (!op || !op->sb) {
+            /* skip not bounded ports */
+            continue;
+        }
+
+        nbrec_bfd_set_status(nb_bt,
+                             bfd_get_connection_status(nb_bt,
+                                                       rp_bfd_connections,
+                                                       sr_bfd_connections));
+        if (!bfd_e->sb_bt) {
             int udp_src = bfd_get_unused_port(bfd_src_ports);
             if (udp_src < 0) {
                 continue;
             }
 
-            sb_bt = sbrec_bfd_insert(ovnsb_txn);
+            /* Add entry to bfd sb table. */
+            const struct sbrec_bfd *sb_bt = sbrec_bfd_insert(ovnsb_txn);
             sbrec_bfd_set_logical_port(sb_bt, nb_bt->logical_port);
             sbrec_bfd_set_dst_ip(sb_bt, nb_bt->dst_ip);
             sbrec_bfd_set_disc(sb_bt, 1 + random_uint32());
             sbrec_bfd_set_src_port(sb_bt, udp_src);
             sbrec_bfd_set_status(sb_bt, nb_bt->status);
-            if (op && op->sb && op->sb->chassis) {
+            if (op->sb->chassis) {
                 sbrec_bfd_set_chassis_name(sb_bt, op->sb->chassis->name);
             }
 
@@ -10538,37 +10601,59 @@ build_bfd_table(struct ovsdb_idl_txn *ovnsb_txn,
                     nbrec_bfd_set_status(nb_bt, bfd_e->sb_bt->status);
                 }
             }
+
             build_bfd_update_sb_conf(nb_bt, bfd_e->sb_bt);
-            if (op && op->sb && op->sb->chassis &&
-                strcmp(op->sb->chassis->name, bfd_e->sb_bt->chassis_name)) {
+            if (op->sb->chassis && !strcmp(op->sb->chassis->name,
+                                           bfd_e->sb_bt->chassis_name)) {
                 sbrec_bfd_set_chassis_name(bfd_e->sb_bt,
                                            op->sb->chassis->name);
             }
-
-            hmap_remove(&sb_only, &bfd_e->hmap_node);
-            bfd_e->ref = false;
-            hash = hash_string(bfd_e->sb_bt->dst_ip, 0);
-            hash = hash_string(bfd_e->sb_bt->logical_port, hash);
-            hmap_insert(bfd_connections, &bfd_e->hmap_node, hash);
         }
 
-        if (op) {
-            op->has_bfd = true;
-        }
+        bfd_e->stale = false;
     }
 
-    HMAP_FOR_EACH_POP (bfd_e, hmap_node, &sb_only) {
-        struct ovn_port *op = ovn_port_find(lr_ports,
-                                            bfd_e->sb_bt->logical_port);
-        if (op) {
-            op->has_bfd = false;
+    HMAP_FOR_EACH_SAFE (bfd_e, hmap_node, sync_bfd_connections) {
+        if (bfd_e->stale) {
+            hmap_remove(sync_bfd_connections, &bfd_e->hmap_node);
+            sbrec_bfd_delete(bfd_e->sb_bt);
+            bfd_erase_entry(bfd_e);
         }
-        sbrec_bfd_delete(bfd_e->sb_bt);
-        free(bfd_e);
     }
-    hmap_destroy(&sb_only);
 
     bitmap_free(bfd_src_ports);
+}
+
+void
+build_bfd_map(const struct nbrec_bfd_table *nbrec_bfd_table,
+              const struct sbrec_bfd_table *sbrec_bfd_table,
+              struct hmap *bfd_connections)
+{
+    struct bfd_entry *bfd_e;
+
+    /* align bfd_map to sb db */
+    const struct sbrec_bfd *sb_bt;
+    SBREC_BFD_TABLE_FOR_EACH (sb_bt, sbrec_bfd_table) {
+        bfd_e = bfd_port_lookup(bfd_connections, sb_bt->logical_port,
+                                sb_bt->dst_ip);
+        if (!bfd_e) {
+            bfd_e = bfd_alloc_entry(bfd_connections, sb_bt->logical_port,
+                                    sb_bt->dst_ip,  sb_bt->status);
+        }
+        bfd_e->sb_bt = sb_bt;
+    }
+
+    const struct nbrec_bfd *nb_bt;
+    NBREC_BFD_TABLE_FOR_EACH (nb_bt, nbrec_bfd_table) {
+        bfd_e = bfd_port_lookup(bfd_connections, nb_bt->logical_port,
+                                nb_bt->dst_ip);
+        if (!bfd_e) {
+            /* brand new entry. */
+            bfd_e = bfd_alloc_entry(bfd_connections, nb_bt->logical_port,
+                                    nb_bt->dst_ip, "admin_down");
+        }
+        bfd_e->nb_bt = nb_bt;
+    }
 }
 
 /* Returns a string of the IP address of the router port 'op' that
@@ -10606,17 +10691,13 @@ get_outport_for_routing_policy_nexthop(struct ovn_datapath *od,
     return NULL;
 }
 
-static struct ovs_mutex bfd_lock = OVS_MUTEX_INITIALIZER;
-
-static bool check_bfd_state(
-        const struct nbrec_logical_router_policy *rule,
-        const struct hmap *bfd_connections,
-        struct ovn_port *out_port,
-        const char *nexthop)
+static bool check_bfd_state(const struct nbrec_logical_router_policy *rule,
+                            struct ovn_port *out_port, const char *nexthop,
+                            const struct hmap *bfd_connections,
+                            struct hmap *bfd_active_connections)
 {
     struct in6_addr nexthop_v6;
     bool is_nexthop_v6 = ipv6_parse(nexthop, &nexthop_v6);
-    bool ret = true;
 
     for (size_t i = 0; i < rule->n_bfd_sessions; i++) {
         /* Check if there is a BFD session associated to the reroute
@@ -10641,39 +10722,48 @@ static bool check_bfd_state(
         struct bfd_entry *bfd_e = bfd_port_lookup(bfd_connections,
                                                   nb_bt->logical_port,
                                                   nb_bt->dst_ip);
-        ovs_mutex_lock(&bfd_lock);
-        if (bfd_e) {
-            bfd_e->ref = true;
+        if (!bfd_e) {
+            continue;
         }
 
-        if (!strcmp(nb_bt->status, "admin_down")) {
-            nbrec_bfd_set_status(nb_bt, "down");
+        /* This route policy is linked to an active bfd session. */
+        struct bfd_entry *bfd_rp = bfd_port_lookup(bfd_active_connections,
+                                                   nb_bt->logical_port,
+                                                   nb_bt->dst_ip);
+        if (!bfd_rp) {
+            bfd_rp = bfd_alloc_entry(bfd_active_connections,
+                                     nb_bt->logical_port, nb_bt->dst_ip,
+                                     bfd_e->status);
         }
 
-        ret = strcmp(nb_bt->status, "down");
-        ovs_mutex_unlock(&bfd_lock);
-        break;
+        if (!strcmp(bfd_e->status, "admin_down")) {
+            bfd_set_status(bfd_rp, "down");
+        }
+
+        return strcmp(bfd_rp->status, "down");
     }
 
-    return ret;
+    return true;
 }
 
 static void
 build_routing_policy_flow(struct lflow_table *lflows, struct ovn_datapath *od,
-                          const struct hmap *lr_ports,
-                          const struct nbrec_logical_router_policy *rule,
-                          const struct hmap *bfd_connections,
+                          const struct hmap *lr_ports, struct route_policy *rp,
                           const struct ovsdb_idl_row *stage_hint,
                           struct lflow_ref *lflow_ref)
 {
+    const struct nbrec_logical_router_policy *rule = rp->rule;
     struct ds match = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
 
     if (!strcmp(rule->action, "reroute")) {
         ovs_assert(rule->n_nexthops <= 1);
 
-        char *nexthop =
-            (rule->n_nexthops == 1 ? rule->nexthops[0] : rule->nexthop);
+        if (!rp->n_valid_nexthops) {
+            return;
+        }
+
+        char *nexthop = rp->valid_nexthops[0];
         struct ovn_port *out_port = get_outport_for_routing_policy_nexthop(
              od, lr_ports, rule->priority, nexthop);
         if (!out_port) {
@@ -10686,10 +10776,6 @@ build_routing_policy_flow(struct lflow_table *lflows, struct ovn_datapath *od,
             VLOG_WARN_RL(&rl, "lrp_addr not found for routing policy "
                          " priority %"PRId64" nexthop %s",
                          rule->priority, nexthop);
-            return;
-        }
-
-        if (!check_bfd_state(rule, bfd_connections, out_port, nexthop)) {
             return;
         }
 
@@ -10735,19 +10821,18 @@ static void
 build_ecmp_routing_policy_flows(struct lflow_table *lflows,
                                 struct ovn_datapath *od,
                                 const struct hmap *lr_ports,
-                                const struct nbrec_logical_router_policy *rule,
-                                const struct hmap *bfd_connections,
+                                struct route_policy *rp,
                                 uint16_t ecmp_group_id,
                                 struct lflow_ref *lflow_ref)
 {
-    ovs_assert(rule->n_nexthops > 1);
-
     bool nexthops_is_ipv4 = true;
+    const struct nbrec_logical_router_policy *rule = rp->rule;
+    ovs_assert(rule->n_nexthops > 1);
 
     /* Check that all the nexthops belong to the same addr family before
      * adding logical flows. */
-    for (uint16_t i = 0; i < rule->n_nexthops; i++) {
-        bool is_ipv4 = strchr(rule->nexthops[i], '.') ? true : false;
+    for (uint16_t i = 0; i < rp->n_valid_nexthops; i++) {
+        bool is_ipv4 = strchr(rp->valid_nexthops[i], '.') ? true : false;
 
         if (i == 0) {
             nexthops_is_ipv4 = is_ipv4;
@@ -10758,7 +10843,7 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
             VLOG_WARN_RL(&rl, "nexthop [%s] of the router policy with "
                          "the match [%s] do not belong to the same address "
                          "family as other next hops",
-                         rule->nexthops[i], rule->match);
+                         rp->valid_nexthops[i], rule->match);
             return;
         }
     }
@@ -10766,32 +10851,22 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
     struct ds match = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
 
-    size_t *valid_nexthops = xcalloc(rule->n_nexthops, sizeof *valid_nexthops);
-    size_t n_valid_nexthops = 0;
-
-    for (size_t i = 0; i < rule->n_nexthops; i++) {
+    for (size_t i = 0; i < rp->n_valid_nexthops; i++) {
         struct ovn_port *out_port = get_outport_for_routing_policy_nexthop(
-             od, lr_ports, rule->priority, rule->nexthops[i]);
+             od, lr_ports, rule->priority, rp->valid_nexthops[i]);
         if (!out_port) {
             goto cleanup;
         }
 
         const char *lrp_addr_s =
-            find_lrp_member_ip(out_port, rule->nexthops[i]);
+            find_lrp_member_ip(out_port, rp->valid_nexthops[i]);
         if (!lrp_addr_s) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
             VLOG_WARN_RL(&rl, "lrp_addr not found for routing policy "
                             " priority %"PRId64" nexthop %s",
-                            rule->priority, rule->nexthops[i]);
+                            rule->priority, rp->valid_nexthops[i]);
             goto cleanup;
         }
-
-        if (!check_bfd_state(rule, bfd_connections, out_port,
-                             rule->nexthops[i])) {
-            continue;
-        }
-
-        valid_nexthops[n_valid_nexthops++] = i + 1;
 
         ds_clear(&actions);
         uint32_t pkt_mark = smap_get_uint(&rule->options, "pkt_mark", 0);
@@ -10799,7 +10874,7 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
             ds_put_format(&actions, "pkt.mark = %u; ", pkt_mark);
         }
 
-        bool is_ipv4 = strchr(rule->nexthops[i], '.') ? true : false;
+        bool is_ipv4 = strchr(rp->valid_nexthops[i], '.') ? true : false;
 
         ds_put_format(&actions, "%s = %s; "
                       "%s = %s; "
@@ -10808,7 +10883,7 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
                       "flags.loopback = 1; "
                       "next;",
                       is_ipv4 ? REG_NEXT_HOP_IPV4 : REG_NEXT_HOP_IPV6,
-                      rule->nexthops[i],
+                      rp->valid_nexthops[i],
                       is_ipv4 ? REG_SRC_IPV4 : REG_SRC_IPV6,
                       lrp_addr_s,
                       out_port->lrp_networks.ea_s,
@@ -10824,37 +10899,30 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
                                 lflow_ref);
     }
 
-    if (!n_valid_nexthops) {
-        goto cleanup;
-    }
-
     ds_clear(&actions);
-    if (n_valid_nexthops > 1) {
+    if (rp->n_valid_nexthops > 1) {
         ds_put_format(&actions, "%s = %"PRIu16
                       "; %s = select(", REG_ECMP_GROUP_ID, ecmp_group_id,
                       REG_ECMP_MEMBER_ID);
 
-        for (size_t i = 0; i < n_valid_nexthops; i++) {
+        for (size_t i = 0; i < rp->n_valid_nexthops; i++) {
             if (i > 0) {
                 ds_put_cstr(&actions, ", ");
             }
 
-            ds_put_format(&actions, "%"PRIuSIZE, valid_nexthops[i]);
+            ds_put_format(&actions, "%"PRIuSIZE, i + 1);
         }
         ds_put_cstr(&actions, ");");
     } else {
         ds_put_format(&actions, "%s = %"PRIu16
-                      "; %s = %"PRIuSIZE"; next;", REG_ECMP_GROUP_ID,
-                      ecmp_group_id, REG_ECMP_MEMBER_ID,
-                      valid_nexthops[0]);
+                      "; %s = 1; next;", REG_ECMP_GROUP_ID,
+                      ecmp_group_id, REG_ECMP_MEMBER_ID);
     }
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_POLICY,
                             rule->priority, rule->match,
                             ds_cstr(&actions), &rule->header_,
                             lflow_ref);
-
 cleanup:
-    free(valid_nexthops);
     ds_destroy(&match);
     ds_destroy(&actions);
 }
@@ -10879,7 +10947,7 @@ route_table_add(struct simap *route_tables, const char *route_table_name)
     return rtb_id;
 }
 
-static uint32_t
+uint32_t
 get_route_table_id(struct simap *route_tables, const char *route_table_name)
 {
     if (!route_table_name || !route_table_name[0]) {
@@ -10920,18 +10988,6 @@ build_route_table_lflow(struct ovn_datapath *od, struct lflow_table *lflows,
     ds_destroy(&actions);
 }
 
-struct parsed_route {
-    struct ovs_list list_node;
-    struct in6_addr prefix;
-    unsigned int plen;
-    bool is_src_route;
-    uint32_t route_table_id;
-    uint32_t hash;
-    const struct nbrec_logical_router_static_route *route;
-    bool ecmp_symmetric_reply;
-    bool is_discard_route;
-};
-
 static uint32_t
 route_hash(struct parsed_route *route)
 {
@@ -10946,11 +11002,53 @@ find_static_route_outport(struct ovn_datapath *od, const struct hmap *lr_ports,
 
 /* Parse and validate the route. Return the parsed route if successful.
  * Otherwise return NULL. */
+
 static struct parsed_route *
+parsed_route_lookup(struct hmap *routes, size_t hash,
+                    struct parsed_route *new_pr)
+{
+    struct parsed_route *pr;
+    HMAP_FOR_EACH_WITH_HASH (pr, key_node, hash, routes) {
+        if (pr->plen != new_pr->plen) {
+            continue;
+        }
+
+        if (memcmp(&pr->prefix, &new_pr->prefix, sizeof(struct in6_addr))) {
+            continue;
+        }
+
+        if (pr->is_src_route != new_pr->is_src_route) {
+            continue;
+        }
+
+        if (pr->route_table_id != new_pr->route_table_id) {
+            continue;
+        }
+
+        if (pr->route != new_pr->route) {
+            continue;
+        }
+
+        if (pr->ecmp_symmetric_reply != new_pr->ecmp_symmetric_reply) {
+            continue;
+        }
+
+        if (pr->is_discard_route != new_pr->is_discard_route) {
+            continue;
+        }
+
+        return pr;
+    }
+
+    return NULL;
+}
+
+static void
 parsed_routes_add(struct ovn_datapath *od, const struct hmap *lr_ports,
-                  struct ovs_list *routes, struct simap *route_tables,
                   const struct nbrec_logical_router_static_route *route,
-                  const struct hmap *bfd_connections)
+                  struct hmap *bfd_connections,
+                  struct hmap *routes, struct simap *route_tables,
+                  struct hmap *bfd_active_connections)
 {
     /* Verify that the next hop is an IP address with an all-ones mask. */
     struct in6_addr nexthop;
@@ -10963,7 +11061,7 @@ parsed_routes_add(struct ovn_datapath *od, const struct hmap *lr_ports,
             VLOG_WARN_RL(&rl, "bad 'nexthop' %s in static route "
                          UUID_FMT, route->nexthop,
                          UUID_ARGS(&route->header_.uuid));
-            return NULL;
+            return;
         }
         if ((IN6_IS_ADDR_V4MAPPED(&nexthop) && plen != 32) ||
             (!IN6_IS_ADDR_V4MAPPED(&nexthop) && plen != 128)) {
@@ -10971,7 +11069,7 @@ parsed_routes_add(struct ovn_datapath *od, const struct hmap *lr_ports,
             VLOG_WARN_RL(&rl, "bad next hop mask %s in static route "
                          UUID_FMT, route->nexthop,
                          UUID_ARGS(&route->header_.uuid));
-            return NULL;
+            return;
         }
     }
 
@@ -10982,7 +11080,7 @@ parsed_routes_add(struct ovn_datapath *od, const struct hmap *lr_ports,
         VLOG_WARN_RL(&rl, "bad 'ip_prefix' %s in static route "
                      UUID_FMT, route->ip_prefix,
                      UUID_ARGS(&route->header_.uuid));
-        return NULL;
+        return;
     }
 
     /* Verify that ip_prefix and nexthop have same address familiy. */
@@ -10993,7 +11091,7 @@ parsed_routes_add(struct ovn_datapath *od, const struct hmap *lr_ports,
                          " %s and 'nexthop' %s in static route "UUID_FMT,
                          route->ip_prefix, route->nexthop,
                          UUID_ARGS(&route->header_.uuid));
-            return NULL;
+            return;
         }
     }
 
@@ -11002,52 +11100,88 @@ parsed_routes_add(struct ovn_datapath *od, const struct hmap *lr_ports,
         !find_static_route_outport(od, lr_ports, route,
                                    IN6_IS_ADDR_V4MAPPED(&prefix),
                                    NULL, NULL)) {
-        return NULL;
+        return;
     }
 
     const struct nbrec_bfd *nb_bt = route->bfd;
     if (nb_bt && !strcmp(nb_bt->dst_ip, route->nexthop)) {
-        struct bfd_entry *bfd_e;
-
-        bfd_e = bfd_port_lookup(bfd_connections, nb_bt->logical_port,
-                                nb_bt->dst_ip);
-        ovs_mutex_lock(&bfd_lock);
-        if (bfd_e) {
-            bfd_e->ref = true;
+        struct bfd_entry *bfd_e = bfd_port_lookup(bfd_connections,
+                                                  nb_bt->logical_port,
+                                                  nb_bt->dst_ip);
+        if (!bfd_e) {
+            return;
         }
 
-        if (!strcmp(nb_bt->status, "admin_down")) {
-            nbrec_bfd_set_status(nb_bt, "down");
+        /* This static route is linked to an active bfd session. */
+        struct bfd_entry *bfd_sr = bfd_port_lookup(bfd_active_connections,
+                                                   nb_bt->logical_port,
+                                                   nb_bt->dst_ip);
+        if (!bfd_sr) {
+            bfd_sr = bfd_alloc_entry(bfd_active_connections,
+                                     nb_bt->logical_port, nb_bt->dst_ip,
+                                     bfd_e->status);
         }
 
-        if (!strcmp(nb_bt->status, "down")) {
-            ovs_mutex_unlock(&bfd_lock);
-            return NULL;
+        if (!strcmp(bfd_e->status, "admin_down")) {
+            bfd_set_status(bfd_sr, "down");
         }
-        ovs_mutex_unlock(&bfd_lock);
+
+
+        if (!strcmp(bfd_sr->status, "down")) {
+            return;
+        }
     }
 
-    struct parsed_route *pr = xzalloc(sizeof *pr);
-    pr->prefix = prefix;
-    pr->plen = plen;
-    pr->route_table_id = get_route_table_id(route_tables, route->route_table);
-    pr->is_src_route = (route->policy && !strcmp(route->policy,
-                                                 "src-ip"));
-    pr->hash = route_hash(pr);
-    pr->route = route;
-    pr->ecmp_symmetric_reply = smap_get_bool(&route->options,
-                                             "ecmp_symmetric_reply", false);
-    pr->is_discard_route = is_discard_route;
-    ovs_list_insert(routes, &pr->list_node);
-    return pr;
+    struct parsed_route *new_pr = xzalloc(sizeof *new_pr);
+    new_pr->prefix = prefix;
+    new_pr->plen = plen;
+    new_pr->route_table_id = get_route_table_id(route_tables,
+                                                route->route_table);
+    new_pr->is_src_route = (route->policy &&
+                            !strcmp(route->policy, "src-ip"));
+    new_pr->hash = route_hash(new_pr);
+    new_pr->route = route;
+    new_pr->nbr = od->nbr;
+    new_pr->ecmp_symmetric_reply = smap_get_bool(&route->options,
+                                                 "ecmp_symmetric_reply",
+                                                 false);
+    new_pr->is_discard_route = is_discard_route;
+
+    size_t hash = uuid_hash(&od->key);
+    struct parsed_route *pr = parsed_route_lookup(routes, hash, new_pr);
+    if (!pr) {
+        hmap_insert(routes, &new_pr->key_node, hash);
+    } else {
+        pr->stale = false;
+        free(new_pr);
+    }
 }
 
-static void
-parsed_routes_destroy(struct ovs_list *routes)
+void
+build_parsed_routes(struct ovn_datapath *od, const struct hmap *lr_ports,
+                    struct hmap *bfd_connections, struct hmap *routes,
+                    struct simap *route_tables,
+                    struct hmap *bfd_active_connections)
 {
     struct parsed_route *pr;
-    LIST_FOR_EACH_SAFE (pr, list_node, routes) {
-        ovs_list_remove(&pr->list_node);
+    HMAP_FOR_EACH (pr, key_node, routes) {
+        if (pr->nbr == od->nbr) {
+            pr->stale = true;
+        }
+    }
+
+    for (int i = 0; i < od->nbr->n_static_routes; i++) {
+        parsed_routes_add(od, lr_ports, od->nbr->static_routes[i],
+                          bfd_connections, routes, route_tables,
+                          bfd_active_connections);
+    }
+
+    HMAP_FOR_EACH_SAFE (pr, key_node, routes) {
+        if (!pr->stale) {
+            continue;
+        }
+
+        hmap_remove(routes, &pr->key_node);
         free(pr);
     }
 }
@@ -11495,6 +11629,7 @@ add_route(struct lflow_table *lflows, struct ovn_datapath *od,
           const struct ovn_port *op, const char *lrp_addr_s,
           const char *network_s, int plen, const char *gateway,
           bool is_src_route, const uint32_t rtb_id,
+          const struct hmap *bfd_connections,
           const struct ovsdb_idl_row *stage_hint, bool is_discard_route,
           int ofs, struct lflow_ref *lflow_ref)
 {
@@ -11543,7 +11678,7 @@ add_route(struct lflow_table *lflows, struct ovn_datapath *od,
                             priority, ds_cstr(&match),
                             ds_cstr(&actions), stage_hint,
                             lflow_ref);
-    if (op && op->has_bfd) {
+    if (op && bfd_is_port_running(bfd_connections, op->key)) {
         ds_put_format(&match, " && udp.dst == 3784");
         ovn_lflow_add_with_hint(lflows, op->od,
                                 S_ROUTER_IN_IP_ROUTING,
@@ -11560,6 +11695,7 @@ static void
 build_static_route_flow(struct lflow_table *lflows, struct ovn_datapath *od,
                         const struct hmap *lr_ports,
                         const struct parsed_route *route_,
+                        const struct hmap *bfd_connections,
                         struct lflow_ref *lflow_ref)
 {
     const char *lrp_addr_s = NULL;
@@ -11583,8 +11719,9 @@ build_static_route_flow(struct lflow_table *lflows, struct ovn_datapath *od,
     char *prefix_s = build_route_prefix_s(&route_->prefix, route_->plen);
     add_route(lflows, route_->is_discard_route ? od : out_port->od, out_port,
               lrp_addr_s, prefix_s, route_->plen, route->nexthop,
-              route_->is_src_route, route_->route_table_id, &route->header_,
-              route_->is_discard_route, ofs, lflow_ref);
+              route_->is_src_route, route_->route_table_id,
+              bfd_connections, &route->header_, route_->is_discard_route,
+              ofs, lflow_ref);
 
     free(prefix_s);
 }
@@ -12735,9 +12872,10 @@ build_lrouter_force_snat_flows_op(struct ovn_port *op,
 static void
 build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
                         const struct shash *meter_groups,
+                        const struct hmap *bfd_connections,
                         struct lflow_ref *lflow_ref)
 {
-    if (!op->has_bfd) {
+    if (!bfd_is_port_running(bfd_connections, op->key)) {
         return;
     }
 
@@ -13332,32 +13470,34 @@ build_ip_routing_pre_flows_for_lrouter(struct ovn_datapath *od,
  * LRP 'op'.
  */
 static void
-build_ip_routing_flows_for_lrp(
-        struct ovn_port *op, struct lflow_table *lflows,
-        struct lflow_ref *lflow_ref)
+build_ip_routing_flows_for_lrp(struct ovn_port *op,
+                               const struct hmap *bfd_connections,
+                               struct lflow_table *lflows,
+                               struct lflow_ref *lflow_ref)
 {
     ovs_assert(op->nbrp);
     for (int i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
         add_route(lflows, op->od, op, op->lrp_networks.ipv4_addrs[i].addr_s,
                   op->lrp_networks.ipv4_addrs[i].network_s,
                   op->lrp_networks.ipv4_addrs[i].plen, NULL, false, 0,
-                  &op->nbrp->header_, false, ROUTE_PRIO_OFFSET_CONNECTED,
-                  lflow_ref);
+                  bfd_connections, &op->nbrp->header_, false,
+                  ROUTE_PRIO_OFFSET_CONNECTED, lflow_ref);
     }
 
     for (int i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
         add_route(lflows, op->od, op, op->lrp_networks.ipv6_addrs[i].addr_s,
                   op->lrp_networks.ipv6_addrs[i].network_s,
                   op->lrp_networks.ipv6_addrs[i].plen, NULL, false, 0,
-                  &op->nbrp->header_, false, ROUTE_PRIO_OFFSET_CONNECTED,
-                  lflow_ref);
+                  bfd_connections, &op->nbrp->header_, false,
+                  ROUTE_PRIO_OFFSET_CONNECTED, lflow_ref);
     }
 }
 
 static void
 build_static_route_flows_for_lrouter(
         struct ovn_datapath *od, struct lflow_table *lflows,
-        const struct hmap *lr_ports, const struct hmap *bfd_connections,
+        const struct hmap *lr_ports, struct hmap *parsed_routes,
+        struct simap *route_tables, const struct hmap *bfd_connections,
         struct lflow_ref *lflow_ref)
 {
     ovs_assert(od->nbr);
@@ -13371,22 +13511,16 @@ build_static_route_flows_for_lrouter(
 
     struct hmap ecmp_groups = HMAP_INITIALIZER(&ecmp_groups);
     struct hmap unique_routes = HMAP_INITIALIZER(&unique_routes);
-    struct ovs_list parsed_routes = OVS_LIST_INITIALIZER(&parsed_routes);
-    struct simap route_tables = SIMAP_INITIALIZER(&route_tables);
     struct ecmp_groups_node *group;
 
     for (int i = 0; i < od->nbr->n_ports; i++) {
         build_route_table_lflow(od, lflows, od->nbr->ports[i],
-                                &route_tables, lflow_ref);
+                                route_tables, lflow_ref);
     }
 
-    for (int i = 0; i < od->nbr->n_static_routes; i++) {
-        struct parsed_route *route =
-            parsed_routes_add(od, lr_ports, &parsed_routes, &route_tables,
-                              od->nbr->static_routes[i], bfd_connections);
-        if (!route) {
-            continue;
-        }
+    struct parsed_route *route;
+    HMAP_FOR_EACH_WITH_HASH (route, key_node, uuid_hash(&od->key),
+                             parsed_routes) {
         group = ecmp_groups_find(&ecmp_groups, route);
         if (group) {
             ecmp_groups_add_route(group, route);
@@ -13410,12 +13544,11 @@ build_static_route_flows_for_lrouter(
     }
     const struct unique_routes_node *ur;
     HMAP_FOR_EACH (ur, hmap_node, &unique_routes) {
-        build_static_route_flow(lflows, od, lr_ports, ur->route, lflow_ref);
+        build_static_route_flow(lflows, od, lr_ports, ur->route,
+                                bfd_connections, lflow_ref);
     }
     ecmp_groups_destroy(&ecmp_groups);
     unique_routes_destroy(&unique_routes);
-    parsed_routes_destroy(&parsed_routes);
-    simap_destroy(&route_tables);
 }
 
 /* IP Multicast lookup. Here we set the output port, adjust TTL and
@@ -13522,6 +13655,115 @@ build_mcast_lookup_flows_for_lrouter(
     }
 }
 
+static struct route_policy *
+route_policies_lookup(struct hmap *route_policies, size_t hash,
+                      struct route_policy *new_rp)
+{
+    struct route_policy *rp;
+    HMAP_FOR_EACH_WITH_HASH (rp, key_node, hash, route_policies) {
+        if (rp->rule != new_rp->rule) {
+            continue;
+        }
+
+        if (rp->n_valid_nexthops != new_rp->n_valid_nexthops) {
+            continue;
+        }
+
+        size_t i;
+        for (i = 0; i < new_rp->n_valid_nexthops; i++) {
+            size_t j;
+
+            for (j = 0; j < rp->n_valid_nexthops; j++) {
+                if (!strcmp(new_rp->valid_nexthops[i],
+                            rp->valid_nexthops[j])) {
+                    break;
+                }
+            }
+
+            if (j == rp->n_valid_nexthops) {
+                break;
+            }
+        }
+
+        if (i == new_rp->n_valid_nexthops) {
+            return rp;
+        }
+    }
+
+    return NULL;
+}
+
+void
+build_route_policies(struct ovn_datapath *od, const struct hmap *lr_ports,
+                     const struct hmap *bfd_connections,
+                     struct hmap *route_policies,
+                     struct hmap *bfd_active_connections)
+{
+    struct route_policy *rp;
+
+    HMAP_FOR_EACH (rp, key_node, route_policies) {
+        if (rp->nbr == od->nbr) {
+            rp->stale = true;
+        }
+    }
+
+    for (int i = 0; i < od->nbr->n_policies; i++) {
+        const struct nbrec_logical_router_policy *rule = od->nbr->policies[i];
+        size_t n_valid_nexthops = 0;
+        char **valid_nexthops = NULL;
+
+        if (!strcmp(rule->action, "reroute")) {
+            size_t n_nexthops = rule->n_nexthops ? rule->n_nexthops : 1;
+
+            valid_nexthops = xcalloc(n_nexthops, sizeof *valid_nexthops);
+            for (size_t j = 0; j < n_nexthops; j++) {
+                char *nexthop = rule->n_nexthops
+                    ? rule->nexthops[j] : rule->nexthop;
+                struct ovn_port *out_port =
+                    get_outport_for_routing_policy_nexthop(
+                            od, lr_ports, rule->priority, nexthop);
+                if (!out_port || !check_bfd_state(rule, out_port, nexthop,
+                                                  bfd_connections,
+                                                  bfd_active_connections)) {
+                    continue;
+                }
+                valid_nexthops[n_valid_nexthops++] = nexthop;
+            }
+
+            if (!n_valid_nexthops) {
+                free(valid_nexthops);
+                continue;
+            }
+        }
+
+        struct route_policy *new_rp = xzalloc(sizeof *new_rp);
+        new_rp->rule = rule;
+        new_rp->n_valid_nexthops = n_valid_nexthops;
+        new_rp->valid_nexthops = valid_nexthops;
+        new_rp->nbr = od->nbr;
+
+        size_t hash = uuid_hash(&od->key);
+        rp = route_policies_lookup(route_policies, hash, new_rp);
+        if (!rp) {
+            hmap_insert(route_policies, &new_rp->key_node, hash);
+        } else {
+            rp->stale = false;
+            free(valid_nexthops);
+            free(new_rp);
+        }
+    }
+
+    HMAP_FOR_EACH_SAFE (rp, key_node, route_policies) {
+        if (!rp->stale) {
+            continue;
+        }
+
+        hmap_remove(route_policies, &rp->key_node);
+        free(rp->valid_nexthops);
+        free(rp);
+    }
+}
+
 /* Logical router ingress table POLICY: Policy.
  *
  * A packet that arrives at this table is an IP packet that should be
@@ -13535,7 +13777,7 @@ static void
 build_ingress_policy_flows_for_lrouter(
         struct ovn_datapath *od, struct lflow_table *lflows,
         const struct hmap *lr_ports,
-        const struct hmap *bfd_connections,
+        struct hmap *route_policies,
         struct lflow_ref *lflow_ref)
 {
     ovs_assert(od->nbr);
@@ -13552,21 +13794,20 @@ build_ingress_policy_flows_for_lrouter(
 
     /* Convert routing policies to flows. */
     uint16_t ecmp_group_id = 1;
-    for (int i = 0; i < od->nbr->n_policies; i++) {
-        const struct nbrec_logical_router_policy *rule
-            = od->nbr->policies[i];
+    struct route_policy *rp;
+    HMAP_FOR_EACH_WITH_HASH (rp, key_node, uuid_hash(&od->key),
+                             route_policies) {
+        const struct nbrec_logical_router_policy *rule = rp->rule;
         bool is_ecmp_reroute =
             (!strcmp(rule->action, "reroute") && rule->n_nexthops > 1);
 
         if (is_ecmp_reroute) {
-            build_ecmp_routing_policy_flows(lflows, od, lr_ports, rule,
-                                            bfd_connections, ecmp_group_id,
-                                            lflow_ref);
+            build_ecmp_routing_policy_flows(lflows, od, lr_ports, rp,
+                                            ecmp_group_id, lflow_ref);
             ecmp_group_id++;
         } else {
-            build_routing_policy_flow(lflows, od, lr_ports, rule,
-                                      bfd_connections, &rule->header_,
-                                      lflow_ref);
+            build_routing_policy_flow(lflows, od, lr_ports, rp,
+                                      &rule->header_, lflow_ref);
         }
     }
 }
@@ -14778,6 +15019,7 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
                             struct lflow_table *lflows,
                             struct ds *match, struct ds *actions,
                             const struct shash *meter_groups,
+                            const struct hmap *bfd_connections,
                             struct lflow_ref *lflow_ref)
 {
     ovs_assert(op->nbrp);
@@ -14819,7 +15061,8 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
     }
 
     /* BFD msg handling */
-    build_lrouter_bfd_flows(lflows, op, meter_groups, lflow_ref);
+    build_lrouter_bfd_flows(lflows, op, meter_groups, bfd_connections,
+                            lflow_ref);
 
     /* ICMP time exceeded */
     struct ds ip_ds = DS_EMPTY_INITIALIZER;
@@ -16272,6 +16515,7 @@ build_lsp_lflows_for_lbnats(struct ovn_port *lsp,
 static void
 build_routable_flows_for_router_port(
     struct ovn_port *lrp, const struct lr_stateful_record *lr_stateful_rec,
+    const struct hmap *bfd_connections,
     struct lflow_table *lflows,
     struct ds *match,
     struct ds *actions)
@@ -16308,8 +16552,8 @@ build_routable_flows_for_router_port(
                               router_port->lrp_networks.ipv4_addrs[0].addr_s,
                               laddrs->ipv4_addrs[k].network_s,
                               laddrs->ipv4_addrs[k].plen, NULL, false, 0,
-                              &router_port->nbrp->header_, false,
-                              ROUTE_PRIO_OFFSET_CONNECTED,
+                              bfd_connections, &router_port->nbrp->header_,
+                              false, ROUTE_PRIO_OFFSET_CONNECTED,
                               lrp->stateful_lflow_ref);
                 }
             }
@@ -16419,8 +16663,8 @@ build_lrp_lflows_for_lbnats(struct ovn_port *op,
 static void
 build_lbnat_lflows_iterate_by_lrp(
     struct ovn_port *op, const struct lr_stateful_table *lr_stateful_table,
-    const struct shash *meter_groups, struct ds *match,
-    struct ds *actions, struct lflow_table *lflows)
+    const struct shash *meter_groups, const struct hmap *bfd_connections,
+    struct ds *match, struct ds *actions, struct lflow_table *lflows)
 {
     ovs_assert(op->nbrp);
 
@@ -16432,8 +16676,8 @@ build_lbnat_lflows_iterate_by_lrp(
     build_lrp_lflows_for_lbnats(op, lr_stateful_rec, meter_groups, match,
                                 actions, lflows);
 
-    build_routable_flows_for_router_port(op, lr_stateful_rec, lflows, match,
-                                         actions);
+    build_routable_flows_for_router_port(op, lr_stateful_rec, bfd_connections,
+                                         lflows, match, actions);
 }
 
 static void
@@ -16504,6 +16748,9 @@ struct lswitch_flow_build_info {
     size_t thread_lflow_counter;
     const char *svc_monitor_mac;
     const struct sampling_app_table *sampling_apps;
+    struct hmap *parsed_routes;
+    struct hmap *route_policies;
+    struct simap *route_tables;
 };
 
 /* Helper function to combine all lflow generation which is iterated by
@@ -16549,12 +16796,12 @@ build_lswitch_and_lrouter_iterate_by_lr(struct ovn_datapath *od,
     build_ND_RA_flows_for_lrouter(od, lsi->lflows, NULL);
     build_ip_routing_pre_flows_for_lrouter(od, lsi->lflows, NULL);
     build_static_route_flows_for_lrouter(od, lsi->lflows, lsi->lr_ports,
-                                         lsi->bfd_connections,
-                                         NULL);
+                                         lsi->parsed_routes, lsi->route_tables,
+                                         lsi->bfd_connections, NULL);
     build_mcast_lookup_flows_for_lrouter(od, lsi->lflows, &lsi->match,
                                          &lsi->actions, NULL);
     build_ingress_policy_flows_for_lrouter(od, lsi->lflows, lsi->lr_ports,
-                                           lsi->bfd_connections, NULL);
+                                           lsi->route_policies, NULL);
     build_arp_resolve_flows_for_lrouter(od, lsi->lflows, NULL);
     build_check_pkt_len_flows_for_lrouter(od, lsi->lflows, lsi->lr_ports,
                                           &lsi->match, &lsi->actions,
@@ -16621,7 +16868,8 @@ build_lswitch_and_lrouter_iterate_by_lrp(struct ovn_port *op,
                                           &lsi->actions, op->lflow_ref);
     build_neigh_learning_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
                                                 &lsi->actions, op->lflow_ref);
-    build_ip_routing_flows_for_lrp(op, lsi->lflows, op->lflow_ref);
+    build_ip_routing_flows_for_lrp(op, lsi->bfd_connections,
+                                   lsi->lflows, op->lflow_ref);
     build_ND_RA_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
                                        &lsi->actions, lsi->meter_groups,
                                        op->lflow_ref);
@@ -16639,7 +16887,8 @@ build_lswitch_and_lrouter_iterate_by_lrp(struct ovn_port *op,
                                             lsi->meter_groups,
                                             op->lflow_ref);
     build_lrouter_ipv4_ip_input(op, lsi->lflows, &lsi->match, &lsi->actions,
-                                lsi->meter_groups, op->lflow_ref);
+                                lsi->meter_groups, lsi->bfd_connections,
+                                op->lflow_ref);
     build_lrouter_icmp_packet_toobig_admin_flows(op, lsi->lflows, &lsi->match,
                                                  &lsi->actions, op->lflow_ref);
 }
@@ -16728,7 +16977,8 @@ build_lflows_thread(void *arg)
                     build_lswitch_and_lrouter_iterate_by_lrp(op, lsi);
                     build_lbnat_lflows_iterate_by_lrp(
                         op, lsi->lr_stateful_table, lsi->meter_groups,
-                        &lsi->match, &lsi->actions, lsi->lflows);
+                        lsi->bfd_connections, &lsi->match, &lsi->actions,
+                        lsi->lflows);
                 }
             }
             for (bnum = control->id;
@@ -16871,7 +17121,10 @@ build_lswitch_and_lrouter_flows(
     const struct hmap *bfd_connections,
     const struct chassis_features *features,
     const char *svc_monitor_mac,
-    const struct sampling_app_table *sampling_apps)
+    const struct sampling_app_table *sampling_apps,
+    struct hmap *parsed_routes,
+    struct hmap *route_policies,
+    struct simap *route_tables)
 {
 
     char *svc_check_match = xasprintf("eth.dst == %s", svc_monitor_mac);
@@ -16906,6 +17159,9 @@ build_lswitch_and_lrouter_flows(
             lsiv[index].thread_lflow_counter = 0;
             lsiv[index].svc_monitor_mac = svc_monitor_mac;
             lsiv[index].sampling_apps = sampling_apps;
+            lsiv[index].parsed_routes = parsed_routes;
+            lsiv[index].route_tables = route_tables;
+            lsiv[index].route_policies = route_policies;
             ds_init(&lsiv[index].match);
             ds_init(&lsiv[index].actions);
 
@@ -16947,6 +17203,9 @@ build_lswitch_and_lrouter_flows(
             .svc_check_match = svc_check_match,
             .svc_monitor_mac = svc_monitor_mac,
             .sampling_apps = sampling_apps,
+            .parsed_routes = parsed_routes,
+            .route_tables = route_tables,
+            .route_policies = route_policies,
             .match = DS_EMPTY_INITIALIZER,
             .actions = DS_EMPTY_INITIALIZER,
         };
@@ -16978,6 +17237,7 @@ build_lswitch_and_lrouter_flows(
             build_lswitch_and_lrouter_iterate_by_lrp(op, &lsi);
             build_lbnat_lflows_iterate_by_lrp(op, lsi.lr_stateful_table,
                                               lsi.meter_groups,
+                                              lsi.bfd_connections,
                                               &lsi.match,
                                               &lsi.actions,
                                               lsi.lflows);
@@ -17111,7 +17371,10 @@ void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
                                     input_data->bfd_connections,
                                     input_data->features,
                                     input_data->svc_monitor_mac,
-                                    input_data->sampling_apps);
+                                    input_data->sampling_apps,
+                                    input_data->parsed_routes,
+                                    input_data->route_policies,
+                                    input_data->route_tables);
 
     if (parallelization_state == STATE_INIT_HASH_SIZES) {
         parallelization_state = STATE_USE_PARALLELIZATION;
@@ -17473,6 +17736,7 @@ lflow_handle_lr_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
             build_lbnat_lflows_iterate_by_lrp(op,
                                               lflow_input->lr_stateful_table,
                                               lflow_input->meter_groups,
+                                              lflow_input->bfd_connections,
                                               &match, &actions,
                                               lflows);
 
@@ -18187,6 +18451,27 @@ northd_init(struct northd_data *data)
 }
 
 void
+route_policies_init(struct route_policies_data *data)
+{
+    hmap_init(&data->route_policies);
+    hmap_init(&data->bfd_active_connections);
+}
+
+void
+static_routes_init(struct static_routes_data *data)
+{
+    hmap_init(&data->parsed_routes);
+    simap_init(&data->route_tables);
+    hmap_init(&data->bfd_active_connections);
+}
+
+void
+bfd_init(struct bfd_data *data)
+{
+    hmap_init(&data->bfd_connections);
+}
+
+void
 northd_destroy(struct northd_data *data)
 {
     struct ovn_lb_datapaths *lb_dps;
@@ -18223,6 +18508,48 @@ northd_destroy(struct northd_data *data)
 
     sset_destroy(&data->svc_monitor_lsps);
     destroy_northd_tracked_data(data);
+}
+
+static void
+__bfd_destroy(struct hmap *bfd_connections)
+{
+    struct bfd_entry *bfd_e;
+
+    HMAP_FOR_EACH_POP (bfd_e, hmap_node, bfd_connections) {
+        bfd_erase_entry(bfd_e);
+    }
+    hmap_destroy(bfd_connections);
+}
+
+void
+bfd_destroy(struct bfd_data *data)
+{
+    __bfd_destroy(&data->bfd_connections);
+}
+
+void
+route_policies_destroy(struct route_policies_data *data)
+{
+    struct route_policy *rp;
+    HMAP_FOR_EACH_POP (rp, key_node, &data->route_policies) {
+        free(rp->valid_nexthops);
+        free(rp);
+    };
+    hmap_destroy(&data->route_policies);
+    __bfd_destroy(&data->bfd_active_connections);
+}
+
+void
+static_routes_destroy(struct static_routes_data *data)
+{
+    struct parsed_route *r;
+    HMAP_FOR_EACH_POP (r, key_node, &data->parsed_routes) {
+        free(r);
+    }
+    hmap_destroy(&data->parsed_routes);
+
+    simap_destroy(&data->route_tables);
+    __bfd_destroy(&data->bfd_active_connections);
 }
 
 void

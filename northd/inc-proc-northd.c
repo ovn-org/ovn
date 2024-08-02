@@ -158,6 +158,10 @@ static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lb_data, "lb_data");
 static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lr_nat, "lr_nat");
 static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lr_stateful, "lr_stateful");
 static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(ls_stateful, "ls_stateful");
+static ENGINE_NODE(route_policies, "route_policies");
+static ENGINE_NODE(static_routes, "static_routes");
+static ENGINE_NODE(bfd, "bfd");
+static ENGINE_NODE(bfd_sync, "bfd_sync");
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb)
@@ -243,18 +247,36 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_fdb_aging, &en_global_config,
                      node_global_config_handler);
 
+    engine_add_input(&en_bfd, &en_nb_bfd, NULL);
+    engine_add_input(&en_bfd, &en_sb_bfd, NULL);
+
+    engine_add_input(&en_route_policies, &en_bfd, NULL);
+    engine_add_input(&en_route_policies, &en_northd,
+                     route_policies_northd_change_handler);
+
+    engine_add_input(&en_static_routes, &en_bfd, NULL);
+    engine_add_input(&en_static_routes, &en_northd,
+                     static_routes_northd_change_handler);
+
+    engine_add_input(&en_bfd_sync, &en_bfd, NULL);
+    engine_add_input(&en_bfd_sync, &en_nb_bfd, NULL);
+    engine_add_input(&en_bfd_sync, &en_static_routes, NULL);
+    engine_add_input(&en_bfd_sync, &en_route_policies, NULL);
+    engine_add_input(&en_bfd_sync, &en_northd, bfd_sync_northd_change_handler);
+
     engine_add_input(&en_sync_meters, &en_nb_acl, NULL);
     engine_add_input(&en_sync_meters, &en_nb_meter, NULL);
     engine_add_input(&en_sync_meters, &en_sb_meter, NULL);
 
-    engine_add_input(&en_lflow, &en_nb_bfd, NULL);
     engine_add_input(&en_lflow, &en_nb_acl, NULL);
     engine_add_input(&en_lflow, &en_sync_meters, NULL);
-    engine_add_input(&en_lflow, &en_sb_bfd, NULL);
     engine_add_input(&en_lflow, &en_sb_logical_flow, NULL);
     engine_add_input(&en_lflow, &en_sb_multicast_group, NULL);
     engine_add_input(&en_lflow, &en_sb_igmp_group, NULL);
     engine_add_input(&en_lflow, &en_sb_logical_dp_group, NULL);
+    engine_add_input(&en_lflow, &en_bfd_sync, NULL);
+    engine_add_input(&en_lflow, &en_route_policies, NULL);
+    engine_add_input(&en_lflow, &en_static_routes, NULL);
     engine_add_input(&en_lflow, &en_global_config,
                      node_global_config_handler);
 

@@ -42,6 +42,11 @@ lflow_get_input_data(struct engine_node *node,
                      struct lflow_input *lflow_input)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
+    struct bfd_data *bfd_data = engine_get_input_data("bfd_sync", node);
+    struct static_routes_data *static_routes_data =
+        engine_get_input_data("static_routes", node);
+    struct route_policies_data *route_policies_data =
+        engine_get_input_data("route_policies", node);
     struct port_group_data *pg_data =
         engine_get_input_data("port_group", node);
     struct sync_meters_data *sync_meters_data =
@@ -51,10 +56,6 @@ lflow_get_input_data(struct engine_node *node,
     struct ed_type_ls_stateful *ls_stateful_data =
         engine_get_input_data("ls_stateful", node);
 
-    lflow_input->nbrec_bfd_table =
-        EN_OVSDB_GET(engine_get_input("NB_bfd", node));
-    lflow_input->sbrec_bfd_table =
-        EN_OVSDB_GET(engine_get_input("SB_bfd", node));
     lflow_input->sbrec_logical_flow_table =
         EN_OVSDB_GET(engine_get_input("SB_logical_flow", node));
     lflow_input->sbrec_multicast_group_table =
@@ -79,7 +80,10 @@ lflow_get_input_data(struct engine_node *node,
     lflow_input->meter_groups = &sync_meters_data->meter_groups;
     lflow_input->lb_datapaths_map = &northd_data->lb_datapaths_map;
     lflow_input->svc_monitor_map = &northd_data->svc_monitor_map;
-    lflow_input->bfd_connections = NULL;
+    lflow_input->bfd_connections = &bfd_data->bfd_connections;
+    lflow_input->parsed_routes = &static_routes_data->parsed_routes;
+    lflow_input->route_tables = &static_routes_data->route_tables;
+    lflow_input->route_policies = &route_policies_data->route_policies;
 
     struct ed_type_global_config *global_config =
         engine_get_input_data("global_config", node);
@@ -100,25 +104,14 @@ void en_lflow_run(struct engine_node *node, void *data)
     struct lflow_input lflow_input;
     lflow_get_input_data(node, &lflow_input);
 
-    struct hmap bfd_connections = HMAP_INITIALIZER(&bfd_connections);
-    lflow_input.bfd_connections = &bfd_connections;
-
     stopwatch_start(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
 
     struct lflow_data *lflow_data = data;
     lflow_table_clear(lflow_data->lflow_table);
     lflow_reset_northd_refs(&lflow_input);
 
-    build_bfd_table(eng_ctx->ovnsb_idl_txn,
-                    lflow_input.nbrec_bfd_table,
-                    lflow_input.sbrec_bfd_table,
-                    lflow_input.lr_ports,
-                    &bfd_connections);
     build_lflows(eng_ctx->ovnsb_idl_txn, &lflow_input,
                  lflow_data->lflow_table);
-    bfd_cleanup_connections(lflow_input.nbrec_bfd_table,
-                            &bfd_connections);
-    hmap_destroy(&bfd_connections);
     stopwatch_stop(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
 
     engine_set_node_state(node, EN_UPDATED);

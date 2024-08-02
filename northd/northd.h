@@ -23,6 +23,7 @@
 #include "northd/en-port-group.h"
 #include "northd/ipam.h"
 #include "openvswitch/hmap.h"
+#include "simap.h"
 #include "ovs-thread.h"
 
 struct northd_input {
@@ -163,14 +164,34 @@ struct northd_data {
     struct northd_tracked_data trk_data;
 };
 
+struct route_policy {
+    struct hmap_node key_node;
+    const struct nbrec_logical_router_policy *rule;
+    size_t n_valid_nexthops;
+    char **valid_nexthops;
+    const struct nbrec_logical_router *nbr;
+    bool stale;
+};
+
+struct static_routes_data {
+    struct hmap parsed_routes;
+    struct simap route_tables;
+    struct hmap bfd_active_connections;
+};
+
+struct route_policies_data {
+    struct hmap route_policies;
+    struct hmap bfd_active_connections;
+};
+
+struct bfd_data {
+    struct hmap bfd_connections;
+};
+
 struct lr_nat_table;
 
 struct lflow_input {
-    /* Northbound table references */
-    const struct nbrec_bfd_table *nbrec_bfd_table;
-
     /* Southbound table references */
-    const struct sbrec_bfd_table *sbrec_bfd_table;
     const struct sbrec_logical_flow_table *sbrec_logical_flow_table;
     const struct sbrec_multicast_group_table *sbrec_multicast_group_table;
     const struct sbrec_igmp_group_table *sbrec_igmp_group_table;
@@ -194,6 +215,9 @@ struct lflow_input {
     bool ovn_internal_version_changed;
     const char *svc_monitor_mac;
     const struct sampling_app_table *sampling_apps;
+    struct hmap *parsed_routes;
+    struct hmap *route_policies;
+    struct simap *route_tables;
 };
 
 extern int parallelization_state;
@@ -602,8 +626,6 @@ struct ovn_port {
 
     bool has_unknown; /* If the addresses have 'unknown' defined. */
 
-    bool has_bfd;
-
     /* The port's peer:
      *
      *     - A switch port S of type "router" has a router port R as a peer,
@@ -662,6 +684,20 @@ struct ovn_port {
     struct lflow_ref *stateful_lflow_ref;
 };
 
+struct parsed_route {
+    struct hmap_node key_node;
+    struct in6_addr prefix;
+    unsigned int plen;
+    bool is_src_route;
+    uint32_t route_table_id;
+    uint32_t hash;
+    const struct nbrec_logical_router_static_route *route;
+    bool ecmp_symmetric_reply;
+    bool is_discard_route;
+    const struct nbrec_logical_router *nbr;
+    bool stale;
+};
+
 void ovnnb_db_run(struct northd_input *input_data,
                   struct northd_data *data,
                   struct ovsdb_idl_txn *ovnnb_txn,
@@ -682,6 +718,18 @@ void northd_destroy(struct northd_data *data);
 void northd_init(struct northd_data *data);
 void northd_indices_create(struct northd_data *data,
                            struct ovsdb_idl *ovnsb_idl);
+
+void route_policies_init(struct route_policies_data *);
+void route_policies_destroy(struct route_policies_data *);
+void build_parsed_routes(struct ovn_datapath *, const struct hmap *,
+                         struct hmap *, struct hmap *, struct simap *,
+                         struct hmap *);
+uint32_t get_route_table_id(struct simap *, const char *);
+void static_routes_init(struct static_routes_data *);
+void static_routes_destroy(struct static_routes_data *);
+
+void bfd_init(struct bfd_data *);
+void bfd_destroy(struct bfd_data *);
 
 struct lflow_table;
 struct lr_stateful_tracked_data;
@@ -720,13 +768,13 @@ bool northd_handle_lb_data_changes(struct tracked_lb_data *,
                                    struct hmap *lbgrp_datapaths_map,
                                    struct northd_tracked_data *);
 
-void build_bfd_table(struct ovsdb_idl_txn *ovnsb_txn,
-                     const struct nbrec_bfd_table *,
-                     const struct sbrec_bfd_table *,
-                     const struct hmap *lr_ports,
-                     struct hmap *bfd_connections);
-void bfd_cleanup_connections(const struct nbrec_bfd_table *,
-                             struct hmap *bfd_map);
+void build_route_policies(struct ovn_datapath *, const struct hmap *,
+                          const struct hmap *, struct hmap *, struct hmap *);
+void bfd_table_sync(struct ovsdb_idl_txn *, const struct nbrec_bfd_table *,
+                    const struct hmap *, const struct hmap *,
+                    const struct hmap *, const struct hmap *, struct hmap *);
+void build_bfd_map(const struct nbrec_bfd_table *,
+                   const struct sbrec_bfd_table *, struct hmap *);
 void run_update_worker_pool(int n_threads);
 
 const struct ovn_datapath *northd_get_datapath_for_port(

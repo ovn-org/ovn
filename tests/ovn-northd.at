@@ -12,6 +12,7 @@ m4_define([_DUMP_DB_TABLES], [
     ovn-sbctl list meter >> $1
     ovn-sbctl list meter_band >> $1
     ovn-sbctl list port_group >> $1
+    ovn-sbctl list bfd >> $1
     ovn-sbctl dump-flows > lflows_$1
 ])
 
@@ -3861,6 +3862,7 @@ for i in $(seq 1 9); do
     check ovn-nbctl --wait=sb lsp-set-addresses sw$i-r0 00:00:00:00:00:0$i
 done
 
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 uuid=$(ovn-nbctl create bfd logical_port=r0-sw1 dst_ip=192.168.1.2 status=down min_tx=250 min_rx=250 detect_mult=10)
 ovn-nbctl create bfd logical_port=r0-sw2 dst_ip=192.168.2.2 status=down min_tx=500 min_rx=500 detect_mult=20
 ovn-nbctl create bfd logical_port=r0-sw3 dst_ip=192.168.3.2 status=down
@@ -3873,6 +3875,13 @@ wait_row_count bfd 1 logical_port=r0-sw2 detect_mult=20 dst_ip=192.168.2.2 \
 wait_row_count bfd 1 logical_port=r0-sw3 detect_mult=5 dst_ip=192.168.3.2 \
                      min_rx=1000 min_tx=1000 status=admin_down
 
+check_engine_stats northd norecompute nocompute
+check_engine_stats bfd recompute nocompute
+check_engine_stats lflow recompute nocompute
+check_engine_stats northd_output norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
 uuid=$(fetch_column nb:bfd _uuid logical_port=r0-sw1)
 check ovn-nbctl set bfd $uuid min_tx=1000 min_rx=1000 detect_mult=100
 
@@ -3881,9 +3890,24 @@ check ovn-nbctl clear bfd $uuid_2 min_rx
 wait_row_count bfd 1 logical_port=r0-sw2 min_rx=1000
 wait_row_count bfd 1 logical_port=r0-sw1 min_rx=1000 min_tx=1000 detect_mult=100
 
+check_engine_stats northd norecompute nocompute
+check_engine_stats bfd recompute nocompute
+check_engine_stats lflow recompute nocompute
+check_engine_stats northd_output norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
 check ovn-nbctl --bfd=$uuid lr-route-add r0 100.0.0.0/8 192.168.1.2
 wait_column down bfd status logical_port=r0-sw1
 AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.1.2 | grep -q bfd],[0])
+
+check_engine_stats northd recompute nocompute
+check_engine_stats bfd recompute nocompute
+check_engine_stats static_routes recompute nocompute
+check_engine_stats lflow recompute nocompute
+check_engine_stats northd_output norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 
 check ovn-nbctl --bfd lr-route-add r0 200.0.0.0/8 192.168.2.2
 wait_column down bfd status logical_port=r0-sw2
@@ -3893,9 +3917,25 @@ check ovn-nbctl --bfd lr-route-add r0 240.0.0.0/8 192.168.5.2 r0-sw5
 wait_column down bfd status logical_port=r0-sw5
 AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.5.2 | grep -q bfd],[0])
 
+check_engine_stats northd recompute nocompute
+check_engine_stats bfd recompute nocompute
+check_engine_stats static_routes recompute nocompute
+check_engine_stats lflow recompute nocompute
+check_engine_stats northd_output norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
 check ovn-nbctl --bfd --policy=src-ip lr-route-add r0 192.168.6.1/32 192.168.10.10 r0-sw6
 wait_column down bfd status logical_port=r0-sw6
 AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.6.1 | grep -q bfd],[0])
+
+check_engine_stats northd recompute nocompute
+check_engine_stats bfd recompute nocompute
+check_engine_stats route_policies recompute nocompute
+check_engine_stats lflow recompute nocompute
+check_engine_stats northd_output norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 
 check ovn-nbctl --bfd --policy=src-ip lr-route-add r0 192.168.7.1/32 192.168.10.10 r0-sw7
 wait_column down bfd status logical_port=r0-sw7
@@ -3924,12 +3964,28 @@ wait_column down bfd status logical_port=r0-sw8
 bfd_route_policy_uuid=$(fetch_column nb:bfd _uuid logical_port=r0-sw8)
 AT_CHECK([ovn-nbctl list logical_router_policy | grep -q $bfd_route_policy_uuid])
 
+check_engine_stats northd recompute nocompute
+check_engine_stats bfd recompute nocompute
+check_engine_stats static_routes recompute nocompute
+check_engine_stats lflow recompute nocompute
+check_engine_stats northd_output norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
 check ovn-nbctl lr-policy-del r0
 check ovn-nbctl --bfd lr-policy-add r0 100 "ip4.src == 2.3.4.0/24" reroute 192.168.9.2,192.168.9.3,192.168.9.4
 
 wait_column down bfd status dst_ip=192.168.9.2
 wait_column down bfd status dst_ip=192.168.9.3
 wait_column down bfd status dst_ip=192.168.9.4
+
+check_engine_stats northd recompute nocompute
+check_engine_stats bfd recompute nocompute
+check_engine_stats route_policies recompute nocompute
+check_engine_stats lflow recompute nocompute
+check_engine_stats northd_output norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 
 bfd_route_policy_uuid=$(fetch_column nb:bfd _uuid logical_port=r0-sw9)
 AT_CHECK([ovn-nbctl list logical_router_policy | sed s/,//g | grep -q "$bfd_route_policy_uuid"])
