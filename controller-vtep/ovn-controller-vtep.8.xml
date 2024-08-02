@@ -28,6 +28,9 @@
     <xi:include href="lib/ssl-bootstrap.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
     <xi:include href="lib/ssl-peer-ca-cert.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
+    <h2>Other Options</h2>
+    <xi:include href="lib/common.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
     <h1>Configuration</h1>
     <p>
       <code>ovn-controller-vtep</code> retrieves its configuration
