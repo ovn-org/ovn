@@ -7216,7 +7216,6 @@ build_qos(struct ovn_datapath *od, struct lflow_table *lflows,
             }
         }
         if (rate) {
-            stage = ingress ? S_SWITCH_IN_QOS : S_SWITCH_OUT_QOS;
             if (burst) {
                 ds_put_format(&action,
                               "set_meter(%"PRId64", %"PRId64"); ",
@@ -7243,11 +7242,11 @@ build_qos(struct ovn_datapath *od, struct lflow_table *lflows,
                               qos->value_action[j]);
             }
         }
-            ds_put_cstr(&action, "next;");
-            ovn_lflow_add_with_hint(lflows, od, stage,
-                                    qos->priority,
-                                    qos->match, ds_cstr(&action),
-                                    &qos->header_, lflow_ref);
+        ds_put_cstr(&action, "next;");
+        ovn_lflow_add_with_hint(lflows, od, stage,
+                                qos->priority,
+                                qos->match, ds_cstr(&action),
+                                &qos->header_, lflow_ref);
     }
     ds_destroy(&action);
 }
