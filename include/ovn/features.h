@@ -38,6 +38,7 @@ enum ovs_feature_support_bits {
     OVS_DP_METER_SUPPORT_BIT,
     OVS_CT_TUPLE_FLUSH_BIT,
     OVS_DP_HASH_L4_SYM_BIT,
+    OVS_OF_GROUP_SUPPORT_BIT,
 };
 
 enum ovs_feature_value {
@@ -45,6 +46,7 @@ enum ovs_feature_value {
     OVS_DP_METER_SUPPORT = (1 << OVS_DP_METER_SUPPORT_BIT),
     OVS_CT_TUPLE_FLUSH_SUPPORT = (1 << OVS_CT_TUPLE_FLUSH_BIT),
     OVS_DP_HASH_L4_SYM_SUPPORT = (1 << OVS_DP_HASH_L4_SYM_BIT),
+    OVS_OF_GROUP_SUPPORT = (1 << OVS_OF_GROUP_SUPPORT_BIT),
 };
 
 void ovs_feature_support_destroy(void);
