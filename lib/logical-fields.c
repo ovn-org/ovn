@@ -165,6 +165,14 @@ ovn_init_symtab(struct shash *symtab)
                                     OVN_CT_STR(OVN_CT_LB_FORCE_SNAT_BIT)
                                     "]",
                                     WR_CT_COMMIT);
+    expr_symtab_add_subfield_scoped(symtab, "ct_mark.obs_stage", NULL,
+                                    "ct_mark["
+                                    OVN_CT_STR(OVN_CT_OBS_STAGE_1ST_BIT) ".."
+                                    OVN_CT_STR(OVN_CT_OBS_STAGE_END_BIT)
+                                    "]",
+                                    WR_CT_COMMIT);
+    expr_symtab_add_subfield_scoped(symtab, "ct_mark.obs_collector_id", NULL,
+                                    "ct_mark[16..23]", WR_CT_COMMIT);
 
     expr_symtab_add_field_scoped(symtab, "ct_label", MFF_CT_LABEL, NULL,
                                  false, WR_CT_COMMIT);

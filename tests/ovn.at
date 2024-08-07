@@ -336,6 +336,8 @@ ct_mark.blocked = ct_mark[0]
 ct_mark.ecmp_reply_port = ct_mark[16..31]
 ct_mark.force_snat = ct_mark[3]
 ct_mark.natted = ct_mark[1]
+ct_mark.obs_collector_id = ct_mark[16..23]
+ct_mark.obs_stage = ct_mark[4..5]
 ct_mark.skip_snat = ct_mark[2]
 ct_state = NXM_NX_CT_STATE
 ]])
