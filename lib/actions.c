@@ -4505,10 +4505,13 @@ format_SAMPLE(const struct ovnact_sample *sample, struct ds *s)
 
     ds_put_format(s, ",collector_set=%"PRIu32, sample->collector_set_id);
     ds_put_format(s, ",obs_domain=%"PRIu8, sample->obs_domain_id);
+    ds_put_cstr(s, ",obs_point=");
     if (sample->use_cookie) {
-        ds_put_cstr(s, ",obs_point=$cookie");
+        ds_put_cstr(s, "$cookie");
+    } else if (sample->obs_point_id_src.symbol) {
+        expr_field_format(&sample->obs_point_id_src, s);
     } else {
-        ds_put_format(s, ",obs_point=%"PRIu32, sample->obs_point_id);
+        ds_put_format(s, "%"PRIu32, sample->obs_point_id);
     }
     ds_put_format(s, ");");
 }
@@ -4533,6 +4536,8 @@ encode_SAMPLE(const struct ovnact_sample *sample,
 
     if (sample->use_cookie) {
         os->obs_point_imm = ep->lflow_uuid.parts[0];
+    } else if (sample->obs_point_id_src.symbol) {
+        os->obs_point_src = expr_resolve_field(&sample->obs_point_id_src);
     } else {
         os->obs_point_imm = sample->obs_point_id;
     }
@@ -4566,8 +4571,7 @@ parse_sample_arg(struct action_context *ctx, struct ovnact_sample *sample)
             sample->obs_point_id = ntohll(ctx->lexer->token.value.integer);
             lexer_get(ctx->lexer);
         } else {
-            lexer_syntax_error(ctx->lexer,
-                               "malformed sample observation_point_id");
+            action_parse_field(ctx, 32, false, &sample->obs_point_id_src);
         }
     } else if (lexer_match_id(ctx->lexer, "obs_domain")) {
         if (!lexer_force_match(ctx->lexer, LEX_T_EQUALS)) {

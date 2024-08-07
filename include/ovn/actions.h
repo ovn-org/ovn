@@ -498,13 +498,15 @@ struct ovnact_lookup_fdb {
 /* OVNACT_SAMPLE */
 struct ovnact_sample {
     struct ovnact ovnact;
-    uint16_t probability;       /* probability over UINT16_MAX. */
-    uint8_t obs_domain_id;      /* most significant byte of the
-                                   observation domain id. The other 24 bits
-                                   will come from the datapath's tunnel key. */
-    uint32_t collector_set_id;  /* colector_set_id. */
-    uint32_t obs_point_id;      /* observation point id. */
-    bool use_cookie;            /* use cookie as obs_point_id */
+    uint16_t probability;               /* probability over UINT16_MAX. */
+    uint8_t obs_domain_id;              /* most significant byte of the
+                                           observation domain id. The other
+                                           24 bits will come from the
+                                           datapath's tunnel key. */
+    uint32_t collector_set_id;          /* colector_set_id. */
+    struct expr_field obs_point_id_src; /* observation point id source reg */
+    uint32_t obs_point_id;              /* observation point id */
+    bool use_cookie;                    /* use cookie as obs_point_id */
 };
 
 /* OVNACT_COMMIT_ECMP_NH. */

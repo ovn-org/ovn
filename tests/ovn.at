@@ -2355,17 +2355,28 @@ sample(probability=10);
 sample(probability=100,collector_set=999,obs_domain=0,obs_point=1000);
     encodes as drop
 
+sample(probability=10, obs_point=reg3);
+    formats as sample(probability=10,collector_set=0,obs_domain=0,obs_point=reg3);
+    encodes as sample(probability=10,collector_set_id=0,obs_domain_id=11259375,obs_point_id=NXM_NX_XXREG0[[0..31]])
+
+sample(probability=10, obs_point=ct_label.obs_point_id);
+    formats as sample(probability=10,collector_set=0,obs_domain=0,obs_point=ct_label.obs_point_id);
+    encodes as sample(probability=10,collector_set_id=0,obs_domain_id=11259375,obs_point_id=NXM_NX_CT_LABEL[[96..127]])
+
 sample(probability=0,collector_set=200,obs_domain=0,obs_point=1000);
     probability must be greater than zero
 
 sample(probability=0,collector_set=200,obs_domain=0,obs_point=foo);
-    Syntax error at `foo' malformed sample observation_point_id.
+    Syntax error at `foo' expecting field name.
 
 sample(probability=0,collector_set=200,obs_domain=300,obs_point=foo);
     Syntax error at `300' obs_domain must be 8-bit long.
 
 sample(probability=10,foo=bar,obs_domain=0,obs_point=1000);
     Syntax error at `foo' unknown argument.
+
+sample(probability=10, obs_point=ct_label);
+    Cannot use 128-bit field ct_label[[0..127]] where 32-bit field is required.
 
 # mac_cache_use
 mac_cache_use;
