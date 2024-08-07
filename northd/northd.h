@@ -190,6 +190,7 @@ struct lflow_input {
     const struct hmap *svc_monitor_map;
     bool ovn_internal_version_changed;
     const char *svc_monitor_mac;
+    const struct sampling_app_table *sampling_apps;
 };
 
 extern int parallelization_state;

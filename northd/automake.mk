@@ -32,6 +32,8 @@ northd_ovn_northd_SOURCES = \
 	northd/en-lr-stateful.h \
 	northd/en-ls-stateful.c \
 	northd/en-ls-stateful.h \
+	northd/en-sampling-app.c \
+	northd/en-sampling-app.h \
 	northd/inc-proc-northd.c \
 	northd/inc-proc-northd.h \
 	northd/ipam.c \

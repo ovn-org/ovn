@@ -25,6 +25,7 @@
 #include "en-ls-stateful.h"
 #include "en-northd.h"
 #include "en-meters.h"
+#include "en-sampling-app.h"
 #include "lflow-mgr.h"
 
 #include "lib/inc-proc-eng.h"
@@ -86,6 +87,10 @@ lflow_get_input_data(struct engine_node *node,
     lflow_input->ovn_internal_version_changed =
         global_config->ovn_internal_version_changed;
     lflow_input->svc_monitor_mac = global_config->svc_monitor_mac;
+
+    struct ed_type_sampling_app_data *sampling_app_data =
+        engine_get_input_data("sampling_app", node);
+    lflow_input->sampling_apps = &sampling_app_data->apps;
 }
 
 void en_lflow_run(struct engine_node *node, void *data)

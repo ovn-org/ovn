@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "7.4.0",
-    "cksum": "1908497390 35615",
+    "version": "7.5.0",
+    "cksum": "1137408189 36223",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -691,6 +691,20 @@
                     "type": {"key": "string", "value": "string",
                              "min": 0, "max": "unlimited"}}},
             "indexes": [["chassis"]],
-            "isRoot": true}
+            "isRoot": true},
+        "Sampling_App": {
+            "columns": {
+                "type": {"type": {"key": {"type": "string",
+                    "enum": ["set", ["drop", "acl-new", "acl-est"]]}}},
+                "id": {"type": {"key": {"type": "integer",
+                                        "minInteger": 1,
+                                        "maxInteger": 255}}},
+                "external_ids": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}}
+            },
+            "indexes": [["type"]],
+            "isRoot": true
+        }
     }
 }

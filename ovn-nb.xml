@@ -5127,4 +5127,20 @@ or
       </column>
     </group>
   </table>
+  <table name="Sampling_App">
+    <column name="type">
+      The type of the application to be configured for sampling.  Currently
+      supported options are: "drop", "acl-new", "acl-est".
+    </column>
+    <column name="id">
+      The identifier to be encoded in the samples generated for this type of
+      application.  This identifier is used as part of the sample's
+      observation domain ID.
+    </column>
+    <group title="Common Columns">
+      <column name="external_ids">
+        See <em>External IDs</em> at the beginning of this document.
+      </column>
+    </group>
+  </table>
 </database>

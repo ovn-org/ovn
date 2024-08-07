@@ -12481,6 +12481,23 @@ check_engine_stats lflow recompute nocompute
 AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Sampling_App incremental processing])
+
+ovn_start
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+ovn-nbctl create Sampling_App type="acl-new" id="42"
+check_row_count nb:Sampling_App 1
+check_engine_stats sampling_app recompute nocompute
+check_engine_stats northd norecompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([NAT with match])
 ovn_start
 

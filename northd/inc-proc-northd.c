@@ -39,6 +39,7 @@
 #include "en-lflow.h"
 #include "en-northd-output.h"
 #include "en-meters.h"
+#include "en-sampling-app.h"
 #include "en-sync-sb.h"
 #include "en-sync-from-sb.h"
 #include "unixctl.h"
@@ -61,7 +62,8 @@ static unixctl_cb_func chassis_features_list;
     NB_NODE(meter, "meter") \
     NB_NODE(bfd, "bfd") \
     NB_NODE(static_mac_binding, "static_mac_binding") \
-    NB_NODE(chassis_template_var, "chassis_template_var")
+    NB_NODE(chassis_template_var, "chassis_template_var") \
+    NB_NODE(sampling_app, "sampling_app")
 
     enum nb_engine_node {
 #define NB_NODE(NAME, NAME_STR) NB_##NAME,
@@ -138,6 +140,7 @@ enum sb_engine_node {
  * avoid sparse errors. */
 static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(northd, "northd");
 static ENGINE_NODE(sync_from_sb, "sync_from_sb");
+static ENGINE_NODE(sampling_app, "sampling_app");
 static ENGINE_NODE(lflow, "lflow");
 static ENGINE_NODE(mac_binding_aging, "mac_binding_aging");
 static ENGINE_NODE(mac_binding_aging_waker, "mac_binding_aging_waker");
@@ -169,6 +172,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                      lb_data_logical_switch_handler);
     engine_add_input(&en_lb_data, &en_nb_logical_router,
                      lb_data_logical_router_handler);
+
+    engine_add_input(&en_sampling_app, &en_nb_sampling_app, NULL);
 
     engine_add_input(&en_global_config, &en_nb_nb_global,
                      global_config_nb_global_handler);
@@ -251,6 +256,9 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_lflow, &en_sb_logical_dp_group, NULL);
     engine_add_input(&en_lflow, &en_global_config,
                      node_global_config_handler);
+
+    engine_add_input(&en_lflow, &en_sampling_app, NULL);
+
     engine_add_input(&en_lflow, &en_northd, lflow_northd_handler);
     engine_add_input(&en_lflow, &en_port_group, lflow_port_group_handler);
     engine_add_input(&en_lflow, &en_lr_stateful, lflow_lr_stateful_handler);
