@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "debug.h"
+#include "en-sampling-app.h"
 
 #include "openvswitch/dynamic-string.h"
 #include "openvswitch/vlog.h"
@@ -26,16 +27,17 @@ debug_enabled(void)
 }
 
 void
-init_debug_config(const struct nbrec_nb_global *nb)
+init_debug_config(const struct nbrec_nb_global *nb,
+                  uint8_t drop_domain_id_override)
 {
-
     const struct smap *options = &nb->options;
     uint32_t collector_set_id = smap_get_uint(options,
                                               "debug_drop_collector_set",
                                               0);
-    uint32_t observation_domain_id = smap_get_uint(options,
-                                                   "debug_drop_domain_id",
-                                                   0);
+    uint32_t observation_domain_id =
+        drop_domain_id_override != SAMPLING_APP_ID_NONE
+        ? drop_domain_id_override
+        : smap_get_uint(options, "debug_drop_domain_id", 0);
 
     if (collector_set_id != config.collector_set_id ||
         observation_domain_id != config.observation_domain_id ||

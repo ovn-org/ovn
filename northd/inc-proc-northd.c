@@ -181,6 +181,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                      global_config_sb_global_handler);
     engine_add_input(&en_global_config, &en_sb_chassis,
                      global_config_sb_chassis_handler);
+    engine_add_input(&en_global_config, &en_sampling_app, NULL);
 
     engine_add_input(&en_northd, &en_nb_mirror, NULL);
     engine_add_input(&en_northd, &en_nb_static_mac_binding, NULL);

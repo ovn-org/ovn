@@ -24,6 +24,7 @@
 /* OVN includes */
 #include "debug.h"
 #include "en-global-config.h"
+#include "en-sampling-app.h"
 #include "include/ovn/features.h"
 #include "ipam.h"
 #include "lib/ovn-nb-idl.h"
@@ -42,8 +43,10 @@ static bool chassis_features_changed(const struct chassis_features *,
 static bool config_out_of_sync(const struct smap *config,
                                const struct smap *saved_config,
                                const char *key, bool must_be_present);
-static bool check_nb_options_out_of_sync(const struct nbrec_nb_global *,
-                                         struct ed_type_global_config *);
+static bool check_nb_options_out_of_sync(
+    const struct nbrec_nb_global *,
+    struct ed_type_global_config *,
+    const struct sampling_app_table *);
 static void update_sb_config_options_to_sbrec(struct ed_type_global_config *,
                                               const struct sbrec_sb_global *);
 
@@ -72,6 +75,9 @@ en_global_config_run(struct engine_node *node , void *data)
         EN_OVSDB_GET(engine_get_input("SB_sb_global", node));
     const struct sbrec_chassis_table *sbrec_chassis_table =
         EN_OVSDB_GET(engine_get_input("SB_chassis", node));
+    const struct ed_type_sampling_app_data *sampling_app_data =
+        engine_get_input_data("sampling_app", node);
+    const struct sampling_app_table *sampling_apps = &sampling_app_data->apps;
 
     struct ed_type_global_config *config_data = data;
 
@@ -145,7 +151,8 @@ en_global_config_run(struct engine_node *node , void *data)
         build_chassis_features(sbrec_chassis_table, &config_data->features);
     }
 
-    init_debug_config(nb);
+    init_debug_config(nb, sampling_app_get_id(sampling_apps,
+                                              SAMPLING_APP_DROP_DEBUG));
 
     const struct sbrec_sb_global *sb =
         sbrec_sb_global_table_first(sb_global_table);
@@ -186,6 +193,9 @@ global_config_nb_global_handler(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("NB_nb_global", node));
     const struct sbrec_sb_global_table *sb_global_table =
         EN_OVSDB_GET(engine_get_input("SB_sb_global", node));
+    const struct ed_type_sampling_app_data *sampling_app_data =
+        engine_get_input_data("sampling_app", node);
+    const struct sampling_app_table *sampling_apps = &sampling_app_data->apps;
 
     const struct nbrec_nb_global *nb =
         nbrec_nb_global_table_first(nb_global_table);
@@ -248,7 +258,7 @@ global_config_nb_global_handler(struct engine_node *node, void *data)
         return false;
     }
 
-    if (check_nb_options_out_of_sync(nb, config_data)) {
+    if (check_nb_options_out_of_sync(nb, config_data, sampling_apps)) {
         config_data->tracked_data.nb_options_changed = true;
     }
 
@@ -461,8 +471,10 @@ config_out_of_sync(const struct smap *config, const struct smap *saved_config,
 }
 
 static bool
-check_nb_options_out_of_sync(const struct nbrec_nb_global *nb,
-                             struct ed_type_global_config *config_data)
+check_nb_options_out_of_sync(
+    const struct nbrec_nb_global *nb,
+    struct ed_type_global_config *config_data,
+    const struct sampling_app_table *sampling_apps)
 {
     if (config_out_of_sync(&nb->options, &config_data->nb_options,
                            "mac_binding_removal_limit", false)) {
@@ -496,13 +508,16 @@ check_nb_options_out_of_sync(const struct nbrec_nb_global *nb,
 
     if (config_out_of_sync(&nb->options, &config_data->nb_options,
                            "debug_drop_domain_id", false)) {
-        init_debug_config(nb);
+        init_debug_config(nb, sampling_app_get_id(sampling_apps,
+                                                  SAMPLING_APP_DROP_DEBUG));
+
         return true;
     }
 
     if (config_out_of_sync(&nb->options, &config_data->nb_options,
                            "debug_drop_collector_set", false)) {
-        init_debug_config(nb);
+        init_debug_config(nb, sampling_app_get_id(sampling_apps,
+                                                  SAMPLING_APP_DROP_DEBUG));
         return true;
     }
 

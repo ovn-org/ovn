@@ -53,6 +53,9 @@ Post v24.03.0
   - A new LRP option 'centralize_routing' has been added to a
     distributed gateway port to centralize routing if the logical
     switch of its peer doesn't have a localnet port.
+  - The NB_Global.debug_drop_domain_id configured value is now overridden by
+    the ID associated with the Sampling_App record created for drop sampling
+    (Sampling_App.type configured as "drop").
 
 OVN v24.03.0 - 01 Mar 2024
 --------------------------

@@ -21,7 +21,8 @@
 #include "lib/ovn-nb-idl.h"
 #include "openvswitch/dynamic-string.h"
 
-void init_debug_config(const struct nbrec_nb_global *nb);
+void init_debug_config(const struct nbrec_nb_global *nb,
+                       uint8_t drop_domain_id_override);
 void destroy_debug_config(void);
 
 const char *debug_drop_action(void);

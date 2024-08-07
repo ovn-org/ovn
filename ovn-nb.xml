@@ -351,6 +351,11 @@
           The observation_point_id will be set to the first 32 bits of the
           logical flow's UUID.
         </p>
+        <p>
+          Note: This key is deprecated in favor of the value configured in the
+          <ref table="Sampling_App"/> table for the <code>drop</code>
+          application.
+        </p>
       </column>
 
       <column name="options" key="debug_drop_collector_set">

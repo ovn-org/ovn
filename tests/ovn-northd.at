@@ -12490,9 +12490,34 @@ check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 ovn-nbctl create Sampling_App type="acl-new" id="42"
 check_row_count nb:Sampling_App 1
 check_engine_stats sampling_app recompute nocompute
-check_engine_stats northd norecompute nocompute
+check_engine_stats northd recompute nocompute
 check_engine_stats lflow recompute nocompute
+check_engine_stats global_config recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Sampling_App override debug_drop_domain_id])
+
+ovn_start
+
+check ovn-nbctl -- set NB_Global . options:debug_drop_collector_set="123" \
+                -- set NB_Global . options:debug_drop_domain_id="1" \
+                -- ls-add ls
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl lflow-list | grep ls_in_l2_unknown.*sample | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(sample(probability=65535,collector_set=123,obs_domain=1,obs_point=$cookie); /* drop */)
+])
+
+ovn-nbctl --wait=sb create Sampling_App type="drop" id="42"
+check_row_count nb:Sampling_App 1
+
+AT_CHECK([ovn-sbctl lflow-list | grep ls_in_l2_unknown.*sample | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(sample(probability=65535,collector_set=123,obs_domain=42,obs_point=$cookie); /* drop */)
+])
 
 AT_CLEANUP
 ])
