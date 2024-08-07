@@ -1413,7 +1413,7 @@ check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
 AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows | grep 'priority=120.*backends' | ovn_strip_lflows], 0, [dnl
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 # disabled LSPs should not be a backend of Load Balancer
@@ -1422,7 +1422,7 @@ check ovn-nbctl lsp-set-enabled sw0-p1 disabled
 AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows | grep 'priority=120.*backends' | ovn_strip_lflows], 0, [dnl
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=20.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=20.0.0.3:80);)
 ])
 wait_row_count Service_Monitor 1
 
@@ -1431,7 +1431,7 @@ check ovn-nbctl lsp-set-enabled sw0-p1 enabled
 AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows | grep 'priority=120.*backends' | ovn_strip_lflows], 0, [dnl
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 wait_row_count Service_Monitor 2
 
@@ -1442,7 +1442,7 @@ wait_row_count Service_Monitor 0
 AT_CAPTURE_FILE([sbflows2])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows2 | grep 'priority=120.*backends' | ovn_strip_lflows], [0],
-[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Create the Load_Balancer_Health_Check again.])
@@ -1454,7 +1454,7 @@ check ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows sw0 | grep backends | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt | ovn_strip_lflows], [0], [dnl
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Get the uuid of both the service_monitor])
@@ -1464,7 +1464,7 @@ sm_sw1_p1=$(fetch_column Service_Monitor _uuid logical_port=sw1-p1)
 AT_CAPTURE_FILE([sbflows3])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows 3 | grep 'priority=120.*backends' | ovn_strip_lflows], [0],
-[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Set the service monitor for sw1-p1 to offline])
@@ -1475,7 +1475,7 @@ check ovn-nbctl --wait=sb sync
 AT_CAPTURE_FILE([sbflows4])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows4 | grep 'priority=120.*backends' | ovn_strip_lflows], [0],
-[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80);)
+[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.3:80);)
 ])
 
 AS_BOX([Set the service monitor for sw0-p1 to offline])
@@ -1504,7 +1504,7 @@ check ovn-nbctl --wait=sb sync
 AT_CAPTURE_FILE([sbflows7])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows7 | grep backends | grep priority=120 | ovn_strip_lflows], 0,
-[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
 
 AS_BOX([Set the service monitor for sw1-p1 to error])
@@ -1515,7 +1515,7 @@ check ovn-nbctl --wait=sb sync
 ovn-sbctl dump-flows sw0 | grep "ip4.dst == 10.0.0.10 && tcp.dst == 80" \
 | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt | grep ls_in_lb | ovn_strip_lflows], [0], [dnl
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.3:80);)
 ])
 
 AS_BOX([Add one more vip to lb1])
@@ -1541,8 +1541,8 @@ AT_CAPTURE_FILE([sbflows9])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows9 | grep backends | grep priority=120 | ovn_strip_lflows],
   0,
-[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80);)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:1000);)
+[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(ct_lb_mark(backends=10.0.0.3:1000);)
 ])
 
 AS_BOX([Set the service monitor for sw1-p1 to online])
@@ -1555,8 +1555,8 @@ AT_CAPTURE_FILE([sbflows10])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows10 | grep backends | grep priority=120 | ovn_strip_lflows],
   0,
-[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:1000,20.0.0.3:80);)
+[  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(ct_lb_mark(backends=10.0.0.3:1000,20.0.0.3:80);)
 ])
 
 AS_BOX([Associate lb1 to sw1])
@@ -1565,8 +1565,8 @@ AT_CAPTURE_FILE([sbflows11])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw1 | tee sbflows11 | grep backends | grep priority=120 | ovn_strip_lflows],
   0, [dnl
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.3:1000,20.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.40 && tcp.dst == 1000), action=(ct_lb_mark(backends=10.0.0.3:1000,20.0.0.3:80);)
 ])
 
 AS_BOX([Now create lb2 same as lb1 but udp protocol.])
@@ -4602,8 +4602,8 @@ check_stateful_flows() {
 
     AT_CHECK([grep "ls_in_lb " sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.4:8080);)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.20 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.40:8080);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.4:8080);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.20 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.40:8080);)
 ])
 
     AT_CHECK([grep "ls_in_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
@@ -4802,6 +4802,51 @@ AT_CHECK([grep "ls_out_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; }; next;)
   table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; }; next;)
 ])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([ovn -- ACL label commit - load balancers])
+ovn_start
+
+dnl One logical switch, two ports, one load balancer and ACLs with label set.
+check ovn-nbctl                                           \
+  -- ls-add ls                                            \
+  -- lsp-add ls lsp1                                      \
+  -- lsp-set-addresses lsp1 "00:00:00:00:00:01"           \
+  -- lsp-add ls lsp2                                      \
+  -- lsp-set-addresses lsp2 "00:00:00:00:00:02"           \
+  -- lb-add lb-test 42.42.42.42:4242 43.43.43.43:4343 udp \
+  -- ls-lb-add ls lb-test
+
+check ovn-nbctl --wait=sb sync
+
+flow="inport == \"lsp1\" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02 && ip4.src == 42.42.42.1 && ip4.dst == 42.42.42.42 && ip.ttl==64 && udp.dst == 4242"
+
+AS_BOX([from-lport allow-related ACL])
+check ovn-nbctl --wait=sb -- acl-del ls -- --label=1234 acl-add ls from-lport 1 ip allow-related
+
+dnl Check that the label is committed to conntrack in the ingress pipeline
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --ct new ls "$flow" | grep -e ls_in_stateful -A 2 | grep commit], [0], [dnl
+    ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; };
+])
+
+AS_BOX([from-lport --apply-after-lb allow-related ACL])
+check ovn-nbctl --wait=sb -- acl-del ls -- --apply-after-lb --label=1234 acl-add ls from-lport 1 ip allow-related
+
+dnl Check that the label is committed to conntrack in the ingress pipeline
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --ct new ls "$flow" | grep -e ls_in_stateful -A 2 | grep commit], [0], [dnl
+    ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; };
+])
+
+AS_BOX([to-lport allow-related ACL])
+check ovn-nbctl --wait=sb -- acl-del ls -- --label=1234 acl-add ls to-lport 1 ip allow-related
+
+dnl Check that the label is committed to conntrack in the ingress pipeline
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --ct new ls "$flow" | grep -e ls_out_stateful -A 2 | grep commit], [0], [dnl
+    ct_commit { ct_mark.blocked = 0; ct_label.label = reg3; };
+])
+
 AT_CLEANUP
 ])
 
@@ -7630,7 +7675,7 @@ AT_CHECK([grep -e "ls_in_acl.*eval" -e "ls_in_acl_hint" lsflows | ovn_strip_lflo
 
 AT_CHECK([grep -e "ls_in_lb " lsflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.2), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.10);)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.2), action=(ct_lb_mark(backends=10.0.0.10);)
 ])
 
 AT_CHECK([grep -e "ls_in_stateful" lsflows | ovn_strip_lflows], [0], [dnl
@@ -7685,7 +7730,7 @@ AT_CHECK([grep -e "ls_in_acl.*eval" -e "ls_in_acl_hint" lsflows | ovn_strip_lflo
 
 AT_CHECK([grep -e "ls_in_lb " lsflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.2), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.10);)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.2), action=(ct_lb_mark(backends=10.0.0.10);)
 ])
 
 AT_CHECK([grep -e "ls_in_stateful" lsflows | ovn_strip_lflows], [0], [dnl
@@ -7740,7 +7785,7 @@ AT_CHECK([grep -e "ls_in_acl.*eval" -e "ls_in_acl_hint" lsflows | ovn_strip_lflo
 
 AT_CHECK([grep -e "ls_in_lb " lsflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.2), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.10);)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.2), action=(ct_lb_mark(backends=10.0.0.10);)
 ])
 
 AT_CHECK([grep -e "ls_in_stateful" lsflows | ovn_strip_lflows], [0], [dnl
@@ -9064,13 +9109,13 @@ AT_CAPTURE_FILE([S1flows])
 
 AT_CHECK([grep "ls_in_lb " S0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.2:80);)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.11 && tcp.dst == 8080), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.2:8080);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.2:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.11 && tcp.dst == 8080), action=(ct_lb_mark(backends=10.0.0.2:8080);)
 ])
 AT_CHECK([grep "ls_in_lb " S1flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.2:80);)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.11 && tcp.dst == 8080), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.2:8080);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.2:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.11 && tcp.dst == 8080), action=(ct_lb_mark(backends=10.0.0.2:8080);)
 ])
 
 ovn-sbctl get datapath S0 _uuid > dp_uuids
@@ -9200,9 +9245,9 @@ AT_CHECK([grep "ls_in_lb_aff_check" S0flows | ovn_strip_lflows], [0], [dnl
 ])
 AT_CHECK([grep "ls_in_lb " S0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && tcp.dst == 80), action=(reg0[[1]] = 0; ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80);)
-  table=??(ls_in_lb           ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 10.0.0.2 && reg8[[0..15]] == 80), action=(reg0[[1]] = 0; reg1 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80);)
-  table=??(ls_in_lb           ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 20.0.0.2 && reg8[[0..15]] == 80), action=(reg0[[1]] = 0; reg1 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=20.0.0.2:80);)
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80);)
+  table=??(ls_in_lb           ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 10.0.0.2 && reg8[[0..15]] == 80), action=(reg1 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80);)
+  table=??(ls_in_lb           ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 20.0.0.2 && reg8[[0..15]] == 80), action=(reg1 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=20.0.0.2:80);)
 ])
 AT_CHECK([grep "ls_in_lb_aff_learn" S0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb_aff_learn ), priority=0    , match=(1), action=(next;)
@@ -10287,13 +10332,16 @@ dnl It should not commit anything in the egress pipeline of S1 or in the
 dnl ingress pipeline of S2.
 flow="inport == \"vm1\" && eth.src == 00:de:ad:01:00:01 && eth.dst == 00:de:ad:fe:00:01 && ip4.src == 173.0.1.2 && ip4.dst == 30.0.0.1 && ip.ttl==64"
 
-dnl Check that we only commit once for ACLs, in the egress ACL pipeline
-dnl (in S2, towards vm2).  The original problem this test is trying to
-dnl cover was that ct_state wasn't cleared when traversing from s1 -> r1
-dnl which caused two additional commits to happen:
+dnl Check that we only commit twice for ACLs:
+dnl - in the ingress ACL pipeline (in s1, from vm1)
+dnl - in the egress ACL pipeline (in S2, towards vm2)
+dnl The original problem this test is trying to cover was that ct_state
+dnl wasn't cleared when traversing from s1 -> r1 which caused two additional
+dnl commits to happen:
 dnl - in the egress pipeline of S1, when sending the packet out on s1_r1
 dnl - in the ingress pipeline of S2, when processing the packet on s2_r1
 AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --ct new s1 "$flow" | grep -e ls_in_stateful -e ls_out_stateful -A 2 | grep commit], [0], [dnl
+    ct_commit { ct_mark.blocked = 0; };
     ct_commit { ct_mark.blocked = 0; };
 ])
 

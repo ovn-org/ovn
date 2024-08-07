@@ -7516,14 +7516,12 @@ build_lb_affinity_lr_flows(struct lflow_table *lflows,
  *   table=ls_in_lb, priority=150
  *      match=(REGBIT_KNOWN_LB_SESSION == 1 && ct.new && ip4.dst == V
  *             && REG_LB_AFF_BACKEND_IP4 == B1 && REG_LB_AFF_MATCH_PORT == BP1)
- *      action=(REGBIT_CONNTRACK_COMMIT = 0;
- *              REG_ORIG_DIP_IPV4 = V; REG_ORIG_TP_DPORT = VP;
+ *      action=(REG_ORIG_DIP_IPV4 = V; REG_ORIG_TP_DPORT = VP;
  *              ct_lb_mark(backends=B1:BP1);)
  *   table=ls_in_lb, priority=150
  *      match=(REGBIT_KNOWN_LB_SESSION == 1 && ct.new && ip4.dst == V
  *             && REG_LB_AFF_BACKEND_IP4 == B2 && REG_LB_AFF_MATCH_PORT == BP2)
- *      action=(REGBIT_CONNTRACK_COMMIT = 0;
- *              REG_ORIG_DIP_IPV4 = V;
+ *      action=(REG_ORIG_DIP_IPV4 = V;
  *              REG_ORIG_TP_DPORT = VP;
  *              ct_lb_mark(backends=B1:BP2);)
  *
@@ -7593,8 +7591,7 @@ build_lb_affinity_ls_flows(struct lflow_table *lflows,
         ipv6 ? REG_LB_L2_AFF_BACKEND_IP6 : REG_LB_AFF_BACKEND_IP4;
 
     /* Prepare common part of affinity LB and affinity learn action. */
-    ds_put_format(&aff_action, REGBIT_CONNTRACK_COMMIT" = 0; %s = %s; ",
-                  reg_vip, lb_vip->vip_str);
+    ds_put_format(&aff_action, "%s = %s; ", reg_vip, lb_vip->vip_str);
     ds_put_cstr(&aff_action_learn, "commit_lb_aff(vip = \"");
 
     if (lb_vip->port_str) {
@@ -7733,11 +7730,6 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
 
         ds_clear(action);
         ds_clear(match);
-
-        /* Make sure that we clear the REGBIT_CONNTRACK_COMMIT flag.  Otherwise
-         * the load balanced packet will be committed again in
-         * S_SWITCH_IN_STATEFUL. */
-        ds_put_format(action, REGBIT_CONNTRACK_COMMIT" = 0; ");
 
         /* New connections in Ingress table. */
         const char *meter = NULL;
