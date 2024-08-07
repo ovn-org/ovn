@@ -237,6 +237,17 @@ m4_define([STRIP_MONITOR_CSUM], [grep "csum:" | sed 's/csum:.*/csum: <skip>/'])
 m4_define([FORMAT_CT],
     [[grep -F "dst=$1," | sed -e 's/port=[0-9]*/port=<cleared>/g' -e 's/id=[0-9]*/id=<cleared>/g' -e 's/state=[0-9_A-Z]*/state=<cleared>/g' | sort | uniq]])
 
+# DAEMONIZE([command], [pidfile])
+#
+# Run 'command' as a background process and record its pid to 'pidfile' to
+# allow cleanup on exit.
+#
+m4_define([DAEMONIZE],
+   [$1 & echo $! > $2
+     echo "kill \`cat $2\`" >> cleanup
+   ]
+)
+
 # NETNS_DAEMONIZE([namespace], [command], [pidfile])
 #
 # Run 'command' as a background process within 'namespace' and record its pid

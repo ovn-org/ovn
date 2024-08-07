@@ -27,6 +27,7 @@ RUN dnf -y update \
         libcap-ng-devel \
         libtool \
         net-tools \
+        nfdump \
         ninja-build \
         nmap-ncat \
         numactl-devel \

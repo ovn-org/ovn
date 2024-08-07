@@ -13050,3 +13050,468 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- ACL Sampling])
+AT_SKIP_IF([test $HAVE_NFCAPD = no])
+AT_SKIP_IF([test $HAVE_NFDUMP = no])
+AT_KEYWORDS([ACL])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+dnl Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+dnl Start ovn-controller
+start_daemon ovn-controller
+
+dnl Logical network:
+dnl 1 logical switch connetected to one logical router
+dnl 6 UDP load balancers (ports 1000, 1010, 2000, 2010, 3000, 3010)
+dnl 2 VIFs
+
+check ovn-nbctl                                                  \
+    -- lr-add rtr                                                \
+    -- lrp-add rtr rtr-ls 00:00:00:00:01:00 42.42.42.1/24        \
+    -- ls-add ls                                                 \
+    -- lsp-add ls ls-rtr                                         \
+    -- lsp-set-addresses ls-rtr 00:00:00:00:01:00                \
+    -- lsp-set-type ls-rtr router                                \
+    -- lsp-set-options ls-rtr router-port=rtr-ls                 \
+    -- lsp-add ls vm1 -- lsp-set-addresses vm1 00:00:00:00:00:01 \
+    -- lsp-add ls vm2 -- lsp-set-addresses vm2 00:00:00:00:00:02 \
+    -- lb-add lb1 43.43.43.43:1000 42.42.42.3:1000 udp           \
+    -- lb-add lb2 43.43.43.43:1010 42.42.42.3:1010 udp           \
+    -- lb-add lb3 43.43.43.43:2000 42.42.42.3:2000 udp           \
+    -- lb-add lb4 43.43.43.43:2010 42.42.42.3:2010 udp           \
+    -- lb-add lb5 43.43.43.43:3000 42.42.42.3:3000 udp           \
+    -- lb-add lb6 43.43.43.43:3010 42.42.42.3:3010 udp           \
+    -- ls-lb-add ls lb1                                          \
+    -- ls-lb-add ls lb2                                          \
+    -- ls-lb-add ls lb3                                          \
+    -- ls-lb-add ls lb4                                          \
+    -- ls-lb-add ls lb5                                          \
+    -- ls-lb-add ls lb6
+
+ADD_NAMESPACES(vm1)
+ADD_VETH(vm1, vm1, br-int, "42.42.42.2/24", "00:00:00:00:00:01", "42.42.42.1")
+
+ADD_NAMESPACES(vm2)
+ADD_VETH(vm2, vm2, br-int, "42.42.42.3/24", "00:00:00:00:00:02", "42.42.42.1")
+
+collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 set_id=100)
+collector2=$(ovn-nbctl create Sample_Collector id=2 name=c2 probability=65535 set_id=200)
+check_row_count nb:Sample_Collector 2
+
+ovn-nbctl create Sampling_App type="acl-new" id="42"
+ovn-nbctl create Sampling_App type="acl-est" id="43"
+check_row_count nb:Sampling_App 2
+
+dnl Create ACLs that match the 3 types of traffic in all 3 possible stages:
+dnl from-lport, from-lport-after-lb, to-lport.
+ovn-nbctl                                                                         \
+    -- --id=@sample_in_1c_new create Sample collector="$collector1" metadata=1001 \
+    -- --id=@sample_in_1c_est create Sample collector="$collector1" metadata=1002 \
+    -- --sample-new=@sample_in_1c_new --sample-est=@sample_in_1c_est              \
+       acl-add ls from-lport 1 "inport == \"vm1\" && udp.dst == 1000"             \
+       allow-related
+ovn-nbctl                                                                                     \
+    -- --id=@sample_in_2c_new create Sample collector="$collector1 $collector2" metadata=1011 \
+    -- --id=@sample_in_2c_est create Sample collector="$collector1 $collector2" metadata=1012 \
+    -- --sample-new=@sample_in_2c_new --sample-est=@sample_in_2c_est                          \
+       acl-add ls from-lport 1 "inport == \"vm1\" && udp.dst == 1010"                         \
+       allow-related
+
+ovn-nbctl                                                                            \
+    -- --id=@sample_in_lb_1c_new create Sample collector="$collector1" metadata=2001 \
+    -- --id=@sample_in_lb_1c_est create Sample collector="$collector1" metadata=2002 \
+    -- --apply-after-lb --sample-new=@sample_in_lb_1c_new                            \
+       --sample-est=@sample_in_lb_1c_est                                             \
+       acl-add ls from-lport 1 "inport == \"vm1\" && udp.dst == 2000"                \
+       allow-related
+ovn-nbctl                                                                                        \
+    -- --id=@sample_in_lb_2c_new create Sample collector="$collector1 $collector2" metadata=2011 \
+    -- --id=@sample_in_lb_2c_est create Sample collector="$collector1 $collector2" metadata=2012 \
+    -- --apply-after-lb --sample-new=@sample_in_lb_2c_new --sample-est=@sample_in_lb_2c_est      \
+       acl-add ls from-lport 1 "inport == \"vm1\" && udp.dst == 2010"                            \
+       allow-related
+
+ovn-nbctl                                                                          \
+    -- --id=@sample_out_1c_new create Sample collector="$collector1" metadata=3001 \
+    -- --id=@sample_out_1c_est create Sample collector="$collector1" metadata=3002 \
+    -- --sample-new=@sample_out_1c_new --sample-est=@sample_out_1c_est             \
+       acl-add ls to-lport 1 "outport == \"vm2\" && udp.dst == 3000"               \
+       allow-related
+ovn-nbctl                                                                                      \
+    -- --id=@sample_out_2c_new create Sample collector="$collector1 $collector2" metadata=3011 \
+    -- --id=@sample_out_2c_est create Sample collector="$collector1 $collector2" metadata=3012 \
+    -- --sample-new=@sample_out_2c_new --sample-est=@sample_out_2c_est                         \
+       acl-add ls to-lport 1 "outport == \"vm2\" && udp.dst == 3010"                           \
+       allow-related
+
+check_row_count nb:ACL 6
+check_row_count nb:Sample 12
+
+dnl Wait for ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl Start an IPFIX collector.
+DAEMONIZE([nfcapd -B 1024000 -w . -p 4242 2> collector.err], [collector.pid])
+
+dnl Wait for the collector to be up.
+OVS_WAIT_UNTIL([grep -q 'Startup nfcapd.' collector.err])
+
+dnl Configure the OVS flow sample collector.
+ovs-vsctl --id=@br get Bridge br-int \
+    -- --id=@ipfix create IPFIX targets=\"127.0.0.1:4242\" template_interval=1 \
+    -- --id=@cs create Flow_Sample_Collector_Set id=100 bridge=@br ipfix=@ipfix
+
+dnl And wait for it to be up and running.
+OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q '1 ids'])
+
+dnl Start UDP echo server on vm2.
+NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l 1000], [nc-vm2-1000.pid])
+NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l 1010], [nc-vm2-1010.pid])
+NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l 2000], [nc-vm2-2000.pid])
+NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l 2010], [nc-vm2-2010.pid])
+NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l 3000], [nc-vm2-3000.pid])
+NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l 3010], [nc-vm2-3010.pid])
+
+dnl Send traffic (2 packets) to the UDP LB1 (hits the from-lport ACL).
+NS_CHECK_EXEC([vm1], [(echo a; sleep 1; echo a) | nc --send-only -u 43.43.43.43 1000])
+NS_CHECK_EXEC([vm1], [(echo a; sleep 1; echo a) | nc --send-only -u 43.43.43.43 1010])
+
+dnl Send traffic (2 packets) to the UDP LB1 (hits the from-lport after-lb ACL).
+NS_CHECK_EXEC([vm1], [(echo a; sleep 1; echo a) | nc --send-only -u 43.43.43.43 2000])
+NS_CHECK_EXEC([vm1], [(echo a; sleep 1; echo a) | nc --send-only -u 43.43.43.43 2010])
+
+dnl Send traffic (2 packets) to the UDP LB1 (hits the from-lport ACL).
+NS_CHECK_EXEC([vm1], [(echo a; sleep 1; echo a) | nc --send-only -u 43.43.43.43 3000])
+NS_CHECK_EXEC([vm1], [(echo a; sleep 1; echo a) | nc --send-only -u 43.43.43.43 3010])
+
+dnl Wait until OVS sampled all expected packets (4 data packets + 1 ICMP
+dnl port unreachable error on each session).
+OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q 'sampled pkts=30'])
+
+dnl Check the IPFIX samples.
+kill $(cat collector.pid)
+OVS_WAIT_WHILE([kill -0 $(cat collector.pid) 2>/dev/null])
+
+dnl Can't match on observation domain ID due to the followig fix not being
+dnl available in any released version of nfdump:
+dnl https://github.com/phaag/nfdump/issues/544
+dnl
+dnl Only match on the point ID.
+dnl
+dnl Expect for each ACL:
+dnl - one sample for new packets
+dnl - four samples for established packets (3 data + one icmp error)
+AT_CHECK([for f in $(ls -1 nfcapd.*); do nfdump -o json -r $f; done | grep observationPointID | awk '{$1=$1;print}' | sort], [0], [dnl
+"observationPointID" : 1001,
+"observationPointID" : 1002,
+"observationPointID" : 1002,
+"observationPointID" : 1002,
+"observationPointID" : 1002,
+"observationPointID" : 1011,
+"observationPointID" : 1012,
+"observationPointID" : 1012,
+"observationPointID" : 1012,
+"observationPointID" : 1012,
+"observationPointID" : 2001,
+"observationPointID" : 2002,
+"observationPointID" : 2002,
+"observationPointID" : 2002,
+"observationPointID" : 2002,
+"observationPointID" : 2011,
+"observationPointID" : 2012,
+"observationPointID" : 2012,
+"observationPointID" : 2012,
+"observationPointID" : 2012,
+"observationPointID" : 3001,
+"observationPointID" : 3002,
+"observationPointID" : 3002,
+"observationPointID" : 3002,
+"observationPointID" : 3002,
+"observationPointID" : 3011,
+"observationPointID" : 3012,
+"observationPointID" : 3012,
+"observationPointID" : 3012,
+"observationPointID" : 3012,
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- Tiered ACL Sampling])
+AT_SKIP_IF([test $HAVE_NFCAPD = no])
+AT_SKIP_IF([test $HAVE_NFDUMP = no])
+AT_KEYWORDS([ACL])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+dnl Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+dnl Start ovn-controller
+start_daemon ovn-controller
+
+dnl Logical network:
+dnl 1 logical switch
+dnl 2 VIFs
+
+check ovn-nbctl                                                  \
+    -- ls-add ls                                                 \
+    -- lsp-add ls vm1 -- lsp-set-addresses vm1 00:00:00:00:00:01 \
+    -- lsp-add ls vm2 -- lsp-set-addresses vm2 00:00:00:00:00:02
+ADD_NAMESPACES(vm1)
+ADD_VETH(vm1, vm1, br-int, "42.42.42.2/24", "00:00:00:00:00:01", "42.42.42.1")
+
+ADD_NAMESPACES(vm2)
+ADD_VETH(vm2, vm2, br-int, "42.42.42.3/24", "00:00:00:00:00:02", "42.42.42.1")
+
+collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 set_id=100)
+check_row_count nb:Sample_Collector 1
+
+ovn-nbctl create Sampling_App type="acl-new" id="42"
+ovn-nbctl create Sampling_App type="acl-est" id="43"
+check_row_count nb:Sampling_App 2
+
+dnl Create two tiers of ACLs.
+ovn-nbctl                                                                     \
+    -- --id=@sample_1_new create Sample collector="$collector1" metadata=1001 \
+    -- --id=@sample_1_est create Sample collector="$collector1" metadata=1002 \
+    -- --tier=0 --sample-new=@sample_1_new --sample-est=@sample_1_est         \
+       acl-add ls from-lport 1 "inport == \"vm1\" && udp.dst == 1000"         \
+       pass
+
+ovn-nbctl                                                                     \
+    -- --id=@sample_2_new create Sample collector="$collector1" metadata=2001 \
+    -- --id=@sample_2_est create Sample collector="$collector1" metadata=2002 \
+    -- --tier=1 --sample-new=@sample_2_new --sample-est=@sample_2_est         \
+       acl-add ls from-lport 1 "inport == \"vm1\" && udp.dst == 1000" \
+       allow-related
+
+check_row_count nb:ACL 2
+check_row_count nb:Sample 4
+
+dnl Wait for ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl Start an IPFIX collector.
+DAEMONIZE([nfcapd -B 1024000 -w . -p 4242 2> collector.err], [collector.pid])
+
+dnl Wait for the collector to be up.
+OVS_WAIT_UNTIL([grep -q 'Startup nfcapd.' collector.err])
+
+dnl Configure the OVS flow sample collector.
+ovs-vsctl --id=@br get Bridge br-int \
+    -- --id=@ipfix create IPFIX targets=\"127.0.0.1:4242\" template_interval=1 \
+    -- --id=@cs create Flow_Sample_Collector_Set id=100 bridge=@br ipfix=@ipfix
+
+dnl And wait for it to be up and running.
+OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q '1 ids'])
+
+dnl Start UDP echo server on vm2.
+NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l 1000], [nc-vm2-1000.pid])
+
+dnl Send traffic to the UDP server (hits both ACL tiers).
+NS_CHECK_EXEC([vm1], [echo a | nc --send-only -u 42.42.42.3 1000])
+
+dnl Wait until OVS sampled all expected packets:
+dnl - first packet sampled by both tiers
+dnl - reply packet sampled by last tier (established session)
+dnl - related ICMP port unreachable error sampled by last tier (established session)
+OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q 'sampled pkts=4'])
+
+dnl Check the IPFIX samples.
+kill $(cat collector.pid)
+OVS_WAIT_WHILE([kill -0 $(cat collector.pid) 2>/dev/null])
+
+dnl Can't match on observation domain ID due to the followig fix not being
+dnl available in any released version of nfdump:
+dnl https://github.com/phaag/nfdump/issues/544
+dnl
+dnl Only match on the point ID.
+AT_CHECK([for f in $(ls -1 nfcapd.*); do nfdump -o json -r $f; done | grep observationPointID | awk '{$1=$1;print}' | sort], [0], [dnl
+"observationPointID" : 1001,
+"observationPointID" : 2001,
+"observationPointID" : 2002,
+"observationPointID" : 2002,
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- ACL Sampling - Stateful ACL - to-lport router port])
+AT_SKIP_IF([test $HAVE_NFCAPD = no])
+AT_SKIP_IF([test $HAVE_NFDUMP = no])
+AT_KEYWORDS([ACL])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+dnl Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+dnl Start ovn-controller
+start_daemon ovn-controller
+
+dnl Logical network:
+dnl 1 router
+dnl 1 logical switch
+dnl 1 VIF
+
+check ovn-nbctl                                      \
+  -- lr-add lr                                       \
+  -- lrp-add lr lrp1 00:00:00:00:01:00 42.42.42.1/24 \
+  -- ls-add ls                                       \
+  -- lsp-add ls vm1                                  \
+  -- lsp-set-addresses vm1 00:00:00:00:00:01         \
+  -- lsp-add ls ls-lr                                \
+  -- lsp-set-type ls-lr router                       \
+  -- lsp-set-options ls-lr router-port=lrp1          \
+  -- lsp-set-addresses ls-lr router
+check ovn-nbctl --wait=sb sync
+
+ADD_NAMESPACES(vm1)
+ADD_VETH(vm1, vm1, br-int, "42.42.42.2/24", "00:00:00:00:00:01", "42.42.42.1")
+
+collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 set_id=100)
+collector2=$(ovn-nbctl create Sample_Collector id=2 name=c2 probability=65535 set_id=200)
+check_row_count nb:Sample_Collector 2
+
+ovn-nbctl create Sampling_App type="acl-new" id="42"
+check_row_count nb:Sampling_App 1
+
+dnl Create three ACLs:
+dnl - one from-lport, stateful, allowing all traffic
+dnl - one to-lport, dropping all traffic to 1.1.1.1 (single collector)
+dnl - one to-lport, dropping all traffic to 1.1.1.2 (two collectors)
+ovn-nbctl                                                                          \
+  -- --id=@sample1 create Sample collector="$collector1" metadata=1001             \
+  -- --id=@sample2 create Sample collector="$collector1" metadata=1002             \
+  -- --id=@sample3 create Sample collector="$collector1 $collector2" metadata=1003 \
+  -- --sample-new=@sample1 acl-add ls from-lport 1 "1" allow-related               \
+  -- --sample-new=@sample2 acl-add ls to-lport 1 "ip4.dst == 1.1.1.1" drop         \
+  -- --sample-new=@sample3 acl-add ls to-lport 1 "ip4.dst == 1.1.1.2" drop
+
+check_row_count nb:ACL 3
+check_row_count nb:Sample 3
+
+dnl Wait for ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl Start an IPFIX collector.
+DAEMONIZE([nfcapd -B 1024000 -w . -p 4242 2> collector.err], [collector.pid])
+
+dnl Wait for the collector to be up.
+OVS_WAIT_UNTIL([grep -q 'Startup nfcapd.' collector.err])
+
+dnl Configure the OVS flow sample collector.
+ovs-vsctl --id=@br get Bridge br-int \
+    -- --id=@ipfix create IPFIX targets=\"127.0.0.1:4242\" template_interval=1 \
+    -- --id=@cs create Flow_Sample_Collector_Set id=100 bridge=@br ipfix=@ipfix
+
+dnl And wait for it to be up and running.
+OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q '1 ids'])
+
+NS_CHECK_EXEC([vm1], [ping -c 1 1.1.1.1], [1], [ignore], [ignore])
+NS_CHECK_EXEC([vm1], [ping -c 1 1.1.1.2], [1], [ignore], [ignore])
+
+dnl Wait until OVS sampled the two ICMP packet on two ACLs.
+OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q 'sampled pkts=4'])
+
+dnl Check the IPFIX samples.
+kill $(cat collector.pid)
+OVS_WAIT_WHILE([kill -0 $(cat collector.pid) 2>/dev/null])
+
+dnl Can't match on observation domain ID due to the followig fix not being
+dnl available in any released version of nfdump:
+dnl https://github.com/phaag/nfdump/issues/544
+dnl
+dnl Only match on the point ID.
+AT_CHECK([for f in $(ls -1 nfcapd.*); do nfdump -o json -r $f; done | grep observationPointID | awk '{$1=$1;print}' | sort], [0], [dnl
+"observationPointID" : 1001,
+"observationPointID" : 1001,
+"observationPointID" : 1002,
+"observationPointID" : 1003,
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])

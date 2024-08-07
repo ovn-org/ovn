@@ -329,6 +329,8 @@ ct.trk = ct_state[5]
 ct_label = NXM_NX_CT_LABEL
 ct_label.ecmp_reply_eth = ct_label[32..79]
 ct_label.label = ct_label[96..127]
+ct_label.obs_point_id = ct_label[96..127]
+ct_label.obs_unused = ct_label[0..95]
 ct_mark = NXM_NX_CT_MARK
 ct_mark.blocked = ct_mark[0]
 ct_mark.ecmp_reply_port = ct_mark[16..31]
@@ -1364,6 +1366,11 @@ ct_commit(ct_label=18446744073709551615);
     Syntax error at `(' expecting `;'.
 ct_commit(ct_label=18446744073709551616);
     Syntax error at `(' expecting `;'.
+
+# Observation domain and point id.
+ct_commit { ct_label.obs_point_id = reg2; };
+    encodes as ct(commit,zone=NXM_NX_REG13[[0..15]],exec(move:NXM_NX_XXREG0[[32..63]]->NXM_NX_CT_LABEL[[96..127]]))
+    has prereqs ip
 
 ct_mark = 12345
     Field ct_mark is not modifiable.
@@ -13427,7 +13434,7 @@ tpa=$(ip_to_hex 10 0 0 100)
 send_garp 1 000000000001 ffffffffffff $spa $tpa
 
 dnl traffic from localport should not be sent to localnet
-AT_CHECK([tcpdump -r hv1/br-phys_n1-tx.pcap arp[[24:4]]=0x0a000064 | wc -l],[0],[dnl
+AT_CHECK([tcpdump -vnne -r hv1/br-phys_n1-tx.pcap arp[[24:4]]=0x0a000064 | wc -l],[0],[dnl
 0
 ],[ignore])
 
@@ -18587,7 +18594,7 @@ AT_CHECK([cat 2.packets], [0], [expout])
 
 # There should be total of 9 flows present with conjunction action and 2 flows
 # with conj match. Eg.
-# table=ls_out_acl_eval, priority=2001,conj_id=2,metadata=0x1 actions=resubmit(,ls_out_acl_action)
+# table=ls_out_acl_eval, priority=2001,conj_id=2,metadata=0x1 actions=resubmit(,ls_out_acl_sample)
 # table=ls_out_acl_eval, priority=2001,conj_id=3,metadata=0x1 actions=drop
 # priority=2001,ip,metadata=0x1,nw_dst=10.0.0.6 actions=conjunction(2,2/2)
 # priority=2001,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(2,2/2)
@@ -18878,7 +18885,7 @@ check ovn-nbctl --wait=hv sync
 
 # Get the OF table numbers
 acl_eval=$(ovn-debug lflow-stage-to-oftable ls_out_acl_eval)
-acl_action=$(ovn-debug lflow-stage-to-oftable ls_out_acl_action)
+acl_sample=$(ovn-debug lflow-stage-to-oftable ls_out_acl_sample)
 
 ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
@@ -18946,11 +18953,11 @@ AT_CHECK_UNQUOTED([as hv1 ovs-ofctl dump-flows br-int table=$acl_eval | ofctl_st
     grep "priority=1003" | \
     sed 's/conjunction([[^)]]*)/conjunction()/g' | \
     sed 's/conj_id=[[0-9]]*,/conj_id=xxx,/g' | sort], [0], [dnl
- table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
- table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
+ table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
+ table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
- table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
+ table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
 ])
@@ -18991,11 +18998,11 @@ AT_CHECK_UNQUOTED([as hv1 ovs-ofctl dump-flows br-int table=$acl_eval | ofctl_st
     grep "priority=1003" | \
     sed 's/conjunction([[^)]]*)/conjunction()/g' | \
     sed 's/conj_id=[[0-9]]*,/conj_id=xxx,/g' | sort], [0], [dnl
- table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
- table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
+ table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
+ table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
- table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
+ table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
 ])
@@ -19009,8 +19016,8 @@ AT_CHECK_UNQUOTED([as hv1 ovs-ofctl dump-flows br-int table=$acl_eval | ofctl_st
     grep "priority=1003" | \
     sed 's/conjunction([[^)]]*)/conjunction()/g' | \
     sed 's/conj_id=[[0-9]]*,/conj_id=xxx,/g' | sort], [0], [dnl
- table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
- table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
+ table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
+ table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=conjunction(),conjunction()
@@ -19049,11 +19056,11 @@ AT_CHECK_UNQUOTED([as hv1 ovs-ofctl dump-flows br-int table=$acl_eval | ofctl_st
    grep "priority=1003" | \
    sed 's/conjunction([[^)]]*)/conjunction()/g' | \
    sed 's/conj_id=[[0-9]]*,/conj_id=xxx,/g' | sort], [0], [dnl
- table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
- table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
+ table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
+ table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction()
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction()
- table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
+ table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction()
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
 ])
@@ -19070,16 +19077,16 @@ AT_CHECK_UNQUOTED([as hv1 ovs-ofctl dump-flows br-int table=$acl_eval | ofctl_st
    grep "priority=1003" | \
    sed 's/conjunction([[^)]]*)/conjunction()/g' | \
    sed 's/conj_id=[[0-9]]*,/conj_id=xxx,/g' | sort], [0], [dnl
- table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
- table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
- table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
+ table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
+ table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
+ table=$acl_eval, priority=1003,conj_id=xxx,ip,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.3 actions=conjunction(),conjunction(),conjunction()
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_dst=10.0.0.4 actions=conjunction(),conjunction(),conjunction()
- table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
+ table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.2 actions=conjunction(),conjunction()
  table=$acl_eval, priority=1003,ip,metadata=0x1,nw_src=10.0.0.42 actions=conjunction()
- table=$acl_eval, priority=1003,udp,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
- table=$acl_eval, priority=1003,udp6,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
+ table=$acl_eval, priority=1003,udp,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
+ table=$acl_eval, priority=1003,udp6,metadata=0x1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
 ])
 
 OVN_CLEANUP([hv1])
@@ -22105,7 +22112,7 @@ check_virtual_offlows_present() {
     lr0_public_dp_key=$(printf "%x" $(fetch_column Port_Binding tunnel_key logical_port=lr0-public))
 
     AT_CHECK_UNQUOTED([as $hv ovs-ofctl dump-flows br-int table=$acl_eval,ip | ofctl_strip_all | grep "priority=2000"], [0], [dnl
- table=$acl_eval, priority=2000,ip,metadata=0x$sw0_dp_key actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$(ovn-debug lflow-stage-to-oftable ls_out_acl_action))
+ table=$acl_eval, priority=2000,ip,metadata=0x$sw0_dp_key actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$(ovn-debug lflow-stage-to-oftable ls_out_acl_sample))
 ])
 
     AT_CHECK_UNQUOTED([as $hv ovs-ofctl dump-flows br-int table=$ip_input | ofctl_strip_all | \
@@ -32553,7 +32560,7 @@ ovs-ofctl dump-flows br-int table=$acl_eval | grep "reg14=0x${rtr_port_key},meta
 # 42.42.42.42 coming from the router port.
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=$acl_eval | ofctl_strip_all | \
     grep "reg14=0x${rtr_port_key},metadata=0x${dp_key},nw_dst=42.42.42.42"], [0], [dnl
- table=$acl_eval, priority=1001,ip,reg14=0x${rtr_port_key},metadata=0x${dp_key},nw_dst=42.42.42.42 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,$(ovn-debug lflow-stage-to-oftable ls_in_acl_action))
+ table=$acl_eval, priority=1001,ip,reg14=0x${rtr_port_key},metadata=0x${dp_key},nw_dst=42.42.42.42 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,$(ovn-debug lflow-stage-to-oftable ls_in_acl_sample))
 ])
 
 OVN_CLEANUP([hv1])
@@ -34410,8 +34417,8 @@ check ovn-nbctl set nb_global . options:use_common_zone="true"
 check ovn-nbctl --wait=hv sync
 # Use constants so that if tables or registers change, this test can
 # be updated easily.
-DNAT_TABLE=16
-SNAT_TABLE=45
+DNAT_TABLE=$(ovn-debug lflow-stage-to-oftable lr_in_dnat)
+SNAT_TABLE=$(ovn-debug lflow-stage-to-oftable lr_out_snat)
 DNAT_ZONE_REG="NXM_NX_REG11[[0..15]]"
 SNAT_ZONE_REG="NXM_NX_REG12[[0..15]]"
 
@@ -35552,7 +35559,7 @@ ovn-nbctl --wait=hv sync
 
 # Get the OF table numbers
 acl_eval=$(ovn-debug lflow-stage-to-oftable ls_in_acl_eval)
-acl_action=$(ovn-debug lflow-stage-to-oftable ls_in_acl_action)
+acl_sample=$(ovn-debug lflow-stage-to-oftable ls_in_acl_sample)
 
 dnl Ensure the ACL is not translated to OpenFlow.
 as hv1
@@ -35567,14 +35574,14 @@ lsp2=0x$(fetch_column Port_Binding tunnel_key logical_port=lsp2)
 dnl Ensure the ACL is translated to OpenFlows expanding pg1.
 as hv1
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42' | ofctl_strip_all], [0], [dnl
- table=$acl_eval, priority=1001,ip,reg14=$lsp1,metadata=0x1,nw_src=42.42.42.42 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
- table=$acl_eval, priority=1001,ip,reg14=$lsp2,metadata=0x1,nw_src=42.42.42.42 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
+ table=$acl_eval, priority=1001,ip,reg14=$lsp1,metadata=0x1,nw_src=42.42.42.42 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
+ table=$acl_eval, priority=1001,ip,reg14=$lsp2,metadata=0x1,nw_src=42.42.42.42 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
 ])
 
 dnl Remove a port from pg1 and expect OpenFlows to be correctly updated.
 check ovn-nbctl --wait=hv pg-set-ports pg1 lsp2
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42' | ofctl_strip_all], [0], [dnl
- table=$acl_eval, priority=1001,ip,reg14=$lsp2,metadata=0x1,nw_src=42.42.42.42 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
+ table=$acl_eval, priority=1001,ip,reg14=$lsp2,metadata=0x1,nw_src=42.42.42.42 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
 ])
 
 dnl Change the Chassis_Template_Var mapping to use the address set.
@@ -35583,14 +35590,14 @@ check ovn-nbctl --wait=hv set Chassis_Template_Var hv1 variables:CONDITION='ip4.
 dnl Ensure the ACL is translated to OpenFlows expanding as1.
 as hv1
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42' | ofctl_strip_all], [0], [dnl
- table=$acl_eval, priority=1001,ip,metadata=0x1,nw_src=42.42.42.42,nw_dst=1.1.1.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
- table=$acl_eval, priority=1001,ip,metadata=0x1,nw_src=42.42.42.42,nw_dst=1.1.1.2 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
+ table=$acl_eval, priority=1001,ip,metadata=0x1,nw_src=42.42.42.42,nw_dst=1.1.1.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
+ table=$acl_eval, priority=1001,ip,metadata=0x1,nw_src=42.42.42.42,nw_dst=1.1.1.2 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
 ])
 
 dnl Remove an IP from AS1 and expect OpenFlows to be correctly updated.
 check ovn-nbctl --wait=hv set address_set as1 addresses=\"1.1.1.1\"
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42' | ofctl_strip_all], [0], [dnl
- table=$acl_eval, priority=1001,ip,metadata=0x1,nw_src=42.42.42.42,nw_dst=1.1.1.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_action)
+ table=$acl_eval, priority=1001,ip,metadata=0x1,nw_src=42.42.42.42,nw_dst=1.1.1.1 actions=load:0x1->OXM_OF_PKT_REG4[[48]],resubmit(,$acl_sample)
 ])
 
 dnl Remove the mapping and expect OpenFlows to be removed.

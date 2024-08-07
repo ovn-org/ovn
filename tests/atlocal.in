@@ -196,6 +196,12 @@ find_command bfdd-beacon
 # Set HAVE_ARPING
 find_command arping
 
+# Set HAVE_NFCAPD
+find_command nfcapd
+
+# Set HAVE_NFDUMP
+find_command nfdump
+
 # Turn off proxies.
 unset http_proxy
 unset https_proxy

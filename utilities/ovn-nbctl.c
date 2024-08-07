@@ -2318,6 +2318,11 @@ nbctl_pre_acl(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_match);
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_options);
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_tier);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_sample_new);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_sample_est);
+
+    ovsdb_idl_add_table(ctx->idl, &nbrec_table_sample_collector);
+    ovsdb_idl_add_table(ctx->idl, &nbrec_table_sample);
 }
 
 static void
@@ -2331,6 +2336,8 @@ nbctl_pre_acl_list(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_severity);
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_meter);
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_label);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_sample_new);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_sample_est);
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_options);
 }
 
@@ -2382,6 +2389,8 @@ nbctl_acl_add(struct ctl_context *ctx)
     const char *severity = shash_find_data(&ctx->options, "--severity");
     const char *name = shash_find_data(&ctx->options, "--name");
     const char *meter = shash_find_data(&ctx->options, "--meter");
+    const char *sample_new = shash_find_data(&ctx->options, "--sample-new");
+    const char *sample_est = shash_find_data(&ctx->options, "--sample-est");
     if (log || severity || name || meter) {
         nbrec_acl_set_log(acl, true);
     }
@@ -2397,6 +2406,30 @@ nbctl_acl_add(struct ctl_context *ctx)
     }
     if (meter) {
         nbrec_acl_set_meter(acl, meter);
+    }
+
+    if (sample_new) {
+        char *sample_setting = xasprintf("sample_new=%s", sample_new);
+        error = ctl_set_column("ACL", &acl->header_, sample_setting,
+                               ctx->symtab);
+        free(sample_setting);
+        if (error) {
+            ctl_error(ctx, "invalid --sample-new: %s", error);
+            free(error);
+            return;
+        }
+    }
+
+    if (sample_est) {
+        char *sample_setting = xasprintf("sample_est=%s", sample_est);
+        error = ctl_set_column("ACL", &acl->header_, sample_setting,
+                               ctx->symtab);
+        free(sample_setting);
+        if (error) {
+            ctl_error(ctx, "invalid --sample-est: %s", error);
+            free(error);
+            return;
+        }
     }
 
     /* Set the ACL label */
@@ -7925,7 +7958,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     { "acl-add", 5, 6, "{SWITCH | PORTGROUP} DIRECTION PRIORITY MATCH ACTION",
       nbctl_pre_acl, nbctl_acl_add, NULL,
       "--log,--may-exist,--type=,--name=,--severity=,--meter=,--label=,"
-      "--apply-after-lb,--tier=", RW },
+      "--apply-after-lb,--tier=,--sample-new=,--sample-est=", RW },
     { "acl-del", 1, 4, "{SWITCH | PORTGROUP} [DIRECTION [PRIORITY MATCH]]",
       nbctl_pre_acl, nbctl_acl_del, NULL, "--type=,--tier=", RW },
     { "acl-list", 1, 1, "{SWITCH | PORTGROUP}",

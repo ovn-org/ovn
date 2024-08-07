@@ -399,7 +399,7 @@
       must be either <code>switch</code> or <code>port-group</code>.
     </p>
     <dl>
-        <dt>[<code>--type=</code>{<code>switch</code> | <code>port-group</code>}] [<code>--log</code>] [<code>--meter=</code><var>meter</var>] [<code>--severity=</code><var>severity</var>] [<code>--name=</code><var>name</var>] [<code>--label=</code><var>label</var>] [<code>--may-exist</code>] [<code>--apply-after-lb</code>] [<code>--tier</code>] <code>acl-add</code> <var>entity</var> <var>direction</var> <var>priority</var> <var>match</var> <var>verdict</var></dt>
+        <dt>[<code>--type=</code>{<code>switch</code> | <code>port-group</code>}] [<code>--log</code>] [<code>--meter=</code><var>meter</var>] [<code>--severity=</code><var>severity</var>] [<code>--name=</code><var>name</var>] [<code>--label=</code><var>label</var>] [<code>--sample-new=</code><var>sample</var>] [<code>--sample-est=</code><var>sample</var>] [<code>--may-exist</code>] [<code>--apply-after-lb</code>] [<code>--tier</code>] <code>acl-add</code> <var>entity</var> <var>direction</var> <var>priority</var> <var>match</var> <var>verdict</var></dt>
       <dd>
         <p>
           Adds the specified ACL to <var>entity</var>.  <var>direction</var>
@@ -422,6 +422,12 @@
           <code>info</code>.  The <code>--meter=<var>meter</var></code> option
           is used to rate-limit packet logging.  The <var>meter</var> argument
           names a meter configured by <code>meter-add</code>.
+        </p>
+
+        <p>
+          The <code>--sample-new</code> (and optionally
+          <code>--sample-est</code>) enable ACL sampling. A valid uuid of a
+          row of the <ref table="Sample"/> table must be provided.
         </p>
 
         <p>

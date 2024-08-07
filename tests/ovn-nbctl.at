@@ -2803,6 +2803,42 @@ check_row_count nb:ACL 0
 
 dnl ---------------------------------------------------------------------
 
+OVN_NBCTL_TEST([acl_sampling], [ACL sampling operations], [
+check ovn-nbctl ls-add ls
+ovn-nbctl \
+  --id=@sample1 create Sample metadata=4301 -- \
+  --sample-new=@sample1 acl-add ls from-lport 1 1 allow-related
+sample1=$(fetch_column nb:Sample _uuid metadata=4301)
+check_column "$sample1" nb:ACL sample_new priority=1
+
+ovn-nbctl \
+  --id=@sample2 create Sample metadata=4302 -- \
+  --sample-est=@sample2 acl-add ls from-lport 2 1 allow-related
+sample2=$(fetch_column nb:Sample _uuid metadata=4302)
+check_column "$sample2" nb:ACL sample_est priority=2
+
+ovn-nbctl \
+  --id=@sample3 create Sample metadata=4303 -- \
+  --id=@sample4 create Sample metadata=4304 -- \
+  --sample-new=@sample3 --sample-est=@sample4 acl-add ls from-lport 3 1 allow-related
+sample3=$(fetch_column nb:Sample _uuid metadata=4303)
+sample4=$(fetch_column nb:Sample _uuid metadata=4304)
+check_column "$sample3" nb:ACL sample_new priority=3
+check_column "$sample4" nb:ACL sample_est priority=3
+
+dnl Check invalid sample_new and sample_est values.
+AT_CHECK([ovn-nbctl --sample-new=foo acl-add ls from-lport 4 1 allow-related], [1], [], [dnl
+ovn-nbctl: invalid --sample-new: "foo" is not a valid UUID
+])
+
+AT_CHECK([ovn-nbctl --sample-est=bar acl-add ls from-lport 4 1 allow-related], [1], [], [dnl
+ovn-nbctl: invalid --sample-est: "bar" is not a valid UUID
+])
+
+])
+
+dnl ---------------------------------------------------------------------
+
 AT_SETUP([ovn-nbctl - daemon retry connection])
 OVN_NBCTL_TEST_START daemon
 pid=$(cat ovsdb-server.pid)

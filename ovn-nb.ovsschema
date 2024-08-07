@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "7.5.0",
-    "cksum": "1137408189 36223",
+    "version": "7.6.0",
+    "cksum": "2171465655 38284",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -30,6 +30,41 @@
                 "ipsec": {"type": "boolean"}},
             "maxRows": 1,
             "isRoot": true},
+        "Sample_Collector": {
+            "columns": {
+                "id": {"type": {"key": {
+                    "type": "integer",
+                    "minInteger": 1,
+                    "maxInteger": 255}}},
+                "name": {"type": "string"},
+                "probability": {"type": {"key": {
+                    "type": "integer",
+                    "minInteger": 0,
+                    "maxInteger": 65535}}},
+                "set_id": {"type": {"key": {
+                    "type": "integer",
+                    "minInteger": 1,
+                    "maxInteger": 4294967295}}},
+                "external_ids": {"type": {"key": "string", "value": "string",
+                                          "min": 0, "max": "unlimited"}}
+            },
+            "indexes": [["id"]],
+            "isRoot": true
+        },
+        "Sample": {
+            "columns": {
+                "collectors": {"type": {"key": {"type": "uuid",
+                                                "refTable": "Sample_Collector",
+                                                "refType": "strong"},
+                                        "min": 0,
+                                        "max": "unlimited"}},
+                "metadata": {"type": {"key": {"type": "integer",
+                                              "minInteger": 1,
+                                              "maxInteger": 4294967295},
+                                      "min": 1, "max":1}}
+            },
+            "indexes": [["metadata"]]
+        },
         "Copp": {
             "columns": {
                 "name": {"type": "string"},
@@ -275,6 +310,14 @@
                 "tier": {"type": {"key": {"type": "integer",
                                           "minInteger": 0,
                                           "maxInteger": 3}}},
+                "sample_new": {"type": {"key": {"type": "uuid",
+                                                "refTable": "Sample",
+                                                "refType": "strong"},
+                                        "min": 0, "max": 1}},
+                "sample_est": {"type": {"key": {"type": "uuid",
+                                                "refTable": "Sample",
+                                                "refType": "strong"},
+                                        "min": 0, "max": 1}},
                 "options": {
                      "type": {"key": "string",
                               "value": "string",

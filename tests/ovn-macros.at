@@ -1129,6 +1129,10 @@ ovn_strip_lflows() {
      sed 's/table=[[0-9]]\{1,2\}\s\?/table=??/g' | sort
 }
 
+ovn_strip_collector_set() {
+    sed 's/collector_set=[[0-9]]*,\?/collector_set=??,/g'
+}
+
 OVS_END_SHELL_HELPERS
 
 m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
@@ -1189,11 +1193,11 @@ m4_define([OVN_CHECK_SCAPY_EDNS_CLIENT_SUBNET_SUPPORT],
 
 m4_define([OFTABLE_PHY_TO_LOG], [0])
 m4_define([OFTABLE_LOG_INGRESS_PIPELINE], [8])
-m4_define([OFTABLE_OUTPUT_LARGE_PKT_DETECT], [37])
-m4_define([OFTABLE_OUTPUT_LARGE_PKT_PROCESS], [38])
-m4_define([OFTABLE_REMOTE_OUTPUT], [39])
-m4_define([OFTABLE_LOCAL_OUTPUT], [40])
-m4_define([OFTABLE_LOG_EGRESS_PIPELINE], [42])
+m4_define([OFTABLE_OUTPUT_LARGE_PKT_DETECT], [40])
+m4_define([OFTABLE_OUTPUT_LARGE_PKT_PROCESS], [41])
+m4_define([OFTABLE_REMOTE_OUTPUT], [42])
+m4_define([OFTABLE_LOCAL_OUTPUT], [43])
+m4_define([OFTABLE_LOG_EGRESS_PIPELINE], [45])
 m4_define([OFTABLE_SAVE_INPORT], [64])
 m4_define([OFTABLE_LOG_TO_PHY], [65])
 m4_define([OFTABLE_MAC_BINDING], [66])
