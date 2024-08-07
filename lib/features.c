@@ -25,6 +25,8 @@
 #include "openvswitch/vlog.h"
 #include "openvswitch/ofpbuf.h"
 #include "openvswitch/rconn.h"
+#include "openvswitch/ofp-actions.h"
+#include "openvswitch/ofp-bundle.h"
 #include "openvswitch/ofp-msgs.h"
 #include "openvswitch/ofp-meter.h"
 #include "openvswitch/ofp-group.h"
@@ -185,6 +187,87 @@ group_features_handle_response(struct ovs_openflow_feature *feature,
     return supported_ovs_features & feature->value;
 }
 
+static void
+sample_with_reg_send_request(struct ovs_openflow_feature *feature)
+{
+    struct ofputil_bundle_ctrl_msg ctrl = {
+        .bundle_id = 0,
+        .flags     = OFPBF_ORDERED | OFPBF_ATOMIC,
+        .type      = OFPBCT_OPEN_REQUEST,
+    };
+    rconn_send(swconn,
+               ofputil_encode_bundle_ctrl_request(OFP15_VERSION, &ctrl), NULL);
+
+    uint8_t actions_stub[64];
+    struct ofpbuf actions;
+    ofpbuf_use_stub(&actions, actions_stub, sizeof(actions_stub));
+
+    struct mf_subfield subfield = {
+        .field = mf_from_id(MFF_REG0),
+        .n_bits = 32,
+        .ofs = 0
+    };
+
+    struct ofpact_sample *sample = ofpact_put_SAMPLE(&actions);
+    sample->probability = UINT16_MAX;
+    sample->collector_set_id = 0;
+    sample->obs_domain_src = subfield;
+    sample->obs_point_src = subfield;
+    sample->sampling_port = OFPP_NONE;
+
+    struct ofputil_flow_mod fm = {
+        .priority = 0,
+        .table_id = 0,
+        .ofpacts = actions.data,
+        .ofpacts_len = actions.size,
+        .command = OFPFC_ADD,
+        .new_cookie = htonll(0),
+        .buffer_id = UINT32_MAX,
+        .out_port = OFPP_ANY,
+        .out_group = OFPG_ANY,
+    };
+
+    struct match match;
+    match_init_catchall(&match);
+    minimatch_init(&fm.match, &match);
+
+    struct ofpbuf *fm_msg = ofputil_encode_flow_mod(&fm, OFPUTIL_P_OF15_OXM);
+
+    struct ofputil_bundle_add_msg bam = {
+        .bundle_id = ctrl.bundle_id,
+        .flags = ctrl.flags,
+        .msg = fm_msg->data,
+    };
+    struct ofpbuf *msg = ofputil_encode_bundle_add(OFP15_VERSION, &bam);
+
+    feature->xid = ((struct ofp_header *) msg->data)->xid;
+    rconn_send(swconn, msg, NULL);
+
+    ctrl.type = OFPBCT_DISCARD_REQUEST;
+    rconn_send(swconn,
+               ofputil_encode_bundle_ctrl_request(OFP15_VERSION, &ctrl), NULL);
+
+    minimatch_destroy(&fm.match);
+    ofpbuf_delete(fm_msg);
+}
+
+static bool
+sample_with_reg_handle_response(struct ovs_openflow_feature *feature,
+                                enum ofptype type, const struct ofp_header *oh)
+{
+    if (type != OFPTYPE_ERROR) {
+        log_unexpected_reply(feature, oh);
+    }
+
+    return false;
+}
+
+static bool
+sample_with_reg_handle_barrier(struct ovs_openflow_feature *feature OVS_UNUSED)
+{
+    return true;
+}
+
 static struct ovs_openflow_feature all_openflow_features[] = {
         {
             .value = OVS_DP_METER_SUPPORT,
@@ -199,6 +282,13 @@ static struct ovs_openflow_feature all_openflow_features[] = {
             .send_request = group_features_send_request,
             .handle_response = group_features_handle_response,
             .handle_barrier = default_barrier_response_handle,
+        },
+        {
+            .value = OVS_SAMPLE_REG_SUPPORT,
+            .name = "sample_action_with_registers",
+            .send_request = sample_with_reg_send_request,
+            .handle_response = sample_with_reg_handle_response,
+            .handle_barrier = sample_with_reg_handle_barrier,
         }
 };
 
@@ -271,6 +361,7 @@ ovs_feature_is_valid(enum ovs_feature_value feature)
     case OVS_CT_TUPLE_FLUSH_SUPPORT:
     case OVS_DP_HASH_L4_SYM_SUPPORT:
     case OVS_OF_GROUP_SUPPORT:
+    case OVS_SAMPLE_REG_SUPPORT:
         return true;
     default:
         return false;

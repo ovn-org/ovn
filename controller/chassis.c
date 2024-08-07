@@ -67,6 +67,8 @@ struct ovs_chassis_cfg {
     struct ds iface_types;
     /* Is this chassis an interconnection gateway. */
     bool is_interconn;
+    /* Does OVS support sampling with ids taken from registers? */
+    bool sample_with_regs;
 };
 
 static void
@@ -338,6 +340,8 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
                                   &ovs_cfg->iface_types);
 
     ovs_cfg->is_interconn = get_is_interconn(&cfg->external_ids, chassis_id);
+    ovs_cfg->sample_with_regs =
+        ovs_feature_is_supported(OVS_SAMPLE_REG_SUPPORT);
 
     return true;
 }
@@ -372,6 +376,8 @@ chassis_build_other_config(const struct ovs_chassis_cfg *ovs_cfg,
     smap_replace(config, OVN_FEATURE_LS_DPG_COLUMN, "true");
     smap_replace(config, OVN_FEATURE_CT_COMMIT_NAT_V2, "true");
     smap_replace(config, OVN_FEATURE_CT_COMMIT_TO_ZONE, "true");
+    smap_replace(config, OVN_FEATURE_SAMPLE_WITH_REGISTERS,
+                 ovs_cfg->sample_with_regs ? "true" : "false");
 }
 
 /*
@@ -523,6 +529,14 @@ chassis_other_config_changed(const struct ovs_chassis_cfg *ovs_cfg,
         return true;
     }
 
+    bool chassis_sample_with_regs =
+        smap_get_bool(&chassis_rec->other_config,
+                      OVN_FEATURE_SAMPLE_WITH_REGISTERS,
+                      false);
+    if (chassis_sample_with_regs != ovs_cfg->sample_with_regs) {
+        return true;
+    }
+
     return false;
 }
 
@@ -656,6 +670,7 @@ update_supported_sset(struct sset *supported)
     sset_add(supported, OVN_FEATURE_LS_DPG_COLUMN);
     sset_add(supported, OVN_FEATURE_CT_COMMIT_NAT_V2);
     sset_add(supported, OVN_FEATURE_CT_COMMIT_TO_ZONE);
+    sset_add(supported, OVN_FEATURE_SAMPLE_WITH_REGISTERS);
 }
 
 static void
