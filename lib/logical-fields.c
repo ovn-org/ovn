@@ -243,7 +243,7 @@ ovn_init_symtab(struct shash *symtab)
     expr_symtab_add_field(symtab, "icmp4.code", MFF_ICMPV4_CODE, "icmp4",
               false);
 
-    expr_symtab_add_predicate(symtab, "igmp", "ip4 && ip.proto == 2");
+    expr_symtab_add_predicate(symtab, "igmp", "ip4.mcast && ip.proto == 2");
 
     expr_symtab_add_field(symtab, "ip6.src", MFF_IPV6_SRC, "ip6", false);
     expr_symtab_add_field(symtab, "ip6.dst", MFF_IPV6_DST, "ip6", false);
@@ -317,11 +317,12 @@ ovn_init_symtab(struct shash *symtab)
      * (RFC 2710 and RFC 3810).
      */
     expr_symtab_add_predicate(symtab, "mldv1",
-                              "ip6.src == fe80::/10 && "
+                              "eth.mcastv6 && ip6.src == fe80::/10 && "
                               "icmp6.type == {130, 131, 132}");
     /* MLDv2 packets are sent to ff02::16 (RFC 3810, 5.2.14) */
     expr_symtab_add_predicate(symtab, "mldv2",
-                              "ip6.dst == ff02::16 && icmp6.type == 143");
+                              "eth.mcastv6 && ip6.dst == ff02::16 && "
+                              "icmp6.type == 143");
 
     expr_symtab_add_predicate(symtab, "tcp", "ip.proto == 6");
     expr_symtab_add_field(symtab, "tcp.src", MFF_TCP_SRC, "tcp", false);
