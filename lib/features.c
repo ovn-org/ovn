@@ -457,10 +457,10 @@ ovs_feature_set_discovered(void)
 {
     /* The supported feature set has been discovered if we're connected
      * to OVS and it replied to all our feature request messages. */
-    bool replied_to_all = false;
+    bool replied_to_all = true;
     for (size_t i = 0; i < ARRAY_SIZE(all_openflow_features); i++) {
         struct ovs_openflow_feature *feature = &all_openflow_features[i];
-        replied_to_all |= !feature->queued;
+        replied_to_all &= !feature->queued;
     }
 
     return swconn && rconn_is_connected(swconn) && replied_to_all;
