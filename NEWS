@@ -62,6 +62,8 @@ Post v24.03.0
   - Add "external_ids:ovn-encap-ip-default" config for ovn-controller to
     determine the default encap IP when there are multiple encap IPs
     configured.
+  - Added a new column in the southbound database "flow_desc" to provide
+    human readable context to flows.
 
 OVN v24.03.0 - 01 Mar 2024
 --------------------------

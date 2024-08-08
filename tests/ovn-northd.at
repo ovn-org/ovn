@@ -12416,6 +12416,21 @@ AT_CHECK([grep -e "DHCP_RELAY_" lflows | sed 's/table=../table=??/'], [0], [dnl
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([check for flow_desc])
+ovn_start
+
+check ovn-nbctl -- set NB_Global . options:debug_drop_collector_set="123"
+check ovn-nbctl ls-add ls1
+
+check ovn-nbctl --wait=hv sync
+
+flow_desc=$(fetch_column Logical_flow flow_desc match='"outport == \"none\""')
+AT_CHECK([test "$flow_desc" != ""])
+
+AT_CLEANUP
+])
+
 AT_SETUP([NB_Global and SB_Global incremental processing])
 
 ovn_start

@@ -78,7 +78,8 @@ void lflow_table_add_lflow(struct lflow_table *, const struct ovn_datapath *,
                            const char *actions, const char *io_port,
                            const char *ctrl_meter,
                            const struct ovsdb_idl_row *stage_hint,
-                           const char *where, struct lflow_ref *);
+                           const char *where, const char *flow_desc,
+                           struct lflow_ref *);
 void lflow_table_add_lflow_default_drop(struct lflow_table *,
                                         const struct ovn_datapath *,
                                         enum ovn_stage stage,
@@ -91,20 +92,20 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
                                   STAGE_HINT, LFLOW_REF) \
     lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
                           ACTIONS, IN_OUT_PORT, CTRL_METER, STAGE_HINT, \
-                          OVS_SOURCE_LOCATOR, LFLOW_REF)
+                          OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
 
 #define ovn_lflow_add_with_hint(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, \
                                 ACTIONS, STAGE_HINT, LFLOW_REF) \
     lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
                           ACTIONS, NULL, NULL, STAGE_HINT,  \
-                          OVS_SOURCE_LOCATOR, LFLOW_REF)
+                          OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
 
 #define ovn_lflow_add_with_dp_group(LFLOW_TABLE, DP_BITMAP, DP_BITMAP_LEN, \
                                     STAGE, PRIORITY, MATCH, ACTIONS, \
                                     STAGE_HINT, LFLOW_REF) \
     lflow_table_add_lflow(LFLOW_TABLE, NULL, DP_BITMAP, DP_BITMAP_LEN, STAGE, \
                           PRIORITY, MATCH, ACTIONS, NULL, NULL, STAGE_HINT, \
-                          OVS_SOURCE_LOCATOR, LFLOW_REF)
+                          OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
 
 #define ovn_lflow_add_default_drop(LFLOW_TABLE, OD, STAGE, LFLOW_REF)   \
     lflow_table_add_lflow_default_drop(LFLOW_TABLE, OD, STAGE, \
@@ -126,13 +127,27 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
                                           STAGE_HINT, LFLOW_REF) \
     lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
                           ACTIONS, IN_OUT_PORT, NULL, STAGE_HINT, \
-                          OVS_SOURCE_LOCATOR, LFLOW_REF)
+                          OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
 
 #define ovn_lflow_add(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, ACTIONS, \
                       LFLOW_REF) \
     lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
                           ACTIONS, NULL, NULL, NULL, OVS_SOURCE_LOCATOR, \
-                          LFLOW_REF)
+                          NULL, LFLOW_REF)
+
+#define ovn_lflow_add_drop_with_desc(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, \
+                                     DESCRIPTION, LFLOW_REF) \
+    lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
+                          debug_drop_action(), NULL, NULL, NULL,  \
+                          OVS_SOURCE_LOCATOR, DESCRIPTION, LFLOW_REF)
+
+#define ovn_lflow_add_drop_with_lport_hint_and_desc(LFLOW_TABLE, OD, STAGE, \
+                                                    PRIORITY, MATCH,  \
+                                                    IN_OUT_PORT, STAGE_HINT, \
+                                                    DESCRIPTION, LFLOW_REF) \
+    lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
+                          debug_drop_action(), IN_OUT_PORT, NULL, STAGE_HINT, \
+                          OVS_SOURCE_LOCATOR, DESCRIPTION, LFLOW_REF)
 
 #define ovn_lflow_metered(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, ACTIONS, \
                           CTRL_METER, LFLOW_REF) \

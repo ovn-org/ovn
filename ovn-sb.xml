@@ -2904,6 +2904,11 @@ tcp.flags = RST;
       <code>ovn-controller</code>.
     </column>
 
+    <column name="flow_desc">
+      Human-readable explanation of the flow, this is optional and used
+      to provide context for the given flow.
+    </column>
+
     <column name="external_ids" key="stage-name">
       Human-readable name for this flow's stage in the pipeline.
     </column>
