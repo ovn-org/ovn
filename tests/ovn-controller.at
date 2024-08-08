@@ -3308,51 +3308,60 @@ net_add n1
 sim_add hv1
 ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.20
+ovn-appctl vlog/set inc_proc_eng:dbg
 
 check ovn-nbctl ls-add ls0
 check ovn-nbctl lsp-add ls0 vif
 
-ovn-appctl inc-engine/clear-stats
+m4_define([HANDLER_MESSAGE], [runtime_data, recompute (failed handler for input ovs_interface_shadow)])
 
-ovs-vsctl -- add-port br-int vif -- \
+check ovs-vsctl -- add-port br-int vif -- \
     set Interface vif external-ids:iface-id=vif
 wait_row_count Port_Binding 1 logical_port="vif" up=true
+AT_CHECK([test 0 = $(grep -c "HANDLER_MESSAGE" hv1/ovn-controller.log)])
 
-ovs-vsctl del-port br-int vif
+check ovs-vsctl del-port br-int vif
 wait_row_count Port_Binding 1 logical_port="vif" up=false
+AT_CHECK([test 0 = $(grep -c "HANDLER_MESSAGE" hv1/ovn-controller.log)])
 
-ovs-vsctl add-port br-int vif -- \
+check ovs-vsctl add-port br-int vif -- \
     set Interface vif type=dummy -- \
     set Interface vif external-ids:iface-id=vif
 wait_row_count Port_Binding 1 logical_port="vif" up=true
+AT_CHECK([test 0 = $(grep -c "HANDLER_MESSAGE" hv1/ovn-controller.log)])
 
-ovs-vsctl del-port br-int vif
+check ovs-vsctl del-port br-int vif
 wait_row_count Port_Binding 1 logical_port="vif" up=false
+AT_CHECK([test 0 = $(grep -c "HANDLER_MESSAGE" hv1/ovn-controller.log)])
 
-ovs-vsctl add-port br-int vif -- \
+check ovs-vsctl add-port br-int vif -- \
     set Interface vif type=geneve -- \
     set Interface vif options:remote_ip=1.1.1.1 external-ids:iface-id=vif
 wait_row_count Port_Binding 1 logical_port="vif" up=true
+AT_CHECK([test 0 = $(grep -c "HANDLER_MESSAGE" hv1/ovn-controller.log)])
 
-ovs-vsctl del-port br-int vif
+check ovs-vsctl del-port br-int vif
 wait_row_count Port_Binding 1 logical_port="vif" up=false
+AT_CHECK([test 0 = $(grep -c "HANDLER_MESSAGE" hv1/ovn-controller.log)])
 
 # Make sure that setting iface in two different transaction doesn't
 # cause recompute.
-ovs-vsctl add-port br-int vif
-ovs-vsctl set Interface vif external-ids:iface-id=vif
+check ovs-vsctl add-port br-int vif
+check ovs-vsctl set Interface vif external-ids:iface-id=vif
 wait_row_count Port_Binding 1 logical_port="vif" up=true
+AT_CHECK([test 0 = $(grep -c "HANDLER_MESSAGE" hv1/ovn-controller.log)])
 
-ovs-vsctl del-port br-int vif
+check ovs-vsctl del-port br-int vif
 wait_row_count Port_Binding 1 logical_port="vif" up=false
+AT_CHECK([test 0 = $(grep -c "HANDLER_MESSAGE" hv1/ovn-controller.log)])
 
-AT_CHECK([ovn-appctl inc-engine/show-stats runtime_data |\
-          sed "s/- compute:\s\+[[0-9]]\+/- compute: ??/"], [0], [dnl
-Node: runtime_data
-- recompute:            0
-- compute: ??
-- cancel:               0
-])
+# Make sure that setting dummy iface in two different transactions
+# causes recompute.
+check ovs-vsctl add-port br-int vif -- \
+    set Interface vif type=dummy
+check ovs-vsctl set Interface vif external-ids:iface-id=vif
+wait_row_count Port_Binding 1 logical_port="vif" up=true
+AT_CHECK([test $(grep -c "HANDLER_MESSAGE" hv1/ovn-controller.log) -ge 1])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
