@@ -17609,7 +17609,8 @@ build_static_mac_binding_table(
     struct hmap *lr_ports)
 {
     /* Cleanup SB Static_MAC_Binding entries which do not have corresponding
-     * NB Static_MAC_Binding entries. */
+     * NB Static_MAC_Binding entries, and SB Static_MAC_Binding entries for
+     * which there is not a NB Logical_Router_Port of the same name. */
     const struct nbrec_static_mac_binding *nb_smb;
     const struct sbrec_static_mac_binding *sb_smb;
     SBREC_STATIC_MAC_BINDING_TABLE_FOR_EACH_SAFE (sb_smb,
@@ -17618,6 +17619,12 @@ build_static_mac_binding_table(
                                                sb_smb->logical_port,
                                                sb_smb->ip);
         if (!nb_smb) {
+            sbrec_static_mac_binding_delete(sb_smb);
+            continue;
+        }
+
+        struct ovn_port *op = ovn_port_find(lr_ports, nb_smb->logical_port);
+        if (!op || !op->nbrp || !op->od || !op->od->sb) {
             sbrec_static_mac_binding_delete(sb_smb);
         }
     }
