@@ -5770,13 +5770,24 @@ for i in 1 2 3; do
 
     # Test ICMPv6 MLD reports (v1 and v2) and NS for DAD
     sip=00000000000000000000000000000000
-    test_icmpv6 ${i}3 f00000000${i}${i}3 f00000000021 $sip ff020000000000000000000000160000 83 21
-    test_icmpv6 ${i}3 f00000000${i}${i}3 f00000000021 $sip ff020000000000000000000000160000 8f 21
-    test_icmpv6 ${i}3 f00000000${i}${i}3 f00000000021 $sip ff0200000000000000ea2aeafffe2800 87 21
+    # Multicast traffic is delivered to all ports, except for the source.
+    out_ports=
+    for j in 1 2 3; do
+        for k in 1 2 3; do
+            if test "${j}${k}" -eq "${i}3"; then
+                continue
+            else
+                out_ports="$out_ports ${j}${k}"
+            fi
+        done
+    done
+    test_icmpv6 ${i}3 f00000000${i}${i}3 333300160000 $sip ff020000000000000000000000160000 83 ${out_ports}
+    test_icmpv6 ${i}3 f00000000${i}${i}3 333300160000 $sip ff020000000000000000000000160000 8f ${out_ports}
+    test_icmpv6 ${i}3 f00000000${i}${i}3 3333fffe2800 $sip ff0200000000000000ea2aeafffe2800 87 ${out_ports}
     # Traffic to non-multicast traffic should be dropped
     test_icmpv6 ${i}3 f00000000${i}${i}3 f00000000021 $sip $tip 83
     # Traffic of other ICMPv6 types should be dropped
-    test_icmpv6 ${i}3 f00000000${i}${i}3 f00000000021 $sip ff020000000000000000000000160000 80
+    test_icmpv6 ${i}3 f00000000${i}${i}3 333300160000 $sip ff020000000000000000000000160000 80
 
     # should be dropped
     sip=ae80000000000000ea2aeafffe2800aa
@@ -14174,8 +14185,8 @@ test_mldv2() {
     local inport=$1 outport=$2 src_mac=$3 src_ip=$4
 
     packet=$(fmt_pkt "
-        Ether(dst='ff:ff:ff:ff:ff:ff', src='${src_mac}') /
-        IPv6(src='${src_ip}', dst='ff02::2') /
+        Ether(dst='33:33:00:00:00:01', src='${src_mac}') /
+        IPv6(src='${src_ip}', dst='ff02::1') /
         ICMPv6MLQuery2()
     ")
     as hv1 ovs-appctl netdev-dummy/receive vif${inport} $packet
