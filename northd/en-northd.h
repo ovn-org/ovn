@@ -42,5 +42,9 @@ bool bfd_sync_northd_change_handler(struct engine_node *node,
                                     void *data OVS_UNUSED);
 void en_bfd_sync_run(struct engine_node *node, void *data);
 void en_bfd_sync_cleanup(void *data OVS_UNUSED);
+void en_ecmp_nexthop_run(struct engine_node *node, void *data);
+void *en_ecmp_nexthop_init(struct engine_node *node OVS_UNUSED,
+                           struct engine_arg *arg OVS_UNUSED);
+void en_ecmp_nexthop_cleanup(void *data);
 
 #endif /* EN_NORTHD_H */
