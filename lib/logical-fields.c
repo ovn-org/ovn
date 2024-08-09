@@ -293,6 +293,9 @@ ovn_init_symtab(struct shash *symtab)
               "icmp6.type == {135, 136} && icmp6.code == 0 && ip.ttl == 255");
     expr_symtab_add_predicate(symtab, "nd_ns",
               "icmp6.type == 135 && icmp6.code == 0 && ip.ttl == 255");
+    expr_symtab_add_predicate(symtab, "nd_ns_mcast",
+              "ip6.mcast && icmp6.type == 135 && icmp6.code == 0 && "
+              "ip.ttl == 255");
     expr_symtab_add_predicate(symtab, "nd_na",
               "icmp6.type == 136 && icmp6.code == 0 && ip.ttl == 255");
     expr_symtab_add_predicate(symtab, "nd_rs",

@@ -1146,6 +1146,7 @@
       <ul>
         <li><code>eth.bcast</code> expands to <code>eth.dst == ff:ff:ff:ff:ff:ff</code></li>
         <li><code>eth.mcast</code> expands to <code>eth.dst[40]</code></li>
+        <li><code>eth.mcastv6</code> expands to <code>eth.dst[32..47] == 0x3333</code></li>
         <li><code>vlan.present</code> expands to <code>vlan.tci[12]</code></li>
         <li><code>ip4</code> expands to <code>eth.type == 0x800</code></li>
         <li><code>ip4.src_mcast</code> expands to
@@ -1161,8 +1162,10 @@
         <li><code>ip.first_frag</code> expands to <code>ip.is_frag &amp;&amp; !ip.later_frag</code></li>
         <li><code>arp</code> expands to <code>eth.type == 0x806</code></li>
         <li><code>rarp</code> expands to <code>eth.type == 0x8035</code></li>
+        <li><code>ip6.mcast</code> expands to <code>eth.mcastv6 &amp;&amp; ip6.dst[120..127] == 0xff</code></li>
         <li><code>nd</code> expands to <code>icmp6.type == {135, 136} &amp;&amp; icmp6.code == 0 &amp;&amp; ip.ttl == 255</code></li>
         <li><code>nd_ns</code> expands to <code>icmp6.type == 135 &amp;&amp; icmp6.code == 0 &amp;&amp; ip.ttl == 255</code></li>
+        <li><code>nd_ns_mcast</code> expands to <code>ip6.mcast  &amp;&amp; icmp6.type == 135 &amp;&amp; icmp6.code == 0 &amp;&amp; ip.ttl == 255</code></li>
         <li><code>nd_na</code> expands to <code>icmp6.type == 136 &amp;&amp; icmp6.code == 0 &amp;&amp; ip.ttl == 255</code></li>
         <li><code>nd_rs</code> expands to <code>icmp6.type == 133 &amp;&amp;
         icmp6.code == 0 &amp;&amp; ip.ttl == 255</code></li>
