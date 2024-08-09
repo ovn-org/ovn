@@ -8863,16 +8863,21 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
                                                   &op->nbsp->header_);
             }
 
-            /* For ND solicitations, we need to listen for both the
-             * unicast IPv6 address and its all-nodes multicast address,
-             * but always respond with the unicast IPv6 address. */
+            /* For ND solicitations:
+             *   - Reply only for the all-nodes multicast address(es) of the
+             *     logical port IPv6 address(es).
+             *
+             *   - Do not reply for unicast ND solicitations.  Let the target
+             *     reply to it, so that the sender has the ability to monitor
+             *     the target liveness via the unicast ND solicitations.
+             */
             for (size_t j = 0; j < op->lsp_addrs[i].n_ipv6_addrs; j++) {
                 ds_clear(match);
-                ds_put_format(match,
-                        "nd_ns && ip6.dst == {%s, %s} && nd.target == %s",
-                        op->lsp_addrs[i].ipv6_addrs[j].addr_s,
-                        op->lsp_addrs[i].ipv6_addrs[j].sn_addr_s,
-                        op->lsp_addrs[i].ipv6_addrs[j].addr_s);
+                ds_put_format(
+                    match,
+                    "nd_ns_mcast && ip6.dst == %s && nd.target == %s",
+                    op->lsp_addrs[i].ipv6_addrs[j].sn_addr_s,
+                    op->lsp_addrs[i].ipv6_addrs[j].addr_s);
 
                 ds_clear(actions);
                 ds_put_format(actions,
