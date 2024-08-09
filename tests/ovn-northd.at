@@ -8085,6 +8085,19 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LR NB Static_MAC_Binding garbage collection])
+ovn_start
+
+check ovn-nbctl lr-add lr -- lrp-add lr lr-lrp 00:00:00:00:00:01 1.1.1.1/24
+check ovn-nbctl static-mac-binding-add lr-lrp 1.1.1.2 00:00:00:00:00:02
+wait_row_count sb:Static_MAC_Binding 1 logical_port=lr-lrp ip=1.1.1.2 mac="00\:00\:00\:00\:00\:02"
+check ovn-nbctl lr-del lr
+wait_row_count sb:Static_MAC_Binding 0
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([LR neighbor lookup and learning flows])
 ovn_start
 
