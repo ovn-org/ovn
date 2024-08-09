@@ -9503,9 +9503,9 @@ AT_CAPTURE_FILE([S1flows])
 AT_CHECK([grep -e "ls_in_arp_rsp" S1flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_arp_rsp      ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_arp_rsp      ), priority=100  , match=(arp.tpa == 192.168.0.10 && arp.op == 1 && eth.dst == ff:ff:ff:ff:ff:ff && inport == "S1-vm1"), action=(next;)
-  table=??(ls_in_arp_rsp      ), priority=100  , match=(nd_ns && ip6.dst == {fd00::10, ff02::1:ff00:10} && nd.target == fd00::10 && inport == "S1-vm1"), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(nd_ns_mcast && ip6.dst == ff02::1:ff00:10 && nd.target == fd00::10 && inport == "S1-vm1"), action=(next;)
   table=??(ls_in_arp_rsp      ), priority=50   , match=(arp.tpa == 192.168.0.10 && arp.op == 1 && eth.dst == ff:ff:ff:ff:ff:ff), action=(eth.dst = eth.src; eth.src = 50:54:00:00:00:10; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 50:54:00:00:00:10; arp.tpa = arp.spa; arp.spa = 192.168.0.10; outport = inport; flags.loopback = 1; output;)
-  table=??(ls_in_arp_rsp      ), priority=50   , match=(nd_ns && ip6.dst == {fd00::10, ff02::1:ff00:10} && nd.target == fd00::10), action=(nd_na { eth.src = 50:54:00:00:00:10; ip6.src = fd00::10; nd.target = fd00::10; nd.tll = 50:54:00:00:00:10; outport = inport; flags.loopback = 1; output; };)
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(nd_ns_mcast && ip6.dst == ff02::1:ff00:10 && nd.target == fd00::10), action=(nd_na { eth.src = 50:54:00:00:00:10; ip6.src = fd00::10; nd.target = fd00::10; nd.tll = 50:54:00:00:00:10; outport = inport; flags.loopback = 1; output; };)
 ])
 
 #Set the disable_arp_nd_rsp option and verify the flow
