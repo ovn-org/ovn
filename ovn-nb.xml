@@ -3575,6 +3575,48 @@ or
         </p>
       </column>
 
+      <column name="options" key="routing-protocol-redirect"
+              type='{"type": "string"}'>
+        <p>
+          NOTE: this feature is experimental and may be subject to
+          removal/change in the future.
+        </p>
+        <p>
+          This option expects a name of a Logical Switch Port that's present
+          in the peer's Logical Switch. If set, it causes any traffic
+          that's destined for Logical Router Port's IP addresses (including
+          its IPv6 LLA) and the ports associated with routing protocols defined
+          ip <code>routing-protocols</code> option, to be redirected
+          to the specified Logical Switch Port.
+
+          This allows external routing daemons to be bound to a port in OVN's
+          Logical Switch and act as if they were listening on Logical Router
+          Port's IP addresses.
+        </p>
+      </column>
+
+      <column name="options" key="routing-protocols" type='{"type": "string"}'>
+        <p>
+          NOTE: this feature is experimental and may be subject to
+          removal/change in the future.
+        </p>
+        <p>
+          This option expects a comma-separated list of routing, and
+          routing-related protocols, whose control plane traffic will be
+          redirected to a port specified in
+          <code>routing-protocol-redirect</code> option. Currently supported
+          options are:
+        </p>
+        <ul>
+          <li>
+            <code>BGP</code> (forwards TCP port 179)
+          </li>
+          <li>
+            <code>BFD</code> (forwards UDP port 3784)
+          </li>
+        </ul>
+      </column>
+
       <column name="options" key="gateway_mtu_bypass">
         <p>
           When configured, represents a match expression, in the same

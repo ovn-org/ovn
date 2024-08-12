@@ -14002,6 +14002,234 @@ build_arp_resolve_flows_for_lrp(struct ovn_port *op,
     }
 }
 
+static void
+build_routing_protocols_redirect_rule__(
+        const char *s_addr, const char *redirect_port_name, int protocol_port,
+        const char *proto, bool is_ipv6, struct ovn_port *ls_peer,
+        struct lflow_table *lflows, struct ds *match, struct ds *actions,
+        struct lflow_ref *lflow_ref)
+{
+    int ip_ver = is_ipv6 ? 6 : 4;
+    ds_clear(actions);
+    ds_put_format(actions, "outport = \"%s\"; output;", redirect_port_name);
+
+    /* Redirect packets in the input pipeline destined for LR's IP
+     * and the routing protocol's port to the LSP specified in
+     * 'routing-protocol-redirect' option.*/
+    ds_clear(match);
+    ds_put_format(match, "ip%d.dst == %s && %s.dst == %d", ip_ver, s_addr,
+                  proto, protocol_port);
+    ovn_lflow_add(lflows, ls_peer->od, S_SWITCH_IN_L2_LKUP, 100,
+                  ds_cstr(match),
+                  ds_cstr(actions),
+                  lflow_ref);
+
+    /* To accomodate "peer" nature of the routing daemons, redirect also
+     * replies to the daemons' client requests. */
+    ds_clear(match);
+    ds_put_format(match, "ip%d.dst == %s && %s.src == %d", ip_ver, s_addr,
+                  proto, protocol_port);
+    ovn_lflow_add(lflows, ls_peer->od, S_SWITCH_IN_L2_LKUP, 100,
+                  ds_cstr(match),
+                  ds_cstr(actions),
+                  lflow_ref);
+}
+
+static void
+apply_routing_protocols_redirect__(
+        const char *s_addr, const char *redirect_port_name, int protocol_flags,
+        bool is_ipv6, struct ovn_port *ls_peer, struct lflow_table *lflows,
+        struct ds *match, struct ds *actions, struct lflow_ref *lflow_ref)
+{
+    if (protocol_flags & REDIRECT_BGP) {
+        build_routing_protocols_redirect_rule__(s_addr, redirect_port_name,
+                                                179, "tcp", is_ipv6, ls_peer,
+                                                lflows, match, actions,
+                                                lflow_ref);
+    }
+
+    if (protocol_flags & REDIRECT_BFD) {
+        build_routing_protocols_redirect_rule__(s_addr, redirect_port_name,
+                                                3784, "udp", is_ipv6, ls_peer,
+                                                lflows, match, actions,
+                                                lflow_ref);
+    }
+
+    /* Because the redirected port shares IP and MAC addresses with the LRP,
+     * special consideration needs to be given to the signaling protocols. */
+    ds_clear(actions);
+    ds_put_format(actions,
+                 "clone { outport = \"%s\"; output; }; "
+                 "outport = %s; output;",
+                  redirect_port_name, ls_peer->json_key);
+    if (is_ipv6) {
+        /* Ensure that redirect port receives copy of NA messages destined to
+         * its IP.*/
+        ds_clear(match);
+        ds_put_format(match, "ip6.dst == %s && nd_na", s_addr);
+        ovn_lflow_add(lflows, ls_peer->od, S_SWITCH_IN_L2_LKUP, 100,
+                      ds_cstr(match),
+                      ds_cstr(actions),
+                      lflow_ref);
+    } else {
+        /* Ensure that redirect port receives copy of ARP replies destined to
+         * its IP */
+        ds_clear(match);
+        ds_put_format(match, "arp.op == 2 && arp.tpa == %s", s_addr);
+        ovn_lflow_add(lflows, ls_peer->od, S_SWITCH_IN_L2_LKUP, 100,
+                      ds_cstr(match),
+                      ds_cstr(actions),
+                      lflow_ref);
+    }
+}
+
+static int
+parse_redirected_routing_protocols(struct ovn_port *lrp) {
+    int redirected_protocol_flags = 0;
+    const char *redirect_protocols = smap_get(&lrp->nbrp->options,
+                                              "routing-protocols");
+    if (!redirect_protocols) {
+        return redirected_protocol_flags;
+    }
+
+    char *proto;
+    char *save_ptr = NULL;
+    char *tokstr = xstrdup(redirect_protocols);
+    for (proto = strtok_r(tokstr, ",", &save_ptr); proto != NULL;
+         proto = strtok_r(NULL, ",", &save_ptr)) {
+        if (!strcmp(proto, "BGP")) {
+            redirected_protocol_flags |= REDIRECT_BGP;
+            continue;
+        }
+
+        if (!strcmp(proto, "BFD")) {
+            redirected_protocol_flags |= REDIRECT_BFD;
+            continue;
+        }
+
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "Option 'routing-protocols' encountered unknown "
+                          "value %s",
+                          proto);
+    }
+    free(tokstr);
+    return redirected_protocol_flags;
+}
+
+static void
+build_lrouter_routing_protocol_redirect(
+        struct ovn_port *op, struct lflow_table *lflows, struct ds *match,
+        struct ds *actions, struct lflow_ref *lflow_ref,
+        const struct hmap *ls_ports)
+{
+    /* LRP has to have a peer.*/
+    if (!op->peer) {
+        return;
+    }
+
+    /* LRP has to have NB record.*/
+    if (!op->nbrp) {
+        return;
+    }
+
+    /* Proceed only for LRPs that have 'routing-protocol-redirect' option set.
+     * Value of this option is the name of LSP to which the routing protocol
+     * traffic will be redirected. */
+    const char *redirect_port_name = smap_get(&op->nbrp->options,
+                                              "routing-protocol-redirect");
+    if (!redirect_port_name) {
+        return;
+    }
+
+    if (op->cr_port) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "Option 'routing-protocol-redirect' is not "
+                          "supported on Distributed Gateway Port '%s'",
+                          op->key);
+        return;
+    }
+
+    /* Ensure that LSP, to which the routing protocol traffic is redirected,
+     * exists. */
+    struct ovn_port *lsp_in_peer = ovn_port_find(ls_ports,
+                                                 redirect_port_name);
+    if (!lsp_in_peer) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "Option 'routing-protocol-redirect' set on Logical "
+                          "Router Port '%s' refers to non-existent Logical "
+                          "Switch Port. Routing protocol redirecting won't be "
+                          "configured.",
+                          op->key);
+        return;
+    }
+    if (lsp_in_peer->od != op->peer->od) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "Logical Router Port '%s' is connected to a "
+                          "different switch than the Logical Switch Port "
+                          "'%s' defined in its 'routing-protocol-redirect' "
+                          "option. Routing protocol redirecting won't be "
+                          "configured.",
+                          op->key, redirect_port_name);
+        return;
+    }
+
+    int redirected_protocols = parse_redirected_routing_protocols(op);
+    if (!redirected_protocols) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "Option 'routing-protocol-redirect' is set on "
+                          "Logical Router Port '%s' but no known protocols "
+                          "were set via 'routing-protocols' options. This "
+                          "configuration has no effect.",
+                          op->key);
+        return;
+    }
+
+    /* Redirect traffic destined for LRP's IPs and the specified routing
+     * protocol ports to the port defined in 'routing-protocol-redirect'
+     * option.*/
+    for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
+        const char *ip_s = op->lrp_networks.ipv4_addrs[i].addr_s;
+        apply_routing_protocols_redirect__(ip_s, redirect_port_name,
+                                           redirected_protocols, false,
+                                           op->peer, lflows, match, actions,
+                                           lflow_ref);
+    }
+    for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
+        const char *ip_s = op->lrp_networks.ipv6_addrs[i].addr_s;
+        apply_routing_protocols_redirect__(ip_s, redirect_port_name,
+                                           redirected_protocols, true,
+                                           op->peer, lflows, match, actions,
+                                           lflow_ref);
+    }
+
+    /* Drop ARP replies and IPv6 RA/NA packets originating from
+     * 'routing-protocol-redirect' LSP. As this port shares IP and MAC
+     * addresses with LRP, we don't want to create duplicates.*/
+    ds_clear(match);
+    ds_put_format(match, "inport == \"%s\" && arp.op == 2",
+                  redirect_port_name);
+    ovn_lflow_add(lflows, op->peer->od, S_SWITCH_IN_CHECK_PORT_SEC, 80,
+                  ds_cstr(match),
+                  REGBIT_PORT_SEC_DROP " = 1; next;",
+                  lflow_ref);
+
+    ds_clear(match);
+    ds_put_format(match, "inport == \"%s\" && nd_na",
+                  redirect_port_name);
+    ovn_lflow_add(lflows, op->peer->od, S_SWITCH_IN_CHECK_PORT_SEC, 80,
+                  ds_cstr(match),
+                  REGBIT_PORT_SEC_DROP " = 1; next;",
+                  lflow_ref);
+
+    ds_clear(match);
+    ds_put_format(match, "inport == \"%s\" && nd_ra",
+                  redirect_port_name);
+    ovn_lflow_add(lflows, op->peer->od, S_SWITCH_IN_CHECK_PORT_SEC, 80,
+                  ds_cstr(match),
+                  REGBIT_PORT_SEC_DROP " = 1; next;",
+                  lflow_ref);
+}
+
 /* This function adds ARP resolve flows related to a LSP. */
 static void
 build_arp_resolve_flows_for_lsp(
@@ -16969,6 +17197,9 @@ build_lswitch_and_lrouter_iterate_by_lrp(struct ovn_port *op,
                                 op->lflow_ref);
     build_lrouter_icmp_packet_toobig_admin_flows(op, lsi->lflows, &lsi->match,
                                                  &lsi->actions, op->lflow_ref);
+    build_lrouter_routing_protocol_redirect(op, lsi->lflows, &lsi->match,
+                                            &lsi->actions, op->lflow_ref,
+                                            lsi->ls_ports);
 }
 
 static void *

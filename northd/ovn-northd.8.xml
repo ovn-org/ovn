@@ -285,6 +285,32 @@
       </li>
 
       <li>
+        <p>
+          For each logical port that's defined as a target of routing protocol
+          redirecting (via <code>routing-protocol-redirect</code> option set on
+          Logical Router Port), a filter is set in place that disallows
+          following traffic exiting this port:
+        </p>
+        <ul>
+          <li>
+            ARP replies
+          </li>
+          <li>
+            IPv6 Neighbor Discovery - Router Advertisements
+          </li>
+          <li>
+            IPv6 Neighbor Discovery - Neighbor Advertisements
+          </li>
+        </ul>
+        <p>
+          Since this port shares IP and MAC addresses with the Logical Router
+          Port, we wan't to prevent duplicate replies and advertisements. This
+          is achieved by a rule with priority 80 that sets
+          <code>REGBIT_PORT_SEC_DROP" = 1; next;"</code>.
+        </p>
+      </li>
+
+      <li>
         For each (enabled) vtep logical port, a priority 70 flow is added which
         matches on all packets and applies the action
         <code>next(pipeline=ingress, table=S_SWITCH_IN_L3_LKUP) = 1;</code>
@@ -2000,6 +2026,34 @@ output;
         A priority-100 flow that forwards all DHCP broadcast packets coming
         from VIFs to the logical router port's MAC when DHCP relay is enabled
         on the logical switch.
+      </li>
+
+      <li>
+        <p>
+          For any logical port that's defined as a target of routing protocol
+          redirecting (via <code>routing-protocol-redirect</code> option set on
+          Logical Router Port), we redirect the traffic related to protocols
+          specified in <code>routing-protocols</code> option. It's acoomplished
+          with following priority-100 flows:
+        </p>
+        <ul>
+          <li>
+            Flows that match Logical Router Port's IPs and destination port of
+            the routing daemon are redirected to this port to allow external
+            peers' connection to the daemon listening on this port.
+          </li>
+          <li>
+            Flows that match Logical Router Port's IPs and source port of
+            the routing daemon are redirected to this port to allow replies
+            from the peers.
+          </li>
+        </ul>
+        <p>
+          In addition to this, we add priority-100 rules that
+          <code>clone</code> ARP replies and IPv6 Neighbor Advertisements to
+          this port as well. These allow to build proper ARP/IPv6 neighbor
+          list on this port.
+        </p>
       </li>
 
       <li>
