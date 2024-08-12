@@ -15,7 +15,7 @@ env:
 
 jobs:
   container:
-    if: github.repository_owner == env.IMAGE_NAMESPACE
+    if: github.repository_owner == 'ovn-org'
     runs-on: ubuntu-24.04
     strategy:
       matrix:
