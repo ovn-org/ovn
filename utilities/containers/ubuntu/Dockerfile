@@ -34,6 +34,7 @@ RUN apt update -y \
         ncat \
         net-tools \
         nfdump \
+        nftables \
         ninja-build \
         python3-dev \
         python3-pip \

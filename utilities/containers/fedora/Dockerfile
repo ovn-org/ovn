@@ -28,6 +28,7 @@ RUN dnf -y update \
         libtool \
         net-tools \
         nfdump \
+        nftables \
         ninja-build \
         nmap-ncat \
         numactl-devel \
