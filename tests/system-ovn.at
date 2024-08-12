@@ -13750,3 +13750,152 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
 /.*terminating with signal 15.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Routing protocol redirect])
+AT_SKIP_IF([test $HAVE_NC = no])
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+
+ADD_BR([br-int])
+ADD_BR([br-ext])
+
+check ovs-ofctl add-flow br-ext action=normal
+# Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+check ovn-nbctl lr-add R1 \
+    -- set Logical_Router R1 options:chassis=hv1
+
+check ovn-nbctl ls-add public
+check ovn-nbctl ls-add bar
+
+check ovn-nbctl lrp-add R1 rp-public 00:00:02:01:02:03 172.16.1.1/24
+check ovn-nbctl lrp-add R1 rp-bar 00:00:ff:00:00:01 192.168.10.1/24
+
+check ovn-nbctl lsp-add public public-rp -- set Logical_Switch_Port public-rp \
+    type=router options:router-port=rp-public \
+    -- lsp-set-addresses public-rp router
+
+check ovn-nbctl lsp-add bar bar-rp -- set Logical_Switch_Port bar-rp \
+    type=router options:router-port=rp-bar \
+    -- lsp-set-addresses bar-rp router
+
+check ovn-nbctl lsp-add public bgp-daemon \
+    -- lsp-set-addresses bgp-daemon unknown
+
+# Setup container "bar1" representing host on an internal network
+ADD_NAMESPACES(bar1)
+ADD_VETH(bar1, bar1, br-int, "192.168.10.2/24", "00:00:ff:ff:ff:01", \
+         "192.168.10.1")
+check ovn-nbctl lsp-add bar bar1 \
+    -- lsp-set-addresses bar1 "00:00:ff:ff:ff:01 192.168.10.2"
+
+# Setup SNAT for the internal host
+check ovn-nbctl lr-nat-add R1 snat 172.16.1.1 192.168.10.2
+
+# Configure external connectivity
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext
+check ovn-nbctl lsp-add public public1 \
+        -- lsp-set-addresses public1 unknown \
+        -- lsp-set-type public1 localnet \
+        -- lsp-set-options public1 network_name=phynet
+
+check ovn-nbctl --wait=hv sync
+
+# Set option that redirects BGP and BFD traffic to a LSP "bgp-daemon"
+check ovn-nbctl --wait=sb set logical_router_port rp-public options:routing-protocol-redirect=bgp-daemon
+check ovn-nbctl --wait=sb set logical_router_port rp-public options:routing-protocols=BGP,BFD
+
+# Create "bgp-daemon" interface in a namespace with IP and MAC matching LRP "rp-public"
+ADD_NAMESPACES(bgp-daemon)
+ADD_VETH(bgp-daemon, bgp-daemon, br-int, "172.16.1.1/24", "00:00:02:01:02:03")
+
+ADD_NAMESPACES(ext-foo)
+ADD_VETH(ext-foo, ext-foo, br-ext, "172.16.1.100/24", "00:10:10:01:02:13", \
+         "172.16.1.1")
+
+# Flip the interface down/up to get proper IPv6 LLA
+NS_EXEC([bgp-daemon], [ip link set down bgp-daemon])
+NS_EXEC([bgp-daemon], [ip link set up bgp-daemon])
+NS_EXEC([ext-foo], [ip link set down ext-foo])
+NS_EXEC([ext-foo], [ip link set up ext-foo])
+
+# Wait until IPv6 LLA loses the "tentative" flag otherwise it can't be bound to.
+OVS_WAIT_UNTIL([NS_EXEC([bgp-daemon], [ip a show dev bgp-daemon | grep "fe80::" | grep -v tentative])])
+OVS_WAIT_UNTIL([NS_EXEC([ext-foo], [ip a show dev ext-foo | grep "fe80::" | grep -v tentative])])
+
+# Verify that BGP control plane traffic is delivered to the "bgp-daemon"
+# interface on both IPv4 and IPv6 LLA addresses
+NETNS_DAEMONIZE([bgp-daemon], [nc -l -k 172.16.1.1 179], [bgp_v4.pid])
+NS_CHECK_EXEC([ext-foo], [echo "BGP IPv4 server traffic" | nc --send-only 172.16.1.1 179])
+
+NETNS_DAEMONIZE([bgp-daemon], [nc -l -6 -k fe80::200:2ff:fe01:203%bgp-daemon 179], [bgp_v6.pid])
+NS_CHECK_EXEC([ext-foo], [echo "BGP IPv6 server traffic" | nc --send-only -6 fe80::200:2ff:fe01:203%ext-foo 179])
+
+# Perform same set of checks as above for BFD daemon.
+# We need to manually check that the message arrived on the receiving end as Ncat will
+# produce false positive results over UDP due to lack of ICMP port unreachable messages
+# from LRP's IP.
+NETNS_DAEMONIZE([bgp-daemon], [nc -l -u 172.16.1.1 3784 > bgp-daemon_bfd_v4.out], [bfd_v4.pid])
+NS_CHECK_EXEC([ext-foo], [echo "from ext-foo: BFD IPv4 server traffic" | nc -u 172.16.1.1 3784])
+AT_CHECK([cat bgp-daemon_bfd_v4.out], [0], [dnl
+from ext-foo: BFD IPv4 server traffic
+])
+
+NETNS_DAEMONIZE([bgp-daemon], [nc -l -6 -u fe80::200:2ff:fe01:203%bgp-daemon 3784 > bgp-daemon_bfd_v6.out], [bfd_v6.pid])
+NS_CHECK_EXEC([ext-foo], [echo "from ext-foo: BFD IPv6 server traffic" | nc -u -6 fe80::200:2ff:fe01:203%ext-foo 3784])
+AT_CHECK([cat bgp-daemon_bfd_v6.out], [0], [dnl
+from ext-foo: BFD IPv6 server traffic
+])
+
+# Verify connection in other direction. i.e when BGP daemon running on "bgp-daemon" port
+# makes a client connection to its peer
+NETNS_DAEMONIZE([ext-foo], [nc -l -k 172.16.1.100 179], [reply_bgp_v4.pid])
+NS_CHECK_EXEC([bgp-daemon], [echo "BGP IPv4 client traffic" | nc --send-only 172.16.1.100 179])
+
+NETNS_DAEMONIZE([ext-foo], [nc -l -6 -k fe80::210:10ff:fe01:213%ext-foo 179], [reply_bgp_v6.pid])
+NS_CHECK_EXEC([bgp-daemon], [echo "BGP IPv6 client traffic" | nc --send-only -6 fe80::210:10ff:fe01:213%bgp-daemon 179])
+
+# Perform same checks in other direction for BFD daemon
+NETNS_DAEMONIZE([ext-foo], [nc -l -u 172.16.1.100 3784 > ext-foo_bfd_v4.out], [reply_bfd_v4.pid])
+NS_CHECK_EXEC([bgp-daemon], [echo "from bgp-daemon: BFD IPv4 client traffic" | nc -u 172.16.1.100 3784])
+AT_CHECK([cat ext-foo_bfd_v4.out], [0], [dnl
+from bgp-daemon: BFD IPv4 client traffic
+])
+
+NETNS_DAEMONIZE([ext-foo], [nc -l -6 -u fe80::210:10ff:fe01:213%ext-foo 3784 > ext-foo_bfd_v6.out], [reply_bfd_v6.pid])
+NS_CHECK_EXEC([bgp-daemon], [echo "from bgp-daemon: BFD IPv6 client traffic" | nc -u -6 fe80::210:10ff:fe01:213%bgp-daemon 3784])
+AT_CHECK([cat ext-foo_bfd_v6.out], [0], [dnl
+from bgp-daemon: BFD IPv6 client traffic
+])
+
+# Verify that hosts on the internal network can reach external networks
+NETNS_DAEMONIZE([ext-foo], [nc -l -k 172.16.1.100 2222], [nc_external.pid])
+NS_CHECK_EXEC([bar1], [echo "TCP test" | nc -w 1 --send-only 172.16.1.100 2222])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
+/.*terminating with signal 15.*/d"])
+AT_CLEANUP
+])

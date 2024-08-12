@@ -64,6 +64,10 @@ OVN v24.09.0 - xx xxx xxxx
     configured.
   - Added a new column in the southbound database "flow_desc" to provide
     human readable context to flows.
+  - Added two new experimental logical router port options,
+    "routing-protocol-redirect" and "routing-protocols", that allow
+    redirection of routing protocol traffic received by a router port
+    to a different logical switch port.
 
 OVN v24.03.0 - 01 Mar 2024
 --------------------------

@@ -13774,3 +13774,96 @@ AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3"
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Routing protocol control plane redirect])
+ovn_start
+
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.1
+
+check ovn-nbctl lr-add lr -- \
+    lrp-add lr lr-ls 02:ac:10:01:00:01 172.16.1.1/24
+check ovn-nbctl --wait=sb set logical_router lr options:chassis=hv1
+
+check ovn-nbctl ls-add ls -- \
+    lsp-add ls ls-lr -- \
+    lsp-set-type ls-lr router -- \
+    lsp-set-addresses ls-lr router -- \
+    lsp-set-options ls-lr router-port=lr-ls
+
+check ovn-nbctl lsp-add ls lsp-bgp -- \
+    lsp-set-addresses lsp-bgp unknown
+
+# Function that ensures that no redirect rules are installed.
+check_no_redirect() {
+    AT_CHECK([ovn-sbctl dump-flows ls | grep ls_in_l2_lkup  | grep -E "tcp.dst == 179|tcp.src == 179" | wc -l], [0], [0
+])
+
+    AT_CHECK([ovn-sbctl dump-flows ls | grep ls_in_check_port_sec | grep -E "priority=80" | wc -l], [0], [0
+])
+    check_no_bfd_redirect
+}
+
+# Function that ensures that no BFD redirect rules are installed.
+check_no_bfd_redirect() {
+    AT_CHECK([ovn-sbctl dump-flows ls | grep ls_in_l2_lkup  | grep -E "udp.dst == 3784|udp.src == 3784" | wc -l], [0], [0
+])
+}
+
+# By default, no rules related to routing protocol redirect are present
+check_no_redirect
+
+# Set "lsp-bgp" port as target of BGP control plane redirected traffic
+check ovn-nbctl --wait=sb set logical_router_port lr-ls options:routing-protocol-redirect=lsp-bgp
+check ovn-nbctl --wait=sb set logical_router_port lr-ls options:routing-protocols=BGP
+
+# Check that BGP control plane traffic is redirected "lsp-bgp"
+AT_CHECK([ovn-sbctl dump-flows ls | grep ls_in_l2_lkup | grep -E "tcp.dst == 179|tcp.src == 179" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(ip4.dst == 172.16.1.1 && tcp.dst == 179), action=(outport = "lsp-bgp"; output;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(ip4.dst == 172.16.1.1 && tcp.src == 179), action=(outport = "lsp-bgp"; output;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(ip6.dst == fe80::ac:10ff:fe01:1 && tcp.dst == 179), action=(outport = "lsp-bgp"; output;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(ip6.dst == fe80::ac:10ff:fe01:1 && tcp.src == 179), action=(outport = "lsp-bgp"; output;)
+])
+
+# Check that ARP/ND traffic is cloned to the "lsp-bgp"
+AT_CHECK([ovn-sbctl dump-flows ls | grep ls_in_l2_lkup | grep "arp.op == 2 && arp.tpa == 172.16.1.1" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(arp.op == 2 && arp.tpa == 172.16.1.1), action=(clone { outport = "lsp-bgp"; output; }; outport = "ls-lr"; output;)
+])
+AT_CHECK([ovn-sbctl dump-flows ls | grep ls_in_l2_lkup | grep "&& nd_na" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(ip6.dst == fe80::ac:10ff:fe01:1 && nd_na), action=(clone { outport = "lsp-bgp"; output; }; outport = "ls-lr"; output;)
+])
+
+# Check that at this point no BFD redirecting is present
+check_no_bfd_redirect
+
+# Add BFD traffic redirect
+check ovn-nbctl --wait=sb set logical_router_port lr-ls options:routing-protocols=BGP,BFD
+
+# Check that BFD traffic is redirected to "lsp-bgp"
+AT_CHECK([ovn-sbctl dump-flows ls | grep ls_in_l2_lkup | grep -E "udp.dst == 3784|udp.src == 3784" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(ip4.dst == 172.16.1.1 && udp.dst == 3784), action=(outport = "lsp-bgp"; output;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(ip4.dst == 172.16.1.1 && udp.src == 3784), action=(outport = "lsp-bgp"; output;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(ip6.dst == fe80::ac:10ff:fe01:1 && udp.dst == 3784), action=(outport = "lsp-bgp"; output;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(ip6.dst == fe80::ac:10ff:fe01:1 && udp.src == 3784), action=(outport = "lsp-bgp"; output;)
+])
+
+
+# Check that ARP replies and ND advertisements are blocked from exiting "lsp-bgp"
+AT_CHECK([ovn-sbctl dump-flows ls | grep ls_in_check_port_sec | grep "priority=80" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_check_port_sec), priority=80   , match=(inport == "lsp-bgp" && arp.op == 2), action=(reg0[[15]] = 1; next;)
+  table=??(ls_in_check_port_sec), priority=80   , match=(inport == "lsp-bgp" && nd_na), action=(reg0[[15]] = 1; next;)
+  table=??(ls_in_check_port_sec), priority=80   , match=(inport == "lsp-bgp" && nd_ra), action=(reg0[[15]] = 1; next;)
+])
+
+# Remove 'bgp-redirect' option from LRP and check that rules are removed
+check ovn-nbctl --wait=sb remove logical_router_port lr-ls options routing-protocol-redirect
+check ovn-nbctl --wait=sb remove logical_router_port lr-ls options routing-protocols
+check_no_redirect
+
+# Set non-existent LSP as target of 'bgp-redirect' and check that no rules are added
+check ovn-nbctl --wait=sb set logical_router_port lr-ls options:routing-protocol-redirect=lsp-foo
+check ovn-nbctl --wait=sb set logical_router_port lr-ls options:routing-protocols=BGP,BFD
+check_no_redirect
+
+AT_CLEANUP
+])

@@ -93,6 +93,13 @@ ovn_datapath_find_by_key(struct hmap *datapaths, uint32_t dp_key);
 
 bool od_has_lb_vip(const struct ovn_datapath *od);
 
+/* List of routing and routing-related protocols which
+ * OVN is capable of redirecting from LRP to specific LSP. */
+enum redirected_routing_protcol_flag_type {
+    REDIRECT_BGP = (1 << 0),
+    REDIRECT_BFD = (1 << 1),
+};
+
 struct tracked_ovn_ports {
     /* tracked created ports.
      * hmapx node data is 'struct ovn_port *' */
