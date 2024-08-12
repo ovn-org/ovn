@@ -5501,17 +5501,14 @@ main(int argc, char *argv[])
                                            br_int_remote.probe_interval)) {
                 VLOG_INFO("OVS feature set changed, force recompute.");
                 engine_set_force_recompute(true);
-                if (ovs_feature_set_discovered()) {
-                    uint32_t max_groups = ovs_feature_max_select_groups_get();
-                    uint32_t max_meters = ovs_feature_max_meters_get();
-                    struct ed_type_lflow_output *lflow_out_data =
-                        engine_get_internal_data(&en_lflow_output);
 
-                    ovn_extend_table_reinit(&lflow_out_data->group_table,
-                                            max_groups);
-                    ovn_extend_table_reinit(&lflow_out_data->meter_table,
-                                            max_meters);
-                }
+                struct ed_type_lflow_output *lflow_out_data =
+                    engine_get_internal_data(&en_lflow_output);
+
+                ovn_extend_table_reinit(&lflow_out_data->group_table,
+                                        ovs_feature_max_select_groups_get());
+                ovn_extend_table_reinit(&lflow_out_data->meter_table,
+                                        ovs_feature_max_meters_get());
             }
 
             if (br_int) {
