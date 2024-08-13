@@ -119,3 +119,57 @@ Q: How can I contribute to the OVN Community?
     questions.  You can also suggest improvements to documentation.  If you
     have a feature or bug you would like to work on, send a mail to one of the
     :doc:`mailing lists </internals/mailing-lists>`.
+
+Q: What does it mean when a feature is marked "experimental"?
+
+    A: Experimental features are marked this way because of one of
+    several reasons:
+
+    * The developer was only able to test the feature in a limited
+      environment. Therefore the feature may not always work as intended
+      in all environments.
+
+    * During review, the potential for failure was noticed, but the
+      circumstances that would lead to that failure were hard to nail
+      down or were strictly theoretical.
+
+    * What exists in OVN may be an early version of a more fleshed-out
+      feature to come in a later version.
+
+    * The feature was developed against a draft RFC that is subject to
+      change when the RFC is published.
+
+    * The feature was developed based on observations of how a specific
+      vendor implements a feature, rather than using IETF standards or
+      other documentated specifications.
+
+    A feature may be declared experimental for other reasons as well,
+    but the above are the most common. When a feature is marked
+    experimental, it has the following properties:
+
+    * The feature must be opt-in. The feature must be disabled by
+      default. When the feature is disabled, it must have no bearing
+      on other OVN functionality.
+
+    * Configuration and implementation details of the feature are
+      subject to change between major or minor versions of OVN.
+
+    * Users make use of this feature at their own risk. Users are free
+      to file issues against the feature, but developers are more likely
+      to prioritize work on non-experimental features first.
+
+    * Experimental features may be removed. For instance, if an
+      experimental feature exposes a security risk, it may be removed
+      rather than repaired.
+
+    The hope is that experimental features will eventually lose the
+    "experimental" marker and become a core feature. However, there is
+    no specific test or process defined for when a feature no longer
+    needs to be considered experimental. This typically will be decided
+    collectively by OVN maintainers.
+
+Q: How is a feature marked "experimental"?
+
+    A: Experimental features must contain the following note in their man
+    pages (ovn-nb.5, ovn-sb.5, ovn-controller.8, etc): "NOTE: this feature
+    is experimental and may be subject to removal/change in the future.:
