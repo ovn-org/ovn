@@ -346,7 +346,7 @@ Roi Dayan                          roid@mellanox.com
 Róbert Mulik                       robert.mulik@ericsson.com
 Romain Lenglet                     romain.lenglet@berabera.info
 Roni Bar Yanai                     roniba@mellanox.com
-Rosemarie O'Riorden                roriorden@redhat.com
+Rosemarie O'Riorden                rosemarie@redhat.com
 Russell Bryant                     russell@ovn.org
 RYAN D. MOATS                      rmoats@us.ibm.com
 Ryan Goulding                      rgouldin@redhat.com
