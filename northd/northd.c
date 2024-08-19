@@ -1126,7 +1126,7 @@ is_l3dgw_port(const struct ovn_port *op)
 /* This function returns true if 'op' is a chassis resident
  * derived port. False otherwise.
  * There are 2 ways to check if 'op' is chassis resident port.
- *  1. op->sb->type is "chassisresident"
+ *  1. op->sb->type is "chassisredirect"
  *  2. op->primary_port is not NULL.  If op->primary_port is set,
  *     it means 'op' is derived from the ovn_port op->primary_port.
  *
@@ -2136,7 +2136,7 @@ create_cr_port(struct ovn_port *op, struct hmap *ports,
 
     struct ovn_port *crp = ovn_port_find(ports, redirect_name);
     if (crp && crp->sb && crp->sb->datapath == op->od->sb) {
-        ovn_port_set_nb(crp, NULL, op->nbrp);
+        ovn_port_set_nb(crp, op->nbsp, op->nbrp);
         ovs_list_remove(&crp->list);
         ovs_list_push_back(both_dbs, &crp->list);
     } else {
@@ -2466,7 +2466,7 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
     }
 
 
-    /* Create chassisresident port for the distributed gateway port's (DGP)
+    /* Create chassisredirect port for the distributed gateway port's (DGP)
      * peer if
      *  - DGP's router has only one DGP and
      *  - Its peer is a logical switch port and
@@ -12622,7 +12622,7 @@ build_lrouter_port_nat_arp_nd_flow(struct ovn_port *op,
 
     if (op->peer && op->peer->cr_port) {
         /* We don't add the below flows if the router port's peer has
-         * a chassisresident port.  That's because routing is centralized on
+         * a chassisredirect port.  That's because routing is centralized on
          * the gateway chassis for the router port networks/subnets.
          */
         return;
@@ -16349,7 +16349,7 @@ lrouter_check_nat_entry(const struct ovn_datapath *od,
     *distributed = false;
 
     /* NAT cannnot be distributed if the DGP's peer
-     * has a chassisresident port (as the routing is centralized
+     * has a chassisredirect port (as the routing is centralized
      * on the gateway chassis for the DGP's networks/subnets.)
      */
     struct ovn_port *l3dgw_port = *nat_l3dgw_port;
