@@ -38762,6 +38762,7 @@ dnl don't match on IPv6 source and destination addresses for
 dnl simple switching.
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([IPv6 switching - megaflow check for IPv6 src/dst matches])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 
 check ovn-nbctl ls-add sw0
