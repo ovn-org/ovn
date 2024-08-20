@@ -130,3 +130,6 @@ OVN To-do List
   * Move the lflow build parallel processing from northd.c to lflow-mgr.c
     This would also ensure that the variables declared in northd.c
     (eg. thread_lflow_counter) are not externed in lflow-mgr.c.
+
+* Remove flows with `check_pkt_larger` when userspace datapath can handle
+  PMTUD. (https://issues.redhat.com/browse/FDP-256)
