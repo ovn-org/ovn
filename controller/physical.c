@@ -1258,6 +1258,12 @@ reply_imcp_error_if_pkt_too_big(struct ovn_desired_flow_table *flow_table,
     ofpact_put_set_field(
         &inner_ofpacts, mf_from_id(MFF_LOG_FLAGS), &value, &mask);
 
+    /* inport <-> outport */
+    put_stack(MFF_LOG_INPORT, ofpact_put_STACK_PUSH(&inner_ofpacts));
+    put_stack(MFF_LOG_OUTPORT, ofpact_put_STACK_PUSH(&inner_ofpacts));
+    put_stack(MFF_LOG_INPORT, ofpact_put_STACK_POP(&inner_ofpacts));
+    put_stack(MFF_LOG_OUTPORT, ofpact_put_STACK_POP(&inner_ofpacts));
+
     /* eth.src <-> eth.dst */
     put_stack(MFF_ETH_DST, ofpact_put_STACK_PUSH(&inner_ofpacts));
     put_stack(MFF_ETH_SRC, ofpact_put_STACK_PUSH(&inner_ofpacts));

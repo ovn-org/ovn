@@ -15740,14 +15740,17 @@ m4_define([MULTICHASSIS_PATH_MTU_DISCOVERY_TEST],
    second_mac=00:00:00:00:00:02
    multi1_mac=00:00:00:00:00:f0
    multi2_mac=00:00:00:00:00:f1
+   external_mac=00:00:00:00:ee:ff
    first_ip=10.0.0.1
    second_ip=10.0.0.2
    multi1_ip=10.0.0.10
    multi2_ip=10.0.0.20
+   external_ip=10.0.0.30
    first_ip6=abcd::1
    second_ip6=abcd::2
    multi1_ip6=abcd::f0
    multi2_ip6=abcd::f1
+   external_ip6=abcd::eeff
 
    check ovn-nbctl ls-add ls0
    check ovn-nbctl lsp-add ls0 first
@@ -15866,6 +15869,24 @@ m4_define([MULTICHASSIS_PATH_MTU_DISCOVERY_TEST],
 
    reset_env
 
+   AS_BOX([Multi with "unknown" to external doesn't produce wrong FDB])
+   len=3000
+   check ovn-nbctl --wait=hv lsp-set-addresses multi1 unknown
+
+   packet=$(send_ip_packet multi1 1 $multi1_mac $external_mac $multi1_ip $external_ip $(payload $len) 1 ${expected_ip_mtu})
+   echo $packet >> hv1/multi1.expected
+
+   packet=$(send_ip6_packet multi1 1 $multi1_mac $external_mac $multi1_ip6 $external_ip6 $(payload $len) 1 ${expected_ip_mtu})
+   echo $packet >> hv1/multi1.expected
+
+   check_pkts
+   reset_env
+
+   check_row_count fdb 0 mac="$external_mac"
+   ovn-sbctl --all destroy fdb
+
+   check ovn-nbctl --wait=hv lsp-set-addresses multi1 "${multi1_mac} ${multi1_ip} ${multi1_ip6}"
+
    AS_BOX([Packets of proper size are delivered from multichassis to regular ports])
 
    len=1000
@@ -15964,9 +15985,6 @@ m4_define([MULTICHASSIS_PATH_MTU_DISCOVERY_TEST],
 
    packet=$(send_ip6_packet multi1 1 $multi1_mac $multi2_mac $multi1_ip6 $multi2_ip6 $(payload $len) 1)
    echo $packet >> hv1/multi1.expected
-
-   check_pkts
-   reset_env
 
    AS_BOX([MTU updates are honored in ICMP Path MTU calculation])
 
