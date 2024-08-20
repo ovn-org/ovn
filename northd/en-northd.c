@@ -400,7 +400,6 @@ en_bfd_sync_run(struct engine_node *node, void *data)
                    &northd_data->lr_ports, &bfd_data->bfd_connections,
                    &route_policies_data->bfd_active_connections,
                    &static_routes_data->bfd_active_connections,
-                   &bfd_sync_data->bfd_connections,
                    &bfd_sync_data->bfd_ports);
     engine_set_node_state(node, EN_UPDATED);
 }

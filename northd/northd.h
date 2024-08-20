@@ -196,7 +196,6 @@ struct bfd_data {
 };
 
 struct bfd_sync_data {
-    struct hmap bfd_connections;
     struct sset bfd_ports;
 };
 
@@ -798,7 +797,7 @@ void build_route_policies(struct ovn_datapath *, const struct hmap *,
                           const struct hmap *, struct hmap *, struct hmap *);
 void bfd_table_sync(struct ovsdb_idl_txn *, const struct nbrec_bfd_table *,
                     const struct hmap *, const struct hmap *,
-                    const struct hmap *, const struct hmap *, struct hmap *,
+                    const struct hmap *, const struct hmap *,
                     struct sset *);
 void build_bfd_map(const struct nbrec_bfd_table *,
                    const struct sbrec_bfd_table *, struct hmap *);
