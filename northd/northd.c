@@ -11113,7 +11113,7 @@ parsed_route_lookup(struct hmap *routes, size_t hash,
 static void
 parsed_routes_add(struct ovn_datapath *od, const struct hmap *lr_ports,
                   const struct nbrec_logical_router_static_route *route,
-                  struct hmap *bfd_connections,
+                  const struct hmap *bfd_connections,
                   struct hmap *routes, struct simap *route_tables,
                   struct hmap *bfd_active_connections)
 {
@@ -11226,7 +11226,7 @@ parsed_routes_add(struct ovn_datapath *od, const struct hmap *lr_ports,
 
 void
 build_parsed_routes(struct ovn_datapath *od, const struct hmap *lr_ports,
-                    struct hmap *bfd_connections, struct hmap *routes,
+                    const struct hmap *bfd_connections, struct hmap *routes,
                     struct simap *route_tables,
                     struct hmap *bfd_active_connections)
 {
