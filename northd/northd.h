@@ -225,7 +225,7 @@ struct lflow_input {
     const struct ls_stateful_table *ls_stateful_table;
     const struct shash *meter_groups;
     const struct hmap *lb_datapaths_map;
-    const struct hmap *bfd_connections;
+    const struct sset *bfd_ports;
     const struct chassis_features *features;
     const struct hmap *svc_monitor_map;
     bool ovn_internal_version_changed;
