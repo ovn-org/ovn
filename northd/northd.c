@@ -10442,17 +10442,10 @@ bfd_port_lookup(const struct hmap *bfd_map, const char *logical_port,
 }
 
 static bool
-bfd_is_port_running(const struct hmap *bfd_map, const char *port)
+bfd_is_port_running(const struct sset *bfd_ports, const char *port)
 {
-    struct bfd_entry *bfd_e;
-    HMAP_FOR_EACH (bfd_e, hmap_node, bfd_map) {
-        if (!strcmp(bfd_e->logical_port, port)) {
-            return true;
-        }
-    }
-    return false;
+    return !!sset_find(bfd_ports, port);
 }
-
 
 #define BFD_DEF_MINTX       1000 /* 1s */
 #define BFD_DEF_MINRX       1000 /* 1s */
@@ -11711,7 +11704,7 @@ add_route(struct lflow_table *lflows, struct ovn_datapath *od,
           const struct ovn_port *op, const char *lrp_addr_s,
           const char *network_s, int plen, const char *gateway,
           bool is_src_route, const uint32_t rtb_id,
-          const struct hmap *bfd_connections,
+          const struct sset *bfd_ports,
           const struct ovsdb_idl_row *stage_hint, bool is_discard_route,
           int ofs, struct lflow_ref *lflow_ref)
 {
@@ -11760,7 +11753,7 @@ add_route(struct lflow_table *lflows, struct ovn_datapath *od,
                             priority, ds_cstr(&match),
                             ds_cstr(&actions), stage_hint,
                             lflow_ref);
-    if (op && bfd_is_port_running(bfd_connections, op->key)) {
+    if (op && bfd_is_port_running(bfd_ports, op->key)) {
         ds_put_format(&match, " && udp.dst == 3784");
         ovn_lflow_add_with_hint(lflows, op->od,
                                 S_ROUTER_IN_IP_ROUTING,
@@ -11777,7 +11770,7 @@ static void
 build_static_route_flow(struct lflow_table *lflows, struct ovn_datapath *od,
                         const struct hmap *lr_ports,
                         const struct parsed_route *route_,
-                        const struct hmap *bfd_connections,
+                        const struct sset *bfd_ports,
                         struct lflow_ref *lflow_ref)
 {
     const char *lrp_addr_s = NULL;
@@ -11802,7 +11795,7 @@ build_static_route_flow(struct lflow_table *lflows, struct ovn_datapath *od,
     add_route(lflows, route_->is_discard_route ? od : out_port->od, out_port,
               lrp_addr_s, prefix_s, route_->plen, route->nexthop,
               route_->is_src_route, route_->route_table_id,
-              bfd_connections, &route->header_, route_->is_discard_route,
+              bfd_ports, &route->header_, route_->is_discard_route,
               ofs, lflow_ref);
 
     free(prefix_s);
@@ -12954,10 +12947,10 @@ build_lrouter_force_snat_flows_op(struct ovn_port *op,
 static void
 build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
                         const struct shash *meter_groups,
-                        const struct hmap *bfd_connections,
+                        const struct sset *bfd_ports,
                         struct lflow_ref *lflow_ref)
 {
-    if (!bfd_is_port_running(bfd_connections, op->key)) {
+    if (!bfd_is_port_running(bfd_ports, op->key)) {
         return;
     }
 
@@ -13553,7 +13546,7 @@ build_ip_routing_pre_flows_for_lrouter(struct ovn_datapath *od,
  */
 static void
 build_ip_routing_flows_for_lrp(struct ovn_port *op,
-                               const struct hmap *bfd_connections,
+                               const struct sset *bfd_ports,
                                struct lflow_table *lflows,
                                struct lflow_ref *lflow_ref)
 {
@@ -13562,7 +13555,7 @@ build_ip_routing_flows_for_lrp(struct ovn_port *op,
         add_route(lflows, op->od, op, op->lrp_networks.ipv4_addrs[i].addr_s,
                   op->lrp_networks.ipv4_addrs[i].network_s,
                   op->lrp_networks.ipv4_addrs[i].plen, NULL, false, 0,
-                  bfd_connections, &op->nbrp->header_, false,
+                  bfd_ports, &op->nbrp->header_, false,
                   ROUTE_PRIO_OFFSET_CONNECTED, lflow_ref);
     }
 
@@ -13570,7 +13563,7 @@ build_ip_routing_flows_for_lrp(struct ovn_port *op,
         add_route(lflows, op->od, op, op->lrp_networks.ipv6_addrs[i].addr_s,
                   op->lrp_networks.ipv6_addrs[i].network_s,
                   op->lrp_networks.ipv6_addrs[i].plen, NULL, false, 0,
-                  bfd_connections, &op->nbrp->header_, false,
+                  bfd_ports, &op->nbrp->header_, false,
                   ROUTE_PRIO_OFFSET_CONNECTED, lflow_ref);
     }
 }
@@ -13579,7 +13572,7 @@ static void
 build_static_route_flows_for_lrouter(
         struct ovn_datapath *od, struct lflow_table *lflows,
         const struct hmap *lr_ports, struct hmap *parsed_routes,
-        struct simap *route_tables, const struct hmap *bfd_connections,
+        struct simap *route_tables, const struct sset *bfd_ports,
         struct lflow_ref *lflow_ref, struct simap *nexthops_table)
 {
     ovs_assert(od->nbr);
@@ -13628,7 +13621,7 @@ build_static_route_flows_for_lrouter(
     const struct unique_routes_node *ur;
     HMAP_FOR_EACH (ur, hmap_node, &unique_routes) {
         build_static_route_flow(lflows, od, lr_ports, ur->route,
-                                bfd_connections, lflow_ref);
+                                bfd_ports, lflow_ref);
     }
     ecmp_groups_destroy(&ecmp_groups);
     unique_routes_destroy(&unique_routes);
@@ -15330,7 +15323,7 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
                             struct lflow_table *lflows,
                             struct ds *match, struct ds *actions,
                             const struct shash *meter_groups,
-                            const struct hmap *bfd_connections,
+                            const struct sset *bfd_ports,
                             struct lflow_ref *lflow_ref)
 {
     ovs_assert(op->nbrp);
@@ -15372,8 +15365,7 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
     }
 
     /* BFD msg handling */
-    build_lrouter_bfd_flows(lflows, op, meter_groups, bfd_connections,
-                            lflow_ref);
+    build_lrouter_bfd_flows(lflows, op, meter_groups, bfd_ports, lflow_ref);
 
     /* ICMP time exceeded */
     struct ds ip_ds = DS_EMPTY_INITIALIZER;
@@ -16826,7 +16818,7 @@ build_lsp_lflows_for_lbnats(struct ovn_port *lsp,
 static void
 build_routable_flows_for_router_port(
     struct ovn_port *lrp, const struct lr_stateful_record *lr_stateful_rec,
-    const struct hmap *bfd_connections,
+    const struct sset *bfd_ports,
     struct lflow_table *lflows,
     struct ds *match,
     struct ds *actions)
@@ -16863,7 +16855,7 @@ build_routable_flows_for_router_port(
                               router_port->lrp_networks.ipv4_addrs[0].addr_s,
                               laddrs->ipv4_addrs[k].network_s,
                               laddrs->ipv4_addrs[k].plen, NULL, false, 0,
-                              bfd_connections, &router_port->nbrp->header_,
+                              bfd_ports, &router_port->nbrp->header_,
                               false, ROUTE_PRIO_OFFSET_CONNECTED,
                               lrp->stateful_lflow_ref);
                 }
@@ -16974,7 +16966,7 @@ build_lrp_lflows_for_lbnats(struct ovn_port *op,
 static void
 build_lbnat_lflows_iterate_by_lrp(
     struct ovn_port *op, const struct lr_stateful_table *lr_stateful_table,
-    const struct shash *meter_groups, const struct hmap *bfd_connections,
+    const struct shash *meter_groups, const struct sset *bfd_ports,
     struct ds *match, struct ds *actions, struct lflow_table *lflows)
 {
     ovs_assert(op->nbrp);
@@ -16987,7 +16979,7 @@ build_lbnat_lflows_iterate_by_lrp(
     build_lrp_lflows_for_lbnats(op, lr_stateful_rec, meter_groups, match,
                                 actions, lflows);
 
-    build_routable_flows_for_router_port(op, lr_stateful_rec, bfd_connections,
+    build_routable_flows_for_router_port(op, lr_stateful_rec, bfd_ports,
                                          lflows, match, actions);
 }
 
@@ -17051,7 +17043,7 @@ struct lswitch_flow_build_info {
     const struct shash *meter_groups;
     const struct hmap *lb_dps_map;
     const struct hmap *svc_monitor_map;
-    const struct hmap *bfd_connections;
+    const struct sset *bfd_ports;
     const struct chassis_features *features;
     char *svc_check_match;
     struct ds match;
@@ -17109,7 +17101,7 @@ build_lswitch_and_lrouter_iterate_by_lr(struct ovn_datapath *od,
     build_ip_routing_pre_flows_for_lrouter(od, lsi->lflows, NULL);
     build_static_route_flows_for_lrouter(od, lsi->lflows, lsi->lr_ports,
                                          lsi->parsed_routes, lsi->route_tables,
-                                         lsi->bfd_connections, NULL,
+                                         lsi->bfd_ports, NULL,
                                          lsi->nexthops_table);
     build_mcast_lookup_flows_for_lrouter(od, lsi->lflows, &lsi->match,
                                          &lsi->actions, NULL);
@@ -17181,7 +17173,7 @@ build_lswitch_and_lrouter_iterate_by_lrp(struct ovn_port *op,
                                           &lsi->actions, op->lflow_ref);
     build_neigh_learning_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
                                                 &lsi->actions, op->lflow_ref);
-    build_ip_routing_flows_for_lrp(op, lsi->bfd_connections,
+    build_ip_routing_flows_for_lrp(op, lsi->bfd_ports,
                                    lsi->lflows, op->lflow_ref);
     build_ND_RA_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
                                        &lsi->actions, lsi->meter_groups,
@@ -17200,7 +17192,7 @@ build_lswitch_and_lrouter_iterate_by_lrp(struct ovn_port *op,
                                             lsi->meter_groups,
                                             op->lflow_ref);
     build_lrouter_ipv4_ip_input(op, lsi->lflows, &lsi->match, &lsi->actions,
-                                lsi->meter_groups, lsi->bfd_connections,
+                                lsi->meter_groups, lsi->bfd_ports,
                                 op->lflow_ref);
     build_lrouter_icmp_packet_toobig_admin_flows(op, lsi->lflows, &lsi->match,
                                                  &lsi->actions, op->lflow_ref);
@@ -17293,7 +17285,7 @@ build_lflows_thread(void *arg)
                     build_lswitch_and_lrouter_iterate_by_lrp(op, lsi);
                     build_lbnat_lflows_iterate_by_lrp(
                         op, lsi->lr_stateful_table, lsi->meter_groups,
-                        lsi->bfd_connections, &lsi->match, &lsi->actions,
+                        lsi->bfd_ports, &lsi->match, &lsi->actions,
                         lsi->lflows);
                 }
             }
@@ -17434,7 +17426,7 @@ build_lswitch_and_lrouter_flows(
     const struct shash *meter_groups,
     const struct hmap *lb_dps_map,
     const struct hmap *svc_monitor_map,
-    const struct hmap *bfd_connections,
+    const struct sset *bfd_ports,
     const struct chassis_features *features,
     const char *svc_monitor_mac,
     const struct sampling_app_table *sampling_apps,
@@ -17470,7 +17462,7 @@ build_lswitch_and_lrouter_flows(
             lsiv[index].meter_groups = meter_groups;
             lsiv[index].lb_dps_map = lb_dps_map;
             lsiv[index].svc_monitor_map = svc_monitor_map;
-            lsiv[index].bfd_connections = bfd_connections;
+            lsiv[index].bfd_ports = bfd_ports;
             lsiv[index].features = features;
             lsiv[index].svc_check_match = svc_check_match;
             lsiv[index].thread_lflow_counter = 0;
@@ -17516,7 +17508,7 @@ build_lswitch_and_lrouter_flows(
             .meter_groups = meter_groups,
             .lb_dps_map = lb_dps_map,
             .svc_monitor_map = svc_monitor_map,
-            .bfd_connections = bfd_connections,
+            .bfd_ports = bfd_ports,
             .features = features,
             .svc_check_match = svc_check_match,
             .svc_monitor_mac = svc_monitor_mac,
@@ -17556,7 +17548,7 @@ build_lswitch_and_lrouter_flows(
             build_lswitch_and_lrouter_iterate_by_lrp(op, &lsi);
             build_lbnat_lflows_iterate_by_lrp(op, lsi.lr_stateful_table,
                                               lsi.meter_groups,
-                                              lsi.bfd_connections,
+                                              lsi.bfd_ports,
                                               &lsi.match,
                                               &lsi.actions,
                                               lsi.lflows);
@@ -17687,7 +17679,7 @@ void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
                                     input_data->meter_groups,
                                     input_data->lb_datapaths_map,
                                     input_data->svc_monitor_map,
-                                    input_data->bfd_connections,
+                                    input_data->bfd_ports,
                                     input_data->features,
                                     input_data->svc_monitor_mac,
                                     input_data->sampling_apps,
@@ -18056,7 +18048,7 @@ lflow_handle_lr_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
             build_lbnat_lflows_iterate_by_lrp(op,
                                               lflow_input->lr_stateful_table,
                                               lflow_input->meter_groups,
-                                              lflow_input->bfd_connections,
+                                              lflow_input->bfd_ports,
                                               &match, &actions,
                                               lflows);
 
