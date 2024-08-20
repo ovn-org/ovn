@@ -10534,7 +10534,6 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
                const struct hmap *bfd_connections,
                const struct hmap *rp_bfd_connections,
                const struct hmap *sr_bfd_connections,
-               struct hmap *sync_bfd_connections,
                struct sset *bfd_ports)
 {
     if (!ovnsb_txn) {
@@ -10542,10 +10541,11 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
     }
 
     unsigned long *bfd_src_ports = bitmap_allocate(BFD_UDP_SRC_PORT_LEN);
+    struct hmap sync_bfd_connections = HMAP_INITIALIZER(&sync_bfd_connections);
 
     struct bfd_entry *bfd_e;
     HMAP_FOR_EACH (bfd_e, hmap_node, bfd_connections) {
-        struct bfd_entry *e = bfd_alloc_entry(sync_bfd_connections,
+        struct bfd_entry *e = bfd_alloc_entry(&sync_bfd_connections,
                                               bfd_e->logical_port,
                                               bfd_e->dst_ip, bfd_e->status);
         e->nb_bt = bfd_e->nb_bt;
@@ -10560,7 +10560,7 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
 
     const struct nbrec_bfd *nb_bt;
     NBREC_BFD_TABLE_FOR_EACH (nb_bt, nbrec_bfd_table) {
-        bfd_e = bfd_port_lookup(sync_bfd_connections, nb_bt->logical_port,
+        bfd_e = bfd_port_lookup(&sync_bfd_connections, nb_bt->logical_port,
                                 nb_bt->dst_ip);
         if (!bfd_e) {
             continue;
@@ -10622,13 +10622,13 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
         bfd_e->stale = false;
     }
 
-    HMAP_FOR_EACH_SAFE (bfd_e, hmap_node, sync_bfd_connections) {
+    HMAP_FOR_EACH_POP (bfd_e, hmap_node, &sync_bfd_connections) {
         if (bfd_e->stale) {
-            hmap_remove(sync_bfd_connections, &bfd_e->hmap_node);
             sbrec_bfd_delete(bfd_e->sb_bt);
-            bfd_erase_entry(bfd_e);
         }
+        bfd_erase_entry(bfd_e);
     }
+    hmap_destroy(&sync_bfd_connections);
 
     bitmap_free(bfd_src_ports);
 }
@@ -18793,7 +18793,6 @@ bfd_init(struct bfd_data *data)
 void
 bfd_sync_init(struct bfd_sync_data *data)
 {
-    hmap_init(&data->bfd_connections);
     sset_init(&data->bfd_ports);
 }
 
@@ -18862,7 +18861,6 @@ bfd_destroy(struct bfd_data *data)
 void
 bfd_sync_destroy(struct bfd_sync_data *data)
 {
-    __bfd_destroy(&data->bfd_connections);
     sset_destroy(&data->bfd_ports);
 }
 
