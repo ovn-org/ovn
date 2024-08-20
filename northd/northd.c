@@ -10541,7 +10541,8 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
                const struct hmap *bfd_connections,
                const struct hmap *rp_bfd_connections,
                const struct hmap *sr_bfd_connections,
-               struct hmap *sync_bfd_connections)
+               struct hmap *sync_bfd_connections,
+               struct sset *bfd_ports)
 {
     if (!ovnsb_txn) {
         return;
@@ -10624,6 +10625,7 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
             }
         }
 
+        sset_add(bfd_ports, nb_bt->logical_port);
         bfd_e->stale = false;
     }
 
@@ -18797,6 +18799,13 @@ bfd_init(struct bfd_data *data)
 }
 
 void
+bfd_sync_init(struct bfd_sync_data *data)
+{
+    hmap_init(&data->bfd_connections);
+    sset_init(&data->bfd_ports);
+}
+
+void
 ecmp_nexthop_init(struct ecmp_nexthop_data *data)
 {
     simap_init(&data->nexthops);
@@ -18856,6 +18865,13 @@ void
 bfd_destroy(struct bfd_data *data)
 {
     __bfd_destroy(&data->bfd_connections);
+}
+
+void
+bfd_sync_destroy(struct bfd_sync_data *data)
+{
+    __bfd_destroy(&data->bfd_connections);
+    sset_destroy(&data->bfd_ports);
 }
 
 void

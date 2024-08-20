@@ -392,15 +392,16 @@ en_bfd_sync_run(struct engine_node *node, void *data)
         = engine_get_input_data("static_routes", node);
     const struct nbrec_bfd_table *nbrec_bfd_table =
         EN_OVSDB_GET(engine_get_input("NB_bfd", node));
-    struct bfd_data *bfd_sync_data = data;
+    struct bfd_sync_data *bfd_sync_data = data;
 
-    bfd_destroy(data);
-    bfd_init(data);
+    bfd_sync_destroy(data);
+    bfd_sync_init(data);
     bfd_table_sync(eng_ctx->ovnsb_idl_txn, nbrec_bfd_table,
                    &northd_data->lr_ports, &bfd_data->bfd_connections,
                    &route_policies_data->bfd_active_connections,
                    &static_routes_data->bfd_active_connections,
-                   &bfd_sync_data->bfd_connections);
+                   &bfd_sync_data->bfd_connections,
+                   &bfd_sync_data->bfd_ports);
     engine_set_node_state(node, EN_UPDATED);
 }
 
@@ -468,8 +469,8 @@ void
 *en_bfd_sync_init(struct engine_node *node OVS_UNUSED,
                   struct engine_arg *arg OVS_UNUSED)
 {
-    struct bfd_data *data = xzalloc(sizeof *data);
-    bfd_init(data);
+    struct bfd_sync_data *data = xzalloc(sizeof *data);
+    bfd_sync_init(data);
     return data;
 }
 
@@ -553,7 +554,7 @@ en_bfd_cleanup(void *data)
 void
 en_bfd_sync_cleanup(void *data)
 {
-    bfd_destroy(data);
+    bfd_sync_destroy(data);
 }
 
 void
