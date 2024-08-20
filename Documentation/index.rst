@@ -81,6 +81,7 @@ Learn more about the Open Virtual Network (OVN) project and about how you can co
 
 - **Contributing:** :doc:`internals/contributing/submitting-patches` |
   :doc:`internals/contributing/backporting-patches` |
+  :doc:`internals/contributing/inclusive-language` |
   :doc:`internals/contributing/coding-style`
 
 - **Maintaining:** :doc:`internals/maintainers` |
