@@ -56,6 +56,7 @@ DOC_SOURCE = \
 	Documentation/internals/security.rst \
 	Documentation/internals/contributing/index.rst \
 	Documentation/internals/contributing/backporting-patches.rst \
+	Documentation/internals/contributing/inclusive-language.rst \
 	Documentation/internals/contributing/coding-style.rst \
 	Documentation/internals/contributing/documentation-style.rst \
 	Documentation/internals/contributing/submitting-patches.rst \
