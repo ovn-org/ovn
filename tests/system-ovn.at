@@ -6172,21 +6172,18 @@ NS_CHECK_EXEC([bob1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | FORMAT_PING], \
 # and just ensure that the known ethernet address is present.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.0.1) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
-sed -e 's/mark=[[0-9]]*/mark=<cleared>/' |
-sed -e 's/labels=0x[[0-9]]/labels=0x?/'], [0], [dnl
-icmp,orig=(src=172.16.0.1,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0.0.2,dst=172.16.0.1,id=<cleared>,type=0,code=0),zone=<cleared>,mark=<cleared>,labels=0x?000000000401020400000000
-tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x?000000000401020400000000,protoinfo=(state=<cleared>)
+sed -e 's/mark=[[0-9]]*/mark=<cleared>/'], [0], [dnl
+icmp,orig=(src=172.16.0.1,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0.0.2,dst=172.16.0.1,id=<cleared>,type=0,code=0),zone=<cleared>,mark=<cleared>,labels=0x401020400000000
+tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x401020400000000,protoinfo=(state=<cleared>)
 ])
 
 # Ensure datapaths show conntrack states as expected
 # Like with conntrack entries, we shouldn't try to predict
 # port binding tunnel keys. So omit them from expected labels.
-AT_CHECK([ovs-appctl dpctl/dump-flows | sed -e 's/label=0x[[0-9]]/label=0x?/' | \
-grep 'ct_state(+new-est+trk).*ct(.*label=0x?000000000401020400000000/.*)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est+trk).*ct(.*label=0x401020400000000/.*)' -c], [0], [dnl
 2
 ])
-AT_CHECK([[ovs-appctl dpctl/dump-flows | sed -e 's/ct_label(0x[0-9]/ct_label(0x?/' | \
-grep 'ct_state(-new+est+trk).*ct_label(0x?000000000401020400000000)' -c]], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+trk).*ct_label(0x401020400000000)' -c], [0], [dnl
 2
 ])
 
@@ -6205,21 +6202,18 @@ NS_CHECK_EXEC([bob1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
-AT_CHECK([ovs-appctl dpctl/dump-flows | sed -e 's/label=0x[[0-9]]/label=0x?/' | \
-grep 'ct_state(+new-est+trk).*ct(.*label=0x?000000001001020400000000/.*)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est+trk).*ct(.*label=0x1001020400000000/.*)' -c], [0], [dnl
 2
 ])
-AT_CHECK([[ovs-appctl dpctl/dump-flows | sed -e 's/ct_label(0x[0-9]/ct_label(0x?/' | \
-grep 'ct_state(-new+est+trk).*ct_label(0x?000000001001020400000000)' -c]], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+trk).*ct_label(0x1001020400000000)' -c], [0], [dnl
 2
 ])
 
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 1001020400000000 | FORMAT_CT(172.16.0.1) | \
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 0x1001020400000000 | FORMAT_CT(172.16.0.1) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
-sed -e 's/mark=[[0-9]]*/mark=<cleared>/' |
-sed -e 's/labels=0x[[0-9]]/labels=0x?/' | sort], [0], [dnl
-icmp,orig=(src=172.16.0.1,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0.0.2,dst=172.16.0.1,id=<cleared>,type=0,code=0),zone=<cleared>,mark=<cleared>,labels=0x?000000001001020400000000
-tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x?000000001001020400000000,protoinfo=(state=<cleared>)
+sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
+icmp,orig=(src=172.16.0.1,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0.0.2,dst=172.16.0.1,id=<cleared>,type=0,code=0),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000
+tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000,protoinfo=(state=<cleared>)
 ])
 # Check entries in table 76 and 77 expires w/o traffic
 OVS_WAIT_UNTIL([
@@ -6241,11 +6235,10 @@ NS_CHECK_EXEC([alice1], [ping -q -c 3 -i 0.3 -w 2 172.16.0.1 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 401020500000000 | FORMAT_CT(172.16.0.1) | \
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 0x401020500000000 | FORMAT_CT(172.16.0.1) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
-sed -e 's/mark=[[0-9]]*/mark=<cleared>/' |
-sed -e 's/labels=0x[[0-9]]/labels=0x?/' | sort], [0], [dnl
-tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x?000000000401020500000000,protoinfo=(state=<cleared>)
+sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
+tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x401020500000000,protoinfo=(state=<cleared>)
 ])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
@@ -6395,12 +6388,11 @@ NS_CHECK_EXEC([bob1], [ping -q -c 3 -i 0.3 -w 2 fd01::2 | FORMAT_PING], \
 # Ensure datapaths show conntrack states as expected
 # Like with conntrack entries, we shouldn't try to predict
 # port binding tunnel keys. So omit them from expected labels.
-AT_CHECK([ovs-appctl dpctl/dump-flows | sed -e 's/label=0x[[0-9]]/label=0x?/' | \
-grep 'ct_state(+new-est+trk).*ct(.*label=0x?000000000401020400000000/.*)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est+trk).*ct(.*label=0x401020400000000/.*)' -c], [0], [dnl
 2
 ])
-AT_CHECK([[ovs-appctl dpctl/dump-flows | sed -e 's/ct_label(0x[0-9]/ct_label(0x?/' | \
-grep 'ct_state(-new+est+trk).*ct_label(0x?000000000401020400000000)' -c]], [0], [dnl
+
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+trk).*ct_label(0x401020400000000)' -c], [0], [dnl
 2
 ])
 
@@ -6409,10 +6401,9 @@ grep 'ct_state(-new+est+trk).*ct_label(0x?000000000401020400000000)' -c]], [0], 
 # and just ensure that the known ethernet address is present.
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd01::2) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
-sed -e 's/mark=[[0-9]]*/mark=<cleared>/' |
-sed -e 's/labels=0x[[0-9]]/labels=0x?/' | sort], [0], [dnl
-icmpv6,orig=(src=fd07::1,dst=fd01::2,id=<cleared>,type=128,code=0),reply=(src=fd01::2,dst=fd07::1,id=<cleared>,type=129,code=0),zone=<cleared>,mark=<cleared>,labels=0x?000000000401020400000000
-tcp,orig=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd07::1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x?000000000401020400000000,protoinfo=(state=<cleared>)
+sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
+icmpv6,orig=(src=fd07::1,dst=fd01::2,id=<cleared>,type=128,code=0),reply=(src=fd01::2,dst=fd07::1,id=<cleared>,type=129,code=0),zone=<cleared>,mark=<cleared>,labels=0x401020400000000
+tcp,orig=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd07::1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x401020400000000,protoinfo=(state=<cleared>)
 ])
 
 # Flush conntrack entries for easier output parsing of next test.
@@ -6429,21 +6420,18 @@ NS_CHECK_EXEC([bob1], [ping -q -c 3 -i 0.3 -w 2 fd01::2 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-AT_CHECK([ovs-appctl dpctl/dump-flows | sed -e 's/label=0x[[0-9]]/label=0x?/' | \
-grep 'ct_state(+new-est+trk).*ct(.*label=0x?000000001001020400000000/.*)' -c], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(+new-est+trk).*ct(.*label=0x1001020400000000/.*)' -c], [0], [dnl
 2
 ])
-AT_CHECK([[ovs-appctl dpctl/dump-flows | sed -e 's/ct_label(0x[0-9]/ct_label(0x?/' | \
-grep 'ct_state(-new+est+trk).*ct_label(0x?000000001001020400000000)' -c]], [0], [dnl
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+trk).*ct_label(0x1001020400000000)' -c], [0], [dnl
 2
 ])
 
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 1001020400000000 | FORMAT_CT(fd01::2) | \
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 0x1001020400000000 | FORMAT_CT(fd01::2) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
-sed -e 's/mark=[[0-9]]*/mark=<cleared>/' |
-sed -e 's/labels=0x[[0-9]]/labels=0x?/'], [0], [dnl
-icmpv6,orig=(src=fd07::1,dst=fd01::2,id=<cleared>,type=128,code=0),reply=(src=fd01::2,dst=fd07::1,id=<cleared>,type=129,code=0),zone=<cleared>,mark=<cleared>,labels=0x?000000001001020400000000
-tcp,orig=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd07::1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x?000000001001020400000000,protoinfo=(state=<cleared>)
+sed -e 's/mark=[[0-9]]*/mark=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd07::1,dst=fd01::2,id=<cleared>,type=128,code=0),reply=(src=fd01::2,dst=fd07::1,id=<cleared>,type=129,code=0),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000
+tcp,orig=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd07::1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000,protoinfo=(state=<cleared>)
 ])
 
 # Check entries in table 76 and 77 expires w/o traffic
@@ -6463,11 +6451,10 @@ NS_CHECK_EXEC([alice1], [ping -q -c 3 -i 0.3 -w 2 fd07::1 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 1001020400000000 | FORMAT_CT(fd07::1) | \
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 0x1001020400000000 | FORMAT_CT(fd07::1) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
-sed -e 's/mark=[[0-9]]*/mark=<cleared>/' |
-sed -e 's/labels=0x[[0-9]]/labels=0x?/' | sort], [0], [dnl
-tcp,orig=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd07::1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x?000000001001020400000000,protoinfo=(state=<cleared>)
+sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
+tcp,orig=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd07::1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000,protoinfo=(state=<cleared>)
 ])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
