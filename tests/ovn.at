@@ -38944,3 +38944,70 @@ OVN_CHECK_PACKETS([hv/vif1-tx.pcap], [expected-vif1])
 
 AT_CLEANUP
 ])
+
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Multichassis port I-P processing])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.12
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add ls multi
+check ovn-nbctl lsp-set-options multi requested-chassis=hv1
+
+check ovn-nbctl lsp-add ls ln
+check ovn-nbctl lsp-set-type ln localnet
+check ovn-nbctl lsp-set-addresses ln unknown
+check ovn-nbctl lsp-set-options ln network_name=phys
+
+check ovn-nbctl lsp-add ls lsp1 \
+    -- lsp-set-options lsp1 requested-chassis=hv1
+as hv1 check ovs-vsctl -- add-port br-int lsp1 \
+    -- set Interface lsp1 external-ids:iface-id=lsp1
+
+for hv in hv1 hv2; do
+    as $hv check ovs-vsctl -- add-port br-int multi \
+        -- set Interface multi external-ids:iface-id=multi
+done
+
+wait_for_ports_up
+ovn-nbctl --wait=hv sync
+
+OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep -c check_pkt_larger) -eq 0])
+
+check ovn-nbctl --wait=hv lsp-set-options multi requested-chassis=hv1,hv2
+OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep -c check_pkt_larger) -eq 4])
+
+check ovn-nbctl --wait=hv lsp-set-options multi requested-chassis=hv1
+OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep -c check_pkt_larger) -eq 0])
+
+check ovn-nbctl --wait=hv lsp-set-options multi requested-chassis=hv1,hv2
+OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep -c check_pkt_larger) -eq 4])
+
+as hv2 check ovs-vsctl del-port multi
+OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep -c check_pkt_larger) -eq 0])
+
+as hv2 check ovs-vsctl -- add-port br-int multi \
+    -- set Interface multi external-ids:iface-id=multi
+OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep -c check_pkt_larger) -eq 4])
+
+check ovn-nbctl --wait=hv lsp-del multi
+OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep -c check_pkt_larger) -eq 0])
+
+OVN_CLEANUP([hv1],[hv2])
+
+AT_CLEANUP
+])

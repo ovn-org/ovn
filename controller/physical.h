@@ -81,4 +81,7 @@ bool physical_handle_flows_for_lport(const struct sbrec_port_binding *,
                                      bool removed,
                                      struct physical_ctx *,
                                      struct ovn_desired_flow_table *);
+void physical_multichassis_reprocess(const struct sbrec_port_binding *,
+                                     struct physical_ctx *,
+                                     struct ovn_desired_flow_table *);
 #endif /* controller/physical.h */

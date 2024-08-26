@@ -4456,22 +4456,7 @@ pflow_output_if_status_mgr_handler(struct engine_node *node,
         }
         if (pb->n_additional_chassis) {
             /* Update flows for all ports in datapath. */
-            struct sbrec_port_binding *target =
-                sbrec_port_binding_index_init_row(
-                    p_ctx.sbrec_port_binding_by_datapath);
-            sbrec_port_binding_index_set_datapath(target, pb->datapath);
-
-            const struct sbrec_port_binding *binding;
-            SBREC_PORT_BINDING_FOR_EACH_EQUAL (
-                    binding, target, p_ctx.sbrec_port_binding_by_datapath) {
-                bool removed = sbrec_port_binding_is_deleted(binding);
-                if (!physical_handle_flows_for_lport(binding, removed, &p_ctx,
-                                                     &pfo->flow_table)) {
-                    destroy_physical_ctx(&p_ctx);
-                    return false;
-                }
-            }
-            sbrec_port_binding_index_destroy_row(target);
+            physical_multichassis_reprocess(pb, &p_ctx, &pfo->flow_table);
         } else {
             /* If any multichassis ports, update flows for the port. */
             bool removed = sbrec_port_binding_is_deleted(pb);

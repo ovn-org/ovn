@@ -2403,33 +2403,9 @@ physical_handle_flows_for_lport(const struct sbrec_port_binding *pb,
         }
     }
 
-    if (ldp) {
-        bool multichassis_state_changed = (
-            !!pb->additional_chassis ==
-            !!shash_find(&ldp->multichassis_ports, pb->logical_port)
-        );
-        if (multichassis_state_changed) {
-            if (pb->additional_chassis) {
-                add_local_datapath_multichassis_port(
-                    ldp, pb->logical_port, pb);
-            } else {
-                remove_local_datapath_multichassis_port(
-                    ldp, pb->logical_port);
-            }
-
-            struct sbrec_port_binding *target =
-                sbrec_port_binding_index_init_row(
-                    p_ctx->sbrec_port_binding_by_datapath);
-            sbrec_port_binding_index_set_datapath(target, ldp->datapath);
-
-            const struct sbrec_port_binding *port;
-            SBREC_PORT_BINDING_FOR_EACH_EQUAL (
-                    port, target, p_ctx->sbrec_port_binding_by_datapath) {
-                ofctrl_remove_flows(flow_table, &port->header_.uuid);
-                physical_eval_port_binding(p_ctx, port, flow_table);
-            }
-            sbrec_port_binding_index_destroy_row(target);
-        }
+    if (sbrec_port_binding_is_updated(
+            pb, SBREC_PORT_BINDING_COL_ADDITIONAL_CHASSIS) || removed) {
+        physical_multichassis_reprocess(pb, p_ctx, flow_table);
     }
 
     if (!removed) {
@@ -2444,6 +2420,25 @@ physical_handle_flows_for_lport(const struct sbrec_port_binding *pb,
     }
 
     return true;
+}
+
+void
+physical_multichassis_reprocess(const struct sbrec_port_binding *pb,
+                                struct physical_ctx *p_ctx,
+                                struct ovn_desired_flow_table *flow_table)
+{
+    struct sbrec_port_binding *target =
+            sbrec_port_binding_index_init_row(
+                    p_ctx->sbrec_port_binding_by_datapath);
+    sbrec_port_binding_index_set_datapath(target, pb->datapath);
+
+    const struct sbrec_port_binding *port;
+    SBREC_PORT_BINDING_FOR_EACH_EQUAL (port, target,
+                                       p_ctx->sbrec_port_binding_by_datapath) {
+        ofctrl_remove_flows(flow_table, &port->header_.uuid);
+        physical_eval_port_binding(p_ctx, port, flow_table);
+    }
+    sbrec_port_binding_index_destroy_row(target);
 }
 
 void
