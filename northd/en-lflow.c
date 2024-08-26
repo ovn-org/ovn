@@ -56,8 +56,6 @@ lflow_get_input_data(struct engine_node *node,
         engine_get_input_data("lr_stateful", node);
     struct ed_type_ls_stateful *ls_stateful_data =
         engine_get_input_data("ls_stateful", node);
-    struct ecmp_nexthop_data *nexthop_data =
-        engine_get_input_data("ecmp_nexthop", node);
 
     lflow_input->sbrec_logical_flow_table =
         EN_OVSDB_GET(engine_get_input("SB_logical_flow", node));
@@ -87,7 +85,6 @@ lflow_get_input_data(struct engine_node *node,
     lflow_input->parsed_routes = &static_routes_data->parsed_routes;
     lflow_input->route_tables = &static_routes_data->route_tables;
     lflow_input->route_policies = &route_policies_data->route_policies;
-    lflow_input->nexthops_table = &nexthop_data->nexthops;
 
     struct ed_type_global_config *global_config =
         engine_get_input_data("global_config", node);

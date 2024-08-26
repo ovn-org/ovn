@@ -28717,7 +28717,7 @@ AT_CHECK([
     for hv in 1 2; do
         grep table=$ecmp_stateful hv${hv}flows | \
         grep "priority=100" | \
-        grep -c "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],.*exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_MARK\\[[16..31\\]],load:0x[[0-9]]->NXM_NX_CT_LABEL\\[[96..127\\]]))"
+        grep -c "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],.*exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_MARK\\[[16..31\\]]))"
 
         grep table=$arp_resolve hv${hv}flows | \
         grep "priority=200" | \
@@ -28846,7 +28846,7 @@ AT_CHECK([
     for hv in 1 2; do
         grep table=$ecmp_stateful hv${hv}flows | \
         grep "priority=100" | \
-        grep -c "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],.*exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_MARK\\[[16..31\\]],load:0x[[0-9]]->NXM_NX_CT_LABEL\\[[96..127\\]]))"
+        grep -c "ct(commit,zone=NXM_NX_REG11\\[[0..15\\]],.*exec(move:NXM_OF_ETH_SRC\\[[\\]]->NXM_NX_CT_LABEL\\[[32..79\\]],load:0x[[0-9]]->NXM_NX_CT_MARK\\[[16..31\\]]))"
 
         grep table=$arp_resolve hv${hv}flows | \
         grep "priority=200" | \
