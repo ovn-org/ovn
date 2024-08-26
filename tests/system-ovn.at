@@ -6248,10 +6248,6 @@ sed -e 's/labels=0x[[0-9]]/labels=0x?/' | sort], [0], [dnl
 tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x?000000000401020500000000,protoinfo=(state=<cleared>)
 ])
 
-# Flush connection tracking entries
-ovn-nbctl --wait=hv lr-route-del R1
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.0.1)])
-
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
 as ovn-sb
@@ -6473,10 +6469,6 @@ sed -e 's/mark=[[0-9]]*/mark=<cleared>/' |
 sed -e 's/labels=0x[[0-9]]/labels=0x?/' | sort], [0], [dnl
 tcp,orig=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd07::1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x?000000001001020400000000,protoinfo=(state=<cleared>)
 ])
-
-# Flush connection tracking entries
-check ovn-nbctl --wait=hv lr-route-del R1
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd01::2)])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 

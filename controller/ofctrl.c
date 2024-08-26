@@ -45,7 +45,6 @@
 #include "ovn/actions.h"
 #include "lib/extend-table.h"
 #include "lib/lb.h"
-#include "lib/ovn-util.h"
 #include "openvswitch/poll-loop.h"
 #include "physical.h"
 #include "openvswitch/rconn.h"
@@ -390,15 +389,8 @@ struct meter_band_entry {
 
 static struct shash meter_bands;
 
-static unsigned long *ecmp_nexthop_ids;
-
 static void ofctrl_meter_bands_destroy(void);
 static void ofctrl_meter_bands_clear(void);
-
-static void ecmp_nexthop_monitor_run(
-        const struct sbrec_ecmp_nexthop_table *enh_table,
-        struct ovs_list *msgs);
-
 
 /* MFF_* field ID for our Geneve option.  In S_TLV_TABLE_MOD_SENT, this is
  * the option we requested (we don't know whether we obtained it yet).  In
@@ -438,7 +430,6 @@ ofctrl_init(struct ovn_extend_table *group_table,
     groups = group_table;
     meters = meter_table;
     shash_init(&meter_bands);
-    ecmp_nexthop_ids = bitmap_allocate(ECMP_NEXTHOP_IDS_LEN);
 }
 
 /* S_NEW, for a new connection.
@@ -886,7 +877,6 @@ ofctrl_destroy(void)
     expr_symtab_destroy(&symtab);
     shash_destroy(&symtab);
     ofctrl_meter_bands_destroy();
-    bitmap_free(ecmp_nexthop_ids);
 }
 
 uint64_t
@@ -2317,47 +2307,6 @@ add_meter(struct ovn_extend_table_info *m_desired,
 }
 
 static void
-ecmp_nexthop_monitor_flush_ct_entry(uint64_t id, struct ovs_list *msgs)
-{
-    ovs_u128 mask = {
-        /* ct_labels.label BITS[96-127] */
-        .u64.hi = 0xffffffff00000000,
-    };
-    ovs_u128 nexthop = {
-        .u64.hi = id << 32,
-    };
-    struct ofp_ct_match match = {
-        .labels = nexthop,
-        .labels_mask = mask,
-    };
-    struct ofpbuf *msg = ofp_ct_match_encode(&match, NULL,
-                                             rconn_get_version(swconn));
-    ovs_list_push_back(msgs, &msg->list_node);
-}
-
-static void
-ecmp_nexthop_monitor_run(const struct sbrec_ecmp_nexthop_table *enh_table,
-                         struct ovs_list *msgs)
-{
-    unsigned long *ids = bitmap_allocate(ECMP_NEXTHOP_IDS_LEN);
-
-    const struct sbrec_ecmp_nexthop *sbrec_ecmp_nexthop;
-    SBREC_ECMP_NEXTHOP_TABLE_FOR_EACH (sbrec_ecmp_nexthop, enh_table) {
-        bitmap_set1(ids, sbrec_ecmp_nexthop->id);
-    }
-
-    int id;
-    BITMAP_FOR_EACH_1 (id, ECMP_NEXTHOP_IDS_LEN, ecmp_nexthop_ids) {
-        if (!bitmap_is_set(ids, id)) {
-            ecmp_nexthop_monitor_flush_ct_entry(id, msgs);
-        }
-    }
-
-    bitmap_free(ecmp_nexthop_ids);
-    ecmp_nexthop_ids = ids;
-}
-
-static void
 installed_flow_add(struct ovn_flow *d,
                    struct ofputil_bundle_ctrl_msg *bc,
                    struct ovs_list *msgs)
@@ -2715,7 +2664,6 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
            struct shash *pending_ct_zones,
            struct hmap *pending_lb_tuples,
            struct ovsdb_idl_index *sbrec_meter_by_name,
-           const struct sbrec_ecmp_nexthop_table *enh_table,
            uint64_t req_cfg,
            bool lflows_changed,
            bool pflows_changed)
@@ -2755,8 +2703,6 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
 
     /* OpenFlow messages to send to the switch to bring it up-to-date. */
     struct ovs_list msgs = OVS_LIST_INITIALIZER(&msgs);
-
-    ecmp_nexthop_monitor_run(enh_table, &msgs);
 
     /* Iterate through ct zones that need to be flushed. */
     struct shash_node *iter;

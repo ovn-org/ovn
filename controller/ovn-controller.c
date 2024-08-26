@@ -5722,8 +5722,6 @@ main(int argc, char *argv[])
                                    &ct_zones_data->ctx.pending,
                                    &lb_data->removed_tuples,
                                    sbrec_meter_by_name,
-                                   sbrec_ecmp_nexthop_table_get(
-                                        ovnsb_idl_loop.idl),
                                    ofctrl_seqno_get_req_cfg(),
                                    engine_node_changed(&en_lflow_output),
                                    engine_node_changed(&en_pflow_output));
