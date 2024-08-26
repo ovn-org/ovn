@@ -5178,35 +5178,4 @@ tcp.flags = RST;
       The set of variable values for a given chassis.
     </column>
   </table>
-
-  <table name="ECMP_Nexthop">
-    <p>
-      Each record in this table represents an active ECMP route committed by
-      <code>ovn-northd</code> to <code>ovs</code> connection-tracking table.
-      <code>ECMP_Nexthop</code> table is used by <code>ovn-controller</code>
-      to track active ct entries and to flush stale ones.
-    </p>
-    <column name="nexthop">
-      <p>
-        Nexthop IP address for this ECMP route. Nexthop IP address should
-        be the IP address of a connected router port or the IP address of
-        an external device used as nexthop for the given destination.
-      </p>
-    </column>
-
-    <column name="id">
-      <p>
-        Nexthop unique identifier. Nexthop ID is used to track active
-        ecmp-symmetric-reply connections and flush stale ones.
-      </p>
-    </column>
-
-    <column name="options">
-      Reserved for future use.
-    </column>
-
-    <column name="external_ids">
-      See <em>External IDs</em> at the beginning of this document.
-    </column>
-  </table>
 </database>

@@ -405,25 +405,6 @@ en_bfd_sync_run(struct engine_node *node, void *data)
 }
 
 void
-en_ecmp_nexthop_run(struct engine_node *node, void *data)
-{
-    const struct engine_context *eng_ctx = engine_get_context();
-    struct static_routes_data *static_routes_data =
-        engine_get_input_data("static_routes", node);
-    struct ecmp_nexthop_data *enh_data = data;
-    const struct sbrec_ecmp_nexthop_table *sbrec_ecmp_nexthop_table =
-        EN_OVSDB_GET(engine_get_input("SB_ecmp_nexthop", node));
-
-    ecmp_nexthop_destroy(data);
-    ecmp_nexthop_init(data);
-    build_ecmp_nexthop_table(eng_ctx->ovnsb_idl_txn,
-                             &static_routes_data->parsed_routes,
-                             &enh_data->nexthops,
-                             sbrec_ecmp_nexthop_table);
-    engine_set_node_state(node, EN_UPDATED);
-}
-
-void
 *en_northd_init(struct engine_node *node OVS_UNUSED,
                 struct engine_arg *arg OVS_UNUSED)
 {
@@ -470,16 +451,6 @@ void
 {
     struct bfd_sync_data *data = xzalloc(sizeof *data);
     bfd_sync_init(data);
-    return data;
-}
-
-void
-*en_ecmp_nexthop_init(struct engine_node *node OVS_UNUSED,
-                      struct engine_arg *arg OVS_UNUSED)
-{
-    struct ecmp_nexthop_data *data = xzalloc(sizeof *data);
-
-    ecmp_nexthop_init(data);
     return data;
 }
 
@@ -554,10 +525,4 @@ void
 en_bfd_sync_cleanup(void *data)
 {
     bfd_sync_destroy(data);
-}
-
-void
-en_ecmp_nexthop_cleanup(void *data)
-{
-    ecmp_nexthop_destroy(data);
 }

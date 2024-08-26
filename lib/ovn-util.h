@@ -38,8 +38,6 @@
 #define STT_TUNNEL_OVERHEAD 18
 #define VXLAN_TUNNEL_OVERHEAD 30
 
-#define ECMP_NEXTHOP_IDS_LEN 65535
-
 struct eth_addr;
 struct nbrec_logical_router_port;
 struct ovsrec_flow_sample_collector_set_table;
