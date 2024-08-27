@@ -2934,6 +2934,16 @@ consider_patch_port_for_local_datapaths(const struct sbrec_port_binding *pb,
                 b_ctx_out->tracked_dp_bindings);
         }
     }
+
+    if (sbrec_port_binding_is_updated(pb, SBREC_PORT_BINDING_COL_TYPE) &&
+       (pb->chassis == b_ctx_in->chassis_rec ||
+            is_additional_chassis(pb, b_ctx_in->chassis_rec))) {
+        remove_local_lports(pb->logical_port, b_ctx_out);
+        release_lport(pb, b_ctx_in->chassis_rec,
+                             !b_ctx_in->ovnsb_idl_txn,
+                             b_ctx_out->tracked_dp_bindings,
+                             b_ctx_out->if_mgr);
+    }
 }
 
 static bool

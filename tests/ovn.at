@@ -39038,3 +39038,145 @@ OVN_CLEANUP([hv1],[hv2])
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ct_zones])
+AT_KEYWORDS([ct_zones])
+
+ovn_start
+
+net_add n1
+for i in 1 2; do
+    check ovn-nbctl ls-add ls${i}
+    ovn-nbctl lsp-add ls${i} lsp${i}
+    sim_add hv$i
+    as hv$i
+    ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys 192.168.0.$i
+    ovs-vsctl -- add-port br-int vif${i} -- set Interface vif${i} external-ids:iface-id=lsp${i}
+done
+
+check ovn-nbctl lr-add r1
+check ovn-nbctl lrp-add r1 r1-ls1 f0:00:00:00:00:01 192.168.2.1/24 \
+                -- lsp-add ls1 ls1-r1 \
+                -- set Logical_Switch_Port ls1-r1 type=router options:router-port=r1-ls1 addresses=router
+
+check ovn-nbctl lrp-add r1 r1-ls2 f0:00:00:00:00:02 192.168.3.1/24 \
+                -- lsp-add ls2 ls2-r1 \
+                -- set Logical_Switch_Port ls2-r1 type=router options:router-port=r1-ls2 addresses=router
+
+check ovn-nbctl --wait=hv sync
+
+AS_BOX([With patch ports])
+zone_list_hv1=$(as hv1 ovn-appctl -t ovn-controller ct-zone-list | sort)
+AT_CHECK([echo "$zone_list_hv1" | sed "s/ [[0-9]]*/ ??/" | sort], [0], [dnl
+ls1_dnat ??
+ls1_snat ??
+ls2_dnat ??
+ls2_snat ??
+lsp1 ??
+r1_dnat ??
+r1_snat ??
+])
+
+zone_list_hv2=$(as hv2 ovn-appctl -t ovn-controller ct-zone-list | sort)
+AT_CHECK([echo "$zone_list_hv2" | sed "s/ [[0-9]]*/ ??/" | sort], [0], [dnl
+ls1_dnat ??
+ls1_snat ??
+ls2_dnat ??
+ls2_snat ??
+lsp2 ??
+r1_dnat ??
+r1_snat ??
+])
+
+AS_BOX([With patch ports after recompute])
+check as hv1 ovn-appctl -t ovn-controller inc-engine/recompute
+check as hv2 ovn-appctl -t ovn-controller inc-engine/recompute
+zone_list_hv1_after_recompute=$(as hv1 ovn-appctl -t ovn-controller ct-zone-list | sort)
+zone_list_hv2_after_recompute=$(as hv2 ovn-appctl -t ovn-controller ct-zone-list | sort)
+AT_CHECK([test "X$zone_list_hv1" = "X$zone_list_hv1_after_recompute"])
+AT_CHECK([test "X$zone_list_hv2" = "X$zone_list_hv2_after_recompute"])
+
+AS_BOX([With l3gw in hv2])
+check ovn-nbctl --wait=hv set Logical_Router r1 options:chassis=hv2
+# ls2 should now only be a local datapath in hv2.
+# However, ovn-controller does not remove datapath from list of ldp when needed, so ls2 is still seen as local in hv1.
+zone_list_hv1=$(as hv1 ovn-appctl -t ovn-controller ct-zone-list | sort)
+AT_CHECK([echo "$zone_list_hv1" | sed "s/ [[0-9]]*/ ??/" | sort], [0], [dnl
+ls1_dnat ??
+ls1_snat ??
+ls2_dnat ??
+ls2_snat ??
+lsp1 ??
+r1_dnat ??
+r1_snat ??
+])
+
+# l3gw ports should have ct_zones allocated
+zone_list_hv2=$(as hv2 ovn-appctl -t ovn-controller ct-zone-list | sort)
+AT_CHECK([echo "$zone_list_hv2" | sed "s/ [[0-9]]*/ ??/" | sort], [0], [dnl
+ls1-r1 ??
+ls1_dnat ??
+ls1_snat ??
+ls2-r1 ??
+ls2_dnat ??
+ls2_snat ??
+lsp2 ??
+r1-ls1 ??
+r1-ls2 ??
+r1_dnat ??
+r1_snat ??
+])
+
+AS_BOX([With l3gw ports after recompute])
+check as hv1 ovn-appctl -t ovn-controller inc-engine/recompute
+check as hv2 ovn-appctl -t ovn-controller inc-engine/recompute
+
+# ls2 not in hv1 after recompute, as expected
+zone_list_hv1_after_recompute=$(as hv1 ovn-appctl -t ovn-controller ct-zone-list | sort)
+AT_CHECK([echo "$zone_list_hv1_after_recompute" | sed "s/ [[0-9]]*/ ??/" | sort], [0], [dnl
+ls1_dnat ??
+ls1_snat ??
+lsp1 ??
+])
+
+zone_list_hv2_after_recompute=$(as hv2 ovn-appctl -t ovn-controller ct-zone-list | sort)
+AT_CHECK([test "X$zone_list_hv2" = "X$zone_list_hv2_after_recompute"])
+
+AS_BOX([With patch ports again])
+check ovn-nbctl --wait=hv remove Logical_Router r1 options chassis=hv2
+zone_list_hv1=$(as hv1 ovn-appctl -t ovn-controller ct-zone-list | sort)
+AT_CHECK([echo "$zone_list_hv1" | sed "s/ [[0-9]]*/ ??/" | sort], [0], [dnl
+ls1_dnat ??
+ls1_snat ??
+ls2_dnat ??
+ls2_snat ??
+lsp1 ??
+r1_dnat ??
+r1_snat ??
+])
+
+zone_list_hv2=$(as hv2 ovn-appctl -t ovn-controller ct-zone-list | sort)
+AT_CHECK([echo "$zone_list_hv2" | sed "s/ [[0-9]]*/ ??/" | sort], [0], [dnl
+ls1_dnat ??
+ls1_snat ??
+ls2_dnat ??
+ls2_snat ??
+lsp2 ??
+r1_dnat ??
+r1_snat ??
+])
+
+check as hv1 ovn-appctl -t ovn-controller inc-engine/recompute
+check as hv2 ovn-appctl -t ovn-controller inc-engine/recompute
+AS_BOX([With patch ports after recompute])
+zone_list_hv1_after_recompute=$(as hv1 ovn-appctl -t ovn-controller ct-zone-list | sort)
+zone_list_hv2_after_recompute=$(as hv2 ovn-appctl -t ovn-controller ct-zone-list | sort)
+AT_CHECK([test "X$zone_list_hv1" = "X$zone_list_hv1_after_recompute"])
+AT_CHECK([test "X$zone_list_hv2" = "X$zone_list_hv2_after_recompute"])
+
+OVN_CLEANUP([hv1],[hv2])
+
+AT_CLEANUP
+])
