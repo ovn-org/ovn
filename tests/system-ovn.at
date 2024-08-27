@@ -13169,12 +13169,12 @@ dnl And wait for it to be up and running.
 OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q '1 ids'])
 
 dnl Start UDP echo server on vm2.
-NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l 1000], [nc-vm2-1000.pid])
-NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l 1010], [nc-vm2-1010.pid])
-NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l 2000], [nc-vm2-2000.pid])
-NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l 2010], [nc-vm2-2010.pid])
-NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l 3000], [nc-vm2-3000.pid])
-NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l 3010], [nc-vm2-3010.pid])
+NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l -m 1 1000], [nc-vm2-1000.pid])
+NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l -m 1 1010], [nc-vm2-1010.pid])
+NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l -m 1 2000], [nc-vm2-2000.pid])
+NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l -m 1 2010], [nc-vm2-2010.pid])
+NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l -m 1 3000], [nc-vm2-3000.pid])
+NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l -m 1 3010], [nc-vm2-3010.pid])
 
 dnl Send traffic (2 packets) to the UDP LB1 (hits the from-lport ACL).
 NS_CHECK_EXEC([vm1], [(echo a; sleep 1; echo a) | nc --send-only -u 43.43.43.43 1000])
@@ -13337,7 +13337,7 @@ dnl And wait for it to be up and running.
 OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q '1 ids'])
 
 dnl Start UDP echo server on vm2.
-NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l 1000], [nc-vm2-1000.pid])
+NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l -m 1 1000], [nc-vm2-1000.pid])
 
 dnl Send traffic to the UDP server (hits both ACL tiers).
 NS_CHECK_EXEC([vm1], [echo a | nc --send-only -u 42.42.42.3 1000])
