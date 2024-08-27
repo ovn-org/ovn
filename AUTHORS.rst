@@ -184,6 +184,7 @@ Ian Campbell                       Ian.Campbell@citrix.com
 Ian Stokes                         ian.stokes@intel.com
 Igor Zhukov                        ivzhukov@sbercloud.ru
 Ihar Hrachyshka                    ihrachys@redhat.com
+Ihtisham ul Haq                    Ihtisham.ul_Haq@mail.schwarz
 Ilya Maximets                      i.maximets@samsung.com
 Iman Tabrizian                     tabrizian@outlook.com
 Isaku Yamahata                     yamahata@valinux.co.jp
@@ -277,6 +278,8 @@ Maryam Tahhan                      maryam.tahhan@intel.com
 Matteo Croce                       mcroce@redhat.com
 Matthias May                       matthias.may@neratec.com
 Mauricio Vásquez                   mauricio.vasquezbernal@studenti.polito.it
+Max Lamprecht                      max.lamprecht@mail.schwarz
+Maxim Korezkij                     maxim.korezkij@mail.schwarz
 Maxime Coquelin                    maxime.coquelin@redhat.com
 Mehak Mahajaon
 Mengxin Liu                        mengxin@alauda.io

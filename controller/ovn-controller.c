@@ -844,6 +844,7 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
 #define SB_NODES \
     SB_NODE(sb_global, "sb_global") \
     SB_NODE(chassis, "chassis") \
+    SB_NODE(ha_chassis_group, "ha_chassis_group") \
     SB_NODE(encap, "encap") \
     SB_NODE(address_set, "address_set") \
     SB_NODE(port_group, "port_group") \
@@ -3301,6 +3302,47 @@ en_mac_cache_cleanup(void *data)
     hmap_destroy(&cache_data->fdbs);
 }
 
+struct ed_type_bfd_chassis {
+    struct sset bfd_chassis;
+};
+
+static void *
+en_bfd_chassis_init(struct engine_node *node OVS_UNUSED,
+                   struct engine_arg *arg OVS_UNUSED)
+{
+    struct ed_type_bfd_chassis *data = xzalloc(sizeof *data);
+    sset_init(&data->bfd_chassis);
+    return data;
+}
+
+static void
+en_bfd_chassis_run(struct engine_node *node, void *data OVS_UNUSED)
+{
+    struct ed_type_bfd_chassis *bfd_chassis = data;
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    const struct sbrec_ha_chassis_group_table *ha_chassis_grp_table =
+        EN_OVSDB_GET(engine_get_input("SB_ha_chassis_group", node));
+    struct ovsdb_idl_index *sbrec_chassis_by_name =
+        engine_ovsdb_node_get_index(
+            engine_get_input("SB_chassis", node),
+            "name");
+    const struct sbrec_chassis *chassis
+        = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
+
+    sset_clear(&bfd_chassis->bfd_chassis);
+    bfd_calculate_chassis(chassis, ha_chassis_grp_table,
+                          &bfd_chassis->bfd_chassis);
+    engine_set_node_state(node, EN_UPDATED);
+}
+
+static void
+en_bfd_chassis_cleanup(void *data OVS_UNUSED){
+    struct ed_type_bfd_chassis *bfd_chassis = data;
+    sset_destroy(&bfd_chassis->bfd_chassis);
+}
+
 /* Engine node which is used to handle the Non VIF data like
  *   - OVS patch ports
  *   - Tunnel ports and the related chassis information.
@@ -4712,6 +4754,14 @@ controller_output_mac_cache_handler(struct engine_node *node,
     return true;
 }
 
+static bool
+controller_output_bfd_chassis_handler(struct engine_node *node,
+                                    void *data OVS_UNUSED)
+{
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
+}
+
 /* Handles sbrec_chassis changes.
  * If a new chassis is added or removed return false, so that
  * flows are recomputed.  For any updates, there is no need for
@@ -5024,6 +5074,7 @@ main(int argc, char *argv[])
     ENGINE_NODE(if_status_mgr, "if_status_mgr");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lb_data, "lb_data");
     ENGINE_NODE(mac_cache, "mac_cache");
+    ENGINE_NODE(bfd_chassis, "bfd_chassis");
 
 #define SB_NODE(NAME, NAME_STR) ENGINE_NODE_SB(NAME, NAME_STR);
     SB_NODES
@@ -5063,6 +5114,10 @@ main(int argc, char *argv[])
 
     engine_add_input(&en_if_status_mgr, &en_ovs_interface,
                      if_status_mgr_ovs_interface_handler);
+    engine_add_input(&en_bfd_chassis, &en_ovs_open_vswitch, NULL);
+    engine_add_input(&en_bfd_chassis, &en_sb_sb_global, NULL);
+    engine_add_input(&en_bfd_chassis, &en_sb_chassis, NULL);
+    engine_add_input(&en_bfd_chassis, &en_sb_ha_chassis_group, NULL);
 
     /* Note: The order of inputs is important, all OVS interface changes must
      * be handled before any ct_zone changes.
@@ -5220,6 +5275,8 @@ main(int argc, char *argv[])
                      controller_output_pflow_output_handler);
     engine_add_input(&en_controller_output, &en_mac_cache,
                      controller_output_mac_cache_handler);
+    engine_add_input(&en_controller_output, &en_bfd_chassis,
+                     controller_output_bfd_chassis_handler);
 
     struct engine_arg engine_arg = {
         .sb_idl = ovnsb_idl_loop.idl,
@@ -5264,6 +5321,8 @@ main(int argc, char *argv[])
         engine_get_internal_data(&en_pflow_output);
     struct ed_type_ct_zones *ct_zones_data =
         engine_get_internal_data(&en_ct_zones);
+    struct ed_type_bfd_chassis *bfd_chassis_data =
+        engine_get_internal_data(&en_bfd_chassis);
     struct ed_type_runtime_data *runtime_data =
         engine_get_internal_data(&en_runtime_data);
     struct ed_type_template_vars *template_vars_data =
@@ -5572,6 +5631,7 @@ main(int argc, char *argv[])
                     }
 
                     ct_zones_data = engine_get_data(&en_ct_zones);
+                    bfd_chassis_data = engine_get_data(&en_bfd_chassis);
                     if (ovs_idl_txn) {
                         if (ct_zones_data) {
                             stopwatch_start(CT_ZONE_COMMIT_STOPWATCH_NAME,
@@ -5581,13 +5641,18 @@ main(int argc, char *argv[])
                             stopwatch_stop(CT_ZONE_COMMIT_STOPWATCH_NAME,
                                            time_msec());
                         }
-                        stopwatch_start(BFD_RUN_STOPWATCH_NAME, time_msec());
-                        bfd_run(ovsrec_interface_table_get(ovs_idl_loop.idl),
-                                br_int, chassis,
-                                sbrec_ha_chassis_group_table_get(
-                                    ovnsb_idl_loop.idl),
-                                sbrec_sb_global_table_get(ovnsb_idl_loop.idl));
-                        stopwatch_stop(BFD_RUN_STOPWATCH_NAME, time_msec());
+                        if (bfd_chassis_data) {
+                            stopwatch_start(
+                                BFD_RUN_STOPWATCH_NAME, time_msec());
+                            bfd_run(
+                                ovsrec_interface_table_get(ovs_idl_loop.idl),
+                                br_int, &bfd_chassis_data->bfd_chassis,
+                                chassis, sbrec_sb_global_table_get(
+                                    ovnsb_idl_loop.idl)
+                            );
+                            stopwatch_stop(
+                                BFD_RUN_STOPWATCH_NAME, time_msec());
+                        }
                     }
 
                     runtime_data = engine_get_data(&en_runtime_data);

@@ -117,7 +117,7 @@ bfd_calculate_active_tunnels(const struct ovsrec_bridge *br_int,
  *
  * If 'our_chassis' is C5 then this function returns empty bfd set.
  */
-static void
+void
 bfd_calculate_chassis(
     const struct sbrec_chassis *our_chassis,
     const struct sbrec_ha_chassis_group_table *ha_chassis_grp_table,
@@ -154,7 +154,9 @@ bfd_calculate_chassis(
                 if (smap_get_bool(&ref_ch->other_config, "is-remote", false)) {
                     continue;
                 }
-                sset_add(&grp_chassis, ref_ch->name);
+                /* we have bfd_setup_required == true anyway, so we skip adding
+                 * it to an sset that we later move to another sset again. */
+                sset_add(bfd_chassis, ref_ch->name);
             }
         } else {
             /* This is not an HA chassis. Check if this chassis is present
@@ -181,16 +183,13 @@ bfd_calculate_chassis(
 void
 bfd_run(const struct ovsrec_interface_table *interface_table,
         const struct ovsrec_bridge *br_int,
+        const struct sset *bfd_chassis,
         const struct sbrec_chassis *chassis_rec,
-        const struct sbrec_ha_chassis_group_table *ha_chassis_grp_table,
         const struct sbrec_sb_global_table *sb_global_table)
 {
     if (!chassis_rec) {
         return;
     }
-    struct sset bfd_chassis = SSET_INITIALIZER(&bfd_chassis);
-    bfd_calculate_chassis(chassis_rec, ha_chassis_grp_table,
-                          &bfd_chassis);
 
     /* Identify tunnels ports(connected to remote chassis id) to enable bfd */
     struct sset tunnels = SSET_INITIALIZER(&tunnels);
@@ -205,7 +204,7 @@ bfd_run(const struct ovsrec_interface_table *interface_table,
             sset_add(&tunnels, port_name);
 
             if (encaps_tunnel_id_parse(tunnel_id, &chassis_name, NULL, NULL)) {
-                if (sset_contains(&bfd_chassis, chassis_name)) {
+                if (sset_contains(bfd_chassis, chassis_name)) {
                     sset_add(&bfd_ifaces, port_name);
                 }
                 free(chassis_name);
@@ -270,5 +269,4 @@ bfd_run(const struct ovsrec_interface_table *interface_table,
     smap_destroy(&bfd);
     sset_destroy(&tunnels);
     sset_destroy(&bfd_ifaces);
-    sset_destroy(&bfd_chassis);
 }
