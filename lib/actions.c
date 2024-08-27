@@ -701,13 +701,32 @@ parse_CT_NEXT(struct action_context *ctx)
     }
 
     add_prerequisite(ctx, "ip");
-    ovnact_put_CT_NEXT(ctx->ovnacts)->ltable = ctx->pp->cur_ltable + 1;
+    struct ovnact_ct_next *ct_next = ovnact_put_CT_NEXT(ctx->ovnacts);
+    ct_next->dnat_zone = true;
+    ct_next->ltable = ctx->pp->cur_ltable + 1;
+
+    if (!lexer_match(ctx->lexer, LEX_T_LPAREN)) {
+        return;
+    }
+
+    if (lexer_match_id(ctx->lexer, "dnat")) {
+        ct_next->dnat_zone = true;
+    } else if (lexer_match_id(ctx->lexer, "snat")) {
+        ct_next->dnat_zone = false;
+    } else {
+        lexer_error(ctx->lexer, "\"ct_next\" action accepts only"
+                                " \"dnat\" or \"snat\" parameter.");
+        return;
+    }
+
+    lexer_force_match(ctx->lexer, LEX_T_RPAREN);
 }
 
 static void
 format_CT_NEXT(const struct ovnact_ct_next *ct_next OVS_UNUSED, struct ds *s)
 {
-    ds_put_cstr(s, "ct_next;");
+    ds_put_cstr(s, "ct_next");
+    ds_put_cstr(s, ct_next->dnat_zone ? "(dnat);" : "(snat);");
 }
 
 static void
@@ -719,10 +738,16 @@ encode_CT_NEXT(const struct ovnact_ct_next *ct_next,
 
     struct ofpact_conntrack *ct = ofpact_put_CT(ofpacts);
     ct->recirc_table = first_ptable(ep, ep->pipeline) + ct_next->ltable;
-    ct->zone_src.field = ep->is_switch ? mf_from_id(MFF_LOG_CT_ZONE)
-                            : mf_from_id(MFF_LOG_DNAT_ZONE);
     ct->zone_src.ofs = 0;
     ct->zone_src.n_bits = 16;
+
+    if (ep->is_switch) {
+        ct->zone_src.field = mf_from_id(MFF_LOG_CT_ZONE);
+    } else {
+        ct->zone_src.field = mf_from_id(ct_next->dnat_zone
+                                        ? MFF_LOG_DNAT_ZONE
+                                        : MFF_LOG_SNAT_ZONE);
+    }
 
     ct = ofpbuf_at_assert(ofpacts, ct_offset, sizeof *ct);
     ofpacts->header = ct;

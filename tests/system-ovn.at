@@ -3518,7 +3518,7 @@ AT_CHECK([ovn-nbctl lr-nat-add R1 dnat_and_snat 172.16.1.3 192.168.1.2 foo1 00:0
 AT_CHECK([ovn-nbctl lr-nat-add R1 dnat_and_snat 172.16.1.4 192.168.1.3 foo2 00:00:02:02:03:05])
 
 # Add a SNAT rule
-AT_CHECK([ovn-nbctl lr-nat-add R1 snat 172.16.1.1 192.168.0.0/16])
+AT_CHECK([ovn-nbctl lr-nat-add R1 snat 172.16.1.1 0.0.0.0/0])
 
 # Add default route to ext-net
 AT_CHECK([ovn-nbctl lr-route-add R1 10.0.0.0/24 172.16.1.2])
@@ -3724,8 +3724,7 @@ AT_CHECK([ovn-nbctl lr-nat-add R1 dnat_and_snat fd20::3 fd11::2 foo1 00:00:02:02
 AT_CHECK([ovn-nbctl lr-nat-add R1 dnat_and_snat fd20::4 fd11::3 foo2 00:00:02:02:03:05])
 
 # Add a SNAT rule
-AT_CHECK([ovn-nbctl lr-nat-add R1 snat fd20::1 fd11::/64])
-AT_CHECK([ovn-nbctl lr-nat-add R1 snat fd20::1 fd12::/64])
+AT_CHECK([ovn-nbctl lr-nat-add R1 snat fd20::1 ::/0])
 
 ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=fd20::1)'])
@@ -3920,7 +3919,7 @@ AT_CHECK([ovn-nbctl lr-nat-add R1 dnat_and_snat 172.16.1.3 192.168.1.2 foo1 00:0
 AT_CHECK([ovn-nbctl lr-nat-add R1 dnat_and_snat 172.16.1.4 192.168.2.2 bar1 00:00:02:02:03:05])
 
 # Add a SNAT rule
-AT_CHECK([ovn-nbctl lr-nat-add R1 snat 172.16.1.1 192.168.0.0/16])
+AT_CHECK([ovn-nbctl lr-nat-add R1 snat 172.16.1.1 0.0.0.0/0])
 
 ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=172.16.1.1)'])
@@ -4104,8 +4103,7 @@ AT_CHECK([ovn-nbctl lr-nat-add R1 dnat_and_snat fd20::3 fd11::2 foo1 00:00:02:02
 AT_CHECK([ovn-nbctl lr-nat-add R1 dnat_and_snat fd20::4 fd12::2 bar1 00:00:02:02:03:05])
 
 # Add a SNAT rule
-AT_CHECK([ovn-nbctl lr-nat-add R1 snat fd20::1 fd11::/64])
-AT_CHECK([ovn-nbctl lr-nat-add R1 snat fd20::1 fd12::/64])
+AT_CHECK([ovn-nbctl lr-nat-add R1 snat fd20::1 ::/0])
 
 ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=fd20::1)'])

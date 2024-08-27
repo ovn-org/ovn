@@ -1369,6 +1369,8 @@
         </dd>
 
         <dt><code>ct_next;</code></dt>
+        <dt><code>ct_next(dnat);</code></dt>
+        <dt><code>ct_next(snat);</code></dt>
         <dd>
           <p>
             Apply connection tracking to the flow, initializing

@@ -15995,7 +15995,6 @@ build_lrouter_out_snat_flow(struct lflow_table *lflows,
     build_lrouter_out_snat_match(lflows, od, nat, match, distributed_nat,
                                  cidr_bits, is_v6, l3dgw_port, lflow_ref,
                                  false);
-    size_t original_match_len = match->length;
 
     if (!od->is_gw_router && distributed_nat) {
         ds_put_format(actions, "eth.src = "ETH_ADDR_FMT"; ",
@@ -16017,14 +16016,13 @@ build_lrouter_out_snat_flow(struct lflow_table *lflows,
     /* For the SNAT networks, we need to make sure that connections are
      * properly tracked so we can decide whether to perform SNAT on traffic
      * exiting the network. */
-    if (features->ct_commit_to_zone && !strcmp(nat->type, "snat") &&
-        !od->is_gw_router) {
+    if (features->ct_commit_to_zone && features->ct_next_zone &&
+        !strcmp(nat->type, "snat") && !od->is_gw_router) {
         /* For traffic that comes from SNAT network, initiate CT state before
          * entering S_ROUTER_OUT_SNAT to allow matching on various CT states.
          */
-        ds_truncate(match, original_match_len);
         ovn_lflow_add(lflows, od, S_ROUTER_OUT_POST_UNDNAT, 70,
-                      ds_cstr(match), "ct_snat;",
+                      ds_cstr(match), "ct_next(snat);",
                       lflow_ref);
 
         build_lrouter_out_snat_match(lflows, od, nat, match,
