@@ -2331,7 +2331,7 @@ main(int argc, char *argv[])
             if (!rc1 || !rc2 || !rc3 || !rc4) {
                 VLOG_DBG(" a transaction failed in: %s %s %s %s",
                          !rc1 ? "nb" : "", !rc2 ? "sb" : "",
-                         !rc3 ? "ic_nb" : "", rc4 ? "ic_sb" : "");
+                         !rc3 ? "ic_nb" : "", !rc4 ? "ic_sb" : "");
                 /* A transaction failed. Wake up immediately to give
                  * opportunity to send the proper transaction
                  */
