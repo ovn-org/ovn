@@ -1108,7 +1108,8 @@ ovn_start
 # DR is connected to S1 and CR is connected to S2
 
 check ovn-sbctl chassis-add gw1 geneve 127.0.0.1 \
-  -- set chassis gw1 other_config:ct-commit-to-zone="true"
+  -- set chassis gw1 other_config:ct-commit-to-zone="true" \
+  -- set chassis gw1 other_config:ct-next-zone="true"
 
 check ovn-nbctl lr-add DR
 check ovn-nbctl lrp-add DR DR-S1 02:ac:10:01:00:01 172.16.1.1/24
@@ -5550,7 +5551,8 @@ AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=./table=?/' | sort], [0], [
 check ovn-sbctl chassis-add gw1 geneve 127.0.0.1 \
   -- set chassis gw1 other_config:ct-no-masked-label="true" \
   -- set chassis gw1 other_config:ovn-ct-lb-related="true" \
-  -- set chassis gw1 other_config:ct-commit-to-zone="true"
+  -- set chassis gw1 other_config:ct-commit-to-zone="true" \
+  -- set chassis gw1 other_config:ct-next-zone="true"
 
 # Create a distributed gw port on lr0
 check ovn-nbctl ls-add public
@@ -5651,8 +5653,8 @@ AT_CHECK([grep "lr_out_undnat" lr0flows | sed 's/table=./table=?/' | sort], [0],
 
 AT_CHECK([grep "lr_out_post_undnat" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_out_post_undnat ), priority=0    , match=(1), action=(next;)
-  table=??(lr_out_post_undnat ), priority=70   , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
-  table=??(lr_out_post_undnat ), priority=70   , match=(ip && ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
+  table=??(lr_out_post_undnat ), priority=70   , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_next(snat);)
+  table=??(lr_out_post_undnat ), priority=70   , match=(ip && ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_next(snat);)
 ])
 
 AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
@@ -5809,8 +5811,8 @@ AT_CHECK([grep "lr_out_undnat" lr0flows | sed 's/table=./table=?/' | sort], [0],
 
 AT_CHECK([grep "lr_out_post_undnat" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(lr_out_post_undnat ), priority=0    , match=(1), action=(next;)
-  table=??(lr_out_post_undnat ), priority=70   , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
-  table=??(lr_out_post_undnat ), priority=70   , match=(ip && ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
+  table=??(lr_out_post_undnat ), priority=70   , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_next(snat);)
+  table=??(lr_out_post_undnat ), priority=70   , match=(ip && ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_next(snat);)
 ])
 
 AT_CHECK([grep "lr_out_snat" lr0flows | sed 's/table=../table=??/' | sort], [0], [dnl
@@ -7625,13 +7627,16 @@ ovn_start
 # distributed gateway LRPs.
 
 check ovn-sbctl chassis-add gw1 geneve 127.0.0.1 \
-  -- set chassis gw1 other_config:ct-commit-to-zone="true"
+  -- set chassis gw1 other_config:ct-commit-to-zone="true" \
+  -- set chassis gw1 other_config:ct-next-zone="true"
 
 check ovn-sbctl chassis-add gw2 geneve 128.0.0.1 \
-  -- set chassis gw2 other_config:ct-commit-to-zone="true"
+  -- set chassis gw2 other_config:ct-commit-to-zone="true" \
+  -- set chassis gw2 other_config:ct-next-zone="true"
 
 check ovn-sbctl chassis-add gw3 geneve 129.0.0.1 \
-  -- set chassis gw3 other_config:ct-commit-to-zone="true"
+  -- set chassis gw3 other_config:ct-commit-to-zone="true" \
+  -- set chassis gw3 other_config:ct-next-zone="true"
 
 check ovn-nbctl lr-add DR
 check ovn-nbctl lrp-add DR DR-S1 02:ac:10:01:00:01 172.16.1.1/24
