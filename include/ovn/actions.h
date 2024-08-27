@@ -260,6 +260,7 @@ struct ovnact_push_pop {
 /* OVNACT_CT_NEXT. */
 struct ovnact_ct_next {
     struct ovnact ovnact;
+    bool dnat_zone;
     uint8_t ltable;                /* Logical table ID of next table. */
 };
 
