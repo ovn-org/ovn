@@ -1756,6 +1756,7 @@ pinctrl_handle_icmp(struct rconn *swconn, const struct flow *ip_flow,
         if (mtu) {
             put_16aligned_be32(ih->icmp6_data.be32, *mtu);
             ih->icmp6_base.icmp6_type = ICMP6_PACKET_TOO_BIG;
+            ih->icmp6_base.icmp6_code = 0;
         }
 
         void *data = ih + 1;
