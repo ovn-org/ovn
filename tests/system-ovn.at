@@ -9353,7 +9353,7 @@ name: 'vport4' value: '999'
 NETNS_DAEMONIZE([vm1], [nc -k -l 42.42.42.2 4242], [nc-vm1.pid])
 
 NETNS_START_TCPDUMP([vm1],
-    [-n -i vm1 -nnleX -c6 udp and dst 42.42.42.2 and dst port 4343],
+    [-n -i vm1 -nnqleX -c6 udp and dst 42.42.42.2 and dst port 4343],
     [vm1])
 
 # Make sure connecting to the VIP works (hairpin, via ls and via lr).
@@ -9504,7 +9504,7 @@ name: 'vport4' value: '999'
 NETNS_DAEMONIZE([vm1], [nc -k -l 4242::2 4242], [nc-vm1.pid])
 
 NETNS_START_TCPDUMP([vm1],
-    [-n -i vm1 -nnleX -c6 udp and dst 4242::2 and dst port 4343],
+    [-n -i vm1 -nnqleX -c6 udp and dst 4242::2 and dst port 4343],
     [vm1])
 
 # Make sure connecting to the VIP works (hairpin, via ls and via lr).
