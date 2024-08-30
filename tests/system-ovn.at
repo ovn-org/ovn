@@ -6920,7 +6920,8 @@ check ovn-nbctl lsp-add public public1 \
         -- lsp-set-type public1 localnet \
         -- lsp-set-options public1 network_name=phynet
 
-NS_CHECK_EXEC([server], [bfdd-beacon --listen=172.16.1.50], [0])
+NETNS_DAEMONIZE([server], [bfdd-beacon  --nofork --tee --listen=172.16.1.50 >beacon.stdout 2>&1], [beacon.pid])
+OVS_WAIT_UNTIL([grep -q "Listening for BFD connections" beacon.stdout])
 NS_CHECK_EXEC([server], [bfdd-control allow 172.16.1.1], [0], [dnl
 Allowing connections from 172.16.1.1
 ])
@@ -6980,7 +6981,8 @@ check ovn-nbctl set logical_router R1 options:chassis=hv1
 check ovn-nbctl set logical_router_static_route $route_uuid bfd=$uuid
 
 # restart bfdd
-NS_CHECK_EXEC([server], [bfdd-beacon --listen=172.16.1.50], [0])
+NETNS_DAEMONIZE([server], [bfdd-beacon  --nofork --tee --listen=172.16.1.50 >beacon.stdout 2>&1], [beacon.pid])
+OVS_WAIT_UNTIL([grep -q "Listening for BFD connections" beacon.stdout])
 NS_CHECK_EXEC([server], [bfdd-control allow 172.16.1.1], [0], [dnl
 Allowing connections from 172.16.1.1
 ])
@@ -7022,7 +7024,8 @@ check ovn-nbctl lr-route-add R1 2000::/64 1000::b
 route_uuid_v6=$(fetch_column nb:logical_router_static_route _uuid ip_prefix=\"2000::/64\")
 ovn-nbctl set logical_router_static_route $route_uuid_v6 bfd=$uuid_v6
 check ovn-nbctl --wait=hv sync
-NS_CHECK_EXEC([server], [bfdd-beacon --listen=1000::b], [0])
+NETNS_DAEMONIZE([server], [bfdd-beacon  --nofork --tee --listen=1000::b >beacon.stdout 2>&1], [beacon.pid])
+OVS_WAIT_UNTIL([grep -q "Listening for BFD connections" beacon.stdout])
 NS_CHECK_EXEC([server], [bfdd-control allow 1000::a], [0], [dnl
 Allowing connections from 1000::a
 ])
