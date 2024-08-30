@@ -34709,11 +34709,13 @@ port_key_1=$(printf "0x%x" $(as hv1 fetch_column port_binding tunnel_key logical
 dp_key_2=$(printf "0x%x" $(as hv1 fetch_column datapath tunnel_key external_ids:name=gw-2))
 port_key_2=$(printf "0x%x" $(as hv1 fetch_column port_binding tunnel_key logical_port=gw-2-public))
 
-AT_CHECK_UNQUOTED([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE --no-stats | strip_cookie | sort], [0], [dnl
- table=OFTABLE_MAC_CACHE_USE, priority=100,ip,reg14=${port_key_1},metadata=${dp_key_1},dl_src=00:00:00:00:10:10,nw_src=192.168.10.10 actions=drop
+table=" table=OFTABLE_MAC_CACHE_USE, priority=100,ip,reg14=${port_key_1},metadata=${dp_key_1},dl_src=00:00:00:00:10:10,nw_src=192.168.10.10 actions=drop
  table=OFTABLE_MAC_CACHE_USE, priority=100,ip,reg14=${port_key_1},metadata=${dp_key_1},dl_src=00:00:00:00:10:20,nw_src=192.168.10.20 actions=drop
  table=OFTABLE_MAC_CACHE_USE, priority=100,ip,reg14=${port_key_2},metadata=${dp_key_2},dl_src=00:00:00:00:10:10,nw_src=192.168.10.10 actions=drop
- table=OFTABLE_MAC_CACHE_USE, priority=100,ip,reg14=${port_key_2},metadata=${dp_key_2},dl_src=00:00:00:00:10:20,nw_src=192.168.10.20 actions=drop
+ table=OFTABLE_MAC_CACHE_USE, priority=100,ip,reg14=${port_key_2},metadata=${dp_key_2},dl_src=00:00:00:00:10:20,nw_src=192.168.10.20 actions=drop"
+sorted_table=$(printf '%s\n' "$table" | sort)
+AT_CHECK_UNQUOTED([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE --no-stats | strip_cookie | sort], [0], [dnl
+$sorted_table
 ])
 
 timestamp=$(fetch_column mac_binding timestamp ip="192.168.10.20")
