@@ -12624,6 +12624,7 @@ AT_SETUP([Sampling_App incremental processing])
 
 ovn_start
 
+ovn-nbctl --wait=sb sync
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 
 ovn-nbctl create Sampling_App type="acl-new" id="42"
