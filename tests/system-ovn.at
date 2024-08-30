@@ -13165,6 +13165,7 @@ ovs-vsctl --id=@br get Bridge br-int \
     -- --id=@ipfix create IPFIX targets=\"127.0.0.1:4242\" template_interval=1 \
     -- --id=@cs create Flow_Sample_Collector_Set id=100 bridge=@br ipfix=@ipfix
 
+ovn-nbctl --wait=hv sync
 dnl And wait for it to be up and running.
 OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q '1 ids'])
 
@@ -13333,6 +13334,7 @@ ovs-vsctl --id=@br get Bridge br-int \
     -- --id=@ipfix create IPFIX targets=\"127.0.0.1:4242\" template_interval=1 \
     -- --id=@cs create Flow_Sample_Collector_Set id=100 bridge=@br ipfix=@ipfix
 
+ovn-nbctl --wait=hv sync
 dnl And wait for it to be up and running.
 OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q '1 ids'])
 
@@ -13462,6 +13464,7 @@ ovs-vsctl --id=@br get Bridge br-int \
     -- --id=@ipfix create IPFIX targets=\"127.0.0.1:4242\" template_interval=1 \
     -- --id=@cs create Flow_Sample_Collector_Set id=100 bridge=@br ipfix=@ipfix
 
+ovn-nbctl --wait=hv sync
 dnl And wait for it to be up and running.
 OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q '1 ids'])
 
