@@ -173,7 +173,7 @@ done
 create_ic_infra() {
     az_id=$1
     ts_id=$2
-    az=az$i
+    az=az$1
 
     lsp=lsp${az_id}-${ts_id}
     lrp=lrp${az_id}-${ts_id}
@@ -184,7 +184,7 @@ create_ic_infra() {
 
     check ovn-ic-nbctl --wait=sb ts-add $ts
     check ovn-nbctl lr-add $lr
-    check ovn-nbctl lrp-add $lr $lrp 00:00:00:00:00:0$az_id 10.0.$az_id.1/24
+    check ovn-nbctl --wait=sb lrp-add $lr $lrp 00:00:00:00:00:0$az_id 10.0.$az_id.1/24
     check ovn-nbctl lrp-set-gateway-chassis $lrp gw-$az
 
     check ovn-nbctl lsp-add $ts $lsp -- \
@@ -192,7 +192,7 @@ create_ic_infra() {
         lsp-set-type $lsp router -- \
         lsp-set-options $lsp router-port=$lrp
 
-    check ovn-nbctl lr-route-add $lr 192.168.0.0/16 10.0.$az_id.10
+    check ovn-nbctl --wait=sb lr-route-add $lr 192.168.0.0/16 10.0.$az_id.10
 }
 
 create_ic_infra 1 1
@@ -209,7 +209,7 @@ check_row_count ic-sb:Route 3 ip_prefix=192.168.0.0/16
 check ovn-ic-nbctl --wait=sb ts-del ts1-1
 ovn-ic-sbctl list route
 ovn-ic-nbctl list transit_switch
-checl_row_count ic-sb:route 2 ip_prefix=192.168.0.0/16
+check_row_count ic-sb:route 2 ip_prefix=192.168.0.0/16
 ovn-ic-sbctl list route
 
 for i in 1 2; do
@@ -255,7 +255,7 @@ for i in 1 2; do
     check ovn-nbctl lrp-add lr1 lrp$i 00:00:00:00:0$i:01 10.0.$i.1/24
     check ovn-nbctl lrp-set-gateway-chassis lrp$i gw-az$i
 
-    check ovn-nbctl lsp-add ts1 lsp$i -- \
+    check ovn-nbctl --wait=sb lsp-add ts1 lsp$i -- \
         lsp-set-addresses lsp$i router -- \
         lsp-set-type lsp$i router -- \
         lsp-set-options lsp$i router-port=lrp$i
@@ -266,10 +266,8 @@ ovn_as az1
 ovn-nbctl \
   --id=@id create logical-router-static-route ip_prefix=1.1.1.1/32 nexthop=10.0.1.10 -- \
   add logical-router lr1 static_routes @id
-ovn-nbctl \
-  --id=@id create logical-router-static-route ip_prefix=1.1.1.1/32 nexthop=10.0.1.10 -- \
-  add logical-router lr1 static_routes @id
 
+check ovn-ic-nbctl --wait=sb sync
 check ovn-ic-nbctl --wait=sb sync
 check_row_count ic-sb:route 1 ip_prefix=1.1.1.1/32
 
@@ -455,12 +453,14 @@ Route Table <main>:
 # Delete route in AZ1, AZ2's learned route should be deleted.
 ovn_as az1 ovn-nbctl lr-route-del lr1 10.11.1.0/24
 ovn-ic-nbctl --wait=sb sync
+ovn-ic-nbctl --wait=sb sync
 AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep -c learned], [1], [dnl
 0
 ])
 
 # Add the route back
 ovn_as az1 ovn-nbctl lr-route-add lr1 10.11.1.0/24 169.254.0.1
+ovn-ic-nbctl --wait=sb sync
 ovn-ic-nbctl --wait=sb sync
 AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep -c learned], [0], [dnl
 1
@@ -485,6 +485,7 @@ ovn_as az1 ovn-nbctl set nb_global . options:ic-route-adv=false
 # AZ2 shouldn't have the route learned, because AZ1 should have stopped
 # advertising.
 check ovn-ic-nbctl --wait=sb sync
+check ovn-ic-nbctl --wait=sb sync
 AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
 IPv4 Routes
 Route Table <main>:
@@ -498,6 +499,7 @@ ovn_as az1 ovn-nbctl lr-route-add lr1 0.0.0.0/0 169.254.0.3
 # Re-enable router-advertising & learn for AZ1
 ovn_as az1 ovn-nbctl set nb_global . options:ic-route-adv=true
 ovn_as az1 ovn-nbctl set nb_global . options:ic-route-learn=true
+check ovn-ic-nbctl --wait=sb sync
 check ovn-ic-nbctl --wait=sb sync
 
 # Default route should NOT get advertised or learned, by default.
@@ -576,7 +578,7 @@ for i in 1 2; do
 done
 
 # Create directly-connected routes
-ovn_as az2 ovn-nbctl lrp-add lr12 lrp-lr12-ls2 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
+ovn_as az2 ovn-nbctl --wait=sb lrp-add lr12 lrp-lr12-ls2 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
 ovn_as az2 ovn-nbctl lr-route-add lr12 10.10.10.0/24 192.168.0.10
 ovn_as az1 ovn-nbctl --wait=sb sync
 
@@ -584,6 +586,7 @@ echo az1
 ovn_as az1 ovn-nbctl show
 echo az2
 ovn_as az2 ovn-nbctl show
+check ovn-ic-nbctl --wait=sb sync
 check ovn-ic-nbctl --wait=sb sync
 
 # Test routes from lr12 were learned to lr11
@@ -626,7 +629,7 @@ for i in 1 2; do
     ovn-nbctl lrp-add lr$i lrp-lr$i-p$i 00:00:00:00:00:0$i 192.168.$i.1/24
 
     # Create static routes
-    ovn-nbctl lr-route-add lr$i 10.11.$i.0/24 169.254.0.1
+    ovn-nbctl --wait=sb lr-route-add lr$i 10.11.$i.0/24 169.254.0.1
 
     # Create a src-ip route, which shouldn't be synced
     ovn-nbctl --policy=src-ip lr-route-add lr$i 10.22.$i.0/24 169.254.0.2
@@ -665,7 +668,6 @@ ovn-ic-nbctl ts-add ts1
 for i in 1 2; do
     ovn_start az$i
     ovn_as az$i
-
     # Enable route learning at AZ level
     ovn-nbctl set nb_global . options:ic-route-learn=true
     # Enable route advertising at AZ level
@@ -680,9 +682,10 @@ for i in 1 2; do
             -- lsp-set-type lsp-ts1-lr$i router \
             -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
 
-    ovn-nbctl lrp-add lr$i lrp-lr$i-p$i 00:00:00:00:00:0$i 2002:db8:1::$i/64
+    ovn-nbctl --wait=sb lrp-add lr$i lrp-lr$i-p$i 00:00:00:00:00:0$i 2002:db8:1::$i/64
 done
 
+check ovn-ic-nbctl --wait=sb sync
 check ovn-ic-nbctl --wait=sb sync
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1 | awk '/learned/{print $1, $2}'], [0], [dnl
 2002:db8:1::/64 2001:db8:1::2
@@ -734,6 +737,7 @@ for i in 1 2; do
 done
 
 check ovn-ic-nbctl --wait=sb sync
+check ovn-ic-nbctl --wait=sb sync
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1], [0], [dnl
 IPv4 Routes
 Route Table <main>:
@@ -750,6 +754,7 @@ for i in 1 2; do
     ovn_as az$i ovn-nbctl --route-table=rtb1 lr-route-add lr$i 10.11.$i.0/24 169.254.0.1
 done
 
+check ovn-ic-nbctl --wait=sb sync
 check ovn-ic-nbctl --wait=sb sync
 # ensure route from rtb1 is not learned to any route table as route table is
 # not set to TS port
@@ -975,6 +980,7 @@ ovn_as az2 ovn-nbctl --route-table=rtb3 lr-route-add lr12 10.10.10.0/24 192.168.
 # Create directly-connected route in VPC2
 ovn_as az2 ovn-nbctl --wait=sb lrp-add lr22 lrp-lr22 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
 check ovn-ic-nbctl --wait=sb sync
+check ovn-ic-nbctl --wait=sb sync
 # Test direct routes from lr12 were learned to lr11
 OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
              grep learned | awk '{print $1, $2, $5}' | sort ], [0], [dnl
@@ -1102,6 +1108,10 @@ ovn_as az2 ovn-nbctl --route-table=rtb3 lr-route-add lr12 2001:db8:aaaa::/64 200
 ovn_as az2 ovn-nbctl --wait=sb lrp-add lr22 lrp-lr22 aa:aa:aa:aa:bb:01 "2001:db8:200::1/64"
 
 # Test direct routes from lr12 were learned to lr11
+#
+# We need to wait twice: first time for az2/ic to handle port addition and update ic/sb and
+# second time for az1/ic to handle ic/sb update.
+check ovn-ic-nbctl --wait=sb sync
 check ovn-ic-nbctl --wait=sb sync
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 2001:db8:200 |
              grep learned | awk '{print $1, $2, $5}' | sort], [0], [dnl
@@ -1178,6 +1188,7 @@ for i in 1 2; do
 done
 
 check ovn-ic-nbctl --wait=sb sync
+check ovn-ic-nbctl --wait=sb sync
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep dst-ip | sort] , [0], [dnl
                 0.0.0.0/0              192.168.1.11 dst-ip
               10.0.0.0/24              192.168.1.10 dst-ip
@@ -1249,13 +1260,13 @@ for i in 1 2; do
             -- lsp-set-options $lsp router-port=$lrp
 done
 
-
 # Create directly-connected routes
 ovn_as az1 ovn-nbctl lrp-add lr11 lrp-lr11 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
 ovn_as az2 ovn-nbctl lrp-add lr21 lrp-lr21 aa:aa:aa:aa:bc:01 "192.168.1.1/24"
-ovn_as az2 ovn-nbctl lrp-add lr22 lrp-lr22 aa:aa:aa:aa:bc:02 "192.168.2.1/24"
+ovn_as az2 ovn-nbctl --wait=sb lrp-add lr22 lrp-lr22 aa:aa:aa:aa:bc:02 "192.168.2.1/24"
 
 # Test direct routes from lr21 and lr22 were learned to lr11
+check ovn-ic-nbctl --wait=sb sync
 check ovn-ic-nbctl --wait=sb sync
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
              grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
@@ -1335,7 +1346,6 @@ check ovn-ic-nbctl ts-add ts1
 for i in 1 2; do
     ovn_start az$i
     ovn_as az$i
-
     # Enable route learning at AZ level
     check ovn-nbctl set nb_global . options:ic-route-learn=true
     # Enable route advertising at AZ level
@@ -1369,10 +1379,11 @@ for i in 1 2; do
             33:33:33:33:33:3$i 2005:1734:5678::$i/50
 
     # additional not filtered prefix -> different subnet bits
-    check ovn-nbctl lrp-add lr$i lrp-lr$i-p-ext4$i \
+    check ovn-nbctl --wait=sb lrp-add lr$i lrp-lr$i-p-ext4$i \
             44:44:44:44:44:4$i 2005:1834:5678::$i/50
 done
 
+check ovn-ic-nbctl --wait=sb sync
 check ovn-ic-nbctl --wait=sb sync
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1 |
     awk '/learned/{print $1, $2}' ], [0], [dnl
@@ -1387,6 +1398,7 @@ for i in 1 2; do
     check ovn-nbctl remove nb_global . options ic-route-denylist
 done
 
+check ovn-ic-nbctl --wait=sb sync
 check ovn-ic-nbctl --wait=sb sync
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1 |
     awk '/learned/{print $1, $2}' | sort ], [0], [dnl
@@ -1750,6 +1762,7 @@ check ovn-nbctl lsp-add ts ts-lr3 \
 
 wait_for_ports_up
 check ovn-ic-nbctl --wait=sb sync
+check ovn-ic-nbctl --wait=sb sync
 
 ovn_as az1
 check ovn-nbctl lsp-set-options ts-lr2 requested-chassis=hv2
@@ -1969,6 +1982,7 @@ check ovn-nbctl lsp-add ts ts-lr3 \
     -- lsp-set-options ts-lr3 router-port=lr3-ts
 
 wait_for_ports_up
+check ovn-ic-nbctl --wait=sb sync
 check ovn-ic-nbctl --wait=sb sync
 ovn_as az1
 check ovn-nbctl lsp-set-options ts-lr2 requested-chassis=hv2
@@ -2222,6 +2236,7 @@ check ovn-nbctl lsp-add ts ts-lr3 \
     -- lsp-set-options ts-lr3 router-port=lr3-ts
 
 wait_for_ports_up
+check ovn-ic-nbctl --wait=sb sync
 check ovn-ic-nbctl --wait=sb sync
 ovn_as az1
 check ovn-nbctl lsp-set-options ts-lr2 requested-chassis=hv2
