@@ -59,7 +59,7 @@ OVN v24.09.0 - xx xxx xxxx
   - The NB_Global.debug_drop_domain_id configured value is now overridden by
     the ID associated with the Sampling_App record created for drop sampling
     (Sampling_App.type configured as "drop").
-    - Add support for ACL sampling through the new Sample_Collector and Sample
+  - Add support for ACL sampling through the new Sample_Collector and Sample
     tables.  Sampling is supported for both traffic that creates new
     connections and for traffic that is part of an existing connection.
   - Add "external_ids:ovn-encap-ip-default" config for ovn-controller to
