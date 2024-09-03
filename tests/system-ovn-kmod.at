@@ -909,7 +909,6 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([LR with SNAT fragmentation needed for external server])
-AT_KEYWORDS([ovnlb])
 
 CHECK_CONNTRACK()
 CHECK_CONNTRACK_NAT()
@@ -920,15 +919,16 @@ ADD_BR([br-int])
 ADD_BR([br-ext])
 
 dnl Logical network:
-dnl 2 logical switches "public" (192.168.1.0/24) and "internal" (172.16.1.0/24)
-dnl connected to a router lr.
+dnl 2 logical switches "public" (192.168.10.0/24 and fd10::/64)
+dnl and "internal" (192.168.20.0/24 and fd20::/64) connected to a router lr.
 dnl internal has a client.
 dnl server is connected through localnet.
 dnl
-dnl Server IP 192.168.1.2 MTU 900
-dnl Client IP  172.16.1.2 MTU 800
+dnl Server IP 192.168.10.2 fd10:2
+dnl Client IP 192.168.20.2 fd20:2
 dnl
-dnl SNAT for internal 172.16.1.2/24 with router ip 192.168.1.1.
+dnl SNAT for internal 192.168.20.0/24 with router ip 192.168.10.1.
+dnl SNAT for internal fd20::/64 with router ip fd10::1.
 
 check ovs-ofctl add-flow br-ext action=normal
 # Set external-ids in br-int needed for ovn-controller
@@ -947,11 +947,11 @@ check ovn-nbctl lr-add lr
 check ovn-nbctl ls-add internal
 check ovn-nbctl ls-add public
 
-check ovn-nbctl lrp-add lr lr-pub 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lrp-add lr lr-pub 00:00:01:01:02:03 192.168.10.1/24 fd10::1/64
 check ovn-nbctl lsp-add  public pub-lr -- set Logical_Switch_Port pub-lr \
     type=router options:router-port=lr-pub addresses=\"00:00:01:01:02:03\"
 
-check ovn-nbctl lrp-add lr lr-internal 00:00:01:01:02:04 172.16.1.1/24
+check ovn-nbctl lrp-add lr lr-internal 00:00:01:01:02:04 192.168.20.1/24 fd20::1/64
 check ovn-nbctl lsp-add internal internal-lr -- set Logical_Switch_Port internal-lr \
     type=router options:router-port=lr-internal addresses=\"00:00:01:01:02:04\"
 
@@ -961,79 +961,51 @@ ovn-nbctl lsp-add public ln_port \
                 -- lsp-set-options ln_port network_name=phynet
 
 ADD_NAMESPACES(server)
-ADD_VETH([server], [server], [br-ext], ["192.168.1.2/24"],
-         ["f0:00:00:01:02:03"], ["192.168.1.1"])
-NS_EXEC([server], [ip l set dev server mtu 900])
-NS_EXEC([server], [ip l show dev server])
+ADD_VETH(server, server, br-ext, "fd10::2/64", "f0:00:00:01:02:03", "fd10::1",
+         "nodad", "192.168.10.2/24", "192.168.10.1")
+NS_EXEC([server], [ip a show dev server])
 
 ADD_NAMESPACES(client)
-ADD_VETH([client], [client], [br-int], ["172.16.1.2/24"],
-         ["f0:00:0f:01:02:03"], ["172.16.1.1"])
-NS_EXEC([client], [ip l set dev client mtu 800])
-NS_EXEC([client], [ip l show dev client])
+ADD_VETH(client, client, br-int, "fd20::2/64", "f0:00:0f:01:02:03", "fd20::1",
+         "nodad", "192.168.20.2/24", "192.168.20.1")
+NS_EXEC([client], [ip a show dev client])
 check ovn-nbctl lsp-add internal client \
-  -- lsp-set-addresses client "f0:00:0f:01:02:03 172.16.1.2"
+  -- lsp-set-addresses client "f0:00:0f:01:02:03 192.168.20.2 fd20::2"
 
-dnl Config OVN load-balancer with a VIP.  (not necessary, but if we do not
-dnl have a load balancer and comment out snat, we will receive a stray fragment
-dnl on the client side.)
-dnl check ovn-nbctl lb-add lb1 192.168.1.20:4242 172.16.1.2:4242 udp
-dnl check ovn-nbctl lr-lb-add lr lb1
 check ovn-nbctl set logical_router lr options:chassis=hv1
-check ovn-nbctl set logical_router_port lr-internal options:gateway_mtu=800
+check ovn-nbctl set logical_router_port lr-internal options:gateway_mtu=1300
 
-check ovn-nbctl lr-nat-add lr snat 192.168.1.1 172.16.1.2
+check ovn-nbctl lr-nat-add lr snat 192.168.10.1 192.168.20.0/24
+check ovn-nbctl lr-nat-add lr snat fd10::1 fd20::/64
 
+OVN_POPULATE_ARP
 check ovn-nbctl --wait=hv sync
 
 ovn-nbctl show
 ovs-vsctl show
 ovn-appctl -t ovn-controller vlog/set vconn:file:dbg pinctrl:file:dbg
 
-AT_DATA([server.py], [dnl
-import socket
-
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-server_address = '192.168.1.2'
-server_port = 4242
-
-server = (server_address, server_port)
-sock.bind(server)
-print("Listening on ", server_address, ":", str(server_port), flush=True)
-
-while True:
-  payload, client_address = sock.recvfrom(1000)
-  print("Received data from ", str(client_address), ": ", payload)
-  sent = sock.sendto(b"x" * 1017, client_address)
-  print("Sent back: ", str(sent), "bytes", flush=True)
+AS_BOX([IPv4])
+NS_CHECK_EXEC([client], [ping -c 1 -W 2 -s 1400 192.168.10.2 | grep -q "Frag needed and DF set (mtu = 1300)"])
+NS_CHECK_EXEC([client], [ping -c 1 -W 2 -s 1400 192.168.10.2], [1], [ignore])
+NS_CHECK_EXEC([client], [ping -c 1 -W 2 -s 1400 192.168.10.2 | FORMAT_PING],
+[0], [dnl
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
 ])
-NETNS_DAEMONIZE([server], [$PYTHON3 ./server.py > server.log], [server.pid])
 
-dnl Collect packets on server side.
-NETNS_START_TCPDUMP([server], [-U -i server -vnne 'ip and (icmp or udp)'], [tcpdump-server])
+NS_CHECK_EXEC([client], [ip r get 192.168.10.2 | grep -q "mtu 1300"])
+NS_CHECK_EXEC([server], [ip r get 192.168.10.1 | grep -q "mtu 1300"])
 
-dnl Collect packets on client side.
-NETNS_START_TCPDUMP([client], [-U -i client -vnne 'ip and (icmp or udp)'], [tcpdump-client])
-
-dnl Send two packets to the server with a short interval.
-dnl First packet should generate 'needs frag', the second should result in
-dnl corectly fragmented reply.
-AT_DATA([client.py], [dnl
-import socket
-import time
-
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.sendto(b"x" * 7, ("192.168.1.2", 4242))
-time.sleep(1)
-sock.sendto(b"x" * 7, ("192.168.1.2", 4242))
-time.sleep(5)
+AS_BOX([IPv6])
+NS_CHECK_EXEC([client], [ping -c 1 -W 2 -s 1400 fd10::2 | grep -q "Packet too big: mtu=1300"])
+NS_CHECK_EXEC([client], [ping -c 1 -W 2 -s 1400 fd10::2], [1], [ignore])
+NS_CHECK_EXEC([client], [ping -c 1 -W 2 -s 1400 fd10::2 | FORMAT_PING],
+[0], [dnl
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
 ])
-NS_CHECK_EXEC([client], [$PYTHON3 ./client.py])
 
-dnl Expecting 2 outgoing packets and 2 fragments back - 8 lines total.
-OVS_WAIT_UNTIL([test "$(cat tcpdump-client.tcpdump | wc -l)" = "8"])
-AT_CHECK([test $(grep -c "need to frag (mtu 800)" tcpdump-server.tcpdump) -eq 1])
+NS_CHECK_EXEC([client], [ip r get fd10::2 | grep -q "mtu 1300"])
+NS_CHECK_EXEC([server], [ip r get fd10::1 | grep -q "mtu 1300"])
 
 ovn-appctl -t ovn-controller vlog/set info
 
