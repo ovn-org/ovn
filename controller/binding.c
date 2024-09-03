@@ -2529,7 +2529,7 @@ is_iface_vif(const struct ovsrec_interface *iface_rec)
     return true;
 }
 
-static bool
+bool
 is_iface_in_int_bridge(const struct ovsrec_interface *iface,
                        const struct ovsrec_bridge *br_int)
 {

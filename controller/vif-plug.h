@@ -34,6 +34,7 @@ struct vif_plug_ctx_in {
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
     struct ovsdb_idl_index *sbrec_port_binding_by_requested_chassis;
     struct ovsdb_idl_index *ovsrec_port_by_interfaces;
+    struct ovsdb_idl_index *ovsrec_interface_by_name;
     const struct ovsrec_open_vswitch_table *ovs_table;
     const struct ovsrec_bridge *br_int;
     const struct ovsrec_interface_table *iface_table;

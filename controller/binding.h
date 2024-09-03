@@ -284,4 +284,7 @@ void claimed_lport_set_up(const struct sbrec_port_binding *pb,
 bool port_binding_is_up(const struct sbrec_chassis *chassis_rec,
                         const struct sbrec_port_binding_table *,
                         const struct uuid *pb_uuid);
+bool is_iface_in_int_bridge(const struct ovsrec_interface *iface,
+                            const struct ovsrec_bridge *br_int);
+
 #endif /* controller/binding.h */

@@ -39180,3 +39180,56 @@ OVN_CLEANUP([hv1],[hv2])
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - vif-plug transaction failures])
+AT_KEYWORDS([vif-plug])
+
+ovn_start
+
+net_add n1
+sim_add hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovn-appctl vlog/set dbg
+
+sim_add hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+ovn-appctl vlog/set dbg
+
+check ovn-nbctl ls-add lsw0
+
+check ovn-nbctl lsp-add lsw0 lsp1
+check ovn-nbctl lsp-set-addresses lsp1 "f0:00:00:00:00:01 172.16.0.101"
+
+sleep_ovs hv1
+
+# This used to cause Transaction failures in ovsdb until ofport is created.
+check ovn-nbctl lsp-set-options lsp1 \
+    requested-chassis=hv1 \
+    vif-plug-type=dummy \
+    vif-plug-mtu-request=420
+
+check ovn-nbctl lsp-add lsw0 lsp2
+check ovn-nbctl lsp-set-addresses lsp2 "f0:00:00:00:00:02 172.16.0.102"
+
+sleep_ovs hv2
+
+check ovn-nbctl lsp-set-options lsp2 \
+    requested-chassis=hv2 \
+    vif-plug-type=dummy \
+    vif-plug-mtu-request=420
+
+wake_up_ovs hv1
+wait_for_ports_up lsp1
+
+# Exit ovn-controller while last transaction to ovsdb is not completed
+as hv2
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+wake_up_ovs hv2
+OVS_APP_EXIT_AND_WAIT([ovs-vswitchd])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])

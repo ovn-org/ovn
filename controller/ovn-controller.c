@@ -4868,6 +4868,9 @@ main(int argc, char *argv[])
     struct ovsdb_idl_index *ovsrec_port_by_qos
         = ovsdb_idl_index_create1(ovs_idl_loop.idl,
                                   &ovsrec_port_col_qos);
+    struct ovsdb_idl_index *ovsrec_interface_by_name
+        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
+                                  &ovsrec_interface_col_name);
     struct ovsdb_idl_index *ovsrec_queue_by_external_ids
         = ovsdb_idl_index_create1(ovs_idl_loop.idl,
                                   &ovsrec_queue_col_external_ids);
@@ -5250,6 +5253,8 @@ main(int argc, char *argv[])
     engine_ovsdb_node_add_index(&en_ovs_flow_sample_collector_set, "id",
                                 ovsrec_flow_sample_collector_set_by_id);
     engine_ovsdb_node_add_index(&en_ovs_port, "qos", ovsrec_port_by_qos);
+    engine_ovsdb_node_add_index(&en_ovs_interface, "name",
+                                ovsrec_interface_by_name);
     engine_ovsdb_node_add_index(&en_ovs_queue, "external_ids",
                                 ovsrec_queue_by_external_ids);
 
@@ -5604,6 +5609,8 @@ main(int argc, char *argv[])
                                     sbrec_port_binding_by_requested_chassis,
                                 .ovsrec_port_by_interfaces =
                                     ovsrec_port_by_interfaces,
+                                .ovsrec_interface_by_name =
+                                    ovsrec_interface_by_name,
                                 .ovs_table = ovs_table,
                                 .br_int = br_int,
                                 .iface_table =

@@ -208,6 +208,22 @@ transact_update_port(const struct ovsrec_interface *iface_rec,
         mtu_request);
 }
 
+static const struct ovsrec_interface *
+iface_lookup_by_name(struct ovsdb_idl_index *ovsrec_interface_by_name,
+                     char *name)
+{
+    struct ovsrec_interface *iface = ovsrec_interface_index_init_row(
+        ovsrec_interface_by_name);
+    ovsrec_interface_set_name(iface, name);
+
+    const struct ovsrec_interface *retval
+        = ovsrec_interface_index_find(ovsrec_interface_by_name,
+                                      iface);
+
+    ovsrec_interface_index_destroy_row(iface);
+
+    return retval;
+}
 
 static bool
 consider_unplug_iface(const struct ovsrec_interface *iface,
@@ -287,11 +303,10 @@ get_plug_mtu_request(const struct smap *lport_options)
 }
 
 static bool
-consider_plug_lport_create__(const struct vif_plug_class *vif_plug,
-                             const struct smap *iface_external_ids,
-                             const struct sbrec_port_binding *pb,
-                             struct vif_plug_ctx_in *vif_plug_ctx_in,
-                             struct vif_plug_ctx_out *vif_plug_ctx_out)
+consider_plug_lport__(const struct vif_plug_class *vif_plug,
+                      const struct sbrec_port_binding *pb,
+                      struct vif_plug_port_ctx **vif_plug_port_ctx_ptr,
+                      struct vif_plug_ctx_in *vif_plug_ctx_in)
 {
     if (!vif_plug_ctx_in->chassis_rec || !vif_plug_ctx_in->br_int
         || !vif_plug_ctx_in->ovs_idl_txn) {
@@ -317,13 +332,22 @@ consider_plug_lport_create__(const struct vif_plug_class *vif_plug,
                            &vif_plug_port_ctx->vif_plug_port_ctx_out)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_INFO_RL(&rl,
-                     "Not plugging lport %s on direction from VIF plug "
-                     "provider.",
+                     "Not plugging/updating lport %s on direction from VIF "
+                     "plug provider.",
                      pb->logical_port);
         destroy_port_ctx(vif_plug_port_ctx);
         return true;
     }
-
+    *vif_plug_port_ctx_ptr = vif_plug_port_ctx;
+    return true;
+}
+static bool
+consider_plug_lport_create__(const struct smap *iface_external_ids,
+                             const struct sbrec_port_binding *pb,
+                             const struct vif_plug_port_ctx *vif_plug_port_ctx,
+                             struct vif_plug_ctx_in *vif_plug_ctx_in,
+                             struct vif_plug_ctx_out *vif_plug_ctx_out)
+{
     VLOG_INFO("Plugging port %s into %s for lport %s on this "
               "chassis.",
               vif_plug_port_ctx->vif_plug_port_ctx_out.name,
@@ -340,41 +364,12 @@ static bool
 consider_plug_lport_update__(const struct vif_plug_class *vif_plug,
                              const struct smap *iface_external_ids,
                              const struct sbrec_port_binding *pb,
-                             struct local_binding *lbinding,
+                             const struct ovsrec_interface *iface_rec,
+                             struct vif_plug_port_ctx *vif_plug_port_ctx,
                              struct vif_plug_ctx_in *vif_plug_ctx_in,
                              struct vif_plug_ctx_out *vif_plug_ctx_out)
 {
-    if (!vif_plug_ctx_in->chassis_rec || !vif_plug_ctx_in->br_int
-        || !vif_plug_ctx_in->ovs_idl_txn) {
-        /* Some of our prerequisites are not available, ask for a recompute. */
-        return false;
-    }
-    /* Our contract with the VIF plug provider is that vif_plug_port_finish
-     * will be called with vif_plug_port_ctx_in and vif_plug_port_ctx_out
-     * objects once the transaction commits.
-     *
-     * Since this happens asynchronously we need to allocate memory for
-     * and duplicate any database references so that they stay valid.
-     *
-     * The data is freed with a call to destroy_port_ctx after the
-     * transaction completes at the end of the ovn-controller main
-     * loop. */
-    struct vif_plug_port_ctx *vif_plug_port_ctx = build_port_ctx(
-        vif_plug, PLUG_OP_CREATE, vif_plug_ctx_in, pb, NULL, NULL);
-
-    if (!vif_plug_port_prepare(vif_plug,
-                               &vif_plug_port_ctx->vif_plug_port_ctx_in,
-                               &vif_plug_port_ctx->vif_plug_port_ctx_out)) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_INFO_RL(&rl,
-                     "Not updating lport %s on direction from VIF plug "
-                     "provider.",
-                     pb->logical_port);
-        destroy_port_ctx(vif_plug_port_ctx);
-        return true;
-    }
-
-    if (strcmp(lbinding->iface->name,
+    if (strcmp(iface_rec->name,
                vif_plug_port_ctx->vif_plug_port_ctx_out.name)) {
         VLOG_WARN("Attempt of incompatible change to existing "
                   "port detected, please recreate port: %s",
@@ -386,7 +381,7 @@ consider_plug_lport_update__(const struct vif_plug_class *vif_plug,
         return false;
     }
     VLOG_DBG("updating iface for: %s", pb->logical_port);
-    transact_update_port(lbinding->iface, vif_plug_ctx_in, vif_plug_ctx_out,
+    transact_update_port(iface_rec, vif_plug_ctx_in, vif_plug_ctx_out,
                          vif_plug_port_ctx, iface_external_ids,
                          get_plug_mtu_request(&pb->options));
 
@@ -438,13 +433,45 @@ consider_plug_lport(const struct sbrec_port_binding *pb,
                              UUID_ARGS(&lbinding->iface->header_.uuid));
                 return false;
             }
+            struct vif_plug_port_ctx *vif_plug_port_ctx = NULL;
+            if (!consider_plug_lport__(vif_plug, pb, &vif_plug_port_ctx,
+                                       vif_plug_ctx_in)) {
+                return false;
+            }
+
             ret = consider_plug_lport_update__(vif_plug, &iface_external_ids,
-                                               pb, lbinding, vif_plug_ctx_in,
+                                               pb, lbinding->iface,
+                                               vif_plug_port_ctx,
+                                               vif_plug_ctx_in,
                                                vif_plug_ctx_out);
         } else {
-            ret = consider_plug_lport_create__(vif_plug, &iface_external_ids,
-                                               pb, vif_plug_ctx_in,
-                                               vif_plug_ctx_out);
+            struct vif_plug_port_ctx *vif_plug_port_ctx = NULL;
+            if (!consider_plug_lport__(vif_plug, pb, &vif_plug_port_ctx,
+                                       vif_plug_ctx_in)) {
+                return false;
+            }
+
+            const struct ovsrec_interface *iface_rec =
+                iface_lookup_by_name(vif_plug_ctx_in->ovsrec_interface_by_name,
+                             vif_plug_port_ctx->vif_plug_port_ctx_out.name);
+            if (iface_rec &&
+                smap_get(&iface_rec->external_ids, "iface-id") &&
+                smap_get(&iface_rec->external_ids,
+                         OVN_PLUGGED_EXT_ID) &&
+                is_iface_in_int_bridge(iface_rec, vif_plug_ctx_in->br_int)) {
+
+                ret = consider_plug_lport_update__(vif_plug,
+                                                   &iface_external_ids,
+                                                   pb, iface_rec,
+                                                   vif_plug_port_ctx,
+                                                   vif_plug_ctx_in,
+                                                   vif_plug_ctx_out);
+            } else {
+                ret = consider_plug_lport_create__(&iface_external_ids, pb,
+                                                   vif_plug_port_ctx,
+                                                   vif_plug_ctx_in,
+                                                   vif_plug_ctx_out);
+            }
         }
     }
 
