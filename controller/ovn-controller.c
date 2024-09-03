@@ -5904,7 +5904,22 @@ loop_done:
             }
 
             ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop);
-            ovsdb_idl_loop_commit_and_wait(&ovs_idl_loop);
+            int ovs_txn_status = ovsdb_idl_loop_commit_and_wait(&ovs_idl_loop);
+            if (!ovs_txn_status) {
+                /* The transaction failed. */
+                vif_plug_clear_deleted(
+                        &vif_plug_deleted_iface_ids);
+                vif_plug_clear_changed(
+                        &vif_plug_changed_iface_ids);
+            } else if (ovs_txn_status == 1) {
+                /* The transaction committed successfully
+                 * (or it did not change anything in the database). */
+                vif_plug_finish_deleted(
+                        &vif_plug_deleted_iface_ids);
+                vif_plug_finish_changed(
+                        &vif_plug_changed_iface_ids);
+            }
+
             poll_block();
         }
     }
