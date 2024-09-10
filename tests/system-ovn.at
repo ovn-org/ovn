@@ -13929,3 +13929,76 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
 /.*terminating with signal 15.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([NXT_CT_FLUSH_ZONE count])
+ovn_start --use-tcp-to-sb
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+dnl Set external-ids in br-int needed for ovn-controller
+PARSE_LISTENING_PORT([$ovs_base/ovn-sb/ovsdb-server.log], [TCP_PORT])
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=tcp:127.0.0.1:$TCP_PORT \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+dnl Start ovn-controller
+start_daemon ovn-controller
+check ovn-appctl -t ovn-controller vlog/set dbg:ct_zone
+
+# sw0-port1 -- sw0
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-port1
+
+# Make sure address is set in a different transaction.
+sleep_sb
+stop_ovsdb_controller_updates $TCP_PORT
+check ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:01 192.168.0.2"
+
+ovs-vsctl add-port br-int p1 -- \
+    set Interface p1 external_ids:iface-id=sw0-port1 -- set Interface p1 type=internal
+
+# Make sure ovn-controller runs and claims the port.
+ensure_controller_run
+
+# Wake up sb, so that it can handle lsp-set-address, but no the pb->chassis (as updates from controller stillblocked)
+wake_up_sb
+ensure_controller_run
+
+# And now restarts ovn-controller.
+restart_ovsdb_controller_updates $TCP_PORT
+
+wait_for_ports_up
+ovn-nbctl --wait=hv sync
+
+AT_CHECK([ovn-appctl -t ovn-controller ct-zone-list | sed "s/ [[0-9]]*/ ??/" | sort], [0], [dnl
+sw0-port1 ??
+sw0_dnat ??
+sw0_snat ??
+])
+
+# Check that we did just the initial zone flush
+AT_CHECK([grep -c "NXT_CT_FLUSH_ZONE" ovs-vswitchd.log], [0], [dnl
+3
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
+/.*terminating with signal 15.*/d"])
+AT_CLEANUP
+])
