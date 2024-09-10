@@ -216,12 +216,15 @@ ct_zones_update(const struct sset *local_lports,
     struct shash_node *node;
     SHASH_FOR_EACH_SAFE (node, &ctx->current) {
         struct ct_zone *ct_zone = node->data;
-        if (!sset_contains(&all_users, node->name) ||
-            ct_zone->zone < min_ct_zone || ct_zone->zone > max_ct_zone) {
+        if (!sset_contains(&all_users, node->name)) {
             ct_zone_remove(ctx, node->name);
         } else if (!simap_find(&req_snat_zones, node->name)) {
-            bitmap_set1(unreq_snat_zones_map, ct_zone->zone);
-            simap_put(&unreq_snat_zones, node->name, ct_zone->zone);
+            if (ct_zone->zone < min_ct_zone || ct_zone->zone > max_ct_zone) {
+                ct_zone_remove(ctx, node->name);
+            } else {
+                bitmap_set1(unreq_snat_zones_map, ct_zone->zone);
+                simap_put(&unreq_snat_zones, node->name, ct_zone->zone);
+            }
         }
     }
 
@@ -249,10 +252,11 @@ ct_zones_update(const struct sset *local_lports,
 
         struct ct_zone *ct_zone = shash_find_data(&ctx->current,
                                                   snat_req_node->name);
+        bool flush = !(ct_zone && ct_zone->zone == snat_req_node->data);
         if (ct_zone && ct_zone->zone != snat_req_node->data) {
             ct_zone_remove(ctx, snat_req_node->name);
         }
-        ct_zone_add(ctx, snat_req_node->name, snat_req_node->data, true);
+        ct_zone_add(ctx, snat_req_node->name, snat_req_node->data, flush);
     }
 
     /* xxx This is wasteful to assign a zone to each port--even if no
