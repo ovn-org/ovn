@@ -1620,7 +1620,7 @@ consider_vif_lport_(const struct sbrec_port_binding *pb,
                                  b_ctx_out->if_mgr);
         }
     }
-    if (pb->chassis != b_ctx_in->chassis_rec
+    if (pb->chassis && pb->chassis != b_ctx_in->chassis_rec
             && !is_requested_additional_chassis(pb, b_ctx_in->chassis_rec)
             && if_status_is_port_claimed(b_ctx_out->if_mgr,
                                          pb->logical_port)) {
