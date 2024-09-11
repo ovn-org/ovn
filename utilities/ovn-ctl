@@ -499,6 +499,11 @@ run_sb_ovsdb() {
     start_sb_ovsdb
 }
 
+run_sb_relay_ovsdb() {
+    DB_SB_RELAY_DETACH=no
+    start_sb_relay_ovsdb
+}
+
 run_ic_nb_ovsdb() {
     DB_IC_NB_DETACH=no
     start_ic_nb_ovsdb
@@ -1468,6 +1473,9 @@ case $command in
         ;;
     run_sb_ovsdb)
         run_sb_ovsdb
+        ;;
+    run_sb_relay_ovsdb)
+        run_sb_relay_ovsdb
         ;;
     run_ic_nb_ovsdb)
         run_ic_nb_ovsdb
