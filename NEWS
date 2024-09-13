@@ -1,4 +1,4 @@
-OVN v24.09.0 - xx xxx xxxx
+OVN v24.09.0 - 13 Sep 2024
 --------------------------
   - Added a new logical switch port option "pkt_clone_type".
     If the value is set to "mc_unknown", packets destined to the port gets
