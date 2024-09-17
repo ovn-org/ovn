@@ -820,6 +820,42 @@ main(int argc, char *argv[])
     ovsdb_idl_omit_alert(ovnnb_idl_loop.idl,
                          &nbrec_nb_global_col_hv_cfg_timestamp);
 
+    /* Ignore northbound external IDs, except for logical switch, router and
+     * their ports, for which the external IDs are propagated to corresponding
+     * southbound datapath and port binding records. */
+    const struct ovsdb_idl_column *external_ids[] = {
+        &nbrec_acl_col_external_ids,
+        &nbrec_address_set_col_external_ids,
+        &nbrec_bfd_col_external_ids,
+        &nbrec_chassis_template_var_col_external_ids,
+        &nbrec_connection_col_external_ids,
+        &nbrec_copp_col_external_ids,
+        &nbrec_dhcp_options_col_external_ids,
+        &nbrec_dhcp_relay_col_external_ids,
+        &nbrec_dns_col_external_ids,
+        &nbrec_forwarding_group_col_external_ids,
+        &nbrec_gateway_chassis_col_external_ids,
+        &nbrec_ha_chassis_col_external_ids,
+        &nbrec_ha_chassis_group_col_external_ids,
+        &nbrec_load_balancer_col_external_ids,
+        &nbrec_load_balancer_health_check_col_external_ids,
+        &nbrec_logical_router_policy_col_external_ids,
+        &nbrec_logical_router_static_route_col_external_ids,
+        &nbrec_meter_col_external_ids,
+        &nbrec_meter_band_col_external_ids,
+        &nbrec_mirror_col_external_ids,
+        &nbrec_nat_col_external_ids,
+        &nbrec_nb_global_col_external_ids,
+        &nbrec_port_group_col_external_ids,
+        &nbrec_qos_col_external_ids,
+        &nbrec_ssl_col_external_ids,
+        &nbrec_sample_collector_col_external_ids,
+        &nbrec_sampling_app_col_external_ids,
+    };
+    for (size_t i = 0; i < ARRAY_SIZE(external_ids); i++) {
+        ovsdb_idl_omit(ovnnb_idl_loop.idl, external_ids[i]);
+    }
+
     unixctl_command_register("nb-connection-status", "", 0, 0,
                              ovn_conn_show, ovnnb_idl_loop.idl);
 
