@@ -44,7 +44,7 @@ test_ipam_get_unused_ip(struct ovs_cmdl_context *ctx)
         uint32_t next_ip = ipam_get_unused_ip(&info);
         ds_put_format(&output, IP_FMT "\n", IP_ARGS(htonl(next_ip)));
         if (next_ip) {
-            ovs_assert(ipam_insert_ip(&info, next_ip));
+            ovs_assert(ipam_insert_ip(&info, next_ip, true));
         }
     }
 

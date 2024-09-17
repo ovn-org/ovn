@@ -22,7 +22,7 @@ void init_ipam_info(struct ipam_info *info, const struct smap *config,
 
 void destroy_ipam_info(struct ipam_info *info);
 
-bool ipam_insert_ip(struct ipam_info *info, uint32_t ip);
+bool ipam_insert_ip(struct ipam_info *info, uint32_t ip, bool dynamic);
 
 uint32_t ipam_get_unused_ip(struct ipam_info *info);
 
