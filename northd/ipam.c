@@ -48,7 +48,7 @@ destroy_ipam_info(struct ipam_info *info)
 }
 
 bool
-ipam_insert_ip(struct ipam_info *info, uint32_t ip)
+ipam_insert_ip(struct ipam_info *info, uint32_t ip, bool dynamic)
 {
     if (!info->allocated_ipv4s) {
         return true;
@@ -56,8 +56,8 @@ ipam_insert_ip(struct ipam_info *info, uint32_t ip)
 
     if (ip >= info->start_ipv4 &&
         ip < (info->start_ipv4 + info->total_ipv4s)) {
-        if (bitmap_is_set(info->allocated_ipv4s,
-                          ip - info->start_ipv4)) {
+        if (dynamic && bitmap_is_set(info->allocated_ipv4s,
+                                     ip - info->start_ipv4)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
             VLOG_WARN_RL(&rl, "%s: Duplicate IP set: " IP_FMT,
                          info->id, IP_ARGS(htonl(ip)));
