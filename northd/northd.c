@@ -1464,13 +1464,13 @@ ovn_port_get_peer(const struct hmap *lr_ports, struct ovn_port *op)
 }
 
 static void
-ipam_insert_ip_for_datapath(struct ovn_datapath *od, uint32_t ip)
+ipam_insert_ip_for_datapath(struct ovn_datapath *od, uint32_t ip, bool dynamic)
 {
     if (!od) {
         return;
     }
 
-    ipam_insert_ip(&od->ipam_info, ip);
+    ipam_insert_ip(&od->ipam_info, ip, dynamic);
 }
 
 static void
@@ -1487,7 +1487,7 @@ ipam_insert_lsp_addresses(struct ovn_datapath *od,
 
     for (size_t j = 0; j < laddrs->n_ipv4_addrs; j++) {
         uint32_t ip = ntohl(laddrs->ipv4_addrs[j].addr);
-        ipam_insert_ip_for_datapath(od, ip);
+        ipam_insert_ip_for_datapath(od, ip, false);
     }
 }
 
@@ -1519,7 +1519,7 @@ ipam_add_port_addresses(struct ovn_datapath *od, struct ovn_port *op)
              * about a duplicate IP address.
              */
             if (ip != op->peer->od->ipam_info.start_ipv4) {
-                ipam_insert_ip_for_datapath(op->peer->od, ip);
+                ipam_insert_ip_for_datapath(op->peer->od, ip, false);
             }
         }
     }
@@ -1744,7 +1744,8 @@ update_unchanged_dynamic_addresses(struct dynamic_address_update *update)
     }
     if (update->ipv4 == NONE && update->current_addresses.n_ipv4_addrs) {
         ipam_insert_ip_for_datapath(update->op->od,
-                       ntohl(update->current_addresses.ipv4_addrs[0].addr));
+                       ntohl(update->current_addresses.ipv4_addrs[0].addr),
+                       true);
     }
 }
 
@@ -1872,7 +1873,7 @@ update_dynamic_addresses(struct dynamic_address_update *update)
     ipam_insert_mac(&mac, true);
 
     if (ip4) {
-        ipam_insert_ip_for_datapath(update->od, ntohl(ip4));
+        ipam_insert_ip_for_datapath(update->od, ntohl(ip4), true);
         ds_put_format(&new_addr, " "IP_FMT, IP_ARGS(ip4));
     }
     if (!IN6_ARE_ADDR_EQUAL(&ip6, &in6addr_any)) {
