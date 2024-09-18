@@ -39305,3 +39305,117 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep -v 
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
 ])
+
+AT_SETUP([Patch ports not owned by OVN])
+
+AT_KEYWORDS([ovn])
+ovn_start
+
+net_add n1
+sim_add hv1
+ovs-vsctl add-br br-eth0
+ovs-vsctl add-br br-eth1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.20
+
+ovs-vsctl set Open_vSwitch . external_ids:ovn-bridge-mappings=physnet1:br-eth0,physnet2:br-eth1
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0p1
+
+check ovn-nbctl --wait=hv sync
+
+check ovn-appctl -t ovn-controller debug/ignore-startup-delay
+
+# Waits until the OVS database contains exactly the specified patch ports.
+# Each argument should be of the form BRIDGE PORT PEER.
+check_patch_ports () {
+    # Generate code to check that the set of patch ports is exactly as
+    # specified.
+    echo 'ovs-vsctl -f csv -d bare --no-headings --columns=name find Interface type=patch | sort' > query
+    for patch
+    do
+        echo $patch
+    done | cut -d' ' -f 2 | sort > expout
+
+    # Generate code to verify that the configuration of each patch
+    # port is correct.
+    for patch
+    do
+        set $patch; bridge=$1 port=$2 peer=$3
+        echo >>query "ovs-vsctl iface-to-br $port -- get Interface $port type options"
+        echo >>expout "$bridge
+patch
+{peer=$peer}"
+    done
+
+    # Run the query until we get the expected result (or until a timeout).
+    #
+    # (We use sed to drop all "s from output because ovs-vsctl quotes some
+    # of the port names but not others.)
+    AT_CAPTURE_FILE([query])
+    AT_CAPTURE_FILE([expout])
+    AT_CAPTURE_FILE([stdout])
+    OVS_WAIT_UNTIL([. ./query | sed 's/"//g' > stdout #"
+                    diff -u stdout expout >/dev/null])
+}
+
+# Initially there should be no patch ports.
+check_patch_ports
+
+check ovn-nbctl lsp-add sw0 ln-sw0
+check ovn-nbctl lsp-set-type ln-sw0 localnet
+check ovn-nbctl lsp-set-addresses ln-sw0 unknown
+check ovn-nbctl --wait=hv lsp-set-options ln-sw0 network_name=physnet1
+
+# There should still be no patch ports.
+check_patch_ports
+
+as hv1
+check ovs-vsctl \
+    -- add-port br-int vif1 \
+    -- set Interface vif1 external_ids:iface-id=sw0p1
+
+# ovn-controller should bind the interface.
+wait_for_ports_up
+
+AS_BOX([Checking for patch ports to be created by OVN for ln-sw0])
+check_patch_ports \
+    'br-int  patch-br-int-to-ln-sw0  patch-ln-sw0-to-br-int' \
+    'br-eth0 patch-ln-sw0-to-br-int  patch-br-int-to-ln-sw0'
+
+
+check ovs-vsctl add-port br-int patch-br-int-to-br-eth0 \
+   -- set interface patch-br-int-to-br-eth0 options:peer=patch-br-eth0-to-br-int \
+   -- set interface patch-br-int-to-br-eth0 type=patch \
+   -- add-port br-eth0 patch-br-eth0-to-br-int \
+   -- set interface patch-br-eth0-to-br-int options:peer=patch-br-int-to-br-eth0 \
+   -- set interface patch-br-eth0-to-br-int type=patch \
+
+AS_BOX([Checking for patch ports after creating manual patch ports])
+
+check_patch_ports \
+    'br-int  patch-br-int-to-ln-sw0   patch-ln-sw0-to-br-int' \
+    'br-eth0 patch-ln-sw0-to-br-int   patch-br-int-to-ln-sw0' \
+    'br-int  patch-br-int-to-br-eth0  patch-br-eth0-to-br-int' \
+    'br-eth0 patch-br-eth0-to-br-int  patch-br-int-to-br-eth0'
+
+# Delete the localnet port.  ovn-controller should not
+# delete the manually created ones.
+check ovn-nbctl --wait=hv lsp-del ln-sw0
+
+check_patch_ports \
+    'br-int  patch-br-int-to-br-eth0  patch-br-eth0-to-br-int' \
+    'br-eth0 patch-br-eth0-to-br-int  patch-br-int-to-br-eth0'
+
+# Set external_ids:ovn-localnet-port to the manually created patch port.
+# ovn-controller should delete the patch ports now as we are setting
+# OVN as its owner.
+check ovs-vsctl set port patch-br-int-to-br-eth0 external_ids:ovn-localnet-port=foo
+ovn-nbctl --wait=hv sync
+
+AS_BOX([Checking for patch ports after setting external_ids:ovn-localnet-port to the manually created patch port])
+check_patch_ports
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
