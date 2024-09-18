@@ -84,7 +84,8 @@ Learn more about the Open Virtual Network (OVN) project and about how you can co
   :doc:`internals/contributing/inclusive-language` |
   :doc:`internals/contributing/coding-style`
 
-- **Maintaining:** :doc:`internals/maintainers` |
+- **Maintaining:** :doc:`internals/charter` |
+  :doc:`internals/maintainers` |
   :doc:`internals/committer-responsibilities` |
   :doc:`internals/committer-grant-revocation` |
   :doc:`internals/committer-emeritus-status`
