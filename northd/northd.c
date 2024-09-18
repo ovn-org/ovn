@@ -10695,8 +10695,8 @@ get_outport_for_routing_policy_nexthop(struct ovn_datapath *od,
     }
 
     static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-    VLOG_WARN_RL(&rl, "No path for routing policy priority %d; next hop %s",
-                 priority, nexthop);
+    VLOG_WARN_RL(&rl, "No path for routing policy priority %d on router %s; "
+                 "next hop %s", priority, od->nbr->name, nexthop);
     return NULL;
 }
 
@@ -11433,8 +11433,8 @@ find_static_route_outport(struct ovn_datapath *od, const struct hmap *lr_ports,
     if (!out_port || !lrp_addr_s) {
         /* There is no matched out port. */
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "No path for static route %s; next hop %s",
-                     route->ip_prefix, route->nexthop);
+        VLOG_WARN_RL(&rl, "No path for static route %s on router %s; next hop"
+                     " %s", route->ip_prefix, od->nbr->name, route->nexthop);
         return false;
     }
     if (p_out_port) {
