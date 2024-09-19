@@ -2357,3 +2357,203 @@ OVN_CLEANUP_SBOX([hv2], ["/IGMP Querier enabled without a valid IPv4/d
 OVN_CLEANUP_IC([az1],[az2])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- route tag -- tagging and filtering routes])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+
+    # Enable route learning at AZ level
+    ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level
+    ovn-nbctl set nb_global . options:ic-route-adv=true
+done
+
+# Create new transit switches and LRs. Test topology is next:
+# VPC1:
+#                       / transit switch (ts11) \
+# logical router (lr11) - transit switch (ts12) - logical router (lr12)
+#                       \                       /
+#                        transit switch (tspeer)
+# VPC2:                 /                       \
+# logical router (lr21) - transit switch (ts21) - logical router (lr22)
+#                       \ transit switch (ts22) /
+#
+
+# VPC1
+# create lr11, lr12, ts11, ts12 and connect them
+for i in 1 2; do
+    ovn_as az$i
+
+    lr=lr1$i
+    ovn-nbctl lr-add $lr
+
+    for j in 1 2; do
+        ts=ts1$j
+        ovn-ic-nbctl --wait=sb --may-exist ts-add $ts
+
+        lrp=lrp-$lr-$ts
+        lsp=lsp-$ts-$lr
+        # Create LRP and connect to TS
+        ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
+        ovn-nbctl lsp-add $ts $lsp \
+                -- lsp-set-addresses $lsp router \
+                -- lsp-set-type $lsp router \
+                -- lsp-set-options $lsp router-port=$lrp
+    done
+done
+
+# VPC2
+# create lr21, lr22, ts21, ts22 and connect them
+for i in 1 2; do
+    ovn_as az$i
+
+    lr=lr2$i
+    ovn-nbctl lr-add $lr
+
+    for j in 1 2; do
+        ts=ts2$j
+        ovn-ic-nbctl --wait=sb --may-exist ts-add $ts
+
+        lrp=lrp-$lr-$ts
+        lsp=lsp-$ts-$lr
+        # Create LRP and connect to TS
+        ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
+        ovn-nbctl lsp-add $ts $lsp \
+                -- lsp-set-addresses $lsp router \
+                -- lsp-set-type $lsp router \
+                -- lsp-set-options $lsp router-port=$lrp
+    done
+done
+
+# Create directly-connected route in VPC1
+ovn_as az2 ovn-nbctl lrp-add lr12 lrp-lr12 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
+
+# Create directly-connected route in VPC2
+ovn_as az2 ovn-nbctl --wait=sb lrp-add lr22 lrp-lr22 aa:aa:aa:aa:cc:01 "192.168.1.1/24"
+
+check ovn-ic-nbctl --wait=sb sync
+
+# Test direct routes from lr12 were learned to lr11
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2, $5}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.101.2 ecmp
+192.168.0.0/24 169.254.102.2 ecmp
+])
+
+# Test direct routes from lr22 were learned to lr21
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr21 | grep 192.168 |
+             grep learned | awk '{print $1, $2, $5}' | sort ], [0], [dnl
+192.168.1.0/24 169.254.101.2 ecmp
+192.168.1.0/24 169.254.102.2 ecmp
+])
+
+# Create peering TS
+ovn-ic-nbctl --wait=sb --may-exist ts-add tspeer
+
+# Create LRPs and connect to the peering TS
+ovn_as az1
+ovn-nbctl lrp-add lr11 lrp-lr11-tspeer aa:aa:aa:aa:11:01 169.254.103.11/24
+ovn-nbctl lsp-add tspeer lsp-tspeer-lr11 \
+        -- lsp-set-addresses lsp-tspeer-lr11 router \
+        -- lsp-set-type lsp-tspeer-lr11 router \
+        -- lsp-set-options lsp-tspeer-lr11 router-port=lrp-lr11-tspeer
+
+ovn_as az2
+ovn-nbctl lrp-add lr12 lrp-lr12-tspeer aa:aa:aa:aa:12:01 169.254.103.12/24
+ovn-nbctl lsp-add tspeer lsp-tspeer-lr12 \
+        -- lsp-set-addresses lsp-tspeer-lr12 router \
+        -- lsp-set-type lsp-tspeer-lr12 router \
+        -- lsp-set-options lsp-tspeer-lr12 router-port=lrp-lr12-tspeer
+
+ovn_as az1
+ovn-nbctl lrp-add lr21 lrp-lr21-tspeer aa:aa:aa:aa:21:01 169.254.103.21/24
+ovn-nbctl lsp-add tspeer lsp-tspeer-lr21 \
+        -- lsp-set-addresses lsp-tspeer-lr21 router \
+        -- lsp-set-type lsp-tspeer-lr21 router \
+        -- lsp-set-options lsp-tspeer-lr21 router-port=lrp-lr21-tspeer
+
+ovn_as az2
+ovn-nbctl lrp-add lr22 lrp-lr22-tspeer aa:aa:aa:aa:22:01 169.254.103.22/24
+ovn-nbctl lsp-add tspeer lsp-tspeer-lr22 \
+        -- lsp-set-addresses lsp-tspeer-lr22 router \
+        -- lsp-set-type lsp-tspeer-lr22 router \
+        -- lsp-set-options lsp-tspeer-lr22 router-port=lrp-lr22-tspeer
+
+check ovn-ic-nbctl --wait=sb sync
+
+# Test direct routes from lr12/lr22 were learned to lr11
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.101.2
+192.168.0.0/24 169.254.102.2
+192.168.0.0/24 169.254.103.12
+192.168.1.0/24 169.254.103.22
+])
+
+# Test direct routes from lr22/lr12 were learned to lr21
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr21 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.103.12
+192.168.1.0/24 169.254.101.2
+192.168.1.0/24 169.254.102.2
+192.168.1.0/24 169.254.103.22
+])
+
+# VPC1: Create a route tag for VPC1 mark its own routes via lrp-lr12
+ovn_as az2 ovn-nbctl set logical_router_port lrp-lr12-tspeer options:ic-route-tag=vpc1
+
+# Test advertised routes with the vpc1 route tag present
+ovn-ic-sbctl list route
+wait_row_count ic-sb:Route 1 ip_prefix=192.168.0.1/24 nexthop=169.254.103.12 origin=connected external_ids:ic-route-tag=vpc1
+
+# Filter routes on VPC1 lrp-lr11-tspeer with the route tag vpc1 present
+ovn_as az1 ovn-nbctl set logical_router_port lrp-lr11-tspeer options:ic-route-filter-tag=vpc1
+
+# Test remaining direct routes from lr12 were learned to lr11
+# Routes from the 169.254.101.2 nexthop have been filtered
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.101.2
+192.168.0.0/24 169.254.102.2
+192.168.1.0/24 169.254.103.22
+])
+
+# Remove the route tag used for advertisement
+ovn_as az2 ovn-nbctl remove logical_router_port lrp-lr12-tspeer options ic-route-tag=vpc1
+
+# Test advertised routes with the vpc1 route tag present
+ovn-ic-sbctl list route
+wait_row_count ic-sb:Route 0 ip_prefix=192.168.0.1/24 nexthop=169.254.103.12 origin=connected external_ids:ic-route-tag=vpc1
+
+# Test the original direct routes from lr12/lr22 were learned to lr11
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.101.2
+192.168.0.0/24 169.254.102.2
+192.168.0.0/24 169.254.103.12
+192.168.1.0/24 169.254.103.22
+])
+
+# Remove route tag filter and add route tag on lrp-lr12-tspeer advertised routes
+ovn_as az1 ovn-nbctl remove logical_router_port lrp-lr11-tspeer options ic-route-filter-tag=vpc1
+ovn_as az2 ovn-nbctl set logical_router_port lrp-lr12-tspeer options:ic-route-tag=vpc1
+
+# Test if all the routes are learned because we no longer have the filter tag option enabled
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.101.2
+192.168.0.0/24 169.254.102.2
+192.168.0.0/24 169.254.103.12
+192.168.1.0/24 169.254.103.22
+])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])

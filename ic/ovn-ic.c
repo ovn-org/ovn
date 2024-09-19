@@ -874,6 +874,7 @@ struct ic_route_info {
     struct in6_addr nexthop;
     const char *origin;
     const char *route_table;
+    const char *route_tag;
 
     const struct nbrec_logical_router *nb_lr;
 
@@ -1124,7 +1125,8 @@ add_to_routes_ad(struct hmap *routes_ad, const struct in6_addr prefix,
                  const char *origin, const char *route_table,
                  const struct nbrec_logical_router_port *nb_lrp,
                  const struct nbrec_logical_router_static_route *nb_route,
-                 const struct nbrec_logical_router *nb_lr)
+                 const struct nbrec_logical_router *nb_lr,
+                 const char *route_tag)
 {
     if (route_table == NULL) {
         route_table = "";
@@ -1143,6 +1145,7 @@ add_to_routes_ad(struct hmap *routes_ad, const struct in6_addr prefix,
         ic_route->route_table = route_table;
         ic_route->nb_lrp = nb_lrp;
         ic_route->nb_lr = nb_lr;
+        ic_route->route_tag = route_tag;
         hmap_insert(routes_ad, &ic_route->node, hash);
     } else {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
@@ -1158,7 +1161,8 @@ add_static_to_routes_ad(
     const struct nbrec_logical_router_static_route *nb_route,
     const struct nbrec_logical_router *nb_lr,
     const struct lport_addresses *nexthop_addresses,
-    const struct smap *nb_options)
+    const struct smap *nb_options,
+    const char *route_tag)
 {
     struct in6_addr prefix, nexthop;
     unsigned int plen;
@@ -1199,7 +1203,7 @@ add_static_to_routes_ad(
     }
 
     add_to_routes_ad(routes_ad, prefix, plen, nexthop, ROUTE_ORIGIN_STATIC,
-                     nb_route->route_table, NULL, nb_route, nb_lr);
+                     nb_route->route_table, NULL, nb_route, nb_lr, route_tag);
 }
 
 static void
@@ -1207,7 +1211,8 @@ add_network_to_routes_ad(struct hmap *routes_ad, const char *network,
                          const struct nbrec_logical_router_port *nb_lrp,
                          const struct lport_addresses *nexthop_addresses,
                          const struct smap *nb_options,
-                         const struct nbrec_logical_router *nb_lr)
+                         const struct nbrec_logical_router *nb_lr,
+                         const char *route_tag)
 {
     struct in6_addr prefix, nexthop;
     unsigned int plen;
@@ -1246,7 +1251,7 @@ add_network_to_routes_ad(struct hmap *routes_ad, const char *network,
 
     /* directly-connected routes go to <main> route table */
     add_to_routes_ad(routes_ad, prefix, plen, nexthop, ROUTE_ORIGIN_CONNECTED,
-                     NULL, nb_lrp, NULL, nb_lr);
+                     NULL, nb_lrp, NULL, nb_lr, route_tag);
 }
 
 static bool
@@ -1315,8 +1320,8 @@ get_lrp_name_by_ts_port_name(struct ic_context *ctx, const char *ts_port_name)
     return smap_get(&nb_lsp->options, "router-port");
 }
 
-static const char *
-get_route_table_by_lrp_name(struct ic_context *ctx, const char *lrp_name)
+static const struct nbrec_logical_router_port *
+get_lrp_by_lrp_name(struct ic_context *ctx, const char *lrp_name)
 {
     const struct nbrec_logical_router_port *lrp;
     const struct nbrec_logical_router_port *lrp_key =
@@ -1326,10 +1331,7 @@ get_route_table_by_lrp_name(struct ic_context *ctx, const char *lrp_name)
                                                lrp_key);
     nbrec_logical_router_port_index_destroy_row(lrp_key);
 
-    if (lrp) {
-        return smap_get_def(&lrp->options, "route_table", "");
-    }
-    return "";  /* <main> route table */
+    return lrp;
 }
 
 static bool
@@ -1359,12 +1361,21 @@ sync_learned_routes(struct ic_context *ctx,
         nbrec_nb_global_first(ctx->ovnnb_idl);
     ovs_assert(nb_global);
 
-    const char *lrp_name, *ts_route_table;
+    const char *lrp_name, *ts_route_table, *route_filter_tag;
     const struct icsbrec_port_binding *isb_pb;
+    const struct nbrec_logical_router_port *lrp;
     for (int i = 0; i < ic_lr->n_isb_pbs; i++) {
         isb_pb = ic_lr->isb_pbs[i];
         lrp_name = get_lrp_name_by_ts_port_name(ctx, isb_pb->logical_port);
-        ts_route_table = get_route_table_by_lrp_name(ctx, lrp_name);
+        lrp = get_lrp_by_lrp_name(ctx, lrp_name);
+        if (lrp) {
+            ts_route_table = smap_get_def(&lrp->options, "route_table", "");
+            route_filter_tag = smap_get_def(&lrp->options,
+                                            "ic-route-filter-tag", "");
+        } else {
+            ts_route_table = "";
+            route_filter_tag = "";
+        }
 
         isb_route_key = icsbrec_route_index_init_row(ctx->icsbrec_route_by_ts);
         icsbrec_route_index_set_transit_switch(isb_route_key,
@@ -1381,6 +1392,16 @@ sync_learned_routes(struct ic_context *ctx,
                 continue;
             }
             if (uuid_equals(&ic_lr->lr->header_.uuid, &lr_uuid)) {
+                continue;
+            }
+
+            const char *isb_route_tag = smap_get(&isb_route->external_ids,
+                                                 "ic-route-tag");
+            if (isb_route_tag  && !strcmp(isb_route_tag, route_filter_tag)) {
+                VLOG_DBG("Skip learning route %s -> %s as its route tag "
+                         "[%s] is filtered by the filter tag [%s] of TS LRP ",
+                         isb_route->ip_prefix, isb_route->nexthop,
+                         isb_route_tag, route_filter_tag);
                 continue;
             }
 
@@ -1471,6 +1492,7 @@ ad_route_sync_external_ids(const struct ic_route_info *route_adv,
                            const struct icsbrec_route *isb_route)
 {
     struct uuid isb_ext_id, nb_id, isb_ext_lr_id, lr_id;
+    const char *route_tag;
     smap_get_uuid(&isb_route->external_ids, "nb-id", &isb_ext_id);
     smap_get_uuid(&isb_route->external_ids, "lr-id", &isb_ext_lr_id);
     nb_id = route_adv->nb_route ? route_adv->nb_route->header_.uuid
@@ -1487,6 +1509,16 @@ ad_route_sync_external_ids(const struct ic_route_info *route_adv,
         icsbrec_route_update_external_ids_setkey(isb_route, "lr-id",
                                                  uuid_s);
         free(uuid_s);
+    }
+    if (strcmp(route_adv->route_tag, "")) {
+        icsbrec_route_update_external_ids_setkey(isb_route, "ic-route-tag",
+                                                 route_adv->route_tag);
+    } else {
+        route_tag = smap_get(&isb_route->external_ids, "ic-route-tag");
+        if (route_tag) {
+            icsbrec_route_update_external_ids_delkey(isb_route,
+                                                     "ic-route-tag");
+        }
     }
 }
 
@@ -1580,7 +1612,8 @@ build_ts_routes_to_adv(struct ic_context *ctx,
                        struct hmap *routes_ad,
                        struct lport_addresses *ts_port_addrs,
                        const struct nbrec_nb_global *nb_global,
-                       const char *ts_route_table)
+                       const char *ts_route_table,
+                       const char *route_tag)
 {
     const struct nbrec_logical_router *lr = ic_lr->lr;
 
@@ -1603,7 +1636,7 @@ build_ts_routes_to_adv(struct ic_context *ctx,
         } else if (!strcmp(ts_route_table, nb_route->route_table)) {
             /* It may be a route to be advertised */
             add_static_to_routes_ad(routes_ad, nb_route, lr, ts_port_addrs,
-                                    &nb_global->options);
+                                    &nb_global->options, route_tag);
         }
     }
 
@@ -1615,7 +1648,7 @@ build_ts_routes_to_adv(struct ic_context *ctx,
                 add_network_to_routes_ad(routes_ad, lrp->networks[j], lrp,
                                          ts_port_addrs,
                                          &nb_global->options,
-                                         lr);
+                                         lr, route_tag);
             }
         } else {
             /* The router port of the TS port is ignored. */
@@ -1635,9 +1668,10 @@ collect_lr_routes(struct ic_context *ctx,
     ovs_assert(nb_global);
 
     const struct icsbrec_port_binding *isb_pb;
-    const char *lrp_name, *ts_name, *route_table;
+    const char *lrp_name, *ts_name, *route_table, *route_tag;
     struct lport_addresses ts_port_addrs;
     const struct icnbrec_transit_switch *key;
+    const struct nbrec_logical_router_port *lrp;
 
     struct hmap *routes_ad;
     const struct icnbrec_transit_switch *t_sw;
@@ -1669,9 +1703,16 @@ collect_lr_routes(struct ic_context *ctx,
             continue;
         }
         lrp_name = get_lrp_name_by_ts_port_name(ctx, isb_pb->logical_port);
-        route_table = get_route_table_by_lrp_name(ctx, lrp_name);
+        lrp = get_lrp_by_lrp_name(ctx, lrp_name);
+        if (lrp) {
+            route_table = smap_get_def(&lrp->options, "route_table", "");
+            route_tag = smap_get_def(&lrp->options, "ic-route-tag", "");
+        } else {
+            route_table = "";
+            route_tag = "";
+        }
         build_ts_routes_to_adv(ctx, ic_lr, routes_ad, &ts_port_addrs,
-                               nb_global, route_table);
+                               nb_global, route_table, route_tag);
         destroy_lport_addresses(&ts_port_addrs);
     }
 }

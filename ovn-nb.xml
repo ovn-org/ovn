@@ -3678,6 +3678,33 @@ or
 
         </ul>
       </column>
+
+      <column name="options" key="ic-route-tag" type='{"type": "string"}'>
+        <p>
+          This option expects a name of a route-tag that's present in the
+          Logical Router Port. If set, it causes any route advertised by
+          the Logical Router Port to include the <code>route-tag</code> in
+          the <code> external_ids </code> register of the advertised route
+          entry in the <ref table="Route" db="OVN_IC_Southbound"/> table of
+          the <ref db="OVN_IC_Southbound"/> database.
+
+          This allows to tag and filter route tags in the process of
+          advertising and learning routes in <code>ovn-ic</code> daemon.
+        </p>
+      </column>
+
+      <column name="options" key="ic-route-filter-tag"
+              type='{"type": "string"}'>
+        <p>
+          This option expects a name of a filtered route-tag that's present
+          in the Logical Router Port. If set, it causes any route learned by
+          the Logical Router Port with the <code>route-tag</code> present in
+          the external_ids register of the advertised route entry in the
+          <ref table="Route" db="OVN_IC_Southbound"/> table of the
+          <ref db="OVN_IC_Southbound"/> database, will be filtered and not
+          learned by the <code>ovn-ic</code> daemon.
+        </p>
+      </column>
     </group>
 
     <group title="Attachment">
