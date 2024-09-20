@@ -6799,20 +6799,23 @@ check ovn-nbctl lsp-set-type public-lr0 router
 check ovn-nbctl lsp-set-addresses public-lr0 router
 check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
 
+# ECMP flows will be added even if there is only one next-hop.
 check ovn-nbctl --wait=sb --ecmp-symmetric-reply lr-route-add lr0 1.0.0.1 192.168.0.10
 
 ovn-sbctl dump-flows lr0 > lr0flows
 
 AT_CHECK([grep -w "lr_in_ip_routing" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_ip_routing   ), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=10300, match=(ct_mark.ecmp_reply_port == 1 && reg7 == 0 && ip4.dst == 1.0.0.1/32), action=(ip.ttl--; flags.loopback = 1; eth.src = 00:00:20:20:12:13; reg1 = 192.168.0.1; outport = "lr0-public"; next;)
   table=??(lr_in_ip_routing   ), priority=10550, match=(nd_rs || nd_ra), action=(drop;)
   table=??(lr_in_ip_routing   ), priority=194  , match=(inport == "lr0-public" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::200:20ff:fe20:1213; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
   table=??(lr_in_ip_routing   ), priority=74   , match=(ip4.dst == 192.168.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
-  table=??(lr_in_ip_routing   ), priority=97   , match=(reg7 == 0 && ip4.dst == 1.0.0.1/32), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 192.168.0.10; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=97   , match=(reg7 == 0 && ip4.dst == 1.0.0.1/32), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = 1; next;)
 ])
 
 AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_ip_routing_ecmp), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 192.168.0.10; reg1 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; next;)
   table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
 ])
 

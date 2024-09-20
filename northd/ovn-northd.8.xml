@@ -4328,7 +4328,18 @@ next;
 ip.ttl--;
 flags.loopback = 1;
 reg8[0..15] = <var>GID</var>;
-select(reg8[16..31], <var>MID1</var>, <var>MID2</var>, ...);
+reg8[16..31] = select(<var>MID1</var>, <var>MID2</var>, ...);
+        </pre>
+        <p>
+          However, when there is only one route in an ECMP group, group actions
+          will be:
+        </p>
+
+        <pre>
+ip.ttl--;
+flags.loopback = 1;
+reg8[0..15] = <var>GID</var>;
+reg8[16..31] = <var>MID1</var>);
         </pre>
       </li>
 
