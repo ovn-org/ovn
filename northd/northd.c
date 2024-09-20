@@ -11565,20 +11565,26 @@ build_ecmp_route_flow(struct lflow_table *lflows, struct ovn_datapath *od,
 
     struct ds actions = DS_EMPTY_INITIALIZER;
     ds_put_format(&actions, "ip.ttl--; flags.loopback = 1; %s = %"PRIu16
-                  "; %s = select(", REG_ECMP_GROUP_ID, eg->id,
-                  REG_ECMP_MEMBER_ID);
+                  "; %s = ", REG_ECMP_GROUP_ID, eg->id, REG_ECMP_MEMBER_ID);
 
-    bool is_first = true;
-    LIST_FOR_EACH (er, list_node, &eg->route_list) {
-        if (is_first) {
-            is_first = false;
-        } else {
-            ds_put_cstr(&actions, ", ");
+    if (!ovs_list_is_singleton(&eg->route_list)) {
+        bool is_first = true;
+
+        ds_put_cstr(&actions, "select(");
+        LIST_FOR_EACH (er, list_node, &eg->route_list) {
+            if (is_first) {
+                is_first = false;
+            } else {
+                ds_put_cstr(&actions, ", ");
+            }
+            ds_put_format(&actions, "%"PRIu16, er->id);
         }
-        ds_put_format(&actions, "%"PRIu16, er->id);
+        ds_put_cstr(&actions, ");");
+    } else {
+        er = CONTAINER_OF(ovs_list_front(&eg->route_list),
+                          struct ecmp_route_list_node, list_node);
+        ds_put_format(&actions, "%"PRIu16"; next;", er->id);
     }
-
-    ds_put_cstr(&actions, ");");
 
     ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, priority,
                   ds_cstr(&route_match), ds_cstr(&actions),
@@ -13541,6 +13547,11 @@ build_static_route_flows_for_lrouter(
                 if (group) {
                     ecmp_groups_add_route(group, route);
                 }
+            } else if (route->ecmp_symmetric_reply) {
+                /* Traffic for symmetric reply routes has to be conntracked
+                 * even if there is only one next-hop, in case another next-hop
+                 * is added later. */
+                ecmp_groups_add(&ecmp_groups, route);
             } else {
                 unique_routes_add(&unique_routes, route);
             }
