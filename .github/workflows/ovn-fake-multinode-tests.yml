@@ -22,7 +22,7 @@ jobs:
         - { repo: ovn-org/ovn, branch: "branch-22.03" }
     env:
       RUNC_CMD: podman
-      OS_IMAGE: "fedora:37"
+      OS_IMAGE: "fedora:39"
       # https://github.com/actions/runner-images/issues/6282
       XDG_RUNTIME_DIR: ''
     steps:
@@ -31,7 +31,7 @@ jobs:
       with:
         repository: 'ovn-org/ovn-fake-multinode'
         path: 'ovn-fake-multinode'
-        ref: 'v0.1'
+        ref: 'v0.2'
 
     # Check out ovn and ovs separately inside ovn-fake-multinode/ovn and ovn-fake-multinode/ovs
     # ovn-fake-multinode builds and installs ovs from ovn-fake-multinode/ovs
@@ -83,7 +83,7 @@ jobs:
     name: multinode tests ${{ join(matrix.cfg.*, ' ') }}
     env:
       RUNC_CMD: podman
-      OS_IMAGE: "fedora:37"
+      OS_IMAGE: "fedora:39"
       CENTRAL_IMAGE: "ovn/ovn-multi-node:${{ matrix.cfg.branch }}"
       CHASSIS_IMAGE: "ovn/ovn-multi-node:${{ github.ref_name }}"
       RELAY_IMAGE: "ovn/ovn-multi-node:${{ github.ref_name }}"
@@ -132,7 +132,7 @@ jobs:
       with:
         repository: 'ovn-org/ovn-fake-multinode'
         path: 'ovn-fake-multinode'
-        ref: 'v0.1'
+        ref: 'v0.2'
 
     - name: Start openvswitch
       run: |
@@ -150,8 +150,8 @@ jobs:
     - name: Start basic cluster
       run: |
         sudo -E ./ovn_cluster.sh start
-        sudo podman exec -it ovn-central ovn-nbctl show
-        sudo podman exec -it ovn-central ovn-appctl -t ovn-northd version
+        sudo podman exec -it ovn-central-az1-1 ovn-nbctl show
+        sudo podman exec -it ovn-central-az1-1 ovn-appctl -t ovn-northd version
         sudo podman exec -it ovn-chassis-1 ovn-appctl -t ovn-controller version
       working-directory: ovn-fake-multinode
 
@@ -187,8 +187,8 @@ jobs:
     - name: Run fake-multinode system tests
       run: |
         if ! sudo make check-multinode TESTSUITEFLAGS="${{ matrix.cfg.testsuiteflags }}"; then
-          sudo podman exec -it ovn-central ovn-nbctl show || :
-          sudo podman exec -it ovn-central ovn-sbctl show || :
+          sudo podman exec -it ovn-central-az1-1 ovn-nbctl show || :
+          sudo podman exec -it ovn-central-az1-1 ovn-sbctl show || :
           sudo podman exec -it ovn-chassis-1 ovs-vsctl show || :
           sudo podman exec -it ovn-chassis-1 ip netns || :
           sudo podman exec -it ovn-chassis-1 cat /var/log/ovn/ovn-controller.log || :

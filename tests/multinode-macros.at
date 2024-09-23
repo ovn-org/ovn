@@ -50,11 +50,11 @@ m_as() {
 }
 
 m_central_as () {
-    podman exec ovn-central "$@"
+    podman exec ovn-central-az1-1 "$@"
 }
 
 check_fake_multinode_setup() {
-    check m_as ovn-central ovn-nbctl --wait=sb sync
+    check m_as ovn-central-az1-1 ovn-nbctl --wait=sb sync
     AT_CHECK([m_as ovn-chassis-1 ovn-appctl -t ovn-controller version], [0], [ignore])
     AT_CHECK([m_as ovn-chassis-2 ovn-appctl -t ovn-controller version], [0], [ignore])
     AT_CHECK([m_as ovn-gw-1 ovn-appctl -t ovn-controller version], [0], [ignore])
@@ -62,9 +62,9 @@ check_fake_multinode_setup() {
 }
 
 cleanup_multinode_resources() {
-    m_as ovn-central rm -f /etc/ovn/ovnnb_db.db
-    m_as ovn-central /usr/share/ovn/scripts/ovn-ctl restart_northd
-    check m_as ovn-central ovn-nbctl --wait=sb sync
+    m_as ovn-central-az1-1 rm -f /etc/ovn/ovnnb_db.db
+    m_as ovn-central-az1-1 /usr/share/ovn/scripts/ovn-ctl restart_northd
+    check m_as ovn-central-az1-1 ovn-nbctl --wait=sb sync
     for c in ovn-chassis-1 ovn-chassis-2 ovn-gw-1
     do
         m_as $c ovs-vsctl del-br br-int
@@ -73,7 +73,7 @@ cleanup_multinode_resources() {
 }
 
 multinode_nbctl () {
-    m_as ovn-central ovn-nbctl "$@"
+    m_as ovn-central-az1-1 ovn-nbctl "$@"
 }
 
 # m_count_rows TABLE [CONDITION...]
