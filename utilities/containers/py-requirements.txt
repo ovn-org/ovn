@@ -1,5 +1,5 @@
 flake8==5.0.4
-scapy
+scapy==2.5.0
 sphinx
 setuptools
 pyelftools
