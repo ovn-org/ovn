@@ -3308,7 +3308,7 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
             break;
 
         case OVNACT_PUT_ND_RA_OPTS:
-            execute_put_nd_ra_opts(ovnact_get_PUT_DHCPV6_OPTS(a),
+            execute_put_nd_ra_opts(ovnact_get_PUT_ND_RA_OPTS(a),
                                    "put_nd_ra_opts", uflow, super);
             break;
 
