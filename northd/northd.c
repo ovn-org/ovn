@@ -7206,7 +7206,10 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
         /* For drop ACLs just sample all packets as "new" packets. */
         build_acl_sample_label_action(actions, acl, acl->sample_new, NULL,
                                       obs_stage);
-        ds_put_cstr(actions, "ct_commit { ct_mark.blocked = 1; }; next;");
+        uint32_t obs_pid = acl->sample_est ? acl->sample_est->metadata : 0;
+        ds_put_format(actions,
+                      "ct_commit { ct_mark.blocked = 1; "
+                      "ct_label.obs_point_id = %"PRIu32"; }; next;", obs_pid);
         ovn_lflow_add_with_hint(lflows, od, stage, priority,
                                 ds_cstr(match), ds_cstr(actions),
                                 &acl->header_, lflow_ref);
