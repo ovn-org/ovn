@@ -8950,7 +8950,7 @@ build_lswitch_rport_arp_req_flows_for_lbnats(
             continue;
         }
 
-        if (!strcmp(nat->type, "snat")) {
+        if (nat_entry->type == SNAT) {
             continue;
         }
 
@@ -10356,8 +10356,8 @@ build_lswitch_ip_unicast_lookup_for_nats(
         const struct ovn_nat *nat =
             &lr_stateful_rec->lrnat_rec->nat_entries[i];
 
-        if (!strcmp(nat->nb->type, "dnat_and_snat")
-            && nat->nb->logical_port && nat->nb->external_mac
+        if (nat->type == DNAT_AND_SNAT && nat->nb->logical_port
+            && nat->nb->external_mac
             && eth_addr_from_string(nat->nb->external_mac, &mac)) {
 
             ds_clear(match);
@@ -12307,10 +12307,10 @@ copy_ra_to_sb(struct ovn_port *op, const char *address_mode)
 }
 
 static inline bool
-lrouter_dnat_and_snat_is_stateless(const struct nbrec_nat *nat)
+lrouter_dnat_and_snat_is_stateless(const struct ovn_nat *nat)
 {
-    return smap_get_bool(&nat->options, "stateless", false) &&
-           !strcmp(nat->type, "dnat_and_snat");
+    return smap_get_bool(&nat->nb->options, "stateless", false) &&
+           nat->type == DNAT_AND_SNAT;
 }
 
 #define NAT_PRIORITY_MATCH_OFFSET 300
@@ -14587,7 +14587,7 @@ build_lr_gateway_redirect_flows_for_nats(
         for (int j = 0; j < lrnat_rec->n_nat_entries; j++) {
             const struct ovn_nat *nat = &lrnat_rec->nat_entries[j];
 
-            if (!lrouter_dnat_and_snat_is_stateless(nat->nb) ||
+            if (!lrouter_dnat_and_snat_is_stateless(nat) ||
                 (!nat->nb->allowed_ext_ips && !nat->nb->exempted_ext_ips)) {
                 continue;
             }
@@ -15237,7 +15237,7 @@ build_lrouter_arp_nd_for_datapath(const struct ovn_datapath *od,
         /* Skip SNAT entries for now, we handle unique SNAT IPs separately
         * below.
         */
-        if (!strcmp(nat_entry->nb->type, "snat")) {
+        if (nat_entry->type == SNAT) {
             continue;
         }
         build_lrouter_nat_arp_nd_flow(od, nat_entry, lflows, meter_groups,
@@ -15544,7 +15544,7 @@ build_lrouter_ipv4_ip_input_for_lbnats(
         /* Skip SNAT entries for now, we handle unique SNAT IPs separately
         * below.
         */
-        if (!strcmp(nat_entry->nb->type, "snat")) {
+        if (nat_entry->type == SNAT) {
             continue;
         }
         build_lrouter_port_nat_arp_nd_flow(op, nat_entry, lflows,
@@ -15597,16 +15597,17 @@ build_lrouter_in_unsnat_match(const struct ovn_datapath *od,
 static void
 build_lrouter_in_unsnat_stateless_flow(struct lflow_table *lflows,
                                        const struct ovn_datapath *od,
-                                       const struct nbrec_nat *nat,
+                                       const struct ovn_nat *nat_entry,
                                        struct ds *match,
                                        bool distributed_nat, bool is_v6,
                                        struct ovn_port *l3dgw_port,
                                        struct lflow_ref *lflow_ref)
 {
-    if (strcmp(nat->type, "snat") && strcmp(nat->type, "dnat_and_snat")) {
+    if (!(nat_entry->type == SNAT || nat_entry->type == DNAT_AND_SNAT)) {
         return;
     }
 
+    const struct nbrec_nat *nat = nat_entry->nb;
     uint16_t priority = od->is_gw_router ? 90 : 100;
 
     build_lrouter_in_unsnat_match(od, nat, match, distributed_nat, is_v6,
@@ -15620,15 +15621,16 @@ build_lrouter_in_unsnat_stateless_flow(struct lflow_table *lflows,
 static void
 build_lrouter_in_unsnat_in_czone_flow(struct lflow_table *lflows,
                                       const struct ovn_datapath *od,
-                                      const struct nbrec_nat *nat,
+                                      const struct ovn_nat *nat_entry,
                                       struct ds *match, bool distributed_nat,
                                       bool is_v6, struct ovn_port *l3dgw_port,
                                       struct lflow_ref *lflow_ref)
 {
-    if (strcmp(nat->type, "snat") && strcmp(nat->type, "dnat_and_snat")) {
+    if (!(nat_entry->type == SNAT || nat_entry->type == DNAT_AND_SNAT)) {
         return;
     }
 
+    const struct nbrec_nat *nat = nat_entry->nb;
     build_lrouter_in_unsnat_match(od, nat, match, distributed_nat, is_v6,
                                   l3dgw_port);
 
@@ -15655,16 +15657,16 @@ build_lrouter_in_unsnat_in_czone_flow(struct lflow_table *lflows,
 static void
 build_lrouter_in_unsnat_flow(struct lflow_table *lflows,
                              const struct ovn_datapath *od,
-                             const struct nbrec_nat *nat, struct ds *match,
+                             const struct ovn_nat *nat_entry, struct ds *match,
                              bool distributed_nat, bool is_v6,
                              struct ovn_port *l3dgw_port,
                              struct lflow_ref *lflow_ref)
 {
-
-    if (strcmp(nat->type, "snat") && strcmp(nat->type, "dnat_and_snat")) {
+    if (!(nat_entry->type == SNAT || nat_entry->type == DNAT_AND_SNAT)) {
         return;
     }
 
+    const struct nbrec_nat *nat = nat_entry->nb;
     uint16_t priority = od->is_gw_router ? 90 : 100;
 
     build_lrouter_in_unsnat_match(od, nat, match, distributed_nat, is_v6,
@@ -15679,7 +15681,7 @@ static void
 build_lrouter_in_dnat_flow(struct lflow_table *lflows,
                            const struct ovn_datapath *od,
                            const struct lr_nat_record *lrnat_rec,
-                           const struct nbrec_nat *nat, struct ds *match,
+                           const struct ovn_nat *nat_entry, struct ds *match,
                            struct ds *actions, bool distributed_nat,
                            int cidr_bits, bool is_v6,
                            struct ovn_port *l3dgw_port, bool stateless,
@@ -15688,13 +15690,14 @@ build_lrouter_in_dnat_flow(struct lflow_table *lflows,
     /* Ingress DNAT table: Packets enter the pipeline with destination
     * IP address that needs to be DNATted from a external IP address
     * to a logical IP address. */
-    if (strcmp(nat->type, "dnat") && strcmp(nat->type, "dnat_and_snat")) {
+    if (!(nat_entry->type == DNAT || nat_entry->type == DNAT_AND_SNAT)) {
         return;
     }
 
     ds_clear(match);
     ds_clear(actions);
 
+    const struct nbrec_nat *nat = nat_entry->nb;
     const char *nat_action = lrouter_use_common_zone(od)
                              ? "ct_dnat_in_czone"
                              : "ct_dnat";
@@ -15757,11 +15760,11 @@ build_lrouter_in_dnat_flow(struct lflow_table *lflows,
 static void
 build_lrouter_out_undnat_flow(struct lflow_table *lflows,
                               const struct ovn_datapath *od,
-                              const struct nbrec_nat *nat, struct ds *match,
-                              struct ds *actions, bool distributed_nat,
-                              struct eth_addr mac, bool is_v6,
-                              struct ovn_port *l3dgw_port, bool stateless,
-                              struct lflow_ref *lflow_ref)
+                              const struct ovn_nat *nat_entry,
+                              struct ds *match, struct ds *actions,
+                              bool distributed_nat, struct eth_addr mac,
+                              bool is_v6, struct ovn_port *l3dgw_port,
+                              bool stateless, struct lflow_ref *lflow_ref)
 {
     /* Egress UNDNAT table: It is for already established connections'
     * reverse traffic. i.e., DNAT has already been done in ingress
@@ -15771,13 +15774,14 @@ build_lrouter_out_undnat_flow(struct lflow_table *lflows,
     * Note that this only applies for NAT on a distributed router.
     */
     if (!od->n_l3dgw_ports ||
-        (strcmp(nat->type, "dnat") && strcmp(nat->type, "dnat_and_snat"))) {
+        !(nat_entry->type == DNAT || nat_entry->type == DNAT_AND_SNAT)) {
         return;
     }
 
     ds_clear(match);
     ds_clear(actions);
 
+    const struct nbrec_nat *nat = nat_entry->nb;
     ds_put_format(match, "ip && ip%c.src == %s && outport == %s",
                   is_v6 ? '6' : '4', nat->logical_ip,
                   l3dgw_port->json_key);
@@ -15883,19 +15887,20 @@ build_lrouter_out_snat_match(struct lflow_table *lflows,
 static void
 build_lrouter_out_snat_stateless_flow(struct lflow_table *lflows,
                                       const struct ovn_datapath *od,
-                                      const struct nbrec_nat *nat,
+                                      const struct ovn_nat *nat_entry,
                                       struct ds *match, struct ds *actions,
                                       bool distributed_nat,
                                       struct eth_addr mac, int cidr_bits,
                                       bool is_v6, struct ovn_port *l3dgw_port,
                                       struct lflow_ref *lflow_ref)
 {
-    if (strcmp(nat->type, "snat") && strcmp(nat->type, "dnat_and_snat")) {
+    if (!(nat_entry->type == SNAT || nat_entry->type == DNAT_AND_SNAT)) {
         return;
     }
 
     ds_clear(actions);
 
+    const struct nbrec_nat *nat = nat_entry->nb;
     uint16_t priority = lrouter_nat_get_priority(od, nat, false, cidr_bits);
     build_lrouter_out_snat_match(lflows, od, nat, match, distributed_nat,
                                  cidr_bits, is_v6, l3dgw_port, lflow_ref,
@@ -15918,19 +15923,20 @@ build_lrouter_out_snat_stateless_flow(struct lflow_table *lflows,
 static void
 build_lrouter_out_snat_in_czone_flow(struct lflow_table *lflows,
                                      const struct ovn_datapath *od,
-                                     const struct nbrec_nat *nat,
+                                     const struct ovn_nat *nat_entry,
                                      struct ds *match,
                                      struct ds *actions, bool distributed_nat,
                                      struct eth_addr mac, int cidr_bits,
                                      bool is_v6, struct ovn_port *l3dgw_port,
                                      struct lflow_ref *lflow_ref)
 {
-    if (strcmp(nat->type, "snat") && strcmp(nat->type, "dnat_and_snat")) {
+    if (!(nat_entry->type == SNAT || nat_entry->type == DNAT_AND_SNAT)) {
         return;
     }
 
     ds_clear(actions);
 
+    const struct nbrec_nat *nat = nat_entry->nb;
     uint16_t priority = lrouter_nat_get_priority(od, nat, false, cidr_bits);
     struct ds zone_actions = DS_EMPTY_INITIALIZER;
 
@@ -15977,19 +15983,20 @@ build_lrouter_out_snat_in_czone_flow(struct lflow_table *lflows,
 static void
 build_lrouter_out_snat_flow(struct lflow_table *lflows,
                             const struct ovn_datapath *od,
-                            const struct nbrec_nat *nat, struct ds *match,
+                            const struct ovn_nat *nat_entry, struct ds *match,
                             struct ds *actions, bool distributed_nat,
                             struct eth_addr mac, int cidr_bits, bool is_v6,
                             struct ovn_port *l3dgw_port,
                             struct lflow_ref *lflow_ref,
                             const struct chassis_features *features)
 {
-    if (strcmp(nat->type, "snat") && strcmp(nat->type, "dnat_and_snat")) {
+    if (!(nat_entry->type == SNAT || nat_entry->type == DNAT_AND_SNAT)) {
         return;
     }
 
     ds_clear(actions);
 
+    const struct nbrec_nat *nat = nat_entry->nb;
     uint16_t priority = lrouter_nat_get_priority(od, nat, false, cidr_bits);
 
     build_lrouter_out_snat_match(lflows, od, nat, match, distributed_nat,
@@ -16017,7 +16024,7 @@ build_lrouter_out_snat_flow(struct lflow_table *lflows,
      * properly tracked so we can decide whether to perform SNAT on traffic
      * exiting the network. */
     if (features->ct_commit_to_zone && features->ct_next_zone &&
-        !strcmp(nat->type, "snat") && !od->is_gw_router) {
+        nat_entry->type == SNAT && !od->is_gw_router) {
         /* For traffic that comes from SNAT network, initiate CT state before
          * entering S_ROUTER_OUT_SNAT to allow matching on various CT states.
          */
@@ -16120,14 +16127,15 @@ build_lrouter_ingress_nat_check_pkt_len(struct lflow_table *lflows,
 static void
 build_lrouter_ingress_flow(struct lflow_table *lflows,
                            const struct ovn_datapath *od,
-                           const struct nbrec_nat *nat, struct ds *match,
+                           const struct ovn_nat *nat_entry, struct ds *match,
                            struct ds *actions, struct eth_addr mac,
                            bool distributed_nat, bool is_v6,
                            struct ovn_port *l3dgw_port,
                            const struct shash *meter_groups,
                            struct lflow_ref *lflow_ref)
 {
-    if (od->n_l3dgw_ports && !strcmp(nat->type, "snat")) {
+    const struct nbrec_nat *nat = nat_entry->nb;
+    if (od->n_l3dgw_ports && nat_entry->type == SNAT) {
         ds_clear(match);
         ds_put_format(
             match, "inport == %s && %s == %s",
@@ -16173,11 +16181,12 @@ build_lrouter_ingress_flow(struct lflow_table *lflows,
 
 static int
 lrouter_check_nat_entry(const struct ovn_datapath *od,
-                        const struct nbrec_nat *nat,
+                        const struct ovn_nat *nat_entry,
                         const struct hmap *lr_ports, ovs_be32 *mask,
                         bool *is_v6, int *cidr_bits, struct eth_addr *mac,
                         bool *distributed, struct ovn_port **nat_l3dgw_port)
 {
+    const struct nbrec_nat *nat = nat_entry->nb;
     struct in6_addr ipv6, mask_v6, v6_exact = IN6ADDR_EXACT_INIT;
     ovs_be32 ip;
 
@@ -16255,7 +16264,7 @@ lrouter_check_nat_entry(const struct ovn_datapath *od,
         error = ip_parse_masked(nat->logical_ip, &ip, mask);
         *cidr_bits = ip_count_cidr_bits(*mask);
     }
-    if (!strcmp(nat->type, "snat")) {
+    if (nat_entry->type == SNAT) {
         if (error) {
             /* Invalid for both IPv4 and IPv6 */
             static struct vlog_rate_limit rl =
@@ -16293,7 +16302,7 @@ lrouter_check_nat_entry(const struct ovn_datapath *od,
         return 0;
     }
 
-    if (od->n_l3dgw_ports && !strcmp(nat->type, "dnat_and_snat") &&
+    if (od->n_l3dgw_ports && nat_entry->type == DNAT_AND_SNAT &&
         nat->logical_port && nat->external_mac) {
         if (eth_addr_from_string(nat->external_mac, mac)) {
             *distributed = true;
@@ -16460,9 +16469,9 @@ build_lrouter_nat_defrag_and_lb(
         int cidr_bits;
         struct ovn_port *l3dgw_port;
 
-        bool stateless = lrouter_dnat_and_snat_is_stateless(nat);
+        bool stateless = lrouter_dnat_and_snat_is_stateless(nat_entry);
 
-        if (lrouter_check_nat_entry(od, nat, lr_ports, &mask, &is_v6,
+        if (lrouter_check_nat_entry(od, nat_entry, lr_ports, &mask, &is_v6,
                                     &cidr_bits,
                                     &mac, &distributed_nat, &l3dgw_port) < 0) {
             continue;
@@ -16479,21 +16488,22 @@ build_lrouter_nat_defrag_and_lb(
          * not know about the possibility of eventual additional SNAT in
          * egress pipeline. */
         if (stateless) {
-            build_lrouter_in_unsnat_stateless_flow(lflows, od, nat, match,
-                                                   distributed_nat, is_v6,
-                                                   l3dgw_port, lflow_ref);
+            build_lrouter_in_unsnat_stateless_flow(lflows, od, nat_entry,
+                                                   match, distributed_nat,
+                                                   is_v6, l3dgw_port,
+                                                   lflow_ref);
         } else if (lrouter_use_common_zone(od)) {
-            build_lrouter_in_unsnat_in_czone_flow(lflows, od, nat, match,
+            build_lrouter_in_unsnat_in_czone_flow(lflows, od, nat_entry, match,
                                                   distributed_nat, is_v6,
                                                   l3dgw_port, lflow_ref);
         } else {
-            build_lrouter_in_unsnat_flow(lflows, od, nat, match,
+            build_lrouter_in_unsnat_flow(lflows, od, nat_entry, match,
                                          distributed_nat, is_v6, l3dgw_port,
                                          lflow_ref);
         }
         /* S_ROUTER_IN_DNAT */
-        build_lrouter_in_dnat_flow(lflows, od, lrnat_rec, nat, match, actions,
-                                   distributed_nat, cidr_bits, is_v6,
+        build_lrouter_in_dnat_flow(lflows, od, lrnat_rec, nat_entry, match,
+                                   actions, distributed_nat, cidr_bits, is_v6,
                                    l3dgw_port, stateless, lflow_ref);
 
         /* ARP resolve for NAT IPs. */
@@ -16569,7 +16579,7 @@ build_lrouter_nat_defrag_and_lb(
         }
 
         /* S_ROUTER_OUT_UNDNAT */
-        build_lrouter_out_undnat_flow(lflows, od, nat, match, actions,
+        build_lrouter_out_undnat_flow(lflows, od, nat_entry, match, actions,
                                       distributed_nat, mac, is_v6, l3dgw_port,
                                       stateless, lflow_ref);
         /* S_ROUTER_OUT_SNAT
@@ -16577,23 +16587,23 @@ build_lrouter_nat_defrag_and_lb(
          * source ip address that needs to be SNATted to a external ip
          * address. */
         if (stateless) {
-            build_lrouter_out_snat_stateless_flow(lflows, od, nat, match,
+            build_lrouter_out_snat_stateless_flow(lflows, od, nat_entry, match,
                                                   actions, distributed_nat,
                                                   mac, cidr_bits, is_v6,
                                                   l3dgw_port, lflow_ref);
         } else if (lrouter_use_common_zone(od)) {
-            build_lrouter_out_snat_in_czone_flow(lflows, od, nat, match,
+            build_lrouter_out_snat_in_czone_flow(lflows, od, nat_entry, match,
                                                  actions, distributed_nat, mac,
                                                  cidr_bits, is_v6, l3dgw_port,
                                                  lflow_ref);
         } else {
-            build_lrouter_out_snat_flow(lflows, od, nat, match, actions,
+            build_lrouter_out_snat_flow(lflows, od, nat_entry, match, actions,
                                         distributed_nat, mac, cidr_bits, is_v6,
                                         l3dgw_port, lflow_ref, features);
         }
 
         /* S_ROUTER_IN_ADMISSION - S_ROUTER_IN_IP_INPUT */
-        build_lrouter_ingress_flow(lflows, od, nat, match, actions, mac,
+        build_lrouter_ingress_flow(lflows, od, nat_entry, match, actions, mac,
                                    distributed_nat, is_v6, l3dgw_port,
                                    meter_groups, lflow_ref);
 

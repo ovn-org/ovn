@@ -313,10 +313,14 @@ lr_nat_record_init(struct lr_nat_record *lrnat_rec,
                             nat_entry->ext_addrs.ipv6_addrs[0].addr_s,
                             nat_entry);
             }
+            nat_entry->type = SNAT;
         } else {
-            if (!strcmp(nat->type, "dnat_and_snat")
-                    && nat->logical_port && nat->external_mac) {
-                lrnat_rec->has_distributed_nat = true;
+            nat_entry->type = DNAT;
+            if (!strcmp(nat->type, "dnat_and_snat")) {
+                nat_entry->type = DNAT_AND_SNAT;
+                if (nat->logical_port && nat->external_mac) {
+                    lrnat_rec->has_distributed_nat = true;
+                }
             }
 
             if (nat->external_mac) {

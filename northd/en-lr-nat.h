@@ -29,6 +29,12 @@
 #include "lib/ovn-sb-idl.h"
 #include "lib/ovn-util.h"
 
+enum ovn_nat_type {
+    SNAT,
+    DNAT,
+    DNAT_AND_SNAT,
+};
+
 /* Contains a NAT entry with the external addresses pre-parsed. */
 struct ovn_nat {
     const struct nbrec_nat *nb;
@@ -39,6 +45,7 @@ struct ovn_nat {
                                          */
     bool is_router_ip; /* Indicates if the NAT external_ip is also one of
                         * router's lrp ip.  Can be 'true' only for SNAT. */
+    enum ovn_nat_type type;
 };
 
 /* Stores the list of SNAT entries referencing a unique SNAT IP address.
