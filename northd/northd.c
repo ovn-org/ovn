@@ -3199,25 +3199,25 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
                 }
             }
 
-            if (lsp_is_remote(op->nbsp)) {
+            if (lsp_is_remote(op->nbsp) ||
+                op->sb->requested_additional_chassis) {
                 /* ovn-northd is supposed to set port_binding for remote ports
-                 * if requested chassis is marked as remote. */
+                 * if requested chassis is marked as remote. In addition,
+                 * if the primary chassis is remote bind it.*/
                 if (op->sb->requested_chassis &&
                     smap_get_bool(&op->sb->requested_chassis->other_config,
                                   "is-remote", false)) {
                     sbrec_port_binding_set_chassis(op->sb,
                                                    op->sb->requested_chassis);
-                    smap_add(&options, "is-remote-nb-bound", "true");
-                } else if (smap_get_bool(&op->sb->options,
-                                         "is-remote-nb-bound", false)) {
+                } else {
                     sbrec_port_binding_set_chassis(op->sb, NULL);
-                    smap_add(&options, "is-remote-nb-bound", "false");
                 }
             } else if (op->sb->chassis &&
                        smap_get_bool(&op->sb->chassis->other_config,
                                      "is-remote", false)) {
-                /* Its not a remote port but if the chassis is set and if its a
-                 * remote chassis then clear it. */
+                /* It's not a remote port but if the chassis is set and if
+                 * it's a remote chassis, and we don't have any additional
+                 * chassis then clear it. */
                 sbrec_port_binding_set_chassis(op->sb, NULL);
             }
 
