@@ -87,6 +87,7 @@
 #include "statctrl.h"
 #include "lib/dns-resolve.h"
 #include "ct-zone.h"
+#include "ovn-dns.h"
 
 VLOG_DEFINE_THIS_MODULE(main);
 
@@ -3268,6 +3269,43 @@ en_mac_cache_cleanup(void *data)
     hmap_destroy(&cache_data->fdbs);
 }
 
+static void *
+en_dns_cache_init(struct engine_node *node OVS_UNUSED,
+                  struct engine_arg *arg OVS_UNUSED)
+{
+    ovn_dns_cache_init();
+    return NULL;
+}
+
+static void
+en_dns_cache_run(struct engine_node *node, void *data OVS_UNUSED)
+{
+    const struct sbrec_dns_table *dns_table =
+        EN_OVSDB_GET(engine_get_input("SB_dns", node));
+
+    ovn_dns_sync_cache(dns_table);
+
+    engine_set_node_state(node, EN_UPDATED);
+}
+
+static bool
+dns_cache_sb_dns_handler(struct engine_node *node, void *data OVS_UNUSED)
+{
+    const struct sbrec_dns_table *dns_table =
+        EN_OVSDB_GET(engine_get_input("SB_dns", node));
+
+    ovn_dns_update_cache(dns_table);
+
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
+}
+
+static void
+en_dns_cache_cleanup(void *data OVS_UNUSED)
+{
+    ovn_dns_cache_destroy();
+}
+
 /* Engine node which is used to handle the Non VIF data like
  *   - OVS patch ports
  *   - Tunnel ports and the related chassis information.
@@ -4990,6 +5028,7 @@ main(int argc, char *argv[])
     ENGINE_NODE(if_status_mgr, "if_status_mgr");
     ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lb_data, "lb_data");
     ENGINE_NODE(mac_cache, "mac_cache");
+    ENGINE_NODE(dns_cache, "dns_cache");
 
 #define SB_NODE(NAME, NAME_STR) ENGINE_NODE_SB(NAME, NAME_STR);
     SB_NODES
@@ -5121,7 +5160,7 @@ main(int argc, char *argv[])
      * process all changes. */
     engine_add_input(&en_lflow_output, &en_sb_logical_dp_group,
                      engine_noop_handler);
-    engine_add_input(&en_lflow_output, &en_sb_dns, NULL);
+
     engine_add_input(&en_lflow_output, &en_lb_data,
                      lflow_output_lb_data_handler);
     engine_add_input(&en_lflow_output, &en_sb_fdb,
@@ -5180,6 +5219,11 @@ main(int argc, char *argv[])
     engine_add_input(&en_mac_cache, &en_sb_port_binding,
                      engine_noop_handler);
 
+    engine_add_input(&en_dns_cache, &en_sb_dns,
+                     dns_cache_sb_dns_handler);
+
+    engine_add_input(&en_controller_output, &en_dns_cache,
+                     NULL);
     engine_add_input(&en_controller_output, &en_lflow_output,
                      controller_output_lflow_output_handler);
     engine_add_input(&en_controller_output, &en_pflow_output,
@@ -5610,7 +5654,6 @@ main(int argc, char *argv[])
                                     sbrec_igmp_group,
                                     sbrec_ip_multicast,
                                     sbrec_fdb_by_dp_key_mac,
-                                    sbrec_dns_table_get(ovnsb_idl_loop.idl),
                                     sbrec_controller_event_table_get(
                                         ovnsb_idl_loop.idl),
                                     sbrec_service_monitor_table_get(
