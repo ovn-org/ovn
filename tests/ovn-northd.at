@@ -572,6 +572,7 @@ check ovn-sbctl chassis-add ch2 geneve 127.0.0.3
 check ovn-sbctl chassis-add ch3 geneve 127.0.0.4
 check ovn-sbctl chassis-add comp1 geneve 127.0.0.5
 check ovn-sbctl chassis-add comp2 geneve 127.0.0.6
+check ovn-sbctl chassis-add cadd1 geneve 127.0.0.7
 
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:20:20:12:14 10.0.0.1/24
 check ovn-nbctl lsp-add sw0 sw0-lr0
@@ -584,10 +585,16 @@ wait_row_count nb:Logical_Switch_Port 1 name=sw0-p1 up=true
 
 comp1_ch_uuid=$(fetch_column Chassis _uuid name=comp1)
 comp2_ch_uuid=$(fetch_column Chassis _uuid name=comp2)
+cadd1_ch_uuid=$(fetch_column Chassis _uuid name=cadd1)
+
 ch2_ch_uuid=$comp1_ch_uuid
 
 # Check ref_chassis.
 echo "comp1_ch_uuid = $comp1_ch_uuid"
+wait_column "$comp1_ch_uuid" HA_Chassis_Group ref_chassis
+ovn-sbctl set Port_Binding sw0-p1 additional_chassis=$cadd1_ch_uuid
+wait_column "$cadd1_ch_uuid $comp1_ch_uuid" HA_Chassis_Group ref_chassis
+ovn-sbctl clear Port_Binding sw0-p1 additional_chassis
 wait_column "$comp1_ch_uuid" HA_Chassis_Group ref_chassis
 
 # unbind sw0-p1
