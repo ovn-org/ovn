@@ -20,6 +20,7 @@ CONTAINER_CMD=${CONTAINER_CMD:-podman}
 CONTAINER_WORKSPACE="/workspace"
 CONTAINER_WORKDIR="/workspace/ovn-tmp"
 IMAGE_NAME=${IMAGE_NAME:-"ovn-org/ovn-tests"}
+TIMEOUT=${TIMEOUT:-"0"}
 
 # Test variables
 ARCH=${ARCH:-$(uname -m)}
@@ -100,7 +101,8 @@ function run_tests() {
         && \
         ARCH=$ARCH CC=$CC LIBS=$LIBS OPTS=$OPTS TESTSUITE=$TESTSUITE \
         TEST_RANGE=$TEST_RANGE SANITIZERS=$SANITIZERS DPDK=$DPDK \
-        RECHECK=$RECHECK UNSTABLE=$UNSTABLE ./.ci/linux-build.sh
+        RECHECK=$RECHECK UNSTABLE=$UNSTABLE TIMEOUT=$TIMEOUT \
+        ./.ci/linux-build.sh
     "
 }
 
@@ -115,7 +117,7 @@ function check_clang_version_ge() {
 }
 
 options=$(getopt --options "" \
-    --long help,shell,archive-logs,jobs:,ovn-path:,ovs-path:,image-name:\
+    --long help,shell,archive-logs,jobs:,ovn-path:,ovs-path:,image-name:,timeout:\
     -- "${@}")
 eval set -- "$options"
 while true; do
@@ -142,11 +144,15 @@ while true; do
     --archive-logs)
         archive_logs="1"
         ;;
+    --timeout)
+        shift
+        TIMEOUT="$1"
+        ;;
     --help)
         set +x
         printf "$0 [--shell] [--help] [--archive-logs] [--jobs=<JOBS>] "
         printf "[--ovn-path=<OVN_PATH>] [--ovs-path=<OVS_PATH>] "
-        printf "[--image-name=<IMAGE_NAME>]\n"
+        printf "[--image-name=<IMAGE_NAME>] [--timeout=<TIMEOUT>]\n"
         exit
         ;;
     --)

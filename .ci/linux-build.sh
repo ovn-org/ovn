@@ -10,6 +10,7 @@ OVN_CFLAGS=""
 OPTS="$OPTS --enable-Werror"
 JOBS=${JOBS:-"-j4"}
 RECHECK=${RECHECK:-"no"}
+TIMEOUT=${TIMEOUT:-"0"}
 
 function install_dpdk()
 {
@@ -105,7 +106,8 @@ function configure_clang()
 
 function run_tests()
 {
-    if ! make distcheck CFLAGS="${COMMON_CFLAGS} ${OVN_CFLAGS}" $JOBS \
+    if ! timeout -k 5m -v $TIMEOUT make distcheck \
+        CFLAGS="${COMMON_CFLAGS} ${OVN_CFLAGS}" $JOBS \
         TESTSUITEFLAGS="$JOBS $TEST_RANGE" RECHECK=$RECHECK \
         SKIP_UNSTABLE=$SKIP_UNSTABLE
     then
@@ -147,8 +149,9 @@ function run_system_tests()
     local type=$1
     local log_file=$2
 
-    if ! sudo make $JOBS $type TESTSUITEFLAGS="$TEST_RANGE" \
-            RECHECK=$RECHECK SKIP_UNSTABLE=$SKIP_UNSTABLE; then
+    if ! sudo timeout -k 5m -v $TIMEOUT make $JOBS $type \
+        TESTSUITEFLAGS="$TEST_RANGE" RECHECK=$RECHECK \
+        SKIP_UNSTABLE=$SKIP_UNSTABLE; then
         # $log_file is necessary for debugging.
         cat tests/$log_file
         return 1

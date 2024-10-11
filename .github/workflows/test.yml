@@ -168,11 +168,11 @@ jobs:
 
     - name: build
       if: ${{ startsWith(matrix.cfg.testsuite, 'system-test') }}
-      run: sudo -E ./.ci/ci.sh --archive-logs
+      run: sudo -E ./.ci/ci.sh --archive-logs --timeout=2h
 
     - name: build
       if: ${{ !startsWith(matrix.cfg.testsuite, 'system-test') }}
-      run: ./.ci/ci.sh --archive-logs
+      run: ./.ci/ci.sh --archive-logs --timeout=2h
 
     - name: upload logs on failure
       if: failure() || cancelled()
