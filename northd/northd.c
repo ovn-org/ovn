@@ -19269,7 +19269,14 @@ collect_lr_groups_for_ha_chassis_groups(const struct sbrec_port_binding *sb,
     }
 
     hmapx_add(lr_groups, lr_group);
-    hmapx_add(&lr_group->tmp_ha_ref_chassis, sb->chassis);
+
+    if (sb->chassis) {
+        hmapx_add(&lr_group->tmp_ha_ref_chassis, sb->chassis);
+    }
+
+    for (size_t i = 0; i < sb->n_additional_chassis; i++) {
+        hmapx_add(&lr_group->tmp_ha_ref_chassis, sb->additional_chassis[i]);
+    }
 }
 
 static void
@@ -19386,7 +19393,8 @@ handle_port_binding_changes(struct ovsdb_idl_txn *ovnsb_txn,
             sbrec_port_binding_set_up(op->sb, &up, 1);
         }
 
-        if (build_ha_chassis_ref && ovnsb_txn && sb->chassis) {
+        if (build_ha_chassis_ref && ovnsb_txn
+            && (sb->chassis || sb->n_additional_chassis)) {
             /* Check and collect the chassis which has claimed this 'sb'
              * in relation to LR groups. */
             collect_lr_groups_for_ha_chassis_groups(sb, op, &lr_groups);
