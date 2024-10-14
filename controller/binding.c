@@ -1871,14 +1871,35 @@ consider_nonvif_lport_(const struct sbrec_port_binding *pb,
                        struct binding_ctx_in *b_ctx_in,
                        struct binding_ctx_out *b_ctx_out)
 {
+    struct local_datapath *ld =
+        get_local_datapath(b_ctx_out->local_datapaths,
+                           pb->datapath->tunnel_key);
+
     if (our_chassis) {
         update_local_lports(pb->logical_port, b_ctx_out);
-        add_local_datapath(b_ctx_in->sbrec_datapath_binding_by_key,
-                           b_ctx_in->sbrec_port_binding_by_datapath,
-                           b_ctx_in->sbrec_port_binding_by_name,
-                           pb->datapath, b_ctx_in->chassis_rec,
-                           b_ctx_out->local_datapaths,
-                           b_ctx_out->tracked_dp_bindings);
+        if (!ld) {
+            add_local_datapath(b_ctx_in->sbrec_datapath_binding_by_key,
+                               b_ctx_in->sbrec_port_binding_by_datapath,
+                               b_ctx_in->sbrec_port_binding_by_name,
+                               pb->datapath, b_ctx_in->chassis_rec,
+                               b_ctx_out->local_datapaths,
+                               b_ctx_out->tracked_dp_bindings);
+        } else {
+            /* Add the peer datapath to the local datapaths if it's
+             * not present yet.
+             */
+            if (need_add_peer_to_local(
+                    b_ctx_in->sbrec_port_binding_by_name, pb,
+                    b_ctx_in->chassis_rec)) {
+                add_local_datapath_peer_port(
+                    pb, b_ctx_in->chassis_rec,
+                    b_ctx_in->sbrec_datapath_binding_by_key,
+                    b_ctx_in->sbrec_port_binding_by_datapath,
+                    b_ctx_in->sbrec_port_binding_by_name,
+                    ld, b_ctx_out->local_datapaths,
+                    b_ctx_out->tracked_dp_bindings);
+            }
+        }
 
         update_related_lport(pb, b_ctx_out);
         return claim_lport(pb, NULL, b_ctx_in->chassis_rec, NULL,
@@ -1895,10 +1916,17 @@ consider_nonvif_lport_(const struct sbrec_port_binding *pb,
             || is_additional_chassis(pb, b_ctx_in->chassis_rec)
             || if_status_is_port_claimed(b_ctx_out->if_mgr,
                                          pb->logical_port)) {
-        return release_lport(pb, b_ctx_in->chassis_rec,
-                             !b_ctx_in->ovnsb_idl_txn,
-                             b_ctx_out->tracked_dp_bindings,
-                             b_ctx_out->if_mgr);
+        if (!release_lport(pb, b_ctx_in->chassis_rec,
+                          !b_ctx_in->ovnsb_idl_txn,
+                          b_ctx_out->tracked_dp_bindings,
+                          b_ctx_out->if_mgr)) {
+            return false;
+        }
+
+        if (ld) {
+            remove_local_datapath_peer_port(pb, ld,
+                                            b_ctx_out->local_datapaths);
+        }
     }
 
     return true;

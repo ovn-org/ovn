@@ -208,7 +208,11 @@ add_local_datapath_peer_port(
     struct hmap *tracked_datapaths)
 {
     const struct sbrec_port_binding *peer;
-    peer = lport_get_peer(pb, sbrec_port_binding_by_name);
+     if (!strcmp(pb->type, "l3gateway")) {
+        peer = lport_get_l3gw_peer(pb, sbrec_port_binding_by_name);
+    } else {
+        peer = lport_get_peer(pb, sbrec_port_binding_by_name);
+    }
 
     if (!peer) {
         return;
