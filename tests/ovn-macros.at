@@ -23,76 +23,62 @@ m4_divert_text([PREPARE_TESTS],
      diff -u $exp_text.sorted $rcv_text.sorted
    }
    ovn_check_packets__ () {
-     if [[ -n "$4" ]]; then
-       echo "$3: checking packets in $1 against $2: using $4"
-     else
-       echo "$3: checking packets in $1 against $2:"
-     fi
      rcv_pcap=$1
-     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
      exp_text=$2
+     cmd=${4-cat}
+     echo "$3: checking packets in $1 against $2:"
+     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
      exp_n=`wc -l < "$exp_text"`
      OVS_WAIT_UNTIL(
-       [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
-        rcv_n=`wc -l < "$rcv_text"`
+       [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > rcv_tmp
+        rcv_n=`wc -l < rcv_tmp`
         echo "rcv_n=$rcv_n exp_n=$exp_n"
         test $rcv_n -ge $exp_n],
        [dump_diff__ "$rcv_pcap" "$exp_text"])
-     if [[ -n "$4" ]]; then
-       sort $exp_text | $4 > expout
-       cat $rcv_text | $4 > rcv_tmp
-       mv rcv_tmp $rcv_text
-     else
-       sort $exp_text > expout
-     fi
+     sort $exp_text | $cmd > expout
+     cat rcv_tmp | $cmd > $rcv_text
    }
    ovn_check_packets_remove_broadcast__ () {
-     echo "$3: checking packets in $1 against $2:"
      rcv_pcap=$1
-     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
      exp_text=$2
+     cmd=${4-cat}
+     echo "$3: checking packets in $1 against $2:"
+     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
      exp_n=`wc -l < "$exp_text"`
      OVS_WAIT_UNTIL(
-       [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
-        sed -i '/ffffffffffff/d' $rcv_text
-        rcv_n=`wc -l < "$rcv_text"`
+       [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > rcv_tmp
+        sed -i '/ffffffffffff/d' rcv_tmp
+        rcv_n=`wc -l < rcv_tmp`
         echo "rcv_n=$rcv_n exp_n=$exp_n"
         test $rcv_n -ge $exp_n],
        [dump_diff__ "$rcv_pcap" "$exp_text"])
-     sort $exp_text > expout
+     sort $exp_text | $cmd > expout
+     cat rcv_tmp | $cmd > $rcv_text
    }
    ovn_wait_packets__ () {
-     echo "$3: waiting for packets from $2 at $1:"
-     if [[ -n "$4" ]]; then
-       echo "$3: checking packets from $2 at $1: using $4"
-     else
-       echo "$3: checking packets from $2 at $1:"
-     fi
      rcv_pcap=$1
-     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
      exp_text=$2
-     if [[ -n "$4" ]]; then
-       cmd=$4
-     else
-       cmd=cat
-     fi
+     cmd=${4-cat}
+     echo "$3: waiting packets from $2 at $1:"
+     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
+     OVS_WAIT_UNTIL(
+       [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > rcv_tmp
+        sort $exp_text | $cmd > expout
+        cat rcv_tmp | $cmd > $rcv_text
+        test x"$(sort $rcv_text | comm -2 -3 expout -)" = "x"],
+       [dump_diff__ "$rcv_pcap" "$exp_text"])
+   }
+
+   ovn_wait_packets_uniq__ () {
+     rcv_pcap=$1
+     exp_text=$2
+     cmd=${4-cat}
+     echo "$3: waiting for packets from $2 at $1:"
+     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
      OVS_WAIT_UNTIL(
        [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
         sort $exp_text | $cmd > expout
-        test x"$(sort $rcv_text | $cmd | comm -2 -3 expout -)" = "x"],
-       [dump_diff__ "$rcv_pcap" "$exp_text"])
-     cat $rcv_text | $cmd > rcv_tmp
-     mv rcv_tmp $rcv_text
-   }
-   ovn_wait_packets_uniq__ () {
-     echo "$3: waiting for packets from $2 at $1:"
-     rcv_pcap=$1
-     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
-     exp_text=$2
-     OVS_WAIT_UNTIL(
-       [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
-        sort $exp_text > expout
-        test x"$(sort $rcv_text | uniq | comm -3 expout -)" = "x"],
+        test x"$(sort $rcv_text | $cmd | uniq | comm -3 expout -)" = "x"],
        [dump_diff__ "$rcv_pcap" "$exp_text"])
    }
 
@@ -159,22 +145,28 @@ m4_divert_text([PREPARE_TESTS],
    }
 ])
 
+# Wait to receive all packets in $2.
+# Fails if any additional packet, or any duplicate packets is received,
 m4_define([OVN_CHECK_PACKETS],
   [AT_CHECK([$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $1 ], [0], [ignore])
    ovn_check_packets__ "$1" "$2" "__file__:__line__" $3
    AT_CHECK([sort $rcv_text], [0], [expout], [ignore], [dump_diff__ "$1" "$2"])])
 
+# Wait to receive all packets in $2, potentially receiving extra broadcast packets.
+# Fails if any (non bcast) additional packet, or any duplicate packets is received.
 m4_define([OVN_CHECK_PACKETS_REMOVE_BROADCAST],
-  [ovn_check_packets_remove_broadcast__ "$1" "$2" "__file__:__line__"
+  [ovn_check_packets_remove_broadcast__ "$1" "$2" "__file__:__line__" "$3"
    AT_CHECK([sort $rcv_text], [0], [expout], [ignore], [dump_diff__ "$1" "$2"])])
 
+# Wait to receive all packets from $2.
+# Any additional and duplicate packets are accepted.
 m4_define([OVN_CHECK_PACKETS_CONTAIN],
   [ovn_wait_packets__ "$1" "$2" "__file__:__line__" $3])
 
-# OVN_CHECK_PACKETS_UNIQ succeeds if some expected packets are duplicated.
-# It fails if unexpected packets are received.
+# Wait to receive all packets from $2.
+# Duplicate packets are accepted, but the macro fails if unexpected packets are received.
 m4_define([OVN_CHECK_PACKETS_UNIQ],
-  [ovn_wait_packets_uniq__ "$1" "$2" "__file__:__line__"])
+  [ovn_wait_packets_uniq__ "$1" "$2" "__file__:__line__" $3])
 
 m4_define([OVN_WAIT_PATCH_PORT_FLOWS],
   [ovn_wait_patch_port_flows "$1" "$2" "__file__:__line__"])
