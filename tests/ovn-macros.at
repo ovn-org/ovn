@@ -1,3 +1,191 @@
+# OVN_CHECK_PACKETS([PCAP], [EXPECTED])
+#
+# This compares packets read from PCAP, in pcap format, to those read
+# from EXPECTED, which is a text file containing packets as hex
+# strings, one per line.  If PCAP contains fewer packets than
+# EXPECTED, it waits up to 10 seconds for more packets to appear.
+#
+# The implementation is an m4 macro that is mostly implemented in
+# terms of a shell function.  This reduces the size of the generated
+# testsuite file since the shell function is only emitted once even
+# when this macro is invoked many times.
+m4_divert_text([PREPARE_TESTS],
+  [dump_diff__ () {
+     local rcv_pcap=$1 exp_text=$2
+     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
+     echo "Expected:"
+     sort $exp_text
+     echo "Received:"
+     sort $rcv_text
+     sort $exp_text -o $exp_text.sorted
+     sort $rcv_text -o $rcv_text.sorted
+     echo "Diff:"
+     diff -u $exp_text.sorted $rcv_text.sorted
+   }
+   ovn_check_packets__ () {
+     if [[ -n "$4" ]]; then
+       echo "$3: checking packets in $1 against $2: using $4"
+     else
+       echo "$3: checking packets in $1 against $2:"
+     fi
+     rcv_pcap=$1
+     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
+     exp_text=$2
+     exp_n=`wc -l < "$exp_text"`
+     OVS_WAIT_UNTIL(
+       [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
+        rcv_n=`wc -l < "$rcv_text"`
+        echo "rcv_n=$rcv_n exp_n=$exp_n"
+        test $rcv_n -ge $exp_n],
+       [dump_diff__ "$rcv_pcap" "$exp_text"])
+     if [[ -n "$4" ]]; then
+       sort $exp_text | $4 > expout
+       cat $rcv_text | $4 > rcv_tmp
+       mv rcv_tmp $rcv_text
+     else
+       sort $exp_text > expout
+     fi
+   }
+   ovn_check_packets_remove_broadcast__ () {
+     echo "$3: checking packets in $1 against $2:"
+     rcv_pcap=$1
+     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
+     exp_text=$2
+     exp_n=`wc -l < "$exp_text"`
+     OVS_WAIT_UNTIL(
+       [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
+        sed -i '/ffffffffffff/d' $rcv_text
+        rcv_n=`wc -l < "$rcv_text"`
+        echo "rcv_n=$rcv_n exp_n=$exp_n"
+        test $rcv_n -ge $exp_n],
+       [dump_diff__ "$rcv_pcap" "$exp_text"])
+     sort $exp_text > expout
+   }
+   ovn_wait_packets__ () {
+     echo "$3: waiting for packets from $2 at $1:"
+     if [[ -n "$4" ]]; then
+       echo "$3: checking packets from $2 at $1: using $4"
+     else
+       echo "$3: checking packets from $2 at $1:"
+     fi
+     rcv_pcap=$1
+     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
+     exp_text=$2
+     if [[ -n "$4" ]]; then
+       cmd=$4
+     else
+       cmd=cat
+     fi
+     OVS_WAIT_UNTIL(
+       [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
+        sort $exp_text | $cmd > expout
+        test x"$(sort $rcv_text | $cmd | comm -2 -3 expout -)" = "x"],
+       [dump_diff__ "$rcv_pcap" "$exp_text"])
+     cat $rcv_text | $cmd > rcv_tmp
+     mv rcv_tmp $rcv_text
+   }
+   ovn_wait_packets_uniq__ () {
+     echo "$3: waiting for packets from $2 at $1:"
+     rcv_pcap=$1
+     rcv_text=`echo "$rcv_pcap.packets" | sed 's/\.pcap//'`
+     exp_text=$2
+     OVS_WAIT_UNTIL(
+       [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > $rcv_text
+        sort $exp_text > expout
+        test x"$(sort $rcv_text | uniq | comm -3 expout -)" = "x"],
+       [dump_diff__ "$rcv_pcap" "$exp_text"])
+   }
+
+   ovn_wait_patch_port_flows () {
+     for localnet in $1; do
+       patch_port="patch-br-int-to-$localnet"
+       for hv in $2; do
+         echo "$3: waiting for flows for $patch_port on $hv"
+         # Patch port might be created after ports are reported up
+         OVS_WAIT_UNTIL([
+             test 1 = $(as $hv ovs-vsctl show | grep "Port \b$patch_port\b" | wc -l)
+         ])
+         # Wait for a flow outputing to patch port
+         OVS_WAIT_UNTIL([
+             hv_patch_ofport=$(as $hv ovs-vsctl --bare --columns ofport find Interface name=$patch_port)
+             echo "$patch_port=$hv_patch_ofport"
+             test 1 -le $(as $hv ovs-ofctl dump-flows br-int | grep -c "output:\b$hv_patch_ofport\b")
+         ])
+       done
+     done
+   }
+
+   ovn_wait_remote_output_flows () {
+     hv1=$1
+     hv2=$2
+     echo "$3: waiting for flows for remote output on $hv1"
+     # Wait for a flow outputing  to remote output
+     OVS_WAIT_UNTIL([
+         ofport=$(as $hv1 ovs-vsctl --bare --columns ofport find Interface name=ovn-${hv2}-0)
+         echo "tunnel port=$ofport"
+         test 1 -le $(as $hv1 ovs-ofctl dump-flows br-int | grep -c "output:$ofport")
+     ])
+   }
+
+   ovn_wait_remote_input_flows () {
+     hv1=$1
+     hv2=$2
+     echo "$3: waiting for flows for remote input on $hv1"
+     # Wait for a flow outputing  to remote input
+     OVS_WAIT_UNTIL([
+         ofport=$(as $hv1 ovs-vsctl --bare --columns ofport find Interface name=ovn-${hv2}-0)
+         echo "tunnel port=$ofport"
+         test 1 -le $(as $hv1 ovs-ofctl dump-flows br-int | grep -c "in_port=$ofport")
+     ])
+   }
+
+   # ovn_wait_for_bfd_up HV
+   # BFD might be quite slow. While BFD is not up, all chassis will fight to claim the port
+   # Wait for BFD between different chassis to be up
+   ovn_wait_for_bfd_up() {
+     for hv; do
+       as $hv
+       for chassis; do
+         if test $hv != $chassis; then
+             echo "checking bdf_status for $hv -> $chassis"
+             OVS_WAIT_UNTIL([
+                 bfd_status=$(as $hv ovs-vsctl get interface ovn-$chassis-0 bfd_status:state)
+                 echo "bfd status = $bfd_status"
+                 test "$bfd_status" = "up"
+             ])
+         fi
+       done
+     done
+   }
+])
+
+m4_define([OVN_CHECK_PACKETS],
+  [AT_CHECK([$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $1 ], [0], [ignore])
+   ovn_check_packets__ "$1" "$2" "__file__:__line__" $3
+   AT_CHECK([sort $rcv_text], [0], [expout], [ignore], [dump_diff__ "$1" "$2"])])
+
+m4_define([OVN_CHECK_PACKETS_REMOVE_BROADCAST],
+  [ovn_check_packets_remove_broadcast__ "$1" "$2" "__file__:__line__"
+   AT_CHECK([sort $rcv_text], [0], [expout], [ignore], [dump_diff__ "$1" "$2"])])
+
+m4_define([OVN_CHECK_PACKETS_CONTAIN],
+  [ovn_wait_packets__ "$1" "$2" "__file__:__line__" $3])
+
+# OVN_CHECK_PACKETS_UNIQ succeeds if some expected packets are duplicated.
+# It fails if unexpected packets are received.
+m4_define([OVN_CHECK_PACKETS_UNIQ],
+  [ovn_wait_packets_uniq__ "$1" "$2" "__file__:__line__"])
+
+m4_define([OVN_WAIT_PATCH_PORT_FLOWS],
+  [ovn_wait_patch_port_flows "$1" "$2" "__file__:__line__"])
+
+m4_define([OVN_WAIT_REMOTE_OUTPUT_FLOWS],
+  [ovn_wait_remote_output_flows "$1" "$2" "__file__:__line__"])
+
+m4_define([OVN_WAIT_REMOTE_INPUT_FLOWS],
+  [ovn_wait_remote_input_flows "$1" "$2" "__file__:__line__"])
+
+
 # OVN_CLEANUP_VSWITCH(sim)
 #
 # Gracefully terminate vswitch daemons in the
