@@ -15443,8 +15443,8 @@ OVN_WAIT_PATCH_PORT_FLOWS(["public"], ["hv1"])
 OVN_WAIT_PATCH_PORT_FLOWS(["public"], ["hv2"])
 OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv1"],["hv2"])
 OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv2"],["hv1"])
-OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv3"],[hv1"])
-OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv3"],[hv2"])
+OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv3"],["hv1"])
+OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv3"],["hv2"])
 
 wait_column "$hv1_uuid" Port_Binding chassis logical_port=migrator
 wait_column "$hv1_uuid" Port_Binding requested_chassis logical_port=migrator

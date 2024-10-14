@@ -109,7 +109,7 @@ m4_divert_text([PREPARE_TESTS],
          OVS_WAIT_UNTIL([
              hv_patch_ofport=$(as $hv ovs-vsctl --bare --columns ofport find Interface name=$patch_port)
              echo "$patch_port=$hv_patch_ofport"
-             test 1 -le $(as $hv ovs-ofctl dump-flows br-int | grep -c "output:\b$hv_patch_ofport\b")
+             test -n "$hv_patch_ofport" && test 1 -le $(as $hv ovs-ofctl dump-flows br-int | grep -c "output:\b$hv_patch_ofport\b")
          ])
        done
      done
@@ -123,7 +123,7 @@ m4_divert_text([PREPARE_TESTS],
      OVS_WAIT_UNTIL([
          ofport=$(as $hv1 ovs-vsctl --bare --columns ofport find Interface name=ovn-${hv2}-0)
          echo "tunnel port=$ofport"
-         test 1 -le $(as $hv1 ovs-ofctl dump-flows br-int | grep -c "output:$ofport")
+         test -n "$ofport" && test 1 -le $(as $hv1 ovs-ofctl dump-flows br-int | grep -c "output:$ofport")
      ])
    }
 
@@ -135,7 +135,7 @@ m4_divert_text([PREPARE_TESTS],
      OVS_WAIT_UNTIL([
          ofport=$(as $hv1 ovs-vsctl --bare --columns ofport find Interface name=ovn-${hv2}-0)
          echo "tunnel port=$ofport"
-         test 1 -le $(as $hv1 ovs-ofctl dump-flows br-int | grep -c "in_port=$ofport")
+         test -n "$ofport" && test 1 -le $(as $hv1 ovs-ofctl dump-flows br-int | grep -c "in_port=$ofport")
      ])
    }
 
