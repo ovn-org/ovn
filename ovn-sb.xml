@@ -2545,6 +2545,7 @@ tcp.flags = RST;
         </dd>
 
         <dt><code><var>R</var> = select(<var>N1</var>[=<var>W1</var>], <var>N2</var>[=<var>W2</var>], ...);</code></dt>
+        <dt><code><var>R</var> = select(values=<var>N1</var>[=<var>W1</var>], <var>N2</var>[=<var>W2</var>], ...; hash_felds="<var>field1</var>,<var>field2</var>,...");</code></dt>
         <dd>
           <p>
             <b>Parameters</b>: Integer <var>N1</var>, <var>N2</var>..., with
@@ -2565,6 +2566,14 @@ tcp.flags = RST;
           </p>
 
           <p>
+            By default, <code>dp_hash</code> is used as the OpenFlow group
+            selection method, but if <code>values</code> and
+            <code>hash_fields</code> are specified, <code>hash</code> is used
+            as the selection method, and the fields listed are used as the
+            hash fields.
+          </p>
+
+          <p>
             Processing automatically moves on to the next table, as if
             <code>next;</code> were specified.  The <code>select</code> action
             must be put as the last action of the logical flow when there are
@@ -2574,6 +2583,7 @@ tcp.flags = RST;
 
           <p>
             <b>Example:</b> <code>reg8[16..31] = select(1=20, 2=30, 3=50);</code>
+            <b>Example:</b> <code>reg8[16..31] = select(values=1=20, 2=30, 3=50; hash_fields="ip_proto,src_ip,dst_ip");</code>
           </p>
         </dd>
 

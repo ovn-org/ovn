@@ -3806,6 +3806,32 @@ or
       </p>
     </column>
 
+    <column name="selection_fields">
+        <p>
+          ECMP routes use OpenFlow groups of type <code>select</code> to
+          pick a nexthop among the list of available nexthops.
+          OVS supports two selection methods: <code>dp_hash</code> and
+          <code>hash</code> for hash computation and selecting
+          the buckets of a group. OVN by default uses <code>dp_hash</code>.
+          In order to use the <code>hash</code> selection method,
+          specify the allowed match fields in selection fields.
+          Please see the OVS documentation (man ovs-ofctl) for more
+          details on selection methods and fields.
+        </p>
+        <p>
+          To match on Layer 4 ports use <code>tp_src</code> and
+          <code>tp_dst</code>. This match is applicable only for TCP,
+          UDP, SCTP and will be ignored for all other IP packets. When
+          matching on Layer 4 ports, match on ip_proto will be implicitly
+          added in the select action.
+        </p>
+        <p>
+          Example: <code>{ip_proto,ip_src,ip_dst}</code> for a 3-tuple match.
+          Example: <code>{ip_proto,ip_src,ip_dst,tp_src,tp_dst}</code>
+          for a 5-tuple match.
+        </p>
+    </column>
+
     <column name="route_table">
       <p>
         Any string to place route to separate routing table. If Logical Router

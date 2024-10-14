@@ -1541,9 +1541,17 @@ parse_select_action(struct action_context *ctx, struct expr_field *res_field)
     struct ovnact_select_dst *dsts = NULL;
     size_t allocated_dsts = 0;
     size_t n_dsts = 0;
+    bool requires_hash_fields = false;
+    char *hash_fields = NULL;
 
     lexer_get(ctx->lexer); /* Skip "select". */
     lexer_get(ctx->lexer); /* Skip '('. */
+
+    if (lexer_match_id(ctx->lexer, "values")) {
+        lexer_force_match(ctx->lexer, LEX_T_EQUALS);
+        lexer_force_match(ctx->lexer, LEX_T_LPAREN);
+        requires_hash_fields = true;
+    }
 
     while (!lexer_match(ctx->lexer, LEX_T_RPAREN)) {
         struct ovnact_select_dst dst;
@@ -1581,11 +1589,31 @@ parse_select_action(struct action_context *ctx, struct expr_field *res_field)
         return;
     }
 
+    if (requires_hash_fields) {
+        lexer_force_match(ctx->lexer, LEX_T_SEMICOLON);
+        if (!lexer_match_id(ctx->lexer, "hash_fields")) {
+            lexer_syntax_error(ctx->lexer, "expecting hash_fields");
+            free(dsts);
+            return;
+        }
+        if (!lexer_match(ctx->lexer, LEX_T_EQUALS) ||
+            ctx->lexer->token.type != LEX_T_STRING ||
+            lexer_lookahead(ctx->lexer) != LEX_T_RPAREN) {
+            lexer_syntax_error(ctx->lexer, "invalid hash_fields");
+            free(dsts);
+            return;
+        }
+        hash_fields = xstrdup(ctx->lexer->token.s);
+        lexer_get(ctx->lexer);
+        lexer_force_match(ctx->lexer, LEX_T_RPAREN);
+    }
+
     struct ovnact_select *select = ovnact_put_SELECT(ctx->ovnacts);
     select->ltable = ctx->pp->cur_ltable + 1;
     select->dsts = dsts;
     select->n_dsts = n_dsts;
     select->res_field = *res_field;
+    select->hash_fields = hash_fields;
 }
 
 static void
@@ -1595,6 +1623,9 @@ format_SELECT(const struct ovnact_select *select, struct ds *s)
     ds_put_cstr(s, " = ");
     ds_put_cstr(s, "select");
     ds_put_char(s, '(');
+    if (select->hash_fields) {
+        ds_put_format(s, "values=(");
+    }
     for (size_t i = 0; i < select->n_dsts; i++) {
         if (i) {
             ds_put_cstr(s, ", ");
@@ -1605,6 +1636,9 @@ format_SELECT(const struct ovnact_select *select, struct ds *s)
         ds_put_format(s, "=%"PRIu16, dst->weight);
     }
     ds_put_char(s, ')');
+    if (select->hash_fields) {
+      ds_put_format(s, "; hash_fields=\"%s\")", select->hash_fields);
+    }
     ds_put_char(s, ';');
 }
 
@@ -1619,9 +1653,14 @@ encode_SELECT(const struct ovnact_select *select,
     struct ofpact_group *og;
 
     struct ds ds = DS_EMPTY_INITIALIZER;
-    ds_put_format(&ds, "type=select,selection_method=dp_hash");
+    ds_put_format(&ds, "type=select,selection_method=%s",
+                  select->hash_fields ? "hash": "dp_hash");
+    if (select->hash_fields) {
+      ds_put_format(&ds, ",fields(%s)", select->hash_fields);
+    }
 
-    if (ovs_feature_is_supported(OVS_DP_HASH_L4_SYM_SUPPORT)) {
+    if (ovs_feature_is_supported(OVS_DP_HASH_L4_SYM_SUPPORT) &&
+        !select->hash_fields) {
         /* Select dp-hash l4_symmetric by setting the upper 32bits of
          * selection_method_param to value 1 (1 << 32): */
         ds_put_cstr(&ds, ",selection_method_param=0x100000000");
@@ -1654,6 +1693,7 @@ static void
 ovnact_select_free(struct ovnact_select *select)
 {
     free(select->dsts);
+    free(select->hash_fields);
 }
 
 static void

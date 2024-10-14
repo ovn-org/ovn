@@ -2133,6 +2133,16 @@ reg0 = select(1, 2);
     encodes as group:20
     uses group: id(20), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=load:1->xxreg0[[96..127]],resubmit(,oflow_in_table),bucket=bucket_id=1,weight:100,actions=load:2->xxreg0[[96..127]],resubmit(,oflow_in_table))
 
+reg9[[16..31]] = select(values=(1=50, 2=100, 3); hash_fields="ip_src,ip_dst");
+    formats as reg9[[16..31]] = select(values=(1=50, 2=100, 3=100); hash_fields="ip_src,ip_dst");
+    encodes as group:21
+    uses group: id(21), name(type=select,selection_method=hash,fields(ip_src,ip_dst),bucket=bucket_id=0,weight:50,actions=load:1->xreg4[[16..31]],resubmit(,oflow_in_table),bucket=bucket_id=1,weight:100,actions=load:2->xreg4[[16..31]],resubmit(,oflow_in_table),bucket=bucket_id=2,weight:100,actions=load:3->xreg4[[16..31]],resubmit(,oflow_in_table))
+
+reg0 = select(values=(1, 2); hash_fields="ip_dst,ip_src");
+    formats as reg0 = select(values=(1=100, 2=100); hash_fields="ip_dst,ip_src");
+    encodes as group:22
+    uses group: id(22), name(type=select,selection_method=hash,fields(ip_dst,ip_src),bucket=bucket_id=0,weight:100,actions=load:1->xxreg0[[96..127]],resubmit(,oflow_in_table),bucket=bucket_id=1,weight:100,actions=load:2->xxreg0[[96..127]],resubmit(,oflow_in_table))
+
 reg0 = select(1=, 2);
     Syntax error at `,' expecting weight.
 reg0 = select(1=0, 2);
@@ -2141,6 +2151,14 @@ reg0 = select(1=123456, 2);
     Syntax error at `123456' expecting weight.
 reg0 = select(123);
     Syntax error at `;' expecting at least 2 group members.
+reg0 = select(values=1, 2);
+    Syntax error at `1' expecting `('.
+reg0 = select(values=(1, 2); test_fields="hello,world");
+    Syntax error at `test_fields' expecting hash_fields.
+reg0 = select(values=(1, 2); hash_fields);
+    Syntax error at `)' invalid hash_fields.
+reg0 = select(values=(1, 2); hash_fields=);
+    Syntax error at `)' invalid hash_fields.
 ip.proto = select(1, 2, 3);
     Field ip.proto is not modifiable.
 reg0[[0..14]] = select(1, 2, 3);
@@ -2148,12 +2166,12 @@ reg0[[0..14]] = select(1, 2, 3);
 
 fwd_group(liveness=true, childports="eth0", "lsp1");
     formats as fwd_group(liveness="true", childports="eth0", "lsp1");
-    encodes as group:21
-    uses group: id(21), name(type=select,selection_method=dp_hash,bucket=watch_port:5,load=0x5->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT),bucket=watch_port:17,load=0x17->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT))
+    encodes as group:23
+    uses group: id(23), name(type=select,selection_method=dp_hash,bucket=watch_port:5,load=0x5->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT),bucket=watch_port:17,load=0x17->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT))
 
 fwd_group(childports="eth0", "lsp1");
-    encodes as group:22
-    uses group: id(22), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT),bucket=load=0x17->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT))
+    encodes as group:24
+    uses group: id(24), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT),bucket=load=0x17->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT))
 
 fwd_group(childports=eth0);
     Syntax error at `eth0' expecting logical switch port.
@@ -2162,8 +2180,8 @@ fwd_group();
     Syntax error at `)' expecting `;'.
 
 fwd_group(childports="eth0", "lsp1");
-    encodes as group:22
-    uses group: id(22), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT),bucket=load=0x17->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT))
+    encodes as group:24
+    uses group: id(24), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT),bucket=load=0x17->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT))
 
 fwd_group(liveness=xyzzy, childports="eth0", "lsp1");
     Syntax error at `xyzzy' expecting true or false.
@@ -26636,6 +26654,234 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ECMP static routes - custom hash])
+ovn_start
+
+# Logical network:
+# ls1 (192.168.1.0/24) - lr1 - ls2 (192.168.2.0/24)
+# lsl has lsp11 (192.168.1.11) and ls2 has lsp21 (192.168.2.21) and lsp22
+# (192.168.2.22)
+#
+# Static routes on lr1:
+# 10.0.0.0/24 nexthop 192.168.2.21
+# 10.0.0.0/24 nexthop 192.168.2.22
+#
+# ECMP hash on ip_proto,src_ip,dst_ip,tp_dst
+#
+# Test:
+# lsp11 sends packets to 10.0.0.100 with different source ports
+# Migrate all the VIFs to a hv2
+# Generate the same traffic from lsp11 again
+#
+# Expected result:
+# All packets should go out of a either lsp21 or lsp22 on hv1
+# All packets should go out of the same port even on hv2
+
+ovn-nbctl lr-add lr1
+
+ovn-nbctl ls-add ls1
+ovn-nbctl ls-add ls2
+
+for i in 1 2; do
+    ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
+    ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
+        -- lsp-set-options lsp-ls${i}-lr1 router-port=lrp-lr1-ls${i} \
+        -- lsp-set-addresses lsp-ls${i}-lr1 router
+done
+
+#install static routes
+ovn-nbctl lr-route-add lr1 10.0.0.0/24 192.168.2.21
+route_uuid=$(fetch_column nb:logical_router_static_route _uuid nexthop="192.168.2.21")
+check ovn-nbctl set logical_router_static_route $route_uuid selection_fields="eth_src,ip_proto,ip_src,ip_dst,tp_dst"
+
+ovn-nbctl --ecmp lr-route-add lr1 10.0.0.0/24 192.168.2.22
+route_uuid=$(fetch_column nb:logical_router_static_route _uuid nexthop="192.168.2.22")
+check ovn-nbctl set logical_router_static_route $route_uuid selection_fields="eth_dst,ip_proto,ip_src,ip_dst,tp_dst"
+
+# Create logical ports
+ovn-nbctl lsp-add ls1 lsp11 -- \
+    lsp-set-addresses lsp11 "f0:00:00:00:01:11 192.168.1.11"
+ovn-nbctl lsp-add ls2 lsp21 -- \
+    lsp-set-addresses lsp21 "f0:00:00:00:02:21 192.168.2.21"
+ovn-nbctl lsp-add ls2 lsp22 -- \
+    lsp-set-addresses lsp22 "f0:00:00:00:02:22 192.168.2.22"
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+
+as hv1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=lsp11 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=lsp21 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+
+ovs-vsctl -- add-port br-int hv1-vif3 -- \
+    set interface hv1-vif3 external-ids:iface-id=lsp22 \
+    options:tx_pcap=hv1/vif3-tx.pcap \
+    options:rxq_pcap=hv1/vif3-rx.pcap \
+    ofport-request=3
+
+# wait for earlier changes to take effect
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up
+
+ovn-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
+
+AT_CAPTURE_FILE([ofgroups])
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-groups br-int > ofgroups
+    grep "selection_method=hash,fields" ofgroups | \
+    grep "nw_proto" | grep "ip_src" | grep "ip_dst" | wc -l], [0], [4
+])
+
+as hv1 ovs-ofctl dump-groups br-int > ofgroups
+AT_CHECK([grep "selection_method=hash,fields(ip_src,ip_dst,nw_proto)" ofgroups |  wc -l], [0], [1
+])
+AT_CHECK([grep "selection_method=hash,fields(ip_src,ip_dst,nw_proto,tcp_dst)" ofgroups |  wc -l], [0], [1
+])
+AT_CHECK([grep "selection_method=hash,fields(ip_src,ip_dst,nw_proto,udp_dst)" ofgroups |  wc -l], [0], [1
+])
+AT_CHECK([grep "selection_method=hash,fields(ip_src,ip_dst,nw_proto,sctp_dst)" ofgroups |  wc -l], [0], [1
+])
+
+as hv1 ovs-ofctl dump-flows br-int > oflows
+AT_CAPTURE_FILE([oflows])
+
+for i in $(seq 5001 5010); do
+    packet="inport==\"lsp11\" && eth.src==f0:00:00:00:01:11 && eth.dst==00:00:00:01:01:01 &&
+            ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==10.0.0.100 &&
+            tcp && tcp.src==$i && tcp.dst==80"
+    OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+    for j in 1 2; do
+        # Assume all packets go to lsp2${j}.
+        exp_packet="eth.src==00:00:00:01:02:01 && eth.dst==f0:00:00:00:02:2${j} &&
+                ip4 && ip.ttl==63 && ip4.src==192.168.1.11 && ip4.dst==10.0.0.100 &&
+                tcp && tcp.src==$i && tcp.dst==80"
+        echo $exp_packet | ovstest test-ovn expr-to-packets >> expected_lsp2${j}
+    done
+done
+
+# All packets should go out of a single port given the hashing is based on ip_proto,ip_src,ip_dst,tp_dst which is fixed
+OVS_WAIT_UNTIL([
+    hv1_rcv_n1=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap > lsp21.packets && cat lsp21.packets | wc -l`
+    hv1_rcv_n2=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif3-tx.pcap > lsp22.packets && cat lsp22.packets | wc -l`
+    echo $hv1_rcv_n1 $hv1_rcv_n2
+    test $(($hv1_rcv_n1 + $hv1_rcv_n2)) -ge 10])
+
+if test $hv1_rcv_n1 = 0; then
+    AT_CHECK([test $hv1_rcv_n2 -ge 10], [0], [])
+else
+    AT_CHECK([test $hv1_rcv_n1 -ge 10], [0], [])
+fi
+
+# Move all VIFs to hv2 and send the same packets again
+as hv1
+ovs-vsctl del-port hv1-vif1
+ovs-vsctl del-port hv1-vif2
+ovs-vsctl del-port hv1-vif3
+
+wait_column "" Port_Binding chassis logical_port=lsp11
+wait_column "" Port_Binding chassis logical_port=lsp21
+wait_column "" Port_Binding chassis logical_port=lsp22
+
+as hv2
+ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=lsp11 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+
+ovs-vsctl -- add-port br-int hv2-vif2 -- \
+    set interface hv2-vif2 external-ids:iface-id=lsp21 \
+    options:tx_pcap=hv2/vif2-tx.pcap \
+    options:rxq_pcap=hv2/vif2-rx.pcap \
+    ofport-request=2
+
+ovs-vsctl -- add-port br-int hv2-vif3 -- \
+    set interface hv2-vif3 external-ids:iface-id=lsp22 \
+    options:tx_pcap=hv2/vif3-tx.pcap \
+    options:rxq_pcap=hv2/vif3-rx.pcap \
+    ofport-request=3
+
+# wait for earlier changes to take effect
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up
+
+AT_CAPTURE_FILE([ofgroups])
+OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-groups br-int > ofgroups
+    grep "selection_method=hash,fields" ofgroups | \
+    grep "nw_proto" | grep "ip_src" | grep "ip_dst" | wc -l], [0], [4
+])
+
+as hv2 ovs-ofctl dump-groups br-int > ofgroups
+AT_CHECK([grep "selection_method=hash,fields(ip_src,ip_dst,nw_proto)" ofgroups |  wc -l], [0], [1
+])
+AT_CHECK([grep "selection_method=hash,fields(ip_src,ip_dst,nw_proto,tcp_dst)" ofgroups |  wc -l], [0], [1
+])
+AT_CHECK([grep "selection_method=hash,fields(ip_src,ip_dst,nw_proto,udp_dst)" ofgroups |  wc -l], [0], [1
+])
+AT_CHECK([grep "selection_method=hash,fields(ip_src,ip_dst,nw_proto,sctp_dst)" ofgroups |  wc -l], [0], [1
+])
+
+as hv2 ovs-ofctl dump-flows br-int > oflows
+AT_CAPTURE_FILE([oflows])
+
+for i in $(seq 5001 5010); do
+    packet="inport==\"lsp11\" && eth.src==f0:00:00:00:01:11 && eth.dst==00:00:00:01:01:01 &&
+            ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==10.0.0.100 &&
+            tcp && tcp.src==$i && tcp.dst==80"
+    OVS_WAIT_UNTIL([as hv2 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+    for j in 1 2; do
+        # Assume all packets go to lsp2${j}.
+        exp_packet="eth.src==00:00:00:01:02:01 && eth.dst==f0:00:00:00:02:2${j} &&
+                ip4 && ip.ttl==63 && ip4.src==192.168.1.11 && ip4.dst==10.0.0.100 &&
+                tcp && tcp.src==$i && tcp.dst==80"
+        echo $exp_packet | ovstest test-ovn expr-to-packets >> expected_lsp2${j}
+    done
+done
+
+# All packets should go out of a single port given the hashing is based on ip_proto,ip_src,ip_dst,tp_dst which is fixed
+OVS_WAIT_UNTIL([
+    hv2_rcv_n1=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/vif2-tx.pcap > lsp21.packets && cat lsp21.packets | wc -l`
+    hv2_rcv_n2=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/vif3-tx.pcap > lsp22.packets && cat lsp22.packets | wc -l`
+    echo $hv2_rcv_n1 $hv2_rcv_n2
+    test $(($hv2_rcv_n1 + $hv2_rcv_n2)) -ge 10])
+
+if test $hv2_rcv_n1 = 0; then
+    AT_CHECK([test $hv2_rcv_n2 -ge 10], [0], [])
+else
+    AT_CHECK([test $hv2_rcv_n1 -ge 10], [0], [])
+fi
+
+# All packets should out of the same port on both hosts
+if test $hv1_rcv_n1 = 0; then
+    AT_CHECK([test $hv2_rcv_n1 -eq 0], [0], [])
+else
+    AT_CHECK([test $hv2_rcv_n2 -eq 0], [0], [])
+fi
+
+OVN_CLEANUP([hv1], [hv2])
+
+AT_CLEANUP
+])
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([route tables -- <main> route table routes])
