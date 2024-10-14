@@ -103,6 +103,7 @@ static unixctl_cb_func debug_dump_local_bindings;
 static unixctl_cb_func debug_dump_related_lports;
 static unixctl_cb_func debug_dump_local_template_vars;
 static unixctl_cb_func debug_dump_local_mac_bindings;
+static unixctl_cb_func debug_dump_peer_ports;
 static unixctl_cb_func debug_dump_lflow_conj_ids;
 static unixctl_cb_func lflow_cache_flush_cmd;
 static unixctl_cb_func lflow_cache_show_stats_cmd;
@@ -5418,6 +5419,10 @@ main(int argc, char *argv[])
                              debug_dump_lflow_conj_ids,
                              &lflow_output_data->conj_ids);
 
+    unixctl_command_register("debug/dump-peer-ports", "", 0, 0,
+                             debug_dump_peer_ports,
+                             &runtime_data->local_datapaths);
+
     unixctl_command_register("debug/dump-local-template-vars", "", 0, 0,
                              debug_dump_local_template_vars,
                              &template_vars_data->local_templates);
@@ -6359,6 +6364,16 @@ debug_dump_related_lports(struct unixctl_conn *conn, int argc OVS_UNUSED,
     binding_dump_related_lports(related_lports, &data);
     unixctl_command_reply(conn, ds_cstr(&data));
     ds_destroy(&data);
+}
+
+static void
+debug_dump_peer_ports(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                          const char *argv[] OVS_UNUSED, void *local_datapaths)
+{
+    struct ds peer_ports = DS_EMPTY_INITIALIZER;
+    local_data_dump_peer_ports(local_datapaths, &peer_ports);
+    unixctl_command_reply(conn, ds_cstr(&peer_ports));
+    ds_destroy(&peer_ports);
 }
 
 static void

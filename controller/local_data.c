@@ -232,6 +232,21 @@ add_local_datapath_peer_port(
 }
 
 void
+local_data_dump_peer_ports(struct hmap *local_datapaths, struct ds *peer_ports)
+{
+    struct local_datapath *ld;
+    HMAP_FOR_EACH (ld, hmap_node, local_datapaths) {
+        const char *name = smap_get_def(&ld->datapath->external_ids, "name",
+                                        "unknown");
+        for (size_t i = 0; i < ld->n_peer_ports; i++) {
+            ds_put_format(peer_ports, "dp %s : local = %s, remote = %s\n",
+                          name, ld->peer_ports[i].local->logical_port,
+                          ld->peer_ports[i].remote->logical_port);
+        }
+    }
+}
+
+void
 remove_local_datapath_peer_port(const struct sbrec_port_binding *pb,
                                 struct local_datapath *ld,
                                 struct hmap *local_datapaths)
