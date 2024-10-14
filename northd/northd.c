@@ -125,6 +125,8 @@ static bool vxlan_mode;
 #define REGBIT_ACL_HINT_ALLOW_REL "reg0[17]"
 #define REGBIT_FROM_ROUTER_PORT   "reg0[18]"
 #define REGBIT_IP_FRAG            "reg0[19]"
+#define REGBIT_ACL_PERSIST_ID     "reg0[20]"
+#define REGBIT_ACL_HINT_ALLOW_PERSISTED "reg0[21]"
 
 /* Register definitions for switches and routers. */
 
@@ -6754,7 +6756,8 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
              const struct nbrec_acl *acl, bool has_stateful,
              const struct shash *meter_groups, uint64_t max_acl_tier,
              struct ds *match, struct ds *actions,
-             struct lflow_ref *lflow_ref)
+             struct lflow_ref *lflow_ref,
+             const struct chassis_features *features)
 {
     bool ingress = !strcmp(acl->direction, "from-lport") ? true :false;
     enum ovn_stage stage;
@@ -6839,6 +6842,19 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
 
         ds_truncate(actions, log_verdict_len);
         ds_put_cstr(actions, REGBIT_CONNTRACK_COMMIT" = 1; ");
+
+        if (smap_get_bool(&acl->options, "persist-established", false)) {
+            if (!features->ct_label_flush) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_WARN_RL(&rl, "OVS does not support CT label flush. "
+                             "persist-established option cannot "
+                             "be honored for ACL "UUID_FMT".",
+                             UUID_ARGS(&acl->header_.uuid));
+            } else {
+                ds_put_format(actions,
+                              REGBIT_ACL_PERSIST_ID " = 1; ");
+            }
+        }
 
         /* For stateful ACLs sample "new" and "established" packets. */
         build_acl_sample_label_action(actions, acl, acl->sample_new,
@@ -7341,6 +7357,32 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
                       REGBIT_ACL_HINT_ALLOW_REL" == 1",
                       REGBIT_ACL_VERDICT_ALLOW " = 1; next;",
                       lflow_ref);
+
+        /* Ingress and egress ACL Table (Priority 65532).
+         *
+         * Allow traffic that is established if the ACL has a persistent
+         * conntrack ID configured.
+         */
+        ds_clear(&match);
+        const char *pre_lb_persisted_acl_action =
+            REGBIT_ACL_HINT_ALLOW_PERSISTED" = 1; "
+            REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
+        const char *persisted_acl_action =
+            REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
+        ds_put_format(&match, "ct.est && ct_mark.allow_established == 1");
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_EVAL, UINT16_MAX - 3,
+                      ds_cstr(&match),
+                      pre_lb_persisted_acl_action,
+                      lflow_ref);
+        ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL_EVAL, UINT16_MAX - 3,
+                      ds_cstr(&match),
+                      persisted_acl_action,
+                      lflow_ref);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_AFTER_LB_EVAL,
+                      UINT16_MAX - 3,
+                      REGBIT_ACL_HINT_ALLOW_PERSISTED" == 1",
+                      persisted_acl_action,
+                      lflow_ref);
     }
 
     /* Ingress and Egress ACL Table (Priority 65532).
@@ -7374,7 +7416,7 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
         uint64_t max_acl_tier = choose_max_acl_tier(ls_stateful_rec, acl);
         consider_acl(lflows, od, acl, has_stateful,
                      meter_groups, max_acl_tier,
-                     &match, &actions, lflow_ref);
+                     &match, &actions, lflow_ref, features);
         build_acl_sample_flows(ls_stateful_rec, od, lflows, acl,
                                &match, &actions, sampling_apps,
                                features, lflow_ref);
@@ -7395,7 +7437,7 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
                                                             acl);
                 consider_acl(lflows, od, acl, has_stateful,
                              meter_groups, max_acl_tier,
-                             &match, &actions, lflow_ref);
+                             &match, &actions, lflow_ref, features);
                 build_acl_sample_flows(ls_stateful_rec, od, lflows, acl,
                                        &match, &actions, sampling_apps,
                                        features, lflow_ref);
@@ -8019,6 +8061,7 @@ build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
     ds_put_cstr(&actions,
                  "ct_commit { "
                     "ct_mark.blocked = 0; "
+                    "ct_mark.allow_established = " REGBIT_ACL_PERSIST_ID "; "
                     "ct_mark.obs_stage = " REGBIT_ACL_OBS_STAGE "; "
                     "ct_mark.obs_collector_id = " REG_OBS_COLLECTOR_ID_EST "; "
                     "ct_label.obs_point_id = " REG_OBS_POINT_ID_EST "; "
@@ -8039,7 +8082,11 @@ build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
      * any packet that makes it this far is part of a connection we
      * want to allow to continue. */
     ds_clear(&actions);
-    ds_put_cstr(&actions, "ct_commit { ct_mark.blocked = 0; }; next;");
+    ds_put_cstr(&actions,
+                "ct_commit { "
+                   "ct_mark.blocked = 0; "
+                   "ct_mark.allow_established = " REGBIT_ACL_PERSIST_ID "; "
+                "}; next;");
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
                   REGBIT_CONNTRACK_COMMIT" == 1 && "
                   REGBIT_ACL_LABEL" == 0",

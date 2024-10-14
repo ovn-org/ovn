@@ -214,6 +214,7 @@ const struct ovn_field *ovn_field_from_name(const char *name);
 #define OVN_CT_LB_FORCE_SNAT_BIT 3
 #define OVN_CT_OBS_STAGE_1ST_BIT 4
 #define OVN_CT_OBS_STAGE_END_BIT 5
+#define OVN_CT_ALLOW_ESTABLISHED_BIT 6
 
 #define OVN_CT_BLOCKED 1
 #define OVN_CT_NATTED  2

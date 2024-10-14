@@ -145,6 +145,7 @@ ct_label.label = ct_label[96..127]
 ct_label.obs_point_id = ct_label[96..127]
 ct_label.obs_unused = ct_label[0..95]
 ct_mark = NXM_NX_CT_MARK
+ct_mark.allow_established = ct_mark[6]
 ct_mark.blocked = ct_mark[0]
 ct_mark.ecmp_reply_port = ct_mark[16..31]
 ct_mark.force_snat = ct_mark[3]

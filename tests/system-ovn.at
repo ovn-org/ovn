@@ -14402,6 +14402,185 @@ as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
 /failed to query port patch-.*/d
 /.*terminating with signal 15.*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACLs - persistent sessions])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+ovs-vsctl set-fail-mode br-ext standalone
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+# For this test, we want to ensure that established traffic
+# is allowed on ACLs when the persist-established option
+# is enabled.
+#
+# To start, we will set up allow-related ACLs.
+# We will send traffic and ensure it is allowed. Then we will adjust
+# the ACL so it no longer matches, and we will ensure that the traffic
+# is no longer allowed.
+#
+# Next, we will reset the ACL to its initial state, but we will also
+# change the ACL to have persist-established enabled.
+# We will flush conntrack, and rerun the test exactly as before.
+# The difference this time is that after we adjust the ACL so it no
+# longer matches, the traffic should still be allowed.
+
+check ovn-nbctl ls-add sw
+check ovn-nbctl lsp-add sw swp1 -- lsp-set-addresses swp1 "00:00:00:00:00:01 192.168.1.1"
+check ovn-nbctl lsp-add sw swp2 -- lsp-set-addresses swp2 "00:00:00:00:00:02 192.168.1.2"
+
+ADD_NAMESPACES(swp1)
+ADD_VETH(swp1, swp1, br-int, "192.168.1.1/24", "00:00:00:00:00:01")
+
+ADD_NAMESPACES(swp2)
+ADD_VETH(swp2, swp2, br-int, "192.168.1.2/24", "00:00:00:00:00:02")
+
+# Start a TCP server on swp2.
+NETNS_DAEMONIZE(swp2, [server.py -i 192.168.1.2 -p 10000], [server.pid])
+
+# Ensure TCP server is ready for connections
+OVS_WAIT_FOR_OUTPUT([cat output.txt], [0], [dnl
+Server Ready
+])
+: > output.txt
+
+# Make a FIFO and send its output to a client
+# from swp1
+mkfifo /tmp/myfifo
+on_exit 'rm -rf /tmp/myfifo'
+
+NETNS_DAEMONIZE(swp1, [client.py -f "/tmp/myfifo" -i 192.168.1.2 -p 10000], [client.pid])
+
+# First, ensure that we have basic connectivity before we even start setting
+# up ACLs.
+AT_CHECK([printf "test\n" > /tmp/myfifo], [0], [dnl
+])
+
+OVS_WAIT_FOR_OUTPUT([cat output.txt], [0], [dnl
+test
+])
+
+: > output.txt
+
+check ovn-nbctl acl-add sw from-lport 1000 'ip4.dst == 192.168.1.2' allow-related
+check ovn-nbctl acl-add sw from-lport 0 '1' drop
+
+# Do another basic connectivity check to ensure the ACL is allowing traffic as expected.
+AT_CHECK([printf "test\n" > /tmp/myfifo], [0], [dnl
+])
+
+OVS_WAIT_FOR_OUTPUT([cat output.txt], [0], [dnl
+test
+])
+
+: > output.txt
+
+# At this point, I need to adjust the ACL so it no longer matches. We then need
+# to ensure that the traffic does not pass. How we test this is...interesting. I'm
+# not sure how to test for a negative condition accurately.
+
+acl_uuid=$(fetch_column nb:ACL _uuid priority=1000)
+
+# Update the ACL so that it no longer matches our client-server traffic
+check ovn-nbctl set ACL $acl_uuid match="\"ip4.dst == 192.168.1.3\""
+
+# Send another packet from the client to the server.
+AT_CHECK([printf "test\n" > /tmp/myfifo], [0], [dnl
+])
+
+# The traffic should be blocked. We'll check the "drop" ACL to see if it has
+# been hit. We can't predict the number of packets that will be seen, but we know
+# it will be non-zero.
+lflow_table=$(ovn-debug lflow-stage-to-ltable ls_in_acl_eval)
+drop_acl_lflow_uuid=$(fetch_column Logical_Flow _uuid pipeline=ingress table_id=$lflow_table priority=1000 match="\"reg0[[9]] == 1 && (1)\"")
+drop_acl_cookie=$(ovn-debug uuid-to-cookie $drop_acl_lflow_uuid)
+
+OVS_WAIT_FOR_OUTPUT([ovs-ofctl dump-flows br-int | grep "cookie=$drop_acl_cookie" | grep -c "n_packets=[[1-9]][[0-9]]*"], [0], [dnl
+1
+])
+
+# And just to be safe, let's make sure the output file is still empty
+AT_CHECK([cat output.txt], [0], [dnl
+])
+
+# Reset the client and server processes so that we create a new connection
+client_pid=$(cat client.pid)
+server_pid=$(cat server.pid)
+kill $server_pid
+kill $client_pid
+OVS_WAIT_WHILE([kill -0 $server_pid 2>/dev/null])
+OVS_WAIT_WHILE([kill -0 $client_pid 2>/dev/null])
+
+NETNS_DAEMONIZE(swp2, [server.py -i 192.168.1.2 -p 20000], [server.pid])
+#
+# Ensure TCP server is ready for connections
+OVS_WAIT_FOR_OUTPUT([cat output.txt], [0], [dnl
+Server Ready
+])
+: > output.txt
+
+NETNS_DAEMONIZE(swp1, [client.py -f "/tmp/myfifo" -i 192.168.1.2 -p 20000], [client.pid])
+
+# Now we'll re-set the ACL to allow the traffic.
+check ovn-nbctl set ACL $acl_uuid match="\"ip4.dst == 192.168.1.2\""
+
+# We'll also enable persist-established.
+check ovn-nbctl --wait=hv set ACL $acl_uuid options:persist-established=true
+
+# Make sure traffic passes
+AT_CHECK([printf "test\n" > /tmp/myfifo], [0], [dnl
+])
+
+OVS_WAIT_FOR_OUTPUT([cat output.txt], [0], [dnl
+test
+])
+
+: > output.txt
+
+# Adjust the ACL so that it no longer matches
+check ovn-nbctl set ACL $acl_uuid match="\"ip4.dst == 192.168.1.3\""
+
+# Traffic should still pass
+AT_CHECK([printf "test\n" > /tmp/myfifo], [0], [dnl
+])
+
+OVS_WAIT_FOR_OUTPUT([cat output.txt], [0], [dnl
+test
+])
+
+: > output.txt
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
 AT_CLEANUP
 ])
 

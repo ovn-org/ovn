@@ -2567,6 +2567,32 @@ or
           of all the ACLs and the default deny/allow ACLs if any.
         </p>
       </column>
+
+      <column name="options" key="persist-established">
+        <p>
+          This option applies only to ACLs whose <ref column="action"/> is set
+          to <code>allow-related</code>.
+        </p>
+
+        <p>
+          <code>allow-related</code> ACLs create a conntrack entry when a
+          packet matches the ACL's <ref column="match"/> column. Typically,
+          traffic must continue to match these conditions in order to continue
+          to be allowed by the ACL. With this option set to <code>true</code>,
+          then the ACL match is bypassed once the original match occurs.
+          Instead, a mark bit in the conntrack entry is used to allow the
+          traffic. This means that traffic will continue to be allowed even if
+          the ACL's match changes and no longer matches the established
+          traffic.
+        </p>
+
+        <p>
+          The traffic will stop being allowed automatically if this option is
+          set to <code>false</code>, if the ACL's <ref column="action"/> is
+          changed to something other than <code>allow-related</code>, or if the
+          ACL is destroyed.
+        </p>
+      </column>
     </group>
 
     <group title="Logging">

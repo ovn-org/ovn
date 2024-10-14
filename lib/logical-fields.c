@@ -174,6 +174,11 @@ ovn_init_symtab(struct shash *symtab)
                                     OVN_CT_STR(OVN_CT_OBS_STAGE_END_BIT)
                                     "]",
                                     WR_CT_COMMIT);
+    expr_symtab_add_subfield_scoped(symtab, "ct_mark.allow_established", NULL,
+                                    "ct_mark["
+                                    OVN_CT_STR(OVN_CT_ALLOW_ESTABLISHED_BIT)
+                                    "]",
+                                    WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab, "ct_mark.obs_collector_id", NULL,
                                     "ct_mark[16..23]", WR_CT_COMMIT);
 
