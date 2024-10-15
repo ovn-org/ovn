@@ -4271,8 +4271,9 @@ lflow_output_runtime_data_handler(struct engine_node *node,
         struct shash_node *shash_node;
         SHASH_FOR_EACH (shash_node, &tdp->lports) {
             struct tracked_lport *lport = shash_node->data;
-            if (!lflow_handle_flows_for_lport(lport->pb, &l_ctx_in,
-                                                &l_ctx_out)) {
+            if (!lflow_handle_flows_for_lport(
+                    lport->pb, &l_ctx_in, &l_ctx_out,
+                    lport->tracked_type == TRACKED_RESOURCE_REMOVED)) {
                 return false;
             }
         }

@@ -39686,3 +39686,44 @@ OVN_CLEANUP([hv1])
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Port Deleted and added back])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovn-appctl vlog/set dbg
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 2001::3"
+check ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03 2001::3"
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Delete sw0-p1
+sleep_controller hv1
+check ovn-nbctl --wait=sb lsp-del sw0-p1
+
+# Add back sw0-p1 but without any address set.
+check ovn-nbctl --wait=sb lsp-add sw0 sw0-p1
+wake_up_controller hv1
+
+CHECK_FLOWS_AFTER_RECOMPUTE([hv1], [hv1])
+
+OVN_CLEANUP([hv1])
+
+AT_CLEANUP
+])

@@ -190,7 +190,8 @@ bool lflow_add_flows_for_datapath(const struct sbrec_datapath_binding *,
                                   struct lflow_ctx_out *);
 bool lflow_handle_flows_for_lport(const struct sbrec_port_binding *,
                                   struct lflow_ctx_in *,
-                                  struct lflow_ctx_out *);
+                                  struct lflow_ctx_out *,
+                                  bool deleted);
 bool lflow_handle_changed_mc_groups(struct lflow_ctx_in *,
                                     struct lflow_ctx_out *);
 bool lflow_handle_changed_port_bindings(struct lflow_ctx_in *,

@@ -378,15 +378,37 @@ tracked_datapath_lport_add(const struct sbrec_port_binding *pb,
     }
 
     /* Check if the lport is already present or not.
-     * If it is already present, then just update the 'pb' field. */
+     * If it is already present, then check whether it is the same pb.
+     * We might have two different pb with the same logical_port if it was
+     * deleted and added back within the same loop.
+     * If the same pb was already present, just update the 'pb' field.
+     * Otherwise, add the second pb */
     struct tracked_lport *lport =
         shash_find_data(&tracked_dp->lports, pb->logical_port);
 
     if (!lport) {
         lport = xmalloc(sizeof *lport);
         shash_add(&tracked_dp->lports, pb->logical_port, lport);
+    } else if (pb != lport->pb) {
+        bool found = false;
+        /* There is at least another pb with the same logical_port.
+         * However, our pb might already be shash_added (e.g. pb1 deleted, pb2
+         * added, pb2 deleted). This is not really optimal, but this loop
+         * only runs in a very uncommon race condition (same logical port
+         * deleted and added within same loop */
+        struct shash_node *node;
+        SHASH_FOR_EACH (node, &tracked_dp->lports) {
+            lport = (struct tracked_lport *) node->data;
+            if (lport->pb == pb) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            lport = xmalloc(sizeof *lport);
+            shash_add(&tracked_dp->lports, pb->logical_port, lport);
+        }
     }
-
     lport->pb = pb;
     lport->tracked_type = tracked_type;
 }
