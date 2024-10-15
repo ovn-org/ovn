@@ -1754,8 +1754,10 @@ consider_container_lport(const struct sbrec_port_binding *pb,
 
     ovs_assert(parent_b_lport && parent_b_lport->pb);
     /* cannot bind to this chassis if the parent_port cannot be bounded. */
+    /* Do not bind neither if parent is postponed */
     bool can_bind = lport_can_bind_on_this_chassis(b_ctx_in->chassis_rec,
                                                    parent_b_lport->pb) &&
+                    !is_postponed_port(parent_b_lport->pb->logical_port) &&
                     lport_can_bind_on_this_chassis(b_ctx_in->chassis_rec, pb);
 
     return consider_vif_lport_(pb, can_bind, b_ctx_in, b_ctx_out,
