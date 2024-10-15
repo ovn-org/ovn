@@ -2782,27 +2782,25 @@ handle_deleted_vif_lport(const struct sbrec_port_binding *pb,
                          struct binding_ctx_out *b_ctx_out)
 {
     struct local_binding *lbinding = NULL;
-    bool bound = false;
 
     struct shash *binding_lports = &b_ctx_out->lbinding_data->lports;
     struct binding_lport *b_lport = binding_lport_find(binding_lports, pb->logical_port);
     if (b_lport) {
         lbinding = b_lport->lbinding;
-        bound = is_binding_lport_this_chassis(b_lport, b_ctx_in->chassis_rec);
 
          /* Remove b_lport from local_binding. */
          binding_lport_delete(binding_lports, b_lport);
     }
 
-    if ((lbinding && lport_type == LP_VIF) &&
-        (bound || sset_find_and_delete(b_ctx_out->postponed_ports,
-                                       pb->logical_port))) {
+    if (lbinding && lport_type == LP_VIF) {
+        sset_find_and_delete(b_ctx_out->postponed_ports, pb->logical_port);
         /* We need to release the container/virtual binding lports (if any) if
          * deleted 'pb' type is LP_VIF. */
         struct binding_lport *c_lport;
         LIST_FOR_EACH (c_lport, list_node, &lbinding->binding_lports) {
             sset_find_and_delete(b_ctx_out->postponed_ports, c_lport->name);
             remove_local_lports(c_lport->pb->logical_port, b_ctx_out);
+            remove_related_lport(c_lport->pb, b_ctx_out);
             if (!release_binding_lport(b_ctx_in->chassis_rec, c_lport,
                                        !b_ctx_in->ovnsb_idl_txn,
                                        b_ctx_out)) {
