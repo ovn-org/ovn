@@ -41,6 +41,23 @@ m4_define([M_START_TCPDUMP],
 )
 
 
+# M_FORMAT_CT([ip-addr])
+#
+# Strip content from the piped input which would differ from test to test
+# and limit the output to the rows containing 'ip-addr'.
+#
+m4_define([M_FORMAT_CT],
+    [[grep -F "dst=$1," | sed -e 's/id=[0-9]*/id=<cleared>/g' -e 's/state=[0-9_A-Z]*/state=<cleared>/g' | sort | uniq | sed -e 's/zone=[[0-9]]*/zone=<cleared>/' -e 's/mark=[[0-9]]*/mark=<cleared>/' ]])
+
+# M_FORMAT_CURL([ip-addr], [port])
+#
+# Strip content from the piped input which would differ from test to test
+# and limit the output to the rows containing 'ip-addr' and 'port'.
+#
+m4_define([M_FORMAT_CURL],
+    [[sed 's/\(.*\)Connected to $1 ($1) port $2/Connected to $1 ($1) port $2\n/' | sed 's/\(.*\)200 OK/200 OK\n/' | grep -i -e connected -e "200 OK" | uniq ]])
+
+
 OVS_START_SHELL_HELPERS
 
 m_as() {
@@ -74,6 +91,25 @@ cleanup_multinode_resources() {
 
 multinode_nbctl () {
     m_as ovn-central-az1-1 ovn-nbctl "$@"
+}
+
+check_fake_multinode_setup_by_nodes() {
+    check m_as ovn-central-az1-1 ovn-nbctl --wait=sb sync
+    for c in $1
+    do
+        AT_CHECK([m_as $c ovn-appctl -t ovn-controller version], [0], [ignore])
+    done
+}
+
+cleanup_multinode_resources_by_nodes() {
+    m_as ovn-central-az1-1 rm -f /etc/ovn/ovnnb_db.db
+    m_as ovn-central-az1-1 /usr/share/ovn/scripts/ovn-ctl restart_northd
+    check m_as ovn-central-az1-1 ovn-nbctl --wait=sb sync
+    for c in $1
+    do
+        m_as $c ovs-vsctl del-br br-int
+        m_as $c ip --all netns delete
+    done
 }
 
 # m_count_rows TABLE [CONDITION...]

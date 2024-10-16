@@ -1591,3 +1591,994 @@ AT_CHECK([cat ch1_eth2.tcpdump], [0], [dnl
 ])
 
 AT_CLEANUP
+
+AT_SETUP([ovn multinode load-balancer with multiple DGPs and multiple chassis])
+
+# Check that ovn-fake-multinode setup is up and running - requires additional nodes
+check_fake_multinode_setup_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-chassis-3 ovn-chassis-4 ovn-gw-1 ovn-gw-2'
+
+# Delete the multinode NB and OVS resources before starting the test.
+cleanup_multinode_resources_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-chassis-3 ovn-chassis-4 ovn-gw-1 ovn-gw-2'
+
+# Reset geneve tunnels
+for c in ovn-chassis-1 ovn-chassis-2 ovn-chassis-3 ovn-chassis-4 ovn-gw-1 ovn-gw-2
+do
+    m_as $c ovs-vsctl set open . external-ids:ovn-encap-type=geneve
+done
+
+# Network topology
+#
+#             publicp1 (ovn-chassis-3) (20.0.1.3/24)
+#                |
+#              overlay
+#                |
+#      DGP public1 (ovn-gw-1) (20.0.1.1/24)
+#                |
+#                |
+#                |
+#               lr0 ------- sw0 --- sw0p1 (ovn-chassis-1) 10.0.1.3/24
+#                |           |
+#                |           + ---  sw0p2 (ovn-chassis-2) 10.0.1.4/24
+#                |
+#      DGP public2 (ovn-gw-2) (30.0.1.1/24)
+#                |
+#              overlay
+#                |
+#             publicp2 (ovn-chassis-4) (30.0.1.3/24)
+
+# Delete already used ovs-ports
+m_as ovn-chassis-1 ip link del sw0p1-p
+m_as ovn-chassis-2 ip link del sw0p2-p
+m_as ovn-chassis-2 ip link del sw1p1-p
+m_as ovn-chassis-3 ip link del publicp1-p
+m_as ovn-chassis-4 ip link del publicp2-p
+
+# Create East-West switch for LB backends
+check multinode_nbctl ls-add sw0
+check multinode_nbctl lsp-add sw0 sw0-port1
+check multinode_nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.1.3 1000::3"
+check multinode_nbctl lsp-add sw0 sw0-port2
+check multinode_nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.1.4 1000::4"
+
+m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 1342 10.0.1.3 24 10.0.1.1 1000::3/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 1342 10.0.1.4 24 10.0.1.1 1000::4/64 1000::a
+
+m_wait_for_ports_up
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 10.0.1.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ping -q -c 3 -i 0.3 -w 2 10.0.1.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Create a logical router and attach to sw0
+check multinode_nbctl lr-add lr0
+check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.1.1/24 1000::a/64
+check multinode_nbctl lsp-add sw0 sw0-lr0
+check multinode_nbctl lsp-set-type sw0-lr0 router
+check multinode_nbctl lsp-set-addresses sw0-lr0 router
+check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+# create external connection for N/S traffic using multiple DGPs
+check multinode_nbctl ls-add public
+
+# create external connection for N/S traffic
+# DGP public1
+check multinode_nbctl lsp-add public ln-public-1
+check multinode_nbctl lsp-set-type ln-public-1 localnet
+check multinode_nbctl lsp-set-addresses ln-public-1 unknown
+check multinode_nbctl lsp-set-options ln-public-1 network_name=public1
+
+# DGP public2
+check multinode_nbctl lsp-add public ln-public-2
+check multinode_nbctl lsp-set-type ln-public-2 localnet
+check multinode_nbctl lsp-set-addresses ln-public-2 unknown
+check multinode_nbctl lsp-set-options ln-public-2 network_name=public2
+
+# Attach DGP public1 to GW-1 and chassis-3 (overlay connectivity)
+m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public1:br-ex
+m_as ovn-chassis-3 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public1:br-ex
+
+# Attach DGP public2 to GW-2 and chassis-4 (overlay connectivity)
+m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public2:br-ex
+m_as ovn-chassis-4 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public2:br-ex
+
+# Create the external LR0 port to the DGP public1
+check multinode_nbctl lsp-add public public-port1
+check multinode_nbctl lsp-set-addresses public-port1 "40:54:00:00:00:03 20.0.1.3 2000::3"
+
+check multinode_nbctl lrp-add lr0 lr0-public-p1 00:00:00:00:ff:02 20.0.1.1/24 2000::a/64
+check multinode_nbctl lsp-add public public-lr0-p1
+check multinode_nbctl lsp-set-type public-lr0-p1 router
+check multinode_nbctl lsp-set-addresses public-lr0-p1 router
+check multinode_nbctl lsp-set-options public-lr0-p1 router-port=lr0-public-p1
+check multinode_nbctl lrp-set-gateway-chassis lr0-public-p1 ovn-gw-1 10
+
+# Create a VM on ovn-chassis-3 in the same public1 overlay
+m_as ovn-chassis-3 /data/create_fake_vm.sh public-port1 publicp1 40:54:00:00:00:03 1342 20.0.1.3 24 20.0.1.1 2000::4/64 2000::a
+
+m_wait_for_ports_up public-port1
+
+# Create the external LR0 port to the DGP public2
+check multinode_nbctl lsp-add public public-port2
+check multinode_nbctl lsp-set-addresses public-port2 "60:54:00:00:00:03 30.0.1.3 3000::3"
+
+check multinode_nbctl lrp-add lr0 lr0-public-p2 00:00:00:00:ff:03 30.0.1.1/24 3000::a/64
+check multinode_nbctl lsp-add public public-lr0-p2
+check multinode_nbctl lsp-set-type public-lr0-p2 router
+check multinode_nbctl lsp-set-addresses public-lr0-p2 router
+check multinode_nbctl lsp-set-options public-lr0-p2 router-port=lr0-public-p2
+check multinode_nbctl lrp-set-gateway-chassis lr0-public-p2 ovn-gw-2 10
+
+# Create a VM on ovn-chassis-4 in the same public2 overlay
+m_as ovn-chassis-4 /data/create_fake_vm.sh public-port2 publicp2 60:54:00:00:00:03 1342 30.0.1.3 24 30.0.1.1 3000::4/64 3000::a
+
+m_wait_for_ports_up public-port2
+
+# Add SNAT rules using gateway-port
+check multinode_nbctl --gateway-port lr0-public-p1 lr-nat-add lr0 snat 20.0.1.1 10.0.1.0/24
+check multinode_nbctl --gateway-port lr0-public-p2 lr-nat-add lr0 snat 30.0.1.1 10.0.1.0/24
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 20.0.1.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ping -q -c 3 -i 0.3 -w 2 30.0.1.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# create LB
+check multinode_nbctl lb-add lb0 "172.16.0.100:80" "10.0.1.3:80,10.0.1.4:80"
+check multinode_nbctl lr-lb-add lr0 lb0
+check multinode_nbctl ls-lb-add sw0 lb0
+
+# Set use_stateless_nat to true
+check multinode_nbctl set load_balancer lb0 options:use_stateless_nat=true
+
+# Start backend http services
+M_NS_DAEMONIZE([ovn-chassis-1], [sw0p1], [python3 -m http.server --bind 10.0.1.3 80 >/dev/null 2>&1], [http1.pid])
+M_NS_DAEMONIZE([ovn-chassis-2], [sw0p2], [python3 -m http.server --bind 10.0.1.4 80 >/dev/null 2>&1], [http2.pid])
+
+# wait for http server be ready
+OVS_WAIT_UNTIL([m_as ovn-chassis-1 ip netns exec sw0p1 ss -tulpn | grep LISTEN | grep 10.0.1.3:80])
+OVS_WAIT_UNTIL([m_as ovn-chassis-2 ip netns exec sw0p2 ss -tulpn | grep LISTEN | grep 10.0.1.4:80])
+
+# Flush conntrack entries for easier output parsing of next test.
+m_as ovn-gw-1 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-2 ovs-appctl dpctl/flush-conntrack
+
+M_NS_EXEC([ovn-chassis-3], [publicp1], [sh -c 'curl -v 172.16.0.100:80 --retry 0 --connect-timeout 1 --max-time 1 --local-port 59002 2> curl.out'])
+M_NS_CHECK_EXEC([ovn-chassis-3], [publicp1], [sh -c 'cat -v curl.out' | M_FORMAT_CURL([172.16.0.100], [80])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 80
+200 OK
+])
+
+M_NS_EXEC([ovn-chassis-4], [publicp2], [sh -c 'curl -v 172.16.0.100:80 --retry 0 --connect-timeout 1 --max-time 1 --local-port 59003 2> curl.out'])
+M_NS_CHECK_EXEC([ovn-chassis-4], [publicp2], [sh -c 'cat -v curl.out' | M_FORMAT_CURL([172.16.0.100], [80])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 80
+200 OK
+])
+
+m_as ovn-gw-1 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-2 ovs-appctl dpctl/flush-conntrack
+
+M_NS_EXEC([ovn-chassis-3], [publicp1], [sh -c 'curl -v 172.16.0.100:80 --retry 0 --connect-timeout 1 --max-time 1 --local-port 59001'])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-1 ovs-appctl dpctl/dump-conntrack | M_FORMAT_CT(20.0.1.3) | \
+grep tcp | sed -E -e 's/10.0.1.3|10.0.1.4/<cleared>/g' | sort], [0], [dnl
+tcp,orig=(src=20.0.1.3,dst=<cleared>,sport=59001,dport=80),reply=(src=<cleared>,dst=20.0.1.3,sport=80,dport=59001),zone=<cleared>,mark=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=20.0.1.3,dst=<cleared>,sport=59001,dport=80),reply=(src=<cleared>,dst=20.0.1.3,sport=80,dport=59001),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+M_NS_EXEC([ovn-chassis-4], [publicp2], [sh -c 'curl -v 172.16.0.100:80 --retry 0 --connect-timeout 1 --max-time 1 --local-port 59000'])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ovs-appctl dpctl/dump-conntrack | M_FORMAT_CT(30.0.1.3) | \
+grep tcp | sed -E -e 's/10.0.1.3|10.0.1.4/<cleared>/g' | sort], [0], [dnl
+tcp,orig=(src=30.0.1.3,dst=<cleared>,sport=59000,dport=80),reply=(src=<cleared>,dst=30.0.1.3,sport=80,dport=59000),zone=<cleared>,mark=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=30.0.1.3,dst=<cleared>,sport=59000,dport=80),reply=(src=<cleared>,dst=30.0.1.3,sport=80,dport=59000),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+# create a big file on web servers for download
+M_NS_EXEC([ovn-chassis-1], [sw0p1], [dd bs=512 count=200000 if=/dev/urandom of=download_file])
+M_NS_EXEC([ovn-chassis-2], [sw0p2], [dd bs=512 count=200000 if=/dev/urandom of=download_file])
+
+# Flush conntrack entries for easier output parsing of next test.
+m_as ovn-chassis-1 ovs-appctl dpctl/flush-conntrack
+m_as ovn-chassis-2 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-1 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-2 ovs-appctl dpctl/flush-conntrack
+
+M_NS_EXEC([ovn-chassis-3], [publicp1], [sh -c 'curl -v -O 172.16.0.100:80/download_file --retry 0 --connect-timeout 1 --max-time 1 --local-port 59004 2>curl.out'])
+
+gw1_ct=$(m_as ovn-gw-1 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+gw2_ct=$(m_as ovn-gw-2 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+chassis1_ct=$(m_as ovn-chassis-1 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+chassis2_ct=$(m_as ovn-chassis-2 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+chassis1_flow=$(m_as ovn-chassis-1 ovs-dpctl dump-flows | sed ':a;N;$!ba;s/\n/\\n/g')
+chassis2_flow=$(m_as ovn-chassis-2 ovs-dpctl dump-flows | sed ':a;N;$!ba;s/\n/\\n/g')
+
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 ip netns exec publicp1 cat -v curl.out | M_FORMAT_CURL([172.16.0.100], [80])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 80
+200 OK
+])
+
+# Check if we have only one backend for the same connection - orig + dest ports
+OVS_WAIT_FOR_OUTPUT([echo -e $gw1_ct | M_FORMAT_CT(20.0.1.3) | \
+grep tcp | sed -E -e 's/10.0.1.3|10.0.1.4/<cleared>/g' | sort], [0], [dnl
+tcp,orig=(src=20.0.1.3,dst=<cleared>,sport=59004,dport=80),reply=(src=<cleared>,dst=20.0.1.3,sport=80,dport=59004),zone=<cleared>,mark=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=20.0.1.3,dst=<cleared>,sport=59004,dport=80),reply=(src=<cleared>,dst=20.0.1.3,sport=80,dport=59004),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+# Check if gw-2 is empty to ensure that the traffic only come from/to the originator chassis via DGP public1
+AT_CHECK([echo -e $gw2_ct | grep "20.0.1.3" -c], [1], [dnl
+0
+])
+
+# Check the backend IP from ct entries on gw-1 (DGP public1)
+backend_check=$(echo -e $chassis1_ct | grep "10.0.1.3,sport=59004,dport=80" -c)
+
+if [[ $backend_check -gt 0 ]]; then
+# Backend resides on ovn-chassis-1
+AT_CHECK([echo -e $chassis1_ct | M_FORMAT_CT(20.0.1.3) | \
+grep tcp], [0], [dnl
+tcp,orig=(src=20.0.1.3,dst=10.0.1.3,sport=59004,dport=80),reply=(src=10.0.1.3,dst=20.0.1.3,sport=80,dport=59004),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+# Ensure that the traffic only come from ovn-chassis-1
+AT_CHECK([echo -e $chassis2_ct | grep "20.0.1.3" | grep "dport=80" -c], [1], [dnl
+0
+])
+AT_CHECK([echo -e $chassis2_flow | grep "20.0.1.3" | grep "dport=80" -c], [1], [dnl
+0
+])
+else
+# Backend resides on ovn-chassis-2
+AT_CHECK([echo -e $chassis2_ct | M_FORMAT_CT(20.0.1.3) | \
+grep tcp], [0], [dnl
+tcp,orig=(src=20.0.1.3,dst=10.0.1.4,sport=59004,dport=80),reply=(src=10.0.1.4,dst=20.0.1.3,sport=80,dport=59004),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+# Ensure that the traffic only come from ovn-chassis-2
+AT_CHECK([echo -e $chassis1_ct | grep "20.0.1.3" | grep "dport=80" -c], [1], [dnl
+0
+])
+AT_CHECK([echo -e $chassis1_flow | grep "20.0.1.3" | grep "dport=80" -c], [1], [dnl
+0
+])
+fi
+
+# Flush conntrack entries for easier output parsing of next test.
+m_as ovn-chassis-1 ovs-appctl dpctl/flush-conntrack
+m_as ovn-chassis-2 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-1 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-2 ovs-appctl dpctl/flush-conntrack
+
+# Check the flows again for a new source port
+M_NS_EXEC([ovn-chassis-3], [publicp1], [sh -c 'curl -v -O 172.16.0.100:80/download_file --retry 0 --connect-timeout 1 --max-time 1 --local-port 59005 2>curl.out'])
+
+gw1_ct=$(m_as ovn-gw-1 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+gw2_ct=$(m_as ovn-gw-2 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+chassis1_ct=$(m_as ovn-chassis-1 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+chassis2_ct=$(m_as ovn-chassis-2 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+chassis1_flow=$(m_as ovn-chassis-1 ovs-dpctl dump-flows | sed ':a;N;$!ba;s/\n/\\n/g')
+chassis2_flow=$(m_as ovn-chassis-2 ovs-dpctl dump-flows | sed ':a;N;$!ba;s/\n/\\n/g')
+
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 ip netns exec publicp1 cat -v curl.out | M_FORMAT_CURL([172.16.0.100], [80])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 80
+200 OK
+])
+
+# Check if we have only one backend for the same connection - orig + dest ports
+OVS_WAIT_FOR_OUTPUT([echo -e $gw1_ct | M_FORMAT_CT(20.0.1.3) | \
+grep tcp | sed -E -e 's/10.0.1.3|10.0.1.4/<cleared>/g' | sort], [0], [dnl
+tcp,orig=(src=20.0.1.3,dst=<cleared>,sport=59005,dport=80),reply=(src=<cleared>,dst=20.0.1.3,sport=80,dport=59005),zone=<cleared>,mark=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=20.0.1.3,dst=<cleared>,sport=59005,dport=80),reply=(src=<cleared>,dst=20.0.1.3,sport=80,dport=59005),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+# Check if gw-2 is empty to ensure that the traffic only come from/to the originator chassis via DGP public1
+AT_CHECK([echo -e $gw2_ct | grep "20.0.1.3" -c], [1], [dnl
+0
+])
+
+# Check the backend IP from ct entries on gw-1 (DGP public1)
+backend_check=$(echo -e $chassis1_ct | grep "10.0.1.3,sport=59005,dport=80" -c)
+
+if [[ $backend_check -gt 0 ]]; then
+# Backend resides on ovn-chassis-1
+# Ensure that the traffic only come from ovn-chassis-1
+AT_CHECK([echo -e $chassis2_ct | grep "20.0.1.3" | grep "dport=80" -c], [1], [dnl
+0
+])
+AT_CHECK([echo -e $chassis2_flow | grep "20.0.1.3" | grep "dport=80" -c], [1], [dnl
+0
+])
+else
+# Backend resides on ovn-chassis-2
+# Ensure that the traffic only come from ovn-chassis-2
+AT_CHECK([echo -e $chassis1_ct | grep "20.0.1.3" | grep "dport=80" -c], [1], [dnl
+0
+])
+AT_CHECK([echo -e $chassis1_flow | grep "20.0.1.3" | grep "dport=80" -c], [1], [dnl
+0
+])
+fi
+
+# Flush conntrack entries for easier output parsing of next test.
+m_as ovn-chassis-1 ovs-appctl dpctl/flush-conntrack
+m_as ovn-chassis-2 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-1 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-2 ovs-appctl dpctl/flush-conntrack
+
+# Start a new test using the second DGP as origin (public2)
+M_NS_EXEC([ovn-chassis-4], [publicp2], [sh -c 'curl -v -O 172.16.0.100:80/download_file --retry 0 --connect-timeout 1 --max-time 1 --local-port 59006 2>curl.out'])
+
+gw1_ct=$(m_as ovn-gw-1 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+gw2_ct=$(m_as ovn-gw-2 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+chassis1_ct=$(m_as ovn-chassis-1 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+chassis2_ct=$(m_as ovn-chassis-2 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+chassis1_flow=$(m_as ovn-chassis-1 ovs-dpctl dump-flows | sed ':a;N;$!ba;s/\n/\\n/g')
+chassis2_flow=$(m_as ovn-chassis-2 ovs-dpctl dump-flows | sed ':a;N;$!ba;s/\n/\\n/g')
+
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-4 ip netns exec publicp2 cat -v curl.out | M_FORMAT_CURL([172.16.0.100], [80])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 80
+200 OK
+])
+
+# Check if we have only one backend for the same connection - orig + dest ports
+OVS_WAIT_FOR_OUTPUT([echo -e $gw2_ct | M_FORMAT_CT(30.0.1.3) | \
+grep tcp | sed -E -e 's/10.0.1.3|10.0.1.4/<cleared>/g' | sort], [0], [dnl
+tcp,orig=(src=30.0.1.3,dst=<cleared>,sport=59006,dport=80),reply=(src=<cleared>,dst=30.0.1.3,sport=80,dport=59006),zone=<cleared>,mark=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=30.0.1.3,dst=<cleared>,sport=59006,dport=80),reply=(src=<cleared>,dst=30.0.1.3,sport=80,dport=59006),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+# Check if gw-1 is empty to ensure that the traffic only come from/to the originator chassis via DGP public2
+AT_CHECK([echo -e $gw1_ct | grep "30.0.1.3" -c], [1], [dnl
+0
+])
+
+# Check the backend IP from ct entries on gw-2 (DGP public2)
+backend_check=$(echo -e $chassis1_ct | grep "10.0.1.3,sport=59006,dport=80" -c)
+
+if [[ $backend_check -gt 0 ]]; then
+# Backend resides on ovn-chassis-1
+AT_CHECK([echo -e $chassis1_ct | M_FORMAT_CT(30.0.1.3) | \
+grep tcp], [0], [dnl
+tcp,orig=(src=30.0.1.3,dst=10.0.1.3,sport=59006,dport=80),reply=(src=10.0.1.3,dst=30.0.1.3,sport=80,dport=59006),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+# Ensure that the traffic only come from ovn-chassis-1
+AT_CHECK([echo -e $chassis2_ct | grep "30.0.1.3" | grep "dport=80" -c], [1], [dnl
+0
+])
+AT_CHECK([echo -e $chassis2_flow | grep "30.0.1.3" | grep "dport=80" -c], [1], [dnl
+0
+])
+else
+# Backend resides on ovn-chassis-2
+AT_CHECK([echo -e $chassis2_ct | M_FORMAT_CT(30.0.1.3) | \
+grep tcp], [0], [dnl
+tcp,orig=(src=30.0.1.3,dst=10.0.1.4,sport=59006,dport=80),reply=(src=10.0.1.4,dst=30.0.1.3,sport=80,dport=59006),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+# Ensure that the traffic only come from ovn-chassis-2
+AT_CHECK([echo -e $chassis1_ct | grep "30.0.1.3" | grep "dport=80" -c], [1], [dnl
+0
+])
+AT_CHECK([echo -e $chassis1_flow | grep "30.0.1.3" | grep "dport=80" -c], [1], [dnl
+0
+])
+fi
+
+# Flush conntrack entries for easier output parsing of next test.
+m_as ovn-chassis-1 ovs-appctl dpctl/flush-conntrack
+m_as ovn-chassis-2 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-1 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-2 ovs-appctl dpctl/flush-conntrack
+
+# Check the flows again for a new source port using the second DGP as origin (public2)
+M_NS_EXEC([ovn-chassis-4], [publicp2], [sh -c 'curl -v -O 172.16.0.100:80/download_file --retry 0 --connect-timeout 1 --max-time 1 --local-port 59007 2>curl.out'])
+
+gw1_ct=$(m_as ovn-gw-1 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+gw2_ct=$(m_as ovn-gw-2 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+chassis1_ct=$(m_as ovn-chassis-1 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+chassis2_ct=$(m_as ovn-chassis-2 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+chassis1_flow=$(m_as ovn-chassis-1 ovs-dpctl dump-flows | sed ':a;N;$!ba;s/\n/\\n/g')
+chassis2_flow=$(m_as ovn-chassis-2 ovs-dpctl dump-flows | sed ':a;N;$!ba;s/\n/\\n/g')
+
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-4 ip netns exec publicp2 cat -v curl.out | M_FORMAT_CURL([172.16.0.100], [80])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 80
+200 OK
+])
+
+# Check if we have only one backend for the same connection - orig + dest ports
+OVS_WAIT_FOR_OUTPUT([echo -e $gw2_ct | M_FORMAT_CT(30.0.1.3) | \
+grep tcp | sed -E -e 's/10.0.1.3|10.0.1.4/<cleared>/g' | sort], [0], [dnl
+tcp,orig=(src=30.0.1.3,dst=<cleared>,sport=59007,dport=80),reply=(src=<cleared>,dst=30.0.1.3,sport=80,dport=59007),zone=<cleared>,mark=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=30.0.1.3,dst=<cleared>,sport=59007,dport=80),reply=(src=<cleared>,dst=30.0.1.3,sport=80,dport=59007),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+# Check if gw-1 is empty to ensure that the traffic only come from/to the originator chassis via DGP public2
+AT_CHECK([echo -e $gw1_ct | grep "30.0.1.3" -c], [1], [dnl
+0
+])
+
+# Check the backend IP from ct entries on gw-1 (DGP public1)
+backend_check=$(echo -e $chassis1_ct | grep "10.0.1.3,sport=59007,dport=80" -c)
+
+if [[ $backend_check -gt 0 ]]; then
+# Backend resides on ovn-chassis-1
+AT_CHECK([echo -e $chassis1_ct | M_FORMAT_CT(30.0.1.3) | \
+grep tcp], [0], [dnl
+tcp,orig=(src=30.0.1.3,dst=10.0.1.3,sport=59007,dport=80),reply=(src=10.0.1.3,dst=30.0.1.3,sport=80,dport=59007),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+# Ensure that the traffic only come from ovn-chassis-1
+AT_CHECK([echo -e $chassis2_ct | grep "30.0.1.3" | grep "dport=80" -c], [1], [dnl
+0
+])
+AT_CHECK([echo -e $chassis2_flow | grep "30.0.1.3" | grep "dport=80" -c], [1], [dnl
+0
+])
+else
+# Backend resides on ovn-chassis-2
+AT_CHECK([echo -e $chassis2_ct | M_FORMAT_CT(30.0.1.3) | \
+grep tcp], [0], [dnl
+tcp,orig=(src=30.0.1.3,dst=10.0.1.4,sport=59007,dport=80),reply=(src=10.0.1.4,dst=30.0.1.3,sport=80,dport=59007),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+# Ensure that the traffic only come from ovn-chassis-2
+AT_CHECK([echo -e $chassis1_ct | grep "30.0.1.3" | grep "dport=80" -c], [1], [dnl
+0
+])
+AT_CHECK([echo -e $chassis1_flow | grep "30.0.1.3" | grep "dport=80" -c], [1], [dnl
+0
+])
+fi
+
+# Check multiple requests coming from DGP's public1 and public2
+
+M_NS_EXEC([ovn-chassis-4], [publicp2], [sh -c 'curl -v -O 172.16.0.100:80/download_file --retry 0 --connect-timeout 1 --max-time 1 2>curl.out'])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-4 cat -v curl.out | M_FORMAT_CURL([172.16.0.100], [80])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 80
+200 OK
+])
+
+M_NS_EXEC([ovn-chassis-3], [publicp1], [sh -c 'curl -v -O 172.16.0.100:80/download_file --retry 0 --connect-timeout 1 --max-time 1 2>curl.out'])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 cat -v curl.out | M_FORMAT_CURL([172.16.0.100], [80])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 80
+200 OK
+])
+
+M_NS_EXEC([ovn-chassis-4], [publicp2], [sh -c 'curl -v -O 172.16.0.100:80/download_file --retry 0 --connect-timeout 1 --max-time 1 2>curl.out'])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-4 cat -v curl.out | M_FORMAT_CURL([172.16.0.100], [80])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 80
+200 OK
+])
+
+M_NS_EXEC([ovn-chassis-3], [publicp1], [sh -c 'curl -v -O 172.16.0.100:80/download_file --retry 0 --connect-timeout 1 --max-time 1 2>curl.out'])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 cat -v curl.out | M_FORMAT_CURL([172.16.0.100], [80])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 80
+200 OK
+])
+
+# Remove the LB and change the VIP port - different from the backend ports
+check multinode_nbctl lb-del lb0
+
+# create LB again
+check multinode_nbctl lb-add lb0 "172.16.0.100:9000" "10.0.1.3:80,10.0.1.4:80"
+check multinode_nbctl lr-lb-add lr0 lb0
+check multinode_nbctl ls-lb-add sw0 lb0
+
+# Set use_stateless_nat to true
+check multinode_nbctl set load_balancer lb0 options:use_stateless_nat=true
+
+m_as ovn-gw-1 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-2 ovs-appctl dpctl/flush-conntrack
+
+# Check end-to-end request using a new port for VIP
+M_NS_EXEC([ovn-chassis-3], [publicp1], [sh -c 'curl -v -O 172.16.0.100:9000/download_file --retry 0 --connect-timeout 1 --max-time 1 --local-port 59008 2>curl.out'])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-1 ovs-appctl dpctl/dump-conntrack | M_FORMAT_CT(20.0.1.3) | \
+grep tcp | sed -E -e 's/10.0.1.3|10.0.1.4/<cleared>/g' | sort], [0], [dnl
+tcp,orig=(src=20.0.1.3,dst=<cleared>,sport=59008,dport=80),reply=(src=<cleared>,dst=20.0.1.3,sport=80,dport=59008),zone=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=20.0.1.3,dst=<cleared>,sport=59008,dport=9000),reply=(src=<cleared>,dst=20.0.1.3,sport=80,dport=59008),zone=<cleared>,mark=<cleared>,protoinfo=(state=<cleared>)
+])
+
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 cat -v curl.out | M_FORMAT_CURL([172.16.0.100], [9000])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 9000
+200 OK
+])
+
+m_as ovn-gw-1 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-2 ovs-appctl dpctl/flush-conntrack
+
+# Check end-to-end request using a new port for VIP
+M_NS_EXEC([ovn-chassis-4], [publicp2], [sh -c 'curl -v -O 172.16.0.100:9000/download_file --retry 0 --connect-timeout 1 --max-time 1 --local-port 59008 2>curl.out'])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ovs-appctl dpctl/dump-conntrack | M_FORMAT_CT(30.0.1.3) | \
+grep tcp | sed -E -e 's/10.0.1.3|10.0.1.4/<cleared>/g' | sort], [0], [dnl
+tcp,orig=(src=30.0.1.3,dst=<cleared>,sport=59008,dport=80),reply=(src=<cleared>,dst=30.0.1.3,sport=80,dport=59008),zone=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=30.0.1.3,dst=<cleared>,sport=59008,dport=9000),reply=(src=<cleared>,dst=30.0.1.3,sport=80,dport=59008),zone=<cleared>,mark=<cleared>,protoinfo=(state=<cleared>)
+])
+
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 cat -v curl.out | M_FORMAT_CURL([172.16.0.100], [9000])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 9000
+200 OK
+])
+
+AT_CLEANUP
+
+AT_SETUP([ovn multinode load-balancer with multiple DGPs and multiple chassis - ECMP environment])
+
+# Check that ovn-fake-multinode setup is up and running - requires additional nodes
+check_fake_multinode_setup_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-chassis-3 ovn-gw-1 ovn-gw-2 ovn-gw-3 ovn-gw-4'
+
+# Delete the multinode NB and OVS resources before starting the test.
+cleanup_multinode_resources_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-chassis-3 ovn-gw-1 ovn-gw-2 ovn-gw-3 ovn-gw-4'
+
+# Reset geneve tunnels
+for c in ovn-chassis-1 ovn-chassis-2 ovn-chassis-3 ovn-gw-1 ovn-gw-2 ovn-gw-3 ovn-gw-4
+do
+    m_as $c ovs-vsctl set open . external-ids:ovn-encap-type=geneve
+done
+
+# Network topology
+#                                      VM ovn-chassis-3 (40.0.2.3/24)
+#                                                   |
+#                                                  sw1
+#                                                   |
+#                                                  lr1
+#                                                   |
+#                     +.............................|.............................+
+#                     |                                                           |
+#      DGP publicp3 (ovn-gw-3) (20.0.2.3/24)                     DGP publicp4 (ovn-gw-4) (20.0.2.4/24)
+#                     |                                                           |
+#                     +.............................+.............................+
+#                                                   |
+#                                                   | (overlay)
+#                     +.............................+.............................+
+#                     |                                                           |
+#      DGP public1 (ovn-gw-1) (20.0.2.1/24)                      DGP public2 (ovn-gw-2) (20.0.2.2/24)
+#                     |                                                           |
+#                     +.............................+.............................+
+#                                                   |
+#                                                  lr0 (lb0 VIP 172.16.0.100)
+#                                                   |
+#                                                  sw0
+#                                                   |
+#                     +.............................+.............................+
+#                     |                                                           |
+#      sw0p1 (ovn-chassis-1) 10.0.2.3/24                         sw0p2 (ovn-chassis-2) 10.0.2.4/24
+
+
+# Delete already used ovs-ports
+m_as ovn-chassis-1 ip link del sw0p1-p
+m_as ovn-chassis-2 ip link del sw0p2-p
+m_as ovn-chassis-2 ip link del sw1p1-p
+m_as ovn-chassis-3 ip link del sw1p1-p
+
+# Create East-West switch for LB backends
+check multinode_nbctl ls-add sw0
+check multinode_nbctl lsp-add sw0 sw0-port1
+check multinode_nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.2.3 1000::3"
+check multinode_nbctl lsp-add sw0 sw0-port2
+check multinode_nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.2.4 1000::4"
+
+m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 1342 10.0.2.3 24 10.0.2.1 1000::3/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 1342 10.0.2.4 24 10.0.2.1 1000::4/64 1000::a
+
+# Create sw1 for ovn-chassis-3 VM
+check multinode_nbctl ls-add sw1
+check multinode_nbctl lsp-add sw1 sw1-port1
+check multinode_nbctl lsp-set-addresses sw1-port1 "70:54:00:00:00:03 40.0.2.3 5000::3"
+
+m_as ovn-chassis-3 /data/create_fake_vm.sh sw1-port1 sw1p1 70:54:00:00:00:03 1342 40.0.2.3 24 40.0.2.1 5000::3/64 5000::a
+
+m_wait_for_ports_up
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 10.0.2.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ping -q -c 3 -i 0.3 -w 2 10.0.2.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Create a logical router and attach to sw0
+check multinode_nbctl lr-add lr0
+check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.2.1/24 1000::a/64
+check multinode_nbctl lsp-add sw0 sw0-lr0
+check multinode_nbctl lsp-set-type sw0-lr0 router
+check multinode_nbctl lsp-set-addresses sw0-lr0 router
+check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+# create external connection for N/S traffic using multiple DGPs
+check multinode_nbctl ls-add public
+
+# create external connection for N/S traffic
+# DGP public1
+check multinode_nbctl lsp-add public ln-public-1
+check multinode_nbctl lsp-set-type ln-public-1 localnet
+check multinode_nbctl lsp-set-addresses ln-public-1 unknown
+check multinode_nbctl lsp-set-options ln-public-1 network_name=public1
+
+# DGP public2
+check multinode_nbctl lsp-add public ln-public-2
+check multinode_nbctl lsp-set-type ln-public-2 localnet
+check multinode_nbctl lsp-set-addresses ln-public-2 unknown
+check multinode_nbctl lsp-set-options ln-public-2 network_name=public2
+
+# Attach DGP public1 to GW-1 public1 (overlay connectivity)
+m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public1:br-ex
+
+# Attach DGP public2 to GW-2 public2 (overlay connectivity)
+m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public2:br-ex
+
+check multinode_nbctl lrp-add lr0 lr0-public-p1 40:54:00:00:00:01 20.0.2.1/24 2000::1/64
+check multinode_nbctl lsp-add public public-lr0-p1
+check multinode_nbctl lsp-set-type public-lr0-p1 router
+check multinode_nbctl lsp-set-addresses public-lr0-p1 router
+check multinode_nbctl lsp-set-options public-lr0-p1 router-port=lr0-public-p1
+check multinode_nbctl lrp-set-gateway-chassis lr0-public-p1 ovn-gw-1 10
+
+m_wait_for_ports_up
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 20.0.2.1 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+check multinode_nbctl lrp-add lr0 lr0-public-p2 40:54:00:00:00:02 20.0.2.2/24 2000::2/64
+check multinode_nbctl lsp-add public public-lr0-p2
+check multinode_nbctl lsp-set-type public-lr0-p2 router
+check multinode_nbctl lsp-set-addresses public-lr0-p2 router
+check multinode_nbctl lsp-set-options public-lr0-p2 router-port=lr0-public-p2
+check multinode_nbctl lrp-set-gateway-chassis lr0-public-p2 ovn-gw-2 10
+
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ping -q -c 3 -i 0.3 -w 2 20.0.2.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Create a logical router and attach to sw1
+check multinode_nbctl lr-add lr1
+check multinode_nbctl lrp-add lr1 lr1-sw1 00:00:00:00:ff:02 40.0.2.1/24 5000::a/64
+check multinode_nbctl lsp-add sw1 sw1-lr1
+check multinode_nbctl lsp-set-type sw1-lr1 router
+check multinode_nbctl lsp-set-addresses sw1-lr1 router
+check multinode_nbctl lsp-set-options sw1-lr1 router-port=lr1-sw1
+
+# create external connection for N/S traffic
+# DGP public3
+check multinode_nbctl lsp-add public ln-public-3
+check multinode_nbctl lsp-set-type ln-public-3 localnet
+check multinode_nbctl lsp-set-addresses ln-public-3 unknown
+check multinode_nbctl lsp-set-options ln-public-3 network_name=public3
+
+# Attach DGP public3 to GW-3 public3 (overlay connectivity)
+m_as ovn-gw-3 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public3:br-ex
+
+check multinode_nbctl lrp-add lr1 lr1-public-p3 40:54:00:00:00:03 20.0.2.3/24 2000::3/64
+check multinode_nbctl lsp-add public public-lr1-p3
+check multinode_nbctl lsp-set-type public-lr1-p3 router
+check multinode_nbctl lsp-set-addresses public-lr1-p3 router
+check multinode_nbctl lsp-set-options public-lr1-p3 router-port=lr1-public-p3
+check multinode_nbctl lrp-set-gateway-chassis lr1-public-p3 ovn-gw-3 10
+
+M_NS_CHECK_EXEC([ovn-chassis-3], [sw1p1], [ping -q -c 3 -i 0.3 -w 2 40.0.2.1 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+M_NS_CHECK_EXEC([ovn-chassis-3], [sw1p1], [ping -q -c 3 -i 0.3 -w 2 20.0.2.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Add a default route for multiple DGPs using ECMP - first step
+check multinode_nbctl --ecmp lr-route-add lr0 0.0.0.0/0 20.0.2.3
+check multinode_nbctl --ecmp lr-route-add lr1 0.0.0.0/0 20.0.2.1
+
+# Add SNAT rules using gateway-port
+check multinode_nbctl --gateway-port lr0-public-p1 lr-nat-add lr0 snat 20.0.2.1 10.0.2.0/24
+check multinode_nbctl --gateway-port lr0-public-p2 lr-nat-add lr0 snat 20.0.2.2 10.0.2.0/24
+check multinode_nbctl --gateway-port lr1-public-p3 lr-nat-add lr1 snat 20.0.2.3 40.0.2.0/24
+
+M_NS_CHECK_EXEC([ovn-chassis-3], [sw1p1], [ping -q -c 3 -i 0.3 -w 2 20.0.2.1 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+M_NS_CHECK_EXEC([ovn-chassis-3], [sw1p1], [ping -q -c 3 -i 0.3 -w 2 20.0.2.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Configure the second DGP for the lr1
+# DGP public4
+check multinode_nbctl lsp-add public ln-public-4
+check multinode_nbctl lsp-set-type ln-public-4 localnet
+check multinode_nbctl lsp-set-addresses ln-public-4 unknown
+check multinode_nbctl lsp-set-options ln-public-4 network_name=public4
+
+# Attach DGP public4 to GW-2 public4 (overlay connectivity)
+m_as ovn-gw-4 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public4:br-ex
+
+check multinode_nbctl lrp-add lr1 lr1-public-p4 40:54:00:00:00:04 20.0.2.4/24 2000::4/64
+check multinode_nbctl lsp-add public public-lr1-p4
+check multinode_nbctl lsp-set-type public-lr1-p4 router
+check multinode_nbctl lsp-set-addresses public-lr1-p4 router
+check multinode_nbctl lsp-set-options public-lr1-p4 router-port=lr1-public-p4
+check multinode_nbctl lrp-set-gateway-chassis lr1-public-p4 ovn-gw-4 10
+
+M_NS_CHECK_EXEC([ovn-chassis-3], [sw1p1], [ping -q -c 3 -i 0.3 -w 2 20.0.2.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Add SNAT rules using gateway-port
+check multinode_nbctl --gateway-port lr1-public-p4 lr-nat-add lr1 snat 20.0.2.4 40.0.2.0/24
+
+# Add a default route for multiple DGPs using ECMP - second step (multipath)
+check multinode_nbctl --ecmp lr-route-add lr0 0.0.0.0/0 20.0.2.4
+check multinode_nbctl --ecmp lr-route-add lr1 0.0.0.0/0 20.0.2.2
+
+# Start backend http services
+M_NS_DAEMONIZE([ovn-chassis-1], [sw0p1], [python3 -m http.server --bind 10.0.2.3 80 >/dev/null 2>&1], [http1.pid])
+M_NS_DAEMONIZE([ovn-chassis-2], [sw0p2], [python3 -m http.server --bind 10.0.2.4 80 >/dev/null 2>&1], [http2.pid])
+
+# wait for http server be ready
+OVS_WAIT_UNTIL([m_as ovn-chassis-1 ip netns exec sw0p1 ss -tulpn | grep LISTEN | grep 10.0.2.3:80])
+OVS_WAIT_UNTIL([m_as ovn-chassis-2 ip netns exec sw0p2 ss -tulpn | grep LISTEN | grep 10.0.2.4:80])
+
+# create a big file on web servers for download
+M_NS_EXEC([ovn-chassis-1], [sw0p1], [dd bs=512 count=200000 if=/dev/urandom of=download_file])
+M_NS_EXEC([ovn-chassis-2], [sw0p2], [dd bs=512 count=200000 if=/dev/urandom of=download_file])
+
+# create LB
+check multinode_nbctl lb-add lb0 "172.16.0.100:80" "10.0.2.3:80,10.0.2.4:80"
+check multinode_nbctl lr-lb-add lr0 lb0
+check multinode_nbctl ls-lb-add sw0 lb0
+
+check multinode_nbctl --wait=sb sync
+
+# Flush conntrack entries for easier output parsing of next test.
+m_as ovn-gw-1 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-2 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-3 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-4 ovs-appctl dpctl/flush-conntrack
+
+# Check direct backend traffic using the same LB ports
+M_NS_EXEC([ovn-chassis-3], [sw1p1], [sh -c 'curl -v -O 10.0.2.3:80/download_file --retry 0 --connect-timeout 1 --max-time 1 --local-port 59013 2>curl.out'])
+
+gw1_ct=$(m_as ovn-gw-1 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+gw2_ct=$(m_as ovn-gw-2 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+gw3_ct=$(m_as ovn-gw-3 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+gw4_ct=$(m_as ovn-gw-4 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+
+# Check the backend IP from ct entries on gateways
+backend_check_gw1=$(echo -e $gw1_ct | grep "dport=80" | grep "59013" -c)
+backend_check_gw2=$(echo -e $gw2_ct | grep "dport=80" | grep "59013" -c)
+backend_check_gw3=$(echo -e $gw3_ct | grep "dport=80" | grep "59013" -c)
+backend_check_gw4=$(echo -e $gw4_ct | grep "dport=80" | grep "59013" -c)
+
+chassis_in_use=$(($backend_check_gw1 + $backend_check_gw2 + $backend_check_gw3 + $backend_check_gw4))
+
+# If the traffic passes through both gateways (GW-1 and GW-2 OR GW-3 and GW-4) it will be dropped because
+# we are bypassing the Stateless NAT solution for LB when we access the backend directly
+if [[ $chassis_in_use -gt 2 ]]; then
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 ip netns exec sw1p1 cat -v curl.out | \
+sed 's/\(.*\)timed out/timed out\n/' | sed 's/\(.*\)connect timeout/timed out\n/' | grep -i -e "timed out" | uniq], [0], [dnl
+timed out
+])
+else
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 cat -v curl.out | M_FORMAT_CURL([10.0.2.3], [80])], [0], [dnl
+Connected to 10.0.2.3 (10.0.2.3) port 80
+200 OK
+])
+fi
+
+# Flush conntrack entries for easier output parsing of next test.
+m_as ovn-gw-1 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-2 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-3 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-4 ovs-appctl dpctl/flush-conntrack
+
+M_NS_EXEC([ovn-chassis-3], [sw1p1], [sh -c 'curl -v -O 10.0.2.4:80/download_file --retry 0 --connect-timeout 1 --max-time 1 --local-port 59014 2>curl.out'])
+
+gw1_ct=$(m_as ovn-gw-1 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+gw2_ct=$(m_as ovn-gw-2 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+gw3_ct=$(m_as ovn-gw-3 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+gw4_ct=$(m_as ovn-gw-4 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+
+# Check the backend IP from ct entries on gateways
+backend_check_gw1=$(echo -e $gw1_ct | grep "dport=80" | grep "59014" -c)
+backend_check_gw2=$(echo -e $gw2_ct | grep "dport=80" | grep "59014" -c)
+backend_check_gw3=$(echo -e $gw3_ct | grep "dport=80" | grep "59014" -c)
+backend_check_gw4=$(echo -e $gw4_ct | grep "dport=80" | grep "59014" -c)
+
+chassis_in_use=$(($backend_check_gw1 + $backend_check_gw2 + $backend_check_gw3 + $backend_check_gw4))
+
+# If the traffic passes through both gateways (GW-1 and GW-2 OR GW-3 and GW-4) it will be dropped because
+# we are bypassing the Stateless NAT solution for LB when we access the backend directly
+if [[ $chassis_in_use -gt 2 ]]; then
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 ip netns exec sw1p1 cat -v curl.out | \
+sed 's/\(.*\)timed out/timed out\n/' | sed 's/\(.*\)connect timeout/timed out\n/' | grep -i -e "timed out" | uniq], [0], [dnl
+timed out
+])
+else
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 cat -v curl.out | M_FORMAT_CURL([10.0.2.4], [80])], [0], [dnl
+Connected to 10.0.2.4 (10.0.2.4) port 80
+200 OK
+])
+fi
+
+# Check the flows again for the LB VIP
+M_NS_EXEC([ovn-chassis-3], [sw1p1], [sh -c 'curl -v 172.16.0.100:80 --retry 0 --connect-timeout 1 --max-time 1 --local-port 59015 2>curl.out'])
+
+curl_timeout=$(m_as ovn-chassis-3 cat -v curl.out | grep -i -e "timed out" -e "timeout" -c)
+
+# This may fail because we do not have the flows to work independently of the DGP (DNAT + SNAT for the LB Stateless NAT)
+if [[ $curl_timeout -gt 0 ]]; then
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 ip netns exec sw1p1 cat -v curl.out | \
+sed 's/\(.*\)timed out/timed out\n/' | sed 's/\(.*\)connect timeout/timed out\n/' | grep -i -e "timed out" | uniq], [0], [dnl
+timed out
+])
+else
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 cat -v curl.out | M_FORMAT_CURL([172.16.0.100], [80])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 80
+200 OK
+])
+fi
+
+# Check the flows again for the LB VIP
+M_NS_EXEC([ovn-chassis-3], [sw1p1], [sh -c 'curl -v 172.16.0.100:80 --retry 0 --connect-timeout 1 --max-time 1 --local-port 59016 2>curl.out'])
+
+curl_timeout=$(m_as ovn-chassis-3 cat -v curl.out | grep -i -e "timed out" -e "timeout" -c)
+
+# This may fail because we do not have the flows to work independently of the DGP (DNAT + SNAT for the LB Stateless NAT)
+if [[ $curl_timeout -gt 0 ]]; then
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 ip netns exec sw1p1 cat -v curl.out | \
+sed 's/\(.*\)timed out/timed out\n/' | sed 's/\(.*\)connect timeout/timed out\n/' | grep -i -e "timed out" | uniq], [0], [dnl
+timed out
+])
+else
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 cat -v curl.out | M_FORMAT_CURL([172.16.0.100], [80])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 80
+200 OK
+])
+fi
+
+# Set use_stateless_nat to true
+# Now, if the traffic passes through both gateways (GW-1 and GW-2) it will be forwarded successfully
+check multinode_nbctl set load_balancer lb0 options:use_stateless_nat=true
+
+# Check the flows again for the LB VIP - always needs to be successful regardless of the datapath (one or two gw chassis)
+M_NS_EXEC([ovn-chassis-3], [sw1p1], [sh -c 'curl -v -O 172.16.0.100:80/download_file --retry 0 --connect-timeout 1 --max-time 1 2>curl.out'])
+
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 cat -v curl.out | M_FORMAT_CURL([172.16.0.100], [80])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 80
+200 OK
+])
+
+M_NS_EXEC([ovn-chassis-3], [sw1p1], [sh -c 'curl -v -O 172.16.0.100:80/download_file --retry 0 --connect-timeout 1 --max-time 1 2>curl.out'])
+
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 cat -v curl.out | M_FORMAT_CURL([172.16.0.100], [80])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 80
+200 OK
+])
+
+M_NS_EXEC([ovn-chassis-3], [sw1p1], [sh -c 'curl -v -O 172.16.0.100:80/download_file --retry 0 --connect-timeout 1 --max-time 1 2>curl.out'])
+
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 cat -v curl.out | M_FORMAT_CURL([172.16.0.100], [80])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 80
+200 OK
+])
+
+M_NS_EXEC([ovn-chassis-3], [sw1p1], [sh -c 'curl -v -O 172.16.0.100:80/download_file --retry 0 --connect-timeout 1 --max-time 1 2>curl.out'])
+
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 cat -v curl.out | M_FORMAT_CURL([172.16.0.100], [80])], [0], [dnl
+Connected to 172.16.0.100 (172.16.0.100) port 80
+200 OK
+])
+
+# Direct backend traffic using the same LB ports needs to be dropped
+M_NS_EXEC([ovn-chassis-3], [sw1p1], [sh -c 'curl -v -O 10.0.2.3:80/download_file --retry 0 --connect-timeout 1 --max-time 1 2>curl.out'])
+
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 ip netns exec sw1p1 cat -v curl.out | \
+sed 's/\(.*\)timed out/timed out\n/' | sed 's/\(.*\)connect timeout/timed out\n/' | grep -i -e "timed out" | uniq], [0], [dnl
+timed out
+])
+
+# check again using another source ports
+M_NS_EXEC([ovn-chassis-3], [sw1p1], [sh -c 'curl -v -O 10.0.2.3:80/download_file --retry 0 --connect-timeout 1 --max-time 1 2>curl.out'])
+
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 ip netns exec sw1p1 cat -v curl.out | \
+sed 's/\(.*\)timed out/timed out\n/' | sed 's/\(.*\)connect timeout/timed out\n/' | grep -i -e "timed out" | uniq], [0], [dnl
+timed out
+])
+
+# Start backend http services using different ports from the LB config - check connectivity
+M_NS_DAEMONIZE([ovn-chassis-1], [sw0p1], [python3 -m http.server --bind 10.0.2.3 8080 >/dev/null 2>&1], [http3.pid])
+M_NS_DAEMONIZE([ovn-chassis-2], [sw0p2], [python3 -m http.server --bind 10.0.2.4 8080 >/dev/null 2>&1], [http4.pid])
+
+# wait for http server be ready
+OVS_WAIT_UNTIL([m_as ovn-chassis-1 ip netns exec sw0p1 ss -tulpn | grep LISTEN | grep 10.0.2.3:8080])
+OVS_WAIT_UNTIL([m_as ovn-chassis-2 ip netns exec sw0p2 ss -tulpn | grep LISTEN | grep 10.0.2.4:8080])
+
+# Flush conntrack entries for easier output parsing of next test.
+m_as ovn-gw-1 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-2 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-3 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-4 ovs-appctl dpctl/flush-conntrack
+
+M_NS_EXEC([ovn-chassis-3], [sw1p1], [sh -c 'curl -v -O 10.0.2.4:8080/download_file --retry 0 --connect-timeout 1 --max-time 1 --local-port 59017 2>curl.out'])
+
+gw1_ct=$(m_as ovn-gw-1 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+gw2_ct=$(m_as ovn-gw-2 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+gw3_ct=$(m_as ovn-gw-3 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+gw4_ct=$(m_as ovn-gw-4 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+
+# Check the backend IP from ct entries on gateways
+backend_check_gw1=$(echo -e $gw1_ct | grep "dport=8080" | grep "59017" -c)
+backend_check_gw2=$(echo -e $gw2_ct | grep "dport=8080" | grep "59017" -c)
+backend_check_gw3=$(echo -e $gw3_ct | grep "dport=8080" | grep "59017" -c)
+backend_check_gw4=$(echo -e $gw4_ct | grep "dport=8080" | grep "59017" -c)
+
+chassis_in_use=$(($backend_check_gw1 + $backend_check_gw2 + $backend_check_gw3 + $backend_check_gw4))
+
+# If the traffic passes through both gateways (GW-1 and GW-2 OR GW-3 and GW-4) it will be dropped because
+# we are bypassing the Stateless NAT solution for LB when we access the backend directly
+if [[ $chassis_in_use -gt 2 ]]; then
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 ip netns exec sw1p1 cat -v curl.out | \
+sed 's/\(.*\)timed out/timed out\n/' | sed 's/\(.*\)connect timeout/timed out\n/' | grep -i -e "timed out" | uniq], [0], [dnl
+timed out
+])
+else
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 cat -v curl.out | M_FORMAT_CURL([10.0.2.4], [8080])], [0], [dnl
+Connected to 10.0.2.4 (10.0.2.4) port 8080
+200 OK
+])
+fi
+
+# Flush conntrack entries for easier output parsing of next test.
+m_as ovn-gw-1 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-2 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-3 ovs-appctl dpctl/flush-conntrack
+m_as ovn-gw-4 ovs-appctl dpctl/flush-conntrack
+
+# Check again
+M_NS_EXEC([ovn-chassis-3], [sw1p1], [sh -c 'curl -v -O 10.0.2.4:8080/download_file --retry 0 --connect-timeout 1 --max-time 1 --local-port 59018 2>curl.out'])
+
+gw1_ct=$(m_as ovn-gw-1 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+gw2_ct=$(m_as ovn-gw-2 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+gw3_ct=$(m_as ovn-gw-3 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+gw4_ct=$(m_as ovn-gw-4 ovs-appctl dpctl/dump-conntrack | sed ':a;N;$!ba;s/\n/\\n/g')
+
+# Check the backend IP from ct entries on gateways
+backend_check_gw1=$(echo -e $gw1_ct | grep "dport=8080" | grep "59018" -c)
+backend_check_gw2=$(echo -e $gw2_ct | grep "dport=8080" | grep "59018" -c)
+backend_check_gw3=$(echo -e $gw3_ct | grep "dport=8080" | grep "59018" -c)
+backend_check_gw4=$(echo -e $gw4_ct | grep "dport=8080" | grep "59018" -c)
+
+chassis_in_use=$(($backend_check_gw1 + $backend_check_gw2 + $backend_check_gw3 + $backend_check_gw4))
+
+# If the traffic passes through both gateways (GW-1 and GW-2 OR GW-3 and GW-4) it will be dropped because
+# we are bypassing the Stateless NAT solution for LB when we access the backend directly
+if [[ $chassis_in_use -gt 2 ]]; then
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 ip netns exec sw1p1 cat -v curl.out | \
+sed 's/\(.*\)timed out/timed out\n/' | sed 's/\(.*\)connect timeout/timed out\n/' | grep -i -e "timed out" | uniq], [0], [dnl
+timed out
+])
+else
+OVS_WAIT_FOR_OUTPUT([m_as ovn-chassis-3 cat -v curl.out | M_FORMAT_CURL([10.0.2.4], [8080])], [0], [dnl
+Connected to 10.0.2.4 (10.0.2.4) port 8080
+200 OK
+])
+fi
+
+AT_CLEANUP

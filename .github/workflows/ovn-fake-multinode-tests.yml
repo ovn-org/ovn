@@ -149,7 +149,7 @@ jobs:
 
     - name: Start basic cluster
       run: |
-        sudo -E ./ovn_cluster.sh start
+        sudo -E CHASSIS_COUNT=4 GW_COUNT=4 ./ovn_cluster.sh start
         sudo podman exec -it ovn-central-az1-1 ovn-nbctl show
         sudo podman exec -it ovn-central-az1-1 ovn-appctl -t ovn-northd version
         sudo podman exec -it ovn-chassis-1 ovn-appctl -t ovn-controller version

@@ -516,18 +516,6 @@ lr_stateful_record_create(struct lr_stateful_table *table,
 
     table->array[od->index] = lr_stateful_rec;
 
-    /* Load balancers are not supported (yet) if a logical router has multiple
-     * distributed gateway port.  Log a warning. */
-    if (lr_stateful_rec->has_lb_vip && lr_has_multiple_gw_ports(od)) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-        VLOG_WARN_RL(&rl, "Load-balancers are configured on logical "
-                     "router %s, which has %"PRIuSIZE" distributed "
-                     "gateway ports. Load-balancer is not supported "
-                     "yet when there is more than one distributed "
-                     "gateway port on the router.",
-                     od->nbr->name, od->n_l3dgw_ports);
-    }
-
     return lr_stateful_rec;
 }
 

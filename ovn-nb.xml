@@ -2302,6 +2302,16 @@ or
         local anymore by the ovn-controller. This option is set to
         <code>false</code> by default.
       </column>
+
+      <column name="options" key="use_stateless_nat"
+              type='{"type": "boolean"}'>
+        If the load balancer is configured with <code>use_stateless_nat</code>
+        option to <code>true</code>, the logical router that references this
+        load balancer will use Stateless NAT rules when the logical router
+        has multiple distributed gateway ports(DGP). Otherwise, the outbound
+        traffic may be dropped in scenarios where we have different chassis
+        for each DGP. This option is set to <code>false</code> by default.
+      </column>
     </group>
   </table>
 
@@ -2688,8 +2698,14 @@ or
 
     <column name="load_balancer">
       Set of load balancers associated to this logical router.  Load balancer
-      Load balancer rules only work on the Gateway routers or routers with one
-      and only one distributed gateway port.
+      rules only work without limitations on the Gateway routers or routers
+      with one and only one distributed gateway port (DGP). Load balancers
+      will only work in scenarios that use more than one DGP when the multiple
+      DGPs are associated with the same gateway chassis, this way this chassis
+      can apply/maintain the conntrack state without problems. To use a load
+      balancer in scenarios with DGPs associated with different gateway chassis
+      (e.g. ECMP routes), consider using the <code>use_stateless_nat</code>
+      option to <code>true</code> in the load balancer options column.
     </column>
 
     <column name="load_balancer_group">
