@@ -297,11 +297,22 @@ void *engine_get_input_data(const char *input_name, struct engine_node *);
 void engine_add_input(struct engine_node *node, struct engine_node *input,
                       bool (*change_handler)(struct engine_node *, void *));
 
-/* Force the engine to recompute everything if set to true. It is used
+/* Force the engine to recompute everything. It is used
  * in circumstances when we are not sure there is change or not, or
  * when there is change but the engine couldn't be executed in that
- * iteration, and the change can't be tracked across iterations */
-void engine_set_force_recompute(bool val);
+ * iteration, and the change can't be tracked across iterations. */
+void engine_set_force_recompute(void);
+
+/* Same as "engine_set_force_recompute()", but the poll_loop is woken up
+ * immediately and the next engine run is not delayed. */
+void engine_set_force_recompute_immediate(void);
+
+/* Clear the force flag for the next run so the engine does the
+ * usual processing without forced full recompute. */
+void engine_clear_force_recompute(void);
+
+/* Returns whether next engine_run() is forced to rempute. */
+bool engine_get_force_recompute(void);
 
 /* Return the current engine_context. The values in the context can be NULL
  * if the engine is run with allow_recompute == false in the current
