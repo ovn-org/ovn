@@ -968,7 +968,7 @@ main(int argc, char *argv[])
             if (new_ovnnb_cond_seqno != ovnnb_cond_seqno) {
                 if (!new_ovnnb_cond_seqno) {
                     VLOG_INFO("OVN NB IDL reconnected, force recompute.");
-                    eng_ctx.recompute = true;
+                    inc_proc_northd_force_recompute();
                 }
                 ovnnb_cond_seqno = new_ovnnb_cond_seqno;
             }
@@ -981,7 +981,7 @@ main(int argc, char *argv[])
             if (new_ovnsb_cond_seqno != ovnsb_cond_seqno) {
                 if (!new_ovnsb_cond_seqno) {
                     VLOG_INFO("OVN SB IDL reconnected, force recompute.");
-                    eng_ctx.recompute = true;
+                    inc_proc_northd_force_recompute();
                 }
                 ovnsb_cond_seqno = new_ovnsb_cond_seqno;
             }
@@ -1005,7 +1005,6 @@ main(int argc, char *argv[])
                     int64_t loop_start_time = time_wall_msec();
                     activity = inc_proc_northd_run(ovnnb_txn, ovnsb_txn,
                                                    &eng_ctx);
-                    eng_ctx.recompute = false;
                     check_and_add_supported_dhcp_opts_to_sb_db(
                                  ovnsb_txn, ovnsb_idl_loop.idl);
                     check_and_add_supported_dhcpv6_opts_to_sb_db(
@@ -1018,7 +1017,7 @@ main(int argc, char *argv[])
                                             ovnsb_idl_loop.idl,
                                             ovnnb_txn, ovnsb_txn,
                                             &ovnsb_idl_loop);
-                } else if (!eng_ctx.recompute) {
+                } else if (!inc_proc_northd_get_force_recompute()) {
                     clear_idl_track = false;
                 }
 
@@ -1027,13 +1026,13 @@ main(int argc, char *argv[])
                 if (!ovsdb_idl_loop_commit_and_wait(&ovnnb_idl_loop)) {
                     VLOG_INFO("OVNNB commit failed, "
                               "force recompute next time.");
-                    eng_ctx.recompute = true;
+                    inc_proc_northd_force_recompute_immediate();
                 }
 
                 if (!ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop)) {
                     VLOG_INFO("OVNSB commit failed, "
                               "force recompute next time.");
-                    eng_ctx.recompute = true;
+                    inc_proc_northd_force_recompute_immediate();
                 }
                 run_memory_trimmer(ovnnb_idl_loop.idl, activity);
             } else {
@@ -1042,7 +1041,7 @@ main(int argc, char *argv[])
                 ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop);
 
                 /* Force a full recompute next time we become active. */
-                eng_ctx.recompute = true;
+                inc_proc_northd_force_recompute();
             }
         } else {
             /* ovn-northd is paused
@@ -1066,7 +1065,7 @@ main(int argc, char *argv[])
             ovsdb_idl_wait(ovnsb_idl_loop.idl);
 
             /* Force a full recompute next time we become active. */
-            eng_ctx.recompute = true;
+            inc_proc_northd_force_recompute_immediate();
         }
 
         if (clear_idl_track) {

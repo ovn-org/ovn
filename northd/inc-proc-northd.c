@@ -428,14 +428,6 @@ bool inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
     int64_t start = time_msec();
     engine_init_run();
 
-    /* Force a full recompute if instructed to, for example, after a NB/SB
-     * reconnect event.  However, make sure we don't overwrite an existing
-     * force-recompute request if 'recompute' is false.
-     */
-    if (ctx->recompute) {
-        engine_set_force_recompute(ctx->recompute);
-    }
-
     struct engine_context eng_ctx = {
         .ovnnb_idl_txn = ovnnb_txn,
         .ovnsb_idl_txn = ovnsb_txn,
@@ -447,17 +439,15 @@ bool inc_proc_northd_run(struct ovsdb_idl_txn *ovnnb_txn,
     if (!engine_has_run()) {
         if (engine_need_run()) {
             VLOG_DBG("engine did not run, force recompute next time.");
-            engine_set_force_recompute(true);
-            poll_immediate_wake();
+            engine_set_force_recompute_immediate();
         } else {
             VLOG_DBG("engine did not run, and it was not needed");
         }
     } else if (engine_canceled()) {
         VLOG_DBG("engine was canceled, force recompute next time.");
-        engine_set_force_recompute(true);
-        poll_immediate_wake();
+        engine_set_force_recompute_immediate();
     } else {
-        engine_set_force_recompute(false);
+        engine_clear_force_recompute();
     }
 
     int64_t now = time_msec();
@@ -477,7 +467,7 @@ void inc_proc_northd_cleanup(void)
 bool
 inc_proc_northd_can_run(struct northd_engine_context *ctx)
 {
-    if (ctx->recompute || time_msec() >= ctx->next_run_ms ||
+    if (engine_get_force_recompute() || time_msec() >= ctx->next_run_ms ||
         ctx->nb_idl_duration_ms >= IDL_LOOP_MAX_DURATION_MS ||
         ctx->sb_idl_duration_ms >= IDL_LOOP_MAX_DURATION_MS) {
         return true;

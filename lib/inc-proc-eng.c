@@ -54,9 +54,28 @@ engine_recompute(struct engine_node *node, bool allowed,
                  const char *reason_fmt, ...) OVS_PRINTF_FORMAT(3, 4);
 
 void
-engine_set_force_recompute(bool val)
+engine_set_force_recompute(void)
 {
-    engine_force_recompute = val;
+    engine_force_recompute = true;
+}
+
+void
+engine_set_force_recompute_immediate(void)
+{
+    engine_force_recompute = true;
+    poll_immediate_wake();
+}
+
+void
+engine_clear_force_recompute(void)
+{
+    engine_force_recompute = false;
+}
+
+bool
+engine_get_force_recompute(void)
+{
+    return engine_force_recompute;
 }
 
 const struct engine_context *
@@ -555,6 +574,5 @@ void
 engine_trigger_recompute(void)
 {
     VLOG_INFO("User triggered force recompute.");
-    engine_set_force_recompute(true);
-    poll_immediate_wake();
+    engine_set_force_recompute_immediate();
 }
