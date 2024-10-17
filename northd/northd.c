@@ -7167,7 +7167,7 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
         ds_truncate(actions, log_verdict_len);
         ds_put_format(match, REGBIT_ACL_HINT_ALLOW " == 1 && (%s)",
                       acl->match);
-        if (acl->label) {
+        if (acl->label || acl->sample_est) {
             ds_put_cstr(actions, REGBIT_CONNTRACK_COMMIT" = 1; ");
         }
 
