@@ -1238,7 +1238,7 @@ test_expr_to_packets(struct ovs_cmdl_context *ctx OVS_UNUSED)
         uint64_t packet_stub[128 / 8];
         struct dp_packet packet;
         dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
-        flow_compose(&packet, &uflow, NULL, 64);
+        flow_compose(&packet, &uflow, NULL, 64, false);
 
         struct ds output = DS_EMPTY_INITIALIZER;
         const uint8_t *buf = dp_packet_data(&packet);
