@@ -5769,34 +5769,33 @@ main(int argc, char *argv[])
 
                     stopwatch_start(CONTROLLER_LOOP_STOPWATCH_NAME,
                                     time_msec());
-                    if (ovnsb_idl_txn) {
-                        if (ofctrl_has_backlog()) {
-                            /* When there are in-flight messages pending to
-                             * ovs-vswitchd, we should hold on recomputing so
-                             * that the previous flow installations won't be
-                             * delayed.  However, we still want to try if
-                             * recompute is not needed and we can quickly
-                             * incrementally process the new changes, to avoid
-                             * unnecessarily forced recomputes later on.  This
-                             * is because the OVSDB change tracker cannot
-                             * preserve tracked changes across iterations.  If
-                             * change tracking is improved, we can simply skip
-                             * this round of engine_run and continue processing
-                             * acculated changes incrementally later when
-                             * ofctrl_has_backlog() returns false. */
-                            engine_run(false);
-                        } else {
-                            engine_run(true);
-                        }
-                    } else {
-                        /* Even if there's no SB DB transaction available,
-                         * try to run the engine so that we can handle any
-                         * incremental changes that don't require a recompute.
-                         * If a recompute is required, the engine will abort,
-                         * triggerring a full run in the next iteration.
-                         */
-                        engine_run(false);
-                    }
+
+                    /* Recompute is not allowed in following cases: */
+                    /* 1. No ovnsb_idl_txn  */
+                    /* Even if there's no SB DB transaction available,
+                    * try to run the engine so that we can handle any
+                    * incremental changes that don't require a recompute.
+                    * If a recompute is required, the engine will cancel,
+                    * triggerring a full run in the next iteration.
+                    */
+                    /* 2. ofctrl_has_backlog */
+                    /* When there are in-flight messages pending to
+                     * ovs-vswitchd, we should hold on recomputing so
+                     * that the previous flow installations won't be
+                     * delayed.  However, we still want to try if
+                     * recompute is not needed and we can quickly
+                     * incrementally process the new changes, to avoid
+                     * unnecessarily forced recomputes later on.  This
+                     * is because the OVSDB change tracker cannot
+                     * preserve tracked changes across iterations.  If
+                     * change tracking is improved, we can simply skip
+                     * this round of engine_run and continue processing
+                     * acculated changes incrementally later when
+                     * ofctrl_has_backlog() returns false. */
+
+                    bool recompute_allowed = (ovnsb_idl_txn &&
+                                              !ofctrl_has_backlog());
+                    engine_run(recompute_allowed);
                     stopwatch_stop(CONTROLLER_LOOP_STOPWATCH_NAME,
                                    time_msec());
                     if (engine_has_updated()) {
@@ -5917,6 +5916,7 @@ main(int argc, char *argv[])
                         }
                     }
 
+                    mac_cache_data = engine_get_data(&en_mac_cache);
                     if (mac_cache_data) {
                         statctrl_update(br_int->name);
                         statctrl_run(ovnsb_idl_txn, mac_cache_data);
