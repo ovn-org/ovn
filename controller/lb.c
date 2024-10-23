@@ -51,7 +51,6 @@ ovn_controller_lb_create(const struct sbrec_load_balancer *sbrec_lb,
                          struct sset *template_vars_ref)
 {
     struct ovn_controller_lb *lb = xzalloc(sizeof *lb);
-    bool template = smap_get_bool(&sbrec_lb->options, "template", false);
 
     lb->slb = sbrec_lb;
     lb->n_vips = smap_count(&sbrec_lb->vips);
@@ -63,18 +62,19 @@ ovn_controller_lb_create(const struct sbrec_load_balancer *sbrec_lb,
     SMAP_FOR_EACH (node, &sbrec_lb->vips) {
         struct ovn_lb_vip *lb_vip = &lb->vips[n_vips];
 
-        struct lex_str key_s = template
-                               ? lexer_parse_template_string(node->key,
-                                                             template_vars,
-                                                             template_vars_ref)
-                               : lex_str_use(node->key);
-        struct lex_str value_s = template
-                               ? lexer_parse_template_string(node->value,
-                                                             template_vars,
-                                                             template_vars_ref)
-                               : lex_str_use(node->value);
-        char *error = ovn_lb_vip_init_explicit(lb_vip,
-                                               lex_str_get(&key_s),
+        struct lex_str key_s;
+        if (!lexer_parse_template_string(&key_s, node->key, template_vars,
+                                        template_vars_ref)) {
+            continue;
+        }
+
+        struct lex_str value_s;
+        if (!lexer_parse_template_string(&value_s, node->value, template_vars,
+                                         template_vars_ref)) {
+            continue;
+        }
+
+        char *error = ovn_lb_vip_init_explicit(lb_vip, lex_str_get(&key_s),
                                                lex_str_get(&value_s));
         if (error) {
             free(error);

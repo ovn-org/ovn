@@ -972,10 +972,12 @@ parse_lflow_for_datapath(const struct sbrec_logical_flow *sblf,
         }
 
         char *error;
+        struct lex_str match_s;
+        if (!lexer_parse_template_string(&match_s, sblf->match,
+                                         &template_vars, NULL)) {
+            VLOG_WARN("%s: parsing expression failed", sblf->match);
+        }
         struct expr *match;
-        struct lex_str match_s = lexer_parse_template_string(sblf->match,
-                                                             &template_vars,
-                                                             NULL);
         match = expr_parse_string(lex_str_get(&match_s), &symtab,
                                   &address_sets, &port_groups, NULL, NULL,
                                   dp->tunnel_key, &error);
@@ -1003,8 +1005,13 @@ parse_lflow_for_datapath(const struct sbrec_logical_flow *sblf,
         uint64_t stub[1024 / 8];
         struct ofpbuf ovnacts = OFPBUF_STUB_INITIALIZER(stub);
         struct expr *prereqs;
-        struct lex_str actions_s =
-            lexer_parse_template_string(sblf->actions, &template_vars, NULL);
+        struct lex_str actions_s;
+        if (!lexer_parse_template_string(&actions_s, sblf->actions,
+                                         &template_vars, NULL)) {
+            VLOG_WARN("%s: parsing actions failed", sblf->actions);
+            expr_destroy(match);
+            return;
+        }
         error = ovnacts_parse_string(lex_str_get(&actions_s), &pp, &ovnacts,
                                      &prereqs);
         lex_str_free(&actions_s);
@@ -3517,8 +3524,11 @@ trace_parse(const char *dp_s, const char *flow_s,
          *
          * First make sure that the expression parses. */
         char *error;
-        struct lex_str flow_exp_s =
-            lexer_parse_template_string(flow_s, &template_vars, NULL);
+        struct lex_str flow_exp_s;
+        if (!lexer_parse_template_string(&flow_exp_s, flow_s,
+                                         &template_vars, NULL)) {
+            return xasprintf("failed to parse flow expression \"%s\"", flow_s);
+        }
         struct expr *e = expr_parse_string(lex_str_get(&flow_exp_s), &symtab,
                                            &address_sets, &port_groups, NULL,
                                            NULL, 0, &error);
@@ -3547,8 +3557,11 @@ trace_parse(const char *dp_s, const char *flow_s,
         free(port_name);
     }
 
-    struct lex_str flow_exp_s =
-        lexer_parse_template_string(flow_s, &template_vars, NULL);
+    struct lex_str flow_exp_s;
+    if (!lexer_parse_template_string(&flow_exp_s, flow_s,
+                                     &template_vars, NULL)) {
+        return xasprintf("failed to parse flow expression \"%s\"", flow_s);
+    }
     char *error = expr_parse_microflow(lex_str_get(&flow_exp_s), &symtab,
                                        &address_sets, &port_groups,
                                        ovntrace_lookup_port, *dpp, uflow);
