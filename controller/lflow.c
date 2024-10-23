@@ -336,9 +336,16 @@ lflow_parse_actions(const struct sbrec_logical_flow *lflow,
         .cur_ltable = lflow->table_id,
     };
 
-    struct lex_str actions_s =
-        lexer_parse_template_string(lflow->actions, l_ctx_in->template_vars,
-                                    template_vars_ref);
+    struct lex_str actions_s;
+    if (!lexer_parse_template_string(&actions_s, lflow->actions,
+                                     l_ctx_in->template_vars,
+                                     template_vars_ref)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "error parsing actions \"%s\"",
+                     lflow->actions);
+        return false;
+    }
+
     char *error = ovnacts_parse_string(lex_str_get(&actions_s), &pp,
                                        ovnacts_out, prereqs_out);
     lex_str_free(&actions_s);
@@ -977,9 +984,14 @@ convert_match_to_expr(const struct sbrec_logical_flow *lflow,
     struct sset port_groups_ref = SSET_INITIALIZER(&port_groups_ref);
     char *error = NULL;
 
-    struct lex_str match_s = lexer_parse_template_string(lflow->match,
-                                                         template_vars,
-                                                         template_vars_ref);
+    struct lex_str match_s;
+    if (!lexer_parse_template_string(&match_s, lflow->match, template_vars,
+                                     template_vars_ref)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "error parsing match \"%s\"",
+                     lflow->match);
+        return NULL;
+    }
     struct expr *e = expr_parse_string(lex_str_get(&match_s), &symtab,
                                        addr_sets, port_groups, &addr_sets_ref,
                                        &port_groups_ref,

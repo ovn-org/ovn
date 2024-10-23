@@ -196,7 +196,7 @@ lex_str_free(struct lex_str *ls)
     }
 }
 
-struct lex_str lexer_parse_template_string(const char *s,
-                                           const struct smap *template_vars,
-                                           struct sset *template_vars_ref);
+bool lexer_parse_template_string(struct lex_str *ls, const char *s,
+                                 const struct smap *template_vars,
+                                 struct sset *template_vars_ref);
 #endif /* ovn/lex.h */
