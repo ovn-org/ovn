@@ -3027,11 +3027,13 @@ ofctrl_inject_pkt(const struct ovsrec_bridge *br_int, const char *flow_s,
     if (version < 0) {
         return xstrdup("OpenFlow channel not ready.");
     }
+    struct lex_str flow_exp_s;
+    if (!lexer_parse_template_string(&flow_exp_s, flow_s,
+                                     template_vars, NULL)) {
+        return xasprintf("Could not parse flow \"%s\"", flow_s);
+    }
 
     struct flow uflow;
-    struct lex_str flow_exp_s = lexer_parse_template_string(flow_s,
-                                                            template_vars,
-                                                            NULL);
     char *error = expr_parse_microflow(lex_str_get(&flow_exp_s), &symtab,
                                        addr_sets, port_groups,
                                        ofctrl_lookup_port, br_int, &uflow);

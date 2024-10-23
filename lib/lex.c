@@ -1052,35 +1052,56 @@ lexer_steal_error(struct lexer *lexer)
 }
 
 /* Takes ownership of 's' and expands all templates that are encountered
- * in the contents of 's', if possible.  Adds the encountered template names
- * to 'template_vars_ref'.
+ * in the contents of 's'.  Adds the encountered template names
+ * to 'template_vars_ref'. If the expansion is not possible e.g.
+ * missing template var it, the function will return 'false'.
+ * The caller has to free the returned 'struct lex_str'.
  */
-struct lex_str
-lexer_parse_template_string(const char *s, const struct smap *template_vars,
+bool
+lexer_parse_template_string(struct lex_str *ls, const char *s,
+                            const struct smap *template_vars,
                             struct sset *template_vars_ref)
 {
     /* No '^' means no templates. */
     if (!strchr(s, LEX_TEMPLATE_PREFIX)) {
-        return lex_str_use(s);
+        *ls = lex_str_use(s);
+        return true;
     }
 
+    bool ok = true;
     struct ds expanded = DS_EMPTY_INITIALIZER;
 
     struct lexer lexer;
     lexer_init(&lexer, s);
 
     while (lexer_get(&lexer) != LEX_T_END) {
+        if (!ok) {
+            continue;
+        }
+
         if (lexer.token.type == LEX_T_TEMPLATE) {
-            ds_put_cstr(&expanded, smap_get_def(template_vars, lexer.token.s,
-                                                lexer.token.s));
+            const char *template_var = smap_get(template_vars, lexer.token.s);
+            if (template_var) {
+                ds_put_cstr(&expanded, template_var);
+            }
+
             if (template_vars_ref) {
                 sset_add(template_vars_ref, lexer.token.s);
             }
+
+            ok &= !!template_var;
         } else {
             lex_token_format(&lexer.token, &expanded);
         }
     }
 
     lexer_destroy(&lexer);
-    return lex_str_steal(ds_steal_cstr(&expanded));
+
+    if (ok) {
+        *ls = lex_str_steal(ds_steal_cstr(&expanded));
+    } else {
+        ds_destroy(&expanded);
+        *ls = lex_str_use("");
+    }
+    return ok;
 }

@@ -1326,6 +1326,13 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
 
         puts(ds_cstr(&input));
 
+        struct lex_str exp_input;
+        if (!lexer_parse_template_string(&exp_input, ds_cstr(&input),
+                                         &template_vars, NULL)) {
+            printf("    failed to parse %s\n", ds_cstr(&input));
+            continue;
+        }
+
         ofpbuf_init(&ovnacts, 0);
 
         const struct ovnact_parse_params pp = {
@@ -1337,8 +1344,7 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
             .n_tables = 24,
             .cur_ltable = 10,
         };
-        struct lex_str exp_input =
-            lexer_parse_template_string(ds_cstr(&input), &template_vars, NULL);
+
         error = ovnacts_parse_string(lex_str_get(&exp_input), &pp, &ovnacts,
                                      &prereqs);
         if (!error) {

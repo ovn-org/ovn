@@ -35936,6 +35936,7 @@ AT_CHECK([ovs-ofctl dump-flows br-int | grep '42\.42\.42\.42'], [1], [])
 # Need  to investigate whteher those errors are expected
 OVN_CLEANUP([hv1
 /Syntax error at /d
+/error parsing.*\^/d
 ])
 
 AT_CLEANUP
@@ -36108,11 +36109,9 @@ AT_CHECK([ovs-ofctl dump-groups br-int | grep 'nat'], [1], [])
 as hv1
 AT_CHECK([ovs-ofctl dump-flows br-int | grep table=OFTABLE_CHK_LB_HAIRPIN | ofctl_strip_all], [0], [])
 
-# Ignore errors such as "Syntax error at `BACKENDS31' expecting IP address"
-# Need  to investigate whteher those errors are expected
 OVN_CLEANUP([hv1
 /bad port number/d
-/Syntax error at/d
+/error parsing.*\^/d
 ])
 
 AT_CLEANUP
