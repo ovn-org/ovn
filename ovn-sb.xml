@@ -5354,4 +5354,17 @@ tcp.flags = RST;
       See <em>External IDs</em> at the beginning of this document.
     </column>
   </table>
+
+  <table name="ACL_ID">
+    <p>
+      Each record represents an identifier that <code>ovn-northd</code> needs
+      to synchronize with instances of <code>ovn-controller</code>. The UUID
+      of each record corresponds directly with an <ref table="ACL"/> record
+      in the northbound database.
+    </p>
+    <column name="id">
+      An identifier corresponding to a northbound
+      <code>allow-established</code> ACL.
+    </column>
+  </table>
 </database>

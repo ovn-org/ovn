@@ -38,6 +38,8 @@ northd_ovn_northd_SOURCES = \
 	northd/en-ls-stateful.h \
 	northd/en-sampling-app.c \
 	northd/en-sampling-app.h \
+	northd/en-acl-ids.c \
+	northd/en-acl-ids.h \
 	northd/inc-proc-northd.c \
 	northd/inc-proc-northd.h \
 	northd/ipam.c \

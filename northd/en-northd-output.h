@@ -19,5 +19,7 @@ bool northd_output_fdb_aging_handler(struct engine_node *node,
                                      void *data OVS_UNUSED);
 bool northd_output_ecmp_nexthop_handler(struct engine_node *node,
                                         void *data OVS_UNUSED);
+bool northd_output_acl_id_handler(struct engine_node *node,
+                                  void *data OVS_UNUSED);
 
 #endif

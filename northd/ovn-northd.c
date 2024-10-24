@@ -945,6 +945,10 @@ main(int argc, char *argv[])
         ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
                              &sbrec_ecmp_nexthop_columns[i]);
     }
+    for (size_t i = 0; i < SBREC_ACL_ID_N_COLUMNS; i++) {
+        ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
+                             &sbrec_acl_id_columns[i]);
+    }
 
     unixctl_command_register("sb-connection-status", "", 0, 0,
                              ovn_conn_show, ovnsb_idl_loop.idl);

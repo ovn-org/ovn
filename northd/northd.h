@@ -63,6 +63,9 @@ struct northd_input {
     struct eth_addr svc_monitor_mac_ea;
     const struct chassis_features *features;
 
+    /* ACL ID inputs. */
+    const struct acl_id_data *acl_id_data;
+
     /* Indexes */
     struct ovsdb_idl_index *sbrec_chassis_by_name;
     struct ovsdb_idl_index *sbrec_chassis_by_hostname;
