@@ -1,5 +1,8 @@
 Post v24.09.0
 -------------
+   - Added support to choose selection methods - dp_hash or
+     hash (with specified hash fields) for ECMP routes
+     while choosing nexthop.
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------
