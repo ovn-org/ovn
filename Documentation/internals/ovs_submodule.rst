@@ -53,44 +53,48 @@ Submodules for releases
 -----------------------
 
 For OVN releases, it is preferred for the OVS submodule to point to a stable
-release branch of OVS. Therefore, as part of the release process for OVN, we
-will point the submodule to the latest stable branch of OVS before releasing.
+release of OVS. Therefore, as part of the release process for OVN, we will
+point the submodule to the latest stable version of OVS before releasing.
 
 The exception to this is if the current OVS submodule is pointing to a commit
-that is not in a current stable branch of OVS. In that case, the submodule
+that is not in a current stable release of OVS. In that case, the submodule
 will continue to point to that particular commit. We may, however, bump the
-submodule to the next stable branch of OVS at a later time.
+submodule to the next stable version of OVS at a later time.
 
 As an example, let's assume that the OVS commit history looks something like
 this in the main branch:
 
 ::
 
-    (Newest)
-    Commit 3
-       |
-       |
-    Commit 2 (used to create OVS branch-Y)
-       |
-       |
-    Commit 1
-    (Oldest)
+             (Newest)
+             Commit 4
+                |
+                |
+             Commit 2 ------------------------------- Commit 3
+    (used to create OVS branch-Y)      (latest stable release on OVS branch-Y)
+                |
+                |
+             Commit 1
+             (Oldest)
 
 Let's say that we are planning to release OVN version X. At this point, the
-submodule is pointing to Commit 1. As part of the release process, we will bump
-the OVS submodule in OVN to point to Commit 2, or more likely the tip of OVS
-branch-Y. This way, the released version of OVN is based on a stable release
-branch of OVS, and it has all of the necessary changes that we require.
+submodule is pointing to Commit 1. As part of the release process, we will
+bump the OVS submodule in OVN to point to Commit 2, or more likely the latest
+OVS release on branch-y (Commit 3). This way, the released version of OVN is
+based on a stable release of OVS, and it has all of the necessary changes
+that we require.
 
-What if the OVS submodule currently points to Commit 3, though? There is no
-stable branch that exists after this commit. In this case, we have two choices:
+What if the OVS submodule currently points to Commit 4, though? There is no
+stable OVS release that exists after this commit. In this case, we have two
+choices:
 
-# Create OVN release X and point the OVS submodule to Commit 3. At a later
-  time, if it makes sense to do so, we may bump the submodule to OVS branch-Z
-  when it is released, since Commit 3 will be included in that branch.
-# If Commit 3 is a bug fix in OVS, then we can try to ensure that Commit 3 gets
-  backported to OVS branch-Y, and then point the submodule commit to the tip of
-  OVS branch-Y.
+# Create OVN release X and point the OVS submodule to Commit 4. At a later
+  time, if it makes sense to do so, we may bump the submodule to the new
+  OVS stable release on branch-Z when it is released, since Commit 4 will
+  be included in that branch.
+# If Commit 4 is a bug fix in OVS, then we can try to ensure that Commit 4 gets
+  backported to OVS branch-Y, and then point the submodule commit to the next
+  stable release of OVS on branch-Y.
 
 For choice 1, the decision of whether to update the submodule commit to OVS
 branch-Z is based on several factors.
@@ -100,6 +104,10 @@ branch-Z is based on several factors.
   performance improvements we could take advantage of by updating the
   submodule?
 - Is there risk in updating the submodule?
+
+For choice 2, it's preferable to bump to a new stable OVS release but if
+the bug fix is urgent maintainers may decide to temporarily point the OVS
+submodule bump to the tip of brach-Y.
 
 For an LTS of OVN, we might update the submodule several times during its
 lifetime as more new OVS branches are released. For a standard release, it is
