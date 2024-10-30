@@ -41,6 +41,9 @@ Post v24.09.0
    - Add concept of Transit Routers, users are now allowed to specify
      options:requested-chassis for router ports; if the chassis is remote
      then the router port will behave as a remote port.
+   - Added a new ACL option "persist-established" that allows for
+     established connections to bypass ACL matching. This way, if an ACL
+     match changes, traffic on the established connection can still pass.
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------

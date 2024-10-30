@@ -208,6 +208,7 @@ struct lflow_input {
     /* Southbound table references */
     const struct sbrec_logical_flow_table *sbrec_logical_flow_table;
     const struct sbrec_logical_dp_group_table *sbrec_logical_dp_group_table;
+    const struct sbrec_acl_id_table *sbrec_acl_id_table;
 
     /* Indexes */
     struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp;

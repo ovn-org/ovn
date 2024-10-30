@@ -140,6 +140,7 @@ ct.rpl = ct_state[3]
 ct.snat = ct_state[6]
 ct.trk = ct_state[5]
 ct_label = NXM_NX_CT_LABEL
+ct_label.acl_id = ct_label[80..95]
 ct_label.ecmp_reply_eth = ct_label[32..79]
 ct_label.label = ct_label[96..127]
 ct_label.obs_point_id = ct_label[96..127]

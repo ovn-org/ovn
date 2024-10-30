@@ -206,6 +206,9 @@ BUILD_ASSERT_DECL(ACL_OBS_STAGE_MAX < (1 << 2));
 #define REG_OBS_COLLECTOR_ID_NEW "reg8[0..7]"
 #define REG_OBS_COLLECTOR_ID_EST "reg8[8..15]"
 
+/* Register used for storing persistent ACL IDs */
+#define REG_ACL_ID "reg2[16..31]"
+
 /* Register used for temporarily store ECMP eth.src to avoid masked ct_label
  * access. It doesn't really occupy registers because the content of the
  * register is saved to stack and then restored in the same flow.
@@ -233,6 +236,9 @@ BUILD_ASSERT_DECL(ACL_OBS_STAGE_MAX < (1 << 2));
  * +----+----------------------------------------------+ E |                                   |
  * | R2 |                 REG_LB_PORT                  | G |                                   |
  * |    |  (>= IN_PRE_STATEFUL && <= IN_LB_AFF_LEARN)  | 0 |                                   |
+ * |    |                 REG_ACL_ID                   |   |                                   |
+ * |    |      (>= ACL_IN_EVAL && <= IN_STATEFUL)      |   |                                   |
+ * |    |     (>= ACL_OUT_EVAL && <= OUT_STATEFUL)     |   |                                   |
  * +----+----------------------------------------------+   |                                   |
  * | R3 |             OBS_POINT_ID_NEW                 |   |                                   |
  * |    |       (>= ACL_EVAL* && <= ACL_ACTION*)       |   |                                   |
@@ -6757,7 +6763,8 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
              const struct shash *meter_groups, uint64_t max_acl_tier,
              struct ds *match, struct ds *actions,
              struct lflow_ref *lflow_ref,
-             const struct chassis_features *features)
+             const struct chassis_features *features,
+             const struct sbrec_acl_id_table *sbrec_acl_id_table)
 {
     bool ingress = !strcmp(acl->direction, "from-lport") ? true :false;
     enum ovn_stage stage;
@@ -6844,15 +6851,24 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
         ds_put_cstr(actions, REGBIT_CONNTRACK_COMMIT" = 1; ");
 
         if (smap_get_bool(&acl->options, "persist-established", false)) {
+            const struct sbrec_acl_id *sb_id;
+            sb_id = sbrec_acl_id_table_get_for_uuid(sbrec_acl_id_table,
+                                                    &acl->header_.uuid);
             if (!features->ct_label_flush) {
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
                 VLOG_WARN_RL(&rl, "OVS does not support CT label flush. "
                              "persist-established option cannot "
                              "be honored for ACL "UUID_FMT".",
                              UUID_ARGS(&acl->header_.uuid));
+            } else if (!sb_id) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_WARN_RL(&rl, "No ID found for ACL "UUID_FMT" (%s)",
+                             UUID_ARGS(&acl->header_.uuid), acl->match);
             } else {
                 ds_put_format(actions,
-                              REGBIT_ACL_PERSIST_ID " = 1; ");
+                              REG_ACL_ID " = %"PRId64 "; "
+                              REGBIT_ACL_PERSIST_ID " = 1; ",
+                              sb_id->id);
             }
         }
 
@@ -7199,7 +7215,8 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
            const struct shash *meter_groups,
            const struct sampling_app_table *sampling_apps,
            const struct chassis_features *features,
-           struct lflow_ref *lflow_ref)
+           struct lflow_ref *lflow_ref,
+           const struct sbrec_acl_id_table *sbrec_acl_id_table)
 {
     const char *default_acl_action = default_acl_drop
                                      ? debug_implicit_drop_action()
@@ -7416,7 +7433,8 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
         uint64_t max_acl_tier = choose_max_acl_tier(ls_stateful_rec, acl);
         consider_acl(lflows, od, acl, has_stateful,
                      meter_groups, max_acl_tier,
-                     &match, &actions, lflow_ref, features);
+                     &match, &actions, lflow_ref, features,
+                     sbrec_acl_id_table);
         build_acl_sample_flows(ls_stateful_rec, od, lflows, acl,
                                &match, &actions, sampling_apps,
                                features, lflow_ref);
@@ -7437,7 +7455,8 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
                                                             acl);
                 consider_acl(lflows, od, acl, has_stateful,
                              meter_groups, max_acl_tier,
-                             &match, &actions, lflow_ref, features);
+                             &match, &actions, lflow_ref, features,
+                             sbrec_acl_id_table);
                 build_acl_sample_flows(ls_stateful_rec, od, lflows, acl,
                                        &match, &actions, sampling_apps,
                                        features, lflow_ref);
@@ -8065,6 +8084,7 @@ build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
                     "ct_mark.obs_stage = " REGBIT_ACL_OBS_STAGE "; "
                     "ct_mark.obs_collector_id = " REG_OBS_COLLECTOR_ID_EST "; "
                     "ct_label.obs_point_id = " REG_OBS_POINT_ID_EST "; "
+                    "ct_label.acl_id = " REG_ACL_ID "; "
                   "}; next;");
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
                   REGBIT_CONNTRACK_COMMIT" == 1 && "
@@ -8086,6 +8106,7 @@ build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
                 "ct_commit { "
                    "ct_mark.blocked = 0; "
                    "ct_mark.allow_established = " REGBIT_ACL_PERSIST_ID "; "
+                   "ct_label.acl_id = " REG_ACL_ID "; "
                 "}; next;");
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
                   REGBIT_CONNTRACK_COMMIT" == 1 && "
@@ -16999,7 +17020,8 @@ build_ls_stateful_flows(const struct ls_stateful_record *ls_stateful_rec,
                         const struct shash *meter_groups,
                         const struct sampling_app_table *sampling_apps,
                         const struct chassis_features *features,
-                        struct lflow_table *lflows)
+                        struct lflow_table *lflows,
+                        const struct sbrec_acl_id_table *sbrec_acl_id_table)
 {
     build_ls_stateful_rec_pre_acls(ls_stateful_rec, od, ls_pgs, lflows,
                                    ls_stateful_rec->lflow_ref);
@@ -17008,7 +17030,8 @@ build_ls_stateful_flows(const struct ls_stateful_record *ls_stateful_rec,
     build_acl_hints(ls_stateful_rec, od, lflows,
                     ls_stateful_rec->lflow_ref);
     build_acls(ls_stateful_rec, od, lflows, ls_pgs, meter_groups,
-               sampling_apps, features, ls_stateful_rec->lflow_ref);
+               sampling_apps, features, ls_stateful_rec->lflow_ref,
+               sbrec_acl_id_table);
     build_lb_hairpin(ls_stateful_rec, od, lflows, ls_stateful_rec->lflow_ref);
 }
 
@@ -17035,6 +17058,7 @@ struct lswitch_flow_build_info {
     struct hmap *parsed_routes;
     struct hmap *route_policies;
     struct simap *route_tables;
+    const struct sbrec_acl_id_table *sbrec_acl_id_table;
 };
 
 /* Helper function to combine all lflow generation which is iterated by
@@ -17331,7 +17355,8 @@ build_lflows_thread(void *arg)
                                             lsi->meter_groups,
                                             lsi->sampling_apps,
                                             lsi->features,
-                                            lsi->lflows);
+                                            lsi->lflows,
+                                            lsi->sbrec_acl_id_table);
                 }
             }
 
@@ -17393,7 +17418,8 @@ build_lswitch_and_lrouter_flows(
     const struct sampling_app_table *sampling_apps,
     struct hmap *parsed_routes,
     struct hmap *route_policies,
-    struct simap *route_tables)
+    struct simap *route_tables,
+    const struct sbrec_acl_id_table *sbrec_acl_id_table)
 {
 
     char *svc_check_match = xasprintf("eth.dst == %s", svc_monitor_mac);
@@ -17430,6 +17456,7 @@ build_lswitch_and_lrouter_flows(
             lsiv[index].parsed_routes = parsed_routes;
             lsiv[index].route_tables = route_tables;
             lsiv[index].route_policies = route_policies;
+            lsiv[index].sbrec_acl_id_table = sbrec_acl_id_table;
             ds_init(&lsiv[index].match);
             ds_init(&lsiv[index].actions);
 
@@ -17474,6 +17501,7 @@ build_lswitch_and_lrouter_flows(
             .route_policies = route_policies,
             .match = DS_EMPTY_INITIALIZER,
             .actions = DS_EMPTY_INITIALIZER,
+            .sbrec_acl_id_table = sbrec_acl_id_table,
         };
 
         /* Combined build - all lflow generation from lswitch and lrouter
@@ -17547,7 +17575,8 @@ build_lswitch_and_lrouter_flows(
                                     lsi.meter_groups,
                                     lsi.sampling_apps,
                                     lsi.features,
-                                    lsi.lflows);
+                                    lsi.lflows,
+                                    lsi.sbrec_acl_id_table);
         }
 
         ds_destroy(&lsi.match);
@@ -17637,7 +17666,8 @@ void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
                                     input_data->sampling_apps,
                                     input_data->parsed_routes,
                                     input_data->route_policies,
-                                    input_data->route_tables);
+                                    input_data->route_tables,
+                                    input_data->sbrec_acl_id_table);
     build_igmp_lflows(input_data->igmp_groups,
                       &input_data->ls_datapaths->datapaths,
                       lflows, input_data->igmp_lflow_ref);
@@ -18021,7 +18051,8 @@ lflow_handle_ls_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                 lflow_input->meter_groups,
                                 lflow_input->sampling_apps,
                                 lflow_input->features,
-                                lflows);
+                                lflows,
+                                lflow_input->sbrec_acl_id_table);
 
         /* Sync the new flows to SB. */
         bool handled = lflow_ref_sync_lflows(

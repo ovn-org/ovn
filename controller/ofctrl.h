@@ -33,6 +33,7 @@ struct ovsrec_open_vswitch_table;
 struct sbrec_meter_table;
 struct sbrec_ecmp_nexthop_table;
 struct shash;
+struct tracked_acl_ids;
 
 struct ovn_desired_flow_table {
     /* Hash map flow table using flow match conditions as hash key.*/
@@ -53,7 +54,8 @@ void ofctrl_init(struct ovn_extend_table *group_table,
                  struct ovn_extend_table *meter_table);
 bool ofctrl_run(const char *conn_target, int probe_interval,
                 const struct ovsrec_open_vswitch_table *ovs_table,
-                struct shash *pending_ct_zones);
+                struct shash *pending_ct_zones,
+                struct tracked_acl_ids *tracked_acl_ids);
 enum mf_field_id ofctrl_get_mf_field_id(void);
 void ofctrl_put(struct ovn_desired_flow_table *lflow_table,
                 struct ovn_desired_flow_table *pflow_table,
@@ -65,7 +67,8 @@ void ofctrl_put(struct ovn_desired_flow_table *lflow_table,
                 const struct sbrec_ecmp_nexthop_table *enh_table,
                 uint64_t nb_cfg,
                 bool lflow_changed,
-                bool pflow_changed);
+                bool pflow_changed,
+                struct tracked_acl_ids *tracked_acl_ids);
 bool ofctrl_has_backlog(void);
 void ofctrl_wait(void);
 void ofctrl_destroy(void);

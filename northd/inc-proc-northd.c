@@ -309,6 +309,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_lflow, &en_ls_stateful, lflow_ls_stateful_handler);
     engine_add_input(&en_lflow, &en_multicast_igmp,
                      lflow_multicast_igmp_handler);
+    engine_add_input(&en_lflow, &en_sb_acl_id, NULL);
 
     engine_add_input(&en_sync_to_sb_addr_set, &en_northd, NULL);
     engine_add_input(&en_sync_to_sb_addr_set, &en_lr_stateful, NULL);
@@ -359,6 +360,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_sync_from_sb, &en_sb_port_binding, NULL);
     engine_add_input(&en_sync_from_sb, &en_sb_ha_chassis_group, NULL);
 
+    engine_add_input(&en_northd_output, &en_acl_id, NULL);
     engine_add_input(&en_northd_output, &en_sync_from_sb, NULL);
     engine_add_input(&en_northd_output, &en_sync_to_sb,
                      northd_output_sync_to_sb_handler);

@@ -88,6 +88,7 @@
 #include "lib/dns-resolve.h"
 #include "ct-zone.h"
 #include "ovn-dns.h"
+#include "acl-ids.h"
 
 VLOG_DEFINE_THIS_MODULE(main);
 
@@ -947,7 +948,8 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     SB_NODE(fdb, "fdb") \
     SB_NODE(meter, "meter") \
     SB_NODE(static_mac_binding, "static_mac_binding") \
-    SB_NODE(chassis_template_var, "chassis_template_var")
+    SB_NODE(chassis_template_var, "chassis_template_var") \
+    SB_NODE(acl_id, "acl_id")
 
 enum sb_engine_node {
 #define SB_NODE(NAME, NAME_STR) SB_##NAME,
@@ -4882,6 +4884,14 @@ controller_output_bfd_chassis_handler(struct engine_node *node,
     return true;
 }
 
+static bool
+controller_output_acl_id_handler(struct engine_node *node,
+                                    void *data OVS_UNUSED)
+{
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
+}
+
 /* Handles sbrec_chassis changes.
  * If a new chassis is added or removed return false, so that
  * flows are recomputed.  For any updates, there is no need for
@@ -5202,6 +5212,8 @@ main(int argc, char *argv[])
     ENGINE_NODE(mac_cache, "mac_cache");
     ENGINE_NODE(bfd_chassis, "bfd_chassis");
     ENGINE_NODE(dns_cache, "dns_cache");
+    ENGINE_NODE(acl_id, "acl_id");
+    en_acl_id.is_valid = en_acl_id_is_valid;
 
 #define SB_NODE(NAME, NAME_STR) ENGINE_NODE_SB(NAME, NAME_STR);
     SB_NODES
@@ -5410,6 +5422,10 @@ main(int argc, char *argv[])
     engine_add_input(&en_controller_output, &en_bfd_chassis,
                      controller_output_bfd_chassis_handler);
 
+    engine_add_input(&en_acl_id, &en_sb_acl_id, NULL);
+    engine_add_input(&en_controller_output, &en_acl_id,
+                     controller_output_acl_id_handler);
+
     struct engine_arg engine_arg = {
         .sb_idl = ovnsb_idl_loop.idl,
         .ovs_idl = ovs_idl_loop.idl,
@@ -5562,6 +5578,7 @@ main(int argc, char *argv[])
 
     /* Main loop. */
     bool sb_monitor_all = false;
+    struct tracked_acl_ids *tracked_acl_ids = NULL;
     while (!exit_args.exiting) {
         ovsrcu_quiesce_end();
 
@@ -5719,7 +5736,8 @@ main(int argc, char *argv[])
                 if (ofctrl_run(br_int_remote.target,
                                br_int_remote.probe_interval, ovs_table,
                                ct_zones_data ? &ct_zones_data->ctx.pending
-                                             : NULL)) {
+                                             : NULL,
+                               tracked_acl_ids)) {
                     static struct vlog_rate_limit rl
                             = VLOG_RATE_LIMIT_INIT(1, 1);
 
@@ -5766,6 +5784,8 @@ main(int argc, char *argv[])
                     bool recompute_allowed = (ovnsb_idl_txn &&
                                               !ofctrl_has_backlog());
                     engine_run(recompute_allowed);
+                    tracked_acl_ids = engine_get_data(&en_acl_id);
+
                     stopwatch_stop(CONTROLLER_LOOP_STOPWATCH_NAME,
                                    time_msec());
                     if (engine_has_updated()) {
@@ -5941,7 +5961,8 @@ main(int argc, char *argv[])
                                         ovnsb_idl_loop.idl),
                                    ofctrl_seqno_get_req_cfg(),
                                    engine_node_changed(&en_lflow_output),
-                                   engine_node_changed(&en_pflow_output));
+                                   engine_node_changed(&en_pflow_output),
+                                   tracked_acl_ids);
                         stopwatch_stop(OFCTRL_PUT_STOPWATCH_NAME, time_msec());
                     }
                     stopwatch_start(OFCTRL_SEQNO_RUN_STOPWATCH_NAME,

@@ -195,6 +195,8 @@ ovn_init_symtab(struct shash *symtab)
                                     "ct_label[96..127]", WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab, "ct_label.obs_unused", NULL,
                                     "ct_label[0..95]", WR_CT_COMMIT);
+    expr_symtab_add_subfield_scoped(symtab, "ct_label.acl_id", NULL,
+                                    "ct_label[80..95]", WR_CT_COMMIT);
 
     expr_symtab_add_field(symtab, "ct_state", MFF_CT_STATE, NULL, false);
 
