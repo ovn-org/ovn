@@ -50,6 +50,7 @@ struct mac_cache_threshold {
 };
 
 struct mac_cache_mb_data {
+    const struct sbrec_mac_binding *sbrec; /* Only the UUID is used as key.*/
     uint32_t port_key;
     uint32_t dp_key;
     struct in6_addr ip;
@@ -60,8 +61,6 @@ struct mac_cache_mac_binding {
     struct hmap_node hmap_node;
     /* Common data to identify MAC binding. */
     struct mac_cache_mb_data data;
-    /* Reference to the SB MAC binding record. */
-    const struct sbrec_mac_binding *sbrec_mb;
 };
 
 struct mac_cache_fdb_data {
@@ -87,17 +86,32 @@ bool mac_cache_threshold_replace(struct mac_cache_data *data,
                                  const struct sbrec_datapath_binding *dp,
                                  enum mac_cache_type type);
 void mac_cache_thresholds_clear(struct mac_cache_data *data);
+
+static inline void
+mac_cache_mac_binding_data_init(struct mac_cache_mb_data *data,
+                                uint32_t dp_key, uint32_t port_key,
+                                struct in6_addr ip, struct eth_addr mac)
+{
+    *data = (struct mac_cache_mb_data) {
+        .sbrec = NULL,
+        .dp_key = (dp_key),
+        .port_key = (port_key),
+        .ip = (ip),
+        .mac = (mac),
+    };
+}
+
 void mac_cache_mac_binding_add(struct mac_cache_data *data,
-                                const struct sbrec_mac_binding *mb,
-                                struct ovsdb_idl_index *sbrec_pb_by_name);
+                                const struct sbrec_mac_binding *mb);
 struct mac_cache_mac_binding *
 mac_cachce_mac_binding_find(struct mac_cache_data *data,
-                            const struct sbrec_mac_binding *mb,
-                            struct ovsdb_idl_index *sbrec_pb_by_name);
+                            const struct sbrec_mac_binding *mb);
 void mac_cache_mac_binding_remove(struct mac_cache_data *data,
-                                  const struct sbrec_mac_binding *mb,
-                                  struct ovsdb_idl_index *sbrec_pb_by_name);
+                                  const struct sbrec_mac_binding *mb);
 void mac_cache_mac_bindings_clear(struct mac_cache_data *data);
+void mac_cache_mac_bindings_to_string(const struct hmap *map,
+                                      struct ds *out_data);
+
 bool mac_cache_sb_mac_binding_updated(const struct sbrec_mac_binding *mb);
 
 void mac_cache_fdb_add(struct mac_cache_data *data,
