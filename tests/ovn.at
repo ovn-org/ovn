@@ -35169,6 +35169,116 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([MAC binding aging - port deletion])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovn-nbctl                                                     \
+    -- ls-add ls1                                                   \
+    -- ls-add ls2                                                   \
+    -- lr-add lr                                                    \
+    -- set logical_router lr options:mac_binding_age_threshold=3600 \
+    -- lrp-add lr lr-ls1 00:00:00:00:10:00 192.168.10.1/24          \
+    -- lrp-add lr lr-ls2 00:00:00:00:20:00 192.168.20.1/24          \
+    -- lsp-add ls1 ls1-lr                                           \
+    -- lsp-set-type ls1-lr router                                   \
+    -- lsp-set-addresses ls1-lr router                              \
+    -- lsp-set-options ls1-lr router-port=lr-ls1                    \
+    -- lsp-add ls1 vif1                                             \
+    -- lsp-set-addresses vif1 "00:00:00:00:10:10 192.168.10.10"     \
+    -- lsp-add ls2 ls2-lr                                           \
+    -- lsp-set-type ls2-lr router                                   \
+    -- lsp-set-addresses ls2-lr router                              \
+    -- lsp-set-options ls2-lr router-port=lr-ls2                    \
+    -- lsp-add ls2 vif2                                             \
+    -- lsp-set-addresses vif2 "00:00:00:00:20:10 192.168.20.10"
+
+check ovs-vsctl                                      \
+    -- add-port br-int vif1                          \
+    -- set interface vif1 external-ids:iface-id=vif1 \
+    -- add-port br-int vif2                          \
+    -- set interface vif2 external-ids:iface-id=vif2
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl Wait for pinctrl thread to be connected.
+OVS_WAIT_UNTIL([grep pinctrl hv1/ovn-controller.log | grep -q connected])
+
+send_garp() {
+    hv=$1
+    dev=$2
+    mac=$3
+    ip=$4
+
+    packet=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${mac}')/ \
+                      ARP(op=2, hwsrc='${mac}', hwdst='${mac}',     \
+                      psrc='${ip}', pdst='${ip}')")
+    as $hv ovs-appctl netdev-dummy/receive $dev $packet
+}
+
+AS_BOX([Remove LRP with learnt MAC_Binding])
+dnl Populate MAC Binding entry.
+send_garp hv1 vif1 00:00:00:00:10:10 192.168.10.10
+wait_row_count mac_binding 1 ip="192.168.10.10" logical_port="lr-ls1"
+
+dnl Check local mac binding cache.
+lr_key=$(fetch_column datapath_binding tunnel_key external_ids:name=lr)
+mb_uuid=$(fetch_column mac_binding _uuid logical_port=lr-ls1)
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([as hv1 ovn-appctl -t ovn-controller debug/dump-mac-bindings], [0], [dnl
+Local MAC bindings:
+SB UUID: $mb_uuid, datapath-key: $lr_key, port-key: 0, ip: 192.168.10.10, mac: 00:00:00:00:10:10
+])
+
+dnl Remove router port.  This deletes the mac binding in the same transaction.
+check ovn-nbctl --wait=hv lrp-del lr-ls1
+
+dnl Check local mac binding cache - it should be empty now.
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-mac-bindings], [0], [dnl
+Local MAC bindings:
+])
+
+AS_BOX([Change LRP tunnel-key with learnt MAC_Binding and remove LRP])
+dnl Re-add port.
+check ovn-nbctl \
+    -- set logical_router_port lr-ls2 options:requested-tnl-key=42
+check ovn-nbctl --wait=hv sync
+check_column 42 Port_Binding tunnel_key logical_port=lr-ls2
+
+dnl Populate MAC Binding entry.
+send_garp hv1 vif2 00:00:00:00:20:10 192.168.20.10
+wait_row_count mac_binding 1 ip="192.168.20.10" logical_port="lr-ls2"
+
+dnl Check local mac binding cache.
+mb_uuid=$(fetch_column mac_binding _uuid logical_port=lr-ls2)
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([as hv1 ovn-appctl -t ovn-controller debug/dump-mac-bindings], [0], [dnl
+Local MAC bindings:
+SB UUID: $mb_uuid, datapath-key: $lr_key, port-key: 0, ip: 192.168.20.10, mac: 00:00:00:00:20:10
+])
+
+dnl Change LRP tunnel key.
+check ovn-nbctl --wait=hv set logical_router_port lr-ls2 options:requested-tnl-key=43
+check_column 43 Port_Binding tunnel_key logical_port=lr-ls2
+
+dnl Remove router port.  This deletes the mac binding in the same transaction.
+check ovn-nbctl --wait=hv lrp-del lr-ls2
+dnl Check local mac binding cache - it should be empty now.
+AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-mac-bindings], [0], [dnl
+Local MAC bindings:
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([router port type update and then remove])
 ovn_start
 net_add n1

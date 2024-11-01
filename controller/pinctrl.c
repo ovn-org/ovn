@@ -1539,18 +1539,19 @@ pinctrl_handle_buffered_packets(const struct ofputil_packet_in *pin,
 OVS_REQUIRES(pinctrl_mutex)
 {
     const struct match *md = &pin->flow_metadata;
-    struct mac_binding_data mb_data = (struct mac_binding_data) {
-            .dp_key =  ntohll(md->flow.metadata),
-            .port_key =  md->flow.regs[MFF_LOG_OUTPORT - MFF_REG0],
-            .mac = eth_addr_zero,
-    };
+    struct mac_binding_data mb_data;
+    struct in6_addr ip;
 
     if (is_arp) {
-        mb_data.ip = in6_addr_mapped_ipv4(htonl(md->flow.regs[0]));
+        ip = in6_addr_mapped_ipv4(htonl(md->flow.regs[0]));
     } else {
         ovs_be128 ip6 = hton128(flow_get_xxreg(&md->flow, 0));
-        memcpy(&mb_data.ip, &ip6, sizeof mb_data.ip);
+        memcpy(&ip, &ip6, sizeof ip);
     }
+
+    mac_binding_data_init(&mb_data, ntohll(md->flow.metadata),
+                          md->flow.regs[MFF_LOG_OUTPORT - MFF_REG0],
+                          ip, eth_addr_zero);
 
     struct buffered_packets *bp = buffered_packets_add(&buffered_packets_ctx,
                                                        mb_data);
@@ -4959,9 +4960,14 @@ run_buffered_binding(const struct sbrec_mac_binding_table *mac_binding_table,
         const struct sbrec_port_binding *pb = lport_lookup_by_name(
             sbrec_port_binding_by_name, smb->logical_port);
 
+        if (!pb || !pb->datapath) {
+            continue;
+        }
+
         struct mac_binding_data mb_data;
-        if (!mac_binding_data_from_sbrec(&mb_data, smb,
-                                         sbrec_port_binding_by_name)) {
+
+        if (!mac_binding_data_parse(&mb_data, smb->datapath->tunnel_key,
+                                    pb->tunnel_key, smb->ip, smb->mac)) {
             continue;
         }
 
