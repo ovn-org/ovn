@@ -191,6 +191,7 @@ static void init_buffered_packets_ctx(void);
 static void destroy_buffered_packets_ctx(void);
 static void
 run_buffered_binding(const struct sbrec_mac_binding_table *mac_binding_table,
+                     const struct hmap *local_datapaths,
                      struct ovsdb_idl_index *sbrec_port_binding_by_key,
                      struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                      struct ovsdb_idl_index *sbrec_port_binding_by_name,
@@ -4176,7 +4177,8 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                   sbrec_port_binding_by_key,
                   sbrec_igmp_groups,
                   sbrec_ip_multicast_opts);
-    run_buffered_binding(mac_binding_table, sbrec_port_binding_by_key,
+    run_buffered_binding(mac_binding_table, local_datapaths,
+                         sbrec_port_binding_by_key,
                          sbrec_datapath_binding_by_key,
                          sbrec_port_binding_by_name,
                          sbrec_mac_binding_by_lport_ip);
@@ -4943,6 +4945,7 @@ run_put_mac_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
 static void
 run_buffered_binding(const struct sbrec_mac_binding_table *mac_binding_table,
+                     const struct hmap *local_datapaths,
                      struct ovsdb_idl_index *sbrec_port_binding_by_key,
                      struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                      struct ovsdb_idl_index *sbrec_port_binding_by_name,
@@ -4958,6 +4961,10 @@ run_buffered_binding(const struct sbrec_mac_binding_table *mac_binding_table,
     const struct sbrec_mac_binding *smb;
     SBREC_MAC_BINDING_TABLE_FOR_EACH_TRACKED (smb, mac_binding_table) {
         if (sbrec_mac_binding_is_deleted(smb)) {
+            continue;
+        }
+
+        if (!get_local_datapath(local_datapaths, smb->datapath->tunnel_key)) {
             continue;
         }
 
