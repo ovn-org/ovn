@@ -142,21 +142,18 @@ mac_cache_thresholds_clear(struct mac_cache_data *data)
 }
 
 /* MAC binding. */
-struct mac_binding *
+void
 mac_binding_add(struct hmap *map, struct mac_binding_data mb_data,
                 long long timestamp) {
 
     struct mac_binding *mb = mac_binding_find(map, &mb_data);
     if (!mb) {
         mb = xmalloc(sizeof *mb);
-        mb->sbrec_mb = NULL;
         hmap_insert(map, &mb->hmap_node, mac_binding_data_hash(&mb_data));
     }
 
     mb->data = mb_data;
     mb->timestamp = timestamp;
-
-    return mb;
 }
 
 void
@@ -181,24 +178,37 @@ mac_binding_find(const struct hmap *map,
 }
 
 bool
-mac_binding_data_from_sbrec(struct mac_binding_data *data,
-                            const struct sbrec_mac_binding *mb,
-                            struct ovsdb_idl_index *sbrec_pb_by_name)
+mac_binding_data_parse(struct mac_binding_data *data,
+                       uint32_t dp_key, uint32_t port_key,
+                       const char *ip_str, const char *mac_str)
 {
-    const struct sbrec_port_binding *pb =
-            lport_lookup_by_name(sbrec_pb_by_name, mb->logical_port);
+    struct eth_addr mac;
+    struct in6_addr ip;
 
-    if (!pb || !pb->datapath || !ip46_parse(mb->ip, &data->ip) ||
-        !eth_addr_from_string(mb->mac, &data->mac)) {
+    if (!ip46_parse(ip_str, &ip) || !eth_addr_from_string(mac_str, &mac)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "Couldn't parse MAC binding: ip=%s, mac=%s, "
-                     "logical_port=%s", mb->ip, mb->mac, mb->logical_port);
+        VLOG_WARN_RL(&rl, "Couldn't parse MAC binding: ip=%s, mac=%s",
+                     ip_str, mac_str);
         return false;
     }
 
-    data->dp_key = mb->datapath->tunnel_key;
-    data->port_key = pb->tunnel_key;
+    mac_binding_data_init(data, dp_key, port_key, ip, mac);
+    return true;
+}
 
+bool
+mac_binding_data_from_sbrec(struct mac_binding_data *data,
+                            const struct sbrec_mac_binding *mb)
+{
+    /* This explicitly sets the port_key to 0 as port_binding tunnel_keys
+     * can change.  Instead use add the SB.MAC_Binding UUID as key; this
+     * makes the mac_binding_data key unique. */
+    if (!mac_binding_data_parse(data, mb->datapath->tunnel_key, 0,
+                                mb->ip, mb->mac)) {
+        return false;
+    }
+
+    data->sbrec = mb;
     return true;
 }
 
@@ -208,6 +218,30 @@ mac_bindings_clear(struct hmap *map)
     struct mac_binding *mb;
     HMAP_FOR_EACH_POP (mb, hmap_node, map) {
         free(mb);
+    }
+}
+
+void
+mac_bindings_to_string(const struct hmap *map, struct ds *out_data)
+{
+    struct mac_binding *mb;
+    HMAP_FOR_EACH (mb, hmap_node, map) {
+        char ip[INET6_ADDRSTRLEN];
+
+        if (!ipv6_string_mapped(ip, &mb->data.ip)) {
+            continue;
+        }
+        if (mb->data.sbrec) {
+            ds_put_format(out_data, "SB UUID: " UUID_FMT ", ",
+                          UUID_ARGS(&mb->data.sbrec->header_.uuid));
+        } else {
+            ds_put_cstr(out_data, "SB UUID: <none>, ");
+        }
+        ds_put_format(out_data, "datapath-key: %"PRIu32", "
+                                "port-key: %"PRIu32", "
+                                "ip: %s, mac: " ETH_ADDR_FMT "\n",
+                      mb->data.dp_key, mb->data.port_key,
+                      ip, ETH_ADDR_ARGS(mb->data.mac));
     }
 }
 
@@ -382,9 +416,9 @@ mac_binding_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
          * used on this chassis. Also make sure that we don't update the
          * timestamp more than once during the dump period. */
         if (stats->idle_age_ms < threshold->value &&
-                (timewall_now - mb->sbrec_mb->timestamp) >=
+                (timewall_now - mb->data.sbrec->timestamp) >=
             threshold->dump_period) {
-            sbrec_mac_binding_set_timestamp(mb->sbrec_mb, timewall_now);
+            sbrec_mac_binding_set_timestamp(mb->data.sbrec, timewall_now);
         }
 
         free(stats);
@@ -608,7 +642,9 @@ mac_cache_stats_destroy(struct ovs_list *stats_list)
 static uint32_t
 mac_binding_data_hash(const struct mac_binding_data *mb_data)
 {
-    uint32_t hash = 0;
+    uint32_t hash = mb_data->sbrec
+                    ? uuid_hash(&mb_data->sbrec->header_.uuid)
+                    : 0;
 
     hash = hash_add(hash, mb_data->port_key);
     hash = hash_add(hash, mb_data->dp_key);
@@ -621,9 +657,10 @@ static inline bool
 mac_binding_data_equals(const struct mac_binding_data *a,
                         const struct mac_binding_data *b)
 {
-    return a->port_key == b->port_key &&
+    return a->sbrec == b->sbrec &&
+           a->port_key == b->port_key &&
            a->dp_key == b->dp_key &&
-            ipv6_addr_equals(&a->ip, &b->ip);
+           ipv6_addr_equals(&a->ip, &b->ip);
 }
 
 static uint32_t
