@@ -2769,5 +2769,42 @@ physical_run(struct physical_ctx *p_ctx,
      */
     add_default_drop_flow(p_ctx, OFTABLE_LOG_TO_PHY, flow_table);
 
+    /* Table 81, 82 and 83
+     * Match on ct.trk and ct.est and store the ct_nw_dst, ct_ip6_dst and
+     * ct_tp_dst in the registers. */
+    uint32_t ct_state = OVS_CS_F_TRACKED | OVS_CS_F_ESTABLISHED;
+    match_init_catchall(&match);
+    ofpbuf_clear(&ofpacts);
+
+    /* Add the flow:
+     * match = (ct.trk && ct.est), action = (reg8 = ct_tp_dst)
+     * table = 83
+     */
+    match_set_ct_state_masked(&match, ct_state, ct_state);
+    put_move(MFF_CT_TP_DST, 0,  MFF_LOG_CT_ORIG_TP_DST_PORT, 0, 16, &ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_CT_ORIG_TP_DST_LOAD, 100, 0, &match,
+                    &ofpacts, hc_uuid);
+
+    /* Add the flow:
+     * match = (ct.trk && ct.est && ip4), action = (reg4 = ct_nw_dst)
+     * table = 81
+     */
+    ofpbuf_clear(&ofpacts);
+    match_set_dl_type(&match, htons(ETH_TYPE_IP));
+    put_move(MFF_CT_NW_DST, 0,  MFF_LOG_CT_ORIG_NW_DST_ADDR, 0, 32, &ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_CT_ORIG_NW_DST_LOAD, 100, 0, &match,
+                    &ofpacts, hc_uuid);
+
+    /* Add the flow:
+     * match = (ct.trk && ct.est && ip6), action = (xxreg0 = ct_ip6_dst)
+     * table = 82
+     */
+    ofpbuf_clear(&ofpacts);
+    match_set_dl_type(&match, htons(ETH_TYPE_IPV6));
+    put_move(MFF_CT_IPV6_DST, 0,  MFF_LOG_CT_ORIG_IP6_DST_ADDR, 0,
+             128, &ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_CT_ORIG_IP6_DST_LOAD, 100, 0, &match,
+                    &ofpacts, hc_uuid);
+
     ofpbuf_uninit(&ofpacts);
 }

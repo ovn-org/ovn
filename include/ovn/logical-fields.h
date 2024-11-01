@@ -60,6 +60,10 @@ enum ovn_controller_event {
 #define MFF_LOG_LB_AFF_MATCH_LR_IP6_ADDR    MFF_XXREG1
 #define MFF_LOG_LB_AFF_MATCH_PORT           MFF_REG8
 
+#define MFF_LOG_CT_ORIG_NW_DST_ADDR         MFF_REG4
+#define MFF_LOG_CT_ORIG_IP6_DST_ADDR        MFF_XXREG0
+#define MFF_LOG_CT_ORIG_TP_DST_PORT         MFF_REG8
+
 void ovn_init_symtab(struct shash *symtab);
 
 /* MFF_LOG_FLAGS_REG bit assignments */
