@@ -4957,6 +4957,10 @@ run_buffered_binding(const struct sbrec_mac_binding_table *mac_binding_table,
 
     const struct sbrec_mac_binding *smb;
     SBREC_MAC_BINDING_TABLE_FOR_EACH_TRACKED (smb, mac_binding_table) {
+        if (sbrec_mac_binding_is_deleted(smb)) {
+            continue;
+        }
+
         const struct sbrec_port_binding *pb = lport_lookup_by_name(
             sbrec_port_binding_by_name, smb->logical_port);
 
