@@ -8981,7 +8981,7 @@ static void
 pinctrl_handle_put_fdb(const struct flow *md, const struct flow *headers)
                        OVS_REQUIRES(pinctrl_mutex)
 {
-    if (hmap_count(&put_mac_bindings) >= MAX_FDB_ENTRIES) {
+    if (hmap_count(&put_fdbs) >= MAX_FDB_ENTRIES) {
         COVERAGE_INC(pinctrl_drop_put_mac_binding);
         return;
     }
