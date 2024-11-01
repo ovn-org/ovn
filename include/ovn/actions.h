@@ -131,6 +131,9 @@ struct collector_set_ids;
     OVNACT(CHK_LB_AFF,        ovnact_result)          \
     OVNACT(SAMPLE,            ovnact_sample)          \
     OVNACT(MAC_CACHE_USE,     ovnact_null)            \
+    OVNACT(CT_ORIG_NW_DST,    ovnact_result)          \
+    OVNACT(CT_ORIG_IP6_DST,   ovnact_result)          \
+    OVNACT(CT_ORIG_TP_DST,    ovnact_result)          \
 
 /* enum ovnact_type, with a member OVNACT_<ENUM> for each action. */
 enum OVS_PACKED_ENUM ovnact_type {
@@ -416,10 +419,11 @@ struct ovnact_set_queue {
     uint16_t queue_id;
 };
 
-/* OVNACT_DNS_LOOKUP, OVNACT_CHK_LB_HAIRPIN, OVNACT_CHK_LB_HAIRPIN_REPLY. */
+/* OVNACT_DNS_LOOKUP, OVNACT_CHK_LB_HAIRPIN, OVNACT_CHK_LB_HAIRPIN_REPLY,
+ * OVNACT_CT_ORIG_NW_DST, CT_ORIG_IP6_DST, CT_ORIG_TP_DST */
 struct ovnact_result {
     struct ovnact ovnact;
-    struct expr_field dst;      /* 1-bit destination field. */
+    struct expr_field dst;      /* destination field. */
 };
 
 /* OVNACT_LOG. */
@@ -935,6 +939,12 @@ struct ovnact_encode_params {
                                     this determines which CT zone to use */
     uint32_t mac_cache_use_table; /* OpenFlow table for 'mac_cache_use'
                                    * to resubmit. */
+    uint32_t ct_nw_dst_load_table; /* OpenFlow table for 'ct_nw_dst'
+                                    *  to resubmit. */
+    uint32_t ct_ip6_dst_load_table; /* OpenFlow table for 'ct_ip6_dst'
+                                     *  to resubmit. */
+    uint32_t ct_tp_dst_load_table; /* OpenFlow table for 'ct_tp_dst'
+                                    *  to resubmit. */
 };
 
 void ovnacts_encode(const struct ovnact[], size_t ovnacts_len,

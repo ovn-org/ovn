@@ -2418,6 +2418,54 @@ sample(probability=10, obs_point=ct_label);
 mac_cache_use;
     encodes as resubmit(,OFTABLE_MAC_CACHE_USE)
 
+# ct_nw_dst()
+reg1 = ct_nw_dst();
+    encodes as set_field:0->reg4,resubmit(,OFTABLE_CT_ORIG_NW_DST_LOAD),move:NXM_NX_REG4[[]]->NXM_NX_XXREG0[[64..95]]
+
+xreg1[[3..34]] = ct_nw_dst();
+    encodes as set_field:0->reg4,resubmit(,OFTABLE_CT_ORIG_NW_DST_LOAD),move:NXM_NX_REG4[[]]->NXM_NX_XXREG0[[3..34]]
+
+reg1[[3..34]] = ct_nw_dst();
+    Cannot select bits 3 to 34 of 32-bit field reg1.
+
+reg1[[3..35]] = ct_nw_dst();
+    Cannot select bits 3 to 35 of 32-bit field reg1.
+
+reg1[[1]] = ct_nw_dst();
+    Cannot use 1-bit field reg1[[1..1]] where 32-bit field is required.
+
+ct_nw_dst;
+    Syntax error at `ct_nw_dst' expecting action.
+
+ct_nw_dst();
+    Syntax error at `ct_nw_dst' expecting action.
+
+# ct_ip6_dst()
+xxreg1 = ct_ip6_dst();
+    encodes as set_field:0/0xffffffffffffffff->xxreg0,set_field:0/0xffffffffffffffff0000000000000000->xxreg0,resubmit(,OFTABLE_CT_ORIG_IP6_DST_LOAD),move:NXM_NX_XXREG0[[]]->NXM_NX_XXREG1[[]]
+
+reg1 = ct_ip6_dst();
+    Cannot use 32-bit field reg1[[0..31]] where 128-bit field is required.
+
+ct_ip6_dst;
+    Syntax error at `ct_ip6_dst' expecting action.
+
+ct_ip6_dst();
+    Syntax error at `ct_ip6_dst' expecting action.
+
+# ct_tp_dst()
+reg1[[0..15]] = ct_tp_dst();
+    encodes as set_field:0/0xffff->reg8,resubmit(,OFTABLE_CT_ORIG_TP_DST_LOAD),move:NXM_NX_REG8[[0..15]]->NXM_NX_XXREG0[[64..79]]
+
+reg1 = ct_tp_dst();
+    Cannot use 32-bit field reg1[[0..31]] where 16-bit field is required.
+
+ct_tp_dst;
+    Syntax error at `ct_tp_dst' expecting action.
+
+ct_tp_dst();
+    Syntax error at `ct_tp_dst' expecting action.
+
 # Miscellaneous negative tests.
 ;
     Syntax error at `;'.
@@ -25632,7 +25680,7 @@ OVS_WAIT_FOR_OUTPUT(
    ovn-sbctl dump-flows sw0 | grep ct_lb_mark | grep priority=120 | sed 's/table=..//'], 0,
   [dnl
   (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark;)
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80; hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp.dst == 80), action=(reg1 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80; hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
 ])
 
 AT_CAPTURE_FILE([sbflows2])
@@ -25831,7 +25879,7 @@ OVS_WAIT_FOR_OUTPUT(
    ovn-sbctl dump-flows sw0 | grep ct_lb_mark | grep priority=120 | sed 's/table=..//'], 0,
   [dnl
   (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6.dst == 2001::a && tcp.dst == 80), action=(xxreg1 = 2001::a; reg2[[0..15]] = 80; ct_lb_mark;)
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip6.dst == 2001::a && tcp.dst == 80), action=(ct_lb_mark(backends=[[2001::3]]:80,[[2002::3]]:80; hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip6.dst == 2001::a && tcp.dst == 80), action=(xxreg1 = 2001::a; reg2[[0..15]] = 80; ct_lb_mark(backends=[[2001::3]]:80,[[2002::3]]:80; hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
 ])
 
 AT_CAPTURE_FILE([sbflows2])
@@ -35773,7 +35821,9 @@ check_default_flows() {
     for table in $(grep -oP "table=\K\d*, " oflows | tr -d ',' | sort -n | uniq); do
         # Tables 68 and 70 are part of the chk_lb_hairpin and ct_snat_to_vip actions
         # respectively and it's OK if they don't have a default action.
-        if test ${table} -eq 68 -o ${table} -eq 70; then
+        # Tables 81, 82 and 83 are part of ct_nw_dst(), ct_ip6_dst() and ct_tp_dst()
+        # actions respectively and its OK for them to not have default flows.
+        if test ${table} -eq 68 -o ${table} -eq 70 -o ${table} -eq 81 -o ${table} -eq 82 -o ${table} -eq 83; then
             continue;
         fi
         AT_CHECK([grep -qe "table=$table.* priority=0\(,metadata=0x\w*\)\? actions" oflows], [0], [ignore], [ignore], [echo "Table $table does not contain a default action"])

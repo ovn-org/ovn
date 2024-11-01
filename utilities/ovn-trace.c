@@ -3447,6 +3447,12 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
             break;
         case OVNACT_MAC_CACHE_USE:
             break;
+        case OVNACT_CT_ORIG_NW_DST:
+            break;
+        case OVNACT_CT_ORIG_IP6_DST:
+            break;
+        case OVNACT_CT_ORIG_TP_DST:
+            break;
         }
     }
     ofpbuf_uninit(&stack);

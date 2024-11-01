@@ -124,6 +124,7 @@ static bool vxlan_mode;
 #define REGBIT_ACL_STATELESS      "reg0[16]"
 #define REGBIT_ACL_HINT_ALLOW_REL "reg0[17]"
 #define REGBIT_FROM_ROUTER_PORT   "reg0[18]"
+#define REGBIT_IP_FRAG            "reg0[19]"
 
 #define REG_ORIG_DIP_IPV4         "reg1"
 #define REG_ORIG_DIP_IPV6         "xxreg1"
@@ -6398,6 +6399,13 @@ build_pre_stateful(struct ovn_datapath *od,
 
     /* Note: priority-120 flows are added in build_lb_rules_pre_stateful(). */
 
+    /* If the packet is fragmented, set the REGBIT_IP_FRAG reg bit to 1
+     * as ip.is_frag will not be preserved after conntrack recirculation. */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 115,
+                  REGBIT_CONNTRACK_NAT" == 1 && ip.is_frag",
+                  REGBIT_IP_FRAG" = 1; ct_lb_mark;",
+                  lflow_ref);
+
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 110,
                   REGBIT_CONNTRACK_NAT" == 1", "ct_lb_mark;",
                   lflow_ref);
@@ -8243,13 +8251,32 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
         struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[i];
         const char *ip_match = NULL;
-        if (lb_vip->address_family == AF_INET) {
-            ip_match = "ip4";
-        } else {
-            ip_match = "ip6";
-        }
 
         ds_clear(action);
+
+        /* Store the original destination IP to be used when generating
+         * hairpin flows.
+         * If the packet is fragmented, then the flow which saves the
+         * original destination IP (and port) in the "ls_in_pre_stateful"
+         * stage will not be hit.
+         */
+        if (lb_vip->address_family == AF_INET) {
+            ip_match = "ip4";
+            ds_put_format(action, REG_ORIG_DIP_IPV4 " = %s; ",
+                          lb_vip->vip_str);
+        } else {
+            ip_match = "ip6";
+            ds_put_format(action, REG_ORIG_DIP_IPV6 " = %s; ",
+                          lb_vip->vip_str);
+        }
+
+        if (lb_vip->port_str) {
+            /* Store the original destination port to be used when generating
+             * hairpin flows.
+             */
+            ds_put_format(action, REG_ORIG_TP_DPORT " = %s; ",
+                          lb_vip->port_str);
+        }
         ds_clear(match);
 
         /* New connections in Ingress table. */
@@ -8381,8 +8408,32 @@ build_lb_hairpin(const struct ls_stateful_record *ls_stateful_rec,
                   lflow_ref);
 
     if (ls_stateful_rec->has_lb_vip) {
-        /* Check if the packet needs to be hairpinned.
-         * Set REGBIT_HAIRPIN in the original direction and
+        /* Check if the packet needs to be hairpinned. */
+
+        /* In order to check if the fragmented packets needs to be
+         * hairpinned we need to save the ct tuple original IPv4/v6
+         * destination and L4 destination port in the registers after
+         * the conntrack recirculation.
+         *
+         * Note: We are assuming that sending the packets to conntrack
+         * will reassemble the packet and L4 fields will be available.
+         * It is a risky assumption as ovs-vswitchd doesn't guarantee it
+         * and userspace datapath doesn't reassemble the fragmented packets
+         * after conntrack.  It is the kernel datapath conntrack behavior.
+         * We need to find a better way to handle the fragmented packets.
+         * */
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_LB, 110,
+                      "ct.trk && !ct.rpl && "REGBIT_IP_FRAG" == 1 && ip4",
+                      REG_ORIG_DIP_IPV4 " = ct_nw_dst(); "
+                      REG_ORIG_TP_DPORT " = ct_tp_dst(); next;",
+                      lflow_ref);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_LB, 110,
+                      "ct.trk && !ct.rpl && "REGBIT_IP_FRAG" == 1 && ip6",
+                      REG_ORIG_DIP_IPV6 " = ct_ip6_dst(); "
+                      REG_ORIG_TP_DPORT " = ct_tp_dst(); next;",
+                      lflow_ref);
+
+        /* Set REGBIT_HAIRPIN in the original direction and
          * REGBIT_HAIRPIN_REPLY in the reply direction.
          */
         ovn_lflow_add_with_hint(

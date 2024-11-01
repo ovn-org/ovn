@@ -1027,3 +1027,148 @@ OVS_TRAFFIC_VSWITCHD_STOP(["
 "])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Load Balancer LS hairpin IPv4 UDP - larger than MTU])
+AT_SKIP_IF([test $HAVE_NC = no])
+AT_KEYWORDS([lb])
+
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+# Logical network:
+# One logical switch with IPv4 load balancers that hairpin the traffic.
+check ovn-nbctl ls-add sw
+check ovn-nbctl lsp-add sw lsp -- lsp-set-addresses lsp 00:00:00:00:00:01
+check ovn-nbctl lb-add lb-ipv4-udp     88.88.88.88:4040 42.42.42.1:2021 udp
+check ovn-nbctl ls-lb-add sw lb-ipv4-udp
+
+check ovn-nbctl lr-add rtr
+check ovn-nbctl lrp-add rtr rtr-sw 00:00:00:00:01:00 42.42.42.254/24
+check ovn-nbctl lsp-add sw sw-rtr                       \
+    -- lsp-set-type sw-rtr router                 \
+    -- lsp-set-addresses sw-rtr 00:00:00:00:01:00 \
+    -- lsp-set-options sw-rtr router-port=rtr-sw
+
+ADD_NAMESPACES(lsp)
+ADD_VETH(lsp, lsp, br-int, "42.42.42.1/24", "00:00:00:00:00:01", \
+         "42.42.42.254")
+
+check ovn-nbctl --wait=hv sync
+
+printf %8000s > datafile
+printf %32000s > frag_test_srv.expected
+printf %16000s > frag_test_client.expected
+
+NETNS_DAEMONIZE([lsp], [nc -e /bin/cat -u -v -l 42.42.42.1 2021 -o udp_frag_test_srv.rcvd], [lsp-nc.pid])
+
+# Send 2 client requests with the same port so that the 2nd one
+# is categorized as ct.est and not ct.new.
+NS_CHECK_EXEC([lsp], [(cat datafile; sleep 3) | nc -u 88.88.88.88 4040 -p 20000 -o udp_frag_test_c1.recvd], [0], [ignore], [ignore])
+NS_CHECK_EXEC([lsp], [(cat datafile; sleep 3) | nc -u 88.88.88.88 4040 -p 20000 -o udp_frag_test_c2.recvd], [0], [ignore], [ignore])
+
+check cmp frag_test_srv.expected udp_frag_test_srv.rcvd
+check cmp frag_test_client.expected udp_frag_test_c1.recvd
+check cmp frag_test_client.expected udp_frag_test_c2.recvd
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Load Balancer LS hairpin IPv6 UDP - larger than MTU])
+AT_SKIP_IF([test $HAVE_NC = no])
+AT_KEYWORDS([lb])
+
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+# Logical network:
+# One logical switch with IPv6 load balancers that hairpin the traffic.
+check ovn-nbctl ls-add sw
+check ovn-nbctl lsp-add sw lsp -- lsp-set-addresses lsp 00:00:00:00:00:01
+check ovn-nbctl lb-add lb-ipv6-udp     [[8800::0088]]:4040 [[4200::1]]:2021 udp
+check ovn-nbctl ls-lb-add sw lb-ipv6-udp
+
+check ovn-nbctl lr-add rtr
+check ovn-nbctl lrp-add rtr rtr-sw 00:00:00:00:01:00 4200::00ff/64
+check ovn-nbctl lsp-add sw sw-rtr                       \
+    -- lsp-set-type sw-rtr router                 \
+    -- lsp-set-addresses sw-rtr 00:00:00:00:01:00 \
+    -- lsp-set-options sw-rtr router-port=rtr-sw
+
+check ovn-nbctl --wait=hv sync
+
+ADD_NAMESPACES(lsp)
+ADD_VETH(lsp, lsp, br-int, "4200::1/64", "00:00:00:00:00:01", "4200::00ff", "nodad")
+
+printf %8000s > datafile
+printf %32000s > frag_test_srv.expected
+printf %16000s > frag_test_client.expected
+
+NETNS_DAEMONIZE([lsp], [nc -e /bin/cat -u -v -l 4200::1 2021 -o udp_frag_test_srv.rcvd], [lsp-nc.pid])
+
+# Send 2 client requests with the same port so that the 2nd one
+# is categorized as ct.est and not ct.new.
+NS_CHECK_EXEC([lsp], [(cat datafile; sleep 3) | nc -6 -u 8800::0088 4040 -p 20000 -o udp_frag_test_c1.recvd], [0], [ignore], [ignore])
+NS_CHECK_EXEC([lsp], [(cat datafile; sleep 3) | nc -6 -u 8800::0088 4040 -p 20000 -o udp_frag_test_c2.recvd], [0], [ignore], [ignore])
+
+check cmp frag_test_srv.expected udp_frag_test_srv.rcvd
+check cmp frag_test_client.expected udp_frag_test_c1.recvd
+check cmp frag_test_client.expected udp_frag_test_c2.recvd
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])

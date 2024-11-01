@@ -2766,6 +2766,33 @@ tcp.flags = RST;
           </p>
         </dd>
 
+        <dt><code><var>R</var> = ct_nw_dst();</code></dt>
+        <dd>
+          <p>
+            This action checks if the packet is tracked and stores the
+            conntrack original destination IPv4 address in the register
+            <var>R</var> of 32-bit size.
+          </p>
+        </dd>
+
+        <dt><code><var>R</var> = ct_ip6_dst();</code></dt>
+        <dd>
+          <p>
+            This action checks if the packet is tracked and stores the
+            conntrack original destination IPv6 address in the register
+            <var>R</var> of 128-bit size.
+          </p>
+        </dd>
+
+        <dt><code><var>R</var> = ct_tp_dst();</code></dt>
+        <dd>
+          <p>
+            This action checks if the packet is tracked and stores the
+            conntrack original L4 destination port in the register
+            <var>R</var> of 16-bit size.
+          </p>
+        </dd>
+
         <dt><code>sample(probability=<var>packets</var>, ...)</code></dt>
         <dd>
           <p>

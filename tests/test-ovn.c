@@ -1376,6 +1376,9 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
                 .in_port_sec_ptable = OFTABLE_CHK_IN_PORT_SEC,
                 .out_port_sec_ptable = OFTABLE_CHK_OUT_PORT_SEC,
                 .mac_cache_use_table = OFTABLE_MAC_CACHE_USE,
+                .ct_nw_dst_load_table = OFTABLE_CT_ORIG_NW_DST_LOAD,
+                .ct_ip6_dst_load_table = OFTABLE_CT_ORIG_IP6_DST_LOAD,
+                .ct_tp_dst_load_table = OFTABLE_CT_ORIG_TP_DST_LOAD,
                 .lflow_uuid.parts =
                     { 0xaaaaaaaa, 0xbbbbbbbb, 0xcccccccc, 0xdddddddd},
                 .dp_key = 0xabcdef,

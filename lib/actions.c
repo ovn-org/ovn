@@ -3280,9 +3280,10 @@ ovnact_set_queue_free(struct ovnact_set_queue *a OVS_UNUSED)
 }
 
 static void
-parse_ovnact_result(struct action_context *ctx, const char *name,
-                    const char *prereq, const struct expr_field *dst,
-                    struct ovnact_result *res)
+parse_ovnact_result__(struct action_context *ctx, const char *name,
+                      const char *prereq, const struct expr_field *dst,
+                      struct ovnact_result *res,
+                      int n_bits)
 {
     lexer_get(ctx->lexer); /* Skip action name. */
     lexer_get(ctx->lexer); /* Skip '('. */
@@ -3290,8 +3291,8 @@ parse_ovnact_result(struct action_context *ctx, const char *name,
         lexer_error(ctx->lexer, "%s doesn't take any parameters", name);
         return;
     }
-    /* Validate that the destination is a 1-bit, modifiable field. */
-    char *error = expr_type_check(dst, 1, true, ctx->scope);
+    /* Validate that the destination is n_bits, modifiable field. */
+    char *error = expr_type_check(dst, n_bits, true, ctx->scope);
     if (error) {
         lexer_error(ctx->lexer, "%s", error);
         free(error);
@@ -3302,6 +3303,14 @@ parse_ovnact_result(struct action_context *ctx, const char *name,
     if (prereq) {
         add_prerequisite(ctx, prereq);
     }
+}
+
+static void
+parse_ovnact_result(struct action_context *ctx, const char *name,
+                    const char *prereq, const struct expr_field *dst,
+                    struct ovnact_result *res)
+{
+    parse_ovnact_result__(ctx, name, prereq, dst, res, 1);
 }
 
 static void
@@ -4300,21 +4309,39 @@ format_CHK_LB_HAIRPIN_REPLY(const struct ovnact_result *res, struct ds *s)
 }
 
 static void
+encode_result_action___(const struct ovnact_result *res,
+                        uint8_t resubmit_table,
+                        enum mf_field_id dst,
+                        int ofs, int n_bits,
+                        struct ofpbuf *ofpacts)
+{
+    ovs_assert(n_bits <= 128);
+
+    struct mf_subfield res_dst = expr_resolve_field(&res->dst);
+    ovs_assert(res_dst.field);
+
+    put_load(0, dst, ofs, n_bits < 64 ? n_bits : 64, ofpacts);
+    if (n_bits > 64) {
+        put_load(0, dst, ofs + 64, n_bits - 64, ofpacts);
+    }
+
+    emit_resubmit(ofpacts, resubmit_table);
+
+    struct ofpact_reg_move *orm = ofpact_put_REG_MOVE(ofpacts);
+    orm->dst = res_dst;
+    orm->src.field = mf_from_id(dst);
+    orm->src.ofs = ofs;
+    orm->src.n_bits = n_bits;
+}
+
+static void
 encode_result_action__(const struct ovnact_result *res,
                        uint8_t resubmit_table,
                        int log_flags_result_bit,
                        struct ofpbuf *ofpacts)
 {
-    struct mf_subfield dst = expr_resolve_field(&res->dst);
-    ovs_assert(dst.field);
-    put_load(0, MFF_LOG_FLAGS, log_flags_result_bit, 1, ofpacts);
-    emit_resubmit(ofpacts, resubmit_table);
-
-    struct ofpact_reg_move *orm = ofpact_put_REG_MOVE(ofpacts);
-    orm->dst = dst;
-    orm->src.field = mf_from_id(MFF_LOG_FLAGS);
-    orm->src.ofs = log_flags_result_bit;
-    orm->src.n_bits = 1;
+    encode_result_action___(res, resubmit_table, MFF_LOG_FLAGS,
+                            log_flags_result_bit, 1, ofpacts);
 }
 
 static void
@@ -5435,6 +5462,75 @@ encode_MAC_CACHE_USE(const struct ovnact_null *null OVS_UNUSED,
     emit_resubmit(ofpacts, ep->mac_cache_use_table);
 }
 
+static void
+encode_CT_ORIG_NW_DST(const struct ovnact_result *res,
+                      const struct ovnact_encode_params *ep,
+                      struct ofpbuf *ofpacts)
+{
+    encode_result_action___(res, ep->ct_nw_dst_load_table,
+                            MFF_LOG_CT_ORIG_NW_DST_ADDR, 0, 32, ofpacts);
+}
+
+static void
+parse_CT_ORIG_NW_DST(struct action_context *ctx, const struct expr_field *dst,
+                     struct ovnact_result *res)
+{
+    parse_ovnact_result__(ctx, "ct_nw_dst", NULL, dst, res, 32);
+}
+
+static void
+format_CT_ORIG_NW_DST(const struct ovnact_result *res, struct ds *s)
+{
+    expr_field_format(&res->dst, s);
+    ds_put_cstr(s, " = ct_nw_dst();");
+}
+
+static void
+encode_CT_ORIG_IP6_DST(const struct ovnact_result *res,
+                       const struct ovnact_encode_params *ep,
+                       struct ofpbuf *ofpacts)
+{
+    encode_result_action___(res, ep->ct_ip6_dst_load_table,
+                            MFF_LOG_CT_ORIG_IP6_DST_ADDR, 0, 128, ofpacts);
+}
+
+static void
+parse_CT_ORIG_IP6_DST(struct action_context *ctx, const struct expr_field *dst,
+                     struct ovnact_result *res)
+{
+    parse_ovnact_result__(ctx, "ct_ip6_dst", NULL, dst, res, 128);
+}
+
+static void
+format_CT_ORIG_IP6_DST(const struct ovnact_result *res, struct ds *s)
+{
+    expr_field_format(&res->dst, s);
+    ds_put_cstr(s, " = ct_ip6_dst();");
+}
+
+static void
+encode_CT_ORIG_TP_DST(const struct ovnact_result *res,
+                      const struct ovnact_encode_params *ep OVS_UNUSED,
+                      struct ofpbuf *ofpacts)
+{
+    encode_result_action___(res, ep->ct_tp_dst_load_table,
+                            MFF_LOG_CT_ORIG_TP_DST_PORT, 0, 16, ofpacts);
+}
+
+static void
+parse_CT_ORIG_TP_DST(struct action_context *ctx, const struct expr_field *dst,
+                     struct ovnact_result *res)
+{
+    parse_ovnact_result__(ctx, "ct_tp_dst", NULL, dst, res, 16);
+}
+
+static void
+format_CT_ORIG_TP_DST(const struct ovnact_result *res, struct ds *s)
+{
+    expr_field_format(&res->dst, s);
+    ds_put_cstr(s, " = ct_tp_dst();");
+}
+
 /* Parses an assignment or exchange or put_dhcp_opts action. */
 static void
 parse_set_action(struct action_context *ctx)
@@ -5529,6 +5625,18 @@ parse_set_action(struct action_context *ctx)
         } else if (lexer_match_id(ctx->lexer, "dhcp_relay_resp_chk")) {
             parse_dhcp_relay_chk(
                 ctx, &lhs, ovnact_put_DHCPV4_RELAY_RESP_CHK(ctx->ovnacts));
+        } else if (!strcmp(ctx->lexer->token.s, "ct_nw_dst") &&
+                   lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
+            parse_CT_ORIG_NW_DST(ctx, &lhs,
+                                 ovnact_put_CT_ORIG_NW_DST(ctx->ovnacts));
+        } else if (!strcmp(ctx->lexer->token.s, "ct_ip6_dst") &&
+                   lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
+            parse_CT_ORIG_IP6_DST(ctx, &lhs,
+                                  ovnact_put_CT_ORIG_IP6_DST(ctx->ovnacts));
+        } else if (!strcmp(ctx->lexer->token.s, "ct_tp_dst") &&
+                   lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
+            parse_CT_ORIG_TP_DST(ctx, &lhs,
+                                 ovnact_put_CT_ORIG_TP_DST(ctx->ovnacts));
         } else {
             parse_assignment_action(ctx, false, &lhs);
         }
