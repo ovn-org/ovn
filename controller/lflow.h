@@ -94,6 +94,10 @@ struct uuid;
 #define OFTABLE_ECMP_NH                  77
 #define OFTABLE_CHK_LB_AFFINITY          78
 #define OFTABLE_MAC_CACHE_USE            79
+#define OFTABLE_CT_ORIG_NW_DST_LOAD      81
+#define OFTABLE_CT_ORIG_IP6_DST_LOAD     82
+#define OFTABLE_CT_ORIG_TP_DST_LOAD      83
+
 
 struct lflow_ctx_in {
     struct ovsdb_idl_index *sbrec_multicast_group_by_name_datapath;
