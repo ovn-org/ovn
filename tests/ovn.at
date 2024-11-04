@@ -38177,58 +38177,60 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([localnet port flows after deletion])
+AT_SETUP([Multiple localnet ports without vlans])
+AT_KEYWORDS([localnet])
+
 ovn_start
+
 net_add n1
+sim_add hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phys:br-phys
 
-check ovn-nbctl ls-add sw0
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-ls1 00:00:01:ff:02:03 192.168.1.254/24
 
-for i in 1 2; do
-    check ovn-nbctl lsp-add sw0 sw0-p${i} -- lsp-set-addresses sw0-p${i} "00:00:10:01:02:0${i} 10.0.0.${i}"
-    sim_add hv${i}
-    as hv${i}
-    ovs-vsctl add-br br-phys
-    ovn_attach n1 br-phys 192.168.0.${i}
-    ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
-    ovs-vsctl add-port br-int vif${i} -- \
-        set Interface vif${i} external-ids:iface-id=sw0-p${i} \
-                              options:tx_pcap=hv${i}/vif${i}-tx.pcap \
-                              options:rxq_pcap=hv${i}/vif${i}-rx.pcap
-done
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 ls1-lr1
+check ovn-nbctl lsp-set-type ls1-lr1 router
+check ovn-nbctl lsp-set-options ls1-lr1 router-port=lr1-ls1
+check ovn-nbctl lsp-set-addresses ls1-lr1 router
 
-check ovn-nbctl lr-add lr0
-check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.254/24
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 router
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl ls-add pub
+check ovn-nbctl lsp-add pub pub-lr1
+check ovn-nbctl lsp-set-type pub-lr1 router
+check ovn-nbctl lsp-set-options pub-lr1 router-port=lr1-pub
+check ovn-nbctl lsp-set-addresses pub-lr1 router
+
+check ovn-nbctl lrp-add lr1 lr1-pub 00:00:01:ff:01:03 172.16.1.254/24
+check ovn-nbctl lrp-set-gateway-chassis lr1-pub hv1
 
 check ovn-nbctl --wait=hv sync
 wait_for_ports_up
 
-# We should not have any flows in table OFTABLE_PHY_TO_LOG from in_port different from vif1 and ovn-hv2-0
-OVN_WAIT_REMOTE_INPUT_FLOWS(["hv1"],["hv2"])
-of1=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=vif1)
-of2=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=ovn-hv2-0)
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -v NXST_FLOW | grep "in_port=" | grep -v "in_port=$of1" | grep -v "in_port=$of2" | wc -l], [0], [dnl
-0
+check ovn-nbctl -- lsp-add pub pub-ln -- lsp-set-type pub-ln localnet -- lsp-set-addresses pub-ln unknown -- lsp-set-options pub-ln network_name=phys
+check ovn-nbctl -- lsp-add ls1 ls1-ln -- lsp-set-type ls1-ln localnet -- lsp-set-addresses ls1-ln unknown -- lsp-set-options ls1-ln network_name=phys
+
+# Wait for ofports.
+OVS_WAIT_UNTIL([
+    pub_ln_ofport=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=patch-br-int-to-pub-ln)
+    test -n "$pub_ln_ofport" && test 1 -le $pub_ln_ofport
 ])
 
-# Add localnet port to sw0
-check ovn-nbctl lsp-add sw0 ln-sw0 -- lsp-set-addresses ln-sw0 unknown -- lsp-set-type ln-sw0 localnet
-check ovn-nbctl --wait=hv lsp-set-options ln-sw0 network_name=physnet1 -- set logical_switch_port ln-sw0 tag_request=100
-
-OVN_WAIT_PATCH_PORT_FLOWS(["ln-sw0"], ["hv1"])
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -v NXST_FLOW | grep "in_port=" | grep -v "in_port=$of1" | grep -v "in_port=$of2" | wc -l], [0], [dnl
-2
+OVS_WAIT_UNTIL([
+    ls1_ln_ofport=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=patch-br-int-to-ls1-ln)
+    test -n "$ls1_ln_ofport" && test 1 -le $ls1_ln_ofport
 ])
 
-# Remove localnet port from sw0. Peer-ports flows should be deleted.
-check ovn-nbctl --wait=hv lsp-del ln-sw0
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=0 | grep -v NXST_FLOW | grep "in_port=" | grep -v "in_port=$of1" | grep -v "in_port=$of2" | wc -l], [0], [dnl
-0
-])
+pub_lr1_cookie=$(ovn-sbctl --bare --columns _uuid list port_binding lr1-pub | awk -F '-' '{print $1}')
+ls1_lr1_cookie=$(ovn-sbctl --bare --columns _uuid list port_binding lr1-ls1 | awk -F '-' '{print $1}')
 
-OVN_CLEANUP([hv1],[hv2])
+# Expect to receive one flow matching on conjunction id (replacing source mac with router port mac)
+OVS_WAIT_UNTIL([test "X1" = "X$(ovs-ofctl dump-flows br-int cookie=0x${ls1_lr1_cookie}/-1 | grep "conj_id=100" | grep in_port=$ls1_ln_ofport | wc -l)"])
+OVS_WAIT_UNTIL([test "X1" = "X$(ovs-ofctl dump-flows br-int cookie=0x${pub_lr1_cookie}/-1 | grep "conj_id=100" | grep in_port=$pub_ln_ofport | wc -l)"])
+
+OVN_CLEANUP([hv1])
+
 AT_CLEANUP
 ])
