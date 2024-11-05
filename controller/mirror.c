@@ -352,7 +352,8 @@ sync_ovn_mirror(struct ovn_mirror *m, struct ovsdb_idl_txn *ovs_idl_txn,
         return;
     }
 
-    if (m->sb_mirror && !m->ovs_mirror) {
+    ovs_assert(m->sb_mirror);
+    if (!m->ovs_mirror) {
         create_ovs_mirror(m, ovs_idl_txn, br_int, ovs_mirror_ports);
         if (!m->ovs_mirror) {
             return;
@@ -390,7 +391,7 @@ should_delete_ovs_mirror(struct ovn_mirror *m)
         return false;
     }
 
-    if (m->ovs_mirror && !m->sb_mirror) {
+    if (!m->sb_mirror) {
         return true;
     }
 
