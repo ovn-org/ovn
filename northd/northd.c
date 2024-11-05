@@ -2400,7 +2400,7 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
             /* If the router is multicast enabled then set relay on the switch
              * datapath.
              */
-            if (peer->od && peer->od->mcast_info.rtr.relay) {
+            if (peer->od->mcast_info.rtr.relay) {
                 op->od->mcast_info.sw.flood_relay = true;
             }
 
@@ -3529,7 +3529,7 @@ ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
             }
 
             const char *chassis_name = NULL;
-            if (op->sb && op->sb->chassis) {
+            if (op->sb->chassis) {
                 chassis_name = op->sb->chassis->name;
             }
 
@@ -9969,8 +9969,7 @@ build_lswitch_dhcp_options_and_response(struct ovn_port *op,
         return;
     }
 
-    if (op->od && op->od->nbs
-        && ls_dhcp_relay_port(op->od)) {
+    if (ls_dhcp_relay_port(op->od)) {
         /* Don't add the DHCP server flows if DHCP Relay is enabled on the
          * logical switch. */
         return;
