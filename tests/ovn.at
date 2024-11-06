@@ -8950,7 +8950,7 @@ mac_prefix=$(ovn-nbctl --wait=sb get NB_Global . options:mac_prefix | tr -d \")
 port_addr=$(ovn-nbctl get Logical-Switch-Port p141 dynamic_addresses | tr -d \")
 AT_CHECK([test "$mac_prefix" != "00:00:00:00:00:00"], [0], [])
 AT_CHECK([test "$port_addr" = "${mac_prefix}:00:00:0a"], [0], [])
-ovn-nbctl --wait=sb lsp-del sw14 p141
+check ovn-nbctl --wait=sb lsp-del p141
 ovn-nbctl --wait=sb ls-del sw14
 
 ovn-nbctl --wait=hv set NB_Global . options:mac_prefix="00:11:22"
@@ -14553,7 +14553,7 @@ ovn-nbctl lsp-set-addresses sw1_ip6-port1 \
 "50:64:00:00:01:02 aef1::5264:00ff:fe00:0002"
 
 ovn-nbctl lr-add lr1_ip6
-ovn-nbctl lrp-add lr1_ip6 00:00:00:01:af:01 aef1:0:0:0:0:0:0:0/64
+check ovn-nbctl lrp-add lr1_ip6 lrp1_ip6 00:00:00:01:af:01 aef1:0:0:0:0:0:0:0/64
 ovn-nbctl lsp-add sw1_ip6 lrp1_ip6-attachment
 ovn-nbctl lsp-set-type lrp1_ip6-attachment router
 ovn-nbctl lsp-set-addresses lrp1_ip6-attachment router
@@ -22603,7 +22603,7 @@ packet0="inport==\"sw0-p11\" && eth.src==00:00:00:00:00:11 && eth.dst==00:00:00:
          ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==192.168.1.100 &&
          tcp && tcp.src==10000 && tcp.dst==80"
 OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet0"])
-ovn-nbctl --wait=hv
+check ovn-nbctl --wait=hv sync
 
 ovn-sbctl list controller_event > events
 AT_CAPTURE_FILE([events])
@@ -22632,7 +22632,7 @@ packet1="inport==\"sw1-p0\" && eth.src==00:00:00:00:00:33 && eth.dst==00:00:00:0
          tcp && tcp.src==10000 && tcp.dst==80"
 
 OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet1"])
-ovn-nbctl --wait=hv
+check ovn-nbctl --wait=hv sync
 ovn-sbctl list controller_event
 uuid=$(ovn-sbctl list controller_event | awk '/_uuid/{print $3}')
 AT_CHECK([ovn-sbctl get controller_event $uuid event_type], [0], [dnl
@@ -22648,7 +22648,7 @@ packet2="inport==\"sw0-p11\" && eth.src==00:00:00:00:00:11 && eth.dst==00:00:00:
          tcp && tcp.src==10000 && tcp.dst==50051"
 
 OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet2"])
-ovn-nbctl --wait=hv
+check ovn-nbctl --wait=hv sync
 ovn-sbctl list controller_event
 uuid=$(ovn-sbctl list controller_event | awk '/_uuid/{print $3}')
 
