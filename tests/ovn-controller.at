@@ -424,7 +424,7 @@ OVS_WAIT_UNTIL([test xhv = x`ovn-sbctl --columns name --bare find chassis`])
 
 # Bump the NB_Global nb_cfg value
 nb_global_id=$(ovn-nbctl --columns _uuid --bare find nb_global)
-ovn-nbctl set NB_Global ${nb_global_id} nb_cfg=999
+check ovn-nbctl set NB_Global ${nb_global_id} nb_cfg=999
 
 # ovn-controller should bump the nb_cfg in the chassis_private table
 OVS_WAIT_UNTIL([test x999 = x`ovn-sbctl --columns nb_cfg --bare find chassis_private`])
@@ -2577,7 +2577,7 @@ OVS_WAIT_UNTIL([check_ovsdb_zone lr0_snat $snat_zone])
 
 snat_req_zone=$port1_zone
 check ovn-nbctl set Logical_Router lr0 options:snat-ct-zone=$snat_req_zone
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 ct_zones=$(ovn-appctl -t ovn-controller ct-zone-list)
 echo "$ct_zones"
@@ -2708,7 +2708,7 @@ as hv1
 ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
 
-ovn-nbctl --wait=sb sync
+check ovn-nbctl --wait=sb sync
 wait_row_count Chassis 1 name=hv1
 
 chassis_id=$(fetch_column Chassis _uuid name=hv1)
@@ -2743,13 +2743,13 @@ ovs-vsctl -- add-port br-int hv1-vif1 -- \
     ofport-request=1
 
 
-ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add sw0
 
 check ovn-nbctl lsp-add sw0 sw0-p1
 check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3 1000::3"
 
 wait_for_ports_up
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep -c in_port=1], [0],[dnl
 1
@@ -2799,7 +2799,7 @@ done
 RUN_OVN_NBCTL
 
 wait_for_ports_up
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT | grep reg15=0x8000,metadata=0x1 | grep -c "controller(userdata=00.00.00.1b"], [0],[dnl
 3
@@ -2809,7 +2809,7 @@ for i in $(seq 1 280); do
     OVN_NBCTL(lsp-del sw0-p$i)
 done
 RUN_OVN_NBCTL
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT | grep -q controller], [1])
 
@@ -3010,7 +3010,7 @@ OVS_WAIT_UNTIL([grep -q 'OVNSB commit failed' hv1/ovn-controller.log])
 sleep_controller hv1
 wake_up_sb
 
-ovn-nbctl lb-del lb
+check ovn-nbctl lb-del lb
 
 wake_up_controller hv1
 check ovn-nbctl --wait=hv sync
