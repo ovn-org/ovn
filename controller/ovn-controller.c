@@ -5401,6 +5401,8 @@ main(int argc, char *argv[])
             ovsrec_open_vswitch_table_get(ovs_idl_loop.idl);
         const struct ovsrec_bridge *br_int = NULL;
         const struct ovsrec_datapath *br_int_dp = NULL;
+        const struct ovsrec_open_vswitch *cfg =
+            ovsrec_open_vswitch_table_first(ovs_table);
         process_br_int(ovs_idl_txn, bridge_table, ovs_table, &br_int,
                        ovsrec_server_has_datapath_table(ovs_idl_loop.idl)
                        ? &br_int_dp
@@ -5412,9 +5414,7 @@ main(int argc, char *argv[])
                               br_int_remote.probe_interval);
 
         /* Enable ACL matching for double tagged traffic. */
-        if (ovs_idl_txn) {
-            const struct ovsrec_open_vswitch *cfg =
-                ovsrec_open_vswitch_table_first(ovs_table);
+        if (ovs_idl_txn && cfg) {
             int vlan_limit = smap_get_int(
                 &cfg->other_config, "vlan-limit", -1);
             if (vlan_limit != 0) {
@@ -5430,7 +5430,7 @@ main(int argc, char *argv[])
         }
 
         if (ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl) &&
-            northd_version_match) {
+            northd_version_match && cfg) {
 
             /* Unconditionally remove all deleted lflows from the lflow
              * cache.

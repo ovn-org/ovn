@@ -3419,3 +3419,28 @@ AT_CHECK([test $(grep -c "HANDLER_MESSAGE" hv1/ovn-controller.log) -ge 1])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+AT_SETUP([ovn-controller - Start controller with empty db])
+AT_KEYWORDS([ovn])
+
+check ovsdb-tool create conf.db $ovs_srcdir/vswitchd/vswitch.ovsschema
+start_daemon ovsdb-server --remote=punix:db.sock
+start_daemon ovn-controller unix:db.sock
+
+AT_CHECK([ovsdb-client --bare dump unix:db.sock Open_vSwitch Open_vSwitch], [], [dnl
+Open_vSwitch table
+])
+check ovs-vsctl --no-wait init
+OVS_WAIT_FOR_OUTPUT([ovs-vsctl show | tail -n +2], [], [dnl
+    Bridge br-int
+        fail_mode: secure
+        datapath_type: system
+        Port br-int
+            Interface br-int
+                type: internal
+])
+
+# Gracefully terminate daemons.
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+AT_CLEANUP
