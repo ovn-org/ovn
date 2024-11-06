@@ -17,7 +17,7 @@ m4_define([CACHE_NBDB],[
 m4_define([MEASURE_RECOMPUTE],[
     PERF_RECORD_START(Measure northd recompute)
     ovn-appctl -t northd/ovn-northd inc-engine/recompute
-    ovn-nbctl --wait=sb sync
+    check ovn-nbctl --wait=sb sync
     PERF_RECORD_STOP()
 ])
 
@@ -42,7 +42,7 @@ m4_define([BUILD_NBDB],[
         ovn-appctl -t ovn-nb/ovsdb-server ovsdb-server/remove-db OVN_Northbound
         ovn-appctl -t ovn-nb/ovsdb-server ovsdb-server/add-db ${at_suite_dir}/cached/${at_group}/ovn-nb.db
     fi
-    ovn-nbctl --wait=sb sync
+    check ovn-nbctl --wait=sb sync
     PERF_RECORD_STOP()
 
     MEASURE_RECOMPUTE()
