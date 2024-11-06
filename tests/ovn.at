@@ -3023,7 +3023,7 @@ ovn_start
 # Make ls1 a destination for unknown MACs.
 # Add some ACLs for Ethertypes 1234, 1235, 1236.
 check ovn-nbctl ls-add lsw0
-ovn-sbctl chassis-add hv0 geneve 127.0.0.1
+check ovn-sbctl chassis-add hv0 geneve 127.0.0.1
 for i in 1 2 3; do
     ovn-nbctl lsp-add lsw0 lp$i
 done
@@ -14410,7 +14410,7 @@ check ovn-nbctl --wait=hv sync
 # Chassis entry is not replaced.
 
 gw2_chassis=$(ovn-sbctl --bare --columns=_uuid find Chassis name=gw2)
-ovn-sbctl destroy Chassis $gw2_chassis
+check ovn-sbctl destroy Chassis $gw2_chassis
 
 # Wait for the gw2_chassis row is recreated.
 wait_row_count Chassis 1 name=gw2
@@ -22282,7 +22282,7 @@ check_virtual_offlows_not_present hv2
 # Forcibly clear virtual_parent. ovn-controller should release the binding
 # gracefully.
 pb_uuid=$(ovn-sbctl --bare --columns _uuid find port_binding logical_port=sw0-vir)
-ovn-sbctl clear port_binding $pb_uuid virtual_parent
+check ovn-sbctl clear port_binding $pb_uuid virtual_parent
 
 OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
 logical_port=sw0-vir) = x])
@@ -22713,7 +22713,7 @@ AT_CHECK([ovn-sbctl get controller_event $uuid seq_num], [0], [dnl
 1
 ])
 
-ovn-sbctl destroy controller_event $uuid
+check ovn-sbctl destroy controller_event $uuid
 packet1="inport==\"sw1-p0\" && eth.src==00:00:00:00:00:33 && eth.dst==00:00:00:00:ff:02 &&
          ip4 && ip.ttl==64 && ip4.src==192.168.2.11 && ip4.dst==192.168.2.100 &&
          tcp && tcp.src==10000 && tcp.dst==80"
@@ -22728,7 +22728,7 @@ empty_lb_backends
 AT_CHECK([ovn-sbctl get controller_event $uuid event_info:vip], [0], [dnl
 "192.168.2.100:80"
 ])
-ovn-sbctl destroy controller_event $uuid
+check ovn-sbctl destroy controller_event $uuid
 
 packet2="inport==\"sw0-p11\" && eth.src==00:00:00:00:00:11 && eth.dst==00:00:00:00:00:21 &&
          ip6 && ip.ttl==64 && ip6.src==2001::11 && ip6.dst==2001::10 &&
@@ -23234,9 +23234,9 @@ OVS_WAIT_UNTIL(
   [$at_diff -F'^---' exp rcv])
 
 # Flush IGMP groups.
-ovn-sbctl ip-multicast-flush sw1
-ovn-sbctl ip-multicast-flush sw2
-ovn-sbctl ip-multicast-flush sw3
+check ovn-sbctl ip-multicast-flush sw1
+check ovn-sbctl ip-multicast-flush sw2
+check ovn-sbctl ip-multicast-flush sw3
 wait_row_count IGMP_Group 0 address=239.0.1.68
 check ovn-nbctl --wait=hv sync
 
