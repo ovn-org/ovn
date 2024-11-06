@@ -521,7 +521,7 @@ OVN_CONTROLLER_EXPECT_HIT(
 # Make hv4 active. There is remote possibility that full recompute
 # triggers for hv1-hv5 after hv4 becomes active because of updates to the
 # ovn-hv$i-0 interfaces. Most of the time there will be no recompute.
-ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public hv4 40
+check ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public hv4 40
 hv4_ch=$(ovn-sbctl --bare --columns _uuid list chassis hv4)
 OVS_WAIT_UNTIL([ovn-sbctl find port_binding logical_port=cr-lr1-public chassis=$hv4_ch])
 
@@ -547,7 +547,7 @@ OVN_CONTROLLER_EXPECT_HIT_COND(
 # Wait for port_binding change related flows
 hv5_ch=$(ovn-sbctl --bare --columns _uuid list chassis hv5)
 OVS_WAIT_UNTIL([ovn-sbctl find port_binding logical_port=cr-lr1-public chassis=$hv5_ch])
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 # Delete hv5 from gateway chassis. There should be no lflow_run.
 OVN_CONTROLLER_EXPECT_NO_HIT(
     [hv1 hv2 hv3 hv4 hv5], [lflow_run],
@@ -560,7 +560,7 @@ OVN_CONTROLLER_EXPECT_NO_HIT(
     [ovn-nbctl --wait=hv set Logical_Switch_Port ln-public options:qos_burst=1000]
 )
 
-ovn-nbctl --wait=hv meter-add meter0 drop 100 pktps 10
+check ovn-nbctl --wait=hv meter-add meter0 drop 100 pktps 10
 
 OVN_CONTROLLER_EXPECT_NO_HIT(
     [hv1 hv2 hv3 hv4], [lflow_run],
