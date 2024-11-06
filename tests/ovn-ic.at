@@ -15,7 +15,7 @@ availability-zone az2
 ])
 
 ovn_as az1
-ovn-nbctl set NB_Global . name=az3
+check ovn-nbctl set NB_Global . name=az3
 OVS_WAIT_UNTIL([ovn-ic-sbctl show | grep -q az3])
 AT_CHECK([ovn-ic-sbctl show], [0], [dnl
 availability-zone az2
@@ -23,7 +23,7 @@ availability-zone az3
 ])
 
 ovn_as az2
-ovn-nbctl set NB_Global . name=\"\"
+check ovn-nbctl set NB_Global . name=\"\"
 OVS_WAIT_WHILE([ovn-ic-sbctl show | grep -q az2])
 AT_CHECK([ovn-ic-sbctl show], [0], [dnl
 availability-zone az3
@@ -77,7 +77,7 @@ check_row_count ic-sb:Datapath_Binding 1 transit_switch=ts2
 check_column "ts1 ts2" ic-sb:Datapath_Binding transit_switch
 check_column "ts1 ts2" nb:Logical_Switch name
 
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 # Check SB DP key
 ts1_key=$(fetch_column ic-sb:Datapath_Binding tunnel_key transit_switch=ts1)
@@ -357,12 +357,12 @@ ovs-vsctl set open . external-ids:ovn-is-interconn=true
 
 ovn_as az1
 # Create LRP and connect to TS
-ovn-nbctl lr-add lr1
-ovn-nbctl lrp-add lr1 lrp-lr1-ts1 aa:aa:aa:aa:aa:01 169.254.100.1/24
-ovn-nbctl lsp-add ts1 lsp-ts1-lr1
-ovn-nbctl lsp-set-addresses lsp-ts1-lr1 router
-ovn-nbctl lsp-set-type lsp-ts1-lr1 router
-ovn-nbctl --wait=hv lsp-set-options lsp-ts1-lr1 router-port=lrp-lr1-ts1
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp-lr1-ts1 aa:aa:aa:aa:aa:01 169.254.100.1/24
+check ovn-nbctl lsp-add ts1 lsp-ts1-lr1
+check ovn-nbctl lsp-set-addresses lsp-ts1-lr1 router
+check ovn-nbctl lsp-set-type lsp-ts1-lr1 router
+check ovn-nbctl --wait=hv lsp-set-options lsp-ts1-lr1 router-port=lrp-lr1-ts1
 OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl show | grep lsp-ts1-lr1])
 ovn_as az2 ovn-nbctl lsp-set-options lsp-ts1-lr1 requested-chassis=gw1
 
@@ -377,20 +377,20 @@ OVS_WAIT_FOR_OUTPUT([ovn_as az2 ovn-sbctl -f csv -d bare --no-headings --columns
 lsp-ts1-lr1,remote
 ])
 
-ovn-nbctl lrp-set-gateway-chassis lrp-lr1-ts1 gw1
+check ovn-nbctl lrp-set-gateway-chassis lrp-lr1-ts1 gw1
 OVS_WAIT_UNTIL([ovn_as az2 ovn-sbctl show | grep lsp-ts1-lr1])
 
 ovn_as az2 ovn-nbctl lsp-set-options lsp-ts1-lr1 requested-chassis=""
-ovn-nbctl lrp-del-gateway-chassis lrp-lr1-ts1 gw1
+check ovn-nbctl lrp-del-gateway-chassis lrp-lr1-ts1 gw1
 OVS_WAIT_WHILE([ovn_as az2 ovn-sbctl show | grep lsp-ts1-lr1])
 
-ovn-nbctl set logical_router_port lrp-lr1-ts1 mac="\"aa:aa:aa:aa:aa:02\"" \
+check ovn-nbctl set logical_router_port lrp-lr1-ts1 mac="\"aa:aa:aa:aa:aa:02\"" \
               networks="169.254.100.2/24 169.254.200.3/24"
 OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl show | grep "aa:aa:aa:aa:aa:02 169.254.100.2/24 169.254.200.3/24"])
 
 # Delete the router port from az1, the remote port in az2 should still remain
 # but just lost address.
-ovn-nbctl lrp-del lrp-lr1-ts1
+check ovn-nbctl lrp-del lrp-lr1-ts1
 OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl show | grep "aa:aa:aa:aa:aa:02 169.254.100.2/24 169.254.200.3/24"])
 AT_CHECK([ovn_as az2 ovn-nbctl show | uuidfilt], [0], [dnl
 switch <0> (ts1)
@@ -399,7 +399,7 @@ switch <0> (ts1)
 ])
 
 # Delete the lsp from az1, the remote port in az2 should be gone
-ovn-nbctl lsp-del lsp-ts1-lr1
+check ovn-nbctl lsp-del lsp-ts1-lr1
 OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl show | grep lsp-ts1-lr1])
 
 OVN_CLEANUP_SBOX(gw1)
@@ -1234,13 +1234,13 @@ ovn_as az1
 check ovn-ic-nbctl --wait=sb sync
 
 lr=lr11
-ovn-nbctl lr-add $lr
+check ovn-nbctl lr-add $lr
 
 lrp=lrp-$lr-ts1
 lsp=lsp-ts1-$lr
 # Create LRP and connect to TS
-ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a1:01 169.254.10.11/24
-ovn-nbctl lsp-add ts1 $lsp \
+check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a1:01 169.254.10.11/24
+check ovn-nbctl lsp-add ts1 $lsp \
         -- lsp-set-addresses $lsp router \
         -- lsp-set-type $lsp router \
         -- lsp-set-options $lsp router-port=$lrp
@@ -2458,29 +2458,29 @@ ovn-ic-nbctl --wait=sb --may-exist ts-add tspeer
 
 # Create LRPs and connect to the peering TS
 ovn_as az1
-ovn-nbctl lrp-add lr11 lrp-lr11-tspeer aa:aa:aa:aa:11:01 169.254.103.11/24
-ovn-nbctl lsp-add tspeer lsp-tspeer-lr11 \
+check ovn-nbctl lrp-add lr11 lrp-lr11-tspeer aa:aa:aa:aa:11:01 169.254.103.11/24
+check ovn-nbctl lsp-add tspeer lsp-tspeer-lr11 \
         -- lsp-set-addresses lsp-tspeer-lr11 router \
         -- lsp-set-type lsp-tspeer-lr11 router \
         -- lsp-set-options lsp-tspeer-lr11 router-port=lrp-lr11-tspeer
 
 ovn_as az2
-ovn-nbctl lrp-add lr12 lrp-lr12-tspeer aa:aa:aa:aa:12:01 169.254.103.12/24
-ovn-nbctl lsp-add tspeer lsp-tspeer-lr12 \
+check ovn-nbctl lrp-add lr12 lrp-lr12-tspeer aa:aa:aa:aa:12:01 169.254.103.12/24
+check ovn-nbctl lsp-add tspeer lsp-tspeer-lr12 \
         -- lsp-set-addresses lsp-tspeer-lr12 router \
         -- lsp-set-type lsp-tspeer-lr12 router \
         -- lsp-set-options lsp-tspeer-lr12 router-port=lrp-lr12-tspeer
 
 ovn_as az1
-ovn-nbctl lrp-add lr21 lrp-lr21-tspeer aa:aa:aa:aa:21:01 169.254.103.21/24
-ovn-nbctl lsp-add tspeer lsp-tspeer-lr21 \
+check ovn-nbctl lrp-add lr21 lrp-lr21-tspeer aa:aa:aa:aa:21:01 169.254.103.21/24
+check ovn-nbctl lsp-add tspeer lsp-tspeer-lr21 \
         -- lsp-set-addresses lsp-tspeer-lr21 router \
         -- lsp-set-type lsp-tspeer-lr21 router \
         -- lsp-set-options lsp-tspeer-lr21 router-port=lrp-lr21-tspeer
 
 ovn_as az2
-ovn-nbctl lrp-add lr22 lrp-lr22-tspeer aa:aa:aa:aa:22:01 169.254.103.22/24
-ovn-nbctl lsp-add tspeer lsp-tspeer-lr22 \
+check ovn-nbctl lrp-add lr22 lrp-lr22-tspeer aa:aa:aa:aa:22:01 169.254.103.22/24
+check ovn-nbctl lsp-add tspeer lsp-tspeer-lr22 \
         -- lsp-set-addresses lsp-tspeer-lr22 router \
         -- lsp-set-type lsp-tspeer-lr22 router \
         -- lsp-set-options lsp-tspeer-lr22 router-port=lrp-lr22-tspeer
