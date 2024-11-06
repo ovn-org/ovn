@@ -34,59 +34,59 @@ start_daemon ovn-controller
 ovn-nbctl create Logical_Router name=R1
 ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add join
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add join
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect bar to R1
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
 
 # Connect alice to R2
-ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice addresses=\"00:00:02:01:02:03\"
 
 # Connect R1 to join
-ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24
-ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
+check ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24
+check ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
     type=router options:router-port=R1_join addresses='"00:00:04:01:02:03"'
 
 # Connect R2 to join
-ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24
-ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
+check ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24
+check ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
     type=router options:router-port=R2_join addresses='"00:00:04:01:02:04"'
 
 # Static routes.
-ovn-nbctl lr-route-add R1 172.16.1.0/24 20.0.0.2
-ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
+check ovn-nbctl lr-route-add R1 172.16.1.0/24 20.0.0.2
+check ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
 
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
          "192.168.1.1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "172.16.1.2/24", "f0:00:00:01:02:04", \
          "172.16.1.1")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 172.16.1.2"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:05", \
 "192.168.2.1")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 192.168.2.2"
 
 # Add a DNAT rule.
@@ -98,7 +98,7 @@ ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.2.2 \
     external_ip=30.0.0.1 -- add logical_router R2 nat @nat
 
 # wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=30.0.0.1)'])
 
 # 'alice1' should be able to ping 'foo1' directly.
@@ -134,10 +134,10 @@ icmp,orig=(src=192.168.2.2,dst=172.16.1.2,id=<cleared>,type=8,code=0),reply=(src
 ])
 
 # Add static routes to handle east-west NAT.
-ovn-nbctl lr-route-add R1 30.0.0.0/24 20.0.0.2
+check ovn-nbctl lr-route-add R1 30.0.0.0/24 20.0.0.2
 
 # wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 # Flush conntrack entries for easier output parsing of next test.
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
@@ -213,60 +213,60 @@ start_daemon ovn-controller
 ovn-nbctl create Logical_Router name=R1
 ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add join
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add join
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd11::1/64
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd11::1/64
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect bar to R1
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd12::1/64
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd12::1/64
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
 
 # Connect alice to R2
-ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 fd21::1/64
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 fd21::1/64
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice addresses=\"00:00:02:01:02:03\"
 
 # Connect R1 to join
-ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 fd00::1/64
-ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
+check ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 fd00::1/64
+check ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
     type=router options:router-port=R1_join addresses='"00:00:04:01:02:03"'
 
 # Connect R2 to join
-ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 fd00::2/64
-ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
+check ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 fd00::2/64
+check ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
     type=router options:router-port=R2_join addresses='"00:00:04:01:02:04"'
 
 # Static routes.
-ovn-nbctl lr-route-add R1 fd21::/64 fd00::2
-ovn-nbctl lr-route-add R2 fd11::/64 fd00::1
-ovn-nbctl lr-route-add R2 fd12::/64 fd00::1
+check ovn-nbctl lr-route-add R1 fd21::/64 fd00::2
+check ovn-nbctl lr-route-add R2 fd11::/64 fd00::1
+check ovn-nbctl lr-route-add R2 fd12::/64 fd00::1
 
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "fd11::2/64", "f0:00:00:01:02:03", \
          "fd11::1", "nodad")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 fd11::2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "fd21::2/64", "f0:00:00:01:02:04", \
          "fd21::1", "nodad")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 fd21::2"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "fd12::2/64", "f0:00:00:01:02:05", \
          "fd12::1", "nodad")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 fd12::2"
 
 # Add a DNAT rule.
@@ -278,7 +278,7 @@ ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=\"fd12::2\" \
     external_ip=\"fd30::1\" -- add logical_router R2 nat @nat
 
 # wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=fd30::1)'])
 
 # 'alice1' should be able to ping 'foo1' directly.
@@ -314,10 +314,10 @@ icmpv6,orig=(src=fd12::2,dst=fd21::2,id=<cleared>,type=128,code=0),reply=(src=fd
 ])
 
 # Add static routes to handle east-west NAT.
-ovn-nbctl lr-route-add R1 fd30::/64 fd00::2
+check ovn-nbctl lr-route-add R1 fd30::/64 fd00::2
 
 # wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 # Flush conntrack entries for easier output parsing of next test.
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
@@ -388,57 +388,57 @@ start_daemon ovn-controller
 #
 #    foo -- R1 -- join - R2 -- alice
 
-ovn-nbctl lr-add R1
-ovn-nbctl lr-add R2 -- set Logical_Router R2 options:chassis=hv1
+check ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R2 -- set Logical_Router R2 options:chassis=hv1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add join
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add join
 
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
-ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24
-ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24
-ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24
+check ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24
+check ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24
 
 # Connect foo to R1
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect alice to R2
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice addresses=\"00:00:02:01:02:03\"
 
 # Connect R1 to join
-ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
+check ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
     type=router options:router-port=R1_join addresses='"00:00:04:01:02:03"'
 
 # Connect R2 to join
-ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
+check ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
     type=router options:router-port=R2_join addresses='"00:00:04:01:02:04"'
 
 # Static routes.
-ovn-nbctl lr-route-add R1 172.16.1.0/24 20.0.0.2
-ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
+check ovn-nbctl lr-route-add R1 172.16.1.0/24 20.0.0.2
+check ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
 
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
          "192.168.1.1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "172.16.1.2/24", "f0:00:00:01:02:04", \
          "172.16.1.1")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 172.16.1.2"
 
 # Add a SNAT rule
 ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.1.2 \
     external_ip=172.16.1.1 -- add logical_router R2 nat @nat
 
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=172.16.1.1)'])
 
 # South-North SNAT: 'foo1' pings 'alice1'. But 'alice1' receives traffic
@@ -500,57 +500,57 @@ start_daemon ovn-controller
 #
 #    foo -- R1 -- join - R2 -- alice
 
-ovn-nbctl lr-add R1
-ovn-nbctl lr-add R2 -- set Logical_Router R2 options:chassis=hv1
+check ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R2 -- set Logical_Router R2 options:chassis=hv1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add join
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add join
 
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd10::1/64
-ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 fd30::1/64
-ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 fd20::1/64
-ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 fd20::2/64
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd10::1/64
+check ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 fd30::1/64
+check ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 fd20::1/64
+check ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 fd20::2/64
 
 # Connect foo to R1
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect alice to R2
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice addresses=\"00:00:02:01:02:03\"
 
 # Connect R1 to join
-ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
+check ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
     type=router options:router-port=R1_join addresses='"00:00:04:01:02:03"'
 
 # Connect R2 to join
-ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
+check ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
     type=router options:router-port=R2_join addresses='"00:00:04:01:02:04"'
 
 # Static routes.
-ovn-nbctl lr-route-add R1 fd30::/64 fd20::2
-ovn-nbctl lr-route-add R2 fd10::/64 fd20::1
+check ovn-nbctl lr-route-add R1 fd30::/64 fd20::2
+check ovn-nbctl lr-route-add R2 fd10::/64 fd20::1
 
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "fd10::2/64", "f0:00:00:01:02:03", \
          "fd10::1", "nodad")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 fd10::2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "fd30::2/64", "f0:00:00:01:02:04", \
          "fd30::1", "nodad")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 fd30::2"
 
 # Add a SNAT rule
 ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=\"fd10::2\" \
     external_ip=\"fd30::1\" -- add logical_router R2 nat @nat
 
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=fd30::1)'])
 
 # South-North SNAT: 'foo1' pings 'alice1'. But 'alice1' receives traffic
@@ -622,86 +622,86 @@ ovn-nbctl create Logical_Router name=R1
 ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add bob
-ovn-nbctl ls-add join
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add bob
+check ovn-nbctl ls-add join
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect bar to R1
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
 
 # Connect alice to R2
-ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice addresses=\"00:00:02:01:02:03\"
 
 # Connect bob to R3
-ovn-nbctl lrp-add R3 bob 00:00:03:01:02:03 172.16.1.2/24
-ovn-nbctl lsp-add bob rp-bob -- set Logical_Switch_Port rp-bob \
+check ovn-nbctl lrp-add R3 bob 00:00:03:01:02:03 172.16.1.2/24
+check ovn-nbctl lsp-add bob rp-bob -- set Logical_Switch_Port rp-bob \
     type=router options:router-port=bob addresses=\"00:00:03:01:02:03\"
 
 # Connect R1 to join
-ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24
-ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
+check ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24
+check ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
     type=router options:router-port=R1_join addresses='"00:00:04:01:02:03"'
 
 # Connect R2 to join
-ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24
-ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
+check ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24
+check ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
     type=router options:router-port=R2_join addresses='"00:00:04:01:02:04"'
 
 # Connect R3 to join
-ovn-nbctl lrp-add R3 R3_join 00:00:04:01:02:05 20.0.0.3/24
-ovn-nbctl lsp-add join r3-join -- set Logical_Switch_Port r3-join \
+check ovn-nbctl lrp-add R3 R3_join 00:00:04:01:02:05 20.0.0.3/24
+check ovn-nbctl lsp-add join r3-join -- set Logical_Switch_Port r3-join \
     type=router options:router-port=R3_join addresses='"00:00:04:01:02:05"'
 
 # Install static routes with source ip address as the policy for routing.
 # We want traffic from 'foo' to go via R2 and traffic of 'bar' to go via R3.
-ovn-nbctl --policy="src-ip" lr-route-add R1 192.168.1.0/24 20.0.0.2
-ovn-nbctl --policy="src-ip" lr-route-add R1 192.168.2.0/24 20.0.0.3
+check ovn-nbctl --policy="src-ip" lr-route-add R1 192.168.1.0/24 20.0.0.2
+check ovn-nbctl --policy="src-ip" lr-route-add R1 192.168.2.0/24 20.0.0.3
 
 # Static routes.
-ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
-ovn-nbctl lr-route-add R3 192.168.0.0/16 20.0.0.1
+check ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
+check ovn-nbctl lr-route-add R3 192.168.0.0/16 20.0.0.1
 
 # For gateway routers R2 and R3, set a force SNAT rule.
-ovn-nbctl set logical_router R2 options:dnat_force_snat_ip=20.0.0.2
-ovn-nbctl set logical_router R3 options:dnat_force_snat_ip=20.0.0.3
+check ovn-nbctl set logical_router R2 options:dnat_force_snat_ip=20.0.0.2
+check ovn-nbctl set logical_router R3 options:dnat_force_snat_ip=20.0.0.3
 
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
          "192.168.1.1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "172.16.1.3/24", "f0:00:00:01:02:04", \
          "172.16.1.1")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 172.16.1.3"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:05", \
 "192.168.2.1")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 192.168.2.2"
 
 # Logical port 'bob1' in switch 'bob'.
 ADD_NAMESPACES(bob1)
 ADD_VETH(bob1, bob1, br-int, "172.16.1.4/24", "f0:00:00:01:02:06", \
          "172.16.1.2")
-ovn-nbctl lsp-add bob bob1 \
+check ovn-nbctl lsp-add bob bob1 \
 -- lsp-set-addresses bob1 "f0:00:00:01:02:06 172.16.1.4"
 
 # Router R2
@@ -723,7 +723,7 @@ ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.2.2 \
     external_ip=30.0.0.4 -- add logical_router R3 nat @nat
 
 # wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=30.0.0.4)'])
 
 # North-South DNAT: 'alice1' should be able to ping 'foo1' via 30.0.0.2
@@ -844,88 +844,88 @@ ovn-nbctl create Logical_Router name=R1
 ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add bob
-ovn-nbctl ls-add join
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add bob
+check ovn-nbctl ls-add join
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd11::1/64
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd11::1/64
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect bar to R1
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd12::1/64
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd12::1/64
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
 
 # Connect alice to R2
-ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 fd30::1/64
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 fd30::1/64
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice addresses=\"00:00:02:01:02:03\"
 
 # Connect bob to R3
-ovn-nbctl lrp-add R3 bob 00:00:03:01:02:03 fd30::2/64
-ovn-nbctl lsp-add bob rp-bob -- set Logical_Switch_Port rp-bob \
+check ovn-nbctl lrp-add R3 bob 00:00:03:01:02:03 fd30::2/64
+check ovn-nbctl lsp-add bob rp-bob -- set Logical_Switch_Port rp-bob \
     type=router options:router-port=bob addresses=\"00:00:03:01:02:03\"
 
 # Connect R1 to join
-ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 fd20::1/64
-ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
+check ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 fd20::1/64
+check ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
     type=router options:router-port=R1_join addresses='"00:00:04:01:02:03"'
 
 # Connect R2 to join
-ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 fd20::2/64
-ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
+check ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 fd20::2/64
+check ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
     type=router options:router-port=R2_join addresses='"00:00:04:01:02:04"'
 
 # Connect R3 to join
-ovn-nbctl lrp-add R3 R3_join 00:00:04:01:02:05 fd20::3/64
-ovn-nbctl lsp-add join r3-join -- set Logical_Switch_Port r3-join \
+check ovn-nbctl lrp-add R3 R3_join 00:00:04:01:02:05 fd20::3/64
+check ovn-nbctl lsp-add join r3-join -- set Logical_Switch_Port r3-join \
     type=router options:router-port=R3_join addresses='"00:00:04:01:02:05"'
 
 # Install static routes with source ip address as the policy for routing.
 # We want traffic from 'foo' to go via R2 and traffic of 'bar' to go via R3.
-ovn-nbctl --policy="src-ip" lr-route-add R1 fd11::/64 fd20::2
-ovn-nbctl --policy="src-ip" lr-route-add R1 fd12::/64 fd20::3
+check ovn-nbctl --policy="src-ip" lr-route-add R1 fd11::/64 fd20::2
+check ovn-nbctl --policy="src-ip" lr-route-add R1 fd12::/64 fd20::3
 
 # Static routes.
-ovn-nbctl lr-route-add R2 fd11::/64 fd20::1
-ovn-nbctl lr-route-add R2 fd12::/64 fd20::1
-ovn-nbctl lr-route-add R3 fd11::/64 fd20::1
-ovn-nbctl lr-route-add R3 fd12::/64 fd20::1
+check ovn-nbctl lr-route-add R2 fd11::/64 fd20::1
+check ovn-nbctl lr-route-add R2 fd12::/64 fd20::1
+check ovn-nbctl lr-route-add R3 fd11::/64 fd20::1
+check ovn-nbctl lr-route-add R3 fd12::/64 fd20::1
 
 # For gateway routers R2 and R3, set a force SNAT rule.
-ovn-nbctl set logical_router R2 options:dnat_force_snat_ip=fd20::2
-ovn-nbctl set logical_router R3 options:dnat_force_snat_ip=fd20::3
+check ovn-nbctl set logical_router R2 options:dnat_force_snat_ip=fd20::2
+check ovn-nbctl set logical_router R3 options:dnat_force_snat_ip=fd20::3
 
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "fd11::2/64", "f0:00:00:01:02:03", \
          "fd11::1", "nodad")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 fd11::2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "fd30::3/64", "f0:00:00:01:02:04", \
          "fd30::1", "nodad")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 fd30::3"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "fd12::2/64", "f0:00:00:01:02:05", \
          "fd12::1", "nodad")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 fd12::2"
 
 # Logical port 'bob1' in switch 'bob'.
 ADD_NAMESPACES(bob1)
 ADD_VETH(bob1, bob1, br-int, "fd30::4/64", "f0:00:00:01:02:06", \
          "fd30::2", "nodad")
-ovn-nbctl lsp-add bob bob1 \
+check ovn-nbctl lsp-add bob bob1 \
 -- lsp-set-addresses bob1 "f0:00:00:01:02:06 fd30::4"
 
 # External IPs -- 30.0.0.N --> fd40::N (from IPv4 version of test case)
@@ -949,7 +949,7 @@ ovn-nbctl -- --id=@nat create nat type="snat" logical_ip='"fd12::2"' \
     external_ip='"fd40::4"' -- add logical_router R3 nat @nat
 
 # wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=fd40::4)'])
 
 # North-South DNAT: 'alice1' should be able to ping 'foo1' via fd30::2
@@ -1071,116 +1071,116 @@ ovn-nbctl create Logical_Router name=R1
 ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add bob
-ovn-nbctl ls-add join
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add bob
+check ovn-nbctl ls-add join
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24 fd11::1/64
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24 fd11::1/64
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect bar to R1
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24 fd12::1/64
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24 fd12::1/64
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
 
 # Connect alice to R2
-ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24 fd30::1/64
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24 fd30::1/64
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice addresses=\"00:00:02:01:02:03\"
 
 # Connect bob to R3
-ovn-nbctl lrp-add R3 bob 00:00:03:01:02:03 172.16.1.2/24 fd30::2/64
-ovn-nbctl lsp-add bob rp-bob -- set Logical_Switch_Port rp-bob \
+check ovn-nbctl lrp-add R3 bob 00:00:03:01:02:03 172.16.1.2/24 fd30::2/64
+check ovn-nbctl lsp-add bob rp-bob -- set Logical_Switch_Port rp-bob \
     type=router options:router-port=bob addresses=\"00:00:03:01:02:03\"
 
 # Connect R1 to join
-ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24 fd20::1/64
-ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
+check ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24 fd20::1/64
+check ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
     type=router options:router-port=R1_join addresses='"00:00:04:01:02:03"'
 
 # Connect R2 to join
-ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24 fd20::2/64
-ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
+check ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24 fd20::2/64
+check ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
     type=router options:router-port=R2_join addresses='"00:00:04:01:02:04"'
 
 # Connect R3 to join
-ovn-nbctl lrp-add R3 R3_join 00:00:04:01:02:05 20.0.0.3/24 fd20::3/64
-ovn-nbctl lsp-add join r3-join -- set Logical_Switch_Port r3-join \
+check ovn-nbctl lrp-add R3 R3_join 00:00:04:01:02:05 20.0.0.3/24 fd20::3/64
+check ovn-nbctl lsp-add join r3-join -- set Logical_Switch_Port r3-join \
     type=router options:router-port=R3_join addresses='"00:00:04:01:02:05"'
 
 # Install static routes with source ip address as the policy for routing.
 # We want traffic from 'foo' to go via R2 and traffic of 'bar' to go via R3.
-ovn-nbctl --policy="src-ip" lr-route-add R1 fd11::/64 fd20::2
-ovn-nbctl --policy="src-ip" lr-route-add R1 fd12::/64 fd20::3
-ovn-nbctl --policy="src-ip" lr-route-add R1 192.168.1.0/24 20.0.0.2
-ovn-nbctl --policy="src-ip" lr-route-add R1 192.168.2.0/24 20.0.0.3
+check ovn-nbctl --policy="src-ip" lr-route-add R1 fd11::/64 fd20::2
+check ovn-nbctl --policy="src-ip" lr-route-add R1 fd12::/64 fd20::3
+check ovn-nbctl --policy="src-ip" lr-route-add R1 192.168.1.0/24 20.0.0.2
+check ovn-nbctl --policy="src-ip" lr-route-add R1 192.168.2.0/24 20.0.0.3
 
 # Static routes.
-ovn-nbctl lr-route-add R2 fd11::/64 fd20::1
-ovn-nbctl lr-route-add R2 fd12::/64 fd20::1
-ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
-ovn-nbctl lr-route-add R3 fd11::/64 fd20::1
-ovn-nbctl lr-route-add R3 fd12::/64 fd20::1
-ovn-nbctl lr-route-add R3 192.168.0.0/16 20.0.0.1
+check ovn-nbctl lr-route-add R2 fd11::/64 fd20::1
+check ovn-nbctl lr-route-add R2 fd12::/64 fd20::1
+check ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
+check ovn-nbctl lr-route-add R3 fd11::/64 fd20::1
+check ovn-nbctl lr-route-add R3 fd12::/64 fd20::1
+check ovn-nbctl lr-route-add R3 192.168.0.0/16 20.0.0.1
 
 # For gateway routers R2 and R3, set a force SNAT rule.
-ovn-nbctl set logical_router R2 options:dnat_force_snat_ip="20.0.0.2 fd20::2"
-ovn-nbctl set logical_router R3 options:dnat_force_snat_ip="20.0.0.3 fd20::3"
+check ovn-nbctl set logical_router R2 options:dnat_force_snat_ip="20.0.0.2 fd20::2"
+check ovn-nbctl set logical_router R3 options:dnat_force_snat_ip="20.0.0.3 fd20::3"
 
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
          "192.168.1.1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
 
 ADD_NAMESPACES(foo16)
 ADD_VETH(foo16, foo16, br-int, "fd11::2/64", "f0:00:00:02:02:03", \
          "fd11::1", "nodad")
-ovn-nbctl lsp-add foo foo16 \
+check ovn-nbctl lsp-add foo foo16 \
 -- lsp-set-addresses foo16 "f0:00:00:02:02:03 fd11::2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "172.16.1.3/24", "f0:00:00:01:02:04", \
          "172.16.1.1")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 172.16.1.3"
 
 ADD_NAMESPACES(alice16)
 ADD_VETH(alice16, alice16, br-int, "fd30::3/64", "f0:00:00:02:02:04", \
          "fd30::1", "nodad")
-ovn-nbctl lsp-add alice alice16 \
+check ovn-nbctl lsp-add alice alice16 \
 -- lsp-set-addresses alice16 "f0:00:00:02:02:04 fd30::3"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:05", \
 "192.168.2.1")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 192.168.2.2"
 
 ADD_NAMESPACES(bar16)
 ADD_VETH(bar16, bar16, br-int, "fd12::2/64", "f0:00:00:02:02:05", \
          "fd12::1", "nodad")
-ovn-nbctl lsp-add bar bar16 \
+check ovn-nbctl lsp-add bar bar16 \
 -- lsp-set-addresses bar16 "f0:00:00:02:02:05 fd12::2"
 
 # Logical port 'bob1' in switch 'bob'.
 ADD_NAMESPACES(bob1)
 ADD_VETH(bob1, bob1, br-int, "172.16.1.4/24", "f0:00:00:01:02:06", \
          "172.16.1.2")
-ovn-nbctl lsp-add bob bob1 \
+check ovn-nbctl lsp-add bob bob1 \
 -- lsp-set-addresses bob1 "f0:00:00:01:02:06 172.16.1.4"
 
 ADD_NAMESPACES(bob16)
 ADD_VETH(bob16, bob16, br-int, "fd30::4/64", "f0:00:00:02:02:06", \
          "fd30::2", "nodad")
-ovn-nbctl lsp-add bob bob16 \
+check ovn-nbctl lsp-add bob bob16 \
 -- lsp-set-addresses bob16 "f0:00:00:02:02:06 fd30::4"
 
 # Router R2
@@ -1210,7 +1210,7 @@ ovn-nbctl -- --id=@nat create nat type="snat" logical_ip='"fd12::2"' \
     external_ip='"fd40::4"' -- add logical_router R3 nat @nat
 
 # wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=fd40::4)'])
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=30.0.0.4)'])
 
@@ -1375,58 +1375,58 @@ start_daemon ovn-controller
 # Loadbalancer VIPs in 30.0.0.0/24 network.
 
 ovn-nbctl create Logical_Router name=R1
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect bar to R1
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 172.16.1.1/24
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 172.16.1.1/24
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
 
 # Create logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
          "192.168.1.1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
 
 # Create logical ports 'bar1', 'bar2', 'bar3' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "172.16.1.2/24", "f0:00:0f:01:02:03", \
          "172.16.1.1")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:0f:01:02:03 172.16.1.2"
 
 ADD_NAMESPACES(bar2)
 ADD_VETH(bar2, bar2, br-int, "172.16.1.3/24", "f0:00:0f:01:02:04", \
          "172.16.1.1")
-ovn-nbctl lsp-add bar bar2 \
+check ovn-nbctl lsp-add bar bar2 \
 -- lsp-set-addresses bar2 "f0:00:0f:01:02:04 172.16.1.3"
 
 ADD_NAMESPACES(bar3)
 ADD_VETH(bar3, bar3, br-int, "172.16.1.4/24", "f0:00:0f:01:02:05", \
          "172.16.1.1")
-ovn-nbctl lsp-add bar bar3 \
+check ovn-nbctl lsp-add bar bar3 \
 -- lsp-set-addresses bar3 "f0:00:0f:01:02:05 172.16.1.4"
 
 # Config OVN load-balancer with a VIP.
-ovn-nbctl lb-add lb1 30.0.0.1 "172.16.1.2,172.16.1.3,172.16.1.4"
-ovn-nbctl ls-lb-add foo lb1
+check ovn-nbctl lb-add lb1 30.0.0.1 "172.16.1.2,172.16.1.3,172.16.1.4"
+check ovn-nbctl ls-lb-add foo lb1
 
 # Create another load-balancer with another VIP.
 lb2_uuid=`ovn-nbctl create load_balancer name=lb2 vips:30.0.0.3="172.16.1.2,172.16.1.3,172.16.1.4"`
-ovn-nbctl ls-lb-add foo lb2
+check ovn-nbctl ls-lb-add foo lb2
 
 # Config OVN load-balancer with another VIP (this time with ports).
-ovn-nbctl set load_balancer $lb2_uuid vips:'"30.0.0.2:8000"'='"172.16.1.2:80,172.16.1.3:80,172.16.1.4:80"'
+check ovn-nbctl set load_balancer $lb2_uuid vips:'"30.0.0.2:8000"'='"172.16.1.2:80,172.16.1.3:80,172.16.1.4:80"'
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=172.16.1.4:80)'])
 
@@ -1445,7 +1445,7 @@ AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 # Clear the apply-after-lb option.  The traffic will be allowed.
 check ovn-nbctl clear acl . options
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 OVS_WAIT_FOR_OUTPUT([
     for i in `seq 1 20`; do
@@ -1458,8 +1458,8 @@ tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(s
 tcp,orig=(src=192.168.1.2,dst=30.0.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.1.4,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
-ovn-nbctl acl-del foo from-lport 1002 "ip4 && ip4.dst == {172.16.1.2,172.16.1.3,172.16.1.4} && ct.new"
-ovn-nbctl --wait=hv sync
+check ovn-nbctl acl-del foo from-lport 1002 "ip4 && ip4.dst == {172.16.1.2,172.16.1.3,172.16.1.4} && ct.new"
+check ovn-nbctl --wait=hv sync
 
 dnl Should work with the virtual IP 30.0.0.1 address through NAT
 dnl Each server should have at least one connection.
@@ -1504,7 +1504,7 @@ tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(s
 ])
 
 # Configure selection_fields.
-ovn-nbctl set load_balancer $lb2_uuid selection_fields="ip_src,ip_dst,tp_src,tp_dst"
+check ovn-nbctl set load_balancer $lb2_uuid selection_fields="ip_src,ip_dst,tp_src,tp_dst"
 OVS_WAIT_UNTIL([
     test $(ovs-ofctl dump-groups br-int | \
     grep "selection_method=hash,fields(ip_src,ip_dst,tcp_src,tcp_dst)" -c) -eq 2
@@ -1536,7 +1536,7 @@ done
 dnl Only one backend should be chosen.
 AT_CHECK([test $(ovs-appctl dpctl/dump-conntrack | grep 30.0.0.2 -c) -eq 1])
 
-ovn-nbctl set load_balancer $lb2_uuid selection_fields="ip_src"
+check ovn-nbctl set load_balancer $lb2_uuid selection_fields="ip_src"
 OVS_WAIT_UNTIL([
     test $(ovs-ofctl dump-groups br-int | \
     grep "selection_method=hash,fields=ip_src" -c) -eq 2
@@ -1577,14 +1577,14 @@ else
 fi
 
 # Change the protocol of lb2 to udp and set tp_src and tp_dst.
-ovn-nbctl set load_balancer $lb2_uuid selection_fields="ip_src,ip_dst,tp_src,tp_dst"
+check ovn-nbctl set load_balancer $lb2_uuid selection_fields="ip_src,ip_dst,tp_src,tp_dst"
 
 OVS_WAIT_UNTIL([
     test $(ovs-ofctl dump-groups br-int | \
     grep "selection_method=hash,fields(ip_src,ip_dst,tcp_src,tcp_dst)" -c) -eq 2
 ])
 
-ovn-nbctl set load_balancer $lb2_uuid protocol=udp
+check ovn-nbctl set load_balancer $lb2_uuid protocol=udp
 
 OVS_WAIT_UNTIL([
     test $(ovs-ofctl dump-groups br-int | \
@@ -1592,15 +1592,15 @@ OVS_WAIT_UNTIL([
 ])
 
 # Change the protocol of lb2 to sctp.
-ovn-nbctl set load_balancer $lb2_uuid protocol=sctp
+check ovn-nbctl set load_balancer $lb2_uuid protocol=sctp
 
 OVS_WAIT_UNTIL([
     test $(ovs-ofctl dump-groups br-int | \
     grep "selection_method=hash,fields(ip_src,ip_dst,sctp_src,sctp_dst)" -c) -eq 2
 ])
 
-ovn-nbctl --reject lb-add lb3 30.0.0.10:80 ""
-ovn-nbctl ls-lb-add foo lb3
+check ovn-nbctl --reject lb-add lb3 30.0.0.10:80 ""
+check ovn-nbctl ls-lb-add foo lb3
 # Filter reset segments
 NETNS_START_TCPDUMP([foo1], [-c 1 -neei foo1 ip[[33:1]]=0x14], [rst])
 NS_CHECK_EXEC([foo1], [curl 30.0.0.10 -s --retry 3 --max-time 1], [7])
@@ -1656,58 +1656,58 @@ start_daemon ovn-controller
 # Loadbalancer VIPs in fd03::/64 network.
 
 ovn-nbctl create Logical_Router name=R1
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd01::1/64
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd01::1/64
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect bar to R1
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd02::1/64
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd02::1/64
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
 
 # Create logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "fd01::2/64", "f0:00:00:01:02:03", \
          "fd01::1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 fd01::2"
 
 # Create logical ports 'bar1', 'bar2', 'bar3' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "fd02::2/64", "f0:00:0f:01:02:03", \
          "fd02::1")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:0f:01:02:03 fd02::2"
 
 ADD_NAMESPACES(bar2)
 ADD_VETH(bar2, bar2, br-int, "fd02::3/64", "f0:00:0f:01:02:04", \
          "fd02::1")
-ovn-nbctl lsp-add bar bar2 \
+check ovn-nbctl lsp-add bar bar2 \
 -- lsp-set-addresses bar2 "f0:00:0f:01:02:04 fd02::3"
 
 ADD_NAMESPACES(bar3)
 ADD_VETH(bar3, bar3, br-int, "fd02::4/64", "f0:00:0f:01:02:05", \
          "fd02::1")
-ovn-nbctl lsp-add bar bar3 \
+check ovn-nbctl lsp-add bar bar3 \
 -- lsp-set-addresses bar3 "f0:00:0f:01:02:05 fd02::4"
 
 # Config OVN load-balancer with a VIP.
 uuid=`ovn-nbctl  create load_balancer vips:\"fd03::1\"=\"fd02::2,fd02::3,fd02::4\"`
-ovn-nbctl set logical_switch foo load_balancer=$uuid
+check ovn-nbctl set logical_switch foo load_balancer=$uuid
 
 # Create another load-balancer with another VIP.
 lb2_uuid=`ovn-nbctl create load_balancer vips:\"fd03::3\"=\"fd02::2,fd02::3,fd02::4\"`
 ovn-nbctl add logical_switch foo load_balancer $lb2_uuid
 
 # Config OVN load-balancer with another VIP (this time with ports).
-ovn-nbctl set load_balancer $lb2_uuid vips:'"[[fd03::2]]:8000"'='"@<:@fd02::2@:>@:80,@<:@fd02::3@:>@:80,@<:@fd02::4@:>@:80"'
+check ovn-nbctl set load_balancer $lb2_uuid vips:'"[[fd03::2]]:8000"'='"@<:@fd02::2@:>@:80,@<:@fd02::3@:>@:80,@<:@fd02::4@:>@:80"'
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=\[[fd02::4\]]:80)'])
 
@@ -1755,7 +1755,7 @@ tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd
 ])
 
 # Configure selection_fields.
-ovn-nbctl set load_balancer $lb2_uuid selection_fields="ip_src,ip_dst,tp_src,tp_dst"
+check ovn-nbctl set load_balancer $lb2_uuid selection_fields="ip_src,ip_dst,tp_src,tp_dst"
 OVS_WAIT_UNTIL([
     test $(ovs-ofctl dump-groups br-int | \
     grep "selection_method=hash,fields(ip_src,ip_dst,tcp_src,tcp_dst)" -c) -eq 2
@@ -1789,7 +1789,7 @@ done
 # there should be only one conntrack entry.
 AT_CHECK([test $(ovs-appctl dpctl/dump-conntrack | grep fd03::2 -c) -eq 1])
 
-ovn-nbctl set load_balancer $lb2_uuid selection_fields="eth_src,ip_src"
+check ovn-nbctl set load_balancer $lb2_uuid selection_fields="eth_src,ip_src"
 OVS_WAIT_UNTIL([
     test $(ovs-ofctl dump-groups br-int | \
     grep "selection_method=hash,fields(eth_src,ip_src)" -c) -eq 2
@@ -1877,11 +1877,11 @@ start_daemon ovn-controller
 # foo4 as servers.
 
 ovn-nbctl create Logical_Router name=R1
-ovn-nbctl ls-add foo
+check ovn-nbctl ls-add foo
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Create logical port 'foo1', 'foo2', 'foo3' and 'foo4' in switch 'foo'.
@@ -1896,13 +1896,13 @@ done
 
 # Config OVN load-balancer with a VIP.
 uuid=`ovn-nbctl  create load_balancer vips:30.0.0.1="192.168.1.3,192.168.1.4,192.168.1.5"`
-ovn-nbctl set logical_switch foo load_balancer=$uuid
+check ovn-nbctl set logical_switch foo load_balancer=$uuid
 
 # Config OVN load-balancer with another VIP (this time with ports).
-ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.3:80,192.168.1.4:80,192.168.1.5:80"'
+check ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.3:80,192.168.1.4:80,192.168.1.5:80"'
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=192.168.1.5:80)'])
 
@@ -1985,11 +1985,11 @@ start_daemon ovn-controller
 # foo4 as servers.
 
 ovn-nbctl create Logical_Router name=R1
-ovn-nbctl ls-add foo
+check ovn-nbctl ls-add foo
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd01::1/64
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd01::1/64
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Create logical port 'foo1', 'foo2', 'foo3' and 'foo4' in switch 'foo'.
@@ -2004,15 +2004,15 @@ done
 
 # Config OVN load-balancer with a VIP.
 uuid=`ovn-nbctl  create load_balancer vips:\"fd03::1\"=\"fd01::3,fd01::4,fd01::5\"`
-ovn-nbctl set logical_switch foo load_balancer=$uuid
+check ovn-nbctl set logical_switch foo load_balancer=$uuid
 
 # Config OVN load-balancer with another VIP (this time with ports).
-ovn-nbctl set load_balancer $uuid vips:'"[[fd03::2]]:8000"'='"@<:@fd01::3@:>@:80,@<:@fd01::4@:>@:80,@<:@fd01::5@:>@:80"'
+check ovn-nbctl set load_balancer $uuid vips:'"[[fd03::2]]:8000"'='"@<:@fd01::3@:>@:80,@<:@fd01::4@:>@:80,@<:@fd01::5@:>@:80"'
 
 ovn-nbctl list load_balancer
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=\[[fd01::5\]]:80)'])
 
@@ -2099,74 +2099,74 @@ start_daemon ovn-controller
 ovn-nbctl create Logical_Router name=R1
 ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add join
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add join
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect bar to R1
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
 
 # Connect alice to R2
-ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice addresses=\"00:00:02:01:02:03\"
 
 # Connect R1 to join
-ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24
-ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
+check ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24
+check ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
     type=router options:router-port=R1_join addresses='"00:00:04:01:02:03"'
 
 # Connect R2 to join
-ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24
-ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
+check ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24
+check ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
     type=router options:router-port=R2_join addresses='"00:00:04:01:02:04"'
 
 # Static routes.
-ovn-nbctl lr-route-add R1 172.16.1.0/24 20.0.0.2
-ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
+check ovn-nbctl lr-route-add R1 172.16.1.0/24 20.0.0.2
+check ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
 
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
          "192.168.1.1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "172.16.1.2/24", "f0:00:00:01:02:04", \
          "172.16.1.1")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 172.16.1.2"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:05", \
 "192.168.2.1")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 192.168.2.2"
 
 # Config OVN load-balancer with a VIP.
 uuid=`ovn-nbctl  create load_balancer vips:30.0.0.1="192.168.1.2,192.168.2.2"`
-ovn-nbctl set logical_router R2 load_balancer=$uuid
+check ovn-nbctl set logical_router R2 load_balancer=$uuid
 
 # Config OVN load-balancer with another VIP (this time with ports).
-ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:80,192.168.2.2:80"'
+check ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:80,192.168.2.2:80"'
 
 # Add SNAT rule to make sure that Load-balancing still works with a SNAT rule.
 ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.2.2 \
     external_ip=30.0.0.2 -- add logical_router R2 nat @nat
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 # Get the OF table numbers
 snat=$(ovn-debug lflow-stage-to-oftable lr_out_snat)
@@ -2219,17 +2219,17 @@ sed -n 's/.*n_packets=\([[0-9]]\{1,\}\).*/\1/p')
 OVS_WAIT_UNTIL([check_est_flows], [check established flows])
 
 
-ovn-nbctl set logical_router R2 options:lb_force_snat_ip="20.0.0.2"
+check ovn-nbctl set logical_router R2 options:lb_force_snat_ip="20.0.0.2"
 
 # Destroy the load balancer and create again. ovn-controller will
 # clear the OF flows and re add again and clears the n_packets
 # for these flows.
-ovn-nbctl destroy load_balancer $uuid
+check ovn-nbctl destroy load_balancer $uuid
 uuid=`ovn-nbctl  create load_balancer vips:30.0.0.1="192.168.1.2,192.168.2.2"`
-ovn-nbctl set logical_router R2 load_balancer=$uuid
+check ovn-nbctl set logical_router R2 load_balancer=$uuid
 
 # Config OVN load-balancer with another VIP (this time with ports).
-ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:80,192.168.2.2:80"'
+check ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:80,192.168.2.2:80"'
 
 ovn-nbctl list load_balancer
 ovn-sbctl dump-flows R2
@@ -2258,17 +2258,17 @@ test "x$ct1 = x$exp_ct1" && test "x$ct2 = x$exp_ct2"
 
 OVS_WAIT_UNTIL([check_est_flows], [check established flows])
 
-ovn-nbctl set logical_router R2 options:lb_force_snat_ip=router_ip
+check ovn-nbctl set logical_router R2 options:lb_force_snat_ip=router_ip
 
 # Destroy the load balancer and create again. ovn-controller will
 # clear the OF flows and re add again and clears the n_packets
 # for these flows.
-ovn-nbctl destroy load_balancer $uuid
+check ovn-nbctl destroy load_balancer $uuid
 uuid=`ovn-nbctl  create load_balancer vips:30.0.0.1="192.168.1.2,192.168.2.2"`
-ovn-nbctl set logical_router R2 load_balancer=$uuid
+check ovn-nbctl set logical_router R2 load_balancer=$uuid
 
 # Config OVN load-balancer with another VIP (this time with ports).
-ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:80,192.168.2.2:80"'
+check ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:80,192.168.2.2:80"'
 
 ovn-nbctl list load_balancer
 ovn-sbctl dump-flows R2
@@ -2445,68 +2445,68 @@ start_daemon ovn-controller
 ovn-nbctl create Logical_Router name=R1
 ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add join
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add join
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd11::1/64
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd11::1/64
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect bar to R1
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd12::1/64
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd12::1/64
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
 
 # Connect alice to R2
-ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 fd72::1/64
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 fd72::1/64
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice addresses=\"00:00:02:01:02:03\"
 
 # Connect R1 to join
-ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 fd20::1/64
-ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
+check ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 fd20::1/64
+check ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
     type=router options:router-port=R1_join addresses='"00:00:04:01:02:03"'
 
 # Connect R2 to join
-ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 fd20::2/64
-ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
+check ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 fd20::2/64
+check ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
     type=router options:router-port=R2_join addresses='"00:00:04:01:02:04"'
 
 # Static routes.
-ovn-nbctl lr-route-add R1 fd72::/64 fd20::2
-ovn-nbctl lr-route-add R2 fd11::/64 fd20::1
-ovn-nbctl lr-route-add R2 fd12::/64 fd20::1
+check ovn-nbctl lr-route-add R1 fd72::/64 fd20::2
+check ovn-nbctl lr-route-add R2 fd11::/64 fd20::1
+check ovn-nbctl lr-route-add R2 fd12::/64 fd20::1
 
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "fd11::2/64", "f0:00:00:01:02:03", \
          "fd11::1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 fd11::2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "fd72::2/64", "f0:00:00:01:02:04", \
          "fd72::1")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 fd72::2"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "fd12::2/64", "f0:00:00:01:02:05", \
 "fd12::1")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 fd12::2"
 
 # Config OVN load-balancer with a VIP.
 uuid=`ovn-nbctl  create load_balancer vips:\"fd30::1\"=\"fd11::2,fd12::2\"`
-ovn-nbctl set logical_router R2 load_balancer=$uuid
+check ovn-nbctl set logical_router R2 load_balancer=$uuid
 
 # Config OVN load-balancer with another VIP (this time with ports).
-ovn-nbctl set load_balancer $uuid vips:'"[[fd30::2]]:8000"'='"@<:@fd11::2@:>@:80,@<:@fd12::2@:>@:80"'
+check ovn-nbctl set load_balancer $uuid vips:'"[[fd30::2]]:8000"'='"@<:@fd11::2@:>@:80,@<:@fd12::2@:>@:80"'
 
 ovn-nbctl list load_balancer
 
@@ -2516,7 +2516,7 @@ ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=\"fd12::2\" \
 
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=\[[fd12::2\]]:80)'])
 
@@ -2606,95 +2606,95 @@ ovn-nbctl create Logical_Router name=R1
 ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add bob
-ovn-nbctl ls-add join
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add bob
+check ovn-nbctl ls-add join
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect bar to R1
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
 
 # Connect alice to R2
-ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice addresses=\"00:00:02:01:02:03\"
 
 # Connect bob to R3
-ovn-nbctl lrp-add R3 bob 00:00:03:01:02:03 172.16.1.2/24
-ovn-nbctl lsp-add bob rp-bob -- set Logical_Switch_Port rp-bob \
+check ovn-nbctl lrp-add R3 bob 00:00:03:01:02:03 172.16.1.2/24
+check ovn-nbctl lsp-add bob rp-bob -- set Logical_Switch_Port rp-bob \
     type=router options:router-port=bob addresses=\"00:00:03:01:02:03\"
 
 # Connect R1 to join
-ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24
-ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
+check ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24
+check ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
     type=router options:router-port=R1_join addresses='"00:00:04:01:02:03"'
 
 # Connect R2 to join
-ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24
-ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
+check ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24
+check ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
     type=router options:router-port=R2_join addresses='"00:00:04:01:02:04"'
 
 # Connect R3 to join
-ovn-nbctl lrp-add R3 R3_join 00:00:04:01:02:05 20.0.0.3/24
-ovn-nbctl lsp-add join r3-join -- set Logical_Switch_Port r3-join \
+check ovn-nbctl lrp-add R3 R3_join 00:00:04:01:02:05 20.0.0.3/24
+check ovn-nbctl lsp-add join r3-join -- set Logical_Switch_Port r3-join \
     type=router options:router-port=R3_join addresses='"00:00:04:01:02:05"'
 
 # Install static routes with source ip address as the policy for routing.
 # We want traffic from 'foo' to go via R2 and traffic of 'bar' to go via R3.
-ovn-nbctl --policy="src-ip" lr-route-add R1 192.168.1.0/24 20.0.0.2
-ovn-nbctl --policy="src-ip" lr-route-add R1 192.168.2.0/24 20.0.0.3
+check ovn-nbctl --policy="src-ip" lr-route-add R1 192.168.1.0/24 20.0.0.2
+check ovn-nbctl --policy="src-ip" lr-route-add R1 192.168.2.0/24 20.0.0.3
 
 # Static routes.
-ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
-ovn-nbctl lr-route-add R3 192.168.0.0/16 20.0.0.1
+check ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
+check ovn-nbctl lr-route-add R3 192.168.0.0/16 20.0.0.1
 
 # For gateway routers R2 and R3, set a force SNAT rule.
-ovn-nbctl set logical_router R2 options:lb_force_snat_ip=20.0.0.2
-ovn-nbctl set logical_router R3 options:lb_force_snat_ip=20.0.0.3
+check ovn-nbctl set logical_router R2 options:lb_force_snat_ip=20.0.0.2
+check ovn-nbctl set logical_router R3 options:lb_force_snat_ip=20.0.0.3
 
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
          "192.168.1.1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "172.16.1.3/24", "f0:00:00:01:02:04", \
          "172.16.1.1")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 172.16.1.3"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:05", \
 "192.168.2.1")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 192.168.2.2"
 
 # Logical port 'bob1' in switch 'bob'.
 ADD_NAMESPACES(bob1)
 ADD_VETH(bob1, bob1, br-int, "172.16.1.4/24", "f0:00:00:01:02:06", \
          "172.16.1.2")
-ovn-nbctl lsp-add bob bob1 \
+check ovn-nbctl lsp-add bob bob1 \
 -- lsp-set-addresses bob1 "f0:00:00:01:02:06 172.16.1.4"
 
 # Config OVN load-balancer with a VIP.
 uuid=`ovn-nbctl  create load_balancer vips:30.0.0.1="192.168.1.2,192.168.2.2"`
-ovn-nbctl set logical_router R2 load_balancer=$uuid
-ovn-nbctl set logical_router R3 load_balancer=$uuid
+check ovn-nbctl set logical_router R2 load_balancer=$uuid
+check ovn-nbctl set logical_router R3 load_balancer=$uuid
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=192.168.2.2)'])
 
@@ -2777,97 +2777,97 @@ ovn-nbctl create Logical_Router name=R1
 ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add bob
-ovn-nbctl ls-add join
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add bob
+check ovn-nbctl ls-add join
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd11::1/64
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd11::1/64
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect bar to R1
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd12::1/64
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd12::1/64
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
 
 # Connect alice to R2
-ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 fd72::1/64
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 fd72::1/64
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice addresses=\"00:00:02:01:02:03\"
 
 # Connect bob to R3
-ovn-nbctl lrp-add R3 bob 00:00:03:01:02:03 fd72::2/64
-ovn-nbctl lsp-add bob rp-bob -- set Logical_Switch_Port rp-bob \
+check ovn-nbctl lrp-add R3 bob 00:00:03:01:02:03 fd72::2/64
+check ovn-nbctl lsp-add bob rp-bob -- set Logical_Switch_Port rp-bob \
     type=router options:router-port=bob addresses=\"00:00:03:01:02:03\"
 
 # Connect R1 to join
-ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 fd20::1/64
-ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
+check ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 fd20::1/64
+check ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
     type=router options:router-port=R1_join addresses='"00:00:04:01:02:03"'
 
 # Connect R2 to join
-ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 fd20::2/64
-ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
+check ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 fd20::2/64
+check ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
     type=router options:router-port=R2_join addresses='"00:00:04:01:02:04"'
 
 # Connect R3 to join
-ovn-nbctl lrp-add R3 R3_join 00:00:04:01:02:05 fd20::3/64
-ovn-nbctl lsp-add join r3-join -- set Logical_Switch_Port r3-join \
+check ovn-nbctl lrp-add R3 R3_join 00:00:04:01:02:05 fd20::3/64
+check ovn-nbctl lsp-add join r3-join -- set Logical_Switch_Port r3-join \
     type=router options:router-port=R3_join addresses='"00:00:04:01:02:05"'
 
 # Install static routes with source ip address as the policy for routing.
 # We want traffic from 'foo' to go via R2 and traffic of 'bar' to go via R3.
-ovn-nbctl --policy="src-ip" lr-route-add R1 fd11::/64 fd20::2
-ovn-nbctl --policy="src-ip" lr-route-add R1 fd12::/64 fd20::3
+check ovn-nbctl --policy="src-ip" lr-route-add R1 fd11::/64 fd20::2
+check ovn-nbctl --policy="src-ip" lr-route-add R1 fd12::/64 fd20::3
 
 # Static routes.
-ovn-nbctl lr-route-add R2 fd11::/64 fd20::1
-ovn-nbctl lr-route-add R2 fd12::/64 fd20::1
-ovn-nbctl lr-route-add R3 fd11::/64 fd20::1
-ovn-nbctl lr-route-add R3 fd12::/64 fd20::1
+check ovn-nbctl lr-route-add R2 fd11::/64 fd20::1
+check ovn-nbctl lr-route-add R2 fd12::/64 fd20::1
+check ovn-nbctl lr-route-add R3 fd11::/64 fd20::1
+check ovn-nbctl lr-route-add R3 fd12::/64 fd20::1
 
 # For gateway routers R2 and R3, set a force SNAT rule.
-ovn-nbctl set logical_router R2 options:lb_force_snat_ip=fd20::2
-ovn-nbctl set logical_router R3 options:lb_force_snat_ip=fd20::3
+check ovn-nbctl set logical_router R2 options:lb_force_snat_ip=fd20::2
+check ovn-nbctl set logical_router R3 options:lb_force_snat_ip=fd20::3
 
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "fd11::2/64", "f0:00:00:01:02:03", \
          "fd11::1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 fd11::2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "fd72::3/64", "f0:00:00:01:02:04", \
          "fd72::1")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 fd72::3"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "fd12::2/64", "f0:00:00:01:02:05", \
 "fd12::1")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 fd12::2"
 
 # Logical port 'bob1' in switch 'bob'.
 ADD_NAMESPACES(bob1)
 ADD_VETH(bob1, bob1, br-int, "fd72::4/64", "f0:00:00:01:02:06", \
          "fd72::2")
-ovn-nbctl lsp-add bob bob1 \
+check ovn-nbctl lsp-add bob bob1 \
 -- lsp-set-addresses bob1 "f0:00:00:01:02:06 fd72::4"
 
 # Config OVN load-balancer with a VIP.
 uuid=`ovn-nbctl create load_balancer vips:\"fd30::1\"=\"fd11::2,fd12::2\"`
-ovn-nbctl set logical_router R2 load_balancer=$uuid
-ovn-nbctl set logical_router R3 load_balancer=$uuid
+check ovn-nbctl set logical_router R2 load_balancer=$uuid
+check ovn-nbctl set logical_router R3 load_balancer=$uuid
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=fd12::2)'])
 
@@ -2951,130 +2951,130 @@ ovn-nbctl create Logical_Router name=R1
 ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add bob
-ovn-nbctl ls-add join
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add bob
+check ovn-nbctl ls-add join
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24 fd11::1/64
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24 fd11::1/64
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect bar to R1
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24 fd12::1/64
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24 fd12::1/64
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
 
 # Connect alice to R2
-ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24 fd72::1/64
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24 fd72::1/64
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice addresses=\"00:00:02:01:02:03\"
 
 # Connect bob to R3
-ovn-nbctl lrp-add R3 bob 00:00:03:01:02:03 172.16.1.2/24 fd72::2/64
-ovn-nbctl lsp-add bob rp-bob -- set Logical_Switch_Port rp-bob \
+check ovn-nbctl lrp-add R3 bob 00:00:03:01:02:03 172.16.1.2/24 fd72::2/64
+check ovn-nbctl lsp-add bob rp-bob -- set Logical_Switch_Port rp-bob \
     type=router options:router-port=bob addresses=\"00:00:03:01:02:03\"
 
 # Connect R1 to join
-ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24 fd20::1/64
-ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
+check ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24 fd20::1/64
+check ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
     type=router options:router-port=R1_join addresses='"00:00:04:01:02:03"'
 
 # Connect R2 to join
-ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24 fd20::2/64
-ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
+check ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24 fd20::2/64
+check ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
     type=router options:router-port=R2_join addresses='"00:00:04:01:02:04"'
 
 # Connect R3 to join
-ovn-nbctl lrp-add R3 R3_join 00:00:04:01:02:05 20.0.0.3/24 fd20::3/64
-ovn-nbctl lsp-add join r3-join -- set Logical_Switch_Port r3-join \
+check ovn-nbctl lrp-add R3 R3_join 00:00:04:01:02:05 20.0.0.3/24 fd20::3/64
+check ovn-nbctl lsp-add join r3-join -- set Logical_Switch_Port r3-join \
     type=router options:router-port=R3_join addresses='"00:00:04:01:02:05"'
 
 # Install static routes with source ip address as the policy for routing.
 # We want traffic from 'foo' to go via R2 and traffic of 'bar' to go via R3.
-ovn-nbctl --policy="src-ip" lr-route-add R1 192.168.1.0/24 20.0.0.2
-ovn-nbctl --policy="src-ip" lr-route-add R1 192.168.2.0/24 20.0.0.3
-ovn-nbctl --policy="src-ip" lr-route-add R1 fd11::/64 fd20::2
-ovn-nbctl --policy="src-ip" lr-route-add R1 fd12::/64 fd20::3
+check ovn-nbctl --policy="src-ip" lr-route-add R1 192.168.1.0/24 20.0.0.2
+check ovn-nbctl --policy="src-ip" lr-route-add R1 192.168.2.0/24 20.0.0.3
+check ovn-nbctl --policy="src-ip" lr-route-add R1 fd11::/64 fd20::2
+check ovn-nbctl --policy="src-ip" lr-route-add R1 fd12::/64 fd20::3
 
 # Static routes.
-ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
-ovn-nbctl lr-route-add R3 192.168.0.0/16 20.0.0.1
-ovn-nbctl lr-route-add R2 fd11::/64 fd20::1
-ovn-nbctl lr-route-add R2 fd12::/64 fd20::1
-ovn-nbctl lr-route-add R3 fd11::/64 fd20::1
-ovn-nbctl lr-route-add R3 fd12::/64 fd20::1
+check ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
+check ovn-nbctl lr-route-add R3 192.168.0.0/16 20.0.0.1
+check ovn-nbctl lr-route-add R2 fd11::/64 fd20::1
+check ovn-nbctl lr-route-add R2 fd12::/64 fd20::1
+check ovn-nbctl lr-route-add R3 fd11::/64 fd20::1
+check ovn-nbctl lr-route-add R3 fd12::/64 fd20::1
 
 # For gateway routers R2 and R3, set a force SNAT rule.
-ovn-nbctl set logical_router R2 options:lb_force_snat_ip="20.0.0.2 fd20::2"
-ovn-nbctl set logical_router R3 options:lb_force_snat_ip="20.0.0.3 fd20::3"
+check ovn-nbctl set logical_router R2 options:lb_force_snat_ip="20.0.0.2 fd20::2"
+check ovn-nbctl set logical_router R3 options:lb_force_snat_ip="20.0.0.3 fd20::3"
 
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
          "192.168.1.1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
 
 # Logical port 'foo16' in switch 'foo'.
 ADD_NAMESPACES(foo16)
 ADD_VETH(foo16, foo16, br-int, "fd11::2/64", "f0:00:06:01:02:03", \
          "fd11::1")
-ovn-nbctl lsp-add foo foo16 \
+check ovn-nbctl lsp-add foo foo16 \
 -- lsp-set-addresses foo16 "f0:00:06:01:02:03 fd11::2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "172.16.1.3/24", "f0:00:00:01:02:04", \
          "172.16.1.1")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 172.16.1.3"
 
 # Logical port 'alice16' in switch 'alice'.
 ADD_NAMESPACES(alice16)
 ADD_VETH(alice16, alice16, br-int, "fd72::3/64", "f0:00:06:01:02:04", \
          "fd72::1")
-ovn-nbctl lsp-add alice alice16 \
+check ovn-nbctl lsp-add alice alice16 \
 -- lsp-set-addresses alice16 "f0:00:06:01:02:04 fd72::3"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:05", \
 "192.168.2.1")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 192.168.2.2"
 
 # Logical port 'bar16' in switch 'bar'.
 ADD_NAMESPACES(bar16)
 ADD_VETH(bar16, bar16, br-int, "fd12::2/64", "f0:00:06:01:02:05", \
 "fd12::1")
-ovn-nbctl lsp-add bar bar16 \
+check ovn-nbctl lsp-add bar bar16 \
 -- lsp-set-addresses bar16 "f0:00:06:01:02:05 fd12::2"
 
 # Logical port 'bob1' in switch 'bob'.
 ADD_NAMESPACES(bob1)
 ADD_VETH(bob1, bob1, br-int, "172.16.1.4/24", "f0:00:00:01:02:06", \
          "172.16.1.2")
-ovn-nbctl lsp-add bob bob1 \
+check ovn-nbctl lsp-add bob bob1 \
 -- lsp-set-addresses bob1 "f0:00:00:01:02:06 172.16.1.4"
 
 # Logical port 'bob16' in switch 'bob'.
 ADD_NAMESPACES(bob16)
 ADD_VETH(bob16, bob16, br-int, "fd72::4/64", "f0:00:06:01:02:06", \
          "fd72::2")
-ovn-nbctl lsp-add bob bob16 \
+check ovn-nbctl lsp-add bob bob16 \
 -- lsp-set-addresses bob16 "f0:00:06:01:02:06 fd72::4"
 
 # Config OVN load-balancer with a VIP.
 uuid=`ovn-nbctl  create load_balancer vips:30.0.0.1="192.168.1.2,192.168.2.2" \
 vips:\"fd30::1\"=\"fd11::2,fd12::2\"`
-ovn-nbctl set logical_router R2 load_balancer=$uuid
-ovn-nbctl set logical_router R3 load_balancer=$uuid
+check ovn-nbctl set logical_router R2 load_balancer=$uuid
+check ovn-nbctl set logical_router R3 load_balancer=$uuid
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=192.168.2.2)'])
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
@@ -3160,29 +3160,29 @@ start_daemon ovn-controller
 #           |
 #    alice ----
 
-ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
 
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
-ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.1/24 \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
+check ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.1/24 \
     -- lrp-set-gateway-chassis alice hv1
 
 # Connect foo to R1
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo \
     -- lsp-set-addresses rp-foo router
 
 # Connect bar to R1
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar \
     -- lsp-set-addresses rp-bar router
 
 # Connect alice to R1
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice \
     -- lsp-set-addresses rp-alice router
 
@@ -3190,39 +3190,39 @@ ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
          "192.168.1.1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
 
 # Logical port 'foo2' in switch 'foo'.
 ADD_NAMESPACES(foo2)
 ADD_VETH(foo2, foo2, br-int, "192.168.1.3/24", "f0:00:00:01:02:06", \
          "192.168.1.1")
-ovn-nbctl lsp-add foo foo2 \
+check ovn-nbctl lsp-add foo foo2 \
 -- lsp-set-addresses foo2 "f0:00:00:01:02:06 192.168.1.3"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:04", \
          "192.168.2.1")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:04 192.168.2.2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "172.16.1.2/24", "f0:00:00:01:02:05", \
          "172.16.1.1")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:05 172.16.1.2"
 
 # Config OVN load-balancer with a VIP.
 uuid=`ovn-nbctl  create load_balancer vips:172.16.1.10="192.168.1.2,192.168.2.2"`
-ovn-nbctl set logical_router R1 load_balancer=$uuid
+check ovn-nbctl set logical_router R1 load_balancer=$uuid
 
 # Config OVN load-balancer with another VIP (this time with ports).
-ovn-nbctl set load_balancer $uuid vips:'"172.16.1.11:8000"'='"192.168.1.2:80,192.168.2.2:80"'
+check ovn-nbctl set load_balancer $uuid vips:'"172.16.1.11:8000"'='"192.168.1.2:80,192.168.2.2:80"'
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=192.168.2.2:80)'])
 
@@ -3303,29 +3303,29 @@ start_daemon ovn-controller
 #           |
 #    alice ----
 
-ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
 
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd01::1/64
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd02::1/64
-ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 fd72::1/64 \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd01::1/64
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd02::1/64
+check ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 fd72::1/64 \
     -- lrp-set-gateway-chassis alice hv1
 
 # Connect foo to R1
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo \
     -- lsp-set-addresses rp-foo router
 
 # Connect bar to R1
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar \
     -- lsp-set-addresses rp-bar router
 
 # Connect alice to R1
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice \
     -- lsp-set-addresses rp-alice router
 
@@ -3333,39 +3333,39 @@ ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "fd01::2/64", "f0:00:00:01:02:03", \
          "fd01::1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 fd01::2"
 
 # Logical port 'foo2' in switch 'foo'.
 ADD_NAMESPACES(foo2)
 ADD_VETH(foo2, foo2, br-int, "fd01::3/64", "f0:00:00:01:02:06", \
          "fd01::1")
-ovn-nbctl lsp-add foo foo2 \
+check ovn-nbctl lsp-add foo foo2 \
 -- lsp-set-addresses foo2 "f0:00:00:01:02:06 fd01::3"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "fd02::2/64", "f0:00:00:01:02:04", \
          "fd02::1")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:04 fd02::2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "fd72::2/64", "f0:00:00:01:02:05", \
          "fd72::1")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:05 fd72::2"
 
 # Config OVN load-balancer with a VIP.
 uuid=`ovn-nbctl  create load_balancer vips:\"fd72::10\"=\"fd01::2,fd02::2\"`
-ovn-nbctl set logical_router R1 load_balancer=$uuid
+check ovn-nbctl set logical_router R1 load_balancer=$uuid
 
 # Config OVN load-balancer with another VIP (this time with ports).
-ovn-nbctl set load_balancer $uuid vips:'"[[fd72::11]]:8000"'='"@<:@fd01::2@:>@:80,@<:@fd02::2@:>@:80"'
+check ovn-nbctl set load_balancer $uuid vips:'"[[fd72::11]]:8000"'='"@<:@fd01::2@:>@:80,@<:@fd02::2@:>@:80"'
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=\[[fd02::2\]]:80)'])
 
@@ -3446,29 +3446,29 @@ start_daemon ovn-controller
 #           |
 #    bar ----
 
-ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
 
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
-ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.1/24 \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
+check ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.1/24 \
     -- lrp-set-gateway-chassis alice hv1
 
 # Connect foo to R1
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo \
     -- lsp-set-addresses rp-foo router
 
 # Connect bar to R1
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar \
     -- lsp-set-addresses rp-bar router
 
 # Connect alice to R1
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice \
     -- lsp-set-addresses rp-alice router
 
@@ -3476,28 +3476,28 @@ ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
          "192.168.1.1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
 
 # Logical port 'foo2' in switch 'foo'.
 ADD_NAMESPACES(foo2)
 ADD_VETH(foo2, foo2, br-int, "192.168.1.3/24", "f0:00:00:01:02:06", \
          "192.168.1.1")
-ovn-nbctl lsp-add foo foo2 \
+check ovn-nbctl lsp-add foo foo2 \
 -- lsp-set-addresses foo2 "f0:00:00:01:02:06 192.168.1.3"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:04", \
          "192.168.2.1")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:04 192.168.2.2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "172.16.1.2/24", "f0:00:00:01:02:05", \
          "172.16.1.1")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:05 172.16.1.2"
 
 # Add external network
@@ -3523,7 +3523,7 @@ AT_CHECK([ovn-nbctl lr-nat-add R1 snat 172.16.1.1 0.0.0.0/0])
 # Add default route to ext-net
 AT_CHECK([ovn-nbctl lr-route-add R1 10.0.0.0/24 172.16.1.2])
 
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=172.16.1.1)'])
 
 # North-South DNAT: 'alice1' pings 'foo1' using 172.16.1.3.
@@ -3663,29 +3663,29 @@ start_daemon ovn-controller
 #           |
 #    bar ----
 
-ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
 
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd11::1/64
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd12::1/64
-ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 fd20::1/64 \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd11::1/64
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd12::1/64
+check ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 fd20::1/64 \
     -- lrp-set-gateway-chassis alice hv1
 
 # Connect foo to R1
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo \
     -- lsp-set-addresses rp-foo router
 
 # Connect bar to R1
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar \
     -- lsp-set-addresses rp-bar router
 
 # Connect alice to R1
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice \
     -- lsp-set-addresses rp-alice router
 
@@ -3693,31 +3693,31 @@ ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "fd11::2/64", "f0:00:00:01:02:03", \
          "fd11::1", "nodad")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 fd11::2"
 
 # Logical port 'foo2' in switch 'foo'.
 ADD_NAMESPACES(foo2)
 ADD_VETH(foo2, foo2, br-int, "fd11::3/64", "f0:00:00:01:02:06", \
          "fd11::1", "nodad")
-ovn-nbctl lsp-add foo foo2 \
+check ovn-nbctl lsp-add foo foo2 \
 -- lsp-set-addresses foo2 "f0:00:00:01:02:06 fd11::3"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "fd12::2/64", "f0:00:00:01:02:04", \
          "fd12::1", "nodad")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:04 fd12::2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "fd20::2/64", "f0:00:00:01:02:05", \
          "fd20::1", "nodad")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:05 fd20::2"
 
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 # Add DNAT rules
 AT_CHECK([ovn-nbctl lr-nat-add R1 dnat_and_snat fd20::3 fd11::2 foo1 00:00:02:02:03:04])
@@ -3726,7 +3726,7 @@ AT_CHECK([ovn-nbctl lr-nat-add R1 dnat_and_snat fd20::4 fd11::3 foo2 00:00:02:02
 # Add a SNAT rule
 AT_CHECK([ovn-nbctl lr-nat-add R1 snat fd20::1 ::/0])
 
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=fd20::1)'])
 
 # North-South DNAT: 'alice1' pings 'foo1' using fd20::3
@@ -3860,29 +3860,29 @@ start_daemon ovn-controller
 #           |
 #    bar ----
 
-ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
 
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
-ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.1/24 \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
+check ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.1/24 \
     -- lrp-set-gateway-chassis alice hv1
 
 # Connect foo to R1
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo \
     -- lsp-set-addresses rp-foo router
 
 # Connect bar to R1
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar \
     -- lsp-set-addresses rp-bar router
 
 # Connect alice to R1
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice \
     -- lsp-set-addresses rp-alice router
 
@@ -3890,28 +3890,28 @@ ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
          "192.168.1.1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
 
 # Logical port 'foo2' in switch 'foo'.
 ADD_NAMESPACES(foo2)
 ADD_VETH(foo2, foo2, br-int, "192.168.1.3/24", "f0:00:00:01:02:06", \
          "192.168.1.1")
-ovn-nbctl lsp-add foo foo2 \
+check ovn-nbctl lsp-add foo foo2 \
 -- lsp-set-addresses foo2 "f0:00:00:01:02:06 192.168.1.3"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:04", \
          "192.168.2.1")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:04 192.168.2.2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "172.16.1.2/24", "f0:00:00:01:02:05", \
          "172.16.1.1")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:05 172.16.1.2"
 
 # Add DNAT rules
@@ -3921,7 +3921,7 @@ AT_CHECK([ovn-nbctl lr-nat-add R1 dnat_and_snat 172.16.1.4 192.168.2.2 bar1 00:0
 # Add a SNAT rule
 AT_CHECK([ovn-nbctl lr-nat-add R1 snat 172.16.1.1 0.0.0.0/0])
 
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=172.16.1.1)'])
 
 echo "------ hv dump ------"
@@ -4044,29 +4044,29 @@ start_daemon ovn-controller
 #           |
 #    bar ----
 
-ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
 
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd11::1/64
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd12::1/64
-ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 fd20::1/64 \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd11::1/64
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd12::1/64
+check ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 fd20::1/64 \
     -- lrp-set-gateway-chassis alice hv1
 
 # Connect foo to R1
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo \
     -- lsp-set-addresses rp-foo router
 
 # Connect bar to R1
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar \
     -- lsp-set-addresses rp-bar router
 
 # Connect alice to R1
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice \
     -- lsp-set-addresses rp-alice router
 
@@ -4074,28 +4074,28 @@ ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "fd11::2/64", "f0:00:00:01:02:03", \
          "fd11::1", "nodad")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 fd11::2"
 
 # Logical port 'foo2' in switch 'foo'.
 ADD_NAMESPACES(foo2)
 ADD_VETH(foo2, foo2, br-int, "fd11::3/64", "f0:00:00:01:02:06", \
          "fd11::1", "nodad")
-ovn-nbctl lsp-add foo foo2 \
+check ovn-nbctl lsp-add foo foo2 \
 -- lsp-set-addresses foo2 "f0:00:00:01:02:06 fd11::3"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "fd12::2/64", "f0:00:00:01:02:04", \
          "fd12::1", "nodad")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:04 fd12::2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "fd20::2/64", "f0:00:00:01:02:05", \
          "fd20::1", "nodad")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:05 fd20::2"
 
 # Add DNAT rules
@@ -4105,7 +4105,7 @@ AT_CHECK([ovn-nbctl lr-nat-add R1 dnat_and_snat fd20::4 fd12::2 bar1 00:00:02:02
 # Add a SNAT rule
 AT_CHECK([ovn-nbctl lr-nat-add R1 snat fd20::1 ::/0])
 
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=fd20::1)'])
 
 echo "------ hv dump ------"
@@ -4215,14 +4215,14 @@ check ovn-nbctl acl-add ls1 from-lport 1 1 allow-related
 # Logical port 'p1' in switch 'ls1'.
 ADD_NAMESPACES(p1)
 ADD_VETH(p1, p1, br-int, "192.168.1.10/24", "00:00:00:00:00:10")
-ovn-nbctl lsp-add ls1 p1 \
+check ovn-nbctl lsp-add ls1 p1 \
 -- lsp-set-addresses p1 "00:00:00:00:00:10 192.168.1.10"
 
 # Logical port 'p2' in switch 'ls1'.
-ovn-nbctl lsp-add ls1 p2 \
+check ovn-nbctl lsp-add ls1 p2 \
 -- lsp-set-addresses p2 "00:00:00:00:00:20 192.168.1.20"
 
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 zone_id=$(ovn-appctl -t ovn-controller ct-zone-list | grep p1 | cut -d ' ' -f2)
 
@@ -4289,8 +4289,8 @@ start_daemon ovn-controller
 #   - subnet 20.0.0.0/8
 #   - 2 port (sw2-p1 - sw2-p2)
 #   - IGMP Querier from 20.0.0.254
-ovn-nbctl ls-add sw1
-ovn-nbctl ls-add sw2
+check ovn-nbctl ls-add sw1
+check ovn-nbctl ls-add sw2
 
 for i in `seq 1 2`
 do
@@ -4316,9 +4316,9 @@ do
 done
 
 # Enable IGMP snooping on sw1.
-ovn-nbctl set Logical_Switch sw1 other_config:mcast_querier="false"
-ovn-nbctl set Logical_Switch sw1 other_config:mcast_snoop="true"
-ovn-nbctl --wait=hv sync
+check ovn-nbctl set Logical_Switch sw1 other_config:mcast_querier="false"
+check ovn-nbctl set Logical_Switch sw1 other_config:mcast_snoop="true"
+check ovn-nbctl --wait=hv sync
 
 group_v4="239.0.1.68"
 # Inject IGMP Join for v4 group on sw1-p1.
@@ -4348,7 +4348,7 @@ OVS_WAIT_UNTIL([
 
 # Flush IGMP groups.
 ovn-sbctl ip-multicast-flush sw1
-ovn-nbctl --wait=hv -t 3 sync
+check ovn-nbctl --wait=hv -t 3 sync
 OVS_WAIT_UNTIL([
     total_entries=`ovn-sbctl find IGMP_Group address="${group_v4}" | grep _uuid -c`
     test "${total_entries}" = "0"
@@ -4383,7 +4383,7 @@ OVS_WAIT_UNTIL([
 
 # Enable IGMP & MLD snooping and querier on sw2 and set query interval to
 # minimum.
-ovn-nbctl set Logical_Switch sw2 \
+check ovn-nbctl set Logical_Switch sw2 \
     other_config:mcast_snoop="true" \
     other_config:mcast_querier="true" \
     other_config:mcast_query_interval=1 \
@@ -4444,73 +4444,73 @@ ovs-vsctl \
 # Start ovn-controller
 start_daemon ovn-controller
 
-ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add sw0
 
-ovn-nbctl lsp-add sw0 sw0-p1
-ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03"
-ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03"
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03"
+check ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03"
 
-ovn-nbctl lsp-add sw0 sw0-p2
-ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 10.0.0.4"
-ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+check ovn-nbctl lsp-add sw0 sw0-p2
+check ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+check ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:04 10.0.0.4"
 
 # Create port group and ACLs for sw0 ports.
-ovn-nbctl pg-add pg0_drop sw0-p1 sw0-p2
-ovn-nbctl acl-add pg0_drop from-lport 1001 "inport == @pg0_drop && ip" drop
-ovn-nbctl acl-add pg0_drop to-lport 1001 "outport == @pg0_drop && ip" drop
+check ovn-nbctl pg-add pg0_drop sw0-p1 sw0-p2
+check ovn-nbctl acl-add pg0_drop from-lport 1001 "inport == @pg0_drop && ip" drop
+check ovn-nbctl acl-add pg0_drop to-lport 1001 "outport == @pg0_drop && ip" drop
 
-ovn-nbctl pg-add pg0 sw0-p1 sw0-p2
-ovn-nbctl acl-add pg0 from-lport 1002 "inport == @pg0 && ip4" allow-related
-ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && icmp4" allow-related
-ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 80" allow-related
-ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && udp && udp.dst == 80" allow-related
+check ovn-nbctl pg-add pg0 sw0-p1 sw0-p2
+check ovn-nbctl acl-add pg0 from-lport 1002 "inport == @pg0 && ip4" allow-related
+check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && icmp4" allow-related
+check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 80" allow-related
+check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && udp && udp.dst == 80" allow-related
 
 # Create the second logical switch with one port
-ovn-nbctl ls-add sw1
-ovn-nbctl lsp-add sw1 sw1-p1
-ovn-nbctl lsp-set-addresses sw1-p1 "40:54:00:00:00:03 20.0.0.3"
-ovn-nbctl lsp-set-port-security sw1-p1 "40:54:00:00:00:03 20.0.0.3"
+check ovn-nbctl ls-add sw1
+check ovn-nbctl lsp-add sw1 sw1-p1
+check ovn-nbctl lsp-set-addresses sw1-p1 "40:54:00:00:00:03 20.0.0.3"
+check ovn-nbctl lsp-set-port-security sw1-p1 "40:54:00:00:00:03 20.0.0.3"
 
 # Create port group and ACLs for sw1 ports.
-ovn-nbctl pg-add pg1_drop sw1-p1
-ovn-nbctl acl-add pg1_drop from-lport 1001 "inport == @pg1_drop && ip" drop
-ovn-nbctl acl-add pg1_drop to-lport 1001 "outport == @pg1_drop && ip" drop
+check ovn-nbctl pg-add pg1_drop sw1-p1
+check ovn-nbctl acl-add pg1_drop from-lport 1001 "inport == @pg1_drop && ip" drop
+check ovn-nbctl acl-add pg1_drop to-lport 1001 "outport == @pg1_drop && ip" drop
 
-ovn-nbctl pg-add pg1 sw1-p1
-ovn-nbctl acl-add pg1 from-lport 1002 "inport == @pg1 && ip4" allow-related
-ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4 && ip4.src == 0.0.0.0/0 && icmp4" allow-related
-ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 80" allow-related
-ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4 && ip4.src == 0.0.0.0/0 && udp && udp.dst == 80" allow-related
+check ovn-nbctl pg-add pg1 sw1-p1
+check ovn-nbctl acl-add pg1 from-lport 1002 "inport == @pg1 && ip4" allow-related
+check ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4 && ip4.src == 0.0.0.0/0 && icmp4" allow-related
+check ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 80" allow-related
+check ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4 && ip4.src == 0.0.0.0/0 && udp && udp.dst == 80" allow-related
 
 # Create a logical router and attach both logical switches
-ovn-nbctl lr-add lr0
-ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
-ovn-nbctl lsp-add sw0 sw0-lr0
-ovn-nbctl lsp-set-type sw0-lr0 router
-ovn-nbctl lsp-set-addresses sw0-lr0 router
-ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 router
+check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
 
-ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
-ovn-nbctl lsp-add sw1 sw1-lr0
-ovn-nbctl lsp-set-type sw1-lr0 router
-ovn-nbctl lsp-set-addresses sw1-lr0 router
-ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
+check ovn-nbctl lsp-add sw1 sw1-lr0
+check ovn-nbctl lsp-set-type sw1-lr0 router
+check ovn-nbctl lsp-set-addresses sw1-lr0 router
+check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
 
-ovn-nbctl --reject lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
+check ovn-nbctl --reject lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
 
-ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
-ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:20.0.0.3=sw1-p1:20.0.0.2
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:20.0.0.3=sw1-p1:20.0.0.2
 
 ovn-nbctl --wait=sb -- --id=@hc create \
 Load_Balancer_Health_Check vip="10.0.0.10\:80" -- add Load_Balancer . \
 health_check @hc
 
-ovn-nbctl --wait=sb ls-lb-add sw0 lb1
-ovn-nbctl --wait=sb ls-lb-add sw1 lb1
-ovn-nbctl --wait=sb lr-lb-add lr0 lb1
+check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
+check ovn-nbctl --wait=sb ls-lb-add sw1 lb1
+check ovn-nbctl --wait=sb lr-lb-add lr0 lb1
 
 OVN_POPULATE_ARP
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 ADD_NAMESPACES(sw0-p1)
 ADD_VETH(sw0-p1, sw0-p1, br-int, "10.0.0.3/24", "50:54:00:00:00:03", \
@@ -4588,23 +4588,23 @@ wait_row_count Service_Monitor 2
 wait_row_count Service_Monitor 1 status=online
 
 # Create udp load balancer.
-ovn-nbctl lb-add lb2 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80 udp
+check ovn-nbctl lb-add lb2 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80 udp
 lb_udp=`ovn-nbctl lb-list | grep udp | awk '{print $1}'`
 
 echo "lb udp uuid = $lb_udp"
 
 ovn-nbctl list load_balancer
 
-ovn-nbctl --wait=sb set load_balancer $lb_udp ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
-ovn-nbctl --wait=sb set load_balancer $lb_udp ip_port_mappings:20.0.0.3=sw1-p1:20.0.0.2
+check ovn-nbctl --wait=sb set load_balancer $lb_udp ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
+check ovn-nbctl --wait=sb set load_balancer $lb_udp ip_port_mappings:20.0.0.3=sw1-p1:20.0.0.2
 
 ovn-nbctl --wait=sb -- --id=@hc create \
 Load_Balancer_Health_Check vip="10.0.0.10\:80" -- add Load_Balancer $lb_udp \
 health_check @hc
 
-ovn-nbctl --wait=sb ls-lb-add sw0 lb2
-ovn-nbctl --wait=sb ls-lb-add sw1 lb2
-ovn-nbctl --wait=sb lr-lb-add lr0 lb2
+check ovn-nbctl --wait=sb ls-lb-add sw0 lb2
+check ovn-nbctl --wait=sb ls-lb-add sw1 lb2
+check ovn-nbctl --wait=sb lr-lb-add lr0 lb2
 
 sleep 10
 
@@ -4736,7 +4736,7 @@ check ovn-nbctl ls-lb-add sw1 lb1
 check ovn-nbctl lr-lb-add lr0 lb1
 
 OVN_POPULATE_ARP
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 ADD_NAMESPACES(sw0-p1)
 ADD_VETH(sw0-p1, sw0-p1, br-int, "2001::3/64", "50:54:00:00:00:03", \
@@ -4858,22 +4858,22 @@ start_daemon ovn-controller
 
 # Logical network:
 # One logical switch with IPv4 load balancers that hairpin the traffic.
-ovn-nbctl ls-add sw
-ovn-nbctl lsp-add sw lsp -- lsp-set-addresses lsp 00:00:00:00:00:01
-ovn-nbctl lb-add lb-ipv4-tcp     88.88.88.88:8080 42.42.42.1:4041 tcp
-ovn-nbctl lb-add lb-ipv4-tcp-dup 88.88.88.89:8080 42.42.42.1:4041 tcp
-ovn-nbctl lb-add lb-ipv4-udp     88.88.88.88:4040 42.42.42.1:2021 udp
-ovn-nbctl lb-add lb-ipv4-udp-dup 88.88.88.89:4040 42.42.42.1:2021 udp
-ovn-nbctl lb-add lb-ipv4 88.88.88.90 42.42.42.1
-ovn-nbctl ls-lb-add sw lb-ipv4-tcp
-ovn-nbctl ls-lb-add sw lb-ipv4-tcp-dup
-ovn-nbctl ls-lb-add sw lb-ipv4-udp
-ovn-nbctl ls-lb-add sw lb-ipv4-udp-dup
-ovn-nbctl ls-lb-add sw lb-ipv4
+check ovn-nbctl ls-add sw
+check ovn-nbctl lsp-add sw lsp -- lsp-set-addresses lsp 00:00:00:00:00:01
+check ovn-nbctl lb-add lb-ipv4-tcp     88.88.88.88:8080 42.42.42.1:4041 tcp
+check ovn-nbctl lb-add lb-ipv4-tcp-dup 88.88.88.89:8080 42.42.42.1:4041 tcp
+check ovn-nbctl lb-add lb-ipv4-udp     88.88.88.88:4040 42.42.42.1:2021 udp
+check ovn-nbctl lb-add lb-ipv4-udp-dup 88.88.88.89:4040 42.42.42.1:2021 udp
+check ovn-nbctl lb-add lb-ipv4 88.88.88.90 42.42.42.1
+check ovn-nbctl ls-lb-add sw lb-ipv4-tcp
+check ovn-nbctl ls-lb-add sw lb-ipv4-tcp-dup
+check ovn-nbctl ls-lb-add sw lb-ipv4-udp
+check ovn-nbctl ls-lb-add sw lb-ipv4-udp-dup
+check ovn-nbctl ls-lb-add sw lb-ipv4
 
-ovn-nbctl lr-add rtr
-ovn-nbctl lrp-add rtr rtr-sw 00:00:00:00:01:00 42.42.42.254/24
-ovn-nbctl lsp-add sw sw-rtr                       \
+check ovn-nbctl lr-add rtr
+check ovn-nbctl lrp-add rtr rtr-sw 00:00:00:00:01:00 42.42.42.254/24
+check ovn-nbctl lsp-add sw sw-rtr                       \
     -- lsp-set-type sw-rtr router                 \
     -- lsp-set-addresses sw-rtr 00:00:00:00:01:00 \
     -- lsp-set-options sw-rtr router-port=rtr-sw
@@ -4882,7 +4882,7 @@ ADD_NAMESPACES(lsp)
 ADD_VETH(lsp, lsp, br-int, "42.42.42.1/24", "00:00:00:00:00:01", \
          "42.42.42.254")
 
-ovn-nbctl --wait=hv -t 3 sync
+check ovn-nbctl --wait=hv -t 3 sync
 
 # Start IPv4 TCP server on lsp.
 NETNS_DAEMONIZE([lsp], [nc -l -k 42.42.42.1 4041], [lsp0.pid])
@@ -4907,11 +4907,11 @@ OVS_WAIT_UNTIL([
     test "${total_pkts}" = "3"
 ])
 
-ovn-nbctl pg-add pg0 lsp
-ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1004 "ip4 && ip4.dst == 10.0.0.2" drop
-ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1002 "ip4 && tcp" allow-related
-ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1002 "ip4 && udp" allow
-ovn-nbctl --wait=hv sync
+check ovn-nbctl pg-add pg0 lsp
+check ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1004 "ip4 && ip4.dst == 10.0.0.2" drop
+check ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1002 "ip4 && tcp" allow-related
+check ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1002 "ip4 && udp" allow
+check ovn-nbctl --wait=hv sync
 
 ## Check that IPv4 TCP hairpin connection succeeds on both VIPs.
 NS_CHECK_EXEC([lsp], [nc 88.88.88.88 8080 -z], [0], [ignore], [ignore])
@@ -4957,29 +4957,29 @@ start_daemon ovn-controller
 
 # Logical network:
 # One logical switch with IPv6 load balancers that hairpin the traffic.
-ovn-nbctl ls-add sw
-ovn-nbctl lsp-add sw lsp -- lsp-set-addresses lsp 00:00:00:00:00:01
-ovn-nbctl lb-add lb-ipv6-tcp     [[8800::0088]]:8080 [[4200::1]]:4041 tcp
-ovn-nbctl lb-add lb-ipv6-tcp-dup [[8800::0089]]:8080 [[4200::1]]:4041 tcp
-ovn-nbctl lb-add lb-ipv6-udp     [[8800::0088]]:4040 [[4200::1]]:2021 udp
-ovn-nbctl lb-add lb-ipv6-udp-dup [[8800::0089]]:4040 [[4200::1]]:2021 udp
-ovn-nbctl lb-add lb-ipv6 8800::0090 4200::1
-ovn-nbctl ls-lb-add sw lb-ipv6-tcp
-ovn-nbctl ls-lb-add sw lb-ipv6-tcp-dup
-ovn-nbctl ls-lb-add sw lb-ipv6-udp
-ovn-nbctl ls-lb-add sw lb-ipv6-udp-dup
-ovn-nbctl ls-lb-add sw lb-ipv6
+check ovn-nbctl ls-add sw
+check ovn-nbctl lsp-add sw lsp -- lsp-set-addresses lsp 00:00:00:00:00:01
+check ovn-nbctl lb-add lb-ipv6-tcp     [[8800::0088]]:8080 [[4200::1]]:4041 tcp
+check ovn-nbctl lb-add lb-ipv6-tcp-dup [[8800::0089]]:8080 [[4200::1]]:4041 tcp
+check ovn-nbctl lb-add lb-ipv6-udp     [[8800::0088]]:4040 [[4200::1]]:2021 udp
+check ovn-nbctl lb-add lb-ipv6-udp-dup [[8800::0089]]:4040 [[4200::1]]:2021 udp
+check ovn-nbctl lb-add lb-ipv6 8800::0090 4200::1
+check ovn-nbctl ls-lb-add sw lb-ipv6-tcp
+check ovn-nbctl ls-lb-add sw lb-ipv6-tcp-dup
+check ovn-nbctl ls-lb-add sw lb-ipv6-udp
+check ovn-nbctl ls-lb-add sw lb-ipv6-udp-dup
+check ovn-nbctl ls-lb-add sw lb-ipv6
 
-ovn-nbctl lr-add rtr
-ovn-nbctl lrp-add rtr rtr-sw 00:00:00:00:01:00 4200::00ff/64
-ovn-nbctl lsp-add sw sw-rtr                       \
+check ovn-nbctl lr-add rtr
+check ovn-nbctl lrp-add rtr rtr-sw 00:00:00:00:01:00 4200::00ff/64
+check ovn-nbctl lsp-add sw sw-rtr                       \
     -- lsp-set-type sw-rtr router                 \
     -- lsp-set-addresses sw-rtr 00:00:00:00:01:00 \
     -- lsp-set-options sw-rtr router-port=rtr-sw
 
 ADD_NAMESPACES(lsp)
 ADD_VETH(lsp, lsp, br-int, "4200::1/64", "00:00:00:00:00:01", "4200::00ff", "nodad")
-ovn-nbctl --wait=hv -t 3 sync
+check ovn-nbctl --wait=hv -t 3 sync
 
 # Start IPv6 TCP server on lsp.
 NETNS_DAEMONIZE([lsp], [nc -l -k 4200::1 4041], [lsp0.pid])
@@ -5004,11 +5004,11 @@ OVS_WAIT_UNTIL([
     test "${total_pkts}" = "3"
 ])
 
-ovn-nbctl pg-add pg0 lsp
-ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1002 "ip6 && tcp" allow-related
-ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1002 "ip6 && udp" allow
-ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1000 "ip6" drop
-ovn-nbctl --wait=hv sync
+check ovn-nbctl pg-add pg0 lsp
+check ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1002 "ip6 && tcp" allow-related
+check ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1002 "ip6 && udp" allow
+check ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1000 "ip6" drop
+check ovn-nbctl --wait=hv sync
 
 # Check that IPv6 TCP hairpin connection succeeds on both VIPs.
 NS_CHECK_EXEC([lsp], [nc 8800::0088 8080 -z], [0], [ignore], [ignore])
@@ -5052,51 +5052,51 @@ ovs-vsctl \
 # Start ovn-controller
 start_daemon ovn-controller
 
-ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add sw0
 
-ovn-nbctl lsp-add sw0 sw0-p1-rej
-ovn-nbctl lsp-set-addresses sw0-p1-rej "50:54:00:00:00:03 10.0.0.3 aef0::3"
-ovn-nbctl lsp-set-port-security sw0-p1-rej "50:54:00:00:00:03 10.0.0.3 aef0::3"
+check ovn-nbctl lsp-add sw0 sw0-p1-rej
+check ovn-nbctl lsp-set-addresses sw0-p1-rej "50:54:00:00:00:03 10.0.0.3 aef0::3"
+check ovn-nbctl lsp-set-port-security sw0-p1-rej "50:54:00:00:00:03 10.0.0.3 aef0::3"
 
-ovn-nbctl lsp-add sw0 sw0-p2-rej
-ovn-nbctl lsp-set-addresses sw0-p2-rej "50:54:00:00:00:04 10.0.0.4 aef0::4"
-ovn-nbctl lsp-set-port-security sw0-p2-rej "50:54:00:00:00:04 10.0.0.4 aef0::4"
+check ovn-nbctl lsp-add sw0 sw0-p2-rej
+check ovn-nbctl lsp-set-addresses sw0-p2-rej "50:54:00:00:00:04 10.0.0.4 aef0::4"
+check ovn-nbctl lsp-set-port-security sw0-p2-rej "50:54:00:00:00:04 10.0.0.4 aef0::4"
 
 # Create port group and ACLs for sw0 ports.
-ovn-nbctl pg-add pg0_drop sw0-p1-rej sw0-p2-rej
-ovn-nbctl acl-add pg0_drop from-lport 1001 "inport == @pg0_drop && ip" drop
-ovn-nbctl acl-add pg0_drop to-lport 1001 "outport == @pg0_drop && ip" drop
+check ovn-nbctl pg-add pg0_drop sw0-p1-rej sw0-p2-rej
+check ovn-nbctl acl-add pg0_drop from-lport 1001 "inport == @pg0_drop && ip" drop
+check ovn-nbctl acl-add pg0_drop to-lport 1001 "outport == @pg0_drop && ip" drop
 
-ovn-nbctl pg-add pg0 sw0-p1-rej sw0-p2-rej
-ovn-nbctl acl-add pg0 from-lport 1002 "inport == @pg0 && ip" allow-related
-ovn-nbctl --log acl-add pg0 from-lport 1004 "inport == @pg0 && ip && tcp && tcp.dst == 80" reject
-ovn-nbctl --log acl-add pg0 from-lport 1004 "inport == @pg0 && ip && udp && udp.dst == 90" reject
+check ovn-nbctl pg-add pg0 sw0-p1-rej sw0-p2-rej
+check ovn-nbctl acl-add pg0 from-lport 1002 "inport == @pg0 && ip" allow-related
+check ovn-nbctl --log acl-add pg0 from-lport 1004 "inport == @pg0 && ip && tcp && tcp.dst == 80" reject
+check ovn-nbctl --log acl-add pg0 from-lport 1004 "inport == @pg0 && ip && udp && udp.dst == 90" reject
 
-ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 82" allow-related
-ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && udp && udp.dst == 82" allow-related
-ovn-nbctl --log acl-add pg0 to-lport 1004 "inport == @pg0 && ip && tcp && tcp.dst == 84" reject
-ovn-nbctl --log acl-add pg0 to-lport 1004 "inport == @pg0 && ip && udp && udp.dst == 94" reject
+check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 82" allow-related
+check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && udp && udp.dst == 82" allow-related
+check ovn-nbctl --log acl-add pg0 to-lport 1004 "inport == @pg0 && ip && tcp && tcp.dst == 84" reject
+check ovn-nbctl --log acl-add pg0 to-lport 1004 "inport == @pg0 && ip && udp && udp.dst == 94" reject
 
-ovn-nbctl ls-add sw1
-ovn-nbctl lsp-add sw1 sw1-p1-rej
-ovn-nbctl lsp-set-addresses sw1-p1-rej "40:54:00:00:00:03 20.0.0.3"
-ovn-nbctl lsp-set-port-security sw1-p1-rej "40:54:00:00:00:03 20.0.0.3"
+check ovn-nbctl ls-add sw1
+check ovn-nbctl lsp-add sw1 sw1-p1-rej
+check ovn-nbctl lsp-set-addresses sw1-p1-rej "40:54:00:00:00:03 20.0.0.3"
+check ovn-nbctl lsp-set-port-security sw1-p1-rej "40:54:00:00:00:03 20.0.0.3"
 
-ovn-nbctl lr-add lr0
-ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
-ovn-nbctl lsp-add sw0 sw0-lr0
-ovn-nbctl lsp-set-type sw0-lr0 router
-ovn-nbctl lsp-set-addresses sw0-lr0 router
-ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 router
+check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
 
-ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
-ovn-nbctl lsp-add sw1 sw1-lr0
-ovn-nbctl lsp-set-type sw1-lr0 router
-ovn-nbctl lsp-set-addresses sw1-lr0 router
-ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
+check ovn-nbctl lsp-add sw1 sw1-lr0
+check ovn-nbctl lsp-set-type sw1-lr0 router
+check ovn-nbctl lsp-set-addresses sw1-lr0 router
+check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
 
 OVN_POPULATE_ARP
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 ADD_NAMESPACES(sw0-p1-rej)
 ADD_VETH(sw0-p1-rej, sw0-p1-rej, br-int, "10.0.0.3/24", "50:54:00:00:00:03", \
@@ -5149,9 +5149,9 @@ OVS_WAIT_UNTIL([
     echo "total = $total"
     test "${total}" = "2"
 ])
-ovn-nbctl acl-add sw1 from-lport 1004 "ip" allow-related
-ovn-nbctl acl-add sw1 to-lport 1004 "ip" allow-related
-ovn-nbctl --log acl-add pg0 to-lport 1004 "outport == @pg0 && ip && tcp && tcp.dst == 84" reject
+check ovn-nbctl acl-add sw1 from-lport 1004 "ip" allow-related
+check ovn-nbctl acl-add sw1 to-lport 1004 "ip" allow-related
+check ovn-nbctl --log acl-add pg0 to-lport 1004 "outport == @pg0 && ip && tcp && tcp.dst == 84" reject
 
 OVS_WAIT_UNTIL([
     ip netns exec sw1-p1-rej nc -vz 10.0.0.4 84 2>&1 | grep -i 'connection refused'
@@ -5210,9 +5210,9 @@ aef0::3 udp port 94" | uniq | wc -l)
 ])
 
 # Delete all the ACLs of pg0 and add the ACL with a generic match with reject action.
-ovn-nbctl pg-del pg0
-ovn-nbctl pg-add pg0 sw0-p1-rej sw0-p2-rej
-ovn-nbctl --log acl-add pg0 from-lport 1004 "inport == @pg0 && ip && (tcp || udp)" reject
+check ovn-nbctl pg-del pg0
+check ovn-nbctl pg-add pg0 sw0-p1-rej sw0-p2-rej
+check ovn-nbctl --log acl-add pg0 from-lport 1004 "inport == @pg0 && ip && (tcp || udp)" reject
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -vz 10.0.0.4 80 2>&1 | grep -i 'connection refused'
@@ -5286,51 +5286,51 @@ ovs-vsctl \
 # Start ovn-controller
 start_daemon ovn-controller
 
-ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add sw0
 
-ovn-nbctl lsp-add sw0 sw0-p1-rej
-ovn-nbctl lsp-set-addresses sw0-p1-rej "50:54:00:00:00:03 10.0.0.3 aef0::3"
-ovn-nbctl lsp-set-port-security sw0-p1-rej "50:54:00:00:00:03 10.0.0.3 aef0::3"
+check ovn-nbctl lsp-add sw0 sw0-p1-rej
+check ovn-nbctl lsp-set-addresses sw0-p1-rej "50:54:00:00:00:03 10.0.0.3 aef0::3"
+check ovn-nbctl lsp-set-port-security sw0-p1-rej "50:54:00:00:00:03 10.0.0.3 aef0::3"
 
-ovn-nbctl lsp-add sw0 sw0-p2-rej
-ovn-nbctl lsp-set-addresses sw0-p2-rej "50:54:00:00:00:04 10.0.0.4 aef0::4"
-ovn-nbctl lsp-set-port-security sw0-p2-rej "50:54:00:00:00:04 10.0.0.4 aef0::4"
+check ovn-nbctl lsp-add sw0 sw0-p2-rej
+check ovn-nbctl lsp-set-addresses sw0-p2-rej "50:54:00:00:00:04 10.0.0.4 aef0::4"
+check ovn-nbctl lsp-set-port-security sw0-p2-rej "50:54:00:00:00:04 10.0.0.4 aef0::4"
 
 # Create port group and ACLs for sw0 ports.
-ovn-nbctl pg-add pg0_drop sw0-p1-rej sw0-p2-rej
-ovn-nbctl --apply-after-lb acl-add pg0_drop from-lport 1001 "inport == @pg0_drop && ip" drop
-ovn-nbctl acl-add pg0_drop to-lport 1001 "outport == @pg0_drop && ip" drop
+check ovn-nbctl pg-add pg0_drop sw0-p1-rej sw0-p2-rej
+check ovn-nbctl --apply-after-lb acl-add pg0_drop from-lport 1001 "inport == @pg0_drop && ip" drop
+check ovn-nbctl acl-add pg0_drop to-lport 1001 "outport == @pg0_drop && ip" drop
 
-ovn-nbctl pg-add pg0 sw0-p1-rej sw0-p2-rej
-ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1002 "inport == @pg0 && ip" allow-related
-ovn-nbctl --log --apply-after-lb acl-add pg0 from-lport 1004 "inport == @pg0 && ip && tcp && tcp.dst == 80" reject
-ovn-nbctl --log --apply-after-lb acl-add pg0 from-lport 1004 "inport == @pg0 && ip && udp && udp.dst == 90" reject
+check ovn-nbctl pg-add pg0 sw0-p1-rej sw0-p2-rej
+check ovn-nbctl --apply-after-lb acl-add pg0 from-lport 1002 "inport == @pg0 && ip" allow-related
+check ovn-nbctl --log --apply-after-lb acl-add pg0 from-lport 1004 "inport == @pg0 && ip && tcp && tcp.dst == 80" reject
+check ovn-nbctl --log --apply-after-lb acl-add pg0 from-lport 1004 "inport == @pg0 && ip && udp && udp.dst == 90" reject
 
-ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 82" allow-related
-ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && udp && udp.dst == 82" allow-related
-ovn-nbctl --log acl-add pg0 to-lport 1004 "inport == @pg0 && ip && tcp && tcp.dst == 84" reject
-ovn-nbctl --log acl-add pg0 to-lport 1004 "inport == @pg0 && ip && udp && udp.dst == 94" reject
+check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 82" allow-related
+check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && udp && udp.dst == 82" allow-related
+check ovn-nbctl --log acl-add pg0 to-lport 1004 "inport == @pg0 && ip && tcp && tcp.dst == 84" reject
+check ovn-nbctl --log acl-add pg0 to-lport 1004 "inport == @pg0 && ip && udp && udp.dst == 94" reject
 
-ovn-nbctl ls-add sw1
-ovn-nbctl lsp-add sw1 sw1-p1-rej
-ovn-nbctl lsp-set-addresses sw1-p1-rej "40:54:00:00:00:03 20.0.0.3"
-ovn-nbctl lsp-set-port-security sw1-p1-rej "40:54:00:00:00:03 20.0.0.3"
+check ovn-nbctl ls-add sw1
+check ovn-nbctl lsp-add sw1 sw1-p1-rej
+check ovn-nbctl lsp-set-addresses sw1-p1-rej "40:54:00:00:00:03 20.0.0.3"
+check ovn-nbctl lsp-set-port-security sw1-p1-rej "40:54:00:00:00:03 20.0.0.3"
 
-ovn-nbctl lr-add lr0
-ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
-ovn-nbctl lsp-add sw0 sw0-lr0
-ovn-nbctl lsp-set-type sw0-lr0 router
-ovn-nbctl lsp-set-addresses sw0-lr0 router
-ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 router
+check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
 
-ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
-ovn-nbctl lsp-add sw1 sw1-lr0
-ovn-nbctl lsp-set-type sw1-lr0 router
-ovn-nbctl lsp-set-addresses sw1-lr0 router
-ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
+check ovn-nbctl lsp-add sw1 sw1-lr0
+check ovn-nbctl lsp-set-type sw1-lr0 router
+check ovn-nbctl lsp-set-addresses sw1-lr0 router
+check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
 
 OVN_POPULATE_ARP
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 ADD_NAMESPACES(sw0-p1-rej)
 ADD_VETH(sw0-p1-rej, sw0-p1-rej, br-int, "10.0.0.3/24", "50:54:00:00:00:03", \
@@ -5386,9 +5386,9 @@ OVS_WAIT_UNTIL([
 
 kill $(pidof tcpdump)
 
-ovn-nbctl --apply-after-lb acl-add sw1 from-lport 1004 "ip" allow-related
-ovn-nbctl acl-add sw1 to-lport 1004 "ip" allow-related
-ovn-nbctl --log acl-add pg0 to-lport 1004 "outport == @pg0 && ip && tcp && tcp.dst == 84" reject
+check ovn-nbctl --apply-after-lb acl-add sw1 from-lport 1004 "ip" allow-related
+check ovn-nbctl acl-add sw1 to-lport 1004 "ip" allow-related
+check ovn-nbctl --log acl-add pg0 to-lport 1004 "outport == @pg0 && ip && tcp && tcp.dst == 84" reject
 
 OVS_WAIT_UNTIL([
     ip netns exec sw1-p1-rej nc -vz 10.0.0.4 84 2>&1 | grep -i 'connection refused'
@@ -5446,9 +5446,9 @@ aef0::3 udp port 94" | uniq | wc -l)
 ])
 
 # Delete all the ACLs of pg0 and add the ACL with a generic match with reject action.
-ovn-nbctl pg-del pg0
-ovn-nbctl pg-add pg0 sw0-p1-rej sw0-p2-rej
-ovn-nbctl --log --apply-after-lb acl-add pg0 from-lport 1004 "inport == @pg0 && ip && (tcp || udp)" reject
+check ovn-nbctl pg-del pg0
+check ovn-nbctl pg-add pg0 sw0-p1-rej sw0-p2-rej
+check ovn-nbctl --log --apply-after-lb acl-add pg0 from-lport 1004 "inport == @pg0 && ip && (tcp || udp)" reject
 
 OVS_WAIT_UNTIL([
     ip netns exec sw0-p1-rej nc -vz 10.0.0.4 80 2>&1 | grep -i 'connection refused'
@@ -5543,41 +5543,41 @@ ovs-vsctl \
 # Start ovn-controller
 start_daemon ovn-controller
 
-ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add sw0
 
-ovn-nbctl lsp-add sw0 rst-p1
-ovn-nbctl lsp-set-addresses rst-p1 "50:54:00:00:00:03"
-ovn-nbctl lsp-set-port-security rst-p1 "50:54:00:00:00:03"
+check ovn-nbctl lsp-add sw0 rst-p1
+check ovn-nbctl lsp-set-addresses rst-p1 "50:54:00:00:00:03"
+check ovn-nbctl lsp-set-port-security rst-p1 "50:54:00:00:00:03"
 
-ovn-nbctl lsp-add sw0 rst-p2
-ovn-nbctl lsp-set-addresses rst-p2 "50:54:00:00:00:04 10.0.0.4"
-ovn-nbctl lsp-set-port-security rst-p2 "50:54:00:00:00:04 10.0.0.4"
+check ovn-nbctl lsp-add sw0 rst-p2
+check ovn-nbctl lsp-set-addresses rst-p2 "50:54:00:00:00:04 10.0.0.4"
+check ovn-nbctl lsp-set-port-security rst-p2 "50:54:00:00:00:04 10.0.0.4"
 
 # Create port group and ACLs for sw0 ports.
-ovn-nbctl pg-add pg0_drop rst-p1 rst-p2
-ovn-nbctl acl-add pg0_drop from-lport 1001 "inport == @pg0_drop && ip" drop
-ovn-nbctl acl-add pg0_drop to-lport 1001 "outport == @pg0_drop && ip" drop
+check ovn-nbctl pg-add pg0_drop rst-p1 rst-p2
+check ovn-nbctl acl-add pg0_drop from-lport 1001 "inport == @pg0_drop && ip" drop
+check ovn-nbctl acl-add pg0_drop to-lport 1001 "outport == @pg0_drop && ip" drop
 
-ovn-nbctl pg-add pg0 rst-p1 rst-p2
-ovn-nbctl acl-add pg0 from-lport 1002 "inport == @pg0 && ip4" allow-related
-ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && icmp4" allow-related
-ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 80" allow-related
-ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && udp && udp.dst == 80" allow-related
+check ovn-nbctl pg-add pg0 rst-p1 rst-p2
+check ovn-nbctl acl-add pg0 from-lport 1002 "inport == @pg0 && ip4" allow-related
+check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && icmp4" allow-related
+check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 80" allow-related
+check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4 && ip4.src == 0.0.0.0/0 && udp && udp.dst == 80" allow-related
 
 # Create a logical router and attach to logical switch.
-ovn-nbctl lr-add lr0
-ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
-ovn-nbctl lsp-add sw0 sw0-lr0
-ovn-nbctl lsp-set-type sw0-lr0 router
-ovn-nbctl lsp-set-addresses sw0-lr0 router
-ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 router
+check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
 
-ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80
-ovn-nbctl --wait=sb ls-lb-add sw0 lb1
-ovn-nbctl --wait=sb lr-lb-add lr0 lb1
+check ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80
+check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
+check ovn-nbctl --wait=sb lr-lb-add lr0 lb1
 
 OVN_POPULATE_ARP
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 ADD_NAMESPACES(rst-p1)
 ADD_VETH(rst-p1, rst-p1, br-int, "10.0.0.3/24", "50:54:00:00:00:03", \
@@ -5647,44 +5647,44 @@ ovs-vsctl \
 # Start ovn-controller
 start_daemon ovn-controller
 
-ovn-nbctl ls-add sw0
-ovn-nbctl lsp-add sw0 sw0-p1-lbc
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1-lbc
 check ovn-nbctl lsp-set-addresses sw0-p1-lbc "10:54:00:00:00:03 10.0.0.3"
 
-ovn-nbctl lsp-add sw0 sw0-p2-lbc
+check ovn-nbctl lsp-add sw0 sw0-p2-lbc
 check ovn-nbctl lsp-set-addresses sw0-p2-lbc "10:54:00:00:00:04 10.0.0.4"
 
-ovn-nbctl ls-add sw1
-ovn-nbctl lsp-add sw1 sw1-port1 sw0-p1-lbc 10
-ovn-nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3"
+check ovn-nbctl ls-add sw1
+check ovn-nbctl lsp-add sw1 sw1-port1 sw0-p1-lbc 10
+check ovn-nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3"
 
-ovn-nbctl lsp-add sw1 sw1-port2 sw0-p2-lbc 20
-ovn-nbctl lsp-set-addresses sw1-port2 "40:54:00:00:00:04 20.0.0.4"
-
-
-ovn-nbctl lr-add lr0
-ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
-ovn-nbctl lsp-add sw1 sw1-lr0
-ovn-nbctl lsp-set-type sw1-lr0 router
-ovn-nbctl lsp-set-addresses sw1-lr0 router
-ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check ovn-nbctl lsp-add sw1 sw1-port2 sw0-p2-lbc 20
+check ovn-nbctl lsp-set-addresses sw1-port2 "40:54:00:00:00:04 20.0.0.4"
 
 
-ovn-nbctl ls-add sw2
-ovn-nbctl lsp-add sw2 sw2-port1
-ovn-nbctl lsp-set-addresses sw2-port1 "50:54:00:00:00:03 30.0.0.3"
-
-ovn-nbctl lrp-add lr0 lr0-sw2 00:00:00:00:ff:03 30.0.0.1/24
-ovn-nbctl lsp-add sw2 sw2-lr0
-ovn-nbctl lsp-set-type sw2-lr0 router
-ovn-nbctl lsp-set-addresses sw2-lr0 router
-ovn-nbctl lsp-set-options sw2-lr0 router-port=lr0-sw2
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
+check ovn-nbctl lsp-add sw1 sw1-lr0
+check ovn-nbctl lsp-set-type sw1-lr0 router
+check ovn-nbctl lsp-set-addresses sw1-lr0 router
+check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
 
 
-ovn-nbctl lb-add lb0 "30.0.0.10:80" "20.0.0.4:80"
+check ovn-nbctl ls-add sw2
+check ovn-nbctl lsp-add sw2 sw2-port1
+check ovn-nbctl lsp-set-addresses sw2-port1 "50:54:00:00:00:03 30.0.0.3"
 
-ovn-nbctl ls-lb-add sw1 lb0
-ovn-nbctl ls-lb-add sw2 lb0
+check ovn-nbctl lrp-add lr0 lr0-sw2 00:00:00:00:ff:03 30.0.0.1/24
+check ovn-nbctl lsp-add sw2 sw2-lr0
+check ovn-nbctl lsp-set-type sw2-lr0 router
+check ovn-nbctl lsp-set-addresses sw2-lr0 router
+check ovn-nbctl lsp-set-options sw2-lr0 router-port=lr0-sw2
+
+
+check ovn-nbctl lb-add lb0 "30.0.0.10:80" "20.0.0.4:80"
+
+check ovn-nbctl ls-lb-add sw1 lb0
+check ovn-nbctl ls-lb-add sw2 lb0
 
 ADD_NAMESPACES(sw0-p1-lbc)
 ADD_VETH(sw0-p1-lbc, sw0-p1-lbc, br-int, "10.0.0.3/24", "10:54:00:00:00:03", \
@@ -5720,7 +5720,7 @@ NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 20.0.0.4 80], [0], [ignore], [ignore])
 NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 30.0.0.10 80], [0], [ignore], [ignore])
 
 # Now add an ACL in sw1.
-ovn-nbctl --wait=hv acl-add sw1 to-lport 2002 "ip" allow-related
+check ovn-nbctl --wait=hv acl-add sw1 to-lport 2002 "ip" allow-related
 # Send the packet to backend
 NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 20.0.0.4 80], [0], [ignore], [ignore])
 
@@ -5987,20 +5987,20 @@ ovs-vsctl \
 # Start ovn-controller
 start_daemon ovn-controller
 
-ovn-nbctl ls-add sw0
-ovn-nbctl lsp-add sw0 sw0-p1-f
-ovn-nbctl lsp-set-addresses sw0-p1-f "10:54:00:00:00:03 10.0.0.3"
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1-f
+check ovn-nbctl lsp-set-addresses sw0-p1-f "10:54:00:00:00:03 10.0.0.3"
 
-ovn-nbctl lsp-add sw0 sw0-p2-f
-ovn-nbctl lsp-set-addresses sw0-p2-f "10:54:00:00:00:04 10.0.0.4"
+check ovn-nbctl lsp-add sw0 sw0-p2-f
+check ovn-nbctl lsp-set-addresses sw0-p2-f "10:54:00:00:00:04 10.0.0.4"
 
-ovn-nbctl lsp-add sw0 sw0-p3-f
-ovn-nbctl lsp-set-addresses sw0-p3-f "10:54:00:00:00:05 10.0.0.5"
+check ovn-nbctl lsp-add sw0 sw0-p3-f
+check ovn-nbctl lsp-set-addresses sw0-p3-f "10:54:00:00:00:05 10.0.0.5"
 
 # Add ACL with allow-ralated so that conntrack is hit.
 
-ovn-nbctl acl-add sw0 from-lport 1002 "ip" allow-related
-ovn-nbctl acl-add sw0 to-lport 1002 "ip" allow-related
+check ovn-nbctl acl-add sw0 from-lport 1002 "ip" allow-related
+check ovn-nbctl acl-add sw0 to-lport 1002 "ip" allow-related
 
 ADD_NAMESPACES(sw0-p1-f)
 ADD_VETH(sw0-p1-f, sw0-p1-f, br-int, "10.0.0.3/24", "10:54:00:00:00:03", \
@@ -6097,64 +6097,64 @@ ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
 ovn-nbctl create Logical_Router name=R2
 ovn-nbctl create Logical_Router name=R3
 
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add bob
-ovn-nbctl ls-add ext
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add bob
+check ovn-nbctl ls-add ext
 
 # connect alice to R1
-ovn-nbctl lrp-add R1 alice 00:00:01:01:02:03 10.0.0.1/24
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lrp-add R1 alice 00:00:01:01:02:03 10.0.0.1/24
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice addresses='"00:00:01:01:02:03"'
 
 # connect bob to R2
-ovn-nbctl lrp-add R2 R2_bob 00:00:02:01:02:03 172.16.0.2/16
-ovn-nbctl lsp-add bob rp2-bob -- set Logical_Switch_Port rp2-bob \
+check ovn-nbctl lrp-add R2 R2_bob 00:00:02:01:02:03 172.16.0.2/16
+check ovn-nbctl lsp-add bob rp2-bob -- set Logical_Switch_Port rp2-bob \
     type=router options:router-port=R2_bob addresses='"00:00:02:01:02:03"'
 
 # connect bob to R3
-ovn-nbctl lrp-add R3 R3_bob 00:00:02:01:02:04 172.16.0.3/16
-ovn-nbctl lsp-add bob rp3-bob -- set Logical_Switch_Port rp3-bob \
+check ovn-nbctl lrp-add R3 R3_bob 00:00:02:01:02:04 172.16.0.3/16
+check ovn-nbctl lsp-add bob rp3-bob -- set Logical_Switch_Port rp3-bob \
     type=router options:router-port=R3_bob addresses='"00:00:02:01:02:04"'
 
 # Connect R1 to ext
-ovn-nbctl lrp-add R1 R1_ext 00:00:04:01:02:03 20.0.0.1/24
-ovn-nbctl lsp-add ext r1-ext -- set Logical_Switch_Port r1-ext \
+check ovn-nbctl lrp-add R1 R1_ext 00:00:04:01:02:03 20.0.0.1/24
+check ovn-nbctl lsp-add ext r1-ext -- set Logical_Switch_Port r1-ext \
     type=router options:router-port=R1_ext addresses='"00:00:04:01:02:03"'
 
 # Connect R2 to ext
-ovn-nbctl lrp-add R2 R2_ext 00:00:04:01:02:04 20.0.0.2/24
-ovn-nbctl lsp-add ext r2-ext -- set Logical_Switch_Port r2-ext \
+check ovn-nbctl lrp-add R2 R2_ext 00:00:04:01:02:04 20.0.0.2/24
+check ovn-nbctl lsp-add ext r2-ext -- set Logical_Switch_Port r2-ext \
     type=router options:router-port=R2_ext addresses='"00:00:04:01:02:04"'
 
 # Connect R3 to ext
-ovn-nbctl lrp-add R3 R3_ext 00:00:04:01:02:05 20.0.0.3/24
-ovn-nbctl lsp-add ext r3-ext -- set Logical_Switch_Port r3-ext \
+check ovn-nbctl lrp-add R3 R3_ext 00:00:04:01:02:05 20.0.0.3/24
+check ovn-nbctl lsp-add ext r3-ext -- set Logical_Switch_Port r3-ext \
     type=router options:router-port=R3_ext addresses='"00:00:04:01:02:05"'
 
 # Install ECMP routes for alice.
-ovn-nbctl --ecmp-symmetric-reply --policy="src-ip" lr-route-add R1 10.0.0.0/24 20.0.0.2
-ovn-nbctl --ecmp-symmetric-reply --policy="src-ip" lr-route-add R1 10.0.0.0/24 20.0.0.3
+check ovn-nbctl --ecmp-symmetric-reply --policy="src-ip" lr-route-add R1 10.0.0.0/24 20.0.0.2
+check ovn-nbctl --ecmp-symmetric-reply --policy="src-ip" lr-route-add R1 10.0.0.0/24 20.0.0.3
 
 # Static Routes
-ovn-nbctl lr-route-add R2 10.0.0.0/24 20.0.0.1
-ovn-nbctl lr-route-add R3 10.0.0.0/24 20.0.0.1
+check ovn-nbctl lr-route-add R2 10.0.0.0/24 20.0.0.1
+check ovn-nbctl lr-route-add R3 10.0.0.0/24 20.0.0.1
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "10.0.0.2/24", "f0:00:00:01:02:04", \
          "10.0.0.1")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 10.0.0.2"
 
 # Logical port 'bob1' in switch 'bob'.
 ADD_NAMESPACES(bob1)
 ADD_VETH(bob1, bob1, br-int, "172.16.0.1/16", "f0:00:00:01:02:06", \
          "172.16.0.2")
-ovn-nbctl lsp-add bob bob1 \
+check ovn-nbctl lsp-add bob bob1 \
 -- lsp-set-addresses bob1 "f0:00:00:01:02:06 172.16.0.1"
 
 # Ensure ovn-controller is caught up
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 on_exit 'ovs-ofctl dump-flows br-int'
 
@@ -6188,12 +6188,12 @@ AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_state(-new+est+trk).*ct_label(0
 # Flush conntrack entries for easier output parsing of next test.
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 # Change bob1 L2 address anche check the reply is properly updated.
-ovn-nbctl set Logical_Router_Port R2_ext mac='"00:00:10:01:02:04"'
-ovn-nbctl set Logical_Switch_Port r2-ext \
+check ovn-nbctl set Logical_Router_Port R2_ext mac='"00:00:10:01:02:04"'
+check ovn-nbctl set Logical_Switch_Port r2-ext \
      type=router options:router-port=R2_ext addresses='"00:00:10:01:02:04"'
 
 # Wait for ovn-controller before sending traffic
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 NS_CHECK_EXEC([bob1], [nc -z 10.0.0.2 80], [0])
 NS_CHECK_EXEC([bob1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | FORMAT_PING], \
@@ -6313,47 +6313,47 @@ ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
 ovn-nbctl create Logical_Router name=R2
 ovn-nbctl create Logical_Router name=R3
 
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add bob
-ovn-nbctl ls-add ext
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add bob
+check ovn-nbctl ls-add ext
 
 # connect alice to R1
-ovn-nbctl lrp-add R1 alice 00:00:01:01:02:03 fd01::1/64
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lrp-add R1 alice 00:00:01:01:02:03 fd01::1/64
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice addresses='"00:00:01:01:02:03"'
 
 # connect bob to R2
-ovn-nbctl lrp-add R2 R2_bob 00:00:02:01:02:03 fd07::2/64
-ovn-nbctl lsp-add bob rp2-bob -- set Logical_Switch_Port rp2-bob \
+check ovn-nbctl lrp-add R2 R2_bob 00:00:02:01:02:03 fd07::2/64
+check ovn-nbctl lsp-add bob rp2-bob -- set Logical_Switch_Port rp2-bob \
     type=router options:router-port=R2_bob addresses='"00:00:02:01:02:03"'
 
 # connect bob to R3
-ovn-nbctl lrp-add R3 R3_bob 00:00:02:01:02:04 fd07::3/64
-ovn-nbctl lsp-add bob rp3-bob -- set Logical_Switch_Port rp3-bob \
+check ovn-nbctl lrp-add R3 R3_bob 00:00:02:01:02:04 fd07::3/64
+check ovn-nbctl lsp-add bob rp3-bob -- set Logical_Switch_Port rp3-bob \
     type=router options:router-port=R3_bob addresses='"00:00:02:01:02:04"'
 
 # Connect R1 to ext
-ovn-nbctl lrp-add R1 R1_ext 00:00:04:01:02:03 fd02::1/64
-ovn-nbctl lsp-add ext r1-ext -- set Logical_Switch_Port r1-ext \
+check ovn-nbctl lrp-add R1 R1_ext 00:00:04:01:02:03 fd02::1/64
+check ovn-nbctl lsp-add ext r1-ext -- set Logical_Switch_Port r1-ext \
     type=router options:router-port=R1_ext addresses='"00:00:04:01:02:03"'
 
 # Connect R2 to ext
-ovn-nbctl lrp-add R2 R2_ext 00:00:04:01:02:04 fd02::2/64
-ovn-nbctl lsp-add ext r2-ext -- set Logical_Switch_Port r2-ext \
+check ovn-nbctl lrp-add R2 R2_ext 00:00:04:01:02:04 fd02::2/64
+check ovn-nbctl lsp-add ext r2-ext -- set Logical_Switch_Port r2-ext \
     type=router options:router-port=R2_ext addresses='"00:00:04:01:02:04"'
 
 # Connect R3 to ext
-ovn-nbctl lrp-add R3 R3_ext 00:00:04:01:02:05 fd02::3/64
-ovn-nbctl lsp-add ext r3-ext -- set Logical_Switch_Port r3-ext \
+check ovn-nbctl lrp-add R3 R3_ext 00:00:04:01:02:05 fd02::3/64
+check ovn-nbctl lsp-add ext r3-ext -- set Logical_Switch_Port r3-ext \
     type=router options:router-port=R3_ext addresses='"00:00:04:01:02:05"'
 
 # Install ECMP routes for alice.
-ovn-nbctl --ecmp-symmetric-reply --policy="src-ip" lr-route-add R1 fd01::/126 fd02::2
-ovn-nbctl --ecmp-symmetric-reply --policy="src-ip" lr-route-add R1 fd01::/126 fd02::3
+check ovn-nbctl --ecmp-symmetric-reply --policy="src-ip" lr-route-add R1 fd01::/126 fd02::2
+check ovn-nbctl --ecmp-symmetric-reply --policy="src-ip" lr-route-add R1 fd01::/126 fd02::3
 
 # Static Routes
-ovn-nbctl lr-route-add R2 fd01::/64 fd02::1
-ovn-nbctl lr-route-add R3 fd01::/64 fd02::1
+check ovn-nbctl lr-route-add R2 fd01::/64 fd02::1
+check ovn-nbctl lr-route-add R3 fd01::/64 fd02::1
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
@@ -6364,7 +6364,7 @@ net.ipv6.conf.default.router_solicitations = 1
 ])
 ADD_VETH(alice1, alice1, br-int, "fd01::2/64", "f0:00:00:01:02:04", \
          "fd01::1", "nodad")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 fd01::2"
 # Add neighbour MAC address to avoid sending IPv6 NS messages which could
 # cause datapath flows to be evicted
@@ -6384,11 +6384,11 @@ ADD_VETH(bob1, bob1, br-int, "fd07::1/64", "f0:00:00:01:02:06", \
 NS_CHECK_EXEC([bob1], [ip -6 neigh add fd07::2 lladdr 00:00:02:01:02:03 dev bob1], [0])
 NS_CHECK_EXEC([bob1], [ip -6 neigh add fd07::3 lladdr 00:00:01:01:02:04 dev bob1], [0])
 
-ovn-nbctl lsp-add bob bob1 \
+check ovn-nbctl lsp-add bob bob1 \
 -- lsp-set-addresses bob1 "f0:00:00:01:02:06 fd07::1"
 
 # Ensure ovn-controller is caught up
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 on_exit 'ovs-ofctl dump-flows br-int'
 
@@ -6424,8 +6424,8 @@ tcp,orig=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),reply=(src=fd
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 # Change bob1 L2 address anche check the reply is properly updated.
-ovn-nbctl set Logical_Router_Port R2_ext mac='"00:00:10:01:02:04"'
-ovn-nbctl --wait=hv set Logical_Switch_Port r2-ext \
+check ovn-nbctl set Logical_Router_Port R2_ext mac='"00:00:10:01:02:04"'
+check ovn-nbctl --wait=hv set Logical_Switch_Port r2-ext \
      type=router options:router-port=R2_ext addresses='"00:00:10:01:02:04"'
 
 NS_CHECK_EXEC([bob1], [nc -6 -z fd01::2 80], [0])
@@ -6524,9 +6524,9 @@ ovs-vsctl \
 # Start ovn-controller
 start_daemon ovn-controller
 
-ovn-nbctl ls-add sw0
-ovn-nbctl lsp-add sw0 sw0-port1
-ovn-nbctl lsp-set-addresses sw0-port1 "10:54:00:00:00:03 10.0.0.3"
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-port1
+check ovn-nbctl lsp-set-addresses sw0-port1 "10:54:00:00:00:03 10.0.0.3"
 
 ovs-vsctl add-port br-int p1 -- \
     set Interface p1 external_ids:iface-id=sw0-port1 -- \
@@ -6575,30 +6575,30 @@ ovs-vsctl \
 # Start ovn-controller
 start_daemon ovn-controller
 
-ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R1
 
-ovn-nbctl ls-add sw0
-ovn-nbctl ls-add public
+check ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add public
 
-ovn-nbctl lrp-add R1 rp-sw0 00:00:01:01:02:03 192.168.1.1/24
-ovn-nbctl lrp-add R1 rp-public 00:00:02:01:02:03 172.16.1.1/24 \
+check ovn-nbctl lrp-add R1 rp-sw0 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lrp-add R1 rp-public 00:00:02:01:02:03 172.16.1.1/24 \
     -- lrp-set-gateway-chassis rp-public hv1
 
-ovn-nbctl lsp-add sw0 sw0-rp -- set Logical_Switch_Port sw0-rp \
+check ovn-nbctl lsp-add sw0 sw0-rp -- set Logical_Switch_Port sw0-rp \
     type=router options:router-port=rp-sw0 \
     -- lsp-set-addresses sw0-rp router
 
-ovn-nbctl lsp-add public public-rp -- set Logical_Switch_Port public-rp \
+check ovn-nbctl lsp-add public public-rp -- set Logical_Switch_Port public-rp \
     type=router options:router-port=rp-public \
     -- lsp-set-addresses public-rp router
 
-ovn-nbctl lr-nat-add R1 snat 172.16.1.1 192.168.1.0/24
-ovn-nbctl lr-nat-add R1 snat 172.16.1.20 192.168.1.2
+check ovn-nbctl lr-nat-add R1 snat 172.16.1.1 192.168.1.0/24
+check ovn-nbctl lr-nat-add R1 snat 172.16.1.20 192.168.1.2
 
 ADD_NAMESPACES(sw01-x)
 ADD_VETH(sw01-x, sw01-x, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
          "192.168.1.1")
-ovn-nbctl lsp-add sw0 sw01-x \
+check ovn-nbctl lsp-add sw0 sw01-x \
     -- lsp-set-addresses sw01-x "f0:00:00:01:02:03 192.168.1.2"
 
 OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw01-x) = xup])
@@ -6608,12 +6608,12 @@ ADD_VETH(ext-foo, ext-foo, br-ext, "172.16.1.100/24", "00:10:10:01:02:13", \
          "172.16.1.1")
 
 AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext])
-ovn-nbctl lsp-add public public1 \
+check ovn-nbctl lsp-add public public1 \
         -- lsp-set-addresses public1 unknown \
         -- lsp-set-type public1 localnet \
         -- lsp-set-options public1 network_name=phynet
 
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 # Send ping from sw01-x to ext-foo.
 NS_CHECK_EXEC([sw01-x], [ping -q -c 3 -i 0.3 -w 2 172.16.1.100 | FORMAT_PING], \
@@ -6668,28 +6668,28 @@ ovs-vsctl \
 # Start ovn-controller
 start_daemon ovn-controller
 
-ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add sw0
 
 ADD_NAMESPACES(sw01)
 ADD_VETH(sw01, sw01, br-int, "192.168.1.2/24", "f0:00:00:01:02:03")
-ovn-nbctl lsp-add sw0 sw01 \
+check ovn-nbctl lsp-add sw0 sw01 \
     -- lsp-set-addresses sw01 "f0:00:00:01:02:03 192.168.1.2"
 
 ADD_NAMESPACES(sw02)
 ADD_VETH(sw02, sw02, br-int, "192.168.1.3/24", "f0:00:00:01:02:44")
-ovn-nbctl lsp-add sw0 sw02 \
+check ovn-nbctl lsp-add sw0 sw02 \
     -- lsp-set-addresses sw02 "f0:00:00:01:02:44 192.168.1.3"
 
-ovn-nbctl ls-add sw1
+check ovn-nbctl ls-add sw1
 
 ADD_NAMESPACES(sw11)
 ADD_VETH(sw11, sw11, br-int, "192.168.4.2/24", "f0:00:00:01:04:03")
-ovn-nbctl lsp-add sw1 sw11 \
+check ovn-nbctl lsp-add sw1 sw11 \
     -- lsp-set-addresses sw11 "f0:00:00:01:04:03 192.168.4.2"
 
 ADD_NAMESPACES(sw12)
 ADD_VETH(sw12, sw12, br-int, "192.168.4.3/24", "f0:00:00:03:04:03")
-ovn-nbctl lsp-add sw1 sw12 \
+check ovn-nbctl lsp-add sw1 sw12 \
     -- lsp-set-addresses sw11 "f0:00:00:03:04:03 192.168.4.3"
 
 ADD_NAMESPACES(public)
@@ -6704,12 +6704,12 @@ ADD_VETH(ext, ext, br-ext, "192.168.3.2/24", "f0:00:00:01:02:06")
 AT_CHECK([ovs-vsctl remove interface ovs-ext external-ids iface-id=ext])
 
 AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=public:br-public,ext:br-ext])
-ovn-nbctl lsp-add sw0 public \
+check ovn-nbctl lsp-add sw0 public \
         -- lsp-set-addresses public unknown \
         -- lsp-set-type public localnet \
         -- lsp-set-options public network_name=public
 
-ovn-nbctl lsp-add sw1 ext \
+check ovn-nbctl lsp-add sw1 ext \
         -- lsp-set-addresses ext unknown \
         -- lsp-set-type ext localnet \
         -- lsp-set-options ext network_name=ext
@@ -7023,7 +7023,7 @@ OVS_WAIT_UNTIL([ovn-sbctl dump-flows R1 |grep lr_in_ip_routing |grep 'ip4.dst ==
 check ovn-nbctl clear logical_router_static_route $route_uuid bfd
 wait_column "admin_down" nb:bfd status logical_port=rp-public
 OVS_WAIT_UNTIL([ip netns exec server bfdd-control status | grep -qi state=Down])
-ovn-nbctl destroy bfd $uuid
+check ovn-nbctl destroy bfd $uuid
 check_row_count bfd 0
 
 # create reroute route policy
@@ -7042,7 +7042,7 @@ stopping
 ])
 
 # remove bfd entry
-ovn-nbctl destroy bfd $uuid
+check ovn-nbctl destroy bfd $uuid
 check_row_count bfd 0
 NETNS_START_TCPDUMP([server], [-nni s1 udp port 3784 -Q in], [bfd])
 sleep 5
@@ -7052,7 +7052,7 @@ AT_CHECK([grep -qi bfd bfd.tcpdump],[1])
 uuid_v6=$(ovn-nbctl create bfd logical_port=rp-public dst_ip=\"1000::b\")
 check ovn-nbctl lr-route-add R1 2000::/64 1000::b
 route_uuid_v6=$(fetch_column nb:logical_router_static_route _uuid ip_prefix=\"2000::/64\")
-ovn-nbctl set logical_router_static_route $route_uuid_v6 bfd=$uuid_v6
+check ovn-nbctl set logical_router_static_route $route_uuid_v6 bfd=$uuid_v6
 check ovn-nbctl --wait=hv sync
 NETNS_DAEMONIZE([server], [bfdd-beacon  --nofork --tee --listen=1000::b >beacon.stdout 2>&1], [beacon.pid])
 OVS_WAIT_UNTIL([grep -q "Listening for BFD connections" beacon.stdout])
@@ -7061,7 +7061,7 @@ Allowing connections from 1000::a
 ])
 
 wait_column "up" nb:bfd status logical_port=rp-public
-ovn-nbctl destroy bfd $uuid_v6
+check ovn-nbctl destroy bfd $uuid_v6
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
@@ -7120,7 +7120,7 @@ check ovn-nbctl acl-add pg1 from-lport 1002 "ip" allow-related
 check ovn-nbctl acl-add pg1 to-lport 1002 "ip" allow-related
 
 OVN_POPULATE_ARP
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 ADD_NAMESPACES(sw0-p1)
 ADD_VETH(sw0-p1, sw0-p1, br-int, "10.0.0.3/24", "50:54:00:00:00:03", \
@@ -7248,36 +7248,36 @@ start_daemon ovn-controller
 #
 # In this test, we want to ensure that a ping from VM1 to IP address 172.18.2.10 reaches VM2.
 
-ovn-nbctl ls-add ls1
-ovn-nbctl lsp-add ls1 vm1 -- lsp-set-addresses vm1 "00:00:00:00:00:05 192.168.100.5"
-ovn-nbctl lsp-add ls1 vm2 -- lsp-set-addresses vm2 "00:00:00:00:00:06 192.168.100.6"
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 vm1 -- lsp-set-addresses vm1 "00:00:00:00:00:05 192.168.100.5"
+check ovn-nbctl lsp-add ls1 vm2 -- lsp-set-addresses vm2 "00:00:00:00:00:06 192.168.100.6"
 
-ovn-nbctl ls-add ls-pub
-ovn-nbctl lsp-add ls-pub ext-router -- lsp-set-addresses ext-router "00:00:00:00:01:02 172.18.1.2"
+check ovn-nbctl ls-add ls-pub
+check ovn-nbctl lsp-add ls-pub ext-router -- lsp-set-addresses ext-router "00:00:00:00:01:02 172.18.1.2"
 
-ovn-nbctl lr-add lr1
-ovn-nbctl lrp-add lr1 lr1-ls1 00:00:00:00:00:01 192.168.100.1/24
-ovn-nbctl lsp-add ls1 ls1-lr1                      \
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-ls1 00:00:00:00:00:01 192.168.100.1/24
+check ovn-nbctl lsp-add ls1 ls1-lr1                      \
     -- lsp-set-type ls1-lr1 router                 \
     -- lsp-set-addresses ls1-lr1 00:00:00:00:00:01 \
     -- lsp-set-options ls1-lr1 router-port=lr1-ls1
 
-ovn-nbctl lrp-add lr1 lr1-ls-pub 00:00:00:00:01:01 172.18.1.1/24
-ovn-nbctl lrp-set-gateway-chassis lr1-ls-pub hv1
-ovn-nbctl lsp-add ls-pub ls-pub-lr1                      \
+check ovn-nbctl lrp-add lr1 lr1-ls-pub 00:00:00:00:01:01 172.18.1.1/24
+check ovn-nbctl lrp-set-gateway-chassis lr1-ls-pub hv1
+check ovn-nbctl lsp-add ls-pub ls-pub-lr1                      \
     -- lsp-set-type ls-pub-lr1 router                    \
     -- lsp-set-addresses ls-pub-lr1 00:00:00:00:01:01    \
     -- lsp-set-options ls-pub-lr1 router-port=lr1-ls-pub
 
-ovn-nbctl lr-nat-add lr1 snat 172.18.1.1 192.168.100.0/24
-ovn-nbctl lr-nat-add lr1 dnat_and_snat 172.18.2.10 192.168.100.6
-ovn-nbctl lr-route-add lr1 0.0.0.0/0 172.18.1.2
+check ovn-nbctl lr-nat-add lr1 snat 172.18.1.1 192.168.100.0/24
+check ovn-nbctl lr-nat-add lr1 dnat_and_snat 172.18.2.10 192.168.100.6
+check ovn-nbctl lr-route-add lr1 0.0.0.0/0 172.18.1.2
 
 #ls1_uuid=$(fetch_column Port_Binding datapath logical_port=vm1)
 #ovn-sbctl create MAC_Binding ip=172.18.2.10 datapath=$ls1_uuid logical_port=vm2 mac="00:00:00:00:00:06"
 
 OVN_POPULATE_ARP
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 ADD_NAMESPACES(vm1)
 ADD_VETH(vm1, vm1, br-int, "192.168.100.5/24", "00:00:00:00:00:05", \
@@ -7304,7 +7304,7 @@ NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 172.18.2.10 | FORMAT_PING], \
 ])
 
 dnat_and_snat_uuid=$(fetch_column nb:NAT _uuid external_ip=172.18.2.10)
-ovn-nbctl set NAT $dnat_and_snat_uuid options:stateless=true
+check ovn-nbctl set NAT $dnat_and_snat_uuid options:stateless=true
 
 # A ping from vm1 should hairpin in lr1 and successfully DNAT to vm2
 NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 172.18.2.10 | FORMAT_PING], \
@@ -7723,7 +7723,7 @@ ADD_VETH(sw0-p3, sw0-p3, br-int, "10.0.0.4/24", "50:54:00:00:00:04", \
          "10.0.0.1")
 
 # Ensure ovn-controller is caught up
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 on_exit 'ovn-nbctl acl-list sw0'
 on_exit 'ovn-sbctl lflow-list'
@@ -7865,7 +7865,7 @@ ADD_VETH(sw0-p3, sw0-p3, br-int, "10.0.0.4/24", "50:54:00:00:00:04", \
          "10.0.0.1")
 
 # Ensure ovn-controller is caught up
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 on_exit 'ovn-nbctl acl-list sw0'
 on_exit 'ovn-sbctl lflow-list'
@@ -7993,7 +7993,7 @@ ADD_VETH(sw0-p2, sw0-p2, br-int, "10.0.0.3/24", "50:54:00:00:00:03", \
          "10.0.0.1")
 
 # Ensure ovn-controller is caught up
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 on_exit 'ovn-nbctl acl-list sw0'
 on_exit 'ovn-sbctl lflow-list'
@@ -8020,7 +8020,7 @@ icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0
 # This ACL also allows the ping running in background.
 
 check ovn-nbctl --label=1235 acl-add sw0 from-lport 1003 'ip4 && inport == "sw0-p1" && ip4.dst == 10.0.0.3' allow-related
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 sleep 3s
 
@@ -8094,7 +8094,7 @@ ADD_VETH(sw0-p2, sw0-p2, br-int, "10.0.0.3/24", "50:54:00:00:00:03", \
          "10.0.0.1")
 
 # Ensure ovn-controller is caught up
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 on_exit 'ovn-nbctl acl-list sw0'
 on_exit 'ovn-sbctl lflow-list'
@@ -8121,7 +8121,7 @@ icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0
 # This ACL also allows the ping running in background.
 
 check ovn-nbctl --label=1235 --apply-after-lb acl-add sw0 from-lport 1003 'ip4 && inport == "sw0-p1" && ip4.dst == 10.0.0.3' allow-related
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 sleep 3s
 
@@ -8212,7 +8212,7 @@ check ovn-nbctl lsp-set-addresses sw1-lr0 00:00:00:00:ff:02
 check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
 
 # Ensure ovn-controller is caught up
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 on_exit 'ovn-nbctl acl-list sw0'
 on_exit 'ovn-sbctl lflow-list'
@@ -8691,7 +8691,7 @@ tcp,orig=(src=192.168.2.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),reply
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 # SNAT and DNAT. using Logical IP
-ovn-nbctl --wait=hv lr-nat-add R1 dnat_and_snat 172.16.1.2 192.168.1.2
+check ovn-nbctl --wait=hv lr-nat-add R1 dnat_and_snat 172.16.1.2 192.168.1.2
 NS_CHECK_EXEC([sw11], [nc 192.168.1.2 8000 -z], [0], [ignore], [ignore])
 test_ping sw11 192.168.1.2
 
@@ -8757,11 +8757,11 @@ ovs-vsctl \
 # Start ovn-controller
 start_daemon ovn-controller
 
-ovn-nbctl ls-add sw0
-ovn-nbctl lsp-add sw0 sw0-p1
-ovn-nbctl lsp-set-addresses sw0-p1 "00:54:00:00:00:03 10.0.0.3"
-ovn-nbctl lsp-add sw0 sw0-p1.2 sw0-p1 2
-ovn-nbctl lsp-set-addresses sw0-p1.2 "00:54:00:00:00:04 10.0.0.4"
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "00:54:00:00:00:03 10.0.0.3"
+check ovn-nbctl lsp-add sw0 sw0-p1.2 sw0-p1 2
+check ovn-nbctl lsp-set-addresses sw0-p1.2 "00:54:00:00:00:04 10.0.0.4"
 check ovn-nbctl --wait=hv sync
 
 ADD_NAMESPACES(sw0-p1)
@@ -9733,21 +9733,21 @@ start_daemon ovn-controller
 #
 #    foo -- R1 -- bar
 
-ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
 
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
 
 # Connect foo to R1
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo \
     -- lsp-set-addresses rp-foo router
 
 # Connect bar to R1
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar \
     -- lsp-set-addresses rp-bar router
 
@@ -9755,22 +9755,22 @@ ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
          "192.168.1.1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:04", \
          "192.168.2.1")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:04 192.168.2.2"
 
 # Config OVN load-balancer with a VIP.
-ovn-nbctl lb-add lb1 30.30.30.30:80 "192.168.2.2:80" tcp
-ovn-nbctl ls-lb-add foo lb1
+check ovn-nbctl lb-add lb1 30.30.30.30:80 "192.168.2.2:80" tcp
+check ovn-nbctl ls-lb-add foo lb1
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=192.168.2.2:80)'])
@@ -9803,7 +9803,7 @@ tcp,orig=(src=192.168.1.2,dst=30.30.30.30,sport=<cleared>,dport=<cleared>),reply
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 # remove lb
-ovn-nbctl ls-lb-del foo lb1
+check ovn-nbctl ls-lb-del foo lb1
 
 # add stateless acl
 check ovn-nbctl acl-add foo from-lport 1 1 allow-stateless
@@ -9820,10 +9820,10 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 # add lb back
-ovn-nbctl ls-lb-add foo lb1
+check ovn-nbctl ls-lb-add foo lb1
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=192.168.2.2:80)'])
@@ -9881,41 +9881,41 @@ start_daemon ovn-controller
 #
 #    foo -- R1 -- bar
 
-ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd11::1/64
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 fd11::1/64
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect bar to R1
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd12::1/64
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 fd12::1/64
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
 
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "fd11::2/64", "f0:00:00:01:02:03", \
          "fd11::1", "nodad")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 fd11::2"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "fd12::2/64", "f0:00:00:01:02:05", \
          "fd12::1",  "nodad")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 fd12::2"
 
 # Config OVN load-balancer with a VIP.
-ovn-nbctl lb-add lb1 [[fd30::2]]:80 [[fd12::2]]:80 tcp
-ovn-nbctl ls-lb-add foo lb1
+check ovn-nbctl lb-add lb1 [[fd30::2]]:80 [[fd12::2]]:80 tcp
+check ovn-nbctl ls-lb-add foo lb1
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=\[[fd12::2\]]:80)'])
@@ -9947,7 +9947,7 @@ tcp,orig=(src=fd11::2,dst=fd30::2,sport=<cleared>,dport=<cleared>),reply=(src=fd
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 # remove lb
-ovn-nbctl ls-lb-del foo lb1
+check ovn-nbctl ls-lb-del foo lb1
 
 # add stateless acl
 check ovn-nbctl acl-add foo from-lport 1 1 allow-stateless
@@ -9964,10 +9964,10 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 # add lb back
-ovn-nbctl ls-lb-add foo lb1
+check ovn-nbctl ls-lb-add foo lb1
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=\[[fd12::2\]]:80)'])
@@ -10132,7 +10132,7 @@ ovs-vsctl \
 # Start ovn-controller
 start_daemon ovn-controller
 
-ovn-nbctl ls-add sw
+check ovn-nbctl ls-add sw
 
 # Logical port 'vm1' in switch 'sw'.
 ADD_NAMESPACES(vm1)
@@ -10336,7 +10336,7 @@ check ovn-nbctl ls-lb-add foo lb2
 check ovn-nbctl set load_balancer $lb2_uuid vips:'"30.0.0.2:8000"'='"172.16.1.2:80,172.16.1.3:80,172.16.1.4:80"'
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=172.16.1.4:80)'])
 
@@ -11432,31 +11432,31 @@ ovs-ofctl add-flow br-mirror action=normal
 
 ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24 2001::1/64
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24 2001::1/64
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect bar to R1
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24 2002::1/64
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24 2002::1/64
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
 
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "2001::2/64", "f0:00:00:01:02:03", \
          "2001::1", "nodad", "192.168.1.2/24", "192.168.1.1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2 2001::2"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "2002::2/64", "f0:00:00:01:02:05", \
          "2002::1", "nodad", "192.168.2.2/24", "192.168.2.1")
-ovn-nbctl --wait=hv lsp-add bar bar1 \
+check ovn-nbctl --wait=hv lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 192.168.2.2 2002::2"
 
 # Warm up the datapath (needed to make the DPDK datapth happy)
@@ -11465,8 +11465,8 @@ NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-ovn-nbctl mirror-add mirror0 gre 1 to-lport 172.16.0.100
-ovn-nbctl lsp-attach-mirror bar1 mirror0
+check ovn-nbctl mirror-add mirror0 gre 1 to-lport 172.16.0.100
+check ovn-nbctl lsp-attach-mirror bar1 mirror0
 
 OVN_POPULATE_ARP
 check ovn-nbctl --wait=hv sync
@@ -11489,10 +11489,10 @@ OVS_WAIT_UNTIL([
     test "${n_packets}" = "3"
 ])
 
-ovn-nbctl mirror-del mirror0
-ovn-nbctl mirror-add mirror1 gre 2 to-lport 2003::b
+check ovn-nbctl mirror-del mirror0
+check ovn-nbctl mirror-add mirror1 gre 2 to-lport 2003::b
 
-ovn-nbctl --wait=hv lsp-attach-mirror bar1 mirror1
+check ovn-nbctl --wait=hv lsp-attach-mirror bar1 mirror1
 
 NETNS_START_TCPDUMP([mirror], [-c 3 -neei mirror proto GRE], [gre_mirror6])
 
@@ -11506,9 +11506,9 @@ OVS_WAIT_UNTIL([
     test "${n_packets}" = "3"
 ])
 
-ovn-nbctl mirror-del mirror1
-ovn-nbctl mirror-add mirror2 erspan 3 to-lport 172.16.0.100
-ovn-nbctl --wait=hv lsp-attach-mirror bar1 mirror2
+check ovn-nbctl mirror-del mirror1
+check ovn-nbctl mirror-add mirror2 erspan 3 to-lport 172.16.0.100
+check ovn-nbctl --wait=hv lsp-attach-mirror bar1 mirror2
 
 NETNS_START_TCPDUMP([mirror], [-c 3 -neei mirror ip[[22:2]]=0x88be], [erspan_mirror4])
 
@@ -11521,9 +11521,9 @@ OVS_WAIT_UNTIL([
     test "${n_packets}" = "3"
 ])
 
-ovn-nbctl mirror-del mirror2
-ovn-nbctl mirror-add mirror3 erspan 4 to-lport 2003::b
-ovn-nbctl --wait=hv lsp-attach-mirror bar1 mirror3
+check ovn-nbctl mirror-del mirror2
+check ovn-nbctl mirror-add mirror3 erspan 4 to-lport 2003::b
+check ovn-nbctl --wait=hv lsp-attach-mirror bar1 mirror3
 
 NETNS_START_TCPDUMP([mirror], [-c 3 -neei mirror ip6[[42:2]]=0x88be], [erspan_mirror6])
 
@@ -11537,7 +11537,7 @@ OVS_WAIT_UNTIL([
 ])
 
 uuid=$(fetch_column nb:mirror _uuid name="mirror3")
-ovn-nbctl --wait=hv set mirror $uuid type=gre
+check ovn-nbctl --wait=hv set mirror $uuid type=gre
 
 NETNS_START_TCPDUMP([mirror], [-c 3 -neei mirror proto GRE], [gre2_mirror6])
 
@@ -11846,7 +11846,7 @@ NS_CHECK_EXEC([vif0], [ping -q -c 3 -i 0.3 -w 2 fe80::200:ff:fe00:1 | FORMAT_PIN
 check_row_count mac_binding 1 mac=\"00:00:00:00:00:02\"
 ovn-sbctl --all destroy mac_binding
 
-ovn-nbctl --wait=hv set logical_router lr0 options:always_learn_from_arp_request=true
+check ovn-nbctl --wait=hv set logical_router lr0 options:always_learn_from_arp_request=true
 
 NS_CHECK_EXEC([vif0], [ping -q -c 3 -i 0.3 -w 2 fe80::200:ff:fe00:1 | FORMAT_PING], \
 [0], [dnl
@@ -12025,74 +12025,74 @@ start_daemon ovn-controller
 ovn-nbctl create Logical_Router name=R1
 ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 
-ovn-nbctl ls-add foo
-ovn-nbctl ls-add bar
-ovn-nbctl ls-add alice
-ovn-nbctl ls-add join
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add join
 
 # Connect foo to R1
-ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
-ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
     type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
 
 # Connect bar to R1
-ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
-ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
     type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
 
 # Connect alice to R2
-ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24
-ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+check ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
     type=router options:router-port=alice addresses=\"00:00:02:01:02:03\"
 
 # Connect R1 to join
-ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24
-ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
+check ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24
+check ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
     type=router options:router-port=R1_join addresses='"00:00:04:01:02:03"'
 
 # Connect R2 to join
-ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24
-ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
+check ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24
+check ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
     type=router options:router-port=R2_join addresses='"00:00:04:01:02:04"'
 
 # Static routes.
-ovn-nbctl lr-route-add R1 172.16.1.0/24 20.0.0.2
-ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
+check ovn-nbctl lr-route-add R1 172.16.1.0/24 20.0.0.2
+check ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
 
 # Logical port 'foo1' in switch 'foo'.
 ADD_NAMESPACES(foo1)
 ADD_VETH(foo1, foo1, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
          "192.168.1.1")
-ovn-nbctl lsp-add foo foo1 \
+check ovn-nbctl lsp-add foo foo1 \
 -- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
 
 # Logical port 'alice1' in switch 'alice'.
 ADD_NAMESPACES(alice1)
 ADD_VETH(alice1, alice1, br-int, "172.16.1.2/24", "f0:00:00:01:02:04", \
          "172.16.1.1")
-ovn-nbctl lsp-add alice alice1 \
+check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 172.16.1.2"
 
 # Logical port 'bar1' in switch 'bar'.
 ADD_NAMESPACES(bar1)
 ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:05", \
 "192.168.2.1")
-ovn-nbctl lsp-add bar bar1 \
+check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 192.168.2.2"
 
 # Config OVN load-balancer with a VIP.
 uuid=`ovn-nbctl  create load_balancer protocol=sctp vips:30.0.0.1="192.168.1.2,192.168.2.2"`
-ovn-nbctl set logical_router R2 load_balancer=$uuid
+check ovn-nbctl set logical_router R2 load_balancer=$uuid
 
 # Config OVN load-balancer with another VIP (this time with ports).
-ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:12345,192.168.2.2:12345"'
+check ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:12345,192.168.2.2:12345"'
 
 # Add SNAT rule to make sure that Load-balancing still works with a SNAT rule.
 ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.2.2 \
     external_ip=30.0.0.2 -- add logical_router R2 nat @nat
 
 # Wait for ovn-controller to catch up.
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow13 dump-groups br-int | \
 grep 'nat(dst=192.168.2.2:12345)'])
 
@@ -12141,19 +12141,19 @@ check_est_flows () {
 OVS_WAIT_UNTIL([check_est_flows 0x2], [check established flows])
 
 
-ovn-nbctl set logical_router R2 options:lb_force_snat_ip="20.0.0.2"
+check ovn-nbctl set logical_router R2 options:lb_force_snat_ip="20.0.0.2"
 
 # Destroy the load balancer and create again. ovn-controller will
 # clear the OF flows and re add again and clears the n_packets
 # for these flows.
-ovn-nbctl destroy load_balancer $uuid
+check ovn-nbctl destroy load_balancer $uuid
 uuid=`ovn-nbctl  create load_balancer protocol=sctp vips:30.0.0.1="192.168.1.2,192.168.2.2"`
-ovn-nbctl set logical_router R2 load_balancer=$uuid
+check ovn-nbctl set logical_router R2 load_balancer=$uuid
 
 check ovs-appctl dpctl/flush-conntrack
 
 # Config OVN load-balancer with another VIP (this time with ports).
-ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:12345,192.168.2.2:12345"'
+check ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:12345,192.168.2.2:12345"'
 
 ovn-nbctl list load_balancer
 ovn-sbctl dump-flows R2
@@ -12531,7 +12531,7 @@ check ovn-nbctl lsp-set-addresses lp0 "50:54:00:00:00:01 10.0.0.10"
 check ovn-nbctl lsp-set-addresses lp1 "50:54:00:00:00:02 20.0.0.10"
 
 OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lp0` = xup])
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 # Stopping updates to sb
 # By stopping temporarily updates from controller to sb, we are making sb read-only.
@@ -12610,7 +12610,7 @@ check ovn-nbctl lsp-add internal internal-lr -- set Logical_Switch_Port internal
 
 check ovn-nbctl lsp-add internal server -- lsp-set-addresses server "unknown"
 
-ovn-nbctl lsp-add public ln_port \
+check ovn-nbctl lsp-add public ln_port \
                 -- lsp-set-addresses ln_port unknown \
                 -- lsp-set-type ln_port localnet \
                 -- lsp-set-options ln_port network_name=phynet
@@ -12858,7 +12858,7 @@ check ovn-nbctl lsp-add internal vm2 \
 check ovn-nbctl lsp-add internal vm3 \
     -- lsp-set-addresses vm3 "f0:00:0f:01:02:05 192.168.200.30"
 
-ovn-nbctl lsp-add public ln_port \
+check ovn-nbctl lsp-add public ln_port \
     -- lsp-set-addresses ln_port unknown \
     -- lsp-set-type ln_port localnet \
     -- lsp-set-options ln_port network_name=phynet
@@ -12994,7 +12994,7 @@ check ovn-nbctl lsp-add internal vm2 \
 check ovn-nbctl lsp-add internal vm3 \
     -- lsp-set-addresses vm3 "f0:00:0f:01:02:05 2000::30"
 
-ovn-nbctl lsp-add public ln_port \
+check ovn-nbctl lsp-add public ln_port \
     -- lsp-set-addresses ln_port unknown \
     -- lsp-set-type ln_port localnet \
     -- lsp-set-options ln_port network_name=phynet
@@ -13211,7 +13211,7 @@ ovs-vsctl --id=@br get Bridge br-int \
     -- --id=@ipfix create IPFIX targets=\"127.0.0.1:4242\" template_interval=1 \
     -- --id=@cs create Flow_Sample_Collector_Set id=100 bridge=@br ipfix=@ipfix
 
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 dnl And wait for it to be up and running.
 OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q '1 ids'])
 
@@ -13380,7 +13380,7 @@ ovs-vsctl --id=@br get Bridge br-int \
     -- --id=@ipfix create IPFIX targets=\"127.0.0.1:4242\" template_interval=1 \
     -- --id=@cs create Flow_Sample_Collector_Set id=100 bridge=@br ipfix=@ipfix
 
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 dnl And wait for it to be up and running.
 OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q '1 ids'])
 
@@ -13510,7 +13510,7 @@ ovs-vsctl --id=@br get Bridge br-int \
     -- --id=@ipfix create IPFIX targets=\"127.0.0.1:4242\" template_interval=1 \
     -- --id=@cs create Flow_Sample_Collector_Set id=100 bridge=@br ipfix=@ipfix
 
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 dnl And wait for it to be up and running.
 OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q '1 ids'])
 
@@ -13971,7 +13971,7 @@ ensure_controller_run
 restart_ovsdb_controller_updates $TCP_PORT
 
 wait_for_ports_up
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 AT_CHECK([ovn-appctl -t ovn-controller ct-zone-list | sed "s/ [[0-9]]*/ ??/" | sort], [0], [dnl
 sw0-port1 ??
