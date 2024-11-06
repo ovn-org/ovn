@@ -190,7 +190,7 @@ AT_CHECK([test "${expected_iface_types}" = "${chassis_iface_types}"])
 
 # Change the value of other_config:iface-types using ovn-sbctl.
 # ovn-controller should again set it back to proper one.
-ovn-sbctl set Chassis ${sysid} other_config:iface-types="foo"
+check ovn-sbctl set Chassis ${sysid} other_config:iface-types="foo"
 OVS_WAIT_UNTIL([
     chassis_iface_types=$(ovn-sbctl get Chassis ${sysid} other_config:iface-types | sed -e 's/\"//g')
     echo "chassis_iface_types = ${chassis_iface_types}"
@@ -290,7 +290,7 @@ check_tunnel_property () {
 }
 
 # create "empty" chassis. vxlan is used here as a stub
-ovn-sbctl chassis-add fakechassis vxlan 192.168.0.2
+check ovn-sbctl chassis-add fakechassis vxlan 192.168.0.2
 
 # See if we switch to Geneve as the first choice when it is available
 # With multi-VTEP support we support tunnels with different IPs to the
@@ -305,15 +305,15 @@ OVS_WAIT_UNTIL([check_tunnel_property type geneve])
 
 # change geneve to stt and check that tun interface was deleted and there is
 # no stt encap on the second chassis, only vxlan
-ovn-sbctl set encap ${encap_uuid} type=stt
+check ovn-sbctl set encap ${encap_uuid} type=stt
 OVS_WAIT_WHILE([check_tunnel_property type stt])
 OVS_WAIT_UNTIL([check_tunnel_property type vxlan])
 
 # change back to geneve
-ovn-sbctl set encap ${encap_uuid} type=geneve
+check ovn-sbctl set encap ${encap_uuid} type=geneve
 
 # Check that changes within an encap row are propagated
-ovn-sbctl set encap ${encap_uuid} ip=192.168.0.2
+check ovn-sbctl set encap ${encap_uuid} ip=192.168.0.2
 OVS_WAIT_UNTIL([check_tunnel_property options:remote_ip "\"192.168.0.2\""])
 
 # Change the type on the OVS side and check than OVN fixes it
@@ -395,7 +395,7 @@ ovn_attach n1 br-phys 192.168.0.1
 
 OVS_WAIT_UNTIL([test xhv = x`ovn-sbctl --columns name --bare find chassis`])
 # Delete the chassis "hv"
-ovn-sbctl chassis-del hv
+check ovn-sbctl chassis-del hv
 # ovn-controller should recreate its chassis row.
 OVS_WAIT_UNTIL([test xhv = x`ovn-sbctl --columns name --bare find chassis`])
 
@@ -822,7 +822,7 @@ no_tos_options="{csum=\"true\", key=flow, local_ip=\"192.168.0.1\", remote_ip=\"
 
 #
 # Start off with a remote chassis supporting geneve
-ovn-sbctl chassis-add fakechassis geneve 192.168.0.2
+check ovn-sbctl chassis-add fakechassis geneve 192.168.0.2
 OVS_WAIT_UNTIL([check_tunnel_property type geneve])
 
 tos_option=$(ovs-vsctl get interface ovn-fakech-0 options)
@@ -2855,7 +2855,7 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovn-nbctl --wait=sb sync
 wait_row_count Chassis 1 name=hv1
 
-ovn-sbctl chassis-add fakechassis geneve 192.168.0.2
+check ovn-sbctl chassis-add fakechassis geneve 192.168.0.2
 fakech_tunnel=ovn-fakech-0
 OVS_WAIT_UNTIL([ovs-vsctl list port $fakech_tunnel])
 port_uuid=$(ovs-vsctl get port $fakech_tunnel _uuid)

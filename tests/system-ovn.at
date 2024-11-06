@@ -4347,7 +4347,7 @@ OVS_WAIT_UNTIL([
 ])
 
 # Flush IGMP groups.
-ovn-sbctl ip-multicast-flush sw1
+check ovn-sbctl ip-multicast-flush sw1
 check ovn-nbctl --wait=hv -t 3 sync
 OVS_WAIT_UNTIL([
     total_entries=`ovn-sbctl find IGMP_Group address="${group_v4}" | grep _uuid -c`
@@ -11844,7 +11844,7 @@ NS_CHECK_EXEC([vif0], [ping -q -c 3 -i 0.3 -w 2 fe80::200:ff:fe00:1 | FORMAT_PIN
 ])
 
 check_row_count mac_binding 1 mac=\"00:00:00:00:00:02\"
-ovn-sbctl --all destroy mac_binding
+check ovn-sbctl --all destroy mac_binding
 
 check ovn-nbctl --wait=hv set logical_router lr0 options:always_learn_from_arp_request=true
 
