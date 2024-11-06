@@ -88,8 +88,8 @@ AT_SETUP([check from NBDB to SBDB])
 ovn_start
 
 ovn-nbctl create Logical_Router name=R1
-ovn-sbctl chassis-add gw1 geneve 127.0.0.1
-ovn-sbctl chassis-add gw2 geneve 1.2.4.8
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+check ovn-sbctl chassis-add gw2 geneve 1.2.4.8
 
 # Connect alice to R1 as distributed router gateway port on hv2
 ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.1/24
@@ -122,13 +122,13 @@ ovn-sbctl list ha_chassis_group
 # Delete chassis - gw2 in SB DB.
 # ovn-northd should not recreate ha_chassis rows
 # repeatedly when gw2 is deleted.
-ovn-sbctl chassis-del gw2
+check ovn-sbctl chassis-del gw2
 
 ha_ch_list=$(fetch_column HA_Chassis _uuid)
 check_column "$ha_ch_list" HA_Chassis _uuid
 
 # Add back the gw2 chassis
-ovn-sbctl chassis-add gw2 geneve 1.2.4.8
+check ovn-sbctl chassis-add gw2 geneve 1.2.4.8
 
 # delete the 2nd Gateway_Chassis on NBDB for alice port
 check_column '' Port_Binding gateway_chassis logical_port=cr-alice
@@ -162,8 +162,8 @@ ovn-nbctl ls-add S1
 ovn-nbctl --wait=sb lsp-add S1 S1-vm1
 wait_row_count nb:Logical_Switch_Port 1 name=S1-vm1 'up!=true'
 
-ovn-sbctl chassis-add hv1 geneve 127.0.0.1
-ovn-sbctl lsp-bind S1-vm1 hv1
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.1
+check ovn-sbctl lsp-bind S1-vm1 hv1
 wait_row_count nb:Logical_Switch_Port 1 name=S1-vm1 'up=true'
 
 AT_CLEANUP
@@ -190,7 +190,7 @@ OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check up state of router LSP linked to a gateway LR])
 ovn_start
 
-ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
 
 ovn-nbctl create Logical_Router name=R1 options:chassis=gw1
 ovn-nbctl lrp-add R1 R1-S1 02:ac:10:01:00:01 172.16.1.1/24
@@ -201,7 +201,7 @@ ovn-nbctl lsp-set-type S1-R1 router
 ovn-nbctl lsp-set-addresses S1-R1 02:ac:10:01:00:01
 ovn-nbctl --wait=sb lsp-set-options S1-R1 router-port=R1-S1
 
-ovn-sbctl lsp-bind S1-R1 gw1
+check ovn-sbctl lsp-bind S1-R1 gw1
 AT_CHECK([test x`ovn-nbctl lsp-get-up S1-R1` = xup])
 
 AT_CLEANUP
@@ -211,7 +211,7 @@ OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check up state of router LSP linked to an LRP with set Gateway Chassis])
 ovn_start
 
-ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
 
 ovn-nbctl lr-add R1
 ovn-nbctl lrp-add R1 R1-S1 02:ac:10:01:00:01 172.16.1.1/24
@@ -579,7 +579,7 @@ check ovn-nbctl lsp-set-type sw0-lr0 router
 check ovn-nbctl lsp-set-addresses sw0-lr0 router
 check ovn-nbctl --wait=sb lsp-set-options sw0-lr0 router-port=lr0-sw0
 
-ovn-sbctl lsp-bind sw0-p1 comp1
+check ovn-sbctl lsp-bind sw0-p1 comp1
 wait_row_count nb:Logical_Switch_Port 1 name=sw0-p1 up=true
 
 comp1_ch_uuid=$(fetch_column Chassis _uuid name=comp1)
@@ -597,12 +597,12 @@ ovn-sbctl clear Port_Binding sw0-p1 additional_chassis
 wait_column "$comp1_ch_uuid" HA_Chassis_Group ref_chassis
 
 # unbind sw0-p1
-ovn-sbctl lsp-unbind sw0-p1
+check ovn-sbctl lsp-unbind sw0-p1
 wait_row_count nb:Logical_Switch_Port 1 name=sw0-p1 up=false
 wait_column "" HA_Chassis_Group ref_chassis
 
 # Bind sw0-p1 in comp2
-ovn-sbctl lsp-bind sw0-p1 comp2
+check ovn-sbctl lsp-bind sw0-p1 comp2
 wait_column "$comp2_ch_uuid" HA_Chassis_Group ref_chassis
 
 ovn-nbctl ls-add sw1
@@ -635,7 +635,7 @@ exp_ref_ch_list="$comp1_ch_uuid $comp2_ch_uuid"
 wait_column "$exp_ref_ch_list" HA_Chassis_Group ref_chassis
 
 # Unind sw1-p1. comp2 should not be in the ref_chassis.
-ovn-sbctl lsp-unbind sw1-p1
+check ovn-sbctl lsp-unbind sw1-p1
 wait_row_count nb:Logical_Switch_Port 1 name=sw1-p1 up=false
 wait_column "$comp2_ch_uuid" HA_Chassis_Group ref_chassis
 
@@ -670,12 +670,12 @@ wait_column "$exp_ref_ch_list" HA_Chassis_Group ref_chassis
 
 # Create sw0-p2 and bind it to comp1
 check ovn-nbctl --wait=sb lsp-add sw0 sw0-p2
-ovn-sbctl lsp-bind sw0-p2 comp1
+check ovn-sbctl lsp-bind sw0-p2 comp1
 wait_row_count nb:Logical_Switch_Port 1 name=sw0-p2 up=true
 wait_column "$exp_ref_ch_list" HA_Chassis_Group ref_chassis
 
 # unbind sw0-p2
-ovn-sbctl lsp-unbind sw0-p2
+check ovn-sbctl lsp-unbind sw0-p2
 wait_row_count nb:Logical_Switch_Port 1 name=sw0-p2 up=false
 wait_column "$exp_ref_ch_list" HA_Chassis_Group ref_chassis
 
@@ -973,7 +973,7 @@ OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check Redirect Chassis propagation from NB to SB])
 ovn_start
 
-ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
 
 ovn-nbctl lr-add R1
 ovn-nbctl lrp-add R1 R1-S1 02:ac:10:01:00:01 172.16.1.1/24
@@ -998,7 +998,7 @@ OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check stateless dnat_and_snat rule])
 ovn_start
 
-ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
 
 ovn-nbctl lr-add R1
 ovn-nbctl lrp-add R1 R1-S1 02:ac:10:01:00:01 172.16.1.1/24
@@ -1058,7 +1058,7 @@ OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check portrange dnat, snat and dnat_and_snat rules])
 ovn_start
 
-ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
 
 ovn-nbctl lr-add R1
 ovn-nbctl lrp-add R1 R1-S1 02:ac:10:01:00:01 172.16.1.1/24
@@ -1381,10 +1381,10 @@ ovn-nbctl --wait=sb lsp-add sw1 sw1-p1 -- lsp-set-addresses sw1-p1 \
 "02:00:00:00:00:03 20.0.0.3"
 
 # service_monitors state online requires corresponding port_binding to be "up"
-ovn-sbctl chassis-add hv1 geneve 127.0.0.1 -- \
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.1 -- \
     set chassis hv1 other_config:ct-no-masked-label=true
-ovn-sbctl lsp-bind sw0-p1 hv1
-ovn-sbctl lsp-bind sw1-p1 hv1
+check ovn-sbctl lsp-bind sw0-p1 hv1
+check ovn-sbctl lsp-bind sw1-p1 hv1
 wait_row_count nb:Logical_Switch_Port 1 name=sw0-p1 'up=true'
 wait_row_count nb:Logical_Switch_Port 1 name=sw1-p1 'up=true'
 
@@ -1467,7 +1467,7 @@ OVS_WAIT_FOR_OUTPUT(
 ])
 
 AS_BOX([Set the service monitor for sw0-p1 to offline])
-ovn-sbctl set service_monitor $sm_sw0_p1 status=offline
+check ovn-sbctl set service_monitor $sm_sw0_p1 status=offline
 
 wait_row_count Service_Monitor 1 logical_port=sw0-p1 status=offline
 check ovn-nbctl --wait=sb sync
@@ -1483,8 +1483,8 @@ OVS_WAIT_FOR_OUTPUT(
 ])
 
 AS_BOX([Set the service monitor for sw0-p1 and sw1-p1 to online])
-ovn-sbctl set service_monitor $sm_sw0_p1 status=online
-ovn-sbctl set service_monitor $sm_sw1_p1 status=online
+check ovn-sbctl set service_monitor $sm_sw0_p1 status=online
+check ovn-sbctl set service_monitor $sm_sw1_p1 status=online
 
 wait_row_count Service_Monitor 1 logical_port=sw1-p1 status=online
 check ovn-nbctl --wait=sb sync
@@ -1496,7 +1496,7 @@ OVS_WAIT_FOR_OUTPUT(
 ])
 
 AS_BOX([Set the service monitor for sw1-p1 to error])
-ovn-sbctl set service_monitor $sm_sw1_p1 status=error
+check ovn-sbctl set service_monitor $sm_sw1_p1 status=error
 wait_row_count Service_Monitor 1 logical_port=sw1-p1 status=error
 check ovn-nbctl --wait=sb sync
 
@@ -1605,8 +1605,8 @@ wait_row_count Service_Monitor 2
 sm_sw0_p1=$(fetch_column Service_Monitor _uuid logical_port=sw0-p1)
 sm_sw1_p1=$(fetch_column Service_Monitor _uuid logical_port=sw1-p1)
 
-ovn-sbctl set service_monitor $sm_sw0_p1 status=offline
-ovn-sbctl set service_monitor $sm_sw1_p1 status=offline
+check ovn-sbctl set service_monitor $sm_sw0_p1 status=offline
+check ovn-sbctl set service_monitor $sm_sw1_p1 status=offline
 
 AT_CAPTURE_FILE([sbflows12])
 OVS_WAIT_FOR_OUTPUT(
@@ -1954,7 +1954,7 @@ OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check router ARP/NS responder])
 ovn_start
 
-ovn-sbctl chassis-add ch geneve 127.0.0.1
+check ovn-sbctl chassis-add ch geneve 127.0.0.1
 
 ovn-nbctl lr-add lr
 ovn-nbctl lrp-add lr lrp-public 00:00:00:00:01:00 43.43.43.1/24 4343::1/64
@@ -6197,8 +6197,8 @@ wait_row_count Service_Monitor 2
 sm_vip1=$(fetch_column Service_Monitor _uuid logical_port=vip1)
 sm_vip2=$(fetch_column Service_Monitor _uuid logical_port=vip2)
 
-ovn-sbctl set service_monitor $sm_vip1 status=offline
-ovn-sbctl set service_monitor $sm_vip2 status=offline
+check ovn-sbctl set service_monitor $sm_vip1 status=offline
+check ovn-sbctl set service_monitor $sm_vip2 status=offline
 check ovn-nbctl --wait=sb sync
 
 AT_CHECK([ovn-sbctl dump-flows lr0 | grep "lr_in_dnat" | sort], [0], [dnl
@@ -11962,7 +11962,7 @@ as hv1
 ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.11
 
-ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
 
 check ovn-nbctl ls-add sw0
 check ovn-nbctl --wait=sb lsp-add sw0 sw0p1 -- lsp-set-addresses sw0p1 "00:00:20:20:12:01 10.0.0.4"
