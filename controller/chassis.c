@@ -1024,6 +1024,9 @@ store_chassis_index_if_needed(
 {
     const struct ovsrec_open_vswitch *cfg =
         ovsrec_open_vswitch_table_first(ovs_table);
+    if (!cfg) {
+        return;
+    }
     const char *chassis_id = get_ovs_chassis_id(ovs_table);
 
     char *idx_key = xasprintf(CHASSIS_IDX_PREFIX "%s", chassis_id);
