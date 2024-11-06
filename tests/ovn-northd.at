@@ -607,7 +607,6 @@ wait_column "$comp2_ch_uuid" HA_Chassis_Group ref_chassis
 
 ovn-nbctl ls-add sw1
 ovn-nbctl lsp-add sw1 sw1-p1
-ovn-nbctl lr-add lr1
 ovn-nbctl lrp-add lr1 lr1-sw1 00:00:20:20:12:15 20.0.0.1/24
 ovn-nbctl lsp-add sw1 sw1-lr1
 ovn-nbctl lsp-set-type sw1-lr1 router
@@ -4478,11 +4477,11 @@ ovn-sbctl list fdb
 check_column $sw0_key FDB dp_key
 check_column $sw0p2_key FDB port_key
 
-ovn-nbctl --wait=sb lsp-add sw0-p1
+check ovn-nbctl --wait=sb lsp-add sw0 sw0-p1
 wait_row_count FDB 1
 
 ovn-nbctl lsp-del sw0-p2
-ovn-nbctl lsp-add sw0-p2
+check ovn-nbctl lsp-add sw0 sw0-p2
 wait_row_count FDB 0
 
 ovn-sbctl list FDB
