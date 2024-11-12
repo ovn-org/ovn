@@ -277,20 +277,16 @@ static struct gen_opts_map supported_dhcpv6_opts[] = {
     DHCPV6_OPT_FQDN,
 };
 
+/*
+ * Compare predefined permission against RBAC_Permission record.
+ * Returns true if match, false otherwise.
+ */
 static bool
-ovn_rbac_validate_perm(const struct sbrec_rbac_permission *perm)
+ovn_rbac_match_perm(const struct sbrec_rbac_permission *perm,
+                    const struct rbac_perm_cfg *pcfg)
 {
-    struct rbac_perm_cfg *pcfg;
     int i, j, n_found;
 
-    for (pcfg = rbac_perm_cfg; pcfg->table; pcfg++) {
-        if (!strcmp(perm->table, pcfg->table)) {
-            break;
-        }
-    }
-    if (!pcfg->table) {
-        return false;
-    }
     if (perm->n_authorization != pcfg->n_auth ||
         perm->n_update != pcfg->n_update) {
         return false;
@@ -326,54 +322,71 @@ ovn_rbac_validate_perm(const struct sbrec_rbac_permission *perm)
         return false;
     }
 
-    /* Success, db state matches expected state */
-    pcfg->row = perm;
     return true;
 }
 
+/*
+ * Search predefined permission pcfg in the RBAC_Permission.
+ * If there is no record that match, recover the permission.
+ */
 static void
-ovn_rbac_create_perm(struct rbac_perm_cfg *pcfg,
-                     struct ovsdb_idl_txn *ovnsb_txn,
-                     const struct sbrec_rbac_role *rbac_role)
+ovn_rbac_validate_perm(struct rbac_perm_cfg *pcfg,
+                       struct ovsdb_idl_txn *ovnsb_txn,
+                       struct ovsdb_idl *ovnsb_idl)
 {
-    struct sbrec_rbac_permission *rbac_perm;
+    const struct sbrec_rbac_permission *perm_row;
 
-    rbac_perm = sbrec_rbac_permission_insert(ovnsb_txn);
-    sbrec_rbac_permission_set_table(rbac_perm, pcfg->table);
-    sbrec_rbac_permission_set_authorization(rbac_perm,
+    SBREC_RBAC_PERMISSION_FOR_EACH (perm_row, ovnsb_idl) {
+        if (!strcmp(perm_row->table, pcfg->table)
+            && ovn_rbac_match_perm(perm_row, pcfg)) {
+            pcfg->row = perm_row;
+
+            return;
+        }
+    }
+
+    pcfg->row = sbrec_rbac_permission_insert(ovnsb_txn);
+    sbrec_rbac_permission_set_table(pcfg->row, pcfg->table);
+    sbrec_rbac_permission_set_authorization(pcfg->row,
                                             pcfg->auth,
                                             pcfg->n_auth);
-    sbrec_rbac_permission_set_insert_delete(rbac_perm, pcfg->insdel);
-    sbrec_rbac_permission_set_update(rbac_perm,
+    sbrec_rbac_permission_set_insert_delete(pcfg->row, pcfg->insdel);
+    sbrec_rbac_permission_set_update(pcfg->row,
                                      pcfg->update,
                                      pcfg->n_update);
-    sbrec_rbac_role_update_permissions_setkey(rbac_role, pcfg->table,
-                                              rbac_perm);
 }
 
+/*
+ * Make sure that DB Role 'ovn-controller' exists, has no duplicates
+ * permission list exactly match to predefined permissions.  Recreate if
+ * matching fails.
+ */
 static void
 check_and_update_rbac(struct ovsdb_idl_txn *ovnsb_txn,
                       struct ovsdb_idl *ovnsb_idl)
 {
     const struct sbrec_rbac_role *rbac_role = NULL;
-    const struct sbrec_rbac_permission *perm_row;
     const struct sbrec_rbac_role *role_row;
-    struct rbac_perm_cfg *pcfg;
 
-    for (pcfg = rbac_perm_cfg; pcfg->table; pcfg++) {
-        pcfg->row = NULL;
+    /*
+     * Make sure predefined permissions are presented in the RBAC_Permissions
+     * table. Otherwise create consistent permissions.
+     */
+    for (struct rbac_perm_cfg *pcfg = rbac_perm_cfg; pcfg->table; pcfg++) {
+        ovn_rbac_validate_perm(pcfg, ovnsb_txn, ovnsb_idl);
     }
 
-    SBREC_RBAC_PERMISSION_FOR_EACH_SAFE (perm_row, ovnsb_idl) {
-        if (!ovn_rbac_validate_perm(perm_row)) {
-            sbrec_rbac_permission_delete(perm_row);
-        }
-    }
+    /*
+     * Make sure the role 'ovn-controller' is presented in the RBAC_Role table.
+     * Otherwise create the role. Remove duplicates if any.
+     */
     SBREC_RBAC_ROLE_FOR_EACH_SAFE (role_row, ovnsb_idl) {
-        if (strcmp(role_row->name, "ovn-controller")) {
-            sbrec_rbac_role_delete(role_row);
-        } else {
-            rbac_role = role_row;
+        if (!strcmp(role_row->name, "ovn-controller")) {
+            if (rbac_role) {
+                sbrec_rbac_role_delete(role_row);
+            } else {
+                rbac_role = role_row;
+            }
         }
     }
 
@@ -382,10 +395,38 @@ check_and_update_rbac(struct ovsdb_idl_txn *ovnsb_txn,
         sbrec_rbac_role_set_name(rbac_role, "ovn-controller");
     }
 
-    for (pcfg = rbac_perm_cfg; pcfg->table; pcfg++) {
-        if (!pcfg->row) {
-            ovn_rbac_create_perm(pcfg, ovnsb_txn, rbac_role);
+    /*
+     * Make sure the permission list attached to the role 'ovn-controller'
+     * exactly matches to predefined permissions.
+     * Reassign permission list to the role if any difference has found.
+     */
+    if (ARRAY_SIZE(rbac_perm_cfg) - 1 != rbac_role->n_permissions) {
+        goto rebuild_role_perms;
+    }
+
+    for (struct rbac_perm_cfg *pcfg = rbac_perm_cfg; pcfg->table; pcfg++) {
+        size_t i;
+        for (i = 0; i < rbac_role->n_permissions; i++) {
+            if (!strcmp(pcfg->table, rbac_role->key_permissions[i])
+                && pcfg->row == rbac_role->value_permissions[i]) {
+                break;
+            }
         }
+
+        if (i == rbac_role->n_permissions) {
+            goto rebuild_role_perms;
+        }
+    }
+
+    return;
+
+rebuild_role_perms:
+    sbrec_rbac_role_set_permissions(rbac_role, NULL, NULL, 0);
+
+    for (struct rbac_perm_cfg *pcfg = rbac_perm_cfg; pcfg->table; pcfg++) {
+        sbrec_rbac_role_update_permissions_setkey(rbac_role,
+                                                  pcfg->table,
+                                                  pcfg->row);
     }
 }
 
