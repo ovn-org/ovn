@@ -13893,3 +13893,84 @@ check_no_redirect
 
 AT_CLEANUP
 ])
+
+AT_SETUP([RBAC -- Recover builtin role and permissions])
+ovn_start
+
+RBR_BUILTIN_PNAMES=$(fetch_column RBAC_Role permissions name=ovn-controller | uuidfilt | sed -e 's/<[[^<>]]>*//g' | tr -d '=,{}')
+
+declare -A RBR_BUILTIN_PERM
+
+for V in $RBR_BUILTIN_PNAMES
+do
+  _UUID=`ovn-sbctl get RBAC_Role ovn-controller permissions:$V`
+  RBR_BUILTIN_PERM[[$V]]=`ovn-sbctl get RBAC_Permission $_UUID authorization insert_delete table update | paste -s -d " "`
+done
+
+rbr_match_builtin() {
+  local RBR_REAL_PNAMES=$(fetch_column RBAC_Role permissions name=ovn-controller | uuidfilt | sed -e 's/<[[^<>]]>*//g' | tr -d '=,{}')
+
+  AT_CHECK([test "$RBR_BUILTIN_PNAMES" == "$RBR_REAL_PNAMES"])
+
+  for V in $RBR_BUILTIN_PNAMES
+  do
+    local _UUID=`ovn-sbctl get RBAC_Role ovn-controller permissions:$V`
+    local RBR_REAL_PERM=`ovn-sbctl get RBAC_Permission $_UUID authorization insert_delete table update | paste -s -d " "`
+    AT_CHECK([test "${RBR_BUILTIN_PERM[[$V]]}" == "$RBR_REAL_PERM"])
+  done
+}
+
+rbr_match_custom() {
+  local RBR_BUILTIN_PNAMES='Load_Balancer'
+  local RBR_BUILTIN_ROLE='Load_Balancer=<0>'
+  local RBR_REAL_ROLE=$(fetch_column RBAC_Role permissions name=custom-role | uuidfilt)
+
+  declare -A RBR_BUILTIN_PERM=(
+   [[Load_Balancer]]='[[]] false Load_Balancer [[]]'
+  )
+
+  AT_CHECK([test "$RBR_BUILTIN_ROLE" == "$RBR_REAL_ROLE"])
+
+  for V in $RBR_BUILTIN_PNAMES
+  do
+    local _UUID=`ovn-sbctl get RBAC_Role custom-role permissions:$V`
+    local _PREAL=`ovn-sbctl get RBAC_Permission $_UUID authorization insert_delete table update | paste -s -d " "`
+    AT_CHECK([test "${RBR_BUILTIN_PERM[[$V]]}" == "$_PREAL"])
+  done
+}
+
+AS_BOX([Recover after role delete])
+check ovn-sbctl destroy RBAC_Role ovn-controller
+OVS_WAIT_UNTIL([rbr_match_builtin])
+
+AS_BOX([Recover after permissions alternation])
+check ovn-sbctl remove RBAC_Permission Chassis update vtep_logical_switches
+OVS_WAIT_UNTIL([rbr_match_builtin])
+
+AS_BOX([Recover after permission delete])
+PERM_UID=`ovn-sbctl get RBAC_Role ovn-controller permissions:Chassis`
+check check ovn-sbctl destroy RBAC_Permission $PERM_UID
+OVS_WAIT_UNTIL([rbr_match_builtin])
+
+AS_BOX([Recover after permission link removal from role])
+check ovn-sbctl remove RBAC_Role ovn-controller permissions Chassis
+OVS_WAIT_UNTIL([rbr_match_builtin])
+
+AS_BOX([Clean unwanted permission added to role])
+AT_CHECK([ovn-sbctl --id=@nr create RBAC_Permission table=Load_Balancer \
+-- set RBAC_Role ovn-controller permissions:Load_Balancer=@nr | uuidfilt], [0], [<0>
+])
+OVS_WAIT_UNTIL([rbr_match_builtin])
+
+AS_BOX([Clean duplicated role])
+AT_CHECK([ovn-sbctl create RBAC_Role name=ovn-controller | uuidfilt], [0], [<0>
+])
+OVS_WAIT_UNTIL([rbr_match_builtin])
+
+AS_BOX([Ensure custom role and permission are not automatically deleted])
+PERM_UID=$(fetch_column RBAC_Permission _uuid table=Load_Balancer)
+ovn-sbctl create RBAC_Role name=custom-role permissions:Load_Balancer=$PERM_UID
+OVS_WAIT_UNTIL([rbr_match_builtin])
+check rbr_match_custom
+
+AT_CLEANUP
