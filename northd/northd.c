@@ -34,7 +34,6 @@
 #include "lb.h"
 #include "lib/chassis-index.h"
 #include "lib/ip-mcast-index.h"
-#include "lib/static-mac-binding-index.h"
 #include "lib/copp.h"
 #include "lib/mcast-group-index.h"
 #include "lib/ovn-l7.h"
@@ -18782,29 +18781,11 @@ build_mcast_groups(const struct sbrec_igmp_group_table *sbrec_igmp_group_table,
     }
 }
 
-static const struct nbrec_static_mac_binding *
-static_mac_binding_by_port_ip(
-    const struct nbrec_static_mac_binding_table *nbrec_static_mb_table,
-    const char *logical_port, const char *ip)
-{
-    const struct nbrec_static_mac_binding *nb_smb = NULL;
-
-    NBREC_STATIC_MAC_BINDING_TABLE_FOR_EACH (nb_smb, nbrec_static_mb_table) {
-        if (!strcmp(nb_smb->logical_port, logical_port) &&
-            !strcmp(nb_smb->ip, ip)) {
-            break;
-        }
-    }
-
-    return nb_smb;
-}
-
 static void
 build_static_mac_binding_table(
     struct ovsdb_idl_txn *ovnsb_txn,
     const struct nbrec_static_mac_binding_table *nbrec_static_mb_table,
     const struct sbrec_static_mac_binding_table *sbrec_static_mb_table,
-    struct ovsdb_idl_index *sbrec_static_mac_binding_by_lport_ip,
     struct hmap *lr_ports)
 {
     /* Cleanup SB Static_MAC_Binding entries which do not have corresponding
@@ -18814,9 +18795,8 @@ build_static_mac_binding_table(
     const struct sbrec_static_mac_binding *sb_smb;
     SBREC_STATIC_MAC_BINDING_TABLE_FOR_EACH_SAFE (sb_smb,
         sbrec_static_mb_table) {
-        nb_smb = static_mac_binding_by_port_ip(nbrec_static_mb_table,
-                                               sb_smb->logical_port,
-                                               sb_smb->ip);
+        nb_smb = nbrec_static_mac_binding_table_get_for_uuid(
+            nbrec_static_mb_table, &sb_smb->header_.uuid);
         if (!nb_smb) {
             sbrec_static_mac_binding_delete(sb_smb);
             continue;
@@ -18836,13 +18816,14 @@ build_static_mac_binding_table(
         if (op && op->nbrp) {
             struct ovn_datapath *od = op->od;
             if (od && od->sb) {
+                const struct uuid *nb_uuid = &nb_smb->header_.uuid;
                 const struct sbrec_static_mac_binding *mb =
-                    static_mac_binding_lookup(
-                        sbrec_static_mac_binding_by_lport_ip,
-                        nb_smb->logical_port, nb_smb->ip);
+                    sbrec_static_mac_binding_table_get_for_uuid(
+                        sbrec_static_mb_table, nb_uuid);
                 if (!mb) {
                     /* Create new entry */
-                    mb = sbrec_static_mac_binding_insert(ovnsb_txn);
+                    mb = sbrec_static_mac_binding_insert_persist_uuid(
+                        ovnsb_txn, nb_uuid);
                     sbrec_static_mac_binding_set_logical_port(
                         mb, nb_smb->logical_port);
                     sbrec_static_mac_binding_set_ip(mb, nb_smb->ip);
@@ -19123,7 +19104,6 @@ ovnnb_db_run(struct northd_input *input_data,
     build_static_mac_binding_table(ovnsb_txn,
         input_data->nbrec_static_mac_binding_table,
         input_data->sbrec_static_mac_binding_table,
-        input_data->sbrec_static_mac_binding_by_lport_ip,
         &data->lr_ports);
     stopwatch_stop(BUILD_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
     stopwatch_start(CLEAR_LFLOWS_CTX_STOPWATCH_NAME, time_msec());

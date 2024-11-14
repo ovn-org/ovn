@@ -20,7 +20,6 @@
 
 #include "chassis-index.h"
 #include "ip-mcast-index.h"
-#include "static-mac-binding-index.h"
 #include "lib/inc-proc-eng.h"
 #include "lib/mac-binding-index.h"
 #include "lib/ovn-nb-idl.h"
@@ -359,8 +358,6 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                          ip_mcast_index_create(sb->idl);
     struct ovsdb_idl_index *sbrec_chassis_by_hostname =
         chassis_hostname_index_create(sb->idl);
-    struct ovsdb_idl_index *sbrec_static_mac_binding_by_lport_ip
-        = static_mac_binding_index_create(sb->idl);
     struct ovsdb_idl_index *sbrec_mac_binding_by_datapath
         = mac_binding_by_datapath_index_create(sb->idl);
     struct ovsdb_idl_index *fdb_by_dp_key =
@@ -383,9 +380,6 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_ovsdb_node_add_index(&en_sb_ip_multicast,
                                 "sbrec_ip_mcast_by_dp",
                                 sbrec_ip_mcast_by_dp);
-    engine_ovsdb_node_add_index(&en_sb_static_mac_binding,
-                                "sbrec_static_mac_binding_by_lport_ip",
-                                sbrec_static_mac_binding_by_lport_ip);
     engine_ovsdb_node_add_index(&en_sb_mac_binding,
                                 "sbrec_mac_binding_by_datapath",
                                 sbrec_mac_binding_by_datapath);

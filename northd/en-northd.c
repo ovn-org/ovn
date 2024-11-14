@@ -57,10 +57,6 @@ northd_get_input_data(struct engine_node *node,
         engine_ovsdb_node_get_index(
             engine_get_input("SB_ip_multicast", node),
             "sbrec_ip_mcast_by_dp");
-    input_data->sbrec_static_mac_binding_by_lport_ip =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_static_mac_binding", node),
-            "sbrec_static_mac_binding_by_lport_ip");
     input_data->sbrec_fdb_by_dp_and_port =
         engine_ovsdb_node_get_index(
             engine_get_input("SB_fdb", node),

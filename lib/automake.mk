@@ -44,8 +44,6 @@ lib_libovn_la_SOURCES = \
 	lib/inc-proc-eng.h \
 	lib/lb.c \
 	lib/lb.h \
-	lib/static-mac-binding-index.c \
-	lib/static-mac-binding-index.h \
 	lib/stopwatch-names.h \
 	lib/vif-plug-provider.h \
 	lib/vif-plug-provider.c \

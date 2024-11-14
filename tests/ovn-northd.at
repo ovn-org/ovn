@@ -8122,7 +8122,9 @@ ovn-nbctl static-mac-binding-add lr0-p0 192.168.10.100 00:00:22:33:44:55
 
 wait_row_count nb:Static_MAC_Binding 2 logical_port=lr0-p0
 wait_row_count Static_MAC_Binding 1 logical_port=lr0-p0 ip=192.168.10.10 mac="00\:00\:11\:22\:33\:44"
+check_column "$(fetch_column nb:Static_MAC_Binding _uuid logical_port=lr0-p0 ip=192.168.10.10)" sb:Static_MAC_Binding _uuid logical_port=lr0-p0 ip=192.168.10.10
 wait_row_count Static_MAC_Binding 1 logical_port=lr0-p0 ip=192.168.10.100 mac="00\:00\:22\:33\:44\:55"
+check_column "$(fetch_column nb:Static_MAC_Binding _uuid logical_port=lr0-p0 ip=192.168.10.100)" sb:Static_MAC_Binding _uuid logical_port=lr0-p0 ip=192.168.10.100
 
 ovn-nbctl static-mac-binding-add lr0-p1 10.0.0.10 00:00:33:44:55:66
 wait_row_count nb:Static_MAC_Binding 1 logical_port=lr0-p1
