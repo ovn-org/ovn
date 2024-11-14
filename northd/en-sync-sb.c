@@ -225,7 +225,6 @@ struct sb_lb_record {
     const struct sbrec_load_balancer *sbrec_lb;
     struct ovn_dp_group *ls_dpg;
     struct ovn_dp_group *lr_dpg;
-    struct uuid sb_uuid;
 };
 
 struct sb_lb_table {
@@ -268,7 +267,6 @@ static bool sync_changed_lbs(struct sb_lb_table *,
                              struct ovn_datapaths *ls_datapaths,
                              struct ovn_datapaths *lr_datapaths,
                              struct chassis_features *);
-static bool check_sb_lb_duplicates(const struct sbrec_load_balancer_table *);
 
 void *
 en_sync_to_sb_lb_init(struct engine_node *node OVS_UNUSED,
@@ -343,23 +341,6 @@ sync_to_sb_lb_northd_handler(struct engine_node *node, void *data_)
     }
 
     engine_set_node_state(node, EN_UPDATED);
-    return true;
-}
-
-bool
-sync_to_sb_lb_sb_load_balancer(struct engine_node *node, void *data OVS_UNUSED)
-{
-    const struct sbrec_load_balancer_table *sb_load_balancer_table =
-        EN_OVSDB_GET(engine_get_input("SB_load_balancer", node));
-
-    /* The only reason to handle SB.Load_Balancer updates is to detect
-     * spurious records being created in clustered databases due to
-     * lack of indexing on the SB.Load_Balancer table.  All other changes
-     * are valid and performed by northd, the only write-client for
-     * this table. */
-    if (check_sb_lb_duplicates(sb_load_balancer_table)) {
-        return false;
-    }
     return true;
 }
 
@@ -690,14 +671,7 @@ sb_lb_table_build_and_sync(
     const struct sbrec_load_balancer *sbrec_lb;
     SBREC_LOAD_BALANCER_TABLE_FOR_EACH_SAFE (sbrec_lb,
                                              sb_lb_table) {
-        const char *nb_lb_uuid = smap_get(&sbrec_lb->external_ids, "lb_id");
-        struct uuid lb_uuid;
-        if (!nb_lb_uuid || !uuid_from_string(&lb_uuid, nb_lb_uuid)) {
-            sbrec_load_balancer_delete(sbrec_lb);
-            continue;
-        }
-
-        sb_lb = sb_lb_table_find(&tmp_sb_lbs, &lb_uuid);
+        sb_lb = sb_lb_table_find(&tmp_sb_lbs, &sbrec_lb->header_.uuid);
         if (sb_lb) {
             sb_lb->sbrec_lb = sbrec_lb;
             bool success = sync_sb_lb_record(sb_lb, sbrec_lb, sb_dpgrp_table,
@@ -751,17 +725,9 @@ sync_sb_lb_record(struct sb_lb_record *sb_lb,
     pre_sync_lr_dpg = sb_lb->lr_dpg;
 
     if (!sbrec_lb) {
-        sb_lb->sb_uuid = uuid_random();
-        sbrec_lb =  sbrec_load_balancer_insert_persist_uuid(ovnsb_txn,
-                                                            &sb_lb->sb_uuid);
-        char *lb_id = xasprintf(
-            UUID_FMT, UUID_ARGS(&lb_dps->lb->nlb->header_.uuid));
-        const struct smap external_ids =
-            SMAP_CONST1(&external_ids, "lb_id", lb_id);
-        sbrec_load_balancer_set_external_ids(sbrec_lb, &external_ids);
-        free(lb_id);
+        const struct uuid *nb_uuid = &lb_dps->lb->nlb->header_.uuid;
+        sbrec_lb = sbrec_load_balancer_insert_persist_uuid(ovnsb_txn, nb_uuid);
     } else {
-        sb_lb->sb_uuid = sbrec_lb->header_.uuid;
         sbrec_ls_dp_group =
             chassis_features->ls_dpg_column
             ? sbrec_lb->ls_datapath_group
@@ -923,13 +889,11 @@ sync_changed_lbs(struct sb_lb_table *sb_lbs,
 
     HMAPX_FOR_EACH (hmapx_node, &trk_lbs->deleted) {
         lb_dps = hmapx_node->data;
-
-        sb_lb = sb_lb_table_find(&sb_lbs->entries,
-                                 &lb_dps->lb->nlb->header_.uuid);
+        const struct uuid *nb_uuid = &lb_dps->lb->nlb->header_.uuid;
+        sb_lb = sb_lb_table_find(&sb_lbs->entries, nb_uuid);
         if (sb_lb) {
             const struct sbrec_load_balancer *sbrec_lb =
-                sbrec_load_balancer_table_get_for_uuid(sb_lb_table,
-                                                       &sb_lb->sb_uuid);
+                sbrec_load_balancer_table_get_for_uuid(sb_lb_table, nb_uuid);
             if (sbrec_lb) {
                 sbrec_load_balancer_delete(sbrec_lb);
             }
@@ -941,9 +905,9 @@ sync_changed_lbs(struct sb_lb_table *sb_lbs,
 
     HMAPX_FOR_EACH (hmapx_node, &trk_lbs->crupdated) {
         lb_dps = hmapx_node->data;
+        const struct uuid *nb_uuid = &lb_dps->lb->nlb->header_.uuid;
 
-        sb_lb = sb_lb_table_find(&sb_lbs->entries,
-                                 &lb_dps->lb->nlb->header_.uuid);
+        sb_lb = sb_lb_table_find(&sb_lbs->entries, nb_uuid);
 
         if (!sb_lb && !lb_dps->n_nb_ls && !lb_dps->n_nb_lr) {
             continue;
@@ -953,17 +917,15 @@ sync_changed_lbs(struct sb_lb_table *sb_lbs,
             sb_lb = xzalloc(sizeof *sb_lb);
             sb_lb->lb_dps = lb_dps;
             hmap_insert(&sb_lbs->entries, &sb_lb->key_node,
-                        uuid_hash(&lb_dps->lb->nlb->header_.uuid));
+                        uuid_hash(nb_uuid));
         } else {
             sb_lb->sbrec_lb =
-                sbrec_load_balancer_table_get_for_uuid(sb_lb_table,
-                                                       &sb_lb->sb_uuid);
+                sbrec_load_balancer_table_get_for_uuid(sb_lb_table, nb_uuid);
         }
 
         if (sb_lb && !lb_dps->n_nb_ls && !lb_dps->n_nb_lr) {
             const struct sbrec_load_balancer *sbrec_lb =
-                sbrec_load_balancer_table_get_for_uuid(sb_lb_table,
-                                                       &sb_lb->sb_uuid);
+                sbrec_load_balancer_table_get_for_uuid(sb_lb_table, nb_uuid);
             if (sbrec_lb) {
                 sbrec_load_balancer_delete(sbrec_lb);
             }
@@ -980,24 +942,4 @@ sync_changed_lbs(struct sb_lb_table *sb_lbs,
     }
 
     return true;
-}
-
-static bool
-check_sb_lb_duplicates(const struct sbrec_load_balancer_table *table)
-{
-    struct sset existing_nb_lb_uuids =
-        SSET_INITIALIZER(&existing_nb_lb_uuids);
-    const struct sbrec_load_balancer *sbrec_lb;
-    bool duplicates = false;
-
-    SBREC_LOAD_BALANCER_TABLE_FOR_EACH (sbrec_lb, table) {
-        const char *nb_lb_uuid = smap_get(&sbrec_lb->external_ids, "lb_id");
-        if (nb_lb_uuid && !sset_add(&existing_nb_lb_uuids, nb_lb_uuid)) {
-            duplicates = true;
-            break;
-        }
-    }
-
-    sset_destroy(&existing_nb_lb_uuids);
-    return duplicates;
 }

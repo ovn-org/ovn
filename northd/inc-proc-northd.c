@@ -308,8 +308,10 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                      node_global_config_handler);
     engine_add_input(&en_sync_to_sb_lb, &en_northd,
                      sync_to_sb_lb_northd_handler);
+    /* There is nothing to handle as duplicates are prevented by using
+     * UUID mapping between NB and SB. */
     engine_add_input(&en_sync_to_sb_lb, &en_sb_load_balancer,
-                     sync_to_sb_lb_sb_load_balancer);
+                     engine_noop_handler);
     engine_add_input(&en_sync_to_sb_lb, &en_sb_logical_dp_group, NULL);
 
     engine_add_input(&en_sync_to_sb_pb, &en_northd,
