@@ -18505,37 +18505,41 @@ sync_template_vars(
     const struct nbrec_chassis_template_var_table *nbrec_ch_template_var_table,
     const struct sbrec_chassis_template_var_table *sbrec_ch_template_var_table)
 {
-    struct shash nb_tvs = SHASH_INITIALIZER(&nb_tvs);
-
     const struct nbrec_chassis_template_var *nb_tv;
     const struct sbrec_chassis_template_var *sb_tv;
 
-    NBREC_CHASSIS_TEMPLATE_VAR_TABLE_FOR_EACH (
-            nb_tv, nbrec_ch_template_var_table) {
-        shash_add(&nb_tvs, nb_tv->chassis, nb_tv);
-    }
-
     SBREC_CHASSIS_TEMPLATE_VAR_TABLE_FOR_EACH_SAFE (
             sb_tv, sbrec_ch_template_var_table) {
-        nb_tv = shash_find_and_delete(&nb_tvs, sb_tv->chassis);
+        nb_tv = nbrec_chassis_template_var_table_get_for_uuid(
+            nbrec_ch_template_var_table, &sb_tv->header_.uuid);
         if (!nb_tv) {
             sbrec_chassis_template_var_delete(sb_tv);
             continue;
         }
+
+        if (strcmp(sb_tv->chassis, nb_tv->chassis)) {
+            sbrec_chassis_template_var_set_chassis(sb_tv, nb_tv->chassis);
+        }
+
         if (!smap_equal(&sb_tv->variables, &nb_tv->variables)) {
-            sbrec_chassis_template_var_set_variables(sb_tv,
-                                                     &nb_tv->variables);
+            sbrec_chassis_template_var_set_variables(sb_tv, &nb_tv->variables);
         }
     }
 
-    struct shash_node *node;
-    SHASH_FOR_EACH (node, &nb_tvs) {
-        nb_tv = node->data;
-        sb_tv = sbrec_chassis_template_var_insert(ovnsb_txn);
+    NBREC_CHASSIS_TEMPLATE_VAR_TABLE_FOR_EACH (
+            nb_tv, nbrec_ch_template_var_table) {
+        const struct uuid *nb_uuid = &nb_tv->header_.uuid;
+        sb_tv = sbrec_chassis_template_var_table_get_for_uuid(
+            sbrec_ch_template_var_table, nb_uuid);
+        if (sb_tv) {
+            continue;
+        }
+
+        sb_tv = sbrec_chassis_template_var_insert_persist_uuid(ovnsb_txn,
+                                                               nb_uuid);
         sbrec_chassis_template_var_set_chassis(sb_tv, nb_tv->chassis);
         sbrec_chassis_template_var_set_variables(sb_tv, &nb_tv->variables);
     }
-    shash_destroy(&nb_tvs);
 }
 
 static void

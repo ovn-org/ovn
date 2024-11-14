@@ -10186,13 +10186,23 @@ check ovn-nbctl set Chassis_Template_Var hv2 variables:tv=v2
 AS_BOX([Ensure values are propagated to SB])
 check ovn-nbctl --wait=sb sync
 check_column "tv=v1" sb:Chassis_Template_Var variables chassis="hv1"
+check_column "$(fetch_column nb:Chassis_Template_Var _uuid chassis=\"hv1\")" sb:Chassis_Template_Var _uuid chassis="hv1"
 check_column "tv=v2" sb:Chassis_Template_Var variables chassis="hv2"
+check_column "$(fetch_column nb:Chassis_Template_Var _uuid chassis=\"hv2\")" sb:Chassis_Template_Var _uuid chassis="hv2"
 
 AS_BOX([Ensure SB is reconciled])
 check ovn-sbctl --all destroy Chassis_Template_Var
 check ovn-nbctl --wait=sb sync
 check_column "tv=v1" sb:Chassis_Template_Var variables chassis="hv1"
 check_column "tv=v2" sb:Chassis_Template_Var variables chassis="hv2"
+
+AS_BOX([Ensure SB is reconciled - update])
+uuid=$(fetch_column nb:Chassis_Template_Var _uuid chassis="hv1")
+check ovn-sbctl set Chassis_Template_Var $uuid chassis="hv3"
+wait_column "tv=v1" sb:Chassis_Template_Var variables chassis="hv1"
+
+check ovn-sbctl set Chassis_Template_Var $uuid variables="tv=tv3"
+wait_column "tv=v1" sb:Chassis_Template_Var variables chassis="hv1"
 
 AS_BOX([Ensure SB is reconciled - deletion])
 check ovn-nbctl destroy Chassis_Template_Var hv1
