@@ -18318,23 +18318,21 @@ mirror_needs_update(const struct nbrec_mirror *nb_mirror,
 }
 
 static void
-sync_mirrors_iterate_nb_mirror(struct ovsdb_idl_txn *ovnsb_txn,
-                               const char *mirror_name,
-                               const struct nbrec_mirror *nb_mirror,
-                               struct shash *sb_mirrors)
+sync_nb_and_sb_mirror(struct ovsdb_idl_txn *ovnsb_txn,
+                      const char *mirror_name,
+                      const struct nbrec_mirror *nb_mirror,
+                      const struct sbrec_mirror_table *sbrec_mirror_table)
 {
-    const struct sbrec_mirror *sb_mirror;
-    bool new_sb_mirror = false;
+    const struct uuid *nb_uuid = &nb_mirror->header_.uuid;
+    const struct sbrec_mirror *sb_mirror =
+        sbrec_mirror_table_get_for_uuid(sbrec_mirror_table, nb_uuid);
 
-    sb_mirror = shash_find_data(sb_mirrors, mirror_name);
     if (!sb_mirror) {
-        sb_mirror = sbrec_mirror_insert(ovnsb_txn);
+        sb_mirror = sbrec_mirror_insert_persist_uuid(ovnsb_txn, nb_uuid);
         sbrec_mirror_set_name(sb_mirror, mirror_name);
-        shash_add(sb_mirrors, sb_mirror->name, sb_mirror);
-        new_sb_mirror = true;
     }
 
-    if (new_sb_mirror || mirror_needs_update(nb_mirror, sb_mirror)) {
+    if (mirror_needs_update(nb_mirror, sb_mirror)) {
         sbrec_mirror_set_filter(sb_mirror, nb_mirror->filter);
         sbrec_mirror_set_index(sb_mirror, nb_mirror->index);
         sbrec_mirror_set_sink(sb_mirror, nb_mirror->sink);
@@ -18347,26 +18345,19 @@ sync_mirrors(struct ovsdb_idl_txn *ovnsb_txn,
              const struct nbrec_mirror_table *nbrec_mirror_table,
              const struct sbrec_mirror_table *sbrec_mirror_table)
 {
-    struct shash sb_mirrors = SHASH_INITIALIZER(&sb_mirrors);
-
     const struct sbrec_mirror *sb_mirror;
-    SBREC_MIRROR_TABLE_FOR_EACH (sb_mirror, sbrec_mirror_table) {
-        shash_add(&sb_mirrors, sb_mirror->name, sb_mirror);
+    SBREC_MIRROR_TABLE_FOR_EACH_SAFE (sb_mirror, sbrec_mirror_table) {
+        if (!nbrec_mirror_table_get_for_uuid(nbrec_mirror_table,
+                                             &sb_mirror->header_.uuid)) {
+            sbrec_mirror_delete(sb_mirror);
+        }
     }
 
     const struct nbrec_mirror *nb_mirror;
     NBREC_MIRROR_TABLE_FOR_EACH (nb_mirror, nbrec_mirror_table) {
-        sync_mirrors_iterate_nb_mirror(ovnsb_txn, nb_mirror->name, nb_mirror,
-                                       &sb_mirrors);
-        shash_find_and_delete(&sb_mirrors, nb_mirror->name);
+        sync_nb_and_sb_mirror(ovnsb_txn, nb_mirror->name,
+                              nb_mirror, sbrec_mirror_table);
     }
-
-    struct shash_node *node, *next;
-    SHASH_FOR_EACH_SAFE (node, next, &sb_mirrors) {
-        sbrec_mirror_delete(node->data);
-        shash_delete(&sb_mirrors, node);
-    }
-    shash_destroy(&sb_mirrors);
 }
 
 /*
