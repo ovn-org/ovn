@@ -3209,8 +3209,11 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
                                   "is-remote", false)) {
                     sbrec_port_binding_set_chassis(op->sb,
                                                    op->sb->requested_chassis);
-                } else {
+                    smap_add(&options, "is-remote-nb-bound", "true");
+                } else if (smap_get_bool(&op->sb->options,
+                                         "is-remote-nb-bound", false)) {
                     sbrec_port_binding_set_chassis(op->sb, NULL);
+                    smap_add(&options, "is-remote-nb-bound", "false");
                 }
             } else if (op->sb->chassis &&
                        smap_get_bool(&op->sb->chassis->other_config,

@@ -39727,3 +39727,37 @@ OVN_CLEANUP([hv1])
 
 AT_CLEANUP
 ])
+
+# ovn-kubernetes used to explicitly set chassis,
+# test if we don't accidentally remove it.
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Remote port with explicit SB chassis])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+
+check ovn-sbctl chassis-add hv2 geneve 192.168.0.12 \
+    -- set chassis hv2 other_config:is-remote=true
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add ls lsp
+check ovn-nbctl --wait=sb lsp-set-type lsp remote
+
+remote_chassis=$(fetch_column Chassis _uuid name=hv2)
+lsp_uuid=$(fetch_column Port_Binding _uuid logical_port=lsp)
+
+check ovn-sbctl set Port_Binding $lsp_uuid chassis=$remote_chassis
+
+check ovn-nbctl --wait=hv sync
+
+check_column $remote_chassis Port_Binding chassis logical_port=lsp
+
+OVN_CLEANUP([hv1])
+
+AT_CLEANUP
+])
