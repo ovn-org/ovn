@@ -18384,7 +18384,7 @@ struct dns_info {
 };
 
 static inline struct dns_info *
-get_dns_info_from_hmap(struct hmap *dns_map, struct uuid *uuid)
+get_dns_info_from_hmap(struct hmap *dns_map, const struct uuid *uuid)
 {
     struct dns_info *dns_info;
     size_t hash = uuid_hash(uuid);
@@ -18430,15 +18430,8 @@ sync_dns_entries(struct ovsdb_idl_txn *ovnsb_txn,
 
     const struct sbrec_dns *sbrec_dns;
     SBREC_DNS_TABLE_FOR_EACH_SAFE (sbrec_dns, sbrec_dns_table) {
-        const char *nb_dns_uuid = smap_get(&sbrec_dns->external_ids, "dns_id");
-        struct uuid dns_uuid;
-        if (!nb_dns_uuid || !uuid_from_string(&dns_uuid, nb_dns_uuid)) {
-            sbrec_dns_delete(sbrec_dns);
-            continue;
-        }
-
         struct dns_info *dns_info =
-            get_dns_info_from_hmap(&dns_map, &dns_uuid);
+            get_dns_info_from_hmap(&dns_map, &sbrec_dns->header_.uuid);
         if (dns_info) {
             dns_info->sb_dns = sbrec_dns;
         } else {
@@ -18449,14 +18442,8 @@ sync_dns_entries(struct ovsdb_idl_txn *ovnsb_txn,
     struct dns_info *dns_info;
     HMAP_FOR_EACH_POP (dns_info, hmap_node, &dns_map) {
         if (!dns_info->sb_dns) {
-            sbrec_dns = sbrec_dns_insert(ovnsb_txn);
-            dns_info->sb_dns = sbrec_dns;
-            char *dns_id = xasprintf(
-                UUID_FMT, UUID_ARGS(&dns_info->nb_dns->header_.uuid));
-            const struct smap external_ids =
-                SMAP_CONST1(&external_ids, "dns_id", dns_id);
-            sbrec_dns_set_external_ids(sbrec_dns, &external_ids);
-            free(dns_id);
+            dns_info->sb_dns = sbrec_dns_insert_persist_uuid(
+                ovnsb_txn, &dns_info->nb_dns->header_.uuid);
         }
 
         /* Copy DNS options to SB*/

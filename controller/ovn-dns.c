@@ -28,6 +28,8 @@ VLOG_DEFINE_THIS_MODULE(ovndns);
 
 /* Internal DNS cache entry for each SB DNS record. */
 struct dns_data {
+    struct hmap_node hmap_node;
+    struct uuid uuid;
     uint64_t *dps;
     size_t n_dps;
     struct smap records;
@@ -36,15 +38,19 @@ struct dns_data {
 };
 
 /* shash of 'struct dns_data'. */
-static struct shash dns_cache_ = SHASH_INITIALIZER(&dns_cache_);
+static struct hmap dns_cache_ = HMAP_INITIALIZER(&dns_cache_);
 
 /* Mutex to protect dns_cache_. */
 static struct ovs_mutex dns_cache_mutex = OVS_MUTEX_INITIALIZER;
 
 static void update_cache_with_dns_rec(const struct sbrec_dns *,
                                       struct dns_data *,
-                                      const char *dns_id,
-                                      struct shash *dns_cache);
+                                      const struct uuid *uuid,
+                                      struct hmap *dns_cache);
+static struct dns_data *dns_data_find(const struct uuid *uuid);
+static struct dns_data *dns_data_alloc(struct uuid uuid);
+static void dns_data_destroy(struct dns_data *dns_data);
+
 void
 ovn_dns_cache_init(void)
 {
@@ -54,16 +60,11 @@ void
 ovn_dns_cache_destroy(void)
 {
     ovs_mutex_lock(&dns_cache_mutex);
-    struct shash_node *iter;
-    SHASH_FOR_EACH_SAFE (iter, &dns_cache_) {
-        struct dns_data *d = iter->data;
-        shash_delete(&dns_cache_, iter);
-        smap_destroy(&d->records);
-        smap_destroy(&d->options);
-        free(d->dps);
-        free(d);
+    struct dns_data *dns_data;
+    HMAP_FOR_EACH_POP (dns_data, hmap_node, &dns_cache_) {
+        dns_data_destroy(dns_data);
     }
-    shash_destroy(&dns_cache_);
+    hmap_destroy(&dns_cache_);
     ovs_mutex_unlock(&dns_cache_mutex);
 }
 
@@ -71,27 +72,18 @@ void
 ovn_dns_sync_cache(const struct sbrec_dns_table *dns_table)
 {
     ovs_mutex_lock(&dns_cache_mutex);
-    struct shash_node *iter;
-    SHASH_FOR_EACH (iter, &dns_cache_) {
-        struct dns_data *d = iter->data;
-        d->delete = true;
+    struct dns_data *dns_data;
+    HMAP_FOR_EACH (dns_data, hmap_node, &dns_cache_) {
+        dns_data->delete = true;
     }
 
     const struct sbrec_dns *sbrec_dns;
     SBREC_DNS_TABLE_FOR_EACH (sbrec_dns, dns_table) {
-        const char *dns_id = smap_get(&sbrec_dns->external_ids, "dns_id");
-        if (!dns_id) {
-            continue;
-        }
-
-        struct dns_data *dns_data = shash_find_data(&dns_cache_, dns_id);
+        const struct uuid *uuid = &sbrec_dns->header_.uuid;
+        dns_data = dns_data_find(uuid);
         if (!dns_data) {
-            dns_data = xmalloc(sizeof *dns_data);
-            smap_init(&dns_data->records);
-            smap_init(&dns_data->options);
-            shash_add(&dns_cache_, dns_id, dns_data);
-            dns_data->n_dps = 0;
-            dns_data->dps = NULL;
+            dns_data = dns_data_alloc(*uuid);
+            hmap_insert(&dns_cache_, &dns_data->hmap_node, uuid_hash(uuid));
         } else {
             free(dns_data->dps);
         }
@@ -115,14 +107,10 @@ ovn_dns_sync_cache(const struct sbrec_dns_table *dns_table)
         }
     }
 
-    SHASH_FOR_EACH_SAFE (iter, &dns_cache_) {
-        struct dns_data *d = iter->data;
-        if (d->delete) {
-            shash_delete(&dns_cache_, iter);
-            smap_destroy(&d->records);
-            smap_destroy(&d->options);
-            free(d->dps);
-            free(d);
+    HMAP_FOR_EACH_SAFE (dns_data, hmap_node, &dns_cache_) {
+        if (dns_data->delete) {
+            hmap_remove(&dns_cache_, &dns_data->hmap_node);
+            dns_data_destroy(dns_data);
         }
     }
     ovs_mutex_unlock(&dns_cache_mutex);
@@ -135,25 +123,14 @@ ovn_dns_update_cache(const struct sbrec_dns_table *dns_table)
 
     const struct sbrec_dns *sbrec_dns;
     SBREC_DNS_TABLE_FOR_EACH_TRACKED (sbrec_dns, dns_table) {
-        const char *dns_id = smap_get(&sbrec_dns->external_ids, "dns_id");
-        if (!dns_id) {
-            continue;
-        }
+        const struct uuid *uuid = &sbrec_dns->header_.uuid;
+        struct dns_data *dns_data = dns_data_find(uuid);
 
-        struct shash_node *shash_node = shash_find(&dns_cache_, dns_id);
-        if (sbrec_dns_is_deleted(sbrec_dns)) {
-            if (shash_node) {
-                struct dns_data *dns_data = shash_node->data;
-                shash_delete(&dns_cache_, shash_node);
-                smap_destroy(&dns_data->records);
-                smap_destroy(&dns_data->options);
-                free(dns_data->dps);
-                free(dns_data);
-            }
+        if (sbrec_dns_is_deleted(sbrec_dns) && dns_data) {
+            hmap_remove(&dns_cache_, &dns_data->hmap_node);
+            dns_data_destroy(dns_data);
         } else {
-            update_cache_with_dns_rec(sbrec_dns,
-                                      shash_node ? shash_node->data : NULL,
-                                      dns_id, &dns_cache_);
+            update_cache_with_dns_rec(sbrec_dns, dns_data, uuid, &dns_cache_);
         }
     }
 
@@ -166,20 +143,19 @@ ovn_dns_lookup(const char *query_name, uint64_t dp_key, bool *ovn_owned)
     ovs_mutex_lock(&dns_cache_mutex);
 
     *ovn_owned = false;
-    struct shash_node *iter;
+    struct dns_data *dns_data;
     const char *answer_data = NULL;
-    SHASH_FOR_EACH (iter, &dns_cache_) {
-        struct dns_data *d = iter->data;
-            for (size_t i = 0; i < d->n_dps; i++) {
-            if (d->dps[i] == dp_key) {
+    HMAP_FOR_EACH (dns_data, hmap_node, &dns_cache_) {
+        for (size_t i = 0; i < dns_data->n_dps; i++) {
+            if (dns_data->dps[i] == dp_key) {
                 /* DNS records in SBDB are stored in lowercase. Convert to
                  * lowercase to perform case insensitive lookup
                  */
                 char *query_name_lower = str_tolower(query_name);
-                answer_data = smap_get(&d->records, query_name_lower);
+                answer_data = smap_get(&dns_data->records, query_name_lower);
                 free(query_name_lower);
                 if (answer_data) {
-                    *ovn_owned = smap_get_bool(&d->options, "ovn-owned",
+                    *ovn_owned = smap_get_bool(&dns_data->options, "ovn-owned",
                                                false);
                     break;
                 }
@@ -201,16 +177,12 @@ ovn_dns_lookup(const char *query_name, uint64_t dp_key, bool *ovn_owned)
 static void
 update_cache_with_dns_rec(const struct sbrec_dns *sbrec_dns,
                           struct dns_data *dns_data,
-                          const char *dns_id,
-                          struct shash *dns_cache)
+                          const struct uuid *uuid,
+                          struct hmap *dns_cache)
 {
     if (!dns_data) {
-        dns_data = xmalloc(sizeof *dns_data);
-        smap_init(&dns_data->records);
-        smap_init(&dns_data->options);
-        shash_add(dns_cache, dns_id, dns_data);
-        dns_data->n_dps = 0;
-        dns_data->dps = NULL;
+        dns_data = dns_data_alloc(*uuid);
+        hmap_insert(dns_cache, &dns_data->hmap_node, uuid_hash(uuid));
     } else {
         free(dns_data->dps);
     }
@@ -230,4 +202,41 @@ update_cache_with_dns_rec(const struct sbrec_dns *sbrec_dns,
     for (size_t i = 0; i < sbrec_dns->n_datapaths; i++) {
         dns_data->dps[i] = sbrec_dns->datapaths[i]->tunnel_key;
     }
+}
+
+static struct dns_data *
+dns_data_find(const struct uuid *uuid)
+{
+    struct dns_data *dns_data;
+    size_t hash = uuid_hash(uuid);
+    HMAP_FOR_EACH_WITH_HASH (dns_data, hmap_node, hash, &dns_cache_) {
+        if (uuid_equals(&dns_data->uuid, uuid)) {
+            return dns_data;
+        }
+    }
+    return NULL;
+}
+
+static struct dns_data *
+dns_data_alloc(struct uuid uuid)
+{
+    struct dns_data *dns_data = xmalloc(sizeof *dns_data);
+    *dns_data = (struct dns_data) {
+        .uuid = uuid,
+        .dps = NULL,
+        .n_dps = 0,
+        .records = SMAP_INITIALIZER(&dns_data->records),
+        .options = SMAP_INITIALIZER(&dns_data->options),
+    };
+
+    return dns_data;
+}
+
+static void
+dns_data_destroy(struct dns_data *dns_data)
+{
+    smap_destroy(&dns_data->records);
+    smap_destroy(&dns_data->options);
+    free(dns_data->dps);
+    free(dns_data);
 }
