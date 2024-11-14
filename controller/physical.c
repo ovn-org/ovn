@@ -699,7 +699,7 @@ put_replace_chassis_mac_flows(const struct shash *ct_zones,
         put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, ofpacts_p);
         ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 180,
                         rport_binding->header_.uuid.parts[0],
-                        &match, ofpacts_p, hc_uuid);
+                        &match, ofpacts_p, &localnet_port->header_.uuid);
 
         /* Provide second search criteria, i.e localnet port's
          * vlan ID for conjunction flow */
@@ -707,6 +707,7 @@ put_replace_chassis_mac_flows(const struct shash *ct_zones,
         ofpbuf_clear(ofpacts_p);
         match_init_catchall(&match);
 
+        match_set_in_port(&match, ofport);
         if (tag) {
             match_set_dl_vlan(&match, htons(tag), 0);
         } else {
@@ -719,7 +720,7 @@ put_replace_chassis_mac_flows(const struct shash *ct_zones,
         conj->clause = 1;
         ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 180,
                         rport_binding->header_.uuid.parts[0],
-                        &match, ofpacts_p, hc_uuid);
+                        &match, ofpacts_p, &localnet_port->header_.uuid);
     }
 }
 
@@ -2393,8 +2394,9 @@ physical_handle_flows_for_lport(const struct sbrec_port_binding *pb,
     struct local_datapath *ldp =
         get_local_datapath(p_ctx->local_datapaths,
                            pb->datapath->tunnel_key);
-    if (!strcmp(pb->type, "external")) {
-        /* External lports have a dependency on the localnet port.
+    if (!strcmp(pb->type, "external") ||
+        !strcmp(pb->type, "patch") || !strcmp(pb->type, "l3gateway")) {
+        /* Those lports have a dependency on the localnet port.
          * We need to remove the flows of the localnet port as well
          * and re-consider adding the flows for it.
          */
