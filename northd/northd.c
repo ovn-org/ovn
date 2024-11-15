@@ -9191,8 +9191,8 @@ build_dhcpv6_options_flows(struct ovn_port *op,
             ds_clear(&match);
             ds_put_format(
                 &match, "inport == %s && eth.src == %s"
-                " && ip6.dst == ff02::1:2 && udp.src == 546 &&"
-                " udp.dst == 547",
+                " && ip6.mcast && ip6.dst == ff02::1:2"
+                " && udp.src == 546 && udp.dst == 547",
                 inport->json_key, lsp_addrs->ea_s);
 
             if (is_external) {
