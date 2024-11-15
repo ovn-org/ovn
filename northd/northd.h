@@ -620,6 +620,7 @@ struct ovn_port {
     const struct nbrec_logical_router_port *nbrp; /* May be NULL. */
 
     struct lport_addresses lrp_networks;
+    bool prefix_delegation; /* True if IPv6 prefix delegation enabled. */
 
     /* Logical port multicast data. */
     struct mcast_port_info mcast_info;
