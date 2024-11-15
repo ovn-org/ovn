@@ -1441,6 +1441,7 @@ struct ovn_port {
     const struct nbrec_logical_router_port *nbrp; /* May be NULL. */
 
     struct lport_addresses lrp_networks;
+    bool prefix_delegation; /* True if IPv6 prefix delegation enabled. */
 
     struct ovn_port_routable_addresses routables;
 
@@ -2613,6 +2614,10 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
 
             op->lrp_networks = lrp_networks;
             op->od = od;
+
+            op->prefix_delegation = smap_get_bool(&op->nbrp->options,
+                                                  "prefix_delegation", false);
+
             hmap_insert(&od->ports, &op->dp_node,
                         hmap_node_hash(&op->key_node));
 
@@ -7747,8 +7752,8 @@ ovn_update_ipv6_options(struct hmap *lr_ports)
         smap_clone(&options, &op->sb->options);
 
         /* enable IPv6 prefix delegation */
-        bool prefix_delegation = smap_get_bool(&op->nbrp->options,
-                                           "prefix_delegation", false);
+        bool prefix_delegation = op->prefix_delegation;
+
         if (!lrport_is_enabled(op->nbrp)) {
             prefix_delegation = false;
         }
@@ -14463,7 +14468,7 @@ build_dhcpv6_reply_flows_for_lrouter_port(
         struct ds *match)
 {
     ovs_assert(op->nbrp);
-    if (op->l3dgw_port) {
+    if (!op->prefix_delegation || op->l3dgw_port) {
         return;
     }
     for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
