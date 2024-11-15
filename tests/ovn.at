@@ -7587,7 +7587,7 @@ test_dhcpv6() {
     local inport=$1 src_mac=$2 src_lla=$3 msg_code=$4 offer_ip=$5 boot_file=$6
     local fqdn=$7
 
-    local req_scapy="Ether(dst='ff:ff:ff:ff:ff:ff', src='${src_mac}')/ \
+    local req_scapy="Ether(dst='33:33:00:01:00:02', src='${src_mac}')/ \
                      IPv6(dst='ff02::1:2', src='${src_lla}')/ \
                      UDP(sport=546, dport=547)/ \
                      DHCP6(msgtype=${msg_code}, trid=0x010203)/ \
@@ -7650,7 +7650,7 @@ test_dhcpv6_release() {
     local inport=$1 src_mac=$2 src_lla=$3 offer_ip=$4
 
     local ip_scapy="DHCP6OptIAAddress(addr='${offer_ip}', preflft=0xffffffff, validlft=0xffffffff)"
-    local req_scapy="Ether(dst='00:00:00:10:00:01', src='${src_mac}')/ \
+    local req_scapy="Ether(dst='33:33:00:01:00:02', src='${src_mac}')/ \
                      IPv6(dst='ff02::1:2', src='${src_lla}')/ \
                      UDP(sport=546, dport=547)/ \
                      DHCP6(msgtype=8, trid=0x010203)/ \
@@ -20125,7 +20125,7 @@ test_dhcp() {
 test_dhcpv6() {
     local inport=$1 src_mac=$2 src_lla=$3 msg_code=$4 offer_ip=$5
     local req_pkt_in_expected=$6
-    local request=ffffffffffff${src_mac}86dd00000000002a1101${src_lla}
+    local request=333300010002${src_mac}86dd00000000002a1101${src_lla}
     # dst ip ff02::1:2
     request=${request}ff020000000000000000000000010002
     # udp header and dhcpv6 header
