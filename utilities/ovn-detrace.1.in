@@ -13,9 +13,11 @@ OVN logical flow information.
 .
 .SH DESCRIPTION
 The \fB\*(PN\fR program reads \fBovs\-appctl ofproto/trace\fR output on
-stdin, looking for flow cookies, and expand each cookie with corresponding OVN
-logical flows. It expands logical flow further with the north-bound information
-e.g. the ACL that generated the logical flow, when relevant.
+stdin, looking for flow cookies, and displays for each cookie the
+OVN south-bound records that contributed to its creation. It further displays
+the related north-bound information when applicable, e.g.,
+the ACL that generated the logical flow that gets translated to an
+OpenFlow rule with a given cookie.
 .PP
 .
 .SH "OPTIONS"
