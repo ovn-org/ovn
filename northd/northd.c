@@ -339,11 +339,12 @@ static const char *reg_ct_state[] = {
  *  1. (highest priority) connected routes
  *  2. static routes
  *  3. routes learned from the outside via ovn-controller (e.g. bgp)
- *  4. (lowest priority) src-ip routes */
-#define ROUTE_PRIO_OFFSET_MULTIPLIER 8
-#define ROUTE_PRIO_OFFSET_LEARNED 2
-#define ROUTE_PRIO_OFFSET_STATIC 4
-#define ROUTE_PRIO_OFFSET_CONNECTED 6
+ * (src-ip routes have lower priority than all other routes regardless of
+ * prefix length, so not included here.) */
+#define ROUTE_PRIO_OFFSET_MULTIPLIER 6
+#define ROUTE_PRIO_OFFSET_LEARNED 0
+#define ROUTE_PRIO_OFFSET_STATIC 2
+#define ROUTE_PRIO_OFFSET_CONNECTED 4
 
 /* Returns the type of the datapath to which a flow with the given 'stage' may
  * be added. */
@@ -11832,6 +11833,7 @@ build_route_match(const struct ovn_port *op_inport, uint32_t rtb_id,
 {
     const char *dir;
     int ofs = route_source_to_offset(source);
+    int base = 0;
 
     /* The priority here is calculated to implement longest-prefix-match
      * routing. */
@@ -11840,6 +11842,9 @@ build_route_match(const struct ovn_port *op_inport, uint32_t rtb_id,
         ofs = 0;
     } else {
         dir = "dst";
+        /* dst routes have higher priority than all src routes regardless of
+         * prefix length. */
+        base = (128 + 1) * ROUTE_PRIO_OFFSET_MULTIPLIER;
     }
 
     if (op_inport) {
@@ -11853,7 +11858,7 @@ build_route_match(const struct ovn_port *op_inport, uint32_t rtb_id,
     if (has_protocol_match) {
         ofs += 1;
     }
-    *priority = (plen * ROUTE_PRIO_OFFSET_MULTIPLIER) + ofs;
+    *priority = base + (plen * ROUTE_PRIO_OFFSET_MULTIPLIER) + ofs;
 
     ds_put_format(match, "ip%s.%s == %s/%d", is_ipv4 ? "4" : "6", dir,
                   network_s, plen);
