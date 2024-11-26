@@ -20,7 +20,7 @@ bool northd_nb_logical_router_handler(struct engine_node *, void *data);
 bool northd_sb_port_binding_handler(struct engine_node *, void *data);
 bool northd_lb_data_handler(struct engine_node *, void *data);
 bool northd_sb_fdb_change_handler(struct engine_node *node, void *data);
-void *en_static_routes_init(struct engine_node *node OVS_UNUSED,
+void *en_routes_init(struct engine_node *node OVS_UNUSED,
                             struct engine_arg *arg OVS_UNUSED);
 void en_route_policies_cleanup(void *data);
 bool route_policies_northd_change_handler(struct engine_node *node,
@@ -28,10 +28,10 @@ bool route_policies_northd_change_handler(struct engine_node *node,
 void en_route_policies_run(struct engine_node *node, void *data);
 void *en_route_policies_init(struct engine_node *node OVS_UNUSED,
                              struct engine_arg *arg OVS_UNUSED);
-void en_static_routes_cleanup(void *data);
-bool static_routes_northd_change_handler(struct engine_node *node,
+void en_routes_cleanup(void *data);
+bool routes_northd_change_handler(struct engine_node *node,
                                          void *data OVS_UNUSED);
-void en_static_routes_run(struct engine_node *node, void *data);
+void en_routes_run(struct engine_node *node, void *data);
 void *en_bfd_init(struct engine_node *node OVS_UNUSED,
                   struct engine_arg *arg OVS_UNUSED);
 void en_bfd_cleanup(void *data);

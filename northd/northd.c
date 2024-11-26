@@ -18901,7 +18901,7 @@ route_policies_init(struct route_policies_data *data)
 }
 
 void
-static_routes_init(struct static_routes_data *data)
+routes_init(struct routes_data *data)
 {
     hmap_init(&data->parsed_routes);
     simap_init(&data->route_tables);
@@ -18995,7 +18995,7 @@ route_policies_destroy(struct route_policies_data *data)
 }
 
 void
-static_routes_destroy(struct static_routes_data *data)
+routes_destroy(struct routes_data *data)
 {
     struct parsed_route *r;
     HMAP_FOR_EACH_POP (r, key_node, &data->parsed_routes) {

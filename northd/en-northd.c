@@ -283,7 +283,7 @@ en_route_policies_run(struct engine_node *node, void *data)
 }
 
 bool
-static_routes_northd_change_handler(struct engine_node *node,
+routes_northd_change_handler(struct engine_node *node,
                                     void *data OVS_UNUSED)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
@@ -312,29 +312,29 @@ static_routes_northd_change_handler(struct engine_node *node,
 }
 
 void
-en_static_routes_run(struct engine_node *node, void *data)
+en_routes_run(struct engine_node *node, void *data)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
     struct bfd_data *bfd_data = engine_get_input_data("bfd", node);
-    struct static_routes_data *static_routes_data = data;
+    struct routes_data *routes_data = data;
 
-    static_routes_destroy(data);
-    static_routes_init(data);
+    routes_destroy(data);
+    routes_init(data);
 
     struct ovn_datapath *od;
     HMAP_FOR_EACH (od, key_node, &northd_data->lr_datapaths.datapaths) {
         for (int i = 0; i < od->nbr->n_ports; i++) {
             const char *route_table_name =
                 smap_get(&od->nbr->ports[i]->options, "route_table");
-            get_route_table_id(&static_routes_data->route_tables,
+            get_route_table_id(&routes_data->route_tables,
                                route_table_name);
         }
 
         build_parsed_routes(od, &northd_data->lr_ports,
                             &bfd_data->bfd_connections,
-                            &static_routes_data->parsed_routes,
-                            &static_routes_data->route_tables,
-                            &static_routes_data->bfd_active_connections);
+                            &routes_data->parsed_routes,
+                            &routes_data->route_tables,
+                            &routes_data->bfd_active_connections);
     }
 
     engine_set_node_state(node, EN_UPDATED);
@@ -384,8 +384,8 @@ en_bfd_sync_run(struct engine_node *node, void *data)
     struct bfd_data *bfd_data = engine_get_input_data("bfd", node);
     struct route_policies_data *route_policies_data
         = engine_get_input_data("route_policies", node);
-    struct static_routes_data *static_routes_data
-        = engine_get_input_data("static_routes", node);
+    struct routes_data *routes_data
+        = engine_get_input_data("routes", node);
     const struct nbrec_bfd_table *nbrec_bfd_table =
         EN_OVSDB_GET(engine_get_input("NB_bfd", node));
     struct bfd_sync_data *bfd_sync_data = data;
@@ -395,7 +395,7 @@ en_bfd_sync_run(struct engine_node *node, void *data)
     bfd_table_sync(eng_ctx->ovnsb_idl_txn, nbrec_bfd_table,
                    &northd_data->lr_ports, &bfd_data->bfd_connections,
                    &route_policies_data->bfd_active_connections,
-                   &static_routes_data->bfd_active_connections,
+                   &routes_data->bfd_active_connections,
                    &bfd_sync_data->bfd_ports);
     engine_set_node_state(node, EN_UPDATED);
 }
@@ -422,12 +422,12 @@ void
 }
 
 void
-*en_static_routes_init(struct engine_node *node OVS_UNUSED,
+*en_routes_init(struct engine_node *node OVS_UNUSED,
                       struct engine_arg *arg OVS_UNUSED)
 {
-    struct static_routes_data *data = xzalloc(sizeof *data);
+    struct routes_data *data = xzalloc(sizeof *data);
 
-    static_routes_init(data);
+    routes_init(data);
     return data;
 }
 
@@ -506,9 +506,9 @@ en_route_policies_cleanup(void *data)
 }
 
 void
-en_static_routes_cleanup(void *data)
+en_routes_cleanup(void *data)
 {
-    static_routes_destroy(data);
+    routes_destroy(data);
 }
 
 void

@@ -3911,7 +3911,7 @@ AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.1.2 | grep -q bfd],[0])
 
 check_engine_stats northd recompute nocompute
 check_engine_stats bfd recompute nocompute
-check_engine_stats static_routes recompute nocompute
+check_engine_stats routes recompute nocompute
 check_engine_stats lflow recompute nocompute
 check_engine_stats northd_output norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -3927,7 +3927,7 @@ AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.5.2 | grep -q bfd],[0])
 
 check_engine_stats northd recompute nocompute
 check_engine_stats bfd recompute nocompute
-check_engine_stats static_routes recompute nocompute
+check_engine_stats routes recompute nocompute
 check_engine_stats lflow recompute nocompute
 check_engine_stats northd_output norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -3974,7 +3974,7 @@ AT_CHECK([ovn-nbctl list logical_router_policy | grep -q $bfd_route_policy_uuid]
 
 check_engine_stats northd recompute nocompute
 check_engine_stats bfd recompute nocompute
-check_engine_stats static_routes recompute nocompute
+check_engine_stats routes recompute nocompute
 check_engine_stats lflow recompute nocompute
 check_engine_stats northd_output norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
