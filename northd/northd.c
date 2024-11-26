@@ -11506,15 +11506,7 @@ find_static_route_outport(struct ovn_datapath *od, const struct hmap *lr_ports,
     } else {
         /* output_port is not specified, find the
          * router port matching the next hop. */
-        int i;
-        for (i = 0; i < od->nbr->n_ports; i++) {
-            struct nbrec_logical_router_port *lrp = od->nbr->ports[i];
-            out_port = ovn_port_find(lr_ports, lrp->name);
-            if (!out_port) {
-                /* This should not happen. */
-                continue;
-            }
-
+        HMAP_FOR_EACH (out_port, dp_node, &od->ports) {
             if (route->nexthop[0]) {
                 lrp_addr_s = find_lrp_member_ip(out_port, route->nexthop);
             }
