@@ -6902,7 +6902,8 @@ build_acls(struct ovn_datapath *od, const struct chassis_features *features,
     if (ls_has_dns_records(od->nbs)) {
         const char *dns_actions = has_stateful ? "ct_commit; next;" : "next;";
         ovn_lflow_add(
-            lflows, od, S_SWITCH_OUT_ACL, 34000, "udp.src == 53",
+            lflows, od, S_SWITCH_OUT_ACL, 34000,
+            "flags.from_ctrl && udp.src == 53",
             dns_actions);
     }
 

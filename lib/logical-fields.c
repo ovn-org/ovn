@@ -130,6 +130,9 @@ ovn_init_symtab(struct shash *symtab)
     expr_symtab_add_subfield(symtab, "flags.use_snat_zone", NULL,
                              flags_str);
 
+    snprintf(flags_str, sizeof flags_str, "flags[%d]", MLF_FROM_CTRL_BIT);
+    expr_symtab_add_subfield(symtab, "flags.from_ctrl", NULL, flags_str);
+
     /* Connection tracking state. */
     expr_symtab_add_field_scoped(symtab, "ct_mark", MFF_CT_MARK, NULL, false,
                                  WR_CT_COMMIT);
