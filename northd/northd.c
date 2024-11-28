@@ -7172,7 +7172,8 @@ build_acls(struct ovn_datapath *od, const struct chassis_features *features,
                            "ct_commit; next;"
                          : REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
         ovn_lflow_add(
-            lflows, od, S_SWITCH_OUT_ACL_EVAL, 34000, "udp.src == 53",
+            lflows, od, S_SWITCH_OUT_ACL_EVAL, 34000,
+            "flags.from_ctrl && udp.src == 53",
             dns_actions);
     }
 
