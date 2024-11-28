@@ -388,6 +388,8 @@ static void pinctrl_handle_put_fdb(const struct flow *md,
                                    const struct flow *headers)
                                    OVS_REQUIRES(pinctrl_mutex);
 
+static void set_from_ctrl_flag_in_pkt_metadata(struct ofputil_packet_in *);
+
 COVERAGE_DEFINE(pinctrl_drop_put_mac_binding);
 COVERAGE_DEFINE(pinctrl_drop_buffered_packets_map);
 COVERAGE_DEFINE(pinctrl_drop_controller_event);
@@ -3123,6 +3125,10 @@ exit:
         union mf_subvalue sv;
         sv.u8_val = success;
         mf_write_subfield(&dst, &sv, &pin->flow_metadata);
+
+        /* Indicate that this packet is from ovn-controller. */
+        set_from_ctrl_flag_in_pkt_metadata(pin);
+
     }
     queue_msg(swconn, ofputil_encode_resume(pin, continuation, proto));
     dp_packet_uninit(pkt_out_ptr);
@@ -8339,4 +8345,25 @@ pinctrl_handle_put_fdb(const struct flow *md, const struct flow *headers)
 
     ovn_fdb_add(&put_fdbs, dp_key, headers->dl_src, port_key);
     notify_pinctrl_main();
+}
+
+/* This function sets the register bit 'MLF_FROM_CTRL_BIT'
+ * in the register 'MFF_LOG_FLAGS' to indicate that this packet
+ * is generated/sent by ovn-controller.
+ * ovn-northd can add logical flows to match on "flags.from_ctrl".
+ */
+static void
+set_from_ctrl_flag_in_pkt_metadata(struct ofputil_packet_in *pin)
+{
+    const struct mf_field *f = mf_from_id(MFF_LOG_FLAGS);
+
+    struct mf_subfield dst = {
+        .field = f,
+        .ofs = MLF_FROM_CTRL_BIT,
+        .n_bits = 1,
+    };
+
+    union mf_subvalue sv;
+    sv.u8_val = 1;
+    mf_write_subfield(&dst, &sv, &pin->flow_metadata);
 }

@@ -84,6 +84,7 @@ enum mff_log_flags_bits {
     MLF_LOCALNET_BIT = 15,
     MLF_RX_FROM_TUNNEL_BIT = 16,
     MLF_ICMP_SNAT_BIT = 17,
+    MLF_FROM_CTRL_BIT = 18,
 };
 
 /* MFF_LOG_FLAGS_REG flag assignments */
