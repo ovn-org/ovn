@@ -115,9 +115,13 @@ or security fixes.
 
 The branches for standard term support versions may receive bug fixes and
 critical and security fixes after the OVN team has stopped creating regular
-releases. This is strictly to facilitate easy backporting of fixes to LTS
+releases. This is to facilitate easy backporting of fixes to LTS
 versions that are still receiving regular releases. Even though the branch may
 receive additional fixes, no releases will be made with these fixes.
+
+Sometimes, a fix can be backported to these branches if requested by the user
+or author of that fix.  The request maybe rejected by the maintainers if it is
+deemed risky or complex.
 
 Release Numbering
 -----------------
