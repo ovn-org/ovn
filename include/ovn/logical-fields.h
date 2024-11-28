@@ -88,6 +88,7 @@ enum mff_log_flags_bits {
     MLF_RX_FROM_TUNNEL_BIT = 16,
     MLF_ICMP_SNAT_BIT = 17,
     MLF_OVERRIDE_LOCAL_ONLY_BIT = 18,
+    MLF_FROM_CTRL_BIT = 19,
 };
 
 /* MFF_LOG_FLAGS_REG flag assignments */
