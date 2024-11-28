@@ -11080,6 +11080,15 @@ echo ${dns_reply} > expected
 as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 ${dns_req}
 OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv1/vif1-tx.pcap], [expected])
 
+AS_BOX([Add ACL to drop udp.src == 53 in egress stage])
+
+# DNS reply from ovn-controller should still be delivered.
+check ovn-nbctl --wait=hv acl-add ls to-lport 1002 "udp.src == 53" drop
+as hv1 reset_pcap_file  hv1-vif1 hv1/vif1
+
+as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 ${dns_req}
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [expected])
+
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
@@ -34498,6 +34507,94 @@ OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=0 |grep priority=1
 OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=0 |grep priority=150|grep dl_vlan=7| grep -c in_port=8], [1],[dnl
 0
 ])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([DNS reply packet with ACL to drop it])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+net_add n1
+sim_add hv1
+
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=sw0p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-int vif2 -- \
+    set interface vif2 external-ids:iface-id=sw0p2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0p1 -- \
+  lsp-set-addresses sw0p1 "50:54:00:00:00:03 10.0.0.3"
+check ovn-nbctl --wait=hv lsp-add sw0 sw0p2 -- \
+  lsp-set-addresses sw0p2 "50:54:00:00:00:04 10.0.0.4"
+
+wait_for_ports_up
+
+# Send 2 UDP packets from sw0p1 to sw0p2.
+# One with udp.src = 53 and the other with udp.src = 54.
+# If dropped is yes, then the udp pkt with udp.src == 53 should
+# be dropped.
+send_udp_packets() {
+    rm -f expected
+    dropped=$1
+    packet=$(fmt_pkt "
+            Ether(dst='50:54:00:00:00:04', src='50:54:00:00:00:03') /
+            IP(src='10.0.0.3', dst='10.0.0.4') /
+            UDP(sport=53, dport=1235)
+           ")
+    ovs-appctl netdev-dummy/receive vif1 $packet
+    if [[ "$dropped" != "yes" ]]; then
+        echo $packet > expected
+    fi
+    packet=$(fmt_pkt "
+            Ether(dst='50:54:00:00:00:04', src='50:54:00:00:00:03') /
+            IP(src='10.0.0.3', dst='10.0.0.4') /
+            UDP(sport=54, dport=1235)
+           ")
+    ovs-appctl netdev-dummy/receive vif1 $packet
+    echo $packet >> expected
+}
+
+# Send UDP packets with src port 53 and 54 from sw0p1 to sw0p2.  Both should be
+# delivered to sw0p2.
+as hv1 reset_pcap_file vif1 hv1/vif1
+as hv1 reset_pcap_file vif2 hv1/vif2
+
+send_udp_packets no
+
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected])
+
+AS_BOX([Create DNS records, add ACL to drop DNS reply packet])
+DNS1=$(ovn-nbctl create DNS records={vm1=10.0.0.3})
+check ovn-nbctl set logical_switch sw0 dns_records=$DNS1
+check ovn-nbctl --wait=hv acl-add sw0 to-lport 1002 "udp.src == 53" drop
+ovn-sbctl dump-flows sw0 > sw0flows
+AT_CAPTURE_FILE([sw0flows])
+
+AT_CHECK([grep "ls_out_acl" sw0flows | sed 's/table=../table=??/' | grep "udp.src" | sort], [0], [dnl
+  table=??(ls_out_acl         ), priority=2002 , match=(udp.src == 53), action=(/* drop */)
+  table=??(ls_out_acl         ), priority=34000, match=(flags.from_ctrl && udp.src == 53), action=(next;)
+])
+
+AS_BOX([Send UDP packets from sw0p1 to sw0p2 and pkt with udp.src == 53 should be dropped])
+as hv1 reset_pcap_file vif1 hv1/vif1
+as hv1 reset_pcap_file vif2 hv1/vif2
+# Send UDP packets with src port 53 and 54 from sw0p1 to sw0p2.  Only with udp.src = 54
+# should be delivered to sw0p2.
+send_udp_packets yes
+
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

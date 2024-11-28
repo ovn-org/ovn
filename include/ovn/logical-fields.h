@@ -72,6 +72,7 @@ enum mff_log_flags_bits {
     MLF_CHECK_PORT_SEC_BIT = 12,
     MLF_LOOKUP_COMMIT_ECMP_NH_BIT = 13,
     MLF_LOCALNET_BIT = 15,
+    MLF_FROM_CTRL_BIT = 16,
 };
 
 /* MFF_LOG_FLAGS_REG flag assignments */
