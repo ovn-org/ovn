@@ -71,6 +71,7 @@ enum mff_log_flags_bits {
     MLF_USE_SNAT_ZONE = 11,
     MLF_CHECK_PORT_SEC_BIT = 12,
     MLF_LOOKUP_COMMIT_ECMP_NH_BIT = 13,
+    MLF_FROM_CTRL_BIT = 14,
 };
 
 /* MFF_LOG_FLAGS_REG flag assignments */
