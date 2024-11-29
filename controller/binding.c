@@ -244,6 +244,7 @@ add_or_del_qos_port(const char *ovn_port, bool add)
 static bool
 add_ovs_qos_table_entry(struct ovsdb_idl_txn *ovs_idl_txn,
                         const struct ovsrec_port *port,
+                        const struct ovsrec_interface *iface,
                         unsigned long long min_rate,
                         unsigned long long max_rate,
                         unsigned long long burst,
@@ -262,7 +263,19 @@ add_ovs_qos_table_entry(struct ovsdb_idl_txn *ovs_idl_txn,
         qos = ovsrec_qos_insert(ovs_idl_txn);
         ovsrec_qos_set_type(qos, OVN_QOS_TYPE);
         ovsrec_port_set_qos(port, qos);
-        smap_add_format(&other_config, "max-rate", "%lld", OVN_QOS_MAX_RATE);
+
+        const char *drv_name = smap_get_def(&iface->status, "driver_name", "");
+        /* Link speed for virtual interfaces (e.g. veth or tap is inaccurate),
+         * so use default value for them while rely on link speed for real
+         * NICs. */
+        if (!strcmp(drv_name, "veth") || !strcmp(drv_name, "tap") ||
+            !iface->n_link_speed) {
+            smap_add_format(&other_config, "max-rate", "%lld",
+                            OVN_QOS_MAX_RATE);
+        } else {
+            smap_add_format(&other_config, "max-rate", "%lld",
+                            (long long int) iface->link_speed[0]);
+        }
         ovsrec_qos_set_other_config(qos, &other_config);
         smap_clear(&other_config);
 
@@ -391,9 +404,9 @@ configure_qos(const struct sbrec_port_binding *pb,
         }
         if (iface) {
             /* Add new QoS entries. */
-            if (add_ovs_qos_table_entry(ovs_idl_txn, port, min_rate,
-                                    max_rate, burst, queue_id,
-                                    pb->logical_port)) {
+            if (add_ovs_qos_table_entry(ovs_idl_txn, port, iface,
+                                        min_rate, max_rate, burst,
+                                        queue_id, pb->logical_port)) {
                 if (!q) {
                     q = xzalloc(sizeof *q);
                     hmap_insert(qos_map, &q->node, hash);
