@@ -332,8 +332,7 @@ find_additional_encap_for_chassis(const struct sbrec_port_binding *pb,
 
 static struct ovs_list *
 get_remote_tunnels(const struct sbrec_port_binding *binding,
-                   const struct sbrec_chassis *chassis,
-                   const struct hmap *chassis_tunnels,
+                   const struct physical_ctx *ctx,
                    const char *local_encap_ip)
 {
     const struct chassis_tunnel *tun;
@@ -341,9 +340,9 @@ get_remote_tunnels(const struct sbrec_port_binding *binding,
     struct ovs_list *tunnels = xmalloc(sizeof *tunnels);
     ovs_list_init(tunnels);
 
-    if (binding->chassis && binding->chassis != chassis) {
+    if (binding->chassis && binding->chassis != ctx->chassis) {
         tun = get_port_binding_tun(binding->encap, binding->chassis,
-                chassis_tunnels, local_encap_ip);
+                ctx->chassis_tunnels, local_encap_ip);
         if (!tun) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
             VLOG_WARN_RL(
@@ -358,14 +357,15 @@ get_remote_tunnels(const struct sbrec_port_binding *binding,
     }
 
     for (size_t i = 0; i < binding->n_additional_chassis; i++) {
-        if (binding->additional_chassis[i] == chassis) {
+        if (binding->additional_chassis[i] == ctx->chassis) {
             continue;
         }
         const struct sbrec_encap *additional_encap;
-        additional_encap = find_additional_encap_for_chassis(binding, chassis);
+        additional_encap = find_additional_encap_for_chassis(binding,
+                                                             ctx->chassis);
         tun = get_port_binding_tun(additional_encap,
                                    binding->additional_chassis[i],
-                                   chassis_tunnels, local_encap_ip);
+                                   ctx->chassis_tunnels, local_encap_ip);
         if (!tun) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
             VLOG_WARN_RL(
@@ -383,25 +383,20 @@ get_remote_tunnels(const struct sbrec_port_binding *binding,
 
 static void
 put_remote_port_redirect_overlay(const struct sbrec_port_binding *binding,
-                                 enum mf_field_id mff_ovn_geneve,
+                                 const struct physical_ctx *ctx,
                                  uint32_t port_key,
                                  struct match *match,
                                  struct ofpbuf *ofpacts_p,
-                                 const struct sbrec_chassis *chassis,
-                                 const struct hmap *chassis_tunnels,
-                                 size_t n_encap_ips,
-                                 const char **encap_ips,
                                  struct ovn_desired_flow_table *flow_table)
 {
     /* Setup encapsulation */
-    for (size_t i = 0; i < n_encap_ips; i++) {
+    for (size_t i = 0; i < ctx->n_encap_ips; i++) {
+        const char *encap_ip = ctx->encap_ips[i];
         struct ofpbuf *ofpacts_clone = ofpbuf_clone(ofpacts_p);
 
         match_set_reg_masked(match, MFF_LOG_ENCAP_ID - MFF_REG0, i << 16,
                              (uint32_t) 0xFFFF << 16);
-        struct ovs_list *tuns = get_remote_tunnels(binding, chassis,
-                                                   chassis_tunnels,
-                                                   encap_ips[i]);
+        struct ovs_list *tuns = get_remote_tunnels(binding, ctx, encap_ip);
         if (!ovs_list_is_empty(tuns)) {
             bool is_vtep_port = !strcmp(binding->type, "vtep");
             /* rewrite MFF_IN_PORT to bypass OpenFlow loopback check for ARP/ND
@@ -413,7 +408,7 @@ put_remote_port_redirect_overlay(const struct sbrec_port_binding *binding,
 
             struct tunnel *tun;
             LIST_FOR_EACH (tun, list_node, tuns) {
-                put_encapsulation(mff_ovn_geneve, tun->tun,
+                put_encapsulation(ctx->mff_ovn_geneve, tun->tun,
                                   binding->datapath, port_key, is_vtep_port,
                                   ofpacts_clone);
                 ofpact_put_OUTPUT(ofpacts_clone)->port = tun->tun->ofport;
@@ -764,18 +759,14 @@ ofpact_put_push_vlan(struct ofpbuf *ofpacts, const struct smap *options, int tag
 }
 
 static void
-put_replace_router_port_mac_flows(struct ovsdb_idl_index
-                                  *sbrec_port_binding_by_name,
+put_replace_router_port_mac_flows(const struct physical_ctx *ctx,
                                   const struct
                                   sbrec_port_binding *localnet_port,
-                                  const struct sbrec_chassis *chassis,
-                                  const struct sset *active_tunnels,
-                                  const struct hmap *local_datapaths,
                                   struct ofpbuf *ofpacts_p,
                                   ofp_port_t ofport,
                                   struct ovn_desired_flow_table *flow_table)
 {
-    struct local_datapath *ld = get_local_datapath(local_datapaths,
+    struct local_datapath *ld = get_local_datapath(ctx->local_datapaths,
                                                    localnet_port->datapath->
                                                    tunnel_key);
     ovs_assert(ld);
@@ -795,7 +786,7 @@ put_replace_router_port_mac_flows(struct ovsdb_idl_index
     }
 
     /* Get chassis mac */
-    if (!chassis_get_mac(chassis, network, &chassis_mac)) {
+    if (!chassis_get_mac(ctx->chassis, network, &chassis_mac)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
         /* Keeping the log level low for backward compatibility.
          * Chassis mac is a new configuration.
@@ -811,8 +802,8 @@ put_replace_router_port_mac_flows(struct ovsdb_idl_index
         struct match match;
         struct ofpact_mac *replace_mac;
         char *cr_peer_name = xasprintf("cr-%s", rport_binding->logical_port);
-        if (lport_is_chassis_resident(sbrec_port_binding_by_name,
-                                      chassis, active_tunnels,
+        if (lport_is_chassis_resident(ctx->sbrec_port_binding_by_name,
+                                      ctx->chassis, ctx->active_tunnels,
                                       cr_peer_name)) {
             /* If a router port's chassisredirect port is
              * resident on this chassis, then we need not do mac replace. */
@@ -1422,18 +1413,14 @@ static void
 enforce_tunneling_for_multichassis_ports(
     struct local_datapath *ld,
     const struct sbrec_port_binding *binding,
-    const struct sbrec_chassis *chassis,
-    const struct hmap *chassis_tunnels,
-    enum mf_field_id mff_ovn_geneve,
-    struct ovn_desired_flow_table *flow_table,
-    const struct if_status_mgr *if_mgr)
+    const struct physical_ctx *ctx,
+    struct ovn_desired_flow_table *flow_table)
 {
     if (shash_is_empty(&ld->multichassis_ports)) {
         return;
     }
 
-    struct ovs_list *tuns = get_remote_tunnels(binding, chassis,
-                                               chassis_tunnels, NULL);
+    struct ovs_list *tuns = get_remote_tunnels(binding, ctx, NULL);
     if (ovs_list_is_empty(tuns)) {
         free(tuns);
         return;
@@ -1462,7 +1449,7 @@ enforce_tunneling_for_multichassis_ports(
 
         struct tunnel *tun;
         LIST_FOR_EACH (tun, list_node, tuns) {
-            put_encapsulation(mff_ovn_geneve, tun->tun,
+            put_encapsulation(ctx->mff_ovn_geneve, tun->tun,
                               binding->datapath, port_key, is_vtep_port,
                               &ofpacts);
             ofpact_put_OUTPUT(&ofpacts)->port = tun->tun->ofport;
@@ -1472,7 +1459,7 @@ enforce_tunneling_for_multichassis_ports(
                         &binding->header_.uuid);
         ofpbuf_uninit(&ofpacts);
 
-        handle_pkt_too_big(flow_table, tuns, binding, mcp, if_mgr);
+        handle_pkt_too_big(flow_table, tuns, binding, mcp, ctx->if_mgr);
     }
 
     struct tunnel *tun_elem;
@@ -1483,28 +1470,15 @@ enforce_tunneling_for_multichassis_ports(
 }
 
 static void
-consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                      enum mf_field_id mff_ovn_geneve,
-                      const struct shash *ct_zones,
-                      const struct sset *active_tunnels,
-                      const struct hmap *local_datapaths,
-                      const struct shash *local_bindings,
-                      const struct simap *patch_ofports,
-                      const struct hmap *chassis_tunnels,
+consider_port_binding(const struct physical_ctx *ctx,
                       const struct sbrec_port_binding *binding,
-                      const struct sbrec_chassis *chassis,
-                      const struct physical_debug *debug,
-                      const struct if_status_mgr *if_mgr,
-                      size_t n_encap_ips,
-                      const char **encap_ips,
-                      bool always_tunnel,
                       struct ovn_desired_flow_table *flow_table,
                       struct ofpbuf *ofpacts_p)
 {
     uint32_t dp_key = binding->datapath->tunnel_key;
     uint32_t port_key = binding->tunnel_key;
     struct local_datapath *ld;
-    if (!(ld = get_local_datapath(local_datapaths, dp_key))) {
+    if (!(ld = get_local_datapath(ctx->local_datapaths, dp_key))) {
         return;
     }
 
@@ -1518,7 +1492,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         match_set_metadata(&match, htonll(dp_key));
         match_set_reg(&match, MFF_LOG_INPORT - MFF_REG0, port_key);
 
-        struct zone_ids icmp_zone_ids = get_zone_ids(binding, ct_zones);
+        struct zone_ids icmp_zone_ids = get_zone_ids(binding, ctx->ct_zones);
         ofpbuf_clear(ofpacts_p);
         put_zones_ofpacts(&icmp_zone_ids, ofpacts_p);
         put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, ofpacts_p);
@@ -1531,17 +1505,17 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     struct match match;
     if (!strcmp(binding->type, "patch")
         || (!strcmp(binding->type, "l3gateway")
-            && binding->chassis == chassis)) {
+            && binding->chassis == ctx->chassis)) {
 
         const struct sbrec_port_binding *peer = get_binding_peer(
-                sbrec_port_binding_by_name, binding);
+                ctx->sbrec_port_binding_by_name, binding);
         if (!peer) {
             return;
         }
 
-        struct zone_ids binding_zones = get_zone_ids(binding, ct_zones);
+        struct zone_ids binding_zones = get_zone_ids(binding, ctx->ct_zones);
         put_local_common_flows(dp_key, binding, NULL, &binding_zones,
-                               debug, ofpacts_p, flow_table);
+                               &ctx->debug, ofpacts_p, flow_table);
 
         ofpbuf_clear(ofpacts_p);
         match_outport_dp_and_port_keys(&match, dp_key, port_key);
@@ -1552,9 +1526,9 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         put_load(0, MFF_LOG_DNAT_ZONE, 0, 32, ofpacts_p);
         put_load(0, MFF_LOG_SNAT_ZONE, 0, 32, ofpacts_p);
         put_load(0, MFF_LOG_CT_ZONE, 0, 16, ofpacts_p);
-        struct zone_ids peer_zones = get_zone_ids(peer, ct_zones);
-        load_logical_ingress_metadata(peer, &peer_zones, n_encap_ips,
-                                      encap_ips, ofpacts_p, false);
+        struct zone_ids peer_zones = get_zone_ids(peer, ctx->ct_zones);
+        load_logical_ingress_metadata(peer, &peer_zones, ctx->n_encap_ips,
+                                      ctx->encap_ips, ofpacts_p, false);
         put_load(0, MFF_LOG_FLAGS, 0, 32, ofpacts_p);
         put_load(0, MFF_LOG_OUTPORT, 0, 32, ofpacts_p);
         for (int i = 0; i < MFF_N_LOG_REGS; i++) {
@@ -1571,9 +1545,9 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         return;
     }
     if (!strcmp(binding->type, "chassisredirect")
-        && (binding->chassis == chassis
-            || ha_chassis_group_is_active(binding->ha_chassis_group,
-                                          active_tunnels, chassis))) {
+        && (binding->chassis == ctx->chassis ||
+            ha_chassis_group_is_active(binding->ha_chassis_group,
+                                       ctx->active_tunnels, ctx->chassis))) {
 
         /* Table 43, priority 100.
          * =======================
@@ -1590,7 +1564,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         const char *distributed_port = smap_get_def(&binding->options,
                                                     "distributed-port", "");
         const struct sbrec_port_binding *distributed_binding
-            = lport_lookup_by_name(sbrec_port_binding_by_name,
+            = lport_lookup_by_name(ctx->sbrec_port_binding_by_name,
                                    distributed_port);
 
         if (!distributed_binding) {
@@ -1614,7 +1588,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                      MFF_LOG_OUTPORT, 0, 32, ofpacts_p);
 
             struct zone_ids zone_ids = get_zone_ids(distributed_binding,
-                                                    ct_zones);
+                                                    ctx->ct_zones);
             put_zones_ofpacts(&zone_ids, ofpacts_p);
 
             /* Clear the MFF_INPORT.  Its possible that the same packet may
@@ -1656,16 +1630,16 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         if (!binding->tag) {
             return;
         }
-        ofport = local_binding_get_lport_ofport(local_bindings,
+        ofport = local_binding_get_lport_ofport(ctx->local_bindings,
                                                 binding->parent_port);
         if (ofport) {
             tag = *binding->tag;
             nested_container = true;
             parent_port = lport_lookup_by_name(
-                sbrec_port_binding_by_name, binding->parent_port);
+                ctx->sbrec_port_binding_by_name, binding->parent_port);
 
             if (parent_port
-                && (lport_can_bind_on_this_chassis(chassis,
+                && (lport_can_bind_on_this_chassis(ctx->chassis,
                     parent_port) != CAN_BIND_AS_MAIN)) {
                 /* Even though there is an ofport for this container
                  * parent port, it is requested on different chassis ignore
@@ -1677,15 +1651,15 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     } else if (!strcmp(binding->type, "localnet")
              || !strcmp(binding->type, "l2gateway")) {
 
-        ofport = u16_to_ofp(simap_get(patch_ofports,
+        ofport = u16_to_ofp(simap_get(ctx->patch_ofports,
                                       binding->logical_port));
         if (ofport && binding->tag) {
             tag = *binding->tag;
         }
     } else {
-        ofport = local_binding_get_lport_ofport(local_bindings,
+        ofport = local_binding_get_lport_ofport(ctx->local_bindings,
                                                 binding->logical_port);
-        if (ofport && !lport_can_bind_on_this_chassis(chassis, binding)) {
+        if (ofport && !lport_can_bind_on_this_chassis(ctx->chassis, binding)) {
             /* Even though there is an ofport for this port_binding, it is
              * requested on different chassis. So ignore this ofport.
              */
@@ -1694,7 +1668,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     }
 
     const struct sbrec_port_binding *localnet_port =
-        get_localnet_port(local_datapaths, dp_key);
+        get_localnet_port(ctx->local_datapaths, dp_key);
 
     struct ha_chassis_ordered *ha_ch_ordered;
     ha_ch_ordered = ha_chassis_get_ordered(binding->ha_chassis_group);
@@ -1705,7 +1679,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         /* Enforce tunneling while we clone packets to additional chassis b/c
          * otherwise upstream switch won't flood the packet to both chassis. */
         if (localnet_port && !binding->additional_chassis) {
-            ofport = u16_to_ofp(simap_get(patch_ofports,
+            ofport = u16_to_ofp(simap_get(ctx->patch_ofports,
                                           localnet_port->logical_port));
             if (!ofport) {
                 goto out;
@@ -1728,11 +1702,11 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
          * arrive from containers have a tag (vlan) associated with them.
          */
 
-        struct zone_ids zone_ids = get_zone_ids(binding, ct_zones);
+        struct zone_ids zone_ids = get_zone_ids(binding, ctx->ct_zones);
         /* Pass the parent port binding if the port is a nested
          * container. */
         put_local_common_flows(dp_key, binding, parent_port, &zone_ids,
-                               debug, ofpacts_p, flow_table);
+                               &ctx->debug, ofpacts_p, flow_table);
 
         /* Table 0, Priority 150 and 100.
          * ==============================
@@ -1777,15 +1751,15 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             }
         }
 
-        setup_activation_strategy(binding, chassis, dp_key, port_key,
+        setup_activation_strategy(binding, ctx->chassis, dp_key, port_key,
                                   ofport, &zone_ids, flow_table);
 
         /* Remember the size with just strip vlan added so far,
          * as we're going to remove this with ofpbuf_pull() later. */
         uint32_t ofpacts_orig_size = ofpacts_p->size;
 
-        load_logical_ingress_metadata(binding, &zone_ids, n_encap_ips,
-                                      encap_ips, ofpacts_p, true);
+        load_logical_ingress_metadata(binding, &zone_ids, ctx->n_encap_ips,
+                                      ctx->encap_ips, ofpacts_p, true);
 
         if (!strcmp(binding->type, "localport")) {
             /* mark the packet as incoming from a localport */
@@ -1812,8 +1786,9 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         }
 
         if (!strcmp(binding->type, "localnet")) {
-            put_replace_chassis_mac_flows(ct_zones, binding, local_datapaths,
-                                          ofpacts_p, ofport, flow_table);
+            put_replace_chassis_mac_flows(ctx->ct_zones, binding,
+                                          ctx->local_datapaths, ofpacts_p,
+                                          ofport, flow_table);
         }
 
         /* Table 65, Priority 100.
@@ -1842,9 +1817,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                         &match, ofpacts_p, &binding->header_.uuid);
 
         if (!strcmp(binding->type, "localnet")) {
-            put_replace_router_port_mac_flows(sbrec_port_binding_by_name,
-                                              binding, chassis, active_tunnels,
-                                              local_datapaths, ofpacts_p,
+            put_replace_router_port_mac_flows(ctx, binding, ofpacts_p,
                                               ofport, flow_table);
         }
 
@@ -1856,7 +1829,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         if (!strcmp(binding->type, "localnet")) {
             /* do not forward traffic from localport to localnet port */
             ofpbuf_clear(ofpacts_p);
-            put_drop(debug, OFTABLE_CHECK_LOOPBACK, ofpacts_p);
+            put_drop(&ctx->debug, OFTABLE_CHECK_LOOPBACK, ofpacts_p);
             match_outport_dp_and_port_keys(&match, dp_key, port_key);
             match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
                                  MLF_LOCALPORT, MLF_LOCALPORT);
@@ -1866,7 +1839,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
             /* Drop LOCAL_ONLY traffic leaking through localnet ports. */
             ofpbuf_clear(ofpacts_p);
-            put_drop(debug, OFTABLE_CHECK_LOOPBACK, ofpacts_p);
+            put_drop(&ctx->debug, OFTABLE_CHECK_LOOPBACK, ofpacts_p);
             match_outport_dp_and_port_keys(&match, dp_key, port_key);
             match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
                                  MLF_LOCAL_ONLY,
@@ -1884,7 +1857,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                 if (!pb->chassis) {
                     continue;
                 }
-                if (strcmp(pb->chassis->name, chassis->name)) {
+                if (strcmp(pb->chassis->name, ctx->chassis->name)) {
                     continue;
                 }
 
@@ -1937,7 +1910,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                             binding->header_.uuid.parts[0], &match,
                             ofpacts_p, &binding->header_.uuid);
         }
-    } else if (access_type == PORT_LOCALNET && !always_tunnel) {
+    } else if (access_type == PORT_LOCALNET && !ctx->always_tunnel) {
         /* Remote port connected by localnet port */
         /* Table 43, priority 100.
          * =======================
@@ -1965,10 +1938,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                         binding->header_.uuid.parts[0],
                         &match, ofpacts_p, &binding->header_.uuid);
 
-        enforce_tunneling_for_multichassis_ports(ld, binding, chassis,
-                                                 chassis_tunnels,
-                                                 mff_ovn_geneve, flow_table,
-                                                 if_mgr);
+        enforce_tunneling_for_multichassis_ports(ld, binding, ctx, flow_table);
 
         /* No more tunneling to set up. */
         goto out;
@@ -1990,15 +1960,14 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
     if (redirect_type && !strcasecmp(redirect_type, "bridged")) {
         put_remote_port_redirect_bridged(
-            binding, local_datapaths, ld, &match, ofpacts_p, flow_table);
+            binding, ctx->local_datapaths, ld, &match, ofpacts_p, flow_table);
     } else if (access_type == PORT_HA_REMOTE) {
         put_remote_port_redirect_overlay_ha_remote(
-            binding, ha_ch_ordered, mff_ovn_geneve, port_key,
-            &match, ofpacts_p, chassis_tunnels, flow_table);
+            binding, ha_ch_ordered, ctx->mff_ovn_geneve, port_key,
+            &match, ofpacts_p, ctx->chassis_tunnels, flow_table);
     } else {
         put_remote_port_redirect_overlay(
-            binding, mff_ovn_geneve, port_key, &match, ofpacts_p,
-            chassis, chassis_tunnels, n_encap_ips, encap_ips, flow_table);
+            binding, ctx, port_key, &match, ofpacts_p, flow_table);
     }
 out:
     if (ha_ch_ordered) {
@@ -2128,19 +2097,13 @@ mc_ofctrl_add_flow(const struct sbrec_multicast_group *mc,
 }
 
 static void
-consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                  enum mf_field_id mff_ovn_geneve,
-                  const struct shash *ct_zones,
-                  const struct hmap *local_datapaths,
-                  struct shash *local_bindings,
-                  struct simap *patch_ofports,
-                  const struct sbrec_chassis *chassis,
+consider_mc_group(const struct physical_ctx *ctx,
                   const struct sbrec_multicast_group *mc,
-                  const struct hmap *chassis_tunnels,
                   struct ovn_desired_flow_table *flow_table)
 {
     uint32_t dp_key = mc->datapath->tunnel_key;
-    struct local_datapath *ldp = get_local_datapath(local_datapaths, dp_key);
+    struct local_datapath *ldp = get_local_datapath(ctx->local_datapaths,
+                                                    dp_key);
     if (!ldp) {
         return;
     }
@@ -2194,7 +2157,7 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             continue;
         }
 
-        int zone_id = ct_zone_find_zone(ct_zones, port->logical_port);
+        int zone_id = ct_zone_find_zone(ctx->ct_zones, port->logical_port);
         if (zone_id) {
             put_load(zone_id, MFF_LOG_CT_ZONE, 0, 16, &ofpacts);
         }
@@ -2215,27 +2178,28 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             }
         } else if (!strcmp(port->type, "localport")) {
             remote_ports = true;
-        } else if ((port->chassis == chassis
-                    || is_additional_chassis(port, chassis))
-                   && (local_binding_get_primary_pb(local_bindings, lport_name)
+        } else if ((port->chassis == ctx->chassis
+                    || is_additional_chassis(port, ctx->chassis))
+                   && (local_binding_get_primary_pb(ctx->local_bindings,
+                                                    lport_name)
                        || !strcmp(port->type, "l3gateway"))) {
             local_output_pb(port->tunnel_key, &ofpacts);
-        } else if (simap_contains(patch_ofports, port->logical_port)) {
+        } else if (simap_contains(ctx->patch_ofports, port->logical_port)) {
             local_output_pb(port->tunnel_key, &ofpacts);
         } else if (!strcmp(port->type, "chassisredirect")
-                   && port->chassis == chassis) {
+                   && port->chassis == ctx->chassis) {
             const char *distributed_port = smap_get(&port->options,
                                                     "distributed-port");
             if (distributed_port) {
                 const struct sbrec_port_binding *distributed_binding
-                    = lport_lookup_by_name(sbrec_port_binding_by_name,
+                    = lport_lookup_by_name(ctx->sbrec_port_binding_by_name,
                                            distributed_port);
                 if (distributed_binding
                     && port->datapath == distributed_binding->datapath) {
                     local_output_pb(distributed_binding->tunnel_key, &ofpacts);
                 }
             }
-        } else if (!get_localnet_port(local_datapaths,
+        } else if (!get_localnet_port(ctx->local_datapaths,
                                       mc->datapath->tunnel_key)) {
             /* Add remote chassis only when localnet port not exist,
              * otherwise multicast will reach remote ports through localnet
@@ -2276,9 +2240,10 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         put_load(mc->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts_last);
     }
 
-    fanout_to_chassis(mff_ovn_geneve, &remote_chassis, chassis_tunnels,
-                      mc->datapath, mc->tunnel_key, false, &ofpacts_last);
-    fanout_to_chassis(mff_ovn_geneve, &vtep_chassis, chassis_tunnels,
+    fanout_to_chassis(ctx->mff_ovn_geneve, &remote_chassis,
+                      ctx->chassis_tunnels, mc->datapath, mc->tunnel_key,
+                      false, &ofpacts_last);
+    fanout_to_chassis(ctx->mff_ovn_geneve, &vtep_chassis, ctx->chassis_tunnels,
                       mc->datapath, mc->tunnel_key, true, &ofpacts_last);
 
     remote_ports |= (ofpacts_last.size > 0);
@@ -2286,7 +2251,8 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         put_resubmit(OFTABLE_LOCAL_OUTPUT, &ofpacts_last);
     }
 
-    bool has_vtep = get_vtep_port(local_datapaths, mc->datapath->tunnel_key);
+    bool has_vtep = get_vtep_port(ctx->local_datapaths,
+                                  mc->datapath->tunnel_key);
     uint32_t reverse_ramp_flow_index = MC_BUF_START_ID;
     flow_index = MC_BUF_START_ID;
 
@@ -2316,8 +2282,8 @@ consider_mc_group(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             if (port->chassis) {
                 put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
                          &remote_ofpacts);
-                tunnel_to_chassis(mff_ovn_geneve, port->chassis->name,
-                                  chassis_tunnels, mc->datapath,
+                tunnel_to_chassis(ctx->mff_ovn_geneve, port->chassis->name,
+                                  ctx->chassis_tunnels, mc->datapath,
                                   port->tunnel_key, &remote_ofpacts);
             }
         } else if (!strcmp(port->type, "localport")) {
@@ -2364,19 +2330,7 @@ physical_eval_port_binding(struct physical_ctx *p_ctx,
 {
     struct ofpbuf ofpacts;
     ofpbuf_init(&ofpacts, 0);
-    consider_port_binding(p_ctx->sbrec_port_binding_by_name,
-                          p_ctx->mff_ovn_geneve, p_ctx->ct_zones,
-                          p_ctx->active_tunnels,
-                          p_ctx->local_datapaths,
-                          p_ctx->local_bindings,
-                          p_ctx->patch_ofports,
-                          p_ctx->chassis_tunnels,
-                          pb, p_ctx->chassis, &p_ctx->debug,
-                          p_ctx->if_mgr,
-                          p_ctx->n_encap_ips,
-                          p_ctx->encap_ips,
-                          p_ctx->always_tunnel,
-                          flow_table, &ofpacts);
+    consider_port_binding(p_ctx, pb, flow_table, &ofpacts);
     ofpbuf_uninit(&ofpacts);
 }
 
@@ -2470,13 +2424,7 @@ physical_handle_mc_group_changes(struct physical_ctx *p_ctx,
             if (!sbrec_multicast_group_is_new(mc)) {
                 ofctrl_remove_flows(flow_table, &mc->header_.uuid);
             }
-            consider_mc_group(p_ctx->sbrec_port_binding_by_name,
-                              p_ctx->mff_ovn_geneve, p_ctx->ct_zones,
-                              p_ctx->local_datapaths, p_ctx->local_bindings,
-                              p_ctx->patch_ofports,
-                              p_ctx->chassis, mc,
-                              p_ctx->chassis_tunnels,
-                              flow_table);
+            consider_mc_group(p_ctx, mc, flow_table);
         }
     }
 }
@@ -2502,18 +2450,7 @@ physical_run(struct physical_ctx *p_ctx,
      * 64 for logical-to-physical translation. */
     const struct sbrec_port_binding *binding;
     SBREC_PORT_BINDING_TABLE_FOR_EACH (binding, p_ctx->port_binding_table) {
-        consider_port_binding(p_ctx->sbrec_port_binding_by_name,
-                              p_ctx->mff_ovn_geneve, p_ctx->ct_zones,
-                              p_ctx->active_tunnels, p_ctx->local_datapaths,
-                              p_ctx->local_bindings,
-                              p_ctx->patch_ofports,
-                              p_ctx->chassis_tunnels, binding,
-                              p_ctx->chassis, &p_ctx->debug,
-                              p_ctx->if_mgr,
-                              p_ctx->n_encap_ips,
-                              p_ctx->encap_ips,
-                              p_ctx->always_tunnel,
-                              flow_table, &ofpacts);
+        consider_port_binding(p_ctx, binding, flow_table, &ofpacts);
     }
 
     /* Default flow for CT_ZONE_LOOKUP Table. */
@@ -2527,12 +2464,7 @@ physical_run(struct physical_ctx *p_ctx,
     /* Handle output to multicast groups, in tables 40 and 41. */
     const struct sbrec_multicast_group *mc;
     SBREC_MULTICAST_GROUP_TABLE_FOR_EACH (mc, p_ctx->mc_group_table) {
-        consider_mc_group(p_ctx->sbrec_port_binding_by_name,
-                          p_ctx->mff_ovn_geneve, p_ctx->ct_zones,
-                          p_ctx->local_datapaths, p_ctx->local_bindings,
-                          p_ctx->patch_ofports, p_ctx->chassis,
-                          mc, p_ctx->chassis_tunnels,
-                          flow_table);
+        consider_mc_group(p_ctx, mc, flow_table);
     }
 
     /* Table 0, priority 100.
