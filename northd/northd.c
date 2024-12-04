@@ -15001,7 +15001,8 @@ build_arp_request_flows_for_lrouter(
 
         ds_clear(match);
         ds_put_format(match, "eth.dst == 00:00:00:00:00:00 && "
-                      "ip6 && " REG_NEXT_HOP_IPV6 " == %s",
+                      REGBIT_NEXTHOP_IS_IPV4" == 0 && "
+                      REG_NEXT_HOP_IPV6 " == %s",
                       route->nexthop);
         struct in6_addr sn_addr;
         struct eth_addr eth_dst;
@@ -15031,7 +15032,8 @@ build_arp_request_flows_for_lrouter(
     }
 
     ovn_lflow_metered(lflows, od, S_ROUTER_IN_ARP_REQUEST, 100,
-                      "eth.dst == 00:00:00:00:00:00 && ip4",
+                      "eth.dst == 00:00:00:00:00:00 && "
+                      REGBIT_NEXTHOP_IS_IPV4" == 1",
                       "arp { "
                       "eth.dst = ff:ff:ff:ff:ff:ff; "
                       "arp.spa = " REG_SRC_IPV4 "; "
@@ -15043,7 +15045,8 @@ build_arp_request_flows_for_lrouter(
                                      meter_groups),
                       lflow_ref);
     ovn_lflow_metered(lflows, od, S_ROUTER_IN_ARP_REQUEST, 100,
-                      "eth.dst == 00:00:00:00:00:00 && ip6",
+                      "eth.dst == 00:00:00:00:00:00 && "
+                      REGBIT_NEXTHOP_IS_IPV4" == 0",
                       "nd_ns { "
                       "nd.target = " REG_NEXT_HOP_IPV6 "; "
                       "output; "

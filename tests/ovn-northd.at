@@ -6979,10 +6979,10 @@ AT_CHECK([grep -e "lr_in_arp_resolve" lr0flows | ovn_strip_lflows], [0], [dnl
 
 AT_CHECK([grep -e "lr_in_arp_request" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_arp_request  ), priority=0    , match=(1), action=(output;)
-  table=??(lr_in_arp_request  ), priority=100  , match=(eth.dst == 00:00:00:00:00:00 && ip4), action=(arp { eth.dst = ff:ff:ff:ff:ff:ff; arp.spa = reg5; arp.tpa = reg0; arp.op = 1; output; }; output;)
-  table=??(lr_in_arp_request  ), priority=100  , match=(eth.dst == 00:00:00:00:00:00 && ip6), action=(nd_ns { nd.target = xxreg0; output; }; output;)
-  table=??(lr_in_arp_request  ), priority=200  , match=(eth.dst == 00:00:00:00:00:00 && ip6 && xxreg0 == 2001:db8::10), action=(nd_ns { eth.dst = 33:33:ff:00:00:10; ip6.dst = ff02::1:ff00:10; nd.target = 2001:db8::10; output; }; output;)
-  table=??(lr_in_arp_request  ), priority=200  , match=(eth.dst == 00:00:00:00:00:00 && ip6 && xxreg0 == 2001:db8::20), action=(nd_ns { eth.dst = 33:33:ff:00:00:20; ip6.dst = ff02::1:ff00:20; nd.target = 2001:db8::20; output; }; output;)
+  table=??(lr_in_arp_request  ), priority=100  , match=(eth.dst == 00:00:00:00:00:00 && reg9[[9]] == 0), action=(nd_ns { nd.target = xxreg0; output; }; output;)
+  table=??(lr_in_arp_request  ), priority=100  , match=(eth.dst == 00:00:00:00:00:00 && reg9[[9]] == 1), action=(arp { eth.dst = ff:ff:ff:ff:ff:ff; arp.spa = reg5; arp.tpa = reg0; arp.op = 1; output; }; output;)
+  table=??(lr_in_arp_request  ), priority=200  , match=(eth.dst == 00:00:00:00:00:00 && reg9[[9]] == 0 && xxreg0 == 2001:db8::10), action=(nd_ns { eth.dst = 33:33:ff:00:00:10; ip6.dst = ff02::1:ff00:10; nd.target = 2001:db8::10; output; }; output;)
+  table=??(lr_in_arp_request  ), priority=200  , match=(eth.dst == 00:00:00:00:00:00 && reg9[[9]] == 0 && xxreg0 == 2001:db8::20), action=(nd_ns { eth.dst = 33:33:ff:00:00:20; ip6.dst = ff02::1:ff00:20; nd.target = 2001:db8::20; output; }; output;)
 ])
 
 AT_CLEANUP

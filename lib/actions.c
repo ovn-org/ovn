@@ -1765,7 +1765,7 @@ parse_nested_action(struct action_context *ctx, enum ovnact_type type,
 static void
 parse_ARP(struct action_context *ctx)
 {
-    parse_nested_action(ctx, OVNACT_ARP, "ip4", ctx->scope);
+    parse_nested_action(ctx, OVNACT_ARP, "ip", ctx->scope);
 }
 
 static void
@@ -1819,7 +1819,7 @@ parse_ND_NA_ROUTER(struct action_context *ctx)
 static void
 parse_ND_NS(struct action_context *ctx)
 {
-    parse_nested_action(ctx, OVNACT_ND_NS, "ip6", ctx->scope);
+    parse_nested_action(ctx, OVNACT_ND_NS, "ip", ctx->scope);
 }
 
 static void

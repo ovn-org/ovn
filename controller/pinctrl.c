@@ -1567,9 +1567,11 @@ pinctrl_handle_arp(struct rconn *swconn, const struct flow *ip_flow,
                    const struct ofputil_packet_in *pin,
                    struct ofpbuf *userdata, const struct ofpbuf *continuation)
 {
-    /* This action only works for IP packets, and the switch should only send
-     * us IP packets this way, but check here just to be sure. */
-    if (ip_flow->dl_type != htons(ETH_TYPE_IP)) {
+    uint16_t dl_type = ntohs(ip_flow->dl_type);
+
+    /* This action only works for IPv4 or IPv6 packets, and the switch should
+     * only send us IP packets this way, but check here just to be sure. */
+    if (dl_type != ETH_TYPE_IP && dl_type != ETH_TYPE_IPV6) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
         VLOG_WARN_RL(&rl, "ARP action on non-IP packet (Ethertype %"PRIx16")",
                      ntohs(ip_flow->dl_type));
@@ -1593,9 +1595,25 @@ pinctrl_handle_arp(struct rconn *swconn, const struct flow *ip_flow,
     struct arp_eth_header *arp = dp_packet_l3(&packet);
     arp->ar_op = htons(ARP_OP_REQUEST);
     arp->ar_sha = ip_flow->dl_src;
-    put_16aligned_be32(&arp->ar_spa, ip_flow->nw_src);
     arp->ar_tha = eth_addr_zero;
-    put_16aligned_be32(&arp->ar_tpa, ip_flow->nw_dst);
+
+    /* We might be here without actually currently handling an IPv4 packet.
+     * This can happen in the case where we route IPv6 packets over an IPv4
+     * link.
+     * In these cases we have no destination IPv4 address from the packet that
+     * we can reuse. But we receive the actual destination IPv4 address via
+     * userdata anyway, so what we set for now is irrelevant.
+     * This is just a hope since we do not parse the userdata. If we land here
+     * for whatever reason without being an IPv4 packet and without userdata we
+     * will send out a wrong packet.
+     */
+    if (ip_flow->dl_type == htons(ETH_TYPE_IP)) {
+        put_16aligned_be32(&arp->ar_spa, ip_flow->nw_src);
+        put_16aligned_be32(&arp->ar_tpa, ip_flow->nw_dst);
+    } else {
+        put_16aligned_be32(&arp->ar_spa, 0);
+        put_16aligned_be32(&arp->ar_tpa, 0);
+    }
 
     if (ip_flow->vlans[0].tci & htons(VLAN_CFI)) {
         eth_push_vlan(&packet, htons(ETH_TYPE_VLAN_8021Q),
@@ -6620,8 +6638,11 @@ pinctrl_handle_nd_ns(struct rconn *swconn, const struct flow *ip_flow,
                      struct ofpbuf *userdata,
                      const struct ofpbuf *continuation)
 {
-    /* This action only works for IPv6 packets. */
-    if (get_dl_type(ip_flow) != htons(ETH_TYPE_IPV6)) {
+    uint16_t dl_type = ntohs(ip_flow->dl_type);
+
+    /* This action only works for IPv4 or IPv6 packets, and the switch should
+     * only send us IP packets this way, but check here just to be sure. */
+    if (dl_type != ETH_TYPE_IP && dl_type != ETH_TYPE_IPV6) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
         VLOG_WARN_RL(&rl, "NS action on non-IPv6 packet");
         return;
@@ -6637,8 +6658,23 @@ pinctrl_handle_nd_ns(struct rconn *swconn, const struct flow *ip_flow,
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
 
     in6_generate_lla(ip_flow->dl_src, &ipv6_src);
+
+    /* We might be here without actually currently handling an IPv6 packet.
+     * This can happen in the case where we route IPv4 packets over an IPv6
+     * link.
+     * In these cases we have no destination IPv6 address from the packet that
+     * we can reuse. But we receive the actual destination IPv6 address via
+     * userdata anyway, so what we pass to compose_nd_ns is irrelevant.
+     * This is just a hope since we do not parse the userdata. If we land here
+     * for whatever reason without being an IPv6 packet and without userdata we
+     * will send out a wrong packet.
+     */
+    struct in6_addr ipv6_dst = IN6ADDR_EXACT_INIT;
+    if (get_dl_type(ip_flow) == htons(ETH_TYPE_IPV6)) {
+        ipv6_dst = ip_flow->ipv6_dst;
+    }
     compose_nd_ns(&packet, ip_flow->dl_src, &ipv6_src,
-                  &ip_flow->ipv6_dst);
+                  &ipv6_dst);
 
     /* Reload previous packet metadata and set actions from userdata. */
     set_actions_and_enqueue_msg(swconn, &packet,
