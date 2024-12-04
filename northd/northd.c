@@ -186,7 +186,7 @@ BUILD_ASSERT_DECL(ACL_OBS_STAGE_MAX < (1 << 2));
 /* Registers used for routing. */
 #define REG_NEXT_HOP_IPV4 "reg0"
 #define REG_NEXT_HOP_IPV6 "xxreg0"
-#define REG_SRC_IPV4 "reg1"
+#define REG_SRC_IPV4 "reg5"
 #define REG_SRC_IPV6 "xxreg1"
 #define REG_DHCP_RELAY_DIP_IPV4 "reg2"
 #define REG_ROUTE_TABLE_ID "reg7"
@@ -257,8 +257,8 @@ BUILD_ASSERT_DECL(ACL_OBS_STAGE_MAX < (1 << 2));
  * |     |      NEXT_HOP_IPV4        | R |                 |   |                                    |
  * |     |      (>= IP_INPUT)        | E | INPORT_ETH_ADDR | X |                                    |
  * +-----+---------------------------+ G |   (< IP_INPUT)  | X |                                    |
- * | R1  |   SRC_IPV4 for ARP-REQ    | 0 |                 | R |                                    |
- * |     |      (>= IP_INPUT)        |   |                 | E |     NEXT_HOP_IPV6 (>= DEFRAG )     |
+ * | R1  |        UNUSED             | 0 |                 | R |                                    |
+ * |     |                           |   |                 | E |     NEXT_HOP_IPV6 (>= DEFRAG )     |
  * +-----+---------------------------+---+-----------------+ G |                                    |
  * | R2     REG_DHCP_RELAY_DIP_IPV4  | X |                 | 0 |                                    |
  * |     |                           | R |                 |   |                                    |
@@ -269,8 +269,8 @@ BUILD_ASSERT_DECL(ACL_OBS_STAGE_MAX < (1 << 2));
  * | R4  |  REG_LB_AFF_BACKEND_IP4   | X |                 |   |                                    |
  * |     |                           | R |                 |   |                                    |
  * +-----+---------------------------+ E |     UNUSED      | X |                                    |
- * | R5  |        UNUSED             | G |                 | X |                                    |
- * |     |                           | 2 |                 | R |        LB_L3_AFF_BACKEND_IP6       |
+ * | R5  |  SRC_IPV4 for ARP-REQ     | G |                 | X |                                    |
+ * |     |      (>= IP_INPUT)        | 2 |                 | R |        LB_L3_AFF_BACKEND_IP6       |
  * +-----+---------------------------+---+-----------------+ E |           (<= IN_DNAT)             |
  * | R6  |        UNUSED             | X |                 | G |                                    |
  * |     |                           | R |                 | 1 |                                    |
@@ -11772,9 +11772,10 @@ add_ecmp_symmetric_reply_flows(struct lflow_table *lflows,
                   ds_cstr(route_match));
     ds_clear(&actions);
     ds_put_format(&actions, "ip.ttl--; flags.loopback = 1; "
-                  "eth.src = %s; %sreg1 = %s; outport = %s; next;",
+                  "eth.src = %s; %s = %s; outport = %s; next;",
                   out_port->lrp_networks.ea_s,
-                  IN6_IS_ADDR_V4MAPPED(&route->prefix) ? "" : "xx",
+                  IN6_IS_ADDR_V4MAPPED(&route->prefix) ?
+                      REG_SRC_IPV4 : REG_SRC_IPV6,
                   port_ip, out_port->json_key);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_ROUTING, 10300,
                            ds_cstr(&match), ds_cstr(&actions),

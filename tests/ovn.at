@@ -22134,7 +22134,7 @@ check ovn-nbctl --wait=hv sync
 
 # verify the traffic from virtual port is discarded if the port is not claimed
 AT_CHECK([grep lr_in_gw_redirect lr0-flows2 | grep "ip4.src == 10.0.0.10" | ovn_strip_lflows], [0], [dnl
-  table=??(lr_in_gw_redirect  ), priority=100  , match=(ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("sw0-vir")), action=(eth.src = 10:54:00:00:00:10; reg1 = 172.168.0.50; next;)
+  table=??(lr_in_gw_redirect  ), priority=100  , match=(ip4.src == 10.0.0.10 && outport == "lr0-public" && is_chassis_resident("sw0-vir")), action=(eth.src = 10:54:00:00:00:10; reg5 = 172.168.0.50; next;)
   table=??(lr_in_gw_redirect  ), priority=80   , match=(ip4.src == 10.0.0.10 && outport == "lr0-public"), action=(drop;)
 ])
 
