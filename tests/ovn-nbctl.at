@@ -1857,7 +1857,7 @@ AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.1/24 11.0.0.2])
 AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.10.0/24 lp0])
 AT_CHECK([ovn-nbctl --bfd lr-route-add lr0 10.0.20.0/24 11.0.2.1 lp0])
 AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.10.0/24 lp1], [1], [],
-  [ovn-nbctl: bad IPv4 nexthop argument: lp1
+  [ovn-nbctl: bad nexthop argument: lp1
 ])
 
 dnl Add overlapping route with 10.0.0.1/24
@@ -1871,13 +1871,13 @@ AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.111/24a 11.0.0.1], [1], [],
   [ovn-nbctl: bad prefix argument: 10.0.0.111/24a
 ])
 AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.111/24 11.0.0.1a], [1], [],
-  [ovn-nbctl: bad IPv4 nexthop argument: 11.0.0.1a
+  [ovn-nbctl: bad nexthop argument: 11.0.0.1a
 ])
 AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.111/24 11.0.0.1/24], [1], [],
-  [ovn-nbctl: bad IPv4 nexthop argument: 11.0.0.1/24
+  [ovn-nbctl: bad nexthop argument: 11.0.0.1/24
 ])
 AT_CHECK([ovn-nbctl lr-route-add lr0 2001:0db8:1::/64 2001:0db8:0:f103::1/64], [1], [],
-  [ovn-nbctl: bad IPv6 nexthop argument: 2001:0db8:0:f103::1/64
+  [ovn-nbctl: bad nexthop argument: 2001:0db8:0:f103::1/64
 ])
 AT_CHECK([ovn-nbctl --ecmp lr-route-add lr0 20.0.0.0/24 discard], [1], [],
   [ovn-nbctl: ecmp is not valid for discard routes.
@@ -2100,6 +2100,24 @@ bfd_uuid=$(ovn-nbctl create bfd logical_port=lr0-p0 dst_ip=100.0.0.50 status=dow
 AT_CHECK([ovn-nbctl lr-route-add lr0 100.0.0.0/24 192.168.0.1])
 route_uuid=$(fetch_column nb:logical_router_static_route _uuid ip_prefix="100.0.0.0/24")
 AT_CHECK([ovn-nbctl set logical_router_static_route $route_uuid bfd=$bfd_uuid])
+
+check ovn-nbctl lr-route-del lr0
+AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
+])
+
+dnl Check IPv4 over v6 and IPv6 over v4 routes
+AT_CHECK([ovn-nbctl lr-route-add lr0 10.0.0.1/24 2001:0db8:0:f103::10])
+AT_CHECK([ovn-nbctl lr-route-add lr0 2001:0db8:0::/64 11.0.1.10])
+
+AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+              10.0.0.0/24       2001:db8:0:f103::10 dst-ip
+
+IPv6 Routes
+Route Table <main>:
+            2001:db8::/64                 11.0.1.10 dst-ip
+])
 
 check ovn-nbctl lr-route-del lr0
 AT_CHECK([ovn-nbctl lr-route-list lr0], [0], [dnl

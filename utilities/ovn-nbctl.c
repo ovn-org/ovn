@@ -4591,11 +4591,9 @@ nbctl_lr_route_add(struct ctl_context *ctx)
     }
 
     char *route_table = shash_find_data(&ctx->options, "--route-table");
-    bool v6_prefix = false;
     prefix = normalize_ipv4_prefix_str(ctx->argv[2]);
     if (!prefix) {
         prefix = normalize_ipv6_prefix_str(ctx->argv[2]);
-        v6_prefix = true;
     }
     if (!prefix) {
         ctl_error(ctx, "bad prefix argument: %s", ctx->argv[2]);
@@ -4606,15 +4604,15 @@ nbctl_lr_route_add(struct ctl_context *ctx)
     if (is_discard_route) {
         next_hop = xasprintf("discard");
     } else {
-        next_hop = v6_prefix
-            ? normalize_ipv6_addr_str(ctx->argv[3])
-            : normalize_ipv4_addr_str(ctx->argv[3]);
+        next_hop = normalize_ipv4_addr_str(ctx->argv[3]);
+        if (!next_hop) {
+            next_hop = normalize_ipv6_addr_str(ctx->argv[3]);
+        }
         if (!next_hop) {
             /* check if it is a output port. */
             error = lrp_by_name_or_uuid(ctx, ctx->argv[3], true, &out_lrp);
             if (error) {
-                ctl_error(ctx, "bad %s nexthop argument: %s",
-                          v6_prefix ? "IPv6" : "IPv4", ctx->argv[3]);
+                ctl_error(ctx, "bad nexthop argument: %s", ctx->argv[3]);
                 free(error);
                 goto cleanup;
             }

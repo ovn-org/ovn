@@ -81,6 +81,10 @@ OVN v24.09.0 - 13 Sep 2024
     "routing-protocol-redirect" and "routing-protocols", that allow
     redirection of routing protocol traffic received by a router port
     to a different logical switch port.
+  - Allow Static Routes where the address families of ip_prefix and nexthop
+    diverge (e.g. IPv4 packets over IPv6 links). This is currently limited to
+    nexthops that have their mac addresses prepopulated (so
+    dynamic_neigh_routers must be false).
 
 OVN v24.03.0 - 01 Mar 2024
 --------------------------

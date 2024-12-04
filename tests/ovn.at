@@ -39760,3 +39760,648 @@ OVN_CLEANUP([hv1])
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([2 HVs, 2 LS, 1 lport/LS, 2 peer LRs, IPv4 over IPv6])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+# Logical network:
+# Two LRs - R1 and R2 that are connected to each other as peers in 2001:db8::/64
+# network. R1 has a switchs ls1 (192.168.1.0/24) connected to it.
+# R2 has ls2 (172.16.1.0/24) connected to it.
+
+ls1_lp1_mac="f0:00:00:01:02:03"
+rp_ls1_mac="00:00:00:01:02:03"
+rp_ls2_mac="00:00:00:01:02:04"
+ls2_lp1_mac="f0:00:00:01:02:04"
+
+ls1_lp1_ip="192.168.1.2"
+ls2_lp1_ip="172.16.1.2"
+
+check ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R2
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl ls-add ls2
+
+# Connect ls1 to R1
+check ovn-nbctl lrp-add R1 ls1 $rp_ls1_mac 192.168.1.1/24
+
+check ovn-nbctl lsp-add ls1 rp-ls1 -- set Logical_Switch_Port rp-ls1 type=router \
+  options:router-port=ls1 addresses=\"$rp_ls1_mac\"
+
+# Connect ls2 to R2
+check ovn-nbctl lrp-add R2 ls2 $rp_ls2_mac 172.16.1.1/24
+
+check ovn-nbctl lsp-add ls2 rp-ls2 -- set Logical_Switch_Port rp-ls2 type=router \
+  options:router-port=ls2 addresses=\"$rp_ls2_mac\"
+
+# Connect R1 to R2
+check ovn-nbctl lrp-add R1 R1_R2 00:00:00:02:03:04 2001:db8::1/64 peer=R2_R1
+check ovn-nbctl lrp-add R2 R2_R1 00:00:00:02:03:05 2001:db8::2/64 peer=R1_R2
+
+AT_CHECK([ovn-nbctl lr-route-add R1 "0.0.0.0/0" 2001:db8::2])
+AT_CHECK([ovn-nbctl lr-route-add R2 "0.0.0.0/0" 2001:db8::1])
+
+# Create logical port ls1-lp1 in ls1
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "$ls1_lp1_mac $ls1_lp1_ip"
+
+# Create logical port ls2-lp1 in ls2
+check ovn-nbctl lsp-add ls2 ls2-lp1 \
+-- lsp-set-addresses ls2-lp1 "$ls2_lp1_mac $ls2_lp1_ip"
+
+# Create two hypervisor and create OVS ports corresponding to logical ports.
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+check ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+
+
+# Pre-populate the hypervisors' ARP tables so that we don't lose any
+# packets for ARP resolution (native tunneling doesn't queue packets
+# for ARP resolution).
+OVN_POPULATE_ARP
+
+# Allow some time for ovn-northd and ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Packet to send.
+packet=$(fmt_pkt "Ether(dst='${rp_ls1_mac}', src='${ls1_lp1_mac}')/ \
+                  IP(src='${ls1_lp1_ip}', dst='${ls2_lp1_ip}', ttl=64)/ \
+                  UDP(sport=53, dport=4369)")
+check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 "$packet"
+
+# Packet to Expect
+# The TTL should be decremented by 2.
+expected=$(fmt_pkt "Ether(dst='${ls2_lp1_mac}', src='${rp_ls2_mac}')/ \
+                    IP(src='${ls1_lp1_ip}', dst='${ls2_lp1_ip}', ttl=62)/ \
+                    UDP(sport=53, dport=4369)")
+echo ${expected} > expected
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_arp_resolve | \
+grep "reg0 == 172.16.1.2" | wc -l], [0], [1
+])
+
+# Disable the ls2-lp1 port.
+check ovn-nbctl --wait=hv set logical_switch_port ls2-lp1 enabled=false
+
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_arp_resolve | \
+grep "reg0 == 172.16.1.2" | wc -l], [0], [0
+])
+
+# Send the same packet again and it should not be delivered
+check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 "$packet"
+
+# The 2nd packet sent shound not be received.
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+OVN_CLEANUP([hv1],[hv2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([2 HVs, 2 LS, 1 lport/LS, LRs connected via LS, IPv4 over IPv6])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+# Logical network:
+# Two LRs - R1 and R2 that are connected to ls-transfer in 2001:db8::/64
+# network. R1 has a switchs ls1 (192.168.1.0/24) connected to it.
+# R2 has ls2 (172.16.1.0/24) connected to it.
+
+ls1_lp1_mac="f0:00:00:01:02:03"
+rp_ls1_mac="00:00:00:01:02:03"
+rp_ls2_mac="00:00:00:01:02:04"
+ls2_lp1_mac="f0:00:00:01:02:04"
+
+ls1_lp1_ip="192.168.1.2"
+ls2_lp1_ip="172.16.1.2"
+
+check ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R2
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl ls-add ls2
+check ovn-nbctl ls-add ls-transfer
+
+# Connect ls1 to R1
+check ovn-nbctl lrp-add R1 ls1 $rp_ls1_mac 192.168.1.1/24
+
+check ovn-nbctl lsp-add ls1 rp-ls1 -- set Logical_Switch_Port rp-ls1 type=router \
+  options:router-port=ls1 addresses=\"$rp_ls1_mac\"
+
+# Connect ls2 to R2
+check ovn-nbctl lrp-add R2 ls2 $rp_ls2_mac 172.16.1.1/24
+
+check ovn-nbctl lsp-add ls2 rp-ls2 -- set Logical_Switch_Port rp-ls2 type=router \
+  options:router-port=ls2 addresses=\"$rp_ls2_mac\"
+
+# Connect R1 to R2
+check ovn-nbctl lrp-add R1 R1_ls-transfer 00:00:00:02:03:04 2001:db8::1/64
+check ovn-nbctl lrp-add R2 R2_ls-transfer 00:00:00:02:03:05 2001:db8::2/64
+
+check ovn-nbctl lsp-add ls-transfer ls-transfer_r1 -- \
+  set Logical_Switch_Port ls-transfer_r1 type=router \
+  options:router-port=R1_ls-transfer addresses=\"router\"
+check ovn-nbctl lsp-add ls-transfer ls-transfer_r2 -- \
+  set Logical_Switch_Port ls-transfer_r2 type=router \
+  options:router-port=R2_ls-transfer addresses=\"router\"
+
+AT_CHECK([ovn-nbctl lr-route-add R1 "0.0.0.0/0" 2001:db8::2])
+AT_CHECK([ovn-nbctl lr-route-add R2 "0.0.0.0/0" 2001:db8::1])
+
+# Create logical port ls1-lp1 in ls1
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "$ls1_lp1_mac $ls1_lp1_ip"
+
+# Create logical port ls2-lp1 in ls2
+check ovn-nbctl lsp-add ls2 ls2-lp1 \
+-- lsp-set-addresses ls2-lp1 "$ls2_lp1_mac $ls2_lp1_ip"
+
+# Create two hypervisor and create OVS ports corresponding to logical ports.
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+check ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+
+
+# Pre-populate the hypervisors' ARP tables so that we don't lose any
+# packets for ARP resolution (native tunneling doesn't queue packets
+# for ARP resolution).
+OVN_POPULATE_ARP
+
+# Allow some time for ovn-northd and ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Packet to send.
+packet=$(fmt_pkt "Ether(dst='${rp_ls1_mac}', src='${ls1_lp1_mac}')/ \
+                  IP(src='${ls1_lp1_ip}', dst='${ls2_lp1_ip}', ttl=64)/ \
+                  UDP(sport=53, dport=4369)")
+check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 "$packet"
+
+# Packet to Expect
+# The TTL should be decremented by 2.
+expected=$(fmt_pkt "Ether(dst='${ls2_lp1_mac}', src='${rp_ls2_mac}')/ \
+                    IP(src='${ls1_lp1_ip}', dst='${ls2_lp1_ip}', ttl=62)/ \
+                    UDP(sport=53, dport=4369)")
+echo ${expected} > expected
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_arp_resolve | \
+grep "reg0 == 172.16.1.2" | wc -l], [0], [1
+])
+
+# Disable the ls2-lp1 port.
+check ovn-nbctl --wait=hv set logical_switch_port ls2-lp1 enabled=false
+
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_arp_resolve | \
+grep "reg0 == 172.16.1.2" | wc -l], [0], [0
+])
+
+# Send the same packet again and it should not be delivered
+check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 "$packet"
+
+# The 2nd packet sent shound not be received.
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+OVN_CLEANUP([hv1],[hv2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([2 HVs, 2 LS, 1 lport/LS, LRs connected via LS, IPv4 over IPv6, static mac])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+# Logical network:
+# Two LRs - R1 and R2 that are connected to ls-transfer in 2001:db8::/64
+# network. R1 has a switchs ls1 (192.168.1.0/24) connected to it.
+# R2 has ls2 (172.16.1.0/24) connected to it.
+
+ls1_lp1_mac="f0:00:00:01:02:03"
+rp_ls1_mac="00:00:00:01:02:03"
+rp_ls2_mac="00:00:00:01:02:04"
+ls2_lp1_mac="f0:00:00:01:02:04"
+
+ls1_lp1_ip="192.168.1.2"
+ls2_lp1_ip="172.16.1.2"
+
+check ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R2
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl ls-add ls2
+check ovn-nbctl ls-add ls-transfer
+
+# Connect ls1 to R1
+check ovn-nbctl lrp-add R1 ls1 $rp_ls1_mac 192.168.1.1/24
+check ovn-nbctl set Logical_Router R1 options:dynamic_neigh_routers=true
+
+check ovn-nbctl lsp-add ls1 rp-ls1 -- set Logical_Switch_Port rp-ls1 type=router \
+  options:router-port=ls1 addresses=\"$rp_ls1_mac\"
+
+# Connect ls2 to R2
+check ovn-nbctl lrp-add R2 ls2 $rp_ls2_mac 172.16.1.1/24
+check ovn-nbctl set Logical_Router R2 options:dynamic_neigh_routers=true
+
+check ovn-nbctl lsp-add ls2 rp-ls2 -- set Logical_Switch_Port rp-ls2 type=router \
+  options:router-port=ls2 addresses=\"$rp_ls2_mac\"
+
+# Connect R1 to R2
+check ovn-nbctl lrp-add R1 R1_ls-transfer 00:00:00:02:03:04 2001:db8::1/64
+check ovn-nbctl lrp-add R2 R2_ls-transfer 00:00:00:02:03:05 2001:db8::2/64
+
+check ovn-nbctl lsp-add ls-transfer ls-transfer_r1 -- \
+  set Logical_Switch_Port ls-transfer_r1 type=router \
+  options:router-port=R1_ls-transfer addresses=\"router\"
+check ovn-nbctl lsp-add ls-transfer ls-transfer_r2 -- \
+  set Logical_Switch_Port ls-transfer_r2 type=router \
+  options:router-port=R2_ls-transfer addresses=\"router\"
+
+# Static mac binding entries
+check ovn-nbctl static-mac-binding-add R1_ls-transfer 2001:db8::2 00:00:00:02:03:05
+check ovn-nbctl static-mac-binding-add R2_ls-transfer 2001:db8::1 00:00:00:02:03:04
+
+AT_CHECK([ovn-nbctl lr-route-add R1 "0.0.0.0/0" 2001:db8::2])
+AT_CHECK([ovn-nbctl lr-route-add R2 "0.0.0.0/0" 2001:db8::1])
+
+# Create logical port ls1-lp1 in ls1
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "$ls1_lp1_mac $ls1_lp1_ip"
+
+# Create logical port ls2-lp1 in ls2
+check ovn-nbctl lsp-add ls2 ls2-lp1 \
+-- lsp-set-addresses ls2-lp1 "$ls2_lp1_mac $ls2_lp1_ip"
+
+# Create two hypervisor and create OVS ports corresponding to logical ports.
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+check ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+
+
+# Pre-populate the hypervisors' ARP tables so that we don't lose any
+# packets for ARP resolution (native tunneling doesn't queue packets
+# for ARP resolution).
+OVN_POPULATE_ARP
+
+# Allow some time for ovn-northd and ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Packet to send.
+packet=$(fmt_pkt "Ether(dst='${rp_ls1_mac}', src='${ls1_lp1_mac}')/ \
+                  IP(src='${ls1_lp1_ip}', dst='${ls2_lp1_ip}', ttl=64)/ \
+                  UDP(sport=53, dport=4369)")
+check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 "$packet"
+
+# Packet to Expect
+# The TTL should be decremented by 2.
+expected=$(fmt_pkt "Ether(dst='${ls2_lp1_mac}', src='${rp_ls2_mac}')/ \
+                    IP(src='${ls1_lp1_ip}', dst='${ls2_lp1_ip}', ttl=62)/ \
+                    UDP(sport=53, dport=4369)")
+echo ${expected} > expected
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_arp_resolve | \
+grep "reg0 == 172.16.1.2" | wc -l], [0], [1
+])
+
+# Disable the ls2-lp1 port.
+check ovn-nbctl --wait=hv set logical_switch_port ls2-lp1 enabled=false
+
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_arp_resolve | \
+grep "reg0 == 172.16.1.2" | wc -l], [0], [0
+])
+
+# Send the same packet again and it should not be delivered
+check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 "$packet"
+
+# The 2nd packet sent shound not be received.
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+OVN_CLEANUP([hv1],[hv2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([2 HVs, 2 LS, 1 lport/LS, LRs connected via LS, IPv4 over IPv6, ECMP])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+# Logical network:
+# Two LRs - R1 and R2 that are connected to ls-transfer1 and lr-transfer2 in
+# 2001:db8:1::/64 and 2001:db8:2::/64
+# network. R1 has a switchs ls1 (192.168.1.0/24) connected to it.
+# R2 has ls2 (172.16.1.0/24) connected to it.
+
+ls1_lp1_mac="f0:00:00:01:02:03"
+rp_ls1_mac="00:00:00:01:02:03"
+rp_ls2_mac="00:00:00:01:02:04"
+ls2_lp1_mac="f0:00:00:01:02:04"
+
+ls1_lp1_ip="192.168.1.2"
+ls2_lp1_ip="172.16.1.2"
+
+check ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R2
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl ls-add ls2
+check ovn-nbctl ls-add ls-transfer1
+check ovn-nbctl ls-add ls-transfer2
+
+# Connect ls1 to R1
+check ovn-nbctl lrp-add R1 ls1 $rp_ls1_mac 192.168.1.1/24
+
+check ovn-nbctl lsp-add ls1 rp-ls1 -- set Logical_Switch_Port rp-ls1 type=router \
+  options:router-port=ls1 addresses=\"$rp_ls1_mac\"
+
+# Connect ls2 to R2
+check ovn-nbctl lrp-add R2 ls2 $rp_ls2_mac 172.16.1.1/24
+
+check ovn-nbctl lsp-add ls2 rp-ls2 -- set Logical_Switch_Port rp-ls2 type=router \
+  options:router-port=ls2 addresses=\"$rp_ls2_mac\"
+
+# Connect R1 to R2 (ls-transfer1)
+check ovn-nbctl lrp-add R1 R1_ls-transfer1 00:00:00:02:03:04 2001:db8:1::1/64
+check ovn-nbctl lrp-add R2 R2_ls-transfer1 00:00:00:02:03:05 2001:db8:1::2/64
+
+check ovn-nbctl lsp-add ls-transfer1 ls-transfer1_r1 -- \
+  set Logical_Switch_Port ls-transfer1_r1 type=router \
+  options:router-port=R1_ls-transfer1 addresses=\"router\"
+check ovn-nbctl lsp-add ls-transfer1 ls-transfer1_r2 -- \
+  set Logical_Switch_Port ls-transfer1_r2 type=router \
+  options:router-port=R2_ls-transfer1 addresses=\"router\"
+
+# Connect R1 to R2 (ls-transfer2)
+check ovn-nbctl lrp-add R1 R1_ls-transfer2 00:00:00:02:03:14 2001:db8:2::1/64
+check ovn-nbctl lrp-add R2 R2_ls-transfer2 00:00:00:02:03:15 2001:db8:2::2/64
+
+check ovn-nbctl lsp-add ls-transfer2 ls-transfer2_r1 -- \
+  set Logical_Switch_Port ls-transfer2_r1 type=router \
+  options:router-port=R1_ls-transfer2 addresses=\"router\"
+check ovn-nbctl lsp-add ls-transfer2 ls-transfer2_r2 -- \
+  set Logical_Switch_Port ls-transfer2_r2 type=router \
+  options:router-port=R2_ls-transfer2 addresses=\"router\"
+
+AT_CHECK([ovn-nbctl lr-route-add R1 "0.0.0.0/0" 2001:db8:1::2])
+AT_CHECK([ovn-nbctl --ecmp lr-route-add R1 "0.0.0.0/0" 2001:db8:2::2])
+AT_CHECK([ovn-nbctl lr-route-add R2 "0.0.0.0/0" 2001:db8:1::1])
+AT_CHECK([ovn-nbctl --ecmp lr-route-add R2 "0.0.0.0/0" 2001:db8:2::1])
+
+# Create logical port ls1-lp1 in ls1
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "$ls1_lp1_mac $ls1_lp1_ip"
+
+# Create logical port ls2-lp1 in ls2
+check ovn-nbctl lsp-add ls2 ls2-lp1 \
+-- lsp-set-addresses ls2-lp1 "$ls2_lp1_mac $ls2_lp1_ip"
+
+# Create two hypervisor and create OVS ports corresponding to logical ports.
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+check ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+
+
+# Pre-populate the hypervisors' ARP tables so that we don't lose any
+# packets for ARP resolution (native tunneling doesn't queue packets
+# for ARP resolution).
+OVN_POPULATE_ARP
+
+# Allow some time for ovn-northd and ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Packet to send.
+packet=$(fmt_pkt "Ether(dst='${rp_ls1_mac}', src='${ls1_lp1_mac}')/ \
+                  IP(src='${ls1_lp1_ip}', dst='${ls2_lp1_ip}', ttl=64)/ \
+                  UDP(sport=53, dport=4369)")
+check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 "$packet"
+
+# Packet to Expect
+# The TTL should be decremented by 2.
+expected=$(fmt_pkt "Ether(dst='${ls2_lp1_mac}', src='${rp_ls2_mac}')/ \
+                    IP(src='${ls1_lp1_ip}', dst='${ls2_lp1_ip}', ttl=62)/ \
+                    UDP(sport=53, dport=4369)")
+echo ${expected} > expected
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_arp_resolve | \
+grep "reg0 == 172.16.1.2" | wc -l], [0], [1
+])
+
+# Disable the ls2-lp1 port.
+check ovn-nbctl --wait=hv set logical_switch_port ls2-lp1 enabled=false
+
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_arp_resolve | \
+grep "reg0 == 172.16.1.2" | wc -l], [0], [0
+])
+
+# Send the same packet again and it should not be delivered
+check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 "$packet"
+
+# The 2nd packet sent shound not be received.
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+OVN_CLEANUP([hv1],[hv2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([2 HVs, 2 LS, 1 lport/LS, 2 peer LRs, IPv6 over IPv4])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+# Logical network:
+# Two LRs - R1 and R2 that are connected to each other as peers in 10.0.0.0/24
+# network. R1 has a switchs ls1 (2001:db8:1::/64) connected to it.
+# R2 has ls2 (2001:db8:2::/64) connected to it.
+
+ls1_lp1_mac="f0:00:00:01:02:03"
+rp_ls1_mac="00:00:00:01:02:03"
+rp_ls2_mac="00:00:00:01:02:04"
+ls2_lp1_mac="f0:00:00:01:02:04"
+
+ls1_lp1_ip="2001:db8:1::2"
+ls2_lp1_ip="2001:db8:2::2"
+
+check ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R2
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl ls-add ls2
+
+# Connect ls1 to R1
+check ovn-nbctl lrp-add R1 ls1 $rp_ls1_mac 2001:db8:1::1/64
+
+check ovn-nbctl lsp-add ls1 rp-ls1 -- set Logical_Switch_Port rp-ls1 type=router \
+  options:router-port=ls1 addresses=\"$rp_ls1_mac\"
+
+# Connect ls2 to R2
+check ovn-nbctl lrp-add R2 ls2 $rp_ls2_mac 2001:db8:2::1/64
+
+check ovn-nbctl lsp-add ls2 rp-ls2 -- set Logical_Switch_Port rp-ls2 type=router \
+  options:router-port=ls2 addresses=\"$rp_ls2_mac\"
+
+# Connect R1 to R2
+check ovn-nbctl lrp-add R1 R1_R2 00:00:00:02:03:04 10.0.0.1/24 peer=R2_R1
+check ovn-nbctl lrp-add R2 R2_R1 00:00:00:02:03:05 10.0.0.2/24 peer=R1_R2
+
+AT_CHECK([ovn-nbctl lr-route-add R1 "::/0" 10.0.0.2])
+AT_CHECK([ovn-nbctl lr-route-add R2 "::/0" 10.0.0.1])
+
+# Create logical port ls1-lp1 in ls1
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "$ls1_lp1_mac $ls1_lp1_ip"
+
+# Create logical port ls2-lp1 in ls2
+check ovn-nbctl lsp-add ls2 ls2-lp1 \
+-- lsp-set-addresses ls2-lp1 "$ls2_lp1_mac $ls2_lp1_ip"
+
+# Create two hypervisor and create OVS ports corresponding to logical ports.
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+check ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+
+
+# Pre-populate the hypervisors' ARP tables so that we don't lose any
+# packets for ARP resolution (native tunneling doesn't queue packets
+# for ARP resolution).
+OVN_POPULATE_ARP
+
+# Allow some time for ovn-northd and ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Packet to send.
+packet=$(fmt_pkt "Ether(dst='${rp_ls1_mac}', src='${ls1_lp1_mac}')/ \
+                  IPv6(src='${ls1_lp1_ip}', dst='${ls2_lp1_ip}', hlim=64)/ \
+                  UDP(sport=53, dport=4369)")
+check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 "$packet"
+
+# Packet to Expect
+# The TTL should be decremented by 2.
+expected=$(fmt_pkt "Ether(dst='${ls2_lp1_mac}', src='${rp_ls2_mac}')/ \
+                    IPv6(src='${ls1_lp1_ip}', dst='${ls2_lp1_ip}', hlim=62)/ \
+                    UDP(sport=53, dport=4369)")
+echo ${expected} > expected
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_arp_resolve | \
+grep "xxreg0 == 2001:db8:2::2" | wc -l], [0], [1
+])
+
+# Disable the ls2-lp1 port.
+check ovn-nbctl --wait=hv set logical_switch_port ls2-lp1 enabled=false
+
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_arp_resolve | \
+grep "xxreg0 == 2001:db8:2::2" | wc -l], [0], [0
+])
+
+# Send the same packet again and it should not be delivered
+check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 "$packet"
+
+# The 2nd packet sent shound not be received.
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+OVN_CLEANUP([hv1],[hv2])
+
+AT_CLEANUP
+])
