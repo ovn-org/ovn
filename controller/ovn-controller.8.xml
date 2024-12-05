@@ -169,6 +169,10 @@
         </p>
 
         <p>
+          <code>stt</code> tunnel type is deprecated.
+        </p>
+
+        <p>
           Due to the limited amount of metadata in <code>vxlan</code>,
           the capabilities and performance of connected gateways and
           hypervisors will be reduced versus other tunnel formats.

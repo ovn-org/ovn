@@ -243,12 +243,16 @@ chassis_parse_ovs_encap_type(const char *encap_type,
 {
     sset_from_delimited_string(encap_type_set, encap_type, ",");
 
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
     const char *type;
 
     SSET_FOR_EACH (type, encap_type_set) {
-        if (!get_tunnel_type(type)) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        uint32_t tun_type = get_tunnel_type(type);
+
+        if (!tun_type) {
             VLOG_INFO_RL(&rl, "Unknown tunnel type: %s", type);
+        } else if (tun_type == STT) {
+            VLOG_WARN_RL(&rl, "STT encapsulation type is deprecated");
         }
     }
 }

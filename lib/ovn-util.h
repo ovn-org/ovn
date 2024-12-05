@@ -332,7 +332,8 @@ hash_add_in6_addr(uint32_t hash, const struct in6_addr *addr)
  * least-preferred (lower number). */
 enum chassis_tunnel_type {
     GENEVE = 1 << 2,
-    STT    = 1 << 1,
+    STT    = 1 << 1,  /* NOTE: STT support is deprecated and will be removed
+                       *       in an upcoming release. */
     VXLAN  = 1 << 0
 };
 

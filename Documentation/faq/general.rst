@@ -88,6 +88,9 @@ Q: Why does OVN use STT and Geneve instead of VLANs or VXLAN (or GRE)?
 
     See ``ovn-architecture(7)``, under "Tunnel Encapsulations", for details.
 
+    Note: Support for STT tunnels is deprecated and will be removed in OVN
+    25.09 release.
+
     Together, these metadata require 24 + 15 + 16 = 55 bits.  GRE provides 32
     bits, VXLAN provides 24, and VLAN only provides 12.  Most notably, if
     logical egress pipelines do not match on the logical ingress port, thereby

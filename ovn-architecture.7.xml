@@ -2897,10 +2897,9 @@
   </diagram>
 
   <p>
-    Environments whose NICs lack Geneve offload may prefer STT encapsulation
-    for performance reasons.  For STT encapsulation, OVN encodes all three
-    pieces of logical metadata in the STT 64-bit tunnel ID as follows, from MSB
-    to LSB:
+    Support for STT encapsulation is deprecated.  While using STT on setups
+    that didn't migrate to Geneve yet, OVN encodes all three pieces of logical
+    metadata in the STT 64-bit tunnel ID as follows, from MSB to LSB:
   </p>
 
   <diagram>
