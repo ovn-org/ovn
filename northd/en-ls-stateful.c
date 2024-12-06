@@ -204,16 +204,22 @@ ls_stateful_port_group_handler(struct engine_node *node, void *data_)
             ovn_datapaths_find_by_index(input_data.ls_datapaths,
                                         ls_stateful_rec->ls_index);
         bool had_stateful_acl = ls_stateful_rec->has_stateful_acl;
-        uint64_t max_acl_tier = ls_stateful_rec->max_acl_tier;
+        struct acl_tier old_max = ls_stateful_rec->max_acl_tier;
         bool had_acls = ls_stateful_rec->has_acls;
         bool modified = false;
 
         ls_stateful_record_reinit(ls_stateful_rec, od, ls_pg,
                                   input_data.ls_port_groups);
 
+        struct acl_tier new_max = ls_stateful_rec->max_acl_tier;
+
+        /* Using memcmp for struct acl_tier is fine since there is no padding
+         * in the struct. However, if the structure is changed, the memcmp
+         * may need to be updated to compare individual struct fields.
+         */
         if ((had_stateful_acl != ls_stateful_rec->has_stateful_acl)
             || (had_acls != ls_stateful_rec->has_acls)
-            || max_acl_tier != ls_stateful_rec->max_acl_tier) {
+            || memcmp(&old_max, &new_max, sizeof(old_max))) {
             modified = true;
         }
 
@@ -365,7 +371,8 @@ ls_stateful_record_set_acl_flags(struct ls_stateful_record *ls_stateful_rec,
                                  const struct ls_port_group_table *ls_pgs)
 {
     ls_stateful_rec->has_stateful_acl = false;
-    ls_stateful_rec->max_acl_tier = 0;
+    memset(&ls_stateful_rec->max_acl_tier, 0,
+           sizeof ls_stateful_rec->max_acl_tier);
     ls_stateful_rec->has_acls = false;
 
     if (ls_stateful_record_set_acl_flags_(ls_stateful_rec, od->nbs->acls,
@@ -391,6 +398,38 @@ ls_stateful_record_set_acl_flags(struct ls_stateful_record *ls_stateful_rec,
     }
 }
 
+static void
+update_ls_max_acl_tier(struct ls_stateful_record *ls_stateful_rec,
+                       const struct nbrec_acl *acl)
+{
+    if (!acl->tier) {
+        return;
+    }
+
+    uint64_t *tier;
+
+    if (!strcmp(acl->direction, "from-lport")) {
+        if (smap_get_bool(&acl->options, "apply-after-lb", false)) {
+            tier = &ls_stateful_rec->max_acl_tier.ingress_post_lb;
+        } else {
+            tier = &ls_stateful_rec->max_acl_tier.ingress_pre_lb;
+        }
+    } else {
+        tier = &ls_stateful_rec->max_acl_tier.egress;
+    }
+
+    *tier = MAX(*tier, acl->tier);
+}
+
+static bool
+ls_acl_tiers_are_maxed_out(struct acl_tier *acl_tier,
+                           uint64_t max_allowed_acl_tier)
+{
+    return acl_tier->ingress_post_lb == max_allowed_acl_tier &&
+           acl_tier->ingress_pre_lb == max_allowed_acl_tier &&
+           acl_tier->egress == max_allowed_acl_tier;
+}
+
 static bool
 ls_stateful_record_set_acl_flags_(struct ls_stateful_record *ls_stateful_rec,
                                   struct nbrec_acl **acls,
@@ -408,16 +447,15 @@ ls_stateful_record_set_acl_flags_(struct ls_stateful_record *ls_stateful_rec,
     ls_stateful_rec->has_acls = true;
     for (size_t i = 0; i < n_acls; i++) {
         const struct nbrec_acl *acl = acls[i];
-        if (acl->tier > ls_stateful_rec->max_acl_tier) {
-            ls_stateful_rec->max_acl_tier = acl->tier;
-        }
+        update_ls_max_acl_tier(ls_stateful_rec, acl);
         if (!ls_stateful_rec->has_stateful_acl
                 && !strcmp(acl->action, "allow-related")) {
             ls_stateful_rec->has_stateful_acl = true;
         }
         if (ls_stateful_rec->has_stateful_acl &&
-            ls_stateful_rec->max_acl_tier ==
-                nbrec_acl_col_tier.type.value.integer.max) {
+            ls_acl_tiers_are_maxed_out(
+                &ls_stateful_rec->max_acl_tier,
+                nbrec_acl_col_tier.type.value.integer.max)) {
             return true;
         }
     }

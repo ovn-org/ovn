@@ -13431,6 +13431,130 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- Tiered ACL Sampling - tier mismatch])
+AT_SKIP_IF([test $HAVE_NFCAPD = no])
+AT_SKIP_IF([test $HAVE_NFDUMP = no])
+AT_KEYWORDS([ACL])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+dnl Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+dnl Start ovn-controller
+start_daemon ovn-controller
+
+dnl Logical network:
+dnl 1 logical switch
+dnl 2 VIFs
+
+check ovn-nbctl                                                  \
+    -- ls-add ls                                                 \
+    -- lsp-add ls vm1 -- lsp-set-addresses vm1 00:00:00:00:00:01 \
+    -- lsp-add ls vm2 -- lsp-set-addresses vm2 00:00:00:00:00:02
+ADD_NAMESPACES(vm1)
+ADD_VETH(vm1, vm1, br-int, "42.42.42.2/24", "00:00:00:00:00:01", "42.42.42.1")
+
+ADD_NAMESPACES(vm2)
+ADD_VETH(vm2, vm2, br-int, "42.42.42.3/24", "00:00:00:00:00:02", "42.42.42.1")
+
+collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 set_id=100)
+check_row_count nb:Sample_Collector 1
+
+ovn-nbctl create Sampling_App type="acl-new" id="42"
+ovn-nbctl create Sampling_App type="acl-est" id="43"
+check_row_count nb:Sampling_App 2
+
+dnl Create two tiers of ACLs.
+dnl The first ACL is an ingress "pass" ACL at tier 0.
+ovn-nbctl                                                                     \
+    -- --id=@sample_1_new create Sample collector="$collector1" metadata=1001 \
+    -- --id=@sample_1_est create Sample collector="$collector1" metadata=1002 \
+    -- --tier=0 --sample-new=@sample_1_new --sample-est=@sample_1_est         \
+       acl-add ls from-lport 1 "inport == \"vm1\" && udp.dst == 1000"         \
+       pass
+
+dnl The second ACL is an unrelated egress ACL. However, it uses tier 1 instead
+dnl of tier 0.
+ovn-nbctl --tier=1 acl-add ls to-lport 1 "inport == \"vm1\" && udp.dst == 1000" allow-related
+
+check_row_count nb:ACL 2
+check_row_count nb:Sample 2
+
+dnl Wait for ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl Start an IPFIX collector.
+DAEMONIZE([nfcapd -B 1024000 -w . -p 4242 2> collector.err], [collector.pid])
+
+dnl Wait for the collector to be up.
+OVS_WAIT_UNTIL([grep -q 'Startup nfcapd.' collector.err])
+
+dnl Configure the OVS flow sample collector.
+ovs-vsctl --id=@br get Bridge br-int \
+    -- --id=@ipfix create IPFIX targets=\"127.0.0.1:4242\" template_interval=1 \
+    -- --id=@cs create Flow_Sample_Collector_Set id=100 bridge=@br ipfix=@ipfix
+
+check ovn-nbctl --wait=hv sync
+dnl And wait for it to be up and running.
+OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q '1 ids'])
+
+dnl Start UDP echo server on vm2.
+NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l -m 1 1000], [nc-vm2-1000.pid])
+
+dnl Send traffic to the UDP server (hits both ACL tiers).
+NS_CHECK_EXEC([vm1], [echo a | nc --send-only -u 42.42.42.3 1000])
+
+dnl Wait until OVS sampled all expected packets:
+dnl In this case, we only expect a single sampled packet.
+dnl The pass ACL should sample its "pass" result. The egress
+dnl ACL should not get hit (and it doesn't have sampling configured
+dnl anyway). A bug that previously existed in OVN would result in
+dnl the "pass" being sampled two times instead of just once.
+OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q 'sampled pkts=1'])
+
+dnl Check the IPFIX samples.
+kill $(cat collector.pid)
+OVS_WAIT_WHILE([kill -0 $(cat collector.pid) 2>/dev/null])
+
+dnl Can't match on observation domain ID due to the followig fix not being
+dnl available in any released version of nfdump:
+dnl https://github.com/phaag/nfdump/issues/544
+dnl
+dnl Only match on the point ID.
+AT_CHECK([for f in $(ls -1 nfcapd.*); do nfdump -o json -r $f; done | grep observationPointID | awk '{$1=$1;print}' | sort], [0], [dnl
+"observationPointID" : 1001,
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- ACL Sampling - Stateful ACL - to-lport router port])
 AT_SKIP_IF([test $HAVE_NFCAPD = no])
 AT_SKIP_IF([test $HAVE_NFDUMP = no])
