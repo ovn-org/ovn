@@ -2407,6 +2407,11 @@ physical_multichassis_reprocess(const struct sbrec_port_binding *pb,
     const struct sbrec_port_binding *port;
     SBREC_PORT_BINDING_FOR_EACH_EQUAL (port, target,
                                        p_ctx->sbrec_port_binding_by_datapath) {
+        /* Ignore PBs that were already reprocessed. */
+        if (!sset_add(&p_ctx->reprocessed_pbs, port->logical_port)) {
+            continue;
+        }
+
         ofctrl_remove_flows(flow_table, &port->header_.uuid);
         physical_eval_port_binding(p_ctx, port, flow_table);
     }
