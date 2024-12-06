@@ -13974,3 +13974,37 @@ OVS_WAIT_UNTIL([rbr_match_builtin])
 check rbr_match_custom
 
 AT_CLEANUP
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([ACL mismatched tiers])
+ovn_start
+
+check ovn-nbctl ls-add S1
+
+# Ingress pre-lb ACLs have only a tier 1 ACL configured.
+# Ingress post-lb ACLs have tier up to 3 configured.
+# Egress ACLs have up to tier 2 configured.
+check ovn-nbctl --tier=1 acl-add S1 from-lport 1001 "tcp" allow
+check ovn-nbctl --tier=3 --apply-after-lb acl-add  S1 from-lport 1001 "tcp" allow
+check ovn-nbctl --tier=2 acl-add S1 to-lport 1001 "tcp" allow
+
+# Ingress pre-lb ACLs should only ever increment the tier to 1.
+AT_CHECK([ovn-sbctl lflow-list S1 | grep ls_in_acl_action | grep priority=500 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_acl_action   ), priority=500  , match=(reg8[[30..31]] == 0), action=(reg8[[30..31]] = 1; next(pipeline=ingress,table=??);)
+])
+
+# Ingress post-lb ACLs should increment the tier to 3.
+AT_CHECK([ovn-sbctl lflow-list S1 | grep ls_in_acl_after_lb_action | grep priority=500 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_acl_after_lb_action), priority=500  , match=(reg8[[30..31]] == 0), action=(reg8[[30..31]] = 1; next(pipeline=ingress,table=??);)
+  table=??(ls_in_acl_after_lb_action), priority=500  , match=(reg8[[30..31]] == 1), action=(reg8[[30..31]] = 2; next(pipeline=ingress,table=??);)
+  table=??(ls_in_acl_after_lb_action), priority=500  , match=(reg8[[30..31]] == 2), action=(reg8[[30..31]] = 3; next(pipeline=ingress,table=??);)
+])
+
+# Egress ACLs should increment the tier to 2.
+AT_CHECK([ovn-sbctl lflow-list S1 | grep ls_out_acl_action | grep priority=500 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_out_acl_action  ), priority=500  , match=(reg8[[30..31]] == 0), action=(reg8[[30..31]] = 1; next(pipeline=egress,table=??);)
+  table=??(ls_out_acl_action  ), priority=500  , match=(reg8[[30..31]] == 1), action=(reg8[[30..31]] = 2; next(pipeline=egress,table=??);)
+])
+
+AT_CLEANUP
+])

@@ -7336,28 +7336,34 @@ build_acl_action_lflows(const struct ls_stateful_record *ls_stateful_rec,
         S_SWITCH_OUT_ACL_EVAL,
     };
 
+    uint64_t max_acl_tiers[] = {
+        ls_stateful_rec->max_acl_tier.ingress_pre_lb,
+        ls_stateful_rec->max_acl_tier.ingress_post_lb,
+        ls_stateful_rec->max_acl_tier.egress,
+    };
+
     ds_clear(actions);
     ds_put_cstr(actions, REGBIT_ACL_VERDICT_ALLOW " = 0; "
                         REGBIT_ACL_VERDICT_DROP " = 0; "
                         REGBIT_ACL_VERDICT_REJECT " = 0; ");
-    if (ls_stateful_rec->max_acl_tier) {
-        ds_put_cstr(actions, REG_ACL_TIER " = 0; ");
-    }
 
     size_t verdict_len = actions->length;
-
     for (size_t i = 0; i < ARRAY_SIZE(stages); i++) {
         enum ovn_stage stage = stages[i];
+        if (max_acl_tiers[i]) {
+            ds_put_cstr(actions, REG_ACL_TIER " = 0; ");
+        }
+        size_t verdict_tier_len = actions->length;
         if (!ls_stateful_rec->has_acls) {
             ovn_lflow_add(lflows, od, stage, 0, "1", "next;", lflow_ref);
             continue;
         }
-        ds_truncate(actions, verdict_len);
+        ds_truncate(actions, verdict_tier_len);
         ds_put_cstr(actions, "next;");
         ovn_lflow_add(lflows, od, stage, 1000,
                       REGBIT_ACL_VERDICT_ALLOW " == 1", ds_cstr(actions),
                       lflow_ref);
-        ds_truncate(actions, verdict_len);
+        ds_truncate(actions, verdict_tier_len);
         ds_put_cstr(actions, debug_implicit_drop_action());
         ovn_lflow_add(lflows, od, stage, 1000,
                       REGBIT_ACL_VERDICT_DROP " == 1",
@@ -7365,7 +7371,7 @@ build_acl_action_lflows(const struct ls_stateful_record *ls_stateful_rec,
                       lflow_ref);
         bool ingress = ovn_stage_get_pipeline(stage) == P_IN;
 
-        ds_truncate(actions, verdict_len);
+        ds_truncate(actions, verdict_tier_len);
         build_acl_reject_action(actions, ingress);
 
         ovn_lflow_metered(lflows, od, stage, 1000,
@@ -7373,12 +7379,12 @@ build_acl_action_lflows(const struct ls_stateful_record *ls_stateful_rec,
                           copp_meter_get(COPP_REJECT, od->nbs->copp,
                           meter_groups), lflow_ref);
 
-        ds_truncate(actions, verdict_len);
+        ds_truncate(actions, verdict_tier_len);
         ds_put_cstr(actions, default_acl_action);
         ovn_lflow_add(lflows, od, stage, 0, "1", ds_cstr(actions), lflow_ref);
 
         struct ds tier_actions = DS_EMPTY_INITIALIZER;
-        for (size_t j = 0; j < ls_stateful_rec->max_acl_tier; j++) {
+        for (size_t j = 0; j < max_acl_tiers[i]; j++) {
             ds_clear(match);
             ds_put_format(match, REG_ACL_TIER " == %"PRIuSIZE, j);
             ds_clear(&tier_actions);
@@ -7390,6 +7396,7 @@ build_acl_action_lflows(const struct ls_stateful_record *ls_stateful_rec,
                          ds_cstr(&tier_actions), lflow_ref);
         }
         ds_destroy(&tier_actions);
+        ds_truncate(actions, verdict_len);
     }
 }
 
@@ -7456,6 +7463,21 @@ build_acl_log_related_flows(const struct ovn_datapath *od,
                             UINT16_MAX - 2,
                             ds_cstr(match), ds_cstr(actions),
                             &acl->header_, lflow_ref);
+}
+
+static uint64_t
+choose_max_acl_tier(const struct ls_stateful_record *ls_stateful_rec,
+                    const struct nbrec_acl *acl)
+{
+    if (!strcmp(acl->direction, "from-lport")) {
+        if (smap_get_bool(&acl->options, "apply-after-lb", false)) {
+            return ls_stateful_rec->max_acl_tier.ingress_post_lb;
+        } else {
+            return ls_stateful_rec->max_acl_tier.ingress_pre_lb;
+        }
+    } else {
+        return ls_stateful_rec->max_acl_tier.egress;
+    }
 }
 
 static void
@@ -7654,8 +7676,9 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
         build_acl_log_related_flows(od, lflows, acl, has_stateful,
                                     meter_groups, &match, &actions,
                                     lflow_ref);
+        uint64_t max_acl_tier = choose_max_acl_tier(ls_stateful_rec, acl);
         consider_acl(lflows, od, acl, has_stateful,
-                     meter_groups, ls_stateful_rec->max_acl_tier,
+                     meter_groups, max_acl_tier,
                      &match, &actions, lflow_ref);
         build_acl_sample_flows(ls_stateful_rec, od, lflows, acl,
                                &match, &actions, sampling_apps,
@@ -7673,8 +7696,10 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
                 build_acl_log_related_flows(od, lflows, acl, has_stateful,
                                             meter_groups, &match, &actions,
                                             lflow_ref);
+                uint64_t max_acl_tier = choose_max_acl_tier(ls_stateful_rec,
+                                                            acl);
                 consider_acl(lflows, od, acl, has_stateful,
-                             meter_groups, ls_stateful_rec->max_acl_tier,
+                             meter_groups, max_acl_tier,
                              &match, &actions, lflow_ref);
                 build_acl_sample_flows(ls_stateful_rec, od, lflows, acl,
                                        &match, &actions, sampling_apps,

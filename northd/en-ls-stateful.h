@@ -33,6 +33,12 @@
 
 struct lflow_ref;
 
+struct acl_tier {
+    uint64_t ingress_pre_lb;
+    uint64_t ingress_post_lb;
+    uint64_t egress;
+};
+
 struct ls_stateful_record {
     struct hmap_node key_node;
 
@@ -46,7 +52,7 @@ struct ls_stateful_record {
     bool has_stateful_acl;
     bool has_lb_vip;
     bool has_acls;
-    uint64_t max_acl_tier;
+    struct acl_tier max_acl_tier;
 
     /* 'lflow_ref' is used to reference logical flows generated for
      * this ls_stateful record.
