@@ -3572,11 +3572,10 @@ or
       </column>
 
       <column name="options" key="route_table">
-        Designates lookup Logical_Router_Static_Routes with specified
-        <code>route_table</code> value. Routes to directly connected networks
-        from same Logical Router and routes without <code>route_table</code>
-        option set have higher priority than routes with
-        <code>route_table</code> option set.
+        Designates lookup for <code>Logical_Router_Static_Routes</code> with
+        the specified <code>route_table</code> value.  See detailed explanation
+        for routes lookup behavior in
+        <code>Logical_Router_Static_Route:route_table</code> field description.
       </column>
 
       <column name="options" key="gateway_mtu"
@@ -3844,24 +3843,34 @@ or
 
     <column name="route_table">
       <p>
-        Any string to place route to separate routing table. If Logical Router
-        Port has configured value in <ref table="Logical_Router_Port"
-        column="options" key="route_table"/> other than empty string, OVN
-        performs route lookup for all packets entering Logical Router ingress
-        pipeline from this port in the following manner:
+        Specify any string to assign a route to a separate routing table.  When
+        a Logical Router Port has a configured value in
+        <code>options:route_table</code>, only static routes with the same
+        routing table value are considered.  A more detailed description of the
+        route lookup behavior is provided below:
       </p>
-
-      <ul>
-        <li>
-          1. First lookup among "global" routes: routes without
-          <code>route_table</code> value set and routes to directly connected
-          networks.
-        </li>
-        <li>
-          2. Next lookup among routes with same <code>route_table</code> value
-          as specified in LRP's options:route_table field.
-        </li>
-      </ul>
+      <p>
+        When a packet enters Logical Router (<code>LR</code>), it examines
+        the following list of routes:
+        <ul>
+          <li>
+            All routes to directly connected networks of the <code>LR</code>
+            (including networks that are learned from other availability zones
+            within the same <code>LR</code> through OVN-IC).
+          </li>
+          <li>
+            All static routes of the <code>LR</code> that have the same
+            <code>route_table</code> field value as that of the Logical Router
+            Port's <code>options:route_table</code> (If the option is absent,
+            static routes with an empty <code>route_table</code> field are
+            considered).
+          </li>
+        </ul>
+      </p>
+      <p>
+        From the resulting list of routes, the route with the longest prefix
+        match takes precedence over others.
+      </p>
     </column>
 
     <column name="external_ids" key="ic-learned-route">
