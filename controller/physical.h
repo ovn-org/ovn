@@ -70,6 +70,10 @@ struct physical_ctx {
     const char **encap_ips;
     struct physical_debug debug;
     bool always_tunnel;
+
+    /* Set of port binding names that have been already reprocessed during
+     * the I-P run. */
+    struct sset reprocessed_pbs;
 };
 
 void physical_register_ovs_idl(struct ovsdb_idl *);
