@@ -4447,6 +4447,7 @@ static void init_physical_ctx(struct engine_node *node,
     p_ctx->if_mgr = ctrl_ctx->if_mgr;
 
     pflow_output_get_debug(node, &p_ctx->debug);
+    sset_init(&p_ctx->reprocessed_pbs);
 }
 
 static void
@@ -4456,6 +4457,7 @@ destroy_physical_ctx(struct physical_ctx *p_ctx)
         free((char *)(p_ctx->encap_ips[i]));
     }
     free(p_ctx->encap_ips);
+    sset_destroy(&p_ctx->reprocessed_pbs);
 }
 
 static void *
