@@ -155,7 +155,7 @@ m4_define([OVN_CHECK_PACKETS],
 # Wait to receive all packets in $2, potentially receiving extra broadcast packets.
 # Fails if any (non bcast) additional packet, or any duplicate packets is received.
 m4_define([OVN_CHECK_PACKETS_REMOVE_BROADCAST],
-  [ovn_check_packets_remove_broadcast__ "$1" "$2" "__file__:__line__" "$3"
+  [ovn_check_packets_remove_broadcast__ "$1" "$2" "__file__:__line__" $3
    AT_CHECK([sort $rcv_text], [0], [expout], [ignore], [dump_diff__ "$1" "$2"])])
 
 # Wait to receive all packets from $2.
