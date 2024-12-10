@@ -5218,4 +5218,74 @@ tcp.flags = RST;
       The set of variable values for a given chassis.
     </column>
   </table>
+
+  <table name="Advertised_Route">
+    <p>
+      Each record represents a route that should be exported from ovn to the
+      outside network fabric.
+      It is populated by <code>ovn-northd</code> based on the addresses,
+      routes and NAT Entries of a
+      <code>OVN_Northbound.Logical_Router_Port</code>.
+    </p>
+
+    <column name="datapath">
+      The datapath belonging to the
+      <code>OVN_Northbound.Logical_Router</code> that this route is valid
+      for.
+    </column>
+
+    <column name="logical_port">
+      This is the <ref table="Port_Binding"/> that the router will send packets
+      out that are received for the below prefix.
+    </column>
+
+    <column name="ip_prefix">
+      IP prefix of this route (e.g. 192.168.100.0/24).
+    </column>
+
+    <column name="tracked_port">
+      In combination with a host <code>ip_prefix</code> this tracks the port
+      OVN will forward the packets for this destination to.
+      If set the <ref table="Advertised_Route" column="ip_prefix"/> will always
+      contain a /32 (for ipv4) or /128 (for ipv6) prefix.
+
+      An announcing chassis can use this information to check if this
+      destination is local and adjust the route priorities based on that.
+    </column>
+
+    <column name="external_ids">
+      See <em>External IDs</em> at the beginning of this document.
+    </column>
+  </table>
+
+  <table name="Learned_Route">
+    <p>
+      Each record represents a route that learned by ovn using some dynamic
+      routing logic outside of ovn.
+      It is populated by <code>ovn-controller</code> with routes it learns
+      locally.
+    </p>
+
+    <column name="datapath">
+      The datapath belonging to the
+      <code>OVN_Northbound.Logical_Router</code> that this route is valid
+      for.
+    </column>
+
+    <column name="logical_port">
+      This is the <ref table="Port_Binding"/> that the route was learned on.
+    </column>
+
+    <column name="ip_prefix">
+      IP prefix of this route (e.g. 192.168.100.0/24).
+    </column>
+
+    <column name="nexthop">
+      This is the nexthop ip we learned from outside of OVN.
+    </column>
+
+    <column name="external_ids">
+      See <em>External IDs</em> at the beginning of this document.
+    </column>
+  </table>
 </database>
