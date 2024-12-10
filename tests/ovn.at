@@ -14542,23 +14542,10 @@ nd_target=20010db800010000020002fffe010205
 as hv1 test_ipv6 1 $src_mac $dst_mac $src_ip $dst_ip $dst_mcast_mac \
 $mcast_node_ip $nd_target $nd_src_ip
 
-OVS_WAIT_WHILE([test 24 = $(wc -c hv1/br-phys_n1-tx.pcap | cut -d " " -f1)])
-OVS_WAIT_WHILE([test 24 = $(wc -c hv1/br-phys-tx.pcap | cut -d " " -f1)])
-
-# Use the grep here to filter out rarp packets that might have arrived
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/br-phys_n1-tx.pcap | \
-grep -v ffffffffffff | trim_zeros > 1.packets
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/br-phys-tx.pcap | \
-grep -v ffffffffffff | trim_zeros > 2.packets
-
-cat ipv6_ns.expected | cut -c -112 > expout
-AT_CHECK([cat 1.packets | cut -c -112], [0], [expout])
-AT_CHECK([cat 2.packets | cut -c -112], [0], [expout])
-
-# Skipping the ICMPv6 checksum
-cat ipv6_ns.expected | cut -c 117- > expout
-AT_CHECK([cat 1.packets | cut -c 117-], [0], [expout])
-AT_CHECK([cat 2.packets | cut -c 117-], [0], [expout])
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv1/br-phys_n1-tx.pcap], [ipv6_ns.expected], [cut -c -112])
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv1/br-phys-tx.pcap], [ipv6_ns.expected], [cut -c -112])
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv1/br-phys_n1-tx.pcap], [ipv6_ns.expected], [cut -c 117-])
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv1/br-phys-tx.pcap], [ipv6_ns.expected], [cut -c 117-])
 
 # Check that NS packets are not flooded across routing domains. That means
 # that hv2 should not send any packets across the physical network.
