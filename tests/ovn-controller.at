@@ -2305,6 +2305,9 @@ OVS_WAIT_UNTIL([grep -q 'wait-before-clear' hv1/ovn-controller.log])
 OVS_WAIT_UNTIL([test 0 = $(ovs-ofctl dump-flows br-int | grep -F 10.1.2.4 | grep -cvF 2.2.2.2)])
 
 # Check in the middle of the wait.
+# Wait for ovn-controller to claim the port as it might cause some lflow_run.
+OVS_WAIT_UNTIL([test 2 = $(grep -c 'Claiming lport ls1-lp1 for this chassis' hv1/ovn-controller.log)])
+
 lflow_run_1=$(ovn-appctl -t ovn-controller coverage/read-counter lflow_run)
 AT_CHECK([ovs-ofctl dump-flows br-int | grep -F 10.1.2.3], [0], [ignore])
 
