@@ -38660,10 +38660,7 @@ sid=$src_ip
 # send packet
 send_dhcp_packet $src_mac $src_ip $dst_mac $dst_ip 01 01 $yiaddr $giaddr $sid vif0
 
-ovs-ofctl dump-flows br-int table=$dhcp_relay_req_table > pflows1_dhcp_relay_req
-AT_CAPTURE_FILE([pflows1_dhcp_relay_req])
-
-AT_CHECK([cat pflows1_dhcp_relay_req | grep -v NXST | grep 255.255.255.255 | grep resubmit |
+OVS_WAIT_FOR_OUTPUT([ovs-ofctl dump-flows br-int table=$dhcp_relay_req_table | grep -v NXST | grep 255.255.255.255 | grep resubmit |
 cut -d ' ' -f5-5 | sed "s/,//"], [0], [dnl
 n_packets=1
 ])
@@ -38674,10 +38671,7 @@ giaddr=`ip_to_hex 192.168.1.1`
 # send packet
 send_dhcp_packet $src_mac $src_ip $dst_mac $dst_ip 01 01 $yiaddr $giaddr $sid vif0
 
-ovs-ofctl dump-flows br-int table=$dhcp_relay_req_table > pflows2_dhcp_relay_req
-AT_CAPTURE_FILE([pflows2_dhcp_relay_req])
-
-AT_CHECK([cat pflows2_dhcp_relay_req | grep -v NXST | grep 255.255.255.255 | grep drop |
+OVS_WAIT_FOR_OUTPUT([ovs-ofctl dump-flows br-int table=$dhcp_relay_req_table | grep -v NXST | grep 255.255.255.255 | grep drop |
 cut -d ' ' -f5-5 | sed "s/,//"], [0], [dnl
 n_packets=1
 ])
@@ -38694,10 +38688,7 @@ sid=$src_ip
 # send packet
 send_dhcp_packet $src_mac $src_ip $dst_mac $dst_ip 02 02 $yiaddr $giaddr $sid ext0
 
-ovs-ofctl dump-flows br-int table=$dhcp_relay_resp_table > pflows1_dhcp_relay_resp
-AT_CAPTURE_FILE([pflows1_dhcp_relay_resp])
-
-AT_CHECK([cat pflows1_dhcp_relay_resp | grep -v NXST | grep 172.16.1.1 | grep resubmit |
+OVS_WAIT_FOR_OUTPUT([ovs-ofctl dump-flows br-int table=$dhcp_relay_resp_table | grep -v NXST | grep 172.16.1.1 | grep resubmit |
 cut -d ' ' -f5-5 | sed "s/,//"], [0], [dnl
 n_packets=1
 ])
@@ -38707,10 +38698,7 @@ giaddr=`ip_to_hex 192.168.1.10`
 # send packet
 send_dhcp_packet $src_mac $src_ip $dst_mac $dst_ip 02 02 $yiaddr $giaddr $sid ext0
 
-ovs-ofctl dump-flows br-int table=$dhcp_relay_resp_table > pflows2_dhcp_relay_resp
-AT_CAPTURE_FILE([pflows2_dhcp_relay_resp])
-
-AT_CHECK([cat pflows2_dhcp_relay_resp | grep -v NXST | grep 172.16.1.1 | grep drop |
+OVS_WAIT_FOR_OUTPUT([ovs-ofctl dump-flows br-int table=$dhcp_relay_resp_table | grep -v NXST | grep 172.16.1.1 | grep drop |
 cut -d ' ' -f5-5 | sed "s/,//"], [0], [dnl
 n_packets=1
 ])
@@ -38723,10 +38711,7 @@ yiaddr=`ip_to_hex 192.168.2.10`
 # send packet
 send_dhcp_packet $src_mac $src_ip $dst_mac $dst_ip 02 02 $yiaddr $giaddr $sid ext0
 
-ovs-ofctl dump-flows br-int table=$dhcp_relay_resp_table > pflows2_dhcp_relay_resp
-AT_CAPTURE_FILE([pflows2_dhcp_relay_resp])
-
-AT_CHECK([cat pflows2_dhcp_relay_resp | grep -v NXST | grep 172.16.1.1 | grep drop |
+OVS_WAIT_FOR_OUTPUT([ovs-ofctl dump-flows br-int table=$dhcp_relay_resp_table | grep -v NXST | grep 172.16.1.1 | grep drop |
 cut -d ' ' -f5-5 | sed "s/,//"], [0], [dnl
 n_packets=2
 ])
@@ -38739,10 +38724,7 @@ sid=`ip_to_hex 172.16.1.100`
 # send packet
 send_dhcp_packet $src_mac $src_ip $dst_mac $dst_ip 02 02 $yiaddr $giaddr $sid ext0
 
-ovs-ofctl dump-flows br-int table=$dhcp_relay_resp_table > pflows2_dhcp_relay_resp
-AT_CAPTURE_FILE([pflows2_dhcp_relay_resp])
-
-AT_CHECK([cat pflows2_dhcp_relay_resp | grep -v NXST | grep 172.16.1.1 | grep drop |
+OVS_WAIT_FOR_OUTPUT([ovs-ofctl dump-flows br-int table=$dhcp_relay_resp_table | grep -v NXST | grep 172.16.1.1 | grep drop |
 cut -d ' ' -f5-5 | sed "s/,//"], [0], [dnl
 n_packets=3
 ])
