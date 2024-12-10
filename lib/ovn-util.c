@@ -353,6 +353,26 @@ extract_lrp_networks(const struct nbrec_logical_router_port *lrp,
     return true;
 }
 
+void
+lrp_network_to_string(const struct lport_addresses *addresses, struct ds *s,
+                      bool include_generated_v6)
+{
+    ds_put_cstr(s, addresses->ea_s);
+    for (size_t i = 0; i < addresses->n_ipv4_addrs; i++) {
+        struct ipv4_netaddr *addr = &addresses->ipv4_addrs[i];
+        ds_put_format(s, " %s/%d", addr->addr_s, addr->plen);
+    }
+    for (size_t i = 0; i < addresses->n_ipv6_addrs; i++) {
+        /* The generated v6 address is always at the end
+         * (see extract_lrp_networks). */
+        if (!include_generated_v6 && i == addresses->n_ipv6_addrs -1) {
+            break;
+        }
+        struct ipv6_netaddr *addr = &addresses->ipv6_addrs[i];
+        ds_put_format(s, " %s/%d", addr->addr_s, addr->plen);
+    }
+}
+
 bool
 extract_sbrec_binding_first_mac(const struct sbrec_port_binding *binding,
                                 struct eth_addr *ea)

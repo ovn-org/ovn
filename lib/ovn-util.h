@@ -107,6 +107,8 @@ bool extract_ip_addresses(const char *address, struct lport_addresses *);
 bool extract_ip_address(const char *address, struct lport_addresses *);
 bool extract_lrp_networks(const struct nbrec_logical_router_port *,
                           struct lport_addresses *);
+void lrp_network_to_string(const struct lport_addresses *, struct ds *,
+                           bool include_generated_v6);
 bool extract_sbrec_binding_first_mac(const struct sbrec_port_binding *binding,
                                      struct eth_addr *ea);
 

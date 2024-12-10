@@ -3143,10 +3143,10 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
         sbrec_port_binding_set_tag(op->sb, NULL, 0);
 
         struct ds s = DS_EMPTY_INITIALIZER;
-        ds_put_cstr(&s, op->nbrp->mac);
-        for (int i = 0; i < op->nbrp->n_networks; ++i) {
-            ds_put_format(&s, " %s", op->nbrp->networks[i]);
-        }
+        lrp_network_to_string(op->primary_port
+                              ? &op->primary_port->lrp_networks
+                              : &op->lrp_networks,
+                              &s, false);
         const char *addresses = ds_cstr(&s);
         sbrec_port_binding_set_mac(op->sb, &addresses, 1);
         ds_destroy(&s);
