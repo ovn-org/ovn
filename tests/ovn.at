@@ -31753,11 +31753,12 @@ OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
 
 wait_row_count FDB 2
 
+# FDB update can be delayed up to MAX_FDB_DELAY_MSEC msec.
+wait_column "$sw0p3_dpkey" fdb port_key mac='"50:54:00:00:00:13"'
+
 check_column "50:54:00:00:00:13 50:54:00:00:00:14" fdb mac
 check_column "$sw0_dpkey $sw0_dpkey" fdb dp_key
 check_column "$sw0p1_dpkey $sw0p3_dpkey" fdb port_key
-
-check_column "$sw0p3_dpkey" fdb port_key mac="50\:54\:00\:00\:00\:13"
 
 as hv1 reset_pcap_file hv1-vif1 hv1/vif1
 as hv1 reset_pcap_file hv1-vif3 hv1/vif3
