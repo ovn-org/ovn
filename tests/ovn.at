@@ -9555,7 +9555,7 @@ AT_CHECK([sort packets], [0], [expout])
 
 # Temporarily remove nat-addresses option to avoid race conditions
 # due to GARP backoff
-ovn-nbctl lsp-set-options lrp0-rp router-port=lrp0 nat-addresses=""
+ovn-nbctl --wait=hv lsp-set-options lrp0-rp router-port=lrp0 nat-addresses=""
 
 as hv1 reset_pcap_file snoopvif hv1/snoopvif
 
