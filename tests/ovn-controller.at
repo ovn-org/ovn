@@ -3415,6 +3415,11 @@ AT_CHECK([test 0 = $(grep -c "HANDLER_MESSAGE" hv1/ovn-controller.log)])
 # causes recompute.
 check ovs-vsctl add-port br-int vif -- \
     set Interface vif type=dummy
+
+# Ensure ovn-controller runs and handles previous change before setting
+# iface-id, so it's seen in a different transaction.
+check ovn-nbctl --wait=hv sync
+
 check ovs-vsctl set Interface vif external-ids:iface-id=vif
 wait_row_count Port_Binding 1 logical_port="vif" up=true
 AT_CHECK([test $(grep -c "HANDLER_MESSAGE" hv1/ovn-controller.log) -ge 1])
