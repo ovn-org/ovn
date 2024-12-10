@@ -3298,9 +3298,17 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
                 smap_init(&new);
 
                 if (is_cr_port(op)) {
-                    smap_add(&new, "distributed-port", op->nbsp->name);
+                    smap_add(&new, "distributed-port", op->primary_port->key);
                 } else if (router_port) {
-                    smap_add(&new, "peer", router_port);
+                    /* op->peer can be null if the peer is disabed. In this
+                     * case we fall back to the router_port string which
+                     * might be wrong, but since the port does not exist that
+                     * does not matter. */
+                    if (op->peer) {
+                        smap_add(&new, "peer", op->peer->key);
+                    } else {
+                        smap_add(&new, "peer", router_port);
+                    }
                 }
                 if (chassis) {
                     smap_add(&new, "l3gateway-chassis", chassis);
@@ -4016,7 +4024,7 @@ sync_pb_for_lrp(struct ovn_port *op,
             lr_stateful_table_find_by_index(lr_stateful_table, op->od->index);
         ovs_assert(lr_stateful_rec);
 
-        smap_add(&new, "distributed-port", op->nbrp->name);
+        smap_add(&new, "distributed-port", op->primary_port->key);
 
         bool always_redirect =
             !lr_stateful_rec->lrnat_rec->has_distributed_nat &&
@@ -4041,10 +4049,7 @@ sync_pb_for_lrp(struct ovn_port *op,
             smap_add(&new, "peer", op->peer->key);
             if (op->nbrp->ha_chassis_group ||
                 op->nbrp->n_gateway_chassis) {
-                char *redirect_name =
-                    ovn_chassis_redirect_name(op->nbrp->name);
-                smap_add(&new, "chassis-redirect-port", redirect_name);
-                free(redirect_name);
+                smap_add(&new, "chassis-redirect-port", op->cr_port->key);
             }
         }
         if (chassis_name) {
