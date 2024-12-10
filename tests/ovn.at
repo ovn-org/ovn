@@ -13307,13 +13307,8 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([localport suppress gARP])
 AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
-
-send_garp() {
-    local inport=$1 eth_src=$2 eth_dst=$3 spa=$4 tpa=$5
-    local request=${eth_dst}${eth_src}08060001080006040001${eth_src}${spa}${eth_dst}${tpa}
-    as hv1 ovs-appctl netdev-dummy/receive vif$inport $request
-}
 
 net_add n1
 sim_add hv1
@@ -13366,7 +13361,7 @@ AT_CHECK([
 
 spa=$(ip_to_hex 10 0 0 1)
 tpa=$(ip_to_hex 10 0 0 100)
-send_garp 1 000000000001 ffffffffffff $spa $tpa
+send_garp hv1 1 1 "00:00:00:00:00:01" "ff:ff:ff:ff:ff:ff" $spa $tpa
 
 dnl traffic from localport should not be sent to localnet
 AT_CHECK([tcpdump -vnne -r hv1/br-phys_n1-tx.pcap arp[[24:4]]=0x0a000064 | wc -l],[0],[dnl
@@ -13380,6 +13375,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([localport doesn't suppress ARP directed to external port])
 AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 
 ovn_start
 net_add n1
@@ -13427,24 +13423,18 @@ check ovn-nbctl --wait=hv sync
 check ovn-nbctl lsp-del lext-deleted
 check ovn-nbctl --wait=hv sync
 
-send_garp() {
-    local inport=$1 eth_src=$2 eth_dst=$3 spa=$4 tpa=$5
-    local request=${eth_dst}${eth_src}08060001080006040001${eth_src}${spa}${eth_dst}${tpa}
-    ovs-appctl netdev-dummy/receive $inport $request
-}
-
 send_frames() {
-    spa=$(ip_to_hex 10 0 0 1)
-    tpa=$(ip_to_hex 10 0 0 2)
-    send_garp lp 000000000001 000000000002 $spa $tpa
+    spa=10.0.0.1
+    tpa=10.0.0.2
+    send_garp main lp 1 "00:00:00:00:00:01" "00:00:00:00:00:02" $spa $tpa
 
-    spa=$(ip_to_hex 10 0 0 1)
-    tpa=$(ip_to_hex 10 0 0 10)
-    send_garp lp 000000000001 000000000010 $spa $tpa
+    spa=10.0.0.1
+    tpa=10.0.0.10
+    send_garp main lp 1 "00:00:00:00:00:01" "00:00:00:00:00:10" $spa $tpa
 
-    spa=$(ip_to_hex 10 0 0 1)
-    tpa=$(ip_to_hex 10 0 0 3)
-    send_garp lp 000000000001 000000000003 $spa $tpa
+    spa=10.0.0.1
+    tpa=10.0.0.3
+    send_garp main lp 1 "00:00:00:00:00:01" "00:00:00:00:00:03" $spa $tpa
 }
 
 send_frames
@@ -15233,6 +15223,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([localnet connectivity with multiple requested-chassis])
 AT_KEYWORDS([multi-chassis])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 
 net_add n1
@@ -15298,13 +15289,6 @@ send_arp() {
     echo "${request}"
 }
 
-send_garp() {
-    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 spa=$5 tpa=$6
-    local request=${eth_dst}${eth_src}08060001080006040002${eth_src}${spa}${eth_dst}${tpa}
-    as ${hv} ovs-appctl netdev-dummy/receive $inport $request
-    echo "${request}"
-}
-
 reset_env() {
     as hv1 reset_pcap_file first hv1/first
     as hv2 reset_pcap_file second hv2/second
@@ -15361,10 +15345,10 @@ wait_column "" Port_Binding requested_additional_chassis logical_port=migrator
 wait_for_ports_up
 
 # advertise location of ports through localnet port
-send_garp hv1 migrator 0000000000ff ffffffffffff $migrator_tpa $migrator_tpa
-send_garp hv1 first 000000000001 ffffffffffff $first_spa $first_spa
-send_garp hv2 second 000000000002 ffffffffffff $second_spa $second_spa
-send_garp hv3 third 000000000003 ffffffffffff $third_spa $third_spa
+send_garp hv1 migrator 2 "00:00:00:00:00:ff" "ff:ff:ff:ff:ff:ff" 10.0.0.100 10.0.0.100
+send_garp hv1 first 2 "00:00:00:00:00:01" "ff:ff:ff:ff:ff:ff" 10.0.0.1 10.0.0.1
+send_garp hv2 second 2 "00:00:00:00:00:02" "ff:ff:ff:ff:ff:ff" 10.0.0.2 10.0.0.2
+send_garp hv3 third 2 "00:00:00:00:00:03" "ff:ff:ff:ff:ff:ff" 10.0.0.3 10.0.0.3
 reset_env
 
 # check that...
@@ -15546,7 +15530,7 @@ check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([test `as hv2 ovs-vsctl get Interface migrator external_ids:ovn-installed` = '"true"'])
 
 # advertise new location of the port through localnet port
-send_garp hv2 migrator 0000000000ff ffffffffffff $migrator_tpa $migrator_tpa
+send_garp hv2 migrator 2 "00:00:00:00:00:ff" "ff:ff:ff:ff:ff:ff" 10.0.0.100 10.0.0.100
 
 reset_env
 
@@ -21876,16 +21860,12 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([virtual ports])
 AT_KEYWORDS([virtual ports])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 
 send_nd_ns() {
     local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 ip6_src=$5 ip6_dst=$6 tgt_ip=$7
     local request=${eth_dst}${eth_src}86dd6000000000203aff${ip6_src}${ip6_dst}870005c900000000${tgt_ip}0101${eth_src}
-    as hv$hv ovs-appctl netdev-dummy/receive hv${hv}-vif$inport $request
-}
-send_garp() {
-    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 spa=$5 tpa=$6
-    local request=${eth_dst}${eth_src}08060001080006040001${eth_src}${spa}${eth_dst}${tpa}
     as hv$hv ovs-appctl netdev-dummy/receive hv${hv}-vif$inport $request
 }
 
@@ -22098,9 +22078,9 @@ check_virtual_offlows_not_present() {
 # and sw0-p1 should be its virtual_parent.
 eth_src=505400000003
 eth_dst=ffffffffffff
-spa=$(ip_to_hex 10 0 0 10)
-tpa=$(ip_to_hex 10 0 0 10)
-send_garp 1 1 $eth_src $eth_dst $spa $tpa
+spa=10.0.0.10
+tpa=10.0.0.10
+send_garp hv1 hv1-vif1 1 $(hex_to_mac $eth_src) $(hex_to_mac $eth_dst) $spa $tpa
 
 eth_dst=3333ff0061d1
 ipv6_src=10000000000000000000000000000003
@@ -22165,7 +22145,7 @@ check_virtual_offlows_not_present hv2
 
 # From sw0-p0 resend GARP for 10.0.0.10. hv1 should reclaim sw0-vir
 # and sw0-p1 should be its virtual_parent.
-send_garp 1 1 $eth_src $eth_dst $spa $tpa
+send_garp hv1 hv1-vif1 1 $(hex_to_mac $eth_src) $(hex_to_mac $eth_dst) $spa $tpa
 
 OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
 logical_port=sw0-vir) = x$hv1_ch_uuid])
@@ -22209,11 +22189,11 @@ check_virtual_offlows_not_present hv2
 
 # From sw0-p0 send GARP for 10.0.0.10. hv1 should claim sw0-vir
 # and sw0-p1 should be its virtual_parent.
-eth_src=505400000003
-eth_dst=ffffffffffff
-spa=$(ip_to_hex 10 0 0 10)
-tpa=$(ip_to_hex 10 0 0 10)
-send_garp 1 1 $eth_src $eth_dst $spa $tpa
+eth_src="50:54:00:00:00:03"
+eth_dst="ff:ff:ff:ff:ff:ff"
+spa=10.0.0.10
+tpa=10.0.0.10
+send_garp hv1 hv1-vif1 1 $eth_src $eth_dst $spa $tpa
 
 wait_row_count Port_Binding 1 logical_port=sw0-vir chassis=$hv1_ch_uuid
 check_row_count Port_Binding 1 logical_port=sw0-vir virtual_parent=sw0-p1
@@ -22229,11 +22209,11 @@ check_virtual_offlows_not_present hv2
 
 # From sw0-p3 send GARP for 10.0.0.10. hv1 should claim sw0-vir
 # and sw0-p3 should be its virtual_parent.
-eth_src=505400000005
-eth_dst=ffffffffffff
-spa=$(ip_to_hex 10 0 0 10)
-tpa=$(ip_to_hex 10 0 0 10)
-send_garp 1 2 $eth_src $eth_dst $spa $tpa
+eth_src="50:54:00:00:00:05"
+eth_dst="ff:ff:ff:ff:ff:ff"
+spa=10.0.0.10
+tpa=10.0.0.10
+send_garp hv1 hv1-vif2 1 $eth_src $eth_dst $spa $tpa
 
 OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
 logical_port=sw0-vir) = x$hv1_ch_uuid])
@@ -22257,11 +22237,11 @@ check_virtual_offlows_not_present hv2
 
 # send the garp from sw0-p2 (in hv2). hv2 should claim sw0-vir
 # and sw0-p2 shpuld be its virtual_parent.
-eth_src=505400000004
-eth_dst=ffffffffffff
-spa=$(ip_to_hex 10 0 0 10)
-tpa=$(ip_to_hex 10 0 0 10)
-send_garp 2 1 $eth_src $eth_dst $spa $tpa
+eth_src="50:54:00:00:00:04"
+eth_dst="ff:ff:ff:ff:ff:ff"
+spa=10.0.0.10
+tpa=10.0.0.10
+send_garp hv2 hv2-vif1 1 $eth_src $eth_dst $spa $tpa
 
 OVS_WAIT_UNTIL([test x$(ovn-sbctl --bare --columns chassis find port_binding \
 logical_port=sw0-vir) = x$hv2_ch_uuid])
@@ -24711,13 +24691,8 @@ DVR_N_S_PING([vxlan])
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ARP lookup before learning])
 AT_KEYWORDS([virtual ports])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
-
-send_garp() {
-    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 spa=$5 tpa=$6
-    local request=${eth_dst}${eth_src}08060001080006040001${eth_src}${spa}${eth_dst}${tpa}
-    as hv$hv ovs-appctl netdev-dummy/receive hv${hv}-vif$inport $request
-}
 
 send_arp_reply() {
     local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 spa=$5 tpa=$6
@@ -24794,11 +24769,11 @@ as hv1 ovs-appctl -t ovn-controller vlog/set dbg
 #     mac - 50:54:00:00:00:03
 
 check_row_count MAC_Binding 0
-eth_src=505400000003
-eth_dst=ffffffffffff
-spa=$(ip_to_hex 10 0 0 30)
-tpa=$(ip_to_hex 10 0 0 30)
-send_garp 1 1 $eth_src $eth_dst $spa $tpa
+eth_src="50:54:00:00:00:03"
+eth_dst="ff:ff:ff:ff:ff:ff"
+spa=10.0.0.30
+tpa=10.0.0.30
+send_garp hv1 hv1-vif1 1 $eth_src $eth_dst $spa $tpa
 
 wait_row_count MAC_Binding 1
 
@@ -24824,7 +24799,7 @@ OVS_WAIT_UNTIL(
 )
 
 # Send garp again. This time the packet should not be sent to ovn-controller.
-send_garp 1 1 $eth_src $eth_dst $spa $tpa
+send_garp hv1 hv1-vif1 1 $eth_src $eth_dst $spa $tpa
 # Wait for an entry in table=OFTABLE_MAC_LOOKUP
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep n_packets=1 | wc -l`])
 
@@ -24836,11 +24811,11 @@ AT_CHECK([test 1 = `as hv1 ovs-ofctl dump-flows br-int table=$learn_neigh | grep
 grep controller | grep -v n_packets=0 | wc -l`])
 
 # Now send garp packet with different mac.
-eth_src=505400000013
-eth_dst=ffffffffffff
-spa=$(ip_to_hex 10 0 0 30)
-tpa=$(ip_to_hex 10 0 0 30)
-send_garp 1 1 $eth_src $eth_dst $spa $tpa
+eth_src="50:54:00:00:00:13"
+eth_dst="ff:ff:ff:ff:ff:ff"
+spa=10.0.0.30
+tpa=10.0.0.30
+send_garp hv1 hv1-vif1 1 $eth_src $eth_dst $spa $tpa
 
 # The garp packet should be sent to ovn-controller and the mac_binding entry
 # should be updated.
@@ -24861,12 +24836,12 @@ list mac_binding], [0], [lr0-sw0
 #   logical_port - lr0
 #   IP           - 10.0.0.50
 #   MAC          - 50:54:00:00:00:33
-eth_src=505400000033
-eth_dst=ffffffffffff
-spa=$(ip_to_hex 10 0 0 50)
-tpa=$(ip_to_hex 20 0 0 1)
+eth_src="50:54:00:00:00:33"
+eth_dst="ff:ff:ff:ff:ff:ff"
+spa=10.0.0.50
+tpa=20.0.0.1
 
-send_garp 1 1 $eth_src $eth_dst $spa $tpa
+send_garp hv1 hv1-vif1 1 $eth_src $eth_dst $spa $tpa
 
 # The garp packet should be sent to ovn-controller and the mac_binding entry
 # should be updated.
@@ -24885,7 +24860,7 @@ find mac_binding ip=10.0.0.50], [0], [lr0-sw0
 ])
 
 # Send the same packet again.
-send_garp 1 1 $eth_src $eth_dst $spa $tpa
+send_garp hv1 hv1-vif1 1 $eth_src $eth_dst $spa $tpa
 
 OVS_WAIT_UNTIL(
     [test 1 = `as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep dl_src=50:54:00:00:00:33 \
@@ -34836,20 +34811,6 @@ AT_CHECK([ovn-nbctl --wait=hv sync])
 OVS_WAIT_UNTIL([grep pinctrl hv1/ovn-controller.log | grep -c connected])
 OVS_WAIT_UNTIL([grep pinctrl hv2/ovn-controller.log | grep -c connected])
 
-send_garp() {
-    hv=$1
-    dev=$2
-    mac_byte=$3
-    ip_byte=${4-$3}
-
-    mac="00:00:00:00:10:${mac_byte}"
-    ip="192.168.10.${ip_byte}"
-    packet=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${mac}')/ \
-                      ARP(op=2, hwsrc='${mac}', hwdst='${mac}', \
-                      psrc='${ip}', pdst='${ip}')")
-    as $hv ovs-appctl netdev-dummy/receive $dev $packet
-}
-
 send_udp() {
     hv=$1
     dev=$2
@@ -34864,8 +34825,8 @@ AT_CHECK([fetch_column nb:logical_router options name="gw-1" | grep -q mac_bindi
 AT_CHECK([fetch_column nb:logical_router options name="gw-2" | grep -q mac_binding_age_threshold], [1])
 
 # Send GARP to populate MAC binding table records
-send_garp hv1 ext1 10
-send_garp hv2 ext2 20
+send_garp hv1 ext1 2 "00:00:00:00:10:10" "ff:ff:ff:ff:ff:ff" "192.168.10.10" "192.168.10.10"
+send_garp hv2 ext2 2 "00:00:00:00:10:20" "ff:ff:ff:ff:ff:ff" "192.168.10.20" "192.168.10.20"
 
 # Two rows present for each IP, one corresponding to each logical_port
 wait_row_count mac_binding 2 ip="192.168.10.10"
@@ -35083,21 +35044,9 @@ check ovn-nbctl --wait=hv sync
 dnl Wait for pinctrl thread to be connected.
 OVS_WAIT_UNTIL([grep pinctrl hv1/ovn-controller.log | grep -q connected])
 
-send_garp() {
-    hv=$1
-    dev=$2
-    mac=$3
-    ip=$4
-
-    packet=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${mac}')/ \
-                      ARP(op=2, hwsrc='${mac}', hwdst='${mac}',     \
-                      psrc='${ip}', pdst='${ip}')")
-    as $hv ovs-appctl netdev-dummy/receive $dev $packet
-}
-
 AS_BOX([Remove LRP with learnt MAC_Binding])
 dnl Populate MAC Binding entry.
-send_garp hv1 vif1 00:00:00:00:10:10 192.168.10.10
+send_garp hv1 vif1 2 00:00:00:00:10:10 ff:ff:ff:ff:ff:ff 192.168.10.10 192.168.10.10
 wait_row_count mac_binding 1 ip="192.168.10.10" logical_port="lr-ls1"
 
 dnl Check local mac binding cache.
@@ -35124,7 +35073,7 @@ check ovn-nbctl --wait=hv sync
 check_column 42 Port_Binding tunnel_key logical_port=lr-ls2
 
 dnl Populate MAC Binding entry.
-send_garp hv1 vif2 00:00:00:00:20:10 192.168.20.10
+send_garp hv1 vif2 2 00:00:00:00:20:10 ff:ff:ff:ff:ff:ff 192.168.20.10 192.168.20.10
 wait_row_count mac_binding 1 ip="192.168.20.10" logical_port="lr-ls2"
 
 dnl Check local mac binding cache.
@@ -37653,12 +37602,6 @@ AT_SETUP([virtual port claim race condition])
 AT_KEYWORDS([virtual ports])
 ovn_start
 
-send_garp() {
-    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 spa=$5 tpa=$6
-    local request=${eth_dst}${eth_src}08060001080006040001${eth_src}${spa}${eth_dst}${tpa}
-    as hv$hv ovs-appctl netdev-dummy/receive hv${hv}-vif$inport $request
-}
-
 net_add n1
 
 sim_add hv1
@@ -37713,11 +37656,7 @@ sleep_sb
 
 # From sw0-p0 send GARP for 10.0.0.10. hv1 should claim sw0-vir
 # and sw0-p1 should be its virtual_parent.
-eth_src=505400000003
-eth_dst=ffffffffffff
-spa=$(ip_to_hex 10 0 0 10)
-tpa=$(ip_to_hex 10 0 0 10)
-send_garp 1 1 $eth_src $eth_dst $spa $tpa
+send_garp hv1 hv1-vif1 1 "50:54:00:00:00:03" "ff:ff:ff:ff:ff:ff" 10.0.0.10 10.0.0.10
 
 OVS_WAIT_UNTIL([test 1 = `cat hv1/ovn-controller.log | grep "pinctrl received  packet-in" | \
 grep opcode=BIND_VPORT | grep OF_Table_ID=$(ovn-debug lflow-stage-to-oftable ls_in_arp_rsp) | wc -l`])
