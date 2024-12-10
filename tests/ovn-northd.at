@@ -918,6 +918,10 @@ check as ovn-nb ovs-appctl -t ovsdb-server ovsdb-server/remove-remote "$conn"
 conn2=punix:`pwd`/special.sock
 check as ovn-nb ovs-appctl -t ovsdb-server ovsdb-server/add-remote "$conn2"
 
+# The reply of previous unixctl does not guarantee that ovsdb-server added the remote.
+# By running another unixctl command, we ensure that ovsdb-server had reconfigured the remotes.
+AT_CHECK([test 1 = $(as ovn-nb ovs-appctl -t ovsdb-server ovsdb-server/list-remotes | grep -c special.sock)])
+
 # ovn-northd won't respond to changes (because the nbdb connection dropped).
 check ovn-nbctl --db="${conn2#p}" ls-add sw1
 sleep 5
