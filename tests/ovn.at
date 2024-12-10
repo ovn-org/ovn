@@ -22508,8 +22508,8 @@ packet0="inport==\"sw0-p11\" && eth.src==00:00:00:00:00:11 && eth.dst==00:00:00:
          ip4 && ip.ttl==64 && ip4.src==192.168.1.11 && ip4.dst==192.168.1.100 &&
          tcp && tcp.src==10000 && tcp.dst==80"
 OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet0"])
-check ovn-nbctl --wait=hv sync
 
+wait_row_count controller_event 1
 ovn-sbctl list controller_event > events
 AT_CAPTURE_FILE([events])
 uuid=$(awk '/_uuid/{print $3}' < events)
@@ -22537,7 +22537,7 @@ packet1="inport==\"sw1-p0\" && eth.src==00:00:00:00:00:33 && eth.dst==00:00:00:0
          tcp && tcp.src==10000 && tcp.dst==80"
 
 OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet1"])
-check ovn-nbctl --wait=hv sync
+wait_row_count controller_event 1
 ovn-sbctl list controller_event
 uuid=$(ovn-sbctl list controller_event | awk '/_uuid/{print $3}')
 AT_CHECK([ovn-sbctl get controller_event $uuid event_type], [0], [dnl
@@ -22553,7 +22553,7 @@ packet2="inport==\"sw0-p11\" && eth.src==00:00:00:00:00:11 && eth.dst==00:00:00:
          tcp && tcp.src==10000 && tcp.dst==50051"
 
 OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet2"])
-check ovn-nbctl --wait=hv sync
+wait_row_count controller_event 1
 ovn-sbctl list controller_event
 uuid=$(ovn-sbctl list controller_event | awk '/_uuid/{print $3}')
 
