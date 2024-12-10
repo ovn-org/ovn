@@ -149,14 +149,14 @@ AT_CHECK([ovn-sbctl --columns=vtep_logical_switches list Chassis | cut -d ':' -f
 
 # unbinds all ports from lswitch0.
 AT_CHECK([vtep-ctl unbind-ls br-vtep p0 100 -- unbind-ls br-vtep p1 300])
-OVS_WAIT_UNTIL([test -z "`ovn-sbctl list Chassis | grep -- br-vtep_lswitch0`"])
+OVS_WAIT_UNTIL([test -z "`ovn-sbctl list Chassis | grep -- lswitch0`"])
 AT_CHECK([ovn-sbctl --columns=vtep_logical_switches list Chassis | cut -d ':' -f2 | tr -d ' ' ], [0], [dnl
 [[lswitch1]]
 ])
 
 # unbinds all ports from lswitch1.
 AT_CHECK([vtep-ctl unbind-ls br-vtep p0 300])
-OVS_WAIT_UNTIL([test -z "`ovn-sbctl list Chassis | grep -- br-vtep_lswitch1`"])
+OVS_WAIT_UNTIL([test -z "`ovn-sbctl list Chassis | grep -- lswitch1`"])
 AT_CHECK([ovn-sbctl --columns=vtep_logical_switches list Chassis | cut -d ':' -f2 | tr -d ' '], [0], [dnl
 [[]]
 ])
