@@ -4189,7 +4189,8 @@ ipv6_ra_update_config(const struct sbrec_port_binding *pb)
     }
 
     const char *prefixes = smap_get(&pb->options, "ipv6_ra_prefixes");
-    if (prefixes && !extract_ip_addresses(prefixes, &config->prefixes)) {
+    if (prefixes && *prefixes != '\0' &&
+        !extract_ip_addresses(prefixes, &config->prefixes)) {
         VLOG_WARN("Invalid IPv6 prefixes: %s", prefixes);
         goto fail;
     }
