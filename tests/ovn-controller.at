@@ -3225,9 +3225,10 @@ AS_BOX([Check LR snat requested zone 2])
 AT_CHECK([test $(ovn-appctl -t ovn-controller ct-zone-list | awk '/lr_snat/{print $2}') -eq 2])
 
 n_flush=$(grep -c -i flush hv1/ovs-vswitchd.log)
-check ovn-appctl -t ovn-controller exit --restart
-# Make sure ovn-controller stopped before restarting it
-OVS_WAIT_UNTIL([test "$(ovn-appctl -t ovn-controller debug/status)" != "running"])
+
+# Stop ovn-controller on hv1 with --restart flag
+OVN_CONTROLLER_EXIT([hv1])
+
 start_daemon ovn-controller --verbose="ct_zone:dbg"
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
@@ -3244,9 +3245,7 @@ check_ct_zone_max 22
 AT_CHECK([test $(ovn-appctl -t ovn-controller ct-zone-list | awk '/lr_snat/{print $2}') -eq 0])
 
 n_flush=$(grep -c -i flush hv1/ovs-vswitchd.log)
-check ovn-appctl -t ovn-controller exit --restart
-# Make sure ovn-controller stopped before restarting it
-OVS_WAIT_UNTIL([test "$(ovn-appctl -t ovn-controller debug/status)" != "running"])
+OVN_CONTROLLER_EXIT([hv1])
 start_daemon ovn-controller --verbose="ct_zone:dbg"
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
