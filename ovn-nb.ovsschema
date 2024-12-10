@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "7.7.0",
-    "cksum": "116357561 38626",
+    "version": "7.8.0",
+    "cksum": "3497747919 38626",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -468,7 +468,7 @@
                              "min": 0,
                              "max": "unlimited"}},
                 "networks": {"type": {"key": "string",
-                                      "min": 1,
+                                      "min": 0,
                                       "max": "unlimited"}},
                 "mac": {"type": "string"},
                 "peer": {"type": {"key": "string", "min": 0, "max": 1}},

@@ -10,6 +10,8 @@ Post v24.09.0
      enabled in all cases where it is needed.
    - The experimental logical router port options "routing-protocol-redirect"
      and "routing-protocols" are now also usable on distributed gateway ports.
+   - ovn-nb: Changed schema of ovn-nb to make networks optional within Logical
+     Router Ports.
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------

@@ -929,12 +929,12 @@
     <h2>Logical Router Port Commands</h2>
 
     <dl>
-      <dt>[<code>--may-exist</code>] <code>lrp-add</code> <var>router</var> <var>port</var> <var>mac</var> <var>network</var>... [<code>peer=</code><var>peer</var>]</dt>
+      <dt>[<code>--may-exist</code>] <code>lrp-add</code> <var>router</var> <var>port</var> <var>mac</var> [<var>network</var>]... [<code>peer=</code><var>peer</var>]</dt>
       <dd>
         <p>
           Creates on <var>router</var> a new logical router port named
-          <var>port</var> with Ethernet address <var>mac</var> and one
-          or more IP address/netmask for each <var>network</var>.
+          <var>port</var> with Ethernet address <var>mac</var> and IP
+          address/netmask for each <var>network</var>.
         </p>
 
         <p>

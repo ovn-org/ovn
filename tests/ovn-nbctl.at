@@ -1697,6 +1697,19 @@ AT_CHECK([ovn-nbctl lrp-list lr0 | uuidfilt], [0], [dnl
 <1> (lrp1)
 ])
 
+AT_CHECK([ovn-nbctl lrp-add lr0 lrp2 00:00:00:01:02:03])
+AT_CHECK([ovn-nbctl lrp-list lr0 | uuidfilt], [0], [dnl
+<0> (lrp0)
+<1> (lrp1)
+<2> (lrp2)
+])
+
+AT_CHECK([ovn-nbctl lrp-del lrp2])
+AT_CHECK([ovn-nbctl lrp-list lr0 | uuidfilt], [0], [dnl
+<0> (lrp0)
+<1> (lrp1)
+])
+
 AT_CHECK([ovn-nbctl lr-add lr1])
 AT_CHECK([ovn-nbctl lrp-add lr0 lrp1 00:00:00:01:02:03 192.168.1.1/24], [1], [],
   [ovn-nbctl: lrp1: a port with this name already exists
