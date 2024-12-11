@@ -3327,7 +3327,7 @@ check_ct_zone_max 22
 AS_BOX([Check LR snat requested zone 2])
 AT_CHECK([test $(ovn-appctl -t ovn-controller ct-zone-list | awk '/lr_snat/{print $2}') -eq 2])
 
-n_flush=$(grep -c -i flush hv1/ovs-vswitchd.log)
+n_flush=$(grep -c -i ct_flush_zone hv1/ovs-vswitchd.log)
 
 # Stop ovn-controller on hv1 with --restart flag
 OVN_CONTROLLER_EXIT([hv1])
@@ -3337,7 +3337,7 @@ wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 # Check we do not have unexpected ct-flush restarting ovn-controller
-AT_CHECK([test $(grep -c -i flush hv1/ovs-vswitchd.log) -eq ${n_flush}])
+AT_CHECK([test $(grep -c -i ct_flush_zone hv1/ovs-vswitchd.log) -eq ${n_flush}])
 
 AS_BOX([Check LR snat allowed requested zone 0])
 check ovn-nbctl set logical_router lr options:snat-ct-zone=0
@@ -3347,14 +3347,14 @@ check_ct_zone_min 0
 check_ct_zone_max 22
 AT_CHECK([test $(ovn-appctl -t ovn-controller ct-zone-list | awk '/lr_snat/{print $2}') -eq 0])
 
-n_flush=$(grep -c -i flush hv1/ovs-vswitchd.log)
+n_flush=$(grep -c -i ct_flush_zone hv1/ovs-vswitchd.log)
 OVN_CONTROLLER_EXIT([hv1])
 start_daemon ovn-controller --verbose="ct_zone:dbg"
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 # Check we do not have unexpected ct-flush restarting ovn-controller
-AT_CHECK([test $(grep -c -i flush hv1/ovs-vswitchd.log) -eq ${n_flush}])
+AT_CHECK([test $(grep -c -i ct_flush_zone hv1/ovs-vswitchd.log) -eq ${n_flush}])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

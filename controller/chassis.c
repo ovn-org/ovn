@@ -71,6 +71,8 @@ struct ovs_chassis_cfg {
     bool is_interconn;
     /* Does OVS support sampling with ids taken from registers? */
     bool sample_with_regs;
+    /* Does OVS support flushing CT zones using label/mark? */
+    bool ct_label_flush;
 };
 
 static void
@@ -358,6 +360,8 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
     ovs_cfg->is_interconn = get_is_interconn(&cfg->external_ids, chassis_id);
     ovs_cfg->sample_with_regs =
         ovs_feature_is_supported(OVS_SAMPLE_REG_SUPPORT);
+    ovs_cfg->ct_label_flush =
+        ovs_feature_is_supported(OVS_CT_LABEL_FLUSH_SUPPORT);
 
     return true;
 }
@@ -395,6 +399,8 @@ chassis_build_other_config(const struct ovs_chassis_cfg *ovs_cfg,
     smap_replace(config, OVN_FEATURE_SAMPLE_WITH_REGISTERS,
                  ovs_cfg->sample_with_regs ? "true" : "false");
     smap_replace(config, OVN_FEATURE_CT_NEXT_ZONE, "true");
+    smap_replace(config, OVN_FEATURE_CT_LABEL_FLUSH,
+                 ovs_cfg->ct_label_flush ? "true" :"false");
 }
 
 /*
@@ -560,6 +566,14 @@ chassis_other_config_changed(const struct ovs_chassis_cfg *ovs_cfg,
         return true;
     }
 
+    bool chassis_ct_label_flush =
+        smap_get_bool(&chassis_rec->other_config,
+                      OVN_FEATURE_CT_LABEL_FLUSH,
+                      false);
+    if (chassis_ct_label_flush != ovs_cfg->ct_label_flush) {
+        return true;
+    }
+
     return false;
 }
 
@@ -718,6 +732,7 @@ update_supported_sset(struct sset *supported)
     sset_add(supported, OVN_FEATURE_CT_COMMIT_TO_ZONE);
     sset_add(supported, OVN_FEATURE_SAMPLE_WITH_REGISTERS);
     sset_add(supported, OVN_FEATURE_CT_NEXT_ZONE);
+    sset_add(supported, OVN_FEATURE_CT_LABEL_FLUSH);
 }
 
 static void

@@ -35,6 +35,7 @@
 #include "openvswitch/ofp-group.h"
 #include "openvswitch/ofp-print.h"
 #include "openvswitch/ofp-util.h"
+#include "openvswitch/ofp-ct.h"
 #include "openvswitch/rconn.h"
 #include "ovn/features.h"
 #include "controller/ofctrl.h"
@@ -271,6 +272,53 @@ sample_with_reg_handle_barrier(struct ovs_openflow_feature *feature OVS_UNUSED)
     return true;
 }
 
+static void
+ct_label_flush_send_request(struct ovs_openflow_feature *feature)
+{
+    /* At the time of this code being written, the highest bits
+     * of the CT label are not used for anything. Setting these
+     * is most likely to minimize flushing a valid CT entry by
+     * mistake.
+     */
+    ovs_u128 ct_mask = {
+        .u64.hi = 0x10000000,
+    };
+    ovs_u128 ct_value = {
+        .u64.hi = 0x10000000,
+    };
+    struct ofp_ct_match match = {
+        .labels = ct_value,
+        .labels_mask = ct_mask,
+        /* ICMP type 1 is unassigned. This should reduce the
+         * risk of flushing legitimate CT entries by mistake
+         */
+        .ip_proto = IPPROTO_ICMP,
+        .tuple_orig.icmp_type = 1,
+    };
+
+    struct ofpbuf *msg = ofp_ct_match_encode(&match, NULL,
+                                             rconn_get_version(swconn));
+    const struct ofp_header *oh = msg->data;
+    feature->xid = oh->xid;
+    rconn_send(swconn, msg, NULL);
+}
+
+static bool
+ct_label_flush_handle_response(struct ovs_openflow_feature *feature,
+                               enum ofptype type, const struct ofp_header *oh)
+{
+    if (type != OFPTYPE_ERROR) {
+        log_unexpected_reply(feature, oh);
+    }
+    return false;
+}
+
+static bool
+ct_label_flush_handle_barrier(struct ovs_openflow_feature *feature OVS_UNUSED)
+{
+    return true;
+}
+
 static struct ovs_openflow_feature all_openflow_features[] = {
         {
             .value = OVS_DP_METER_SUPPORT,
@@ -292,7 +340,14 @@ static struct ovs_openflow_feature all_openflow_features[] = {
             .send_request = sample_with_reg_send_request,
             .handle_response = sample_with_reg_handle_response,
             .handle_barrier = sample_with_reg_handle_barrier,
-        }
+        },
+        {
+            .value = OVS_CT_LABEL_FLUSH_SUPPORT,
+            .name = "ct_label_flush",
+            .send_request = ct_label_flush_send_request,
+            .handle_response = ct_label_flush_handle_response,
+            .handle_barrier = ct_label_flush_handle_barrier,
+        },
 };
 
 static bool
@@ -365,6 +420,7 @@ ovs_feature_is_valid(enum ovs_feature_value feature)
     case OVS_DP_HASH_L4_SYM_SUPPORT:
     case OVS_OF_GROUP_SUPPORT:
     case OVS_SAMPLE_REG_SUPPORT:
+    case OVS_CT_LABEL_FLUSH_SUPPORT:
         return true;
     default:
         return false;

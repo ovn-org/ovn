@@ -21,6 +21,7 @@ struct chassis_features {
     bool ct_commit_to_zone;
     bool sample_with_reg;
     bool ct_next_zone;
+    bool ct_label_flush;
 };
 
 struct global_config_tracked_data {

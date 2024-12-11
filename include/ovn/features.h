@@ -31,6 +31,7 @@
 #define OVN_FEATURE_CT_COMMIT_TO_ZONE "ct-commit-to-zone"
 #define OVN_FEATURE_SAMPLE_WITH_REGISTERS "ovn-sample-with-registers"
 #define OVN_FEATURE_CT_NEXT_ZONE "ct-next-zone"
+#define OVN_FEATURE_CT_LABEL_FLUSH "ct-label-flush"
 
 /* OVS datapath supported features.  Based on availability OVN might generate
  * different types of openflows.
@@ -42,6 +43,7 @@ enum ovs_feature_support_bits {
     OVS_DP_HASH_L4_SYM_BIT,
     OVS_OF_GROUP_SUPPORT_BIT,
     OVS_SAMPLE_REG_SUPPORT_BIT,
+    OVS_CT_LABEL_FLUSH_BIT,
 };
 
 enum ovs_feature_value {
@@ -51,6 +53,7 @@ enum ovs_feature_value {
     OVS_DP_HASH_L4_SYM_SUPPORT = (1 << OVS_DP_HASH_L4_SYM_BIT),
     OVS_OF_GROUP_SUPPORT = (1 << OVS_OF_GROUP_SUPPORT_BIT),
     OVS_SAMPLE_REG_SUPPORT = (1 << OVS_SAMPLE_REG_SUPPORT_BIT),
+    OVS_CT_LABEL_FLUSH_SUPPORT = (1 << OVS_CT_LABEL_FLUSH_BIT),
 };
 
 void ovs_feature_support_destroy(void);
