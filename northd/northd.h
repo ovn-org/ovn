@@ -370,6 +370,7 @@ struct ovn_datapath {
 
     struct ovn_port **localnet_ports;
     size_t n_localnet_ports;
+    size_t n_allocated_localnet_ports;
 
     struct ovs_list lr_list; /* In list of logical router datapaths. */
     /* The logical router group to which this datapath belongs.

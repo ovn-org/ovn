@@ -2127,6 +2127,178 @@ parse_lsp_addrs(struct ovn_port *op)
         op->n_ps_addrs++;
     }
 }
+static struct ovn_port *
+join_logical_ports_lsp(struct hmap *ports,
+                       struct ovs_list *nb_only, struct ovs_list *both,
+                       struct ovn_datapath *od,
+                       const struct nbrec_logical_switch_port *nbsp,
+                       const char *name,
+                       unsigned long *queue_id_bitmap,
+                       struct hmap *tag_alloc_table)
+{
+    struct ovn_port *op = ovn_port_find_bound(ports, name);
+    if (op && (op->od || op->nbsp || op->nbrp)) {
+        static struct vlog_rate_limit rl
+            = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "duplicate logical port %s", name);
+        return NULL;
+    } else if (op && (!op->sb || op->sb->datapath == od->sb)) {
+        /*
+         * Handle cases where lport type was explicitly changed
+         * in the NBDB, in such cases:
+         * 1. remove the current sbrec of the affected lport from
+         *    the port_binding table.
+         *
+         * 2. create a new sbrec with the same logical_port as the
+         *    deleted lport and add it to the nb_only list which
+         *    will make the northd handle this lport as a new
+         *    created one and recompute everything that is needed
+         *    for this lport.
+         *
+         * This change will affect container/virtual lport type
+         * changes only for now, this change is needed in
+         * contaier/virtual lport cases to avoid port type
+         * conflicts in the ovn-controller when the user clears
+         * the parent_port field in the container lport or updated
+         * the lport type.
+         *
+         */
+        bool update_sbrec = false;
+        if (op->sb && lsp_is_type_changed(op->sb, nbsp,
+                                          &update_sbrec)
+                       && update_sbrec) {
+            ovs_list_remove(&op->list);
+            sbrec_port_binding_delete(op->sb);
+            ovn_port_destroy(ports, op);
+            op = ovn_port_create(ports, name, nbsp,
+                                 NULL, NULL);
+            ovs_list_push_back(nb_only, &op->list);
+        } else {
+            ovn_port_set_nb(op, nbsp, NULL);
+            ovs_list_remove(&op->list);
+
+            uint32_t queue_id = smap_get_int(&op->sb->options,
+                                             "qdisc_queue_id", 0);
+            if (queue_id) {
+                bitmap_set1(queue_id_bitmap, queue_id);
+            }
+
+            ovs_list_push_back(both, &op->list);
+
+            /* This port exists due to a SB binding, but should
+             * not have been initialized fully. */
+            ovs_assert(!op->n_lsp_addrs && !op->n_ps_addrs);
+        }
+    } else {
+        op = ovn_port_create(ports, name, nbsp, NULL, NULL);
+        ovs_list_push_back(nb_only, &op->list);
+    }
+
+    if (lsp_is_localnet(nbsp)) {
+       if (od->n_localnet_ports >= od->n_allocated_localnet_ports) {
+           od->localnet_ports = x2nrealloc(
+               od->localnet_ports, &od->n_allocated_localnet_ports,
+               sizeof *od->localnet_ports);
+       }
+       od->localnet_ports[od->n_localnet_ports++] = op;
+    }
+
+    if (lsp_is_vtep(nbsp)) {
+        od->has_vtep_lports = true;
+    }
+
+    parse_lsp_addrs(op);
+
+    op->od = od;
+    if (op->has_unknown) {
+        od->has_unknown = true;
+    }
+    hmap_insert(&od->ports, &op->dp_node,
+                hmap_node_hash(&op->key_node));
+    tag_alloc_add_existing_tags(tag_alloc_table, nbsp);
+    return op;
+}
+
+static struct ovn_port*
+join_logical_ports_lrp(struct hmap *ports,
+                       struct ovs_list *nb_only, struct ovs_list *both,
+                       struct hmapx *dgps,
+                       struct ovn_datapath *od,
+                       const struct nbrec_logical_router_port *nbrp,
+                       const char *name, struct lport_addresses *lrp_networks)
+{
+    if (!lrp_networks->n_ipv4_addrs && !lrp_networks->n_ipv6_addrs) {
+      return NULL;
+    }
+
+    struct ovn_port *op = ovn_port_find_bound(ports, name);
+    if (op && (op->od || op->nbsp || op->nbrp)) {
+        static struct vlog_rate_limit rl
+            = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "duplicate logical router port %s",
+                     name);
+        destroy_lport_addresses(lrp_networks);
+        return NULL;
+    } else if (op && (!op->sb || op->sb->datapath == od->sb)) {
+        ovn_port_set_nb(op, NULL, nbrp);
+        ovs_list_remove(&op->list);
+        ovs_list_push_back(both, &op->list);
+
+        /* This port exists but should not have been
+         * initialized fully. */
+        ovs_assert(!op->lrp_networks.n_ipv4_addrs
+                   && !op->lrp_networks.n_ipv6_addrs);
+    } else {
+        op = ovn_port_create(ports, name, NULL, nbrp, NULL);
+        ovs_list_push_back(nb_only, &op->list);
+    }
+
+    op->lrp_networks = *lrp_networks;
+    op->od = od;
+
+    op->prefix_delegation = smap_get_bool(&op->nbrp->options,
+                                          "prefix_delegation", false);
+
+    for (size_t j = 0; j < op->lrp_networks.n_ipv4_addrs; j++) {
+        sset_add(&op->od->router_ips,
+                 op->lrp_networks.ipv4_addrs[j].addr_s);
+    }
+    for (size_t j = 0; j < op->lrp_networks.n_ipv6_addrs; j++) {
+        /* Exclude the LLA. */
+        if (!in6_is_lla(&op->lrp_networks.ipv6_addrs[j].addr)) {
+            sset_add(&op->od->router_ips,
+                     op->lrp_networks.ipv6_addrs[j].addr_s);
+        }
+    }
+
+    hmap_insert(&od->ports, &op->dp_node,
+                hmap_node_hash(&op->key_node));
+
+    if (!od->redirect_bridged) {
+        const char *redirect_type =
+            smap_get(&nbrp->options, "redirect-type");
+        od->redirect_bridged =
+            redirect_type && !strcasecmp(redirect_type, "bridged");
+    }
+
+    if (op->nbrp->ha_chassis_group || op->nbrp->n_gateway_chassis) {
+        const char *gw_chassis = smap_get(&op->od->nbr->options,
+                                       "chassis");
+        if (gw_chassis) {
+            static struct vlog_rate_limit rl
+                = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_WARN_RL(&rl, "Bad configuration: distributed "
+                         "gateway port configured on port %s "
+                         "on L3 gateway router", name);
+            return NULL;
+        } else {
+            hmapx_add(dgps, op);
+        }
+
+    }
+    return op;
+}
+
 
 static struct ovn_port *
 create_cr_port(struct ovn_port *op, struct hmap *ports,
@@ -2198,90 +2370,12 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
     struct ovn_datapath *od;
     HMAP_FOR_EACH (od, key_node, ls_datapaths) {
         ovs_assert(od->nbs);
-        size_t n_allocated_localnet_ports = 0;
         for (size_t i = 0; i < od->nbs->n_ports; i++) {
             const struct nbrec_logical_switch_port *nbsp
                 = od->nbs->ports[i];
-            struct ovn_port *op = ovn_port_find_bound(ports, nbsp->name);
-            if (op && (op->od || op->nbsp || op->nbrp)) {
-                static struct vlog_rate_limit rl
-                    = VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_WARN_RL(&rl, "duplicate logical port %s", nbsp->name);
-                continue;
-            } else if (op && (!op->sb || op->sb->datapath == od->sb)) {
-                /*
-                 * Handle cases where lport type was explicitly changed
-                 * in the NBDB, in such cases:
-                 * 1. remove the current sbrec of the affected lport from
-                 *    the port_binding table.
-                 *
-                 * 2. create a new sbrec with the same logical_port as the
-                 *    deleted lport and add it to the nb_only list which
-                 *    will make the northd handle this lport as a new
-                 *    created one and recompute everything that is needed
-                 *    for this lport.
-                 *
-                 * This change will affect container/virtual lport type
-                 * changes only for now, this change is needed in
-                 * contaier/virtual lport cases to avoid port type
-                 * conflicts in the ovn-controller when the user clears
-                 * the parent_port field in the container lport or updated
-                 * the lport type.
-                 *
-                 */
-                bool update_sbrec = false;
-                if (op->sb && lsp_is_type_changed(op->sb, nbsp,
-                                                  &update_sbrec)
-                               && update_sbrec) {
-                    ovs_list_remove(&op->list);
-                    sbrec_port_binding_delete(op->sb);
-                    ovn_port_destroy(ports, op);
-                    op = ovn_port_create(ports, nbsp->name, nbsp,
-                                         NULL, NULL);
-                    ovs_list_push_back(nb_only, &op->list);
-                } else {
-                    ovn_port_set_nb(op, nbsp, NULL);
-                    ovs_list_remove(&op->list);
-
-                    uint32_t queue_id = smap_get_int(&op->sb->options,
-                                                     "qdisc_queue_id", 0);
-                    if (queue_id) {
-                        bitmap_set1(queue_id_bitmap, queue_id);
-                    }
-
-                    ovs_list_push_back(both, &op->list);
-
-                    /* This port exists due to a SB binding, but should
-                     * not have been initialized fully. */
-                    ovs_assert(!op->n_lsp_addrs && !op->n_ps_addrs);
-                }
-            } else {
-                op = ovn_port_create(ports, nbsp->name, nbsp, NULL, NULL);
-                ovs_list_push_back(nb_only, &op->list);
-            }
-
-            if (lsp_is_localnet(nbsp)) {
-               if (od->n_localnet_ports >= n_allocated_localnet_ports) {
-                   od->localnet_ports = x2nrealloc(
-                       od->localnet_ports, &n_allocated_localnet_ports,
-                       sizeof *od->localnet_ports);
-               }
-               od->localnet_ports[od->n_localnet_ports++] = op;
-            }
-
-            if (lsp_is_vtep(nbsp)) {
-                od->has_vtep_lports = true;
-            }
-
-            parse_lsp_addrs(op);
-
-            op->od = od;
-            if (op->has_unknown) {
-                od->has_unknown = true;
-            }
-            hmap_insert(&od->ports, &op->dp_node,
-                        hmap_node_hash(&op->key_node));
-            tag_alloc_add_existing_tags(tag_alloc_table, nbsp);
+            join_logical_ports_lsp(ports, nb_only, both, od, nbsp,
+                                   nbsp->name, queue_id_bitmap,
+                                   tag_alloc_table);
         }
     }
 
@@ -2299,74 +2393,9 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
                 VLOG_WARN_RL(&rl, "bad 'mac' %s", nbrp->mac);
                 continue;
             }
-
-            if (!lrp_networks.n_ipv4_addrs && !lrp_networks.n_ipv6_addrs) {
-                continue;
-            }
-
-            struct ovn_port *op = ovn_port_find_bound(ports, nbrp->name);
-            if (op && (op->od || op->nbsp || op->nbrp)) {
-                static struct vlog_rate_limit rl
-                    = VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_WARN_RL(&rl, "duplicate logical router port %s",
-                             nbrp->name);
-                destroy_lport_addresses(&lrp_networks);
-                continue;
-            } else if (op && (!op->sb || op->sb->datapath == od->sb)) {
-                ovn_port_set_nb(op, NULL, nbrp);
-                ovs_list_remove(&op->list);
-                ovs_list_push_back(both, &op->list);
-
-                /* This port exists but should not have been
-                 * initialized fully. */
-                ovs_assert(!op->lrp_networks.n_ipv4_addrs
-                           && !op->lrp_networks.n_ipv6_addrs);
-            } else {
-                op = ovn_port_create(ports, nbrp->name, NULL, nbrp, NULL);
-                ovs_list_push_back(nb_only, &op->list);
-            }
-
-            op->lrp_networks = lrp_networks;
-            op->od = od;
-
-            op->prefix_delegation = smap_get_bool(&op->nbrp->options,
-                                                  "prefix_delegation", false);
-
-            for (size_t j = 0; j < op->lrp_networks.n_ipv4_addrs; j++) {
-                sset_add(&op->od->router_ips,
-                         op->lrp_networks.ipv4_addrs[j].addr_s);
-            }
-            for (size_t j = 0; j < op->lrp_networks.n_ipv6_addrs; j++) {
-                /* Exclude the LLA. */
-                if (!in6_is_lla(&op->lrp_networks.ipv6_addrs[j].addr)) {
-                    sset_add(&op->od->router_ips,
-                             op->lrp_networks.ipv6_addrs[j].addr_s);
-                }
-            }
-
-            hmap_insert(&od->ports, &op->dp_node,
-                        hmap_node_hash(&op->key_node));
-
-            if (!od->redirect_bridged) {
-                const char *redirect_type =
-                    smap_get(&nbrp->options, "redirect-type");
-                od->redirect_bridged =
-                    redirect_type && !strcasecmp(redirect_type, "bridged");
-            }
-
-            if (op->nbrp->ha_chassis_group || op->nbrp->n_gateway_chassis) {
-                const char *gw_chassis = smap_get(&op->od->nbr->options,
-                                               "chassis");
-                if (gw_chassis) {
-                    static struct vlog_rate_limit rl
-                        = VLOG_RATE_LIMIT_INIT(1, 1);
-                    VLOG_WARN_RL(&rl, "Bad configuration: distributed "
-                                 "gateway port configured on port %s "
-                                 "on L3 gateway router", nbrp->name);
-                } else {
-                    hmapx_add(&dgps, op);
-                }
-           }
+            join_logical_ports_lrp(ports, nb_only, both, &dgps,
+                                   od, nbrp,
+                                   nbrp->name, &lrp_networks);
         }
     }
 
