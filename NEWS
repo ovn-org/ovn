@@ -6,6 +6,8 @@ Post v24.09.0
    - ovn-ic: Add support for route tag to prevent route learning.
    - Support for STT tunnels in ovn-encap-type is deprecated and will be
      removed in the next release.
+   - The LRP option 'centralize_routing' has been removed. The behavior is now
+     enabled in all cases where it is needed.
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------

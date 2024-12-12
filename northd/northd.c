@@ -2332,7 +2332,6 @@ create_cr_port(struct ovn_port *op, struct hmap *ports,
  * Chassis resident port needs to be created if the following
  * conditionsd are met:
  *   - op is a distributed gateway port
- *   - op has the option 'centralize_routing' set to true
  *   - op is the only distributed gateway port attached to its
  *     router
  *   - op's peer logical switch has no localnet ports.
@@ -2343,7 +2342,7 @@ peer_needs_cr_port_creation(struct ovn_port *op)
     if ((op->nbrp->n_gateway_chassis || op->nbrp->ha_chassis_group)
         && op->od->n_l3dgw_ports == 1 && op->peer && op->peer->nbsp
         && !op->peer->od->n_localnet_ports) {
-        return smap_get_bool(&op->nbrp->options, "centralize_routing", false);
+        return true;
     }
 
     return false;
@@ -2503,8 +2502,7 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
      * peer if
      *  - DGP's router has only one DGP and
      *  - Its peer is a logical switch port and
-     *  - It's peer's logical switch has no localnet ports and
-     *  - option 'centralize_routing' is set to true for the DGP.
+     *  - Its peer's logical switch has no localnet ports
      *
      * This is required to support
      *   - NAT via geneve (for the overlay provider networks) and

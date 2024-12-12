@@ -13736,52 +13736,8 @@ check_flows_no_cr_port_for_public_lr0
 # Remove the localnet port from public logical switch.
 check ovn-nbctl --wait=sb lsp-set-type ln-public ""
 
-# Check that the lflows are as expected and there is no cr port
-# created for "public-lr0"  when public has no localnet port
-# since public doesn't have the option "overlay_provider_network=true"
-# set.
-check_row_count Port_Binding 0 logical_port=cr-public-lr0
-
-ovn-sbctl dump-flows lr0 > lr0flows
-ovn-sbctl dump-flows public > publicflows
-
-AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" lr0flows | ovn_strip_lflows], [0], [dnl
-  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && inport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(xreg0[[0..47]] = 00:00:00:00:ff:02; next;)
-  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.110), action=(eth.dst = 30:54:00:00:00:03; next;)
-  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.120), action=(eth.dst = 00:00:00:00:ff:02; next;)
-  table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.110), action=(drop;)
-  table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.120), action=(drop;)
-  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.110 && inport == "lr0-public"), action=(ct_dnat(10.0.0.3);)
-  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.120 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat(20.0.0.3);)
-  table=??(lr_in_gw_redirect  ), priority=100  , match=(ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(eth.src = 30:54:00:00:00:03; reg1 = 172.168.0.110; next;)
-  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.168.0.110), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
-  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.168.0.120), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
-  table=??(lr_in_ip_input     ), priority=91   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.110), action=(drop;)
-  table=??(lr_in_ip_input     ), priority=91   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.120), action=(drop;)
-  table=??(lr_in_ip_input     ), priority=92   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.110 && is_chassis_resident("sw0-port1")), action=(eth.dst = eth.src; eth.src = 30:54:00:00:00:03; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 30:54:00:00:00:03; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
-  table=??(lr_in_ip_input     ), priority=92   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.120 && is_chassis_resident("cr-lr0-public")), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
-  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.110 && inport == "lr0-public"), action=(ct_snat;)
-  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.120 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
-  table=??(lr_out_egr_loop    ), priority=100  , match=(ip4.dst == 172.168.0.110 && outport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(clone { ct_clear; inport = outport; outport = ""; eth.dst <-> eth.src; flags = 0; flags.loopback = 1; reg0 = 0; reg1 = 0; reg2 = 0; reg3 = 0; reg4 = 0; reg5 = 0; reg6 = 0; reg7 = 0; reg8 = 0; reg9 = 0; reg9[[0]] = 1; next(pipeline=ingress, table=??); };)
-  table=??(lr_out_egr_loop    ), priority=100  , match=(ip4.dst == 172.168.0.120 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(clone { ct_clear; inport = outport; outport = ""; eth.dst <-> eth.src; flags = 0; flags.loopback = 1; reg0 = 0; reg1 = 0; reg2 = 0; reg3 = 0; reg4 = 0; reg5 = 0; reg6 = 0; reg7 = 0; reg8 = 0; reg9 = 0; reg9[[0]] = 1; next(pipeline=ingress, table=??); };)
-  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("sw0-port1") && (!ct.trk || !ct.rpl)), action=(eth.src = 30:54:00:00:00:03; ct_snat(172.168.0.110);)
-  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.120);)
-  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public"), action=(eth.src = 30:54:00:00:00:03; ct_dnat;)
-  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat;)
-])
-
-AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" publicflows | ovn_strip_lflows], [0], [dnl
-  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && is_chassis_resident("sw0-port1")), action=(outport = "public-lr0"; output;)
-  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:ff:02, 30:54:00:00:00:03} && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.110), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.120), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
-])
-
-
-# Set the option "centralize_routing=true" for lr0-public.
-check ovn-nbctl --wait=sb set logical_router_port lr0-public options:centralize_routing=true
-
-# Check that the lflows are as expected and there is cr port created for public-lr0.
+# We know we still need the cr port so we check that the lflows are as
+# expected and there is cr port created for public-lr0.
 check_flows_cr_port_for_public_lr0
 
 # Set the type of ln-public back to localnet
