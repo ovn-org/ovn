@@ -16452,7 +16452,7 @@ build_lrouter_nat_defrag_and_lb(
     if (lr_stateful_rec->has_lb_vip) {
         ds_clear(match);
 
-        ds_put_cstr(match, "ct.rel && !ct.est && !ct.new");
+        ds_put_cstr(match, "ct.rel && !ct.est && !ct.new && !ct.rpl");
         size_t match_len = match->length;
 
         ds_put_cstr(match, " && ct_mark.skip_snat == 1");
@@ -16477,7 +16477,8 @@ build_lrouter_nat_defrag_and_lb(
          */
         ds_clear(match);
 
-        ds_put_cstr(match, "ct.est && !ct.rel && !ct.new && ct_mark.natted");
+        ds_put_cstr(match, "ct.est && !ct.rel && !ct.new && !ct.rpl && "
+                           "ct_mark.natted");
         match_len = match->length;
 
         ds_put_cstr(match, " && ct_mark.skip_snat == 1");
