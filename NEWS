@@ -8,6 +8,8 @@ Post v24.09.0
      removed in the next release.
    - The LRP option 'centralize_routing' has been removed. The behavior is now
      enabled in all cases where it is needed.
+   - The experimental logical router port options "routing-protocol-redirect"
+     and "routing-protocols" are now also usable on distributed gateway ports.
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------

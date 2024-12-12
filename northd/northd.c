@@ -14428,14 +14428,6 @@ build_lrouter_routing_protocol_redirect(
         return;
     }
 
-    if (op->cr_port) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-        VLOG_WARN_RL(&rl, "Option 'routing-protocol-redirect' is not "
-                          "supported on Distributed Gateway Port '%s'",
-                          op->key);
-        return;
-    }
-
     /* Ensure that LSP, to which the routing protocol traffic is redirected,
      * exists. */
     struct ovn_port *lsp_in_peer = ovn_port_find(ls_ports,
