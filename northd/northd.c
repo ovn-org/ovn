@@ -2368,17 +2368,6 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
     }
 
     struct ovn_datapath *od;
-    HMAP_FOR_EACH (od, key_node, ls_datapaths) {
-        ovs_assert(od->nbs);
-        for (size_t i = 0; i < od->nbs->n_ports; i++) {
-            const struct nbrec_logical_switch_port *nbsp
-                = od->nbs->ports[i];
-            join_logical_ports_lsp(ports, nb_only, both, od, nbsp,
-                                   nbsp->name, queue_id_bitmap,
-                                   tag_alloc_table);
-        }
-    }
-
     struct hmapx dgps = HMAPX_INITIALIZER(&dgps);
     HMAP_FOR_EACH (od, key_node, lr_datapaths) {
         ovs_assert(od->nbr);
@@ -2396,6 +2385,17 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
             join_logical_ports_lrp(ports, nb_only, both, &dgps,
                                    od, nbrp,
                                    nbrp->name, &lrp_networks);
+        }
+    }
+
+    HMAP_FOR_EACH (od, key_node, ls_datapaths) {
+        ovs_assert(od->nbs);
+        for (size_t i = 0; i < od->nbs->n_ports; i++) {
+            const struct nbrec_logical_switch_port *nbsp
+                = od->nbs->ports[i];
+            join_logical_ports_lsp(ports, nb_only, both, od, nbsp,
+                                   nbsp->name, queue_id_bitmap,
+                                   tag_alloc_table);
         }
     }
 
