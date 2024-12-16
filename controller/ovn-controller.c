@@ -5458,6 +5458,8 @@ main(int argc, char *argv[])
     /* Main loop. */
     bool sb_monitor_all = false;
     while (!exit_args.exiting) {
+        ovsrcu_quiesce_end();
+
         memory_run();
         if (memory_should_report()) {
             struct simap usage = SIMAP_INITIALIZER(&usage);
@@ -5951,6 +5953,7 @@ main(int argc, char *argv[])
 
 loop_done:
         memory_wait();
+        ovsrcu_quiesce_start();
         poll_block();
         if (should_service_stop()) {
             exit_args.exiting = true;

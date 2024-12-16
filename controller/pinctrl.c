@@ -3902,6 +3902,8 @@ pinctrl_handler(void *arg_)
     static long long int send_prefixd_time = LLONG_MAX;
 
     while (!latch_is_set(&pctrl->pinctrl_thread_exit)) {
+        ovsrcu_quiesce_end();
+
         long long int bfd_time = LLONG_MAX;
         bool lock_failed = false;
 
@@ -3975,6 +3977,8 @@ pinctrl_handler(void *arg_)
 
             latch_wait(&pctrl->pinctrl_thread_exit);
         }
+
+        ovsrcu_quiesce_start();
         poll_block();
     }
 
