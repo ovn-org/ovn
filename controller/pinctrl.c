@@ -3903,10 +3903,14 @@ pinctrl_handler(void *arg_)
 
     while (!latch_is_set(&pctrl->pinctrl_thread_exit)) {
         long long int bfd_time = LLONG_MAX;
+        bool lock_failed = false;
 
-        ovs_mutex_lock(&pinctrl_mutex);
-        ip_mcast_snoop_run();
-        ovs_mutex_unlock(&pinctrl_mutex);
+        if (!ovs_mutex_trylock(&pinctrl_mutex)) {
+            ip_mcast_snoop_run();
+            ovs_mutex_unlock(&pinctrl_mutex);
+        } else {
+            lock_failed = true;
+        }
 
         rconn_run(swconn);
         new_seq = seq_read(pinctrl_handler_seq);
@@ -3931,35 +3935,46 @@ pinctrl_handler(void *arg_)
             }
 
             if (may_inject_pkts()) {
-                ovs_mutex_lock(&pinctrl_mutex);
-                send_garp_rarp_run(swconn, &send_garp_rarp_time);
-                send_ipv6_ras(swconn, &send_ipv6_ra_time);
-                send_ipv6_prefixd(swconn, &send_prefixd_time);
-                send_mac_binding_buffered_pkts(swconn);
-                bfd_monitor_send_msg(swconn, &bfd_time);
-                ovs_mutex_unlock(&pinctrl_mutex);
-
+                if (!ovs_mutex_trylock(&pinctrl_mutex)) {
+                    send_garp_rarp_run(swconn, &send_garp_rarp_time);
+                    send_ipv6_ras(swconn, &send_ipv6_ra_time);
+                    send_ipv6_prefixd(swconn, &send_prefixd_time);
+                    send_mac_binding_buffered_pkts(swconn);
+                    bfd_monitor_send_msg(swconn, &bfd_time);
+                    ovs_mutex_unlock(&pinctrl_mutex);
+                } else {
+                    lock_failed = true;
+                }
                 ip_mcast_querier_run(swconn, &send_mcast_query_time);
             }
 
-            ovs_mutex_lock(&pinctrl_mutex);
-            svc_monitors_run(swconn, &svc_monitors_next_run_time);
-            ovs_mutex_unlock(&pinctrl_mutex);
+            if (!ovs_mutex_trylock(&pinctrl_mutex)) {
+                svc_monitors_run(swconn, &svc_monitors_next_run_time);
+                ovs_mutex_unlock(&pinctrl_mutex);
+            } else {
+                lock_failed = true;
+            }
         }
 
-        rconn_run_wait(swconn);
-        rconn_recv_wait(swconn);
-        if (rconn_is_connected(swconn)) {
-            send_garp_rarp_wait(send_garp_rarp_time);
-            ipv6_ra_wait(send_ipv6_ra_time);
-            ip_mcast_querier_wait(send_mcast_query_time);
-            svc_monitors_wait(svc_monitors_next_run_time);
-            ipv6_prefixd_wait(send_prefixd_time);
-            bfd_monitor_wait(bfd_time);
-        }
-        seq_wait(pinctrl_handler_seq, new_seq);
+        if (lock_failed) {
+            /* Wait for 5 msecs before waking to avoid degrading the
+             * lock to a spinlock. */
+            poll_timer_wait_until(5);
+        } else {
+            rconn_run_wait(swconn);
+            rconn_recv_wait(swconn);
+            if (rconn_is_connected(swconn)) {
+                send_garp_rarp_wait(send_garp_rarp_time);
+                ipv6_ra_wait(send_ipv6_ra_time);
+                ip_mcast_querier_wait(send_mcast_query_time);
+                svc_monitors_wait(svc_monitors_next_run_time);
+                ipv6_prefixd_wait(send_prefixd_time);
+                bfd_monitor_wait(bfd_time);
+            }
+            seq_wait(pinctrl_handler_seq, new_seq);
 
-        latch_wait(&pctrl->pinctrl_thread_exit);
+            latch_wait(&pctrl->pinctrl_thread_exit);
+        }
         poll_block();
     }
 
