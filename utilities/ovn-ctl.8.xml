@@ -96,7 +96,7 @@
     <p><code>--ovn-controller-ssl-ca-cert=<var>CERT</var></code></p>
     <p><code>--ovn-controller-ssl-bootstrap-ca-cert=<var>CERT</var></code></p>
 
-    <h1>Protocol and Cipher options</h1>
+    <h1>Protocol, Cipher and Ciphersuite options</h1>
     <p><code>--ovn-controller-ssl-protocols=<var>PROTOCOLS</var></code></p>
     <p><code>--ovn-ic-ssl-protocols=<var>PROTOCOLS</var></code></p>
     <p><code>--ovn-northd-ssl-protocols=<var>PROTOCOLS</var></code></p>
@@ -111,6 +111,13 @@
     <p><code>--ovn-sb-db-ssl-ciphers=<var>CIPHERS</var></code></p>
     <p><code>--ovn-ic-nb-db-ssl-ciphers=<var>CIPHERS</var></code></p>
     <p><code>--ovn-ic-sb-db-ssl-ciphers=<var>CIPHERS</var></code></p>
+    <p><code>--ovn-controller-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
+    <p><code>--ovn-ic-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
+    <p><code>--ovn-northd-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
+    <p><code>--ovn-nb-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
+    <p><code>--ovn-sb-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
+    <p><code>--ovn-ic-nb-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
+    <p><code>--ovn-ic-sb-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
 
     <h1>Address and port options</h1>
     <p><code>--db-nb-sync-from-addr=<var>IP ADDRESS</var></code></p>

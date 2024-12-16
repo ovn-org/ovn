@@ -118,7 +118,7 @@ Connection commands:\n\
 SSL/TLS commands:\n\
   get-ssl                     print the SSL/TLS configuration\n\
   del-ssl                     delete the SSL/TLS configuration\n\
-  set-ssl PRIV-KEY CERT CA-CERT [SSL-PROTOS [SSL-CIPHERS]] \
+  set-ssl PRIV-KEY CERT CA-CERT [SSL-PROTOS [SSL-CIPHERS [SSL-CIPHERSUITES]]] \
 set the SSL/TLS configuration\n\
 \n\
 %s\
@@ -1478,11 +1478,14 @@ cmd_set_ssl(struct ctl_context *ctx)
 
     sbrec_ssl_set_bootstrap_ca_cert(ssl, bootstrap);
 
-    if (ctx->argc == 5) {
+    if (ctx->argc >= 5) {
         sbrec_ssl_set_ssl_protocols(ssl, ctx->argv[4]);
-    } else if (ctx->argc == 6) {
-        sbrec_ssl_set_ssl_protocols(ssl, ctx->argv[4]);
-        sbrec_ssl_set_ssl_ciphers(ssl, ctx->argv[5]);
+        if (ctx->argc >= 6) {
+            sbrec_ssl_set_ssl_ciphers(ssl, ctx->argv[5]);
+            if (ctx->argc == 7) {
+                sbrec_ssl_set_ssl_ciphersuites(ssl, ctx->argv[6]);
+            }
+        }
     }
 
     sbrec_sb_global_set_ssl(sb_global, ssl);
@@ -1590,8 +1593,9 @@ static const struct ctl_command_syntax sbctl_commands[] = {
     /* SSL/TLS commands. */
     {"get-ssl", 0, 0, "", pre_cmd_get_ssl, cmd_get_ssl, NULL, "", RO},
     {"del-ssl", 0, 0, "", pre_cmd_del_ssl, cmd_del_ssl, NULL, "", RW},
-    {"set-ssl", 3, 5,
-        "PRIVATE-KEY CERTIFICATE CA-CERT [SSL-PROTOS [SSL-CIPHERS]]",
+    {"set-ssl", 3, 6,
+        "PRIVATE-KEY CERTIFICATE CA-CERT"
+        " [SSL-PROTOS [SSL-CIPHERS [SSL-CIPHERSUITES]]]",
         pre_cmd_set_ssl, cmd_set_ssl, NULL, "--bootstrap", RW},
 
     {NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, RO},

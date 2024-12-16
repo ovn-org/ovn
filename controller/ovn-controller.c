@@ -6131,6 +6131,10 @@ parse_options(int argc, char *argv[])
             stream_ssl_set_ciphers(optarg);
             break;
 
+        case OPT_SSL_CIPHERSUITES:
+            stream_ssl_set_ciphersuites(optarg);
+            break;
+
         case OPT_PEER_CA_CERT:
             stream_ssl_set_peer_ca_cert_file(optarg);
             break;

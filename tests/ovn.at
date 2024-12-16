@@ -38245,7 +38245,7 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
-AT_SETUP([read-only sb db:pssl access with ssl-ciphers and ssl-protocols])
+AT_SETUP([read-only sb db:pssl access with ssl-ciphers/uites and ssl-protocols])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
 AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"
@@ -38273,8 +38273,9 @@ start_daemon ovsdb-server --remote=punix:ovn-sb.sock \
                           --private-key="$PKIDIR/testpki-test2-privkey.pem" \
                           --certificate="$PKIDIR/testpki-test2-cert.pem" \
                           --ca-cert="$PKIDIR/testpki-cacert.pem" \
-                          --ssl-ciphers='HIGH:!aNULL:!MD5:@SECLEVEL=1' \
-                          --ssl-protocols='TLSv1,TLSv1.1,TLSv1.2' \
+                          --ssl-ciphers='DEFAULT:@SECLEVEL=2' \
+                          --ssl-ciphersuites='TLS_CHACHA20_POLY1305_SHA256' \
+                          --ssl-protocols='TLSv1.2-TLSv1.3' \
                           ovn-sb.db
 
 PARSE_LISTENING_PORT([ovsdb-server.log], [TCP_PORT])
@@ -38284,15 +38285,17 @@ AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
                     --private-key=$PKIDIR/testpki-test-privkey.pem \
                     --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
-                    --ssl-ciphers='HIGH:!aNULL:!MD5:@SECLEVEL=1' \
-                    --ssl-protocols='TLSv1,TLSv1.1,TLSv1.2' \
+                    --ssl-ciphers='DEFAULT:@SECLEVEL=2' \
+                    --ssl-ciphersuites='TLS_CHACHA20_POLY1305_SHA256' \
+                    --ssl-protocols='TLSv1.2-TLSv1.3' \
                     list SB_Global], [0], [stdout], [ignore])
 AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
                     --private-key=$PKIDIR/testpki-test-privkey.pem \
                     --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
-                    --ssl-ciphers='HIGH:!aNULL:!MD5:@SECLEVEL=1' \
-                    --ssl-protocols='TLSv1,TLSv1.1,TLSv1.2' \
+                    --ssl-ciphers='DEFAULT:@SECLEVEL=2' \
+                    --ssl-ciphersuites='TLS_CHACHA20_POLY1305_SHA256' \
+                    --ssl-protocols='TLSv1.2-TLSv1.3' \
                     list Connection], [0], [stdout], [ignore])
 
 # write access should fail
@@ -38300,8 +38303,9 @@ AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
                     --private-key=$PKIDIR/testpki-test-privkey.pem \
                     --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
-                    --ssl-ciphers='HIGH:!aNULL:!MD5:@SECLEVEL=1' \
-                    --ssl-protocols='TLSv1,TLSv1.1,TLSv1.2' \
+                    --ssl-ciphers='DEFAULT:@SECLEVEL=2' \
+                    --ssl-ciphersuites='TLS_CHACHA20_POLY1305_SHA256' \
+                    --ssl-protocols='TLSv1.2-TLSv1.3' \
                     chassis-add ch vxlan 1.2.4.8 2>&1 | grep 'transaction error'], [0], [dnl
 ovn-sbctl: transaction error: {"details":"insert operation not allowed when database server is in read only mode","error":"not allowed"}
 ], [ignore])
@@ -38309,7 +38313,7 @@ ovn-sbctl: transaction error: {"details":"insert operation not allowed when data
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 AT_CLEANUP
 
-AT_SETUP([nb connection/ssl commands with ssl-ciphers and ssl-protocols])
+AT_SETUP([nb connection/ssl commands with ssl-ciphers/uites and ssl-protocols])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
 AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"
@@ -38324,15 +38328,20 @@ start_daemon ovsdb-server --remote=punix:ovnnb_db.sock \
                           --private-key=db:OVN_Northbound,SSL,private_key \
                           --certificate=db:OVN_Northbound,SSL,certificate \
                           --ca-cert=db:OVN_Northbound,SSL,ca_cert \
-                          --ssl-ciphers='HIGH:!aNULL:!MD5:@SECLEVEL=1' \
-                          --ssl-protocols='TLSv1,TLSv1.1,TLSv1.2' \
+                          --ssl-protocols=db:OVN_Northbound,SSL,ssl_protocols \
+                          --ssl-ciphers=db:OVN_Northbound,SSL,ssl_ciphers \
+                          --ssl-ciphersuites=db:OVN_Northbound,SSL,ssl_ciphersuites \
                           ovn-nb.db
 
 # Populate SSL/TLS configuration entries in nb db
 AT_CHECK(
     [ovn-nbctl set-ssl $PKIDIR/testpki-test-privkey.pem \
                        $PKIDIR/testpki-test-cert.pem \
-                       $PKIDIR/testpki-cacert.pem], [0], [stdout], [ignore])
+                       $PKIDIR/testpki-cacert.pem \
+                       'TLSv1.2-TLSv1.3' \
+                       'DEFAULT:@SECLEVEL=2' \
+                       'TLS_CHACHA20_POLY1305_SHA256'],
+    [0], [stdout], [ignore])
 
 # Populate a passive SSL/TLS connection in nb db
 AT_CHECK([ovn-nbctl set-connection pssl:0:127.0.0.1], [0], [stdout], [ignore])
@@ -38344,31 +38353,34 @@ AT_CHECK([ovn-nbctl --db=ssl:127.0.0.1:$TCP_PORT \
                     --private-key=$PKIDIR/testpki-test-privkey.pem \
                     --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
-                    --ssl-ciphers='HIGH:!aNULL:!MD5:@SECLEVEL=1' \
-                    --ssl-protocols='TLSv1,TLSv1.1,TLSv1.2' \
+                    --ssl-ciphers='DEFAULT:@SECLEVEL=2' \
+                    --ssl-ciphersuites='TLS_CHACHA20_POLY1305_SHA256' \
+                    --ssl-protocols='TLSv1.2-TLSv1.3' \
           list NB_Global],
          [0], [stdout], [ignore])
 AT_CHECK([ovn-nbctl --db=ssl:127.0.0.1:$TCP_PORT \
                     --private-key=$PKIDIR/testpki-test-privkey.pem \
                     --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
-                    --ssl-ciphers='HIGH:!aNULL:!MD5:@SECLEVEL=1' \
-                    --ssl-protocols='TLSv1,TLSv1.1,TLSv1.2' \
+                    --ssl-ciphers='DEFAULT:@SECLEVEL=2' \
+                    --ssl-ciphersuites='TLS_CHACHA20_POLY1305_SHA256' \
+                    --ssl-protocols='TLSv1.2-TLSv1.3' \
           list Connection],
          [0], [stdout], [ignore])
 AT_CHECK([ovn-nbctl --db=ssl:127.0.0.1:$TCP_PORT \
                     --private-key=$PKIDIR/testpki-test-privkey.pem \
                     --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
-                    --ssl-ciphers='HIGH:!aNULL:!MD5:@SECLEVEL=1' \
-                    --ssl-protocols='TLSv1,TLSv1.1,TLSv1.2' \
+                    --ssl-ciphers='DEFAULT:@SECLEVEL=2' \
+                    --ssl-ciphersuites='TLS_CHACHA20_POLY1305_SHA256' \
+                    --ssl-protocols='TLSv1.2-TLSv1.3' \
           get-connection],
          [0], [stdout], [ignore])
 
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 AT_CLEANUP
 
-AT_SETUP([sb connection/ssl commands with ssl-ciphers and ssl-protocols])
+AT_SETUP([sb connection/ssl commands with ssl-ciphers/uites and ssl-protocols])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
 AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"
@@ -38383,15 +38395,20 @@ start_daemon ovsdb-server --remote=punix:ovnsb_db.sock \
                           --private-key=db:OVN_Southbound,SSL,private_key \
                           --certificate=db:OVN_Southbound,SSL,certificate \
                           --ca-cert=db:OVN_Southbound,SSL,ca_cert \
-                          --ssl-ciphers='HIGH:!aNULL:!MD5:@SECLEVEL=1' \
-                          --ssl-protocols='TLSv1,TLSv1.1,TLSv1.2' \
+                          --ssl-protocols=db:OVN_Southbound,SSL,ssl_protocols \
+                          --ssl-ciphers=db:OVN_Southbound,SSL,ssl_ciphers \
+                          --ssl-ciphersuites=db:OVN_Southbound,SSL,ssl_ciphersuites \
                           ovn-sb.db
 
 # Populate SSL/TLS configuration entries in sb db
 AT_CHECK(
     [ovn-sbctl set-ssl $PKIDIR/testpki-test-privkey.pem \
                        $PKIDIR/testpki-test-cert.pem \
-                       $PKIDIR/testpki-cacert.pem], [0], [stdout], [ignore])
+                       $PKIDIR/testpki-cacert.pem \
+                       'TLSv1.2-TLSv1.3' \
+                       'DEFAULT:@SECLEVEL=2' \
+                       'TLS_CHACHA20_POLY1305_SHA256'],
+    [0], [stdout], [ignore])
 
 # Populate a passive SSL/TLS connection in sb db
 AT_CHECK([ovn-sbctl set-connection pssl:0:127.0.0.1], [0], [stdout], [ignore])
@@ -38403,24 +38420,27 @@ AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
                     --private-key=$PKIDIR/testpki-test-privkey.pem \
                     --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
-                    --ssl-ciphers='HIGH:!aNULL:!MD5:@SECLEVEL=1' \
-                    --ssl-protocols='TLSv1,TLSv1.1,TLSv1.2' \
+                    --ssl-ciphers='DEFAULT:@SECLEVEL=2' \
+                    --ssl-ciphersuites='TLS_CHACHA20_POLY1305_SHA256' \
+                    --ssl-protocols='TLSv1.2-TLSv1.3' \
           list SB_Global],
          [0], [stdout], [ignore])
 AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
                     --private-key=$PKIDIR/testpki-test-privkey.pem \
                     --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
-                    --ssl-ciphers='HIGH:!aNULL:!MD5:@SECLEVEL=1' \
-                    --ssl-protocols='TLSv1,TLSv1.1,TLSv1.2' \
+                    --ssl-ciphers='DEFAULT:@SECLEVEL=2' \
+                    --ssl-ciphersuites='TLS_CHACHA20_POLY1305_SHA256' \
+                    --ssl-protocols='TLSv1.2-TLSv1.3' \
           list Connection],
          [0], [stdout], [ignore])
 AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
                     --private-key=$PKIDIR/testpki-test-privkey.pem \
                     --certificate=$PKIDIR/testpki-test-cert.pem \
                     --ca-cert=$PKIDIR/testpki-cacert.pem \
-                    --ssl-ciphers='HIGH:!aNULL:!MD5:@SECLEVEL=1' \
-                    --ssl-protocols='TLSv1,TLSv1.1,TLSv1.2' \
+                    --ssl-ciphers='DEFAULT:@SECLEVEL=2' \
+                    --ssl-ciphersuites='TLS_CHACHA20_POLY1305_SHA256' \
+                    --ssl-protocols='TLSv1.2-TLSv1.3' \
           get-connection],
          [0], [stdout], [ignore])
 

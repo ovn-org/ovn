@@ -2833,7 +2833,7 @@ ovn_attach n1 br-phys 192.168.0.20
 
 # Set cipher and and it should connect
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
-start_daemon ovn-controller --ssl-ciphers='HIGH:!aNULL:!MD5:@SECLEVEL=1' --ssl-protocols='TLSv1,TLSv1.1,TLSv1.2'
+start_daemon ovn-controller --ssl-ciphers='DEFAULT@SECLEVEL=2' --ssl-protocols='TLSv1.2'
 
 OVS_WAIT_FOR_OUTPUT([ovn-appctl -t ovn-controller connection-status], [0], [connected
 ])

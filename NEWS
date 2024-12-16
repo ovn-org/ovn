@@ -13,6 +13,21 @@ Post v24.09.0
    - ovn-nb: Changed schema of ovn-nb to make networks optional within Logical
      Router Ports.
    - Bump python version required for building OVN to 3.7.
+   - SSL/TLS:
+     * TLSv1 and TLSv1.1 protocols are deprecated and disabled by default
+       on OpenFlow and database connections.  Use --ssl-protocols to turn
+       them back on.  Support will be fully removed in the next release.
+     * OpenSSL 1.1.1 or newer is now required for SSL/TLS support.
+     * The protocol list in --ssl-protocols or corresponding database column
+       now supports specifying simple protocol ranges like:
+         - "TLSv1-TLSv1.2" to enable all protocols between TLSv1 and TLSv1.2.
+         - "TLSv1.2+" to enable protocol TLSv1.2 and later.
+       The value must be a list of protocols or exactly one protocol range.
+     * Added explicit support for TLSv1.3.  It can now be enabled via
+       --ssl-protocols (TLSv1.3 was supported in earlier versions only when
+       this option was not set).  TLS ciphersuites for TLSv1.3 and later can
+       be configured via --ssl-ciphersuites (--ssl-ciphers only applies to
+       TLSv1.2 and earlier).
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------

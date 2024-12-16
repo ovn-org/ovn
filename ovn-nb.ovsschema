@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "7.8.0",
-    "cksum": "3497747919 38626",
+    "version": "7.9.0",
+    "cksum": "2414335430 38682",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -653,6 +653,7 @@
                 "bootstrap_ca_cert": {"type": "boolean"},
                 "ssl_protocols": {"type": "string"},
                 "ssl_ciphers": {"type": "string"},
+                "ssl_ciphersuites": {"type": "string"},
                 "external_ids": {"type": {"key": "string",
                                           "value": "string",
                                           "min": 0,

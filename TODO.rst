@@ -133,3 +133,6 @@ OVN To-do List
 
 * Remove flows with `check_pkt_larger` when userspace datapath can handle
   PMTUD. (https://issues.redhat.com/browse/FDP-256)
+
+* Remove ssl_ciphersuites workaround for clustered databases from ovn-ctl
+  after 26.03 release, assuming it will be an LTS release.

@@ -72,6 +72,7 @@ ovn_start_db() {
            --ca-cert=db:$schema_name,SSL,ca_cert \
            --ssl-protocols=db:$schema_name,SSL,ssl_protocols \
            --ssl-ciphers=db:$schema_name,SSL,ssl_ciphers \
+           --ssl-ciphersuites=db:$schema_name,SSL,ssl_ciphersuites \
            --unixctl=${db} --remote=punix:$db.ovsdb \
            "$sim_base"/$db$i/$db.db "$@"
     }
