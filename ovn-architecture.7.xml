@@ -2720,19 +2720,19 @@
 
   <ol>
     <li>
-      Creating SSL certificates for each chassis with the certificate CN field
-      set to the chassis name (e.g. for a chassis with
+      Creating SSL/TLS certificates for each chassis with the certificate CN
+      field set to the chassis name (e.g. for a chassis with
       <code>external-ids:system-id=chassis-1</code>, via the command
       "<code>ovs-pki -u req+sign chassis-1 switch</code>").
     </li>
     <li>
-      Configuring each ovn-controller to use SSL when connecting to the
+      Configuring each ovn-controller to use SSL/TLS when connecting to the
       southbound database (e.g. via "<code>ovs-vsctl set open .
       external-ids:ovn-remote=ssl:x.x.x.x:6642</code>").
     </li>
     <li>
-      Configuring a southbound database SSL remote with "ovn-controller" role
-      (e.g. via "<code>ovn-sbctl set-connection role=ovn-controller
+      Configuring a southbound database SSL/TLS remote with "ovn-controller"
+      role (e.g. via "<code>ovn-sbctl set-connection role=ovn-controller
       pssl:6642</code>").
     </li>
   </ol>
@@ -2765,8 +2765,8 @@
     Chassis authenticates each other by using certificate. The authentication
     succeeds if the other end in tunnel presents a certificate signed by a
     trusted CA and the common name (CN) matches the expected chassis name.  The
-    SSL certificates used in role-based access controls (RBAC) can be used in
-    IPsec. Or use <code>ovs-pki</code> to create different certificates. The
+    SSL/TLS certificates used in role-based access controls (RBAC) can be used
+    in IPsec. Or use <code>ovs-pki</code> to create different certificates. The
     certificate is required to be x.509 version 3, and with CN field and
     subjectAltName field being set to the chassis name.
   </p>

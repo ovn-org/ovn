@@ -93,10 +93,10 @@ with the active server::
 2. Using load balancer vip ip as a master_ip.  In order to use this feature,
 one needs to use listen_on_master_ip_only to no.  Current code for load
 balancer have been tested to work with tcp protocol and needs to be
-tested/enchanced for ssl. Using load balancer, standby nodes will not listen on
-nb and sb db ports so that load balancer will always communicate to the active
-node and all the traffic will be sent to active node only.  Standby will
-continue to sync using LB VIP IP in this case.
+tested/enchanced for ssl/tls. Using load balancer, standby nodes will not
+listen on nb and sb db ports so that load balancer will always communicate to
+the active node and all the traffic will be sent to active node only.  Standby
+will continue to sync using LB VIP IP in this case.
 
 Use the following command to create pcs resource using LB VIP IP::
 

@@ -21,8 +21,8 @@
 
     <h2>PKI Options</h2>
     <p>
-      PKI configuration is required in order to use SSL for the connections to
-      the VTEP and Southbound databases.
+      PKI configuration is required in order to use SSL/TLS for the connections
+      to the VTEP and Southbound databases.
     </p>
     <xi:include href="lib/ssl.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
     <xi:include href="lib/ssl-bootstrap.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
@@ -47,10 +47,11 @@
           <code>ssl:<var>host</var>:<var>port</var></code>
         </p>
         <p>
-          The specified SSL <var>port</var> on the give <var>host</var>, which
-          can either be a DNS name (if built with unbound library) or an IP
-          address (IPv4 or IPv6).  If <var>host</var> is an IPv6 address, then
-          wrap <var>host</var> with square brackets, e.g.: <code>ssl:[::1]:6640</code>.
+          The specified SSL/TLS <var>port</var> on the give <var>host</var>,
+          which can either be a DNS name (if built with unbound library) or an
+          IP address (IPv4 or IPv6).  If <var>host</var> is an IPv6 address,
+          then wrap <var>host</var> with square brackets, e.g.:
+          <code>ssl:[::1]:6640</code>.
           The <code>--private-key</code>, <code>--certificate</code> and either
           of <code>--ca-cert</code> or <code>--bootstrap-ca-cert</code> options
           are mandatory when this form is used.

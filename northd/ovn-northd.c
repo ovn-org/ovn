@@ -66,7 +66,7 @@ static const char *ovnnb_db;
 static const char *ovnsb_db;
 static const char *unixctl_path;
 
-/* SSL options */
+/* SSL/TLS options. */
 static const char *ssl_private_key_file;
 static const char *ssl_certificate_file;
 static const char *ssl_ca_cert_file;

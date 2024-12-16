@@ -102,6 +102,6 @@ the common ports used by OVN. No additional security is provided. To ensure a
 more secure environment, it is a good idea to do the following
 
 * Use tools such as iptables or nftables to restrict access to known hosts.
-* Use SSL for all remote connections to OVN databases.
+* Use SSL/TLS for all remote connections to OVN databases.
 * Use role-based access control for connections to the OVN southbound
   database.

@@ -10351,7 +10351,7 @@ AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 AT_CLEANUP
 
-AT_SETUP([nb connection/ssl commands])
+AT_SETUP([nb connection - ssl commands])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
 AT_SKIP_IF([expr "$PKIDIR" : ".*[[ 	'\"
@@ -10368,18 +10368,18 @@ start_daemon ovsdb-server --remote=punix:ovnnb_db.sock \
                           --ca-cert=db:OVN_Northbound,SSL,ca_cert \
                           ovn-nb.db
 
-# Populate SSL configuration entries in nb db
+# Populate SSL/TLS configuration entries in nb db
 AT_CHECK(
     [ovn-nbctl set-ssl $PKIDIR/testpki-test-privkey.pem \
                        $PKIDIR/testpki-test-cert.pem \
                        $PKIDIR/testpki-cacert.pem], [0], [stdout], [ignore])
 
-# Populate a passive SSL connection in nb db
+# Populate a passive SSL/TLS connection in nb db
 AT_CHECK([ovn-nbctl set-connection pssl:0:127.0.0.1], [0], [stdout], [ignore])
 
 PARSE_LISTENING_PORT([ovsdb-server.log], [TCP_PORT])
 
-# Verify SSL connetivity to nb db server
+# Verify SSL/TLS connetivity to nb db server
 AT_CHECK([ovn-nbctl --db=ssl:127.0.0.1:$TCP_PORT \
                     --private-key=$PKIDIR/testpki-test-privkey.pem \
                     --certificate=$PKIDIR/testpki-test-cert.pem \
@@ -10419,18 +10419,18 @@ start_daemon ovsdb-server --remote=punix:ovnsb_db.sock \
                           --ca-cert=db:OVN_Southbound,SSL,ca_cert \
                           ovn-sb.db
 
-# Populate SSL configuration entries in sb db
+# Populate SSL/TLS configuration entries in sb db
 AT_CHECK(
     [ovn-sbctl set-ssl $PKIDIR/testpki-test-privkey.pem \
                        $PKIDIR/testpki-test-cert.pem \
                        $PKIDIR/testpki-cacert.pem], [0], [stdout], [ignore])
 
-# Populate a passive SSL connection in sb db
+# Populate a passive SSL/TLS connection in sb db
 AT_CHECK([ovn-sbctl set-connection pssl:0:127.0.0.1], [0], [stdout], [ignore])
 
 PARSE_LISTENING_PORT([ovsdb-server.log], [TCP_PORT])
 
-# Verify SSL connetivity to sb db server
+# Verify SSL/TLS connetivity to sb db server
 AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
                     --private-key=$PKIDIR/testpki-test-privkey.pem \
                     --certificate=$PKIDIR/testpki-test-cert.pem \
@@ -36295,7 +36295,7 @@ check ovn-nbctl --wait=hv sync
 echo hv2 > ${OVN_SYSCONFDIR}/system-id-override
 ovs-vsctl add-br br-phys2
 
-# for some reason SSL ovsdb configuration overrides CLI, so
+# for some reason SSL/TLS ovsdb configuration overrides CLI, so
 # delete ssl config from ovsdb to give CLI arguments priority
 ovs-vsctl del-ssl
 
@@ -36558,7 +36558,7 @@ check ovn-nbctl lsp-set-addresses lp2 "00:00:00:00:00:02 10.0.0.2"
 # here after the first ovn-controller has started
 echo hv2 > ${OVN_SYSCONFDIR}/system-id-override
 
-# for some reason SSL ovsdb configuration overrides CLI, so
+# for some reason SSL/TLS ovsdb configuration overrides CLI, so
 # delete ssl config from ovsdb to give CLI arguments priority
 ovs-vsctl del-ssl
 
@@ -36803,7 +36803,7 @@ ovs-vsctl add-br br-phys-2
 # here after the first ovn-controller has started
 echo hv2 > ${OVN_SYSCONFDIR}/system-id-override
 
-# for some reason SSL ovsdb configuration overrides CLI, so
+# for some reason SSL/TLS ovsdb configuration overrides CLI, so
 # delete ssl config from ovsdb to give CLI arguments priority
 ovs-vsctl del-ssl
 
@@ -36841,7 +36841,7 @@ rm -f ${OVN_SYSCONFDIR}/system-id-override
 
 OVN_CONTROLLER_EXIT([hv1])
 
-# for some reason SSL ovsdb configuration overrides CLI, so
+# for some reason SSL/TLS ovsdb configuration overrides CLI, so
 # delete ssl config from ovsdb to give CLI arguments priority
 ovs-vsctl del-ssl
 
@@ -38328,18 +38328,18 @@ start_daemon ovsdb-server --remote=punix:ovnnb_db.sock \
                           --ssl-protocols='TLSv1,TLSv1.1,TLSv1.2' \
                           ovn-nb.db
 
-# Populate SSL configuration entries in nb db
+# Populate SSL/TLS configuration entries in nb db
 AT_CHECK(
     [ovn-nbctl set-ssl $PKIDIR/testpki-test-privkey.pem \
                        $PKIDIR/testpki-test-cert.pem \
                        $PKIDIR/testpki-cacert.pem], [0], [stdout], [ignore])
 
-# Populate a passive SSL connection in nb db
+# Populate a passive SSL/TLS connection in nb db
 AT_CHECK([ovn-nbctl set-connection pssl:0:127.0.0.1], [0], [stdout], [ignore])
 
 PARSE_LISTENING_PORT([ovsdb-server.log], [TCP_PORT])
 
-# Verify SSL connetivity to nb db server
+# Verify SSL/TLS connetivity to nb db server
 AT_CHECK([ovn-nbctl --db=ssl:127.0.0.1:$TCP_PORT \
                     --private-key=$PKIDIR/testpki-test-privkey.pem \
                     --certificate=$PKIDIR/testpki-test-cert.pem \
@@ -38387,18 +38387,18 @@ start_daemon ovsdb-server --remote=punix:ovnsb_db.sock \
                           --ssl-protocols='TLSv1,TLSv1.1,TLSv1.2' \
                           ovn-sb.db
 
-# Populate SSL configuration entries in sb db
+# Populate SSL/TLS configuration entries in sb db
 AT_CHECK(
     [ovn-sbctl set-ssl $PKIDIR/testpki-test-privkey.pem \
                        $PKIDIR/testpki-test-cert.pem \
                        $PKIDIR/testpki-cacert.pem], [0], [stdout], [ignore])
 
-# Populate a passive SSL connection in sb db
+# Populate a passive SSL/TLS connection in sb db
 AT_CHECK([ovn-sbctl set-connection pssl:0:127.0.0.1], [0], [stdout], [ignore])
 
 PARSE_LISTENING_PORT([ovsdb-server.log], [TCP_PORT])
 
-# Verify SSL connetivity to sb db server
+# Verify SSL/TLS connetivity to sb db server
 AT_CHECK([ovn-sbctl --db=ssl:127.0.0.1:$TCP_PORT \
                     --private-key=$PKIDIR/testpki-test-privkey.pem \
                     --certificate=$PKIDIR/testpki-test-cert.pem \

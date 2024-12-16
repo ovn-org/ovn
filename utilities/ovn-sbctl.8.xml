@@ -248,7 +248,7 @@
 
     <h2>PKI Options</h2>
     <p>
-      PKI configuration is required to use SSL for the connection to the
+      PKI configuration is required to use SSL/TLS for the connection to the
       database.
     </p>
     <xi:include href="lib/ssl.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
@@ -455,16 +455,16 @@
       </dd>
     </dl>
 
-    <h2>SSL Configuration Commands</h2>
+    <h2>SSL/TLS Configuration Commands</h2>
     <p>
-      When <code>ovsdb-server</code> is configured to connect using SSL, the
-      following parameters are required:
+      When <code>ovsdb-server</code> is configured to connect using SSL/TLS,
+      the following parameters are required:
     </p>
 
     <dl>
       <dt><var>private-key</var></dt>
       <dd>
-        Specifies a PEM file containing the private key used for SSL
+        Specifies a PEM file containing the private key used for SSL/TLS
         connections.
       </dd>
 
@@ -483,26 +483,26 @@
     </dl>
 
     <p>
-      These SSL settings apply to all SSL connections made by the southbound
-      database server.
+      These SSL/TLS settings apply to all SSL/TLS connections made by the
+      southbound database server.
     </p>
 
     <dl>
       <dt><code>get-ssl</code></dt>
       <dd>
-      Prints the SSL configuration.
+      Prints the SSL/TLS configuration.
       </dd>
 
       <dt><code>del-ssl</code></dt>
       <dd>
-      Deletes the current SSL configuration.
+      Deletes the current SSL/TLS configuration.
       </dd>
 
       <dt>[<code>--bootstrap</code>] <code>set-ssl</code>
          <var>private-key</var> <var>certificate</var> <var>ca-cert</var>
          [<var>ssl-protocol-list</var> [<var>ssl-cipher-list</var>]]</dt>
       <dd>
-      Sets the SSL configuration.
+      Sets the SSL/TLS configuration.
       </dd>
     </dl>
 

@@ -42,8 +42,8 @@ Generating Certificates and Keys
 
 OVN chassis uses CA-signed certificate to authenticate peer chassis for
 building IPsec tunnel. If you have enabled Role-Based Access Control (RBAC) in
-OVN, you can use the RBAC SSL certificates and keys to set up OVN IPsec. Or you
-can generate separate certificates and keys with ``ovs-pki`` (refer to
+OVN, you can use the RBAC SSL/TLS certificates and keys to set up OVN IPsec. Or
+you can generate separate certificates and keys with ``ovs-pki`` (refer to
 :ref:`gen-certs-keys`).
 
 .. note::

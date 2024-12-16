@@ -403,7 +403,7 @@ configure the Northbound and Southbound databases::
          ovn-sb.ovsschema
 
 Configure ovsdb-servers to use databases created above, to listen on a Unix
-domain socket and to use the SSL configuration in the database::
+domain socket and to use the SSL/TLS configuration in the database::
 
    $ sudo mkdir -p /usr/local/var/run/ovn
    $ sudo ovsdb-server /usr/local/etc/ovn/ovnnb_db.db --remote=punix:/usr/local/var/run/ovn/ovnnb_db.sock \
@@ -420,7 +420,7 @@ domain socket and to use the SSL configuration in the database::
         --pidfile=/usr/local/var/run/ovn/ovnsb-server.pid --detach --log-file=/usr/local/var/log/ovn/ovnsb-server.log
 
 .. note::
-  If you built OVN without SSL support, then omit ``--private-key``,
+  If you built OVN without SSL/TLS support, then omit ``--private-key``,
   ``--certificate``, and ``--bootstrap-ca-cert``.)
 
 Initialize the databases using ovn-nbctl and ovn-sbctl. This is only necessary

@@ -473,7 +473,7 @@
 
   <h2>PKI Options</h2>
   <p>
-    PKI configuration is required to use SSL for the connection to the
+    PKI configuration is required to use SSL/TLS for the connection to the
     database (and the switch, if <code>--ovs</code> is specified).
   </p>
   <xi:include href="lib/ssl.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>

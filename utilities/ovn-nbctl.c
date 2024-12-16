@@ -456,11 +456,11 @@ Connection commands:\n\
   [--inactivity-probe=MSECS]\n\
   set-connection TARGET...   set the list of connections to TARGET...\n\
 \n\
-SSL commands:\n\
-  get-ssl                     print the SSL configuration\n\
-  del-ssl                     delete the SSL configuration\n\
+SSL/TLS commands:\n\
+  get-ssl                     print the SSL/TLS configuration\n\
+  del-ssl                     delete the SSL/TLS configuration\n\
   set-ssl PRIV-KEY CERT CA-CERT [SSL-PROTOS [SSL-CIPHERS]] \
-set the SSL configuration\n\
+set the SSL/TLS configuration\n\
 Port group commands:\n\
   pg-add PG [PORTS]           Create port group PG with optional PORTS\n\
   pg-set-ports PG PORTS       Set PORTS on port group PG\n\
@@ -8166,7 +8166,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     {"set-connection", 1, INT_MAX, "TARGET...", pre_connection, cmd_set_connection,
      NULL, "--inactivity-probe=", RW},
 
-    /* SSL commands. */
+    /* SSL/TLS commands. */
     {"get-ssl", 0, 0, "", pre_cmd_get_ssl, cmd_get_ssl, NULL, "", RO},
     {"del-ssl", 0, 0, "", pre_cmd_del_ssl, cmd_del_ssl, NULL, "", RW},
     {"set-ssl", 3, 5,

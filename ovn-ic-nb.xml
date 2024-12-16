@@ -88,7 +88,7 @@
         table for more information.
       </column>
       <column name="ssl">
-        Global SSL configuration.
+        Global SSL/TLS configuration.
       </column>
     </group>
   </table>
@@ -114,11 +114,11 @@
   </table>
 
   <table name="SSL">
-    SSL configuration for ovn-nb database access.
+    SSL/TLS configuration for ovn-nb database access.
 
     <column name="private_key">
       Name of a PEM file containing the private key used as the switch's
-      identity for SSL connections to the controller.
+      identity for SSL/TLS connections to the controller.
     </column>
 
     <column name="certificate">
@@ -135,23 +135,24 @@
 
     <column name="bootstrap_ca_cert">
       If set to <code>true</code>, then Open vSwitch will attempt to
-      obtain the CA certificate from the controller on its first SSL
+      obtain the CA certificate from the controller on its first SSL/TLS
       connection and save it to the named PEM file. If it is successful,
       it will immediately drop the connection and reconnect, and from then
-      on all SSL connections must be authenticated by a certificate signed
+      on all SSL/TLS connections must be authenticated by a certificate signed
       by the CA certificate thus obtained.  <em>This option exposes the
-      SSL connection to a man-in-the-middle attack obtaining the initial
+      SSL/TLS connection to a man-in-the-middle attack obtaining the initial
       CA certificate.</em>  It may still be useful for bootstrapping.
     </column>
 
     <column name="ssl_protocols">
-      List of SSL protocols to be enabled for SSL connections. The default
-      when this option is omitted is <code>TLSv1,TLSv1.1,TLSv1.2</code>.
+      List of SSL/TLS protocols to be enabled for SSL/TLS connections. The
+      default when this option is omitted is
+      <code>TLSv1,TLSv1.1,TLSv1.2</code>.
     </column>
 
     <column name="ssl_ciphers">
       List of ciphers (in OpenSSL cipher string format) to be supported
-      for SSL connections. The default when this option is omitted is
+      for SSL/TLS connections. The default when this option is omitted is
       <code>HIGH:!aNULL:!MD5</code>.
     </column>
 
@@ -190,18 +191,19 @@
           <dt><code>ssl:<var>host</var></code>[<code>:<var>port</var></code>]</dt>
           <dd>
             <p>
-              The specified SSL <var>port</var> on the host at the given
+              The specified SSL/TLS <var>port</var> on the host at the given
               <var>host</var>, which can either be a DNS name (if built with
-              unbound library) or an IP address. A valid SSL configuration must
-              be provided when this form is used, this configuration can be
-              specified via command-line options or the <ref table="SSL"/> table.
+              unbound library) or an IP address. A valid SSL/TLS configuration
+              must be provided when this form is used, this configuration can
+              be specified via command-line options or the <ref table="SSL"/>
+              table.
             </p>
             <p>
               If <var>port</var> is not specified, it defaults to 6640.
             </p>
             <p>
-              SSL support is an optional feature that is not always
-              built as part of Open vSwitch.
+              SSL/TLS support is an optional feature that is not always
+              built as part of OVN or Open vSwitch.
             </p>
           </dd>
 
@@ -220,7 +222,8 @@
           <dt><code>pssl:</code>[<var>port</var>][<code>:<var>host</var></code>]</dt>
           <dd>
             <p>
-              Listens for SSL connections on the specified TCP <var>port</var>.
+              Listens for SSL/TLS connections on the specified TCP
+              <var>port</var>.
               Specify 0 for <var>port</var> to have the kernel automatically
               choose an available port.  If <var>host</var>, which can either
               be a DNS name (if built with unbound library) or an IP address,
@@ -229,16 +232,16 @@
               <var>host</var> is an IPv6 address, wrap in square brackets,
               e.g. <code>pssl:6640:[::1]</code>.  If <var>host</var> is not
               specified then it listens only on IPv4 (but not IPv6) addresses.
-              A valid SSL configuration must be provided when this form is used,
-             this can be specified either via command-line options or the
-             <ref table="SSL"/> table.
+              A valid SSL/TLS configuration must be provided when this form is
+              used, this can be specified either via command-line options or
+              the <ref table="SSL"/> table.
             </p>
             <p>
               If <var>port</var> is not specified, it defaults to 6640.
             </p>
             <p>
-              SSL support is an optional feature that is not always built as
-              part of Open vSwitch.
+              SSL/TLS support is an optional feature that is not always built
+              as part of OVN or Open vSwitch.
             </p>
           </dd>
           <dt><code>ptcp:</code>[<var>port</var>][<code>:<var>host</var></code>]</dt>

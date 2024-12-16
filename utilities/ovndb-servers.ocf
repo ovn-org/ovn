@@ -158,7 +158,7 @@ ovsdb_server_metadata() {
 
   <parameter name="ovn_nb_db_privkey" unique="1">
   <longdesc lang="en">
-  OVN NB DB private key absolute path for ssl setup.
+  OVN NB DB private key absolute path for ssl/tls setup.
   </longdesc>
   <shortdesc lang="en">OVN NB DB private key file</shortdesc>
   <content type="string" />
@@ -166,7 +166,7 @@ ovsdb_server_metadata() {
 
   <parameter name="ovn_nb_db_cert" unique="1">
   <longdesc lang="en">
-  OVN NB DB certificate absolute path for ssl setup.
+  OVN NB DB certificate absolute path for ssl/tls setup.
   </longdesc>
   <shortdesc lang="en">OVN NB DB cert file</shortdesc>
   <content type="string" />
@@ -174,7 +174,7 @@ ovsdb_server_metadata() {
 
   <parameter name="ovn_nb_db_cacert" unique="1">
   <longdesc lang="en">
-  OVN NB DB CA certificate absolute path for ssl setup.
+  OVN NB DB CA certificate absolute path for ssl/tls setup.
   </longdesc>
   <shortdesc lang="en">OVN NB DB cacert file</shortdesc>
   <content type="string" />
@@ -182,7 +182,7 @@ ovsdb_server_metadata() {
 
   <parameter name="ovn_sb_db_privkey" unique="1">
   <longdesc lang="en">
-  OVN SB DB private key absolute path for ssl setup.
+  OVN SB DB private key absolute path for ssl/tls setup.
   </longdesc>
   <shortdesc lang="en">OVN SB DB private key file</shortdesc>
   <content type="string" />
@@ -190,7 +190,7 @@ ovsdb_server_metadata() {
 
   <parameter name="ovn_sb_db_cert" unique="1">
   <longdesc lang="en">
-  OVN SB DB certificate absolute path for ssl setup.
+  OVN SB DB certificate absolute path for ssl/tls setup.
   </longdesc>
   <shortdesc lang="en">OVN SB DB cert file</shortdesc>
   <content type="string" />
@@ -198,7 +198,7 @@ ovsdb_server_metadata() {
 
   <parameter name="ovn_sb_db_cacert" unique="1">
   <longdesc lang="en">
-  OVN SB DB CA certificate absolute path for ssl setup.
+  OVN SB DB CA certificate absolute path for ssl/tls setup.
   </longdesc>
   <shortdesc lang="en">OVN SB DB cacert file</shortdesc>
   <content type="string" />

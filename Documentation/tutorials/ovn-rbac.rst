@@ -44,7 +44,7 @@ Generating Certificates and Keys
 --------------------------------
 
 In the OVN RBAC deployment, ovn-controller connects to the southbound database
-via SSL connection. The southbound database uses CA-signed certificate to
+via SSL/TLS connection. The southbound database uses CA-signed certificate to
 authenticate ovn-controller.
 
 Suppose there are three machines in your deployment. `machine_1` runs
@@ -108,8 +108,8 @@ Configuring RBAC
 ----------------
 
 1. Set certificate, private key, and CA certificate for the southbound
-   database. Configure the southbound database to listen on SSL connection and
-   enforce role-based access control.
+   database. Configure the southbound database to listen on SSL/TLS connection
+   and enforce role-based access control.
 
    In `machine_3`::
 
@@ -119,7 +119,7 @@ Configuring RBAC
 
 2. Set certificate, private key, and CA certificate for `chassis_1` and
    `chassis_2`. Configure `chassis_1` and `chassis_2` to connect southbound
-   database via SSL.
+   database via SSL/TLS.
 
    In `machine_1`::
 
@@ -146,7 +146,7 @@ at port '6642'. However, if you want to deploy multiple machines for
 hosting the central components, `ovn-northd` will require a remote
 connection to all of them.
 
-1. Configure the southbound database with a second SSL listener on a
+1. Configure the southbound database with a second SSL/TLS listener on a
    separate port without RBAC enabled for use by `ovn-northd`.
 
    In `machine_3`::

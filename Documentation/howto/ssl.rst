@@ -21,9 +21,9 @@
 
       Avoid deeper levels because they do not render well.
 
-=====================
-Open vSwitch with SSL
-=====================
+=================================
+Open Virtual Network with SSL/TLS
+=================================
 
-Please refer to the Open vSwitch documentation on SSL.
+Please refer to the Open vSwitch documentation on SSL/TLS.
 

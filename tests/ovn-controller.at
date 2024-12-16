@@ -56,8 +56,8 @@ check_bridge_mappings () {
 }
 
 # NOTE: This test originally ran with only the SB-DB and no northd. For the
-# test to be successfull with SSL+RBAC we need to initially run northd to get
-# the RBAC rules programmed into the SB-DB. The test instruments the SB-DB
+# test to be successfull with SSL/TLS+RBAC we need to initially run northd to
+# get the RBAC rules programmed into the SB-DB. The test instruments the SB-DB
 # directly and we need to stop northd to avoid overwriting the instrumentation.
 kill `cat northd/ovn-northd.pid`
 kill `cat ovn-nb/ovsdb-server.pid`
@@ -672,7 +672,7 @@ OVN_CLEANUP([hv1
 /No distributed-port option set for chassisredirect port lsp1/d])
 AT_CLEANUP
 
-AT_SETUP([ovn-controller - ssl files change when using command line options])
+AT_SETUP([ovn-controller - ssl/tls files change when using command line options])
 AT_KEYWORDS([ovn])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
@@ -697,12 +697,12 @@ cp $PKIDIR/$key2 $key
 cp $PKIDIR/$cert3 $cert
 cp $PKIDIR/$cacert $cacert
 
-# Restart ovn-controller using command line options for SSL parameters
+# Restart ovn-controller using command line options for SSL/TLS parameters
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 check ovs-vsctl del-ssl
 start_daemon ovn-controller -p $key -c $cert -C $cacert
 
-# SSL should not connect because of key and cert mismatch
+# SSL/TLS should not connect because of key and cert mismatch
 OVS_WAIT_FOR_OUTPUT([ovn-appctl -t ovn-controller connection-status], [0], [not connected
 ])
 
@@ -2821,7 +2821,7 @@ OVN_CLEANUP([hv1
 AT_CLEANUP
 ])
 
-AT_SETUP([ovn-controller - ssl ciphers using command line options])
+AT_SETUP([ovn-controller - ssl/tls ciphers using command line options])
 AT_KEYWORDS([ovn])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 ovn_start

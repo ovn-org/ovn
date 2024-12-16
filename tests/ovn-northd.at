@@ -4997,7 +4997,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
-AT_SETUP([northd ssl file change])
+AT_SETUP([northd ssl/tls file change])
 TAG_UNSTABLE
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 PKIDIR="$(cd $abs_top_builddir/tests && pwd)"
@@ -5038,7 +5038,7 @@ start_daemon ovn-northd -vjsonrpc \
     --ovnnb-db=$OVN_NB_DB --ovnsb-db=ssl:127.0.0.1:$TCP_PORT \
     -p $key -c $cert -C $cacert
 
-# SSL should not connect because of key and cert mismatch
+# SSL/TLS should not connect because of key and cert mismatch
 AT_FAIL_IF([ovn-nbctl --timeout=3 --wait=sb sync])
 
 # Modify the files with the correct key and cert, and reconnect should succeed

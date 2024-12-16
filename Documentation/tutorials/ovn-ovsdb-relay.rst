@@ -113,7 +113,7 @@ To use **TCP** between ovn-controller and OVSDB Relay:
   ovs-vsctl set external_ids:ovn-remote="tcp:127.0.0.1:6642"
   /usr/share/ovn/scripts/ovn-ctl start_controller
 
-To use **SSL** between ovn-controller and OVSDB Relay:
+To use **SSL/TLS** between ovn-controller and OVSDB Relay:
 
 ::
 
@@ -130,7 +130,7 @@ To use **SSL** between ovn-controller and OVSDB Relay:
   ovs-vsctl set-ssl <...>
   /usr/share/ovn/scripts/ovn-ctl start_controller
 
-To use **SSL with RBAC** between ovn-controller and OVSDB Relay:
+To use **SSL/TLS with RBAC** between ovn-controller and OVSDB Relay:
 
 ::
 
@@ -237,7 +237,7 @@ start "intermediate" OVSDB Relay:
 Next, start "last-level" OVSDB Relay servers, to which ovn-controllers would be
 connected.
 
-To use **SSL with RBAC** between ovn-controller and OVSDB Relay:
+To use **SSL/TLS with RBAC** between ovn-controller and OVSDB Relay:
 
 ::
 

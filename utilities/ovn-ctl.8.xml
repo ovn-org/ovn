@@ -333,7 +333,7 @@
 
     <h2>Passing ssl keys when starting OVN dbs will supersede the default ssl
         values in db</h2>
-    <h3>Starting standalone ovn db server passing SSL certificates</h3>
+    <h3>Starting standalone ovn db server passing SSL/TLS certificates</h3>
     <p>
       <code>
         # ovn-ctl --ovn-nb-db-ssl-key=/etc/ovn/ovnnb-privkey.pem

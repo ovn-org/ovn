@@ -2880,7 +2880,7 @@ AT_CHECK([ovn-nbctl show], [0], [ignore])
 OVN_NBCTL_TEST_STOP "/terminating with signal 15/d"
 AT_CLEANUP
 
-AT_SETUP([ovn-nbctl - daemon ssl files change])
+AT_SETUP([ovn-nbctl - daemon ssl/tls files change])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
 dnl Create ovn-nb database.
 AT_CHECK([ovsdb-tool create ovn-nb.db $abs_top_srcdir/ovn-nb.ovsschema])

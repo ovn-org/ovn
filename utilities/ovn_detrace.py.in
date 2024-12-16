@@ -469,12 +469,12 @@ def main():
                          "(use --help for help)\n" % argv0)
         sys.exit(1)
 
-    # If at least one of the remotes is SSL, make sure the SSL required args
-    # were passed.
+    # If at least one of the remotes is SSL/TLS, make sure the SSL/TLS required
+    # args were passed.
     for db in [ovnnb_db, ovnsb_db, ovs_db]:
         if remote_is_ssl(db) and \
                 (not ssl_pk or not ssl_cert or not ssl_ca_cert):
-            sys.stderr.write('%s: SSL connection requires private key, '
+            sys.stderr.write('%s: SSL/TLS connection requires private key, '
                              'certificate for private key, and peer CA '
                              'certificate as arguments.\n' % argv0)
             sys.exit(1)

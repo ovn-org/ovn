@@ -136,7 +136,7 @@ struct br_int_remote {
 static char *parse_options(int argc, char *argv[]);
 OVS_NO_RETURN static void usage(void);
 
-/* SSL options */
+/* SSL/TLS options. */
 static const char *ssl_private_key_file;
 static const char *ssl_certificate_file;
 static const char *ssl_ca_cert_file;
