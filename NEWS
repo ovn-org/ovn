@@ -12,6 +12,7 @@ Post v24.09.0
      and "routing-protocols" are now also usable on distributed gateway ports.
    - ovn-nb: Changed schema of ovn-nb to make networks optional within Logical
      Router Ports.
+   - Bump python version required for building OVN to 3.7.
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------
