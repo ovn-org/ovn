@@ -16712,7 +16712,7 @@ ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.3
 
 ovn-nbctl lr-add ro
-ovn-nbctl lrp-add ro ro-sw 00:00:00:00:00:01 aef0:0:0:0:0:0:0:1/64
+ovn-nbctl lrp-add ro ro-sw 00:00:00:00:00:01 20.0.0.1/24
 
 ovn-nbctl ls-add sw
 ovn-nbctl lsp-add sw sw-ro
@@ -16817,6 +16817,11 @@ ra_test() {
 
     rm -f expected
 }
+
+echo "Baseline test with no ipv6"
+ra_test 0 00 0 0 0 c0
+
+ovn-nbctl --wait=hv set Logical_Router_port ro-sw networks='aef0\:\:1/64'
 
 echo "Baseline test with no MTU"
 ra_test 0 00 0 0 0 c0 40 aef00000000000000000000000000000
@@ -16963,7 +16968,7 @@ check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 ovn_attach n1 br-phys 192.168.0.3
 
 check ovn-nbctl lr-add ro
-check ovn-nbctl lrp-add ro ro-sw 00:00:00:00:00:01 aef0:0:0:0:0:0:0:1/64
+check ovn-nbctl lrp-add ro ro-sw 00:00:00:00:00:01 20.0.0.1/24
 
 check ovn-nbctl ls-add sw
 check ovn-nbctl lsp-add sw ln
@@ -17078,8 +17083,13 @@ ra_test() {
     rm -f expected
 }
 
+
+echo "Baseline test with no ipv6"
+check ra_test 0 00 0 0 0 c0
+ovn-nbctl --wait=hv set Logical_Router_port ro-sw networks='aef0\:\:1/64'
+
 # check that RAs are sent to vifs
-ra_test 0 00 0 0 0 c0 40 aef00000000000000000000000000000
+check ra_test 0 00 0 0 0 c0 40 aef00000000000000000000000000000
 
 # check that RAs don't leak into provider networks
 for i in hv1 hv2 ; do
