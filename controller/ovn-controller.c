@@ -136,6 +136,8 @@ struct br_int_remote {
 static char *parse_options(int argc, char *argv[]);
 OVS_NO_RETURN static void usage(void);
 
+static const char *unixctl_path;
+
 /* SSL options */
 static const char *ssl_private_key_file;
 static const char *ssl_certificate_file;
@@ -6146,6 +6148,10 @@ parse_options(int argc, char *argv[])
         case 'n':
             free(cli_system_id);
             cli_system_id = xstrdup(optarg);
+            break;
+
+        case 'u':
+            unixctl_path = optarg;
             break;
 
         case '?':
