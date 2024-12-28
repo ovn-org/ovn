@@ -3076,7 +3076,7 @@ tcp.flags = RST;
     <column name="type">
       <p>
         The value of this field specifies the mirror type - <code>gre</code>,
-        <code>erspan</code> or <code>local</code>.
+        <code>erspan</code>, <code>local</code> or <code>lport</code>.
       </p>
     </column>
 
@@ -3333,6 +3333,10 @@ tcp.flags = RST;
         Points to preferred encapsulation configuration to transmit
         logical dataplane packets to this chassis. The entry is reference to
         a <ref table="Encap"/> record.
+      </column>
+
+      <column name="mirror_port">
+       Points to mirror target port fot lport mirror type.
       </column>
 
       <column name="additional_encap">

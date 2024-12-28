@@ -121,6 +121,10 @@ mirror_run(struct ovsdb_idl_txn *ovs_idl_txn,
     /* Iterate through sb mirrors and build the 'ovn_mirrors'. */
     const struct sbrec_mirror *sb_mirror;
     SBREC_MIRROR_TABLE_FOR_EACH (sb_mirror, sb_mirror_table) {
+        /* We don't need to add mirror to ovs if it is lport mirror. */
+        if (!strcmp(sb_mirror->type, "lport")) {
+            continue;
+        }
         struct ovn_mirror *m = ovn_mirror_create(sb_mirror->name);
         m->sb_mirror = sb_mirror;
         ovn_mirror_add(&ovn_mirrors, m);

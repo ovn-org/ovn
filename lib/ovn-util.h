@@ -198,6 +198,8 @@ get_sb_port_group_name(const char *nb_pg_name, int64_t dp_tunnel_key,
 }
 
 char *ovn_chassis_redirect_name(const char *port_name);
+char *ovn_mirror_port_name(const char *datapath_name,
+                           const char *port_name);
 void ovn_set_pidfile(const char *name);
 
 bool ip46_parse_cidr(const char *str, struct in6_addr *prefix,
@@ -310,7 +312,7 @@ BUILD_ASSERT_DECL(
 #define SCTP_ABORT_CHUNK_FLAG_T (1 << 0)
 
 /* The number of tables for the ingress and egress pipelines. */
-#define LOG_PIPELINE_LEN 30
+#define LOG_PIPELINE_LEN 31
 
 static inline uint32_t
 hash_add_in6_addr(uint32_t hash, const struct in6_addr *addr)
@@ -406,6 +408,7 @@ enum en_lport_type {
     LP_UNKNOWN,
     LP_VIF,
     LP_CONTAINER,
+    LP_MIRROR,
     LP_PATCH,
     LP_L3GATEWAY,
     LP_LOCALNET,

@@ -457,13 +457,15 @@ check ovn-nbctl ls-add sw0
 check ovn-nbctl lsp-add sw0 sw0-port1
 check ovn-nbctl lsp-add sw0 sw0-port2
 check ovn-nbctl lsp-add sw0 sw0-port3
+check ovn-nbctl lsp-add sw0 sw0-port4
+check ovn-nbctl mirror-add mirror-lport lport to-lport sw0-port1
 
 dnl Add duplicate mirror name
 AT_CHECK([ovn-nbctl mirror-add mirror1 gre 0 from-lport 10.10.10.5], [1], [], [stderr])
 AT_CHECK([grep 'already exists' stderr], [0], [ignore])
 
 dnl Attach invalid source port to mirror
-AT_CHECK([ovn-nbctl lsp-attach-mirror sw0-port4 mirror3], [1], [], [stderr])
+AT_CHECK([ovn-nbctl lsp-attach-mirror sw0-port5 mirror3], [1], [], [stderr])
 AT_CHECK([grep 'port name not found' stderr], [0], [ignore])
 
 dnl Attach source port to invalid mirror
@@ -479,12 +481,22 @@ dnl Attach one more source port to mirror
 check ovn-nbctl lsp-attach-mirror sw0-port3 mirror3
 check_column "$mirror3uuid" nb:Logical_Switch_Port mirror_rules name=sw0-port3
 
+mirror_lportuuid=$(fetch_column nb:Mirror _uuid name=mirror-lport)
+dnl Attach source port to lport mirror
+check ovn-nbctl lsp-attach-mirror sw0-port4 mirror-lport
+check_column "$mirror_lportuuid" nb:Logical_Switch_Port mirror_rules name=sw0-port4
+
 dnl Verify if multiple ports are attached to the same mirror properly
 AT_CHECK([ovn-nbctl mirror-list], [0], [dnl
 mirror-local:
   Type     :  local
   Sink     :  10.10.10.3
   Filter   :  both
+
+mirror-lport:
+  Type     :  lport
+  Sink     :  sw0-port1
+  Filter   :  to-lport
 
 mirror1:
   Type     :  gre
@@ -523,6 +535,11 @@ check_column "" nb:Logical_Switch_Port mirror_rules name=sw0-port1
 
 dnl Check if the mirror deleted properly
 AT_CHECK([ovn-nbctl mirror-list], [0], [dnl
+mirror-lport:
+  Type     :  lport
+  Sink     :  sw0-port1
+  Filter   :  to-lport
+
 mirror1:
   Type     :  gre
   Sink     :  10.10.10.1
@@ -537,8 +554,11 @@ mirror2:
 
 ])
 
-dnl Delete another mirror
+dnl Delete mirrors one more mirror
 check ovn-nbctl mirror-del mirror2
+
+dnl Delete one more mirror
+check ovn-nbctl mirror-del mirror-lport
 
 dnl Update the Sink address
 check ovn-nbctl set mirror . sink=192.168.1.13
@@ -556,6 +576,81 @@ dnl Delete all mirrors
 check ovn-nbctl mirror-del
 AT_CHECK([ovn-nbctl mirror-list], [0], [dnl
 ])])
+
+dnl ---------------------------------------------------------------------
+
+OVN_NBCTL_TEST([ovn_nbctl_mirrors_rules], [mirror_rules], [
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl mirror-add mirror1 lport from-lport sw0-p1
+check ovn-nbctl mirror-add mirror2 lport to-lport sw0-p1
+
+check ovn-nbctl mirror-rule-add mirror1 100 '1' mirror
+check ovn-nbctl mirror-rule-add mirror2 150 'ip' mirror
+
+dnl Add mirror rule for non-exist mirror name
+AT_CHECK([ovn-nbctl mirror-rule-add mirror5 150 'ip' allow], [1], [], [stderr])
+AT_CHECK([grep 'not found' stderr], [0], [ignore])
+
+dnl Add same mirror rule for mirror
+AT_CHECK([ovn-nbctl mirror-rule-add mirror2 150 'ip' mirror], [1], [], [stderr])
+AT_CHECK([grep 'exists' stderr], [0], [ignore])
+
+AT_CHECK([ovn-nbctl mirror-list], [0], [dnl
+mirror1:
+  Type     :  lport
+  Sink     :  sw0-p1
+  Filter   :  from-lport
+  Rules    :
+         100                              1          mirror
+
+mirror2:
+  Type     :  lport
+  Sink     :  sw0-p1
+  Filter   :  to-lport
+  Rules    :
+         150                             ip          mirror
+
+])
+
+dnl Add one more mirror rule to mirror
+check ovn-nbctl mirror-rule-add mirror2 200 'icmp' mirror
+
+check ovn-nbctl mirror-rule-add mirror2 250 'icmp' skip
+
+dnl Mirror rule attach mirror
+mirrorrule1uuid=$(fetch_column nb:Mirror_rule _uuid name=mirror1)
+check_column "$mirrorrule1uuid" nb:Mirror mirror_rule mirror_rule="$mirrorrule1uuid"
+
+dnl Remove the mirror rule by name
+check ovn-nbctl mirror-rule-del mirror1
+
+dnl Mirror rule dettach mirror
+mirrorr1uuid=$(fetch_column nb:Mirror _uuid name=mirror1)
+check_column "" nb:Mirror mirror_rule mirror_rule="mirrorr1uuid"
+
+dnl Delete mirror rule by priority
+check ovn-nbctl mirror-rule-del mirror2 200
+
+dnl Remove the mirror rule by priority and match
+check ovn-nbctl mirror-rule-del mirror2 250 'icmp'
+
+AT_CHECK([ovn-nbctl mirror-list], [0], [dnl
+mirror1:
+  Type     :  lport
+  Sink     :  sw0-p1
+  Filter   :  from-lport
+
+mirror2:
+  Type     :  lport
+  Sink     :  sw0-p1
+  Filter   :  to-lport
+  Rules    :
+         150                             ip          mirror
+
+])
+
+])
 
 dnl ---------------------------------------------------------------------
 

@@ -61,6 +61,7 @@ static unixctl_cb_func chassis_features_list;
     NB_NODE(acl, "acl") \
     NB_NODE(logical_router, "logical_router") \
     NB_NODE(mirror, "mirror") \
+    NB_NODE(mirror_rule, "mirror_rule") \
     NB_NODE(meter, "meter") \
     NB_NODE(bfd, "bfd") \
     NB_NODE(static_mac_binding, "static_mac_binding") \
@@ -198,6 +199,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_acl_id, &en_sb_acl_id, NULL);
 
     engine_add_input(&en_northd, &en_nb_mirror, NULL);
+    engine_add_input(&en_northd, &en_nb_mirror_rule, NULL);
     engine_add_input(&en_northd, &en_nb_static_mac_binding, NULL);
     engine_add_input(&en_northd, &en_nb_chassis_template_var, NULL);
 
