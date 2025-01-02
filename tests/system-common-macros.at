@@ -473,13 +473,13 @@ AT_CHECK([ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-16], [0
 [2001:1db8:3333]
 ])
 
-prefix=$(ovn-nbctl list logical_router_port rp-public | awk -F/ '/ipv6_prefix/{print substr($ 1,25,9)}' | sed 's/://g')
+hex_prefix=0x20011db8
 ovn-nbctl list logical_router_port rp-public > /tmp/rp-public
 
 # Wait for 2 renew on each port.
-NETNS_START_TCPDUMP([server], [-c 4 -nni s1 ip6[[48:1]]=0x05 and ip6[[113:4]]=0x${prefix}], [renew])
+NETNS_START_TCPDUMP([server], [-c 4 -nni s1 ip6[[48:1]]=0x05 and ip6[[113:4]]=${hex_prefix}], [renew])
 # Reply message with Status OK
-NETNS_START_TCPDUMP([server], [-c 4 -nni s1 ip6[[48:1]]=0x07 and ip6[[81:4]]=0x${prefix}], [reply])
+NETNS_START_TCPDUMP([server], [-c 4 -nni s1 ip6[[48:1]]=0x07 and ip6[[81:4]]=${hex_prefix}], [reply])
 
 OVS_WAIT_UNTIL([
     total_pkts=$(cat renew.tcpdump | wc -l)
@@ -495,7 +495,7 @@ check ovn-nbctl set logical_router_port rp-public options:prefix=false
 check ovn-nbctl set logical_router_port rp-sw0 options:prefix=false
 check ovn-nbctl --wait=hv set logical_router_port rp-sw1 options:prefix=true
 sleep_sb
-NETNS_START_TCPDUMP([server], [-c 2 -nni s1 ip6[[48:1]]=0x05 and ip6[[113:4]]=0x${prefix}], [renew2])
+NETNS_START_TCPDUMP([server], [-c 2 -nni s1 ip6[[48:1]]=0x05 and ip6[[113:4]]=${hex_prefix}], [renew2])
 
 # Sleep enough to have solicit and renew being sent, then wait for 2 renew.
 # The reply to the request will usually be received as sb is sleeping.
