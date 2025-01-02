@@ -438,8 +438,8 @@ check ovn-nbctl --wait=hv sync
 cat > /etc/dhcp/dhcpd.conf <<EOF
 option dhcp-rebinding-time 10;
 option dhcp-renewal-time 5;
-subnet6 2001:1db8:3333::/64 {
-    prefix6 2001:1db8:3333:100:: 2001:1db8:3333:111:: /96;
+subnet6 2001:1db8:3333::/56 {
+    prefix6 2001:1db8:3333:100:: 2001:1db8:3333:111:: /64;
 }
 EOF
 rm -f /var/lib/dhcp/dhcpd6.leases
