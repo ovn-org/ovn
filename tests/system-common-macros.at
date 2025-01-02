@@ -394,8 +394,8 @@ ADD_NAMESPACES(sw11)
 ADD_VETH(sw11, sw11, br-int, "192.168.2.2/24", "f0:00:00:02:02:03", \
          "192.168.2.1")
 ADD_NAMESPACES(server)
-ADD_VETH(s1, server, br-ext, "2001:1db8:3333::2/64", "f0:00:00:01:02:05", \
-         "2001:1db8:3333::1", "nodad")
+ADD_VETH(s1, server, br-ext, "2001:db8:3333::2/64", "f0:00:00:01:02:05", \
+         "2001:db8:3333::1", "nodad")
 
 if test X"$1" = X"GR"; then
    check_uuid ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
@@ -449,8 +449,8 @@ check ovn-nbctl --wait=hv sync
 cat > /etc/dhcp/dhcpd.conf <<EOF
 option dhcp-rebinding-time 10;
 option dhcp-renewal-time 5;
-subnet6 2001:1db8:3333::/56 {
-    prefix6 2001:1db8:3333:100:: 2001:1db8:3333:111:: /64;
+subnet6 2001:db8:3333::/56 {
+    prefix6 2001:db8:3333:100:: 2001:db8:3333:111:: /64;
 }
 EOF
 rm -f /var/lib/dhcp/dhcpd6.leases
@@ -466,14 +466,14 @@ check ovn-nbctl --wait=hv sync
 OVS_WAIT_WHILE([test "$(ovn-nbctl get logical_router_port rp-public ipv6_prefix | cut -c4-15)" = ""])
 OVS_WAIT_WHILE([test "$(ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c4-15)" = ""])
 
-AT_CHECK([ovn-nbctl get logical_router_port rp-public ipv6_prefix | cut -c3-16], [0], [dnl
-[2001:1db8:3333]
+AT_CHECK([ovn-nbctl get logical_router_port rp-public ipv6_prefix | cut -c3-15], [0], [dnl
+[2001:db8:3333]
 ])
-AT_CHECK([ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-16], [0], [dnl
-[2001:1db8:3333]
+AT_CHECK([ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-15], [0], [dnl
+[2001:db8:3333]
 ])
 
-hex_prefix=0x20011db8
+hex_prefix=0x20010db8
 ovn-nbctl list logical_router_port rp-public > /tmp/rp-public
 
 # Wait for 2 renew on each port.
@@ -509,8 +509,8 @@ OVS_WAIT_UNTIL([
 
 check ovn-nbctl set logical_router_port rp-sw0 options:prefix=false
 check ovn-nbctl clear logical_router_port rp-sw0 ipv6_prefix
-OVS_WAIT_WHILE([test "$(ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-16)" = "[2001:1db8:3333]"])
-AT_CHECK([ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-16], [0], [dnl
+OVS_WAIT_WHILE([test "$(ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-15)" = "[2001:db8:3333]"])
+AT_CHECK([ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-15], [0], [dnl
 []
 ])
 
