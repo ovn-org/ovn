@@ -14310,8 +14310,8 @@ ovs-vsctl \
 start_daemon ovn-controller
 
 ADD_NAMESPACES(server)
-ADD_VETH(s1, server, br-ext, "2001:1db8:3333::2/64", "f0:00:00:01:02:05", \
-         "2001:1db8:3333::1", "nodad")
+ADD_VETH(s1, server, br-ext, "2001:db8:3333::2/64", "f0:00:00:01:02:05", \
+         "2001:db8:3333::1", "nodad")
 
 check_uuid ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
 
@@ -14356,8 +14356,8 @@ check ovn-nbctl --wait=hv sync
 cat > /etc/dhcp/dhcpd.conf <<EOF
 option dhcp-rebinding-time 10;
 option dhcp-renewal-time 5;
-subnet6 2001:1db8:3333::/56 {
-    prefix6 2001:1db8:3333:100:: 2001:1db8:3333:111:: /64;
+subnet6 2001:db8:3333::/56 {
+    prefix6 2001:db8:3333:100:: 2001:db8:3333:111:: /64;
 }
 EOF
 rm -f /var/lib/dhcp/dhcpd6.leases
@@ -14380,11 +14380,11 @@ dp sw0 : local = sw0-rp, remote = rp-sw0
 OVS_WAIT_WHILE([test "$(ovn-nbctl get logical_router_port rp-public ipv6_prefix | cut -c4-15)" = ""])
 OVS_WAIT_WHILE([test "$(ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c4-15)" = ""])
 
-AT_CHECK([ovn-nbctl get logical_router_port rp-public ipv6_prefix | cut -c3-16], [0], [dnl
-[2001:1db8:3333]
+AT_CHECK([ovn-nbctl get logical_router_port rp-public ipv6_prefix | cut -c3-15], [0], [dnl
+[2001:db8:3333]
 ])
-AT_CHECK([ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-16], [0], [dnl
-[2001:1db8:3333]
+AT_CHECK([ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-15], [0], [dnl
+[2001:db8:3333]
 ])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
@@ -14447,7 +14447,7 @@ start_daemon ovn-controller
 # Create router and switch facilitating external connectivity
 check ovn-nbctl \
         -- lr-add R1 \
-        -- lrp-add R1 lrp-r1-public 00:00:02:ff:ff:01 2001:1db8:ffff::1/64 \
+        -- lrp-add R1 lrp-r1-public 00:00:02:ff:ff:01 2001:db8:ffff::1/64 \
         -- ls-add public \
         -- lsp-add public lsp-public-r1 \
         -- lsp-set-type lsp-public-r1 router \
@@ -14474,7 +14474,7 @@ check ovn-nbctl --wait=hv sync
 
 # Create "external host"
 ADD_NAMESPACES(ext1)
-ADD_VETH(ext1, ext1, br-ext, "2001:1db8:ffff::2/64", "00:00:02:ff:ff:02", [], [nodad])
+ADD_VETH(ext1, ext1, br-ext, "2001:db8:ffff::2/64", "00:00:02:ff:ff:02", [], [nodad])
 OVS_WAIT_UNTIL([NS_EXEC([ext1], [ip a show dev ext1 | grep "fe80::" | grep -v tentative])])
 
 # Simulate external IPv4 network "behind" external host
@@ -14483,7 +14483,7 @@ NS_CHECK_EXEC([ext1], [ip link set dummy0 up])
 NS_CHECK_EXEC([ext1], [ip addr add 10.42.0.10/32 dev dummy0])
 
 # Add IPv4 route over IPv6 next-hop to the router
-check ovn-nbctl lr-route-add R1 10.42.0.10/24 2001:1db8:ffff::2 lrp-r1-public
+check ovn-nbctl lr-route-add R1 10.42.0.10/24 2001:db8:ffff::2 lrp-r1-public
 
 # Test Distributed NAT
 # Create internal network and connect it to router
@@ -14506,7 +14506,7 @@ check ovn-nbctl \
 check ovn-nbctl lr-nat-add R1 dnat_and_snat 172.16.10.1 192.168.100.10 alice 00:00:04:00:00:01
 
 # Add route for R1's external SNAT/DNAT address to external host
-NS_EXEC([ext1], [ip route add 172.16.10.1/32 via inet6 2001:1db8:ffff::1])
+NS_EXEC([ext1], [ip route add 172.16.10.1/32 via inet6 2001:db8:ffff::1])
 
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
@@ -14544,7 +14544,7 @@ check ovn-nbctl \
 check ovn-nbctl lr-nat-add R1 snat 172.16.10.2 192.168.200.10
 
 # Add route for R1's external SNAT address to external host
-NS_EXEC([ext1], [ip route add 172.16.10.2/32 via inet6 2001:1db8:ffff::1])
+NS_EXEC([ext1], [ip route add 172.16.10.2/32 via inet6 2001:db8:ffff::1])
 
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
@@ -14614,7 +14614,7 @@ start_daemon ovn-controller
 # Create gateway router and switch facilitating external connectivity
 check ovn-nbctl \
         -- lr-add R1 \
-        -- lrp-add R1 lrp-r1-public 00:00:02:ff:ff:01 2001:1db8:ffff::1/64 \
+        -- lrp-add R1 lrp-r1-public 00:00:02:ff:ff:01 2001:db8:ffff::1/64 \
         -- set Logical_Router R1 options:chassis=hv1 \
         -- ls-add public \
         -- lsp-add public lsp-public-r1 \
@@ -14634,7 +14634,7 @@ check ovn-nbctl --wait=hv sync
 
 # Create "external host"
 ADD_NAMESPACES(ext1)
-ADD_VETH(ext1, ext1, br-ext, "2001:1db8:ffff::2/64", "00:00:02:ff:ff:02", [], [nodad])
+ADD_VETH(ext1, ext1, br-ext, "2001:db8:ffff::2/64", "00:00:02:ff:ff:02", [], [nodad])
 OVS_WAIT_UNTIL([NS_EXEC([ext1], [ip a show dev ext1 | grep "fe80::" | grep -v tentative])])
 
 # Simulate external IPv4 network "behind" external host
@@ -14643,7 +14643,7 @@ NS_CHECK_EXEC([ext1], [ip link set dummy0 up])
 NS_CHECK_EXEC([ext1], [ip addr add 10.42.0.10/32 dev dummy0])
 
 # Add IPv4 route over IPv6 next-hop to the router
-check ovn-nbctl lr-route-add R1 10.42.0.10/24 2001:1db8:ffff::2 lrp-r1-public
+check ovn-nbctl lr-route-add R1 10.42.0.10/24 2001:db8:ffff::2 lrp-r1-public
 
 # Test dnat_and_snat NAT type
 # Create internal network and connect it to router
@@ -14666,7 +14666,7 @@ check ovn-nbctl \
 check ovn-nbctl lr-nat-add R1 dnat_and_snat 172.16.10.1 192.168.100.10
 
 # Add route for R1's external SNAT/DNAT address to external host
-NS_EXEC([ext1], [ip route add 172.16.10.1/32 via inet6 2001:1db8:ffff::1])
+NS_EXEC([ext1], [ip route add 172.16.10.1/32 via inet6 2001:db8:ffff::1])
 
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
@@ -14705,7 +14705,7 @@ check ovn-nbctl \
 check ovn-nbctl lr-nat-add R1 snat 172.16.10.2 192.168.200.10
 
 # Add route for R1's external SNAT address to external host
-NS_EXEC([ext1], [ip route add 172.16.10.2/32 via inet6 2001:1db8:ffff::1])
+NS_EXEC([ext1], [ip route add 172.16.10.2/32 via inet6 2001:db8:ffff::1])
 
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
