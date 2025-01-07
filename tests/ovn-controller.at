@@ -3190,6 +3190,56 @@ OVS_WAIT_UNTIL([grep -q 'tcp:127.0.0.1:1235: connected' hv1/ovn-controller.log])
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
+AT_SETUP([ovn-controller - br-int flow table prefixes])
+AT_KEYWORDS([ovn-controller prefixes])
+ovn_start
+
+net_add n1
+sim_add hv1
+ovs-vsctl add-br br-phys
+
+dnl Stop the database server before starting ovn-controller and convert the
+dnl schema to support only 3 prefixes.
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+AT_CHECK([sed 's/"max": 4}/"max": 3}/' $ovs_srcdir/vswitchd/vswitch.ovsschema > new_schema])
+AT_CHECK([ovsdb-tool convert hv1/conf.db new_schema])
+start_daemon ovsdb-server --remote=punix:db.sock
+
+dnl Start ovn-controller.
+ovn_attach n1 br-phys 192.168.0.20
+
+dnl Wait for exactly 3 prefixes to be configured.
+OVS_WAIT_UNTIL(
+    [grep -q 'Setting flow table prefixes: ip_src, ip_dst, ipv6_src.' \
+             hv1/ovn-controller.log])
+OVS_WAIT_FOR_OUTPUT([ovs-vsctl --columns=prefixes --bare list Flow_Table], [0], [dnl
+ip_dst ip_src ipv6_src
+])
+
+dnl Remember the row UUID.
+uuid=$(ovs-vsctl --columns=_uuid --bare list Flow_Table)
+
+dnl Stop the database server again and convert the schema back to support
+dnl up to 4 prefixes.
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+AT_CHECK([cat $ovs_srcdir/vswitchd/vswitch.ovsschema > new_schema])
+AT_CHECK([ovsdb-tool convert hv1/conf.db new_schema])
+start_daemon ovsdb-server --remote=punix:db.sock
+
+dnl Wait for exactly 4 prefixes to be configured.
+OVS_WAIT_FOR_OUTPUT(
+    [grep -q 'Setting flow table prefixes: ip_src, ip_dst, ipv6_src, ipv6_dst.' \
+             hv1/ovn-controller.log])
+OVS_WAIT_FOR_OUTPUT([ovs-vsctl --columns=prefixes --bare list Flow_Table], [0], [dnl
+ip_dst ip_src ipv6_dst ipv6_src
+])
+
+dnl Check that the record was updated and not replaced.
+AT_CHECK([test "$(ovs-vsctl --columns=_uuid --bare list Flow_Table)" = "${uuid}"])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-controller - CT zone min/max boundaries])
 ovn_start

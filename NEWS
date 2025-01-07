@@ -35,6 +35,9 @@ Post v24.09.0
      removed by the CMS.  This behavior is controlled by the
      "ecmp_nexthop_monitor_enable" config option in the NB_Global table.
      Disabled by default.
+   - Improved handling of IPv6 traffic by enabling address prefix tracking
+     in OVS for both IPv4 and IPv6 addresses, whenever possible, reducing
+     the amount of IPv6 datapath flows.
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------

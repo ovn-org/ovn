@@ -20,6 +20,9 @@
 #include "lib/util.h"
 #include "lib/dirs.h"
 #include "socket-util.h"
+#include "lib/ovsdb-cs.h"
+#include "lib/ovsdb-error.h"
+#include "lib/ovsdb-types.h"
 #include "lib/vswitch-idl.h"
 #include "odp-netlink.h"
 #include "openvswitch/vlog.h"
@@ -418,17 +421,99 @@ ovs_feature_get_openflow_cap(void)
     return ret;
 }
 
+/* Monitoring how many prefixes flow tables can have.
+ * TODO: Remove this code once the server column type is available via IDL. */
+static struct ovsdb_cs *vswitch_cs;
+static size_t max_flow_table_prefixes;
+
+static struct json *
+vswitch_schema_prefixes_find(const struct json *schema_json,
+                             void *ctx OVS_UNUSED)
+{
+    /* We must return a monitor request object, but we do not actually want
+     * to monitor the data, so returning an empty one. */
+    struct json *monitor_request = json_object_create();
+    struct ovsdb_idl_column *prefixes_col;
+
+    prefixes_col = &ovsrec_flow_table_columns[OVSREC_FLOW_TABLE_COL_PREFIXES];
+
+    if (schema_json->type != JSON_OBJECT) {
+        VLOG_WARN_RL(&rl, "OVS database schema is not a JSON object");
+        return monitor_request;
+    }
+
+    const char *ft_name = ovsrec_table_classes[OVSREC_TABLE_FLOW_TABLE].name;
+    const char *nested_objects[] = {
+        "tables", ft_name, "columns", prefixes_col->name, "type",
+    };
+    const struct json *nested = schema_json;
+
+    for (size_t i = 0; i < ARRAY_SIZE(nested_objects); i++) {
+        nested = shash_find_data(json_object(nested), nested_objects[i]);
+        if (!nested || nested->type != JSON_OBJECT) {
+            VLOG_WARN_RL(&rl, "OVS database schema has no valid '%s'.",
+                         nested_objects[i]);
+            return monitor_request;
+        }
+    }
+
+    struct ovsdb_type server_type;
+    struct ovsdb_error *error;
+
+    error = ovsdb_type_from_json(&server_type, nested);
+    if (error) {
+        char *msg = ovsdb_error_to_string_free(error);
+
+        VLOG_WARN_RL(&rl, "Failed to parse type of %s column in %s table: %s",
+                     prefixes_col->name, ft_name, msg);
+        free(msg);
+        return monitor_request;
+    }
+
+    if (max_flow_table_prefixes != server_type.n_max) {
+        VLOG_INFO_RL(&rl, "OVS DB schema supports %d flow table prefixes, "
+                          "our IDL supports: %d",
+                     server_type.n_max, prefixes_col->type.n_max);
+        max_flow_table_prefixes = server_type.n_max;
+    }
+
+    return monitor_request;
+}
+
+static struct ovsdb_cs_ops feature_cs_ops = {
+    .compose_monitor_requests = vswitch_schema_prefixes_find,
+};
+
+static void
+vswitch_schema_prefixes_run(void)
+{
+    struct ovsdb_cs_event *event;
+    struct ovs_list events;
+
+    ovsdb_cs_run(vswitch_cs, &events);
+    LIST_FOR_EACH_POP (event, list_node, &events) {
+        /* We're not really interested in events.  We only care about the
+         * monitor request callback being invoked on re-connections or
+         * schema changes. */
+        ovsdb_cs_event_destroy(event);
+    }
+    ovsdb_cs_wait(vswitch_cs);
+}
+
 void
 ovs_feature_support_destroy(void)
 {
     rconn_destroy(swconn);
     swconn = NULL;
+    ovsdb_cs_destroy(vswitch_cs);
+    vswitch_cs = NULL;
 }
 
 /* Returns 'true' if the set of tracked OVS features has been updated. */
 bool
 ovs_feature_support_run(const struct smap *ovs_capabilities,
-                        const char *conn_target, int probe_interval)
+                        const char *conn_target, int probe_interval,
+                        const char *db_target)
 {
     static struct smap empty_caps = SMAP_INITIALIZER(&empty_caps);
 
@@ -449,6 +534,16 @@ ovs_feature_support_run(const struct smap *ovs_capabilities,
         updated |= handle_feature_state_update(new_value, feature->value,
                                                feature->name);
     }
+
+    if (!vswitch_cs) {
+        vswitch_cs = ovsdb_cs_create(ovsrec_idl_class.database, 3,
+                                     &feature_cs_ops, NULL);
+    }
+    ovsdb_cs_set_remote(vswitch_cs, db_target, true);
+    /* This feature doesn't affect OpenFlow rules, so not touching 'updated'
+     * even if changed. */
+    vswitch_schema_prefixes_run();
+
     return updated;
 }
 
@@ -478,4 +573,12 @@ uint32_t
 ovs_feature_max_select_groups_get(void)
 {
     return ovs_group_features.max_groups[OFPGT11_SELECT];
+}
+
+/* Returns the number of flow table prefixes that can be configured in
+ * the OVS database. */
+size_t
+ovs_features_max_flow_table_prefixes_get(void)
+{
+    return max_flow_table_prefixes;
 }
