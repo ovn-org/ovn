@@ -1126,6 +1126,8 @@ add_to_routes_ad(struct hmap *routes_ad, const struct in6_addr prefix,
                  const struct nbrec_logical_router_static_route *nb_route,
                  const struct nbrec_logical_router *nb_lr)
 {
+    ovs_assert(nb_route || nb_lrp);
+
     if (route_table == NULL) {
         route_table = "";
     }
@@ -1146,9 +1148,15 @@ add_to_routes_ad(struct hmap *routes_ad, const struct in6_addr prefix,
         hmap_insert(routes_ad, &ic_route->node, hash);
     } else {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "Duplicate route advertisement was suppressed! NB "
-                     "route uuid: "UUID_FMT,
-                     UUID_ARGS(&nb_route->header_.uuid));
+        const char *msg_fmt = "Duplicate %s route advertisement was "
+                              "suppressed! NB %s uuid: "UUID_FMT;
+        if (nb_route) {
+            VLOG_WARN_RL(&rl, msg_fmt, origin, "route",
+                         UUID_ARGS(&nb_route->header_.uuid));
+        } else {
+            VLOG_WARN_RL(&rl, msg_fmt, origin, "lrp",
+                         UUID_ARGS(&nb_lrp->header_.uuid));
+        }
     }
 }
 
