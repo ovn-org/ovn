@@ -493,6 +493,76 @@ create_br_datapath(struct ovsdb_idl_txn *ovs_idl_txn,
     return dp;
 }
 
+#define N_FLOW_TABLES 255
+
+static void
+update_flow_table_prefixes(struct ovsdb_idl_txn *ovs_idl_txn,
+                           const struct ovsrec_bridge *br_int)
+{
+    size_t max_prefixes = ovs_features_max_flow_table_prefixes_get();
+    struct ds ds = DS_EMPTY_INITIALIZER;
+    const char *prefixes[] = {
+        "ip_src", "ip_dst", "ipv6_src", "ipv6_dst",
+    };
+    struct ovsrec_flow_table *ft;
+    size_t i;
+
+    /* We must not attempt setting more prefixes than our IDL supports.
+     * Note: This should be a build time assertion, but IDL structures
+     * are not defined as constants. */
+    ovs_assert(
+        ARRAY_SIZE(prefixes) <=
+        ovsrec_flow_table_columns[OVSREC_FLOW_TABLE_COL_PREFIXES].type.n_max);
+
+    if (!max_prefixes) {
+        /* Not discovered yet. */
+        return;
+    }
+
+    max_prefixes = MIN(max_prefixes, ARRAY_SIZE(prefixes));
+    if (br_int->n_flow_tables == N_FLOW_TABLES &&
+        br_int->value_flow_tables[0]->n_prefixes == max_prefixes) {
+        /* Already up to date.  Ideally, we would check every table,
+         * but it seems excessive. */
+        return;
+    }
+
+    for (i = 1; i < br_int->n_flow_tables; i++) {
+        if (br_int->value_flow_tables[i] != br_int->value_flow_tables[0]) {
+            break;
+        }
+    }
+    if (i == N_FLOW_TABLES) {
+        /* Correct number of flow tables and all pointing to the same row. */
+        ft = br_int->value_flow_tables[0];
+    } else {
+        /* Unexpected configuration.  Let's create a new flow table row.
+         * Old ones will be garbage collected by the database. */
+        struct ovsrec_flow_table *values[N_FLOW_TABLES];
+        int64_t keys[N_FLOW_TABLES];
+
+        ft = ovsrec_flow_table_insert(ovs_idl_txn);
+        for (i = 0; i < ARRAY_SIZE(values); i++) {
+            keys[i] = i;
+            values[i] = ft;
+        }
+        ovsrec_bridge_set_flow_tables(br_int, keys, values,
+                                      ARRAY_SIZE(values));
+    }
+
+    ds_put_cstr(&ds, "Setting flow table prefixes:");
+    for (i = 0 ; i < max_prefixes; i++) {
+        ds_put_char(&ds, ' ');
+        ds_put_cstr(&ds, prefixes[i]);
+        ds_put_char(&ds, ',');
+    }
+    ds_chomp(&ds, ',');
+    VLOG_INFO("%s.", ds_cstr_ro(&ds));
+    ds_destroy(&ds);
+
+    ovsrec_flow_table_set_prefixes(ft, prefixes, max_prefixes);
+}
+
 static const struct ovsrec_bridge *
 get_br_int(const struct ovsrec_bridge_table *bridge_table,
            const struct ovsrec_open_vswitch_table *ovs_table)
@@ -569,6 +639,8 @@ process_br_int(struct ovsdb_idl_txn *ovs_idl_txn,
                                                     datapath_type);
                 }
             }
+
+            update_flow_table_prefixes(ovs_idl_txn, br_int);
         }
     }
     *br_int_ = br_int;
@@ -789,8 +861,11 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_add_column(ovs_idl, &ovsrec_bridge_col_ports);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_bridge_col_name);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_bridge_col_fail_mode);
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_bridge_col_flow_tables);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_bridge_col_other_config);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_bridge_col_external_ids);
+    ovsdb_idl_add_table(ovs_idl, &ovsrec_table_flow_table);
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_flow_table_col_prefixes);
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_ssl);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_ssl_col_bootstrap_ca_cert);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_ssl_col_ca_cert);
@@ -5519,7 +5594,8 @@ main(int argc, char *argv[])
                 && ovs_feature_support_run(br_int_dp ?
                                            &br_int_dp->capabilities : NULL,
                                            br_int_remote.target,
-                                           br_int_remote.probe_interval)) {
+                                           br_int_remote.probe_interval,
+                                           ovs_remote)) {
                 VLOG_INFO("OVS feature set changed, force recompute.");
                 engine_set_force_recompute(true);
 

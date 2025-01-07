@@ -1,5 +1,8 @@
 OVN v24.09.3 - xx xxx xxxx
 --------------------------
+   - Improved handling of IPv6 traffic by enabling address prefix tracking
+     in OVS for both IPv4 and IPv6 addresses, whenever possible, reducing
+     the amount of IPv6 datapath flows.
 
 OVN v24.09.2 - 21 Jan 2025
 --------------------------
