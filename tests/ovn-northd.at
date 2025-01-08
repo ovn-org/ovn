@@ -10956,8 +10956,37 @@ check_engine_stats sync_to_sb_lb norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set load_balancer . options:add_route=true
+check_engine_stats lb_data recompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lr_stateful recompute nocompute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb set load_balancer . options:foo=bar
+check_engine_stats lb_data norecompute compute
+check_engine_stats northd recompute nocompute
+check_engine_stats lr_stateful recompute nocompute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set load_balancer . options:add_route=false
+check_engine_stats lb_data recompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lr_stateful recompute nocompute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set load_balancer . options:foo=barr
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute
 check_engine_stats lr_stateful norecompute compute
