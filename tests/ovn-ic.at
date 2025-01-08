@@ -419,23 +419,23 @@ for i in 1 2; do
     ovn_as az$i
     check ovn-ic-nbctl --wait=sb sync
     # Enable route learning at AZ level
-    ovn-nbctl set nb_global . options:ic-route-learn=true
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
     # Enable route advertising at AZ level
-    ovn-nbctl set nb_global . options:ic-route-adv=true
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
 
     # Create LRP and connect to TS
-    ovn-nbctl lr-add lr$i
-    ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
-    ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
+    check ovn-nbctl lr-add lr$i
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
+    check ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
             -- lsp-set-addresses lsp-ts1-lr$i router \
             -- lsp-set-type lsp-ts1-lr$i router \
             -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
 
     # Create static routes
-    ovn-nbctl lr-route-add lr$i 10.11.$i.0/24 169.254.0.1
+    check ovn-nbctl lr-route-add lr$i 10.11.$i.0/24 169.254.0.1
 
     # Create a src-ip route, which shouldn't be synced
-    ovn-nbctl --policy=src-ip lr-route-add lr$i 10.22.$i.0/24 169.254.0.2
+    check ovn-nbctl --policy=src-ip lr-route-add lr$i 10.22.$i.0/24 169.254.0.2
 done
 
 for i in 1 2; do
@@ -555,11 +555,11 @@ for i in 1 2; do
     ovn_as az$i
 
     # Ensure route learning at AZ level
-    ovn-nbctl set nb_global . options:ic-route-learn=true
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
     # Ensure route advertising at AZ level
-    ovn-nbctl set nb_global . options:ic-route-adv=true
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
     # Drop denylist
-    ovn-nbctl remove nb_global . options ic-route-denylist
+    check ovn-nbctl remove nb_global . options ic-route-denylist
 
     for j in 1 2; do
         ts=ts$j$j
@@ -568,9 +568,9 @@ for i in 1 2; do
         # Create LRP and connect to TS
         lr=lr$j$i
         echo lr: $lr, ts: $ts
-        ovn-nbctl lr-add $lr
-        ovn-nbctl lrp-add $lr lrp-$lr-$ts aa:aa:aa:aa:aa:0$j 169.254.100.$i/24
-        ovn-nbctl lsp-add $ts lsp-$ts-$lr \
+        check ovn-nbctl lr-add $lr
+        check ovn-nbctl lrp-add $lr lrp-$lr-$ts aa:aa:aa:aa:aa:0$j 169.254.100.$i/24
+        check ovn-nbctl lsp-add $ts lsp-$ts-$lr \
                 -- lsp-set-addresses lsp-$ts-$lr router \
                 -- lsp-set-type lsp-$ts-$lr router \
                 -- lsp-set-options lsp-$ts-$lr router-port=lrp-$lr-$ts
@@ -614,25 +614,25 @@ for i in 1 2; do
     ovn_as az$i
 
     # Enable route learning at AZ level
-    ovn-nbctl set nb_global . options:ic-route-learn=true
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
     # Enable route advertising at AZ level
-    ovn-nbctl set nb_global . options:ic-route-adv=true
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
 
     # Create LRP and connect to TS
-    ovn-nbctl lr-add lr$i
-    ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
-    ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
+    check ovn-nbctl lr-add lr$i
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
+    check ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
             -- lsp-set-addresses lsp-ts1-lr$i router \
             -- lsp-set-type lsp-ts1-lr$i router \
             -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
 
-    ovn-nbctl lrp-add lr$i lrp-lr$i-p$i 00:00:00:00:00:0$i 192.168.$i.1/24
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-p$i 00:00:00:00:00:0$i 192.168.$i.1/24
 
     # Create static routes
-    ovn-nbctl --wait=sb lr-route-add lr$i 10.11.$i.0/24 169.254.0.1
+    check ovn-nbctl --wait=sb lr-route-add lr$i 10.11.$i.0/24 169.254.0.1
 
     # Create a src-ip route, which shouldn't be synced
-    ovn-nbctl --policy=src-ip lr-route-add lr$i 10.22.$i.0/24 169.254.0.2
+    check ovn-nbctl --policy=src-ip lr-route-add lr$i 10.22.$i.0/24 169.254.0.2
 done
 
 check ovn-ic-nbctl --wait=sb sync
@@ -669,20 +669,20 @@ for i in 1 2; do
     ovn_start az$i
     ovn_as az$i
     # Enable route learning at AZ level
-    ovn-nbctl set nb_global . options:ic-route-learn=true
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
     # Enable route advertising at AZ level
-    ovn-nbctl set nb_global . options:ic-route-adv=true
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
     check ovn-ic-nbctl --wait=sb sync
 
     # Create LRP and connect to TS
-    ovn-nbctl lr-add lr$i
-    ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 2001:db8:1::$i/64
-    ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
+    check ovn-nbctl lr-add lr$i
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 2001:db8:1::$i/64
+    check ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
             -- lsp-set-addresses lsp-ts1-lr$i router \
             -- lsp-set-type lsp-ts1-lr$i router \
             -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
 
-    ovn-nbctl --wait=sb lrp-add lr$i lrp-lr$i-p$i 00:00:00:00:00:0$i 2002:db8:1::$i/64
+    check ovn-nbctl --wait=sb lrp-add lr$i lrp-lr$i-p$i 00:00:00:00:00:0$i 2002:db8:1::$i/64
 done
 
 check ovn-ic-nbctl --wait=sb sync
@@ -694,8 +694,8 @@ AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1 | awk '/learned/{print $1, $2}'
 # Do not learn routes from link-local nexthops
 for i in 1 2; do
     ovn_as az$i
-    ovn-nbctl lrp-del lrp-lr$i-ts1
-    ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
+    check ovn-nbctl lrp-del lrp-lr$i-ts1
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
 done
 
 OVS_WAIT_WHILE([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep learned])
@@ -717,23 +717,23 @@ for i in 1 2; do
     ovn_as az$i
     check ovn-ic-nbctl --wait=sb sync
     # Enable route learning at AZ level
-    ovn-nbctl set nb_global . options:ic-route-learn=true
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
     # Enable route advertising at AZ level
-    ovn-nbctl set nb_global . options:ic-route-adv=true
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
 
     # Create LRP and connect to TS
-    ovn-nbctl lr-add lr$i
-    ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
-    ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
+    check ovn-nbctl lr-add lr$i
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
+    check ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
             -- lsp-set-addresses lsp-ts1-lr$i router \
             -- lsp-set-type lsp-ts1-lr$i router \
             -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
 
     # Create static routes
-    ovn-nbctl lr-route-add lr$i 10.11.$i.0/24 169.254.0.1
+    check ovn-nbctl lr-route-add lr$i 10.11.$i.0/24 169.254.0.1
 
     # Create a src-ip route, which shouldn't be synced
-    ovn-nbctl --policy=src-ip --route-table=rtb1 lr-route-add lr$i 10.22.$i.0/24 169.254.0.2
+    check ovn-nbctl --policy=src-ip --route-table=rtb1 lr-route-add lr$i 10.22.$i.0/24 169.254.0.2
 done
 
 check ovn-ic-nbctl --wait=sb sync
@@ -902,9 +902,9 @@ for i in 1 2; do
     ovn_as az$i
 
     # Enable route learning at AZ level
-    ovn-nbctl set nb_global . options:ic-route-learn=true
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
     # Enable route advertising at AZ level
-    ovn-nbctl set nb_global . options:ic-route-adv=true
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
 done
 
 # Create new transit switches and LRs. Test topology is next:
@@ -928,7 +928,7 @@ for i in 1 2; do
     ovn_as az$i
 
     lr=lr1$i
-    ovn-nbctl lr-add $lr
+    check ovn-nbctl lr-add $lr
 
     for j in 1 2 3; do
         ts=ts1$j
@@ -937,9 +937,9 @@ for i in 1 2; do
         lrp=lrp-$lr-$ts
         lsp=lsp-$ts-$lr
         # Create LRP and connect to TS
-        ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
-        ovn-nbctl lrp-set-options $lrp route_table=rtb$j
-        ovn-nbctl lsp-add $ts $lsp \
+        check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
+        check ovn-nbctl lrp-set-options $lrp route_table=rtb$j
+        check ovn-nbctl lsp-add $ts $lsp \
                 -- lsp-set-addresses $lsp router \
                 -- lsp-set-type $lsp router \
                 -- lsp-set-options $lsp router-port=$lrp
@@ -953,7 +953,7 @@ for i in 1 2; do
     ovn_as az$i
 
     lr=lr2$i
-    ovn-nbctl lr-add $lr
+    check ovn-nbctl lr-add $lr
 
     for j in 1 2; do
         ts=ts2$j
@@ -962,9 +962,9 @@ for i in 1 2; do
         lrp=lrp-$lr-$ts
         lsp=lsp-$ts-$lr
         # Create LRP and connect to TS
-        ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
-        ovn-nbctl lrp-set-options $lrp route_table=rtb$j
-        ovn-nbctl lsp-add $ts $lsp \
+        check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
+        check ovn-nbctl lrp-set-options $lrp route_table=rtb$j
+        check ovn-nbctl lsp-add $ts $lsp \
                 -- lsp-set-addresses $lsp router \
                 -- lsp-set-type $lsp router \
                 -- lsp-set-options $lsp router-port=$lrp
@@ -1029,9 +1029,9 @@ for i in 1 2; do
     ovn_as az$i
 
     # Enable route learning at AZ level
-    ovn-nbctl set nb_global . options:ic-route-learn=true
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
     # Enable route advertising at AZ level
-    ovn-nbctl set nb_global . options:ic-route-adv=true
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
 done
 
 # Create new transit switches and LRs. Test topology is next:
@@ -1055,7 +1055,7 @@ for i in 1 2; do
     ovn_as az$i
 
     lr=lr1$i
-    ovn-nbctl lr-add $lr
+    check ovn-nbctl lr-add $lr
 
     for j in 1 2 3; do
         ts=ts1$j
@@ -1064,9 +1064,9 @@ for i in 1 2; do
         lrp=lrp-$lr-$ts
         lsp=lsp-$ts-$lr
         # Create LRP and connect to TS
-        ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 2001:db8:$j::$i/64
-        ovn-nbctl lrp-set-options $lrp route_table=rtb$j
-        ovn-nbctl lsp-add $ts $lsp \
+        check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 2001:db8:$j::$i/64
+        check ovn-nbctl lrp-set-options $lrp route_table=rtb$j
+        check ovn-nbctl lsp-add $ts $lsp \
                 -- lsp-set-addresses $lsp router \
                 -- lsp-set-type $lsp router \
                 -- lsp-set-options $lsp router-port=$lrp
@@ -1080,7 +1080,7 @@ for i in 1 2; do
     ovn_as az$i
 
     lr=lr2$i
-    ovn-nbctl lr-add $lr
+    check ovn-nbctl lr-add $lr
 
     for j in 1 2; do
         ts=ts2$j
@@ -1089,9 +1089,9 @@ for i in 1 2; do
         lrp=lrp-$lr-$ts
         lsp=lsp-$ts-$lr
         # Create LRP and connect to TS
-        ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 2001:db8:$j::$i/64
-        ovn-nbctl lrp-set-options $lrp route_table=rtb$j
-        ovn-nbctl lsp-add $ts $lsp \
+        check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 2001:db8:$j::$i/64
+        check ovn-nbctl lrp-set-options $lrp route_table=rtb$j
+        check ovn-nbctl lsp-add $ts $lsp \
                 -- lsp-set-addresses $lsp router \
                 -- lsp-set-type $lsp router \
                 -- lsp-set-options $lsp router-port=$lrp
@@ -1164,24 +1164,24 @@ for i in 1 2; do
     check ovn-ic-nbctl --wait=sb sync
 
     # Enable route learning at AZ level
-    ovn-nbctl set nb_global . options:ic-route-learn=true
-    ovn-nbctl set nb_global . options:ic-route-learn-default=true
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
+    check ovn-nbctl set nb_global . options:ic-route-learn-default=true
     # Enable route advertising at AZ level
-    ovn-nbctl set nb_global . options:ic-route-adv=true
-    ovn-nbctl set nb_global . options:ic-route-adv-default=true
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
+    check ovn-nbctl set nb_global . options:ic-route-adv-default=true
 
     lr=lr1$i
-    ovn-nbctl lr-add $lr
+    check ovn-nbctl lr-add $lr
 
     lrp=lrp-$lr-ts1
     lsp=lsp-ts1-$lr
     # Create LRP and connect to TS
-    ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
-    ovn-nbctl lsp-add ts1 $lsp \
+    check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
+    check ovn-nbctl lsp-add ts1 $lsp \
         -- lsp-set-addresses $lsp router \
         -- lsp-set-type $lsp router \
         -- lsp-set-options $lsp router-port=$lrp
-    ovn-nbctl lrp-add $lr lrp-local-subnet 00:00:00:00:00:0$i 192.168.$i.1/24
+    check ovn-nbctl lrp-add $lr lrp-local-subnet 00:00:00:00:00:0$i 192.168.$i.1/24
     ovn-nbctl list logical-router-static-route
     check ovn-nbctl lr-route-add $lr 10.0.0.0/24 192.168.$i.10
     check ovn-nbctl --wait=sb lr-route-add $lr 0.0.0.0/0 192.168.$i.11
@@ -1215,9 +1215,9 @@ for i in 1 2; do
     ovn_as az$i
 
     # Enable route learning at AZ level
-    ovn-nbctl set nb_global . options:ic-route-learn=true
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
     # Enable route advertising at AZ level
-    ovn-nbctl set nb_global . options:ic-route-adv=true
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
 done
 
 # Create new transit switches and LRs. Test topology is next:
@@ -1248,13 +1248,13 @@ ovn-nbctl lsp-add ts1 $lsp \
 ovn_as az2
 for i in 1 2; do
     lr=lr2$i
-    ovn-nbctl lr-add $lr
+    check ovn-nbctl lr-add $lr
 
     lrp=lrp-$lr-ts1
     lsp=lsp-ts1-$lr
     # Create LRP and connect to TS
-    ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a2:0$i 169.254.10.2$i/24
-    ovn-nbctl lsp-add ts1 $lsp \
+    check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a2:0$i 169.254.10.2$i/24
+    check ovn-nbctl lsp-add ts1 $lsp \
             -- lsp-set-addresses $lsp router \
             -- lsp-set-type $lsp router \
             -- lsp-set-options $lsp router-port=$lrp

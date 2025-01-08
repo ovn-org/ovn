@@ -2864,10 +2864,10 @@ for i in 1 2; do
 
     for j in 1 2; do
         ovs-vsctl add-port br-int vif$i$j -- set Interface vif$i$j external-ids:iface-id=lp$i$j options:tx_pcap=hv$i/vif$i$j-tx.pcap options:rxq_pcap=hv$i/vif$i$j-rx.pcap ofport-request=$i$j
-        ovn-nbctl lsp-add lsw0 lp$i$j
+        check ovn-nbctl lsp-add lsw0 lp$i$j
         ip_addrs="192.168.0.$i$j"
-        ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j $ip_addrs"
-        ovn-nbctl --wait=hv lsp-set-port-security lp$i$j f0:00:00:00:00:$i$j
+        check ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j $ip_addrs"
+        check ovn-nbctl --wait=hv lsp-set-port-security lp$i$j f0:00:00:00:00:$i$j
     done
 done
 
@@ -3025,21 +3025,21 @@ ovn_start
 check ovn-nbctl ls-add lsw0
 check ovn-sbctl chassis-add hv0 geneve 127.0.0.1
 for i in 1 2 3; do
-    ovn-nbctl lsp-add lsw0 lp$i
+    check ovn-nbctl lsp-add lsw0 lp$i
 done
 check ovn-nbctl --wait=sb sync
 for i in 1 2 3; do
-    ovn-sbctl lsp-bind lp$i hv0
+    check ovn-sbctl lsp-bind lp$i hv0
     if test $i = 1; then
-        ovn-nbctl lsp-set-addresses lp$i "f0:00:00:00:00:0$i 192.168.0.$i" unknown
+        check ovn-nbctl lsp-set-addresses lp$i "f0:00:00:00:00:0$i 192.168.0.$i" unknown
     else
         if test $i = 3; then
            ip_addrs="192.168.0.$i fe80::ea2a:eaff:fe28:$i/64 192.169.0.$i"
         else
            ip_addrs="192.168.0.$i"
         fi
-        ovn-nbctl lsp-set-addresses lp$i "f0:00:00:00:00:0$i $ip_addrs"
-        ovn-nbctl lsp-set-port-security lp$i f0:00:00:00:00:0$i
+        check ovn-nbctl lsp-set-addresses lp$i "f0:00:00:00:00:0$i $ip_addrs"
+        check ovn-nbctl lsp-set-port-security lp$i f0:00:00:00:00:0$i
     fi
 done
 check ovn-nbctl acl-add lsw0 from-lport 1000 'eth.type == 0x1234' drop
@@ -3277,16 +3277,16 @@ ovn_start
 
 for i in 1 2 3; do
     ls_name=ls$i
-    ovn-nbctl ls-add $ls_name
+    check ovn-nbctl ls-add $ls_name
     ln_port_name=ln$i
     if test $i -eq 2; then
-        ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
+        check ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
     else
-        ovn-nbctl lsp-add $ls_name $ln_port_name
+        check ovn-nbctl lsp-add $ls_name $ln_port_name
     fi
-    ovn-nbctl lsp-set-addresses $ln_port_name unknown
-    ovn-nbctl lsp-set-type $ln_port_name localnet
-    ovn-nbctl lsp-set-options $ln_port_name network_name=phys
+    check ovn-nbctl lsp-set-addresses $ln_port_name unknown
+    check ovn-nbctl lsp-set-type $ln_port_name localnet
+    check ovn-nbctl lsp-set-options $ln_port_name network_name=phys
 done
 
 # lsp_to_ls LSP
@@ -3319,9 +3319,9 @@ for i in 1 2; do
         lsp_name=lp$i$j
         ls_name=$(lsp_to_ls $lsp_name)
 
-        ovn-nbctl lsp-add $ls_name $lsp_name
-        ovn-nbctl lsp-set-addresses $lsp_name f0:00:00:00:00:$i$j
-        ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:$i$j
+        check ovn-nbctl lsp-add $ls_name $lsp_name
+        check ovn-nbctl lsp-set-addresses $lsp_name f0:00:00:00:00:$i$j
+        check ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:$i$j
 
         OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
     done
@@ -3467,13 +3467,13 @@ done
 
 for i in 1 2; do
     lsname=ls-${i}0
-    ovn-nbctl ls-add $lsname
+    check ovn-nbctl ls-add $lsname
     for tag in `seq ${i}1 ${i}9`; do
         ln_port_name=ln-$tag
-        ovn-nbctl lsp-add $lsname $ln_port_name "" $tag
-        ovn-nbctl lsp-set-addresses $ln_port_name unknown
-        ovn-nbctl lsp-set-type $ln_port_name localnet
-        ovn-nbctl lsp-set-options $ln_port_name network_name=phys-$tag
+        check ovn-nbctl lsp-add $lsname $ln_port_name "" $tag
+        check ovn-nbctl lsp-set-addresses $ln_port_name unknown
+        check ovn-nbctl lsp-set-type $ln_port_name localnet
+        check ovn-nbctl lsp-set-options $ln_port_name network_name=phys-$tag
     done
 done
 
@@ -3487,9 +3487,9 @@ for hv in 1 2; do
                                   options:rxq_pcap=hv-$hv/vif-$hv-$ls-rx.pcap \
                                   ofport-request=$hv$ls
 
-        ovn-nbctl lsp-add ls-${ls}0 $lsp_name
-        ovn-nbctl lsp-set-addresses $lsp_name f0:00:00:00:00:${hv}${ls}
-        ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:${hv}${ls}
+        check ovn-nbctl lsp-add ls-${ls}0 $lsp_name
+        check ovn-nbctl lsp-set-addresses $lsp_name f0:00:00:00:00:${hv}${ls}
+        check ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:${hv}${ls}
 
         OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
     done
@@ -3610,13 +3610,13 @@ done
 
 for i in 1 2; do
     lsname=ls-${i}0
-    ovn-nbctl ls-add $lsname
+    check ovn-nbctl ls-add $lsname
     for tag in `seq ${i}1 ${i}9`; do
         ln_port_name=ln-$tag
-        ovn-nbctl lsp-add $lsname $ln_port_name "" $tag
-        ovn-nbctl lsp-set-addresses $ln_port_name unknown
-        ovn-nbctl lsp-set-type $ln_port_name localnet
-        ovn-nbctl lsp-set-options $ln_port_name network_name=phys-$tag
+        check ovn-nbctl lsp-add $lsname $ln_port_name "" $tag
+        check ovn-nbctl lsp-set-addresses $ln_port_name unknown
+        check ovn-nbctl lsp-set-type $ln_port_name localnet
+        check ovn-nbctl lsp-set-options $ln_port_name network_name=phys-$tag
     done
 done
 
@@ -3631,9 +3631,9 @@ for hv in 1 2; do
                                       options:rxq_pcap=hv-$hv/vif-$hv-$ls-$peer-rx.pcap \
                                       ofport-request=$hv$ls$peer
 
-            ovn-nbctl lsp-add ls-${ls}0 $lsp_name
-            ovn-nbctl lsp-set-addresses $lsp_name f0:00:00:00:0${peer}:${hv}${ls}
-            ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:0${peer}:${hv}${ls}
+            check ovn-nbctl lsp-add ls-${ls}0 $lsp_name
+            check ovn-nbctl lsp-set-addresses $lsp_name f0:00:00:00:0${peer}:${hv}${ls}
+            check ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:0${peer}:${hv}${ls}
 
             OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
 
@@ -3753,13 +3753,13 @@ ovn_start
 
 # two switches, each connected to lots of networks
 for i in 1 2; do
-    ovn-nbctl ls-add ls-$i
+    check ovn-nbctl ls-add ls-$i
     for tag in `seq 10 20`; do
         ln_port_name=ln-$i-$tag
-        ovn-nbctl lsp-add ls-$i $ln_port_name "" $tag
-        ovn-nbctl lsp-set-addresses $ln_port_name unknown
-        ovn-nbctl lsp-set-type $ln_port_name localnet
-        ovn-nbctl lsp-set-options $ln_port_name network_name=phys-$tag
+        check ovn-nbctl lsp-add ls-$i $ln_port_name "" $tag
+        check ovn-nbctl lsp-set-addresses $ln_port_name unknown
+        check ovn-nbctl lsp-set-type $ln_port_name localnet
+        check ovn-nbctl lsp-set-options $ln_port_name network_name=phys-$tag
     done
 done
 
@@ -3787,9 +3787,9 @@ for i in 1 2; do
                               ofport-request=$i
 
     lsp_name=lp-$i
-    ovn-nbctl lsp-add ls-$i $lsp_name
-    ovn-nbctl lsp-set-addresses $lsp_name f0:00:00:00:00:0$i
-    ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:0$i
+    check ovn-nbctl lsp-add ls-$i $lsp_name
+    check ovn-nbctl lsp-set-addresses $lsp_name f0:00:00:00:00:0$i
+    check ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:0$i
 
     OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
     OVN_WAIT_PATCH_PORT_FLOWS(["ln-$i-20"], ["hv-$i"])
@@ -4395,10 +4395,10 @@ ovn_start
 check ovn-nbctl ls-add ls1
 for tag in 10 20; do
     ln_port_name=ln-$tag
-    ovn-nbctl lsp-add ls1 $ln_port_name "" $tag
-    ovn-nbctl lsp-set-addresses $ln_port_name unknown
-    ovn-nbctl lsp-set-type $ln_port_name localnet
-    ovn-nbctl lsp-set-options $ln_port_name network_name=phys-$tag
+    check ovn-nbctl lsp-add ls1 $ln_port_name "" $tag
+    check ovn-nbctl lsp-set-addresses $ln_port_name unknown
+    check ovn-nbctl lsp-set-type $ln_port_name localnet
+    check ovn-nbctl lsp-set-options $ln_port_name network_name=phys-$tag
 done
 
 # create fabric networks
@@ -4422,9 +4422,9 @@ for tag in 10 20; do
                                   ofport-request=$tag$i
 
         lsp_name=lp-$tag-$i
-        ovn-nbctl lsp-add ls1 $lsp_name
-        ovn-nbctl lsp-set-addresses $lsp_name f0:00:00:00:0$i:$tag
-        ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:0$i:$tag
+        check ovn-nbctl lsp-add ls1 $lsp_name
+        check ovn-nbctl lsp-set-addresses $lsp_name f0:00:00:00:0$i:$tag
+        check ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:0$i:$tag
 
         OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
         OVN_WAIT_PATCH_PORT_FLOWS(["ln-$tag"], ["hv-$tag-$i"])
@@ -5015,14 +5015,14 @@ ovn_start
 # 27 VIFs, 9 per LS, 3 per subnet: lp[123][123][123], where the first two
 # digits are the subnet and the last digit distinguishes the VIF.
 for i in 1 2 3; do
-    ovn-nbctl ls-add ls$i
+    check ovn-nbctl ls-add ls$i
     for j in 1 2 3; do
         for k in 1 2 3; do
             # Add "unknown" to MAC addresses for lp?11, so packets for
             # MAC-IP bindings discovered via ARP later have somewhere to go.
             if test $j$k = 11; then unknown=unknown; else unknown=; fi
 
-            ovn-nbctl \
+            check ovn-nbctl \
                 -- lsp-add ls$i lp$i$j$k \
                 -- lsp-set-addresses lp$i$j$k \
                    "f0:00:00:00:0$i:$j$k 192.168.$i$j.$k" $unknown
@@ -5033,8 +5033,8 @@ done
 check ovn-nbctl lr-add lr0
 for i in 1 2 3; do
     for j in 1 2 3; do
-        ovn-nbctl lrp-add lr0 lrp$i$j 00:00:00:00:ff:$i$j 192.168.$i$j.254/24
-        ovn-nbctl \
+        check ovn-nbctl lrp-add lr0 lrp$i$j 00:00:00:00:ff:$i$j 192.168.$i$j.254/24
+        check ovn-nbctl \
             -- lsp-add ls$i lrp$i$j-attachment \
             -- set Logical_Switch_Port lrp$i$j-attachment type=router \
                              options:router-port=lrp$i$j \
@@ -5453,15 +5453,15 @@ ovn_start
 #
 check ovn-nbctl lr-add lr0
 for i in 1 2 ; do
-    ovn-nbctl ls-add ls$i
-    ovn-nbctl lrp-add lr0 lrp$i 00:00:00:00:ff:0$i 192.168.$i.1/24
-    ovn-nbctl \
+    check ovn-nbctl ls-add ls$i
+    check ovn-nbctl lrp-add lr0 lrp$i 00:00:00:00:ff:0$i 192.168.$i.1/24
+    check ovn-nbctl \
         -- lsp-add ls$i lrp$i-attachment \
         -- set Logical_Switch_Port lrp$i-attachment type=router \
                          options:router-port=lrp$i \
                          addresses=router
     for j in 1 2; do
-        ovn-nbctl \
+        check ovn-nbctl \
             -- lsp-add ls$i lp$i$j \
             -- lsp-set-addresses lp$i$j \
                "f0:00:00:00:00:$i$j 192.168.$i.1$j"
@@ -5713,16 +5713,16 @@ for i in 1 2 3; do
     ovn_attach n1 br-phys 192.168.0.$i
     for j in 1 2 3; do
         ovs-vsctl add-port br-int vif$i$j -- set Interface vif$i$j external-ids:iface-id=lp$i$j options:tx_pcap=hv$i/vif$i$j-tx.pcap options:rxq_pcap=hv$i/vif$i$j-rx.pcap ofport-request=$i$j
-        ovn-nbctl lsp-add lsw0 lp$i$j
+        check ovn-nbctl lsp-add lsw0 lp$i$j
         if test $j = 1; then
-            ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j" unknown
+            check ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j" unknown
         elif test $j = 2; then
-            ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j 4343::00$i$j"
-            ovn-nbctl lsp-set-port-security lp$i$j f0:00:00:00:00:$i$j
+            check ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j 4343::00$i$j"
+            check ovn-nbctl lsp-set-port-security lp$i$j f0:00:00:00:00:$i$j
         else
             extra_addr="f0:00:00:00:0$i:$i$j fe80::ea2a:eaff:fe28:$i$j 4242::00$i$j"
-            ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j" "$extra_addr"
-            ovn-nbctl lsp-set-port-security lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j" "$extra_addr"
+            check ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j" "$extra_addr"
+            check ovn-nbctl lsp-set-port-security lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j" "$extra_addr"
         fi
         OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lp$i$j` = xup])
     done
@@ -8759,12 +8759,12 @@ check ovn-nbctl --wait=sb sync
 check ovn-nbctl --wait=hv set NB_Global . options:mac_prefix="0a:00:00:00:00:00"
 check ovn-nbctl ls-add sw0
 check ovn-nbctl lsp-add sw0 p0 -- lsp-set-addresses p0 dynamic
-ovn-nbctl --wait=sb add Logical-Switch sw0 other_config subnet=192.168.1.0/24
+check ovn-nbctl --wait=sb add Logical-Switch sw0 other_config subnet=192.168.1.0/24
 check_dynamic_addresses p0 "0a:00:00:a8:01:03 192.168.1.2"
 
 # Add 9 more ports to sw0, addresses should all be unique.
 for n in `seq 1 9`; do
-    ovn-nbctl --wait=sb lsp-add sw0 "p$n" -- lsp-set-addresses "p$n" dynamic
+    check ovn-nbctl --wait=sb lsp-add sw0 "p$n" -- lsp-set-addresses "p$n" dynamic
 done
 for i in `seq 1 9`; do
     mac=0a:00:00:a8:01:$(printf "%02x" $(expr $i + 3))
@@ -8776,11 +8776,11 @@ done
 # across both switches but IP's only need to be unique within the same switch.
 check ovn-nbctl ls-add sw1
 check ovn-nbctl lsp-add sw1 p10 -- lsp-set-addresses p10 dynamic
-ovn-nbctl --wait=sb add Logical-Switch sw1 other_config subnet=192.168.1.0/24
+check ovn-nbctl --wait=sb add Logical-Switch sw1 other_config subnet=192.168.1.0/24
 check_row_count nb:Logical_Switch_Port 1 name=p10 dynamic_addresses='"0a:00:00:a8:01:0d 192.168.1.2"'
 
 for n in `seq 11 19`; do
-    ovn-nbctl --wait=sb lsp-add sw1 "p$n" -- lsp-set-addresses "p$n" dynamic
+    check ovn-nbctl --wait=sb lsp-add sw1 "p$n" -- lsp-set-addresses "p$n" dynamic
 done
 for i in `seq 11 19`; do
     mac=0a:00:00:a8:01:$(printf "%02x" $(expr $i + 3))
@@ -8919,7 +8919,7 @@ check ovn-nbctl --wait=sb lsp-add sw5 p41 -- lsp-set-addresses p41 \
 check_dynamic_addresses p41 ''
 
 # Set a subnet. Now p41 should have an ipv4 address, too
-ovn-nbctl --wait=sb add Logical-Switch sw5 other_config subnet=192.168.1.0/24
+check ovn-nbctl --wait=sb add Logical-Switch sw5 other_config subnet=192.168.1.0/24
 check_dynamic_addresses p41 "0a:00:00:a8:01:22 192.168.1.2"
 
 # Clear the other_config. The IPv4 address should be gone
@@ -8943,11 +8943,11 @@ check ovn-nbctl --wait=sb clear Logical-Switch sw5 other_config
 check_dynamic_addresses p41 ''
 
 # Set the subnet again. Now p41 should get the IPv4 address again.
-ovn-nbctl --wait=sb add Logical-Switch sw5 other_config subnet=192.168.1.0/24
+check ovn-nbctl --wait=sb add Logical-Switch sw5 other_config subnet=192.168.1.0/24
 check_dynamic_addresses p41 "f0:00:00:00:10:2b 192.168.1.2"
 
 # Add an excluded IP address that conflicts with p41. p41 should update.
-ovn-nbctl --wait=sb add Logical-Switch sw5 other_config \
+check ovn-nbctl --wait=sb add Logical-Switch sw5 other_config \
 exclude_ips="192.168.1.2"
 check_dynamic_addresses p41 "f0:00:00:00:10:2b 192.168.1.3"
 
@@ -8964,7 +8964,7 @@ check ovn-nbctl ls-add sw6
 check ovn-nbctl --wait=hv set NB_Global . options:mac_prefix="00:11:22:33:44:55"
 check ovn-nbctl --wait=sb set Logical-Switch sw6 other_config:subnet=192.168.100.0/24
 for n in $(seq 1 3); do
-    ovn-nbctl --wait=sb lsp-add sw6 "p5$n" -- lsp-set-addresses "p5$n" dynamic
+    check ovn-nbctl --wait=sb lsp-add sw6 "p5$n" -- lsp-set-addresses "p5$n" dynamic
 done
 check_dynamic_addresses p51 "00:11:22:a8:64:03 192.168.100.2"
 check_dynamic_addresses p52 "00:11:22:a8:64:04 192.168.100.3"
@@ -8973,7 +8973,7 @@ check_dynamic_addresses p53 "00:11:22:a8:64:05 192.168.100.4"
 # verify configuration order does not break IPAM/MACAM
 check ovn-nbctl ls-add sw7
 for n in $(seq 1 3); do
-    ovn-nbctl --wait=sb lsp-add sw7 "p7$n" -- lsp-set-addresses "p7$n" dynamic
+    check ovn-nbctl --wait=sb lsp-add sw7 "p7$n" -- lsp-set-addresses "p7$n" dynamic
 done
 check ovn-nbctl --wait=sb set Logical-Switch sw7 other_config:ipv6_prefix="bef0::"
 p71_addr=$(ovn-nbctl get Logical-Switch-Port p71 dynamic_addresses)
@@ -8988,7 +8988,7 @@ AT_CHECK([test "$p72_addr" != "$p73_addr"], [0], [])
 check ovn-nbctl ls-add sw8
 check ovn-nbctl --wait=sb set Logical-Switch sw8 other_config:mac_only=true
 for n in $(seq 1 3); do
-    ovn-nbctl --wait=sb lsp-add sw8 "p8$n" -- lsp-set-addresses "p8$n" dynamic
+    check ovn-nbctl --wait=sb lsp-add sw8 "p8$n" -- lsp-set-addresses "p8$n" dynamic
 done
 check_dynamic_addresses p81 "00:11:22:00:00:06"
 check_dynamic_addresses p82 "00:11:22:00:00:07"
@@ -9040,7 +9040,7 @@ check ovn-nbctl ls-add sw12
 for i in $(seq 0 1); do
     for j in $(seq 1 99); do
         idx=$((i*100+j))
-        ovn-nbctl lsp-add sw12 sw12-p${idx} -- \
+        check ovn-nbctl lsp-add sw12 sw12-p${idx} -- \
         lsp-set-addresses sw12-p${idx} "00:00:00:00:$i:$j dynamic"
     done
 done
@@ -9795,7 +9795,7 @@ check ovn-nbctl lsp-add foo foo1 \
 # Create logical port bar1, bar2 and bar3 in bar
 for i in `seq 1 3`; do
     ip=`expr $i + 1`
-    ovn-nbctl lsp-add bar bar$i \
+    check ovn-nbctl lsp-add bar bar$i \
     -- lsp-set-addresses bar$i "f0:00:0a:01:02:$i 172.16.1.$ip"
 done
 
@@ -13352,9 +13352,9 @@ for i in 1 2; do
                               options:rxq_pcap=hv${i}/vif${i}1-rx.pcap \
                               ofport-request=${i}1
 
-    ovn-nbctl lsp-add ls1 lp${i}1
-    ovn-nbctl lsp-set-addresses lp${i}1 f0:00:00:00:00:${i}1
-    ovn-nbctl lsp-set-port-security lp${i}1 f0:00:00:00:00:${i}1
+    check ovn-nbctl lsp-add ls1 lp${i}1
+    check ovn-nbctl lsp-set-addresses lp${i}1 f0:00:00:00:00:${i}1
+    check ovn-nbctl lsp-set-port-security lp${i}1 f0:00:00:00:00:${i}1
 
         OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lp${i}1` = xup])
 done
@@ -13729,7 +13729,7 @@ for i in 1 2; do
         options:rxq_pcap=hv$i/vif1-rx.pcap \
         ofport-request=1
 
-        ovn-nbctl lsp-add inside inside$i \
+        check ovn-nbctl lsp-add inside inside$i \
             -- lsp-set-addresses inside$i "f0:00:00:01:22:$i 192.168.1.10$i"
 
 done
@@ -15947,7 +15947,7 @@ m4_define([MULTICHASSIS_PATH_MTU_DISCOVERY_TEST],
    reset_env
 
    check_row_count fdb 0 mac="$external_mac"
-   ovn-sbctl --all destroy fdb
+   check ovn-sbctl --all destroy fdb
 
    check ovn-nbctl --wait=hv lsp-set-addresses multi1 "${multi1_mac} ${multi1_ip} ${multi1_ip6}"
 
@@ -17221,7 +17221,7 @@ for i in 1 2 3; do
     ovn_attach n1 br-phys 192.168.0.$i
 
     for j in 1 2 3; do
-        ovn-nbctl lsp-add sw0 sw0-p$i$j -- \
+        check ovn-nbctl lsp-add sw0 sw0-p$i$j -- \
                 lsp-set-addresses sw0-p$i$j "00:00:00:00:00:$i$j 192.168.1.$i$j"
 
         check ovs-vsctl -- add-port br-int vif$i$j -- \
@@ -17442,7 +17442,7 @@ ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-phys
 # Allow some time for ovn-northd and ovn-controller to catch up.
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-ovn-nbctl dump-flows > sbflows
+ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
 
 for i in 1 2; do
@@ -17821,7 +17821,7 @@ ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-phys
 # Allow some time for ovn-northd and ovn-controller to catch up.
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-ovn-nbctl dump-flows > sbflows
+ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
 
 check ovn-nbctl mirror-add mirror0 gre 0 to-lport 192.168.1.12
@@ -18066,10 +18066,10 @@ get_lsp_uuid () {
 pg1_ports=
 pg2_ports=
 for i in 1 2 3; do
-    ovn-nbctl ls-add ls$i
+    check ovn-nbctl ls-add ls$i
     for j in 1 2 3; do
         for k in 1 2 3; do
-            ovn-nbctl \
+            check ovn-nbctl \
                 -- lsp-add ls$i lp$i$j$k \
                 -- lsp-set-addresses lp$i$j$k \
                    "f0:00:00:00:0$i:$j$k 192.168.$i$j.$k"
@@ -18088,8 +18088,8 @@ done
 check ovn-nbctl lr-add lr0
 for i in 1 2 3; do
     for j in 1 2 3; do
-        ovn-nbctl lrp-add lr0 lrp$i$j 00:00:00:00:ff:$i$j 192.168.$i$j.254/24
-        ovn-nbctl \
+        check ovn-nbctl lrp-add lr0 lrp$i$j 00:00:00:00:ff:$i$j 192.168.$i$j.254/24
+        check ovn-nbctl \
             -- lsp-add ls$i lrp$i$j-attachment \
             -- set Logical_Switch_Port lrp$i$j-attachment type=router \
                              options:router-port=lrp$i$j \
@@ -18286,10 +18286,10 @@ get_lsp_uuid () {
 pg1_ports=
 pg2_ports=
 for i in 1 2 3; do
-    ovn-nbctl ls-add ls$i
+    check ovn-nbctl ls-add ls$i
     for j in 1 2 3; do
         for k in 1 2 3; do
-            ovn-nbctl \
+            check ovn-nbctl \
                 -- lsp-add ls$i lp$i$j$k \
                 -- lsp-set-addresses lp$i$j$k \
                    "f0:00:00:00:0$i:$j$k 192.168.$i$j.$k"
@@ -18308,8 +18308,8 @@ done
 check ovn-nbctl lr-add lr0
 for i in 1 2 3; do
     for j in 1 2 3; do
-        ovn-nbctl lrp-add lr0 lrp$i$j 00:00:00:00:ff:$i$j 192.168.$i$j.254/24
-        ovn-nbctl \
+        check ovn-nbctl lrp-add lr0 lrp$i$j 00:00:00:00:ff:$i$j 192.168.$i$j.254/24
+        check ovn-nbctl \
             -- lsp-add ls$i lrp$i$j-attachment \
             -- set Logical_Switch_Port lrp$i$j-attachment type=router \
                              options:router-port=lrp$i$j \
@@ -19306,8 +19306,8 @@ for i in 1 2 3; do
     ovn_attach n1 br-phys 192.168.0.$i
 
     ovs-vsctl add-port br-int vif${i}1 -- set Interface vif${i}1 external-ids:iface-id=lp${i}1 options:tx_pcap=hv$i/vif${i}1-tx.pcap options:rxq_pcap=hv$i/vif${i}1-rx.pcap ofport-request=${i}1
-    ovn-nbctl lsp-add lsw0 lp${i}1
-    ovn-nbctl lsp-set-addresses lp${i}1 "f0:00:00:00:00:${i}1 192.168.0.${i}1" unknown
+    check ovn-nbctl lsp-add lsw0 lp${i}1
+    check ovn-nbctl lsp-set-addresses lp${i}1 "f0:00:00:00:00:${i}1 192.168.0.${i}1" unknown
 done
 #
 
@@ -19367,7 +19367,7 @@ for sf in 0 1; do
     if test ${sf} = 1; then
         # Add a stateful rule and re-run the check to make sure the
         # drop rule is still effective..
-        ovn-nbctl --wait=hv acl-add lsw0 from-lport 2000 'inport == "lp31" && ip' allow-related
+        check ovn-nbctl --wait=hv acl-add lsw0 from-lport 2000 'inport == "lp31" && ip' allow-related
     fi
     for is in 1 2 3; do
         s=${is}1
@@ -19551,14 +19551,14 @@ test_ip6_packet() {
 
 for i in 1 2; do
     net_add n$i
-    ovn-nbctl ls-add sw$i
+    check ovn-nbctl ls-add sw$i
 
     sim_add hv$i
     as hv$i
     ovs-vsctl add-br br-phys
     ovn_attach n$i br-phys 192.168.$i.1
 
-    ovn-nbctl lsp-add sw$i sw$i-p${i}0 -- \
+    check ovn-nbctl lsp-add sw$i sw$i-p${i}0 -- \
         lsp-set-addresses sw$i-p${i}0 "00:00:00:00:00:0$i 192.168.$i.1 2001:db8:$i::11"
 
     ovs-vsctl -- add-port br-int vif$i -- \
@@ -19573,8 +19573,8 @@ done
 
 check ovn-nbctl lr-add lr0
 for i in 1 2; do
-    ovn-nbctl lrp-add lr0 lrp$i 00:00:00:00:ff:0$i 192.168.$i.254/24 2001:db8:$i::1/64
-    ovn-nbctl -- lsp-add sw$i lrp$i-attachment \
+    check ovn-nbctl lrp-add lr0 lrp$i 00:00:00:00:ff:0$i 192.168.$i.254/24 2001:db8:$i::1/64
+    check ovn-nbctl -- lsp-add sw$i lrp$i-attachment \
               -- set Logical_Switch_Port lrp$i-attachment type=router \
                 options:router-port=lrp$i addresses='"00:00:00:00:ff:0'$i' 192.168.'$i'.254 2001:db8:'$i'::1"'
 done
@@ -19778,14 +19778,14 @@ test_ip6_packet() {
 
 for i in 1 2; do
     net_add n$i
-    ovn-nbctl ls-add sw$i
+    check ovn-nbctl ls-add sw$i
 
     sim_add hv$i
     as hv$i
     ovs-vsctl add-br br-phys
     ovn_attach n$i br-phys 192.168.$i.1
 
-    ovn-nbctl lsp-add sw$i sw$i-p${i}0 -- \
+    check ovn-nbctl lsp-add sw$i sw$i-p${i}0 -- \
         lsp-set-addresses sw$i-p${i}0 "00:00:00:00:00:0$i 192.168.$i.1 2001:db8:$i::11"
 
     ovs-vsctl -- add-port br-int vif$i -- \
@@ -19798,8 +19798,8 @@ done
 
 check ovn-nbctl lr-add lr0
 for i in 1 2; do
-    ovn-nbctl lrp-add lr0 lrp$i 00:00:00:00:ff:0$i 192.168.$i.254/24 2001:db8:$i::1/64
-    ovn-nbctl -- lsp-add sw$i lrp$i-attachment \
+    check ovn-nbctl lrp-add lr0 lrp$i 00:00:00:00:ff:0$i 192.168.$i.254/24 2001:db8:$i::1/64
+    check ovn-nbctl -- lsp-add sw$i lrp$i-attachment \
               -- set Logical_Switch_Port lrp$i-attachment type=router \
                 options:router-port=lrp$i addresses='"00:00:00:00:ff:0'$i' 192.168.'$i'.254 2001:db8:'$i'::1"'
 done
@@ -20623,7 +20623,7 @@ ovn_attach n1 br-phys 192.168.0.10
 
 check ovn-nbctl ls-add ls1
 for i in 1 2; do
-    ovn-nbctl lsp-add ls1 lp$i \
+    check ovn-nbctl lsp-add ls1 lp$i \
         -- lsp-set-addresses lp$i "f0:00:00:00:00:0$i 192.168.1.$i"
     as hv1 ovs-vsctl \
         -- add-port br-int vif$i \
@@ -20634,32 +20634,32 @@ done
 for i in 1 2 3; do
     as1_uuid=`ovn-nbctl --wait=hv create addr name=as1`
     as2_uuid=`ovn-nbctl --wait=hv create addr name=as2`
-    ovn-nbctl --wait=hv acl-add ls1 to-lport 200 \
+    check ovn-nbctl --wait=hv acl-add ls1 to-lport 200 \
             'outport=="lp1" && ip4 && ip4.src == {$as1, $as2}' allow-related
-    ovn-nbctl --wait=hv set addr as1 addresses="10.1.2.10"
+    check ovn-nbctl --wait=hv set addr as1 addresses="10.1.2.10"
     AT_CHECK([ovs-ofctl dump-flows br-int | grep -F "10.1.2.10"], [0], [ignore])
 
     # Update address set as1
-    ovn-nbctl --wait=hv set addr as1 addresses="10.1.2.10 10.1.2.11"
+    check ovn-nbctl --wait=hv set addr as1 addresses="10.1.2.10 10.1.2.11"
     AT_CHECK([ovs-ofctl dump-flows br-int | grep -F "10.1.2.11"], [0], [ignore])
 
     # Update address set as2
-    ovn-nbctl --wait=hv set addr as2 addresses="10.1.2.12 10.1.2.13"
+    check ovn-nbctl --wait=hv set addr as2 addresses="10.1.2.12 10.1.2.13"
     AT_CHECK([ovs-ofctl dump-flows br-int | grep -F "10.1.2.12"], [0], [ignore])
 
     # Add another ACL referencing as1
     n_flows_before=`ovs-ofctl dump-flows br-int | grep -F "10.1.2.10" | wc -l`
-    ovn-nbctl --wait=hv acl-add ls1 to-lport 200 \
+    check ovn-nbctl --wait=hv acl-add ls1 to-lport 200 \
             'outport=="lp2" && ip4 && ip4.src == $as1' allow-related
     n_flows_after=`ovs-ofctl dump-flows br-int | grep -F "10.1.2.10" | wc -l`
     AT_CHECK([test $(expr $n_flows_before \* 2) = $n_flows_after], [0], [ignore])
 
     # Trigger full recompute. Creating a chassis would trigger full recompute.
-    ovn-sbctl chassis-add tst geneve 127.0.0.4
-    ovn-sbctl chassis-del tst
+    check ovn-sbctl chassis-add tst geneve 127.0.0.4
+    check ovn-sbctl chassis-del tst
 
     # Remove an ACL
-    ovn-nbctl --wait=hv acl-del ls1 to-lport 200 \
+    check ovn-nbctl --wait=hv acl-del ls1 to-lport 200 \
             'outport=="lp2" && ip4 && ip4.src == $as1'
     n_flows_after=`ovs-ofctl dump-flows br-int | grep -F "10.1.2.10" | wc -l`
     AT_CHECK([test $n_flows_before = $n_flows_after], [0], [ignore])
@@ -20668,7 +20668,7 @@ for i in 1 2 3; do
     # parsing should fail.
     echo "before del as1"
     ovn-nbctl list addr | grep as1
-    ovn-nbctl --wait=hv destroy addr $as1_uuid
+    check ovn-nbctl --wait=hv destroy addr $as1_uuid
     echo "after del as1"
     ovn-nbctl list addr | grep as1
     AT_CHECK([ovs-ofctl dump-flows br-int | grep -F "10.1.2.10"], [1], [ignore])
@@ -20679,10 +20679,10 @@ for i in 1 2 3; do
     AT_CHECK([ovs-ofctl dump-flows br-int | grep -F "10.1.2.12"], [0], [ignore])
 
     # Remove ACLs and address sets
-    ovn-nbctl --wait=hv destroy addr $as1_uuid -- destroy addr $as2_uuid
+    check ovn-nbctl --wait=hv destroy addr $as1_uuid -- destroy addr $as2_uuid
     AT_CHECK([ovs-ofctl dump-flows br-int | grep -F "10.1.2.12"], [1], [ignore])
 
-    ovn-nbctl --wait=hv acl-del ls1
+    check ovn-nbctl --wait=hv acl-del ls1
 done
 
 # Gracefully terminate daemons
@@ -21611,7 +21611,7 @@ check ovn-nbctl --wait=sb sync
 check ovn-nbctl --wait=hv set NB_Global . options:mac_prefix="0a:00:00:00:00:00"
 check ovn-nbctl ls-add sw0
 check ovn-nbctl lsp-add sw0 p0 -- lsp-set-addresses p0 dynamic
-ovn-nbctl --wait=sb add Logical-Switch sw0 other_config subnet=192.168.1.0/24
+check ovn-nbctl --wait=sb add Logical-Switch sw0 other_config subnet=192.168.1.0/24
 
 AT_CHECK([ovn-nbctl get Logical-Switch-Port p0 dynamic_addresses], [0],
     ["0a:00:00:a8:01:03 192.168.1.2"
@@ -21634,11 +21634,11 @@ check ovn-nbctl ls-add sw
 check ovn-nbctl set logical_switch sw other-config:subnet=192.168.1.0/24
 
 for i in 2 3 4; do
-    ovn-nbctl lr-add ro$i
-    ovn-nbctl lsp-add sw swp$i
-    ovn-nbctl --wait=sb lsp-set-addresses swp$i "02:00:00:00:00:0$i dynamic"
+    check ovn-nbctl lr-add ro$i
+    check ovn-nbctl lsp-add sw swp$i
+    check ovn-nbctl --wait=sb lsp-set-addresses swp$i "02:00:00:00:00:0$i dynamic"
     cidr=$(ovn-nbctl get logical_switch_port swp$i dynamic_addresses |cut -f2 -d' '|cut -f1 -d\")
-    ovn-nbctl lrp-add ro$i rop$i 02:00:00:00:00:0$i $cidr/24 -- set logical_switch_port swp$i type=router options:router-port=rop$i addresses=router;
+    check ovn-nbctl lrp-add ro$i rop$i 02:00:00:00:00:0$i $cidr/24 -- set logical_switch_port swp$i type=router options:router-port=rop$i addresses=router;
     AT_CHECK_UNQUOTED([ovn-nbctl get logical_router_port rop$i networks], [0], [[["192.168.1.$i/24"]]
 ])
 done
@@ -21836,16 +21836,16 @@ ovn_start
 
 for i in 1 2; do
     ls_name=ls$i
-    ovn-nbctl ls-add $ls_name
+    check ovn-nbctl ls-add $ls_name
     ln_port_name=ln$i
     if test $i -eq 1; then
-        ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
+        check ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
     elif test $i -eq 2; then
-        ovn-nbctl lsp-add $ls_name $ln_port_name "" 201
+        check ovn-nbctl lsp-add $ls_name $ln_port_name "" 201
     fi
-    ovn-nbctl lsp-set-addresses $ln_port_name unknown
-    ovn-nbctl lsp-set-type $ln_port_name localnet
-    ovn-nbctl lsp-set-options $ln_port_name network_name=phys
+    check ovn-nbctl lsp-set-addresses $ln_port_name unknown
+    check ovn-nbctl lsp-set-type $ln_port_name localnet
+    check ovn-nbctl lsp-set-options $ln_port_name network_name=phys
 done
 
 # lsp_to_ls LSP
@@ -21929,9 +21929,9 @@ for i in 1 2; do
     lsp_name=lp$i$i
     ls_name=$(lsp_to_ls $lsp_name)
 
-    ovn-nbctl lsp-add $ls_name $lsp_name
-    ovn-nbctl lsp-set-addresses $lsp_name "f0:00:00:00:00:$i$i 192.168.$i.$i"
-    ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:$i$i
+    check ovn-nbctl lsp-add $ls_name $lsp_name
+    check ovn-nbctl lsp-set-addresses $lsp_name "f0:00:00:00:00:$i$i 192.168.$i.$i"
+    check ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:$i$i
 
     OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
 
@@ -22622,9 +22622,9 @@ net_add n1
 check_uuid ovn-nbctl create Logical_Router name=lr0 options:chassis=hv1
 for i in 0 1; do
     idx=$((i+1))
-    ovn-nbctl ls-add sw$i
-    ovn-nbctl lrp-add lr0 lrp$i 00:00:00:00:ff:0$idx 192.168.$idx.254/24 200$idx::a/64
-    ovn-nbctl \
+    check ovn-nbctl ls-add sw$i
+    check ovn-nbctl lrp-add lr0 lrp$i 00:00:00:00:ff:0$idx 192.168.$idx.254/24 200$idx::a/64
+    check ovn-nbctl \
         -- lsp-add sw$i lrp$i-attachment \
         -- set Logical_Switch_Port lrp$i-attachment type=router \
                          options:router-port=lrp$i \
@@ -22638,7 +22638,7 @@ for i in 1 2; do
     ovn_attach n1 br-phys 192.168.0.$i
 
     for j in 1 2; do
-        ovn-nbctl lsp-add sw0 sw0-p$i$j -- \
+        check ovn-nbctl lsp-add sw0 sw0-p$i$j -- \
                 lsp-set-addresses sw0-p$i$j "00:00:00:00:00:$i$j 192.168.1.$i$j 2001::$i$j"
 
         ovs-vsctl -- add-port br-int vif$i$j -- \
@@ -24294,16 +24294,16 @@ m4_define([DVR_N_S_ARP_HANDLING],
 
    for i in 1 2; do
        ls_name=ls$i
-       ovn-nbctl ls-add $ls_name
+       check ovn-nbctl ls-add $ls_name
        ln_port_name=ln$i
        if test $i -eq 1; then
-           ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
+           check ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
        elif test $i -eq 2; then
-           ovn-nbctl lsp-add $ls_name $ln_port_name "" 201
+           check ovn-nbctl lsp-add $ls_name $ln_port_name "" 201
        fi
-       ovn-nbctl lsp-set-addresses $ln_port_name unknown
-       ovn-nbctl lsp-set-type $ln_port_name localnet
-       ovn-nbctl lsp-set-options $ln_port_name network_name=phys
+       check ovn-nbctl lsp-set-addresses $ln_port_name unknown
+       check ovn-nbctl lsp-set-type $ln_port_name localnet
+       check ovn-nbctl lsp-set-options $ln_port_name network_name=phys
    done
 
    # lsp_to_ls LSP
@@ -24344,30 +24344,30 @@ m4_define([DVR_N_S_ARP_HANDLING],
        lsp_name=lp$i$i
        ls_name=$(lsp_to_ls $lsp_name)
 
-       ovn-nbctl lsp-add $ls_name $lsp_name
-       ovn-nbctl lsp-set-addresses $lsp_name "f0:00:00:00:00:$i$i 192.168.$i.$i"
-       ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:$i$i
+       check ovn-nbctl lsp-add $ls_name $lsp_name
+       check ovn-nbctl lsp-set-addresses $lsp_name "f0:00:00:00:00:$i$i 192.168.$i.$i"
+       check ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:$i$i
 
        OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
 
    done
 
-   ovn-nbctl ls-add ls-underlay
-   ovn-nbctl lsp-add ls-underlay ln3 "" 1000
-   ovn-nbctl lsp-set-addresses ln3 unknown
-   ovn-nbctl lsp-set-type ln3 localnet
-   ovn-nbctl lsp-set-options ln3 network_name=phys
+   check ovn-nbctl ls-add ls-underlay
+   check ovn-nbctl lsp-add ls-underlay ln3 "" 1000
+   check ovn-nbctl lsp-set-addresses ln3 unknown
+   check ovn-nbctl lsp-set-type ln3 localnet
+   check ovn-nbctl lsp-set-options ln3 network_name=phys
 
-   ovn-nbctl ls-add ls-north
-   ovn-nbctl lsp-add ls-north ln4 "" 1000
-   ovn-nbctl lsp-set-addresses ln4 unknown
-   ovn-nbctl lsp-set-type ln4 localnet
-   ovn-nbctl lsp-set-options ln4 network_name=phys
+   check ovn-nbctl ls-add ls-north
+   check ovn-nbctl lsp-add ls-north ln4 "" 1000
+   check ovn-nbctl lsp-set-addresses ln4 unknown
+   check ovn-nbctl lsp-set-type ln4 localnet
+   check ovn-nbctl lsp-set-options ln4 network_name=phys
 
    # Add a VM on ls-north
-   ovn-nbctl lsp-add ls-north lp-north
-   ovn-nbctl lsp-set-addresses lp-north "f0:f0:00:00:00:11 172.31.0.10"
-   ovn-nbctl lsp-set-port-security lp-north f0:f0:00:00:00:11
+   check ovn-nbctl lsp-add ls-north lp-north
+   check ovn-nbctl lsp-set-addresses lp-north "f0:f0:00:00:00:11 172.31.0.10"
+   check ovn-nbctl lsp-set-port-security lp-north f0:f0:00:00:00:11
 
    # Add 3rd hypervisor
    sim_add hv3
@@ -24389,16 +24389,16 @@ m4_define([DVR_N_S_ARP_HANDLING],
                                  options:rxq_pcap=hv4/vif-north-rx.pcap \
                                  ofport-request=44
 
-   ovn-nbctl lr-add router
-   ovn-nbctl lrp-add router router-to-ls1 00:00:01:01:02:03 192.168.1.3/24
-   ovn-nbctl lrp-add router router-to-ls2 00:00:01:01:02:05 192.168.2.3/24
-   ovn-nbctl lrp-add router router-to-underlay 00:00:01:01:02:07 172.31.0.1/24
+   check ovn-nbctl lr-add router
+   check ovn-nbctl lrp-add router router-to-ls1 00:00:01:01:02:03 192.168.1.3/24
+   check ovn-nbctl lrp-add router router-to-ls2 00:00:01:01:02:05 192.168.2.3/24
+   check ovn-nbctl lrp-add router router-to-underlay 00:00:01:01:02:07 172.31.0.1/24
 
-   ovn-nbctl lsp-add ls1 ls1-to-router -- set Logical_Switch_Port ls1-to-router type=router \
+   check ovn-nbctl lsp-add ls1 ls1-to-router -- set Logical_Switch_Port ls1-to-router type=router \
              options:router-port=router-to-ls1 -- lsp-set-addresses ls1-to-router router
-   ovn-nbctl lsp-add ls2 ls2-to-router -- set Logical_Switch_Port ls2-to-router type=router \
+   check ovn-nbctl lsp-add ls2 ls2-to-router -- set Logical_Switch_Port ls2-to-router type=router \
              options:router-port=router-to-ls2 -- lsp-set-addresses ls2-to-router router
-   ovn-nbctl lsp-add ls-underlay underlay-to-router -- set Logical_Switch_Port \
+   check ovn-nbctl lsp-add ls-underlay underlay-to-router -- set Logical_Switch_Port \
                                  underlay-to-router type=router \
                                  options:router-port=router-to-underlay \
                                  -- lsp-set-addresses underlay-to-router router
@@ -24455,7 +24455,7 @@ m4_define([DVR_N_S_ARP_HANDLING],
    tip=`printf "%02x%02x%02x%02x" 172 31 0 1`
 
    # Set a hypervisor as gateway chassis, for router port 172.31.0.1
-   ovn-nbctl lrp-set-gateway-chassis router-to-underlay hv3
+   check ovn-nbctl lrp-set-gateway-chassis router-to-underlay hv3
    wait_for_ports_up
    check ovn-nbctl --wait=sb sync
    OVN_WAIT_PATCH_PORT_FLOWS(["ln1"] ["ln2"], ["hv1"] ["hv2"] ["hv3"])
@@ -24574,16 +24574,16 @@ m4_define([DVR_N_S_PING],
 
    for i in 1 2; do
        ls_name=ls$i
-       ovn-nbctl ls-add $ls_name
+       check ovn-nbctl ls-add $ls_name
        ln_port_name=ln$i
        if test $i -eq 1; then
-           ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
+           check ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
        elif test $i -eq 2; then
-           ovn-nbctl lsp-add $ls_name $ln_port_name "" 201
+           check ovn-nbctl lsp-add $ls_name $ln_port_name "" 201
        fi
-       ovn-nbctl lsp-set-addresses $ln_port_name unknown
-       ovn-nbctl lsp-set-type $ln_port_name localnet
-       ovn-nbctl lsp-set-options $ln_port_name network_name=phys
+       check ovn-nbctl lsp-set-addresses $ln_port_name unknown
+       check ovn-nbctl lsp-set-type $ln_port_name localnet
+       check ovn-nbctl lsp-set-options $ln_port_name network_name=phys
    done
 
    # lsp_to_ls LSP
@@ -24624,30 +24624,30 @@ m4_define([DVR_N_S_PING],
        lsp_name=lp$i$i
        ls_name=$(lsp_to_ls $lsp_name)
 
-       ovn-nbctl lsp-add $ls_name $lsp_name
-       ovn-nbctl lsp-set-addresses $lsp_name "f0:00:00:00:00:$i$i 192.168.$i.$i"
-       ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:$i$i
+       check ovn-nbctl lsp-add $ls_name $lsp_name
+       check ovn-nbctl lsp-set-addresses $lsp_name "f0:00:00:00:00:$i$i 192.168.$i.$i"
+       check ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:$i$i
 
        OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
 
    done
 
-   ovn-nbctl ls-add ls-underlay
-   ovn-nbctl lsp-add ls-underlay ln3 "" 1000
-   ovn-nbctl lsp-set-addresses ln3 unknown
-   ovn-nbctl lsp-set-type ln3 localnet
-   ovn-nbctl lsp-set-options ln3 network_name=phys
+   check ovn-nbctl ls-add ls-underlay
+   check ovn-nbctl lsp-add ls-underlay ln3 "" 1000
+   check ovn-nbctl lsp-set-addresses ln3 unknown
+   check ovn-nbctl lsp-set-type ln3 localnet
+   check ovn-nbctl lsp-set-options ln3 network_name=phys
 
-   ovn-nbctl ls-add ls-north
-   ovn-nbctl lsp-add ls-north ln4 "" 1000
-   ovn-nbctl lsp-set-addresses ln4 unknown
-   ovn-nbctl lsp-set-type ln4 localnet
-   ovn-nbctl lsp-set-options ln4 network_name=phys
+   check ovn-nbctl ls-add ls-north
+   check ovn-nbctl lsp-add ls-north ln4 "" 1000
+   check ovn-nbctl lsp-set-addresses ln4 unknown
+   check ovn-nbctl lsp-set-type ln4 localnet
+   check ovn-nbctl lsp-set-options ln4 network_name=phys
 
    # Add a VM on ls-north
-   ovn-nbctl lsp-add ls-north lp-north
-   ovn-nbctl lsp-set-addresses lp-north "f0:f0:00:00:00:11 172.31.0.10"
-   ovn-nbctl lsp-set-port-security lp-north f0:f0:00:00:00:11
+   check ovn-nbctl lsp-add ls-north lp-north
+   check ovn-nbctl lsp-set-addresses lp-north "f0:f0:00:00:00:11 172.31.0.10"
+   check ovn-nbctl lsp-set-port-security lp-north f0:f0:00:00:00:11
 
    # Add 3rd hypervisor
    sim_add hv3
@@ -24669,22 +24669,22 @@ m4_define([DVR_N_S_PING],
                                  options:rxq_pcap=hv4/vif-north-rx.pcap \
                                  ofport-request=44
 
-   ovn-nbctl lr-add router
-   ovn-nbctl lrp-add router router-to-ls1 00:00:01:01:02:03 192.168.1.3/24
-   ovn-nbctl lrp-add router router-to-ls2 00:00:01:01:02:05 192.168.2.3/24
-   ovn-nbctl lrp-add router router-to-underlay 00:00:01:01:02:07 172.31.0.1/24
+   check ovn-nbctl lr-add router
+   check ovn-nbctl lrp-add router router-to-ls1 00:00:01:01:02:03 192.168.1.3/24
+   check ovn-nbctl lrp-add router router-to-ls2 00:00:01:01:02:05 192.168.2.3/24
+   check ovn-nbctl lrp-add router router-to-underlay 00:00:01:01:02:07 172.31.0.1/24
 
-   ovn-nbctl lsp-add ls1 ls1-to-router -- set Logical_Switch_Port ls1-to-router type=router \
+   check ovn-nbctl lsp-add ls1 ls1-to-router -- set Logical_Switch_Port ls1-to-router type=router \
              options:router-port=router-to-ls1 -- lsp-set-addresses ls1-to-router router
-   ovn-nbctl lsp-add ls2 ls2-to-router -- set Logical_Switch_Port ls2-to-router type=router \
+   check ovn-nbctl lsp-add ls2 ls2-to-router -- set Logical_Switch_Port ls2-to-router type=router \
              options:router-port=router-to-ls2 -- lsp-set-addresses ls2-to-router router
-   ovn-nbctl lsp-add ls-underlay underlay-to-router -- set Logical_Switch_Port \
+   check ovn-nbctl lsp-add ls-underlay underlay-to-router -- set Logical_Switch_Port \
                                  underlay-to-router type=router \
                                  options:router-port=router-to-underlay \
                                  -- lsp-set-addresses underlay-to-router router
 
-   ovn-nbctl lrp-set-gateway-chassis router-to-underlay hv3
-   ovn-nbctl lrp-set-redirect-type router-to-underlay bridged
+   check ovn-nbctl lrp-set-gateway-chassis router-to-underlay hv3
+   check ovn-nbctl lrp-set-redirect-type router-to-underlay bridged
 
    wait_for_ports_up
    check ovn-nbctl --wait=sb sync
@@ -25245,16 +25245,16 @@ ovn_start
 
 for i in 1 2; do
     ls_name=ls$i
-    ovn-nbctl ls-add $ls_name
+    check ovn-nbctl ls-add $ls_name
     ln_port_name=ln$i
     if test $i -eq 1; then
-        ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
+        check ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
     elif test $i -eq 2; then
-        ovn-nbctl lsp-add $ls_name $ln_port_name "" 201
+        check ovn-nbctl lsp-add $ls_name $ln_port_name "" 201
     fi
-    ovn-nbctl lsp-set-addresses $ln_port_name unknown
-    ovn-nbctl lsp-set-type $ln_port_name localnet
-    ovn-nbctl lsp-set-options $ln_port_name network_name=phys
+    check ovn-nbctl lsp-set-addresses $ln_port_name unknown
+    check ovn-nbctl lsp-set-type $ln_port_name localnet
+    check ovn-nbctl lsp-set-options $ln_port_name network_name=phys
 done
 
 # lsp_to_ls LSP
@@ -25295,9 +25295,9 @@ for i in 1 2; do
     lsp_name=lp$i$i
     ls_name=$(lsp_to_ls $lsp_name)
 
-    ovn-nbctl lsp-add $ls_name $lsp_name
-    ovn-nbctl lsp-set-addresses $lsp_name "f0:00:00:00:00:$i$i 192.168.$i.$i"
-    ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:$i$i
+    check ovn-nbctl lsp-add $ls_name $lsp_name
+    check ovn-nbctl lsp-set-addresses $lsp_name "f0:00:00:00:00:$i$i 192.168.$i.$i"
+    check ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:$i$i
 
     OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
 
@@ -26586,8 +26586,8 @@ check ovn-nbctl ls-add ls1
 check ovn-nbctl ls-add ls2
 
 for i in 1 2; do
-    ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
-    ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
+    check ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
+    check ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
         -- lsp-set-options lsp-ls${i}-lr1 router-port=lrp-lr1-ls${i} \
         -- lsp-set-addresses lsp-ls${i}-lr1 router
 done
@@ -26705,9 +26705,9 @@ ovn_start
 check ovn-nbctl lr-add lr1
 
 for i in 1 2; do
-    ovn-nbctl ls-add ls${i}
-    ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
-    ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
+    check ovn-nbctl ls-add ls${i}
+    check ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
+    check ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
         -- lsp-set-options lsp-ls${i}-lr1 router-port=lrp-lr1-ls${i} \
         -- lsp-set-addresses lsp-ls${i}-lr1 router
 done
@@ -26871,9 +26871,9 @@ ovn_start
 check ovn-nbctl lr-add lr1
 
 for i in 1 2; do
-    ovn-nbctl ls-add ls${i}
-    ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
-    ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
+    check ovn-nbctl ls-add ls${i}
+    check ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
+    check ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
         -- lsp-set-options lsp-ls${i}-lr1 router-port=lrp-lr1-ls${i} \
         -- lsp-set-addresses lsp-ls${i}-lr1 router
 done
@@ -27011,12 +27011,12 @@ check ovn-nbctl lr-add lr1
 
 # Create logical topology
 for i in $(seq 1 4); do
-    ovn-nbctl ls-add ls${i}
-    ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
-    ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
+    check ovn-nbctl ls-add ls${i}
+    check ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
+    check ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
         -- lsp-set-options lsp-ls${i}-lr1 router-port=lrp-lr1-ls${i} \
         -- lsp-set-addresses lsp-ls${i}-lr1 router
-    ovn-nbctl lsp-add ls$i lsp${i}1 -- \
+    check ovn-nbctl lsp-add ls$i lsp${i}1 -- \
         lsp-set-addresses lsp${i}1 "f0:00:00:00:0${i}:1${i} 192.168.${i}.${i}1"
 done
 
@@ -27124,12 +27124,12 @@ check ovn-nbctl lr-add lr1
 
 # Create logical topology
 for i in $(seq 1 4); do
-    ovn-nbctl ls-add ls${i}
-    ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 2001:db8:${i}::1/64
-    ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
+    check ovn-nbctl ls-add ls${i}
+    check ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 2001:db8:${i}::1/64
+    check ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
         -- lsp-set-options lsp-ls${i}-lr1 router-port=lrp-lr1-ls${i} \
         -- lsp-set-addresses lsp-ls${i}-lr1 router
-    ovn-nbctl lsp-add ls$i lsp${i}1 -- \
+    check ovn-nbctl lsp-add ls$i lsp${i}1 -- \
         lsp-set-addresses lsp${i}1 "f0:00:00:00:0${i}:1${i} 2001:db8:${i}::${i}1"
 done
 
@@ -29321,9 +29321,9 @@ check ovn-nbctl ls-add s2 # simulate internal LS
 # Connnect r1 to ext.
 check ovn-nbctl lrp-add r1 lrp-r1-ext 00:00:00:00:01:01 10.0.1.1/24
 if test X"$1" = X"DGP"; then
-    ovn-nbctl lrp-set-gateway-chassis lrp-r1-ext hv1 1
+    check ovn-nbctl lrp-set-gateway-chassis lrp-r1-ext hv1 1
 else
-    ovn-nbctl set logical_router r1 options:chassis=hv1
+    check ovn-nbctl set logical_router r1 options:chassis=hv1
 fi
 check ovn-nbctl lsp-add ext lsp-ext-r1 -- set Logical_Switch_Port lsp-ext-r1 type=router \
     options:router-port=lrp-r1-ext addresses=router
@@ -30201,7 +30201,7 @@ for i in 1 2; do
             external_ids:iface-id=lsp$i$j \
             external_ids:encap-ip=192.168.0.$i$j \
             options:tx_pcap=hv$i/vif$i$j-tx.pcap options:rxq_pcap=hv$i/vif$i$j-rx.pcap
-        ovn-nbctl lsp-add ls1 lsp$i$j -- lsp-set-addresses lsp$i$j "f0:00:00:00:00:$i$j 10.0.0.$i$j"
+        check ovn-nbctl lsp-add ls1 lsp$i$j -- lsp-set-addresses lsp$i$j "f0:00:00:00:00:$i$j 10.0.0.$i$j"
 
     done
 done
@@ -30303,7 +30303,7 @@ for i in 1 2; do
             external_ids:iface-id=lsp$i$j \
             external_ids:encap-ip=192.168.0.$i$j \
             options:tx_pcap=hv$i/vif$i$j-tx.pcap options:rxq_pcap=hv$i/vif$i$j-rx.pcap
-        ovn-nbctl lsp-add ls$i lsp$i$j -- lsp-set-addresses lsp$i$j "f0:00:00:00:00:$i$j 10.0.$i.$j"
+        check ovn-nbctl lsp-add ls$i lsp$i$j -- lsp-set-addresses lsp$i$j "f0:00:00:00:00:$i$j 10.0.$i.$j"
 
     done
 done
@@ -32545,16 +32545,16 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovn-nbctl lr-add lr0
 
 for i in $(seq 0 9); do
-    ovn-nbctl ls-add ls$i
-    ovn-nbctl lrp-add lr0 lrp_lr0_ls$i aa:bb:bb:00:00:0$i 192.168.${i}.1/24
+    check ovn-nbctl ls-add ls$i
+    check ovn-nbctl lrp-add lr0 lrp_lr0_ls$i aa:bb:bb:00:00:0$i 192.168.${i}.1/24
 
-    ovn-nbctl lsp-add ls$i lsp_ls${i}_lr0 -- \
+    check ovn-nbctl lsp-add ls$i lsp_ls${i}_lr0 -- \
         lsp-set-addresses lsp_ls${i}_lr0 router -- \
         lsp-set-type lsp_ls${i}_lr0 router -- \
         lsp-set-options lsp_ls${i}_lr0 router-port=lrp_lr0_ls${i}
 
     for j in 0 1; do
-        ovn-nbctl lsp-add ls$i lsp${i}-${j} -- \
+        check ovn-nbctl lsp-add ls$i lsp${i}-${j} -- \
             lsp-set-addresses lsp${i}-${j} "aa:aa:aa:00:0$i:0$j 192.168.$i.1$j"
     done
 done
@@ -32876,9 +32876,9 @@ arp_proxy_ls2=(00:00:00:02:02:f1 \
                fd7b:6b4d:7b25:d22c::1)
 arp_proxy_ls2_option="\"${arp_proxy_ls2[[*]]}\""
 
-ovn-nbctl --wait=hv add Logical_Switch_Port rp-ls1 \
+check ovn-nbctl --wait=hv add Logical_Switch_Port rp-ls1 \
 options arp_proxy="$arp_proxy_ls1_option"
-ovn-nbctl --wait=hv add Logical_Switch_Port rp-ls2 \
+check ovn-nbctl --wait=hv add Logical_Switch_Port rp-ls2 \
 options arp_proxy="$arp_proxy_ls2_option"
 ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
@@ -32971,10 +32971,10 @@ AT_CHECK([ovn-sbctl dump-flows |
 ])
 
 # Add the flows back send arp request and check we see an ARP response
-ovn-nbctl --wait=hv add Logical_Switch_Port rp-ls1 \
+check ovn-nbctl --wait=hv add Logical_Switch_Port rp-ls1 \
 options arp_proxy="$arp_proxy_ls1_option"
 
-ovn-nbctl --wait=hv add Logical_Switch_Port rp-ls2 \
+check ovn-nbctl --wait=hv add Logical_Switch_Port rp-ls2 \
 options arp_proxy="$arp_proxy_ls2_option"
 
 bcast_mac=ff:ff:ff:ff:ff:ff
