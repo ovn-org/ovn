@@ -644,3 +644,68 @@ try_checkpatch \
 "
 
 AT_CLEANUP
+
+AT_SETUP([checkpatch - check and check_uuid])
+# Verify that missing check is covered.
+try_checkpatch \
+   "COMMON_PATCH_HEADER([tests/something.at])
+    +ovn-nbctl lsp-add ls
+    " \
+    "WARNING: ovn-nbctl return should be checked Consider adding check or check_uuid in front.
+    #8 FILE: tests/something.at:1:
+    ovn-nbctl lsp-add ls
+"
+
+# Verify that existing check makes checkpatch happy.
+try_checkpatch \
+   "COMMON_PATCH_HEADER([tests/something.at])
+    +check ovn-nbctl lsp-add ls
+    "
+
+# Verify that missing check_uuid is covered.
+try_checkpatch \
+   "COMMON_PATCH_HEADER([tests/something.at])
+    +ovn-sbctl -- create FDB mac='"00\:00\:00\:00\:00\:03"' dp_key=1 port_key=1
+    " \
+    "WARNING: ovn-sbctl return should be checked Consider adding check or check_uuid in front.
+    #8 FILE: tests/something.at:1:
+    ovn-sbctl -- create FDB mac='00:00:00:00:00:03' dp_key=1 port_key=1
+"
+
+# Verify that existing check_uuid makes checkpatch happy.
+try_checkpatch \
+   "COMMON_PATCH_HEADER([tests/something.at])
+    +check_uuid ovn-sbctl -- create FDB mac='"00\:00\:00\:00\:00\:03"' dp_key=1 port_key=1
+    "
+
+# Verify that missing check for a get command does not cause checkpatch failures.
+try_checkpatch \
+   "COMMON_PATCH_HEADER([tests/something.at])
+    +ovn-nbctl get Logical-Switch-Port p1 dynamic_addresses
+    "
+
+# Verify that missing check for a create command causes checkpatch failure - multiline.
+try_checkpatch \
+   "COMMON_PATCH_HEADER([tests/something.at])
+    +ovn-sbctl \
+    + -- create FDB mac='"00\:00\:00\:00\:00\:03"' dp_key=1 port_key=1
+    " \
+    "WARNING: ovn-sbctl return should be checked Consider adding check or check_uuid in front.
+    #8 FILE: tests/something.at:1:
+    ovn-sbctl     + -- create FDB mac='00:00:00:00:00:03' dp_key=1 port_key=1
+"
+
+# Verify that missing check for a get command does not cause checkpatch failures - multiline.
+try_checkpatch \
+   "COMMON_PATCH_HEADER([tests/something.at])
+    +ovn-nbctl \
+    + --  get Logical-Switch-Port p1 dynamic_addresses
+    "
+
+# Verify that we can still store outout of ovn-nbctl w/o check.
+try_checkpatch \
+   "COMMON_PATCH_HEADER([tests/something.at])
+   +lsp1_uuid=$(ovn-nbctl --bare --columns _uuid find Logical_Switch_Port name=lsp1)
+   "
+
+AT_CLEANUP

@@ -203,6 +203,8 @@ __regex_if_macros = re.compile(r'^ +(%s) \([\S]([\s\S]+[\S])*\) { +\\' %
 __regex_nonascii_characters = re.compile("[^\u0000-\u007f]")
 __regex_efgrep = re.compile(r'.*[ef]grep.*$')
 __regex_hardcoded_table = re.compile(r'.*(table=[0-9]+)|.*(resubmit\(,[0-9]+\))')
+__regex_ovn_nbctl = re.compile(r'^\s*ovn-nbctl ')
+__regex_ovn_sbctl = re.compile(r'^\s*ovn-sbctl ')
 
 skip_leading_whitespace_check = False
 skip_trailing_whitespace_check = False
@@ -376,6 +378,21 @@ def has_hardcoded_table(line):
     """Return TRUE if the current line contains table=<NUMBER> or
        resubmit(,<NUMBER>)"""
     return __regex_hardcoded_table.match(line) is not None
+
+def has_nbctl_non_checked_commands(line):
+    """Return TRUE if the current line is missing check in front of ovn-nbctl,
+       except for commands containing 'find', 'show', 'list' and 'get'."""
+    return (__regex_ovn_nbctl.match(line) is not None and
+            "find" not in line and "show" not in line and
+            "list" not in line and "get" not in line)
+
+def has_sbctl_non_checked_commands(line):
+    """Return TRUE if the current line is missing check in front of ovn-sbctl.
+       except for commands containing 'find', 'show', 'list' and 'get'."""
+    return (__regex_ovn_sbctl.match(line) is not None and
+            "dump-flows" not in line and
+            "find" not in line and "show" not in line and
+            "list" not in line and "get" not in line)
 
 def filter_comments(current_line, keep=False):
     """remove all of the c-style comments in a line"""
@@ -668,6 +685,18 @@ checks = [
          lambda: print_warning("Use of hardcoded table=<NUMBER> or"
                                " resubmit=(,<NUMBER>) is discouraged in tests."
                                " Consider using MACRO instead.")},
+
+    {'regex': r'\.at$', 'match_name': None,
+     'check': lambda x: has_nbctl_non_checked_commands(x),
+     'print':
+         lambda: print_warning("ovn-nbctl return should be checked"
+                               " Consider adding check or check_uuid in front.")},
+
+    {'regex': r'\.at$', 'match_name': None,
+     'check': lambda x: has_sbctl_non_checked_commands(x),
+     'print':
+         lambda: print_warning("ovn-sbctl return should be checked"
+                               " Consider adding check or check_uuid in front.")},
 ]
 
 
@@ -899,12 +928,23 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
 
     reset_counters()
 
+    current_line = ""
     for line in text.split("\n"):
         if current_file != previous_file:
             previous_file = current_file
 
         lineno = lineno + 1
         total_line = total_line + 1
+
+        if current_file.endswith(".at"):
+            if line.endswith("\\"):
+                current_line += line[:-1]
+                continue
+            else:
+                current_line += line
+
+            line = current_line
+            current_line = ""
 
         if line == "\f":
             # Form feed
