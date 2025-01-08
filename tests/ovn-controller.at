@@ -73,7 +73,7 @@ check_patches
 # Create a localnet port, but we should still have no patch ports, as they
 # won't be created until there's a localnet port on a logical switch with
 # another logical port bound to this chassis.
-ovn-sbctl \
+check_uuid ovn-sbctl \
     -- --id=@dp101 create Datapath_Binding tunnel_key=101 external_ids:name=dp101 \
     -- create Port_Binding datapath=@dp101 logical_port=localnet1 tunnel_key=1 \
         type=localnet options:network_name=physnet1
@@ -81,7 +81,7 @@ check_patches
 
 # Create a localnet port on a logical switch with a port bound to this chassis.
 # Now we should get some patch ports created.
-ovn-sbctl \
+check_uuid ovn-sbctl \
     -- --id=@dp102 create Datapath_Binding tunnel_key=102 external_ids:name=dp102 \
     -- create Port_Binding datapath=@dp102 logical_port=localnet2 tunnel_key=1 \
         type=localnet options:network_name=physnet1 \
@@ -948,7 +948,7 @@ read_counter() {
     ovn-appctl -t ovn-controller coverage/read-counter $1
 }
 
-ovn-nbctl create address_set name=as1
+check_uuid ovn-nbctl create address_set name=as1
 check ovn-nbctl --wait=hv acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1' drop
 
 # Add IPs to as1 for 10 times, 1 IP each time.
@@ -1121,7 +1121,7 @@ read_counter() {
     ovn-appctl -t ovn-controller coverage/read-counter $1
 }
 
-ovn-nbctl create address_set name=as1
+check_uuid ovn-nbctl create address_set name=as1
 check ovn-nbctl --wait=hv acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1 && tcp && tcp.dst == {111, 222, 333}' drop
 
 # Add IPs to as1 for 10 times, 1 IP each time.
@@ -1315,8 +1315,8 @@ read_counter() {
     ovn-appctl -t ovn-controller coverage/read-counter $1
 }
 
-ovn-nbctl create address_set name=as1
-ovn-nbctl create address_set name=as2
+check_uuid ovn-nbctl create address_set name=as1
+check_uuid ovn-nbctl create address_set name=as2
 check ovn-nbctl --wait=hv acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1 && ip4.dst == $as2' drop
 
 # Add IPs to as1 and as2, with some of the IPs overlapping
@@ -1470,8 +1470,8 @@ read_counter() {
     ovn-appctl -t ovn-controller coverage/read-counter $1
 }
 
-ovn-nbctl create address_set name=as1
-ovn-nbctl create address_set name=as2
+check_uuid ovn-nbctl create address_set name=as1
+check_uuid ovn-nbctl create address_set name=as2
 
 # OR on different fields
 check ovn-nbctl --wait=hv acl-add ls1 to-lport 100 'outport == "ls1-lp1" && (ip4.src == $as1 || ip4.dst == $as2)' drop
@@ -1566,8 +1566,8 @@ read_counter() {
     ovn-appctl -t ovn-controller coverage/read-counter $1
 }
 
-ovn-nbctl create address_set name=as1
-ovn-nbctl create address_set name=as2
+check_uuid ovn-nbctl create address_set name=as1
+check_uuid ovn-nbctl create address_set name=as2
 
 # OR on the same field
 check ovn-nbctl --wait=hv acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == {$as1, $as2}' drop
@@ -1671,7 +1671,7 @@ read_counter() {
     ovn-appctl -t ovn-controller coverage/read-counter $1
 }
 
-ovn-nbctl create address_set name=as1
+check_uuid ovn-nbctl create address_set name=as1
 check ovn-nbctl --wait=hv acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1 && ip4.dst == $as1' drop
 
 # Add IPs to as1 for 10 times, 1 IP each time.
@@ -1858,8 +1858,8 @@ read_counter() {
 # 2 ASes, each has 3 IPs, no overlapping.
 # 2 ACLs, each should generate a conjunction, and 1 overlapping tcp.dst
 # generating a flow with combined conjunctions.
-ovn-nbctl create address_set name=as1 addresses=10.0.0.11,10.0.0.12,10.0.0.13
-ovn-nbctl create address_set name=as2 addresses=10.0.0.21,10.0.0.22,10.0.0.23
+check_uuid ovn-nbctl create address_set name=as1 addresses=10.0.0.11,10.0.0.12,10.0.0.13
+check_uuid ovn-nbctl create address_set name=as2 addresses=10.0.0.21,10.0.0.22,10.0.0.23
 check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1 && tcp && tcp.dst == {101, 102}' drop
 check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as2 && tcp && tcp.dst == {201, 202}' drop
 
@@ -1975,7 +1975,7 @@ read_counter() {
     ovn-appctl -t ovn-controller coverage/read-counter $1
 }
 
-ovn-nbctl create address_set name=as1
+check_uuid ovn-nbctl create address_set name=as1
 check ovn-nbctl --wait=hv acl-add ls1 to-lport 100 'outport == "ls1-lp1" && eth.src == $as1' drop
 
 # Add MACs to as1 for 5 times.
@@ -2056,7 +2056,7 @@ read_counter() {
     ovn-appctl -t ovn-controller coverage/read-counter $1
 }
 
-ovn-nbctl create address_set name=as1
+check_uuid ovn-nbctl create address_set name=as1
 check ovn-nbctl --wait=hv acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip6.src == $as1' drop
 
 # Add IPs to as1 for 5 times, 1 IP each time.
@@ -2128,7 +2128,7 @@ check ovn-nbctl lsp-add ls1 ls1-lp1 \
 wait_for_ports_up
 ovn-appctl -t ovn-controller vlog/set file:dbg
 
-ovn-nbctl create address_set name=as1 addresses=8.8.8.8
+check_uuid ovn-nbctl create address_set name=as1 addresses=8.8.8.8
 check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1' drop
 check ovn-nbctl --wait=hv sync
 AT_CHECK([ovs-ofctl dump-flows br-int table=46 | grep -c "priority=1100"], [0], [1
@@ -2874,7 +2874,7 @@ acl_action=$(ovn-debug lflow-stage-to-oftable ls_out_acl_action)
 dp_key=$(printf "%x" $(fetch_column datapath tunnel_key external_ids:name=ls1))
 port_key=$(printf "%x" $(fetch_column port_binding tunnel_key logical_port=ls1-lp1))
 
-ovn-nbctl create address_set name=as1
+check_uuid ovn-nbctl create address_set name=as1
 check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1' drop
 check ovn-nbctl add address_set as1 addresses 10.0.0.0/24
 check ovn-nbctl --wait=hv sync

@@ -387,7 +387,7 @@ ADD_VETH(s1, server, br-ext, "2001:1db8:3333::2/64", "f0:00:00:01:02:05", \
          "2001:1db8:3333::1", "nodad")
 
 if test X"$1" = X"GR"; then
-   ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
+   check_uuid ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
 else
    ovn-nbctl lr-add R1
 fi

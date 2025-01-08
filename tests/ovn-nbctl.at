@@ -825,8 +825,8 @@ AT_CHECK([ovn-nbctl lr-nat-del lr0 dnat])
 
 AT_CHECK([ovn-nbctl lr-nat-del lr0])
 
-ovn-nbctl create Address_Set name=allowed_range addresses=\"1.1.1.1\"
-ovn-nbctl create Address_Set name=disallowed_range addresses=\"2.2.2.2\"
+check_uuid ovn-nbctl create Address_Set name=allowed_range addresses=\"1.1.1.1\"
+check_uuid ovn-nbctl create Address_Set name=disallowed_range addresses=\"2.2.2.2\"
 AT_CHECK([ovn-nbctl lr-nat-add lr0 snat 40.0.0.3 192.168.1.6])
 AT_CHECK([ovn-nbctl lr-nat-update-ext-ip lr0 snat 192.168.1.6 allowed_range])
 AT_CHECK([ovn-nbctl --is-exempted lr-nat-update-ext-ip lr0 snat 192.168.1.6 disallowed_range])

@@ -87,14 +87,14 @@ OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check from NBDB to SBDB])
 ovn_start
 
-ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R1
 check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
 check ovn-sbctl chassis-add gw2 geneve 1.2.4.8
 
 # Connect alice to R1 as distributed router gateway port on hv2
 check ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.1/24
 
-ovn-nbctl --wait=sb \
+check_uuid ovn-nbctl --wait=sb \
     --id=@gc0 create Gateway_Chassis name=alice_gw1 \
                                      chassis_name=gw1 \
                                      priority=20 -- \
@@ -192,7 +192,7 @@ ovn_start
 
 check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
 
-ovn-nbctl create Logical_Router name=R1 options:chassis=gw1
+check_uuid ovn-nbctl create Logical_Router name=R1 options:chassis=gw1
 check ovn-nbctl lrp-add R1 R1-S1 02:ac:10:01:00:01 172.16.1.1/24
 
 check ovn-nbctl ls-add S1
@@ -1147,8 +1147,8 @@ echo "CR-LRP UUID is: " $uuid
 check ovn-nbctl set Logical_Router $cr_uuid options:chassis=gw1
 check ovn-nbctl --wait=sb sync
 
-ovn-nbctl create Address_Set name=allowed_range addresses=\"1.1.1.1\"
-ovn-nbctl create Address_Set name=disallowed_range addresses=\"2.2.2.2\"
+check_uuid ovn-nbctl create Address_Set name=allowed_range addresses=\"1.1.1.1\"
+check_uuid ovn-nbctl create Address_Set name=disallowed_range addresses=\"2.2.2.2\"
 
 # SNAT with ALLOWED_IPs
 check ovn-nbctl lr-nat-add DR snat  172.16.1.1 50.0.0.11
@@ -1434,7 +1434,7 @@ OVS_WAIT_FOR_OUTPUT(
 ])
 
 AS_BOX([Create the Load_Balancer_Health_Check again.])
-ovn-nbctl --wait=sb -- --id=@hc create \
+check_uuid ovn-nbctl --wait=sb -- --id=@hc create \
 Load_Balancer_Health_Check vip="10.0.0.10\:80" -- add Load_Balancer . \
 health_check @hc
 wait_row_count Service_Monitor 2
@@ -2866,7 +2866,7 @@ AT_SETUP([check tunnel ids exhaustion])
 ovn_start
 
 # Create a fake chassis with vxlan encap to lower MAX DP tunnel key to 2^12
-ovn-sbctl \
+check_uuid ovn-sbctl \
     --id=@e create encap chassis_name=hv1 ip="192.168.0.1" type="vxlan" \
     -- --id=@c create chassis name=hv1 encaps=@e
 
@@ -3780,9 +3780,12 @@ for i in $(seq 1 9); do
 done
 
 uuid=$(ovn-nbctl create bfd logical_port=r0-sw1 dst_ip=192.168.1.2 status=down min_tx=250 min_rx=250 detect_mult=10)
-ovn-nbctl create bfd logical_port=r0-sw2 dst_ip=192.168.2.2 status=down min_tx=500 min_rx=500 detect_mult=20
-ovn-nbctl create bfd logical_port=r0-sw3 dst_ip=192.168.3.2 status=down
-ovn-nbctl create bfd logical_port=r0-sw4 dst_ip=192.168.4.2 status=down min_tx=0 detect_mult=0
+check_uuid ovn-nbctl create bfd logical_port=r0-sw2 dst_ip=192.168.2.2 status=down min_tx=500 min_rx=500 detect_mult=20
+check_uuid ovn-nbctl create bfd logical_port=r0-sw3 dst_ip=192.168.3.2 status=down
+AT_CHECK([ovn-nbctl create bfd logical_port=r0-sw4 dst_ip=192.168.4.2 status=down min_tx=0 detect_mult=0], [1], [],
+[ovn-nbctl: constraint violation: 0 is less than minimum allowed value 1
+])
+
 
 wait_row_count bfd 1 logical_port=r0-sw1 detect_mult=10 dst_ip=192.168.1.2 \
                      min_rx=250 min_tx=250 status=admin_down
@@ -4452,18 +4455,18 @@ sw0p1_key=$(fetch_column port_binding tunnel_key logical_port=sw0-p1)
 sw0p2_key=$(fetch_column port_binding tunnel_key logical_port=sw0-p2)
 sw1p1_key=$(fetch_column port_binding tunnel_key logical_port=sw1-p1)
 
-ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:01" dp_key=$sw0_key port_key=$sw0p1_key
-ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:02" dp_key=$sw0_key port_key=$sw0p1_key
-ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:03" dp_key=$sw0_key port_key=$sw0p2_key
-ovn-sbctl create FDB mac="00\:00\:00\:00\:01\:01" dp_key=$sw1_key port_key=$sw1p1_key
-ovn-sbctl create FDB mac="00\:00\:00\:00\:01\:02" dp_key=$sw1_key port_key=$sw1p1_key
-ovn-sbctl create FDB mac="00\:00\:00\:00\:01\:03" dp_key=$sw1_key port_key=$sw1p1_key
+check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:01" dp_key=$sw0_key port_key=$sw0p1_key
+check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:02" dp_key=$sw0_key port_key=$sw0p1_key
+check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:03" dp_key=$sw0_key port_key=$sw0p2_key
+check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:01\:01" dp_key=$sw1_key port_key=$sw1p1_key
+check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:01\:02" dp_key=$sw1_key port_key=$sw1p1_key
+check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:01\:03" dp_key=$sw1_key port_key=$sw1p1_key
 
 wait_row_count FDB 6
 
-ovn-sbctl create fdb mac="00\:00\:00\:00\:01\:03" dp_key=$sw1_key port_key=10
+AT_CHECK([ovn-sbctl create fdb mac="00\:00\:00\:00\:01\:03" dp_key=$sw1_key port_key=10], [1], [ignore], [ignore])
 wait_row_count FDB 6
-ovn-sbctl create fdb mac="00\:00\:00\:00\:01\:03" dp_key=4 port_key=10
+check_uuid ovn-sbctl create fdb mac="00\:00\:00\:00\:01\:03" dp_key=4 port_key=10
 wait_row_count FDB 6
 
 check ovn-nbctl --wait=sb ls-del sw1
@@ -12494,7 +12497,7 @@ OVS_WAIT_UNTIL([rbr_match_builtin])
 
 AS_BOX([Ensure custom role and permission are not automatically deleted])
 PERM_UID=$(fetch_column RBAC_Permission _uuid table=Load_Balancer)
-ovn-sbctl create RBAC_Role name=custom-role permissions:Load_Balancer=$PERM_UID
+check_uuid ovn-sbctl create RBAC_Role name=custom-role permissions:Load_Balancer=$PERM_UID
 OVS_WAIT_UNTIL([rbr_match_builtin])
 check rbr_match_custom
 

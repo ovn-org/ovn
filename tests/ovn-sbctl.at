@@ -95,7 +95,7 @@ AT_CHECK([ovn-sbctl -f csv -d bare --no-headings --columns ip,type list encap | 
 
 AT_CHECK([ovn-sbctl chassis-add ch2 geneve 2.3.4.5])
 ch2_uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find chassis name=ch2)
-ovn-sbctl create Chassis_Private name=ch2 chassis=$ch2_uuid
+check_uuid ovn-sbctl create Chassis_Private name=ch2 chassis=$ch2_uuid
 check_row_count Chassis_Private 1
 
 AT_CHECK([ovn-sbctl -f csv -d bare --no-headings --columns ip,type list encap | sort],

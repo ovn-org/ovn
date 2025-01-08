@@ -31,8 +31,8 @@ start_daemon ovn-controller
 #           |
 #    bar ----
 
-ovn-nbctl create Logical_Router name=R1
-ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
@@ -328,8 +328,8 @@ start_daemon ovn-controller
 #           |
 #    bar ----
 
-ovn-nbctl create Logical_Router name=R1
-ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
@@ -872,7 +872,7 @@ for type in icmp udp tcp; do
     AS_BOX([Testing $type])
     # First time, when the packet needs to pass through pinctrl buffering
     check ovs-appctl dpctl/flush-conntrack
-    ovn-sbctl --all destroy mac_binding
+    check ovn-sbctl --all destroy mac_binding
     wait_row_count mac_binding 0
     test_$type
 
