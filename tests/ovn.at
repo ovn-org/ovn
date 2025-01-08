@@ -2610,7 +2610,7 @@ done
 check ovn-nbctl acl-add lsw0 from-lport 1000 'eth.type == 0x1234' drop
 check ovn-nbctl acl-add lsw0 from-lport 1000 'eth.type == 0x1235 && inport == "lp11"' drop
 check ovn-nbctl acl-add lsw0 to-lport 1000 'eth.type == 0x1236 && outport == "lp33"' drop
-ovn-nbctl create Address_Set name=set1 addresses=\"f0:00:00:00:00:11\",\"f0:00:00:00:00:21\",\"f0:00:00:00:00:31\"
+check_uuid ovn-nbctl create Address_Set name=set1 addresses=\"f0:00:00:00:00:11\",\"f0:00:00:00:00:21\",\"f0:00:00:00:00:31\"
 check ovn-nbctl acl-add lsw0 to-lport 1000 'eth.type == 0x1237 && eth.src == $set1 && outport == "lp33"' drop
 
 check ovn-nbctl pg-add pg1 lp22 lp33
@@ -3045,7 +3045,7 @@ done
 check ovn-nbctl acl-add lsw0 from-lport 1000 'eth.type == 0x1234' drop
 check ovn-nbctl acl-add lsw0 from-lport 1000 'eth.type == 0x1235 && inport == "lp1"' drop
 check ovn-nbctl acl-add lsw0 to-lport 1000 'eth.type == 0x1236 && outport == "lp3"' drop
-ovn-nbctl create Address_Set name=set1 addresses=\"f0:00:00:00:00:01\",\"f0:00:00:00:00:02\"
+check_uuid ovn-nbctl create Address_Set name=set1 addresses=\"f0:00:00:00:00:01\",\"f0:00:00:00:00:02\"
 check ovn-nbctl acl-add lsw0 to-lport 1000 'eth.type == 0x1237 && eth.src == $set1 && outport == "lp3"' drop
 
 check ovn-nbctl --wait=sb sync
@@ -7462,7 +7462,7 @@ rm -f 2.expected
 
 check ovn-nbctl --all destroy dhcp-option
 
-ovn-nbctl dhcp-options-create 10.0.0.0/24
+check ovn-nbctl dhcp-options-create 10.0.0.0/24
 d3=$(ovn-nbctl --bare --columns=_uuid find dhcp_options cidr="10.0.0.0/24")
 check ovn-nbctl dhcp-options-set-options $d3 \
    server_id=10.0.0.1 server_mac=ff:10:00:00:00:01 \
@@ -7933,8 +7933,8 @@ ovs-vsctl -- add-port br-int hv2-vif1 -- \
 # for ARP resolution).
 OVN_POPULATE_ARP
 
-ovn-nbctl create Logical_Router name=R1
-ovn-nbctl create Logical_Router name=R2 options:chassis="hv2"
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis="hv2"
 
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add alice
@@ -7962,11 +7962,11 @@ check ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
 
 
 #install static routes
-ovn-nbctl -- --id=@lrt create Logical_Router_Static_Route \
+check_uuid ovn-nbctl -- --id=@lrt create Logical_Router_Static_Route \
 ip_prefix=172.16.1.0/24 nexthop=20.0.0.2 -- add Logical_Router \
 R1 static_routes @lrt
 
-ovn-nbctl -- --id=@lrt create Logical_Router_Static_Route \
+check_uuid ovn-nbctl -- --id=@lrt create Logical_Router_Static_Route \
 ip_prefix=192.168.1.0/24 nexthop=20.0.0.1 -- add Logical_Router \
 R2 static_routes @lrt
 
@@ -8040,13 +8040,13 @@ CHECK_FLOWS_AFTER_RECOMPUTE([hv1], [hv1])
 
 # Delete the router and re-create it. Things should work as before.
 check ovn-nbctl  lr-del R2
-ovn-nbctl create Logical_Router name=R2 options:chassis="hv2"
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis="hv2"
 # Connect alice to R2
 check ovn-nbctl lrp-add R2 R2-alice 00:00:02:01:02:03 172.16.1.1/24
 # Connect R2 to join
 check ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24
 
-ovn-nbctl -- --id=@lrt create Logical_Router_Static_Route \
+check_uuid ovn-nbctl -- --id=@lrt create Logical_Router_Static_Route \
 ip_prefix=192.168.1.0/24 nexthop=20.0.0.1 -- add Logical_Router \
 R2 static_routes @lrt
 
@@ -8795,8 +8795,8 @@ check ovn-nbctl --wait=sb lsp-add sw0 p20 -- lsp-set-addresses p20 dynamic
 check_dynamic_addresses p20 "0a:00:00:a8:01:18 192.168.1.13"
 
 # Test for logical router port address management.
-ovn-nbctl create Logical_Router name=R1
-ovn-nbctl -- --id=@lrp create Logical_Router_port name=sw0 \
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl -- --id=@lrp create Logical_Router_port name=sw0 \
 network="192.168.1.1/24" mac=\"0a:00:00:a8:01:19\" \
 -- add Logical_Router R1 ports @lrp -- lsp-add sw0 rp-sw0 \
 -- set Logical_Switch_Port rp-sw0 type=router options:router-port=sw0
@@ -8823,11 +8823,11 @@ check ovn-nbctl --wait=sb lsp-add sw2 p28 -- lsp-set-addresses p28 dynamic
 check_dynamic_addresses p28 "0a:00:00:00:00:01"
 
 # Test that address management does not add duplicate MAC for lsp/lrp peers.
-ovn-nbctl create Logical_Router name=R2
+check_uuid ovn-nbctl create Logical_Router name=R2
 check ovn-nbctl ls-add sw3
 check ovn-nbctl lsp-add sw3 p29 -- lsp-set-addresses p29 \
 "0a:00:00:a8:01:18"
-ovn-nbctl -- --id=@lrp create Logical_Router_port name=sw3 \
+check_uuid ovn-nbctl -- --id=@lrp create Logical_Router_port name=sw3 \
 network="192.168.2.1/24" mac=\"0a:00:00:a8:01:18\" \
 -- add Logical_Router R2 ports @lrp -- lsp-add sw3 rp-sw3 \
 -- set Logical_Switch_Port rp-sw3 type=router options:router-port=sw3
@@ -9300,7 +9300,7 @@ check ovn-nbctl ls-add ls1
 check ovn-nbctl ls-add ls2
 
 # Create  router
-ovn-nbctl create Logical_Router name=lr0
+check_uuid ovn-nbctl create Logical_Router name=lr0
 
 # Add router ls1p1 port to gateway router
 check ovn-nbctl lrp-add lr0 lrp-ls1lp1 f0:00:00:00:00:01 192.168.0.1/24
@@ -9377,7 +9377,7 @@ ovn_start
 # Create logical switch
 check ovn-nbctl ls-add ls0
 # Create gateway router
-ovn-nbctl create Logical_Router name=lr0 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=lr0 options:chassis=hv1
 # Add router port to gateway router
 check ovn-nbctl lrp-add lr0 lrp0 f0:00:00:00:00:01 192.168.0.1/24
 check ovn-nbctl lsp-add ls0 lrp0-rp -- set Logical_Switch_Port lrp0-rp \
@@ -9563,7 +9563,7 @@ ovn_start
 # Create logical switch
 check ovn-nbctl ls-add ls0
 # Create gateway router
-ovn-nbctl create Logical_Router name=lr0 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=lr0 options:chassis=hv1
 # Add router port to gateway router
 check ovn-nbctl lrp-add lr0 lrp0 f0:00:00:00:00:01 192.168.0.1/24
 check ovn-nbctl lsp-add ls0 lrp0-rp -- set Logical_Switch_Port lrp0-rp \
@@ -9653,7 +9653,7 @@ ovn_start
 # Create logical switch
 check ovn-nbctl ls-add ls0
 # Create gateway router
-ovn-nbctl create Logical_Router name=lr0 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=lr0 options:chassis=hv1
 # Add router port to gateway router
 check ovn-nbctl lrp-add lr0 lrp0 f0:00:00:00:00:01 fd12:3456:789a:1::1/64
 check ovn-nbctl lsp-add ls0 lrp0-rp -- set Logical_Switch_Port lrp0-rp \
@@ -9731,8 +9731,8 @@ check ovn-nbctl lr-add lr0
 check ovn-nbctl lrp-add lr0 lrp0 f0:00:00:00:00:01 192.168.0.1/24
 check ovn-nbctl lrp-add lr0 lrp1 f0:00:00:00:00:02 192.168.1.1/24
 dp_uuid=$(fetch_column Datapath_Binding _uuid)
-ovn-sbctl create MAC_Binding ip=10.0.0.1 datapath=$dp_uuid logical_port=lrp0 mac="00\:00\:00\:01\:00\:01"
-ovn-sbctl create MAC_Binding ip=10.0.0.1 datapath=$dp_uuid logical_port=lrp1 mac="00\:00\:00\:01\:00\:02"
+check_uuid ovn-sbctl create MAC_Binding ip=10.0.0.1 datapath=$dp_uuid logical_port=lrp0 mac="00\:00\:00\:01\:00\:01"
+check_uuid ovn-sbctl create MAC_Binding ip=10.0.0.1 datapath=$dp_uuid logical_port=lrp1 mac="00\:00\:00\:01\:00\:02"
 ovn-sbctl find MAC_Binding
 # Delete port lrp0 and check that its MAC_Binding is deleted.
 check ovn-nbctl lrp-del lrp0
@@ -9774,7 +9774,7 @@ for i in foo1 bar1 bar2 bar3; do
         options:rxq_pcap=hv1/$i-rx.pcap
 done
 
-ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R1
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
 
@@ -10968,9 +10968,9 @@ ovs-vsctl -- add-port br-int hv3-vif1 -- \
     ofport-request=1
 
 
-ovn-nbctl create Logical_Router name=R1
-ovn-nbctl create Logical_Router name=R2 options:chassis="hv2"
-ovn-nbctl create Logical_Router name=R3 options:chassis="hv3"
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis="hv2"
+check_uuid ovn-nbctl create Logical_Router name=R3 options:chassis="hv3"
 
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
@@ -12541,7 +12541,7 @@ ovn_start
 check ovn-nbctl ls-add ls0
 check ovn-nbctl ls-add ls1
 # Create distributed router
-ovn-nbctl create Logical_Router name=lr0
+check_uuid ovn-nbctl create Logical_Router name=lr0
 # Add distributed gateway port to distributed router
 check ovn-nbctl lrp-add lr0 lrp0 f0:00:00:00:00:01 192.168.0.1/24 \
     -- lrp-set-gateway-chassis lrp0 hv2
@@ -13736,7 +13736,7 @@ done
 
 OVN_POPULATE_ARP
 
-ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R1
 
 # Connect inside to R1
 check ovn-nbctl lrp-add R1 inside 00:00:01:01:02:03 192.168.1.1/24
@@ -13747,11 +13747,11 @@ check ovn-nbctl lsp-add inside rp-inside -- set Logical_Switch_Port rp-inside \
 # Connect outside to R1 as distributed router gateway port on gw1+gw2
 check ovn-nbctl lrp-add R1 outside 00:00:02:01:02:04 192.168.0.101/24
 
-ovn-nbctl --id=@gc0 create Gateway_Chassis \
-                    name=outside_gw1 chassis_name=gw1 priority=20 -- \
-          --id=@gc1 create Gateway_Chassis \
-                    name=outside_gw2 chassis_name=gw2 priority=10 -- \
-          set Logical_Router_Port outside 'gateway_chassis=[@gc0,@gc1]'
+check_uuid ovn-nbctl --id=@gc0 create Gateway_Chassis \
+                               name=outside_gw1 chassis_name=gw1 priority=20 -- \
+                     --id=@gc1 create Gateway_Chassis \
+                               name=outside_gw2 chassis_name=gw2 priority=10 -- \
+                     set Logical_Router_Port outside 'gateway_chassis=[@gc0,@gc1]'
 
 check ovn-nbctl lsp-add outside rp-outside -- set Logical_Switch_Port rp-outside \
     type=router options:router-port=outside \
@@ -13887,11 +13887,11 @@ wait_column "$exp_ref_ch_list" HA_Chassis_Group ref_chassis
 
 # at this point, we invert the priority of the gw chassis between gw1 and gw2
 
-ovn-nbctl --id=@gc0 create Gateway_Chassis \
-                    name=outside_gw1 chassis_name=gw1 priority=10 -- \
-          --id=@gc1 create Gateway_Chassis \
-                    name=outside_gw2 chassis_name=gw2 priority=20 -- \
-          set Logical_Router_Port outside 'gateway_chassis=[@gc0,@gc1]'
+check_uuid ovn-nbctl --id=@gc0 create Gateway_Chassis \
+                               name=outside_gw1 chassis_name=gw1 priority=10 -- \
+                     --id=@gc1 create Gateway_Chassis \
+                               name=outside_gw2 chassis_name=gw2 priority=20 -- \
+                     set Logical_Router_Port outside 'gateway_chassis=[@gc0,@gc1]'
 
 
 wait_for_ports_up
@@ -14195,14 +14195,14 @@ AT_SETUP([send gratuitous ARP for NAT rules on HA distributed router])
 ovn_start
 check ovn-nbctl ls-add ls0
 check ovn-nbctl ls-add ls1
-ovn-nbctl create Logical_Router name=lr0
+check_uuid ovn-nbctl create Logical_Router name=lr0
 check ovn-nbctl lrp-add lr0 lrp0 f0:00:00:00:00:01 192.168.0.100/24
 
-ovn-nbctl --id=@gc0 create Gateway_Chassis \
-                    name=outside_gw1 chassis_name=hv2 priority=10 -- \
-          --id=@gc1 create Gateway_Chassis \
-                    name=outside_gw2 chassis_name=hv3 priority=1 -- \
-          set Logical_Router_Port lrp0 'gateway_chassis=[@gc0,@gc1]'
+check_uuid ovn-nbctl --id=@gc0 create Gateway_Chassis \
+                               name=outside_gw1 chassis_name=hv2 priority=10 -- \
+                     --id=@gc1 create Gateway_Chassis \
+                               name=outside_gw2 chassis_name=hv3 priority=1 -- \
+                     set Logical_Router_Port lrp0 'gateway_chassis=[@gc0,@gc1]'
 
 check ovn-nbctl lsp-add ls0 lrp0-rp -- set Logical_Switch_Port lrp0-rp \
     type=router options:router-port=lrp0 addresses="router"
@@ -14271,12 +14271,12 @@ AT_CHECK([grep $garp hv3_br_phys_tx | sort], [0], [])
 
 # at this point, we invert the priority of the gw chassis between hv2 and hv3
 
-ovn-nbctl --wait=hv \
-          --id=@gc0 create Gateway_Chassis \
-                    name=outside_gw1 chassis_name=hv2 priority=1 -- \
-          --id=@gc1 create Gateway_Chassis \
-                    name=outside_gw2 chassis_name=hv3 priority=10 -- \
-          set Logical_Router_Port lrp0 'gateway_chassis=[@gc0,@gc1]'
+check_uuid ovn-nbctl --wait=hv \
+                     --id=@gc0 create Gateway_Chassis \
+                               name=outside_gw1 chassis_name=hv2 priority=1 -- \
+                     --id=@gc1 create Gateway_Chassis \
+                               name=outside_gw2 chassis_name=hv3 priority=10 -- \
+                     set Logical_Router_Port lrp0 'gateway_chassis=[@gc0,@gc1]'
 
 # We expect not to receive garp on hv2 after inverting the priority.
 # Hence  reset hv2 after inverting priority as otherwise a garp might
@@ -14372,7 +14372,7 @@ check ovn-nbctl lsp-add inside inside1 \
 
 OVN_POPULATE_ARP
 
-ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R1
 
 # Connect inside to R1
 check ovn-nbctl lrp-add R1 inside 00:00:01:01:02:03 192.168.1.1/24
@@ -14383,11 +14383,11 @@ check ovn-nbctl lsp-add inside rp-inside -- set Logical_Switch_Port rp-inside \
 # Connect outside to R1 as distributed router gateway port on gw1+gw2
 check ovn-nbctl lrp-add R1 outside 00:00:02:01:02:04 192.168.0.101/24
 
-ovn-nbctl --id=@gc0 create Gateway_Chassis \
-                    name=outside_gw1 chassis_name=gw1 priority=20 -- \
-          --id=@gc1 create Gateway_Chassis \
-                    name=outside_gw2 chassis_name=gw2 priority=10 -- \
-          set Logical_Router_Port outside 'gateway_chassis=[@gc0,@gc1]'
+check_uuid ovn-nbctl --id=@gc0 create Gateway_Chassis \
+                               name=outside_gw1 chassis_name=gw1 priority=20 -- \
+                     --id=@gc1 create Gateway_Chassis \
+                               name=outside_gw2 chassis_name=gw2 priority=10 -- \
+                     set Logical_Router_Port outside 'gateway_chassis=[@gc0,@gc1]'
 
 check ovn-nbctl lsp-add outside rp-outside -- set Logical_Switch_Port rp-outside \
     type=router options:router-port=outside \
@@ -14593,7 +14593,7 @@ check ovn-nbctl lrp-add lr0_ip6 ip6_public 00:00:02:01:02:04 \
 -- lrp-set-gateway-chassis ip6_public hv1
 
 # Install default static route.
-ovn-nbctl -- --id=@lrt create Logical_Router_Static_Route \
+check_uuid ovn-nbctl -- --id=@lrt create Logical_Router_Static_Route \
 ip_prefix="\:\:/0" nexthop="2001\:db8\:1\:0\:200\:02ff\:fe01\:1305" \
 -- add Logical_Router lr0_ip6 static_routes @lrt
 
@@ -14621,7 +14621,7 @@ check ovn-nbctl lrp-add lr1_ip6 ip6_public_1 00:01:02:01:02:04 \
 -- lrp-set-gateway-chassis ip6_public_1 hv2
 
 # Install default static route.
-ovn-nbctl -- --id=@lrt create Logical_Router_Static_Route \
+check_uuid ovn-nbctl -- --id=@lrt create Logical_Router_Static_Route \
 ip_prefix="\:\:/0" nexthop="2002\:db8\:1\:0\:200\:02ff\:fe01\:1305" \
 -- add Logical_Router lr1_ip6 static_routes @lrt
 
@@ -18097,8 +18097,8 @@ for i in 1 2 3; do
     done
 done
 
-ovn-nbctl create Port_Group name=pg1 ports="$pg1_ports"
-ovn-nbctl create Port_Group name=pg2 ports="$pg2_ports"
+check_uuid ovn-nbctl create Port_Group name=pg1 ports="$pg1_ports"
+check_uuid ovn-nbctl create Port_Group name=pg2 ports="$pg2_ports"
 
 # create ACLs on ls1 and ls2 (where ports of pg1 reside) to drop all traffic
 # from pg2 to pg1
@@ -18317,8 +18317,8 @@ for i in 1 2 3; do
     done
 done
 
-ovn-nbctl create Port_Group name=pg1 ports="$pg1_ports"
-ovn-nbctl create Port_Group name=pg2 ports="$pg2_ports"
+check_uuid ovn-nbctl create Port_Group name=pg1 ports="$pg1_ports"
+check_uuid ovn-nbctl create Port_Group name=pg2 ports="$pg2_ports"
 
 # create ACLs on pg1 to drop traffic from pg2 to pg1
 check ovn-nbctl acl-add pg1 to-lport 1001 'outport == @pg1' drop
@@ -18544,8 +18544,8 @@ check ovn-nbctl lsp-set-addresses lp1 "02:00:00:00:00:01 10.0.0.1 2001:db8::1"
 check ovn-nbctl lsp-set-addresses lp2 "02:00:00:00:00:02 10.0.0.2 2001:db8::2"
 check ovn-nbctl lsp-set-addresses lp3 "02:00:00:00:00:03 10.0.0.3 2001:db8::3"
 
-ovn-nbctl create Port_Group name=pg1
-ovn-nbctl create Port_Group name=pg2
+check_uuid ovn-nbctl create Port_Group name=pg1
+check_uuid ovn-nbctl create Port_Group name=pg2
 
 ovn-nbctl --id=@p get Logical_Switch_Port lp1 -- add Port_Group pg1 ports @p
 ovn-nbctl --id=@p get Logical_Switch_Port lp2 -- add Port_Group pg1 ports @p
@@ -18595,8 +18595,8 @@ check ovn-nbctl lsp-set-addresses lp1 "02:00:00:00:00:01 dynamic"
 check ovn-nbctl lsp-set-addresses lp2 "02:00:00:00:00:02 dynamic"
 check ovn-nbctl lsp-set-addresses lp3 "02:00:00:00:00:03 dynamic"
 
-ovn-nbctl create Port_Group name=pg1
-ovn-nbctl create Port_Group name=pg2
+check_uuid ovn-nbctl create Port_Group name=pg1
+check_uuid ovn-nbctl create Port_Group name=pg2
 
 ovn-nbctl --id=@p get Logical_Switch_Port lp1 -- add Port_Group pg1 ports @p
 ovn-nbctl --id=@p get Logical_Switch_Port lp2 -- add Port_Group pg1 ports @p
@@ -18670,9 +18670,9 @@ ovs-vsctl -- add-port br-int hv1-vif2 -- \
     options:rxq_pcap=hv1/vif2-rx.pcap \
     ofport-request=2
 
-ovn-nbctl create Address_Set name=set1 \
+check_uuid ovn-nbctl create Address_Set name=set1 \
 addresses=\"10.0.0.4\",\"10.0.0.5\",\"10.0.0.6\"
-ovn-nbctl create Address_Set name=set2 \
+check_uuid ovn-nbctl create Address_Set name=set2 \
 addresses=\"10.0.0.7\",\"10.0.0.8\",\"10.0.0.9\"
 check ovn-nbctl acl-add ls1 to-lport 1001 \
 'ip4 && ip4.src == $set1 && ip4.dst == $set1' allow
@@ -19243,8 +19243,8 @@ check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     options:rxq_pcap=hv1/vif2-rx.pcap \
     ofport-request=2
 
-ovn-nbctl create address_set name=as1 addresses="10.0.0.1"
-ovn-nbctl create address_set name=as2 addresses="10.0.0.11,10.0.0.12"
+check_uuid ovn-nbctl create address_set name=as1 addresses="10.0.0.1"
+check_uuid ovn-nbctl create address_set name=as2 addresses="10.0.0.11,10.0.0.12"
 check ovn-nbctl pg-add pg1 ls1-lp1 ls1-lp2
 
 # The 1st ACL potentially can generate 2 conjunctions, but as1 has only 1 address,
@@ -19316,8 +19316,8 @@ get_lsp_uuid () {
 }
 
 # Create Port Group and corresponding Address set.
-ovn-nbctl create Port_Group name=pg1 ports=`get_lsp_uuid lp11`,`get_lsp_uuid lp21`
-ovn-nbctl create Address_Set name=set1 addresses=\"f0:00:00:00:00:11\",\"f0:00:00:00:00:21\"
+check_uuid ovn-nbctl create Port_Group name=pg1 ports=`get_lsp_uuid lp11`,`get_lsp_uuid lp21`
+check_uuid ovn-nbctl create Address_Set name=set1 addresses=\"f0:00:00:00:00:11\",\"f0:00:00:00:00:21\"
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
 # packets for ARP resolution (native tunneling doesn't queue packets
@@ -21160,7 +21160,7 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int  \
 ]])
 dp_uuid=$(ovn-sbctl find datapath_binding | grep sw0 -B2 | grep _uuid | \
 awk '{print $3}')
-ovn-sbctl create MAC_Binding ip=172.168.0.3 datapath=$dp_uuid \
+check_uuid ovn-sbctl create MAC_Binding ip=172.168.0.3 datapath=$dp_uuid \
 logical_port=lr0-public mac="00\:00\:00\:12\:af\:11"
 
 # Try different gateway mtus and send a 142-byte packet (corresponding
@@ -21211,7 +21211,7 @@ test_ip6_packet_larger_ext 2 f00000010204 20000000000000000000000000000002 100 c
 check ovn-nbctl lsp-del sw0-lr0
 
 check ovn-nbctl lr-del lr0
-ovn-nbctl create Logical_Router name=lr1 options:chassis="hv1"
+check_uuid ovn-nbctl create Logical_Router name=lr1 options:chassis="hv1"
 check ovn-nbctl lrp-add lr1 lr1-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::1/64
 check ovn-nbctl lsp-add sw0 sw0-lr1
 check ovn-nbctl lsp-set-type sw0-lr1 router
@@ -21231,7 +21231,7 @@ check ovn-nbctl --wait=sb sync
 
 dp_uuid=$(ovn-sbctl find datapath_binding | grep sw0 -B2 | grep _uuid | \
 awk '{print $3}')
-ovn-sbctl create MAC_Binding ip=172.168.0.3 datapath=$dp_uuid \
+check_uuid ovn-sbctl create MAC_Binding ip=172.168.0.3 datapath=$dp_uuid \
 logical_port=lr1-public mac="00\:00\:00\:12\:af\:11"
 
 # Try different gateway mtus and send a 142-byte packet (corresponding
@@ -21366,7 +21366,7 @@ ovs-vsctl -- add-port br-int hv2-vif2 -- \
     options:rxq_pcap=hv2/vif2-rx.pcap \
     ofport-request=3
 
-ovn-nbctl create Logical_Router name=lr0
+check_uuid ovn-nbctl create Logical_Router name=lr0
 check ovn-nbctl ls-add sw0
 check ovn-nbctl ls-add sw1
 
@@ -21500,10 +21500,8 @@ check ovn-nbctl lsp-set-addresses ln-pub unknown
 check ovn-nbctl lsp-set-options ln-pub network_name=phys
 
 # Create logical routers and connect them to public switch
-AT_CHECK([(ovn-nbctl create Logical_Router name=lr0;
-           ovn-nbctl create Logical_Router name=lr1) | uuidfilt], [0], [<0>
-<1>
-])
+check_uuid ovn-nbctl create Logical_Router name=lr0
+check_uuid ovn-nbctl create Logical_Router name=lr1
 
 check ovn-nbctl lrp-add lr0 lr0-pub f0:00:00:00:00:01 172.24.4.220/24
 check ovn-nbctl lsp-add pub pub-lr0 -- set Logical_Switch_Port pub-lr0 \
@@ -21589,7 +21587,7 @@ check ovn-sbctl --all destroy mac_binding
 # Create a mac_binding entry on lr0-pub for 172.24.4.200 with a
 # wrong mac, expecting it to be updated with the real mac.
 lr0_dp=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
-ovn-sbctl create mac_binding datapath=$lr0_dp logical_port=lr0-pub \
+check_uuid ovn-sbctl create mac_binding datapath=$lr0_dp logical_port=lr0-pub \
     ip=172.24.4.200 mac=\"aa:aa:aa:aa:aa:aa\"
 
 check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.24.4.100 10.0.0.10
@@ -22621,7 +22619,7 @@ ovn_start
 
 net_add n1
 
-ovn-nbctl create Logical_Router name=lr0 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=lr0 options:chassis=hv1
 for i in 0 1; do
     idx=$((i+1))
     ovn-nbctl ls-add sw$i
@@ -23331,7 +23329,7 @@ wait_row_count Chassis 1 name=hv3 other_config:ovn-monitor-all='"true"'
 # Inject a fake IGMP_Group entry.
 dp=$(fetch_column Datapath_Binding _uuid external_ids:name=sw2)
 ch=$(fetch_column Chassis _uuid name=hv3)
-ovn-sbctl create IGMP_Group address=239.0.1.42 datapath=$dp chassis=$ch chassis_name=hv3
+check_uuid ovn-sbctl create IGMP_Group address=239.0.1.42 datapath=$dp chassis=$ch chassis_name=hv3
 
 check ovn-nbctl --wait=hv sync
 wait_row_count IGMP_Group 2 address=239.0.1.68
@@ -26003,7 +26001,7 @@ check ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80 sctp
 check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
 check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:20.0.0.3=sw1-p1:10.0.0.2
 
-ovn-nbctl --wait=sb -- --id=@hc create \
+check_uuid ovn-nbctl --wait=sb -- --id=@hc create \
 Load_Balancer_Health_Check vip="10.0.0.10\:80" -- add Load_Balancer . \
 health_check @hc
 
@@ -27810,10 +27808,10 @@ check ovn-nbctl ls-add ls1
 check ovn-nbctl --wait=sb lsp-add ls1 lsp1
 
 # Simulate the fact that lsp1 had been previously bound on hv1.
-ovn-sbctl --id=@e1 create encap chassis_name=hv1 ip="192.168.0.1" type="geneve" \
-    -- --id=@e2 create encap chassis_name=hv1 ip="192.168.0.1" type="vxlan" \
-    -- --id=@c create chassis hostname=hv1 name=hv1 encaps=@e1,@e2 \
-    -- set Port_Binding lsp1 chassis=@c
+check_uuid ovn-sbctl --id=@e1 create encap chassis_name=hv1 ip="192.168.0.1" type="geneve" \
+               -- --id=@e2 create encap chassis_name=hv1 ip="192.168.0.1" type="vxlan" \
+               -- --id=@c create chassis hostname=hv1 name=hv1 encaps=@e1,@e2 \
+               -- set Port_Binding lsp1 chassis=@c
 
 as hv1
 ovs-vsctl add-br br-phys
@@ -27838,7 +27836,7 @@ check ovn-nbctl ls-add ls1
 check ovn-nbctl --wait=sb lsp-add ls1 lsp1
 
 # Simulate the fact that lsp1 had been previously bound on hv1.
-ovn-sbctl --id=@e1 create encap chassis_name=hv1 ip="192.168.0.1" type="geneve" \
+check_uuid ovn-sbctl --id=@e1 create encap chassis_name=hv1 ip="192.168.0.1" type="geneve" \
     -- --id=@e2 create encap chassis_name=hv1 ip="192.168.0.1" type="vxlan" \
     -- --id=@c create chassis hostname=hv1 name=hv1 encaps=@e1,@e2 \
     -- set Port_Binding lsp1 chassis=@c
@@ -27916,29 +27914,19 @@ wait_for_ports_up
 wait_row_count datapath_binding 1 external-ids:name=lr0
 lr0_dp_uuid=$(ovn-sbctl --bare --columns _uuid list datapath_binding lr0)
 
-AT_CHECK(
-  [ovn-sbctl create mac_binding datapath=$lr0_dp_uuid ip=172.168.0.120 \
+check_uuid ovn-sbctl create mac_binding datapath=$lr0_dp_uuid ip=172.168.0.120 \
        logical_port=lr0-public mac="10\:54\:00\:00\:00\:03"
-   ovn-sbctl create mac_binding datapath=$lr0_dp_uuid ip=172.168.0.200 \
+check_uuid ovn-sbctl create mac_binding datapath=$lr0_dp_uuid ip=172.168.0.200 \
        logical_port=lr0-public mac="10\:54\:00\:00\:00\:04"
-   ovn-sbctl create mac_binding datapath=$lr0_dp_uuid ip="bef0\:\:4" \
+check_uuid ovn-sbctl create mac_binding datapath=$lr0_dp_uuid ip="bef0\:\:4" \
        logical_port=lr0-public mac="10\:54\:00\:00\:00\:05"
-   ovn-sbctl create mac_binding datapath=$lr0_dp_uuid ip="bef0\:\:5" \
+check_uuid ovn-sbctl create mac_binding datapath=$lr0_dp_uuid ip="bef0\:\:5" \
        logical_port=lr0-public mac="10\:54\:00\:00\:00\:06"
-   ovn-sbctl create mac_binding datapath=$lr0_dp_uuid ip="bef0\:\:6" \
+check_uuid ovn-sbctl create mac_binding datapath=$lr0_dp_uuid ip="bef0\:\:6" \
        logical_port=lr0-public mac="10\:54\:00\:00\:00\:07"
-   ovn-nbctl -- --id=@lrt create Logical_Router_Static_Route \
+check_uuid ovn-nbctl -- --id=@lrt create Logical_Router_Static_Route \
        ip_prefix="\:\:/64" nexthop="bef0\:\:4" -- add Logical_Router lr0 \
-       static_routes @lrt],
-  [0], [stdout])
-AT_CHECK([uuidfilt stdout], [0],
-  [<0>
-<1>
-<2>
-<3>
-<4>
-<5>
-])
+       static_routes @lrt
 
 check ovn-nbctl --wait=hv sync
 
@@ -28715,7 +28703,7 @@ ovn_attach n1 br-phys 192.168.0.2
 #  would likely have a localnet port, but for the purposes of this test
 #  it is unnecessary.
 
-ovn-nbctl create Logical_Router name=DR
+check_uuid ovn-nbctl create Logical_Router name=DR
 gw_uuid=$(ovn-nbctl create Logical_Router name=GW)
 
 check ovn-nbctl ls-add ls1
@@ -28845,7 +28833,7 @@ ovn_attach n1 br-phys 192.168.0.2
 #  would likely have a localnet port, but for the purposes of this test
 #  it is unnecessary.
 
-ovn-nbctl create Logical_Router name=DR
+check_uuid ovn-nbctl create Logical_Router name=DR
 gw_uuid=$(ovn-nbctl create Logical_Router name=GW)
 
 check ovn-nbctl ls-add ls1
@@ -29074,7 +29062,7 @@ ovs-vsctl -- add-port br-int hv1-vif1 \
     -- add-port br-int hv1-vif2 \
     -- set interface hv1-vif2 external-ids:iface-id=lsp2
 
-ovn-nbctl ls-add ls1 \
+check_uuid ovn-nbctl ls-add ls1 \
     -- lsp-add ls1 lsp1 \
     -- lsp-add ls1 lsp2 \
     -- pg-add pg1 lsp1 lsp2 \
@@ -30006,7 +29994,7 @@ ${dst_ip}0035111100080000
 }
 
 # Create an address set
-ovn-nbctl create Address_Set name=as1 \
+check_uuid ovn-nbctl create Address_Set name=as1 \
 addresses=\"10.0.0.2\",\"10.0.0.3\"
 
 # Create overlapping ACLs resulting in conflict desired OVS flows
@@ -31251,7 +31239,7 @@ check ovn-nbctl lsp-add sw0 sw0-port5
 check ovn-nbctl lsp-add sw0 sw0-port6
 check ovn-nbctl lsp-add sw0 sw0-port7
 
-ovn-nbctl create address_set name=as1
+check_uuid ovn-nbctl create address_set name=as1
 check ovn-nbctl set address_set . addresses="10.0.0.10,10.0.0.11,10.0.0.12"
 
 check ovn-nbctl pg-add pg1 sw0-port1 sw0-port2 sw0-port3
@@ -31786,7 +31774,7 @@ AS_BOX([Test routing])
 
 lr0_dp_uuid=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
 
-ovn-sbctl create mac_binding ip=10.0.0.14 logical_port=lr0-sw0 \
+check_uuid ovn-sbctl create mac_binding ip=10.0.0.14 logical_port=lr0-sw0 \
 mac="50\:54\:00\:00\:00\:14" datapath=$lr0_dp_uuid
 
 # Wait till the mac_binding flows appear in hv1
@@ -34108,7 +34096,7 @@ test_mac_binding_flows() {
 # Create SB MAC_Binding entry on external gateway port
 lr0_dp_uuid=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
 
-ovn-sbctl create mac_binding ip=172.16.1.1 logical_port=lr0-ext-ls0 mac="00\:00\:11\:22\:33\:44" datapath=$lr0_dp_uuid
+check_uuid ovn-sbctl create mac_binding ip=172.16.1.1 logical_port=lr0-ext-ls0 mac="00\:00\:11\:22\:33\:44" datapath=$lr0_dp_uuid
 test_mac_binding_flows 100 00:00:11:22:33:44 1
 
 # Create Static_MAC_Binding entry on external gateway port. This should have
@@ -34206,7 +34194,7 @@ test_mac_binding_flows() {
 
 # Create SB MAC_Binding entry on external gateway port
 gw_dp_uuid=$(fetch_column datapath_binding _uuid external_ids:name=gw)
-ovn-sbctl create mac_binding ip=192.168.10.10 logical_port=gw-public mac="00\:00\:00\:00\:10\:10" datapath=$gw_dp_uuid
+check_uuid ovn-sbctl create mac_binding ip=192.168.10.10 logical_port=gw-public mac="00\:00\:00\:00\:10\:10" datapath=$gw_dp_uuid
 
 test_mac_binding_flows hv1 00\:00\:00\:00\:10\:10 1
 test_mac_binding_flows hv2 00\:00\:00\:00\:10\:10 0
@@ -35195,7 +35183,7 @@ ovs-vsctl -- add-port br-int hv2-vif2 -- \
     options:tx_pcap=hv2/vif2-tx.pcap \
     options:rxq_pcap=hv2/vif2-rx.pcap
 
-ovn-nbctl create Logical_Router name=lr0
+check_uuid ovn-nbctl create Logical_Router name=lr0
 check ovn-nbctl ls-add sw0
 check ovn-nbctl ls-add sw1
 
@@ -38056,7 +38044,7 @@ check ovn-nbctl --wait=hv ls-add ls \
           -- lrp-set-gateway-chassis lr-ls hv1
 
 dp_uuid=$(fetch_column datapath _uuid external_ids:name=lr)
-ovn-sbctl create MAC_Binding ip=192.168.1.10 datapath=$dp_uuid logical_port=lr-ls mac='"00:00:00:00:00:01"'
+check_uuid ovn-sbctl create MAC_Binding ip=192.168.1.10 datapath=$dp_uuid logical_port=lr-ls mac='"00:00:00:00:00:01"'
 
 OVN_POPULATE_ARP
 wait_for_ports_up
@@ -38066,7 +38054,7 @@ create_fdb() {
     ls_key=$(fetch_column datapath tunnel_key external_ids:name=ls)
     lsp_key=$(fetch_column port_binding tunnel_key logical_port=lsp1)
 
-    ovn-sbctl create FDB mac='"00:00:00:00:00:01"' dp_key=$ls_key port_key=$lsp_key
+    check_uuid ovn-sbctl create FDB mac='"00:00:00:00:00:01"' dp_key=$ls_key port_key=$lsp_key
 }
 
 AS_BOX([Logical switch tunnel_key change])

@@ -614,6 +614,15 @@ check() {
     AT_CHECK(["$@"])
 }
 
+# Runs COMMAND and checks that it does not print anything else than uuid as output.
+# It also fails if the output is empty.
+check_uuid() {
+    echo "$@"
+    output=$("${@}")
+    AT_CHECK([echo "$output" | grep .], [0], [ignore], [], [echo "Unexpected empty output: check_uuid is expecting a UUID"])
+    AT_CHECK([echo "$output" | grep -vE '^[[0-9a-fA-F]]{8}-[[0-9a-fA-F]]{4}-[[0-9a-fA-F]]{4}-[[0-9a-fA-F]]{4}-[[0-9a-fA-F]]{12}$'], [1])
+}
+
 parse_db() {
     case $1 in
         (*:*) echo ${1%%:*} ;;

@@ -31,8 +31,8 @@ start_daemon ovn-controller
 #           |
 #    bar ----
 
-ovn-nbctl create Logical_Router name=R1
-ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
@@ -90,11 +90,11 @@ check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 192.168.2.2"
 
 # Add a DNAT rule.
-ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip=192.168.1.2 \
+check_uuid ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip=192.168.1.2 \
     external_ip=30.0.0.2 -- add logical_router R2 nat @nat
 
 # Add a SNAT rule
-ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.2.2 \
+check_uuid ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.2.2 \
     external_ip=30.0.0.1 -- add logical_router R2 nat @nat
 
 # wait for ovn-controller to catch up.
@@ -210,8 +210,8 @@ start_daemon ovn-controller
 #           |
 #    bar ----
 
-ovn-nbctl create Logical_Router name=R1
-ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
@@ -270,11 +270,11 @@ check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 fd12::2"
 
 # Add a DNAT rule.
-ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip=\"fd11::2\" \
+check_uuid ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip=\"fd11::2\" \
     external_ip=\"fd30::2\" -- add logical_router R2 nat @nat
 
 # Add a SNAT rule
-ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=\"fd12::2\" \
+check_uuid ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=\"fd12::2\" \
     external_ip=\"fd30::1\" -- add logical_router R2 nat @nat
 
 # wait for ovn-controller to catch up.
@@ -435,7 +435,7 @@ check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 172.16.1.2"
 
 # Add a SNAT rule
-ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.1.2 \
+check_uuid ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.1.2 \
     external_ip=172.16.1.1 -- add logical_router R2 nat @nat
 
 check ovn-nbctl --wait=hv sync
@@ -547,7 +547,7 @@ check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:04 fd30::2"
 
 # Add a SNAT rule
-ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=\"fd10::2\" \
+check_uuid ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=\"fd10::2\" \
     external_ip=\"fd30::1\" -- add logical_router R2 nat @nat
 
 check ovn-nbctl --wait=hv sync
@@ -618,9 +618,9 @@ start_daemon ovn-controller
 #           |          |
 #    bar ----          - R3 --- bob
 
-ovn-nbctl create Logical_Router name=R1
-ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
-ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
 
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
@@ -706,20 +706,20 @@ check ovn-nbctl lsp-add bob bob1 \
 
 # Router R2
 # Add a DNAT rule.
-ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip=192.168.1.2 \
+check_uuid ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip=192.168.1.2 \
     external_ip=30.0.0.2 -- add logical_router R2 nat @nat
 
 # Add a SNAT rule
-ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.1.2 \
+check_uuid ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.1.2 \
     external_ip=30.0.0.1 -- add logical_router R2 nat @nat
 
 # Router R3
 # Add a DNAT rule.
-ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip=192.168.1.2 \
+check_uuid ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip=192.168.1.2 \
     external_ip=30.0.0.3 -- add logical_router R3 nat @nat
 
 # Add a SNAT rule
-ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.2.2 \
+check_uuid ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.2.2 \
     external_ip=30.0.0.4 -- add logical_router R3 nat @nat
 
 # wait for ovn-controller to catch up.
@@ -840,9 +840,9 @@ start_daemon ovn-controller
 #           |          |
 #    bar ----          - R3 --- bob
 
-ovn-nbctl create Logical_Router name=R1
-ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
-ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
 
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
@@ -932,20 +932,20 @@ check ovn-nbctl lsp-add bob bob1 \
 
 # Router R2
 # Add a DNAT rule.
-ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip='"fd11::2"' \
+check_uuid ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip='"fd11::2"' \
     external_ip='"fd40::2"' -- add logical_router R2 nat @nat
 
 # Add a SNAT rule
-ovn-nbctl -- --id=@nat create nat type="snat" logical_ip='"fd11::2"' \
+check_uuid ovn-nbctl -- --id=@nat create nat type="snat" logical_ip='"fd11::2"' \
     external_ip='"fd40::1"' -- add logical_router R2 nat @nat
 
 # Router R3
 # Add a DNAT rule.
-ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip='"fd11::2"' \
+check_uuid ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip='"fd11::2"' \
     external_ip='"fd40::3"' -- add logical_router R3 nat @nat
 
 # Add a SNAT rule
-ovn-nbctl -- --id=@nat create nat type="snat" logical_ip='"fd12::2"' \
+check_uuid ovn-nbctl -- --id=@nat create nat type="snat" logical_ip='"fd12::2"' \
     external_ip='"fd40::4"' -- add logical_router R3 nat @nat
 
 # wait for ovn-controller to catch up.
@@ -1067,9 +1067,9 @@ start_daemon ovn-controller
 #           |          |
 #    bar ----          - R3 --- bob
 
-ovn-nbctl create Logical_Router name=R1
-ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
-ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
 
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
@@ -1185,28 +1185,28 @@ check ovn-nbctl lsp-add bob bob16 \
 
 # Router R2
 # Add a DNAT rule.
-ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip=192.168.1.2 \
+check_uuid ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip=192.168.1.2 \
     external_ip=30.0.0.2 -- add logical_router R2 nat @nat
-ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip='"fd11::2"' \
+check_uuid ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip='"fd11::2"' \
     external_ip='"fd40::2"' -- add logical_router R2 nat @nat
 
 # Add a SNAT rule
-ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.1.2 \
+check_uuid ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.1.2 \
     external_ip=30.0.0.1 -- add logical_router R2 nat @nat
-ovn-nbctl -- --id=@nat create nat type="snat" logical_ip='"fd11::2"' \
+check_uuid ovn-nbctl -- --id=@nat create nat type="snat" logical_ip='"fd11::2"' \
     external_ip='"fd40::1"' -- add logical_router R2 nat @nat
 
 # Router R3
 # Add a DNAT rule.
-ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip=192.168.1.2 \
+check_uuid ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip=192.168.1.2 \
     external_ip=30.0.0.3 -- add logical_router R3 nat @nat
-ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip='"fd11::2"' \
+check_uuid ovn-nbctl -- --id=@nat create nat type="dnat" logical_ip='"fd11::2"' \
     external_ip='"fd40::3"' -- add logical_router R3 nat @nat
 
 # Add a SNAT rule
-ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.2.2 \
+check_uuid ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.2.2 \
     external_ip=30.0.0.4 -- add logical_router R3 nat @nat
-ovn-nbctl -- --id=@nat create nat type="snat" logical_ip='"fd12::2"' \
+check_uuid ovn-nbctl -- --id=@nat create nat type="snat" logical_ip='"fd12::2"' \
     external_ip='"fd40::4"' -- add logical_router R3 nat @nat
 
 # wait for ovn-controller to catch up.
@@ -1374,7 +1374,7 @@ start_daemon ovn-controller
 #
 # Loadbalancer VIPs in 30.0.0.0/24 network.
 
-ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R1
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
 
@@ -1655,7 +1655,7 @@ start_daemon ovn-controller
 #
 # Loadbalancer VIPs in fd03::/64 network.
 
-ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R1
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
 
@@ -1701,7 +1701,7 @@ check ovn-nbctl set logical_switch foo load_balancer=$uuid
 
 # Create another load-balancer with another VIP.
 lb2_uuid=`ovn-nbctl create load_balancer vips:\"fd03::3\"=\"fd02::2,fd02::3,fd02::4\"`
-ovn-nbctl add logical_switch foo load_balancer $lb2_uuid
+check ovn-nbctl add logical_switch foo load_balancer $lb2_uuid
 
 # Config OVN load-balancer with another VIP (this time with ports).
 check ovn-nbctl set load_balancer $lb2_uuid vips:'"[[fd03::2]]:8000"'='"@<:@fd02::2@:>@:80,@<:@fd02::3@:>@:80,@<:@fd02::4@:>@:80"'
@@ -1876,7 +1876,7 @@ start_daemon ovn-controller
 # gateway. We will test load-balancing with foo1 as a client and foo2, foo3 and
 # foo4 as servers.
 
-ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R1
 check ovn-nbctl ls-add foo
 
 # Connect foo to R1
@@ -1984,7 +1984,7 @@ start_daemon ovn-controller
 # gateway. We will test load-balancing with foo1 as a client and foo2, foo3 and
 # foo4 as servers.
 
-ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R1
 check ovn-nbctl ls-add foo
 
 # Connect foo to R1
@@ -2096,8 +2096,8 @@ start_daemon ovn-controller
 #           |
 #    bar ----
 
-ovn-nbctl create Logical_Router name=R1
-ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
@@ -2162,7 +2162,7 @@ check ovn-nbctl set logical_router R2 load_balancer=$uuid
 check ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:80,192.168.2.2:80"'
 
 # Add SNAT rule to make sure that Load-balancing still works with a SNAT rule.
-ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.2.2 \
+check_uuid ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.2.2 \
     external_ip=30.0.0.2 -- add logical_router R2 nat @nat
 
 # Wait for ovn-controller to catch up.
@@ -2442,8 +2442,8 @@ start_daemon ovn-controller
 #           |
 #    bar ----
 
-ovn-nbctl create Logical_Router name=R1
-ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
@@ -2511,7 +2511,7 @@ check ovn-nbctl set load_balancer $uuid vips:'"[[fd30::2]]:8000"'='"@<:@fd11::2@
 ovn-nbctl list load_balancer
 
 # Add SNAT rule to make sure that Load-balancing still works with a SNAT rule.
-ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=\"fd12::2\" \
+check_uuid ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=\"fd12::2\" \
     external_ip=\"fd30::2\" -- add logical_router R2 nat @nat
 
 
@@ -2602,9 +2602,9 @@ start_daemon ovn-controller
 #           |          |
 #    bar ----          - R3 --- bob
 
-ovn-nbctl create Logical_Router name=R1
-ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
-ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
 
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
@@ -2773,9 +2773,9 @@ start_daemon ovn-controller
 #           |          |
 #    bar ----          - R3 --- bob
 
-ovn-nbctl create Logical_Router name=R1
-ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
-ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
 
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
@@ -2947,9 +2947,9 @@ start_daemon ovn-controller
 #           |          |
 #    bar ----          - R3 --- bob
 
-ovn-nbctl create Logical_Router name=R1
-ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
-ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R3 options:chassis=hv1
 
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
@@ -4503,7 +4503,7 @@ check ovn-nbctl --reject lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
 check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
 check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:20.0.0.3=sw1-p1:20.0.0.2
 
-ovn-nbctl --wait=sb -- --id=@hc create \
+check_uuid ovn-nbctl --wait=sb -- --id=@hc create \
 Load_Balancer_Health_Check vip="10.0.0.10\:80" -- add Load_Balancer . \
 health_check @hc
 
@@ -4600,7 +4600,7 @@ ovn-nbctl list load_balancer
 check ovn-nbctl --wait=sb set load_balancer $lb_udp ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
 check ovn-nbctl --wait=sb set load_balancer $lb_udp ip_port_mappings:20.0.0.3=sw1-p1:20.0.0.2
 
-ovn-nbctl --wait=sb -- --id=@hc create \
+check_uuid ovn-nbctl --wait=sb -- --id=@hc create \
 Load_Balancer_Health_Check vip="10.0.0.10\:80" -- add Load_Balancer $lb_udp \
 health_check @hc
 
@@ -4729,7 +4729,7 @@ check ovn-nbctl --reject lb-add lb1 [[2001::a]]:80 [[2001::3]]:80,[[2002::3]]:80
 check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:\"[[2001::3]]\"=\"sw0-p1:[[2001::2]]\"
 check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:\"[[2002::3]]\"=\"sw1-p1:[[2002::2]]\"
 
-ovn-nbctl --wait=sb -- --id=@hc create \
+check_uuid ovn-nbctl --wait=sb -- --id=@hc create \
 Load_Balancer_Health_Check vip="\[\[2001\:\:a\]\]\:80" -- add Load_Balancer . \
 health_check @hc
 
@@ -6095,9 +6095,9 @@ start_daemon ovn-controller
 # For this test, Bob sends request traffic through R2 to Alice. We want to ensure that
 # all response traffic from Alice is routed through R2 as well.
 
-ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
-ovn-nbctl create Logical_Router name=R2
-ovn-nbctl create Logical_Router name=R3
+check_uuid ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R2
+check_uuid ovn-nbctl create Logical_Router name=R3
 
 check ovn-nbctl ls-add alice
 check ovn-nbctl ls-add bob
@@ -6311,9 +6311,9 @@ start_daemon ovn-controller
 # For this test, Bob sends request traffic through R2 to Alice. We want to ensure that
 # all response traffic from Alice is routed through R2 as well.
 
-ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
-ovn-nbctl create Logical_Router name=R2
-ovn-nbctl create Logical_Router name=R3
+check_uuid ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R2
+check_uuid ovn-nbctl create Logical_Router name=R3
 
 check ovn-nbctl ls-add alice
 check ovn-nbctl ls-add bob
@@ -11442,7 +11442,7 @@ start_daemon ovn-controller
 
 ovs-ofctl add-flow br-mirror action=normal
 
-ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
 
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
@@ -12034,8 +12034,8 @@ start_daemon ovn-controller
 #           |
 #    bar ----
 
-ovn-nbctl create Logical_Router name=R1
-ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
 
 check ovn-nbctl ls-add foo
 check ovn-nbctl ls-add bar
@@ -12100,7 +12100,7 @@ check ovn-nbctl set logical_router R2 load_balancer=$uuid
 check ovn-nbctl set load_balancer $uuid vips:'"30.0.0.2:8000"'='"192.168.1.2:12345,192.168.2.2:12345"'
 
 # Add SNAT rule to make sure that Load-balancing still works with a SNAT rule.
-ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.2.2 \
+check_uuid ovn-nbctl -- --id=@nat create nat type="snat" logical_ip=192.168.2.2 \
     external_ip=30.0.0.2 -- add logical_router R2 nat @nat
 
 # Wait for ovn-controller to catch up.
@@ -12508,10 +12508,9 @@ check ovn-nbctl lsp-set-addresses ln-pub unknown
 check ovn-nbctl lsp-set-options ln-pub network_name=phys
 
 # Create logical routers and connect them to public switch
-AT_CHECK([(ovn-nbctl create Logical_Router name=lr0;
-           ovn-nbctl create Logical_Router name=lr1) | uuidfilt], [0], [<0>
-<1>
-])
+check_uuid ovn-nbctl create Logical_Router name=lr0
+check_uuid ovn-nbctl create Logical_Router name=lr1
+
 check ovn-nbctl lrp-add lr0 lr0-pub f0:00:00:00:00:01 172.24.4.220/24
 check ovn-nbctl lsp-add pub pub-lr0 -- set Logical_Switch_Port pub-lr0 \
     type=router options:router-port=lr0-pub options:nat-addresses="router" addresses="router"
@@ -13159,46 +13158,46 @@ collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 se
 collector2=$(ovn-nbctl create Sample_Collector id=2 name=c2 probability=65535 set_id=200)
 check_row_count nb:Sample_Collector 2
 
-ovn-nbctl create Sampling_App type="acl-new" id="42"
-ovn-nbctl create Sampling_App type="acl-est" id="43"
+check_uuid ovn-nbctl create Sampling_App type="acl-new" id="42"
+check_uuid ovn-nbctl create Sampling_App type="acl-est" id="43"
 check_row_count nb:Sampling_App 2
 
 dnl Create ACLs that match the 3 types of traffic in all 3 possible stages:
 dnl from-lport, from-lport-after-lb, to-lport.
-ovn-nbctl                                                                         \
+check_uuid ovn-nbctl                                                              \
     -- --id=@sample_in_1c_new create Sample collector="$collector1" metadata=1001 \
     -- --id=@sample_in_1c_est create Sample collector="$collector1" metadata=1002 \
     -- --sample-new=@sample_in_1c_new --sample-est=@sample_in_1c_est              \
        acl-add ls from-lport 1 "inport == \"vm1\" && udp.dst == 1000"             \
        allow-related
-ovn-nbctl                                                                                     \
+check_uuid ovn-nbctl                                                                          \
     -- --id=@sample_in_2c_new create Sample collector="$collector1 $collector2" metadata=1011 \
     -- --id=@sample_in_2c_est create Sample collector="$collector1 $collector2" metadata=1012 \
     -- --sample-new=@sample_in_2c_new --sample-est=@sample_in_2c_est                          \
        acl-add ls from-lport 1 "inport == \"vm1\" && udp.dst == 1010"                         \
        allow-related
 
-ovn-nbctl                                                                            \
+check_uuid ovn-nbctl                                                                 \
     -- --id=@sample_in_lb_1c_new create Sample collector="$collector1" metadata=2001 \
     -- --id=@sample_in_lb_1c_est create Sample collector="$collector1" metadata=2002 \
     -- --apply-after-lb --sample-new=@sample_in_lb_1c_new                            \
        --sample-est=@sample_in_lb_1c_est                                             \
        acl-add ls from-lport 1 "inport == \"vm1\" && udp.dst == 2000"                \
        allow-related
-ovn-nbctl                                                                                        \
+check_uuid ovn-nbctl                                                                             \
     -- --id=@sample_in_lb_2c_new create Sample collector="$collector1 $collector2" metadata=2011 \
     -- --id=@sample_in_lb_2c_est create Sample collector="$collector1 $collector2" metadata=2012 \
     -- --apply-after-lb --sample-new=@sample_in_lb_2c_new --sample-est=@sample_in_lb_2c_est      \
        acl-add ls from-lport 1 "inport == \"vm1\" && udp.dst == 2010"                            \
        allow-related
 
-ovn-nbctl                                                                          \
+check_uuid ovn-nbctl                                                               \
     -- --id=@sample_out_1c_new create Sample collector="$collector1" metadata=3001 \
     -- --id=@sample_out_1c_est create Sample collector="$collector1" metadata=3002 \
     -- --sample-new=@sample_out_1c_new --sample-est=@sample_out_1c_est             \
        acl-add ls to-lport 1 "outport == \"vm2\" && udp.dst == 3000"               \
        allow-related
-ovn-nbctl                                                                                      \
+check_uuid ovn-nbctl                                                                           \
     -- --id=@sample_out_2c_new create Sample collector="$collector1 $collector2" metadata=3011 \
     -- --id=@sample_out_2c_est create Sample collector="$collector1 $collector2" metadata=3012 \
     -- --sample-new=@sample_out_2c_new --sample-est=@sample_out_2c_est                         \
@@ -13355,19 +13354,19 @@ ADD_VETH(vm2, vm2, br-int, "42.42.42.3/24", "00:00:00:00:00:02", "42.42.42.1")
 collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 set_id=100)
 check_row_count nb:Sample_Collector 1
 
-ovn-nbctl create Sampling_App type="acl-new" id="42"
-ovn-nbctl create Sampling_App type="acl-est" id="43"
+check_uuid ovn-nbctl create Sampling_App type="acl-new" id="42"
+check_uuid ovn-nbctl create Sampling_App type="acl-est" id="43"
 check_row_count nb:Sampling_App 2
 
 dnl Create two tiers of ACLs.
-ovn-nbctl                                                                     \
+check_uuid ovn-nbctl                                                          \
     -- --id=@sample_1_new create Sample collector="$collector1" metadata=1001 \
     -- --id=@sample_1_est create Sample collector="$collector1" metadata=1002 \
     -- --tier=0 --sample-new=@sample_1_new --sample-est=@sample_1_est         \
        acl-add ls from-lport 1 "inport == \"vm1\" && udp.dst == 1000"         \
        pass
 
-ovn-nbctl                                                                     \
+check_uuid ovn-nbctl                                                          \
     -- --id=@sample_2_new create Sample collector="$collector1" metadata=2001 \
     -- --id=@sample_2_est create Sample collector="$collector1" metadata=2002 \
     -- --tier=1 --sample-new=@sample_2_new --sample-est=@sample_2_est         \
@@ -13482,13 +13481,13 @@ ADD_VETH(vm2, vm2, br-int, "42.42.42.3/24", "00:00:00:00:00:02", "42.42.42.1")
 collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 set_id=100)
 check_row_count nb:Sample_Collector 1
 
-ovn-nbctl create Sampling_App type="acl-new" id="42"
-ovn-nbctl create Sampling_App type="acl-est" id="43"
+check_uuid ovn-nbctl create Sampling_App type="acl-new" id="42"
+check_uuid ovn-nbctl create Sampling_App type="acl-est" id="43"
 check_row_count nb:Sampling_App 2
 
 dnl Create two tiers of ACLs.
 dnl The first ACL is an ingress "pass" ACL at tier 0.
-ovn-nbctl                                                                     \
+check_uuid ovn-nbctl                                                          \
     -- --id=@sample_1_new create Sample collector="$collector1" metadata=1001 \
     -- --id=@sample_1_est create Sample collector="$collector1" metadata=1002 \
     -- --tier=0 --sample-new=@sample_1_new --sample-est=@sample_1_est         \
@@ -13613,14 +13612,14 @@ collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 se
 collector2=$(ovn-nbctl create Sample_Collector id=2 name=c2 probability=65535 set_id=200)
 check_row_count nb:Sample_Collector 2
 
-ovn-nbctl create Sampling_App type="acl-new" id="42"
+check_uuid ovn-nbctl create Sampling_App type="acl-new" id="42"
 check_row_count nb:Sampling_App 1
 
 dnl Create three ACLs:
 dnl - one from-lport, stateful, allowing all traffic
 dnl - one to-lport, dropping all traffic to 1.1.1.1 (single collector)
 dnl - one to-lport, dropping all traffic to 1.1.1.2 (two collectors)
-ovn-nbctl                                                                          \
+check_uuid ovn-nbctl                                                               \
   -- --id=@sample1 create Sample collector="$collector1" metadata=1001             \
   -- --id=@sample2 create Sample collector="$collector1" metadata=1002             \
   -- --id=@sample3 create Sample collector="$collector1 $collector2" metadata=1003 \

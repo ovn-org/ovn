@@ -263,7 +263,7 @@ done
 
 ovn_as az1
 
-ovn-nbctl \
+check_uuid ovn-nbctl \
   --id=@id create logical-router-static-route ip_prefix=1.1.1.1/32 nexthop=10.0.1.10 -- \
   add logical-router lr1 static_routes @id
 
