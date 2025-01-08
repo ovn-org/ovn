@@ -834,8 +834,8 @@ AT_CHECK([ovn-nbctl lr-nat-del lr0 dnat])
 
 AT_CHECK([ovn-nbctl lr-nat-del lr0])
 
-ovn-nbctl create Address_Set name=allowed_range addresses=\"1.1.1.1\"
-ovn-nbctl create Address_Set name=disallowed_range addresses=\"2.2.2.2\"
+check_uuid ovn-nbctl create Address_Set name=allowed_range addresses=\"1.1.1.1\"
+check_uuid ovn-nbctl create Address_Set name=disallowed_range addresses=\"2.2.2.2\"
 AT_CHECK([ovn-nbctl lr-nat-add lr0 snat 40.0.0.3 192.168.1.6])
 AT_CHECK([ovn-nbctl lr-nat-update-ext-ip lr0 snat 192.168.1.6 allowed_range])
 AT_CHECK([ovn-nbctl --is-exempted lr-nat-update-ext-ip lr0 snat 192.168.1.6 disallowed_range])
@@ -2836,19 +2836,19 @@ dnl ---------------------------------------------------------------------
 
 OVN_NBCTL_TEST([acl_sampling], [ACL sampling operations], [
 check ovn-nbctl ls-add ls
-ovn-nbctl \
+check_uuid ovn-nbctl \
   --id=@sample1 create Sample metadata=4301 -- \
   --sample-new=@sample1 acl-add ls from-lport 1 1 allow-related
 sample1=$(fetch_column nb:Sample _uuid metadata=4301)
 check_column "$sample1" nb:ACL sample_new priority=1
 
-ovn-nbctl \
+check_uuid ovn-nbctl \
   --id=@sample2 create Sample metadata=4302 -- \
   --sample-est=@sample2 acl-add ls from-lport 2 1 allow-related
 sample2=$(fetch_column nb:Sample _uuid metadata=4302)
 check_column "$sample2" nb:ACL sample_est priority=2
 
-ovn-nbctl \
+check_uuid ovn-nbctl \
   --id=@sample3 create Sample metadata=4303 -- \
   --id=@sample4 create Sample metadata=4304 -- \
   --sample-new=@sample3 --sample-est=@sample4 acl-add ls from-lport 3 1 allow-related
