@@ -284,7 +284,7 @@ ovn_start () {
     ovn_init_db ovn-sb $1; ovn-sbctl init
     ovn_init_db ovn-nb $1; ovn-nbctl init
     if test -n "$1"; then
-        ovn-nbctl set NB_Global . name=$1
+        check ovn-nbctl set NB_Global . name=$1
     fi
 
     ovn_start_northd primary $AZ
@@ -314,7 +314,7 @@ ovn_start () {
     fi
 
     if test -n "$AZ"; then
-        ovn-nbctl --wait=sb sync || exit $?
+        check ovn-nbctl --wait=sb sync || exit $?
 
         echo "${msg_prefix}starting ovn-ic"
         mkdir "$ovs_base"/$d_prefix/ic

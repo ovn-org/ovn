@@ -4,13 +4,13 @@ AT_SETUP([ipsec -- basic configuration])
 ovn_start
 
 # Configure the Northbound database
-ovn-nbctl ls-add lsw0
+check ovn-nbctl ls-add lsw0
 
-ovn-nbctl lsp-add lsw0 lp1
-ovn-nbctl lsp-set-addresses lp1 "f0:00:00:00:00:01 10.1.1.1"
+check ovn-nbctl lsp-add lsw0 lp1
+check ovn-nbctl lsp-set-addresses lp1 "f0:00:00:00:00:01 10.1.1.1"
 
-ovn-nbctl lsp-add lsw0 lp2
-ovn-nbctl lsp-set-addresses lp2 "f0:00:00:00:00:02 10.1.1.2"
+check ovn-nbctl lsp-add lsw0 lp2
+check ovn-nbctl lsp-set-addresses lp2 "f0:00:00:00:00:02 10.1.1.2"
 
 net_add n1               # Network to connect hv1 and hv2
 
@@ -43,8 +43,8 @@ ovs-vsctl \
     -- set Open_vSwitch . other_config:ca_cert=dummy-cacert.pem
 
 # Enable IPsec
-ovn-nbctl set nb_global . ipsec=true
-ovn-nbctl set nb_global . options:ipsec_encapsulation=true
+check ovn-nbctl set nb_global . ipsec=true
+check ovn-nbctl set nb_global . options:ipsec_encapsulation=true
 
 check ovn-nbctl --wait=hv sync
 
