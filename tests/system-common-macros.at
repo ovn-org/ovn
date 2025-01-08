@@ -400,51 +400,51 @@ ADD_VETH(s1, server, br-ext, "2001:1db8:3333::2/64", "f0:00:00:01:02:05", \
 if test X"$1" = X"GR"; then
    check_uuid ovn-nbctl create Logical_Router name=R1 options:chassis=hv1
 else
-   ovn-nbctl lr-add R1
+   check ovn-nbctl lr-add R1
 fi
 
-ovn-nbctl ls-add sw0
-ovn-nbctl ls-add sw1
-ovn-nbctl ls-add public
+check ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add sw1
+check ovn-nbctl ls-add public
 
-ovn-nbctl lrp-add R1 rp-sw0 00:00:01:01:02:03 192.168.1.1/24
-ovn-nbctl lrp-add R1 rp-sw1 00:00:03:01:02:03 192.168.2.1/24
-ovn-nbctl lrp-add R1 rp-public 00:00:02:01:02:03 172.16.1.1/24
+check ovn-nbctl lrp-add R1 rp-sw0 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lrp-add R1 rp-sw1 00:00:03:01:02:03 192.168.2.1/24
+check ovn-nbctl lrp-add R1 rp-public 00:00:02:01:02:03 172.16.1.1/24
 
 if test X"$1" != X"GR"; then
-    ovn-nbctl lrp-set-gateway-chassis rp-public hv1
+    check ovn-nbctl lrp-set-gateway-chassis rp-public hv1
 fi
 
-ovn-nbctl lsp-add sw0 sw0-rp -- set Logical_Switch_Port sw0-rp \
+check ovn-nbctl lsp-add sw0 sw0-rp -- set Logical_Switch_Port sw0-rp \
     type=router options:router-port=rp-sw0 \
     -- lsp-set-addresses sw0-rp router
-ovn-nbctl lsp-add sw1 sw1-rp -- set Logical_Switch_Port sw1-rp \
+check ovn-nbctl lsp-add sw1 sw1-rp -- set Logical_Switch_Port sw1-rp \
     type=router options:router-port=rp-sw1 \
     -- lsp-set-addresses sw1-rp router
 
-ovn-nbctl lsp-add public public-rp -- set Logical_Switch_Port public-rp \
+check ovn-nbctl lsp-add public public-rp -- set Logical_Switch_Port public-rp \
     type=router options:router-port=rp-public \
     -- lsp-set-addresses public-rp router
 
-ovn-nbctl lsp-add sw0 sw01 \
+check ovn-nbctl lsp-add sw0 sw01 \
     -- lsp-set-addresses sw01 "f0:00:00:01:02:03 192.168.1.2"
 
-ovn-nbctl lsp-add sw1 sw11 \
+check ovn-nbctl lsp-add sw1 sw11 \
     -- lsp-set-addresses sw11 "f0:00:00:02:02:03 192.168.2.2"
 
 AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext])
-ovn-nbctl lsp-add public public1 \
+check ovn-nbctl lsp-add public public1 \
         -- lsp-set-addresses public1 unknown \
         -- lsp-set-type public1 localnet \
         -- lsp-set-options public1 network_name=phynet
 
-ovn-nbctl set logical_router_port rp-public options:prefix_delegation=true
-ovn-nbctl set logical_router_port rp-public options:prefix=true
-ovn-nbctl set logical_router_port rp-sw0 options:prefix=true
+check ovn-nbctl set logical_router_port rp-public options:prefix_delegation=true
+check ovn-nbctl set logical_router_port rp-public options:prefix=true
+check ovn-nbctl set logical_router_port rp-sw0 options:prefix=true
 
 OVN_POPULATE_ARP
 
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 cat > /etc/dhcp/dhcpd.conf <<EOF
 option dhcp-rebinding-time 10;
@@ -461,7 +461,7 @@ chmod 664 /var/lib/dhcp/dhcpd6.leases
 
 NETNS_START_TCPDUMP([server], [-nni s1], [server])
 NETNS_DAEMONIZE([server], [dhcpd -6 -f s1 > dhcpd.log 2>&1], [dhcpd.pid])
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 OVS_WAIT_WHILE([test "$(ovn-nbctl get logical_router_port rp-public ipv6_prefix | cut -c4-15)" = ""])
 OVS_WAIT_WHILE([test "$(ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c4-15)" = ""])
@@ -491,9 +491,9 @@ OVS_WAIT_UNTIL([
     test "${total_pkts}" = "4"
 ])
 
-ovn-nbctl set logical_router_port rp-public options:prefix=false
-ovn-nbctl set logical_router_port rp-sw0 options:prefix=false
-ovn-nbctl --wait=hv set logical_router_port rp-sw1 options:prefix=true
+check ovn-nbctl set logical_router_port rp-public options:prefix=false
+check ovn-nbctl set logical_router_port rp-sw0 options:prefix=false
+check ovn-nbctl --wait=hv set logical_router_port rp-sw1 options:prefix=true
 sleep_sb
 NETNS_START_TCPDUMP([server], [-c 2 -nni s1 ip6[[48:1]]=0x05 and ip6[[113:4]]=0x${prefix}], [renew2])
 
@@ -507,8 +507,8 @@ OVS_WAIT_UNTIL([
     test "${total_pkts}" = "2"
 ])
 
-ovn-nbctl set logical_router_port rp-sw0 options:prefix=false
-ovn-nbctl clear logical_router_port rp-sw0 ipv6_prefix
+check ovn-nbctl set logical_router_port rp-sw0 options:prefix=false
+check ovn-nbctl clear logical_router_port rp-sw0 ipv6_prefix
 OVS_WAIT_WHILE([test "$(ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-16)" = "[2001:1db8:3333]"])
 AT_CHECK([ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-16], [0], [dnl
 []

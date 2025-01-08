@@ -1890,7 +1890,7 @@ for i in `seq 1 4`; do
     j=`expr $i + 1`
     ADD_VETH(foo$i, foo$i, br-int, "192.168.1.$j/24", "f0:00:00:01:02:0$j", \
              "192.168.1.1")
-    ovn-nbctl lsp-add foo foo$i \
+    check ovn-nbctl lsp-add foo foo$i \
         -- lsp-set-addresses foo$i "f0:00:00:01:02:0$j 192.168.1.$j"
 done
 
@@ -1998,7 +1998,7 @@ for i in `seq 1 4`; do
     j=`expr $i + 1`
     ADD_VETH(foo$i, foo$i, br-int, "fd01::$j/64", "f0:00:00:01:02:0$j", \
              "fd01::1")
-    ovn-nbctl lsp-add foo foo$i \
+    check ovn-nbctl lsp-add foo foo$i \
         -- lsp-set-addresses foo$i "f0:00:00:01:02:0$j fd01::$j"
 done
 
@@ -4302,7 +4302,7 @@ net.ipv4.igmp_qrv = 1
 ])
     ADD_VETH(sw1-p$i, sw1-p$i, br-int, "10.0.0.$i/24", "00:00:00:00:01:0$i", \
             "10.0.0.254")
-    ovn-nbctl lsp-add sw1 sw1-p$i \
+    check ovn-nbctl lsp-add sw1 sw1-p$i \
         -- lsp-set-addresses sw1-p$i "00:00:00:00:01:0$i 10.0.0.$i"
 done
 
@@ -4311,7 +4311,7 @@ do
     ADD_NAMESPACES(sw2-p$i)
     ADD_VETH(sw2-p$i, sw2-p$i, br-int, "20.0.0.$i/24", "00:00:00:00:02:0$i", \
             "20.0.0.254")
-    ovn-nbctl lsp-add sw2 sw2-p$i \
+    check ovn-nbctl lsp-add sw2 sw2-p$i \
         -- lsp-set-addresses sw2-p$i "00:00:00:00:02:0$i 20.0.0.$i"
 done
 
@@ -13484,7 +13484,7 @@ check_uuid ovn-nbctl                                                          \
 
 dnl The second ACL is an unrelated egress ACL. However, it uses tier 1 instead
 dnl of tier 0.
-ovn-nbctl --tier=1 acl-add ls to-lport 1 "inport == \"vm1\" && udp.dst == 1000" allow-related
+check ovn-nbctl --tier=1 acl-add ls to-lport 1 "inport == \"vm1\" && udp.dst == 1000" allow-related
 
 check_row_count nb:ACL 2
 check_row_count nb:Sample 2
@@ -14356,7 +14356,7 @@ chmod 664 /var/lib/dhcp/dhcpd6.leases
 
 NETNS_START_TCPDUMP([server], [-nni s1], [server])
 NETNS_DAEMONIZE([server], [dhcpd -6 -f s1 > dhcpd.log 2>&1], [dhcpd.pid])
-ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
 
 AT_CHECK([ovn-appctl debug/dump-peer-ports | sort], [0], [dnl
 dp R1 : local = rp-public, remote = public-rp

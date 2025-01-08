@@ -592,9 +592,9 @@ ch2_ch_uuid=$comp1_ch_uuid
 # Check ref_chassis.
 echo "comp1_ch_uuid = $comp1_ch_uuid"
 wait_column "$comp1_ch_uuid" HA_Chassis_Group ref_chassis
-ovn-sbctl set Port_Binding sw0-p1 additional_chassis=$cadd1_ch_uuid
+check ovn-sbctl set Port_Binding sw0-p1 additional_chassis=$cadd1_ch_uuid
 wait_column "$cadd1_ch_uuid $comp1_ch_uuid" HA_Chassis_Group ref_chassis
-ovn-sbctl clear Port_Binding sw0-p1 additional_chassis
+check ovn-sbctl clear Port_Binding sw0-p1 additional_chassis
 wait_column "$comp1_ch_uuid" HA_Chassis_Group ref_chassis
 
 # unbind sw0-p1
@@ -2776,10 +2776,9 @@ get_tunnel_keys() {
 
 echo
 echo "__file__:__line__: Add three logical switches, check tunnel ids"
-AT_CHECK(
-  [ovn-nbctl --wait=sb ls-add ls0
-   ovn-nbctl --wait=sb ls-add ls1
-   ovn-nbctl --wait=sb ls-add ls2])
+check ovn-nbctl --wait=sb ls-add ls0
+check ovn-nbctl --wait=sb ls-add ls1
+check ovn-nbctl --wait=sb ls-add ls2
 get_tunnel_keys
 AT_CHECK([test $ls0 = 1 && test $ls1 = 2 && test $ls2 = 3])
 
@@ -2853,9 +2852,9 @@ echo
 echo "__file__:__line__: Add two logical switches with three ports each, check tunnel ids"
 AT_CHECK(
   [for i in 0 1; do
-       ovn-nbctl --wait=sb ls-add ls$i || exit $?
+       check ovn-nbctl --wait=sb ls-add ls$i || exit $?
        for j in 0 1 2; do
-           ovn-nbctl --wait=sb lsp-add ls$i lsp$i$j || exit $?
+           check ovn-nbctl --wait=sb lsp-add ls$i lsp$i$j || exit $?
        done
    done])
 get_tunnel_keys
@@ -3545,9 +3544,9 @@ check ovn-nbctl lsp-add ls lsp2
 check ovn-nbctl lsp-set-addresses lsp2 00:00:00:00:00:02
 
 for direction in from to; do
-    ovn-nbctl acl-add ls ${direction}-lport 3 "tcp" allow-related
-    ovn-nbctl acl-add ls ${direction}-lport 2 "udp" allow-related
-    ovn-nbctl acl-add ls ${direction}-lport 1 "ip" drop
+    check ovn-nbctl acl-add ls ${direction}-lport 3 "tcp" allow-related
+    check ovn-nbctl acl-add ls ${direction}-lport 2 "udp" allow-related
+    check ovn-nbctl acl-add ls ${direction}-lport 1 "ip" drop
 done
 check ovn-nbctl --wait=sb sync
 
@@ -3580,7 +3579,7 @@ ct_next(ct_state=new|trk) {
 
 # Allow stateless for TCP.
 for direction in from to; do
-    ovn-nbctl acl-add ls ${direction}-lport 4 tcp allow-stateless
+    check ovn-nbctl acl-add ls ${direction}-lport 4 tcp allow-stateless
 done
 check ovn-nbctl --wait=sb sync
 
@@ -3640,7 +3639,7 @@ ct_lb_mark {
 
 # Allow stateless for TCP.
 for direction in from to; do
-    ovn-nbctl acl-add ls ${direction}-lport 4 tcp allow-stateless
+    check ovn-nbctl acl-add ls ${direction}-lport 4 tcp allow-stateless
 done
 check ovn-nbctl --wait=sb sync
 
@@ -3680,9 +3679,9 @@ check ovn-nbctl lsp-set-addresses lsp2 00:00:00:00:00:02
 check ovn-nbctl pg-add pg lsp1 lsp2
 
 for direction in from to; do
-    ovn-nbctl acl-add pg ${direction}-lport 3 "tcp" allow-related
-    ovn-nbctl acl-add pg ${direction}-lport 2 "udp" allow-related
-    ovn-nbctl acl-add pg ${direction}-lport 1 "ip" drop
+    check ovn-nbctl acl-add pg ${direction}-lport 3 "tcp" allow-related
+    check ovn-nbctl acl-add pg ${direction}-lport 2 "udp" allow-related
+    check ovn-nbctl acl-add pg ${direction}-lport 1 "ip" drop
 done
 check ovn-nbctl --wait=sb sync
 
@@ -3716,7 +3715,7 @@ ct_next(ct_state=new|trk) {
 
 # Allow stateless for TCP.
 for direction in from to; do
-    ovn-nbctl acl-add pg ${direction}-lport 4 tcp allow-stateless
+    check ovn-nbctl acl-add pg ${direction}-lport 4 tcp allow-stateless
 done
 check ovn-nbctl --wait=sb sync
 
@@ -3776,7 +3775,7 @@ ct_lb_mark {
 
 # Allow stateless for TCP.
 for direction in from to; do
-    ovn-nbctl acl-add pg ${direction}-lport 4 tcp allow-stateless
+    check ovn-nbctl acl-add pg ${direction}-lport 4 tcp allow-stateless
 done
 check ovn-nbctl --wait=sb sync
 
@@ -3814,8 +3813,8 @@ check ovn-nbctl lsp-add ls lsp2
 check ovn-nbctl lsp-set-addresses lsp2 00:00:00:00:00:02
 
 for direction in from to; do
-    ovn-nbctl acl-add ls ${direction}-lport 3 "tcp" allow-related
-    ovn-nbctl acl-add ls ${direction}-lport 3 "udp" allow
+    check ovn-nbctl acl-add ls ${direction}-lport 3 "tcp" allow-related
+    check ovn-nbctl acl-add ls ${direction}-lport 3 "udp" allow
 done
 check ovn-nbctl --wait=sb sync
 
@@ -3838,8 +3837,8 @@ ct_next(ct_state=new|trk) {
 
 # Allow stateless with *lower* priority. It always beats stateful rules.
 for direction in from to; do
-    ovn-nbctl acl-add ls ${direction}-lport 1 tcp allow-stateless
-    ovn-nbctl acl-add ls ${direction}-lport 1 udp allow-stateless
+    check ovn-nbctl acl-add ls ${direction}-lport 1 tcp allow-stateless
+    check ovn-nbctl acl-add ls ${direction}-lport 1 udp allow-stateless
 done
 check ovn-nbctl --wait=sb sync
 
@@ -12021,7 +12020,7 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 # should resync the logical flows.
 for l in $(ovn-sbctl --bare --columns _uuid list logical_flow)
 do
-    ovn-sbctl clear logical_flow $l logical_dp_group
+    check ovn-sbctl clear logical_flow $l logical_dp_group
 done
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
