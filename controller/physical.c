@@ -926,12 +926,12 @@ put_local_common_flows(uint32_t dp_key,
 
     uint32_t port_key = pb->tunnel_key;
 
-    /* Table 40, priority 100.
+    /* Table 43, priority 100.
      * =======================
      *
      * Implements output to local hypervisor.  Each flow matches a
      * logical output port on the local hypervisor, and resubmits to
-     * table 41.
+     * table 44.
      */
 
     ofpbuf_clear(ofpacts_p);
@@ -941,13 +941,13 @@ put_local_common_flows(uint32_t dp_key,
 
     put_zones_ofpacts(zone_ids, ofpacts_p);
 
-    /* Resubmit to table 41. */
+    /* Resubmit to table 44. */
     put_resubmit(OFTABLE_CHECK_LOOPBACK, ofpacts_p);
     ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100,
                     pb->header_.uuid.parts[0], &match, ofpacts_p,
                     &pb->header_.uuid);
 
-    /* Table 41, Priority 100.
+    /* Table 44, Priority 100.
      * =======================
      *
      * Drop packets whose logical inport and outport are the same
@@ -1575,7 +1575,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             || ha_chassis_group_is_active(binding->ha_chassis_group,
                                           active_tunnels, chassis))) {
 
-        /* Table 40, priority 100.
+        /* Table 43, priority 100.
          * =======================
          *
          * Implements output to local hypervisor.  Each flow matches a
@@ -1918,7 +1918,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             }
         }
 
-        /* Table 39, priority 150.
+        /* Table 42, priority 150.
          * =======================
          *
          * Handles packets received from ports of type "localport".  These
@@ -1938,7 +1938,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         }
     } else if (access_type == PORT_LOCALNET && !always_tunnel) {
         /* Remote port connected by localnet port */
-        /* Table 40, priority 100.
+        /* Table 43, priority 100.
          * =======================
          *
          * Implements switching to localnet port. Each flow matches a
@@ -1958,7 +1958,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
         put_load(localnet_port->tunnel_key, MFF_LOG_OUTPORT, 0, 32, ofpacts_p);
 
-        /* Resubmit to table 40. */
+        /* Resubmit to table 43. */
         put_resubmit(OFTABLE_LOCAL_OUTPUT, ofpacts_p);
         ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100,
                         binding->header_.uuid.parts[0],
@@ -1977,7 +1977,7 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const char *redirect_type = smap_get(&binding->options,
                                          "redirect-type");
 
-    /* Table 40, priority 100.
+    /* Table 43, priority 100.
      * =======================
      *
      * Handles traffic that needs to be sent to a remote hypervisor.  Each
@@ -2666,7 +2666,7 @@ physical_run(struct physical_ctx *p_ctx,
      */
     add_default_drop_flow(p_ctx, OFTABLE_PHY_TO_LOG, flow_table);
 
-    /* Table 37-38, priority 0.
+    /* Table 40-43, priority 0.
      * ========================
      *
      * Default resubmit actions for OFTABLE_OUTPUT_LARGE_PKT_* tables.
@@ -2692,7 +2692,7 @@ physical_run(struct physical_ctx *p_ctx,
     ofctrl_add_flow(flow_table, OFTABLE_OUTPUT_LARGE_PKT_PROCESS, 0, 0, &match,
                     &ofpacts, hc_uuid);
 
-    /* Table 39, priority 150.
+    /* Table 42, priority 150.
      * =======================
      *
      * Handles packets received from a VXLAN tunnel which get resubmitted to
@@ -2711,7 +2711,7 @@ physical_run(struct physical_ctx *p_ctx,
     ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 150, 0,
                     &match, &ofpacts, hc_uuid);
 
-    /* Table 39, priority 150.
+    /* Table 42, priority 150.
      * =======================
      *
      * Packets that should not be sent to other hypervisors.
@@ -2725,7 +2725,7 @@ physical_run(struct physical_ctx *p_ctx,
     ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 150, 0,
                     &match, &ofpacts, hc_uuid);
 
-    /* Table 39, Priority 0.
+    /* Table 42, Priority 0.
      * =======================
      *
      * Resubmit packets that are not directed at tunnels or part of a
