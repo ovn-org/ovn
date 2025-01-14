@@ -1546,8 +1546,10 @@
       <p>
         Table 44 matches and drops packets for which the logical input and
         output ports are the same and the MLF_ALLOW_LOOPBACK flag is not
-        set. It also drops MLF_LOCAL_ONLY packets directed to a localnet port.
-        It resubmits other packets to table 45.
+        set. It also drops MLF_LOCAL_ONLY packets directed to a localnet port,
+        provided they aren't RAs sent from a gateway or distributed router
+        which is checked via the presence of the bitflag
+        MLF_OVERRIDE_LOCAL_ONLY. It resubmits other packets to table 46.
       </p>
     </li>
 
