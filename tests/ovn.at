@@ -35471,6 +35471,22 @@ m4_define([MULTIPLE_OVS_INT],
            sed -e 's/n_bytes=[[0-9]]*, //g'
    }
 
+   WAIT_UNTIL_FLOWS()
+   {
+       cookie=${1}
+       interface=${2}
+       OVS_WAIT_UNTIL([
+           ofport=$(ovs-vsctl --bare --columns ofport find Interface name=$interface)
+           ovs-ofctl dump-flows br-int | grep "cookie=$cookie" | grep "actions=output:$ofport"
+       ])
+   }
+
+   get_nb_flows()
+   {
+       cookie=${1}
+       ovs-ofctl dump-flows br-int | grep -c "cookie=$cookie"
+   }
+
    check ovn-nbctl ls-add ls
    check ovn-nbctl lsp-add ls lp
    if test X$1 != X; then
@@ -35494,13 +35510,11 @@ m4_define([MULTIPLE_OVS_INT],
    echo ======================================================
    echo === Flows after iface-id set for the old interface ===
    echo ======================================================
-   COOKIE=$(ovn-sbctl find port_binding logical_port=lp|grep uuid|cut -d: -f2| cut -c1-8 | sed 's/^\s*0\{0,8\}//')
+   COOKIE=$(ovn-debug uuid-to-cookie $(fetch_column port_binding _uuid logical_port=lp))
 
-   OVS_WAIT_UNTIL([
-       ofport=$(ovs-vsctl --bare --columns ofport find Interface name=lpold)
-       ovs-ofctl dump-flows br-int | grep $COOKIE | grep "actions=output:$ofport"
-   ])
-   nb_flows=`ovs-ofctl dump-flows br-int | grep $COOKIE | wc -l`
+   WAIT_UNTIL_FLOWS $COOKIE lpold
+
+   nb_flows=$(get_nb_flows $COOKIE )
    echo $nb_flows "flows after iface-id set for old interface"
 
    echo ======================================================
@@ -35509,11 +35523,8 @@ m4_define([MULTIPLE_OVS_INT],
    # Set external_ids:iface-id within same transaction as adding the port.
    # This will generally cause ovn-controller to get initially notified of ovs interface changes with ofport == 0.
    check ovs-vsctl add-port br-int lpnew -- set interface lpnew type=internal -- set interface lpnew external_ids:iface-id=lp
-   OVS_WAIT_UNTIL([
-       ofport=$(ovs-vsctl --bare --columns ofport find Interface name=lpnew)
-       ovs-ofctl dump-flows br-int | grep $COOKIE | grep "actions=output:$ofport"
-   ])
-   check test "$nb_flows" = $(ovs-ofctl dump-flows br-int | grep $COOKIE | wc -l)
+   WAIT_UNTIL_FLOWS $COOKIE lpnew
+   check test "$nb_flows" = $(get_nb_flows $COOKIE)
    flows_lpnew=$(get_flows $COOKIE)
 
    echo ======================================================
@@ -35522,7 +35533,7 @@ m4_define([MULTIPLE_OVS_INT],
    check ovs-vsctl del-port br-int lpold
    # We do not expect changes, so let's wait for controller to get time to process any update
    check ovn-nbctl --wait=hv sync
-   check test "$nb_flows" = $(ovs-ofctl dump-flows br-int | grep $COOKIE | wc -l)
+   check test "$nb_flows" = $(get_nb_flows $COOKIE)
    flows_after_deletion=$(get_flows $COOKIE)
    check test "$flows_lpnew" = "$flows_after_deletion"
 
@@ -35533,23 +35544,15 @@ m4_define([MULTIPLE_OVS_INT],
    # This will generally cause ovn-controller to get notified of ovs interface changes with a proper ofport.
    check ovs-vsctl add-port br-int lptemp -- set Interface lptemp type=internal
    check ovs-vsctl set Interface lptemp external_ids:iface-id=lp
-   OVS_WAIT_UNTIL([
-       ofport=$(ovs-vsctl --bare --columns ofport find Interface name=lptemp)
-       ovs-ofctl dump-flows br-int | grep $COOKIE | grep "actions=output:$ofport"
-   ])
-   check test "$nb_flows" = $(ovs-ofctl dump-flows br-int | grep $COOKIE | wc -l)
+   WAIT_UNTIL_FLOWS $COOKIE lptemp
+   check test "$nb_flows" = $(get_nb_flows $COOKIE)
 
    echo ======================================================
    echo ======= Flows after lptemp interface is deleted ======
    echo ======================================================
    check ovs-vsctl del-port br-int lptemp
-   OVS_WAIT_UNTIL([
-       ofport=$(ovs-vsctl --bare --columns ofport find Interface name=lpnew)
-       echo $ofport
-       ovs-ofctl dump-flows br-int  | grep $COOKIE
-       ovs-ofctl dump-flows br-int | grep $COOKIE | grep "actions=output:$ofport"
-   ])
-   check test "$nb_flows" = $(ovs-ofctl dump-flows br-int | grep $COOKIE | wc -l)
+   WAIT_UNTIL_FLOWS $COOKIE lpnew
+   check test "$nb_flows" = $(get_nb_flows $COOKIE)
    flows_after_deletion=$(get_flows $COOKIE)
    check test "$flows_lpnew" = "$flows_after_deletion"
 
@@ -35558,7 +35561,7 @@ m4_define([MULTIPLE_OVS_INT],
    echo ======================================================
    check ovs-vsctl del-port br-int lpnew
    OVS_WAIT_UNTIL([
-       nb_flows=`ovs-ofctl dump-flows br-int | grep $COOKIE | wc -l`
+       nb_flows=`get_nb_flows $COOKIE`
        test "${nb_flows}" = $nb_flows_ref
    ])
 
@@ -35571,21 +35574,15 @@ m4_define([MULTIPLE_OVS_INT],
    check ovs-vsctl set interface lpnew external_ids:iface-id=lp
 
    # Wait for lpnew  flows to be installed
-   OVS_WAIT_UNTIL([
-       ofport=$(ovs-vsctl --bare --columns ofport find Interface name=lpnew)
-       ovs-ofctl dump-flows br-int | grep $COOKIE | grep "actions=output:$ofport"
-   ])
+   WAIT_UNTIL_FLOWS $COOKIE lpnew
    flows_lpnew=$(get_flows $COOKIE)
-   nb_flows=`ovs-ofctl dump-flows br-int | grep $COOKIE | wc -l`
+   nb_flows=`get_nb_flows $COOKIE`
 
    check ovs-vsctl add-port br-int lptemp -- set Interface lptemp type=internal
    check ovs-vsctl set Interface lptemp external_ids:iface-id=lp
 
    # Wait for lptemp  flows to be installed
-   OVS_WAIT_UNTIL([
-       ofport=$(ovs-vsctl --bare --columns ofport find Interface name=lptemp)
-       ovs-ofctl dump-flows br-int | grep $COOKIE | grep "actions=output:$ofport"
-   ])
+   WAIT_UNTIL_FLOWS $COOKIE lptemp
 
    # Delete both lpold and lptemp to go to a stable situation
    check ovs-vsctl del-port br-int lptemp
@@ -35596,21 +35593,15 @@ m4_define([MULTIPLE_OVS_INT],
    ])
 
    # Wait for correct/lpnew flows to be installed
-   OVS_WAIT_UNTIL([
-       ofport=$(ovs-vsctl --bare --columns ofport find Interface name=lpnew)
-       ovs-ofctl dump-flows br-int | grep $COOKIE | grep "actions=output:$ofport"
-   ])
-   check test "$nb_flows" = $(ovs-ofctl dump-flows br-int | grep $COOKIE | wc -l)
+   WAIT_UNTIL_FLOWS $COOKIE lpnew
+   check test "$nb_flows" = $(get_nb_flows $COOKIE)
    flows_after_deletion=$(get_flows $COOKIE)
    check test "$flows_lpnew" = "$flows_after_deletion"
 
    # Check that recompute still works
    check ovn-appctl -t ovn-controller recompute
-   OVS_WAIT_UNTIL([
-       ofport=$(ovs-vsctl --bare --columns ofport find Interface name=lpnew)
-       ovs-ofctl dump-flows br-int | grep $COOKIE | grep "actions=output:$ofport"
-   ])
-   check test "$nb_flows" = $(ovs-ofctl dump-flows br-int | grep $COOKIE | wc -l)
+   WAIT_UNTIL_FLOWS $COOKIE lpnew
+   check test "$nb_flows" = $(get_nb_flows $COOKIE)
    flows_after_deletion=$(get_flows $COOKIE)
    check test "$flows_lpnew" = "$flows_after_deletion"
 
