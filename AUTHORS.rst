@@ -41,6 +41,7 @@ Alan Pevec                         alan.pevec@redhat.com
 Ales Musil                         amusil@redhat.com
 Alexander Duyck                    alexander.h.duyck@redhat.com
 Aleksandr Smirnov                  AleksSmirnov@k2.cloud
+Alexandra Rukomoinikova            arukomoinikova@k2.cloud
 Alexandru Copot                    alex.mihai.c@gmail.com
 Alexei Starovoitov                 ast@plumgrid.com
 Alexey I. Froloff                  raorn@raorn.name
