@@ -1,5 +1,53 @@
 AT_BANNER([ovn-controller])
 
+m4_divert_push([PREPARE_TESTS])
+# Checks if the provided engine node recomputed or not
+# and if it computed or not.
+# 1st argument is the simulated hypervisor name.
+# 2nd argument is the engine node.
+# 3rd argument is the expected recompute state.
+#   Possible values are - "norecompute" and "recompute".
+# 4th argument is the expected compute state.
+#   Possible values are - "nocompute" and "compute".
+#
+# Eg. 'check_controller_engine_stats hv1 logical_flow_output recompute nocompute'
+# will verify that if the lflow engine node recompute stat is > 0 and
+# compute stat is equal to 0.  It fails otherwise.
+check_controller_engine_stats() {
+  hv=$1
+  node=$2
+  recompute=$3
+  compute=$4
+
+  echo "Checking engine stats for node $node : recompute - \
+$recompute : compute - $compute"
+
+  node_stat=$(as $hv ovn-appctl -t ovn-controller inc-engine/show-stats $node)
+  # node_stat will be of this format :
+  #     - Node: logical_flow_output - recompute: 3 - compute: 0 - cancel: 0
+  node_recompute_ct=$(echo $node_stat | cut -d '-' -f2 | cut -d ':' -f2)
+  node_compute_ct=$(echo $node_stat | cut -d '-' -f3 | cut -d ':' -f2)
+
+  if [[ "$recompute" == "norecompute" ]]; then
+    # node should not be recomputed
+    echo "Expecting $node recompute count - $node_recompute_ct to be 0"
+    check test "$node_recompute_ct" -eq "0"
+  else
+    echo "Expecting $node recompute count - $node_recompute_ct not to be 0"
+    check test "$node_recompute_ct" -ne "0"
+  fi
+
+  if [[ "$compute" == "nocompute" ]]; then
+    # node should not be computed
+    echo "Expecting $node compute count - $node_compute_ct to be 0"
+    check test "$node_compute_ct" -eq "0"
+  else
+    echo "Expecting $node compute count - $node_compute_ct not to be 0"
+    check test "$node_compute_ct" -ne "0"
+  fi
+}
+m4_divert_pop([PREPARE_TESTS])
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-controller - ovn-bridge-mappings])
 AT_KEYWORDS([ovn])
@@ -916,6 +964,11 @@ port=$(ovn-sbctl get port_binding ls1-rp tunnel_key)
 check ovn-nbctl lrp-add lr0 rp-ls1 00:00:01:01:02:03 192.168.1.254/24
 
 OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int | grep table=OFTABLE_LOCAL_OUTPUT | grep -q "reg15=0x${port},metadata=0x${meta}"])
+
+# Check we have a full recompute if type column is updated
+check as hv1 ovn-appctl -t ovn-controller inc-engine/clear-stats
+check ovn-nbctl --wait=hv lsp-set-type ls0-rp localnet
+check_controller_engine_stats hv1 physical_flow_output recompute nocompute
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

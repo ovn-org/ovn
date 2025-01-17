@@ -2411,13 +2411,21 @@ physical_handle_flows_for_lport(const struct sbrec_port_binding *pb,
         physical_multichassis_reprocess(pb, p_ctx, flow_table);
     }
 
-    if (!removed) {
+    /* Always update pb and the configured peer for patch ports. */
+    if (!removed || !strcmp(pb->type, "patch")) {
         physical_eval_port_binding(p_ctx, pb, flow_table);
-        if (!strcmp(pb->type, "patch")) {
-            const struct sbrec_port_binding *peer =
-                get_binding_peer(p_ctx->sbrec_port_binding_by_name, pb);
-            if (peer) {
-                physical_eval_port_binding(p_ctx, peer, flow_table);
+    }
+
+    if (!strcmp(pb->type, "patch")) {
+        if (removed) {
+            ofctrl_remove_flows(flow_table, &pb->header_.uuid);
+        }
+        const struct sbrec_port_binding *peer =
+            get_binding_peer(p_ctx->sbrec_port_binding_by_name, pb);
+        if (peer) {
+            physical_eval_port_binding(p_ctx, peer, flow_table);
+            if (removed) {
+                ofctrl_remove_flows(flow_table, &peer->header_.uuid);
             }
         }
     }
