@@ -40754,3 +40754,50 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep -v 
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([requested-tnl-key-recompute])
+AT_KEYWORDS([requested-tnl-key-recompute])
+
+m4_define([OFTABLE_LOG_TO_PHY], [65])
+
+ovn_start
+net_add n1
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add ls lsp -- lsp-set-addresses lsp "00:00:10:01:02:01 10.0.0.1"
+
+check ovn-nbctl lr-add lr
+check ovn-nbctl set logical_router lr options:mac_binding_age_threshold=3600
+check ovn-nbctl lrp-add lr lr-ls 00:00:00:00:ff:01 10.0.0.254/24
+check ovn-nbctl lsp-add ls ls-lr
+check ovn-nbctl lsp-set-type ls-lr router
+check ovn-nbctl lsp-set-addresses ls-lr router
+check ovn-nbctl lsp-set-options ls-lr router-port=lr-ls
+
+sim_add hv1
+
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
+ovs-vsctl add-port br-int vif -- set Interface vif external-ids:iface-id=lsp
+
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up
+
+check ovn-nbctl --wait=hv set logical_router_port lr-ls options:requested-tnl-key=42
+ls_tnl_key=$(fetch_column datapath_binding tunnel_key external_ids:name=ls)
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_LOG_TO_PHY,metadata=0x${ls_tnl_key} | grep -q load:0x2a->NXM_NX_REG14])
+
+check ovn-nbctl lrp-del lr-ls
+check ovn-nbctl                                             \
+    -- lrp-add lr lr-ls 00:00:00:00:10:00 192.168.10.1/24   \
+    -- set logical_router_port lr-ls options:requested-tnl-key=43
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_LOG_TO_PHY,metadata=0x${ls_tnl_key} | grep -q load:0x2b->NXM_NX_REG14])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
