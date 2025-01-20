@@ -10993,8 +10993,35 @@ check_engine_stats lr_stateful norecompute compute
 check_engine_stats lflow norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
-check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set load_balancer lb1 options:neighbor_responder=all
+check_engine_stats lb_data recompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lr_stateful recompute nocompute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set load_balancer lb1 options:neighbor_responder=reachable
+check_engine_stats lb_data recompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lr_stateful recompute nocompute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set load_balancer lb1 options:neighbor_responder=none
+check_engine_stats lb_data recompute nocompute
+check_engine_stats northd recompute nocompute
+check_engine_stats lr_stateful recompute nocompute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb -- lb-add lb2 20.0.0.10:80 20.0.0.20:80 -- lb-add lb3 30.0.0.10:80 30.0.0.20:80
 check_engine_stats lb_data norecompute compute
 check_engine_stats northd norecompute compute

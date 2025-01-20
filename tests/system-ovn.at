@@ -12778,3 +12778,72 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([neighbor_responder for all])
+AT_KEYWORDS([neighbor_responder])
+AT_SKIP_IF([test "$HAVE_ARPING" = no])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+check_uuid ovn-nbctl create Logical_Router name=lr options:chassis=hv1
+check ovn-nbctl ls-add ls
+
+# Connect alice to R2
+check ovn-nbctl lrp-add lr lr-ls 00:00:02:01:02:03 192.168.1.254/24
+check ovn-nbctl lsp-add ls ls-lr -- set Logical_Switch_Port ls-lr \
+    type=router options:router-port=lr-ls addresses=\"00:00:02:01:02:03\"
+
+# Logical port 'foo' in switch 'foo'.
+ADD_NAMESPACES(foo)
+ADD_VETH(foo, foo, br-int, "192.168.1.1/24", "f0:00:00:01:02:03", \
+         "192.168.1.254")
+check ovn-nbctl lsp-add ls foo \
+-- lsp-set-addresses foo "f0:00:00:01:02:03 192.168.1.1"
+
+check ovn-nbctl lb-add lb0 192.168.1.100 192.168.1.1
+check ovn-nbctl lr-lb-add lr lb0
+check ovn-nbctl lb-add lb1 172.16.1.100 192.168.1.1
+check ovn-nbctl lr-lb-add lr lb1
+
+NS_CHECK_EXEC([foo], [ip route add 172.16.1.100 dev foo])
+
+check ovn-nbctl set load_balancer lb0 options:neighbor_responder=all
+check ovn-nbctl set load_balancer lb1 options:neighbor_responder=all
+check ovn-nbctl --wait=hv sync
+
+NS_CHECK_EXEC([foo], [arping -q -c 3 192.168.1.100])
+NS_CHECK_EXEC([foo], [arping -q -c 3 172.16.1.100])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
