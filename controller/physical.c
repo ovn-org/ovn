@@ -2374,16 +2374,18 @@ physical_handle_flows_for_lport(const struct sbrec_port_binding *pb,
         physical_multichassis_reprocess(pb, p_ctx, flow_table);
     }
 
+    /* Always update pb and the configured peer for patch ports. */
     if (!removed) {
         physical_eval_port_binding(p_ctx, pb, type, flow_table);
-        if (type == LP_PATCH) {
-            const struct sbrec_port_binding *peer =
-                get_binding_peer(p_ctx->sbrec_port_binding_by_name, pb);
-            if (peer) {
-                physical_eval_port_binding(p_ctx, peer, get_lport_type(peer),
-                                           flow_table);
-            }
-        }
+    }
+
+    const struct sbrec_port_binding *peer = type == LP_PATCH
+        ? get_binding_peer(p_ctx->sbrec_port_binding_by_name, pb)
+        : NULL;
+    if (peer) {
+        ofctrl_remove_flows(flow_table, &peer->header_.uuid);
+        physical_eval_port_binding(p_ctx, peer, get_lport_type(peer),
+                                   flow_table);
     }
 
     return true;
