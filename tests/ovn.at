@@ -17008,6 +17008,111 @@ OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
 ])
 
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([IPv6 periodic gateway RA enabled for localnet adjacent switch ports])
+ovn_start
+
+net_add n1
+sim_add hv1
+sim_add hv2
+as hv1
+check ovs-vsctl add-br br-phys
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n1 br-phys 192.168.0.2
+as hv2
+check ovs-vsctl add-br br-phys
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n1 br-phys 192.168.0.3
+
+check ovn-nbctl lr-add ro -- set Logical_Router ro options:chassis="hv1"
+check ovn-nbctl lrp-add ro ro-sw 00:00:00:00:00:01 20.0.0.1/24
+
+check ovn-nbctl ls-add sw
+check ovn-nbctl lsp-add sw ln
+check ovn-nbctl lsp-set-addresses ln unknown
+check ovn-nbctl lsp-set-type ln localnet
+check ovn-nbctl lsp-set-options ln network_name=phys
+
+check ovn-nbctl lsp-add sw sw-ro
+check ovn-nbctl lsp-set-type sw-ro router
+check ovn-nbctl lsp-set-options sw-ro router-port=ro-sw
+check ovn-nbctl lsp-set-addresses sw-ro 00:00:00:00:00:01
+check ovn-nbctl lsp-add sw sw-p1
+check ovn-nbctl lsp-set-addresses sw-p1 "00:00:00:00:00:02 aef0::200:ff:fe00:2"
+check ovn-nbctl lsp-add sw sw-p2
+check ovn-nbctl lsp-set-addresses sw-p2 "00:00:00:00:00:03 aef0::200:ff:fe00:3"
+
+AT_CHECK([ovn-sbctl get Port_Binding ro-sw type | tr -d '\n'],[0],[l3gateway])
+
+check ovn-nbctl set Logical_Router_Port ro-sw ipv6_ra_configs:send_periodic=true
+check ovn-nbctl set Logical_Router_Port ro-sw ipv6_ra_configs:address_mode=slaac
+check ovn-nbctl set Logical_Router_Port ro-sw ipv6_ra_configs:max_interval=1
+check ovn-nbctl set Logical_Router_Port ro-sw ipv6_ra_configs:min_interval=1
+
+for i in 1 2 ; do
+    as hv$i
+    check ovs-vsctl -- add-port br-int hv$i-vif1 -- \
+        set interface hv$i-vif1 external-ids:iface-id=sw-p$i \
+        options:tx_pcap=hv$i/vif1-tx.pcap \
+        options:rxq_pcap=hv$i/vif1-rx.pcap \
+        ofport-request=1
+done
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+ra_received() {
+    $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $1 | sed '/^ffffffffffff/d' | wc -l
+}
+
+ra_test() {
+    interface=$1
+    shift 1
+    local ra_packet=$(fmt_pkt "
+        Ether(src='00:00:00:00:00:01', dst='33:33:00:00:00:01') /
+        IPv6(dst='ff02::1', src='fe80::200:ff:fe00:1') /
+        ICMPv6ND_RA(chlim=255, prf=0, routerlifetime=65535) /
+        ICMPv6NDOptSrcLLAddr(lladdr='00:00:00:00:00:01')
+    ")
+    intname="$interface"
+
+    for i in hv1 hv2 ; do
+        if echo "$interface" | grep -q -v "br"; then
+            intname="$i-$interface"
+        fi
+        echo $intname
+        as $i reset_pcap_file $intname $i/$interface
+
+        OVS_WAIT_WHILE([test 0 = $(ra_received $i/$interface-tx.pcap)])
+
+        $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $i/$interface-tx.pcap > packets
+        sed -i '/^ffffffffffff/d' packets
+
+        echo ${ra_packet} | cut -c -112 > expout
+        AT_CHECK([head -1 packets | cut -c -112], [0], [expout])
+
+        # Skip ICMPv6 checksum.
+        echo ${ra_packet} | cut -c 117- > expout
+        AT_CHECK([head -1 packets | cut -c 117-], [0], [expout])
+
+        rm -f packets
+        as $i reset_pcap_file $intname $i/$interface
+    done
+
+    rm -f expected
+}
+
+# check that RAs are sent
+ra_test vif1
+
+# check that RAs are recived on br-phys
+ra_test br-phys
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ACL reject rule test])
 AT_KEYWORDS([acl-reject])

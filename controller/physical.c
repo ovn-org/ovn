@@ -1844,7 +1844,8 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             put_drop(debug, OFTABLE_CHECK_LOOPBACK, ofpacts_p);
             match_outport_dp_and_port_keys(&match, dp_key, port_key);
             match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
-                                 MLF_LOCAL_ONLY, MLF_LOCAL_ONLY);
+                                 MLF_LOCAL_ONLY,
+                                 MLF_LOCAL_ONLY | MLF_OVERRIDE_LOCAL_ONLY);
             ofctrl_add_flow(flow_table, OFTABLE_CHECK_LOOPBACK, 160,
                             binding->header_.uuid.parts[0], &match,
                             ofpacts_p, &binding->header_.uuid);
