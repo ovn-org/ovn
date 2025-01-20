@@ -4108,6 +4108,7 @@ struct ipv6_ra_state {
     struct ipv6_ra_config *config;
     int64_t port_key;
     int64_t metadata;
+    bool preserved;
     bool delete_me;
 };
 
@@ -4433,6 +4434,9 @@ ipv6_ra_send(struct rconn *swconn, struct ipv6_ra_state *ra)
     put_load(dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
     put_load(port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
     put_load(1, MFF_LOG_FLAGS, MLF_LOCAL_ONLY_BIT, 1, &ofpacts);
+    if (ra->preserved) {
+        put_load(1, MFF_LOG_FLAGS, MLF_OVERRIDE_LOCAL_ONLY_BIT, 1, &ofpacts);
+    }
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
     resubmit->table_id = OFTABLE_LOG_INGRESS_PIPELINE;
@@ -4543,8 +4547,11 @@ prepare_ipv6_ras(const struct shash *local_active_ports_ras,
          * router port is connected to. The RA is injected
          * into that logical switch port.
          */
-        ra->port_key = peer->tunnel_key;
-        ra->metadata = peer->datapath->tunnel_key;
+        ra->port_key  = peer->tunnel_key;
+        ra->metadata  = peer->datapath->tunnel_key;
+        ra->preserved = (!strcmp(pb->type,"l2gateway") ||
+                        !strcmp(pb->type,"l3gateway") ||
+                        !strcmp(pb->type,"chassisredirect"));
         ra->delete_me = false;
 
         /* pinctrl_handler thread will send the IPv6 RAs. */
