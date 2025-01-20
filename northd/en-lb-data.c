@@ -181,6 +181,7 @@ lb_data_load_balancer_handler(struct engine_node *node, void *data)
             struct sset old_ips_v6 = SSET_INITIALIZER(&old_ips_v6);
             sset_swap(&lb->ips_v4, &old_ips_v4);
             sset_swap(&lb->ips_v6, &old_ips_v6);
+            enum lb_neighbor_responder_mode neigh_mode = lb->neigh_mode;
             bool routable = lb->routable;
             ovn_northd_lb_reinit(lb, tracked_lb);
             health_checks |= lb->health_checks;
@@ -213,6 +214,10 @@ lb_data_load_balancer_handler(struct engine_node *node, void *data)
             if (routable != lb->routable) {
                 /* If routable is toggled trigger a full recompute.
                  */
+                return false;
+            }
+            if (neigh_mode != lb->neigh_mode) {
+                /* If neigh_mode is updated trigger a full recompute. */
                 return false;
             }
         }
