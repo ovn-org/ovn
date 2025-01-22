@@ -5371,11 +5371,7 @@ encode_COMMIT_LB_AFF(const struct ovnact_commit_lb_aff *lb_aff,
         imm_backend_ip = (union mf_value) {
             .ipv6 =  lb_aff->backend,
         };
-        if (ep->is_switch) {
-            ol_spec->dst.field = mf_from_id(MFF_LOG_LB_AFF_MATCH_LS_IP6_ADDR);
-        } else {
-            ol_spec->dst.field = mf_from_id(MFF_LOG_LB_AFF_MATCH_LR_IP6_ADDR);
-        }
+        ol_spec->dst.field = mf_from_id(MFF_LOG_LB_AFF_MATCH_IP6_ADDR);
     } else {
         ovs_be32 ip4 = in6_addr_get_mapped_ipv4(&lb_aff->backend);
         imm_backend_ip = (union mf_value) {

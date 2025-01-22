@@ -125,20 +125,24 @@ static bool vxlan_mode;
 #define REGBIT_FROM_ROUTER_PORT   "reg0[18]"
 #define REGBIT_IP_FRAG            "reg0[19]"
 
-#define REG_ORIG_DIP_IPV4         "reg1"
-#define REG_ORIG_DIP_IPV6         "xxreg1"
-#define REG_ORIG_TP_DPORT         "reg2[0..15]"
-
-/* Register used to store backend ipv6 address
- * for load balancer affinity. */
-#define REG_LB_L2_AFF_BACKEND_IP6 "xxreg0"
-
 /* Register definitions for switches and routers. */
 
-/* Register used to store backend ipv4 address
- * for load balancer affinity. */
-#define REG_LB_AFF_BACKEND_IP4  "reg4"
-#define REG_LB_AFF_MATCH_PORT   "reg8[0..15]"
+/* Registers used for LB Affinity.
+ * These registers contain different values depending on the context.
+ *
+ * On new sessions, these registers contain:
+ * - REG_LB_IPV4: The load balancer IPv4 VIP.
+ * - REG_LB_IPV6: The load balancer IPv6 VIP.
+ * - REG_LB_PORT: The load balancer VIP port.
+ *
+ * On established sessions, these registers contain:
+ * - REG_LB_IPV4: The selected load balancer backend IPv4 address.
+ * - REG_LB_IPV6: The selected load balancer backend IPv6 address.
+ * - REG_LB_PORT: The selected load balancer backend port.
+ * */
+#define REG_LB_IPV4 "reg4"
+#define REG_LB_IPV6 "xxreg1"
+#define REG_LB_PORT "reg2[0..15]"
 
 /* Registers for ACL evaluation */
 #define REGBIT_ACL_VERDICT_ALLOW "reg8[16]"
@@ -192,12 +196,6 @@ BUILD_ASSERT_DECL(ACL_OBS_STAGE_MAX < (1 << 2));
 #define REG_DHCP_RELAY_DIP_IPV4 "reg2"
 #define REG_ROUTE_TABLE_ID "reg7"
 
-/* Register used to store backend ipv6 address
- * for load balancer affinity. */
-#define REG_LB_L3_AFF_BACKEND_IP6  "xxreg1"
-
-#define REG_ORIG_TP_DPORT_ROUTER   "reg9[16..31]"
-
 /* Registers used for pasing observability information for switches:
  * domain and point ID. */
 #define REG_OBS_POINT_ID_NEW "reg3"
@@ -227,25 +225,27 @@ BUILD_ASSERT_DECL(ACL_OBS_STAGE_MAX < (1 << 2));
  * |    |     REGBIT_{HAIRPIN/HAIRPIN_REPLY}           |   |                                   |
  * |    | REGBIT_ACL_HINT_{ALLOW_NEW/ALLOW/DROP/BLOCK} |   |                                   |
  * |    |     REGBIT_ACL_{LABEL/STATELESS}             | X |                                   |
- * +----+----------------------------------------------+ X |       LB_L2_AFF_BACKEND_IP6       |
- * | R1 |         ORIG_DIP_IPV4 (>= IN_PRE_STATEFUL)   | R |        (>= IN_LB_AFF_CHECK &&     |
- * +----+----------------------------------------------+ E |         <= IN_LB_AFF_LEARN)       |
- * | R2 |         ORIG_TP_DPORT (>= IN_PRE_STATEFUL)   | G |                                   |
- * +----+----------------------------------------------+ 0 |                                   |
+ * +----+----------------------------------------------+ X |                                   |
+ * | R1 |                   UNUSED                     | R |                                   |
+ * +----+----------------------------------------------+ E |                                   |
+ * | R2 |                 REG_LB_PORT                  | G |                                   |
+ * |    |  (>= IN_PRE_STATEFUL && <= IN_LB_AFF_LEARN)  | 0 |                                   |
+ * +----+----------------------------------------------+   |                                   |
  * | R3 |             OBS_POINT_ID_NEW                 |   |                                   |
  * |    |       (>= ACL_EVAL* && <= ACL_ACTION*)       |   |                                   |
  * +----+----------------------------------------------+---+-----------------------------------+
- * | R4 |            REG_LB_AFF_BACKEND_IP4            |   |                                   |
- * +----+----------------------------------------------+ X |                                   |
- * | R5 |                   UNUSED                     | X | ORIG_DIP_IPV6(>= IN_PRE_STATEFUL) |
- * +----+----------------------------------------------+ R |                                   |
- * | R6 |                   UNUSED                     | E |                                   |
- * +----+----------------------------------------------+ G |                                   |
- * | R7 |                   UNUSED                     | 1 |                                   |
+ * | R4 |                 REG_LB_IPV4                  |   |                                   |
+ * | R4 |    (>= IN_PRE_STATEFUL && <= IN_HAIRPIN)     | X |                                   |
+ * +----+----------------------------------------------+ X |           REG_LB_IPV6             |
+ * | R5 |                   UNUSED                     | R |      (>= IN_PRE_STATEFUL &&       |
+ * +----+----------------------------------------------+ E |       <= IN_HAIRPIN)              |
+ * | R6 |                   UNUSED                     | G |                                   |
+ * +----+----------------------------------------------+ 1 |                                   |
+ * | R7 |                   UNUSED                     |   |                                   |
  * +----+----------------------------------------------+---+-----------------------------------+
- * | R8 |              LB_AFF_MATCH_PORT               | X |      REG_OBS_COLLECTOR_ID_NEW     |
- * |    |  (>= IN_LB_AFF_CHECK && <= IN_LB_AFF_LEARN)  | R |      REG_OBS_COLLECTOR_ID_EST     |
- * |    |                                              | E |  (>= ACL_EVAL* && <= ACL_ACTION*) |
+ * | R8 |           REG_OBS_COLLECTOR_ID_NEW           | X |                                   |
+ * |    |           REG_OBS_COLLECTOR_ID_EST           | R |                                   |
+ * |    |       (>= ACL_EVAL* && <= ACL_ACTION*)       | E |                                   |
  * +----+----------------------------------------------+ G +-----------------------------------+
  * | R9 |              OBS_POINT_ID_EST                | 4 |                                   |
  * |    |       (>= ACL_EVAL* && <= ACL_ACTION*)       |   |                                   |
@@ -256,23 +256,26 @@ BUILD_ASSERT_DECL(ACL_OBS_STAGE_MAX < (1 << 2));
  * | R0  | REGBIT_ND_RA_OPTS_RESULT  |   |                 |   |                                    |
  * |     |   (= IN_ND_RA_OPTIONS)    | X |                 |   |                                    |
  * |     |      NEXT_HOP_IPV4        | R |                 |   |                                    |
- * |     |      (>= IP_INPUT)        | E | INPORT_ETH_ADDR | X |                                    |
+ * |     |   (>= IN_IP_ROUTING)      | E | INPORT_ETH_ADDR | X |                                    |
  * +-----+---------------------------+ G |   (< IP_INPUT)  | X |                                    |
  * | R1  |        UNUSED             | 0 |                 | R |                                    |
- * |     |                           |   |                 | E |     NEXT_HOP_IPV6 (>= DEFRAG )     |
+ * |     |                           |   |                 | E |  NEXT_HOP_IPV6 (>= IN_IP_ROUTING)  |
  * +-----+---------------------------+---+-----------------+ G |                                    |
- * | R2     REG_DHCP_RELAY_DIP_IPV4  | X |                 | 0 |                                    |
- * |     |                           | R |                 |   |                                    |
- * +-----+---------------------------+ E |     UNUSED      |   |                                    |
- * | R3  |        UNUSED             | G |                 |   |                                    |
- * |     |                           | 1 |                 |   |                                    |
+ * | R2  |  REG_DHCP_RELAY_DIP_IPV4  |   |                 | 0 |                                    |
+ * |     |       REG_LB_PORT         | X |                 | 0 |                                    |
+ * |     | (>= IN_LB_AFF_CHECK       | R |                 |   |                                    |
+ * |     |  <= IN_LB_AFF_LEARN)      | E |                 |   |                                    |
+ * +-----+---------------------------+ G |     UNUSED      |   |                                    |
+ * | R3  |        UNUSED             | 1 |                 |   |                                    |
+ * |     |                           |   |                 |   |                                    |
  * +-----+---------------------------+---+-----------------+---+------------------------------------+
- * | R4  |  REG_LB_AFF_BACKEND_IP4   | X |                 |   |                                    |
- * |     |                           | R |                 |   |                                    |
+ * | R4  |        REG_LB_IPV4        | X |                 |   |                                    |
+ * |     |  (>= IN_LB_AFF_CHECK &&   | R |                 |   |                                    |
+ * |     |   <= IN_LB_AFF_LEARN)     | R |                 |   |                                    |
  * +-----+---------------------------+ E |     UNUSED      | X |                                    |
- * | R5  |  SRC_IPV4 for ARP-REQ     | G |                 | X |                                    |
- * |     |      (>= IP_INPUT)        | 2 |                 | R |        LB_L3_AFF_BACKEND_IP6       |
- * +-----+---------------------------+---+-----------------+ E |           (<= IN_DNAT)             |
+ * | R5  |  SRC_IPV4 for ARP-REQ     | G |                 | X |            REG_LB_IPV6             |
+ * |     |      (>= IP_INPUT)        | 2 |                 | R |        (>= IN_LB_AFF_CHECK &&      |
+ * +-----+---------------------------+---+-----------------+ E |         <= IN_LB_AFF_LEARN)        |
  * | R6  |        UNUSED             | X |                 | G |                                    |
  * |     |                           | R |                 | 1 |                                    |
  * +-----+---------------------------+ E |     UNUSED      |   |                                    |
@@ -282,7 +285,7 @@ BUILD_ASSERT_DECL(ACL_OBS_STAGE_MAX < (1 << 2));
  * +-----+---------------------------+---+-----------------+---+------------------------------------+
  * | R8  |     ECMP_GROUP_ID         |   |                 |
  * |     |     ECMP_MEMBER_ID        |   |                 |
- * |     |    LB_AFF_MATCH_PORT      | X |                 |
+ * |     |                           | X |                 |
  * +-----+---------------------------+ R |                 |
  * |     | REGBIT_{                  | E |                 |
  * |     |   EGRESS_LOOPBACK/        | G |     UNUSED      |
@@ -292,9 +295,6 @@ BUILD_ASSERT_DECL(ACL_OBS_STAGE_MAX < (1 << 2));
  * |     |REGBIT_DHCP_RELAY_REQ_CHK/ |   |                 |
  * |     |REGBIT_DHCP_RELAY_RESP_CHK |   |                 |
  * |     |REGBIT_NEXTHOP_IS_IPV4}    |   |                 |
- * |     |                           |   |                 |
- * |     | REG_ORIG_TP_DPORT_ROUTER  |   |                 |
- * |     |                           |   |                 |
  * +-----+---------------------------+---+-----------------+
  *
  */
@@ -3620,6 +3620,16 @@ build_lb_vip_actions(const struct ovn_northd_lb *lb,
 {
     bool reject = !lb_vip->n_backends && lb_vip->empty_backend_rej;
     bool drop = !lb_vip->n_backends && !lb_vip->empty_backend_rej;
+
+    if (ls_dp || lb->affinity_timeout) {
+        const char *ip_reg =
+            lb_vip->address_family == AF_INET ? REG_LB_IPV4 : REG_LB_IPV6;
+        ds_put_format(action, "%s = %s; ", ip_reg, lb_vip->vip_str);
+
+        if (lb_vip->port_str) {
+            ds_put_format(action, REG_LB_PORT" = %s; ", lb_vip->port_str);
+        }
+    }
 
     if (lb_vip_nb->lb_health_check) {
         ds_put_cstr(action, "ct_lb_mark(backends=");
@@ -7867,29 +7877,19 @@ build_lb_rules_pre_stateful(struct lflow_table *lflows,
          */
         if (lb->vips[i].address_family == AF_INET) {
             ip_match = "ip4";
-            ds_put_format(action, REG_ORIG_DIP_IPV4 " = %s; ",
+            ds_put_format(action, REG_LB_IPV4 " = %s; ",
                           lb_vip->vip_str);
         } else {
             ip_match = "ip6";
-            ds_put_format(action, REG_ORIG_DIP_IPV6 " = %s; ",
+            ds_put_format(action, REG_LB_IPV6 " = %s; ",
                           lb_vip->vip_str);
         }
 
-        const char *proto = NULL;
         if (lb_vip->port_str) {
-            proto = "tcp";
-            if (lb->nlb->protocol) {
-                if (!strcmp(lb->nlb->protocol, "udp")) {
-                    proto = "udp";
-                } else if (!strcmp(lb->nlb->protocol, "sctp")) {
-                    proto = "sctp";
-                }
-            }
-
             /* Store the original destination port to be used when generating
              * hairpin flows.
              */
-            ds_put_format(action, REG_ORIG_TP_DPORT " = %s; ",
+            ds_put_format(action, REG_LB_PORT " = %s; ",
                           lb_vip->port_str);
         }
         ds_put_cstr(action, "ct_lb_mark;");
@@ -7897,7 +7897,8 @@ build_lb_rules_pre_stateful(struct lflow_table *lflows,
         ds_put_format(match, REGBIT_CONNTRACK_NAT" == 1 && %s.dst == %s",
                       ip_match, lb_vip->vip_str);
         if (lb_vip->port_str) {
-            ds_put_format(match, " && %s.dst == %s", proto, lb_vip->port_str);
+            ds_put_format(match, " && %s.dst == %s", lb->proto,
+                          lb_vip->port_str);
         }
 
         ovn_lflow_add_with_dp_group(
@@ -7913,34 +7914,30 @@ build_lb_rules_pre_stateful(struct lflow_table *lflows,
  * - load balancing affinity check:
  *   table=lr_in_lb_aff_check, priority=100
  *      match=(new_lb_match)
- *      action=(REG_NEXT_HOP_IPV4 = ip4.dst;
- *              REG_ORIG_TP_DPORT_ROUTER = tcp.dst;
- *              REGBIT_KNOWN_LB_SESSION = chk_lb_aff(); next;)
+ *      action=(REGBIT_KNOWN_LB_SESSION = chk_lb_aff(); next;)
  *
  * - load balancing:
  *   table=lr_in_dnat, priority=150
  *      match=(REGBIT_KNOWN_LB_SESSION == 1 && ct.new && ip4.dst == V
- *             && REG_LB_AFF_BACKEND_IP4 == B1 && REG_LB_AFF_MATCH_PORT == BP1)
- *      action=(REG_NEXT_HOP_IPV4 = V; lb_action;
- *              ct_lb_mark(backends=B1:BP1; ct_flag);)
+ *             && REG_LB_IPV4 == B1 && REG_LB_PORT == BP1)
+ *      action=(lb_action; ct_lb_mark(backends=B1:BP1; ct_flag);)
  *   table=lr_in_dnat, priority=150
  *      match=(REGBIT_KNOWN_LB_SESSION == 1 && ct.new && ip4.dst == V
- *             && REG_LB_AFF_BACKEND_IP4 == B2 && REG_LB_AFF_MATCH_PORT == BP2)
- *      action=(REG_NEXT_HOP_IPV4 = V; lb_action;
- *              ct_lb_mark(backends=B2:BP2; ct_flag);)
+ *             && REG_LB_IPV4 == B2 && REG_LB_PORT == BP2)
+ *      action=(lb_action; ct_lb_mark(backends=B2:BP2; ct_flag);)
  *
  * - load balancing affinity learn:
  *   table=lr_in_lb_aff_learn, priority=100
  *      match=(REGBIT_KNOWN_LB_SESSION == 0
  *             && ct.new && ip4
- *             && REG_NEXT_HOP_IPV4 == V && REG_ORIG_TP_DPORT_ROUTER = VP
+ *             && REG_LB_IPV4 == V && REG_LB_PORT = VP
  *             && ip4.dst == B1 && tcp.dst == BP1)
  *      action=(commit_lb_aff(vip = "V:VP", backend = "B1:BP1",
  *                            proto = tcp, timeout = T));
  *   table=lr_in_lb_aff_learn, priority=100
  *      match=(REGBIT_KNOWN_LB_SESSION == 0
  *             && ct.new && ip4
- *             && REG_NEXT_HOP_IPV4 == V && REG_ORIG_TP_DPORT_ROUTER = VP
+ *             && REG_LB_IPV4 == V && REG_LB_PORT = VP
  *             && ip4.dst == B2 && tcp.dst == BP2)
  *      action=(commit_lb_aff(vip = "V:VP", backend = "B2:BP2",
  *                            proto = tcp, timeout = T));
@@ -7963,14 +7960,11 @@ build_lb_affinity_lr_flows(struct lflow_table *lflows,
     struct ds aff_action_learn = DS_EMPTY_INITIALIZER;
     struct ds aff_match = DS_EMPTY_INITIALIZER;
     struct ds aff_match_learn = DS_EMPTY_INITIALIZER;
-    struct ds aff_check_action = DS_EMPTY_INITIALIZER;
 
     bool ipv6 = !IN6_IS_ADDR_V4MAPPED(&lb_vip->vip);
     const char *ip_match = ipv6 ? "ip6" : "ip4";
 
-    const char *reg_vip = ipv6 ? REG_NEXT_HOP_IPV6 : REG_NEXT_HOP_IPV4;
-    const char *reg_backend =
-        ipv6 ? REG_LB_L3_AFF_BACKEND_IP6 : REG_LB_AFF_BACKEND_IP4;
+    const char *reg_ip = ipv6 ? REG_LB_IPV6 : REG_LB_IPV4;
     const char *ct_flag = NULL;
     if (lb_action && !strcmp(lb_action, "flags.skip_snat_for_lb = 1; ")) {
         ct_flag = "; skip_snat";
@@ -7980,22 +7974,12 @@ build_lb_affinity_lr_flows(struct lflow_table *lflows,
     }
 
     /* Create affinity check flow. */
-    ds_put_format(&aff_check_action, "%s = %s.dst; ", reg_vip, ip_match);
-
-    if (lb_vip->port_str) {
-        ds_put_format(&aff_check_action, REG_ORIG_TP_DPORT_ROUTER" = %s.dst; ",
-                      lb->proto);
-    }
-    ds_put_cstr(&aff_check_action, REGBIT_KNOWN_LB_SESSION
-                " = chk_lb_aff(); next;");
-
     ovn_lflow_add_with_dp_group(
         lflows, dp_bitmap, ods_size(lr_datapaths), S_ROUTER_IN_LB_AFF_CHECK,
-        100, new_lb_match, ds_cstr(&aff_check_action), &lb->nlb->header_,
-        lflow_ref);
+        100, new_lb_match, REGBIT_KNOWN_LB_SESSION" = chk_lb_aff(); next;",
+        &lb->nlb->header_, lflow_ref);
 
     /* Prepare common part of affinity LB and affinity learn action. */
-    ds_put_format(&aff_action, "%s = %s; ", reg_vip, lb_vip->vip_str);
     ds_put_cstr(&aff_action_learn, "commit_lb_aff(vip = \"");
 
     if (lb_vip->port_str) {
@@ -8015,19 +7999,19 @@ build_lb_affinity_lr_flows(struct lflow_table *lflows,
     if (lb_vip->port_str) {
         ds_put_format(&aff_match_learn, REGBIT_KNOWN_LB_SESSION" == 0 && "
                       "ct.new && %s && %s == %s && "
-                      REG_ORIG_TP_DPORT_ROUTER" == %s && "
-                      "%s.dst == ", ip_match, reg_vip, lb_vip->vip_str,
+                      REG_LB_PORT " == %s && "
+                      "%s.dst == ", ip_match, reg_ip, lb_vip->vip_str,
                       lb_vip->port_str, ip_match);
     } else {
         ds_put_format(&aff_match_learn, REGBIT_KNOWN_LB_SESSION" == 0 && "
                       "ct.new && %s && %s == %s && %s.dst == ", ip_match,
-                      reg_vip, lb_vip->vip_str, ip_match);
+                      reg_ip, lb_vip->vip_str, ip_match);
     }
 
     /* Prepare common part of affinity match. */
     ds_put_format(&aff_match, REGBIT_KNOWN_LB_SESSION" == 1 && "
                   "ct.new && %s.dst == %s && %s == ", ip_match,
-                  lb_vip->vip_str, reg_backend);
+                  lb_vip->vip_str, reg_ip);
 
     /* Store the common part length. */
     size_t aff_action_len = aff_action.length;
@@ -8050,7 +8034,7 @@ build_lb_affinity_lr_flows(struct lflow_table *lflows,
 
             ds_put_format(&aff_match_learn, " && %s.dst == %d",
                           lb->proto, backend->port);
-            ds_put_format(&aff_match, " && "REG_LB_AFF_MATCH_PORT" == %d",
+            ds_put_format(&aff_match, " && "REG_LB_PORT" == %d",
                           backend->port);
         } else {
             ds_put_cstr(&aff_action, backend->ip_str);
@@ -8094,7 +8078,6 @@ build_lb_affinity_lr_flows(struct lflow_table *lflows,
     ds_destroy(&aff_action_learn);
     ds_destroy(&aff_match);
     ds_destroy(&aff_match_learn);
-    ds_destroy(&aff_check_action);
 }
 
 /* Builds the logical switch flows related to load balancer affinity.
@@ -8102,35 +8085,33 @@ build_lb_affinity_lr_flows(struct lflow_table *lflows,
  * affinity timeout set to T, it generates the following logical flows:
  * - load balancing affinity check:
  *   table=ls_in_lb_aff_check, priority=100
- *      match=(ct.new && ip4
- *             && REG_ORIG_DIP_IPV4 == V && REG_ORIG_TP_DPORT == VP)
+ *      match=(ct.new && ip4 && ip4.dst == V && PROTO && PROTO.dst == VP)
  *      action=(REGBIT_KNOWN_LB_SESSION = chk_lb_aff(); next;)
  *
  * - load balancing:
  *   table=ls_in_lb, priority=150
  *      match=(REGBIT_KNOWN_LB_SESSION == 1 && ct.new && ip4.dst == V
- *             && REG_LB_AFF_BACKEND_IP4 == B1 && REG_LB_AFF_MATCH_PORT == BP1)
- *      action=(REG_ORIG_DIP_IPV4 = V; REG_ORIG_TP_DPORT = VP;
+ *             && PROTO && PROTO.dst == VP)
+ *      action=(REG_LB_IPV4 = V; REG_LB_PORT = VP;
  *              ct_lb_mark(backends=B1:BP1);)
  *   table=ls_in_lb, priority=150
  *      match=(REGBIT_KNOWN_LB_SESSION == 1 && ct.new && ip4.dst == V
- *             && REG_LB_AFF_BACKEND_IP4 == B2 && REG_LB_AFF_MATCH_PORT == BP2)
- *      action=(REG_ORIG_DIP_IPV4 = V;
- *              REG_ORIG_TP_DPORT = VP;
+ *             && PROTO && PROTO.dst == VP)
+ *      action=(REG_LB_IPV4 = V; REG_LB_PORT = VP;
  *              ct_lb_mark(backends=B1:BP2);)
  *
  * - load balancing affinity learn:
  *   table=ls_in_lb_aff_learn, priority=100
  *      match=(REGBIT_KNOWN_LB_SESSION == 0
  *             && ct.new && ip4
- *             && REG_ORIG_DIP_IPV4 == V && REG_ORIG_TP_DPORT == VP
+ *             && REG_LB_IPV4 == V && REG_LB_PORT == VP
  *             && ip4.dst == B1 && tcp.dst == BP1)
  *      action=(commit_lb_aff(vip = "V:VP", backend = "B1:BP1",
  *                            proto = tcp, timeout = T));
  *   table=ls_in_lb_aff_learn, priority=100
  *      match=(REGBIT_KNOWN_LB_SESSION == 0
  *             && ct.new && ip4
- *             && REG_ORIG_DIP_IPV4 == V && REG_ORIG_TP_DPORT == VP
+ *             && REG_LB_IPV4 == V && REG_LB_PORT == VP
  *             && ip4.dst == B2 && tcp.dst == BP2)
  *      action=(commit_lb_aff(vip = "V:VP", backend = "B2:BP2",
  *                            proto = tcp, timeout = T));
@@ -8149,19 +8130,16 @@ build_lb_affinity_ls_flows(struct lflow_table *lflows,
 
     const struct ovn_northd_lb *lb = lb_dps->lb;
     struct ds new_lb_match = DS_EMPTY_INITIALIZER;
-    if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
-        ds_put_format(&new_lb_match,
-                      "ct.new && ip4 && "REG_ORIG_DIP_IPV4 " == %s",
-                      lb_vip->vip_str);
-    } else {
-        ds_put_format(&new_lb_match,
-                      "ct.new && ip6 && "REG_ORIG_DIP_IPV6 " == %s",
-                      lb_vip->vip_str);
-    }
+    bool ipv6 = lb_vip->address_family == AF_INET6;
+    const char *ip_match = ipv6 ? "ip6" : "ip4";
+    const char *reg_ip = ipv6 ? REG_LB_IPV6 : REG_LB_IPV4;
+
+    ds_put_format(&new_lb_match, "ct.new && %s && %s.dst == %s",
+                  ip_match, ip_match, lb_vip->vip_str);
 
     if (lb_vip->port_str) {
-        ds_put_format(&new_lb_match, " && "REG_ORIG_TP_DPORT " == %s",
-                      lb_vip->port_str);
+        ds_put_format(&new_lb_match, " && %s && %s.dst == %s",
+                      lb->proto, lb->proto, lb_vip->port_str);
     }
 
     static char *aff_check = REGBIT_KNOWN_LB_SESSION" = chk_lb_aff(); next;";
@@ -8177,19 +8155,12 @@ build_lb_affinity_ls_flows(struct lflow_table *lflows,
     struct ds aff_match = DS_EMPTY_INITIALIZER;
     struct ds aff_match_learn = DS_EMPTY_INITIALIZER;
 
-    bool ipv6 = !IN6_IS_ADDR_V4MAPPED(&lb_vip->vip);
-    const char *ip_match = ipv6 ? "ip6" : "ip4";
-
-    const char *reg_vip = ipv6 ? REG_ORIG_DIP_IPV6 : REG_ORIG_DIP_IPV4;
-    const char *reg_backend =
-        ipv6 ? REG_LB_L2_AFF_BACKEND_IP6 : REG_LB_AFF_BACKEND_IP4;
-
     /* Prepare common part of affinity LB and affinity learn action. */
-    ds_put_format(&aff_action, "%s = %s; ", reg_vip, lb_vip->vip_str);
+    ds_put_format(&aff_action, "%s = %s; ", reg_ip, lb_vip->vip_str);
     ds_put_cstr(&aff_action_learn, "commit_lb_aff(vip = \"");
 
     if (lb_vip->port_str) {
-        ds_put_format(&aff_action, REG_ORIG_TP_DPORT" = %s; ",
+        ds_put_format(&aff_action, REG_LB_PORT" = %s; ",
                       lb_vip->port_str);
         ds_put_format(&aff_action_learn, ipv6 ? "[%s]:%s" : "%s:%s",
                       lb_vip->vip_str, lb_vip->port_str);
@@ -8204,19 +8175,19 @@ build_lb_affinity_ls_flows(struct lflow_table *lflows,
     if (lb_vip->port_str) {
         ds_put_format(&aff_match_learn, REGBIT_KNOWN_LB_SESSION" == 0 && "
                       "ct.new && %s && %s == %s && "
-                      REG_ORIG_TP_DPORT" == %s && %s.dst == ",
-                      ip_match, reg_vip, lb_vip->vip_str,
+                      REG_LB_PORT" == %s && %s.dst == ",
+                      ip_match, reg_ip, lb_vip->vip_str,
                       lb_vip->port_str, ip_match);
     } else {
         ds_put_format(&aff_match_learn, REGBIT_KNOWN_LB_SESSION" == 0 && "
                       "ct.new && %s && %s == %s && %s.dst == ",
-                      ip_match, reg_vip, lb_vip->vip_str, ip_match);
+                      ip_match, reg_ip, lb_vip->vip_str, ip_match);
     }
 
     /* Prepare common part of affinity match. */
     ds_put_format(&aff_match, REGBIT_KNOWN_LB_SESSION" == 1 && "
                   "ct.new && %s.dst == %s && %s == ", ip_match,
-                  lb_vip->vip_str, reg_backend);
+                  lb_vip->vip_str, reg_ip);
 
     /* Store the common part length. */
     size_t aff_action_len = aff_action.length;
@@ -8238,7 +8209,7 @@ build_lb_affinity_ls_flows(struct lflow_table *lflows,
 
             ds_put_format(&aff_match_learn, " && %s.dst == %d",
                           lb->proto, backend->port);
-            ds_put_format(&aff_match, " && "REG_LB_AFF_MATCH_PORT" == %d",
+            ds_put_format(&aff_match, " && "REG_LB_PORT" == %d",
                           backend->port);
         } else {
             ds_put_cstr(&aff_action, backend->ip_str);
@@ -8315,33 +8286,10 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
         struct ovn_northd_lb_vip *lb_vip_nb = &lb->vips_nb[i];
-        const char *ip_match = NULL;
+        const char *ip_match =
+            lb_vip->address_family == AF_INET ? "ip4" : "ip6";
 
         ds_clear(action);
-
-        /* Store the original destination IP to be used when generating
-         * hairpin flows.
-         * If the packet is fragmented, then the flow which saves the
-         * original destination IP (and port) in the "ls_in_pre_stateful"
-         * stage will not be hit.
-         */
-        if (lb_vip->address_family == AF_INET) {
-            ip_match = "ip4";
-            ds_put_format(action, REG_ORIG_DIP_IPV4 " = %s; ",
-                          lb_vip->vip_str);
-        } else {
-            ip_match = "ip6";
-            ds_put_format(action, REG_ORIG_DIP_IPV6 " = %s; ",
-                          lb_vip->vip_str);
-        }
-
-        if (lb_vip->port_str) {
-            /* Store the original destination port to be used when generating
-             * hairpin flows.
-             */
-            ds_put_format(action, REG_ORIG_TP_DPORT " = %s; ",
-                          lb_vip->port_str);
-        }
         ds_clear(match);
 
         /* New connections in Ingress table. */
@@ -8489,13 +8437,13 @@ build_lb_hairpin(const struct ls_stateful_record *ls_stateful_rec,
          * */
         ovn_lflow_add(lflows, od, S_SWITCH_IN_LB, 110,
                       "ct.trk && !ct.rpl && "REGBIT_IP_FRAG" == 1 && ip4",
-                      REG_ORIG_DIP_IPV4 " = ct_nw_dst(); "
-                      REG_ORIG_TP_DPORT " = ct_tp_dst(); next;",
+                      REG_LB_IPV4 " = ct_nw_dst(); "
+                      REG_LB_PORT " = ct_tp_dst(); next;",
                       lflow_ref);
         ovn_lflow_add(lflows, od, S_SWITCH_IN_LB, 110,
                       "ct.trk && !ct.rpl && "REGBIT_IP_FRAG" == 1 && ip6",
-                      REG_ORIG_DIP_IPV6 " = ct_ip6_dst(); "
-                      REG_ORIG_TP_DPORT " = ct_tp_dst(); next;",
+                      REG_LB_IPV6 " = ct_ip6_dst(); "
+                      REG_LB_PORT " = ct_tp_dst(); next;",
                       lflow_ref);
 
         /* Set REGBIT_HAIRPIN in the original direction and
