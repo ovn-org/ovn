@@ -54,6 +54,7 @@
 #include "vswitch-idl.h"
 #include "ovn-sb-idl.h"
 #include "ct-zone.h"
+#include "ecmp-next-hop-monitor.h"
 
 VLOG_DEFINE_THIS_MODULE(ofctrl);
 
@@ -425,6 +426,7 @@ ofctrl_init(struct ovn_extend_table *group_table,
     tx_counter = rconn_packet_counter_create();
     hmap_init(&installed_lflows);
     hmap_init(&installed_pflows);
+    ecmp_nexthop_init();
     ovs_list_init(&flow_updates);
     ovn_init_symtab(&symtab);
     groups = group_table;
@@ -877,6 +879,7 @@ ofctrl_destroy(void)
     expr_symtab_destroy(&symtab);
     shash_destroy(&symtab);
     ofctrl_meter_bands_destroy();
+    ecmp_nexthop_destroy();
 }
 
 uint64_t
@@ -2662,8 +2665,11 @@ void
 ofctrl_put(struct ovn_desired_flow_table *lflow_table,
            struct ovn_desired_flow_table *pflow_table,
            struct shash *pending_ct_zones,
+           struct shash *current_ct_zones,
            struct hmap *pending_lb_tuples,
+           const struct hmap *local_datapaths,
            struct ovsdb_idl_index *sbrec_meter_by_name,
+           const struct sbrec_ecmp_nexthop_table *enh_table,
            uint64_t req_cfg,
            bool lflows_changed,
            bool pflows_changed)
@@ -2691,18 +2697,29 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
         }
     }
 
+    /* OpenFlow messages to send to the switch to bring it up-to-date. */
+    struct ovs_list msgs = OVS_LIST_INITIALIZER(&msgs);
+
+    if (local_datapaths) {
+        need_put |= ecmp_nexthop_monitor_run(enh_table, local_datapaths,
+                                             current_ct_zones, swconn, &msgs);
+    }
+
     if (!need_put) {
+        ovs_assert(ovs_list_is_empty(&msgs));
         VLOG_DBG("ofctrl_put not needed");
         return;
     }
     if (!ofctrl_can_put()) {
         VLOG_DBG("ofctrl_put can't be performed");
+
+        struct ofpbuf *msg;
+        LIST_FOR_EACH_POP (msg, list_node, &msgs) {
+            ofpbuf_delete(msg);
+        }
         skipped_last_time = true;
         return;
     }
-
-    /* OpenFlow messages to send to the switch to bring it up-to-date. */
-    struct ovs_list msgs = OVS_LIST_INITIALIZER(&msgs);
 
     /* Iterate through ct zones that need to be flushed. */
     struct shash_node *iter;

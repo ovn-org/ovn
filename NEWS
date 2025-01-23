@@ -31,6 +31,8 @@ Post v24.09.0
    - Add "arp-nd-max-timeout-sec" config option to vswitchd external-ids to
      configure the interval (in seconds) between ovn-controller originated
      ARP/ND packets used for tracking ECMP next hop MAC addresses.
+   - Auto flush ECMP symmetric reply connection states when an ECMP route is
+     removed by the CMS.
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------

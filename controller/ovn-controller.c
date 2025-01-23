@@ -5839,8 +5839,13 @@ main(int argc, char *argv[])
                         ofctrl_put(&lflow_output_data->flow_table,
                                    &pflow_output_data->flow_table,
                                    &ct_zones_data->ctx.pending,
+                                   &ct_zones_data->ctx.current,
                                    &lb_data->removed_tuples,
+                                   runtime_data ?
+                                        &runtime_data->local_datapaths : NULL,
                                    sbrec_meter_by_name,
+                                   sbrec_ecmp_nexthop_table_get(
+                                        ovnsb_idl_loop.idl),
                                    ofctrl_seqno_get_req_cfg(),
                                    engine_node_changed(&en_lflow_output),
                                    engine_node_changed(&en_pflow_output));

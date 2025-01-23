@@ -31,6 +31,7 @@ struct ofpbuf;
 struct ovsrec_bridge;
 struct ovsrec_open_vswitch_table;
 struct sbrec_meter_table;
+struct sbrec_ecmp_nexthop_table;
 struct shash;
 
 struct ovn_desired_flow_table {
@@ -57,8 +58,11 @@ enum mf_field_id ofctrl_get_mf_field_id(void);
 void ofctrl_put(struct ovn_desired_flow_table *lflow_table,
                 struct ovn_desired_flow_table *pflow_table,
                 struct shash *pending_ct_zones,
+                struct shash *current_ct_zones,
                 struct hmap *pending_lb_tuples,
+                const struct hmap *local_datapaths,
                 struct ovsdb_idl_index *sbrec_meter_by_name,
+                const struct sbrec_ecmp_nexthop_table *enh_table,
                 uint64_t nb_cfg,
                 bool lflow_changed,
                 bool pflow_changed);
