@@ -487,4 +487,8 @@ void ovn_exit_args_finish(struct ovn_exit_args *exit_args);
 bool ovn_update_swconn_at(struct rconn *swconn, const char *target,
                           int probe_interval, const char *where);
 
+const struct sbrec_port_binding *lport_lookup_by_name(
+    struct ovsdb_idl_index *sbrec_port_binding_by_name,
+    const char *name);
+
 #endif /* OVN_UTIL_H */

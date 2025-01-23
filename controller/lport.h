@@ -34,10 +34,6 @@ struct sset;
  * instead we define our own indexes.
  */
 
-const struct sbrec_port_binding *lport_lookup_by_name(
-    struct ovsdb_idl_index *sbrec_port_binding_by_name,
-    const char *name);
-
 const struct sbrec_port_binding *lport_lookup_by_key(
     struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
     struct ovsdb_idl_index *sbrec_port_binding_by_key,

@@ -49,6 +49,7 @@
 #include "ovn/lex.h"
 #include "lib/acl-log.h"
 #include "lib/ip-mcast-index.h"
+#include "lib/mac-binding-index.h"
 #include "lib/mcast-group-index.h"
 #include "lib/ovn-l7.h"
 #include "lib/ovn-util.h"

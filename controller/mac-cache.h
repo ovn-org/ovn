@@ -161,10 +161,6 @@ void mac_bindings_to_string(const struct hmap *map, struct ds *out_data);
 
 bool sb_mac_binding_updated(const struct sbrec_mac_binding *mb);
 
-const struct sbrec_mac_binding *
-mac_binding_lookup(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
-                   const char *logical_port, const char *ip);
-
 /* FDB. */
 struct fdb *fdb_add(struct hmap *map, struct fdb_data fdb_data,
                     long long timestamp);

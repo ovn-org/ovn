@@ -23,4 +23,8 @@ struct ovsdb_idl_index *mac_binding_by_datapath_index_create(
 struct ovsdb_idl_index *mac_binding_by_lport_ip_index_create(
     struct ovsdb_idl *idl);
 
+const struct sbrec_mac_binding *
+mac_binding_lookup(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+                   const char *logical_port, const char *ip);
+
 #endif /* lib/mac-binding-index.h */

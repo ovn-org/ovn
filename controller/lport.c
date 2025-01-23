@@ -28,22 +28,6 @@ static const struct sbrec_port_binding *get_peer_lport(
     struct ovsdb_idl_index *sbrec_port_binding_by_name);
 
 const struct sbrec_port_binding *
-lport_lookup_by_name(struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                     const char *name)
-{
-    struct sbrec_port_binding *pb = sbrec_port_binding_index_init_row(
-        sbrec_port_binding_by_name);
-    sbrec_port_binding_index_set_logical_port(pb, name);
-
-    const struct sbrec_port_binding *retval = sbrec_port_binding_index_find(
-        sbrec_port_binding_by_name, pb);
-
-    sbrec_port_binding_index_destroy_row(pb);
-
-    return retval;
-}
-
-const struct sbrec_port_binding *
 lport_lookup_by_key_with_dp(struct ovsdb_idl_index *sbrec_port_binding_by_key,
                             const struct sbrec_datapath_binding *db,
                             uint64_t port_key)
