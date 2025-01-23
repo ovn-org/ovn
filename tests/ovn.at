@@ -40852,6 +40852,36 @@ OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Switch from Distributed Router to Gateway Router])
+
+ovn_start
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+
+check ovn-nbctl ls-add public
+check ovn-nbctl lsp-add public public-lr0
+check ovn-nbctl lsp-set-type public-lr0 router
+check ovn-nbctl lsp-set-addresses public-lr0 router
+check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24
+check ovn-nbctl --wait=hv lrp-set-gateway-chassis lr0-public hv1
+wait_column "chassisredirect" sb:Port_Binding type logical_port=cr-lr0-public
+
+check ovn-nbctl --wait=hv set logical_router lr0 options:chassis=hv1
+wait_row_count sb:Port_Binding 0 logical_port=cr-lr0-public
+check ovn-nbctl --wait=hv clear logical_router_port lr0-public gateway_chassis
+wait_column "l3gateway" sb:Port_Binding type logical_port=lr0-public
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([requested-tnl-key-recompute])
 AT_KEYWORDS([requested-tnl-key-recompute])

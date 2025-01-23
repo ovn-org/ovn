@@ -4086,8 +4086,12 @@ sync_pb_for_lrp(struct ovn_port *op,
     } else {
         if (op->peer) {
             smap_add(&new, "peer", op->peer->key);
-            if (op->nbrp->ha_chassis_group ||
-                op->nbrp->n_gateway_chassis) {
+            /* Even if the router port has ha_chassis_group or
+             * gateway_chassis configured, don't assume that its
+             * chassis-redirect port is created.
+             * Check op->cr_port for NULL before accessing. */
+            if (op->cr_port && (op->nbrp->ha_chassis_group ||
+                op->nbrp->n_gateway_chassis)) {
                 smap_add(&new, "chassis-redirect-port", op->cr_port->key);
             }
         }
