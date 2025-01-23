@@ -6820,6 +6820,8 @@ check ovn-nbctl lsp-set-type public-lr0 router
 check ovn-nbctl lsp-set-addresses public-lr0 router
 check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
 
+check ovn-nbctl set nb_global . options:ecmp_nexthop_monitor_enable="true"
+
 # non ecmp-symmetric-reply routes do not add any entry in ECMP_Nexthop table
 check ovn-nbctl --wait=sb --ecmp lr-route-add lr0 1.0.0.1 192.168.0.10
 check_row_count ECMP_Nexthop 0
@@ -6831,6 +6833,14 @@ check_row_count ECMP_Nexthop 1
 uuid=$(fetch_column Port_Binding _uuid logical_port=lr0-public)
 check_column 192.168.0.10 ECMP_Nexthop nexthop
 check_column "$uuid" ECMP_Nexthop port
+
+# Disable ecmp_nexthop_monitor_enable and check the SB.ECMP_Nexthop is empty.
+check ovn-nbctl --wait=sb set nb_global . options:ecmp_nexthop_monitor_enable="false"
+check_row_count ECMP_Nexthop 0
+
+# Enable ecmp_nexthop_monitor_enable.
+check ovn-nbctl --wait=sb set nb_global . options:ecmp_nexthop_monitor_enable="true"
+check_row_count ECMP_Nexthop 1
 
 ovn-sbctl dump-flows lr0 > lr0flows
 

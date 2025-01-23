@@ -23,6 +23,7 @@
 #include "openvswitch/hmap.h"
 #include "util.h"
 
+#include "en-global-config.h"
 #include "en-ecmp-nexthop.h"
 #include "en-northd.h"
 
@@ -195,11 +196,24 @@ en_ecmp_nexthop_run(struct engine_node *node, void *data OVS_UNUSED)
     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip =
         engine_ovsdb_node_get_index(engine_get_input("SB_mac_binding", node),
                                     "sbrec_mac_binding_by_lport_ip");
+    struct ed_type_global_config *global_config =
+        engine_get_input_data("global_config", node);
+    bool ecmp_nexthop_monitor_en = smap_get_bool(&global_config->nb_options,
+                                                 "ecmp_nexthop_monitor_enable",
+                                                 false);
 
-    build_ecmp_nexthop_table(eng_ctx->ovnsb_idl_txn,
-                             sbrec_mac_binding_by_lport_ip,
-                             &routes_data->parsed_routes,
-                             sbrec_ecmp_nexthop_table);
+    if (ecmp_nexthop_monitor_en) {
+        build_ecmp_nexthop_table(eng_ctx->ovnsb_idl_txn,
+                                 sbrec_mac_binding_by_lport_ip,
+                                 &routes_data->parsed_routes,
+                                 sbrec_ecmp_nexthop_table);
+    } else {
+        const struct sbrec_ecmp_nexthop *sb_ecmp_nexthop;
+        SBREC_ECMP_NEXTHOP_TABLE_FOR_EACH_SAFE (sb_ecmp_nexthop,
+                                                sbrec_ecmp_nexthop_table) {
+            sbrec_ecmp_nexthop_delete(sb_ecmp_nexthop);
+        }
+    }
     engine_set_node_state(node, EN_UPDATED);
 }
 

@@ -14887,6 +14887,8 @@ check ovs-vsctl \
 start_daemon ovn-controller
 check ovs-vsctl set Open_vSwitch . external-ids:arp-nd-max-timeout-sec=1
 
+check ovn-nbctl set nb_global . options:ecmp_nexthop_monitor_enable="true"
+
 check ovn-nbctl lr-add R1
 check ovn-nbctl set logical_router R1 options:chassis=hv1
 check ovn-nbctl lr-add R2
@@ -15152,6 +15154,8 @@ check ovs-vsctl \
 # Start ovn-controller
 start_daemon ovn-controller
 check ovs-vsctl set Open_vSwitch . external-ids:arp-nd-max-timeout-sec=1
+
+check ovn-nbctl set nb_global . options:ecmp_nexthop_monitor_enable="true"
 
 check ovn-nbctl lr-add R1
 check ovn-nbctl set logical_router R1 options:chassis=hv1

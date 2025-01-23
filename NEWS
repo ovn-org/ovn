@@ -32,7 +32,9 @@ Post v24.09.0
      configure the interval (in seconds) between ovn-controller originated
      ARP/ND packets used for tracking ECMP next hop MAC addresses.
    - Auto flush ECMP symmetric reply connection states when an ECMP route is
-     removed by the CMS.
+     removed by the CMS.  This behavior is controlled by the
+     "ecmp_nexthop_monitor_enable" config option in the NB_Global table.
+     Disabled by default.
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------

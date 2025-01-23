@@ -266,6 +266,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_bfd_sync, &en_route_policies, NULL);
     engine_add_input(&en_bfd_sync, &en_northd, bfd_sync_northd_change_handler);
 
+    engine_add_input(&en_ecmp_nexthop, &en_global_config, NULL);
     engine_add_input(&en_ecmp_nexthop, &en_routes, NULL);
     engine_add_input(&en_ecmp_nexthop, &en_sb_ecmp_nexthop, NULL);
     engine_add_input(&en_ecmp_nexthop, &en_sb_port_binding, NULL);
