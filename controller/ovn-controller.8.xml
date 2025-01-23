@@ -389,6 +389,16 @@
         cap for the exponential backoff used by <code>ovn-controller</code>
         to send GARPs packets.
       </dd>
+      <dt><code>external_ids:arp-nd-max-timeout-sec</code></dt>
+      <dd>
+        When used, this configuration value specifies the maximum timeout
+        (in seconds) between two consecutive ARP/ND packets sent by
+        <code>ovn-controller</code> to resolve ECMP nexthop mac address.
+        <code>ovn-controller</code> by default continuously sends ARP/ND
+        packets. Setting <code>external_ids:arp-nd-max-timeout-sec</code>
+        allows to cap for the exponential backoff used by <code>ovn-controller
+        </code> to send ARPs/NDs packets.
+      </dd>
       <dt><code>external_ids:ovn-bridge-remote</code></dt>
       <dd>
         <p>

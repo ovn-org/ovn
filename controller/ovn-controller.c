@@ -231,6 +231,8 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
      *
      * Monitor Template_Var for local chassis.
      *
+     * Monitor ECMP_Nexthop for local datapaths.
+     *
      * We always monitor patch ports because they allow us to see the linkages
      * between related logical datapaths.  That way, when we know that we have
      * a VIF on a particular logical switch, we immediately know to monitor all
@@ -247,6 +249,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
     struct ovsdb_idl_condition igmp = OVSDB_IDL_CONDITION_INIT(&igmp);
     struct ovsdb_idl_condition chprv = OVSDB_IDL_CONDITION_INIT(&chprv);
     struct ovsdb_idl_condition tv = OVSDB_IDL_CONDITION_INIT(&tv);
+    struct ovsdb_idl_condition nh = OVSDB_IDL_CONDITION_INIT(&nh);
 
     /* Always monitor all logical datapath groups. Otherwise, DPG updates may
      * be received *after* the lflows using it are seen by ovn-controller.
@@ -266,6 +269,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         ovsdb_idl_condition_add_clause_true(&igmp);
         ovsdb_idl_condition_add_clause_true(&chprv);
         ovsdb_idl_condition_add_clause_true(&tv);
+        ovsdb_idl_condition_add_clause_true(&nh);
         goto out;
     }
 
@@ -354,6 +358,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
             sbrec_dns_add_clause_datapaths(&dns, OVSDB_F_INCLUDES, &uuid, 1);
             sbrec_ip_multicast_add_clause_datapath(&ip_mcast, OVSDB_F_EQ,
                                                    uuid);
+            sbrec_ecmp_nexthop_add_clause_datapath(&nh, OVSDB_F_EQ, uuid);
         }
 
         /* Datapath groups are immutable, which means a new group record is
@@ -381,6 +386,7 @@ out:;
         sb_table_set_req_mon_condition(ovnsb_idl, igmp_group, &igmp),
         sb_table_set_req_mon_condition(ovnsb_idl, chassis_private, &chprv),
         sb_table_set_opt_mon_condition(ovnsb_idl, chassis_template_var, &tv),
+        sb_table_set_opt_mon_condition(ovnsb_idl, ecmp_nexthop, &nh),
     };
 
     unsigned int expected_cond_seqno = 0;
@@ -400,6 +406,7 @@ out:;
     ovsdb_idl_condition_destroy(&igmp);
     ovsdb_idl_condition_destroy(&chprv);
     ovsdb_idl_condition_destroy(&tv);
+    ovsdb_idl_condition_destroy(&nh);
     return expected_cond_seqno;
 }
 
@@ -5759,6 +5766,8 @@ main(int argc, char *argv[])
                                     sbrec_mac_binding_table_get(
                                         ovnsb_idl_loop.idl),
                                     sbrec_bfd_table_get(ovnsb_idl_loop.idl),
+                                    sbrec_ecmp_nexthop_table_get(
+                                        ovnsb_idl_loop.idl),
                                     br_int, chassis,
                                     &runtime_data->local_datapaths,
                                     &runtime_data->active_tunnels,

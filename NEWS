@@ -28,6 +28,9 @@ Post v24.09.0
        this option was not set).  TLS ciphersuites for TLSv1.3 and later can
        be configured via --ssl-ciphersuites (--ssl-ciphers only applies to
        TLSv1.2 and earlier).
+   - Add "arp-nd-max-timeout-sec" config option to vswitchd external-ids to
+     configure the interval (in seconds) between ovn-controller originated
+     ARP/ND packets used for tracking ECMP next hop MAC addresses.
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------

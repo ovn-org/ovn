@@ -164,6 +164,9 @@ static struct seq *pinctrl_main_seq;
 static long long int garp_rarp_max_timeout = GARP_RARP_DEF_MAX_TIMEOUT;
 static bool garp_rarp_continuous;
 
+static long long int arp_nd_max_timeout = GARP_RARP_DEF_MAX_TIMEOUT;
+static bool arp_nd_continuous;
+
 static void *pinctrl_handler(void *arg);
 
 struct pinctrl {
@@ -223,13 +226,17 @@ static void run_activated_ports(
     const struct sbrec_chassis *chassis);
 
 static void init_send_garps_rarps(void);
+static void init_send_arps_nds(void);
 static void destroy_send_garps_rarps(void);
+static void destroy_send_arps_nds(void);
 static void send_garp_rarp_wait(long long int send_garp_rarp_time);
+static void send_arp_nd_wait(long long int send_arp_nd_time);
 static void send_garp_rarp_prepare(
     struct ovsdb_idl_txn *ovnsb_idl_txn,
     struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+    const struct sbrec_ecmp_nexthop_table *ecmp_nh_table,
     const struct ovsrec_bridge *,
     const struct sbrec_chassis *,
     const struct hmap *local_datapaths,
@@ -238,6 +245,9 @@ static void send_garp_rarp_prepare(
     OVS_REQUIRES(pinctrl_mutex);
 static void send_garp_rarp_run(struct rconn *swconn,
                                long long int *send_garp_rarp_time)
+    OVS_REQUIRES(pinctrl_mutex);
+static void send_arp_nd_run(struct rconn *swconn,
+                            long long int *send_arp_nd_time)
     OVS_REQUIRES(pinctrl_mutex);
 static void pinctrl_handle_nd_na(struct rconn *swconn,
                                  const struct flow *ip_flow,
@@ -550,6 +560,7 @@ pinctrl_init(void)
 {
     init_put_mac_bindings();
     init_send_garps_rarps();
+    init_send_arps_nds();
     init_ipv6_ras();
     init_ipv6_prefixd();
     init_buffered_packets_ctx();
@@ -3902,6 +3913,7 @@ pinctrl_handler(void *arg_)
     static long long int send_ipv6_ra_time = LLONG_MAX;
     /* Next GARP/RARP announcement in ms. */
     static long long int send_garp_rarp_time = LLONG_MAX;
+    static long long int send_arp_nd_time = LLONG_MAX;
     /* Next multicast query (IGMP) in ms. */
     static long long int send_mcast_query_time = LLONG_MAX;
     static long long int svc_monitors_next_run_time = LLONG_MAX;
@@ -3945,6 +3957,7 @@ pinctrl_handler(void *arg_)
             if (may_inject_pkts()) {
                 if (!ovs_mutex_trylock(&pinctrl_mutex)) {
                     send_garp_rarp_run(swconn, &send_garp_rarp_time);
+                    send_arp_nd_run(swconn, &send_arp_nd_time);
                     send_ipv6_ras(swconn, &send_ipv6_ra_time);
                     send_ipv6_prefixd(swconn, &send_prefixd_time);
                     send_mac_binding_buffered_pkts(swconn);
@@ -3973,6 +3986,7 @@ pinctrl_handler(void *arg_)
             rconn_recv_wait(swconn);
             if (rconn_is_connected(swconn)) {
                 send_garp_rarp_wait(send_garp_rarp_time);
+                send_arp_nd_wait(send_arp_nd_time);
                 ipv6_ra_wait(send_ipv6_ra_time);
                 ip_mcast_querier_wait(send_mcast_query_time);
                 svc_monitors_wait(svc_monitors_next_run_time);
@@ -4062,6 +4076,7 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             const struct sbrec_service_monitor_table *svc_mon_table,
             const struct sbrec_mac_binding_table *mac_binding_table,
             const struct sbrec_bfd_table *bfd_table,
+            const struct sbrec_ecmp_nexthop_table *ecmp_nh_table,
             const struct ovsrec_bridge *br_int,
             const struct sbrec_chassis *chassis,
             const struct hmap *local_datapaths,
@@ -4078,8 +4093,9 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                            sbrec_port_binding_by_key, chassis);
     send_garp_rarp_prepare(ovnsb_idl_txn, sbrec_port_binding_by_datapath,
                            sbrec_port_binding_by_name,
-                           sbrec_mac_binding_by_lport_ip, br_int, chassis,
-                           local_datapaths, active_tunnels, ovs_table);
+                           sbrec_mac_binding_by_lport_ip, ecmp_nh_table,
+                           br_int, chassis, local_datapaths, active_tunnels,
+                           ovs_table);
     prepare_ipv6_ras(local_active_ports_ras, sbrec_port_binding_by_name);
     prepare_ipv6_prefixd(ovnsb_idl_txn, sbrec_port_binding_by_name,
                          local_active_ports_ipv6_pd, chassis,
@@ -4621,6 +4637,7 @@ pinctrl_destroy(void)
     latch_destroy(&pinctrl.pinctrl_thread_exit);
     rconn_destroy(pinctrl.swconn);
     destroy_send_garps_rarps();
+    destroy_send_arps_nds();
     destroy_ipv6_ras();
     destroy_ipv6_prefixd();
     destroy_buffered_packets_ctx();
@@ -5128,6 +5145,149 @@ send_garp_rarp_update(struct ovsdb_idl_txn *ovnsb_idl_txn,
     }
 }
 
+struct arp_nd_data {
+    struct hmap_node hmap_node;
+    struct eth_addr ea;          /* Ethernet address of port. */
+    struct in6_addr src_ip;      /* IP address of port. */
+    struct in6_addr dst_ip;      /* Destination IP address */
+    long long int announce_time; /* Next announcement in ms. */
+    int backoff;                 /* Backoff timeout for the next
+                                  * announcement (in msecs). */
+    uint32_t dp_key;             /* Datapath used to output this GARP. */
+    uint32_t port_key;           /* Port to inject the GARP into. */
+};
+
+static struct hmap send_arp_nd_data;
+
+static void
+init_send_arps_nds(void)
+{
+    hmap_init(&send_arp_nd_data);
+}
+
+static void
+destroy_send_arps_nds(void)
+{
+    struct arp_nd_data *e;
+    HMAP_FOR_EACH_POP (e, hmap_node, &send_arp_nd_data) {
+        free(e);
+    }
+    hmap_destroy(&send_arp_nd_data);
+}
+
+static struct arp_nd_data *
+arp_nd_find_data(const struct sbrec_port_binding *pb,
+                 const struct in6_addr *nexthop)
+{
+    uint32_t hash = 0;
+
+    hash = hash_add_in6_addr(hash, nexthop);
+    hash = hash_add(hash, pb->datapath->tunnel_key);
+    hash = hash_add(hash, pb->tunnel_key);
+
+    struct arp_nd_data *e;
+    HMAP_FOR_EACH_WITH_HASH (e, hmap_node, hash, &send_arp_nd_data) {
+        if (ipv6_addr_equals(&e->dst_ip, nexthop) &&
+            e->port_key == pb->tunnel_key) {
+            return e;
+        }
+    }
+
+    return NULL;
+}
+
+static uint32_t
+arp_nd_data_get_hash(struct arp_nd_data *e)
+{
+    uint32_t hash = 0;
+    hash = hash_add_in6_addr(hash, &e->dst_ip);
+    hash = hash_add(hash, e->dp_key);
+    return hash_add(hash, e->port_key);
+}
+
+static struct arp_nd_data *
+arp_nd_alloc_data(const struct eth_addr ea,
+                  struct in6_addr src_ip, struct in6_addr dst_ip,
+                  const struct sbrec_port_binding *pb)
+{
+    struct arp_nd_data *e = xmalloc(sizeof *e);
+    e->ea = ea;
+    e->src_ip = src_ip;
+    e->dst_ip = dst_ip;
+    e->announce_time = time_msec() + 1000;
+    e->backoff = 1000; /* msec. */
+    e->dp_key = pb->datapath->tunnel_key;
+    e->port_key = pb->tunnel_key;
+
+    uint32_t hash = arp_nd_data_get_hash(e);
+    hmap_insert(&send_arp_nd_data, &e->hmap_node, hash);
+    notify_pinctrl_handler();
+
+    return e;
+}
+
+static void
+arp_nd_sync_data(const struct sbrec_ecmp_nexthop_table *ecmp_nh_table)
+{
+    struct hmap arp_nd_active = HMAP_INITIALIZER(&arp_nd_active);
+
+    const struct sbrec_ecmp_nexthop *sb_ecmp_nexthop;
+    SBREC_ECMP_NEXTHOP_TABLE_FOR_EACH (sb_ecmp_nexthop, ecmp_nh_table) {
+        struct in6_addr nexthop;
+        if (!ip46_parse(sb_ecmp_nexthop->nexthop, &nexthop)) {
+            continue;
+        }
+
+        struct arp_nd_data *e = arp_nd_find_data(sb_ecmp_nexthop->port,
+                                                 &nexthop);
+        if (e) {
+            hmap_remove(&send_arp_nd_data, &e->hmap_node);
+            uint32_t hash = arp_nd_data_get_hash(e);
+            hmap_insert(&arp_nd_active, &e->hmap_node, hash);
+        }
+    }
+
+    destroy_send_arps_nds();
+    init_send_arps_nds();
+    hmap_swap(&arp_nd_active, &send_arp_nd_data);
+}
+
+
+/* Add or update a vif for which ARPs need to be announced. */
+static void
+send_arp_nd_update(const struct sbrec_port_binding *pb, const char *nexthop,
+                   long long int max_arp_timeout, bool continuous_arp_nd)
+{
+    struct in6_addr dst_ip;
+    if (!ip46_parse(nexthop, &dst_ip)) {
+        return;
+    }
+
+    struct arp_nd_data *e = arp_nd_find_data(pb, &dst_ip);
+    if (!e) {
+        struct lport_addresses laddrs;
+        if (!extract_lsp_addresses(pb->mac[0], &laddrs)) {
+            return;
+        }
+
+        if (laddrs.n_ipv4_addrs) {
+            arp_nd_alloc_data(laddrs.ea,
+                              in6_addr_mapped_ipv4(laddrs.ipv4_addrs[0].addr),
+                              dst_ip, pb);
+        } else if (laddrs.n_ipv6_addrs) {
+            arp_nd_alloc_data(laddrs.ea, laddrs.ipv6_addrs[0].addr,
+                              dst_ip, pb);
+        }
+        destroy_lport_addresses(&laddrs);
+    } else if (max_arp_timeout != arp_nd_max_timeout ||
+               continuous_arp_nd != arp_nd_continuous) {
+        /* reset backoff */
+        e->announce_time = time_msec() + 1000;
+        e->backoff = 1000; /* msec. */
+        notify_pinctrl_handler();
+    }
+}
+
 /* Remove a vif from GARP announcements. */
 static void
 send_garp_rarp_delete(const char *lport)
@@ -5138,36 +5298,40 @@ send_garp_rarp_delete(const char *lport)
     notify_pinctrl_handler();
 }
 
-/* Called with in the pinctrl_handler thread context. */
-static long long int
-send_garp_rarp(struct rconn *swconn, struct garp_rarp_data *garp_rarp,
-               long long int current_time)
-    OVS_REQUIRES(pinctrl_mutex)
+static void
+send_self_originated_neigh_packet(struct rconn *swconn,
+                                  uint32_t dp_key, uint32_t port_key,
+                                  struct eth_addr eth,
+                                  struct in6_addr *local,
+                                  struct in6_addr *target,
+                                  uint8_t table_id)
 {
-    if (current_time < garp_rarp->announce_time) {
-        return garp_rarp->announce_time;
-    }
-
-    /* Compose a GARP request packet. */
     uint64_t packet_stub[128 / 8];
     struct dp_packet packet;
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
-    if (garp_rarp->ipv4) {
-        compose_arp(&packet, ARP_OP_REQUEST, garp_rarp->ea, eth_addr_zero,
-                    true, garp_rarp->ipv4, garp_rarp->ipv4);
+    if (!local) {
+        compose_rarp(&packet, eth);
+    } else if (IN6_IS_ADDR_V4MAPPED(local)) {
+        compose_arp(&packet, ARP_OP_REQUEST, eth, eth_addr_zero, true,
+                    in6_addr_get_mapped_ipv4(local),
+                    in6_addr_get_mapped_ipv4(target));
     } else {
-        compose_rarp(&packet, garp_rarp->ea);
+        compose_nd_ns(&packet, eth, local, target);
     }
 
     /* Inject GARP request. */
     uint64_t ofpacts_stub[4096 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
     enum ofp_version version = rconn_get_version(swconn);
-    put_load(garp_rarp->dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
-    put_load(garp_rarp->port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
+    put_load(dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
+    if (table_id == OFTABLE_LOCAL_OUTPUT) {
+        put_load(port_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
+    } else {
+        put_load(port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
+    }
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
-    resubmit->table_id = OFTABLE_LOG_INGRESS_PIPELINE;
+    resubmit->table_id = table_id;
 
     struct ofputil_packet_out po = {
         .packet = dp_packet_data(&packet),
@@ -5181,6 +5345,34 @@ send_garp_rarp(struct rconn *swconn, struct garp_rarp_data *garp_rarp,
     queue_msg(swconn, ofputil_encode_packet_out(&po, proto));
     dp_packet_uninit(&packet);
     ofpbuf_uninit(&ofpacts);
+}
+
+/* Called with in the pinctrl_handler thread context. */
+static long long int
+send_garp_rarp(struct rconn *swconn, struct garp_rarp_data *garp_rarp,
+               long long int current_time)
+    OVS_REQUIRES(pinctrl_mutex)
+{
+    if (current_time < garp_rarp->announce_time) {
+        return garp_rarp->announce_time;
+    }
+
+    /* Compose and inject a GARP request packet. */
+    if (garp_rarp->ipv4) {
+        struct in6_addr addr;
+        in6_addr_set_mapped_ipv4(&addr, garp_rarp->ipv4);
+        send_self_originated_neigh_packet(swconn,
+                                          garp_rarp->dp_key,
+                                          garp_rarp->port_key,
+                                          garp_rarp->ea, &addr, &addr,
+                                          OFTABLE_LOG_INGRESS_PIPELINE);
+    } else {
+        send_self_originated_neigh_packet(swconn,
+                                          garp_rarp->dp_key,
+                                          garp_rarp->port_key,
+                                          garp_rarp->ea, NULL, NULL,
+                                          OFTABLE_LOG_INGRESS_PIPELINE);
+    }
 
     /* Set the next announcement.  At most 5 announcements are sent for a
      * vif if garp_rarp_max_timeout is not specified otherwise cap the max
@@ -6466,6 +6658,16 @@ send_garp_rarp_wait(long long int send_garp_rarp_time)
     }
 }
 
+static void
+send_arp_nd_wait(long long int send_arp_nd_time)
+{
+    /* Set the poll timer for next arp packet only if there is data to
+     * be sent. */
+    if (hmap_count(&send_arp_nd_data)) {
+        poll_timer_wait_until(send_arp_nd_time);
+    }
+}
+
 /* Called with in the pinctrl_handler thread context. */
 static void
 send_garp_rarp_run(struct rconn *swconn, long long int *send_garp_rarp_time)
@@ -6488,6 +6690,55 @@ send_garp_rarp_run(struct rconn *swconn, long long int *send_garp_rarp_time)
     }
 }
 
+static long long int
+send_arp_nd(struct rconn *swconn, struct arp_nd_data *e,
+            long long int current_time)
+    OVS_REQUIRES(pinctrl_mutex)
+{
+    if (current_time < e->announce_time) {
+        return e->announce_time;
+    }
+
+    /* Compose a ARP request packet. */
+    send_self_originated_neigh_packet(swconn,
+                                      e->dp_key, e->port_key,
+                                      e->ea, &e->src_ip, &e->dst_ip,
+                                      OFTABLE_LOCAL_OUTPUT);
+
+    /* Set the next announcement.  At most 5 announcements are sent for a
+     * vif if arp_nd_max_timeout is not specified otherwise cap the max
+     * timeout to arp_nd_max_timeout. */
+    if (arp_nd_continuous || e->backoff < arp_nd_max_timeout) {
+        e->announce_time = current_time + e->backoff;
+    } else {
+        e->announce_time = LLONG_MAX;
+    }
+    e->backoff = MIN(arp_nd_max_timeout, e->backoff * 2);
+
+    return e->announce_time;
+}
+
+static void
+send_arp_nd_run(struct rconn *swconn, long long int *send_arp_nd_time)
+    OVS_REQUIRES(pinctrl_mutex)
+{
+    if (!hmap_count(&send_arp_nd_data)) {
+        return;
+    }
+
+    /* Send ARPs, and update the next announcement. */
+    long long int current_time = time_msec();
+    *send_arp_nd_time = LLONG_MAX;
+
+    struct arp_nd_data *e;
+    HMAP_FOR_EACH (e, hmap_node, &send_arp_nd_data) {
+        long long int next_announce = send_arp_nd(swconn, e, current_time);
+        if (*send_arp_nd_time > next_announce) {
+            *send_arp_nd_time = next_announce;
+        }
+    }
+}
+
 /* Called by pinctrl_run(). Runs with in the main ovn-controller
  * thread context. */
 static void
@@ -6495,6 +6746,7 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
                        struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
                        struct ovsdb_idl_index *sbrec_port_binding_by_name,
                        struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+                       const struct sbrec_ecmp_nexthop_table *ecmp_nh_table,
                        const struct ovsrec_bridge *br_int,
                        const struct sbrec_chassis *chassis,
                        const struct hmap *local_datapaths,
@@ -6507,7 +6759,8 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
     struct sset nat_ip_keys = SSET_INITIALIZER(&nat_ip_keys);
     struct shash nat_addresses;
     unsigned long long garp_max_timeout = GARP_RARP_DEF_MAX_TIMEOUT;
-    bool garp_continuous = false;
+    unsigned long long max_arp_nd_timeout = GARP_RARP_DEF_MAX_TIMEOUT;
+    bool garp_continuous = false, continuous_arp_nd = true;
     const struct ovsrec_open_vswitch *cfg =
         ovsrec_open_vswitch_table_first(ovs_table);
     if (cfg) {
@@ -6517,6 +6770,11 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
         if (!garp_max_timeout) {
             garp_max_timeout = GARP_RARP_DEF_MAX_TIMEOUT;
         }
+
+        max_arp_nd_timeout = smap_get_ullong(
+                &cfg->external_ids, "arp-nd-max-timeout-sec",
+                GARP_RARP_DEF_MAX_TIMEOUT / 1000) * 1000;
+        continuous_arp_nd = !!max_arp_nd_timeout;
     }
 
     shash_init(&nat_addresses);
@@ -6530,6 +6788,7 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
                                &nat_ip_keys, &local_l3gw_ports,
                                chassis, active_tunnels,
                                &nat_addresses);
+
     /* For deleted ports and deleted nat ips, remove from
      * send_garp_rarp_data. */
     struct shash_node *iter;
@@ -6565,6 +6824,17 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
         }
     }
 
+    arp_nd_sync_data(ecmp_nh_table);
+
+    const struct sbrec_ecmp_nexthop *sb_ecmp_nexthop;
+    SBREC_ECMP_NEXTHOP_TABLE_FOR_EACH (sb_ecmp_nexthop, ecmp_nh_table) {
+        const struct sbrec_port_binding *pb = sb_ecmp_nexthop->port;
+        if (pb && !strcmp(pb->type, "l3gateway") && pb->chassis == chassis) {
+            send_arp_nd_update(pb, sb_ecmp_nexthop->nexthop,
+                               max_arp_nd_timeout, continuous_arp_nd);
+        }
+    }
+
     /* pinctrl_handler thread will send the GARPs. */
 
     sset_destroy(&localnet_vifs);
@@ -6582,6 +6852,9 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
     garp_rarp_max_timeout = garp_max_timeout;
     garp_rarp_continuous = garp_continuous;
+
+    arp_nd_max_timeout = max_arp_nd_timeout;
+    arp_nd_continuous = continuous_arp_nd;
 }
 
 static bool
