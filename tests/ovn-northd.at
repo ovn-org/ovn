@@ -6820,8 +6820,17 @@ check ovn-nbctl lsp-set-type public-lr0 router
 check ovn-nbctl lsp-set-addresses public-lr0 router
 check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
 
+# non ecmp-symmetric-reply routes do not add any entry in ECMP_Nexthop table
+check ovn-nbctl --wait=sb --ecmp lr-route-add lr0 1.0.0.1 192.168.0.10
+check_row_count ECMP_Nexthop 0
+check ovn-nbctl --wait=sb lr-route-del lr0
+
 # ECMP flows will be added even if there is only one next-hop.
 check ovn-nbctl --wait=sb --ecmp-symmetric-reply lr-route-add lr0 1.0.0.1 192.168.0.10
+check_row_count ECMP_Nexthop 1
+uuid=$(fetch_column Port_Binding _uuid logical_port=lr0-public)
+check_column 192.168.0.10 ECMP_Nexthop nexthop
+check_column "$uuid" ECMP_Nexthop port
 
 ovn-sbctl dump-flows lr0 > lr0flows
 
@@ -6841,6 +6850,9 @@ AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | ovn_strip_lflows], [0], [dn
 ])
 
 check ovn-nbctl --wait=sb --ecmp-symmetric-reply lr-route-add lr0 1.0.0.1 192.168.0.20
+check_row_count ECMP_Nexthop 2
+check_column 192.168.0.10 ECMP_Nexthop nexthop nexthop=192.168.0.10
+check_column 192.168.0.20 ECMP_Nexthop nexthop nexthop=192.168.0.20
 
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CHECK([grep -w "lr_in_ip_routing" lr0flows | ovn_strip_lflows], [0], [dnl
@@ -6870,6 +6882,9 @@ AT_CHECK([grep -e "lr_in_arp_resolve.*ecmp" lr0flows | ovn_strip_lflows], [0], [
 
 # add ecmp route with wrong nexthop
 check ovn-nbctl --wait=sb --ecmp-symmetric-reply lr-route-add lr0 1.0.0.1 192.168.1.20
+check_row_count ECMP_Nexthop 2
+check_column 192.168.0.10 ECMP_Nexthop nexthop nexthop=192.168.0.10
+check_column 192.168.0.20 ECMP_Nexthop nexthop nexthop=192.168.0.20
 
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CHECK([grep -w "lr_in_ip_routing" lr0flows | ovn_strip_lflows], [0], [dnl
@@ -6889,6 +6904,7 @@ AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed 's/192\.168\.0\..0/192.
 
 check ovn-nbctl lr-route-del lr0
 wait_row_count nb:Logical_Router_Static_Route 0
+check_row_count ECMP_Nexthop 0
 
 check ovn-nbctl --wait=sb lr-route-add lr0 1.0.0.0/24 192.168.0.10
 ovn-sbctl dump-flows lr0 > lr0flows

@@ -8,6 +8,8 @@ northd_ovn_northd_SOURCES = \
 	northd/northd.c \
 	northd/northd.h \
 	northd/ovn-northd.c \
+	northd/en-ecmp-nexthop.c \
+	northd/en-ecmp-nexthop.h \
 	northd/en-global-config.c \
 	northd/en-global-config.h \
 	northd/en-northd.c \

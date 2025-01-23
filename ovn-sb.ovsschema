@@ -1,7 +1,7 @@
 {
     "name": "OVN_Southbound",
-    "version": "20.39.0",
-    "cksum": "6416280 33547",
+    "version": "20.40.0",
+    "cksum": "544016150 34456",
     "tables": {
         "SB_Global": {
             "columns": {
@@ -610,6 +610,23 @@
                                   "key": {"type": "uuid",
                                           "refTable": "Datapath_Binding"}}}},
             "indexes": [["logical_port", "ip"]],
+            "isRoot": true},
+        "ECMP_Nexthop": {
+            "columns": {
+                "nexthop": {"type": "string"},
+                "port": {"type": {"key": {"type": "uuid",
+                                          "refTable": "Port_Binding",
+                                          "refType": "strong"},
+                                          "min": 1, "max": 1}},
+                "datapath": {"type": {"key": {"type": "uuid",
+                                              "refTable": "Datapath_Binding",
+                                              "refType": "strong"},
+                                              "min": 1, "max": 1}},
+                "mac": {"type": "string"},
+                "external_ids": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}}},
+            "indexes": [["nexthop", "port"]],
             "isRoot": true},
         "Chassis_Template_Var": {
             "columns": {

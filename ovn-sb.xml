@@ -5316,4 +5316,42 @@ tcp.flags = RST;
       See <em>External IDs</em> at the beginning of this document.
     </column>
   </table>
+
+  <table name="ECMP_Nexthop">
+    <p>
+      Each record in this table represents an active next-hop for ECMP
+      routes created with <code>--ecmp-symmetric-reply</code> option
+      that are committed by <code>ovn-northd</code> to <code>ovs</code>
+      connection tracker. The <code>ECMP_Nexthop</code> table is used by
+      <code>ovn-controller</code> to track active ct entries and to flush
+      stale ones.
+    </p>
+    <column name="nexthop">
+      <p>
+        Nexthop IP address for this ECMP route. Nexthop IP address should
+        be the IP address of a connected router port or the IP address of
+        an external device used as nexthop for the given destination.
+      </p>
+    </column>
+    <column name="port">
+      <p>
+        The reference to <ref table="Port_Binding"/> table for the port used
+        to connect to the configured next-hop.
+      </p>
+    </column>
+    <column name="datapath">
+      <p>
+        The reference to <ref table="Datapath_Binding"/> table for the datapath
+        where the port used to connect to the configured next-hop is running.
+      </p>
+    </column>
+    <column name="mac">
+      <p>
+        Nexthop mac address.
+      </p>
+    </column>
+    <column name="external_ids">
+      See <em>External IDs</em> at the beginning of this document.
+    </column>
+  </table>
 </database>
