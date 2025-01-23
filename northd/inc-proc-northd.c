@@ -266,8 +266,11 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_bfd_sync, &en_route_policies, NULL);
     engine_add_input(&en_bfd_sync, &en_northd, bfd_sync_northd_change_handler);
 
-    engine_add_input(&en_ecmp_nexthop, &en_sb_ecmp_nexthop, NULL);
     engine_add_input(&en_ecmp_nexthop, &en_routes, NULL);
+    engine_add_input(&en_ecmp_nexthop, &en_sb_ecmp_nexthop, NULL);
+    engine_add_input(&en_ecmp_nexthop, &en_sb_port_binding, NULL);
+    engine_add_input(&en_ecmp_nexthop, &en_sb_mac_binding,
+                     ecmp_nexthop_mac_binding_handler);
 
     engine_add_input(&en_sync_meters, &en_nb_acl, NULL);
     engine_add_input(&en_sync_meters, &en_nb_meter, NULL);
@@ -370,6 +373,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
         chassis_hostname_index_create(sb->idl);
     struct ovsdb_idl_index *sbrec_mac_binding_by_datapath
         = mac_binding_by_datapath_index_create(sb->idl);
+    struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip
+        = mac_binding_by_lport_ip_index_create(sb->idl);
     struct ovsdb_idl_index *fdb_by_dp_key =
         ovsdb_idl_index_create1(sb->idl, &sbrec_fdb_col_dp_key);
 
@@ -393,6 +398,9 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_ovsdb_node_add_index(&en_sb_mac_binding,
                                 "sbrec_mac_binding_by_datapath",
                                 sbrec_mac_binding_by_datapath);
+    engine_ovsdb_node_add_index(&en_sb_mac_binding,
+                                "sbrec_mac_binding_by_lport_ip",
+                                sbrec_mac_binding_by_lport_ip);
     engine_ovsdb_node_add_index(&en_sb_fdb,
                                 "fdb_by_dp_key",
                                 fdb_by_dp_key);
@@ -415,6 +423,18 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_ovsdb_node_add_index(&en_sb_fdb,
                                 "sbrec_fdb_by_dp_and_port",
                                 sbrec_fdb_by_dp_and_port);
+
+    struct ovsdb_idl_index *sbrec_port_binding_by_name
+        = ovsdb_idl_index_create1(sb->idl,
+                                  &sbrec_port_binding_col_logical_port);
+    engine_ovsdb_node_add_index(&en_sb_port_binding,
+                                "sbrec_port_binding_by_name",
+                                sbrec_port_binding_by_name);
+    struct ovsdb_idl_index *sbrec_ecmp_nexthop_by_ip_and_port
+        = ecmp_nexthop_index_create(sb->idl);
+    engine_ovsdb_node_add_index(&en_sb_ecmp_nexthop,
+                                "sbrec_ecmp_nexthop_by_ip_and_port",
+                                sbrec_ecmp_nexthop_by_ip_and_port);
 
     struct ed_type_global_config *global_config =
         engine_get_internal_data(&en_global_config);
