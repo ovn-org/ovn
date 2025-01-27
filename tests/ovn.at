@@ -30504,6 +30504,111 @@ AT_CLEANUP
 
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([multiple encap ips selection for localnet packets])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+net_add n1
+
+check ovn-nbctl lr-add lr
+
+# 2 HVs, each with 2 encap-ips, and each hosting a separate LS, connected by a LR with DGPs.
+# Each LS is connected to an external bridge through a localnet port.
+# Each HV has an external VIF on its external bridge.
+# Traffic between the external VIFs traverses:
+#   VIF1@HV1 - localnet LS1 - DGP1 - tunnel - DGP2 - localnet LS2 - VIF2@HV2
+#
+# The tunnel should encap with the IP configured in ovn-encap-ip-default
+
+for i in 1 2; do
+    sim_add hv$i
+    as hv$i
+    ovs-vsctl add-br br-phys-$j
+    ovn_attach n1 br-phys-$j 192.168.0.${i}1
+    ovs-vsctl set open . external_ids:ovn-encap-ip=192.168.0.${i}1,192.168.0.${i}2
+
+    ovs-vsctl add-br br-ext
+    ovs-vsctl add-port br-ext vif$i -- set Interface vif$i \
+        options:tx_pcap=hv$i/vif$i-tx.pcap options:rxq_pcap=hv$i/vif$i-rx.pcap
+
+    ovs-vsctl set open . external-ids:ovn-bridge-mappings=ext:br-ext
+
+    check ovn-nbctl ls-add ls$i -- \
+        lrp-add lr lrp-ls$i f0:00:00:00:88:0$i 10.0.$i.88/24 -- \
+        lrp-set-gateway-chassis lrp-ls$i hv$i 1 -- \
+        lsp-add ls$i lsp-lr-$i -- lsp-set-type lsp-lr-$i router -- \
+        lsp-set-addresses lsp-lr-$i router -- \
+        lsp-set-options lsp-lr-$i router-port=lrp-ls$i
+
+    check ovn-nbctl lsp-add ls$i ln-lsp$i -- lsp-set-addresses ln-lsp$i unknown -- \
+        lsp-set-type ln-lsp$i localnet -- \
+        lsp-set-options ln-lsp$i network_name=ext
+
+done
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+vif_to_hv() {
+    case $1 in dnl (
+        vif1) echo hv1 ;; dnl (
+        vif2) echo hv2 ;; dnl (
+        *) AT_FAIL_IF([:]) ;;
+    esac
+}
+
+vif_to_ip() {
+    vif=$1
+    echo 10.0.${vif:3:1}.99
+}
+
+# check_packet_tunnel SRC_VIF DST_VIF
+# Verify that a packet from SRC_VIF to DST_VIF goes through the corresponding
+# tunnel that matches the VIFs' encap_ip configurations.
+check_packet_tunnel() {
+    local src=$1 dst=$2
+    local src_mac=f0:00:00:00:00:0$src
+    local dst_mac=f0:00:00:00:88:01 # lrp-ls1's MAC
+    local src_ip=$(vif_to_ip vif$src)
+    local dst_ip=$(vif_to_ip vif$dst)
+
+    local local_encap_ip=$3
+    local remote_encap_ip=$4
+
+    local packet=$(fmt_pkt "Ether(dst='${dst_mac}', src='${src_mac}')/ \
+                            IP(dst='${dst_ip}', src='${src_ip}')/ \
+                            ICMP(type=8)")
+    hv=`vif_to_hv vif$src`
+    as $hv
+    echo "vif$src -> vif$dst should go through tunnel $local_encap_ip -> $remote_encap_ip"
+    tunnel_ofport=$(ovs-vsctl --bare --column=ofport find interface options:local_ip=$local_encap_ip options:remote_ip=$remote_encap_ip)
+    AT_CHECK([test $(ovs-appctl ofproto/trace br-ext in_port=vif$src $packet | grep "output:" | awk -F ':' '{ print $2 }') == $tunnel_ofport])
+}
+
+# Create mac-binding for the destination so that there is no need to trigger
+# arp-resolve.
+lr_dp_uuid=$(fetch_column datapath_binding _uuid external_ids:name=lr)
+
+check_uuid ovn-sbctl create mac_binding ip=10.0.2.99 logical_port=lrp-ls2 \
+mac="f0\:00\:00\:00\:00\:02" datapath=$lr_dp_uuid
+
+# Set default encap-ip. Packets should go through default encap-ip.
+for e in 1 2; do
+    for i in 1 2; do
+        as hv$i
+        check ovs-vsctl set open . external_ids:ovn-encap-ip-default=192.168.0.${i}${e}
+        ovs-vsctl get open . external_ids:ovn-encap-ip-default
+    done
+    check ovn-nbctl --wait=hv sync
+
+    check_packet_tunnel 1 2 192.168.0.1${e} 192.168.0.2${e}
+done
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])
+
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([Load Balancer LS hairpin OF flows])
 ovn_start
 

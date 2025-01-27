@@ -4380,6 +4380,23 @@ parse_encap_ips(const struct ovsrec_open_vswitch_table *ovs_table,
     }
     *n_encap_ips = sset_count(&encap_ip_set);
     sset_destroy(&encap_ip_set);
+
+    /* Move the default encap IP, if configured, to the first so that it will
+     * have index 0, because we use index as encap-id and we need 0 to be the
+     * default encap-id. */
+    const char *encap_ip_default =
+        get_chassis_external_id_value(&cfg->external_ids, chassis_id,
+                                      "ovn-encap-ip-default", NULL);
+    if (encap_ip_default) {
+        for (size_t i = 0; i < *n_encap_ips; i++) {
+            if (!strcmp(encap_ip_default, (*encap_ips)[i])) {
+                const char *tmp = (*encap_ips)[0];
+                (*encap_ips)[0] = (*encap_ips)[i];
+                (*encap_ips)[i] = tmp;
+                break;
+            }
+        }
+    }
 }
 
 static void init_physical_ctx(struct engine_node *node,
