@@ -135,6 +135,7 @@ struct lflow_ctx_in {
     bool localnet_learn_fdb;
     bool localnet_learn_fdb_changed;
     bool explicit_arp_ns_output;
+    bool register_consolidation;
 };
 
 struct lflow_ctx_out {

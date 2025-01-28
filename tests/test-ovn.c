@@ -1366,6 +1366,7 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
                 .meter_table = &meter_table,
                 .collector_ids = &collector_ids,
                 .explicit_arp_ns_output = true,
+                .register_consolidation = true,
 
                 .pipeline = OVNACT_P_INGRESS,
                 .ingress_ptable = OFTABLE_LOG_INGRESS_PIPELINE,

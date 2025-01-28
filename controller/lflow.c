@@ -100,7 +100,8 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
 static void
 consider_lb_hairpin_flows(const struct ovn_controller_lb *lb,
                           const struct hmap *local_datapaths,
-                          struct ovn_desired_flow_table *flow_table);
+                          struct ovn_desired_flow_table *flow_table,
+                          bool register_consolidation);
 
 static void add_port_sec_flows(const struct shash *binding_lports,
                                const struct sbrec_chassis *,
@@ -878,6 +879,7 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
         .lflow_uuid = lflow->header_.uuid,
         .dp_key = ldp->datapath->tunnel_key,
         .explicit_arp_ns_output = l_ctx_in->explicit_arp_ns_output,
+        .register_consolidation = l_ctx_in->register_consolidation,
 
         .pipeline = ingress ? OVNACT_P_INGRESS : OVNACT_P_EGRESS,
         .ingress_ptable = OFTABLE_LOG_INGRESS_PIPELINE,
@@ -1645,7 +1647,8 @@ static void
 add_lb_vip_hairpin_flows(const struct ovn_controller_lb *lb,
                          struct ovn_lb_vip *lb_vip,
                          struct ovn_lb_backend *lb_backend,
-                         struct ovn_desired_flow_table *flow_table)
+                         struct ovn_desired_flow_table *flow_table,
+                         bool register_consolidation)
 {
     uint64_t stub[1024 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
@@ -1677,9 +1680,10 @@ add_lb_vip_hairpin_flows(const struct ovn_controller_lb *lb,
         if (!lb->hairpin_orig_tuple) {
             match_set_ct_nw_dst(&hairpin_match, vip4);
         } else {
-            match_set_reg(&hairpin_match,
-                          MFF_LOG_LB_ORIG_DIP_IPV4 - MFF_LOG_REG0,
-                          ntohl(vip4));
+            enum mf_field_id id = register_consolidation
+                ? MFF_LOG_LB_ORIG_DIP_IPV4
+                : MFF_LOG_LB_ORIG_DIP_IPV4_OLD;
+            match_set_reg(&hairpin_match, id - MFF_LOG_REG0, ntohl(vip4));
         }
 
         add_lb_vip_hairpin_reply_action(NULL, snat_vip4, lb->proto,
@@ -1788,7 +1792,8 @@ static void
 add_lb_ct_snat_hairpin_vip_flow(const struct ovn_controller_lb *lb,
                                 const struct ovn_lb_vip *lb_vip,
                                 const struct hmap *local_datapaths,
-                                struct ovn_desired_flow_table *flow_table)
+                                struct ovn_desired_flow_table *flow_table,
+                                bool register_consolidation)
 {
     uint64_t stub[1024 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
@@ -1845,8 +1850,10 @@ add_lb_ct_snat_hairpin_vip_flow(const struct ovn_controller_lb *lb,
         if (!lb->hairpin_orig_tuple) {
             match_set_ct_nw_dst(&match, vip4);
         } else {
-            match_set_reg(&match, MFF_LOG_LB_ORIG_DIP_IPV4 - MFF_LOG_REG0,
-                          ntohl(vip4));
+            enum mf_field_id id = register_consolidation
+                                  ? MFF_LOG_LB_ORIG_DIP_IPV4
+                                  : MFF_LOG_LB_ORIG_DIP_IPV4_OLD;
+            match_set_reg(&match, id - MFF_LOG_REG0, ntohl(vip4));
         }
     } else {
         match_set_dl_type(&match, htons(ETH_TYPE_IPV6));
@@ -1922,7 +1929,8 @@ add_lb_ct_snat_hairpin_vip_flow(const struct ovn_controller_lb *lb,
 static void
 add_lb_ct_snat_hairpin_flows(const struct ovn_controller_lb *lb,
                              const struct hmap *local_datapaths,
-                             struct ovn_desired_flow_table *flow_table)
+                             struct ovn_desired_flow_table *flow_table,
+                             bool register_consolidation)
 {
     /* We must add a flow for each LB VIP. In the general case, this flow
        is added to the OFTABLE_CT_SNAT_HAIRPIN table. If it matches, we
@@ -1956,14 +1964,15 @@ add_lb_ct_snat_hairpin_flows(const struct ovn_controller_lb *lb,
 
     for (int i = 0; i < lb->n_vips; i++) {
         add_lb_ct_snat_hairpin_vip_flow(lb, &lb->vips[i], local_datapaths,
-                                        flow_table);
+                                        flow_table, register_consolidation);
     }
 }
 
 static void
 consider_lb_hairpin_flows(const struct ovn_controller_lb *lb,
                           const struct hmap *local_datapaths,
-                          struct ovn_desired_flow_table *flow_table)
+                          struct ovn_desired_flow_table *flow_table,
+                          bool register_consolidation)
 {
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
@@ -1971,11 +1980,13 @@ consider_lb_hairpin_flows(const struct ovn_controller_lb *lb,
         for (size_t j = 0; j < lb_vip->n_backends; j++) {
             struct ovn_lb_backend *lb_backend = &lb_vip->backends[j];
 
-            add_lb_vip_hairpin_flows(lb, lb_vip, lb_backend, flow_table);
+            add_lb_vip_hairpin_flows(lb, lb_vip, lb_backend, flow_table,
+                                     register_consolidation);
         }
     }
 
-    add_lb_ct_snat_hairpin_flows(lb, local_datapaths, flow_table);
+    add_lb_ct_snat_hairpin_flows(lb, local_datapaths, flow_table,
+                                 register_consolidation);
 }
 
 /* Adds OpenFlow flows to flow tables for each Load balancer VIPs and
@@ -1983,11 +1994,13 @@ consider_lb_hairpin_flows(const struct ovn_controller_lb *lb,
 static void
 add_lb_hairpin_flows(const struct hmap *local_lbs,
                      const struct hmap *local_datapaths,
-                     struct ovn_desired_flow_table *flow_table)
+                     struct ovn_desired_flow_table *flow_table,
+                     bool register_consolidation)
 {
     const struct ovn_controller_lb *lb;
     HMAP_FOR_EACH (lb, hmap_node, local_lbs) {
-        consider_lb_hairpin_flows(lb, local_datapaths, flow_table);
+        consider_lb_hairpin_flows(lb, local_datapaths, flow_table,
+                                  register_consolidation);
     }
 }
 
@@ -2147,7 +2160,8 @@ lflow_run(struct lflow_ctx_in *l_ctx_in, struct lflow_ctx_out *l_ctx_out)
                        l_ctx_out->flow_table);
     add_lb_hairpin_flows(l_ctx_in->local_lbs,
                          l_ctx_in->local_datapaths,
-                         l_ctx_out->flow_table);
+                         l_ctx_out->flow_table,
+                         l_ctx_in->register_consolidation);
     add_fdb_flows(l_ctx_in->fdb_table, l_ctx_in->local_datapaths,
                   l_ctx_out->flow_table,
                   l_ctx_in->sbrec_port_binding_by_key,
@@ -2401,7 +2415,8 @@ lflow_handle_changed_lbs(struct lflow_ctx_in *l_ctx_in,
                   UUID_FMT, UUID_ARGS(&uuid_node->uuid));
         ofctrl_remove_flows(l_ctx_out->flow_table, &uuid_node->uuid);
         consider_lb_hairpin_flows(lb, l_ctx_in->local_datapaths,
-                                  l_ctx_out->flow_table);
+                                  l_ctx_out->flow_table,
+                                  l_ctx_in->register_consolidation);
     }
 
     UUIDSET_FOR_EACH (uuid_node, new_lbs) {
@@ -2410,7 +2425,8 @@ lflow_handle_changed_lbs(struct lflow_ctx_in *l_ctx_in,
         VLOG_DBG("Add load balancer hairpin flows for "UUID_FMT,
                  UUID_ARGS(&uuid_node->uuid));
         consider_lb_hairpin_flows(lb, l_ctx_in->local_datapaths,
-                                  l_ctx_out->flow_table);
+                                  l_ctx_out->flow_table,
+                                  l_ctx_in->register_consolidation);
     }
 
     return true;

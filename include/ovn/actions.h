@@ -893,6 +893,9 @@ struct ovnact_encode_params {
     /* Indication if we should add explicit output after arp/nd_ns action. */
     bool explicit_arp_ns_output;
 
+    /* Indication if we should use the "old" version of registers. */
+    bool register_consolidation;
+
     /* OVN maps each logical flow table (ltable), one-to-one, onto a physical
      * OpenFlow flow table (ptable).  A number of parameters describe this
      * mapping and data related to flow tables:

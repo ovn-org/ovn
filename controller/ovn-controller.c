@@ -3520,6 +3520,7 @@ struct ed_type_northd_options {
                          * switch (i.e with localnet port) should
                          * be tunnelled or sent via the localnet
                          * port.  Default value is 'false'. */
+    bool register_consolidation;
 };
 
 
@@ -3557,6 +3558,12 @@ en_northd_options_run(struct engine_node *node, void *data)
                             false)
             : false;
 
+    n_opts->register_consolidation =
+        sb_global
+        ? smap_get_bool(&sb_global->options, "register_consolidation",
+                        false)
+        : false;
+
     engine_set_node_state(node, EN_UPDATED);
 }
 
@@ -3588,6 +3595,17 @@ en_northd_options_sb_sb_global_handler(struct engine_node *node, void *data)
 
     if (always_tunnel != n_opts->always_tunnel) {
         n_opts->always_tunnel = always_tunnel;
+        engine_set_node_state(node, EN_UPDATED);
+    }
+
+    bool register_consolidation =
+        sb_global
+        ? smap_get_bool(&sb_global->options, "register_consolidation",
+                        false)
+        : false;
+
+    if (register_consolidation != n_opts->register_consolidation) {
+        n_opts->register_consolidation = register_consolidation;
         engine_set_node_state(node, EN_UPDATED);
     }
 
@@ -3820,6 +3838,7 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->localnet_learn_fdb_changed = rt_data->localnet_learn_fdb_changed;
     l_ctx_in->chassis_tunnels = &non_vif_data->chassis_tunnels;
     l_ctx_in->explicit_arp_ns_output = n_opts->explicit_arp_ns_output;
+    l_ctx_in->register_consolidation = n_opts->register_consolidation;
     l_ctx_in->nd_ra_opts = &fo->nd_ra_opts;
     l_ctx_in->dhcp_opts = &dhcp_opts->v4_opts;
     l_ctx_in->dhcpv6_opts = &dhcp_opts->v6_opts;

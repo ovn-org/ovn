@@ -590,6 +590,10 @@ update_sb_config_options_to_sbrec(struct ed_type_global_config *config_data,
      * arp/nd_ns action. */
     smap_add(options, "arp_ns_explicit_output", "true");
 
+    /* Adds indication that northd has code with consolidated
+     * register usage. */
+    smap_add(options, "register_consolidation", "true");
+
     if (!smap_equal(&sb->options, options)) {
         sbrec_sb_global_set_options(sb, options);
     }

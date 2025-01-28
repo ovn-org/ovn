@@ -64,6 +64,13 @@ enum ovn_controller_event {
 #define MFF_LOG_CT_ORIG_TP_DST_PORT         MFF_REG2   /* REG_ORIG_TP_DPORT
                                                         * (bits 0..15). */
 
+/* Logical registers that are needed for backwards
+ * compatibility with older northd versions.
+ * XXX: All of them can be removed in 26.09. */
+#define MFF_LOG_LB_ORIG_DIP_IPV4_OLD         MFF_REG1
+#define MFF_LOG_LB_AFF_MATCH_PORT_OLD        MFF_REG8
+#define MFF_LOG_LB_AFF_MATCH_LS_IP6_ADDR_OLD MFF_XXREG0
+
 void ovn_init_symtab(struct shash *symtab);
 
 /* MFF_LOG_FLAGS_REG bit assignments */
