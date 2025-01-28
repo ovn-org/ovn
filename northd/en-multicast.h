@@ -62,7 +62,6 @@ struct ovn_igmp_group_entry {
  */
 struct ovn_igmp_group {
     struct hmap_node hmap_node; /* Index on 'datapath' and 'address'. */
-    struct ovs_list list_node;  /* Linkage in the per-dp igmp group list. */
 
     struct ovn_datapath *datapath;
     struct in6_addr address; /* Multicast IPv6-mapped-IPv4 or IPv4 address. */

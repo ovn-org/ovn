@@ -668,7 +668,6 @@ init_mcast_info_for_datapath(struct ovn_datapath *od)
     hmap_init(&od->mcast_info.group_tnlids);
     /* allocations start from hint + 1 */
     od->mcast_info.group_tnlid_hint = OVN_MIN_IP_MULTICAST - 1;
-    ovs_list_init(&od->mcast_info.groups);
 
     if (od->nbs) {
         init_mcast_info_for_switch_datapath(od);
@@ -9768,39 +9767,6 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
                       "ip6.mcast_flood",
                       "outport = \""MC_FLOOD"\"; output;",
                       lflow_ref);
-
-        /* Forward uregistered IP multicast to routers with relay enabled
-         * and to any ports configured to flood IP multicast traffic.
-         * If configured to flood unregistered traffic this will be
-         * handled by the L2 multicast flow.
-         */
-        if (!mcast_sw_info->flood_unregistered) {
-            ds_clear(actions);
-
-            if (mcast_sw_info->flood_relay) {
-                ds_put_cstr(actions,
-                            "clone { "
-                                "outport = \""MC_MROUTER_FLOOD"\"; "
-                                "output; "
-                            "}; ");
-            }
-
-            if (mcast_sw_info->flood_static) {
-                ds_put_cstr(actions, "outport =\""MC_STATIC"\"; output;");
-            }
-
-            /* Explicitly drop the traffic if relay or static flooding
-             * is not configured.
-             */
-            if (!mcast_sw_info->flood_relay &&
-                    !mcast_sw_info->flood_static) {
-                ds_put_cstr(actions, debug_drop_action());
-            }
-
-            ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 80,
-                          "ip4.mcast || ip6.mcast",
-                          ds_cstr(actions), lflow_ref);
-        }
     }
 
     if (!smap_get_bool(&od->nbs->other_config,
@@ -9815,6 +9781,48 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
                   "outport = \""MC_FLOOD"\"; output;", lflow_ref);
 }
 
+/* Ingress table destination lookup, multicast handling (priority 80). */
+static void
+build_mcast_flood_lswitch(struct ovn_datapath *od, struct lflow_table *lflows,
+                          struct ds *actions, struct lflow_ref *lflow_ref)
+{
+    ovs_assert(od->nbs);
+    struct mcast_switch_info *mcast_sw_info = &od->mcast_info.sw;
+    if (!mcast_sw_info->enabled || mcast_sw_info->flood_unregistered) {
+        return;
+    }
+
+    ds_clear(actions);
+
+    /* Forward unregistered IP multicast to routers with relay enabled
+     * and to any ports configured to flood IP multicast traffic.
+     * If configured to flood unregistered traffic this will be
+     * handled by the L2 multicast flow.
+     */
+    if (mcast_sw_info->flood_relay) {
+        ds_put_cstr(actions,
+                    "clone { "
+                        "outport = \""MC_MROUTER_FLOOD"\"; "
+                        "output; "
+                    "}; ");
+    }
+
+    if (mcast_sw_info->flood_static) {
+        ds_put_cstr(actions, "outport =\""MC_STATIC"\"; output;");
+    }
+
+    /* Explicitly drop the traffic if relay or static flooding
+     * is not configured.
+     */
+    if (!mcast_sw_info->flood_relay &&
+        !mcast_sw_info->flood_static) {
+        ds_put_cstr(actions, debug_drop_action());
+    }
+
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 80,
+                  "ip4.mcast || ip6.mcast", ds_cstr(actions), lflow_ref);
+}
+
 
 /* Ingress table 25: Add IP multicast flows learnt from IGMP/MLD
  * (priority 90). */
@@ -9822,11 +9830,10 @@ static void
 build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
                                 struct lflow_table *lflows,
                                 struct ds *actions,
-                                struct ds *match)
+                                struct ds *match,
+                                struct lflow_ref *lflow_ref)
 {
-    if (!(igmp_group->datapath && igmp_group->datapath->nbs)) {
-        return;
-    }
+    ovs_assert(igmp_group->datapath->nbs);
 
     uint64_t dummy;
 
@@ -9896,7 +9903,7 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
                   igmp_group->mcgroup.name);
 
     ovn_lflow_add(lflows, igmp_group->datapath, S_SWITCH_IN_L2_LKUP,
-                  90, ds_cstr(match), ds_cstr(actions), NULL);
+                  90, ds_cstr(match), ds_cstr(actions), lflow_ref);
 }
 
 /* Ingress table 25: Destination lookup, unicast handling (priority 50), */
@@ -13499,14 +13506,50 @@ build_route_flows_for_lrouter(
     unique_routes_destroy(&unique_routes);
 }
 
+static void
+build_lrouter_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
+                                struct lflow_table *lflows,
+                                struct ds *match, struct ds *actions,
+                                struct lflow_ref *lflow_ref)
+{
+    ovs_assert(igmp_group->datapath->nbr);
+
+    if (!igmp_group->datapath->mcast_info.rtr.relay) {
+        return;
+    }
+
+    ds_clear(match);
+    ds_clear(actions);
+    if (IN6_IS_ADDR_V4MAPPED(&igmp_group->address)) {
+        ds_put_format(match, "ip4 && ip4.dst == %s ",
+                      igmp_group->mcgroup.name);
+    } else {
+        ds_put_format(match, "ip6 && ip6.dst == %s ",
+                      igmp_group->mcgroup.name);
+    }
+    if (igmp_group->datapath->mcast_info.rtr.flood_static) {
+        ds_put_cstr(actions,
+                    "clone { "
+                        "outport = \""MC_STATIC"\"; "
+                        "ip.ttl--; "
+                        "next; "
+                    "};");
+    }
+    ds_put_format(actions, "outport = \"%s\"; ip.ttl--; next;",
+                  igmp_group->mcgroup.name);
+    ovn_lflow_add(lflows, igmp_group->datapath, S_ROUTER_IN_IP_ROUTING, 10500,
+                  ds_cstr(match), ds_cstr(actions),
+                  lflow_ref);
+}
+
 /* IP Multicast lookup. Here we set the output port, adjust TTL and
  * advance to next table (priority 500).
  */
 static void
-build_mcast_lookup_flows_for_lrouter(
-        struct ovn_datapath *od, struct lflow_table *lflows,
-        struct ds *match, struct ds *actions,
-        struct lflow_ref *lflow_ref)
+build_mcast_lookup_flows_for_lrouter(struct ovn_datapath *od,
+                                     struct lflow_table *lflows,
+                                     struct ds *match,
+                                     struct lflow_ref *lflow_ref)
 {
     ovs_assert(od->nbr);
 
@@ -13518,33 +13561,6 @@ build_mcast_lookup_flows_for_lrouter(
                   lflow_ref);
     if (!od->mcast_info.rtr.relay) {
         return;
-    }
-
-    struct ovn_igmp_group *igmp_group;
-
-    LIST_FOR_EACH (igmp_group, list_node, &od->mcast_info.groups) {
-        ds_clear(match);
-        ds_clear(actions);
-        if (IN6_IS_ADDR_V4MAPPED(&igmp_group->address)) {
-            ds_put_format(match, "ip4 && ip4.dst == %s ",
-                        igmp_group->mcgroup.name);
-        } else {
-            ds_put_format(match, "ip6 && ip6.dst == %s ",
-                        igmp_group->mcgroup.name);
-        }
-        if (od->mcast_info.rtr.flood_static) {
-            ds_put_cstr(actions,
-                        "clone { "
-                            "outport = \""MC_STATIC"\"; "
-                            "ip.ttl--; "
-                            "next; "
-                        "};");
-        }
-        ds_put_format(actions, "outport = \"%s\"; ip.ttl--; next;",
-                      igmp_group->mcgroup.name);
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING, 10500,
-                      ds_cstr(match), ds_cstr(actions),
-                      lflow_ref);
     }
 
     /* If needed, flood unregistered multicast on statically configured
@@ -16961,6 +16977,7 @@ build_lswitch_and_lrouter_iterate_by_ls(struct ovn_datapath *od,
     build_lswitch_output_port_sec_od(od, lsi->lflows, NULL);
     build_lswitch_lb_affinity_default_flows(od, lsi->lflows, NULL);
     build_lswitch_lflows_l2_unknown(od, lsi->lflows, NULL);
+    build_mcast_flood_lswitch(od, lsi->lflows, &lsi->actions, NULL);
 }
 
 /* Helper function to combine all lflow generation which is iterated by
@@ -16980,8 +16997,7 @@ build_lswitch_and_lrouter_iterate_by_lr(struct ovn_datapath *od,
     build_route_flows_for_lrouter(od, lsi->lflows,
                                   lsi->parsed_routes, lsi->route_tables,
                                   lsi->bfd_ports, NULL);
-    build_mcast_lookup_flows_for_lrouter(od, lsi->lflows, &lsi->match,
-                                         &lsi->actions, NULL);
+    build_mcast_lookup_flows_for_lrouter(od, lsi->lflows, &lsi->match, NULL);
     build_ingress_policy_flows_for_lrouter(od, lsi->lflows, lsi->lr_ports,
                                            lsi->route_policies, NULL);
     build_arp_resolve_flows_for_lrouter(od, lsi->lflows, NULL);
@@ -17243,9 +17259,17 @@ build_lflows_thread(void *arg)
                     if (stop_parallel_processing()) {
                         return NULL;
                     }
-                    build_lswitch_ip_mcast_igmp_mld(igmp_group, lsi->lflows,
-                                                    &lsi->match,
-                                                    &lsi->actions);
+                    if (igmp_group->datapath->nbs) {
+                        build_lswitch_ip_mcast_igmp_mld(igmp_group,
+                                                        lsi->lflows,
+                                                        &lsi->actions,
+                                                        &lsi->match, NULL);
+                    } else {
+                        build_lrouter_ip_mcast_igmp_mld(
+                            igmp_group, lsi->lflows,
+                            &lsi->actions,
+                            &lsi->match, NULL);
+                    }
                 }
             }
             lsi->thread_lflow_counter = thread_lflow_counter;
@@ -17469,10 +17493,15 @@ build_lswitch_and_lrouter_flows(
         stopwatch_stop(LFLOWS_LS_STATEFUL_STOPWATCH_NAME, time_msec());
         stopwatch_start(LFLOWS_IGMP_STOPWATCH_NAME, time_msec());
         HMAP_FOR_EACH (igmp_group, hmap_node, igmp_groups) {
-            build_lswitch_ip_mcast_igmp_mld(igmp_group,
-                                            lsi.lflows,
-                                            &lsi.actions,
-                                            &lsi.match);
+            if (igmp_group->datapath->nbs) {
+                build_lswitch_ip_mcast_igmp_mld(igmp_group, lsi.lflows,
+                                                &lsi.actions, &lsi.match,
+                                                NULL);
+            } else {
+                build_lrouter_ip_mcast_igmp_mld(igmp_group, lsi.lflows,
+                                                &lsi.actions, &lsi.match,
+                                                NULL);
+            }
         }
         stopwatch_stop(LFLOWS_IGMP_STOPWATCH_NAME, time_msec());
 

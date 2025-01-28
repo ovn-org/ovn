@@ -207,18 +207,24 @@ build_mcast_groups(const struct sbrec_igmp_group_table *sbrec_igmp_group_table,
 
         /* Add the extracted ports to the IGMP group. */
         ovn_igmp_group_add_entry(igmp_group, igmp_ports, n_igmp_ports);
-    }
 
-    /* Build IGMP groups for multicast routers with relay enabled. The router
-     * IGMP groups are based on the groups learnt by their multicast enabled
-     * peers.
-     */
-    HMAP_FOR_EACH (od, key_node, ls_datapaths) {
-
-        if (ovs_list_is_empty(&od->mcast_info.groups)) {
+        /* Skip mrouter entries. */
+        if (!strcmp(igmp_group->mcgroup.name, OVN_IGMP_GROUP_MROUTERS)) {
             continue;
         }
 
+        /* For IPv6 only relay routable multicast groups
+         * (RFC 4291 2.7).
+         */
+        if (!IN6_IS_ADDR_V4MAPPED(&group_address) &&
+            !ipv6_addr_is_routable_multicast(&group_address)) {
+            continue;
+        }
+
+        /* Build IGMP groups for multicast routers with relay enabled.
+         * The router IGMP groups are based on the groups learnt by their
+         * multicast enabled peers.
+         */
         for (size_t i = 0; i < od->n_router_ports; i++) {
             struct ovn_port *router_port = od->router_ports[i]->peer;
 
@@ -232,38 +238,19 @@ build_mcast_groups(const struct sbrec_igmp_group_table *sbrec_igmp_group_table,
                 continue;
             }
 
-            struct ovn_igmp_group *igmp_group;
-            LIST_FOR_EACH (igmp_group, list_node, &od->mcast_info.groups) {
-                struct in6_addr *address = &igmp_group->address;
-
-                /* Skip mrouter entries. */
-                if (!strcmp(igmp_group->mcgroup.name,
-                            OVN_IGMP_GROUP_MROUTERS)) {
-                    continue;
-                }
-
-                /* For IPv6 only relay routable multicast groups
-                 * (RFC 4291 2.7).
-                 */
-                if (!IN6_IS_ADDR_V4MAPPED(address) &&
-                    !ipv6_addr_is_routable_multicast(address)) {
-                    continue;
-                }
-
-                struct ovn_igmp_group *igmp_group_rtr =
-                    ovn_igmp_group_add(sbrec_mcast_group_by_name_dp,
-                                       igmp_groups, router_port->od,
-                                       address, igmp_group->mcgroup.name);
-                struct ovn_port **router_igmp_ports =
-                    xmalloc(sizeof *router_igmp_ports);
-                /* Store the chassis redirect port  otherwise traffic will not
-                 * be tunneled properly.
-                 */
-                router_igmp_ports[0] = router_port->cr_port
-                                       ? router_port->cr_port
-                                       : router_port;
-                ovn_igmp_group_add_entry(igmp_group_rtr, router_igmp_ports, 1);
-            }
+            struct ovn_igmp_group *igmp_group_rtr =
+                ovn_igmp_group_add(sbrec_mcast_group_by_name_dp,
+                                   igmp_groups, router_port->od,
+                                   &group_address, igmp_group->mcgroup.name);
+            struct ovn_port **router_igmp_ports =
+                xmalloc(sizeof *router_igmp_ports);
+            /* Store the chassis redirect port  otherwise traffic will not
+             * be tunneled properly.
+             */
+            router_igmp_ports[0] = router_port->cr_port
+                                   ? router_port->cr_port
+                                   : router_port;
+            ovn_igmp_group_add_entry(igmp_group_rtr, router_igmp_ports, 1);
         }
     }
 
@@ -522,8 +509,6 @@ ovn_igmp_group_add(struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp,
 
         hmap_insert(igmp_groups, &igmp_group->hmap_node,
                     ovn_igmp_group_hash(datapath, address));
-        ovs_list_push_back(&datapath->mcast_info.groups,
-                           &igmp_group->list_node);
     }
 
     return igmp_group;
@@ -656,7 +641,6 @@ ovn_igmp_group_destroy(struct hmap *igmp_groups,
             free(entry);
         }
         hmap_remove(igmp_groups, &igmp_group->hmap_node);
-        ovs_list_remove(&igmp_group->list_node);
         free(igmp_group);
     }
 }

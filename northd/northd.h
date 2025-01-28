@@ -292,7 +292,6 @@ struct mcast_info {
 
     struct hmap group_tnlids;  /* Group tunnel IDs in use on this DP. */
     uint32_t group_tnlid_hint; /* Hint for allocating next group tunnel ID. */
-    struct ovs_list groups;    /* List of groups learnt on this DP. */
 
     union {
         struct mcast_switch_info sw;  /* Switch specific multicast info. */
