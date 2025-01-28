@@ -1,7 +1,8 @@
 ARG OVNKUBE_COMMIT
 ARG GO_VERSION
+ARG FEDORA_VERSION
 
-FROM fedora:37 AS ovnbuilder
+FROM fedora:$FEDORA_VERSION AS ovnbuilder
 
 USER root
 
@@ -37,6 +38,7 @@ RUN rm rpm/rpmbuild/RPMS/x86_64/*docker*
 ARG GO_VERSION
 FROM golang:$GO_VERSION as ovnkubebuilder
 ARG OVNKUBE_COMMIT
+ARG FEDORA_VERSION
 
 # Clone OVN Kubernetes and build the binary based on the commit passed as argument
 WORKDIR /root
@@ -63,7 +65,7 @@ COPY --from=ovnbuilder /tmp/ovn/ovn-sb.ovsschema pkg/sbdb/ovn-sb.ovsschema
 RUN go generate ./pkg/nbdb && go generate ./pkg/sbdb && make
 
 # Build the final image
-FROM fedora:37
+FROM fedora:$FEDORA_VERSION
 
 # install needed dependencies
 RUN INSTALL_PKGS=" \
