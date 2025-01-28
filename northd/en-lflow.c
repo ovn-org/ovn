@@ -23,6 +23,7 @@
 #include "en-lr-nat.h"
 #include "en-lr-stateful.h"
 #include "en-ls-stateful.h"
+#include "en-multicast.h"
 #include "en-northd.h"
 #include "en-meters.h"
 #include "en-sampling-app.h"
@@ -56,13 +57,11 @@ lflow_get_input_data(struct engine_node *node,
         engine_get_input_data("lr_stateful", node);
     struct ed_type_ls_stateful *ls_stateful_data =
         engine_get_input_data("ls_stateful", node);
+    struct multicast_igmp_data *multicat_igmp_data =
+        engine_get_input_data("multicast_igmp", node);
 
     lflow_input->sbrec_logical_flow_table =
         EN_OVSDB_GET(engine_get_input("SB_logical_flow", node));
-    lflow_input->sbrec_multicast_group_table =
-        EN_OVSDB_GET(engine_get_input("SB_multicast_group", node));
-    lflow_input->sbrec_igmp_group_table =
-        EN_OVSDB_GET(engine_get_input("SB_igmp_group", node));
     lflow_input->sbrec_logical_dp_group_table =
         EN_OVSDB_GET(engine_get_input("SB_logical_dp_group", node));
 
@@ -85,6 +84,8 @@ lflow_get_input_data(struct engine_node *node,
     lflow_input->parsed_routes = &routes_data->parsed_routes;
     lflow_input->route_tables = &routes_data->route_tables;
     lflow_input->route_policies = &route_policies_data->route_policies;
+    lflow_input->igmp_groups = &multicat_igmp_data->igmp_groups;
+    lflow_input->igmp_lflow_ref = multicat_igmp_data->lflow_ref;
 
     struct ed_type_global_config *global_config =
         engine_get_input_data("global_config", node);
@@ -110,6 +111,7 @@ void en_lflow_run(struct engine_node *node, void *data)
     struct lflow_data *lflow_data = data;
     lflow_table_clear(lflow_data->lflow_table);
     lflow_reset_northd_refs(&lflow_input);
+    lflow_ref_clear(lflow_input.igmp_lflow_ref);
 
     build_lflows(eng_ctx->ovnsb_idl_txn, &lflow_input,
                  lflow_data->lflow_table);
@@ -212,6 +214,48 @@ lflow_ls_stateful_handler(struct engine_node *node, void *data)
                                           &ls_sful_data->trk_data,
                                           &lflow_input,
                                           lflow_data->lflow_table)) {
+        return false;
+    }
+
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
+}
+
+bool
+lflow_multicast_igmp_handler(struct engine_node *node, void *data)
+{
+    struct multicast_igmp_data *mcast_igmp_data =
+        engine_get_input_data("multicast_igmp", node);
+
+    const struct engine_context *eng_ctx = engine_get_context();
+    struct lflow_data *lflow_data = data;
+    struct lflow_input lflow_input;
+    lflow_get_input_data(node, &lflow_input);
+
+    if (!lflow_ref_resync_flows(mcast_igmp_data->lflow_ref,
+                                lflow_data->lflow_table,
+                                eng_ctx->ovnsb_idl_txn,
+                                lflow_input.ls_datapaths,
+                                lflow_input.lr_datapaths,
+                                lflow_input.ovn_internal_version_changed,
+                                lflow_input.sbrec_logical_flow_table,
+                                lflow_input.sbrec_logical_dp_group_table)) {
+        return false;
+    }
+
+    build_igmp_lflows(&mcast_igmp_data->igmp_groups,
+                      &lflow_input.ls_datapaths->datapaths,
+                      lflow_data->lflow_table,
+                      mcast_igmp_data->lflow_ref);
+
+    if (!lflow_ref_sync_lflows(mcast_igmp_data->lflow_ref,
+                               lflow_data->lflow_table,
+                               eng_ctx->ovnsb_idl_txn,
+                               lflow_input.ls_datapaths,
+                               lflow_input.lr_datapaths,
+                               lflow_input.ovn_internal_version_changed,
+                               lflow_input.sbrec_logical_flow_table,
+                               lflow_input.sbrec_logical_dp_group_table)) {
         return false;
     }
 

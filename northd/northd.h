@@ -198,13 +198,12 @@ struct bfd_sync_data {
     struct sset bfd_ports;
 };
 
+struct lflow_ref;
 struct lr_nat_table;
 
 struct lflow_input {
     /* Southbound table references */
     const struct sbrec_logical_flow_table *sbrec_logical_flow_table;
-    const struct sbrec_multicast_group_table *sbrec_multicast_group_table;
-    const struct sbrec_igmp_group_table *sbrec_igmp_group_table;
     const struct sbrec_logical_dp_group_table *sbrec_logical_dp_group_table;
 
     /* Indexes */
@@ -228,6 +227,8 @@ struct lflow_input {
     struct hmap *parsed_routes;
     struct hmap *route_policies;
     struct simap *route_tables;
+    struct hmap *igmp_groups;
+    struct lflow_ref *igmp_lflow_ref;
 };
 
 extern int parallelization_state;
@@ -896,5 +897,8 @@ lsp_is_router(const struct nbrec_logical_switch_port *nbsp)
 }
 
 struct ovn_port *ovn_port_find(const struct hmap *ports, const char *name);
-
+void build_igmp_lflows(struct hmap *igmp_groups,
+                       const struct hmap *ls_datapaths,
+                       struct lflow_table *lflows,
+                       struct lflow_ref *lflow_ref);
 #endif /* NORTHD_H */

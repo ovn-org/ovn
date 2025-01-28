@@ -70,20 +70,16 @@ struct ovn_igmp_group {
     struct ovs_list entries; /* List of SB entries for this group. */
 };
 
-void build_mcast_groups(
-    const struct sbrec_igmp_group_table *sbrec_igmp_group_table,
-    struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp,
-    const struct hmap *ls_datapaths,
-    const struct hmap *ls_ports,
-    const struct hmap *lr_ports,
-    struct hmap *mcast_groups,
-    struct hmap *igmp_groups);
-void sync_multicast_groups_to_sb(
-    struct ovsdb_idl_txn *ovnsb_txn,
-    const struct sbrec_multicast_group_table *sbrec_multicast_group_table,
-    const struct hmap * ls_datapaths, const struct hmap *lr_datapaths,
-    struct hmap *mcast_groups);
-void ovn_igmp_groups_destroy(struct hmap *igmp_groups);
+struct multicast_igmp_data {
+    struct hmap mcast_groups;
+    struct hmap igmp_groups;
+    struct lflow_ref *lflow_ref;
+};
+
+void *en_multicast_igmp_init(struct engine_node *,struct engine_arg *);
+void en_multicast_igmp_run(struct engine_node *, void *);
+bool multicast_igmp_northd_handler(struct engine_node *, void *);
+void en_multicast_igmp_cleanup(void *);
 struct sbrec_multicast_group *create_sb_multicast_group(
     struct ovsdb_idl_txn *ovnsb_txn, const struct sbrec_datapath_binding *,
     const char *name, int64_t tunnel_key);

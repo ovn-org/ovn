@@ -22,5 +22,6 @@ bool lflow_northd_handler(struct engine_node *, void *data);
 bool lflow_port_group_handler(struct engine_node *, void *data);
 bool lflow_lr_stateful_handler(struct engine_node *, void *data);
 bool lflow_ls_stateful_handler(struct engine_node *node, void *data);
+bool lflow_multicast_igmp_handler(struct engine_node *node, void *data);
 
 #endif /* EN_LFLOW_H */
