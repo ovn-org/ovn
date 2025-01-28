@@ -10212,78 +10212,79 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
                                 struct ds *actions,
                                 struct ds *match)
 {
+    if (!(igmp_group->datapath && igmp_group->datapath->nbs)) {
+        return;
+    }
+
     uint64_t dummy;
 
-    if (igmp_group->datapath) {
+    ds_clear(match);
+    ds_clear(actions);
 
-        ds_clear(match);
-        ds_clear(actions);
+    struct mcast_switch_info *mcast_sw_info =
+        &igmp_group->datapath->mcast_info.sw;
+    uint64_t table_size = mcast_sw_info->table_size;
 
-        struct mcast_switch_info *mcast_sw_info =
-            &igmp_group->datapath->mcast_info.sw;
-        uint64_t table_size = mcast_sw_info->table_size;
-
-        if (IN6_IS_ADDR_V4MAPPED(&igmp_group->address)) {
-            /* RFC 4541, section 2.1.2, item 2: Skip groups in the 224.0.0.X
-             * range.
-             */
-            ovs_be32 group_address =
-                in6_addr_get_mapped_ipv4(&igmp_group->address);
-            if (ip_is_local_multicast(group_address)) {
-                return;
-            }
-            if (atomic_compare_exchange_strong(
-                        &mcast_sw_info->active_v4_flows, &table_size,
-                        mcast_sw_info->table_size)) {
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-
-                VLOG_INFO_RL(&rl, "Too many active mcast flows: %"PRIu64,
-                             mcast_sw_info->active_v4_flows);
-                return;
-            }
-            atomic_add(&mcast_sw_info->active_v4_flows, 1, &dummy);
-            ds_put_format(match, "eth.mcast && ip4 && ip4.dst == %s ",
-                          igmp_group->mcgroup.name);
-        } else {
-            /* RFC 4291, section 2.7.1: Skip groups that correspond to all
-             * hosts, all link-local routers and all site routers.
-             */
-            if (ipv6_is_all_hosts(&igmp_group->address) ||
-                ipv6_is_all_router(&igmp_group->address) ||
-                ipv6_is_all_site_router(&igmp_group->address)) {
-                return;
-            }
-            if (atomic_compare_exchange_strong(
-                        &mcast_sw_info->active_v6_flows, &table_size,
-                        mcast_sw_info->table_size)) {
-                return;
-            }
-            atomic_add(&mcast_sw_info->active_v6_flows, 1, &dummy);
-            ds_put_format(match, "eth.mcast && ip6 && ip6.dst == %s ",
-                          igmp_group->mcgroup.name);
+    if (IN6_IS_ADDR_V4MAPPED(&igmp_group->address)) {
+        /* RFC 4541, section 2.1.2, item 2: Skip groups in the 224.0.0.X
+         * range.
+         */
+        ovs_be32 group_address =
+            in6_addr_get_mapped_ipv4(&igmp_group->address);
+        if (ip_is_local_multicast(group_address)) {
+            return;
         }
+        if (atomic_compare_exchange_strong(
+                    &mcast_sw_info->active_v4_flows, &table_size,
+                    mcast_sw_info->table_size)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
 
-        /* Also flood traffic to all multicast routers with relay enabled. */
-        if (mcast_sw_info->flood_relay) {
-            ds_put_cstr(actions,
-                        "clone { "
-                            "outport = \""MC_MROUTER_FLOOD "\"; "
-                            "output; "
-                        "};");
+            VLOG_INFO_RL(&rl, "Too many active mcast flows: %"PRIu64,
+                         mcast_sw_info->active_v4_flows);
+            return;
         }
-        if (mcast_sw_info->flood_static) {
-            ds_put_cstr(actions,
-                        "clone { "
-                            "outport =\""MC_STATIC"\"; "
-                            "output; "
-                        "};");
-        }
-        ds_put_format(actions, "outport = \"%s\"; output; ",
+        atomic_add(&mcast_sw_info->active_v4_flows, 1, &dummy);
+        ds_put_format(match, "eth.mcast && ip4 && ip4.dst == %s ",
                       igmp_group->mcgroup.name);
-
-        ovn_lflow_add(lflows, igmp_group->datapath, S_SWITCH_IN_L2_LKUP,
-                      90, ds_cstr(match), ds_cstr(actions), NULL);
+    } else {
+        /* RFC 4291, section 2.7.1: Skip groups that correspond to all
+         * hosts, all link-local routers and all site routers.
+         */
+        if (ipv6_is_all_hosts(&igmp_group->address) ||
+            ipv6_is_all_router(&igmp_group->address) ||
+            ipv6_is_all_site_router(&igmp_group->address)) {
+            return;
+        }
+        if (atomic_compare_exchange_strong(
+                    &mcast_sw_info->active_v6_flows, &table_size,
+                    mcast_sw_info->table_size)) {
+            return;
+        }
+        atomic_add(&mcast_sw_info->active_v6_flows, 1, &dummy);
+        ds_put_format(match, "eth.mcast && ip6 && ip6.dst == %s ",
+                      igmp_group->mcgroup.name);
     }
+
+    /* Also flood traffic to all multicast routers with relay enabled. */
+    if (mcast_sw_info->flood_relay) {
+        ds_put_cstr(actions,
+                    "clone { "
+                        "outport = \""MC_MROUTER_FLOOD "\"; "
+                        "output; "
+                    "};");
+    }
+    if (mcast_sw_info->flood_static) {
+        ds_put_cstr(actions,
+                    "clone { "
+                        "outport =\""MC_STATIC"\"; "
+                        "output; "
+                    "};");
+    }
+    ds_put_format(actions, "outport = \"%s\"; output; ",
+                  igmp_group->mcgroup.name);
+
+    ovn_lflow_add(lflows, igmp_group->datapath, S_SWITCH_IN_L2_LKUP,
+                  90, ds_cstr(match), ds_cstr(actions), NULL);
 }
 
 /* Ingress table 25: Destination lookup, unicast handling (priority 50), */
