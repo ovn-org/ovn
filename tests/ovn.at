@@ -2279,6 +2279,12 @@ ct_tp_dst;
 ct_tp_dst();
     Syntax error at `ct_tp_dst' expecting action.
 
+flood_remote;
+    encodes as set_field:0x8000->reg6,resubmit(,OFTABLE_FLOOD_REMOTE_CHASSIS)
+
+flood_remote();
+    Syntax error at `(' expecting `;'.
+
 # Miscellaneous negative tests.
 ;
     Syntax error at `;'.
@@ -35760,7 +35766,9 @@ check_default_flows() {
         # respectively and it's OK if they don't have a default action.
         # Tables 81, 82 and 83 are part of ct_nw_dst(), ct_ip6_dst() and ct_tp_dst()
         # actions respectively and its OK for them to not have default flows.
-        if test ${table} -eq 68 -o ${table} -eq 70 -o ${table} -eq 81 -o ${table} -eq 82 -o ${table} -eq 83; then
+        # Table 84 is part of flood_remote; action and its OK for
+        #  it to not have default flows.
+        if test ${table} -eq 68 -o ${table} -eq 70 -o ${table} -eq 81 -o ${table} -eq 82 -o ${table} -eq 83 -o ${table} -eq 84; then
             continue;
         fi
         AT_CHECK([grep -qe "table=$table.* priority=0\(,metadata=0x\w*\)\? actions" oflows], [0], [ignore], [ignore], [echo "Table $table does not contain a default action"])

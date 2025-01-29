@@ -112,6 +112,54 @@ cleanup_multinode_resources_by_nodes() {
     done
 }
 
+# multinode_cleanup_northd NODE
+#
+# Removes previously set nothd on specified node
+multinode_cleanup_northd() {
+    c=$1
+    # Cleanup existing one
+    m_as $c /usr/share/ovn/scripts/ovn-ctl stop_northd
+    m_as $c rm -f /etc/ovn/*.db
+}
+
+# multinode_setup_northd NODE
+#
+# Sets up northd on specified node.
+multinode_setup_northd() {
+    c=$1
+
+    multinode_cleanup_northd $c
+
+    m_as $c /usr/share/ovn/scripts/ovn-ctl start_northd
+    m_as $c ovn-nbctl set-connection ptcp:6641
+    m_as $c ovn-sbctl set-connection ptcp:6642
+}
+
+# multinode_setup_controller NODE ENCAP_IP REMOTE_IP [ENCAP_TYPE]
+#
+# Sets up controller on specified node.
+multinode_setup_controller() {
+    c=$1
+    encap_ip=$3
+    remote_ip=$4
+    encap_type=${5:-"geneve"}
+
+    # Cleanup existing one
+    m_as $c /usr/share/openvswitch/scripts/ovs-ctl stop
+    m_as $c /usr/share/ovn/scripts/ovn-ctl stop_controller
+    m_as $c rm -f /etc/openvswitch/*.db
+
+    m_as $c /usr/share/openvswitch/scripts/ovs-ctl start --system-id=$c
+    m_as $c /usr/share/ovn/scripts/ovn-ctl start_controller
+
+    m_as $c ovs-vsctl set open . external_ids:ovn-encap-ip=$encap_ip
+    m_as $c ovs-vsctl set open . external-ids:ovn-encap-type=$encap_type
+    m_as $c ovs-vsctl set open . external-ids:ovn-remote=tcp:$remote_ip:6642
+    m_as $c ovs-vsctl set open . external-ids:ovn-openflow-probe-interval=60
+    m_as $c ovs-vsctl set open . external-ids:ovn-remote-probe-interval=180000
+    m_as $c ovs-vsctl set open . external-ids:ovn-bridge-datapath-type=system
+}
+
 # m_count_rows TABLE [CONDITION...]
 #
 # Prints the number of rows in TABLE (that satisfy CONDITION).

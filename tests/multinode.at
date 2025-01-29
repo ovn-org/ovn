@@ -2575,3 +2575,204 @@ Connected to 10.0.2.4 (10.0.2.4) port 8080
 fi
 
 AT_CLEANUP
+
+AT_SETUP([ovn multinode - Transit Router basic functionality])
+
+# Check that ovn-fake-multinode setup is up and running
+check_fake_multinode_setup
+
+# Delete the multinode NB and OVS resources before starting the test.
+cleanup_multinode_resources
+
+# Network topology
+#    ┌─────────────────────────────────┐     ┌────────────────────────────────┐
+#    │                                 │     │                                │
+#    │    ┌───────────────────┐   AZ1  │     │  AZ2   ┌───────────────────┐   │
+#    │    │     external      │        │     │        │                   │   │
+#    │    │                   │        │     │        │                   │   │
+#    │    │ 192.168.100.10/24 │        │     │        │ ................. │   │
+#    │    │    1000::10/64    │        │     │        │                   │   │
+#    │    └─────────┬─────────┘        │     │        └─────────┬─────────┘   │
+#    │              │                  │     │                  │             │
+#    │              │                  │     │                  │             │
+#    │    ┌─────────┴─────────┐        │     │        ┌─────────┴─────────┐   │
+#    │    │ 192.168.100.1/24  │        │     │        │ 192.168.100.2/24  │   │
+#    │    │    1000::1/64     │        │     │        │    1000::2/64     │   │
+#    │    │                   │        │     │        │                   │   │
+#    │    │        GW         │        │     │        │        GW         │   │
+#    │    │                   │        │     │        │                   │   │
+#    │    │   100.65.0.1/30   │        │     │        │   100.65.0.5/30   │   │
+#    │    │   100:65::1/126   │        │     │        │   100:65::5/126   │   │
+#    │    └─────────┬─────────┘        │     │        └───────────────────┘   │
+#    │              │                  │     │                  │             │
+#    │              │  Peer ports      │     │                  │  Peer ports │
+#    │              │                  │     │                  │             │
+#    │    ┌─────────┴──────────────────│─────│──────────────────┴─────────┐   │
+#    │    │   100.65.0.2/30            │     │            100.65.0.6/30   │   │
+#    │    │   100:65::2/126            │     │            100:65::6/126   │   │
+#    │    │                            │     │                            │   │
+#    │    │                            │  TR │                            │   │
+#    │    │                            │     │                            │   │
+#    │    │  10.100.200.1/24           │     │           10.100.200.1/24  │   │
+#    │    │   10:200::1/64             │     │            10:200::1/64    │   │
+#    │    └─────────┬──────────────────│─────│────────────────────────────┘   │
+#    │              │                  │     │                  │             │
+#    │              │                  │     │                  │             │
+#    │              │                  │     │                  │             │
+#    │    ┌─────────┴──────────────────│─────│────────────────────────────┐   │
+#    │    │                            │  TS │                            │   │
+#    │    └─────────┬──────────────────│─────│────────────────────────────┘   │
+#    │              │                  │     │                  │             │
+#    │              │                  │     │                  │             │
+#    │              │                  │     │                  │             │
+#    │    ┌─────────┴─────────┐        │     │        ┌─────────┴─────────┐   │
+#    │    │       pod10       │        │     │        │       pod20       │   │
+#    │    │                   │        │     │        │                   │   │
+#    │    │  10.100.200.10/24 │        │     │        │  10.100.200.20/24 │   │
+#    │    │   10:200::10/64   │        │     │        │   10:200::20/64   │   │
+#    │    └───────────────────┘        │     │        └───────────────────┘   │
+#    └─────────────────────────────────┘     └────────────────────────────────┘
+
+for i in 1 2; do
+    chassis="ovn-chassis-$i"
+    ip=$(m_as $chassis ip -4 addr show eth1 | grep inet | awk '{print $2}' | cut -d'/' -f1)
+
+    multinode_setup_northd $chassis
+    multinode_setup_controller $chassis $chassis $ip $ip
+
+    check m_as $chassis ovs-vsctl set open . external_ids:ovn-monitor-all=true
+    check m_as $chassis ovs-vsctl set open . external_ids:ovn-is-interconn=true
+
+    check m_as $chassis ovn-nbctl ls-add public
+
+    check m_as $chassis ovn-nbctl lsp-add public public-gw
+    check m_as $chassis ovn-nbctl lsp-set-type public-gw router
+    check m_as $chassis ovn-nbctl lsp-set-addresses public-gw router
+    check m_as $chassis ovn-nbctl lsp-set-options public-gw router-port=gw-public
+
+    check m_as $chassis ovn-nbctl lr-add gw
+    check m_as $chassis ovn-nbctl lrp-add gw gw-public 00:00:00:00:20:00 192.168.100.$i/24 1000::$i/64
+
+    check m_as $chassis ovn-nbctl set logical_router gw options:chassis=$chassis
+
+    # Add TR and set the same tunnel key for both chassis
+    check m_as $chassis ovn-nbctl ls-add ts
+    check m_as $chassis ovn-nbctl set logical_switch ts other_config:requested-tnl-key=10
+
+    check m_as $chassis ovn-nbctl lsp-add ts ts-tr
+    check m_as $chassis ovn-nbctl lsp-set-type ts-tr router
+    check m_as $chassis ovn-nbctl lsp-set-addresses ts-tr router
+    check m_as $chassis ovn-nbctl lsp-set-options ts-tr router-port=tr-ts
+
+    check m_as $chassis ovn-nbctl lr-add tr
+    check m_as $chassis ovn-nbctl lrp-add tr tr-ts 00:00:00:00:10:00 10.100.200.1/24 10:200::1/64
+    check m_as $chassis ovn-nbctl set logical_router tr options:requested-tnl-key=20
+
+    # Add TS pods, with the same tunnel keys on both sides
+    check m_as $chassis ovn-nbctl lsp-add ts pod10
+    check m_as $chassis ovn-nbctl lsp-set-addresses pod10 "00:00:00:00:10:10 10.100.200.10 10:200::10"
+    check m_as $chassis ovn-nbctl set logical_switch_port pod10 options:requested-tnl-key=10
+
+    check m_as $chassis ovn-nbctl lsp-add ts pod20
+    check m_as $chassis ovn-nbctl lsp-set-addresses pod20 "00:00:00:00:10:20 10.100.200.20 10:200::20"
+    check m_as $chassis ovn-nbctl set logical_switch_port pod20 options:requested-tnl-key=20
+done
+
+# Add SNAT for the GW router that corresponds to "gw-tr" LRP IP
+check m_as ovn-chassis-1 ovn-nbctl lr-nat-add gw snat 100.65.0.1 192.168.100.0/24
+check m_as ovn-chassis-1 ovn-nbctl lr-nat-add gw snat 100:65::1 1000::/64
+check m_as ovn-chassis-2 ovn-nbctl lr-nat-add gw snat 100.65.0.5 192.168.100.0/24
+check m_as ovn-chassis-2 ovn-nbctl lr-nat-add gw snat 100:65::5 1000::/64
+
+# Add peer ports between GW and TR
+check m_as ovn-chassis-1 ovn-nbctl lrp-add gw gw-tr 00:00:00:00:30:01 100.65.0.1/30 100:65::1/126 peer=tr-gw
+check m_as ovn-chassis-1 ovn-nbctl lrp-add tr tr-gw 00:00:00:00:30:02 100.65.0.2/30 100:65::2/126 peer=gw-tr
+
+check m_as ovn-chassis-2 ovn-nbctl lrp-add gw gw-tr 00:00:00:00:30:05 100.65.0.5/30 100:65::5/126 peer=tr-gw
+check m_as ovn-chassis-2 ovn-nbctl lrp-add tr tr-gw 00:00:00:00:30:06 100.65.0.6/30 100:65::6/126 peer=gw-tr
+
+# Add routes for the TS subnet
+check m_as ovn-chassis-1 ovn-nbctl lr-route-add gw 10.100.200.0/24 100.65.0.2
+check m_as ovn-chassis-1 ovn-nbctl lr-route-add gw 10:200::/64 100:65::2
+check m_as ovn-chassis-2 ovn-nbctl lr-route-add gw 10.100.200.0/24 100.65.0.6
+check m_as ovn-chassis-2 ovn-nbctl lr-route-add gw 10:200::/64 100:65::6
+
+# Add mutual remote ports
+check m_as ovn-chassis-1 ovn-nbctl lrp-add tr tr-az2 00:00:00:00:30:06 100.65.0.6/30 100:65::6/126
+check m_as ovn-chassis-1 ovn-nbctl set logical_router_port tr-az2 options:requested-chassis=ovn-chassis-2
+
+check m_as ovn-chassis-2 ovn-nbctl lrp-add tr tr-az1 00:00:00:00:30:02 100.65.0.2/30 100:65::2/126
+check m_as ovn-chassis-2 ovn-nbctl set logical_router_port tr-az1 options:requested-chassis=ovn-chassis-1
+
+# Important set the proper tunnel keys
+check m_as ovn-chassis-1 ovn-nbctl set logical_router_port tr-gw options:requested-tnl-key=10
+check m_as ovn-chassis-1 ovn-nbctl set logical_router_port tr-az2 options:requested-tnl-key=20
+
+check m_as ovn-chassis-2 ovn-nbctl set logical_router_port tr-gw options:requested-tnl-key=20
+check m_as ovn-chassis-2 ovn-nbctl set logical_router_port tr-az1 options:requested-tnl-key=10
+
+check m_as ovn-chassis-1 ovn-nbctl lsp-add public external
+check m_as ovn-chassis-1 ovn-nbctl lsp-set-addresses external "00:00:00:00:20:10 192.168.100.10 1000::10"
+
+# Add mutual chassis
+check m_as ovn-chassis-1 ovn-sbctl chassis-add ovn-chassis-2 geneve $(m_as ovn-chassis-2 ip -4 addr show eth1 | grep inet | awk '{print $2}' | cut -d'/' -f1)
+check m_as ovn-chassis-1 ovn-sbctl set chassis ovn-chassis-2 other_config:is-remote=true
+
+check m_as ovn-chassis-2 ovn-sbctl chassis-add ovn-chassis-1 geneve $(m_as ovn-chassis-1 ip -4 addr show eth1 | grep inet | awk '{print $2}' | cut -d'/' -f1)
+check m_as ovn-chassis-2 ovn-sbctl set chassis ovn-chassis-1 other_config:is-remote=true
+
+# Configure ports on the transit switch as remotes
+check m_as ovn-chassis-1 ovn-nbctl lsp-set-type pod20 remote
+check m_as ovn-chassis-1 ovn-nbctl lsp-set-options pod10 requested-chassis=ovn-chassis-1
+check m_as ovn-chassis-1 ovn-nbctl lsp-set-options pod20 requested-chassis=ovn-chassis-2
+
+check m_as ovn-chassis-2 ovn-nbctl lsp-set-type pod10 remote
+check m_as ovn-chassis-2 ovn-nbctl lsp-set-options pod10 requested-chassis=ovn-chassis-1
+check m_as ovn-chassis-2 ovn-nbctl lsp-set-options pod20 requested-chassis=ovn-chassis-2
+
+m_as ovn-chassis-1 /data/create_fake_vm.sh external external 00:00:00:00:20:10 1500 192.168.100.10 24 192.168.100.1 1000::10/64 1000::1
+m_as ovn-chassis-1 /data/create_fake_vm.sh pod10 pod10 00:00:00:00:10:10 1500 10.100.200.10 24 10.100.200.1 10:200::10/64 10:200::1
+m_as ovn-chassis-2 /data/create_fake_vm.sh pod20 pod20 00:00:00:00:10:20 1500 10.100.200.20 24 10.100.200.1 10:200::20/64 10:200::1
+
+# We cannot use any of the helpers as they assume that there is only single ovn-northd instance running
+check m_as ovn-chassis-1 ovn-nbctl --wait=hv sync
+OVS_WAIT_UNTIL([test -n "$(m_as ovn-chassis-1 ovn-sbctl --bare --columns _uuid find Port_Binding logical_port=external up=true)"])
+OVS_WAIT_UNTIL([test -n "$(m_as ovn-chassis-1 ovn-sbctl --bare --columns _uuid find Port_Binding logical_port=pod10 up=true)"])
+check m_as ovn-chassis-2 ovn-nbctl --wait=hv sync
+OVS_WAIT_UNTIL([test -n "$(m_as ovn-chassis-2 ovn-sbctl --bare --columns _uuid find Port_Binding logical_port=pod20 up=true)"])
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [external], [ping -q -c 5 -i 0.3 -w 2 10.100.200.20 | FORMAT_PING], \
+[0], [dnl
+5 packets transmitted, 5 received, 0% packet loss, time 0ms
+])
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [external], [ping -q -c 5 -i 0.3 -w 2 10:200::20 | FORMAT_PING], \
+[0], [dnl
+5 packets transmitted, 5 received, 0% packet loss, time 0ms
+])
+
+check test $(m_as ovn-chassis-1 grep -c "skipping output to input port" \
+    /var/log/openvswitch/ovs-vswitchd.log) -eq 0
+check test $(m_as ovn-chassis-2 grep -c "skipping output to input port" \
+    /var/log/openvswitch/ovs-vswitchd.log) -eq 0
+
+echo "Chassis1"
+m_as ovn-chassis-1 ovn-sbctl show
+m_as ovn-chassis-1 ovn-nbctl show
+m_as ovn-chassis-1 ovs-vsctl show
+
+echo "Chassis2"
+m_as ovn-chassis-2 ovn-sbctl show
+m_as ovn-chassis-2 ovn-nbctl show
+m_as ovn-chassis-2 ovs-vsctl show
+
+# Connect the chassis back to the original northd and remove northd per chassis.
+for i in 1 2; do
+    chassis="ovn-chassis-$i"
+    ip=$(m_as $chassis ip -4 addr show eth1 | grep inet | awk '{print $2}' | cut -d'/' -f1)
+
+    multinode_setup_controller $chassis $chassis $ip "170.168.0.2"
+    multinode_cleanup_northd $chassis
+done
+
+AT_CLEANUP

@@ -3460,6 +3460,9 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
             break;
         case OVNACT_CT_ORIG_TP_DST:
             break;
+        case OVNACT_FLOOD_REMOTE:
+            ovntrace_node_append(super, OVNTRACE_NODE_OUTPUT,
+                                 "/* Flood to all remote chassis */");
         }
     }
     ofpbuf_uninit(&stack);

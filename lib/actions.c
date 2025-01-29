@@ -5533,6 +5533,21 @@ format_CT_ORIG_TP_DST(const struct ovnact_result *res, struct ds *s)
     ds_put_cstr(s, " = ct_tp_dst();");
 }
 
+static void
+format_FLOOD_REMOTE(const struct ovnact_null *null OVS_UNUSED, struct ds *s)
+{
+    ds_put_cstr(s, "flood_remote;");
+}
+
+static void
+encode_FLOOD_REMOTE(const struct ovnact_null *null OVS_UNUSED,
+                    const struct ovnact_encode_params *ep,
+                     struct ofpbuf *ofpacts)
+{
+    put_load(CHASSIS_FLOOD_INDEX_START, MFF_REG6, 0, 32, ofpacts);
+    emit_resubmit(ofpacts, ep->flood_remote_table);
+}
+
 /* Parses an assignment or exchange or put_dhcp_opts action. */
 static void
 parse_set_action(struct action_context *ctx)
@@ -5760,6 +5775,8 @@ parse_action(struct action_context *ctx)
         parse_sample(ctx);
     } else if (lexer_match_id(ctx->lexer, "mac_cache_use")) {
         ovnact_put_MAC_CACHE_USE(ctx->ovnacts);
+    } else if (lexer_match_id(ctx->lexer, "flood_remote")) {
+        ovnact_put_FLOOD_REMOTE(ctx->ovnacts);
     } else {
         lexer_syntax_error(ctx->lexer, "expecting action");
     }

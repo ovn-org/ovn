@@ -134,6 +134,7 @@ struct collector_set_ids;
     OVNACT(CT_ORIG_NW_DST,    ovnact_result)          \
     OVNACT(CT_ORIG_IP6_DST,   ovnact_result)          \
     OVNACT(CT_ORIG_TP_DST,    ovnact_result)          \
+    OVNACT(FLOOD_REMOTE,      ovnact_null)            \
 
 /* enum ovnact_type, with a member OVNACT_<ENUM> for each action. */
 enum OVS_PACKED_ENUM ovnact_type {
@@ -948,6 +949,8 @@ struct ovnact_encode_params {
                                      *  to resubmit. */
     uint32_t ct_tp_dst_load_table; /* OpenFlow table for 'ct_tp_dst'
                                     *  to resubmit. */
+    uint32_t flood_remote_table; /* OpenFlow table for 'chassis_flood'
+                                  * to resubmit. */
 };
 
 void ovnacts_encode(const struct ovnact[], size_t ovnacts_len,

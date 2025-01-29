@@ -1386,6 +1386,7 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
                 .ct_nw_dst_load_table = OFTABLE_CT_ORIG_NW_DST_LOAD,
                 .ct_ip6_dst_load_table = OFTABLE_CT_ORIG_IP6_DST_LOAD,
                 .ct_tp_dst_load_table = OFTABLE_CT_ORIG_TP_DST_LOAD,
+                .flood_remote_table = OFTABLE_FLOOD_REMOTE_CHASSIS,
                 .lflow_uuid.parts =
                     { 0xaaaaaaaa, 0xbbbbbbbb, 0xcccccccc, 0xdddddddd},
                 .dp_key = 0xabcdef,

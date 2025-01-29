@@ -13148,21 +13148,22 @@ build_neigh_learning_flows_for_lrouter(
      * */
 
     /* Flows for LOOKUP_NEIGHBOR. */
+    const char *flood = od->is_transit_router ? "flood_remote; " : "";
     bool learn_from_arp_request = smap_get_bool(&od->nbr->options,
         "always_learn_from_arp_request", true);
     ds_clear(actions);
     ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
-                  " = lookup_arp(inport, arp.spa, arp.sha); %snext;",
+                  " = lookup_arp(inport, arp.spa, arp.sha); %s%snext;",
                   learn_from_arp_request ? "" :
-                  REGBIT_LOOKUP_NEIGHBOR_IP_RESULT" = 1; ");
+                  REGBIT_LOOKUP_NEIGHBOR_IP_RESULT" = 1; ", flood);
     ovn_lflow_add(lflows, od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 100,
                   "arp.op == 2", ds_cstr(actions), lflow_ref);
 
     ds_clear(actions);
     ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
-                  " = lookup_nd(inport, nd.target, nd.tll); %snext;",
+                  " = lookup_nd(inport, nd.target, nd.tll); %s%snext;",
                   learn_from_arp_request ? "" :
-                  REGBIT_LOOKUP_NEIGHBOR_IP_RESULT" = 1; ");
+                  REGBIT_LOOKUP_NEIGHBOR_IP_RESULT" = 1; ", flood);
     ovn_lflow_add(lflows, od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 100, "nd_na",
                   ds_cstr(actions), lflow_ref);
 
@@ -13178,7 +13179,8 @@ build_neigh_learning_flows_for_lrouter(
         ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
                                " = lookup_nd(inport, nd.target, nd.tll); "
                                REGBIT_LOOKUP_NEIGHBOR_IP_RESULT
-                               " = lookup_nd_ip(inport, nd.target); next;");
+                               " = lookup_nd_ip(inport, nd.target); %snext;",
+                               flood);
         ovn_lflow_add(lflows, od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 110,
                       "nd_na && ip6.src == fe80::/10 && ip6.dst == ff00::/8",
                       ds_cstr(actions), lflow_ref);

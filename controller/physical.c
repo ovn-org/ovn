@@ -186,6 +186,84 @@ put_encapsulation(enum mf_field_id mff_ovn_geneve,
 }
 
 static void
+put_decapsulation(enum mf_field_id mff_ovn_geneve,
+                  const struct chassis_tunnel *tun,
+                  struct ofpbuf *ofpacts)
+{
+    if (tun->type == GENEVE) {
+        put_move(MFF_TUN_ID, 0,  MFF_LOG_DATAPATH, 0, 24, ofpacts);
+        put_move(mff_ovn_geneve, 16, MFF_LOG_INPORT, 0, 15, ofpacts);
+        put_move(mff_ovn_geneve, 0, MFF_LOG_OUTPORT, 0, 16, ofpacts);
+    } else if (tun->type == STT) {
+        put_move(MFF_TUN_ID, 40, MFF_LOG_INPORT,   0, 15, ofpacts);
+        put_move(MFF_TUN_ID, 24, MFF_LOG_OUTPORT,  0, 16, ofpacts);
+        put_move(MFF_TUN_ID,  0, MFF_LOG_DATAPATH, 0, 24, ofpacts);
+    } else if (tun->type == VXLAN) {
+        /* Add flows for non-VTEP tunnels. Split VNI into two 12-bit
+         * sections and use them for datapath and outport IDs. */
+        put_move(MFF_TUN_ID, 12, MFF_LOG_OUTPORT,  0, 12, ofpacts);
+        put_move(MFF_TUN_ID, 0, MFF_LOG_DATAPATH, 0, 12, ofpacts);
+    } else {
+        OVS_NOT_REACHED();
+    }
+}
+
+
+static void
+put_remote_chassis_flood_encap(struct ofpbuf *ofpacts,
+                               enum chassis_tunnel_type type,
+                               enum mf_field_id mff_ovn_geneve)
+{
+    if (type == GENEVE) {
+        put_move(MFF_LOG_DATAPATH, 0,  MFF_TUN_ID, 0, 24, ofpacts);
+        put_load(0, mff_ovn_geneve, 0, 32, ofpacts);
+        put_move(MFF_LOG_INPORT, 0, mff_ovn_geneve, 16, 15, ofpacts);
+    } else if (type == STT) {
+        put_move(MFF_LOG_INPORT, 0, MFF_TUN_ID, 40, 15, ofpacts);
+        put_load(0, MFF_TUN_ID, 24, 16, ofpacts);
+        put_move(MFF_LOG_DATAPATH,  0, MFF_TUN_ID, 0, 24, ofpacts);
+    } else if (type == VXLAN) {
+        put_move(MFF_LOG_INPORT, 0, MFF_TUN_ID,  12, 12, ofpacts);
+        put_move(MFF_LOG_DATAPATH, 0, MFF_TUN_ID, 0, 12, ofpacts);
+    } else {
+        OVS_NOT_REACHED();
+    }
+}
+
+static void
+match_set_chassis_flood_outport(struct match *match,
+                                enum chassis_tunnel_type type,
+                                enum mf_field_id mff_ovn_geneve)
+{
+    if (type == GENEVE) {
+        /* Outport occupies the lower half of tunnel metadata (0-15). */
+        union mf_value value, mask;
+        memset(&value, 0, sizeof value);
+        memset(&mask, 0, sizeof mask);
+
+        const struct mf_field *mf_ovn_geneve = mf_from_id(mff_ovn_geneve);
+        memset(&mask.tun_metadata[mf_ovn_geneve->n_bytes - 2], 0xff, 2);
+
+        tun_metadata_set_match(mf_ovn_geneve, &value, &mask, match, NULL);
+    } else if (type == STT) {
+        /* Outport occupies bits 24-39. */
+        match_set_tun_id_masked(match, 0, htonll(UINT64_C(0xffff) << 24));
+    }
+}
+
+static void
+match_set_chassis_flood_remote(struct match *match, uint32_t index)
+{
+    match_init_catchall(match);
+    match_set_reg(match, MFF_REG6 - MFF_REG0, index);
+    /* Match if the packet wasn't already received from tunnel.
+     * This prevents from looping it back to the tunnel again. */
+    match_set_reg_masked(match, MFF_LOG_FLAGS - MFF_REG0, 0,
+                         MLF_RX_FROM_TUNNEL);
+}
+
+
+static void
 put_stack(enum mf_field_id field, struct ofpact_stack *stack)
 {
     stack->subfield.field = mf_from_id(field);
@@ -2367,6 +2445,105 @@ consider_mc_group(const struct physical_ctx *ctx,
     sset_destroy(&vtep_chassis);
 }
 
+#define CHASSIS_FLOOD_MAX_MSG_SIZE MC_OFPACTS_MAX_MSG_SIZE
+
+static void
+physical_eval_remote_chassis_flows(const struct physical_ctx *ctx,
+                                   struct ofpbuf *egress_ofpacts,
+                                   struct ovn_desired_flow_table *flow_table)
+{
+    struct match match = MATCH_CATCHALL_INITIALIZER;
+    uint32_t index = CHASSIS_FLOOD_INDEX_START;
+    struct chassis_tunnel *prev = NULL;
+
+    uint8_t actions_stub[256];
+    struct ofpbuf ingress_ofpacts;
+    ofpbuf_use_stub(&ingress_ofpacts, actions_stub, sizeof(actions_stub));
+
+    ofpbuf_clear(egress_ofpacts);
+
+    const struct sbrec_chassis *chassis;
+    SBREC_CHASSIS_TABLE_FOR_EACH (chassis, ctx->chassis_table) {
+        if (!smap_get_bool(&chassis->other_config, "is-remote", false)) {
+            continue;
+        }
+
+        struct chassis_tunnel *tun =
+            chassis_tunnel_find(ctx->chassis_tunnels, chassis->name,
+                                NULL, NULL);
+        if (!tun) {
+            continue;
+        }
+
+        if (!(prev && prev->type == tun->type)) {
+            put_remote_chassis_flood_encap(egress_ofpacts, tun->type,
+                                           ctx->mff_ovn_geneve);
+        }
+
+        ofpact_put_OUTPUT(egress_ofpacts)->port = tun->ofport;
+        prev = tun;
+
+        if (egress_ofpacts->size > CHASSIS_FLOOD_MAX_MSG_SIZE) {
+            match_set_chassis_flood_remote(&match, index++);
+            put_split_buf_function(index, 0, OFTABLE_FLOOD_REMOTE_CHASSIS,
+                                   egress_ofpacts);
+
+            ofctrl_add_flow(flow_table, OFTABLE_FLOOD_REMOTE_CHASSIS, 100, 0,
+                            &match, egress_ofpacts, hc_uuid);
+
+            ofpbuf_clear(egress_ofpacts);
+            prev = NULL;
+        }
+
+
+        ofpbuf_clear(&ingress_ofpacts);
+        put_load(1, MFF_LOG_FLAGS, MLF_RX_FROM_TUNNEL_BIT, 1,
+                 &ingress_ofpacts);
+        put_decapsulation(ctx->mff_ovn_geneve, tun, &ingress_ofpacts);
+        put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, &ingress_ofpacts);
+        if (tun->type == VXLAN) {
+            /* VXLAN doesn't carry the inport information, we cannot set
+             * the outport to 0 then and match on it. */
+            put_resubmit(OFTABLE_LOCAL_OUTPUT, &ingress_ofpacts);
+        }
+
+        /* Add match on ARP response coming from remote chassis. */
+        match_init_catchall(&match);
+        match_set_in_port(&match, tun->ofport);
+        match_set_dl_type(&match, htons(ETH_TYPE_ARP));
+        match_set_arp_opcode_masked(&match, 2, UINT8_MAX);
+        match_set_chassis_flood_outport(&match, tun->type,
+                                        ctx->mff_ovn_geneve);
+
+        ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 120,
+                        chassis->header_.uuid.parts[0],
+                        &match, &ingress_ofpacts, hc_uuid);
+
+        /* Add match on ND NA coming from remote chassis. */
+        match_init_catchall(&match);
+        match_set_in_port(&match, tun->ofport);
+        match_set_dl_type(&match, htons(ETH_TYPE_IPV6));
+        match_set_nw_proto(&match, IPPROTO_ICMPV6);
+        match_set_icmp_type(&match, 136);
+        match_set_icmp_code(&match, 0);
+        match_set_chassis_flood_outport(&match, tun->type,
+                                        ctx->mff_ovn_geneve);
+
+        ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 120,
+                        chassis->header_.uuid.parts[0],
+                        &match, &ingress_ofpacts, hc_uuid);
+    }
+
+    if (egress_ofpacts->size > 0) {
+        match_set_chassis_flood_remote(&match, index++);
+
+        ofctrl_add_flow(flow_table, OFTABLE_FLOOD_REMOTE_CHASSIS, 100, 0,
+                        &match, egress_ofpacts, hc_uuid);
+    }
+
+    ofpbuf_uninit(&ingress_ofpacts);
+}
+
 static void
 physical_eval_port_binding(struct physical_ctx *p_ctx,
                            const struct sbrec_port_binding *pb,
@@ -2531,24 +2708,7 @@ physical_run(struct physical_ctx *p_ctx,
         match_set_in_port(&match, tun->ofport);
 
         ofpbuf_clear(&ofpacts);
-        if (tun->type == GENEVE) {
-            put_move(MFF_TUN_ID, 0,  MFF_LOG_DATAPATH, 0, 24, &ofpacts);
-            put_move(p_ctx->mff_ovn_geneve, 16, MFF_LOG_INPORT, 0, 15,
-                     &ofpacts);
-            put_move(p_ctx->mff_ovn_geneve, 0, MFF_LOG_OUTPORT, 0, 16,
-                     &ofpacts);
-        } else if (tun->type == STT) {
-            put_move(MFF_TUN_ID, 40, MFF_LOG_INPORT,   0, 15, &ofpacts);
-            put_move(MFF_TUN_ID, 24, MFF_LOG_OUTPORT,  0, 16, &ofpacts);
-            put_move(MFF_TUN_ID,  0, MFF_LOG_DATAPATH, 0, 24, &ofpacts);
-        } else if (tun->type == VXLAN) {
-            /* Add flows for non-VTEP tunnels. Split VNI into two 12-bit
-             * sections and use them for datapath and outport IDs. */
-            put_move(MFF_TUN_ID, 12, MFF_LOG_OUTPORT,  0, 12, &ofpacts);
-            put_move(MFF_TUN_ID, 0, MFF_LOG_DATAPATH, 0, 12, &ofpacts);
-        } else {
-            OVS_NOT_REACHED();
-        }
+        put_decapsulation(p_ctx->mff_ovn_geneve, tun, &ofpacts);
 
         put_resubmit(OFTABLE_LOCAL_OUTPUT, &ofpacts);
         ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 100, 0, &match,
@@ -2799,6 +2959,8 @@ physical_run(struct physical_ctx *p_ctx,
              128, &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_CT_ORIG_IP6_DST_LOAD, 100, 0, &match,
                     &ofpacts, hc_uuid);
+
+    physical_eval_remote_chassis_flows(p_ctx, &ofpacts, flow_table);
 
     ofpbuf_uninit(&ofpacts);
 }

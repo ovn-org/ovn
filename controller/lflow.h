@@ -98,6 +98,10 @@ struct uuid;
 #define OFTABLE_CT_ORIG_NW_DST_LOAD      81
 #define OFTABLE_CT_ORIG_IP6_DST_LOAD     82
 #define OFTABLE_CT_ORIG_TP_DST_LOAD      83
+#define OFTABLE_FLOOD_REMOTE_CHASSIS     84
+
+/* Common defines shared between some controller components. */
+#define CHASSIS_FLOOD_INDEX_START 0x8000
 
 
 struct lflow_ctx_in {
