@@ -3554,3 +3554,96 @@ OVS_WAIT_FOR_OUTPUT([ovs-vsctl show | tail -n +2], [], [dnl
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 AT_CLEANUP
+
+AT_SETUP([ovn-controller - LR peer ports combination])
+AT_KEYWORDS([ovn])
+ovn_start
+
+net_add n1
+sim_add hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.20
+
+check ovn-nbctl ls-add ls0
+check ovn-nbctl ls-add ls1
+
+check ovn-nbctl lsp-add ls0 vif0
+check ovn-nbctl lsp-add ls0 vif1
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lr-add lr1
+
+check ovn-nbctl lrp-add lr0 lr0-ls0 00:00:00:00:20:00 192.168.20.1/24
+check ovn-nbctl lsp-add ls0 ls0-lr0 \
+    -- lsp-set-type ls0-lr0 router \
+    -- lsp-set-addresses ls0-lr0 router \
+    -- lsp-set-options ls0-lr0 router-port=lr0-ls0
+
+check ovn-nbctl lrp-add lr0 lr1-ls1 00:00:00:00:30:00 192.168.30.1/24
+check ovn-nbctl lsp-add ls0 ls1-lr1 \
+    -- lsp-set-type ls1-lr1 router \
+    -- lsp-set-addresses ls1-lr1 router \
+    -- lsp-set-options ls1-lr1 router-port=lr1-ls1
+
+check ovs-vsctl -- add-port br-int vif0 \
+    -- set Interface vif0 external-ids:iface-id=vif0
+
+check ovs-vsctl -- add-port br-int vif1 \
+    -- set Interface vif1 external-ids:iface-id=vif1
+
+check ovn-nbctl lrp-add lr0 lr0-lr1 00:00:00:00:30:01 192.168.30.1/31 peer=lr1-lr0
+check ovn-nbctl lrp-add lr1 lr1-lr0 00:00:00:00:30:02 192.168.30.2/31 peer=lr0-lr1
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+pb_cookie() {
+    ovn-debug uuid-to-cookie $(fetch_column port_binding _uuid logical_port=$1)
+}
+
+lr0_peer_cookie="$(pb_cookie lr0-lr1)"
+lr1_peer_cookie="$(pb_cookie lr1-lr0)"
+
+# Check that distributed router to distributed router patch port connections
+# generate proper OF rules.
+check_row_count Port_Binding 1 logical_port="lr0-lr1" type=patch
+check_row_count Port_Binding 1 logical_port="lr1-lr0" type=patch
+ovs-ofctl dump-flows br-int table=OFTABLE_LOG_TO_PHY > log_to_phy_flows
+AT_CHECK([grep -c "cookie=$lr0_peer_cookie," log_to_phy_flows], [0], [dnl
+1
+])
+AT_CHECK([grep -c "cookie=$lr1_peer_cookie," log_to_phy_flows], [0], [dnl
+1
+])
+
+# Check that gateway router to distributed router patch port connections
+# generate proper OF rules.
+check ovn-nbctl --wait=hv set Logical_Router lr0 options:chassis=hv1
+
+check_row_count Port_Binding 1 logical_port="lr0-lr1" type=l3gateway
+check_row_count Port_Binding 1 logical_port="lr1-lr0" type=patch
+ovs-ofctl dump-flows br-int table=OFTABLE_LOG_TO_PHY > log_to_phy_flows
+AT_CHECK([grep -c "cookie=$lr0_peer_cookie," log_to_phy_flows], [0], [dnl
+1
+])
+AT_CHECK([grep -c "cookie=$lr1_peer_cookie," log_to_phy_flows], [0], [dnl
+1
+])
+
+# Check that distributed router to gateway router patch port connections
+# generate proper OF rules.
+check ovn-nbctl remove Logical_Router lr0 options chassis
+check ovn-nbctl --wait=hv set Logical_Router lr1 options:chassis=hv1
+
+check_row_count Port_Binding 1 logical_port="lr0-lr1" type=patch
+check_row_count Port_Binding 1 logical_port="lr1-lr0" type=l3gateway
+ovs-ofctl dump-flows br-int table=OFTABLE_LOG_TO_PHY > log_to_phy_flows
+AT_CHECK([grep -c "cookie=$lr0_peer_cookie," log_to_phy_flows], [0], [dnl
+1
+])
+AT_CHECK([grep -c "cookie=$lr1_peer_cookie," log_to_phy_flows], [0], [dnl
+1
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
