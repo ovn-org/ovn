@@ -14823,9 +14823,8 @@ build_dhcp_relay_flows_for_lrouter_port(struct ovn_port *op,
                                         struct ds *match, struct ds *actions,
                                         struct lflow_ref *lflow_ref)
 {
-    if (!op->nbrp || !op->nbrp->dhcp_relay) {
+    if (!op->nbrp || !op->nbrp->dhcp_relay || !op->lrp_networks.n_ipv4_addrs) {
         return;
-
     }
 
     /* configure dhcp relay flows only when peer switch has
@@ -16731,28 +16730,46 @@ build_routable_flows_for_router_port(
     struct ovn_port_routable_addresses ra =
         get_op_routable_addresses(lrp, lr_stateful_rec);
 
-    struct ovn_port *router_port;
-
     for (size_t i = 0; i < peer_ls->n_router_ports; i++) {
-        router_port = peer_ls->router_ports[i]->peer;
+        struct ovn_port *router_port = peer_ls->router_ports[i]->peer;
+        struct lport_addresses *lrpaddrs = &router_port->lrp_networks;
+        char *router_port_lla_s = NULL;
 
         if (router_port == lrp) {
             continue;
         }
 
+        bool is_ipv4_nexthop = true;
+        if (!lrpaddrs->n_ipv4_addrs) {
+            for (size_t v = 0; v < lrpaddrs->n_ipv6_addrs; v++) {
+                struct ipv6_netaddr *addrs = &lrpaddrs->ipv6_addrs[v];
+                if (in6_is_lla(&addrs->network)) {
+                    router_port_lla_s = addrs->addr_s;
+                    is_ipv4_nexthop = false;
+                }
+            }
+            if (!router_port_lla_s) {
+                continue;
+            }
+        }
+
         if (lrp->nbrp->ha_chassis_group ||
                 lrp->nbrp->n_gateway_chassis || lrp->od->is_gw_router) {
+
             for (size_t j = 0; j < ra.n_addrs; j++) {
                 struct lport_addresses *laddrs = &ra.laddrs[j];
+
                 for (size_t k = 0; k < laddrs->n_ipv4_addrs; k++) {
                     add_route(lflows, router_port->od, router_port,
-                              router_port->lrp_networks.ipv4_addrs[0].addr_s,
+                              is_ipv4_nexthop
+                              ? router_port->lrp_networks.ipv4_addrs[0].addr_s
+                              : router_port_lla_s,
                               laddrs->ipv4_addrs[k].network_s,
                               laddrs->ipv4_addrs[k].plen, NULL, false, 0,
                               bfd_ports, &router_port->nbrp->header_,
                               false, ROUTE_SOURCE_CONNECTED,
                               lrp->stateful_lflow_ref,
-                              true, true);
+                              true, is_ipv4_nexthop ? true : false);
                 }
             }
         }

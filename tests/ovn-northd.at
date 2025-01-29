@@ -5223,7 +5223,12 @@ check ovn-nbctl lsp-add sw sw-ro1
 
 check ovn-nbctl lr-add ro2
 check ovn-nbctl lrp-add ro2 ro2-sw 00:00:00:00:00:02 20.0.0.1/24
-check ovn-nbctl --wait=sb lsp-add sw sw-ro2
+check ovn-nbctl lsp-add sw sw-ro2
+
+# Add neighbor with no IPv4 address to confirm routable NAT/LB flows.
+check ovn-nbctl lr-add ro3
+check ovn-nbctl lrp-add ro3 ro3-sw 00:00:00:00:00:03
+check ovn-nbctl --wait=sb lsp-add sw sw-ro3
 
 check ovn-nbctl ls-add ls1
 check ovn-nbctl lsp-add ls1 vm1
@@ -5263,7 +5268,11 @@ check ovn-nbctl lsp-set-options sw-ro1 router-port=ro1-sw
 
 check ovn-nbctl lsp-set-type sw-ro2 router
 check ovn-nbctl lsp-set-addresses sw-ro2 router
-check ovn-nbctl --wait=sb lsp-set-options sw-ro2 router-port=ro2-sw
+check ovn-nbctl lsp-set-options sw-ro2 router-port=ro2-sw
+
+check ovn-nbctl lsp-set-type sw-ro3 router
+check ovn-nbctl lsp-set-addresses sw-ro3 router
+check ovn-nbctl --wait=sb lsp-set-options sw-ro3 router-port=ro3-sw
 
 check_lflows 0
 
