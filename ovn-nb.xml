@@ -3104,6 +3104,32 @@ or
     <column name="external_ids">
       See <em>External IDs</em> at the beginning of this document.
     </column>
+
+    <group title="Transit router">
+      <p>
+        In order to achieve status of <code>Transit Router</code> for
+        <ref table="Logical_Router"/> there needs to be at least one
+        <ref table="Logical_Router_Port"/> that is considered remote.
+        The LRP can be <code>remote</code> only if it has
+        <code>options:requested-chassis</code> set to chassis that is
+        considered remote. See <ref table="Logical_Router_Port"/> for more
+        details.
+      </p>
+
+      <p>
+        In order for the <code>Transit Router</code> to work properly all the
+        tunnel keys for the <code>Transit Router</code> itself and the remote
+        ports keys needs to match  in all AZs e.g. TR in AZ1 and AZ2 needs to
+        have the same tunnel key. Remote port for AZ2 in AZ1 needs to have the
+        same tunnel key as local port in AZ2 and vice vers.
+      </p>
+
+      <p>
+        The <code>Transit Router</code> behaves as distributed router which
+        means that it has the same limitations for stateful flows like
+        <code>NAT and LBs</code> and it will lose the CT state between AZs.
+      </p>
+    </group>
   </table>
 
   <table name="Meter" title="Meter entry">
@@ -3679,6 +3705,23 @@ or
           <ref db="OVN_IC_Southbound"/> database, will be filtered and not
           learned by the <code>ovn-ic</code> daemon.
         </p>
+      </column>
+
+      <column name="options" key="requested-chassis">
+        <p>
+          If set, identifies a specific chassis (by name or hostname) that
+          is allowed to bind this port. This option is valid only for chassis
+          that have <code>options:is-remote=true</code>, in other words for
+          chassis that are in different Availability zone. The option accepts
+          only single value.
+        </p>
+
+        <p>
+          By assigning remote chassis the <ref table="Logical_Router"/> gains
+          status of <code>Transit Router</code> see
+          <ref table="Logical_Router"/> table for more details.
+        </p>
+
       </column>
     </group>
 

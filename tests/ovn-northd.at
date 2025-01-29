@@ -14579,3 +14579,54 @@ wait_row_count Multicast_Group 0 name=239.0.1.68
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Transit router - remote ports])
+ovn_start NORTHD_TYPE
+
+check ovn-sbctl chassis-add hv2 geneve 192.168.0.12 \
+    -- set chassis hv2 other_config:is-remote=true
+
+check ovn-sbctl chassis-add hv3 geneve 192.168.0.13 \
+    -- set chassis hv3 other_config:is-remote=true
+
+check ovn-sbctl chassis-add hv4 geneve 192.168.0.14
+
+check ovn-nbctl lr-add tr
+ovn-nbctl lrp-add tr tr-local 00:00:00:00:30:1 192.168.100.1/31
+
+ovn-nbctl lrp-add tr tr-az2 00:00:00:00:30:03 192.168.100.3/31 \
+    -- set Logical_Router_Port tr-az2 options:requested-chassis=hv2
+
+ovn-nbctl lrp-add tr tr-az3 00:00:00:00:30:04 192.168.100.4/31 \
+    -- set Logical_Router_Port tr-az3 options:requested-chassis=hv3
+
+ovn-nbctl lrp-add tr tr-az4 00:00:00:00:30:04 192.168.100.4/31 \
+    -- set Logical_Router_Port tr-az4 options:requested-chassis=hv4
+
+check ovn-nbctl --wait=sb sync
+
+hv2_uuid=$(fetch_column Chassis _uuid name=hv2)
+hv3_uuid=$(fetch_column Chassis _uuid name=hv3)
+hv4_uuid=$(fetch_column Chassis _uuid name=hv4)
+
+check_row_count Port_Binding 1 logical_port=tr-az2 type=remote chassis=$hv2_uuid requested-chassis=$hv2_uuid
+check_row_count Port_Binding 1 logical_port=tr-az3 type=remote chassis=$hv3_uuid requested-chassis=$hv3_uuid
+
+# hv4 is not set as remote, so the port should remain as patch port
+check_row_count Port_Binding 1 logical_port=tr-az4 type=patch
+
+check ovn-sbctl set chassis hv4 other_config:is-remote=true
+check ovn-nbctl --wait=sb sync
+
+# Setting hv4 as remote should change the tr-az4 to remote too
+check_row_count Port_Binding 1 logical_port=tr-az4 type=remote chassis=$hv4_uuid requested-chassis=$hv4_uuid
+
+check ovn-sbctl remove chassis hv4 other_config is-remote
+check ovn-nbctl --wait=sb sync
+
+# Removing "is-remote" from hv4 should change the tr-az4 back to patch port
+check_row_count Port_Binding 1 logical_port=tr-az4 type=patch
+
+AT_CLEANUP
+])

@@ -1246,6 +1246,7 @@ is_pb_router_type(const struct sbrec_port_binding *pb)
     case LP_CHASSISREDIRECT:
     case LP_L3GATEWAY:
     case LP_L2GATEWAY:
+    case LP_REMOTE:
         return true;
 
     case LP_VIF:
@@ -1253,7 +1254,6 @@ is_pb_router_type(const struct sbrec_port_binding *pb)
     case LP_VIRTUAL:
     case LP_LOCALNET:
     case LP_LOCALPORT:
-    case LP_REMOTE:
     case LP_VTEP:
     case LP_EXTERNAL:
     case LP_UNKNOWN:

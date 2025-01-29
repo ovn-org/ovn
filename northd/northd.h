@@ -349,6 +349,10 @@ struct ovn_datapath {
      * If this is true, then 'l3dgw_ports' will be ignored. */
     bool is_gw_router;
 
+    /* Indicates whether the router should be considered a transit router.
+     * This is applicable only to routers with "remote" ports. */
+    bool is_transit_router;
+
     /* OVN northd only needs to know about logical router gateway ports for
      * NAT/LB on a distributed router.  The "distributed gateway ports" are
      * populated only when there is a gateway chassis or ha chassis group
