@@ -11555,12 +11555,16 @@ add_route(struct lflow_table *lflows, struct ovn_datapath *od,
     if (is_discard_route) {
         ds_put_cstr(&actions, debug_drop_action());
     } else {
-        ds_put_format(&common_actions, REG_ECMP_GROUP_ID" = 0; %s = ",
-                      is_ipv4_nexthop ? REG_NEXT_HOP_IPV4 : REG_NEXT_HOP_IPV6);
+        ds_put_format(&common_actions, REG_ECMP_GROUP_ID" = 0; ");
         if (gateway) {
+            ds_put_format(&common_actions, "%s = ",
+                          is_ipv4_nexthop ? REG_NEXT_HOP_IPV4 :
+                                            REG_NEXT_HOP_IPV6);
             ipv6_format_mapped(gateway, &common_actions);
         } else {
-            ds_put_format(&common_actions, "ip%s.dst",
+            ds_put_format(&common_actions, "%s = ip%s.dst",
+                          is_ipv4_prefix ? REG_NEXT_HOP_IPV4 :
+                                           REG_NEXT_HOP_IPV6,
                           is_ipv4_prefix ? "4" : "6");
         }
         ds_put_format(&common_actions, "; "

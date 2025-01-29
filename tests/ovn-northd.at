@@ -5209,6 +5209,16 @@ check_lflows() {
     ro2_arp_resolve=$(grep lr_in_arp_resolve <<< "$ro2_flows")
     match=$(grep -c 'match=(outport == "ro2-sw" && reg0 == {10.0.0.100})' <<< "$ro2_arp_resolve")
     AT_CHECK([test "$expected" = "$match"])
+
+    ro3_flows=$(ovn-sbctl lflow-list ro3)
+    ro3_ip_routing=$(grep lr_in_ip_routing <<< "$ro3_flows")
+    match=$(grep -c "match=(ip4.dst == 10.0.0.100/32).*; reg0 = ip4.dst" \
+        <<< "$ro3_ip_routing")
+    AT_CHECK([test "$expected" = "$match"])
+
+    match=$(grep -c "match=(ip4.dst == 20.0.0.100/32).*; reg0 = ip4.dst" \
+        <<< "$ro3_ip_routing")
+    AT_CHECK([test "$expected" = "$match"])
 }
 
 ovn_start
