@@ -213,7 +213,7 @@ static void send_mac_binding_buffered_pkts(struct rconn *swconn)
 
 static void pinctrl_rarp_activation_strategy_handler(const struct match *md);
 
-static void pinctrl_mg_split_buff_handler(
+static void pinctrl_split_buf_action_handler(
         struct rconn *swconn, struct dp_packet *pkt,
         const struct match *md, struct ofpbuf *userdata);
 
@@ -3808,9 +3808,9 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         ovs_mutex_unlock(&pinctrl_mutex);
         break;
 
-    case ACTION_OPCODE_MG_SPLIT_BUF:
-        pinctrl_mg_split_buff_handler(swconn, &packet, &pin.flow_metadata,
-                                      &userdata);
+    case ACTION_OPCODE_SPLIT_BUF_ACTION:
+        pinctrl_split_buf_action_handler(swconn, &packet, &pin.flow_metadata,
+                                         &userdata);
         break;
 
     default:
@@ -9036,8 +9036,9 @@ pinctrl_rarp_activation_strategy_handler(const struct match *md)
 }
 
 static void
-pinctrl_mg_split_buff_handler(struct rconn *swconn, struct dp_packet *pkt,
-                              const struct match *md, struct ofpbuf *userdata)
+pinctrl_split_buf_action_handler(struct rconn *swconn, struct dp_packet *pkt,
+                                 const struct match *md,
+                                 struct ofpbuf *userdata)
 {
     ovs_be32 *index = ofpbuf_try_pull(userdata, sizeof *index);
     if (!index) {
@@ -9046,10 +9047,10 @@ pinctrl_mg_split_buff_handler(struct rconn *swconn, struct dp_packet *pkt,
         return;
     }
 
-    ovs_be32 *mg = ofpbuf_try_pull(userdata, sizeof *mg);
-    if (!mg) {
+    ovs_be32 *outport = ofpbuf_try_pull(userdata, sizeof *outport);
+    if (!outport) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-        VLOG_WARN_RL(&rl, "%s: missing multicast group field", __func__);
+        VLOG_WARN_RL(&rl, "%s: missing outport tunnel_key field", __func__);
         return;
     }
 
@@ -9071,7 +9072,7 @@ pinctrl_mg_split_buff_handler(struct rconn *swconn, struct dp_packet *pkt,
     ofpact_put_set_field(&ofpacts, pkt_mark_field, &pkt_mark_value, NULL);
 
     put_load(ntohl(*index), MFF_REG6, 0, 32, &ofpacts);
-    put_load(ntohl(*mg), MFF_LOG_OUTPORT, 0, 32, &ofpacts);
+    put_load(ntohl(*outport), MFF_LOG_OUTPORT, 0, 32, &ofpacts);
 
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;

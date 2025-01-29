@@ -193,6 +193,27 @@ put_stack(enum mf_field_id field, struct ofpact_stack *stack)
     stack->subfield.n_bits = stack->subfield.field->n_bits;
 }
 
+/* Split the ofpacts buffer to prevent overflow of the
+ * MAX_ACTIONS_BUFSIZE netlink buffer size supported by the kernel.
+ * In order to avoid all the action buffers to be squashed together by
+ * ovs, add a controller action for each configured openflow.
+ */
+static void
+put_split_buf_function(uint32_t index, uint32_t outport, uint8_t stage,
+                       struct ofpbuf *ofpacts)
+{
+    ovs_be32 values[2] = {
+        htonl(index),
+        htonl(outport)
+    };
+    size_t oc_offset =
+           encode_start_controller_op(ACTION_OPCODE_SPLIT_BUF_ACTION, false,
+                                      NX_CTLR_NO_METER, ofpacts);
+    ofpbuf_put(ofpacts, values, sizeof values);
+    ofpbuf_put(ofpacts, &stage, sizeof stage);
+    encode_finish_controller_op(oc_offset, ofpacts);
+}
+
 static const struct sbrec_port_binding *
 get_localnet_port(const struct hmap *local_datapaths, int64_t tunnel_key)
 {
@@ -2106,20 +2127,7 @@ mc_ofctrl_add_flow(const struct sbrec_multicast_group *mc,
     if (index == (mc->n_ports - 1)) {
         ofpbuf_put(ofpacts, ofpacts_last->data, ofpacts_last->size);
     } else {
-        /* Split multicast groups with size greater than
-         * MC_OFPACTS_MAX_MSG_SIZE in order to not overcome the
-         * MAX_ACTIONS_BUFSIZE netlink buffer size supported by the kernel.
-         * In order to avoid all the action buffers to be squashed together by
-         * ovs, add a controller action for each configured openflow.
-         */
-        size_t oc_offset = encode_start_controller_op(
-                ACTION_OPCODE_MG_SPLIT_BUF, false, NX_CTLR_NO_METER, ofpacts);
-        ovs_be32 val = htonl(++flow_index);
-        ofpbuf_put(ofpacts, &val, sizeof val);
-        val = htonl(mc->tunnel_key);
-        ofpbuf_put(ofpacts, &val, sizeof val);
-        ofpbuf_put(ofpacts, &stage, sizeof stage);
-        encode_finish_controller_op(oc_offset, ofpacts);
+        put_split_buf_function(++flow_index, mc->tunnel_key, stage, ofpacts);
     }
 
     ofctrl_add_flow(flow_table, stage, prio, mc->header_.uuid.parts[0],

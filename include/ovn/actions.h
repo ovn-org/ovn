@@ -783,8 +783,8 @@ enum action_opcode {
     /* activation_strategy_rarp() */
     ACTION_OPCODE_ACTIVATION_STRATEGY_RARP,
 
-    /* multicast group split buffer action. */
-    ACTION_OPCODE_MG_SPLIT_BUF,
+    /* split buffer action. */
+    ACTION_OPCODE_SPLIT_BUF_ACTION,
 
     /* "dhcp_relay_req_chk(relay_ip, server_ip)".
      *
