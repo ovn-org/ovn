@@ -649,16 +649,6 @@ init_mcast_info_for_switch_datapath(struct ovn_datapath *od)
 }
 
 static void
-init_mcast_flow_count(struct ovn_datapath *od)
-{
-    ovs_assert(od->nbs);
-
-    struct mcast_switch_info *mcast_sw_info = &od->mcast_info.sw;
-    atomic_init(&mcast_sw_info->active_v4_flows, 0);
-    atomic_init(&mcast_sw_info->active_v6_flows, 0);
-}
-
-static void
 init_mcast_info_for_datapath(struct ovn_datapath *od)
 {
     if (!od->nbr && !od->nbs) {
@@ -9829,20 +9819,18 @@ build_mcast_flood_lswitch(struct ovn_datapath *od, struct lflow_table *lflows,
 static void
 build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
                                 struct lflow_table *lflows,
+                                struct ovn_mcast_sw_stats *stats,
                                 struct ds *actions,
                                 struct ds *match,
                                 struct lflow_ref *lflow_ref)
 {
     ovs_assert(igmp_group->datapath->nbs);
 
-    uint64_t dummy;
-
     ds_clear(match);
     ds_clear(actions);
 
     struct mcast_switch_info *mcast_sw_info =
         &igmp_group->datapath->mcast_info.sw;
-    uint64_t table_size = mcast_sw_info->table_size;
 
     if (IN6_IS_ADDR_V4MAPPED(&igmp_group->address)) {
         /* RFC 4541, section 2.1.2, item 2: Skip groups in the 224.0.0.X
@@ -9853,16 +9841,13 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
         if (ip_is_local_multicast(group_address)) {
             return;
         }
-        if (atomic_compare_exchange_strong(
-                    &mcast_sw_info->active_v4_flows, &table_size,
-                    mcast_sw_info->table_size)) {
+        if (stats->active_v4_flows++ >= mcast_sw_info->table_size) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
 
-            VLOG_INFO_RL(&rl, "Too many active mcast flows: %"PRIu64,
-                         mcast_sw_info->active_v4_flows);
+            VLOG_INFO_RL(&rl, "Too many active IPv4 mcast flows: %"PRIu64,
+                         mcast_sw_info->table_size);
             return;
         }
-        atomic_add(&mcast_sw_info->active_v4_flows, 1, &dummy);
         ds_put_format(match, "eth.mcast && ip4 && ip4.dst == %s ",
                       igmp_group->mcgroup.name);
     } else {
@@ -9874,12 +9859,13 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
             ipv6_is_all_site_router(&igmp_group->address)) {
             return;
         }
-        if (atomic_compare_exchange_strong(
-                    &mcast_sw_info->active_v6_flows, &table_size,
-                    mcast_sw_info->table_size)) {
+        if (stats->active_v6_flows++ >= mcast_sw_info->table_size) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+
+            VLOG_INFO_RL(&rl, "Too many active IPv6 mcast flows: %"PRIu64,
+                         mcast_sw_info->table_size);
             return;
         }
-        atomic_add(&mcast_sw_info->active_v6_flows, 1, &dummy);
         ds_put_format(match, "eth.mcast && ip6 && ip6.dst == %s ",
                       igmp_group->mcgroup.name);
     }
@@ -17499,12 +17485,14 @@ void
 build_igmp_lflows(struct hmap *igmp_groups, const struct hmap *ls_datapaths,
                   struct lflow_table *lflows, struct lflow_ref *lflow_ref)
 {
+    struct shash ls_stats = SHASH_INITIALIZER(&ls_stats);
     struct ds actions = DS_EMPTY_INITIALIZER;
     struct ds match = DS_EMPTY_INITIALIZER;
 
     struct ovn_datapath *od;
     HMAP_FOR_EACH (od, key_node, ls_datapaths) {
-        init_mcast_flow_count(od);
+        shash_add(&ls_stats, od->nbs->name,
+                  xzalloc(sizeof(struct ovn_mcast_sw_stats)));
         build_mcast_flood_lswitch(od, lflows, &actions, lflow_ref);
     }
 
@@ -17512,8 +17500,10 @@ build_igmp_lflows(struct hmap *igmp_groups, const struct hmap *ls_datapaths,
     struct ovn_igmp_group *igmp_group;
     HMAP_FOR_EACH (igmp_group, hmap_node, igmp_groups) {
         if (igmp_group->datapath->nbs) {
-            build_lswitch_ip_mcast_igmp_mld(igmp_group, lflows, &actions,
-                                            &match, lflow_ref);
+            struct shash_node *node =
+                shash_find(&ls_stats, igmp_group->datapath->nbs->name);
+            build_lswitch_ip_mcast_igmp_mld(igmp_group, lflows, node->data,
+                                            &actions, &match, lflow_ref);
         } else {
             build_lrouter_ip_mcast_igmp_mld(igmp_group, lflows, &actions,
                                             &match, lflow_ref);
@@ -17521,6 +17511,7 @@ build_igmp_lflows(struct hmap *igmp_groups, const struct hmap *ls_datapaths,
     }
     stopwatch_stop(LFLOWS_IGMP_STOPWATCH_NAME, time_msec());
 
+    shash_destroy_free_data(&ls_stats);
     ds_destroy(&actions);
     ds_destroy(&match);
 }

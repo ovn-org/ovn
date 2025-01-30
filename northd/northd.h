@@ -273,13 +273,6 @@ struct mcast_switch_info {
     int64_t query_max_response; /* Expected time after which reports should
                                  * be received for queries that were sent out.
                                  */
-
-    atomic_uint64_t active_v4_flows;   /* Current number of active IPv4
-                                        * multicast flows.
-                                        */
-    atomic_uint64_t active_v6_flows;   /* Current number of active IPv6
-                                        * multicast flows.
-                                        */
 };
 
 struct mcast_router_info {

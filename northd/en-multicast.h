@@ -76,6 +76,13 @@ struct multicast_igmp_data {
     struct lflow_ref *lflow_ref;
 };
 
+struct ovn_mcast_sw_stats {
+    uint64_t active_v4_flows;   /* Current number of active IPv4 multicast
+                                 * flows. */
+    uint64_t active_v6_flows;   /* Current number of active IPv6 multicast
+                                 * flows. */
+};
+
 void *en_multicast_igmp_init(struct engine_node *,struct engine_arg *);
 void en_multicast_igmp_run(struct engine_node *, void *);
 bool multicast_igmp_northd_handler(struct engine_node *, void *);
