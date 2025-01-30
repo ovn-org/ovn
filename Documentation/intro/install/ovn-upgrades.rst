@@ -201,6 +201,32 @@ of known impactible schema changes and how to fix when error encountered.
    ovn-ic daemons in all availability zones first and after that convert OVS
    schema (restart ovn-ic database daemon).
 
+#. Release 2.11 and earlier: The availability_zone name is added to the
+   external_ids in NB_Global. Therefore, when upgrading to latest versions,
+   update the name column in NB_Global for each availability zone before
+   starting the ovn-ic daemons. The Northbound database upgrade does not
+   handle populating the name column part of schema upgrade. Failing to do
+   this could result in data plane impact, such as remote AZs being unable
+   to update port bindings during gateway chassis failover, new gateway
+   chassis CRUD, etc. Run below command to set the name column in NB_Global
+   if upgrading from very old 2.* versions to latest/newer versions:
+
+    $ ovn-nbctl set NB_Global . name=<availability zone name>
+
+    Then restart ovn-ic daemons in all availability zones.
+
+   Missing above step will result in cpu of ovn-ic active instance spike
+   to 100%. This occurs due to null name column as ovn-ic in each
+   availability zones repeatedly fails in commiting transaction to South
+   bound in remote availability zones due to duplicate chassis. This will
+   also result in manual clean up remote availability zones gateway chassis
+   of type interconnection in local availability zone causing data plane
+   impact. Fix these issues by below command on each availability zone part
+   of upgrade from very old 2.* versions after stopping ovn-ic on all
+   availability zones:
+
+    $ ovn-nbctl set NB_Global . name=<availability zone name>
+    $ ovn-sbctl chassis-del <remote-ic-gateway-chassis-uuid>
 
 Upgrade OVN Integration
 ~~~~~~~~~~~~~~~~~~~~~~~
