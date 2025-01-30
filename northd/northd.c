@@ -13499,7 +13499,7 @@ build_route_flows_for_lrouter(
 static void
 build_lrouter_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
                                 struct lflow_table *lflows,
-                                struct ds *match, struct ds *actions,
+                                struct ds *actions, struct ds *match,
                                 struct lflow_ref *lflow_ref)
 {
     ovs_assert(igmp_group->datapath->nbr);
