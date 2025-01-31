@@ -71,6 +71,8 @@ enum if_state {
                            * but not yet marked "up" in the binding module (in
                            * SB and OVS databases).
                            */
+    OIF_UNINSTALLED,      /* Interface from whom ovn-install must be removed
+                           */
     OIF_INSTALLED,        /* Interface flows programmed in OVS and binding
                            * marked "up" in the binding module.
                            */
@@ -89,6 +91,7 @@ static const char *if_state_names[] = {
     [OIF_REM_OLD_OVN_INST] = "REM_OLD_OVN_INST",
     [OIF_MARK_UP]          = "MARK_UP",
     [OIF_MARK_DOWN]        = "MARK_DOWN",
+    [OIF_UNINSTALLED]      = "UNINSTALLED",
     [OIF_INSTALLED]        = "INSTALLED",
     [OIF_UPDATE_PORT]      = "UPDATE_PORT",
 };
@@ -326,6 +329,7 @@ if_status_mgr_claim_iface(struct if_status_mgr *mgr,
         /* Nothing to do here. */
         break;
     case OIF_INSTALLED:
+    case OIF_UNINSTALLED:
     case OIF_MARK_DOWN:
     case OIF_UPDATE_PORT:
         ovs_iface_set_state(mgr, iface, OIF_CLAIMED);
@@ -362,6 +366,7 @@ if_status_mgr_release_iface(struct if_status_mgr *mgr, const char *iface_id)
     case OIF_REM_OLD_OVN_INST:
     case OIF_MARK_UP:
     case OIF_INSTALLED:
+    case OIF_UNINSTALLED:
         /* Properly mark interfaces "down" if their flows were already
          * programmed in OVS.
          */
@@ -402,6 +407,7 @@ if_status_mgr_delete_iface(struct if_status_mgr *mgr, const char *iface_id,
     case OIF_REM_OLD_OVN_INST:
     case OIF_MARK_UP:
     case OIF_INSTALLED:
+    case OIF_UNINSTALLED:
         /* Properly mark interfaces "down" if their flows were already
          * programmed in OVS.
          */
@@ -634,13 +640,22 @@ if_status_mgr_update(struct if_status_mgr *mgr,
 
 void
 if_status_mgr_remove_ovn_installed(struct if_status_mgr *mgr,
-                                   const char *name,
-                                   const struct uuid *uuid)
+                                   const struct ovsrec_interface *iface_rec)
 {
-    VLOG_DBG("Adding %s to list of interfaces for which to remove "
-              "ovn-installed", name);
-    if (!shash_find_data(&mgr->ovn_uninstall_hash, name)) {
-        add_to_ovn_uninstall_hash(mgr, name, uuid);
+    if (!shash_find_data(&mgr->ovn_uninstall_hash, iface_rec->name)) {
+        VLOG_DBG("Adding %s to list of interfaces for which to remove "
+                 "ovn-installed", iface_rec->name);
+        add_to_ovn_uninstall_hash(mgr, iface_rec->name,
+                                  &iface_rec->header_.uuid);
+    }
+
+    /* Move out of MARK_UP state which would add ovn-install back. */
+    const char *iface_id = smap_get(&iface_rec->external_ids, "iface-id");
+    if (iface_id) {
+        struct ovs_iface *iface = shash_find_data(&mgr->ifaces, iface_id);
+        if (iface && iface->state == OIF_MARK_UP) {
+            ovs_iface_set_state(mgr, iface, OIF_UNINSTALLED);
+        }
     }
 }
 

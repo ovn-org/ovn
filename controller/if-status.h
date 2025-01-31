@@ -61,8 +61,7 @@ bool if_status_handle_claims(struct if_status_mgr *mgr,
                              const struct sbrec_port_binding_table *pb_table,
                              bool sb_readonly);
 void if_status_mgr_remove_ovn_installed(struct if_status_mgr *mgr,
-                                        const char *name,
-                                        const struct uuid *uuid);
+                                    const struct ovsrec_interface *iface_rec);
 uint16_t if_status_mgr_iface_get_mtu(const struct if_status_mgr *mgr,
                                      const char *iface_id);
 bool if_status_mgr_iface_update(const struct if_status_mgr *mgr,
