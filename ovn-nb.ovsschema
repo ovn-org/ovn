@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "7.9.1",
-    "cksum": "414526704 38879",
+    "version": "7.10.0",
+    "cksum": "1541935526 38961",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -247,7 +247,7 @@
                     "type": {"key": {"type": "string",
                              "enum": ["set",
                                 ["eth_src", "eth_dst", "ip_src", "ip_dst",
-                                 "tp_src", "tp_dst"]]},
+                                 "ipv6_src", "ipv6_dst", "tp_src", "tp_dst"]]},
                              "min": 0, "max": "unlimited"}},
                 "options": {
                      "type": {"key": "string",
@@ -510,7 +510,8 @@
                     "type": {"key": {"type": "string",
                              "enum": ["set",
                                 ["eth_src", "eth_dst", "ip_proto", "ip_src",
-                                 "ip_dst", "tp_src", "tp_dst"]]},
+                                 "ip_dst", "ipv6_src", "ipv6_dst", "tp_src",
+                                 "tp_dst"]]},
                              "min": 0, "max": "unlimited"}},
                 "options": {
                     "type": {"key": "string", "value": "string",

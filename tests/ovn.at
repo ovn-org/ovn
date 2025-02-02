@@ -25834,7 +25834,7 @@ check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
 
 check ovn-nbctl lb-add lb1 [[2001::a]]:80 [[2001::3]]:80,[[2002::3]]:80
 OVN_LB_ID=$(ovn-nbctl --bare --column _uuid find load_balancer name=lb1)
-check ovn-nbctl set load_balancer ${OVN_LB_ID} selection_fields="ip_dst,ip_src,tp_dst,tp_src"
+check ovn-nbctl set load_balancer ${OVN_LB_ID} selection_fields="ipv6_dst,ipv6_src,tp_dst,tp_src"
 #
 check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:\"[[2001::3]]\"=\"sw0-p1:[[2001::2]]\"
 check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:\"[[2002::3]]\"=\"sw1-p1:[[2002::2]]\"
@@ -25877,14 +25877,14 @@ OVS_WAIT_FOR_OUTPUT(
    ovn-sbctl dump-flows sw0 | grep ct_lb_mark | grep priority=120 | sed 's/table=..//'], 0,
   [dnl
   (ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip6.dst == 2001::a && tcp.dst == 80), action=(xxreg1 = 2001::a; reg2[[0..15]] = 80; ct_lb_mark;)
-  (ls_in_lb           ), priority=120  , match=(ct.new && ip6.dst == 2001::a && tcp.dst == 80), action=(xxreg1 = 2001::a; reg2[[0..15]] = 80; ct_lb_mark(backends=[[2001::3]]:80,[[2002::3]]:80; hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
+  (ls_in_lb           ), priority=120  , match=(ct.new && ip6.dst == 2001::a && tcp.dst == 80), action=(xxreg1 = 2001::a; reg2[[0..15]] = 80; ct_lb_mark(backends=[[2001::3]]:80,[[2002::3]]:80; hash_fields="ipv6_dst,ipv6_src,tcp_dst,tcp_src");)
 ])
 
 AT_CAPTURE_FILE([sbflows2])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows > sbflows2
    ovn-sbctl dump-flows lr0 | grep ct_lb_mark | grep priority=120 | sed 's/table=..//'], 0,
-  [  (lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2001::a && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=[[2001::3]]:80,[[2002::3]]:80; hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
+  [  (lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2001::a && tcp && tcp.dst == 80 && is_chassis_resident("cr-lr0-public")), action=(ct_lb_mark(backends=[[2001::3]]:80,[[2002::3]]:80; hash_fields="ipv6_dst,ipv6_src,tcp_dst,tcp_src");)
 ])
 
 # get the svc monitor mac.
