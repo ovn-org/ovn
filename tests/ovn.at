@@ -34829,6 +34829,7 @@ ovs-vsctl -- add-port br-phys ext1 -- \
     options:rxq_pcap=hv1/ext1-rx.pcap \
     ofport-request=2
 ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
+ovn-appctl -t ovn-controller vlog/set mac_cache:file:dbg pinctrl:file:dbg
 
 sim_add hv2
 as hv2
@@ -34846,6 +34847,7 @@ ovs-vsctl -- add-port br-phys ext2 -- \
     options:rxq_pcap=hv2/ext2-rx.pcap \
     ofport-request=2
 ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
+ovn-appctl -t ovn-controller vlog/set mac_cache:file:dbg pinctrl:file:dbg
 
 OVN_POPULATE_ARP
 wait_for_ports_up
@@ -35052,6 +35054,7 @@ sim_add hv1
 as hv1
 check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
+ovn-appctl -t ovn-controller vlog/set mac_cache:file:dbg pinctrl:file:dbg
 
 check ovn-nbctl                                                     \
     -- ls-add ls1                                                   \
@@ -35135,6 +35138,89 @@ dnl Check local mac binding cache - it should be empty now.
 AT_CHECK([as hv1 ovn-appctl -t ovn-controller debug/dump-mac-bindings], [0], [dnl
 Local MAC bindings:
 ])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([MAC binding aging - persistence of the active entry])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovn-appctl -t ovn-controller vlog/set mac_cache:file:dbg pinctrl:file:dbg
+
+check ovn-nbctl                                                     \
+    -- ls-add ls1                                                   \
+    -- ls-add ls2                                                   \
+    -- lr-add lr                                                    \
+    -- set logical_router lr options:mac_binding_age_threshold=4    \
+    -- lrp-add lr lr-ls1 00:00:00:00:10:00 192.168.10.1/24          \
+    -- lrp-add lr lr-ls2 00:00:00:00:20:00 192.168.20.1/24          \
+    -- lsp-add ls1 ls1-lr                                           \
+    -- lsp-set-type ls1-lr router                                   \
+    -- lsp-set-addresses ls1-lr router                              \
+    -- lsp-set-options ls1-lr router-port=lr-ls1                    \
+    -- lsp-add ls1 vif1                                             \
+    -- lsp-set-addresses vif1 "00:00:00:00:10:10 192.168.10.10"     \
+    -- lsp-add ls2 ls2-lr                                           \
+    -- lsp-set-type ls2-lr router                                   \
+    -- lsp-set-addresses ls2-lr router                              \
+    -- lsp-set-options ls2-lr router-port=lr-ls2                    \
+    -- lsp-add ls2 vif2                                             \
+    -- lsp-set-addresses vif2 "00:00:00:00:20:10 192.168.20.10"
+
+check ovs-vsctl                                      \
+    -- add-port br-int vif1                          \
+    -- set interface vif1 external-ids:iface-id=vif1 \
+    -- add-port br-int vif2                          \
+    -- set interface vif2 external-ids:iface-id=vif2
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl Wait for pinctrl thread to be connected.
+OVS_WAIT_UNTIL([grep pinctrl hv1/ovn-controller.log | grep -q connected])
+
+dnl Populate MAC Binding entries.  Wait between two, so they have an initial
+dnl difference in timestamps around half the age threshold.
+send_garp hv1 vif2 2 00:00:00:00:20:10 ff:ff:ff:ff:ff:ff 192.168.20.10 192.168.20.10
+wait_row_count mac_binding 1 ip="192.168.20.10" logical_port="lr-ls2"
+sleep 2
+send_garp hv1 vif1 2 00:00:00:00:10:10 ff:ff:ff:ff:ff:ff 192.168.10.10 192.168.10.10
+wait_row_count mac_binding 1 ip="192.168.10.10" logical_port="lr-ls1"
+
+send_udp() {
+    local hv=$1 dev=$2 byte=$3
+
+    packet=$(fmt_pkt "Ether(dst='00:00:00:00:10:00', src='00:00:00:00:10:${byte}')/ \
+                      IP(dst='192.168.20.${byte}', src='192.168.10.${byte}')/UDP()")
+    check as $hv ovs-appctl netdev-dummy/receive $dev $packet
+}
+
+uuid=$(fetch_column mac_binding _uuid ip="192.168.10.10" logical_port="lr-ls1")
+for i in $(seq 12); do
+    # Keep one entry alive by sending traffic that uses it.
+    send_udp hv1 vif1 10
+    sleep 1
+    # The entry must not expire.
+    check_row_count mac_binding 1 ip="192.168.10.10" logical_port="lr-ls1"
+    as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE
+done
+# Check that it's the same entry.
+uuid2=$(fetch_column mac_binding _uuid ip="192.168.10.10" logical_port="lr-ls1")
+check test "$uuid" = "$uuid2"
+
+# The other entry must have expired by now.
+check_row_count mac_binding 0 ip="192.168.20.10" logical_port="lr-ls2"
+# Wait for the alive one to expire as well.
+wait_row_count mac_binding 0 ip="192.168.10.10" logical_port="lr-ls1"
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
