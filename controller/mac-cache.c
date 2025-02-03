@@ -37,6 +37,12 @@ mac_binding_data_hash(const struct mac_binding_data *mb_data);
 static inline bool
 mac_binding_data_equals(const struct mac_binding_data *a,
                         const struct mac_binding_data *b);
+static void mac_binding_update_log(const char *action,
+                                   const struct mac_binding_data *,
+                                   bool print_times,
+                                   const struct mac_cache_threshold *,
+                                   int64_t idle_age_ms,
+                                   uint64_t since_updated_ms);
 static uint32_t
 fdb_data_hash(const struct fdb_data *fdb_data);
 static inline bool
@@ -84,7 +90,16 @@ mac_cache_threshold_add(struct mac_cache_data *data,
     threshold = xmalloc(sizeof *threshold);
     threshold->dp_key = dp->tunnel_key;
     threshold->value = value;
-    threshold->dump_period = (3 * value) / 4;
+    threshold->dump_period = value / 2;
+    threshold->cooldown_period = value / 4;
+
+    /* (cooldown_period + dump_period) is the maximum time the timestamp may
+     * be not updated.  So, the sum of those times must be lower than the
+     * threshold, otherwise we may fail to update an active MAC binding in
+     * time and risk it being removed.  Giving it an extra 1/10 of the time
+     * for all the processing that needs to happen. */
+    ovs_assert(threshold->cooldown_period + threshold->dump_period
+               < (9 * value) / 10);
 
     hmap_insert(&data->thresholds, &threshold->hmap_node, dp->tunnel_key);
 }
@@ -156,10 +171,13 @@ mac_binding_add(struct hmap *map, struct mac_binding_data mb_data,
     mb->data = mb_data;
     mb->sbrec = smb;
     mb->timestamp = timestamp;
+    mac_binding_update_log("Added", &mb_data, false, NULL, 0, 0);
 }
 
 void
-mac_binding_remove(struct hmap *map, struct mac_binding *mb) {
+mac_binding_remove(struct hmap *map, struct mac_binding *mb)
+{
+    mac_binding_update_log("Removed", &mb->data, false, NULL, 0, 0);
     hmap_remove(map, &mb->hmap_node);
     free(mb);
 }
@@ -384,6 +402,33 @@ mac_binding_stats_process_flow_stats(struct ovs_list *stats_list,
     ovs_list_push_back(stats_list, &stats->list_node);
 }
 
+static void
+mac_binding_update_log(const char *action,
+                       const struct mac_binding_data *data,
+                       bool print_times,
+                       const struct mac_cache_threshold *threshold,
+                       int64_t idle_age_ms, uint64_t since_updated_ms)
+{
+    if (!VLOG_IS_DBG_ENABLED()) {
+        return;
+    }
+
+    struct ds s = DS_EMPTY_INITIALIZER;
+
+    ds_put_cstr(&s, action);
+    ds_put_cstr(&s, " MAC binding (");
+    mac_binding_data_to_string(data, &s);
+    if (print_times) {
+        ds_put_format(&s, "), last update: %"PRIu64"ms ago,"
+                          " idle age: %"PRIi64"ms, threshold: %"PRIu64"ms",
+                      since_updated_ms, idle_age_ms, threshold->value);
+    } else {
+        ds_put_char(&s, ')');
+    }
+    VLOG_DBG("%s.", ds_cstr_ro(&s));
+    ds_destroy(&s);
+}
+
 void
 mac_binding_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
                       void *data)
@@ -396,26 +441,43 @@ mac_binding_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
         struct mac_binding *mb = mac_binding_find(&cache_data->mac_bindings,
                                                   &stats->data.mb);
         if (!mb) {
+            mac_binding_update_log("Not found in the cache:", &stats->data.mb,
+                                   false, NULL, 0, 0);
             free(stats);
             continue;
         }
 
+        uint64_t since_updated_ms = timewall_now - mb->sbrec->timestamp;
         struct mac_cache_threshold *threshold =
                 mac_cache_threshold_find(cache_data, mb->data.dp_key);
 
         /* If "idle_age" is under threshold it means that the mac binding is
-         * used on this chassis. Also make sure that we don't update the
-         * timestamp more than once during the dump period. */
-        if (stats->idle_age_ms < threshold->value &&
-                (timewall_now - mb->sbrec->timestamp) >=
-            threshold->dump_period) {
-            sbrec_mac_binding_set_timestamp(mb->sbrec, timewall_now);
+         * used on this chassis. */
+        if (stats->idle_age_ms < threshold->value) {
+            if (since_updated_ms >= threshold->cooldown_period) {
+                mac_binding_update_log("Updating active", &mb->data, true,
+                                       threshold, stats->idle_age_ms,
+                                       since_updated_ms);
+                sbrec_mac_binding_set_timestamp(mb->sbrec, timewall_now);
+            } else {
+                /* Postponing the update to avoid sending database transactions
+                 * too frequently. */
+                mac_binding_update_log("Not updating active", &mb->data, true,
+                                       threshold, stats->idle_age_ms,
+                                       since_updated_ms);
+            }
+        } else {
+            mac_binding_update_log("Not updating non-active", &mb->data, true,
+                                   threshold, stats->idle_age_ms,
+                                   since_updated_ms);
         }
-
         free(stats);
     }
 
     mac_cache_update_req_delay(&cache_data->thresholds, req_delay);
+    if (*req_delay) {
+        VLOG_DBG("MAC binding statistics dalay: %"PRIu64, *req_delay);
+    }
 }
 
 /* FDB stat processing. */

@@ -4776,6 +4776,9 @@ mac_binding_add_to_sb(struct ovsdb_idl_txn *ovnsb_idl_txn,
         /* For backward compatibility check if timestamp column is available
          * in SB DB. */
         if (pinctrl.mac_binding_can_timestamp) {
+            VLOG_DBG("Setting MAC binding timestamp for "
+                     "ip:%s mac:%s port:%s to %lld",
+                     b->ip, b->mac, logical_port, time_wall_msec());
             sbrec_mac_binding_set_timestamp(b, time_wall_msec());
         }
     }

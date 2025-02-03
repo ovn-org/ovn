@@ -48,6 +48,8 @@ struct mac_cache_threshold {
     uint64_t value;
     /* Statistics dump period. */
     uint64_t dump_period;
+    /* How long to wait between two database updates. */
+    uint64_t cooldown_period;
 };
 
 struct mac_binding_data {
