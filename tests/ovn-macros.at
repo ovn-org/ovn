@@ -1197,8 +1197,7 @@ send_garp() {
                       ARP(op=$op, hwsrc='${eth_src}', hwdst='${eth_src}', \
                       psrc='${spa}', pdst='${tpa}')")
     echo "Sending GARP($op) $eth_src $eth_dst $spa $tpa packet=$packet on $hv"
-    as $hv
-    ovs-appctl netdev-dummy/receive $inport $packet
+    check as $hv ovs-appctl netdev-dummy/receive $inport $packet
 }
 
 # Wrapper on top of ovn-trace, stripping some things and storing the trace
