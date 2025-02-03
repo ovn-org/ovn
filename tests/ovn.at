@@ -36917,6 +36917,7 @@ ovs-vsctl -- add-port br-phys ext0 -- \
     options:rxq_pcap=hv1/ext0-rx.pcap \
     ofport-request=2
 ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
+ovn-appctl -t ovn-controller vlog/set mac_cache:file:dbg pinctrl:file:dbg
 
 OVN_POPULATE_ARP
 wait_for_ports_up
@@ -36957,6 +36958,88 @@ check $(test "$timestamp" != "")
 
 # Check if the records are removed after some inactivity
 wait_row_count fdb 0 mac='"00:00:00:00:10:20"'
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([FDB aging - persistence of the active entry])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+net_add n1
+
+check ovn-nbctl ls-add ls0
+
+check ovn-nbctl lsp-add ls0 ln_port -- \
+      lsp-set-addresses ln_port unknown -- \
+      lsp-set-type ln_port localnet -- \
+      lsp-set-options ln_port network_name=physnet1 -- \
+      set logical_switch_port ln_port options:localnet_learn_fdb=true -- \
+      set logical_switch ls0 other_config:fdb_age_threshold=4
+
+check ovn-nbctl lsp-add ls0 vif1 -- \
+      lsp-set-addresses vif1 "00:00:00:00:10:10 192.168.10.10"
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-underlay
+ovn_attach n1 br-underlay 192.168.0.1
+ovs-vsctl add-br br-phys
+ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=vif1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-phys ext0 -- \
+    set interface ext0 \
+    options:tx_pcap=hv1/ext0-tx.pcap \
+    options:rxq_pcap=hv1/ext0-rx.pcap \
+    ofport-request=2
+ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
+ovn-appctl -t ovn-controller vlog/set mac_cache:file:dbg pinctrl:file:dbg
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+send_packet() {
+    packet=$(fmt_pkt "
+            Ether(dst='00:00:00:00:10:10', src='00:00:00:00:10:${1}') /
+            IP(src='192.168.10.${1}', dst='192.168.10.10') /
+            UDP(sport=1234, dport=1235)
+           ")
+    check ovs-appctl netdev-dummy/receive ext0 $packet
+}
+
+# Send packets to create FDB entries.  Wait between two, so they have an
+# initial difference in timestamps around half the age threshold.
+send_packet 20
+wait_row_count fdb 1 mac='"00:00:00:00:10:20"'
+sleep 2
+send_packet 30
+wait_row_count fdb 1 mac='"00:00:00:00:10:30"'
+
+timestamp=$(fetch_column fdb timestamp mac='"00:00:00:00:10:20"')
+
+uuid=$(fetch_column fdb _uuid mac='"00:00:00:00:10:30"')
+for i in $(seq 12); do
+    # Keep one entry alive by sending traffic that uses it.
+    send_packet 30
+    sleep 1
+    # The entry must not expire.
+    check_row_count fdb 1 mac='"00:00:00:00:10:30"'
+    as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOOKUP_FDB
+done
+# Check that it's the same entry.
+uuid2=$(fetch_column fdb _uuid mac='"00:00:00:00:10:30"')
+check test "$uuid" = "$uuid2"
+
+# The other entry must have expired by now.
+wait_row_count fdb 0 mac='"00:00:00:00:10:20"'
+# Wait for the alive one to expire as well.
+wait_row_count fdb 0 mac='"00:00:00:00:10:30"'
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

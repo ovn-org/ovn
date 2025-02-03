@@ -426,6 +426,34 @@ mac_cache_fdb_stats_process_flow_stats(struct ovs_list *stats_list,
     ovs_list_push_back(stats_list, &stats->list_node);
 }
 
+static void
+mac_cache_fdb_update_log(const char *action,
+                         const struct mac_cache_fdb_data *data,
+                         bool print_times,
+                         const struct mac_cache_threshold *threshold,
+                         int64_t idle_age_ms, uint64_t since_updated_ms)
+{
+    if (!VLOG_IS_DBG_ENABLED()) {
+        return;
+    }
+
+    struct ds s = DS_EMPTY_INITIALIZER;
+
+    ds_put_cstr(&s, action);
+    ds_put_format(&s, " FDB entry (datapath-key: %"PRIu32", "
+                      "port-key: %"PRIu32", mac: " ETH_ADDR_FMT,
+                  data->dp_key, data->port_key, ETH_ADDR_ARGS(data->mac));
+    if (print_times) {
+        ds_put_format(&s, "), last update: %"PRIu64"ms ago,"
+                          " idle age: %"PRIi64"ms, threshold: %"PRIu64"ms",
+                      since_updated_ms, idle_age_ms, threshold->value);
+    } else {
+        ds_put_char(&s, ')');
+    }
+    VLOG_DBG("%s.", ds_cstr_ro(&s));
+    ds_destroy(&s);
+}
+
 void
 mac_cache_fdb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
                         void *data)
@@ -439,25 +467,46 @@ mac_cache_fdb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
         struct mac_cache_fdb *mc_fdb = mac_cache_fdb_find(cache_data,
                                                           &stats->data.fdb);
         if (!mc_fdb) {
+            mac_cache_fdb_update_log("Not found in the cache:",
+                                     &stats->data.fdb, false, NULL, 0, 0);
             free(stats);
             continue;
         }
 
+        uint64_t since_updated_ms =
+            timewall_now - mc_fdb->sbrec_fdb->timestamp;
         struct mac_cache_threshold *threshold =
                 mac_cache_threshold_find(thresholds, &mc_fdb->dp_uuid);
-        /* If "idle_age" is under threshold it means that the mac binding is
-         * used on this chassis. Also make sure that we don't update the
-         * timestamp more than once during the dump period. */
-        if (stats->idle_age_ms < threshold->value &&
-            (timewall_now - mc_fdb->sbrec_fdb->timestamp) >=
-            threshold->dump_period) {
-            sbrec_fdb_set_timestamp(mc_fdb->sbrec_fdb, timewall_now);
+        /* If "idle_age" is under threshold it means that the fdb entry is
+         * used on this chassis. */
+        if (stats->idle_age_ms < threshold->value) {
+            if (since_updated_ms >= threshold->cooldown_period) {
+                mac_cache_fdb_update_log("Updating active",
+                                         &mc_fdb->data, true, threshold,
+                                        stats->idle_age_ms,
+                                        since_updated_ms);
+                sbrec_fdb_set_timestamp(mc_fdb->sbrec_fdb, timewall_now);
+            } else {
+                /* Postponing the update to avoid sending database transactions
+                 * too frequently. */
+                mac_cache_fdb_update_log("Not updating active",
+                                         &mc_fdb->data, true, threshold,
+                                         stats->idle_age_ms,
+                                         since_updated_ms);
+            }
+        } else {
+            mac_cache_fdb_update_log("Not updating non-active",
+                                     &mc_fdb->data, true, threshold,
+                                     stats->idle_age_ms, since_updated_ms);
         }
 
         free(stats);
     }
 
     mac_cache_update_req_delay(thresholds, req_delay);
+    if (*req_delay) {
+        VLOG_DBG("FDB entry statistics dalay: %"PRIu64, *req_delay);
+    }
 }
 
 void
