@@ -34988,10 +34988,8 @@ send_garp hv1 ext1 2 "00:00:00:00:10:10" "ff:ff:ff:ff:ff:ff" "192.168.10.10" "19
 send_garp hv2 ext2 2 "00:00:00:00:10:20" "ff:ff:ff:ff:ff:ff" "192.168.10.20" "192.168.10.20" # belong to 192.168.10.20/32
 send_garp hv2 ext2 2 "00:00:00:00:10:65" "ff:ff:ff:ff:ff:ff" "192.168.10.65" "192.168.10.65" # belong to 192.168.10.64/26
 
-ip_addresses=("192.168.10.10" "192.168.10.20" "192.168.10.65")
-logical_ports=("gw-1-public" "gw-2-public")
-for ip in "${ip_addresses[@]}"; do
-    for port in "${logical_ports[@]}"; do
+for ip in 192.168.10.10 192.168.10.20 192.168.10.65; do
+    for port in gw-1-public gw-2-public; do
         wait_row_count mac_binding 1 ip=$ip logical_port=$port
     done
 done
@@ -35001,9 +34999,8 @@ OVS_WAIT_UNTIL([
 ])
 
 # The other two should remain because the corresponding prefixes have threshold 0
-ip_addresses=("192.168.10.20" "192.168.10.65")
-for ip in "${ip_addresses[@]}"; do
-    for port in "${logical_ports[@]}"; do
+for ip in 192.168.10.20 192.168.10.65; do
+    for port in gw-1-public gw-2-public; do
         check_row_count mac_binding 1 ip=$ip logical_port=$port
     done
 done
@@ -35022,8 +35019,8 @@ AT_CHECK([ovn-sbctl get datapath $uuid external_ids:mac_binding_age_threshold], 
 send_garp hv1 ext1 2 "00:00:00:00:10:10" "ff:ff:ff:ff:ff:ff" "192.168.10.10" "192.168.10.10" # belong to default
 send_garp hv2 ext2 2 "00:00:00:00:10:65" "ff:ff:ff:ff:ff:ff" "192.168.10.65" "192.168.10.65" # belong to 192.168.10.64/26
 
-for ip in "${ip_addresses[@]}"; do
-    for port in "${logical_ports[@]}"; do
+for ip in 192.168.10.10 192.168.10.65; do
+    for port in gw-1-public gw-2-public; do
         wait_row_count mac_binding 1 ip=$ip logical_port=$port
     done
 done
@@ -35031,7 +35028,7 @@ done
 OVS_WAIT_UNTIL([
     test "1" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.10')"
 ])
-for port in "${logical_ports[@]}"; do
+for port in gw-1-public gw-2-public; do
     check_row_count mac_binding 1 ip="192.168.10.65" logical_port=$port
 done
 check ovn-sbctl --all destroy mac_binding
@@ -35070,14 +35067,11 @@ AT_CHECK([ovn-sbctl get datapath $uuid external_ids:mac_binding_age_threshold], 
 send_garp hv1 ext1 2 "00:00:00:00:10:10" "ff:ff:ff:ff:ff:ff" "192.168.10.10" "192.168.10.10" # belong to 192.168.10.0/24
 send_garp hv2 ext2 2 "00:00:00:00:10:20" "ff:ff:ff:ff:ff:ff" "192.168.10.20" "192.168.10.20" # belong to 192.168.10.20/32
 
-ip_addresses=("192.168.10.10" "192.168.10.20")
-logical_ports=("gw-1-public" "gw-2-public")
-for ip in "${ip_addresses[@]}"; do
-    for port in "${logical_ports[@]}"; do
+for ip in 192.168.10.10 192.168.10.20; do
+    for port in gw-1-public gw-2-public; do
         wait_row_count mac_binding 1 ip=$ip logical_port=$port
     done
 done
-
 
 OVS_WAIT_UNTIL([
     test "0" = "$(ovn-sbctl list mac_binding | grep -c '192.168.10.10')"
