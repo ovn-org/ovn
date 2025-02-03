@@ -52,7 +52,7 @@ struct mac_cache_threshold {
 
 struct mac_binding_data {
     /* Keys. */
-    const struct sbrec_mac_binding *sbrec; /* Only the UUID is used as key.*/
+    uint64_t cookie;
     uint32_t port_key;
     uint32_t dp_key;
     struct in6_addr ip;
@@ -64,6 +64,8 @@ struct mac_binding {
     struct hmap_node hmap_node;
     /* Common data to identify MAC binding. */
     struct mac_binding_data data;
+    /* Reference to the SB MAC binding record (Might be NULL). */
+    const struct sbrec_mac_binding *sbrec;
     /* User specified timestamp (in ms) */
     long long timestamp;
 };
@@ -134,7 +136,7 @@ mac_binding_data_init(struct mac_binding_data *data,
                       struct in6_addr ip, struct eth_addr mac)
 {
     *data = (struct mac_binding_data) {
-        .sbrec = NULL,
+        .cookie = 0,
         .dp_key = (dp_key),
         .port_key = (port_key),
         .ip = (ip),
@@ -143,7 +145,7 @@ mac_binding_data_init(struct mac_binding_data *data,
 }
 
 void mac_binding_add(struct hmap *map, struct mac_binding_data mb_data,
-                     long long timestamp);
+                     const struct sbrec_mac_binding *, long long timestamp);
 
 void mac_binding_remove(struct hmap *map, struct mac_binding *mb);
 

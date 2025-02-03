@@ -145,8 +145,8 @@ mac_cache_thresholds_clear(struct mac_cache_data *data)
 /* MAC binding. */
 void
 mac_binding_add(struct hmap *map, struct mac_binding_data mb_data,
-                long long timestamp) {
-
+                const struct sbrec_mac_binding *smb, long long timestamp)
+{
     struct mac_binding *mb = mac_binding_find(map, &mb_data);
     if (!mb) {
         mb = xmalloc(sizeof *mb);
@@ -154,6 +154,7 @@ mac_binding_add(struct hmap *map, struct mac_binding_data mb_data,
     }
 
     mb->data = mb_data;
+    mb->sbrec = smb;
     mb->timestamp = timestamp;
 }
 
@@ -209,7 +210,7 @@ mac_binding_data_from_sbrec(struct mac_binding_data *data,
         return false;
     }
 
-    data->sbrec = mb;
+    data->cookie = mb->header_.uuid.parts[0];
     return true;
 }
 
@@ -222,27 +223,30 @@ mac_bindings_clear(struct hmap *map)
     }
 }
 
+static void
+mac_binding_data_to_string(const struct mac_binding_data *data,
+                           struct ds *out_data)
+{
+    char ip[INET6_ADDRSTRLEN];
+
+    if (!ipv6_string_mapped(ip, &data->ip)) {
+        return;
+    }
+    ds_put_format(out_data, "cookie: 0x%08"PRIx64", "
+                            "datapath-key: %"PRIu32", "
+                            "port-key: %"PRIu32", "
+                            "ip: %s, mac: " ETH_ADDR_FMT,
+                  data->cookie, data->dp_key, data->port_key,
+                  ip, ETH_ADDR_ARGS(data->mac));
+}
+
 void
 mac_bindings_to_string(const struct hmap *map, struct ds *out_data)
 {
     struct mac_binding *mb;
     HMAP_FOR_EACH (mb, hmap_node, map) {
-        char ip[INET6_ADDRSTRLEN];
-
-        if (!ipv6_string_mapped(ip, &mb->data.ip)) {
-            continue;
-        }
-        if (mb->data.sbrec) {
-            ds_put_format(out_data, "SB UUID: " UUID_FMT ", ",
-                          UUID_ARGS(&mb->data.sbrec->header_.uuid));
-        } else {
-            ds_put_cstr(out_data, "SB UUID: <none>, ");
-        }
-        ds_put_format(out_data, "datapath-key: %"PRIu32", "
-                                "port-key: %"PRIu32", "
-                                "ip: %s, mac: " ETH_ADDR_FMT "\n",
-                      mb->data.dp_key, mb->data.port_key,
-                      ip, ETH_ADDR_ARGS(mb->data.mac));
+        mac_binding_data_to_string(&mb->data, out_data);
+        ds_put_char(out_data, '\n');
     }
 }
 
@@ -364,7 +368,9 @@ mac_binding_stats_process_flow_stats(struct ovs_list *stats_list,
 
     stats->idle_age_ms = ofp_stats->idle_age * 1000;
     stats->data.mb = (struct mac_binding_data) {
-        .port_key = ofp_stats->match.flow.regs[MFF_LOG_INPORT - MFF_REG0],
+        .cookie = ntohll(ofp_stats->cookie),
+        /* The port_key must be zero to match mac_binding_data_from_sbrec. */
+        .port_key = 0,
         .dp_key = ntohll(ofp_stats->match.flow.metadata),
         .mac = ofp_stats->match.flow.dl_src
     };
@@ -401,9 +407,9 @@ mac_binding_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
          * used on this chassis. Also make sure that we don't update the
          * timestamp more than once during the dump period. */
         if (stats->idle_age_ms < threshold->value &&
-                (timewall_now - mb->data.sbrec->timestamp) >=
+                (timewall_now - mb->sbrec->timestamp) >=
             threshold->dump_period) {
-            sbrec_mac_binding_set_timestamp(mb->data.sbrec, timewall_now);
+            sbrec_mac_binding_set_timestamp(mb->sbrec, timewall_now);
         }
 
         free(stats);
@@ -627,9 +633,7 @@ mac_cache_stats_destroy(struct ovs_list *stats_list)
 static uint32_t
 mac_binding_data_hash(const struct mac_binding_data *mb_data)
 {
-    uint32_t hash = mb_data->sbrec
-                    ? uuid_hash(&mb_data->sbrec->header_.uuid)
-                    : 0;
+    uint32_t hash = hash_uint64(mb_data->cookie);
 
     hash = hash_add(hash, mb_data->port_key);
     hash = hash_add(hash, mb_data->dp_key);
@@ -642,7 +646,7 @@ static inline bool
 mac_binding_data_equals(const struct mac_binding_data *a,
                         const struct mac_binding_data *b)
 {
-    return a->sbrec == b->sbrec &&
+    return a->cookie == b->cookie &&
            a->port_key == b->port_key &&
            a->dp_key == b->dp_key &&
            ipv6_addr_equals(&a->ip, &b->ip);

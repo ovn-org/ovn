@@ -3025,7 +3025,7 @@ mac_binding_add_sb(struct mac_cache_data *data,
         return;
     }
 
-    mac_binding_add(&data->mac_bindings, mb_data, 0);
+    mac_binding_add(&data->mac_bindings, mb_data, smb, 0);
 }
 
 static void

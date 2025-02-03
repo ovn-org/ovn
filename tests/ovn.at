@@ -34937,6 +34937,7 @@ $sorted_table
 ])
 
 timestamp=$(fetch_column mac_binding timestamp ip="192.168.10.20")
+binding_uuid=$(fetch_column mac_binding _uuid ip="192.168.10.20")
 
 send_udp hv1 ext1 10
 send_udp hv2 ext2 20
@@ -34959,7 +34960,10 @@ OVS_CTL_TIMEOUT=10
 OVS_WAIT_UNTIL([
     test "$timestamp" != "$(fetch_column mac_binding timestamp ip='192.168.10.20')"
 ])
-check test "$(fetch_column mac_binding timestamp ip='192.168.10.20')" != ""
+# Should still have 2 entries, i.e. none should expire yet.
+check_row_count mac_binding 2 ip='192.168.10.20'
+# Must be the same updated entries, not re-created.
+check test "$binding_uuid" = "$(fetch_column mac_binding _uuid ip='192.168.10.20')"
 
 # Check if the records are removed after some inactivity for gw-1. Only 1 entry should be present for gw-2.
 OVS_WAIT_UNTIL([
@@ -35135,10 +35139,10 @@ wait_row_count mac_binding 1 ip="192.168.10.10" logical_port="lr-ls1"
 
 dnl Check local mac binding cache.
 lr_key=$(fetch_column datapath_binding tunnel_key external_ids:name=lr)
-mb_uuid=$(fetch_column mac_binding _uuid logical_port=lr-ls1)
+cookie=$(fetch_column mac_binding _uuid logical_port=lr-ls1 | cut -d'-' -f1)
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([as hv1 ovn-appctl -t ovn-controller debug/dump-mac-bindings], [0], [dnl
 Local MAC bindings:
-SB UUID: $mb_uuid, datapath-key: $lr_key, port-key: 0, ip: 192.168.10.10, mac: 00:00:00:00:10:10
+cookie: 0x$cookie, datapath-key: $lr_key, port-key: 0, ip: 192.168.10.10, mac: 00:00:00:00:10:10
 ])
 
 dnl Remove router port.  This deletes the mac binding in the same transaction.
@@ -35161,10 +35165,10 @@ send_garp hv1 vif2 2 00:00:00:00:20:10 ff:ff:ff:ff:ff:ff 192.168.20.10 192.168.2
 wait_row_count mac_binding 1 ip="192.168.20.10" logical_port="lr-ls2"
 
 dnl Check local mac binding cache.
-mb_uuid=$(fetch_column mac_binding _uuid logical_port=lr-ls2)
+cookie=$(fetch_column mac_binding _uuid logical_port=lr-ls2 | cut -d'-' -f1)
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([as hv1 ovn-appctl -t ovn-controller debug/dump-mac-bindings], [0], [dnl
 Local MAC bindings:
-SB UUID: $mb_uuid, datapath-key: $lr_key, port-key: 0, ip: 192.168.20.10, mac: 00:00:00:00:20:10
+cookie: 0x$cookie, datapath-key: $lr_key, port-key: 0, ip: 192.168.20.10, mac: 00:00:00:00:20:10
 ])
 
 dnl Change LRP tunnel key.
