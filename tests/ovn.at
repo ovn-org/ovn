@@ -13476,7 +13476,7 @@ AT_CHECK([
 
 spa=$(ip_to_hex 10 0 0 1)
 tpa=$(ip_to_hex 10 0 0 100)
-send_garp hv1 1 1 "00:00:00:00:00:01" "ff:ff:ff:ff:ff:ff" $spa $tpa
+send_garp hv1 vif1 1 "00:00:00:00:00:01" "ff:ff:ff:ff:ff:ff" $spa $tpa
 
 dnl traffic from localport should not be sent to localnet
 AT_CHECK([tcpdump -r hv1/br-phys_n1-tx.pcap arp[[24:4]]=0x0a000064 | wc -l],[0],[dnl
@@ -34690,9 +34690,9 @@ AT_CHECK([ovn-sbctl get datapath $uuid external_ids:mac_binding_age_threshold], 
 ])
 
 # Send GARP to populate MAC binding table records
-send_garp hv1 ext1 10 # belong to 192.168.10.0/24
-send_garp hv2 ext2 20 # belong to 192.168.10.20/32
-send_garp hv2 ext2 65 # belong to 192.168.10.64/26
+send_garp hv1 ext1 2 "00:00:00:00:10:10" "ff:ff:ff:ff:ff:ff" "192.168.10.10" "192.168.10.10" # belong to 192.168.10.0/24
+send_garp hv2 ext2 2 "00:00:00:00:10:20" "ff:ff:ff:ff:ff:ff" "192.168.10.20" "192.168.10.20" # belong to 192.168.10.20/32
+send_garp hv2 ext2 2 "00:00:00:00:10:65" "ff:ff:ff:ff:ff:ff" "192.168.10.65" "192.168.10.65" # belong to 192.168.10.64/26
 
 ip_addresses=("192.168.10.10" "192.168.10.20" "192.168.10.65")
 logical_ports=("gw-1-public" "gw-2-public")
@@ -34725,8 +34725,8 @@ AT_CHECK([ovn-sbctl get datapath $uuid external_ids:mac_binding_age_threshold], 
 ])
 
 # Send GARP to populate MAC binding table records
-send_garp hv1 ext1 10 # belong to default
-send_garp hv2 ext2 65 # belong to 192.168.10.64/26
+send_garp hv1 ext1 2 "00:00:00:00:10:10" "ff:ff:ff:ff:ff:ff" "192.168.10.10" "192.168.10.10" # belong to default
+send_garp hv2 ext2 2 "00:00:00:00:10:65" "ff:ff:ff:ff:ff:ff" "192.168.10.65" "192.168.10.65" # belong to 192.168.10.64/26
 
 for ip in "${ip_addresses[@]}"; do
     for port in "${logical_ports[@]}"; do
@@ -34749,7 +34749,7 @@ uuid=$(fetch_column datapath _uuid external_ids:name=gw-1)
 AT_CHECK([ovn-sbctl get datapath $uuid external_ids:mac_binding_age_threshold], [1], [ignore], [ignore])
 
 # Send GARP to populate MAC binding table records
-send_garp hv1 ext1 10
+send_garp hv1 ext1 2 "00:00:00:00:10:10" "ff:ff:ff:ff:ff:ff" "192.168.10.10" "192.168.10.10"
 
 wait_row_count mac_binding 1 ip="192.168.10.10" logical_port="gw-1-public"
 wait_row_count mac_binding 1 ip="192.168.10.10" logical_port="gw-2-public"
@@ -34773,8 +34773,8 @@ AT_CHECK([ovn-sbctl get datapath $uuid external_ids:mac_binding_age_threshold], 
 ])
 
 # Send GARP to populate MAC binding table records
-send_garp hv1 ext1 10 # belong to 192.168.10.0/24
-send_garp hv2 ext2 20 # belong to 192.168.10.20/32
+send_garp hv1 ext1 2 "00:00:00:00:10:10" "ff:ff:ff:ff:ff:ff" "192.168.10.10" "192.168.10.10" # belong to 192.168.10.0/24
+send_garp hv2 ext2 2 "00:00:00:00:10:20" "ff:ff:ff:ff:ff:ff" "192.168.10.20" "192.168.10.20" # belong to 192.168.10.20/32
 
 ip_addresses=("192.168.10.10" "192.168.10.20")
 logical_ports=("gw-1-public" "gw-2-public")
