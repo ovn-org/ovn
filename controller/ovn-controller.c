@@ -3474,10 +3474,6 @@ mac_cache_sb_mac_binding_handler(struct engine_node *node, void *data)
 
     const struct sbrec_mac_binding *sbrec_mb;
     SBREC_MAC_BINDING_TABLE_FOR_EACH_TRACKED (sbrec_mb, mb_table) {
-        if (!mac_cache_sb_mac_binding_updated(sbrec_mb)) {
-            continue;
-        }
-
         if (!sbrec_mac_binding_is_new(sbrec_mb)) {
             mac_cache_mac_binding_remove(cache_data, sbrec_mb);
         }
@@ -3515,10 +3511,6 @@ mac_cache_sb_fdb_handler(struct engine_node *node, void *data)
     struct local_datapath *local_dp;
     const struct sbrec_fdb *sbrec_fdb;
     SBREC_FDB_TABLE_FOR_EACH_TRACKED (sbrec_fdb, fdb_table) {
-        if (!mac_cache_sb_fdb_updated(sbrec_fdb)) {
-            continue;
-        }
-
         if (!sbrec_fdb_is_new(sbrec_fdb)) {
             mac_cache_fdb_remove(cache_data, sbrec_fdb);
         }
@@ -5260,6 +5252,12 @@ main(int argc, char *argv[])
                          &sbrec_chassis_private_col_nb_cfg);
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
                          &sbrec_chassis_private_col_nb_cfg_timestamp);
+    /* Omit the timestamp columns of the MAC_Binding and FDB tables.
+     * ovn-controller doesn't need to react to changes in timestamp
+     * values (it does read them to implement aging).  Therefore we
+     * can disable change tracking and alerting for these columns. */
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_mac_binding_col_timestamp);
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_fdb_col_timestamp);
 
     /* Omit the external_ids column of all the tables except for -
      *  - DNS. pinctrl.c uses the external_ids column of DNS,

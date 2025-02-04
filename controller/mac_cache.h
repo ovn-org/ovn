@@ -116,13 +116,10 @@ void mac_cache_mac_bindings_clear(struct mac_cache_data *data);
 void mac_cache_mac_bindings_to_string(const struct hmap *map,
                                       struct ds *out_data);
 
-bool mac_cache_sb_mac_binding_updated(const struct sbrec_mac_binding *mb);
-
 void mac_cache_fdb_add(struct mac_cache_data *data,
                        const struct sbrec_fdb *fdb, struct uuid dp_uuid);
 void mac_cache_fdb_remove(struct mac_cache_data *data,
                           const struct sbrec_fdb *fdb);
-bool mac_cache_sb_fdb_updated(const struct sbrec_fdb *fdb);
 void mac_cache_fdbs_clear(struct mac_cache_data *data);
 
 void

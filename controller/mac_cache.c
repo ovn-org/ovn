@@ -171,22 +171,6 @@ mac_cache_mac_binding_remove(struct mac_cache_data *data,
     free(mc_mb);
 }
 
-bool
-mac_cache_sb_mac_binding_updated(const struct sbrec_mac_binding *mb)
-{
-    bool updated = false;
-    for (size_t i = 0; i < SBREC_MAC_BINDING_N_COLUMNS; i++) {
-        /* Ignore timestamp update as this does not affect the existing nodes
-         * at all. */
-        if (i == SBREC_MAC_BINDING_COL_TIMESTAMP) {
-            continue;
-        }
-        updated |= sbrec_mac_binding_is_updated(mb, i);
-    }
-
-    return updated || sbrec_mac_binding_is_deleted(mb);
-}
-
 void
 mac_cache_mac_bindings_clear(struct mac_cache_data *data)
 {
@@ -261,22 +245,6 @@ mac_cache_fdb_remove(struct mac_cache_data *data, const struct sbrec_fdb *fdb)
 
     hmap_remove(&data->fdbs, &mc_fdb->hmap_node);
     free(mc_fdb);
-}
-
-bool
-mac_cache_sb_fdb_updated(const struct sbrec_fdb *fdb)
-{
-    bool updated = false;
-    for (size_t i = 0; i < SBREC_FDB_N_COLUMNS; i++) {
-        /* Ignore timestamp update as this does not affect the existing nodes
-         * at all. */
-        if (i == SBREC_FDB_COL_TIMESTAMP) {
-            continue;
-        }
-        updated |= sbrec_fdb_is_updated(fdb, i);
-    }
-
-    return updated || sbrec_fdb_is_deleted(fdb);
 }
 
 void
