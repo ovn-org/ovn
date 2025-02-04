@@ -163,8 +163,6 @@ bool mac_binding_data_from_sbrec(struct mac_binding_data *data,
 void mac_bindings_clear(struct hmap *map);
 void mac_bindings_to_string(const struct hmap *map, struct ds *out_data);
 
-bool sb_mac_binding_updated(const struct sbrec_mac_binding *mb);
-
 /* FDB. */
 struct fdb *fdb_add(struct hmap *map, struct fdb_data fdb_data,
                     long long timestamp);
@@ -174,8 +172,6 @@ void fdb_remove(struct hmap *map, struct fdb *fdb);
 bool fdb_data_from_sbrec(struct fdb_data *data, const struct sbrec_fdb *fdb);
 
 struct fdb *fdb_find(const struct hmap *map, const struct fdb_data *fdb_data);
-
-bool sb_fdb_updated(const struct sbrec_fdb *fdb);
 
 void fdbs_clear(struct hmap *map);
 

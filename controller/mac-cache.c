@@ -268,22 +268,6 @@ mac_bindings_to_string(const struct hmap *map, struct ds *out_data)
     }
 }
 
-bool
-sb_mac_binding_updated(const struct sbrec_mac_binding *mb)
-{
-    bool updated = false;
-    for (size_t i = 0; i < SBREC_MAC_BINDING_N_COLUMNS; i++) {
-        /* Ignore timestamp update as this does not affect the existing nodes
-         * at all. */
-        if (i == SBREC_MAC_BINDING_COL_TIMESTAMP) {
-            continue;
-        }
-        updated |= sbrec_mac_binding_is_updated(mb, i);
-    }
-
-    return updated || sbrec_mac_binding_is_deleted(mb);
-}
-
 /* FDB. */
 struct fdb *
 fdb_add(struct hmap *map, struct fdb_data fdb_data, long long timestamp)
@@ -337,22 +321,6 @@ fdb_find(const struct hmap *map, const struct fdb_data *fdb_data)
     }
 
     return NULL;
-}
-
-bool
-sb_fdb_updated(const struct sbrec_fdb *fdb)
-{
-    bool updated = false;
-    for (size_t i = 0; i < SBREC_FDB_N_COLUMNS; i++) {
-        /* Ignore timestamp update as this does not affect the existing nodes
-         * at all. */
-        if (i == SBREC_FDB_COL_TIMESTAMP) {
-            continue;
-        }
-        updated |= sbrec_fdb_is_updated(fdb, i);
-    }
-
-    return updated || sbrec_fdb_is_deleted(fdb);
 }
 
 void
