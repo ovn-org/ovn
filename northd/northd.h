@@ -180,6 +180,8 @@ struct route_policy {
     char **valid_nexthops;
     const struct nbrec_logical_router *nbr;
     bool stale;
+    uint32_t chain_id;
+    uint32_t jump_chain_id;
 };
 
 struct routes_data {
@@ -191,6 +193,7 @@ struct routes_data {
 struct route_policies_data {
     struct hmap route_policies;
     struct hmap bfd_active_connections;
+    struct simap chain_ids;
 };
 
 struct bfd_data {
@@ -797,7 +800,8 @@ bool northd_handle_lb_data_changes(struct tracked_lb_data *,
                                    struct northd_tracked_data *);
 
 void build_route_policies(struct ovn_datapath *, const struct hmap *,
-                          const struct hmap *, struct hmap *, struct hmap *);
+                          const struct hmap *, struct hmap *, struct hmap *,
+                          struct simap *);
 void bfd_table_sync(struct ovsdb_idl_txn *, const struct nbrec_bfd_table *,
                     const struct hmap *, const struct hmap *,
                     const struct hmap *, const struct hmap *,

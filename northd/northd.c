@@ -197,6 +197,7 @@ BUILD_ASSERT_DECL(ACL_OBS_STAGE_MAX < (1 << 2));
 #define REG_SRC_IPV4 "reg5"
 #define REG_SRC_IPV6 "xxreg1"
 #define REG_DHCP_RELAY_DIP_IPV4 "reg2"
+#define REG_POLICY_CHAIN_ID "reg9[16..31]"
 #define REG_ROUTE_TABLE_ID "reg7"
 
 /* Registers used for pasing observability information for switches:
@@ -10598,7 +10599,11 @@ build_routing_policy_flow(struct lflow_table *lflows, struct ovn_datapath *od,
                       out_port->lrp_networks.ea_s,
                       out_port->json_key,
                       is_ipv4);
-
+    } else if (!strcmp(rule->action, "jump")) {
+        ds_put_format(&actions, REG_POLICY_CHAIN_ID
+                      "=%d; next(pipeline=ingress, table=%d);",
+                      rp->jump_chain_id,
+                      ovn_stage_get_table(S_ROUTER_IN_POLICY));
     } else if (!strcmp(rule->action, "drop")) {
         ds_put_cstr(&actions, debug_drop_action());
     } else if (!strcmp(rule->action, "allow")) {
@@ -10608,7 +10613,13 @@ build_routing_policy_flow(struct lflow_table *lflows, struct ovn_datapath *od,
         }
         ds_put_cstr(&actions, REG_ECMP_GROUP_ID" = 0; next;");
     }
-    ds_put_format(&match, "%s", rule->match);
+
+    if (rp->chain_id == -1) {
+        ds_put_format(&match, "%s", rule->match);
+    } else {
+        ds_put_format(&match, REG_POLICY_CHAIN_ID" == %d && (%s)",
+                      rp->chain_id, rule->match);
+    }
 
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_POLICY, rule->priority,
                             ds_cstr(&match), ds_cstr(&actions), stage_hint,
@@ -13748,11 +13759,40 @@ route_policies_lookup(struct hmap *route_policies, size_t hash,
     return NULL;
 }
 
+static bool
+policy_chain_id(struct simap *chain_ids, const char *chain_name, uint32_t *id)
+{
+    if (chain_name && *chain_name) {
+        *id = simap_get(chain_ids, chain_name);
+        return true;
+    }
+
+    return false;
+}
+
+static void
+policy_chain_add(struct simap *chain_ids, const char *chain_name)
+{
+    uint32_t id = simap_count(chain_ids) + 1;
+
+    if (id == UINT16_MAX) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "Too many policy chains for Logical Router.");
+        return;
+    }
+
+    if (!simap_put(chain_ids, chain_name, id)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "Policy chain id unexpectedly appeared");
+    }
+}
+
 void
 build_route_policies(struct ovn_datapath *od, const struct hmap *lr_ports,
                      const struct hmap *bfd_connections,
                      struct hmap *route_policies,
-                     struct hmap *bfd_active_connections)
+                     struct hmap *bfd_active_connections,
+                     struct simap *chain_ids)
 {
     struct route_policy *rp;
 
@@ -13762,10 +13802,56 @@ build_route_policies(struct ovn_datapath *od, const struct hmap *lr_ports,
         }
     }
 
+    /* Create chain numeric ids for policies with chain name set */
+    for (int i = 0; i < od->nbr->n_policies; i++) {
+        const struct nbrec_logical_router_policy *rule = od->nbr->policies[i];
+        uint32_t id;
+
+        if (policy_chain_id(chain_ids, rule->chain, &id) && id == 0) {
+            policy_chain_add(chain_ids, rule->chain);
+        }
+    }
+
     for (int i = 0; i < od->nbr->n_policies; i++) {
         const struct nbrec_logical_router_policy *rule = od->nbr->policies[i];
         size_t n_valid_nexthops = 0;
         char **valid_nexthops = NULL;
+        uint32_t chain_id = 0;
+        uint32_t jump_chain_id = 0;
+
+        /* Skip policy if chain name is set but id was not created above */
+        if (policy_chain_id(chain_ids, rule->chain, &chain_id)
+            && chain_id == 0) {
+            continue;
+        }
+
+        if (!strcmp(rule->action, "jump")) {
+            /* Skip policy if action is 'jump' but no target chain is set */
+            if (!policy_chain_id(chain_ids, rule->jump_chain,
+                                 &jump_chain_id)) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+                VLOG_WARN_RL(&rl,
+                         "Logical router: %s, policy action 'jump'"
+                         " has empty target",
+                         od->nbr->name);
+                continue;
+            }
+
+            /* Skip policy if action is 'jump' but target chain name
+               is not resolved to numeric id */
+            if (jump_chain_id == 0) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+                VLOG_WARN_RL(&rl,
+                         "Logical router: %s, policy action 'jump'"
+                         " follows to non-existent chain %s",
+                         od->nbr->name, rule->jump_chain);
+                continue;
+            }
+        }
+
+        if (simap_is_empty(chain_ids)) {
+            chain_id = -1;
+        }
 
         if (!strcmp(rule->action, "reroute")) {
             size_t n_nexthops = rule->n_nexthops ? rule->n_nexthops : 1;
@@ -13796,6 +13882,8 @@ build_route_policies(struct ovn_datapath *od, const struct hmap *lr_ports,
         new_rp->n_valid_nexthops = n_valid_nexthops;
         new_rp->valid_nexthops = valid_nexthops;
         new_rp->nbr = od->nbr;
+        new_rp->chain_id = chain_id;
+        new_rp->jump_chain_id = jump_chain_id;
 
         size_t hash = uuid_hash(&od->key);
         rp = route_policies_lookup(route_policies, hash, new_rp);
@@ -18465,6 +18553,7 @@ route_policies_init(struct route_policies_data *data)
 {
     hmap_init(&data->route_policies);
     hmap_init(&data->bfd_active_connections);
+    simap_init(&data->chain_ids);
 }
 
 void
@@ -18559,6 +18648,7 @@ route_policies_destroy(struct route_policies_data *data)
     };
     hmap_destroy(&data->route_policies);
     __bfd_destroy(&data->bfd_active_connections);
+    simap_destroy(&data->chain_ids);
 }
 
 void

@@ -44,6 +44,9 @@ Post v24.09.0
    - Added a new ACL option "persist-established" that allows for
      established connections to bypass ACL matching. This way, if an ACL
      match changes, traffic on the established connection can still pass.
+   - Logical router policies can now be arranged in chains. Using the new
+     "jump" action, combined with new "chain" and "jump_chain" columns,
+     allows for policies to be chained together.
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------

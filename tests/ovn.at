@@ -8213,6 +8213,99 @@ echo $expected | ovstest test-ovn expr-to-packets > 3.expected
 
 OVN_CHECK_PACKETS([pbr-hv/vif3-tx.pcap], [3.expected])
 
+#
+# Test routing policy chains
+#
+
+# Create 3 chains: any drop, any allow, any reroute
+check ovn-nbctl --wait=hv lr-policy-del R1
+check ovn-nbctl --wait=hv --chain anydrop lr-policy-add R1 111 "1" drop
+check ovn-nbctl --wait=hv --chain anyallow lr-policy-add R1 112 "1" allow
+check ovn-nbctl --wait=hv --chain anyreroute lr-policy-add R1 113 "1" reroute 20.20.1.2
+
+reset_pcap_file vif2 pbr-hv/vif2
+reset_pcap_file vif3 pbr-hv/vif3
+
+# Create a policy jumping to drop chain
+check ovn-nbctl --wait=hv lr-policy-add R1 201 "ip4.src==192.168.1.0/24 && ip4.dst==172.16.1.0/24" jump anydrop
+
+# Check logical flow
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | grep "192.168.1.0" | wc -l], [0], [dnl
+1
+])
+
+# Send packet.
+packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
+       ip4 && ip.ttl==64 && ip4.src==$ls1_p1_ip && ip4.dst==$ls2_p1_ip &&
+       udp && udp.src==53 && udp.dst==4369"
+
+OVS_WAIT_UNTIL([as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+# Check if packet hit the drop policy
+OVS_WAIT_UNTIL([test "1" = "$(ovs-ofctl dump-flows br-int | \
+    grep "actions=drop" | \
+    grep "priority=111" | grep "n_packets=1" -c)"])
+
+# Expected to drop the packet.
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" pbr-hv/vif2-tx.pcap > vif2.packets
+rcvd_packet=`cat vif2.packets`
+
+AT_FAIL_IF([test "$rcvd_packet" != ""])
+
+# Create a priority policy jumping to allow chain
+check ovn-nbctl --wait=hv lr-policy-add R1 301 "ip4.src==192.168.1.0/24 && ip4.dst==172.16.1.0/24"  jump anyallow
+
+# Check logical flow
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | grep "192.168.1.0" -c], [0], [dnl
+2
+])
+
+# Send packet.
+packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
+       ip4 && ip.ttl==64 && ip4.src==$ls1_p1_ip && ip4.dst==$ls2_p1_ip &&
+       udp && udp.src==53 && udp.dst==4369"
+OVS_WAIT_UNTIL([as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+# Check if packet hit the allow policy
+OVS_WAIT_UNTIL([test "1" = "$(ovs-ofctl dump-flows br-int | \
+    grep "priority=112" | grep "n_packets=1" -c)"])
+
+# Expected packet has TTL decreased by 1
+expected="eth.src==$ls2_ro_mac && eth.dst==$ls2_p1_mac &&
+       ip4 && ip.ttl==63 && ip4.src==$ls1_p1_ip && ip4.dst==$ls2_p1_ip &&
+       udp && udp.src==53 && udp.dst==4369"
+echo $expected | ovstest test-ovn expr-to-packets > expected
+
+OVN_CHECK_PACKETS([pbr-hv/vif2-tx.pcap], [expected])
+
+# Create a priority policy jumping to reroute chain
+check ovn-nbctl --wait=hv lr-policy-add R1 401 "ip4.src==192.168.1.0/24 && ip4.dst==172.16.1.0/24"  jump anyreroute
+
+# Check logical flow
+AT_CHECK([ovn-sbctl dump-flows | grep lr_in_policy | \
+    grep "192.168.1.0" | \
+    grep "priority=30" -c], [0], [dnl
+1
+])
+
+# Send packet.
+packet="inport==\"ls1-lp1\" && eth.src==$ls1_p1_mac && eth.dst==$ls1_ro_mac &&
+       ip4 && ip.ttl==64 && ip4.src==$ls1_p1_ip && ip4.dst==$ls2_p1_ip &&
+       udp && udp.src==53 && udp.dst==4369"
+OVS_WAIT_UNTIL([as pbr-hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+# Check if packet hit the allow policy
+OVS_WAIT_UNTIL([test "1" = "$(ovs-ofctl dump-flows br-int | \
+    grep "priority=113" | grep "n_packets=1" -c)"])
+
+# Expected packet has TTL decreased by 1
+expected="eth.src==$ls3_ro_mac && eth.dst==$ls3_p1_mac &&
+       ip4 && ip.ttl==63 && ip4.src==$ls1_p1_ip && ip4.dst==$ls2_p1_ip &&
+       udp && udp.src==53 && udp.dst==4369"
+echo $expected | ovstest test-ovn expr-to-packets > 3.expected
+
+OVN_CHECK_PACKETS([pbr-hv/vif3-tx.pcap], [3.expected])
+
 OVN_CLEANUP([pbr-hv])
 AT_CLEANUP
 ])

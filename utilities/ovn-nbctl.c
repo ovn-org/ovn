@@ -56,6 +56,14 @@ VLOG_DEFINE_THIS_MODULE(nbctl);
  * change the database at all? */
 static bool force_wait = false;
 
+static char *
+string_ptr(char *ptr)
+{
+    static char *s = "";
+
+    return (ptr) ? ptr : s;
+}
+
 static void
 nbctl_add_base_prerequisites(struct ovsdb_idl *idl,
                              enum nbctl_wait_type wait_type)
@@ -4091,6 +4099,7 @@ nbctl_pre_lr_policy_add(struct ctl_context *ctx)
 
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_priority);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_match);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_chain);
 
     ovsdb_idl_add_column(ctx->idl, &nbrec_bfd_col_dst_ip);
     ovsdb_idl_add_column(ctx->idl, &nbrec_bfd_col_logical_port);
@@ -4114,13 +4123,16 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
     const char *action = ctx->argv[4];
     size_t n_nexthops = 0;
     char **nexthops = NULL;
+    char *chain_s = shash_find_data(&ctx->options, "--chain");
 
     bool reroute = false;
+    bool jump = false;
+
     /* Validate action. */
     if (strcmp(action, "allow") && strcmp(action, "drop")
-        && strcmp(action, "reroute")) {
+        && strcmp(action, "jump") && strcmp(action, "reroute")) {
         ctl_error(ctx, "%s: action must be one of \"allow\", \"drop\", "
-                  "and \"reroute\"", action);
+                  "\"reroute\", \"jump\"", action);
         return;
     }
     if (!strcmp(action, "reroute")) {
@@ -4131,14 +4143,23 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
         reroute = true;
     }
 
+    if (!strcmp(action, "jump")) {
+        if (ctx->argc < 6) {
+            ctl_error(ctx, "Chain name is required when action is jump.");
+            return;
+        }
+        jump = true;
+    }
+
     /* Check if same routing policy already exists.
      * A policy is uniquely identified by priority and match */
     bool may_exist = !!shash_find(&ctx->options, "--may-exist");
     size_t i;
     for (i = 0; i < lr->n_policies; i++) {
         const struct nbrec_logical_router_policy *policy = lr->policies[i];
-        if (policy->priority == priority &&
-            !strcmp(policy->match, ctx->argv[3])) {
+        if (policy->priority == priority
+            && !strcmp(policy->match, ctx->argv[3])
+            && !strcmp(string_ptr(policy->chain), string_ptr(chain_s))) {
             if (!may_exist) {
                 ctl_error(ctx, "Same routing policy already existed on the "
                           "logical router %s.", ctx->argv[1]);
@@ -4200,6 +4221,15 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
     nbrec_logical_router_policy_set_priority(policy, priority);
     nbrec_logical_router_policy_set_match(policy, ctx->argv[3]);
     nbrec_logical_router_policy_set_action(policy, action);
+
+    if (chain_s) {
+        nbrec_logical_router_policy_set_chain(policy, chain_s);
+    }
+
+    if (jump) {
+        nbrec_logical_router_policy_set_jump_chain(policy, ctx->argv[5]);
+    }
+
     if (reroute) {
         nbrec_logical_router_policy_set_nexthops(
             policy, (const char **)nexthops, n_nexthops);
@@ -4207,7 +4237,7 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
 
     /* Parse the options. */
     struct smap options = SMAP_INITIALIZER(&options);
-    for (i = reroute ? 6 : 5; i < ctx->argc; i++) {
+    for (i = (reroute || jump) ? 6 : 5; i < ctx->argc; i++) {
         char *key, *value;
         value = xstrdup(ctx->argv[i]);
         key = strsep(&value, "=");
@@ -4319,84 +4349,77 @@ nbctl_pre_lr_policy_del(struct ctl_context *ctx)
 
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_priority);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_match);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_chain);
 }
 
 static void
 nbctl_lr_policy_del(struct ctl_context *ctx)
 {
     const struct nbrec_logical_router *lr;
-    int64_t priority = 0;
     char *error = lr_by_name_or_uuid(ctx, ctx->argv[1], true, &lr);
+
     if (error) {
         ctx->error = error;
         return;
     }
 
-    if (ctx->argc == 2) {
-        /* If a priority is not specified, delete all policies. */
+    const char *chain = string_ptr(shash_find_data(&ctx->options, "--chain"));
+
+    /* An uuid or priority either chain are not specified.
+       Delete all policies for lr */
+    if (ctx->argc == 2 && !*chain) {
         nbrec_logical_router_set_policies(lr, NULL, 0);
         return;
     }
 
-    const struct uuid *lr_policy_uuid = NULL;
+    int64_t priority = 0;
     struct uuid uuid_from_cmd;
-    if (uuid_from_string(&uuid_from_cmd, ctx->argv[2])) {
-        lr_policy_uuid = &uuid_from_cmd;
-    } else {
+
+    /* An uuid is specified, delete the policy with uuid only */
+    if (ctx->argc == 3 && uuid_from_string(&uuid_from_cmd, ctx->argv[2])) {
+        for (int i = 0; i < lr->n_policies; i++) {
+            if (uuid_equals(&uuid_from_cmd,
+                            &(lr->policies[i]->header_.uuid))) {
+                nbrec_logical_router_update_policies_delvalue(
+                lr, lr->policies[i]);
+                return;
+            }
+        }
+
+        if (!shash_find(&ctx->options, "--if-exists")) {
+            ctl_error(ctx, "Logical router policy uuid is not found.");
+        }
+
+        return;
+    }
+
+    if (ctx->argc >= 3) {
         error = parse_priority(ctx->argv[2], &priority);
         if (error) {
             ctx->error = error;
             return;
         }
     }
-    /* If uuid was specified, delete routing policy with the
-     * specified uuid. */
-    if (ctx->argc == 3) {
-        size_t i;
 
-        if (lr_policy_uuid) {
-            for (i = 0; i < lr->n_policies; i++) {
-                if (uuid_equals(lr_policy_uuid,
-                                &(lr->policies[i]->header_.uuid))) {
-                    nbrec_logical_router_update_policies_delvalue(
-                        lr, lr->policies[i]);
-                    break;
-                }
-            }
-            if (i == lr->n_policies) {
-                if (!shash_find(&ctx->options, "--if-exists")) {
-                    ctl_error(ctx, "Logical router policy uuid is not found.");
-                }
-                return;
-            }
+    char *match = (ctx->argc == 4) ? ctx->argv[3] : NULL;
 
-        /* If match is not specified, delete all routing policies with the
-         * specified priority. */
-        } else {
-            for (i = 0; i < lr->n_policies; i++) {
-                if (priority == lr->policies[i]->priority) {
-                    nbrec_logical_router_update_policies_delvalue(
-                        lr, lr->policies[i]);
-                }
-            }
-        }
-        return;
-    }
-
-    /* Delete policy that has the same priority and match string */
     for (int i = 0; i < lr->n_policies; i++) {
-        struct nbrec_logical_router_policy *routing_policy = lr->policies[i];
-        if (priority == routing_policy->priority &&
-            !strcmp(ctx->argv[3], routing_policy->match)) {
-            nbrec_logical_router_update_policies_delvalue(lr, routing_policy);
-            return;
+        struct nbrec_logical_router_policy *policy = lr->policies[i];
+
+        /* Delete policies selected by chain, priority (if set),
+           match (if set). Sure, at least one option is set here */
+        if ((!priority || priority == policy->priority)
+            && (!strcmp(chain, string_ptr(policy->chain)))
+            && (!match || !strcmp(match, policy->match))) {
+            nbrec_logical_router_update_policies_delvalue(lr, policy);
         }
     }
 }
 
- struct routing_policy {
+struct routing_policy {
     int priority;
     char *match;
+    char *chain;
     const struct nbrec_logical_router_policy *policy;
 };
 
@@ -4405,6 +4428,12 @@ routing_policy_cmp(const void *policy1_, const void *policy2_)
 {
     const struct routing_policy *policy1p = policy1_;
     const struct routing_policy *policy2p = policy2_;
+    int chain_match = strcmp(policy1p->chain, policy2p->chain);
+
+    if (chain_match) {
+        return chain_match;
+    }
+
     if (policy1p->priority != policy2p->priority) {
         return policy1p->priority > policy2p->priority ? -1 : 1;
     } else {
@@ -4416,17 +4445,18 @@ static void
 print_routing_policy(const struct nbrec_logical_router_policy *policy,
                      struct ds *s)
 {
-    if (policy->n_nexthops) {
-        ds_put_format(s, "%10"PRId64" %50s %15s", policy->priority,
-                      policy->match, policy->action);
-        for (int i = 0; i < policy->n_nexthops; i++) {
-            char *next_hop = normalize_prefix_str(policy->nexthops[i]);
-            ds_put_format(s, i ? ", %s" : " %25s", next_hop ? next_hop : "");
-            free(next_hop);
-        }
-    } else {
-        ds_put_format(s, "%10"PRId64" %50s %15s", policy->priority,
-                      policy->match, policy->action);
+    ds_put_format(s, "%10"PRId64" %50s %15s",
+                  policy->priority, policy->match, policy->action);
+
+    if (strcmp(policy->action, "jump") == 0
+        && policy->jump_chain && *policy->jump_chain) {
+        ds_put_format(s, " -> %s", policy->jump_chain);
+    }
+
+    for (int i = 0; i < policy->n_nexthops; i++) {
+        char *next_hop = normalize_prefix_str(policy->nexthops[i]);
+        ds_put_format(s, i ? ", %s" : " %25s", next_hop ? next_hop : "");
+        free(next_hop);
     }
 
     if (!smap_is_empty(&policy->options) || policy->n_bfd_sessions) {
@@ -4457,6 +4487,9 @@ nbctl_pre_lr_policy_list(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_options);
     ovsdb_idl_add_column(ctx->idl,
                          &nbrec_logical_router_policy_col_bfd_sessions);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_chain);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_policy_col_jump_chain);
 }
 
 static void
@@ -4476,6 +4509,7 @@ nbctl_lr_policy_list(struct ctl_context *ctx)
             = lr->policies[i];
         policies[n_policies].priority = policy->priority;
         policies[n_policies].match = policy->match;
+        policies[n_policies].chain = string_ptr(policy->chain);
         policies[n_policies].policy = policy;
         n_policies++;
     }
@@ -4483,9 +4517,31 @@ nbctl_lr_policy_list(struct ctl_context *ctx)
     if (n_policies) {
         ds_put_cstr(&ctx->output, "Routing Policies\n");
     }
+
+    /* Print chain headings only if there are non-default chains.
+       Otherwise print format will be fully backward compatible.
+       Note that at this point policies are sorted out by chain names too.
+    */
+    char *chain_current;
+    int  print_chain_head = (n_policies
+                             && policies[n_policies - 1].chain[0]);
+
     for (int i = 0; i < n_policies; i++) {
+        /* Print chain heading */
+        if (print_chain_head
+            && (i == 0
+                || strcmp(chain_current, policies[i].chain))) {
+            chain_current = policies[i].chain;
+            if (*chain_current) {
+                ds_put_format(&ctx->output, "\nChain %s:\n", chain_current);
+            } else {
+                ds_put_format(&ctx->output, "Chain <Default>:\n");
+            }
+        }
+
         print_routing_policy(policies[i].policy, &ctx->output);
     }
+
     free(policies);
 }
 
@@ -8094,10 +8150,11 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     /* Policy commands */
     { "lr-policy-add", 4, INT_MAX,
      "ROUTER PRIORITY MATCH ACTION [NEXTHOP] [OPTIONS - KEY=VALUE ...]",
-     nbctl_pre_lr_policy_add, nbctl_lr_policy_add, NULL, "--may-exist,--bfd?",
-     RW },
+     nbctl_pre_lr_policy_add, nbctl_lr_policy_add, NULL,
+     "--may-exist,--bfd?,--chain=", RW },
     { "lr-policy-del", 1, 3, "ROUTER [{PRIORITY | UUID} [MATCH]]",
-      nbctl_pre_lr_policy_del, nbctl_lr_policy_del, NULL, "--if-exists", RW },
+      nbctl_pre_lr_policy_del, nbctl_lr_policy_del, NULL,
+      "--if-exists,--chain=", RW },
     { "lr-policy-list", 1, 1, "ROUTER", nbctl_pre_lr_policy_list,
       nbctl_lr_policy_list, NULL, "", RO },
 

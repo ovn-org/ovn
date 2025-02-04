@@ -276,7 +276,8 @@ en_route_policies_run(struct engine_node *node, void *data)
         build_route_policies(od, &northd_data->lr_ports,
                              &bfd_data->bfd_connections,
                              &route_policies_data->route_policies,
-                             &route_policies_data->bfd_active_connections);
+                             &route_policies_data->bfd_active_connections,
+                             &route_policies_data->chain_ids);
     }
 
     engine_set_node_state(node, EN_UPDATED);

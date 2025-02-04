@@ -3539,6 +3539,33 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Router policies - chains])
+ovn_start
+
+check ovn-nbctl --wait=sb lr-add lr0
+check ovn-nbctl --wait=sb lr-policy-add lr0 112 "ip4.src == 10.0.0.0/24" jump nochain
+check ovn-nbctl --wait=sb lr-policy-add lr0 102 "ip4.src == 10.0.0.0/24" jump inbound
+check ovn-nbctl --wait=sb lr-policy-add lr0 101 "ip4.src == 10.0.16.0/24" jump inbound
+check ovn-nbctl --wait=sb lr-policy-add lr0 100 "ip4.src == 192.168.0.1/32" allow
+check ovn-nbctl --wait=sb --chain=inbound lr-policy-add lr0 201 "1" allow
+
+AT_CHECK([grep -qE "Logical router: lr0, policy action 'jump' follows to non-existent chain nochain" northd/ovn-northd.log], [0])
+
+ovn-sbctl dump-flows lr0 > lr0flows2
+AT_CAPTURE_FILE([lr0flows2])
+
+AT_CHECK([grep "lr_in_policy[[^_]]" lr0flows2 | ovn_strip_lflows | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = 0; next;)
+  table=??(lr_in_policy       ), priority=100  , match=(reg9[[16..31]] == 0 && (ip4.src == 192.168.0.1/32)), action=(reg8[[0..15]] = 0; next;)
+  table=??(lr_in_policy       ), priority=101  , match=(reg9[[16..31]] == 0 && (ip4.src == 10.0.16.0/24)), action=(reg9[[16..31]]=1; next(pipeline=ingress, table=??);)
+  table=??(lr_in_policy       ), priority=102  , match=(reg9[[16..31]] == 0 && (ip4.src == 10.0.0.0/24)), action=(reg9[[16..31]]=1; next(pipeline=ingress, table=??);)
+  table=??(lr_in_policy       ), priority=201  , match=(reg9[[16..31]] == 1 && (1)), action=(reg8[[0..15]] = 0; next;)
+])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ACL allow-stateless omit conntrack - Logical_Switch])
 ovn_start
 

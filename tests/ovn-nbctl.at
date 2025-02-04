@@ -2318,7 +2318,7 @@ dnl ---------------------------------------------------------------------
 OVN_NBCTL_TEST([ovn_nbctl_policies], [policies], [
 AT_CHECK([ovn-nbctl lr-add lr0])
 
-dnl Add policies with allow and drop actions
+dnl Add policies with allow, drop and jump actions
 AT_CHECK([ovn-nbctl lr-policy-add lr0 100 "ip4.src == 1.1.1.0/24" drop])
 AT_CHECK([ovn-nbctl lr-policy-add lr0 100 "ip4.src == 1.1.2.0/24" allow pkt_mark=100,foo=bar])
 AT_CHECK([ovn-nbctl lr-policy-add lr0 101 "ip4.src == 2.1.1.0/24" allow])
@@ -2330,6 +2330,8 @@ AT_CHECK([ovn-nbctl --bfd lr-policy-add lr0 103 "ip4.src == 1.2.3.0/24" reroute 
 AT_CHECK([ovn-nbctl --bfd lr-policy-add lr0 103 "ip4.src == 1.2.3.0/24" drop], [1], [],
   [ovn-nbctl: BFD is valid only with reroute action.
 ])
+AT_CHECK([ovn-nbctl --chain=inbound lr-policy-add lr0 100 "ip4.src == 1.1.1.0/24" drop])
+AT_CHECK([ovn-nbctl --chain=outbound lr-policy-add lr0 100 "ip4.src == 2.1.1.0/24" jump inbound])
 
 dnl Incomplete option set.
 AT_CHECK([ovn-nbctl lr-policy-add lr0 200 "ip4.src == 1.1.4.0/24" reroute 192.168.0.10 foo], [1], [],
@@ -2338,6 +2340,14 @@ AT_CHECK([ovn-nbctl lr-policy-add lr0 200 "ip4.src == 1.1.4.0/24" reroute 192.16
 
 AT_CHECK([ovn-nbctl lr-policy-add lr0 200 "ip4.src == 1.1.4.0/24" allow bar=], [1], [],
   [ovn-nbctl: No value specified for the option : bar
+])
+
+AT_CHECK([ovn-nbctl --chain lr-policy-add lr0 100 "ip4.src == 1.1.1.0/24" drop], [1], [],
+  [ovn-nbctl: unknown command 'lr0'; use --help for help
+])
+
+AT_CHECK([ovn-nbctl lr-policy-add lr0 100 "ip4.src == 2.1.1.0/24" jump], [1], [],
+  [ovn-nbctl: Chain name is required when action is jump.
 ])
 
 dnl Add duplicated policy
@@ -2349,34 +2359,68 @@ AT_CHECK([ovn-nbctl --may-exist lr-policy-add lr0 100 "ip4.src == 1.1.1.0/24" dr
 
 dnl Add duplicated policy
 AT_CHECK([ovn-nbctl lr-policy-add lr0 103 "ip4.src == 1.1.1.0/24" deny], [1], [],
-  [ovn-nbctl: deny: action must be one of "allow", "drop", and "reroute"
+  [ovn-nbctl: deny: action must be one of "allow", "drop", "reroute", "jump"
 ])
 
 dnl Delete by priority and match string
 AT_CHECK([ovn-nbctl lr-policy-del lr0 100 "ip4.src == 1.1.1.0/24"])
+
 AT_CHECK([ovn-nbctl lr-policy-list lr0], [0], [dnl
 Routing Policies
+Chain <Default>:
        101                              ip4.src == 2.1.1.0/24           allow
        101                              ip4.src == 2.1.2.0/24            drop
        101                               ip6.src == 2002::/64            drop
        100                              ip4.src == 1.1.2.0/24           allow               pkt_mark=100,foo=bar
+
+Chain inbound:
+       100                              ip4.src == 1.1.1.0/24            drop
+
+Chain outbound:
+       100                              ip4.src == 2.1.1.0/24            jump -> inbound
+])
+
+AT_CHECK([ovn-nbctl --chain inbound lr-policy-del lr0 100 "ip4.src == 1.1.1.0/24"])
+
+AT_CHECK([ovn-nbctl lr-policy-list lr0], [0], [dnl
+Routing Policies
+Chain <Default>:
+       101                              ip4.src == 2.1.1.0/24           allow
+       101                              ip4.src == 2.1.2.0/24            drop
+       101                               ip6.src == 2002::/64            drop
+       100                              ip4.src == 1.1.2.0/24           allow               pkt_mark=100,foo=bar
+
+Chain outbound:
+       100                              ip4.src == 2.1.1.0/24            jump -> inbound
 ])
 
 dnl Delete all policies for given priority
 AT_CHECK([ovn-nbctl lr-policy-del lr0 101])
 AT_CHECK([ovn-nbctl lr-policy-list lr0], [0], [dnl
 Routing Policies
+Chain <Default>:
        100                              ip4.src == 1.1.2.0/24           allow               pkt_mark=100,foo=bar
+
+Chain outbound:
+       100                              ip4.src == 2.1.1.0/24            jump -> inbound
 ])
 
-
 dnl Delete policy by specified uuid
-uuid=$(ovn-nbctl --bare --column _uuid list logical_router_policy)
+uuid=$(ovn-nbctl --bare --column _uuid find logical_router_policy 'chain{<=}""')
 AT_CHECK([ovn-nbctl lr-policy-del lr0 $uuid])
-AT_CHECK([ovn-nbctl list logical-router-policy], [0], [dnl
+AT_CHECK([ovn-nbctl lr-policy-list lr0], [0], [dnl
+Routing Policies
+
+Chain outbound:
+       100                              ip4.src == 2.1.1.0/24            jump -> inbound
 ])
 
 AT_CHECK([ovn-nbctl --if-exists lr-policy-del lr0 $uuid])
+
+AT_CHECK([ovn-nbctl --chain outbound lr-policy-del lr0])
+
+AT_CHECK([ovn-nbctl lr-policy-list lr0], [0], [dnl
+])
 
 dnl Add policy with reroute action
 AT_CHECK([ovn-nbctl lr-policy-add lr0 102 "ip4.src == 3.1.2.0/24" reroute 3.3.3.3])
