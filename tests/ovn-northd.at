@@ -14098,3 +14098,50 @@ AT_CHECK([ovn-sbctl lflow-list S2 | grep ls_in_acl_action | grep priority=500 | 
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([configure LRP peers strange])
+ovn_start
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lr-add lr2
+check ovn-nbctl lrp-add lr0 lrp0 00:00:00:02:ff:01 10.10.0.1/24
+check ovn-nbctl lrp-add lr1 lrp1 00:00:00:02:ff:02 10.10.0.2/24
+check ovn-nbctl lrp-add lr2 lrp2 00:00:00:02:ff:03 10.10.0.3/24
+check ovn-nbctl --wait=sb sync
+
+# We test here that we can configure lrp peers after the lrps have been
+# created. We use multiple waits to ensure that northd needs to handle all
+# partial states.
+check_row_count Port_Binding 1 logical_port=lrp0 options:peer{not-in}lrp1
+check_row_count Port_Binding 1 logical_port=lrp1 options:peer{not-in}lrp0
+
+check ovn-nbctl --wait=sb set Logical_Router_Port lrp0 peer=lrp1
+check_row_count Port_Binding 1 logical_port=lrp0 options:peer{not-in}lrp1
+check_row_count Port_Binding 1 logical_port=lrp1 options:peer{not-in}lrp0
+
+check ovn-nbctl --wait=sb set Logical_Router_Port lrp1 peer=lrp0
+check_row_count Port_Binding 1 logical_port=lrp0 options:peer=lrp1
+check_row_count Port_Binding 1 logical_port=lrp1 options:peer=lrp0
+
+# Now we use 3 LRPs on different LRs and configure the peers in a circle so
+# that lrp0->lrp1->lrp2->lrp0. While this setup is obviously not valid we
+# should not crash.
+check ovn-nbctl --wait=sb clear Logical_Router_Port lrp1 peer
+check_row_count Port_Binding 1 logical_port=lrp0 options:peer{not-in}lrp1
+check_row_count Port_Binding 1 logical_port=lrp1 options:peer{not-in}lrp2
+check_row_count Port_Binding 1 logical_port=lrp2 options:peer{not-in}lrp0
+
+check ovn-nbctl --wait=sb set Logical_Router_Port lrp1 peer=lrp2
+check_row_count Port_Binding 1 logical_port=lrp0 options:peer{not-in}lrp1
+check_row_count Port_Binding 1 logical_port=lrp1 options:peer{not-in}lrp2
+check_row_count Port_Binding 1 logical_port=lrp2 options:peer{not-in}lrp0
+
+check ovn-nbctl --wait=sb set Logical_Router_Port lrp2 peer=lrp0
+check_row_count Port_Binding 1 logical_port=lrp0 options:peer{not-in}lrp1
+check_row_count Port_Binding 1 logical_port=lrp1 options:peer{not-in}lrp2
+check_row_count Port_Binding 1 logical_port=lrp2 options:peer{not-in}lrp0
+
+AT_CLEANUP
+])

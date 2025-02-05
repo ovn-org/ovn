@@ -2426,7 +2426,10 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
         } else if (op->nbrp && op->nbrp->peer && !is_cr_port(op)) {
             struct ovn_port *peer = ovn_port_find(ports, op->nbrp->peer);
             if (peer) {
-                if (peer->nbrp) {
+                if (peer->nbrp && peer->nbrp->peer &&
+                        !strcmp(op->nbrp->name, peer->nbrp->peer)) {
+                    /* We only configure LRP peers if each LRP has the other as
+                     * its peer. */
                     op->peer = peer;
                 } else if (peer->nbsp) {
                     /* An ovn_port for a switch port of type "router" does have
