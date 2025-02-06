@@ -610,6 +610,7 @@ static const char *OVN_NB_LSP_TYPES[] = {
     "localnet",
     "localport",
     "router",
+    "switch",
     "vtep",
     "external",
     "virtual",

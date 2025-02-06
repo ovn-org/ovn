@@ -2463,6 +2463,11 @@ AT_CHECK([ovn-nbctl lsp-get-type lp0], [0], [dnl
 router
 ])
 
+AT_CHECK([ovn-nbctl lsp-set-type lp0 switch])
+AT_CHECK([ovn-nbctl lsp-get-type lp0], [0], [dnl
+switch
+])
+
 AT_CHECK([ovn-nbctl lsp-set-type lp0 localnet])
 AT_CHECK([ovn-nbctl lsp-get-type lp0], [0], [dnl
 localnet
@@ -2504,8 +2509,22 @@ ovn-nbctl: Logical switch port type 'eggs' is unrecognized. Not setting type.
 
 dnl Empty string should work too
 AT_CHECK([ovn-nbctl lsp-set-type lp0 ""])
-AT_CHECK([ovn-nbctl lsp-get-type lp0], [0], [dnl
+AT_CHECK([ovn-nbctl lsp-get-type lp0], [0], [
+])
 
+dnl Only the 'switch' type should accept peer.
+AT_CHECK([ovn-nbctl lsp-set-type lp0 router peer=qwe], [1], [], [dnl
+ovn-nbctl: Peer can only be set for a logical switch port with type 'switch'.
+])
+AT_CHECK([ovn-nbctl lsp-get-type lp0], [0], [
+])
+dnl Check that peer can be set.
+AT_CHECK([ovn-nbctl lsp-set-type lp0 switch peer=my-peer])
+AT_CHECK([ovn-nbctl lsp-get-type lp0], [0], [dnl
+switch
+])
+AT_CHECK([ovn-nbctl get logical-switch-port lp0 peer], [0], [dnl
+my-peer
 ])])
 
 dnl ---------------------------------------------------------------------

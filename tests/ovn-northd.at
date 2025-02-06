@@ -171,6 +171,23 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([check up state of switch-switch LSP])
+ovn_start
+
+check ovn-nbctl ls-add S1
+check ovn-nbctl lsp-add S1 S1-p1
+check ovn-nbctl --wait=sb lsp-set-type S1-p1 switch peer=S2-p2
+
+check ovn-nbctl ls-add S2
+check ovn-nbctl lsp-add S2 S2-p2
+check ovn-nbctl --wait=sb lsp-set-type S2-p2 switch peer=S1-p1
+AT_CHECK([test x`ovn-nbctl lsp-get-up S1-p1` = xup])
+AT_CHECK([test x`ovn-nbctl lsp-get-up S2-p2` = xup])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check up state of router LSP linked to a distributed LR])
 ovn_start
 
@@ -7381,7 +7398,62 @@ AT_CHECK([grep -e "ls_in_l2_lkup.*S1-vm1" S1flows | ovn_strip_lflows], [0], [dnl
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([implicit unknown addresses on switch-switch LSPs])
+ovn_start NORTHD_TYPE
+check ovn-nbctl ls-add S1
+check ovn-nbctl lsp-add S1 S1-vm
+check ovn-nbctl lsp-set-addresses S1-vm "50:54:00:00:00:01 192.168.0.1"
 
+check ovn-nbctl ls-add S2
+check ovn-nbctl lsp-add S2 S2-vm
+check ovn-nbctl lsp-set-addresses S2-vm "50:54:00:00:00:02 192.168.0.2"
+
+check ovn-nbctl lsp-add S1 S1-S2
+check ovn-nbctl lsp-add S2 S2-S1
+check ovn-nbctl lsp-set-type S1-S2 switch peer=S2-S1
+check ovn-nbctl lsp-set-type S2-S1 switch peer=S1-S2
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows S1 > S1flows
+AT_CAPTURE_FILE([S1flows])
+
+dnl Check that S2-vm address is not known on S1 and the forwarding to
+dnl _MC_unknown group is configured.
+AT_CHECK([grep -E "ls_in_l2_lkup.*S1-|unknown" S1flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 50:54:00:00:00:01), action=(outport = "S1-vm"; output;)
+  table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
+  table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(outport = "_MC_unknown"; output;)
+])
+
+ovn-sbctl dump-flows S2 > S2flows
+AT_CAPTURE_FILE([S2flows])
+
+dnl Check that S1-vm address is not known on S2 and the forwarding to
+dnl _MC_unknown group is configured.
+AT_CHECK([grep -E "ls_in_l2_lkup.*S2-|unknown" S2flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 50:54:00:00:00:02), action=(outport = "S2-vm"; output;)
+  table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
+  table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(outport = "_MC_unknown"; output;)
+])
+
+dnl Add an explicit address to S1-S2 indicating that the port with
+dnl address of S2-vm is behind it.
+check ovn-nbctl --wait=sb lsp-set-addresses S1-S2 "50:54:00:00:00:02 192.168.0.2"
+ovn-sbctl dump-flows S1 > S1flows2
+AT_CAPTURE_FILE([S1flows2])
+
+dnl Check that that address is now known on S1, but forwarding to _MC_unknown
+dnl group is still configured for other potential addresses.
+AT_CHECK([grep -E "ls_in_l2_lkup.*S1-|unknown" S1flows2 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 50:54:00:00:00:01), action=(outport = "S1-vm"; output;)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 50:54:00:00:00:02), action=(outport = "S1-S2"; output;)
+  table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
+  table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(outport = "_MC_unknown"; output;)
+])
+
+AT_CLEANUP
+])
 
 # Duplicated datapaths shouldn't be created, but in case it is created because
 # of bug or dirty data, it should be properly deleted instead of causing

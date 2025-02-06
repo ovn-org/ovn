@@ -738,7 +738,8 @@
         or <code>disabled</code>.
       </dd>
 
-      <dt><code>lsp-set-type</code> <var>port</var> <var>type</var></dt>
+      <dt><code>lsp-set-type</code> <var>port</var> <var>type</var>
+          [<code>peer=</code><var>peer</var>]</dt>
       <dd>
         <p>
           Set the type for the logical port.  The type must be one of the following:
@@ -753,6 +754,13 @@
           <dt><code>router</code></dt>
           <dd>
             A connection to a logical router.
+          </dd>
+
+          <dt><code>switch</code></dt>
+          <dd>
+            A connection to another logical switch.  The optional argument
+            <code>peer</code> identifies a logical switch port that connects
+            to this one.
           </dd>
 
           <dt><code>localnet</code></dt>

@@ -649,6 +649,8 @@ struct ovn_port {
      *
      *     - Two connected logical router ports have each other as peer.
      *
+     *     - Two connected logical switch ports have each other as peer.
+     *
      *     - Other kinds of ports have no peer. */
     struct ovn_port *peer;
 

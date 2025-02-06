@@ -889,6 +889,9 @@ print_ls(const struct nbrec_logical_switch *ls, struct ds *s)
         if (router_port) {
             ds_put_format(s, "        router-port: %s\n", router_port);
         }
+        if (lsp->peer) {
+            ds_put_format(s, "        peer: %s\n", lsp->peer);
+        }
     }
 }
 
@@ -921,6 +924,7 @@ nbctl_pre_show(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_external_ids);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_type);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_parent_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_peer);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_tag);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_addresses);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_options);
@@ -1739,6 +1743,7 @@ nbctl_pre_lsp_type(struct ctl_context *ctx)
 {
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_type);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_peer);
 }
 
 static void
@@ -1865,7 +1870,13 @@ nbctl_lsp_set_type(struct ctl_context *ctx)
 {
     const char *id = ctx->argv[1];
     const char *type = ctx->argv[2];
+    const char *peer = (ctx->argc < 4) ? NULL : ctx->argv[3];
     const struct nbrec_logical_switch_port *lsp = NULL;
+
+    if (peer && strncmp(peer, "peer=", 5)) {
+        ctl_error(ctx, "Unrecognized argument: %s\n", peer);
+        return;
+    }
 
     char *error = lsp_by_name_or_uuid(ctx, id, true, &lsp);
     if (error) {
@@ -1873,7 +1884,15 @@ nbctl_lsp_set_type(struct ctl_context *ctx)
         return;
     }
     if (ovn_is_known_nb_lsp_type(type)) {
+        if (peer && strcmp(type, "switch")) {
+            ctl_error(ctx, "Peer can only be set for a logical switch port "
+                           "with type 'switch'.");
+            return;
+        }
         nbrec_logical_switch_port_set_type(lsp, type);
+        if (peer) {
+            nbrec_logical_switch_port_set_peer(lsp, peer + 5);
+        }
     } else {
         ctl_error(ctx, "Logical switch port type '%s' is unrecognized. "
                   "Not setting type.", type);
@@ -8066,7 +8085,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
       nbctl_lsp_set_enabled, NULL, "", RW },
     { "lsp-get-enabled", 1, 1, "PORT", nbctl_pre_lsp_enabled,
       nbctl_lsp_get_enabled, NULL, "", RO },
-    { "lsp-set-type", 2, 2, "PORT TYPE", nbctl_pre_lsp_type,
+    { "lsp-set-type", 2, 3, "PORT TYPE [peer=PEER]", nbctl_pre_lsp_type,
       nbctl_lsp_set_type, NULL, "", RW },
     { "lsp-get-type", 1, 1, "PORT", nbctl_pre_lsp_type,
       nbctl_lsp_get_type, NULL, "", RO },

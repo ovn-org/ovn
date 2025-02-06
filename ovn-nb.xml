@@ -996,6 +996,16 @@
             to which this logical switch port is connected.
           </dd>
 
+          <dt><code>switch</code></dt>
+          <dd>
+            A connection to another logical switch.  The value of <ref
+            column="peer" /> specifies the <ref column="name"/> of the
+            <ref table="Logical_Switch_Port"/> to which this logical switch
+            port is connected.  Such ports always have an implicit "unknown"
+            address, because the address information is not leaked between
+            directly connected switches.
+          </dd>
+
           <dt><code>localnet</code></dt>
           <dd>
             A connection to a locally accessible network from
@@ -1855,6 +1865,17 @@
         </dl>
       </column>
     </group>
+
+    <column name="peer">
+      <p>
+        For a switch port used to connect two logical switches, this
+        identifies the other switch port in the pair by <ref column="name"/>.
+      </p>
+
+      <p>
+        For a switch port attached to a logical router, this column is empty.
+      </p>
+    </column>
 
     <group title="DHCP">
       <column name="dhcpv4_options">

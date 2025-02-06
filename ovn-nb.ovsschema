@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "7.10.0",
-    "cksum": "1541935526 38961",
+    "version": "7.11.0",
+    "cksum": "2520708261 39034",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -155,6 +155,7 @@
                 "port_security": {"type": {"key": "string",
                                            "min": 0,
                                            "max": "unlimited"}},
+                "peer": {"type": {"key": "string", "min": 0, "max": 1}},
                 "up": {"type": {"key": "boolean", "min": 0, "max": 1}},
                 "enabled": {"type": {"key": "boolean", "min": 0, "max": 1}},
                 "dhcpv4_options": {"type": {"key": {"type": "uuid",
