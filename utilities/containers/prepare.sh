@@ -1,7 +1,7 @@
 #!/bin/bash -xe
 
 DPDK_GIT=https://dpdk.org/git/dpdk
-DPDK_VER=23.11
+DPDK_VER=24.11
 
 function compile_sparse()
 {
