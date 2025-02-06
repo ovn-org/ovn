@@ -2112,6 +2112,10 @@ build_local_bindings(struct binding_ctx_in *b_ctx_in,
     }
 }
 
+static bool consider_patch_port_for_local_datapaths(
+        const struct sbrec_port_binding *,
+        struct binding_ctx_in *, struct binding_ctx_out *);
+
 void
 binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
 {
@@ -2155,7 +2159,9 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
         switch (lport_type) {
         case LP_PATCH:
             update_related_lport(pb, b_ctx_out);
+            consider_patch_port_for_local_datapaths(pb, b_ctx_in, b_ctx_out);
             break;
+
         case LP_VTEP:
             update_related_lport(pb, b_ctx_out);
             struct lport *vtep_lport = xmalloc(sizeof *vtep_lport);
@@ -2925,7 +2931,7 @@ handle_updated_vif_lport(const struct sbrec_port_binding *pb,
     return true;
 }
 
-static void
+static bool
 consider_patch_port_for_local_datapaths(const struct sbrec_port_binding *pb,
                                         struct binding_ctx_in *b_ctx_in,
                                         struct binding_ctx_out *b_ctx_out)
@@ -2976,15 +2982,30 @@ consider_patch_port_for_local_datapaths(const struct sbrec_port_binding *pb,
         }
     }
 
-    if (sbrec_port_binding_is_updated(pb, SBREC_PORT_BINDING_COL_TYPE) &&
-       (pb->chassis == b_ctx_in->chassis_rec ||
-            is_additional_chassis(pb, b_ctx_in->chassis_rec))) {
-        remove_local_lports(pb->logical_port, b_ctx_out);
-        release_lport(pb, b_ctx_in->chassis_rec,
-                             !b_ctx_in->ovnsb_idl_txn,
-                             b_ctx_out->tracked_dp_bindings,
-                             b_ctx_out->if_mgr);
+    /* If this chassis is requested - try to claim. */
+    if (pb->requested_chassis == b_ctx_in->chassis_rec) {
+        return claim_lport(pb, NULL, b_ctx_in->chassis_rec, NULL,
+                           !b_ctx_in->ovnsb_idl_txn, false,
+                           b_ctx_out->tracked_dp_bindings,
+                           b_ctx_out->if_mgr,
+                           b_ctx_out->postponed_ports);
     }
+    /* If this chassis is claimed, but not requested to be; or requested for
+     * some other chassis, but claimed by us - release. */
+    if ((!pb->requested_chassis && !pb->n_additional_chassis && pb->chassis)
+        || pb->chassis == b_ctx_in->chassis_rec
+        || is_additional_chassis(pb, b_ctx_in->chassis_rec)
+        || if_status_is_port_claimed(b_ctx_out->if_mgr, pb->logical_port)) {
+
+        remove_local_lports(pb->logical_port, b_ctx_out);
+        if (!release_lport(pb, b_ctx_in->chassis_rec,
+                           !b_ctx_in->ovnsb_idl_txn,
+                           b_ctx_out->tracked_dp_bindings,
+                           b_ctx_out->if_mgr)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static bool
@@ -3042,7 +3063,8 @@ handle_updated_port(struct binding_ctx_in *b_ctx_in,
 
     case LP_PATCH:
         update_related_lport(pb, b_ctx_out);
-        consider_patch_port_for_local_datapaths(pb, b_ctx_in, b_ctx_out);
+        handled = consider_patch_port_for_local_datapaths(pb, b_ctx_in,
+                                                              b_ctx_out);
         break;
 
     case LP_VTEP:
@@ -3084,8 +3106,9 @@ handle_updated_port(struct binding_ctx_in *b_ctx_in,
                          distributed_port, pb->logical_port);
             break;
         }
-        consider_patch_port_for_local_datapaths(distributed_pb, b_ctx_in,
-                                                b_ctx_out);
+        handled = consider_patch_port_for_local_datapaths(distributed_pb,
+                                                          b_ctx_in,
+                                                          b_ctx_out);
         break;
 
     case LP_EXTERNAL:

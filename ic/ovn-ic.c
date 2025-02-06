@@ -503,10 +503,32 @@ find_crp_for_sb_pb(struct ic_context *ctx,
     return find_crp_from_lrp(ctx, peer);
 }
 
-static const char *
-get_lrp_address_for_sb_pb(struct ic_context *ctx,
-                          const struct sbrec_port_binding *sb_pb)
+static const struct nbrec_logical_switch_port *
+get_lsp_by_ts_port_name(struct ic_context *ctx, const char *ts_port_name)
 {
+    const struct nbrec_logical_switch_port *lsp, *key;
+
+    key = nbrec_logical_switch_port_index_init_row(ctx->nbrec_port_by_name);
+    nbrec_logical_switch_port_index_set_name(key, ts_port_name);
+    lsp = nbrec_logical_switch_port_index_find(ctx->nbrec_port_by_name, key);
+    nbrec_logical_switch_port_index_destroy_row(key);
+
+    return lsp;
+}
+
+static const char *
+get_lp_address_for_sb_pb(struct ic_context *ctx,
+                         const struct sbrec_port_binding *sb_pb)
+{
+    const struct nbrec_logical_switch_port *nb_lsp;
+
+    nb_lsp = get_lsp_by_ts_port_name(ctx, sb_pb->logical_port);
+    if (!strcmp(nb_lsp->type, "switch")) {
+        /* Switches always have implicit "unknown" address, and IC-SB port
+         * binding can only have one address specified. */
+        return "unknown";
+    }
+
     const struct sbrec_port_binding *peer = find_peer_port(ctx, sb_pb);
     if (!peer) {
         return NULL;
@@ -597,9 +619,9 @@ sync_local_port(struct ic_context *ctx,
                 const struct nbrec_logical_switch_port *lsp)
 {
     /* Sync address from NB to ISB */
-    const char *address = get_lrp_address_for_sb_pb(ctx, sb_pb);
+    const char *address = get_lp_address_for_sb_pb(ctx, sb_pb);
     if (!address) {
-        VLOG_DBG("Can't get logical router port address for logical"
+        VLOG_DBG("Can't get router/switch port address for logical"
                  " switch port %s", sb_pb->logical_port);
         if (isb_pb->address[0]) {
             icsbrec_port_binding_set_address(isb_pb, "");
@@ -615,6 +637,10 @@ sync_local_port(struct ic_context *ctx,
     if (crp && crp->chassis) {
         if (strcmp(crp->chassis->name, isb_pb->gateway)) {
             icsbrec_port_binding_set_gateway(isb_pb, crp->chassis->name);
+        }
+    } else if (!strcmp(lsp->type, "switch") && sb_pb->chassis) {
+        if (strcmp(sb_pb->chassis->name, isb_pb->gateway)) {
+            icsbrec_port_binding_set_gateway(isb_pb, sb_pb->chassis->name);
         }
     } else {
         if (isb_pb->gateway[0]) {
@@ -715,7 +741,7 @@ create_isb_pb(struct ic_context *ctx,
     icsbrec_port_binding_set_logical_port(isb_pb, sb_pb->logical_port);
     icsbrec_port_binding_set_tunnel_key(isb_pb, pb_tnl_key);
 
-    const char *address = get_lrp_address_for_sb_pb(ctx, sb_pb);
+    const char *address = get_lp_address_for_sb_pb(ctx, sb_pb);
     if (address) {
         icsbrec_port_binding_set_address(isb_pb, address);
     }
@@ -804,7 +830,8 @@ port_binding_run(struct ic_context *ctx,
         for (int i = 0; i < ls->n_ports; i++) {
             lsp = ls->ports[i];
 
-            if (!strcmp(lsp->type, "router")) {
+            if (!strcmp(lsp->type, "router")
+                || !strcmp(lsp->type, "switch")) {
                 /* The port is local. */
                 sb_pb = find_lsp_in_sb(ctx, lsp);
                 if (!sb_pb) {
@@ -1314,13 +1341,8 @@ static const char *
 get_lrp_name_by_ts_port_name(struct ic_context *ctx, const char *ts_port_name)
 {
     const struct nbrec_logical_switch_port *nb_lsp;
-    const struct nbrec_logical_switch_port *nb_lsp_key =
-        nbrec_logical_switch_port_index_init_row(ctx->nbrec_port_by_name);
-    nbrec_logical_switch_port_index_set_name(nb_lsp_key, ts_port_name);
-    nb_lsp = nbrec_logical_switch_port_index_find(ctx->nbrec_port_by_name,
-                                                  nb_lsp_key);
-    nbrec_logical_switch_port_index_destroy_row(nb_lsp_key);
 
+    nb_lsp = get_lsp_by_ts_port_name(ctx, ts_port_name);
     if (!nb_lsp) {
         return NULL;
     }
@@ -1781,6 +1803,16 @@ route_run(struct ic_context *ctx,
     ICSBREC_PORT_BINDING_FOR_EACH_EQUAL (isb_pb, isb_pb_key,
                                          ctx->icsbrec_port_binding_by_az)
     {
+        const struct nbrec_logical_switch_port *nb_lsp;
+
+        nb_lsp = get_lsp_by_ts_port_name(ctx, isb_pb->logical_port);
+        if (!strcmp(nb_lsp->type, "switch")) {
+            VLOG_DBG("IC-SB Port_Binding '%s' on ts '%s' corresponds to a "
+                     "switch port, not considering for route collection.",
+                     isb_pb->logical_port, isb_pb->transit_switch);
+            continue;
+        }
+
         const char *ts_lrp_name =
             get_lrp_name_by_ts_port_name(ctx, isb_pb->logical_port);
         if (!ts_lrp_name) {

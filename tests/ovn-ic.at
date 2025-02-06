@@ -2618,3 +2618,164 @@ OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([spine-leaf: 2 AZs, 2 HVs, 2 LSs, connected via transit spine switch])
+AT_KEYWORDS([spine leaf])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+
+ovn_init_ic_db
+
+ovn_start az1
+ovn_start az2
+
+# Logical network:
+# Single network 172.16.1.0/24.  Two switches with VIF ports on HVs in two
+# separate AZs, connected to a spine transit switch via 'switch' ports.
+
+ovn-ic-nbctl ts-add spine
+ovn_as az1 check ovn-nbctl ls-add ls1
+ovn_as az2 check ovn-nbctl ls-add ls2
+
+# Connect ls1 to spine.
+ovn_as az1
+check ovn-nbctl lsp-add spine spine-to-ls1
+check ovn-nbctl lsp-add ls1 ls1-to-spine
+check ovn-nbctl lsp-set-type spine-to-ls1 switch peer=ls1-to-spine
+check ovn-nbctl lsp-set-type ls1-to-spine switch peer=spine-to-ls1
+
+# Connect ls2 to spine.
+ovn_as az2
+check ovn-nbctl lsp-add spine spine-to-ls2
+check ovn-nbctl lsp-add ls2 ls2-to-spine
+check ovn-nbctl lsp-set-type spine-to-ls2 switch peer=ls2-to-spine
+check ovn-nbctl lsp-set-type ls2-to-spine switch peer=spine-to-ls2
+
+# Create logical port ls1-lp1 in ls1
+ovn_as az1 check ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "f0:00:00:01:02:01 172.16.1.1"
+# Create logical port ls1-lp2 in ls1
+ovn_as az1 check ovn-nbctl lsp-add ls1 ls1-lp2 \
+-- lsp-set-addresses ls1-lp2 "f0:00:00:01:02:02 172.16.1.2"
+
+# Create logical port ls2-lp1 in ls2
+ovn_as az2 check ovn-nbctl lsp-add ls2 ls2-lp1 \
+-- lsp-set-addresses ls2-lp1 "f0:00:00:01:02:03 172.16.1.3"
+# Create logical port ls2-lp2 in ls2
+ovn_as az2 check ovn-nbctl lsp-add ls2 ls2-lp2 \
+-- lsp-set-addresses ls2-lp2 "f0:00:00:01:02:04 172.16.1.4"
+
+# Create hypervisors and OVS ports corresponding to logical ports.
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.1.1 16
+check ovs-vsctl set open . external-ids:ovn-is-interconn=true
+ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=ls1-lp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-int vif2 -- \
+    set interface vif2 external-ids:iface-id=ls1-lp2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_az_attach az2 n1 br-phys 192.168.2.1 16
+check ovs-vsctl set open . external-ids:ovn-is-interconn=true
+ovs-vsctl -- add-port br-int vif3 -- \
+    set interface vif3 external-ids:iface-id=ls2-lp1 \
+    options:tx_pcap=hv2/vif3-tx.pcap \
+    options:rxq_pcap=hv2/vif3-rx.pcap \
+    ofport-request=3
+ovs-vsctl -- add-port br-int vif4 -- \
+    set interface vif4 external-ids:iface-id=ls2-lp2 \
+    options:tx_pcap=hv2/vif4-tx.pcap \
+    options:rxq_pcap=hv2/vif4-rx.pcap \
+    ofport-request=4
+
+# Bind transit switch ports to their chassis.
+check ovn_as az1 ovn-nbctl lsp-set-options spine-to-ls1 requested-chassis=hv1
+check ovn_as az2 ovn-nbctl lsp-set-options spine-to-ls2 requested-chassis=hv2
+
+# Pre-populate the hypervisors' ARP tables so that we don't lose any
+# packets for ARP resolution (native tunneling doesn't queue packets
+# for ARP resolution).
+OVN_POPULATE_ARP
+
+ovn_as az1
+check ovn-nbctl --wait=hv sync
+ovn-sbctl dump-flows > az1/sbflows
+
+#wait_for_ports_up
+ovn_as az2
+check ovn-nbctl --wait=hv sync
+ovn-sbctl dump-flows > az2/sbflows
+
+check ovn-ic-nbctl --wait=sb sync
+
+ovn-ic-nbctl show > ic-nbctl.dump
+AT_CAPTURE_FILE([ic-nbctl.dump])
+
+(echo "---------ISB dump-----"
+ ovn-ic-sbctl show
+ echo "---------------------"
+ ovn-ic-sbctl list gateway
+ echo "---------------------"
+ ovn-ic-sbctl list datapath_binding
+ echo "---------------------"
+ ovn-ic-sbctl list port_binding
+ echo "---------------------"
+ ovn-ic-sbctl list route
+ echo "---------------------") > ic-sbctl.dump
+AT_CAPTURE_FILE([ic-sbctl.dump])
+
+# Send ip packets between the two ports.
+src_mac="f0:00:00:01:02:01"
+dst_mac="f0:00:00:01:02:03"
+src_ip=172.16.1.1
+dst_ip=172.16.1.3
+packet=$(fmt_pkt "Ether(dst='${dst_mac}', src='${src_mac}')/ \
+                  IP(src='${src_ip}', dst='${dst_ip}')/ \
+                  UDP(sport=1538, dport=4369)")
+check as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
+
+# Check that datapath is not doing any extra work and sends the packet out
+# through the tunnel.
+AT_CHECK([ovn_as az1 as hv1 ovs-appctl ofproto/trace --names \
+                br-int in_port=vif1 $packet > ofproto-trace-1])
+AT_CAPTURE_FILE([ofproto-trace-1])
+AT_CHECK([grep 'Megaflow:' ofproto-trace-1], [0], [dnl
+Megaflow: recirc_id=0,eth,ip,in_port=vif1,dl_src=f0:00:00:01:02:01,dl_dst=f0:00:00:01:02:03,nw_ecn=0,nw_frag=no
+])
+AT_CHECK([grep -q \
+  'Datapath actions: tnl_push(tnl_port(genev_sys_6081).*out_port(br-phys))' \
+  ofproto-trace-1])
+
+# It's a little problematic to trace the other side, but we can check
+# datapath actions.
+AT_CHECK([as hv2 ovs-appctl dpctl/dump-flows --names \
+            | grep actions | sed 's/.*\(actions:.*\)/\1/' | sort], [0], [dnl
+actions:tnl_pop(genev_sys_6081)
+actions:vif3
+])
+
+# No modifications expected.
+AT_CHECK([echo $packet > expected])
+
+AT_CHECK([touch empty])
+
+# Check that it is delivered where needed and not delivered where not.
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [empty])
+OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected])
+OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [empty])
+
+OVN_CLEANUP_IC([az1], [az2])
+AT_CLEANUP
+])

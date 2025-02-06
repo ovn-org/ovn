@@ -14,6 +14,7 @@ Post v24.09.0
      Router Ports.
    - Added support for Spine-Leaf topology of logical switches by adding
      a new LSP type 'switch' that can directly connect two logical switches.
+     Supported for both distributed and transit switches.
    - Bump python version required for building OVN to 3.7.
    - SSL/TLS:
      * TLSv1 and TLSv1.1 protocols are deprecated and disabled by default
