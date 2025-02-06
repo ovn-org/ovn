@@ -879,7 +879,7 @@ bool
 is_vxlan_mode(const struct smap *nb_options,
               const struct sbrec_chassis_table *sbrec_chassis_table);
 
-uint32_t get_ovn_max_dp_key_local(bool _vxlan_mode);
+uint32_t get_ovn_max_dp_key_local(bool _vxlan_mode, bool ic_mode);
 
 /* Returns true if the logical router port 'enabled' column is empty or
  * set to true.  Otherwise, returns false. */

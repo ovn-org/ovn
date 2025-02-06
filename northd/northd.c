@@ -95,6 +95,8 @@ static bool default_acl_drop;
  * and ports tunnel key allocation (12 bits for each instead of default 16). */
 static bool vxlan_mode;
 
+static bool vxlan_ic_mode;
+
 #define MAX_OVN_TAGS 4096
 
 
@@ -853,6 +855,7 @@ join_datapaths(const struct nbrec_logical_switch_table *nbrec_ls_table,
         ovs_list_push_back(sb_only, &od->list);
     }
 
+    vxlan_ic_mode = false;
     const struct nbrec_logical_switch *nbs;
     NBREC_LOGICAL_SWITCH_TABLE_FOR_EACH (nbs, nbrec_ls_table) {
         struct ovn_datapath *od = ovn_datapath_find_(datapaths,
@@ -870,6 +873,10 @@ join_datapaths(const struct nbrec_logical_switch_table *nbrec_ls_table,
 
         init_ipam_info_for_datapath(od);
         init_mcast_info_for_datapath(od);
+
+        if (smap_get_bool(&nbs->other_config, "ic-vxlan_mode", false)) {
+            vxlan_ic_mode = true;
+        }
     }
 
     const struct nbrec_logical_router *nbr;
@@ -927,13 +934,14 @@ is_vxlan_mode(const struct smap *nb_options,
 }
 
 uint32_t
-get_ovn_max_dp_key_local(bool _vxlan_mode)
+get_ovn_max_dp_key_local(bool _vxlan_mode, bool _vxlan_ic_mode)
 {
     if (_vxlan_mode) {
         /* OVN_MAX_DP_GLOBAL_NUM doesn't apply for VXLAN mode. */
-        return OVN_MAX_DP_VXLAN_KEY;
+        return _vxlan_ic_mode ? OVN_MAX_DP_VXLAN_KEY_LOCAL
+                              : OVN_MAX_DP_VXLAN_KEY;
     }
-    return OVN_MAX_DP_KEY - OVN_MAX_DP_GLOBAL_NUM;
+    return _vxlan_ic_mode ? OVN_MAX_DP_VXLAN_KEY_LOCAL : OVN_MAX_DP_KEY_LOCAL;
 }
 
 static void
@@ -942,7 +950,8 @@ ovn_datapath_allocate_key(struct hmap *datapaths, struct hmap *dp_tnlids,
 {
     if (!od->tunnel_key) {
         od->tunnel_key = ovn_allocate_tnlid(dp_tnlids, "datapath",
-            OVN_MIN_DP_KEY_LOCAL, get_ovn_max_dp_key_local(vxlan_mode), hint);
+            OVN_MIN_DP_KEY_LOCAL,
+            get_ovn_max_dp_key_local(vxlan_mode, vxlan_ic_mode), hint);
         if (!od->tunnel_key) {
             if (od->sb) {
                 sbrec_datapath_binding_delete(od->sb);

@@ -95,6 +95,38 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- VXLAN tunnel key])
+ovn_init_ic_db
+net_add n1
+
+ovn_start az1
+sim_add gw-az1
+as gw-az1
+
+check ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.1.1
+check ovs-vsctl set open . external-ids:ovn-is-interconn=true
+
+AT_CHECK([ovn-ic-nbctl --wait=sb ts-add ts1])
+
+# Check ISB
+check_row_count ic-sb:Datapath_Binding 1 transit_switch=ts1
+check_column "ts1" ic-sb:Datapath_Binding transit_switch
+check_column "ts1" nb:Logical_Switch name
+
+wait_column "ic-vxlan_mode=false interconn-ts=ts1 requested-tnl-key=16711682" nb:Logical_Switch other_config name="ts1"
+# Check tunnel key fits in VXLAN space
+check ovn-ic-nbctl --wait=sb set IC_NB_Global . options:vxlan_mode=true
+wait_column "ic-vxlan_mode=true interconn-ts=ts1 requested-tnl-key=1025" nb:Logical_Switch other_config name="ts1"
+
+check ovn-ic-nbctl --wait=sb set IC_NB_Global . options:vxlan_mode=false
+wait_column "ic-vxlan_mode=false interconn-ts=ts1 requested-tnl-key=16711682" nb:Logical_Switch other_config name="ts1"
+
+OVN_CLEANUP_IC([az1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- port-bindings deletion upon TS deletion])
 
 ovn_init_ic_db

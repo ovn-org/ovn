@@ -188,6 +188,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
 
     engine_add_input(&en_global_config, &en_nb_nb_global,
                      global_config_nb_global_handler);
+    engine_add_input(&en_global_config, &en_nb_logical_switch,
+                     global_config_nb_logical_switch_handler);
     engine_add_input(&en_global_config, &en_sb_sb_global,
                      global_config_sb_global_handler);
     engine_add_input(&en_global_config, &en_sb_chassis,

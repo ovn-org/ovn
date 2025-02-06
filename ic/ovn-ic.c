@@ -181,18 +181,20 @@ az_run(struct ic_context *ctx)
 }
 
 static uint32_t
-allocate_ts_dp_key(struct hmap *dp_tnlids)
+allocate_ts_dp_key(struct hmap *dp_tnlids, bool vxlan_mode)
 {
-    static uint32_t hint = OVN_MIN_DP_KEY_GLOBAL;
-    return ovn_allocate_tnlid(dp_tnlids, "transit switch datapath",
-                              OVN_MIN_DP_KEY_GLOBAL, OVN_MAX_DP_KEY_GLOBAL,
-                              &hint);
+    uint32_t hint = vxlan_mode ? OVN_MIN_DP_VXLAN_KEY_GLOBAL
+                               : OVN_MIN_DP_KEY_GLOBAL;
+    return ovn_allocate_tnlid(dp_tnlids, "transit switch datapath", hint,
+            vxlan_mode ? OVN_MAX_DP_VXLAN_KEY_GLOBAL : OVN_MAX_DP_KEY_GLOBAL,
+            &hint);
 }
 
 static void
 ts_run(struct ic_context *ctx)
 {
     const struct icnbrec_transit_switch *ts;
+    bool dp_key_refresh = false;
 
     struct hmap dp_tnlids = HMAP_INITIALIZER(&dp_tnlids);
     struct shash isb_dps = SHASH_INITIALIZER(&isb_dps);
@@ -200,6 +202,20 @@ ts_run(struct ic_context *ctx)
     ICSBREC_DATAPATH_BINDING_FOR_EACH (isb_dp, ctx->ovnisb_idl) {
         shash_add(&isb_dps, isb_dp->transit_switch, isb_dp);
         ovn_add_tnlid(&dp_tnlids, isb_dp->tunnel_key);
+    }
+
+    bool vxlan_mode = false;
+    const struct icnbrec_ic_nb_global *ic_nb =
+        icnbrec_ic_nb_global_first(ctx->ovninb_idl);
+
+    if (ic_nb && smap_get_bool(&ic_nb->options, "vxlan_mode", false)) {
+        const struct icsbrec_encap *encap;
+        ICSBREC_ENCAP_FOR_EACH (encap, ctx->ovnisb_idl) {
+            if (!strcmp(encap->type, "vxlan")) {
+                vxlan_mode = true;
+                break;
+            }
+        }
     }
 
     /* Sync INB TS to AZ NB */
@@ -224,7 +240,19 @@ ts_run(struct ic_context *ctx)
                 nbrec_logical_switch_update_other_config_setkey(ls,
                                                                 "interconn-ts",
                                                                 ts->name);
+                nbrec_logical_switch_update_other_config_setkey(
+                        ls, "ic-vxlan_mode", vxlan_mode ? "true" : "false");
+            } else {
+                bool _vxlan_mode = smap_get_bool(&ls->other_config,
+                                                 "ic-vxlan_mode", false);
+                if (_vxlan_mode != vxlan_mode) {
+                    dp_key_refresh = true;
+                    nbrec_logical_switch_update_other_config_setkey(
+                            ls, "ic-vxlan_mode",
+                            vxlan_mode ? "true" : "false");
+                }
             }
+
             isb_dp = shash_find_data(&isb_dps, ts->name);
             if (isb_dp) {
                 int64_t nb_tnl_key = smap_get_int(&ls->other_config,
@@ -260,7 +288,7 @@ ts_run(struct ic_context *ctx)
             isb_dp = shash_find_and_delete(&isb_dps, ts->name);
             if (!isb_dp) {
                 /* Allocate tunnel key */
-                int64_t dp_key = allocate_ts_dp_key(&dp_tnlids);
+                int64_t dp_key = allocate_ts_dp_key(&dp_tnlids, vxlan_mode);
                 if (!dp_key) {
                     continue;
                 }
@@ -268,6 +296,12 @@ ts_run(struct ic_context *ctx)
                 isb_dp = icsbrec_datapath_binding_insert(ctx->ovnisb_txn);
                 icsbrec_datapath_binding_set_transit_switch(isb_dp, ts->name);
                 icsbrec_datapath_binding_set_tunnel_key(isb_dp, dp_key);
+            } else if (dp_key_refresh) {
+                /* Refresh tunnel key since encap mode has changhed. */
+                int64_t dp_key = allocate_ts_dp_key(&dp_tnlids, vxlan_mode);
+                if (dp_key) {
+                    icsbrec_datapath_binding_set_tunnel_key(isb_dp, dp_key);
+                }
             }
         }
 
@@ -1962,8 +1996,8 @@ static void
 ovn_db_run(struct ic_context *ctx,
            const struct icsbrec_availability_zone *az)
 {
-    ts_run(ctx);
     gateway_run(ctx, az);
+    ts_run(ctx);
     port_binding_run(ctx, az);
     route_run(ctx, az);
 }

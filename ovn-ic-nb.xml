@@ -78,6 +78,13 @@
           at least 1000 ms.
         </p>
       </column>
+
+      <column name="options" key="vxlan_mode">
+        <p>
+          This field allows the client to enable VXLAN as encapsulation
+          protocol for for cross-AZ traffic. Default value is false.
+        </p>
+      </column>
     </group>
 
     <group title="Connection Options">

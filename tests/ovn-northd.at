@@ -3000,7 +3000,29 @@ OVS_WAIT_UNTIL([grep "all port tunnel ids exhausted" northd/ovn-northd.log])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([check VXLAN encap in IC-mode])
+ovn_start
 
+get_max_tunid() {
+    echo $(ovn-nbctl get NB_Global . options:max_tunid | sed s/":"//g | sed s/\"//g)
+}
+
+check_uuid ovn-sbctl \
+    --id=@e create encap chassis_name=hv1 ip="192.168.0.1" type="vxlan" \
+    -- --id=@c create chassis name=hv1 encaps=@e
+check ovn-nbctl --wait=sb ls-add LS
+AT_CHECK([test "$(get_max_tunid)" -eq 4095])
+
+check ovn-nbctl --wait=sb set logical-switch LS other-config:interconn-ts=LS
+check ovn-nbctl --wait=sb set logical-switch LS other-config:ic-vxlan_mode=true
+AT_CHECK([test "$(get_max_tunid)" -eq 1023])
+
+check ovn-nbctl --wait=sb clear logical-switch LS other-config
+AT_CHECK([test "$(get_max_tunid)" -eq 4095])
+
+AT_CLEANUP
+])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Logical Flow Datapath Groups])

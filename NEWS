@@ -50,6 +50,10 @@ Post v24.09.0
    - Logical router policies can now be arranged in chains. Using the new
      "jump" action, combined with new "chain" and "jump_chain" columns,
      allows for policies to be chained together.
+   - Reduce the max number of local datapath to 1024 when OVN is using VXLAN
+     encapsulation type in OVN-interconnect mode.
+   - Added vxlan_mode parameter in IC_NB_GLOBAL option column to enable or
+     disable VXLAN encapsulation type in OVN-interconnect mode.
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------
