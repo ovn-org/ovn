@@ -2475,6 +2475,13 @@ physical_eval_remote_chassis_flows(const struct physical_ctx *ctx,
             continue;
         }
 
+        /* Do not create flows for Geneve if the TLV negotiation is not
+         * finished.
+         */
+        if (tun->type == GENEVE && !ctx->mff_ovn_geneve) {
+            continue;
+        }
+
         if (!(prev && prev->type == tun->type)) {
             put_remote_chassis_flood_encap(egress_ofpacts, tun->type,
                                            ctx->mff_ovn_geneve);
