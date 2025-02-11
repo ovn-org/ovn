@@ -15916,3 +15916,404 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
 /.*terminating with signal 15.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([dynamic-routing - DGP])
+
+VRF_RESERVE([1337])
+
+# This test uses dynamic routing on a simulated multi-tenant internet
+# connection.
+# Tenant 1 (pr1, p1, vif1) is connected to the internet via NAT on pr1.
+# Tenant 2 (pr2, p2, vif2) is connected to the internet via routing.
+# The connections of pr1 and pr2 to public are using DGPs.
+# The connection from internet to phys is also using a DGP.
+# The LR internet is running dynamic-routing.
+# The LS phys is assumed to be used for peering with a router outside OVN.
+#
+#
+# +----+       +----+
+# |vif1|       |vif2|
+# +--+-+       +--+-+
+#    |            |
+# +--+--+      +--+--+
+# |LS p1|      |LS p2|
+# +--+--+      +--+--+
+#    |            |
+# +--+---+     +--+---+
+# |LR pr1|     |LR pr2|
+# +-----++     ++-----+
+#       |       |
+#      ++-------++
+#      |LS public|
+#      +-----+---+
+#            |
+#      +-----+-----+
+#      |LR internet|
+#      +-----+-----+
+#            |
+#        +---+---+
+#        |LS phys|
+#        +-------+
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+
+ADD_BR([br-int])
+ADD_BR([br-ext])
+
+check ovs-ofctl add-flow br-ext action=normal
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv1 \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller.
+start_daemon ovn-controller
+
+# LS setup.
+
+check ovn-nbctl ls-add public
+check ovn-nbctl ls-add phys
+check ovn-nbctl ls-add p1
+check ovn-nbctl ls-add p2
+
+# LR internet setup.
+
+check ovn-nbctl lr-add internet \
+    -- set Logical_Router internet options:dynamic-routing=true \
+                                   options:requested-tnl-key=1337
+
+check ovn-nbctl lrp-add internet internet-public \
+        00:00:02:01:02:03 192.0.2.1/24 \
+    -- set Logical_Router_Port internet-public \
+            options:dynamic-routing-redistribute="connected,static"
+check ovn-nbctl lsp-add public public-internet \
+    -- set Logical_Switch_Port public-internet type=router \
+            options:router-port=internet-public \
+    -- lsp-set-addresses public-internet router
+
+check ovn-nbctl lrp-add internet internet-phys \
+        00:00:ff:00:00:01 192.168.10.1/24 \
+    -- set Logical_Router_Port internet-phys \
+            options:dynamic-routing-maintain-vrf=true
+check ovn-nbctl lrp-set-gateway-chassis internet-phys hv1
+check ovn-nbctl lsp-add phys phys-internet \
+    -- set Logical_Switch_Port phys-internet type=router \
+            options:router-port=internet-phys \
+    -- lsp-set-addresses phys-internet router
+
+# LR pr1 setup.
+
+check ovn-nbctl lr-add pr1 \
+    -- set Logical_Router pr1 options:requested-tnl-key=1338
+
+check ovn-nbctl lrp-add pr1 pr1-public \
+        00:00:02:01:02:04 192.0.2.2/24
+check ovn-nbctl lrp-set-gateway-chassis pr1-public hv1
+check ovn-nbctl lsp-add public public-pr1 \
+    -- set Logical_Switch_Port public-pr1 type=router \
+            options:router-port=pr1-public \
+    -- lsp-set-addresses public-pr1 router
+
+check ovn-nbctl lrp-add pr1 pr1-p1 \
+        00:00:03:00:00:01 10.0.0.1/24
+check ovn-nbctl lsp-add p1 p1-pr1 \
+    -- set Logical_Switch_Port p1-pr1 type=router \
+            options:router-port=pr1-p1 \
+    -- lsp-set-addresses p1-pr1 router
+
+check ovn-nbctl lr-route-add pr1 0.0.0.0/0 192.0.2.1
+
+# LR pr2 setup.
+
+check ovn-nbctl lr-add pr2 \
+    -- set Logical_Router pr2 options:requested-tnl-key=1339
+
+check ovn-nbctl lrp-add pr2 pr2-public \
+        00:00:02:01:02:05 192.0.2.3/24
+check ovn-nbctl lrp-set-gateway-chassis pr2-public hv1
+check ovn-nbctl lsp-add public public-pr2 \
+    -- set Logical_Switch_Port public-pr2 type=router \
+            options:router-port=pr2-public \
+    -- lsp-set-addresses public-pr2 router
+
+check ovn-nbctl lrp-add pr2 pr2-p2 \
+        00:00:04:00:00:01 198.51.100.1/24
+check ovn-nbctl lsp-add p2 p2-pr2 \
+    -- set Logical_Switch_Port p2-pr2 type=router \
+            options:router-port=pr2-p2 \
+    -- lsp-set-addresses p2-pr2 router
+
+check ovn-nbctl lr-route-add pr2 0.0.0.0/0 192.0.2.1
+
+# Setup lsp "vif1" with NAT.
+check ovn-nbctl lsp-add p1 vif1 \
+    -- lsp-set-addresses vif1 "00:00:ff:ff:ff:01 10.0.0.2"
+check ovn-nbctl lr-nat-add pr1 dnat_and_snat 192.0.2.10 10.0.0.2
+
+# Setup lsp "vif2" with a static route on LR internet.
+check ovn-nbctl lsp-add p2 vif2 \
+    -- lsp-set-addresses vif2 "00:00:ff:ff:ff:02 198.51.100.10"
+check ovn-nbctl lr-route-add internet 198.51.100.0/24 192.0.2.3
+
+# Configure external connectivity.
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext
+check ovn-nbctl lsp-add phys phys1 \
+    -- lsp-set-addresses phys1 unknown \
+    -- lsp-set-type phys1 localnet \
+    -- lsp-set-options phys1 network_name=phynet
+
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up public-internet phys-internet public-pr1 p1-pr1 public-pr2 p2-pr2
+
+# Now the ovn-controller should have setup a vrf named "ovnvrf1337".
+# It should contain routes for:
+# * 192.0.2.0/24
+# * 198.51.100.0/24
+
+AT_CHECK([ip vrf show ovnvrf1337], [0], [dnl
+ovnvrf1337 1337
+])
+
+# "ip route list" output has a trailing space on each line.
+# The awk magic removes all trailing spaces.
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
+blackhole 192.0.2.0/24 proto 84
+blackhole 198.51.100.0/24 proto 84])
+
+# We now switch to announcing host routes and expect 192.0.2.0/24 to be gone
+# and the following to be added:
+# * 192.0.2.1/32
+# * 192.0.2.2/32
+# * 192.0.2.3/32
+# * 192.0.2.10/32
+check ovn-nbctl --wait=hv set Logical_Router_Port internet-public \
+    options:dynamic-routing-redistribute="connected-as-host,static"
+
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
+blackhole 192.0.2.1 proto 84
+blackhole 192.0.2.2 proto 84
+blackhole 192.0.2.3 proto 84
+blackhole 192.0.2.10 proto 84
+blackhole 198.51.100.0/24 proto 84])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
+/.*terminating with signal 15.*/d"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([dynamic-routing - Gateway Router])
+
+VRF_RESERVE([1337])
+
+# This test uses dynamic routing on a simulated multi-tenant internet
+# connection.
+# Tenant 1 (pr1, p1, vif1) is connected to the internet via NAT on pr1.
+# Tenant 2 (pr2, p2, vif2) is connected to the internet via routing.
+# The connections of pr1 and pr2 to public are using DGPs.
+# The LR internet is a gateway router.
+# The LR internet is running dynamic-routing.
+# The LS phys is assumed to be used for peering with a router outside OVN.
+#
+#
+# +----+       +----+
+# |vif1|       |vif2|
+# +--+-+       +--+-+
+#    |            |
+# +--+--+      +--+--+
+# |LS p1|      |LS p2|
+# +--+--+      +--+--+
+#    |            |
+# +--+---+     +--+---+
+# |LR pr1|     |LR pr2|
+# +-----++     ++-----+
+#       |       |
+#      ++-------++
+#      |LS public|
+#      +-----+---+
+#            |
+#      +-----+-----+
+#      |LR internet|
+#      +-----+-----+
+#            |
+#        +---+---+
+#        |LS phys|
+#        +-------+
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+
+ADD_BR([br-int])
+ADD_BR([br-ext])
+
+check ovs-ofctl add-flow br-ext action=normal
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv1 \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller.
+start_daemon ovn-controller
+
+# LS setup.
+
+check ovn-nbctl ls-add public
+check ovn-nbctl ls-add phys
+check ovn-nbctl ls-add p1
+check ovn-nbctl ls-add p2
+
+# LR internet setup.
+
+check ovn-nbctl lr-add internet \
+    -- set Logical_Router internet options:dynamic-routing=true \
+                                   options:requested-tnl-key=1337 \
+                                   options:chassis=hv1
+
+check ovn-nbctl lrp-add internet internet-public \
+        00:00:02:01:02:03 192.0.2.1/24 \
+    -- set Logical_Router_Port internet-public \
+            options:dynamic-routing-redistribute="connected,static" \
+            options:dynamic-routing-port-name=wedontlearnstuffhere
+check ovn-nbctl lsp-add public public-internet \
+    -- set Logical_Switch_Port public-internet type=router \
+            options:router-port=internet-public \
+    -- lsp-set-addresses public-internet router
+
+check ovn-nbctl lrp-add internet internet-phys \
+        00:00:ff:00:00:01 192.168.10.1/24 \
+    -- set Logical_Router_Port internet-phys \
+            options:dynamic-routing-maintain-vrf=true
+check ovn-nbctl lsp-add phys phys-internet \
+    -- set Logical_Switch_Port phys-internet type=router \
+            options:router-port=internet-phys \
+    -- lsp-set-addresses phys-internet router
+
+# LR pr1 setup.
+
+check ovn-nbctl lr-add pr1 \
+    -- set Logical_Router pr1 options:requested-tnl-key=1338
+
+check ovn-nbctl lrp-add pr1 pr1-public \
+        00:00:02:01:02:04 192.0.2.2/24
+check ovn-nbctl lrp-set-gateway-chassis pr1-public hv1
+check ovn-nbctl lsp-add public public-pr1 \
+    -- set Logical_Switch_Port public-pr1 type=router \
+            options:router-port=pr1-public \
+    -- lsp-set-addresses public-pr1 router
+
+check ovn-nbctl lrp-add pr1 pr1-p1 \
+        00:00:03:00:00:01 10.0.0.1/24
+check ovn-nbctl lsp-add p1 p1-pr1 \
+    -- set Logical_Switch_Port p1-pr1 type=router \
+            options:router-port=pr1-p1 \
+    -- lsp-set-addresses p1-pr1 router
+
+check ovn-nbctl lr-route-add pr1 0.0.0.0/0 192.0.2.1
+
+# LR pr2 setup.
+
+check ovn-nbctl lr-add pr2 \
+    -- set Logical_Router pr2 options:requested-tnl-key=1339
+
+check ovn-nbctl lrp-add pr2 pr2-public \
+        00:00:02:01:02:05 192.0.2.3/24
+check ovn-nbctl lrp-set-gateway-chassis pr2-public hv1
+check ovn-nbctl lsp-add public public-pr2 \
+    -- set Logical_Switch_Port public-pr2 type=router \
+            options:router-port=pr2-public \
+    -- lsp-set-addresses public-pr2 router
+
+check ovn-nbctl lrp-add pr2 pr2-p2 \
+        00:00:04:00:00:01 198.51.100.1/24
+check ovn-nbctl lsp-add p2 p2-pr2 \
+    -- set Logical_Switch_Port p2-pr2 type=router \
+            options:router-port=pr2-p2 \
+    -- lsp-set-addresses p2-pr2 router
+
+check ovn-nbctl lr-route-add pr2 0.0.0.0/0 192.0.2.1
+
+# Setup lsp "vif1" with NAT.
+check ovn-nbctl lsp-add p1 vif1 \
+    -- lsp-set-addresses vif1 "00:00:ff:ff:ff:01 10.0.0.2"
+check ovn-nbctl lr-nat-add pr1 dnat_and_snat 192.0.2.10 10.0.0.2
+
+# Setup lsp "vif2" with a static route on LR internet.
+check ovn-nbctl lsp-add p2 vif2 \
+    -- lsp-set-addresses vif2 "00:00:ff:ff:ff:02 198.51.100.10"
+check ovn-nbctl lr-route-add internet 198.51.100.0/24 192.0.2.3
+
+# Configure external connectivity.
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext
+check ovn-nbctl lsp-add phys phys1 \
+    -- lsp-set-addresses phys1 unknown \
+    -- lsp-set-type phys1 localnet \
+    -- lsp-set-options phys1 network_name=phynet
+
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up public-internet phys-internet public-pr1 p1-pr1 public-pr2 p2-pr2
+
+# Now the ovn-controller should have setup a vrf named "ovnvrf1337".
+# It should contain routes for:
+# * 192.0.2.0/24
+# * 198.51.100.0/24
+
+AT_CHECK([ip vrf show ovnvrf1337], [0], [dnl
+ovnvrf1337 1337
+])
+
+# "ip route list" output has a trailing space on each line.
+# The awk magic removes all trailing spaces.
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
+blackhole 192.0.2.0/24 proto 84
+blackhole 198.51.100.0/24 proto 84])
+
+# We now switch to announcing host routes and expect 192.0.2.0/24 to be gone
+# and the following to be added:
+# * 192.0.2.1/32
+# * 192.0.2.2/32
+# * 192.0.2.3/32
+# * 192.0.2.10/32
+check ovn-nbctl --wait=hv set Logical_Router_Port internet-public \
+    options:dynamic-routing-redistribute="connected-as-host,static"
+
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
+blackhole 192.0.2.1 proto 84
+blackhole 192.0.2.2 proto 84
+blackhole 192.0.2.3 proto 84
+blackhole 192.0.2.10 proto 84
+blackhole 198.51.100.0/24 proto 84])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
+/.*terminating with signal 15.*/d"])
+AT_CLEANUP
+])

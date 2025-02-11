@@ -542,3 +542,18 @@ m4_define([CHECK_VRF],
     AT_SKIP_IF([test $rc -ne 0])
     on_exit 'modprobe -r vrf'
 ])
+
+# VRF_RESERVE([id])
+#
+# Helper to ensure we actually support vrfs and the vrf in question has no
+# route entries in it and is not existing.
+# We need to add it before deleting as routes can actually survive in a
+# deleted vrf.
+m4_define([VRF_RESERVE],
+    [
+     CHECK_VRF()
+     ip link add "ovnvrf$1" type vrf table "$1"
+     ip route flush vrf "ovnvrf$1"
+     ip link del "ovnvrf$1"
+    ]
+)
