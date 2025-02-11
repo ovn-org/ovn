@@ -3041,6 +3041,36 @@ or
             applied to this Logical Router
           </li>
         </ul>
+
+        Users will need to use the following settings to opt into individual
+        route types that should be advertised. See:
+        <ul>
+        <li><ref column="options" key="dynamic-routing-redistribute"
+                 table="Logical_Router"/></li>
+        <li><ref column="options" key="dynamic-routing-redistribute"
+                 table="Logical_Router_Port"/></li>
+        </ul>
+      </column>
+
+      <column name="options" key="dynamic-routing-redistribute"
+              type='{"type": "string"}'>
+        Only relevant if <ref column="options" key="dynamic-routing"
+        table="Logical_Router"/> is set to <code>true</code>.
+
+        This is a list of elements separated by <code>,</code>.
+
+        If <code>connected</code> is in the list then northd will synchronize
+        all "connected" routes to the southbound <ref table="Route"
+        db="OVN_SB"/> table. "Connected" here means routes implicitly created
+        by networks associated with the LRPs.
+
+        If <code>static</code> is in the list then northd will synchronize all
+        <ref table="Logical_Router_Static_Route"/> to the southbound
+        <ref table="Route" db="OVN_SB"/> table.
+
+        This value can be overwritten on a per LRP basis using
+        <ref column="options" key="dynamic-routing-redistribute"
+             table="Logical_Router_Port"/>.
       </column>
     </group>
 
@@ -3808,7 +3838,28 @@ or
           status of <code>Transit Router</code> see
           <ref table="Logical_Router"/> table for more details.
         </p>
+      </column>
 
+      <column name="options" key="dynamic-routing-redistribute"
+              type='{"type": "string"}'>
+        Only relevant if <ref column="options" key="dynamic-routing"
+        table="Logical_Router"/> on the respective Logical_Router is set
+        to <code>true</code>.
+
+        This is a list of elements separated by <code>,</code>.
+
+        If <code>connected</code> is in the list then northd will synchronize
+        all "connected" routes to the southbound <ref table="Route"
+        db="OVN_SB"/> table. "Connected" here means routes implicitly created
+        by networks associated with the LRPs.
+
+        If <code>static</code> is in the list then northd will synchronize all
+        <ref table="Logical_Router_Static_Route"/> to the southbound
+        <ref table="Route" db="OVN_SB"/> table.
+
+        If not set the value from <ref column="options"
+        key="dynamic-routing-redistribute" table="Logical_Router"/> will be
+        used.
       </column>
     </group>
 

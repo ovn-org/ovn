@@ -148,6 +148,17 @@ advertised_route_table_sync(
             continue;
         }
 
+        enum dynamic_routing_redistribute_mode drr =
+            route->out_port->dynamic_routing_redistribute;
+        if (route->source == ROUTE_SOURCE_CONNECTED &&
+                !drr_mode_CONNECTED_is_set(drr)) {
+            continue;
+        }
+        if (route->source == ROUTE_SOURCE_STATIC &&
+                !drr_mode_STATIC_is_set(drr)) {
+            continue;
+        }
+
         char *ip_prefix = normalize_v46_prefix(&route->prefix, route->plen);
         route_e = ar_add_entry(&sync_routes, route->od->sb,
                                route->out_port->sb, ip_prefix);

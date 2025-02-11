@@ -55,9 +55,13 @@ Post v24.09.0
    - Added vxlan_mode parameter in IC_NB_GLOBAL option column to enable or
      disable VXLAN encapsulation type in OVN-interconnect mode.
    - Dynamic Routing:
-     * Add the option "dynamic-routing" to Logical Routers. If set to true all
-       static and connected routes attached to the router are shared to the
+     * Add the option "dynamic-routing" to Logical Routers. If set to true
+       static and connected routes matching the filter below are shared to the
        southbound "Advertised_Route" table for sharing outside of OVN.
+       The routes can further be configured by setting
+       `dynamic-routing-redistribute` on the LR or LRP. The LRP settings
+       overwrite the LR settings for all routes using this interface to
+       forward traffic on.
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------

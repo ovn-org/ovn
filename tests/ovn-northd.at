@@ -14925,7 +14925,8 @@ ovn_start
 
 # Adding a router - no route advertised.
 check ovn-nbctl lr-add lr0
-check ovn-nbctl --wait=sb set Logical_Router lr0 option:dynamic-routing=true
+check ovn-nbctl --wait=sb set Logical_Router lr0 option:dynamic-routing=true \
+    option:dynamic-routing-redistribute="connected,static"
 check_row_count Advertised_Route 0
 datapath=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
 
@@ -14979,6 +14980,73 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - sync to sb filtering])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# We start with announcing everything on a lr with 2 lrps and 2 static routes.
+check ovn-nbctl lr-add lr0
+check ovn-nbctl --wait=sb set Logical_Router lr0           \
+    option:dynamic-routing=true                            \
+    option:dynamic-routing-redistribute="connected,static"
+check ovn-nbctl --wait=sb lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+sw0=$(fetch_column port_binding _uuid logical_port=lr0-sw0)
+check ovn-nbctl --wait=sb lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 2001:db8::1/64
+sw1=$(fetch_column port_binding _uuid logical_port=lr0-sw1)
+check ovn-nbctl --wait=sb lr-route-add lr0 192.168.0.0/24 10.0.0.10
+check ovn-nbctl --wait=sb lr-route-add lr0 2001:db8:1::/64 2001:db8::10
+check_row_count Advertised_Route 4
+datapath=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
+
+# Disabling connected routes just keeps the static ones.
+check ovn-nbctl --wait=sb set Logical_Router lr0 \
+    option:dynamic-routing-redistribute="static"
+check_row_count Advertised_Route 2
+check_column 192.168.0.0/24 Advertised_Route ip_prefix \
+    datapath=$datapath logical_port=$sw0
+check_column 2001:db8:1::/64 Advertised_Route ip_prefix \
+    datapath=$datapath logical_port=$sw1
+
+# Enabling it on lr0-sw0 will just bring this one route back.
+check ovn-nbctl --wait=sb set Logical_Router_Port lr0-sw0 \
+    option:dynamic-routing-redistribute="connected,static"
+check_row_count Advertised_Route 3
+check_row_count Advertised_Route 2 logical_port=$sw0
+check_row_count Advertised_Route 1 logical_port=$sw0 ip_prefix=10.0.0.0/24
+check_row_count Advertised_Route 1 logical_port=$sw0 ip_prefix=192.168.0.0/24
+
+# Disabling static routes just keeps the one explicit connected route.
+check ovn-nbctl --wait=sb remove Logical_Router lr0 \
+    option dynamic-routing-redistribute
+check ovn-nbctl --wait=sb set Logical_Router_Port lr0-sw0 \
+    option:dynamic-routing-redistribute="connected"
+check_row_count Advertised_Route 1
+check_column 10.0.0.0/24 Advertised_Route ip_prefix \
+    datapath=$datapath logical_port=$sw0
+
+# Enabling static routes on the LR, but disabeling them on lr0-sw0 also works.
+check ovn-nbctl --wait=sb set Logical_Router lr0 \
+    option:dynamic-routing-redistribute="static"
+check ovn-nbctl --wait=sb set Logical_Router_Port lr0-sw0 \
+    option:dynamic-routing-redistribute="connected"
+check_row_count Advertised_Route 2
+check_column 10.0.0.0/24 Advertised_Route ip_prefix \
+    datapath=$datapath logical_port=$sw0
+check_column 2001:db8:1::/64 Advertised_Route ip_prefix \
+    datapath=$datapath logical_port=$sw1
+
+# Setting an empty dynamic-routing-redistribute will block advertisements from
+# this interface.
+check ovn-nbctl --wait=sb set Logical_Router_Port lr0-sw0 \
+    option:dynamic-routing-redistribute='""'
+check_row_count Advertised_Route 1
+check_column 2001:db8:1::/64 Advertised_Route ip_prefix \
+    datapath=$datapath logical_port=$sw1
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([dynamic-routing incremental processing])
 AT_KEYWORDS([dynamic-routing])
 ovn_start
@@ -14989,7 +15057,8 @@ ovn_start
 check ovn-nbctl --wait=sb sync
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl lr-add lr0
-check ovn-nbctl --wait=sb set Logical_Router lr0 option:dynamic-routing=true
+check ovn-nbctl --wait=sb set Logical_Router lr0 option:dynamic-routing=true \
+    option:dynamic-routing-redistribute="connected,static"
 
 check_engine_stats northd recompute nocompute
 check_engine_stats routes recompute nocompute
@@ -15033,6 +15102,38 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb set Logical_Router lr0 option:dynamic-routing=true
+check_engine_stats northd recompute nocompute
+check_engine_stats routes recompute nocompute
+check_engine_stats advertised_route_sync recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set Logical_Router lr0 \
+    option:dynamic-routing-redistribute="static"
+check_engine_stats northd recompute nocompute
+check_engine_stats routes recompute nocompute
+check_engine_stats advertised_route_sync recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb remove Logical_Router lr0 \
+    option dynamic-routing-redistribute
+check_engine_stats northd recompute nocompute
+check_engine_stats routes recompute nocompute
+check_engine_stats advertised_route_sync recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set Logical_Router_Port lr0-sw1 \
+    option:dynamic-routing-redistribute="connected"
+check_engine_stats northd recompute nocompute
+check_engine_stats routes recompute nocompute
+check_engine_stats advertised_route_sync recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set Logical_Router_Port lr0-sw0 \
+    option:dynamic-routing-redistribute="connected"
 check_engine_stats northd recompute nocompute
 check_engine_stats routes recompute nocompute
 check_engine_stats advertised_route_sync recompute nocompute

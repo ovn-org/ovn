@@ -812,6 +812,44 @@ ovn_datapath_update_external_ids(struct ovn_datapath *od)
     smap_destroy(&ids);
 }
 
+static enum dynamic_routing_redistribute_mode
+parse_dynamic_routing_redistribute(
+    const struct smap *options,
+    enum dynamic_routing_redistribute_mode default_dynamic_mode,
+    const char *nb_entity_name)
+{
+    char *save_ptr = NULL;
+    enum dynamic_routing_redistribute_mode out = DRRM_NONE;
+
+    const char *dynamic_routing_redistribute = smap_get(
+        options, "dynamic-routing-redistribute");
+    if (!dynamic_routing_redistribute) {
+        return default_dynamic_mode;
+    }
+
+    char *tokstr = xstrdup(dynamic_routing_redistribute);
+    for (char *token = strtok_r(tokstr, ",", &save_ptr);
+         token != NULL;
+         token = strtok_r(NULL, ",", &save_ptr)) {
+
+        if (!strcmp(token, "connected")) {
+            out |= DRRM_CONNECTED;
+            continue;
+        }
+        if (!strcmp(token, "static")) {
+            out |= DRRM_STATIC;
+            continue;
+        }
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl,
+                     "unkown dynamic-routing-redistribute option '%s' on %s",
+                     token, nb_entity_name);
+    }
+
+    free(tokstr);
+    return out;
+}
+
 static void
 join_datapaths(const struct nbrec_logical_switch_table *nbrec_ls_table,
                const struct nbrec_logical_router_table *nbrec_lr_table,
@@ -912,6 +950,9 @@ join_datapaths(const struct nbrec_logical_switch_table *nbrec_ls_table,
         }
         od->dynamic_routing = smap_get_bool(&od->nbr->options,
                                             "dynamic-routing", false);
+        od->dynamic_routing_redistribute =
+            parse_dynamic_routing_redistribute(&od->nbr->options, DRRM_NONE,
+                                               od->nbr->name);
         ovs_list_push_back(lr_list, &od->lr_list);
     }
 }
@@ -2264,6 +2305,10 @@ join_logical_ports_lrp(struct hmap *ports,
 
     op->prefix_delegation = smap_get_bool(&op->nbrp->options,
                                           "prefix_delegation", false);
+    op->dynamic_routing_redistribute =
+        parse_dynamic_routing_redistribute(&op->nbrp->options,
+                                           od->dynamic_routing_redistribute,
+                                           op->nbrp->name);
 
     for (size_t j = 0; j < op->lrp_networks.n_ipv4_addrs; j++) {
         sset_add(&op->od->router_ips,
