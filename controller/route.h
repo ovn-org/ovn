@@ -20,6 +20,7 @@
 
 #include <stdbool.h>
 #include <netinet/in.h>
+#include <net/if.h>
 #include "openvswitch/hmap.h"
 #include "sset.h"
 #include "smap.h"
@@ -59,6 +60,7 @@ struct advertise_datapath_entry {
 
     const struct sbrec_datapath_binding *db;
     bool maintain_vrf;
+    char vrf_name[IFNAMSIZ + 1];
     struct hmap routes;
 
     /* The name of the port bindings locally bound for this datapath and

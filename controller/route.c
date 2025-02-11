@@ -185,6 +185,22 @@ route_run(struct route_ctx_in *r_ctx_in,
                               "dynamic-routing-maintain-vrf",
                               false);
 
+            const char *vrf_name = smap_get(&repb->options,
+                                            "dynamic-routing-vrf-name");
+            if (vrf_name && strlen(vrf_name) >= IFNAMSIZ) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 20);
+                VLOG_WARN_RL(&rl, "Ignoring vrf name %s, since it is too long."
+                             "Maximum length is %d characters", vrf_name,
+                             IFNAMSIZ);
+                vrf_name = NULL;
+            }
+            if (vrf_name) {
+                memcpy(ad->vrf_name, vrf_name, strlen(vrf_name) + 1);
+            } else {
+                snprintf(ad->vrf_name, sizeof ad->vrf_name, "ovnvrf%"PRIi64,
+                         ad->db->tunnel_key);
+            }
+
             const char *port_name = smap_get(&repb->options,
                                             "dynamic-routing-port-name");
             if (!port_name) {
