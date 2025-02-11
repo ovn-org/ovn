@@ -1070,27 +1070,6 @@ get_nexthop_from_lport_addresses(bool is_v4,
 }
 
 static bool
-prefix_is_link_local(struct in6_addr *prefix, unsigned int plen)
-{
-    if (IN6_IS_ADDR_V4MAPPED(prefix)) {
-        /* Link local range is "169.254.0.0/16". */
-        if (plen < 16) {
-            return false;
-        }
-        ovs_be32 lla;
-        inet_pton(AF_INET, "169.254.0.0", &lla);
-        return ((in6_addr_get_mapped_ipv4(prefix) & htonl(0xffff0000)) == lla);
-    }
-
-    /* ipv6, link local range is "fe80::/10". */
-    if (plen < 10) {
-        return false;
-    }
-    return (((prefix->s6_addr[0] & 0xff) == 0xfe) &&
-            ((prefix->s6_addr[1] & 0xc0) == 0x80));
-}
-
-static bool
 prefix_is_deny_listed(const struct smap *nb_options,
                       struct in6_addr *prefix,
                       unsigned int plen)

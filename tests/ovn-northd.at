@@ -14917,3 +14917,140 @@ AT_CHECK([ovn-sbctl lflow-list sw | grep ls_out_acl_eval | grep priority=2002 | 
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - sync to sb])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# Adding a router - no route advertised.
+check ovn-nbctl lr-add lr0
+check ovn-nbctl --wait=sb set Logical_Router lr0 option:dynamic-routing=true
+check_row_count Advertised_Route 0
+datapath=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
+
+# Adding a LRP adds a route entry for the associated network.
+check ovn-nbctl --wait=sb lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+pb=$(fetch_column port_binding _uuid logical_port=lr0-sw0)
+check_row_count Advertised_Route 1
+check_column 10.0.0.0/24 Advertised_Route ip_prefix datapath=$datapath logical_port=$pb
+
+# Adding a second LRP adds an additional route entry.
+check ovn-nbctl --wait=sb lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 10.0.1.1/24
+pb2=$(fetch_column port_binding _uuid logical_port=lr0-sw1)
+check_row_count Advertised_Route 2
+check_column 10.0.0.0/24 Advertised_Route ip_prefix datapath=$datapath logical_port=$pb
+check_column 10.0.1.0/24 Advertised_Route ip_prefix datapath=$datapath logical_port=$pb2
+
+# Adding a static route adds an additional entry.
+check ovn-nbctl --wait=sb lr-route-add lr0 192.168.0.0/24 10.0.0.10
+check_row_count Advertised_Route 3
+check_row_count Advertised_Route 2 logical_port=$pb
+check_row_count Advertised_Route 1 logical_port=$pb ip_prefix=192.168.0.0/24
+
+# Adding an ipv6 LRP adds an addition route entry.
+check ovn-nbctl --wait=sb lrp-add lr0 lr0-sw2 00:00:00:00:ff:03 2001:db8::1/64 fe80::1/64
+pb3=$(fetch_column port_binding _uuid logical_port=lr0-sw2)
+check_row_count Advertised_Route 4
+check_row_count Advertised_Route 2 logical_port=$pb
+check_row_count Advertised_Route 1 logical_port=$pb ip_prefix=192.168.0.0/24
+check_column 10.0.1.0/24 Advertised_Route ip_prefix datapath=$datapath logical_port=$pb2
+check_column 2001:db8::/64 Advertised_Route ip_prefix datapath=$datapath logical_port=$pb3
+
+# Removing the option:dynamic-routing removes all routes.
+check ovn-nbctl --wait=sb remove Logical_Router lr0 option dynamic-routing
+check_row_count Advertised_Route 0
+
+# And setting it again adds them again.
+check ovn-nbctl --wait=sb set Logical_Router lr0 option:dynamic-routing=true
+check_row_count Advertised_Route 4
+
+# Removing the lrp used for the static route removes both route entries.
+check ovn-nbctl --wait=sb lrp-del lr0-sw0
+check_row_count Advertised_Route 2
+check_row_count Advertised_Route 1 logical_port=$pb2
+check_row_count Advertised_Route 1 logical_port=$pb3
+
+# Removing the lr will remove all routes.
+check ovn-nbctl --wait=sb lr-del lr0
+check_row_count Advertised_Route 0
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing incremental processing])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# Test I-P for dynamic-routing.
+# Presently ovn-northd has no I-P for Advertised_Route.
+# Wait for sb to be connected before clearing stats.
+check ovn-nbctl --wait=sb sync
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl lr-add lr0
+check ovn-nbctl --wait=sb set Logical_Router lr0 option:dynamic-routing=true
+
+check_engine_stats northd recompute nocompute
+check_engine_stats routes recompute nocompute
+check_engine_stats advertised_route_sync recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check_engine_stats northd recompute compute
+check_engine_stats routes recompute nocompute
+check_engine_stats advertised_route_sync recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 10.0.1.1/24
+check_engine_stats northd recompute compute
+check_engine_stats routes recompute nocompute
+check_engine_stats advertised_route_sync recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-route-add lr0 192.168.0.0/24 10.0.0.10
+check_engine_stats northd recompute nocompute
+check_engine_stats routes recompute nocompute
+check_engine_stats advertised_route_sync recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lrp-add lr0 lr0-sw2 00:00:00:00:ff:03 2001:db8::1/64 fe80::1/64
+check_engine_stats northd recompute compute
+check_engine_stats routes recompute nocompute
+check_engine_stats advertised_route_sync recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb remove Logical_Router lr0 option dynamic-routing
+check_engine_stats northd recompute nocompute
+check_engine_stats routes recompute nocompute
+check_engine_stats advertised_route_sync recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set Logical_Router lr0 option:dynamic-routing=true
+check_engine_stats northd recompute nocompute
+check_engine_stats routes recompute nocompute
+check_engine_stats advertised_route_sync recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lrp-del lr0-sw0
+check_engine_stats northd recompute compute
+check_engine_stats routes recompute nocompute
+check_engine_stats advertised_route_sync recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-del lr0
+check_engine_stats northd recompute nocompute
+check_engine_stats routes recompute nocompute
+check_engine_stats advertised_route_sync recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AT_CLEANUP
+])

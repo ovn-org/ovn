@@ -949,6 +949,10 @@ main(int argc, char *argv[])
         ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
                              &sbrec_acl_id_columns[i]);
     }
+    for (size_t i = 0; i < SBREC_ADVERTISED_ROUTE_N_COLUMNS; i++) {
+        ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
+                             &sbrec_advertised_route_columns[i]);
+    }
 
     unixctl_command_register("sb-connection-status", "", 0, 0,
                              ovn_conn_show, ovnsb_idl_loop.idl);
@@ -976,6 +980,7 @@ main(int argc, char *argv[])
     stopwatch_create(LR_NAT_RUN_STOPWATCH_NAME, SW_MS);
     stopwatch_create(LR_STATEFUL_RUN_STOPWATCH_NAME, SW_MS);
     stopwatch_create(LS_STATEFUL_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(ADVERTISED_ROUTE_SYNC_RUN_STOPWATCH_NAME, SW_MS);
 
     /* Initialize incremental processing engine for ovn-northd */
     inc_proc_northd_init(&ovnnb_idl_loop, &ovnsb_idl_loop);

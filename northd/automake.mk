@@ -40,6 +40,8 @@ northd_ovn_northd_SOURCES = \
 	northd/en-sampling-app.h \
 	northd/en-acl-ids.c \
 	northd/en-acl-ids.h \
+	northd/en-advertised-route-sync.c \
+	northd/en-advertised-route-sync.h \
 	northd/inc-proc-northd.c \
 	northd/inc-proc-northd.h \
 	northd/ipam.c \

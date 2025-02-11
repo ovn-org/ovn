@@ -44,6 +44,7 @@
 #include "en-sync-from-sb.h"
 #include "en-ecmp-nexthop.h"
 #include "en-acl-ids.h"
+#include "en-advertised-route-sync.h"
 #include "unixctl.h"
 #include "util.h"
 
@@ -107,7 +108,8 @@ static unixctl_cb_func chassis_features_list;
     SB_NODE(chassis_template_var, "chassis_template_var") \
     SB_NODE(logical_dp_group, "logical_dp_group") \
     SB_NODE(ecmp_nexthop, "ecmp_nexthop") \
-    SB_NODE(acl_id, "acl_id")
+    SB_NODE(acl_id, "acl_id") \
+    SB_NODE(advertised_route, "advertised_route")
 
 enum sb_engine_node {
 #define SB_NODE(NAME, NAME_STR) SB_##NAME,
@@ -169,6 +171,7 @@ static ENGINE_NODE(bfd_sync, "bfd_sync");
 static ENGINE_NODE(ecmp_nexthop, "ecmp_nexthop");
 static ENGINE_NODE(multicast_igmp, "multicast_igmp");
 static ENGINE_NODE(acl_id, "acl_id");
+static ENGINE_NODE(advertised_route_sync, "advertised_route_sync");
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb)
@@ -283,6 +286,10 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_ecmp_nexthop, &en_sb_mac_binding,
                      ecmp_nexthop_mac_binding_handler);
 
+    engine_add_input(&en_advertised_route_sync, &en_routes, NULL);
+    engine_add_input(&en_advertised_route_sync, &en_sb_advertised_route,
+                     NULL);
+
     engine_add_input(&en_sync_meters, &en_nb_acl, NULL);
     engine_add_input(&en_sync_meters, &en_nb_meter, NULL);
     engine_add_input(&en_sync_meters, &en_sb_meter, NULL);
@@ -376,6 +383,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                      northd_output_ecmp_nexthop_handler);
     engine_add_input(&en_northd_output, &en_acl_id,
                      northd_output_acl_id_handler);
+    engine_add_input(&en_northd_output, &en_advertised_route_sync,
+                     northd_output_advertised_route_sync_handler);
 
     struct engine_arg engine_arg = {
         .nb_idl = nb->idl,

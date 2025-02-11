@@ -1353,6 +1353,27 @@ ovn_update_swconn_at(struct rconn *swconn, const char *target,
     return notify;
 }
 
+bool
+prefix_is_link_local(const struct in6_addr *prefix, unsigned int plen)
+{
+    if (IN6_IS_ADDR_V4MAPPED(prefix)) {
+        /* Link local range is "169.254.0.0/16". */
+        if (plen < 16) {
+            return false;
+        }
+        ovs_be32 lla;
+        inet_pton(AF_INET, "169.254.0.0", &lla);
+        return ((in6_addr_get_mapped_ipv4(prefix) & htonl(0xffff0000)) == lla);
+    }
+
+    /* ipv6, link local range is "fe80::/10". */
+    if (plen < 10) {
+        return false;
+    }
+    return (((prefix->s6_addr[0] & 0xff) == 0xfe) &&
+            ((prefix->s6_addr[1] & 0xc0) == 0x80));
+}
+
 const struct sbrec_port_binding *
 lport_lookup_by_name(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                      const char *name)

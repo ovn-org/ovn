@@ -3023,6 +3023,25 @@ or
         option is not present the limit is not set and the zone limit is
         derived from OvS default datapath limit.
       </column>
+
+      <column name="options" key="dynamic-routing" type='{"type": "boolean"}'>
+        If set to <code>true</code> then this <ref table="Logical_Router"/>
+        can participate in dynamic routing with components outside of OVN.
+
+        It will synchronize all routes to the soutbound
+        <ref table="Advertised_Route" db="OVN_SB"/> table that are relevant
+        for the router. This includes:
+        <ul>
+          <li>
+            all "connected" routes implicitly created by networks
+            associated with this Logical Router
+          </li>
+          <li>
+            all <ref table="Logical_Router_Static_Route"/> that are
+            applied to this Logical Router
+          </li>
+        </ul>
+      </column>
     </group>
 
     <group title="Common Columns">
