@@ -186,8 +186,19 @@ re_nl_delete_route(uint32_t table_id, const struct in6_addr *dst,
     return modify_route(RTM_DELROUTE, 0, table_id, dst, plen);
 }
 
+void
+re_nl_learned_routes_destroy(struct ovs_list *learned_routes)
+{
+    struct re_nl_received_route_node *rr;
+    LIST_FOR_EACH_POP (rr, list_node, learned_routes) {
+        free(rr);
+    }
+}
+
 struct route_msg_handle_data {
+    const struct sbrec_datapath_binding *db;
     struct hmapx *routes_to_advertise;
+    struct ovs_list *learned_routes;
     const struct hmap *routes;
 };
 
@@ -199,8 +210,25 @@ handle_route_msg(const struct route_table_msg *msg, void *data)
     struct advertise_route_entry *ar;
     int err;
 
-    /* This route is not from us, we should not touch it. */
+    /* This route is not from us, so we learn it. */
     if (rd->rtm_protocol != RTPROT_OVN) {
+        if (prefix_is_link_local(&rd->rta_dst, rd->rtm_dst_len)) {
+            return;
+        }
+        struct route_data_nexthop *nexthop;
+        LIST_FOR_EACH (nexthop, nexthop_node, &rd->nexthops) {
+            if (ipv6_is_zero(&nexthop->addr)) {
+                /* This is most likely an address on the local link.
+                 * As we just want to learn remote routes we do not need it.*/
+                continue;
+            }
+            struct re_nl_received_route_node *rr = xmalloc(sizeof *rr);
+            rr->db = handle_data->db;
+            rr->prefix = rd->rta_dst;
+            rr->plen = rd->rtm_dst_len;
+            rr->nexthop = nexthop->addr;
+            ovs_list_push_back(handle_data->learned_routes, &rr->list_node);
+        }
         return;
     }
 
@@ -227,7 +255,9 @@ handle_route_msg(const struct route_table_msg *msg, void *data)
 }
 
 void
-re_nl_sync_routes(uint32_t table_id, const struct hmap *routes)
+re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
+                  struct ovs_list *learned_routes,
+                  const struct sbrec_datapath_binding *db)
 {
     struct hmapx routes_to_advertise = HMAPX_INITIALIZER(&routes_to_advertise);
     struct advertise_route_entry *ar;
@@ -242,6 +272,8 @@ re_nl_sync_routes(uint32_t table_id, const struct hmap *routes)
     struct route_msg_handle_data data = {
         .routes = routes,
         .routes_to_advertise = &routes_to_advertise,
+        .learned_routes = learned_routes,
+        .db = db,
     };
     route_table_dump_one_table(table_id, handle_route_msg, &data);
 

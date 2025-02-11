@@ -150,3 +150,9 @@ OVN To-do List
     This is to prevent deleting our routes on restart. If we defer updating
     routes until we are sure to have loaded all necessary Advertised_Routes
     this could be changed.
+
+  * Improve handling of the Learned_Route table in ovn-controller conditional
+    monitoring; once a new local datapath is added we need to wait for
+    monitoring conditions to update before we actually try to learn routes.
+    Otherwise we could try to add duplicated Learned_Routes and the ovnsb
+    commit would fail.

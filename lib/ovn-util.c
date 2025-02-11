@@ -824,6 +824,16 @@ normalize_v46_prefix(const struct in6_addr *prefix, unsigned int plen)
 }
 
 char *
+normalize_v46(const struct in6_addr *prefix)
+{
+    if (IN6_IS_ADDR_V4MAPPED(prefix)) {
+        return normalize_ipv4_prefix(in6_addr_get_mapped_ipv4(prefix), 32);
+    } else {
+        return normalize_ipv6_prefix(prefix, 128);
+    }
+}
+
+char *
 str_tolower(const char *orig)
 {
     char *copy = xmalloc(strlen(orig) + 1);

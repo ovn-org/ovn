@@ -236,7 +236,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
      *
      * Monitor ECMP_Nexthop for local datapaths.
      *
-     * Monitor Advertised_Route for local datapaths.
+     * Monitor Advertised/Learned_Route for local datapaths.
      *
      * We always monitor patch ports because they allow us to see the linkages
      * between related logical datapaths.  That way, when we know that we have
@@ -256,12 +256,21 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
     struct ovsdb_idl_condition tv = OVSDB_IDL_CONDITION_INIT(&tv);
     struct ovsdb_idl_condition nh = OVSDB_IDL_CONDITION_INIT(&nh);
     struct ovsdb_idl_condition ar = OVSDB_IDL_CONDITION_INIT(&ar);
+    struct ovsdb_idl_condition lr = OVSDB_IDL_CONDITION_INIT(&lr);
 
     /* Always monitor all logical datapath groups. Otherwise, DPG updates may
      * be received *after* the lflows using it are seen by ovn-controller.
      * Since the number of DPGs are relatively small, we monitor all DPGs to
      * avoid the unnecessarily extra wake-ups of ovn-controller. */
     ovsdb_idl_condition_add_clause_true(&ldpg);
+
+    /* Always monitor all learned routes. Otherwise, when we have a new local
+     * datapath we directly try to learn routes from the vrf (if it exists).
+     * If we then do not know all learned routes of this datapath we can get
+     * duplicates.
+     * XXX: This should be optimized, e.g. if we find a way to defer to learn
+     * routes until db conditions are updated. */
+    ovsdb_idl_condition_add_clause_true(&lr);
 
     if (monitor_all) {
         ovsdb_idl_condition_add_clause_true(&pb);
@@ -331,9 +340,10 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         sbrec_port_binding_add_clause_type(&pb, OVSDB_F_EQ, "l2gateway");
         sbrec_port_binding_add_clause_type(&pb, OVSDB_F_EQ, "l3gateway");
 
-        /* Monitor all advertised routes during startup. Otherwise, once we
-         * claim a port on startup we do not yet know the routes to advertise
-         * and might wrongly delete already installed ones. */
+        /* Monitor all advertised routes during startup.
+         * Otherwise, once we claim a port on startup we do not yet know the
+         * routes to advertise and might wrongly delete already installed
+         * ones. */
         ovsdb_idl_condition_add_clause_true(&ar);
     }
 
@@ -401,6 +411,7 @@ out:;
         sb_table_set_opt_mon_condition(ovnsb_idl, chassis_template_var, &tv),
         sb_table_set_opt_mon_condition(ovnsb_idl, ecmp_nexthop, &nh),
         sb_table_set_opt_mon_condition(ovnsb_idl, advertised_route, &ar),
+        sb_table_set_opt_mon_condition(ovnsb_idl, learned_route, &lr),
     };
 
     unsigned int expected_cond_seqno = 0;
@@ -422,6 +433,7 @@ out:;
     ovsdb_idl_condition_destroy(&tv);
     ovsdb_idl_condition_destroy(&nh);
     ovsdb_idl_condition_destroy(&ar);
+    ovsdb_idl_condition_destroy(&lr);
     return expected_cond_seqno;
 }
 
@@ -964,7 +976,8 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     SB_NODE(static_mac_binding, "static_mac_binding") \
     SB_NODE(chassis_template_var, "chassis_template_var") \
     SB_NODE(acl_id, "acl_id") \
-    SB_NODE(advertised_route, "advertised_route")
+    SB_NODE(advertised_route, "advertised_route") \
+    SB_NODE(learned_route, "learned_route")
 
 enum sb_engine_node {
 #define SB_NODE(NAME, NAME_STR) SB_##NAME,
@@ -5125,13 +5138,40 @@ route_sb_advertised_route_data_handler(struct engine_node *node, void *data)
     return true;
 }
 
+struct ed_type_route_exchange {
+    /* We need the idl to check if the Learned_Route table exists. */
+    struct ovsdb_idl *sb_idl;
+};
+
 static void
-en_route_exchange_run(struct engine_node *node, void *data OVS_UNUSED)
+en_route_exchange_run(struct engine_node *node, void *data)
 {
+    struct ed_type_route_exchange *re = data;
+
+    struct ovsdb_idl_index *sbrec_learned_route_by_datapath =
+        engine_ovsdb_node_get_index(
+            engine_get_input("SB_learned_route", node),
+            "datapath");
+
+    struct ovsdb_idl_index *sbrec_port_binding_by_name =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_port_binding", node),
+                "name");
+
     struct ed_type_route *route_data =
         engine_get_input_data("route", node);
 
+    /* There can not actually be any routes to advertise unless we also have
+     * the Learned_Route table, since they where introduced in the same
+     * release. */
+    if (!sbrec_server_has_learned_route_table(re->sb_idl)) {
+        return;
+    }
+
     struct route_exchange_ctx_in r_ctx_in = {
+        .ovnsb_idl_txn = engine_get_context()->ovnsb_idl_txn,
+        .sbrec_learned_route_by_datapath = sbrec_learned_route_by_datapath,
+        .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
         .announce_routes = &route_data->announce_routes,
     };
     struct route_exchange_ctx_out r_ctx_out = {
@@ -5144,9 +5184,12 @@ en_route_exchange_run(struct engine_node *node, void *data OVS_UNUSED)
 
 static void *
 en_route_exchange_init(struct engine_node *node OVS_UNUSED,
-                       struct engine_arg *arg OVS_UNUSED)
+                       struct engine_arg *arg)
 {
-    return NULL;
+    struct ed_type_route_exchange *re = xzalloc(sizeof *re);
+
+    re->sb_idl = arg->sb_idl;
+    return re;
 }
 
 static void
@@ -5362,6 +5405,9 @@ main(int argc, char *argv[])
     struct ovsdb_idl_index *sbrec_chassis_template_var_index_by_chassis
         = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
                                   &sbrec_chassis_template_var_col_chassis);
+    struct ovsdb_idl_index *sbrec_learned_route_index_by_datapath
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_learned_route_col_datapath);
 
     ovsdb_idl_track_add_all(ovnsb_idl_loop.idl);
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
@@ -5394,6 +5440,8 @@ main(int argc, char *argv[])
                    &sbrec_ha_chassis_group_col_external_ids);
     ovsdb_idl_omit(ovnsb_idl_loop.idl,
                    &sbrec_advertised_route_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl,
+                   &sbrec_learned_route_col_external_ids);
 
     /* We don't want to monitor Connection table at all. So omit all the
      * columns. */
@@ -5489,6 +5537,10 @@ main(int argc, char *argv[])
                      route_sb_advertised_route_data_handler);
 
     engine_add_input(&en_route_exchange, &en_route, NULL);
+    engine_add_input(&en_route_exchange, &en_sb_learned_route,
+                     engine_noop_handler);
+    engine_add_input(&en_route_exchange, &en_sb_port_binding,
+                     engine_noop_handler);
 
     engine_add_input(&en_addr_sets, &en_sb_address_set,
                      addr_sets_sb_address_set_handler);
@@ -5711,6 +5763,8 @@ main(int argc, char *argv[])
                                 sbrec_static_mac_binding_by_datapath);
     engine_ovsdb_node_add_index(&en_sb_chassis_template_var, "chassis",
                                 sbrec_chassis_template_var_index_by_chassis);
+    engine_ovsdb_node_add_index(&en_sb_learned_route, "datapath",
+                                sbrec_learned_route_index_by_datapath);
     engine_ovsdb_node_add_index(&en_ovs_flow_sample_collector_set, "id",
                                 ovsrec_flow_sample_collector_set_by_id);
     engine_ovsdb_node_add_index(&en_ovs_port, "qos", ovsrec_port_by_qos);

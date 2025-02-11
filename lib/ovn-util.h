@@ -209,6 +209,7 @@ bool ip46_parse(const char *ip_str, struct in6_addr *ip);
 char *normalize_ipv4_prefix(ovs_be32 ipv4, unsigned int plen);
 char *normalize_ipv6_prefix(const struct in6_addr *ipv6, unsigned int plen);
 char *normalize_v46_prefix(const struct in6_addr *prefix, unsigned int plen);
+char *normalize_v46(const struct in6_addr *prefix);
 
 /* Returns a lowercase copy of orig.
  * Caller must free the returned string.

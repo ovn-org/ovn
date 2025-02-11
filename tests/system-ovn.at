@@ -16101,6 +16101,16 @@ blackhole 192.0.2.3 proto 84
 blackhole 192.0.2.10 proto 84
 blackhole 198.51.100.0/24 proto 84])
 
+# Now we test route learning.
+check_row_count Learned_Route 0
+check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
+# For now we trigger a recompute as route watching is not yet implemented.
+check ovn-appctl -t ovn-controller inc-engine/recompute
+check ovn-nbctl --wait=hv sync
+check_row_count Learned_Route 1
+lp=$(fetch_column port_binding _uuid logical_port=internet-phys)
+check_row_count Learned_Route 1 logical_port=$lp ip_prefix=233.252.0.0/24 nexthop=192.168.10.10
+
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
 as ovn-sb
@@ -16261,6 +16271,7 @@ check ovn-nbctl lr-nat-add pr1 dnat_and_snat 192.0.2.10 10.0.0.2
 check ovn-nbctl lsp-add p2 vif2 \
     -- lsp-set-addresses vif2 "00:00:ff:ff:ff:02 198.51.100.10"
 check ovn-nbctl lr-route-add internet 198.51.100.0/24 192.0.2.3
+        .ovnsb_idl = re->sb_idl,
 
 # Configure external connectivity.
 check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext
@@ -16302,6 +16313,16 @@ blackhole 192.0.2.2 proto 84
 blackhole 192.0.2.3 proto 84
 blackhole 192.0.2.10 proto 84
 blackhole 198.51.100.0/24 proto 84])
+
+# Now we test route learning.
+check_row_count Learned_Route 0
+check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
+# For now we trigger a recompute as route watching is not yet implemented.
+check ovn-appctl -t ovn-controller inc-engine/recompute
+check ovn-nbctl --wait=hv sync
+check_row_count Learned_Route 2
+lp=$(fetch_column port_binding _uuid logical_port=internet-phys)
+check_row_count Learned_Route 1 logical_port=$lp ip_prefix=233.252.0.0/24 nexthop=192.168.10.10
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
