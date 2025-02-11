@@ -39,50 +39,51 @@ ingress=$(ovn-debug uuid-to-cookie $(fetch_column logical_flow _uuid \
 egress=$(ovn-debug uuid-to-cookie $(fetch_column logical_flow _uuid \
     table_id=$egress_table pipeline=egress match="1"))
 
+# There is artificial indentation just to check it's kept with ovn-detrace.
 cat << EOF > trace
 0. in_port=1, priority 100, cookie $pb_vm0
-set_field:0x4/0xffff->reg13
-set_field:0x1->reg11
-set_field:0x1->reg12
-set_field:0x1->metadata
-set_field:0x1->reg14
-set_field:0/0xffff0000->reg13
-resubmit(,??)
+    set_field:0x4/0xffff->reg13
+    set_field:0x1->reg11
+    set_field:0x1->reg12
+    set_field:0x1->metadata
+    set_field:0x1->reg14
+    set_field:0/0xffff0000->reg13
+    resubmit(,??)
 8. metadata=0x1, priority 50, cookie $ingress
-set_field:0/0x1000->reg10
-resubmit(,??)
-51. metadata=0x1, priority 0, cookie $egress
-resubmit(,??)
-65. reg15=0x2,metadata=0x1, priority 100, cookie $pb_vm1
-output:2
+    set_field:0/0x1000->reg10
+    resubmit(,??)
+    51. metadata=0x1, priority 0, cookie $egress
+        resubmit(,??)
+        65. reg15=0x2,metadata=0x1, priority 100, cookie $pb_vm1
+            output:2
 EOF
 
 AT_CHECK_UNQUOTED([cat trace | $PYTHON $top_srcdir/utilities/ovn_detrace.py.in], [0], [dnl
 0. in_port=1, priority 100, cookie $pb_vm0
-set_field:0x4/0xffff->reg13
-set_field:0x1->reg11
-set_field:0x1->reg12
-set_field:0x1->metadata
-set_field:0x1->reg14
-set_field:0/0xffff0000->reg13
-resubmit(,??)
+    set_field:0x4/0xffff->reg13
+    set_field:0x1->reg11
+    set_field:0x1->reg12
+    set_field:0x1->metadata
+    set_field:0x1->reg14
+    set_field:0/0xffff0000->reg13
+    resubmit(,??)
   * Logical datapath: "ls" ($dp_uuid)
   * Port Binding: logical_port "vm0", tunnel_key 10, chassis-name "hv1", chassis-str "hv1"
 8. metadata=0x1, priority 50, cookie $ingress
-set_field:0/0x1000->reg10
-resubmit(,??)
+    set_field:0/0x1000->reg10
+    resubmit(,??)
   * Logical datapaths:
   *     "ls" ($dp_uuid) [[ingress]]
   * Logical flow: table=$ingress_table (ls_in_check_port_sec), priority=50, match=(1), actions=(reg0[[15]] = check_in_port_sec(); next;)
-51. metadata=0x1, priority 0, cookie $egress
-resubmit(,??)
-  * Logical datapaths:
-  *     "ls" ($dp_uuid) [[egress]]
-  * Logical flow: table=$egress_table (ls_out_apply_port_sec), priority=0, match=(1), actions=(output;)
-65. reg15=0x2,metadata=0x1, priority 100, cookie $pb_vm1
-output:2
-  * Logical datapath: "ls" ($dp_uuid)
-  * Port Binding: logical_port "vm1", tunnel_key 11, chassis-name "hv1", chassis-str "hv1"
+    51. metadata=0x1, priority 0, cookie $egress
+        resubmit(,??)
+      * Logical datapaths:
+      *     "ls" ($dp_uuid) [[egress]]
+      * Logical flow: table=$egress_table (ls_out_apply_port_sec), priority=0, match=(1), actions=(output;)
+        65. reg15=0x2,metadata=0x1, priority 100, cookie $pb_vm1
+            output:2
+          * Logical datapath: "ls" ($dp_uuid)
+          * Port Binding: logical_port "vm1", tunnel_key 11, chassis-name "hv1", chassis-str "hv1"
 
 ])
 

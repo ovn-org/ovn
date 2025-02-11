@@ -62,13 +62,20 @@ The following options are also available:
 
 class Printer(object):
     def __init__(self):
-        pass
+        self.level = 0
+
+    def set_level(self, level):
+        self.level = level
 
     def print_p(self, string):
-        print('  * ' + string)
+        self._print(2, string)
 
     def print_h(self, string):
-        print('   * ' + string)
+        self._print(3, string)
+
+    def _print(self, extra_indent, string):
+        prefix_len = self.level * 4 + extra_indent
+        print(' ' * prefix_len + '* ' + string)
 
 def datapath_str(datapath):
     return '"%s" (%s)' % (str(datapath.external_ids.get('name')),
@@ -543,13 +550,15 @@ def main():
                     print_record_from_cookie(ovsdb_ovnnb, handlers, cookie)
                 cookies = []
 
-        print(line.strip())
+        print(line.rstrip())
         if line == '':
             break
 
         for regex, handlers in regex_handlers:
             m = regex.match(line)
             if m:
+                # Set indentation level to match the line indentation
+                printer.set_level((len(line) - len(line.lstrip(' '))) // 4)
                 cookies.append((m.group(1), handlers))
 
 
