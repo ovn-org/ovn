@@ -15301,6 +15301,39 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - lrp options])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 option:dynamic-routing=true \
+    option:dynamic-routing-redistribute="connected,static"
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl set Logical_Router lr0 options:chassis=hv1
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl --wait=sb set Logical_Switch_Port sw0-lr0 \
+    type=router options:router-port=lr0-sw0
+
+AT_CHECK([fetch_column sb:Port_Binding options logical_port=lr0-sw0 | grep -q 'dynamic-routing=true'])
+AT_CHECK([fetch_column sb:Port_Binding options logical_port=lr0-sw0 | grep -qv 'dynamic-routing-maintain-vrf'])
+AT_CHECK([fetch_column sb:Port_Binding options logical_port=lr0-sw0 | grep -qv 'dynamic-routing-vrf-name'])
+AT_CHECK([fetch_column sb:Port_Binding options logical_port=lr0-sw0 | grep -qv 'dynamic-routing-port-name'])
+
+check ovn-nbctl set Logical_Router lr0 options:dynamic-routing-vrf-name=myvrf
+check ovn-nbctl --wait=sb set Logical_Router_Port lr0-sw0 \
+    options:dynamic-routing-maintain-vrf=true             \
+    options:dynamic-routing-port-name=myif
+
+AT_CHECK([fetch_column sb:Port_Binding options logical_port=lr0-sw0 | grep -q 'dynamic-routing=true'])
+AT_CHECK([fetch_column sb:Port_Binding options logical_port=lr0-sw0 | grep -q 'dynamic-routing-maintain-vrf=true'])
+AT_CHECK([fetch_column sb:Port_Binding options logical_port=lr0-sw0 | grep -q 'dynamic-routing-vrf-name=myvrf'])
+AT_CHECK([fetch_column sb:Port_Binding options logical_port=lr0-sw0 | grep -q 'dynamic-routing-port-name=myif'])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([dynamic-routing incremental processing])
 AT_KEYWORDS([dynamic-routing])
 ovn_start

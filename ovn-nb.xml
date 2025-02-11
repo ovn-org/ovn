@@ -3107,6 +3107,31 @@ or
                table="Logical_Router_Port"/> on the Logical_Router_Port.
         </p>
       </column>
+
+      <column name="options" key="dynamic-routing-vrf-name"
+          type='{"type": "string"}'>
+        <p>
+          Only relevant if <ref column="options" key="dynamic-routing"/>
+          is set to <code>true</code>.
+        </p>
+
+        <p>
+          This defines the name of the vrf the ovn-controller will use to
+          advertise and learn routes. If not set the vrf will be named "ovnvrf"
+          with the datapath id of the Logical Router appended to it.
+        </p>
+
+        <p>
+          The vrf name must be a valid linux interface name. If it is too long
+          the generated name will be used instead.
+        </p>
+
+        <p>
+          The vrf table id is not affected by this setting. For details see
+          <ref column="options" key="dynamic-routing-maintain-vrf"
+               table="Logical_Router"/> on the Logical_Router.
+        </p>
+      </column>
     </group>
 
     <group title="Common Columns">
@@ -3931,6 +3956,68 @@ or
           Logical_Router will be used.
         </p>
 
+      </column>
+
+      <column name="options" key="dynamic-routing-maintain-vrf"
+         type='{"type": "boolean"}'>
+        <p>
+          Only relevant if <ref column="options" key="dynamic-routing"
+          table="Logical_Router"/> on the respective Logical_Router is set
+          to <code>true</code>.
+        </p>
+
+        <p>
+          If this LRP is bound to a specific chassis then the ovn-controller of
+          this chassis will maintain a vrf.
+          This vrf will contain all the routes that should be announced from
+          this LRP.
+          Unless <ref column="options" key="dynamic-routing-vrf-name"
+          table="Logical_Router"/> is set the vrf will be named "ovnvrf" with
+          the datapath id of the Logical Router appended to it.
+        </p>
+
+        <p>
+          If the setting is not set or false the ovn-controller will expect
+          this VRF to already exist. Some tooling outside of OVN needs to
+          ensure this.
+        </p>
+
+        <p>
+          The VRF table ID is the same as the tunnel key of the Logical_Router
+          datapath. If this setting is false the tooling outside of OVN needs
+          to ensure that this is the case.
+        </p>
+      </column>
+
+      <column name="options" key="dynamic-routing-port-name"
+          type='{"type": "string"}'>
+        Only relevant if <ref column="options" key="dynamic-routing"
+        table="Logical_Router"/> on the respective Logical_Router is set
+        to <code>true</code>.
+
+        Only learn routes associated with the interface locally bound to the
+        LSP or LRP specified here. This allows a single chassis to learn
+        different routes on separate LRPs bound to this chassis.
+
+        This is usefully e.g. in the case of a chassis with multiple links
+        towards the network fabric where all of them run BGP individually.
+        This option allows to have a 1:1 mapping between a single LRP and an
+        individual link.
+
+        If the port referenced by this name is bound locally on the
+        ovn-controller we lookup the linux interface name of this port. This
+        interface name is then used for the route filtering, so only routes
+        that have this interface as nexthop will be learned.
+
+        As there might not always be such a port bound on the ovn-controller
+        this value can also be an arbitrary string. The ovn-controller will
+        lookup the port name in the local <ref
+        key="dynamic-routing-port-mapping" table="Open_vSwitch"
+        column="external_ids" db="Open_vSwitch"/>. This is a list separated
+        by <code>,</code> that contains <code>port=interfacename</code> pairs.
+        If a match is found in there the configured interface name is used
+        instead of the autodiscovery. Also it is then irrelevant if the port
+        is bound locally.
       </column>
     </group>
 
