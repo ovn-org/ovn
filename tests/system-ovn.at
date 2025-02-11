@@ -16172,7 +16172,49 @@ check ip route add 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink vrf ovnvr
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 1 ip_prefix=233.253.0.0/24 nexthop=192.168.20.20
 
+# Stopping the ovn-controller will clean up the route entries created by it.
+# We first need to unset dynamic-routing-maintain-vrf as otherwise it will
+# delete the whole vrf.
+check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
+                             options:dynamic-routing-maintain-vrf=false
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
+AT_CHECK([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [0], [dnl
+233.252.0.0/24 via 192.168.10.10 dev lo onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink
+])
+
+# Starting it again will add the routes again.
+start_daemon ovn-controller
+OVS_WAIT_UNTIL([test "$(ovn-appctl -t ovn-controller debug/status)" == "running"])
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
+blackhole 192.0.2.1 proto 84 metric 1000
+blackhole 192.0.2.2 proto 84 metric 100
+blackhole 192.0.2.3 proto 84 metric 100
+blackhole 192.0.2.10 proto 84 metric 100
+blackhole 198.51.100.0/24 proto 84 metric 1000
+233.252.0.0/24 via 192.168.10.10 dev lo onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
+
+# Stoping with --restart will not touch the routes.
+check ovn-appctl -t ovn-controller exit --restart
+OVS_WAIT_UNTIL([test "$(ovn-appctl -t ovn-controller debug/status)" != "running"])
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
+blackhole 192.0.2.1 proto 84 metric 1000
+blackhole 192.0.2.2 proto 84 metric 100
+blackhole 192.0.2.3 proto 84 metric 100
+blackhole 192.0.2.10 proto 84 metric 100
+blackhole 198.51.100.0/24 proto 84 metric 1000
+233.252.0.0/24 via 192.168.10.10 dev lo onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
+
+# Now we set maintain-vrf again and stop the ovn-controller.
+# It will then remove the VRF.
+start_daemon ovn-controller
+OVS_WAIT_UNTIL([test "$(ovn-appctl -t ovn-controller debug/status)" == "running"])
+check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
+        options:dynamic-routing-maintain-vrf=true
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+AT_CHECK([ip vrf | grep -q ovnvrf1337], [1], [])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -16446,7 +16488,49 @@ check ip route add 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink vrf ovnvr
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 1 ip_prefix=233.253.0.0/24 nexthop=192.168.20.20
 
+# Stopping the ovn-controller will clean up the route entries created by it.
+# We first need to unset dynamic-routing-maintain-vrf as otherwise it will
+# delete the whole vrf
+check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
+                             options:dynamic-routing-maintain-vrf=false
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
+AT_CHECK([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [0], [dnl
+233.252.0.0/24 via 192.168.10.10 dev lo onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink
+])
+
+# Starting it again will add the routes again.
+start_daemon ovn-controller
+OVS_WAIT_UNTIL([test "$(ovn-appctl -t ovn-controller debug/status)" == "running"])
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
+blackhole 192.0.2.1 proto 84 metric 100
+blackhole 192.0.2.2 proto 84 metric 100
+blackhole 192.0.2.3 proto 84 metric 100
+blackhole 192.0.2.10 proto 84 metric 100
+blackhole 198.51.100.0/24 proto 84 metric 1000
+233.252.0.0/24 via 192.168.10.10 dev lo onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
+
+# Stoping with --restart will not touch the routes.
+check ovn-appctl -t ovn-controller exit --restart
+OVS_WAIT_UNTIL([test "$(ovn-appctl -t ovn-controller debug/status)" != "running"])
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
+blackhole 192.0.2.1 proto 84 metric 100
+blackhole 192.0.2.2 proto 84 metric 100
+blackhole 192.0.2.3 proto 84 metric 100
+blackhole 192.0.2.10 proto 84 metric 100
+blackhole 198.51.100.0/24 proto 84 metric 1000
+233.252.0.0/24 via 192.168.10.10 dev lo onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
+
+# Now we set maintain-vrf again and stop the ovn-controller.
+# It will then remove the VRF.
+start_daemon ovn-controller
+OVS_WAIT_UNTIL([test "$(ovn-appctl -t ovn-controller debug/status)" == "running"])
+check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
+        options:dynamic-routing-maintain-vrf=true
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+AT_CHECK([ip vrf | grep -q ovnvrf1337], [1], [])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])

@@ -214,6 +214,9 @@ handle_route_msg(const struct route_table_msg *msg, void *data)
 
     /* This route is not from us, so we learn it. */
     if (rd->rtm_protocol != RTPROT_OVN) {
+        if (!handle_data->learned_routes) {
+            return;
+        }
         if (prefix_is_link_local(&rd->rta_dst, rd->rtm_dst_len)) {
             return;
         }
@@ -236,13 +239,15 @@ handle_route_msg(const struct route_table_msg *msg, void *data)
         return;
     }
 
-    uint32_t hash = advertise_route_hash(&rd->rta_dst, rd->rtm_dst_len);
-    HMAP_FOR_EACH_WITH_HASH (ar, node, hash, handle_data->routes) {
-        if (ipv6_addr_equals(&ar->addr, &rd->rta_dst)
-                && ar->plen == rd->rtm_dst_len
-                && ar->priority == rd->rta_priority) {
-            hmapx_find_and_delete(handle_data->routes_to_advertise, ar);
-            return;
+    if (handle_data->routes_to_advertise) {
+        uint32_t hash = advertise_route_hash(&rd->rta_dst, rd->rtm_dst_len);
+        HMAP_FOR_EACH_WITH_HASH (ar, node, hash, handle_data->routes) {
+            if (ipv6_addr_equals(&ar->addr, &rd->rta_dst)
+                    && ar->plen == rd->rtm_dst_len
+                    && ar->priority == rd->rta_priority) {
+                hmapx_find_and_delete(handle_data->routes_to_advertise, ar);
+                return;
+            }
         }
     }
     err = re_nl_delete_route(rd->rta_table_id, &rd->rta_dst,
@@ -301,4 +306,17 @@ re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
         }
     }
     hmapx_destroy(&routes_to_advertise);
+}
+
+void
+re_nl_cleanup_routes(uint32_t table_id)
+{
+    /* Remove routes from the system that are not in the host_routes hmap and
+     * remove entries from host_routes hmap that match routes already installed
+     * in the system. */
+    struct route_msg_handle_data data = {
+        .routes_to_advertise = NULL,
+        .learned_routes = NULL,
+    };
+    route_table_dump_one_table(table_id, handle_route_msg, &data);
 }

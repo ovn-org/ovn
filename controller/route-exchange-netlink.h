@@ -57,4 +57,6 @@ void re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
                        struct ovs_list *learned_routes,
                        const struct sbrec_datapath_binding *db);
 
+void re_nl_cleanup_routes(uint32_t table_id);
+
 #endif /* route-exchange-netlink.h */
