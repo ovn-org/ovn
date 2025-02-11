@@ -17,10 +17,21 @@
 #define EN_ADVERTISED_ROUTE_SYNC_H 1
 
 #include "lib/inc-proc-eng.h"
+#include "lib/uuidset.h"
 
 struct advertised_route_sync_data {
+  /* Contains the uuids of all NB Logical Routers where we used a
+   * lr_stateful_record during computation. */
+  struct uuidset nb_lr;
+  /* Contains the uuids of all NB Logical Switches where we rely on port
+   * changes for host routes. */
+  struct uuidset nb_ls;
 };
 
+bool advertised_route_sync_lr_stateful_change_handler(struct engine_node *,
+                                                      void *data);
+bool advertised_route_sync_northd_change_handler(struct engine_node *,
+                                                 void *data);
 void *en_advertised_route_sync_init(struct engine_node *, struct engine_arg *);
 void en_advertised_route_sync_cleanup(void *data);
 void en_advertised_route_sync_run(struct engine_node *, void *data);

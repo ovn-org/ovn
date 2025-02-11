@@ -292,6 +292,10 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_advertised_route_sync, &en_routes, NULL);
     engine_add_input(&en_advertised_route_sync, &en_sb_advertised_route,
                      NULL);
+    engine_add_input(&en_advertised_route_sync, &en_lr_stateful,
+                     advertised_route_sync_lr_stateful_change_handler);
+    engine_add_input(&en_advertised_route_sync, &en_northd,
+                     advertised_route_sync_northd_change_handler);
 
     engine_add_input(&en_learned_route_sync, &en_routes, NULL);
     engine_add_input(&en_learned_route_sync, &en_sb_learned_route, NULL);

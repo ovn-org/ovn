@@ -25,6 +25,7 @@
 #include "openvswitch/hmap.h"
 #include "simap.h"
 #include "ovs-thread.h"
+#include "en-lr-stateful.h"
 
 struct northd_input {
     /* Northbound table references */
@@ -309,7 +310,8 @@ struct mcast_port_info {
 
 #define DRR_MODES          \
     DRR_MODE(CONNECTED, 0) \
-    DRR_MODE(STATIC,    1)
+    DRR_MODE(CONNECTED_AS_HOST, 1) \
+    DRR_MODE(STATIC,    2)
 
 enum dynamic_routing_redistribute_mode_bits {
 #define DRR_MODE(PROTOCOL, BIT) DRRM_##PROTOCOL##_BIT = BIT,
@@ -970,4 +972,24 @@ void build_igmp_lflows(struct hmap *igmp_groups,
                        const struct hmap *ls_datapaths,
                        struct lflow_table *lflows,
                        struct lflow_ref *lflow_ref);
+
+/* Structure representing logical router port routable addresses. This
+ * includes DNAT and Load Balancer addresses. This structure will only
+ * be filled in if the router port is a gateway router port. Otherwise,
+ * all pointers will be NULL and n_addrs will be 0.
+ */
+struct ovn_port_routable_addresses {
+    /* The parsed routable addresses */
+    struct lport_addresses *laddrs;
+    /* Number of items in the laddrs array */
+    size_t n_addrs;
+};
+
+struct ovn_port_routable_addresses get_op_addresses(
+    const struct ovn_port *op,
+    const struct lr_stateful_record *lr_stateful_rec,
+    bool routable_only);
+
+void destroy_routable_addresses(struct ovn_port_routable_addresses *ra);
+
 #endif /* NORTHD_H */

@@ -3029,8 +3029,8 @@ or
         can participate in dynamic routing with components outside of OVN.
 
         It will synchronize all routes to the soutbound
-        <ref table="Advertised_Route" db="OVN_SB"/> table that are relevant
-        for the router. This includes:
+        <ref table="Advertised_Route" db="OVN_Southbound"/> table that are
+        relevant for the router. This includes:
         <ul>
           <li>
             all "connected" routes implicitly created by networks
@@ -3046,31 +3046,66 @@ or
         route types that should be advertised. See:
         <ul>
         <li><ref column="options" key="dynamic-routing-redistribute"
-                 table="Logical_Router"/></li>
+                 table="Logical_Router"/> on Logical_Router</li>
         <li><ref column="options" key="dynamic-routing-redistribute"
-                 table="Logical_Router_Port"/></li>
+                 table="Logical_Router_Port"/> on Logical_Router_Port</li>
         </ul>
       </column>
 
       <column name="options" key="dynamic-routing-redistribute"
               type='{"type": "string"}'>
-        Only relevant if <ref column="options" key="dynamic-routing"
-        table="Logical_Router"/> is set to <code>true</code>.
+        <p>
+          Only relevant if <ref column="options" key="dynamic-routing"
+          table="Logical_Router"/> is set to <code>true</code>.
+        </p>
 
-        This is a list of elements separated by <code>,</code>.
+        <p>
+          This is a list of elements separated by <code>,</code>.
+        </p>
 
-        If <code>connected</code> is in the list then northd will synchronize
-        all "connected" routes to the southbound <ref table="Route"
-        db="OVN_SB"/> table. "Connected" here means routes implicitly created
-        by networks associated with the LRPs.
+        <p>
+          If <code>connected</code> is in the list then northd will synchronize
+          all "connected" routes to the southbound <ref
+          table="Advertised_Route" db="OVN_Southbound"/> table. "Connected"
+          here means routes implicitly created by networks associated with
+          the LRPs.
+        </p>
 
-        If <code>static</code> is in the list then northd will synchronize all
-        <ref table="Logical_Router_Static_Route"/> to the southbound
-        <ref table="Route" db="OVN_SB"/> table.
+        <p>
+          If <code>connected-as-host</code> is in the list then northd will
+          enumerate all actively used individual IPs of a "connected" route and
+          announce these IPs as host routes instead of announcing the subnet.
+          This includes LSP and LRP addresses on the network as well as NAT
+          entries of remove Logical_Routers on this network.
+          Setting this implies the setting <code>connected</code>.
 
-        This value can be overwritten on a per LRP basis using
-        <ref column="options" key="dynamic-routing-redistribute"
-             table="Logical_Router_Port"/>.
+          This setting can be used to:
+          <ul>
+            <li>
+              allow the fabric outside of OVN to drop traffic towards IP
+              addresses that are not actually used. This traffic would
+              otherwise hit this LR and then be dropped.
+            </li>
+
+            <li>
+              If this LR has multiple LRPs connected to the fabric on different
+              chassis: allows the fabric outside of OVN to steer packets to the
+              chassis which already hosts this backing ip address.
+            </li>
+          </ul>
+        </p>
+
+        <p>
+          If <code>static</code> is in the list then northd will synchronize
+          all <ref table="Logical_Router_Static_Route"/> to the southbound
+          <ref table="Advertised_Route" db="OVN_Southbound"/> table.
+        </p>
+
+        <p>
+          This value can be overwritten on a per LRP basis using
+          <ref column="options" key="dynamic-routing-redistribute"
+               table="Logical_Router_Port"/> on the Logical_Router_Port.
+        </p>
       </column>
     </group>
 
@@ -3842,24 +3877,60 @@ or
 
       <column name="options" key="dynamic-routing-redistribute"
               type='{"type": "string"}'>
-        Only relevant if <ref column="options" key="dynamic-routing"
-        table="Logical_Router"/> on the respective Logical_Router is set
-        to <code>true</code>.
+        <p>
+          Only relevant if <ref column="options" key="dynamic-routing"
+          table="Logical_Router"/> on the respective Logical_Router is set
+          to <code>true</code>.
+        </p>
 
-        This is a list of elements separated by <code>,</code>.
+        <p>
+          This is a list of elements separated by <code>,</code>.
+        </p>
 
-        If <code>connected</code> is in the list then northd will synchronize
-        all "connected" routes to the southbound <ref table="Route"
-        db="OVN_SB"/> table. "Connected" here means routes implicitly created
-        by networks associated with the LRPs.
+        <p>
+          If <code>connected</code> is in the list then northd will synchronize
+          all "connected" routes to the southbound <ref
+          table="Advertised_Route" db="OVN_Southbound"/> table. "Connected"
+          here means routes implicitly created by networks associated with
+          the LRPs.
+        </p>
 
-        If <code>static</code> is in the list then northd will synchronize all
-        <ref table="Logical_Router_Static_Route"/> to the southbound
-        <ref table="Route" db="OVN_SB"/> table.
+        <p>
+          If <code>connected-as-host</code> is in the list then northd will
+          enumerate all actively used individual IPs of a "connected" route and
+          announce these IPs as host routes instead of announcing the subnet.
+          This includes LSP and LRP addresses on the network as well as NAT
+          entries of remove Logical_Routers on this network.
+          Setting this implies the setting <code>connected</code>.
 
-        If not set the value from <ref column="options"
-        key="dynamic-routing-redistribute" table="Logical_Router"/> will be
-        used.
+          This setting can be used to:
+          <ul>
+            <li>
+              allow the fabric outside of OVN to drop traffic towards IP
+              addresses that are not actually used. This traffic would
+              otherwise hit this LR and then be dropped.
+            </li>
+
+            <li>
+              If this LR has multiple LRPs connected to the fabric on different
+              chassis: allows the fabric outside of OVN to steer packets to the
+              chassis which already hosts this backing ip address.
+            </li>
+          </ul>
+        </p>
+
+        <p>
+          If <code>static</code> is in the list then northd will synchronize
+          all <ref table="Logical_Router_Static_Route"/> to the southbound
+          <ref table="Advertised_Route" db="OVN_Southbound"/> table.
+        </p>
+
+        <p>
+          If not set the value from <ref column="options"
+          key="dynamic-routing-redistribute" table="Logical_Router"/> on the
+          Logical_Router will be used.
+        </p>
+
       </column>
     </group>
 

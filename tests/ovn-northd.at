@@ -15215,6 +15215,92 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - host routes])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# We start with announcing routes on a lr with 2 lrps.
+# LRP lr0-sw0 is connected to ls sw0.
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 option:dynamic-routing=true \
+    option:dynamic-routing-redistribute="connected,static"
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+sw0=$(fetch_column port_binding _uuid logical_port=lr0-sw0)
+check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 10.0.1.1/24
+sw1=$(fetch_column port_binding _uuid logical_port=lr0-sw1)
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl --wait=sb set Logical_Switch_Port sw0-lr0 \
+    type=router options:router-port=lr0-sw0
+check_row_count Advertised_Route 2 tracked_port='[[]]'
+datapath=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
+
+# Configuring the LRP lr0-sw0 to send host routes.
+# As sw0 is quite empty we will only see the addresses of lr0-sw0.
+check ovn-nbctl --wait=sb set Logical_Router_Port lr0-sw0 \
+    options:dynamic-routing-redistribute="connected-as-host,static"
+check_row_count Advertised_Route 2
+check_column 10.0.0.1/32 Advertised_Route ip_prefix \
+    datapath=$datapath logical_port=$sw0
+check_column $sw0 Advertised_Route tracked_port \
+    datapath=$datapath logical_port=$sw0
+
+# Adding a VIF to the LS sw0 will advertise it as well.
+check ovn-nbctl lsp-add sw0 sw0-vif0
+check ovn-nbctl --wait=sb lsp-set-addresses sw0-vif0 \
+    "00:aa:bb:cc:dd:ee 10.0.0.2"
+vif0=$(fetch_column port_binding _uuid logical_port=sw0-vif0)
+check_row_count Advertised_Route 3
+check_row_count Advertised_Route 2 tracked_port!='[[]]'
+check_column $vif0 Advertised_Route tracked_port \
+    datapath=$datapath logical_port=$sw0 ip_prefix=10.0.0.2/32
+
+# Adding a LR lr1 to the LS sw0 will advertise the LRP of the new router.
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-sw0 00:00:00:01:ff:01 10.0.0.10/24
+check ovn-nbctl lsp-add sw0 sw0-lr1
+lr1=$(fetch_column port_binding _uuid logical_port=lr1-sw0)
+check ovn-nbctl --wait=sb set Logical_Switch_Port sw0-lr1 \
+    type=router options:router-port=lr1-sw0
+check_row_count Advertised_Route 4
+check_row_count Advertised_Route 3 tracked_port!='[[]]'
+check_column $lr1 Advertised_Route tracked_port \
+    datapath=$datapath logical_port=$sw0 ip_prefix=10.0.0.10/32
+
+# Adding a NAT rule to lr1 will advertise it as well.
+check ovn-nbctl --wait=sb lr-nat-add lr1 dnat_and_snat 10.0.0.100 192.168.0.1
+check_row_count Advertised_Route 5
+check_row_count Advertised_Route 4 tracked_port!='[[]]'
+check_column $lr1 Advertised_Route tracked_port \
+    datapath=$datapath logical_port=$sw0 ip_prefix=10.0.0.100/32
+
+# Adding a static route to lr1 will be advertised just normally.
+check ovn-nbctl --wait=sb lr-route-add lr0 172.16.0.0/24 10.0.0.200
+check_row_count Advertised_Route 6
+check_row_count Advertised_Route 4 tracked_port!='[[]]'
+check_row_count Advertised_Route 1 datapath=$datapath logical_port=$sw0 \
+    ip_prefix=172.16.0.0/24
+
+# Adding lr2 directly connected using two LRPs will advertise it as well.
+# lr2 contains a NAT rule that will be advertised.
+check ovn-nbctl lr-add lr2
+check ovn-nbctl lrp-add lr0 lr0-lr2 00:00:00:02:ff:01 10.10.0.1/24 peer=lr2-lr0
+check ovn-nbctl set Logical_Router_Port lr0-lr2 \
+    options:dynamic-routing-redistribute="connected-as-host,static"
+lr0lr2=$(fetch_column port_binding _uuid logical_port=lr0-lr2)
+check ovn-nbctl lrp-add lr2 lr2-lr0 00:00:00:02:ff:02 10.10.0.2/24 peer=lr0-lr2
+lr2lr0=$(fetch_column port_binding _uuid logical_port=lr2-lr0)
+check ovn-nbctl lrp-add lr2 lr2-sw1 00:00:00:02:ff:03 10.11.0.1/24
+check ovn-nbctl --wait=sb lr-nat-add lr2 dnat_and_snat 10.10.0.20 10.20.0.123
+check_row_count Advertised_Route 8
+check_row_count Advertised_Route 6 tracked_port!='[[]]'
+check_row_count Advertised_Route 1 datapath=$datapath logical_port=$lr0lr2 \
+    ip_prefix=10.10.0.20/32 tracked_port=$lr2lr0
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([dynamic-routing incremental processing])
 AT_KEYWORDS([dynamic-routing])
 ovn_start
@@ -15237,13 +15323,17 @@ check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
-check ovn-nbctl --wait=sb lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl --wait=sb set Logical_Switch_Port sw0-lr0 \
+    type=router options:router-port=lr0-sw0
 sw0=$(fetch_column port_binding _uuid logical_port=lr0-sw0)
 check_engine_stats northd recompute compute
-check_engine_stats routes recompute nocompute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_stats routes recompute compute
+check_engine_stats advertised_route_sync recompute compute
+check_engine_stats learned_route_sync recompute compute
+check_engine_stats lflow recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
@@ -15355,6 +15445,48 @@ check_engine_stats routes norecompute nocompute
 check_engine_stats advertised_route_sync norecompute nocompute
 check_engine_stats learned_route_sync recompute nocompute
 check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set Logical_Router_Port lr0-sw0 \
+    options:dynamic-routing-redistribute="connected-as-host"
+check_engine_stats northd recompute nocompute
+check_engine_stats routes recompute nocompute
+check_engine_stats advertised_route_sync recompute nocompute
+check_engine_stats learned_route_sync recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl lsp-add sw0 sw0-vif0
+check ovn-nbctl --wait=sb lsp-set-addresses sw0-vif0 "00:aa:bb:cc:dd:ee 10.0.0.2"
+check_engine_stats northd norecompute compute
+check_engine_stats routes norecompute compute
+check_engine_stats advertised_route_sync recompute nocompute
+check_engine_stats learned_route_sync norecompute compute
+check_engine_stats lflow norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-sw0 00:00:00:01:ff:01 10.0.0.10/24
+check ovn-nbctl lsp-add sw0 sw0-lr1
+check ovn-nbctl --wait=sb set Logical_Switch_Port sw0-lr1 \
+    type=router options:router-port=lr1-sw0
+check_engine_stats northd recompute compute
+check_engine_stats routes recompute compute
+check_engine_stats advertised_route_sync recompute nocompute
+check_engine_stats learned_route_sync recompute compute
+check_engine_stats lflow recompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-nat-add lr1 dnat_and_snat 10.0.0.100 192.168.0.1
+check_engine_stats northd norecompute compute
+check_engine_stats routes norecompute compute
+check_engine_stats advertised_route_sync recompute nocompute
+check_engine_stats learned_route_sync norecompute compute
+check_engine_stats lflow norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats

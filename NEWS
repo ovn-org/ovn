@@ -66,6 +66,9 @@ Post v24.09.0
        fabric. Routes entered into the "Learned_Route" table in the southbound
        database will be learned by the respective LR. They are included in the
        route table with a lower priority than static routes.
+     * Add the option value "connected-as-host" to the
+       "dynamic-routing-redistribute" LR and LRP option. If set then connected
+       routes are announced as individual host routes.
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------
