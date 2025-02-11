@@ -19,8 +19,10 @@
 
 #include <net/if.h>
 
+#include "vswitch-idl.h"
 #include "openvswitch/hmap.h"
 #include "openvswitch/vlog.h"
+#include "openvswitch/ofp-parse.h"
 
 #include "lib/ovn-sb-idl.h"
 
@@ -30,7 +32,6 @@
 #include "route.h"
 
 VLOG_DEFINE_THIS_MODULE(exchange);
-static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 20);
 
 bool
 route_exchange_relevant_port(const struct sbrec_port_binding *pb)
@@ -74,6 +75,49 @@ find_route_exchange_pb(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 }
 
 static void
+build_port_mapping(struct smap *mapping, const char *port_mapping)
+{
+    if (!port_mapping) {
+        return;
+    }
+
+    char *tokstr, *orig, *key, *value;
+
+    orig = tokstr = xstrdup(port_mapping);
+    while (ofputil_parse_key_value(&tokstr, &key, &value)) {
+        if (!*value) {
+          static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+          VLOG_WARN_RL(&rl, "dynamic-routing-port-mapping setting '%s' is "
+                            "not valid.", tokstr);
+          free(orig);
+          break;
+        }
+        smap_add(mapping, key, value);
+    }
+    free(orig);
+}
+
+static const char *
+ifname_from_port_name(const struct smap *port_mapping,
+                      struct shash *local_bindings,
+                      const struct sbrec_chassis *chassis,
+                      const char *port_name)
+{
+    const char *iface = smap_get(port_mapping, port_name);
+    if (iface) {
+        return iface;
+    }
+
+    if (!local_binding_is_up(local_bindings, port_name, chassis)) {
+        return NULL;
+    }
+
+    struct local_binding *binding = local_binding_find(local_bindings,
+                                                       port_name);
+    return binding->iface->name;
+}
+
+static void
 advertise_datapath_cleanup(struct advertise_datapath_entry *ad)
 {
     struct advertise_route_entry *ar;
@@ -82,7 +126,7 @@ advertise_datapath_cleanup(struct advertise_datapath_entry *ad)
         free(ar);
     }
     hmap_destroy(&ad->routes);
-    sset_destroy(&ad->bound_ports);
+    smap_destroy(&ad->bound_ports);
     free(ad);
 }
 
@@ -105,6 +149,9 @@ route_run(struct route_ctx_in *r_ctx_in,
 {
     struct advertise_datapath_entry *ad;
     const struct local_datapath *ld;
+    struct smap port_mapping = SMAP_INITIALIZER(&port_mapping);
+
+    build_port_mapping(&port_mapping, r_ctx_in->dynamic_routing_port_mapping);
 
     HMAP_FOR_EACH (ld, hmap_node, r_ctx_in->local_datapaths) {
         if (!ld->n_peer_ports || ld->is_switch) {
@@ -114,7 +161,7 @@ route_run(struct route_ctx_in *r_ctx_in,
         ad = xzalloc(sizeof(*ad));
         ad->db = ld->datapath;
         hmap_init(&ad->routes);
-        sset_init(&ad->bound_ports);
+        smap_init(&ad->bound_ports);
 
         /* This is a LR datapath, find LRPs with route exchange options
          * that are bound locally. */
@@ -134,13 +181,28 @@ route_run(struct route_ctx_in *r_ctx_in,
                 smap_get_bool(&repb->options,
                               "dynamic-routing-maintain-vrf",
                               false);
-            sset_add(&ad->bound_ports, local_peer->logical_port);
+
+            const char *port_name = smap_get(&repb->options,
+                                            "dynamic-routing-port-name");
+            if (!port_name) {
+                /* No port-name set, so we learn routes from all ports. */
+                smap_add_nocopy(&ad->bound_ports,
+                                xstrdup(local_peer->logical_port), NULL);
+            } else {
+                /* If a port_name is set the we filter for the name as set in
+                 * the port-mapping or the interface name of the local
+                 * binding. If the port is not in the port_mappings and not
+                 * bound locally we will not learn routes for this port. */
+                const char *ifname = ifname_from_port_name(
+                    &port_mapping, r_ctx_in->local_bindings,
+                    r_ctx_in->chassis, port_name);
+                if (ifname) {
+                    smap_add(&ad->bound_ports, local_peer->logical_port,
+                             ifname);
+                }
+            }
         }
 
-        if (sset_is_empty(&ad->bound_ports)) {
-            advertise_datapath_cleanup(ad);
-            continue;
-        }
         tracked_datapath_add(ld->datapath, TRACKED_RESOURCE_NEW,
                              r_ctx_out->tracked_re_datapaths);
 
@@ -159,6 +221,7 @@ route_run(struct route_ctx_in *r_ctx_in,
         struct in6_addr prefix;
         unsigned int plen;
         if (!ip46_parse_cidr(route->ip_prefix, &prefix, &plen)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 20);
             VLOG_WARN_RL(&rl, "bad 'ip_prefix' %s in route "
                          UUID_FMT, route->ip_prefix,
                          UUID_ARGS(&route->header_.uuid));
@@ -171,6 +234,8 @@ route_run(struct route_ctx_in *r_ctx_in,
         hmap_insert(&ad->routes, &ar->node,
                     advertise_route_hash(&prefix, plen));
     }
+
+    smap_destroy(&port_mapping);
 }
 
 void

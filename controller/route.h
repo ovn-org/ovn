@@ -22,6 +22,7 @@
 #include <netinet/in.h>
 #include "openvswitch/hmap.h"
 #include "sset.h"
+#include "smap.h"
 
 struct hmap;
 struct ovsdb_idl_index;
@@ -32,9 +33,11 @@ struct route_ctx_in {
     const struct sbrec_advertised_route_table *advertised_route_table;
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
     const struct sbrec_chassis *chassis;
+    const char *dynamic_routing_port_mapping;
     const struct sset *active_tunnels;
     const struct hmap *local_datapaths;
     const struct sset *local_lports;
+    struct shash *local_bindings;
 };
 
 struct route_ctx_out {
@@ -52,8 +55,12 @@ struct advertise_datapath_entry {
     struct hmap routes;
 
     /* The name of the port bindings locally bound for this datapath and
-     * running route exchange logic. */
-    struct sset bound_ports;
+     * running route exchange logic.
+     * The key is the port name and the value is the ifname if set. This may
+     * be empty if the all ports specified dynamic-routing-port-name, but no
+     * such referenced port is local. In this case we should only advertise
+     * routes but not learn them. */
+    struct smap bound_ports;
 };
 
 struct advertise_route_entry {

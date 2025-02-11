@@ -16101,6 +16101,11 @@ blackhole 192.0.2.3 proto 84
 blackhole 192.0.2.10 proto 84
 blackhole 198.51.100.0/24 proto 84])
 
+# Disable maintaining the vrf as some tests below would cause the vrfs to be
+# removed.
+check ovn-nbctl set Logical_Router_Port internet-phys \
+    options:dynamic-routing-maintain-vrf=false
+
 # Now we test route learning.
 check_row_count Learned_Route 0
 check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
@@ -16110,6 +16115,46 @@ check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 1
 lp=$(fetch_column port_binding _uuid logical_port=internet-phys)
 check_row_count Learned_Route 1 logical_port=$lp ip_prefix=233.252.0.0/24 nexthop=192.168.10.10
+
+# If we remove the route it is also gone.
+check ip route del 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
+# For now we trigger a recompute as route watching is not yet implemented.
+check ovn-appctl -t ovn-controller inc-engine/recompute
+check ovn-nbctl --wait=hv sync
+check_row_count Learned_Route 0
+
+# By setting a learning interface filter will prevent us from learning the
+# route again. The Port referenced by the name does not even exist.
+check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
+      options:dynamic-routing-port-name=thisportdoesnotexist
+check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
+# For now we trigger a recompute as route watching is not yet implemented.
+check ovn-appctl -t ovn-controller inc-engine/recompute
+check ovn-nbctl --wait=hv sync
+check_row_count Learned_Route 0
+
+# Setting the local ovsdb to map this port to "lo" will make route learning
+# work again.
+check ovs-vsctl set Open_vSwitch . \
+    external-ids:dynamic-routing-port-mapping="thisisirrelevant=andjustfortesting,thisportdoesnotexist=lo"
+check ovn-nbctl --wait=hv sync
+check_row_count Learned_Route 1
+
+# Now we try the interface filter with an existing port.
+check ovn-nbctl lsp-add phys mylearninglsp
+check ovs-vsctl -- add-port br-int hv1-mll -- \
+    set interface hv1-mll type=internal external-ids:iface-id=mylearninglsp
+check ip link set hv1-mll up
+wait_for_ports_up mylearninglsp
+
+check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
+      options:dynamic-routing-port-name=mylearninglsp
+
+check ip route add 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink vrf ovnvrf1337
+# For now we trigger a recompute as route watching is not yet implemented.
+check ovn-appctl -t ovn-controller inc-engine/recompute
+check ovn-nbctl --wait=hv sync
+check_row_count Learned_Route 1 ip_prefix=233.253.0.0/24 nexthop=192.168.20.20
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
@@ -16314,15 +16359,62 @@ blackhole 192.0.2.3 proto 84
 blackhole 192.0.2.10 proto 84
 blackhole 198.51.100.0/24 proto 84])
 
+# Disable maintaining the vrf as some tests below would cause the vrfs to be
+# removed.
+check ovn-nbctl set Logical_Router_Port internet-phys \
+    options:dynamic-routing-maintain-vrf=false
+
 # Now we test route learning.
 check_row_count Learned_Route 0
 check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
 # For now we trigger a recompute as route watching is not yet implemented.
 check ovn-appctl -t ovn-controller inc-engine/recompute
 check ovn-nbctl --wait=hv sync
-check_row_count Learned_Route 2
+check_row_count Learned_Route 1
 lp=$(fetch_column port_binding _uuid logical_port=internet-phys)
 check_row_count Learned_Route 1 logical_port=$lp ip_prefix=233.252.0.0/24 nexthop=192.168.10.10
+
+# If we remove the route it is also gone.
+check ip route del 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
+# For now we trigger a recompute as route watching is not yet implemented.
+check ovn-appctl -t ovn-controller inc-engine/recompute
+check ovn-nbctl --wait=hv sync
+check_row_count Learned_Route 0
+
+# By setting a learning interface filter will prevent us from learning the
+# route again. The Port referenced by the name does not even exist.
+check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
+    options:dynamic-routing-port-name=thisportdoesnotexist
+check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
+# For now we trigger a recompute as route watching is not yet implemented.
+check ovn-appctl -t ovn-controller inc-engine/recompute
+check ovn-nbctl --wait=hv sync
+check_row_count Learned_Route 0
+
+# Setting the local ovsdb to map this port to "lo" will make route learning
+# work again.
+check ovs-vsctl set Open_vSwitch . \
+    external-ids:dynamic-routing-port-mapping="thisisirrelevant=andjustfortesting,thisportdoesnotexist=lo"
+check ovn-nbctl --wait=hv sync
+check_row_count Learned_Route 1
+
+# Now we try the interface filter with an existing port.
+check ovn-nbctl lsp-add phys mylearninglsp
+check ovs-vsctl -- add-port br-int hv1-mll -- \
+    set interface hv1-mll type=internal external-ids:iface-id=mylearninglsp
+check ip link set hv1-mll up
+wait_for_ports_up mylearninglsp
+
+check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
+    options:dynamic-routing-port-name=mylearninglsp
+
+check ip route add 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink vrf ovnvrf1337
+# For now we trigger a recompute as route watching is not yet implemented.
+check ovn-appctl -t ovn-controller inc-engine/recompute
+check ovn-nbctl --wait=hv sync
+check_row_count Learned_Route 1 ip_prefix=233.253.0.0/24 nexthop=192.168.20.20
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])

@@ -227,6 +227,8 @@ handle_route_msg(const struct route_table_msg *msg, void *data)
             rr->prefix = rd->rta_dst;
             rr->plen = rd->rtm_dst_len;
             rr->nexthop = nexthop->addr;
+            memcpy(rr->ifname, nexthop->ifname, IFNAMSIZ);
+            rr->ifname[IFNAMSIZ] = 0;
             ovs_list_push_back(handle_data->learned_routes, &rr->list_node);
         }
         return;

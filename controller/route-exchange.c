@@ -93,7 +93,7 @@ route_lookup(struct hmap *route_map,
 static void
 sb_sync_learned_routes(const struct ovs_list *learned_routes,
                        const struct sbrec_datapath_binding *datapath,
-                       const struct sset *bound_ports,
+                       const struct smap *bound_ports,
                        struct ovsdb_idl_txn *ovnsb_idl_txn,
                        struct ovsdb_idl_index *sbrec_port_binding_by_name,
                        struct ovsdb_idl_index *sbrec_learned_route_by_datapath)
@@ -108,8 +108,9 @@ sb_sync_learned_routes(const struct ovs_list *learned_routes,
     SBREC_LEARNED_ROUTE_FOR_EACH_EQUAL (sb_route, filter,
                                         sbrec_learned_route_by_datapath) {
         /* If the port is not local we don't care about it.
-         * Some other ovn-controller will handle it. */
-        if (!sset_contains(bound_ports,
+         * Some other ovn-controller will handle it.
+         * We may not use smap_get since the value might be validly NULL. */
+        if (!smap_get_node(bound_ports,
                            sb_route->logical_port->logical_port)) {
             continue;
         }
@@ -123,11 +124,18 @@ sb_sync_learned_routes(const struct ovs_list *learned_routes,
                                                learned_route->plen);
         char *nexthop = normalize_v46(&learned_route->nexthop);
 
-        const char *logical_port_name;
-        SSET_FOR_EACH (logical_port_name, bound_ports) {
+        struct smap_node *port_node;
+        SMAP_FOR_EACH (port_node, bound_ports) {
+            /* The user specified an ifname, but we learned it on a different
+             * port. */
+            if (port_node->value && strcmp(port_node->value,
+                                           learned_route->ifname)) {
+                continue;
+            }
+
             const struct sbrec_port_binding *logical_port =
                 lport_lookup_by_name(sbrec_port_binding_by_name,
-                                     logical_port_name);
+                                     port_node->key);
             if (!logical_port) {
                 continue;
             }

@@ -5007,13 +5007,20 @@ en_route_run(struct engine_node *node, void *data)
     const struct sbrec_advertised_route_table *advertised_route_table =
         EN_OVSDB_GET(engine_get_input("SB_advertised_route", node));
 
+    const struct ovsrec_open_vswitch *cfg
+        = ovsrec_open_vswitch_table_first(ovs_table);
+    const char *dynamic_routing_port_mapping =
+        smap_get(&cfg->external_ids, "dynamic-routing-port-mapping");
+
     struct route_ctx_in r_ctx_in = {
         .advertised_route_table = advertised_route_table,
         .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
         .chassis = chassis,
+        .dynamic_routing_port_mapping = dynamic_routing_port_mapping,
         .active_tunnels = &rt_data->active_tunnels,
         .local_datapaths = &rt_data->local_datapaths,
         .local_lports = &rt_data->local_lports,
+        .local_bindings = &rt_data->lbinding_data.bindings,
     };
 
     struct route_ctx_out r_ctx_out = {

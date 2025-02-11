@@ -414,6 +414,14 @@
           If the value is zero, it disables the inactivity probe.
         </p>
       </dd>
+      <dt><code>external_ids:dynamic-routing-port-mapping</code></dt>
+      <dd>
+        <p>
+          This setting works together with the Northbound
+          dynamic-routing-port-name option on Logical_Router_Ports.
+          See the <code>ovn-nb</code>(5) for more details.
+        </p>
+      </dd>
     </dl>
 
     <p>
