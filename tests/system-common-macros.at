@@ -530,3 +530,15 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
 /failed to query port patch-.*/d
 /.*terminating with signal 15.*/d"])
 ]))
+
+# CHECK_VRF()
+#
+# Perform a requirements check for running VRF tests.
+#
+m4_define([CHECK_VRF],
+[
+    rc=0
+    modprobe vrf || rc=$?
+    AT_SKIP_IF([test $rc -ne 0])
+    on_exit 'modprobe -r vrf'
+])

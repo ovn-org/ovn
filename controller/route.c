@@ -38,7 +38,7 @@ route_exchange_relevant_port(const struct sbrec_port_binding *pb)
     return pb && smap_get_bool(&pb->options, "dynamic-routing", false);
 }
 
-static uint32_t
+uint32_t
 advertise_route_hash(const struct in6_addr *dst, unsigned int plen)
 {
     uint32_t hash = hash_bytes(dst->s6_addr, 16, 0);

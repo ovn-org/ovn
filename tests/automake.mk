@@ -308,6 +308,11 @@ tests_ovstest_LDADD = $(OVS_LIBDIR)/daemon.lo \
 	controller/vif-plug.$(OBJEXT) \
 	northd/ipam.$(OBJEXT)
 
+if HAVE_NETLINK
+tests_ovstest_LDADD += \
+	controller/route-exchange-netlink.$(OBJEXT)
+endif
+
 # Python tests.
 CHECK_PYFILES = \
 	tests/test-l7.py \

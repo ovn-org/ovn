@@ -59,6 +59,12 @@ controller_ovn_controller_SOURCES = \
 	controller/route.h \
 	controller/route.c
 
+if HAVE_NETLINK
+controller_ovn_controller_SOURCES += \
+	controller/route-exchange-netlink.h \
+	controller/route-exchange-netlink.c
+endif
+
 controller_ovn_controller_LDADD = lib/libovn.la $(OVS_LIBDIR)/libopenvswitch.la
 man_MANS += controller/ovn-controller.8
 EXTRA_DIST += controller/ovn-controller.8.xml
