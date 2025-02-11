@@ -414,14 +414,19 @@ tracked_datapath_lport_add(const struct sbrec_port_binding *pb,
 }
 
 void
-tracked_datapaths_destroy(struct hmap *tracked_datapaths)
+tracked_datapaths_clear(struct hmap *tracked_datapaths)
 {
     struct tracked_datapath *t_dp;
     HMAP_FOR_EACH_POP (t_dp, node, tracked_datapaths) {
         shash_destroy_free_data(&t_dp->lports);
         free(t_dp);
     }
+}
 
+void
+tracked_datapaths_destroy(struct hmap *tracked_datapaths)
+{
+    tracked_datapaths_clear(tracked_datapaths);
     hmap_destroy(tracked_datapaths);
 }
 

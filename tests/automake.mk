@@ -304,6 +304,7 @@ tests_ovstest_LDADD = $(OVS_LIBDIR)/daemon.lo \
 	controller/ofctrl-seqno.$(OBJEXT) \
 	controller/ovsport.$(OBJEXT) \
 	controller/patch.$(OBJEXT) \
+	controller/route.$(OBJEXT) \
 	controller/vif-plug.$(OBJEXT) \
 	northd/ipam.$(OBJEXT)
 

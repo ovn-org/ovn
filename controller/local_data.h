@@ -131,6 +131,7 @@ struct tracked_datapath *tracked_datapath_find(
 void tracked_datapath_lport_add(const struct sbrec_port_binding *,
                                 enum en_tracked_resource_type,
                                 struct hmap *tracked_datapaths);
+void tracked_datapaths_clear(struct hmap *tracked_datapaths);
 void tracked_datapaths_destroy(struct hmap *tracked_datapaths);
 
 /* Maps from a chassis to the OpenFlow port number of the tunnel that can be

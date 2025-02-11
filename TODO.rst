@@ -97,6 +97,7 @@ OVN To-do List
 * ovn-controller Incremental processing
 
   * Implement I-P for datapath groups.
+  * Implement I-P for route exchange relevant ports.
 
 * ovn-northd parallel logical flow processing
 
@@ -144,3 +145,8 @@ OVN To-do List
 
   * Add incremental processing for northd when the Learned_Route table changes.
     Currently en_lflow is fully recomputed whenever such a change happens.
+
+  * The ovn-controller currently loads all Advertised_Route entries on startup.
+    This is to prevent deleting our routes on restart. If we defer updating
+    routes until we are sure to have loaded all necessary Advertised_Routes
+    this could be changed.
