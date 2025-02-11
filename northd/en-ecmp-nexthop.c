@@ -96,19 +96,26 @@ build_ecmp_nexthop_table(
             continue;
         }
 
-        const struct nbrec_logical_router_static_route *r = pr->route;
+        /* This route has ecmp-symmetric-reply configured, it must be a
+         * static route. */
+        ovs_assert(pr->source == ROUTE_SOURCE_STATIC);
+
+        struct ds nexthop_str = DS_EMPTY_INITIALIZER;
+        ipv6_format_mapped(pr->nexthop, &nexthop_str);
+        const char *nexthop = ds_cstr(&nexthop_str);
+
         struct ecmp_nexthop_data *e = ecmp_nexthop_find_entry(
-                r->nexthop, pr->out_port->sb, &sb_nexthops_map);
+                nexthop, pr->out_port->sb, &sb_nexthops_map);
         if (!e) {
             sb_ecmp_nexthop = sbrec_ecmp_nexthop_insert(ovnsb_txn);
-            sbrec_ecmp_nexthop_set_nexthop(sb_ecmp_nexthop, r->nexthop);
+            sbrec_ecmp_nexthop_set_nexthop(sb_ecmp_nexthop, nexthop);
             sbrec_ecmp_nexthop_set_port(sb_ecmp_nexthop, pr->out_port->sb);
             sbrec_ecmp_nexthop_set_datapath(sb_ecmp_nexthop,
                                             pr->out_port->sb->datapath);
             const struct sbrec_mac_binding *smb =
                 mac_binding_lookup(sbrec_mac_binding_by_lport_ip,
                                    pr->out_port->sb->logical_port,
-                                   r->nexthop);
+                                   nexthop);
             if (smb) {
                 sbrec_ecmp_nexthop_set_mac(sb_ecmp_nexthop, smb->mac);
             }
@@ -116,6 +123,7 @@ build_ecmp_nexthop_table(
             hmap_remove(&sb_nexthops_map, &e->hmap_node);
             free(e);
         }
+        ds_destroy(&nexthop_str);
     }
 
     struct ecmp_nexthop_data *e;

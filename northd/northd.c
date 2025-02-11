@@ -314,11 +314,14 @@ BUILD_ASSERT_DECL(ACL_OBS_STAGE_MAX < (1 << 2));
 /*
  * Route offsets implement logic to prioritize traffic for routes with
  * same ip_prefix values:
- *  -  connected route overrides static one;
- *  -  static route overrides src-ip route. */
-#define ROUTE_PRIO_OFFSET_MULTIPLIER 5
-#define ROUTE_PRIO_OFFSET_STATIC 2
-#define ROUTE_PRIO_OFFSET_CONNECTED 4
+ *  1. (highest priority) connected routes
+ *  2. static routes
+ *  3. routes learned from the outside via ovn-controller (e.g. bgp)
+ *  4. (lowest priority) src-ip routes */
+#define ROUTE_PRIO_OFFSET_MULTIPLIER 8
+#define ROUTE_PRIO_OFFSET_LEARNED 2
+#define ROUTE_PRIO_OFFSET_STATIC 4
+#define ROUTE_PRIO_OFFSET_CONNECTED 6
 
 /* Returns the type of the datapath to which a flow with the given 'stage' may
  * be added. */
@@ -10907,7 +10910,7 @@ build_route_table_lflow(struct ovn_datapath *od, struct lflow_table *lflows,
 }
 
 static uint32_t
-route_hash(struct parsed_route *route)
+route_hash(const struct parsed_route *route)
 {
     return hash_bytes(&route->prefix, sizeof route->prefix,
                       (uint32_t)route->plen);
@@ -10958,7 +10961,7 @@ parsed_route_lookup(struct hmap *routes, size_t hash,
             continue;
         }
 
-        if (pr->route != new_pr->route) {
+        if (pr->source_hint != new_pr->source_hint) {
             continue;
         }
 
@@ -10985,15 +10988,89 @@ parsed_route_lookup(struct hmap *routes, size_t hash,
     return NULL;
 }
 
-static void
+static struct parsed_route *
+parsed_route_init(const struct ovn_datapath *od,
+                  struct in6_addr *nexthop,
+                  const struct in6_addr prefix,
+                  unsigned int plen,
+                  bool is_discard_route,
+                  const char *lrp_addr_s,
+                  const struct ovn_port *out_port,
+                  uint32_t route_table_id,
+                  bool is_src_route,
+                  bool ecmp_symmetric_reply,
+                  const struct sset *ecmp_selection_fields,
+                  enum route_source source,
+                  const struct ovsdb_idl_row *source_hint)
+{
+
+    struct parsed_route *new_pr = xzalloc(sizeof *new_pr);
+
+    new_pr->prefix = prefix;
+    new_pr->plen = plen;
+    new_pr->nexthop = nexthop;
+    new_pr->route_table_id = route_table_id;
+    new_pr->is_src_route = is_src_route;
+    new_pr->od = od;
+    new_pr->ecmp_symmetric_reply = ecmp_symmetric_reply;
+    new_pr->is_discard_route = is_discard_route;
+    new_pr->lrp_addr_s = nullable_xstrdup(lrp_addr_s);
+    new_pr->out_port = out_port;
+    new_pr->source = source;
+    if (ecmp_selection_fields) {
+        sset_clone(&new_pr->ecmp_selection_fields, ecmp_selection_fields);
+    } else {
+        sset_init(&new_pr->ecmp_selection_fields);
+    }
+    new_pr->source_hint = source_hint;
+
+    return new_pr;
+}
+
+/* Returns an independent clone of the provided parsed_route. The returned
+ * parsed_route will need to be freed using parsed_route_free. */
+struct parsed_route *
+parsed_route_clone(const struct parsed_route *pr)
+{
+    struct in6_addr *nexthop = NULL;
+    if (pr->nexthop) {
+        nexthop = xmemdup(pr->nexthop, sizeof *pr->nexthop);
+    }
+
+    struct parsed_route *new_pr = parsed_route_init(
+        pr->od, nexthop, pr->prefix, pr->plen, pr->is_discard_route,
+        pr->lrp_addr_s, pr->out_port, pr->route_table_id, pr->is_src_route,
+        pr->ecmp_symmetric_reply, &pr->ecmp_selection_fields, pr->source,
+        pr->source_hint);
+
+    new_pr->hash = pr->hash;
+    return new_pr;
+}
+
+/* This hash needs to be equal to the one used in
+ * build_route_flows_for_lrouter to iterate over all routes of a datapath.
+ * This is distinct from route_hash which is stored in parsed_route->hash. */
+size_t
+parsed_route_hash(const struct parsed_route *pr) {
+    return uuid_hash(&pr->od->key);
+}
+
+void
 parsed_route_free(struct parsed_route *pr) {
+    if (!pr) {
+        return;
+    }
     free(pr->lrp_addr_s);
     free(pr->nexthop);
     sset_destroy(&pr->ecmp_selection_fields);
     free(pr);
 }
 
-static void
+/* Adds a parsed_route to the provided routes hmap if it is not already
+ * in there.
+ * Takes ownership of the provided nexthop. All other parameters are cloned.
+ * Elements of the routes hmap need to be freed using parsed_route_free. */
+void
 parsed_route_add(const struct ovn_datapath *od,
                  struct in6_addr *nexthop,
                  const struct in6_addr *prefix,
@@ -11001,38 +11078,23 @@ parsed_route_add(const struct ovn_datapath *od,
                  bool is_discard_route,
                  const char *lrp_addr_s,
                  const struct ovn_port *out_port,
-                 const struct nbrec_logical_router_static_route *route,
                  uint32_t route_table_id,
                  bool is_src_route,
                  bool ecmp_symmetric_reply,
                  const struct sset *ecmp_selection_fields,
                  enum route_source source,
+                 const struct ovsdb_idl_row *source_hint,
                  struct hmap *routes)
 {
 
-    struct parsed_route *new_pr = xzalloc(sizeof *new_pr);
-    new_pr->prefix = *prefix;
-    new_pr->plen = plen;
-    new_pr->nexthop = nexthop;
-    new_pr->route_table_id = route_table_id;
-    new_pr->is_src_route = is_src_route;
-    new_pr->hash = route_hash(new_pr);
-    new_pr->od = od;
-    new_pr->ecmp_symmetric_reply = ecmp_symmetric_reply;
-    new_pr->is_discard_route = is_discard_route;
-    if (!is_discard_route) {
-        new_pr->lrp_addr_s = xstrdup(lrp_addr_s);
-    }
-    new_pr->out_port = out_port;
-    new_pr->source = source;
-    new_pr->route = route;
-    if (ecmp_selection_fields) {
-        sset_clone(&new_pr->ecmp_selection_fields, ecmp_selection_fields);
-    } else {
-        sset_init(&new_pr->ecmp_selection_fields);
-    }
+    struct parsed_route *new_pr = parsed_route_init(
+        od, nexthop, *prefix, plen, is_discard_route, lrp_addr_s, out_port,
+        route_table_id, is_src_route, ecmp_symmetric_reply,
+        ecmp_selection_fields, source, source_hint);
 
-    size_t hash = uuid_hash(&od->key);
+    new_pr->hash = route_hash(new_pr);
+
+    size_t hash = parsed_route_hash(new_pr);
     struct parsed_route *pr = parsed_route_lookup(routes, hash, new_pr);
     if (!pr) {
         hmap_insert(routes, &new_pr->key_node, hash);
@@ -11163,9 +11225,9 @@ parsed_routes_add_static(const struct ovn_datapath *od,
     }
 
     parsed_route_add(od, nexthop, &prefix, plen, is_discard_route, lrp_addr_s,
-                     out_port, route, route_table_id, is_src_route,
+                     out_port, route_table_id, is_src_route,
                      ecmp_symmetric_reply, &ecmp_selection_fields, source,
-                     routes);
+                     &route->header_, routes);
     sset_destroy(&ecmp_selection_fields);
 }
 
@@ -11181,9 +11243,9 @@ parsed_routes_add_connected(const struct ovn_datapath *od,
 
         parsed_route_add(od, NULL, &prefix, addr->plen,
                          false, addr->addr_s, op,
-                         NULL, 0, false,
+                         0, false,
                          false, NULL, ROUTE_SOURCE_CONNECTED,
-                         routes);
+                         &op->nbrp->header_, routes);
     }
 
     for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
@@ -11193,9 +11255,9 @@ parsed_routes_add_connected(const struct ovn_datapath *od,
 
         parsed_route_add(od, NULL, &prefix, addr->plen,
                          false, addr->addr_s, op,
-                         NULL, 0, false,
+                         0, false,
                          false, NULL, ROUTE_SOURCE_CONNECTED,
-                         routes);
+                         &op->nbrp->header_, routes);
     }
 }
 
@@ -11397,13 +11459,30 @@ build_route_prefix_s(const struct in6_addr *prefix, unsigned int plen)
     return prefix_s;
 }
 
+static uint16_t
+route_source_to_offset(enum route_source source)
+{
+    switch (source) {
+    case ROUTE_SOURCE_CONNECTED:
+        return ROUTE_PRIO_OFFSET_CONNECTED;
+    case ROUTE_SOURCE_STATIC:
+        return ROUTE_PRIO_OFFSET_STATIC;
+    case ROUTE_SOURCE_LEARNED:
+        return ROUTE_PRIO_OFFSET_LEARNED;
+    default:
+        OVS_NOT_REACHED();
+    }
+}
+
 static void
 build_route_match(const struct ovn_port *op_inport, uint32_t rtb_id,
                   const char *network_s, int plen, bool is_src_route,
-                  bool is_ipv4, struct ds *match, uint16_t *priority, int ofs,
-                  bool has_protocol_match)
+                  bool is_ipv4, struct ds *match, uint16_t *priority,
+                  enum route_source source, bool has_protocol_match)
 {
     const char *dir;
+    int ofs = route_source_to_offset(source);
+
     /* The priority here is calculated to implement longest-prefix-match
      * routing. */
     if (is_src_route) {
@@ -11416,7 +11495,8 @@ build_route_match(const struct ovn_port *op_inport, uint32_t rtb_id,
     if (op_inport) {
         ds_put_format(match, "inport == %s && ", op_inport->json_key);
     }
-    if (rtb_id || ofs == ROUTE_PRIO_OFFSET_STATIC) {
+    if (rtb_id || source == ROUTE_SOURCE_STATIC ||
+            source == ROUTE_SOURCE_LEARNED) {
         ds_put_format(match, "%s == %d && ", REG_ROUTE_TABLE_ID, rtb_id);
     }
 
@@ -11427,6 +11507,45 @@ build_route_match(const struct ovn_port *op_inport, uint32_t rtb_id,
 
     ds_put_format(match, "ip%s.%s == %s/%d", is_ipv4 ? "4" : "6", dir,
                   network_s, plen);
+}
+
+bool
+find_route_outport(const struct hmap *lr_ports, const char *output_port,
+                   const char *ip_prefix, const char *nexthop, bool is_ipv4,
+                   bool force_out_port,
+                   struct ovn_port **out_port, const char **lrp_addr_s)
+{
+    *out_port = ovn_port_find(lr_ports, output_port);
+    if (!*out_port) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "Bad out port %s for static route %s",
+                     output_port, ip_prefix);
+        return false;
+    }
+    if (nexthop[0]) {
+        *lrp_addr_s = find_lrp_member_ip(*out_port, nexthop);
+    }
+    if (!*lrp_addr_s) {
+        if (!force_out_port) {
+            return false;
+        }
+        /* There are no IP networks configured on the router's port via
+         * which 'route->nexthop' is theoretically reachable.  But since
+         * 'out_port' has been specified, we honor it by trying to reach
+         * 'route->nexthop' via the first IP address of 'out_port'.
+         * (There are cases, e.g in GCE, where each VM gets a /32 IP
+         * address and the default gateway is still reachable from it.) */
+        if (is_ipv4) {
+            if ((*out_port)->lrp_networks.n_ipv4_addrs) {
+                *lrp_addr_s = (*out_port)->lrp_networks.ipv4_addrs[0].addr_s;
+            }
+        } else {
+            if ((*out_port)->lrp_networks.n_ipv6_addrs) {
+                *lrp_addr_s = (*out_port)->lrp_networks.ipv6_addrs[0].addr_s;
+            }
+        }
+    }
+    return true;
 }
 
 /* Output: p_lrp_addr_s and p_out_port. */
@@ -11440,32 +11559,9 @@ find_static_route_outport(const struct ovn_datapath *od,
     struct ovn_port *out_port = NULL;
     if (route->output_port) {
         /* XXX: we should be able to use &od->ports instead of lr_ports. */
-        out_port = ovn_port_find(lr_ports, route->output_port);
-        if (!out_port) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_WARN_RL(&rl, "Bad out port %s for static route %s",
-                         route->output_port, route->ip_prefix);
+        if (!find_route_outport(lr_ports, route->output_port, route->ip_prefix,
+              route->nexthop, is_ipv4, true, &out_port, &lrp_addr_s)) {
             return false;
-        }
-        if (route->nexthop[0]) {
-            lrp_addr_s = find_lrp_member_ip(out_port, route->nexthop);
-        }
-        if (!lrp_addr_s) {
-            /* There are no IP networks configured on the router's port via
-             * which 'route->nexthop' is theoretically reachable.  But since
-             * 'out_port' has been specified, we honor it by trying to reach
-             * 'route->nexthop' via the first IP address of 'out_port'.
-             * (There are cases, e.g in GCE, where each VM gets a /32 IP
-             * address and the default gateway is still reachable from it.) */
-            if (is_ipv4) {
-                if (out_port->lrp_networks.n_ipv4_addrs) {
-                    lrp_addr_s = out_port->lrp_networks.ipv4_addrs[0].addr_s;
-                }
-            } else {
-                if (out_port->lrp_networks.n_ipv6_addrs) {
-                    lrp_addr_s = out_port->lrp_networks.ipv6_addrs[0].addr_s;
-                }
-            }
         }
     } else {
         /* output_port is not specified, find the
@@ -11505,7 +11601,6 @@ add_ecmp_symmetric_reply_flows(struct lflow_table *lflows,
                                struct ds *route_match,
                                struct lflow_ref *lflow_ref)
 {
-    const struct nbrec_logical_router_static_route *st_route = route->route;
     struct ds match = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
     struct ds ecmp_reply = DS_EMPTY_INITIALIZER;
@@ -11522,12 +11617,12 @@ add_ecmp_symmetric_reply_flows(struct lflow_table *lflows,
     free(cidr);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DEFRAG, 100,
                              ds_cstr(&match), "ct_next;",
-                             &st_route->header_, lflow_ref);
+                             route->source_hint, lflow_ref);
 
     /* And packets that go out over an ECMP route need conntrack */
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_DEFRAG, 100,
                              ds_cstr(route_match), "ct_next;",
-                             &st_route->header_, lflow_ref);
+                             route->source_hint, lflow_ref);
 
     /* Save src eth and inport in ct_label for packets that arrive over
      * an ECMP route.
@@ -11543,7 +11638,7 @@ add_ecmp_symmetric_reply_flows(struct lflow_table *lflows,
             out_port->sb->tunnel_key);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ECMP_STATEFUL, 100,
                             ds_cstr(&match), ds_cstr(&actions),
-                            &st_route->header_,
+                            route->source_hint,
                             lflow_ref);
 
     /* Bypass ECMP selection if we already have ct_label information
@@ -11564,13 +11659,13 @@ add_ecmp_symmetric_reply_flows(struct lflow_table *lflows,
                   port_ip, out_port->json_key);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_ROUTING, 10300,
                            ds_cstr(&match), ds_cstr(&actions),
-                           &st_route->header_,
+                           route->source_hint,
                            lflow_ref);
 
     /* Egress reply traffic for symmetric ECMP routes skips router policies. */
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_POLICY, 65535,
                             ds_cstr(&ecmp_reply), "next;",
-                            &st_route->header_,
+                            route->source_hint,
                             lflow_ref);
 
     /* Use REG_ECMP_ETH_FULL to pass the eth field from ct_label to eth.dst to
@@ -11587,25 +11682,12 @@ add_ecmp_symmetric_reply_flows(struct lflow_table *lflows,
                          " pop(" REG_ECMP_ETH_FULL "); next;";
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_ARP_RESOLVE,
                             200, ds_cstr(&ecmp_reply),
-                            action, &st_route->header_,
+                            action, route->source_hint,
                             lflow_ref);
 
     ds_destroy(&match);
     ds_destroy(&actions);
     ds_destroy(&ecmp_reply);
-}
-
-static int
-route_source_to_offset(enum route_source source)
-{
-    switch (source) {
-        case ROUTE_SOURCE_CONNECTED:
-            return ROUTE_PRIO_OFFSET_CONNECTED;
-        case ROUTE_SOURCE_STATIC:
-            return ROUTE_PRIO_OFFSET_STATIC;
-        default:
-            OVS_NOT_REACHED();
-    }
 }
 
 static void
@@ -11620,10 +11702,9 @@ build_ecmp_route_flow(struct lflow_table *lflows, struct ovn_datapath *od,
     struct ds route_match = DS_EMPTY_INITIALIZER;
 
     char *prefix_s = build_route_prefix_s(&eg->prefix, eg->plen);
-    int ofs = route_source_to_offset(eg->source);
     build_route_match(NULL, eg->route_table_id, prefix_s, eg->plen,
                       eg->is_src_route, is_ipv4_prefix, &route_match,
-                      &priority, ofs,
+                      &priority, eg->source,
                       protocol != NULL);
     free(prefix_s);
 
@@ -11686,18 +11767,17 @@ build_ecmp_route_flow(struct lflow_table *lflows, struct ovn_datapath *od,
     struct ds match = DS_EMPTY_INITIALIZER;
     struct sset visited_ports = SSET_INITIALIZER(&visited_ports);
     LIST_FOR_EACH (er, list_node, &eg->route_list) {
-        const struct parsed_route *route_ = er->route;
-        const struct nbrec_logical_router_static_route *route = route_->route;
-        bool is_ipv4_nexthop = IN6_IS_ADDR_V4MAPPED(route_->nexthop);
+        const struct parsed_route *route = er->route;
+        bool is_ipv4_nexthop = IN6_IS_ADDR_V4MAPPED(route->nexthop);
         /* Symmetric ECMP reply is only usable on gateway routers.
          * It is NOT usable on distributed routers with a gateway port.
          */
         if (smap_get(&od->nbr->options, "chassis") &&
-            route_->ecmp_symmetric_reply && sset_add(&visited_ports,
-                                                     route_->out_port->key)) {
-            add_ecmp_symmetric_reply_flows(lflows, od, route_->lrp_addr_s,
-                                           route_->out_port,
-                                           route_, &route_match,
+            route->ecmp_symmetric_reply && sset_add(&visited_ports,
+                                                    route->out_port->key)) {
+            add_ecmp_symmetric_reply_flows(lflows, od, route->lrp_addr_s,
+                                           route->out_port,
+                                           route, &route_match,
                                            lflow_ref);
         }
         ds_clear(&match);
@@ -11707,7 +11787,7 @@ build_ecmp_route_flow(struct lflow_table *lflows, struct ovn_datapath *od,
         ds_clear(&actions);
         ds_put_format(&actions, "%s = ",
                       is_ipv4_nexthop ? REG_NEXT_HOP_IPV4 : REG_NEXT_HOP_IPV6);
-        ipv6_format_mapped(route_->nexthop, &actions);
+        ipv6_format_mapped(route->nexthop, &actions);
         ds_put_format(&actions, "; "
                       "%s = %s; "
                       "eth.src = %s; "
@@ -11715,13 +11795,13 @@ build_ecmp_route_flow(struct lflow_table *lflows, struct ovn_datapath *od,
                       REGBIT_NEXTHOP_IS_IPV4" = %d; "
                       "next;",
                       is_ipv4_nexthop ? REG_SRC_IPV4 : REG_SRC_IPV6,
-                      route_->lrp_addr_s,
-                      route_->out_port->lrp_networks.ea_s,
-                      route_->out_port->json_key,
+                      route->lrp_addr_s,
+                      route->out_port->lrp_networks.ea_s,
+                      route->out_port->json_key,
                       is_ipv4_nexthop);
         ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_ROUTING_ECMP, 100,
                                 ds_cstr(&match), ds_cstr(&actions),
-                                &route->header_, lflow_ref);
+                                route->source_hint, lflow_ref);
     }
     sset_destroy(&visited_ports);
     ds_destroy(&match);
@@ -11743,8 +11823,6 @@ add_route(struct lflow_table *lflows, struct ovn_datapath *od,
     uint16_t priority;
     const struct ovn_port *op_inport = NULL;
 
-    int ofs = route_source_to_offset(source);
-
     /* IPv6 link-local addresses must be scoped to the local router port. */
     if (!is_ipv4_prefix) {
         struct in6_addr network;
@@ -11754,7 +11832,7 @@ add_route(struct lflow_table *lflows, struct ovn_datapath *od,
         }
     }
     build_route_match(op_inport, rtb_id, network_s, plen, is_src_route,
-                      is_ipv4_prefix, &match, &priority, ofs, false);
+                      is_ipv4_prefix, &match, &priority, source, false);
 
     struct ds common_actions = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
@@ -11807,23 +11885,22 @@ add_route(struct lflow_table *lflows, struct ovn_datapath *od,
 
 static void
 build_route_flow(struct lflow_table *lflows, struct ovn_datapath *od,
-                        const struct parsed_route *route_,
+                        const struct parsed_route *route,
                         const struct sset *bfd_ports,
                         struct lflow_ref *lflow_ref)
 {
-    const struct nbrec_logical_router_static_route *route = route_->route;
-    bool is_ipv4_prefix = IN6_IS_ADDR_V4MAPPED(&route_->prefix);
-    bool is_ipv4_nexthop = route_->nexthop
-                           ? IN6_IS_ADDR_V4MAPPED(route_->nexthop)
+    bool is_ipv4_prefix = IN6_IS_ADDR_V4MAPPED(&route->prefix);
+    bool is_ipv4_nexthop = route->nexthop
+                           ? IN6_IS_ADDR_V4MAPPED(route->nexthop)
                            : is_ipv4_prefix;
 
-    char *prefix_s = build_route_prefix_s(&route_->prefix, route_->plen);
-    add_route(lflows, route_->is_discard_route ? od : route_->out_port->od,
-              route_->out_port, route_->lrp_addr_s, prefix_s,
-              route_->plen, route_->nexthop, route_->is_src_route,
-              route_->route_table_id, bfd_ports,
-              route ? &route->header_ : &route_->out_port->nbrp->header_,
-              route_->is_discard_route, route_->source, lflow_ref,
+    char *prefix_s = build_route_prefix_s(&route->prefix, route->plen);
+    add_route(lflows, route->is_discard_route ? od : route->out_port->od,
+              route->out_port, route->lrp_addr_s, prefix_s,
+              route->plen, route->nexthop, route->is_src_route,
+              route->route_table_id, bfd_ports,
+              route->source_hint,
+              route->is_discard_route, route->source, lflow_ref,
               is_ipv4_prefix, is_ipv4_nexthop);
 
     free(prefix_s);

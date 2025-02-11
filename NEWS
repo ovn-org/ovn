@@ -62,6 +62,10 @@ Post v24.09.0
        `dynamic-routing-redistribute` on the LR or LRP. The LRP settings
        overwrite the LR settings for all routes using this interface to
        forward traffic on.
+     * Allow Logical Routers to dynamically learn routes from outside the
+       fabric. Routes entered into the "Learned_Route" table in the southbound
+       database will be learned by the respective LR. They are included in the
+       route table with a lower priority than static routes.
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------

@@ -139,3 +139,8 @@ OVN To-do List
 
 * Remove OVS database schema parsing from features.c once server side column
   types are available through IDL.
+
+* Dynamic Routing
+
+  * Add incremental processing for northd when the Learned_Route table changes.
+    Currently en_lflow is fully recomputed whenever such a change happens.

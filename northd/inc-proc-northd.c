@@ -45,6 +45,7 @@
 #include "en-ecmp-nexthop.h"
 #include "en-acl-ids.h"
 #include "en-advertised-route-sync.h"
+#include "en-learned-route-sync.h"
 #include "unixctl.h"
 #include "util.h"
 
@@ -109,7 +110,8 @@ static unixctl_cb_func chassis_features_list;
     SB_NODE(logical_dp_group, "logical_dp_group") \
     SB_NODE(ecmp_nexthop, "ecmp_nexthop") \
     SB_NODE(acl_id, "acl_id") \
-    SB_NODE(advertised_route, "advertised_route")
+    SB_NODE(advertised_route, "advertised_route") \
+    SB_NODE(learned_route, "learned_route")
 
 enum sb_engine_node {
 #define SB_NODE(NAME, NAME_STR) SB_##NAME,
@@ -172,6 +174,7 @@ static ENGINE_NODE(ecmp_nexthop, "ecmp_nexthop");
 static ENGINE_NODE(multicast_igmp, "multicast_igmp");
 static ENGINE_NODE(acl_id, "acl_id");
 static ENGINE_NODE(advertised_route_sync, "advertised_route_sync");
+static ENGINE_NODE(learned_route_sync, "learned_route_sync");
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb)
@@ -290,6 +293,11 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_advertised_route_sync, &en_sb_advertised_route,
                      NULL);
 
+    engine_add_input(&en_learned_route_sync, &en_routes, NULL);
+    engine_add_input(&en_learned_route_sync, &en_sb_learned_route, NULL);
+    engine_add_input(&en_learned_route_sync, &en_northd,
+                     learned_route_sync_northd_change_handler);
+
     engine_add_input(&en_sync_meters, &en_nb_acl, NULL);
     engine_add_input(&en_sync_meters, &en_nb_meter, NULL);
     engine_add_input(&en_sync_meters, &en_sb_meter, NULL);
@@ -307,6 +315,10 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_lflow, &en_bfd_sync, NULL);
     engine_add_input(&en_lflow, &en_route_policies, NULL);
     engine_add_input(&en_lflow, &en_routes, NULL);
+    /* XXX: This causes a full lflow recompute on each change to any route.
+     * At least for learned routes we should add incremental processing here.
+     * */
+    engine_add_input(&en_lflow, &en_learned_route_sync, NULL);
     engine_add_input(&en_lflow, &en_global_config,
                      node_global_config_handler);
 
