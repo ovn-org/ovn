@@ -18,6 +18,8 @@
 #ifndef ROUTE_EXCHANGE_H
 #define ROUTE_EXCHANGE_H 1
 
+#include "openvswitch/hmap.h"
+
 struct route_exchange_ctx_in {
     struct ovsdb_idl_txn *ovnsb_idl_txn;
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
@@ -28,6 +30,7 @@ struct route_exchange_ctx_in {
 };
 
 struct route_exchange_ctx_out {
+    struct hmap route_table_watches;
 };
 
 void route_exchange_run(const struct route_exchange_ctx_in *,

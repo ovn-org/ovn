@@ -16133,8 +16133,6 @@ check ovn-nbctl set Logical_Router_Port internet-phys \
 # Now we test route learning.
 check_row_count Learned_Route 0
 check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
-# For now we trigger a recompute as route watching is not yet implemented.
-check ovn-appctl -t ovn-controller inc-engine/recompute
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 1
 lp=$(fetch_column port_binding _uuid logical_port=internet-phys)
@@ -16142,8 +16140,6 @@ check_row_count Learned_Route 1 logical_port=$lp ip_prefix=233.252.0.0/24 nextho
 
 # If we remove the route it is also gone.
 check ip route del 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
-# For now we trigger a recompute as route watching is not yet implemented.
-check ovn-appctl -t ovn-controller inc-engine/recompute
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 0
 
@@ -16152,8 +16148,6 @@ check_row_count Learned_Route 0
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
       options:dynamic-routing-port-name=thisportdoesnotexist
 check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
-# For now we trigger a recompute as route watching is not yet implemented.
-check ovn-appctl -t ovn-controller inc-engine/recompute
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 0
 
@@ -16175,8 +16169,6 @@ check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
       options:dynamic-routing-port-name=mylearninglsp
 
 check ip route add 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink vrf ovnvrf1337
-# For now we trigger a recompute as route watching is not yet implemented.
-check ovn-appctl -t ovn-controller inc-engine/recompute
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 1 ip_prefix=233.253.0.0/24 nexthop=192.168.20.20
 
@@ -16415,8 +16407,6 @@ check ovn-nbctl set Logical_Router_Port internet-phys \
 # Now we test route learning.
 check_row_count Learned_Route 0
 check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
-# For now we trigger a recompute as route watching is not yet implemented.
-check ovn-appctl -t ovn-controller inc-engine/recompute
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 1
 lp=$(fetch_column port_binding _uuid logical_port=internet-phys)
@@ -16424,8 +16414,6 @@ check_row_count Learned_Route 1 logical_port=$lp ip_prefix=233.252.0.0/24 nextho
 
 # If we remove the route it is also gone.
 check ip route del 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
-# For now we trigger a recompute as route watching is not yet implemented.
-check ovn-appctl -t ovn-controller inc-engine/recompute
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 0
 
@@ -16434,8 +16422,6 @@ check_row_count Learned_Route 0
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
     options:dynamic-routing-port-name=thisportdoesnotexist
 check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
-# For now we trigger a recompute as route watching is not yet implemented.
-check ovn-appctl -t ovn-controller inc-engine/recompute
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 0
 
@@ -16457,8 +16443,6 @@ check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
     options:dynamic-routing-port-name=mylearninglsp
 
 check ip route add 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink vrf ovnvrf1337
-# For now we trigger a recompute as route watching is not yet implemented.
-check ovn-appctl -t ovn-controller inc-engine/recompute
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 1 ip_prefix=233.253.0.0/24 nexthop=192.168.20.20
 

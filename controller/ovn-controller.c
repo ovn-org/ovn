@@ -91,6 +91,7 @@
 #include "acl-ids.h"
 #include "route.h"
 #include "route-exchange.h"
+#include "route-table-notify.h"
 
 VLOG_DEFINE_THIS_MODULE(main);
 
@@ -5237,10 +5238,16 @@ en_route_exchange_run(struct engine_node *node, void *data)
         .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
         .announce_routes = &route_data->announce_routes,
     };
-    struct route_exchange_ctx_out r_ctx_out = {
-    };
+    struct route_exchange_ctx_out r_ctx_out = {};
+
+    hmap_init(&r_ctx_out.route_table_watches);
 
     route_exchange_run(&r_ctx_in, &r_ctx_out);
+    route_table_notify_update_watches(&r_ctx_out.route_table_watches);
+
+    route_table_watch_request_cleanup(&r_ctx_out.route_table_watches);
+    hmap_destroy(&r_ctx_out.route_table_watches);
+
     engine_set_node_state(node, EN_UPDATED);
 }
 
@@ -5257,6 +5264,39 @@ en_route_exchange_init(struct engine_node *node OVS_UNUSED,
 
 static void
 en_route_exchange_cleanup(void *data OVS_UNUSED)
+{
+}
+
+struct ed_type_route_table_notify {
+    /* For incremental processing this could be tracked per datapath in
+     * the future. */
+    bool changed;
+};
+
+static void
+en_route_table_notify_run(struct engine_node *node, void *data)
+{
+    struct ed_type_route_table_notify *rtn = data;
+    if (rtn->changed) {
+        engine_set_node_state(node, EN_UPDATED);
+    } else {
+        engine_set_node_state(node, EN_UNCHANGED);
+    }
+    rtn->changed = false;
+}
+
+
+static void *
+en_route_table_notify_init(struct engine_node *node OVS_UNUSED,
+                           struct engine_arg *arg OVS_UNUSED)
+{
+    struct ed_type_route_table_notify *rtn = xzalloc(sizeof *rtn);
+    rtn->changed = true;
+    return rtn;
+}
+
+static void
+en_route_table_notify_cleanup(void *data OVS_UNUSED)
 {
 }
 
@@ -5567,6 +5607,7 @@ main(int argc, char *argv[])
     ENGINE_NODE(acl_id, "acl_id");
     en_acl_id.is_valid = en_acl_id_is_valid;
     ENGINE_NODE(route, "route");
+    ENGINE_NODE(route_table_notify, "route_table_notify");
     ENGINE_NODE(route_exchange, "route_exchange");
 
 #define SB_NODE(NAME, NAME_STR) ENGINE_NODE_SB(NAME, NAME_STR);
@@ -5604,6 +5645,7 @@ main(int argc, char *argv[])
                      engine_noop_handler);
     engine_add_input(&en_route_exchange, &en_sb_port_binding,
                      engine_noop_handler);
+    engine_add_input(&en_route_exchange, &en_route_table_notify, NULL);
 
     engine_add_input(&en_addr_sets, &en_sb_address_set,
                      addr_sets_sb_address_set_handler);
@@ -6128,6 +6170,10 @@ main(int argc, char *argv[])
                                &transport_zones,
                                bridge_table);
 
+                    struct ed_type_route_table_notify *rtn =
+                        engine_get_internal_data(&en_route_table_notify);
+                    rtn->changed = route_table_notify_run();
+
                     stopwatch_start(CONTROLLER_LOOP_STOPWATCH_NAME,
                                     time_msec());
 
@@ -6413,6 +6459,7 @@ main(int argc, char *argv[])
             }
 
             binding_wait();
+            route_table_notify_wait();
         }
 
         unixctl_server_run(unixctl);
@@ -6567,6 +6614,7 @@ loop_done:
     ovsrcu_exit();
     dns_resolve_destroy();
     route_exchange_destroy();
+    route_table_notify_destroy();
 
     exit(retval);
 }
