@@ -108,6 +108,12 @@ jobs:
         - { arch: x86, compiler: gcc, opts: --disable-ssl }
 
     steps:
+    - name: system-level-dependencies
+      if: ${{ startsWith(matrix.cfg.testsuite, 'system-test') }}
+      run: |
+        sudo apt update
+        sudo apt -y install linux-modules-extra-$(uname -r)
+
     - name: checkout
       if: github.event_name == 'push' || github.event_name == 'pull_request'
       uses: actions/checkout@v4
