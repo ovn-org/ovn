@@ -33,6 +33,9 @@
 
 VLOG_DEFINE_THIS_MODULE(exchange);
 
+#define PRIORITY_DEFAULT 1000
+#define PRIORITY_LOCAL_BOUND 100
+
 bool
 route_exchange_relevant_port(const struct sbrec_port_binding *pb)
 {
@@ -46,11 +49,11 @@ advertise_route_hash(const struct in6_addr *dst, unsigned int plen)
     return hash_int(plen, hash);
 }
 
-static const struct sbrec_port_binding*
-find_route_exchange_pb(struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                       const struct sbrec_chassis *chassis,
-                       const struct sset *active_tunnels,
-                       const struct sbrec_port_binding *pb)
+const struct sbrec_port_binding*
+route_exchange_find_port(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                         const struct sbrec_chassis *chassis,
+                         const struct sset *active_tunnels,
+                         const struct sbrec_port_binding *pb)
 {
     if (!pb) {
         return NULL;
@@ -169,10 +172,10 @@ route_run(struct route_ctx_in *r_ctx_in,
             const struct sbrec_port_binding *local_peer
                 = ld->peer_ports[i].local;
             const struct sbrec_port_binding *repb =
-                find_route_exchange_pb(r_ctx_in->sbrec_port_binding_by_name,
-                                       r_ctx_in->chassis,
-                                       r_ctx_in->active_tunnels,
-                                       local_peer);
+                route_exchange_find_port(r_ctx_in->sbrec_port_binding_by_name,
+                                         r_ctx_in->chassis,
+                                         r_ctx_in->active_tunnels,
+                                         local_peer);
             if (!repb) {
                 continue;
             }
@@ -228,9 +231,25 @@ route_run(struct route_ctx_in *r_ctx_in,
             continue;
         }
 
-        struct advertise_route_entry *ar = xmalloc(sizeof *ar);
+        unsigned int priority = PRIORITY_DEFAULT;
+        if (route->tracked_port) {
+            if (lport_is_local(r_ctx_in->sbrec_port_binding_by_name,
+                               r_ctx_in->chassis,
+                               r_ctx_in->active_tunnels,
+                               route->tracked_port->logical_port)) {
+                priority = PRIORITY_LOCAL_BOUND;
+                sset_add(r_ctx_out->tracked_ports_local,
+                         route->tracked_port->logical_port);
+            } else {
+                sset_add(r_ctx_out->tracked_ports_remote,
+                         route->tracked_port->logical_port);
+            }
+        }
+
+        struct advertise_route_entry *ar = xmalloc(sizeof(*ar));
         ar->addr = prefix;
         ar->plen = plen;
+        ar->priority = priority;
         hmap_insert(&ad->routes, &ar->node,
                     advertise_route_hash(&prefix, plen));
     }

@@ -16082,8 +16082,8 @@ ovnvrf1337 1337
 # "ip route list" output has a trailing space on each line.
 # The awk magic removes all trailing spaces.
 OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.0/24 proto 84
-blackhole 198.51.100.0/24 proto 84])
+blackhole 192.0.2.0/24 proto 84 metric 1000
+blackhole 198.51.100.0/24 proto 84 metric 1000])
 
 # We now switch to announcing host routes and expect 192.0.2.0/24 to be gone
 # and the following to be added:
@@ -16091,15 +16091,39 @@ blackhole 198.51.100.0/24 proto 84])
 # * 192.0.2.2/32
 # * 192.0.2.3/32
 # * 192.0.2.10/32
+# The last 3 of them are local to the current chassis so we expect a better
+# prio.
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-public \
     options:dynamic-routing-redistribute="connected-as-host,static"
 
 OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84
-blackhole 192.0.2.2 proto 84
-blackhole 192.0.2.3 proto 84
-blackhole 192.0.2.10 proto 84
-blackhole 198.51.100.0/24 proto 84])
+blackhole 192.0.2.1 proto 84 metric 1000
+blackhole 192.0.2.2 proto 84 metric 100
+blackhole 192.0.2.3 proto 84 metric 100
+blackhole 192.0.2.10 proto 84 metric 100
+blackhole 198.51.100.0/24 proto 84 metric 1000])
+
+# If the pr1-public lrp is now removed from this hypervisor the route metric
+# will go back to the default.
+# For this we just schedule it on a non existing chassis.
+check ovn-nbctl lrp-del-gateway-chassis pr1-public hv1
+check ovn-nbctl --wait=hv lrp-set-gateway-chassis pr1-public hv123
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
+blackhole 192.0.2.1 proto 84 metric 1000
+blackhole 192.0.2.2 proto 84 metric 1000
+blackhole 192.0.2.3 proto 84 metric 100
+blackhole 192.0.2.10 proto 84 metric 1000
+blackhole 198.51.100.0/24 proto 84 metric 1000])
+
+# Moving pr1-public back will also change the route metrics again.
+check ovn-nbctl lrp-del-gateway-chassis pr1-public hv123
+check ovn-nbctl --wait=hv lrp-set-gateway-chassis pr1-public hv1
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
+blackhole 192.0.2.1 proto 84 metric 1000
+blackhole 192.0.2.2 proto 84 metric 100
+blackhole 192.0.2.3 proto 84 metric 100
+blackhole 192.0.2.10 proto 84 metric 100
+blackhole 198.51.100.0/24 proto 84 metric 1000])
 
 # Disable maintaining the vrf as some tests below would cause the vrfs to be
 # removed.
@@ -16340,8 +16364,8 @@ ovnvrf1337 1337
 # "ip route list" output has a trailing space on each line.
 # The awk magic removes all trailing spaces.
 OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.0/24 proto 84
-blackhole 198.51.100.0/24 proto 84])
+blackhole 192.0.2.0/24 proto 84 metric 1000
+blackhole 198.51.100.0/24 proto 84 metric 1000])
 
 # We now switch to announcing host routes and expect 192.0.2.0/24 to be gone
 # and the following to be added:
@@ -16349,15 +16373,39 @@ blackhole 198.51.100.0/24 proto 84])
 # * 192.0.2.2/32
 # * 192.0.2.3/32
 # * 192.0.2.10/32
+# The last 3 of them are local to the current chassis so we expect a better
+# prio.
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-public \
     options:dynamic-routing-redistribute="connected-as-host,static"
 
 OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84
-blackhole 192.0.2.2 proto 84
-blackhole 192.0.2.3 proto 84
-blackhole 192.0.2.10 proto 84
-blackhole 198.51.100.0/24 proto 84])
+blackhole 192.0.2.1 proto 84 metric 100
+blackhole 192.0.2.2 proto 84 metric 100
+blackhole 192.0.2.3 proto 84 metric 100
+blackhole 192.0.2.10 proto 84 metric 100
+blackhole 198.51.100.0/24 proto 84 metric 1000])
+
+# If the pr1-public lrp is now removed from this hypervisor the route metric
+# will go back to the default.
+# For this we just schedule it on a non existing chassis.
+check ovn-nbctl lrp-del-gateway-chassis pr1-public hv1
+check ovn-nbctl --wait=hv lrp-set-gateway-chassis pr1-public hv123
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
+blackhole 192.0.2.1 proto 84 metric 100
+blackhole 192.0.2.2 proto 84 metric 1000
+blackhole 192.0.2.3 proto 84 metric 100
+blackhole 192.0.2.10 proto 84 metric 1000
+blackhole 198.51.100.0/24 proto 84 metric 1000])
+
+# Moving pr1-public back will also change the route metrics again.
+check ovn-nbctl lrp-del-gateway-chassis pr1-public hv123
+check ovn-nbctl --wait=hv lrp-set-gateway-chassis pr1-public hv1
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
+blackhole 192.0.2.1 proto 84 metric 100
+blackhole 192.0.2.2 proto 84 metric 100
+blackhole 192.0.2.3 proto 84 metric 100
+blackhole 192.0.2.10 proto 84 metric 100
+blackhole 198.51.100.0/24 proto 84 metric 1000])
 
 # Disable maintaining the vrf as some tests below would cause the vrfs to be
 # removed.

@@ -98,7 +98,8 @@ re_nl_delete_vrf(const char *ifname)
 
 static int
 modify_route(uint32_t type, uint32_t flags_arg, uint32_t table_id,
-             const struct in6_addr *dst, unsigned int plen)
+             const struct in6_addr *dst, unsigned int plen,
+             unsigned int priority)
 {
     uint32_t flags = NLM_F_REQUEST | NLM_F_ACK;
     bool is_ipv4 = IN6_IS_ADDR_V4MAPPED(dst);
@@ -120,6 +121,7 @@ modify_route(uint32_t type, uint32_t flags_arg, uint32_t table_id,
     rt->rtm_dst_len = plen;
 
     nl_msg_put_u32(&request, RTA_TABLE, table_id);
+    nl_msg_put_u32(&request, RTA_PRIORITY, priority);
 
     if (is_ipv4) {
         nl_msg_put_be32(&request, RTA_DST, in6_addr_get_mapped_ipv4(dst));
@@ -157,7 +159,7 @@ modify_route(uint32_t type, uint32_t flags_arg, uint32_t table_id,
 
 int
 re_nl_add_route(uint32_t table_id, const struct in6_addr *dst,
-                unsigned int plen)
+                unsigned int plen, unsigned int priority)
 {
     if (!TABLE_ID_VALID(table_id)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 20);
@@ -168,12 +170,12 @@ re_nl_add_route(uint32_t table_id, const struct in6_addr *dst,
     }
 
     return modify_route(RTM_NEWROUTE, NLM_F_CREATE | NLM_F_EXCL, table_id,
-                        dst, plen);
+                        dst, plen, priority);
 }
 
 int
 re_nl_delete_route(uint32_t table_id, const struct in6_addr *dst,
-                   unsigned int plen)
+                   unsigned int plen, unsigned int priority)
 {
     if (!TABLE_ID_VALID(table_id)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 20);
@@ -183,7 +185,7 @@ re_nl_delete_route(uint32_t table_id, const struct in6_addr *dst,
         return EINVAL;
     }
 
-    return modify_route(RTM_DELROUTE, 0, table_id, dst, plen);
+    return modify_route(RTM_DELROUTE, 0, table_id, dst, plen, priority);
 }
 
 void
@@ -237,13 +239,14 @@ handle_route_msg(const struct route_table_msg *msg, void *data)
     uint32_t hash = advertise_route_hash(&rd->rta_dst, rd->rtm_dst_len);
     HMAP_FOR_EACH_WITH_HASH (ar, node, hash, handle_data->routes) {
         if (ipv6_addr_equals(&ar->addr, &rd->rta_dst)
-                && ar->plen == rd->rtm_dst_len) {
+                && ar->plen == rd->rtm_dst_len
+                && ar->priority == rd->rta_priority) {
             hmapx_find_and_delete(handle_data->routes_to_advertise, ar);
             return;
         }
     }
     err = re_nl_delete_route(rd->rta_table_id, &rd->rta_dst,
-                             rd->rtm_dst_len);
+                             rd->rtm_dst_len, rd->rta_priority);
     if (err) {
         char addr_s[INET6_ADDRSTRLEN + 1];
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 20);
@@ -284,7 +287,7 @@ re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
     struct hmapx_node *hn;
     HMAPX_FOR_EACH (hn, &routes_to_advertise) {
         ar = hn->data;
-        int err = re_nl_add_route(table_id, &ar->addr, ar->plen);
+        int err = re_nl_add_route(table_id, &ar->addr, ar->plen, ar->priority);
         if (err) {
             char addr_s[INET6_ADDRSTRLEN + 1];
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 20);

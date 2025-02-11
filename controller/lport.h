@@ -64,6 +64,10 @@ lport_is_chassis_resident(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                           const struct sbrec_chassis *chassis,
                           const struct sset *active_tunnels,
                           const char *port_name);
+bool lport_is_local(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                    const struct sbrec_chassis *chassis,
+                    const struct sset *active_tunnels,
+                    const char *port_name);
 const struct sbrec_port_binding *lport_get_peer(
     const struct sbrec_port_binding *,
     struct ovsdb_idl_index *sbrec_port_binding_by_name);
