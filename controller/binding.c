@@ -2230,7 +2230,9 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
         }
 
         case LP_REMOTE:
-            /* Nothing to be done for REMOTE type. */
+            /* Remote ports are related, since we can have rules in the
+             * egress pipeline matching on traffic coming from another AZ. */
+            update_related_lport(pb, b_ctx_out);
             break;
 
         case LP_UNKNOWN: {
@@ -3143,6 +3145,9 @@ handle_updated_port(struct binding_ctx_in *b_ctx_in,
     }
 
     case LP_REMOTE:
+        update_related_lport(pb, b_ctx_out);
+        break;
+
     case LP_UNKNOWN:
         break;
     }

@@ -504,17 +504,19 @@ enum ovn_stage {
     PIPELINE_STAGE(SWITCH, IN,  L2_UNKNOWN,    29, "ls_in_l2_unknown")    \
                                                                           \
     /* Logical switch egress stages. */                                   \
-    PIPELINE_STAGE(SWITCH, OUT, PRE_ACL,      0, "ls_out_pre_acl")        \
-    PIPELINE_STAGE(SWITCH, OUT, PRE_LB,       1, "ls_out_pre_lb")         \
-    PIPELINE_STAGE(SWITCH, OUT, PRE_STATEFUL, 2, "ls_out_pre_stateful")   \
-    PIPELINE_STAGE(SWITCH, OUT, ACL_HINT,     3, "ls_out_acl_hint")       \
-    PIPELINE_STAGE(SWITCH, OUT, ACL_EVAL,     4, "ls_out_acl_eval")       \
-    PIPELINE_STAGE(SWITCH, OUT, ACL_SAMPLE,   5, "ls_out_acl_sample")     \
-    PIPELINE_STAGE(SWITCH, OUT, ACL_ACTION,   6, "ls_out_acl_action")     \
-    PIPELINE_STAGE(SWITCH, OUT, QOS,          7, "ls_out_qos")       \
-    PIPELINE_STAGE(SWITCH, OUT, STATEFUL,     8, "ls_out_stateful")       \
-    PIPELINE_STAGE(SWITCH, OUT, CHECK_PORT_SEC,  9, "ls_out_check_port_sec") \
-    PIPELINE_STAGE(SWITCH, OUT, APPLY_PORT_SEC, 10, "ls_out_apply_port_sec") \
+    PIPELINE_STAGE(SWITCH, OUT, LOOKUP_FDB,      0, "ls_out_lookup_fdb")     \
+    PIPELINE_STAGE(SWITCH, OUT, PUT_FDB,         1, "ls_out_put_fdb")        \
+    PIPELINE_STAGE(SWITCH, OUT, PRE_ACL,         2, "ls_out_pre_acl")        \
+    PIPELINE_STAGE(SWITCH, OUT, PRE_LB,          3, "ls_out_pre_lb")         \
+    PIPELINE_STAGE(SWITCH, OUT, PRE_STATEFUL,    4, "ls_out_pre_stateful")   \
+    PIPELINE_STAGE(SWITCH, OUT, ACL_HINT,        5, "ls_out_acl_hint")       \
+    PIPELINE_STAGE(SWITCH, OUT, ACL_EVAL,        6, "ls_out_acl_eval")       \
+    PIPELINE_STAGE(SWITCH, OUT, ACL_SAMPLE,      7, "ls_out_acl_sample")     \
+    PIPELINE_STAGE(SWITCH, OUT, ACL_ACTION,      8, "ls_out_acl_action")     \
+    PIPELINE_STAGE(SWITCH, OUT, QOS,             9, "ls_out_qos")            \
+    PIPELINE_STAGE(SWITCH, OUT, STATEFUL,       10, "ls_out_stateful")       \
+    PIPELINE_STAGE(SWITCH, OUT, CHECK_PORT_SEC, 11, "ls_out_check_port_sec") \
+    PIPELINE_STAGE(SWITCH, OUT, APPLY_PORT_SEC, 12, "ls_out_apply_port_sec") \
                                                                       \
     /* Logical router ingress stages. */                              \
     PIPELINE_STAGE(ROUTER, IN,  ADMISSION,       0, "lr_in_admission")    \
