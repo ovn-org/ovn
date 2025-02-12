@@ -407,6 +407,8 @@
       port security is disabled and 'unknown' address setn as well as
       for localnet ports with option localnet_learn_fdb. A localnet
       port entry does not overwrite a VIF port entry.
+      Logical switch ports with type <code>switch</code> have implicit
+      'unknown' addresses and so they are also eligible for MAC learning.
     </p>
 
     <ul>
@@ -451,8 +453,9 @@
     <h3>Ingress Table 3: Learn MAC of 'unknown' ports.</h3>
 
     <p>
-      This table learns the MAC addresses seen on the VIF logical ports
-      whose port security is disabled and 'unknown' address set as well
+      This table learns the MAC addresses seen on the VIF or 'switch' logical
+      ports whose port security is disabled and 'unknown' address set (note:
+      'switch' ports have implicit 'unknown' addresses) as well
       as on localnet ports with localnet_learn_fdb option set
       if the <code>lookup_fdb</code> action returned false in the
       previous table. For localnet ports (with flags.localnet = 1),
