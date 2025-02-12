@@ -7915,19 +7915,22 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([spine-leaf: 1 HV, 2 LSs, connected via spine switch])
+AT_SETUP([spine-leaf: 1 HV, 3 LSs, connected via spine switch])
 AT_KEYWORDS([spine leaf])
 AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 
 # Logical network:
-# Single network 191.168.1.0/24.  Two switches with VIF ports, connected
-# to a spine logical switch via 'switch' ports.
+# Single network 191.168.1.0/24.  Three switches with VIF ports, connected
+# to a spine logical switch via 'switch' ports.  Third switch has a port
+# with unknown address, but we're only sending packets between ports on other
+# two switches.
 
 check ovn-nbctl ls-add spine
 
 check ovn-nbctl ls-add ls1
 check ovn-nbctl ls-add ls2
+check ovn-nbctl ls-add ls3
 
 # Connect ls1 to spine.
 check ovn-nbctl lsp-add spine spine-to-ls1
@@ -7940,6 +7943,12 @@ check ovn-nbctl lsp-add spine spine-to-ls2
 check ovn-nbctl lsp-add ls2 ls2-to-spine
 check ovn-nbctl lsp-set-type spine-to-ls2 switch peer=ls2-to-spine
 check ovn-nbctl lsp-set-type ls2-to-spine switch peer=spine-to-ls2
+
+# Connect ls3 to spine.
+check ovn-nbctl lsp-add spine spine-to-ls3
+check ovn-nbctl lsp-add ls3 ls3-to-spine
+check ovn-nbctl lsp-set-type spine-to-ls3 switch peer=ls3-to-spine
+check ovn-nbctl lsp-set-type ls3-to-spine switch peer=spine-to-ls3
 
 # Create logical port ls1-lp1 in ls1
 check ovn-nbctl lsp-add ls1 ls1-lp1 \
@@ -7954,6 +7963,9 @@ check ovn-nbctl lsp-add ls2 ls2-lp1 \
 # Create logical port ls2-lp2 in ls2
 check ovn-nbctl lsp-add ls2 ls2-lp2 \
 -- lsp-set-addresses ls2-lp2 "f0:00:00:01:02:04 172.16.1.4"
+
+# Create logical port ls3-lp1 in ls3 with unknown address.
+check ovn-nbctl lsp-add ls3 ls3-lp1 -- lsp-set-addresses ls3-lp1 unknown
 
 # Create one hypervisor and create OVS ports corresponding to logical ports.
 net_add n1
@@ -7984,6 +7996,12 @@ ovs-vsctl -- add-port br-int vif4 -- \
     options:rxq_pcap=hv1/vif4-rx.pcap \
     ofport-request=4
 
+ovs-vsctl -- add-port br-int vif5 -- \
+    set interface vif5 external-ids:iface-id=ls3-lp1 \
+    options:tx_pcap=hv1/vif5-tx.pcap \
+    options:rxq_pcap=hv1/vif5-rx.pcap \
+    ofport-request=5
+
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
@@ -7998,14 +8016,29 @@ dst_ip=172.16.1.3
 packet=$(fmt_pkt "Ether(dst='${dst_mac}', src='${src_mac}')/ \
                   IP(src='${src_ip}', dst='${dst_ip}')/ \
                   UDP(sport=1538, dport=4369)")
+
+# Check that datapath is not doing any extra work.  Since FDB is not updated
+# yet, we expect the packet to be sent to userspace three times: one while
+# entering the spine switch, then it gets broadcasted to two other leaf
+# switches and sent to userspace from there.  We also expect a clone of the
+# packet to end up in vif5 due to aforementioned broadcast.  Need to sort the
+# output, since the order of ports may change.
+AT_CHECK([as hv1 ovs-appctl ofproto/trace --names br-int in_port=vif1 $packet \
+            | tail -2 | grep -oE 'Megaflow.*|userspace|vif[[0-9]]' | sort], [0], [dnl
+Megaflow: recirc_id=0,eth,ip,in_port=vif1,dl_src=f0:00:00:01:02:01,dl_dst=f0:00:00:01:02:03,nw_frag=no
+userspace
+userspace
+userspace
+vif3
+vif5
+])
+
+# Actually send the packet.
 check as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
 
-# Check that datapath is not doing any extra work.
-AT_CHECK([as hv1 ovs-appctl ofproto/trace --names \
-                br-int in_port=vif1 $packet | tail -2], [0], [dnl
-Megaflow: recirc_id=0,eth,ip,in_port=vif1,dl_src=f0:00:00:01:02:01,dl_dst=f0:00:00:01:02:03,nw_frag=no
-Datapath actions: vif3
-])
+# Wait for the FDB entries to be created and propagated to OpenFlow.
+wait_row_count FDB 3
+check ovn-nbctl --wait=hv sync
 
 # No modifications expected.
 AT_CHECK([echo $packet > expected])
@@ -8013,28 +8046,88 @@ AT_CHECK([echo $packet > expected])
 AT_CHECK([touch empty])
 
 # Check that it is delivered where needed and not delivered where not.
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [empty])
 OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [empty])
 OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected])
 OVN_CHECK_PACKETS([hv1/vif4-tx.pcap], [empty])
+OVN_CHECK_PACKETS([hv1/vif5-tx.pcap], [expected])
+
+# Trace a reply packet.
+reply=$(fmt_pkt "Ether(dst='${src_mac}', src='${dst_mac}')/ \
+                 IP(src='${dst_ip}', dst='${src_ip}')/ \
+                 UDP(sport=4369, dport=1538)")
+# For the reply packet we expect only two userspace actions for FDB update,
+# because we already learned that MAC of vif1 is behind spine-ls1 and no
+# longer need to broadcast to ls3/vif5.
+AT_CHECK([as hv1 ovs-appctl ofproto/trace --names \
+            br-int in_port=vif3 $reply | tail -2 \
+            | grep -oE 'Megaflow.*|userspace|vif[[0-9]]'], [0], [dnl
+Megaflow: recirc_id=0,eth,ip,in_port=vif3,dl_src=f0:00:00:01:02:03,dl_dst=f0:00:00:01:02:01,nw_frag=no
+userspace
+userspace
+vif1
+])
+# Now actually send it.
+check as hv1 ovs-appctl netdev-dummy/receive vif3 $reply
+
+AT_CHECK([echo $reply > reply])
+# Check that it is delivered where needed and not delivered where not.
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [reply])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [empty])
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected])
+OVN_CHECK_PACKETS([hv1/vif4-tx.pcap], [empty])
+OVN_CHECK_PACKETS([hv1/vif5-tx.pcap], [expected])
+
+# Wait for the FDB entries to be created and propagated to OpenFlow.
+wait_row_count FDB 5
+check ovn-nbctl --wait=hv sync
+
+# Packets should flow directly to the destination now in both directions.
+AT_CHECK([as hv1 ovs-appctl ofproto/trace --names \
+            br-int in_port=vif1 $packet | tail -2], [0], [dnl
+Megaflow: recirc_id=0,eth,ip,in_port=vif1,dl_src=f0:00:00:01:02:01,dl_dst=f0:00:00:01:02:03,nw_frag=no
+Datapath actions: vif3
+])
+AT_CHECK([as hv1 ovs-appctl ofproto/trace --names \
+            br-int in_port=vif3 $reply | tail -2], [0], [dnl
+Megaflow: recirc_id=0,eth,ip,in_port=vif3,dl_src=f0:00:00:01:02:03,dl_dst=f0:00:00:01:02:01,nw_frag=no
+Datapath actions: vif1
+])
+
+# Send and check one more time.
+check as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
+check as hv1 ovs-appctl netdev-dummy/receive vif3 $reply
+
+AT_CHECK([cp expected expected-vif5])
+AT_CHECK([echo $packet >> expected])
+AT_CHECK([echo $reply >> reply])
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [reply])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [empty])
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [expected])
+OVN_CHECK_PACKETS([hv1/vif4-tx.pcap], [empty])
+OVN_CHECK_PACKETS([hv1/vif5-tx.pcap], [expected-vif5])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([spine-leaf: 2 HVs, 2 LSs, connected via distributed spine switch])
+AT_SETUP([spine-leaf: 3 HVs, 3 LSs, connected via distributed spine switch])
 AT_KEYWORDS([spine leaf])
 AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 
 # Logical network:
-# Single network 172.16.1.0/24.  Two switches with VIF ports on two HVs,
+# Single network 172.16.1.0/24.  Three switches with VIF ports on three HVs,
 # connected to a spine distributed logical switch via 'switch' ports.
+# Third switch has a port with unknown address, but we're only sending packets
+# between ports on other two switches.
 
 check ovn-nbctl ls-add spine
 
 check ovn-nbctl ls-add ls1
 check ovn-nbctl ls-add ls2
+check ovn-nbctl ls-add ls3
 
 # Connect ls1 to spine.
 check ovn-nbctl lsp-add spine spine-to-ls1
@@ -8047,6 +8140,12 @@ check ovn-nbctl lsp-add spine spine-to-ls2
 check ovn-nbctl lsp-add ls2 ls2-to-spine
 check ovn-nbctl lsp-set-type spine-to-ls2 switch peer=ls2-to-spine
 check ovn-nbctl lsp-set-type ls2-to-spine switch peer=spine-to-ls2
+
+# Connect ls3 to spine.
+check ovn-nbctl lsp-add spine spine-to-ls3
+check ovn-nbctl lsp-add ls3 ls3-to-spine
+check ovn-nbctl lsp-set-type spine-to-ls3 switch peer=ls3-to-spine
+check ovn-nbctl lsp-set-type ls3-to-spine switch peer=spine-to-ls3
 
 # Create logical port ls1-lp1 in ls1
 check ovn-nbctl lsp-add ls1 ls1-lp1 \
@@ -8061,6 +8160,9 @@ check ovn-nbctl lsp-add ls2 ls2-lp1 \
 # Create logical port ls2-lp2 in ls2
 check ovn-nbctl lsp-add ls2 ls2-lp2 \
 -- lsp-set-addresses ls2-lp2 "f0:00:00:01:02:04 172.16.1.4"
+
+# Create logical port ls3-lp1 in ls3 with unknown address.
+check ovn-nbctl lsp-add ls3 ls3-lp1 -- lsp-set-addresses ls3-lp1 unknown
 
 # Create hypervisors and OVS ports corresponding to logical ports.
 net_add n1
@@ -8095,6 +8197,16 @@ ovs-vsctl -- add-port br-int vif4 -- \
     options:rxq_pcap=hv2/vif4-rx.pcap \
     ofport-request=4
 
+sim_add hv3
+as hv3
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.3
+ovs-vsctl -- add-port br-int vif5 -- \
+    set interface vif5 external-ids:iface-id=ls3-lp1 \
+    options:tx_pcap=hv3/vif5-tx.pcap \
+    options:rxq_pcap=hv3/vif5-rx.pcap \
+    ofport-request=5
+
 OVN_POPULATE_ARP
 
 wait_for_ports_up
@@ -8111,26 +8223,54 @@ dst_ip=172.16.1.3
 packet=$(fmt_pkt "Ether(dst='${dst_mac}', src='${src_mac}')/ \
                   IP(src='${src_ip}', dst='${dst_ip}')/ \
                   UDP(sport=1538, dport=4369)")
-check as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
 
 # Check that datapath is not doing any extra work and sends the packet out
-# through the tunnel.
+# through the tunnels.  We expect the packet to enter the spine switch, be
+# sent to userspace for FDB learning, then get broadcasted to other two
+# switches.  In which of those it will be sent to userspace for FDB learning
+# as well and then sent out through the appropriate tunnel to the destination.
+# It's sent to vif3, because it is a destination and it's also sent to vif5
+# due to aforementioned broadcast and the unknown address on vif5.
 AT_CHECK([as hv1 ovs-appctl ofproto/trace --names \
                 br-int in_port=vif1 $packet > ofproto-trace-1])
 AT_CAPTURE_FILE([ofproto-trace-1])
 AT_CHECK([grep 'Megaflow:' ofproto-trace-1], [0], [dnl
 Megaflow: recirc_id=0,eth,ip,in_port=vif1,dl_src=f0:00:00:01:02:01,dl_dst=f0:00:00:01:02:03,nw_ecn=0,nw_frag=no
 ])
-AT_CHECK([grep -q \
-  'Datapath actions: tnl_push(tnl_port(genev_sys_6081).*out_port(br-phys))' \
-  ofproto-trace-1])
+AT_CHECK([cat ofproto-trace-1 | tail -1 \
+            | grep -oE 'tnl_push|userspace|clone|br-phys_n1|vif[[0-9]]'], [0], [dnl
+userspace
+userspace
+clone
+tnl_push
+br-phys_n1
+userspace
+tnl_push
+br-phys_n1
+])
 
-# It's a little problematic to trace the other side, but we can check
-# datapath actions.
+# Actually send the packet.
+check as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
+
+# Wait for the FDB entries to be created and propagated to OpenFlow.
+wait_row_count FDB 3
+check ovn-nbctl --wait=hv sync
+
+# It's a little problematic to trace the other side, but we can check datapath
+# actions.  Note: 'actions:br-phys' is a stray tunnel packet destined for the
+# other node, but OVS from the 'main' namespace didn't learn addresses yet,
+# so it broadcasts.
 AT_CHECK([as hv2 ovs-appctl dpctl/dump-flows --names \
             | grep actions | sed 's/.*\(actions:.*\)/\1/' | sort], [0], [dnl
+actions:br-phys
 actions:tnl_pop(genev_sys_6081)
 actions:vif3
+])
+AT_CHECK([as hv3 ovs-appctl dpctl/dump-flows --names \
+            | grep actions | sed 's/.*\(actions:.*\)/\1/' | sort], [0], [dnl
+actions:br-phys
+actions:tnl_pop(genev_sys_6081)
+actions:vif5
 ])
 
 # No modifications expected.
@@ -8139,11 +8279,79 @@ AT_CHECK([echo $packet > expected])
 AT_CHECK([touch empty])
 
 # Check that it is delivered where needed and not delivered where not.
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [empty])
 OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [empty])
 OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected])
 OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [empty])
+OVN_CHECK_PACKETS([hv3/vif5-tx.pcap], [expected])
 
-OVN_CLEANUP([hv1], [hv2])
+# Trace a reply packet.
+reply=$(fmt_pkt "Ether(dst='${src_mac}', src='${dst_mac}')/ \
+                 IP(src='${dst_ip}', dst='${src_ip}')/ \
+                 UDP(sport=4369, dport=1538)")
+# For the reply packet we expect only two userspace actions for FDB update
+# and only one tunnel push and send, because we already learned that MAC of
+# vif1 is behind spine-ls1 and no longer need to broadcast to ls3/vif5.
+AT_CHECK([as hv2 ovs-appctl ofproto/trace --names \
+                br-int in_port=vif3 $reply > ofproto-trace-2])
+AT_CAPTURE_FILE([ofproto-trace-2])
+AT_CHECK([grep 'Megaflow:' ofproto-trace-2], [0], [dnl
+Megaflow: recirc_id=0,eth,ip,in_port=vif3,dl_src=f0:00:00:01:02:03,dl_dst=f0:00:00:01:02:01,nw_ecn=0,nw_frag=no
+])
+AT_CHECK([cat ofproto-trace-2 | tail -1 \
+            | grep -oE 'tnl_push|userspace|clone|br-phys_n1|vif[[0-9]]'], [0], [dnl
+userspace
+userspace
+tnl_push
+br-phys_n1
+])
+
+# Now actually send it.
+check as hv2 ovs-appctl netdev-dummy/receive vif3 $reply
+
+AT_CHECK([echo $reply > reply])
+# Check that it is delivered where needed and not delivered where not.
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [reply])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [empty])
+OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected])
+OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [empty])
+OVN_CHECK_PACKETS([hv3/vif5-tx.pcap], [expected])
+
+# Wait for the FDB entries to be created and propagated to OpenFlow.
+wait_row_count FDB 5
+check ovn-nbctl --wait=hv sync
+
+# Packets should flow directly to the destination (via tunnels) in both
+# directions now.
+AT_CHECK([as hv1 ovs-appctl ofproto/trace --names \
+            br-int in_port=vif1 $packet | tail -2 \
+            | grep -oE 'Megaflow.*|tnl_push|userspace|clone|br-phys_n1|vif[[0-9]]'], [0], [dnl
+Megaflow: recirc_id=0,eth,ip,in_port=vif1,dl_src=f0:00:00:01:02:01,dl_dst=f0:00:00:01:02:03,nw_ecn=0,nw_frag=no
+tnl_push
+br-phys_n1
+])
+AT_CHECK([as hv2 ovs-appctl ofproto/trace --names \
+            br-int in_port=vif3 $reply | tail -2 \
+            | grep -oE 'Megaflow.*|tnl_push|userspace|clone|br-phys_n1|vif[[0-9]]'], [0], [dnl
+Megaflow: recirc_id=0,eth,ip,in_port=vif3,dl_src=f0:00:00:01:02:03,dl_dst=f0:00:00:01:02:01,nw_ecn=0,nw_frag=no
+tnl_push
+br-phys_n1
+])
+
+# Send and check one more time.
+check as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
+check as hv2 ovs-appctl netdev-dummy/receive vif3 $reply
+
+AT_CHECK([cp expected expected-vif5])
+AT_CHECK([echo $packet >> expected])
+AT_CHECK([echo $reply >> reply])
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [reply])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [empty])
+OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected])
+OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [empty])
+OVN_CHECK_PACKETS([hv3/vif5-tx.pcap], [expected-vif5])
+
+OVN_CLEANUP([hv1], [hv2], [hv3])
 AT_CLEANUP
 ])
 

@@ -7448,6 +7448,12 @@ AT_CHECK([grep -E "ls_in_l2_lkup.*S1-|unknown" S1flows | ovn_strip_lflows], [0],
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(outport = "_MC_unknown"; output;)
 ])
 
+dnl Check that FDB learning is enabled for the switch port.
+AT_CHECK([grep -E "ls_.*fdb.*S1-" S1flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_lookup_fdb   ), priority=100  , match=(inport == "S1-S2"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=??(ls_in_put_fdb      ), priority=100  , match=(inport == "S1-S2" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+])
+
 ovn-sbctl dump-flows S2 > S2flows
 AT_CAPTURE_FILE([S2flows])
 
@@ -7457,6 +7463,12 @@ AT_CHECK([grep -E "ls_in_l2_lkup.*S2-|unknown" S2flows | ovn_strip_lflows], [0],
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 50:54:00:00:00:02), action=(outport = "S2-vm"; output;)
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(outport = "_MC_unknown"; output;)
+])
+
+dnl Check that FDB learning is enabled for the switch port.
+AT_CHECK([grep -E "ls_.*fdb.*S2-" S2flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_lookup_fdb   ), priority=100  , match=(inport == "S2-S1"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=??(ls_in_put_fdb      ), priority=100  , match=(inport == "S2-S1" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
 ])
 
 dnl Add an explicit address to S1-S2 indicating that the port with
@@ -7472,6 +7484,12 @@ AT_CHECK([grep -E "ls_in_l2_lkup.*S1-|unknown" S1flows2 | ovn_strip_lflows], [0]
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 50:54:00:00:00:02), action=(outport = "S1-S2"; output;)
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(outport = "_MC_unknown"; output;)
+])
+
+dnl Check that FDB learning is still enabled for the switch port.
+AT_CHECK([grep -E "ls_.*fdb.*S1-" S1flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_lookup_fdb   ), priority=100  , match=(inport == "S1-S2"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=??(ls_in_put_fdb      ), priority=100  , match=(inport == "S1-S2" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
 ])
 
 AT_CLEANUP
