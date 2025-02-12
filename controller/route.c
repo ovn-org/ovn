@@ -92,7 +92,6 @@ build_port_mapping(struct smap *mapping, const char *port_mapping)
           static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
           VLOG_WARN_RL(&rl, "dynamic-routing-port-mapping setting '%s' is "
                             "not valid.", tokstr);
-          free(orig);
           break;
         }
         smap_add(mapping, key, value);
