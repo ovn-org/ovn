@@ -13767,6 +13767,9 @@ build_route_flows_for_lrouter(
     struct parsed_route *route;
     HMAP_FOR_EACH_WITH_HASH (route, key_node, uuid_hash(&od->key),
                              parsed_routes) {
+        if (od != route->od) {
+            continue;
+        }
         if (route->source == ROUTE_SOURCE_CONNECTED) {
             unique_routes_add(&unique_routes, route);
             continue;
