@@ -2779,6 +2779,26 @@ ovn_as az3
 check ovn-nbctl --wait=hv sync
 ovn-sbctl dump-flows > az3/sbflows
 
+dnl Check that FDB learning is enabled for remote ports in the egress pipeline.
+AT_CHECK([grep -E "ls_out.*fdb.*spine-to-" az1/sbflows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_out_lookup_fdb  ), priority=100  , match=(inport == "spine-to-ls2"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=??(ls_out_lookup_fdb  ), priority=100  , match=(inport == "spine-to-ls3"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=??(ls_out_put_fdb     ), priority=100  , match=(inport == "spine-to-ls2" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+  table=??(ls_out_put_fdb     ), priority=100  , match=(inport == "spine-to-ls3" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+])
+AT_CHECK([grep -E "ls_out.*fdb.*spine-to-" az2/sbflows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_out_lookup_fdb  ), priority=100  , match=(inport == "spine-to-ls1"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=??(ls_out_lookup_fdb  ), priority=100  , match=(inport == "spine-to-ls3"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=??(ls_out_put_fdb     ), priority=100  , match=(inport == "spine-to-ls1" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+  table=??(ls_out_put_fdb     ), priority=100  , match=(inport == "spine-to-ls3" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+])
+AT_CHECK([grep -E "ls_out.*fdb.*spine-to-" az3/sbflows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_out_lookup_fdb  ), priority=100  , match=(inport == "spine-to-ls1"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=??(ls_out_lookup_fdb  ), priority=100  , match=(inport == "spine-to-ls2"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=??(ls_out_put_fdb     ), priority=100  , match=(inport == "spine-to-ls1" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+  table=??(ls_out_put_fdb     ), priority=100  , match=(inport == "spine-to-ls2" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+])
+
 check ovn-ic-nbctl --wait=sb sync
 
 ovn-ic-nbctl show > ic-nbctl.dump
@@ -2836,15 +2856,13 @@ ovn_as az1
 wait_row_count FDB 1
 check ovn-nbctl --wait=hv sync
 
-# Only one entry is expected in the other zones as well - the entry for
-# the ls[23]-to-spine port in ls[23] switches.  Technically, we also need
-# an entry for a remote spine-to-ls1 port, but learning from remote ports
-# is not implemented yet.
+# Two entries are expected in the other zones - one for the remote port on
+# the spine switch and one for the switch port on the leaf.
 ovn_as az2
-wait_row_count FDB 1
+wait_row_count FDB 2
 check ovn-nbctl --wait=hv sync
 ovn_as az3
-wait_row_count FDB 1
+wait_row_count FDB 2
 check ovn-nbctl --wait=hv sync
 
 # FDB entry was created from the userspace() action in the datapath, but
@@ -2887,9 +2905,10 @@ OVN_CHECK_PACKETS([hv3/vif5-tx.pcap], [expected])
 reply=$(fmt_pkt "Ether(dst='${src_mac}', src='${dst_mac}')/ \
                  IP(src='${dst_ip}', dst='${src_ip}')/ \
                  UDP(sport=4369, dport=1538)")
-# Reply packet is still learned and broadcasted in the spine switch, because
-# learning from remote ports is not implemented, so we don't know where the
-# vif1 is located, even though we received some traffic from it.
+# For the reply packet we expect only one userspace action for FDB update on
+# the spine switch and only one tunnel push and send, because we already
+# learned that MAC of vif1 is behind spine-ls1 and no longer need to broadcast
+# to zone 3.
 AT_CHECK([ovn_as az2 as hv2 ovs-appctl ofproto/trace --names \
                 br-int in_port=vif3 $reply > ofproto-trace-2])
 AT_CAPTURE_FILE([ofproto-trace-2])
@@ -2899,9 +2918,6 @@ Megaflow: recirc_id=0,eth,ip,in_port=vif3,dl_src=f0:00:00:01:02:03,dl_dst=f0:00:
 AT_CHECK([cat ofproto-trace-2 | tail -1 \
             | grep -oE 'tnl_push|userspace|clone|br-phys_n1|vif[[0-9]]'], [0], [dnl
 userspace
-clone
-tnl_push
-br-phys_n1
 tnl_push
 br-phys_n1
 ])
@@ -2909,23 +2925,56 @@ br-phys_n1
 # Now actually send it.
 check as hv2 ovs-appctl netdev-dummy/receive vif3 $reply
 
-# Zones 1 and 2 should have 2 FDB entries now each.  One per side of a
-# switch-switch port connecting ls[12] with the spine.  Zone 3 only has two
-# entries on ls3 for traffic broadcasted in the spine from both vif1 and vif3.
-ovn_as az1 wait_row_count FDB 2
-ovn_as az2 wait_row_count FDB 2
-ovn_as az3 wait_row_count FDB 2
-
 AT_CHECK([echo $reply > reply])
 # Check that it is delivered where needed and not delivered where not.
-# While the traffic is broadcasted within the spine and arrives in zone 3, the
-# packets must be dropped, because ls3 learned that their destination addresses
-# are behind the spine switch, so no new packets should be seen on vif5.
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [reply])
 OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [empty])
 OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected])
 OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [empty])
 OVN_CHECK_PACKETS([hv3/vif5-tx.pcap], [expected])
+
+# Zones 1 and 2 should have 2 FDB entries now each.  One for a remote port and
+# one per side of a switch-switch port connecting ls[12] with the spine.  Zone
+# 3 still only has two entries created for the original request from vif1.
+ovn_as az1
+wait_row_count FDB 3
+check ovn-nbctl --wait=hv sync
+ovn_as az2
+wait_row_count FDB 3
+check ovn-nbctl --wait=hv sync
+ovn_as az3
+wait_row_count FDB 2
+check ovn-nbctl --wait=hv sync
+
+# Packets should flow directly to the destination (via tunnels) in both
+# directions now.
+AT_CHECK([as hv1 ovs-appctl ofproto/trace --names \
+            br-int in_port=vif1 $packet | tail -2 \
+            | grep -oE 'Megaflow.*|tnl_push|userspace|clone|br-phys_n1|vif[[0-9]]'], [0], [dnl
+Megaflow: recirc_id=0,eth,ip,in_port=vif1,dl_src=f0:00:00:01:02:01,dl_dst=f0:00:00:01:02:03,nw_ecn=0,nw_frag=no
+tnl_push
+br-phys_n1
+])
+AT_CHECK([as hv2 ovs-appctl ofproto/trace --names \
+            br-int in_port=vif3 $reply | tail -2 \
+            | grep -oE 'Megaflow.*|tnl_push|userspace|clone|br-phys_n1|vif[[0-9]]'], [0], [dnl
+Megaflow: recirc_id=0,eth,ip,in_port=vif3,dl_src=f0:00:00:01:02:03,dl_dst=f0:00:00:01:02:01,nw_ecn=0,nw_frag=no
+tnl_push
+br-phys_n1
+])
+
+# Send and check one more time.
+check as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
+check as hv2 ovs-appctl netdev-dummy/receive vif3 $reply
+
+AT_CHECK([cp expected expected-vif5])
+AT_CHECK([echo $packet >> expected])
+AT_CHECK([echo $reply >> reply])
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [reply])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [empty])
+OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected])
+OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [empty])
+OVN_CHECK_PACKETS([hv3/vif5-tx.pcap], [expected-vif5])
 
 OVN_CLEANUP_IC([az1], [az2], [az3])
 AT_CLEANUP

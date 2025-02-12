@@ -5751,7 +5751,9 @@ build_lswitch_learn_fdb_op(
         return;
     }
 
-    if (!strcmp(op->nbsp->type, "") || lsp_is_switch(op->nbsp)
+    bool remote = lsp_is_remote(op->nbsp);
+
+    if (remote || !strcmp(op->nbsp->type, "") || lsp_is_switch(op->nbsp)
         || (lsp_is_localnet(op->nbsp) && localnet_can_learn_mac(op->nbsp))) {
         ds_clear(match);
         ds_clear(actions);
@@ -5762,7 +5764,9 @@ build_lswitch_learn_fdb_op(
         ds_put_format(actions, REGBIT_LKUP_FDB
                       " = lookup_fdb(inport, eth.src); next;");
         ovn_lflow_add_with_lport_and_hint(lflows, op->od,
-                                          S_SWITCH_IN_LOOKUP_FDB, 100,
+                                          remote ? S_SWITCH_OUT_LOOKUP_FDB
+                                                 : S_SWITCH_IN_LOOKUP_FDB,
+                                          100,
                                           ds_cstr(match), ds_cstr(actions),
                                           op->key, &op->nbsp->header_,
                                           op->lflow_ref);
@@ -5770,7 +5774,9 @@ build_lswitch_learn_fdb_op(
         ds_put_cstr(match, " && "REGBIT_LKUP_FDB" == 0");
         ds_clear(actions);
         ds_put_cstr(actions, "put_fdb(inport, eth.src); next;");
-        ovn_lflow_add_with_lport_and_hint(lflows, op->od, S_SWITCH_IN_PUT_FDB,
+        ovn_lflow_add_with_lport_and_hint(lflows, op->od,
+                                          remote ? S_SWITCH_OUT_PUT_FDB
+                                                 : S_SWITCH_IN_PUT_FDB,
                                           100, ds_cstr(match),
                                           ds_cstr(actions), op->key,
                                           &op->nbsp->header_,
@@ -5790,6 +5796,11 @@ build_lswitch_learn_fdb_od(
                   lflow_ref);
     ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 0, "1",
                   "outport = get_fdb(eth.dst); next;", lflow_ref);
+
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_LOOKUP_FDB, 0, "1", "next;",
+                  lflow_ref);
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_PUT_FDB, 0, "1", "next;",
+                  lflow_ref);
 }
 
 /* Egress tables 8: Egress port security - IP (priority 0)

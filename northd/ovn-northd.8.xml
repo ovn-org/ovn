@@ -2280,7 +2280,25 @@ output;
       </li>
     </ul>
 
-    <h3>Egress Table 0: <code>to-lport</code> Pre-ACLs</h3>
+    <h3>Egress Table 0: Lookup MAC address learning table</h3>
+    <p>
+      This is similar to ingress table <code>Lookup MAC address learning table
+      </code> with the difference that MAC address learning lookup is only
+      happening for ports with type <code>remote</code> whose port security is
+      disabled and 'unknown' address set.  This stage facilitates MAC learning
+      on a transit switch connecting multiple availability zones.
+    </p>
+
+    <h3>Egress Table 1: Learn MAC of 'unknown' ports.</h3>
+    <p>
+      This is similar to ingress table <code>Learn MAC of 'unknown' ports
+      </code> with the difference that MAC address learning is only happening
+      for ports with type <code>remote</code> whose port security is disabled
+      and 'unknown' address set.  This stage facilitates MAC learning on a
+      transit switch connecting multiple availability zones.
+    </p>
+
+    <h3>Egress Table 2: <code>to-lport</code> Pre-ACLs</h3>
 
     <p>
       This is similar to ingress table <code>Pre-ACLs</code> except for
@@ -2307,7 +2325,7 @@ output;
     </p>
 
 
-    <h3>Egress Table 1: Pre-LB</h3>
+    <h3>Egress Table 3: Pre-LB</h3>
 
     <p>
       This table is similar to ingress table <code>Pre-LB</code>.  It
@@ -2342,7 +2360,7 @@ output;
       logical router datapath from logical switch datapath for routing.
     </p>
 
-    <h3>Egress Table 2: Pre-stateful</h3>
+    <h3>Egress Table 4: Pre-stateful</h3>
 
     <p>
       This is similar to ingress table <code>Pre-stateful</code>.  This table
@@ -2372,12 +2390,12 @@ output;
       </li>
     </ul>
 
-    <h3>Egress Table 3: <code>from-lport</code> ACL hints</h3>
+    <h3>Egress Table 5: <code>from-lport</code> ACL hints</h3>
     <p>
       This is similar to ingress table <code>ACL hints</code>.
     </p>
 
-    <h3>Egress Table 4: <code>to-lport</code> ACL evaluation</h3>
+    <h3>Egress Table 6: <code>to-lport</code> ACL evaluation</h3>
 
     <p>
       This is similar to ingress table <code>ACL eval</code> except for
@@ -2435,31 +2453,31 @@ output;
       </li>
     </ul>
 
-    <h3>Egress Table 5: <code>to-lport</code> ACL sampling</h3>
+    <h3>Egress Table 7: <code>to-lport</code> ACL sampling</h3>
     <p>
       This is similar to ingress table <code>ACL sampling</code>.
     </p>
 
-    <h3>Egress Table 6: <code>to-lport</code> ACL action</h3>
+    <h3>Egress Table 8: <code>to-lport</code> ACL action</h3>
     <p>
       This is similar to ingress table <code>ACL action</code>.
     </p>
 
-    <h3>Egress Table 7: <code>to-lport</code> QoS</h3>
+    <h3>Egress Table 9: <code>to-lport</code> QoS</h3>
 
     <p>
       This is similar to ingress table <code>QoS</code> except
       they apply to <code>to-lport</code> QoS rules.
     </p>
 
-    <h3>Egress Table 8: Stateful</h3>
+    <h3>Egress Table 10: Stateful</h3>
 
     <p>
       This is similar to ingress table <code>Stateful</code> except that
       there are no rules added for load balancing new connections.
     </p>
 
-    <h3>Egress Table 9: Egress Port Security - check</h3>
+    <h3>Egress Table 11: Egress Port Security - check</h3>
 
     <p>
       This is similar to the port security logic in table
@@ -2488,7 +2506,7 @@ output;
       </li>
     </ul>
 
-    <h3>Egress Table 10: Egress Port Security - Apply</h3>
+    <h3>Egress Table 12: Egress Port Security - Apply</h3>
 
     <p>
       This is similar to the ingress port security logic in ingress table
