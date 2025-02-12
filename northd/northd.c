@@ -11391,7 +11391,8 @@ ecmp_groups_find(struct hmap *ecmp_groups, struct parsed_route *route)
         if (ipv6_addr_equals(&eg->prefix, &route->prefix) &&
             eg->plen == route->plen &&
             eg->is_src_route == route->is_src_route &&
-            eg->route_table_id == route->route_table_id) {
+            eg->route_table_id == route->route_table_id &&
+            eg->source == route->source) {
             return eg;
         }
     }

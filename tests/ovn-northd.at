@@ -15215,6 +15215,137 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - route learning ecmp])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# We start with announcing routes on a lr with 2 lrps and 2 ecmp static routes.
+check ovn-nbctl lr-add lr0
+check ovn-nbctl --wait=sb set Logical_Router lr0 option:dynamic-routing=true \
+    option:dynamic-routing-redistribute="connected,static"
+check ovn-nbctl --wait=sb lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+sw0=$(fetch_column port_binding _uuid logical_port=lr0-sw0)
+check ovn-nbctl --wait=sb lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 10.0.1.1/24
+sw1=$(fetch_column port_binding _uuid logical_port=lr0-sw1)
+check ovn-nbctl --wait=sb --ecmp lr-route-add lr0 192.168.0.0/24 10.0.0.10
+check ovn-nbctl --wait=sb --ecmp lr-route-add lr0 192.168.0.0/24 10.0.1.10
+check_row_count Advertised_Route 4
+datapath=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
+
+# Validate the routes.
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep -w "lr_in_ip_routing" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=10550, match=(nd_rs || nd_ra), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=196  , match=(reg7 == 0 && ip4.dst == 192.168.0.0/24), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
+  table=??(lr_in_ip_routing   ), priority=198  , match=(ip4.dst == 10.0.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 10.0.0.1; eth.src = 00:00:00:00:ff:01; outport = "lr0-sw0"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=198  , match=(ip4.dst == 10.0.1.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 10.0.1.1; eth.src = 00:00:00:00:ff:02; outport = "lr0-sw1"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=518  , match=(inport == "lr0-sw0" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::200:ff:fe00:ff01; eth.src = 00:00:00:00:ff:01; outport = "lr0-sw0"; flags.loopback = 1; reg9[[9]] = 0; next;)
+  table=??(lr_in_ip_routing   ), priority=518  , match=(inport == "lr0-sw1" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::200:ff:fe00:ff02; eth.src = 00:00:00:00:ff:02; outport = "lr0-sw1"; flags.loopback = 1; reg9[[9]] = 0; next;)
+])
+AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed -e 's/10\.0\..\./10.0.??./g' -e 's/lr0-sw./lr0-sw??/' -e 's/00:ff:0./00:ff:0?/' | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing_ecmp), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 10.0.??.10; reg5 = 10.0.??.1; eth.src = 00:00:00:00:ff:0?; outport = "lr0-sw??"; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 10.0.??.10; reg5 = 10.0.??.1; eth.src = 00:00:00:00:ff:0?; outport = "lr0-sw??"; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
+])
+
+# Learn a route to 192.168.1.0/24 via 10.0.0.20 learned on lr0-sw0.
+check_uuid ovn-sbctl create Learned_Route \
+    datapath=$datapath                    \
+    logical_port=$sw0                     \
+    ip_prefix=192.168.1.0/24              \
+    nexthop=10.0.0.20
+check ovn-nbctl --wait=sb sync
+check_row_count Advertised_Route 4
+check_row_count Learned_Route 1
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep -w "lr_in_ip_routing" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=10550, match=(nd_rs || nd_ra), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=194  , match=(reg7 == 0 && ip4.dst == 192.168.1.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 10.0.0.20; reg5 = 10.0.0.1; eth.src = 00:00:00:00:ff:01; outport = "lr0-sw0"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=196  , match=(reg7 == 0 && ip4.dst == 192.168.0.0/24), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
+  table=??(lr_in_ip_routing   ), priority=198  , match=(ip4.dst == 10.0.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 10.0.0.1; eth.src = 00:00:00:00:ff:01; outport = "lr0-sw0"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=198  , match=(ip4.dst == 10.0.1.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 10.0.1.1; eth.src = 00:00:00:00:ff:02; outport = "lr0-sw1"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=518  , match=(inport == "lr0-sw0" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::200:ff:fe00:ff01; eth.src = 00:00:00:00:ff:01; outport = "lr0-sw0"; flags.loopback = 1; reg9[[9]] = 0; next;)
+  table=??(lr_in_ip_routing   ), priority=518  , match=(inport == "lr0-sw1" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::200:ff:fe00:ff02; eth.src = 00:00:00:00:ff:02; outport = "lr0-sw1"; flags.loopback = 1; reg9[[9]] = 0; next;)
+])
+AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed -e 's/10\.0\..\./10.0.??./g' -e 's/lr0-sw./lr0-sw??/' -e 's/00:ff:0./00:ff:0?/' | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing_ecmp), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 10.0.??.10; reg5 = 10.0.??.1; eth.src = 00:00:00:00:ff:0?; outport = "lr0-sw??"; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 10.0.??.10; reg5 = 10.0.??.1; eth.src = 00:00:00:00:ff:0?; outport = "lr0-sw??"; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
+])
+
+# Learn a route to 192.168.1.0/24 via 10.0.1.20 learned on lr0-sw1.
+# This will create an ecmp flow.
+check_uuid ovn-sbctl create Learned_Route \
+    datapath=$datapath                    \
+    logical_port=$sw1                     \
+    ip_prefix=192.168.1.0/24              \
+    nexthop=10.0.1.20
+check ovn-nbctl --wait=sb sync
+check_row_count Advertised_Route 4
+check_row_count Learned_Route 2
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep -w "lr_in_ip_routing" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=10550, match=(nd_rs || nd_ra), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=194  , match=(reg7 == 0 && ip4.dst == 192.168.1.0/24), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
+  table=??(lr_in_ip_routing   ), priority=196  , match=(reg7 == 0 && ip4.dst == 192.168.0.0/24), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 2; reg8[[16..31]] = select(1, 2);)
+  table=??(lr_in_ip_routing   ), priority=198  , match=(ip4.dst == 10.0.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 10.0.0.1; eth.src = 00:00:00:00:ff:01; outport = "lr0-sw0"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=198  , match=(ip4.dst == 10.0.1.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 10.0.1.1; eth.src = 00:00:00:00:ff:02; outport = "lr0-sw1"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=518  , match=(inport == "lr0-sw0" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::200:ff:fe00:ff01; eth.src = 00:00:00:00:ff:01; outport = "lr0-sw0"; flags.loopback = 1; reg9[[9]] = 0; next;)
+  table=??(lr_in_ip_routing   ), priority=518  , match=(inport == "lr0-sw1" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::200:ff:fe00:ff02; eth.src = 00:00:00:00:ff:02; outport = "lr0-sw1"; flags.loopback = 1; reg9[[9]] = 0; next;)
+])
+AT_CHECK([grep -e "lr_in_ip_routing_ecmp" lr0flows | sed -e 's/10\.0\..\./10.0.??./g' -e 's/lr0-sw./lr0-sw??/' -e 's/00:ff:0./00:ff:0?/' | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing_ecmp), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 1), action=(reg0 = 10.0.??.20; reg5 = 10.0.??.1; eth.src = 00:00:00:00:ff:0?; outport = "lr0-sw??"; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == 2), action=(reg0 = 10.0.??.20; reg5 = 10.0.??.1; eth.src = 00:00:00:00:ff:0?; outport = "lr0-sw??"; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 2 && reg8[[16..31]] == 1), action=(reg0 = 10.0.??.10; reg5 = 10.0.??.1; eth.src = 00:00:00:00:ff:0?; outport = "lr0-sw??"; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 2 && reg8[[16..31]] == 2), action=(reg0 = 10.0.??.10; reg5 = 10.0.??.1; eth.src = 00:00:00:00:ff:0?; outport = "lr0-sw??"; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
+])
+
+# Now learn two routes, both of them to 192.168.0.0/24:
+# One via 10.0.0.30 on lr0-sw0
+# One via 10.0.1.30 on lr0-sw1
+# The prefix is the same as with the static routes. But because learned routes
+# have a lower priority than static routes we will get two separate ECMP
+# groups.
+# Since the ecmp group IDs are not stable we do not validate
+# lr_in_ip_routing_ecmp. Having 3 separate ecmp selects in lr_in_ip_routing is
+# sufficient proof that there are in fact separate ECMP groups.
+check_uuid ovn-sbctl create Learned_Route \
+    datapath=$datapath                    \
+    logical_port=$sw0                     \
+    ip_prefix=192.168.0.0/24              \
+    nexthop=10.0.0.30
+check_uuid ovn-sbctl create Learned_Route \
+    datapath=$datapath                    \
+    logical_port=$sw1                     \
+    ip_prefix=192.168.0.0/24              \
+    nexthop=10.0.1.30
+check ovn-nbctl --wait=sb sync
+check_row_count Advertised_Route 4
+check_row_count Learned_Route 4
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep -w "lr_in_ip_routing" lr0flows | sed -e 's/reg8\[[0..15\]] = [[123]]/reg8\[[0..15\]] = ??/' | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=10550, match=(nd_rs || nd_ra), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=194  , match=(reg7 == 0 && ip4.dst == 192.168.0.0/24), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = ??; reg8[[16..31]] = select(1, 2);)
+  table=??(lr_in_ip_routing   ), priority=194  , match=(reg7 == 0 && ip4.dst == 192.168.1.0/24), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = ??; reg8[[16..31]] = select(1, 2);)
+  table=??(lr_in_ip_routing   ), priority=196  , match=(reg7 == 0 && ip4.dst == 192.168.0.0/24), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = ??; reg8[[16..31]] = select(1, 2);)
+  table=??(lr_in_ip_routing   ), priority=198  , match=(ip4.dst == 10.0.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 10.0.0.1; eth.src = 00:00:00:00:ff:01; outport = "lr0-sw0"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=198  , match=(ip4.dst == 10.0.1.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 10.0.1.1; eth.src = 00:00:00:00:ff:02; outport = "lr0-sw1"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=518  , match=(inport == "lr0-sw0" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::200:ff:fe00:ff01; eth.src = 00:00:00:00:ff:01; outport = "lr0-sw0"; flags.loopback = 1; reg9[[9]] = 0; next;)
+  table=??(lr_in_ip_routing   ), priority=518  , match=(inport == "lr0-sw1" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::200:ff:fe00:ff02; eth.src = 00:00:00:00:ff:02; outport = "lr0-sw1"; flags.loopback = 1; reg9[[9]] = 0; next;)
+])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([dynamic-routing - host routes])
 AT_KEYWORDS([dynamic-routing])
 ovn_start
