@@ -758,9 +758,27 @@
 
           <dt><code>switch</code></dt>
           <dd>
-            A connection to another logical switch.  The optional argument
-            <code>peer</code> identifies a logical switch port that connects
-            to this one.
+            <p>
+              A connection to another logical switch.  The optional argument
+              <code>peer</code> identifies a logical switch port that connects
+              to this one.
+            </p>
+            <p>
+              All logical switch ports of that type have implicit 'unknown'
+              addresses and FDB learning enabled (unless port security is set).
+              This comes with all the positive and negative sides of the
+              'unknown' address.  Static addresses-to-port mappings don't need
+              to be maintained on each node and only the actually used mappings
+              are learned, but at a cost of broadcasting packets for which the
+              destination address is not learned yet.
+            <p>
+            </p>
+              FDB learning will also cause not learned yet packets to be sent
+              to controller from each switch-switch connection they traverse.
+              This should be taken into consideration while planning to have
+              many directly connected switches within a single availability
+              zone.
+            </p>
           </dd>
 
           <dt><code>localnet</code></dt>
