@@ -256,6 +256,7 @@ Lorand Jakab                       lojakab@cisco.com
 Lorenzo Bianconi                   lorenzo.bianconi@redhat.com
 Luca Giraudo
 Lucas Alvares Gomes                lucasagomes@gmail.com
+Lucas Vargas Dias                  lucas.vdias@luizalabs.com
 Lucian Petrut                      lpetrut@cloudbasesolutions.com
 Luigi Rizzo                        rizzo@iet.unipi.it
 Luis E. P.                         l31g@hotmail.com
