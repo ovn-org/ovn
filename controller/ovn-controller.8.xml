@@ -117,16 +117,20 @@
       <dd>
         <p>
           A boolean value that tells if <code>ovn-controller</code> should
-          monitor all records of tables in <var>ovs-database</var>.  If
-          set to <code>false</code>, it will conditionally monitor the records
-          that is needed in the current chassis.
+          monitor all records of most tables in the
+          <code>OVN Southbound</code> database.  The only exception is the
+          <code>Chassis_Private</code> table for which ovn-controller
+          always monitors only the record that is relevant to the local
+          chassis.  If this option is set to <code>false</code>,
+          ovn-controller will conditionally monitor only the records that
+          are needed for the local chassis.
         </p>
         <p>
           It is more efficient to set it to <code>true</code> in use cases
           where the chassis would anyway need to monitor most of the records in
           <var>OVN Southbound</var> database, which would save the overhead of
           conditions processing, especially for server side.  Typically, set it
-          to <code>true</code> for environments that all workloads need to be
+          to <code>true</code> for environments where all workloads need to be
           reachable from each other.
         </p>
         <p>
