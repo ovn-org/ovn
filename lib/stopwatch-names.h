@@ -36,5 +36,6 @@
 #define LS_STATEFUL_RUN_STOPWATCH_NAME "ls_stateful"
 #define ADVERTISED_ROUTE_SYNC_RUN_STOPWATCH_NAME "advertised_route_sync"
 #define LEARNED_ROUTE_SYNC_RUN_STOPWATCH_NAME "learned_route_sync"
+#define DYNAMIC_ROUTES_RUN_STOPWATCH_NAME "dynamic_routes"
 
 #endif

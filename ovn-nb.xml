@@ -3102,6 +3102,24 @@ or
         </p>
 
         <p>
+          If <code>lb</code> is in the list then northd will create entries in
+          <ref table="Advertised_Route" db="OVN_Southbound"/> table for each
+          Load Balancer VIP on this router and it's neighboring routers.
+          Neighboring routers are those that are either directly connected,
+          via Logical Router Port, or those that are connected via shared
+          Logical Switch.
+        </p>
+
+        <p>
+          If <code>nat</code> is in the list then northd will create entries in
+          <ref table="Advertised_Route" db="OVN_Southbound"/> table for each
+          NAT's external IP on this router and it's neighboring routers.
+          Neighboring routers are those that are either directly connected,
+          via Logical Router Port, or those that are connected via shared
+          Logical Switch.
+        </p>
+
+        <p>
           This value can be overwritten on a per LRP basis using
           <ref column="options" key="dynamic-routing-redistribute"
                table="Logical_Router_Port"/> on the Logical_Router_Port.
@@ -3959,6 +3977,24 @@ or
           If <code>static</code> is in the list then northd will synchronize
           all <ref table="Logical_Router_Static_Route"/> to the southbound
           <ref table="Advertised_Route" db="OVN_Southbound"/> table.
+        </p>
+
+        <p>
+          If <code>lb</code> is in the list then northd will create entries in
+          <ref table="Advertised_Route" db="OVN_Southbound"/> table for each
+          Load Balancer VIP on this port's router, and it's neighboring
+          routers. Neighboring routers are those that are either directly
+          connected to this Logical Router Port, or those that are connected
+          via shared Logical Switch.
+        </p>
+
+        <p>
+          If <code>nat</code> is in the list then northd will create entries in
+          <ref table="Advertised_Route" db="OVN_Southbound"/> table for each
+          NAT's external IP on this port's router, and it's neighboring
+          routers. Neighboring routers are those that are either directly
+          connected to this Logical Router Port, or those that are connected
+          via shared Logical Switch.
         </p>
 
         <p>

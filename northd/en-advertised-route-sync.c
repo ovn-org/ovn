@@ -30,7 +30,8 @@ advertised_route_table_sync(
     struct ovsdb_idl_txn *ovnsb_txn,
     const struct sbrec_advertised_route_table *sbrec_advertised_route_table,
     const struct lr_stateful_table *lr_stateful_table,
-    const struct hmap *parsed_routes,
+    const struct hmap *routes,
+    const struct hmap *dynamic_routes,
     struct advertised_route_sync_data *data);
 
 bool
@@ -141,6 +142,8 @@ en_advertised_route_sync_run(struct engine_node *node, void *data OVS_UNUSED)
     struct advertised_route_sync_data *routes_sync_data = data;
     struct routes_data *routes_data
         = engine_get_input_data("routes", node);
+    struct dynamic_routes_data *dynamic_routes_data
+        = engine_get_input_data("dynamic_routes", node);
     const struct engine_context *eng_ctx = engine_get_context();
     const struct sbrec_advertised_route_table *sbrec_advertised_route_table =
         EN_OVSDB_GET(engine_get_input("SB_advertised_route", node));
@@ -153,9 +156,75 @@ en_advertised_route_sync_run(struct engine_node *node, void *data OVS_UNUSED)
                                 sbrec_advertised_route_table,
                                 &lr_stateful_data->table,
                                 &routes_data->parsed_routes,
+                                &dynamic_routes_data->parsed_routes,
                                 routes_sync_data);
 
     stopwatch_stop(ADVERTISED_ROUTE_SYNC_RUN_STOPWATCH_NAME, time_msec());
+    engine_set_node_state(node, EN_UPDATED);
+}
+
+void *
+en_dynamic_routes_init(struct engine_node *node OVS_UNUSED,
+                       struct engine_arg *arg OVS_UNUSED)
+{
+    struct dynamic_routes_data *data = xmalloc(sizeof *data);
+    *data = (struct dynamic_routes_data) {
+        .parsed_routes = HMAP_INITIALIZER(&data->parsed_routes),
+    };
+
+    return data;
+}
+
+static void
+en_dynamic_routes_clear(struct dynamic_routes_data *data)
+{
+    struct parsed_route *r;
+    HMAP_FOR_EACH_POP (r, key_node, &data->parsed_routes) {
+        parsed_route_free(r);
+    }
+}
+void
+en_dynamic_routes_cleanup(void *data_)
+{
+    struct dynamic_routes_data *data = data_;
+
+    en_dynamic_routes_clear(data);
+    hmap_destroy(&data->parsed_routes);
+}
+
+void
+en_dynamic_routes_run(struct engine_node *node, void *data)
+{
+    struct dynamic_routes_data *dynamic_routes_data = data;
+    struct northd_data *northd_data = engine_get_input_data("northd", node);
+    struct ed_type_lr_stateful *lr_stateful_data =
+        engine_get_input_data("lr_stateful", node);
+
+    en_dynamic_routes_clear(data);
+
+    stopwatch_start(DYNAMIC_ROUTES_RUN_STOPWATCH_NAME, time_msec());
+    const struct lr_stateful_record *lr_stateful_rec;
+    HMAP_FOR_EACH (lr_stateful_rec, key_node,
+                   &lr_stateful_data->table.entries) {
+        const struct ovn_datapath *od =
+            ovn_datapaths_find_by_index(&northd_data->lr_datapaths,
+                                        lr_stateful_rec->lr_index);
+        if (!od->dynamic_routing) {
+            continue;
+        }
+        build_nat_parsed_routes(od, lr_stateful_rec->lrnat_rec,
+                                &northd_data->ls_ports,
+                                &dynamic_routes_data->parsed_routes);
+        build_nat_connected_parsed_routes(od, &lr_stateful_data->table,
+                                          &northd_data->ls_ports,
+                                          &dynamic_routes_data->parsed_routes);
+
+        build_lb_parsed_routes(od, lr_stateful_rec->lb_ips,
+                               &dynamic_routes_data->parsed_routes);
+        build_lb_connected_parsed_routes(od, &lr_stateful_data->table,
+                                         &dynamic_routes_data->parsed_routes);
+    }
+    stopwatch_stop(DYNAMIC_ROUTES_RUN_STOPWATCH_NAME, time_msec());
     engine_set_node_state(node, EN_UPDATED);
 }
 
@@ -334,11 +403,88 @@ publish_host_routes(struct hmap *sync_routes,
 }
 
 static void
+advertised_route_table_sync_route_add(
+    const struct lr_stateful_table *lr_stateful_table,
+    struct advertised_route_sync_data *data,
+    struct uuidset *host_route_lrps,
+    struct hmap *sync_routes,
+    const struct parsed_route *route)
+{
+    if (route->is_discard_route) {
+        return;
+    }
+    if (prefix_is_link_local(&route->prefix, route->plen)) {
+        return;
+    }
+    if (!route->od->dynamic_routing) {
+        return;
+    }
+
+    enum dynamic_routing_redistribute_mode drr =
+        route->out_port->dynamic_routing_redistribute;
+    if (route->source == ROUTE_SOURCE_CONNECTED) {
+        if (!drr_mode_CONNECTED_is_set(drr)) {
+            return;
+        }
+        /* If we advertise host routes, we only need to do so once per
+         * LRP. */
+        const struct uuid *lrp_uuid = &route->out_port->nbrp->header_.uuid;
+        if (drr_mode_CONNECTED_AS_HOST_is_set(drr) &&
+            !uuidset_contains(host_route_lrps, lrp_uuid)) {
+            uuidset_insert(host_route_lrps, lrp_uuid);
+            publish_host_routes(sync_routes, lr_stateful_table, route, data);
+            return;
+        }
+    }
+    if (route->source == ROUTE_SOURCE_STATIC && !drr_mode_STATIC_is_set(drr)) {
+        return;
+    }
+    if (route->source == ROUTE_SOURCE_NAT) {
+        if (!drr_mode_NAT_is_set(drr)) {
+            return;
+        }
+        /* If NAT route tracks port on a different DP than the one that
+         * advertises the route, we need to watch for changes on that DP as
+         * well. */
+        if (route->tracked_port && route->tracked_port->od != route->od) {
+            if (route->tracked_port->od->nbr) {
+                uuidset_insert(&data->nb_lr,
+                               &route->tracked_port->od->nbr->header_.uuid);
+            } else if (route->tracked_port->od->nbs) {
+                uuidset_insert(&data->nb_ls,
+                               &route->tracked_port->od->nbs->header_.uuid);
+            }
+        }
+    }
+    if (route->source == ROUTE_SOURCE_LB) {
+        if (!drr_mode_LB_is_set(drr)) {
+            return;
+        }
+        /* If LB route tracks port on a different DP than the one that
+         * advertises the route, we need to watch for changes on that DP as
+         * well. */
+        if (route->tracked_port && route->tracked_port->od != route->od) {
+            uuidset_insert(&data->nb_lr,
+                           &route->tracked_port->od->nbr->header_.uuid);
+        }
+    }
+
+    char *ip_prefix = normalize_v46_prefix(&route->prefix, route->plen);
+    const struct sbrec_port_binding *tracked_port = NULL;
+    if (route->tracked_port) {
+        tracked_port = route->tracked_port->sb;
+    }
+    ar_add_entry(sync_routes, route->od->sb, route->out_port->sb,
+                 ip_prefix, tracked_port);
+}
+
+static void
 advertised_route_table_sync(
     struct ovsdb_idl_txn *ovnsb_txn,
     const struct sbrec_advertised_route_table *sbrec_advertised_route_table,
     const struct lr_stateful_table *lr_stateful_table,
-    const struct hmap *parsed_routes,
+    const struct hmap *routes,
+    const struct hmap *dynamic_routes,
     struct advertised_route_sync_data *data)
 {
     struct hmap sync_routes = HMAP_INITIALIZER(&sync_routes);
@@ -346,47 +492,24 @@ advertised_route_table_sync(
     const struct parsed_route *route;
 
     struct ar_entry *route_e;
-    const struct sbrec_advertised_route *sb_route;
-    HMAP_FOR_EACH (route, key_node, parsed_routes) {
-        if (route->is_discard_route) {
-            continue;
-        }
-        if (prefix_is_link_local(&route->prefix, route->plen)) {
-            continue;
-        }
-        if (!route->od->dynamic_routing) {
-            continue;
-        }
 
-        enum dynamic_routing_redistribute_mode drr =
-            route->out_port->dynamic_routing_redistribute;
-        if (route->source == ROUTE_SOURCE_CONNECTED) {
-            if (!drr_mode_CONNECTED_is_set(drr)) {
-                continue;
-            }
-            /* If we advertise host routes, we only need to do so once per
-             * LRP. */
-            const struct uuid *lrp_uuid =
-                &route->out_port->nbrp->header_.uuid;
-            if (drr_mode_CONNECTED_AS_HOST_is_set(drr) &&
-                  !uuidset_contains(&host_route_lrps, lrp_uuid)) {
-                uuidset_insert(&host_route_lrps, lrp_uuid);
-                publish_host_routes(&sync_routes, lr_stateful_table,
-                                    route, data);
-                continue;
-            }
-        }
-        if (route->source == ROUTE_SOURCE_STATIC &&
-                !drr_mode_STATIC_is_set(drr)) {
-            continue;
-        }
-
-        char *ip_prefix = normalize_v46_prefix(&route->prefix, route->plen);
-        route_e = ar_add_entry(&sync_routes, route->od->sb,
-                               route->out_port->sb, ip_prefix, NULL);
+    /* First build the set of non-dynamic routes that need sync-ing. */
+    HMAP_FOR_EACH (route, key_node, routes) {
+        advertised_route_table_sync_route_add(lr_stateful_table,
+                                              data, &host_route_lrps,
+                                              &sync_routes,
+                                              route);
+    }
+    /* Then add the set of dynamic routes that need sync-ing. */
+    HMAP_FOR_EACH (route, key_node, dynamic_routes) {
+        advertised_route_table_sync_route_add(lr_stateful_table,
+                                              data, &host_route_lrps,
+                                              &sync_routes,
+                                              route);
     }
     uuidset_destroy(&host_route_lrps);
 
+    const struct sbrec_advertised_route *sb_route;
     SBREC_ADVERTISED_ROUTE_TABLE_FOR_EACH_SAFE (sb_route,
                                                 sbrec_advertised_route_table) {
         route_e = ar_find(&sync_routes, sb_route->datapath,

@@ -146,6 +146,9 @@ OVN To-do List
   * Add incremental processing for northd when the Learned_Route table changes.
     Currently en_lflow is fully recomputed whenever such a change happens.
 
+  * Add incremental processing of en_dynamic_routes for stateful configuration
+    changes.
+
   * The ovn-controller currently loads all Advertised_Route entries on startup.
     This is to prevent deleting our routes on restart. If we defer updating
     routes until we are sure to have loaded all necessary Advertised_Routes
@@ -156,3 +159,10 @@ OVN To-do List
     monitoring conditions to update before we actually try to learn routes.
     Otherwise we could try to add duplicated Learned_Routes and the ovnsb
     commit would fail.
+
+  * Consider splitting parsed_route structure. When creating parsed routes
+    with tracked_port explicitly set, other members of this structure are
+    usually unused/default. A new structure dedicated to routes with
+    explicitly defined tracked_port would be more efficient.
+    More details in
+    https://mail.openvswitch.org/pipermail/ovs-dev/2025-February/420985.html

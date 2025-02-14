@@ -848,6 +848,14 @@ parse_dynamic_routing_redistribute(
             out |= DRRM_STATIC;
             continue;
         }
+        if (!strcmp(token, "nat")) {
+            out |= DRRM_NAT;
+            continue;
+        }
+        if (!strcmp(token, "lb")) {
+            out |= DRRM_LB;
+            continue;
+        }
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_WARN_RL(&rl,
                      "unkown dynamic-routing-redistribute option '%s' on %s",
@@ -11000,6 +11008,7 @@ parsed_route_init(const struct ovn_datapath *od,
                   bool ecmp_symmetric_reply,
                   const struct sset *ecmp_selection_fields,
                   enum route_source source,
+                  const struct ovn_port *tracked_port,
                   const struct ovsdb_idl_row *source_hint)
 {
 
@@ -11015,6 +11024,7 @@ parsed_route_init(const struct ovn_datapath *od,
     new_pr->is_discard_route = is_discard_route;
     new_pr->lrp_addr_s = nullable_xstrdup(lrp_addr_s);
     new_pr->out_port = out_port;
+    new_pr->tracked_port = tracked_port;
     new_pr->source = source;
     if (ecmp_selection_fields) {
         sset_clone(&new_pr->ecmp_selection_fields, ecmp_selection_fields);
@@ -11040,7 +11050,7 @@ parsed_route_clone(const struct parsed_route *pr)
         pr->od, nexthop, pr->prefix, pr->plen, pr->is_discard_route,
         pr->lrp_addr_s, pr->out_port, pr->route_table_id, pr->is_src_route,
         pr->ecmp_symmetric_reply, &pr->ecmp_selection_fields, pr->source,
-        pr->source_hint);
+        pr->tracked_port, pr->source_hint);
 
     new_pr->hash = pr->hash;
     return new_pr;
@@ -11083,13 +11093,14 @@ parsed_route_add(const struct ovn_datapath *od,
                  const struct sset *ecmp_selection_fields,
                  enum route_source source,
                  const struct ovsdb_idl_row *source_hint,
+                 const struct ovn_port *tracked_port,
                  struct hmap *routes)
 {
 
     struct parsed_route *new_pr = parsed_route_init(
         od, nexthop, *prefix, plen, is_discard_route, lrp_addr_s, out_port,
         route_table_id, is_src_route, ecmp_symmetric_reply,
-        ecmp_selection_fields, source, source_hint);
+        ecmp_selection_fields, source, tracked_port, source_hint);
 
     new_pr->hash = route_hash(new_pr);
 
@@ -11226,7 +11237,7 @@ parsed_routes_add_static(const struct ovn_datapath *od,
     parsed_route_add(od, nexthop, &prefix, plen, is_discard_route, lrp_addr_s,
                      out_port, route_table_id, is_src_route,
                      ecmp_symmetric_reply, &ecmp_selection_fields, source,
-                     &route->header_, routes);
+                     &route->header_, NULL, routes);
     sset_destroy(&ecmp_selection_fields);
 }
 
@@ -11244,7 +11255,7 @@ parsed_routes_add_connected(const struct ovn_datapath *od,
                          false, addr->addr_s, op,
                          0, false,
                          false, NULL, ROUTE_SOURCE_CONNECTED,
-                         &op->nbrp->header_, routes);
+                         &op->nbrp->header_, NULL, routes);
     }
 
     for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
@@ -11256,7 +11267,7 @@ parsed_routes_add_connected(const struct ovn_datapath *od,
                          false, addr->addr_s, op,
                          0, false,
                          false, NULL, ROUTE_SOURCE_CONNECTED,
-                         &op->nbrp->header_, routes);
+                         &op->nbrp->header_, NULL, routes);
     }
 }
 
@@ -11294,6 +11305,237 @@ build_parsed_routes(const struct ovn_datapath *od, const struct hmap *lr_ports,
     }
 }
 
+/* This function adds new parsed route for each entry in lr_nat record
+ * to "routes". Logical port of the route is set to "advertising_op" and
+ * tracked port is set to NAT's distributed gw port. If NAT doesn't have
+ * DGP (for example if it's set on gateway router), no tracked port will
+ * be set.*/
+static void
+build_nat_parsed_route_for_port(const struct ovn_port *advertising_op,
+                                const struct lr_nat_record *lr_nat,
+                                const struct hmap *ls_ports,
+                                struct hmap *routes)
+{
+    const struct ovn_datapath *advertising_od = advertising_op->od;
+
+    for (size_t i = 0; i < lr_nat->n_nat_entries; i++) {
+        const struct ovn_nat *nat = &lr_nat->nat_entries[i];
+        if (!nat->is_valid) {
+            continue;
+        }
+
+        int plen = nat_entry_is_v6(nat) ? 128 : 32;
+        struct in6_addr prefix;
+        ip46_parse(nat->nb->external_ip, &prefix);
+
+        const struct ovn_port *tracked_port =
+            nat->is_distributed
+            ? ovn_port_find(ls_ports, nat->nb->logical_port)
+            : nat->l3dgw_port;
+        parsed_route_add(advertising_od, NULL, &prefix, plen, false,
+                         nat->nb->external_ip, advertising_op, 0, false,
+                         false, NULL, ROUTE_SOURCE_NAT, &nat->nb->header_,
+                         tracked_port, routes);
+    }
+}
+
+/* Generate parsed routes for NAT external IPs in lr_nat, for each ovn port
+ * in "od" that has enabled redistribution of NAT adresses.*/
+void
+build_nat_parsed_routes(const struct ovn_datapath *od,
+                        const struct lr_nat_record *lr_nat,
+                        const struct hmap *ls_ports,
+                        struct hmap *routes)
+{
+    const struct ovn_port *op;
+    HMAP_FOR_EACH (op, dp_node, &od->ports) {
+        if (!drr_mode_NAT_is_set(op->dynamic_routing_redistribute)) {
+            continue;
+        }
+
+        build_nat_parsed_route_for_port(op, lr_nat, ls_ports, routes);
+    }
+}
+
+/* Similar to build_nat_parsed_routes, this function generates parsed routes
+ * for nat records in neighboring routers. For each ovn port in "od" that has
+ * enabled redistribution of NAT adresses, look up their neighbors (either
+ * directly routers, or routers connected through common LS) and advertise
+ * thier external NAT IPs too.*/
+void
+build_nat_connected_parsed_routes(
+    const struct ovn_datapath *od,
+    const struct lr_stateful_table *lr_stateful_table,
+    const struct hmap *ls_ports,
+    struct hmap *routes)
+{
+    const struct ovn_port *op;
+    HMAP_FOR_EACH (op, dp_node, &od->ports) {
+        if (!drr_mode_NAT_is_set(op->dynamic_routing_redistribute)) {
+            continue;
+        }
+
+        if (!op->peer) {
+            continue;
+        }
+
+        struct ovn_datapath *peer_od = op->peer->od;
+        ovs_assert(peer_od->nbs || peer_od->nbr);
+
+        const struct ovn_port *peer_port = NULL;
+        /* This is a directly connected LR peer. */
+        if (peer_od->nbr) {
+            peer_port = op->peer;
+
+            const struct lr_stateful_record *peer_lr_stateful =
+                lr_stateful_table_find_by_index(lr_stateful_table,
+                                                 peer_od->index);
+            if (!peer_lr_stateful) {
+                continue;
+            }
+
+            /* Advertise peer's NAT routes via the local port too. */
+            build_nat_parsed_route_for_port(op, peer_lr_stateful->lrnat_rec,
+                                            ls_ports, routes);
+            return;
+        }
+
+        /* This peer is LSP, we need to check all connected router ports
+         * for NAT.*/
+        for (size_t i = 0; i < peer_od->n_router_ports; i++) {
+            peer_port = peer_od->router_ports[i]->peer;
+            if (peer_port == op) {
+                /* Skip advertising router. */
+                continue;
+            }
+
+            const struct lr_stateful_record *peer_lr_stateful =
+                lr_stateful_table_find_by_index(lr_stateful_table,
+                                                peer_port->od->index);
+            if (!peer_lr_stateful) {
+                continue;
+            }
+
+            /* Advertise peer's NAT routes via the local port too. */
+            build_nat_parsed_route_for_port(op, peer_lr_stateful->lrnat_rec,
+                                            ls_ports, routes);
+        }
+    }
+}
+
+/* This function adds new parsed route for each IP in lb_ips to "routes".*/
+static void
+build_lb_parsed_route_for_port(const struct ovn_port *advertising_op,
+                               const struct ovn_port *tracked_port,
+                               const struct ovn_lb_ip_set *lb_ips,
+                               struct hmap *routes)
+{
+    const struct ovn_datapath *advertising_od = advertising_op->od;
+
+    const char *ip_address;
+    SSET_FOR_EACH (ip_address, &lb_ips->ips_v4) {
+        struct in6_addr prefix;
+        ip46_parse(ip_address, &prefix);
+        parsed_route_add(advertising_od, NULL, &prefix, 32, false,
+                         ip_address, advertising_op, 0, false, false,
+                         NULL, ROUTE_SOURCE_LB, &advertising_op->nbrp->header_,
+                         tracked_port, routes);
+    }
+    SSET_FOR_EACH (ip_address, &lb_ips->ips_v6) {
+        struct in6_addr prefix;
+        ip46_parse(ip_address, &prefix);
+        parsed_route_add(advertising_od, NULL, &prefix, 128, false,
+                         ip_address, advertising_op, 0, false, false,
+                         NULL, ROUTE_SOURCE_LB, &advertising_op->nbrp->header_,
+                         tracked_port, routes);
+    }
+}
+
+/* Similar to build_lb_parsed_routes, this function generates parsed routes
+ * for LB VIPs of neighboring routers. For each ovn port in "od" that has
+ * enabled redistribution of LB VIPs, look up their neighbors (either
+ * directly routers, or routers connected through common LS) and advertise
+ * thier LB VIPs too.*/
+void
+build_lb_connected_parsed_routes(
+        const struct ovn_datapath *od,
+        const struct lr_stateful_table *lr_stateful_table,
+        struct hmap *routes)
+{
+    const struct ovn_port *op;
+    HMAP_FOR_EACH (op, dp_node, &od->ports) {
+        if (!drr_mode_LB_is_set(op->dynamic_routing_redistribute)) {
+            continue;
+        }
+
+        if (!op->peer) {
+            continue;
+        }
+
+        struct ovn_datapath *peer_od = op->peer->od;
+        ovs_assert(peer_od->nbs || peer_od->nbr);
+
+        const struct lr_stateful_record *lr_stateful_rec;
+        const struct ovn_port *peer_port = NULL;
+        /* This is directly connected LR peer. */
+        if (peer_od->nbr) {
+            lr_stateful_rec = lr_stateful_table_find_by_index(
+                lr_stateful_table, peer_od->index);
+            peer_port = op->peer;
+            build_lb_parsed_route_for_port(op, peer_port,
+                                           lr_stateful_rec->lb_ips, routes);
+            return;
+        }
+
+        /* This peer is LSP, we need to check all connected router ports for
+         * LBs.*/
+        for (size_t i = 0; i < peer_od->n_router_ports; i++) {
+            peer_port = peer_od->router_ports[i]->peer;
+            if (peer_port == op) {
+                /* no need to check for LBs on ovn_port that initiated this
+                 * function.*/
+                continue;
+            }
+            lr_stateful_rec = lr_stateful_table_find_by_index(
+                lr_stateful_table, peer_port->od->index);
+
+            build_lb_parsed_route_for_port(op, peer_port,
+                                           lr_stateful_rec->lb_ips, routes);
+        }
+    }
+}
+
+void
+build_lb_parsed_routes(const struct ovn_datapath *od,
+                       const struct ovn_lb_ip_set *lb_ips,
+                       struct hmap *routes)
+{
+    const struct ovn_port *op;
+    HMAP_FOR_EACH (op, dp_node, &od->ports) {
+        if (!drr_mode_LB_is_set(op->dynamic_routing_redistribute)) {
+            continue;
+        }
+
+        /* Traffic processed by a load balancer is:
+         * - handled by the chassis where a gateway router is bound
+         * OR
+         * - always redirected to a distributed gateway router port
+         *
+         * Advertise the LB IPs via all 'op' if this is a gateway router or
+         * throuh all DGPs of this distributed router otherwise. */
+        struct ovn_port *op_ = NULL;
+        size_t n_tracked_ports = !od->is_gw_router ? od->n_l3dgw_ports : 1;
+        struct ovn_port **tracked_ports = !od->is_gw_router
+                                          ? od->l3dgw_ports
+                                          : &op_;
+
+        for (size_t i = 0; i < n_tracked_ports; i++) {
+            build_lb_parsed_route_for_port(op, tracked_ports[i], lb_ips,
+                                           routes);
+        }
+    }
+
+}
 struct ecmp_route_list_node {
     struct ovs_list list_node;
     uint16_t id; /* starts from 1 */
@@ -11469,6 +11711,8 @@ route_source_to_offset(enum route_source source)
         return ROUTE_PRIO_OFFSET_STATIC;
     case ROUTE_SOURCE_LEARNED:
         return ROUTE_PRIO_OFFSET_LEARNED;
+    case ROUTE_SOURCE_NAT:
+    case ROUTE_SOURCE_LB:
     default:
         OVS_NOT_REACHED();
     }

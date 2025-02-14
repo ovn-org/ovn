@@ -175,6 +175,7 @@ static ENGINE_NODE(multicast_igmp, "multicast_igmp");
 static ENGINE_NODE(acl_id, "acl_id");
 static ENGINE_NODE(advertised_route_sync, "advertised_route_sync");
 static ENGINE_NODE(learned_route_sync, "learned_route_sync");
+static ENGINE_NODE(dynamic_routes, "dynamic_routes");
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb)
@@ -289,7 +290,15 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_ecmp_nexthop, &en_sb_mac_binding,
                      ecmp_nexthop_mac_binding_handler);
 
+    engine_add_input(&en_dynamic_routes, &en_lr_stateful, NULL);
+    /* No need for an explicit handler for northd changes.  Stateful
+     * configuration changes are passed through the en_lr_stateful input
+     * dependency.  We do need to access en_northd (input) data, i.e., to
+     * lookup OVN ports. */
+    engine_add_input(&en_dynamic_routes, &en_northd, engine_noop_handler);
+
     engine_add_input(&en_advertised_route_sync, &en_routes, NULL);
+    engine_add_input(&en_advertised_route_sync, &en_dynamic_routes, NULL);
     engine_add_input(&en_advertised_route_sync, &en_sb_advertised_route,
                      NULL);
     engine_add_input(&en_advertised_route_sync, &en_lr_stateful,

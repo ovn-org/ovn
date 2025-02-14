@@ -36,4 +36,7 @@ void *en_advertised_route_sync_init(struct engine_node *, struct engine_arg *);
 void en_advertised_route_sync_cleanup(void *data);
 void en_advertised_route_sync_run(struct engine_node *, void *data);
 
+void *en_dynamic_routes_init(struct engine_node *, struct engine_arg *);
+void en_dynamic_routes_cleanup(void *data);
+void en_dynamic_routes_run(struct engine_node *, void *data);
 #endif /* EN_ADVERTISED_ROUTE_SYNC_H */

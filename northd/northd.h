@@ -186,9 +186,13 @@ struct route_policy {
 };
 
 struct routes_data {
-    struct hmap parsed_routes;
+    struct hmap parsed_routes; /* Stores struct parsed_route. */
     struct simap route_tables;
     struct hmap bfd_active_connections;
+};
+
+struct dynamic_routes_data {
+    struct hmap parsed_routes; /* Stores struct parsed_route. */
 };
 
 struct route_policies_data {
@@ -308,10 +312,12 @@ struct mcast_port_info {
                          * (e.g., IGMP join/leave). */
 };
 
-#define DRR_MODES          \
-    DRR_MODE(CONNECTED, 0) \
+#define DRR_MODES                  \
+    DRR_MODE(CONNECTED,         0) \
     DRR_MODE(CONNECTED_AS_HOST, 1) \
-    DRR_MODE(STATIC,    2)
+    DRR_MODE(STATIC,            2) \
+    DRR_MODE(NAT,               3) \
+    DRR_MODE(LB,                4)
 
 enum dynamic_routing_redistribute_mode_bits {
 #define DRR_MODE(PROTOCOL, BIT) DRRM_##PROTOCOL##_BIT = BIT,
@@ -747,6 +753,10 @@ enum route_source {
     ROUTE_SOURCE_STATIC,
     /* The route is dynamically learned by an ovn-controller. */
     ROUTE_SOURCE_LEARNED,
+    /* The route is derived from a NAT's external IP. */
+    ROUTE_SOURCE_NAT,
+    /* The route is derived from a LB's VIP. */
+    ROUTE_SOURCE_LB,
 };
 
 struct parsed_route {
@@ -766,6 +776,7 @@ struct parsed_route {
     const struct ovsdb_idl_row *source_hint;
     char *lrp_addr_s;
     const struct ovn_port *out_port;
+    const struct ovn_port *tracked_port; /* May be NULL. */
 };
 
 struct parsed_route *parsed_route_clone(const struct parsed_route *);
@@ -785,6 +796,7 @@ void parsed_route_add(const struct ovn_datapath *od,
                       const struct sset *ecmp_selection_fields,
                       enum route_source source,
                       const struct ovsdb_idl_row *source_hint,
+                      const struct ovn_port *tracked_port,
                       struct hmap *routes);
 
 bool
@@ -819,6 +831,20 @@ void route_policies_destroy(struct route_policies_data *);
 void build_parsed_routes(const struct ovn_datapath *, const struct hmap *,
                          const struct hmap *, struct hmap *, struct simap *,
                          struct hmap *);
+void build_nat_parsed_routes(const struct ovn_datapath *,
+                             const struct lr_nat_record *,
+                             const struct hmap *ls_ports,
+                             struct hmap *routes);
+void build_nat_connected_parsed_routes(const struct ovn_datapath *,
+                                       const struct lr_stateful_table *,
+                                       const struct hmap *ls_ports,
+                                       struct hmap *routes);
+void build_lb_parsed_routes(const struct ovn_datapath *,
+                            const struct ovn_lb_ip_set *,
+                            struct hmap *);
+void build_lb_connected_parsed_routes(const struct ovn_datapath *,
+                                      const struct lr_stateful_table *,
+                                      struct hmap *routes);
 uint32_t get_route_table_id(struct simap *, const char *);
 void routes_init(struct routes_data *);
 void routes_destroy(struct routes_data *);

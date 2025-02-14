@@ -16561,3 +16561,682 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
 /.*terminating with signal 15.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([dynamic-routing - LB VIPs on gateway router IPv4])
+AT_KEYWORDS([dynamic-routing])
+
+CHECK_VRF()
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+
+vrf=1000
+VRF_RESERVE([$vrf])
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-ext], [set Bridge br-ext fail-mode=standalone])
+
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv1 \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+    -- set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller.
+start_daemon ovn-controller
+
+OVS_WAIT_WHILE([ip link | grep -q ovnvrf$vrf:.*UP])
+
+check ovn-nbctl                                             \
+    -- lr-add R1                                            \
+    -- set Logical_Router R1                                \
+            options:requested-tnl-key=$vrf                  \
+            options:dynamic-routing=true                    \
+    -- ls-add sw0                                           \
+    -- ls-add public                                        \
+    -- lrp-add R1 rp-sw0 00:00:01:01:02:03 192.168.1.1/24   \
+    -- lrp-add R1 rp-public 00:00:02:01:02:03 172.16.1.1/24 \
+    -- lrp-set-options rp-public                            \
+            dynamic-routing-maintain-vrf=true               \
+            dynamic-routing-redistribute=lb                 \
+    -- set logical_router R1 options:chassis=hv1            \
+    -- lsp-add sw0 sw0-rp                                   \
+    -- set Logical_Switch_Port sw0-rp type=router           \
+            options:router-port=rp-sw0                      \
+    -- lsp-set-addresses sw0-rp router                      \
+    -- lsp-add public public-rp                             \
+    -- set Logical_Switch_Port public-rp type=router        \
+            options:router-port=rp-public                   \
+    -- lsp-set-addresses public-rp router                   \
+    -- lsp-add public public1                               \
+    -- lsp-set-addresses public1 unknown                    \
+    -- lsp-set-type public1 localnet                        \
+    -- lsp-set-options public1 network_name=phynet
+
+OVN_POPULATE_ARP
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up
+
+AT_CHECK([test `ip route show table $vrf | wc -l` -eq 1], [1])
+
+# Create a load balancer and associate to R1.
+check ovn-nbctl                                   \
+    -- lb-add lb1 172.16.1.150:80 172.16.1.100:80 \
+    -- lr-lb-add R1 lb1
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP])
+
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
+blackhole 172.16.1.150 proto 84 metric 1000])
+
+# Add distributed router connected through "join" LS and ensure
+# that its LB VIPs are redistributed by R1. LS join has no
+# IP config, routers reach each other over IPv6 LLAs.
+check ovn-nbctl \
+    -- remove Logical_Router_Port rp-public                    \
+            options dynamic-routing-redistribute               \
+    -- lrp-add R1 r1-join 00:00:00:00:ff:02                    \
+    -- lrp-set-options r1-join dynamic-routing-redistribute=lb \
+    -- ls-add ls-join                                          \
+    -- lsp-add ls-join lsp-join-to-r1                          \
+    -- lsp-set-type lsp-join-to-r1 router                      \
+    -- lsp-set-options lsp-join-to-r1 router-port=r1-join      \
+    -- lsp-set-addresses lsp-join-to-r1 router                 \
+    -- lr-add R2                                               \
+    -- lrp-add R2 r2-join 00:00:00:00:fe:02                    \
+    -- lsp-add ls-join lsp-join-to-r2                          \
+    -- lsp-set-type lsp-join-to-r2 router                      \
+    -- lsp-set-options lsp-join-to-r2 router-port=r2-join      \
+    -- lrp-set-gateway-chassis r2-join hv1
+
+# Create a load balancer and associate to R2.
+check ovn-nbctl                                    \
+    -- lb-add lb2 10.42.10.10:80 192.168.123.10:80 \
+    -- lr-lb-add R2 lb2
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP])
+
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
+blackhole 10.42.10.10 proto 84 metric 100
+blackhole 172.16.1.150 proto 84 metric 1000])
+
+# Move DGW of R2 to another chassis to verify that route priority decreases.
+check ovn-nbctl                              \
+    -- lrp-del-gateway-chassis r2-join hv1   \
+    -- lrp-set-gateway-chassis r2-join hv123
+check ovn-nbctl --wait=hv sync
+
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
+blackhole 10.42.10.10 proto 84 metric 1000
+blackhole 172.16.1.150 proto 84 metric 1000])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+# Ensure system resources are cleaned up.
+AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP], [1])
+AT_CHECK([test `ip route show table $vrf | wc -l` -eq 1], [1])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/Failed to acquire.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([dynamic-routing - LB VIPs on gateway router IPv6])
+AT_KEYWORDS([dynamic-routing])
+
+CHECK_VRF()
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+
+vrf=1001
+VRF_RESERVE([$vrf])
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-ext], [set Bridge br-ext fail-mode=standalone])
+
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv1 \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+    -- set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller.
+start_daemon ovn-controller
+
+OVS_WAIT_WHILE([ip link | grep -q ovnvrf$vrf:.*UP])
+
+check ovn-nbctl                                                   \
+    -- lr-add R1                                                  \
+    -- set Logical_Router R1                                      \
+            options:requested-tnl-key=$vrf                        \
+            options:dynamic-routing=true                          \
+    -- ls-add sw0                                                 \
+    -- ls-add public                                              \
+    -- lrp-add R1 rp-sw0 00:00:01:01:02:03 2001:db8:100::1/64     \
+    -- lrp-add R1 rp-public 00:00:02:01:02:03 2001:db8:1001::1/64 \
+    -- lrp-set-options rp-public                                  \
+            dynamic-routing-maintain-vrf=true                     \
+            dynamic-routing-redistribute=lb                       \
+    -- set logical_router R1 options:chassis=hv1                  \
+    -- lsp-add sw0 sw0-rp                                         \
+    -- set Logical_Switch_Port sw0-rp type=router                 \
+            options:router-port=rp-sw0                            \
+    -- lsp-set-addresses sw0-rp router                            \
+    -- lsp-add public public-rp                                   \
+    -- set Logical_Switch_Port public-rp type=router              \
+            options:router-port=rp-public                         \
+    -- lsp-set-addresses public-rp router                         \
+    -- lsp-add public public1                                     \
+    -- lsp-set-addresses public1 unknown                          \
+    -- lsp-set-type public1 localnet                              \
+    -- lsp-set-options public1 network_name=phynet
+
+OVN_POPULATE_ARP
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up
+
+
+AT_CHECK([test `ip -6 route show table $vrf | wc -l` -eq 1], [1])
+
+# Create a load balancer and associate to R1.
+check ovn-nbctl                                                       \
+    -- lb-add lb1 [[2001:db8:1001::150]]:80 [[2001:db8:2001::100]]:80 \
+    -- lr-lb-add R1 lb1
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ip link | grep -q ovnvrf1001:.*UP])
+AT_CHECK([test `ip -6 route show table 1001 | wc -l` -eq 1])
+
+OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
+blackhole 2001:db8:1001::150 dev lo proto 84 metric 1000 pref medium])
+
+# Add distributed router connected through "join" LS and ensure
+# that its LB VIPs are redistributed by R1. LS join has no
+# IP config, routers reach each other over IPv6 LLAs
+check ovn-nbctl \
+    -- remove Logical_Router_Port rp-public                    \
+            options dynamic-routing-redistribute               \
+    -- lrp-add R1 r1-join 00:00:00:00:ff:02                    \
+    -- lrp-set-options r1-join dynamic-routing-redistribute=lb \
+    -- ls-add ls-join                                          \
+    -- lsp-add ls-join lsp-join-to-r1                          \
+    -- lsp-set-type lsp-join-to-r1 router                      \
+    -- lsp-set-options lsp-join-to-r1 router-port=r1-join      \
+    -- lsp-set-addresses lsp-join-to-r1 router                 \
+    -- lr-add R2                                               \
+    -- lrp-add R2 r2-join 00:00:00:00:fe:02                    \
+    -- lsp-add ls-join lsp-join-to-r2                          \
+    -- lsp-set-type lsp-join-to-r2 router                      \
+    -- lsp-set-options lsp-join-to-r2 router-port=r2-join      \
+    -- lrp-set-gateway-chassis r2-join hv1
+
+# Create a load balancer and associate to R2.
+check ovn-nbctl                                                       \
+    -- lb-add lb2 [[2001:db8:3001::150]]:80 [[2001:db8:4001::100]]:80 \
+    -- lr-lb-add R2 lb2
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP])
+
+OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
+blackhole 2001:db8:1001::150 dev lo proto 84 metric 1000 pref medium
+blackhole 2001:db8:3001::150 dev lo proto 84 metric 100 pref medium])
+
+# Move DGW of R2 to another chassis to verify that route priority decreases.
+check ovn-nbctl                              \
+    -- lrp-del-gateway-chassis r2-join hv1   \
+    -- lrp-set-gateway-chassis r2-join hv123
+check ovn-nbctl --wait=hv sync
+
+OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
+blackhole 2001:db8:1001::150 dev lo proto 84 metric 1000 pref medium
+blackhole 2001:db8:3001::150 dev lo proto 84 metric 1000 pref medium])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+# Ensure system resources are cleaned up.
+AT_CHECK([ip link | grep -q ovnvrf1001:.*UP], [1])
+AT_CHECK([test `ip -6 route show table 1001 | wc -l` -eq 1], [1])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/Failed to acquire.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([dynamic-routing - DNAT and DNAT_AND_SNAT on gateway router IPv4])
+AT_KEYWORDS([dynamic-routing])
+
+CHECK_VRF()
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+
+vrf=1002
+VRF_RESERVE([$vrf])
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-ext], [set Bridge br-ext fail-mode=standalone])
+
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv1 \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+    -- set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller.
+start_daemon ovn-controller
+
+OVS_WAIT_WHILE([ip link | grep -q ovnvrf$vrf:.*UP])
+
+check ovn-nbctl                                             \
+    -- lr-add R1                                            \
+    -- set Logical_Router R1                                \
+            options:requested-tnl-key=$vrf                  \
+            options:dynamic-routing=true                    \
+    -- ls-add sw0                                           \
+    -- ls-add public                                        \
+    -- lrp-add R1 rp-sw0 00:00:01:01:02:03 192.168.1.1/24   \
+    -- lrp-add R1 rp-public 00:00:02:01:02:03 172.16.1.1/24 \
+    -- lrp-set-options rp-public                            \
+           dynamic-routing-maintain-vrf=true                \
+           dynamic-routing-redistribute=nat                 \
+    -- set logical_router R1 options:chassis=hv1            \
+    -- lsp-add sw0 sw0-rp                                   \
+    -- set Logical_Switch_Port sw0-rp type=router           \
+            options:router-port=rp-sw0                      \
+    -- lsp-set-addresses sw0-rp router                      \
+    -- lsp-add public public-rp                             \
+    -- set Logical_Switch_Port public-rp type=router        \
+            options:router-port=rp-public                   \
+    -- lsp-set-addresses public-rp router                   \
+    -- lsp-add public public1                               \
+    -- lsp-set-addresses public1 unknown                    \
+    -- lsp-set-type public1 localnet                        \
+    -- lsp-set-options public1 network_name=phynet
+
+OVN_POPULATE_ARP
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up
+
+AT_CHECK([test `ip route show table $vrf | wc -l` -eq 2], [1])
+
+# Create dnat_and_snat, dnat rules in R1.
+check ovn-nbctl                                             \
+    -- lr-nat-add R1 dnat_and_snat 172.16.1.10 192.168.1.10 \
+    -- lr-nat-add R1 dnat 172.16.1.11 192.168.1.11
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP])
+
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
+blackhole 172.16.1.10 proto 84 metric 1000
+blackhole 172.16.1.11 proto 84 metric 1000])
+
+# Add distributed router connected through "join" LS and ensure
+# that its external NAT IPs are redistributed by R1. LS join has no
+# IP config, routers reach each other over IPv6 LLAs.
+check ovn-nbctl                                                 \
+    -- remove Logical_Router_Port rp-public                     \
+            options dynamic-routing-redistribute                \
+    -- lrp-add R1 r1-join 00:00:00:00:ff:02                     \
+    -- lrp-set-options r1-join dynamic-routing-redistribute=nat \
+    -- ls-add ls-join                                           \
+    -- lsp-add ls-join lsp-join-to-r1                           \
+    -- lsp-set-type lsp-join-to-r1 router                       \
+    -- lsp-set-options lsp-join-to-r1 router-port=r1-join       \
+    -- lsp-set-addresses lsp-join-to-r1 router                  \
+    -- lr-add R2                                                \
+    -- lrp-add R2 r2-join 00:00:00:00:fe:02                     \
+    -- lsp-add ls-join lsp-join-to-r2                           \
+    -- lsp-set-type lsp-join-to-r2 router                       \
+    -- lsp-set-options lsp-join-to-r2 router-port=r2-join       \
+    -- ha-chassis-group-add g1                                  \
+    -- ha-chassis-group-add-chassis g1 hv1 10
+
+group_uuid=$(fetch_column nb:HA_Chassis_Group _uuid name=g1)
+check ovn-nbctl set logical_router_port r2-join ha_chassis_group="$group_uuid"
+
+# Create valid NATs on R2 (these should be advertised).
+check ovn-nbctl --gateway-port r2-join \
+    lr-nat-add R2 dnat_and_snat 10.42.10.10 192.168.1.10
+check ovn-nbctl --gateway-port r2-join \
+    lr-nat-add R2 dnat_and_snat 10.42.10.11 192.168.1.11
+
+# Create NATs without explicit gateway_port set on R2 (these should not be
+# advertised when multiple DGPs are configured because the configuration is
+# invalid / ambiguous in that case).
+check ovn-nbctl \
+    lr-nat-add R2 dnat_and_snat 10.42.10.12 192.168.1.12
+check ovn-nbctl \
+    lr-nat-add R2 dnat_and_snat 10.42.10.13 192.168.1.13
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP])
+
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
+blackhole 10.42.10.10 proto 84 metric 100
+blackhole 10.42.10.11 proto 84 metric 100
+blackhole 10.42.10.12 proto 84 metric 100
+blackhole 10.42.10.13 proto 84 metric 100
+blackhole 172.16.1.10 proto 84 metric 1000
+blackhole 172.16.1.11 proto 84 metric 1000])
+
+# Move DGW of R2 to another chassis to verify that route priority decreases.
+check ovn-nbctl                             \
+  -- ha-chassis-group-add-chassis g1 hv2 20 \
+  -- ha-chassis-group-remove-chassis g1 hv1
+check ovn-nbctl --wait=hv sync
+
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
+blackhole 10.42.10.10 proto 84 metric 1000
+blackhole 10.42.10.11 proto 84 metric 1000
+blackhole 10.42.10.12 proto 84 metric 1000
+blackhole 10.42.10.13 proto 84 metric 1000
+blackhole 172.16.1.10 proto 84 metric 1000
+blackhole 172.16.1.11 proto 84 metric 1000])
+
+# Add "guest" LS connected the distributed router R2 and one "VM" called
+# guest1.
+# Also, connect R2 to ls-join via another DGW.
+check ovn-nbctl                                                     \
+    -- lrp-add R2 r2-guest 00:00:00:00:fd:02 192.168.2.1/24         \
+    -- lrp-add R2 r2-join-dgw2 00:00:00:00:fd:02                    \
+    -- lsp-add ls-join lsp-join-to-r2-dgw2                          \
+    -- lsp-set-type lsp-join-to-r2-dgw2 router                      \
+    -- lsp-set-options lsp-join-to-r2-dgw2 router-port=r2-join-dgw2 \
+    -- ls-add ls-guest                                              \
+    -- lsp-add ls-guest lsp-guest-to-r2                             \
+    -- lsp-set-type lsp-guest-to-r2 router                          \
+    -- lsp-set-options lsp-guest-to-r2 router-port=r2-guest         \
+    -- lsp-set-addresses lsp-guest-to-r2 router                     \
+    -- lsp-add ls-guest guest1                                      \
+    -- lsp-set-addresses guest1 '00:00:00:00:fc:03 192.168.2.10'
+
+check ovn-nbctl \
+    -- set logical_router_port r2-join-dgw2 ha_chassis_group="$group_uuid"
+check ovn-nbctl --wait=hv sync
+
+# Bind guest1 on hv1.
+ADD_NAMESPACES(guest1)
+ADD_VETH(guest1, guest1, br-int, "192.168.2.10/24", "00:00:00:00:fd:03", \
+         "192.168.2.1")
+
+# Add distributed NAT on R2 for guest1 and ensure that it's advertised
+# with better metric on chassis hv1 even when DGP for R2 is elsewhere.
+check ovn-nbctl                                              \
+    --gateway-port r2-join-dgw2 --add-route                  \
+        lr-nat-add R2 dnat_and_snat 10.42.20.11 192.168.2.10 \
+        guest1 00:00:00:00:fc:04
+check ovn-nbctl --wait=hv sync
+
+# At this point, because R2 has multiple DGPs the NAT rules for
+# 10.42.10.12 and 10.42.10.13 have become invalid so ovn shouldn't
+# advertise them anymore.
+
+OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
+blackhole 10.42.10.10 proto 84 metric 1000
+blackhole 10.42.10.11 proto 84 metric 1000
+blackhole 10.42.20.11 proto 84 metric 100
+blackhole 172.16.1.10 proto 84 metric 1000
+blackhole 172.16.1.11 proto 84 metric 1000])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+# Ensure system resources are cleaned up.
+AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP], [1])
+AT_CHECK([test `ip route show table $vrf | wc -l` -eq 1], [1])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/Failed to acquire.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([dynamic-routing - DNAT and DNAT_AND_SNAT on gateway router IPv6])
+AT_KEYWORDS([dynamic-routing])
+
+CHECK_VRF()
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+
+vrf=1003
+VRF_RESERVE([$vrf])
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-ext], [set Bridge br-ext fail-mode=standalone])
+
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv1 \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+    -- set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller.
+start_daemon ovn-controller
+
+OVS_WAIT_WHILE([ip link | grep -q ovnvrf$vrf:.*UP])
+
+check ovn-nbctl                                                   \
+    -- lr-add R1                                                  \
+    -- set Logical_Router R1                                      \
+            options:requested-tnl-key=$vrf                        \
+            options:dynamic-routing=true                          \
+    -- ls-add sw0                                                 \
+    -- ls-add public                                              \
+    -- lrp-add R1 rp-sw0 00:00:01:01:02:03 2001:db8:100::1/64     \
+    -- lrp-add R1 rp-public 00:00:02:01:02:03 2001:db8:1003::1/64 \
+    -- lrp-set-options rp-public                                  \
+           dynamic-routing-maintain-vrf=true                      \
+           dynamic-routing-redistribute=nat                       \
+    -- set logical_router R1 options:chassis=hv1                  \
+    -- lsp-add sw0 sw0-rp                                         \
+    -- set Logical_Switch_Port sw0-rp type=router                 \
+            options:router-port=rp-sw0                            \
+    -- lsp-set-addresses sw0-rp router                            \
+    -- lsp-add public public-rp                                   \
+    -- set Logical_Switch_Port public-rp type=router              \
+            options:router-port=rp-public                         \
+    -- lsp-set-addresses public-rp router                         \
+    -- lsp-add public public1                                     \
+    -- lsp-set-addresses public1 unknown                          \
+    -- lsp-set-type public1 localnet                              \
+    -- lsp-set-options public1 network_name=phynet
+
+OVN_POPULATE_ARP
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up
+
+AT_CHECK([test `ip -6 route show table $vrf | wc -l` -eq 2], [1])
+
+# Create dnat_and_snat, dnat rules in R1.
+check ovn-nbctl                                                         \
+    -- lr-nat-add R1 dnat_and_snat 2001:db8:1003::150 2001:db8:100::100 \
+    -- lr-nat-add R1 dnat 2001:db8:1003::151 2001:db8:100::100
+
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP])
+OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
+blackhole 2001:db8:1003::150 dev lo proto 84 metric 1000 pref medium
+blackhole 2001:db8:1003::151 dev lo proto 84 metric 1000 pref medium])
+
+# Add distributed router connected through "join" LS and ensure
+# that its external NAT IPs are redistributed by R1. LS join has no
+# IP config, routers reach each other over IPv6 LLAs.
+check ovn-nbctl                                                 \
+    -- remove Logical_Router_Port rp-public                     \
+            options dynamic-routing-redistribute                \
+    -- lrp-add R1 r1-join 00:00:00:00:ff:02                     \
+    -- lrp-set-options r1-join dynamic-routing-redistribute=nat \
+    -- ls-add ls-join                                           \
+    -- lsp-add ls-join lsp-join-to-r1                           \
+    -- lsp-set-type lsp-join-to-r1 router                       \
+    -- lsp-set-options lsp-join-to-r1 router-port=r1-join       \
+    -- lsp-set-addresses lsp-join-to-r1 router                  \
+    -- lr-add R2                                                \
+    -- lrp-add R2 r2-join 00:00:00:00:fe:02                     \
+    -- lsp-add ls-join lsp-join-to-r2                           \
+    -- lsp-set-type lsp-join-to-r2 router                       \
+    -- lsp-set-options lsp-join-to-r2 router-port=r2-join       \
+    -- ha-chassis-group-add g1                                  \
+    -- ha-chassis-group-add-chassis g1 hv1 10
+
+group_uuid=$(fetch_column nb:HA_Chassis_Group _uuid name=g1)
+check ovn-nbctl set logical_router_port r2-join ha_chassis_group="$group_uuid"
+
+# Create valid NATs on R2 (these should be advertised).
+check ovn-nbctl --gateway-port r2-join \
+    lr-nat-add R2 dnat_and_snat 2001:db8:1004::150 2001:db8:201::100
+check ovn-nbctl --gateway-port r2-join \
+    lr-nat-add R2 dnat 2001:db8:1004::151 2001:db8:201::101
+
+# Create NATs without explicit gateway_port set on R2 (these should not be
+# advertised when multiple DGPs are configured because the configuration is
+# invalid / ambiguous in that case).
+check ovn-nbctl \
+    lr-nat-add R2 dnat_and_snat 2001:db8:1004::152 2001:db8:201::102
+check ovn-nbctl \
+    lr-nat-add R2 dnat_and_snat 2001:db8:1004::153 2001:db8:201::103
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP])
+
+OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
+blackhole 2001:db8:1003::150 dev lo proto 84 metric 1000 pref medium
+blackhole 2001:db8:1003::151 dev lo proto 84 metric 1000 pref medium
+blackhole 2001:db8:1004::150 dev lo proto 84 metric 100 pref medium
+blackhole 2001:db8:1004::151 dev lo proto 84 metric 100 pref medium
+blackhole 2001:db8:1004::152 dev lo proto 84 metric 100 pref medium
+blackhole 2001:db8:1004::153 dev lo proto 84 metric 100 pref medium])
+
+# Move DGW of R2 to another chassis to verify that route priority decreases.
+check ovn-nbctl                             \
+  -- ha-chassis-group-add-chassis g1 hv2 20 \
+  -- ha-chassis-group-remove-chassis g1 hv1
+check ovn-nbctl --wait=hv sync
+
+OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
+blackhole 2001:db8:1003::150 dev lo proto 84 metric 1000 pref medium
+blackhole 2001:db8:1003::151 dev lo proto 84 metric 1000 pref medium
+blackhole 2001:db8:1004::150 dev lo proto 84 metric 1000 pref medium
+blackhole 2001:db8:1004::151 dev lo proto 84 metric 1000 pref medium
+blackhole 2001:db8:1004::152 dev lo proto 84 metric 1000 pref medium
+blackhole 2001:db8:1004::153 dev lo proto 84 metric 1000 pref medium])
+
+# Add "guest" LS connected the distributed router R2 and one "VM" called
+# guest1.
+# Also, connect R2 to ls-join via another DGW.
+check ovn-nbctl                                                       \
+    -- lrp-add R2 r2-guest 00:00:00:00:fd:02 2001:db9:2000::1/64      \
+    -- lrp-add R2 r2-join-dgw2 00:00:00:00:fd:02                      \
+    -- lsp-add ls-join lsp-join-to-r2-dgw2                            \
+    -- lsp-set-type lsp-join-to-r2-dgw2 router                        \
+    -- lsp-set-options lsp-join-to-r2-dgw2 router-port=r2-join-dgw2   \
+    -- ls-add ls-guest                                                \
+    -- lsp-add ls-guest lsp-guest-to-r2                               \
+    -- lsp-set-type lsp-guest-to-r2 router                            \
+    -- lsp-set-options lsp-guest-to-r2 router-port=r2-guest           \
+    -- lsp-set-addresses lsp-guest-to-r2 router                       \
+    -- lsp-add ls-guest guest1                                        \
+    -- lsp-set-addresses guest1 '00:00:00:00:fc:03 2001:db9:2000::10'
+
+check ovn-nbctl \
+    -- set logical_router_port r2-join-dgw2 ha_chassis_group="$group_uuid"
+check ovn-nbctl --wait=hv sync
+
+# Bind guest1 on hv1.
+ADD_NAMESPACES(guest1)
+ADD_VETH(guest1, guest1, br-int, "2001:db9:2000::10/64", "00:00:00:00:fd:03", \
+         "2001:db9:2000::1", "nodad")
+
+# Add distributed NAT on R2 for guest1 and ensure that it's advertised
+# with better metric on chassis hv1 even when DGP for R2 is elsewhere.
+check ovn-nbctl                                                          \
+    --gateway-port r2-join-dgw2 --add-route                              \
+        lr-nat-add R2 dnat_and_snat 2001:db8:1005::150 2001:db9:2000::10 \
+        guest1 00:00:00:00:fc:04
+check ovn-nbctl --wait=hv sync
+
+# At this point, because R2 has multiple DGPs the NAT rules for
+# 2001:db8:1004::152 and 2001:db8:1004::153 have become invalid so ovn
+# shouldn't advertise them anymore.
+
+OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
+blackhole 2001:db8:1003::150 dev lo proto 84 metric 1000 pref medium
+blackhole 2001:db8:1003::151 dev lo proto 84 metric 1000 pref medium
+blackhole 2001:db8:1004::150 dev lo proto 84 metric 1000 pref medium
+blackhole 2001:db8:1004::151 dev lo proto 84 metric 1000 pref medium
+blackhole 2001:db8:1005::150 dev lo proto 84 metric 100 pref medium])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+# Ensure system resources are cleaned up.
+AT_CHECK([ip link | grep -q ovnvrf1003:.*UP], [1])
+AT_CHECK([test `ip -6 route show table 1003 | wc -l` -eq 2], [1])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/Failed to acquire.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
