@@ -968,6 +968,23 @@ lsp_is_router(const struct nbrec_logical_switch_port *nbsp)
     return !strcmp(nbsp->type, "router");
 }
 
+/* This function returns true if 'op' is a gateway router port.
+ * False otherwise.
+ * For 'op' to be a gateway router port.
+ *  1. op->nbrp->gateway_chassis or op->nbrp->ha_chassis_group should
+ *     be configured.
+ *  2. op->cr_port should not be NULL.  If op->nbrp->gateway_chassis or
+ *     op->nbrp->ha_chassis_group is set by the user, northd WILL create
+ *     a chassis resident port in the SB port binding.
+ *     See join_logical_ports().
+ */
+static inline bool
+lrp_is_l3dgw(const struct ovn_port *op)
+{
+    return op->cr_port && op->nbrp &&
+           (op->nbrp->n_gateway_chassis || op->nbrp->ha_chassis_group);
+}
+
 struct ovn_port *ovn_port_find(const struct hmap *ports, const char *name);
 void build_igmp_lflows(struct hmap *igmp_groups,
                        const struct hmap *ls_datapaths,
