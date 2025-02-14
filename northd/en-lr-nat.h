@@ -38,13 +38,22 @@ enum ovn_nat_type {
 /* Contains a NAT entry with the external addresses pre-parsed. */
 struct ovn_nat {
     const struct nbrec_nat *nb;
-    struct lport_addresses ext_addrs;
+    struct lport_addresses ext_addrs; /* Parsed NB.NAT.external_ip. */
+    struct eth_addr mac;              /* Parsed NB.NAT.external_mac. */
+    int logical_ip_cidr_bits;         /* Parsed NB.NATlogical_ip prefix len. */
     struct ovs_list ext_addr_list_node; /* Linkage in the per-external IP
                                          * list of nat entries. Currently
                                          * only used for SNAT.
                                          */
     bool is_router_ip; /* Indicates if the NAT external_ip is also one of
                         * router's lrp ip.  Can be 'true' only for SNAT. */
+
+    struct ovn_port *l3dgw_port; /* If non-NULL, the distributed gateway port
+                                  * this NAT will use.  NULL for gateway
+                                  * routers. */
+    bool is_distributed;         /* True if this NAT record is fully
+                                  * distributed. */
+    bool is_valid; /* True if the configuration of this entry is valid. */
     enum ovn_nat_type type;
 };
 
@@ -113,19 +122,6 @@ void en_lr_nat_run(struct engine_node *, void *data);
 
 bool lr_nat_logical_router_handler(struct engine_node *, void *data);
 bool lr_nat_northd_handler(struct engine_node *, void *data);
-
-/* Returns true if a 'nat_entry' is valid, i.e.:
- * - parsing was successful.
- * - the string yielded exactly one IPv4 address or exactly one IPv6 address.
- */
-static inline bool
-nat_entry_is_valid(const struct ovn_nat *nat_entry)
-{
-    const struct lport_addresses *ext_addrs = &nat_entry->ext_addrs;
-
-    return (ext_addrs->n_ipv4_addrs == 1 && ext_addrs->n_ipv6_addrs == 0) ||
-        (ext_addrs->n_ipv4_addrs == 0 && ext_addrs->n_ipv6_addrs == 1);
-}
 
 static inline bool
 nat_entry_is_v6(const struct ovn_nat *nat_entry)

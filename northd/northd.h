@@ -968,6 +968,8 @@ lsp_is_router(const struct nbrec_logical_switch_port *nbsp)
     return !strcmp(nbsp->type, "router");
 }
 
+const char *lrp_find_member_ip(const struct ovn_port *op, const char *ip_s);
+
 /* This function returns true if 'op' is a gateway router port.
  * False otherwise.
  * For 'op' to be a gateway router port.
@@ -986,6 +988,7 @@ lrp_is_l3dgw(const struct ovn_port *op)
 }
 
 struct ovn_port *ovn_port_find(const struct hmap *ports, const char *name);
+
 void build_igmp_lflows(struct hmap *igmp_groups,
                        const struct hmap *ls_datapaths,
                        struct lflow_table *lflows,
