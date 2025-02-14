@@ -1172,3 +1172,567 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([LR DGP - ct-commit-all])
+AT_KEYWORDS([ovnnat])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller.
+start_daemon ovn-controller
+
+# Logical network:
+# One LR R1 with switches foo (192.168.1.0/24 fd11::/64), bar (192.168.2.0/24 fd12::/64),
+# and alice (172.16.1.0/24 fd20::/64) connected to it.  The port between R1 and
+# alice is the router gateway port where the R1 NAT rules are applied.
+#
+#    foo -- R1 -- alice
+#           |
+#    bar ----
+
+check ovn-nbctl lr-add R1
+check ovn-nbctl set logical_router R1 options:ct-commit-all="true"
+
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
+
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24 fd11::1/64
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24 fd12::1/64
+check ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.1/24 fd20::1/64 \
+    -- lrp-set-gateway-chassis alice hv1
+
+# Connect foo to R1.
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+    type=router options:router-port=foo \
+    -- lsp-set-addresses rp-foo router
+
+# Connect bar to R1.
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+    type=router options:router-port=bar \
+    -- lsp-set-addresses rp-bar router
+
+# Connect alice to R1.
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+    type=router options:router-port=alice \
+    -- lsp-set-addresses rp-alice router
+
+# Logical port 'foo1' in switch 'foo'.
+ADD_NAMESPACES(foo1)
+ADD_VETH(foo1, foo1, br-int, "fd11::2", "f0:00:00:01:02:03", \
+         "fd11::1", "nodad", "192.168.1.2/24", "192.168.1.1")
+check ovn-nbctl lsp-add foo foo1 \
+-- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2 fd11::2"
+
+# Logical port 'foo2' in switch 'foo'.
+ADD_NAMESPACES(foo2)
+ADD_VETH(foo2, foo2, br-int, "fd11::3/64", "f0:00:00:01:02:06", \
+         "fd11::1", "nodad", "192.168.1.3/24", "192.168.1.1")
+check ovn-nbctl lsp-add foo foo2 \
+-- lsp-set-addresses foo2 "f0:00:00:01:02:06 192.168.1.3 fd11::3"
+
+# Logical port 'bar1' in switch 'bar'.
+ADD_NAMESPACES(bar1)
+ADD_VETH(bar1, bar1, br-int, "fd12::2/64", "f0:00:00:01:02:04", \
+         "fd12::1", "nodad", "192.168.2.2/24", "192.168.2.1")
+check ovn-nbctl lsp-add bar bar1 \
+-- lsp-set-addresses bar1 "f0:00:00:01:02:04 192.168.2.2 fd12::2"
+
+# Logical port 'alice1' in switch 'alice'.
+ADD_NAMESPACES(alice1)
+ADD_VETH(alice1, alice1, br-int, "fd20::2/64", "f0:00:00:01:02:05", \
+         "fd20::1", "nodad", "172.16.1.2/24", "172.16.1.1")
+check ovn-nbctl lsp-add alice alice1 \
+-- lsp-set-addresses alice1 "f0:00:00:01:02:05 172.16.1.2 fd20::2"
+
+# Add DNAT and SNAT rules.
+check ovn-nbctl lr-nat-add R1 dnat_and_snat 172.16.1.3 192.168.1.2 foo1 00:00:02:02:03:04
+check ovn-nbctl lr-nat-add R1 dnat_and_snat 172.16.1.4 192.168.2.2 bar1 00:00:02:02:03:05
+check ovn-nbctl lr-nat-add R1 dnat_and_snat fd20::3 fd11::2 foo1 00:00:02:02:03:04
+check ovn-nbctl lr-nat-add R1 dnat_and_snat fd20::4 fd12::2 bar1 00:00:02:02:03:05
+
+# Add a SNAT rule.
+check ovn-nbctl lr-nat-add R1 snat 172.16.1.1 192.168.1.0/24
+check ovn-nbctl lr-nat-add R1 snat fd20::1 fd11::/64
+
+OVN_POPULATE_ARP
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=172.16.1.1)'])
+OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=fd20::1)'])
+
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+NS_CHECK_EXEC([alice1], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep icmp | FORMAT_CT(192.168.2.2) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=172.16.1.2,dst=192.168.2.2,id=<cleared>,type=8,code=0),reply=(src=192.168.2.2,dst=172.16.1.2,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+NS_CHECK_EXEC([alice1], [ping -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep icmp | FORMAT_CT(fd12::2) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd20::2,dst=fd12::2,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd20::2,id=<cleared>,type=129,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+NS_CHECK_EXEC([bar1], [ping -q -c 3 -i 0.3 -w 2 172.16.1.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep icmp | FORMAT_CT(172.16.1.2) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=192.168.2.2,dst=172.16.1.2,id=<cleared>,type=8,code=0),reply=(src=172.16.1.2,dst=172.16.1.4,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+NS_CHECK_EXEC([bar1], [ping -q -c 3 -i 0.3 -w 2 fd20::2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep icmp | FORMAT_CT(fd20::2) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd12::2,dst=fd20::2,id=<cleared>,type=128,code=0),reply=(src=fd20::2,dst=fd20::4,id=<cleared>,type=129,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+# East-West NAT: 'foo1' pings 'bar1' using 172.16.1.4.
+NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 172.16.1.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Check conntrack entries.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep icmp | FORMAT_CT(172.16.1.4) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=172.16.1.3,dst=172.16.1.4,id=<cleared>,type=8,code=0),reply=(src=192.168.2.2,dst=172.16.1.3,id=<cleared>,type=0,code=0),zone=<cleared>
+icmp,orig=(src=192.168.1.2,dst=172.16.1.4,id=<cleared>,type=8,code=0),reply=(src=172.16.1.4,dst=172.16.1.3,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 fd20::4 | FORMAT_PING], [0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Check conntrack entries.  First SNAT of 'foo1' address happens.
+# Then DNAT of 'bar1' address happens (listed first below).
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd20::4) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd11::2,dst=fd20::4,id=<cleared>,type=128,code=0),reply=(src=fd20::4,dst=fd20::3,id=<cleared>,type=129,code=0),zone=<cleared>
+icmpv6,orig=(src=fd20::3,dst=fd20::4,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd20::3,id=<cleared>,type=129,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+NS_CHECK_EXEC([foo2], [ping -q -c 3 -i 0.3 -w 2 172.16.1.4 | FORMAT_PING], [0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Check conntrack entries.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep icmp | FORMAT_CT(172.16.1.1) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=172.16.1.1,dst=172.16.1.4,id=<cleared>,type=8,code=0),reply=(src=192.168.2.2,dst=172.16.1.1,id=<cleared>,type=0,code=0),zone=<cleared>
+icmp,orig=(src=192.168.1.3,dst=172.16.1.4,id=<cleared>,type=8,code=0),reply=(src=172.16.1.4,dst=172.16.1.1,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+# East-West NAT: 'foo2' pings 'bar1' using fd20::4.
+NS_CHECK_EXEC([foo2], [ping -q -c 3 -i 0.3 -w 2 fd20::4 | FORMAT_PING], [0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd20::1) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd11::3,dst=fd20::4,id=<cleared>,type=128,code=0),reply=(src=fd20::4,dst=fd20::1,id=<cleared>,type=129,code=0),zone=<cleared>
+icmpv6,orig=(src=fd20::1,dst=fd20::4,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd20::1,id=<cleared>,type=129,code=0),zone=<cleared>
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([LR GW router - ct-commit-all])
+AT_KEYWORDS([ovnnat])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller.
+start_daemon ovn-controller
+
+# Logical network:
+# One LR R1 with switches foo (192.168.1.0/24 fd11::/64), bar (192.168.2.0/24 fd12::/64),
+# and alice (172.16.1.0/24 fd20::/64) connected to it.  The port between R1 and
+# alice is the router gateway port where the R1 NAT rules are applied.
+#
+#    foo -- R1 -- alice
+#           |
+#    bar ----
+
+check ovn-nbctl lr-add R1
+check ovn-nbctl set logical_router R1 options:ct-commit-all="true"
+
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
+
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24 fd11::1/64
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24 fd12::1/64
+check ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.1/24 fd20::1/64 \
+    -- set logical_router R1 options:chassis="hv1"
+
+# Connect foo to R1.
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+    type=router options:router-port=foo \
+    -- lsp-set-addresses rp-foo router
+
+# Connect bar to R1.
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+    type=router options:router-port=bar \
+    -- lsp-set-addresses rp-bar router
+
+# Connect alice to R1.
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+    type=router options:router-port=alice \
+    -- lsp-set-addresses rp-alice router
+
+# Logical port 'foo1' in switch 'foo'.
+ADD_NAMESPACES(foo1)
+ADD_VETH(foo1, foo1, br-int, "fd11::2", "f0:00:00:01:02:03", \
+         "fd11::1", "nodad", "192.168.1.2/24", "192.168.1.1")
+check ovn-nbctl lsp-add foo foo1 \
+-- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2 fd11::2"
+
+# Logical port 'foo2' in switch 'foo'.
+ADD_NAMESPACES(foo2)
+ADD_VETH(foo2, foo2, br-int, "fd11::3/64", "f0:00:00:01:02:06", \
+         "fd11::1", "nodad", "192.168.1.3/24", "192.168.1.1")
+check ovn-nbctl lsp-add foo foo2 \
+-- lsp-set-addresses foo2 "f0:00:00:01:02:06 192.168.1.3 fd11::3"
+
+# Logical port 'bar1' in switch 'bar'.
+ADD_NAMESPACES(bar1)
+ADD_VETH(bar1, bar1, br-int, "fd12::2/64", "f0:00:00:01:02:04", \
+         "fd12::1", "nodad", "192.168.2.2/24", "192.168.2.1")
+check ovn-nbctl lsp-add bar bar1 \
+-- lsp-set-addresses bar1 "f0:00:00:01:02:04 192.168.2.2 fd12::2"
+
+# Logical port 'alice1' in switch 'alice'.
+ADD_NAMESPACES(alice1)
+ADD_VETH(alice1, alice1, br-int, "fd20::2/64", "f0:00:00:01:02:05", \
+         "fd20::1", "nodad", "172.16.1.2/24", "172.16.1.1")
+check ovn-nbctl lsp-add alice alice1 \
+-- lsp-set-addresses alice1 "f0:00:00:01:02:05 172.16.1.2 fd20::2"
+
+# Add DNAT and SNAT rules.
+check ovn-nbctl lr-nat-add R1 dnat_and_snat 172.16.1.3 192.168.1.2 foo1 00:00:02:02:03:04
+check ovn-nbctl lr-nat-add R1 dnat_and_snat 172.16.1.4 192.168.2.2 bar1 00:00:02:02:03:05
+check ovn-nbctl lr-nat-add R1 dnat_and_snat fd20::3 fd11::2 foo1 00:00:02:02:03:04
+check ovn-nbctl lr-nat-add R1 dnat_and_snat fd20::4 fd12::2 bar1 00:00:02:02:03:05
+
+# Add a SNAT rule.
+check ovn-nbctl lr-nat-add R1 snat 172.16.1.1 192.168.1.0/24
+check ovn-nbctl lr-nat-add R1 snat fd20::1 fd11::/64
+
+OVN_POPULATE_ARP
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=172.16.1.1)'])
+OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=fd20::1)'])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep icmp | FORMAT_CT(192.168.2.2) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=192.168.1.2,dst=192.168.2.2,id=<cleared>,type=8,code=0),reply=(src=192.168.2.2,dst=172.16.1.3,id=<cleared>,type=0,code=0),zone=<cleared>
+icmp,orig=(src=192.168.1.2,dst=192.168.2.2,id=<cleared>,type=8,code=0),reply=(src=192.168.2.2,dst=192.168.1.2,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep icmp | FORMAT_CT(fd12::2) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd11::2,dst=fd12::2,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd11::2,id=<cleared>,type=129,code=0),zone=<cleared>
+icmpv6,orig=(src=fd11::2,dst=fd12::2,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd20::3,id=<cleared>,type=129,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+NS_CHECK_EXEC([foo2], [ping -q -c 3 -i 0.3 -w 2 192.168.2.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep icmp | FORMAT_CT(192.168.2.2) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=192.168.1.3,dst=192.168.2.2,id=<cleared>,type=8,code=0),reply=(src=192.168.2.2,dst=172.16.1.1,id=<cleared>,type=0,code=0),zone=<cleared>
+icmp,orig=(src=192.168.1.3,dst=192.168.2.2,id=<cleared>,type=8,code=0),reply=(src=192.168.2.2,dst=192.168.1.3,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+NS_CHECK_EXEC([foo2], [ping -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep icmp | FORMAT_CT(fd12::2) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd11::3,dst=fd12::2,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd11::3,id=<cleared>,type=129,code=0),zone=<cleared>
+icmpv6,orig=(src=fd11::3,dst=fd12::2,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd20::1,id=<cleared>,type=129,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+NS_CHECK_EXEC([bar1], [ping -q -c 3 -i 0.3 -w 2 192.168.1.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep icmp | FORMAT_CT(192.168.1.3) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=192.168.2.2,dst=192.168.1.3,id=<cleared>,type=8,code=0),reply=(src=192.168.1.3,dst=172.16.1.4,id=<cleared>,type=0,code=0),zone=<cleared>
+icmp,orig=(src=192.168.2.2,dst=192.168.1.3,id=<cleared>,type=8,code=0),reply=(src=192.168.1.3,dst=192.168.2.2,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+NS_CHECK_EXEC([bar1], [ping -q -c 3 -i 0.3 -w 2 fd11::3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep icmp | FORMAT_CT(fd11::3) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd12::2,dst=fd11::3,id=<cleared>,type=128,code=0),reply=(src=fd11::3,dst=fd12::2,id=<cleared>,type=129,code=0),zone=<cleared>
+icmpv6,orig=(src=fd12::2,dst=fd11::3,id=<cleared>,type=128,code=0),reply=(src=fd11::3,dst=fd20::4,id=<cleared>,type=129,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 172.16.1.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Check conntrack entries.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep icmp | FORMAT_CT(172.16.1.4) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=192.168.1.2,dst=172.16.1.4,id=<cleared>,type=8,code=0),reply=(src=192.168.2.2,dst=192.168.1.2,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep icmp | FORMAT_CT(172.16.1.3) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=192.168.1.2,dst=192.168.2.2,id=<cleared>,type=8,code=0),reply=(src=192.168.2.2,dst=172.16.1.3,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 fd20::4 | FORMAT_PING], [0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Check conntrack entries.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd20::4) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd11::2,dst=fd20::4,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd11::2,id=<cleared>,type=129,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd20::3) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd11::2,dst=fd12::2,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd20::3,id=<cleared>,type=129,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+# East-West NAT: 'foo2' pings 'bar1' using 172.16.1.4.
+NS_CHECK_EXEC([foo2], [ping -q -c 3 -i 0.3 -w 2 172.16.1.4 | FORMAT_PING], [0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Check conntrack entries.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep icmp | FORMAT_CT(172.16.1.1) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=192.168.1.3,dst=192.168.2.2,id=<cleared>,type=8,code=0),reply=(src=192.168.2.2,dst=172.16.1.1,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.1.4) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmp,orig=(src=192.168.1.3,dst=172.16.1.4,id=<cleared>,type=8,code=0),reply=(src=192.168.2.2,dst=192.168.1.3,id=<cleared>,type=0,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+# East-West NAT: 'foo2' pings 'bar1' using fd20::4.
+NS_CHECK_EXEC([foo2], [ping -q -c 3 -i 0.3 -w 2 fd20::4 | FORMAT_PING], [0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Check conntrack entries.
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd20::1) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd11::3,dst=fd12::2,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd20::1,id=<cleared>,type=129,code=0),zone=<cleared>
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd20::4) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+icmpv6,orig=(src=fd11::3,dst=fd20::4,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd11::3,id=<cleared>,type=129,code=0),zone=<cleared>
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Commit all - UDN])
+AT_KEYWORDS([ovnnat])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller.
+start_daemon ovn-controller
+
+check ovn-nbctl lr-add lr
+check ovn-nbctl ls-add ls
+
+check ovn-nbctl lrp-add lr lr-ls 00:00:00:00:00:01 192.168.100.1/24 \
+    -- lrp-set-gateway-chassis lr-ls hv1
+check ovn-nbctl lsp-add ls ls-lr -- set Logical_Switch_Port ls-lr \
+    type=router options:router-port=lr-ls \
+    -- lsp-set-addresses ls-lr router
+
+ADD_NAMESPACES(pod)
+ADD_VETH(pod, pod, br-int, "192.168.100.5/24", "00:00:00:00:00:05", "192.168.100.1")
+check ovn-nbctl lsp-add ls pod \
+    -- lsp-set-addresses pod "00:00:00:00:00:05 192.168.100.5"
+
+ADD_NAMESPACES(mgmt)
+ADD_VETH(mgmt, mgmt, br-int, "192.168.100.2/24", "00:00:00:00:00:02", "192.168.100.1")
+NS_EXEC([mgmt], [ip addr add 172.16.100.2/24 dev mgmt])
+check ovn-nbctl lsp-add ls mgmt \
+    -- lsp-set-addresses mgmt "00:00:00:00:00:02 192.168.100.2"
+
+check check ovn-nbctl --policy="src-ip" lr-route-add lr 192.168.100.0/24 192.168.100.2
+check ovn-nbctl lb-add lb0 172.16.0.5:5656 192.168.100.5:2323 udp
+check ovn-nbctl lb-add lb1 172.16.0.5:5657 192.168.100.5:2324 tcp
+check ovn-nbctl ls-lb-add ls lb0
+check ovn-nbctl ls-lb-add ls lb1
+
+check ovn-nbctl --match="eth.dst == 00:00:00:00:00:02" lr-nat-add lr snat 172.16.0.2 192.168.100.0/24
+check ovn-nbctl set logical_router lr options:ct-commit-all="true"
+
+OVN_POPULATE_ARP
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+
+NETNS_START_TCPDUMP([mgmt], [-vnne "ip or icmp"], [mgmt])
+NETNS_START_TCPDUMP([pod], [-vnne "ip or icmp"], [pod])
+
+echo -e "Hello UDP\nHello UDP" > udp.expected
+echo -e "Hello TCP\nHello TCP" > tcp.expected
+
+NETNS_DAEMONIZE([pod], [nc -e /bin/cat -v -l -u -o server_udp.log 192.168.100.5 2323], [nc1.pid])
+NETNS_DAEMONIZE([pod], [nc -e /bin/cat -v -l -o server_tcp.log 192.168.100.5 2324], [nc2.pid])
+
+NS_CHECK_EXEC([mgmt], [(echo "Hello UDP"; sleep 3) | nc -u -s 172.16.100.2 -o client_udp.log 172.16.0.5 5656], [0], [ignore], [ignore])
+check cmp server_udp.log udp.expected
+check cmp client_udp.log udp.expected
+
+NS_CHECK_EXEC([mgmt], [(echo "Hello TCP"; sleep 3) | nc -s 172.16.100.2 -o client_tcp.log 172.16.0.5 5657], [0], [ignore], [ignore])
+check cmp server_tcp.log tcp.expected
+check cmp client_tcp.log tcp.expected
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])

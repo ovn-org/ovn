@@ -3132,6 +3132,17 @@ or
                table="Logical_Router"/> on the Logical_Router.
         </p>
       </column>
+
+      <column name="options" key="ct-commit-all" type='{"type": "boolean"}'>
+        When enabled the LR will commit traffic in a zone that is stateful.
+        The traffic is not commited to both zones but it is selective based
+        whether there is stateful DNAT/SNAT or both. The commit all will
+        prevent issues with <code>ct.inv</code> packets as it will prevent
+        the commit of reply traffic, which could happen in some cases. This
+        also helps with HWOL as there shouldn't be any match on ct.new
+        for established sessions as we will commit everything in addition
+        to already existing stateful NATs and LBs.
+      </column>
     </group>
 
     <group title="Common Columns">

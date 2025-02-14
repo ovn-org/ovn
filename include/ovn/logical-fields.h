@@ -95,6 +95,8 @@ enum mff_log_flags_bits {
     MLF_ICMP_SNAT_BIT = 17,
     MLF_OVERRIDE_LOCAL_ONLY_BIT = 18,
     MLF_FROM_CTRL_BIT = 19,
+    MLF_UNSNAT_NEW_BIT = 20,
+    MLF_UNSNAT_NOT_TRACKED_BIT = 21,
 };
 
 /* MFF_LOG_FLAGS_REG flag assignments */
@@ -152,6 +154,12 @@ enum mff_log_flags {
     MLF_ICMP_SNAT = (1 << MLF_ICMP_SNAT_BIT),
 
     MLF_OVERRIDE_LOCAL_ONLY = (1 << MLF_OVERRIDE_LOCAL_ONLY_BIT),
+
+    /* Indicate that the packet went through unSNAT and had ct.new state. */
+    MLF_UNSNAT_NEW = (1 << MLF_UNSNAT_NEW_BIT),
+
+    /* Indicate that the packet didn't go through unSNAT. */
+    MLF_UNSNAT_NOT_TRACKED = (1 << MLF_UNSNAT_NOT_TRACKED_BIT)
 };
 
 /* OVN logical fields

@@ -78,6 +78,8 @@ Post v24.09.0
        learned from a linux interfaces that is locally bound to the referenced
        LSP will be learned. Additionally support local overwrites for arbitrary
        interface names using "dynamic-routing-port-mapping".
+   - Add "options:ct-commit-all" to LR, that enables commit of all traffic
+     to DNAT and SNAT zone when LR is stateful.
 
 OVN v24.09.0 - 13 Sep 2024
 --------------------------

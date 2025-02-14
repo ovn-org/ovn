@@ -3667,7 +3667,26 @@ next;
       </li>
     </ul>
 
-    <h3>Ingress Table 6: DEFRAG</h3>
+    <h3>Ingress Table 6: POST USNAT</h3>
+
+    <p>
+      This is to check whether the packet is already tracked in SNAT zone.
+      It contains a priority-0 flow that simply moves traffic to the next
+      table.
+    </p>
+
+    <p>
+      If the <code>options:ct-commit-all</code> is set to <code>true</code> the
+      following two flows are configured matching on <code>ip &amp;&amp;
+      ct.new</code> with an action <code>flags.unsnat_new = 1; next; </code>
+      and <code>ip &amp;&amp; !ct.trk</code> with an action
+      <code>flags.unsnat_not_tracked = 1; next;</code> Which sets one of the
+      flags that is used in later stages. There is extra match on both when
+      there is configured DGP
+      <code>inport == DGP &amp;&amp; is_chassis_resident(CHASSIS)</code>.
+    </p>
+
+    <h3>Ingress Table 7: DEFRAG</h3>
 
     <p>
       This is to send packets to connection tracker for tracking and
@@ -3710,7 +3729,15 @@ next;
       this allows potentially related ICMP traffic to pass through CT.
     </p>
 
-    <h3>Ingress Table 7: Load balancing affinity check</h3>
+    <p>
+      If the <code>options:ct-commit-all</code> is set to <code>true</code>
+      the following flow is configured matching on <code>ip &amp;&amp;
+      (!ct.trk || !ct.rpl)</code> with an action <code>ct_next(dnat);</code>.
+      There is extra match when the LR is configured as DGP
+      <code>inport == DGP &amp;&amp; is_chassis_resident(CHASSIS)</code>.
+    </p>
+
+   <h3>Ingress Table 8: Load balancing affinity check</h3>
 
     <p>
       Load balancing affinity check table contains the following
@@ -3737,7 +3764,7 @@ next;
       </li>
     </ul>
 
-    <h3>Ingress Table 8: DNAT</h3>
+    <h3>Ingress Table 9: DNAT</h3>
 
     <p>
       Packets enter the pipeline with destination IP address that needs to
@@ -3866,7 +3893,7 @@ next;
       </li>
     </ul>
 
-    <p>Ingress Table 8: DNAT on Gateway Routers</p>
+    <p>Ingress Table 9: DNAT on Gateway Routers</p>
 
     <ul>
       <li>
@@ -3920,12 +3947,20 @@ next;
       </li>
 
       <li>
+        <p>
+          If the <code>options:ct-commit-all</code> is set to <code>true</code>
+          the following flow is configured matching on <code>ip &amp;&amp;
+          ct.new</code> with an action <code>ct_commit_to_zone(dnat);</code>.
+        </p>
+      </li>
+
+      <li>
         A priority-0 logical flow with match <code>1</code> has actions
         <code>next;</code>.
       </li>
     </ul>
 
-    <p>Ingress Table 8: DNAT on Distributed Routers</p>
+    <p>Ingress Table 9: DNAT on Distributed Routers</p>
 
     <p>
       On distributed routers, the DNAT table only handles packets
@@ -3974,13 +4009,21 @@ next;
         </p>
 
         <p>
+          If the <code>options:ct-commit-all</code> is set to <code>true</code>
+          the following flow is configured matching on <code>ip &amp;&amp;
+          ct.new &amp;&amp; inport == DGP &amp;&amp;
+          is_chassis_resident(CHASSIS)</code> with an action
+          <code>ct_commit_to_zone(dnat);</code>.
+        </p>
+
+        <p>
           A priority-0 logical flow with match <code>1</code> has actions
           <code>next;</code>.
         </p>
       </li>
     </ul>
 
-    <h3>Ingress Table 9: Load balancing affinity learn</h3>
+   <h3>Ingress Table 10: Load balancing affinity learn</h3>
 
     <p>
       Load balancing affinity learn table contains the following
@@ -4008,7 +4051,7 @@ next;
       </li>
     </ul>
 
-    <h3>Ingress Table 10: ECMP symmetric reply processing</h3>
+   <h3>Ingress Table 11: ECMP symmetric reply processing</h3>
     <ul>
       <li>
         If ECMP routes with symmetric reply are configured in the
@@ -4027,7 +4070,7 @@ next;
       </li>
     </ul>
 
-    <h3>Ingress Table 11: IPv6 ND RA option processing</h3>
+   <h3>Ingress Table 12: IPv6 ND RA option processing</h3>
 
     <ul>
       <li>
@@ -4057,7 +4100,7 @@ reg0[5] = put_nd_ra_opts(<var>options</var>);next;
       </li>
     </ul>
 
-    <h3>Ingress Table 12: IPv6 ND RA responder</h3>
+    <h3>Ingress Table 13: IPv6 ND RA responder</h3>
 
     <p>
       This table implements IPv6 ND RA responder for the IPv6 ND RA replies
@@ -4102,7 +4145,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 13: IP Routing Pre</h3>
+   <h3>Ingress Table 14: IP Routing Pre</h3>
 
     <p>
       If a packet arrived at this table from Logical Router Port <var>P</var>
@@ -4132,7 +4175,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 14: IP Routing</h3>
+   <h3>Ingress Table 15: IP Routing</h3>
 
     <p>
       A packet that arrives at this table is an IP packet that should be
@@ -4349,7 +4392,7 @@ reg8[16..31] = <var>MID1</var>);
       </li>
     </ul>
 
-    <h3>Ingress Table 15: IP_ROUTING_ECMP</h3>
+    <h3>Ingress Table 16: IP_ROUTING_ECMP</h3>
 
     <p>
       This table implements the second part of IP routing for ECMP routes
@@ -4406,7 +4449,7 @@ outport = <var>P</var>;
       </li>
     </ul>
 
-    <h3>Ingress Table 16: Router policies</h3>
+   <h3>Ingress Table 17: Router policies</h3>
     <p>
       This table adds flows for the logical router policies configured
       on the logical router. Please see the
@@ -4478,7 +4521,7 @@ next;
       </li>
     </ul>
 
-    <h3>Ingress Table 17: ECMP handling for router policies</h3>
+    <h3>Ingress Table 18: ECMP handling for router policies</h3>
     <p>
       This table handles the ECMP for the router policies configured
       with multiple nexthops.
@@ -4527,7 +4570,7 @@ outport = <var>P</var>
       </li>
     </ul>
 
-    <h3>Ingress Table 18: DHCP Relay Response Check</h3>
+    <h3>Ingress Table 19: DHCP Relay Response Check</h3>
     <p>
       This stage process the DHCP response packets coming from the DHCP server.
     </p>
@@ -4561,7 +4604,7 @@ outport = <var>P</var>
       </li>
     </ul>
 
-    <h3>Ingress Table 19: DHCP Relay Response</h3>
+    <h3>Ingress Table 20: DHCP Relay Response</h3>
     <p>
       This stage process the DHCP response packets on which
       <code>dhcp_relay_resp_chk</code> action is applied in the previous stage.
@@ -4604,7 +4647,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 20: ARP/ND Resolution</h3>
+   <h3>Ingress Table 21: ARP/ND Resolution</h3>
 
     <p>
       Any packet that reaches this table is an IP packet whose next-hop
@@ -4818,7 +4861,7 @@ output;
 
     </ul>
 
-    <h3>Ingress Table 21: Check packet length</h3>
+   <h3>Ingress Table 22: Check packet length</h3>
 
     <p>
       For distributed logical routers or gateway routers with gateway
@@ -4855,7 +4898,7 @@ REGBIT_PKT_LARGER = check_pkt_larger(<var>L</var>); next;
       and advances to the next table.
     </p>
 
-    <h3>Ingress Table 22: Handle larger packets</h3>
+   <h3>Ingress Table 23: Handle larger packets</h3>
 
     <p>
       For distributed logical routers or gateway routers with gateway port
@@ -4918,7 +4961,7 @@ icmp6 {
       and advances to the next table.
     </p>
 
-    <h3>Ingress Table 23: Gateway Redirect</h3>
+   <h3>Ingress Table 24: Gateway Redirect</h3>
 
     <p>
       For distributed logical routers where one or more of the logical router
@@ -5002,7 +5045,7 @@ icmp6 {
       </li>
     </ul>
 
-    <h3>Ingress Table 24: ARP Request</h3>
+   <h3>Ingress Table 25: ARP Request</h3>
 
     <p>
       In the common case where the Ethernet destination has been resolved, this
@@ -5203,6 +5246,16 @@ nd_ns {
         </li>
 
         <li>
+          If the <code>options:ct-commit-all</code> is set to <code>true</code>
+          the following flows are configured matching on <code>ip &amp;&amp;
+          (!ct.trk || !ct.rpl) &amp;&amp; flags.unsnat_not_tracked == 1</code>
+          with  an action <code>ct_next(snat);</code> and <code>ip &amp;&amp;
+          flags.unsnat_new == 1</code> with an action <code>next;</code>. There
+          is extra match when there is configured DGP
+          <code>outport == DGP &amp;&amp; is_chassis_resident(CHASSIS)</code>.
+        </li>
+
+        <li>
           A priority-0 logical flow with match <code>1</code> has actions
         <code>next;</code>.
         </li>
@@ -5334,6 +5387,17 @@ nd_ns {
 
       <li>
         <p>
+          If the <code>options:ct-commit-all</code> is set to <code>true</code>
+          the following two flows are configured matching on <code> ip
+          &amp;&amp; (!ct.trk || !ct.rpl) &amp;&amp;
+          flags.unsnat_new == 1</code> and
+          <code>ip &amp;&amp; ct.new &amp;&amp; flags.unsnat_not_tracked == 1
+          </code> both with an action <code>ct_commit_to_zone(snat);</code>.
+        </p>
+      </li>
+
+      <li>
+        <p>
           A priority-0 logical flow with match <code>1</code> has actions
           <code>next;</code>.
         </p>
@@ -5410,6 +5474,19 @@ nd_ns {
         initiated for this traffic so that the following table, <code>
         lr_out_post_snat</code>, can identify whether the traffic flow was
         initiated from the internal or external network.
+      </li>
+
+      <li>
+        <p>
+          If the <code>options:ct-commit-all</code> is set to <code>true</code>
+          the following two flows are configured matching on <code>ip
+          &amp;&amp; (!ct.trk || !ct.rpl) &amp;&amp; flags.unsnat_new == 1
+          &amp;&amp; outport == DGP &amp;&amp; is_chassis_resident(CHASSIS)
+          </code> and <code>ip &amp;&amp; ct.new &amp;&amp;
+          flags.unsnat_not_tracked == 1 &amp;&amp; outport == DGP &amp;&amp;
+          is_chassis_resident(CHASSIS)</code>both  with an action
+          <code>ct_commit_to_zone(snat);</code>.
+        </p>
       </li>
 
       <li>
