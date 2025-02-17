@@ -273,17 +273,12 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
      * routes until db conditions are updated. */
     ovsdb_idl_condition_add_clause_true(&lr);
 
-    if (chassis) {
-        /* Monitors Chassis_Private record for current chassis only. */
-        sbrec_chassis_private_add_clause_name(&chprv, OVSDB_F_EQ,
-                                              chassis->name);
-    } else {
-        /* During initialization, we monitor all records in Chassis_Private so
-         * that we don't try to recreate existing ones. */
-        ovsdb_idl_condition_add_clause_true(&chprv);
-    }
-
     if (monitor_all) {
+        /* Monitor all Southbound tables unconditionally.  Do that even for
+         * tables that could be easily filtered by chassis name (like
+         * Chassis_Private).  That's because the current ovsdb-server
+         * implementation uses a cache whose efficiency significantly
+         * decreases when monitor conditions are present. */
         ovsdb_idl_condition_add_clause_true(&pb);
         ovsdb_idl_condition_add_clause_true(&lf);
         ovsdb_idl_condition_add_clause_true(&mb);
@@ -293,6 +288,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         ovsdb_idl_condition_add_clause_true(&ce);
         ovsdb_idl_condition_add_clause_true(&ip_mcast);
         ovsdb_idl_condition_add_clause_true(&igmp);
+        ovsdb_idl_condition_add_clause_true(&chprv);
         ovsdb_idl_condition_add_clause_true(&tv);
         ovsdb_idl_condition_add_clause_true(&nh);
         ovsdb_idl_condition_add_clause_true(&ar);
@@ -331,9 +327,16 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         sbrec_igmp_group_add_clause_chassis(&igmp, OVSDB_F_EQ,
                                             &chassis->header_.uuid);
 
+        /* Monitors Chassis_Private record for current chassis only. */
+        sbrec_chassis_private_add_clause_name(&chprv, OVSDB_F_EQ,
+                                              chassis->name);
+
         sbrec_chassis_template_var_add_clause_chassis(&tv, OVSDB_F_EQ,
                                                       chassis->name);
     } else {
+        /* During initialization, we monitor all records in Chassis_Private so
+         * that we don't try to recreate existing ones. */
+        ovsdb_idl_condition_add_clause_true(&chprv);
         /* Also, to avoid traffic disruption (e.g., conntrack flushing for
          * zones that are used by OVN but not yet known due to the SB initial
          * contents not being available), monitor all port bindings
@@ -712,8 +715,7 @@ static void
 update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
              bool *monitor_all_p, bool *reset_ovnsb_idl_min_index,
              struct controller_engine_ctx *ctx,
-             unsigned int *sb_cond_seqno,
-             struct ovsdb_idl_index *sbrec_chassis_by_name)
+             unsigned int *sb_cond_seqno)
 {
     const struct ovsrec_open_vswitch *cfg = ovsrec_open_vswitch_first(ovs_idl);
     if (!cfg) {
@@ -739,18 +741,12 @@ update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
         get_chassis_external_id_value_bool(
             &cfg->external_ids, chassis_id, "ovn-monitor-all", false);
     if (monitor_all) {
-        const struct sbrec_chassis *chassis = NULL;
-        if (chassis_id && sbrec_chassis_by_name) {
-            chassis =
-                chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
-        }
-
         /* Always call update_sb_monitors when monitor_all is true.
          * Otherwise, don't call it here, because there would be unnecessary
          * extra cost. Instead, it is called after the engine execution only
          * when it is necessary. */
         unsigned int next_cond_seqno =
-            update_sb_monitors(ovnsb_idl, chassis, NULL, NULL, NULL, true);
+            update_sb_monitors(ovnsb_idl, NULL, NULL, NULL, NULL, true);
         if (sb_cond_seqno) {
             *sb_cond_seqno = next_cond_seqno;
         }
@@ -6044,8 +6040,7 @@ main(int argc, char *argv[])
 
         update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl, &sb_monitor_all,
                      &reset_ovnsb_idl_min_index,
-                     &ctrl_engine_ctx, &ovnsb_expected_cond_seqno,
-                     sbrec_chassis_by_name);
+                     &ctrl_engine_ctx, &ovnsb_expected_cond_seqno);
         update_ssl_config(ovsrec_ssl_table_get(ovs_idl_loop.idl));
 
         struct ovsdb_idl_txn *ovnsb_idl_txn
@@ -6532,7 +6527,7 @@ loop_done:
         bool done = !ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl);
         while (!done) {
             update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl,
-                         NULL, NULL, NULL, NULL, sbrec_chassis_by_name);
+                         NULL, NULL, NULL, NULL);
             update_ssl_config(ovsrec_ssl_table_get(ovs_idl_loop.idl));
 
             struct ovsdb_idl_txn *ovs_idl_txn
