@@ -484,10 +484,11 @@ OVN_CLEANUP([hv])
 AT_CLEANUP
 ])
 
-# Checks that ovn-controller increments the nb_cfg value in the Chassis_Private table
-# and each hv doesn't exchange messages of update of Chassis_Private table
-OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn-controller - Bump Chassis_Private nb_cfg value with Monitor All])
+# Checks that when ovn-controller increments the nb_cfg value in the
+# Chassis_Private table each hv receives Chassis_Private update messages.
+# NOTE: Only run this test once, it's relevant only for the case when
+# monitor_all is set to 'true'.
+AT_SETUP([ovn-controller - Chassis_Private processing with conditional monitoring disabled])
 AT_KEYWORDS([ovn])
 ovn_start
 
@@ -502,34 +503,36 @@ as hv2
 check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.12
 
-as hv1 ovs-vsctl set open . external_ids:ovn-monitor-all=true
-as hv2 ovs-vsctl set open . external_ids:ovn-monitor-all=true
+as hv1
+check ovs-vsctl set open . external_ids:ovn-monitor-all=true
+as hv2
+check ovs-vsctl set open . external_ids:ovn-monitor-all=true
 
 # Wait until ovn-monitor-all is processed by ovn-controller.
 wait_row_count Chassis 1 name=hv1 other_config:ovn-monitor-all=true
 wait_row_count Chassis 1 name=hv2 other_config:ovn-monitor-all=true
 
 # Enable debug for check the received messages.
-as hv1 ovn-appctl -t ovn-controller vlog/set dbg
-as hv2 ovn-appctl -t ovn-controller vlog/set dbg
+as hv1
+check ovn-appctl -t ovn-controller vlog/set dbg
+as hv2
+check ovn-appctl -t ovn-controller vlog/set dbg
 
 # Bump the NB_Global nb_cfg value.
-check ovn-nbctl set NB_Global . nb_cfg=999
+check ovn-nbctl --wait=hv sync
 
-# ovn-controller should bump the nb_cfg in the chassis_private table.
-wait_row_count Chassis_Private 1 name=hv1 nb_cfg=999
-wait_row_count Chassis_Private 1 name=hv2 nb_cfg=999
+nb_cfg=$(fetch_column nb:NB_Global options:nb_cfg)
 
-AT_CHECK([grep -c 'Chassis_Private.*nb_cfg":999' hv1/ovn-controller.log], [0], [dnl
-1
+# Both chassis should receive all Chassis_Private notifications.
+AT_CHECK([grep -c "Chassis_Private.*nb_cfg\":${nb_cfg}" hv1/ovn-controller.log], [0], [dnl
+2
 ])
-AT_CHECK([grep -c 'Chassis_Private.*nb_cfg":999' hv2/ovn-controller.log], [0], [dnl
-1
+AT_CHECK([grep -c "Chassis_Private.*nb_cfg\":${nb_cfg}" hv2/ovn-controller.log], [0], [dnl
+2
 ])
 
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
-])
 
 # check that nb_cfg overflow cases handled properly
 AT_SETUP([ovn-controller - overflow the nb_cfg value across the tables])
