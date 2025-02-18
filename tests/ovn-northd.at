@@ -15871,7 +15871,7 @@ AT_CHECK([grep "lr_out_post_undnat" lr0flows | ovn_strip_lflows], [0], [dnl
 AT_CHECK([grep "lr_out_snat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=??(lr_out_snat        ), priority=10   , match=(ip && (!ct.trk || !ct.rpl) && flags.unsnat_new == 1 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_commit_to_zone(snat);)
-  table=??(lr_out_snat        ), priority=10   , match=(ip && ct.new && flags.unsnat_not_tracked == 1 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_commit_to_zone(snat);)
+  table=??(lr_out_snat        ), priority=10   , match=(ip && ct.new && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_commit_to_zone(snat);)
   table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
   table=??(lr_out_snat        ), priority=153  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.10);)
 ])
@@ -15919,7 +15919,7 @@ AT_CHECK([grep "lr_out_post_undnat" lr0flows | ovn_strip_lflows], [0], [dnl
 AT_CHECK([grep "lr_out_snat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=??(lr_out_snat        ), priority=10   , match=(ip && (!ct.trk || !ct.rpl) && flags.unsnat_new == 1 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_commit_to_zone(snat);)
-  table=??(lr_out_snat        ), priority=10   , match=(ip && ct.new && flags.unsnat_not_tracked == 1 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_commit_to_zone(snat);)
+  table=??(lr_out_snat        ), priority=10   , match=(ip && ct.new && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_commit_to_zone(snat);)
   table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
 ])
 
@@ -15963,7 +15963,7 @@ AT_CHECK([grep "lr_out_post_undnat" lr0flows | ovn_strip_lflows], [0], [dnl
 AT_CHECK([grep "lr_out_snat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=??(lr_out_snat        ), priority=10   , match=(ip && (!ct.trk || !ct.rpl) && flags.unsnat_new == 1 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_commit_to_zone(snat);)
-  table=??(lr_out_snat        ), priority=10   , match=(ip && ct.new && flags.unsnat_not_tracked == 1 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_commit_to_zone(snat);)
+  table=??(lr_out_snat        ), priority=10   , match=(ip && ct.new && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_commit_to_zone(snat);)
   table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
   table=??(lr_out_snat        ), priority=153  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.10);)
 ])
@@ -16009,7 +16009,7 @@ AT_CHECK([grep "lr_out_post_undnat" lr0flows | ovn_strip_lflows], [0], [dnl
 AT_CHECK([grep "lr_out_snat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=??(lr_out_snat        ), priority=10   , match=(ip && (!ct.trk || !ct.rpl) && flags.unsnat_new == 1), action=(ct_commit_to_zone(snat);)
-  table=??(lr_out_snat        ), priority=10   , match=(ip && ct.new && flags.unsnat_not_tracked == 1), action=(ct_commit_to_zone(snat);)
+  table=??(lr_out_snat        ), priority=10   , match=(ip && ct.new), action=(ct_commit_to_zone(snat);)
   table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
   table=??(lr_out_snat        ), priority=25   , match=(ip && ip4.src == 10.0.0.0/24 && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.10);)
 ])
