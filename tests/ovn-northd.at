@@ -82,6 +82,39 @@ $recompute : compute - $compute"
     check test "$node_compute_ct" -ne "0"
   fi
 }
+
+# Checks if the provided engine node recomputed, computed or is unchanged.
+# 1st argument is the engine node.
+# 2nd argument is the expected state.
+# Possible values are - "recompute", "incremental" and "unchanged".
+#
+# Eg. 'check_engine_compute lflow incremental' will verify
+# that if the lflow engine node recompute stat is equal to 0 and
+# compute stat is > 0.  It fails otherwise.
+check_engine_compute() {
+  node=$1
+  state=$2
+
+  echo "Checking engine stats for node $node : goal $state"
+
+  node_stat=$(as northd ovn-appctl -t ovn-northd inc-engine/show-stats $node)
+  # node_stat will be of this format :
+  #     - Node: lflow - recompute: 3 - compute: 0 - cancel: 0
+  node_recompute_ct=$(echo $node_stat | cut -d '-' -f2 | cut -d ':' -f2)
+  node_compute_ct=$(echo $node_stat | cut -d '-' -f3 | cut -d ':' -f2)
+
+  if [[ "$state" == "recompute" ]]; then
+    # Node should have recomputed.
+    # It is irrelevant if it also computed.
+    check test "$node_recompute_ct" -ne "0"
+  elif [[ "$state" == "incremental" ]]; then
+    check test "$node_recompute_ct" -eq "0"
+    check test "$node_compute_ct" -ne "0"
+  else
+    check test "$node_recompute_ct" -eq "0"
+    check test "$node_compute_ct" -eq "0"
+  fi
+}
 m4_divert_pop([PREPARE_TESTS])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
@@ -15525,11 +15558,11 @@ datapath=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
 check ovn-nbctl --wait=sb set Logical_Router lr0 option:dynamic-routing=true \
     option:dynamic-routing-redistribute="connected,static"
 
-check_engine_stats northd recompute nocompute
-check_engine_stats routes recompute nocompute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_compute northd recompute
+check_engine_compute routes recompute
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
@@ -15539,98 +15572,98 @@ check ovn-nbctl lsp-add sw0 sw0-lr0
 check ovn-nbctl --wait=sb set Logical_Switch_Port sw0-lr0 \
     type=router options:router-port=lr0-sw0
 sw0=$(fetch_column port_binding _uuid logical_port=lr0-sw0)
-check_engine_stats northd recompute compute
-check_engine_stats routes recompute compute
-check_engine_stats advertised_route_sync recompute compute
-check_engine_stats learned_route_sync recompute compute
-check_engine_stats lflow recompute compute
+check_engine_compute northd recompute
+check_engine_compute routes recompute
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 10.0.1.1/24
 sw1=$(fetch_column port_binding _uuid logical_port=lr0-sw1)
-check_engine_stats northd recompute compute
-check_engine_stats routes recompute nocompute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_compute northd recompute
+check_engine_compute routes recompute
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-route-add lr0 192.168.0.0/24 10.0.0.10
-check_engine_stats northd recompute nocompute
-check_engine_stats routes recompute nocompute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_compute northd recompute
+check_engine_compute routes recompute
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lrp-add lr0 lr0-sw2 00:00:00:00:ff:03 2001:db8::1/64 fe80::1/64
 sw2=$(fetch_column port_binding _uuid logical_port=lr0-sw2)
-check_engine_stats northd recompute compute
-check_engine_stats routes recompute nocompute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_compute northd recompute
+check_engine_compute routes recompute
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb remove Logical_Router lr0 option dynamic-routing
-check_engine_stats northd recompute nocompute
-check_engine_stats routes recompute nocompute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_compute northd recompute
+check_engine_compute routes recompute
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb set Logical_Router lr0 option:dynamic-routing=true
-check_engine_stats northd recompute nocompute
-check_engine_stats routes recompute nocompute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_compute northd recompute
+check_engine_compute routes recompute
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb set Logical_Router lr0 \
     option:dynamic-routing-redistribute="static"
-check_engine_stats northd recompute nocompute
-check_engine_stats routes recompute nocompute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_compute northd recompute
+check_engine_compute routes recompute
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb remove Logical_Router lr0 \
     option dynamic-routing-redistribute
-check_engine_stats northd recompute nocompute
-check_engine_stats routes recompute nocompute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_compute northd recompute
+check_engine_compute routes recompute
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb set Logical_Router_Port lr0-sw1 \
     option:dynamic-routing-redistribute="connected"
-check_engine_stats northd recompute nocompute
-check_engine_stats routes recompute nocompute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_compute northd recompute
+check_engine_compute routes recompute
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb set Logical_Router_Port lr0-sw0 \
     option:dynamic-routing-redistribute="connected"
-check_engine_stats northd recompute nocompute
-check_engine_stats routes recompute nocompute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_compute northd recompute
+check_engine_compute routes recompute
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
@@ -15640,41 +15673,41 @@ check_uuid ovn-sbctl create Learned_Route \
     ip_prefix=172.16.0.0/24               \
     nexthop=10.0.0.11
 check ovn-nbctl --wait=sb sync
-check_engine_stats northd norecompute nocompute
-check_engine_stats routes norecompute nocompute
-check_engine_stats advertised_route_sync norecompute nocompute
-check_engine_stats learned_route_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_compute northd unchanged
+check_engine_compute routes unchanged
+check_engine_compute advertised_route_sync unchanged
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-sbctl --all destroy Learned_Route
 check ovn-nbctl --wait=sb sync
-check_engine_stats northd norecompute nocompute
-check_engine_stats routes norecompute nocompute
-check_engine_stats advertised_route_sync norecompute nocompute
-check_engine_stats learned_route_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_compute northd unchanged
+check_engine_compute routes unchanged
+check_engine_compute advertised_route_sync unchanged
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb set Logical_Router_Port lr0-sw0 \
     options:dynamic-routing-redistribute="connected-as-host"
-check_engine_stats northd recompute nocompute
-check_engine_stats routes recompute nocompute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_compute northd recompute
+check_engine_compute routes recompute
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl lsp-add sw0 sw0-vif0
 check ovn-nbctl --wait=sb lsp-set-addresses sw0-vif0 "00:aa:bb:cc:dd:ee 10.0.0.2"
-check_engine_stats northd norecompute compute
-check_engine_stats routes norecompute compute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync norecompute compute
-check_engine_stats lflow norecompute compute
+check_engine_compute northd incremental
+check_engine_compute routes incremental
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync incremental
+check_engine_compute lflow incremental
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
@@ -15683,38 +15716,38 @@ check ovn-nbctl lrp-add lr1 lr1-sw0 00:00:00:01:ff:01 10.0.0.10/24
 check ovn-nbctl lsp-add sw0 sw0-lr1
 check ovn-nbctl --wait=sb set Logical_Switch_Port sw0-lr1 \
     type=router options:router-port=lr1-sw0
-check_engine_stats northd recompute compute
-check_engine_stats routes recompute compute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync recompute compute
-check_engine_stats lflow recompute compute
+check_engine_compute northd recompute
+check_engine_compute routes recompute
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-nat-add lr1 dnat_and_snat 10.0.0.100 192.168.0.1
-check_engine_stats northd norecompute compute
-check_engine_stats routes norecompute compute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync norecompute compute
-check_engine_stats lflow norecompute compute
+check_engine_compute northd incremental
+check_engine_compute routes incremental
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync incremental
+check_engine_compute lflow incremental
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lrp-del lr0-sw0
-check_engine_stats northd recompute compute
-check_engine_stats routes recompute nocompute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_compute northd recompute
+check_engine_compute routes recompute
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-del lr0
-check_engine_stats northd recompute nocompute
-check_engine_stats routes recompute nocompute
-check_engine_stats advertised_route_sync recompute nocompute
-check_engine_stats learned_route_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_compute northd recompute
+check_engine_compute routes recompute
+check_engine_compute advertised_route_sync recompute
+check_engine_compute learned_route_sync recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 AT_CLEANUP
