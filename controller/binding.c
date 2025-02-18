@@ -1357,9 +1357,9 @@ claim_lport(const struct sbrec_port_binding *pb,
             bool sb_readonly, bool is_vif,
             struct hmap *tracked_datapaths,
             struct if_status_mgr *if_mgr,
-            struct sset *postponed_ports)
+            struct sset *postponed_ports,
+            enum can_bind can_bind)
 {
-    enum can_bind can_bind = lport_can_bind_on_this_chassis(chassis_rec, pb);
     bool update_tracked = false;
 
     if (can_bind == CAN_BIND_AS_MAIN) {
@@ -1561,7 +1561,7 @@ release_binding_lport(const struct sbrec_chassis *chassis_rec,
 
 static bool
 consider_vif_lport_(const struct sbrec_port_binding *pb,
-                    bool can_bind,
+                    enum can_bind can_bind,
                     struct binding_ctx_in *b_ctx_in,
                     struct binding_ctx_out *b_ctx_out,
                     struct binding_lport *b_lport)
@@ -1579,7 +1579,7 @@ consider_vif_lport_(const struct sbrec_port_binding *pb,
                              !b_ctx_in->ovnsb_idl_txn,
                              !parent_pb, b_ctx_out->tracked_dp_bindings,
                              b_ctx_out->if_mgr,
-                             b_ctx_out->postponed_ports)) {
+                             b_ctx_out->postponed_ports, can_bind)) {
                 return false;
             }
 
@@ -1632,8 +1632,15 @@ consider_vif_lport_(const struct sbrec_port_binding *pb,
                                  b_ctx_out->if_mgr);
         }
     }
+
+    struct binding_lport *parent_b_lport = b_lport && b_lport->lbinding ?
+        local_binding_get_primary_lport(b_lport->lbinding) : NULL;
+
     if (pb->chassis && pb->chassis != b_ctx_in->chassis_rec
             && !is_requested_additional_chassis(pb, b_ctx_in->chassis_rec)
+            && (!parent_b_lport
+                || !is_requested_additional_chassis(parent_b_lport->pb,
+                                                    b_ctx_in->chassis_rec))
             && if_status_is_port_claimed(b_ctx_out->if_mgr,
                                          pb->logical_port)) {
         update_lport_tracking(pb, b_ctx_out->tracked_dp_bindings, false);
@@ -1651,7 +1658,8 @@ consider_vif_lport(const struct sbrec_port_binding *pb,
                    struct binding_ctx_out *b_ctx_out,
                    struct local_binding *lbinding)
 {
-    bool can_bind = lport_can_bind_on_this_chassis(b_ctx_in->chassis_rec, pb);
+    enum can_bind can_bind =
+        lport_can_bind_on_this_chassis(b_ctx_in->chassis_rec, pb);
 
     if (!lbinding) {
         lbinding = local_binding_find(&b_ctx_out->lbinding_data->bindings,
@@ -1767,10 +1775,12 @@ consider_container_lport(const struct sbrec_port_binding *pb,
     ovs_assert(parent_b_lport && parent_b_lport->pb);
     /* cannot bind to this chassis if the parent_port cannot be bounded. */
     /* Do not bind neither if parent is postponed */
-    bool can_bind = lport_can_bind_on_this_chassis(b_ctx_in->chassis_rec,
-                                                   parent_b_lport->pb) &&
-                    !is_postponed_port(parent_b_lport->pb->logical_port) &&
-                    lport_can_bind_on_this_chassis(b_ctx_in->chassis_rec, pb);
+
+    enum can_bind can_bind =
+        (!is_postponed_port(parent_b_lport->pb->logical_port) &&
+         lport_can_bind_on_this_chassis(b_ctx_in->chassis_rec, pb)) ?
+         lport_can_bind_on_this_chassis(b_ctx_in->chassis_rec,
+                                        parent_b_lport->pb) : CANNOT_BIND;
 
     return consider_vif_lport_(pb, can_bind, b_ctx_in, b_ctx_out,
                                container_b_lport);
@@ -1820,7 +1830,7 @@ consider_virtual_lport(const struct sbrec_port_binding *pb,
         }
     }
 
-    if (!consider_vif_lport_(pb, true, b_ctx_in, b_ctx_out,
+    if (!consider_vif_lport_(pb, CAN_BIND_AS_MAIN, b_ctx_in, b_ctx_out,
                              virtual_b_lport)) {
         return false;
     }
@@ -1895,11 +1905,13 @@ consider_nonvif_lport_(const struct sbrec_port_binding *pb,
                            b_ctx_out->tracked_dp_bindings);
 
         update_related_lport(pb, b_ctx_out);
+        enum can_bind can_bind = lport_can_bind_on_this_chassis(
+                                     b_ctx_in->chassis_rec, pb);
         return claim_lport(pb, NULL, b_ctx_in->chassis_rec, NULL,
                            !b_ctx_in->ovnsb_idl_txn, false,
                            b_ctx_out->tracked_dp_bindings,
                            b_ctx_out->if_mgr,
-                           b_ctx_out->postponed_ports);
+                           b_ctx_out->postponed_ports, can_bind);
     }
     if (!is_ha_chassis) {
         remove_related_lport(pb, b_ctx_out);
@@ -2866,7 +2878,8 @@ handle_updated_vif_lport(const struct sbrec_port_binding *pb,
     bool now_claimed = (pb->chassis == b_ctx_in->chassis_rec);
 
     if (lport_type == LP_VIRTUAL || lport_type == LP_CONTAINER ||
-            claimed == now_claimed) {
+            (claimed == now_claimed &&
+             !is_additional_chassis(pb, b_ctx_in->chassis_rec))) {
         return true;
     }
 

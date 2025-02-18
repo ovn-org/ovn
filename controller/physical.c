@@ -1665,8 +1665,8 @@ consider_port_binding(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                 sbrec_port_binding_by_name, binding->parent_port);
 
             if (parent_port
-                && (lport_can_bind_on_this_chassis(chassis,
-                    parent_port) != CAN_BIND_AS_MAIN)) {
+                && !lport_can_bind_on_this_chassis(chassis,
+                                                   parent_port)) {
                 /* Even though there is an ofport for this container
                  * parent port, it is requested on different chassis ignore
                  * this container port.

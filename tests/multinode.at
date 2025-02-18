@@ -1591,3 +1591,256 @@ AT_CHECK([cat ch1_eth2.tcpdump], [0], [dnl
 ])
 
 AT_CLEANUP
+
+AT_SETUP([Migration of container ports])
+# Migrate vif port between chassis-1 and chassis-3; send packets between
+# chassis-2 and chassis-1/chassis-3, and check that
+# - packet handing on src works before migration.
+# - packet handing on src & dst works during migration.
+# - packet handing on dst works after migration.
+# Do the same for container ports.
+# The container port migration is tested in two different orders,
+# setting iface-id on dst resp. before and after requested-chassis.
+
+# Check that ovn-fake-multinode setup is up and running
+# check_fake_multinode_setup
+check_fake_multinode_setup_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-chassis-3'
+
+# Delete the multinode NB and OVS resources before starting the test.
+cleanup_multinode_resources_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-chassis-3'
+
+OVS_WAIT_UNTIL([m_as ovn-chassis-1 ip link show | grep -q genev_sys])
+OVS_WAIT_UNTIL([m_as ovn-chassis-2 ip link show | grep -q genev_sys])
+OVS_WAIT_UNTIL([m_as ovn-chassis-3 ip link show | grep -q genev_sys])
+
+check multinode_nbctl ls-add sw0
+check multinode_nbctl lsp-add sw0 migrator
+check multinode_nbctl lsp-set-addresses migrator "50:54:00:00:00:03 10.0.0.3 1000::3"
+check multinode_nbctl lsp-add sw0 sw0-port2
+check multinode_nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 1000::4"
+
+# Set requested chassis before creating migrator on chassis-3
+check multinode_nbctl --wait=hv set Logical_Switch_Port migrator options:requested-chassis=ovn-chassis-1
+
+m_as ovn-chassis-1 /data/create_fake_vm.sh migrator migrator 50:54:00:00:00:03 1342 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
+m_as ovn-chassis-3 /data/create_fake_vm.sh migrator migrator 50:54:00:00:00:03 1342 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 1342 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
+
+m_wait_for_ports_up
+
+M_START_TCPDUMP([ovn-chassis-1], [-neei genev_sys_6081 arp or ip], [ch1_genev])
+M_START_TCPDUMP([ovn-chassis-1], [-neei migrator-p arp or ip], [ch1_migrator])
+M_START_TCPDUMP([ovn-chassis-2], [-neei genev_sys_6081 arp or ip], [ch2_genev])
+M_START_TCPDUMP([ovn-chassis-2], [-neei sw0p2-p arp or ip], [ch2_sw0p2])
+M_START_TCPDUMP([ovn-chassis-3], [-neei genev_sys_6081 arp or ip], [ch3_genev])
+M_START_TCPDUMP([ovn-chassis-3], [-neei migrator-p arp or ip], [ch3_migrator])
+
+AS_BOX([Migration with vifs])
+echo "Migrator on chassis-1 => sw0p2 on chassis-2"
+M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ping -q -c 3 -i 0.3 -w 2 10.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+echo "sw0p2 on chassis-2 => Migrator on chassis-1"
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ping -q -c 3 -i 0.3 -w 2 10.0.0.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+echo "== Starting migration =="
+check multinode_nbctl --wait=hv set Logical_Switch_Port migrator options:requested-chassis=ovn-chassis-1,ovn-chassis-3
+
+echo "Migrator on chassis-1 => sw0p2 on chassis-2"
+M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ping -q -c 3 -i 0.3 -w 2 10.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+
+echo "Migrator on chassis-3 => sw0p2 on chassis-2"
+M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ping -q -c 3 -i 0.3 -w 2 10.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+echo "sw0p2 on chassis-2 => migrator on  ..."
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ping -q -c 3 -i 0.3 -w 2 10.0.0.3 | FORMAT_PING], \
+[0], [stdout])
+
+# Both VM are running ... We might get duplicates replies.
+AT_CHECK([cat stdout | grep "3 packets transmitted" | grep -c "3 received"], [0],[dnl
+1
+])
+
+echo "== Finalizing migration =="
+check multinode_nbctl --wait=hv set Logical_Switch_Port migrator options:requested-chassis=ovn-chassis-3
+
+echo "Migrator on chassis-1 => sw0p2 on chassis-2"
+M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ping -q -c 3 -i 0.3 -w 2 10.0.0.4 | FORMAT_PING], \
+[0], [stdout])
+
+# VM still running on chassis-1 but flows should have been deleted as migration completed.
+AT_CHECK([cat stdout | grep -c "100% packet loss"], [0],[dnl
+1
+])
+
+echo "Migrator on chassis-3 => sw0p2 on chassis-2"
+M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ping -q -c 3 -i 0.3 -w 2 10.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# We should not have duplicates anymore
+echo "sw0p2 on chassis-2 => migrator on chassis-3"
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ping -q -c 3 -i 0.3 -w 2 10.0.0.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AS_BOX([Migration with container ports])
+# Create container ports.
+check multinode_nbctl ls-add sw1
+check multinode_nbctl lsp-add sw1 mig-cont migrator 10 \
+                   -- lsp-set-addresses mig-cont "f0:00:00:01:02:03 20.0.0.3"
+check multinode_nbctl lsp-add sw1 cont2 sw0-port2 10 \
+                   -- lsp-set-addresses cont2 "f0:00:00:01:02:04 20.0.0.4"
+
+# Create the interface for lport mig-cont
+M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ip link add link migrator name cont type vlan id 10], [0])
+M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ip link set cont address f0:00:00:01:02:03], [0])
+M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ip link set cont up], [0])
+M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ip addr add 20.0.0.3/24 dev cont], [0])
+
+M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ip link add link migrator name cont type vlan id 10], [0])
+M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ip link set cont address f0:00:00:01:02:03], [0])
+M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ip link set cont up], [0])
+M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ip addr add 20.0.0.3/24 dev cont], [0])
+
+# Create the interface for lport sw1-port2
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ip link add link sw0p2 name cont2 type vlan id 10], [0])
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ip link set cont2 address f0:00:00:01:02:04], [0])
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ip link set cont2 up], [0])
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ip addr add 20.0.0.4/24 dev cont2], [0])
+
+echo "mig-cont on chassis-3 => cont2 on chassis-2"
+M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ping -q -c 3 -i 0.3 -w 2 20.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+echo "cont2 on chassis-2 => mig-cont on chassis-3"
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ping -q -c 3 -i 0.3 -w 2 20.0.0.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+echo "== Starting migration back =="
+check multinode_nbctl --wait=hv set Logical_Switch_Port migrator options:requested-chassis=ovn-chassis-3,ovn-chassis-1
+
+echo "mig-cont on chassis-3 => cont2 on chassis-2"
+M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ping -q -c 3 -i 0.3 -w 2 20.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+echo "mig-cont on chassis-1 => cont2 on chassis-2"
+M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ping -q -c 3 -i 0.3 -w 2 20.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+echo "cont2 on chassis-2 => mig-cont on  ..."
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ping -q -c 3 -i 0.3 -w 2 20.0.0.3 | FORMAT_PING], \
+[0], [stdout])
+
+# Both VM are running ... We might get duplicates replies.
+AT_CHECK([cat stdout | grep "3 packets transmitted" | grep -c "3 received"], [0],[dnl
+1
+])
+
+echo "== Finalizing migration =="
+check multinode_nbctl --wait=hv set Logical_Switch_Port migrator options:requested-chassis=ovn-chassis-1
+
+echo "mig-cont on chassis-3 => cont2 on chassis-2"
+M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ping -q -c 3 -i 0.3 -w 2 20.0.0.4 | FORMAT_PING], \
+[0], [stdout])
+
+# VM still running on chassis-3 but flows should have been deleted....
+AT_CHECK([cat stdout | grep -c "100% packet loss"], [0],[dnl
+1
+])
+
+echo "mig-cont on chassis-1 => cont2 on chassis-2"
+M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ping -q -c 3 -i 0.3 -w 2 20.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# We should not have duplicates anymore
+echo "cont2 on chassis-2 => mig-cont on chassis-1"
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ping -q -c 3 -i 0.3 -w 2 20.0.0.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+echo "== Starting another migration, this time before starting dst VM =="
+# Unbind migrator from chassis-3
+m_as ovn-chassis-3 ovs-vsctl -- set Interface migrator-p external_ids:iface-id=foo
+
+check multinode_nbctl --wait=hv set Logical_Switch_Port migrator options:requested-chassis=ovn-chassis-1,ovn-chassis-3
+sleep 1
+m_as ovn-chassis-3 ovs-vsctl -- set Interface migrator-p external_ids:iface-id=migrator
+
+
+echo "mig-cont on chassis-3 => cont2 on chassis-2"
+M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ping -q -c 3 -i 0.3 -w 2 20.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+echo "mig-cont on chassis-1 => cont2 on chassis-2"
+M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ping -q -c 3 -i 0.3 -w 2 20.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+echo "cont2 on chassis-2 => migrator on  ..."
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ping -q -c 3 -i 0.3 -w 2 20.0.0.3 | FORMAT_PING], \
+[0], [stdout])
+
+# Both VM are running ... We might get duplicates replies.
+AT_CHECK([cat stdout | grep "3 packets transmitted" | grep -c "3 received"], [0],[dnl
+1
+])
+
+echo "== Finalizing migration =="
+check multinode_nbctl --wait=hv set Logical_Switch_Port migrator options:requested-chassis=ovn-chassis-3
+
+echo "mig-cont on chassis-1 => cont2 on chassis-2"
+M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ping -q -c 3 -i 0.3 -w 2 20.0.0.4 | FORMAT_PING], \
+[0], [stdout])
+
+# VM still running on chassis-1 but flows should have been deleted....
+AT_CHECK([cat stdout | grep -c "100% packet loss"], [0],[dnl
+1
+])
+
+echo "mig-cont on chassis-3 => cont2 on chassis-2"
+M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ping -q -c 3 -i 0.3 -w 2 20.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# We should not have duplicates anymore
+echo "cont2 on chassis-2 => mig-cont on chassis-3"
+M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ping -q -c 3 -i 0.3 -w 2 20.0.0.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+m_as ovn-chassis-1 killall tcpdump
+m_as ovn-chassis-2 killall tcpdump
+m_as ovn-chassis-3 killall tcpdump
+
+AT_CLEANUP

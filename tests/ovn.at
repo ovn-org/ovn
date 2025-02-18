@@ -16634,6 +16634,160 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([No fight between two chassis for the same port])
+ovn_start
+
+# lsp1 on hv1, lsp2 on hv2.
+# migrator1 (and its mig1-cont container) initially on hv1.
+# migrator2 (and its mig2-cont container) initially on hv2.
+# For migrator1, iface-id is set (in both hv) before starting migration.
+# For migrator2, iface-id is set (in dst hv) after initiating migration.
+check ovn-nbctl ls-add ls0
+check ovn-nbctl lsp-add ls0 lsp1
+check ovn-nbctl lsp-add ls0 lsp2
+check ovn-nbctl lsp-add ls0 migrator1
+check ovn-nbctl lsp-add ls0 migrator2
+check ovn-nbctl lsp-add ls0 mig1-cont migrator1 1
+check ovn-nbctl lsp-add ls0 mig2-cont migrator2 1
+check ovn-nbctl set Logical_Switch_Port migrator1  options:requested-chassis=hv1
+check ovn-nbctl set Logical_Switch_Port migrator2  options:requested-chassis=hv2
+
+net_add n1
+for i in 1 2; do
+    sim_add hv$i
+    as hv$i
+    ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys 192.168.0.$i
+done
+
+as hv2 ovs-vsctl -- add-port br-int vif-migrator2 \
+                 -- set Interface vif-migrator2 external-ids:iface-id=migrator2
+
+# Set iface-id in both hv1 and hv2.
+for i in 1 2; do
+    as hv$i
+    ovs-vsctl -- add-port br-int vif-migrator1 \
+              -- set Interface vif-migrator1 external-ids:iface-id=migrator1
+    ovs-vsctl -- add-port br-int vif$i \
+              -- set Interface vif$i external-ids:iface-id=lsp$i
+done
+
+hv1_uuid=$(ovn-sbctl --bare --columns _uuid list chassis hv1)
+hv2_uuid=$(ovn-sbctl --bare --columns _uuid list chassis hv2)
+
+check_in_port_flows_count() {
+  hv=$1
+  of=$2
+  count=$3
+  AT_CHECK_UNQUOTED([as $hv ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep "in_port=$of" | wc -l], [0], [dnl
+$count
+])
+}
+
+check_claims() {
+    port=$1
+    hv1_claims=$(grep -c "Claiming lport $port\|Changing chassis for lport $port" hv1/ovn-controller.log)
+    hv2_claims=$(grep -c "Claiming lport $port\|Changing chassis for lport $port" hv2/ovn-controller.log)
+    echo "$hv1_claims claims for port $port in hv1"
+    echo "$hv2_claims claims for port $port in hv2"
+    AT_CHECK([test "${hv1_claims}" -le "${max_claims}"], [0], [])
+    AT_CHECK([test "${hv2_claims}" -le "${max_claims}"], [0], [])
+}
+
+# Waiting for flows in hv1 && hv2 for resp. lsp1 and lsp2.
+OVS_WAIT_UNTIL([
+    of_hv1=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=vif1)
+    of_hv2=$(as hv2 ovs-vsctl --bare --columns ofport find Interface name=vif2)
+    test -n $of_hv1 && test -n $of_hv2 &&
+        test 1 -le $(as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep "in_port=$of_hv1" | wc -l) &&
+        test 1 -le $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep "in_port=$of_hv2" | wc -l)
+])
+
+of1=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=vif-migrator1)
+of2=$(as hv2 ovs-vsctl --bare --columns ofport find Interface name=vif-migrator1)
+
+AS_BOX([$(date +%H:%M:%S.%03N) Before migrating migrator1])
+wait_column "" Port_Binding additional_chassis logical_port=migrator1
+wait_column "" Port_Binding additional_chassis logical_port=mig1-cont
+# We should have two flows in table OFTABLE_PHY_TO_LOG from in_port=migrator1 in hv1 (one for vif and one for the container) and 0 flows in hv2.
+check_in_port_flows_count hv1 $of1 2
+check_in_port_flows_count hv2 $of2 0
+
+
+AS_BOX([$(date +%H:%M:%S.%03N) Starting migrating migrator1])
+check ovn-nbctl --wait=hv set Logical_Switch_Port migrator1 options:requested-chassis=hv1,hv2
+wait_column "$hv2_uuid" Port_Binding additional_chassis logical_port=migrator1
+wait_column "$hv2_uuid" Port_Binding additional_chassis logical_port=mig1-cont
+# We should have two flows in table OFTABLE_PHY_TO_LOG from in_port=migrator1 in hv1 and hv2.
+check_in_port_flows_count hv1 $of1 2
+check_in_port_flows_count hv2 $of2 2
+
+# While migration in underway, check that there is no fight between hv
+sleep 3
+max_claims=2
+check_claims migrator1
+check_claims mig1-cont
+
+AS_BOX([$(date +%H:%M:%S.%03N) After migrating migrator1])
+check ovn-nbctl --wait=hv set Logical_Switch_Port migrator1 options:requested-chassis=hv2
+wait_column "" Port_Binding additional_chassis logical_port=migrator1
+wait_column "" Port_Binding additional_chassis logical_port=mig1-cont
+check_in_port_flows_count hv1 $of1 0
+check_in_port_flows_count hv2 $of2 2
+
+# Now do the same, but with iface-id set after starting migration
+of2=$(as hv2 ovs-vsctl --bare --columns ofport find Interface name=vif-migrator2)
+# There is no ofport yet for hv1 => we cannot check/find a flows with in_port=of1
+
+AS_BOX([$(date +%H:%M:%S.%03N) Before migrating migrator2])
+# We should have zero flows in table OFTABLE_PHY_TO_LOG from in_port=migrator2 in hv1 and two flows in hv2.
+wait_column "" Port_Binding additional_chassis logical_port=migrator2
+wait_column "" Port_Binding additional_chassis logical_port=mig2-cont
+check_in_port_flows_count hv2 $of2 2
+
+check ovn-nbctl --wait=hv set Logical_Switch_Port migrator2  options:requested-chassis=hv2,hv1
+wait_column "" Port_Binding additional_chassis logical_port=migrator2
+wait_column "" Port_Binding additional_chassis logical_port=mig2-cont
+# As no iface-id for migrator2 yet, migration not really started
+# We should have zero flows in table OFTABLE_PHY_TO_LOG from in_port=migrator2 in hv1 and two flows in hv2.
+check_in_port_flows_count hv2 $of2 2
+
+AS_BOX([$(date +%H:%M:%S.%03N) Starting migrating migrator2])
+as hv1 ovs-vsctl -- add-port br-int vif-migrator2 \
+                 -- set Interface vif-migrator2 external-ids:iface-id=migrator2
+
+wait_column "$hv1_uuid" Port_Binding additional_chassis logical_port=migrator2
+wait_column "$hv1_uuid" Port_Binding additional_chassis logical_port=mig2-cont
+# We need for oflow to be created and handled by ovn-controller. Wait sync would not be enough.
+OVS_WAIT_UNTIL([
+    of1=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=vif-migrator2)
+    test 1 -le "$of1"
+])
+
+check ovn-nbctl --wait=hv sync
+
+# We should have two flows in table OFTABLE_PHY_TO_LOG from in_port=migrator2 in hv1 and hv2.
+check_in_port_flows_count hv1 $of1 2
+check_in_port_flows_count hv2 $of2 2
+
+# While migration in underway, check that there is no fight between hv
+sleep 3
+check_claims migrator2
+check_claims mig2-cont
+
+AS_BOX([$(date +%H:%M:%S.%03N) After migrating migrator2])
+check ovn-nbctl --wait=hv set Logical_Switch_Port migrator2  options:requested-chassis=hv1
+wait_column "" Port_Binding additional_chassis logical_port=migrator2
+wait_column "" Port_Binding additional_chassis logical_port=mig2-cont
+check_in_port_flows_count hv1 $of1 2
+check_in_port_flows_count hv2 $of2 0
+
+OVN_CLEANUP([hv1],[hv2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([options:requested-chassis with hostname])
 
 ovn_start
@@ -38797,7 +38951,7 @@ OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG
 ])
 
 # Add hv2 to lport Additional requested chassis as MAIN chassis
-# and check that no flows installed in table 0 in hv1
+# and check that flows remain installed in table 0 in hv1
 check ovn-nbctl set Logical_Switch_Port lsp1 \
     options:requested-chassis=hv2,hv1
 
@@ -38812,8 +38966,8 @@ wait_column "$hv2_uuid" Port_Binding chassis logical_port=lsp1
 OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG |grep priority=150|grep dl_vlan=7| grep -c in_port=8], [0],[dnl
 1
 ])
-OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG |grep priority=150|grep dl_vlan=7| grep -c in_port=8], [1],[dnl
-0
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG |grep priority=150|grep dl_vlan=7| grep -c in_port=8], [0],[dnl
+1
 ])
 
 OVN_CLEANUP([hv1])
