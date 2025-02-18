@@ -16481,7 +16481,7 @@ build_gw_lrouter_commit_all(const struct ovn_datapath *od,
                   "ip && (!ct.trk || !ct.rpl) && flags.unsnat_new == 1",
                   "ct_commit_to_zone(snat);", lflow_ref);
     ovn_lflow_add(lflows, od, S_ROUTER_OUT_SNAT, 10,
-                  "ip && ct.new && flags.unsnat_not_tracked == 1",
+                  "ip && ct.new",
                   "ct_commit_to_zone(snat);", lflow_ref);
 }
 
@@ -16558,7 +16558,7 @@ build_dgp_lrouter_commit_all(const struct ovn_datapath *od,
     ovn_lflow_add(lflows, od, S_ROUTER_OUT_SNAT, 10, ds_cstr(match),
                   "ct_commit_to_zone(snat);", lflow_ref);
     ds_clear(match);
-    ds_put_format(match, "ip && ct.new && flags.unsnat_not_tracked == 1 && "
+    ds_put_format(match, "ip && ct.new && "
                   "outport == %s && is_chassis_resident(%s)",
                   l3dgw_port->json_key, l3dgw_port->cr_port->json_key);
     ovn_lflow_add(lflows, od, S_ROUTER_OUT_SNAT, 10, ds_cstr(match),
