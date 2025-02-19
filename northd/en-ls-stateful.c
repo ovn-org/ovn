@@ -455,7 +455,7 @@ ls_stateful_record_set_acl_flags_(struct ls_stateful_record *ls_stateful_rec,
         if (ls_stateful_rec->has_stateful_acl &&
             ls_acl_tiers_are_maxed_out(
                 &ls_stateful_rec->max_acl_tier,
-                nbrec_acl_col_tier.type.value.integer.max)) {
+                nbrec_acl_col_tier.type.key.integer.max)) {
             return true;
         }
     }

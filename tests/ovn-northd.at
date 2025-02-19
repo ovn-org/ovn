@@ -14636,6 +14636,34 @@ AT_CHECK([ovn-sbctl lflow-list S1 | grep ls_out_acl_action | grep priority=500 |
   table=??(ls_out_acl_action  ), priority=500  , match=(reg8[[30..31]] == 1), action=(reg8[[30..31]] = 2; next(pipeline=egress,table=??);)
 ])
 
+# Create a port group and add 2 ACLs.
+# First add an allow-related ACL with tier 1 with a predefine UUID and
+# make sure that there is a pri 500 flow to check for ACLs in tier 1.
+# Then add another ACL with tier 0 and make sure that the pri 500
+# flow still exists.
+check ovn-nbctl ls-add S2
+check ovn-nbctl lsp-add S2 S2-p1
+check ovn-nbctl lsp-add S2 S2-p2
+check ovn-nbctl pg-add pg1 S2-p1 S2-p2
+
+check_uuid ovn-nbctl --id=3f507ce6-f6e6-4b18-829b-80a18a8143cd create ACL \
+action=allow-related direction=from-lport match=tcp priority=1001 tier=1 -- \
+add port_group pg1 acls 3f507ce6-f6e6-4b18-829b-80a18a8143cd
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl lflow-list S2 | grep ls_in_acl_action | grep priority=500 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_acl_action   ), priority=500  , match=(reg8[[30..31]] == 0), action=(reg8[[30..31]] = 1; next(pipeline=ingress,table=??);)
+])
+
+check_uuid ovn-nbctl --id=3f507ce6-f6e6-4b18-829b-80a18a8143cc create ACL \
+action=allow-related direction=from-lport match=ip4 priority=2001 tier=0 -- \
+add port_group pg1 acls 3f507ce6-f6e6-4b18-829b-80a18a8143cc
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl lflow-list S2 | grep ls_in_acl_action | grep priority=500 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_acl_action   ), priority=500  , match=(reg8[[30..31]] == 0), action=(reg8[[30..31]] = 1; next(pipeline=ingress,table=??);)
+])
+
 AT_CLEANUP
 ])
 
