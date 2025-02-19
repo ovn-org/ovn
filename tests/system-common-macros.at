@@ -293,6 +293,25 @@ m4_define([NETNS_START_TCPDUMP],
     ]
 )
 
+# NETNS_START_DHCPD([namespace], [iface], [dhcpd.conf])
+#
+# Helper to properly start dhcpd
+m4_define([NETNS_START_DHCPD],
+    [
+        DHCP_TEST_DIR="$ovs_base/dhcp-test"
+        mkdir -p $DHCP_TEST_DIR
+
+        mv $3 $DHCP_TEST_DIR/dhcpd.conf
+
+        touch $DHCP_TEST_DIR/dhcpd.leases
+        chown root:dhcpd $DHCP_TEST_DIR $DHCP_TEST_DIR/dhcpd.leases
+        chmod 775 $DHCP_TEST_DIR
+        chmod 664 $DHCP_TEST_DIR/dhcpd.leases
+
+        NETNS_START_TCPDUMP([$1], [-nni $2], [$1])
+        NETNS_DAEMONIZE([$1], [dhcpd -6 -f -lf $DHCP_TEST_DIR/dhcpd.leases -cf $DHCP_TEST_DIR/dhcpd.conf $2 > dhcpd.log 2>&1], [dhcpd.pid])
+    ]
+)
 
 # OVS_CHECK_VXLAN()
 #
@@ -446,21 +465,16 @@ OVN_POPULATE_ARP
 
 check ovn-nbctl --wait=hv sync
 
-cat > /etc/dhcp/dhcpd.conf <<EOF
+cat > dhcpd.conf <<EOF
 option dhcp-rebinding-time 10;
 option dhcp-renewal-time 5;
 subnet6 2001:db8:3333::/56 {
     prefix6 2001:db8:3333:100:: 2001:db8:3333:111:: /64;
 }
 EOF
-rm -f /var/lib/dhcp/dhcpd6.leases
-touch /var/lib/dhcp/dhcpd6.leases
-chown root:dhcpd /var/lib/dhcp /var/lib/dhcp/dhcpd6.leases
-chmod 775 /var/lib/dhcp
-chmod 664 /var/lib/dhcp/dhcpd6.leases
 
-NETNS_START_TCPDUMP([server], [-nni s1], [server])
-NETNS_DAEMONIZE([server], [dhcpd -6 -f s1 > dhcpd.log 2>&1], [dhcpd.pid])
+NETNS_START_DHCPD([server], [s1], [dhcpd.conf])
+
 check ovn-nbctl --wait=hv sync
 
 OVS_WAIT_WHILE([test "$(ovn-nbctl get logical_router_port rp-public ipv6_prefix | cut -c4-15)" = ""])
