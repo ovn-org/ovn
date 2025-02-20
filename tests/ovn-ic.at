@@ -1445,7 +1445,7 @@ for i in 1 2; do
     check ovn-nbctl set nb_global . options:ic-route-adv=true
     # Enable denylist single filter for IPv6
     check ovn-nbctl set nb_global . options:ic-route-denylist=" \
-            2003:db8:1::/64,2004:aaaa::/32,2005:1234::/21"
+            2003:db08:1::/64,2004:aaaa::/32,2005:1234::/21"
 
     check ovn-ic-nbctl --wait=sb sync
     # Create LRP and connect to TS
@@ -1462,7 +1462,10 @@ for i in 1 2; do
 
     # Create denylisted LRPs and connect to TS
     check ovn-nbctl lrp-add lr$i lrp-lr$i-p-ext$i \
-            11:11:11:11:11:1$i 2003:db8:1::$i/64
+            11:11:11:11:11:1$i 2003:db88:1::$i/64
+
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-p-ext1$i \
+            11:11:11:11:12:1$i 2003:db08:1::$i/64
 
     check ovn-nbctl lrp-add lr$i lrp-lr$i-p-ext2$i \
             22:22:22:22:22:2$i 2004:aaaa:bbb::$i/48
@@ -1481,6 +1484,7 @@ check ovn-ic-nbctl --wait=sb sync
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1 |
     awk '/learned/{print $1, $2}' ], [0], [dnl
 2002:db8:1::/64 2001:db8:1::2
+2003:db88:1::/64 2001:db8:1::2
 2005:1834:5678::/50 2001:db8:1::2
 ])
 
@@ -1496,7 +1500,8 @@ check ovn-ic-nbctl --wait=sb sync
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1 |
     awk '/learned/{print $1, $2}' | sort ], [0], [dnl
 2002:db8:1::/64 2001:db8:1::2
-2003:db8:1::/64 2001:db8:1::2
+2003:db08:1::/64 2001:db8:1::2
+2003:db88:1::/64 2001:db8:1::2
 2004:aaaa:bbb::/48 2001:db8:1::2
 2005:1734:5678::/50 2001:db8:1::2
 2005:1834:5678::/50 2001:db8:1::2
@@ -1506,7 +1511,7 @@ for i in 1 2; do
     ovn_as az$i
 
     check ovn-nbctl set nb_global . \
-            options:ic-route-denylist="2003:db8:1::/64,2004:db8:1::/64"
+            options:ic-route-denylist="2003:db88:1::/64,2004:db8:1::/64"
 
     # Create an 'extra' denylisted LRP and connect to TS
     check ovn-nbctl lrp-add lr$i lrp-lr$i-p-ext5$i \
@@ -1517,6 +1522,7 @@ check ovn-ic-nbctl --wait=sb sync
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1 |
     awk '/learned/{print $1, $2}' | sort ], [0], [dnl
 2002:db8:1::/64 2001:db8:1::2
+2003:db08:1::/64 2001:db8:1::2
 2004:aaaa:bbb::/48 2001:db8:1::2
 2005:1734:5678::/50 2001:db8:1::2
 2005:1834:5678::/50 2001:db8:1::2

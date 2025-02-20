@@ -1112,13 +1112,10 @@ prefix_is_deny_listed(const struct smap *nb_options,
                 continue;
             }
         } else {
-            struct in6_addr mask = ipv6_create_mask(plen);
-            /* First calculate the difference between bl_prefix and prefix, so
-             * use the bl mask to ensure prefixes are correctly validated.
-             * e.g.: 2005:1734:5678::/50 is a subnet of 2005:1234::/21 */
-            struct in6_addr m_prefixes = ipv6_addr_bitand(prefix, &bl_prefix);
-            struct in6_addr m_prefix = ipv6_addr_bitand(&m_prefixes, &mask);
-            struct in6_addr m_bl_prefix = ipv6_addr_bitand(&bl_prefix, &mask);
+            struct in6_addr bl_mask = ipv6_create_mask(bl_plen);
+            struct in6_addr m_prefix = ipv6_addr_bitand(prefix, &bl_mask);
+            struct in6_addr m_bl_prefix = ipv6_addr_bitand(&bl_prefix,
+                                                           &bl_mask);
             if (!ipv6_addr_equals(&m_prefix, &m_bl_prefix)) {
                 continue;
             }
