@@ -241,7 +241,7 @@ struct ar_entry {
 /* Add a new entries to the to-be-advertised routes.
  * Takes ownership of ip_prefix. */
 static struct ar_entry *
-ar_add_entry(struct hmap *routes, const struct sbrec_datapath_binding *sb_db,
+ar_entry_add(struct hmap *routes, const struct sbrec_datapath_binding *sb_db,
              const struct sbrec_port_binding *logical_port, char *ip_prefix,
              const struct sbrec_port_binding *tracked_port)
 {
@@ -260,9 +260,11 @@ ar_add_entry(struct hmap *routes, const struct sbrec_datapath_binding *sb_db,
 }
 
 static struct ar_entry *
-ar_find(struct hmap *route_map, const struct sbrec_datapath_binding *sb_db,
-        const struct sbrec_port_binding *logical_port, const char *ip_prefix,
-        const struct sbrec_port_binding *tracked_port)
+ar_entry_find(struct hmap *route_map,
+              const struct sbrec_datapath_binding *sb_db,
+              const struct sbrec_port_binding *logical_port,
+              const char *ip_prefix,
+              const struct sbrec_port_binding *tracked_port)
 {
     struct ar_entry *route_e;
     uint32_t hash;
@@ -310,7 +312,7 @@ publish_lport_addresses(struct hmap *sync_routes,
 {
     for (size_t i = 0; i < addresses->n_ipv4_addrs; i++) {
         const struct ipv4_netaddr *addr = &addresses->ipv4_addrs[i];
-        ar_add_entry(sync_routes, sb_db, logical_port->sb,
+        ar_entry_add(sync_routes, sb_db, logical_port->sb,
                      xstrdup(addr->addr_s), tracking_port->sb);
     }
     for (size_t i = 0; i < addresses->n_ipv6_addrs; i++) {
@@ -318,7 +320,7 @@ publish_lport_addresses(struct hmap *sync_routes,
             continue;
         }
         const struct ipv6_netaddr *addr = &addresses->ipv6_addrs[i];
-        ar_add_entry(sync_routes, sb_db, logical_port->sb,
+        ar_entry_add(sync_routes, sb_db, logical_port->sb,
                      xstrdup(addr->addr_s), tracking_port->sb);
     }
 }
@@ -472,7 +474,7 @@ advertised_route_table_sync_route_add(
     if (route->tracked_port) {
         tracked_port = route->tracked_port->sb;
     }
-    ar_add_entry(sync_routes, route->od->sb, route->out_port->sb,
+    ar_entry_add(sync_routes, route->od->sb, route->out_port->sb,
                  ip_prefix, tracked_port);
 }
 
@@ -510,9 +512,9 @@ advertised_route_table_sync(
     const struct sbrec_advertised_route *sb_route;
     SBREC_ADVERTISED_ROUTE_TABLE_FOR_EACH_SAFE (sb_route,
                                                 sbrec_advertised_route_table) {
-        route_e = ar_find(&sync_routes, sb_route->datapath,
-                          sb_route->logical_port, sb_route->ip_prefix,
-                          sb_route->tracked_port);
+        route_e = ar_entry_find(&sync_routes, sb_route->datapath,
+                                sb_route->logical_port, sb_route->ip_prefix,
+                                sb_route->tracked_port);
         if (route_e) {
           hmap_remove(&sync_routes, &route_e->hmap_node);
           ar_entry_free(route_e);
