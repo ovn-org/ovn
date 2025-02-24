@@ -15450,7 +15450,7 @@ datapath=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
 check ovn-nbctl --wait=sb set Logical_Router_Port lr0-sw0 \
     options:dynamic-routing-redistribute="connected-as-host,static"
 check_row_count Advertised_Route 2
-check_column 10.0.0.1/32 Advertised_Route ip_prefix \
+check_column 10.0.0.1 Advertised_Route ip_prefix \
     datapath=$datapath logical_port=$sw0
 check_column $sw0 Advertised_Route tracked_port \
     datapath=$datapath logical_port=$sw0
@@ -15463,7 +15463,7 @@ vif0=$(fetch_column port_binding _uuid logical_port=sw0-vif0)
 check_row_count Advertised_Route 3
 check_row_count Advertised_Route 2 tracked_port!='[[]]'
 check_column $vif0 Advertised_Route tracked_port \
-    datapath=$datapath logical_port=$sw0 ip_prefix=10.0.0.2/32
+    datapath=$datapath logical_port=$sw0 ip_prefix=10.0.0.2
 
 # Adding a LR lr1 to the LS sw0 will advertise the LRP of the new router.
 check ovn-nbctl lr-add lr1
@@ -15475,14 +15475,14 @@ check ovn-nbctl --wait=sb set Logical_Switch_Port sw0-lr1 \
 check_row_count Advertised_Route 4
 check_row_count Advertised_Route 3 tracked_port!='[[]]'
 check_column $lr1 Advertised_Route tracked_port \
-    datapath=$datapath logical_port=$sw0 ip_prefix=10.0.0.10/32
+    datapath=$datapath logical_port=$sw0 ip_prefix=10.0.0.10
 
 # Adding a NAT rule to lr1 will advertise it as well.
 check ovn-nbctl --wait=sb lr-nat-add lr1 dnat_and_snat 10.0.0.100 192.168.0.1
 check_row_count Advertised_Route 5
 check_row_count Advertised_Route 4 tracked_port!='[[]]'
 check_column $lr1 Advertised_Route tracked_port \
-    datapath=$datapath logical_port=$sw0 ip_prefix=10.0.0.100/32
+    datapath=$datapath logical_port=$sw0 ip_prefix=10.0.0.100
 
 # Adding a static route to lr1 will be advertised just normally.
 check ovn-nbctl --wait=sb lr-route-add lr0 172.16.0.0/24 10.0.0.200
@@ -15505,7 +15505,7 @@ check ovn-nbctl --wait=sb lr-nat-add lr2 dnat_and_snat 10.10.0.20 10.20.0.123
 check_row_count Advertised_Route 8
 check_row_count Advertised_Route 6 tracked_port!='[[]]'
 check_row_count Advertised_Route 1 datapath=$datapath logical_port=$lr0lr2 \
-    ip_prefix=10.10.0.20/32 tracked_port=$lr2lr0
+    ip_prefix=10.10.0.20 tracked_port=$lr2lr0
 
 AT_CLEANUP
 ])
