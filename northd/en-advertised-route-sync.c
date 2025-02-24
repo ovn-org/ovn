@@ -310,18 +310,16 @@ publish_lport_addresses(struct hmap *sync_routes,
 {
     for (size_t i = 0; i < addresses->n_ipv4_addrs; i++) {
         const struct ipv4_netaddr *addr = &addresses->ipv4_addrs[i];
-        char *addr_s = xasprintf("%s/32", addr->addr_s);
         ar_add_entry(sync_routes, sb_db, logical_port->sb,
-                       addr_s, tracking_port->sb);
+                     xstrdup(addr->addr_s), tracking_port->sb);
     }
     for (size_t i = 0; i < addresses->n_ipv6_addrs; i++) {
         if (in6_is_lla(&addresses->ipv6_addrs[i].network)) {
             continue;
         }
         const struct ipv6_netaddr *addr = &addresses->ipv6_addrs[i];
-        char *addr_s = xasprintf("%s/128", addr->addr_s);
         ar_add_entry(sync_routes, sb_db, logical_port->sb,
-                       addr_s, tracking_port->sb);
+                     xstrdup(addr->addr_s), tracking_port->sb);
     }
 }
 
