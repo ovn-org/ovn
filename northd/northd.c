@@ -3657,10 +3657,14 @@ build_lb_vip_actions(const struct ovn_northd_lb *lb,
     const char *enclose = is_lb_action ? ");" : "";
 
     if (!ls_dp) {
-        ds_put_format(skip_snat_action, "flags.skip_snat_for_lb = 1; %s%s",
+        if (!drop) {
+            ds_put_cstr(skip_snat_action, "flags.skip_snat_for_lb = 1; ");
+            ds_put_cstr(force_snat_action, "flags.force_snat_for_lb = 1; ");
+        }
+        ds_put_format(skip_snat_action, "%s%s",
                       ds_cstr(action),
                       is_lb_action ? "; skip_snat);" : enclose);
-        ds_put_format(force_snat_action, "flags.force_snat_for_lb = 1; %s%s",
+        ds_put_format(force_snat_action, "%s%s",
                       ds_cstr(action),
                       is_lb_action ? "; force_snat);" : enclose);
     }
