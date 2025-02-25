@@ -833,20 +833,6 @@ void route_policies_destroy(struct route_policies_data *);
 void build_parsed_routes(const struct ovn_datapath *, const struct hmap *,
                          const struct hmap *, struct hmap *, struct simap *,
                          struct hmap *);
-void build_nat_parsed_routes(const struct ovn_datapath *,
-                             const struct lr_nat_record *,
-                             const struct hmap *ls_ports,
-                             struct hmap *routes);
-void build_nat_connected_parsed_routes(const struct ovn_datapath *,
-                                       const struct lr_stateful_table *,
-                                       const struct hmap *ls_ports,
-                                       struct hmap *routes);
-void build_lb_parsed_routes(const struct ovn_datapath *,
-                            const struct ovn_lb_ip_set *,
-                            struct hmap *);
-void build_lb_connected_parsed_routes(const struct ovn_datapath *,
-                                      const struct lr_stateful_table *,
-                                      struct hmap *routes);
 uint32_t get_route_table_id(struct simap *, const char *);
 void routes_init(struct routes_data *);
 void routes_destroy(struct routes_data *);
