@@ -159,10 +159,3 @@ OVN To-do List
     monitoring conditions to update before we actually try to learn routes.
     Otherwise we could try to add duplicated Learned_Routes and the ovnsb
     commit would fail.
-
-  * Consider splitting parsed_route structure. When creating parsed routes
-    with tracked_port explicitly set, other members of this structure are
-    usually unused/default. A new structure dedicated to routes with
-    explicitly defined tracked_port would be more efficient.
-    More details in
-    https://mail.openvswitch.org/pipermail/ovs-dev/2025-February/420985.html
