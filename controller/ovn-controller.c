@@ -885,6 +885,20 @@ get_transport_zones(const struct ovsrec_open_vswitch_table *ovs_table)
                                          "ovn-transport-zones", "");
 }
 
+static bool
+get_ovn_cleanup_on_exit(const struct ovsrec_open_vswitch_table *ovs_table)
+{
+    const struct ovsrec_open_vswitch *cfg =
+        ovsrec_open_vswitch_table_first(ovs_table);
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    if (!cfg || !chassis_id) {
+        return false;
+    }
+
+    return get_chassis_external_id_value_bool(&cfg->external_ids, chassis_id,
+                                              "ovn-cleanup-on-exit", true);
+}
+
 static void
 ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
 {
@@ -6525,8 +6539,14 @@ loop_done:
     engine_set_context(NULL);
     engine_cleanup();
 
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        ovsrec_open_vswitch_table_get(ovs_idl_loop.idl);
+    bool restart = exit_args.restart || !get_ovn_cleanup_on_exit(ovs_table);
+    VLOG_INFO("Exiting ovn-controller, resource cleanup: %s",
+              restart ? "False (--restart)" : "True");
+
     /* It's time to exit.  Clean up the databases if we are not restarting */
-    if (!exit_args.restart) {
+    if (!restart) {
         bool done = !ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl);
         while (!done) {
             update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl,
@@ -6540,8 +6560,6 @@ loop_done:
 
             const struct ovsrec_bridge_table *bridge_table
                 = ovsrec_bridge_table_get(ovs_idl_loop.idl);
-            const struct ovsrec_open_vswitch_table *ovs_table
-                = ovsrec_open_vswitch_table_get(ovs_idl_loop.idl);
 
             const struct sbrec_port_binding_table *port_binding_table
                 = sbrec_port_binding_table_get(ovnsb_idl_loop.idl);

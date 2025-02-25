@@ -423,6 +423,13 @@
           See the <code>ovn-nb</code>(5) for more details.
         </p>
       </dd>
+
+      <dt><code>external_ids:ovn-cleanup-on-exit</code></dt>
+      <dd>
+        The boolean flag indicates if ovn-controller should perform cleanup on
+        exit. In order to keep backward compatibility the
+        <code>--restart</code> exit flag has priority over this flag.
+      </dd>
     </dl>
 
     <p>
