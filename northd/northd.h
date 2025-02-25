@@ -192,7 +192,8 @@ struct routes_data {
 };
 
 struct dynamic_routes_data {
-    struct hmap parsed_routes; /* Stores struct parsed_route. */
+    struct hmap routes; /* Stores struct ar_entry, one for each
+                         * dynamic route. */
 };
 
 struct route_policies_data {
