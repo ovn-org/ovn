@@ -386,7 +386,7 @@ publish_host_routes(struct hmap *sync_routes,
 
     struct ovn_port *port;
     HMAP_FOR_EACH (port, dp_node, &peer_od->ports) {
-        if (port->peer) {
+        if (port->peer && port->peer->nbrp) {
             /* This is a LSP connected to an LRP */
             publish_host_routes_lrp(sync_routes, lr_stateful_table, route,
                                     data, port->peer);

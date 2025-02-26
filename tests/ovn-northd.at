@@ -15507,6 +15507,21 @@ check_row_count Advertised_Route 6 tracked_port!='[[]]'
 check_row_count Advertised_Route 1 datapath=$datapath logical_port=$lr0lr2 \
     ip_prefix=10.10.0.20 tracked_port=$lr2lr0
 
+# Add a directly connected switch and make sure that northd is not confused.
+# The IP on a switch-switch port should be advertised.
+check ovn-nbctl ls-add sw1
+check ovn-nbctl lsp-add sw0 sw0-sw1
+check ovn-nbctl lsp-add sw1 sw1-sw0
+check ovn-nbctl lsp-set-type sw0-sw1 switch peer=sw1-sw0 -- \
+                lsp-set-type sw1-sw0 switch peer=sw0-sw1
+check ovn-nbctl --wait=sb lsp-set-addresses sw0-sw1 \
+    "11:aa:bb:cc:dd:ee 10.0.0.42"
+sw0sw1=$(fetch_column port_binding _uuid logical_port=sw0-sw1)
+check_row_count Advertised_Route 9
+check_row_count Advertised_Route 7 tracked_port!='[[]]'
+check_column $sw0sw1 Advertised_Route tracked_port \
+    datapath=$datapath logical_port=$sw0 ip_prefix=10.0.0.42
+
 AT_CLEANUP
 ])
 
