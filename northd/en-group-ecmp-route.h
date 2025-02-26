@@ -54,6 +54,9 @@ struct group_ecmp_datapath {
     /* The datapath for which this node is relevant. */
     const struct ovn_datapath *od;
 
+    /* The lflow ref for all routes of this datapath. */
+    struct lflow_ref *lflow_ref;
+
     /* Contains all routes that are part of an ecmp group.
      * Contains struct ecmp_groups_node. */
     struct hmap ecmp_groups;
