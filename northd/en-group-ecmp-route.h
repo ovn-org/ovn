@@ -63,15 +63,34 @@ struct group_ecmp_datapath {
     struct hmap unique_routes;
 };
 
+struct group_ecmp_route_tracked_data {
+    /* Contains references to group_ecmp_route_node. Each of the referenced
+     * datapaths contains at least one route. */
+    struct hmapx crupdated_datapath_routes;
+
+    /* Contains references to group_ecmp_route_node. Each of the referenced
+     * datapath previously had some routes. The datapath now no longer
+     * contains any route.*/
+    struct hmapx deleted_datapath_routes;
+};
+
 struct group_ecmp_route_data {
     /* Contains struct group_ecmp_route_node. */
     struct hmap datapaths;
+
+    /* 'tracked' is set to true if there is information available for
+     * incremental processing. If true then 'trk_data' is valid. */
+    bool tracked;
+    struct group_ecmp_route_tracked_data trk_data;
 };
 
 void *en_group_ecmp_route_init(struct engine_node *, struct engine_arg *);
 void en_group_ecmp_route_cleanup(void *data);
 void en_group_ecmp_route_clear_tracked_data(void *data);
 void en_group_ecmp_route_run(struct engine_node *, void *data);
+
+bool group_ecmp_route_learned_route_change_handler(struct engine_node *,
+                                                   void *data);
 
 struct group_ecmp_datapath *group_ecmp_datapath_lookup(
     const struct group_ecmp_route_data *data,
