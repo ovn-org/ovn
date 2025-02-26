@@ -27,7 +27,7 @@
 #include "en-northd.h"
 #include "en-meters.h"
 #include "en-sampling-app.h"
-#include "en-learned-route-sync.h"
+#include "en-group-ecmp-route.h"
 #include "lflow-mgr.h"
 
 #include "lib/inc-proc-eng.h"
@@ -262,6 +262,72 @@ lflow_multicast_igmp_handler(struct engine_node *node, void *data)
                                lflow_input.sbrec_logical_flow_table,
                                lflow_input.sbrec_logical_dp_group_table)) {
         return false;
+    }
+
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
+}
+
+bool
+lflow_group_ecmp_route_change_handler(struct engine_node *node,
+                                      void *data OVS_UNUSED)
+{
+    struct group_ecmp_route_data *group_ecmp_route_data =
+        engine_get_input_data("group_ecmp_route", node);
+
+    /* If we do not have tracked data we need to recompute. */
+    if (!group_ecmp_route_data->tracked) {
+        return false;
+    }
+
+    const struct engine_context *eng_ctx = engine_get_context();
+    struct lflow_data *lflow_data = data;
+
+    struct lflow_input lflow_input;
+    lflow_get_input_data(node, &lflow_input);
+
+    struct group_ecmp_datapath *route_node;
+    struct hmapx_node *hmapx_node;
+
+    /* We need to handle deletions before additions as they could potentially
+     * overlap. */
+    HMAPX_FOR_EACH (hmapx_node,
+                    &group_ecmp_route_data->trk_data.deleted_datapath_routes) {
+        route_node = hmapx_node->data;
+        lflow_ref_unlink_lflows(route_node->lflow_ref);
+
+        bool handled = lflow_ref_sync_lflows(
+            route_node->lflow_ref, lflow_data->lflow_table,
+            eng_ctx->ovnsb_idl_txn, lflow_input.ls_datapaths,
+            lflow_input.lr_datapaths,
+            lflow_input.ovn_internal_version_changed,
+            lflow_input.sbrec_logical_flow_table,
+            lflow_input.sbrec_logical_dp_group_table);
+        if (!handled) {
+            return false;
+        }
+    }
+
+    /* Now we handle created or updated route nodes. */
+    struct hmapx *crupdated_datapath_routes =
+        &group_ecmp_route_data->trk_data.crupdated_datapath_routes;
+    HMAPX_FOR_EACH (hmapx_node, crupdated_datapath_routes) {
+        route_node = hmapx_node->data;
+        lflow_ref_unlink_lflows(route_node->lflow_ref);
+        build_route_data_flows_for_lrouter(
+            route_node->od, lflow_data->lflow_table,
+            route_node, lflow_input.bfd_ports);
+
+        bool handled = lflow_ref_sync_lflows(
+            route_node->lflow_ref, lflow_data->lflow_table,
+            eng_ctx->ovnsb_idl_txn, lflow_input.ls_datapaths,
+            lflow_input.lr_datapaths,
+            lflow_input.ovn_internal_version_changed,
+            lflow_input.sbrec_logical_flow_table,
+            lflow_input.sbrec_logical_dp_group_table);
+        if (!handled) {
+            return false;
+        }
     }
 
     engine_set_node_state(node, EN_UPDATED);

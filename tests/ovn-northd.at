@@ -15704,7 +15704,7 @@ check_engine_compute routes unchanged
 check_engine_compute advertised_route_sync unchanged
 check_engine_compute learned_route_sync incremental
 check_engine_compute group_ecmp_route incremental
-check_engine_compute lflow recompute
+check_engine_compute lflow incremental
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
@@ -15715,7 +15715,7 @@ check_engine_compute routes unchanged
 check_engine_compute advertised_route_sync unchanged
 check_engine_compute learned_route_sync incremental
 check_engine_compute group_ecmp_route incremental
-check_engine_compute lflow recompute
+check_engine_compute lflow incremental
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats

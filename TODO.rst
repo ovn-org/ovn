@@ -143,9 +143,6 @@ OVN To-do List
 
 * Dynamic Routing
 
-  * Add incremental processing for northd when the Learned_Route table changes.
-    Currently en_lflow is fully recomputed whenever such a change happens.
-
   * Add incremental processing of en_dynamic_routes for stateful configuration
     changes.
 
