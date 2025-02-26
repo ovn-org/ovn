@@ -16710,3 +16710,22 @@ check_row_count Port_Binding 1 logical_port=lrp2 options:peer{not-in}lrp0
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LSP using LRP with peer])
+ovn_start
+
+check ovn-nbctl --wait=sb sync \
+    -- lr-add lr \
+    -- ls-add ls \
+    -- lrp-add lr lrp0 00:00:00:01:ff:01 192.168.1.1/24 peer=lrp1 \
+    -- lrp-add lr lrp1 00:00:00:01:ff:01 192.168.1.1/24 peer=lrp0 \
+    -- lsp-add ls ls-lrp1 \
+    -- lsp-set-type ls-lrp1 router \
+    -- lsp-set-options ls-lrp1 router-port=lrp1 \
+    -- lsp-set-addresses ls-lrp1 router
+
+check grep -q "Bad configuration: The peer of the switch port 'ls-lrp1' (LRP peer: 'lrp1') has its own peer configuration: 'lrp0'" northd/ovn-northd.log
+
+AT_CLEANUP
+])
