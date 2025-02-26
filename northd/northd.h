@@ -851,11 +851,17 @@ void bfd_sync_destroy(struct bfd_sync_data *);
 struct lflow_table;
 struct lr_stateful_tracked_data;
 struct ls_stateful_tracked_data;
+struct group_ecmp_datapath;
 
 void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
                   struct lflow_input *input_data,
                   struct lflow_table *);
 void lflow_reset_northd_refs(struct lflow_input *);
+void build_route_data_flows_for_lrouter(
+    const struct ovn_datapath *od, struct lflow_table *lflows,
+    const struct group_ecmp_datapath *route_node,
+    const struct sset *bfd_ports);
+
 
 bool lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                       struct tracked_ovn_ports *,

@@ -335,10 +335,10 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_lflow, &en_bfd_sync, NULL);
     engine_add_input(&en_lflow, &en_route_policies, NULL);
     engine_add_input(&en_lflow, &en_routes, NULL);
-    /* XXX: This causes a full lflow recompute on each change to any route.
-     * At least for learned routes we should add incremental processing here.
-     * */
-    engine_add_input(&en_lflow, &en_group_ecmp_route, NULL);
+    /* XXX: The incremental processing only supports changes to learned routes.
+     * All other changes trigger a full recompute. */
+    engine_add_input(&en_lflow, &en_group_ecmp_route,
+                     lflow_group_ecmp_route_change_handler);
     engine_add_input(&en_lflow, &en_global_config,
                      node_global_config_handler);
 
