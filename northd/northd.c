@@ -2452,6 +2452,15 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
                 continue;
             }
 
+            if (peer->nbrp->peer) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+                VLOG_WARN_RL(&rl, "Bad configuration: The peer of the switch "
+                             "port '%s' (LRP peer: '%s') has its own peer "
+                             "configuration: '%s'", op->key, peer->key,
+                             peer->nbrp->peer);
+                continue;
+            }
+
             ovn_datapath_add_router_port(op->od, op);
             ovn_datapath_add_ls_peer(peer->od, op->od);
             peer->peer = op;
