@@ -783,24 +783,28 @@ struct parsed_route {
 };
 
 struct parsed_route *parsed_route_clone(const struct parsed_route *);
+struct parsed_route *parsed_route_lookup_by_source(
+    const struct ovn_datapath *od, enum route_source source,
+    const struct ovsdb_idl_row *source_hint, const struct hmap *routes);
 size_t parsed_route_hash(const struct parsed_route *);
 void parsed_route_free(struct parsed_route *);
 
-void parsed_route_add(const struct ovn_datapath *od,
-                      struct in6_addr *nexthop,
-                      const struct in6_addr *prefix,
-                      unsigned int plen,
-                      bool is_discard_route,
-                      const char *lrp_addr_s,
-                      const struct ovn_port *out_port,
-                      uint32_t route_table_id,
-                      bool is_src_route,
-                      bool ecmp_symmetric_reply,
-                      const struct sset *ecmp_selection_fields,
-                      enum route_source source,
-                      const struct ovsdb_idl_row *source_hint,
-                      const struct ovn_port *tracked_port,
-                      struct hmap *routes);
+struct parsed_route *parsed_route_add(
+    const struct ovn_datapath *od,
+    struct in6_addr *nexthop,
+    const struct in6_addr *prefix,
+    unsigned int plen,
+    bool is_discard_route,
+    const char *lrp_addr_s,
+    const struct ovn_port *out_port,
+    uint32_t route_table_id,
+    bool is_src_route,
+    bool ecmp_symmetric_reply,
+    const struct sset *ecmp_selection_fields,
+    enum route_source source,
+    const struct ovsdb_idl_row *source_hint,
+    const struct ovn_port *tracked_port,
+    struct hmap *routes);
 
 bool
 find_route_outport(const struct hmap *lr_ports, const char *output_port,

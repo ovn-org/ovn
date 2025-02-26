@@ -61,18 +61,35 @@ learned_route_sync_northd_change_handler(struct engine_node *node,
 }
 
 static void
+routes_sync_clear_tracked(struct learned_route_sync_data *data)
+{
+    hmapx_clear(&data->trk_data.trk_created_parsed_route);
+    struct hmapx_node *hmapx_node;
+    HMAPX_FOR_EACH_SAFE (hmapx_node,
+                         &data->trk_data.trk_deleted_parsed_route) {
+        parsed_route_free(hmapx_node->data);
+        hmapx_delete(&data->trk_data.trk_deleted_parsed_route, hmapx_node);
+    }
+    data->tracked = false;
+}
+
+static void
 routes_sync_clear(struct learned_route_sync_data *data)
 {
     struct parsed_route *r;
     HMAP_FOR_EACH_POP (r, key_node, &data->parsed_routes) {
         parsed_route_free(r);
     }
+    routes_sync_clear_tracked(data);
 }
 
 static void
 routes_sync_init(struct learned_route_sync_data *data)
 {
     hmap_init(&data->parsed_routes);
+    hmapx_init(&data->trk_data.trk_created_parsed_route);
+    hmapx_init(&data->trk_data.trk_deleted_parsed_route);
+    data->tracked = false;
 }
 
 static void
@@ -80,6 +97,8 @@ routes_sync_destroy(struct learned_route_sync_data *data)
 {
     routes_sync_clear(data);
     hmap_destroy(&data->parsed_routes);
+    hmapx_destroy(&data->trk_data.trk_created_parsed_route);
+    hmapx_destroy(&data->trk_data.trk_deleted_parsed_route);
 }
 
 void *
@@ -95,6 +114,12 @@ void
 en_learned_route_sync_cleanup(void *data)
 {
     routes_sync_destroy(data);
+}
+
+void
+en_learned_route_sync_clear_tracked_data(void *data)
+{
+    routes_sync_clear_tracked(data);
 }
 
 void
@@ -122,7 +147,7 @@ en_learned_route_sync_run(struct engine_node *node, void *data)
 }
 
 
-static void
+static struct parsed_route *
 parse_route_from_sbrec_route(struct hmap *parsed_routes_out,
                              const struct hmap *lr_ports,
                              const struct hmap *lr_datapaths,
@@ -132,7 +157,7 @@ parse_route_from_sbrec_route(struct hmap *parsed_routes_out,
         NULL, lr_datapaths, route->datapath);
 
     if (!od || ovn_datapath_is_stale(od)) {
-        return;
+        return NULL;
     }
 
     /* Verify that the next hop is an IP address with an all-ones mask. */
@@ -144,7 +169,7 @@ parse_route_from_sbrec_route(struct hmap *parsed_routes_out,
                      UUID_FMT, route->nexthop,
                      UUID_ARGS(&route->header_.uuid));
         free(nexthop);
-        return;
+        return NULL;
     }
     if ((IN6_IS_ADDR_V4MAPPED(nexthop) && plen != 32) ||
         (!IN6_IS_ADDR_V4MAPPED(nexthop) && plen != 128)) {
@@ -153,7 +178,7 @@ parse_route_from_sbrec_route(struct hmap *parsed_routes_out,
                      UUID_FMT, route->nexthop,
                      UUID_ARGS(&route->header_.uuid));
         free(nexthop);
-        return;
+        return NULL;
     }
 
     /* Parse ip_prefix */
@@ -164,7 +189,7 @@ parse_route_from_sbrec_route(struct hmap *parsed_routes_out,
                      UUID_FMT, route->ip_prefix,
                      UUID_ARGS(&route->header_.uuid));
         free(nexthop);
-        return;
+        return NULL;
     }
 
     /* Verify that ip_prefix and nexthop are on the same network. */
@@ -175,14 +200,18 @@ parse_route_from_sbrec_route(struct hmap *parsed_routes_out,
                             IN6_IS_ADDR_V4MAPPED(&prefix),
                             false,
                             &out_port, &lrp_addr_s)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "could not find output port %s for learned route "
+                     UUID_FMT, route->logical_port->logical_port,
+                     UUID_ARGS(&route->header_.uuid));
         free(nexthop);
-        return;
+        return NULL;
     }
 
-    parsed_route_add(od, nexthop, &prefix, plen, false, lrp_addr_s,
-                     out_port, 0, false, false, NULL,
-                     ROUTE_SOURCE_LEARNED, &route->header_, NULL,
-                     parsed_routes_out);
+    return parsed_route_add(od, nexthop, &prefix, plen, false, lrp_addr_s,
+                            out_port, 0, false, false, NULL,
+                            ROUTE_SOURCE_LEARNED, &route->header_, NULL,
+                            parsed_routes_out);
 }
 
 static void
@@ -211,4 +240,76 @@ routes_table_sync(
         hmap_insert(parsed_routes_out, &parsed_route_clone(route)->key_node,
                     parsed_route_hash(route));
     }
+}
+
+static struct parsed_route *
+find_learned_route(const struct sbrec_learned_route *learned_route,
+                   const struct ovn_datapaths *lr_datapaths,
+                   const struct hmap *routes)
+{
+    const struct ovn_datapath *od = ovn_datapath_from_sbrec(
+        NULL, &lr_datapaths->datapaths, learned_route->datapath);
+    if (!od) {
+        return NULL;
+    }
+    return parsed_route_lookup_by_source(od, ROUTE_SOURCE_LEARNED,
+                                         &learned_route->header_, routes);
+}
+
+bool
+learned_route_sync_sb_learned_route_change_handler(struct engine_node *node,
+                                                   void *data_)
+{
+    struct learned_route_sync_data *data = data_;
+    data->tracked = true;
+
+    const struct sbrec_learned_route_table *sbrec_learned_route_table =
+        EN_OVSDB_GET(engine_get_input("SB_learned_route", node));
+    struct northd_data *northd_data = engine_get_input_data("northd", node);
+
+    const struct sbrec_learned_route *changed_route;
+    SBREC_LEARNED_ROUTE_TABLE_FOR_EACH_TRACKED (changed_route,
+                                                sbrec_learned_route_table) {
+        if (sbrec_learned_route_is_new(changed_route) &&
+            sbrec_learned_route_is_deleted(changed_route)) {
+            continue;
+        }
+
+        if (sbrec_learned_route_is_new(changed_route)) {
+            struct parsed_route *route = parse_route_from_sbrec_route(
+                &data->parsed_routes, &northd_data->lr_ports,
+                &northd_data->lr_datapaths.datapaths, changed_route);
+            if (route) {
+                hmapx_add(&data->trk_data.trk_created_parsed_route, route);
+                continue;
+            }
+        }
+
+        if (sbrec_learned_route_is_deleted(changed_route)) {
+            struct parsed_route *route = find_learned_route(
+                changed_route, &northd_data->lr_datapaths,
+                &data->parsed_routes);
+            if (!route) {
+                goto fail;
+            }
+            hmap_remove(&data->parsed_routes, &route->key_node);
+            hmapx_add(&data->trk_data.trk_deleted_parsed_route, route);
+            continue;
+        }
+
+        /* The learned routes should never be updated, so we just fail the
+         * handler here if that happens. */
+        goto fail;
+    }
+
+    if (!hmapx_is_empty(&data->trk_data.trk_created_parsed_route) ||
+        !hmapx_is_empty(&data->trk_data.trk_deleted_parsed_route)) {
+        engine_set_node_state(node, EN_UPDATED);
+    }
+
+    return true;
+
+fail:
+    routes_sync_clear_tracked(data);
+    return false;
 }
