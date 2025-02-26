@@ -858,7 +858,7 @@ parse_dynamic_routing_redistribute(
         }
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_WARN_RL(&rl,
-                     "unkown dynamic-routing-redistribute option '%s' on %s",
+                     "unknown dynamic-routing-redistribute option '%s' on %s",
                      token, nb_entity_name);
     }
 
