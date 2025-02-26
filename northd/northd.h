@@ -237,7 +237,7 @@ struct lflow_input {
     bool ovn_internal_version_changed;
     const char *svc_monitor_mac;
     const struct sampling_app_table *sampling_apps;
-    struct hmap *parsed_routes;
+    struct group_ecmp_route_data *route_data;
     struct hmap *route_policies;
     struct simap *route_tables;
     struct hmap *igmp_groups;
