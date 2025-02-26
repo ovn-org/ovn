@@ -13638,21 +13638,20 @@ static void
 build_route_flows_for_lrouter(
         struct ovn_datapath *od, struct lflow_table *lflows,
         const struct group_ecmp_route_data *route_data,
-        struct simap *route_tables, const struct sset *bfd_ports,
-        struct lflow_ref *lflow_ref)
+        struct simap *route_tables, const struct sset *bfd_ports)
 {
     ovs_assert(od->nbr);
     ovn_lflow_add_default_drop(lflows, od, S_ROUTER_IN_IP_ROUTING_ECMP,
-                               lflow_ref);
+                               NULL);
     ovn_lflow_add_default_drop(lflows, od, S_ROUTER_IN_IP_ROUTING,
-                               lflow_ref);
+                               NULL);
     ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING_ECMP, 150,
                   REG_ECMP_GROUP_ID" == 0", "next;",
-                  lflow_ref);
+                  NULL);
 
     for (int i = 0; i < od->nbr->n_ports; i++) {
         build_route_table_lflow(od, lflows, od->nbr->ports[i],
-                                route_tables, lflow_ref);
+                                route_tables, NULL);
     }
 
     const struct group_ecmp_datapath *route_node =
@@ -13665,20 +13664,24 @@ build_route_flows_for_lrouter(
     HMAP_FOR_EACH (group, hmap_node, &route_node->ecmp_groups) {
         /* add a flow in IP_ROUTING, and one flow for each member in
          * IP_ROUTING_ECMP. */
-        build_ecmp_route_flow(lflows, od, group, lflow_ref, NULL);
+        build_ecmp_route_flow(lflows, od, group, route_node->lflow_ref, NULL);
 
         /* If src or dst port is specified for selection_fields, install
          * separate ECMP flows with protocol match of TCP, UDP and SCTP */
         if (sset_contains(&group->selection_fields, "tp_src") ||
             sset_contains(&group->selection_fields, "tp_dst")) {
-            build_ecmp_route_flow(lflows, od, group, lflow_ref, "tcp");
-            build_ecmp_route_flow(lflows, od, group, lflow_ref, "udp");
-            build_ecmp_route_flow(lflows, od, group, lflow_ref, "sctp");
+            build_ecmp_route_flow(lflows, od, group,
+                                  route_node->lflow_ref, "tcp");
+            build_ecmp_route_flow(lflows, od, group,
+                                  route_node->lflow_ref, "udp");
+            build_ecmp_route_flow(lflows, od, group,
+                                  route_node->lflow_ref, "sctp");
         }
     }
     const struct unique_routes_node *ur;
     HMAP_FOR_EACH (ur, hmap_node, &route_node->unique_routes) {
-        build_route_flow(lflows, od, ur->route, bfd_ports, lflow_ref);
+        build_route_flow(lflows, od, ur->route, bfd_ports,
+                         route_node->lflow_ref);
     }
 }
 
@@ -17289,7 +17292,7 @@ build_lswitch_and_lrouter_iterate_by_lr(struct ovn_datapath *od,
     build_ip_routing_pre_flows_for_lrouter(od, lsi->lflows, NULL);
     build_route_flows_for_lrouter(od, lsi->lflows,
                                   lsi->route_data, lsi->route_tables,
-                                  lsi->bfd_ports, NULL);
+                                  lsi->bfd_ports);
     build_mcast_lookup_flows_for_lrouter(od, lsi->lflows, &lsi->match, NULL);
     build_ingress_policy_flows_for_lrouter(od, lsi->lflows, lsi->lr_ports,
                                            lsi->route_policies, NULL);
