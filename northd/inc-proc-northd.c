@@ -46,6 +46,7 @@
 #include "en-acl-ids.h"
 #include "en-advertised-route-sync.h"
 #include "en-learned-route-sync.h"
+#include "en-group-ecmp-route.h"
 #include "unixctl.h"
 #include "util.h"
 
@@ -177,6 +178,7 @@ static ENGINE_NODE(advertised_route_sync, "advertised_route_sync");
 static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(learned_route_sync,
                                          "learned_route_sync");
 static ENGINE_NODE(dynamic_routes, "dynamic_routes");
+static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(group_ecmp_route, "group_ecmp_route");
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb)
@@ -307,11 +309,13 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_advertised_route_sync, &en_northd,
                      advertised_route_sync_northd_change_handler);
 
-    engine_add_input(&en_learned_route_sync, &en_routes, NULL);
     engine_add_input(&en_learned_route_sync, &en_sb_learned_route,
                      learned_route_sync_sb_learned_route_change_handler);
     engine_add_input(&en_learned_route_sync, &en_northd,
                      learned_route_sync_northd_change_handler);
+
+    engine_add_input(&en_group_ecmp_route, &en_routes, NULL);
+    engine_add_input(&en_group_ecmp_route, &en_learned_route_sync, NULL);
 
     engine_add_input(&en_sync_meters, &en_nb_acl, NULL);
     engine_add_input(&en_sync_meters, &en_nb_meter, NULL);
@@ -333,7 +337,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     /* XXX: This causes a full lflow recompute on each change to any route.
      * At least for learned routes we should add incremental processing here.
      * */
-    engine_add_input(&en_lflow, &en_learned_route_sync, NULL);
+    engine_add_input(&en_lflow, &en_group_ecmp_route, NULL);
     engine_add_input(&en_lflow, &en_global_config,
                      node_global_config_handler);
 

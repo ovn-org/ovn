@@ -44,6 +44,8 @@ northd_ovn_northd_SOURCES = \
 	northd/en-advertised-route-sync.h \
 	northd/en-learned-route-sync.c \
 	northd/en-learned-route-sync.h \
+	northd/en-group-ecmp-route.c \
+	northd/en-group-ecmp-route.h \
 	northd/inc-proc-northd.c \
 	northd/inc-proc-northd.h \
 	northd/ipam.c \

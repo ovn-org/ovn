@@ -48,8 +48,8 @@ lflow_get_input_data(struct engine_node *node,
         engine_get_input_data("bfd_sync", node);
     struct routes_data *routes_data =
         engine_get_input_data("routes", node);
-    struct learned_route_sync_data *learned_route_sync_data =
-        engine_get_input_data("learned_route_sync", node);
+    struct group_ecmp_route_data *group_ecmp_route_data =
+        engine_get_input_data("group_ecmp_route", node);
     struct route_policies_data *route_policies_data =
         engine_get_input_data("route_policies", node);
     struct port_group_data *pg_data =
@@ -86,7 +86,7 @@ lflow_get_input_data(struct engine_node *node,
     lflow_input->lb_datapaths_map = &northd_data->lb_datapaths_map;
     lflow_input->svc_monitor_map = &northd_data->svc_monitor_map;
     lflow_input->bfd_ports = &bfd_sync_data->bfd_ports;
-    lflow_input->parsed_routes = &learned_route_sync_data->parsed_routes;
+    lflow_input->route_data = group_ecmp_route_data;
     lflow_input->route_tables = &routes_data->route_tables;
     lflow_input->route_policies = &route_policies_data->route_policies;
     lflow_input->igmp_groups = &multicat_igmp_data->igmp_groups;

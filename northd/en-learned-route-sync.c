@@ -31,7 +31,6 @@ VLOG_DEFINE_THIS_MODULE(en_learned_route_sync);
 static void
 routes_table_sync(
     const struct sbrec_learned_route_table *sbrec_learned_route_table,
-    const struct hmap *parsed_routes,
     const struct hmap *lr_ports,
     const struct ovn_datapaths *lr_datapaths,
     struct hmap *parsed_routes_out);
@@ -128,8 +127,6 @@ en_learned_route_sync_run(struct engine_node *node, void *data)
     routes_sync_clear(data);
 
     struct learned_route_sync_data *routes_sync_data = data;
-    struct routes_data *routes_data
-        = engine_get_input_data("routes", node);
     const struct sbrec_learned_route_table *sbrec_learned_route_table =
         EN_OVSDB_GET(engine_get_input("SB_learned_route", node));
     struct northd_data *northd_data = engine_get_input_data("northd", node);
@@ -137,7 +134,6 @@ en_learned_route_sync_run(struct engine_node *node, void *data)
     stopwatch_start(LEARNED_ROUTE_SYNC_RUN_STOPWATCH_NAME, time_msec());
 
     routes_table_sync(sbrec_learned_route_table,
-                      &routes_data->parsed_routes,
                       &northd_data->lr_ports,
                       &northd_data->lr_datapaths,
                       &routes_sync_data->parsed_routes);
@@ -217,7 +213,6 @@ parse_route_from_sbrec_route(struct hmap *parsed_routes_out,
 static void
 routes_table_sync(
     const struct sbrec_learned_route_table *sbrec_learned_route_table,
-    const struct hmap *parsed_routes,
     const struct hmap *lr_ports,
     const struct ovn_datapaths *lr_datapaths,
     struct hmap *parsed_routes_out)
@@ -233,12 +228,6 @@ routes_table_sync(
                                      &lr_datapaths->datapaths,
                                      sb_route);
 
-    }
-
-    const struct parsed_route *route;
-    HMAP_FOR_EACH (route, key_node, parsed_routes) {
-        hmap_insert(parsed_routes_out, &parsed_route_clone(route)->key_node,
-                    parsed_route_hash(route));
     }
 }
 
