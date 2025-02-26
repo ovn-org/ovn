@@ -11083,6 +11083,26 @@ parsed_route_clone(const struct parsed_route *pr)
     return new_pr;
 }
 
+/* Searches for a parsed_route in a hmap based on datapath, source and
+ * source_hint. */
+struct parsed_route *
+parsed_route_lookup_by_source(const struct ovn_datapath *od,
+                              enum route_source source,
+                              const struct ovsdb_idl_row *source_hint,
+                              const struct hmap *routes)
+{
+    size_t hash = uuid_hash(&od->key);
+    struct parsed_route *route;
+    HMAP_FOR_EACH_WITH_HASH (route, key_node, hash, routes) {
+        if (route->source == source &&
+                uuid_equals(&route->source_hint->uuid,
+                            &source_hint->uuid)) {
+            return route;
+        }
+    }
+    return NULL;
+}
+
 /* This hash needs to be equal to the one used in
  * build_route_flows_for_lrouter to iterate over all routes of a datapath.
  * This is distinct from route_hash which is stored in parsed_route->hash. */
@@ -11106,7 +11126,7 @@ parsed_route_free(struct parsed_route *pr) {
  * in there.
  * Takes ownership of the provided nexthop. All other parameters are cloned.
  * Elements of the routes hmap need to be freed using parsed_route_free. */
-void
+struct parsed_route *
 parsed_route_add(const struct ovn_datapath *od,
                  struct in6_addr *nexthop,
                  const struct in6_addr *prefix,
@@ -11135,9 +11155,11 @@ parsed_route_add(const struct ovn_datapath *od,
     struct parsed_route *pr = parsed_route_lookup(routes, hash, new_pr);
     if (!pr) {
         hmap_insert(routes, &new_pr->key_node, hash);
+        return new_pr;
     } else {
         pr->stale = false;
         parsed_route_free(new_pr);
+        return pr;
     }
 }
 

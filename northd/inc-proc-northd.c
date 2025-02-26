@@ -174,7 +174,8 @@ static ENGINE_NODE(ecmp_nexthop, "ecmp_nexthop");
 static ENGINE_NODE(multicast_igmp, "multicast_igmp");
 static ENGINE_NODE(acl_id, "acl_id");
 static ENGINE_NODE(advertised_route_sync, "advertised_route_sync");
-static ENGINE_NODE(learned_route_sync, "learned_route_sync");
+static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(learned_route_sync,
+                                         "learned_route_sync");
 static ENGINE_NODE(dynamic_routes, "dynamic_routes");
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
@@ -307,7 +308,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                      advertised_route_sync_northd_change_handler);
 
     engine_add_input(&en_learned_route_sync, &en_routes, NULL);
-    engine_add_input(&en_learned_route_sync, &en_sb_learned_route, NULL);
+    engine_add_input(&en_learned_route_sync, &en_sb_learned_route,
+                     learned_route_sync_sb_learned_route_change_handler);
     engine_add_input(&en_learned_route_sync, &en_northd,
                      learned_route_sync_northd_change_handler);
 
