@@ -8,8 +8,6 @@ OVN v25.03.0 - xx xxx xxxx
      removed in the next release.
    - The LRP option 'centralize_routing' has been removed. The behavior is now
      enabled in all cases where it is needed.
-   - The experimental logical router port options "routing-protocol-redirect"
-     and "routing-protocols" are now also usable on distributed gateway ports.
    - ovn-nb: Changed schema of ovn-nb to make networks optional within Logical
      Router Ports.
    - Added support for Spine-Leaf topology of logical switches by adding
@@ -78,6 +76,11 @@ OVN v25.03.0 - xx xxx xxxx
        learned from a linux interfaces that is locally bound to the referenced
        LSP will be learned. Additionally support local overwrites for arbitrary
        interface names using "dynamic-routing-port-mapping".
+     * The logical router port options "routing-protocol-redirect" and
+       "routing-protocols" are now also usable on distributed gateway ports.
+     * Logical router port options "routing-protocol-redirect" and
+       "routing-protocols" are now considered stable. Their "experimental" tag
+       was removed.
    - Add "options:ct-commit-all" to LR, that enables commit of all traffic
      to DNAT and SNAT zone when LR is stateful.
 

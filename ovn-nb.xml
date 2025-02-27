@@ -3837,10 +3837,6 @@ or
       <column name="options" key="routing-protocol-redirect"
               type='{"type": "string"}'>
         <p>
-          NOTE: this feature is experimental and may be subject to
-          removal/change in the future.
-        </p>
-        <p>
           This option expects a name of a Logical Switch Port that's present
           in the peer's Logical Switch. If set, it causes any traffic
           that's destined for Logical Router Port's IP addresses (including
@@ -3855,10 +3851,6 @@ or
       </column>
 
       <column name="options" key="routing-protocols" type='{"type": "string"}'>
-        <p>
-          NOTE: this feature is experimental and may be subject to
-          removal/change in the future.
-        </p>
         <p>
           This option expects a comma-separated list of routing, and
           routing-related protocols, whose control plane traffic will be
