@@ -3735,7 +3735,9 @@ or
 
       <column name="ipv6_ra_configs" key="send_periodic">
         If set to true, then this router interface will send router
-        advertisements periodically.  The default is false.
+        advertisements periodically. This option has no effect if <ref
+        column="ipv6_ra_configs" key="address_mode"/> is not set. The default
+        is false.
       </column>
 
       <column name="ipv6_ra_configs" key="max_interval">
@@ -3872,6 +3874,43 @@ or
             <code>BFD</code> (forwards UDP port 3784)
           </li>
         </ul>
+        <p>
+          Note that for BGP to work in "unnumbered mode" (advertising IPv4
+          routes over IPv6 network, with automatic on-link peer discovery),
+          Logical Router Port needs to enable sending of periodic IPv6 Router
+          Announcements (see the <ref column="ipv6_ra_configs"
+          key="send_periodic"/>).
+
+          Recommended minimal configuration of periodic RAs for BGP unnumbered:
+
+          <ul>
+            <li>
+              <ref column="ipv6_ra_configs" key="address_mode"/>
+              = <code>slaac</code> (Any valid value is OK, but the option
+              needs to be set)
+            </li>
+            <li>
+              <ref column="ipv6_ra_configs" key="send_periodic"/>
+              = <code>true</code>
+            </li>
+            <li>
+              <ref column="ipv6_ra_configs" key="max_interval"/>
+              = <code>10</code>
+            </li>
+            <li>
+              <ref column="ipv6_ra_configs" key="min_interval"/>
+              = <code>5</code>
+            </li>
+          </ul>
+
+          Feel free to adjust max and min interval values, but be aware that
+          they influence speed at which the initial BGP session is
+          established. With the above values, the session will be established
+          in 5 to 10 seconds.
+
+          Please refer to RFC 8950 for more details about advertising IPv4
+          networks over IPv6 next-hop addresses.
+        </p>
       </column>
 
       <column name="options" key="gateway_mtu_bypass">
