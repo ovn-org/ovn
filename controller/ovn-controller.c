@@ -5670,7 +5670,6 @@ main(int argc, char *argv[])
     engine_add_input(&en_if_status_mgr, &en_ovs_interface,
                      if_status_mgr_ovs_interface_handler);
     engine_add_input(&en_bfd_chassis, &en_ovs_open_vswitch, NULL);
-    engine_add_input(&en_bfd_chassis, &en_sb_sb_global, NULL);
     engine_add_input(&en_bfd_chassis, &en_sb_chassis, NULL);
     engine_add_input(&en_bfd_chassis, &en_sb_ha_chassis_group, NULL);
 
