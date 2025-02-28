@@ -2794,6 +2794,10 @@ check_fake_multinode_setup_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-chassis-3'
 # Delete the multinode NB and OVS resources before starting the test.
 cleanup_multinode_resources_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-chassis-3'
 
+m_as ovn-chassis-1 ip link del migrator-p
+m_as ovn-chassis-2 ip link del sw0p2-p
+m_as ovn-chassis-3 ip link del migrator-p
+
 OVS_WAIT_UNTIL([m_as ovn-chassis-1 ip link show | grep -q genev_sys])
 OVS_WAIT_UNTIL([m_as ovn-chassis-2 ip link show | grep -q genev_sys])
 OVS_WAIT_UNTIL([m_as ovn-chassis-3 ip link show | grep -q genev_sys])
