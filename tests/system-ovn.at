@@ -17342,3 +17342,72 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([bfd induced recomputes])
+ovn_start --use-tcp-to-sb
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-phys])
+
+dnl Set external-ids in br-int needed for ovn-controller
+PARSE_LISTENING_PORT([$ovs_base/ovn-sb/ovsdb-server.log], [TCP_PORT])
+
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=tcp:127.0.0.1:$TCP_PORT \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add ls lsp1 -- lsp-set-addresses lsp1 "00:00:10:01:02:01 10.0.0.1"
+check ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
+check ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=lsp1 -- set Interface vif1 type=internal
+
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up
+
+# Stop updates from ovn-controller to sb
+stop_ovsdb_controller_updates $TCP_PORT
+
+# Change sb_global:options:nb_cfg; this will trigger updates to (Chassis_Private in ) sb by ovn-controller.
+check ovn-nbctl --wait=sb sync
+# sb should now be read-only.
+
+lflow_run=$(ovn-appctl -t ovn-controller coverage/read-counter lflow_run)
+
+# Change again nb_cfg.
+check ovn-nbctl --wait=sb sync
+
+# Re-enable notifications from sb.
+restart_ovsdb_controller_updates $TCP_PORT
+
+# Make sure ovn-controller run.
+check ovn-nbctl --wait=hv sync
+
+lflow_run_end=$(ovn-appctl -t ovn-controller coverage/read-counter lflow_run)
+
+n_recomputes=`expr $lflow_run_end - $lflow_run`
+echo "$n_recomputes recomputes"
+
+AT_CHECK([test $lflow_run_end == $lflow_run])
+
+OVN_CLEANUP_CONTROLLER([hv1])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP()
+
+AT_CLEANUP
+])
