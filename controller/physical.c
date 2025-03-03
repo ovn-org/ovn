@@ -252,44 +252,11 @@ match_set_chassis_flood_outport(struct match *match,
 }
 
 static void
-match_set_chassis_flood_remote(struct match *match, uint32_t index)
-{
-    match_init_catchall(match);
-    match_set_reg(match, MFF_REG6 - MFF_REG0, index);
-    /* Match if the packet wasn't already received from tunnel.
-     * This prevents from looping it back to the tunnel again. */
-    match_set_reg_masked(match, MFF_LOG_FLAGS - MFF_REG0, 0,
-                         MLF_RX_FROM_TUNNEL);
-}
-
-
-static void
 put_stack(enum mf_field_id field, struct ofpact_stack *stack)
 {
     stack->subfield.field = mf_from_id(field);
     stack->subfield.ofs = 0;
     stack->subfield.n_bits = stack->subfield.field->n_bits;
-}
-
-/* Split the ofpacts buffer to prevent overflow of the
- * MAX_ACTIONS_BUFSIZE netlink buffer size supported by the kernel.
- * In order to avoid all the action buffers to be squashed together by
- * ovs, add a controller action for each configured openflow.
- */
-static void
-put_split_buf_function(uint32_t index, uint32_t outport, uint8_t stage,
-                       struct ofpbuf *ofpacts)
-{
-    ovs_be32 values[2] = {
-        htonl(index),
-        htonl(outport)
-    };
-    size_t oc_offset =
-           encode_start_controller_op(ACTION_OPCODE_SPLIT_BUF_ACTION, false,
-                                      NX_CTLR_NO_METER, ofpacts);
-    ofpbuf_put(ofpacts, values, sizeof values);
-    ofpbuf_put(ofpacts, &stage, sizeof stage);
-    encode_finish_controller_op(oc_offset, ofpacts);
 }
 
 static const struct sbrec_port_binding *
@@ -301,12 +268,12 @@ get_localnet_port(const struct hmap *local_datapaths, int64_t tunnel_key)
 }
 
 
-static const struct sbrec_port_binding *
-get_vtep_port(const struct hmap *local_datapaths, int64_t tunnel_key)
+static bool
+has_vtep_port(const struct hmap *local_datapaths, int64_t tunnel_key)
 {
     const struct local_datapath *ld = get_local_datapath(local_datapaths,
                                                          tunnel_key);
-    return ld ? ld->vtep_port : NULL;
+    return ld != NULL;
 }
 
 
@@ -2178,42 +2145,36 @@ local_output_pb(int64_t tunnel_key, struct ofpbuf *ofpacts)
     put_resubmit(OFTABLE_CHECK_LOOPBACK, ofpacts);
 }
 
-#define MC_OFPACTS_MAX_MSG_SIZE     8192
-#define MC_BUF_START_ID             0x9000
+struct mc_flow_ctx {
+    uint8_t stage;
+    uint16_t prio;
+    uint32_t flags;
+    uint32_t flags_mask;
+    struct ofpbuf ofpacts;
+};
+
+enum mc_flows_type {
+    MC_FLOWS_LOCAL,
+    MC_FLOWS_REMOTE,
+    MC_FLOWS_REMOTE_RAMP,
+    MC_FLOWS_MAX,
+};
 
 static void
 mc_ofctrl_add_flow(const struct sbrec_multicast_group *mc,
-                   struct match *match, struct ofpbuf *ofpacts,
-                   struct ofpbuf *ofpacts_last, uint8_t stage,
-                   size_t index, uint32_t *pflow_index,
-                   uint16_t prio, struct ovn_desired_flow_table *flow_table)
-
+                   struct mc_flow_ctx *ctx,
+                   struct ovn_desired_flow_table *flow_table)
 {
-    /* do not overcome max netlink message size used by ovs-vswitchd to
-     * send netlink configuration to the kernel. */
-    if (ofpacts->size < MC_OFPACTS_MAX_MSG_SIZE && index < (mc->n_ports - 1)) {
-        return;
-    }
+    struct match match = MATCH_CATCHALL_INITIALIZER;
 
-    uint32_t flow_index = *pflow_index;
-    bool is_first = (flow_index == MC_BUF_START_ID);
-    if (!is_first) {
-        match_set_reg(match, MFF_REG6 - MFF_REG0, flow_index);
-        prio += 10;
-    }
-
-    if (index == (mc->n_ports - 1)) {
-        ofpbuf_put(ofpacts, ofpacts_last->data, ofpacts_last->size);
-    } else {
-        put_split_buf_function(++flow_index, mc->tunnel_key, stage, ofpacts);
-    }
-
-    ofctrl_add_flow(flow_table, stage, prio, mc->header_.uuid.parts[0],
-                    match, ofpacts, &mc->header_.uuid);
-    ofpbuf_clear(ofpacts);
-    /* reset MFF_REG6. */
-    put_load(0, MFF_REG6, 0, 32, ofpacts);
-    *pflow_index = flow_index;
+    match_outport_dp_and_port_keys(&match, mc->datapath->tunnel_key,
+                                   mc->tunnel_key);
+    match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
+                         ctx->flags, ctx->flags_mask);
+    ofctrl_add_flow(flow_table, ctx->stage, ctx->prio,
+                    mc->header_.uuid.parts[0], &match, &ctx->ofpacts,
+                    &mc->header_.uuid);
+    ofpbuf_clear(&ctx->ofpacts);
 }
 
 static void
@@ -2221,9 +2182,8 @@ consider_mc_group(const struct physical_ctx *ctx,
                   const struct sbrec_multicast_group *mc,
                   struct ovn_desired_flow_table *flow_table)
 {
-    uint32_t dp_key = mc->datapath->tunnel_key;
     struct local_datapath *ldp = get_local_datapath(ctx->local_datapaths,
-                                                    dp_key);
+                                                    mc->datapath->tunnel_key);
     if (!ldp) {
         return;
     }
@@ -2251,20 +2211,33 @@ consider_mc_group(const struct physical_ctx *ctx,
      *      set the output port to be the router patch port for which
      *      the redirect port was added.
      */
-    struct ofpbuf ofpacts, remote_ofpacts, remote_ofpacts_ramp;
-    struct ofpbuf ofpacts_last, ofpacts_ramp_last;
-    ofpbuf_init(&ofpacts, 0);
-    ofpbuf_init(&remote_ofpacts, 0);
-    ofpbuf_init(&remote_ofpacts_ramp, 0);
-    ofpbuf_init(&ofpacts_last, 0);
-    ofpbuf_init(&ofpacts_ramp_last, 0);
+    bool has_vtep = has_vtep_port(ctx->local_datapaths,
+                                  mc->datapath->tunnel_key);
+    struct mc_flow_ctx mc_flows[MC_FLOWS_MAX] = {
+        {
+            .stage = OFTABLE_LOCAL_OUTPUT,
+            .prio = 100,
+        },
+        {
+            .stage = OFTABLE_REMOTE_OUTPUT,
+            .prio = 100,
+            .flags_mask = has_vtep ? MLF_RCV_FROM_RAMP : 0,
+        },
+        {
+            .stage = OFTABLE_REMOTE_OUTPUT,
+            .prio = 120,
+            .flags = MLF_RCV_FROM_RAMP | MLF_ALLOW_LOOPBACK,
+            .flags_mask = MLF_RCV_FROM_RAMP | MLF_ALLOW_LOOPBACK,
+        },
+    };
+    for (size_t i = 0; i < MC_FLOWS_MAX; i++) {
+        struct mc_flow_ctx *flow_ctx = &mc_flows[i];
+        ofpbuf_init(&flow_ctx->ofpacts, 0);
+    }
 
-    bool local_ports = false, remote_ports = false, remote_ramp_ports = false;
-
-    /* local port loop. */
-    uint32_t flow_index = MC_BUF_START_ID;
-    put_load(0, MFF_REG6, 0, 32, &ofpacts);
-    put_load(mc->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts_last);
+    struct mc_flow_ctx *local_ctx = &mc_flows[MC_FLOWS_LOCAL];
+    struct mc_flow_ctx *remote_ctx = &mc_flows[MC_FLOWS_REMOTE];
+    struct mc_flow_ctx *ramp_ctx = &mc_flows[MC_FLOWS_REMOTE_RAMP];
 
     for (size_t i = 0; i < mc->n_ports; i++) {
         struct sbrec_port_binding *port = mc->ports[i];
@@ -2280,7 +2253,7 @@ consider_mc_group(const struct physical_ctx *ctx,
 
         int zone_id = ct_zone_find_zone(ctx->ct_zones, port->logical_port);
         if (zone_id) {
-            put_load(zone_id, MFF_LOG_CT_ZONE, 0, 16, &ofpacts);
+            put_load(zone_id, MFF_LOG_CT_ZONE, 0, 16, &local_ctx->ofpacts);
         }
 
         const char *lport_name = (port->parent_port && *port->parent_port) ?
@@ -2288,25 +2261,29 @@ consider_mc_group(const struct physical_ctx *ctx,
 
         if (type == LP_PATCH) {
             if (ldp->is_transit_switch) {
-                local_output_pb(port->tunnel_key, &ofpacts);
+                local_output_pb(port->tunnel_key, &local_ctx->ofpacts);
             } else {
-                remote_ramp_ports = true;
-                remote_ports = true;
+                local_output_pb(port->tunnel_key, &remote_ctx->ofpacts);
+                local_output_pb(port->tunnel_key, &ramp_ctx->ofpacts);
             }
         } else if (type == LP_REMOTE) {
             if (port->chassis) {
-                remote_ports = true;
+                put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
+                         &remote_ctx->ofpacts);
+                tunnel_to_chassis(ctx->mff_ovn_geneve, port->chassis->name,
+                                  ctx->chassis_tunnels, mc->datapath,
+                                  port->tunnel_key, &remote_ctx->ofpacts);
             }
         } else if (type == LP_LOCALPORT) {
-            remote_ports = true;
+            local_output_pb(port->tunnel_key, &remote_ctx->ofpacts);
         } else if ((port->chassis == ctx->chassis
                     || is_additional_chassis(port, ctx->chassis))
                    && (local_binding_get_primary_pb(ctx->local_bindings,
                                                     lport_name)
                        || type == LP_L3GATEWAY)) {
-            local_output_pb(port->tunnel_key, &ofpacts);
+            local_output_pb(port->tunnel_key, &local_ctx->ofpacts);
         } else if (simap_contains(ctx->patch_ofports, port->logical_port)) {
-            local_output_pb(port->tunnel_key, &ofpacts);
+            local_output_pb(port->tunnel_key, &local_ctx->ofpacts);
         } else if (type == LP_CHASSISREDIRECT
                    && port->chassis == ctx->chassis) {
             const char *distributed_port = smap_get(&port->options,
@@ -2317,7 +2294,8 @@ consider_mc_group(const struct physical_ctx *ctx,
                                            distributed_port);
                 if (distributed_binding
                     && port->datapath == distributed_binding->datapath) {
-                    local_output_pb(distributed_binding->tunnel_key, &ofpacts);
+                    local_output_pb(distributed_binding->tunnel_key,
+                                    &local_ctx->ofpacts);
                 }
             }
         } else if (!get_localnet_port(ctx->local_datapaths,
@@ -2342,110 +2320,47 @@ consider_mc_group(const struct physical_ctx *ctx,
                 }
             }
         }
-
-        local_ports |= (ofpacts.size > 0);
-        if (!local_ports) {
-            continue;
-        }
-
-        struct match match;
-        match_outport_dp_and_port_keys(&match, dp_key, mc->tunnel_key);
-        mc_ofctrl_add_flow(mc, &match, &ofpacts, &ofpacts_last,
-                           OFTABLE_LOCAL_OUTPUT, i, &flow_index, 100,
-                           flow_table);
     }
 
-    /* remote port loop. */
-    ofpbuf_clear(&ofpacts_last);
+    bool local_lports = local_ctx->ofpacts.size > 0;
+    bool remote_ports = remote_ctx->ofpacts.size > 0;
+    bool ramp_ports = ramp_ctx->ofpacts.size > 0;
+
+    if (local_lports) {
+        put_load(mc->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &local_ctx->ofpacts);
+        mc_ofctrl_add_flow(mc, local_ctx, flow_table);
+    }
+
     if (remote_ports) {
-        put_load(mc->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts_last);
+        put_load(mc->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &remote_ctx->ofpacts);
     }
-
     fanout_to_chassis(ctx->mff_ovn_geneve, &remote_chassis,
                       ctx->chassis_tunnels, mc->datapath, mc->tunnel_key,
-                      false, &ofpacts_last);
-    fanout_to_chassis(ctx->mff_ovn_geneve, &vtep_chassis, ctx->chassis_tunnels,
-                      mc->datapath, mc->tunnel_key, true, &ofpacts_last);
+                      false, &remote_ctx->ofpacts);
+    fanout_to_chassis(ctx->mff_ovn_geneve, &vtep_chassis,
+                      ctx->chassis_tunnels, mc->datapath, mc->tunnel_key,
+                      true, &remote_ctx->ofpacts);
 
-    remote_ports |= (ofpacts_last.size > 0);
-    if (remote_ports && local_ports) {
-        put_resubmit(OFTABLE_LOCAL_OUTPUT, &ofpacts_last);
+    remote_ports = remote_ctx->ofpacts.size > 0;
+    if (remote_ports) {
+        if (local_lports) {
+            put_resubmit(OFTABLE_LOCAL_OUTPUT, &remote_ctx->ofpacts);
+        }
+        mc_ofctrl_add_flow(mc, remote_ctx, flow_table);
     }
 
-    bool has_vtep = get_vtep_port(ctx->local_datapaths,
-                                  mc->datapath->tunnel_key);
-    uint32_t reverse_ramp_flow_index = MC_BUF_START_ID;
-    flow_index = MC_BUF_START_ID;
-
-    put_load(0, MFF_REG6, 0, 32, &remote_ofpacts);
-    put_load(0, MFF_REG6, 0, 32, &remote_ofpacts_ramp);
-
-    put_load(mc->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts_ramp_last);
-    put_resubmit(OFTABLE_LOCAL_OUTPUT, &ofpacts_ramp_last);
-
-    for (size_t i = 0; remote_ports && i < mc->n_ports; i++) {
-        struct sbrec_port_binding *port = mc->ports[i];
-        enum en_lport_type type = get_lport_type(port);
-
-        if (port->datapath != mc->datapath) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_WARN_RL(&rl, UUID_FMT": multicast group contains ports "
-                         "in wrong datapath",
-                         UUID_ARGS(&mc->header_.uuid));
-            continue;
-        }
-
-        if (type == LP_PATCH) {
-            if (!ldp->is_transit_switch) {
-                local_output_pb(port->tunnel_key, &remote_ofpacts);
-                local_output_pb(port->tunnel_key, &remote_ofpacts_ramp);
-            }
-        } if (type == LP_REMOTE) {
-            if (port->chassis) {
-                put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
-                         &remote_ofpacts);
-                tunnel_to_chassis(ctx->mff_ovn_geneve, port->chassis->name,
-                                  ctx->chassis_tunnels, mc->datapath,
-                                  port->tunnel_key, &remote_ofpacts);
-            }
-        } else if (type == LP_LOCALPORT) {
-            local_output_pb(port->tunnel_key, &remote_ofpacts);
-        }
-
-        struct match match;
-        match_outport_dp_and_port_keys(&match, dp_key, mc->tunnel_key);
-        if (has_vtep) {
-            match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0, 0,
-                                 MLF_RCV_FROM_RAMP);
-        }
-        mc_ofctrl_add_flow(mc, &match, &remote_ofpacts, &ofpacts_last,
-                           OFTABLE_REMOTE_OUTPUT, i, &flow_index, 100,
-                           flow_table);
-
-        if (!remote_ramp_ports || !has_vtep) {
-            continue;
-        }
-
-        struct match match_ramp;
-        match_outport_dp_and_port_keys(&match_ramp, dp_key, mc->tunnel_key);
-        match_set_reg_masked(&match_ramp, MFF_LOG_FLAGS - MFF_REG0,
-                             MLF_RCV_FROM_RAMP | MLF_ALLOW_LOOPBACK,
-                             MLF_RCV_FROM_RAMP | MLF_ALLOW_LOOPBACK);
-        mc_ofctrl_add_flow(mc, &match_ramp, &remote_ofpacts_ramp,
-                           &ofpacts_ramp_last, OFTABLE_REMOTE_OUTPUT, i,
-                           &reverse_ramp_flow_index, 120, flow_table);
+    if (ramp_ports && has_vtep) {
+        put_load(mc->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &ramp_ctx->ofpacts);
+        put_resubmit(OFTABLE_LOCAL_OUTPUT, &ramp_ctx->ofpacts);
+        mc_ofctrl_add_flow(mc, ramp_ctx, flow_table);
     }
 
-    ofpbuf_uninit(&ofpacts);
-    ofpbuf_uninit(&remote_ofpacts);
-    ofpbuf_uninit(&ofpacts_last);
-    ofpbuf_uninit(&ofpacts_ramp_last);
-    ofpbuf_uninit(&remote_ofpacts_ramp);
+    for (size_t i = 0; i < MC_FLOWS_MAX; i++) {
+        ofpbuf_uninit(&mc_flows[i].ofpacts);
+    }
     sset_destroy(&remote_chassis);
     sset_destroy(&vtep_chassis);
 }
-
-#define CHASSIS_FLOOD_MAX_MSG_SIZE MC_OFPACTS_MAX_MSG_SIZE
 
 static void
 physical_eval_remote_chassis_flows(const struct physical_ctx *ctx,
@@ -2453,7 +2368,6 @@ physical_eval_remote_chassis_flows(const struct physical_ctx *ctx,
                                    struct ovn_desired_flow_table *flow_table)
 {
     struct match match = MATCH_CATCHALL_INITIALIZER;
-    uint32_t index = CHASSIS_FLOOD_INDEX_START;
     struct chassis_tunnel *prev = NULL;
 
     uint8_t actions_stub[256];
@@ -2489,18 +2403,6 @@ physical_eval_remote_chassis_flows(const struct physical_ctx *ctx,
 
         ofpact_put_OUTPUT(egress_ofpacts)->port = tun->ofport;
         prev = tun;
-
-        if (egress_ofpacts->size > CHASSIS_FLOOD_MAX_MSG_SIZE) {
-            match_set_chassis_flood_remote(&match, index++);
-            put_split_buf_function(index, 0, OFTABLE_FLOOD_REMOTE_CHASSIS,
-                                   egress_ofpacts);
-
-            ofctrl_add_flow(flow_table, OFTABLE_FLOOD_REMOTE_CHASSIS, 100, 0,
-                            &match, egress_ofpacts, hc_uuid);
-
-            ofpbuf_clear(egress_ofpacts);
-            prev = NULL;
-        }
 
 
         ofpbuf_clear(&ingress_ofpacts);
@@ -2542,8 +2444,11 @@ physical_eval_remote_chassis_flows(const struct physical_ctx *ctx,
     }
 
     if (egress_ofpacts->size > 0) {
-        match_set_chassis_flood_remote(&match, index++);
-
+        match_init_catchall(&match);
+        /* Match if the packet wasn't already received from tunnel.
+         * This prevents from looping it back to the tunnel again. */
+        match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0, 0,
+                             MLF_RX_FROM_TUNNEL);
         ofctrl_add_flow(flow_table, OFTABLE_FLOOD_REMOTE_CHASSIS, 100, 0,
                         &match, egress_ofpacts, hc_uuid);
     }

@@ -792,7 +792,7 @@ OVNACTS
     /* activation_strategy_rarp() */                                          \
     ACTION_OPCODE(ACTIVATION_STRATEGY_RARP)                                   \
                                                                               \
-    /* split buffer action. */                                                \
+    /*  DEPRECATED: split buffer action. */                                   \
     ACTION_OPCODE(SPLIT_BUF_ACTION)                                           \
                                                                               \
     /* "dhcp_relay_req_chk(relay_ip, server_ip)".
