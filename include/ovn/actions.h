@@ -771,7 +771,7 @@ OVNACTS
     /* activation_strategy_rarp() */                                          \
     ACTION_OPCODE(ACTIVATION_STRATEGY_RARP)                                   \
                                                                               \
-    /* multicast group split buffer action. */                                \
+    /* DEPRECATED: multicast group split buffer action. */                    \
     ACTION_OPCODE(MG_SPLIT_BUF)
 
 
