@@ -376,7 +376,8 @@ mac_binding_stats_process_flow_stats(struct ovs_list *stats_list,
         .mac = ofp_stats->match.flow.dl_src
     };
 
-    if (ofp_stats->match.flow.dl_type == htons(ETH_TYPE_IP)) {
+    if (ofp_stats->match.flow.dl_type == htons(ETH_TYPE_IP) ||
+        ofp_stats->match.flow.dl_type == htons(ETH_TYPE_ARP)) {
         stats->data.mb.ip = in6_addr_mapped_ipv4(ofp_stats->match.flow.nw_src);
     } else {
         stats->data.mb.ip = ofp_stats->match.flow.ipv6_src;
