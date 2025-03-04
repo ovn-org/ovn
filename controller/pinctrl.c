@@ -5124,6 +5124,55 @@ send_garp_rarp_delete(const char *lport)
     notify_pinctrl_handler();
 }
 
+void
+send_self_originated_neigh_packet(struct rconn *swconn,
+                                  uint32_t dp_key, uint32_t port_key,
+                                  struct eth_addr eth,
+                                  struct in6_addr *local,
+                                  struct in6_addr *target,
+                                  uint8_t table_id)
+{
+    uint64_t packet_stub[128 / 8];
+    struct dp_packet packet;
+    dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
+    if (!local) {
+        compose_rarp(&packet, eth);
+    } else if (IN6_IS_ADDR_V4MAPPED(local)) {
+        compose_arp(&packet, ARP_OP_REQUEST, eth, eth_addr_zero, true,
+                    in6_addr_get_mapped_ipv4(local),
+                    in6_addr_get_mapped_ipv4(target));
+    } else {
+        compose_nd_ns(&packet, eth, local, target);
+    }
+
+    /* Inject GARP request. */
+    uint64_t ofpacts_stub[4096 / 8];
+    struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
+    enum ofp_version version = rconn_get_version(swconn);
+    put_load(dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
+    if (table_id == OFTABLE_LOCAL_OUTPUT) {
+        put_load(port_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
+    } else {
+        put_load(port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
+    }
+    struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
+    resubmit->in_port = OFPP_CONTROLLER;
+    resubmit->table_id = table_id;
+
+    struct ofputil_packet_out po = {
+        .packet = dp_packet_data(&packet),
+        .packet_len = dp_packet_size(&packet),
+        .buffer_id = UINT32_MAX,
+        .ofpacts = ofpacts.data,
+        .ofpacts_len = ofpacts.size,
+    };
+    match_set_in_port(&po.flow_metadata, OFPP_CONTROLLER);
+    enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
+    queue_msg(swconn, ofputil_encode_packet_out(&po, proto));
+    dp_packet_uninit(&packet);
+    ofpbuf_uninit(&ofpacts);
+}
+
 /* Called with in the pinctrl_handler thread context. */
 static long long int
 send_garp_rarp(struct rconn *swconn, struct garp_rarp_data *garp_rarp,
