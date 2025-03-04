@@ -2195,7 +2195,7 @@ encode_GET_ND(const struct ovnact_get_mac_bind *get_mac,
               const struct ovnact_encode_params *ep,
               struct ofpbuf *ofpacts)
 {
-    encode_get_mac(get_mac, MFF_XXREG0, ep, ofpacts);
+    encode_get_mac(get_mac, MFF_XXREG1, ep, ofpacts);
 }
 
 static void
@@ -2454,7 +2454,7 @@ encode_LOOKUP_ND_IP(const struct ovnact_lookup_mac_bind_ip *lookup_mac,
                     const struct ovnact_encode_params *ep,
                     struct ofpbuf *ofpacts)
 {
-    encode_lookup_mac_bind_ip(lookup_mac, MFF_XXREG0, ep, ofpacts);
+    encode_lookup_mac_bind_ip(lookup_mac, MFF_XXREG1, ep, ofpacts);
 }
 
 static void
