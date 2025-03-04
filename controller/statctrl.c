@@ -33,6 +33,7 @@
 #include "seq.h"
 #include "socket-util.h"
 #include "statctrl.h"
+#include "stopwatch.h"
 
 VLOG_DEFINE_THIS_MODULE(statctrl);
 
@@ -67,21 +68,27 @@ struct stats_node {
                 struct ovsdb_idl_index *sbrec_port_binding_by_name,
                 struct ovs_list *stats_list,
                 uint64_t *req_delay, void *data);
+    /* Name of the stats node corresponding stopwatch. */
+    const char *stopwatch_name;
 };
 
 #define STATS_NODE(NAME, REQUEST, DESTROY, PROCESS, RUN)                   \
-    statctrl_ctx.nodes[STATS_##NAME] = (struct stats_node) {               \
-        .request = REQUEST,                                                \
-        .xid = 0,                                                          \
-        .next_request_timestamp = INT64_MAX,                               \
-        .request_delay = 0,                                                \
-        .stats_list =                                                      \
-            OVS_LIST_INITIALIZER(                                          \
-                &statctrl_ctx.nodes[STATS_##NAME].stats_list),             \
-        .destroy = DESTROY,                                                \
-        .process_flow_stats = PROCESS,                                     \
-        .run = RUN                                                         \
-    };
+    do {                                                                   \
+        statctrl_ctx.nodes[STATS_##NAME] = (struct stats_node) {           \
+            .request = REQUEST,                                            \
+            .xid = 0,                                                      \
+            .next_request_timestamp = INT64_MAX,                           \
+            .request_delay = 0,                                            \
+            .stats_list =                                                  \
+                OVS_LIST_INITIALIZER(                                      \
+                    &statctrl_ctx.nodes[STATS_##NAME].stats_list),         \
+            .destroy = DESTROY,                                            \
+            .process_flow_stats = PROCESS,                                 \
+            .run = RUN,                                                    \
+            .stopwatch_name = OVS_STRINGIZE(stats_##NAME),                 \
+        };                                                                 \
+        stopwatch_create(OVS_STRINGIZE(stats_##NAME), SW_MS);              \
+    } while (0)
 
 struct statctrl_ctx {
     /* OpenFlow connection to the switch. */
@@ -189,9 +196,11 @@ statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
         struct stats_node *node = &statctrl_ctx.nodes[i];
         uint64_t prev_delay = node->request_delay;
 
+        stopwatch_start(node->stopwatch_name, time_msec());
         node->run(statctrl_ctx.swconn,
                   sbrec_port_binding_by_name, &node->stats_list,
                   &node->request_delay, node_data[i]);
+        stopwatch_stop(node->stopwatch_name, time_msec());
 
         schedule_updated |=
                 statctrl_update_next_request_timestamp(node, now, prev_delay);
