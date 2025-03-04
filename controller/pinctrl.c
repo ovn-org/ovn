@@ -5303,7 +5303,7 @@ send_garp_rarp_delete(const char *lport)
     notify_pinctrl_handler();
 }
 
-static void
+void
 send_self_originated_neigh_packet(struct rconn *swconn,
                                   uint32_t dp_key, uint32_t port_key,
                                   struct eth_addr eth,
