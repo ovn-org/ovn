@@ -31,6 +31,7 @@ struct ovsdb_idl_index;
 struct ovsdb_idl_txn;
 struct ovsrec_bridge;
 struct ovsrec_open_vswitch_table;
+struct rconn;
 struct sbrec_chassis;
 struct sbrec_dns_table;
 struct sbrec_controller_event_table;

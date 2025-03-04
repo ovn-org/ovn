@@ -5802,7 +5802,8 @@ main(int argc, char *argv[])
 
                     mac_cache_data = engine_get_data(&en_mac_cache);
                     if (mac_cache_data) {
-                        statctrl_run(ovnsb_idl_txn, mac_cache_data);
+                        statctrl_run(ovnsb_idl_txn, sbrec_port_binding_by_name,
+                                     mac_cache_data);
                     }
 
                     ofctrl_seqno_update_create(
