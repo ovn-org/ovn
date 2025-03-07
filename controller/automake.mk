@@ -36,8 +36,6 @@ controller_ovn_controller_SOURCES = \
 	controller/ovn-controller.h \
 	controller/physical.c \
 	controller/physical.h \
-	controller/mac-learn.c \
-	controller/mac-learn.h \
 	controller/local_data.c \
 	controller/local_data.h \
 	controller/ovsport.h \

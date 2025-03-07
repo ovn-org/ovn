@@ -3359,6 +3359,66 @@ en_lb_data_cleanup(void *data)
 }
 
 static void
+mac_binding_add_sb(struct mac_cache_data *data,
+                   const struct sbrec_mac_binding *smb)
+{
+    struct mac_binding_data mb_data;
+    if (!mac_binding_data_from_sbrec(&mb_data, smb)) {
+        return;
+    }
+
+    mac_binding_add(&data->mac_bindings, mb_data, smb, 0);
+}
+
+static void
+mac_binding_remove_sb(struct mac_cache_data *data,
+                      const struct sbrec_mac_binding *smb)
+{
+    struct mac_binding_data mb_data;
+    if (!mac_binding_data_from_sbrec(&mb_data, smb)) {
+        return;
+    }
+
+    struct mac_binding *mb = mac_binding_find(&data->mac_bindings, &mb_data);
+    if (!mb) {
+        return;
+    }
+
+    mac_binding_remove(&data->mac_bindings, mb);
+}
+
+static void
+fdb_add_sb(struct mac_cache_data *data, const struct sbrec_fdb *sfdb,
+           struct uuid dp_uuid)
+{
+    struct fdb_data fdb_data;
+    if (!fdb_data_from_sbrec(&fdb_data, sfdb)) {
+        return;
+    }
+
+    struct fdb *fdb = fdb_add(&data->fdbs, fdb_data);
+
+    fdb->sbrec_fdb = sfdb;
+    fdb->dp_uuid = dp_uuid;
+}
+
+static void
+fdb_remove_sb(struct mac_cache_data *data, const struct sbrec_fdb *sfdb)
+{
+    struct fdb_data fdb_data;
+    if (!fdb_data_from_sbrec(&fdb_data, sfdb)) {
+        return;
+    }
+
+    struct fdb *fdb = fdb_find(&data->fdbs, &fdb_data);
+    if (!fdb) {
+        return;
+    }
+
+    fdb_remove(&data->fdbs, fdb);
+}
+
+static void
 mac_cache_mb_handle_for_datapath(struct mac_cache_data *data,
                                  const struct sbrec_datapath_binding *dp,
                                  struct ovsdb_idl_index *sbrec_mb_by_dp)
@@ -3373,9 +3433,9 @@ mac_cache_mb_handle_for_datapath(struct mac_cache_data *data,
     const struct sbrec_mac_binding *mb;
     SBREC_MAC_BINDING_FOR_EACH_EQUAL (mb, mb_index_row, sbrec_mb_by_dp) {
         if (has_threshold) {
-            mac_cache_mac_binding_add(data, mb);
+            mac_binding_add_sb(data, mb);
         } else {
-            mac_cache_mac_binding_remove(data, mb);
+            mac_binding_remove_sb(data, mb);
         }
     }
 
@@ -3396,9 +3456,9 @@ mac_cache_fdb_handle_for_datapath(struct mac_cache_data *data,
     const struct sbrec_fdb *fdb;
     SBREC_FDB_FOR_EACH_EQUAL (fdb, fdb_index_row, sbrec_fdb_by_dp_key) {
         if (has_threshold) {
-            mac_cache_fdb_add(data, fdb, dp->header_.uuid);
+            fdb_add_sb(data, fdb, dp->header_.uuid);
         } else {
-            mac_cache_fdb_remove(data, fdb);
+            fdb_remove_sb(data, fdb);
         }
     }
 
@@ -3432,8 +3492,8 @@ en_mac_cache_run(struct engine_node *node, void *data)
             EN_OVSDB_GET(engine_get_input("SB_fdb", node));
 
     mac_cache_thresholds_clear(cache_data);
-    mac_cache_mac_bindings_clear(cache_data);
-    mac_cache_fdbs_clear(cache_data);
+    mac_bindings_clear(&cache_data->mac_bindings);
+    fdbs_clear(&cache_data->fdbs);
 
     const struct sbrec_mac_binding *sbrec_mb;
     SBREC_MAC_BINDING_TABLE_FOR_EACH (sbrec_mb, mb_table) {
@@ -3444,7 +3504,7 @@ en_mac_cache_run(struct engine_node *node, void *data)
 
         if (mac_cache_threshold_add(cache_data, sbrec_mb->datapath,
                                     MAC_CACHE_MAC_BINDING)) {
-            mac_cache_mac_binding_add(cache_data, sbrec_mb);
+            mac_binding_add_sb(cache_data, sbrec_mb);
         }
     }
 
@@ -3459,8 +3519,8 @@ en_mac_cache_run(struct engine_node *node, void *data)
 
         if (mac_cache_threshold_add(cache_data, local_dp->datapath,
                                     MAC_CACHE_FDB)) {
-            mac_cache_fdb_add(cache_data, sbrec_fdb,
-                              local_dp->datapath->header_.uuid);
+            fdb_add_sb(cache_data, sbrec_fdb,
+                       local_dp->datapath->header_.uuid);
         }
     }
 
@@ -3479,8 +3539,12 @@ mac_cache_sb_mac_binding_handler(struct engine_node *node, void *data)
 
     const struct sbrec_mac_binding *sbrec_mb;
     SBREC_MAC_BINDING_TABLE_FOR_EACH_TRACKED (sbrec_mb, mb_table) {
+        if (!sb_mac_binding_updated(sbrec_mb)) {
+            continue;
+        }
+
         if (!sbrec_mac_binding_is_new(sbrec_mb)) {
-            mac_cache_mac_binding_remove(cache_data, sbrec_mb);
+            mac_binding_remove_sb(cache_data, sbrec_mb);
         }
 
         if (sbrec_mac_binding_is_deleted(sbrec_mb) ||
@@ -3491,7 +3555,7 @@ mac_cache_sb_mac_binding_handler(struct engine_node *node, void *data)
 
         if (mac_cache_threshold_add(cache_data, sbrec_mb->datapath,
                                     MAC_CACHE_MAC_BINDING)) {
-            mac_cache_mac_binding_add(cache_data, sbrec_mb);
+            mac_binding_add_sb(cache_data, sbrec_mb);
         }
     }
 
@@ -3516,8 +3580,12 @@ mac_cache_sb_fdb_handler(struct engine_node *node, void *data)
     struct local_datapath *local_dp;
     const struct sbrec_fdb *sbrec_fdb;
     SBREC_FDB_TABLE_FOR_EACH_TRACKED (sbrec_fdb, fdb_table) {
+        if (!sb_fdb_updated(sbrec_fdb)) {
+            continue;
+        }
+
         if (!sbrec_fdb_is_new(sbrec_fdb)) {
-            mac_cache_fdb_remove(cache_data, sbrec_fdb);
+            fdb_remove_sb(cache_data, sbrec_fdb);
         }
 
         local_dp = get_local_datapath(&rt_data->local_datapaths,
@@ -3528,8 +3596,8 @@ mac_cache_sb_fdb_handler(struct engine_node *node, void *data)
 
         if (mac_cache_threshold_add(cache_data, local_dp->datapath,
                                     MAC_CACHE_FDB)) {
-            mac_cache_fdb_add(cache_data, sbrec_fdb,
-                              local_dp->datapath->header_.uuid);
+            fdb_add_sb(cache_data, sbrec_fdb,
+                       local_dp->datapath->header_.uuid);
         }
     }
 
@@ -3638,9 +3706,9 @@ en_mac_cache_cleanup(void *data)
     for (size_t i = 0; i < MAC_CACHE_MAX; i++) {
         hmap_destroy(&cache_data->thresholds[i]);
     }
-    mac_cache_mac_bindings_clear(cache_data);
+    mac_bindings_clear(&cache_data->mac_bindings);
     hmap_destroy(&cache_data->mac_bindings);
-    mac_cache_fdbs_clear(cache_data);
+    fdbs_clear(&cache_data->fdbs);
     hmap_destroy(&cache_data->fdbs);
 }
 
@@ -6585,7 +6653,7 @@ debug_dump_local_mac_bindings(struct unixctl_conn *conn, int argc OVS_UNUSED,
     struct ds mb_str = DS_EMPTY_INITIALIZER;
 
     ds_put_cstr(&mb_str, "Local MAC bindings:\n");
-    mac_cache_mac_bindings_to_string(mac_bindings, &mb_str);
+    mac_bindings_to_string(mac_bindings, &mb_str);
     unixctl_command_reply(conn, ds_cstr(&mb_str));
     ds_destroy(&mb_str);
 }

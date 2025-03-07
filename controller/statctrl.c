@@ -136,7 +136,7 @@ statctrl_init(void)
             .table_id = OFTABLE_MAC_CACHE_USE,
     };
     STATS_NODE(MAC_BINDING, mac_binding_request, mac_cache_stats_destroy,
-               mac_cache_mb_stats_process_flow_stats, mac_cache_mb_stats_run);
+               mac_binding_stats_process_flow_stats, mac_binding_stats_run);
 
     struct ofputil_flow_stats_request fdb_request = {
             .cookie = htonll(0),
@@ -146,8 +146,7 @@ statctrl_init(void)
             .table_id = OFTABLE_LOOKUP_FDB,
     };
     STATS_NODE(FDB, fdb_request, mac_cache_stats_destroy,
-               mac_cache_fdb_stats_process_flow_stats,
-               mac_cache_fdb_stats_run);
+               fdb_stats_process_flow_stats, fdb_stats_run);
 
     statctrl_ctx.thread = ovs_thread_create("ovn_statctrl",
                                             statctrl_thread_handler,

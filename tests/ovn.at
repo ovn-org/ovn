@@ -34995,9 +34995,21 @@ check ovn-nbctl --wait=hv sync
 dnl Wait for pinctrl thread to be connected.
 OVS_WAIT_UNTIL([grep pinctrl hv1/ovn-controller.log | grep -q connected])
 
+send_garp() {
+    hv=$1
+    dev=$2
+    mac=$3
+    ip=$4
+
+    packet=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${mac}')/ \
+                      ARP(op=2, hwsrc='${mac}', hwdst='${mac}',     \
+                      psrc='${ip}', pdst='${ip}')")
+    as $hv ovs-appctl netdev-dummy/receive $dev $packet
+}
+
 AS_BOX([Remove LRP with learnt MAC_Binding])
 dnl Populate MAC Binding entry.
-send_garp hv1 vif1 2 00:00:00:00:10:10 ff:ff:ff:ff:ff:ff 192.168.10.10 192.168.10.10
+send_garp hv1 vif1 00:00:00:00:10:10 192.168.10.10
 wait_row_count mac_binding 1 ip="192.168.10.10" logical_port="lr-ls1"
 
 dnl Check local mac binding cache.
@@ -35024,7 +35036,7 @@ check ovn-nbctl --wait=hv sync
 check_column 42 Port_Binding tunnel_key logical_port=lr-ls2
 
 dnl Populate MAC Binding entry.
-send_garp hv1 vif2 2 00:00:00:00:20:10 ff:ff:ff:ff:ff:ff 192.168.20.10 192.168.20.10
+send_garp hv1 vif2 00:00:00:00:20:10 192.168.20.10
 wait_row_count mac_binding 1 ip="192.168.20.10" logical_port="lr-ls2"
 
 dnl Check local mac binding cache.
