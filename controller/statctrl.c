@@ -39,6 +39,7 @@ VLOG_DEFINE_THIS_MODULE(statctrl);
 enum stat_type {
     STATS_MAC_BINDING = 0,
     STATS_FDB,
+    STATS_MAC_BINDING_PROBE,
     STATS_MAX,
 };
 
@@ -62,7 +63,10 @@ struct stats_node {
                                struct ofputil_flow_stats *ofp_stats);
     /* Function to process the parsed stats.
      * This function runs in main thread locked behind mutex. */
-    void (*run)(struct ovs_list *stats_list, uint64_t *req_delay, void *data);
+    void (*run)(struct rconn *swconn,
+                struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                struct ovs_list *stats_list,
+                uint64_t *req_delay, void *data);
 };
 
 #define STATS_NODE(NAME, REQUEST, DESTROY, PROCESS, RUN)                   \
@@ -80,6 +84,9 @@ struct stats_node {
     };
 
 struct statctrl_ctx {
+    /* OpenFlow connection to the switch. */
+    struct rconn *swconn;
+
     char *br_int;
 
     pthread_t thread;
@@ -121,6 +128,8 @@ static bool statctrl_update_next_request_timestamp(struct stats_node *node,
 void
 statctrl_init(void)
 {
+    /* OpenFlow connection to the switch. */
+    statctrl_ctx.swconn = rconn_create(0, 0, DSCP_DEFAULT, 1 << OFP15_VERSION);
     statctrl_ctx.br_int = NULL;
     latch_init(&statctrl_ctx.exit_latch);
     ovs_mutex_init(&mutex);
@@ -148,6 +157,18 @@ statctrl_init(void)
     STATS_NODE(FDB, fdb_request, mac_cache_stats_destroy,
                fdb_stats_process_flow_stats, fdb_stats_run);
 
+    struct ofputil_flow_stats_request mac_binding_probe_request = {
+            .cookie = htonll(0),
+            .cookie_mask = htonll(0),
+            .out_port = OFPP_ANY,
+            .out_group = OFPG_ANY,
+            .table_id = OFTABLE_MAC_BINDING,
+    };
+    STATS_NODE(MAC_BINDING_PROBE, mac_binding_probe_request,
+               mac_cache_stats_destroy,
+               mac_binding_probe_stats_process_flow_stats,
+               mac_binding_probe_stats_run);
+
     statctrl_ctx.thread = ovs_thread_create("ovn_statctrl",
                                             statctrl_thread_handler,
                                             &statctrl_ctx);
@@ -155,13 +176,18 @@ statctrl_init(void)
 
 void
 statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
+             struct ovsdb_idl_index *sbrec_port_binding_by_name,
              struct mac_cache_data *mac_cache_data)
 {
     if (!ovnsb_idl_txn) {
         return;
     }
 
-    void *node_data[STATS_MAX] = {mac_cache_data, mac_cache_data};
+    void *node_data[STATS_MAX] = {
+        mac_cache_data,
+        mac_cache_data,
+        mac_cache_data
+    };
 
     bool schedule_updated = false;
     long long now = time_msec();
@@ -171,7 +197,9 @@ statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
         struct stats_node *node = &statctrl_ctx.nodes[i];
         uint64_t prev_delay = node->request_delay;
 
-        node->run(&node->stats_list, &node->request_delay, node_data[i]);
+        node->run(statctrl_ctx.swconn,
+                  sbrec_port_binding_by_name, &node->stats_list,
+                  &node->request_delay, node_data[i]);
 
         schedule_updated |=
                 statctrl_update_next_request_timestamp(node, now, prev_delay);
@@ -216,6 +244,7 @@ statctrl_destroy(void)
     latch_set(&statctrl_ctx.exit_latch);
     pthread_join(statctrl_ctx.thread, NULL);
     latch_destroy(&statctrl_ctx.exit_latch);
+    rconn_destroy(statctrl_ctx.swconn);
     free(statctrl_ctx.br_int);
     seq_destroy(statctrl_ctx.thread_seq);
     seq_destroy(statctrl_ctx.main_seq);
@@ -232,8 +261,7 @@ statctrl_thread_handler(void *arg)
     struct statctrl_ctx *ctx = arg;
 
     /* OpenFlow connection to the switch. */
-    struct rconn *swconn = rconn_create(0, 0, DSCP_DEFAULT,
-                                        1 << OFP15_VERSION);
+    struct rconn *swconn = ctx->swconn;
 
     while (!latch_is_set(&ctx->exit_latch)) {
         ovs_mutex_lock(&mutex);
@@ -272,7 +300,6 @@ statctrl_thread_handler(void *arg)
         poll_block();
     }
 
-    rconn_destroy(swconn);
     return NULL;
 }
 

@@ -16,6 +16,7 @@
 #include <config.h>
 #include <stdbool.h>
 
+#include "lflow.h"
 #include "local_data.h"
 #include "lport.h"
 #include "mac-cache.h"
@@ -23,6 +24,7 @@
 #include "openvswitch/vlog.h"
 #include "ovn/logical-fields.h"
 #include "ovn-sb-idl.h"
+#include "pinctrl.h"
 
 VLOG_DEFINE_THIS_MODULE(mac_cache);
 
@@ -89,15 +91,20 @@ mac_cache_threshold_add(struct mac_cache_data *data,
     threshold = xmalloc(sizeof *threshold);
     threshold->dp_key = dp->tunnel_key;
     threshold->value = value;
-    threshold->dump_period = value / 2;
-    threshold->cooldown_period = value / 4;
+    threshold->dump_period = (3 * value) / 16;
+    threshold->cooldown_period = (3 * value) / 16;
 
     /* (cooldown_period + dump_period) is the maximum time the timestamp may
-     * be not updated.  So, the sum of those times must be lower than the
-     * threshold, otherwise we may fail to update an active MAC binding in
+     * be not updated for an entry with IP + MAC combination from which we see
+     * incoming traffic.  For the entry that is used only in Tx direction
+     * (e.g., an entry for a default gateway of the chassis) this time is
+     * doubled, because an ARP/ND probe will need to be sent first and the
+     * (cooldown_period + dump_period) will be the maximum time between such
+     * probes.  Hence, 2 * (cooldown_period + dump_period) should be less than
+     * a threshold, otherwise we may fail to update an active MAC binding in
      * time and risk it being removed.  Giving it an extra 1/10 of the time
      * for all the processing that needs to happen. */
-    ovs_assert(threshold->cooldown_period + threshold->dump_period
+    ovs_assert(2 * (threshold->cooldown_period + threshold->dump_period)
                < (9 * value) / 10);
 
     hmap_insert(&data->thresholds, &threshold->hmap_node, dp->tunnel_key);
@@ -444,8 +451,10 @@ mac_binding_update_log(const char *action,
 }
 
 void
-mac_binding_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
-                      void *data)
+mac_binding_stats_run(
+        struct rconn *swconn OVS_UNUSED,
+        struct ovsdb_idl_index *sbrec_port_binding_by_name OVS_UNUSED,
+        struct ovs_list *stats_list, uint64_t *req_delay, void *data)
 {
     struct mac_cache_data *cache_data = data;
     long long timewall_now = time_wall_msec();
@@ -540,8 +549,10 @@ fdb_update_log(const char *action,
 }
 
 void
-fdb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
-              void *data)
+fdb_stats_run(struct rconn *swconn OVS_UNUSED,
+              struct ovsdb_idl_index *sbrec_port_binding_by_name OVS_UNUSED,
+              struct ovs_list *stats_list,
+              uint64_t *req_delay, void *data)
 {
     struct mac_cache_data *cache_data = data;
     long long timewall_now = time_wall_msec();
@@ -891,4 +902,113 @@ buffered_packets_db_lookup(struct buffered_packets *bp, struct ds *ip,
     }
 
     eth_addr_from_string(smb->mac, mac);
+}
+
+void
+mac_binding_probe_stats_process_flow_stats(
+        struct ovs_list *stats_list,
+        struct ofputil_flow_stats *ofp_stats)
+{
+    struct mac_cache_stats *stats = xmalloc(sizeof *stats);
+
+    stats->idle_age_ms = ofp_stats->idle_age * 1000;
+    stats->data.mb = (struct mac_binding_data) {
+        .cookie = ntohll(ofp_stats->cookie),
+        /* The port_key must be zero to match mac_binding_data_from_sbrec. */
+        .port_key = 0,
+        .dp_key = ntohll(ofp_stats->match.flow.metadata),
+    };
+
+    if (ofp_stats->match.flow.regs[0]) {
+        stats->data.mb.ip =
+            in6_addr_mapped_ipv4(htonl(ofp_stats->match.flow.regs[0]));
+    } else {
+        ovs_be128 ip6 = hton128(flow_get_xxreg(&ofp_stats->match.flow, 1));
+        memcpy(&stats->data.mb.ip, &ip6, sizeof stats->data.mb.ip);
+    }
+
+    ovs_list_push_back(stats_list, &stats->list_node);
+}
+
+void
+mac_binding_probe_stats_run(
+        struct rconn *swconn,
+        struct ovsdb_idl_index *sbrec_port_binding_by_name,
+        struct ovs_list *stats_list,
+        uint64_t *req_delay, void *data)
+{
+    long long timewall_now = time_wall_msec();
+    struct mac_cache_data *cache_data = data;
+
+    struct mac_cache_stats *stats;
+    LIST_FOR_EACH_POP (stats, list_node, stats_list) {
+        struct mac_binding *mb = mac_binding_find(&cache_data->mac_bindings,
+                                                  &stats->data.mb);
+        if (!mb) {
+            mac_binding_update_log("Probe: not found in the cache:",
+                                   &stats->data.mb, false, NULL, 0, 0);
+            free(stats);
+            continue;
+        }
+
+        struct mac_cache_threshold *threshold =
+                mac_cache_threshold_find(cache_data, mb->data.dp_key);
+        uint64_t since_updated_ms = timewall_now - mb->sbrec->timestamp;
+        const struct sbrec_mac_binding *sbrec = mb->sbrec;
+
+        if (stats->idle_age_ms > threshold->value) {
+            mac_binding_update_log("Not sending ARP/ND request for non-active",
+                                   &mb->data, true, threshold,
+                                   stats->idle_age_ms, since_updated_ms);
+            free(stats);
+            continue;
+        }
+
+        if (since_updated_ms < threshold->cooldown_period) {
+            mac_binding_update_log(
+                    "Not sending ARP/ND request for recently updated",
+                    &mb->data, true, threshold, stats->idle_age_ms,
+                    since_updated_ms);
+            free(stats);
+            continue;
+        }
+
+        const struct sbrec_port_binding *pb =
+            lport_lookup_by_name(sbrec_port_binding_by_name,
+                                 sbrec->logical_port);
+        if (!pb) {
+            free(stats);
+            continue;
+        }
+
+        struct lport_addresses laddr;
+        if (!extract_lsp_addresses(pb->mac[0], &laddr)) {
+            free(stats);
+            continue;
+        }
+
+        if (laddr.n_ipv4_addrs || laddr.n_ipv6_addrs) {
+            struct in6_addr local = laddr.n_ipv4_addrs
+                ? in6_addr_mapped_ipv4(laddr.ipv4_addrs[0].addr)
+                : laddr.ipv6_addrs[0].addr;
+
+            mac_binding_update_log("Sending ARP/ND request for active",
+                                   &mb->data, true, threshold,
+                                   stats->idle_age_ms, since_updated_ms);
+
+            send_self_originated_neigh_packet(swconn,
+                                              sbrec->datapath->tunnel_key,
+                                              pb->tunnel_key, laddr.ea,
+                                              &local, &mb->data.ip,
+                                              OFTABLE_LOCAL_OUTPUT);
+        }
+
+        free(stats);
+        destroy_lport_addresses(&laddr);
+    }
+
+    mac_cache_update_req_delay(&cache_data->thresholds, req_delay);
+    if (*req_delay) {
+        VLOG_DBG("MAC probe binding statistics delay: %"PRIu64, *req_delay);
+    }
 }

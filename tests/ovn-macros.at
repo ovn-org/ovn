@@ -1137,3 +1137,6 @@ m4_define([OVN_CONTROLLER_EXIT],
    echo "Waiting for pid $TMPPID"
    OVS_WAIT_WHILE([kill -0 $TMPPID 2>/dev/null])
 ])
+
+m4_define([OFTABLE_MAC_BINDING], [66])
+m4_define([OFTABLE_MAC_CACHE_USE], [79])

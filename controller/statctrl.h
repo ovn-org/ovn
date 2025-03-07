@@ -20,6 +20,7 @@
 
 void statctrl_init(void);
 void statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                  struct ovsdb_idl_index *sbrec_port_binding_by_name,
                   struct mac_cache_data *mac_cache_data);
 void statctrl_update(const char *br_int_name);
 void statctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn);
