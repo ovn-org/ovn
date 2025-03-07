@@ -46,7 +46,7 @@ RUN apt update -y \
 # Compile sparse from source
 WORKDIR /workspace/sparse
 
-RUN git clone git://git.kernel.org/pub/scm/devel/sparse/sparse.git \
+RUN git clone https://github.com/lucvoo/sparse \
     /workspace/sparse \
     && \
     make -j4 PREFIX=/usr HAVE_LLVM= HAVE_SQLITE= install
