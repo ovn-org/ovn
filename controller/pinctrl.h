@@ -31,6 +31,7 @@ struct ovsdb_idl_index;
 struct ovsdb_idl_txn;
 struct ovsrec_bridge;
 struct ovsrec_open_vswitch_table;
+struct rconn;
 struct sbrec_chassis;
 struct sbrec_dns_table;
 struct sbrec_controller_event_table;
@@ -74,4 +75,10 @@ struct activated_port {
 void tag_port_as_activated_in_engine(struct activated_port *ap);
 struct ovs_list *get_ports_to_activate_in_engine(void);
 bool pinctrl_is_port_activated(int64_t dp_key, int64_t port_key);
+void send_self_originated_neigh_packet(struct rconn *swconn,
+                                       uint32_t dp_key, uint32_t port_key,
+                                       struct eth_addr eth,
+                                       struct in6_addr *local,
+                                       struct in6_addr *target,
+                                       uint8_t table_id);
 #endif /* controller/pinctrl.h */
