@@ -1391,7 +1391,7 @@ consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         }
         ovs_be128 value;
         memcpy(&value, &ip6, sizeof(value));
-        match_set_xxreg(&get_arp_match, 0, ntoh128(value));
+        match_set_xxreg(&get_arp_match, 1, ntoh128(value));
 
         match_set_dl_type(&lookup_arp_match, htons(ETH_TYPE_IPV6));
         match_set_nw_proto(&lookup_arp_match, 58);

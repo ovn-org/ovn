@@ -1722,10 +1722,10 @@ nd_na_router { eth.src = 12:34:56:78:9a:bc; nd.tll = 12:34:56:78:9a:bc; outport 
 
 # get_nd
 get_nd(outport, ip6.dst);
-    encodes as push:NXM_NX_XXREG0[],push:NXM_NX_IPV6_DST[],pop:NXM_NX_XXREG0[],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_XXREG0[]
+    encodes as push:NXM_NX_XXREG1[],push:NXM_NX_IPV6_DST[],pop:NXM_NX_XXREG1[],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_XXREG1[]
     has prereqs eth.type == 0x86dd
 get_nd(inport, xxreg0);
-    encodes as push:NXM_NX_REG15[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_REG15[]
+    encodes as push:NXM_NX_REG15[],push:NXM_NX_XXREG1[],push:NXM_NX_XXREG0[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],pop:NXM_NX_XXREG1[],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_XXREG1[],pop:NXM_NX_REG15[]
 get_nd;
     Syntax error at `;' expecting `('.
 get_nd();
@@ -1812,10 +1812,10 @@ reg0[0] = lookup_nd(inport, ip6.src, ip6.dst);
 
 # lookup_nd_ip
 reg2[0] = lookup_nd_ip(inport, ip6.dst);
-    encodes as push:NXM_NX_REG15[],push:NXM_NX_XXREG0[],push:NXM_NX_IPV6_DST[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],pop:NXM_NX_XXREG0[],push:NXM_OF_ETH_DST[],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[6]->NXM_NX_XXREG0[32],pop:NXM_OF_ETH_DST[],pop:NXM_NX_XXREG0[],pop:NXM_NX_REG15[]
+    encodes as push:NXM_NX_REG15[],push:NXM_NX_XXREG1[],push:NXM_NX_IPV6_DST[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],pop:NXM_NX_XXREG1[],push:NXM_OF_ETH_DST[],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[6]->NXM_NX_XXREG0[32],pop:NXM_OF_ETH_DST[],pop:NXM_NX_XXREG1[],pop:NXM_NX_REG15[]
     has prereqs eth.type == 0x86dd
 reg3[0] = lookup_nd_ip(inport, nd.target);
-    encodes as push:NXM_NX_REG15[],push:NXM_NX_XXREG0[],push:NXM_NX_ND_TARGET[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],pop:NXM_NX_XXREG0[],push:NXM_OF_ETH_DST[],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[6]->NXM_NX_XXREG0[0],pop:NXM_OF_ETH_DST[],pop:NXM_NX_XXREG0[],pop:NXM_NX_REG15[]
+    encodes as push:NXM_NX_REG15[],push:NXM_NX_XXREG1[],push:NXM_NX_ND_TARGET[],push:NXM_NX_REG14[],pop:NXM_NX_REG15[],pop:NXM_NX_XXREG1[],push:NXM_OF_ETH_DST[],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[6]->NXM_NX_XXREG0[0],pop:NXM_OF_ETH_DST[],pop:NXM_NX_XXREG1[],pop:NXM_NX_REG15[]
     has prereqs (icmp6.type == 0x87 || icmp6.type == 0x88) && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && icmp6.code == 0 && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && ip.ttl == 0xff && (eth.type == 0x800 || eth.type == 0x86dd)
 
 lookup_nd_ip;
