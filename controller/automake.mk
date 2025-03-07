@@ -46,8 +46,8 @@ controller_ovn_controller_SOURCES = \
 	controller/vif-plug.c \
 	controller/mirror.h \
 	controller/mirror.c \
-	controller/mac_cache.h \
-	controller/mac_cache.c \
+	controller/mac-cache.h \
+	controller/mac-cache.c \
 	controller/statctrl.h \
 	controller/statctrl.c
 

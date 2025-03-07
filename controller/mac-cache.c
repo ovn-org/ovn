@@ -17,7 +17,7 @@
 #include <stdbool.h>
 
 #include "lport.h"
-#include "mac_cache.h"
+#include "mac-cache.h"
 #include "openvswitch/hmap.h"
 #include "openvswitch/vlog.h"
 #include "ovn/logical-fields.h"

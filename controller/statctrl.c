@@ -19,7 +19,7 @@
 #include "dirs.h"
 #include "latch.h"
 #include "lflow.h"
-#include "mac_cache.h"
+#include "mac-cache.h"
 #include "openvswitch/ofp-errors.h"
 #include "openvswitch/ofp-flow.h"
 #include "openvswitch/ofp-msgs.h"

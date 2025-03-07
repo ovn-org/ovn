@@ -83,7 +83,7 @@
 #include "lib/ovn-l7.h"
 #include "hmapx.h"
 #include "mirror.h"
-#include "mac_cache.h"
+#include "mac-cache.h"
 #include "statctrl.h"
 
 VLOG_DEFINE_THIS_MODULE(main);

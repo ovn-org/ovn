@@ -16,7 +16,7 @@
 #ifndef STATCTRL_H
 #define STATCTRL_H
 
-#include "mac_cache.h"
+#include "mac-cache.h"
 
 void statctrl_init(void);
 void statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
