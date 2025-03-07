@@ -2,8 +2,8 @@
 
 function compile_sparse()
 {
-    git clone git://git.kernel.org/pub/scm/devel/sparse/sparse.git \
-        /workspace/sparse
+    # Official mirror of the git.kernel.org/pub/scm/devel/sparse/sparse.git.
+    git clone https://github.com/lucvoo/sparse /workspace/sparse
 
     pushd sparse
     make -j4 PREFIX=/usr HAVE_LLVM= HAVE_SQLITE= install
