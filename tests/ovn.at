@@ -37120,7 +37120,7 @@ OVS_WAIT_UNTIL([
     test "$timestamp" != "$curr_timestamp"
 ])
 timestamp=$(fetch_column fdb timestamp mac='"00:00:00:00:10:20"')
-check $(test "$timestamp" != "")
+check test "$timestamp" != ""
 
 # Check if the records are removed after some inactivity
 wait_row_count fdb 0 mac='"00:00:00:00:10:20"'
