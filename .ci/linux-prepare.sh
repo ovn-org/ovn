@@ -9,7 +9,9 @@ set -ev
 # linking against it fails.
 # Disabling sqlite support because sindex build fails and we don't
 # really need this utility being installed.
-git clone git://git.kernel.org/pub/scm/devel/sparse/sparse.git
+#
+# Official mirror of the git.kernel.org/pub/scm/devel/sparse/sparse.git.
+git clone https://github.com/lucvoo/sparse
 cd sparse && make -j4 HAVE_LLVM= HAVE_SQLITE= install && cd ..
 
 # Installing wheel separately because it may be needed to build some
