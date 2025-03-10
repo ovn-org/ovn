@@ -3168,6 +3168,32 @@ or
         See <em>External IDs</em> at the beginning of this document.
       </column>
     </group>
+
+    <group title="Transit router">
+      <p>
+        In order to achieve status of <code>Transit Router</code> for
+        <ref table="Logical_Router"/> there needs to be at least one
+        <ref table="Logical_Router_Port"/> that is considered remote.
+        The LRP can be <code>remote</code> only if it has
+        <code>options:requested-chassis</code> set to chassis that is
+        considered remote. See <ref table="Logical_Router_Port"/> for more
+        details.
+      </p>
+
+      <p>
+        In order for the <code>Transit Router</code> to work properly all the
+        tunnel keys for the <code>Transit Router</code> itself and the remote
+        ports keys needs to match  in all AZs e.g. TR in AZ1 and AZ2 needs to
+        have the same tunnel key. Remote port for AZ2 in AZ1 needs to have the
+        same tunnel key as local port in AZ2 and vice vers.
+      </p>
+
+      <p>
+        The <code>Transit Router</code> behaves as distributed router which
+        means that it has the same limitations for stateful flows like
+        <code>NAT and LBs</code> and it will lose the CT state between AZs.
+      </p>
+    </group>
   </table>
 
   <table name="QoS" title="QoS rule">
@@ -3310,32 +3336,6 @@ or
     <column name="external_ids">
       See <em>External IDs</em> at the beginning of this document.
     </column>
-
-    <group title="Transit router">
-      <p>
-        In order to achieve status of <code>Transit Router</code> for
-        <ref table="Logical_Router"/> there needs to be at least one
-        <ref table="Logical_Router_Port"/> that is considered remote.
-        The LRP can be <code>remote</code> only if it has
-        <code>options:requested-chassis</code> set to chassis that is
-        considered remote. See <ref table="Logical_Router_Port"/> for more
-        details.
-      </p>
-
-      <p>
-        In order for the <code>Transit Router</code> to work properly all the
-        tunnel keys for the <code>Transit Router</code> itself and the remote
-        ports keys needs to match  in all AZs e.g. TR in AZ1 and AZ2 needs to
-        have the same tunnel key. Remote port for AZ2 in AZ1 needs to have the
-        same tunnel key as local port in AZ2 and vice vers.
-      </p>
-
-      <p>
-        The <code>Transit Router</code> behaves as distributed router which
-        means that it has the same limitations for stateful flows like
-        <code>NAT and LBs</code> and it will lose the CT state between AZs.
-      </p>
-    </group>
   </table>
 
   <table name="Meter" title="Meter entry">
