@@ -571,3 +571,19 @@ m4_define([VRF_RESERVE],
      ip link del "ovnvrf$1"
     ]
 )
+
+# OVN_ROUTE_EQUAL([vrf], [string to compare])
+#
+# Will dump all v4 routes in the mentioned vrf. Trailing spaces will be removed
+# and "proto 84" is converted to "proto ovn" for compatibility.
+m4_define([OVN_ROUTE_EQUAL],
+  [OVS_WAIT_UNTIL_EQUAL([ip route list vrf $1 | sed -e 's|[[[[:space:]]]]*$||g' -e 's|proto 84|proto ovn|'], [$2])
+])
+
+# OVN_ROUTE_V6_EQUAL([vrf], [string to compare])
+#
+# Will dump all v6 routes in the mentioned vrf. Trailing spaces will be removed
+# and "proto 84" is converted to "proto ovn" for compatibility.
+m4_define([OVN_ROUTE_V6_EQUAL],
+  [OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf $1 | sed -e 's|[[[[:space:]]]]*$||g' -e 's|proto 84|proto ovn|'], [$2])
+])
