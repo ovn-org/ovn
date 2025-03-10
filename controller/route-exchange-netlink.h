@@ -23,11 +23,11 @@
 #include <netinet/in.h>
 #include <net/if.h>
 
-/* This value is arbitrary but currently unused.
- * See the kernel rtnetlink UAPI at
- * https://github.com/torvalds/linux/blob/master/include/uapi/linux/rtnetlink.h
- * */
+/* The following definition should be available in Linux 6.15 and might be
+ * missing if we have older headers. */
+#ifndef RTPROT_OVN
 #define RTPROT_OVN 84
+#endif
 
 struct in6_addr;
 struct hmap;
