@@ -17356,3 +17356,40 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([sb_cfg propagation])
+ovn_start
+
+#
+# Test engine call does not happen between sb db transaction
+# commitment and sb_cfg write to the nb db (if have to)
+#
+> northd/ovn-northd.log
+check as northd ovn-appctl -t ovn-northd vlog/set jsonrpc:dbg
+check as northd ovn-appctl -t ovn-northd vlog/set inc_proc_eng:dbg
+# Any change that invoke engine processing, for example add logical switch.
+# nb_cfg bump must be present in order to get feedback as sb_cfg.
+check ovn-nbctl --wait=sb ls-add sw1
+#
+# Get following messages from log file:
+# 'unix... transact ... Southbound' --> Indicates the pack of updates has been
+#                                       committed to the sb db.
+# 'unix... transact ... sb_cfg'  --> Indicates the sb_cfg has been committed to
+#                                    the sb db.
+# 'Initializing new run' --> Indicates the engine has been called.
+#
+# Then, take first letter of messages, here 'u' or 'I' and form them into one
+# string.
+#
+# Finally, a 'good' string should have two 'u' conjuncted with several 'I'
+# both as prefix and suffix, while 'bad' string will have 'I' between two 'u'.
+#
+call_seq=`grep -E \
+ "(transact.*sb_cfg)|(transact.*Southbound)|(Initializing new run)" \
+ northd/ovn-northd.log | cut -d "|" -f 5- | cut -b 1 | tr -d '\n'`
+
+AT_CHECK([echo $call_seq | grep -qE "^I*uuI*$"], [0])
+
+AT_CLEANUP
+])

@@ -797,6 +797,15 @@ run_memory_trimmer(struct ovsdb_idl *ovnnb_idl, bool activity)
     memory_trimmer_wait(mt);
 }
 
+static bool
+sb_cfg_is_in_sync(struct ovsdb_idl *ovnnb_idl,
+                  struct ovsdb_idl_loop *sb_loop)
+{
+    const struct nbrec_nb_global *nb = nbrec_nb_global_first(ovnnb_idl);
+
+    return !(nb && sb_loop->cur_cfg && nb->sb_cfg != sb_loop->cur_cfg);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -1064,8 +1073,17 @@ main(int argc, char *argv[])
                 if (ovnnb_txn && ovnsb_txn &&
                     inc_proc_northd_can_run(&eng_ctx)) {
                     int64_t loop_start_time = time_wall_msec();
-                    activity = inc_proc_northd_run(ovnnb_txn, ovnsb_txn,
-                                                   &eng_ctx);
+
+                    if (sb_cfg_is_in_sync(ovnnb_idl_loop.idl,
+                                          &ovnsb_idl_loop)) {
+                        activity = inc_proc_northd_run(ovnnb_txn,
+                                                       ovnsb_txn,
+                                                       &eng_ctx);
+                    } else {
+                        poll_immediate_wake();
+                        clear_idl_track = false;
+                    }
+
                     check_and_add_supported_dhcp_opts_to_sb_db(
                                  ovnsb_txn, ovnsb_idl_loop.idl);
                     check_and_add_supported_dhcpv6_opts_to_sb_db(
