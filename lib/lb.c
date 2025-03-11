@@ -24,7 +24,53 @@
 
 VLOG_DEFINE_THIS_MODULE(lb);
 
-static void ovn_lb_backends_clear(struct ovn_lb_vip *vip);
+static bool
+ovn_lb_backend_init_explicit(const struct ovn_lb_vip *lb_vip,
+                             struct ovn_lb_backend *backend,
+                             const char *token, struct ds *errors)
+{
+    int backend_addr_family;
+    if (!ip_address_and_port_from_lb_key(token, &backend->ip_str,
+                                         &backend->ip, &backend->port,
+                                         &backend_addr_family)) {
+        if (lb_vip->port_str) {
+            ds_put_format(errors, "%s: should be an IP address and a "
+                                   "port number with : as a separator, ",
+                          token);
+        } else {
+            ds_put_format(errors, "%s: should be an IP address, ", token);
+        }
+        return false;
+    }
+
+    if (lb_vip->address_family != backend_addr_family) {
+        free(backend->ip_str);
+        ds_put_format(errors, "%s: IP address family is different from "
+                               "VIP %s, ",
+                      token, lb_vip->vip_str);
+        return false;
+    }
+
+    if (lb_vip->port_str) {
+        if (!backend->port) {
+            free(backend->ip_str);
+            ds_put_format(errors, "%s: should be an IP address and "
+                                   "a port number with : as a separator, ",
+                          token);
+            return false;
+        }
+    } else {
+        if (backend->port) {
+            free(backend->ip_str);
+            ds_put_format(errors, "%s: should be an IP address, ", token);
+            return false;
+        }
+    }
+
+    backend->port_str =
+        backend->port ? xasprintf("%"PRIu16, backend->port) : NULL;
+    return true;
+}
 
 /* Format for backend ips: "IP1:port1,IP2:port2,...". */
 static char *
@@ -47,46 +93,10 @@ ovn_lb_backends_init_explicit(struct ovn_lb_vip *lb_vip, const char *value)
         }
 
         struct ovn_lb_backend *backend = &lb_vip->backends[lb_vip->n_backends];
-        int backend_addr_family;
-        if (!ip_address_and_port_from_lb_key(token, &backend->ip_str,
-                                             &backend->ip, &backend->port,
-                                             &backend_addr_family)) {
-            if (lb_vip->port_str) {
-                ds_put_format(&errors, "%s: should be an IP address and a "
-                                       "port number with : as a separator, ",
-                              token);
-            } else {
-                ds_put_format(&errors, "%s: should be an IP address, ", token);
-            }
+        if (!ovn_lb_backend_init_explicit(lb_vip, backend, token, &errors)) {
             continue;
         }
 
-        if (lb_vip->address_family != backend_addr_family) {
-            free(backend->ip_str);
-            ds_put_format(&errors, "%s: IP address family is different from "
-                                   "VIP %s, ",
-                          token, lb_vip->vip_str);
-            continue;
-        }
-
-        if (lb_vip->port_str) {
-            if (!backend->port) {
-                free(backend->ip_str);
-                ds_put_format(&errors, "%s: should be an IP address and "
-                                       "a port number with : as a separator, ",
-                              token);
-                continue;
-            }
-        } else {
-            if (backend->port) {
-                free(backend->ip_str);
-                ds_put_format(&errors, "%s: should be an IP address, ", token);
-                continue;
-            }
-        }
-
-        backend->port_str =
-            backend->port ? xasprintf("%"PRIu16, backend->port) : NULL;
         lb_vip->n_backends++;
     }
     free(tokstr);
@@ -118,6 +128,47 @@ ovn_lb_vip_init_explicit(struct ovn_lb_vip *lb_vip, const char *lb_key,
     return ovn_lb_backends_init_explicit(lb_vip, lb_value);
 }
 
+static bool
+ovn_lb_backend_init_template(struct ovn_lb_backend *backend, const char *token,
+                             struct ds *errors)
+{
+    char *atom = xstrdup(token);
+    char *save_ptr = NULL;
+    bool success = false;
+    char *backend_ip = NULL;
+    char *backend_port = NULL;
+
+    for (char *subatom = strtok_r(atom, ":", &save_ptr); subatom;
+         subatom = strtok_r(NULL, ":", &save_ptr)) {
+        if (backend_ip && backend_port) {
+            success = false;
+            break;
+        }
+        success = true;
+        if (!backend_ip) {
+            backend_ip = xstrdup(subatom);
+        } else {
+            backend_port = xstrdup(subatom);
+        }
+    }
+
+    if (success) {
+        backend->ip_str = backend_ip;
+        backend->port_str = backend_port;
+        backend->port = 0;
+        memset(&backend->ip, 0, sizeof backend->ip);
+    } else {
+        ds_put_format(errors, "%s: should be a template of the form: "
+                      "'^backendip_variable1[:^port_variable1|:port]', ",
+                      atom);
+        free(backend_port);
+        free(backend_ip);
+    }
+    free(atom);
+
+    return success;
+}
+
 /* Parses backends of a templated LB VIP.
  * For now only the following template forms are supported:
  * A.
@@ -130,6 +181,8 @@ ovn_lb_vip_init_explicit(struct ovn_lb_vip *lb_vip, const char *lb_key,
  *                                               IP1_2:PORT1_2 on chassis-2
  *        and 'backends_variable2' may expand to IP2_1:PORT2_1 on chassis-1
  *                                               IP2_2:PORT2_2 on chassis-2
+ * C.
+ *    backendip1[:port],backendip2[:port]
  */
 static char *
 ovn_lb_backends_init_template(struct ovn_lb_vip *lb_vip, const char *value_)
@@ -140,50 +193,28 @@ ovn_lb_backends_init_template(struct ovn_lb_vip *lb_vip, const char *value_)
     size_t n_allocated_backends = 0;
     lb_vip->n_backends = 0;
 
-    for (char *backend = strtok_r(value, ",", &save_ptr); backend;
-         backend = strtok_r(NULL, ",", &save_ptr)) {
+    for (char *token = strtok_r(value, ",", &save_ptr); token;
+         token = strtok_r(NULL, ",", &save_ptr)) {
 
-        char *atom = xstrdup(backend);
-        char *save_ptr2 = NULL;
-        bool success = false;
-        char *backend_ip = NULL;
-        char *backend_port = NULL;
-
-        for (char *subatom = strtok_r(atom, ":", &save_ptr2); subatom;
-             subatom = strtok_r(NULL, ":", &save_ptr2)) {
-            if (backend_ip && backend_port) {
-                success = false;
-                break;
-            }
-            success = true;
-            if (!backend_ip) {
-                backend_ip = xstrdup(subatom);
-            } else {
-                backend_port = xstrdup(subatom);
-            }
+        if (lb_vip->n_backends == n_allocated_backends) {
+            lb_vip->backends = x2nrealloc(lb_vip->backends,
+                                          &n_allocated_backends,
+                                          sizeof *lb_vip->backends);
         }
 
-        if (success) {
-            if (lb_vip->n_backends == n_allocated_backends) {
-                lb_vip->backends = x2nrealloc(lb_vip->backends,
-                                              &n_allocated_backends,
-                                              sizeof *lb_vip->backends);
+        struct ovn_lb_backend *backend = &lb_vip->backends[lb_vip->n_backends];
+        if (token[0] && token[0] == '^') {
+            if (!ovn_lb_backend_init_template(backend, token, &errors)) {
+                continue;
             }
-
-            struct ovn_lb_backend *lb_backend =
-                &lb_vip->backends[lb_vip->n_backends];
-            lb_backend->ip_str = backend_ip;
-            lb_backend->port_str = backend_port;
-            lb_backend->port = 0;
-            lb_vip->n_backends++;
         } else {
-            ds_put_format(&errors, "%s: should be a template of the form: "
-                          "'^backendip_variable1[:^port_variable1|:port]', ",
-                          atom);
-            free(backend_port);
-            free(backend_ip);
+            if (!ovn_lb_backend_init_explicit(lb_vip, backend,
+                                              token, &errors)) {
+                continue;
+            }
         }
-        free(atom);
+
+        lb_vip->n_backends++;
     }
 
     free(value);
@@ -231,23 +262,13 @@ ovn_lb_vip_init_template(struct ovn_lb_vip *lb_vip, const char *lb_key_,
 
     /* Backends can either be templates or explicit IPs and ports. */
     lb_vip->address_family = address_family;
-    lb_vip->template_backends = true;
     char *template_error = ovn_lb_backends_init_template(lb_vip, lb_value);
 
     if (template_error) {
-        lb_vip->template_backends = false;
-        ovn_lb_backends_clear(lb_vip);
-
-        char *explicit_error = ovn_lb_backends_init_explicit(lb_vip, lb_value);
-        if (explicit_error) {
-            char *error =
-                xasprintf("invalid backend: template (%s) OR explicit (%s)",
-                          template_error, explicit_error);
-            free(explicit_error);
+        char *error = xasprintf("invalid backend: template (%s)",
+                                template_error);
             free(template_error);
             return error;
-        }
-        free(template_error);
     }
     return NULL;
 }
@@ -274,14 +295,7 @@ ovn_lb_backends_destroy(struct ovn_lb_vip *vip)
         free(vip->backends[i].ip_str);
         free(vip->backends[i].port_str);
     }
-}
-
-static void
-ovn_lb_backends_clear(struct ovn_lb_vip *vip)
-{
-    ovn_lb_backends_destroy(vip);
-    vip->backends = NULL;
-    vip->n_backends = 0;
+    free(vip->backends);
 }
 
 void
@@ -290,7 +304,6 @@ ovn_lb_vip_destroy(struct ovn_lb_vip *vip)
     free(vip->vip_str);
     free(vip->port_str);
     ovn_lb_backends_destroy(vip);
-    free(vip->backends);
 }
 
 static void
@@ -320,11 +333,11 @@ ovn_lb_vip_format(const struct ovn_lb_vip *vip, struct ds *s, bool template)
 void
 ovn_lb_vip_backends_format(const struct ovn_lb_vip *vip, struct ds *s)
 {
-    bool needs_brackets = vip->address_family == AF_INET6 && vip->port_str
-                          && !vip->template_backends;
     for (size_t i = 0; i < vip->n_backends; i++) {
         struct ovn_lb_backend *backend = &vip->backends[i];
-
+        bool needs_brackets = vip->address_family == AF_INET6 &&
+                              vip->port_str &&
+                              !ipv6_addr_equals(&backend->ip, &in6addr_any);
         if (needs_brackets) {
             ds_put_char(s, '[');
         }
