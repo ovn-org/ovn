@@ -1594,6 +1594,8 @@ check ovn-nbctl --template lb-add lb4 ^vip:^vport ^backend:^bport udp ipv4
 check ovn-nbctl --template lb-add lb5 ^vip:^vport ^backend:^bport udp ipv6
 check ovn-nbctl --template lb-add lb6 ^vip:^vport 1.1.1.1:111 udp ipv4
 check ovn-nbctl --template lb-add lb7 ^vip:^vport [[1::1]]:111 udp ipv6
+check ovn-nbctl --template lb-add lb8 ^vip:^vport "^backend,^port,1.1.1.1:111" udp ipv4
+check ovn-nbctl --template lb-add lb9 ^vip:^vport "^backend,^port,[[1::1]]:111" udp ipv6
 
 AT_CHECK([ovn-nbctl lb-list | uuidfilt], [0], [dnl
 UUID                                    LB                  PROTO      VIP            IPs
@@ -1605,6 +1607,8 @@ UUID                                    LB                  PROTO      VIP      
 <5>    lb5                 udp        ^vip:^vport    ^backend:^bport
 <6>    lb6                 udp        ^vip:^vport    1.1.1.1:111
 <7>    lb7                 udp        ^vip:^vport    [[1::1]]:111
+<8>    lb8                 udp        ^vip:^vport    ^backend,^port,1.1.1.1:111
+<9>    lb9                 udp        ^vip:^vport    ^backend,^port,[[1::1]]:111
 ])
 
 ])
