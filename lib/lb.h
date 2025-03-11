@@ -38,9 +38,7 @@ struct ovn_lb_vip {
                           */
     struct ovn_lb_backend *backends;
     size_t n_backends;
-    bool template_backends; /* True if the backends are templates. False if
-                             * they're explicitly specified.
-                             */
+
     bool empty_backend_rej;
     int address_family;
 };
