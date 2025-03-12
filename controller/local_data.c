@@ -149,18 +149,19 @@ need_add_peer_to_local(
     }
 
     /* If it is a regular patch port, it is fully distributed, add the peer. */
-    const char *crp = smap_get(&pb->options, "chassis-redirect-port");
-    if (!crp) {
+    const char *crp_name = smap_get(&pb->options, "chassis-redirect-port");
+    if (!crp_name) {
         return true;
     }
 
     /* A DGP, find its chassis-redirect-port pb. */
     const struct sbrec_port_binding *pb_crp =
-        lport_lookup_by_name(sbrec_port_binding_by_name, crp);
+        lport_get_cr_port(sbrec_port_binding_by_name, pb, crp_name);
+
     if (!pb_crp) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 5);
-        VLOG_WARN_RL(&rl, "Chassis-redirect-port %s for DGP %s is not found.",
-                     pb->logical_port, crp);
+        VLOG_WARN_RL(&rl, "chassis-redirect-port %s for DGP %s is not found.",
+                     crp_name, pb->logical_port);
         return false;
     }
 

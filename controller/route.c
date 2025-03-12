@@ -61,18 +61,20 @@ route_exchange_find_port(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     if (route_exchange_relevant_port(pb)) {
         return pb;
     }
-    const char *crp = smap_get(&pb->options, "chassis-redirect-port");
-    if (!crp) {
+
+    const struct sbrec_port_binding *cr_pb =
+        lport_get_cr_port(sbrec_port_binding_by_name, pb, NULL);
+
+    if (!cr_pb) {
         return NULL;
     }
-    if (!lport_is_chassis_resident(sbrec_port_binding_by_name, chassis,
-                                   active_tunnels, crp)) {
+
+    if (!lport_pb_is_chassis_resident(chassis, active_tunnels, cr_pb)) {
         return NULL;
     }
-    const struct sbrec_port_binding *crpbp = lport_lookup_by_name(
-        sbrec_port_binding_by_name, crp);
-    if (route_exchange_relevant_port(crpbp)) {
-        return crpbp;
+
+    if (route_exchange_relevant_port(cr_pb)) {
+        return cr_pb;
     }
     return NULL;
 }
