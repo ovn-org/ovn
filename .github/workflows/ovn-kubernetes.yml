@@ -25,7 +25,7 @@ jobs:
   build:
     name: Build
     if: github.repository_owner == 'ovn-org' || github.event_name != 'schedule'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
     - name: Enable Docker experimental features
       run: |
@@ -65,7 +65,7 @@ jobs:
   e2e:
     name: e2e
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 220
     strategy:
       fail-fast: false

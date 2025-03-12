@@ -170,6 +170,7 @@ fi
 
 CONTAINER_ID="$($CONTAINER_CMD run --privileged -d \
     --pids-limit=-1 \
+    --security-opt apparmor=unconfined \
     --env ASAN_OPTIONS=$ASAN_OPTIONS \
     -v /lib/modules/$(uname -r):/lib/modules/$(uname -r):ro \
     -v $OVN_PATH:$CONTAINER_WORKSPACE/ovn:Z \
