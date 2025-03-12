@@ -201,7 +201,7 @@ bool binding_handle_port_binding_changes(struct binding_ctx_in *,
 void binding_tracked_dp_destroy(struct hmap *tracked_datapaths);
 
 void binding_dump_local_bindings(struct local_binding_data *, struct ds *);
-
+void binding_dump_local_datapaths(struct hmap *local_datapaths, struct ds *);
 void binding_dump_related_lports(struct related_lports *related_lports,
                                  struct ds *);
 

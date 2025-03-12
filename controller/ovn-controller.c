@@ -104,6 +104,7 @@ static unixctl_cb_func debug_pause_execution;
 static unixctl_cb_func debug_resume_execution;
 static unixctl_cb_func debug_status_execution;
 static unixctl_cb_func debug_dump_local_bindings;
+static unixctl_cb_func debug_dump_local_datapaths;
 static unixctl_cb_func debug_dump_related_lports;
 static unixctl_cb_func debug_dump_local_template_vars;
 static unixctl_cb_func debug_dump_local_mac_bindings;
@@ -5952,6 +5953,10 @@ main(int argc, char *argv[])
                              debug_dump_local_bindings,
                              &runtime_data->lbinding_data);
 
+    unixctl_command_register("debug/dump-local-datapaths", "", 0, 0,
+                             debug_dump_local_datapaths,
+                             &runtime_data->local_datapaths);
+
     unixctl_command_register("debug/dump-related-ports", "", 0, 0,
                              debug_dump_related_lports,
                              &runtime_data->related_lports);
@@ -6924,6 +6929,17 @@ debug_dump_local_bindings(struct unixctl_conn *conn, int argc OVS_UNUSED,
     binding_dump_local_bindings(local_bindings, &binding_data);
     unixctl_command_reply(conn, ds_cstr(&binding_data));
     ds_destroy(&binding_data);
+}
+
+static void
+debug_dump_local_datapaths(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                           const char *argv[] OVS_UNUSED,
+                           void *local_datapaths)
+{
+    struct ds local_dps_data = DS_EMPTY_INITIALIZER;
+    binding_dump_local_datapaths(local_datapaths, &local_dps_data);
+    unixctl_command_reply(conn, ds_cstr(&local_dps_data));
+    ds_destroy(&local_dps_data);
 }
 
 static void
