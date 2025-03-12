@@ -214,8 +214,7 @@ objdep_mgr_handle_change(struct objdep_mgr *mgr,
              " name: %s.", objdep_type_name(type), res_name);
     *changed = false;
 
-    struct ovs_list objs_todo = OVS_LIST_INITIALIZER(&objs_todo);
-
+    struct uuidset objs_todo = UUIDSET_INITIALIZER(&objs_todo);
     struct object_to_resources_list_node *resource_list_node;
     HMAP_FOR_EACH (resource_list_node, hmap_node, &resource_node->objs) {
         if (uuidset_find(objs_processed, &resource_list_node->obj_uuid)) {
@@ -223,12 +222,9 @@ objdep_mgr_handle_change(struct objdep_mgr *mgr,
         }
         /* Use object_to_resources_list_node as list node to store the uuid.
          * Other fields are not used here. */
-        struct object_to_resources_list_node *resource_list_node_uuid =
-            xmalloc(sizeof *resource_list_node_uuid);
-        resource_list_node_uuid->obj_uuid = resource_list_node->obj_uuid;
-        ovs_list_push_back(&objs_todo, &resource_list_node_uuid->list_node);
+        uuidset_insert(&objs_todo, &resource_list_node->obj_uuid);
     }
-    if (ovs_list_is_empty(&objs_todo)) {
+    if (uuidset_is_empty(&objs_todo)) {
         return true;
     }
     *changed = true;

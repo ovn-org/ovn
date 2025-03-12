@@ -748,7 +748,7 @@ done:
 
 bool
 lflow_handle_changed_ref(enum objdep_type type, const char *res_name,
-                         struct ovs_list *objs_todo,
+                         struct uuidset *objs_todo,
                          const void *in_arg, void *out_arg)
 {
     struct lflow_ctx_in *l_ctx_in = CONST_CAST(struct lflow_ctx_in *, in_arg);
@@ -756,22 +756,13 @@ lflow_handle_changed_ref(enum objdep_type type, const char *res_name,
 
     /* Re-parse the related lflows. */
     /* Firstly, flood remove the flows from desired flow table. */
-    struct object_to_resources_list_node *resource_list_node_uuid;
-    struct uuidset flood_remove_nodes =
-        UUIDSET_INITIALIZER(&flood_remove_nodes);
-    LIST_FOR_EACH_SAFE (resource_list_node_uuid, list_node, objs_todo) {
-        const struct uuid *obj_uuid = &resource_list_node_uuid->obj_uuid;
-        VLOG_DBG("Reprocess lflow "UUID_FMT" for resource type: %s,"
-                 " name: %s.",
-                 UUID_ARGS(obj_uuid), objdep_type_name(type), res_name);
-        uuidset_insert(&flood_remove_nodes, obj_uuid);
-        free(resource_list_node_uuid);
-    }
-    ofctrl_flood_remove_flows(l_ctx_out->flow_table, &flood_remove_nodes);
+    ofctrl_flood_remove_flows(l_ctx_out->flow_table, objs_todo);
 
     /* Secondly, for each lflow that is actually removed, reprocessing it. */
     struct uuidset_node *ofrn;
-    UUIDSET_FOR_EACH (ofrn, &flood_remove_nodes) {
+    UUIDSET_FOR_EACH (ofrn, objs_todo) {
+        VLOG_DBG("Reprocess lflow "UUID_FMT" for resource type: %s, name: %s.",
+                 UUID_ARGS(&ofrn->uuid), objdep_type_name(type), res_name);
         objdep_mgr_remove_obj(l_ctx_out->lflow_deps_mgr, &ofrn->uuid);
         lflow_conj_ids_free(l_ctx_out->conj_ids, &ofrn->uuid);
 
@@ -798,7 +789,8 @@ lflow_handle_changed_ref(enum objdep_type type, const char *res_name,
 
         consider_logical_flow(lflow, false, l_ctx_in, l_ctx_out);
     }
-    uuidset_destroy(&flood_remove_nodes);
+
+    uuidset_destroy(objs_todo);
     return true;
 }
 

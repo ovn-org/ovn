@@ -35,7 +35,7 @@ enum objdep_type {
  * handled successfully. */
 typedef bool (*objdep_change_handler)(enum objdep_type,
                                       const char *res_name,
-                                      struct ovs_list *ref_nodes,
+                                      struct uuidset *ref_nodes,
                                       const void *in_arg, void *out_arg);
 
 /* A node pointing to all objects that refer to a given resource. */

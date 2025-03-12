@@ -169,7 +169,7 @@ bool lflow_handle_addr_set_update(const char *as_name, struct addr_set_diff *,
                                   struct lflow_ctx_out *,
                                   bool *changed);
 bool lflow_handle_changed_ref(enum objdep_type, const char *res_name,
-                              struct ovs_list *objs_todo,
+                              struct uuidset *objs_todo,
                               const void *in_arg, void *out_arg);
 
 void lflow_handle_changed_mac_bindings(

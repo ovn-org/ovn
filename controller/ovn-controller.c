@@ -2770,15 +2770,15 @@ lb_data_local_lb_remove(struct ed_type_lb_data *lb_data,
 
 static bool
 lb_data_handle_changed_ref(enum objdep_type type, const char *res_name,
-                           struct ovs_list *objs_todo, const void *in_arg,
+                           struct uuidset *objs_todo, const void *in_arg,
                            void *out_arg)
 {
     const struct lb_data_ctx_in *ctx_in = in_arg;
     struct ed_type_lb_data *lb_data = out_arg;
 
-    struct object_to_resources_list_node *resource_lb_uuid;
-    LIST_FOR_EACH_POP (resource_lb_uuid, list_node, objs_todo) {
-        struct uuid *uuid = &resource_lb_uuid->obj_uuid;
+    struct uuidset_node *ofrn;
+    UUIDSET_FOR_EACH (ofrn, objs_todo) {
+        struct uuid *uuid = &ofrn->uuid;
 
         VLOG_DBG("Reprocess LB "UUID_FMT" for resource type: %s, name: %s",
                  UUID_ARGS(uuid), objdep_type_name(type), res_name);
@@ -2786,7 +2786,6 @@ lb_data_handle_changed_ref(enum objdep_type type, const char *res_name,
         struct ovn_controller_lb *lb =
             ovn_controller_lb_find(&lb_data->local_lbs, uuid);
         if (!lb) {
-            free(resource_lb_uuid);
             continue;
         }
 
@@ -2795,14 +2794,13 @@ lb_data_handle_changed_ref(enum objdep_type type, const char *res_name,
         const struct sbrec_load_balancer *sbrec_lb =
             sbrec_load_balancer_table_get_for_uuid(ctx_in->lb_table, uuid);
         if (!lb_is_local(sbrec_lb, ctx_in->local_datapaths)) {
-            free(resource_lb_uuid);
             continue;
         }
 
         lb_data_local_lb_add(lb_data, sbrec_lb, ctx_in->template_vars, true);
-
-        free(resource_lb_uuid);
     }
+
+    uuidset_destroy(objs_todo);
     return true;
 }
 
