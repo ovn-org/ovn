@@ -13,7 +13,7 @@ concurrency:
 jobs:
   build:
     name: Build ovn-fake-multinode image
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         cfg:
@@ -69,7 +69,7 @@ jobs:
         path: /tmp/_output/ovn_${{ matrix.cfg.branch }}_image.tar
 
   multinode-tests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     needs: [build]
     strategy:
@@ -136,14 +136,6 @@ jobs:
       run: |
         sudo systemctl start openvswitch-switch
         sudo ovs-vsctl show
-
-    # XXX This should be removed when native crun >=1.9.1
-    - name: update crun script
-      run: |
-        crun --version
-        sudo curl -L "https://github.com/containers/crun/releases/download/1.14.1/crun-1.14.1-linux-amd64" -o /usr/bin/crun
-        sudo chmod +x /usr/bin/crun
-        echo "New crun version: "$(crun --version)
 
     - name: Start basic cluster
       run: |
