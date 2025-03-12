@@ -1129,6 +1129,19 @@ binding_dump_local_bindings(struct local_binding_data *lbinding_data,
 }
 
 void
+binding_dump_local_datapaths(struct hmap *local_datapaths,
+                             struct ds *out_data)
+{
+    ds_put_cstr(out_data, "Local datapaths:\n");
+    struct local_datapath *ld;
+    HMAP_FOR_EACH (ld, hmap_node, local_datapaths) {
+        ds_put_format(out_data, "Datapath: %s, type: %s\n",
+                      smap_get(&ld->datapath->external_ids, "name"),
+                      ld->is_switch ? "switch" : "router");
+    }
+}
+
+void
 set_pb_chassis_in_sbrec(const struct sbrec_port_binding *pb,
                         const struct sbrec_chassis *chassis_rec,
                         bool is_set)
