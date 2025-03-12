@@ -4926,21 +4926,17 @@ run_buffered_binding(const struct sbrec_mac_binding_table *mac_binding_table,
 
         mac_binding_add(&recent_mbs, mb_data, smb, 0);
 
-        const char *redirect_port =
-            smap_get(&pb->options, "chassis-redirect-port");
-        if (!redirect_port) {
-            continue;
-        }
-
-        pb = lport_lookup_by_name(sbrec_port_binding_by_name, redirect_port);
-        if (!pb || pb->datapath->tunnel_key != smb->datapath->tunnel_key ||
-            strcmp(pb->type, "chassisredirect")) {
+        const struct sbrec_port_binding *cr_pb =
+            lport_get_cr_port(sbrec_port_binding_by_name, pb, NULL);
+        if (!cr_pb ||
+            cr_pb->datapath->tunnel_key != smb->datapath->tunnel_key ||
+            strcmp(cr_pb->type, "chassisredirect")) {
             continue;
         }
 
         /* Add the same entry also for chassisredirect port as the buffered
          * traffic might be buffered on the cr port. */
-        mb_data.port_key = pb->tunnel_key;
+        mb_data.port_key = cr_pb->tunnel_key;
         mac_binding_add(&recent_mbs, mb_data, smb, 0);
     }
 
