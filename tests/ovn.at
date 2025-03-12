@@ -42124,6 +42124,7 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ACL Conntrack ID propagation])
 ovn_start
 
