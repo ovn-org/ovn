@@ -766,8 +766,12 @@ primary lport : [[lsp1]]
 done
 
 check as northd ovn-appctl -t ovn-northd resume
+
+# Since northd is restarted, port type is back to localport, so ls is not local datapath anymore.
 OVN_CLEANUP([hv1
-/No distributed-port option set for chassisredirect port lsp1/d])
+/No distributed-port option set for chassisredirect port lsp1/d
+ignored_dp=ls1
+])
 AT_CLEANUP
 
 AT_SETUP([ovn-controller - ssl/tls files change when using command line options])

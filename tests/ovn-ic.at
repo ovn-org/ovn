@@ -495,7 +495,8 @@ switch <0> (ts1)
 check ovn-nbctl lsp-del lsp-ts1-lr1
 OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl show | grep lsp-ts1-lr1])
 
-OVN_CLEANUP_SBOX(gw1)
+# ts1 should not be local datapath since lsp-ts1-lr1 has been deleted.
+OVN_CLEANUP_SBOX(gw1, [], [], [ts1,lr1])
 OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP

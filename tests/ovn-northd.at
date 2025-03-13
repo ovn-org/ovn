@@ -11131,7 +11131,10 @@ northd_recomp=$(as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd 
 echo northd_recomp $northd_recomp
 AT_CHECK([test $northd_recomp -ge 1])
 
-OVN_CLEANUP([hv1])
+# ls0 should not be a local datapath as all its ports got deleted.
+OVN_CLEANUP([hv1
+ignored_dp=ls0
+])
 AT_CLEANUP
 ])
 
@@ -11254,7 +11257,9 @@ check ovn-nbctl --wait=sb lrp-del lrp
 check_recompute_counter 1 1
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
-OVN_CLEANUP([hv1])
+# lr0 is not local datapath as lrp got deleted.
+OVN_CLEANUP([hv1
+ignored_dp=lr0])
 AT_CLEANUP
 ])
 

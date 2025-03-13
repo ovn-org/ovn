@@ -362,9 +362,11 @@ m4_define([OVN_CLEANUP_CONTROLLER],[
     hv=$1
     sbox=$2
     related_ports=$3
-    no_recompute_check=$4
+    ignored_dp=$4
+    ignored_tables=$5
+    no_recompute_check=$6
     if test "$no_recompute_check" != "True"; then
-        CHECK_RELATED_PORTS_AFTER_RECOMPUTE([$hv], [$sbox], [$related_ports])
+        CHECK_AFTER_RECOMPUTE([$hv], [$sbox], [$related_ports], [$ignored_dp], [$ignored_tables])
     fi
 
     if test "$hv" = "vtep"; then
@@ -385,10 +387,12 @@ m4_define([OVN_CLEANUP_SBOX],[
     sbox=$1
     error=$2
     related_ports=$3
-    no_recompute_check=$4
+    ignored_dp=$4
+    ignored_tables=$5
+    no_recompute_check=$6
     echo "$sbox: clean up sandbox"
     as $sbox
-    OVN_CLEANUP_CONTROLLER([$sbox], [$sbox], [$related_ports], [$no_recompute_check])
+    OVN_CLEANUP_CONTROLLER([$sbox], [$sbox], [$related_ports], [$ignored_dp], [$ignored_tables], [$no_recompute_check])
     OVN_CLEANUP_VSWITCH([$sbox])
 
     # Check for errors in logs. Ignore following errors:
@@ -416,13 +420,15 @@ m4_define([OVN_CLEANUP],[
     m4_foreach([sbox_and_error], [$@], [
         sbox=$(echo "sbox_and_error" |sed -n '1p')
         error=$(echo "sbox_and_error"  | grep '/')
-        related_ports=$(echo "sbox_and_error" | sed -n '2,$p' | grep -v '/')
-        CHECK_RELATED_PORTS_AFTER_RECOMPUTE([$sbox], [$sbox], [$related_ports])
+        ignored_dp=$(echo "sbox_and_error"  | grep 'ignored_dp' |  cut -d'=' -f 2)
+        ignored_tables=$(echo "sbox_and_error"  | grep 'ignored_tables' |  cut -d'=' -f 2)
+        related_ports=$(echo "sbox_and_error" | sed -n '2,$p' | grep -v '/' | grep -v 'ignored_dp' | grep -v 'ignored_tables')
+        CHECK_AFTER_RECOMPUTE([$sbox], [$sbox], [$related_ports], [$ignored_dp], [$ignored_tables])
     ])
     m4_foreach([sbox_and_error], [$@], [
         sbox=$(echo "sbox_and_error" |sed -n '1p')
         error=$(echo "sbox_and_error"  | grep '/')
-        OVN_CLEANUP_SBOX([$sbox], [$error], [], ["True"])
+        OVN_CLEANUP_SBOX([$sbox], [$error], [], [], [], ["True"])
     ])
 
     echo
