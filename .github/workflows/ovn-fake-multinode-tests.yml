@@ -114,6 +114,11 @@ jobs:
         . .ci/linux-util.sh
         free_up_disk_space_ubuntu
 
+    - name: Set podman apparmor=unconfined
+      run: |
+        . .ci/linux-util.sh
+        set_containers_apparmor_profile unconfined
+
     - uses: actions/download-artifact@v4
       with:
         name: test-${{ github.ref_name }}-image

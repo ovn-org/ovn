@@ -17,3 +17,11 @@ function free_up_disk_space_ubuntu()
                  /usr/local/share/boost/'
     sudo rm -rf $paths
 }
+
+function set_containers_apparmor_profile()
+{
+    local profile=$1
+
+    sed -i "s/^#apparmor_profile = \".*\"$/apparmor_profile = \"$profile\"/" \
+        /usr/share/containers/containers.conf
+}
