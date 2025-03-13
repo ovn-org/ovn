@@ -2861,11 +2861,9 @@ lb_data_sb_load_balancer_handler(struct engine_node *node, void *data)
         if (!sbrec_load_balancer_is_new(sbrec_lb)) {
             lb = ovn_controller_lb_find(&lb_data->local_lbs,
                                         &sbrec_lb->header_.uuid);
-            if (!lb) {
-                continue;
+            if (lb) {
+                lb_data_local_lb_remove(lb_data, lb);
             }
-
-            lb_data_local_lb_remove(lb_data, lb);
         }
 
         if (sbrec_load_balancer_is_deleted(sbrec_lb) ||
