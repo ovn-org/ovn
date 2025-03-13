@@ -99,6 +99,10 @@ lport_is_local(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const struct sbrec_port_binding *pb = lport_lookup_by_name(
         sbrec_port_binding_by_name, port_name);
 
+    if (!pb) {
+        return false;
+    }
+
     if (lport_pb_is_chassis_resident(chassis, active_tunnels, pb)) {
         return true;
     }
