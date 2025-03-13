@@ -542,9 +542,9 @@ NS_CHECK_EXEC([foo1], [nc -z fd12::b 8081])
 
 NS_CHECK_EXEC([foo1], [ip -6 neigh add fd11::b lladdr 00:00:01:01:02:03 dev foo1], [0])
 check ovn-nbctl --wait=sb lb-add lb4 [[fd11::a]]:8080 [[fd11::2]]:80
-check ovn-nbctl --wait=sb lb-add lb40 [[fd11::a]]:8080 [[fd11::2]]:80
+check ovn-nbctl --wait=sb lb-add lb40 [[fd11::c]]:8080 [[fd11::2]]:80
 check ovn-nbctl --wait=sb lb-add lb4-no-aff [[fd11::a]]:8081 [[fd11::2]]:80
-check ovn-nbctl --wait=sb lb-add lb40-no-aff [[fd11::a]]:8081 [[fd11::2]]:80
+check ovn-nbctl --wait=sb lb-add lb40-no-aff [[fd11::c]]:8081 [[fd11::2]]:80
 check ovn-nbctl --wait=sb set load_balancer lb4 options:affinity_timeout=60 options:hairpin_snat_ip="fd11::b"
 check ovn-nbctl --wait=sb set load_balancer lb40 options:affinity_timeout=60 options:hairpin_snat_ip="fd11::b"
 check ovn-nbctl ls-lb-add foo lb4
