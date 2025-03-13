@@ -14760,7 +14760,7 @@ check ovn-nbctl lsp-add sw1 sw1-rtr \
     -- lsp-set-addresses sw1-rtr 00:00:00:00:01:00 \
     -- lsp-set-options sw1-rtr router-port=rtr-sw1
 
-check ovn-nbctl lsp-add sw2 sw2-rtr \
+check ovn-nbctl --wait=sb lsp-add sw2 sw2-rtr \
     -- lsp-set-type sw2-rtr router  \
     -- lsp-set-addresses sw1-rtr 00:00:00:00:02:00 \
     -- lsp-set-options sw2-rtr router-port=rtr-sw2
