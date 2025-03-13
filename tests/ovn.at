@@ -9925,7 +9925,10 @@ n_arp=$(tcpdump -c 10 -ner hv1/snoopvif-tx.pcap arp | wc -l)
 test "$n_arp" = 10
 ])
 
-OVN_CLEANUP([hv1],[hv2])
+# lr0 & ls0 should not be local datapath on hv2 anymore, and hence
+# ln_port should not be a related_port on hv2.
+OVN_CLEANUP([hv1],[hv2
+ln_port])
 
 AT_CLEANUP
 ])
@@ -25162,12 +25165,13 @@ m4_define([DVR_N_S_ARP_HANDLING],
    as hv4 ovs-appctl fdb/show br-phys
 
    # Expect some potential transaction errors for MAC_Binding
-   # Since router-to-underlay moved to hv3, ls-underlay is not local to hv1 anymore and ln3 should not be a related_port.
+   # Since router-to-underlay moved to hv3, ls-underlay is not local to hv1 or hv2 anymore.
+   # As ls-underlay is not local, ln3 should not be a related_port.
    OVN_CLEANUP([hv1
    /transaction error/d
 ln3],[hv2
    /transaction error/d
-   ],[hv3
+ln3],[hv3
    /transaction error/d
    ],[hv4])
 
@@ -26352,7 +26356,10 @@ wait_row_count Service_Monitor 1
 wait_row_count Service_Monitor 0 status=offline
 wait_row_count Service_Monitor 0 status=online
 
-OVN_CLEANUP([hv1], [hv2])
+# lr0_public is on hv1. Hence lr0 & public should not be local datapaths on hv2, and ln_public not a related port for hv2.
+OVN_CLEANUP([hv1], [hv2
+ln-public])
+
 AT_CLEANUP
 ])
 
@@ -26550,7 +26557,10 @@ wait_row_count Service_Monitor 1
 wait_row_count Service_Monitor 0 status=offline
 wait_row_count Service_Monitor 0 status=online
 
-OVN_CLEANUP([hv1], [hv2])
+# lr0_public is on hv1. Hence lr0 & public should not be local datapaths on hv2, and ln_public not a related port for hv2.
+OVN_CLEANUP([hv1], [hv2
+ln-public])
+
 AT_CLEANUP
 ])
 
@@ -26669,7 +26679,10 @@ check_row_count Service_Monitor 0
 
 AT_CHECK([test 1 = `grep -c "SCTP load balancers do not currently support health checks" northd/ovn-northd.log`])
 
-OVN_CLEANUP([hv1],[hv2])
+# lr0_public is on hv1. Hence lr0 & public should not be local datapaths on hv2, and ln_public not a related port for hv2.
+OVN_CLEANUP([hv1], [hv2
+ln-public])
+
 AT_CLEANUP
 ])
 
@@ -34368,13 +34381,22 @@ test_ip vif11 f00000000010 06ac10010001 $sip $dip vif-north3
 OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv5/vif-north3-tx.pcap], [vif-north3.expected])
 
 # Since DR-S1, DR-S2 and DR-S3 are gw-chassis on resp. hv2, hv3 and hv4,
-# S1, S2 and S3 should not be local datapaths on hv1, and their localnets
+# S1, S2 and S3 should not be local datapaths on the other hvs, and their localnets
 # should not be related ports.
 OVN_CLEANUP([hv1
 ln1
 ln2
 ln3
-],[hv2],[hv3],[hv4],[hv5])
+],[hv2
+ln2
+ln3],[hv3
+ln1
+ln3],[hv4
+ln1
+ln2],[hv5
+ln1
+ln2
+ln3])
 AT_CLEANUP
 ])
 
@@ -40499,7 +40521,9 @@ OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_L
 check ovn-nbctl --wait=hv lsp-del multi
 OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep -c check_pkt_larger) -eq 0])
 
-OVN_CLEANUP([hv1],[hv2])
+# ls (and it's localnet ln) should not be local datapath to hv2 as multi was deleted. Still local datapath to hv1 due to lsp1.
+OVN_CLEANUP([hv1],[hv2
+ln])
 
 AT_CLEANUP
 ])
