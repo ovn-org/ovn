@@ -283,8 +283,7 @@ tcp,orig=(src=192.168.1.200,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),rep
 ])
 NS_CHECK_EXEC([foo1], [nc -z 192.168.1.100 8081])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
-
+OVN_CLEANUP_CONTROLLER([hv1])
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
@@ -581,7 +580,7 @@ tcp,orig=(src=fd11::b,dst=fd11::2,sport=<cleared>,dport=<cleared>),reply=(src=fd
 ])
 NS_CHECK_EXEC([foo1], [nc -z fd11::a 8081])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -723,7 +722,7 @@ test_fragmented_traffic
 check ovn-nbctl ls-lb-del public
 check ovn-nbctl lb-del lb1
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -890,7 +889,8 @@ for type in icmp udp tcp; do
     test_$type
 done
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+# Avoid checking flows on public due to different ct-zone allocation for cr-ports in I+P/recompute.
+OVN_CLEANUP_CONTROLLER([hv1], [], [], [public])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -1009,7 +1009,7 @@ NS_CHECK_EXEC([server], [ip r get fd10::1 | grep -q "mtu 1300"])
 
 ovn-appctl -t ovn-controller vlog/set info
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -1084,7 +1084,7 @@ check cmp frag_test_srv.expected udp_frag_test_srv.rcvd
 check cmp frag_test_client.expected udp_frag_test_c1.recvd
 check cmp frag_test_client.expected udp_frag_test_c2.recvd
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -1156,7 +1156,7 @@ check cmp frag_test_srv.expected udp_frag_test_srv.rcvd
 check cmp frag_test_client.expected udp_frag_test_c1.recvd
 check cmp frag_test_client.expected udp_frag_test_c2.recvd
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -1371,7 +1371,7 @@ icmpv6,orig=(src=fd11::3,dst=fd20::4,id=<cleared>,type=128,code=0),reply=(src=fd
 icmpv6,orig=(src=fd20::1,dst=fd20::4,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd20::1,id=<cleared>,type=129,code=0),zone=<cleared>
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -1629,7 +1629,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 icmpv6,orig=(src=fd11::3,dst=fd20::4,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd11::3,id=<cleared>,type=129,code=0),zone=<cleared>
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -1720,7 +1720,7 @@ NS_CHECK_EXEC([mgmt], [(echo "Hello TCP"; sleep 3) | nc -s 172.16.100.2 -o clien
 check cmp server_tcp.log tcp.expected
 check cmp client_tcp.log tcp.expected
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])

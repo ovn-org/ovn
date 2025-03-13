@@ -162,7 +162,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 icmp,orig=(src=192.168.2.2,dst=192.168.1.2,id=<cleared>,type=8,code=0),reply=(src=192.168.1.2,dst=30.0.0.1,id=<cleared>,type=0,code=0),zone=<cleared>
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -342,7 +342,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 icmpv6,orig=(src=fd12::2,dst=fd11::2,id=<cleared>,type=128,code=0),reply=(src=fd11::2,dst=fd30::1,id=<cleared>,type=129,code=0),zone=<cleared>
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -454,7 +454,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 icmp,orig=(src=192.168.1.2,dst=172.16.1.2,id=<cleared>,type=8,code=0),reply=(src=172.16.1.2,dst=172.16.1.1,id=<cleared>,type=0,code=0),zone=<cleared>
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -566,7 +566,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 icmpv6,orig=(src=fd10::2,dst=fd30::2,id=<cleared>,type=128,code=0),reply=(src=fd30::2,dst=fd30::1,id=<cleared>,type=129,code=0),zone=<cleared>
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -788,7 +788,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 icmp,orig=(src=192.168.1.2,dst=172.16.1.3,id=<cleared>,type=8,code=0),reply=(src=172.16.1.3,dst=30.0.0.1,id=<cleared>,type=0,code=0),zone=<cleared>
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -1014,7 +1014,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 icmpv6,orig=(src=fd11::2,dst=fd30::3,id=<cleared>,type=128,code=0),reply=(src=fd30::3,dst=fd40::1,id=<cleared>,type=129,code=0),zone=<cleared>
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -1328,7 +1328,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 icmpv6,orig=(src=fd11::2,dst=fd30::3,id=<cleared>,type=128,code=0),reply=(src=fd30::3,dst=fd40::1,id=<cleared>,type=129,code=0),zone=<cleared>
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -1610,7 +1610,7 @@ OVS_WAIT_UNTIL([
     test "${n_reset}" = "1"
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -1831,7 +1831,7 @@ if [[ "$bar3_ct" == "20" ]]; then
 else
     AT_CHECK([test $bar3_ct -eq 0])
 fi
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -2078,7 +2078,7 @@ AT_CHECK([test $bar1_ct -gt 0])
 AT_CHECK([test $bar2_ct -gt 0])
 AT_CHECK([test $bar3_ct -gt 0])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -2186,7 +2186,7 @@ tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(s
 tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.5,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -2296,7 +2296,7 @@ tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd
 tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::5,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -2545,7 +2545,7 @@ test "x$ct1 = x$exp_ct1" && test "x$ct2 = x$exp_ct2"
 
 OVS_WAIT_UNTIL([check_est_flows], [check established flows])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -2640,7 +2640,7 @@ for i in $(seq 1 5); do
     NS_CHECK_EXEC([client], [wget 172.16.1.150 -t 5 -T 1 --retry-connrefused -v -o wget$i.log])
 done
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -2797,7 +2797,7 @@ tcp,orig=(src=fd72::2,dst=fd30::2,sport=<cleared>,dport=<cleared>),reply=(src=fd
 tcp,orig=(src=fd72::2,dst=fd30::2,sport=<cleared>,dport=<cleared>),reply=(src=fd12::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -2968,7 +2968,7 @@ test "x$ct1 = x$exp_ct1" && test "x$ct2 = x$exp_ct2"
 ], [0], [dnl
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -3141,7 +3141,7 @@ test "x$ct1 = x$exp_ct1" && test "x$ct2 = x$exp_ct2"
 ], [0], [dnl
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -3362,7 +3362,7 @@ test "x$ct1 = x$exp_ct1" && test "x$ct2 = x$exp_ct2" && test "x$ct3 = x$exp_ct3"
 ], [0], [dnl
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -3505,7 +3505,7 @@ tcp,orig=(src=172.16.1.2,dst=172.16.1.11,sport=<cleared>,dport=<cleared>),reply=
 tcp,orig=(src=172.16.1.2,dst=172.16.1.11,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -3648,7 +3648,7 @@ tcp,orig=(src=fd72::2,dst=fd72::11,sport=<cleared>,dport=<cleared>),reply=(src=f
 tcp,orig=(src=fd72::2,dst=fd72::11,sport=<cleared>,dport=<cleared>),reply=(src=fd02::2,dst=fd72::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -3865,7 +3865,7 @@ OVS_WAIT_UNTIL([
     test "${total_pkts}" = "3"
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -4062,7 +4062,7 @@ test_connectivity_from_ext foo1 fd11::2
 # does not have DNAT
 test_connectivity_from_ext bar1 fd12::2
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -4246,7 +4246,7 @@ icmp,orig=(src=172.16.1.1,dst=192.168.2.2,id=<cleared>,type=8,code=0),reply=(src
 icmp,orig=(src=192.168.1.3,dst=172.16.1.4,id=<cleared>,type=8,code=0),reply=(src=172.16.1.4,dst=172.16.1.1,id=<cleared>,type=0,code=0),zone=<cleared>
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -4414,7 +4414,7 @@ icmpv6,orig=(src=fd20::1,dst=fd12::2,id=<cleared>,type=128,code=0),reply=(src=fd
 icmpv6,orig=(src=fd20::1,dst=fd20::4,id=<cleared>,type=128,code=0),reply=(src=fd12::2,dst=fd20::1,id=<cleared>,type=129,code=0),zone=<cleared>
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -4491,7 +4491,8 @@ check ovs-vsctl clear interface ovs-p1 external_ids
 # check conntrack zone is flushed
 OVS_WAIT_WHILE([ovs-appctl dpctl/dump-conntrack zone=$zone_id | grep .])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+# ls1 should not be a local datapath anymore since ovs-p1 binding removed
+OVN_CLEANUP_CONTROLLER([hv1], [], [], [ls1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -4657,7 +4658,7 @@ OVS_WAIT_UNTIL([
     test "${total_queries}" = "2"
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -4881,7 +4882,7 @@ OVS_WAIT_UNTIL([
     test "${n_reset}" = "1"
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -5064,7 +5065,7 @@ ovs-vsctl set interface ovs-sw1-p1 external_ids:iface-id=sw1-p1
 wait_row_count Service_Monitor 2
 wait_row_count Service_Monitor 1 status=online
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -5166,7 +5167,7 @@ check ovn-nbctl --wait=hv sync
 NS_CHECK_EXEC([lsp], [nc 88.88.88.88 8080 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([lsp], [nc 88.88.88.89 8080 -z], [0], [ignore], [ignore])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -5263,7 +5264,7 @@ check ovn-nbctl --wait=hv sync
 NS_CHECK_EXEC([lsp], [nc 8800::0088 8080 -z], [0], [ignore], [ignore])
 NS_CHECK_EXEC([lsp], [nc 8800::0089 8080 -z], [0], [ignore], [ignore])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -5496,7 +5497,7 @@ aef0::3 udp port 90" | uniq | wc -l)
     test $c -ge 1
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -5733,7 +5734,9 @@ aef0::3 udp port 90" | uniq | wc -l)
     test $c -ge 1
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+kill $(pidof tcpdump)
+
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -5856,7 +5859,7 @@ AT_CHECK([
     test $ct_est_count -eq 1
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -5976,7 +5979,7 @@ NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 20.0.0.4 80], [0], [ignore], [ignore])
 # Send the packet to VIP.
 NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 30.0.0.10 80], [0], [ignore], [ignore])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -6085,7 +6088,7 @@ tcp,orig=(src=42.42.42.3,dst=42.42.42.2,sport=<clnt_s_port>,dport=4242),reply=(s
 tcp,orig=(src=42.42.42.3,dst=66.66.66.66,sport=<clnt_s_port>,dport=666),reply=(src=42.42.42.2,dst=42.42.42.3,sport=4242,dport=<clnt_s_port>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -6194,7 +6197,7 @@ tcp,orig=(src=4242::3,dst=4242::2,sport=<clnt_s_port>,dport=4242),reply=(src=424
 tcp,orig=(src=4242::3,dst=6666::1,sport=<clnt_s_port>,dport=666),reply=(src=4242::2,dst=4242::3,sport=4242,dport=<clnt_s_port>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -6288,7 +6291,7 @@ NS_CHECK_EXEC([sw0-p1-f], [ping -q -c 3 -i 0.3 -w 2 10.0.0.5 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -6504,7 +6507,7 @@ sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
 tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x401020500000000,protoinfo=(state=<cleared>)
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -6736,7 +6739,7 @@ sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
 tcp,orig=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd07::1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000,protoinfo=(state=<cleared>)
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -6785,7 +6788,7 @@ OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-port1) = xup])
 ovs-vsctl set interface p1 type=\"\"
 OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-port1) = xdown])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1], [], [], [sw0])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -6876,7 +6879,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 icmp,orig=(src=192.168.1.2,dst=172.16.1.100,id=<cleared>,type=8,code=0),reply=(src=172.16.1.100,dst=172.16.1.20,id=<cleared>,type=0,code=0),zone=<cleared>
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -7112,7 +7115,7 @@ AT_CHECK([ovn-nbctl set Logical_Switch_Port sw02 options:qos_burst=1000000])
 OVS_WAIT_UNTIL([tc class show dev ovs-public | \
                 grep -q 'class htb .* prio 0 rate 5Gbit ceil 6Gbit burst 125000b cburst 124500b'])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -7312,7 +7315,7 @@ Allowing connections from 1000::a
 wait_column "up" nb:bfd status logical_port=rp-public
 check ovn-nbctl destroy bfd $uuid_v6
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -7446,7 +7449,7 @@ AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_mark | grep -v ipv6 -c], [1], [d
 0
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -7571,7 +7574,7 @@ NS_CHECK_EXEC([vm2], [ping -q -c 3 -i 0.3 -w 2 172.18.2.10 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -7688,7 +7691,8 @@ NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 172.18.2.12 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+# Avoid checking flows on ls-pub due to different ct-zone allocation for cr-ports in I+P/recompute.
+OVN_CLEANUP_CONTROLLER([hv1], [], [], [ls-pub])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -7900,7 +7904,7 @@ EOF
 
 OVS_WAIT_UNTIL([test "1" = "$(grep -c "dl_dst=33:33:33:33:33:33" ovn-controller.log)"])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -8043,7 +8047,7 @@ icmp,orig=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0
 icmp,orig=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=0,code=0),zone=<cleared>
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -8185,7 +8189,7 @@ icmp,orig=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0
 icmp,orig=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=0,code=0),zone=<cleared>
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -8286,7 +8290,7 @@ icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0
 icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>,labels=0x4d3000000000000000000000000
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -8387,7 +8391,7 @@ icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0
 icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>,mark=16,labels=0x4d3000000000000000000000000
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -8487,7 +8491,7 @@ check ovn-nbctl --wait=hv sync
 
 AT_CHECK([ip netns exec sw0p1 wget 20.0.0.3 -t 3 -T 1], [0], [ignore], [ignore])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -8844,7 +8848,7 @@ check $PYTHON $srcdir/check_acl_log.py \
     --icmp_code=0
 
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -8973,7 +8977,7 @@ tcp,orig=(src=192.168.2.2,dst=172.16.1.2,sport=<cleared>,dport=<cleared>),reply=
 
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -9035,7 +9039,7 @@ NS_CHECK_EXEC([sw0-p1.2], [ping -q -c 3 -i 0.3 -w 2 10.0.0.3 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -9132,7 +9136,7 @@ NS_CHECK_EXEC([ls1p1], [ping6 -q -c 3 -i 0.3 -w 2 1711::1  | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -9241,7 +9245,7 @@ OVS_WAIT_UNTIL([
 # Double check we never hit error condition
 AT_CHECK([grep -qE 'Too many active IPv4 mcast flows' northd/ovn-northd.log], [1])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -9315,7 +9319,7 @@ NS_CHECK_EXEC([vif0], [ping -q -c 3 -i 0.3 -w 1 192.168.20.1 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -9523,7 +9527,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 udp,orig=(src=192.168.10.10,dst=192.168.20.20,sport=<cleared>,dport=<cleared>),reply=(src=192.168.20.10,dst=192.168.10.10,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=10
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -9673,7 +9677,7 @@ OVS_WAIT_UNTIL([
     test "${requests}" -ge "6"
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -9824,7 +9828,7 @@ OVS_WAIT_UNTIL([
     test "${requests}" -ge "6"
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -9952,7 +9956,7 @@ OVS_WAIT_UNTIL([
         test "${total_icmp1_pkts}" = "3"
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -10103,7 +10107,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -10247,7 +10251,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -10358,7 +10362,7 @@ NS_CHECK_EXEC([ns_ls1p1], [ping -q -c 3 -i 0.3 -w 2 10.89.189.1 | FORMAT_PING], 
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -10500,7 +10504,7 @@ NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -10714,7 +10718,7 @@ check ovn-nbctl --wait=hv lb-del lb1
 
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [LB1_CT_ENTRIES])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -10859,7 +10863,7 @@ NS_CHECK_EXEC([ns_ext1], [ping -q -c 3 -i 0.3 -w 2 172.0.0.88 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -11019,7 +11023,7 @@ OVS_WAIT_UNTIL([
         test "${total_icmp1_pkts}" -gt "${total_icmp_pkts}"
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -11189,7 +11193,7 @@ OVS_WAIT_UNTIL([
     test "${total_pkts}" = "4"
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -11322,7 +11326,7 @@ OVS_WAIT_UNTIL([
     test "${total_pkts}" = "3"
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -11815,7 +11819,9 @@ OVS_WAIT_UNTIL([
     test "${n_packets}" = "3"
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+killall tcpdump
+
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -11957,7 +11963,7 @@ acl_test from-lport "" pg
 acl_test from-lport "--apply-after-lb" pg
 acl_test to-lport "" pg
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -12046,7 +12052,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 tcp,orig=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.0.2,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -12119,7 +12125,7 @@ NS_CHECK_EXEC([vif0], [ping -q -c 3 -i 0.3 -w 2 fe80::200:ff:fe00:1 | FORMAT_PIN
 
 check_row_count mac_binding 1 mac=\"00:00:00:00:00:02\"
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -12233,7 +12239,7 @@ OVS_WAIT_FOR_OUTPUT([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.1.151) |
 1
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -12446,7 +12452,7 @@ sctp,orig=(src=172.16.1.2,dst=192.168.2.2,sport=<cleared>,dport=<cleared>),reply
 
 OVS_WAIT_UNTIL([check_est_flows 0xa], [check established flows])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -12525,7 +12531,7 @@ dnl Test the connection originating something that uses the same source port
 dnl as the LB VIP.
 NS_CHECK_EXEC([vm1], [nc -z -p 8080 42.42.42.1 80], 0, [ignore], [ignore])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -12614,7 +12620,7 @@ AT_CHECK([ovs-ofctl dump-flows br-int | grep 'table=OFTABLE_CHK_LB_AFFINITY, n_p
 0
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -12704,7 +12710,7 @@ NS_CHECK_EXEC([sw1-p0], [ping -q -c 3 -i 0.3 -w 2 172.16.1.100 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -12817,7 +12823,7 @@ restart_ovsdb_controller_updates $TCP_PORT
 # Check that the MAC_Binding entries have been properly created as SB is now writable.
 wait_row_count MAC_Binding 1 logical_port=lr1-pub ip=172.24.4.100
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -12912,7 +12918,7 @@ zone_id=$(ovn-appctl -t ovn-controller ct-zone-list | grep lr_dnat | cut -d ' ' 
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep -c "zone=$zone_id"], [0], [2
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -13059,7 +13065,7 @@ NS_CHECK_EXEC([sw01], [ip addr show sw01 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'],
 NS_CHECK_EXEC([sw11], [ip addr show sw11 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'], [0], [dnl
 192.168.2.10
 ])
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -13196,7 +13202,7 @@ check ovn-nbctl set logical_router lr options:chassis=hv1
 check_snat
 check_dnat
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -13332,7 +13338,7 @@ check ovn-nbctl set logical_router lr options:chassis=hv1
 check_snat
 check_dnat
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -13548,7 +13554,7 @@ AT_CHECK([for f in $(ls -1 nfcapd.*); do nfdump -o json -r $f; done | grep obser
 "observationPointID" : 3012,
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -13675,7 +13681,7 @@ AT_CHECK([for f in $(ls -1 nfcapd.*); do nfdump -o json -r $f; done | grep obser
 "observationPointID" : 2002,
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -13799,7 +13805,7 @@ AT_CHECK([for f in $(ls -1 nfcapd.*); do nfdump -o json -r $f; done | grep obser
 "observationPointID" : 1001,
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -13923,7 +13929,7 @@ AT_CHECK([for f in $(ls -1 nfcapd.*); do nfdump -o json -r $f; done | grep obser
 "observationPointID" : 1003,
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -14045,7 +14051,7 @@ NS_CHECK_EXEC([sw01], [ping -q -c 2 -i 0.2 -w 2 172.16.1.1 | FORMAT_PING],
 ])
 
 AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-remote=$SB_PATH])
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -14148,7 +14154,7 @@ AT_CHECK([grep -q "pinctrl_drop_buffered_packets_map" ovn_counters], [0])
 
 AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-remote=$SB_PATH])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -14298,7 +14304,7 @@ from bgp-daemon: BFD IPv6 client traffic
 NETNS_DAEMONIZE([ext-foo], [nc -l -k 172.16.1.100 2222], [nc_external.pid])
 NS_CHECK_EXEC([bar1], [echo "TCP test" | nc -w 1 --send-only 172.16.1.100 2222])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -14448,7 +14454,7 @@ from bgp-daemon: BFD IPv6 client traffic
 NETNS_DAEMONIZE([ext-foo], [nc -l -k 172.16.1.100 2222], [nc_external.pid])
 NS_CHECK_EXEC([bar1], [echo "TCP test" | nc -w 1 --send-only 172.16.1.100 2222])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -14521,7 +14527,7 @@ AT_CHECK([grep -c "NXT_CT_FLUSH_ZONE" ovs-vswitchd.log], [0], [dnl
 3
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -14633,7 +14639,7 @@ AT_CHECK([ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-15], [0
 [2001:db8:3333]
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -14832,7 +14838,7 @@ grep "labels=0x"$acl_id"00000000000000000000" | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -15000,7 +15006,7 @@ NS_CHECK_EXEC([bob], [ping -q -c 3 -i 0.3 -w 2 10.42.0.10 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -15161,7 +15167,7 @@ NS_CHECK_EXEC([bob], [ping -q -c 3 -i 0.3 -w 2 10.42.0.10 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -15290,7 +15296,8 @@ NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 172.18.1.12 | FORMAT_PING], \
 7 packets transmitted, 0 received, 100% packet loss, time 0ms
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+# Avoid checking flows on ls-pub due to different ct-zone allocation for cr-ports in I+P/recompute.
+OVN_CLEANUP_CONTROLLER([hv1], [], [], [ls-pub])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -15359,7 +15366,7 @@ check ovn-nbctl --wait=hv sync
 NS_CHECK_EXEC([foo], [arping -q -c 3 192.168.1.100])
 NS_CHECK_EXEC([foo], [arping -q -c 3 172.16.1.100])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -15627,7 +15634,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
 sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -15894,7 +15901,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
 sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
 ])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
@@ -16172,7 +16179,7 @@ check_row_count Learned_Route 1 ip_prefix=233.253.0.0/24 nexthop=192.168.20.20
 # delete the whole vrf.
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
                              options:dynamic-routing-maintain-vrf=false
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 AT_CHECK([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [0], [dnl
 233.252.0.0/24 via 192.168.10.10 dev lo onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink
@@ -16222,7 +16229,7 @@ blackhole 198.51.100.0/24 proto 84 metric 1000
 start_daemon ovn-controller
 OVS_WAIT_UNTIL([test "$(ovn-appctl -t ovn-controller debug/status)" == "running"])
 check ovn-nbctl --wait=hv sync
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 AT_CHECK([ip vrf | grep -q ovnvrf1338], [1], [])
 
 as ovn-sb
@@ -16502,7 +16509,7 @@ check_row_count Learned_Route 1 ip_prefix=233.253.0.0/24 nexthop=192.168.20.20
 # delete the whole vrf
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
                              options:dynamic-routing-maintain-vrf=false
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 AT_CHECK([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [0], [dnl
 233.252.0.0/24 via 192.168.10.10 dev lo onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink
@@ -16538,7 +16545,7 @@ start_daemon ovn-controller
 OVS_WAIT_UNTIL([test "$(ovn-appctl -t ovn-controller debug/status)" == "running"])
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
         options:dynamic-routing-maintain-vrf=true
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 AT_CHECK([ip vrf | grep -q ovnvrf1337], [1], [])
 
 as ovn-sb
@@ -16670,7 +16677,7 @@ OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
 blackhole 10.42.10.10 proto 84 metric 1000
 blackhole 172.16.1.150 proto 84 metric 1000])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 # Ensure system resources are cleaned up.
 AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP], [1])
@@ -16808,7 +16815,7 @@ OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
 blackhole 2001:db8:1001::150 dev lo proto 84 metric 1000 pref medium
 blackhole 2001:db8:3001::150 dev lo proto 84 metric 1000 pref medium])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 # Ensure system resources are cleaned up.
 AT_CHECK([ip link | grep -q ovnvrf1001:.*UP], [1])
@@ -17011,7 +17018,11 @@ blackhole 10.42.20.11 proto 84 metric 100
 blackhole 172.16.1.10 proto 84 metric 1000
 blackhole 172.16.1.11 proto 84 metric 1000])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+# Skip ls-join in flows comparison between I+P and recompute, because R2 has multiple DGPs.
+# This causes the following flows in sb
+# table=xx(ls_in_l2_lkup      ), priority=80   , match=(flags[1] == 0 && arp.op == 1 && arp.tpa == 10.42.10.10), action=(outport = "lsp-join-to-r2"; output;)
+# table=xx(ls_in_l2_lkup      ), priority=80   , match=(flags[1] == 0 && arp.op == 1 && arp.tpa == 10.42.10.10), action=(outport = "lsp-join-to-r2-dgw2"; output;)
+OVN_CLEANUP_CONTROLLER([hv1], [], [], [ls-join])
 
 # Ensure system resources are cleaned up.
 AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP], [1])
@@ -17214,7 +17225,7 @@ blackhole 2001:db8:1004::150 dev lo proto 84 metric 1000 pref medium
 blackhole 2001:db8:1004::151 dev lo proto 84 metric 1000 pref medium
 blackhole 2001:db8:1005::150 dev lo proto 84 metric 100 pref medium])
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1], [], [], [ls-join])
 # Ensure system resources are cleaned up.
 AT_CHECK([ip link | grep -q ovnvrf1003:.*UP], [1])
 AT_CHECK([test `ip -6 route show table 1003 | wc -l` -eq 2], [1])
@@ -17326,7 +17337,7 @@ OVS_WAIT_UNTIL([
 # Wait for the mac binding entry to expire.
 wait_row_count MAC_Binding 0
 
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
