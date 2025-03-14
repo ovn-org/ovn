@@ -2795,7 +2795,9 @@ check_fake_multinode_setup_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-chassis-3'
 cleanup_multinode_resources_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-chassis-3'
 
 m_as ovn-chassis-1 ip link del migrator-p
-m_as ovn-chassis-2 ip link del sw0p2-p
+m_as ovn-chassis-2 ip link del sw0-port1-p
+m_as ovn-chassis-2 ip link del sw0-port2-p
+m_as ovn-chassis-2 ip link del sw0-port3-p
 m_as ovn-chassis-3 ip link del migrator-p
 
 OVS_WAIT_UNTIL([m_as ovn-chassis-1 ip link show | grep -q genev_sys])
@@ -2829,7 +2831,7 @@ check_ping() {
     dst_chassis=$(multinode_sbctl --bare --columns name list chassis $dst_chassis_uuid)
     dst_ip=$(multinode_nbctl lsp-get-addresses $dst_port | awk '{print $2}')
     echo "$src_port on $src_chassis => $dst_port on $dst_chassis(requested_chassis=$requested_chassis_uuid)"
-    M_NS_CHECK_EXEC([$src_chassis], [$src_ns], [ping -q -c 3 -i 0.3 -w 2 $dst_ip | FORMAT_PING], \
+    M_NS_CHECK_EXEC([$src_chassis], [$src_ns], [ping -q -c 3 -i 0.1 -w 2 $dst_ip | FORMAT_PING], \
 [0], [stdout])
     if [[ "$status" == "success" ]]; then
         AT_CHECK([cat stdout | grep -c "3 packets transmitted, 3 received, 0% packet loss"], [0], [dnl
@@ -2851,85 +2853,115 @@ check_ping() {
 
 check multinode_nbctl ls-add sw0
 check multinode_nbctl lsp-add sw0 migrator
-check multinode_nbctl lsp-set-addresses migrator "50:54:00:00:00:03 10.0.0.3 1000::3"
-check multinode_nbctl lsp-add sw0 sw0-port2
-check multinode_nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 1000::4"
+check multinode_nbctl lsp-set-addresses migrator "50:54:00:00:00:09 10.0.0.9 1000::9"
+for i in 1 2 3; do
+    check multinode_nbctl lsp-add sw0 sw0-port${i}
+    check multinode_nbctl lsp-set-addresses sw0-port${i} "50:54:00:00:00:0${i} 10.0.0.${i} 1000::${i}"
+done
 
 # Set requested chassis before creating migrator on chassis-3
 check multinode_nbctl --wait=hv set Logical_Switch_Port migrator options:requested-chassis=ovn-chassis-1
 
-m_as ovn-chassis-1 /data/create_fake_vm.sh migrator migrator 50:54:00:00:00:03 1342 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
-m_as ovn-chassis-3 /data/create_fake_vm.sh migrator migrator 50:54:00:00:00:03 1342 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0-port2 50:54:00:00:00:04 1342 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
+m_as ovn-chassis-1 /data/create_fake_vm.sh migrator migrator 50:54:00:00:00:09 1342 10.0.0.9 24 10.0.0.10 1000::9/64 1000::a
+m_as ovn-chassis-3 /data/create_fake_vm.sh migrator migrator 50:54:00:00:00:09 1342 10.0.0.9 24 10.0.0.10 1000::9/64 1000::a
+for i in 1 2 3; do
+    m_as ovn-chassis-${i} /data/create_fake_vm.sh sw0-port${i} sw0-port${i} 50:54:00:00:00:0${i} 1342 10.0.0.${i} 24 10.0.0.10 1000::${i}/64 1000::a
+done
 
 m_wait_for_ports_up
 
 M_START_TCPDUMP([ovn-chassis-1], [-neei genev_sys_6081 arp or ip], [ch1_genev])
 M_START_TCPDUMP([ovn-chassis-1], [-neei migrator-p arp or ip], [ch1_migrator])
 M_START_TCPDUMP([ovn-chassis-2], [-neei genev_sys_6081 arp or ip], [ch2_genev])
-M_START_TCPDUMP([ovn-chassis-2], [-neei sw0-port2-p arp or ip], [ch2_sw0p2])
+for i in 1 2 3; do
+    M_START_TCPDUMP([ovn-chassis-${i}], [-neei sw0-port${i}-p arp or ip], [ch${i}_sw0-port${i}])
+done
 M_START_TCPDUMP([ovn-chassis-3], [-neei genev_sys_6081 arp or ip], [ch3_genev])
 M_START_TCPDUMP([ovn-chassis-3], [-neei migrator-p arp or ip], [ch3_migrator])
 
 AS_BOX([Migration with vifs])
-check_ping migrator ovn-chassis-1 sw0-port2
-check_ping sw0-port2 ovn-chassis-2 migrator
+for i in 1 2 3; do
+    check_ping migrator ovn-chassis-1 sw0-port${i}
+    check_ping sw0-port${i} ovn-chassis-${i} migrator
+done
 
 echo "== Starting migration =="
 check multinode_nbctl --wait=hv set Logical_Switch_Port migrator options:requested-chassis=ovn-chassis-1,ovn-chassis-3
 
-check_ping migrator ovn-chassis-1 sw0-port2
-check_ping migrator ovn-chassis-3 sw0-port2
-
-check_ping sw0-port2 ovn-chassis-2 migrator "potential-duplicates"
+for i in 1 2 3; do
+    check_ping migrator ovn-chassis-1 sw0-port${i}
+    check_ping migrator ovn-chassis-3 sw0-port${i}
+    check_ping sw0-port${i} ovn-chassis-${i} migrator "potential-duplicates"
+done
 
 echo "== Finalizing migration =="
 check multinode_nbctl --wait=hv set Logical_Switch_Port migrator options:requested-chassis=ovn-chassis-3
 
-check_ping migrator ovn-chassis-3 sw0-port2
-check_ping sw0-port2 ovn-chassis-2 migrator
+for i in 1 2 3; do
+    check_ping migrator ovn-chassis-1 sw0-port${i} "lost"
+    check_ping migrator ovn-chassis-3 sw0-port${i}
+    check_ping sw0-port${i} ovn-chassis-${i} migrator
+done
 
 AS_BOX([Migration with container ports])
 # Create container ports.
 check multinode_nbctl ls-add sw1
 check multinode_nbctl lsp-add sw1 mig-cont migrator 10 \
-                   -- lsp-set-addresses mig-cont "f0:00:00:01:02:03 20.0.0.3"
-check multinode_nbctl lsp-add sw1 cont2 sw0-port2 10 \
-                   -- lsp-set-addresses cont2 "f0:00:00:01:02:04 20.0.0.4"
+                   -- lsp-set-addresses mig-cont "f0:00:00:01:02:09 20.0.0.9"
+for i in 1 2 3; do
+    check multinode_nbctl lsp-add sw1 cont${i} sw0-port${i} 10 \
+                       -- lsp-set-addresses cont${i} "f0:00:00:01:02:0${i} 20.0.0.${i}"
+done
 
 # Create the interface for lport mig-cont
 M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ip link add link migrator name cont type vlan id 10], [0])
-M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ip link set cont address f0:00:00:01:02:03], [0])
+M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ip link set cont address f0:00:00:01:02:09], [0])
 M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ip link set cont up], [0])
-M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ip addr add 20.0.0.3/24 dev cont], [0])
+M_NS_CHECK_EXEC([ovn-chassis-1], [migrator], [ip addr add 20.0.0.9/24 dev cont], [0])
 
 M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ip link add link migrator name cont type vlan id 10], [0])
-M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ip link set cont address f0:00:00:01:02:03], [0])
+M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ip link set cont address f0:00:00:01:02:09], [0])
 M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ip link set cont up], [0])
-M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ip addr add 20.0.0.3/24 dev cont], [0])
+M_NS_CHECK_EXEC([ovn-chassis-3], [migrator], [ip addr add 20.0.0.9/24 dev cont], [0])
 
-# Create the interface for lport sw1-port2
-M_NS_CHECK_EXEC([ovn-chassis-2], [sw0-port2], [ip link add link sw0-port2 name cont2 type vlan id 10], [0])
-M_NS_CHECK_EXEC([ovn-chassis-2], [sw0-port2], [ip link set cont2 address f0:00:00:01:02:04], [0])
-M_NS_CHECK_EXEC([ovn-chassis-2], [sw0-port2], [ip link set cont2 up], [0])
-M_NS_CHECK_EXEC([ovn-chassis-2], [sw0-port2], [ip addr add 20.0.0.4/24 dev cont2], [0])
+# Create the cont interface for lport sw0-port1, sw0-port2, sw0-port3
+for i in 1 2 3; do
+    M_NS_CHECK_EXEC([ovn-chassis-${i}], [sw0-port${i}], [ip link add link sw0-port${i} name cont${i} type vlan id 10], [0])
+    M_NS_CHECK_EXEC([ovn-chassis-${i}], [sw0-port${i}], [ip link set cont${i} address f0:00:00:01:02:0${i}], [0])
+    M_NS_CHECK_EXEC([ovn-chassis-${i}], [sw0-port${i}], [ip link set cont${i} up], [0])
+    M_NS_CHECK_EXEC([ovn-chassis-${i}], [sw0-port${i}], [ip addr add 20.0.0.${i}/24 dev cont${i}], [0])
+done
 
-check_ping mig-cont ovn-chassis-3 cont2
-check_ping cont2 ovn-chassis-2 mig-cont
+for i in 1 2 3; do
+    check_ping mig-cont ovn-chassis-3 cont${i}
+    check_ping cont${i} ovn-chassis-${i} mig-cont
+    check_ping migrator ovn-chassis-3 cont${i}
+    check_ping cont${i} ovn-chassis-${i} migrator
+done
 
 echo "== Starting migration back =="
 check multinode_nbctl --wait=hv set Logical_Switch_Port migrator options:requested-chassis=ovn-chassis-3,ovn-chassis-1
 
-check_ping mig-cont ovn-chassis-3 cont2
-check_ping mig-cont ovn-chassis-1 cont2
-check_ping cont2 ovn-chassis-2 mig-cont "potential-duplicates"
+for i in 1 2 3; do
+    check_ping mig-cont ovn-chassis-3 cont${i}
+    check_ping mig-cont ovn-chassis-1 cont${i}
+    check_ping cont${i} ovn-chassis-${i} mig-cont "potential-duplicates"
+    check_ping migrator ovn-chassis-3 cont${i}
+    check_ping migrator ovn-chassis-1 cont${i}
+    check_ping cont${i} ovn-chassis-${i} migrator "potential-duplicates"
+done
 
 echo "== Finalizing migration =="
 check multinode_nbctl --wait=hv set Logical_Switch_Port migrator options:requested-chassis=ovn-chassis-1
 
-check_ping mig-cont ovn-chassis-3 cont2 "lost"
-check_ping mig-cont ovn-chassis-1 cont2
-check_ping cont2 ovn-chassis-2 mig-cont
+for i in 1 2 3; do
+    check_ping mig-cont ovn-chassis-3 cont${i} "lost"
+    check_ping mig-cont ovn-chassis-1 cont${i}
+    check_ping cont${i} ovn-chassis-${i} mig-cont
+    check_ping migrator ovn-chassis-3 cont${i} "lost"
+    check_ping migrator ovn-chassis-1 cont${i}
+    check_ping cont${i} ovn-chassis-${i} migrator
+done
 
 echo "== Starting another migration, this time before starting dst VM =="
 # Unbind migrator from chassis-3
@@ -2939,18 +2971,76 @@ check multinode_nbctl --wait=hv set Logical_Switch_Port migrator options:request
 sleep 1
 m_as ovn-chassis-3 ovs-vsctl -- set Interface migrator-p external_ids:iface-id=migrator
 
-
-check_ping mig-cont ovn-chassis-3 cont2
-check_ping mig-cont ovn-chassis-1 cont2
-check_ping cont2 ovn-chassis-2 mig-cont "potential-duplicates"
-
+for i in 1 2 3; do
+    check_ping mig-cont ovn-chassis-3 cont${i}
+    check_ping mig-cont ovn-chassis-1 cont${i}
+    check_ping cont${i} ovn-chassis-${i} mig-cont "potential-duplicates"
+    check_ping migrator ovn-chassis-3 cont${i}
+    check_ping migrator ovn-chassis-1 cont${i}
+    check_ping cont${i} ovn-chassis-${i} migrator "potential-duplicates"
+done
 
 echo "== Finalizing migration =="
 check multinode_nbctl --wait=hv set Logical_Switch_Port migrator options:requested-chassis=ovn-chassis-3
 
-check_ping mig-cont ovn-chassis-1 cont2 "lost"
-check_ping mig-cont ovn-chassis-3 cont2
-check_ping cont2 ovn-chassis-2 mig-cont
+for i in 1 2 3; do
+    check_ping mig-cont ovn-chassis-1 cont${i} "lost"
+    check_ping mig-cont ovn-chassis-3 cont${i}
+    check_ping cont${i} ovn-chassis-${i} mig-cont
+    check_ping migrator ovn-chassis-1 cont${i} "lost"
+    check_ping migrator ovn-chassis-3 cont${i}
+    check_ping cont${i} ovn-chassis-${i} migrator
+done
+
+# Remove iface-id from src after migration is completed
+m_as ovn-chassis-1 ovs-vsctl -- remove Interface migrator-p external_ids iface-id
+check multinode_nbctl --wait=sb sync
+
+for i in 1 2 3; do
+    check_ping migrator ovn-chassis-1 sw0-port${i} "lost"
+    check_ping mig-cont ovn-chassis-1 cont${i} "lost"
+    check_ping migrator ovn-chassis-1 cont${i} "lost"
+    check_ping migrator ovn-chassis-3 sw0-port${i}
+    check_ping mig-cont ovn-chassis-3 cont${i}
+    check_ping migrator ovn-chassis-3 cont${i}
+    check_ping sw0-port${i} ovn-chassis-${i} migrator
+    check_ping cont${i} ovn-chassis-${i} mig-cont
+    check_ping cont${i} ovn-chassis-${i} migrator
+done
+
+# Finally, remove interface from src after migration is completed
+m_as ovn-chassis-1 ovs-vsctl -- del-port migrator-p
+for i in 1 2 3; do
+    check_ping migrator ovn-chassis-1 sw0-port${i} "lost"
+    check_ping mig-cont ovn-chassis-1 cont${i} "lost"
+    check_ping migrator ovn-chassis-1 cont${i} "lost"
+    check_ping migrator ovn-chassis-3 sw0-port${i}
+    check_ping mig-cont ovn-chassis-3 cont${i}
+    check_ping migrator ovn-chassis-3 cont${i}
+    check_ping sw0-port${i} ovn-chassis-${i} migrator
+    check_ping cont${i} ovn-chassis-${i} mig-cont
+    check_ping cont${i} ovn-chassis-${i} migrator
+done
+
+# Also do some recomputes ...
+AS_BOX([Recompute after removing interface])
+for i in 1 2 3; do
+    m_as ovn-chassis-${i} ovn-appctl -t ovn-controller recompute
+done
+
+check multinode_nbctl --wait=sb sync
+
+for i in 1 2 3; do
+    check_ping migrator ovn-chassis-1 sw0-port${i} "lost"
+    check_ping mig-cont ovn-chassis-1 cont${i} "lost"
+    check_ping migrator ovn-chassis-1 cont${i} "lost"
+    check_ping migrator ovn-chassis-3 sw0-port${i}
+    check_ping mig-cont ovn-chassis-3 cont${i}
+    check_ping migrator ovn-chassis-3 cont${i}
+    check_ping sw0-port${i} ovn-chassis-${i} migrator
+    check_ping cont${i} ovn-chassis-${i} mig-cont
+    check_ping cont${i} ovn-chassis-${i} migrator
+done
 
 m_as ovn-chassis-1 killall tcpdump
 m_as ovn-chassis-2 killall tcpdump
