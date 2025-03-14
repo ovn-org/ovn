@@ -76,6 +76,10 @@ multinode_nbctl () {
     m_as ovn-central ovn-nbctl "$@"
 }
 
+multinode_sbctl () {
+    m_as ovn-central ovn-sbctl "$@"
+}
+
 # m_count_rows TABLE [CONDITION...]
 #
 # Prints the number of rows in TABLE (that satisfy CONDITION).
