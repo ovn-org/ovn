@@ -93,6 +93,10 @@ multinode_nbctl () {
     m_as ovn-central-az1-1 ovn-nbctl "$@"
 }
 
+multinode_sbctl () {
+    m_as ovn-central-az1-1 ovn-sbctl "$@"
+}
+
 check_fake_multinode_setup_by_nodes() {
     check m_as ovn-central-az1-1 ovn-nbctl --wait=sb sync
     for c in $1
