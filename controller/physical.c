@@ -1777,9 +1777,9 @@ consider_port_binding(const struct physical_ctx *ctx,
                                                    parent_port)) {
                 /* Even though there is an ofport for this container
                  * parent port, it is requested on different chassis ignore
-                 * this container port.
+                 * this ofport.
                  */
-                return;
+                ofport = 0;
             }
         }
     } else if (type == LP_LOCALNET || type == LP_L2GATEWAY) {
