@@ -12879,8 +12879,8 @@ check ovn-nbctl set logical_router lr options:mac_binding_age_threshold=5
 check ovn-nbctl ls-add sw
 check ovn-nbctl ls-add public
 
-check ovn-nbctl lrp-add lr rp-sw 00:00:01:01:02:03 192.168.1.1/24
-check ovn-nbctl lrp-add lr rp-public 00:00:02:01:02:03 172.16.1.1/24
+check ovn-nbctl lrp-add lr rp-sw 00:00:01:01:02:03 192.168.1.1/24 fd11::1/64
+check ovn-nbctl lrp-add lr rp-public 00:00:02:01:02:03 172.16.1.1/24 fd12::1/64
 
 check ovn-nbctl lsp-add sw sw-rp -- set Logical_Switch_Port sw-rp \
     type=router options:router-port=rp-sw \
@@ -12891,8 +12891,9 @@ check ovn-nbctl lsp-add public public-rp -- set Logical_Switch_Port public-rp \
     -- lsp-set-addresses public-rp router
 
 ADD_NAMESPACES(alice)
-ADD_VETH(alice, alice, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", "192.168.1.1")
-check ovn-nbctl lsp-add sw alice -- lsp-set-addresses alice "f0:00:00:01:02:03 192.168.1.2"
+ADD_VETH(alice, alice, br-int, "fd11::2/64", "f0:00:00:01:02:03", \
+         "fd11::1", "nodad", "192.168.1.2/24", "192.168.1.1")
+check ovn-nbctl lsp-add sw alice -- lsp-set-addresses alice "f0:00:00:01:02:03 192.168.1.2 fd11::2"
 
 check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext
 check ovn-nbctl lsp-add public public \
@@ -12901,17 +12902,24 @@ check ovn-nbctl lsp-add public public \
         -- lsp-set-options public network_name=phynet
 
 ADD_NAMESPACES(gw)
-ADD_VETH(gw0, gw, br-ext, "172.16.1.2/24", "f0:00:00:01:02:04", "172.16.1.1")
+ADD_VETH(gw0, gw, br-ext, "fd12::2/64", "f0:00:00:01:02:04", \
+         "fd12::1", "nodad", "172.16.1.2/24", "172.16.1.1")
 ADD_VETH(gw1, gw, br-gw, "172.16.2.2/24", "f0:00:00:01:03:04")
+NS_CHECK_EXEC([gw], [ip a a fd13::2/64 dev gw1 nodad])
 
 NS_CHECK_EXEC([gw], [sysctl -w net.ipv4.conf.all.forwarding=1],[0], [dnl
 net.ipv4.conf.all.forwarding = 1
 ])
+NS_CHECK_EXEC([gw], [sysctl -w net.ipv6.conf.all.forwarding=1],[0], [dnl
+net.ipv6.conf.all.forwarding = 1
+])
 
 ADD_NAMESPACES(bob)
-ADD_VETH(bob, bob, br-gw, "172.16.2.10/24", "f0:00:00:01:02:06", "172.16.2.2")
+ADD_VETH(bob, bob, br-gw, "fd13::a/64", "f0:00:00:01:02:06", \
+         "fd13::2", "nodad", "172.16.2.10/24", "172.16.2.2")
 
 check ovn-nbctl lr-route-add lr 0.0.0.0/0 172.16.1.2
+check ovn-nbctl lr-route-add lr ::/0 fd12::2
 check ovn-nbctl --wait=hv sync
 
 NS_CHECK_EXEC([alice], [ping -q -c 3 -i 0.3 -w 2 172.16.2.10 | FORMAT_PING], \
@@ -12938,6 +12946,26 @@ OVS_WAIT_UNTIL([
 
 # Wait for the mac binding entry to expire.
 wait_row_count MAC_Binding 0
+
+NS_CHECK_EXEC([alice], [ping -6 -q -c 3 -i 0.3 -w 2 fd13::a | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+check_row_count mac_binding 1 mac=\"f0:00:00:01:02:04\" ip=\"fd12::2\"
+mac_binding_uuid=$(fetch_column mac_binding _uuid mac=\"f0:00:00:01:02:04\" ip=\"fd12::2\")
+NETNS_START_TCPDUMP([gw], [-n -c 2 -i gw0 icmp6 and ip6[[40]] == 0x87], [gw6])
+
+NS_CHECK_EXEC([alice], [ping -6 -q -c 30 -i 0.5 fd13::a | FORMAT_PING], \
+[0], [dnl
+30 packets transmitted, 30 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([test "$(fetch_column mac_binding _uuid mac=\"f0:00:00:01:02:04\" ip=\"fd12::2\")" = "$mac_binding_uuid"])
+OVS_WAIT_UNTIL([
+    n_ns=$(cat gw6.tcpdump | wc -l)
+    test ${n_ns} -ge 2
+])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
