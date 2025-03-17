@@ -36240,12 +36240,37 @@ send_udp() {
     as $hv ovs-appctl netdev-dummy/receive $dev $packet
 }
 
+send_udp6() {
+    local hv=$1 dev=$2 hdst=$3 hsrc=$4 idst=$5 isrc=$6
+    local packet=$(fmt_pkt "Ether(dst='${hdst}', src='${hsrc}')/ \
+                            IPv6(dst='${idst}', src='${isrc}')/UDP()")
+    as $hv ovs-appctl netdev-dummy/receive $dev $packet
+}
+
+send_na() {
+    local hv=$1 dev=$2 hdst=$3 hsrc=$4 idst=$5 isrc=$6
+    local packet=$(fmt_pkt "Ether(dst='${hdst}', src='${hsrc}')/ \
+                            IPv6(dst='${idst}', src='${isrc}')/ \
+                            ICMPv6ND_NA(tgt='${isrc}')/ \
+                            ICMPv6NDOptDstLLAddr(lladdr='${hsrc}')")
+    as $hv ovs-appctl netdev-dummy/receive $dev $packet
+}
+
 dump_arp() {
     local op=$1 eth_src=$2 eth_dst=$3 spa=$4 tpa=$5 hwdst=$6
 
     local packet=$(fmt_pkt "Ether(dst='${eth_dst}', src='${eth_src}')/ \
                       ARP(op=$op, hwsrc='${eth_src}', hwdst='${hwdst}', \
                       psrc='${spa}', pdst='${tpa}')")
+    echo $packet
+}
+
+dump_ns() {
+    local hdst=$1 hsrc=$2 idst=$3 isrc=$4 tgt=$5
+    local packet=$(fmt_pkt "Ether(dst='${hdst}', src='${hsrc}')/ \
+                            IPv6(dst='${idst}', src='${isrc}')/ \
+                            ICMPv6ND_NS(tgt='${tgt}')/
+                            ICMPv6NDOptSrcLLAddr(lladdr='${hsrc}')")
     echo $packet
 }
 
@@ -36262,8 +36287,8 @@ check ovn-nbctl                                                             \
     -- ls-add ls2                                                           \
     -- lr-add lr                                                            \
     -- set logical_router lr options:mac_binding_age_threshold=$aging_th    \
-    -- lrp-add lr lr-ls1 00:00:00:00:10:00 192.168.10.1/24                  \
-    -- lrp-add lr lr-ls2 00:00:00:00:20:00 192.168.20.1/24                  \
+    -- lrp-add lr lr-ls1 00:00:00:00:10:00 192.168.10.1/24 fd11::1/64       \
+    -- lrp-add lr lr-ls2 00:00:00:00:20:00 192.168.20.1/24 fd12::1/64       \
     -- lsp-add ls1 ls1-lr                                                   \
     -- lsp-set-type ls1-lr router                                           \
     -- lsp-set-addresses ls1-lr router                                      \
@@ -36342,6 +36367,32 @@ send_udp hv1 vif2 00:00:00:00:20:00 00:00:00:00:10:2b 192.168.10.100 192.168.20.
 OVN_CHECK_PACKETS_CONTAIN([hv1/vif2-tx.pcap], [expected1])
 OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [expected2])
 
+wait_row_count mac_binding 0
+# Send UDP6 traffic.
+send_udp6 hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a fd12::64 fd11::64
+send_udp6 hv1 vif2 00:00:00:00:20:00 00:00:00:00:10:2b fd11::64 fd12::64
+# Send NA to resolve L2 addresses.
+send_na hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:1a fd11::1 fd11::64
+send_na hv1 vif2 00:00:00:00:20:00 00:00:00:00:10:1b fd12::1 fd12::64
+
+check_row_count mac_binding 1 mac=\"00:00:00:00:10:1a\" ip=\"fd11::64\"
+check_row_count mac_binding 1 mac=\"00:00:00:00:10:1b\" ip=\"fd12::64\"
+
+ts0=$(fetch_column Mac_Binding timestamp mac=\"00:00:00:00:10:1a\" ip=\"fd11::64\")
+uuid=$(fetch_column Mac_Binding _uuid mac=\"00:00:00:00:10:1a\" ip=\"fd11::64\")
+OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
+                       awk '/ipv6_src=fd11::64/{print substr($6,10,1)}') -ge $((aging_th/2))])
+send_udp6 hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a fd12::64 fd11::64
+send_udp6 hv1 vif2 00:00:00:00:20:00 00:00:00:00:10:2b fd11::64 fd12::64
+
+dump_ns 33:33:ff:00:00:64 00:00:00:00:10:00 ff02::1:ff00:64 fd11::1 fd11::64 > expected2
+dump_ns 33:33:ff:00:00:64 00:00:00:00:10:00 ff02::1:ff00:64 fd11::1 fd11::64 >> expected2
+OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [expected2])
+
+send_na hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:1a fd11::1 fd11::64
+OVS_WAIT_UNTIL([test $(fetch_column Mac_Binding timestamp mac=\"00:00:00:00:10:1a\" ip=\"fd11::64\") -gt $ts0])
+AT_CHECK([test "$(fetch_column Mac_Binding _uuid mac=\"00:00:00:00:10:1a\" ip=\"fd11::64\")" = "$uuid"])
+
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
@@ -36355,6 +36406,22 @@ send_imcp_echo_req() {
     local hv=$1 dev=$2 hdst=$3 hsrc=$4 idst=$5 isrc=$6
     local packet=$(fmt_pkt "Ether(dst='${hdst}', src='${hsrc}')/ \
                             IP(dst='${idst}', src='${isrc}')/ICMP()")
+    as $hv ovs-appctl netdev-dummy/receive $dev $packet
+}
+
+send_icmp6_echo_req() {
+    local hv=$1 dev=$2 hdst=$3 hsrc=$4 idst=$5 isrc=$6
+    local packet=$(fmt_pkt "Ether(dst='${hdst}', src='${hsrc}')/ \
+                            IPv6(dst='${idst}', src='${isrc}')/ICMPv6EchoRequest()")
+    as $hv ovs-appctl netdev-dummy/receive $dev $packet
+}
+
+send_na() {
+    local hv=$1 dev=$2 hdst=$3 hsrc=$4 idst=$5 isrc=$6
+    local packet=$(fmt_pkt "Ether(dst='${hdst}', src='${hsrc}')/ \
+                            IPv6(dst='${idst}', src='${isrc}')/ \
+                            ICMPv6ND_NA(tgt='${isrc}')/ \
+                            ICMPv6NDOptDstLLAddr(lladdr='${hsrc}')")
     as $hv ovs-appctl netdev-dummy/receive $dev $packet
 }
 
@@ -36383,8 +36450,8 @@ check ovn-nbctl                                                             \
     -- set Logical_Router gw options:chassis="hv1"                          \
     -- set logical_router gw options:mac_binding_age_threshold=$aging_th    \
     -- set logical_router gw options:dynamic_neigh_routers=true             \
-    -- lrp-add gw gw-public 00:00:00:00:10:00 192.168.10.1/24               \
-    -- lrp-add gw gw-join 00:00:00:00:20:00 192.168.20.1/24                 \
+    -- lrp-add gw gw-public 00:00:00:00:10:00 192.168.10.1/24 fd11::1/64    \
+    -- lrp-add gw gw-join 00:00:00:00:20:00 192.168.20.1/24 fd12::1/64      \
     -- lsp-add public public-gw                                             \
     -- lsp-set-type public-gw router                                        \
     -- lsp-set-addresses public-gw router                                   \
@@ -36395,12 +36462,13 @@ check ovn-nbctl                                                             \
     -- lsp-set-type join-gw router                                          \
     -- lsp-set-addresses join-gw router                                     \
     -- lsp-set-options join-gw router-port=gw-join                          \
-    -- lrp-add lr lr-join 00:00:00:00:30:00 192.168.20.2/24                 \
+    -- lrp-add lr lr-join 00:00:00:00:30:00 192.168.20.2/24 fd12::2/64      \
     -- lsp-add join join-lr                                                 \
     -- lsp-set-type join-lr router                                          \
     -- lsp-set-addresses join-lr router                                     \
     -- lsp-set-options join-lr router-port=lr-join                          \
-    -- lr-route-add lr 0.0.0.0/0 192.168.20.1
+    -- lr-route-add lr 0.0.0.0/0 192.168.20.1                               \
+    -- lr-route-add lr ::/0 fd12::1
 
 check ovs-vsctl                                                             \
     -- add-port br-int public                                               \
@@ -36433,10 +36501,10 @@ OVS_WAIT_UNTIL([$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | \
                   sed 's/reg15=0x.,metadata=0x./reg15=<cleared>,metadata=<cleared>/g' | \
                   grep -q "reg0=0xc0a81402,reg15=<cleared>,metadata=<cleared> actions=mod_dl_dst:00:00:00:00:30:00")])
 
+n_arp=$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/arp_spa=192.168.20.2/{print substr($4,11,1)}')
 # Check GW router does not send any ARP requests in this case.
 OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
                        awk '/nw_src=192.168.10.100/{print substr($6,10,1)}') -ge $((aging_th/2))])
-n_arp=$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/arp_spa=192.168.20.2/{print substr($4,11,1)}')
 AT_CHECK([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/arp_spa=192.168.20.2/{print substr($4,11,1)}') -eq $n_arp])
 
 send_imcp_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:10:1a 192.168.20.2 192.168.10.100
@@ -36448,6 +36516,29 @@ OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |
                        awk '/nw_src=192.168.10.100/{print substr($6,10,1)}') -ge $((aging_th/2))])
 send_imcp_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:10:1a 192.168.20.2 192.168.10.100
 OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/arp_spa=192.168.20.2/{print substr($4,11,1)}') -ge $((n_arp+1))])
+
+check ovn-nbctl --wait=hv acl-del join
+wait_row_count mac_binding 0
+
+send_icmp6_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:50:01 fd12::2 fd11::64
+send_na hv1 vif1 00:00:00:00:10:00 00:00:00:00:50:01 fd11::1 fd11::64
+check_row_count mac_binding 1 mac=\"00:00:00:00:30:00\" ip=\"fd12::2\"
+
+n_ipv6=$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/ipv6_src=fd12::2/{print substr($4,11,1)}')
+OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
+                       awk '/ipv6_src=fd12::2/{print substr($6,10,1)}') -ge $((aging_th/2))])
+# Check GW router does not send any NS requests in this case.
+AT_CHECK([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/ipv6_src=fd12::2/{print substr($4,11,1)}') -eq $n_ipv6])
+send_icmp6_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:50:01 fd12::2 fd11::64
+
+# Now drop ICMPv6 echo reply in order to force OVN to send NS for the lr mac binding entry.
+check ovn-nbctl --wait=hv acl-add join from-lport 1010 'inport == "join-lr" && ip6 && icmp6.type == 0x87' allow
+check ovn-nbctl --wait=hv acl-add join from-lport 1000 'inport == "join-lr" && icmp' drop
+n_ipv6=$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/ipv6_src=fd12::2/{print substr($4,11,1)}')
+OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
+                       awk '/ipv6_src=fd12::2/{print substr($6,10,1)}') -ge $((aging_th/2))])
+send_icmp6_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:50:01 fd12::2 fd11::64
+OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/ipv6_src=fd12::2/{print substr($4,11,1)}') -ge $((n_ipv6+1))])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

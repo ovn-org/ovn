@@ -942,10 +942,12 @@ mac_binding_probe_stats_run(
             continue;
         }
 
-        if (laddr.n_ipv4_addrs || laddr.n_ipv6_addrs) {
-            struct in6_addr local = laddr.n_ipv4_addrs
-                ? in6_addr_mapped_ipv4(laddr.ipv4_addrs[0].addr)
-                : laddr.ipv6_addrs[0].addr;
+        bool is_mb_v4 = IN6_IS_ADDR_V4MAPPED(&mb->data.ip);
+        if ((is_mb_v4 && laddr.n_ipv4_addrs)
+                || (!is_mb_v4 && laddr.n_ipv6_addrs)) {
+            struct in6_addr local =
+                is_mb_v4 ? in6_addr_mapped_ipv4(laddr.ipv4_addrs[0].addr)
+                         : laddr.ipv6_addrs[0].addr;
 
             mac_binding_update_log("Sending ARP/ND request for active",
                                    &mb->data, true, threshold,
