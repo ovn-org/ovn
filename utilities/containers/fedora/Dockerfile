@@ -26,6 +26,7 @@ RUN dnf -y update \
         kmod \
         libcap-ng-devel \
         libtool \
+        llvm-devel \
         net-tools \
         nftables \
         nmap-ncat \
