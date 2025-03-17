@@ -1398,15 +1398,11 @@ consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         match_set_dl_type(&lookup_arp_match, htons(ETH_TYPE_IPV6));
         match_set_nw_proto(&lookup_arp_match, 58);
         match_set_icmp_code(&lookup_arp_match, 0);
-        lookup_arp_for_stats_match = lookup_arp_match;
 
         match_set_xxreg(&lookup_arp_match, 0, ntoh128(value));
 
         match_set_dl_type(&mb_cache_use_match, htons(ETH_TYPE_IPV6));
         match_set_ipv6_src(&mb_cache_use_match, &ip6);
-
-        match_set_icmp_type(&lookup_arp_for_stats_match, 136);
-        match_set_nd_target(&lookup_arp_for_stats_match, &ip6);
     }
 
     match_set_metadata(&get_arp_match, htonll(pb->datapath->tunnel_key));
@@ -1438,9 +1434,12 @@ consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
     if (b) {
         ofpbuf_clear(&ofpacts);
-        ofctrl_add_flow(flow_table, OFTABLE_MAC_CACHE_USE, priority,
-                        b->header_.uuid.parts[0], &lookup_arp_for_stats_match,
-                        &ofpacts, &b->header_.uuid);
+        if (strchr(ip, '.')) {
+            ofctrl_add_flow(flow_table, OFTABLE_MAC_CACHE_USE, priority,
+                            b->header_.uuid.parts[0],
+                            &lookup_arp_for_stats_match,
+                            &ofpacts, &b->header_.uuid);
+        }
         ofctrl_add_flow(flow_table, OFTABLE_MAC_CACHE_USE, priority,
                         b->header_.uuid.parts[0], &mb_cache_use_match,
                         &ofpacts, &b->header_.uuid);
