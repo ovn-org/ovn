@@ -31,7 +31,7 @@ jobs:
       with:
         repository: 'ovn-org/ovn-fake-multinode'
         path: 'ovn-fake-multinode'
-        ref: 'v0.2'
+        ref: 'v0.3'
 
     # Check out ovn and ovs separately inside ovn-fake-multinode/ovn and ovn-fake-multinode/ovs
     # ovn-fake-multinode builds and installs ovs from ovn-fake-multinode/ovs
@@ -137,7 +137,7 @@ jobs:
       with:
         repository: 'ovn-org/ovn-fake-multinode'
         path: 'ovn-fake-multinode'
-        ref: 'v0.2'
+        ref: 'v0.3'
 
     - name: Start openvswitch
       run: |
@@ -147,8 +147,8 @@ jobs:
     - name: Start basic cluster
       run: |
         sudo -E CHASSIS_COUNT=4 GW_COUNT=4 ./ovn_cluster.sh start
-        sudo podman exec -it ovn-central-az1-1 ovn-nbctl show
-        sudo podman exec -it ovn-central-az1-1 ovn-appctl -t ovn-northd version
+        sudo podman exec -it ovn-central-az1 ovn-nbctl show
+        sudo podman exec -it ovn-central-az1 ovn-appctl -t ovn-northd version
         sudo podman exec -it ovn-chassis-1 ovn-appctl -t ovn-controller version
       working-directory: ovn-fake-multinode
 
@@ -184,8 +184,8 @@ jobs:
     - name: Run fake-multinode system tests
       run: |
         if ! sudo make check-multinode TESTSUITEFLAGS="${{ matrix.cfg.testsuiteflags }}"; then
-          sudo podman exec -it ovn-central-az1-1 ovn-nbctl show || :
-          sudo podman exec -it ovn-central-az1-1 ovn-sbctl show || :
+          sudo podman exec -it ovn-central-az1 ovn-nbctl show || :
+          sudo podman exec -it ovn-central-az1 ovn-sbctl show || :
           sudo podman exec -it ovn-chassis-1 ovs-vsctl show || :
           sudo podman exec -it ovn-chassis-1 ip netns || :
           sudo podman exec -it ovn-chassis-1 cat /var/log/ovn/ovn-controller.log || :
