@@ -402,6 +402,8 @@ m4_define([OVN_CLEANUP_SBOX],[
     # "Failed to locate tunnel to reach main chassis" happening when controller started e.g. before ovn-bridge-mappings is set
     # "Transaction causes multiple rows in \"MAC_Binding\" table to have identical values"
     #  happening as ovn-controller has a race condition over MAC binding table with other controllers (GARP).
+    # "Transaction causes multiple rows in \"FDB\" table to have identical values"
+    #  happens when there is a race between multiple ovn-controllers that try to create the same FDB.
     AT_CHECK([check_logs "
         $error
         /connection failed (No such file or directory)/d
@@ -409,6 +411,7 @@ m4_define([OVN_CLEANUP_SBOX],[
         /receive tunnel port not found*/d
         /Failed to locate tunnel to reach main chassis/d
         /Transaction causes multiple rows.*MAC_Binding/d
+        /Transaction causes multiple rows.*FDB/d
     " $sbox])
 ])
 
