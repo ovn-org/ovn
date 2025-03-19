@@ -65,6 +65,10 @@ enum ovn_controller_event {
 #define MFF_LOG_CT_ORIG_TP_DST_PORT         MFF_REG2   /* REG_ORIG_TP_DPORT
                                                         * (bits 0..15). */
 
+/* Maximum number of networks supported by 4-bit flags.network_id. */
+#define OVN_MAX_NETWORK_ID \
+    ((1 << (MLF_NETWORK_ID_END_BIT - MLF_NETWORK_ID_START_BIT + 1)) - 1)
+
 void ovn_init_symtab(struct shash *symtab);
 
 /* MFF_LOG_FLAGS_REG bit assignments */
@@ -89,6 +93,8 @@ enum mff_log_flags_bits {
     MLF_ICMP_SNAT_BIT = 17,
     MLF_OVERRIDE_LOCAL_ONLY_BIT = 18,
     MLF_FROM_CTRL_BIT = 19,
+    MLF_NETWORK_ID_START_BIT = 28,
+    MLF_NETWORK_ID_END_BIT = 31,
 };
 
 /* MFF_LOG_FLAGS_REG flag assignments */
@@ -146,6 +152,10 @@ enum mff_log_flags {
     MLF_ICMP_SNAT = (1 << MLF_ICMP_SNAT_BIT),
 
     MLF_OVERRIDE_LOCAL_ONLY = (1 << MLF_OVERRIDE_LOCAL_ONLY_BIT),
+
+    /* Assign network ID to packet to choose correct network for snat when
+     * lb_force_snat_ip=router_ip. */
+    MLF_NETWORK_ID = (OVN_MAX_NETWORK_ID << MLF_NETWORK_ID_START_BIT),
 };
 
 /* OVN logical fields

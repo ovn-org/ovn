@@ -139,6 +139,9 @@ ovn_init_symtab(struct shash *symtab)
                              flags_str);
     snprintf(flags_str, sizeof flags_str, "flags[%d]", MLF_RX_FROM_TUNNEL_BIT);
     expr_symtab_add_subfield(symtab, "flags.tunnel_rx", NULL, flags_str);
+    snprintf(flags_str, sizeof flags_str, "flags[%d..%d]",
+             MLF_NETWORK_ID_START_BIT, MLF_NETWORK_ID_END_BIT);
+    expr_symtab_add_subfield(symtab, "flags.network_id", NULL, flags_str);
 
     snprintf(flags_str, sizeof flags_str, "flags[%d]", MLF_FROM_CTRL_BIT);
     expr_symtab_add_subfield(symtab, "flags.from_ctrl", NULL, flags_str);

@@ -39467,3 +39467,80 @@ OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv2/vif1-tx.pcap], [expected])
 OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([lb_force_snat_ip=router_ip select correct network for snat])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+check ovn-nbctl lr-add lr
+check ovn-nbctl set logical_router lr options:chassis=hv1
+check ovn-nbctl set logical_router lr options:lb_force_snat_ip=router_ip
+check ovn-nbctl lrp-add lr lrp-client 02:00:00:00:00:02 1.1.1.1/24
+check ovn-nbctl lrp-add lr lrp-server 02:00:00:00:00:03 1.1.2.1/24 1.2.1.1/24 \
+            1.1.3.1/24 2.2.2.1/24 7.7.7.1/24 8.8.8.1/24 6.7.1.1/24 6.8.1.1/24 \
+            1.2.2.1/24 3.3.3.1/24 4.4.4.1/24 5.5.5.1/24 6.6.6.1/24 6.2.1.1/24 \
+            6.3.1.1/24 6.4.1.1/24 6.5.1.1/24 6.6.1.1/24
+check ovn-nbctl ls-add ls-client
+check ovn-nbctl ls-add ls-server
+check ovn-nbctl lsp-add ls-client lsp-client-router
+check ovn-nbctl lsp-set-type lsp-client-router router
+check ovn-nbctl lsp-add ls-server lsp-server-router
+check ovn-nbctl lsp-set-type lsp-server-router router
+check ovn-nbctl set logical_switch_port lsp-client-router options:router-port=lrp-client
+check ovn-nbctl set logical_switch_port lsp-server-router options:router-port=lrp-server
+check ovn-nbctl lsp-add ls-client client
+check ovn-nbctl lsp-add ls-server server
+check ovn-nbctl lsp-set-addresses client "02:00:00:00:00:01 1.1.1.10"
+check ovn-nbctl lsp-set-addresses server "02:00:00:00:00:04 2.2.2.10"
+check ovn-nbctl lsp-set-addresses lsp-client-router router
+check ovn-nbctl lsp-set-addresses lsp-server-router router
+check ovn-nbctl lb-add lb 42.42.42.42:80 2.2.2.10:80 udp
+check ovn-nbctl lr-lb-add lr lb
+
+# Create a hypervisor and create OVS ports corresponding to logical ports.
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=client \
+    options:tx_pcap=hv1/client-tx.pcap \
+    options:rxq_pcap=hv1/client-rx.pcap
+
+check ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=server \
+    options:tx_pcap=hv1/server-tx.pcap \
+    options:rxq_pcap=hv1/server-rx.pcap
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+check grep -q \
+    'Logical router port "lrp-server" already has the max of 16 networks configured' \
+    northd/ovn-northd.log
+
+tx_src_mac="02:00:00:00:00:01"
+tx_dst_mac="02:00:00:00:00:02"
+tx_src_ip=1.1.1.10
+tx_dst_ip=42.42.42.42
+request=$(fmt_pkt "Ether(dst='${tx_dst_mac}', src='${tx_src_mac}')/ \
+                   IP(src='${tx_src_ip}', dst='${tx_dst_ip}')/ \
+                   UDP(sport=20001, dport=80)")
+
+check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $request
+
+rx_src_mac="02:00:00:00:00:03"
+rx_dst_mac="02:00:00:00:00:04"
+rx_src_ip=2.2.2.1
+rx_dst_ip=2.2.2.10
+expected=$(fmt_pkt "Ether(dst='${rx_dst_mac}', src='${rx_src_mac}')/ \
+                    IP(src='${rx_src_ip}', dst='${rx_dst_ip}', ttl=0x3F)/ \
+                    UDP(sport=20001, dport=80)")
+
+echo $expected > expected
+OVN_CHECK_PACKETS([hv1/server-tx.pcap], [expected])
+AT_CLEANUP
+])
