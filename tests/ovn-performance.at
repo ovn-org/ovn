@@ -100,7 +100,7 @@ read_counters() {
     local sims="$1" target="$2" counter="$3"
 
     for sim in $sims; do
-        as $sim ovs-appctl -t "$target" coverage/read-counter "$counter" || return 1
+        as $sim ovn-appctl -t "$target" coverage/read-counter "$counter" || return 1
     done
 }
 

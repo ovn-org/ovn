@@ -462,7 +462,7 @@ check ovn-nbctl --wait=sb lsp-add sw p1
 check_row_count Port_Binding 1 logical_port=p1
 AT_CHECK([ovn-nbctl --wait=sb lsp-del p1])
 
-# ovs-appctl exit with unixctl option
+# ovn-appctl exit with unixctl option
 OVS_APP_EXIT_AND_WAIT_BY_TARGET(["$ovs_base"/northd/ovn-northd.ctl], ["$ovs_base"/northd/ovn-northd.pid])
 
 # Check no port_binding entry for new port as ovn-northd is not running
@@ -868,7 +868,7 @@ Status: paused
 ])
 
 AS_BOX([Resume the backup])
-check as northd-backup ovs-appctl -t ovn-northd resume
+check as northd-backup ovn-appctl -t ovn-northd resume
 OVS_WAIT_FOR_OUTPUT([get_northd_status], [0], [false
 Status: active
 false
@@ -885,8 +885,8 @@ check ovn-nbctl --wait=sb ls-del sw0
 check_row_count Datapath_Binding 0
 
 AS_BOX([Pause the main northd])
-check as northd ovs-appctl -t ovn-northd pause
-check as northd-backup ovs-appctl -t ovn-northd pause
+check as northd ovn-appctl -t ovn-northd pause
+check as northd-backup ovn-appctl -t ovn-northd pause
 AT_CHECK([get_northd_status], [0], [true
 Status: paused
 true
@@ -902,7 +902,7 @@ check_row_count Datapath_Binding 0
 # Do not resume both main and backup right after each other
 # as there would be no guarentee of which one would become active
 AS_BOX([Resume the main northd])
-check as northd ovs-appctl -t ovn-northd resume
+check as northd ovn-appctl -t ovn-northd resume
 OVS_WAIT_FOR_OUTPUT([get_northd_status], [0], [false
 Status: active
 true
@@ -910,7 +910,7 @@ Status: paused
 ])
 
 AS_BOX([Resume the backup northd])
-check as northd-backup ovs-appctl -t ovn-northd resume
+check as northd-backup ovn-appctl -t ovn-northd resume
 OVS_WAIT_FOR_OUTPUT([get_northd_status], [0], [false
 Status: active
 false

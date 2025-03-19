@@ -281,7 +281,7 @@
   <p>
     If <code>ovn-trace</code> is invoked with the <code>--detach</code> option
     (see <code>Daemon Options</code>, below), it runs in the background as a
-    daemon and accepts commands from <code>ovs-appctl</code> (or another
+    daemon and accepts commands from <code>ovn-appctl</code> (or another
     JSON-RPC client) indefinitely.  The currently supported commands are
     described below.
   </p>

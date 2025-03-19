@@ -171,7 +171,7 @@ sections for the document include:
 
       Given a choice, the procedure should be one that takes at least
       some work to turn into a useful exploit.  For example, a
-      procedure based on "ovs-appctl" commands, which require local
+      procedure based on "ovn-appctl" commands, which require local
       administrator access, is preferred to one that sends test
       packets to a machine, which only requires network connectivity.
 

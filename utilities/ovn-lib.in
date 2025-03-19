@@ -163,13 +163,13 @@ stop_ovn_daemon () {
             actions="TERM .1 .25 .65 1 1 1 1 \
                      KILL 1 1 1 2 10 15 30 \
                      FAIL"
-            version=`ovs-appctl -T 1 -t $ctl_file version \
+            version=`ovn-appctl -T 1 -t $ctl_file version \
                      | awk 'NR==1{print $NF}'`
 
-            # Use `ovs-appctl exit` only if the running daemon version
+            # Use `ovn-appctl exit` only if the running daemon version
             # is >= 2.5.90.  This script might be used during upgrade to
             # stop older versions of daemons which do not behave correctly
-            # with `ovs-appctl exit` (e.g. ovs-vswitchd <= 2.5.0 deletes
+            # with `ovn-appctl exit` (e.g. ovs-vswitchd <= 2.5.0 deletes
             # internal ports).
             if version_geq "$version" "2.5.90"; then
                 actions="$graceful $actions"
@@ -182,7 +182,7 @@ stop_ovn_daemon () {
                         return 0
                     fi
                     # But, does the file exist? We may have had a daemon
-                    # segfault with `ovs-appctl exit`. Check one more time
+                    # segfault with `ovn-appctl exit`. Check one more time
                     # before deciding that the daemon is dead.
                     [ -e "$pid_file" ] && sleep 2 && pid=`cat "$pid_file"` 2>/dev/null
                     if pid_exists "$pid" >/dev/null 2>&1; then :; else
@@ -192,7 +192,7 @@ stop_ovn_daemon () {
                 case $action in
                     EXIT)
                         action "Exiting $1 ($pid)" \
-                            ${bindir}/ovs-appctl -T 1 -t $ctl_file exit $other_args
+                            ${bindir}/ovn-appctl -T 1 -t $ctl_file exit $other_args
                         # The above command could have resulted in delayed
                         # daemon segfault. And if a monitor is running, it
                         # would restart the daemon giving it a new pid.

@@ -72,7 +72,7 @@
 
     <h1>Runtime Management Commands</h1>
     <p>
-      <code>ovs-appctl</code> can send commands to a running
+      <code>ovn-appctl</code> can send commands to a running
       <code>ovn-ic</code> process.  The currently supported commands
       are described below.
       <dl>

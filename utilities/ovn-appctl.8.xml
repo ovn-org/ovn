@@ -28,7 +28,7 @@
     </p>
 
     <p>
-      <code>ovn-ctl</code> is exactly similar to Open vSwitch
+      <code>ovn-appctl</code> is the equivalent of the Open vSwitch
       <code>ovs-appctl</code> utility.
     </p>
 

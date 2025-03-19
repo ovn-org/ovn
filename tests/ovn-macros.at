@@ -1273,7 +1273,7 @@ ovn_trace() {
 ovn_trace_client() {
     target=$1; shift
     AT_CAPTURE_FILE([trace])
-    ovs-appctl -t $target trace "$@" | tee trace | sed '/^# /d'
+    ovn-appctl -t $target trace "$@" | tee trace | sed '/^# /d'
 }
 
 # Receives a string with scapy python code that represents a packet.

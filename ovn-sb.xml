@@ -2293,7 +2293,7 @@
             that processes it.  Packet logging currently uses the same logging
             mechanism as other Open vSwitch and OVN messages, which means that
             whether and where log messages appear depends on the local logging
-            configuration that can be configured with <code>ovs-appctl</code>,
+            configuration that can be configured with <code>ovn-appctl</code>,
             etc.
           </p>
           <p>

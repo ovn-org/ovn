@@ -1704,7 +1704,7 @@ for s_az in $(seq 1 $n_az); do
                     udp && udp.src==53 && udp.dst==4369"
             echo "sending: $packet"
             AT_CHECK([ovn_trace --ovs "$packet" > ${s_az}-${d_az}-$i.ovn-trace])
-            OVS_WAIT_UNTIL([ovs-appctl -t ovn-controller inject-pkt "$packet"])
+            OVS_WAIT_UNTIL([ovn-appctl -t ovn-controller inject-pkt "$packet"])
             ovs_inport=$(ovs-vsctl --bare --columns=ofport find Interface external-ids:iface-id="$ovn_inport")
 
             ovs_packet=$(echo $packet | ovstest test-ovn expr-to-packets)

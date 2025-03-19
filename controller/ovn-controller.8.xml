@@ -679,7 +679,7 @@
       <dd>
         Upon startup, <code>ovn-controller</code> creates a row in this table
         to represent its own chassis.  Upon graceful termination, e.g. with
-        <code>ovs-appctl -t ovn-controller exit</code> (but not
+        <code>ovn-appctl -t ovn-controller exit</code> (but not
         <code>SIGTERM</code>), <code>ovn-controller</code> removes its row.
       </dd>
 
@@ -715,7 +715,7 @@
 
     <h1>Runtime Management Commands</h1>
     <p>
-      <code>ovs-appctl</code> can send commands to a running
+      <code>ovn-appctl</code> can send commands to a running
       <code>ovn-controller</code> process.  The currently supported
       commands are described below.
       <dl>
