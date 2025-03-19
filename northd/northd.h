@@ -547,7 +547,8 @@ enum ovn_stage {
     PIPELINE_STAGE(ROUTER, IN,  CHK_PKT_LEN,     22, "lr_in_chk_pkt_len")     \
     PIPELINE_STAGE(ROUTER, IN,  LARGER_PKTS,     23, "lr_in_larger_pkts")     \
     PIPELINE_STAGE(ROUTER, IN,  GW_REDIRECT,     24, "lr_in_gw_redirect")     \
-    PIPELINE_STAGE(ROUTER, IN,  ARP_REQUEST,     25, "lr_in_arp_request")     \
+    PIPELINE_STAGE(ROUTER, IN,  NETWORK_ID,      25, "lr_in_network_id")      \
+    PIPELINE_STAGE(ROUTER, IN,  ARP_REQUEST,     26, "lr_in_arp_request")     \
                                                                       \
     /* Logical router egress stages. */                               \
     PIPELINE_STAGE(ROUTER, OUT, CHECK_DNAT_LOCAL,   0,                       \
