@@ -12915,73 +12915,115 @@ build_lrouter_force_snat_flows_op(struct ovn_port *op,
                                   struct ds *match, struct ds *actions,
                                   struct lflow_ref *lflow_ref)
 {
+    size_t network_id;
+
     ovs_assert(op->nbrp);
     if (!op->peer || !lrnat_rec->lb_force_snat_router_ip) {
         return;
     }
 
-    if (op->lrp_networks.n_ipv4_addrs) {
+    for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
         ds_clear(match);
         ds_clear(actions);
 
         ds_put_format(match, "inport == %s && ip4.dst == %s",
-                      op->json_key, op->lrp_networks.ipv4_addrs[0].addr_s);
+                      op->json_key, op->lrp_networks.ipv4_addrs[i].addr_s);
         ovn_lflow_add(lflows, op->od, S_ROUTER_IN_UNSNAT, 110,
                       ds_cstr(match), "ct_snat;", lflow_ref);
-
         ds_clear(match);
+
+        if (i > OVN_MAX_NETWORK_ID) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_WARN_RL(&rl, "Logical router port %s already has the max of "
+                              "%d networks configured, so for network "
+                              "\"%s/%d\" the first IP [%s] will be considered "
+                              "as SNAT for load balancer.", op->json_key,
+                              OVN_MAX_NETWORK_ID + 1,
+                              op->lrp_networks.ipv4_addrs[i].addr_s,
+                              op->lrp_networks.ipv4_addrs[i].plen,
+                              op->lrp_networks.ipv4_addrs[0].addr_s);
+            network_id = 0;
+        } else {
+            network_id = i;
+        }
 
         /* Higher priority rules to force SNAT with the router port ip.
          * This only takes effect when the packet has already been
          * load balanced once. */
-        ds_put_format(match, "flags.force_snat_for_lb == 1 && ip4 && "
-                      "outport == %s", op->json_key);
+        ds_put_format(match, "flags.force_snat_for_lb == 1 && "
+                      "flags.network_id == %"PRIuSIZE" && ip4 && "
+                      "outport == %s", network_id, op->json_key);
         ds_put_format(actions, "ct_snat(%s);",
-                      op->lrp_networks.ipv4_addrs[0].addr_s);
+                      op->lrp_networks.ipv4_addrs[network_id].addr_s);
         ovn_lflow_add(lflows, op->od, S_ROUTER_OUT_SNAT, 110,
                       ds_cstr(match), ds_cstr(actions),
                       lflow_ref);
-        if (op->lrp_networks.n_ipv4_addrs > 1) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-            VLOG_WARN_RL(&rl, "Logical router port %s is configured with "
-                              "multiple IPv4 addresses.  Only the first "
-                              "IP [%s] is considered as SNAT for load "
-                              "balancer", op->json_key,
-                              op->lrp_networks.ipv4_addrs[0].addr_s);
-        }
     }
 
     /* op->lrp_networks.ipv6_addrs will always have LLA and that will be
-     * last in the list. So add the flows only if n_ipv6_addrs > 1. */
-    if (op->lrp_networks.n_ipv6_addrs > 1) {
+     * last in the list. So loop to add flows n_ipv6_addrs - 1 times. */
+    for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs - 1; i++) {
         ds_clear(match);
         ds_clear(actions);
 
         ds_put_format(match, "inport == %s && ip6.dst == %s",
-                      op->json_key, op->lrp_networks.ipv6_addrs[0].addr_s);
+                      op->json_key, op->lrp_networks.ipv6_addrs[i].addr_s);
         ovn_lflow_add(lflows, op->od, S_ROUTER_IN_UNSNAT, 110,
                       ds_cstr(match), "ct_snat;", lflow_ref);
-
         ds_clear(match);
+
+        if (i > OVN_MAX_NETWORK_ID) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_WARN_RL(&rl, "Logical router port %s already has the max of "
+                              "%d networks configured, so for network "
+                              "\"%s/%d\" the first IP [%s] will be considered "
+                              "as SNAT for load balancer.", op->json_key,
+                              OVN_MAX_NETWORK_ID + 1,
+                              op->lrp_networks.ipv6_addrs[i].addr_s,
+                              op->lrp_networks.ipv6_addrs[i].plen,
+                              op->lrp_networks.ipv6_addrs[0].addr_s);
+            network_id = 0;
+        } else {
+            network_id = i;
+        }
 
         /* Higher priority rules to force SNAT with the router port ip.
          * This only takes effect when the packet has already been
          * load balanced once. */
+        ds_put_format(match, "flags.force_snat_for_lb == 1 && "
+                      "flags.network_id == %"PRIuSIZE" && ip6 && "
+                      "outport == %s", network_id, op->json_key);
+        ds_put_format(actions, "ct_snat(%s);",
+                      op->lrp_networks.ipv6_addrs[network_id].addr_s);
+        ovn_lflow_add(lflows, op->od, S_ROUTER_OUT_SNAT, 110,
+                      ds_cstr(match), ds_cstr(actions),
+                      lflow_ref);
+    }
+
+    /* This lower-priority flow matches the old behavior for if northd is
+     * upgraded before controller and flags.network_id is not recognized. */
+    if (op->lrp_networks.n_ipv4_addrs > 0) {
+        ds_clear(match);
+        ds_clear(actions);
+        ds_put_format(match, "flags.force_snat_for_lb == 1 && ip4 && "
+                      "outport == %s", op->json_key);
+        ds_put_format(actions, "ct_snat(%s);",
+                      op->lrp_networks.ipv4_addrs[0].addr_s);
+        ovn_lflow_add(lflows, op->od, S_ROUTER_OUT_SNAT, 105,
+                      ds_cstr(match), ds_cstr(actions), lflow_ref);
+    }
+
+    /* op->lrp_networks.ipv6_addrs will always have LLA, so only add flow if
+     * there is more than 1. */
+    if (op->lrp_networks.n_ipv6_addrs > 1) {
+        ds_clear(match);
+        ds_clear(actions);
         ds_put_format(match, "flags.force_snat_for_lb == 1 && ip6 && "
                       "outport == %s", op->json_key);
         ds_put_format(actions, "ct_snat(%s);",
                       op->lrp_networks.ipv6_addrs[0].addr_s);
-        ovn_lflow_add(lflows, op->od, S_ROUTER_OUT_SNAT, 110,
-                      ds_cstr(match), ds_cstr(actions),
-                      lflow_ref);
-        if (op->lrp_networks.n_ipv6_addrs > 2) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-            VLOG_WARN_RL(&rl, "Logical router port %s is configured with "
-                              "multiple IPv6 addresses.  Only the first "
-                              "IP [%s] is considered as SNAT for load "
-                              "balancer", op->json_key,
-                              op->lrp_networks.ipv6_addrs[0].addr_s);
-        }
+        ovn_lflow_add(lflows, op->od, S_ROUTER_OUT_SNAT, 105,
+                      ds_cstr(match), ds_cstr(actions), lflow_ref);
     }
 }
 
@@ -14811,6 +14853,91 @@ build_arp_request_flows_for_lrouter(
                       lflow_ref);
     ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 0, "1", "output;",
                   lflow_ref);
+}
+
+static void
+build_lrouter_network_id_flows(
+        struct ovn_datapath *od, struct lflow_table *lflows,
+        struct ds *match, struct ds *actions, struct lflow_ref *lflow_ref)
+{
+    const struct ovn_port *op;
+    size_t network_id;
+
+    HMAP_FOR_EACH (op, dp_node, &od->ports) {
+        for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
+            if (i > OVN_MAX_NETWORK_ID) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+                VLOG_WARN_RL(&rl, "Logical router port %s already has the max "
+                                  "of %d networks configured, so network "
+                                  "\"%s/%d\" is assigned "
+                                  "flags.network_id = 0.", op->json_key,
+                                  OVN_MAX_NETWORK_ID + 1,
+                                  op->lrp_networks.ipv4_addrs[i].addr_s,
+                                  op->lrp_networks.ipv4_addrs[i].plen);
+                network_id = 0;
+            } else {
+                network_id = i;
+            }
+
+            ds_clear(match);
+            ds_clear(actions);
+
+            ds_put_format(match, "outport == %s && ip4 && "
+                          REG_NEXT_HOP_IPV4 " == %s/%d", op->json_key,
+                          op->lrp_networks.ipv4_addrs[i].addr_s,
+                          op->lrp_networks.ipv4_addrs[i].plen);
+
+            ds_put_format(actions, "flags.network_id = %"PRIuSIZE"; next;",
+                          network_id);
+
+            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_NETWORK_ID, 110,
+                          ds_cstr(match), ds_cstr(actions),
+                          lflow_ref);
+        }
+
+        /* op->lrp_networks.ipv6_addrs will always have LLA and that will be
+         * last in the list. So add the flows only if n_ipv6_addrs > 1, and
+         * loop n_ipv6_addrs - 1 times. */
+        for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs - 1; i++) {
+            if (i > OVN_MAX_NETWORK_ID) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+                VLOG_WARN_RL(&rl, "Logical router port %s already has the max "
+                                  "of %d networks configured, so network "
+                                  "\"%s/%d\" is assigned "
+                                  "flags.network_id = 0.", op->json_key,
+                                  OVN_MAX_NETWORK_ID + 1,
+                                  op->lrp_networks.ipv6_addrs[i].addr_s,
+                                  op->lrp_networks.ipv6_addrs[i].plen);
+                network_id = 0;
+            } else {
+                network_id = i;
+            }
+
+            ds_clear(match);
+            ds_clear(actions);
+
+            ds_put_format(match, "outport == %s && ip6 && "
+                          REG_NEXT_HOP_IPV6 " == %s/%d", op->json_key,
+                          op->lrp_networks.ipv6_addrs[i].addr_s,
+                          op->lrp_networks.ipv6_addrs[i].plen);
+
+            ds_put_format(actions, "flags.network_id = %"PRIuSIZE"; next;", i);
+
+            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_NETWORK_ID, 110,
+                          ds_cstr(match), ds_cstr(actions), lflow_ref);
+        }
+    }
+
+    /* Lower-priority flow for the case the next-hop doesn't belong to
+     * any of the port networks.  In this case, setting network id to zero
+     * explicitly. */
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_NETWORK_ID, 105, "1",
+                  "flags.network_id = 0; next;", lflow_ref);
+
+    /* This lower-priority flow is for the case where northd is upgraded before
+     * controller and flags.network_id is not recognized. */
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_NETWORK_ID, 0,
+                  "1", "next;", lflow_ref);
 }
 
 /* Logical router egress table DELIVERY: Delivery (priority 100-110).
@@ -17160,6 +17287,8 @@ build_lswitch_and_lrouter_iterate_by_lr(struct ovn_datapath *od,
                                         &lsi->actions,
                                         lsi->meter_groups,
                                         NULL);
+    build_lrouter_network_id_flows(od, lsi->lflows, &lsi->match,
+                                   &lsi->actions, NULL);
     build_misc_local_traffic_drop_flows_for_lrouter(od, lsi->lflows, NULL);
 
     build_lr_nat_defrag_and_lb_default_flows(od, lsi->lflows, NULL);

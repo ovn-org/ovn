@@ -5002,7 +5002,62 @@ icmp6 {
       </li>
     </ul>
 
-    <h3>Ingress Table 24: ARP Request</h3>
+   <h3>Ingress Table 24: Network ID</h3>
+
+    <p>
+      This table contains flows that set <code>flags.network_id</code> for
+      IP packets:
+    </p>
+
+    <ul>
+      <li>
+        <p>
+          A priority-110 flow with match:
+          <ul>
+            <li>
+              for IPv4: <code>outport == <var>P</var> &amp;&amp;
+              REG_NEXT_HOP_IPV4 == <var>I</var>/<var>C</var> &amp;&amp;
+              ip4</code>
+            </li>
+            <li>
+              for IPv6: <code>outport == <var>P</var> &amp;&amp;
+              REG_NEXT_HOP_IPV6 == <var>I</var>/<var>C</var> &amp;&amp;
+              ip6</code>
+            </li>
+          </ul>
+        </p>
+
+        <p>
+          and actions <code>flags.network_id = <var>N</var>; next;</code>.
+          Where <var>P</var> is the outport, <var>I</var>/<var>C</var> is a
+          network CIDR of the port <var>P</var>, and <var>N</var> is the
+          network id (index). There is one flow like this per router port's
+          network.
+        </p>
+
+        <p>
+        <code>flags.network_id</code> is 4 bits, and thus only 16 networks can
+        be indexed. If the number of networks is greater than 16, networks 17
+        and up will have the actions <code>flags.network_id = 0; next;</code>
+        and only the lexicographically first IP will be considered for SNAT for
+        those networks.
+        </p>
+      </li>
+
+      <li>
+        A lower priority-105 flow with match <code>1</code> and actions
+        <code>flags.network_id = 0; next;</code>. This is for the case that the
+        next-hop doesn't belong to any of the port networks, so
+        <code>flags.network_id</code> should be set to zero.
+      </li>
+
+      <li>
+        Catch-all: A priority-0 flow with match <code>1</code> has
+        actions <code>next;</code>.
+      </li>
+    </ul>
+
+   <h3>Ingress Table 25: ARP Request</h3>
 
     <p>
       In the common case where the Ethernet destination has been resolved, this
@@ -5255,19 +5310,39 @@ nd_ns {
           load-balanced) using router IP (i.e <ref column="options"
           table="Logical_Router"/>:lb_force_snat_ip=router_ip), then for
           each logical router port <var>P</var> attached to the Gateway
-          router, a priority-110 flow matches
-          <code>flags.force_snat_for_lb == 1 &amp;&amp; outport == <var>P</var>
-          </code> with an action <code>ct_snat(<var>R</var>);</code>
-          where <var>R</var> is the IP configured on the router port.
-          If <code>R</code> is an IPv4 address then the match will also
-          include <code>ip4</code> and if it is an IPv6 address, then the
-          match will also include <code>ip6</code>.
+          router, and for each network configured for this port, a priority-110
+          flow matches <code>flags.force_snat_for_lb == 1</code> &amp;&amp;
+          <code>ip4</code> &amp;&amp;
+          <code>flags.network_id == <var>N</var></code> &amp;&amp;
+          <code>outport == <var>P</var></code>, where <var>N</var> is the
+          network index, with an action <code>ct_snat(<var>R</var>);</code>
+          where <var>R</var> is the IP configured on the router port. A similar
+          flow is created for IPv6, with <code>ip6</code> instead of
+          <code>ip4</code>. <var>N</var>, the network index, will be 0 for
+          networks 17 and up.
         </p>
 
         <p>
           If the logical router port <var>P</var> is configured with multiple
-          IPv4 and multiple IPv6 addresses, only the first IPv4 and first IPv6
-          address is considered.
+          IPv4 and multiple IPv6 addresses, the IPv4 and IPv6 address within
+          the same network as the next-hop will be chosen as <var>R</var> for
+          SNAT. However, if there are more than 16 networks configured, the
+          lexicographically first IP will be considered for SNAT for networks
+          17 and up.
+        </p>
+      </li>
+      <li>
+        <p>
+          A priority-105 flow matches the old behavior for if northd is
+          upgraded before controller and <code>flags.network_id</code> is not
+          recognized. It is only added if there's at least one network
+          configured (excluding LLA for IPv6). It matches on:
+          <code>flags.force_snat_for_lb == 1</code> &amp;&amp; <code>ip4</code>
+          &amp;&amp; <code>outport == <var>P</var></code>, with action:
+          <code>ct_snat(<var>R</var>)</code>.
+          <var>R</var> is the lexicographically first IP address configured.
+          There is a similar flow for IPv6 with <code>ip6</code> instead of
+          <code>ip4</code>.
         </p>
       </li>
 
