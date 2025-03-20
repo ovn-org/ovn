@@ -211,7 +211,7 @@ static void wait_put_mac_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn);
 static void send_mac_binding_buffered_pkts(struct rconn *swconn)
     OVS_REQUIRES(pinctrl_mutex);
 
-static void pinctrl_rarp_activation_strategy_handler(const struct match *md);
+static void pinctrl_activation_strategy_handler(const struct match *md);
 
 static void pinctrl_split_buf_action_handler(
         struct rconn *swconn, struct dp_packet *pkt,
@@ -3802,9 +3802,9 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         ovs_mutex_unlock(&pinctrl_mutex);
         break;
 
-    case ACTION_OPCODE_ACTIVATION_STRATEGY_RARP:
+    case ACTION_OPCODE_ACTIVATION_STRATEGY:
         ovs_mutex_lock(&pinctrl_mutex);
-        pinctrl_rarp_activation_strategy_handler(&pin.flow_metadata);
+        pinctrl_activation_strategy_handler(&pin.flow_metadata);
         ovs_mutex_unlock(&pinctrl_mutex);
         break;
 
@@ -9014,7 +9014,7 @@ tag_port_as_activated_in_engine(struct activated_port *ap) {
 }
 
 static void
-pinctrl_rarp_activation_strategy_handler(const struct match *md)
+pinctrl_activation_strategy_handler(const struct match *md)
     OVS_REQUIRES(pinctrl_mutex)
 {
     /* Tag the port as activated in-memory. */

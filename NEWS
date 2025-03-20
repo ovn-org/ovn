@@ -4,6 +4,9 @@ Post v25.03.0
      external-ids, this option allows to specify if ovn-controller should
      perform cleanup when exiting. The "--restart" exit always has priority
      to keep the backward compatibility.
+   - Add additional protocol support for options:activation-strategy. The new
+     supported protocols are gARP and NA. The option now supports a comma
+     separated to specify selected group of protocols.
 
 OVN v25.03.0 - 07 Mar 2025
 --------------------------

@@ -788,8 +788,8 @@ OVNACTS
     /* put_fdb(inport, eth.src). */                                           \
     ACTION_OPCODE(PUT_FDB)                                                    \
                                                                               \
-    /* activation_strategy_rarp() */                                          \
-    ACTION_OPCODE(ACTIVATION_STRATEGY_RARP)                                   \
+    /* activation_strategy() */                                               \
+    ACTION_OPCODE(ACTIVATION_STRATEGY)                                        \
                                                                               \
     /* split buffer action. */                                                \
     ACTION_OPCODE(SPLIT_BUF_ACTION)                                           \

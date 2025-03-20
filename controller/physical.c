@@ -1228,33 +1228,146 @@ enum access_type {
     PORT_HA_REMOTE,
 };
 
+enum activation_strategy {
+    ACTIVATION_RARP = 1 << 0,
+    ACTIVATION_GARP = 1 << 1,
+    ACTIVATION_NA   = 1 << 2,
+    ACTIVATION_IP4  = ACTIVATION_GARP | ACTIVATION_RARP,
+    ACTIVATION_IP6  = ACTIVATION_NA,
+};
+
 static void
 setup_rarp_activation_strategy(const struct sbrec_port_binding *binding,
                                ofp_port_t ofport, struct zone_ids *zone_ids,
+                               struct ofpbuf *ofpacts,
                                struct ovn_desired_flow_table *flow_table)
 {
     struct match match = MATCH_CATCHALL_INITIALIZER;
-    uint64_t stub[1024 / 8];
-    struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
 
     /* Unblock the port on ingress RARP. */
     match_set_dl_type(&match, htons(ETH_TYPE_RARP));
     match_set_in_port(&match, ofport);
 
-    load_logical_ingress_metadata(binding, zone_ids, 0, NULL, &ofpacts, true);
-
-    encode_controller_op(ACTION_OPCODE_ACTIVATION_STRATEGY_RARP,
-                         NX_CTLR_NO_METER, &ofpacts);
-
-    put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, &ofpacts);
+    load_logical_ingress_metadata(binding, zone_ids, 0, NULL, ofpacts, true);
+    encode_controller_op(ACTION_OPCODE_ACTIVATION_STRATEGY,
+                         NX_CTLR_NO_METER, ofpacts);
+    put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, ofpacts);
 
     ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 1010,
                     binding->header_.uuid.parts[0],
-                    &match, &ofpacts, &binding->header_.uuid);
-    ofpbuf_clear(&ofpacts);
+                    &match, ofpacts, &binding->header_.uuid);
+    ofpbuf_clear(ofpacts);
+}
+
+static void
+setup_arp_activation_strategy(const struct sbrec_port_binding *binding,
+                              ofp_port_t  ofport, struct zone_ids *zone_ids,
+                              struct ofpbuf *ofpacts, struct eth_addr mac,
+                              ovs_be32 ip,
+                              struct ovn_desired_flow_table *flow_table)
+{
+    struct match match = MATCH_CATCHALL_INITIALIZER;
+
+    /* match: arp/rarp, in_port=<OFPORT>, dl_src=<MAC>, arp_sha=<MAC>,
+     * arp_spa=<IP>, arp_tpa=<IP> */
+    match_set_dl_type(&match, htons(ETH_TYPE_ARP));
+    match_set_in_port(&match, ofport);
+    match_set_dl_src(&match, mac);
+    match_set_arp_sha(&match, mac);
+    match_set_arp_spa_masked(&match, ip, OVS_BE32_MAX);
+    match_set_arp_tpa_masked(&match, ip, OVS_BE32_MAX);
+
+    load_logical_ingress_metadata(binding, zone_ids, 0, NULL, ofpacts, true);
+    /* Unblock the traffic when it matches specified strategy. */
+    encode_controller_op(ACTION_OPCODE_ACTIVATION_STRATEGY,
+                         NX_CTLR_NO_METER, ofpacts);
+    put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, ofpacts);
+
+    ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 1010,
+                    binding->header_.uuid.parts[0],
+                    &match, ofpacts, &binding->header_.uuid);
+    ofpbuf_clear(ofpacts);
+}
+
+static void
+setup_nd_na_activation_strategy(const struct sbrec_port_binding *binding,
+                                ofp_port_t  ofport, struct zone_ids *zone_ids,
+                                struct ofpbuf *ofpacts, struct eth_addr mac,
+                                const struct in6_addr *ip,
+                                struct ovn_desired_flow_table *flow_table)
+{
+    struct match match = MATCH_CATCHALL_INITIALIZER;
+
+    /* match: icmp6, in_port=<OFPORT>, icmp_type=136, icmp_code=0,
+     * ipv6_src=<IP>, nd_target=<IP>, nd_tll=<MAC> */
+    match_set_dl_type(&match, htons(ETH_TYPE_IPV6));
+    match_set_in_port(&match, ofport);
+    match_set_nw_proto(&match, IPPROTO_ICMPV6);
+    match_set_icmp_type(&match, 136);
+    match_set_icmp_code(&match, 0);
+    match_set_ipv6_src(&match, ip);
+    match_set_nd_target(&match, ip);
+    match_set_arp_tha(&match, mac);
+
+    load_logical_ingress_metadata(binding, zone_ids, 0, NULL, ofpacts, true);
+    /* Unblock the traffic when it matches specified strategy. */
+    encode_controller_op(ACTION_OPCODE_ACTIVATION_STRATEGY,
+                         NX_CTLR_NO_METER, ofpacts);
+    put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, ofpacts);
+
+    ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 1010,
+                    binding->header_.uuid.parts[0],
+                    &match, ofpacts, &binding->header_.uuid);
+    ofpbuf_clear(ofpacts);
+}
+
+static void
+setup_activation_strategy_flows(const struct sbrec_port_binding *binding,
+                                ofp_port_t ofport, struct zone_ids *zone_ids,
+                                uint32_t activation_strategies,
+                                const struct lport_addresses *addresses,
+                                struct ovn_desired_flow_table *flow_table)
+{
+    uint64_t stub[1024 / 8];
+    struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
+
+    bool ip4_activation = (activation_strategies & ACTIVATION_IP4) != 0;
+    bool ip6_activation = (activation_strategies & ACTIVATION_IP6) != 0;
+
+    if (activation_strategies & ACTIVATION_RARP) {
+        setup_rarp_activation_strategy(binding, ofport, zone_ids, &ofpacts,
+                                       flow_table);
+    }
+
+    for (size_t i = 0; ip4_activation && i < addresses->n_ipv4_addrs; i++) {
+        const struct ipv4_netaddr *address = &addresses->ipv4_addrs[i];
+        if (activation_strategies & ACTIVATION_GARP) {
+            setup_arp_activation_strategy(binding, ofport, zone_ids, &ofpacts,
+                                          addresses->ea, address->addr,
+                                          flow_table);
+        }
+    }
+
+    /* Always add LLA address activation if there is any IPv6 address. */
+    if (ip6_activation && addresses->n_ipv6_addrs) {
+        struct in6_addr lla;
+        in6_generate_lla(addresses->ea, &lla);
+
+        setup_nd_na_activation_strategy(binding, ofport, zone_ids, &ofpacts,
+                                        addresses->ea, &lla, flow_table);
+    }
+
+    for (size_t i = 0; ip6_activation && i < addresses->n_ipv6_addrs; i++) {
+        const struct ipv6_netaddr *address = &addresses->ipv6_addrs[i];
+        if (activation_strategies & ACTIVATION_NA) {
+            setup_nd_na_activation_strategy(binding, ofport, zone_ids,
+                                            &ofpacts, addresses->ea,
+                                            &address->addr, flow_table);
+        }
+    }
 
     /* Block all non-RARP traffic for the port, both directions. */
-    match_init_catchall(&match);
+    struct match match = MATCH_CATCHALL_INITIALIZER;
     match_set_in_port(&match, ofport);
 
     ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 1000,
@@ -1274,6 +1387,35 @@ setup_rarp_activation_strategy(const struct sbrec_port_binding *binding,
     ofpbuf_uninit(&ofpacts);
 }
 
+static uint32_t
+pb_parse_activation_strategy(const struct sbrec_port_binding *pb)
+{
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+    uint32_t strategies = 0;
+
+    struct sset strategies_cfg = SSET_INITIALIZER(&strategies_cfg);
+    sset_from_delimited_string(&strategies_cfg,
+                               smap_get_def(&pb->options,
+                                           "activation-strategy", ""),
+                               ",");
+    const char *strategy;
+    SSET_FOR_EACH (strategy, &strategies_cfg) {
+        if (!strcmp(strategy, "rarp")) {
+            strategies |= ACTIVATION_RARP;
+        } else if (!strcmp(strategy, "garp")) {
+            strategies |= ACTIVATION_GARP;
+        } else if (!strcmp(strategy, "na")) {
+            strategies |= ACTIVATION_NA;
+        } else {
+            VLOG_WARN_RL(&rl, "Unknown activation strategy defined for "
+                         "port %s: %s", pb->logical_port, strategy);
+        }
+    }
+
+    sset_destroy(&strategies_cfg);
+    return strategies;
+}
+
 static void
 setup_activation_strategy(const struct sbrec_port_binding *binding,
                           const struct sbrec_chassis *chassis,
@@ -1281,28 +1423,28 @@ setup_activation_strategy(const struct sbrec_port_binding *binding,
                           ofp_port_t ofport, struct zone_ids *zone_ids,
                           struct ovn_desired_flow_table *flow_table)
 {
-    for (size_t i = 0; i < binding->n_additional_chassis; i++) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-        if (binding->additional_chassis[i] == chassis) {
-            const char *strategy = smap_get(&binding->options,
-                                            "activation-strategy");
-            if (strategy
-                    && !lport_is_activated_by_activation_strategy(binding,
-                                                                  chassis)
-                    && !pinctrl_is_port_activated(dp_key, port_key)) {
-                if (!strcmp(strategy, "rarp")) {
-                    setup_rarp_activation_strategy(binding, ofport,
-                                                   zone_ids, flow_table);
-                } else {
-                    VLOG_WARN_RL(&rl,
-                                 "Unknown activation strategy defined for "
-                                 "port %s: %s",
-                                 binding->logical_port, strategy);
-                    return;
-                }
-            }
-            return;
+    if (!is_additional_chassis(binding, chassis)) {
+        return;
+    }
+
+    if (lport_is_activated_by_activation_strategy(binding, chassis) ||
+        pinctrl_is_port_activated(dp_key, port_key)) {
+        return;
+    }
+
+    uint32_t strategies = pb_parse_activation_strategy(binding);
+    if (!strategies) {
+        return;
+    }
+
+    for (size_t i = 0; i < binding->n_mac; i++) {
+        struct lport_addresses addresses;
+        if (!extract_lsp_addresses(binding->mac[i], &addresses)) {
+            continue;
         }
+        setup_activation_strategy_flows(binding, ofport, zone_ids, strategies,
+                                        &addresses, flow_table);
+        destroy_lport_addresses(&addresses);
     }
 }
 

@@ -3783,13 +3783,16 @@ tcp.flags = RST;
       </column>
 
       <column name="options" key="activation-strategy">
-        If used with multiple chassis set in <ref column="requested-chassis"/>,
-        specifies an activation strategy for all additional chassis. By
-        default, no activation strategy is used, meaning additional port
-        locations are immediately available for use. When set to "rarp", the
-        port is blocked for ingress and egress communication until a RARP
-        packet is sent from a new location. The "rarp" strategy is useful
-        in live migration scenarios for virtual machines.
+        If used with multiple chassis set in
+        <ref column="requested-chassis"/>, specifies an activation strategy
+        for all additional chassis. By default, no activation strategy is
+        used, meaning additional port locations are immediately available for
+        use. The option supports a comma separated list where you can combine
+        3 protocols, "rarp", "garp" and "na". When any of the protocols is
+        set, the port is blocked for ingress and egress communication until
+        a specified protocol packet is sent from a new location. The
+        activation strategy is useful in live migration scenarios for
+        virtual machines.
       </column>
 
       <column name="options" key="additional-chassis-activated">
