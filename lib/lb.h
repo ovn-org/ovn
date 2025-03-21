@@ -36,6 +36,7 @@ struct ovn_lb_vip {
     char *port_str;      /* Actual port string representation.  To be used
                           * in ovn-northd.
                           */
+    bool template_vips;  /* True if the vips are templates. */
     struct ovn_lb_backend *backends;
     size_t n_backends;
 
