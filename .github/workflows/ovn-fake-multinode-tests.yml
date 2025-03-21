@@ -19,7 +19,7 @@ jobs:
       matrix:
         cfg:
         - { repo: "${{ github.repository }}", branch: "${{ github.ref_name }}" }
-        - { repo: ovn-org/ovn, branch: "branch-22.03" }
+        - { repo: ovn-org/ovn, branch: "branch-24.03" }
     env:
       RUNC_CMD: podman
       OS_IMAGE: "fedora:39"
@@ -79,7 +79,7 @@ jobs:
       matrix:
         cfg:
         - { branch: "${{ github.ref_name }}", testsuiteflags: ""}
-        - { branch: "branch-22.03", testsuiteflags: "-k 'basic test'" }
+        - { branch: "branch-24.03", testsuiteflags: "-k 'basic test'" }
     name: multinode tests ${{ join(matrix.cfg.*, ' ') }}
     env:
       RUNC_CMD: podman
@@ -125,12 +125,12 @@ jobs:
 
     - uses: actions/download-artifact@v4
       with:
-        name: test-branch-22.03-image
+        name: test-branch-24.03-image
 
     - name: Load podman image
       run: |
         sudo podman load --input ovn_${{ github.ref_name }}_image.tar
-        sudo podman load --input ovn_branch-22.03_image.tar
+        sudo podman load --input ovn_branch-24.03_image.tar
 
     - name: Check out ovn-fake-multi-node
       uses: actions/checkout@v4
