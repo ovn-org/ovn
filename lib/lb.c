@@ -248,6 +248,7 @@ ovn_lb_vip_init_template(struct ovn_lb_vip *lb_vip, const char *lb_key_,
         success = true;
         if (!lb_vip->vip_str) {
             lb_vip->vip_str = xstrdup(atom);
+            lb_vip->template_vips = !!strchr(atom, LEX_TEMPLATE_PREFIX);
         } else {
             lb_vip->port_str = xstrdup(atom);
         }
