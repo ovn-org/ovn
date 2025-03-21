@@ -12336,6 +12336,35 @@ build_lrouter_defrag_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
 }
 
 static void
+build_lrouter_allow_vip_traffic_template(struct lflow_table *lflows,
+                                         struct ovn_lb_datapaths *lb_dps,
+                                         struct ovn_lb_vip *lb_vip,
+                                         const struct ovn_northd_lb *lb,
+                                         const struct ovn_datapaths *lr_dps)
+{
+    if (!lb_vip->template_vips) {
+        return;
+    }
+
+    struct ds match = DS_EMPTY_INITIALIZER;
+
+    size_t index;
+    BITMAP_FOR_EACH_1 (index, ods_size(lr_dps), lb_dps->nb_lr_map) {
+        struct ovn_datapath *od = lr_dps->array[index];
+        /* Do not drop ip traffic with destination the template VIP. */
+        ds_clear(&match);
+        ds_put_format(&match, "ip%d.dst == %s",
+                      lb_vip->address_family == AF_INET ? 4 : 6,
+                      lb_vip->vip_str);
+        ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_INPUT, 100,
+                                ds_cstr(&match), "next;",
+                                &lb->nlb->header_, lb_dps->lflow_ref);
+    }
+
+    ds_destroy(&match);
+}
+
+static void
 build_lrouter_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
                            struct lflow_table *lflows,
                            const struct shash *meter_groups,
@@ -12358,6 +12387,9 @@ build_lrouter_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
                                        lr_datapaths, lr_stateful_table, lflows,
                                        match, action, meter_groups,
                                        svc_monitor_map);
+
+        build_lrouter_allow_vip_traffic_template(lflows, lb_dps, lb_vip, lb,
+                                                 lr_datapaths);
 
         if (!build_empty_lb_event_flow(lb_vip, lb, match, action)) {
             continue;

@@ -3101,6 +3101,15 @@ icmp6_error {
       </li>
 
       <li>
+          For each load balancer applied to this logical router configured
+          with <code>VIP</code> template, a priority-100 flow matching
+          <code>ip4.dst</code> or <code>ip6.dst</code> with the configured
+          load balancer <code>VIP</code> and action <code>next;</code>.
+          These flows avoid dropping the packet if the <code>VIP</code> is
+          set to one of the router IPs.
+      </li>
+
+      <li>
         <p>
           ICMP echo reply.  These flows reply to ICMP echo requests received
           for the router's IP address.  Let <var>A</var> be an IP address
