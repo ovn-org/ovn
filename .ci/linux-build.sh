@@ -104,26 +104,42 @@ function configure_clang()
     COMMON_CFLAGS="${COMMON_CFLAGS} -Wno-error=unused-command-line-argument"
 }
 
-function run_tests()
-{
-    if ! timeout -k 5m -v $TIMEOUT make distcheck \
-        CFLAGS="${COMMON_CFLAGS} ${OVN_CFLAGS}" $JOBS \
-        TESTSUITEFLAGS="$JOBS $TEST_RANGE" RECHECK=$RECHECK \
-        SKIP_UNSTABLE=$SKIP_UNSTABLE
-    then
-        # testsuite.log is necessary for debugging.
-        cat */_build/sub/tests/testsuite.log
-        return 1
-    fi
-}
-
-function execute_tests()
+function execute_dist_tests()
 {
     # 'distcheck' will reconfigure with required options.
     # Now we only need to prepare the Makefile without sparse-wrapped CC.
     configure_ovn
 
     export DISTCHECK_CONFIGURE_FLAGS="$OPTS"
+
+    # Just list the tests during distcheck.
+    if ! timeout -k 5m -v $TIMEOUT make distcheck \
+        CFLAGS="${COMMON_CFLAGS} ${OVN_CFLAGS}" $JOBS \
+        TESTSUITEFLAGS="-l"
+    then
+        # config.log is necessary for debugging.
+        cat config.log
+        exit 1
+    fi
+}
+
+function run_tests()
+{
+    if ! timeout -k 5m -v $TIMEOUT make check \
+        CFLAGS="${COMMON_CFLAGS} ${OVN_CFLAGS}" $JOBS \
+        TESTSUITEFLAGS="$JOBS $TEST_RANGE" RECHECK=$RECHECK \
+        SKIP_UNSTABLE=$SKIP_UNSTABLE
+    then
+        # testsuite.log is necessary for debugging.
+        cat tests/testsuite.log
+        return 1
+    fi
+}
+
+function execute_tests()
+{
+    configure_ovn $OPTS
+    make $JOBS || { cat config.log; exit 1; }
 
     local stable_rc=0
     local unstable_rc=0
@@ -188,6 +204,10 @@ if [ "$TESTSUITE" ]; then
     case "$TESTSUITE" in
         "test")
         execute_tests
+        ;;
+
+        "dist-test")
+        execute_dist_tests
         ;;
 
         "system-test")

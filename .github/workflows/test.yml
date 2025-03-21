@@ -91,6 +91,7 @@ jobs:
         cfg:
         - { compiler: gcc, opts: --disable-ssl }
         - { compiler: clang, opts: --disable-ssl }
+        - { compiler: gcc, testsuite: dist-test }
         - { compiler: gcc, testsuite: test, test_range: "-300" }
         - { compiler: gcc, testsuite: test, test_range: "301-600" }
         - { compiler: gcc, testsuite: test, test_range: "601-", unstable: unstable }
