@@ -94,7 +94,7 @@ multinode_nbctl () {
 }
 
 multinode_sbctl () {
-    m_as ovn-central-az1-1 ovn-sbctl "$@"
+    m_as ovn-central-az1 ovn-sbctl "$@"
 }
 
 check_fake_multinode_setup_by_nodes() {
