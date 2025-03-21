@@ -14444,3 +14444,148 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([load balancing lb_force_snat_ip with template])
+AT_KEYWORDS([ovnlb])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+# Logical network:
+# Two LRs - R1 and R2 that are connected to each other via LS "join"
+# in 20.0.0.0/24 network. R1 has switchess foo (192.168.1.0/24) and
+# bar (192.168.2.0/24) connected to it. R2 has alice (172.16.1.0/24) connected
+# to it.  R2 is a gateway router on which we add load-balancing rules.
+#
+#    foo -- R1 -- join - R2 -- alice
+#           |
+#    bar ----
+
+check_uuid ovn-nbctl create Logical_Router name=R1
+check_uuid ovn-nbctl create Logical_Router name=R2 options:chassis=hv1
+
+check ovn-nbctl ls-add foo
+check ovn-nbctl ls-add bar
+check ovn-nbctl ls-add alice
+check ovn-nbctl ls-add join
+
+# Connect foo to R1
+check ovn-nbctl lrp-add R1 foo 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lsp-add foo rp-foo -- set Logical_Switch_Port rp-foo \
+    type=router options:router-port=foo addresses=\"00:00:01:01:02:03\"
+
+# Connect bar to R1
+check ovn-nbctl lrp-add R1 bar 00:00:01:01:02:04 192.168.2.1/24
+check ovn-nbctl lsp-add bar rp-bar -- set Logical_Switch_Port rp-bar \
+    type=router options:router-port=bar addresses=\"00:00:01:01:02:04\"
+
+# Connect alice to R2
+check ovn-nbctl lrp-add R2 alice 00:00:02:01:02:03 172.16.1.1/24
+check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
+    type=router options:router-port=alice addresses=\"00:00:02:01:02:03\"
+
+# Connect R1 to join
+check ovn-nbctl lrp-add R1 R1_join 00:00:04:01:02:03 20.0.0.1/24
+check ovn-nbctl lsp-add join r1-join -- set Logical_Switch_Port r1-join \
+    type=router options:router-port=R1_join addresses='"00:00:04:01:02:03"'
+
+# Connect R2 to join
+check ovn-nbctl lrp-add R2 R2_join 00:00:04:01:02:04 20.0.0.2/24
+check ovn-nbctl lsp-add join r2-join -- set Logical_Switch_Port r2-join \
+    type=router options:router-port=R2_join addresses='"00:00:04:01:02:04"'
+
+# Static routes.
+check ovn-nbctl lr-route-add R1 172.16.1.0/24 20.0.0.2
+check ovn-nbctl lr-route-add R2 192.168.0.0/16 20.0.0.1
+
+# Logical port 'foo1' in switch 'foo'.
+ADD_NAMESPACES(foo1)
+ADD_VETH(foo1, foo1, br-int, "192.168.1.2/24", "f0:00:00:01:02:03", \
+         "192.168.1.1")
+check ovn-nbctl lsp-add foo foo1 \
+-- lsp-set-addresses foo1 "f0:00:00:01:02:03 192.168.1.2"
+
+# Logical port 'alice1' in switch 'alice'.
+ADD_NAMESPACES(alice1)
+ADD_VETH(alice1, alice1, br-int, "172.16.1.2/24", "f0:00:00:01:02:04", \
+         "172.16.1.1")
+check ovn-nbctl lsp-add alice alice1 \
+-- lsp-set-addresses alice1 "f0:00:00:01:02:04 172.16.1.2"
+
+# Logical port 'bar1' in switch 'bar'.
+ADD_NAMESPACES(bar1)
+ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:05", \
+"192.168.2.1")
+check ovn-nbctl lsp-add bar bar1 \
+-- lsp-set-addresses bar1 "f0:00:00:01:02:05 192.168.2.2"
+
+check ovn-nbctl set logical_router R2 options:lb_force_snat_ip="20.0.0.5"
+
+AT_CHECK([ovn-nbctl -- create chassis_template_var chassis="hv1" \
+          variables="{vip=172.16.1.1,vport1=8000,backends1=\"192.168.1.2:80,192.168.2.2:80\"}"],
+          [0], [ignore])
+
+# Config OVN load-balancer with a VIP.
+check ovn-nbctl --template lb-add lb1 "^vip:^vport1" "^backends1" tcp
+check ovn-nbctl lr-lb-add R2 lb1
+# Wait for ovn-controller to catch up.
+check ovn-nbctl --wait=hv sync
+
+# Start webservers in 'foo1', 'bar1'.
+OVS_START_L7([foo1], [http])
+OVS_START_L7([bar1], [http])
+
+NETNS_START_TCPDUMP([foo1], [-neei foo1 src 20.0.0.5 and tcp], [foo1])
+NETNS_START_TCPDUMP([bar1], [-neei bar1 src 20.0.0.5 and tcp], [bar1])
+
+check ovs-appctl dpctl/flush-conntrack
+for i in $(seq 10); do
+    NS_EXEC([alice1], [wget 172.16.1.1:8000 -t 5 -T 1 --retry-connrefused -v -o wget$i.log])
+done
+
+OVS_WAIT_UNTIL([
+    n_pkt=$(cat foo1.tcpdump | wc -l)
+    test "${n_pkt}" -ge 1
+])
+OVS_WAIT_UNTIL([
+    n_pkt=$(cat bar1.tcpdump | wc -l)
+    test "${n_pkt}" -ge 1
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(20.0.0.5) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+tcp,orig=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=20.0.0.5,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=192.168.2.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=20.0.0.5,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+])
+
+OVN_CLEANUP_CONTROLLER([hv1])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
