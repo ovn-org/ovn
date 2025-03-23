@@ -332,8 +332,10 @@ lflow_parse_actions(const struct sbrec_logical_flow *lflow,
         .nd_ra_opts = l_ctx_in->nd_ra_opts,
         .controller_event_opts = l_ctx_in->controller_event_opts,
 
-        .pipeline = ingress ? OVNACT_P_INGRESS : OVNACT_P_EGRESS,
-        .n_tables = LOG_PIPELINE_LEN,
+        .pipeline = ingress ? OVNACT_P_INGRESS
+                            : OVNACT_P_EGRESS,
+        .n_tables = ingress ? LOG_PIPELINE_INGRESS_LEN
+                            : LOG_PIPELINE_EGRESS_LEN,
         .cur_ltable = lflow->table_id,
     };
 

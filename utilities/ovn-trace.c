@@ -990,16 +990,17 @@ parse_lflow_for_datapath(const struct sbrec_logical_flow *sblf,
             return;
         }
 
+        bool ingress = !strcmp(sblf->pipeline, "ingress");
         struct ovnact_parse_params pp = {
             .symtab = &symtab,
             .dhcp_opts = &dhcp_opts,
             .dhcpv6_opts = &dhcpv6_opts,
             .nd_ra_opts = &nd_ra_opts,
             .controller_event_opts = &event_opts,
-            .pipeline = (!strcmp(sblf->pipeline, "ingress")
-                         ? OVNACT_P_INGRESS
-                         : OVNACT_P_EGRESS),
-            .n_tables = LOG_PIPELINE_LEN,
+            .pipeline = ingress ? OVNACT_P_INGRESS
+                                : OVNACT_P_EGRESS,
+            .n_tables = ingress ? LOG_PIPELINE_INGRESS_LEN
+                                : LOG_PIPELINE_EGRESS_LEN,
             .cur_ltable = sblf->table_id,
         };
         uint64_t stub[1024 / 8];

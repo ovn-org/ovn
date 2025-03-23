@@ -362,10 +362,14 @@ parse_NEXT(struct action_context *ctx)
         }
     }
 
-    if (table >= ctx->pp->n_tables) {
+    int max_table = pipeline == OVNACT_P_INGRESS
+                             ? LOG_PIPELINE_INGRESS_LEN
+                             : LOG_PIPELINE_EGRESS_LEN;
+
+    if (table >= max_table) {
         lexer_error(ctx->lexer,
                     "\"next\" action cannot advance beyond table %d.",
-                    ctx->pp->n_tables - 1);
+                    max_table);
         return;
     }
 

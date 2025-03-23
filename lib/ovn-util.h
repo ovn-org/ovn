@@ -313,7 +313,8 @@ BUILD_ASSERT_DECL(
 #define SCTP_ABORT_CHUNK_FLAG_T (1 << 0)
 
 /* The number of tables for the ingress and egress pipelines. */
-#define LOG_PIPELINE_LEN 30
+#define LOG_PIPELINE_INGRESS_LEN 30
+#define LOG_PIPELINE_EGRESS_LEN 13
 
 static inline uint32_t
 hash_add_in6_addr(uint32_t hash, const struct in6_addr *addr)
