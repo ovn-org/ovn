@@ -7,6 +7,7 @@ Post v25.03.0
    - Add additional protocol support for options:activation-strategy. The new
      supported protocols are gARP and NA. The option now supports a comma
      separated to specify selected group of protocols.
+   - Add CoPP support for DHCP relay.
 
 OVN v25.03.0 - 07 Mar 2025
 --------------------------

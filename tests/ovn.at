@@ -40284,6 +40284,126 @@ n_packets=3
 
 sid=`ip_to_hex 172.16.1.1`
 
+# ====================================================
+# Test Copp for DHCP request/response packets
+
+check ovn-nbctl --wait=hv meter-add dhcp_relay_meter drop 10 pktps 5
+check ovn-nbctl --wait=hv copp-add copp_dhcp_relay dhcpv4-relay dhcp_relay_meter
+check ovn-nbctl --wait=hv lr-copp-add copp_dhcp_relay lr0
+
+AT_CHECK([as hv1 ovs-appctl -t ovn-controller meter-table-list], [0], [dnl
+dhcp_relay_meter: 1
+])
+
+# Print some information that may help debugging.
+ovs-ofctl dump-flows br-int > pflows_dhcp_relay_copp
+ovn-sbctl find logical_flow controller_meter=dhcp_relay_meter > lflows_dhcp_relay_copp
+
+## Verify packets within defined limit are not dropped.
+
+# Send DHCP discovery.
+src_mac="505400000010"
+src_ip=`ip_to_hex 0.0.0.0`
+dst_mac="ffffffffffff"
+dst_ip=`ip_to_hex 255.255.255.255`
+yiaddr=`ip_to_hex 0.0.0.0`
+giaddr=`ip_to_hex 0.0.0.0`
+sid=$src_ip
+
+for i in {1..3}
+do
+  send_dhcp_packet $src_mac $src_ip $dst_mac $dst_ip 01 01 $yiaddr $giaddr $sid vif0
+done
+
+echo "Meter stats:"
+as hv1 ovs-ofctl -O OpenFlow15 meter-stats br-int
+meter_stat=$(as hv1 ovs-ofctl -O OpenFlow15 meter-stats br-int)
+drop_cnt=$(echo $meter_stat | tail -n1 | sed -n 's/.*packet_count:\([[0-9]]\+\).*/\1/p')
+check test $drop_cnt -eq 0
+
+# Send DHCP offer.
+src_mac="50540000001f"
+src_ip=`ip_to_hex 172.16.1.1`
+dst_mac="505400000002"
+dst_ip=`ip_to_hex 192.168.1.1`
+yiaddr=`ip_to_hex 192.168.1.10`
+giaddr=`ip_to_hex 192.168.1.1`
+sid=$src_ip
+
+sleep 1
+for i in {1..3}
+do
+  send_dhcp_packet $src_mac $src_ip $dst_mac $dst_ip 02 02 $yiaddr $giaddr $sid ext0
+done
+
+echo "Meter stats:"
+as hv1 ovs-ofctl -O OpenFlow15 meter-stats br-int
+meter_stat=$(as hv1 ovs-ofctl -O OpenFlow15 meter-stats br-int)
+drop_cnt=$(echo $meter_stat | tail -n1 | sed -n 's/.*packet_count:\([[0-9]]\+\).*/\1/p')
+check test $drop_cnt -eq 0
+
+## Verify packets exceeding rate limiting are dropped.
+
+# Send DHCP discovery.
+src_mac="505400000010"
+src_ip=`ip_to_hex 0.0.0.0`
+dst_mac="ffffffffffff"
+dst_ip=`ip_to_hex 255.255.255.255`
+yiaddr=`ip_to_hex 0.0.0.0`
+giaddr=`ip_to_hex 0.0.0.0`
+sid=$src_ip
+
+sleep 1
+start_time=$(date +%s%3N)
+for i in {1..15}
+do
+  send_dhcp_packet $src_mac $src_ip $dst_mac $dst_ip 01 01 $yiaddr $giaddr $sid vif0
+done
+end_time=$(date +%s%3N)
+
+# On particularly slow or overloaded systems, the transmission rate may
+# be lower than the configured meter rate. To prevent false test
+# failures, we check the transmission duration, and if it's
+# greater than expected time, just skip the test.
+d_ms=$(expr $end_time - $start_time)
+echo "Discover transmission duration ms: $d_ms"
+AT_SKIP_IF([test $d_ms -gt 1000])
+
+echo "Meter stats:"
+as hv1 ovs-ofctl -O OpenFlow15 meter-stats br-int
+meter_stat=$(as hv1 ovs-ofctl -O OpenFlow15 meter-stats br-int)
+drop_cnt=$(echo $meter_stat | tail -n1 | sed -n 's/.*packet_count:\([[0-9]]\+\).*/\1/p')
+check test $drop_cnt -gt 1
+
+# Send DHCP offer.
+src_mac="50540000001f"
+src_ip=`ip_to_hex 172.16.1.1`
+dst_mac="505400000002"
+dst_ip=`ip_to_hex 192.168.1.1`
+yiaddr=`ip_to_hex 192.168.1.10`
+giaddr=`ip_to_hex 192.168.1.1`
+sid=$src_ip
+
+sleep 1
+start_time=$(date +%s%3N)
+for i in {1..15}
+do
+  send_dhcp_packet $src_mac $src_ip $dst_mac $dst_ip 02 02 $yiaddr $giaddr $sid ext0
+done
+end_time=$(date +%s%3N)
+
+d_ms=$(expr $end_time - $start_time)
+echo "Offer transmission duration ms: $d_ms"
+AT_SKIP_IF([test $d_ms -gt 1000])
+
+echo "Meter stats:"
+as hv1 ovs-ofctl -O OpenFlow15 meter-stats br-int
+prev_cnt=$drop_cnt
+meter_stat=$(as hv1 ovs-ofctl -O OpenFlow15 meter-stats br-int)
+drop_cnt=$(echo $meter_stat | tail -n1 | sed -n 's/.*packet_count:\([[0-9]]\+\).*/\1/p')
+drop_delta=$(expr $drop_cnt - $prev_cnt)
+check test $drop_delta -gt 1
+
 OVN_CLEANUP([hv1
 /WARN\|DHCP_RELAY/d
 ])

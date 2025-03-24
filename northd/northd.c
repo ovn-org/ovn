@@ -15257,7 +15257,8 @@ static void
 build_dhcp_relay_flows_for_lrouter_port(struct ovn_port *op,
                                         struct lflow_table *lflows,
                                         struct ds *match, struct ds *actions,
-                                        struct lflow_ref *lflow_ref)
+                                        struct lflow_ref *lflow_ref,
+                                        const struct shash *meter_groups)
 {
     if (!op->nbrp || !op->nbrp->dhcp_relay || !op->lrp_networks.n_ipv4_addrs) {
         return;
@@ -15306,9 +15307,12 @@ build_dhcp_relay_flows_for_lrouter_port(struct ovn_port *op,
                   "next; /* DHCP_RELAY_REQ */",
                   op->lrp_networks.ipv4_addrs[0].addr_s, server_ip_str);
 
-    ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_IP_INPUT, 110,
-                            ds_cstr(match), ds_cstr(actions),
-                            &op->nbrp->header_, lflow_ref);
+    ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT, 110,
+                              ds_cstr(match), ds_cstr(actions), NULL,
+                              copp_meter_get(COPP_DHCPV4_RELAY,
+                                             op->od->nbr->copp,
+                                             meter_groups),
+                              &op->nbrp->header_, lflow_ref);
 
     ds_clear(match);
     ds_clear(actions);
@@ -15368,10 +15372,13 @@ build_dhcp_relay_flows_for_lrouter_port(struct ovn_port *op,
           " = dhcp_relay_resp_chk(%s, %s); next; /* DHCP_RELAY_RESP */",
           op->lrp_networks.ipv4_addrs[0].addr_s, server_ip_str);
 
-    ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_DHCP_RELAY_RESP_CHK,
-                            100,
-                            ds_cstr(match), ds_cstr(actions),
-                            &op->nbrp->header_, lflow_ref);
+    ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_DHCP_RELAY_RESP_CHK,
+                              100,
+                              ds_cstr(match), ds_cstr(actions), NULL,
+                              copp_meter_get(COPP_DHCPV4_RELAY,
+                                             op->od->nbr->copp,
+                                             meter_groups),
+                              &op->nbrp->header_, lflow_ref);
 
 
     ds_clear(match);
@@ -17555,7 +17562,8 @@ build_lswitch_and_lrouter_iterate_by_lrp(struct ovn_port *op,
     build_dhcpv6_reply_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
                                               op->lflow_ref);
     build_dhcp_relay_flows_for_lrouter_port(op, lsi->lflows, &lsi->match,
-                                            &lsi->actions, op->lflow_ref);
+                                            &lsi->actions, op->lflow_ref,
+                                            lsi->meter_groups);
     build_ipv6_input_flows_for_lrouter_port(op, lsi->lflows,
                                             &lsi->match, &lsi->actions,
                                             lsi->meter_groups,

@@ -640,6 +640,10 @@
       Rate limiting meter for packets that are arriving to service
       monitor MAC address.
     </column>
+    <column name="meters" key="dhcpv4-relay">
+      Rate limiting meter for DHCPv4 relay packets (request/response) when
+      DHCPv4 Relay functionality is enabled.
+    </column>
     <column name="external_ids">
       See <em>External IDs</em> at the beginning of this document.
     </column>

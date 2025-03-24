@@ -40,6 +40,7 @@ static char *copp_proto_names[COPP_PROTO_MAX] = {
     [COPP_REJECT]        = "reject",
     [COPP_SVC_MONITOR]   = "svc-monitor",
     [COPP_BFD]           = "bfd",
+    [COPP_DHCPV4_RELAY]  = "dhcpv4-relay",
 };
 
 static const char *
