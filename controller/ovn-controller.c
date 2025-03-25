@@ -5991,6 +5991,7 @@ main(int argc, char *argv[])
 
     unixctl_command_register("debug/ignore-startup-delay", "", 0, 0,
                              debug_ignore_startup_delay, NULL);
+    ovn_debug_commands_register();
 
     unsigned int ovs_cond_seqno = UINT_MAX;
     unsigned int ovnsb_cond_seqno = UINT_MAX;
