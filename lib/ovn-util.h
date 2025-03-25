@@ -484,4 +484,5 @@ void ovn_exit_args_finish(struct ovn_exit_args *exit_args);
 bool ovn_update_swconn_at(struct rconn *swconn, const char *target,
                           int probe_interval, const char *where);
 
+void ovn_debug_commands_register(void);
 #endif /* OVN_UTIL_H */

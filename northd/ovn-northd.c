@@ -845,6 +845,7 @@ main(int argc, char *argv[])
     unixctl_command_register("parallel-build/get-n-threads", "", 0, 0,
                              ovn_northd_get_thread_count_cmd,
                              NULL);
+    ovn_debug_commands_register();
 
     daemonize_complete();
 
