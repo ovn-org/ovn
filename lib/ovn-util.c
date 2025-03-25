@@ -33,6 +33,7 @@
 #include "stream.h"
 #include "svec.h"
 #include "unixctl.h"
+#include "dummy.h"
 
 VLOG_DEFINE_THIS_MODULE(ovn_util);
 
@@ -1398,4 +1399,19 @@ lport_lookup_by_name(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     sbrec_port_binding_index_destroy_row(pb);
 
     return retval;
+}
+
+static void
+ovn_enable_timewarp(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                    const char *argv[] OVS_UNUSED, void *arg OVS_UNUSED)
+{
+    timeval_dummy_register();
+    unixctl_command_reply(conn, NULL);
+}
+
+void
+ovn_debug_commands_register(void)
+{
+    unixctl_command_register("debug/enable-timewarp", "", 0, 0,
+                             ovn_enable_timewarp, NULL);
 }
