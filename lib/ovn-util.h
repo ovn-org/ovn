@@ -477,4 +477,5 @@ void ovn_exit_command_callback(struct unixctl_conn *conn, int argc,
                                const char *argv[], void *exit_args_);
 void ovn_exit_args_finish(struct ovn_exit_args *exit_args);
 
+void ovn_debug_commands_register(void);
 #endif /* OVN_UTIL_H */
