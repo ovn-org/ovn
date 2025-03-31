@@ -169,7 +169,7 @@ def reset_counters():
 __parenthesized_constructs = 'if|for|while|switch|[_A-Z]+FOR_*EACH[_A-Z0-9]*'
 
 __regex_added_line = re.compile(r'^\+{1,2}[^\+][\w\W]*')
-__regex_subtracted_line = re.compile(r'^\-{1,2}[^\-][\w\W]*')
+__regex_subtracted_line = re.compile(r'^\-{1,2}(?!\-)[\w\W]*')
 __regex_leading_with_whitespace_at_all = re.compile(r'^\s+')
 __regex_leading_with_spaces = re.compile(r'^ +[\S]+')
 __regex_trailing_whitespace = re.compile(r'[^\S]+$')
@@ -937,6 +937,9 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
         total_line = total_line + 1
 
         if current_file.endswith(".at"):
+            if current_line:
+                if line.startswith("-"):
+                    lineno = lineno - 1
             if line.endswith("\\"):
                 current_line += line[:-1]
                 continue
