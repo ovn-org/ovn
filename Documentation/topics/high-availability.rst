@@ -77,7 +77,7 @@ Basic Architecture
 
 In an OVN deployment, the set of hypervisors and network elements operating
 under the guidance of ovn-northd are in what's called "logical space".  These
-servers use VXLAN, STT, or Geneve to communicate, oblivious to the details of
+servers use VXLAN or Geneve to communicate, oblivious to the details of
 the underlying physical network.  When these systems need to communicate with
 legacy networks, traffic must be routed through a Gateway which translates from
 OVN controlled tunnel traffic, to raw physical network traffic.

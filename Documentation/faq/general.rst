@@ -49,7 +49,7 @@ Q: How can I try OVN?
     various Linux distributions are available on many platforms, including:
     Debian, Ubuntu, Fedora.
 
-Q: Why does OVN use STT and Geneve instead of VLANs or VXLAN (or GRE)?
+Q: Why does OVN use Geneve instead of VLANs or VXLAN (or GRE)?
 
     A: OVN implements a fairly sophisticated packet processing pipeline in
     "logical datapaths" that can implement switching or routing functionality.
@@ -77,19 +77,15 @@ Q: Why does OVN use STT and Geneve instead of VLANs or VXLAN (or GRE)?
     metadata must pass across the physical network:
 
     * Logical datapath ID, a 24-bit identifier.  In Geneve, OVN uses the VNI to
-      hold the logical datapath ID; in STT, OVN uses 24 bits of STT's 64-bit
-      context ID.
+      hold the logical datapath ID.
 
     * Logical ingress port, a 15-bit identifier.  In Geneve, OVN uses an option
-      to hold the logical ingress port; in STT, 15 bits of the context ID.
+      to hold the logical ingress port.
 
     * Logical egress port, a 16-bit identifier.  In Geneve, OVN uses an option
-      to hold the logical egress port; in STT, 16 bits of the context ID.
+      to hold the logical egress port.
 
     See ``ovn-architecture(7)``, under "Tunnel Encapsulations", for details.
-
-    Note: Support for STT tunnels is deprecated and will be removed in OVN
-    25.09 release.
 
     Together, these metadata require 24 + 15 + 16 = 55 bits.  GRE provides 32
     bits, VXLAN provides 24, and VLAN only provides 12.  Most notably, if

@@ -1,7 +1,7 @@
 {
     "name": "OVN_Southbound",
-    "version": "20.41.0",
-    "cksum": "2343742948 34719",
+    "version": "21.0.0",
+    "cksum": "4028932437 34711",
     "tables": {
         "SB_Global": {
             "columns": {
@@ -64,7 +64,7 @@
             "columns": {
                 "type": {"type": {"key": {
                            "type": "string",
-                           "enum": ["set", ["geneve", "stt", "vxlan"]]}}},
+                           "enum": ["set", ["geneve", "vxlan"]]}}},
                 "options": {"type": {"key": "string",
                                      "value": "string",
                                      "min": 0,

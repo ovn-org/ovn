@@ -1204,7 +1204,7 @@
       </p>
 
       <p>
-        Geneve and STT tunnels pass this field as part of the tunnel key.
+        Geneve tunnels pass this field as part of the tunnel key.
         Ramp switch VXLAN tunnels do not explicitly carry a logical input port,
         but since they are used to communicate with gateways that from OVN's
         perspective consist of only a single logical port, so that OVN can set
@@ -1228,7 +1228,7 @@
       </p>
 
       <p>
-        Geneve, STT and regular VXLAN tunnels pass this field as part of the
+        Geneve and regular VXLAN tunnels pass this field as part of the
         tunnel key. Ramp switch VXLAN tunnels do not transmit the logical
         output port field, and since they do not carry a logical output port
         field in the tunnel key, when a packet is received from ramp switch
@@ -2813,7 +2813,7 @@
   <p>
     When VXLAN is enabled on any hypervisor in a cluster, datapath and egress
     port identifier ranges are reduced to 12-bits.  This is done because only
-    STT and Geneve provide the large space for metadata (over 32 bits per
+    Geneve provides the large space for metadata (over 32 bits per
     packet).  The mode with reduced ranges is called <code>VXLAN mode</code>.
     To accommodate for VXLAN, 24 bits available are split as follows:
   </p>
@@ -2868,14 +2868,13 @@
   </p>
   <ul>
     <li>
-      STT and Geneve use randomized UDP or TCP source ports that allows
-      efficient distribution among multiple paths in environments that use ECMP
+      Geneve uses randomized UDP or TCP source ports that allows efficient
+      distribution among multiple paths in environments that use ECMP
       in their underlay.
     </li>
 
     <li>
-      NICs are available to offload STT and Geneve encapsulation and
-      decapsulation.
+      NICs are available to offload Geneve encapsulation and decapsulation.
     </li>
   </ul>
 
@@ -2899,23 +2898,8 @@
   </diagram>
 
   <p>
-    Support for STT encapsulation is deprecated.  While using STT on setups
-    that didn't migrate to Geneve yet, OVN encodes all three pieces of logical
-    metadata in the STT 64-bit tunnel ID as follows, from MSB to LSB:
-  </p>
-
-  <diagram>
-    <header name="">
-      <bits name="reserved" above="9" below="0" width=".5"/>
-      <bits name="ingress port" above="15" width=".75"/>
-      <bits name="egress port" above="16" width=".75"/>
-      <bits name="datapath" above="24" width="1.25"/>
-    </header>
-  </diagram>
-
-  <p>
-    For connecting to gateways, in addition to Geneve and STT, OVN supports
-    VXLAN, because only VXLAN support is common on top-of-rack (ToR) switches.
+    For connecting to gateways, in addition to Geneve, OVN supports VXLAN,
+    because VXLAN-only support is common on top-of-rack (ToR) switches.
     Currently, gateways have a feature set that matches the capabilities as
     defined by the VTEP schema, so fewer bits of metadata are necessary.  In
     the future, gateways that do not support encapsulations with large amounts

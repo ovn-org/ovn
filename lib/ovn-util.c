@@ -914,8 +914,6 @@ get_tunnel_type(const char *name)
 {
     if (!strcmp(name, "geneve")) {
         return GENEVE;
-    } else if (!strcmp(name, "stt")) {
-        return STT;
     } else if (!strcmp(name, "vxlan")) {
         return VXLAN;
     }

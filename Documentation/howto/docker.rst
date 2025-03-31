@@ -117,13 +117,10 @@ The "overlay" mode
 
    ``$ENCAP_TYPE``
      is the type of tunnel that you would like to use for overlay networking.
-     The options are ``geneve`` or ``stt``. Your kernel must have support for
-     your chosen ``$ENCAP_TYPE``. Both ``geneve`` and ``stt`` are part of the
-     Open vSwitch kernel module that is compiled from this repo. If you use the
-     Open vSwitch kernel module from upstream Linux, you will need a minimum
-     kernel version of 3.18 for ``geneve``. There is no ``stt`` support in
-     upstream Linux. You can verify whether you have the support in your kernel
-     as follows::
+     The options are ``geneve`` or ``vxlan``. Your kernel must have support for
+     your chosen ``$ENCAP_TYPE``.  You will need a minimum Linux kernel version
+     of 3.18 for ``geneve``.  You can verify whether you have the support in
+     your kernel as follows::
 
          $ lsmod | grep $ENCAP_TYPE
 

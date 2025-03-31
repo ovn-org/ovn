@@ -478,9 +478,8 @@
 
     <column name="type">
       The encapsulation to use to transmit packets to this chassis.
-      Hypervisors and gateways must use one of: <code>geneve</code>,
-      <code>vxlan</code>, or <code>stt</code>.  <code>stt</code> is
-      deprecated.
+      Hypervisors and gateways must use <code>geneve</code> or
+      <code>vxlan</code>.
     </column>
 
     <column name="options">
@@ -539,8 +538,7 @@
 
     <column name="options" key="dst_port" type='{"type": "integer"}'>
       <p>
-        If set, overrides the UDP (for <code>geneve</code> and
-        <code>vxlan</code>) or TCP (for <code>stt</code>) destination port.
+        If set, overrides the UDP destination port.
       </p>
     </column>
 
@@ -3430,8 +3428,8 @@ tcp.flags = RST;
 
       <column name="tunnel_key">
         <p>
-          A number that represents the logical port in the key (e.g. STT key or
-          Geneve TLV) field carried within tunnel protocol packets.
+          A number that represents the logical port in the key (e.g. Geneve
+          TLV) field carried within tunnel protocol packets.
         </p>
 
         <p>

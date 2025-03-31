@@ -168,10 +168,6 @@ put_encapsulation(enum mf_field_id mff_ovn_geneve,
         put_load(datapath->tunnel_key, MFF_TUN_ID, 0, 24, ofpacts);
         put_load(outport, mff_ovn_geneve, 0, 32, ofpacts);
         put_move(MFF_LOG_INPORT, 0, mff_ovn_geneve, 16, 15, ofpacts);
-    } else if (tun->type == STT) {
-        put_load(datapath->tunnel_key | ((uint64_t) outport << 24),
-                 MFF_TUN_ID, 0, 64, ofpacts);
-        put_move(MFF_LOG_INPORT, 0, MFF_TUN_ID, 40, 15, ofpacts);
     } else if (tun->type == VXLAN) {
         uint64_t vni = datapath->tunnel_key;
         if (!is_ramp_switch) {
@@ -194,10 +190,6 @@ put_decapsulation(enum mf_field_id mff_ovn_geneve,
         put_move(MFF_TUN_ID, 0,  MFF_LOG_DATAPATH, 0, 24, ofpacts);
         put_move(mff_ovn_geneve, 16, MFF_LOG_INPORT, 0, 15, ofpacts);
         put_move(mff_ovn_geneve, 0, MFF_LOG_OUTPORT, 0, 16, ofpacts);
-    } else if (tun->type == STT) {
-        put_move(MFF_TUN_ID, 40, MFF_LOG_INPORT,   0, 15, ofpacts);
-        put_move(MFF_TUN_ID, 24, MFF_LOG_OUTPORT,  0, 16, ofpacts);
-        put_move(MFF_TUN_ID,  0, MFF_LOG_DATAPATH, 0, 24, ofpacts);
     } else if (tun->type == VXLAN) {
         /* Add flows for non-VTEP tunnels. Split VNI into two 12-bit
          * sections and use them for datapath and outport IDs. */
@@ -218,10 +210,6 @@ put_remote_chassis_flood_encap(struct ofpbuf *ofpacts,
         put_move(MFF_LOG_DATAPATH, 0,  MFF_TUN_ID, 0, 24, ofpacts);
         put_load(0, mff_ovn_geneve, 0, 32, ofpacts);
         put_move(MFF_LOG_INPORT, 0, mff_ovn_geneve, 16, 15, ofpacts);
-    } else if (type == STT) {
-        put_move(MFF_LOG_INPORT, 0, MFF_TUN_ID, 40, 15, ofpacts);
-        put_load(0, MFF_TUN_ID, 24, 16, ofpacts);
-        put_move(MFF_LOG_DATAPATH,  0, MFF_TUN_ID, 0, 24, ofpacts);
     } else if (type == VXLAN) {
         put_move(MFF_LOG_INPORT, 0, MFF_TUN_ID,  12, 12, ofpacts);
         put_move(MFF_LOG_DATAPATH, 0, MFF_TUN_ID, 0, 12, ofpacts);
@@ -245,9 +233,6 @@ match_set_chassis_flood_outport(struct match *match,
         memset(&mask.tun_metadata[mf_ovn_geneve->n_bytes - 2], 0xff, 2);
 
         tun_metadata_set_match(mf_ovn_geneve, &value, &mask, match, NULL);
-    } else if (type == STT) {
-        /* Outport occupies bits 24-39. */
-        match_set_tun_id_masked(match, 0, htonll(UINT64_C(0xffff) << 24));
     }
 }
 
@@ -1613,8 +1598,6 @@ get_tunnel_overhead(struct chassis_tunnel const *tun)
     enum chassis_tunnel_type type = tun->type;
     if (type == GENEVE) {
         overhead += GENEVE_TUNNEL_OVERHEAD;
-    } else if (type == STT) {
-        overhead += STT_TUNNEL_OVERHEAD;
     } else if (type == VXLAN) {
         overhead += VXLAN_TUNNEL_OVERHEAD;
     } else {
@@ -2838,8 +2821,8 @@ physical_run(struct physical_ctx *p_ctx,
      * Process packets that arrive from a remote hypervisor (by matching
      * on tunnel in_port). */
 
-    /* Add flows for Geneve, STT and VXLAN encapsulations.  Geneve and STT
-     * encapsulations have metadata about the ingress and egress logical ports.
+    /* Add flows for Geneve and VXLAN encapsulations.  Geneve encapsulations
+     * have metadata about the ingress and egress logical ports.
      * VXLAN encapsulations have metadata about the egress logical port only.
      * We set MFF_LOG_DATAPATH, MFF_LOG_INPORT, and MFF_LOG_OUTPORT from the
      * tunnel key data where possible, then resubmit to table 40 to handle

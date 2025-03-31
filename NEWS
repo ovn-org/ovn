@@ -1,5 +1,11 @@
 Post v25.03.0
 -------------
+   - STT tunnels are no longer supported in ovn-encap-type.
+     ** WARNING ** Existing setups must be fully reconfigured to use Geneve
+     or VxLAN before upgrading.  To avoid potential database conversion issues
+     all OVN databases should be manually compacted after the reconfiguration.
+     For instructions see:
+       https://docs.openvswitch.org/en/latest/ref/ovsdb.7/#compacting-databases
    - Added support for "ovn-cleanup-on-exit" config option in Open_vSwitch
      external-ids, this option allows to specify if ovn-controller should
      perform cleanup when exiting. The "--restart" exit always has priority

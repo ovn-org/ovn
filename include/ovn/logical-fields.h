@@ -112,7 +112,7 @@ enum mff_log_flags {
 
     /* Indicate that a packet was received from a ramp switch to compensate for
      * the lack of egress port information available in ramp switch
-     * encapsulation.  Egress port information is available for Geneve, STT and
+     * encapsulation.  Egress port information is available for Geneve and
      * regular VXLAN tunnel types. */
     MLF_RCV_FROM_RAMP = (1 << MLF_RCV_FROM_RAMP_BIT),
 

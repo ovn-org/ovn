@@ -35,7 +35,6 @@
 #define ETHERNET_OVERHEAD (ETH_HEADER_LEN + ETH_CRC_LENGTH)
 
 #define GENEVE_TUNNEL_OVERHEAD 38
-#define STT_TUNNEL_OVERHEAD 18
 #define VXLAN_TUNNEL_OVERHEAD 30
 
 struct eth_addr;
@@ -337,9 +336,7 @@ hash_add_in6_addr(uint32_t hash, const struct in6_addr *addr)
 /* Must be a bit-field ordered from most-preferred (higher number) to
  * least-preferred (lower number). */
 enum chassis_tunnel_type {
-    GENEVE = 1 << 2,
-    STT    = 1 << 1,  /* NOTE: STT support is deprecated and will be removed
-                       *       in an upcoming release. */
+    GENEVE = 1 << 1,
     VXLAN  = 1 << 0
 };
 

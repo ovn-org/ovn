@@ -253,8 +253,6 @@ chassis_parse_ovs_encap_type(const char *encap_type,
 
         if (!tun_type) {
             VLOG_INFO_RL(&rl, "Unknown tunnel type: %s", type);
-        } else if (tun_type == STT) {
-            VLOG_WARN_RL(&rl, "STT encapsulation type is deprecated");
         }
     }
 }

@@ -482,8 +482,6 @@ local_nonvif_data_run(const struct ovsrec_bridge *br_int,
                 enum chassis_tunnel_type tunnel_type;
                 if (!strcmp(iface_rec->type, "geneve")) {
                     tunnel_type = GENEVE;
-                } else if (!strcmp(iface_rec->type, "stt")) {
-                    tunnel_type = STT;
                 } else if (!strcmp(iface_rec->type, "vxlan")) {
                     tunnel_type = VXLAN;
                 } else {
@@ -527,8 +525,7 @@ local_nonvif_data_handle_ovs_iface_changes(
     OVSREC_INTERFACE_TABLE_FOR_EACH_TRACKED (iface_rec, iface_table) {
         if (!strcmp(iface_rec->type, "geneve") ||
             !strcmp(iface_rec->type, "patch") ||
-            !strcmp(iface_rec->type, "vxlan") ||
-            !strcmp(iface_rec->type, "stt")) {
+            !strcmp(iface_rec->type, "vxlan")) {
             return false;
         }
     }

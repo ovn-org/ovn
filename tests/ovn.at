@@ -16515,7 +16515,6 @@ m4_define([MULTICHASSIS_PATH_MTU_DISCOVERY_TEST],
    AT_CLEANUP
    ])])
 
-# NOTE(ihar) no STT variants because it's not supported by upstream kernels
 MULTICHASSIS_PATH_MTU_DISCOVERY_TEST([ipv4], [geneve], [1424])
 MULTICHASSIS_PATH_MTU_DISCOVERY_TEST([ipv6], [geneve], [1404])
 MULTICHASSIS_PATH_MTU_DISCOVERY_TEST([ipv4], [vxlan], [1432])

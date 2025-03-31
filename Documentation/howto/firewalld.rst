@@ -91,7 +91,7 @@ time the firewalld service restarts.
 The ovn-host-firewall-service only opens port 6081. This is because the
 default protocol for OVN tunnels is geneve. If you are using a different
 encapsulation protocol, you will need to modify the XML service file to open
-the appropriate port(s). For VXLAN, open port 4789. For STT, open port 7471.
+the appropriate port(s). For VXLAN, open port 4789.
 
 Recommendations
 ---------------

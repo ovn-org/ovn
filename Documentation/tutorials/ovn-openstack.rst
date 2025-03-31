@@ -1946,7 +1946,7 @@ explore some of these directions:
 
 * Adding more than one hypervisor ("compute node", in OpenStack
   parlance).  OVN connects compute nodes by tunneling packets with the
-  STT or Geneve protocols.  OVN scales to 1000 compute nodes or more,
+  Geneve protocol.  OVN scales to 1000 compute nodes or more,
   but two compute nodes demonstrate the principle.  All of the tools
   and techniques we demonstrated also work with multiple compute
   nodes.
