@@ -14,6 +14,9 @@ Post v25.03.0
      supported protocols are gARP and NA. The option now supports a comma
      separated to specify selected group of protocols.
    - Add CoPP support for DHCP relay.
+   - SSL/TLS:
+     * Support for deprecated TLSv1 and TLSv1.1 protocols on OpenFlow and
+       database connections is now removed.
 
 OVN v25.03.0 - 07 Mar 2025
 --------------------------

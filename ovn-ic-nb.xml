@@ -157,17 +157,16 @@
         enable for SSL/TLS connections.
       </p>
       <p>
-        Supported protocols include <code>TLSv1</code> (deprecated),
-        <code>TLSv1.1</code> (deprecated), <code>TLSv1.2</code> and
+        Supported protocols include <code>TLSv1.2</code> and
         <code>TLSv1.3</code>.  Ranges can be provided in a form of two protocol
-        names separated with a dash (<code>TLSv1.1-TLSv1.2</code>), or as a
+        names separated with a dash (<code>TLSv1.2-TLSv1.3</code>), or as a
         single protocol name with a plus sign (<code>TLSv1.2+</code>).  The
         value can be a list of protocols or exactly one range.  The range is a
         preferred way of specifying protocols and the configuration always
         behaves as if the range between the minimum and the maximum specified
         version is provided, i.e., if the value is set to
-        <code>TLSv1.1,TLSv1.3</code>, the <code>TLSv1.2</code> will also be
-        enabled as if it was a range.
+        <code>TLSv1.X,TLSv1.(X+2)</code>, the <code>TLSv1.(X+1)</code> will
+        also be enabled as if it was a range.
         Regardless of order, the highest protocol supported by both sides will
         be chosen when making the connection.
       </p>
@@ -178,8 +177,8 @@
 
     <column name="ssl_ciphers">
       List of ciphers (in OpenSSL cipher string format) to be supported
-      for SSL/TLS connections with TLSv1.2 and earlier.  The default when this
-      option is omitted is <code>DEFAULT:@SECLEVEL=2</code>.
+      for SSL/TLS connections with TLSv1.2.  The default when this option
+      is omitted is <code>DEFAULT:@SECLEVEL=2</code>.
     </column>
 
     <column name="ssl_ciphersuites">
