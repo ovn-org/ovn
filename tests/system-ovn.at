@@ -7611,19 +7611,20 @@ bfd: bfd-meter
 ])
 
 check ovn-nbctl --wait=hv --bfd lr-route-add R1 240.0.0.0/8 172.16.1.50 rp-public
-printf "%08x" $(ovn-sbctl get bfd . disc) > /tmp/disc
+ovn_discriminator=$(printf "%08x" $(ovn-sbctl get bfd . disc))
 NETNS_START_TCPDUMP([server], [-nn -i s1 udp port 3784 and ip[[29]]==0x90 -Q in], [bfd])
 ip netns exec server scapy -H <<-EOF
-import binascii
-f = open("/tmp/disc", "r")
-# scapy does not support BFD protocol
-# let's hardcode a BFD payload with the proper my-disc field read from the db
-bfd = binascii.unhexlify("20600518a899e77b" + f.readline().strip() + "000f4240000f424000000000")
-p = IP(src="172.16.1.50", dst="172.16.1.1") / UDP(dport = 3784, sport = 49152) / Raw(load = bfd)
-send (p, iface='s1', loop = 0, verbose = 0, count = 100)
-f.close()
+from scapy.contrib import bfd
+BFD_STA_DOWN = 1
+BFD_FLAG_POLL = 1 << 5
+p = (Ether(src="f0:00:00:01:02:05", dst="00:00:02:01:02:03") /
+     IP(src="172.16.1.50", dst="172.16.1.1") /
+     UDP(dport = 3784, sport = 49152) /
+     bfd.BFD(sta=BFD_STA_DOWN,
+             flags=BFD_FLAG_POLL,
+             your_discriminator=0x$ovn_discriminator))
+sendp (p, iface='s1', loop = 0, verbose = 0, count = 100)
 EOF
-rm /tmp/disc
 
 # 1pps
 OVS_WAIT_UNTIL([
