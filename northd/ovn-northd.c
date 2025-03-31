@@ -532,48 +532,47 @@ update_sequence_numbers(int64_t loop_start_time,
 
     /* Update northbound sb_cfg if appropriate. */
     int64_t sb_cfg = sb_loop->cur_cfg;
-    if (nb && sb_cfg && nb->sb_cfg != sb_cfg) {
+    if (sb_cfg && nb->sb_cfg != sb_cfg) {
         nbrec_nb_global_set_sb_cfg(nb, sb_cfg);
         nbrec_nb_global_set_sb_cfg_timestamp(nb, loop_start_time);
     }
 
     /* Update northbound hv_cfg if appropriate. */
-    if (nb) {
-        /* Find minimum nb_cfg among all chassis. */
-        const struct sbrec_chassis_private *chassis_priv;
-        int64_t hv_cfg = nb->nb_cfg;
-        int64_t hv_cfg_ts = 0;
-        SBREC_CHASSIS_PRIVATE_FOR_EACH (chassis_priv, ovnsb_idl) {
-            const struct sbrec_chassis *chassis = chassis_priv->chassis;
-            if (chassis) {
-                if (smap_get_bool(&chassis->other_config,
-                                  "is-remote", false)) {
-                    /* Skip remote chassises. */
-                    continue;
-                }
-            } else {
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-                VLOG_WARN_RL(&rl, "Chassis does not exist for "
-                             "Chassis_Private record, name: %s",
-                             chassis_priv->name);
-            }
 
-            /* Detect if overflows happened within the cfg update. */
-            int64_t delta = chassis_priv->nb_cfg - hv_cfg;
-            if (chassis_priv->nb_cfg < hv_cfg || delta > INT32_MAX) {
-                hv_cfg = chassis_priv->nb_cfg;
-                hv_cfg_ts = chassis_priv->nb_cfg_timestamp;
-            } else if (chassis_priv->nb_cfg == hv_cfg &&
-                       chassis_priv->nb_cfg_timestamp > hv_cfg_ts) {
-                hv_cfg_ts = chassis_priv->nb_cfg_timestamp;
+    /* Find minimum nb_cfg among all chassis. */
+    const struct sbrec_chassis_private *chassis_priv;
+    int64_t hv_cfg = nb->nb_cfg;
+    int64_t hv_cfg_ts = 0;
+    SBREC_CHASSIS_PRIVATE_FOR_EACH (chassis_priv, ovnsb_idl) {
+        const struct sbrec_chassis *chassis = chassis_priv->chassis;
+        if (chassis) {
+            if (smap_get_bool(&chassis->other_config,
+                              "is-remote", false)) {
+                /* Skip remote chassises. */
+                continue;
             }
+        } else {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_WARN_RL(&rl, "Chassis does not exist for "
+                         "Chassis_Private record, name: %s",
+                         chassis_priv->name);
         }
 
-        /* Update hv_cfg. */
-        if (nb->hv_cfg != hv_cfg) {
-            nbrec_nb_global_set_hv_cfg(nb, hv_cfg);
-            nbrec_nb_global_set_hv_cfg_timestamp(nb, hv_cfg_ts);
+        /* Detect if overflows happened within the cfg update. */
+        int64_t delta = chassis_priv->nb_cfg - hv_cfg;
+        if (chassis_priv->nb_cfg < hv_cfg || delta > INT32_MAX) {
+            hv_cfg = chassis_priv->nb_cfg;
+            hv_cfg_ts = chassis_priv->nb_cfg_timestamp;
+        } else if (chassis_priv->nb_cfg == hv_cfg &&
+                   chassis_priv->nb_cfg_timestamp > hv_cfg_ts) {
+            hv_cfg_ts = chassis_priv->nb_cfg_timestamp;
         }
+    }
+
+    /* Update hv_cfg. */
+    if (nb->hv_cfg != hv_cfg) {
+        nbrec_nb_global_set_hv_cfg(nb, hv_cfg);
+        nbrec_nb_global_set_hv_cfg_timestamp(nb, hv_cfg_ts);
     }
 }
 
