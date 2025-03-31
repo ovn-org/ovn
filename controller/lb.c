@@ -99,9 +99,6 @@ ovn_controller_lb_create(const struct sbrec_load_balancer *sbrec_lb,
      */
     lb->n_vips = n_vips;
 
-    lb->hairpin_orig_tuple = smap_get_bool(&sbrec_lb->options,
-                                           "hairpin_orig_tuple",
-                                           false);
     lb->ct_flush = smap_get_bool(&sbrec_lb->options, "ct_flush", false);
     ovn_lb_get_hairpin_snat_ip(&sbrec_lb->header_.uuid, &sbrec_lb->options,
                                &lb->hairpin_snat_ips);

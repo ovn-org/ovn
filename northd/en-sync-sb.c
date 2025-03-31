@@ -858,17 +858,9 @@ sync_sb_lb_record(struct sb_lb_record *sb_lb,
     sbrec_load_balancer_set_vips(sbrec_lb,
                                  ovn_northd_lb_get_vips(lb_dps->lb));
     sbrec_load_balancer_set_protocol(sbrec_lb, lb_dps->lb->nlb->protocol);
-
-    /* Store the fact that northd provides the original (destination IP +
-     * transport port) tuple.
-     */
-    struct smap options;
-    smap_clone(&options, &lb_dps->lb->nlb->options);
-    smap_replace(&options, "hairpin_orig_tuple", "true");
-    sbrec_load_balancer_set_options(sbrec_lb, &options);
+    sbrec_load_balancer_set_options(sbrec_lb, &lb_dps->lb->nlb->options);
     /* Clearing 'datapaths' column, since 'dp_group' is in use. */
     sbrec_load_balancer_set_datapaths(sbrec_lb, NULL, 0);
-    smap_destroy(&options);
 
     return true;
 }

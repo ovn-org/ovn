@@ -31938,63 +31938,6 @@ AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_CT_SNAT_HAIRPIN | ofc
 
 check ovn-nbctl --wait=hv ls-lb-del sw0 lb-ipv4
 check ovn-nbctl --wait=hv ls-lb-del sw0 lb-ipv6
-
-# Check backwards compatibility with ovn-northd versions that don't store the
-# original destination tuple.
-#
-# ovn-controller should fall back to matching on ct_nw_dst()/ct_tp_dst().
-as northd ovn-appctl -t ovn-northd pause
-
-check ovn-sbctl \
-    -- remove load_balancer lb-ipv4-tcp options hairpin_orig_tuple \
-    -- remove load_balancer lb-ipv6-tcp options hairpin_orig_tuple \
-    -- remove load_balancer lb-ipv4-udp options hairpin_orig_tuple \
-    -- remove load_balancer lb-ipv6-udp options hairpin_orig_tuple
-
-OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_CHK_LB_HAIRPIN | ofctl_strip_all | grep -v NXST], [0], [dnl
- table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_mark=0x2/0x2,ct_ipv6_dst=8800::88,ct_nw_proto=17,ct_tp_dst=4040,udp6,ipv6_src=4200::1,ipv6_dst=4200::1,tp_dst=2021 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x86dd,NXM_NX_IPV6_SRC[[]],ipv6_dst=8800::88,nw_proto=17,NXM_OF_UDP_SRC[[]]=NXM_OF_UDP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_mark=0x2/0x2,ct_ipv6_dst=8800::88,ct_nw_proto=6,ct_tp_dst=8080,tcp6,ipv6_src=4200::1,ipv6_dst=4200::1,tp_dst=4041 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x86dd,NXM_NX_IPV6_SRC[[]],ipv6_dst=8800::88,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_mark=0x2/0x2,ct_nw_dst=88.88.88.88,ct_nw_proto=17,ct_tp_dst=4040,udp,nw_src=42.42.42.1,nw_dst=42.42.42.1,tp_dst=2021 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=88.88.88.88,nw_proto=17,NXM_OF_UDP_SRC[[]]=NXM_OF_UDP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_mark=0x2/0x2,ct_nw_dst=88.88.88.88,ct_nw_proto=6,ct_tp_dst=8080,tcp,nw_src=42.42.42.1,nw_dst=42.42.42.1,tp_dst=4041 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=88.88.88.88,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_mark=0x2/0x2,ct_nw_dst=88.88.88.90,ct_nw_proto=6,ct_tp_dst=8080,tcp,nw_src=42.42.42.42,nw_dst=42.42.42.42,tp_dst=4041 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=88.88.88.90,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_mark=0x2/0x2,ct_nw_dst=88.88.88.90,ct_nw_proto=6,ct_tp_dst=8080,tcp,nw_src=52.52.52.52,nw_dst=52.52.52.52,tp_dst=4042 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=88.88.88.90,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
-])
-
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_CHK_LB_HAIRPIN_REPLY | grep -v NXST], [1], [dnl
-])
-
-OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_CT_SNAT_HAIRPIN | ofctl_strip_all | grep -v NXST], [0], [dnl
- table=OFTABLE_CT_SNAT_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=17,ct_tp_dst=4040,udp6 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
- table=OFTABLE_CT_SNAT_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=6,ct_tp_dst=8080,tcp6 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
- table=OFTABLE_CT_SNAT_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=17,ct_tp_dst=4040,udp actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
- table=OFTABLE_CT_SNAT_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=6,ct_tp_dst=8080,tcp actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
- table=OFTABLE_CT_SNAT_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ct_nw_proto=6,ct_tp_dst=8080,tcp actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
-])
-
-OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_CHK_LB_HAIRPIN | ofctl_strip_all | grep -v NXST], [0], [dnl
- table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_mark=0x2/0x2,ct_ipv6_dst=8800::88,ct_nw_proto=17,ct_tp_dst=4040,udp6,ipv6_src=4200::1,ipv6_dst=4200::1,tp_dst=2021 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x86dd,NXM_NX_IPV6_SRC[[]],ipv6_dst=8800::88,nw_proto=17,NXM_OF_UDP_SRC[[]]=NXM_OF_UDP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_mark=0x2/0x2,ct_ipv6_dst=8800::88,ct_nw_proto=6,ct_tp_dst=8080,tcp6,ipv6_src=4200::1,ipv6_dst=4200::1,tp_dst=4041 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x86dd,NXM_NX_IPV6_SRC[[]],ipv6_dst=8800::88,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_mark=0x2/0x2,ct_nw_dst=88.88.88.88,ct_nw_proto=17,ct_tp_dst=4040,udp,nw_src=42.42.42.1,nw_dst=42.42.42.1,tp_dst=2021 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=88.88.88.88,nw_proto=17,NXM_OF_UDP_SRC[[]]=NXM_OF_UDP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_mark=0x2/0x2,ct_nw_dst=88.88.88.88,ct_nw_proto=6,ct_tp_dst=8080,tcp,nw_src=42.42.42.1,nw_dst=42.42.42.1,tp_dst=4041 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=88.88.88.88,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_mark=0x2/0x2,ct_nw_dst=88.88.88.90,ct_nw_proto=6,ct_tp_dst=8080,tcp,nw_src=42.42.42.42,nw_dst=42.42.42.42,tp_dst=4041 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=88.88.88.90,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_mark=0x2/0x2,ct_nw_dst=88.88.88.90,ct_nw_proto=6,ct_tp_dst=8080,tcp,nw_src=52.52.52.52,nw_dst=52.52.52.52,tp_dst=4042 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=88.88.88.90,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
-])
-
-AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_CHK_LB_HAIRPIN_REPLY | grep -v NXST], [1], [dnl
-])
-
-OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_CT_SNAT_HAIRPIN | ofctl_strip_all | grep -v NXST], [0], [dnl
- table=OFTABLE_CT_SNAT_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=17,ct_tp_dst=4040,udp6 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
- table=OFTABLE_CT_SNAT_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_ipv6_dst=8800::88,ct_nw_proto=6,ct_tp_dst=8080,tcp6 actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=8800::88))
- table=OFTABLE_CT_SNAT_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=17,ct_tp_dst=4040,udp actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
- table=OFTABLE_CT_SNAT_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.88,ct_nw_proto=6,ct_tp_dst=8080,tcp actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.88))
- table=OFTABLE_CT_SNAT_HAIRPIN, priority=100,ct_state=+trk+dnat,ct_nw_dst=88.88.88.90,ct_nw_proto=6,ct_tp_dst=8080,tcp actions=ct(commit,zone=NXM_NX_REG12[[0..15]],nat(src=88.88.88.90))
-])
-
-# Resume ovn-northd.
-as northd ovn-appctl -t ovn-northd resume
-check ovn-nbctl --wait=hv sync
-
 as hv2 ovs-vsctl del-port hv2-vif1
 OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p2) = xdown])
 

@@ -1667,14 +1667,6 @@ add_lb_vip_hairpin_flows(const struct ovn_controller_lb *lb,
     put_load(&value, sizeof value, MFF_LOG_FLAGS,
              MLF_LOOKUP_LB_HAIRPIN_BIT, 1, &ofpacts);
 
-    /* Matching on ct_nw_dst()/ct_ipv6_dst()/ct_tp_dst() requires matching
-     * on ct_state first.
-     */
-    if (!lb->hairpin_orig_tuple) {
-        uint32_t ct_state = OVS_CS_F_TRACKED | OVS_CS_F_DST_NAT;
-        match_set_ct_state_masked(&hairpin_match, ct_state, ct_state);
-    }
-
     if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
         ovs_be32 bip4 = in6_addr_get_mapped_ipv4(&lb_backend->ip);
         ovs_be32 vip4 = in6_addr_get_mapped_ipv4(&lb_vip->vip);
@@ -1685,15 +1677,10 @@ add_lb_vip_hairpin_flows(const struct ovn_controller_lb *lb,
         match_set_dl_type(&hairpin_match, htons(ETH_TYPE_IP));
         match_set_nw_src(&hairpin_match, bip4);
         match_set_nw_dst(&hairpin_match, bip4);
-
-        if (!lb->hairpin_orig_tuple) {
-            match_set_ct_nw_dst(&hairpin_match, vip4);
-        } else {
-            enum mf_field_id id = register_consolidation
-                ? MFF_LOG_LB_ORIG_DIP_IPV4
-                : MFF_LOG_LB_ORIG_DIP_IPV4_OLD;
-            match_set_reg(&hairpin_match, id - MFF_LOG_REG0, ntohl(vip4));
-        }
+        enum mf_field_id id = register_consolidation
+            ? MFF_LOG_LB_ORIG_DIP_IPV4
+            : MFF_LOG_LB_ORIG_DIP_IPV4_OLD;
+        match_set_reg(&hairpin_match, id - MFF_LOG_REG0, ntohl(vip4));
 
         add_lb_vip_hairpin_reply_action(NULL, snat_vip4, lb->proto,
                                         lb_backend->port,
@@ -1709,16 +1696,11 @@ add_lb_vip_hairpin_flows(const struct ovn_controller_lb *lb,
         match_set_ipv6_src(&hairpin_match, bip6);
         match_set_ipv6_dst(&hairpin_match, bip6);
 
-        if (!lb->hairpin_orig_tuple) {
-            match_set_ct_ipv6_dst(&hairpin_match, &lb_vip->vip);
-        } else {
-            ovs_be128 vip6_value;
-
-            memcpy(&vip6_value, &lb_vip->vip, sizeof vip6_value);
-            match_set_xxreg(&hairpin_match,
-                            MFF_LOG_LB_ORIG_DIP_IPV6 - MFF_LOG_XXREG0,
-                            ntoh128(vip6_value));
-        }
+        ovs_be128 vip6_value;
+        memcpy(&vip6_value, &lb_vip->vip, sizeof vip6_value);
+        match_set_xxreg(&hairpin_match,
+                        MFF_LOG_LB_ORIG_DIP_IPV6 - MFF_LOG_XXREG0,
+                        ntoh128(vip6_value));
 
         add_lb_vip_hairpin_reply_action(snat_vip6, 0, lb->proto,
                                         lb_backend->port,
@@ -1729,14 +1711,9 @@ add_lb_vip_hairpin_flows(const struct ovn_controller_lb *lb,
     if (lb_backend->port) {
         match_set_nw_proto(&hairpin_match, lb->proto);
         match_set_tp_dst(&hairpin_match, htons(lb_backend->port));
-        if (!lb->hairpin_orig_tuple) {
-            match_set_ct_nw_proto(&hairpin_match, lb->proto);
-            match_set_ct_tp_dst(&hairpin_match, htons(lb_vip->vip_port));
-        } else {
-            match_set_reg_masked(&hairpin_match,
-                                 MFF_LOG_LB_ORIG_TP_DPORT - MFF_REG0,
-                                 lb_vip->vip_port, UINT16_MAX);
-        }
+        match_set_reg_masked(&hairpin_match,
+                             MFF_LOG_LB_ORIG_TP_DPORT - MFF_REG0,
+                             lb_vip->vip_port, UINT16_MAX);
     }
 
     /* In the original direction, only match on traffic that was already
@@ -1843,49 +1820,26 @@ add_lb_ct_snat_hairpin_vip_flow(const struct ovn_controller_lb *lb,
 
     struct match match = MATCH_CATCHALL_INITIALIZER;
 
-    /* Matching on ct_nw_dst()/ct_ipv6_dst()/ct_tp_dst() requires matching
-     * on ct_state first.
-     */
-    if (!lb->hairpin_orig_tuple) {
-        uint32_t ct_state = OVS_CS_F_TRACKED | OVS_CS_F_DST_NAT;
-        match_set_ct_state_masked(&match, ct_state, ct_state);
-    }
-
     if (address_family == AF_INET) {
         ovs_be32 vip4 = in6_addr_get_mapped_ipv4(&lb_vip->vip);
 
         match_set_dl_type(&match, htons(ETH_TYPE_IP));
-
-        if (!lb->hairpin_orig_tuple) {
-            match_set_ct_nw_dst(&match, vip4);
-        } else {
-            enum mf_field_id id = register_consolidation
-                                  ? MFF_LOG_LB_ORIG_DIP_IPV4
-                                  : MFF_LOG_LB_ORIG_DIP_IPV4_OLD;
-            match_set_reg(&match, id - MFF_LOG_REG0, ntohl(vip4));
-        }
+        enum mf_field_id id = register_consolidation
+                              ? MFF_LOG_LB_ORIG_DIP_IPV4
+                              : MFF_LOG_LB_ORIG_DIP_IPV4_OLD;
+        match_set_reg(&match, id - MFF_LOG_REG0, ntohl(vip4));
     } else {
         match_set_dl_type(&match, htons(ETH_TYPE_IPV6));
-        if (!lb->hairpin_orig_tuple) {
-            match_set_ct_ipv6_dst(&match, &lb_vip->vip);
-        } else {
-            ovs_be128 vip6_value;
-
-            memcpy(&vip6_value, &lb_vip->vip, sizeof vip6_value);
-            match_set_xxreg(&match, MFF_LOG_LB_ORIG_DIP_IPV6 - MFF_LOG_XXREG0,
-                            ntoh128(vip6_value));
-        }
+        ovs_be128 vip6_value;
+        memcpy(&vip6_value, &lb_vip->vip, sizeof vip6_value);
+        match_set_xxreg(&match, MFF_LOG_LB_ORIG_DIP_IPV6 - MFF_LOG_XXREG0,
+                        ntoh128(vip6_value));
     }
 
     if (lb_vip->vip_port) {
         match_set_nw_proto(&match, lb->proto);
-        if (!lb->hairpin_orig_tuple) {
-            match_set_ct_nw_proto(&match, lb->proto);
-            match_set_ct_tp_dst(&match, htons(lb_vip->vip_port));
-        } else {
-            match_set_reg_masked(&match, MFF_LOG_LB_ORIG_TP_DPORT - MFF_REG0,
-                                 lb_vip->vip_port, UINT16_MAX);
-        }
+        match_set_reg_masked(&match, MFF_LOG_LB_ORIG_TP_DPORT - MFF_REG0,
+                             lb_vip->vip_port, UINT16_MAX);
     }
 
     bool use_hairpin_snat_ip = false;
