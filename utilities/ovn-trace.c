@@ -2445,6 +2445,24 @@ execute_dns_lookup(const struct ovnact_result *dl, struct flow *uflow,
                          "*** dns_lookup action not implemented");
 }
 
+/* Populate CT fields from the flow corresponding counterpart. */
+static void
+populate_ct_fields(struct flow *ct_flow, struct flow *original_flow)
+{
+    ct_flow->ct_nw_proto = original_flow->nw_proto;
+    /* L3 */
+    if (original_flow->dl_type == htons(ETH_TYPE_IP)) {
+        ct_flow->ct_nw_src = original_flow->nw_src;
+        ct_flow->ct_nw_dst = original_flow->nw_dst;
+    } else if (original_flow->dl_type == htons(ETH_TYPE_IPV6)) {
+        ct_flow->ct_ipv6_src = original_flow->ipv6_src;
+        ct_flow->ct_ipv6_dst = original_flow->ipv6_dst;
+    }
+    /* L4 */
+    ct_flow->ct_tp_src = original_flow->tp_src;
+    ct_flow->ct_tp_dst = original_flow->tp_dst;
+}
+
 static void
 execute_ct_next(const struct ovnact_ct_next *ct_next,
                 const struct ovntrace_datapath *dp, struct flow *uflow,
@@ -2466,6 +2484,8 @@ execute_ct_next(const struct ovnact_ct_next *ct_next,
     /* Trace the actions in the next table. */
     struct flow ct_flow = *uflow;
     ct_flow.ct_state = state;
+    populate_ct_fields(&ct_flow, uflow);
+
     trace__(dp, &ct_flow, ct_next->ltable, pipeline, &node->subs);
 
     /* Upon return, we will trace the actions following the ct action in the
@@ -2530,6 +2550,8 @@ execute_ct_nat(const struct ovnact_ct_nat *ct_nat,
         super, OVNTRACE_NODE_TRANSFORMATION, "%s", ds_cstr(&s));
     ds_destroy(&s);
 
+    populate_ct_fields(&ct_flow, uflow);
+
     /* Trace the actions in the next table. */
     trace__(dp, &ct_flow, ct_nat->ltable, pipeline, &node->subs);
 
@@ -2553,6 +2575,8 @@ ct_commit_to_zone__(const struct ovnact_ct_commit_to_zone *ct_nat,
 
     struct ovntrace_node *node = ovntrace_node_append(
         super, OVNTRACE_NODE_TRANSFORMATION, "%s", ds_cstr(action));
+
+    populate_ct_fields(&ct_flow, uflow);
 
     /* Trace the actions in the next table. */
     trace__(dp, &ct_flow, ct_nat->ltable, pipeline, &node->subs);
@@ -2657,6 +2681,9 @@ execute_ct_lb(const struct ovnact_ct_lb *ct_lb,
         ct_lb->ovnact.type == OVNACT_CT_LB_MARK ? "ct_lb_mark" : "ct_lb",
         ds_cstr_ro(&comment));
     ds_destroy(&comment);
+
+    populate_ct_fields(&ct_lb_flow, uflow);
+
     trace__(dp, &ct_lb_flow, ct_lb->ltable, pipeline, &node->subs);
 }
 
