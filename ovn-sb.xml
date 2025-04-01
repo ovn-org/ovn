@@ -2957,9 +2957,8 @@ tcp.flags = RST;
     </column>
 
     <column name="external_ids" key="stage-hint" type='{"type": "uuid"}'>
-      UUID of a <ref db="OVN_Northbound"/> record that caused this logical flow
-      to be created.  Currently used only for attribute of logical flows to
-      northbound <ref db="OVN_Northbound" table="ACL"/> records.
+      UUID of an <ref db="OVN_Northbound"/> record that caused this logical
+      flow to be created.
     </column>
 
     <column name="external_ids" key="source">
