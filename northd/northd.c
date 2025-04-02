@@ -15070,7 +15070,8 @@ build_lrouter_network_id_flows(
                           op->lrp_networks.ipv6_addrs[i].addr_s,
                           op->lrp_networks.ipv6_addrs[i].plen);
 
-            ds_put_format(actions, "flags.network_id = %"PRIuSIZE"; next;", i);
+            ds_put_format(actions, "flags.network_id = %"PRIuSIZE"; next;",
+                          network_id);
 
             ovn_lflow_add(lflows, op->od, S_ROUTER_IN_NETWORK_ID, 110,
                           ds_cstr(match), ds_cstr(actions), lflow_ref);
