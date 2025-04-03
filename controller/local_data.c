@@ -130,44 +130,68 @@ local_datapath_destroy(struct local_datapath *ld)
     free(ld);
 }
 
-/* Checks if pb is running on local gw router or pb is a patch port
- * and the peer datapath should be added to local datapaths. */
+/* Checks if pb is running on local gw router or pb and peer
+ * are patch ports and if the peer's datapath should be added to
+ * local datapaths or not.
+ *
+ * Note that if 'pb' belongs to a logical switch and 'peer' to a
+ * logical router datapath and if 'peer' has a chassis-redirect port,
+ * then we add the 'peer' to the local datapaths only if the
+ * chassis-redirect port is local.
+ * */
 bool
 need_add_peer_to_local(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const struct sbrec_port_binding *pb,
+    const struct sbrec_port_binding *peer,
     const struct sbrec_chassis *chassis)
 {
     /* This port is running on local gw router. */
-    if (!strcmp(pb->type, "l3gateway") && pb->chassis == chassis) {
+    if (!strcmp(pb->type, "l3gateway") && pb->chassis == chassis &&
+        peer->chassis == chassis) {
         return true;
     }
 
-    /* If it is not a patch port, no peer to add. */
+    /* If pb is not a patch port, no peer to add. */
     if (strcmp(pb->type, "patch")) {
         return false;
     }
 
-    /* If it is a regular patch port, it is fully distributed, add the peer. */
-    const char *crp_name = smap_get(&pb->options, "chassis-redirect-port");
-    if (!crp_name) {
+    const char *cr_pb_name = smap_get(&pb->options,
+                                      "chassis-redirect-port");
+    const char *cr_peer_name = smap_get(&peer->options,
+                                        "chassis-redirect-port");
+    if (!cr_pb_name && !cr_peer_name) {
+        /* pb and peer are regular patch ports (fully distributed),
+         * add the peer to local datapaths. */
         return true;
     }
 
-    /* A DGP, find its chassis-redirect-port pb. */
-    const struct sbrec_port_binding *pb_crp =
-        lport_get_cr_port(sbrec_port_binding_by_name, pb, crp_name);
+    const struct sbrec_port_binding *cr_pb =
+        lport_get_cr_port(sbrec_port_binding_by_name, pb, cr_pb_name);
+    const struct sbrec_port_binding *cr_peer =
+        lport_get_cr_port(sbrec_port_binding_by_name, peer, cr_peer_name);
 
-    if (!pb_crp) {
+    if (!cr_pb && !cr_peer) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 5);
         VLOG_WARN_RL(&rl, "chassis-redirect-port %s for DGP %s is not found.",
-                     crp_name, pb->logical_port);
+                     cr_pb_name ? cr_pb_name : cr_peer_name,
+                     cr_pb_name ? pb->logical_port :
+                     peer->logical_port);
         return false;
     }
 
-    /* Check if it is configured as "always-redirect". If not, then we will
+    if (cr_peer && datapath_is_switch(pb->datapath) &&
+        !datapath_is_switch(peer->datapath)) {
+        /* pb belongs to logical switch and peer  belongs to logical router.
+         * Add the peer to local datapaths only if its chassis-redirect-port
+         * is local. */
+        return ha_chassis_group_contains(cr_peer->ha_chassis_group, chassis);
+    }
+
+    /* Check if cr-pb is configured as "always-redirect". If not, then we will
      * need to add the peer to local for distributed processing. */
-    if (!smap_get_bool(&pb_crp->options, "always-redirect", false)) {
+    if (cr_pb && !smap_get_bool(&cr_pb->options, "always-redirect", false)) {
         return true;
     }
 
@@ -175,9 +199,10 @@ need_add_peer_to_local(
      * the peer to local, which could be the localnet network, which doesn't
      * have other chances to be added to local datapaths if there is no VIF
      * bindings. */
-    if (pb_crp->ha_chassis_group) {
-        return ha_chassis_group_contains(pb_crp->ha_chassis_group, chassis);
+    if (cr_pb && cr_pb->ha_chassis_group) {
+        return ha_chassis_group_contains(cr_pb->ha_chassis_group, chassis);
     }
+
     return false;
 }
 
@@ -200,6 +225,7 @@ add_local_datapath(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
 void
 add_local_datapath_peer_port(
     const struct sbrec_port_binding *pb,
+    const struct sbrec_port_binding *peer,
     const struct sbrec_chassis *chassis,
     struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
     struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
@@ -208,25 +234,18 @@ add_local_datapath_peer_port(
     struct hmap *local_datapaths,
     struct hmap *tracked_datapaths)
 {
-    const struct sbrec_port_binding *peer =
-        lport_get_peer(pb, sbrec_port_binding_by_name);
-
-    if (!peer) {
-        return;
-    }
-
     local_datapath_peer_port_add(ld, pb, peer);
 
     struct local_datapath *peer_ld =
         get_local_datapath(local_datapaths,
                            peer->datapath->tunnel_key);
     if (!peer_ld) {
-        add_local_datapath__(sbrec_datapath_binding_by_key,
-                             sbrec_port_binding_by_datapath,
-                             sbrec_port_binding_by_name, 1,
-                             peer->datapath, chassis, local_datapaths,
-                             tracked_datapaths);
-        return;
+        peer_ld =
+            add_local_datapath__(sbrec_datapath_binding_by_key,
+                                 sbrec_port_binding_by_datapath,
+                                 sbrec_port_binding_by_name, 1,
+                                 peer->datapath, chassis, local_datapaths,
+                                 tracked_datapaths);
     }
 
     local_datapath_peer_port_add(peer_ld, peer, pb);
@@ -626,7 +645,7 @@ add_local_datapath__(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
         const struct sbrec_port_binding *peer =
             lport_get_peer(pb, sbrec_port_binding_by_name);
         if (peer && need_add_peer_to_local(sbrec_port_binding_by_name,
-                                           pb, chassis)) {
+                                           pb, peer, chassis)) {
             struct local_datapath *peer_ld =
                 add_local_datapath__(sbrec_datapath_binding_by_key,
                                     sbrec_port_binding_by_datapath,

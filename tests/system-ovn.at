@@ -16672,6 +16672,13 @@ OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
 blackhole 10.42.10.10 proto ovn metric 1000
 blackhole 172.16.1.150 proto ovn metric 1000])
 
+# Before cleanup of hv1 ovn-controller, trigger a recompute
+# to cleanup the local datapaths. Otherwise, the test will fail.
+# This is because we don't remove a datapath from
+# the local_datapaths hmap while handling the port binding
+# changes incrementally yet.
+check ovn-appctl inc-engine/recompute
+
 OVN_CLEANUP_CONTROLLER([hv1])
 
 # Ensure system resources are cleaned up.
@@ -16809,6 +16816,13 @@ check ovn-nbctl --wait=hv sync
 OVN_ROUTE_V6_EQUAL([ovnvrf$vrf], [dnl
 blackhole 2001:db8:1001::150 dev lo proto ovn metric 1000 pref medium
 blackhole 2001:db8:3001::150 dev lo proto ovn metric 1000 pref medium])
+
+# Before cleanup of hv1 ovn-controller, trigger a recompute
+# to cleanup the local datapaths. Otherwise, the test will fail.
+# This is because we don't remove a datapath from
+# the local_datapaths hmap while handling the port binding
+# changes incrementally yet.
+check ovn-appctl inc-engine/recompute
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
@@ -17012,6 +17026,13 @@ blackhole 10.42.10.11 proto ovn metric 1000
 blackhole 10.42.20.11 proto ovn metric 100
 blackhole 172.16.1.10 proto ovn metric 1000
 blackhole 172.16.1.11 proto ovn metric 1000])
+
+# Before cleanup of hv1 ovn-controller, trigger a recompute
+# to cleanup the local datapaths. Otherwise, the test will fail.
+# This is because we don't remove a datapath from
+# the local_datapaths hmap while handling the port binding
+# changes incrementally yet.
+check ovn-appctl inc-engine/recompute
 
 # Skip ls-join in flows comparison between I+P and recompute, because R2 has multiple DGPs.
 # This causes the following flows in sb
@@ -17219,6 +17240,13 @@ blackhole 2001:db8:1003::151 dev lo proto ovn metric 1000 pref medium
 blackhole 2001:db8:1004::150 dev lo proto ovn metric 1000 pref medium
 blackhole 2001:db8:1004::151 dev lo proto ovn metric 1000 pref medium
 blackhole 2001:db8:1005::150 dev lo proto ovn metric 100 pref medium])
+
+# Before cleanup of hv1 ovn-controller, trigger a recompute
+# to cleanup the local datapaths. Otherwise, the test will fail.
+# This is because we don't remove a datapath from
+# the local_datapaths hmap while handling the port binding
+# changes incrementally yet.
+check ovn-appctl inc-engine/recompute
 
 OVN_CLEANUP_CONTROLLER([hv1], [], [], [ls-join])
 # Ensure system resources are cleaned up.
