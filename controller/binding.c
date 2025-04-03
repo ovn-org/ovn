@@ -2970,7 +2970,7 @@ consider_patch_port_for_local_datapaths(const struct sbrec_port_binding *pb,
          * */
         const struct sbrec_port_binding *peer;
         struct local_datapath *peer_ld = NULL;
-        peer = lport_get_peer(pb, b_ctx_in->sbrec_port_binding_by_name);
+        peer = lport_get_patch_peer(pb, b_ctx_in->sbrec_port_binding_by_name);
         if (peer) {
             peer_ld =
                 get_local_datapath(b_ctx_out->local_datapaths,

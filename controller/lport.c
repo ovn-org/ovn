@@ -117,6 +117,16 @@ const struct sbrec_port_binding *
 lport_get_peer(const struct sbrec_port_binding *pb,
                struct ovsdb_idl_index *sbrec_port_binding_by_name)
 {
+    const struct sbrec_port_binding *peer =
+        lport_get_patch_peer(pb, sbrec_port_binding_by_name);
+
+    return peer ? peer : lport_get_l3gw_peer(pb, sbrec_port_binding_by_name);
+}
+
+const struct sbrec_port_binding *
+lport_get_patch_peer(const struct sbrec_port_binding *pb,
+               struct ovsdb_idl_index *sbrec_port_binding_by_name)
+{
     if (strcmp(pb->type, "patch")) {
         return NULL;
     }
