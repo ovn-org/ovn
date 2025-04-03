@@ -76,7 +76,8 @@ struct local_datapath *get_local_datapath_no_hash(
 bool
 need_add_peer_to_local(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
-    const struct sbrec_port_binding *,
+    const struct sbrec_port_binding *pb,
+    const struct sbrec_port_binding *peer,
     const struct sbrec_chassis *);
 void add_local_datapath(
     struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
@@ -90,7 +91,8 @@ void add_local_datapath(
 void local_datapaths_destroy(struct hmap *local_datapaths);
 void local_datapath_destroy(struct local_datapath *ld);
 void add_local_datapath_peer_port(
-    const struct sbrec_port_binding *,
+    const struct sbrec_port_binding *pb,
+    const struct sbrec_port_binding *peer,
     const struct sbrec_chassis *,
     struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
     struct ovsdb_idl_index *sbrec_port_binding_by_datapath,

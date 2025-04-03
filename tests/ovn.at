@@ -42280,6 +42280,381 @@ wait_row_count ACL_ID 0
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([ovn-controller -- local datapaths check])
+ovn_start
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+
+sim_add gw1
+as gw1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.3
+
+sim_add gw2
+as gw2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.4
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-port1
+check ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:01 10.0.0.3 1000::3"
+check ovn-nbctl lsp-add sw0 sw0-port2
+check ovn-nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:02 10.0.0.4 1000::4"
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::1/64
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 router
+check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+check ovn-nbctl ls-add public
+check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24 2000::1/64
+check ovn-nbctl lsp-add public public-lr0
+check ovn-nbctl lsp-set-type public-lr0 router
+check ovn-nbctl lsp-set-addresses public-lr0 router
+check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+
+# localnet port
+check ovn-nbctl lsp-add public ln-public
+check ovn-nbctl lsp-set-type ln-public localnet
+check ovn-nbctl lsp-set-addresses ln-public unknown
+check ovn-nbctl lsp-set-options ln-public network_name=phys
+
+check ovn-nbctl lrp-set-gateway-chassis lr0-public gw1 20
+check ovn-nbctl lr-nat-add lr0 snat 172.168.0.100 10.0.0.0/24
+check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.168.0.110 10.0.0.4 sw0-port2 f0:00:00:01:02:04
+check ovn-nbctl lr-nat-add lr0 snat 2000::1 1000::/64
+check ovn-nbctl lr-nat-add lr0 dnat_and_snat 2000::2 1000::4 sw0-port2 f0:00:00:01:02:04
+
+check ovn-nbctl --wait=hv sync
+
+check_local_datapath() {
+    hv=$1
+    expected_dps=$2
+    OVS_WAIT_UNTIL(
+      [check_expected $hv $expected_dps], [echo "Did not find flows on $expected_dps on $hv"])
+    OVS_WAIT_UNTIL(
+      [check_unexpected $hv $expected_dps], [echo "Found unexpected flows on $hv"])
+    found=$(as $hv ovn-appctl -t ovn-controller debug/dump-local-datapaths \
+| grep -v "Local" | sed 's/.*Datapath:\s*\([[a-z0-9-]]*\).*/\1/')
+    dps=$(echo "$expected_dps" | tr ',' '\n' | sort | tr '\n' ' ')
+    found=$(echo "$found" | sort | tr '\n' ' ')
+    check test "$dps" = "$found"
+}
+
+check_unexpected() {
+    hv=$1
+    dps=$2
+    flows=$(as $hv ovs-ofctl dump-flows br-int)
+
+    # Check for flows from unexpected datapaths
+    dps=$(echo "$dps" | tr ',' ' ')
+    echo "Looking for unexpected flows on $hv"
+    for dp in $dps
+    do
+      if [[ -n "${dp}" ]]; then
+        key=$(printf "0x%x" $(fetch_column Datapath_Binding tunnel_key external_ids:name=$dp))
+        if [[ -n "${key}" ]]; then
+          flows=$(echo "$flows" | grep -v "metadata=$key" )
+        fi
+      fi
+    done
+    n_flows=$(echo "$flows" | grep "metadata=" | wc -l)
+    if  [[ "${n_flows}" != "0" ]]; then
+      #echo "hv $hv has $n_flows remaining flows"
+      return 1
+    fi
+}
+
+check_expected() {
+    # Check for flows from expected datapaths
+    hv=$1
+    dps=$2
+    dps=$(echo "$dps" | tr ',' ' ')
+    for dp in $dps
+    do
+      if [[ -n "${dp}" ]]; then
+        key=$(printf "0x%x" $(fetch_column Datapath_Binding tunnel_key external_ids:name=$dp))
+        if [[ -n "${key}" ]]; then
+          echo "Looking for expected flows in $hv for $dp i.e. tunnel_key
+$key"
+          n_flows=$(as $hv ovs-ofctl dump-flows br-int | grep -c "metadata=$key")
+          if  [[ "${n_flows}" -eq "0" ]]; then
+            #echo "hv $hv has no flows on dp $dp"
+            return 1
+          fi
+        fi
+      fi
+    done
+}
+
+trigger_recompute() {
+    check ovn-nbctl --wait=hv sync
+    for hv in hv1 hv2 gw1 gw2
+    do
+        as $hv ovn-appctl inc-engine/recompute
+    done
+    check ovn-nbctl --wait=hv sync
+}
+
+check_local_datapath hv1 ""
+check_local_datapath hv2 ""
+check_local_datapath gw1 sw0,lr0,public
+check_local_datapath gw2 ""
+
+# Create a VIF on hv1 for sw0-port1
+AS_BOX([create a VIF on hv1 for sw0-port1])
+
+as hv1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-port1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+wait_for_ports_up sw0-port1
+
+AS_BOX([Create a VIF on hv1 for sw0-port1 - hv1 should have flows for sw0, lr0 and public])
+
+check_local_datapath hv1 sw0,lr0,public
+check_local_datapath hv2 ""
+check_local_datapath gw1 sw0,lr0,public
+check_local_datapath gw2 ""
+
+AS_BOX([create a switch sw1 and router lr1, attach both and attach lr1 to public])
+
+check ovn-nbctl ls-add sw1
+check ovn-nbctl lsp-add sw1 sw1-port1
+check ovn-nbctl lsp-set-addresses sw1-port1 "60:54:00:00:00:01 20.0.0.3"
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-sw1 00:00:01:00:ef:01 20.0.0.1/24
+check ovn-nbctl lsp-add sw1 sw1-lr1
+check ovn-nbctl lsp-set-type sw1-lr1 router
+check ovn-nbctl lsp-set-addresses sw1-lr1 router
+check ovn-nbctl lsp-set-options sw1-lr1 router-port=lr1-sw1
+
+check ovn-nbctl lrp-add lr1 lr1-public 00:00:20:30:22:13 172.168.0.101/24
+check ovn-nbctl lsp-add public public-lr1
+check ovn-nbctl lsp-set-type public-lr1 router
+check ovn-nbctl lsp-set-addresses public-lr1 router
+check ovn-nbctl lsp-set-options public-lr1 router-port=lr1-public
+
+check ovn-nbctl lr-nat-add lr1 snat 172.168.0.101 20.0.0.0/24
+check ovn-nbctl lr-nat-add lr1 dnat_and_snat 172.168.0.140 20.0.0.3
+
+AS_BOX([create a switch sw2 and router lr2, attach both and attach lr2 to public])
+
+check ovn-nbctl ls-add sw2
+check ovn-nbctl lsp-add sw2 sw2-port1
+check ovn-nbctl lsp-set-addresses sw2-port1 "70:54:00:00:00:01 30.0.0.3"
+
+check ovn-nbctl lr-add lr2
+check ovn-nbctl lrp-add lr2 lr2-sw2 00:00:02:00:ef:01 30.0.0.1/24
+check ovn-nbctl lsp-add sw2 sw2-lr2
+check ovn-nbctl lsp-set-type sw2-lr2 router
+check ovn-nbctl lsp-set-addresses sw2-lr2 router
+check ovn-nbctl lsp-set-options sw2-lr2 router-port=lr2-sw2
+
+check ovn-nbctl lrp-add lr2 lr2-public 00:00:20:40:22:53 172.168.0.102/24
+check ovn-nbctl lsp-add public public-lr2
+check ovn-nbctl lsp-set-type public-lr2 router
+check ovn-nbctl lsp-set-addresses public-lr2 router
+check ovn-nbctl lsp-set-options public-lr2 router-port=lr2-public
+
+check ovn-nbctl lr-nat-add lr2 snat 172.168.0.102 30.0.0.0/24
+check ovn-nbctl lr-nat-add lr2 dnat_and_snat 172.168.0.150 30.0.0.3
+
+check ovn-nbctl --wait=hv sync
+
+check_local_datapath hv1 sw0,lr0,public,sw1,lr1,sw2,lr2
+check_local_datapath hv2 ""
+check_local_datapath gw1 sw0,lr0,public,sw1,lr1,sw2,lr2
+check_local_datapath gw2 ""
+
+AS_BOX([Set gw2 as gateway chassis for lr1-public and lr2-public])
+check ovn-nbctl --wait=hv lrp-set-gateway-chassis lr1-public gw2 20
+check ovn-nbctl --wait=hv lrp-set-gateway-chassis lr2-public gw2 30
+wait_row_count Port_Binding 1 logical_port=cr-lr1-public
+wait_row_count Port_Binding 1 logical_port=cr-lr2-public
+
+trigger_recompute
+
+check_local_datapath hv1 sw0,lr0,public
+check_local_datapath hv2 ""
+check_local_datapath gw1 sw0,lr0,public
+check_local_datapath gw2 sw1,lr1,sw2,lr2,public
+
+AS_BOX([Create a VIF on hv2 for sw1-port1])
+
+as hv2
+ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=sw1-port1 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+
+wait_for_ports_up sw1-port1
+
+trigger_recompute
+
+check_local_datapath hv1 sw0,lr0,public
+check_local_datapath hv2 sw1,lr1
+check_local_datapath gw1 sw0,lr0,public
+check_local_datapath gw2 sw1,lr1,sw2,lr2,public
+
+# Add distributed dnat_and_snat in lr1.  hv2 should have
+# public in its local datapaths.
+AS_BOX([ Add distributed dnat_and_snat in lr1])
+
+check ovn-nbctl lr-nat-del lr1 dnat_and_snat
+check ovn-nbctl --wait=hv lr-nat-add lr1 dnat_and_snat 172.168.0.140 20.0.0.3 sw1-port1 10:00:00:01:02:14
+
+trigger_recompute
+
+check_local_datapath hv1 sw0,lr0,public
+check_local_datapath hv2 sw1,lr1,public
+check_local_datapath gw1 sw0,lr0,public
+check_local_datapath gw2 sw1,lr1,sw2,lr2,public
+
+AS_BOX([Create a VIF on hv2 for sw0-port2])
+
+as hv2
+ovs-vsctl -- add-port br-int hv2-vif2 -- \
+    set interface hv2-vif2 external-ids:iface-id=sw0-port2 \
+    options:tx_pcap=hv2/vif2-tx.pcap \
+    options:rxq_pcap=hv2/vif2-rx.pcap \
+    ofport-request=2
+
+wait_for_ports_up sw0-port2
+
+trigger_recompute
+
+check_local_datapath hv1 sw0,lr0,public
+check_local_datapath hv2 sw0,lr0,sw1,lr1,public
+check_local_datapath gw1 sw0,lr0,public
+check_local_datapath gw2 sw1,lr1,sw2,lr2,public
+
+AS_BOX([Delete the VIF for sw1-port1 in hv2])
+
+as hv2 ovs-vsctl del-port hv2-vif1
+check ovn-nbctl --wait=hv sync
+check_column "false" Port_Binding up logical_port=sw1-port1
+
+trigger_recompute
+
+check_local_datapath hv1 sw0,lr0,public
+check_local_datapath hv2 sw0,lr0,public
+check_local_datapath gw1 sw0,lr0,public
+check_local_datapath gw2 sw1,lr1,sw2,lr2,public
+
+AS_BOX([Delete the VIF for sw0-port2 in hv2])
+
+# Presently when a port binding is released we are not
+# deleting its datapath from the local_datapaths if it
+# is not relevant anymore.
+
+as hv2 ovs-vsctl del-port hv2-vif2
+check ovn-nbctl --wait=hv sync
+check_column "false" Port_Binding up logical_port=sw0-port2
+
+check_local_datapath hv1 sw0,lr0,public
+check_local_datapath hv2 sw0,lr0,public
+check_local_datapath gw1 sw0,lr0,public
+check_local_datapath gw2 sw1,lr1,sw2,lr2,public
+
+AS_BOX([Trigger a recompute])
+trigger_recompute
+
+check_local_datapath hv1 sw0,lr0,public
+check_local_datapath hv2 ""
+check_local_datapath gw1 sw0,lr0,public
+check_local_datapath gw2 sw1,lr1,sw2,lr2,public
+
+AS_BOX([Disconnect sw2 from lr2])
+
+check ovn-nbctl --wait=hv lsp-set-options sw2-lr2 router-port=lr2-sw2xxx
+
+trigger_recompute
+
+check_local_datapath hv1 sw0,lr0,public
+check_local_datapath hv2 ""
+check_local_datapath gw1 sw0,lr0,public
+check_local_datapath gw2 sw1,lr1,lr2,public
+
+AS_BOX([Reconnect sw2 to lr2 again])
+
+check ovn-nbctl --wait=hv lsp-set-options sw2-lr2 router-port=lr2-sw2
+
+trigger_recompute
+
+check_local_datapath hv1 sw0,lr0,public
+check_local_datapath hv2 ""
+check_local_datapath gw1 sw0,lr0,public
+check_local_datapath gw2 sw1,lr1,sw2,lr2,public
+
+AS_BOX([Create a VIF on gw2 for sw1-port1])
+
+as gw2
+ovs-vsctl -- add-port br-int gw2-vif2 -- \
+    set interface gw2-vif2 external-ids:iface-id=sw1-port1 \
+    options:tx_pcap=gw2/vif2-tx.pcap \
+    options:rxq_pcap=gw2/vif2-rx.pcap \
+    ofport-request=2
+
+wait_for_ports_up sw1-port1
+trigger_recompute
+
+check_local_datapath hv1 sw0,lr0,public
+check_local_datapath hv2 ""
+check_local_datapath gw1 sw0,lr0,public
+check_local_datapath gw2 sw1,lr1,sw2,lr2,public
+
+AS_BOX([Delete the VIF for sw1-port1 in gw2])
+
+as gw2 ovs-vsctl del-port gw2-vif2
+check ovn-nbctl --wait=hv sync
+check_column "false" Port_Binding up logical_port=sw1-port1
+trigger_recompute
+
+check_local_datapath hv1 sw0,lr0,public
+check_local_datapath hv2 ""
+check_local_datapath gw1 sw0,lr0,public
+check_local_datapath gw2 sw1,lr1,sw2,lr2,public
+
+AS_BOX([Create a logical port for public and bind it on hv2])
+# hv2 will only have public in its local datapaths.
+check ovn-nbctl lsp-add public public-p1
+
+as hv2
+ovs-vsctl -- add-port br-int hv2-vif3 -- \
+    set interface hv2-vif3 external-ids:iface-id=public-p1 \
+    options:tx_pcap=hv2/vif3-tx.pcap \
+    options:rxq_pcap=hv2/vif3-rx.pcap \
+    ofport-request=2
+
+wait_for_ports_up public-p1
+trigger_recompute
+
+check_local_datapath hv1 sw0,lr0,public
+check_local_datapath hv2 public
+check_local_datapath gw1 sw0,lr0,public
+check_local_datapath gw2 sw1,lr1,sw2,lr2,public
+
+OVN_CLEANUP([hv1], [hv2], [gw1], [gw2])
+AT_CLEANUP
+])
+
 # Test when a load balancer is added to two logical switches
 # which are local to different hypervisors.
 OVN_FOR_EACH_NORTHD([

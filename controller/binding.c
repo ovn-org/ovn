@@ -1923,11 +1923,14 @@ consider_nonvif_lport_(const struct sbrec_port_binding *pb,
             /* Add the peer datapath to the local datapaths if it's
              * not present yet.
              */
-            if (need_add_peer_to_local(
+            const struct sbrec_port_binding *peer =
+                lport_get_peer(pb, b_ctx_in->sbrec_port_binding_by_name);
+
+            if (peer && need_add_peer_to_local(
                     b_ctx_in->sbrec_port_binding_by_name, pb,
-                    b_ctx_in->chassis_rec)) {
+                    peer, b_ctx_in->chassis_rec)) {
                 add_local_datapath_peer_port(
-                    pb, b_ctx_in->chassis_rec,
+                    pb, peer, b_ctx_in->chassis_rec,
                     b_ctx_in->sbrec_datapath_binding_by_key,
                     b_ctx_in->sbrec_port_binding_by_datapath,
                     b_ctx_in->sbrec_port_binding_by_name,
@@ -2958,27 +2961,27 @@ consider_patch_port_for_local_datapaths(const struct sbrec_port_binding *pb,
                                         struct binding_ctx_in *b_ctx_in,
                                         struct binding_ctx_out *b_ctx_out)
 {
-    struct local_datapath *ld =
-        get_local_datapath(b_ctx_out->local_datapaths,
-                           pb->datapath->tunnel_key);
+    const struct sbrec_port_binding *peer;
+    struct local_datapath *peer_ld = NULL;
+    struct local_datapath *ld = NULL;
 
+    ld = get_local_datapath(b_ctx_out->local_datapaths,
+                            pb->datapath->tunnel_key);
+
+    peer = lport_get_peer(pb, b_ctx_in->sbrec_port_binding_by_name);
     if (!ld) {
         /* If 'ld' for this lport is not present, then check if
          * there is a peer for this lport. If peer is present
          * and peer's datapath is already in the local datapaths,
          * then add this lport's datapath to the local_datapaths.
          * */
-        const struct sbrec_port_binding *peer;
-        struct local_datapath *peer_ld = NULL;
-        peer = lport_get_patch_peer(pb, b_ctx_in->sbrec_port_binding_by_name);
         if (peer) {
-            peer_ld =
-                get_local_datapath(b_ctx_out->local_datapaths,
-                                   peer->datapath->tunnel_key);
+            peer_ld = get_local_datapath(b_ctx_out->local_datapaths,
+                                         peer->datapath->tunnel_key);
         }
         if (peer_ld && need_add_peer_to_local(
                 b_ctx_in->sbrec_port_binding_by_name, peer,
-                b_ctx_in->chassis_rec)) {
+                pb, b_ctx_in->chassis_rec)) {
             add_local_datapath(
                 b_ctx_in->sbrec_datapath_binding_by_key,
                 b_ctx_in->sbrec_port_binding_by_datapath,
@@ -2991,11 +2994,11 @@ consider_patch_port_for_local_datapaths(const struct sbrec_port_binding *pb,
         /* Add the peer datapath to the local datapaths if it's
          * not present yet.
          */
-        if (need_add_peer_to_local(
+        if (peer && need_add_peer_to_local(
                 b_ctx_in->sbrec_port_binding_by_name, pb,
-                b_ctx_in->chassis_rec)) {
+                peer, b_ctx_in->chassis_rec)) {
             add_local_datapath_peer_port(
-                pb, b_ctx_in->chassis_rec,
+                pb, peer, b_ctx_in->chassis_rec,
                 b_ctx_in->sbrec_datapath_binding_by_key,
                 b_ctx_in->sbrec_port_binding_by_datapath,
                 b_ctx_in->sbrec_port_binding_by_name,
