@@ -208,12 +208,8 @@ add_local_datapath_peer_port(
     struct hmap *local_datapaths,
     struct hmap *tracked_datapaths)
 {
-    const struct sbrec_port_binding *peer;
-     if (!strcmp(pb->type, "l3gateway")) {
-        peer = lport_get_l3gw_peer(pb, sbrec_port_binding_by_name);
-    } else {
-        peer = lport_get_peer(pb, sbrec_port_binding_by_name);
-    }
+    const struct sbrec_port_binding *peer =
+        lport_get_peer(pb, sbrec_port_binding_by_name);
 
     if (!peer) {
         return;
@@ -630,29 +626,19 @@ add_local_datapath__(struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
     const struct sbrec_port_binding *pb;
     SBREC_PORT_BINDING_FOR_EACH_EQUAL (pb, target,
                                        sbrec_port_binding_by_datapath) {
-        if (!strcmp(pb->type, "patch") || !strcmp(pb->type, "l3gateway")) {
-            const char *peer_name = smap_get(&pb->options, "peer");
-            if (peer_name) {
-                const struct sbrec_port_binding *peer;
-
-                peer = lport_lookup_by_name(sbrec_port_binding_by_name,
-                                            peer_name);
-
-                if (peer && peer->datapath) {
-                    if (need_add_peer_to_local(
-                            sbrec_port_binding_by_name, pb, chassis)) {
-                        struct local_datapath *peer_ld =
-                            add_local_datapath__(sbrec_datapath_binding_by_key,
-                                             sbrec_port_binding_by_datapath,
-                                             sbrec_port_binding_by_name,
-                                             depth + 1, peer->datapath,
-                                             chassis, local_datapaths,
-                                             tracked_datapaths);
-                        local_datapath_peer_port_add(peer_ld, peer, pb);
-                        local_datapath_peer_port_add(ld, pb, peer);
-                    }
-                }
-            }
+        const struct sbrec_port_binding *peer =
+            lport_get_peer(pb, sbrec_port_binding_by_name);
+        if (peer && need_add_peer_to_local(sbrec_port_binding_by_name,
+                                           pb, chassis)) {
+            struct local_datapath *peer_ld =
+                add_local_datapath__(sbrec_datapath_binding_by_key,
+                                    sbrec_port_binding_by_datapath,
+                                    sbrec_port_binding_by_name,
+                                    depth + 1, peer->datapath,
+                                    chassis, local_datapaths,
+                                    tracked_datapaths);
+            local_datapath_peer_port_add(peer_ld, peer, pb);
+            local_datapath_peer_port_add(ld, pb, peer);
         }
     }
     sbrec_port_binding_index_destroy_row(target);
