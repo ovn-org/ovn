@@ -36,6 +36,7 @@ Name                               Email
 Aaron Conole                       aconole@redhat.com
 Aaron Rosen                        arosen@clemson.edu
 Abhiram R N                        abhiramrn@gmail.com
+Aditya Mehakare                    aditya.mehakare@nutanix.com
 Aidan Shribman                     aidan.shribman@gmail.com
 Alan Pevec                         alan.pevec@redhat.com
 Ales Musil                         amusil@redhat.com
