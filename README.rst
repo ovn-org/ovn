@@ -15,6 +15,8 @@ OVN
     :target: https://cirrus-ci.com/github/ovn-org/ovn
 .. image:: https://readthedocs.org/projects/ovn/badge/?version=latest
     :target: https://docs.ovn.org/en/latest/
+.. image:: https://scan.coverity.com/projects/30371/badge.svg
+    :target: https://scan.coverity.com/projects/open-virtual-network
 
 What is OVN?
 ---------------------
