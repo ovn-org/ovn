@@ -1004,6 +1004,7 @@
 
     <dl>
       <dt>[<code>--may-exist</code>] [<code>--policy</code>=<var>POLICY</var>]
+        [<code>--route-table</code>=<var>ROUTE_TABLE</var>]
         [<code>--ecmp</code>] [<code>--ecmp-symmetric-reply</code>]
         [<code>--bfd[=<var>UUID</var></code>]]
         <code>lr-route-add</code> <var>router</var>
@@ -1021,6 +1022,16 @@
           <var>port</var> is omitted, OVN infers the output port based
           on <var>nexthop</var>. Nexthop can be set to <var>discard</var>
           for dropping packets which match the given route.
+        </p>
+
+        <p>
+          The <code>--route-table</code> option can be used to assign the
+          given route to a separate routing table <var>ROUTE_TABLE</var>
+          instead of the default <code>&lt;main&gt;</code> table.  For a
+          detailed explanation of the route lookup behavior, see the
+          description of the field
+          <code>Logical_Router_Static_Route:route_table</code> in the
+          <code>ovn-nb</code>(5) manpage.
         </p>
 
         <p>
@@ -1069,6 +1080,7 @@
       </dd>
 
       <dt>[<code>--if-exists</code>] [<code>--policy</code>=<var>POLICY</var>]
+        [<code>--route-table</code>=<var>ROUTE_TABLE</var>]
         <code>lr-route-del</code> <var>router</var> [<var>prefix</var>
         [<var>nexthop</var> [<var>port</var>]]]</dt>
       <dd>
@@ -1078,6 +1090,12 @@
           <var>POLICY</var>, <var>prefix</var>, <var>nexthop</var> and/or
           <var>port</var> are also specified, then all the routes that match
           the conditions will be deleted from the logical router.
+        </p>
+
+        <p>
+          The <code>--route-table</code> option can be used to delete the
+          given route from the route table <var>ROUTE_TABLE</var> instead
+          of the default <code>&lt;main&gt;</code> table.
         </p>
 
         <p>
@@ -1096,6 +1114,7 @@
 
     <dl>
       <dt>[<code>--may-exist</code>] [<code>--bfd</code>]
+          [<code>--route-table</code>=<var>ROUTE_TABLE</var>]
           <code>lr-policy-add</code>
           <var>router</var> <var>priority</var> <var>match</var>
           <var>action</var> [<var>nexthop</var>[,<var>nexthop</var>,...]]
@@ -1121,6 +1140,12 @@
           routing policy with the same priority and match string is not
           really created. Without <code>--may-exist</code>, adding a
           duplicated routing policy results in error.
+        </p>
+
+        <p>
+          The <code>--route-table</code> option can be used to list the
+          routes assigned to route table <var>ROUTE_TABLE</var> instead of
+          the default <code>&lt;main&gt;</code> table.
         </p>
 
         <p>
