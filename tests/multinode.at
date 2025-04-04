@@ -2667,6 +2667,7 @@ for i in 1 2; do
     check m_as $chassis ovn-nbctl lr-add tr
     check m_as $chassis ovn-nbctl lrp-add tr tr-ts 00:00:00:00:10:00 10.100.200.1/24 10:200::1/64
     check m_as $chassis ovn-nbctl set logical_router tr options:requested-tnl-key=20
+    check m_as $chassis ovn-nbctl lrp-set-gateway-chassis tr-ts $chassis
 
     # Add TS pods, with the same tunnel keys on both sides
     check m_as $chassis ovn-nbctl lsp-add ts pod10
@@ -2676,6 +2677,11 @@ for i in 1 2; do
     check m_as $chassis ovn-nbctl lsp-add ts pod20
     check m_as $chassis ovn-nbctl lsp-set-addresses pod20 "00:00:00:00:10:20 10.100.200.20 10:200::20"
     check m_as $chassis ovn-nbctl set logical_switch_port pod20 options:requested-tnl-key=20
+
+    # Add mgmt pod
+    check m_as $chassis ovn-nbctl lsp-add ts mgmt
+    check m_as $chassis ovn-nbctl lsp-set-addresses mgmt "00:00:00:00:10:11 10.100.200.11 10:200::11"
+    check m_as $chassis ovn-nbctl set logical_switch_port mgmt options:requested-tnl-key=11
 done
 
 # Add SNAT for the GW router that corresponds to "gw-tr" LRP IP
@@ -2696,6 +2702,12 @@ check m_as ovn-chassis-1 ovn-nbctl lr-route-add gw 10.100.200.0/24 100.65.0.2
 check m_as ovn-chassis-1 ovn-nbctl lr-route-add gw 10:200::/64 100:65::2
 check m_as ovn-chassis-2 ovn-nbctl lr-route-add gw 10.100.200.0/24 100.65.0.6
 check m_as ovn-chassis-2 ovn-nbctl lr-route-add gw 10:200::/64 100:65::6
+
+# Add LB on TS and condition NAT
+check m_as ovn-chassis-1 ovn-nbctl lb-add lb0 172.16.0.5:5656 10.100.200.10:2324 tcp
+check m_as ovn-chassis-1 ovn-nbctl ls-lb-add ts lb0
+check m_as ovn-chassis-1 ovn-nbctl --match="eth.dst == 00:00:00:00:10:11" lr-nat-add tr snat 172.16.0.2 10.100.200.0/24
+check m_as ovn-chassis-1 ovn-nbctl set logical_router tr options:ct-commit-all="true"
 
 # Add mutual remote ports
 check m_as ovn-chassis-1 ovn-nbctl lrp-add tr tr-az2 00:00:00:00:30:06 100.65.0.6/30 100:65::6/126
@@ -2724,14 +2736,18 @@ check m_as ovn-chassis-2 ovn-sbctl set chassis ovn-chassis-1 other_config:is-rem
 # Configure ports on the transit switch as remotes
 check m_as ovn-chassis-1 ovn-nbctl lsp-set-type pod20 remote
 check m_as ovn-chassis-1 ovn-nbctl lsp-set-options pod10 requested-chassis=ovn-chassis-1
+check m_as ovn-chassis-1 ovn-nbctl lsp-set-options mgmt requested-chassis=ovn-chassis-1
 check m_as ovn-chassis-1 ovn-nbctl lsp-set-options pod20 requested-chassis=ovn-chassis-2
 
 check m_as ovn-chassis-2 ovn-nbctl lsp-set-type pod10 remote
+check m_as ovn-chassis-2 ovn-nbctl lsp-set-type mgmt remote
 check m_as ovn-chassis-2 ovn-nbctl lsp-set-options pod10 requested-chassis=ovn-chassis-1
+check m_as ovn-chassis-2 ovn-nbctl lsp-set-options mgmt requested-chassis=ovn-chassis-1
 check m_as ovn-chassis-2 ovn-nbctl lsp-set-options pod20 requested-chassis=ovn-chassis-2
 
 m_as ovn-chassis-1 /data/create_fake_vm.sh external external 00:00:00:00:20:10 1500 192.168.100.10 24 192.168.100.1 1000::10/64 1000::1
 m_as ovn-chassis-1 /data/create_fake_vm.sh pod10 pod10 00:00:00:00:10:10 1500 10.100.200.10 24 10.100.200.1 10:200::10/64 10:200::1
+m_as ovn-chassis-1 /data/create_fake_vm.sh mgmt mgmt 00:00:00:00:10:11 1500 10.100.200.11 24 10.100.200.1 10:200::11/64 10:200::1
 m_as ovn-chassis-2 /data/create_fake_vm.sh pod20 pod20 00:00:00:00:10:20 1500 10.100.200.20 24 10.100.200.1 10:200::20/64 10:200::1
 
 # We cannot use any of the helpers as they assume that there is only single ovn-northd instance running
@@ -2751,10 +2767,22 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [external], [ping -q -c 5 -i 0.3 -w 2 10:200::2
 5 packets transmitted, 5 received, 0% packet loss, time 0ms
 ])
 
+M_NS_CHECK_EXEC([ovn-chassis-1], [mgmt], [ip a a 172.16.100.2/24 dev mgmt])
+M_NS_DAEMONIZE([ovn-chassis-1], [pod10], [nc -e /bin/cat -v -l -o server.log 10.100.200.10 2324], [pod10.pid])
+M_START_TCPDUMP([ovn-chassis-1], [-neei pod10-p ip], [pod10])
+M_START_TCPDUMP([ovn-chassis-1], [-neei mgmt-p ip], [mgmt])
+
+m_as ovn-chassis-1 sh -c 'echo -e "Hello\nHello" > msg.expected'
+check m_as ovn-chassis-1 ovn-nbctl --policy="src-ip" lr-route-add tr 10.100.200.0/24 10.100.200.11
+
 check test $(m_as ovn-chassis-1 grep -c "skipping output to input port" \
     /var/log/openvswitch/ovs-vswitchd.log) -eq 0
 check test $(m_as ovn-chassis-2 grep -c "skipping output to input port" \
     /var/log/openvswitch/ovs-vswitchd.log) -eq 0
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [mgmt], [sh -c '(echo "Hello"; sleep 3) | nc -s 172.16.100.2 -o client.log 172.16.0.5 5656'], [0], [ignore], [ignore])
+check m_as ovn-chassis-1 cmp server.log msg.expected
+check m_as ovn-chassis-1 cmp client.log msg.expected
 
 echo "Chassis1"
 m_as ovn-chassis-1 ovn-sbctl show
@@ -2774,6 +2802,8 @@ for i in 1 2; do
     multinode_setup_controller $chassis $chassis $ip "170.168.0.2"
     multinode_cleanup_northd $chassis
 done
+
+m_as ovn-chassis-1 killall tcpdump
 
 AT_CLEANUP
 
