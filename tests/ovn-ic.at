@@ -2407,3 +2407,218 @@ OVN_CLEANUP_SBOX([hv2], ["/IGMP Querier enabled without a valid IPv4/d
 OVN_CLEANUP_IC([az1],[az2])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- Delete route lsp orphan])
+
+ovn_init_ic_db
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+
+    # Enable route learning at AZ level
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
+done
+
+# Create new transit switches and LRs. Test topology is next:
+#
+#                       / transit switch (ts11) \
+# logical router (lr11) -                       - logical router (lr12)
+#                       \ transit switch (ts12) /
+#
+
+# Create lr11, lr12, ts11, ts12 and connect them
+for i in 1 2; do
+    ovn_as az$i
+
+    lr=lr1$i
+    check ovn-nbctl lr-add $lr
+
+    for j in 1 2; do
+        ts=ts1$j
+        check ovn-ic-nbctl --wait=sb --may-exist ts-add $ts
+
+        lrp=lrp-$lr-$ts
+        lsp=lsp-$ts-$lr
+        # Create LRP and connect to TS
+        check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
+        check ovn-nbctl lsp-add $ts $lsp \
+                -- lsp-set-addresses $lsp router \
+                -- lsp-set-type $lsp router \
+                -- lsp-set-options $lsp router-port=$lrp
+    done
+done
+
+# Create directly-connected route in lr11
+check ovn_as az2 ovn-nbctl lrp-add lr12 lrp-lr12 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.101.2
+192.168.0.0/24 169.254.102.2
+])
+
+check ovn_as az2 ovn-nbctl lrp-del lrp-lr12-ts12
+
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.101.2
+])
+
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- Delete route lrp orphan])
+
+ovn_init_ic_db
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+
+    # Enable route learning at AZ level
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
+done
+
+# Create new transit switches and LRs. Test topology is next:
+#
+#                       / transit switch (ts11) \
+# logical router (lr11) -                       - logical router (lr12)
+#                       \ transit switch (ts12) /
+#
+
+# Create lr11, lr12, ts11, ts12 and connect them
+for i in 1 2; do
+    ovn_as az$i
+
+    lr=lr1$i
+    check ovn-nbctl lr-add $lr
+
+    for j in 1 2; do
+        ts=ts1$j
+        check ovn-ic-nbctl --wait=sb --may-exist ts-add $ts
+
+        lrp=lrp-$lr-$ts
+        lsp=lsp-$ts-$lr
+        # Create LRP and connect to TS
+        check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
+        check ovn-nbctl lsp-add $ts $lsp \
+                -- lsp-set-addresses $lsp router \
+                -- lsp-set-type $lsp router \
+                -- lsp-set-options $lsp router-port=$lrp
+    done
+done
+
+# Create directly-connected route in lr11
+check ovn_as az2 ovn-nbctl lrp-add lr12 lrp-lr12 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.101.2
+192.168.0.0/24 169.254.102.2
+])
+
+check ovn_as az2 ovn-nbctl lsp-del lsp-ts12-lr12
+
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.101.2
+])
+
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- Check loop with lsp orphan in same subnet of new lsp in other TS])
+
+ovn_init_ic_db
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+
+    # Enable route learning at AZ level
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
+done
+
+# Create new transit switches and LRs. Test topology is next:
+#
+#                       / transit switch (ts11) \
+# logical router (lr11) -                       - logical router (lr12)
+#                       \ transit switch (ts12) /
+#
+
+# Create lr11, lr12 and ts11 and connect them
+for i in 1 2; do
+    ovn_as az$i
+
+    lr=lr1$i
+    check ovn-nbctl lr-add $lr
+
+    for j in 1; do
+        ts=ts1$j
+        check ovn-ic-nbctl --wait=sb --may-exist ts-add $ts
+
+        lrp=lrp-$lr-$ts
+        lsp=lsp-$ts-$lr
+        # Create LRP and connect to TS
+        check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
+        check ovn-nbctl lsp-add $ts $lsp \
+                -- lsp-set-addresses $lsp router \
+                -- lsp-set-type $lsp router \
+                -- lsp-set-options $lsp router-port=$lrp
+    done
+done
+
+# Create directly-connected route in lr11
+check ovn_as az2 ovn-nbctl lrp-add lr12 lrp-lr12 aa:aa:aa:aa:bb:01 "192.168.0.1/24"
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.101.2
+])
+
+# Delete LRP connection from lr11 to ts11, keep lsp orphan
+check ovn_as az1 ovn-nbctl lrp-del lrp-lr11-ts11
+
+# Create ts12, and connect lr11 and lr21 to it in the same subnet of ts11 where
+# exist one lsp orphan
+for i in 1 2; do
+    ovn_as az$i
+    ts=ts12
+
+    lr=lr1$i
+    for j in 1; do
+        check ovn-ic-nbctl --wait=sb --may-exist ts-add $ts
+
+        lrp=lrp-$lr-$ts
+        lsp=lsp-$ts-$lr
+        # Create LRP and connect to TS
+        check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i$i/24
+        check ovn-nbctl lsp-add $ts $lsp \
+                -- lsp-set-addresses $lsp router \
+                -- lsp-set-type $lsp router \
+                -- lsp-set-options $lsp router-port=$lrp
+    done
+done
+
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.101.22
+])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])
