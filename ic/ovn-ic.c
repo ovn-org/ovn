@@ -1271,10 +1271,51 @@ route_has_local_gw(const struct nbrec_logical_router *lr,
 }
 
 static bool
+lrp_has_neighbor_in_ts(const struct nbrec_logical_router_port *lrp,
+                       struct in6_addr *nexthop)
+{
+    if (!lrp || !nexthop) {
+        return false;
+    }
+
+    struct lport_addresses lrp_networks;
+    if (!extract_lrp_networks(lrp, &lrp_networks)) {
+        destroy_lport_addresses(&lrp_networks);
+        return false;
+    }
+
+    if (IN6_IS_ADDR_V4MAPPED(nexthop)) {
+        ovs_be32 neigh_prefix_v4 = in6_addr_get_mapped_ipv4(nexthop);
+        for (size_t i = 0; i < lrp_networks.n_ipv4_addrs; i++) {
+            struct ipv4_netaddr address = lrp_networks.ipv4_addrs[i];
+            if (address.network == (neigh_prefix_v4 & address.mask)) {
+                destroy_lport_addresses(&lrp_networks);
+                return true;
+            }
+        }
+    } else {
+        for (size_t i = 0; i < lrp_networks.n_ipv6_addrs; i++) {
+            struct ipv6_netaddr address = lrp_networks.ipv6_addrs[i];
+            struct in6_addr neigh_prefix = ipv6_addr_bitand(nexthop,
+                                                            &address.mask);
+            if (ipv6_addr_equals(&address.network, &neigh_prefix)) {
+                destroy_lport_addresses(&lrp_networks);
+                return true;
+            }
+        }
+    }
+
+    destroy_lport_addresses(&lrp_networks);
+    return false;
+}
+
+static bool
 route_need_learn(const struct nbrec_logical_router *lr,
                  const struct icsbrec_route *isb_route,
                  struct in6_addr *prefix, unsigned int plen,
-                 const struct smap *nb_options)
+                 const struct smap *nb_options,
+                 const struct nbrec_logical_router_port *ts_lrp,
+                 struct in6_addr *nexthop)
 {
     if (!smap_get_bool(nb_options, "ic-route-learn", false)) {
         return false;
@@ -1299,6 +1340,10 @@ route_need_learn(const struct nbrec_logical_router *lr,
         return false;
     }
 
+    if (!lrp_has_neighbor_in_ts(ts_lrp, nexthop)) {
+        return false;
+    }
+
     return true;
 }
 
@@ -1320,6 +1365,20 @@ get_lrp_name_by_ts_port_name(struct ic_context *ctx, const char *ts_port_name)
     return smap_get(&nb_lsp->options, "router-port");
 }
 
+static const struct nbrec_logical_router_port *
+get_lrp_by_lrp_name(struct ic_context *ctx, const char *lrp_name)
+{
+    const struct nbrec_logical_router_port *lrp;
+    const struct nbrec_logical_router_port *lrp_key =
+        nbrec_logical_router_port_index_init_row(ctx->nbrec_lrp_by_name);
+    nbrec_logical_router_port_index_set_name(lrp_key, lrp_name);
+    lrp = nbrec_logical_router_port_index_find(ctx->nbrec_lrp_by_name,
+                                               lrp_key);
+    nbrec_logical_router_port_index_destroy_row(lrp_key);
+
+    return lrp;
+}
+
 static const char *
 get_route_table_by_lrp_name(struct ic_context *ctx, const char *lrp_name)
 {
@@ -1335,6 +1394,67 @@ get_route_table_by_lrp_name(struct ic_context *ctx, const char *lrp_name)
         return smap_get_def(&lrp->options, "route_table", "");
     }
     return "";  /* <main> route table */
+}
+
+static const struct nbrec_logical_router_port *
+find_lrp_of_nexthop(struct ic_context *ctx,
+                    const struct icsbrec_route *isb_route)
+{
+    const struct nbrec_logical_router_port *lrp;
+    const struct nbrec_logical_switch *ls;
+    ls = find_ts_in_nb(ctx, isb_route->transit_switch);
+    if (!ls) {
+        return NULL;
+    }
+
+    struct in6_addr nexthop;
+    if (!ip46_parse(isb_route->nexthop, &nexthop)) {
+        return NULL;
+    }
+
+    for (size_t i = 0; i < ls->n_ports; i++) {
+        char *lsp_name = ls->ports[i]->name;
+        const char *lrp_name = get_lrp_name_by_ts_port_name(ctx,
+                                                            lsp_name);
+        if (!lrp_name) {
+            continue;
+        }
+
+        lrp = get_lrp_by_lrp_name(ctx, lrp_name);
+        if (!lrp) {
+            continue;
+        }
+
+        struct lport_addresses lrp_networks;
+        if (!extract_lrp_networks(lrp, &lrp_networks)) {
+            destroy_lport_addresses(&lrp_networks);
+            continue;
+        }
+
+        if (IN6_IS_ADDR_V4MAPPED(&nexthop)) {
+            ovs_be32 nexthop_v4 = in6_addr_get_mapped_ipv4(&nexthop);
+            for (size_t i_v4 = 0; i_v4  < lrp_networks.n_ipv4_addrs; i_v4++) {
+                struct ipv4_netaddr address = lrp_networks.ipv4_addrs[i_v4];
+                if (address.addr == nexthop_v4) {
+                    destroy_lport_addresses(&lrp_networks);
+                    return lrp;
+                }
+            }
+        } else {
+            for (size_t i_v6 = 0; i_v6 < lrp_networks.n_ipv6_addrs; i_v6++) {
+                struct ipv6_netaddr address = lrp_networks.ipv6_addrs[i_v6];
+                struct in6_addr nexthop_v6 = ipv6_addr_bitand(&nexthop,
+                                                              &address.mask);
+                if (ipv6_addr_equals(&address.network, &nexthop_v6)) {
+                    destroy_lport_addresses(&lrp_networks);
+                    return lrp;
+                }
+            }
+        }
+        destroy_lport_addresses(&lrp_networks);
+    }
+
+    return NULL;
 }
 
 static bool
@@ -1366,9 +1486,11 @@ sync_learned_routes(struct ic_context *ctx,
 
     const char *lrp_name, *ts_route_table;
     const struct icsbrec_port_binding *isb_pb;
+    const struct nbrec_logical_router_port *lrp;
     for (int i = 0; i < ic_lr->n_isb_pbs; i++) {
         isb_pb = ic_lr->isb_pbs[i];
         lrp_name = get_lrp_name_by_ts_port_name(ctx, isb_pb->logical_port);
+        lrp = get_lrp_by_lrp_name(ctx, lrp_name);
         ts_route_table = get_route_table_by_lrp_name(ctx, lrp_name);
 
         isb_route_key = icsbrec_route_index_init_row(ctx->icsbrec_route_by_ts);
@@ -1411,7 +1533,7 @@ sync_learned_routes(struct ic_context *ctx,
                 continue;
             }
             if (!route_need_learn(ic_lr->lr, isb_route, &prefix, plen,
-                                  &nb_global->options)) {
+                                  &nb_global->options, lrp, &nexthop)) {
                 continue;
             }
 
@@ -1702,7 +1824,7 @@ delete_orphan_ic_routes(struct ic_context *ctx,
             ctx->icnbrec_transit_switch_by_name, t_sw_key);
         icnbrec_transit_switch_index_destroy_row(t_sw_key);
 
-        if (!t_sw) {
+        if (!t_sw || !find_lrp_of_nexthop(ctx, isb_route)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
             VLOG_INFO_RL(&rl, "Deleting orphan ICDB:Route: %s->%s (%s, rtb:%s,"
                          " transit switch: %s)", isb_route->ip_prefix,
@@ -2125,6 +2247,8 @@ main(int argc, char *argv[])
                          &nbrec_logical_router_col_external_ids);
 
     ovsdb_idl_add_table(ovnnb_idl_loop.idl, &nbrec_table_logical_router_port);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_router_port_col_mac);
     ovsdb_idl_add_column(ovnnb_idl_loop.idl,
                          &nbrec_logical_router_port_col_name);
     ovsdb_idl_add_column(ovnnb_idl_loop.idl,
