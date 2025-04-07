@@ -286,14 +286,18 @@
       process in turn updates the physical flows installed in the chassis's
       Open vSwitch instances.  When it receives confirmation from Open vSwitch
       that the physical flows have been updated, it updates <code>nb_cfg</code>
-      in its own <code>Chassis</code> record in the southbound database.
+      in its own <code>Chassis_Private</code> record in the southbound
+      database.  (OVN versions before v20.09.0 used the <code>nb_cfg</code>
+      column from the <code>Chassis</code> table.  Although this column still
+      exists, it is deprecated in favor of the same column in
+      <code>Chassis_Private</code> and no longer updated.)
     </li>
 
     <li>
       <code>ovn-northd</code> monitors the <code>nb_cfg</code> column in all of
-      the <code>Chassis</code> records in the southbound database.  It keeps
-      track of the minimum value among all the records and copies it into the
-      <code>hv_cfg</code> column in the northbound <code>NB_Global</code>
+      the <code>Chassis_Private</code> records in the southbound database.  It
+      keeps track of the minimum value among all the records and copies it into
+      the <code>hv_cfg</code> column in the northbound <code>NB_Global</code>
       table.  (Thus, the CMS or another observer can determine when all of the
       hypervisors have caught up to the northbound configuration.)
     </li>
