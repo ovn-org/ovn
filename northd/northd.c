@@ -8157,7 +8157,8 @@ build_lswitch_rport_arp_req_self_orig_flow(struct ovn_port *op,
     ds_put_cstr(&eth_src, "}");
 
     ds_put_format(&match,
-                  "eth.src == %s && (arp.op == 1 || rarp.op == 3 || nd_ns)",
+                  "eth.src == %s && eth.dst == ff:ff:ff:ff:ff:ff && "
+                  "(arp.op == 1 || rarp.op == 3 || nd_ns)",
                   ds_cstr(&eth_src));
     ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, priority, ds_cstr(&match),
                   "outport = \""MC_FLOOD_L2"\"; output;", lflow_ref);
