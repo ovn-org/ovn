@@ -47,8 +47,6 @@ This is the current list of active OVN committers:
      - guru@ovn.org
    * - Han Zhou
      - hzhou@ovn.org
-   * - Justin Pettit
-     - jpettit@ovn.org
    * - Leonid Ryzhyk
      - lryzhyk@vmware.com
    * - Mark Michelson
@@ -67,6 +65,8 @@ More information about Emeritus Committers can be found here:
      - Email
    * - Ben Pfaff
      - blp@ovn.org
+   * - Justin Pettit
+     - jpettit@ovn.org
    * - Russell Bryant
      - russell@ovn.org
 
