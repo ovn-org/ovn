@@ -7079,6 +7079,9 @@ pinctrl_find_put_vport_binding(uint32_t dp_key, uint32_t vport_key,
     return NULL;
 }
 
+#define VPORT_BACKOFF_INTERVAL 1000ll
+#define VPORT_MAX_POSTPONE 10000ll
+
 static void
 run_put_vport_binding(struct ovsdb_idl_txn *ovnsb_idl_txn OVS_UNUSED,
                       struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
@@ -7099,18 +7102,56 @@ run_put_vport_binding(struct ovsdb_idl_txn *ovnsb_idl_txn OVS_UNUSED,
     }
 
     /* pinctrl module updates the port binding only for type 'virtual'. */
-    if (!strcmp(pb->type, "virtual")) {
-        const struct sbrec_port_binding *parent = lport_lookup_by_key(
+    if (strcmp(pb->type, "virtual")) {
+        return;
+    }
+
+    const struct sbrec_port_binding *parent = lport_lookup_by_key(
         sbrec_datapath_binding_by_key, sbrec_port_binding_by_key,
         vpb->dp_key, vpb->vport_parent_key);
-        if (parent) {
-            VLOG_INFO("Claiming virtual lport %s for this chassis "
-                       "with the virtual parent %s",
-                       pb->logical_port, parent->logical_port);
-            sbrec_port_binding_set_chassis(pb, chassis);
-            sbrec_port_binding_set_virtual_parent(pb, parent->logical_port);
-        }
+    if (!parent) {
+        return;
     }
+
+    if (pb->chassis == chassis && !strcmp(pb->virtual_parent,
+                                          parent->logical_port)) {
+        VLOG_DBG("Virtual port %s is already claimed by this chassis.",
+                 pb->logical_port);
+        return;
+    }
+
+    long long timewall_now = time_wall_msec();
+    long long last_claim = ovn_smap_get_llong(&pb->options,
+                                              "vport-last-claim", 0);
+    long long backoff = ovn_smap_get_llong(&pb->options, "vport-backoff", 0);
+
+    struct smap options;
+    smap_clone(&options, &pb->options);
+
+    long long next_backoff;
+    if (timewall_now >= last_claim + backoff) {
+        sbrec_port_binding_set_chassis(pb, chassis);
+        sbrec_port_binding_set_virtual_parent(pb, parent->logical_port);
+
+        next_backoff = VPORT_BACKOFF_INTERVAL;
+        smap_remove(&options, "vport-last-claim");
+        smap_add_format(&options, "vport-last-claim", "%lld", timewall_now);
+
+        VLOG_INFO("Claiming virtual lport %s for this chassis "
+                  "with the virtual parent %s",
+                  pb->logical_port, parent->logical_port);
+    } else {
+        next_backoff = MIN(backoff + VPORT_BACKOFF_INTERVAL,
+                           VPORT_MAX_POSTPONE);
+        VLOG_INFO("Postponing virtual lport %s claim by %lld ms",
+                  pb->logical_port, next_backoff);
+    }
+
+    smap_remove(&options, "vport-backoff");
+    smap_add_format(&options, "vport-backoff", "%lld", next_backoff);
+
+    sbrec_port_binding_set_options(pb, &options);
+    smap_destroy(&options);
 }
 
 /* Called by pinctrl_run(). Runs with in the main ovn-controller
