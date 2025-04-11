@@ -185,6 +185,7 @@ struct pinctrl {
 
 static struct pinctrl pinctrl;
 
+static bool pinctrl_is_sb_commited(int64_t commit_cfg, int64_t cur_cfg);
 static void init_buffered_packets_ctx(void);
 static void destroy_buffered_packets_ctx(void);
 static void
@@ -315,7 +316,7 @@ static void run_put_vport_bindings(
     struct ovsdb_idl_txn *ovnsb_idl_txn,
     struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
     struct ovsdb_idl_index *sbrec_port_binding_by_key,
-    const struct sbrec_chassis *chassis)
+    const struct sbrec_chassis *chassis, int64_t cur_cfg)
     OVS_REQUIRES(pinctrl_mutex);
 static void wait_put_vport_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn);
 static void pinctrl_handle_bind_vport(const struct flow *md,
@@ -3628,14 +3629,15 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             const struct sset *active_tunnels,
             const struct shash *local_active_ports_ipv6_pd,
             const struct shash *local_active_ports_ras,
-            const struct ovsrec_open_vswitch_table *ovs_table)
+            const struct ovsrec_open_vswitch_table *ovs_table,
+            int64_t cur_cfg)
 {
     ovs_mutex_lock(&pinctrl_mutex);
     run_put_mac_bindings(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
                          sbrec_port_binding_by_key,
                          sbrec_mac_binding_by_lport_ip);
     run_put_vport_bindings(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
-                           sbrec_port_binding_by_key, chassis);
+                           sbrec_port_binding_by_key, chassis, cur_cfg);
     send_garp_rarp_prepare(ovnsb_idl_txn, sbrec_port_binding_by_datapath,
                            sbrec_port_binding_by_name,
                            sbrec_mac_binding_by_lport_ip, br_int, chassis,
@@ -4177,6 +4179,15 @@ pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn)
     wait_put_fdbs(ovnsb_idl_txn);
     wait_activated_ports();
     ovs_mutex_unlock(&pinctrl_mutex);
+}
+
+#define PINCTRL_CFG_INTERVAL 100
+
+static bool
+pinctrl_is_sb_commited(int64_t commit_cfg, int64_t cur_cfg)
+{
+    return (INT64_MAX - commit_cfg < PINCTRL_CFG_INTERVAL &&
+            cur_cfg < PINCTRL_CFG_INTERVAL) || cur_cfg > commit_cfg;
 }
 
 /* Called by ovn-controller. */
@@ -6606,44 +6617,12 @@ struct put_vport_binding {
 
     uint32_t vport_parent_key;
 
-    /* This vport record Only relevant if "new_record" is true. */
-    bool new_record;
+    /* Current commit cfg number. */
+    int64_t cfg;
 };
 
 /* Contains "struct put_vport_binding"s. */
 static struct hmap put_vport_bindings;
-
-/*
- * Validate if the vport_binding record that was added
- * by the pinctrl thread is still relevant and needs
- * to be updated in the SBDB or not.
- *
- * vport_binding record is only relevant and needs to be updated in SB if:
- *   2. The put_vport_binding:new_record is true:
- *       The new_record will be set to "true" when this vport record is created
- *       by function "pinctrl_handle_bind_vport".
- *
- *       After the first attempt to bind this vport to the chassis and
- *       virtual_parent by function "run_put_vport_bindings" we will set the
- *       value of vpb:new_record to "false" and keep it in "put_vport_bindings"
- *
- *       After the second attempt of binding the vpb it will be removed by
- *       this function.
- *
- *       The above guarantees that we will try to bind the vport twice in
- *       a certain amount of time.
- *
-*/
-static bool
-is_vport_binding_relevant(struct put_vport_binding *vpb)
-{
-
-    if (vpb->new_record) {
-        vpb->new_record = false;
-        return true;
-    }
-    return false;
-}
 
 static void
 init_put_vport_bindings(void)
@@ -6652,21 +6631,13 @@ init_put_vport_bindings(void)
 }
 
 static void
-flush_put_vport_bindings(bool force_flush)
+destroy_put_vport_bindings(void)
 {
     struct put_vport_binding *vport_b;
     HMAP_FOR_EACH_SAFE (vport_b, hmap_node, &put_vport_bindings) {
-        if (!is_vport_binding_relevant(vport_b) || force_flush) {
-            hmap_remove(&put_vport_bindings, &vport_b->hmap_node);
-            free(vport_b);
-        }
+        hmap_remove(&put_vport_bindings, &vport_b->hmap_node);
+        free(vport_b);
     }
-}
-
-static void
-destroy_put_vport_bindings(void)
-{
-    flush_put_vport_bindings(true);
     hmap_destroy(&put_vport_bindings);
 }
 
@@ -6731,20 +6702,24 @@ static void
 run_put_vport_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn,
                       struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                       struct ovsdb_idl_index *sbrec_port_binding_by_key,
-                      const struct sbrec_chassis *chassis)
+                      const struct sbrec_chassis *chassis, int64_t cur_cfg)
     OVS_REQUIRES(pinctrl_mutex)
 {
     if (!ovnsb_idl_txn) {
         return;
     }
 
-    const struct put_vport_binding *vpb;
-    HMAP_FOR_EACH (vpb, hmap_node, &put_vport_bindings) {
-        run_put_vport_binding(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
-                              sbrec_port_binding_by_key, chassis, vpb);
+    struct put_vport_binding *vpb;
+    HMAP_FOR_EACH_SAFE (vpb, hmap_node, &put_vport_bindings) {
+        if (vpb->cfg >= 0 && pinctrl_is_sb_commited(vpb->cfg, cur_cfg)) {
+            hmap_remove(&put_vport_bindings, &vpb->hmap_node);
+            free(vpb);
+        } else {
+            run_put_vport_binding(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
+                                  sbrec_port_binding_by_key, chassis, vpb);
+            vpb->cfg = cur_cfg;
+        }
     }
-
-    flush_put_vport_bindings(false);
 }
 
 /* Called with in the pinctrl_handler thread context. */
@@ -6782,7 +6757,7 @@ pinctrl_handle_bind_vport(
     vpb->dp_key = dp_key;
     vpb->vport_key = vport_key;
     vpb->vport_parent_key = vport_parent_key;
-    vpb->new_record = true;
+    vpb->cfg = -1;
     notify_pinctrl_main();
 }
 

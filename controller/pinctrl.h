@@ -60,7 +60,8 @@ void pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                  const struct sset *active_tunnels,
                  const struct shash *local_active_ports_ipv6_pd,
                  const struct shash *local_active_ports_ras,
-                 const struct ovsrec_open_vswitch_table *ovs_table);
+                 const struct ovsrec_open_vswitch_table *ovs_table,
+                 int64_t cur_cfg);
 void pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn);
 void pinctrl_destroy(void);
 void pinctrl_set_br_int_name(const char *br_int_name);
