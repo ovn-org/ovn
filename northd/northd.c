@@ -3348,6 +3348,21 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
                 }
             }
 
+            /* Preserve virtual port options. */
+            if (!strcmp(op->nbsp->type, "virtual")) {
+                const char *last_claim = smap_get(&op->sb->options,
+                                                  "vport-last-claim");
+                if (last_claim) {
+                    smap_add(&options, "vport-last-claim", last_claim);
+                }
+
+                const char *backoff = smap_get(&op->sb->options,
+                                               "vport-backoff");
+                if (backoff) {
+                    smap_add(&options, "vport-backoff", backoff);
+                }
+            }
+
             if (lsp_is_remote(op->nbsp) ||
                 op->sb->requested_additional_chassis) {
                 /* ovn-northd is supposed to set port_binding for remote ports
