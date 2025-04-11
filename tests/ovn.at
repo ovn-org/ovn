@@ -23045,6 +23045,8 @@ check_virtual_offlows_not_present hv1
 # hv2 should not have the flow for ACL.
 check_virtual_offlows_not_present hv2
 
+# Remove the backoff period, to not prolong the test.
+ovn-sbctl remove Port_Binding sw0-vir options vport-backoff
 # From sw0-p0 resend GARP for 10.0.0.10. hv1 should reclaim sw0-vir
 # and sw0-p1 should be its virtual_parent.
 send_garp hv1 hv1-vif1 1 $(hex_to_mac $eth_src) $(hex_to_mac $eth_dst) $spa $tpa
@@ -23089,6 +23091,8 @@ check_virtual_offlows_not_present hv1
 # hv2 should not have the above flows.
 check_virtual_offlows_not_present hv2
 
+# Wait for the backoff period to pass.
+sleep 1.2
 # From sw0-p0 send GARP for 10.0.0.10. hv1 should claim sw0-vir
 # and sw0-p1 should be its virtual_parent.
 eth_src="50:54:00:00:00:03"
@@ -23109,6 +23113,8 @@ check_virtual_offlows_present hv1
 # hv2 should not have the above flows.
 check_virtual_offlows_not_present hv2
 
+# Remove the backoff period, to not prolong the test.
+ovn-sbctl remove Port_Binding sw0-vir options vport-backoff
 # From sw0-p3 send GARP for 10.0.0.10. hv1 should claim sw0-vir
 # and sw0-p3 should be its virtual_parent.
 eth_src="50:54:00:00:00:05"
@@ -23137,6 +23143,8 @@ check_virtual_offlows_present hv1
 # hv2 should not have the above flows.
 check_virtual_offlows_not_present hv2
 
+# Remove the backoff period, to not prolong the test.
+ovn-sbctl remove Port_Binding sw0-vir options vport-backoff
 # send the garp from sw0-p2 (in hv2). hv2 should claim sw0-vir
 # and sw0-p2 shpuld be its virtual_parent.
 eth_src="50:54:00:00:00:04"
@@ -23164,6 +23172,8 @@ check_virtual_offlows_present hv2
 # hv1 should not have the above flows.
 check_virtual_offlows_not_present hv1
 
+# Remove the backoff period, to not prolong the test.
+ovn-sbctl remove Port_Binding sw0-vir options vport-backoff
 # Now send arp reply from sw0-p1. hv1 should claim sw0-vir
 # and sw0-p1 shpuld be its virtual_parent.
 eth_src=505400000003
@@ -43068,5 +43078,101 @@ expected=$(fmt_pkt "Ether(dst='${rx_dst_mac}', src='${rx_src_mac}')/ \
 
 echo $expected > expected
 OVN_CHECK_PACKETS([hv1/server-tx.pcap], [expected])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([virtual port claim postpone])
+AT_KEYWORDS([virtual ports])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+check ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=sw0-p2 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap
+
+sim_add hv3
+as hv3
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.3
+check ovs-vsctl -- add-port br-int hv3-vif1 -- \
+    set interface hv3-vif1 external-ids:iface-id=sw0-p3 \
+    options:tx_pcap=hv3/vif1-tx.pcap \
+    options:rxq_pcap=hv3/vif1-rx.pcap
+
+check ovn-nbctl ls-add sw0
+
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:01 10.0.0.1"
+check ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:01 10.0.0.1 10.0.0.10"
+
+check ovn-nbctl lsp-add sw0 sw0-p2
+check ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:02 10.0.0.2"
+check ovn-nbctl lsp-set-port-security sw0-p2 "50:54:00:00:00:02 10.0.0.2 10.0.0.10"
+
+check ovn-nbctl lsp-add sw0 sw0-p3
+check ovn-nbctl lsp-set-addresses sw0-p3 "50:54:00:00:00:03 10.0.0.3"
+check ovn-nbctl lsp-set-port-security sw0-p3 "50:54:00:00:00:03 10.0.0.3 10.0.0.10"
+
+check ovn-nbctl lsp-add sw0 sw0-vir
+check ovn-nbctl lsp-set-addresses sw0-vir "50:54:00:00:00:10 10.0.0.10"
+check ovn-nbctl lsp-set-type sw0-vir virtual
+check ovn-nbctl set logical_switch_port sw0-vir options:virtual-ip=10.0.0.10
+check ovn-nbctl set logical_switch_port sw0-vir options:virtual-parents="sw0-p1,sw0-p2,sw0-p3"
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Claim virtual port on hv1.
+send_garp hv1 hv1-vif1 1 "50:54:00:00:00:01" "ff:ff:ff:ff:ff:ff" 10.0.0.10 10.0.0.10
+wait_row_count Port_Binding 1 logical_port=sw0-vir chassis=$(fetch_column Chassis _uuid name=hv1)
+wait_row_count Port_Binding 1 logical_port=sw0-vir virtual_parent=sw0-p1
+wait_for_ports_up sw0-vir
+
+# Check that the backoff interval was set.
+AT_CHECK([fetch_column Port_Binding options logical_port=sw0-vir | grep -q "vport-last-claim"])
+check_row_count Port_Binding 1 logical_port=sw0-vir options:vport-backoff=1000
+
+# Pass the backoff timer
+sleep 1.2
+
+# Try to claim on all chassis in quick succession.
+for i in $(seq 1 10); do
+    send_garp hv3 hv3-vif1 1 "50:54:00:00:00:03" "ff:ff:ff:ff:ff:ff" 10.0.0.10 10.0.0.10
+    send_garp hv2 hv2-vif1 1 "50:54:00:00:00:02" "ff:ff:ff:ff:ff:ff" 10.0.0.10 10.0.0.10
+    send_garp hv1 hv1-vif1 1 "50:54:00:00:00:01" "ff:ff:ff:ff:ff:ff" 10.0.0.10 10.0.0.10
+    sleep 0.2
+done
+
+wait_row_count Port_Binding 1 logical_port=sw0-vir chassis=$(fetch_column Chassis _uuid name=hv3)
+wait_row_count Port_Binding 1 logical_port=sw0-vir virtual_parent=sw0-p3
+wait_for_ports_up sw0-vir
+
+# Check that the backoff interval reached the maximum.
+AT_CHECK([fetch_column Port_Binding options logical_port=sw0-vir | grep -q "vport-last-claim"])
+check_row_count Port_Binding 1 logical_port=sw0-vir options:vport-backoff=10000
+
+AT_CHECK([grep -q "Postponing virtual lport sw0-vir" hv1/ovn-controller.log ])
+AT_CHECK([grep -q "Postponing virtual lport sw0-vir" hv2/ovn-controller.log ])
+
+# hv3 has the claim already, it doesn't bump the backoff interval.
+AT_CHECK([grep -q "Postponing virtual lport sw0-vir" hv3/ovn-controller.log], [1])
+
+OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
