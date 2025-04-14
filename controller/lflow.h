@@ -97,7 +97,7 @@ struct uuid;
 #define OFTABLE_CT_ORIG_NW_DST_LOAD      81
 #define OFTABLE_CT_ORIG_IP6_DST_LOAD     82
 #define OFTABLE_CT_ORIG_TP_DST_LOAD      83
-
+#define OFTABLE_CT_STATE_SAVE            85
 
 struct lflow_ctx_in {
     struct ovsdb_idl_index *sbrec_multicast_group_by_name_datapath;

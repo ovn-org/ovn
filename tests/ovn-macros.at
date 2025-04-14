@@ -1143,3 +1143,4 @@ m4_define([OVN_CONTROLLER_EXIT],
 
 m4_define([OFTABLE_MAC_BINDING], [66])
 m4_define([OFTABLE_MAC_CACHE_USE], [79])
+m4_define([OFTABLE_CT_STATE_SAVE], [85])
