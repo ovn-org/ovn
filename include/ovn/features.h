@@ -30,6 +30,7 @@
 #define OVN_FEATURE_CT_COMMIT_NAT_V2 "ct-commit-nat-v2"
 #define OVN_FEATURE_CT_COMMIT_TO_ZONE "ct-commit-to-zone"
 #define OVN_FEATURE_CT_NEXT_ZONE "ct-next-zone"
+#define OVN_FEATURE_CT_STATE_SAVE "ct-state-save"
 
 /* OVS datapath supported features.  Based on availability OVN might generate
  * different types of openflows.

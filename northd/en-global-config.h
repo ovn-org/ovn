@@ -22,6 +22,7 @@ struct chassis_features {
     bool ct_commit_nat_v2;
     bool ct_commit_to_zone;
     bool ct_next_zone;
+    bool ct_state_save;
 };
 
 struct global_config_tracked_data {
