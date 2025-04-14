@@ -32,6 +32,7 @@
 #define OVN_FEATURE_SAMPLE_WITH_REGISTERS "ovn-sample-with-registers"
 #define OVN_FEATURE_CT_NEXT_ZONE "ct-next-zone"
 #define OVN_FEATURE_CT_LABEL_FLUSH "ct-label-flush"
+#define OVN_FEATURE_CT_STATE_SAVE "ct-state-save"
 
 /* OVS datapath supported features.  Based on availability OVN might generate
  * different types of openflows.

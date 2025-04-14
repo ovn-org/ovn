@@ -399,6 +399,7 @@ chassis_build_other_config(const struct ovs_chassis_cfg *ovs_cfg,
     smap_replace(config, OVN_FEATURE_CT_NEXT_ZONE, "true");
     smap_replace(config, OVN_FEATURE_CT_LABEL_FLUSH,
                  ovs_cfg->ct_label_flush ? "true" :"false");
+    smap_replace(config, OVN_FEATURE_CT_STATE_SAVE, "true");
 }
 
 /*
@@ -572,6 +573,11 @@ chassis_other_config_changed(const struct ovs_chassis_cfg *ovs_cfg,
         return true;
     }
 
+    if (!smap_get_bool(&chassis_rec->other_config, OVN_FEATURE_CT_STATE_SAVE,
+                       false)) {
+        return true;
+    }
+
     return false;
 }
 
@@ -731,6 +737,7 @@ update_supported_sset(struct sset *supported)
     sset_add(supported, OVN_FEATURE_SAMPLE_WITH_REGISTERS);
     sset_add(supported, OVN_FEATURE_CT_NEXT_ZONE);
     sset_add(supported, OVN_FEATURE_CT_LABEL_FLUSH);
+    sset_add(supported, OVN_FEATURE_CT_STATE_SAVE);
 }
 
 static void
