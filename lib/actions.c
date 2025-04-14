@@ -5491,6 +5491,29 @@ format_CT_ORIG_TP_DST(const struct ovnact_result *res, struct ds *s)
     ds_put_cstr(s, " = ct_tp_dst();");
 }
 
+static void
+encode_CT_STATE_SAVE(const struct ovnact_result *res,
+                     const struct ovnact_encode_params *ep OVS_UNUSED,
+                     struct ofpbuf *ofpacts)
+{
+    encode_result_action___(res, ep->ct_state_save_table,
+                            MFF_LOG_CT_SAVED_STATE, 0, 8, ofpacts);
+}
+
+static void
+parse_CT_STATE_SAVE(struct action_context *ctx, const struct expr_field *dst,
+                    struct ovnact_result *res)
+{
+    parse_ovnact_result__(ctx, "ct_state_save", NULL, dst, res, 8);
+}
+
+static void
+format_CT_STATE_SAVE(const struct ovnact_result *res, struct ds *s)
+{
+    expr_field_format(&res->dst, s);
+    ds_put_cstr(s, " = ct_state_save();");
+}
+
 /* Parses an assignment or exchange or put_dhcp_opts action. */
 static void
 parse_set_action(struct action_context *ctx)
@@ -5597,6 +5620,10 @@ parse_set_action(struct action_context *ctx)
                    lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
             parse_CT_ORIG_TP_DST(ctx, &lhs,
                                  ovnact_put_CT_ORIG_TP_DST(ctx->ovnacts));
+        } else if (!strcmp(ctx->lexer->token.s, "ct_state_save") &&
+                  lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
+            parse_CT_STATE_SAVE(ctx, &lhs,
+                                ovnact_put_CT_STATE_SAVE(ctx->ovnacts));
         } else {
             parse_assignment_action(ctx, false, &lhs);
         }

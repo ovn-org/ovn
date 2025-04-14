@@ -64,6 +64,8 @@ enum ovn_controller_event {
 #define MFF_LOG_CT_ORIG_IP6_DST_ADDR        MFF_XXREG1 /* REG_ORIG_DIP_IPV6 */
 #define MFF_LOG_CT_ORIG_TP_DST_PORT         MFF_REG2   /* REG_ORIG_TP_DPORT
                                                         * (bits 0..15). */
+#define MFF_LOG_CT_SAVED_STATE              MFF_REG4   /* REG_CT_STATE
+                                                        * (bits 0..8). */
 
 /* Maximum number of networks supported by 4-bit flags.network_id. */
 #define OVN_MAX_NETWORK_ID \
