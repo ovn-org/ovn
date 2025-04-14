@@ -3085,6 +3085,29 @@ physical_run(struct physical_ctx *p_ctx,
     ofctrl_add_flow(flow_table, OFTABLE_CT_ORIG_IP6_DST_LOAD, 100, 0, &match,
                     &ofpacts, hc_uuid);
 
+    /* Implement the ct_state_save() logical action. */
+
+    /* Add the flow:
+     * match = (1), action = (reg4[0..7] = ct_state[0..7])
+     * table = 85, priority = UINT16_MAX - 1
+     */
+    match_init_catchall(&match);
+    ofpbuf_clear(&ofpacts);
+    put_move(MFF_CT_STATE, 0,  MFF_LOG_CT_SAVED_STATE, 0, 8, &ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_CT_STATE_SAVE, UINT16_MAX - 1, 0,
+                    &match, &ofpacts, hc_uuid);
+
+    /* Add the flow:
+     * match = (!ct.trk), action = (reg4[0..7] = 0)
+     * table = 85, priority = UINT16_MAX
+     */
+    match_init_catchall(&match);
+    ofpbuf_clear(&ofpacts);
+    match_set_ct_state_masked(&match, 0, OVS_CS_F_TRACKED);
+    put_load(0, MFF_LOG_CT_SAVED_STATE, 0, 8, &ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_CT_STATE_SAVE, UINT16_MAX, 0,
+                    &match, &ofpacts, hc_uuid);
+
     physical_eval_remote_chassis_flows(p_ctx, &ofpacts, flow_table);
 
     ofpbuf_uninit(&ofpacts);

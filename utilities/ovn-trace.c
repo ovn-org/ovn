@@ -3122,6 +3122,23 @@ execute_check_out_port_sec(const struct ovnact_result *dl,
 }
 
 static void
+execute_ct_save_state(const struct ovnact_result *dl, struct flow *uflow,
+                      struct ovs_list *super)
+{
+    struct mf_subfield sf = expr_resolve_field(&dl->dst);
+    union mf_subvalue sv = {
+        .u8_val = uflow->ct_state & CS_TRACKED ? uflow->ct_state : 0,
+    };
+    mf_write_subfield_flow(&sf, &sv, uflow);
+
+    struct ds s = DS_EMPTY_INITIALIZER;
+    expr_field_format(&dl->dst, &s);
+    ovntrace_node_append(super, OVNTRACE_NODE_ACTION, "/* %s = %"PRIu8"; */",
+                         ds_cstr(&s), sv.u8_val);
+    ds_destroy(&s);
+}
+
+static void
 trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
               const struct ovntrace_datapath *dp, struct flow *uflow,
               uint8_t table_id, enum ovnact_pipeline pipeline,
@@ -3464,6 +3481,10 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
         case OVNACT_FLOOD_REMOTE:
             ovntrace_node_append(super, OVNTRACE_NODE_OUTPUT,
                                  "/* Flood to all remote chassis */");
+            break;
+        case OVNACT_CT_STATE_SAVE:
+            execute_ct_save_state(ovnact_get_CT_STATE_SAVE(a), uflow, super);
+            break;
         }
     }
     ofpbuf_uninit(&stack);

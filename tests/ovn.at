@@ -2287,6 +2287,28 @@ flood_remote;
 flood_remote();
     Syntax error at `(' expecting `;'.
 
+# ct_state_save()
+reg1[[0..7]] = ct_state_save();
+    encodes as set_field:0/0xff->reg4,resubmit(,OFTABLE_CT_STATE_SAVE),move:NXM_NX_REG4[[0..7]]->NXM_NX_XXREG0[[64..71]]
+
+reg1[[2..9]] = ct_state_save();
+    encodes as set_field:0/0xff->reg4,resubmit(,OFTABLE_CT_STATE_SAVE),move:NXM_NX_REG4[[0..7]]->NXM_NX_XXREG0[[66..73]]
+
+reg1[[24..31]] = ct_state_save();
+    encodes as set_field:0/0xff->reg4,resubmit(,OFTABLE_CT_STATE_SAVE),move:NXM_NX_REG4[[0..7]]->NXM_NX_XXREG0[[88..95]]
+
+xreg1 = ct_state_save();
+    Cannot use 64-bit field xreg1[[0..63]] where 8-bit field is required.
+
+reg1[[0..30]] = ct_state_save();
+    Cannot use 31-bit field reg1[[0..30]] where 8-bit field is required.
+
+ct_state_save;
+    Syntax error at `ct_state_save' expecting action.
+
+ct_state_save();
+    Syntax error at `ct_state_save' expecting action.
+
 # Miscellaneous negative tests.
 ;
     Syntax error at `;'.
@@ -37003,8 +37025,10 @@ check_default_flows() {
         # Tables 81, 82 and 83 are part of ct_nw_dst(), ct_ip6_dst() and ct_tp_dst()
         # actions respectively and its OK for them to not have default flows.
         # Table 84 is part of flood_remote; action and its OK for
-        #  it to not have default flows.
-        if test ${table} -eq 68 -o ${table} -eq 70 -o ${table} -eq 81 -o ${table} -eq 82 -o ${table} -eq 83 -o ${table} -eq 84; then
+        # it to not have default flows.
+        # Table 85 is the implementation of the ct_state_save action and
+        # doesn't require a default flow.
+        if test ${table} -eq 68 -o ${table} -eq 70 -o ${table} -eq 81 -o ${table} -eq 82 -o ${table} -eq 83 -o ${table} -eq 84 -o ${table} -eq 85; then
             continue;
         fi
         AT_CHECK([grep -qe "table=$table.* priority=0\(,metadata=0x\w*\)\? actions" oflows], [0], [ignore], [ignore], [echo "Table $table does not contain a default action"])
