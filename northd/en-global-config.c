@@ -383,6 +383,7 @@ northd_enable_all_features(struct ed_type_global_config *data)
         .ct_commit_to_zone = true,
         .sample_with_reg = true,
         .ct_next_zone = true,
+        .ct_state_save = true,
     };
 }
 
@@ -461,6 +462,15 @@ build_chassis_features(const struct sbrec_chassis_table *sbrec_chassis_table,
         if (!ct_next_zone &&
             chassis_features->ct_next_zone) {
             chassis_features->ct_next_zone = false;
+        }
+
+        bool ct_state_save =
+                smap_get_bool(&chassis->other_config,
+                              OVN_FEATURE_CT_STATE_SAVE,
+                              false);
+        if (!ct_state_save &&
+            chassis_features->ct_state_save) {
+            chassis_features->ct_state_save = false;
         }
     }
 }
