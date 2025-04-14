@@ -4899,12 +4899,14 @@ output;
       integer value, this table adds a priority-50 logical flow with
       the match <code>outport == <var>GW_PORT</var></code> where
       <var>GW_PORT</var> is the gateway router port and applies the
-      action <code>check_pkt_larger</code> and advances the packet to
-      the next table.
+      actions <code>check_pkt_larger</code> and <code>ct_state_save</code>
+      and then advances the packet to the next table.
     </p>
 
     <pre>
-REGBIT_PKT_LARGER = check_pkt_larger(<var>L</var>); next;
+REGBIT_PKT_LARGER = check_pkt_larger(<var>L</var>);
+REG_CT_STATE = ct_state_save();
+next;
     </pre>
 
     <p>

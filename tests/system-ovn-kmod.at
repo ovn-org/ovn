@@ -922,9 +922,11 @@ dnl Logical network:
 dnl 2 logical switches "public" (192.168.10.0/24 and fd10::/64)
 dnl and "internal" (192.168.20.0/24 and fd20::/64) connected to a router lr.
 dnl internal has a client.
-dnl server is connected through localnet.
+dnl Server1 is connected through localnet.
+dnl Server2 is connected to the same switch as the client.
 dnl
-dnl Server IP 192.168.10.2 fd10:2
+dnl Server1 IP 192.168.10.2 fd10:2
+dnl Server1 IP 192.168.20.3 fd20:3
 dnl Client IP 192.168.20.2 fd20:2
 dnl
 dnl SNAT for internal 192.168.20.0/24 with router ip 192.168.10.1.
@@ -960,17 +962,25 @@ check ovn-nbctl lsp-add public ln_port \
                 -- lsp-set-type ln_port localnet \
                 -- lsp-set-options ln_port network_name=phynet
 
-ADD_NAMESPACES(server)
-ADD_VETH(server, server, br-ext, "fd10::2/64", "f0:00:00:01:02:03", "fd10::1",
+ADD_NAMESPACES(server1)
+ADD_VETH(server1, server1, br-ext, "fd10::2/64", "f0:00:00:01:02:03", "fd10::1",
          "nodad", "192.168.10.2/24", "192.168.10.1")
-NS_EXEC([server], [ip a show dev server])
+NS_EXEC([server1], [ip a show dev server1])
 
 ADD_NAMESPACES(client)
 ADD_VETH(client, client, br-int, "fd20::2/64", "f0:00:0f:01:02:03", "fd20::1",
          "nodad", "192.168.20.2/24", "192.168.20.1")
 NS_EXEC([client], [ip a show dev client])
+
+ADD_NAMESPACES(server2)
+ADD_VETH(server2, server2, br-int, "fd20::3/64", "f0:00:0f:01:02:04", "fd20::1",
+         "nodad", "192.168.20.3/24", "192.168.20.1")
+NS_EXEC([server2], [ip a show dev server2])
+
 check ovn-nbctl lsp-add internal client \
   -- lsp-set-addresses client "f0:00:0f:01:02:03 192.168.20.2 fd20::2"
+check ovn-nbctl lsp-add internal server2 \
+  -- lsp-set-addresses server2 "f0:00:0f:01:02:04 192.168.20.3 fd20::3"
 
 check ovn-nbctl set logical_router lr options:chassis=hv1
 check ovn-nbctl set logical_router_port lr-internal options:gateway_mtu=1300
@@ -979,6 +989,7 @@ check ovn-nbctl lr-nat-add lr snat 192.168.10.1 192.168.20.0/24
 check ovn-nbctl lr-nat-add lr snat fd10::1 fd20::/64
 
 OVN_POPULATE_ARP
+wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 ovn-nbctl show
@@ -994,7 +1005,7 @@ NS_CHECK_EXEC([client], [ping -c 1 -W 2 -s 1400 192.168.10.2 | FORMAT_PING],
 ])
 
 NS_CHECK_EXEC([client], [ip r get 192.168.10.2 | grep -q "mtu 1300"])
-NS_CHECK_EXEC([server], [ip r get 192.168.10.1 | grep -q "mtu 1300"])
+NS_CHECK_EXEC([server1], [ip r get 192.168.10.1 | grep -q "mtu 1300"])
 
 AS_BOX([IPv6])
 NS_CHECK_EXEC([client], [ping -c 1 -W 2 -s 1400 fd10::2 | grep -q "Packet too big: mtu=1300"])
@@ -1005,7 +1016,31 @@ NS_CHECK_EXEC([client], [ping -c 1 -W 2 -s 1400 fd10::2 | FORMAT_PING],
 ])
 
 NS_CHECK_EXEC([client], [ip r get fd10::2 | grep -q "mtu 1300"])
-NS_CHECK_EXEC([server], [ip r get fd10::1 | grep -q "mtu 1300"])
+NS_CHECK_EXEC([server1], [ip r get fd10::1 | grep -q "mtu 1300"])
+
+AS_BOX([Switched traffic - smaller than MTU - connect to server2])
+check ovs-appctl revalidator/purge
+NS_CHECK_EXEC([client], [ping -c 1 -W 2 192.168.20.3 | FORMAT_PING],
+[0], [dnl
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
+])
+NS_CHECK_EXEC([client], [ping -c 1 -W 2 fd20::3 | FORMAT_PING],
+[0], [dnl
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
+])
+
+dnl While the traffic is only switched, OpenFlow tables are shared between
+dnl router and switch datapaths, making it such that stateful configurations
+dnl in the router pipeline can cause ct_state matches to "leak" to switch
+dnl specific datapath flows.
+dnl
+dnl Ensure datapath flows don't match on any dnat and/or snat conntrack states.
+dnl Those are known to not be offloadable to hardware.
+ovs-appctl dpctl/dump-flows > dp-flows
+AT_CAPTURE_FILE([dp-flows])
+AT_CHECK([grep 'ct_state(.*nat.*)' -c dp-flows], [1], [dnl
+0
+])
 
 ovn-appctl -t ovn-controller vlog/set info
 
