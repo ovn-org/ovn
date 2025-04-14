@@ -923,9 +923,11 @@ dnl Logical network:
 dnl 2 logical switches "public" (192.168.1.0/24) and "internal" (172.16.1.0/24)
 dnl connected to a router lr.
 dnl internal has a client.
-dnl server is connected through localnet.
+dnl Server1 is connected through localnet.
+dnl Server2 is connected to the same switch as the client.
 dnl
 dnl Server IP 192.168.1.2 MTU 900
+dnl Server1 IP 172.16.1.3 MTU 800
 dnl Client IP  172.16.1.2 MTU 800
 dnl
 dnl SNAT for internal 172.16.1.2/24 with router ip 192.168.1.1.
@@ -960,19 +962,26 @@ check ovn-nbctl lsp-add public ln_port \
                 -- lsp-set-type ln_port localnet \
                 -- lsp-set-options ln_port network_name=phynet
 
-ADD_NAMESPACES(server)
-ADD_VETH([server], [server], [br-ext], ["192.168.1.2/24"],
+ADD_NAMESPACES(server1)
+ADD_VETH([server1], [server1], [br-ext], ["192.168.1.2/24"],
          ["f0:00:00:01:02:03"], ["192.168.1.1"])
-NS_EXEC([server], [ip l set dev server mtu 900])
-NS_EXEC([server], [ip l show dev server])
+NS_EXEC([server1], [ip l set dev server1 mtu 900])
+NS_EXEC([server1], [ip l show dev server1])
 
 ADD_NAMESPACES(client)
 ADD_VETH([client], [client], [br-int], ["172.16.1.2/24"],
          ["f0:00:0f:01:02:03"], ["172.16.1.1"])
 NS_EXEC([client], [ip l set dev client mtu 800])
 NS_EXEC([client], [ip l show dev client])
+
+ADD_NAMESPACES(server2)
+ADD_VETH([server2], [server2], [br-int], ["172.16.1.3/24"],
+         ["f0:00:0f:01:02:04"], ["172.16.1.1"])
+NS_EXEC([server2], [ip a show dev server2])
 check ovn-nbctl lsp-add internal client \
   -- lsp-set-addresses client "f0:00:0f:01:02:03 172.16.1.2"
+check ovn-nbctl lsp-add internal server2 \
+  -- lsp-set-addresses server2 "f0:00:0f:01:02:04 172.16.1.3"
 
 dnl Config OVN load-balancer with a VIP.  (not necessary, but if we do not
 dnl have a load balancer and comment out snat, we will receive a stray fragment
@@ -984,6 +993,7 @@ check ovn-nbctl set logical_router_port lr-internal options:gateway_mtu=800
 
 check ovn-nbctl lr-nat-add lr snat 192.168.1.1 172.16.1.2
 
+wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 ovn-nbctl show
@@ -1008,15 +1018,15 @@ while True:
   sent = sock.sendto(b"x" * 1017, client_address)
   print("Sent back: ", str(sent), "bytes", flush=True)
 ])
-NETNS_DAEMONIZE([server], [$PYTHON3 ./server.py > server.log], [server.pid])
+NETNS_DAEMONIZE([server1], [$PYTHON3 ./server.py > server.log], [server.pid])
 
 dnl Collect packets on server side.
-NETNS_START_TCPDUMP([server], [-U -i server -vnne 'ip and (icmp or udp)'], [tcpdump-server])
+NETNS_START_TCPDUMP([server1], [-U -i server1 -vnne 'ip and (icmp or udp)'], [tcpdump-server])
 
 dnl Collect packets on client side.
 NETNS_START_TCPDUMP([client], [-U -i client -vnne 'ip and (icmp or udp)'], [tcpdump-client])
 
-dnl Send two packets to the server with a short interval.
+dnl Send two packets to the server1 with a short interval.
 dnl First packet should generate 'needs frag', the second should result in
 dnl corectly fragmented reply.
 AT_DATA([client.py], [dnl
@@ -1034,6 +1044,26 @@ NS_CHECK_EXEC([client], [$PYTHON3 ./client.py])
 dnl Expecting 2 outgoing packets and 2 fragments back - 8 lines total.
 OVS_WAIT_UNTIL([test "$(cat tcpdump-client.tcpdump | wc -l)" = "8"])
 AT_CHECK([test $(grep -c "need to frag (mtu 800)" tcpdump-server.tcpdump) -eq 1])
+
+AS_BOX([Switched traffic - smaller than MTU - connect to server2])
+check ovs-appctl revalidator/purge
+NS_CHECK_EXEC([client], [ping -c 1 -W 2 172.16.1.3 | FORMAT_PING],
+[0], [dnl
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
+])
+
+dnl While the traffic is only switched, OpenFlow tables are shared between
+dnl router and switch datapaths, making it such that stateful configurations
+dnl in the router pipeline can cause ct_state matches to "leak" to switch
+dnl specific datapath flows.
+dnl
+dnl Ensure datapath flows don't match on any dnat and/or snat conntrack states.
+dnl Those are known to not be offloadable to hardware.
+ovs-appctl dpctl/dump-flows > dp-flows
+AT_CAPTURE_FILE([dp-flows])
+AT_CHECK([grep 'ct_state(.*nat.*)' -c dp-flows], [1], [dnl
+0
+])
 
 ovn-appctl -t ovn-controller vlog/set info
 
