@@ -22,6 +22,7 @@ struct chassis_features {
     bool sample_with_reg;
     bool ct_next_zone;
     bool ct_label_flush;
+    bool ct_state_save;
 };
 
 struct global_config_tracked_data {
