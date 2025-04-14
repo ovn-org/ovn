@@ -4593,7 +4593,6 @@ static void init_physical_ctx(struct engine_node *node,
     p_ctx->chassis = chassis;
     p_ctx->active_tunnels = &rt_data->active_tunnels;
     p_ctx->local_datapaths = &rt_data->local_datapaths;
-    p_ctx->local_lports = &rt_data->local_lports;
     p_ctx->ct_zones = ct_zones;
     p_ctx->mff_ovn_geneve = ed_mff_ovn_geneve->mff_ovn_geneve;
     p_ctx->local_bindings = &rt_data->lbinding_data.bindings;
@@ -5043,7 +5042,6 @@ en_route_run(struct engine_node *node, void *data)
         .dynamic_routing_port_mapping = dynamic_routing_port_mapping,
         .active_tunnels = &rt_data->active_tunnels,
         .local_datapaths = &rt_data->local_datapaths,
-        .local_lports = &rt_data->local_lports,
         .local_bindings = &rt_data->lbinding_data.bindings,
     };
 
