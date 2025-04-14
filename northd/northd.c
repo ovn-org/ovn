@@ -181,6 +181,19 @@ static bool default_acl_drop;
 /* Register used for setting a label for ACLs in a Logical Switch. */
 #define REG_LABEL "reg3"
 
+/* Register used for storing the ct_state in the router pipeline and
+ * ct_saved_state helpers, matching the ct_state bits definitions from
+ * ovs-fields(7). */
+#define REG_CT_STATE "reg4[0..7]"
+
+static const char *reg_ct_state[] = {
+#define CS_STATE(ENUM, INDEX, NAME) \
+    [CS_##ENUM] = "reg4[" #INDEX "]",
+
+    CS_STATES
+#undef CS_STATE
+};
+
 /* Register used for temporarily store ECMP eth.src to avoid masked ct_label
  * access. It doesn't really occupy registers because the content of the
  * register is saved to stack and then restored in the same flow.
@@ -241,10 +254,12 @@ static bool default_acl_drop;
  * |     |                           | 1 |                 |   |                                    |
  * +-----+---------------------------+---+-----------------+---+------------------------------------+
  * | R4  |  REG_LB_AFF_BACKEND_IP4   | X |                 |   |                                    |
- * |     |                           | R |                 |   |                                    |
- * +-----+---------------------------+ E |     UNUSED      | X |                                    |
- * | R5  |        UNUSED             | G |                 | X |                                    |
- * |     |                           | 2 |                 | R |        LB_L3_AFF_BACKEND_IP6       |
+ * |     |        REG_CT_STATE       | R |                 |   |                                    |
+ * |     |  (>= IN_CHK_PKT_LEN &&    | R |                 |   |                                    |
+ * |     |   <= IN_LARGER_PKTS)      | E |                 |   |                                    |
+ * +-----+---------------------------+ G |     UNUSED      | X |                                    |
+ * | R5  |        UNUSED             | 2 |                 | X |                                    |
+ * |     |                           |   |                 | R |        LB_L3_AFF_BACKEND_IP6       |
  * +-----+---------------------------+---+-----------------+ E |           (<= IN_DNAT)             |
  * | R6  |        UNUSED             | X |                 | G |                                    |
  * |     |                           | R |                 | 1 |                                    |
@@ -13310,6 +13325,7 @@ build_icmperr_pkt_big_flows(struct ovn_port *op, int mtu,
                             const struct shash *meter_groups, struct ds *match,
                             struct ds *actions, enum ovn_stage stage,
                             struct ovn_port *outport,
+                            const char *ct_state_match,
                             struct lflow_ref *lflow_ref)
 {
     const char *ipv4_meter = copp_meter_get(COPP_ICMP4_ERR, op->od->nbr->copp,
@@ -13321,15 +13337,17 @@ build_icmperr_pkt_big_flows(struct ovn_port *op, int mtu,
     ds_put_format(match, "inport == %s", op->json_key);
 
     if (outport) {
+        ovs_assert(ct_state_match);
+
         ds_put_format(match, " && outport == %s", outport->json_key);
 
         create_icmp_need_frag_lflow(op, mtu, actions, match, ipv4_meter,
                                     lflows, lflow_ref, stage, 160, false,
-                                    "ct.trk && ct.rpl && ct.dnat",
+                                    ct_state_match,
                                     "flags.icmp_snat = 1; ");
         create_icmp_need_frag_lflow(op, mtu, actions, match, ipv6_meter,
                                     lflows, lflow_ref, stage, 160, true,
-                                    "ct.trk && ct.rpl && ct.dnat",
+                                    ct_state_match,
                                     "flags.icmp_snat = 1; ");
     }
 
@@ -13355,15 +13373,25 @@ build_check_pkt_len_flows_for_lrp(struct ovn_port *op,
 
     ds_clear(match);
     ds_put_format(match, "outport == %s", op->json_key);
+    const char *mtu_flow_action = features->ct_state_save
+                                  ? REG_CT_STATE " = ct_state_save(); next;"
+                                  : "next;";
     build_gateway_mtu_flow(lflows, op, S_ROUTER_IN_CHK_PKT_LEN, 50, 55,
-                           match, actions, &op->nbrp->header_,
-                           lflow_ref, "next;");
+                           match, actions, &op->nbrp->header_, lflow_ref,
+                           "%s", mtu_flow_action);
 
     /* ingress traffic */
     build_icmperr_pkt_big_flows(op, gw_mtu, lflows, meter_groups,
                                 match, actions, S_ROUTER_IN_IP_INPUT,
-                                NULL, lflow_ref);
+                                NULL, NULL, lflow_ref);
 
+    /* Additional match at egress on tracked and reply and dnat-ed traffic. */
+    char *ct_match = features->ct_state_save
+                     ? xasprintf("%s && %s && %s",
+                                 reg_ct_state[CS_TRACKED],
+                                 reg_ct_state[CS_REPLY_DIR],
+                                 reg_ct_state[CS_DST_NAT])
+                     : xstrdup("ct.trk && ct.rpl && ct.dnat");
     for (size_t i = 0; i < op->od->nbr->n_ports; i++) {
         struct ovn_port *rp = ovn_port_find(lr_ports,
                                             op->od->nbr->ports[i]->name);
@@ -13374,8 +13402,9 @@ build_check_pkt_len_flows_for_lrp(struct ovn_port *op,
         /* egress traffic */
         build_icmperr_pkt_big_flows(rp, gw_mtu, lflows, meter_groups,
                                     match, actions, S_ROUTER_IN_LARGER_PKTS,
-                                    op, lflow_ref);
+                                    op, ct_match, lflow_ref);
     }
+    free(ct_match);
 
     if (features->ct_commit_nat_v2) {
         ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_OUT_POST_SNAT, 100,
