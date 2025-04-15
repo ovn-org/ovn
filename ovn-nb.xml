@@ -2328,6 +2328,18 @@ or
           of the <ref table="Chassis_Template_Var"/> <ref column="variables"/>
           records.
         </p>
+
+        <p>
+          In the above examples, square brackets are only used to indicate
+          choosing between the enclosed options. But when adding to
+          <ref table="Chassis_Template_Var"/> <ref column="variables"/>
+          backend IPv6 addresses must be enclosed in []. VIPs must not be
+          enclosed in []. For example:
+          <code>
+          lbvip="3001::10",lbport=12010,lbback="[2001::1]",
+          ip6_back="[2001::1]:12010"
+          </code>
+        </p>
       </column>
 
       <column name="options" key="address-family">
