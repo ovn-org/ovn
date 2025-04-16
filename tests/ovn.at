@@ -37020,17 +37020,27 @@ check_default_flows() {
     ovs-ofctl dump-flows br-int > oflows
     AT_CAPTURE_FILE([oflows])
     for table in $(grep -oP "table=\K\d*, " oflows | tr -d ',' | sort -n | uniq); do
-        # Tables 68 and 70 are part of the chk_lb_hairpin and ct_snat_to_vip actions
-        # respectively and it's OK if they don't have a default action.
-        # Tables 81, 82 and 83 are part of ct_nw_dst(), ct_ip6_dst() and ct_tp_dst()
-        # actions respectively and its OK for them to not have default flows.
-        # Table 84 is part of flood_remote; action and its OK for
-        # it to not have default flows.
-        # Table 85 is the implementation of the ct_state_save action and
-        # doesn't require a default flow.
-        if test ${table} -eq 68 -o ${table} -eq 70 -o ${table} -eq 81 -o ${table} -eq 82 -o ${table} -eq 83 -o ${table} -eq 84 -o ${table} -eq 85; then
-            continue;
-        fi
+        # Tables OFTABLE_CHK_LB_HAIRPIN and OFTABLE_CT_SNAT_HAIRPIN are part
+        # of the chk_lb_hairpin and ct_snat_to_vip actions respectively and
+        # it's OK if they don't have a default action.
+        # Tables OFTABLE_CT_ORIG_NW_DST_LOAD, OFTABLE_CT_ORIG_IP6_DST_LOAD and
+        # OFTABLE_CT_ORIG_TP_DST_LOAD are part of ct_nw_dst(), ct_ip6_dst()
+        # and ct_tp_dst() actions respectively and it's OK for them to not
+        # have default flows.
+        # Table OFTABLE_FLOOD_REMOTE_CHASSIS is part of flood_remote action
+        # and it's OK for it to not have default flows.
+        # Table OFTABLE_CT_STATE_SAVE is the implementation of the
+        # ct_state_save() action and doesn't require a default flow.
+        case ${table} in
+            OFTABLE_CHK_LB_HAIRPIN       | \
+            OFTABLE_CT_SNAT_HAIRPIN      | \
+            OFTABLE_CT_ORIG_NW_DST_LOAD  | \
+            OFTABLE_CT_ORIG_IP6_DST_LOAD | \
+            OFTABLE_CT_ORIG_TP_DST_LOAD  | \
+            OFTABLE_FLOOD_REMOTE_CHASSIS | \
+            OFTABLE_CT_STATE_SAVE)
+                continue ;;
+        esac
         AT_CHECK([grep -qe "table=$table.* priority=0\(,metadata=0x\w*\)\? actions" oflows], [0], [ignore], [ignore], [echo "Table $table does not contain a default action"])
     done
 }
