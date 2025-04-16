@@ -154,6 +154,10 @@ ovn_init_symtab(struct shash *symtab)
     snprintf(flags_str, sizeof flags_str, "flags[%d]", MLF_FROM_CTRL_BIT);
     expr_symtab_add_subfield(symtab, "flags.from_ctrl", NULL, flags_str);
 
+    snprintf(flags_str, sizeof flags_str, "flags[%d]",
+             MLF_IGMP_IGMP_SNOOP_INJECT_BIT);
+    expr_symtab_add_subfield(symtab, "flags.igmp_loopback", NULL, flags_str);
+
     /* Connection tracking state. */
     expr_symtab_add_field_scoped(symtab, "ct_mark", MFF_CT_MARK, NULL, false,
                                  WR_CT_COMMIT);

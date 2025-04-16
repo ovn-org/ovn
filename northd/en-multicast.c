@@ -616,7 +616,7 @@ ovn_igmp_group_get_ports(const struct sbrec_igmp_group *sb_igmp_group,
         }
 
         /* If this is already a flood port skip it for the group. */
-        if (port->mcast_info.flood) {
+        if (port->mcast_info.flood || port->mcast_info.flood_reports) {
             continue;
         }
 

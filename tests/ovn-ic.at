@@ -2043,6 +2043,10 @@ check ovs-vsctl -- add-port br-int hv2-vif2 \
     -- set interface hv2-vif2 external-ids:iface-id=lsp3 \
        options:tx_pcap=hv2/vif2-tx.pcap \
        options:rxq_pcap=hv2/vif2-rx.pcap
+check ovs-vsctl -- add-port br-int hv2-vif3 \
+    -- set interface hv2-vif3 external-ids:iface-id=lsp4 \
+       options:tx_pcap=hv2/vif3-tx.pcap \
+       options:rxq_pcap=hv2/vif3-rx.pcap
 check ovs-vsctl set open . external-ids:ovn-is-interconn=true
 
 AT_CHECK([ovn-ic-nbctl --wait=sb create Transit_Switch name=ts], [0], [ignore])
@@ -2081,6 +2085,8 @@ check ovn-nbctl lsp-add ts ts-lr2 \
     -- lsp-set-addresses ts-lr2 router \
     -- lsp-set-type ts-lr2 router \
     -- lsp-set-options ts-lr2 router-port=lr2-ts
+check ovn-nbctl lsp-add ts lsp4 \
+    -- lsp-set-addresses lsp4 unknown
 
 check ovn-nbctl lr-add lr3 \
     -- lrp-add lr3 lr3-ts 00:00:00:02:00:02 42.42.42.3/24 4242::3/64 \
@@ -2165,6 +2171,18 @@ send_mld_v2_report hv2-vif2 hv2 \
     ff0adeadbeef00000000000000000001 04 c0e4 \
     /dev/null
 
+# Inject IGMP Join for 239.0.1.68 on LSP4.
+send_igmp_v3_report hv2-vif3 hv2 \
+    000000000001 $(ip_to_hex 10 0 0 42) f9cf \
+    $(ip_to_hex 239 0 1 68) 04 e9b9 \
+    /dev/null
+
+# Inject MLD Join for ff0a:dead:beef::1 on LSP3.
+send_mld_v2_report hv2-vif3 hv2 \
+    000000000001 10000000000000000000000000000042 \
+    ff0adeadbeef00000000000000000001 04 c0a3 \
+    /dev/null
+
 # Check that the IGMP and MLD groups are learned on both AZs (on the LS
 # and TS).
 ovn_as az1
@@ -2181,6 +2199,7 @@ check ovn-nbctl --wait=hv sync
 # to lsp1 and lsp3.
 > expected_az1
 > expected_az2
+> expected_az2-lsp4
 send_ip_multicast_pkt hv2-vif1 hv2 \
     000000000001 01005e000144 \
     $(ip_to_hex 44 44 44 2) $(ip_to_hex 239 0 1 68) 1e 20 7c6b 11 \
@@ -2193,6 +2212,10 @@ store_ip_multicast_pkt \
     000000020200 01005e000144 \
     $(ip_to_hex 44 44 44 2) $(ip_to_hex 239 0 1 68) 1e 1e 7e6b 11 \
     e518e518000aed350000 expected_az2
+store_ip_multicast_pkt \
+    000000020001 01005e000144 \
+    $(ip_to_hex 44 44 44 2) $(ip_to_hex 239 0 1 68) 1e 1f 7d6b 11 \
+    e518e518000aed350000 expected_az2-lsp4
 
 send_ip6_multicast_pkt hv2-vif1 hv2 \
     000000000001 333300000001 \
@@ -2211,10 +2234,17 @@ store_ip6_multicast_pkt \
     000e 3e 11 \
     93407a69000e2b4e61736461640a \
     expected_az2
+store_ip6_multicast_pkt \
+    000000020001 333300000001 \
+    00100000000000000000000000000042 ff0adeadbeef00000000000000000001 \
+    000e 3f 11 \
+    93407a69000e2b4e61736461640a \
+    expected_az2-lsp4
 
 OVS_WAIT_UNTIL(
   [check_packets 'hv1/vif1-tx.pcap expected_az1' \
-                 'hv2/vif2-tx.pcap expected_az2'],
+                 'hv2/vif2-tx.pcap expected_az2' \
+                 'hv2/vif3-tx.pcap expected_az2-lsp4'],
   [$at_diff -F'^---' exp rcv])
 
 OVN_CLEANUP_SBOX([hv1], ["/IGMP Querier enabled without a valid IPv4/d
