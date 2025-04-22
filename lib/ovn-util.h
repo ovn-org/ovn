@@ -409,6 +409,7 @@ enum en_lport_type {
     LP_UNKNOWN,
     LP_VIF,
     LP_CONTAINER,
+    LP_MIRROR,
     LP_PATCH,
     LP_L3GATEWAY,
     LP_LOCALNET,

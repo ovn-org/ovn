@@ -1883,23 +1883,31 @@ consider_port_binding(const struct physical_ctx *ctx,
 
     int tag = 0;
     bool nested_container = false;
-    const struct sbrec_port_binding *parent_port = NULL;
+    const struct sbrec_port_binding *binding_port = NULL;
     ofp_port_t ofport;
-    if (binding->parent_port && *binding->parent_port) {
-        if (!binding->tag) {
+    bool is_mirror = (type == LP_MIRROR) ? true : false;
+    if ((binding->parent_port && *binding->parent_port) || is_mirror) {
+        if (!binding->tag && !is_mirror) {
             return;
         }
-        ofport = local_binding_get_lport_ofport(ctx->local_bindings,
-                                                binding->parent_port);
-        if (ofport) {
-            tag = *binding->tag;
-            nested_container = true;
-            parent_port = lport_lookup_by_name(
-                ctx->sbrec_port_binding_by_name, binding->parent_port);
 
-            if (parent_port
+        const char *binding_port_name = is_mirror ? binding->mirror_port :
+                                        binding->parent_port;
+        ofport = local_binding_get_lport_ofport(ctx->local_bindings,
+                                                binding_port_name);
+        if (ofport) {
+            if (!is_mirror) {
+                tag = *binding->tag;
+            }
+            nested_container = true;
+
+            binding_port
+                = lport_lookup_by_name(ctx->sbrec_port_binding_by_name,
+                                       binding_port_name);
+
+            if (binding_port
                 && !lport_can_bind_on_this_chassis(ctx->chassis,
-                                                   parent_port)) {
+                                                  binding_port)) {
                 /* Even though there is an ofport for this container
                  * parent port, it is requested on different chassis ignore
                  * this ofport.
@@ -1963,7 +1971,7 @@ consider_port_binding(const struct physical_ctx *ctx,
         struct zone_ids zone_ids = get_zone_ids(binding, ctx->ct_zones);
         /* Pass the parent port binding if the port is a nested
          * container. */
-        put_local_common_flows(dp_key, binding, parent_port, &zone_ids,
+        put_local_common_flows(dp_key, binding, binding_port, &zone_ids,
                                &ctx->debug, ofpacts_p, flow_table);
 
         /* Table 0, Priority 150 and 100.

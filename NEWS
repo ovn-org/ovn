@@ -19,6 +19,7 @@ Post v25.03.0
        database connections is now removed.
    - Introduce exclude-router-ips-from-garp in logical_switch_port column
      so that the router port IPs are not advertised in the GARPs.
+   - Added support for port mirroring in OVN overlay.
 
 OVN v25.03.0 - 07 Mar 2025
 --------------------------

@@ -18773,6 +18773,297 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([Mirror - lport: 2 HVs, 2 LS, 1 lport/LS, 2 peer LRs])
+ovn_start
+
+# logical network:
+# ls1 192.168.1.0/24 - lr1 - ls2 172.16.1.0/24
+# ls1_lp1 - 192.168.1.2
+# ls2_lp1 - 172.16.1.2
+# ls2_lp2 - 172.16.1.3
+#
+# test cases
+# sending packet from ls1_lp1 to ls2_lp1
+# after mirror setting on ls1_lp1 expect to see
+# mirrored packet on ls2_lp2
+
+ls1_lp1_mac="f0:00:00:01:02:03"
+ls2_lp2_mac="f0:00:00:01:02:05"
+rp_ls1_mac="00:00:00:01:02:03"
+rp_ls2_mac="00:00:00:01:02:04"
+ls2_lp1_mac="f0:00:00:01:02:04"
+
+ls1_lp1_ip="192.168.1.2"
+ls2_lp1_ip="172.16.1.2"
+ls2_lp2_ip="172.16.1.3"
+
+check ovn-nbctl lr-add R1
+check ovn-nbctl lr-add R2
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl ls-add ls2
+
+# Connect ls1 to R1
+check ovn-nbctl lrp-add R1 ls1 $rp_ls1_mac 192.168.1.1/24
+
+check ovn-nbctl lsp-add ls1 rp-ls1 -- set Logical_Switch_Port rp-ls1 type=router \
+  options:router-port=ls1 addresses=\"$rp_ls1_mac\"
+
+# Connect ls2 to R2
+check ovn-nbctl lrp-add R2 ls2 $rp_ls2_mac 172.16.1.1/24
+
+check ovn-nbctl lsp-add ls2 rp-ls2 -- set Logical_Switch_Port rp-ls2 type=router \
+  options:router-port=ls2 addresses=\"$rp_ls2_mac\"
+
+# Connect R1 to R2
+check ovn-nbctl lrp-add R1 R1_R2 00:00:00:02:03:04 20.0.0.1/24 peer=R2_R1
+check ovn-nbctl lrp-add R2 R2_R1 00:00:00:02:03:05 20.0.0.2/24 peer=R1_R2
+
+# Add static routes
+check ovn-nbctl lr-route-add R1 172.16.1.0/24 20.0.0.2
+check ovn-nbctl lr-route-add R2 192.168.1.0/24 20.0.0.1
+
+# Create logical port ls1-lp1 in ls1
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "$ls1_lp1_mac $ls1_lp1_ip"
+
+# Create logical port ls2-lp1 in ls2
+check ovn-nbctl lsp-add ls2 ls2-lp1 \
+-- lsp-set-addresses ls2-lp1 "$ls2_lp1_mac $ls2_lp1_ip"
+
+# Create logical port ls2-lp2 in ls2
+check ovn-nbctl lsp-add ls2 ls2-lp2 \
+-- lsp-set-addresses ls2-lp2 "$ls2_lp2_mac $ls2_lp2_ip"
+
+# Create two hypervisor and create OVS ports corresponding to logical ports.
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.5
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.6
+ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=2
+
+sim_add hv3
+as hv3
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.7
+ovs-vsctl -- add-port br-int hv3-vif1 -- \
+    set interface hv3-vif1 external-ids:iface-id=ls2-lp2 \
+    options:tx_pcap=hv3/vif1-tx.pcap \
+    options:rxq_pcap=hv3/vif1-rx.pcap \
+    ofport-request=3
+
+
+# Pre-populate the hypervisors' ARP tables.
+OVN_POPULATE_ARP
+
+# Allow some time for ovn-northd and ovn-controller to catch up.
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Packet to send.
+packet="inport==\"ls1-lp1\" && eth.src==$ls1_lp1_mac && eth.dst==$rp_ls1_mac &&
+        ip4 && ip.ttl==64 && ip4.src==$ls1_lp1_ip && ip4.dst==$ls2_lp1_ip &&
+        udp && udp.src==53 && udp.dst==4369"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+expected="eth.src==$rp_ls2_mac && eth.dst==$ls2_lp1_mac &&
+        ip4 && ip.ttl==62 && ip4.src==$ls1_lp1_ip && ip4.dst==$ls2_lp1_ip &&
+        udp && udp.src==53 && udp.dst==4369"
+echo $expected | ovstest test-ovn expr-to-packets > expected
+
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+# Expect no packets on target port at the moment.
+: > expected
+OVN_CHECK_PACKETS([hv3/vif1-tx.pcap], [expected])
+
+check ovn-nbctl mirror-add mirror0 lport both ls2-lp2
+check ovn-nbctl lsp-attach-mirror ls1-lp1 mirror0
+
+check ovn-nbctl --wait=hv sync
+
+check_row_count Port_Binding 1 logical_port=mp-ls1-ls2-lp2
+
+hv3_uuid=$(fetch_column sb:Chassis _uuid name=hv3)
+check_column "$hv3_uuid" sb:Port_Binding chassis logical_port=mp-ls1-ls2-lp2
+
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep mirror| ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_mirror       ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_mirror       ), priority=100  , match=(inport == "ls1-lp1"), action=(mirror("mp-ls1-ls2-lp2"); next;)
+  table=??(ls_out_mirror      ), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_mirror      ), priority=100  , match=(outport == "ls1-lp1"), action=(mirror("mp-ls1-ls2-lp2"); next;)
+])
+
+as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+
+echo "---------------------"
+ovn-sbctl show
+
+echo "---------------------"
+ovn-sbctl list port_b
+
+hv3_uuid=`ovn-sbctl --bare --columns _uuid find Chassis name="hv3"`
+check_column "$hv3_uuid" sb:Port_Binding chassis logical_port=mp-ls1-ls2-lp2
+
+# Packet to send.
+packet="inport==\"ls1-lp1\" && eth.src==$ls1_lp1_mac && eth.dst==$rp_ls1_mac &&
+        ip4 && ip.ttl==64 && ip4.src==$ls1_lp1_ip && ip4.dst==$ls2_lp1_ip &&
+        udp && udp.src==53 && udp.dst==4369"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+echo $packet | ovstest test-ovn expr-to-packets > packet
+
+expected="eth.src==$rp_ls2_mac && eth.dst==$ls2_lp1_mac &&
+         ip4 && ip.ttl==62 && ip4.src==$ls1_lp1_ip && ip4.dst==$ls2_lp1_ip &&
+         udp && udp.src==53 && udp.dst==4369"
+echo $expected | ovstest test-ovn expr-to-packets > expected
+
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+# Expect mirrored packet on target port.
+OVN_CHECK_PACKETS([hv3/vif1-tx.pcap], [packet])
+
+as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+as hv3 reset_pcap_file hv3-vif1 hv3/vif1
+
+# Expect no mirrored packet on target port after detaching.
+check ovn-nbctl lsp-detach-mirror ls1-lp1 mirror0
+
+check ovn-nbctl --wait=hv sync
+
+echo "---------------------"
+ovn-sbctl show
+
+echo "---------------------"
+ovn-sbctl list port_b
+
+check_row_count Port_Binding 0 logical_port=mp-ls1-ls2-lp2
+
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep mirror| ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_mirror       ), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_mirror      ), priority=0    , match=(1), action=(next;)
+])
+
+as hv3 reset_pcap_file hv3-vif1 hv3/vif1
+
+# Packet to send.
+packet="inport==\"ls1-lp1\" && eth.src==$ls1_lp1_mac && eth.dst==$rp_ls1_mac &&
+        ip4 && ip.ttl==64 && ip4.src==$ls1_lp1_ip && ip4.dst==$ls2_lp1_ip &&
+        udp && udp.src==53 && udp.dst==4369"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+expected="eth.src==$rp_ls2_mac && eth.dst==$ls2_lp1_mac &&
+         ip4 && ip.ttl==62 && ip4.src==$ls1_lp1_ip && ip4.dst==$ls2_lp1_ip &&
+         udp && udp.src==53 && udp.dst==4369"
+echo $expected | ovstest test-ovn expr-to-packets > expected
+
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+# Expect no packets on target port after detaching mirror.
+: > expected
+OVN_CHECK_PACKETS([hv3/vif1-tx.pcap], [expected])
+
+as hv2 reset_pcap_file hv2-vif1 hv2/vif1
+as hv3 reset_pcap_file hv3-vif1 hv3/vif1
+
+# Test mirror filtering.
+check ovn-nbctl lsp-attach-mirror ls1-lp1 mirror0
+
+check ovn-nbctl mirror-rule-add mirror0 200 '1' skip
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep mirror | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_mirror       ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_mirror       ), priority=100  , match=(inport == "ls1-lp1"), action=(mirror("mp-ls1-ls2-lp2"); next;)
+  table=??(ls_in_mirror       ), priority=300  , match=(inport == "ls1-lp1" && (1)), action=(next;)
+  table=??(ls_out_mirror      ), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_mirror      ), priority=100  , match=(outport == "ls1-lp1"), action=(mirror("mp-ls1-ls2-lp2"); next;)
+  table=??(ls_out_mirror      ), priority=300  , match=(outport == "ls1-lp1" && (1)), action=(next;)
+])
+
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_out_pre_acl | ovn_strip_lflows], [0], [dnl
+  table=??(ls_out_pre_acl     ), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=65535, match=(outport == "mp-ls1-ls2-lp2"), action=(next(pipeline=egress, table=??);)
+])
+
+# Check target port deletion.
+check ovn-nbctl lsp-del ls2-lp2
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep mirror | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_mirror       ), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_mirror      ), priority=0    , match=(1), action=(next;)
+])
+
+check ovn-nbctl lsp-add ls2 ls2-lp2
+
+# Packet to send.
+packet="inport==\"ls1-lp1\" && eth.src==$ls1_lp1_mac && eth.dst==$rp_ls1_mac &&
+        ip4 && ip.ttl==64 && ip4.src==$ls1_lp1_ip && ip4.dst==$ls2_lp1_ip &&
+        udp && udp.src==53 && udp.dst==4369"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+# Expect no packets on target port after rule added.
+: > expected
+OVN_CHECK_PACKETS([hv3/vif1-tx.pcap], [expected])
+
+check ovn-nbctl mirror-rule-add mirror0 300 'udp.dst == 4369' mirror
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep mirror| ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_mirror       ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_mirror       ), priority=100  , match=(inport == "ls1-lp1"), action=(mirror("mp-ls1-ls2-lp2"); next;)
+  table=??(ls_in_mirror       ), priority=300  , match=(inport == "ls1-lp1" && (1)), action=(next;)
+  table=??(ls_in_mirror       ), priority=400  , match=(inport == "ls1-lp1" && (udp.dst == 4369)), action=(mirror("mp-ls1-ls2-lp2"); next;)
+  table=??(ls_out_mirror      ), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_mirror      ), priority=100  , match=(outport == "ls1-lp1"), action=(mirror("mp-ls1-ls2-lp2"); next;)
+  table=??(ls_out_mirror      ), priority=300  , match=(outport == "ls1-lp1" && (1)), action=(next;)
+  table=??(ls_out_mirror      ), priority=400  , match=(outport == "ls1-lp1" && (udp.dst == 4369)), action=(mirror("mp-ls1-ls2-lp2"); next;)
+])
+
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_out_pre_acl | ovn_strip_lflows], [0], [dnl
+  table=??(ls_out_pre_acl     ), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(eth.src == $svc_monitor_mac), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=65535, match=(outport == "mp-ls1-ls2-lp2"), action=(next(pipeline=egress, table=??);)
+])
+
+# Packet to send.
+packet="inport==\"ls1-lp1\" && eth.src==$ls1_lp1_mac && eth.dst==$rp_ls1_mac &&
+        ip4 && ip.ttl==64 && ip4.src==$ls1_lp1_ip && ip4.dst==$ls2_lp1_ip &&
+        udp && udp.src==53 && udp.dst==4369"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+echo $packet | ovstest test-ovn expr-to-packets > packet
+
+packet="inport==\"ls1-lp1\" && eth.src==$ls1_lp1_mac && eth.dst==$rp_ls1_mac &&
+        ip4 && ip.ttl==64 && ip4.src==$ls1_lp1_ip && ip4.dst==$ls2_lp1_ip &&
+        udp && udp.src==53 && udp.dst==4368"
+OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
+
+OVN_CHECK_PACKETS([hv3/vif1-tx.pcap], [packet])
+
+check ovn-nbctl mirror-del
+
+OVN_CLEANUP([hv1],[hv2],[hv3])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([Port Groups])
 AT_KEYWORDS([ovnpg])
 AT_KEYWORDS([slowtest])
