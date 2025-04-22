@@ -3081,7 +3081,7 @@ tcp.flags = RST;
     <column name="type">
       <p>
         The value of this field specifies the mirror type - <code>gre</code>,
-        <code>erspan</code> or <code>local</code>.
+        <code>erspan</code>, <code>local</code> or <code>lport</code>.
       </p>
     </column>
 

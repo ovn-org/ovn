@@ -298,9 +298,10 @@ QoS commands:\n\
   qos-list SWITCH           print QoS rules for SWITCH\n\
 \n\
 Mirror commands:\n\
-  mirror-add NAME TYPE [INDEX] FILTER {IP | MIRROR-ID} \n\
+  mirror-add NAME TYPE [INDEX] FILTER {IP | MIRROR-ID| TARGET-PORT} \n\
                             add a mirror with given name\n\
-                            specify TYPE 'gre', 'erspan', or 'local'\n\
+                            specify TYPE 'gre', 'erspan', 'local'\n\
+                                or 'lport'.\n\
                             specify the tunnel INDEX value\n\
                                 (indicates key if GRE\n\
                                  erpsan_idx if ERSPAN)\n\
@@ -309,8 +310,16 @@ Mirror commands:\n\
                             specify Sink / Destination i.e. Remote IP, or a\n\
                                 local interface with external-ids:mirror-id\n\
                                 matching MIRROR-ID\n\
+                                In case of lport type specify logical switch\n\
+                                port, which is a mirror target.\n\
   mirror-del [NAME]         remove mirrors\n\
   mirror-list               print mirrors\n\
+  mirror-rule-add MIRROR-NAME PRIORITY MATCH ACTION \n\
+                            add a mirror rule selection to given lport\n\
+                            mirror.\n\
+                            specify MATCH for selecting mirrored traffic.\n\
+                            specify ACTION 'mirror' or 'skip'.\n\
+  mirror-rule-del MIRROR-NAME [PRIORITY | MATCH] remove mirrors\n\
 \n\
 Meter commands:\n\
   [--fair]\n\
@@ -1821,11 +1830,11 @@ nbctl_lsp_attach_mirror(struct ctl_context *ctx)
         return;
     }
 
+    bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
     /* Check if same mirror rule already exists for the lsp */
     for (size_t i = 0; i < lsp->n_mirror_rules; i++) {
         if (uuid_equals(&lsp->mirror_rules[i]->header_.uuid,
                         &mirror->header_.uuid)) {
-            bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
             if (!may_exist) {
                 ctl_error(ctx, "mirror %s is already attached to the "
                           "logical port %s.",
@@ -7772,16 +7781,18 @@ static char * OVS_WARN_UNUSED_RESULT
 parse_mirror_type(const char *arg, const char **type_p)
 {
     /* Validate type.  Only require the first letter. */
-    if (arg[0] == 'g') {
+    if (!strcmp(arg, "gre")) {
         *type_p = "gre";
-    } else if (arg[0] == 'e') {
+    } else if (!strcmp(arg, "erspan")) {
         *type_p = "erspan";
-    } else if (arg[0] == 'l') {
+    } else if (!strcmp(arg, "local")) {
         *type_p = "local";
+    } else if (!strcmp(arg, "lport")) {
+        *type_p = "lport";
     } else {
         *type_p = NULL;
         return xasprintf("%s: type must be \"gre\", "
-                         "\"erspan\", or \"local\"", arg);
+                         "\"erspan\", or \"local\" or \"lport\"", arg);
     }
     return NULL;
 }
@@ -7794,6 +7805,7 @@ nbctl_pre_mirror_add(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_index);
     ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_sink);
     ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_type);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
 }
 
 static void
@@ -7818,14 +7830,17 @@ nbctl_mirror_add(struct ctl_context *ctx)
         }
     }
 
-    /* Type - gre/erspan/local */
+    /* Type - gre/erspan/local/lport */
     error = parse_mirror_type(ctx->argv[pos++], &type);
     if (error) {
         ctx->error = error;
         return;
     }
 
-    if (strcmp(type, "local")) {
+    int is_local = !strcmp(type, "local");
+    int is_lport = !strcmp(type, "lport");
+
+    if (!is_local && !is_lport) {
         /* tunnel index / GRE key / ERSPAN idx */
         if (!str_to_long(ctx->argv[pos++], 10, (long int *) &index)) {
             ctl_error(ctx, "Invalid Index");
@@ -7844,7 +7859,7 @@ nbctl_mirror_add(struct ctl_context *ctx)
     sink = ctx->argv[pos++];
 
     /* check if it is a valid ip unless it is type 'local' */
-    if (strcmp(type, "local")) {
+    if (!is_local && !is_lport) {
         char *new_sink_ip = normalize_ipv4_addr_str(sink);
         if (!new_sink_ip) {
             new_sink_ip = normalize_ipv6_addr_str(sink);
@@ -7855,6 +7870,21 @@ nbctl_mirror_add(struct ctl_context *ctx)
             return;
         }
         free(new_sink_ip);
+    }
+
+    /* Check if it is an existing port for lport mirror type. */
+    if (is_lport) {
+        const struct nbrec_logical_switch_port *lsp;
+        error = lsp_by_name_or_uuid(ctx, sink, false, &lsp);
+        if (error) {
+            ctx->error = error;
+            return;
+        }
+
+        if (!lsp) {
+            VLOG_WARN("Attaching target to non existing port with name %s.",
+                      sink);
+        }
     }
 
     /* Create the mirror. */
@@ -7896,6 +7926,143 @@ nbctl_mirror_del(struct ctl_context *ctx)
     }
 }
 
+static int
+rule_cmp(const void *mirror1_, const void *mirror2_)
+{
+    const struct nbrec_mirror_rule *const *mirror_1 = mirror1_;
+    const struct nbrec_mirror_rule *const *mirror_2 = mirror2_;
+
+    const struct nbrec_mirror_rule *mirror1 = *mirror_1;
+    const struct nbrec_mirror_rule *mirror2 = *mirror_2;
+
+    int result =  mirror1->priority - mirror2->priority;
+    if (result) {
+        return result;
+    }
+
+    result = strcmp(mirror1->match, mirror2->match);
+    if (result) {
+        return result;
+    }
+
+    return strcmp(mirror1->action, mirror2->action);
+}
+
+static void
+nbctl_pre_mirror_rule_add(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_mirror_rules);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_rule_col_match);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_rule_col_action);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_rule_col_priority);
+}
+
+static void
+nbctl_mirror_rule_add(struct ctl_context *ctx)
+{
+    const struct nbrec_mirror_rule *mirror_rule;
+    const struct nbrec_mirror *mirror;
+    int64_t priority = 0;
+    char *error;
+
+    error = mirror_by_name_or_uuid(ctx, ctx->argv[1], true, &mirror);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    error = parse_priority(ctx->argv[2], &priority);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    const char *action = ctx->argv[4];
+    if (strcmp(action, "mirror") && strcmp(action, "skip")) {
+        ctl_error(ctx, "%s: action must be one of \"mirror\", \"skip\"",
+                  action);
+    }
+
+    mirror_rule = nbrec_mirror_rule_insert(ctx->txn);
+    nbrec_mirror_rule_set_match(mirror_rule, ctx->argv[3]);
+    nbrec_mirror_rule_set_action(mirror_rule, action);
+    nbrec_mirror_rule_set_priority(mirror_rule, priority);
+
+    bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
+    /* Check if same mirror rule exists for this mirror. */
+    for (size_t i = 0; i < mirror->n_mirror_rules; i++) {
+        if (!rule_cmp(&mirror_rule, &mirror->mirror_rules[i])) {
+            if (!may_exist) {
+                ctl_error(ctx, "Same mirror-rule already exists on the "
+                          "mirror %s.", ctx->argv[1]);
+            } else {
+                nbrec_mirror_rule_delete(mirror_rule);
+            }
+            return;
+        }
+    }
+
+    /* Insert mirror rule to mirror. */
+    nbrec_mirror_update_mirror_rules_addvalue(mirror, mirror_rule);
+}
+
+static void
+nbctl_pre_mirror_rule_del(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_mirror_rules);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_rule_col_action);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_rule_col_priority);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_rule_col_match);
+}
+
+static void
+nbctl_mirror_rule_del(struct ctl_context *ctx)
+{
+    const struct nbrec_mirror *mirror = NULL;
+    int64_t priority = 0;
+    char *error = NULL;
+
+    error = mirror_by_name_or_uuid(ctx, ctx->argv[1], true, &mirror);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    if (ctx->argc == 2) {
+        for (size_t i = 0; i < mirror->n_mirror_rules; i++) {
+            nbrec_mirror_update_mirror_rules_delvalue(mirror,
+                                    mirror->mirror_rules[i]);
+        }
+        return;
+    }
+
+    error = parse_priority(ctx->argv[2], &priority);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    if (ctx->argc == 3) {
+        for (size_t i = 0; i < mirror->n_mirror_rules; i++) {
+            struct nbrec_mirror_rule *rule = mirror->mirror_rules[i];
+            if (priority == rule->priority) {
+                nbrec_mirror_update_mirror_rules_delvalue(mirror, rule);
+                return;
+            }
+        }
+    }
+
+    for (size_t i = 0; i < mirror->n_mirror_rules; i++) {
+        struct nbrec_mirror_rule *rule = mirror->mirror_rules[i];
+        if (priority == rule->priority && !strcmp(ctx->argv[3],
+            rule->match)) {
+            nbrec_mirror_update_mirror_rules_delvalue(mirror, rule);
+        }
+    }
+}
+
 static void
 nbctl_pre_mirror_list(struct ctl_context *ctx)
 {
@@ -7905,6 +8072,10 @@ nbctl_pre_mirror_list(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_index);
     ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_sink);
     ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_type);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_col_mirror_rules);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_rule_col_action);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_rule_col_match);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_mirror_rule_col_priority);
 }
 
 static void
@@ -7931,14 +8102,26 @@ nbctl_mirror_list(struct ctl_context *ctx)
 
     for (size_t i = 0; i < n_mirrors; i++) {
         mirror = mirrors[i];
+        bool is_lport = !strcmp(mirror->type, "lport");
+        bool is_local = !strcmp(mirror->type, "local");
+
         ds_put_format(&ctx->output, "%s:\n", mirror->name);
         /* print all the values */
         ds_put_format(&ctx->output, "  Type     :  %s\n", mirror->type);
         ds_put_format(&ctx->output, "  Sink     :  %s\n", mirror->sink);
         ds_put_format(&ctx->output, "  Filter   :  %s\n", mirror->filter);
-        if (strcmp(mirror->type, "local")) {
+        if (!is_local && !is_lport) {
             ds_put_format(&ctx->output, "  Index/Key:  %"PRId64"\n",
                           mirror->index);
+        }
+        if (mirror->n_mirror_rules) {
+            ds_put_cstr(&ctx->output, "  Rules    :\n");
+            for (size_t j = 0; j < mirror->n_mirror_rules; j++) {
+                ds_put_format(&ctx->output, "       %5"PRId64" %30s %15s\n",
+                              mirror->mirror_rules[j]->priority,
+                              mirror->mirror_rules[j]->match,
+                              mirror->mirror_rules[j]->action);
+            }
         }
         ds_put_cstr(&ctx->output, "\n");
     }
@@ -8044,12 +8227,18 @@ static const struct ctl_command_syntax nbctl_commands[] = {
 
     /* mirror commands. */
     { "mirror-add", 4, 5,
-      "NAME TYPE INDEX FILTER IP",
+      "NAME TYPE INDEX FILTER SINK",
       nbctl_pre_mirror_add, nbctl_mirror_add, NULL, "--may-exist", RW },
     { "mirror-del", 0, 1, "[NAME]",
       nbctl_pre_mirror_del, nbctl_mirror_del, NULL, "", RW },
     { "mirror-list", 0, 0, "", nbctl_pre_mirror_list, nbctl_mirror_list,
       NULL, "", RO },
+
+    /* Mirror rule commands. */
+    { "mirror-rule-add", 4, 4, "MIRROR-NAME PRIORITY MATCH ACTION",
+      nbctl_pre_mirror_rule_add, nbctl_mirror_rule_add, NULL, "", RW},
+    { "mirror-rule-del", 1, 3, "MIRROR-NAME [PRIORITY MATCH]",
+      nbctl_pre_mirror_rule_del, nbctl_mirror_rule_del, NULL, "", RW },
 
     /* meter commands. */
     { "meter-add", 4, 5, "NAME ACTION RATE UNIT [BURST]", nbctl_pre_meter_add,

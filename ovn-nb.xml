@@ -3346,7 +3346,7 @@ or
     <column name="type">
       <p>
         The value of this field specifies the mirror type - <code>gre</code>,
-        <code>erspan</code> or <code>local</code>.
+        <code>erspan</code>, <code>local</code> or <code>lport</code>.
       </p>
     </column>
 
@@ -3360,8 +3360,51 @@ or
       </p>
     </column>
 
+    <column name="mirror_rules">
+      <p>
+        The value of this field represents the mirror rule for filtering
+        mirror traffic.
+      </p>
+    </column>
+
     <column name="external_ids">
       See <em>External IDs</em> at the beginning of this document.
+    </column>
+  </table>
+
+  <table name="Mirror_Rule" title="Mirror rule entry">
+    <p>
+      Each row in this table represents a mirror rule that can be used
+      for filtering of <code>lport</code> mirrored traffic.
+    </p>
+
+    <column name="match">
+      <p>
+        The match expression, describing which packets should be executed
+        against Mirror Rule action. The Logical_Flow expression language is
+        used.
+      </p>
+    </column>
+
+    <column name="action">
+      <p>The action to take when the Mirror Rule matches:</p>
+      <ul>
+        <li>
+          <code>mirror</code>: Mirror the matched packet.
+        </li>
+
+        <li>
+          <code>skip</code>: Do not mirror matched packet.
+        </li>
+      </ul>
+    </column>
+
+    <column name="priority">
+      <p>
+        The Mirror Rule priority. Rule with higher priority takes precedence
+        over those with lower. A rule is uniquely identified by the priority
+        and match string.
+      </p>
     </column>
   </table>
 
