@@ -41,6 +41,8 @@ This is the current list of active OVN committers:
 
    * - Name
      - Email
+   * - Aleš Musil
+     - amusil@redhat.com
    * - Dumitru Ceara
      - dceara@redhat.com
    * - Gurucharan Shetty
