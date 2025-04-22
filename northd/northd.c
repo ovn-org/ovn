@@ -884,8 +884,7 @@ join_datapaths(const struct nbrec_logical_switch_table *nbrec_ls_table,
                const struct sbrec_datapath_binding_table *sbrec_dp_table,
                struct ovsdb_idl_txn *ovnsb_txn,
                struct hmap *datapaths, struct ovs_list *sb_only,
-               struct ovs_list *nb_only, struct ovs_list *both,
-               struct ovs_list *lr_list)
+               struct ovs_list *nb_only, struct ovs_list *both)
 {
     ovs_list_init(sb_only);
     ovs_list_init(nb_only);
@@ -986,7 +985,6 @@ join_datapaths(const struct nbrec_logical_switch_table *nbrec_ls_table,
         od->dynamic_routing_redistribute =
             parse_dynamic_routing_redistribute(&od->nbr->options, DRRM_NONE,
                                                od->nbr->name);
-        ovs_list_push_back(lr_list, &od->lr_list);
     }
 }
 
@@ -1079,14 +1077,13 @@ build_datapaths(struct ovsdb_idl_txn *ovnsb_txn,
                 const struct nbrec_logical_router_table *nbrec_lr_table,
                 const struct sbrec_datapath_binding_table *sbrec_dp_table,
                 struct ovn_datapaths *ls_datapaths,
-                struct ovn_datapaths *lr_datapaths,
-                struct ovs_list *lr_list)
+                struct ovn_datapaths *lr_datapaths)
 {
     struct ovs_list sb_only, nb_only, both;
 
     struct hmap *datapaths = &ls_datapaths->datapaths;
     join_datapaths(nbrec_ls_table, nbrec_lr_table, sbrec_dp_table, ovnsb_txn,
-                   datapaths, &sb_only, &nb_only, &both, lr_list);
+                   datapaths, &sb_only, &nb_only, &both);
 
     /* Assign explicitly requested tunnel ids first. */
     struct hmap dp_tnlids = HMAP_INITIALIZER(&dp_tnlids);
@@ -8922,7 +8919,7 @@ build_lrouter_groups__(struct hmap *lr_ports, struct ovn_datapath *od)
  * each other either directly or indirectly (via transit logical switches
  * in between).
  *
- * Suppose if 'lr_list' has lr0, lr1, lr2, lr3, lr4, lr5
+ * Suppose if 'lr_datapaths' has lr0, lr1, lr2, lr3, lr4, lr5
  * and the topology is like
  *  sw0 <-> lr0 <-> sw1 <-> lr1 <->sw2 <-> lr2
  *  sw3 <-> lr3 <-> lr4 <-> sw5
@@ -8939,12 +8936,12 @@ build_lrouter_groups__(struct hmap *lr_ports, struct ovn_datapath *od)
  * Each logical router can belong to only one group.
  */
 static void
-build_lrouter_groups(struct hmap *lr_ports, struct ovs_list *lr_list)
+build_lrouter_groups(struct hmap *lr_ports, struct ovn_datapaths *lr_datapaths)
 {
     struct ovn_datapath *od;
-    size_t n_router_dps = ovs_list_size(lr_list);
+    size_t n_router_dps = hmap_count(&lr_datapaths->datapaths);
 
-    LIST_FOR_EACH (od, lr_list, lr_list) {
+    HMAP_FOR_EACH (od, key_node, &lr_datapaths->datapaths) {
         if (!od->lr_group) {
             od->lr_group = xzalloc(sizeof *od->lr_group);
             /* Each logical router group can have max
@@ -19184,11 +19181,10 @@ ovn_datapaths_destroy(struct ovn_datapaths *datapaths)
 static void
 destroy_datapaths_and_ports(struct ovn_datapaths *ls_datapaths,
                             struct ovn_datapaths *lr_datapaths,
-                            struct hmap *ls_ports, struct hmap *lr_ports,
-                            struct ovs_list *lr_list)
+                            struct hmap *ls_ports, struct hmap *lr_ports)
 {
     struct ovn_datapath *router_dp;
-    LIST_FOR_EACH_POP (router_dp, lr_list, lr_list) {
+    HMAP_FOR_EACH (router_dp, key_node, &lr_datapaths->datapaths) {
         if (router_dp->lr_group) {
             struct lrouter_group *lr_group = router_dp->lr_group;
 
@@ -19227,7 +19223,6 @@ northd_init(struct northd_data *data)
     hmap_init(&data->lr_ports);
     hmap_init(&data->lb_datapaths_map);
     hmap_init(&data->lb_group_datapaths_map);
-    ovs_list_init(&data->lr_list);
     sset_init(&data->svc_monitor_lsps);
     hmap_init(&data->svc_monitor_map);
     init_northd_tracked_data(data);
@@ -19293,8 +19288,7 @@ northd_destroy(struct northd_data *data)
     cleanup_macam();
 
     destroy_datapaths_and_ports(&data->ls_datapaths, &data->lr_datapaths,
-                                &data->ls_ports, &data->lr_ports,
-                                &data->lr_list);
+                                &data->ls_ports, &data->lr_ports);
 
     sset_destroy(&data->svc_monitor_lsps);
     destroy_northd_tracked_data(data);
@@ -19384,7 +19378,7 @@ ovnnb_db_run(struct northd_input *input_data,
                     input_data->nbrec_logical_router_table,
                     input_data->sbrec_datapath_binding_table,
                     &data->ls_datapaths,
-                    &data->lr_datapaths, &data->lr_list);
+                    &data->lr_datapaths);
     build_lb_datapaths(input_data->lbs, input_data->lbgrps,
                        &data->ls_datapaths, &data->lr_datapaths,
                        &data->lb_datapaths_map, &data->lb_group_datapaths_map);
@@ -19411,7 +19405,7 @@ ovnnb_db_run(struct northd_input *input_data,
                        ods_size(&data->ls_datapaths),
                        ods_size(&data->lr_datapaths));
     build_ipam(&data->ls_datapaths.datapaths, &data->ls_ports);
-    build_lrouter_groups(&data->lr_ports, &data->lr_list);
+    build_lrouter_groups(&data->lr_ports, &data->lr_datapaths);
     build_ip_mcast(ovnsb_txn, input_data->sbrec_ip_multicast_table,
                    input_data->sbrec_ip_mcast_by_dp,
                    &data->ls_datapaths.datapaths);

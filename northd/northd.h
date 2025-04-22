@@ -170,7 +170,6 @@ struct northd_data {
     struct hmap lr_ports;
     struct hmap lb_datapaths_map;
     struct hmap lb_group_datapaths_map;
-    struct ovs_list lr_list;
     struct sset svc_monitor_lsps;
     struct hmap svc_monitor_map;
 
@@ -415,7 +414,6 @@ struct ovn_datapath {
 
     struct vector localnet_ports; /* Vector of struct ovn_port *. */
 
-    struct ovs_list lr_list; /* In list of logical router datapaths. */
     /* The logical router group to which this datapath belongs.
      * Valid only if it is logical router datapath. NULL otherwise. */
     struct lrouter_group *lr_group;
