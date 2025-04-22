@@ -49,6 +49,8 @@ static bool check_nb_options_out_of_sync(
     const struct sampling_app_table *);
 static void update_sb_config_options_to_sbrec(struct ed_type_global_config *,
                                               const struct sbrec_sb_global *);
+static bool is_vxlan_mode(const struct smap *nb_options,
+                          const struct sbrec_chassis_table *);
 
 void *
 en_global_config_init(struct engine_node *node OVS_UNUSED,
@@ -131,11 +133,11 @@ en_global_config_run(struct engine_node *node , void *data)
             break;
         }
     }
-    uint32_t max_dp_key =
-        get_ovn_max_dp_key_local(is_vxlan_mode(&nb->options,
-                                               sbrec_chassis_table),
-                                 ic_vxlan_mode);
-    char *max_tunid = xasprintf("%d", max_dp_key);
+    config_data->vxlan_mode = is_vxlan_mode(&nb->options, sbrec_chassis_table);
+    config_data->max_dp_tunnel_id =
+        get_ovn_max_dp_key_local(config_data->vxlan_mode, ic_vxlan_mode);
+
+    char *max_tunid = xasprintf("%d", config_data->max_dp_tunnel_id);
     smap_replace(options, "max_tunid", max_tunid);
     free(max_tunid);
 
@@ -269,6 +271,11 @@ global_config_nb_global_handler(struct engine_node *node, void *data)
         return EN_UNHANDLED;
     }
 
+    if (config_out_of_sync(&nb->options, &config_data->nb_options,
+                           "vxlan_mode", false)) {
+        return EN_UNHANDLED;
+    }
+
     if (check_nb_options_out_of_sync(nb, config_data, sampling_apps)) {
         config_data->tracked_data.nb_options_changed = true;
     }
@@ -390,8 +397,6 @@ global_config_nb_logical_switch_handler(struct engine_node *node,
         EN_OVSDB_GET(engine_get_input("NB_logical_switch", node));
     const struct nbrec_nb_global *nb = nbrec_nb_global_table_first(
                 EN_OVSDB_GET(engine_get_input("NB_nb_global", node)));
-    const struct sbrec_chassis_table *sbrec_chassis_table =
-        EN_OVSDB_GET(engine_get_input("SB_chassis", node));
     enum engine_input_handler_result result;
 
     bool ic_vxlan_mode = false;
@@ -402,11 +407,10 @@ global_config_nb_logical_switch_handler(struct engine_node *node,
             break;
         }
     }
-    uint32_t max_dp_key =
-        get_ovn_max_dp_key_local(is_vxlan_mode(&nb->options,
-                                               sbrec_chassis_table),
+    config_data->max_dp_tunnel_id =
+        get_ovn_max_dp_key_local(config_data->vxlan_mode,
                                  ic_vxlan_mode);
-    char *max_tunid = xasprintf("%d", max_dp_key);
+    char *max_tunid = xasprintf("%d", config_data->max_dp_tunnel_id);
     struct smap *options = &config_data->nb_options;
     const char *cur_max_tunid = smap_get(options, "max_tunid");
 
@@ -630,11 +634,6 @@ check_nb_options_out_of_sync(
     }
 
     if (config_out_of_sync(&nb->options, &config_data->nb_options,
-                           "vxlan_mode", false)) {
-        return true;
-    }
-
-    if (config_out_of_sync(&nb->options, &config_data->nb_options,
                            "always_tunnel", false)) {
         return true;
     }
@@ -693,5 +692,24 @@ chassis_features_changed(const struct chassis_features *present,
         return true;
     }
 
+    return false;
+}
+
+static bool
+is_vxlan_mode(const struct smap *nb_options,
+              const struct sbrec_chassis_table *sbrec_chassis_table)
+{
+    if (!smap_get_bool(nb_options, "vxlan_mode", true)) {
+        return false;
+    }
+
+    const struct sbrec_chassis *chassis;
+    SBREC_CHASSIS_TABLE_FOR_EACH (chassis, sbrec_chassis_table) {
+        for (int i = 0; i < chassis->n_encaps; i++) {
+            if (!strcmp(chassis->encaps[i]->type, "vxlan")) {
+                return true;
+            }
+        }
+    }
     return false;
 }

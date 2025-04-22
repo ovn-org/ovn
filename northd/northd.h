@@ -65,6 +65,7 @@ struct northd_input {
     const char *svc_monitor_mac;
     struct eth_addr svc_monitor_mac_ea;
     const struct chassis_features *features;
+    bool vxlan_mode;
 
     /* ACL ID inputs. */
     const struct acl_id_data *acl_id_data;
@@ -973,10 +974,6 @@ lr_has_multiple_gw_ports(const struct ovn_datapath *od)
 {
     return vector_len(&od->l3dgw_ports) > 1 && !od->is_gw_router;
 }
-
-bool
-is_vxlan_mode(const struct smap *nb_options,
-              const struct sbrec_chassis_table *sbrec_chassis_table);
 
 uint32_t get_ovn_max_dp_key_local(bool _vxlan_mode, bool ic_mode);
 

@@ -116,6 +116,7 @@ northd_get_input_data(struct engine_node *node,
     input_data->svc_monitor_mac = global_config->svc_monitor_mac;
     input_data->svc_monitor_mac_ea = global_config->svc_monitor_mac_ea;
     input_data->features = &global_config->features;
+    input_data->vxlan_mode = global_config->vxlan_mode;
 }
 
 enum engine_node_state
