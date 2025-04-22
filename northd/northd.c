@@ -107,6 +107,11 @@ static bool vxlan_ic_mode;
  * priority to determine the ACL's logical flow priority. */
 #define OVN_ACL_PRI_OFFSET 1000
 
+/* Default logical flows for mirroring are added with the priority described
+ * below, in the case of mirroring rules specified in the northbound database
+ * this value will also be added to the priority. */
+#define OVN_LPORT_MIRROR_OFFSET 100
+
 /* Register definitions specific to switches. */
 #define REGBIT_CONNTRACK_DEFRAG   "reg0[0]"
 #define REGBIT_CONNTRACK_COMMIT   "reg0[1]"
@@ -457,6 +462,12 @@ od_has_lb_vip(const struct ovn_datapath *od)
     } else {
         return lr_has_lb_vip(od);
     }
+}
+
+static const char *
+ovn_datapath_name(const struct sbrec_datapath_binding *sb)
+{
+    return smap_get_def(&sb->external_ids, "name", "");
 }
 
 /* A group of logical router datapaths which are connected - either
@@ -1197,6 +1208,12 @@ is_transit_router_port(struct ovn_port *op)
            smap_get_bool(&op->sb->chassis->other_config, "is-remote", false);
 }
 
+static bool
+is_mp_port(const struct ovn_port *op)
+{
+    return op->mirror_target_port;
+}
+
 void
 destroy_routable_addresses(struct ovn_port_routable_addresses *ra)
 {
@@ -1343,7 +1360,7 @@ ovn_port_destroy(struct hmap *ports, struct ovn_port *port)
         /* Don't remove port->list. The node should be removed from such lists
          * before calling this function. */
         hmap_remove(ports, &port->key_node);
-        if (port->od && !port->primary_port) {
+        if (port->od && !is_mp_port(port) && !port->primary_port) {
             hmap_remove(&port->od->ports, &port->dp_node);
         }
         ovn_port_destroy_orphan(port);
@@ -1460,8 +1477,8 @@ lsp_is_type_changed(const struct sbrec_port_binding *sb,
 
     if (!sb->type[0] && !nbsp->type[0]) {
         /* Two "VIF's" interface make sure both have parent_port
-         * set or both have parent_port unset, otherwisre they are
-         * different ports type.
+         * or mirror_port set or both have parent_port/mirror_port
+         * unset, otherwisre they are different ports type.
          */
         if ((!sb->parent_port && nbsp->parent_name) ||
                         (sb->parent_port && !nbsp->parent_name)) {
@@ -2183,6 +2200,39 @@ parse_lsp_addrs(struct ovn_port *op)
         op->n_ps_addrs++;
     }
 }
+
+static void
+create_mirror_port(struct ovn_port *op, struct hmap *ports,
+                   struct ovs_list *both_dbs, struct ovs_list *nb_only,
+                   const struct nbrec_mirror *nb_mirror)
+{
+    char *mp_name = ovn_mirror_port_name(ovn_datapath_name(op->od->sb),
+                                         nb_mirror->sink);
+    struct ovn_port *mp = ovn_port_find(ports, mp_name);
+    struct ovn_port *target_port = ovn_port_find(ports, nb_mirror->sink);
+
+    if (!target_port) {
+        goto clear;
+    }
+
+    if (!mp) {
+        mp = ovn_port_create(ports, mp_name, op->nbsp, NULL, NULL);
+        ovs_list_push_back(nb_only, &mp->list);
+    } else if (mp->sb) {
+        ovn_port_set_nb(mp, op->nbsp, NULL);
+        ovs_list_remove(&mp->list);
+        ovs_list_push_back(both_dbs, &mp->list);
+    } else {
+        goto clear;
+    }
+
+    mp->mirror_target_port = target_port;
+    mp->od = op->od;
+
+clear:
+    free(mp_name);
+}
+
 static struct ovn_port *
 join_logical_ports_lsp(struct hmap *ports,
                        struct ovs_list *nb_only, struct ovs_list *both,
@@ -2190,7 +2240,8 @@ join_logical_ports_lsp(struct hmap *ports,
                        const struct nbrec_logical_switch_port *nbsp,
                        const char *name,
                        unsigned long *queue_id_bitmap,
-                       struct hmap *tag_alloc_table)
+                       struct hmap *tag_alloc_table,
+                       struct hmapx *mirror_attached_ports)
 {
     struct ovn_port *op = ovn_port_find_bound(ports, name);
     if (op && (op->od || op->nbsp || op->nbrp)) {
@@ -2271,6 +2322,11 @@ join_logical_ports_lsp(struct hmap *ports,
     }
     hmap_insert(&od->ports, &op->dp_node,
                 hmap_node_hash(&op->key_node));
+
+    if (nbsp->n_mirror_rules) {
+        hmapx_add(mirror_attached_ports, op);
+    }
+
     tag_alloc_add_existing_tags(tag_alloc_table, nbsp);
     return op;
 }
@@ -2409,6 +2465,22 @@ peer_needs_cr_port_creation(struct ovn_port *op)
 }
 
 static void
+join_mirror_ports(struct ovn_port *op,
+                  const struct nbrec_logical_switch_port *nbsp,
+                  struct hmap *ports, struct ovs_list *both,
+                  struct ovs_list *nb_only)
+{
+    /* Create mirror targets port bindings if there any mirror
+     * with lport type attached to this port. */
+    for (size_t j = 0; j < op->nbsp->n_mirror_rules; j++) {
+        struct nbrec_mirror *mirror = nbsp->mirror_rules[j];
+        if (!strcmp(mirror->type, "lport")) {
+            create_mirror_port(op, ports, both, nb_only, mirror);
+        }
+    }
+}
+
+static void
 join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
                    struct hmap *ls_datapaths, struct hmap *lr_datapaths,
                    struct hmap *ports, unsigned long *queue_id_bitmap,
@@ -2428,6 +2500,8 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
 
     struct ovn_datapath *od;
     struct hmapx dgps = HMAPX_INITIALIZER(&dgps);
+    struct hmapx mirror_attached_ports =
+                    HMAPX_INITIALIZER(&mirror_attached_ports);
     HMAP_FOR_EACH (od, key_node, lr_datapaths) {
         ovs_assert(od->nbr);
         for (size_t i = 0; i < od->nbr->n_ports; i++) {
@@ -2454,7 +2528,7 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
                 = od->nbs->ports[i];
             join_logical_ports_lsp(ports, nb_only, both, od, nbsp,
                                    nbsp->name, queue_id_bitmap,
-                                   tag_alloc_table);
+                                   tag_alloc_table, &mirror_attached_ports);
         }
     }
 
@@ -2621,6 +2695,14 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
         }
     }
     hmapx_destroy(&dgps);
+
+    HMAPX_FOR_EACH (hmapx_node, &mirror_attached_ports) {
+        op = hmapx_node->data;
+        if (op && op->nbsp) {
+            join_mirror_ports(op, op->nbsp, ports, both, nb_only);
+        }
+    }
+    hmapx_destroy(&mirror_attached_ports);
 
     /* Wait until all ports have been connected to add to IPAM since
      * it relies on proper peers to be set
@@ -3300,6 +3382,16 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
 
         sbrec_port_binding_set_external_ids(op->sb, &op->nbrp->external_ids);
     } else {
+        if (op->mirror_target_port) {
+            /* In case of using a lport mirror, we establish a port binding
+             * with mirror target port to act it like container port without
+             * tag it by vlan tag. */
+            sbrec_port_binding_set_type(op->sb, "mirror");
+            sbrec_port_binding_set_mirror_port(op->sb,
+                                               op->mirror_target_port->key);
+            goto common;
+        }
+
         if (!lsp_is_router(op->nbsp)) {
             uint32_t queue_id = smap_get_int(
                     &op->sb->options, "qdisc_queue_id", 0);
@@ -3514,6 +3606,8 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
         }
 
     }
+
+common:
     if (op->tunnel_key != op->sb->tunnel_key) {
         sbrec_port_binding_set_tunnel_key(op->sb, op->tunnel_key);
     }
@@ -4843,6 +4937,38 @@ check_lsp_changes_other_than_up(const struct nbrec_logical_switch_port *nbsp)
     return false;
 }
 
+static bool
+is_lsp_mirror_target_port(
+    struct ovsdb_idl_index *nbrec_mirror_by_type_and_sink,
+    struct ovn_port *port)
+{
+    struct nbrec_mirror *target =
+        nbrec_mirror_index_init_row(nbrec_mirror_by_type_and_sink);
+    nbrec_mirror_index_set_type(target, "lport");
+    nbrec_mirror_index_set_sink(target, port->key);
+
+    const struct nbrec_mirror *nb_mirror =
+        nbrec_mirror_index_find(nbrec_mirror_by_type_and_sink, target);
+
+    nbrec_mirror_index_destroy_row(target);
+
+    if (nb_mirror) {
+        return true;
+    }
+
+    return false;
+}
+
+static bool
+lsp_handle_mirror_rules_changes(const struct nbrec_logical_switch_port *nbsp)
+{
+    if (nbrec_logical_switch_port_is_updated(nbsp,
+        NBREC_LOGICAL_SWITCH_PORT_COL_MIRROR_RULES)) {
+        return false;
+    }
+    return true;
+}
+
 /* Handles logical switch port changes of a changed logical switch.
  * Returns false, if any logical port can't be incrementally handled.
  */
@@ -4913,6 +5039,12 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
                  * by this change. Fallback to recompute. */
                 goto fail;
             }
+            if (!lsp_handle_mirror_rules_changes(new_nbsp) ||
+                 is_lsp_mirror_target_port(ni->nbrec_mirror_by_type_and_sink,
+                                           op)) {
+                /* Fallback to recompute. */
+                goto fail;
+            }
             if (!check_lsp_is_up &&
                 !check_lsp_changes_other_than_up(new_nbsp)) {
                 /* If the only change is the "up" column while the
@@ -4961,6 +5093,12 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
             sbrec_port_binding_delete(op->sb);
             delete_fdb_entries(ni->sbrec_fdb_by_dp_and_port, od->tunnel_key,
                                 op->tunnel_key);
+            if (is_lsp_mirror_target_port(ni->nbrec_mirror_by_type_and_sink,
+                                          op)) {
+            /* This port was used as target mirror port, fallback
+             * to recompute. */
+                goto fail;
+            }
         }
     }
 
@@ -5720,6 +5858,145 @@ build_dhcpv6_action(struct ovn_port *op, struct in6_addr *offer_ip,
                   server_mac, server_ip);
 
     return true;
+}
+
+enum mirror_filter {
+    IN_MIRROR,
+    OUT_MIRROR,
+    BOTH_MIRROR,
+};
+
+static void
+build_mirror_default_lflow(struct ovn_datapath *od,
+                           struct lflow_table *lflows)
+{
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_MIRROR, 0, "1", "next;", NULL);
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_MIRROR, 0, "1", "next;", NULL);
+}
+
+static void
+build_mirror_lflow(struct ovn_port *op,
+                   struct ovn_port *serving_port,
+                   struct lflow_table *lflows,
+                   struct nbrec_mirror_rule *rule, bool egress)
+{
+    struct ds match = DS_EMPTY_INITIALIZER;
+    struct ds action = DS_EMPTY_INITIALIZER;
+    enum ovn_stage stage;
+    const char *dir;
+    uint32_t priority = OVN_LPORT_MIRROR_OFFSET + rule->priority;
+
+    if (!strcmp(rule->action, "mirror")) {
+        ds_put_format(&action, "mirror(%s); ", serving_port->json_key);
+    }
+
+    if (egress) {
+        dir = "outport";
+        stage = S_SWITCH_OUT_MIRROR;
+    } else {
+        dir = "inport";
+        stage = S_SWITCH_IN_MIRROR;
+    }
+
+    ds_put_cstr(&action, "next;");
+    ds_put_format(&match, "%s == %s && (%s)", dir, op->json_key, rule->match);
+    ovn_lflow_add(lflows, op->od, stage, priority, ds_cstr(&match),
+                  ds_cstr(&action), op->lflow_ref);
+
+    ds_destroy(&match);
+    ds_destroy(&action);
+}
+
+static void
+build_mirror_pass_lflow(struct ovn_port *op,
+                        struct ovn_port *serving_port,
+                        struct lflow_table *lflows, bool egress)
+{
+    struct ds match = DS_EMPTY_INITIALIZER;
+    struct ds action = DS_EMPTY_INITIALIZER;
+    enum ovn_stage stage;
+    const char *dir;
+
+    if (egress) {
+        dir = "outport";
+        stage = S_SWITCH_OUT_MIRROR;
+    } else {
+        dir = "inport";
+        stage = S_SWITCH_IN_MIRROR;
+    }
+
+    ds_put_format(&action, "mirror(%s); next;", serving_port->json_key);
+    ds_put_format(&match, "%s == %s", dir, op->json_key);
+    ovn_lflow_add(lflows, op->od, stage, OVN_LPORT_MIRROR_OFFSET,
+                  ds_cstr(&match), ds_cstr(&action), op->lflow_ref);
+
+    ds_clear(&match);
+    ds_clear(&action);
+
+    /* We need to skip conntrack for all trafic directed to target port.*/
+    ds_put_format(&action, "next(pipeline=egress, table=%d);",
+                  ovn_stage_get_table(S_SWITCH_OUT_APPLY_PORT_SEC));
+    ds_put_format(&match,  "outport == %s", serving_port->json_key);
+
+    ovn_lflow_add(lflows, op->od, S_SWITCH_OUT_PRE_ACL, UINT16_MAX,
+                  ds_cstr(&match), ds_cstr(&action), op->lflow_ref);
+
+    ds_destroy(&match);
+    ds_destroy(&action);
+}
+
+static void
+build_mirror_lflows(struct ovn_port *op,
+                    const struct hmap *ls_ports,
+                    struct lflow_table *lflows)
+{
+    enum mirror_filter filter;
+
+    for (size_t i = 0; i < op->nbsp->n_mirror_rules; i++) {
+        struct nbrec_mirror *mirror = op->nbsp->mirror_rules[i];
+
+        if (strcmp(mirror->type, "lport")) {
+            continue;
+        }
+
+        char *serving_port_name = ovn_mirror_port_name(
+                                        ovn_datapath_name(op->od->sb),
+                                        mirror->sink);
+
+        struct ovn_port *serving_port = ovn_port_find(ls_ports,
+                                        serving_port_name);
+
+        /* Mirror serving port wasn't created
+         * because the target port doesn't exist. */
+        if (!serving_port) {
+            free(serving_port_name);
+            continue;
+        }
+
+        filter = !strcmp(mirror->filter, "from-lport") ? IN_MIRROR :
+                 !strcmp(mirror->filter, "to-lport") ? OUT_MIRROR
+                 : BOTH_MIRROR;
+
+        if (filter == IN_MIRROR || filter ==  BOTH_MIRROR) {
+            build_mirror_pass_lflow(op, serving_port, lflows, false);
+        }
+        if (filter == OUT_MIRROR || filter == BOTH_MIRROR) {
+            build_mirror_pass_lflow(op, serving_port, lflows, true);
+        }
+
+        for (size_t j = 0; j < mirror->n_mirror_rules; j++) {
+            struct nbrec_mirror_rule *rule = mirror->mirror_rules[j];
+
+            if (filter == IN_MIRROR || filter ==  BOTH_MIRROR) {
+                build_mirror_lflow(op, serving_port, lflows, rule, false);
+            }
+            if (filter == OUT_MIRROR || filter == BOTH_MIRROR) {
+                build_mirror_lflow(op, serving_port, lflows, rule, true);
+            }
+        }
+
+        free(serving_port_name);
+    }
 }
 
 /* Adds the logical flows in the (in/out) check port sec stage only if
@@ -17521,6 +17798,7 @@ build_lswitch_and_lrouter_iterate_by_ls(struct ovn_datapath *od,
                                         struct lswitch_flow_build_info *lsi)
 {
     ovs_assert(od->nbs);
+    build_mirror_default_lflow(od, lsi->lflows);
     build_lswitch_lflows_pre_acl_and_acl(od, lsi->lflows,
                                          lsi->meter_groups, NULL);
 
@@ -17597,7 +17875,11 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
 {
     ovs_assert(op->nbsp);
 
+    if (is_mp_port(op)) {
+        return;
+    }
     /* Build Logical Switch Flows. */
+    build_mirror_lflows(op, ls_ports, lflows);
     build_lswitch_port_sec_op(op, lflows, actions, match);
     build_lswitch_learn_fdb_op(op, lflows, actions, match);
     build_lswitch_arp_nd_responder_skip_local(op, lflows, match);

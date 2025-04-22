@@ -5575,6 +5575,76 @@ format_CT_STATE_SAVE(const struct ovnact_result *res, struct ds *s)
     ds_put_cstr(s, " = ct_state_save();");
 }
 
+static void
+parse_MIRROR_action(struct action_context *ctx)
+{
+    if (!lexer_force_match(ctx->lexer, LEX_T_LPAREN)) {
+        return;
+    }
+
+    if (ctx->lexer->token.type != LEX_T_STRING) {
+        lexer_syntax_error(ctx->lexer, "expecting port name string");
+        return;
+    }
+
+    struct ovnact_mirror *mirror = ovnact_put_MIRROR(ctx->ovnacts);
+    mirror->port = xstrdup(ctx->lexer->token.s);
+
+    lexer_get(ctx->lexer);
+    lexer_force_match(ctx->lexer, LEX_T_RPAREN);
+}
+
+static void
+format_MIRROR(const struct ovnact_mirror *mirror,
+              struct ds *s)
+{
+    ds_put_cstr(s, "mirror(");
+    ds_put_format(s, "\"%s\"", mirror->port);
+    ds_put_cstr(s, ");");
+}
+
+static void
+encode_MIRROR(const struct ovnact_mirror *mirror,
+              const struct ovnact_encode_params *ep,
+              struct ofpbuf *ofpacts)
+{
+    size_t clone_ofs = ofpacts->size;
+    uint32_t vport_key;
+
+    if (!ep->lookup_port(ep->aux, mirror->port, &vport_key)) {
+        return;
+    }
+
+    struct ofpact_nest *clone = ofpact_put_CLONE(ofpacts);
+
+    /*  We need set in_port to 0. Consider the following configuration:
+     *  - hostA (target lport, source lport) + (dst lport) hostB
+     *  - mirror in both directions (to and from lport) attached
+     *    to dst port.
+     *
+     *  When a packet comes from lport source to dst lport, for cloned
+     *  mirrored packet inport will be equal to outport, and incoming
+     *  traffic will not be mirrored.
+     *
+     *  We have no problem with zeroing in_port: it will be no recirculations
+     *  for packet proccesing on hostA, because we skip conntrack for traffic
+     *  directed to the target port.
+     */
+    put_load(ofp_to_u16(OFPP_NONE), MFF_IN_PORT, 0, 16, ofpacts);
+    put_load(vport_key, MFF_LOG_OUTPORT, 0, 32, ofpacts);
+    emit_resubmit(ofpacts, OFTABLE_REMOTE_OUTPUT);
+    clone = ofpbuf_at_assert(ofpacts, clone_ofs, sizeof *clone);
+    ofpacts->header = clone;
+
+    ofpact_finish_CLONE(ofpacts, &clone);
+}
+
+static void
+ovnact_mirror_free(struct ovnact_mirror *mirror OVS_UNUSED)
+{
+    free(mirror->port);
+}
+
 /* Parses an assignment or exchange or put_dhcp_opts action. */
 static void
 parse_set_action(struct action_context *ctx)
@@ -5808,6 +5878,8 @@ parse_action(struct action_context *ctx)
         ovnact_put_MAC_CACHE_USE(ctx->ovnacts);
     } else if (lexer_match_id(ctx->lexer, "flood_remote")) {
         ovnact_put_FLOOD_REMOTE(ctx->ovnacts);
+    } else if (lexer_match_id(ctx->lexer, "mirror")) {
+        parse_MIRROR_action(ctx);
     } else {
         lexer_syntax_error(ctx->lexer, "expecting action");
     }

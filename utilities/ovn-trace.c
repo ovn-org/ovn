@@ -588,6 +588,20 @@ ovntrace_port_find_by_key(const struct ovntrace_datapath *dp,
     return NULL;
 }
 
+static const struct ovntrace_port *
+ovntrace_port_find_by_name(const struct ovntrace_datapath *dp,
+                           const char *name)
+{
+    const struct shash_node *node;
+    SHASH_FOR_EACH (node, &ports) {
+        const struct ovntrace_port *port = node->data;
+        if (port->dp == dp && !strcmp(port->name, name)) {
+            return port;
+        }
+    }
+    return NULL;
+}
+
 static const char *
 ovntrace_port_key_to_name(const struct ovntrace_datapath *dp,
                           uint16_t key)
@@ -3139,6 +3153,29 @@ execute_ct_save_state(const struct ovnact_result *dl, struct flow *uflow,
 }
 
 static void
+execute_mirror(const struct ovnact_mirror *mirror,
+               const struct ovntrace_datapath *dp,
+               struct flow *uflow, struct ovs_list *super)
+{
+    const struct ovntrace_port *port;
+    struct flow cloned_flow = *uflow;
+    port = ovntrace_port_find_by_name(dp, mirror->port);
+
+    if (port) {
+        struct ovntrace_node *node = ovntrace_node_append(super,
+            OVNTRACE_NODE_TRANSFORMATION, "clone");
+
+        cloned_flow.regs[MFF_LOG_INPORT - MFF_REG0] = 0;
+        cloned_flow.regs[MFF_LOG_OUTPORT - MFF_REG0] = port->tunnel_key;
+
+        trace__(dp, &cloned_flow, 0, OVNACT_P_EGRESS, &node->subs);
+    } else {
+        ovntrace_node_append(super, OVNTRACE_NODE_ERROR,
+        "/* omitting output because no taget port found. */");
+    }
+}
+
+static void
 trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
               const struct ovntrace_datapath *dp, struct flow *uflow,
               uint8_t table_id, enum ovnact_pipeline pipeline,
@@ -3458,6 +3495,11 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
             execute_check_out_port_sec(ovnact_get_CHECK_OUT_PORT_SEC(a),
                                        dp, uflow);
             break;
+
+        case OVNACT_MIRROR:
+            execute_mirror(ovnact_get_MIRROR(a), dp, uflow, super);
+            break;
+
         case OVNACT_COMMIT_ECMP_NH:
             break;
         case OVNACT_CHK_ECMP_NH_MAC:

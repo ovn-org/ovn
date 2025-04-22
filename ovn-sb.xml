@@ -2921,6 +2921,20 @@ tcp.flags = RST;
           </p>
         </dd>
 
+      <dt><code>mirror(<var>P</var>);</code></dt>
+        <dd>
+          <p>
+            <b>Parameters</b>: logical port string field <var>P</var>
+            of type <code>mirror</code>.
+          </p>
+
+          <p>
+           When using an lport mirror, it clones the packet and outputs it
+           to the local/remote chassis through the mirrored port <var>P</var>
+           to the target port.
+          </p>
+        </dd>
+
       </dl>
     </column>
 
@@ -3465,6 +3479,10 @@ tcp.flags = RST;
           <code>Logical_Switch_Port</code> table in the Northbound database. It
           follows the same format as that column.
         </p>
+      </column>
+
+      <column name="mirror_port">
+       Points to mirror target port fot lport mirror type.
       </column>
 
       <column name="type">

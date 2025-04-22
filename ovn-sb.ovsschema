@@ -1,7 +1,7 @@
 {
     "name": "OVN_Southbound",
-    "version": "21.1.0",
-    "cksum": "880279393 34779",
+    "version": "21.2.0",
+    "cksum": "29145795 34859",
     "tables": {
         "SB_Global": {
             "columns": {
@@ -229,6 +229,7 @@
                                       "minInteger": 1,
                                       "maxInteger": 32767}}},
                 "parent_port": {"type": {"key": "string", "min": 0, "max": 1}},
+                "mirror_port": {"type": {"key": "string", "min": 0, "max": 1}},
                 "tag": {
                      "type": {"key": {"type": "integer",
                                       "minInteger": 1,

@@ -1413,3 +1413,10 @@ ovn_debug_commands_register(void)
     unixctl_command_register("debug/enable-timewarp", "", 0, 0,
                              ovn_enable_timewarp, NULL);
 }
+
+char *
+ovn_mirror_port_name(const char *datapath_name,
+                     const char *port_name)
+{
+    return xasprintf("mp-%s-%s", datapath_name, port_name);
+}

@@ -61,6 +61,10 @@ northd_get_input_data(struct engine_node *node,
         engine_ovsdb_node_get_index(
             engine_get_input("SB_fdb", node),
             "sbrec_fdb_by_dp_and_port");
+    input_data->nbrec_mirror_by_type_and_sink =
+        engine_ovsdb_node_get_index(
+            engine_get_input("NB_mirror", node),
+            "nbrec_mirror_by_type_and_sink");
 
     input_data->nbrec_logical_switch_table =
         EN_OVSDB_GET(engine_get_input("NB_logical_switch", node));
@@ -72,6 +76,8 @@ northd_get_input_data(struct engine_node *node,
         EN_OVSDB_GET(engine_get_input("NB_chassis_template_var", node));
     input_data->nbrec_mirror_table =
         EN_OVSDB_GET(engine_get_input("NB_mirror", node));
+    input_data->nbrec_mirror_rule_table =
+        EN_OVSDB_GET(engine_get_input("NB_mirror_rule", node));
 
     input_data->sbrec_datapath_binding_table =
         EN_OVSDB_GET(engine_get_input("SB_datapath_binding", node));

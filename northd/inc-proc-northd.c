@@ -64,6 +64,7 @@ static unixctl_cb_func chassis_features_list;
     NB_NODE(acl, "acl") \
     NB_NODE(logical_router, "logical_router") \
     NB_NODE(mirror, "mirror") \
+    NB_NODE(mirror_rule, "mirror_rule") \
     NB_NODE(meter, "meter") \
     NB_NODE(bfd, "bfd") \
     NB_NODE(static_mac_binding, "static_mac_binding") \
@@ -210,6 +211,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_acl_id, &en_sb_acl_id, NULL);
 
     engine_add_input(&en_northd, &en_nb_mirror, NULL);
+    engine_add_input(&en_northd, &en_nb_mirror_rule, NULL);
     engine_add_input(&en_northd, &en_nb_static_mac_binding, NULL);
     engine_add_input(&en_northd, &en_nb_chassis_template_var, NULL);
 
@@ -490,6 +492,14 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_ovsdb_node_add_index(&en_sb_port_binding,
                                 "sbrec_port_binding_by_name",
                                 sbrec_port_binding_by_name);
+
+    struct ovsdb_idl_index *nbrec_mirror_by_type_and_sink
+        = ovsdb_idl_index_create2(nb->idl, &nbrec_mirror_col_type,
+                                  &nbrec_mirror_col_sink);
+    engine_ovsdb_node_add_index(&en_nb_mirror,
+                                "nbrec_mirror_by_type_and_sink",
+                                nbrec_mirror_by_type_and_sink);
+
     struct ovsdb_idl_index *sbrec_ecmp_nexthop_by_ip_and_port
         = ecmp_nexthop_index_create(sb->idl);
     engine_ovsdb_node_add_index(&en_sb_ecmp_nexthop,
