@@ -17,6 +17,8 @@ Post v25.03.0
    - SSL/TLS:
      * Support for deprecated TLSv1 and TLSv1.1 protocols on OpenFlow and
        database connections is now removed.
+   - Introduce exclude-router-ips-from-garp in logical_switch_port column
+     so that the router port IPs are not advertised in the GARPs.
 
 OVN v25.03.0 - 07 Mar 2025
 --------------------------

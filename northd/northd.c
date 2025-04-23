@@ -4036,6 +4036,58 @@ build_lb_port_related_data(
     build_lswitch_lbs_from_lrouter(lr_datapaths, lb_dps_map, lb_group_dps_map);
 }
 
+/* Returns true if the peer port IPs of op should be added in the nat_addresses
+ * column of Port_Binding of op or not.
+ *
+ * Returns false, if the options:exclude-router-ips-from-garp is set to true.
+ *
+ * Otherwise, return true if:
+ *  - op->peer has 'reside-on-redirect-chassis' set and the
+ *    the logical router datapath has distributed router port.
+ *
+ * -  op->peer is distributed gateway router port.
+ *
+ * -  op->peer's router is a gateway router and op has a localnet
+ *    port.
+ *
+ * else, false.
+ */
+static bool
+should_add_router_port_garp(const struct ovn_port *op, const char *chassis)
+{
+    if (smap_get_bool(&op->nbsp->options, "exclude-router-ips-from-garp",
+                      false)) {
+        return false;
+    }
+
+    bool add_router_port_garp = false;
+    if (op->peer && op->peer->nbrp && op->peer->od->n_l3dgw_ports) {
+        if (lrp_is_l3dgw(op->peer)) {
+            add_router_port_garp = true;
+        } else if (smap_get_bool(&op->peer->nbrp->options,
+                                 "reside-on-redirect-chassis", false)) {
+            if (op->peer->od->n_l3dgw_ports == 1) {
+                add_router_port_garp = true;
+            } else {
+                static struct vlog_rate_limit rl =
+                    VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_WARN_RL(&rl, "\"reside-on-redirect-chassis\" is "
+                                "set on logical router port %s, which "
+                                "is on logical router %s, which has %"
+                                PRIuSIZE" distributed gateway ports. This"
+                                "option can only be used when there is "
+                                "a single distributed gateway port.",
+                                op->peer->key, op->peer->od->nbr->name,
+                                op->peer->od->n_l3dgw_ports);
+            }
+        }
+    } else if (chassis && op->od->n_localnet_ports) {
+        add_router_port_garp = true;
+    }
+
+    return add_router_port_garp;
+}
+
 /* Syncs the SB port binding for the ovn_port 'op' of a logical switch port.
  * Caller should make sure that the OVN SB IDL txn is not NULL.  Presently it
  * only syncs the nat column of port binding corresponding to the 'op->nbsp' */
@@ -4098,47 +4150,24 @@ sync_pb_for_lsp(struct ovn_port *op,
         }
 
         /* Add the router mac and IPv4 addresses to
-            * Port_Binding.nat_addresses so that GARP is sent for these
-            * IPs by the ovn-controller on which the distributed gateway
-            * router port resides if:
-            *
-            * -  op->peer has 'reside-on-redirect-chassis' set and the
-            *    the logical router datapath has distributed router port.
-            *
-            * -  op->peer is distributed gateway router port.
-            *
-            * -  op->peer's router is a gateway router and op has a localnet
-            *    port.
-            *
-            * Note: Port_Binding.nat_addresses column is also used for
-            * sending the GARPs for the router port IPs.
-            * */
-        bool add_router_port_garp = false;
-        if (op->peer && op->peer->nbrp && op->peer->od->n_l3dgw_ports) {
-            if (lrp_is_l3dgw(op->peer)) {
-                add_router_port_garp = true;
-            } else if (smap_get_bool(&op->peer->nbrp->options,
-                            "reside-on-redirect-chassis", false)) {
-                if (op->peer->od->n_l3dgw_ports == 1) {
-                    add_router_port_garp = true;
-                } else {
-                    static struct vlog_rate_limit rl =
-                        VLOG_RATE_LIMIT_INIT(1, 1);
-                    VLOG_WARN_RL(&rl, "\"reside-on-redirect-chassis\" is "
-                                    "set on logical router port %s, which "
-                                    "is on logical router %s, which has %"
-                                    PRIuSIZE" distributed gateway ports. This"
-                                    "option can only be used when there is "
-                                    "a single distributed gateway port.",
-                                    op->peer->key, op->peer->od->nbr->name,
-                                    op->peer->od->n_l3dgw_ports);
-                }
-            }
-        } else if (chassis && op->od->n_localnet_ports) {
-            add_router_port_garp = true;
-        }
-
-        if (add_router_port_garp) {
+         * Port_Binding.nat_addresses so that GARP is sent for these
+         * IPs by the ovn-controller on which the distributed gateway
+         * router port resides if:
+         *
+         * -  options:exclude-router-ips-from-garp is not set to true for op.
+         *
+         * -  op->peer has 'reside-on-redirect-chassis' set and the
+         *    the logical router datapath has distributed router port.
+         *
+         * -  op->peer is distributed gateway router port.
+         *
+         * -  op->peer's router is a gateway router and op has a localnet
+         *    port.
+         *
+         * Note: Port_Binding.nat_addresses column is also used for
+         * sending the GARPs for the router port IPs.
+        * */
+        if (should_add_router_port_garp(op, chassis)) {
             struct ds garp_info = DS_EMPTY_INITIALIZER;
             ds_put_format(&garp_info, "%s", op->peer->lrp_networks.ea_s);
 
@@ -4163,7 +4192,7 @@ sync_pb_for_lsp(struct ovn_port *op,
             ds_destroy(&garp_info);
         }
         sbrec_port_binding_set_nat_addresses(op->sb,
-                                                (const char **) nats, n_nats);
+                                             (const char **) nats, n_nats);
         for (size_t i = 0; i < n_nats; i++) {
             free(nats[i]);
         }

@@ -1223,6 +1223,15 @@
           not cosidering configured load balancers.
         </column>
 
+        <column name="options" key="exclude-router-ips-from-garp">
+          If <ref column="options" key="nat-addresses"/> is set to
+          <code>router</code>, Gratuitous ARPs will not be sent for
+          router port IP addresses and SNAT IP addresses (if SNAT IP
+          is same as the router port IP) defined on its peer router
+          port. Do not set this option if the router port IPs are
+          also used as SNAT and DNAT IPs.
+        </column>
+
         <column name="options" key="arp_proxy">
           Optional. A list of MAC and addresses/cidrs or just addresses/cidrs
           that this logical switch <code>router</code> port will reply to

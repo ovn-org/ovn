@@ -7720,6 +7720,40 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([check exclude-router-ips-from-garp option])
+ovn_start
+
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+
+check ovn-nbctl lr-add R1
+check ovn-nbctl lrp-add R1 R1-S1 02:ac:10:01:00:01 172.16.1.1/24
+check ovn-nbctl lrp-set-gateway-chassis R1-S1 gw1
+check ovn-nbctl ls-add S1
+check ovn-nbctl lsp-add S1 S1-R1
+check ovn-nbctl lsp-set-type S1-R1 router
+check ovn-nbctl lsp-set-addresses S1-R1 02:ac:10:01:00:01
+check ovn-nbctl --wait=sb lsp-set-options S1-R1 router-port=R1-S1 nat-addresses="router"
+
+check ovn-nbctl lr-nat-add R1 snat 172.16.1.1 10.0.0.0/24
+check ovn-nbctl lr-nat-add R1 dnat 172.16.1.2 10.0.0.1
+check ovn-nbctl lr-nat-add R1 dnat 172.16.1.1 10.0.0.10
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl get Port_Binding S1-R1 nat_addresses | grep -q 172.16.1.1], [0])
+
+check ovn-nbctl --wait=sb lsp-set-options S1-R1 router-port=R1-S1 nat-addresses="router" \
+  exclude-router-ips-from-garp="true"
+AT_CHECK([ovn-sbctl get Port_Binding S1-R1 nat_addresses | grep -q 172.16.1.1], [1])
+
+check ovn-nbctl clear logical_router R1 nat
+check ovn-nbctl --wait=sb lr-nat-add R1 snat 172.16.1.4 10.0.0.0/24
+AT_CHECK([ovn-sbctl get Port_Binding S1-R1 nat_addresses | grep -q 172.16.1.1], [1])
+AT_CHECK([ovn-sbctl get Port_Binding S1-R1 nat_addresses | grep -q 172.16.1.4], [0])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check broadcast-arps-to-all-routers option])
 ovn_start
 
