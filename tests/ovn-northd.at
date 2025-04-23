@@ -15869,11 +15869,11 @@ check ovn-nbctl lsp-set-type sw0-lr0 router
 check ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
 check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
 check ovn-nbctl set logical_router lr0 options:ct-commit-all="true"
-check ovn-nbctl --wait=sb sync
 
 check ovn-sbctl chassis-add gw1 geneve 127.0.0.1 \
   -- set chassis gw1 other_config:ct-commit-to-zone="true" \
   -- set chassis gw1 other_config:ct-next-zone="true"
+check ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CAPTURE_FILE([lr0flows])
@@ -15912,6 +15912,7 @@ check ovn-nbctl lsp-add public public-lr0 \
 
 # Add SNAT
 check ovn-nbctl lr-nat-add lr0 snat 172.168.0.10 10.0.0.0/24
+check ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CAPTURE_FILE([lr0flows])
