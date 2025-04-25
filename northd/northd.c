@@ -6519,10 +6519,16 @@ build_acl_hints(const struct ls_stateful_record *ls_stateful_rec,
         /* New, not already established connections, may hit either allow
          * or drop ACLs. For allow ACLs, the connection must also be committed
          * to conntrack so we set REGBIT_ACL_HINT_ALLOW_NEW.
+         *
+         * All new traffic should be committed to conntrack if there are
+         * stateful ACLs present, so set REGBIT_CONNTRACK_COMMIT here to
+         * ensure that the traffic is committed to conntrack in the STATEFUL
+         * stage.
          */
         ovn_lflow_add(lflows, od, stage, 7, "ct.new && !ct.est",
                       REGBIT_ACL_HINT_ALLOW_NEW " = 1; "
                       REGBIT_ACL_HINT_DROP " = 1; "
+                      REGBIT_CONNTRACK_COMMIT " = 1; "
                       "next;", lflow_ref);
 
         /* Already established connections in the "request" direction that
@@ -6530,13 +6536,15 @@ build_acl_hints(const struct ls_stateful_record *ls_stateful_rec,
          * - allow ACLs for connections that were previously allowed by a
          *   policy that was deleted and is being readded now. In this case
          *   the connection should be recommitted so we set
-         *   REGBIT_ACL_HINT_ALLOW_NEW.
+         *   REGBIT_ACL_HINT_ALLOW_NEW. Since we want traffic recommitted
+         *   in this case, we also set REGBIT_CONNTRACK_COMMIT.
          * - drop ACLs.
          */
         ovn_lflow_add(lflows, od, stage, 6,
                       "!ct.new && ct.est && !ct.rpl && ct_mark.blocked == 1",
                       REGBIT_ACL_HINT_ALLOW_NEW " = 1; "
                       REGBIT_ACL_HINT_DROP " = 1; "
+                      REGBIT_CONNTRACK_COMMIT " = 1; "
                       "next;", lflow_ref);
 
         /* Not tracked traffic can either be allowed or dropped. */
@@ -7190,7 +7198,6 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
                       acl->match);
 
         ds_truncate(actions, log_verdict_len);
-        ds_put_cstr(actions, REGBIT_CONNTRACK_COMMIT" = 1; ");
 
         /* For stateful ACLs sample "new" and "established" packets. */
         build_acl_sample_label_action(actions, acl, acl->sample_new,
@@ -7603,22 +7610,17 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
         ds_put_format(&match, "ip && ct.est && ct_mark.blocked == 1");
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_EVAL, 1,
                       ds_cstr(&match),
-                      REGBIT_CONNTRACK_COMMIT" = 1; "
                       REGBIT_ACL_VERDICT_ALLOW" = 1; next;",
                       lflow_ref);
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL_EVAL, 1,
                       ds_cstr(&match),
-                      REGBIT_CONNTRACK_COMMIT" = 1; "
                       REGBIT_ACL_VERDICT_ALLOW" = 1; next;",
                       lflow_ref);
 
-        const char *next_action = default_acl_drop
-                             ? "next;"
-                             : REGBIT_CONNTRACK_COMMIT" = 1; next;";
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_EVAL, 1, "ip && !ct.est",
-                      next_action, lflow_ref);
+                      "next;" , lflow_ref);
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL_EVAL, 1, "ip && !ct.est",
-                      next_action, lflow_ref);
+                      "next;", lflow_ref);
 
         /* Ingress and Egress ACL Table (Priority 65532).
          *
