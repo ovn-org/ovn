@@ -344,6 +344,31 @@ sync_to_sb_lb_northd_handler(struct engine_node *node, void *data_)
     return true;
 }
 
+bool
+sync_to_sb_lb_sb_load_balancer(struct engine_node *node, void *data_)
+{
+    const struct sbrec_load_balancer_table *sb_lb_table =
+        EN_OVSDB_GET(engine_get_input("SB_load_balancer", node));
+    struct ed_type_sync_to_sb_lb_data *data = data_;
+
+    /* The only reason to handle SB.Load_Balancer updates is to detect
+     * spurious records being created in clustered databases due to
+     * lack of indexing on the SB.Load_Balancer table.  All other changes
+     * are valid and performed by northd, the only write-client for
+     * this table. */
+    const struct sbrec_load_balancer *sb_lb;
+    SBREC_LOAD_BALANCER_TABLE_FOR_EACH_TRACKED (sb_lb, sb_lb_table) {
+        if (!sbrec_load_balancer_is_new(sb_lb)) {
+            continue;
+        }
+
+        if (!sb_lb_table_find(&data->sb_lbs.entries, &sb_lb->header_.uuid)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /* sync_to_sb_pb engine node functions.
  * This engine node syncs the SB Port Bindings (partly).
  * en_northd engine create the SB Port binding rows and

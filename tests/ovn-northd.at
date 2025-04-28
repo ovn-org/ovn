@@ -6621,8 +6621,11 @@ nlb=$(fetch_column nb:Load_Balancer _uuid)
 AT_CHECK([ovn-sbctl --id="$nlb" create Load_Balancer name=lb1 ls_datapath_group="$dps"], [1], [ignore], [stderr])
 check grep -q "duplicate uuid" stderr
 
+AT_CHECK([ovn-sbctl create Load_Balancer name=lb1 ls_datapath_group="$dps"], [0], [ignore])
+
 check ovn-nbctl --wait=sb sync
 check_row_count Load_Balancer 1
+check test "$nlb" == "$(fetch_column Load_Balancer _uuid)"
 
 AT_CLEANUP
 ])
