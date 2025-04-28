@@ -16388,7 +16388,6 @@ check ovn-nbctl lr-nat-add pr1 dnat_and_snat 192.0.2.10 10.0.0.2
 check ovn-nbctl lsp-add p2 vif2 \
     -- lsp-set-addresses vif2 "00:00:ff:ff:ff:02 198.51.100.10"
 check ovn-nbctl lr-route-add internet 198.51.100.0/24 192.0.2.3
-        .ovnsb_idl = re->sb_idl,
 
 # Configure external connectivity.
 check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext
