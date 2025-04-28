@@ -5109,6 +5109,28 @@ route_runtime_data_handler(struct engine_node *node, void *data)
                  * request recompute. */
                 return false;
             }
+
+            /* When the port is removed we went from local to remote,
+             * otherwise it's from remote to local. */
+            struct sset *tracked_ports =
+                lport->tracked_type == TRACKED_RESOURCE_REMOVED
+                ? &re_data->tracked_ports_local
+                : &re_data->tracked_ports_remote;
+
+            const char *name = lport->pb->logical_port;
+            if (sset_contains(tracked_ports, name)) {
+                /* XXX: Until we get I-P support for route exchange we need to
+                 * request recompute. */
+                return false;
+            }
+
+            const char *dp_name = smap_get(&lport->pb->options,
+                                           "distributed-port");
+            if (dp_name && sset_contains(tracked_ports, dp_name)) {
+                /* XXX: Until we get I-P support for route exchange we need to
+                 * request recompute. */
+                return false;
+            }
         }
     }
 
