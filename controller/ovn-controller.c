@@ -5632,30 +5632,29 @@ main(int argc, char *argv[])
 
     /* Define inc-proc-engine nodes. */
     ENGINE_NODE(sb_ro, "sb_ro");
-    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(template_vars, "template_vars");
-    ENGINE_NODE_WITH_CLEAR_TRACK_DATA_IS_VALID(ct_zones, "ct_zones");
-    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(ovs_interface_shadow,
-                                      "ovs_interface_shadow");
-    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(runtime_data, "runtime_data");
+    ENGINE_NODE(template_vars, "template_vars", CLEAR_TRACKED_DATA);
+    ENGINE_NODE(ct_zones, "ct_zones", CLEAR_TRACKED_DATA, IS_VALID);
+    ENGINE_NODE(ovs_interface_shadow, "ovs_interface_shadow",
+                CLEAR_TRACKED_DATA);
+    ENGINE_NODE(runtime_data, "runtime_data", CLEAR_TRACKED_DATA);
     ENGINE_NODE(non_vif_data, "non_vif_data");
     ENGINE_NODE(mff_ovn_geneve, "mff_ovn_geneve");
     ENGINE_NODE(ofctrl_is_connected, "ofctrl_is_connected");
-    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(activated_ports, "activated_ports");
+    ENGINE_NODE(activated_ports, "activated_ports", CLEAR_TRACKED_DATA);
     ENGINE_NODE(postponed_ports, "postponed_ports");
     ENGINE_NODE(pflow_output, "physical_flow_output");
-    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lflow_output, "logical_flow_output");
+    ENGINE_NODE(lflow_output, "logical_flow_output", CLEAR_TRACKED_DATA);
     ENGINE_NODE(controller_output, "controller_output");
-    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(addr_sets, "addr_sets");
-    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(port_groups, "port_groups");
+    ENGINE_NODE(addr_sets, "addr_sets", CLEAR_TRACKED_DATA);
+    ENGINE_NODE(port_groups, "port_groups", CLEAR_TRACKED_DATA);
     ENGINE_NODE(northd_options, "northd_options");
     ENGINE_NODE(dhcp_options, "dhcp_options");
     ENGINE_NODE(if_status_mgr, "if_status_mgr");
-    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lb_data, "lb_data");
+    ENGINE_NODE(lb_data, "lb_data", CLEAR_TRACKED_DATA);
     ENGINE_NODE(mac_cache, "mac_cache");
     ENGINE_NODE(bfd_chassis, "bfd_chassis");
     ENGINE_NODE(dns_cache, "dns_cache");
-    ENGINE_NODE(acl_id, "acl_id");
-    en_acl_id.is_valid = en_acl_id_is_valid;
+    ENGINE_NODE(acl_id, "acl_id", IS_VALID);
     ENGINE_NODE(route, "route");
     ENGINE_NODE(route_table_notify, "route_table_notify");
     ENGINE_NODE(route_exchange, "route_exchange");

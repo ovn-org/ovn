@@ -499,4 +499,40 @@ const struct sbrec_port_binding *lport_lookup_by_name(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const char *name);
 
+/* __NARG__ provides a way to count the number of arguments passed to a
+ * variadic macro. As defined below, it's capable of counting up to
+ * 16 arguments. This should be more than enough for our purposes. However
+ * the __ARG_N and __RSEQ_N macros can be updated to include more numbers
+ * if we wish to be able to count higher.
+ * */
+#define __NARG__(...)  __NARG_I_(__VA_ARGS__,__RSEQ_N())
+#define __NARG_I_(...) __ARG_N(__VA_ARGS__)
+#define __ARG_N( \
+      _1, _2, _3, _4, _5, _6, _7, _8, _9, \
+      _10, _11, _12, _13, _14, _15, _16, N,...) N
+#define __RSEQ_N() \
+     16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0
+
+/* VFUNC provides a way to overload macros so that they can
+ * accept a variable number of arguments.
+ *
+ * It works by using __NARG__ to count the number of arguments
+ * that were passed into the macro. Then this is concatenated
+ * to the end of the macro name. Then this concatenated macro
+ * is called.
+ *
+ * As an example, let's say we have
+ * # define FOO(...) VFUNC(FOO, __VA_ARGS)
+ *
+ * Then if a caller were to call FOO(bar)
+ * then we would count one argument (bar), concatenate
+ * the 1 to the end of FOO, and end up calling FOO1(bar).
+ *
+ * If a caller were to call FOO(bar, baz), then the
+ * result would be to call FOO2(bar, baz).
+ */
+#define _VFUNC_(name, n) name##n
+#define _VFUNC(name, n) _VFUNC_(name, n)
+#define VFUNC(func, ...) _VFUNC(func, __NARG__(__VA_ARGS__)) (__VA_ARGS__)
+
 #endif /* OVN_UTIL_H */

@@ -148,7 +148,7 @@ enum sb_engine_node {
 
 /* Define engine nodes for other nodes. They should be defined as static to
  * avoid sparse errors. */
-static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(northd, "northd");
+static ENGINE_NODE(northd, "northd", CLEAR_TRACKED_DATA);
 static ENGINE_NODE(sync_from_sb, "sync_from_sb");
 static ENGINE_NODE(sampling_app, "sampling_app");
 static ENGINE_NODE(lflow, "lflow");
@@ -158,16 +158,16 @@ static ENGINE_NODE(northd_output, "northd_output");
 static ENGINE_NODE(sync_meters, "sync_meters");
 static ENGINE_NODE(sync_to_sb, "sync_to_sb");
 static ENGINE_NODE(sync_to_sb_addr_set, "sync_to_sb_addr_set");
-static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(port_group, "port_group");
+static ENGINE_NODE(port_group, "port_group", CLEAR_TRACKED_DATA);
 static ENGINE_NODE(fdb_aging, "fdb_aging");
 static ENGINE_NODE(fdb_aging_waker, "fdb_aging_waker");
 static ENGINE_NODE(sync_to_sb_lb, "sync_to_sb_lb");
 static ENGINE_NODE(sync_to_sb_pb, "sync_to_sb_pb");
-static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(global_config, "global_config");
-static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lb_data, "lb_data");
-static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lr_nat, "lr_nat");
-static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lr_stateful, "lr_stateful");
-static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(ls_stateful, "ls_stateful");
+static ENGINE_NODE(global_config, "global_config", CLEAR_TRACKED_DATA);
+static ENGINE_NODE(lb_data, "lb_data", CLEAR_TRACKED_DATA);
+static ENGINE_NODE(lr_nat, "lr_nat", CLEAR_TRACKED_DATA);
+static ENGINE_NODE(lr_stateful, "lr_stateful", CLEAR_TRACKED_DATA);
+static ENGINE_NODE(ls_stateful, "ls_stateful", CLEAR_TRACKED_DATA);
 static ENGINE_NODE(route_policies, "route_policies");
 static ENGINE_NODE(routes, "routes");
 static ENGINE_NODE(bfd, "bfd");
@@ -176,10 +176,10 @@ static ENGINE_NODE(ecmp_nexthop, "ecmp_nexthop");
 static ENGINE_NODE(multicast_igmp, "multicast_igmp");
 static ENGINE_NODE(acl_id, "acl_id");
 static ENGINE_NODE(advertised_route_sync, "advertised_route_sync");
-static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(learned_route_sync,
-                                         "learned_route_sync");
+static ENGINE_NODE(learned_route_sync, "learned_route_sync",
+                   CLEAR_TRACKED_DATA);
 static ENGINE_NODE(dynamic_routes, "dynamic_routes");
-static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(group_ecmp_route, "group_ecmp_route");
+static ENGINE_NODE(group_ecmp_route, "group_ecmp_route", CLEAR_TRACKED_DATA);
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb)
