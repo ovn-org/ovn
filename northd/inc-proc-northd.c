@@ -55,24 +55,24 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_northd);
 static unixctl_cb_func chassis_features_list;
 
 #define NB_NODES \
-    NB_NODE(nb_global, "nb_global") \
-    NB_NODE(logical_switch, "logical_switch") \
-    NB_NODE(address_set, "address_set") \
-    NB_NODE(port_group, "port_group") \
-    NB_NODE(load_balancer, "load_balancer") \
-    NB_NODE(load_balancer_group, "load_balancer_group") \
-    NB_NODE(acl, "acl") \
-    NB_NODE(logical_router, "logical_router") \
-    NB_NODE(mirror, "mirror") \
-    NB_NODE(mirror_rule, "mirror_rule") \
-    NB_NODE(meter, "meter") \
-    NB_NODE(bfd, "bfd") \
-    NB_NODE(static_mac_binding, "static_mac_binding") \
-    NB_NODE(chassis_template_var, "chassis_template_var") \
-    NB_NODE(sampling_app, "sampling_app")
+    NB_NODE(nb_global) \
+    NB_NODE(logical_switch) \
+    NB_NODE(address_set) \
+    NB_NODE(port_group) \
+    NB_NODE(load_balancer) \
+    NB_NODE(load_balancer_group) \
+    NB_NODE(acl) \
+    NB_NODE(logical_router) \
+    NB_NODE(mirror) \
+    NB_NODE(mirror_rule) \
+    NB_NODE(meter) \
+    NB_NODE(bfd) \
+    NB_NODE(static_mac_binding) \
+    NB_NODE(chassis_template_var) \
+    NB_NODE(sampling_app)
 
     enum nb_engine_node {
-#define NB_NODE(NAME, NAME_STR) NB_##NAME,
+#define NB_NODE(NAME) NB_##NAME,
     NB_NODES
 #undef NB_NODE
     };
@@ -83,40 +83,40 @@ static unixctl_cb_func chassis_features_list;
  * en_nb_<TABLE_NAME>_init()
  * en_nb_<TABLE_NAME>_cleanup()
  */
-#define NB_NODE(NAME, NAME_STR) ENGINE_FUNC_NB(NAME);
+#define NB_NODE(NAME) ENGINE_FUNC_NB(NAME);
     NB_NODES
 #undef NB_NODE
 
 #define SB_NODES \
-    SB_NODE(sb_global, "sb_global") \
-    SB_NODE(chassis, "chassis") \
-    SB_NODE(address_set, "address_set") \
-    SB_NODE(port_group, "port_group") \
-    SB_NODE(logical_flow, "logical_flow") \
-    SB_NODE(multicast_group, "multicast_group") \
-    SB_NODE(mirror, "mirror") \
-    SB_NODE(meter, "meter") \
-    SB_NODE(datapath_binding, "datapath_binding") \
-    SB_NODE(port_binding, "port_binding") \
-    SB_NODE(mac_binding, "mac_binding") \
-    SB_NODE(dns, "dns") \
-    SB_NODE(ha_chassis_group, "ha_chassis_group") \
-    SB_NODE(ip_multicast, "ip_multicast") \
-    SB_NODE(igmp_group, "igmp_group") \
-    SB_NODE(service_monitor, "service_monitor") \
-    SB_NODE(load_balancer, "load_balancer") \
-    SB_NODE(bfd, "bfd") \
-    SB_NODE(fdb, "fdb") \
-    SB_NODE(static_mac_binding, "static_mac_binding") \
-    SB_NODE(chassis_template_var, "chassis_template_var") \
-    SB_NODE(logical_dp_group, "logical_dp_group") \
-    SB_NODE(ecmp_nexthop, "ecmp_nexthop") \
-    SB_NODE(acl_id, "acl_id") \
-    SB_NODE(advertised_route, "advertised_route") \
-    SB_NODE(learned_route, "learned_route")
+    SB_NODE(sb_global) \
+    SB_NODE(chassis) \
+    SB_NODE(address_set) \
+    SB_NODE(port_group) \
+    SB_NODE(logical_flow) \
+    SB_NODE(multicast_group) \
+    SB_NODE(mirror) \
+    SB_NODE(meter) \
+    SB_NODE(datapath_binding) \
+    SB_NODE(port_binding) \
+    SB_NODE(mac_binding) \
+    SB_NODE(dns) \
+    SB_NODE(ha_chassis_group) \
+    SB_NODE(ip_multicast) \
+    SB_NODE(igmp_group) \
+    SB_NODE(service_monitor) \
+    SB_NODE(load_balancer) \
+    SB_NODE(bfd) \
+    SB_NODE(fdb) \
+    SB_NODE(static_mac_binding) \
+    SB_NODE(chassis_template_var) \
+    SB_NODE(logical_dp_group) \
+    SB_NODE(ecmp_nexthop) \
+    SB_NODE(acl_id) \
+    SB_NODE(advertised_route) \
+    SB_NODE(learned_route)
 
 enum sb_engine_node {
-#define SB_NODE(NAME, NAME_STR) SB_##NAME,
+#define SB_NODE(NAME) SB_##NAME,
     SB_NODES
 #undef SB_NODE
 };
@@ -127,7 +127,7 @@ enum sb_engine_node {
  * en_sb_<TABLE_NAME>_init()
  * en_sb_<TABLE_NAME>_cleanup()
  */
-#define SB_NODE(NAME, NAME_STR) ENGINE_FUNC_SB(NAME);
+#define SB_NODE(NAME) ENGINE_FUNC_SB(NAME);
     SB_NODES
 #undef SB_NODE
 
@@ -138,48 +138,47 @@ enum sb_engine_node {
  *
  * Define nodes as static to avoid sparse errors.
  */
-#define NB_NODE(NAME, NAME_STR) static ENGINE_NODE_NB(NAME, NAME_STR);
+#define NB_NODE(NAME) static ENGINE_NODE_NB(NAME);
     NB_NODES
 #undef NB_NODE
 
-#define SB_NODE(NAME, NAME_STR) static ENGINE_NODE_SB(NAME, NAME_STR);
+#define SB_NODE(NAME) static ENGINE_NODE_SB(NAME);
     SB_NODES
 #undef SB_NODE
 
 /* Define engine nodes for other nodes. They should be defined as static to
  * avoid sparse errors. */
-static ENGINE_NODE(northd, "northd", CLEAR_TRACKED_DATA);
-static ENGINE_NODE(sync_from_sb, "sync_from_sb");
-static ENGINE_NODE(sampling_app, "sampling_app");
-static ENGINE_NODE(lflow, "lflow");
-static ENGINE_NODE(mac_binding_aging, "mac_binding_aging");
-static ENGINE_NODE(mac_binding_aging_waker, "mac_binding_aging_waker");
-static ENGINE_NODE(northd_output, "northd_output");
-static ENGINE_NODE(sync_meters, "sync_meters");
-static ENGINE_NODE(sync_to_sb, "sync_to_sb");
-static ENGINE_NODE(sync_to_sb_addr_set, "sync_to_sb_addr_set");
-static ENGINE_NODE(port_group, "port_group", CLEAR_TRACKED_DATA);
-static ENGINE_NODE(fdb_aging, "fdb_aging");
-static ENGINE_NODE(fdb_aging_waker, "fdb_aging_waker");
-static ENGINE_NODE(sync_to_sb_lb, "sync_to_sb_lb");
-static ENGINE_NODE(sync_to_sb_pb, "sync_to_sb_pb");
-static ENGINE_NODE(global_config, "global_config", CLEAR_TRACKED_DATA);
-static ENGINE_NODE(lb_data, "lb_data", CLEAR_TRACKED_DATA);
-static ENGINE_NODE(lr_nat, "lr_nat", CLEAR_TRACKED_DATA);
-static ENGINE_NODE(lr_stateful, "lr_stateful", CLEAR_TRACKED_DATA);
-static ENGINE_NODE(ls_stateful, "ls_stateful", CLEAR_TRACKED_DATA);
-static ENGINE_NODE(route_policies, "route_policies");
-static ENGINE_NODE(routes, "routes");
-static ENGINE_NODE(bfd, "bfd");
-static ENGINE_NODE(bfd_sync, "bfd_sync");
-static ENGINE_NODE(ecmp_nexthop, "ecmp_nexthop");
-static ENGINE_NODE(multicast_igmp, "multicast_igmp");
-static ENGINE_NODE(acl_id, "acl_id");
-static ENGINE_NODE(advertised_route_sync, "advertised_route_sync");
-static ENGINE_NODE(learned_route_sync, "learned_route_sync",
-                   CLEAR_TRACKED_DATA);
-static ENGINE_NODE(dynamic_routes, "dynamic_routes");
-static ENGINE_NODE(group_ecmp_route, "group_ecmp_route", CLEAR_TRACKED_DATA);
+static ENGINE_NODE(northd, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(sync_from_sb);
+static ENGINE_NODE(sampling_app);
+static ENGINE_NODE(lflow);
+static ENGINE_NODE(mac_binding_aging);
+static ENGINE_NODE(mac_binding_aging_waker);
+static ENGINE_NODE(northd_output);
+static ENGINE_NODE(sync_meters);
+static ENGINE_NODE(sync_to_sb);
+static ENGINE_NODE(sync_to_sb_addr_set);
+static ENGINE_NODE(port_group, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(fdb_aging);
+static ENGINE_NODE(fdb_aging_waker);
+static ENGINE_NODE(sync_to_sb_lb);
+static ENGINE_NODE(sync_to_sb_pb);
+static ENGINE_NODE(global_config, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(lb_data, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(lr_nat, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(lr_stateful, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(ls_stateful, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(route_policies);
+static ENGINE_NODE(routes);
+static ENGINE_NODE(bfd);
+static ENGINE_NODE(bfd_sync);
+static ENGINE_NODE(ecmp_nexthop);
+static ENGINE_NODE(multicast_igmp);
+static ENGINE_NODE(acl_id);
+static ENGINE_NODE(advertised_route_sync);
+static ENGINE_NODE(learned_route_sync, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(dynamic_routes);
+static ENGINE_NODE(group_ecmp_route, CLEAR_TRACKED_DATA);
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb)

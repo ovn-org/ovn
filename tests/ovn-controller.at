@@ -10,7 +10,7 @@ m4_divert_push([PREPARE_TESTS])
 # 4th argument is the expected compute state.
 #   Possible values are - "nocompute" and "compute".
 #
-# Eg. 'check_controller_engine_stats hv1 logical_flow_output recompute nocompute'
+# Eg. 'check_controller_engine_stats hv1 lflow_output recompute nocompute'
 # will verify that if the lflow engine node recompute stat is > 0 and
 # compute stat is equal to 0.  It fails otherwise.
 check_controller_engine_stats() {
@@ -24,7 +24,7 @@ $recompute : compute - $compute"
 
   node_stat=$(as $hv ovn-appctl -t ovn-controller inc-engine/show-stats $node)
   # node_stat will be of this format :
-  #     - Node: logical_flow_output - recompute: 3 - compute: 0 - cancel: 0
+  #     - Node: lflow_output - recompute: 3 - compute: 0 - cancel: 0
   node_recompute_ct=$(echo $node_stat | cut -d '-' -f2 | cut -d ':' -f2)
   node_compute_ct=$(echo $node_stat | cut -d '-' -f3 | cut -d ':' -f2)
 
@@ -1014,7 +1014,7 @@ OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int | grep table=OFTABLE_LOCAL_OU
 # Check we have a full recompute if type column is updated
 check as hv1 ovn-appctl -t ovn-controller inc-engine/clear-stats
 check ovn-nbctl --wait=hv lsp-set-type ls0-rp localnet
-check_controller_engine_stats hv1 physical_flow_output recompute nocompute
+check_controller_engine_stats hv1 pflow_output recompute nocompute
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

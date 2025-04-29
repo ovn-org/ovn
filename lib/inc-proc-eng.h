@@ -408,8 +408,8 @@ void engine_ovsdb_node_add_index(struct engine_node *, const char *name,
 
 #define ENGINE_NODE_DEF_END };
 
-#define ENGINE_NODE2(NAME, NAME_STR) \
-    ENGINE_NODE_DEF_START(NAME, NAME_STR) \
+#define ENGINE_NODE1(NAME) \
+    ENGINE_NODE_DEF_START(NAME, #NAME) \
     ENGINE_NODE_DEF_END
 
 #define CLEAR_TRACKED_DATA(NAME) \
@@ -418,12 +418,12 @@ void engine_ovsdb_node_add_index(struct engine_node *, const char *name,
 #define IS_VALID(NAME) \
     .is_valid = en_##NAME##_is_valid
 
-#define ENGINE_NODE3(NAME, NAME_STR, ARG1) \
+#define ENGINE_NODE2(NAME, ARG1) \
     ENGINE_NODE_DEF_START(NAME, #NAME) \
     ARG1(NAME), \
     ENGINE_NODE_DEF_END
 
-#define ENGINE_NODE4(NAME, NAME_STR, ARG1, ARG2) \
+#define ENGINE_NODE3(NAME, ARG1, ARG2) \
     ENGINE_NODE_DEF_START(NAME, #NAME) \
     ARG1(NAME), \
     ARG2(NAME), \
@@ -476,19 +476,20 @@ static void en_##DB_NAME##_##TBL_NAME##_cleanup(void *data OVS_UNUSED) \
 
 /* Macro to define an engine node which represents a table of OVSDB */
 #define ENGINE_NODE_OVSDB(DB_NAME, DB_NAME_STR, TBL_NAME, TBL_NAME_STR) \
-    ENGINE_NODE(DB_NAME##_##TBL_NAME, DB_NAME_STR"_"TBL_NAME_STR)
+    ENGINE_NODE_DEF_START(DB_NAME##_##TBL_NAME, DB_NAME_STR"_"TBL_NAME_STR) \
+    ENGINE_NODE_DEF_END
 
 /* Macro to define an engine node which represents a table of OVN SB DB */
-#define ENGINE_NODE_SB(TBL_NAME, TBL_NAME_STR) \
-    ENGINE_NODE_OVSDB(sb, "SB", TBL_NAME, TBL_NAME_STR);
+#define ENGINE_NODE_SB(TBL_NAME) \
+    ENGINE_NODE_OVSDB(sb, "SB", TBL_NAME, #TBL_NAME);
 
 /* Macro to define an engine node which represents a table of OVN NB DB */
-#define ENGINE_NODE_NB(TBL_NAME, TBL_NAME_STR) \
-    ENGINE_NODE_OVSDB(nb, "NB", TBL_NAME, TBL_NAME_STR);
+#define ENGINE_NODE_NB(TBL_NAME) \
+    ENGINE_NODE_OVSDB(nb, "NB", TBL_NAME, #TBL_NAME);
 
 /* Macro to define an engine node which represents a table of open_vswitch
  * DB */
-#define ENGINE_NODE_OVS(TBL_NAME, TBL_NAME_STR) \
-    ENGINE_NODE_OVSDB(ovs, "OVS", TBL_NAME, TBL_NAME_STR);
+#define ENGINE_NODE_OVS(TBL_NAME) \
+    ENGINE_NODE_OVSDB(ovs, "OVS", TBL_NAME, #TBL_NAME);
 
 #endif /* lib/inc-proc-eng.h */

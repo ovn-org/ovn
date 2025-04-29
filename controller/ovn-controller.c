@@ -978,56 +978,56 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
 }
 
 #define SB_NODES \
-    SB_NODE(sb_global, "sb_global") \
-    SB_NODE(chassis, "chassis") \
-    SB_NODE(ha_chassis_group, "ha_chassis_group") \
-    SB_NODE(encap, "encap") \
-    SB_NODE(address_set, "address_set") \
-    SB_NODE(port_group, "port_group") \
-    SB_NODE(multicast_group, "multicast_group") \
-    SB_NODE(datapath_binding, "datapath_binding") \
-    SB_NODE(logical_dp_group, "logical_dp_group") \
-    SB_NODE(port_binding, "port_binding") \
-    SB_NODE(mac_binding, "mac_binding") \
-    SB_NODE(logical_flow, "logical_flow") \
-    SB_NODE(dhcp_options, "dhcp_options") \
-    SB_NODE(dhcpv6_options, "dhcpv6_options") \
-    SB_NODE(dns, "dns") \
-    SB_NODE(load_balancer, "load_balancer") \
-    SB_NODE(fdb, "fdb") \
-    SB_NODE(meter, "meter") \
-    SB_NODE(static_mac_binding, "static_mac_binding") \
-    SB_NODE(chassis_template_var, "chassis_template_var") \
-    SB_NODE(acl_id, "acl_id") \
-    SB_NODE(advertised_route, "advertised_route") \
-    SB_NODE(learned_route, "learned_route")
+    SB_NODE(sb_global) \
+    SB_NODE(chassis) \
+    SB_NODE(ha_chassis_group) \
+    SB_NODE(encap) \
+    SB_NODE(address_set) \
+    SB_NODE(port_group) \
+    SB_NODE(multicast_group) \
+    SB_NODE(datapath_binding) \
+    SB_NODE(logical_dp_group) \
+    SB_NODE(port_binding) \
+    SB_NODE(mac_binding) \
+    SB_NODE(logical_flow) \
+    SB_NODE(dhcp_options) \
+    SB_NODE(dhcpv6_options) \
+    SB_NODE(dns) \
+    SB_NODE(load_balancer) \
+    SB_NODE(fdb) \
+    SB_NODE(meter) \
+    SB_NODE(static_mac_binding) \
+    SB_NODE(chassis_template_var) \
+    SB_NODE(acl_id) \
+    SB_NODE(advertised_route) \
+    SB_NODE(learned_route)
 
 enum sb_engine_node {
-#define SB_NODE(NAME, NAME_STR) SB_##NAME,
+#define SB_NODE(NAME) SB_##NAME,
     SB_NODES
 #undef SB_NODE
 };
 
-#define SB_NODE(NAME, NAME_STR) ENGINE_FUNC_SB(NAME);
+#define SB_NODE(NAME) ENGINE_FUNC_SB(NAME);
     SB_NODES
 #undef SB_NODE
 
 #define OVS_NODES \
-    OVS_NODE(open_vswitch, "open_vswitch") \
-    OVS_NODE(bridge, "bridge") \
-    OVS_NODE(port, "port") \
-    OVS_NODE(interface, "interface") \
-    OVS_NODE(qos, "qos") \
-    OVS_NODE(queue, "queue") \
-    OVS_NODE(flow_sample_collector_set, "flow_sample_collector_set")
+    OVS_NODE(open_vswitch) \
+    OVS_NODE(bridge) \
+    OVS_NODE(port) \
+    OVS_NODE(interface) \
+    OVS_NODE(qos) \
+    OVS_NODE(queue) \
+    OVS_NODE(flow_sample_collector_set)
 
 enum ovs_engine_node {
-#define OVS_NODE(NAME, NAME_STR) OVS_##NAME,
+#define OVS_NODE(NAME) OVS_##NAME,
     OVS_NODES
 #undef OVS_NODE
 };
 
-#define OVS_NODE(NAME, NAME_STR) ENGINE_FUNC_OVS(NAME);
+#define OVS_NODE(NAME) ENGINE_FUNC_OVS(NAME);
     OVS_NODES
 #undef OVS_NODE
 
@@ -5631,39 +5631,38 @@ main(int argc, char *argv[])
     stopwatch_create(VIF_PLUG_RUN_STOPWATCH_NAME, SW_MS);
 
     /* Define inc-proc-engine nodes. */
-    ENGINE_NODE(sb_ro, "sb_ro");
-    ENGINE_NODE(template_vars, "template_vars", CLEAR_TRACKED_DATA);
-    ENGINE_NODE(ct_zones, "ct_zones", CLEAR_TRACKED_DATA, IS_VALID);
-    ENGINE_NODE(ovs_interface_shadow, "ovs_interface_shadow",
-                CLEAR_TRACKED_DATA);
-    ENGINE_NODE(runtime_data, "runtime_data", CLEAR_TRACKED_DATA);
-    ENGINE_NODE(non_vif_data, "non_vif_data");
-    ENGINE_NODE(mff_ovn_geneve, "mff_ovn_geneve");
-    ENGINE_NODE(ofctrl_is_connected, "ofctrl_is_connected");
-    ENGINE_NODE(activated_ports, "activated_ports", CLEAR_TRACKED_DATA);
-    ENGINE_NODE(postponed_ports, "postponed_ports");
-    ENGINE_NODE(pflow_output, "physical_flow_output");
-    ENGINE_NODE(lflow_output, "logical_flow_output", CLEAR_TRACKED_DATA);
-    ENGINE_NODE(controller_output, "controller_output");
-    ENGINE_NODE(addr_sets, "addr_sets", CLEAR_TRACKED_DATA);
-    ENGINE_NODE(port_groups, "port_groups", CLEAR_TRACKED_DATA);
-    ENGINE_NODE(northd_options, "northd_options");
-    ENGINE_NODE(dhcp_options, "dhcp_options");
-    ENGINE_NODE(if_status_mgr, "if_status_mgr");
-    ENGINE_NODE(lb_data, "lb_data", CLEAR_TRACKED_DATA);
-    ENGINE_NODE(mac_cache, "mac_cache");
-    ENGINE_NODE(bfd_chassis, "bfd_chassis");
-    ENGINE_NODE(dns_cache, "dns_cache");
-    ENGINE_NODE(acl_id, "acl_id", IS_VALID);
-    ENGINE_NODE(route, "route");
-    ENGINE_NODE(route_table_notify, "route_table_notify");
-    ENGINE_NODE(route_exchange, "route_exchange");
+    ENGINE_NODE(sb_ro);
+    ENGINE_NODE(template_vars, CLEAR_TRACKED_DATA);
+    ENGINE_NODE(ct_zones, CLEAR_TRACKED_DATA, IS_VALID);
+    ENGINE_NODE(ovs_interface_shadow, CLEAR_TRACKED_DATA);
+    ENGINE_NODE(runtime_data, CLEAR_TRACKED_DATA);
+    ENGINE_NODE(non_vif_data);
+    ENGINE_NODE(mff_ovn_geneve);
+    ENGINE_NODE(ofctrl_is_connected);
+    ENGINE_NODE(activated_ports, CLEAR_TRACKED_DATA);
+    ENGINE_NODE(postponed_ports);
+    ENGINE_NODE(pflow_output);
+    ENGINE_NODE(lflow_output, CLEAR_TRACKED_DATA);
+    ENGINE_NODE(controller_output);
+    ENGINE_NODE(addr_sets, CLEAR_TRACKED_DATA);
+    ENGINE_NODE(port_groups, CLEAR_TRACKED_DATA);
+    ENGINE_NODE(northd_options);
+    ENGINE_NODE(dhcp_options);
+    ENGINE_NODE(if_status_mgr);
+    ENGINE_NODE(lb_data, CLEAR_TRACKED_DATA);
+    ENGINE_NODE(mac_cache);
+    ENGINE_NODE(bfd_chassis);
+    ENGINE_NODE(dns_cache);
+    ENGINE_NODE(acl_id, IS_VALID);
+    ENGINE_NODE(route);
+    ENGINE_NODE(route_table_notify);
+    ENGINE_NODE(route_exchange);
 
-#define SB_NODE(NAME, NAME_STR) ENGINE_NODE_SB(NAME, NAME_STR);
+#define SB_NODE(NAME) ENGINE_NODE_SB(NAME);
     SB_NODES
 #undef SB_NODE
 
-#define OVS_NODE(NAME, NAME_STR) ENGINE_NODE_OVS(NAME, NAME_STR);
+#define OVS_NODE(NAME) ENGINE_NODE_OVS(NAME);
     OVS_NODES
 #undef OVS_NODE
 
