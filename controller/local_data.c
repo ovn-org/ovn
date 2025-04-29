@@ -538,9 +538,17 @@ local_nonvif_data_handle_ovs_iface_changes(
 {
     const struct ovsrec_interface *iface_rec;
     OVSREC_INTERFACE_TABLE_FOR_EACH_TRACKED (iface_rec, iface_table) {
-        if (!strcmp(iface_rec->type, "geneve") ||
-            !strcmp(iface_rec->type, "patch") ||
-            !strcmp(iface_rec->type, "vxlan")) {
+        /* Check only patch ports or tunnels. */
+        if (strcmp(iface_rec->type, "geneve") &&
+            strcmp(iface_rec->type, "patch") &&
+            strcmp(iface_rec->type, "vxlan")) {
+            continue;
+        }
+        /* We are interested only in ofport changes for this handler. */
+        if (ovsrec_interface_is_new(iface_rec) ||
+            ovsrec_interface_is_deleted(iface_rec) ||
+            ovsrec_interface_is_updated(iface_rec,
+                                        OVSREC_INTERFACE_COL_OFPORT)) {
             return false;
         }
     }
