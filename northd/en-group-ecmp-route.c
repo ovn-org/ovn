@@ -460,7 +460,7 @@ handle_deleted_route(struct group_ecmp_route_data *data,
     return true;
 }
 
-bool
+enum engine_input_handler_result
 group_ecmp_route_learned_route_change_handler(struct engine_node *eng_node,
                                               void *_data)
 {
@@ -470,7 +470,7 @@ group_ecmp_route_learned_route_change_handler(struct engine_node *eng_node,
 
     if (!learned_route_data->tracked) {
         data->tracked = false;
-        return false;
+        return EN_UNHANDLED;
     }
 
     data->tracked = true;
@@ -484,7 +484,7 @@ group_ecmp_route_learned_route_change_handler(struct engine_node *eng_node,
         pr = hmapx_node->data;
         if (!handle_deleted_route(data, pr, &updated_routes)) {
             hmapx_destroy(&updated_routes);
-            return false;
+            return EN_UNHANDLED;
         }
     }
 
@@ -511,7 +511,7 @@ group_ecmp_route_learned_route_change_handler(struct engine_node *eng_node,
 
     if (!(hmapx_is_empty(&data->trk_data.crupdated_datapath_routes) &&
           hmapx_is_empty(&data->trk_data.deleted_datapath_routes))) {
-        engine_set_node_state(eng_node, EN_UPDATED);
+        return EN_HANDLED_UPDATED;
     }
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }

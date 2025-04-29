@@ -62,7 +62,7 @@ en_sync_from_sb_run(struct engine_node *node, void *data OVS_UNUSED)
     return EN_UNCHANGED;
 }
 
-bool
+enum engine_input_handler_result
 sync_from_sb_northd_handler(struct engine_node *node,
                             void *data OVS_UNUSED)
 {
@@ -74,9 +74,9 @@ sync_from_sb_northd_handler(struct engine_node *node,
          * cares about is the "up" column of LSP, which is considered
          * write-only to this node, so it is safe to ignore the change. (The
          * real change matters to this node is always from the SB DB.) */
-        return true;
+        return EN_HANDLED_UNCHANGED;
     }
-    return false;
+    return EN_UNHANDLED;
 }
 
 void

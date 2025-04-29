@@ -508,7 +508,7 @@ en_port_group_run(struct engine_node *node, void *data_)
     return EN_UPDATED;
 }
 
-bool
+enum engine_input_handler_result
 port_group_nb_port_group_handler(struct engine_node *node, void *data_)
 {
     struct port_group_input input_data = port_group_get_input_data(node);
@@ -525,7 +525,7 @@ port_group_nb_port_group_handler(struct engine_node *node, void *data_)
     NBREC_PORT_GROUP_TABLE_FOR_EACH_TRACKED (nb_pg, nb_pg_table) {
         if (nbrec_port_group_is_new(nb_pg) ||
                 nbrec_port_group_is_deleted(nb_pg)) {
-            return false;
+            return EN_UNHANDLED;
         }
     }
 
@@ -579,9 +579,8 @@ port_group_nb_port_group_handler(struct engine_node *node, void *data_)
     }
 
     data->ls_port_groups_sets_changed = !success;
-    engine_set_node_state(node, EN_UPDATED);
     hmapx_destroy(&updated_ls_port_groups);
-    return success;
+    return success ? EN_HANDLED_UPDATED : EN_UNHANDLED;
 }
 
 static void

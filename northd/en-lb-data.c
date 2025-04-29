@@ -132,7 +132,7 @@ en_lb_data_clear_tracked_data(void *data)
 
 
 /* Handler functions. */
-bool
+enum engine_input_handler_result
 lb_data_load_balancer_handler(struct engine_node *node, void *data)
 {
     const struct nbrec_load_balancer_table *nb_lb_table =
@@ -214,20 +214,19 @@ lb_data_load_balancer_handler(struct engine_node *node, void *data)
             if (routable != lb->routable) {
                 /* If routable is toggled trigger a full recompute.
                  */
-                return false;
+                return EN_UNHANDLED;
             }
             if (neigh_mode != lb->neigh_mode) {
                 /* If neigh_mode is updated trigger a full recompute. */
-                return false;
+                return EN_UNHANDLED;
             }
         }
     }
 
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }
 
-bool
+enum engine_input_handler_result
 lb_data_load_balancer_group_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lb_data *lb_data = (struct ed_type_lb_data *) data;
@@ -318,11 +317,10 @@ lb_data_load_balancer_group_handler(struct engine_node *node, void *data)
         }
     }
 
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }
 
-bool
+enum engine_input_handler_result
 lb_data_logical_switch_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lb_data *lb_data = (struct ed_type_lb_data *) data;
@@ -376,13 +374,10 @@ lb_data_logical_switch_handler(struct engine_node *node, void *data)
         }
     }
 
-    if (changed) {
-        engine_set_node_state(node, EN_UPDATED);
-    }
-    return true;
+    return changed ? EN_HANDLED_UPDATED : EN_HANDLED_UNCHANGED;
 }
 
-bool
+enum engine_input_handler_result
 lb_data_logical_router_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lb_data *lb_data = (struct ed_type_lb_data *) data;
@@ -436,10 +431,7 @@ lb_data_logical_router_handler(struct engine_node *node, void *data)
         }
     }
 
-    if (changed) {
-        engine_set_node_state(node, EN_UPDATED);
-    }
-    return true;
+    return changed ? EN_HANDLED_UPDATED : EN_HANDLED_UNCHANGED;
 }
 
 /* static functions. */

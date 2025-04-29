@@ -105,8 +105,10 @@ void en_ls_stateful_cleanup(void *data);
 void en_ls_stateful_clear_tracked_data(void *data);
 enum engine_node_state en_ls_stateful_run(struct engine_node *, void *data);
 
-bool ls_stateful_northd_handler(struct engine_node *, void *data);
-bool ls_stateful_port_group_handler(struct engine_node *, void *data);
+enum engine_input_handler_result
+ls_stateful_northd_handler(struct engine_node *, void *data);
+enum engine_input_handler_result
+ls_stateful_port_group_handler(struct engine_node *, void *data);
 
 const struct ls_stateful_record *ls_stateful_table_find(
     const struct ls_stateful_table *, const struct nbrec_logical_switch *);

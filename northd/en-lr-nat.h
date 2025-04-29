@@ -120,8 +120,8 @@ void en_lr_nat_cleanup(void *data);
 void en_lr_nat_clear_tracked_data(void *data);
 enum engine_node_state en_lr_nat_run(struct engine_node *, void *data);
 
-bool lr_nat_logical_router_handler(struct engine_node *, void *data);
-bool lr_nat_northd_handler(struct engine_node *, void *data);
+enum engine_input_handler_result lr_nat_northd_handler(struct engine_node *,
+                                                       void *data);
 
 static inline bool
 nat_entry_is_v6(const struct ovn_nat *nat_entry)

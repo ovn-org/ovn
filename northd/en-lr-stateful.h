@@ -125,9 +125,12 @@ void en_lr_stateful_cleanup(void *data);
 void en_lr_stateful_clear_tracked_data(void *data);
 enum engine_node_state en_lr_stateful_run(struct engine_node *, void *data);
 
-bool lr_stateful_northd_handler(struct engine_node *, void *data);
-bool lr_stateful_lr_nat_handler(struct engine_node *, void *data);
-bool lr_stateful_lb_data_handler(struct engine_node *, void *data);
+enum engine_input_handler_result
+lr_stateful_northd_handler(struct engine_node *, void *data);
+enum engine_input_handler_result
+lr_stateful_lr_nat_handler(struct engine_node *, void *data);
+enum engine_input_handler_result
+lr_stateful_lb_data_handler(struct engine_node *, void *data);
 
 const struct lr_stateful_record *lr_stateful_table_find_by_index(
     const struct lr_stateful_table *, size_t od_index);

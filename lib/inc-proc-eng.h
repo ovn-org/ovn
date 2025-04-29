@@ -170,22 +170,6 @@ struct engine_arg {
 
 struct engine_node;
 
-struct engine_node_input {
-    /* The input node. */
-    struct engine_node *node;
-
-    /* Change handler for changes of the input node. The changes may need to be
-     * evaluated against all the other inputs. Returns:
-     *  - true: if change can be handled
-     *  - false: if change cannot be handled (indicating full recompute needed)
-     * A change handler can also call engine_get_context() but it must make
-     * sure the txn pointers returned by it are non-NULL. In case the change
-     * handler needs to use the txn pointers returned by engine_get_context(),
-     * and the pointers are NULL, the change handler MUST return false.
-     */
-    bool (*change_handler)(struct engine_node *node, void *data);
-};
-
 enum engine_node_state {
     EN_STALE,     /* Data in the node is not up to date with the DB. */
     EN_UPDATED,   /* Data in the node is valid but was updated during the
@@ -198,6 +182,33 @@ enum engine_node_state {
                    * this node.
                    */
     EN_STATE_MAX,
+};
+
+enum engine_input_handler_result {
+    EN_UNHANDLED = -1,
+    EN_HANDLED_UPDATED = EN_UPDATED,
+    EN_HANDLED_UNCHANGED = EN_UNCHANGED,
+};
+
+struct engine_node_input {
+    /* The input node. */
+    struct engine_node *node;
+
+    /* Change handler for changes of the input node. The changes may need to be
+     * evaluated against all the other inputs. Returns:
+     *  - EN_UNHANDLED: the change cannot be handled (indicating full
+     *    recompute needed).
+     *  - EN_HANDLED_UPDATED: the change can be handled, and the node's
+     *    data was updated as a result.
+     *  - EN_HANDLED_UNCHANGED: the change can be handled, and the node's
+     *    data was left unchanged.
+     * A change handler can also call engine_get_context() but it must make
+     * sure the txn pointers returned by it are non-NULL. In case the change
+     * handler needs to use the txn pointers returned by engine_get_context(),
+     * and the pointers are NULL, the change handler MUST return EN_UNHANDLED.
+     */
+    enum engine_input_handler_result (*change_handler)
+        (struct engine_node *node, void *data);
 };
 
 struct engine_stats {
@@ -295,7 +306,8 @@ void *engine_get_input_data(const char *input_name, struct engine_node *);
  * be able to process the change incrementally, and will fall back to call
  * the run method to recompute. */
 void engine_add_input(struct engine_node *node, struct engine_node *input,
-                      bool (*change_handler)(struct engine_node *, void *));
+                      enum engine_input_handler_result (*change_handler)
+                          (struct engine_node *, void *));
 
 /* Force the engine to recompute everything. It is used
  * in circumstances when we are not sure there is change or not, or
@@ -385,10 +397,10 @@ struct ovsdb_idl_index * engine_ovsdb_node_get_index(struct engine_node *,
                                                      const char *name);
 
 /* Any engine node can use this function for no-op handlers. */
-static inline bool
+static inline enum engine_input_handler_result
 engine_noop_handler(struct engine_node *node OVS_UNUSED, void *data OVS_UNUSED)
 {
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
 /* Adds an OVSDB IDL index to the node. This should be called only after

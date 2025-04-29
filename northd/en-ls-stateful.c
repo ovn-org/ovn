@@ -130,17 +130,17 @@ en_ls_stateful_run(struct engine_node *node, void *data_)
 }
 
 /* Handler functions. */
-bool
+enum engine_input_handler_result
 ls_stateful_northd_handler(struct engine_node *node, void *data_)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
     if (!northd_has_tracked_data(&northd_data->trk_data)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     if (!northd_has_ls_lbs_in_tracked_data(&northd_data->trk_data) &&
         !northd_has_ls_acls_in_tracked_data(&northd_data->trk_data)) {
-        return true;
+        return EN_HANDLED_UNCHANGED;
     }
 
     struct northd_tracked_data *nd_changes = &northd_data->trk_data;
@@ -170,23 +170,23 @@ ls_stateful_northd_handler(struct engine_node *node, void *data_)
         hmapx_add(&data->trk_data.crupdated, ls_stateful_rec);
     }
 
-    if (ls_stateful_has_tracked_data(&data->trk_data)) {
-        engine_set_node_state(node, EN_UPDATED);
-    }
-
     hmapx_destroy(&changed_stateful_od);
 
-    return true;
+    if (ls_stateful_has_tracked_data(&data->trk_data)) {
+        return EN_HANDLED_UPDATED;
+    }
+
+    return EN_HANDLED_UNCHANGED;
 }
 
-bool
+enum engine_input_handler_result
 ls_stateful_port_group_handler(struct engine_node *node, void *data_)
 {
     struct port_group_data *pg_data =
         engine_get_input_data("port_group", node);
 
     if (pg_data->ls_port_groups_sets_changed) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     /* port_group engine node doesn't provide the tracking data yet.
@@ -230,9 +230,9 @@ ls_stateful_port_group_handler(struct engine_node *node, void *data_)
     }
 
     if (ls_stateful_has_tracked_data(&data->trk_data)) {
-        engine_set_node_state(node, EN_UPDATED);
+        return EN_HANDLED_UPDATED;
     }
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
 /* static functions. */

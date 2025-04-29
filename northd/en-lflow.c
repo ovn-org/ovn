@@ -126,7 +126,7 @@ en_lflow_run(struct engine_node *node, void *data)
     return EN_UPDATED;
 }
 
-bool
+enum engine_input_handler_result
 lflow_northd_handler(struct engine_node *node,
                      void *data)
 {
@@ -145,20 +145,19 @@ lflow_northd_handler(struct engine_node *node,
                                           &northd_data->trk_data.trk_lsps,
                                           &lflow_input,
                                           lflow_data->lflow_table)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     if (!lflow_handle_northd_lb_changes(
             eng_ctx->ovnsb_idl_txn, &northd_data->trk_data.trk_lbs,
             &lflow_input, lflow_data->lflow_table)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }
 
-bool
+enum engine_input_handler_result
 lflow_port_group_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     struct port_group_data *pg_data =
@@ -168,21 +167,20 @@ lflow_port_group_handler(struct engine_node *node, void *data OVS_UNUSED)
      * need to reprocess lflows.  Otherwise, there might be a need to
      * add/delete port-group ACLs to/from switches. */
     if (pg_data->ls_port_groups_sets_changed) {
-        return false;
+        return EN_UNHANDLED;
     }
 
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }
 
-bool
+enum engine_input_handler_result
 lflow_lr_stateful_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lr_stateful *lr_sful_data =
         engine_get_input_data("lr_stateful", node);
 
     if (!lr_stateful_has_tracked_data(&lr_sful_data->trk_data)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     const struct engine_context *eng_ctx = engine_get_context();
@@ -194,21 +192,20 @@ lflow_lr_stateful_handler(struct engine_node *node, void *data)
                                           &lr_sful_data->trk_data,
                                           &lflow_input,
                                           lflow_data->lflow_table)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }
 
-bool
+enum engine_input_handler_result
 lflow_ls_stateful_handler(struct engine_node *node, void *data)
 {
     struct ed_type_ls_stateful *ls_sful_data =
         engine_get_input_data("ls_stateful", node);
 
     if (!ls_stateful_has_tracked_data(&ls_sful_data->trk_data)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     const struct engine_context *eng_ctx = engine_get_context();
@@ -220,14 +217,13 @@ lflow_ls_stateful_handler(struct engine_node *node, void *data)
                                           &ls_sful_data->trk_data,
                                           &lflow_input,
                                           lflow_data->lflow_table)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }
 
-bool
+enum engine_input_handler_result
 lflow_multicast_igmp_handler(struct engine_node *node, void *data)
 {
     struct multicast_igmp_data *mcast_igmp_data =
@@ -246,7 +242,7 @@ lflow_multicast_igmp_handler(struct engine_node *node, void *data)
                                 lflow_input.ovn_internal_version_changed,
                                 lflow_input.sbrec_logical_flow_table,
                                 lflow_input.sbrec_logical_dp_group_table)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     build_igmp_lflows(&mcast_igmp_data->igmp_groups,
@@ -262,14 +258,13 @@ lflow_multicast_igmp_handler(struct engine_node *node, void *data)
                                lflow_input.ovn_internal_version_changed,
                                lflow_input.sbrec_logical_flow_table,
                                lflow_input.sbrec_logical_dp_group_table)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }
 
-bool
+enum engine_input_handler_result
 lflow_group_ecmp_route_change_handler(struct engine_node *node,
                                       void *data OVS_UNUSED)
 {
@@ -278,7 +273,7 @@ lflow_group_ecmp_route_change_handler(struct engine_node *node,
 
     /* If we do not have tracked data we need to recompute. */
     if (!group_ecmp_route_data->tracked) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     const struct engine_context *eng_ctx = engine_get_context();
@@ -305,7 +300,7 @@ lflow_group_ecmp_route_change_handler(struct engine_node *node,
             lflow_input.sbrec_logical_flow_table,
             lflow_input.sbrec_logical_dp_group_table);
         if (!handled) {
-            return false;
+            return EN_UNHANDLED;
         }
     }
 
@@ -327,12 +322,11 @@ lflow_group_ecmp_route_change_handler(struct engine_node *node,
             lflow_input.sbrec_logical_flow_table,
             lflow_input.sbrec_logical_dp_group_table);
         if (!handled) {
-            return false;
+            return EN_UNHANDLED;
         }
     }
 
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }
 
 void *en_lflow_init(struct engine_node *node OVS_UNUSED,

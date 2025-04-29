@@ -58,14 +58,18 @@ enum engine_node_state en_global_config_run(struct engine_node *, void *data);
 void en_global_config_cleanup(void *data);
 void en_global_config_clear_tracked_data(void *data);
 
-bool global_config_nb_global_handler(struct engine_node *, void *data);
-bool global_config_sb_global_handler(struct engine_node *, void *data);
-bool global_config_sb_chassis_handler(struct engine_node *, void *data);
-bool global_config_nb_logical_switch_handler(struct engine_node *node,
-                                             void *data);
+enum engine_input_handler_result
+global_config_nb_global_handler(struct engine_node *, void *data);
+enum engine_input_handler_result
+global_config_sb_global_handler(struct engine_node *, void *data);
+enum engine_input_handler_result
+global_config_sb_chassis_handler(struct engine_node *, void *data);
+enum engine_input_handler_result
+global_config_nb_logical_switch_handler(struct engine_node *node, void *data);
 
 /* generic global config handler for any engine node which has global_config
  * has an input node . */
-bool node_global_config_handler(struct engine_node *, void *data);
+enum engine_input_handler_result
+node_global_config_handler(struct engine_node *, void *data);
 
 #endif /* EN_GLOBAL_CONFIG_H */

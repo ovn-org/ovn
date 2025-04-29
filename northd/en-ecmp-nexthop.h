@@ -24,7 +24,8 @@
 
 #include "lib/inc-proc-eng.h"
 
-bool ecmp_nexthop_mac_binding_handler(struct engine_node *, void *data);
+enum engine_input_handler_result
+ecmp_nexthop_mac_binding_handler(struct engine_node *, void *data);
 enum engine_node_state en_ecmp_nexthop_run(struct engine_node *, void *data);
 void *en_ecmp_nexthop_init(struct engine_node *, struct engine_arg *);
 void en_ecmp_nexthop_cleanup(void *data);

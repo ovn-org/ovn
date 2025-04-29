@@ -255,7 +255,8 @@ engine_get_input_data(const char *input_name, struct engine_node *node)
 
 void
 engine_add_input(struct engine_node *node, struct engine_node *input,
-                 bool (*change_handler)(struct engine_node *, void *))
+                 enum engine_input_handler_result (*change_handler)
+                     (struct engine_node *, void *))
 {
     ovs_assert(node->n_inputs < ENGINE_MAX_INPUT);
     node->inputs[node->n_inputs].node = input;
@@ -437,7 +438,8 @@ engine_compute(struct engine_node *node, bool recompute_allowed)
              * the node handler.
              */
             long long int now = time_msec();
-            bool handled = node->inputs[i].change_handler(node, node->data);
+            enum engine_input_handler_result handled;
+            handled = node->inputs[i].change_handler(node, node->data);
             long long int delta_time = time_msec() - now;
             if (delta_time > engine_compute_log_timeout_msec) {
                 static struct vlog_rate_limit rl =
@@ -449,11 +451,17 @@ engine_compute(struct engine_node *node, bool recompute_allowed)
                 VLOG_DBG("node: %s, handler for input %s took %lldms",
                          node->name, node->inputs[i].node->name, delta_time);
             }
-            if (!handled) {
+            if (handled == EN_UNHANDLED) {
                 engine_recompute(node, recompute_allowed,
                                  "failed handler for input %s",
                                  node->inputs[i].node->name);
                 return (node->state != EN_CANCELED);
+            } else if (!engine_node_changed(node)) {
+                /* We only want to update the state if the node is unchanged.
+                 * Otherwise, handlers might change the state from EN_UPDATED
+                 * back to EN_UNCHANGED.
+                 */
+                engine_set_node_state(node, (enum engine_node_state) handled);
             }
         }
     }

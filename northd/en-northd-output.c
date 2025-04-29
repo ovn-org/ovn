@@ -43,57 +43,51 @@ en_northd_output_cleanup(void *data OVS_UNUSED)
 
 }
 
-bool
-northd_output_sync_to_sb_handler(struct engine_node *node,
+enum engine_input_handler_result
+northd_output_sync_to_sb_handler(struct engine_node *node OVS_UNUSED,
                                  void *data OVS_UNUSED)
 {
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }
 
-bool
-northd_output_lflow_handler(struct engine_node *node, void *data OVS_UNUSED)
+enum engine_input_handler_result
+northd_output_lflow_handler(struct engine_node *node OVS_UNUSED,
+                            void *data OVS_UNUSED)
 {
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }
 
-bool
-northd_output_mac_binding_aging_handler(struct engine_node *node,
+enum engine_input_handler_result
+northd_output_mac_binding_aging_handler(struct engine_node *node OVS_UNUSED,
                                         void *data OVS_UNUSED)
 {
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }
 
-bool
-northd_output_fdb_aging_handler(struct engine_node *node,
+enum engine_input_handler_result
+northd_output_fdb_aging_handler(struct engine_node *node OVS_UNUSED,
                                 void *data OVS_UNUSED)
 {
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }
 
-bool
-northd_output_ecmp_nexthop_handler(struct engine_node *node,
+enum engine_input_handler_result
+northd_output_ecmp_nexthop_handler(struct engine_node *node OVS_UNUSED,
                                    void *data OVS_UNUSED)
 {
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }
 
-bool
-northd_output_acl_id_handler(struct engine_node *node,
+enum engine_input_handler_result
+northd_output_acl_id_handler(struct engine_node *node OVS_UNUSED,
                              void *data OVS_UNUSED)
 {
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }
 
-bool
-northd_output_advertised_route_sync_handler(struct engine_node *node,
-                                            void *data OVS_UNUSED)
+enum engine_input_handler_result
+northd_output_advertised_route_sync_handler(
+    struct engine_node *node OVS_UNUSED, void *data OVS_UNUSED)
 {
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }

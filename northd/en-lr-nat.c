@@ -117,16 +117,16 @@ en_lr_nat_run(struct engine_node *node, void *data_)
 }
 
 /* Handler functions. */
-bool
+enum engine_input_handler_result
 lr_nat_northd_handler(struct engine_node *node, void *data_)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
     if (!northd_has_tracked_data(&northd_data->trk_data)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     if (!northd_has_lr_nats_in_tracked_data(&northd_data->trk_data)) {
-        return true;
+        return EN_HANDLED_UNCHANGED;
     }
 
     struct ed_type_lr_nat_data *data = data_;
@@ -145,10 +145,10 @@ lr_nat_northd_handler(struct engine_node *node, void *data_)
     }
 
     if (lr_nat_has_tracked_data(&data->trk_data)) {
-        engine_set_node_state(node, EN_UPDATED);
+        return EN_HANDLED_UPDATED;
     }
 
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
 /* static functions. */

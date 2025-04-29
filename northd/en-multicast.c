@@ -145,12 +145,12 @@ en_multicast_igmp_run(struct engine_node *node, void *data_)
     return EN_UPDATED;
 }
 
-bool
+enum engine_input_handler_result
 multicast_igmp_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
     if (!northd_has_tracked_data(&northd_data->trk_data)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     /* This node uses the below data from the en_northd engine node.
@@ -171,7 +171,7 @@ multicast_igmp_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
      *      need to revisit this handler.
      *
      * */
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
 void

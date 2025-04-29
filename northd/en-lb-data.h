@@ -114,9 +114,13 @@ enum engine_node_state en_lb_data_run(struct engine_node *, void *data);
 void en_lb_data_cleanup(void *data);
 void en_lb_data_clear_tracked_data(void *data);
 
-bool lb_data_load_balancer_handler(struct engine_node *, void *data);
-bool lb_data_load_balancer_group_handler(struct engine_node *, void *data);
-bool lb_data_logical_switch_handler(struct engine_node *, void *data);
-bool lb_data_logical_router_handler(struct engine_node *, void *data);
+enum engine_input_handler_result
+lb_data_load_balancer_handler(struct engine_node *, void *data);
+enum engine_input_handler_result
+lb_data_load_balancer_group_handler(struct engine_node *, void *data);
+enum engine_input_handler_result
+lb_data_logical_switch_handler(struct engine_node *, void *data);
+enum engine_input_handler_result
+lb_data_logical_router_handler(struct engine_node *, void *data);
 
 #endif /* end of EN_NORTHD_LB_DATA_H */

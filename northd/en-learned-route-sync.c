@@ -35,13 +35,13 @@ routes_table_sync(
     const struct ovn_datapaths *lr_datapaths,
     struct hmap *parsed_routes_out);
 
-bool
+enum engine_input_handler_result
 learned_route_sync_northd_change_handler(struct engine_node *node,
                                          void *data_ OVS_UNUSED)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
     if (!northd_has_tracked_data(&northd_data->trk_data)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     /* This node uses the below data from the en_northd engine node.
@@ -56,7 +56,7 @@ learned_route_sync_northd_change_handler(struct engine_node *node,
      *      logical router ports, we need to revisit this handler.
      */
 
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
 static void
@@ -245,7 +245,7 @@ find_learned_route(const struct sbrec_learned_route *learned_route,
                                          &learned_route->header_, routes);
 }
 
-bool
+enum engine_input_handler_result
 learned_route_sync_sb_learned_route_change_handler(struct engine_node *node,
                                                    void *data_)
 {
@@ -293,12 +293,12 @@ learned_route_sync_sb_learned_route_change_handler(struct engine_node *node,
 
     if (!hmapx_is_empty(&data->trk_data.trk_created_parsed_route) ||
         !hmapx_is_empty(&data->trk_data.trk_deleted_parsed_route)) {
-        engine_set_node_state(node, EN_UPDATED);
+        return EN_HANDLED_UPDATED;
     }
 
-    return true;
+    return EN_HANDLED_UNCHANGED;
 
 fail:
     routes_sync_clear_tracked(data);
-    return false;
+    return EN_UNHANDLED;
 }

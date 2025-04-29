@@ -129,12 +129,12 @@ en_lr_stateful_run(struct engine_node *node, void *data_)
     return EN_UPDATED;
 }
 
-bool
+enum engine_input_handler_result
 lr_stateful_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
     if (!northd_has_tracked_data(&northd_data->trk_data)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     /* This node uses the below data from the en_northd engine node.
@@ -161,15 +161,15 @@ lr_stateful_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
      * and (3) if any.
      *
      * */
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
-bool
+enum engine_input_handler_result
 lr_stateful_lb_data_handler(struct engine_node *node, void *data_)
 {
     struct ed_type_lb_data *lb_data = engine_get_input_data("lb_data", node);
     if (!lb_data->tracked) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     struct lr_stateful_input input_data = lr_stateful_get_input_data(node);
@@ -319,20 +319,20 @@ lr_stateful_lb_data_handler(struct engine_node *node, void *data_)
             lr_stateful_rec->has_lb_vip = od_has_lb_vip(od);
         }
 
-        engine_set_node_state(node, EN_UPDATED);
+        return EN_HANDLED_UPDATED;
     }
 
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
-bool
+enum engine_input_handler_result
 lr_stateful_lr_nat_handler(struct engine_node *node, void *data_)
 {
     struct ed_type_lr_nat_data *lr_nat_data =
         engine_get_input_data("lr_nat", node);
 
     if (!lr_nat_has_tracked_data(&lr_nat_data->trk_data)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     struct lr_stateful_input input_data = lr_stateful_get_input_data(node);
@@ -358,10 +358,10 @@ lr_stateful_lr_nat_handler(struct engine_node *node, void *data_)
     }
 
     if (lr_stateful_has_tracked_data(&data->trk_data)) {
-        engine_set_node_state(node, EN_UPDATED);
+        return EN_HANDLED_UPDATED;
     }
 
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
 const struct lr_stateful_record *

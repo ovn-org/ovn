@@ -115,7 +115,7 @@ en_sync_to_sb_addr_set_cleanup(void *data OVS_UNUSED)
 
 }
 
-bool
+enum engine_input_handler_result
 sync_to_sb_addr_set_nb_address_set_handler(struct engine_node *node,
                                            void *data OVS_UNUSED)
 {
@@ -129,7 +129,7 @@ sync_to_sb_addr_set_nb_address_set_handler(struct engine_node *node,
                                               nb_address_set_table) {
         if (nbrec_address_set_is_new(nb_addr_set) ||
                 nbrec_address_set_is_deleted(nb_addr_set)) {
-            return false;
+            return EN_UNHANDLED;
         }
     }
 
@@ -144,7 +144,7 @@ sync_to_sb_addr_set_nb_address_set_handler(struct engine_node *node,
             sb_address_set_lookup_by_name(sbrec_address_set_by_name,
                                           nb_addr_set->name);
         if (!sb_addr_set) {
-            return false;
+            return EN_UNHANDLED;
         }
         struct sorted_array addrs =
             sorted_array_from_dbrec(nb_addr_set, addresses);
@@ -152,10 +152,10 @@ sync_to_sb_addr_set_nb_address_set_handler(struct engine_node *node,
         sorted_array_destroy(&addrs);
     }
 
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
-bool
+enum engine_input_handler_result
 sync_to_sb_addr_set_nb_port_group_handler(struct engine_node *node,
                                           void *data OVS_UNUSED)
 {
@@ -165,7 +165,7 @@ sync_to_sb_addr_set_nb_port_group_handler(struct engine_node *node,
     NBREC_PORT_GROUP_TABLE_FOR_EACH_TRACKED (nb_pg, nb_port_group_table) {
         if (nbrec_port_group_is_new(nb_pg) ||
                 nbrec_port_group_is_deleted(nb_pg)) {
-            return false;
+            return EN_UNHANDLED;
         }
     }
 
@@ -180,7 +180,7 @@ sync_to_sb_addr_set_nb_port_group_handler(struct engine_node *node,
                                           ipv4_addrs_name);
         if (!sb_addr_set_v4) {
             free(ipv4_addrs_name);
-            return false;
+            return EN_UNHANDLED;
         }
         char *ipv6_addrs_name = xasprintf("%s_ip6", nb_pg->name);
         const struct sbrec_address_set *sb_addr_set_v6 =
@@ -189,7 +189,7 @@ sync_to_sb_addr_set_nb_port_group_handler(struct engine_node *node,
         if (!sb_addr_set_v6) {
             free(ipv4_addrs_name);
             free(ipv6_addrs_name);
-            return false;
+            return EN_UNHANDLED;
         }
 
         struct svec ipv4_addrs = SVEC_EMPTY_INITIALIZER;
@@ -212,7 +212,7 @@ sync_to_sb_addr_set_nb_port_group_handler(struct engine_node *node,
         free(ipv6_addrs_name);
     }
 
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
 /* sync_to_sb_lb engine node functions.
@@ -310,18 +310,18 @@ en_sync_to_sb_lb_cleanup(void *data_)
     sb_lb_table_destroy(&data->sb_lbs);
 }
 
-bool
+enum engine_input_handler_result
 sync_to_sb_lb_northd_handler(struct engine_node *node, void *data_)
 {
     struct northd_data *nd = engine_get_input_data("northd", node);
 
     if (!northd_has_tracked_data(&nd->trk_data)) {
         /* Return false if no tracking data. */
-        return false;
+        return EN_UNHANDLED;
     }
 
     if (!northd_has_lbs_in_tracked_data(&nd->trk_data)) {
-        return true;
+        return EN_HANDLED_UNCHANGED;
     }
 
     const struct engine_context *eng_ctx = engine_get_context();
@@ -337,14 +337,13 @@ sync_to_sb_lb_northd_handler(struct engine_node *node, void *data_)
                           sb_dpgrp_table, &nd->trk_data.trk_lbs,
                           &nd->ls_datapaths, &nd->lr_datapaths,
                           &global_config->features)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }
 
-bool
+enum engine_input_handler_result
 sync_to_sb_lb_sb_load_balancer(struct engine_node *node, void *data_)
 {
     const struct sbrec_load_balancer_table *sb_lb_table =
@@ -363,10 +362,10 @@ sync_to_sb_lb_sb_load_balancer(struct engine_node *node, void *data_)
         }
 
         if (!sb_lb_table_find(&data->sb_lbs.entries, &sb_lb->header_.uuid)) {
-            return false;
+            return EN_UNHANDLED;
         }
     }
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
 /* sync_to_sb_pb engine node functions.
@@ -404,19 +403,19 @@ en_sync_to_sb_pb_cleanup(void *data OVS_UNUSED)
 
 }
 
-bool
+enum engine_input_handler_result
 sync_to_sb_pb_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct engine_context *eng_ctx = engine_get_context();
     if (!eng_ctx->ovnsb_idl_txn) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     struct northd_data *nd = engine_get_input_data("northd", node);
     if (!northd_has_tracked_data(&nd->trk_data) ||
             northd_has_lbs_in_tracked_data(&nd->trk_data)) {
         /* Return false if no tracking data or if lbs changed. */
-        return false;
+        return EN_UNHANDLED;
     }
 
     struct ed_type_lr_stateful *lr_stateful_data =
@@ -424,11 +423,10 @@ sync_to_sb_pb_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
 
     if (!sync_pbs_for_northd_changed_ovn_ports(&nd->trk_data.trk_lsps,
                                                &lr_stateful_data->table)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
-    engine_set_node_state(node, EN_UPDATED);
-    return true;
+    return EN_HANDLED_UPDATED;
 }
 
 /* static functions. */

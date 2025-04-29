@@ -138,7 +138,7 @@ en_northd_run(struct engine_node *node, void *data)
     return EN_UPDATED;
 }
 
-bool
+enum engine_input_handler_result
 northd_nb_logical_switch_handler(struct engine_node *node,
                                  void *data)
 {
@@ -150,17 +150,17 @@ northd_nb_logical_switch_handler(struct engine_node *node,
     northd_get_input_data(node, &input_data);
 
     if (!northd_handle_ls_changes(eng_ctx->ovnsb_idl_txn, &input_data, nd)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     if (northd_has_tracked_data(&nd->trk_data)) {
-        engine_set_node_state(node, EN_UPDATED);
+        return EN_HANDLED_UPDATED;
     }
 
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
-bool
+enum engine_input_handler_result
 northd_sb_port_binding_handler(struct engine_node *node,
                                void *data)
 {
@@ -172,13 +172,13 @@ northd_sb_port_binding_handler(struct engine_node *node,
 
     if (!northd_handle_sb_port_binding_changes(
         input_data.sbrec_port_binding_table, &nd->ls_ports, &nd->lr_ports)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
-bool
+enum engine_input_handler_result
 northd_nb_logical_router_handler(struct engine_node *node,
                                  void *data)
 {
@@ -188,23 +188,23 @@ northd_nb_logical_router_handler(struct engine_node *node,
     northd_get_input_data(node, &input_data);
 
     if (!northd_handle_lr_changes(&input_data, nd)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     if (northd_has_lr_nats_in_tracked_data(&nd->trk_data)) {
-        engine_set_node_state(node, EN_UPDATED);
+        return EN_HANDLED_UPDATED;
     }
 
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
-bool
+enum engine_input_handler_result
 northd_lb_data_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lb_data *lb_data = engine_get_input_data("lb_data", node);
 
     if (!lb_data->tracked) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     struct northd_data *nd = data;
@@ -214,17 +214,17 @@ northd_lb_data_handler(struct engine_node *node, void *data)
                                        &nd->lb_datapaths_map,
                                        &nd->lb_group_datapaths_map,
                                        &nd->trk_data)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     if (northd_has_lbs_in_tracked_data(&nd->trk_data)) {
-        engine_set_node_state(node, EN_UPDATED);
+        return EN_HANDLED_UPDATED;
     }
 
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
-bool
+enum engine_input_handler_result
 northd_global_config_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     struct ed_type_global_config *global_config =
@@ -232,19 +232,19 @@ northd_global_config_handler(struct engine_node *node, void *data OVS_UNUSED)
 
     if (!global_config->tracked
         || global_config->tracked_data.nb_options_changed) {
-        return false;
+        return EN_UNHANDLED;
     }
 
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
-bool
+enum engine_input_handler_result
 route_policies_northd_change_handler(struct engine_node *node,
                                      void *data OVS_UNUSED)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
     if (!northd_has_tracked_data(&northd_data->trk_data)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     /* This node uses the below data from the en_northd engine node.
@@ -264,7 +264,7 @@ route_policies_northd_change_handler(struct engine_node *node,
      *      Note: When we add I-P to handle route policies changes, we need
      *      to revisit this handler.
      */
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
 enum engine_node_state
@@ -289,13 +289,13 @@ en_route_policies_run(struct engine_node *node, void *data)
     return EN_UPDATED;
 }
 
-bool
+enum engine_input_handler_result
 routes_northd_change_handler(struct engine_node *node,
                                     void *data OVS_UNUSED)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
     if (!northd_has_tracked_data(&northd_data->trk_data)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     /* This node uses the below data from the en_northd engine node.
@@ -315,7 +315,7 @@ routes_northd_change_handler(struct engine_node *node,
      *      Note: When we add I-P to handle static routes changes, we need
      *      to revisit this handler.
      */
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
 enum engine_node_state
@@ -363,12 +363,12 @@ en_bfd_run(struct engine_node *node, void *data)
     return EN_UPDATED;
 }
 
-bool
+enum engine_input_handler_result
 bfd_sync_northd_change_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
     if (!northd_has_tracked_data(&northd_data->trk_data)) {
-        return false;
+        return EN_UNHANDLED;
     }
 
     /* This node uses the below data from the en_northd engine node.
@@ -380,7 +380,7 @@ bfd_sync_northd_change_handler(struct engine_node *node, void *data OVS_UNUSED)
      *      Note: When we add I-P to the created/deleted logical router ports,
      *      we need to revisit this handler.
      */
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
 enum engine_node_state
@@ -470,7 +470,7 @@ en_northd_clear_tracked_data(void *data_)
     destroy_northd_data_tracked_changes(data);
 }
 
-bool
+enum engine_input_handler_result
 northd_sb_fdb_change_handler(struct engine_node *node, void *data)
 {
     struct northd_data *nd = data;
@@ -503,7 +503,7 @@ northd_sb_fdb_change_handler(struct engine_node *node, void *data)
         sbrec_fdb_delete(fdb_prev_del);
     }
 
-    return true;
+    return EN_HANDLED_UNCHANGED;
 }
 
 void

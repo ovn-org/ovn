@@ -112,6 +112,7 @@ void en_port_group_cleanup(void *data);
 void en_port_group_clear_tracked_data(void *data);
 enum engine_node_state en_port_group_run(struct engine_node *, void *data);
 
-bool port_group_nb_port_group_handler(struct engine_node *, void *data);
+enum engine_input_handler_result
+port_group_nb_port_group_handler(struct engine_node *, void *data);
 
 #endif /* EN_PORT_GROUP_H */
