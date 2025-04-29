@@ -118,7 +118,7 @@ northd_get_input_data(struct engine_node *node,
     input_data->features = &global_config->features;
 }
 
-void
+enum engine_node_state
 en_northd_run(struct engine_node *node, void *data)
 {
     const struct engine_context *eng_ctx = engine_get_context();
@@ -135,7 +135,7 @@ en_northd_run(struct engine_node *node, void *data)
     ovnnb_db_run(&input_data, data, eng_ctx->ovnnb_idl_txn,
                  eng_ctx->ovnsb_idl_txn);
     stopwatch_stop(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 bool
@@ -267,7 +267,7 @@ route_policies_northd_change_handler(struct engine_node *node,
     return true;
 }
 
-void
+enum engine_node_state
 en_route_policies_run(struct engine_node *node, void *data)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
@@ -286,7 +286,7 @@ en_route_policies_run(struct engine_node *node, void *data)
                              &route_policies_data->chain_ids);
     }
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 bool
@@ -318,7 +318,7 @@ routes_northd_change_handler(struct engine_node *node,
     return true;
 }
 
-void
+enum engine_node_state
 en_routes_run(struct engine_node *node, void *data)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
@@ -344,10 +344,10 @@ en_routes_run(struct engine_node *node, void *data)
                             &routes_data->bfd_active_connections);
     }
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
-void
+enum engine_node_state
 en_bfd_run(struct engine_node *node, void *data)
 {
     struct bfd_data *bfd_data = data;
@@ -360,7 +360,7 @@ en_bfd_run(struct engine_node *node, void *data)
     bfd_init(data);
     build_bfd_map(nbrec_bfd_table, sbrec_bfd_table,
                   &bfd_data->bfd_connections);
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 bool
@@ -383,7 +383,7 @@ bfd_sync_northd_change_handler(struct engine_node *node, void *data OVS_UNUSED)
     return true;
 }
 
-void
+enum engine_node_state
 en_bfd_sync_run(struct engine_node *node, void *data)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
@@ -404,7 +404,7 @@ en_bfd_sync_run(struct engine_node *node, void *data)
                    &route_policies_data->bfd_active_connections,
                    &routes_data->bfd_active_connections,
                    &bfd_sync_data->bfd_ports);
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 void

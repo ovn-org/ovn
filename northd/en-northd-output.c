@@ -30,10 +30,11 @@ en_northd_output_init(struct engine_node *node OVS_UNUSED,
     return NULL;
 }
 
-void
-en_northd_output_run(struct engine_node *node, void *data OVS_UNUSED)
+enum engine_node_state
+en_northd_output_run(struct engine_node *node OVS_UNUSED,
+                     void *data OVS_UNUSED)
 {
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 void

@@ -83,7 +83,7 @@ struct ovn_mcast_sw_stats {
 };
 
 void *en_multicast_igmp_init(struct engine_node *,struct engine_arg *);
-void en_multicast_igmp_run(struct engine_node *, void *);
+enum engine_node_state en_multicast_igmp_run(struct engine_node *, void *);
 bool multicast_igmp_northd_handler(struct engine_node *, void *);
 void en_multicast_igmp_cleanup(void *);
 struct sbrec_multicast_group *create_sb_multicast_group(

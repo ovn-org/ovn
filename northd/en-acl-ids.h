@@ -8,6 +8,6 @@
 
 bool northd_acl_id_handler(struct engine_node *node, void *data);
 void *en_acl_id_init(struct engine_node *, struct engine_arg *);
-void en_acl_id_run(struct engine_node *, void *data);
+enum engine_node_state en_acl_id_run(struct engine_node *, void *data);
 void en_acl_id_cleanup(void *data);
 #endif

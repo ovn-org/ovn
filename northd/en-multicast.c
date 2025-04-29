@@ -114,7 +114,7 @@ en_multicast_igmp_init(struct engine_node *node OVS_UNUSED,
     return data;
 }
 
-void
+enum engine_node_state
 en_multicast_igmp_run(struct engine_node *node, void *data_)
 {
     struct multicast_igmp_data *data = data_;
@@ -142,7 +142,7 @@ en_multicast_igmp_run(struct engine_node *node, void *data_)
                                 &northd_data->ls_datapaths.datapaths,
                                 &northd_data->lr_datapaths.datapaths);
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 bool

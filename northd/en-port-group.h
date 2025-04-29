@@ -110,7 +110,7 @@ struct port_group_data {
 void *en_port_group_init(struct engine_node *, struct engine_arg *);
 void en_port_group_cleanup(void *data);
 void en_port_group_clear_tracked_data(void *data);
-void en_port_group_run(struct engine_node *, void *data);
+enum engine_node_state en_port_group_run(struct engine_node *, void *data);
 
 bool port_group_nb_port_group_handler(struct engine_node *, void *data);
 

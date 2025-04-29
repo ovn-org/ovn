@@ -43,7 +43,7 @@ en_sync_from_sb_init(struct engine_node *node OVS_UNUSED,
     return NULL;
 }
 
-void
+enum engine_node_state
 en_sync_from_sb_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct engine_context *eng_ctx = engine_get_context();
@@ -58,6 +58,8 @@ en_sync_from_sb_run(struct engine_node *node, void *data OVS_UNUSED)
                  sb_pb_table, sb_ha_ch_grp_table,
                  &nd->ls_ports, &nd->lr_ports);
     stopwatch_stop(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
+
+    return EN_UNCHANGED;
 }
 
 bool

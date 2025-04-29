@@ -483,7 +483,7 @@ en_port_group_clear_tracked_data(void *data_)
     data->ls_port_groups_sets_changed = true;
 }
 
-void
+enum engine_node_state
 en_port_group_run(struct engine_node *node, void *data_)
 {
     const struct engine_context *eng_ctx = engine_get_context();
@@ -505,7 +505,7 @@ en_port_group_run(struct engine_node *node, void *data_)
                              eng_ctx->ovnsb_idl_txn);
 
     stopwatch_stop(PORT_GROUP_RUN_STOPWATCH_NAME, time_msec());
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 bool

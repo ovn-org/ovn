@@ -411,7 +411,7 @@ engine_recompute(struct engine_node *node, bool allowed,
 
     /* Run the node handler which might change state. */
     long long int now = time_msec();
-    node->run(node, node->data);
+    engine_set_node_state(node, node->run(node, node->data));
     node->stats.recompute++;
     long long int delta_time = time_msec() - now;
     if (delta_time > engine_compute_log_timeout_msec) {
@@ -467,7 +467,7 @@ engine_run_node(struct engine_node *node, bool recompute_allowed)
 {
     if (!node->n_inputs) {
         /* Run the node handler which might change state. */
-        node->run(node, node->data);
+        engine_set_node_state(node, node->run(node, node->data));
         node->stats.recompute++;
         return;
     }
@@ -545,7 +545,7 @@ engine_need_run(void)
             continue;
         }
 
-        node->run(node, node->data);
+        engine_set_node_state(node, node->run(node, node->data));
         node->stats.recompute++;
         VLOG_DBG("input node: %s, state: %s", node->name,
                  engine_node_state_name[node->state]);

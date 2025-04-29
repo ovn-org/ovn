@@ -5,8 +5,8 @@
 
 void *en_northd_output_init(struct engine_node *node OVS_UNUSED,
                             struct engine_arg *arg OVS_UNUSED);
-void en_northd_output_run(struct engine_node *node OVS_UNUSED,
-                          void *data OVS_UNUSED);
+enum engine_node_state en_northd_output_run(struct engine_node *,
+                                            void *data OVS_UNUSED);
 
 void en_northd_output_cleanup(void *data);
 bool northd_output_sync_to_sb_handler(struct engine_node *node,

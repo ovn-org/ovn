@@ -111,7 +111,7 @@ en_lr_stateful_clear_tracked_data(void *data_)
     hmapx_clear(&data->trk_data.crupdated);
 }
 
-void
+enum engine_node_state
 en_lr_stateful_run(struct engine_node *node, void *data_)
 {
     struct lr_stateful_input input_data = lr_stateful_get_input_data(node);
@@ -126,7 +126,7 @@ en_lr_stateful_run(struct engine_node *node, void *data_)
                             input_data.lbgrp_datapaths_map);
 
     stopwatch_stop(LR_STATEFUL_RUN_STOPWATCH_NAME, time_msec());
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 bool

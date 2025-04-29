@@ -90,7 +90,8 @@ struct group_ecmp_route_data {
 void *en_group_ecmp_route_init(struct engine_node *, struct engine_arg *);
 void en_group_ecmp_route_cleanup(void *data);
 void en_group_ecmp_route_clear_tracked_data(void *data);
-void en_group_ecmp_route_run(struct engine_node *, void *data);
+enum engine_node_state en_group_ecmp_route_run(struct engine_node *,
+                                               void *data);
 
 bool group_ecmp_route_learned_route_change_handler(struct engine_node *,
                                                    void *data);

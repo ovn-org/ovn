@@ -92,7 +92,7 @@ en_lb_data_init(struct engine_node *node OVS_UNUSED,
     return data;
 }
 
-void
+enum engine_node_state
 en_lb_data_run(struct engine_node *node, void *data)
 {
     struct ed_type_lb_data *lb_data = (struct ed_type_lb_data *) data;
@@ -113,7 +113,7 @@ en_lb_data_run(struct engine_node *node, void *data)
     build_od_lb_map(nb_ls_table, nb_lr_table, &lb_data->ls_lb_map,
                     &lb_data->lr_lb_map);
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 void

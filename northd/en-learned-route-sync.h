@@ -48,6 +48,7 @@ bool learned_route_sync_sb_learned_route_change_handler(struct engine_node *,
 void *en_learned_route_sync_init(struct engine_node *, struct engine_arg *);
 void en_learned_route_sync_cleanup(void *data);
 void en_learned_route_sync_clear_tracked_data(void *data);
-void en_learned_route_sync_run(struct engine_node *, void *data);
+enum engine_node_state en_learned_route_sync_run(struct engine_node *,
+                                                 void *data);
 
 #endif /* EN_LEARNED_ROUTE_SYNC_H */

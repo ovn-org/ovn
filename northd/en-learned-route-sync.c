@@ -121,7 +121,7 @@ en_learned_route_sync_clear_tracked_data(void *data)
     routes_sync_clear_tracked(data);
 }
 
-void
+enum engine_node_state
 en_learned_route_sync_run(struct engine_node *node, void *data)
 {
     routes_sync_clear(data);
@@ -139,7 +139,7 @@ en_learned_route_sync_run(struct engine_node *node, void *data)
                       &routes_sync_data->parsed_routes);
 
     stopwatch_stop(LEARNED_ROUTE_SYNC_RUN_STOPWATCH_NAME, time_msec());
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 

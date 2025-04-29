@@ -42,7 +42,7 @@ should_sync_to_sb(const struct nbrec_acl *nb_acl)
                          false);
 }
 
-void
+enum engine_node_state
 en_acl_id_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct engine_context *eng_ctx = engine_get_context();
@@ -89,9 +89,9 @@ en_acl_id_run(struct engine_node *node, void *data OVS_UNUSED)
         scan_start = new_id + 1;
     }
 
-    engine_set_node_state(node, EN_UPDATED);
     uuidset_destroy(&visited);
     bitmap_free(id_bitmap);
+    return EN_UPDATED;
 }
 
 void

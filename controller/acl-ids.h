@@ -21,7 +21,7 @@
 #include "openvswitch/types.h"
 
 void *en_acl_id_init(struct engine_node *, struct engine_arg *);
-void en_acl_id_run(struct engine_node *, void *);
+enum engine_node_state en_acl_id_run(struct engine_node *, void *);
 void en_acl_id_cleanup(void *);
 bool en_acl_id_is_valid(struct engine_node *);
 

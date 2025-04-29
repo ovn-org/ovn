@@ -194,7 +194,7 @@ en_ecmp_nexthop_cleanup(void *data OVS_UNUSED)
 {
 }
 
-void
+enum engine_node_state
 en_ecmp_nexthop_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct engine_context *eng_ctx = engine_get_context();
@@ -222,6 +222,6 @@ en_ecmp_nexthop_run(struct engine_node *node, void *data OVS_UNUSED)
             sbrec_ecmp_nexthop_delete(sb_ecmp_nexthop);
         }
     }
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 

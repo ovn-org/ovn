@@ -104,7 +104,8 @@ lflow_get_input_data(struct engine_node *node,
     lflow_input->sampling_apps = &sampling_app_data->apps;
 }
 
-void en_lflow_run(struct engine_node *node, void *data)
+enum engine_node_state
+en_lflow_run(struct engine_node *node, void *data)
 {
     const struct engine_context *eng_ctx = engine_get_context();
 
@@ -122,7 +123,7 @@ void en_lflow_run(struct engine_node *node, void *data)
                  lflow_data->lflow_table);
     stopwatch_stop(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 bool

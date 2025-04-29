@@ -364,7 +364,7 @@ group_ecmp_route(struct group_ecmp_route_data *data,
     }
 }
 
-void
+enum engine_node_state
 en_group_ecmp_route_run(struct engine_node *node, void *_data)
 {
     struct group_ecmp_route_data *data = _data;
@@ -380,7 +380,7 @@ en_group_ecmp_route_run(struct engine_node *node, void *_data)
     group_ecmp_route(data, routes_data, learned_route_data);
 
     stopwatch_stop(GROUP_ECMP_ROUTE_RUN_STOPWATCH_NAME, time_msec());
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 static void

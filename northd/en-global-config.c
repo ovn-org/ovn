@@ -61,12 +61,12 @@ en_global_config_init(struct engine_node *node OVS_UNUSED,
     return data;
 }
 
-void
+enum engine_node_state
 en_global_config_run(struct engine_node *node , void *data)
 {
     const struct engine_context *eng_ctx = engine_get_context();
     if (!eng_ctx->ovnnb_idl_txn || !eng_ctx->ovnsb_idl_txn) {
-        return;
+        return EN_STALE;
     }
 
     const struct nbrec_nb_global_table *nb_global_table =
@@ -177,7 +177,7 @@ en_global_config_run(struct engine_node *node , void *data)
     /* Set up SB_Global (depends on chassis features). */
     update_sb_config_options_to_sbrec(config_data, sb);
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 void en_global_config_cleanup(void *data OVS_UNUSED)

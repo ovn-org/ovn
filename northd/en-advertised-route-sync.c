@@ -232,7 +232,7 @@ en_advertised_route_sync_cleanup(void *data OVS_UNUSED)
     routes_sync_destroy(data);
 }
 
-void
+enum engine_node_state
 en_advertised_route_sync_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     routes_sync_clear(data);
@@ -258,7 +258,7 @@ en_advertised_route_sync_run(struct engine_node *node, void *data OVS_UNUSED)
                                 routes_sync_data);
 
     stopwatch_stop(ADVERTISED_ROUTE_SYNC_RUN_STOPWATCH_NAME, time_msec());
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 /* This function adds a new route for each entry in lr_nat record
@@ -506,7 +506,7 @@ en_dynamic_routes_cleanup(void *data_)
     hmap_destroy(&data->routes);
 }
 
-void
+enum engine_node_state
 en_dynamic_routes_run(struct engine_node *node, void *data)
 {
     struct dynamic_routes_data *dynamic_routes_data = data;
@@ -539,7 +539,7 @@ en_dynamic_routes_run(struct engine_node *node, void *data)
                                   &dynamic_routes_data->routes);
     }
     stopwatch_stop(DYNAMIC_ROUTES_RUN_STOPWATCH_NAME, time_msec());
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 static void

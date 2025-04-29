@@ -85,12 +85,11 @@ en_acl_id_init(struct engine_node *node OVS_UNUSED,
     return ids;
 }
 
-void
+enum engine_node_state
 en_acl_id_run(struct engine_node *node, void *data)
 {
     if (!ovs_feature_is_supported(OVS_CT_LABEL_FLUSH_SUPPORT)) {
-        engine_set_node_state(node, EN_UNCHANGED);
-        return;
+        return EN_UNCHANGED;
     }
 
     const struct sbrec_acl_id_table *sb_acl_id_table =
@@ -121,7 +120,7 @@ en_acl_id_run(struct engine_node *node, void *data)
         id->state = ACTIVE;
     }
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 void

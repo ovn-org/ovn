@@ -101,7 +101,7 @@ en_lr_nat_clear_tracked_data(void *data_)
     hmapx_clear(&data->trk_data.crupdated);
 }
 
-void
+enum engine_node_state
 en_lr_nat_run(struct engine_node *node, void *data_)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
@@ -113,7 +113,7 @@ en_lr_nat_run(struct engine_node *node, void *data_)
                        &northd_data->lr_ports);
 
     stopwatch_stop(LR_NAT_RUN_STOPWATCH_NAME, time_msec());
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 /* Handler functions. */

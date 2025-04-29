@@ -65,10 +65,10 @@ en_sync_to_sb_init(struct engine_node *node OVS_UNUSED,
     return NULL;
 }
 
-void
-en_sync_to_sb_run(struct engine_node *node, void *data OVS_UNUSED)
+enum engine_node_state
+en_sync_to_sb_run(struct engine_node *node OVS_UNUSED, void *data OVS_UNUSED)
 {
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 void
@@ -84,7 +84,7 @@ en_sync_to_sb_addr_set_init(struct engine_node *node OVS_UNUSED,
     return NULL;
 }
 
-void
+enum engine_node_state
 en_sync_to_sb_addr_set_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct nbrec_address_set_table *nb_address_set_table =
@@ -106,7 +106,7 @@ en_sync_to_sb_addr_set_run(struct engine_node *node, void *data OVS_UNUSED)
                    &northd_data->lr_datapaths,
                    global_config->svc_monitor_mac);
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 void
@@ -278,7 +278,7 @@ en_sync_to_sb_lb_init(struct engine_node *node OVS_UNUSED,
     return data;
 }
 
-void
+enum engine_node_state
 en_sync_to_sb_lb_run(struct engine_node *node, void *data_)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
@@ -300,7 +300,7 @@ en_sync_to_sb_lb_run(struct engine_node *node, void *data_)
                                &northd_data->lr_datapaths,
                                &global_config->features);
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 void
@@ -384,7 +384,7 @@ en_sync_to_sb_pb_init(struct engine_node *node OVS_UNUSED,
     return NULL;
 }
 
-void
+enum engine_node_state
 en_sync_to_sb_pb_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct engine_context *eng_ctx = engine_get_context();
@@ -395,7 +395,7 @@ en_sync_to_sb_pb_run(struct engine_node *node, void *data OVS_UNUSED)
     sync_pbs(eng_ctx->ovnsb_idl_txn, &northd_data->ls_ports,
              &northd_data->lr_ports,
              &lr_stateful_data->table);
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 void

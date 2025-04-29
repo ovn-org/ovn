@@ -123,7 +123,7 @@ struct lr_stateful_input {
 void *en_lr_stateful_init(struct engine_node *, struct engine_arg *);
 void en_lr_stateful_cleanup(void *data);
 void en_lr_stateful_clear_tracked_data(void *data);
-void en_lr_stateful_run(struct engine_node *, void *data);
+enum engine_node_state en_lr_stateful_run(struct engine_node *, void *data);
 
 bool lr_stateful_northd_handler(struct engine_node *, void *data);
 bool lr_stateful_lr_nat_handler(struct engine_node *, void *data);

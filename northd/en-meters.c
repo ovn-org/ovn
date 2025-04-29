@@ -52,7 +52,7 @@ en_sync_meters_cleanup(void *data_)
     shash_destroy(&data->meter_groups);
 }
 
-void
+enum engine_node_state
 en_sync_meters_run(struct engine_node *node, void *data_)
 {
     struct sync_meters_data *data = data_;
@@ -76,7 +76,7 @@ en_sync_meters_run(struct engine_node *node, void *data_)
                 sb_meter_table, &data->meter_groups);
 
     stopwatch_stop(SYNC_METERS_RUN_STOPWATCH_NAME, time_msec());
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 const struct nbrec_meter*

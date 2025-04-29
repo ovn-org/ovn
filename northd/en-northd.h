@@ -9,7 +9,8 @@
 
 #include "lib/inc-proc-eng.h"
 
-void en_northd_run(struct engine_node *node OVS_UNUSED, void *data OVS_UNUSED);
+enum engine_node_state en_northd_run(struct engine_node *node OVS_UNUSED,
+                                     void *data OVS_UNUSED);
 void *en_northd_init(struct engine_node *node OVS_UNUSED,
                      struct engine_arg *arg);
 void en_northd_cleanup(void *data);
@@ -25,22 +26,23 @@ void *en_routes_init(struct engine_node *node OVS_UNUSED,
 void en_route_policies_cleanup(void *data);
 bool route_policies_northd_change_handler(struct engine_node *node,
                                           void *data OVS_UNUSED);
-void en_route_policies_run(struct engine_node *node, void *data);
+enum engine_node_state en_route_policies_run(struct engine_node *node,
+                                             void *data);
 void *en_route_policies_init(struct engine_node *node OVS_UNUSED,
                              struct engine_arg *arg OVS_UNUSED);
 void en_routes_cleanup(void *data);
 bool routes_northd_change_handler(struct engine_node *node,
                                          void *data OVS_UNUSED);
-void en_routes_run(struct engine_node *node, void *data);
+enum engine_node_state en_routes_run(struct engine_node *node, void *data);
 void *en_bfd_init(struct engine_node *node OVS_UNUSED,
                   struct engine_arg *arg OVS_UNUSED);
 void en_bfd_cleanup(void *data);
-void en_bfd_run(struct engine_node *node, void *data);
+enum engine_node_state en_bfd_run(struct engine_node *node, void *data);
 void *en_bfd_sync_init(struct engine_node *node OVS_UNUSED,
                        struct engine_arg *arg OVS_UNUSED);
 bool bfd_sync_northd_change_handler(struct engine_node *node,
                                     void *data OVS_UNUSED);
-void en_bfd_sync_run(struct engine_node *node, void *data);
+enum engine_node_state en_bfd_sync_run(struct engine_node *node, void *data);
 void en_bfd_sync_cleanup(void *data OVS_UNUSED);
 
 #endif /* EN_NORTHD_H */

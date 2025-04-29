@@ -103,7 +103,7 @@ struct ed_type_ls_stateful {
 void *en_ls_stateful_init(struct engine_node *, struct engine_arg *);
 void en_ls_stateful_cleanup(void *data);
 void en_ls_stateful_clear_tracked_data(void *data);
-void en_ls_stateful_run(struct engine_node *, void *data);
+enum engine_node_state en_ls_stateful_run(struct engine_node *, void *data);
 
 bool ls_stateful_northd_handler(struct engine_node *, void *data);
 bool ls_stateful_port_group_handler(struct engine_node *, void *data);

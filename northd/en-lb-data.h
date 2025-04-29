@@ -110,7 +110,7 @@ struct ed_type_lb_data {
 };
 
 void *en_lb_data_init(struct engine_node *, struct engine_arg *);
-void en_lb_data_run(struct engine_node *, void *data);
+enum engine_node_state en_lb_data_run(struct engine_node *, void *data);
 void en_lb_data_cleanup(void *data);
 void en_lb_data_clear_tracked_data(void *data);
 

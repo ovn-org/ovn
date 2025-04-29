@@ -44,7 +44,7 @@ en_sampling_app_cleanup(void *data OVS_UNUSED)
 {
 }
 
-void
+enum engine_node_state
 en_sampling_app_run(struct engine_node *node, void *data_)
 {
     const struct nbrec_sampling_app_table *nb_sampling_app_table =
@@ -58,7 +58,7 @@ en_sampling_app_run(struct engine_node *node, void *data_)
         sampling_app_table_add(&data->apps, sa);
     }
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 uint8_t

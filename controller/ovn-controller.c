@@ -1048,8 +1048,8 @@ en_ofctrl_is_connected_cleanup(void *data OVS_UNUSED)
 {
 }
 
-static void
-en_ofctrl_is_connected_run(struct engine_node *node, void *data)
+static enum engine_node_state
+en_ofctrl_is_connected_run(struct engine_node *node OVS_UNUSED, void *data)
 {
     struct controller_engine_ctx *ctrl_ctx = engine_get_context()->client_ctx;
     struct ed_type_ofctrl_is_connected *of_data = data;
@@ -1061,10 +1061,9 @@ en_ofctrl_is_connected_run(struct engine_node *node, void *data)
             ofctrl_seqno_flush();
             if_status_mgr_clear(ctrl_ctx->if_mgr);
         }
-        engine_set_node_state(node, EN_UPDATED);
-        return;
+        return EN_UPDATED;
     }
-    engine_set_node_state(node, EN_UNCHANGED);
+    return EN_UNCHANGED;
 }
 
 struct ed_type_if_status_mgr {
@@ -1085,7 +1084,7 @@ en_if_status_mgr_cleanup(void *data OVS_UNUSED)
 {
 }
 
-static void
+static enum engine_node_state
 en_if_status_mgr_run(struct engine_node *node, void *data_)
 {
     enum engine_node_state state = EN_UNCHANGED;
@@ -1100,7 +1099,7 @@ en_if_status_mgr_run(struct engine_node *node, void *data_)
             state = EN_UPDATED;
         }
     }
-    engine_set_node_state(node, state);
+    return state;
 }
 
 static bool
@@ -1183,21 +1182,21 @@ en_ovs_interface_shadow_clear_tracked_data(void *data_)
     }
 }
 
-static void
+static enum engine_node_state
 en_ovs_interface_shadow_run(struct engine_node *node, void *data_)
 {
     struct ed_type_ovs_interface_shadow *data = data_;
     const struct ovsrec_interface_table *iface_table =
         EN_OVSDB_GET(engine_get_input("OVS_interface", node));
     data->iface_table = iface_table;
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 static bool
 ovs_interface_shadow_ovs_interface_handler(struct engine_node *node,
                                            void *data_)
 {
-    en_ovs_interface_shadow_run(node, data_);
+    engine_set_node_state(node, en_ovs_interface_shadow_run(node, data_));
     return true;
 }
 
@@ -1236,8 +1235,8 @@ en_activated_ports_clear_tracked_data(void *data)
     en_activated_ports_cleanup(data);
 }
 
-static void
-en_activated_ports_run(struct engine_node *node, void *data_)
+static enum engine_node_state
+en_activated_ports_run(struct engine_node *node OVS_UNUSED, void *data_)
 {
     struct ed_type_activated_ports *data = data_;
     enum engine_node_state state = EN_UNCHANGED;
@@ -1245,7 +1244,7 @@ en_activated_ports_run(struct engine_node *node, void *data_)
     if (data->activated_ports) {
         state = EN_UPDATED;
     }
-    engine_set_node_state(node, state);
+    return state;
 }
 
 struct ed_type_postponed_ports {
@@ -1271,8 +1270,8 @@ en_postponed_ports_cleanup(void *data_)
     data->postponed_ports = NULL;
 }
 
-static void
-en_postponed_ports_run(struct engine_node *node, void *data_)
+static enum engine_node_state
+en_postponed_ports_run(struct engine_node *node OVS_UNUSED, void *data_)
 {
     struct ed_type_postponed_ports *data = data_;
     enum engine_node_state state = EN_UNCHANGED;
@@ -1280,7 +1279,7 @@ en_postponed_ports_run(struct engine_node *node, void *data_)
     if (!sset_is_empty(data->postponed_ports)) {
         state = EN_UPDATED;
     }
-    engine_set_node_state(node, state);
+    return state;
 }
 
 struct ed_type_runtime_data {
@@ -1525,7 +1524,7 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_out->localnet_learn_fdb_changed = false;
 }
 
-static void
+static enum engine_node_state
 en_runtime_data_run(struct engine_node *node, void *data)
 {
     struct ed_type_runtime_data *rt_data = data;
@@ -1582,7 +1581,7 @@ en_runtime_data_run(struct engine_node *node, void *data)
     binding_run(&b_ctx_in, &b_ctx_out);
     rt_data->localnet_learn_fdb = b_ctx_out.localnet_learn_fdb;
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 struct ed_type_sb_ro {
@@ -1597,17 +1596,18 @@ en_sb_ro_init(struct engine_node *node OVS_UNUSED,
     return data;
 }
 
-static void
-en_sb_ro_run(struct engine_node *node, void *data)
+static enum engine_node_state
+en_sb_ro_run(struct engine_node *node OVS_UNUSED, void *data)
 {
     struct ed_type_sb_ro *sb_ro_data = data;
     bool sb_readonly = !engine_get_context()->ovnsb_idl_txn;
     if (sb_ro_data->sb_readonly != sb_readonly) {
         sb_ro_data->sb_readonly = sb_readonly;
         if (!sb_ro_data->sb_readonly) {
-            engine_set_node_state(node, EN_UPDATED);
+            return EN_UPDATED;
         }
     }
+    return EN_UNCHANGED;
 }
 
 static void
@@ -1845,7 +1845,7 @@ en_template_vars_init(struct engine_node *node OVS_UNUSED,
     return tv_data;
 }
 
-static void
+static enum engine_node_state
 en_template_vars_run(struct engine_node *node, void *data)
 {
     struct ed_type_template_vars *tv_data = data;
@@ -1866,7 +1866,7 @@ en_template_vars_run(struct engine_node *node, void *data)
     smap_clear(&tv_data->local_templates);
     template_vars_init(sbrec_chassis_template_var_index_by_chassis,
                        chassis, &tv_data->local_templates);
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 static bool
@@ -2035,7 +2035,7 @@ addr_sets_update(const struct sbrec_address_set_table *address_set_table,
     }
 }
 
-static void
+static enum engine_node_state
 en_addr_sets_run(struct engine_node *node, void *data)
 {
     struct ed_type_addr_sets *as = data;
@@ -2049,7 +2049,7 @@ en_addr_sets_run(struct engine_node *node, void *data)
     addr_sets_init(as_table, &as->addr_sets);
 
     as->change_tracked = false;
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 static bool
@@ -2222,7 +2222,7 @@ en_port_groups_clear_tracked_data(void *data_)
     pg->change_tracked = false;
 }
 
-static void
+static enum engine_node_state
 en_port_groups_run(struct engine_node *node, void *data)
 {
     struct ed_type_port_groups *pg = data;
@@ -2239,7 +2239,7 @@ en_port_groups_run(struct engine_node *node, void *data)
     port_groups_init(pg_table, &rt_data->related_lports.lport_names,
                      &pg->port_group_ssets, &pg->port_groups_cs_local);
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 static bool
@@ -2355,7 +2355,7 @@ en_ct_zones_cleanup(void *data)
     ct_zone_ctx_destroy(&ct_zones_data->ctx);
 }
 
-static void
+static enum engine_node_state
 en_ct_zones_run(struct engine_node *node, void *data)
 {
     struct ed_type_ct_zones *ct_zones_data = data;
@@ -2378,7 +2378,7 @@ en_ct_zones_run(struct engine_node *node, void *data)
                          &rt_data->lbinding_data.lports);
 
     ct_zones_data->recomputed = true;
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 /* Handles datapath binding changes for the ct_zones engine.
@@ -2507,17 +2507,16 @@ en_mff_ovn_geneve_cleanup(void *data OVS_UNUSED)
 {
 }
 
-static void
-en_mff_ovn_geneve_run(struct engine_node *node, void *data)
+static enum engine_node_state
+en_mff_ovn_geneve_run(struct engine_node *node OVS_UNUSED, void *data)
 {
     struct ed_type_mff_ovn_geneve *ed_mff_ovn_geneve = data;
     enum mf_field_id mff_ovn_geneve = ofctrl_get_mf_field_id();
     if (ed_mff_ovn_geneve->mff_ovn_geneve != mff_ovn_geneve) {
         ed_mff_ovn_geneve->mff_ovn_geneve = mff_ovn_geneve;
-        engine_set_node_state(node, EN_UPDATED);
-        return;
+        return EN_UPDATED;
     }
-    engine_set_node_state(node, EN_UNCHANGED);
+    return EN_UNCHANGED;
 }
 
 /* Stores the load balancers that are applied to the datapath 'dp'. */
@@ -2819,7 +2818,7 @@ en_lb_data_init(struct engine_node *node OVS_UNUSED,
     return lb_data;
 }
 
-static void
+static enum engine_node_state
 en_lb_data_run(struct engine_node *node, void *data)
 {
     struct ed_type_lb_data *lb_data = data;
@@ -2849,7 +2848,7 @@ en_lb_data_run(struct engine_node *node, void *data)
                              &tv_data->local_templates, false);
     }
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 static bool
@@ -3176,7 +3175,7 @@ en_mac_cache_init(struct engine_node *node OVS_UNUSED,
     return cache_data;
 }
 
-static void
+static enum engine_node_state
 en_mac_cache_run(struct engine_node *node, void *data)
 {
     struct mac_cache_data *cache_data = data;
@@ -3211,7 +3210,7 @@ en_mac_cache_run(struct engine_node *node, void *data)
                                           sbrec_fdb_by_dp_key);
     }
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 static bool
@@ -3413,7 +3412,7 @@ en_bfd_chassis_init(struct engine_node *node OVS_UNUSED,
     return data;
 }
 
-static void
+static enum engine_node_state
 en_bfd_chassis_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     struct ed_type_bfd_chassis *bfd_chassis = data;
@@ -3432,7 +3431,7 @@ en_bfd_chassis_run(struct engine_node *node, void *data OVS_UNUSED)
     sset_clear(&bfd_chassis->bfd_chassis);
     bfd_calculate_chassis(chassis, ha_chassis_grp_table,
                           &bfd_chassis->bfd_chassis);
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 static void
@@ -3449,7 +3448,7 @@ en_dns_cache_init(struct engine_node *node OVS_UNUSED,
     return NULL;
 }
 
-static void
+static enum engine_node_state
 en_dns_cache_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct sbrec_dns_table *dns_table =
@@ -3457,7 +3456,7 @@ en_dns_cache_run(struct engine_node *node, void *data OVS_UNUSED)
 
     ovn_dns_sync_cache(dns_table);
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 static bool
@@ -3507,7 +3506,7 @@ en_non_vif_data_cleanup(void *data OVS_UNUSED)
     chassis_tunnels_destroy(&ed_non_vif_data->chassis_tunnels);
 }
 
-static void
+static enum engine_node_state
 en_non_vif_data_run(struct engine_node *node, void *data)
 {
     struct ed_type_non_vif_data *ed_non_vif_data = data;
@@ -3536,7 +3535,7 @@ en_non_vif_data_run(struct engine_node *node, void *data)
 
     local_nonvif_data_run(br_int, chassis, &ed_non_vif_data->patch_ofports,
                           &ed_non_vif_data->chassis_tunnels);
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 static bool
@@ -3573,7 +3572,7 @@ en_northd_options_cleanup(void *data OVS_UNUSED)
 {
 }
 
-static void
+static enum engine_node_state
 en_northd_options_run(struct engine_node *node, void *data)
 {
     struct ed_type_northd_options *n_opts = data;
@@ -3606,7 +3605,7 @@ en_northd_options_run(struct engine_node *node, void *data)
                         true)
         : true;
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 static bool
@@ -3690,7 +3689,7 @@ en_dhcp_options_cleanup(void *data)
     dhcp_opts_destroy(&dhcp_opts->v6_opts);
 }
 
-static void
+static enum engine_node_state
 en_dhcp_options_run(struct engine_node *node, void *data)
 {
     struct ed_type_dhcp_options *dhcp_opts = data;
@@ -3715,7 +3714,7 @@ en_dhcp_options_run(struct engine_node *node, void *data)
        dhcp_opt_add(&dhcp_opts->v6_opts, dhcpv6_opt_row->name,
                     dhcpv6_opt_row->code, dhcpv6_opt_row->type);
     }
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 struct lflow_output_persistent_data {
@@ -3949,7 +3948,7 @@ en_lflow_output_cleanup(void *data)
     flow_collector_ids_destroy(&flow_output_data->collector_ids);
 }
 
-static void
+static enum engine_node_state
 en_lflow_output_run(struct engine_node *node, void *data)
 {
     const struct ovsrec_open_vswitch_table *ovs_table =
@@ -4010,7 +4009,7 @@ en_lflow_output_run(struct engine_node *node, void *data)
     init_lflow_ctx(node, fo, &l_ctx_in, &l_ctx_out);
     lflow_run(&l_ctx_in, &l_ctx_out);
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 static bool
@@ -4647,7 +4646,7 @@ en_pflow_output_cleanup(void *data OVS_UNUSED)
     ovn_desired_flow_table_destroy(&pfo->flow_table);
 }
 
-static void
+static enum engine_node_state
 en_pflow_output_run(struct engine_node *node, void *data)
 {
     struct ed_type_pflow_output *pfo = data;
@@ -4669,7 +4668,7 @@ en_pflow_output_run(struct engine_node *node, void *data)
     physical_run(&p_ctx, pflow_table);
     destroy_physical_ctx(&p_ctx);
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 static bool
@@ -4920,11 +4919,11 @@ en_controller_output_cleanup(void *data OVS_UNUSED)
 
 }
 
-static void
+static enum engine_node_state
 en_controller_output_run(struct engine_node *node OVS_UNUSED,
                          void *data OVS_UNUSED)
 {
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 static bool
@@ -5016,7 +5015,7 @@ struct ed_type_route {
     struct ovsdb_idl *ovnsb_idl;
 };
 
-static void
+static enum engine_node_state
 en_route_run(struct engine_node *node, void *data)
 {
     struct ed_type_route *re_data = data;
@@ -5072,7 +5071,7 @@ en_route_run(struct engine_node *node, void *data)
     sset_clear(r_ctx_out.tracked_ports_remote);
 
     route_run(&r_ctx_in, &r_ctx_out);
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 
@@ -5257,7 +5256,7 @@ struct ed_type_route_exchange {
     struct ovsdb_idl *sb_idl;
 };
 
-static void
+static enum engine_node_state
 en_route_exchange_run(struct engine_node *node, void *data)
 {
     struct ed_type_route_exchange *re = data;
@@ -5279,7 +5278,7 @@ en_route_exchange_run(struct engine_node *node, void *data)
      * the Learned_Route table, since they where introduced in the same
      * release. */
     if (!sbrec_server_has_learned_route_table(re->sb_idl)) {
-        return;
+        return EN_STALE;
     }
 
     struct route_exchange_ctx_in r_ctx_in = {
@@ -5298,7 +5297,7 @@ en_route_exchange_run(struct engine_node *node, void *data)
     route_table_watch_request_cleanup(&r_ctx_out.route_table_watches);
     hmap_destroy(&r_ctx_out.route_table_watches);
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 
@@ -5323,16 +5322,18 @@ struct ed_type_route_table_notify {
     bool changed;
 };
 
-static void
-en_route_table_notify_run(struct engine_node *node, void *data)
+static enum engine_node_state
+en_route_table_notify_run(struct engine_node *node OVS_UNUSED, void *data)
 {
     struct ed_type_route_table_notify *rtn = data;
+    enum engine_node_state state;
     if (rtn->changed) {
-        engine_set_node_state(node, EN_UPDATED);
+        state = EN_UPDATED;
     } else {
-        engine_set_node_state(node, EN_UNCHANGED);
+        state = EN_UNCHANGED;
     }
     rtn->changed = false;
+    return state;
 }
 
 

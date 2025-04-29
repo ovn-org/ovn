@@ -44,7 +44,7 @@ struct ed_type_sampling_app_data {
 
 void *en_sampling_app_init(struct engine_node *, struct engine_arg *);
 void en_sampling_app_cleanup(void *data);
-void en_sampling_app_run(struct engine_node *, void *data);
+enum engine_node_state en_sampling_app_run(struct engine_node *, void *data);
 uint8_t sampling_app_get_id(const struct sampling_app_table *,
                             enum sampling_app);
 

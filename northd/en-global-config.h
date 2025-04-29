@@ -54,7 +54,7 @@ struct ed_type_global_config {
 };
 
 void *en_global_config_init(struct engine_node *, struct engine_arg *);
-void en_global_config_run(struct engine_node *, void *data);
+enum engine_node_state en_global_config_run(struct engine_node *, void *data);
 void en_global_config_cleanup(void *data);
 void en_global_config_clear_tracked_data(void *data);
 

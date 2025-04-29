@@ -386,7 +386,7 @@ mac_binding_aging_run_for_datapath(const struct sbrec_datapath_binding *dp,
     sbrec_mac_binding_index_destroy_row(mb_index_row);
 }
 
-void
+enum engine_node_state
 en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct engine_context *eng_ctx = engine_get_context();
@@ -400,7 +400,7 @@ en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
     if (!eng_ctx->ovnsb_idl_txn ||
         !global_config->features.mac_binding_timestamp ||
         time_msec() < waker->next_wake_msec) {
-        return;
+        return EN_STALE;
     }
 
     uint32_t limit = get_removal_limit(node, "mac_binding_removal_limit");
@@ -441,7 +441,7 @@ en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
 
     aging_waker_schedule_next_wake(waker, ctx.next_wake_ms);
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 void *
@@ -462,24 +462,22 @@ en_mac_binding_aging_cleanup(void *data OVS_UNUSED)
  * if we there are updates, so it could process the other nodes, however
  * the waker cannot be dependent on other node because it wouldn't be
  * input node anymore. */
-void
-en_mac_binding_aging_waker_run(struct engine_node *node, void *data)
+enum engine_node_state
+en_mac_binding_aging_waker_run(struct engine_node *node OVS_UNUSED, void *data)
 {
     struct aging_waker *waker = data;
 
-    engine_set_node_state(node, EN_UNCHANGED);
-
     if (!waker->should_schedule) {
-        return;
+        return EN_UNCHANGED;
     }
 
     if (time_msec() >= waker->next_wake_msec) {
         waker->should_schedule = false;
-        engine_set_node_state(node, EN_UPDATED);
-        return;
+        return EN_UPDATED;
     }
 
     poll_timer_wait_until(waker->next_wake_msec);
+    return EN_UNCHANGED;
 }
 
 void *
@@ -524,7 +522,7 @@ fdb_run_for_datapath(const struct sbrec_datapath_binding *dp,
     sbrec_fdb_index_destroy_row(fdb_index_row);
 }
 
-void
+enum engine_node_state
 en_fdb_aging_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct engine_context *eng_ctx = engine_get_context();
@@ -536,7 +534,7 @@ en_fdb_aging_run(struct engine_node *node, void *data OVS_UNUSED)
     if (!eng_ctx->ovnsb_idl_txn ||
         !global_config->features.fdb_timestamp ||
         time_msec() < waker->next_wake_msec) {
-        return;
+        return EN_STALE;
     }
 
     uint32_t limit = get_removal_limit(node, "fdb_removal_limit");
@@ -570,7 +568,7 @@ en_fdb_aging_run(struct engine_node *node, void *data OVS_UNUSED)
 
     aging_waker_schedule_next_wake(waker, ctx.next_wake_ms);
 
-    engine_set_node_state(node, EN_UPDATED);
+    return EN_UPDATED;
 }
 
 void *
@@ -591,24 +589,22 @@ en_fdb_aging_cleanup(void *data OVS_UNUSED)
  * if we there are updates, so it could process the other nodes, however
  * the waker cannot be dependent on other node because it wouldn't be
  * input node anymore. */
-void
-en_fdb_aging_waker_run(struct engine_node *node, void *data)
+enum engine_node_state
+en_fdb_aging_waker_run(struct engine_node *node OVS_UNUSED, void *data)
 {
     struct aging_waker *waker = data;
 
-    engine_set_node_state(node, EN_UNCHANGED);
-
     if (!waker->should_schedule) {
-        return;
+        return EN_UNCHANGED;
     }
 
     if (time_msec() >= waker->next_wake_msec) {
         waker->should_schedule = false;
-        engine_set_node_state(node, EN_UPDATED);
-        return;
+        return EN_UPDATED;
     }
 
     poll_timer_wait_until(waker->next_wake_msec);
+    return EN_UNCHANGED;
 }
 
 void *

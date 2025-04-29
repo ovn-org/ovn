@@ -241,7 +241,7 @@ struct engine_node {
      * implementation guarantees that the txn pointers returned
      * engine_get_context() are not NULL and valid.
      */
-    void (*run)(struct engine_node *node, void *data);
+    enum engine_node_state (*run)(struct engine_node *node, void *data);
 
     /* Method to validate if the 'internal_data' is valid. This allows users
      * to customize when 'data' can be used (e.g., even if the node
@@ -434,17 +434,16 @@ void engine_ovsdb_node_add_index(struct engine_node *, const char *name,
 /* Macro to define member functions of an engine node which represents
  * a table of OVSDB */
 #define ENGINE_FUNC_OVSDB(DB_NAME, TBL_NAME) \
-static void \
+static enum engine_node_state \
 en_##DB_NAME##_##TBL_NAME##_run(struct engine_node *node, \
                                 void *data OVS_UNUSED) \
 { \
     const struct DB_NAME##rec_##TBL_NAME##_table *table = \
         EN_OVSDB_GET(node); \
     if (DB_NAME##rec_##TBL_NAME##_table_track_get_first(table)) { \
-        engine_set_node_state(node, EN_UPDATED); \
-        return; \
+        return EN_UPDATED; \
     } \
-    engine_set_node_state(node, EN_UNCHANGED); \
+    return EN_UNCHANGED; \
 } \
 static void *en_##DB_NAME##_##TBL_NAME##_init( \
     struct engine_node *node OVS_UNUSED, \
