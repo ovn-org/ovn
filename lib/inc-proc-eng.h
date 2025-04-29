@@ -336,10 +336,6 @@ const struct engine_context *engine_get_context(void);
 
 void engine_set_context(const struct engine_context *);
 
-void engine_set_node_state_at(struct engine_node *node,
-                              enum engine_node_state state,
-                              const char *where);
-
 /* Return true if during the last iteration the node's data was updated. */
 bool engine_node_changed(struct engine_node *node);
 
@@ -371,10 +367,6 @@ void *engine_get_data(struct engine_node *node);
  * before the first engine_run().
  */
 void *engine_get_internal_data(struct engine_node *node);
-
-/* Set the state of the node and log changes. */
-#define engine_set_node_state(node, state) \
-    engine_set_node_state_at(node, state, OVS_SOURCE_LOCATOR)
 
 /* Trigger a full recompute. */
 void engine_trigger_recompute(void);

@@ -289,19 +289,26 @@ engine_ovsdb_node_add_index(struct engine_node *node, const char *name,
     ed->n_indexes ++;
 }
 
-void
-engine_set_node_state_at(struct engine_node *node,
-                         enum engine_node_state state,
-                         const char *where)
+static void
+engine_set_node_state(struct engine_node *node,
+                      enum engine_node_state state,
+                      const char *reason_fmt, ...)
 {
     if (node->state == state) {
         return;
     }
 
-    VLOG_DBG("%s: node: %s, old_state %s, new_state %s",
-             where, node->name,
-             engine_node_state_name[node->state],
-             engine_node_state_name[state]);
+    if (VLOG_IS_DBG_ENABLED()) {
+        va_list args;
+        va_start(args, reason_fmt);
+        char *reason = xvasprintf(reason_fmt, args);
+        VLOG_DBG("node: %s, old_state %s, new_state %s, reason: %s.",
+                 reason, node->name,
+                 engine_node_state_name[node->state],
+                 engine_node_state_name[state]);
+        va_end(args);
+        free(reason);
+    }
 
     node->state = state;
 }
@@ -376,7 +383,7 @@ engine_init_run(void)
     VLOG_DBG("Initializing new run");
     struct engine_node *node;
     VECTOR_FOR_EACH (&engine_nodes, node) {
-        engine_set_node_state(node, EN_STALE);
+        engine_set_node_state(node, EN_STALE, "engine_init_run");
 
         if (node->clear_tracked_data) {
             node->clear_tracked_data(node->data);
@@ -400,7 +407,7 @@ engine_recompute(struct engine_node *node, bool allowed,
 
     if (!allowed) {
         VLOG_DBG("node: %s, recompute (%s) canceled", node->name, reason);
-        engine_set_node_state(node, EN_CANCELED);
+        engine_set_node_state(node, EN_CANCELED, "recompute not allowed");
         goto done;
     }
 
@@ -412,7 +419,8 @@ engine_recompute(struct engine_node *node, bool allowed,
 
     /* Run the node handler which might change state. */
     long long int now = time_msec();
-    engine_set_node_state(node, node->run(node, node->data));
+    engine_set_node_state(node, node->run(node, node->data),
+                          "recompute run() result");
     node->stats.recompute++;
     long long int delta_time = time_msec() - now;
     if (delta_time > engine_compute_log_timeout_msec) {
@@ -461,7 +469,9 @@ engine_compute(struct engine_node *node, bool recompute_allowed)
                  * Otherwise, handlers might change the state from EN_UPDATED
                  * back to EN_UNCHANGED.
                  */
-                engine_set_node_state(node, (enum engine_node_state) handled);
+                engine_set_node_state(node, (enum engine_node_state) handled,
+                                      "input %s updated",
+                                      node->inputs[i].node->name);
             }
         }
     }
@@ -475,7 +485,8 @@ engine_run_node(struct engine_node *node, bool recompute_allowed)
 {
     if (!node->n_inputs) {
         /* Run the node handler which might change state. */
-        engine_set_node_state(node, node->run(node, node->data));
+        engine_set_node_state(node, node->run(node, node->data),
+                              "run() result due to having no inputs");
         node->stats.recompute++;
         return;
     }
@@ -516,7 +527,7 @@ engine_run_node(struct engine_node *node, bool recompute_allowed)
      * still valid.
      */
     if (!engine_node_changed(node)) {
-        engine_set_node_state(node, EN_UNCHANGED);
+        engine_set_node_state(node, EN_UNCHANGED, "no change detected");
     }
 }
 
@@ -553,7 +564,8 @@ engine_need_run(void)
             continue;
         }
 
-        engine_set_node_state(node, node->run(node, node->data));
+        engine_set_node_state(node, node->run(node, node->data),
+                              "checking if engine needs to be run");
         node->stats.recompute++;
         VLOG_DBG("input node: %s, state: %s", node->name,
                  engine_node_state_name[node->state]);
