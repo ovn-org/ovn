@@ -20,10 +20,10 @@
 #include "openvswitch/hmap.h"
 #include "openvswitch/list.h"
 #include "northd/northd.h"
+#include "vec.h"
 #include <netinet/in.h>
 
 struct ecmp_route_list_node {
-    struct ovs_list list_node;
     uint16_t id; /* starts from 1 */
     const struct parsed_route *route;
 };
@@ -37,7 +37,7 @@ struct ecmp_groups_node {
     enum route_source source;
     uint32_t route_table_id;
     uint16_t route_count;
-    struct ovs_list route_list; /* Contains ecmp_route_list_node */
+    struct vector route_list; /* Contains ecmp_route_list_node */
     struct sset selection_fields;
 };
 

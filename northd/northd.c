@@ -11941,7 +11941,7 @@ build_ecmp_route_flow(struct lflow_table *lflows,
 {
     bool is_ipv4_prefix = IN6_IS_ADDR_V4MAPPED(&eg->prefix);
     uint16_t priority;
-    struct ecmp_route_list_node *er;
+    const struct ecmp_route_list_node *er;
     struct ds route_match = DS_EMPTY_INITIALIZER;
 
     char *prefix_s = build_route_prefix_s(&eg->prefix, eg->plen);
@@ -11955,7 +11955,7 @@ build_ecmp_route_flow(struct lflow_table *lflows,
     ds_put_format(&actions, "ip.ttl--; flags.loopback = 1; %s = %"PRIu16
                   "; %s = ", REG_ECMP_GROUP_ID, eg->id, REG_ECMP_MEMBER_ID);
 
-    if (!ovs_list_is_singleton(&eg->route_list)) {
+    if (vector_len(&eg->route_list) > 1) {
         if (protocol && !sset_is_empty(&eg->selection_fields)) {
             ds_put_format(&route_match, " && %s", protocol);
         }
@@ -11963,7 +11963,7 @@ build_ecmp_route_flow(struct lflow_table *lflows,
         struct ds values = DS_EMPTY_INITIALIZER;
         bool is_first = true;
 
-        LIST_FOR_EACH (er, list_node, &eg->route_list) {
+        VECTOR_FOR_EACH_PTR (&eg->route_list, er) {
             if (is_first) {
                 is_first = false;
             } else {
@@ -11997,8 +11997,7 @@ build_ecmp_route_flow(struct lflow_table *lflows,
         ds_put_cstr(&actions, ");");
         ds_destroy(&values);
     } else {
-        er = CONTAINER_OF(ovs_list_front(&eg->route_list),
-                          struct ecmp_route_list_node, list_node);
+        er = vector_get_ptr(&eg->route_list, 0);
         ds_put_format(&actions, "%"PRIu16"; next;", er->id);
     }
 
@@ -12009,7 +12008,7 @@ build_ecmp_route_flow(struct lflow_table *lflows,
     /* Add per member flow */
     struct ds match = DS_EMPTY_INITIALIZER;
     struct sset visited_ports = SSET_INITIALIZER(&visited_ports);
-    LIST_FOR_EACH (er, list_node, &eg->route_list) {
+    VECTOR_FOR_EACH_PTR (&eg->route_list, er) {
         const struct parsed_route *route = er->route;
         bool is_ipv4_nexthop = IN6_IS_ADDR_V4MAPPED(route->nexthop);
         /* Symmetric ECMP reply is only usable on gateway routers.

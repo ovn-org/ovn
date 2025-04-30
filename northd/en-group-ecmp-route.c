@@ -39,11 +39,7 @@ ecmp_groups_node_free(struct ecmp_groups_node *eg)
         return;
     }
 
-    struct ecmp_route_list_node *er;
-    LIST_FOR_EACH_SAFE (er, list_node, &eg->route_list) {
-        ovs_list_remove(&er->list_node);
-        free(er);
-    }
+    vector_destroy(&eg->route_list);
     sset_destroy(&eg->selection_fields);
     free(eg);
 }
@@ -218,9 +214,10 @@ ecmp_groups_add_route(struct ecmp_groups_node *group,
         return;
     }
 
-    struct ecmp_route_list_node *er = xmalloc(sizeof *er);
-    er->route = route;
-    er->id = ++group->route_count;
+    struct ecmp_route_list_node er = (struct ecmp_route_list_node) {
+        .route = route,
+        .id = ++group->route_count,
+    };
 
     if (group->route_count == 1) {
         sset_clone(&group->selection_fields, &route->ecmp_selection_fields);
@@ -229,7 +226,7 @@ ecmp_groups_add_route(struct ecmp_groups_node *group,
                        &route->ecmp_selection_fields);
     }
 
-    ovs_list_insert(&group->route_list, &er->list_node);
+    vector_push(&group->route_list, &er);
 }
 
 /* Removes a route from an ecmp group. If the ecmp group should persist
@@ -240,13 +237,14 @@ ecmp_groups_remove_route(struct ecmp_groups_node *group,
                          const struct parsed_route *pr)
 {
     struct ecmp_route_list_node *er;
-    LIST_FOR_EACH (er, list_node, &group->route_list) {
+    size_t i = 0;
+    VECTOR_FOR_EACH_PTR (&group->route_list, er) {
         if (er->route == pr) {
             const struct parsed_route *found_route = er->route;
-            ovs_list_remove(&er->list_node);
-            free(er);
+            vector_remove_fast(&group->route_list, i, NULL);
             return found_route;
         }
+        i++;
     }
 
     return NULL;
@@ -257,9 +255,8 @@ ecmp_group_update_ids(struct ecmp_groups_node *group)
 {
     struct ecmp_route_list_node *er;
     size_t i = 0;
-    LIST_FOR_EACH (er, list_node, &group->route_list) {
-        er->id = i;
-        i++;
+    VECTOR_FOR_EACH_PTR (&group->route_list, er) {
+        er->id = i++;
     }
     group->route_count = i;
 }
@@ -283,8 +280,8 @@ ecmp_groups_add(struct group_ecmp_datapath *gn,
     eg->is_src_route = route->is_src_route;
     eg->source = route->source;
     eg->route_table_id = route->route_table_id;
+    eg->route_list = VECTOR_EMPTY_INITIALIZER(struct ecmp_route_list_node);
     sset_init(&eg->selection_fields);
-    ovs_list_init(&eg->route_list);
     ecmp_groups_add_route(eg, route);
 
     return eg;
@@ -311,7 +308,7 @@ static bool
 ecmp_group_has_symmetric_reply(struct ecmp_groups_node *eg)
 {
     struct ecmp_route_list_node *er;
-    LIST_FOR_EACH (er, list_node, &eg->route_list) {
+    VECTOR_FOR_EACH_PTR (&eg->route_list, er) {
         if (er->route->ecmp_symmetric_reply) {
             return true;
         }
@@ -430,7 +427,7 @@ handle_deleted_route(struct group_ecmp_route_data *data,
             return false;
         }
 
-        size_t ecmp_members = ovs_list_size(&eg->route_list);
+        size_t ecmp_members = vector_len(&eg->route_list);
         if (ecmp_members == 1) {
             /* The route is the only ecmp member, we remove the whole group. */
             hmap_remove(&node->ecmp_groups, &eg->hmap_node);
@@ -444,9 +441,8 @@ handle_deleted_route(struct group_ecmp_route_data *data,
             if (ecmp_group_has_symmetric_reply(eg)) {
                 ecmp_group_update_ids(eg);
             } else {
-                struct ecmp_route_list_node *er = CONTAINER_OF(
-                    ovs_list_front(&eg->route_list),
-                    struct ecmp_route_list_node, list_node);
+                const struct ecmp_route_list_node *er =
+                    vector_get_ptr(&eg->route_list, 0);
                 unique_routes_add(node, er->route);
                 hmap_remove(&node->ecmp_groups, &eg->hmap_node);
                 ecmp_groups_node_free(eg);
