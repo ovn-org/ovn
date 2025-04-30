@@ -2334,6 +2334,20 @@ cp test-cases.txt expout
 AT_CHECK([ovstest test-ovn parse-actions < input.txt], [0], [expout])
 AT_CLEANUP
 
+AT_SETUP([Vector operations])
+check ovstest test-vector add
+
+check ovstest test-vector remove
+
+check ovstest test-vector out-of-bounds
+
+check ovstest test-vector shrink
+
+check ovstest test-vector clone
+
+check ovstest test-vector pointers
+AT_CLEANUP
+
 AT_BANNER([OVN end-to-end tests])
 
 OVN_FOR_EACH_NORTHD([

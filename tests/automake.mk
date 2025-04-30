@@ -284,6 +284,7 @@ tests_ovstest_SOURCES = \
 	tests/test-utils.c \
 	tests/test-utils.h \
 	tests/test-ovn.c \
+	tests/test-vector.c \
 	controller/test-lflow-cache.c \
 	controller/test-lflow-conj-ids.c \
 	controller/test-ofctrl-seqno.c \

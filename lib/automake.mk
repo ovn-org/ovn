@@ -45,6 +45,8 @@ lib_libovn_la_SOURCES = \
 	lib/lb.c \
 	lib/lb.h \
 	lib/stopwatch-names.h \
+	lib/vec.c \
+	lib/vec.h \
 	lib/vif-plug-provider.h \
 	lib/vif-plug-provider.c \
 	lib/vif-plug-providers/dummy/vif-plug-dummy.c
