@@ -173,6 +173,17 @@
         options are described individually below.
       </column>
 
+      <column name="options" key="enable_chassis_nb_cfg_update">
+        <p>
+          If set to <code>false</code>, ovn-controller will no longer update the
+          <ref column="nb_cfg" table="Chassis_Private" db="OVN_Southbound"/>
+          column in the <ref table="Chassis_Private" db="OVN_Southbound"/>
+          table of the <ref db="OVN_Southbound"/> database.  It will still
+          update the <code>external_ids:ovn-nb-cfg</code> in the local
+          OVS integration bridge.
+        </p>
+      </column>
+
       <group title="Options for configuring BFD">
         <p>
           These options apply when <code>ovn-controller</code> configures

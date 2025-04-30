@@ -3813,3 +3813,34 @@ start_controller
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+AT_SETUP([ovn-cntroller options:enable_chassis_nb_cfg_update])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11 24 geneve
+check ovn-nbctl --wait=hv sync
+
+check ovn-nbctl set nb_global . nb_cfg=100
+wait_column 100 chassis_priv nb_cfg name=hv1
+AT_CHECK([as hv1 ovs-vsctl get bridge br-int external_ids:ovn-nb-cfg], [0], ["100"
+])
+
+check ovn-nbctl set nb_global . options:enable_chassis_nb_cfg_update=false
+check ovn-nbctl set nb_global . nb_cfg=200
+OVS_WAIT_UNTIL([
+    ovs_nb_cfg=$(as hv1 ovs-vsctl get bridge br-int external_ids:ovn-nb-cfg | sed 's/"//g')
+    test "$ovs_nb_cfg" = "200"
+])
+
+check_column 100 chassis_priv nb_cfg name=hv1
+check ovn-nbctl set nb_global . options:enable_chassis_nb_cfg_update=true
+wait_column 200 chassis_priv nb_cfg name=hv1
+
+check ovn-nbctl --wait=hv sync
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
