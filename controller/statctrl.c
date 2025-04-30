@@ -19,6 +19,7 @@
 #include "dirs.h"
 #include "latch.h"
 #include "lflow.h"
+#include "lib/vec.h"
 #include "mac-cache.h"
 #include "openvswitch/ofp-errors.h"
 #include "openvswitch/ofp-flow.h"
@@ -37,6 +38,8 @@
 
 VLOG_DEFINE_THIS_MODULE(statctrl);
 
+#define STATS_VEC_CAPACITY_THRESHOLD 1024
+
 enum stat_type {
     STATS_MAC_BINDING = 0,
     STATS_FDB,
@@ -53,39 +56,33 @@ struct stats_node {
     int64_t next_request_timestamp;
     /* Request delay in ms. */
     uint64_t request_delay;
-    /* List of processed statistics. */
-    struct ovs_list stats_list;
-    /* Function to clean up the node.
-     * This function runs in main thread. */
-    void (*destroy)(struct ovs_list *stats_list);
+    /* Vector of processed statistics. */
+    struct vector stats;
     /* Function to process the response and store it in the list.
      * This function runs in statctrl thread locked behind mutex. */
-    void (*process_flow_stats)(struct ovs_list *stats_list,
+    void (*process_flow_stats)(struct vector *stats,
                                struct ofputil_flow_stats *ofp_stats);
     /* Function to process the parsed stats.
      * This function runs in main thread locked behind mutex. */
     void (*run)(struct rconn *swconn,
                 struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                struct ovs_list *stats_list,
+                struct vector *stats,
                 uint64_t *req_delay, void *data);
-    /* Name of the stats node corresponding stopwatch. */
-    const char *stopwatch_name;
+    /* Name of the stats node. */
+    const char *name;
 };
 
-#define STATS_NODE(NAME, REQUEST, DESTROY, PROCESS, RUN)                   \
+#define STATS_NODE(NAME, REQUEST, STAT_TYPE, PROCESS, RUN)                 \
     do {                                                                   \
         statctrl_ctx.nodes[STATS_##NAME] = (struct stats_node) {           \
             .request = REQUEST,                                            \
             .xid = 0,                                                      \
             .next_request_timestamp = INT64_MAX,                           \
             .request_delay = 0,                                            \
-            .stats_list =                                                  \
-                OVS_LIST_INITIALIZER(                                      \
-                    &statctrl_ctx.nodes[STATS_##NAME].stats_list),         \
-            .destroy = DESTROY,                                            \
+            .stats = VECTOR_EMPTY_INITIALIZER(STAT_TYPE),                  \
             .process_flow_stats = PROCESS,                                 \
             .run = RUN,                                                    \
-            .stopwatch_name = OVS_STRINGIZE(stats_##NAME),                 \
+            .name = OVS_STRINGIZE(stats_##NAME),                 \
         };                                                                 \
         stopwatch_create(OVS_STRINGIZE(stats_##NAME), SW_MS);              \
     } while (0)
@@ -143,7 +140,7 @@ statctrl_init(void)
             .out_group = OFPG_ANY,
             .table_id = OFTABLE_MAC_CACHE_USE,
     };
-    STATS_NODE(MAC_BINDING, mac_binding_request, mac_cache_stats_destroy,
+    STATS_NODE(MAC_BINDING, mac_binding_request, struct mac_cache_stats,
                mac_binding_stats_process_flow_stats, mac_binding_stats_run);
 
     struct ofputil_flow_stats_request fdb_request = {
@@ -153,7 +150,7 @@ statctrl_init(void)
             .out_group = OFPG_ANY,
             .table_id = OFTABLE_LOOKUP_FDB,
     };
-    STATS_NODE(FDB, fdb_request, mac_cache_stats_destroy,
+    STATS_NODE(FDB, fdb_request, struct mac_cache_stats,
                fdb_stats_process_flow_stats, fdb_stats_run);
 
     struct ofputil_flow_stats_request mac_binding_probe_request = {
@@ -164,7 +161,7 @@ statctrl_init(void)
             .table_id = OFTABLE_MAC_BINDING,
     };
     STATS_NODE(MAC_BINDING_PROBE, mac_binding_probe_request,
-               mac_cache_stats_destroy,
+               struct mac_cache_stats,
                mac_binding_probe_stats_process_flow_stats,
                mac_binding_probe_stats_run);
 
@@ -196,11 +193,18 @@ statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
         struct stats_node *node = &statctrl_ctx.nodes[i];
         uint64_t prev_delay = node->request_delay;
 
-        stopwatch_start(node->stopwatch_name, time_msec());
+        stopwatch_start(node->name, time_msec());
         node->run(statctrl_ctx.swconn,
-                  sbrec_port_binding_by_name, &node->stats_list,
+                  sbrec_port_binding_by_name, &node->stats,
                   &node->request_delay, node_data[i]);
-        stopwatch_stop(node->stopwatch_name, time_msec());
+        vector_clear(&node->stats);
+        if (vector_capacity(&node->stats) >= STATS_VEC_CAPACITY_THRESHOLD) {
+            VLOG_DBG("The statistics vector for node '%s' capacity "
+                     "(%"PRIuSIZE") is over threshold.", node->name,
+                     vector_capacity(&node->stats));
+            vector_shrink_to_fit(&node->stats);
+        }
+        stopwatch_stop(node->name, time_msec());
 
         schedule_updated |=
                 statctrl_update_next_request_timestamp(node, now, prev_delay);
@@ -233,7 +237,7 @@ statctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn)
     ovs_mutex_lock(&mutex);
     for (size_t i = 0; i < STATS_MAX; i++) {
         struct stats_node *node = &statctrl_ctx.nodes[i];
-        if (!ovs_list_is_empty(&node->stats_list)) {
+        if (!vector_is_empty(&node->stats)) {
             poll_immediate_wake();
         }
     }
@@ -254,7 +258,7 @@ statctrl_destroy(void)
 
     for (size_t i = 0; i < STATS_MAX; i++) {
         struct stats_node *node = &statctrl_ctx.nodes[i];
-        node->destroy(&node->stats_list);
+        vector_destroy(&node->stats);
     }
 }
 
@@ -364,7 +368,7 @@ statctrl_decode_statistics_reply(struct stats_node *node, struct ofpbuf *msg)
             break;
         }
 
-        node->process_flow_stats(&node->stats_list, &fs);
+        node->process_flow_stats(&node->stats, &fs);
     }
 
     ofpbuf_uninit(&ofpacts);
@@ -399,7 +403,7 @@ static void
 statctrl_notify_main_thread(struct statctrl_ctx *ctx)
 {
     for (size_t i = 0; i < STATS_MAX; i++) {
-        if (!ovs_list_is_empty(&ctx->nodes[i].stats_list)) {
+        if (!vector_is_empty(&ctx->nodes[i].stats)) {
             seq_change(ctx->main_seq);
             return;
         }

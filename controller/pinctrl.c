@@ -1570,8 +1570,7 @@ OVS_REQUIRES(pinctrl_mutex)
         return;
     }
 
-    struct bp_packet_data *pd = bp_packet_data_create(pin, continuation);
-    buffered_packets_packet_data_enqueue(bp, pd);
+    buffered_packets_packet_data_enqueue(bp, pin, continuation);
 
     /* There is a chance that the MAC binding was already created. */
     notify_pinctrl_main();
@@ -4738,6 +4737,8 @@ pinctrl_handle_put_mac_binding(const struct flow *md,
     notify_pinctrl_main();
 }
 
+#define READY_PACKETS_VEC_CAPACITY_THRESHOLD 1024
+
 /* Called with in the pinctrl_handler thread context. */
 static void
 send_mac_binding_buffered_pkts(struct rconn *swconn)
@@ -4745,15 +4746,21 @@ send_mac_binding_buffered_pkts(struct rconn *swconn)
 {
     enum ofp_version version = rconn_get_version(swconn);
     enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
+    struct vector *rpd = &buffered_packets_ctx.ready_packets_data;
 
     struct bp_packet_data *pd;
-    LIST_FOR_EACH_POP (pd, node, &buffered_packets_ctx.ready_packets_data) {
+    VECTOR_FOR_EACH_PTR (rpd, pd) {
         queue_msg(swconn, ofputil_encode_resume(&pd->pin, pd->continuation,
                                                 proto));
         bp_packet_data_destroy(pd);
     }
 
-    ovs_list_init(&buffered_packets_ctx.ready_packets_data);
+    vector_clear(rpd);
+    if (vector_capacity(rpd) >= READY_PACKETS_VEC_CAPACITY_THRESHOLD) {
+        VLOG_DBG("The ready_packets_data vector capacity (%"PRIuSIZE") "
+                 "is over threshold.", vector_capacity(rpd));
+        vector_shrink_to_fit(rpd);
+    }
 }
 
 /* Update or add an IP-MAC binding for 'logical_port'.

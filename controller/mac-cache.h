@@ -28,6 +28,7 @@
 #include "ovn-sb-idl.h"
 
 struct ovsdb_idl_index;
+struct vector;
 
 struct mac_cache_data {
     /* 'struct mac_cache_threshold' by datapath's tunnel_key. */
@@ -89,9 +90,18 @@ struct fdb {
     long long timestamp;
 };
 
-struct bp_packet_data {
-    struct ovs_list node;
+struct mac_cache_stats {
+    int64_t idle_age_ms;
 
+    union {
+        /* Common data to identify MAC binding. */
+        struct mac_binding_data mb;
+        /* Common data to identify FDB. */
+        struct fdb_data fdb;
+    } data;
+};
+
+struct bp_packet_data {
     struct ofpbuf *continuation;
     struct ofputil_packet_in pin;
 };
@@ -102,7 +112,7 @@ struct buffered_packets {
     struct mac_binding_data mb_data;
 
     /* Queue of packet_data associated with this struct. */
-    struct ovs_list queue;
+    struct vector queue;
 
     /* Timestamp in ms when the buffered packet should expire. */
     long long int expire_at_ms;
@@ -115,7 +125,7 @@ struct buffered_packets_ctx {
     /* Map of all buffered packets waiting for the MAC address. */
     struct hmap buffered_packets;
     /* List of packet data that are ready to be sent. */
-    struct ovs_list ready_packets_data;
+    struct vector ready_packets_data;
 };
 
 /* Thresholds. */
@@ -177,30 +187,24 @@ void fdbs_clear(struct hmap *map);
 
 /* MAC binding stat processing. */
 void
-mac_binding_stats_process_flow_stats(struct ovs_list *stats_list,
+mac_binding_stats_process_flow_stats(struct vector *stats_vec,
                                      struct ofputil_flow_stats *ofp_stats);
 
 void mac_binding_stats_run(
         struct rconn *swconn OVS_UNUSED,
         struct ovsdb_idl_index *sbrec_port_binding_by_name OVS_UNUSED,
-        struct ovs_list *stats_list, uint64_t *req_delay, void *data);
+        struct vector *stats_vec, uint64_t *req_delay, void *data);
 
 /* FDB stat processing. */
-void fdb_stats_process_flow_stats(struct ovs_list *stats_list,
+void fdb_stats_process_flow_stats(struct vector *stats_vec,
                                   struct ofputil_flow_stats *ofp_stats);
 
 void fdb_stats_run(
         struct rconn *swconn OVS_UNUSED,
         struct ovsdb_idl_index *sbrec_port_binding_by_name OVS_UNUSED,
-        struct ovs_list *stats_list, uint64_t *req_delay, void *data);
-
-void mac_cache_stats_destroy(struct ovs_list *stats_list);
+        struct vector *stats_vec, uint64_t *req_delay, void *data);
 
 /* Packet buffering. */
-struct bp_packet_data *
-bp_packet_data_create(const struct ofputil_packet_in *pin,
-                      const struct ofpbuf *continuation);
-
 void bp_packet_data_destroy(struct bp_packet_data *pd);
 
 struct buffered_packets *
@@ -208,7 +212,8 @@ buffered_packets_add(struct buffered_packets_ctx *ctx,
                      struct mac_binding_data mb_data);
 
 void buffered_packets_packet_data_enqueue(struct buffered_packets *bp,
-                                          struct bp_packet_data *pd);
+                                          const struct ofputil_packet_in *pin,
+                                          const struct ofpbuf *continuation);
 
 void buffered_packets_ctx_run(struct buffered_packets_ctx *ctx,
                               const struct hmap *recent_mbs,
@@ -226,12 +231,12 @@ bool buffered_packets_ctx_is_ready_to_send(struct buffered_packets_ctx *ctx);
 bool buffered_packets_ctx_has_packets(struct buffered_packets_ctx *ctx);
 
 void mac_binding_probe_stats_process_flow_stats(
-        struct ovs_list *stats_list,
+        struct vector *stats_vec,
         struct ofputil_flow_stats *ofp_stats);
 
 void mac_binding_probe_stats_run(
         struct rconn *swconn,
         struct ovsdb_idl_index *sbrec_port_binding_by_name,
-        struct ovs_list *stats_list, uint64_t *req_delay, void *data);
+        struct vector *stats_vec, uint64_t *req_delay, void *data);
 
 #endif /* controller/mac-cache.h */

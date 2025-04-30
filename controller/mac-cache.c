@@ -18,6 +18,7 @@
 
 #include "lflow.h"
 #include "lib/mac-binding-index.h"
+#include "lib/vec.h"
 #include "local_data.h"
 #include "lport.h"
 #include "mac-cache.h"
@@ -339,43 +340,30 @@ fdbs_clear(struct hmap *map)
     }
 }
 
-struct mac_cache_stats {
-    struct ovs_list list_node;
-
-    int64_t idle_age_ms;
-
-    union {
-        /* Common data to identify MAC binding. */
-        struct mac_binding_data mb;
-        /* Common data to identify FDB. */
-        struct fdb_data fdb;
-    } data;
-};
-
 /* MAC binding stat processing. */
 void
-mac_binding_stats_process_flow_stats(struct ovs_list *stats_list,
+mac_binding_stats_process_flow_stats(struct vector *stats_vec,
                                      struct ofputil_flow_stats *ofp_stats)
 {
-    struct mac_cache_stats *stats = xmalloc(sizeof *stats);
-
-    stats->idle_age_ms = ofp_stats->idle_age * 1000;
-    stats->data.mb = (struct mac_binding_data) {
-        .cookie = ntohll(ofp_stats->cookie),
-        /* The port_key must be zero to match mac_binding_data_from_sbrec. */
-        .port_key = 0,
-        .dp_key = ntohll(ofp_stats->match.flow.metadata),
-        .mac = ofp_stats->match.flow.dl_src
+    struct mac_cache_stats stats = (struct mac_cache_stats) {
+        .idle_age_ms = ofp_stats->idle_age * 1000,
+        .data.mb = (struct mac_binding_data) {
+            .cookie = ntohll(ofp_stats->cookie),
+            /* The port_key must be zero to match
+             * mac_binding_data_from_sbrec. */
+            .port_key = 0,
+            .dp_key = ntohll(ofp_stats->match.flow.metadata),
+            .mac = ofp_stats->match.flow.dl_src
+        },
     };
 
     if (ofp_stats->match.flow.dl_type == htons(ETH_TYPE_IP) ||
         ofp_stats->match.flow.dl_type == htons(ETH_TYPE_ARP)) {
-        stats->data.mb.ip = in6_addr_mapped_ipv4(ofp_stats->match.flow.nw_src);
+        stats.data.mb.ip = in6_addr_mapped_ipv4(ofp_stats->match.flow.nw_src);
     } else {
-        stats->data.mb.ip = ofp_stats->match.flow.ipv6_src;
+        stats.data.mb.ip = ofp_stats->match.flow.ipv6_src;
     }
-
-    ovs_list_push_back(stats_list, &stats->list_node);
+    vector_push(stats_vec, &stats);
 }
 
 static void
@@ -409,19 +397,18 @@ void
 mac_binding_stats_run(
         struct rconn *swconn OVS_UNUSED,
         struct ovsdb_idl_index *sbrec_port_binding_by_name OVS_UNUSED,
-        struct ovs_list *stats_list, uint64_t *req_delay, void *data)
+        struct vector *stats_vec, uint64_t *req_delay, void *data)
 {
     struct mac_cache_data *cache_data = data;
     long long timewall_now = time_wall_msec();
 
     struct mac_cache_stats *stats;
-    LIST_FOR_EACH_POP (stats, list_node, stats_list) {
+    VECTOR_FOR_EACH_PTR (stats_vec, stats) {
         struct mac_binding *mb = mac_binding_find(&cache_data->mac_bindings,
                                                   &stats->data.mb);
         if (!mb) {
             mac_binding_update_log("Not found in the cache:", &stats->data.mb,
                                    false, NULL, 0, 0);
-            free(stats);
             continue;
         }
 
@@ -449,7 +436,6 @@ mac_binding_stats_run(
                                    threshold, stats->idle_age_ms,
                                    since_updated_ms);
         }
-        free(stats);
     }
 
     mac_cache_update_req_delay(&cache_data->thresholds, req_delay);
@@ -460,19 +446,18 @@ mac_binding_stats_run(
 
 /* FDB stat processing. */
 void
-fdb_stats_process_flow_stats(struct ovs_list *stats_list,
+fdb_stats_process_flow_stats(struct vector *stats_vec,
                              struct ofputil_flow_stats *ofp_stats)
 {
-    struct mac_cache_stats *stats = xmalloc(sizeof *stats);
-
-    stats->idle_age_ms = ofp_stats->idle_age * 1000;
-    stats->data.fdb = (struct fdb_data) {
+    struct mac_cache_stats stats = (struct mac_cache_stats) {
+        .idle_age_ms = ofp_stats->idle_age * 1000,
+        .data.fdb = (struct fdb_data) {
             .port_key = ofp_stats->match.flow.regs[MFF_LOG_INPORT - MFF_REG0],
             .dp_key = ntohll(ofp_stats->match.flow.metadata),
             .mac = ofp_stats->match.flow.dl_src
+        },
     };
-
-    ovs_list_push_back(stats_list, &stats->list_node);
+    vector_push(stats_vec, &stats);
 }
 
 static void
@@ -506,20 +491,19 @@ fdb_update_log(const char *action,
 void
 fdb_stats_run(struct rconn *swconn OVS_UNUSED,
               struct ovsdb_idl_index *sbrec_port_binding_by_name OVS_UNUSED,
-              struct ovs_list *stats_list,
+              struct vector *stats_vec,
               uint64_t *req_delay, void *data)
 {
     struct mac_cache_data *cache_data = data;
     long long timewall_now = time_wall_msec();
 
     struct mac_cache_stats *stats;
-    LIST_FOR_EACH_POP (stats, list_node, stats_list) {
+    VECTOR_FOR_EACH_PTR (stats_vec, stats) {
         struct fdb *fdb = fdb_find(&cache_data->fdbs, &stats->data.fdb);
 
         if (!fdb) {
             fdb_update_log("Not found in the cache:", &stats->data.fdb,
                            false, NULL, 0, 0);
-            free(stats);
             continue;
         }
 
@@ -546,8 +530,6 @@ fdb_stats_run(struct rconn *swconn OVS_UNUSED,
             fdb_update_log("Not updating non-active", &fdb->data, true,
                            threshold, stats->idle_age_ms, since_updated_ms);
         }
-
-        free(stats);
     }
 
     mac_cache_update_req_delay(&cache_data->thresholds, req_delay);
@@ -557,34 +539,10 @@ fdb_stats_run(struct rconn *swconn OVS_UNUSED,
 }
 
 /* Packet buffering. */
-struct bp_packet_data *
-bp_packet_data_create(const struct ofputil_packet_in *pin,
-                      const struct ofpbuf *continuation) {
-    struct bp_packet_data *pd = xmalloc(sizeof *pd);
-
-    pd->pin = (struct ofputil_packet_in) {
-            .packet = xmemdup(pin->packet, pin->packet_len),
-            .packet_len = pin->packet_len,
-            .flow_metadata = pin->flow_metadata,
-            .reason = pin->reason,
-            .table_id = pin->table_id,
-            .cookie = pin->cookie,
-            /* Userdata are empty on purpose,
-             * it is not needed for the continuation. */
-            .userdata = NULL,
-            .userdata_len = 0,
-    };
-    pd->continuation = ofpbuf_clone(continuation);
-
-    return pd;
-}
-
-
 void
 bp_packet_data_destroy(struct bp_packet_data *pd) {
     free(pd->pin.packet);
     ofpbuf_delete(pd->continuation);
-    free(pd);
 }
 
 struct buffered_packets *
@@ -604,7 +562,8 @@ buffered_packets_add(struct buffered_packets_ctx *ctx,
         /* Schedule the freshly added buffered packet to do lookup
          * immediately. */
         bp->lookup_at_ms = 0;
-        ovs_list_init(&bp->queue);
+        bp->queue = VECTOR_CAPACITY_INITIALIZER(struct bp_packet_data,
+                                                BUFFER_QUEUE_DEPTH);
     }
 
     bp->expire_at_ms = time_msec() + BUFFERED_PACKETS_TIMEOUT_MS;
@@ -614,14 +573,32 @@ buffered_packets_add(struct buffered_packets_ctx *ctx,
 
 void
 buffered_packets_packet_data_enqueue(struct buffered_packets *bp,
-                                     struct bp_packet_data *pd) {
-    if (ovs_list_size(&bp->queue) == BUFFER_QUEUE_DEPTH) {
-        struct bp_packet_data *p = CONTAINER_OF(ovs_list_pop_front(&bp->queue),
-                                                struct bp_packet_data, node);
-
-        bp_packet_data_destroy(p);
+                                     const struct ofputil_packet_in *pin,
+                                     const struct ofpbuf *continuation)
+{
+    if (vector_len(&bp->queue) == BUFFER_QUEUE_DEPTH) {
+        struct bp_packet_data pd;
+        vector_remove(&bp->queue, 0, &pd);
+        bp_packet_data_destroy(&pd);
     }
-    ovs_list_push_back(&bp->queue, &pd->node);
+
+    struct bp_packet_data pd = (struct bp_packet_data) {
+        .pin = (struct ofputil_packet_in) {
+            .packet = xmemdup(pin->packet, pin->packet_len),
+            .packet_len = pin->packet_len,
+            .flow_metadata = pin->flow_metadata,
+            .reason = pin->reason,
+            .table_id = pin->table_id,
+            .cookie = pin->cookie,
+            /* Userdata are empty on purpose,
+             * it is not needed for the continuation. */
+            .userdata = NULL,
+            .userdata_len = 0,
+        },
+        .continuation = ofpbuf_clone(continuation),
+    };
+
+    vector_push(&bp->queue, &pd);
 }
 
 void
@@ -661,16 +638,18 @@ buffered_packets_ctx_run(struct buffered_packets_ctx *ctx,
         }
 
         struct bp_packet_data *pd;
-        LIST_FOR_EACH_POP (pd, node, &bp->queue) {
+        VECTOR_FOR_EACH_PTR (&bp->queue, pd) {
             struct dp_packet packet;
             dp_packet_use_const(&packet, pd->pin.packet, pd->pin.packet_len);
 
             struct eth_header *eth = dp_packet_data(&packet);
             eth->eth_dst = mac;
-
-            ovs_list_push_back(&ctx->ready_packets_data, &pd->node);
         }
 
+        vector_push_array(&ctx->ready_packets_data,
+                          vector_get_array(&bp->queue),
+                          vector_len(&bp->queue));
+        vector_clear(&bp->queue);
         buffered_packets_remove(ctx, bp);
     }
 
@@ -679,7 +658,7 @@ buffered_packets_ctx_run(struct buffered_packets_ctx *ctx,
 
 bool
 buffered_packets_ctx_is_ready_to_send(struct buffered_packets_ctx *ctx) {
-    return !ovs_list_is_empty(&ctx->ready_packets_data);
+    return !vector_is_empty(&ctx->ready_packets_data);
 }
 
 bool
@@ -689,32 +668,23 @@ buffered_packets_ctx_has_packets(struct buffered_packets_ctx *ctx) {
 
 void
 buffered_packets_ctx_init(struct buffered_packets_ctx *ctx) {
+    ctx->ready_packets_data = VECTOR_EMPTY_INITIALIZER(struct bp_packet_data);
     hmap_init(&ctx->buffered_packets);
-    ovs_list_init(&ctx->ready_packets_data);
 }
 
 void
 buffered_packets_ctx_destroy(struct buffered_packets_ctx *ctx) {
     struct bp_packet_data *pd;
-    LIST_FOR_EACH_POP (pd, node, &ctx->ready_packets_data) {
+    VECTOR_FOR_EACH_PTR (&ctx->ready_packets_data, pd) {
         bp_packet_data_destroy(pd);
     }
+    vector_destroy(&ctx->ready_packets_data);
 
     struct buffered_packets *bp;
     HMAP_FOR_EACH_SAFE (bp, hmap_node, &ctx->buffered_packets) {
         buffered_packets_remove(ctx, bp);
     }
     hmap_destroy(&ctx->buffered_packets);
-}
-
-
-void
-mac_cache_stats_destroy(struct ovs_list *stats_list)
-{
-    struct mac_cache_stats *stats;
-    LIST_FOR_EACH_POP (stats, list_node, stats_list) {
-        free(stats);
-    }
 }
 
 static uint32_t
@@ -815,11 +785,12 @@ static void
 buffered_packets_remove(struct buffered_packets_ctx *ctx,
                         struct buffered_packets *bp) {
     struct bp_packet_data *pd;
-    LIST_FOR_EACH_POP (pd, node, &bp->queue) {
+    VECTOR_FOR_EACH_PTR (&bp->queue, pd) {
         bp_packet_data_destroy(pd);
     }
 
     hmap_remove(&ctx->buffered_packets, &bp->hmap_node);
+    vector_destroy(&bp->queue);
     free(bp);
 }
 
@@ -861,48 +832,49 @@ buffered_packets_db_lookup(struct buffered_packets *bp, struct ds *ip,
 
 void
 mac_binding_probe_stats_process_flow_stats(
-        struct ovs_list *stats_list,
+        struct vector *stats_vec,
         struct ofputil_flow_stats *ofp_stats)
 {
-    struct mac_cache_stats *stats = xmalloc(sizeof *stats);
-
-    stats->idle_age_ms = ofp_stats->idle_age * 1000;
-    stats->data.mb = (struct mac_binding_data) {
-        .cookie = ntohll(ofp_stats->cookie),
-        /* The port_key must be zero to match mac_binding_data_from_sbrec. */
-        .port_key = 0,
-        .dp_key = ntohll(ofp_stats->match.flow.metadata),
+    struct mac_cache_stats stats = (struct mac_cache_stats) {
+        .idle_age_ms = ofp_stats->idle_age * 1000,
+        .data.mb = (struct mac_binding_data) {
+            .cookie = ntohll(ofp_stats->cookie),
+            /* The port_key must be zero to match
+             * mac_binding_data_from_sbrec. */
+            .port_key = 0,
+            .dp_key = ntohll(ofp_stats->match.flow.metadata),
+            .mac = ofp_stats->match.flow.dl_src
+        },
     };
 
     if (ofp_stats->match.flow.regs[0]) {
-        stats->data.mb.ip =
+        stats.data.mb.ip =
             in6_addr_mapped_ipv4(htonl(ofp_stats->match.flow.regs[0]));
     } else {
         ovs_be128 ip6 = hton128(flow_get_xxreg(&ofp_stats->match.flow, 1));
-        memcpy(&stats->data.mb.ip, &ip6, sizeof stats->data.mb.ip);
+        memcpy(&stats.data.mb.ip, &ip6, sizeof stats.data.mb.ip);
     }
 
-    ovs_list_push_back(stats_list, &stats->list_node);
+    vector_push(stats_vec, &stats);
 }
 
 void
 mac_binding_probe_stats_run(
         struct rconn *swconn,
         struct ovsdb_idl_index *sbrec_port_binding_by_name,
-        struct ovs_list *stats_list,
+        struct vector *stats_vec,
         uint64_t *req_delay, void *data)
 {
     long long timewall_now = time_wall_msec();
     struct mac_cache_data *cache_data = data;
 
     struct mac_cache_stats *stats;
-    LIST_FOR_EACH_POP (stats, list_node, stats_list) {
+    VECTOR_FOR_EACH_PTR (stats_vec, stats) {
         struct mac_binding *mb = mac_binding_find(&cache_data->mac_bindings,
                                                   &stats->data.mb);
         if (!mb) {
             mac_binding_update_log("Probe: not found in the cache:",
                                    &stats->data.mb, false, NULL, 0, 0);
-            free(stats);
             continue;
         }
 
@@ -915,7 +887,6 @@ mac_binding_probe_stats_run(
             mac_binding_update_log("Not sending ARP/ND request for non-active",
                                    &mb->data, true, threshold,
                                    stats->idle_age_ms, since_updated_ms);
-            free(stats);
             continue;
         }
 
@@ -924,7 +895,6 @@ mac_binding_probe_stats_run(
                     "Not sending ARP/ND request for recently updated",
                     &mb->data, true, threshold, stats->idle_age_ms,
                     since_updated_ms);
-            free(stats);
             continue;
         }
 
@@ -932,13 +902,11 @@ mac_binding_probe_stats_run(
             lport_lookup_by_name(sbrec_port_binding_by_name,
                                  sbrec->logical_port);
         if (!pb) {
-            free(stats);
             continue;
         }
 
         struct lport_addresses laddr;
         if (!extract_lsp_addresses(pb->mac[0], &laddr)) {
-            free(stats);
             continue;
         }
 
@@ -960,7 +928,6 @@ mac_binding_probe_stats_run(
                                               OFTABLE_LOCAL_OUTPUT);
         }
 
-        free(stats);
         destroy_lport_addresses(&laddr);
     }
 
