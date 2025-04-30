@@ -45,6 +45,7 @@
 #include "util.h"
 #include "uuid.h"
 #include "openvswitch/vlog.h"
+#include "vec.h"
 
 VLOG_DEFINE_THIS_MODULE(ovn_ic);
 
@@ -921,9 +922,7 @@ port_binding_run(struct ic_context *ctx,
 struct ic_router_info {
     struct hmap_node node;
     const struct nbrec_logical_router *lr; /* key of hmap */
-    const struct icsbrec_port_binding **isb_pbs;
-    size_t n_isb_pbs;
-    size_t n_allocated_isb_pbs;
+    struct vector isb_pbs; /* Vector of const struct icsbrec_port_binding *. */
     struct hmap routes_learned;
 };
 
@@ -1380,8 +1379,7 @@ lrp_is_ts_port(struct ic_context *ctx, struct ic_router_info *ic_lr,
 {
     const struct icsbrec_port_binding *isb_pb;
     const char *ts_lrp_name;
-    for (int i = 0; i < ic_lr->n_isb_pbs; i++) {
-        isb_pb = ic_lr->isb_pbs[i];
+    VECTOR_FOR_EACH (&ic_lr->isb_pbs, isb_pb) {
         ts_lrp_name = get_lrp_name_by_ts_port_name(ctx, isb_pb->logical_port);
         if (!strcmp(ts_lrp_name, lrp_name)) {
             return true;
@@ -1404,8 +1402,7 @@ sync_learned_routes(struct ic_context *ctx,
     const char *lrp_name, *ts_route_table, *route_filter_tag;
     const struct icsbrec_port_binding *isb_pb;
     const struct nbrec_logical_router_port *lrp;
-    for (int i = 0; i < ic_lr->n_isb_pbs; i++) {
-        isb_pb = ic_lr->isb_pbs[i];
+    VECTOR_FOR_EACH (&ic_lr->isb_pbs, isb_pb) {
         lrp_name = get_lrp_name_by_ts_port_name(ctx, isb_pb->logical_port);
         lrp = get_lrp_by_lrp_name(ctx, lrp_name);
         if (lrp) {
@@ -1715,8 +1712,7 @@ collect_lr_routes(struct ic_context *ctx,
 
     struct hmap *routes_ad;
     const struct icnbrec_transit_switch *t_sw;
-    for (int i = 0; i < ic_lr->n_isb_pbs; i++) {
-        isb_pb = ic_lr->isb_pbs[i];
+    VECTOR_FOR_EACH (&ic_lr->isb_pbs, isb_pb) {
         key = icnbrec_transit_switch_index_init_row(
             ctx->icnbrec_transit_switch_by_name);
         icnbrec_transit_switch_index_set_name(key, isb_pb->transit_switch);
@@ -1851,16 +1847,12 @@ route_run(struct ic_context *ctx,
         if (!ic_lr) {
             ic_lr = xzalloc(sizeof *ic_lr);
             ic_lr->lr = lr;
+            ic_lr->isb_pbs =
+                VECTOR_EMPTY_INITIALIZER(const struct icsbrec_port_binding *);
             hmap_init(&ic_lr->routes_learned);
             hmap_insert(&ic_lrs, &ic_lr->node, uuid_hash(&lr->header_.uuid));
         }
-
-        if (ic_lr->n_isb_pbs == ic_lr->n_allocated_isb_pbs) {
-            ic_lr->isb_pbs = x2nrealloc(ic_lr->isb_pbs,
-                                        &ic_lr->n_allocated_isb_pbs,
-                                        sizeof *ic_lr->isb_pbs);
-        }
-        ic_lr->isb_pbs[ic_lr->n_isb_pbs++] = isb_pb;
+        vector_push(&ic_lr->isb_pbs, &isb_pb);
     }
     icsbrec_port_binding_index_destroy_row(isb_pb_key);
 
@@ -1869,7 +1861,7 @@ route_run(struct ic_context *ctx,
     HMAP_FOR_EACH_SAFE (ic_lr, node, &ic_lrs) {
         collect_lr_routes(ctx, ic_lr, &routes_ad_by_ts);
         sync_learned_routes(ctx, ic_lr);
-        free(ic_lr->isb_pbs);
+        vector_destroy(&ic_lr->isb_pbs);
         hmap_destroy(&ic_lr->routes_learned);
         hmap_remove(&ic_lrs, &ic_lr->node);
         free(ic_lr);
