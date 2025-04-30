@@ -16063,6 +16063,14 @@ check ovn-nbctl lsp-add p2 vif2 \
     -- lsp-set-addresses vif2 "00:00:ff:ff:ff:02 198.51.100.10"
 check ovn-nbctl lr-route-add internet 198.51.100.0/24 192.0.2.3
 
+# Setup lsp "vif3" on ls public
+check ovn-nbctl lsp-add public vif3 \
+    -- lsp-set-addresses vif3 "00:00:ff:ff:ff:03 192.0.2.20" \
+    -- set Logical_Switch_Port vif3 options:requested-chassis=hv1
+check ovs-vsctl add-port br-int vif3 \
+      -- set Interface vif3 external-ids:iface-id=vif3 \
+      -- set Interface vif3 type=internal
+
 # Configure external connectivity.
 check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext
 check ovn-nbctl lsp-add phys phys1 \
@@ -16071,7 +16079,7 @@ check ovn-nbctl lsp-add phys phys1 \
     -- lsp-set-options phys1 network_name=phynet
 
 check ovn-nbctl --wait=hv sync
-wait_for_ports_up public-internet phys-internet public-pr1 p1-pr1 public-pr2 p2-pr2
+wait_for_ports_up public-internet phys-internet public-pr1 p1-pr1 public-pr2 p2-pr2 vif3
 
 # Now the ovn-controller should have setup a vrf named "ovnvrf1337".
 # It should contain routes for:
@@ -16092,6 +16100,7 @@ blackhole 198.51.100.0/24 proto ovn metric 1000])
 # * 192.0.2.2/32
 # * 192.0.2.3/32
 # * 192.0.2.10/32
+# * 192.0.2.20/32
 # The last 3 of them are local to the current chassis so we expect a better
 # prio.
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-public \
@@ -16102,6 +16111,7 @@ blackhole 192.0.2.1 proto ovn metric 1000
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # If the pr1-public lrp is now removed from this hypervisor the route metric
@@ -16114,6 +16124,7 @@ blackhole 192.0.2.1 proto ovn metric 1000
 blackhole 192.0.2.2 proto ovn metric 1000
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 1000
+blackhole 192.0.2.20 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # Moving pr1-public back will also change the route metrics again.
@@ -16124,6 +16135,27 @@ blackhole 192.0.2.1 proto ovn metric 1000
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000])
+
+# Moving vif3 away from hv1 will change the route metric to default.
+check ovn-nbctl --wait=hv set Logical_Switch_Port vif3 options:requested-chassis=thisdoesnotexist
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 1000
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 1000
+blackhole 198.51.100.0/24 proto ovn metric 1000])
+
+# Bringing vif3 back will change the route metric to local again.
+check ovn-nbctl --wait=hv set Logical_Switch_Port vif3 options:requested-chassis=hv1
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 1000
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # Disable maintaining the vrf as some tests below would cause the vrfs to be
@@ -16191,6 +16223,7 @@ blackhole 192.0.2.1 proto ovn metric 1000
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000
 233.252.0.0/24 via 192.168.10.10 dev lo onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
@@ -16207,6 +16240,7 @@ blackhole 192.0.2.1 proto ovn metric 1000
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000
 233.252.0.0/24 via 192.168.10.10 dev lo onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
@@ -16219,6 +16253,7 @@ blackhole 192.0.2.1 proto ovn metric 1000
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000
 233.252.0.0/24 via 192.168.10.10 dev lo onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
@@ -16389,6 +16424,14 @@ check ovn-nbctl lsp-add p2 vif2 \
     -- lsp-set-addresses vif2 "00:00:ff:ff:ff:02 198.51.100.10"
 check ovn-nbctl lr-route-add internet 198.51.100.0/24 192.0.2.3
 
+# Setup lsp "vif3" on ls public
+check ovn-nbctl lsp-add public vif3 \
+    -- lsp-set-addresses vif3 "00:00:ff:ff:ff:03 192.0.2.20" \
+    -- set Logical_Switch_Port vif3 options:requested-chassis=hv1
+check ovs-vsctl add-port br-int vif3 \
+      -- set Interface vif3 external-ids:iface-id=vif3 \
+      -- set Interface vif3 type=internal
+
 # Configure external connectivity.
 check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext
 check ovn-nbctl lsp-add phys phys1 \
@@ -16397,7 +16440,7 @@ check ovn-nbctl lsp-add phys phys1 \
     -- lsp-set-options phys1 network_name=phynet
 
 check ovn-nbctl --wait=hv sync
-wait_for_ports_up public-internet phys-internet public-pr1 p1-pr1 public-pr2 p2-pr2
+wait_for_ports_up public-internet phys-internet public-pr1 p1-pr1 public-pr2 p2-pr2 vif3
 
 # Now the ovn-controller should have setup a vrf named "ovnvrf1337".
 # It should contain routes for:
@@ -16418,6 +16461,7 @@ blackhole 198.51.100.0/24 proto ovn metric 1000])
 # * 192.0.2.2/32
 # * 192.0.2.3/32
 # * 192.0.2.10/32
+# * 192.0.2.20/32
 # The last 3 of them are local to the current chassis so we expect a better
 # prio.
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-public \
@@ -16428,6 +16472,7 @@ blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # If the pr1-public lrp is now removed from this hypervisor the route metric
@@ -16440,6 +16485,7 @@ blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 1000
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 1000
+blackhole 192.0.2.20 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # Moving pr1-public back will also change the route metrics again.
@@ -16450,6 +16496,27 @@ blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000])
+
+# Moving vif3 away from hv1 will change the route metric to default.
+check ovn-nbctl --wait=hv set Logical_Switch_Port vif3 options:requested-chassis=thisdoesnotexist
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 1000
+blackhole 198.51.100.0/24 proto ovn metric 1000])
+
+# Bringing vif3 back will change the route metric to local again.
+check ovn-nbctl --wait=hv set Logical_Switch_Port vif3 options:requested-chassis=hv1
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # Disable maintaining the vrf as some tests below would cause the vrfs to be
@@ -16517,6 +16584,7 @@ blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000
 233.252.0.0/24 via 192.168.10.10 dev lo onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
@@ -16529,6 +16597,7 @@ blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000
 233.252.0.0/24 via 192.168.10.10 dev lo onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
