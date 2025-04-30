@@ -5086,10 +5086,36 @@ route_runtime_data_handler(struct engine_node *node, void *data)
     struct ed_type_runtime_data *rt_data =
         engine_get_input_data("runtime_data", node);
 
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    ovs_assert(chassis_id);
+
+    struct ovsdb_idl_index *sbrec_chassis_by_name =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_chassis", node),
+                "name");
+    const struct sbrec_chassis *chassis
+        = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
+    ovs_assert(chassis);
+
+    struct ovsdb_idl_index *sbrec_port_binding_by_name =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_port_binding", node),
+                "name");
+
     if (!rt_data->tracked) {
         return false;
     }
 
+    /* There are the following cases where we need to handle updates to
+     * runtime_data:
+     * 1. A datapath binding has changed that is already taking part in route
+     *    exchange.
+     * 2. A route-exchange relevant port went form local to remote or the
+     *    other way round.
+     * 3. A tracked_port went from local to remote or the other way round.
+     * */
     struct tracked_datapath *t_dp;
     HMAP_FOR_EACH (t_dp, node, &rt_data->tracked_dp_bindings) {
         struct tracked_datapath *re_t_dp =
@@ -5104,7 +5130,10 @@ route_runtime_data_handler(struct engine_node *node, void *data)
         struct shash_node *shash_node;
         SHASH_FOR_EACH (shash_node, &t_dp->lports) {
             struct tracked_lport *lport = shash_node->data;
-            if (route_exchange_relevant_port(lport->pb)) {
+
+            if (route_exchange_find_port(sbrec_port_binding_by_name, chassis,
+                                         &rt_data->active_tunnels,
+                                         lport->pb)) {
                 /* XXX: Until we get I-P support for route exchange we need to
                  * request recompute. */
                 return false;
@@ -5164,6 +5193,16 @@ route_sb_port_binding_data_handler(struct engine_node *node, void *data)
     struct ed_type_runtime_data *rt_data =
         engine_get_input_data("runtime_data", node);
 
+
+    /* There are the following cases where we need to handle updates to the
+     * port_binding table:
+     * 1. The port_binding is part of a router datapath that already takes
+     *    part in route exchange.
+     * 2. The port_binding is now becoming part of route exchange.
+     *
+     * We do not need to handle port_bindings that are tracked_ports and switch
+     * between being local and remote. This is handled as part of the
+     * runtime_data handler. */
     const struct sbrec_port_binding *sbrec_pb;
     SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (sbrec_pb, pb_table) {
         struct tracked_datapath *re_t_dp =
@@ -5175,32 +5214,12 @@ route_sb_port_binding_data_handler(struct engine_node *node, void *data)
             return false;
         }
 
-        if (route_exchange_relevant_port(sbrec_pb)) {
+        if (route_exchange_find_port(sbrec_port_binding_by_name, chassis,
+                                     &rt_data->active_tunnels, sbrec_pb)) {
             /* XXX: Until we get I-P support for route exchange we need to
              * request recompute. */
             return false;
         }
-
-        if (sset_contains(&re_data->tracked_ports_local,
-                          sbrec_pb->logical_port)) {
-            if (!route_exchange_find_port(sbrec_port_binding_by_name, chassis,
-                                          &rt_data->active_tunnels,
-                                          sbrec_pb)) {
-                /* The port was previously local but now it no longer is. */
-                return false;
-            }
-        }
-
-        if (sset_contains(&re_data->tracked_ports_remote,
-                          sbrec_pb->logical_port)) {
-            if (route_exchange_find_port(sbrec_port_binding_by_name, chassis,
-                                         &rt_data->active_tunnels,
-                                         sbrec_pb)) {
-                /* The port was previously remote but now we bound it. */
-                return false;
-            }
-        }
-
     }
 
     return true;
@@ -5213,13 +5232,27 @@ route_sb_advertised_route_data_handler(struct engine_node *node, void *data)
     const struct sbrec_advertised_route_table *advertised_route_table =
         EN_OVSDB_GET(engine_get_input("SB_advertised_route", node));
 
+    /* There are the following cases where we need to handle updates to the
+     * advertised_route table:
+     * 1. The advertised_route is created or deleted and we know about its
+     *    datapath locally.
+     *
+     * Updates to advertised_route can generally be ignored as northd will not
+     * update these entries. We also get update notifications if a referenced
+     * port_binding is updated, but these are handled in the runtime_data
+     * handler. */
     const struct sbrec_advertised_route *sbrec_route;
     SBREC_ADVERTISED_ROUTE_TABLE_FOR_EACH_TRACKED (sbrec_route,
                                                    advertised_route_table) {
         struct tracked_datapath *re_t_dp =
             tracked_datapath_find(&re_data->tracked_route_datapaths,
                                   sbrec_route->datapath);
-        if (re_t_dp) {
+        if (!re_t_dp) {
+            continue;
+        }
+
+        if (sbrec_advertised_route_is_new(sbrec_route) ||
+                sbrec_advertised_route_is_deleted(sbrec_route)) {
             /* XXX: Until we get I-P support for route exchange we need to
              * request recompute. */
             return false;
