@@ -61,6 +61,7 @@
 #include "unixctl.h"
 #include "util.h"
 #include "svec.h"
+#include "vec.h"
 
 VLOG_DEFINE_THIS_MODULE(sbctl);
 
@@ -991,17 +992,15 @@ cmd_lflow_list_load_balancers(struct ctl_context *ctx, struct vconn *vconn,
 }
 
 static void
-sbctl_lflow_add(struct sbctl_lflow **lflows,
-                size_t *n_flows, size_t *n_capacity,
+sbctl_lflow_add(struct vector *lflows,
                 const struct sbrec_logical_flow *lflow,
                 const struct sbrec_datapath_binding *dp)
 {
-    if (*n_flows == *n_capacity) {
-        *lflows = x2nrealloc(*lflows, n_capacity, sizeof **lflows);
-    }
-    (*lflows)[*n_flows].lflow = lflow;
-    (*lflows)[*n_flows].dp = dp;
-    (*n_flows)++;
+    struct sbctl_lflow sbctl_lflow = (struct sbctl_lflow) {
+        .lflow = lflow,
+        .dp = dp,
+    };
+    vector_push(lflows, &sbctl_lflow);
 }
 
 static void
@@ -1032,14 +1031,13 @@ print_lflows_count(int64_t table_id, const char *name,
 }
 
 static void
-print_lflow_counters(size_t n_flows, struct sbctl_lflow *lflows, struct ds *s)
+print_lflow_counters(struct vector *lflows, struct ds *s)
 {
     const struct sbctl_lflow *curr, *prev = NULL;
     long table_lflows = 0;
     long dp_lflows = 0;
-    for (size_t i = 0; i < n_flows; i++) {
+    VECTOR_FOR_EACH_PTR (lflows, curr) {
        bool new_datapath = false;
-       curr = &lflows[i];
        if (!prev
             || prev->dp != curr->dp
             || strcmp(prev->lflow->pipeline, curr->lflow->pipeline)) {
@@ -1070,7 +1068,7 @@ print_lflow_counters(size_t n_flows, struct sbctl_lflow *lflows, struct ds *s)
         }
         prev = curr;
     }
-    if (n_flows > 0) {
+    if (!vector_is_empty(lflows)) {
         print_lflows_count(prev->lflow->table_id,
                            smap_get_def(&prev->lflow->external_ids,
                                         "stage-name", ""),
@@ -1079,7 +1077,8 @@ print_lflow_counters(size_t n_flows, struct sbctl_lflow *lflows, struct ds *s)
                            prev->lflow->pipeline, dp_lflows, s);
 
     }
-    ds_put_format(s, "Total number of logical flows = %"PRIuSIZE"\n", n_flows);
+    ds_put_format(s, "Total number of logical flows = %"PRIuSIZE"\n",
+                  vector_len(lflows));
 }
 
 static void
@@ -1087,6 +1086,8 @@ cmd_lflow_list(struct ctl_context *ctx)
 {
     const char *cmd = ctx->argv[0];
     const struct sbrec_datapath_binding *datapath = NULL;
+    struct vector lflows = VECTOR_EMPTY_INITIALIZER(struct sbctl_lflow);
+
     if (ctx->argc > 1) {
         const struct ovsdb_idl_row *row;
         char *error = ctl_get_row(ctx, &sbrec_table_datapath_binding,
@@ -1103,7 +1104,7 @@ cmd_lflow_list(struct ctl_context *ctx)
             ctx->argv++;
         } else if (!strcmp(cmd, "count-flows")) {
             /* datapath is defined, but isn't found */
-            print_lflow_counters(0, NULL, &ctx->output);
+            print_lflow_counters(&lflows, &ctx->output);
             return;
        }
 
@@ -1120,9 +1121,6 @@ cmd_lflow_list(struct ctl_context *ctx)
     struct vconn *vconn = sbctl_open_vconn(&ctx->options);
     bool stats = shash_find(&ctx->options, "--stats") != NULL;
 
-    struct sbctl_lflow *lflows = NULL;
-    size_t n_flows = 0;
-    size_t n_capacity = 0;
     const struct sbrec_logical_flow *lflow;
     const struct sbrec_logical_dp_group *dp_group;
     SBREC_LOGICAL_FLOW_FOR_EACH (lflow, ctx->idl) {
@@ -1133,35 +1131,29 @@ cmd_lflow_list(struct ctl_context *ctx)
             continue;
         }
         if (datapath) {
-            sbctl_lflow_add(&lflows, &n_flows, &n_capacity, lflow, datapath);
+            sbctl_lflow_add(&lflows, lflow, datapath);
             continue;
         }
         if (lflow->logical_datapath) {
-            sbctl_lflow_add(&lflows, &n_flows, &n_capacity,
-                            lflow, lflow->logical_datapath);
+            sbctl_lflow_add(&lflows, lflow, lflow->logical_datapath);
         }
         dp_group = lflow->logical_dp_group;
         for (size_t i = 0; dp_group && i < dp_group->n_datapaths; i++) {
-            sbctl_lflow_add(&lflows, &n_flows, &n_capacity,
-                            lflow, dp_group->datapaths[i]);
+            sbctl_lflow_add(&lflows, lflow, dp_group->datapaths[i]);
         }
     }
 
-    if (n_flows) {
-        qsort(lflows, n_flows, sizeof *lflows, sbctl_lflow_cmp);
-    }
+    vector_qsort(&lflows, sbctl_lflow_cmp);
 
     if (!strcmp(cmd, "count-flows")) {
-        print_lflow_counters(n_flows, lflows, &ctx->output);
+        print_lflow_counters(&lflows, &ctx->output);
         goto cleanup;
     }
 
     bool print_uuid = shash_find(&ctx->options, "--uuid") != NULL;
 
     const struct sbctl_lflow *curr, *prev = NULL;
-    for (size_t i = 0; i < n_flows; i++) {
-        curr = &lflows[i];
-
+    VECTOR_FOR_EACH_PTR (&lflows, curr) {
         /* Figure out whether to print this particular flow.  By default, we
          * print all flows, but if any UUIDs were listed on the command line
          * then we only print the matching ones. */
@@ -1220,7 +1212,7 @@ cmd_lflow_list(struct ctl_context *ctx)
 
 cleanup:
     vconn_close(vconn);
-    free(lflows);
+    vector_destroy(&lflows);
 }
 
 static void

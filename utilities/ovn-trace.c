@@ -47,6 +47,7 @@
 #include "unixctl.h"
 #include "util.h"
 #include "random.h"
+#include "vec.h"
 
 VLOG_DEFINE_THIS_MODULE(ovntrace);
 
@@ -429,8 +430,7 @@ struct ovntrace_datapath {
 
     struct ovs_list mcgroups;   /* Contains "struct ovntrace_mcgroup"s. */
 
-    struct ovntrace_flow **flows;
-    size_t n_flows, allocated_flows;
+    struct vector flows; /* Vector of struct ovntrace_flow *. */
 
     struct hmap mac_bindings;   /* Contains "struct ovntrace_mac_binding"s. */
     struct hmap fdbs;   /* Contains "struct ovntrace_fdb"s. */
@@ -719,6 +719,7 @@ read_datapaths(void)
                              : shorten_uuid(dp->name2 ? dp->name2 : dp->name));
 
         dp->tunnel_key = sbdb->tunnel_key;
+        dp->flows = VECTOR_EMPTY_INITIALIZER(struct ovntrace_flow *);
 
         ovs_list_init(&dp->mcgroups);
         hmap_init(&dp->mac_bindings);
@@ -1070,11 +1071,7 @@ parse_lflow_for_datapath(const struct sbrec_logical_flow *sblf,
         flow->ovnacts_len = ovnacts.size;
         flow->ovnacts = ofpbuf_steal_data(&ovnacts);
 
-        if (dp->n_flows >= dp->allocated_flows) {
-            dp->flows = x2nrealloc(dp->flows, &dp->allocated_flows,
-                                   sizeof *dp->flows);
-        }
-        dp->flows[dp->n_flows++] = flow;
+        vector_push(&dp->flows, &flow);
 }
 
 static void
@@ -1101,9 +1098,9 @@ read_flows(void)
         }
     }
 
-    const struct ovntrace_datapath *dp;
+    struct ovntrace_datapath *dp;
     HMAP_FOR_EACH (dp, sb_uuid_node, &datapaths) {
-        qsort(dp->flows, dp->n_flows, sizeof *dp->flows, compare_flow);
+        vector_qsort(&dp->flows, compare_flow);
     }
 }
 
@@ -1291,8 +1288,8 @@ ovntrace_flow_lookup(const struct ovntrace_datapath *dp,
                      const struct flow *uflow,
                      uint8_t table_id, enum ovnact_pipeline pipeline)
 {
-    for (size_t i = 0; i < dp->n_flows; i++) {
-        const struct ovntrace_flow *flow = dp->flows[i];
+    const struct ovntrace_flow *flow;
+    VECTOR_FOR_EACH (&dp->flows, flow) {
         if (flow->pipeline == pipeline &&
             flow->table_id == table_id &&
             expr_evaluate(flow->match, uflow, ovntrace_lookup_port, dp)) {
@@ -1306,8 +1303,8 @@ static char *
 ovntrace_stage_name(const struct ovntrace_datapath *dp,
                     uint8_t table_id, enum ovnact_pipeline pipeline)
 {
-    for (size_t i = 0; i < dp->n_flows; i++) {
-        const struct ovntrace_flow *flow = dp->flows[i];
+    const struct ovntrace_flow *flow;
+    VECTOR_FOR_EACH (&dp->flows, flow) {
         if (flow->pipeline == pipeline && flow->table_id == table_id) {
             return xstrdup(flow->stage_name);;
         }

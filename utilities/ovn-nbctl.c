@@ -49,6 +49,7 @@
 #include "util.h"
 #include "openvswitch/vlog.h"
 #include "bitmap.h"
+#include "vec.h"
 
 VLOG_DEFINE_THIS_MODULE(nbctl);
 
@@ -2959,26 +2960,16 @@ nbctl_pre_meter_list(struct ctl_context *ctx)
 static void
 nbctl_meter_list(struct ctl_context *ctx)
 {
-    const struct nbrec_meter **meters = NULL;
+    struct vector meters =
+        VECTOR_EMPTY_INITIALIZER(const struct nbrec_meter *);
     const struct nbrec_meter *meter;
-    size_t n_capacity = 0;
-    size_t n_meters = 0;
 
     NBREC_METER_FOR_EACH (meter, ctx->idl) {
-        if (n_meters == n_capacity) {
-            meters = x2nrealloc(meters, &n_capacity, sizeof *meters);
-        }
-
-        meters[n_meters] = meter;
-        n_meters++;
+        vector_push(&meters, &meter);
     }
+    vector_qsort(&meters, meter_cmp);
 
-    if (n_meters) {
-        qsort(meters, n_meters, sizeof *meters, meter_cmp);
-    }
-
-    for (size_t i = 0; i < n_meters; i++) {
-        meter = meters[i];
+    VECTOR_FOR_EACH (&meters, meter) {
         ds_put_format(&ctx->output, "%s:", meter->name);
         if (meter->fair) {
             ds_put_format(&ctx->output, " (%s)",
@@ -3001,7 +2992,7 @@ nbctl_meter_list(struct ctl_context *ctx)
         ds_put_cstr(&ctx->output, "\n");
     }
 
-    free(meters);
+    vector_destroy(&meters);
 }
 
 static void
@@ -4149,8 +4140,8 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
         return;
     }
     const char *action = ctx->argv[4];
-    size_t n_nexthops = 0;
-    char **nexthops = NULL;
+    struct vector nexthops = VECTOR_EMPTY_INITIALIZER(char *);
+    const struct nbrec_bfd **bfd_sessions = NULL;
     char *chain_s = shash_find_data(&ctx->options, "--chain");
 
     bool reroute = false;
@@ -4200,9 +4191,6 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
         char *nexthops_arg = xstrdup(ctx->argv[5]);
         char *save_ptr, *next_hop, *token;
 
-        n_nexthops = 0;
-        size_t n_allocs = 0;
-
         bool nexthops_is_ipv4 = true;
         for (token = strtok_r(nexthops_arg, ",", &save_ptr);
             token != NULL; token = strtok_r(NULL, ",", &save_ptr)) {
@@ -4211,18 +4199,11 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
             if (!next_hop) {
                 ctl_error(ctx, "bad next hop argument: %s", ctx->argv[5]);
                 free(nexthops_arg);
-                for (i = 0; i < n_nexthops; i++) {
-                    free(nexthops[i]);
-                }
-                free(nexthops);
-                return;
-            }
-            if (n_nexthops == n_allocs) {
-                nexthops = x2nrealloc(nexthops, &n_allocs, sizeof *nexthops);
+                goto free_nexthops;
             }
 
             bool is_ipv4 = strchr(next_hop, '.') ? true : false;
-            if (n_nexthops == 0) {
+            if (vector_is_empty(&nexthops)) {
                 nexthops_is_ipv4 = is_ipv4;
             }
 
@@ -4231,14 +4212,10 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
                           "addr family : %s", ctx->argv[5]);
                 free(nexthops_arg);
                 free(next_hop);
-                for (i = 0; i < n_nexthops; i++) {
-                    free(nexthops[i]);
-                }
-                free(nexthops);
-                return;
+                goto free_nexthops;
             }
-            nexthops[n_nexthops] = next_hop;
-            n_nexthops++;
+
+            vector_push(&nexthops, &next_hop);
         }
 
         free(nexthops_arg);
@@ -4260,7 +4237,7 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
 
     if (reroute) {
         nbrec_logical_router_policy_set_nexthops(
-            policy, (const char **)nexthops, n_nexthops);
+            policy, vector_get_array(&nexthops), vector_len(&nexthops));
     }
 
     /* Parse the options. */
@@ -4275,11 +4252,7 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
             ctl_error(ctx, "No value specified for the option : %s", key);
             smap_destroy(&options);
             free(key);
-            for (i = 0; i < n_nexthops; i++) {
-                free(nexthops[i]);
-            }
-            free(nexthops);
-            return;
+            goto free_nexthops;
         }
         free(key);
     }
@@ -4289,7 +4262,6 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
     nbrec_logical_router_update_policies_addvalue(lr, policy);
 
     struct shash_node *bfd = shash_find(&ctx->options, "--bfd");
-    const struct nbrec_bfd **bfd_sessions = NULL;
 
     if (bfd) {
         if (!reroute) {
@@ -4297,24 +4269,24 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
             goto free_nexthops;
         }
 
-        bfd_sessions = xcalloc(n_nexthops, sizeof *bfd_sessions);
+        bfd_sessions = xcalloc(vector_len(&nexthops), sizeof *bfd_sessions);
         size_t j, n_bfd_sessions = 0;
 
-        for (i = 0; i < n_nexthops; i++) {
+        const char *nexthop;
+        VECTOR_FOR_EACH (&nexthops, nexthop) {
             for (j = 0; j < lr->n_ports; j++) {
-                if (ip_in_lrp_networks(lr->ports[j], nexthops[i])) {
+                if (ip_in_lrp_networks(lr->ports[j], nexthop)) {
                     break;
                 }
             }
 
             if (j == lr->n_ports) {
-                ctl_error(ctx, "out lrp not found for %s nexthop",
-                          nexthops[i]);
+                ctl_error(ctx, "out lrp not found for %s nexthop", nexthop);
                 goto free_nexthops;
             }
 
             struct in6_addr nexthop_v6;
-            bool is_nexthop_v6 = ipv6_parse(nexthops[i], &nexthop_v6);
+            bool is_nexthop_v6 = ipv6_parse(nexthop, &nexthop_v6);
             const struct nbrec_bfd *iter, *nb_bt = NULL;
 
             NBREC_BFD_FOR_EACH (iter, ctx->idl) {
@@ -4328,7 +4300,7 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
                 /* match endpoint ip. */
                 if ((is_nexthop_v6 &&
                      !ipv6_addr_equals(&nexthop_v6, &dst_ipv6)) ||
-                    strcmp(iter->dst_ip, nexthops[i])) {
+                    strcmp(iter->dst_ip, nexthop)) {
                     continue;
                 }
 
@@ -4344,7 +4316,7 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
             /* Create the BFD session if it does not already exist. */
             if (!nb_bt) {
                 nb_bt = nbrec_bfd_insert(ctx->txn);
-                nbrec_bfd_set_dst_ip(nb_bt, nexthops[i]);
+                nbrec_bfd_set_dst_ip(nb_bt, nexthop);
                 nbrec_bfd_set_logical_port(nb_bt, lr->ports[j]->name);
             }
 
@@ -4363,10 +4335,11 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
 
 free_nexthops:
     free(bfd_sessions);
-    for (i = 0; i < n_nexthops; i++) {
-        free(nexthops[i]);
+    char *nexthop;
+    VECTOR_FOR_EACH (&nexthops, nexthop) {
+        free(nexthop);
     }
-    free(nexthops);
+    vector_destroy(&nexthops);
 }
 
 static void
@@ -8082,26 +8055,16 @@ static void
 nbctl_mirror_list(struct ctl_context *ctx)
 {
 
-    const struct nbrec_mirror **mirrors = NULL;
+    struct vector mirrors =
+        VECTOR_EMPTY_INITIALIZER(const struct nbrec_mirror *);
     const struct nbrec_mirror *mirror;
-    size_t n_capacity = 0;
-    size_t n_mirrors = 0;
 
     NBREC_MIRROR_FOR_EACH (mirror, ctx->idl) {
-        if (n_mirrors == n_capacity) {
-            mirrors = x2nrealloc(mirrors, &n_capacity, sizeof *mirrors);
-        }
-
-        mirrors[n_mirrors] = mirror;
-        n_mirrors++;
+        vector_push(&mirrors, &mirror);
     }
+    vector_qsort(&mirrors, mirror_cmp);
 
-    if (n_mirrors) {
-        qsort(mirrors, n_mirrors, sizeof *mirrors, mirror_cmp);
-    }
-
-    for (size_t i = 0; i < n_mirrors; i++) {
-        mirror = mirrors[i];
+    VECTOR_FOR_EACH (&mirrors, mirror) {
         bool is_lport = !strcmp(mirror->type, "lport");
         bool is_local = !strcmp(mirror->type, "local");
 
@@ -8126,7 +8089,7 @@ nbctl_mirror_list(struct ctl_context *ctx)
         ds_put_cstr(&ctx->output, "\n");
     }
 
-    free(mirrors);
+    vector_destroy(&mirrors);
 }
 
 static const struct ctl_table_class tables[NBREC_N_TABLES] = {
