@@ -26,6 +26,7 @@
 #include "simap.h"
 #include "ovs-thread.h"
 #include "en-lr-stateful.h"
+#include "vec.h"
 
 struct northd_input {
     /* Northbound table references */
@@ -365,15 +366,11 @@ struct ovn_datapath {
     uint32_t tunnel_key;
 
     /* Logical router data. */
-    struct ovn_datapath **ls_peers;
-    size_t n_ls_peers;
-    size_t n_allocated_ls_peers;
+    struct vector ls_peers; /* Vector of struct ovn_datapath *. */
     struct sset router_ips; /* Router port IPs except the IPv6 LLAs. */
 
     /* Logical switch data. */
-    struct ovn_port **router_ports;
-    size_t n_router_ports;
-    size_t n_allocated_router_ports;
+    struct vector router_ports; /* Vector of struct ovn_port *. */
 
     struct hmap port_tnlids;
     uint32_t port_key_hint;
@@ -402,9 +399,7 @@ struct ovn_datapath {
      * populated only when there is a gateway chassis or ha chassis group
      * specified for some of the ports on the logical router. Otherwise this
      * will be NULL. */
-    struct ovn_port **l3dgw_ports;
-    size_t n_l3dgw_ports;
-    size_t n_allocated_l3dgw_ports;
+    struct vector l3dgw_ports; /* Vector of struct ovn_port *. */
 
     /* router datapath has a logical port with redirect-type set to bridged. */
     bool redirect_bridged;
@@ -413,9 +408,7 @@ struct ovn_datapath {
     /* The modes contained in the nbr option "dynamic-routing-redistribute". */
     enum dynamic_routing_redistribute_mode dynamic_routing_redistribute;
 
-    struct ovn_port **localnet_ports;
-    size_t n_localnet_ports;
-    size_t n_allocated_localnet_ports;
+    struct vector localnet_ports; /* Vector of struct ovn_port *. */
 
     struct ovs_list lr_list; /* In list of logical router datapaths. */
     /* The logical router group to which this datapath belongs.
@@ -971,7 +964,7 @@ bool lrouter_port_ipv6_reachable(const struct ovn_port *,
 static inline bool
 lr_has_multiple_gw_ports(const struct ovn_datapath *od)
 {
-    return od->n_l3dgw_ports > 1 && !od->is_gw_router;
+    return vector_len(&od->l3dgw_ports) > 1 && !od->is_gw_router;
 }
 
 bool

@@ -338,11 +338,8 @@ build_nat_connected_routes(
         struct ovn_datapath *peer_od = op->peer->od;
         ovs_assert(peer_od->nbs || peer_od->nbr);
 
-        const struct ovn_port *peer_port = NULL;
         /* This is a directly connected LR peer. */
         if (peer_od->nbr) {
-            peer_port = op->peer;
-
             const struct lr_stateful_record *peer_lr_stateful =
                 lr_stateful_table_find_by_index(lr_stateful_table,
                                                  peer_od->index);
@@ -358,16 +355,16 @@ build_nat_connected_routes(
 
         /* This peer is LSP, we need to check all connected router ports
          * for NAT.*/
-        for (size_t i = 0; i < peer_od->n_router_ports; i++) {
-            peer_port = peer_od->router_ports[i]->peer;
-            if (peer_port == op) {
+        const struct ovn_port *rp;
+        VECTOR_FOR_EACH (&peer_od->router_ports, rp) {
+            if (rp->peer == op) {
                 /* Skip advertising router. */
                 continue;
             }
 
             const struct lr_stateful_record *peer_lr_stateful =
                 lr_stateful_table_find_by_index(lr_stateful_table,
-                                                peer_port->od->index);
+                                                rp->peer->od->index);
             if (!peer_lr_stateful) {
                 continue;
             }
@@ -423,30 +420,28 @@ build_lb_connected_routes(const struct ovn_datapath *od,
         ovs_assert(peer_od->nbs || peer_od->nbr);
 
         const struct lr_stateful_record *lr_stateful_rec;
-        const struct ovn_port *peer_port = NULL;
         /* This is directly connected LR peer. */
         if (peer_od->nbr) {
             lr_stateful_rec = lr_stateful_table_find_by_index(
                 lr_stateful_table, peer_od->index);
-            peer_port = op->peer;
-            build_lb_route_for_port(op, peer_port, lr_stateful_rec->lb_ips,
+            build_lb_route_for_port(op, op->peer, lr_stateful_rec->lb_ips,
                                     routes);
             return;
         }
 
         /* This peer is LSP, we need to check all connected router ports for
          * LBs.*/
-        for (size_t i = 0; i < peer_od->n_router_ports; i++) {
-            peer_port = peer_od->router_ports[i]->peer;
-            if (peer_port == op) {
+        struct ovn_port *rp;
+        VECTOR_FOR_EACH (&peer_od->router_ports, rp) {
+            if (rp->peer == op) {
                 /* no need to check for LBs on ovn_port that initiated this
                  * function.*/
                 continue;
             }
             lr_stateful_rec = lr_stateful_table_find_by_index(
-                lr_stateful_table, peer_port->od->index);
+                lr_stateful_table, rp->peer->od->index);
 
-            build_lb_route_for_port(op, peer_port, lr_stateful_rec->lb_ips,
+            build_lb_route_for_port(op, rp->peer, lr_stateful_rec->lb_ips,
                                     routes);
         }
     }
@@ -470,14 +465,14 @@ build_lb_routes(const struct ovn_datapath *od,
          *
          * Advertise the LB IPs via all 'op' if this is a gateway router or
          * throuh all DGPs of this distributed router otherwise. */
-        struct ovn_port *op_ = NULL;
-        size_t n_tracked_ports = !od->is_gw_router ? od->n_l3dgw_ports : 1;
-        struct ovn_port **tracked_ports = !od->is_gw_router
-                                          ? od->l3dgw_ports
-                                          : &op_;
 
-        for (size_t i = 0; i < n_tracked_ports; i++) {
-            build_lb_route_for_port(op, tracked_ports[i], lb_ips, routes);
+        if (od->is_gw_router) {
+            build_lb_route_for_port(op, NULL, lb_ips, routes);
+        } else {
+            struct ovn_port *dgp;
+            VECTOR_FOR_EACH (&od->l3dgw_ports, dgp) {
+                build_lb_route_for_port(op, dgp, lb_ips, routes);
+            }
         }
     }
 }

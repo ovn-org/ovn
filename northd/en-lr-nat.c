@@ -295,13 +295,15 @@ lr_nat_entry_set_dgw_port(const struct ovn_datapath *od,
     /* Validate gateway_port of NAT rule. */
     nat_entry->l3dgw_port = NULL;
     if (nat->gateway_port == NULL) {
-        if (od->n_l3dgw_ports == 1) {
-            nat_entry->l3dgw_port = od->l3dgw_ports[0];
-        } else if (od->n_l3dgw_ports > 1) {
+        if (vector_len(&od->l3dgw_ports) == 1) {
+            nat_entry->l3dgw_port = vector_get(&od->l3dgw_ports, 0,
+                                               struct ovn_port *);
+        } else if (vector_len(&od->l3dgw_ports) > 1) {
             /* Find the DGP reachable for the NAT external IP. */
-            for (size_t i = 0; i < od->n_l3dgw_ports; i++) {
-               if (lrp_find_member_ip(od->l3dgw_ports[i], nat->external_ip)) {
-                   nat_entry->l3dgw_port = od->l3dgw_ports[i];
+            struct ovn_port *dgp;
+            VECTOR_FOR_EACH (&od->l3dgw_ports, dgp) {
+               if (lrp_find_member_ip(dgp, nat->external_ip)) {
+                   nat_entry->l3dgw_port = dgp;
                    break;
                }
             }
@@ -342,7 +344,8 @@ lr_nat_entry_set_dgw_port(const struct ovn_datapath *od,
         return true;
     }
 
-    if (od->n_l3dgw_ports && nat_entry->type == DNAT_AND_SNAT &&
+    if (!vector_is_empty(&od->l3dgw_ports) &&
+        nat_entry->type == DNAT_AND_SNAT &&
         nat->logical_port && nat->external_mac) {
             nat_entry->is_distributed = true;
     }

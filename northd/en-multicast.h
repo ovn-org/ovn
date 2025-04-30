@@ -43,8 +43,7 @@ struct ovn_multicast {
     struct ovn_datapath *datapath;
     const struct multicast_group *group;
 
-    struct ovn_port **ports;
-    size_t n_ports, allocated_ports;
+    struct vector ports; /* Vector of struct ovn_port *. */
 };
 
 /*

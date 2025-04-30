@@ -332,8 +332,8 @@ build_mcast_groups(struct multicast_igmp_data *data,
          * The router IGMP groups are based on the groups learnt by their
          * multicast enabled peers.
          */
-        for (size_t i = 0; i < od->n_router_ports; i++) {
-            struct ovn_port *router_port = od->router_ports[i]->peer;
+        VECTOR_FOR_EACH (&od->router_ports, op) {
+            struct ovn_port *router_port = op->peer;
 
             /* If the router the port connects to doesn't have multicast
              * relay enabled or if it was already configured to flood
@@ -483,24 +483,10 @@ ovn_multicast_add_ports(struct hmap *mcgroups, struct ovn_datapath *od,
         hmap_insert(mcgroups, &mc->hmap_node, ovn_multicast_hash(od, group));
         mc->datapath = od;
         mc->group = group;
-        mc->n_ports = 0;
-        mc->allocated_ports = 4;
-        mc->ports = xmalloc(mc->allocated_ports * sizeof *mc->ports);
+        mc->ports = VECTOR_CAPACITY_INITIALIZER(struct ovn_port *, 4);
     }
 
-    size_t n_ports_total = mc->n_ports + n_ports;
-
-    if (n_ports_total > 2 * mc->allocated_ports) {
-        mc->allocated_ports = n_ports_total;
-        mc->ports = xrealloc(mc->ports,
-                             mc->allocated_ports * sizeof *mc->ports);
-    } else if (n_ports_total > mc->allocated_ports) {
-        mc->ports = x2nrealloc(mc->ports, &mc->allocated_ports,
-                               sizeof *mc->ports);
-    }
-
-    memcpy(&mc->ports[mc->n_ports], &ports[0], n_ports * sizeof *ports);
-    mc->n_ports += n_ports;
+    vector_push_array(&mc->ports, ports, n_ports);
 }
 
 static void
@@ -521,7 +507,7 @@ ovn_multicast_destroy(struct hmap *mcgroups, struct ovn_multicast *mc)
 {
     if (mc) {
         hmap_remove(mcgroups, &mc->hmap_node);
-        free(mc->ports);
+        vector_destroy(&mc->ports);
         free(mc);
     }
 }
@@ -530,12 +516,17 @@ static void
 ovn_multicast_update_sbrec(const struct ovn_multicast *mc,
                            const struct sbrec_multicast_group *sb)
 {
-    struct sbrec_port_binding **ports = xmalloc(mc->n_ports * sizeof *ports);
-    for (size_t i = 0; i < mc->n_ports; i++) {
-        ports[i] = CONST_CAST(struct sbrec_port_binding *, mc->ports[i]->sb);
+    struct vector sb_ports =
+        VECTOR_CAPACITY_INITIALIZER(struct sbrec_port_binding *,
+                                    vector_len(&mc->ports));
+
+    struct ovn_port *op;
+    VECTOR_FOR_EACH (&mc->ports, op) {
+        vector_push(&sb_ports, &op->sb);
     }
-    sbrec_multicast_group_set_ports(sb, ports, mc->n_ports);
-    free(ports);
+    sbrec_multicast_group_set_ports(sb, vector_get_array(&sb_ports),
+                                    vector_len(&sb_ports));
+    vector_destroy(&sb_ports);
 }
 
 static void
@@ -716,11 +707,11 @@ ovn_igmp_group_aggregate_ports(struct ovn_igmp_group *igmp_group,
         free(entry);
     }
 
-    if (igmp_group->datapath->n_localnet_ports) {
+    if (!vector_is_empty(&igmp_group->datapath->localnet_ports)) {
         ovn_multicast_add_ports(mcast_groups, igmp_group->datapath,
-                                &igmp_group->mcgroup,
-                                igmp_group->datapath->localnet_ports,
-                                igmp_group->datapath->n_localnet_ports);
+            &igmp_group->mcgroup,
+            vector_get_array(&igmp_group->datapath->localnet_ports),
+            vector_len(&igmp_group->datapath->localnet_ports));
     }
 }
 

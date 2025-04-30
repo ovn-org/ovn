@@ -499,6 +499,10 @@ ovn_datapath_create(struct hmap *datapaths, const struct uuid *key,
     od->lr_group = NULL;
     hmap_init(&od->ports);
     sset_init(&od->router_ips);
+    od->ls_peers = VECTOR_EMPTY_INITIALIZER(struct ovn_datapath *);
+    od->router_ports = VECTOR_EMPTY_INITIALIZER(struct ovn_port *);
+    od->l3dgw_ports = VECTOR_EMPTY_INITIALIZER(struct ovn_port *);
+    od->localnet_ports = VECTOR_EMPTY_INITIALIZER(struct ovn_port *);
     return od;
 }
 
@@ -521,10 +525,10 @@ ovn_datapath_destroy(struct hmap *datapaths, struct ovn_datapath *od)
         hmap_remove(datapaths, &od->key_node);
         ovn_destroy_tnlids(&od->port_tnlids);
         destroy_ipam_info(&od->ipam_info);
-        free(od->router_ports);
-        free(od->ls_peers);
-        free(od->localnet_ports);
-        free(od->l3dgw_ports);
+        vector_destroy(&od->router_ports);
+        vector_destroy(&od->ls_peers);
+        vector_destroy(&od->localnet_ports);
+        vector_destroy(&od->l3dgw_ports);
         destroy_mcast_info_for_datapath(od);
         destroy_ports_for_datapath(od);
         sset_destroy(&od->router_ips);
@@ -591,27 +595,6 @@ ovn_datapath_from_sbrec(const struct hmap *ls_datapaths,
     }
 
     return NULL;
-}
-
-static void
-ovn_datapath_add_router_port(struct ovn_datapath *od, struct ovn_port *op)
-{
-    if (od->n_router_ports == od->n_allocated_router_ports) {
-        od->router_ports = x2nrealloc(od->router_ports,
-                                      &od->n_allocated_router_ports,
-                                      sizeof *od->router_ports);
-    }
-    od->router_ports[od->n_router_ports++] = op;
-}
-
-static void
-ovn_datapath_add_ls_peer(struct ovn_datapath *od, struct ovn_datapath *peer)
-{
-    if (od->n_ls_peers == od->n_allocated_ls_peers) {
-        od->ls_peers = x2nrealloc(od->ls_peers, &od->n_allocated_ls_peers,
-                                  sizeof *od->ls_peers);
-    }
-    od->ls_peers[od->n_ls_peers++] = peer;
 }
 
 static bool
@@ -1601,7 +1584,7 @@ ipam_add_port_addresses(struct ovn_datapath *od, struct ovn_port *op)
 static bool
 is_nat_gateway_port(const struct nbrec_nat *nat, const struct ovn_port *op)
 {
-    if (op->od->n_l3dgw_ports > 1
+    if (vector_len(&op->od->l3dgw_ports) > 1
         && ((!nat->gateway_port && !lrp_find_member_ip(op, nat->external_ip))
             || (nat->gateway_port && nat->gateway_port != op->nbrp))) {
         return false;
@@ -2302,12 +2285,7 @@ join_logical_ports_lsp(struct hmap *ports,
     }
 
     if (lsp_is_localnet(nbsp)) {
-       if (od->n_localnet_ports >= od->n_allocated_localnet_ports) {
-           od->localnet_ports = x2nrealloc(
-               od->localnet_ports, &od->n_allocated_localnet_ports,
-               sizeof *od->localnet_ports);
-       }
-       od->localnet_ports[od->n_localnet_ports++] = op;
+        vector_push(&od->localnet_ports, &op);
     }
 
     if (lsp_is_vtep(nbsp)) {
@@ -2456,8 +2434,8 @@ static bool
 peer_needs_cr_port_creation(struct ovn_port *op)
 {
     if ((op->nbrp->n_gateway_chassis || op->nbrp->ha_chassis_group)
-        && op->od->n_l3dgw_ports == 1 && op->peer && op->peer->nbsp
-        && !op->peer->od->n_localnet_ports) {
+        && vector_len(&op->od->l3dgw_ports) == 1 && op->peer && op->peer->nbsp
+        && vector_is_empty(&op->peer->od->localnet_ports)) {
         return true;
     }
 
@@ -2552,8 +2530,8 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
                 continue;
             }
 
-            ovn_datapath_add_router_port(op->od, op);
-            ovn_datapath_add_ls_peer(peer->od, op->od);
+            vector_push(&op->od->router_ports, &op);
+            vector_push(&peer->od->ls_peers, &op->od);
             peer->peer = op;
             op->peer = peer;
 
@@ -2659,12 +2637,7 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
         ovs_assert(crp);
 
         /* Add to l3dgw_ports in od, for later use during flow creation. */
-        if (od->n_l3dgw_ports == od->n_allocated_l3dgw_ports) {
-            od->l3dgw_ports = x2nrealloc(od->l3dgw_ports,
-                                        &od->n_allocated_l3dgw_ports,
-                                        sizeof *od->l3dgw_ports);
-        }
-        od->l3dgw_ports[od->n_l3dgw_ports++] = op;
+        vector_push(&od->l3dgw_ports, &op);
 
         if (op->peer && op->peer->nbsp) {
             /* Only used for the router type LSP whose peer is l3dgw_port */
@@ -2770,8 +2743,9 @@ get_nat_addresses(const struct ovn_port *op, size_t *n, bool routable_only,
 
         /* Determine whether this NAT rule satisfies the conditions for
          * distributed NAT processing. */
-        if (op->od->n_l3dgw_ports && !strcmp(nat->type, "dnat_and_snat")
-            && nat->logical_port && nat->external_mac) {
+        if (!vector_is_empty(&op->od->l3dgw_ports) &&
+            !strcmp(nat->type, "dnat_and_snat") &&
+            nat->logical_port && nat->external_mac) {
             /* Distributed NAT rule. */
             if (eth_addr_from_string(nat->external_mac, &mac)) {
                 struct ds address = DS_EMPTY_INITIALIZER;
@@ -3410,8 +3384,9 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
             smap_clone(&options, &op->nbsp->options);
 
             if (queue_id) {
-                if (op->od->n_localnet_ports) {
-                    struct ovn_port *port = op->od->localnet_ports[0];
+                if (!vector_is_empty(&op->od->localnet_ports)) {
+                    struct ovn_port *port = vector_get(&op->od->localnet_ports,
+                                                       0, struct ovn_port *);
                     const char *physical_network = smap_get(
                             &port->nbsp->options, "network_name");
                     if (physical_network) {
@@ -4090,7 +4065,8 @@ build_lswitch_lbs_from_lrouter(struct ovn_datapaths *lr_datapaths,
     HMAP_FOR_EACH (lb_dps, hmap_node, lb_dps_map) {
         BITMAP_FOR_EACH_1 (index, ods_size(lr_datapaths), lb_dps->nb_lr_map) {
             struct ovn_datapath *od = lr_datapaths->array[index];
-            ovn_lb_datapaths_add_ls(lb_dps, od->n_ls_peers, od->ls_peers);
+            ovn_lb_datapaths_add_ls(lb_dps, vector_len(&od->ls_peers),
+                                    vector_get_array(&od->ls_peers));
         }
     }
 
@@ -4098,14 +4074,16 @@ build_lswitch_lbs_from_lrouter(struct ovn_datapaths *lr_datapaths,
     HMAP_FOR_EACH (lb_group_dps, hmap_node, lb_group_dps_map) {
         for (size_t i = 0; i < lb_group_dps->n_lr; i++) {
             struct ovn_datapath *od = lb_group_dps->lr[i];
-            ovn_lb_group_datapaths_add_ls(lb_group_dps, od->n_ls_peers,
-                                          od->ls_peers);
+            ovn_lb_group_datapaths_add_ls(lb_group_dps,
+                                          vector_len(&od->ls_peers),
+                                          vector_get_array(&od->ls_peers));
             for (size_t j = 0; j < lb_group_dps->lb_group->n_lbs; j++) {
                 const struct uuid *lb_uuid =
                     &lb_group_dps->lb_group->lbs[j]->nlb->header_.uuid;
                 lb_dps = ovn_lb_datapaths_find(lb_dps_map, lb_uuid);
                 ovs_assert(lb_dps);
-                ovn_lb_datapaths_add_ls(lb_dps, od->n_ls_peers, od->ls_peers);
+                ovn_lb_datapaths_add_ls(lb_dps, vector_len(&od->ls_peers),
+                                        vector_get_array(&od->ls_peers));
             }
         }
     }
@@ -4170,12 +4148,13 @@ should_add_router_port_garp(const struct ovn_port *op, const char *chassis)
     }
 
     bool add_router_port_garp = false;
-    if (op->peer && op->peer->nbrp && op->peer->od->n_l3dgw_ports) {
+    if (op->peer && op->peer->nbrp &&
+        !vector_is_empty(&op->peer->od->l3dgw_ports)) {
         if (lrp_is_l3dgw(op->peer)) {
             add_router_port_garp = true;
         } else if (smap_get_bool(&op->peer->nbrp->options,
                                  "reside-on-redirect-chassis", false)) {
-            if (op->peer->od->n_l3dgw_ports == 1) {
+            if (vector_len(&op->peer->od->l3dgw_ports) == 1) {
                 add_router_port_garp = true;
             } else {
                 static struct vlog_rate_limit rl =
@@ -4187,10 +4166,10 @@ should_add_router_port_garp(const struct ovn_port *op, const char *chassis)
                                 "option can only be used when there is "
                                 "a single distributed gateway port.",
                                 op->peer->key, op->peer->od->nbr->name,
-                                op->peer->od->n_l3dgw_ports);
+                                vector_len(&op->peer->od->l3dgw_ports));
             }
         }
-    } else if (chassis && op->od->n_localnet_ports) {
+    } else if (chassis && !vector_is_empty(&op->od->localnet_ports)) {
         add_router_port_garp = true;
     }
 
@@ -4217,10 +4196,10 @@ sync_pb_for_lsp(struct ovn_port *op,
         size_t n_nats = 0;
         char **nats = NULL;
         bool l3dgw_ports = op->peer && op->peer->od &&
-                            op->peer->od->n_l3dgw_ports;
+                           !vector_is_empty(&op->peer->od->l3dgw_ports);
         if (nat_addresses && !strcmp(nat_addresses, "router")) {
             if (op->peer && op->peer->od
-                && (chassis || op->peer->od->n_l3dgw_ports)) {
+                && (chassis || !vector_is_empty(&op->peer->od->l3dgw_ports))) {
                 bool include_lb_vips = !smap_get_bool(&op->nbsp->options,
                         "exclude-lb-vips-from-garp", false);
 
@@ -4249,7 +4228,8 @@ sync_pb_for_lsp(struct ovn_port *op,
                     const struct ovn_port *l3dgw_port = (
                         lrp_is_l3dgw(op->peer)
                         ? op->peer
-                        : op->peer->od->l3dgw_ports[0]);
+                        : vector_get(&op->peer->od->l3dgw_ports, 0,
+                                     struct ovn_port *));
                     ds_put_format(&nat_addr, " is_chassis_resident(%s)",
                         l3dgw_port->cr_port->json_key);
                 }
@@ -4286,11 +4266,12 @@ sync_pb_for_lsp(struct ovn_port *op,
                                 op->peer->lrp_networks.ipv4_addrs[i].addr_s);
             }
 
-            if (op->peer->od->n_l3dgw_ports) {
+            if (!vector_is_empty(&op->peer->od->l3dgw_ports)) {
                 const struct ovn_port *l3dgw_port = (
                     lrp_is_l3dgw(op->peer)
                     ? op->peer
-                    : op->peer->od->l3dgw_ports[0]);
+                    : vector_get(&op->peer->od->l3dgw_ports, 0,
+                                 struct ovn_port *));
                 ds_put_format(&garp_info, " is_chassis_resident(%s)",
                                 l3dgw_port->cr_port->json_key);
             }
@@ -4999,8 +4980,8 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
         return true;
     }
 
-    bool ls_had_only_router_ports = (od->n_router_ports
-            && (od->n_router_ports == hmap_count(&od->ports)));
+    bool ls_had_only_router_ports = (!vector_is_empty(&od->router_ports)
+            && (vector_len(&od->router_ports) == hmap_count(&od->ports)));
 
     struct ovn_port *op;
     HMAP_FOR_EACH (op, dp_node, &od->ports) {
@@ -5102,8 +5083,8 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
         }
     }
 
-    bool ls_has_only_router_ports = (od->n_router_ports
-            && (od->n_router_ports == hmap_count(&od->ports)));
+    bool ls_has_only_router_ports = (!vector_is_empty(&od->router_ports)
+            && (vector_len(&od->router_ports)  == hmap_count(&od->ports)));
 
     /* There are lflows related to router ports that depend on whether
      * there are switch ports on the logical switch (see
@@ -5112,8 +5093,7 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
      * to the tracked 'updated' ovn ports so that lflow engine can
      * regenerate lflows for these router ports. */
     if (ls_had_only_router_ports != ls_has_only_router_ports) {
-        for (size_t i = 0; i < od->n_router_ports; i++) {
-            op = od->router_ports[i];
+        VECTOR_FOR_EACH (&od->router_ports, op) {
             add_op_to_northd_tracked_ports(&trk_lsps->updated, op);
         }
     }
@@ -6058,7 +6038,8 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct lflow_table *lflows,
                                           op->key, &op->nbsp->header_,
                                           op->lflow_ref);
 
-        if (!lsp_is_localnet(op->nbsp) && !op->od->n_localnet_ports) {
+        if (!lsp_is_localnet(op->nbsp) &&
+            vector_is_empty(&op->od->localnet_ports)) {
             return;
         }
 
@@ -6073,16 +6054,15 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct lflow_table *lflows,
                                               ds_cstr(match), ds_cstr(actions),
                                               op->key, &op->nbsp->header_,
                                               op->lflow_ref);
-        } else if (op->od->n_localnet_ports) {
+        } else if (!vector_is_empty(&op->od->localnet_ports)) {
+            const struct ovn_port *lp = vector_get(&op->od->localnet_ports, 0,
+                                                   struct ovn_port *);
             ds_put_format(match, "outport == %s && inport == %s",
-                          op->od->localnet_ports[0]->json_key,
-                          op->json_key);
+                          lp->json_key, op->json_key);
             ovn_lflow_add_with_lport_and_hint(lflows, op->od,
                     S_SWITCH_OUT_APPLY_PORT_SEC, 110,
                     ds_cstr(match), ds_cstr(actions),
-                    op->od->localnet_ports[0]->key,
-                    &op->od->localnet_ports[0]->nbsp->header_,
-                    op->lflow_ref);
+                    lp->key, &lp->nbsp->header_, op->lflow_ref);
         }
     } else if (lsp_is_router(op->nbsp)) {
         ds_put_format(actions, REGBIT_FROM_ROUTER_PORT" = 1; next;");
@@ -6304,8 +6284,8 @@ build_ls_stateful_rec_pre_acls(
      * send IP packets for some (allow) filters through the conntrack action,
      * which handles defragmentation, in order to match L4 headers. */
     if (ls_stateful_rec->has_stateful_acl) {
-        for (size_t i = 0; i < od->n_router_ports; i++) {
-            struct ovn_port *op = od->router_ports[i];
+        struct ovn_port *op;
+        VECTOR_FOR_EACH (&od->router_ports, op) {
             if (op->enable_router_port_acl) {
                 continue;
             }
@@ -6313,11 +6293,11 @@ build_ls_stateful_rec_pre_acls(
                                      S_SWITCH_IN_PRE_ACL, S_SWITCH_OUT_PRE_ACL,
                                      110, lflows, lflow_ref);
         }
-        for (size_t i = 0; i < od->n_localnet_ports; i++) {
-            skip_port_from_conntrack(od, od->localnet_ports[i], true,
-                                     S_SWITCH_IN_PRE_ACL,
-                                     S_SWITCH_OUT_PRE_ACL,
-                                     110, lflows, lflow_ref);
+        struct ovn_port *lp;
+        VECTOR_FOR_EACH (&od->localnet_ports, lp) {
+            skip_port_from_conntrack(od, lp, true, S_SWITCH_IN_PRE_ACL,
+                                     S_SWITCH_OUT_PRE_ACL, 110, lflows,
+                                     lflow_ref);
         }
 
         /* stateless filters always take precedence over stateful ACLs. */
@@ -6515,9 +6495,9 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
                              struct lflow_table *lflows,
                              struct lflow_ref *lflow_ref)
 {
-    for (size_t i = 0; i < od->n_router_ports; i++) {
-        skip_port_from_conntrack(od, od->router_ports[i],
-                                 ls_stateful_rec->has_stateful_acl,
+    struct ovn_port *op;
+    VECTOR_FOR_EACH (&od->router_ports, op) {
+        skip_port_from_conntrack(od, op, ls_stateful_rec->has_stateful_acl,
                                  S_SWITCH_IN_PRE_LB, S_SWITCH_OUT_PRE_LB,
                                  110, lflows, lflow_ref);
     }
@@ -6528,9 +6508,9 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
      * balanced.
      */
     if (!ls_stateful_rec->has_lb_vip) {
-        for (size_t i = 0; i < od->n_localnet_ports; i++) {
-            skip_port_from_conntrack(od, od->localnet_ports[i],
-                                     ls_stateful_rec->has_stateful_acl,
+        struct ovn_port *lp;
+        VECTOR_FOR_EACH (&od->localnet_ports, lp) {
+            skip_port_from_conntrack(od, lp, ls_stateful_rec->has_stateful_acl,
                                      S_SWITCH_IN_PRE_LB, S_SWITCH_OUT_PRE_LB,
                                      110, lflows, lflow_ref);
         }
@@ -8721,8 +8701,9 @@ build_vtep_hairpin(struct ovn_datapath *od, struct lflow_table *lflows,
     * current chassis, should be passed to next table for ARP/ND hairpin
     * processing. */
     struct ds match = DS_EMPTY_INITIALIZER;
-    for (int i = 0; i < od->n_router_ports; i++) {
-        struct ovn_port *op = od->router_ports[i]->peer;
+    struct ovn_port *rp;
+    VECTOR_FOR_EACH (&od->router_ports, rp) {
+        struct ovn_port *op = rp->peer;
         if (lrp_is_l3dgw(op)) {
             ds_clear(&match);
             ds_put_format(&match,
@@ -8825,8 +8806,9 @@ build_lrouter_groups__(struct hmap *lr_ports, struct ovn_datapath *od)
     /* For logical router with distributed gateway ports. If it
      * has HA_Chassis_Group associated to it in SB DB, then store the
      * ha chassis group name. */
-    for (size_t i = 0; i < od->n_l3dgw_ports; i++) {
-        struct ovn_port *crp = od->l3dgw_ports[i]->cr_port;
+    struct ovn_port *dgp;
+    VECTOR_FOR_EACH (&od->l3dgw_ports, dgp) {
+        struct ovn_port *crp = dgp->cr_port;
         if (crp->sb->ha_chassis_group &&
             crp->sb->ha_chassis_group->n_ha_chassis > 1) {
             sset_add(&od->lr_group->ha_chassis_groups,
@@ -8852,15 +8834,16 @@ build_lrouter_groups__(struct hmap *lr_ports, struct ovn_datapath *od)
                 build_lrouter_groups__(lr_ports, peer_dp);
             }
         } else {
-            for (size_t j = 0; j < peer_dp->n_router_ports; j++) {
-                if (!peer_dp->router_ports[j]->peer) {
+            struct ovn_port *op;
+            VECTOR_FOR_EACH (&peer_dp->router_ports, op) {
+                if (!op->peer) {
                     /* If there is no peer port connecting to the
                     * router port, ignore it. */
                     continue;
                 }
 
                 struct ovn_datapath *router_dp;
-                router_dp = peer_dp->router_ports[j]->peer->od;
+                router_dp = op->peer->od;
                 if (router_dp == od) {
                     continue;
                 }
@@ -9056,7 +9039,7 @@ build_lswitch_rport_arp_req_flow(
     /* Send a the packet to the router pipeline.  If the switch has non-router
      * ports then flood it there as well.
      */
-    if (od->n_router_ports != od->nbs->n_ports) {
+    if (vector_len(&od->router_ports) != od->nbs->n_ports) {
         ds_put_format(&actions, "clone {outport = %s; output; }; "
                                 "outport = \""MC_FLOOD_L2"\"; output;",
                       patch_op->json_key);
@@ -9078,7 +9061,7 @@ build_lswitch_rport_arp_req_flow(
         ds_put_format(&match, "%s && !is_chassis_resident(%s)", ds_cstr(&m),
                       patch_op->cr_port->json_key);
         ds_clear(&actions);
-        if (od->n_router_ports != od->nbs->n_ports) {
+        if (vector_len(&od->router_ports) != od->nbs->n_ports) {
             ds_put_format(&actions, "clone {outport = %s; output; }; "
                                     "outport = \""MC_FLOOD_L2"\"; output;",
                           patch_op->cr_port->json_key);
@@ -9206,7 +9189,7 @@ build_lswitch_rport_arp_req_flows_for_lbnats(
      *
      * Priority: 75.
      */
-    if (sw_od->n_router_ports != sw_od->nbs->n_ports) {
+    if (vector_len(&sw_od->router_ports) != sw_od->nbs->n_ports) {
         build_lswitch_rport_arp_req_self_orig_flow(op, 75, sw_od,
                                                    lr_stateful_rec->lrnat_rec,
                                                    lflows, lflow_ref);
@@ -9496,7 +9479,7 @@ build_lswitch_dhcp_relay_flows(struct ovn_port *op,
         return;
     }
 
-    if (!op->od || !op->od->n_router_ports || !op->od->nbs) {
+    if (!op->od || vector_is_empty(&op->od->router_ports) || !op->od->nbs) {
         return;
     }
 
@@ -9566,8 +9549,8 @@ build_drop_arp_nd_flows_for_unbound_router_ports(struct ovn_port *op,
     struct ds match = DS_EMPTY_INITIALIZER;
 
     for (size_t i = 0; i < op->n_lsp_addrs; i++) {
-        for (size_t j = 0; j < op->od->n_router_ports; j++) {
-            struct ovn_port *rp = op->od->router_ports[j];
+        struct ovn_port *rp;
+        VECTOR_FOR_EACH (&op->od->router_ports, rp) {
             for (size_t k = 0; k < rp->n_lsp_addrs; k++) {
                 for (size_t l = 0; l < rp->lsp_addrs[k].n_ipv4_addrs; l++) {
                     ds_clear(&match);
@@ -10187,7 +10170,7 @@ build_lswitch_dhcp_options_and_response(struct ovn_port *op,
     }
 
     bool is_external = lsp_is_external(op->nbsp);
-    if (is_external && (!op->od->n_localnet_ports ||
+    if (is_external && (vector_is_empty(&op->od->localnet_ports) ||
                         !op->nbsp->ha_chassis_group)) {
         /* If it's an external port and there are no localnet ports
          * and if it doesn't belong to an HA chassis group ignore it. */
@@ -10196,14 +10179,13 @@ build_lswitch_dhcp_options_and_response(struct ovn_port *op,
 
     for (size_t i = 0; i < op->n_lsp_addrs; i++) {
         if (is_external) {
-            for (size_t j = 0; j < op->od->n_localnet_ports; j++) {
+            struct ovn_port *lp;
+            VECTOR_FOR_EACH (&op->od->localnet_ports, lp) {
                 build_dhcpv4_options_flows(
-                    op, &op->lsp_addrs[i],
-                    op->od->localnet_ports[j], is_external,
+                    op, &op->lsp_addrs[i], lp, is_external,
                     meter_groups, lflows, op->lflow_ref);
                 build_dhcpv6_options_flows(
-                    op, &op->lsp_addrs[i],
-                    op->od->localnet_ports[j], is_external,
+                    op, &op->lsp_addrs[i], lp, is_external,
                     meter_groups, lflows, op->lflow_ref);
             }
         } else {
@@ -10284,10 +10266,10 @@ build_lswitch_external_port(struct ovn_port *op,
     if (!lsp_is_external(op->nbsp)) {
         return;
     }
-    for (size_t i = 0; i < op->od->n_localnet_ports; i++) {
-        build_drop_arp_nd_flows_for_unbound_router_ports(
-            op, op->od->localnet_ports[i], lflows,
-            op->lflow_ref);
+    struct ovn_port *lp;
+    VECTOR_FOR_EACH (&op->od->localnet_ports, lp) {
+        build_drop_arp_nd_flows_for_unbound_router_ports(op, lp, lflows,
+                                                         op->lflow_ref);
     }
 }
 
@@ -10524,7 +10506,8 @@ build_lswitch_ip_unicast_lookup(struct ovn_port *op,
             ds_put_format(match, "eth.dst == %s", op->peer->lrp_networks.ea_s);
         }
 
-        if (op->peer->od->n_l3dgw_ports && op->od->n_localnet_ports) {
+        if (!vector_is_empty(&op->peer->od->l3dgw_ports) &&
+            !vector_is_empty(&op->od->localnet_ports)) {
             bool add_chassis_resident_check = false;
             const char *json_key;
             if (lrp_is_l3dgw(op->peer)) {
@@ -10545,8 +10528,9 @@ build_lswitch_ip_unicast_lookup(struct ovn_port *op,
                 add_chassis_resident_check = smap_get_bool(
                     &op->peer->nbrp->options,
                     "reside-on-redirect-chassis", false) &&
-                    op->peer->od->n_l3dgw_ports == 1;
-                json_key = op->peer->od->l3dgw_ports[0]->cr_port->json_key;
+                    vector_len(&op->peer->od->l3dgw_ports) == 1;
+                json_key = vector_get(&op->peer->od->l3dgw_ports, 0,
+                                      struct ovn_port *)->cr_port->json_key;
             }
 
             if (add_chassis_resident_check) {
@@ -12546,16 +12530,16 @@ build_lrouter_nat_flows_for_lb(
             type = LROUTER_NAT_LB_FLOW_NORMAL;
         }
 
-        if (!od->n_l3dgw_ports) {
+        if (vector_is_empty(&od->l3dgw_ports)) {
             bitmap_set1(gw_dp_bitmap[type], index);
         } else {
             /* Create stateless LB NAT rules when using multiple DGPs and
              * use_stateless_nat is true.
              */
-            bool stateless_nat = (od->n_l3dgw_ports > 1)
+            bool stateless_nat = (vector_len(&od->l3dgw_ports) > 1)
                 ? use_stateless_nat : false;
-            for (size_t i = 0; i < od->n_l3dgw_ports; i++) {
-                struct ovn_port *dgp = od->l3dgw_ports[i];
+            struct ovn_port *dgp;
+            VECTOR_FOR_EACH (&od->l3dgw_ports, dgp) {
                 build_distr_lrouter_nat_flows_for_lb(&ctx, type, od,
                                                      lb_dps->lflow_ref, dgp,
                                                      stateless_nat);
@@ -12873,7 +12857,7 @@ lrouter_nat_get_priority(const struct ovn_datapath *od,
      * nat->logical_ip with the longest mask gets a higher
      * priority. */
     uint16_t priority = prefix_len + 1;
-    if (!od->is_gw_router && od->n_l3dgw_ports) {
+    if (!od->is_gw_router && !vector_is_empty(&od->l3dgw_ports)) {
         priority += 128;
     }
 
@@ -13560,9 +13544,9 @@ build_gateway_get_l2_hdr_size(struct ovn_port *op)
         /* Check if vlans are enabled on a localnet port running the logical
          * switch connected to this logical router.
          */
-        for (size_t i = 0; i < peer->od->n_localnet_ports; i++) {
-            struct ovn_port *localnet_port = peer->od->localnet_ports[i];
-            const struct nbrec_logical_switch_port *nbsp = localnet_port->nbsp;
+        struct ovn_port *lp;
+        VECTOR_FOR_EACH (&peer->od->localnet_ports, lp) {
+            const struct nbrec_logical_switch_port *nbsp = lp->nbsp;
 
             if (!nbsp || !nbsp->tag_request) {
                 continue;
@@ -14813,7 +14797,8 @@ build_arp_resolve_flows_for_lsp(
         return;
     }
 
-    if (op->od->n_router_ports && !lsp_is_router(op->nbsp)
+    struct ovn_port *rp;
+    if (!vector_is_empty(&op->od->router_ports) && !lsp_is_router(op->nbsp)
         && strcmp(op->nbsp->type, "virtual")) {
         /* This is a logical switch port that backs a VM or a container.
          * Extract its addresses. For each of the address, go through all
@@ -14825,12 +14810,11 @@ build_arp_resolve_flows_for_lsp(
             const char *ea_s = op->lsp_addrs[i].ea_s;
             for (size_t j = 0; j < op->lsp_addrs[i].n_ipv4_addrs; j++) {
                 const char *ip_s = op->lsp_addrs[i].ipv4_addrs[j].addr_s;
-                for (size_t k = 0; k < op->od->n_router_ports; k++) {
+                VECTOR_FOR_EACH (&op->od->router_ports, rp) {
                     /* Get the Logical_Router_Port that the
                      * Logical_Switch_Port is connected to, as
                      * 'peer'. */
-                    struct ovn_port *peer = ovn_port_get_peer(
-                            lr_ports, op->od->router_ports[k]);
+                    struct ovn_port *peer = ovn_port_get_peer(lr_ports, rp);
                     if (!peer || !peer->nbrp) {
                         continue;
                     }
@@ -14857,12 +14841,11 @@ build_arp_resolve_flows_for_lsp(
 
             for (size_t j = 0; j < op->lsp_addrs[i].n_ipv6_addrs; j++) {
                 const char *ip_s = op->lsp_addrs[i].ipv6_addrs[j].addr_s;
-                for (size_t k = 0; k < op->od->n_router_ports; k++) {
+                VECTOR_FOR_EACH (&op->od->router_ports, rp) {
                     /* Get the Logical_Router_Port that the
                      * Logical_Switch_Port is connected to, as
                      * 'peer'. */
-                    struct ovn_port *peer = ovn_port_get_peer(
-                            lr_ports, op->od->router_ports[k]);
+                    struct ovn_port *peer = ovn_port_get_peer(lr_ports, rp);
                     if (!peer || !peer->nbrp) {
                         continue;
                     }
@@ -14904,10 +14887,8 @@ build_arp_resolve_flows_for_lsp(
                           "dynamic_neigh_routers", false)) {
             return;
         }
-
-        for (size_t i = 0; i < op->od->n_router_ports; i++) {
-            struct ovn_port *router_port =
-                ovn_port_get_peer(lr_ports, op->od->router_ports[i]);
+        VECTOR_FOR_EACH (&op->od->router_ports, rp) {
+            struct ovn_port *router_port = ovn_port_get_peer(lr_ports,  rp);
             if (!router_port || !router_port->nbrp) {
                 continue;
             }
@@ -15165,8 +15146,9 @@ build_gateway_redirect_flows_for_lrouter(
         struct lflow_ref *lflow_ref)
 {
     ovs_assert(od->nbr);
-    for (size_t i = 0; i < od->n_l3dgw_ports; i++) {
-        if (l3dgw_port_has_associated_vtep_lports(od->l3dgw_ports[i])) {
+    const struct ovn_port *dgp;
+    VECTOR_FOR_EACH (&od->l3dgw_ports, dgp) {
+        if (l3dgw_port_has_associated_vtep_lports(dgp)) {
             /* Skip adding redirect lflow for vtep-enabled l3dgw ports.
              * Traffic from hypervisor to VTEP (ramp) switch should go in
              * distributed manner. Only returning routed traffic must go
@@ -15179,8 +15161,8 @@ build_gateway_redirect_flows_for_lrouter(
 
         const struct ovsdb_idl_row *stage_hint = NULL;
 
-        if (od->l3dgw_ports[i]->nbrp) {
-            stage_hint = &od->l3dgw_ports[i]->nbrp->header_;
+        if (dgp->nbrp) {
+            stage_hint = &dgp->nbrp->header_;
         }
 
         /* For traffic with outport == l3dgw_port, if the
@@ -15188,11 +15170,9 @@ build_gateway_redirect_flows_for_lrouter(
          * rule, then the traffic is redirected to the central
          * instance of the l3dgw_port. */
         ds_clear(match);
-        ds_put_format(match, "outport == %s",
-                      od->l3dgw_ports[i]->json_key);
+        ds_put_format(match, "outport == %s", dgp->json_key);
         ds_clear(actions);
-        ds_put_format(actions, "outport = %s; next;",
-                      od->l3dgw_ports[i]->cr_port->json_key);
+        ds_put_format(actions, "outport = %s; next;", dgp->cr_port->json_key);
         ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_GW_REDIRECT, 50,
                                 ds_cstr(match), ds_cstr(actions),
                                 stage_hint, lflow_ref);
@@ -15211,8 +15191,9 @@ build_lr_gateway_redirect_flows_for_nats(
         struct lflow_ref *lflow_ref)
 {
     ovs_assert(od->nbr);
-    for (size_t i = 0; i < od->n_l3dgw_ports; i++) {
-        if (l3dgw_port_has_associated_vtep_lports(od->l3dgw_ports[i])) {
+    const struct ovn_port *dgp;
+    VECTOR_FOR_EACH (&od->l3dgw_ports, dgp) {
+        if (l3dgw_port_has_associated_vtep_lports(dgp)) {
             /* Skip adding redirect lflow for vtep-enabled l3dgw ports.
              * Traffic from hypervisor to VTEP (ramp) switch should go in
              * distributed manner. Only returning routed traffic must go
@@ -15235,8 +15216,8 @@ build_lr_gateway_redirect_flows_for_nats(
 
             const struct ovsdb_idl_row *stage_hint = NULL;
 
-            if (od->l3dgw_ports[i]->nbrp) {
-                stage_hint = &od->l3dgw_ports[i]->nbrp->header_;
+            if (dgp->nbrp) {
+                stage_hint = &dgp->nbrp->header_;
             }
 
             struct ds match_ext = DS_EMPTY_INITIALIZER;
@@ -15823,7 +15804,7 @@ build_ipv6_input_flows_for_lrouter_port(
     }
 
     /* UDP/TCP/SCTP port unreachable */
-    if (!op->od->is_gw_router && !op->od->n_l3dgw_ports) {
+    if (!op->od->is_gw_router && vector_is_empty(&op->od->l3dgw_ports)) {
         for (int i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
             ds_clear(match);
             ds_put_format(match,
@@ -16087,8 +16068,8 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
                       op->lrp_networks.ipv4_addrs[i].network_s,
                       op->lrp_networks.ipv4_addrs[i].plen);
 
-        if (op->od->n_l3dgw_ports && op->peer
-            && op->peer->od->n_localnet_ports) {
+        if (!vector_is_empty(&op->od->l3dgw_ports) && op->peer
+            && !vector_is_empty(&op->peer->od->localnet_ports)) {
             bool add_chassis_resident_check = false;
             const char *json_key;
             if (lrp_is_l3dgw(op)) {
@@ -16111,8 +16092,9 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
                 add_chassis_resident_check = smap_get_bool(
                     &op->nbrp->options,
                     "reside-on-redirect-chassis", false) &&
-                    op->od->n_l3dgw_ports == 1;
-                json_key = op->od->l3dgw_ports[0]->cr_port->json_key;
+                    vector_len(&op->od->l3dgw_ports) == 1;
+                json_key = vector_get(&op->od->l3dgw_ports, 0,
+                                      struct ovn_port *)->cr_port->json_key;
             }
 
             if (add_chassis_resident_check) {
@@ -16127,7 +16109,7 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
                                &op->nbrp->header_, lflows, lflow_ref);
     }
 
-    if (!op->od->is_gw_router && !op->od->n_l3dgw_ports) {
+    if (!op->od->is_gw_router && vector_is_empty(&op->od->l3dgw_ports)) {
         /* UDP/TCP/SCTP port unreachable. */
         for (int i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
             ds_clear(match);
@@ -16321,7 +16303,7 @@ build_lrouter_in_unsnat_match(const struct ovn_datapath *od,
         /* Traffic received on l3dgw_port is subject to NAT. */
         ds_put_format(match, " && inport == %s", l3dgw_port->json_key);
 
-        if (!distributed_nat && od->n_l3dgw_ports) {
+        if (!distributed_nat && !vector_is_empty(&od->l3dgw_ports)) {
             /* Flows for NAT rules that are centralized are only
              * programmed on the gateway chassis. */
             ds_put_format(match, " && is_chassis_resident(%s)",
@@ -16459,7 +16441,7 @@ build_lrouter_in_dnat_flow(struct lflow_table *lflows,
 
         /* Traffic received on l3dgw_port is subject to NAT. */
         ds_put_format(match, " && inport == %s", l3dgw_port->json_key);
-        if (!distributed_nat && od->n_l3dgw_ports) {
+        if (!distributed_nat && !vector_is_empty(&od->l3dgw_ports)) {
             /* Flows for NAT rules that are centralized are only
             * programmed on the gateway chassis. */
             ds_put_format(match, " && is_chassis_resident(%s)",
@@ -16509,7 +16491,7 @@ build_lrouter_out_undnat_flow(struct lflow_table *lflows,
     *
     * Note that this only applies for NAT on a distributed router.
     */
-    if (!od->n_l3dgw_ports ||
+    if (vector_is_empty(&od->l3dgw_ports) ||
         !(nat_entry->type == DNAT || nat_entry->type == DNAT_AND_SNAT)) {
         return;
     }
@@ -16521,7 +16503,7 @@ build_lrouter_out_undnat_flow(struct lflow_table *lflows,
     ds_put_format(match, "ip && ip%c.src == %s && outport == %s",
                   is_v6 ? '6' : '4', nat->logical_ip,
                   l3dgw_port->json_key);
-    if (!distributed_nat && od->n_l3dgw_ports) {
+    if (!distributed_nat && !vector_is_empty(&od->l3dgw_ports)) {
         /* Flows for NAT rules that are centralized are only
         * programmed on the gateway chassis. */
         ds_put_format(match, " && is_chassis_resident(%s)",
@@ -16556,7 +16538,7 @@ build_lrouter_out_is_dnat_local(struct lflow_table *lflows,
 {
     /* Note that this only applies for NAT on a distributed router.
      */
-    if (!od->n_l3dgw_ports) {
+    if (vector_is_empty(&od->l3dgw_ports)) {
         return;
     }
 
@@ -16601,7 +16583,7 @@ build_lrouter_out_snat_match(struct lflow_table *lflows,
         ds_put_format(match, " && %s == %s",
                       is_reverse ? "inport" : "outport",
                       l3dgw_port->json_key);
-        if (od->n_l3dgw_ports) {
+        if (!vector_is_empty(&od->l3dgw_ports)) {
             ds_put_format(match, " && is_chassis_resident(\"%s\")",
                           distributed_nat
                           ? nat->logical_port
@@ -16871,7 +16853,7 @@ build_lrouter_ingress_flow(struct lflow_table *lflows,
                            struct lflow_ref *lflow_ref)
 {
     const struct nbrec_nat *nat = nat_entry->nb;
-    if (od->n_l3dgw_ports && nat_entry->type == SNAT) {
+    if (!vector_is_empty(&od->l3dgw_ports) && nat_entry->type == SNAT) {
         ds_clear(match);
         ds_put_format(
             match, "inport == %s && %s == %s",
@@ -17011,7 +16993,7 @@ build_dgp_lrouter_commit_all(const struct ovn_datapath *od,
                              const struct chassis_features *features,
                              struct ds *match, struct lflow_ref *lflow_ref)
 {
-    ovs_assert(od->n_l3dgw_ports);
+    ovs_assert(!vector_is_empty(&od->l3dgw_ports));
     if (!(features->ct_commit_to_zone && features->ct_next_zone)) {
         return;
     }
@@ -17155,7 +17137,7 @@ build_lrouter_nat_defrag_and_lb(
     /* NAT rules are only valid on Gateway routers and routers with
      * l3dgw_ports (router has port(s) with gateway chassis
      * specified). */
-    if (!od->is_gw_router && !od->n_l3dgw_ports) {
+    if (!od->is_gw_router && vector_is_empty(&od->l3dgw_ports)) {
         return;
     }
 
@@ -17262,7 +17244,8 @@ build_lrouter_nat_defrag_and_lb(
                             match,
                             "outport == %s && ip%s.src == %s "
                             "&& is_chassis_resident(\"%s\")",
-                            od->l3dgw_ports[0]->json_key,
+                            vector_get(&od->l3dgw_ports, 0,
+                                       const struct ovn_port *)->json_key,
                             is_v6 ? "6" : "4", nat->logical_ip,
                             nat->logical_port);
                     ds_clear(actions);
@@ -17375,7 +17358,7 @@ build_lrouter_nat_defrag_and_lb(
          * gateway port have ip.dst matching a NAT external IP, then
          * loop a clone of the packet back to the beginning of the
          * ingress pipeline with inport = outport. */
-        if (od->n_l3dgw_ports) {
+        if (!vector_is_empty(&od->l3dgw_ports)) {
             /* Distributed router. */
             ds_clear(match);
             ds_put_format(match, "ip%s.dst == %s && outport == %s",
@@ -17441,10 +17424,10 @@ build_lrouter_nat_defrag_and_lb(
             build_gw_lrouter_commit_all(od, lflows, features, lflow_ref);
         }
 
-        for (size_t i = 0; i < od->n_l3dgw_ports; i++) {
-            struct ovn_port *l3dgw_port = od->l3dgw_ports[i];
-            build_dgp_lrouter_commit_all(od, l3dgw_port, lflows,
-                                         features, match, lflow_ref);
+        const struct ovn_port *dgp;
+        VECTOR_FOR_EACH (&od->l3dgw_ports, dgp) {
+            build_dgp_lrouter_commit_all(od, dgp, lflows, features,
+                                         match, lflow_ref);
         }
     }
 
@@ -17548,8 +17531,9 @@ build_routable_flows_for_router_port(
     struct ovn_port_routable_addresses ra =
         get_op_routable_addresses(lrp, lr_stateful_rec);
 
-    for (size_t i = 0; i < peer_ls->n_router_ports; i++) {
-        struct ovn_port *router_port = peer_ls->router_ports[i]->peer;
+    struct ovn_port *op;
+    VECTOR_FOR_EACH (&peer_ls->router_ports, op) {
+        struct ovn_port *router_port = op->peer;
         struct lport_addresses *lrpaddrs = &router_port->lrp_networks;
         char *router_port_lla_s = NULL;
 
@@ -19513,12 +19497,13 @@ collect_lr_groups_for_ha_chassis_groups(const struct sbrec_port_binding *sb,
                                         struct hmapx *lr_groups)
 {
     struct lrouter_group *lr_group = NULL;
-    for (size_t i = 0; i < op->od->n_router_ports; i++) {
-        if (!op->od->router_ports[i]->peer) {
+    struct ovn_port *rp;
+    VECTOR_FOR_EACH (&op->od->router_ports, rp) {
+        if (!rp->peer) {
             continue;
         }
 
-        lr_group = op->od->router_ports[i]->peer->od->lr_group;
+        lr_group = rp->peer->od->lr_group;
         /* If a logical switch has multiple router ports, then
          * all the logical routers belong to the same logical
          * router group. */
