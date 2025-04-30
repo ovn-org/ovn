@@ -60,6 +60,7 @@
 #include "openvswitch/meta-flow.h"
 #include "logical-fields.h"
 #include "smap.h"
+#include "vec.h"
 
 struct ds;
 struct expr;
@@ -471,8 +472,7 @@ bool expr_evaluate(const struct expr *, const struct flow *uflow,
 struct expr_match {
     struct hmap_node hmap_node;
     struct match match;
-    struct cls_conjunction *conjunctions;
-    size_t n, allocated;
+    struct vector conjunctions; /* Vector of struct cls_conjunction. */
 
     /* Tracked address set information. */
     char *as_name;

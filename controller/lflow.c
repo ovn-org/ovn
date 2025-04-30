@@ -925,7 +925,7 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
             .ip = m->as_ip,
             .mask = m->as_mask
         };
-        if (!m->n) {
+        if (vector_is_empty(&m->conjunctions)) {
             ofctrl_add_flow_metered(l_ctx_out->flow_table, ptable,
                                     lflow->priority,
                                     lflow->header_.uuid.parts[0], &m->match,
@@ -933,18 +933,16 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
                                     ctrl_meter_id,
                                     as_info.name ? &as_info : NULL);
         } else {
-            if (m->n > 1) {
+            if (vector_len(&m->conjunctions) > 1) {
                 ovs_assert(!as_info.name);
             }
             uint64_t conj_stubs[64 / 8];
             struct ofpbuf conj;
 
             ofpbuf_use_stub(&conj, conj_stubs, sizeof conj_stubs);
-            for (int i = 0; i < m->n; i++) {
-                const struct cls_conjunction *src = &m->conjunctions[i];
-                struct ofpact_conjunction *dst;
-
-                dst = ofpact_put_CONJUNCTION(&conj);
+            const struct cls_conjunction *src;
+            VECTOR_FOR_EACH_PTR (&m->conjunctions, src) {
+                struct ofpact_conjunction *dst = ofpact_put_CONJUNCTION(&conj);
                 dst->id = src->id;
                 dst->clause = src->clause;
                 dst->n_clauses = src->n_clauses;
@@ -1941,9 +1939,8 @@ consider_lb_hairpin_flows(const struct ovn_controller_lb *lb,
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb->vips[i];
 
-        for (size_t j = 0; j < lb_vip->n_backends; j++) {
-            struct ovn_lb_backend *lb_backend = &lb_vip->backends[j];
-
+        struct ovn_lb_backend *lb_backend;
+        VECTOR_FOR_EACH_PTR (&lb_vip->backends, lb_backend) {
             add_lb_vip_hairpin_flows(lb, lb_vip, lb_backend, flow_table,
                                      register_consolidation);
         }

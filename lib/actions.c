@@ -42,6 +42,7 @@
 #include "socket-util.h"
 #include "lib/ovn-util.h"
 #include "controller/lflow.h"
+#include "vec.h"
 
 VLOG_DEFINE_THIS_MODULE(actions);
 
@@ -1208,9 +1209,7 @@ parse_ct_lb_action(struct action_context *ctx, bool ct_lb_mark)
 
     add_prerequisite(ctx, "ip");
 
-    struct ovnact_ct_lb_dst *dsts = NULL;
-    size_t allocated_dsts = 0;
-    size_t n_dsts = 0;
+    struct vector dsts = VECTOR_EMPTY_INITIALIZER(struct ovnact_ct_lb_dst);
     char *hash_fields = NULL;
     enum ovnact_ct_lb_flag ct_flag = OVNACT_CT_LB_FLAG_NONE;
 
@@ -1229,7 +1228,7 @@ parse_ct_lb_action(struct action_context *ctx, bool ct_lb_mark)
                 /* IPv6 address and port */
                 if (ctx->lexer->token.type != LEX_T_INTEGER
                     || ctx->lexer->token.format != LEX_F_IPV6) {
-                    free(dsts);
+                    vector_destroy(&dsts);
                     lexer_syntax_error(ctx->lexer, "expecting IPv6 address");
                     return;
                 }
@@ -1238,7 +1237,7 @@ parse_ct_lb_action(struct action_context *ctx, bool ct_lb_mark)
 
                 lexer_get(ctx->lexer);
                 if (!lexer_match(ctx->lexer, LEX_T_RSQUARE)) {
-                    free(dsts);
+                    vector_destroy(&dsts);
                     lexer_syntax_error(ctx->lexer, "no closing square "
                                                    "bracket");
                     return;
@@ -1246,14 +1245,14 @@ parse_ct_lb_action(struct action_context *ctx, bool ct_lb_mark)
                 dst.port = 0;
                 if (lexer_match(ctx->lexer, LEX_T_COLON)
                     && !action_parse_uint16(ctx, &dst.port, "port number")) {
-                    free(dsts);
+                    vector_destroy(&dsts);
                     return;
                 }
             } else {
                 if (ctx->lexer->token.type != LEX_T_INTEGER
                     || (ctx->lexer->token.format != LEX_F_IPV4
                     && ctx->lexer->token.format != LEX_F_IPV6)) {
-                    free(dsts);
+                    vector_destroy(&dsts);
                     lexer_syntax_error(ctx->lexer, "expecting IP address");
                     return;
                 }
@@ -1271,31 +1270,27 @@ parse_ct_lb_action(struct action_context *ctx, bool ct_lb_mark)
                 dst.port = 0;
                 if (lexer_match(ctx->lexer, LEX_T_COLON)) {
                     if (dst.family == AF_INET6) {
-                        free(dsts);
+                        vector_destroy(&dsts);;
                         lexer_syntax_error(ctx->lexer, "IPv6 address needs "
                                 "square brackets if port is included");
                         return;
                     } else if (!action_parse_uint16(ctx, &dst.port,
                                                     "port number")) {
-                        free(dsts);
+                        vector_destroy(&dsts);
                         return;
                     }
                 }
             }
             lexer_match(ctx->lexer, LEX_T_COMMA);
 
-            /* Append to dsts. */
-            if (n_dsts >= allocated_dsts) {
-                dsts = x2nrealloc(dsts, &allocated_dsts, sizeof *dsts);
-            }
-            dsts[n_dsts++] = dst;
+            vector_push(&dsts, &dst);
         }
 
         if (lexer_match_id(ctx->lexer, "hash_fields")) {
             if (!lexer_match(ctx->lexer, LEX_T_EQUALS) ||
                 ctx->lexer->token.type != LEX_T_STRING) {
                 lexer_syntax_error(ctx->lexer, "invalid hash_fields");
-                free(dsts);
+                vector_destroy(&dsts);
                 return;
             }
 
@@ -1318,8 +1313,8 @@ parse_ct_lb_action(struct action_context *ctx, bool ct_lb_mark)
     struct ovnact_ct_lb *cl = ct_lb_mark ? ovnact_put_CT_LB_MARK(ctx->ovnacts)
                                          : ovnact_put_CT_LB(ctx->ovnacts);
     cl->ltable = ctx->pp->cur_ltable + 1;
-    cl->dsts = dsts;
-    cl->n_dsts = n_dsts;
+    cl->n_dsts = vector_len(&dsts);
+    cl->dsts = vector_steal_array(&dsts);
     cl->hash_fields = hash_fields;
     cl->ct_flag = ct_flag;
 }
@@ -1542,9 +1537,7 @@ parse_select_action(struct action_context *ctx, struct expr_field *res_field)
         return;
     }
 
-    struct ovnact_select_dst *dsts = NULL;
-    size_t allocated_dsts = 0;
-    size_t n_dsts = 0;
+    struct vector dsts = VECTOR_EMPTY_INITIALIZER(struct ovnact_select_dst);
     bool requires_hash_fields = false;
     char *hash_fields = NULL;
 
@@ -1560,14 +1553,14 @@ parse_select_action(struct action_context *ctx, struct expr_field *res_field)
     while (!lexer_match(ctx->lexer, LEX_T_RPAREN)) {
         struct ovnact_select_dst dst;
         if (!action_parse_uint16(ctx, &dst.id, "id")) {
-            free(dsts);
+            vector_destroy(&dsts);
             return;
         }
 
         dst.weight = 0;
         if (lexer_match(ctx->lexer, LEX_T_EQUALS)) {
             if (!action_parse_uint16(ctx, &dst.weight, "weight")) {
-                free(dsts);
+                vector_destroy(&dsts);
                 return;
             }
             if (dst.weight == 0) {
@@ -1581,15 +1574,11 @@ parse_select_action(struct action_context *ctx, struct expr_field *res_field)
 
         lexer_match(ctx->lexer, LEX_T_COMMA);
 
-        /* Append to dsts. */
-        if (n_dsts >= allocated_dsts) {
-            dsts = x2nrealloc(dsts, &allocated_dsts, sizeof *dsts);
-        }
-        dsts[n_dsts++] = dst;
+        vector_push(&dsts, &dst);
     }
-    if (n_dsts <= 1) {
+    if (vector_len(&dsts) <= 1) {
         lexer_syntax_error(ctx->lexer, "expecting at least 2 group members");
-        free(dsts);
+        vector_destroy(&dsts);
         return;
     }
 
@@ -1597,14 +1586,14 @@ parse_select_action(struct action_context *ctx, struct expr_field *res_field)
         lexer_force_match(ctx->lexer, LEX_T_SEMICOLON);
         if (!lexer_match_id(ctx->lexer, "hash_fields")) {
             lexer_syntax_error(ctx->lexer, "expecting hash_fields");
-            free(dsts);
+            vector_destroy(&dsts);
             return;
         }
         if (!lexer_match(ctx->lexer, LEX_T_EQUALS) ||
             ctx->lexer->token.type != LEX_T_STRING ||
             lexer_lookahead(ctx->lexer) != LEX_T_RPAREN) {
             lexer_syntax_error(ctx->lexer, "invalid hash_fields");
-            free(dsts);
+            vector_destroy(&dsts);
             return;
         }
         hash_fields = xstrdup(ctx->lexer->token.s);
@@ -1614,8 +1603,8 @@ parse_select_action(struct action_context *ctx, struct expr_field *res_field)
 
     struct ovnact_select *select = ovnact_put_SELECT(ctx->ovnacts);
     select->ltable = ctx->pp->cur_ltable + 1;
-    select->dsts = dsts;
-    select->n_dsts = n_dsts;
+    select->n_dsts = vector_len(&dsts);
+    select->dsts = vector_steal_array(&dsts);
     select->res_field = *res_field;
     select->hash_fields = hash_fields;
 }
@@ -2681,25 +2670,22 @@ parse_trigger_event(struct action_context *ctx,
 
     lexer_match(ctx->lexer, LEX_T_COMMA);
 
-    size_t allocated_options = 0;
+    struct vector options = VECTOR_EMPTY_INITIALIZER(struct ovnact_gen_option);
     while (!lexer_match(ctx->lexer, LEX_T_RPAREN)) {
-        if (event->n_options >= allocated_options) {
-            event->options = x2nrealloc(event->options, &allocated_options,
-                                     sizeof *event->options);
-        }
-
-        struct ovnact_gen_option *o = &event->options[event->n_options++];
-        memset(o, 0, sizeof *o);
-        parse_gen_opt(ctx, o,
+        struct ovnact_gen_option o = {0};
+        parse_gen_opt(ctx, &o,
                       &ctx->pp->controller_event_opts->event_opts[event_type],
                       event_to_string(event_type));
+        vector_push(&options, &o);
 
         if (ctx->lexer->error) {
             return;
         }
-
         lexer_match(ctx->lexer, LEX_T_COMMA);
     }
+
+    event->n_options = vector_len(&options);
+    event->options = vector_steal_array(&options);
 
     switch (event_type) {
     case OVN_EVENT_EMPTY_LB_BACKENDS:
@@ -2838,22 +2824,21 @@ parse_put_opts(struct action_context *ctx, const struct expr_field *dst,
     }
     po->dst = *dst;
 
-    size_t allocated_options = 0;
+    struct vector options = VECTOR_EMPTY_INITIALIZER(struct ovnact_gen_option);
     while (!lexer_match(ctx->lexer, LEX_T_RPAREN)) {
-        if (po->n_options >= allocated_options) {
-            po->options = x2nrealloc(po->options, &allocated_options,
-                                     sizeof *po->options);
-        }
+        struct ovnact_gen_option o = {0};
+        parse_gen_opt(ctx, &o, gen_opts, opts_type);
+        vector_push(&options, &o);
 
-        struct ovnact_gen_option *o = &po->options[po->n_options++];
-        memset(o, 0, sizeof *o);
-        parse_gen_opt(ctx, o, gen_opts, opts_type);
         if (ctx->lexer->error) {
-            return;
+            break;
         }
 
         lexer_match(ctx->lexer, LEX_T_COMMA);
     }
+
+    po->n_options = vector_len(&options);
+    po->options = vector_steal_array(&options);
 }
 
 /* Parses the "put_dhcp_opts" and "put_dhcpv6_opts" actions.
@@ -4134,9 +4119,8 @@ ovnact_handle_svc_check_free(struct ovnact_handle_svc_check *sc OVS_UNUSED)
 static void
 parse_fwd_group_action(struct action_context *ctx)
 {
-    char *child_port, **child_port_list = NULL;
-    size_t allocated_ports = 0;
-    size_t n_child_ports = 0;
+    struct vector child_port_list = VECTOR_EMPTY_INITIALIZER(char *);
+    char *child_port = NULL;
     bool liveness = false;
 
     if (lexer_match(ctx->lexer, LEX_T_LPAREN)) {
@@ -4165,25 +4149,18 @@ parse_fwd_group_action(struct action_context *ctx)
                 if (ctx->lexer->token.type != LEX_T_STRING) {
                     lexer_syntax_error(ctx->lexer,
                                        "expecting logical switch port");
-                    if (child_port_list) {
-                        for (int i = 0; i < n_child_ports; i++) {
-                            free(child_port_list[i]);
-                        }
-                        free(child_port_list);
+                    char *port;
+                    VECTOR_FOR_EACH (&child_port_list, port) {
+                            free(port);
                     }
+                    vector_destroy(&child_port_list);
                     return;
                 }
                 /* Parse child's logical ports */
                 child_port = xstrdup(ctx->lexer->token.s);
                 lexer_get(ctx->lexer);
                 lexer_match(ctx->lexer, LEX_T_COMMA);
-
-                if (n_child_ports >= allocated_ports) {
-                    child_port_list = x2nrealloc(child_port_list,
-                                                 &allocated_ports,
-                                                 sizeof *child_port_list);
-                }
-                child_port_list[n_child_ports++] = child_port;
+                vector_push(&child_port_list, &child_port);
             }
         }
     }
@@ -4191,8 +4168,8 @@ parse_fwd_group_action(struct action_context *ctx)
     struct ovnact_fwd_group *fwd_group = ovnact_put_FWD_GROUP(ctx->ovnacts);
     fwd_group->ltable = ctx->pp->cur_ltable + 1;
     fwd_group->liveness = liveness;
-    fwd_group->child_ports = child_port_list;
-    fwd_group->n_child_ports = n_child_ports;
+    fwd_group->n_child_ports = vector_len(&child_port_list);
+    fwd_group->child_ports = vector_steal_array(&child_port_list);
 }
 
 static void

@@ -77,27 +77,20 @@ static char *
 ovn_lb_backends_init_explicit(struct ovn_lb_vip *lb_vip, const char *value)
 {
     struct ds errors = DS_EMPTY_INITIALIZER;
-    size_t n_allocated_backends = 0;
     char *tokstr = xstrdup(value);
     char *save_ptr = NULL;
-    lb_vip->n_backends = 0;
+    lb_vip->backends = VECTOR_EMPTY_INITIALIZER(struct ovn_lb_backend);
 
     for (char *token = strtok_r(tokstr, ",", &save_ptr);
         token != NULL;
         token = strtok_r(NULL, ",", &save_ptr)) {
 
-        if (lb_vip->n_backends == n_allocated_backends) {
-            lb_vip->backends = x2nrealloc(lb_vip->backends,
-                                          &n_allocated_backends,
-                                          sizeof *lb_vip->backends);
-        }
-
-        struct ovn_lb_backend *backend = &lb_vip->backends[lb_vip->n_backends];
-        if (!ovn_lb_backend_init_explicit(lb_vip, backend, token, &errors)) {
+        struct ovn_lb_backend backend = {0};
+        if (!ovn_lb_backend_init_explicit(lb_vip, &backend, token, &errors)) {
             continue;
         }
 
-        lb_vip->n_backends++;
+        vector_push(&lb_vip->backends, &backend);
     }
     free(tokstr);
 
@@ -190,31 +183,25 @@ ovn_lb_backends_init_template(struct ovn_lb_vip *lb_vip, const char *value_)
     struct ds errors = DS_EMPTY_INITIALIZER;
     char *value = xstrdup(value_);
     char *save_ptr = NULL;
-    size_t n_allocated_backends = 0;
-    lb_vip->n_backends = 0;
+    lb_vip->backends = VECTOR_EMPTY_INITIALIZER(struct ovn_lb_backend);
 
     for (char *token = strtok_r(value, ",", &save_ptr); token;
          token = strtok_r(NULL, ",", &save_ptr)) {
 
-        if (lb_vip->n_backends == n_allocated_backends) {
-            lb_vip->backends = x2nrealloc(lb_vip->backends,
-                                          &n_allocated_backends,
-                                          sizeof *lb_vip->backends);
-        }
 
-        struct ovn_lb_backend *backend = &lb_vip->backends[lb_vip->n_backends];
+        struct ovn_lb_backend backend = {0};
         if (token[0] && token[0] == '^') {
-            if (!ovn_lb_backend_init_template(backend, token, &errors)) {
+            if (!ovn_lb_backend_init_template(&backend, token, &errors)) {
                 continue;
             }
         } else {
-            if (!ovn_lb_backend_init_explicit(lb_vip, backend,
+            if (!ovn_lb_backend_init_explicit(lb_vip, &backend,
                                               token, &errors)) {
                 continue;
             }
         }
 
-        lb_vip->n_backends++;
+        vector_push(&lb_vip->backends, &backend);
     }
 
     free(value);
@@ -292,11 +279,12 @@ ovn_lb_vip_init(struct ovn_lb_vip *lb_vip, const char *lb_key,
 static void
 ovn_lb_backends_destroy(struct ovn_lb_vip *vip)
 {
-    for (size_t i = 0; i < vip->n_backends; i++) {
-        free(vip->backends[i].ip_str);
-        free(vip->backends[i].port_str);
+    struct ovn_lb_backend *backend;
+    VECTOR_FOR_EACH_PTR (&vip->backends, backend) {
+        free(backend->ip_str);
+        free(backend->port_str);
     }
-    free(vip->backends);
+    vector_destroy(&vip->backends);
 }
 
 void
@@ -334,8 +322,8 @@ ovn_lb_vip_format(const struct ovn_lb_vip *vip, struct ds *s, bool template)
 void
 ovn_lb_vip_backends_format(const struct ovn_lb_vip *vip, struct ds *s)
 {
-    for (size_t i = 0; i < vip->n_backends; i++) {
-        struct ovn_lb_backend *backend = &vip->backends[i];
+    const struct ovn_lb_backend *backend;
+    VECTOR_FOR_EACH_PTR (&vip->backends, backend) {
         bool needs_brackets = vip->address_family == AF_INET6 &&
                               vip->port_str &&
                               !ipv6_addr_equals(&backend->ip, &in6addr_any);
@@ -349,10 +337,9 @@ ovn_lb_vip_backends_format(const struct ovn_lb_vip *vip, struct ds *s)
         if (backend->port_str) {
             ds_put_format(s, ":%s", backend->port_str);
         }
-        if (i != vip->n_backends - 1) {
-            ds_put_char(s, ',');
-        }
+        ds_put_char(s, ',');
     }
+    ds_chomp(s, ',');
 }
 
 /* Formats the VIP in the way the ovn-controller expects it, that is,

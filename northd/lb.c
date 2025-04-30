@@ -93,7 +93,7 @@ void ovn_northd_lb_vip_init(struct ovn_northd_lb_vip *lb_vip_nb,
                             bool template)
 {
     lb_vip_nb->backend_ips = xstrdup(backend_ips);
-    lb_vip_nb->n_backends = lb_vip->n_backends;
+    lb_vip_nb->n_backends = vector_len(&lb_vip->backends);
     lb_vip_nb->backends_nb = xcalloc(lb_vip_nb->n_backends,
                                      sizeof *lb_vip_nb->backends_nb);
     lb_vip_nb->lb_health_check =
@@ -107,8 +107,9 @@ ovn_lb_vip_backends_health_check_init(const struct ovn_northd_lb *lb,
 {
     struct ds key = DS_EMPTY_INITIALIZER;
 
-    for (size_t j = 0; j < lb_vip->n_backends; j++) {
-        struct ovn_lb_backend *backend = &lb_vip->backends[j];
+    for (size_t j = 0; j < vector_len(&lb_vip->backends); j++) {
+        const struct ovn_lb_backend *backend =
+            vector_get_ptr(&lb_vip->backends, j);
         ds_clear(&key);
         ds_put_format(&key, IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)
                       ? "%s" : "[%s]", backend->ip_str);

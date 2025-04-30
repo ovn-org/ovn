@@ -3141,16 +3141,16 @@ expr_match_new(const struct match *m, uint8_t clause, uint8_t n_clauses,
         match_init_catchall(&match->match);
     }
     if (conj_id) {
-        match->conjunctions = xmalloc(sizeof *match->conjunctions);
-        match->conjunctions[0].id = conj_id;
-        match->conjunctions[0].clause = clause;
-        match->conjunctions[0].n_clauses = n_clauses;
-        match->n = 1;
-        match->allocated = 1;
+        match->conjunctions =
+            VECTOR_CAPACITY_INITIALIZER(struct cls_conjunction, 1);
+        struct cls_conjunction conj = (struct cls_conjunction) {
+            .id = conj_id,
+            .clause = clause,
+            .n_clauses = n_clauses,
+        };
+        vector_push(&match->conjunctions, &conj);
     } else {
-        match->conjunctions = NULL;
-        match->n = 0;
-        match->allocated = 0;
+        match->conjunctions = VECTOR_EMPTY_INITIALIZER(struct cls_conjunction);
     }
     return match;
 }
@@ -3159,7 +3159,7 @@ void
 expr_match_destroy(struct expr_match *match)
 {
     free(match->as_name);
-    free(match->conjunctions);
+    vector_destroy(&match->conjunctions);
     free(match);
 }
 
@@ -3176,19 +3176,13 @@ expr_match_add(struct hmap *matches, struct expr_match *match)
 
     HMAP_FOR_EACH_WITH_HASH (m, hmap_node, hash, matches) {
         if (match_equal(&m->match, &match->match)) {
-            if (!m->n || !match->n) {
-                free(m->conjunctions);
-                m->conjunctions = NULL;
-                m->n = 0;
-                m->allocated = 0;
+            if (vector_is_empty(&m->conjunctions) ||
+                vector_is_empty(&match->conjunctions)) {
+                vector_destroy(&m->conjunctions);
             } else {
-                ovs_assert(match->n == 1);
-                if (m->n >= m->allocated) {
-                    m->conjunctions = x2nrealloc(m->conjunctions,
-                                                 &m->allocated,
-                                                 sizeof *m->conjunctions);
-                }
-                m->conjunctions[m->n++] = match->conjunctions[0];
+                ovs_assert(vector_len(&match->conjunctions) == 1);
+                vector_push(&m->conjunctions,
+                            vector_get_ptr(&match->conjunctions, 0));
             }
             if (m->as_name) {
                 /* m is combined with match. so untracked the address set. */
@@ -3461,11 +3455,11 @@ expr_matches_prepare(struct hmap *matches, uint32_t conj_id_ofs)
             m->match.flow.conj_id += conj_id_ofs;
         }
 
-        for (size_t i = 0; i < m->n; i++) {
-            struct cls_conjunction *src = &m->conjunctions[i];
+        struct cls_conjunction *src;
+        VECTOR_FOR_EACH_PTR (&m->conjunctions, src) {
             src->id += conj_id_ofs;
         }
-        total_size += sizeof *m + m->allocated * sizeof *m->conjunctions;
+        total_size += sizeof *m + vector_memory_usage(&m->conjunctions);
     }
     return total_size;
 }
@@ -3503,12 +3497,12 @@ expr_matches_print(const struct hmap *matches, FILE *stream)
         fputs(s, stream);
         free(s);
 
-        if (m->n) {
-            for (int i = 0; i < m->n; i++) {
-                const struct cls_conjunction *c = &m->conjunctions[i];
-                fprintf(stream, "%c conjunction(%"PRIu32", %d/%d)",
-                        i == 0 ? ':' : ',', c->id, c->clause, c->n_clauses);
-            }
+        bool first = true;
+        struct cls_conjunction *c;
+        VECTOR_FOR_EACH_PTR (&m->conjunctions, c) {
+            fprintf(stream, "%c conjunction(%"PRIu32", %d/%d)",
+                    first ? ':' : ',', c->id, c->clause, c->n_clauses);
+            first = false;
         }
         putc('\n', stream);
     }

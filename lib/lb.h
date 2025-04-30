@@ -24,6 +24,7 @@
 #include "ovn-util.h"
 #include "sset.h"
 #include "uuid.h"
+#include "vec.h"
 
 struct uuid;
 
@@ -37,8 +38,7 @@ struct ovn_lb_vip {
                           * in ovn-northd.
                           */
     bool template_vips;  /* True if the vips are templates. */
-    struct ovn_lb_backend *backends;
-    size_t n_backends;
+    struct vector backends; /* Vector of struct ovn_lb_backend. */
 
     bool empty_backend_rej;
     int address_family;

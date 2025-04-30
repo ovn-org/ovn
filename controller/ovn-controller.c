@@ -2685,9 +2685,9 @@ lb_data_removed_five_tuples_add(struct ed_type_lb_data *lb_data,
 
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *vip = &lb->vips[i];
-        for (size_t j = 0; j < vip->n_backends; j++) {
-            struct ovn_lb_backend *backend = &vip->backends[j];
 
+        const struct ovn_lb_backend *backend;
+        VECTOR_FOR_EACH_PTR (&vip->backends, backend) {
             ovn_lb_5tuple_add(&lb_data->removed_tuples, vip, backend,
                               lb->proto);
         }
@@ -2705,10 +2705,9 @@ lb_data_removed_five_tuples_remove(struct ed_type_lb_data *lb_data,
 
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *vip = &lb->vips[i];
-        for (size_t j = 0; j < vip->n_backends; j++) {
-            struct ovn_lb_backend *backend = &vip->backends[j];
 
-
+        const struct ovn_lb_backend *backend;
+        VECTOR_FOR_EACH_PTR (&vip->backends, backend) {
             struct ovn_lb_5tuple tuple;
             ovn_lb_5tuple_init(&tuple, vip, backend, lb->proto);
             ovn_lb_5tuple_find_and_delete(&lb_data->removed_tuples, &tuple);
