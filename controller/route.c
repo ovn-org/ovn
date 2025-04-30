@@ -161,11 +161,7 @@ route_run(struct route_ctx_in *r_ctx_in,
         if (vector_is_empty(&ld->peer_ports) || ld->is_switch) {
             continue;
         }
-
-        ad = xzalloc(sizeof(*ad));
-        ad->db = ld->datapath;
-        hmap_init(&ad->routes);
-        smap_init(&ad->bound_ports);
+        ad = NULL;
 
         /* This is a LR datapath, find LRPs with route exchange options
          * that are bound locally. */
@@ -179,6 +175,13 @@ route_run(struct route_ctx_in *r_ctx_in,
                                          local_peer);
             if (!repb) {
                 continue;
+            }
+
+            if (!ad) {
+                ad = xzalloc(sizeof(*ad));
+                ad->db = ld->datapath;
+                hmap_init(&ad->routes);
+                smap_init(&ad->bound_ports);
             }
 
             ad->maintain_vrf |=
@@ -223,10 +226,12 @@ route_run(struct route_ctx_in *r_ctx_in,
             }
         }
 
-        tracked_datapath_add(ld->datapath, TRACKED_RESOURCE_NEW,
-                             r_ctx_out->tracked_re_datapaths);
-
-        hmap_insert(r_ctx_out->announce_routes, &ad->node, ad->db->tunnel_key);
+        if (ad) {
+            tracked_datapath_add(ld->datapath, TRACKED_RESOURCE_NEW,
+                                 r_ctx_out->tracked_re_datapaths);
+            hmap_insert(r_ctx_out->announce_routes, &ad->node,
+                        ad->db->tunnel_key);
+        }
     }
 
     const struct sbrec_advertised_route *route;
