@@ -2524,9 +2524,7 @@ en_mff_ovn_geneve_run(struct engine_node *node, void *data)
 struct load_balancers_by_dp {
     struct hmap_node node;
     const struct sbrec_datapath_binding *dp;
-    const struct sbrec_load_balancer **dp_lbs;
-    size_t n_allocated_dp_lbs;
-    size_t n_dp_lbs;
+    struct vector dp_lbs; /* Vector of const struct sbrec_load_balancer *. */
 };
 
 static struct load_balancers_by_dp *
@@ -2536,6 +2534,8 @@ load_balancers_by_dp_create(struct hmap *lbs,
     struct load_balancers_by_dp *lbs_by_dp = xzalloc(sizeof *lbs_by_dp);
 
     lbs_by_dp->dp = dp;
+    lbs_by_dp->dp_lbs =
+        VECTOR_EMPTY_INITIALIZER(const struct sbrec_load_balancer *);
     hmap_insert(lbs, &lbs_by_dp->node, hash_uint64(dp->tunnel_key));
     return lbs_by_dp;
 }
@@ -2547,7 +2547,7 @@ load_balancers_by_dp_destroy(struct load_balancers_by_dp *lbs_by_dp)
         return;
     }
 
-    free(lbs_by_dp->dp_lbs);
+    vector_destroy(&lbs_by_dp->dp_lbs);
     free(lbs_by_dp);
 }
 
@@ -2585,12 +2585,7 @@ load_balancers_by_dp_add_one(const struct hmap *local_datapaths,
         lbs_by_dp = load_balancers_by_dp_create(lbs, ldp->datapath);
     }
 
-    if (lbs_by_dp->n_dp_lbs == lbs_by_dp->n_allocated_dp_lbs) {
-        lbs_by_dp->dp_lbs = x2nrealloc(lbs_by_dp->dp_lbs,
-                                       &lbs_by_dp->n_allocated_dp_lbs,
-                                       sizeof *lbs_by_dp->dp_lbs);
-    }
-    lbs_by_dp->dp_lbs[lbs_by_dp->n_dp_lbs++] = lb;
+    vector_push(&lbs_by_dp->dp_lbs, &lb);
 }
 
 /* Builds and returns a hmap of 'load_balancers_by_dp', one record for each
@@ -3007,8 +3002,8 @@ lb_data_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
             continue;
         }
 
-        for (size_t i = 0; i < lbs_by_dp->n_dp_lbs; i++) {
-            const struct sbrec_load_balancer *sbrec_lb = lbs_by_dp->dp_lbs[i];
+        const struct sbrec_load_balancer *sbrec_lb;
+        VECTOR_FOR_EACH (&lbs_by_dp->dp_lbs, sbrec_lb) {
             struct ovn_controller_lb *lb =
                 ovn_controller_lb_find(&lb_data->local_lbs,
                                        &sbrec_lb->header_.uuid);

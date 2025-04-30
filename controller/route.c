@@ -158,7 +158,7 @@ route_run(struct route_ctx_in *r_ctx_in,
     build_port_mapping(&port_mapping, r_ctx_in->dynamic_routing_port_mapping);
 
     HMAP_FOR_EACH (ld, hmap_node, r_ctx_in->local_datapaths) {
-        if (!ld->n_peer_ports || ld->is_switch) {
+        if (vector_is_empty(&ld->peer_ports) || ld->is_switch) {
             continue;
         }
 
@@ -169,9 +169,9 @@ route_run(struct route_ctx_in *r_ctx_in,
 
         /* This is a LR datapath, find LRPs with route exchange options
          * that are bound locally. */
-        for (size_t i = 0; i < ld->n_peer_ports; i++) {
-            const struct sbrec_port_binding *local_peer
-                = ld->peer_ports[i].local;
+        const struct peer_ports *peers;
+        VECTOR_FOR_EACH_PTR (&ld->peer_ports, peers) {
+            const struct sbrec_port_binding *local_peer = peers->local;
             const struct sbrec_port_binding *repb =
                 route_exchange_find_port(r_ctx_in->sbrec_port_binding_by_name,
                                          r_ctx_in->chassis,

@@ -1356,8 +1356,9 @@ fill_ipv6_prefix_state(struct ovsdb_idl_txn *ovnsb_idl_txn,
 {
     bool changed = false;
 
-    for (size_t i = 0; i < ld->n_peer_ports; i++) {
-        const struct sbrec_port_binding *pb = ld->peer_ports[i].local;
+    const struct peer_ports *peers;
+    VECTOR_FOR_EACH_PTR (&ld->peer_ports, peers) {
+        const struct sbrec_port_binding *pb = peers->local;
         struct ipv6_prefixd_state *pfd;
 
         if (!smap_get_bool(&pb->options, "ipv6_prefix", false)) {
@@ -4814,9 +4815,10 @@ send_garp_locally(struct ovsdb_idl_txn *ovnsb_idl_txn,
         get_local_datapath(local_datapaths, in_pb->datapath->tunnel_key);
 
     ovs_assert(ldp);
-    for (size_t i = 0; i < ldp->n_peer_ports; i++) {
-        const struct sbrec_port_binding *local = ldp->peer_ports[i].local;
-        const struct sbrec_port_binding *remote = ldp->peer_ports[i].remote;
+    const struct peer_ports *peers;
+    VECTOR_FOR_EACH_PTR (&ldp->peer_ports, peers) {
+        const struct sbrec_port_binding *local = peers->local;
+        const struct sbrec_port_binding *remote = peers->remote;
 
         /* Skip "ingress" port. */
         if (local == in_pb) {

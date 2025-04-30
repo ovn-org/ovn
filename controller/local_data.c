@@ -86,6 +86,7 @@ local_datapath_alloc(const struct sbrec_datapath_binding *dp)
     ld->datapath = dp;
     ld->is_switch = datapath_is_switch(dp);
     ld->is_transit_switch = datapath_is_transit_switch(dp);
+    ld->peer_ports = VECTOR_EMPTY_INITIALIZER(struct peer_ports);
     shash_init(&ld->external_ports);
     shash_init(&ld->multichassis_ports);
     /* memory accounting - common part. */
@@ -121,10 +122,9 @@ local_datapath_destroy(struct local_datapath *ld)
     local_datapath_usage -= (shash_count(&ld->multichassis_ports)
                              * sizeof *node);
     local_datapath_usage -= sizeof *ld;
-    local_datapath_usage -=
-        ld->n_allocated_peer_ports * sizeof *ld->peer_ports;
+    local_datapath_usage -= vector_memory_usage(&ld->peer_ports);
 
-    free(ld->peer_ports);
+    vector_destroy(&ld->peer_ports);
     shash_destroy(&ld->external_ports);
     shash_destroy(&ld->multichassis_ports);
     free(ld);
@@ -258,10 +258,11 @@ local_data_dump_peer_ports(struct hmap *local_datapaths, struct ds *peer_ports)
     HMAP_FOR_EACH (ld, hmap_node, local_datapaths) {
         const char *name = smap_get_def(&ld->datapath->external_ids, "name",
                                         "unknown");
-        for (size_t i = 0; i < ld->n_peer_ports; i++) {
+        struct peer_ports peers;
+        VECTOR_FOR_EACH (&ld->peer_ports, peers) {
             ds_put_format(peer_ports, "dp %s : local = %s, remote = %s\n",
-                          name, ld->peer_ports[i].local->logical_port,
-                          ld->peer_ports[i].remote->logical_port);
+                          name, peers.local->logical_port,
+                          peers.remote->logical_port);
         }
     }
 }
@@ -272,25 +273,26 @@ remove_local_datapath_peer_port(const struct sbrec_port_binding *pb,
                                 struct hmap *local_datapaths)
 {
     size_t i = 0;
-    for (i = 0; i < ld->n_peer_ports; i++) {
-        if (ld->peer_ports[i].local == pb) {
+    const struct peer_ports *peers;
+    VECTOR_FOR_EACH_PTR (&ld->peer_ports, peers) {
+        if (peers->local == pb) {
             break;
         }
+        i++;
     }
 
-    if (i == ld->n_peer_ports) {
+    struct peer_ports removed;
+    if (!vector_remove_fast(&ld->peer_ports, i, &removed)) {
         return;
     }
 
-    const struct sbrec_port_binding *peer = ld->peer_ports[i].remote;
+    if (vector_len(&ld->peer_ports) < vector_capacity(&ld->peer_ports) / 2) {
+        local_datapath_usage -= vector_memory_usage(&ld->peer_ports);
+        vector_shrink_to_fit(&ld->peer_ports);
+        local_datapath_usage += vector_memory_usage(&ld->peer_ports);
+    }
 
-    /* Possible improvement: We can shrink the allocated peer ports
-     * if (ld->n_peer_ports < ld->n_allocated_peer_ports / 2).
-     */
-    ld->peer_ports[i].local = ld->peer_ports[ld->n_peer_ports - 1].local;
-    ld->peer_ports[i].remote = ld->peer_ports[ld->n_peer_ports - 1].remote;
-    ld->n_peer_ports--;
-
+    const struct sbrec_port_binding *peer = removed.remote;
     struct local_datapath *peer_ld =
         get_local_datapath(local_datapaths, peer->datapath->tunnel_key);
     if (peer_ld) {
@@ -687,24 +689,20 @@ local_datapath_peer_port_add(struct local_datapath *ld,
                              const struct sbrec_port_binding *local,
                              const struct sbrec_port_binding *remote)
 {
-    for (size_t i = 0; i < ld->n_peer_ports; i++) {
-        if (ld->peer_ports[i].local == local) {
+    const struct peer_ports *ptr;
+    VECTOR_FOR_EACH_PTR (&ld->peer_ports, ptr) {
+        if (ptr->local == local) {
             return;
         }
     }
-    ld->n_peer_ports++;
-    if (ld->n_peer_ports > ld->n_allocated_peer_ports) {
-        size_t old_n_ports = ld->n_allocated_peer_ports;
-        ld->peer_ports =
-            x2nrealloc(ld->peer_ports,
-                       &ld->n_allocated_peer_ports,
-                       sizeof *ld->peer_ports);
-        local_datapath_usage +=
-            (ld->n_allocated_peer_ports - old_n_ports) *
-            sizeof *ld->peer_ports;
-    }
-    ld->peer_ports[ld->n_peer_ports - 1].local = local;
-    ld->peer_ports[ld->n_peer_ports - 1].remote = remote;
+
+   local_datapath_usage -= vector_memory_usage(&ld->peer_ports);
+    struct peer_ports peers = (struct peer_ports) {
+        .local = local,
+        .remote = remote,
+    };
+    vector_push(&ld->peer_ports, &peers);
+    local_datapath_usage += vector_memory_usage(&ld->peer_ports);
 }
 
 static bool

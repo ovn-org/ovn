@@ -20,6 +20,7 @@
 #include "tests/ovstest.h"
 #include "tests/test-utils.h"
 #include "util.h"
+#include "vec.h"
 
 #include "lflow-cache.h"
 
@@ -111,9 +112,7 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
     struct lflow_cache *lc = lflow_cache_create();
     struct expr *e = expr_create_boolean(true);
     bool enabled = !strcmp(ctx->argv[1], "true");
-    struct uuid *lflow_uuids = NULL;
-    size_t n_allocated_lflow_uuids = 0;
-    size_t n_lflow_uuids = 0;
+    struct vector lflow_uuids = VECTOR_EMPTY_INITIALIZER(struct uuid);
     unsigned int shift = 2;
     unsigned int n_ops;
 
@@ -152,16 +151,13 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
                 goto done;
             }
 
-            if (n_lflow_uuids == n_allocated_lflow_uuids) {
-                lflow_uuids = x2nrealloc(lflow_uuids, &n_allocated_lflow_uuids,
-                                         sizeof *lflow_uuids);
-            }
-            struct uuid *lflow_uuid = &lflow_uuids[n_lflow_uuids++];
+            struct uuid lflow_uuid;
+            uuid_generate(&lflow_uuid);
+            vector_push(&lflow_uuids, &lflow_uuid);
 
-            uuid_generate(lflow_uuid);
-            test_lflow_cache_add__(lc, op_type, lflow_uuid, conj_id_ofs,
+            test_lflow_cache_add__(lc, op_type, &lflow_uuid, conj_id_ofs,
                                    n_conjs, e);
-            test_lflow_cache_lookup__(lc, lflow_uuid);
+            test_lflow_cache_lookup__(lc, &lflow_uuid);
         } else if (!strcmp(op, "add-del")) {
             const char *op_type = test_read_value(ctx, shift++, "op_type");
             if (!op_type) {
@@ -188,9 +184,10 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
             test_lflow_cache_delete__(lc, &lflow_uuid);
             test_lflow_cache_lookup__(lc, &lflow_uuid);
         } else if (!strcmp(op, "del")) {
-            ovs_assert(n_lflow_uuids);
-            test_lflow_cache_delete__(lc, &lflow_uuids[n_lflow_uuids - 1]);
-            n_lflow_uuids--;
+            ovs_assert(!vector_is_empty(&lflow_uuids));
+            struct uuid lflow_uuid;
+            vector_pop(&lflow_uuids, &lflow_uuid);
+            test_lflow_cache_delete__(lc, &lflow_uuid);
         } else if (!strcmp(op, "enable")) {
             unsigned int limit;
             unsigned int mem_limit_kb;
@@ -236,7 +233,7 @@ test_lflow_cache_operations(struct ovs_cmdl_context *ctx)
     }
 done:
     lflow_cache_destroy(lc);
-    free(lflow_uuids);
+    vector_destroy(&lflow_uuids);
     expr_destroy(e);
 }
 

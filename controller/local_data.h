@@ -23,6 +23,7 @@
 
 /* OVN includes. */
 #include "lib/ovn-util.h"
+#include "vec.h"
 
 struct sbrec_datapath_binding;
 struct sbrec_port_binding;
@@ -31,6 +32,11 @@ struct ovsdb_idl_index;
 struct ovsrec_bridge;
 struct ovsrec_interface_table;
 struct sbrec_load_balancer;
+
+struct peer_ports {
+    const struct sbrec_port_binding *local;
+    const struct sbrec_port_binding *remote;
+};
 
 /* A logical datapath that has some relevance to this hypervisor.  A logical
  * datapath D is relevant to hypervisor H if:
@@ -53,13 +59,8 @@ struct local_datapath {
     /* The vtep port in this datapath, if any (at most one is allowed). */
     const struct sbrec_port_binding *vtep_port;
 
-    struct {
-        const struct sbrec_port_binding *local;
-        const struct sbrec_port_binding *remote;
-    } *peer_ports;
-
-    size_t n_peer_ports;
-    size_t n_allocated_peer_ports;
+    /* Vector of struct peer_ports. */
+    struct vector peer_ports;
 
     struct shash external_ports;
     struct shash multichassis_ports;

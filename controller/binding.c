@@ -738,10 +738,10 @@ update_ld_peers(const struct sbrec_port_binding *pb,
      * remove it from the ld peers list.
      */
     enum en_lport_type type = get_lport_type(pb);
-    int num_peers = ld->n_peer_ports;
+    size_t num_peers = vector_len(&ld->peer_ports);
     if (type != LP_PATCH) {
         remove_local_datapath_peer_port(pb, ld, local_datapaths);
-        if (num_peers != ld->n_peer_ports) {
+        if (num_peers != vector_len(&ld->peer_ports)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
             VLOG_DBG_RL(&rl,
                         "removing lport %s from the ld peers list",
