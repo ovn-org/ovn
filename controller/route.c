@@ -36,7 +36,7 @@ VLOG_DEFINE_THIS_MODULE(exchange);
 #define PRIORITY_DEFAULT 1000
 #define PRIORITY_LOCAL_BOUND 100
 
-bool
+static bool
 route_exchange_relevant_port(const struct sbrec_port_binding *pb)
 {
     return pb && smap_get_bool(&pb->options, "dynamic-routing", false);

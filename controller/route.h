@@ -83,7 +83,6 @@ const struct sbrec_port_binding *route_exchange_find_port(
     const struct sbrec_chassis *chassis,
     const struct sset *active_tunnels,
     const struct sbrec_port_binding *pb);
-bool route_exchange_relevant_port(const struct sbrec_port_binding *);
 uint32_t advertise_route_hash(const struct in6_addr *dst, unsigned int plen);
 void route_run(struct route_ctx_in *, struct route_ctx_out *);
 void route_cleanup(struct hmap *announce_routes);
