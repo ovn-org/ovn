@@ -2168,16 +2168,14 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
         build_local_bindings(b_ctx_in, b_ctx_out);
     }
 
-    struct ovs_list localnet_lports = OVS_LIST_INITIALIZER(&localnet_lports);
-    struct ovs_list external_lports = OVS_LIST_INITIALIZER(&external_lports);
-    struct ovs_list multichassis_ports = OVS_LIST_INITIALIZER(
-                                                        &multichassis_ports);
-    struct ovs_list vtep_lports = OVS_LIST_INITIALIZER(&vtep_lports);
-
-    struct lport {
-        struct ovs_list list_node;
-        const struct sbrec_port_binding *pb;
-    };
+    struct vector localnet_lports =
+        VECTOR_EMPTY_INITIALIZER(struct sbrec_port_binding *);
+    struct vector external_lports =
+        VECTOR_EMPTY_INITIALIZER(struct sbrec_port_binding *);
+    struct vector multichassis_ports =
+        VECTOR_EMPTY_INITIALIZER(struct sbrec_port_binding *);
+    struct vector vtep_lports =
+        VECTOR_EMPTY_INITIALIZER(struct sbrec_port_binding *);
 
     /* Run through each binding record to see if it is resident on this
      * chassis and update the binding accordingly.  This includes both
@@ -2202,9 +2200,7 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
 
         case LP_VTEP:
             update_related_lport(pb, b_ctx_out);
-            struct lport *vtep_lport = xmalloc(sizeof *vtep_lport);
-            vtep_lport->pb = pb;
-            ovs_list_push_back(&vtep_lports, &vtep_lport->list_node);
+            vector_push(&vtep_lports, &pb);
             break;
 
         case LP_LOCALPORT:
@@ -2214,11 +2210,7 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
         case LP_VIF:
             consider_vif_lport(pb, b_ctx_in, b_ctx_out, NULL);
             if (pb->additional_chassis) {
-                struct lport *multichassis_lport = xmalloc(
-                    sizeof *multichassis_lport);
-                multichassis_lport->pb = pb;
-                ovs_list_push_back(&multichassis_ports,
-                                   &multichassis_lport->list_node);
+                vector_push(&multichassis_ports, &pb);
             }
             break;
 
@@ -2248,17 +2240,12 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
 
         case LP_EXTERNAL:
             consider_external_lport(pb, b_ctx_in, b_ctx_out);
-            struct lport *ext_lport = xmalloc(sizeof *ext_lport);
-            ext_lport->pb = pb;
-            ovs_list_push_back(&external_lports, &ext_lport->list_node);
+            vector_push(&external_lports, &pb);
             break;
 
-        case LP_LOCALNET: {
-            struct lport *lnet_lport = xmalloc(sizeof *lnet_lport);
-            lnet_lport->pb = pb;
-            ovs_list_push_back(&localnet_lports, &lnet_lport->list_node);
+        case LP_LOCALNET:
+            vector_push(&localnet_lports, &pb);
             break;
-        }
 
         case LP_REMOTE:
             /* Remote ports are related, since we can have rules in the
@@ -2283,41 +2270,36 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
     /* Run through each localnet lport list to see if it is a localnet port
      * on local datapaths discovered from above loop, and handles it
      * accordingly. */
-    struct lport *lnet_lport;
-    LIST_FOR_EACH_POP (lnet_lport, list_node, &localnet_lports) {
-        consider_localnet_lport(lnet_lport->pb, b_ctx_out);
-        update_ld_localnet_port(lnet_lport->pb, &bridge_mappings,
+    VECTOR_FOR_EACH (&localnet_lports, pb) {
+        consider_localnet_lport(pb, b_ctx_out);
+        update_ld_localnet_port(pb, &bridge_mappings,
                                 b_ctx_out->local_datapaths);
-        free(lnet_lport);
     }
+    vector_destroy(&localnet_lports);
 
     /* Run through external lport list to see if there are external ports
      * on local datapaths discovered from above loop, and update the
      * corresponding local datapath accordingly. */
-    struct lport *ext_lport;
-    LIST_FOR_EACH_POP (ext_lport, list_node, &external_lports) {
-        update_ld_external_ports(ext_lport->pb, b_ctx_out->local_datapaths);
-        free(ext_lport);
+    VECTOR_FOR_EACH (&external_lports, pb) {
+        update_ld_external_ports(pb, b_ctx_out->local_datapaths);
     }
+    vector_destroy(&external_lports);
 
     /* Run through multichassis lport list to see if there are ports
      * on local datapaths discovered from above loop, and update the
      * corresponding local datapath accordingly. */
-    struct lport *multichassis_lport;
-    LIST_FOR_EACH_POP (multichassis_lport, list_node, &multichassis_ports) {
-        update_ld_multichassis_ports(multichassis_lport->pb,
-                                     b_ctx_out->local_datapaths);
-        free(multichassis_lport);
+    VECTOR_FOR_EACH (&multichassis_ports, pb) {
+        update_ld_multichassis_ports(pb, b_ctx_out->local_datapaths);
     }
+    vector_destroy(&multichassis_ports);
 
     /* Run through vtep lport list to see if there are vtep ports
      * on local datapaths discovered from above loop, and update the
      * corresponding local datapath accordingly. */
-    struct lport *vtep_lport;
-    LIST_FOR_EACH_POP (vtep_lport, list_node, &vtep_lports) {
-        update_ld_vtep_port(vtep_lport->pb, b_ctx_out->local_datapaths);
-        free(vtep_lport);
+    VECTOR_FOR_EACH (&vtep_lports, pb) {
+        update_ld_vtep_port(pb, b_ctx_out->local_datapaths);
     }
+    vector_destroy(&vtep_lports);
 
     shash_destroy(&bridge_mappings);
     /* Remove stale QoS entries. */

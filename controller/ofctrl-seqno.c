@@ -19,13 +19,15 @@
 #include "ofctrl-seqno.h"
 #include "openvswitch/list.h"
 #include "util.h"
+#include "vec.h"
+
+#define VECTOR_THRESHOLD 1024
 
 /* A sequence number update request, i.e., when the barrier corresponding to
  * the 'flow_cfg' sequence number is replied to by OVS then it is safe
  * to inform the application that the 'req_cfg' seqno has been processed.
  */
 struct ofctrl_seqno_update {
-    struct ovs_list list_node; /* In 'ofctrl_seqno_updates'. */
     size_t seqno_type;         /* Application specific seqno type.
                                 * Relevant only for 'req_cfg'.
                                 */
@@ -37,14 +39,15 @@ struct ofctrl_seqno_update {
 };
 
 /* List of in flight sequence number updates. */
-static struct ovs_list ofctrl_seqno_updates;
+static struct vector ofctrl_seqno_updates =
+    VECTOR_EMPTY_INITIALIZER(struct ofctrl_seqno_update);
 
 /* Last sequence number request sent to OVS. */
 static uint64_t ofctrl_req_seqno;
 
 /* State of seqno requests for a given application seqno type. */
 struct ofctrl_seqno_state {
-    struct ovs_list acked_cfgs; /* Acked requests since the last time the
+    struct vector acked_cfgs;   /* Acked requests since the last time the
                                  * application consumed acked requests.
                                  */
     uint64_t cur_cfg;           /* Last acked application seqno. */
@@ -52,20 +55,11 @@ struct ofctrl_seqno_state {
 };
 
 /* Per application seqno type states. */
-static size_t n_ofctrl_seqno_states;
-static struct ofctrl_seqno_state *ofctrl_seqno_states;
+static struct vector ofctrl_seqno_states =
+    VECTOR_EMPTY_INITIALIZER(struct ofctrl_seqno_state);
 
-/* ofctrl_acked_seqnos related static function prototypes. */
-static void ofctrl_acked_seqnos_init(struct ofctrl_acked_seqnos *seqnos,
-                                     uint64_t last_acked);
-static void ofctrl_acked_seqnos_add(struct ofctrl_acked_seqnos *seqnos,
-                                    uint64_t val);
-
-/* ofctrl_seqno_update related static function prototypes. */
-static void ofctrl_seqno_update_create__(size_t seqno_type, uint64_t req_cfg);
-static void ofctrl_seqno_update_list_destroy(struct ovs_list *seqno_list);
-static void ofctrl_seqno_cfg_run(size_t seqno_type,
-                                 struct ofctrl_seqno_update *update);
+/* ofctrl_seqno_state related static function prototypes. */
+static struct ofctrl_seqno_state *ofctrl_seqno_state_get(size_t seqno_type);
 
 /* Returns the collection of acked ofctrl_seqno_update requests of type
  * 'seqno_type'.  It's the responsibility of the caller to free memory by
@@ -74,17 +68,17 @@ static void ofctrl_seqno_cfg_run(size_t seqno_type,
 struct ofctrl_acked_seqnos *
 ofctrl_acked_seqnos_get(size_t seqno_type)
 {
+    struct ofctrl_seqno_state *state = ofctrl_seqno_state_get(seqno_type);
+
     struct ofctrl_acked_seqnos *acked_seqnos = xmalloc(sizeof *acked_seqnos);
-    struct ofctrl_seqno_state *state = &ofctrl_seqno_states[seqno_type];
-    struct ofctrl_seqno_update *update;
+    acked_seqnos->acked = vector_clone(&state->acked_cfgs);
+    acked_seqnos->last_acked = state->cur_cfg;
 
-    ofctrl_acked_seqnos_init(acked_seqnos, state->cur_cfg);
-
-    ovs_assert(seqno_type < n_ofctrl_seqno_states);
-    LIST_FOR_EACH_POP (update, list_node, &state->acked_cfgs) {
-        ofctrl_acked_seqnos_add(acked_seqnos, update->req_cfg);
-        free(update);
+    vector_clear(&state->acked_cfgs);
+    if (vector_capacity(&state->acked_cfgs) >= VECTOR_THRESHOLD) {
+        vector_shrink_to_fit(&state->acked_cfgs);
     }
+
     return acked_seqnos;
 }
 
@@ -95,11 +89,7 @@ ofctrl_acked_seqnos_destroy(struct ofctrl_acked_seqnos *seqnos)
         return;
     }
 
-    struct ofctrl_ack_seqno *seqno_node;
-    HMAP_FOR_EACH_POP (seqno_node, node, &seqnos->acked) {
-        free(seqno_node);
-    }
-    hmap_destroy(&seqnos->acked);
+    vector_destroy(&seqnos->acked);
     free(seqnos);
 }
 
@@ -108,40 +98,52 @@ bool
 ofctrl_acked_seqnos_contains(const struct ofctrl_acked_seqnos *seqnos,
                              uint64_t val)
 {
-    struct ofctrl_ack_seqno *sn;
+    if (vector_is_empty(&seqnos->acked)) {
+        return false;
+    }
 
-    HMAP_FOR_EACH_WITH_HASH (sn, node, hash_uint64(val), &seqnos->acked) {
-        if (sn->seqno == val) {
+    size_t low = 0;
+    size_t high = vector_len(&seqnos->acked) -1;
+    uint64_t *acked = vector_get_array(&seqnos->acked);
+
+    while (low <= high) {
+        size_t mid = low + (high - low) / 2;
+
+        if (acked[mid] == val) {
             return true;
         }
-    }
-    return false;
-}
 
-void
-ofctrl_seqno_init(void)
-{
-    ovs_list_init(&ofctrl_seqno_updates);
+        if (acked[mid] >= acked[low]) {
+            if (val >= acked[low] && val < acked[mid]) {
+                high = mid - 1;
+            } else {
+                low = mid + 1;
+            }
+        } else {
+            if (val > acked[mid] && val <= acked[high]) {
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+    }
+
+    return false;
 }
 
 /* Adds a new type of application specific seqno updates. */
 size_t
 ofctrl_seqno_add_type(void)
 {
-    size_t new_type = n_ofctrl_seqno_states;
-    n_ofctrl_seqno_states++;
+    size_t new_type = vector_len(&ofctrl_seqno_states);
 
-    struct ofctrl_seqno_state *new_states =
-        xzalloc(n_ofctrl_seqno_states * sizeof *new_states);
+    struct ofctrl_seqno_state state = (struct ofctrl_seqno_state) {
+        .acked_cfgs = VECTOR_EMPTY_INITIALIZER(uint64_t),
+        .cur_cfg = 0,
+        .req_cfg = 0,
+    };
+    vector_push(&ofctrl_seqno_states, &state);
 
-    for (size_t i = 0; i < n_ofctrl_seqno_states - 1; i++) {
-        ovs_list_move(&new_states[i].acked_cfgs,
-                      &ofctrl_seqno_states[i].acked_cfgs);
-    }
-    ovs_list_init(&new_states[new_type].acked_cfgs);
-
-    free(ofctrl_seqno_states);
-    ofctrl_seqno_states = new_states;
     return new_type;
 }
 
@@ -151,9 +153,7 @@ ofctrl_seqno_add_type(void)
 void
 ofctrl_seqno_update_create(size_t seqno_type, uint64_t new_cfg)
 {
-    ovs_assert(seqno_type < n_ofctrl_seqno_states);
-
-    struct ofctrl_seqno_state *state = &ofctrl_seqno_states[seqno_type];
+    struct ofctrl_seqno_state *state = ofctrl_seqno_state_get(seqno_type);
 
     /* If new_cfg didn't change since the last request there should already
      * be an update pending.
@@ -163,7 +163,14 @@ ofctrl_seqno_update_create(size_t seqno_type, uint64_t new_cfg)
     }
 
     state->req_cfg = new_cfg;
-    ofctrl_seqno_update_create__(seqno_type, new_cfg);
+
+    ofctrl_req_seqno++;
+    struct ofctrl_seqno_update update = (struct ofctrl_seqno_update) {
+        .seqno_type = seqno_type,
+        .flow_cfg = ofctrl_req_seqno,
+        .req_cfg = new_cfg,
+    };
+    vector_push(&ofctrl_seqno_updates, &update);
 }
 
 /* Should be called when the application is certain that all OVS flow updates
@@ -173,14 +180,25 @@ ofctrl_seqno_update_create(size_t seqno_type, uint64_t new_cfg)
 void
 ofctrl_seqno_run(uint64_t flow_cfg)
 {
+    size_t index = 0;
+
     struct ofctrl_seqno_update *update;
-    LIST_FOR_EACH_SAFE (update, list_node, &ofctrl_seqno_updates) {
+    VECTOR_FOR_EACH_PTR (&ofctrl_seqno_updates, update) {
         if (flow_cfg < update->flow_cfg) {
             break;
         }
+        struct ofctrl_seqno_state *state =
+            ofctrl_seqno_state_get(update->seqno_type);
+        state->cur_cfg = update->req_cfg;
+        vector_push(&state->acked_cfgs, &update->req_cfg);
 
-        ovs_list_remove(&update->list_node);
-        ofctrl_seqno_cfg_run(update->seqno_type, update);
+        index++;
+    }
+
+    vector_remove_block(&ofctrl_seqno_updates, 0, index);
+
+    if (vector_capacity(&ofctrl_seqno_updates) >= VECTOR_THRESHOLD) {
+        vector_shrink_to_fit(&ofctrl_seqno_updates);
     }
 }
 
@@ -197,58 +215,31 @@ ofctrl_seqno_get_req_cfg(void)
 void
 ofctrl_seqno_flush(void)
 {
-    for (size_t i = 0; i < n_ofctrl_seqno_states; i++) {
-        ofctrl_seqno_update_list_destroy(&ofctrl_seqno_states[i].acked_cfgs);
+    vector_clear(&ofctrl_seqno_updates);
+
+    struct ofctrl_seqno_state *state;
+    VECTOR_FOR_EACH_PTR (&ofctrl_seqno_states, state) {
+        vector_clear(&state->acked_cfgs);
     }
-    ofctrl_seqno_update_list_destroy(&ofctrl_seqno_updates);
+
     ofctrl_req_seqno = 0;
 }
 
-static void
-ofctrl_acked_seqnos_init(struct ofctrl_acked_seqnos *seqnos,
-                         uint64_t last_acked)
+void
+ofctrl_seqno_destroy(void)
 {
-    hmap_init(&seqnos->acked);
-    seqnos->last_acked = last_acked;
-}
+    vector_destroy(&ofctrl_seqno_updates);
 
-static void
-ofctrl_acked_seqnos_add(struct ofctrl_acked_seqnos *seqnos, uint64_t val)
-{
-    seqnos->last_acked = val;
-
-    struct ofctrl_ack_seqno *sn = xmalloc(sizeof *sn);
-    hmap_insert(&seqnos->acked, &sn->node, hash_uint64(val));
-    sn->seqno = val;
-}
-
-static void
-ofctrl_seqno_update_create__(size_t seqno_type, uint64_t req_cfg)
-{
-    struct ofctrl_seqno_update *update = xmalloc(sizeof *update);
-
-    ofctrl_req_seqno++;
-    ovs_list_push_back(&ofctrl_seqno_updates, &update->list_node);
-    update->seqno_type = seqno_type;
-    update->flow_cfg = ofctrl_req_seqno;
-    update->req_cfg = req_cfg;
-}
-
-static void
-ofctrl_seqno_update_list_destroy(struct ovs_list *seqno_list)
-{
-    struct ofctrl_seqno_update *update;
-
-    LIST_FOR_EACH_POP (update, list_node, seqno_list) {
-        free(update);
+    struct ofctrl_seqno_state *state;
+    VECTOR_FOR_EACH_PTR (&ofctrl_seqno_states, state) {
+        vector_destroy(&state->acked_cfgs);
     }
+    vector_destroy(&ofctrl_seqno_states);
 }
 
-static void
-ofctrl_seqno_cfg_run(size_t seqno_type, struct ofctrl_seqno_update *update)
+static struct ofctrl_seqno_state *
+ofctrl_seqno_state_get(size_t seqno_type)
 {
-    ovs_assert(seqno_type < n_ofctrl_seqno_states);
-    ovs_list_push_back(&ofctrl_seqno_states[seqno_type].acked_cfgs,
-                       &update->list_node);
-    ofctrl_seqno_states[seqno_type].cur_cfg = update->req_cfg;
+    ovs_assert(seqno_type < vector_len(&ofctrl_seqno_states));
+    return vector_get_ptr(&ofctrl_seqno_states, seqno_type);
 }

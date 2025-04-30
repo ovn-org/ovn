@@ -31,6 +31,7 @@
 #include "ovn-util.h"
 #include "route-table.h"
 #include "route.h"
+#include "vec.h"
 
 #include "route-exchange-netlink.h"
 
@@ -188,19 +189,10 @@ re_nl_delete_route(uint32_t table_id, const struct in6_addr *dst,
     return modify_route(RTM_DELROUTE, 0, table_id, dst, plen, priority);
 }
 
-void
-re_nl_learned_routes_destroy(struct ovs_list *learned_routes)
-{
-    struct re_nl_received_route_node *rr;
-    LIST_FOR_EACH_POP (rr, list_node, learned_routes) {
-        free(rr);
-    }
-}
-
 struct route_msg_handle_data {
     const struct sbrec_datapath_binding *db;
     struct hmapx *routes_to_advertise;
-    struct ovs_list *learned_routes;
+    struct vector *learned_routes;
     const struct hmap *routes;
 };
 
@@ -227,14 +219,17 @@ handle_route_msg(const struct route_table_msg *msg, void *data)
                  * As we just want to learn remote routes we do not need it.*/
                 continue;
             }
-            struct re_nl_received_route_node *rr = xmalloc(sizeof *rr);
-            rr->db = handle_data->db;
-            rr->prefix = rd->rta_dst;
-            rr->plen = rd->rtm_dst_len;
-            rr->nexthop = nexthop->addr;
-            memcpy(rr->ifname, nexthop->ifname, IFNAMSIZ);
-            rr->ifname[IFNAMSIZ] = 0;
-            ovs_list_push_back(handle_data->learned_routes, &rr->list_node);
+            struct re_nl_received_route_node rr;
+            rr = (struct re_nl_received_route_node) {
+                .db = handle_data->db,
+                .prefix = rd->rta_dst,
+                .plen = rd->rtm_dst_len,
+                .nexthop = nexthop->addr,
+            };
+            memcpy(rr.ifname, nexthop->ifname, IFNAMSIZ);
+            rr.ifname[IFNAMSIZ] = '\0';
+
+            vector_push(handle_data->learned_routes, &rr);
         }
         return;
     }
@@ -266,7 +261,7 @@ handle_route_msg(const struct route_table_msg *msg, void *data)
 
 void
 re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
-                  struct ovs_list *learned_routes,
+                  struct vector *learned_routes,
                   const struct sbrec_datapath_binding *db)
 {
     struct hmapx routes_to_advertise = HMAPX_INITIALIZER(&routes_to_advertise);

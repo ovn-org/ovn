@@ -22,12 +22,6 @@
 
 #include "ofctrl-seqno.h"
 
-static void
-test_init(void)
-{
-    ofctrl_seqno_init();
-}
-
 static int
 test_seqno_compare(size_t a, size_t b, void *values_)
 {
@@ -55,20 +49,20 @@ test_dump_acked_seqnos(size_t seqno_type)
     printf("ofctrl-seqno-type: %"PRIuSIZE"\n", seqno_type);
     printf("  last-acked %"PRIu64"\n", acked_seqnos->last_acked);
 
-    size_t n_acked = hmap_count(&acked_seqnos->acked);
+    size_t n_acked = vector_len(&acked_seqnos->acked);
     uint64_t *acked = xmalloc(n_acked * sizeof *acked);
-    struct ofctrl_ack_seqno *ack_seqno;
     size_t i = 0;
 
     /* A bit hacky but ignoring overflows the "total of all seqno + 1" should
      * be a number that is not part of the acked seqnos.
      */
     uint64_t total_seqno = 1;
-    HMAP_FOR_EACH (ack_seqno, node, &acked_seqnos->acked) {
-        ovs_assert(ofctrl_acked_seqnos_contains(acked_seqnos,
-                                                ack_seqno->seqno));
-        total_seqno += ack_seqno->seqno;
-        acked[i++] = ack_seqno->seqno;
+
+    uint64_t ack_seqno;
+    VECTOR_FOR_EACH (&acked_seqnos->acked, ack_seqno) {
+        ovs_assert(ofctrl_acked_seqnos_contains(acked_seqnos, ack_seqno));
+        total_seqno += ack_seqno;
+        acked[i++] = ack_seqno;
     }
     ovs_assert(!ofctrl_acked_seqnos_contains(acked_seqnos, total_seqno));
 
@@ -87,14 +81,14 @@ test_ofctrl_seqno_add_type(struct ovs_cmdl_context *ctx)
 {
     unsigned int n_types;
 
-    test_init();
-
     if (!test_read_uint_value(ctx, 1, "n_types", &n_types)) {
         return;
     }
     for (unsigned int i = 0; i < n_types; i++) {
         printf("%"PRIuSIZE"\n", ofctrl_seqno_add_type());
     }
+
+    ofctrl_seqno_destroy();
 }
 
 static void
@@ -105,7 +99,6 @@ test_ofctrl_seqno_ack_seqnos(struct ovs_cmdl_context *ctx)
     unsigned int n_types;
     unsigned int n_acks;
 
-    test_init();
     bool batch_acks = !strcmp(ctx->argv[1], "true");
 
     if (!test_read_uint_value(ctx, shift++, "n_types", &n_types)) {
@@ -157,6 +150,8 @@ test_ofctrl_seqno_ack_seqnos(struct ovs_cmdl_context *ctx)
             test_dump_acked_seqnos(st);
         }
     }
+
+    ofctrl_seqno_destroy();
 }
 
 static void

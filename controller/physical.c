@@ -64,11 +64,6 @@ struct zone_ids {
     int snat;                   /* MFF_LOG_SNAT_ZONE. */
 };
 
-struct tunnel {
-    struct ovs_list list_node;
-    const struct chassis_tunnel *tun;
-};
-
 static void
 load_logical_ingress_metadata(const struct sbrec_port_binding *binding,
                               const struct zone_ids *zone_ids,
@@ -415,16 +410,14 @@ find_additional_encap_for_chassis(const struct sbrec_port_binding *pb,
     return NULL;
 }
 
-static struct ovs_list *
+static struct vector
 get_remote_tunnels(const struct sbrec_port_binding *binding,
                    const struct physical_ctx *ctx,
                    const char *local_encap_ip)
 {
+    struct vector tunnels =
+        VECTOR_EMPTY_INITIALIZER(const struct chassis_tunnel *);
     const struct chassis_tunnel *tun;
-
-    struct ovs_list *tunnels = xmalloc(sizeof *tunnels);
-    ovs_list_init(tunnels);
-
     if (binding->chassis && binding->chassis != ctx->chassis) {
         tun = get_port_binding_tun(binding->encap, binding->chassis,
                 ctx->chassis_tunnels, local_encap_ip);
@@ -435,9 +428,7 @@ get_remote_tunnels(const struct sbrec_port_binding *binding,
                      "for port %s.",
                 binding->chassis->name, binding->logical_port);
         } else {
-            struct tunnel *tun_elem = xmalloc(sizeof *tun_elem);
-            tun_elem->tun = tun;
-            ovs_list_push_back(tunnels, &tun_elem->list_node);
+            vector_push(&tunnels, &tun);
         }
     }
 
@@ -459,9 +450,7 @@ get_remote_tunnels(const struct sbrec_port_binding *binding,
                 binding->additional_chassis[i]->name, binding->logical_port);
             continue;
         }
-        struct tunnel *tun_elem = xmalloc(sizeof *tun_elem);
-        tun_elem->tun = tun;
-        ovs_list_push_back(tunnels, &tun_elem->list_node);
+        vector_push(&tunnels, &tun);
     }
     return tunnels;
 }
@@ -482,8 +471,8 @@ put_remote_port_redirect_overlay(const struct sbrec_port_binding *binding,
 
         match_set_reg_masked(match, MFF_LOG_ENCAP_ID - MFF_REG0, i << 16,
                              (uint32_t) 0xFFFF << 16);
-        struct ovs_list *tuns = get_remote_tunnels(binding, ctx, encap_ip);
-        if (!ovs_list_is_empty(tuns)) {
+        struct vector tuns = get_remote_tunnels(binding, ctx, encap_ip);
+        if (!vector_is_empty(&tuns)) {
             bool is_vtep_port = type == LP_VTEP;
             /* rewrite MFF_IN_PORT to bypass OpenFlow loopback check for ARP/ND
              * responder in L3 networks. */
@@ -492,24 +481,18 @@ put_remote_port_redirect_overlay(const struct sbrec_port_binding *binding,
                          ofpacts_clone);
             }
 
-            struct tunnel *tun;
-            LIST_FOR_EACH (tun, list_node, tuns) {
-                put_encapsulation(ctx->mff_ovn_geneve, tun->tun,
-                                  binding->datapath, port_key, is_vtep_port,
-                                  ofpacts_clone);
-                ofpact_put_OUTPUT(ofpacts_clone)->port = tun->tun->ofport;
+            const struct chassis_tunnel *tun;
+            VECTOR_FOR_EACH (&tuns, tun) {
+                put_encapsulation(ctx->mff_ovn_geneve, tun, binding->datapath,
+                                  port_key, is_vtep_port, ofpacts_clone);
+                ofpact_put_OUTPUT(ofpacts_clone)->port = tun->ofport;
             }
             put_resubmit(OFTABLE_LOCAL_OUTPUT, ofpacts_clone);
             ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 100,
                             binding->header_.uuid.parts[0], match,
                             ofpacts_clone, &binding->header_.uuid);
         }
-        struct tunnel *tun_elem;
-        LIST_FOR_EACH_POP (tun_elem, list_node, tuns) {
-            free(tun_elem);
-        }
-        free(tuns);
-
+        vector_destroy(&tuns);
         ofpbuf_delete(ofpacts_clone);
     }
 }
@@ -1612,7 +1595,7 @@ get_tunnel_overhead(struct chassis_tunnel const *tun)
 
 static uint16_t
 get_effective_mtu(const struct sbrec_port_binding *mcp,
-                  struct ovs_list *remote_tunnels,
+                  struct vector *remote_tunnels,
                   const struct if_status_mgr *if_mgr)
 {
     /* Use interface MTU as a base for calculation */
@@ -1624,9 +1607,9 @@ get_effective_mtu(const struct sbrec_port_binding *mcp,
 
     /* Iterate over all peer tunnels and find the biggest tunnel overhead */
     uint16_t overhead = 0;
-    struct tunnel *tun;
-    LIST_FOR_EACH (tun, list_node, remote_tunnels) {
-        overhead = MAX(overhead, get_tunnel_overhead(tun->tun));
+    const struct chassis_tunnel *tun;
+    VECTOR_FOR_EACH (remote_tunnels, tun) {
+        overhead = MAX(overhead, get_tunnel_overhead(tun));
     }
     if (!overhead) {
         return 0;
@@ -1656,7 +1639,7 @@ handle_pkt_too_big_for_ip_version(struct ovn_desired_flow_table *flow_table,
 
 static void
 handle_pkt_too_big(struct ovn_desired_flow_table *flow_table,
-                   struct ovs_list *remote_tunnels,
+                   struct vector *remote_tunnels,
                    const struct sbrec_port_binding *binding,
                    const struct sbrec_port_binding *mcp,
                    const struct if_status_mgr *if_mgr)
@@ -1681,9 +1664,9 @@ enforce_tunneling_for_multichassis_ports(
         return;
     }
 
-    struct ovs_list *tuns = get_remote_tunnels(binding, ctx, NULL);
-    if (ovs_list_is_empty(tuns)) {
-        free(tuns);
+    struct vector tuns = get_remote_tunnels(binding, ctx, NULL);
+    if (vector_is_empty(&tuns)) {
+        vector_destroy(&tuns);
         return;
     }
 
@@ -1708,26 +1691,20 @@ enforce_tunneling_for_multichassis_ports(
         match_outport_dp_and_port_keys(&match, dp_key, port_key);
         match_set_reg(&match, MFF_LOG_INPORT - MFF_REG0, mcp->tunnel_key);
 
-        struct tunnel *tun;
-        LIST_FOR_EACH (tun, list_node, tuns) {
-            put_encapsulation(ctx->mff_ovn_geneve, tun->tun,
-                              binding->datapath, port_key, is_vtep_port,
-                              &ofpacts);
-            ofpact_put_OUTPUT(&ofpacts)->port = tun->tun->ofport;
+        const struct chassis_tunnel *tun;
+        VECTOR_FOR_EACH (&tuns, tun) {
+            put_encapsulation(ctx->mff_ovn_geneve, tun, binding->datapath,
+                              port_key, is_vtep_port, &ofpacts);
+            ofpact_put_OUTPUT(&ofpacts)->port = tun->ofport;
         }
         ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 110,
                         binding->header_.uuid.parts[0], &match, &ofpacts,
                         &binding->header_.uuid);
         ofpbuf_uninit(&ofpacts);
 
-        handle_pkt_too_big(flow_table, tuns, binding, mcp, ctx->if_mgr);
+        handle_pkt_too_big(flow_table, &tuns, binding, mcp, ctx->if_mgr);
     }
-
-    struct tunnel *tun_elem;
-    LIST_FOR_EACH_POP (tun_elem, list_node, tuns) {
-        free(tun_elem);
-    }
-    free(tuns);
+    vector_destroy(&tuns);
 }
 
 static void

@@ -30,6 +30,7 @@
 #include "binding.h"
 #include "lib/ovn-sb-idl.h"
 #include "mirror.h"
+#include "vec.h"
 
 VLOG_DEFINE_THIS_MODULE(port_mirror);
 
@@ -37,14 +38,8 @@ struct ovn_mirror {
     char *name;
     const struct sbrec_mirror *sb_mirror;
     const struct ovsrec_mirror *ovs_mirror;
-    struct ovs_list mirror_src_lports;
-    struct ovs_list mirror_dst_lports;
-};
-
-struct mirror_lport {
-    struct ovs_list list_node;
-
-    struct local_binding *lbinding;
+    struct vector mirror_src_lports; /* Vector of struct local_binding *. */
+    struct vector mirror_dst_lports; /* Vector of struct local_binding *. */
 };
 
 static struct ovn_mirror *ovn_mirror_create(char *mirror_name);
@@ -238,8 +233,8 @@ ovn_mirror_create(char *mirror_name)
 {
     struct ovn_mirror *m = xzalloc(sizeof *m);
     m->name = xstrdup(mirror_name);
-    ovs_list_init(&m->mirror_src_lports);
-    ovs_list_init(&m->mirror_dst_lports);
+    m->mirror_src_lports = VECTOR_EMPTY_INITIALIZER(struct local_binding *);
+    m->mirror_dst_lports = VECTOR_EMPTY_INITIALIZER(struct local_binding *);
     return m;
 }
 
@@ -259,15 +254,8 @@ static void
 ovn_mirror_delete(struct ovn_mirror *m)
 {
     free(m->name);
-    struct mirror_lport *m_lport;
-    LIST_FOR_EACH_POP (m_lport, list_node, &m->mirror_src_lports) {
-        free(m_lport);
-    }
-
-    LIST_FOR_EACH_POP (m_lport, list_node, &m->mirror_dst_lports) {
-        free(m_lport);
-    }
-
+    vector_destroy(&m->mirror_src_lports);
+    vector_destroy(&m->mirror_dst_lports);
     free(m);
 }
 
@@ -276,16 +264,12 @@ ovn_mirror_add_lport(struct ovn_mirror *m, struct local_binding *lbinding)
 {
     if (!strcmp(m->sb_mirror->filter, "from-lport") ||
         !strcmp(m->sb_mirror->filter, "both")) {
-        struct mirror_lport *m_lport = xzalloc(sizeof *m_lport);
-        m_lport->lbinding = lbinding;
-        ovs_list_push_back(&m->mirror_src_lports, &m_lport->list_node);
+        vector_push(&m->mirror_src_lports, &lbinding);
     }
 
     if (!strcmp(m->sb_mirror->filter, "to-lport") ||
         !strcmp(m->sb_mirror->filter, "both")) {
-        struct mirror_lport *m_lport = xzalloc(sizeof *m_lport);
-        m_lport->lbinding = lbinding;
-        ovs_list_push_back(&m->mirror_dst_lports, &m_lport->list_node);
+        vector_push(&m->mirror_dst_lports, &lbinding);
     }
 }
 
@@ -350,8 +334,8 @@ sync_ovn_mirror(struct ovn_mirror *m, struct ovsdb_idl_txn *ovs_idl_txn,
         return;
     }
 
-    if (ovs_list_is_empty(&m->mirror_src_lports) &&
-            ovs_list_is_empty(&m->mirror_dst_lports)) {
+    if (vector_is_empty(&m->mirror_src_lports) &&
+        vector_is_empty(&m->mirror_dst_lports)) {
         /* Nothing to do. */
         return;
     }
@@ -399,8 +383,8 @@ should_delete_ovs_mirror(struct ovn_mirror *m)
         return true;
     }
 
-    return (ovs_list_is_empty(&m->mirror_src_lports) &&
-            ovs_list_is_empty(&m->mirror_dst_lports));
+    return (vector_is_empty(&m->mirror_src_lports) &&
+            vector_is_empty(&m->mirror_dst_lports));
 }
 
 static const struct ovsrec_port *
@@ -474,18 +458,18 @@ create_ovs_mirror(struct ovn_mirror *m, struct ovsdb_idl_txn *ovs_idl_txn,
 static void
 sync_ovs_mirror_ports(struct ovn_mirror *m, const struct ovsrec_bridge *br_int)
 {
-    struct mirror_lport *m_lport;
+    struct local_binding *lbinding;
 
-    if (ovs_list_is_empty(&m->mirror_src_lports)) {
+    if (vector_is_empty(&m->mirror_src_lports)) {
         ovsrec_mirror_set_select_src_port(m->ovs_mirror, NULL, 0);
     } else {
-        size_t n_lports = ovs_list_size(&m->mirror_src_lports);
+        size_t n_lports = vector_len(&m->mirror_src_lports);
         struct ovsrec_port **ovs_ports = xmalloc(sizeof *ovs_ports * n_lports);
 
         size_t i = 0;
-        LIST_FOR_EACH (m_lport, list_node, &m->mirror_src_lports) {
+        VECTOR_FOR_EACH (&m->mirror_src_lports, lbinding) {
             const struct ovsrec_port *p =
-                get_iface_port(m_lport->lbinding->iface, br_int);
+                get_iface_port(lbinding->iface, br_int);
             ovs_assert(p);
             ovs_ports[i++] = (struct ovsrec_port *) p;
         }
@@ -494,16 +478,16 @@ sync_ovs_mirror_ports(struct ovn_mirror *m, const struct ovsrec_bridge *br_int)
         free(ovs_ports);
     }
 
-    if (ovs_list_is_empty(&m->mirror_dst_lports)) {
+    if (vector_is_empty(&m->mirror_dst_lports)) {
         ovsrec_mirror_set_select_dst_port(m->ovs_mirror, NULL, 0);
     } else {
-        size_t n_lports = ovs_list_size(&m->mirror_dst_lports);
+        size_t n_lports = vector_len(&m->mirror_dst_lports);
         struct ovsrec_port **ovs_ports = xmalloc(sizeof *ovs_ports * n_lports);
 
         size_t i = 0;
-        LIST_FOR_EACH (m_lport, list_node, &m->mirror_dst_lports) {
+        VECTOR_FOR_EACH (&m->mirror_dst_lports, lbinding) {
             const struct ovsrec_port *p =
-                get_iface_port(m_lport->lbinding->iface, br_int);
+                get_iface_port(lbinding->iface, br_int);
             ovs_assert(p);
             ovs_ports[i++] = (struct ovsrec_port *) p;
         }

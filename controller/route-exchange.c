@@ -132,7 +132,7 @@ route_lookup(struct hmap *route_map,
 }
 
 static void
-sb_sync_learned_routes(const struct ovs_list *learned_routes,
+sb_sync_learned_routes(const struct vector *learned_routes,
                        const struct sbrec_datapath_binding *datapath,
                        const struct smap *bound_ports,
                        struct ovsdb_idl_txn *ovnsb_idl_txn,
@@ -160,7 +160,7 @@ sb_sync_learned_routes(const struct ovs_list *learned_routes,
     sbrec_learned_route_index_destroy_row(filter);
 
     struct re_nl_received_route_node *learned_route;
-    LIST_FOR_EACH (learned_route, list_node, learned_routes) {
+    VECTOR_FOR_EACH_PTR (learned_routes, learned_route) {
         char *ip_prefix = normalize_v46_prefix(&learned_route->prefix,
                                                learned_route->plen);
         char *nexthop = normalize_v46(&learned_route->nexthop);
@@ -240,8 +240,8 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
 
         maintained_route_table_add(table_id);
 
-        struct ovs_list received_routes =
-            OVS_LIST_INITIALIZER(&received_routes);
+        struct vector received_routes =
+            VECTOR_EMPTY_INITIALIZER(struct re_nl_received_route_node);
 
         re_nl_sync_routes(ad->db->tunnel_key, &ad->routes,
                           &received_routes, ad->db);
@@ -254,7 +254,7 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
         route_table_add_watch_request(&r_ctx_out->route_table_watches,
                                       table_id);
 
-        re_nl_learned_routes_destroy(&received_routes);
+        vector_destroy(&received_routes);
     }
 
     /* Remove routes in tables previously maintained by us. */
