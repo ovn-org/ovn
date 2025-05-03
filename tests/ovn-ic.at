@@ -753,6 +753,301 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- route sync -- loadbalancer])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+    check ovn-ic-nbctl --wait=sb sync
+    # Enable route learning at AZ level
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
+
+    # Enable route advertising for loadbalancer VIP
+    check ovn-nbctl set nb_global . options:ic-route-adv-lb=true
+    # Enable route learning for loadbalancer VIP
+    check ovn-nbctl set nb_global . options:ic-route-learn-lb=true
+
+    # Create LRP and connect to TS
+    check ovn-nbctl lr-add lr$i
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24 2001:db8:1::$i/64
+    check ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
+            -- lsp-set-addresses lsp-ts1-lr$i router \
+            -- lsp-set-type lsp-ts1-lr$i router \
+            -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
+
+    # Create LB
+    check ovn-nbctl lb-add lb$i 200.1.$i.50:80 1.1.$i.1:80,1.1.$i.2:80
+    check ovn-nbctl lr-lb-add lr$i lb$i
+done
+
+for i in 1 2; do
+    OVS_WAIT_UNTIL([ovn_as az$i ovn-nbctl lr-route-list lr$i | grep learned])
+done
+
+wait_row_count ic-sb:Route 1 ip_prefix=200.1.1.50/32 origin=loadbalancer
+wait_row_count ic-sb:Route 1 ip_prefix=200.1.2.50/32 origin=loadbalancer
+
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.2.50             169.254.100.2 dst-ip (learned)
+])
+
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.50             169.254.100.1 dst-ip (learned)
+])
+
+# Add another few instances of LB in AZ1, some with same VIP IP.
+check ovn_as az1 ovn-nbctl lb-add lb3 200.1.1.53:80 1.1.1.1:80,1.1.1.2:80,1.1.1.3:80
+check ovn_as az1 ovn-nbctl lb-add lb4 200.1.1.53:8080 1.1.1.1:8080,1.1.1.2:8080
+check ovn_as az1 ovn-nbctl lb-add lb5 200.1.1.54:80 1.1.1.1:80,1.1.1.2:80
+check ovn_as az1 ovn-nbctl lr-lb-add lr1 lb3
+check ovn_as az1 ovn-nbctl lr-lb-add lr1 lb4
+check ovn_as az1 ovn-nbctl lr-lb-add lr1 lb5
+wait_row_count ic-sb:Route 1 ip_prefix=200.1.1.53/32 origin=loadbalancer
+wait_row_count ic-sb:Route 1 ip_prefix=200.1.1.54/32 origin=loadbalancer
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 200.1.1.53])
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 200.1.1.54])
+
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.50             169.254.100.1 dst-ip (learned)
+               200.1.1.53             169.254.100.1 dst-ip (learned)
+               200.1.1.54             169.254.100.1 dst-ip (learned)
+])
+
+# Remove one LB.
+check ovn_as az1 ovn-nbctl lr-lb-del lr1 lb5
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 200.1.1.54])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.50             169.254.100.1 dst-ip (learned)
+               200.1.1.53             169.254.100.1 dst-ip (learned)
+])
+
+# Add load balancer group.
+check ovn_as az1 ovn-nbctl lb-add lb6 250.1.1.11:80 1.1.1.1:80,1.1.1.2:80
+check ovn_as az1 ovn-nbctl lb-add lb7 250.1.1.12:80 1.1.1.1:80,1.1.1.2:80
+lb6=$(ovn_as az1 fetch_column nb:load_balancer _uuid name=lb6)
+lb7=$(ovn_as az1 fetch_column nb:load_balancer _uuid name=lb7)
+
+ovn_as az1
+lbg=$(ovn-nbctl create load_balancer_group name=lbg -- \
+  add load_balancer_group lbg load_balancer $lb6 -- \
+  add load_balancer_group lbg load_balancer $lb7)
+check ovn_as az1 ovn-nbctl add logical_router lr1 load_balancer_group $lbg
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 250.1.1.11])
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 250.1.1.12])
+
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.50             169.254.100.1 dst-ip (learned)
+               200.1.1.53             169.254.100.1 dst-ip (learned)
+               250.1.1.11             169.254.100.1 dst-ip (learned)
+               250.1.1.12             169.254.100.1 dst-ip (learned)
+])
+
+# Remove the LB group from LR.
+check ovn_as az1 ovn-nbctl remove logical_router lr1 load_balancer_group $lbg
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 250.1.1.11])
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 250.1.1.12])
+
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.50             169.254.100.1 dst-ip (learned)
+               200.1.1.53             169.254.100.1 dst-ip (learned)
+])
+
+# Disable LB route-advertising for AZ1.
+check ovn_as az1 ovn-nbctl set nb_global . options:ic-route-adv-lb=false
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 200.1.1])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [])
+
+# Enable LB route-advertising back for AZ1.
+check ovn_as az1 ovn-nbctl set nb_global . options:ic-route-adv-lb=true
+wait_row_count ic-sb:Route 1 ip_prefix=200.1.1.50/32 origin=loadbalancer
+wait_row_count ic-sb:Route 1 ip_prefix=200.1.1.53/32 origin=loadbalancer
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 200.1.1.50])
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 200.1.1.53])
+
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.50             169.254.100.1 dst-ip (learned)
+               200.1.1.53             169.254.100.1 dst-ip (learned)
+])
+
+# Disable LB route-learning for AZ2.
+check ovn_as az2 ovn-nbctl set nb_global . options:ic-route-learn-lb=false
+wait_row_count ic-sb:Route 1 ip_prefix=200.1.1.50/32 origin=loadbalancer
+wait_row_count ic-sb:Route 1 ip_prefix=200.1.1.53/32 origin=loadbalancer
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 200.1.1])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [])
+
+# Enable LB route-learning back for AZ2.
+check ovn_as az2 ovn-nbctl set nb_global . options:ic-route-learn-lb=true
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 200.1.1.50])
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 200.1.1.53])
+
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.50             169.254.100.1 dst-ip (learned)
+               200.1.1.53             169.254.100.1 dst-ip (learned)
+])
+
+# Add IPv6 LB.
+check ovn_as az1 ovn-nbctl lb-add lb_v6 [[4242::1]]:80 "[[4242::2]]:80"
+check ovn_as az1 ovn-nbctl lr-lb-add lr1 lb_v6
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 4242])
+
+AT_CHECK([ovn-ic-sbctl list route | grep 4242 -A 2], [0], [dnl
+ip_prefix           : "4242::1/128"
+nexthop             : "2001:db8:1::1"
+origin              : loadbalancer
+])
+
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.50             169.254.100.1 dst-ip (learned)
+               200.1.1.53             169.254.100.1 dst-ip (learned)
+
+IPv6 Routes
+Route Table <main>:
+                  4242::1             2001:db8:1::1 dst-ip (learned)
+])
+
+# Remove IPv6 LB
+check ovn_as az1 ovn-nbctl lr-lb-del lr1 lb_v6
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 4242])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.50             169.254.100.1 dst-ip (learned)
+               200.1.1.53             169.254.100.1 dst-ip (learned)
+])
+
+# Configure same LB VIP locally as in remote az. Ensure learnt route is removed.
+check ovn_as az2 ovn-nbctl lb-add lb_temp 200.1.1.50:80 1.1.1.1:80,1.1.1.2:80
+check ovn_as az2 ovn-nbctl lr-lb-add lr2 lb_temp
+wait_row_count ic-sb:Route 2 ip_prefix=200.1.1.50/32 origin=loadbalancer
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 200.1.1.50])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.53             169.254.100.1 dst-ip (learned)
+])
+check ovn_as az2 ovn-nbctl lr-lb-del lr2 lb_temp
+check ovn_as az2 ovn-nbctl lb-del lb_temp
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 200.1.1.50])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.50             169.254.100.1 dst-ip (learned)
+               200.1.1.53             169.254.100.1 dst-ip (learned)
+])
+
+# Configure static route in remote az. Route would be learnt. Add local LB VIP
+# same as static route prefix. Ensure route is removed.
+check ovn_as az1 ovn-nbctl lr-route-add lr1 200.1.3.55 169.1.1.1
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 200.1.3.55])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.50             169.254.100.1 dst-ip (learned)
+               200.1.1.53             169.254.100.1 dst-ip (learned)
+               200.1.3.55             169.254.100.1 dst-ip (learned)
+])
+
+check ovn_as az2 ovn-nbctl lb-add lb_temp 200.1.3.55:80 1.1.1.1:80,1.1.1.2:80
+check ovn_as az2 ovn-nbctl lr-lb-add lr2 lb_temp
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 200.1.3.55])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.50             169.254.100.1 dst-ip (learned)
+               200.1.1.53             169.254.100.1 dst-ip (learned)
+])
+
+check ovn_as az2 ovn-nbctl lr-lb-del lr2 lb_temp
+check ovn_as az2 ovn-nbctl lb-del lb_temp
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 200.1.3.55])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.50             169.254.100.1 dst-ip (learned)
+               200.1.1.53             169.254.100.1 dst-ip (learned)
+               200.1.3.55             169.254.100.1 dst-ip (learned)
+])
+check ovn_as az1 ovn-nbctl lr-route-del lr1 200.1.3.55 169.1.1.1
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 200.1.3.55])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.50             169.254.100.1 dst-ip (learned)
+               200.1.1.53             169.254.100.1 dst-ip (learned)
+])
+
+# Create a third az
+ovn_start az3
+ovn_as az3
+check ovn-ic-nbctl --wait=sb sync
+check ovn-nbctl set nb_global . options:ic-route-learn=true
+check ovn-nbctl set nb_global . options:ic-route-adv=true
+
+check ovn-nbctl set nb_global . options:ic-route-adv-lb=true
+check ovn-nbctl set nb_global . options:ic-route-learn-lb=true
+
+check ovn-nbctl lr-add lr3
+check ovn-nbctl lrp-add lr3 lrp-lr3-ts1 aa:aa:aa:aa:aa:03 169.254.100.3/24 2001:db8:1::3/64
+check ovn-nbctl lsp-add ts1 lsp-ts1-lr3 \
+        -- lsp-set-addresses lsp-ts1-lr3 router \
+        -- lsp-set-type lsp-ts1-lr3 router \
+        -- lsp-set-options lsp-ts1-lr3 router-port=lrp-lr3-ts1
+
+# Create LB in 3rd az and check that the route propagates to az1 LR
+check ovn_as az3 ovn-nbctl lb-add lb3 200.1.3.50:80 1.1.3.1:80,1.1.3.2:80
+check ovn_as az3 ovn-nbctl lr-lb-add lr3 lb3
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 200.1.3.50])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.50             169.254.100.1 dst-ip (learned)
+               200.1.1.53             169.254.100.1 dst-ip (learned)
+               200.1.3.50             169.254.100.3 dst-ip (learned)
+])
+
+# Create LB in az3 with same VIP as az1, check for ECMP route in az2 LR
+check ovn_as az3 ovn-nbctl lb-add lb4 200.1.1.50:80 1.1.3.1:80,1.1.3.2:80
+check ovn_as az3 ovn-nbctl lr-lb-add lr3 lb4
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep ecmp])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+               200.1.1.50             169.254.100.1 dst-ip (learned) ecmp
+               200.1.1.50             169.254.100.3 dst-ip (learned) ecmp
+               200.1.1.53             169.254.100.1 dst-ip (learned)
+               200.1.3.50             169.254.100.3 dst-ip (learned)
+])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- route sync -- IPv6 route tables])
 AT_KEYWORDS([IPv6-route-sync])
 
