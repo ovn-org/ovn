@@ -1,6 +1,8 @@
 EXTRA_DIST += \
+	build-aux/calculate-pipeline-cksum \
 	build-aux/calculate-schema-cksum \
 	build-aux/cccl \
+	build-aux/cksum-pipeline-check \
 	build-aux/cksum-schema-check \
 	build-aux/dist-docs \
 	build-aux/dpdkstrip.py \
