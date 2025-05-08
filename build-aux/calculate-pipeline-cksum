@@ -1,0 +1,10 @@
+#!/bin/sh
+
+northd_h=$1
+action_h=$2
+
+stages=$(grep '^\s*PIPELINE_STAGE(' $northd_h)
+
+actions=$(grep 'OVNACT(' $action_h | grep -v 'OVNACT(ENUM,')
+
+echo "$stages" "$actions" | cksum
