@@ -1,0 +1,19 @@
+#!/bin/sh
+
+northd_h=$1
+action_h=$2
+ovn_util_c=$3
+
+cksumcheckpath=$(dirname "$0")
+sum=$("$cksumcheckpath/calculate-pipeline-cksum" "$northd_h" "$action_h")
+checksum=$(sed -n \
+    's/^#define OVN_NORTHD_PIPELINE_CSUM  *"\([^"]*\)".*/\1/p' "$ovn_util_c")
+
+if [ "$sum" != "$checksum" ]; then
+    echo >&2 "The checksum \"$sum\" calculated from the logical actions" \
+             "and pipeline stages does not match the" \
+             "OVN_NORTHD_PIPELINE_CSUM. You should update the checksum" \
+             "with the value listed here and consider updating the" \
+             "OVN internal version number in \"$ovn_util_c\" as well."
+    exit 1
+fi

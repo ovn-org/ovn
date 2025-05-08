@@ -379,6 +379,16 @@ check-ifconfig:
 	fi
 .PHONY: check-ifconfig
 
+northd_h = northd/northd.h
+action_h = include/ovn/actions.h
+checksum_file = lib/ovn-util.c
+
+# Check if northd stages and actions checksum is valid.
+ALL_LOCAL += check-northd
+check-northd: $(northd_h) $(action_h) $(checksum_file)
+	@$(srcdir)/build-aux/cksum-pipeline-check $^
+.PHONY: check-northd
+
 if HAVE_GROFF
 ALL_LOCAL += manpage-check
 manpage-check: $(man_MANS) $(dist_man_MANS) $(noinst_man_MANS)
