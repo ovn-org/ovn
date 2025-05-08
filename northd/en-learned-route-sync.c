@@ -149,8 +149,8 @@ parse_route_from_sbrec_route(struct hmap *parsed_routes_out,
                              const struct hmap *lr_datapaths,
                              const struct sbrec_learned_route *route)
 {
-    const struct ovn_datapath *od = ovn_datapath_from_sbrec(
-        NULL, lr_datapaths, route->datapath);
+    const struct ovn_datapath *od = ovn_datapath_from_sbrec_(
+        lr_datapaths, route->datapath);
 
     if (!od || ovn_datapath_is_stale(od)) {
         return NULL;
@@ -238,8 +238,8 @@ find_learned_route(const struct sbrec_learned_route *learned_route,
                    const struct ovn_datapaths *lr_datapaths,
                    const struct hmap *routes)
 {
-    const struct ovn_datapath *od = ovn_datapath_from_sbrec(
-        NULL, &lr_datapaths->datapaths, learned_route->datapath);
+    const struct ovn_datapath *od = ovn_datapath_from_sbrec_(
+        &lr_datapaths->datapaths, learned_route->datapath);
     if (!od) {
         return NULL;
     }

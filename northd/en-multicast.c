@@ -277,8 +277,7 @@ build_mcast_groups(struct multicast_igmp_data *data,
         }
 
         /* If the datapath value is stale, purge the group. */
-        od = ovn_datapath_from_sbrec(ls_datapaths, NULL,
-                                     sb_igmp->datapath);
+        od = ovn_datapath_from_sbrec_(ls_datapaths, sb_igmp->datapath);
 
         if (!od || ovn_datapath_is_stale(od)) {
             sbrec_igmp_group_delete(sb_igmp);

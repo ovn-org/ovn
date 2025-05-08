@@ -628,6 +628,24 @@ ovn_datapath_find_by_key(struct hmap *datapaths, uint32_t dp_key)
 }
 
 struct ovn_datapath *
+ovn_datapath_from_sbrec_(const struct hmap *datapaths,
+                         const struct sbrec_datapath_binding *sb)
+{
+    struct uuid key;
+
+    if (!datapath_get_nb_uuid(sb, &key)) {
+        return NULL;
+    }
+
+    struct ovn_datapath *od = ovn_datapath_find_(datapaths, &key);
+    if (od && (od->sdp->sb_dp == sb)) {
+        return od;
+    }
+
+    return NULL;
+}
+
+struct ovn_datapath *
 ovn_datapath_from_sbrec(const struct hmap *ls_datapaths,
                         const struct hmap *lr_datapaths,
                         const struct sbrec_datapath_binding *sb)
@@ -2946,7 +2964,7 @@ cleanup_mac_bindings(
     const struct sbrec_mac_binding *b;
     SBREC_MAC_BINDING_TABLE_FOR_EACH_SAFE (b, sbrec_mac_binding_table) {
         const struct ovn_datapath *od =
-            ovn_datapath_from_sbrec(NULL, lr_datapaths, b->datapath);
+            ovn_datapath_from_sbrec_(lr_datapaths, b->datapath);
 
         if (!od || ovn_datapath_is_stale(od) ||
             !ovn_port_find(lr_ports, b->logical_port)) {
@@ -20144,7 +20162,7 @@ build_ip_mcast(struct ovsdb_idl_txn *ovnsb_txn,
     const struct sbrec_ip_multicast *sb;
 
     SBREC_IP_MULTICAST_TABLE_FOR_EACH_SAFE (sb, sbrec_ip_multicast_table) {
-        od = ovn_datapath_from_sbrec(ls_datapaths, NULL, sb->datapath);
+        od = ovn_datapath_from_sbrec_(ls_datapaths, sb->datapath);
         if (!od || ovn_datapath_is_stale(od)) {
             sbrec_ip_multicast_delete(sb);
         }

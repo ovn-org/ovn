@@ -501,6 +501,9 @@ struct ovn_datapath *ovn_datapath_from_sbrec(
     const struct hmap *ls_datapaths, const struct hmap *lr_datapaths,
     const struct sbrec_datapath_binding *);
 
+struct ovn_datapath *ovn_datapath_from_sbrec_(
+    const struct hmap *datapaths, const struct sbrec_datapath_binding *);
+
 static inline bool
 ovn_datapath_is_stale(const struct ovn_datapath *od)
 {
