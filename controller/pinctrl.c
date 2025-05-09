@@ -5051,7 +5051,7 @@ send_garp_rarp_update(struct ovsdb_idl_txn *ovnsb_idl_txn,
                       long long int garp_max_timeout,
                       bool garp_continuous)
 {
-    volatile struct garp_rarp_data *garp_rarp = NULL;
+    struct garp_rarp_data *garp_rarp = NULL;
 
     /* Skip localports as they don't need to be announced */
     if (!strcmp(binding_rec->type, "localport")) {
