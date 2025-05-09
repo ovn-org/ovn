@@ -92,8 +92,7 @@ static bool lflow_ref_sync_lflows__(
 static bool sync_lflow_to_sb(struct ovn_lflow *,
                              struct ovsdb_idl_txn *ovnsb_txn,
                              struct lflow_table *,
-                             const struct ovn_datapaths *ls_datapaths,
-                             const struct ovn_datapaths *lr_datapaths,
+                             const struct ovn_datapaths *datapaths,
                              bool ovn_internal_version_changed,
                              const struct sbrec_logical_flow *sbflow,
                              const struct sbrec_logical_dp_group_table *);
@@ -287,8 +286,14 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
             sbflow = sbrec_logical_flow_table_get_for_uuid(sb_flow_table,
                                                            &lflow->sb_uuid);
         }
-        sync_lflow_to_sb(lflow, ovnsb_txn, lflow_table, ls_datapaths,
-                         lr_datapaths, ovn_internal_version_changed,
+        const struct ovn_datapaths *datapaths;
+        if (ovn_stage_to_datapath_type(lflow->stage) == DP_SWITCH) {
+            datapaths = ls_datapaths;
+        } else {
+            datapaths = lr_datapaths;
+        }
+        sync_lflow_to_sb(lflow, ovnsb_txn, lflow_table, datapaths,
+                         ovn_internal_version_changed,
                          sbflow, dpgrp_table);
         uuidset_insert(&sb_uuid_set, &lflow->sb_uuid);
         hmap_remove(lflows, &lflow->hmap_node);
@@ -341,15 +346,19 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
         enum ovn_pipeline pipeline
             = !strcmp(sbflow->pipeline, "ingress") ? P_IN : P_OUT;
 
+        enum ovn_datapath_type dp_type
+            = ovn_datapath_get_type(logical_datapath_od);
+
         lflow = ovn_lflow_find(
             lflows,
-            ovn_stage_build(ovn_datapath_get_type(logical_datapath_od),
-                            pipeline, sbflow->table_id),
+            ovn_stage_build(dp_type, pipeline, sbflow->table_id),
             sbflow->priority, sbflow->match, sbflow->actions,
             sbflow->controller_meter, sbflow->hash);
         if (lflow) {
-            sync_lflow_to_sb(lflow, ovnsb_txn, lflow_table, ls_datapaths,
-                             lr_datapaths, ovn_internal_version_changed,
+            const struct ovn_datapaths *datapaths;
+            datapaths = dp_type == DP_SWITCH ? ls_datapaths : lr_datapaths;
+            sync_lflow_to_sb(lflow, ovnsb_txn, lflow_table, datapaths,
+                             ovn_internal_version_changed,
                              sbflow, dpgrp_table);
 
             hmap_remove(lflows, &lflow->hmap_node);
@@ -364,9 +373,14 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
         if (search_mode != LFLOW_TABLE_SEARCH_FIELDS) {
             break;
         }
-        sync_lflow_to_sb(lflow, ovnsb_txn, lflow_table, ls_datapaths,
-                         lr_datapaths, ovn_internal_version_changed,
-                         NULL, dpgrp_table);
+        const struct ovn_datapaths *datapaths;
+        if (ovn_stage_to_datapath_type(lflow->stage) == DP_SWITCH) {
+            datapaths = ls_datapaths;
+        } else {
+            datapaths = lr_datapaths;
+        }
+        sync_lflow_to_sb(lflow, ovnsb_txn, lflow_table, datapaths,
+                         ovn_internal_version_changed, NULL, dpgrp_table);
 
         hmap_remove(lflows, &lflow->hmap_node);
         hmap_insert(&lflows_temp, &lflow->hmap_node,
@@ -1040,29 +1054,21 @@ static bool
 sync_lflow_to_sb(struct ovn_lflow *lflow,
                  struct ovsdb_idl_txn *ovnsb_txn,
                  struct lflow_table *lflow_table,
-                 const struct ovn_datapaths *ls_datapaths,
-                 const struct ovn_datapaths *lr_datapaths,
+                 const struct ovn_datapaths *datapaths,
                  bool ovn_internal_version_changed,
                  const struct sbrec_logical_flow *sbflow,
                  const struct sbrec_logical_dp_group_table *sb_dpgrp_table)
 {
     struct sbrec_logical_dp_group *sbrec_dp_group = NULL;
     struct ovn_dp_group *pre_sync_dpg = lflow->dpg;
-    struct ovn_datapath **datapaths_array;
     struct hmap *dp_groups;
     size_t n_datapaths;
-    bool is_switch;
 
+    n_datapaths = ods_size(datapaths);
     if (ovn_stage_to_datapath_type(lflow->stage) == DP_SWITCH) {
-        n_datapaths = ods_size(ls_datapaths);
-        datapaths_array = vector_get_array(&ls_datapaths->dps);
         dp_groups = &lflow_table->ls_dp_groups;
-        is_switch = true;
     } else {
-        n_datapaths = ods_size(lr_datapaths);
-        datapaths_array = vector_get_array(&lr_datapaths->dps);
         dp_groups = &lflow_table->lr_dp_groups;
-        is_switch = false;
     }
 
     size_t n_ods = dynamic_bitmap_count1(&lflow->dpg_bitmap);
@@ -1071,8 +1077,8 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
         /* There is only one datapath, so it should be moved out of the
          * group to a single 'od'. */
         size_t index = dynamic_bitmap_scan(&lflow->dpg_bitmap, true, 0);
-
-        lflow->dp = datapaths_array[index]->sdp;
+        lflow->dp =
+            vector_get(&datapaths->dps, index, struct ovn_datapath *)->sdp;
         lflow->dpg = NULL;
     } else {
         lflow->dp = NULL;
@@ -1202,7 +1208,7 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
             lflow->dpg = ovn_dp_group_create(
                                 ovnsb_txn, dp_groups, sbrec_dp_group,
                                 &lflow->dpg_bitmap,
-                                is_switch ? ls_datapaths : lr_datapaths);
+                                datapaths);
         }
         sbrec_logical_flow_set_logical_dp_group(sbflow,
                                                 lflow->dpg->dp_group);
@@ -1327,18 +1333,21 @@ lflow_ref_sync_lflows__(struct lflow_ref  *lflow_ref,
                                                   &lflow->sb_uuid);
 
         struct hmap *dp_groups = NULL;
+        const struct ovn_datapaths *datapaths;
         if (ovn_stage_to_datapath_type(lflow->stage) == DP_SWITCH) {
             dp_groups = &lflow_table->ls_dp_groups;
+            datapaths = ls_datapaths;
         } else {
             dp_groups = &lflow_table->lr_dp_groups;
+            datapaths = lr_datapaths;
         }
 
         size_t n_ods = dynamic_bitmap_count1(&lflow->dpg_bitmap);
 
         if (n_ods) {
-            if (!sync_lflow_to_sb(lflow, ovnsb_txn, lflow_table, ls_datapaths,
-                                  lr_datapaths, ovn_internal_version_changed,
-                                  sblflow, dpgrp_table)) {
+            if (!sync_lflow_to_sb(lflow, ovnsb_txn, lflow_table, datapaths,
+                                  ovn_internal_version_changed, sblflow,
+                                  dpgrp_table)) {
                 return false;
             }
         }
