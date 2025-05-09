@@ -791,9 +791,7 @@ ovn_dp_group_create(struct ovsdb_idl_txn *ovnsb_txn,
                     struct hmap *dp_groups,
                     struct sbrec_logical_dp_group *sb_group,
                     const struct dynamic_bitmap *desired_bitmap,
-                    bool is_switch,
-                    const struct ovn_datapaths *ls_datapaths,
-                    const struct ovn_datapaths *lr_datapaths)
+                    const struct ovn_datapaths *datapaths)
 {
     struct ovn_dp_group *dpg;
 
@@ -805,10 +803,8 @@ ovn_dp_group_create(struct ovsdb_idl_txn *ovnsb_txn,
     for (i = 0; sb_group && i < sb_group->n_datapaths; i++) {
         struct ovn_datapath *datapath_od;
 
-        datapath_od = ovn_datapath_from_sbrec(
-                        ls_datapaths ? &ls_datapaths->datapaths : NULL,
-                        lr_datapaths ? &lr_datapaths->datapaths : NULL,
-                        sb_group->datapaths[i]);
+        datapath_od = ovn_datapath_from_sbrec_(&datapaths->datapaths,
+                                               sb_group->datapaths[i]);
         if (!datapath_od || ovn_datapath_is_stale(datapath_od)) {
             break;
         }
@@ -837,8 +833,7 @@ ovn_dp_group_create(struct ovsdb_idl_txn *ovnsb_txn,
         dpg->dp_group = ovn_sb_insert_or_update_logical_dp_group(
                             ovnsb_txn,
                             can_modify ? sb_group : NULL,
-                            desired_bitmap->map,
-                            is_switch ? ls_datapaths : lr_datapaths);
+                            desired_bitmap->map, datapaths);
     }
     dpg->dpg_uuid = dpg->dp_group->header_.uuid;
     hmap_insert(dp_groups, &dpg->node, hash_int(desired_bitmap->n_elems, 0));
@@ -1206,8 +1201,8 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
         } else {
             lflow->dpg = ovn_dp_group_create(
                                 ovnsb_txn, dp_groups, sbrec_dp_group,
-                                &lflow->dpg_bitmap, is_switch,
-                                ls_datapaths, lr_datapaths);
+                                &lflow->dpg_bitmap,
+                                is_switch ? ls_datapaths : lr_datapaths);
         }
         sbrec_logical_flow_set_logical_dp_group(sbflow,
                                                 lflow->dpg->dp_group);
