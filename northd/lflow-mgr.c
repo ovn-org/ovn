@@ -33,7 +33,8 @@ VLOG_DEFINE_THIS_MODULE(lflow_mgr);
 /* Static function declarations. */
 struct ovn_lflow;
 
-static void ovn_lflow_init(struct ovn_lflow *, struct ovn_datapath *od,
+static void ovn_lflow_init(struct ovn_lflow *,
+                           const struct ovn_synced_datapath *dp,
                            size_t dp_bitmap_len, enum ovn_stage stage,
                            uint16_t priority, char *match,
                            char *actions, char *io_port,
@@ -172,7 +173,7 @@ enum ovn_lflow_state {
 struct ovn_lflow {
     struct hmap_node hmap_node;
 
-    struct ovn_datapath *od;     /* 'logical_datapath' in SB schema.  */
+    const struct ovn_synced_datapath *dp;
     struct dynamic_bitmap dpg_bitmap;
     enum ovn_stage stage;
     uint16_t priority;
@@ -885,14 +886,15 @@ lflow_hash_lock_destroy(void)
 
 /* static functions. */
 static void
-ovn_lflow_init(struct ovn_lflow *lflow, struct ovn_datapath *od,
+ovn_lflow_init(struct ovn_lflow *lflow,
+               const struct ovn_synced_datapath *dp,
                size_t dp_bitmap_len, enum ovn_stage stage, uint16_t priority,
                char *match, char *actions, char *io_port, char *ctrl_meter,
                char *stage_hint, const char *where,
                const char *flow_desc, struct uuid sbuuid)
 {
     dynamic_bitmap_alloc(&lflow->dpg_bitmap, dp_bitmap_len);
-    lflow->od = od;
+    lflow->dp = dp;
     lflow->stage = stage;
     lflow->priority = priority;
     lflow->match = match;
@@ -1075,10 +1077,10 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
          * group to a single 'od'. */
         size_t index = dynamic_bitmap_scan(&lflow->dpg_bitmap, true, 0);
 
-        lflow->od = datapaths_array[index];
+        lflow->dp = datapaths_array[index]->sdp;
         lflow->dpg = NULL;
     } else {
-        lflow->od = NULL;
+        lflow->dp = NULL;
     }
 
     if (!sbflow) {
@@ -1166,8 +1168,8 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
         }
     }
 
-    if (lflow->od) {
-        sbrec_logical_flow_set_logical_datapath(sbflow, lflow->od->sdp->sb_dp);
+    if (lflow->dp) {
+        sbrec_logical_flow_set_logical_datapath(sbflow, lflow->dp->sb_dp);
         sbrec_logical_flow_set_logical_dp_group(sbflow, NULL);
     } else {
         sbrec_logical_flow_set_logical_datapath(sbflow, NULL);
