@@ -147,6 +147,11 @@ jobs:
             sort -V | tail -1)
       working-directory: ovs
 
+    - name: Fix /etc/hosts file
+      run: |
+        . .ci/linux-util.sh
+        fix_etc_hosts
+
     - name: image cache
       id: image_cache
       uses: actions/cache@v4

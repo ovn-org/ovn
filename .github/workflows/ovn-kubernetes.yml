@@ -101,6 +101,11 @@ jobs:
     - name: Check out ovn
       uses: actions/checkout@v4
 
+    - name: Fix /etc/hosts file
+      run: |
+        . .ci/linux-util.sh
+        fix_etc_hosts
+
     - name: Free up disk space
       run: |
         . .ci/linux-util.sh
