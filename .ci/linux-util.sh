@@ -25,3 +25,13 @@ function set_containers_apparmor_profile()
     sed -i "s/^#apparmor_profile = \".*\"$/apparmor_profile = \"$profile\"/" \
         /usr/share/containers/containers.conf
 }
+
+function fix_etc_hosts()
+{
+    cp /etc/hosts ./hosts.bak
+    sed -E -n \
+      '/^[[:space:]]*(#.*|[0-9a-fA-F:.]+([[:space:]]+[a-zA-Z0-9.-]+)+|)$/p' \
+      ./hosts.bak | sudo tee /etc/hosts
+
+    diff -u ./hosts.bak /etc/hosts || true
+}
