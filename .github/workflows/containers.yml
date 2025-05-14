@@ -29,6 +29,11 @@ jobs:
       - name: Install dependencies
         run: sudo apt install -y ${{ env.DEPENDENCIES }}
 
+      - name: Fix /etc/hosts file
+        run: |
+          . .ci/linux-util.sh
+          fix_etc_hosts
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
 
