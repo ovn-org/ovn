@@ -104,6 +104,11 @@ jobs:
       - name: Install dependencies
         run: sudo apt install -y ${{ env.DEPENDENCIES }}
 
+      - name: Fix /etc/hosts file
+        run: |
+          . .ci/linux-util.sh
+          fix_etc_hosts
+
       - name: Choose image distro
         if: github.event_name == 'push' || github.event_name == 'pull_request'
         run: |
@@ -213,6 +218,11 @@ jobs:
       with:
         path: dpdk-dir
         key: ${{ needs.build-dpdk.outputs.dpdk_key }}
+
+    - name: Fix /etc/hosts file
+      run: |
+        . .ci/linux-util.sh
+        fix_etc_hosts
 
     - name: image cache
       uses: actions/cache@v4
@@ -330,6 +340,11 @@ jobs:
           sed -e 's/@VERSION@/0.0.1/' rhel/ovn-fedora.spec.in \
           > /tmp/ovn.spec
           dnf builddep -y /tmp/ovn.spec
+
+      - name: Fix /etc/hosts file
+        run: |
+          . .ci/linux-util.sh
+          fix_etc_hosts
 
       - name: configure OvS
         run: ./boot.sh && ./configure

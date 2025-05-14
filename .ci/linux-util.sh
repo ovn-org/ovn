@@ -17,3 +17,18 @@ function free_up_disk_space_ubuntu()
                  /usr/local/share/boost/'
     sudo rm -rf $paths
 }
+
+# On multiple occasions GitHub added things to /etc/hosts that are not
+# a correct syntax for this file causing test failures:
+#   https://github.com/actions/runner-images/issues/3353
+#   https://github.com/actions/runner-images/issues/12192
+# Just clearing those out, if any.
+function fix_etc_hosts()
+{
+    cp /etc/hosts ./hosts.bak
+    sed -E -n \
+      '/^[[:space:]]*(#.*|[0-9a-fA-F:.]+([[:space:]]+[a-zA-Z0-9.-]+)+|)$/p' \
+      ./hosts.bak | sudo tee /etc/hosts
+
+    diff -u ./hosts.bak /etc/hosts || true
+}
