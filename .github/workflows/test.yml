@@ -37,6 +37,11 @@ jobs:
       - name: Install dependencies
         run: sudo apt install -y ${{ env.DEPENDENCIES }}
 
+      - name: Fix /etc/hosts file
+        run: |
+          . .ci/linux-util.sh
+          fix_etc_hosts
+
       - name: Choose image distro
         if: github.event_name == 'push' || github.event_name == 'pull_request'
         run: |
@@ -146,6 +151,11 @@ jobs:
           $(git branch -a -l '*branch-*' | sed 's/remotes\/origin\///' | \
             sort -V | tail -1)
       working-directory: ovs
+
+    - name: Fix /etc/hosts file
+      run: |
+        . .ci/linux-util.sh
+        fix_etc_hosts
 
     - name: image cache
       id: image_cache
@@ -258,6 +268,11 @@ jobs:
           sed -e 's/@VERSION@/0.0.1/' rhel/ovn-fedora.spec.in \
           > /tmp/ovn.spec
           dnf builddep -y /tmp/ovn.spec
+
+      - name: Fix /etc/hosts file
+        run: |
+          . .ci/linux-util.sh
+          fix_etc_hosts
 
       - name: configure OvS
         run: ./boot.sh && ./configure
