@@ -1288,6 +1288,7 @@ ovn_port_create(struct hmap *ports, const char *key,
     ovn_port_set_nb(op, nbsp, nbrp);
     op->primary_port = op->cr_port = NULL;
     hmap_insert(ports, &op->key_node, hash_string(op->key, 0));
+    op->has_attached_lport_mirror = false;
 
     op->lflow_ref = lflow_ref_create();
     op->stateful_lflow_ref = lflow_ref_create();
@@ -2212,6 +2213,7 @@ create_mirror_port(struct ovn_port *op, struct hmap *ports,
     mp->mirror_target_port = target_port;
     mp->od = op->od;
 
+    op->has_attached_lport_mirror = true;
 clear:
     free(mp_name);
 }
@@ -4729,6 +4731,13 @@ lsp_can_be_inc_processed(const struct nbrec_logical_switch_port *nbsp)
         }
     }
 
+    /* Attaching lport mirror is not supported for now. */
+    for (size_t i = 0; i < nbsp->n_mirror_rules; i++) {
+        if (!strcmp("lport", nbsp->mirror_rules[i]->type)) {
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -4945,12 +4954,17 @@ is_lsp_mirror_target_port(
 }
 
 static bool
-lsp_handle_mirror_rules_changes(const struct nbrec_logical_switch_port *nbsp)
+lsp_handle_mirror_rules_changes(const struct ovn_port *op)
 {
-    if (nbrec_logical_switch_port_is_updated(nbsp,
+    if (!op->has_attached_lport_mirror) {
+        return true;
+    }
+
+    if (nbrec_logical_switch_port_is_updated(op->nbsp,
         NBREC_LOGICAL_SWITCH_PORT_COL_MIRROR_RULES)) {
         return false;
     }
+
     return true;
 }
 
@@ -5024,7 +5038,7 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
                  * by this change. Fallback to recompute. */
                 goto fail;
             }
-            if (!lsp_handle_mirror_rules_changes(new_nbsp) ||
+            if (!lsp_handle_mirror_rules_changes(op) ||
                  is_lsp_mirror_target_port(ni->nbrec_mirror_by_type_and_sink,
                                            op)) {
                 /* Fallback to recompute. */
@@ -5078,10 +5092,11 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
             sbrec_port_binding_delete(op->sb);
             delete_fdb_entries(ni->sbrec_fdb_by_dp_and_port, od->tunnel_key,
                                 op->tunnel_key);
-            if (is_lsp_mirror_target_port(ni->nbrec_mirror_by_type_and_sink,
+            if (op->has_attached_lport_mirror ||
+                is_lsp_mirror_target_port(ni->nbrec_mirror_by_type_and_sink,
                                           op)) {
-            /* This port was used as target mirror port, fallback
-             * to recompute. */
+                /* This port was used as target/source mirror port,
+                 * fallback to recompute. */
                 goto fail;
             }
         }

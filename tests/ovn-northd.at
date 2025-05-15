@@ -17290,3 +17290,69 @@ AT_CHECK([cat trace | grep output], [0], [dnl
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Lport mirror full recompute.])
+AT_KEYWORDS([mirror])
+ovn_start
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 lport1
+check ovn-nbctl lsp-add ls1 lport2
+
+check ovn-nbctl mirror-add mirror_lport lport to-lport lport2
+check ovn-nbctl mirror-add mirror_local local to-lport lport2
+check ovn-nbctl mirror-add mirror_gre gre 1 to-lport 172.16.0.100
+check ovn-nbctl mirror-add mirror_erspan erspan 3 to-lport 172.16.0.100
+check ovn-nbctl --wait=sb sync
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lsp-attach-mirror lport1 mirror_lport
+check_engine_stats northd recompute compute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lsp-detach-mirror lport1 mirror_lport
+check_engine_stats northd recompute compute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lsp-attach-mirror lport1 mirror_local
+check_engine_stats northd norecompute compute
+check_engine_stats lflow norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lsp-detach-mirror lport1 mirror_local
+check_engine_stats northd norecompute compute
+check_engine_stats lflow norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lsp-attach-mirror lport1 mirror_gre
+check_engine_stats northd norecompute compute
+check_engine_stats lflow norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lsp-detach-mirror lport1 mirror_gre
+check_engine_stats northd norecompute compute
+check_engine_stats lflow norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lsp-attach-mirror lport1 mirror_erspan
+check_engine_stats northd norecompute compute
+check_engine_stats lflow norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lsp-detach-mirror lport1 mirror_erspan
+check_engine_stats northd norecompute compute
+check_engine_stats lflow norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AT_CLEANUP
+])

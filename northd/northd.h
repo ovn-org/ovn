@@ -689,6 +689,9 @@ struct ovn_port {
      * a parent port. */
     struct ovn_port *mirror_target_port;
 
+    /* Set to true if this port is attached to lport mirror. */
+    bool has_attached_lport_mirror;
+
     bool has_unknown; /* If the addresses have 'unknown' defined. */
 
     /* The port's peer:
