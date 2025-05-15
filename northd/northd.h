@@ -511,21 +511,6 @@ ovn_datapath_is_stale(const struct ovn_datapath *od)
 };
 
 /* Pipeline stages. */
-/* Returns an "enum ovn_stage" built from the arguments.
- *
- * (It's better to use ovn_stage_build() for type-safety reasons, but inline
- * functions can't be used in enums or switch cases.) */
-#define OVN_STAGE_BUILD(DP_TYPE, PIPELINE, TABLE) \
-    (((DP_TYPE) << 9) | ((PIPELINE) << 8) | (TABLE))
-
-/* A stage within an OVN logical switch or router.
- *
- * An "enum ovn_stage" indicates whether the stage is part of a logical switch
- * or router, whether the stage is part of the ingress or egress pipeline, and
- * the table within that pipeline.  The first three components are combined to
- * form the stage's full name, e.g. S_SWITCH_IN_PORT_SEC_L2,
- * S_ROUTER_OUT_DELIVERY. */
-enum ovn_stage {
 #define PIPELINE_STAGES                                                   \
     /* Logical switch ingress stages. */                                  \
     PIPELINE_STAGE(SWITCH, IN,  CHECK_PORT_SEC, 0, "ls_in_check_port_sec")   \
@@ -625,15 +610,28 @@ enum ovn_stage {
     PIPELINE_STAGE(ROUTER, OUT, EGR_LOOP,           5, "lr_out_egr_loop")    \
     PIPELINE_STAGE(ROUTER, OUT, DELIVERY,           6, "lr_out_delivery")
 
-#define PIPELINE_STAGE(DP_TYPE, PIPELINE, STAGE, TABLE, NAME)   \
-    S_##DP_TYPE##_##PIPELINE##_##STAGE                          \
-        = OVN_STAGE_BUILD(DP_##DP_TYPE, P_##PIPELINE, TABLE),
-    PIPELINE_STAGES
-#undef PIPELINE_STAGE
+/* A stage within an OVN logical switch or router.
+ *
+ * A "struct ovn_stage" indicates whether the stage is part of a logical switch
+ * or router, whether the stage is part of the ingress or egress pipeline, and
+ * the table within that pipeline.
+ */
+struct ovn_stage {
+    enum ovn_datapath_type dp_type;
+    enum ovn_pipeline pipeline;
+    uint8_t table;
+    const char *name;
 };
 
-enum ovn_datapath_type ovn_stage_to_datapath_type(enum ovn_stage stage);
+bool ovn_stage_equal(const struct ovn_stage *a, const struct ovn_stage *b);
 
+/* Returns the type of the datapath to which a flow with the given 'stage' may
+ * be added. */
+static inline enum ovn_datapath_type
+ovn_stage_to_datapath_type(const struct ovn_stage *stage)
+{
+    return stage->dp_type;
+}
 
 /* Returns 'od''s datapath type. */
 static inline enum ovn_datapath_type
@@ -642,46 +640,43 @@ ovn_datapath_get_type(const struct ovn_datapath *od)
     return od->nbs ? DP_SWITCH : DP_ROUTER;
 }
 
-/* Returns an "enum ovn_stage" built from the arguments. */
-static inline enum ovn_stage
+/* Returns a "struct ovn_stage" built from the arguments.
+ * The stage will not have a proper name, but so far, the only cases
+ * where stages are built from components, a name is not necessary.
+ */
+static inline struct ovn_stage
 ovn_stage_build(enum ovn_datapath_type dp_type, enum ovn_pipeline pipeline,
                 uint8_t table)
 {
-    return OVN_STAGE_BUILD(dp_type, pipeline, table);
+    return (struct ovn_stage) {dp_type, pipeline, table, "<unknown>"};
 }
 
 /* Returns the pipeline to which 'stage' belongs. */
 static inline enum ovn_pipeline
-ovn_stage_get_pipeline(enum ovn_stage stage)
+ovn_stage_get_pipeline(const struct ovn_stage *stage)
 {
-    return (stage >> 8) & 1;
+    return stage->pipeline;
 }
 
 /* Returns the pipeline name to which 'stage' belongs. */
 static inline const char *
-ovn_stage_get_pipeline_name(enum ovn_stage stage)
+ovn_stage_get_pipeline_name(const struct ovn_stage *stage)
 {
     return ovn_stage_get_pipeline(stage) == P_IN ? "ingress" : "egress";
 }
 
 /* Returns the table to which 'stage' belongs. */
 static inline uint8_t
-ovn_stage_get_table(enum ovn_stage stage)
+ovn_stage_get_table(const struct ovn_stage *stage)
 {
-    return stage & 0xff;
+    return stage->table;
 }
 
 /* Returns a string name for 'stage'. */
 static inline const char *
-ovn_stage_to_str(enum ovn_stage stage)
+ovn_stage_to_str(const struct ovn_stage *stage)
 {
-    switch (stage) {
-#define PIPELINE_STAGE(DP_TYPE, PIPELINE, STAGE, TABLE, NAME)       \
-        case S_##DP_TYPE##_##PIPELINE##_##STAGE: return NAME;
-    PIPELINE_STAGES
-#undef PIPELINE_STAGE
-        default: return "<unknown>";
-    }
+    return stage->name;
 }
 
 /* A logical switch port or logical router port.
