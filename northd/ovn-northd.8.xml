@@ -653,6 +653,12 @@
       </li>
 
       <li>
+         A priority-105 added enabled when enable-stateless-acl-with-lb and
+         send all packet directed to VIP that don't match the above flows to
+         connection tracker.
+      </li>
+
+      <li>
          A priority-100 flow sends the packets to connection tracker based
          on a hint provided by the previous tables
          (with a match for <code>reg0[0] == 1</code>) by using the
@@ -2331,6 +2337,8 @@ output;
     <p>
       This is similar to ingress table <code>Pre-ACLs</code> except for
      <code>to-lport</code> traffic.
+     Except when the option enable-stateless-acl-with-lb is enabled:
+     REGBIT_ACL_STATELESS ignored.
     </p>
 
     <p>

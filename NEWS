@@ -23,6 +23,9 @@ Post v25.03.0
    - Added "ic-route-filter-adv" and "ic-route-filter-learn" options to
      the Logical_Router/Logical_Router_Port tables to allow users to
      filter advertised/learned IC routes.
+   - Add a new logical switch option - enable-stateless-acl-lb with default
+     value of false. This option should be set to true for logical switches
+     with stateless ACL to work with load balancer.
 
 OVN v25.03.0 - 07 Mar 2025
 --------------------------

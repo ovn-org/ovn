@@ -379,6 +379,10 @@ struct ovn_datapath {
     bool has_vtep_lports;
     bool has_arp_proxy_port;
 
+    /* Set to true if the option 'enable-stateless-acl-with-lb' is enabled
+     * on the logical switch. */
+    bool lb_with_stateless_mode;
+
     /* IPAM data. */
     struct ipam_info ipam_info;
 

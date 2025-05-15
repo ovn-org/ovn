@@ -503,6 +503,7 @@ ovn_datapath_create(struct hmap *datapaths, const struct uuid *key,
     od->router_ports = VECTOR_EMPTY_INITIALIZER(struct ovn_port *);
     od->l3dgw_ports = VECTOR_EMPTY_INITIALIZER(struct ovn_port *);
     od->localnet_ports = VECTOR_EMPTY_INITIALIZER(struct ovn_port *);
+    od->lb_with_stateless_mode = false;
     return od;
 }
 
@@ -941,6 +942,11 @@ join_datapaths(const struct nbrec_logical_switch_table *nbrec_ls_table,
 
         if (smap_get_bool(&nbs->other_config, "ic-vxlan_mode", false)) {
             vxlan_ic_mode = true;
+        }
+
+        if (smap_get_bool(&nbs->other_config, "enable-stateless-acl-with-lb",
+                          false)) {
+            od->lb_with_stateless_mode = true;
         }
     }
 
@@ -3967,6 +3973,9 @@ build_lb_datapaths(const struct hmap *lbs, const struct hmap *lb_groups,
             lb_dps = ovn_lb_datapaths_find(lb_datapaths_map, lb_uuid);
             ovs_assert(lb_dps);
             ovn_lb_datapaths_add_ls(lb_dps, 1, &od);
+            if (od->lb_with_stateless_mode) {
+                hmapx_add(&lb_dps->ls_lb_with_stateless_mode, od);
+            }
         }
 
         for (size_t i = 0; i < od->nbs->n_load_balancer_group; i++) {
@@ -5549,6 +5558,10 @@ northd_handle_lb_data_changes(struct tracked_lb_data *trk_lb_data,
             ovs_assert(lb_dps);
             ovn_lb_datapaths_add_ls(lb_dps, 1, &od);
 
+            if (od->lb_with_stateless_mode) {
+                hmapx_add(&lb_dps->ls_lb_with_stateless_mode, od);
+            }
+
             /* Add the lb to the northd tracked data. */
             hmapx_add(&nd_changes->trk_lbs.crupdated, lb_dps);
         }
@@ -6230,7 +6243,7 @@ build_stateless_filter(const struct ovn_datapath *od,
                                 action,
                                 &acl->header_,
                                 lflow_ref);
-    } else {
+    } else if (!od->lb_with_stateless_mode) {
         ovn_lflow_add_with_hint(lflows, od, S_SWITCH_OUT_PRE_ACL,
                                 acl->priority + OVN_ACL_PRI_OFFSET,
                                 acl->match,
@@ -7795,8 +7808,14 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
          *
          * This is enforced at a higher priority than ACLs can be defined. */
         ds_clear(&match);
-        ds_put_format(&match, "%s(ct.est && ct.rpl && ct_mark.blocked == 1)",
-                      use_ct_inv_match ? "ct.inv || " : "");
+
+        if (use_ct_inv_match && !od->lb_with_stateless_mode) {
+            ds_put_cstr(&match, "ct.inv || (ct.est && ct.rpl && "
+                                "ct_mark.blocked == 1)");
+        } else {
+            ds_put_cstr(&match, "(ct.est && ct.rpl && ct_mark.blocked == 1)");
+        }
+
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_EVAL, UINT16_MAX - 3,
                       ds_cstr(&match), REGBIT_ACL_VERDICT_DROP " = 1; next;",
                       lflow_ref);
@@ -8099,6 +8118,42 @@ build_lb_rules_pre_stateful(struct lflow_table *lflows,
             lflows, lb_dps->nb_ls_map, ods_size(ls_datapaths),
             S_SWITCH_IN_PRE_STATEFUL, 120, ds_cstr(match), ds_cstr(action),
             &lb->nlb->header_, lb_dps->lflow_ref);
+
+        struct lflow_ref *lflow_ref = lb_dps->lflow_ref;
+        struct hmapx_node *hmapx_node;
+        struct ovn_datapath *od;
+        HMAPX_FOR_EACH (hmapx_node, &lb_dps->ls_lb_with_stateless_mode) {
+            od = hmapx_node->data;
+
+            ds_clear(action);
+            ds_clear(match);
+
+            ds_put_format(match, "%s.dst == %s", ip_match, lb_vip->vip_str);
+
+            if (lb_vip->port_str) {
+                ds_put_format(match, " && %s.dst == %s", lb->proto,
+                              lb_vip->port_str);
+            }
+
+            ds_put_cstr(action, "ct_lb_mark;");
+
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 150,
+                          ds_cstr(match), ds_cstr(action), lflow_ref);
+
+            if (lb->hairpin_snat_ip || lb_vip->port_str) {
+                ds_clear(action);
+                ds_clear(match);
+
+                ds_put_format(match, "%s && %s.dst == %s", lb->proto, ip_match,
+                                     lb->hairpin_snat_ip
+                                     ? lb->hairpin_snat_ip
+                                     : lb_vip->vip_str);
+                ds_put_cstr(action, "ct_lb_mark;");
+
+                ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 105,
+                              ds_cstr(match), ds_cstr(action), lflow_ref);
+            }
+        }
     }
 }
 

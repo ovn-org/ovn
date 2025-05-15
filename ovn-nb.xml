@@ -839,6 +839,14 @@
         is not set and the zone limit is derived from OvS default datapath
         limit.
       </column>
+
+      <column name="other_config" key="enable-stateless-acl-with-lb"
+              type='{"type": "boolean"}'>
+        This option must be set to true for stateless ACL to work with load
+        balancers. When enabled, packets with the ct.inv flag will not be
+        dropped, even if use_ct_inv_match is set to true.
+        Default: <code>false</code>.
+      </column>
     </group>
 
     <group title="IP Multicast Snooping Options">

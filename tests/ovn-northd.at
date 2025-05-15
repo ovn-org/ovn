@@ -17393,3 +17393,126 @@ AT_CHECK([echo $call_seq | grep -qE "^I*uuI*$"], [0])
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([enable-stateless-acl-with-lb usage])
+ovn_start ovn-northd
+
+AS_BOX([Create logical switches and ports.])
+check ovn-nbctl ls-add sw0
+check ovn-nbctl --wait=sb lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 \
+"00:00:00:00:00:02 10.0.0.2"
+
+check ovn-nbctl --wait=sb lsp-add sw0 sw0-p2 -- lsp-set-addresses sw0-p2 \
+"00:00:00:00:00:03 10.0.0.3"
+
+AS_BOX([Create stateless ACLs.])
+check ovn-nbctl --wait=sb acl-add sw0 from-lport 1001 "ip" allow-stateless
+check ovn-nbctl --wait=sb acl-add sw0 to-lport 1001 "ip" allow-stateless
+
+AS_BOX([Create stateful ACLs.])
+# check if allow-stateless acls have higher priority we skip conntrack.
+check ovn-nbctl --wait=sb acl-add sw0 from-lport 1000 "ip" allow-related
+check ovn-nbctl --wait=sb acl-add sw0 to-lport 1000 "ip" allow-related
+
+AS_BOX([Create Load Balancer.])
+check ovn-nbctl lb-add lb1 10.0.0.4:80 10.0.0.2:80,10.0.0.3:80
+check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
+
+ovn-sbctl dump-flows sw0 > sw0flows
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_pre_acl' sw0flows | grep reg0 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_acl      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=??(ls_in_pre_acl      ), priority=2001 , match=(ip), action=(reg0[[16]] = 1; next;)
+  table=??(ls_out_pre_acl     ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=??(ls_out_pre_acl     ), priority=2001 , match=(ip), action=(reg0[[16]] = 1; next;)
+])
+
+AT_CHECK(
+  [grep -E 'ls_out_acl_eval' sw0flows | grep 65532 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
+])
+
+AS_BOX([Enable enable-stateless-acl-with-lb option.])
+check ovn-nbctl --wait=sb set logical_switch sw0 other_config:enable-stateless-acl-with-lb=true
+ovn-sbctl dump-flows sw0 > sw0flows
+AT_CHECK(
+  [grep -E 'ls_(in|out)_pre_acl' sw0flows | grep reg0 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_acl      ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+  table=??(ls_in_pre_acl      ), priority=2001 , match=(ip), action=(reg0[[16]] = 1; next;)
+  table=??(ls_out_pre_acl     ), priority=100  , match=(ip), action=(reg0[[0]] = 1; next;)
+])
+
+# We do not match conntrack invalid packets in case of load balancers with stateless ACLs.
+AT_CHECK(
+  [grep -E 'ls_out_acl_eval' sw0flows | grep 65532 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=((ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
+])
+
+AT_CHECK([grep -E 'ls_in_pre_stateful' sw0flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_stateful ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_pre_stateful ), priority=100  , match=(reg0[[0]] == 1), action=(ct_next;)
+  table=??(ls_in_pre_stateful ), priority=105  , match=(tcp && ip4.dst == 10.0.0.4), action=(ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=115  , match=(reg0[[2]] == 1 && ip.is_frag), action=(reg0[[19]] = 1; ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4.dst == 10.0.0.4 && tcp.dst == 80), action=(reg4 = 10.0.0.4; reg2[[0..15]] = 80; ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=150  , match=(ip4.dst == 10.0.0.4 && tcp.dst == 80), action=(ct_lb_mark;)
+])
+
+AS_BOX([Create Load Balancer without port.])
+check ovn-nbctl --wait=sb ls-lb-del sw0 lb1
+check ovn-nbctl lb-add lb2 10.0.0.5 10.0.0.2,10.0.0.3
+check ovn-nbctl --wait=sb ls-lb-add sw0 lb2
+
+ovn-sbctl dump-flows sw0 > sw0flows
+AT_CHECK([grep -E 'ls_in_pre_stateful' sw0flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_stateful ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_pre_stateful ), priority=100  , match=(reg0[[0]] == 1), action=(ct_next;)
+  table=??(ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=115  , match=(reg0[[2]] == 1 && ip.is_frag), action=(reg0[[19]] = 1; ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4.dst == 10.0.0.5), action=(reg4 = 10.0.0.5; ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=150  , match=(ip4.dst == 10.0.0.5), action=(ct_lb_mark;)
+])
+
+AS_BOX([Set hairpin_snat_ip to Load Balancer without port.])
+check ovn-nbctl --wait=sb set load_balancer lb2 options:hairpin_snat_ip="10.0.0.6"
+
+ovn-sbctl dump-flows sw0 > sw0flows
+AT_CHECK([grep -E 'ls_in_pre_stateful' sw0flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_stateful ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_pre_stateful ), priority=100  , match=(reg0[[0]] == 1), action=(ct_next;)
+  table=??(ls_in_pre_stateful ), priority=105  , match=(tcp && ip4.dst == 10.0.0.6), action=(ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=115  , match=(reg0[[2]] == 1 && ip.is_frag), action=(reg0[[19]] = 1; ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4.dst == 10.0.0.5), action=(reg4 = 10.0.0.5; ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=150  , match=(ip4.dst == 10.0.0.5), action=(ct_lb_mark;)
+])
+
+AS_BOX([Create one more logical switch with load balancer.])
+# Check if load balancer is attached to multiple logical switches:
+# the lflows for the load balancer will only change on the switch
+# where the option is enabled.
+check ovn-nbctl ls-add sw1
+check ovn-nbctl ls-lb-add sw1 lb2
+
+ovn-sbctl dump-flows sw1 > sw1flows
+AT_CHECK([grep -E 'ls_in_pre_stateful' sw1flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_stateful ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_pre_stateful ), priority=100  , match=(reg0[[0]] == 1), action=(ct_next;)
+  table=??(ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=115  , match=(reg0[[2]] == 1 && ip.is_frag), action=(reg0[[19]] = 1; ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4.dst == 10.0.0.5), action=(reg4 = 10.0.0.5; ct_lb_mark;)
+])
+
+AT_CLEANUP
+])
+
