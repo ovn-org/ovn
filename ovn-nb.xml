@@ -553,7 +553,7 @@
       sampled while a value of 65535 corresponds to all packets being sampled.
     </column>
     <column name="set_id">
-      The 8-bit integer identifier of the set of of collectors to send
+      The 32-bit integer identifier of the set of of collectors to send
       packets to. See Flow_Sample_Collector_Set Table in ovs-vswitchd's
       database schema.
     </column>
