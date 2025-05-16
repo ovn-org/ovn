@@ -6508,11 +6508,11 @@ build_acl_sample_action(struct ds *actions, const struct nbrec_acl *acl,
 
     for (size_t i = 0; i < sample->n_collectors; i++) {
         ds_put_format(actions, "sample(probability=%"PRIu16","
-                               "collector_set=%"PRIu8","
+                               "collector_set=%"PRIu32","
                                "obs_domain=%"PRIu32","
                                "obs_point=%"PRIu32");",
                                (uint16_t) sample->collectors[i]->probability,
-                               (uint8_t) sample->collectors[i]->set_id,
+                               (uint32_t) sample->collectors[i]->set_id,
                                domain_id, point_id);
     }
     ds_put_cstr(actions, " next;");
@@ -6776,12 +6776,12 @@ build_acl_sample_generic_new_flows(const struct ovn_datapath *od,
                          (uint8_t) obs_stage);
 
     ds_put_format(actions, "sample(probability=%"PRIu16","
-                           "collector_set=%"PRIu8","
+                           "collector_set=%"PRIu32","
                            "obs_domain=%"PRIu32","
                            "obs_point="REG_OBS_POINT_ID_NEW");"
                            " next;",
                            (uint16_t) coll->probability,
-                           (uint8_t) coll->set_id,
+                           (uint32_t) coll->set_id,
                            sample_domain_id);
 
     ovn_lflow_add(lflows, od, stage, stateful ? 1000 : 900, ds_cstr(match),
@@ -6815,12 +6815,12 @@ build_acl_sample_generic_est_flows(const struct ovn_datapath *od,
                          (uint8_t) obs_stage);
 
     ds_put_format(actions, "sample(probability=%"PRIu16","
-                           "collector_set=%"PRIu8","
+                           "collector_set=%"PRIu32","
                            "obs_domain=%"PRIu32","
                            "obs_point=ct_label.obs_point_id);"
                            " next;",
                            (uint16_t) coll->probability,
-                           (uint8_t) coll->set_id,
+                           (uint32_t) coll->set_id,
                            sample_domain_id);
 
     ovn_lflow_add(lflows, od, stage, 1000, ds_cstr(match),
