@@ -13155,7 +13155,7 @@ ADD_VETH(vm1, vm1, br-int, "42.42.42.2/24", "00:00:00:00:00:01", "42.42.42.1")
 ADD_NAMESPACES(vm2)
 ADD_VETH(vm2, vm2, br-int, "42.42.42.3/24", "00:00:00:00:00:02", "42.42.42.1")
 
-collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 set_id=100)
+collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 set_id=4294967295)
 collector2=$(ovn-nbctl create Sample_Collector id=2 name=c2 probability=65535 set_id=200)
 check_row_count nb:Sample_Collector 2
 
@@ -13221,7 +13221,7 @@ OVS_WAIT_UNTIL([grep -q 'Startup nfcapd.' collector.err])
 dnl Configure the OVS flow sample collector.
 ovs-vsctl --id=@br get Bridge br-int \
     -- --id=@ipfix create IPFIX targets=\"127.0.0.1:4242\" template_interval=1 \
-    -- --id=@cs create Flow_Sample_Collector_Set id=100 bridge=@br ipfix=@ipfix
+    -- --id=@cs create Flow_Sample_Collector_Set id=4294967295 bridge=@br ipfix=@ipfix
 
 check ovn-nbctl --wait=hv sync
 dnl And wait for it to be up and running.
@@ -13352,7 +13352,7 @@ ADD_VETH(vm1, vm1, br-int, "42.42.42.2/24", "00:00:00:00:00:01", "42.42.42.1")
 ADD_NAMESPACES(vm2)
 ADD_VETH(vm2, vm2, br-int, "42.42.42.3/24", "00:00:00:00:00:02", "42.42.42.1")
 
-collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 set_id=100)
+collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 set_id=4294967295)
 check_row_count nb:Sample_Collector 1
 
 check_uuid ovn-nbctl create Sampling_App type="acl-new" id="42"
@@ -13390,7 +13390,7 @@ OVS_WAIT_UNTIL([grep -q 'Startup nfcapd.' collector.err])
 dnl Configure the OVS flow sample collector.
 ovs-vsctl --id=@br get Bridge br-int \
     -- --id=@ipfix create IPFIX targets=\"127.0.0.1:4242\" template_interval=1 \
-    -- --id=@cs create Flow_Sample_Collector_Set id=100 bridge=@br ipfix=@ipfix
+    -- --id=@cs create Flow_Sample_Collector_Set id=4294967295 bridge=@br ipfix=@ipfix
 
 check ovn-nbctl --wait=hv sync
 dnl And wait for it to be up and running.
@@ -13479,7 +13479,7 @@ ADD_VETH(vm1, vm1, br-int, "42.42.42.2/24", "00:00:00:00:00:01", "42.42.42.1")
 ADD_NAMESPACES(vm2)
 ADD_VETH(vm2, vm2, br-int, "42.42.42.3/24", "00:00:00:00:00:02", "42.42.42.1")
 
-collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 set_id=100)
+collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 set_id=4294967295)
 check_row_count nb:Sample_Collector 1
 
 check_uuid ovn-nbctl create Sampling_App type="acl-new" id="42"
@@ -13515,7 +13515,7 @@ OVS_WAIT_UNTIL([grep -q 'Startup nfcapd.' collector.err])
 dnl Configure the OVS flow sample collector.
 ovs-vsctl --id=@br get Bridge br-int \
     -- --id=@ipfix create IPFIX targets=\"127.0.0.1:4242\" template_interval=1 \
-    -- --id=@cs create Flow_Sample_Collector_Set id=100 bridge=@br ipfix=@ipfix
+    -- --id=@cs create Flow_Sample_Collector_Set id=4294967295 bridge=@br ipfix=@ipfix
 
 check ovn-nbctl --wait=hv sync
 dnl And wait for it to be up and running.
@@ -13609,7 +13609,7 @@ check ovn-nbctl --wait=sb sync
 ADD_NAMESPACES(vm1)
 ADD_VETH(vm1, vm1, br-int, "42.42.42.2/24", "00:00:00:00:00:01", "42.42.42.1")
 
-collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 set_id=100)
+collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 set_id=4294967295)
 collector2=$(ovn-nbctl create Sample_Collector id=2 name=c2 probability=65535 set_id=200)
 check_row_count nb:Sample_Collector 2
 
@@ -13644,7 +13644,7 @@ OVS_WAIT_UNTIL([grep -q 'Startup nfcapd.' collector.err])
 dnl Configure the OVS flow sample collector.
 ovs-vsctl --id=@br get Bridge br-int \
     -- --id=@ipfix create IPFIX targets=\"127.0.0.1:4242\" template_interval=1 \
-    -- --id=@cs create Flow_Sample_Collector_Set id=100 bridge=@br ipfix=@ipfix
+    -- --id=@cs create Flow_Sample_Collector_Set id=4294967295 bridge=@br ipfix=@ipfix
 
 check ovn-nbctl --wait=hv sync
 dnl And wait for it to be up and running.
