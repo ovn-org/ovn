@@ -325,6 +325,7 @@ struct ovn_datapath {
      * will be NULL. */
     struct ovn_port **l3dgw_ports;
     size_t n_l3dgw_ports;
+    size_t n_allocated_l3dgw_ports;
 
     /* router datapath has a logical port with redirect-type set to bridged. */
     bool redirect_bridged;

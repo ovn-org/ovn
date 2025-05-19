@@ -21574,10 +21574,10 @@ check ovn-nbctl lsp-add sw0 rp-sw0 -- set Logical_Switch_Port rp-sw0 \
     type=router options:router-port=sw0 \
     -- lsp-set-addresses rp-sw0 router
 
-check ovn-nbctl lrp-add lr0 sw1 00:00:02:01:02:03 172.16.1.1/24 2002:0:0:0:0:0:0:1/64 \
-    -- lrp-set-gateway-chassis sw1 hv2
+check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:02:01:02:03 172.16.1.1/24 2002:0:0:0:0:0:0:1/64 \
+    -- lrp-set-gateway-chassis lr0-sw1 hv2
 check ovn-nbctl lsp-add sw1 rp-sw1 -- set Logical_Switch_Port rp-sw1 \
-    type=router options:router-port=sw1 \
+    type=router options:router-port=lr0-sw1 \
     -- lsp-set-addresses rp-sw1 router
 
 check ovn-nbctl lsp-add sw0 sw0-p0 \
@@ -21588,6 +21588,8 @@ check ovn-nbctl lsp-add sw0 sw0-p1 \
 
 check ovn-nbctl lsp-add sw1 sw1-p0 \
     -- lsp-set-addresses sw1-p0 unknown
+
+check ovn-nbctl lsp-add sw1 ln-sw1 -- lsp-set-type ln-sw1 localnet
 
 check ovn-nbctl lr-nat-add lr0 snat 172.16.1.1 192.168.1.0/24
 check ovn-nbctl lr-nat-add lr0 snat 2002::1 2001::/64

@@ -1046,6 +1046,183 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [sh -c 'dd bs=512 count=2 if=/dev/uran
 done
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route get 10.0.0.1 dev sw0p1 | grep -q "mtu $mtu"])
 
+# Reset back to geneve tunnels
+for c in ovn-chassis-1 ovn-chassis-2 ovn-gw-1
+do
+    m_as $c ovs-vsctl set open . external-ids:ovn-encap-type=geneve
+done
+
+AT_CLEANUP
+
+AT_SETUP([ovn multinode NAT on a provider network with no localnet ports])
+
+# Check that ovn-fake-multinode setup is up and running
+check_fake_multinode_setup
+
+# Delete the multinode NB and OVS resources before starting the test.
+cleanup_multinode_resources
+
+check multinode_nbctl ls-add sw0
+check multinode_nbctl lsp-add sw0 sw0-port1
+check multinode_nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3 1000::3"
+check multinode_nbctl lsp-add sw0 sw0-port2
+check multinode_nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 1000::4"
+
+m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
+
+m_wait_for_ports_up
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.4 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+# Create the second logical switch with one port
+check multinode_nbctl ls-add sw1
+check multinode_nbctl lsp-add sw1 sw1-port1
+check multinode_nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3 2000::3"
+
+# Create a logical router and attach both logical switches
+check multinode_nbctl lr-add lr0
+check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
+check multinode_nbctl lsp-add sw0 sw0-lr0
+check multinode_nbctl lsp-set-type sw0-lr0 router
+check multinode_nbctl lsp-set-addresses sw0-lr0 router
+check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
+check multinode_nbctl lsp-add sw1 sw1-lr0
+check multinode_nbctl lsp-set-type sw1-lr0 router
+check multinode_nbctl lsp-set-addresses sw1-lr0 router
+check multinode_nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
+
+# create exteranl connection for N/S traffic
+check multinode_nbctl ls-add public
+check multinode_nbctl lsp-add public ln-public
+check multinode_nbctl lsp-set-type ln-public localnet
+check multinode_nbctl lsp-set-addresses ln-public unknown
+check multinode_nbctl lsp-set-options ln-public network_name=public
+
+check multinode_nbctl lrp-add lr0 lr0-public 00:11:22:00:ff:01 172.20.0.100/24
+check multinode_nbctl lsp-add public public-lr0
+check multinode_nbctl lsp-set-type public-lr0 router
+check multinode_nbctl lsp-set-addresses public-lr0 router
+check multinode_nbctl lsp-set-options public-lr0 router-port=lr0-public
+check multinode_nbctl lrp-set-gateway-chassis lr0-public ovn-gw-1 10
+
+check multinode_nbctl lr-nat-add lr0 dnat_and_snat 172.20.0.110 10.0.0.3 sw0-port1 30:54:00:00:00:03
+check multinode_nbctl lr-nat-add lr0 dnat_and_snat 172.20.0.120 20.0.0.3
+check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 10.0.0.0/24
+check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 20.0.0.0/24
+
+# Create a logical port pub-p1 and bind it in ovn-chassis-1
+check multinode_nbctl lsp-add public public-port1
+check multinode_nbctl lsp-set-addresses public-port1 "60:54:00:00:00:03 172.168.0.50"
+
+m_as ovn-chassis-1 /data/create_fake_vm.sh public-port1 pubp1 60:54:00:00:00:03 172.20.0.50 24 172.20.0.100
+
+check multinode_nbctl --wait=hv sync
+
+# First do basic ping tests before deleting the localnet port - ln-public.
+# Once the localnet port is deleted from public ls, routing for 172.20.0.0/24
+# is centralized on ovn-gw-1.
+
+# This function checks the North-South traffic.
+run_ns_traffic() {
+  M_NS_CHECK_EXEC([ovn-chassis-1], [pubp1], [arp -d 172.20.0.110], [ignore], [ignore])
+  M_NS_CHECK_EXEC([ovn-chassis-1], [pubp1], [arp -d 172.20.0.120], [ignore], [ignore])
+
+  M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 172.20.0.100 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+  M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 172.20.0.110 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+  M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 172.20.0.120 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+  M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 172.20.0.50 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+  M_NS_CHECK_EXEC([ovn-chassis-2], [sw1p1], [ping -q -c 3 -i 0.3 -w 2 172.20.0.50 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+  # Now ping from pubp1 to 172.20.0.100, 172.20.0.110, 172.20.0.120, 10.0.0.3 and 20.0.0.3
+  M_NS_CHECK_EXEC([ovn-chassis-1], [pubp1], [ping -q -c 3 -i 0.3 -w 2 172.20.0.100 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+  M_NS_CHECK_EXEC([ovn-chassis-1], [pubp1], [ping -q -c 3 -i 0.3 -w 2 172.20.0.110 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+  M_NS_CHECK_EXEC([ovn-chassis-1], [pubp1], [ping -q -c 3 -i 0.3 -w 2 172.20.0.120 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+  M_NS_CHECK_EXEC([ovn-chassis-1], [pubp1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+  M_NS_CHECK_EXEC([ovn-chassis-1], [pubp1], [ping -q -c 3 -i 0.3 -w 2 20.0.0.3 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+}
+
+# Test out the N-S traffic.
+run_ns_traffic
+
+# Delete the localnet port by changing the type of ln-public to VIF port.
+check multinode_nbctl --wait=hv lsp-set-type ln-public ""
+
+# cr-port should not be created for public-lr0 since the option
+# centralize_routing=true is not yet set for lr0-public.
+m_check_row_count Port_Binding 0 logical_port=cr-public-lr0
+
+# Set the option - centralize_routing now.
+check multinode_nbctl --wait=hv set logical_router_port lr0-public options:centralize_routing=true
+
+m_check_row_count Port_Binding 1 logical_port=cr-public-lr0
+m_check_column chassisredirect Port_Binding type logical_port=cr-public-lr0
+
+# Test out the N-S traffic.
+run_ns_traffic
+
+# Re-add the localnet port
+check multinode_nbctl --wait=hv lsp-set-type ln-public localnet
+
+m_check_row_count Port_Binding 0 logical_port=cr-public-lr0
+
+# Test out the N-S traffic.
+run_ns_traffic
+
+# Delete the ln-public port this time.
+check multinode_nbctl --wait=hv lsp-del ln-public
+
+m_check_row_count Port_Binding 1 logical_port=cr-public-lr0
+m_check_column chassisredirect Port_Binding type logical_port=cr-public-lr0
+
+# Test out the N-S traffic.
+run_ns_traffic
+
 AT_CLEANUP
 ])
 

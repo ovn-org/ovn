@@ -3416,6 +3416,40 @@ or
           <ref column="options" key="gateway_mtu"/> option.
         </p>
       </column>
+
+      <column name="options" key="centralize_routing"
+              type='{"type": "boolean"}'>
+        <p>
+          This option is applicable only if the router port is a
+          distributed gateway port i.e if the <ref table="Logical_Router_Port"
+          column="ha_chassis_group"/> column or
+          <ref table="Logical_Router_Port" column="gateway_chassis"/>
+          is set.
+        </p>
+
+        <p>
+          If set to <code>true</code>, routing for the router port's
+          networks (set in the column <ref table="Logical_Router_Port"
+          column="networks"/>) is centralized on the gateway chassis
+          which claims this distributed gateway port.
+        </p>
+
+        <p>
+          Additionally for this option to take effect, below conditions
+          must be met:
+        </p>
+
+        <ul>
+          <li>
+            The Logical router has only one distributed gateway port.
+          </li>
+
+          <li>
+            The router port's peer logical switch has no localnet ports.
+          </li>
+
+        </ul>
+      </column>
     </group>
 
     <group title="Attachment">

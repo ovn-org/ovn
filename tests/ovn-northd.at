@@ -2175,7 +2175,7 @@ match=(inport == "lrp-public" && arp.op == 1 && arp.tpa == 43.43.43.4 && is_chas
 action=(eth.dst = eth.src; eth.src = 00:00:00:00:00:02; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 00:00:00:00:00:02; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
 ])
 
-# xreg0[0..47] isn't used anywhere else.
+# xreg0[[0..47]] isn't used anywhere else.
 AT_CHECK([ovn-sbctl lflow-list | grep "xreg0\[[0..47\]]" | grep -vE 'lr_in_admission|lr_in_ip_input'], [1], [])
 
 AT_CLEANUP
@@ -5499,13 +5499,14 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | grep "192.168.4.100" | grep "_MC_flo
 
 AS_BOX([Configuring ro1-ls1 router port as a gateway router port])
 
-ovn-nbctl --wait=sb lrp-set-gateway-chassis ro1-ls1 chassis-1 30
+check ovn-nbctl  lrp-set-gateway-chassis ro1-ls1 chassis-1 30
+check ovn-nbctl --wait=sb lsp-add ls1 ln-ls1 -- lsp-set-type ln-ls1 localnet
 
 ovn-sbctl lflow-list ls1 > ls1_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | sed 's/table=../table=??/' | sort], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
-  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01 && is_chassis_resident("cr-ro1-ls1")), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
@@ -12842,5 +12843,508 @@ AT_CHECK([grep -E flags.network_id lrflows | sed 's/table=../table=??/' | sort],
   table=??(lr_out_snat        ), priority=110  , match=(flags.force_snat_for_lb == 1 && flags.network_id == 9 && ip4 && outport == "lrp-server"), action=(ct_snat(6.5.1.1);)
   table=??(lr_out_snat        ), priority=110  , match=(flags.force_snat_for_lb == 1 && flags.network_id == 9 && ip6 && outport == "lrp-server"), action=(ct_snat(ff01::b);)
 ])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([NAT on a provider network with no localnet ports])
+AT_KEYWORDS([NAT])
+ovn_start
+
+check ovn-nbctl -- ls-add sw0 -- ls-add sw1
+check ovn-nbctl lsp-add sw0 sw0-port1
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
+check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:03 20.0.0.1/24
+check ovn-nbctl lsp-add sw1 sw1-lr0
+check ovn-nbctl lsp-set-type sw1-lr0 router
+check ovn-nbctl lsp-set-addresses sw1-lr0 router
+check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+check ovn-nbctl ls-add public
+check ovn-nbctl lsp-add public pub-p1
+
+# localnet port
+check ovn-nbctl lsp-add public ln-public
+check ovn-nbctl lsp-set-type ln-public localnet
+check ovn-nbctl lsp-set-addresses ln-public unknown
+check ovn-nbctl lsp-set-options ln-public network_name=public
+
+check ovn-nbctl lrp-add lr0 lr0-public 00:00:00:00:ff:02 172.168.0.10/24
+check ovn-nbctl lrp-set-gateway-chassis lr0-public gw1
+
+check ovn-nbctl lsp-add public public-lr0
+check ovn-nbctl lsp-set-type public-lr0 router
+check ovn-nbctl lsp-set-addresses public-lr0 router
+check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+
+check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.168.0.110 10.0.0.3 sw0-port1 30:54:00:00:00:03
+check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.168.0.120 20.0.0.3
+check ovn-nbctl lr-nat-add lr0 snat 172.168.0.100 10.0.0.0/24
+check ovn-nbctl lr-nat-add lr0 snat 172.168.0.100 20.0.0.0/24
+
+check ovn-nbctl --wait=sb sync
+
+check_flows_no_cr_port_for_public_lr0() {
+  # check that there is no port binding cr-public-lr0
+  check_row_count Port_Binding 0 logical_port=cr-public-lr0
+
+  ovn-sbctl dump-flows lr0 > lr0flows
+  ovn-sbctl dump-flows public > publicflows
+
+AT_CHECK([grep "lr_in_admission" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_admission    ), priority=100  , match=(vlan.present || eth.src[[40]]), action=(drop;)
+  table=??(lr_in_admission    ), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
+  table=??(lr_in_admission    ), priority=120  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.dst == 00:00:00:00:ff:02 && !is_chassis_resident("cr-lr0-public") && flags.tunnel_rx == 1), action=(outport <-> inport; inport = "lr0-public"; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:ff:01 && inport == "lr0-sw0"), action=(xreg0[[0..47]] = 00:00:00:00:ff:01; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:ff:02 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(xreg0[[0..47]] = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:ff:03 && inport == "lr0-sw1"), action=(xreg0[[0..47]] = 00:00:00:00:ff:03; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && inport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(xreg0[[0..47]] = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-public"), action=(xreg0[[0..47]] = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-sw0"), action=(xreg0[[0..47]] = 00:00:00:00:ff:01; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-sw1"), action=(xreg0[[0..47]] = 00:00:00:00:ff:03; next;)
+])
+
+AT_CHECK([grep "lr_in_ip_input" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_input     ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_ip_input     ), priority=100  , match=(ip4.src == {10.0.0.1, 10.0.0.255} && reg9[[0]] == 0), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=100  , match=(ip4.src == {172.168.0.10, 172.168.0.255} && reg9[[0]] == 0), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=100  , match=(ip4.src == {20.0.0.1, 20.0.0.255} && reg9[[0]] == 0), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=100  , match=(ip4.src_mcast ||ip4.src == 255.255.255.255 || ip4.src == 127.0.0.0/8 || ip4.dst == 127.0.0.0/8 || ip4.src == 0.0.0.0/8 || ip4.dst == 0.0.0.0/8), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=120  , match=(inport == "lr0-public" && ip4.src == 172.168.0.100), action=(next;)
+  table=??(lr_in_ip_input     ), priority=30   , match=(ip.ttl == {0, 1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=31   , match=(inport == "lr0-public" && ip4 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp4 {eth.dst <-> eth.src; icmp4.type = 11; /* Time exceeded */ icmp4.code = 0; /* TTL exceeded in transit */ ip4.dst <-> ip4.src ; ip.ttl = 254; outport = "lr0-public"; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=31   , match=(inport == "lr0-sw0" && ip4 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp4 {eth.dst <-> eth.src; icmp4.type = 11; /* Time exceeded */ icmp4.code = 0; /* TTL exceeded in transit */ ip4.dst = ip4.src; ip4.src = 10.0.0.1 ; ip.ttl = 254; outport = "lr0-sw0"; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=31   , match=(inport == "lr0-sw1" && ip4 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp4 {eth.dst <-> eth.src; icmp4.type = 11; /* Time exceeded */ icmp4.code = 0; /* TTL exceeded in transit */ ip4.dst = ip4.src; ip4.src = 20.0.0.1 ; ip.ttl = 254; outport = "lr0-sw1"; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=32   , match=(ip.ttl == {0, 1} && !ip.later_frag && (ip4.mcast || ip6.mcast)), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=50   , match=(eth.bcast), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip4.dst == {10.0.0.1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip4.dst == {172.168.0.10}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip4.dst == {20.0.0.1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip6.dst == {fe80::200:ff:fe00:ff01}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip6.dst == {fe80::200:ff:fe00:ff02}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip6.dst == {fe80::200:ff:fe00:ff03}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=82   , match=(ip4.mcast || ip6.mcast), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=83   , match=(ip6.mcast_rsvd), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=84   , match=(nd_rs || nd_ra), action=(next;)
+  table=??(lr_in_ip_input     ), priority=85   , match=(arp || nd), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.168.0.100), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.168.0.110), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.168.0.120), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.10 && arp.spa == 172.168.0.0/24 && is_chassis_resident("cr-lr0-public")), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr0-public" && ip6.dst == {fe80::200:ff:fe00:ff02, ff02::1:ff00:ff02} && nd_ns && nd.target == fe80::200:ff:fe00:ff02 && is_chassis_resident("cr-lr0-public")), action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr0-sw0" && arp.op == 1 && arp.tpa == 10.0.0.1 && arp.spa == 10.0.0.0/24), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr0-sw0" && ip6.dst == {fe80::200:ff:fe00:ff01, ff02::1:ff00:ff01} && nd_ns && nd.target == fe80::200:ff:fe00:ff01), action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr0-sw1" && arp.op == 1 && arp.tpa == 20.0.0.1 && arp.spa == 20.0.0.0/24), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr0-sw1" && ip6.dst == {fe80::200:ff:fe00:ff03, ff02::1:ff00:ff03} && nd_ns && nd.target == fe80::200:ff:fe00:ff03), action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip4.dst == 10.0.0.1 && icmp4.type == 8 && icmp4.code == 0), action=(ip4.dst <-> ip4.src; ip.ttl = 255; icmp4.type = 0; flags.loopback = 1; next; )
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip4.dst == 172.168.0.10 && icmp4.type == 8 && icmp4.code == 0), action=(ip4.dst <-> ip4.src; ip.ttl = 255; icmp4.type = 0; flags.loopback = 1; next; )
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip4.dst == 20.0.0.1 && icmp4.type == 8 && icmp4.code == 0), action=(ip4.dst <-> ip4.src; ip.ttl = 255; icmp4.type = 0; flags.loopback = 1; next; )
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip6.dst == fe80::200:ff:fe00:ff01 && icmp6.type == 128 && icmp6.code == 0), action=(ip6.dst <-> ip6.src; ip.ttl = 255; icmp6.type = 129; flags.loopback = 1; next; )
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip6.dst == fe80::200:ff:fe00:ff02 && icmp6.type == 128 && icmp6.code == 0), action=(ip6.dst <-> ip6.src; ip.ttl = 255; icmp6.type = 129; flags.loopback = 1; next; )
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip6.dst == fe80::200:ff:fe00:ff03 && icmp6.type == 128 && icmp6.code == 0), action=(ip6.dst <-> ip6.src; ip.ttl = 255; icmp6.type = 129; flags.loopback = 1; next; )
+  table=??(lr_in_ip_input     ), priority=91   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.100), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=91   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.110), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=91   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.120), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=92   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.100 && is_chassis_resident("cr-lr0-public")), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=92   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.110 && is_chassis_resident("sw0-port1")), action=(eth.dst = eth.src; eth.src = 30:54:00:00:00:03; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 30:54:00:00:00:03; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=92   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.120 && is_chassis_resident("cr-lr0-public")), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+])
+
+AT_CHECK([grep "lr_in_unsnat" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_unsnat       ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.100 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.110 && inport == "lr0-public"), action=(ct_snat;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.120 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
+])
+
+AT_CHECK([grep "lr_in_defrag" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_defrag       ), priority=0    , match=(1), action=(next;)
+])
+
+AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.110 && inport == "lr0-public"), action=(ct_dnat(10.0.0.3);)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.120 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat(20.0.0.3);)
+])
+
+AT_CHECK([grep "lr_in_arp_resolve" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_arp_resolve  ), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_arp_resolve  ), priority=1    , match=(ip4), action=(get_arp(outport, reg0); next;)
+  table=??(lr_in_arp_resolve  ), priority=1    , match=(ip6), action=(get_nd(outport, xxreg0); next;)
+  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.100), action=(eth.dst = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.110), action=(eth.dst = 30:54:00:00:00:03; next;)
+  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.120), action=(eth.dst = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.100), action=(drop;)
+  table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.110), action=(drop;)
+  table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.120), action=(drop;)
+  table=??(lr_in_arp_resolve  ), priority=500  , match=(ip4.mcast || ip6.mcast), action=(next;)
+])
+
+AT_CHECK([grep "lr_in_gw_redirect" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_gw_redirect  ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_gw_redirect  ), priority=100  , match=(ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(eth.src = 30:54:00:00:00:03; reg1 = 172.168.0.110; next;)
+  table=??(lr_in_gw_redirect  ), priority=50   , match=(outport == "lr0-public"), action=(outport = "cr-lr0-public"; next;)
+])
+
+AT_CHECK([grep "lr_out_undnat" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public"), action=(eth.src = 30:54:00:00:00:03; ct_dnat;)
+  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat;)
+])
+
+AT_CHECK([grep "lr_out_post_undnat" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_post_undnat ), priority=0    , match=(1), action=(next;)
+])
+
+AT_CHECK([grep "lr_out_snat" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
+  table=??(lr_out_snat        ), priority=153  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.100);)
+  table=??(lr_out_snat        ), priority=153  , match=(ip && ip4.src == 20.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.100);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("sw0-port1") && (!ct.trk || !ct.rpl)), action=(eth.src = 30:54:00:00:00:03; ct_snat(172.168.0.110);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.120);)
+])
+
+AT_CHECK([grep "lr_out_egr_loop" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_egr_loop    ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_egr_loop    ), priority=100  , match=(ip4.dst == 172.168.0.100 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(clone { ct_clear; inport = outport; outport = ""; eth.dst <-> eth.src; flags = 0; flags.loopback = 1; reg0 = 0; reg1 = 0; reg2 = 0; reg3 = 0; reg4 = 0; reg5 = 0; reg6 = 0; reg7 = 0; reg8 = 0; reg9 = 0; reg9[[0]] = 1; next(pipeline=ingress, table=??); };)
+  table=??(lr_out_egr_loop    ), priority=100  , match=(ip4.dst == 172.168.0.110 && outport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(clone { ct_clear; inport = outport; outport = ""; eth.dst <-> eth.src; flags = 0; flags.loopback = 1; reg0 = 0; reg1 = 0; reg2 = 0; reg3 = 0; reg4 = 0; reg5 = 0; reg6 = 0; reg7 = 0; reg8 = 0; reg9 = 0; reg9[[0]] = 1; next(pipeline=ingress, table=??); };)
+  table=??(lr_out_egr_loop    ), priority=100  , match=(ip4.dst == 172.168.0.120 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(clone { ct_clear; inport = outport; outport = ""; eth.dst <-> eth.src; flags = 0; flags.loopback = 1; reg0 = 0; reg1 = 0; reg2 = 0; reg3 = 0; reg4 = 0; reg5 = 0; reg6 = 0; reg7 = 0; reg8 = 0; reg9 = 0; reg9[[0]] = 1; next(pipeline=ingress, table=??); };)
+])
+
+AT_CHECK([grep "ls_in_l2_lkup" publicflows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:ff:02 && is_chassis_resident("cr-lr0-public")), action=(outport = "public-lr0"; output;)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && is_chassis_resident("sw0-port1")), action=(outport = "public-lr0"; output;)
+  table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:ff:02, 30:54:00:00:00:03} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.10), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.100), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.110), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.120), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:ff02), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+])
+
+AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && inport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(xreg0[[0..47]] = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.110), action=(eth.dst = 30:54:00:00:00:03; next;)
+  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.120), action=(eth.dst = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.110), action=(drop;)
+  table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.120), action=(drop;)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.110 && inport == "lr0-public"), action=(ct_dnat(10.0.0.3);)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.120 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat(20.0.0.3);)
+  table=??(lr_in_gw_redirect  ), priority=100  , match=(ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(eth.src = 30:54:00:00:00:03; reg1 = 172.168.0.110; next;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.168.0.110), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.168.0.120), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=91   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.110), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=91   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.120), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=92   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.110 && is_chassis_resident("sw0-port1")), action=(eth.dst = eth.src; eth.src = 30:54:00:00:00:03; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 30:54:00:00:00:03; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=92   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.120 && is_chassis_resident("cr-lr0-public")), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.110 && inport == "lr0-public"), action=(ct_snat;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.120 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
+  table=??(lr_out_egr_loop    ), priority=100  , match=(ip4.dst == 172.168.0.110 && outport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(clone { ct_clear; inport = outport; outport = ""; eth.dst <-> eth.src; flags = 0; flags.loopback = 1; reg0 = 0; reg1 = 0; reg2 = 0; reg3 = 0; reg4 = 0; reg5 = 0; reg6 = 0; reg7 = 0; reg8 = 0; reg9 = 0; reg9[[0]] = 1; next(pipeline=ingress, table=??); };)
+  table=??(lr_out_egr_loop    ), priority=100  , match=(ip4.dst == 172.168.0.120 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(clone { ct_clear; inport = outport; outport = ""; eth.dst <-> eth.src; flags = 0; flags.loopback = 1; reg0 = 0; reg1 = 0; reg2 = 0; reg3 = 0; reg4 = 0; reg5 = 0; reg6 = 0; reg7 = 0; reg8 = 0; reg9 = 0; reg9[[0]] = 1; next(pipeline=ingress, table=??); };)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("sw0-port1") && (!ct.trk || !ct.rpl)), action=(eth.src = 30:54:00:00:00:03; ct_snat(172.168.0.110);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.120);)
+  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public"), action=(eth.src = 30:54:00:00:00:03; ct_dnat;)
+  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat;)
+])
+
+AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" publicflows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && is_chassis_resident("sw0-port1")), action=(outport = "public-lr0"; output;)
+  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:ff:02, 30:54:00:00:00:03} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.110), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.120), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+])
+}
+
+check_flows_cr_port_for_public_lr0() {
+  # check that there is port binding cr-public-lr0
+  check_row_count Port_Binding 1 logical_port=cr-public-lr0
+  check_column chassisredirect Port_Binding type logical_port=cr-public-lr0
+
+  ovn-sbctl dump-flows lr0 > lr0flows
+  ovn-sbctl dump-flows public > publicflows
+
+AT_CHECK([grep "lr_in_admission" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_admission    ), priority=100  , match=(vlan.present || eth.src[[40]]), action=(drop;)
+  table=??(lr_in_admission    ), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
+  table=??(lr_in_admission    ), priority=120  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.dst == 00:00:00:00:ff:02 && !is_chassis_resident("cr-lr0-public") && flags.tunnel_rx == 1), action=(outport <-> inport; inport = "lr0-public"; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:ff:01 && inport == "lr0-sw0"), action=(xreg0[[0..47]] = 00:00:00:00:ff:01; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:ff:02 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(xreg0[[0..47]] = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:ff:03 && inport == "lr0-sw1"), action=(xreg0[[0..47]] = 00:00:00:00:ff:03; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-public"), action=(xreg0[[0..47]] = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-sw0"), action=(xreg0[[0..47]] = 00:00:00:00:ff:01; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-sw1"), action=(xreg0[[0..47]] = 00:00:00:00:ff:03; next;)
+])
+
+AT_CHECK([grep "lr_in_ip_input" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_input     ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_ip_input     ), priority=100  , match=(ip4.src == {10.0.0.1, 10.0.0.255} && reg9[[0]] == 0), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=100  , match=(ip4.src == {172.168.0.10, 172.168.0.255} && reg9[[0]] == 0), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=100  , match=(ip4.src == {20.0.0.1, 20.0.0.255} && reg9[[0]] == 0), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=100  , match=(ip4.src_mcast ||ip4.src == 255.255.255.255 || ip4.src == 127.0.0.0/8 || ip4.dst == 127.0.0.0/8 || ip4.src == 0.0.0.0/8 || ip4.dst == 0.0.0.0/8), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=120  , match=(inport == "lr0-public" && ip4.src == 172.168.0.100), action=(next;)
+  table=??(lr_in_ip_input     ), priority=30   , match=(ip.ttl == {0, 1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=31   , match=(inport == "lr0-public" && ip4 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp4 {eth.dst <-> eth.src; icmp4.type = 11; /* Time exceeded */ icmp4.code = 0; /* TTL exceeded in transit */ ip4.dst <-> ip4.src ; ip.ttl = 254; outport = "lr0-public"; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=31   , match=(inport == "lr0-sw0" && ip4 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp4 {eth.dst <-> eth.src; icmp4.type = 11; /* Time exceeded */ icmp4.code = 0; /* TTL exceeded in transit */ ip4.dst = ip4.src; ip4.src = 10.0.0.1 ; ip.ttl = 254; outport = "lr0-sw0"; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=31   , match=(inport == "lr0-sw1" && ip4 && ip.ttl == {0, 1} && !ip.later_frag), action=(icmp4 {eth.dst <-> eth.src; icmp4.type = 11; /* Time exceeded */ icmp4.code = 0; /* TTL exceeded in transit */ ip4.dst = ip4.src; ip4.src = 20.0.0.1 ; ip.ttl = 254; outport = "lr0-sw1"; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=32   , match=(ip.ttl == {0, 1} && !ip.later_frag && (ip4.mcast || ip6.mcast)), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=50   , match=(eth.bcast), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip4.dst == {10.0.0.1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip4.dst == {172.168.0.10}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip4.dst == {20.0.0.1}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip6.dst == {fe80::200:ff:fe00:ff01}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip6.dst == {fe80::200:ff:fe00:ff02}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=60   , match=(ip6.dst == {fe80::200:ff:fe00:ff03}), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=82   , match=(ip4.mcast || ip6.mcast), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=83   , match=(ip6.mcast_rsvd), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=84   , match=(nd_rs || nd_ra), action=(next;)
+  table=??(lr_in_ip_input     ), priority=85   , match=(arp || nd), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.168.0.100), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.168.0.110), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.168.0.120), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.10 && arp.spa == 172.168.0.0/24), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr0-public" && ip6.dst == {fe80::200:ff:fe00:ff02, ff02::1:ff00:ff02} && nd_ns && nd.target == fe80::200:ff:fe00:ff02 && is_chassis_resident("cr-lr0-public")), action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr0-sw0" && arp.op == 1 && arp.tpa == 10.0.0.1 && arp.spa == 10.0.0.0/24), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr0-sw0" && ip6.dst == {fe80::200:ff:fe00:ff01, ff02::1:ff00:ff01} && nd_ns && nd.target == fe80::200:ff:fe00:ff01), action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr0-sw1" && arp.op == 1 && arp.tpa == 20.0.0.1 && arp.spa == 20.0.0.0/24), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr0-sw1" && ip6.dst == {fe80::200:ff:fe00:ff03, ff02::1:ff00:ff03} && nd_ns && nd.target == fe80::200:ff:fe00:ff03), action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip4.dst == 10.0.0.1 && icmp4.type == 8 && icmp4.code == 0), action=(ip4.dst <-> ip4.src; ip.ttl = 255; icmp4.type = 0; flags.loopback = 1; next; )
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip4.dst == 172.168.0.10 && icmp4.type == 8 && icmp4.code == 0), action=(ip4.dst <-> ip4.src; ip.ttl = 255; icmp4.type = 0; flags.loopback = 1; next; )
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip4.dst == 20.0.0.1 && icmp4.type == 8 && icmp4.code == 0), action=(ip4.dst <-> ip4.src; ip.ttl = 255; icmp4.type = 0; flags.loopback = 1; next; )
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip6.dst == fe80::200:ff:fe00:ff01 && icmp6.type == 128 && icmp6.code == 0), action=(ip6.dst <-> ip6.src; ip.ttl = 255; icmp6.type = 129; flags.loopback = 1; next; )
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip6.dst == fe80::200:ff:fe00:ff02 && icmp6.type == 128 && icmp6.code == 0), action=(ip6.dst <-> ip6.src; ip.ttl = 255; icmp6.type = 129; flags.loopback = 1; next; )
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip6.dst == fe80::200:ff:fe00:ff03 && icmp6.type == 128 && icmp6.code == 0), action=(ip6.dst <-> ip6.src; ip.ttl = 255; icmp6.type = 129; flags.loopback = 1; next; )
+])
+
+AT_CHECK([grep "lr_in_unsnat" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_unsnat       ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.100 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.110 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.120 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
+])
+
+AT_CHECK([grep "lr_in_defrag" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_defrag       ), priority=0    , match=(1), action=(next;)
+])
+
+AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.110 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat(10.0.0.3);)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.120 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat(20.0.0.3);)
+])
+
+AT_CHECK([grep "lr_in_arp_resolve" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_arp_resolve  ), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_arp_resolve  ), priority=1    , match=(ip4), action=(get_arp(outport, reg0); next;)
+  table=??(lr_in_arp_resolve  ), priority=1    , match=(ip6), action=(get_nd(outport, xxreg0); next;)
+  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.100), action=(eth.dst = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.110), action=(eth.dst = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.120), action=(eth.dst = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.100), action=(drop;)
+  table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.110), action=(drop;)
+  table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.120), action=(drop;)
+  table=??(lr_in_arp_resolve  ), priority=500  , match=(ip4.mcast || ip6.mcast), action=(next;)
+])
+
+AT_CHECK([grep "lr_in_gw_redirect" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_gw_redirect  ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_gw_redirect  ), priority=50   , match=(outport == "lr0-public"), action=(outport = "cr-lr0-public"; next;)
+])
+
+AT_CHECK([grep "lr_out_undnat" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat;)
+  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat;)
+])
+
+AT_CHECK([grep "lr_out_post_undnat" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_post_undnat ), priority=0    , match=(1), action=(next;)
+])
+
+AT_CHECK([grep "lr_out_snat" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
+  table=??(lr_out_snat        ), priority=153  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.100);)
+  table=??(lr_out_snat        ), priority=153  , match=(ip && ip4.src == 20.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.100);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.110);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.120);)
+])
+
+AT_CHECK([grep "lr_out_egr_loop" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_egr_loop    ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_egr_loop    ), priority=100  , match=(ip4.dst == 172.168.0.100 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(clone { ct_clear; inport = outport; outport = ""; eth.dst <-> eth.src; flags = 0; flags.loopback = 1; reg0 = 0; reg1 = 0; reg2 = 0; reg3 = 0; reg4 = 0; reg5 = 0; reg6 = 0; reg7 = 0; reg8 = 0; reg9 = 0; reg9[[0]] = 1; next(pipeline=ingress, table=??); };)
+  table=??(lr_out_egr_loop    ), priority=100  , match=(ip4.dst == 172.168.0.110 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(clone { ct_clear; inport = outport; outport = ""; eth.dst <-> eth.src; flags = 0; flags.loopback = 1; reg0 = 0; reg1 = 0; reg2 = 0; reg3 = 0; reg4 = 0; reg5 = 0; reg6 = 0; reg7 = 0; reg8 = 0; reg9 = 0; reg9[[0]] = 1; next(pipeline=ingress, table=??); };)
+  table=??(lr_out_egr_loop    ), priority=100  , match=(ip4.dst == 172.168.0.120 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(clone { ct_clear; inport = outport; outport = ""; eth.dst <-> eth.src; flags = 0; flags.loopback = 1; reg0 = 0; reg1 = 0; reg2 = 0; reg3 = 0; reg4 = 0; reg5 = 0; reg6 = 0; reg7 = 0; reg8 = 0; reg9 = 0; reg9[[0]] = 1; next(pipeline=ingress, table=??); };)
+])
+
+AT_CHECK([grep "ls_in_l2_lkup" publicflows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:ff:02 && !is_chassis_resident("cr-public-lr0")), action=(outport = "cr-public-lr0"; output;)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:ff:02 && is_chassis_resident("cr-public-lr0")), action=(outport = "public-lr0"; output;)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && is_chassis_resident("sw0-port1")), action=(outport = "public-lr0"; output;)
+  table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:ff:02, 30:54:00:00:00:03} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.10 && !is_chassis_resident("cr-public-lr0")), action=(clone {outport = "cr-public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.10 && is_chassis_resident("cr-public-lr0")), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.100 && !is_chassis_resident("cr-public-lr0")), action=(clone {outport = "cr-public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.100 && is_chassis_resident("cr-public-lr0")), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.110 && !is_chassis_resident("cr-public-lr0")), action=(clone {outport = "cr-public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.110 && is_chassis_resident("cr-public-lr0")), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.120 && !is_chassis_resident("cr-public-lr0")), action=(clone {outport = "cr-public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.120 && is_chassis_resident("cr-public-lr0")), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:ff02 && !is_chassis_resident("cr-public-lr0")), action=(clone {outport = "cr-public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:ff02 && is_chassis_resident("cr-public-lr0")), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+])
+
+AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.110), action=(eth.dst = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.120), action=(eth.dst = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.110), action=(drop;)
+  table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.120), action=(drop;)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.110 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat(10.0.0.3);)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.120 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat(20.0.0.3);)
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.168.0.110), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.168.0.120), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.110 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.120 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
+  table=??(lr_out_egr_loop    ), priority=100  , match=(ip4.dst == 172.168.0.110 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(clone { ct_clear; inport = outport; outport = ""; eth.dst <-> eth.src; flags = 0; flags.loopback = 1; reg0 = 0; reg1 = 0; reg2 = 0; reg3 = 0; reg4 = 0; reg5 = 0; reg6 = 0; reg7 = 0; reg8 = 0; reg9 = 0; reg9[[0]] = 1; next(pipeline=ingress, table=??); };)
+  table=??(lr_out_egr_loop    ), priority=100  , match=(ip4.dst == 172.168.0.120 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(clone { ct_clear; inport = outport; outport = ""; eth.dst <-> eth.src; flags = 0; flags.loopback = 1; reg0 = 0; reg1 = 0; reg2 = 0; reg3 = 0; reg4 = 0; reg5 = 0; reg6 = 0; reg7 = 0; reg8 = 0; reg9 = 0; reg9[[0]] = 1; next(pipeline=ingress, table=??); };)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.110);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.120);)
+  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat;)
+  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat;)
+])
+
+AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" publicflows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && is_chassis_resident("sw0-port1")), action=(outport = "public-lr0"; output;)
+  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:ff:02, 30:54:00:00:00:03} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.110 && !is_chassis_resident("cr-public-lr0")), action=(clone {outport = "cr-public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.110 && is_chassis_resident("cr-public-lr0")), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.120 && !is_chassis_resident("cr-public-lr0")), action=(clone {outport = "cr-public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.120 && is_chassis_resident("cr-public-lr0")), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+])
+}
+
+# Check that the lflows are as expected when public has localnet port.
+check_flows_no_cr_port_for_public_lr0
+
+# Remove the localnet port from public logical switch.
+check ovn-nbctl --wait=sb lsp-set-type ln-public ""
+
+# Check that the lflows are as expected and there is no cr port
+# created for "public-lr0"  when public has no localnet port
+# since public doesn't have the option "overlay_provider_network=true"
+# set.
+check_row_count Port_Binding 0 logical_port=cr-public-lr0
+
+ovn-sbctl dump-flows lr0 > lr0flows
+ovn-sbctl dump-flows public > publicflows
+
+AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && inport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(xreg0[[0..47]] = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.110), action=(eth.dst = 30:54:00:00:00:03; next;)
+  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.120), action=(eth.dst = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.110), action=(drop;)
+  table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.120), action=(drop;)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.110 && inport == "lr0-public"), action=(ct_dnat(10.0.0.3);)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.120 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat(20.0.0.3);)
+  table=??(lr_in_gw_redirect  ), priority=100  , match=(ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(eth.src = 30:54:00:00:00:03; reg1 = 172.168.0.110; next;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.168.0.110), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.168.0.120), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=91   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.110), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=91   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.120), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=92   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.110 && is_chassis_resident("sw0-port1")), action=(eth.dst = eth.src; eth.src = 30:54:00:00:00:03; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 30:54:00:00:00:03; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=92   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.120 && is_chassis_resident("cr-lr0-public")), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.110 && inport == "lr0-public"), action=(ct_snat;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.120 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
+  table=??(lr_out_egr_loop    ), priority=100  , match=(ip4.dst == 172.168.0.110 && outport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(clone { ct_clear; inport = outport; outport = ""; eth.dst <-> eth.src; flags = 0; flags.loopback = 1; reg0 = 0; reg1 = 0; reg2 = 0; reg3 = 0; reg4 = 0; reg5 = 0; reg6 = 0; reg7 = 0; reg8 = 0; reg9 = 0; reg9[[0]] = 1; next(pipeline=ingress, table=??); };)
+  table=??(lr_out_egr_loop    ), priority=100  , match=(ip4.dst == 172.168.0.120 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(clone { ct_clear; inport = outport; outport = ""; eth.dst <-> eth.src; flags = 0; flags.loopback = 1; reg0 = 0; reg1 = 0; reg2 = 0; reg3 = 0; reg4 = 0; reg5 = 0; reg6 = 0; reg7 = 0; reg8 = 0; reg9 = 0; reg9[[0]] = 1; next(pipeline=ingress, table=??); };)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("sw0-port1") && (!ct.trk || !ct.rpl)), action=(eth.src = 30:54:00:00:00:03; ct_snat(172.168.0.110);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.120);)
+  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public"), action=(eth.src = 30:54:00:00:00:03; ct_dnat;)
+  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat;)
+])
+
+AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" publicflows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && is_chassis_resident("sw0-port1")), action=(outport = "public-lr0"; output;)
+  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:ff:02, 30:54:00:00:00:03} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.110), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.120), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+])
+
+
+# Set the option "centralize_routing=true" for lr0-public.
+check ovn-nbctl --wait=sb set logical_router_port lr0-public options:centralize_routing=true
+
+# Check that the lflows are as expected and there is cr port created for public-lr0.
+check_flows_cr_port_for_public_lr0
+
+# Set the type of ln-public back to localnet
+check ovn-nbctl --wait=sb lsp-set-type ln-public localnet
+
+# Check that the lflows are as expected when public has localnet port.
+check_flows_no_cr_port_for_public_lr0
+
+# Delete the localnet port
+check ovn-nbctl --wait=sb lsp-del ln-public
+
+# Check that the lflows are as expected when public has no localnet port.
+check_flows_cr_port_for_public_lr0
+
+# Create multiple gateway ports.  chassisresident port should not be
+# created for 'public-lr0' even if there is no localnet port on 'public'
+# logical switch.
+check ovn-nbctl --wait=sb lrp-set-gateway-chassis lr0-sw0 gw1
+# check that there is no port binding cr-public-lr0
+check_row_count Port_Binding 0 logical_port=cr-public-lr0
+
+ovn-sbctl dump-flows lr0 > lr0flows
+ovn-sbctl dump-flows public > publicflows
+
+AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && inport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(xreg0[[0..47]] = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.110), action=(eth.dst = 30:54:00:00:00:03; next;)
+  table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.120), action=(eth.dst = 00:00:00:00:ff:02; next;)
+  table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.110), action=(drop;)
+  table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.120), action=(drop;)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.110 && inport == "lr0-public"), action=(ct_dnat(10.0.0.3);)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.168.0.120 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat(20.0.0.3);)
+  table=??(lr_in_gw_redirect  ), priority=100  , match=(ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(eth.src = 30:54:00:00:00:03; reg1 = 172.168.0.110; next;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.168.0.110), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(arp.op == 1 && arp.tpa == 172.168.0.120), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=91   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.110), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=91   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.120), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=92   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.110 && is_chassis_resident("sw0-port1")), action=(eth.dst = eth.src; eth.src = 30:54:00:00:00:03; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 30:54:00:00:00:03; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=92   , match=(inport == "lr0-public" && arp.op == 1 && arp.tpa == 172.168.0.120 && is_chassis_resident("cr-lr0-public")), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.110 && inport == "lr0-public"), action=(ct_snat;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.120 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
+  table=??(lr_out_egr_loop    ), priority=100  , match=(ip4.dst == 172.168.0.110 && outport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(clone { ct_clear; inport = outport; outport = ""; eth.dst <-> eth.src; flags = 0; flags.loopback = 1; reg0 = 0; reg1 = 0; reg2 = 0; reg3 = 0; reg4 = 0; reg5 = 0; reg6 = 0; reg7 = 0; reg8 = 0; reg9 = 0; reg9[[0]] = 1; next(pipeline=ingress, table=??); };)
+  table=??(lr_out_egr_loop    ), priority=100  , match=(ip4.dst == 172.168.0.120 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(clone { ct_clear; inport = outport; outport = ""; eth.dst <-> eth.src; flags = 0; flags.loopback = 1; reg0 = 0; reg1 = 0; reg2 = 0; reg3 = 0; reg4 = 0; reg5 = 0; reg6 = 0; reg7 = 0; reg8 = 0; reg9 = 0; reg9[[0]] = 1; next(pipeline=ingress, table=??); };)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public" && is_chassis_resident("sw0-port1") && (!ct.trk || !ct.rpl)), action=(eth.src = 30:54:00:00:00:03; ct_snat(172.168.0.110);)
+  table=??(lr_out_snat        ), priority=161  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.120);)
+  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 10.0.0.3 && outport == "lr0-public"), action=(eth.src = 30:54:00:00:00:03; ct_dnat;)
+  table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat;)
+])
+
+AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" publicflows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && is_chassis_resident("sw0-port1")), action=(outport = "public-lr0"; output;)
+  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:ff:02, 30:54:00:00:00:03} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.110), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.120), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
+])
+
 AT_CLEANUP
 ])
