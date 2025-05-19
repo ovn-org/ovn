@@ -1088,16 +1088,36 @@ struct ovn_port_routable_addresses {
 
 static bool lsp_can_be_inc_processed(const struct nbrec_logical_switch_port *);
 
+/* This function returns true if 'op' is a gateway router port.
+ * False otherwise.
+ * For 'op' to be a gateway router port.
+ *  1. op->nbrp->gateway_chassis or op->nbrp->ha_chassis_group should
+ *     be configured.
+ *  2. op->cr_port should not be NULL.  If op->nbrp->gateway_chassis or
+ *     op->nbrp->ha_chassis_group is set by the user, northd WILL create
+ *     a chassis resident port in the SB port binding.
+ *     See join_logical_ports().
+ */
 static bool
 is_l3dgw_port(const struct ovn_port *op)
 {
-    return op->cr_port;
+    return op->cr_port && op->nbrp &&
+           (op->nbrp->n_gateway_chassis || op->nbrp->ha_chassis_group);
 }
 
+/* This function returns true if 'op' is a chassis resident
+ * derived port. False otherwise.
+ * There are 2 ways to check if 'op' is chassis resident port.
+ *  1. op->sb->type is "chassisresident"
+ *  2. op->primary_port is not NULL.  If op->primary_port is set,
+ *     it means 'op' is derived from the ovn_port op->primary_port.
+ *
+ * This function uses the (2) method as it doesn't involve strcmp().
+ */
 static bool
 is_cr_port(const struct ovn_port *op)
 {
-    return op->l3dgw_port;
+    return op->primary_port;
 }
 
 static void
@@ -1182,7 +1202,7 @@ ovn_port_create(struct hmap *ports, const char *key,
     op->key = xstrdup(key);
     op->sb = sb;
     ovn_port_set_nb(op, nbsp, nbrp);
-    op->l3dgw_port = op->cr_port = NULL;
+    op->primary_port = op->cr_port = NULL;
     hmap_insert(ports, &op->key_node, hash_string(op->key, 0));
 
     op->lflow_ref = lflow_ref_create();
@@ -1239,7 +1259,7 @@ ovn_port_destroy(struct hmap *ports, struct ovn_port *port)
         /* Don't remove port->list. The node should be removed from such lists
          * before calling this function. */
         hmap_remove(ports, &port->key_node);
-        if (port->od && !port->l3dgw_port) {
+        if (port->od && !port->primary_port) {
             hmap_remove(&port->od->ports, &port->dp_node);
         }
         ovn_port_destroy_orphan(port);
@@ -1379,7 +1399,7 @@ lrport_is_enabled(const struct nbrec_logical_router_port *lrport)
 static struct ovn_port *
 ovn_port_get_peer(const struct hmap *lr_ports, struct ovn_port *op)
 {
-    if (!op->nbsp || !lsp_is_router(op->nbsp) || op->l3dgw_port) {
+    if (!op->nbsp || !lsp_is_router(op->nbsp) || is_cr_port(op)) {
         return NULL;
     }
 
@@ -2263,7 +2283,7 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
                                           NULL, nbrp, NULL);
                     ovs_list_push_back(nb_only, &crp->list);
                 }
-                crp->l3dgw_port = op;
+                crp->primary_port = op;
                 op->cr_port = crp;
                 crp->od = od;
                 free(redirect_name);
@@ -2284,7 +2304,7 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
      * to their peers. */
     struct ovn_port *op;
     HMAP_FOR_EACH (op, key_node, ports) {
-        if (op->nbsp && lsp_is_router(op->nbsp) && !op->l3dgw_port) {
+        if (op->nbsp && lsp_is_router(op->nbsp) && !op->primary_port) {
             struct ovn_port *peer = ovn_port_get_peer(ports, op);
             if (!peer || !peer->nbrp) {
                 continue;
@@ -2347,7 +2367,7 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
                 op->enable_router_port_acl = smap_get_bool(
                     &op->nbsp->options, "enable_router_port_acl", false);
             }
-        } else if (op->nbrp && op->nbrp->peer && !op->l3dgw_port) {
+        } else if (op->nbrp && op->nbrp->peer && !is_cr_port(op)) {
             struct ovn_port *peer = ovn_port_find(ports, op->nbrp->peer);
             if (peer) {
                 if (peer->nbrp && peer->nbrp->peer &&
@@ -3906,7 +3926,7 @@ sync_pb_for_lrp(struct ovn_port *op,
 
         bool always_redirect =
             !lr_stateful_rec->lrnat_rec->has_distributed_nat &&
-            !l3dgw_port_has_associated_vtep_lports(op->l3dgw_port);
+            !l3dgw_port_has_associated_vtep_lports(op->primary_port);
 
         const char *redirect_type = smap_get(&op->nbrp->options,
                                             "redirect-type");
@@ -4401,7 +4421,7 @@ ls_port_reinit(struct ovn_port *op, struct ovsdb_idl_txn *ovnsb_txn,
     ovn_port_cleanup(op);
     op->sb = sb;
     ovn_port_set_nb(op, nbsp, NULL);
-    op->l3dgw_port = op->cr_port = NULL;
+    op->primary_port = op->cr_port = NULL;
     return ls_port_init(op, ovnsb_txn, od, sb,
                         sbrec_mirror_table, sbrec_chassis_table,
                         sbrec_chassis_by_name, sbrec_chassis_by_hostname);
@@ -13896,7 +13916,7 @@ build_dhcpv6_reply_flows_for_lrouter_port(
         struct lflow_ref *lflow_ref)
 {
     ovs_assert(op->nbrp);
-    if (!op->prefix_delegation || op->l3dgw_port) {
+    if (!op->prefix_delegation || is_cr_port(op)) {
         return;
     }
     for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
@@ -17862,9 +17882,11 @@ build_ha_chassis_group_ref_chassis(struct hmapx *lr_groups,
  * table indicating which chassis the distributed port is bond to. */
 static void
 handle_cr_port_binding_changes(const struct sbrec_port_binding *sb,
-                struct ovn_port *orp)
+                               struct ovn_port *orp)
 {
-    const struct nbrec_logical_router_port *nbrec_lrp = orp->l3dgw_port->nbrp;
+    ovs_assert(orp->primary_port);
+    const struct nbrec_logical_router_port *nbrec_lrp
+        = orp->primary_port->nbrp;
 
     if (sb->chassis) {
         nbrec_logical_router_port_update_status_setkey(nbrec_lrp,
