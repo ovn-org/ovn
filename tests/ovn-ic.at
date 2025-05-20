@@ -3247,3 +3247,116 @@ OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- prefix filter -- filtering routes])
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+    # Enable route learning at AZ level.
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level.
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
+done
+
+# Create new transit switches and LRs. Test topology is next:
+# logical router (lr11) - transit switch (ts1) - logical router (lr12)
+
+# Create lr11, lr12 and connect them to ts1.
+for i in 1 2; do
+    ovn_as az$i
+    lr=lr1$i
+    check ovn-nbctl lr-add $lr
+    lrp=lrp-$lr-ts1
+    lsp=lsp-ts1-$lr
+    # Create LRP and connect to TS.
+    check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:ab:0$i 169.254.101.$i/24 fe80:10::$i/64
+    check ovn-nbctl lsp-add ts1 $lsp \
+            -- lsp-set-addresses $lsp router \
+            -- lsp-set-type $lsp router \
+            -- lsp-set-options $lsp router-port=$lrp
+done
+
+# Create directly-connected route in lr12.
+ovn_as az2 check ovn-nbctl lrp-add lr12 lrp-lr12-1 aa:aa:aa:aa:bb:01 "192.168.12.1/24" "2001:db12::1/64"
+ovn_as az2 check ovn-nbctl lrp-add lr12 lrp-lr12-2 aa:aa:aa:aa:bb:02 "192.168.2.1/24" "2001:db22::1/64"
+
+# Create directly-connected route in lr11.
+ovn_as az1 check ovn-nbctl --wait=sb lrp-add lr11 lrp-lr11 aa:aa:aa:aa:cc:01 "192.168.11.1/24" "2001:db11::1/64"
+check ovn-ic-nbctl --wait=sb sync
+
+# Test direct routes from lr12 were learned to lr11.
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+    grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.12.0/24 169.254.101.2
+192.168.2.0/24 169.254.101.2
+])
+
+# Test direct routes from lr11 were learned to lr12.
+OVS_WAIT_FOR_OUTPUT([ovn_as az2 ovn-nbctl lr-route-list lr12 | grep 192.168 |
+    grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.11.0/24 169.254.101.1
+])
+
+ovn_as az2 check ovn-nbctl set logical_router_port lrp-lr12-ts1 options:ic-route-filter-adv=192.168.12.0/24
+# Test direct routes from lr12 were learned to lr11.
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+    grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.12.0/24 169.254.101.2
+])
+
+# Set ic-route-filter-adv with invalid CIDR to advertise just the valid route.
+ovn_as az2 check ovn-nbctl set logical_router_port lrp-lr12-ts1 options:ic-route-filter-adv="192.168.12.0/24,invalid"
+# Test direct routes from lr12 were learned to lr11.
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+    grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.12.0/24 169.254.101.2
+])
+
+ovn_as az2 check ovn-nbctl remove logical_router_port lrp-lr12-ts1 options ic-route-filter-adv
+ovn_as az1 check ovn-nbctl set logical_router_port lrp-lr11-ts1 options:ic-route-filter-learn=192.168.2.0/24
+
+# Test direct routes from lr12 were learned to lr11.
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+    grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.2.0/24 169.254.101.2
+])
+
+ovn_as az1 check ovn-nbctl remove logical_router_port lrp-lr11-ts1 options ic-route-filter-learn
+
+# Test direct routes from lr12 were learned to lr11.
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 2001 |
+    grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+2001:db12::/64 fe80:10::2
+2001:db22::/64 fe80:10::2
+])
+ovn_as az2 check ovn-nbctl set logical_router_port lrp-lr12-ts1 options:ic-route-filter-adv=2001:db22::/64
+
+# Test direct routes from lr12 were learned to lr11.
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 2001 |
+    grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+2001:db22::/64 fe80:10::2
+])
+
+ovn_as az2 check ovn-nbctl remove logical_router_port lrp-lr12-ts1 options ic-route-filter-adv
+
+# Test direct routes from lr12 were learned to lr11.
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 2001 |
+    grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+2001:db12::/64 fe80:10::2
+2001:db22::/64 fe80:10::2
+])
+
+ovn_as az1 check ovn-nbctl set logical_router_port lrp-lr11-ts1 options:ic-route-filter-learn=2001:db12::/64
+
+# Test direct routes from lr12 were learned to lr11.
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 2001 |
+    grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+2001:db12::/64 fe80:10::2
+])
+
+OVN_CLEANUP_IC([az1], [az2])
+AT_CLEANUP
+])

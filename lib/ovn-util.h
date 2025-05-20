@@ -493,6 +493,10 @@ bool ovn_update_swconn_at(struct rconn *swconn, const char *target,
 
 bool prefix_is_link_local(const struct in6_addr *prefix, unsigned int plen);
 
+bool find_prefix_in_set(const struct in6_addr *prefix, unsigned int plen,
+                        const struct sset *prefix_set,
+                        const char *filter_name);
+
 void ovn_debug_commands_register(void);
 
 const struct sbrec_port_binding *lport_lookup_by_name(

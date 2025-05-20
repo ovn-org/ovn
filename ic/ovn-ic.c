@@ -1069,68 +1069,74 @@ get_nexthop_from_lport_addresses(bool is_v4,
 }
 
 static bool
+prefix_is_filtered(struct in6_addr *prefix,
+                   unsigned int plen,
+                   const struct nbrec_logical_router *nb_lr,
+                   const struct nbrec_logical_router_port *ts_lrp,
+                   bool is_advertisement)
+{
+    struct ds filter_list = DS_EMPTY_INITIALIZER;
+    const char *filter_direction = is_advertisement ? "ic-route-filter-adv" :
+                                                      "ic-route-filter-learn";
+    if (ts_lrp) {
+        const char *lrp_route_filter = smap_get(&ts_lrp->options,
+                                                filter_direction);
+        if (lrp_route_filter) {
+            ds_put_format(&filter_list, "%s,", lrp_route_filter);
+        }
+    }
+    const char *lr_route_filter = smap_get(&nb_lr->options,
+                                           filter_direction);
+    if (lr_route_filter) {
+        ds_put_format(&filter_list, "%s,", lr_route_filter);
+    }
+
+    struct sset prefix_set = SSET_INITIALIZER(&prefix_set);
+    sset_from_delimited_string(&prefix_set, ds_cstr(&filter_list), ",");
+
+    bool matched = true;
+    if (!sset_is_empty(&prefix_set)) {
+        matched = find_prefix_in_set(prefix, plen, &prefix_set,
+                                     filter_direction);
+    }
+
+    ds_destroy(&filter_list);
+    sset_destroy(&prefix_set);
+    return matched;
+}
+
+static bool
 prefix_is_deny_listed(const struct smap *nb_options,
                       struct in6_addr *prefix,
                       unsigned int plen)
 {
-    const char *denylist = smap_get(nb_options, "ic-route-denylist");
+    const char *filter_name = "ic-route-denylist";
+    const char *denylist = smap_get(nb_options, filter_name);
     if (!denylist || !denylist[0]) {
         denylist = smap_get(nb_options, "ic-route-blacklist");
         if (!denylist || !denylist[0]) {
             return false;
         }
     }
-    struct in6_addr bl_prefix;
-    unsigned int bl_plen;
-    char *cur, *next, *start;
-    next = start = xstrdup(denylist);
-    bool matched = false;
-    while ((cur = strsep(&next, ",")) && *cur) {
-        if (!ip46_parse_cidr(cur, &bl_prefix, &bl_plen)) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_WARN_RL(&rl, "Bad format in nb_global options:"
-                         "ic-route-denylist: %s. CIDR expected.", cur);
-            continue;
-        }
 
-        if (IN6_IS_ADDR_V4MAPPED(&bl_prefix) != IN6_IS_ADDR_V4MAPPED(prefix)) {
-            continue;
-        }
+    struct sset prefix_set = SSET_INITIALIZER(&prefix_set);
+    sset_from_delimited_string(&prefix_set, denylist, ",");
 
-        /* 192.168.0.0/16 does not belong to 192.168.0.0/17 */
-        if (plen < bl_plen) {
-            continue;
-        }
-
-        if (IN6_IS_ADDR_V4MAPPED(prefix)) {
-            ovs_be32 bl_prefix_v4 = in6_addr_get_mapped_ipv4(&bl_prefix);
-            ovs_be32 prefix_v4 = in6_addr_get_mapped_ipv4(prefix);
-            ovs_be32 mask = be32_prefix_mask(bl_plen);
-
-            if ((prefix_v4 & mask) != (bl_prefix_v4 & mask)) {
-                continue;
-            }
-        } else {
-            struct in6_addr bl_mask = ipv6_create_mask(bl_plen);
-            struct in6_addr m_prefix = ipv6_addr_bitand(prefix, &bl_mask);
-            struct in6_addr m_bl_prefix = ipv6_addr_bitand(&bl_prefix,
-                                                           &bl_mask);
-            if (!ipv6_addr_equals(&m_prefix, &m_bl_prefix)) {
-                continue;
-            }
-        }
-        matched = true;
-        break;
+    bool denied = false;
+    if (!sset_is_empty(&prefix_set)) {
+        denied = find_prefix_in_set(prefix, plen, &prefix_set, filter_name);
     }
-    free(start);
-    return matched;
+    sset_destroy(&prefix_set);
+    return denied;
 }
 
 static bool
 route_need_advertise(const char *policy,
                      struct in6_addr *prefix,
                      unsigned int plen,
-                     const struct smap *nb_options)
+                     const struct smap *nb_options,
+                     const struct nbrec_logical_router *nb_lr,
+                     const struct nbrec_logical_router_port *ts_lrp)
 {
     if (!smap_get_bool(nb_options, "ic-route-adv", false)) {
         return false;
@@ -1152,6 +1158,11 @@ route_need_advertise(const char *policy,
     if (prefix_is_deny_listed(nb_options, prefix, plen)) {
         return false;
     }
+
+    if (!prefix_is_filtered(prefix, plen, nb_lr, ts_lrp, true)) {
+        return false;
+    }
+
     return true;
 }
 
@@ -1206,7 +1217,8 @@ add_static_to_routes_ad(
     const struct nbrec_logical_router *nb_lr,
     const struct lport_addresses *nexthop_addresses,
     const struct smap *nb_options,
-    const char *route_tag)
+    const char *route_tag,
+    const struct nbrec_logical_router_port *ts_lrp)
 {
     struct in6_addr prefix, nexthop;
     unsigned int plen;
@@ -1215,7 +1227,8 @@ add_static_to_routes_ad(
         return;
     }
 
-    if (!route_need_advertise(nb_route->policy, &prefix, plen, nb_options)) {
+    if (!route_need_advertise(nb_route->policy, &prefix, plen, nb_options,
+                              nb_lr, ts_lrp)) {
         return;
     }
 
@@ -1256,7 +1269,8 @@ add_network_to_routes_ad(struct hmap *routes_ad, const char *network,
                          const struct lport_addresses *nexthop_addresses,
                          const struct smap *nb_options,
                          const struct nbrec_logical_router *nb_lr,
-                         const char *route_tag)
+                         const char *route_tag,
+                         const struct nbrec_logical_router_port *ts_lrp)
 {
     struct in6_addr prefix, nexthop;
     unsigned int plen;
@@ -1264,7 +1278,8 @@ add_network_to_routes_ad(struct hmap *routes_ad, const char *network,
         return;
     }
 
-    if (!route_need_advertise(NULL, &prefix, plen, nb_options)) {
+    if (!route_need_advertise(NULL, &prefix, plen, nb_options,
+                              nb_lr, ts_lrp)) {
         VLOG_DBG("Route ad: skip network %s of lrp %s.",
                  network, nb_lrp->name);
         return;
@@ -1375,6 +1390,10 @@ route_need_learn(const struct nbrec_logical_router *lr,
     }
 
     if (prefix_is_deny_listed(nb_options, prefix, plen)) {
+        return false;
+    }
+
+    if (!prefix_is_filtered(prefix, plen, lr, ts_lrp, false)) {
         return false;
     }
 
@@ -1756,7 +1775,8 @@ build_ts_routes_to_adv(struct ic_context *ctx,
                        struct lport_addresses *ts_port_addrs,
                        const struct nbrec_nb_global *nb_global,
                        const char *ts_route_table,
-                       const char *route_tag)
+                       const char *route_tag,
+                       const struct nbrec_logical_router_port *ts_lrp)
 {
     const struct nbrec_logical_router *lr = ic_lr->lr;
 
@@ -1779,7 +1799,7 @@ build_ts_routes_to_adv(struct ic_context *ctx,
         } else if (!strcmp(ts_route_table, nb_route->route_table)) {
             /* It may be a route to be advertised */
             add_static_to_routes_ad(routes_ad, nb_route, lr, ts_port_addrs,
-                                    &nb_global->options, route_tag);
+                                    &nb_global->options, route_tag, ts_lrp);
         }
     }
 
@@ -1791,7 +1811,7 @@ build_ts_routes_to_adv(struct ic_context *ctx,
                 add_network_to_routes_ad(routes_ad, lrp->networks[j], lrp,
                                          ts_port_addrs,
                                          &nb_global->options,
-                                         lr, route_tag);
+                                         lr, route_tag, ts_lrp);
             }
         } else {
             /* The router port of the TS port is ignored. */
@@ -1854,7 +1874,7 @@ collect_lr_routes(struct ic_context *ctx,
             route_tag = "";
         }
         build_ts_routes_to_adv(ctx, ic_lr, routes_ad, &ts_port_addrs,
-                               nb_global, route_table, route_tag);
+                               nb_global, route_table, route_tag, lrp);
         destroy_lport_addresses(&ts_port_addrs);
     }
 }
