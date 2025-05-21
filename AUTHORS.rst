@@ -636,6 +636,7 @@ Patrik Andersson R              patrik.r.andersson@ericsson.com
 Patryk Diak                     pdiak@redhat.com
 Paul Greenberg
 Paulo Cravero                   pcravero@as2594.net
+Paulo Guilherme da Silva        guilherme.paulo@luizalabs.com
 Pawan Shukla                    shuklap@vmware.com
 Periyasamy Palanisamy           periyasamy.palanisamy@ericsson.com
 Peter Amidon                    peter@picnicpark.org
