@@ -62,6 +62,9 @@ struct lr_stateful_record {
     /* Load Balancer vIPs relevant for this datapath. */
     struct ovn_lb_ip_set *lb_ips;
 
+    /* sset of vips which are also part of lr nats. */
+    struct sset vip_nats;
+
     /* 'lflow_ref' is used to reference logical flows generated for
      * this lr_stateful_record.
      *
@@ -104,6 +107,10 @@ struct lr_stateful_table {
 struct lr_stateful_tracked_data {
     /* Created or updated logical router with LB and/or NAT data. */
     struct hmapx crupdated; /* Stores 'struct lr_stateful_record'. */
+
+    /* Indicates if any router's NATs changed which were also LB vips
+     * or vice versa. */
+    bool vip_nats_changed;
 };
 
 struct ed_type_lr_stateful {
@@ -138,7 +145,7 @@ const struct lr_stateful_record *lr_stateful_table_find_by_index(
 static inline bool
 lr_stateful_has_tracked_data(struct lr_stateful_tracked_data *trk_data)
 {
-    return !hmapx_is_empty(&trk_data->crupdated);
+    return !hmapx_is_empty(&trk_data->crupdated) || trk_data->vip_nats_changed;
 }
 
 static inline bool

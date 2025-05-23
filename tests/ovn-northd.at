@@ -1723,6 +1723,9 @@ AT_CAPTURE_FILE([sbflows])
 # dnat_and_snat or snat entry.
 AT_CHECK([grep "lr_in_unsnat" sbflows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_unsnat       ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_unsnat       ), priority=120  , match=(ip4 && ip4.dst == 192.168.2.1 && tcp && tcp.dst == 8080), action=(next;)
+  table=??(lr_in_unsnat       ), priority=120  , match=(ip4 && ip4.dst == 192.168.2.4 && udp && udp.dst == 8080), action=(next;)
+  table=??(lr_in_unsnat       ), priority=120  , match=(ip4 && ip4.dst == 192.168.2.5 && tcp && tcp.dst == 8080), action=(next;)
   table=??(lr_in_unsnat       ), priority=90   , match=(ip && ip4.dst == 192.168.2.1), action=(ct_snat;)
   table=??(lr_in_unsnat       ), priority=90   , match=(ip && ip4.dst == 192.168.2.4), action=(ct_snat;)
 ])
@@ -1753,6 +1756,9 @@ AT_CAPTURE_FILE([sbflows])
 # dnat_and_snat or snat entry.
 AT_CHECK([grep "lr_in_unsnat" sbflows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_unsnat       ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_unsnat       ), priority=120  , match=(ip4 && ip4.dst == 192.168.2.1 && tcp && tcp.dst == 8080), action=(next;)
+  table=??(lr_in_unsnat       ), priority=120  , match=(ip4 && ip4.dst == 192.168.2.4 && udp && udp.dst == 8080), action=(next;)
+  table=??(lr_in_unsnat       ), priority=120  , match=(ip4 && ip4.dst == 192.168.2.5 && tcp && tcp.dst == 8080), action=(next;)
   table=??(lr_in_unsnat       ), priority=90   , match=(ip && ip4.dst == 192.168.2.1), action=(ct_snat;)
   table=??(lr_in_unsnat       ), priority=90   , match=(ip && ip4.dst == 192.168.2.4), action=(ct_snat;)
 ])
@@ -6296,6 +6302,7 @@ AT_CHECK([grep "lr_in_unsnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_unsnat       ), priority=0    , match=(1), action=(next;)
   table=??(lr_in_unsnat       ), priority=110  , match=(inport == "lr0-public" && ip4.dst == 172.168.0.10), action=(ct_snat;)
   table=??(lr_in_unsnat       ), priority=110  , match=(inport == "lr0-sw0" && ip4.dst == 10.0.0.1), action=(ct_snat;)
+  table=??(lr_in_unsnat       ), priority=120  , match=(ip4 && ip4.dst == 172.168.0.10 && tcp && tcp.dst == 9082), action=(next;)
   table=??(lr_in_unsnat       ), priority=90   , match=(ip && ip4.dst == 172.168.0.10), action=(ct_snat;)
   table=??(lr_in_unsnat       ), priority=90   , match=(ip && ip4.dst == 172.168.0.20), action=(ct_snat;)
   table=??(lr_in_unsnat       ), priority=90   , match=(ip && ip4.dst == 172.168.0.30), action=(ct_snat;)
@@ -6374,6 +6381,7 @@ AT_CHECK([grep "lr_in_unsnat" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_unsnat       ), priority=110  , match=(inport == "lr0-public" && ip6.dst == def0::10), action=(ct_snat;)
   table=??(lr_in_unsnat       ), priority=110  , match=(inport == "lr0-sw0" && ip4.dst == 10.0.0.1), action=(ct_snat;)
   table=??(lr_in_unsnat       ), priority=110  , match=(inport == "lr0-sw0" && ip6.dst == aef0::1), action=(ct_snat;)
+  table=??(lr_in_unsnat       ), priority=120  , match=(ip4 && ip4.dst == 172.168.0.10 && tcp && tcp.dst == 9082), action=(next;)
   table=??(lr_in_unsnat       ), priority=90   , match=(ip && ip4.dst == 172.168.0.10), action=(ct_snat;)
   table=??(lr_in_unsnat       ), priority=90   , match=(ip && ip4.dst == 172.168.0.20), action=(ct_snat;)
   table=??(lr_in_unsnat       ), priority=90   , match=(ip && ip4.dst == 172.168.0.30), action=(ct_snat;)
@@ -12733,7 +12741,7 @@ check ovn-nbctl lb-add lb2 172.168.0.150:80 10.0.0.40:8080
 check ovn-nbctl lr-lb-add lr0 lb1
 check ovn-nbctl lr-lb-add lr0 lb2
 
-# lflow engine should not recompute even if the nat ip 172.168.0.140
+# lflow engine should recompute since the nat ip 172.168.0.140
 # is a lb vip.
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-nat-add lr0 dnat_and_snat 172.168.0.140 10.0.0.20
@@ -12742,10 +12750,10 @@ check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
 check_engine_stats sync_to_sb_pb recompute nocompute
 check_engine_stats sync_to_sb_lb norecompute compute
-check_engine_stats lflow norecompute compute
+check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
-# lflow engine should not recompute even if the nat ip 172.168.0.150
+# lflow engine should recompute since the nat ip 172.168.0.150
 # is a lb vip.
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-nat-add lr0 dnat_and_snat 172.168.0.150 10.0.0.41
@@ -12754,10 +12762,10 @@ check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
 check_engine_stats sync_to_sb_pb recompute nocompute
 check_engine_stats sync_to_sb_lb norecompute compute
-check_engine_stats lflow norecompute compute
+check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
-# lflow engine should not recompute even if the deleted nat ip 172.168.0.150
+# lflow engine should recompute since the deleted nat ip 172.168.0.150
 # is a lb vip.
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-nat-del lr0 dnat_and_snat 172.168.0.150
@@ -12766,10 +12774,10 @@ check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
 check_engine_stats sync_to_sb_pb recompute nocompute
 check_engine_stats sync_to_sb_lb norecompute compute
-check_engine_stats lflow norecompute compute
+check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
-# lflow engine should not recompute even if the deleted nat ip 172.168.0.140
+# lflow engine should recompute since the deleted nat ip 172.168.0.140
 # is a lb vip.
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-nat-del lr0 dnat_and_snat 172.168.0.140
@@ -12778,7 +12786,7 @@ check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
 check_engine_stats sync_to_sb_pb recompute nocompute
 check_engine_stats sync_to_sb_lb norecompute compute
-check_engine_stats lflow norecompute compute
+check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Delete the NAT
