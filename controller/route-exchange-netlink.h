@@ -49,8 +49,6 @@ int re_nl_add_route(uint32_t table_id, const struct in6_addr *dst,
 int re_nl_delete_route(uint32_t table_id, const struct in6_addr *dst,
                        unsigned int plen, unsigned int priority);
 
-void re_nl_dump(uint32_t table_id);
-
 void re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
                        struct vector *learned_routes,
                        const struct sbrec_datapath_binding *db);
