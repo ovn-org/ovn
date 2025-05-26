@@ -134,6 +134,7 @@ const char *default_nb_db(void);
 const char *default_sb_db(void);
 const char *default_ic_nb_db(void);
 const char *default_ic_sb_db(void);
+const char *default_br_db(void);
 char *get_abs_unix_ctl_path(const char *path);
 
 struct ovsdb_idl_table_class;
@@ -593,6 +594,21 @@ dynamic_bitmap_scan(struct dynamic_bitmap *dp, bool target, size_t start)
 
 #define DYNAMIC_BITMAP_FOR_EACH_1(IDX, MAP)   \
         BITMAP_FOR_EACH_1(IDX, (MAP)->capacity, (MAP)->map)
+
+
+static inline const char *
+strip_leading_zero(const char *s)
+{
+    return s + strspn(s, "0");
+}
+
+static inline bool
+is_uuid_with_prefix(const char *uuid)
+{
+     return uuid[0] == '0' && (uuid[1] == 'x' || uuid[1] == 'X');
+}
+
+bool is_partial_uuid_match(const struct uuid *uuid, const char *match);
 
 /* Utilities around properly handling exit command. */
 struct ovn_exit_args {

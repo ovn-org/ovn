@@ -120,6 +120,35 @@ ovn-ic-sb.5: \
 		$(srcdir)/ovn-ic-sb.xml > $@.tmp && \
 	mv $@.tmp $@
 
+# OVN bridge controller E-R diagram
+#
+# If "python" or "dot" is not available, then we do not add graphical diagram
+# to the documentation.
+if HAVE_DOT
+ovn-br.gv: ${OVSDIR}/ovsdb/ovsdb-dot.in $(srcdir)/ovn-br.ovsschema
+	$(AM_V_GEN)$(OVSDB_DOT) --no-arrows $(srcdir)/ovn-br.ovsschema > $@
+ovn-br.pic: ovn-br.gv ${OVSDIR}/ovsdb/dot2pic
+	$(AM_V_GEN)(dot -T plain < ovn-br.gv | $(PYTHON3) ${OVSDIR}/ovsdb/dot2pic -f 3) > $@.tmp && \
+	mv $@.tmp $@
+OVN_BR_PIC = ovn-br.pic
+OVN_BR_DOT_DIAGRAM_ARG = --er-diagram=$(OVN_BR_PIC)
+CLEANFILES += ovn-br.gv ovn-br.pic
+endif
+
+# OVN bridge controller schema documentation
+EXTRA_DIST += ovn-br.xml
+CLEANFILES += ovn-br.5
+man_MANS += ovn-br.5
+
+ovn-br.5: \
+	${OVSDIR}/ovsdb/ovsdb-doc $(srcdir)/ovn-br.xml $(srcdir)/ovn-br.ovsschema $(OVN_BR_PIC)
+	$(AM_V_GEN)$(OVSDB_DOC) \
+		$(OVN_BR_DOT_DIAGRAM_ARG) \
+		--version=$(VERSION) \
+		$(srcdir)/ovn-br.ovsschema \
+		$(srcdir)/ovn-br.xml > $@.tmp && \
+	mv $@.tmp $@
+
 # Version checking for ovn-nb.ovsschema.
 ALL_LOCAL += ovn-nb.ovsschema.stamp
 ovn-nb.ovsschema.stamp: ovn-nb.ovsschema
@@ -143,9 +172,16 @@ ovn-ic-sb.ovsschema.stamp: ovn-ic-sb.ovsschema
 	$(srcdir)/build-aux/cksum-schema-check $? $@
 CLEANFILES += ovn-ic-sb.ovsschema.stamp
 
+# Version checking for ovn-br.ovsschema.
+ALL_LOCAL += ovn-br.ovsschema.stamp
+ovn-br.ovsschema.stamp: ovn-br.ovsschema
+	$(srcdir)/build-aux/cksum-schema-check $? $@
+CLEANFILES += ovn-br.ovsschema.stamp
+
 pkgdata_DATA += ovn-nb.ovsschema
 pkgdata_DATA += ovn-sb.ovsschema
 pkgdata_DATA += ovn-ic-nb.ovsschema
 pkgdata_DATA += ovn-ic-sb.ovsschema
+pkgdata_DATA += ovn-br.ovsschema
 
 CLEANFILES += ovn-sb.ovsschema.stamp

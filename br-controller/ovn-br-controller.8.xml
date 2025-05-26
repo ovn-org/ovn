@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manpage program="ovn-br-controller" section="8" title="ovn-br-controller">
+    <h1>Name</h1>
+    <p>ovn-br-controller -- Open Virtual Network local OVS bridge controller</p>
+
+    <h1>Synopsis</h1>
+    <p>
+      <code>ovn-br-controller</code> [<var>options</var>]
+      [<var>ovs-database</var>]
+    </p>
+
+    <h1>Description</h1>
+    <p>
+      <code>ovn-br-controller</code> is OVN logical flow based
+      local controller daemon to control and program the Open vSwitch
+      bridges.  It connects up to the OVN bridge database (see <code>ovn-br</code>(5))
+      over the OVSDB protocol, and down to the Open vSwitch database (see
+      <code>ovs-vswitchd.conf.db</code>(5)) over the OVSDB protocol and
+      to <code>ovs-vswitchd</code>(8) via OpenFlow.  <code>ovn-br-controller</code>
+      processes and converts the OVN Logical flows configured in the OVN bridge database
+      for the Open vSwitch bridges to OpenFlow rules and programs these flow rules to the
+      Open vSwitch bridges.
+    </p>
+</manpage>

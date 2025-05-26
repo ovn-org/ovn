@@ -625,12 +625,6 @@ sbctl_lflow_cmp(const void *a_, const void *b_)
 }
 
 static bool
-is_uuid_with_prefix(const char *uuid)
-{
-     return uuid[0] == '0' && (uuid[1] == 'x' || uuid[1] == 'X');
-}
-
-static bool
 parse_partial_uuid(char *s)
 {
     /* Accept a full or partial UUID. */
@@ -646,30 +640,6 @@ parse_partial_uuid(char *s)
 
     /* Not a (partial) UUID. */
     return false;
-}
-
-static const char *
-strip_leading_zero(const char *s)
-{
-    return s + strspn(s, "0");
-}
-
-static bool
-is_partial_uuid_match(const struct uuid *uuid, const char *match)
-{
-    char uuid_s[UUID_LEN + 1];
-    snprintf(uuid_s, sizeof uuid_s, UUID_FMT, UUID_ARGS(uuid));
-
-    /* We strip leading zeros because we want to accept cookie values derived
-     * from UUIDs, and cookie values are printed without leading zeros because
-     * they're just numbers. */
-    const char *s1 = strip_leading_zero(uuid_s);
-    const char *s2 = match;
-    if (is_uuid_with_prefix(s2)) {
-        s2 = s2 + 2;
-    }
-    s2 = strip_leading_zero(s2);
-    return !strncmp(s1, s2, strlen(s2));
 }
 
 static char *

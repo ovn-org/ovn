@@ -1,0 +1,95 @@
+{
+    "name": "OVN_Bridge_Controller",
+    "version": "0.0.1",
+    "cksum": "3991291888 4460",
+    "tables": {
+        "BR_Global": {
+            "columns": {
+                "br_cfg": {"type": {"key": "integer"}},
+                "external_ids": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}},
+                "connections": {
+                        "type": {"key": {"type": "uuid",
+                                        "refTable": "Connection"},
+                                        "min": 0,
+                                        "max": "unlimited"}},
+                "ssl": {
+                    "type": {"key": {"type": "uuid",
+                                    "refTable": "SSL"},
+                                    "min": 0, "max": 1}},
+                "options": {
+                    "type": {"key": "string", "value": "string",
+                            "min": 0, "max": "unlimited"}}},
+            "maxRows": 1,
+            "isRoot": true},
+        "Connection": {
+            "columns": {
+                "target": {"type": "string"},
+                "max_backoff": {"type": {"key": {"type": "integer",
+                                         "minInteger": 1000},
+                                         "min": 0,
+                                         "max": 1}},
+                "inactivity_probe": {"type": {"key": "integer",
+                                              "min": 0,
+                                              "max": 1}},
+                "other_config": {"type": {"key": "string",
+                                          "value": "string",
+                                          "min": 0,
+                                          "max": "unlimited"}},
+                "external_ids": {"type": {"key": "string",
+                                 "value": "string",
+                                 "min": 0,
+                                 "max": "unlimited"}},
+                "is_connected": {"type": "boolean", "ephemeral": true},
+                "status": {"type": {"key": "string",
+                                    "value": "string",
+                                    "min": 0,
+                                    "max": "unlimited"},
+                                    "ephemeral": true}},
+            "indexes": [["target"]]},
+        "SSL": {
+            "columns": {
+                "private_key": {"type": "string"},
+                "certificate": {"type": "string"},
+                "ca_cert": {"type": "string"},
+                "bootstrap_ca_cert": {"type": "boolean"},
+                "ssl_protocols": {"type": "string"},
+                "ssl_ciphers": {"type": "string"},
+                "ssl_ciphersuites": {"type": "string"},
+                "external_ids": {"type": {"key": "string",
+                                          "value": "string",
+                                          "min": 0,
+                                          "max": "unlimited"}}},
+            "maxRows": 1},
+        "Bridge": {
+            "columns": {
+                "name": {"type": "string"},
+                "options": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}},
+                "external_ids": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}}},
+            "indexes": [["name"]],
+            "isRoot": true},
+        "Logical_Flow": {
+            "columns": {
+                "bridge": {"type": {"key": {"type": "uuid",
+                                      "refTable": "Bridge"},
+                           "min": 0, "max": 1}},
+                "table_id": {"type": {"key": {"type": "integer",
+                                              "minInteger": 0,
+                                              "maxInteger": 100}}},
+                "priority": {"type": {"key": {"type": "integer",
+                                              "minInteger": 0,
+                                              "maxInteger": 65535}}},
+                "match": {"type": "string"},
+                "actions": {"type": "string"},
+                "external_ids": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}}},
+            "indexes": [["bridge", "table_id", "priority", "match"]],
+            "isRoot": true}
+    }
+}

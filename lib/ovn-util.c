@@ -566,6 +566,19 @@ default_ic_sb_db(void)
     return def;
 }
 
+const char *
+default_br_db(void)
+{
+    static char *def;
+    if (!def) {
+        def = getenv("OVN_BR_DB");
+        if (!def) {
+            def = xasprintf("unix:%s/ovnbr_db.sock", ovn_rundir());
+        }
+    }
+    return def;
+}
+
 char *
 get_abs_unix_ctl_path(const char *path)
 {
@@ -1672,4 +1685,22 @@ parse_neigh_dynamic_redistribute(const struct smap *options)
     free(tokstr);
 
     return mode;
+}
+
+bool
+is_partial_uuid_match(const struct uuid *uuid, const char *match)
+{
+    char uuid_s[UUID_LEN + 1];
+    snprintf(uuid_s, sizeof uuid_s, UUID_FMT, UUID_ARGS(uuid));
+
+    /* We strip leading zeros because we want to accept cookie values derived
+     * from UUIDs, and cookie values are printed without leading zeros because
+     * they're just numbers. */
+    const char *s1 = strip_leading_zero(uuid_s);
+    const char *s2 = match;
+    if (is_uuid_with_prefix(s2)) {
+        s2 = s2 + 2;
+    }
+    s2 = strip_leading_zero(s2);
+    return !strncmp(s1, s2, strlen(s2));
 }

@@ -64,6 +64,8 @@ gdb_ovn_controller=false
 gdb_ovn_controller_ex=false
 gdb_ovn_controller_vtep=false
 gdb_ovn_controller_vtep_ex=false
+gdb_ovn_br_controller=false
+gdb_ovn_br_controller_ex=false
 builddir=
 ovsbuilddir=
 srcdir=
@@ -90,6 +92,7 @@ ic_nb_servers=3
 ic_sb_model=clustered
 ic_sb_servers=3
 dummy=override
+ovn_br=false
 
 for option; do
     # This option-parsing mechanism borrowed from a Autoconf-generated
@@ -339,6 +342,9 @@ EOF
         --ic-sb-m*)
             prev=ic_sb_model
             ;;
+        --ovn-br)
+            ovn_br=true
+            ;;
         -R|--gdb-run)
             gdb_vswitchd_ex=true
             gdb_ovsdb_ex=true
@@ -422,6 +428,11 @@ if $built; then
         echo >&2 'source directory not found, please use --srcdir'
         exit 1
     fi
+    br_schema=$srcdir/ovn-br.ovsschema
+    if test ! -e "$br_schema"; then
+        echo >&2 'source directory not found, please use --srcdir'
+        exit 1
+    fi
 
     # Put built tools early in $PATH.
     if test ! -e $ovsbuilddir/vswitchd/ovs-vswitchd; then
@@ -429,7 +440,7 @@ if $built; then
         exit 1
     fi
     PATH=$ovsbuilddir/ovsdb:$ovsbuilddir/vswitchd:$ovsbuilddir/utilities:$ovsbuilddir/vtep:$PATH
-    PATH=$builddir/controller:$builddir/controller-vtep:$builddir/northd:$builddir/ic:$builddir/utilities:$PATH
+    PATH=$builddir/controller:$builddir/controller-vtep:$builddir/northd:$builddir/ic:$builddir/utilities:$builddir/br-controller:$PATH
     export PATH
 else
     case $schema in
@@ -616,6 +627,10 @@ ovn_start_db sb "$sbdb_model" "$sbdb_servers" "$ovnsb_source"
 ovn_start_db ic_nb "$ic_nb_model" "$ic_nb_servers" "$ic_nb_schema"
 ovn_start_db ic_sb "$ic_sb_model" "$ic_sb_servers" "$ic_sb_schema"
 
+if $ovn_br; then
+    ovn_start_db br standalone 1 "$br_schema"
+fi
+
 #Add a small delay to allow ovsdb-server to launch.
 sleep 0.1
 
@@ -692,6 +707,13 @@ rungdb $gdb_ovn_controller_vtep $gdb_ovn_controller_vtep_ex \
     $OVN_CTRLR_PKI --log-file -vsyslog:off \
     --ovnsb-db="$OVN_SB_DB"
 
+if $ovn_br; then
+    run ovs-vsctl set open . external-ids:ovn-br-remote=$OVN_BR_DB
+    rungdb $gdb_ovn_br_controller $gdb_ovn_br_controller_ex ovn-br-controller \
+        --detach --no-chdir -vsyslog:off \
+        --log-file=ovn-br-controller.log \
+        --pidfile=ovn-br-controller.pid -vconsole:off
+fi
 cat <<EOF
 
 

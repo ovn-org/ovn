@@ -119,6 +119,14 @@ Provides: openvswitch-ovn-docker = %{?epoch:%{epoch}:}%{version}-%{release}
 %description docker
 Docker network plugins for OVN.
 
+%package br-controller
+Summary: Open Virtual Network support
+License: ASL 2.0
+Requires: ovn
+
+%description br-controller
+OVN bridge controller
+
 %prep
 %autosetup -n ovn-%{version} -a 10 -p 1
 
@@ -165,7 +173,7 @@ install -p -D -m 0644 \
         rhel/usr_share_ovn_scripts_systemd_sysconfig.template \
         $RPM_BUILD_ROOT/%{_sysconfdir}/sysconfig/ovn
 
-for service in ovn-controller ovn-controller-vtep ovn-northd ovn-ic ovn-ic-db ovn-db@; do
+for service in ovn-controller ovn-controller-vtep ovn-northd ovn-ic ovn-ic-db ovn-db@ ovn-br-controller ovn-br-db; do
         install -p -D -m 0644 \
                         rhel/usr_lib_systemd_system_${service}.service \
                         $RPM_BUILD_ROOT%{_unitdir}/${service}.service
@@ -549,7 +557,19 @@ fi
 %{_mandir}/man8/ovn-controller-vtep.8*
 %{_unitdir}/ovn-controller-vtep.service
 
+%files br-controller
+%{_bindir}/ovn-br-controller
+%{_bindir}/ovn-brctl
+%{_mandir}/man8/ovn-br-controller.8*
+%{_mandir}/man5/ovn-br.5*
+%config %{_datadir}/ovn/ovn-br.ovsschema
+%{_unitdir}/ovn-br-controller.service
+%{_unitdir}/ovn-br-db.service
+
 %changelog
+* Wed Sep 24 2025 Numan Siddique <numans@ovn.org>
+- Added ovn-br-controller systemd-units.
+
 * Wed Jan 11 2023 Vladislav Odintsov <odivlad@gmail.com>
 - Added ovn-db@.service systemd-unit.
 

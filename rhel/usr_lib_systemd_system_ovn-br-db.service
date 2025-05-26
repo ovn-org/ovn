@@ -1,0 +1,32 @@
+# See ovn-br(8) for details about ovn-br.
+#
+# To customize the ovn-br-db service, you may create a configuration file
+# in the /etc/systemd/system/ovn-br-db.d/ directory.  For example, to specify
+# additional options to be passed to the "ovn-ctl start_ovnbr_ovsdb" command, you
+# could place the following contents in
+# /etc/systemd/system/ovn-br-db.d/local.conf:
+#
+#   [System]
+#   Environment="OVN_BR_DB_OPTS=--db-br-create-insecure-remote=yes"
+#
+# Alternatively, you may specify environment variables in the file /etc/sysconfig/ovn-br-db:
+#
+#   OVN_BR_DB_OPTS="--db-br-create-insecure-remote=yes"
+
+[Unit]
+Description=OVN Bridge Controller OVSDB server
+After=syslog.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=OVN_RUNDIR=%t/ovn OVN_DBDIR=/var/lib/ovn
+EnvironmentFile=-/etc/sysconfig/ovn
+EnvironmentFile=-/etc/sysconfig/ovn-br-db
+ExecStartPre=-/usr/bin/chown -R ${OVN_USER_ID} ${OVN_DBDIR}
+ExecStart=/usr/share/ovn/scripts/ovn-ctl \
+          --ovn-user=${OVN_USER_ID} start_ovnbr_ovsdb $OVN_BR_DB_OPTS
+ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_ovnbr_ovsdb
+
+[Install]
+WantedBy=multi-user.target

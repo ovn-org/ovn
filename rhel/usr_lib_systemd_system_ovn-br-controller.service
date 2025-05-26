@@ -1,0 +1,35 @@
+# See ovn-br-controller(8) for details about ovn-br-controller.
+#
+# To customize the ovn-br-controller service, you may create a configuration file
+# in the /etc/systemd/system/ovn-br-controller.d/ directory.  For example, to specify
+# additional options to be passed to the "ovn-ctl start_ovnbr_controller" command, you
+# could place the following contents in
+# /etc/systemd/system/ovn-br-controller.d/local.conf:
+#
+#   [System]
+#   Environment="OVNBR_CONTROLLER_OPTS=--ovnbr-controller-log=-vconsole:emer -vsyslog:err -vfile:info"
+#
+# Alternatively, you may specify environment variables in the file /etc/sysconfig/ovn-controller:
+#
+#   OVNBR_CONTROLLER_OPTS="--ovnbr-controller-log=-vconsole:emer -vsyslog:err -vfile:info"
+
+[Unit]
+Description=OVN Bridge controller daemon
+After=syslog.target
+Requires=openvswitch.service
+After=openvswitch.service
+
+[Service]
+Type=forking
+PIDFile=/var/run/ovn/ovn-br-controller.pid
+Restart=on-failure
+Environment=OVN_RUNDIR=%t/ovn OVS_RUNDIR=%t/openvswitch
+EnvironmentFile=-/etc/sysconfig/ovn
+EnvironmentFile=-/etc/sysconfig/ovn-br-controller
+ExecStart=/usr/share/ovn/scripts/ovn-ctl --no-monitor \
+           --ovn-user=${OVN_USER_ID} \
+          start_ovnbr_controller $OVNBR_CONTROLLER_OPTS
+ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_ovnbr_controller
+
+[Install]
+WantedBy=multi-user.target

@@ -118,4 +118,12 @@ bin_PROGRAMS += utilities/ovn-debug
 utilities_ovn_debug_SOURCES = utilities/ovn-debug.c
 utilities_ovn_debug_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBDIR)/libopenvswitch.la
 
+# ovn-brctl
+bin_PROGRAMS += utilities/ovn-brctl
+utilities_ovn_brctl_SOURCES = \
+    utilities/ovn-dbctl.c \
+    utilities/ovn-dbctl.h \
+    utilities/ovn-brctl.c
+utilities_ovn_brctl_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBDIR)/libopenvswitch.la
+
 include utilities/bugtool/automake.mk
