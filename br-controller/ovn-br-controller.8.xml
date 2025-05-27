@@ -21,4 +21,31 @@
       for the Open vSwitch bridges to OpenFlow rules and programs these flow rules to the
       Open vSwitch bridges.
     </p>
+
+    <h1>Configuration</h1>
+    <p>
+      <code>ovn-br-controller</code> retrieves most of its configuration
+      information from the local Open vSwitch's ovsdb-server instance.
+      The default location is <code>db.sock</code> in the local Open
+      vSwitch's "run" directory.  It may be overridden by specifying the
+      <var>ovs-database</var> argument as an OVSDB active or passive
+      connection method, as described in <code>ovsdb</code>(7).
+    </p>
+
+    <p>
+      <code>ovn-br-controller</code> assumes it gets configuration
+      information from the following keys in the <code>Open_vSwitch</code>
+      table of the local OVS instance:
+    </p>
+
+    <dl>
+      <dt><code>external_ids:ovn-br-remote</code></dt>
+      <dd>
+        <p>
+          The OVN bridge database that this system should connect to for its
+          configuration, in one of the same forms documented above for the
+          <var>ovs-database</var>.
+        </p>
+      </dd>
+    </dl>
 </manpage>

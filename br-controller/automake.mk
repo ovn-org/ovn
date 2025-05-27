@@ -1,6 +1,10 @@
 bin_PROGRAMS += br-controller/ovn-br-controller
 br_controller_ovn_br_controller_SOURCES = \
-	br-controller/ovn-br-controller.c
+	br-controller/ovn-br-controller.c \
+	br-controller/en-lflow.c \
+	br-controller/en-lflow.h \
+	br-controller/en-bridge-data.c \
+	br-controller/en-bridge-data.h
 
 br_controller_ovn_br_controller_LDADD = lib/libovn.la $(OVS_LIBDIR)/libopenvswitch.la
 man_MANS += br-controller/ovn-br-controller.8
