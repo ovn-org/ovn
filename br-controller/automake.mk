@@ -1,5 +1,7 @@
 bin_PROGRAMS += br-controller/ovn-br-controller
 br_controller_ovn_br_controller_SOURCES = \
+	br-controller/br-flow-mgr.c \
+	br-controller/br-flow-mgr.h \
 	br-controller/en-bridge-data.c \
 	br-controller/en-bridge-data.h \
 	br-controller/en-lflow.c \
