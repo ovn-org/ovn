@@ -5238,9 +5238,9 @@ route_sb_advertised_route_data_handler(struct engine_node *node, void *data)
      *    datapath locally.
      *
      * Updates to advertised_route can generally be ignored as northd will not
-     * update these entries. We also get update notifications if a referenced
-     * port_binding is updated, but these are handled in the runtime_data
-     * handler. */
+     * update these entries. For exceptions see below.
+     * We also get update notifications if a referenced port_binding is
+     * updated, but these are handled in the runtime_data handler. */
     const struct sbrec_advertised_route *sbrec_route;
     SBREC_ADVERTISED_ROUTE_TABLE_FOR_EACH_TRACKED (sbrec_route,
                                                    advertised_route_table) {
@@ -5256,6 +5256,20 @@ route_sb_advertised_route_data_handler(struct engine_node *node, void *data)
             /* XXX: Until we get I-P support for route exchange we need to
              * request recompute. */
             return false;
+        }
+
+        if (sbrec_route->tracked_port) {
+            const char *name = sbrec_route->tracked_port->logical_port;
+            if (!(sset_contains(&re_data->tracked_ports_local, name) ||
+                 sset_contains(&re_data->tracked_ports_remote, name))) {
+                /* Advertised_Routes are generally not changed by northd.
+                 * However if we did not monitor for the Port_Binding
+                 * referenced by tracked_port previously then it would have
+                 * been NULL. If we notice that we have now loaded the
+                 * Port_Binding we need to recompute to correctly update
+                 * the route priority. */
+                return false;
+            }
         }
     }
     return true;
