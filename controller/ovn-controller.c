@@ -48,7 +48,7 @@
 #include "lport.h"
 #include "memory.h"
 #include "ofctrl.h"
-#include "ofctrl-seqno.h"
+#include "lib/ofctrl-seqno.h"
 #include "openvswitch/vconn.h"
 #include "openvswitch/vlog.h"
 #include "ovn/actions.h"

@@ -17,7 +17,7 @@
 
 #include "binding.h"
 #include "if-status.h"
-#include "ofctrl-seqno.h"
+#include "lib/ofctrl-seqno.h"
 #include "ovsport.h"
 #include "simap.h"
 

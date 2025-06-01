@@ -288,10 +288,10 @@ tests_ovstest_SOURCES = \
 	tests/test-ovn.c \
 	tests/test-vector.c \
 	controller/test-lflow-cache.c \
-	controller/test-ofctrl-seqno.c \
 	controller/test-vif-plug.c \
 	lib/test-lflow-conj-ids.c \
 	lib/test-ovn-features.c \
+	lib/test-ofctrl-seqno.c \
 	northd/test-ipam.c
 
 if HAVE_NETLINK
@@ -317,7 +317,6 @@ tests_ovstest_LDADD = $(OVS_LIBDIR)/daemon.lo \
 	controller/lflow-cache.$(OBJEXT) \
 	controller/local_data.$(OBJEXT) \
 	controller/lport.$(OBJEXT) \
-	controller/ofctrl-seqno.$(OBJEXT) \
 	controller/ovsport.$(OBJEXT) \
 	controller/patch.$(OBJEXT) \
 	controller/route.$(OBJEXT) \
