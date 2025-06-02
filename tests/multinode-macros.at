@@ -10,7 +10,7 @@ m4_define([M_NS_EXEC],
 # M_NS_DAEMONIZE([fake_node],[namespace],[command],[pidfile])
 m4_define([M_NS_DAEMONIZE],
     [podman exec $1 ip netns exec $2 $3 & echo $! > $4
-     echo "kill \`cat $4\`" >> cleanup
+     echo "kill \`cat $4\` 2>/dev/null" >> cleanup
     ]
 )
 
@@ -36,6 +36,7 @@ m4_define([M_DAEMONIZE],
 m4_define([M_START_TCPDUMP],
     [
      podman exec $1 tcpdump -l $2 >$3.tcpdump 2>$3.stderr &
+     echo "podman exec $1 ps -ef | grep -v grep | grep tcpdump && podman exec $1 killall tcpdump" >> cleanup
      OVS_WAIT_UNTIL([grep -q "listening" $3.stderr])
     ]
 )
@@ -191,6 +192,18 @@ m_wait_for_ports_up() {
             m_wait_row_count nb:Logical_Switch_Port 1 up=true name=$port
         done
     fi
+}
+
+# m_kill fake_node name
+#
+# Helper to properly kill command in a node.
+m_kill() {
+    containers=$1
+    command=$2
+    for c in $containers; do
+      podman exec $c ps -ef | grep -v grep | grep -q $command && \
+        echo "Killing $command on $c" && podman exec $c killall $command
+    done
 }
 
 OVS_END_SHELL_HELPERS
