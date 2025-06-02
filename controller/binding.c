@@ -1952,6 +1952,10 @@ consider_nonvif_lport_(const struct sbrec_port_binding *pb,
         remove_related_lport(pb, b_ctx_out);
     }
 
+    /* If port was postponed to now, and not our chassis, remove it from
+     * postponed ports as it should not be claimed anymore.*/
+    sset_find_and_delete(b_ctx_out->postponed_ports, pb->logical_port);
+
     if (pb->chassis == b_ctx_in->chassis_rec
             || is_additional_chassis(pb, b_ctx_in->chassis_rec)
             || if_status_is_port_claimed(b_ctx_out->if_mgr,
