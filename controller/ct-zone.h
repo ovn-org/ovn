@@ -70,7 +70,7 @@ void ct_zones_restore(struct ct_zone_ctx *ctx,
                       const struct ovsrec_open_vswitch_table *ovs_table,
                       const struct sbrec_datapath_binding_table *dp_table,
                       const struct ovsrec_bridge *br_int);
-void ct_zones_update(const struct sset *local_lports,
+void ct_zones_update(const struct simap *local_lports,
                      const struct ovsrec_open_vswitch_table *ovs_table,
                      const struct hmap *local_datapaths,
                      struct ct_zone_ctx *ctx);

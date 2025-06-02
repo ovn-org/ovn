@@ -15823,16 +15823,6 @@ echo $request >> hv3/third.expected
 
 check_packets
 
-# ct_zone allocation differs between I+P and recompute:
-# - In I+P an ovs interface with external-ids:iface-id set (but no
-#   logical_port in sb) results in no ct_zone allocated.
-# - In recompute, in the same case, a ct_zone is allocated - this is
-#   necessary to avoid flushing ct_zone if/when controller is restarted.
-# As migrrator has iface-id set on hv1 but is bound to hv2, we would hit
-# some ct-zone related differences in flows before and after recompute.
-# Avoid/hide this by removing iface-id on hv1.
-
-as hv1 check ovs-vsctl remove Interface migrator external-ids iface-id
 OVN_CLEANUP([hv1],[hv2],[hv3])
 
 AT_CLEANUP
@@ -16223,11 +16213,6 @@ echo $request >> hv2/n1.expected
 
 check_packets
 
-# ct_zone allocation differs between I+P and recompute.
-# As migrrator has iface-id set on hv1 but is bound to hv2, we would hit
-# some ct-zone related differences in flows before and after recompute.
-# Avoid/hide this by removing iface-id on hv1.
-as hv1 check ovs-vsctl remove Interface migrator external-ids iface-id
 OVN_CLEANUP([hv1],[hv2],[hv3])
 
 AT_CLEANUP
@@ -16783,12 +16768,6 @@ m4_define([ACTIVATION_STRATEGY_TEST],
     # complete port migration and check that -activated flag is reset
     check ovn-nbctl lsp-set-options migrator requested-chassis=hv2
     OVS_WAIT_UNTIL([test x = x$(ovn-sbctl get Port_Binding $pb_uuid options:additional-chassis-activated)])
-
-    # ct_zone allocation differs between I+P and recompute.
-    # As migrrator has iface-id set on hv1 but is bound to hv2, we would hit
-    # some ct-zone related differences in flows before and after recompute.
-    # Avoid/hide this by removing iface-id on hv1.
-    as hv1 check ovs-vsctl remove Interface migrator external-ids iface-id
 
     OVN_CLEANUP([hv1],[hv2],[hv3])
 

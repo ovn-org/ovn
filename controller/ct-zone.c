@@ -167,7 +167,7 @@ out:
 }
 
 void
-ct_zones_update(const struct sset *local_lports,
+ct_zones_update(const struct simap *local_lports,
                 const struct ovsrec_open_vswitch_table *ovs_table,
                 const struct hmap *local_datapaths, struct ct_zone_ctx *ctx)
 {
@@ -178,9 +178,11 @@ ct_zones_update(const struct sset *local_lports,
     unsigned long *unreq_snat_zones_map = bitmap_allocate(MAX_CT_ZONES);
     struct simap unreq_snat_zones = SIMAP_INITIALIZER(&unreq_snat_zones);
 
-    const char *local_lport;
-    SSET_FOR_EACH (local_lport, local_lports) {
-        sset_add(&all_users, local_lport);
+    const struct simap_node *sinode;
+    SIMAP_FOR_EACH (sinode, local_lports) {
+        if (sinode->data == LPORT_STATUS_BOUND) {
+            sset_add(&all_users, sinode->name);
+        }
     }
 
     /* Local patched datapath (gateway routers) need zones assigned. */
@@ -217,7 +219,14 @@ ct_zones_update(const struct sset *local_lports,
     SHASH_FOR_EACH_SAFE (node, &ctx->current) {
         struct ct_zone *ct_zone = node->data;
         if (!sset_contains(&all_users, node->name)) {
-            ct_zone_remove(ctx, node->name);
+            /* If we started recently and do not monitor all db entries then we
+             * might not have yet learned a port binding entry to the port.
+             * In this case we skip removing the zone until we either know the
+             * port binding or we are sure the zone is no longer needed. */
+            if (!(daemon_started_recently() &&
+                    simap_contains(local_lports, node->name))) {
+                ct_zone_remove(ctx, node->name);
+            }
         } else if (!simap_find(&req_snat_zones, node->name)) {
             if (ct_zone->zone < min_ct_zone || ct_zone->zone > max_ct_zone) {
                 ct_zone_remove(ctx, node->name);

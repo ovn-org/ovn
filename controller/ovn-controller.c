@@ -217,7 +217,7 @@ static char *get_file_system_id(void)
 static unsigned int
 update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
                    const struct sbrec_chassis *chassis,
-                   const struct sset *local_ifaces,
+                   const struct simap *local_ifaces,
                    const struct shash *local_bindings,
                    struct hmap *local_datapaths,
                    bool monitor_all)
@@ -357,7 +357,9 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         const char *name;
 
         ovs_assert(local_bindings);
-        SSET_FOR_EACH (name, local_ifaces) {
+        const struct simap_node *n;
+        SIMAP_FOR_EACH (n, local_ifaces) {
+            name = n->name;
             /* Skip the VIFs we bound already, we should have a local datapath
              * for those. */
             const struct sbrec_port_binding *local_pb
@@ -1297,8 +1299,9 @@ struct ed_type_runtime_data {
      * hypervisor.  These logical ports include the VIFs (and their child
      * logical ports, if any) that belong to VMs running on the hypervisor,
      * l2gateway ports for which options:l2gateway-chassis designates the
-     * local hypervisor, and localnet ports. */
-    struct sset local_lports;
+     * local hypervisor, and localnet ports.
+     * The value is mapped to enum binding_local_lport_status. */
+    struct simap local_lports;
 
     /* Port bindings that are relevant to the local chassis (VIFs bound
      * localy, patch ports).
@@ -1402,7 +1405,7 @@ en_runtime_data_init(struct engine_node *node OVS_UNUSED,
     struct ed_type_runtime_data *data = xzalloc(sizeof *data);
 
     hmap_init(&data->local_datapaths);
-    sset_init(&data->local_lports);
+    simap_init(&data->local_lports);
     related_lports_init(&data->related_lports);
     sset_init(&data->active_tunnels);
     hmap_init(&data->qos_map);
@@ -1422,7 +1425,7 @@ en_runtime_data_cleanup(void *data)
 {
     struct ed_type_runtime_data *rt_data = data;
 
-    sset_destroy(&rt_data->local_lports);
+    simap_destroy(&rt_data->local_lports);
     related_lports_destroy(&rt_data->related_lports);
     sset_destroy(&rt_data->active_tunnels);
     destroy_qos_map(&rt_data->qos_map);
@@ -1536,7 +1539,7 @@ en_runtime_data_run(struct engine_node *node, void *data)
     struct hmap *local_datapaths = &rt_data->local_datapaths;
     struct shash *local_active_ipv6_pd = &rt_data->local_active_ports_ipv6_pd;
     struct shash *local_active_ras = &rt_data->local_active_ports_ras;
-    struct sset *local_lports = &rt_data->local_lports;
+    struct simap *local_lports = &rt_data->local_lports;
     struct sset *active_tunnels = &rt_data->active_tunnels;
 
     static bool first_run = true;
@@ -1548,13 +1551,13 @@ en_runtime_data_run(struct engine_node *node, void *data)
         shash_clear(local_active_ipv6_pd);
         shash_clear(local_active_ras);
         local_binding_data_destroy(&rt_data->lbinding_data);
-        sset_destroy(local_lports);
+        simap_destroy(local_lports);
         related_lports_destroy(&rt_data->related_lports);
         sset_destroy(active_tunnels);
         destroy_qos_map(&rt_data->qos_map);
         smap_destroy(&rt_data->local_iface_ids);
         hmap_init(local_datapaths);
-        sset_init(local_lports);
+        simap_init(local_lports);
         related_lports_init(&rt_data->related_lports);
         sset_init(active_tunnels);
         hmap_init(&rt_data->qos_map);

@@ -654,11 +654,19 @@ update_ld_localnet_port(const struct sbrec_port_binding *binding_rec,
  * Also track if the set has changed.
  */
 static void
-update_local_lports(const char *iface_id, struct binding_ctx_out *b_ctx)
+update_local_lports(const char *iface_id, struct binding_ctx_out *b_ctx,
+                    enum binding_local_lport_status status)
 {
-    if (sset_add(b_ctx->local_lports, iface_id) != NULL) {
-        b_ctx->local_lports_changed = true;
+    struct simap_node *node = simap_find(b_ctx->local_lports, iface_id);
+    if (node && node->data == status) {
+        return;
     }
+    if (node) {
+        node->data = status;
+    } else {
+        simap_put(b_ctx->local_lports, iface_id, status);
+    }
+    b_ctx->local_lports_changed = true;
 }
 
 /* Remove an interface ID from the set of local lports. Also track if the
@@ -667,7 +675,7 @@ update_local_lports(const char *iface_id, struct binding_ctx_out *b_ctx)
 static void
 remove_local_lports(const char *iface_id, struct binding_ctx_out *b_ctx)
 {
-    if (sset_find_and_delete(b_ctx->local_lports, iface_id)) {
+    if (simap_find_and_delete(b_ctx->local_lports, iface_id)) {
         b_ctx->local_lports_changed = true;
     }
 }
@@ -1604,7 +1612,8 @@ consider_vif_lport_(const struct sbrec_port_binding *pb,
                                b_ctx_out->local_datapaths,
                                b_ctx_out->tracked_dp_bindings);
             update_related_lport(pb, b_ctx_out);
-            update_local_lports(pb->logical_port, b_ctx_out);
+            update_local_lports(pb->logical_port, b_ctx_out,
+                                LPORT_STATUS_BOUND);
             if (binding_lport_update_port_sec(b_lport, pb) &&
                     b_ctx_out->tracked_dp_bindings) {
                 tracked_datapath_lport_add(pb, TRACKED_RESOURCE_UPDATED,
@@ -1907,6 +1916,10 @@ consider_localport(const struct sbrec_port_binding *pb,
         remove_related_lport(pb, b_ctx_out);
     }
 
+    /* Add all localnet ports to local_ifaces so that we allocate ct zones
+     * for them. */
+    update_local_lports(pb->logical_port, b_ctx_out, LPORT_STATUS_BOUND);
+
     update_related_lport(pb, b_ctx_out);
     return true;
 }
@@ -1925,7 +1938,7 @@ consider_nonvif_lport_(const struct sbrec_port_binding *pb,
                            pb->datapath->tunnel_key);
 
     if (our_chassis) {
-        update_local_lports(pb->logical_port, b_ctx_out);
+        update_local_lports(pb->logical_port, b_ctx_out, LPORT_STATUS_BOUND);
         if (!ld) {
             add_local_datapath(b_ctx_in->sbrec_datapath_binding_by_key,
                                b_ctx_in->sbrec_port_binding_by_datapath,
@@ -2034,7 +2047,7 @@ consider_localnet_lport(const struct sbrec_port_binding *pb,
 
     /* Add all localnet ports to local_ifaces so that we allocate ct zones
      * for them. */
-    update_local_lports(pb->logical_port, b_ctx_out);
+    update_local_lports(pb->logical_port, b_ctx_out, LPORT_STATUS_BOUND);
 
     add_or_del_qos_port(pb->logical_port, true);
     update_related_lport(pb, b_ctx_out);
@@ -2135,7 +2148,8 @@ build_local_bindings(struct binding_ctx_in *b_ctx_in,
                         iface_rec->name);
                 }
 
-                update_local_lports(iface_id, b_ctx_out);
+                update_local_lports(iface_id, b_ctx_out,
+                                    LPORT_STATUS_NOT_BOUND);
                 smap_replace(b_ctx_out->local_iface_ids, iface_rec->name,
                              iface_id);
             } else if (smap_get_bool(&iface_rec->external_ids,
@@ -2402,7 +2416,6 @@ consider_iface_claim(const struct ovsrec_interface *iface_rec,
                      struct binding_ctx_in *b_ctx_in,
                      struct binding_ctx_out *b_ctx_out)
 {
-    update_local_lports(iface_id, b_ctx_out);
     smap_replace(b_ctx_out->local_iface_ids, iface_rec->name, iface_id);
 
     struct shash *local_bindings = &b_ctx_out->lbinding_data->bindings;
@@ -2430,6 +2443,8 @@ consider_iface_claim(const struct ovsrec_interface *iface_rec,
         pb = b_lport->pb;
     }
 
+    update_local_lports(iface_id, b_ctx_out, pb ? LPORT_STATUS_BOUND :
+                        LPORT_STATUS_NOT_BOUND);
     if (!pb) {
         /* There is no port_binding row for this local binding. */
         return true;

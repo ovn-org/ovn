@@ -71,6 +71,12 @@ struct related_lports {
                               */
 };
 
+enum binding_local_lport_status {
+    LPORT_STATUS_NOT_BOUND, /* Set if just iface-id is set but the port is
+                               not in sb. */
+    LPORT_STATUS_BOUND, /* Set if the port is in sb and locally relevant. */
+};
+
 void related_lports_init(struct related_lports *);
 void related_lports_destroy(struct related_lports *);
 
@@ -81,7 +87,7 @@ struct binding_ctx_out {
     struct local_binding_data *lbinding_data;
 
     /* sset of (potential) local lports. */
-    struct sset *local_lports;
+    struct simap *local_lports;
     /* Track if local_lports have been updated. */
     bool local_lports_changed;
 
