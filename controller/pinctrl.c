@@ -242,7 +242,6 @@ static void send_garp_rarp_prepare(
     const struct ovsrec_bridge *,
     const struct sbrec_chassis *,
     const struct hmap *local_datapaths,
-    const struct sset *active_tunnels,
     const struct ovsrec_open_vswitch_table *ovs_table)
     OVS_REQUIRES(pinctrl_mutex);
 static void send_garp_rarp_run(struct rconn *swconn,
@@ -4097,8 +4096,7 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
     send_garp_rarp_prepare(ovnsb_idl_txn, sbrec_port_binding_by_datapath,
                            sbrec_port_binding_by_name,
                            sbrec_mac_binding_by_lport_ip, ecmp_nh_table,
-                           br_int, chassis, local_datapaths, active_tunnels,
-                           ovs_table);
+                           br_int, chassis, local_datapaths, ovs_table);
     prepare_ipv6_ras(local_active_ports_ras, sbrec_port_binding_by_name);
     prepare_ipv6_prefixd(ovnsb_idl_txn, sbrec_port_binding_by_name,
                          local_active_ports_ipv6_pd, chassis,
@@ -6587,16 +6585,18 @@ consider_nat_address(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                      const struct sbrec_port_binding *pb,
                      struct sset *nat_address_keys,
                      const struct sbrec_chassis *chassis,
-                     const struct sset *active_tunnels,
                      struct shash *nat_addresses)
 {
     struct lport_addresses *laddrs = xmalloc(sizeof *laddrs);
     char *lport = NULL;
-    if (!extract_addresses_with_port(nat_address, laddrs, &lport)
+    const struct sbrec_port_binding *cr_pb = NULL;
+    bool rc = extract_addresses_with_port(nat_address, laddrs, &lport);
+    if (lport) {
+        cr_pb = lport_lookup_by_name(sbrec_port_binding_by_name, lport);
+    }
+    if (!rc
         || (!lport && !strcmp(pb->type, "patch"))
-        || (lport && !lport_is_chassis_resident(
-                sbrec_port_binding_by_name, chassis,
-                active_tunnels, lport))) {
+        || (lport && (!cr_pb || (cr_pb->chassis != chassis)))) {
         destroy_lport_addresses(laddrs);
         free(laddrs);
         free(lport);
@@ -6624,7 +6624,6 @@ get_nat_addresses_and_keys(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                            struct sset *nat_address_keys,
                            struct sset *local_l3gw_ports,
                            const struct sbrec_chassis *chassis,
-                           const struct sset *active_tunnels,
                            struct shash *nat_addresses)
 {
     const char *gw_port;
@@ -6641,7 +6640,6 @@ get_nat_addresses_and_keys(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                 consider_nat_address(sbrec_port_binding_by_name,
                                      pb->nat_addresses[i], pb,
                                      nat_address_keys, chassis,
-                                     active_tunnels,
                                      nat_addresses);
             }
         } else {
@@ -6653,7 +6651,6 @@ get_nat_addresses_and_keys(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                 consider_nat_address(sbrec_port_binding_by_name,
                                      nat_addresses_options, pb,
                                      nat_address_keys, chassis,
-                                     active_tunnels,
                                      nat_addresses);
             }
         }
@@ -6762,7 +6759,6 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
                        const struct ovsrec_bridge *br_int,
                        const struct sbrec_chassis *chassis,
                        const struct hmap *local_datapaths,
-                       const struct sset *active_tunnels,
                        const struct ovsrec_open_vswitch_table *ovs_table)
     OVS_REQUIRES(pinctrl_mutex)
 {
@@ -6798,8 +6794,7 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
     get_nat_addresses_and_keys(sbrec_port_binding_by_name,
                                &nat_ip_keys, &local_l3gw_ports,
-                               chassis, active_tunnels,
-                               &nat_addresses);
+                               chassis, &nat_addresses);
 
     /* For deleted ports and deleted nat ips, remove from
      * send_garp_rarp_data. */
