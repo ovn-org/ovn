@@ -35309,7 +35309,6 @@ OVS_WAIT_UNTIL([
     test x430 = x$(as hv1 ovs-vsctl get Interface ${iface1_uuid} mtu_request)
 ])
 
-as hv1 check ovn-appctl -t ovn-controller debug/ignore-startup-delay
 # Check that pointing requested-chassis somewhere else will unplug the port
 check ovn-nbctl --wait=hv set Logical_Switch_Port lsp1 \
     options:requested-chassis=non-existent-chassis
@@ -35317,7 +35316,6 @@ OVS_WAIT_UNTIL([
     ! as hv1 ovs-vsctl get Interface ${iface1_uuid} _uuid
 ])
 
-as hv2 check ovn-appctl -t ovn-controller debug/ignore-startup-delay
 # Check that removing an lport will unplug it
 AT_CHECK([test x${iface2_uuid} = x$(as hv2 ovs-vsctl get Interface ${iface2_uuid} _uuid)], [0], [])
 check ovn-nbctl --wait=hv lsp-del ${lsp2_uuid}
@@ -38081,9 +38079,6 @@ ovs-vsctl -- add-port br-phys-2 fake-phys-2-to-int-2 -- \
 
 ovn_attach n1 br-phys 192.168.1.1 24
 
-# allow controller to immediately clean patch ports up
-check ovn-appctl -t ovn-controller debug/ignore-startup-delay
-
 # check that patch port on br-int is cleaned up (and also its peer)
 OVS_WAIT_UNTIL([
     test 0 = $(ovs-vsctl --columns _uuid --bare find Port name=fake-int-to-phys | wc -l)
@@ -38148,9 +38143,6 @@ check ovn-nbctl lsp-set-type ln_port localnet
 check ovn-nbctl lsp-set-options ln_port network_name=phys-1
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-
-# Allow controller to immediately clean patch ports up if any.
-check ovn-appctl -t ovn-controller debug/ignore-startup-delay
 
 # check that patch port created on br-int and br-phys-1.
 OVS_WAIT_UNTIL([
@@ -41415,8 +41407,6 @@ check ovn-nbctl ls-add sw0
 check ovn-nbctl lsp-add sw0 sw0p1
 
 check ovn-nbctl --wait=hv sync
-
-check ovn-appctl -t ovn-controller debug/ignore-startup-delay
 
 # Waits until the OVS database contains exactly the specified patch ports.
 # Each argument should be of the form BRIDGE PORT PEER.

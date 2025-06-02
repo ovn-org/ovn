@@ -238,9 +238,6 @@ for i in `seq 1 5`; do
     as hv$i
     ovs-vsctl add-br br-phys
     ovn_attach n1 br-phys 192.168.0.$i
-    # Do not postpone patch ports related changes, as they may occur more or less anywere within the test,
-    # hence causing unexpected recomputes.
-    check ovn-appctl -t ovn-controller debug/ignore-startup-delay
     if [[ $i -ge 3 ]] ; then
         ovs-vsctl add-br br-ex
         ovs-vsctl set open . external_ids:ovn-bridge-mappings="public:br-ex"

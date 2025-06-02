@@ -113,7 +113,6 @@ static unixctl_cb_func debug_dump_lflow_conj_ids;
 static unixctl_cb_func lflow_cache_flush_cmd;
 static unixctl_cb_func lflow_cache_show_stats_cmd;
 static unixctl_cb_func debug_delay_nb_cfg_report;
-static unixctl_cb_func debug_ignore_startup_delay;
 
 #define DEFAULT_BRIDGE_NAME "br-int"
 #define DEFAULT_DATAPATH "system"
@@ -6066,9 +6065,6 @@ main(int argc, char *argv[])
     unixctl_command_register("debug/dump-mac-bindings", "", 0, 0,
                              debug_dump_local_mac_bindings,
                              &mac_cache_data->mac_bindings);
-
-    unixctl_command_register("debug/ignore-startup-delay", "", 0, 0,
-                             debug_ignore_startup_delay, NULL);
     ovn_debug_commands_register();
 
     unsigned int ovs_cond_seqno = UINT_MAX;
@@ -6146,6 +6142,16 @@ main(int argc, char *argv[])
                 engine_set_force_recompute();
             }
             ovnsb_cond_seqno = new_ovnsb_cond_seqno;
+        }
+
+        /* Check if we have received all initial dumps of the southbound
+         * based on the monitor condtions we set.
+         * If we have sb_monitor_all that means we have all data that we would
+         * ever need.
+         * In other cases we depend on engine runs. This is handled below. */
+        if (ovnsb_cond_seqno == ovnsb_expected_cond_seqno
+            && ovnsb_expected_cond_seqno != UINT_MAX && sb_monitor_all) {
+            daemon_started_recently_ignore();
         }
 
         struct engine_context eng_ctx = {
@@ -6305,9 +6311,6 @@ main(int argc, char *argv[])
 
                     stopwatch_stop(CONTROLLER_LOOP_STOPWATCH_NAME,
                                    time_msec());
-                    if (engine_has_updated()) {
-                        daemon_started_recently_countdown();
-                    }
 
                     ct_zones_data = engine_get_data(&en_ct_zones);
                     bfd_chassis_data = engine_get_data(&en_bfd_chassis);
@@ -6417,6 +6420,8 @@ main(int argc, char *argv[])
                          * logical datapath goups changed. */
                         if (engine_node_changed(&en_runtime_data)
                             || engine_node_changed(&en_sb_logical_dp_group)) {
+                            bool had_all_data = ovnsb_cond_seqno ==
+                                                ovnsb_expected_cond_seqno;
                             ovnsb_expected_cond_seqno =
                                 update_sb_monitors(
                                     ovnsb_idl_loop.idl, chassis,
@@ -6424,6 +6429,27 @@ main(int argc, char *argv[])
                                     &runtime_data->lbinding_data.bindings,
                                     &runtime_data->local_datapaths,
                                     sb_monitor_all);
+                            bool condition_changed = ovnsb_cond_seqno !=
+                                                     ovnsb_expected_cond_seqno;
+                            if (had_all_data && condition_changed) {
+                                /* We limit the amount of condition updates
+                                 * that we treat as daemon_started_recently.
+                                 * This allows us to proceed even if there is
+                                 * a continuous reason for monitor updates. */
+                                daemon_started_recently_countdown();
+                            }
+                        }
+                        /* If there is no new expected seqno we have finished
+                         * loading all needed data from southbound. We then
+                         * need to run one more time since we might behave
+                         * differently. */
+                        if (daemon_started_recently()) {
+                            bool condition_changed = ovnsb_cond_seqno !=
+                                                     ovnsb_expected_cond_seqno;
+                            if (!condition_changed) {
+                                daemon_started_recently_ignore();
+                                poll_immediate_wake();
+                            }
                         }
                         if (ovs_idl_txn) {
                             update_qos(sbrec_port_binding_by_name, ovs_idl_txn,
@@ -7105,12 +7131,4 @@ debug_dump_local_mac_bindings(struct unixctl_conn *conn, int argc OVS_UNUSED,
     mac_bindings_to_string(mac_bindings, &mb_str);
     unixctl_command_reply(conn, ds_cstr(&mb_str));
     ds_destroy(&mb_str);
-}
-
-static void
-debug_ignore_startup_delay(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                           const char *argv[] OVS_UNUSED, void *arg OVS_UNUSED)
-{
-    daemon_started_recently_ignore();
-    unixctl_command_reply(conn, NULL);
 }

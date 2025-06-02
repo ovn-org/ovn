@@ -937,13 +937,24 @@ get_bridge(const struct ovsrec_bridge_table *bridge_table, const char *br_name)
     return NULL;
 }
 
+/* This counts the amount of iterations of monitoring condition updates and
+ * their respective update towards us.
+ * This only needs to handle the case of non monitor_all since that will use
+ * the ignore feature below.
+ * In this case we need at least 2 iterations:
+ * 1. the initial iteration where we pull the sb content based on the few
+ *    conditions we now have.
+ * 2. after the first engine run we have enough information to update the
+ *    monitoring conditions to their final values.
+ * However based on the structure of the datapaths we might need more. The
+ * value below is just a hard limit of iterations. We detect if we are done
+ * earlier and then skip further iterations. */
 #define DAEMON_STARTUP_DELAY_SEED 20
-#define DAEMON_STARTUP_DELAY_MS   10000
 
 static int64_t startup_ts;
 static int startup_delay = DAEMON_STARTUP_DELAY_SEED;
 
-/* Used by debug command only, for tests. */
+/* Used if we do not need the startup delay (e.g. when using monitor_all). */
 static bool ignore_startup_delay = false;
 
 OVS_CONSTRUCTOR(startup_ts_initializer) {
@@ -984,9 +995,7 @@ daemon_started_recently(void)
     if (startup_delay) {
         return true;
     }
-
-    /* Ensure that at least an amount of time has passed. */
-    return time_wall_msec() - startup_ts <= DAEMON_STARTUP_DELAY_MS;
+    return false;
 }
 
 /* Builds a unique address set compatible name ([a-zA-Z_.][a-zA-Z_.0-9]*)

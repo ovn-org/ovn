@@ -161,7 +161,6 @@ check_patches \
     'br-eth0 patch-localnet2-to-br-int patch-br-int-to-localnet2'
 
 # Delete the mapping and the ovn-bridge-mapping patch ports should go away.
-check ovn-appctl -t ovn-controller debug/ignore-startup-delay
 AT_CHECK([ovs-vsctl remove Open_vSwitch . external-ids ovn-bridge-mappings])
 check_bridge_mappings
 check_patches
