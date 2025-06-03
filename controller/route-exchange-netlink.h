@@ -51,10 +51,10 @@ int re_nl_delete_route(uint32_t table_id, const struct in6_addr *dst,
                        unsigned int plen, unsigned int priority);
 
 void re_nl_learned_routes_destroy(struct ovs_list *learned_routes);
-void re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
-                       struct ovs_list *learned_routes,
-                       const struct sbrec_datapath_binding *db);
+int re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
+                      struct ovs_list *learned_routes,
+                      const struct sbrec_datapath_binding *db);
 
-void re_nl_cleanup_routes(uint32_t table_id);
+int re_nl_cleanup_routes(uint32_t table_id);
 
 #endif /* route-exchange-netlink.h */
