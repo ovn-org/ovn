@@ -35,3 +35,8 @@ void
 route_exchange_destroy(void)
 {
 }
+
+int route_exchange_status_run(void)
+{
+    return 0;
+}

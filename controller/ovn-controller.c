@@ -5373,6 +5373,36 @@ en_route_table_notify_cleanup(void *data OVS_UNUSED)
 {
 }
 
+struct ed_type_route_exchange_status {
+    bool netlink_trigger_run;
+};
+
+static void *
+en_route_exchange_status_init(struct engine_node *node OVS_UNUSED,
+                              struct engine_arg *arg OVS_UNUSED)
+{
+    return xzalloc(sizeof(struct ed_type_route_exchange_status));
+}
+
+static void
+en_route_exchange_status_run(struct engine_node *node OVS_UNUSED, void *data)
+{
+    struct ed_type_route_exchange_status *res = data;
+
+    if (res->netlink_trigger_run) {
+        engine_set_node_state(node, EN_UPDATED);
+        poll_immediate_wake();
+    } else {
+        engine_set_node_state(node, EN_UNCHANGED);
+    }
+    res->netlink_trigger_run = false;
+}
+
+static void
+en_route_exchange_status_cleanup(void *data OVS_UNUSED)
+{
+}
+
 /* Returns false if the northd internal version stored in SB_Global
  * and ovn-controller internal version don't match.
  */
@@ -5682,6 +5712,7 @@ main(int argc, char *argv[])
     ENGINE_NODE(route, "route");
     ENGINE_NODE(route_table_notify, "route_table_notify");
     ENGINE_NODE(route_exchange, "route_exchange");
+    ENGINE_NODE(route_exchange_status, "route_exchange_status");
 
 #define SB_NODE(NAME, NAME_STR) ENGINE_NODE_SB(NAME, NAME_STR);
     SB_NODES
@@ -5719,6 +5750,7 @@ main(int argc, char *argv[])
     engine_add_input(&en_route_exchange, &en_sb_port_binding,
                      engine_noop_handler);
     engine_add_input(&en_route_exchange, &en_route_table_notify, NULL);
+    engine_add_input(&en_route_exchange, &en_route_exchange_status, NULL);
 
     engine_add_input(&en_addr_sets, &en_sb_address_set,
                      addr_sets_sb_address_set_handler);
@@ -6250,6 +6282,10 @@ main(int argc, char *argv[])
                     struct ed_type_route_table_notify *rtn =
                         engine_get_internal_data(&en_route_table_notify);
                     rtn->changed = route_table_notify_run();
+
+                    struct ed_type_route_exchange_status *res =
+                        engine_get_internal_data(&en_route_exchange_status);
+                    res->netlink_trigger_run = !!route_exchange_status_run();
 
                     stopwatch_start(CONTROLLER_LOOP_STOPWATCH_NAME,
                                     time_msec());
