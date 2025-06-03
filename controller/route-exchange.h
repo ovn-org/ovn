@@ -38,4 +38,6 @@ void route_exchange_run(const struct route_exchange_ctx_in *,
 void route_exchange_cleanup_vrfs(void);
 void route_exchange_destroy(void);
 
+int route_exchange_status_run(void);
+
 #endif /* ROUTE_EXCHANGE_H */
