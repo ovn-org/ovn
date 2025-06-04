@@ -350,7 +350,7 @@ build_nat_connected_routes(
             /* Advertise peer's NAT routes via the local port too. */
             build_nat_route_for_port(op, peer_lr_stateful->lrnat_rec,
                                      ls_ports, routes);
-            return;
+            continue;
         }
 
         /* This peer is LSP, we need to check all connected router ports
@@ -426,7 +426,7 @@ build_lb_connected_routes(const struct ovn_datapath *od,
                 lr_stateful_table, peer_od->index);
             build_lb_route_for_port(op, op->peer, lr_stateful_rec->lb_ips,
                                     routes);
-            return;
+            continue;
         }
 
         /* This peer is LSP, we need to check all connected router ports for
