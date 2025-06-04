@@ -265,6 +265,11 @@ struct engine_node {
      * engine 'data'. It may be NULL. */
     void (*clear_tracked_data)(void *tracked_data);
 
+    /* Method used to dump info about node input compute failues. It may be
+     * NULL.
+     */
+    void (*get_compute_failure_info)(struct engine_node *);
+
     /* Engine stats. */
     struct engine_stats stats;
 };
@@ -308,6 +313,11 @@ void *engine_get_input_data(const char *input_name, struct engine_node *);
 void engine_add_input(struct engine_node *node, struct engine_node *input,
                       enum engine_input_handler_result (*change_handler)
                           (struct engine_node *, void *));
+void engine_add_input_with_compute_debug(
+        struct engine_node *node, struct engine_node *input,
+        enum engine_input_handler_result (*change_handler)
+            (struct engine_node *, void *),
+        void (*get_compute_failure_info)(struct engine_node *));
 
 /* Force the engine to recompute everything. It is used
  * in circumstances when we are not sure there is change or not, or
@@ -422,6 +432,9 @@ void engine_ovsdb_node_add_index(struct engine_node *, const char *name,
 #define IS_VALID(NAME) \
     .is_valid = en_##NAME##_is_valid
 
+#define COMPUTE_FAIL_INFO(NAME) \
+        .get_compute_failure_info = en_##NAME##_compute_failure_info,
+
 #define ENGINE_NODE2(NAME, ARG1) \
     ENGINE_NODE_DEF_START(NAME, #NAME) \
     ARG1(NAME), \
@@ -460,6 +473,42 @@ static void *en_##DB_NAME##_##TBL_NAME##_init( \
 } \
 static void en_##DB_NAME##_##TBL_NAME##_cleanup(void *data OVS_UNUSED) \
 { \
+} \
+static void \
+en_##DB_NAME##_##TBL_NAME##_compute_failure_info(struct engine_node *node)  \
+{                                                                           \
+    if (!VLOG_IS_DBG_ENABLED()) {                                           \
+        return;                                                             \
+    }                                                                       \
+    const struct ovsdb_idl *table = EN_OVSDB_GET(node);                     \
+    const struct ovsdb_idl_row *row;                                        \
+    struct ds s = DS_EMPTY_INITIALIZER;                                     \
+    ds_put_format(&s, "Node \"%s\" compute failure info:\n", node->name);   \
+    for ((row) = ovsdb_idl_track_get_first(table,                           \
+                                           &DB_NAME##rec_table_##TBL_NAME); \
+         (row); (row) = ovsdb_idl_track_get_next(row)) {                    \
+        if (ovsdb_idl_row_get_seqno((row), OVSDB_IDL_CHANGE_INSERT) > 0) {  \
+            ds_put_format(&s, "%s (New) "UUID_FMT"\n",                      \
+                          #DB_NAME"_"#TBL_NAME, UUID_ARGS(&row->uuid));     \
+        } else if (ovsdb_idl_row_get_seqno((row),                           \
+                                           OVSDB_IDL_CHANGE_DELETE) > 0) {  \
+            ds_put_format(&s, "%s (Deleted) "UUID_FMT"\n",                  \
+                          #DB_NAME"_"#TBL_NAME, UUID_ARGS(&row->uuid));     \
+        } else {                                                            \
+            ds_put_format(&s, "%s (Updated) "UUID_FMT" columns:",           \
+                          #DB_NAME"_"#TBL_NAME, UUID_ARGS(&row->uuid));     \
+            for (size_t i = 0; i < row->table->class_->n_columns; i++) {    \
+                struct ovsdb_idl_column *col =                              \
+                    &DB_NAME##rec_##TBL_NAME##_columns[i];                  \
+                if (ovsdb_idl_track_is_updated(row, col)) {                 \
+                    ds_put_format(&s, " %s,", col->name);                   \
+                }                                                           \
+            }                                                               \
+            ds_chomp(&s, ',');                                              \
+        }                                                                   \
+    }                                                                       \
+    VLOG_DBG("%s", ds_cstr(&s));                                            \
+    ds_destroy(&s);                                                         \
 }
 
 /* Macro to define member functions of an engine node which represents
@@ -480,6 +529,7 @@ static void en_##DB_NAME##_##TBL_NAME##_cleanup(void *data OVS_UNUSED) \
 /* Macro to define an engine node which represents a table of OVSDB */
 #define ENGINE_NODE_OVSDB(DB_NAME, DB_NAME_STR, TBL_NAME, TBL_NAME_STR) \
     ENGINE_NODE_DEF_START(DB_NAME##_##TBL_NAME, DB_NAME_STR"_"TBL_NAME_STR) \
+    COMPUTE_FAIL_INFO(DB_NAME##_##TBL_NAME) \
     ENGINE_NODE_DEF_END
 
 /* Macro to define an engine node which represents a table of OVN SB DB */
