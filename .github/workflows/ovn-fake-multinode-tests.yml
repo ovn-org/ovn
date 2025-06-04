@@ -62,6 +62,12 @@ jobs:
         fix_etc_hosts
       working-directory: ovn-fake-multinode/ovn
 
+    - name: Disable apparmor
+      run: |
+        . .ci/linux-util.sh
+        disable_apparmor
+      working-directory: ovn-fake-multinode/ovn
+
     - name: Build ovn-fake-multi-node ${{ matrix.cfg.branch }} image
       run: |
         set -x
@@ -119,6 +125,11 @@ jobs:
       run: |
         . .ci/linux-util.sh
         fix_etc_hosts
+
+    - name: Disable apparmor
+      run: |
+        . .ci/linux-util.sh
+        disable_apparmor
 
     - name: Free up disk space
       run: |

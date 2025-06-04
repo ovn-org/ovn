@@ -42,6 +42,11 @@ jobs:
           . .ci/linux-util.sh
           fix_etc_hosts
 
+      - name: Disable apparmor
+        run: |
+          . .ci/linux-util.sh
+          disable_apparmor
+
       - name: Choose image distro
         if: github.event_name == 'push' || github.event_name == 'pull_request'
         run: |
@@ -149,6 +154,11 @@ jobs:
       run: |
         . .ci/linux-util.sh
         fix_etc_hosts
+
+    - name: Disable apparmor
+      run: |
+        . .ci/linux-util.sh
+        disable_apparmor
 
     - name: image cache
       id: image_cache
