@@ -16719,6 +16719,73 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - NAT/LB sync - different peer types])
+ovn_start
+
+dnl                  lr-int (with NAT/LB configured)
+dnl                     |
+dnl                  ls-int
+dnl                     |
+dnl                  lr-bgp (advertises routes for all neighbor
+dnl                     |    router NAT/LB IPs)
+dnl                     |
+dnl     +-------+-------+-------+-------+  (direct - peer - router connections)
+dnl     |       |       |       |       |
+dnl    lr-ext1 lr-ext2 lr-ext3 lr-ext4 lr-ext5 (with NAT/LB configured)
+
+check ovn-nbctl                                                         \
+    -- lr-add lr-int                                                    \
+      -- set logical_router lr-int options:chassis=hv1                 \
+      -- lrp-add lr-int lrp-int 00:00:00:00:00:01 10.0.0.1/24          \
+      -- lr-nat-add lr-int dnat_and_snat 10.0.0.42 1.1.1.1              \
+      -- lb-add lb-int 30.0.0.1 1.1.1.1                                 \
+      -- lr-lb-add lr-int lb-int                                        \
+    -- ls-add ls-int                                                    \
+       -- lsp-add ls-int lsp-internal                                   \
+       -- lsp-set-type lsp-internal router                              \
+       -- lsp-set-options lsp-internal router-port=lrp-int              \
+       -- lsp-set-addresses lsp-internal router                         \
+       -- lsp-add ls-int lsp-bgp                                        \
+       -- lsp-set-type lsp-bgp router                                   \
+       -- lsp-set-options lsp-bgp router-port=lrp-bgp-internal          \
+       -- lsp-set-addresses lsp-bgp router                              \
+    -- lr-add lr-bgp                                                    \
+       -- set logical_router lr-bgp options:chassis=hv1                 \
+       -- lrp-add lr-bgp lrp-bgp-internal 00:00:00:00:00:02 10.0.0.2/24
+
+n_ext_rtrs=5
+for i in $(seq $n_ext_rtrs); do
+    check ovn-nbctl \
+        -- lrp-add lr-bgp lrp-bgp-ext-$i 00:00:00:00:01:0$i 2$i.0.0.1/24 \
+        -- lr-add lr-ext-$i                                              \
+        -- set logical_router lr-ext-$i options:chassis=hv1              \
+        -- lrp-add lr-ext-$i lrp-ext-$i 00:00:00:00:02:0$i 2$i.0.0.2/24  \
+        -- set Logical_Router_Port lrp-bgp-ext-$i peer=lrp-ext-$i        \
+        -- set Logical_Router_Port lrp-ext-$i peer=lrp-bgp-ext-$i        \
+        -- lr-nat-add lr-ext-$i dnat_and_snat 2$i.0.0.42 2.2.2.2         \
+        -- lb-add lb-ext-$i 3$i.0.0.1 2.2.2.2                            \
+        -- lr-lb-add lr-ext-$i lb-ext-$i
+done
+check ovn-nbctl --wait=sb sync
+
+dnl Dynamic routing disabled, no routes should be advertised.
+check_row_count Advertised_Route 0
+
+dnl Enable dynamic routing on lr-bgp.  It should advertise NATs from both
+dnl lr-int and lr-exts.
+check ovn-nbctl --wait=sb                                                 \
+  -- set logical_router lr-bgp option:dynamic-routing=true                \
+                               option:dynamic-routing-redistribute=nat,lb
+
+dnl Expect two routes to be advertised for lr-int and two routes to be
+dnl advertised for each lr-ext.
+n_advertised_routes=$((2 * ($n_ext_rtrs + 1)))
+check_row_count Advertised_Route $n_advertised_routes
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([configure LRP peers strange])
 ovn_start
 
