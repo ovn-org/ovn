@@ -10553,7 +10553,10 @@ NS_CHECK_EXEC([ns_ls1p1], [ip addr del 10.0.0.11/24 dev ls1p1;
                            ip addr add 10.0.0.88/24 dev ls1p1;
                            ip route add default via 10.0.0.1])
 NS_EXEC([ns_ls1p1], [arping -U -c 1 -w 2 -I ls1p1 10.0.0.88])
+
+wait_column "ls1p1" Port_Binding virtual_parent logical_port=vip
 wait_for_ports_up vip
+wait_column "00:00:00:00:01:11" Mac_Binding mac ip="10.0.0.88"
 check ovn-nbctl --wait=hv sync
 
 # ping virtual IP from ext1
@@ -10576,6 +10579,8 @@ NS_CHECK_EXEC([ns_ls1p2], [ip addr del 10.0.0.12/24 dev ls1p2;
 NS_EXEC([ns_ls1p2], [arping -U -c 1 -w 2 -I ls1p2 10.0.0.88])
 
 wait_column "ls1p2" Port_Binding virtual_parent logical_port=vip
+wait_for_ports_up vip
+wait_column "00:00:00:00:01:12" Mac_Binding mac ip="10.0.0.88"
 check ovn-nbctl --wait=hv sync
 
 # ping virtual IP from ext1
