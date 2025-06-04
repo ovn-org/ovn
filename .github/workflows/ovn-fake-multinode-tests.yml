@@ -21,7 +21,7 @@ jobs:
         - { branch: "branch-22.03" }
     env:
       RUNC_CMD: podman
-      OS_IMAGE: "fedora:37"
+      OS_IMAGE: "fedora:42"
       # https://github.com/actions/runner-images/issues/6282
       XDG_RUNTIME_DIR: ''
     steps:
@@ -93,7 +93,7 @@ jobs:
     name: multinode tests ${{ join(matrix.cfg.*, ' ') }}
     env:
       RUNC_CMD: podman
-      OS_IMAGE: "fedora:37"
+      OS_IMAGE: "fedora:42"
       CENTRAL_IMAGE: "ovn/ovn-multi-node:${{ matrix.cfg.branch }}"
       CHASSIS_IMAGE: "ovn/ovn-multi-node:main"
       RELAY_IMAGE: "ovn/ovn-multi-node:main"
