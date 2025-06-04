@@ -257,7 +257,7 @@ jobs:
     name: linux rpm fedora
     if: github.repository_owner == 'ovn-org' || github.event_name != 'schedule'
     runs-on: ubuntu-24.04
-    container: fedora:40
+    container: fedora:42
     timeout-minutes: 30
 
     strategy:
