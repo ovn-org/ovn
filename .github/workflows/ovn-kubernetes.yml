@@ -57,6 +57,7 @@ jobs:
       run: |
         docker build --build-arg OVNKUBE_COMMIT=${{ env.OVNKUBE_COMMIT }} \
           --build-arg GO_VERSION=${{ env.GO_VERSION }} \
+          --build-arg FEDORA_VERSION=42 \
           --squash -t ovn-daemonset-f:dev -f .ci/ovn-kubernetes/Dockerfile .
         mkdir /tmp/_output
         docker save ovn-daemonset-f:dev > /tmp/_output/image.tar
