@@ -17467,20 +17467,20 @@ ovn_start ovn-northd
 
 AS_BOX([Create logical switches and ports.])
 check ovn-nbctl ls-add sw0
-check ovn-nbctl --wait=sb lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 \
+check ovn-nbctl lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 \
 "00:00:00:00:00:02 10.0.0.2"
 
-check ovn-nbctl --wait=sb lsp-add sw0 sw0-p2 -- lsp-set-addresses sw0-p2 \
+check ovn-nbctl lsp-add sw0 sw0-p2 -- lsp-set-addresses sw0-p2 \
 "00:00:00:00:00:03 10.0.0.3"
 
 AS_BOX([Create stateless ACLs.])
-check ovn-nbctl --wait=sb acl-add sw0 from-lport 1001 "ip" allow-stateless
-check ovn-nbctl --wait=sb acl-add sw0 to-lport 1001 "ip" allow-stateless
+check ovn-nbctl acl-add sw0 from-lport 1001 "ip" allow-stateless
+check ovn-nbctl acl-add sw0 to-lport 1001 "ip" allow-stateless
 
 AS_BOX([Create stateful ACLs.])
 # check if allow-stateless acls have higher priority we skip conntrack.
-check ovn-nbctl --wait=sb acl-add sw0 from-lport 1000 "ip" allow-related
-check ovn-nbctl --wait=sb acl-add sw0 to-lport 1000 "ip" allow-related
+check ovn-nbctl acl-add sw0 from-lport 1000 "ip" allow-related
+check ovn-nbctl acl-add sw0 to-lport 1000 "ip" allow-related
 
 AS_BOX([Create Load Balancer.])
 check ovn-nbctl lb-add lb1 10.0.0.4:80 10.0.0.2:80,10.0.0.3:80
@@ -17536,7 +17536,7 @@ AT_CHECK([grep -E 'ls_in_pre_stateful' sw0flows | ovn_strip_lflows], [0], [dnl
 ])
 
 AS_BOX([Create Load Balancer without port.])
-check ovn-nbctl --wait=sb ls-lb-del sw0 lb1
+check ovn-nbctl ls-lb-del sw0 lb1
 check ovn-nbctl lb-add lb2 10.0.0.5 10.0.0.2,10.0.0.3
 check ovn-nbctl --wait=sb ls-lb-add sw0 lb2
 
@@ -17570,6 +17570,7 @@ AS_BOX([Create one more logical switch with load balancer.])
 # where the option is enabled.
 check ovn-nbctl ls-add sw1
 check ovn-nbctl ls-lb-add sw1 lb2
+check ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows sw1 > sw1flows
 AT_CHECK([grep -E 'ls_in_pre_stateful' sw1flows | ovn_strip_lflows], [0], [dnl
