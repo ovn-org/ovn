@@ -32,3 +32,12 @@ function fix_etc_hosts()
 
     diff -u ./hosts.bak /etc/hosts || true
 }
+
+# Workaround until https://github.com/actions/runner-images/issues/10015
+# is resolved in some way.
+function disable_apparmor()
+{
+    # https://bugs.launchpad.net/ubuntu/+source/apparmor/+bug/2093797
+    sudo aa-teardown || true
+    sudo systemctl disable --now apparmor.service
+}
