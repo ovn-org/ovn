@@ -6155,7 +6155,8 @@ NS_CHECK_EXEC([vm2], [nc 66.66.66.66 666 -p 2001 -z], [0], [ignore], [ignore])
 # - one in vm2's zone (dnat)
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 2001 |             \
 grep "orig=.src=42\.42\.42\.3" |                                    \
-sed -e 's/port=2001/port=<clnt_s_port>/g'                           \
+sed -e 's/sport=2001/sport=<clnt_s_port>/g'                         \
+    -e 's/dport=2001/dport=<clnt_s_port>/g'                         \
     -e 's/sport=4242,dport=[[0-9]]\+/sport=4242,dport=<rnd_port>/g' \
     -e 's/state=[[0-9_A-Z]]*/state=<cleared>/g'                     \
     -e 's/zone=[[0-9]]*/zone=<cleared>/' | sort], [0], [dnl
@@ -6264,7 +6265,8 @@ NS_CHECK_EXEC([vm2], [nc 6666::1 666 -p 2001 -z], [0], [ignore], [ignore])
 # - one in vm2's zone (dnat)
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 2001 |             \
 grep "orig=.src=4242::3" |                                         \
-sed -e 's/port=2001/port=<clnt_s_port>/g'                           \
+sed -e 's/sport=2001/sport=<clnt_s_port>/g'                        \
+    -e 's/dport=2001/dport=<clnt_s_port>/g'                        \
     -e 's/sport=4242,dport=[[0-9]]\+/sport=4242,dport=<rnd_port>/g' \
     -e 's/state=[[0-9_A-Z]]*/state=<cleared>/g'                     \
     -e 's/zone=[[0-9]]*/zone=<cleared>/' | sort], [0], [dnl
