@@ -3094,6 +3094,15 @@ m_as ovn-gw-2 ovn-appctl vlog/set vconn:dbg
 m_as ovn-gw-1 ovn-appctl vlog/disable-rate-limit
 m_as ovn-gw-2 ovn-appctl vlog/disable-rate-limit
 
+# Add some logs in case the test fails.
+export test_success=0
+for chassis in ovn-gw-1 ovn-gw-2 ovn-chassis-1 ovn-chassis-2; do
+    on_exit "if test $test_success != 1; then m_as $chassis ovs-vsctl list Interface > interfaces-${chassis}.txt; fi"
+    on_exit "if test $test_success != 1; then m_as $chassis ovs-vsctl show > ovs-${chassis}.txt; fi"
+    on_exit "if test $test_success != 1; then m_as $chassis ovs-ofctl dump-flows br-int > flow-${chassis}.txt; fi"
+    on_exit "if test $test_success != 1; then m_as $chassis ovs-vsctl get open . external_ids > extids-${chassis}.txt; fi"
+done
+
 check_fake_multinode_setup_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-gw-1 ovn-gw-2'
 
 # Delete the multinode NB and OVS resources before starting the test.
@@ -3103,8 +3112,13 @@ ip_ch1=$(m_as ovn-chassis-1 ip a show dev eth1 | grep "inet " | awk '{print $2}'
 ip_gw1=$(m_as ovn-gw-1 ip a show dev eth1 | grep "inet " | awk '{print $2}'| cut -d '/' -f1)
 ip_gw2=$(m_as ovn-gw-2 ip a show dev eth1 | grep "inet " | awk '{print $2}'| cut -d '/' -f1)
 
+from_gw1_to_gw2=$(m_as ovn-gw-1 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_gw2)
 from_gw1_to_ch1=$(m_as ovn-gw-1 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_ch1)
+from_gw2_to_gw1=$(m_as ovn-gw-2 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_gw1)
 from_gw2_to_ch1=$(m_as ovn-gw-2 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_ch1)
+from_ch1_to_gw1=$(m_as ovn-chassis-1 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_gw1)
+from_ch1_to_gw2=$(m_as ovn-chassis-1 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_gw2)
+
 m_as ovn-chassis-1 ip link del hv1-vif1-p
 m_as ovn-chassis-2 ip link del ext1-p
 
@@ -3193,19 +3207,19 @@ wait_bfd_up() {
 }
 
 # check BFD enablement on tunnel ports from ovn-gw-1 ##########
-for chassis in ovn-ovn-gw-0 $from_gw1_to_ch1; do
+for chassis in $from_gw1_to_gw2 $from_gw1_to_ch1; do
     echo "checking ovn-gw-1 -> $chassis"
     wait_bfd_enabled ovn-gw-1 $chassis
 done
 
 # check BFD enablement on tunnel ports from ovn-gw-2 ##########
-for chassis in ovn-ovn-gw-0 $from_gw2_to_ch1; do
+for chassis in $from_gw2_to_gw1 $from_gw2_to_ch1; do
     echo "checking ovn-gw-2 -> $chassis"
     wait_bfd_enabled ovn-gw-2 $chassis
 done
 
 # check BFD enablement on tunnel ports from ovn-chassis-1 ###########
-for chassis in ovn-ovn-gw-0 ovn-ovn-gw-1; do
+for chassis in $from_ch1_to_gw1 $from_ch1_to_gw2; do
     echo "checking ovn-chassis-1 -> $chassis"
     wait_bfd_enabled ovn-chassis-1 $chassis
 done
@@ -3215,12 +3229,12 @@ gw1_pid=$(podman inspect -f '{{.State.Pid}}' ovn-gw-1)
 nsenter --net=/proc/$gw1_pid/ns/net nft list tables | grep ovn-test && nsenter --net=/proc/$gw1_pid/ns/net nft delete table ip ovn-test
 on_exit "nsenter --net=/proc/$gw1_pid/ns/net nft list tables | grep ovn-test && nsenter --net=/proc/$gw1_pid/ns/net nft delete table ip ovn-test"
 
-wait_bfd_up ovn-gw-1 ovn-ovn-gw-0
+wait_bfd_up ovn-gw-1 $from_gw1_to_gw2
 wait_bfd_up ovn-gw-1 $from_gw1_to_ch1
-wait_bfd_up ovn-gw-2 ovn-ovn-gw-0
-wait_bfd_up ovn-gw-2 $from_gw1_to_ch1
-wait_bfd_up ovn-chassis-1 ovn-ovn-gw-0
-wait_bfd_up ovn-chassis-1 ovn-ovn-gw-1
+wait_bfd_up ovn-gw-2 $from_gw2_to_gw1
+wait_bfd_up ovn-gw-2 $from_gw2_to_ch1
+wait_bfd_up ovn-chassis-1 $from_ch1_to_gw1
+wait_bfd_up ovn-chassis-1 $from_ch1_to_gw2
 
 m_wait_row_count Port_Binding 1 logical_port=cr-R1_outside chassis=$gw1_chassis
 check multinode_nbctl --wait=hv sync
@@ -3279,7 +3293,7 @@ check_migration_between_gw1_and_gw2() {
 f0:00:c0:a8:00:fe > 00:00:c0:a8:00:01, ethertype IPv4 (0x0800), length 98: 192.168.1.1 > 192.168.0.1: ICMP echo reply,
 ])
 
-    flap_count=$(m_as ovn-gw-1 ovs-vsctl get interfac ovn-ovn-gw-0 bfd_status | sed 's/.*flap_count=\"\([[0-9]]*\).*/\1/g')
+    flap_count=$(m_as ovn-gw-1 ovs-vsctl get interface $from_gw1_to_gw2 bfd_status | sed 's/.*flap_count=\"\([[0-9]]*\).*/\1/g')
 
     AS_BOX([$(date +%H:%M:%S.%03N) Blocking bfd on gw1 (from $ip_gw1 to $ip_gw2)])
     nsenter --net=/proc/$gw1_pid/ns/net nft add table ip ovn-test
@@ -3292,7 +3306,7 @@ f0:00:c0:a8:00:fe > 00:00:c0:a8:00:01, ethertype IPv4 (0x0800), length 98: 192.1
     # We do not check that packets go through gw2 as BFD between chassis-2 and gw1 is still up
     AS_BOX([$(date +%H:%M:%S.%03N) Waiting for flap count between gw1 and gw2 to increase])
     OVS_WAIT_UNTIL([
-        new_flap_count=$(m_as ovn-gw-1 ovs-vsctl get interfac ovn-ovn-gw-0 bfd_status | sed 's/.*flap_count=\"\([[0-9]]*\).*/\1/g')
+        new_flap_count=$(m_as ovn-gw-1 ovs-vsctl get interfac $from_gw1_to_gw2 bfd_status | sed 's/.*flap_count=\"\([[0-9]]*\).*/\1/g')
         echo "Comparing $new_flap_count versus $flap_count"
         test "$new_flap_count" -gt "$((flap_count))"
     ])
@@ -3369,5 +3383,6 @@ gw2_rep=$(grep -c "ICMP echo reply" gw2.tcpdump)
 echo "$n1 claims in gw1 and $n2 in gw2"
 echo "ch2_request=$ch2_req gw1_request=$gw1_req gw2_request=$gw2_req ch1_request=$ch1_req ch1_reply=$ch1_rep gw1_reply=$gw1_rep gw2_reply=$gw2_rep ch2_reply=$ch2_rep"
 
+export test_success=1
 AT_CLEANUP
 ])
