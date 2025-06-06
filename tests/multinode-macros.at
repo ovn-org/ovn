@@ -124,7 +124,7 @@ multinode_cleanup_northd() {
     c=$1
     # Cleanup existing one
     m_as $c /usr/share/ovn/scripts/ovn-ctl stop_northd
-    m_as $c rm -f /etc/ovn/*.db
+    m_as $c sh -c "rm -f /etc/ovn/*.db"
 }
 
 # multinode_setup_northd NODE
@@ -152,7 +152,7 @@ multinode_setup_controller() {
     # Cleanup existing one
     m_as $c /usr/share/openvswitch/scripts/ovs-ctl stop
     m_as $c /usr/share/ovn/scripts/ovn-ctl stop_controller
-    m_as $c rm -f /etc/openvswitch/*.db
+    m_as $c sh -c "rm -f /etc/openvswitch/*.db"
 
     m_as $c /usr/share/openvswitch/scripts/ovs-ctl start --system-id=$c
     m_as $c /usr/share/ovn/scripts/ovn-ctl start_controller
@@ -163,6 +163,13 @@ multinode_setup_controller() {
     m_as $c ovs-vsctl set open . external-ids:ovn-openflow-probe-interval=60
     m_as $c ovs-vsctl set open . external-ids:ovn-remote-probe-interval=180000
     m_as $c ovs-vsctl set open . external-ids:ovn-bridge-datapath-type=system
+
+    # Add back br-ex which was removed when removing ovs conf.db
+    m_as $c ovs-vsctl --if-exists del-br br-ex
+    m_as $c ovs-vsctl add-br br-ex
+    m_as $c ip link set eth2 down
+    m_as $c ovs-vsctl add-port br-ex eth2
+    m_as $c ip link set eth2 up
 }
 
 # m_count_rows TABLE [CONDITION...]
