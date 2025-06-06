@@ -352,14 +352,6 @@ static enum ofctrl_state state;
 /* Release wait before clear stage. */
 static bool wait_before_clear_proceed = false;
 
-/* The time (ms) to stay in the state S_WAIT_BEFORE_CLEAR. Read from
- * external_ids: ovn-ofctrl-wait-before-clear. */
-static unsigned int wait_before_clear_time = 0;
-
-/* The time when the state S_WAIT_BEFORE_CLEAR should complete.
- * If the timer is not started yet, it is set to 0. */
-static long long int wait_before_clear_expire = 0;
-
 /* Transaction IDs for messages in flight to the switch. */
 static ovs_be32 xid, xid2;
 
@@ -642,25 +634,9 @@ error:
 static void
 run_S_WAIT_BEFORE_CLEAR(void)
 {
-    if (wait_before_clear_time == 0) {
-        if (wait_before_clear_proceed) {
-            state = S_CLEAR_FLOWS;
-        }
-        return;
-    }
-
-    if (!wait_before_clear_time ||
-        (wait_before_clear_expire &&
-         time_msec() >= wait_before_clear_expire)) {
+    if (wait_before_clear_proceed) {
         state = S_CLEAR_FLOWS;
-        return;
     }
-
-    if (!wait_before_clear_expire) {
-        /* Start the timer. */
-        wait_before_clear_expire = time_msec() + wait_before_clear_time;
-    }
-    poll_timer_wait_until(wait_before_clear_expire);
 }
 
 static void
@@ -836,13 +812,6 @@ ofctrl_run(const char *conn_target, int probe_interval,
     const struct ovsrec_open_vswitch *cfg =
         ovsrec_open_vswitch_table_first(ovs_table);
     ovs_assert(cfg);
-    unsigned int _wait_before_clear_time =
-        smap_get_uint(&cfg->external_ids, "ovn-ofctrl-wait-before-clear", 0);
-    if (_wait_before_clear_time != wait_before_clear_time) {
-        VLOG_INFO("ofctrl-wait-before-clear is now %u ms (was %u ms)",
-                  _wait_before_clear_time, wait_before_clear_time);
-        wait_before_clear_time = _wait_before_clear_time;
-    }
 
     bool progress = true;
     for (int i = 0; progress && i < 50; i++) {

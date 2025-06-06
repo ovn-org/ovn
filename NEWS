@@ -28,6 +28,9 @@ Post v25.03.0
      with stateless ACL to work with load balancer.
    - Added new ovn-nbctl command 'pg-get-ports' to get the ports assigned to
      the port group.
+   - The ovn-controller option ovn-ofctrl-wait-before-clear is no longer
+     supported.  It will be ignored if used. ovn-controller will
+     automatically care about proper delay before clearing lflow.
 
 OVN v25.03.0 - 07 Mar 2025
 --------------------------
