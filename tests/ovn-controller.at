@@ -2454,6 +2454,68 @@ AT_CHECK([ovs-ofctl dump-flows br-int | grep group -c], [0], [3
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - ofctrl delay until all monitored updates come])
+
+# Prepare testing configuration
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=ls1-lp1
+
+check ovn-nbctl ls-add ls1
+
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "f0:00:00:00:00:01 10.1.2.3"
+
+check ovn-nbctl lb-add lb1 1.1.1.1 10.1.2.3 \
+-- ls-lb-add ls1 lb1
+
+check ovn-nbctl lb-add lb2 2.2.2.2 10.1.2.4 \
+-- ls-lb-add ls1 lb2
+
+check ovn-nbctl --wait=hv sync
+
+# Stop ovn-controller
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+# Sine we test initial flow upload controller is restarted.
+# Clear log file and start controller.
+rm -f hv1/ovn-controller.log
+start_daemon ovn-controller -vfile:jsonrpc:dbg -vfile:ofctrl:dbg
+
+# Monitor log file until flow finally uploaded to OVS
+OVS_WAIT_UNTIL([grep -q 'Setting lport.*in OVS' hv1/ovn-controller.log])
+
+# Analyse log file, select records about:
+# 1. monitor_cond changes made for SB DB (message class is 'jsonrpc')
+# 2. 'clearing all flows' message which is issued after 'wait before
+#    clear' stage released (message class is 'ofctrl')
+#
+# We expect here that all monitoring condition changes should be made before
+# OVS flow cleared / uploaded.
+# For now all monitoring updates comes in three iterations: initial,
+# direct dps, indirect dps that corresponds to
+# three messages of type 1 followed by one message of type 2
+#
+# For monitor-all=true one message of type 1 followed by one message of type 2
+#
+# Then we cut off message class and take first letter
+# (j for jsonrpc and o for ofctrl)
+#
+call_seq=$(grep -E \
+ "(clearing all flows)|(monitor_cond.*South)" \
+ hv1/ovn-controller.log | cut -d "|" -f 3- | cut -b 1 | tr -d '\n')
+AT_CHECK([echo $call_seq | grep -qE "^j+o$"], [0])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
 
 AT_SETUP([ovn-controller - check ovn-chassis-mac-mappings])
 

@@ -349,6 +349,9 @@ static uint64_t cur_cfg;
 /* Current state. */
 static enum ofctrl_state state;
 
+/* Release wait before clear stage. */
+static bool wait_before_clear_proceed = false;
+
 /* The time (ms) to stay in the state S_WAIT_BEFORE_CLEAR. Read from
  * external_ids: ovn-ofctrl-wait-before-clear. */
 static unsigned int wait_before_clear_time = 0;
@@ -446,6 +449,7 @@ run_S_NEW(void)
     struct ofpbuf *buf = ofpraw_alloc(OFPRAW_NXT_TLV_TABLE_REQUEST,
                                       rconn_get_version(swconn), 0);
     xid = queue_msg(buf);
+    wait_before_clear_proceed = false;
     state = S_TLV_TABLE_REQUESTED;
 }
 
@@ -638,6 +642,13 @@ error:
 static void
 run_S_WAIT_BEFORE_CLEAR(void)
 {
+    if (wait_before_clear_time == 0) {
+        if (wait_before_clear_proceed) {
+            state = S_CLEAR_FLOWS;
+        }
+        return;
+    }
+
     if (!wait_before_clear_time ||
         (wait_before_clear_expire &&
          time_msec() >= wait_before_clear_expire)) {
@@ -2695,11 +2706,24 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
            uint64_t req_cfg,
            bool lflows_changed,
            bool pflows_changed,
-           struct tracked_acl_ids *tracked_acl_ids)
+           struct tracked_acl_ids *tracked_acl_ids,
+           bool monitor_cond_complete)
 {
     static bool skipped_last_time = false;
     static uint64_t old_req_cfg = 0;
     bool need_put = false;
+
+    if (state == S_WAIT_BEFORE_CLEAR) {
+        /* If no more monitored condition changes expected, release wait
+         * before clear stage and skip over poll wait. */
+        if (monitor_cond_complete) {
+            wait_before_clear_proceed = true;
+            poll_immediate_wake();
+        }
+        skipped_last_time = true;
+        return;
+    }
+
     if (lflows_changed || pflows_changed || skipped_last_time ||
         ofctrl_initial_clear) {
         need_put = true;

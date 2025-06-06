@@ -68,7 +68,8 @@ void ofctrl_put(struct ovn_desired_flow_table *lflow_table,
                 uint64_t nb_cfg,
                 bool lflow_changed,
                 bool pflow_changed,
-                struct tracked_acl_ids *tracked_acl_ids);
+                struct tracked_acl_ids *tracked_acl_ids,
+                bool monitor_cond_complete);
 bool ofctrl_has_backlog(void);
 void ofctrl_wait(void);
 void ofctrl_destroy(void);
