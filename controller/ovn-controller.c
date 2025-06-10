@@ -92,6 +92,7 @@
 #include "route.h"
 #include "route-exchange.h"
 #include "route-table-notify.h"
+#include "garp_rarp.h"
 
 VLOG_DEFINE_THIS_MODULE(main);
 
@@ -4975,6 +4976,13 @@ controller_output_route_exchange_handler(struct engine_node *node OVS_UNUSED,
     return EN_HANDLED_UPDATED;
 }
 
+static enum engine_input_handler_result
+controller_output_garp_rarp_handler(struct engine_node *node OVS_UNUSED,
+                                    void *data OVS_UNUSED)
+{
+    return EN_HANDLED_UPDATED;
+}
+
 /* Handles sbrec_chassis changes.
  * If a new chassis is added or removed return false, so that
  * flows are recomputed.  For any updates, there is no need for
@@ -5432,6 +5440,189 @@ en_route_exchange_status_cleanup(void *data OVS_UNUSED)
 {
 }
 
+static enum engine_node_state
+en_garp_rarp_run(struct engine_node *node, void *data_)
+{
+    struct ed_type_garp_rarp *data = data_;
+
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    ovs_assert(chassis_id);
+
+    struct ovsdb_idl_index *sbrec_chassis_by_name =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_chassis", node),
+                "name");
+    const struct sbrec_chassis *chassis
+        = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
+    ovs_assert(chassis);
+
+    const struct ovsrec_open_vswitch *cfg
+        = ovsrec_open_vswitch_table_first(ovs_table);
+
+    struct ovsdb_idl_index *sbrec_port_binding_by_datapath =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_port_binding", node),
+                "datapath");
+    struct ovsdb_idl_index *sbrec_port_binding_by_name =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_port_binding", node),
+                "name");
+    struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_mac_binding", node),
+                "lport_ip");
+
+    struct ovsdb_idl_txn *ovnsb_idl_txn = engine_get_context()->ovnsb_idl_txn;
+
+    const struct sbrec_ecmp_nexthop_table *ecmp_nh_table =
+        sbrec_ecmp_nexthop_table_get(ovsdb_idl_txn_get_idl(ovnsb_idl_txn));
+
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+
+    struct garp_rarp_ctx_in r_ctx_in = {
+        .ovnsb_idl_txn = ovnsb_idl_txn,
+        .cfg = cfg,
+        .sbrec_port_binding_by_datapath = sbrec_port_binding_by_datapath,
+        .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
+        .sbrec_mac_binding_by_lport_ip = sbrec_mac_binding_by_lport_ip,
+        .ecmp_nh_table = ecmp_nh_table,
+        .chassis = chassis,
+        .active_tunnels = &rt_data->active_tunnels,
+        .local_datapaths = &rt_data->local_datapaths,
+        .data = data,
+    };
+
+    garp_rarp_run(&r_ctx_in);
+    return EN_UPDATED;
+}
+
+
+static void *
+en_garp_rarp_init(struct engine_node *node OVS_UNUSED,
+                  struct engine_arg *arg OVS_UNUSED)
+{
+    return garp_rarp_init();
+}
+
+static void
+en_garp_rarp_cleanup(void *data)
+{
+    garp_rarp_cleanup(data);
+}
+
+static enum engine_input_handler_result
+garp_rarp_sb_port_binding_handler(struct engine_node *node,
+                                  void *data_)
+{
+    /* We need to handle a change if there was change on a datapath with
+     * a localnet port.
+     * Also the ha_chassis status of a port binding might change. */
+    struct ed_type_garp_rarp *data = data_;
+
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    ovs_assert(chassis_id);
+
+    struct ovsdb_idl_index *sbrec_chassis_by_name =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_chassis", node),
+                "name");
+    const struct sbrec_chassis *chassis
+        = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
+    ovs_assert(chassis);
+
+    struct ed_type_runtime_data *rt_data =
+            engine_get_input_data("runtime_data", node);
+    const struct sbrec_port_binding_table *port_binding_table =
+        EN_OVSDB_GET(engine_get_input("SB_port_binding", node));
+    struct ovsdb_idl_index *sbrec_port_binding_by_name =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_port_binding", node),
+                "name");
+
+    const struct sbrec_port_binding *pb;
+    SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb, port_binding_table) {
+        struct local_datapath *ld = get_local_datapath(
+            &rt_data->local_datapaths, pb->datapath->tunnel_key);
+
+        if (!ld || ld->localnet_port) {
+            /* XXX: actually handle this incrementally. */
+            return EN_UNHANDLED;
+        }
+
+        if (sset_contains(&data->non_local_lports, pb->logical_port) &&
+            lport_is_chassis_resident(sbrec_port_binding_by_name, chassis,
+                                      &rt_data->active_tunnels,
+                                      pb->logical_port)) {
+            /* XXX: actually handle this incrementally. */
+            return EN_UNHANDLED;
+        }
+
+        if (sset_contains(&data->local_lports, pb->logical_port) &&
+            !lport_is_chassis_resident(sbrec_port_binding_by_name, chassis,
+                                       &rt_data->active_tunnels,
+                                       pb->logical_port)) {
+            /* XXX: actually handle this incrementally. */
+            return EN_UNHANDLED;
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
+static enum engine_input_handler_result
+garp_rarp_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
+{
+    /* We use two elements from rt_data:
+     * 1. active_tunnels: There is currently not incremental processing for
+     *    this in runtime_data. So we just fall back to a recompute.
+     * 2. local_datapaths: This has incremental processing on the runtime_data
+     *    side. We are only interested in datapaths with a localnet port so
+     *    we just recompute if there is one in there. Otherwise the change is
+     *    irrelevant for us. */
+
+    struct ed_type_runtime_data *rt_data =
+            engine_get_input_data("runtime_data", node);
+
+    /* There are no tracked data. Fall back to full recompute. */
+    if (!rt_data->tracked) {
+        return EN_UNHANDLED;
+    }
+
+    struct tracked_datapath *tdp;
+    HMAP_FOR_EACH (tdp, node, &rt_data->tracked_dp_bindings) {
+        if (tdp->tracked_type == TRACKED_RESOURCE_REMOVED) {
+            /* This is currently not handled incrementally in runtime_data
+             * so it should never happen. Recompute just in case. */
+            return EN_UNHANDLED;
+        }
+
+        struct local_datapath *ld = get_local_datapath(
+            &rt_data->local_datapaths, tdp->dp->tunnel_key);
+
+        if (!ld || ld->localnet_port) {
+            /* XXX: actually handle this incrementally. */
+            return EN_UNHANDLED;
+        }
+
+        /* The localnet port might also have been removed. */
+        struct tracked_lport *tlp;
+        struct shash_node *sn;
+        SHASH_FOR_EACH (sn, &tdp->lports) {
+            tlp = sn->data;
+            if (!strcmp(tlp->pb->type, "localnet")) {
+                return EN_UNHANDLED;
+            }
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
 /* Returns false if the northd internal version stored in SB_Global
  * and ovn-controller internal version don't match.
  */
@@ -5740,6 +5931,7 @@ main(int argc, char *argv[])
     ENGINE_NODE(route_table_notify);
     ENGINE_NODE(route_exchange);
     ENGINE_NODE(route_exchange_status);
+    ENGINE_NODE(garp_rarp);
 
 #define SB_NODE(NAME) ENGINE_NODE_SB(NAME);
     SB_NODES
@@ -5953,6 +6145,16 @@ main(int argc, char *argv[])
     engine_add_input(&en_dns_cache, &en_sb_dns,
                      dns_cache_sb_dns_handler);
 
+    engine_add_input(&en_garp_rarp, &en_ovs_open_vswitch, NULL);
+    engine_add_input(&en_garp_rarp, &en_sb_chassis, NULL);
+    engine_add_input(&en_garp_rarp, &en_sb_port_binding,
+                     garp_rarp_sb_port_binding_handler);
+    /* The mac_binding data is just used in an index to filter duplicates when
+     * inserting data to the southbound. */
+    engine_add_input(&en_garp_rarp, &en_sb_mac_binding, engine_noop_handler);
+    engine_add_input(&en_garp_rarp, &en_runtime_data,
+                     garp_rarp_runtime_data_handler);
+
     engine_add_input(&en_controller_output, &en_dns_cache,
                      NULL);
     engine_add_input(&en_controller_output, &en_lflow_output,
@@ -5965,6 +6167,8 @@ main(int argc, char *argv[])
                      controller_output_bfd_chassis_handler);
     engine_add_input(&en_controller_output, &en_route_exchange,
                      controller_output_route_exchange_handler);
+    engine_add_input(&en_controller_output, &en_garp_rarp,
+                     controller_output_garp_rarp_handler);
 
     engine_add_input(&en_acl_id, &en_sb_acl_id, NULL);
     engine_add_input(&en_controller_output, &en_acl_id,
@@ -6001,6 +6205,8 @@ main(int argc, char *argv[])
                                 sbrec_chassis_template_var_index_by_chassis);
     engine_ovsdb_node_add_index(&en_sb_learned_route, "datapath",
                                 sbrec_learned_route_index_by_datapath);
+    engine_ovsdb_node_add_index(&en_sb_mac_binding, "lport_ip",
+                                sbrec_mac_binding_by_lport_ip);
     engine_ovsdb_node_add_index(&en_ovs_flow_sample_collector_set, "id",
                                 ovsrec_flow_sample_collector_set_by_id);
     engine_ovsdb_node_add_index(&en_ovs_port, "qos", ovsrec_port_by_qos);
@@ -6427,7 +6633,6 @@ main(int argc, char *argv[])
                         pinctrl_update(ovnsb_idl_loop.idl);
                         pinctrl_run(ovnsb_idl_txn,
                                     sbrec_datapath_binding_by_key,
-                                    sbrec_port_binding_by_datapath,
                                     sbrec_port_binding_by_key,
                                     sbrec_port_binding_by_name,
                                     sbrec_mac_binding_by_lport_ip,
@@ -6443,7 +6648,7 @@ main(int argc, char *argv[])
                                     sbrec_bfd_table_get(ovnsb_idl_loop.idl),
                                     sbrec_ecmp_nexthop_table_get(
                                         ovnsb_idl_loop.idl),
-                                    br_int, chassis,
+                                    chassis,
                                     &runtime_data->local_datapaths,
                                     &runtime_data->active_tunnels,
                                     &runtime_data->local_active_ports_ipv6_pd,

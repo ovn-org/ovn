@@ -59,7 +59,9 @@ controller_ovn_controller_SOURCES = \
 	controller/route-exchange.h \
 	controller/route-table-notify.h \
 	controller/route.h \
-	controller/route.c
+	controller/route.c \
+	controller/garp_rarp.h \
+	controller/garp_rarp.c
 
 if HAVE_NETLINK
 controller_ovn_controller_SOURCES += \
