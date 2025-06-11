@@ -5195,6 +5195,68 @@ fail:
     return false;
 }
 
+static bool
+is_pg_acls_changed(const struct nbrec_port_group *npg) {
+
+    return (nbrec_port_group_is_updated(npg, NBREC_PORT_GROUP_COL_ACLS)
+            || is_acls_seqno_changed(npg->acls, npg->n_acls));
+}
+
+bool
+northd_handle_pgs_acl_changes(const struct northd_input *ni,
+                              struct northd_data *nd)
+{
+    const struct nbrec_port_group *nb_pg;
+    struct northd_tracked_data *trk_data = &nd->trk_data;
+
+    NBREC_PORT_GROUP_TABLE_FOR_EACH_TRACKED (nb_pg,
+                                             ni->nbrec_port_group_table) {
+        /* The PG addition/deletion is handled by port_group node. */
+        if (nbrec_port_group_is_new(nb_pg) ||
+            nbrec_port_group_is_deleted(nb_pg)) {
+            continue;
+        }
+
+        if (!is_pg_acls_changed(nb_pg)) {
+            continue;
+        }
+
+        for (size_t i = 0; i < nb_pg->n_ports; i++) {
+            const char *port_name = nb_pg->ports[i]->name;
+            const struct ovn_datapath *od =
+                northd_get_datapath_for_port(&nd->ls_ports, port_name);
+
+            if (!od) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_ERR_RL(&rl, "lport %s in port group %s not found.",
+                            port_name, nb_pg->name);
+                goto fail;
+            }
+
+            if (!od->nbs) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_WARN_RL(&rl, "lport %s in port group %s has no lswitch.",
+                             nb_pg->ports[i]->name,
+                             nb_pg->name);
+                goto fail;
+            }
+
+            hmapx_add(&trk_data->ls_with_changed_acls,
+                      CONST_CAST(struct ovn_datapath *, od));
+        }
+    }
+
+    if (!hmapx_is_empty(&trk_data->ls_with_changed_acls)) {
+        trk_data->type |= NORTHD_TRACKED_LS_ACLS;
+    }
+
+    return true;
+
+fail:
+    destroy_northd_data_tracked_changes(nd);
+    return false;
+}
+
 /* Returns true if the logical router has changes which can be
  * incrementally handled.
  * Presently supports i-p for the below changes:

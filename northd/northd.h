@@ -38,6 +38,7 @@ struct northd_input {
         *nbrec_chassis_template_var_table;
     const struct nbrec_mirror_table *nbrec_mirror_table;
     const struct nbrec_mirror_rule_table *nbrec_mirror_rule_table;
+    const struct nbrec_port_group_table *nbrec_port_group_table;
 
     /* Southbound table references */
     const struct sbrec_datapath_binding_table *sbrec_datapath_binding_table;
@@ -835,6 +836,8 @@ bool northd_handle_ls_changes(struct ovsdb_idl_txn *,
                               struct northd_data *);
 bool northd_handle_lr_changes(const struct northd_input *,
                               struct northd_data *);
+bool northd_handle_pgs_acl_changes(const struct northd_input *ni,
+                                   struct northd_data *nd);
 void destroy_northd_data_tracked_changes(struct northd_data *);
 void northd_destroy(struct northd_data *data);
 void northd_init(struct northd_data *data);

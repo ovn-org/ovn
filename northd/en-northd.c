@@ -78,6 +78,8 @@ northd_get_input_data(struct engine_node *node,
         EN_OVSDB_GET(engine_get_input("NB_mirror", node));
     input_data->nbrec_mirror_rule_table =
         EN_OVSDB_GET(engine_get_input("NB_mirror_rule", node));
+    input_data->nbrec_port_group_table =
+        EN_OVSDB_GET(engine_get_input("NB_port_group", node));
 
     input_data->sbrec_datapath_binding_table =
         EN_OVSDB_GET(engine_get_input("SB_datapath_binding", node));
@@ -238,6 +240,28 @@ northd_global_config_handler(struct engine_node *node, void *data OVS_UNUSED)
 
     return EN_HANDLED_UNCHANGED;
 }
+
+enum engine_input_handler_result
+northd_nb_port_group_handler(struct engine_node *node, void *data)
+{
+    struct northd_data *nd = data;
+
+    struct northd_input input_data;
+    northd_get_input_data(node, &input_data);
+
+    /* This handler cares only about ACLs, the port group itself has separate
+     * node. */
+    if (!northd_handle_pgs_acl_changes(&input_data, nd)) {
+        return EN_UNHANDLED;
+    }
+
+    if (northd_has_tracked_data(&nd->trk_data)) {
+        return EN_HANDLED_UPDATED;
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
 
 enum engine_input_handler_result
 route_policies_northd_change_handler(struct engine_node *node,

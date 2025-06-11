@@ -26,6 +26,8 @@ northd_sb_port_binding_handler(struct engine_node *, void *data);
 enum engine_input_handler_result northd_lb_data_handler(struct engine_node *,
                                                         void *data);
 enum engine_input_handler_result
+northd_nb_port_group_handler(struct engine_node *node, void *data);
+enum engine_input_handler_result
 northd_sb_fdb_change_handler(struct engine_node *node, void *data);
 void *en_routes_init(struct engine_node *node OVS_UNUSED,
                             struct engine_arg *arg OVS_UNUSED);

@@ -10095,7 +10095,7 @@ dnl The northd node should not recompute.
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              0
+- compute:              1
 - cancel:               0
 ])
 dnl The port_group node recomputes every time a NB port group is added/deleted.
@@ -10132,7 +10132,7 @@ dnl The northd node should not recompute.
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              0
+- compute:              1
 - cancel:               0
 ])
 dnl The port_group node recomputes also every time a port from a new switch
@@ -10168,7 +10168,7 @@ dnl The northd node should not recompute.
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              0
+- compute:              1
 - cancel:               0
 ])
 dnl The port_group node recomputes also every time a port from a new switch
@@ -10205,7 +10205,7 @@ dnl The northd node should not recompute.
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              0
+- compute:              1
 - cancel:               0
 ])
 dnl We did not change the set of switches a pg is applied to, there should be
@@ -10243,7 +10243,7 @@ dnl though, therefore "compute: 1".
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              0
+- compute:              1
 - cancel:               0
 ])
 dnl We did not change the set of switches a pg is applied to, there should be
@@ -10279,7 +10279,7 @@ dnl The northd node should not recompute.
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              0
+- compute:              1
 - cancel:               0
 ])
 dnl We changed the set of switches a pg is applied to, there should be
@@ -10316,7 +10316,7 @@ dnl The northd node should not recompute.
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              0
+- compute:              1
 - cancel:               0
 ])
 dnl We changed the set of switches a pg is applied to, there should be
@@ -10353,7 +10353,7 @@ dnl The northd node should not recompute.
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              0
+- compute:              1
 - cancel:               0
 ])
 dnl We changed the set of switches a pg is applied to, there should be a
@@ -10392,7 +10392,7 @@ dnl The northd node should not recompute,.
 AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/show-stats northd], [0], [dnl
 Node: northd
 - recompute:            0
-- compute:              0
+- compute:              1
 - cancel:               0
 ])
 dnl We changed the set of switches a pg is applied to, there should be a
@@ -17589,6 +17589,9 @@ AT_SETUP([ACL incremental processing])
 ovn_start
 
 check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add ls lsp0
+check ovn-nbctl pg-add pg lsp0
+
 check ovn-nbctl meter-add meter1 drop 10 kbps
 check ovn-nbctl meter-add meter2 drop 20 kbps
 
@@ -17654,6 +17657,66 @@ check ovn-nbctl --wait=sb acl-del ls
 check_engine_stats northd norecompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats sync_meters recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+AS_BOX([ACLs attached to LS])
+check ovn-nbctl --wait=sb acl-add ls from-lport 100 tcp drop
+acl_id=$(fetch_column nb:Acl _uuid match=tcp action=drop)
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_meters norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+check ovn-nbctl --wait=sb acl-add ls from-lport 101 ip4 drop
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_meters norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+check ovn-nbctl --wait=sb set acl $acl_id match=udp
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_meters norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+check ovn-nbctl --wait=sb acl-del ls
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_meters norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+AS_BOX([ACLs attached to PG])
+check ovn-nbctl --wait=sb acl-add pg from-lport 100 tcp drop
+acl_id=$(fetch_column nb:Acl _uuid match=tcp action=drop)
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_meters norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+check ovn-nbctl --wait=sb acl-add pg from-lport 101 ip4 drop
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_meters norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+check ovn-nbctl --wait=sb set acl $acl_id match=udp
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_meters norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+check ovn-nbctl --wait=sb acl-del pg
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_meters norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 

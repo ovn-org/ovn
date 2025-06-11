@@ -246,6 +246,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_nb_logical_router,
                      northd_nb_logical_router_handler);
     engine_add_input(&en_northd, &en_lb_data, northd_lb_data_handler);
+    engine_add_input(&en_northd, &en_nb_port_group,
+                     northd_nb_port_group_handler);
 
     engine_add_input(&en_lr_nat, &en_northd, lr_nat_northd_handler);
 
