@@ -11352,14 +11352,14 @@ check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb meter-add m drop 1 pktps
 check ovn-nbctl --wait=sb acl-add ls from-lport 1 1 allow
 dnl Only triggers recompute of the sync_meters and lflow nodes.
-check_recompute_counter 0 2 2
+check_recompute_counter 0 2 1
 CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb meter-del m
 check ovn-nbctl --wait=sb acl-del ls
 dnl Only triggers recompute of the sync_meters and lflow nodes.
-check_recompute_counter 0 2 2
+check_recompute_counter 0 2 1
 CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
 AT_CLEANUP
@@ -17584,3 +17584,78 @@ AT_CHECK([grep -E 'ls_in_pre_stateful' sw1flows | ovn_strip_lflows], [0], [dnl
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([ACL incremental processing])
+ovn_start
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl meter-add meter1 drop 10 kbps
+check ovn-nbctl meter-add meter2 drop 20 kbps
+
+# Wait for sb to be connected before clearing stats.
+check ovn-nbctl --wait=sb sync
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+AS_BOX([ACL with log])
+check ovn-nbctl --wait=sb --log acl-add ls from-lport 100 tcp drop
+acl_id=$(fetch_column nb:Acl _uuid action=drop)
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_meters recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+check ovn-nbctl --wait=sb set acl $acl_id match=udp
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_meters norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+check ovn-nbctl --wait=sb set acl $acl_id log=false
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_meters recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check ovn-nbctl --wait=sb set acl $acl_id log=true
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+check ovn-nbctl --wait=sb acl-del ls
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_meters recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+AS_BOX([ACL with meter])
+check ovn-nbctl --wait=sb --meter=meter1 acl-add ls from-lport 100 tcp drop
+acl_id=$(fetch_column nb:Acl _uuid action=drop)
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_meters recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+check ovn-nbctl --wait=sb set acl $acl_id match=udp
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_meters norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+check ovn-nbctl --wait=sb set acl $acl_id meter=meter2
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_meters recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+check ovn-nbctl --wait=sb acl-del ls
+check_engine_stats northd norecompute compute
+check_engine_stats lflow recompute nocompute
+check_engine_stats sync_meters recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+AT_CLEANUP
+])

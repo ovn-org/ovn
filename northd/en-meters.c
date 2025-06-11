@@ -79,6 +79,30 @@ en_sync_meters_run(struct engine_node *node, void *data_)
     return EN_UPDATED;
 }
 
+enum engine_input_handler_result
+sync_meters_nb_acl_handler(struct engine_node *node, void *data OVS_UNUSED)
+{
+    const struct nbrec_acl_table *acl_table =
+        EN_OVSDB_GET(engine_get_input("NB_acl", node));
+
+    const struct nbrec_acl *nb_acl;
+    NBREC_ACL_TABLE_FOR_EACH_TRACKED (nb_acl, acl_table) {
+        /* New or deleted ACL with meter needs to be recomputed. */
+        if ((nbrec_acl_is_new(nb_acl) || nbrec_acl_is_deleted(nb_acl)) &&
+            (nb_acl->log || nb_acl->meter)) {
+            return EN_UNHANDLED;
+        }
+
+        /* Addition or removal of meter requires recompute. */
+        if (nbrec_acl_is_updated(nb_acl, NBREC_ACL_COL_LOG) ||
+            nbrec_acl_is_updated(nb_acl, NBREC_ACL_COL_METER)) {
+            return EN_UNHANDLED;
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
 const struct nbrec_meter*
 fair_meter_lookup_by_name(const struct shash *meter_groups,
                           const char *meter_name)

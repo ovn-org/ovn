@@ -319,7 +319,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_group_ecmp_route, &en_learned_route_sync,
                      group_ecmp_route_learned_route_change_handler);
 
-    engine_add_input(&en_sync_meters, &en_nb_acl, NULL);
+    engine_add_input(&en_sync_meters, &en_nb_acl, sync_meters_nb_acl_handler);
     engine_add_input(&en_sync_meters, &en_nb_meter, NULL);
     engine_add_input(&en_sync_meters, &en_sb_meter, NULL);
 
