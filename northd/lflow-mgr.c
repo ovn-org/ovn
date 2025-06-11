@@ -726,18 +726,6 @@ lflow_table_add_lflow(struct lflow_table *lflow_table,
     lflow_hash_unlock(hash_lock);
 }
 
-void
-lflow_table_add_lflow_default_drop(struct lflow_table *lflow_table,
-                                   const struct ovn_datapath *od,
-                                   enum ovn_stage stage,
-                                   const char *where,
-                                   struct lflow_ref *lflow_ref)
-{
-    lflow_table_add_lflow(lflow_table, od, NULL, 0, stage, 0, "1",
-                          debug_drop_action(), NULL, NULL, NULL,
-                          where, NULL, lflow_ref);
-}
-
 struct ovn_dp_group *
 ovn_dp_group_get(struct hmap *dp_groups, size_t desired_n,
                  const unsigned long *desired_bitmap,

@@ -80,11 +80,6 @@ void lflow_table_add_lflow(struct lflow_table *, const struct ovn_datapath *,
                            const struct ovsdb_idl_row *stage_hint,
                            const char *where, const char *flow_desc,
                            struct lflow_ref *);
-void lflow_table_add_lflow_default_drop(struct lflow_table *,
-                                        const struct ovn_datapath *,
-                                        enum ovn_stage stage,
-                                        const char *where,
-                                        struct lflow_ref *);
 
 /* Adds a row with the specified contents to the Logical_Flow table. */
 #define ovn_lflow_add_with_hint__(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, \
@@ -108,8 +103,9 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
                           OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
 
 #define ovn_lflow_add_default_drop(LFLOW_TABLE, OD, STAGE, LFLOW_REF)   \
-    lflow_table_add_lflow_default_drop(LFLOW_TABLE, OD, STAGE, \
-                                       OVS_SOURCE_LOCATOR, LFLOW_REF)
+    lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, 0, "1", \
+                          debug_drop_action(), NULL, NULL, NULL,  \
+                          OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
 
 
 /* This macro is similar to ovn_lflow_add_with_hint, except that it requires
