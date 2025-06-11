@@ -20,6 +20,7 @@
 
 /* OVS includes. */
 #include "lib/hmapx.h"
+#include "lib/uuidset.h"
 #include "openvswitch/hmap.h"
 #include "sset.h"
 
@@ -53,6 +54,9 @@ struct ls_stateful_record {
     bool has_lb_vip;
     bool has_acls;
     struct acl_tier max_acl_tier;
+
+    /* Set of ACLs that are related to this LS. */
+    struct uuidset related_acls;
 
     /* 'lflow_ref' is used to reference logical flows generated for
      * this ls_stateful record.
@@ -109,6 +113,8 @@ enum engine_input_handler_result
 ls_stateful_northd_handler(struct engine_node *, void *data);
 enum engine_input_handler_result
 ls_stateful_port_group_handler(struct engine_node *, void *data);
+enum engine_input_handler_result
+ls_stateful_acl_handler(struct engine_node *node, void *data);
 
 const struct ls_stateful_record *ls_stateful_table_find(
     const struct ls_stateful_table *, const struct nbrec_logical_switch *);
