@@ -6250,9 +6250,6 @@ loop_done:
         }
     }
 
-    engine_set_context(NULL);
-    engine_cleanup();
-
     /* It's time to exit.  Clean up the databases if we are not restarting */
     if (!exit_args.restart) {
         bool done = !ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl);
@@ -6306,15 +6303,21 @@ loop_done:
         }
     }
 
+    /* The engine cleanup should happen only after threads have been
+     * destroyed and joined in case they are accessing engine data. */
+    pinctrl_destroy();
+    statctrl_destroy();
+
+    engine_set_context(NULL);
+    engine_cleanup();
+
     free(ovn_version);
     lflow_destroy();
     ofctrl_destroy();
-    pinctrl_destroy();
     binding_destroy();
     patch_destroy();
     mirror_destroy();
     encaps_destroy();
-    statctrl_destroy();
     if_status_mgr_destroy(if_mgr);
     shash_destroy(&vif_plug_deleted_iface_ids);
     shash_destroy(&vif_plug_changed_iface_ids);
