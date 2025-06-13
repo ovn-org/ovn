@@ -6696,9 +6696,6 @@ loop_done:
         }
     }
 
-    engine_set_context(NULL);
-    engine_cleanup();
-
     const struct ovsrec_open_vswitch_table *ovs_table =
         ovsrec_open_vswitch_table_get(ovs_idl_loop.idl);
     bool restart = exit_args.restart || !get_ovn_cleanup_on_exit(ovs_table);
@@ -6772,16 +6769,22 @@ loop_done:
         route_exchange_cleanup_vrfs();
     }
 
+    /* The engine cleanup should happen only after threads have been
+     * destroyed and joined in case they are accessing engine data. */
+    pinctrl_destroy();
+    statctrl_destroy();
+
+    engine_set_context(NULL);
+    engine_cleanup();
+
     free(ovn_version);
     lflow_destroy();
     ofctrl_destroy();
     ofctrl_seqno_destroy();
-    pinctrl_destroy();
     binding_destroy();
     patch_destroy();
     mirror_destroy();
     encaps_destroy();
-    statctrl_destroy();
     if_status_mgr_destroy(if_mgr);
     shash_destroy(&vif_plug_deleted_iface_ids);
     shash_destroy(&vif_plug_changed_iface_ids);
