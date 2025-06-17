@@ -191,6 +191,20 @@ destroy_qos_map(struct hmap *qos_map)
     hmap_destroy(qos_map);
 }
 
+static bool
+is_qos_iface(const struct ovsrec_interface *iface)
+{
+    if (smap_get_bool(&iface->external_ids, "ovn-egress-iface", false)) {
+        return true;
+    }
+
+    if (!iface->type[0] || !strcmp(iface->type, "system")) {
+        return true;
+    }
+
+    return false;
+}
+
 static const struct ovsrec_interface *
 get_qos_egress_port_interface(struct shash *bridge_mappings,
                               const struct ovsrec_port **pport,
@@ -211,9 +225,7 @@ get_qos_egress_port_interface(struct shash *bridge_mappings,
                 continue;
             }
 
-            if (smap_get_bool(&iface->external_ids,
-                              "ovn-egress-iface", false) ||
-                !strcmp(iface->type, "")) {
+            if (is_qos_iface(iface)) {
                 *pport = port;
                 return iface;
             }
