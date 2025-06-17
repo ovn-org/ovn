@@ -257,6 +257,18 @@ AT_CHECK_UNQUOTED([ovn-sbctl count-flows count-test | grep Total | grep ingress 
 $ingress_lflows
 ])
 
+# check total logical flows in a specific datapath using NB UUID instead of name.
+count_test_uuid=$(fetch_column nb:Logical_Switch _uuid name=count-test)
+AT_CHECK_UNQUOTED([ovn-sbctl count-flows $count_test_uuid | grep "flows =" | awk 'NF>1{print $NF}'], [0], [dnl
+$total_lflows
+])
+AT_CHECK_UNQUOTED([ovn-sbctl count-flows $count_test_uuid | grep Total | grep egress | awk 'NF>1{print $NF}'], [0], [dnl
+$egress_lflows
+])
+AT_CHECK_UNQUOTED([ovn-sbctl count-flows $count_test_uuid | grep Total | grep ingress | awk 'NF>1{print $NF}'], [0], [dnl
+$ingress_lflows
+])
+
 # check nonexistent datapath
 AT_CHECK([ovn-sbctl count-flows wrongDatapath], [0], [dnl
 Total number of logical flows = 0
