@@ -35,7 +35,6 @@ struct route_ctx_in {
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
     const struct sbrec_chassis *chassis;
     const char *dynamic_routing_port_mapping;
-    const struct sset *active_tunnels;
     const struct hmap *local_datapaths;
     const struct sset *local_lports;
     struct shash *local_bindings;
@@ -82,7 +81,6 @@ struct advertise_route_entry {
 const struct sbrec_port_binding *route_exchange_find_port(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const struct sbrec_chassis *chassis,
-    const struct sset *active_tunnels,
     const struct sbrec_port_binding *pb,
     const char **dynamic_routing_port_name);
 uint32_t advertise_route_hash(const struct in6_addr *dst, unsigned int plen);

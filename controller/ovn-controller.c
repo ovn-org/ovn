@@ -5027,7 +5027,6 @@ en_route_run(struct engine_node *node, void *data)
         .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
         .chassis = chassis,
         .dynamic_routing_port_mapping = dynamic_routing_port_mapping,
-        .active_tunnels = &rt_data->active_tunnels,
         .local_datapaths = &rt_data->local_datapaths,
         .local_lports = &rt_data->local_lports,
         .local_bindings = &rt_data->lbinding_data.bindings,
@@ -5130,7 +5129,6 @@ route_runtime_data_handler(struct engine_node *node, void *data)
             struct tracked_lport *lport = shash_node->data;
 
             if (route_exchange_find_port(sbrec_port_binding_by_name, chassis,
-                                         &rt_data->active_tunnels,
                                          lport->pb, NULL)) {
                 /* XXX: Until we get I-P support for route exchange we need to
                  * request recompute. */
@@ -5188,8 +5186,6 @@ route_sb_port_binding_data_handler(struct engine_node *node, void *data)
         engine_ovsdb_node_get_index(
                 engine_get_input("SB_port_binding", node),
                 "name");
-    struct ed_type_runtime_data *rt_data =
-        engine_get_input_data("runtime_data", node);
 
 
     /* There are the following cases where we need to handle updates to the
@@ -5213,8 +5209,7 @@ route_sb_port_binding_data_handler(struct engine_node *node, void *data)
         }
 
         if (route_exchange_find_port(sbrec_port_binding_by_name, chassis,
-                                     &rt_data->active_tunnels, sbrec_pb,
-                                     NULL)) {
+                                     sbrec_pb, NULL)) {
             /* XXX: Until we get I-P support for route exchange we need to
              * request recompute. */
             return false;
@@ -6447,7 +6442,6 @@ main(int argc, char *argv[])
                                         ovnsb_idl_loop.idl),
                                     br_int, chassis,
                                     &runtime_data->local_datapaths,
-                                    &runtime_data->active_tunnels,
                                     &runtime_data->local_active_ports_ipv6_pd,
                                     &runtime_data->local_active_ports_ras,
                                     ovsrec_open_vswitch_table_get(

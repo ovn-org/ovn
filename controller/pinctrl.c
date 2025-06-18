@@ -377,8 +377,7 @@ pinctrl_handle_bfd_msg(struct rconn *swconn, const struct flow *ip_flow,
 static void bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                             const struct sbrec_bfd_table *bfd_table,
                             struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                            const struct sbrec_chassis *chassis,
-                            const struct sset *active_tunnels)
+                            const struct sbrec_chassis *chassis)
                             OVS_REQUIRES(pinctrl_mutex);
 static void init_fdb_entries(void);
 static void destroy_fdb_entries(void);
@@ -1444,7 +1443,6 @@ prepare_ipv6_prefixd(struct ovsdb_idl_txn *ovnsb_idl_txn,
                      struct ovsdb_idl_index *sbrec_port_binding_by_name,
                      const struct shash *local_active_ports_ipv6_pd,
                      const struct sbrec_chassis *chassis,
-                     const struct sset *active_tunnels,
                      const struct hmap *local_datapaths)
     OVS_REQUIRES(pinctrl_mutex)
 {
@@ -1473,9 +1471,8 @@ prepare_ipv6_prefixd(struct ovsdb_idl_txn *ovnsb_idl_txn,
         }
 
         char *redirect_name = xasprintf("cr-%s", pb->logical_port);
-        bool resident = lport_is_chassis_resident(
-                sbrec_port_binding_by_name, chassis, active_tunnels,
-                redirect_name);
+        bool resident = lport_is_chassis_resident(sbrec_port_binding_by_name,
+                                                  chassis, redirect_name);
         free(redirect_name);
         if ((strcmp(pb->type, "l3gateway") || pb->chassis != chassis) &&
             !resident) {
@@ -4089,7 +4086,6 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             const struct ovsrec_bridge *br_int,
             const struct sbrec_chassis *chassis,
             const struct hmap *local_datapaths,
-            const struct sset *active_tunnels,
             const struct shash *local_active_ports_ipv6_pd,
             const struct shash *local_active_ports_ras,
             const struct ovsrec_open_vswitch_table *ovs_table,
@@ -4110,7 +4106,7 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
     prepare_ipv6_ras(local_active_ports_ras, sbrec_port_binding_by_name);
     prepare_ipv6_prefixd(ovnsb_idl_txn, sbrec_port_binding_by_name,
                          local_active_ports_ipv6_pd, chassis,
-                         active_tunnels, local_datapaths);
+                         local_datapaths);
     controller_event_run(ovnsb_idl_txn, ce_table, chassis);
     ip_mcast_sync(ovnsb_idl_txn, chassis, local_datapaths,
                   sbrec_datapath_binding_by_key,
@@ -4125,7 +4121,7 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
     sync_svc_monitors(ovnsb_idl_txn, svc_mon_table, sbrec_port_binding_by_name,
                       chassis);
     bfd_monitor_run(ovnsb_idl_txn, bfd_table, sbrec_port_binding_by_name,
-                    chassis, active_tunnels);
+                    chassis);
     run_put_fdbs(ovnsb_idl_txn, sbrec_port_binding_by_key,
                  sbrec_datapath_binding_by_key, sbrec_fdb_by_dp_key_mac,
                  cur_cfg);
@@ -8373,8 +8369,7 @@ static void
 bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 const struct sbrec_bfd_table *bfd_table,
                 struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                const struct sbrec_chassis *chassis,
-                const struct sset *active_tunnels)
+                const struct sbrec_chassis *chassis)
     OVS_REQUIRES(pinctrl_mutex)
 {
     struct bfd_entry *entry;
@@ -8406,9 +8401,8 @@ bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
         }
 
         char *redirect_name = xasprintf("cr-%s", pb->logical_port);
-        bool resident = lport_is_chassis_resident(
-                sbrec_port_binding_by_name, chassis, active_tunnels,
-                redirect_name);
+        bool resident = lport_is_chassis_resident(sbrec_port_binding_by_name,
+                                                  chassis, redirect_name);
         free(redirect_name);
         if ((strcmp(pb->type, "l3gateway") || pb->chassis != chassis) &&
             !resident) {

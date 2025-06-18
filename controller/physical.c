@@ -871,8 +871,7 @@ put_replace_router_port_mac_flows(const struct physical_ctx *ctx,
         struct ofpact_mac *replace_mac;
         char *cr_peer_name = xasprintf("cr-%s", rport_binding->logical_port);
         if (lport_is_chassis_resident(ctx->sbrec_port_binding_by_name,
-                                      ctx->chassis, ctx->active_tunnels,
-                                      cr_peer_name)) {
+                                      ctx->chassis, cr_peer_name)) {
             /* If a router port's chassisredirect port is
              * resident on this chassis, then we need not do mac replace. */
             free(cr_peer_name);

@@ -52,7 +52,6 @@ advertise_route_hash(const struct in6_addr *dst, unsigned int plen)
 const struct sbrec_port_binding*
 route_exchange_find_port(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                          const struct sbrec_chassis *chassis,
-                         const struct sset *active_tunnels,
                          const struct sbrec_port_binding *pb,
                          const char **dynamic_routing_port_name)
 {
@@ -83,7 +82,7 @@ route_exchange_find_port(struct ovsdb_idl_index *sbrec_port_binding_by_name,
             smap_get(&cr_pb->options, "dynamic-routing-port-name");
     }
 
-    if (!lport_pb_is_chassis_resident(chassis, active_tunnels, cr_pb)) {
+    if (!lport_pb_is_chassis_resident(chassis, cr_pb)) {
         return NULL;
     }
 
@@ -187,7 +186,6 @@ route_run(struct route_ctx_in *r_ctx_in,
             const struct sbrec_port_binding *repb =
                 route_exchange_find_port(r_ctx_in->sbrec_port_binding_by_name,
                                          r_ctx_in->chassis,
-                                         r_ctx_in->active_tunnels,
                                          local_peer, &port_name);
             if (port_name) {
                 lr_has_port_name_filter = true;
@@ -291,7 +289,6 @@ route_run(struct route_ctx_in *r_ctx_in,
                               false);
             if (lport_is_local(r_ctx_in->sbrec_port_binding_by_name,
                                r_ctx_in->chassis,
-                               r_ctx_in->active_tunnels,
                                route->tracked_port->logical_port)) {
                 priority = PRIORITY_LOCAL_BOUND;
                 sset_add(r_ctx_out->tracked_ports_local,
