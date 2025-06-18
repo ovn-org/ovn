@@ -26,6 +26,8 @@ Post v25.03.0
    - Add a new logical switch option - enable-stateless-acl-lb with default
      value of false. This option should be set to true for logical switches
      with stateless ACL to work with load balancer.
+   - Added new ovn-nbctl command 'pg-get-ports' to get the ports assigned to
+     the port group.
 
 OVN v25.03.0 - 07 Mar 2025
 --------------------------

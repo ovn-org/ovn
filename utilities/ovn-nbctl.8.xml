@@ -1546,6 +1546,12 @@
         is an error if <code>group</code> does not exist.
       </dd>
 
+      <dt><code>pg-get-ports</code> <var>group</var></dt>
+      <dd>
+        Gets <code>ports</code> on the port group named <code>group</code>. It
+        is an error if <code>group</code> does not exist.
+      </dd>
+
       <dt><code>pg-del</code> <var>group</var></dt>
       <dd>
         Deletes port group <code>group</code>. It is an error if
