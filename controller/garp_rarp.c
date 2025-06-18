@@ -17,6 +17,7 @@
 #include <config.h>
 
 #include "controller/local_data.h"
+#include "lport.h"
 #include "mac-binding-index.h"
 #include "openvswitch/hmap.h"
 #include "openvswitch/vlog.h"
@@ -147,11 +148,7 @@ consider_nat_address(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 {
     struct lport_addresses *laddrs = xmalloc(sizeof *laddrs);
     char *lport = NULL;
-    const struct sbrec_port_binding *cr_pb = NULL;
     bool rc = extract_addresses_with_port(nat_address, laddrs, &lport);
-    if (lport) {
-        cr_pb = lport_lookup_by_name(sbrec_port_binding_by_name, lport);
-    }
     if (!rc
         || (!lport && !strcmp(pb->type, "patch"))) {
         destroy_lport_addresses(laddrs);
@@ -160,7 +157,8 @@ consider_nat_address(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         return;
     }
     if (lport) {
-        if (!cr_pb || (cr_pb->chassis != chassis)) {
+        if (!lport_is_chassis_resident(sbrec_port_binding_by_name,
+                                       chassis, lport)) {
             sset_add(non_local_lports, lport);
             destroy_lport_addresses(laddrs);
             free(laddrs);
