@@ -263,6 +263,7 @@ Luigi Rizzo                        rizzo@iet.unipi.it
 Luis E. P.                         l31g@hotmail.com
 Lukasz Rzasik                      lukasz.rzasik@gmail.com
 Madhu Challa                       challa@noironetworks.com
+Mairtin O'Loingsigh                moloings@redhat.com
 Manohar K C                        manukc@gmail.com
 Manoj Sharma                       manoj.sharma@nutanix.com
 Marcin Mirecki                     mmirecki@redhat.com
