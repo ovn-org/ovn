@@ -134,6 +134,13 @@ find_watch_entry(uint32_t table_id)
 static void
 route_table_change(const void *change_, void *aux OVS_UNUSED)
 {
+    /* We currently track whether at least one recent route table change
+     * was detected.  If that's the case already there's no need to
+     * continue. */
+    if (any_route_table_changed) {
+        return;
+    }
+
     const struct route_table_msg *change = change_;
     if (change && change->rd.rtm_protocol != RTPROT_OVN) {
         if (find_watch_entry(change->rd.rta_table_id)) {
