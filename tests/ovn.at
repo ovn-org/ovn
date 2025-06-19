@@ -15476,6 +15476,7 @@ wait_column "$hv1_uuid" Port_Binding requested_chassis logical_port=migrator
 wait_column "" Port_Binding additional_chassis logical_port=migrator
 wait_column "" Port_Binding requested_additional_chassis logical_port=migrator
 wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # advertise location of ports through localnet port
 send_garp hv1 migrator 2 "00:00:00:00:00:ff" "ff:ff:ff:ff:ff:ff" 10.0.0.100 10.0.0.100
@@ -15554,7 +15555,7 @@ check_packets
 reset_env
 
 # Start port migration hv1 -> hv2: both hypervisors are now bound
-check ovn-nbctl lsp-set-options migrator requested-chassis=hv1,hv2
+check ovn-nbctl --wait=hv lsp-set-options migrator requested-chassis=hv1,hv2
 wait_for_ports_up
 OVN_WAIT_PATCH_PORT_FLOWS(["public"], ["hv1"])
 OVN_WAIT_PATCH_PORT_FLOWS(["public"], ["hv2"])
@@ -29913,6 +29914,7 @@ OVS_WAIT_UNTIL([
     cr_lr0_public_ch=$(ovn-sbctl --bare --columns chassis list port_binding cr-lr0-public)
     test "$cr_lr0_public_ch" = $hv3_uuid
 ])
+check ovn-nbctl --wait=hv sync
 
 test_arp_response 000020201213 $(ip_to_hex 172 16 0 100) hv3 hv1 hv2
 test_arp_response 000020201213 $(ip_to_hex 172 16 0 101) hv3 hv1 hv2
@@ -29926,6 +29928,7 @@ OVS_WAIT_UNTIL([
     gw_router_ch=$(ovn-sbctl --bare --columns chassis list port_binding gw_router-public)
     test "$gw_router_ch" = $hv1_uuid
 ])
+check ovn-nbctl --wait=hv sync
 
 # Send ARP request for the IP which belongs to gw_router
 test_arp_response 000030303233 $(ip_to_hex 172 16 0 200) hv1 hv2 hv3
