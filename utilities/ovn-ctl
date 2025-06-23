@@ -663,6 +663,9 @@ start_controller () {
     if test X"$OVN_CONTROLLER_SSL_CIPHERSUITES" != X; then
         set "$@" --ssl-ciphersuites=$OVN_CONTROLLER_SSL_CIPHERSUITES
     fi
+    if test X"$OVN_CONTROLLER_SYSTEM_ID" != X; then
+        set "$@" -n "$OVN_CONTROLLER_SYSTEM_ID"
+    fi
 
     [ "$OVN_USER" != "" ] && set "$@" --user "$OVN_USER"
 
@@ -1014,6 +1017,8 @@ set_defaults () {
     DB_SB_RELAY_CONFIG_FILE=
 
     DB_CLUSTER_SCHEMA_UPGRADE="yes"
+
+    OVN_CONTROLLER_SYSTEM_ID=""
 }
 
 set_option () {
@@ -1133,6 +1138,7 @@ Options:
   --ovn-northd-n-threads=N_THREADS   ovn northd process number of threads (default: $OVN_NORTHD_N_THREADS)
   --ovn-nb-log=STRING             ovn NB ovsdb-server processes logging params (default: $OVN_NB_LOG)
   --ovn-sb-log=STRING             ovn SB ovsdb-server processes logging params (default: $OVN_SB_LOG)
+  --ovn-controller-system-id=STRING          set chassis name (system-id) for ovn-controller (passed as -n)
   --ovn-ic-priority=NICE     set ovn-ic's niceness (default: $OVN_IC_PRIORITY)
   --ovn-ic-wrapper=WRAPPER   run with a wrapper like valgrind for debugging
   --ovn-ic-ssl-key=KEY OVN IC SSL/TLS private key file
