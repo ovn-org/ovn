@@ -50,6 +50,7 @@
 #include "openvswitch/vlog.h"
 #include "bitmap.h"
 #include "vec.h"
+#include "uuidset.h"
 
 VLOG_DEFINE_THIS_MODULE(nbctl);
 
@@ -2223,30 +2224,10 @@ acl_cmd_get_pg_or_ls(struct ctl_context *ctx,
 }
 
 static void
-nbctl_acl_list(struct ctl_context *ctx)
+nbctl_acl_print(struct ctl_context *ctx, const struct nbrec_acl **acls,
+                size_t n_acls, const char *pg_name)
 {
-    const struct nbrec_logical_switch *ls = NULL;
-    const struct nbrec_port_group *pg = NULL;
-    const struct nbrec_acl **acls;
-    size_t i;
-
-    char *error = acl_cmd_get_pg_or_ls(ctx, &ls, &pg);
-    if (error) {
-        ctx->error = error;
-        return;
-    }
-
-    size_t n_acls = pg ? pg->n_acls : ls->n_acls;
-    struct nbrec_acl **nb_acls = pg ? pg->acls : ls->acls;
-
-    acls = xmalloc(sizeof *acls * n_acls);
-    for (i = 0; i < n_acls; i++) {
-        acls[i] = nb_acls[i];
-    }
-
-    qsort(acls, n_acls, sizeof *acls, acl_cmp);
-
-    for (i = 0; i < n_acls; i++) {
+    for (size_t i = 0; i < n_acls; i++) {
         const struct nbrec_acl *acl = acls[i];
         ds_put_format(&ctx->output, "%10s %5"PRId64" (%s) %s",
                       acl->direction, acl->priority, acl->match,
@@ -2271,10 +2252,70 @@ nbctl_acl_list(struct ctl_context *ctx)
         if (smap_get_bool(&acl->options, "apply-after-lb", false)) {
             ds_put_cstr(&ctx->output, " [after-lb]");
         }
+        if (pg_name) {
+            ds_put_format(&ctx->output, " [%s]", pg_name);
+        }
         ds_put_cstr(&ctx->output, "\n");
     }
+}
 
+static void
+nbctl_acl_list(struct ctl_context *ctx)
+{
+    const struct nbrec_logical_switch *ls = NULL;
+    const struct nbrec_port_group *pg = NULL;
+
+    char *error = acl_cmd_get_pg_or_ls(ctx, &ls, &pg);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    size_t n_acls = pg ? pg->n_acls : ls->n_acls;
+    struct nbrec_acl **nb_acls = pg ? pg->acls : ls->acls;
+    const struct nbrec_acl **acls = xmalloc(sizeof *acls * n_acls);
+    for (size_t i = 0; i < n_acls; i++) {
+        acls[i] = nb_acls[i];
+    }
+
+    qsort(acls, n_acls, sizeof *acls, acl_cmp);
+    nbctl_acl_print(ctx, acls, n_acls, NULL);
     free(acls);
+
+    if (shash_find(&ctx->options, "--all") && ls) {
+        struct uuidset ports = UUIDSET_INITIALIZER(&ports);
+        for (size_t i = 0; i < ls->n_ports; i++) {
+            uuidset_insert(&ports, &ls->ports[i]->header_.uuid);
+        }
+
+        struct shash pg_map = SHASH_INITIALIZER(&pg_map);
+        const struct nbrec_port_group *iter;
+        NBREC_PORT_GROUP_FOR_EACH (iter, ctx->idl) {
+            for (size_t i = 0; i < iter->n_ports; i++) {
+                if (uuidset_find(&ports, &iter->ports[i]->header_.uuid)) {
+                    shash_add(&pg_map, iter->name, iter);
+                    break;
+                }
+            }
+        }
+
+        const struct shash_node **pg_nodes = shash_sort(&pg_map);
+        for (size_t i = 0; i < shash_count(&pg_map); i++) {
+            iter = pg_nodes[i]->data;
+            acls = xmalloc(sizeof *acls * iter->n_acls);
+            for (size_t j = 0; j < iter->n_acls; j++) {
+                acls[j] = iter->acls[j];
+            }
+
+            qsort(acls, iter->n_acls, sizeof *acls, acl_cmp);
+            nbctl_acl_print(ctx, acls, iter->n_acls, iter->name);
+            free(acls);
+        }
+
+        uuidset_destroy(&ports);
+        shash_destroy(&pg_map);
+        free(pg_nodes);
+    }
 }
 
 static int
@@ -2347,9 +2388,12 @@ nbctl_pre_acl(struct ctl_context *ctx)
 {
     ovsdb_idl_add_column(ctx->idl, &nbrec_port_group_col_name);
     ovsdb_idl_add_column(ctx->idl, &nbrec_port_group_col_acls);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_port_group_col_ports);
 
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_name);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_acls);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_col_ports);
 
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_direction);
     ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_priority);
@@ -8226,8 +8270,8 @@ static const struct ctl_command_syntax nbctl_commands[] = {
       "--apply-after-lb,--tier=,--sample-new=,--sample-est=", RW },
     { "acl-del", 1, 4, "{SWITCH | PORTGROUP} [DIRECTION [PRIORITY MATCH]]",
       nbctl_pre_acl, nbctl_acl_del, NULL, "--type=,--tier=", RW },
-    { "acl-list", 1, 1, "{SWITCH | PORTGROUP}",
-      nbctl_pre_acl_list, nbctl_acl_list, NULL, "--type=", RO },
+    { "acl-list", 1, 2, "{SWITCH | PORTGROUP}",
+      nbctl_pre_acl_list, nbctl_acl_list, NULL, "--all,--type=", RO },
 
     /* qos commands. */
     { "qos-add", 5, 7,

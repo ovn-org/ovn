@@ -461,9 +461,14 @@
         </p>
       </dd>
 
-      <dt>[<code>--type=</code>{<code>switch</code> | <code>port-group</code>}] <code>acl-list</code> <var>entity</var> </dt>
+      <dt>[<code>--type=</code>{<code>switch</code> | <code>port-group</code>}] [<code>--all</code>] <code>acl-list</code> <var>entity</var> </dt>
       <dd>
         Lists the ACLs on <var>entity</var>.
+        <p>
+          The <code>--all</code> option will also list the port group ACLs
+          associated with each logical switch port, when a logical switch
+          is provided as an argument.
+        </p>
       </dd>
     </dl>
 
