@@ -428,10 +428,9 @@ if_status_handle_claims(struct if_status_mgr *mgr,
                         struct local_binding_data *binding_data,
                         const struct sbrec_chassis *chassis_rec,
                         struct hmap *tracked_datapath,
-                        const struct sbrec_port_binding_table *pb_table,
-                        bool sb_readonly)
+                        const struct sbrec_port_binding_table *pb_table)
 {
-    if (!binding_data || sb_readonly) {
+    if (!binding_data) {
         return false;
     }
 
