@@ -31,6 +31,7 @@ struct route_exchange_ctx_in {
 
 struct route_exchange_ctx_out {
     struct hmap route_table_watches;
+    bool sb_changes_pending;
 };
 
 void route_exchange_run(const struct route_exchange_ctx_in *,

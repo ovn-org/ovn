@@ -5303,6 +5303,9 @@ route_sb_advertised_route_data_handler(struct engine_node *node, void *data)
 struct ed_type_route_exchange {
     /* We need the idl to check if the Learned_Route table exists. */
     struct ovsdb_idl *sb_idl;
+    /* Set to true when SB is readonly and we have routes that need
+     * to be inserted into SB. */
+    bool sb_changes_pending;
 };
 
 static enum engine_node_state
@@ -5336,7 +5339,9 @@ en_route_exchange_run(struct engine_node *node, void *data)
         .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
         .announce_routes = &route_data->announce_routes,
     };
-    struct route_exchange_ctx_out r_ctx_out = {};
+    struct route_exchange_ctx_out r_ctx_out = {
+        .sb_changes_pending = false,
+    };
 
     hmap_init(&r_ctx_out.route_table_watches);
 
@@ -5346,7 +5351,20 @@ en_route_exchange_run(struct engine_node *node, void *data)
     route_table_watch_request_cleanup(&r_ctx_out.route_table_watches);
     hmap_destroy(&r_ctx_out.route_table_watches);
 
+    re->sb_changes_pending = r_ctx_out.sb_changes_pending;
+
     return EN_UPDATED;
+}
+
+static enum engine_input_handler_result
+route_exchange_sb_ro_handler(struct engine_node *node OVS_UNUSED, void *data)
+{
+    struct ed_type_route_exchange *re = data;
+    if (re->sb_changes_pending) {
+        return EN_UNHANDLED;
+    }
+
+    return EN_HANDLED_UNCHANGED;
 }
 
 
@@ -5961,6 +5979,8 @@ main(int argc, char *argv[])
                      engine_noop_handler);
     engine_add_input(&en_route_exchange, &en_route_table_notify, NULL);
     engine_add_input(&en_route_exchange, &en_route_exchange_status, NULL);
+    engine_add_input(&en_route_exchange, &en_sb_ro,
+                     route_exchange_sb_ro_handler);
 
     engine_add_input(&en_addr_sets, &en_sb_address_set,
                      addr_sets_sb_address_set_handler);
