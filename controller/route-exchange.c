@@ -137,7 +137,8 @@ sb_sync_learned_routes(const struct ovs_list *learned_routes,
                        const struct smap *bound_ports,
                        struct ovsdb_idl_txn *ovnsb_idl_txn,
                        struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                       struct ovsdb_idl_index *sbrec_learned_route_by_datapath)
+                       struct ovsdb_idl_index *sbrec_learned_route_by_datapath,
+                       bool *sb_changes_pending)
 {
     struct hmap sync_routes = HMAP_INITIALIZER(&sync_routes);
     const struct sbrec_learned_route *sb_route;
@@ -186,6 +187,10 @@ sb_sync_learned_routes(const struct ovs_list *learned_routes,
                 hmap_remove(&sync_routes, &route_e->hmap_node);
                 free(route_e);
             } else {
+                if (!ovnsb_idl_txn) {
+                    *sb_changes_pending = true;
+                    continue;
+                }
                 sb_route = sbrec_learned_route_insert(ovnsb_idl_txn);
                 sbrec_learned_route_set_datapath(sb_route, datapath);
                 sbrec_learned_route_set_logical_port(sb_route, logical_port);
@@ -268,7 +273,8 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
         sb_sync_learned_routes(&received_routes, ad->db,
                                &ad->bound_ports, r_ctx_in->ovnsb_idl_txn,
                                r_ctx_in->sbrec_port_binding_by_name,
-                               r_ctx_in->sbrec_learned_route_by_datapath);
+                               r_ctx_in->sbrec_learned_route_by_datapath,
+                               &r_ctx_out->sb_changes_pending);
 
         route_table_add_watch_request(&r_ctx_out->route_table_watches,
                                       table_id);
