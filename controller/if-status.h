@@ -58,8 +58,7 @@ bool if_status_handle_claims(struct if_status_mgr *mgr,
                              struct local_binding_data *binding_data,
                              const struct sbrec_chassis *chassis_rec,
                              struct hmap *tracked_datapath,
-                             const struct sbrec_port_binding_table *pb_table,
-                             bool sb_readonly);
+                             const struct sbrec_port_binding_table *pb_table);
 void if_status_mgr_remove_ovn_installed(struct if_status_mgr *mgr,
                                         const char *name,
                                         const struct uuid *uuid);
