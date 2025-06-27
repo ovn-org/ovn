@@ -5333,10 +5333,10 @@ route_exchange_sb_ro_handler(struct engine_node *node OVS_UNUSED, void *data)
 {
     struct ed_type_route_exchange *re = data;
     if (re->sb_changes_pending) {
-        return true;
+        return false;
     }
 
-    return false;
+    return true;
 }
 
 
