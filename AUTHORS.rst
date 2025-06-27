@@ -383,6 +383,7 @@ Shih-Hao Li                        shihli@vmware.com
 Shu Shen                           shu.shen@radisys.com
 Simon Horman                       horms@ovn.org
 Sorin Vinturis                     svinturis@cloudbasesolutions.com
+Sragdhara Datta Chaudhuri          sragdha.chaudhu@nutanix.com
 Steffen Gebert                     steffen.gebert@informatik.uni-wuerzburg.de
 Sten Spans                         sten@blinkenlights.nl
 Stephane A. Sezer                  sas@cd80.net
