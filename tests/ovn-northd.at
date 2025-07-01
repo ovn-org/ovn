@@ -17436,6 +17436,9 @@ OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([sb_cfg propagation])
 ovn_start
 
+# Make sure ovn-northd propagated all initial state to SB (e.g., RBAC).
+check ovn-nbctl --wait=sb sync
+
 #
 # Test engine call does not happen between sb db transaction
 # commitment and sb_cfg write to the nb db (if have to)
