@@ -84,6 +84,10 @@ check_fake_multinode_setup_by_nodes() {
     for c in $1
     do
         AT_CHECK([m_as $c ovn-appctl -t ovn-controller version], [0], [ignore])
+        on_exit "m_as $c ovs-vsctl list Interface > interfaces-${c}.txt"
+        on_exit "m_as $c ovs-vsctl show > ovs-${chassis}.txt"
+        on_exit "m_as $c ovs-ofctl dump-flows br-int > flow-${c}.txt"
+        on_exit "m_as $c ovs-vsctl get open . external_ids > extids-${c}.txt"
     done
 }
 
