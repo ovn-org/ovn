@@ -19350,6 +19350,18 @@ bfd_sync_init(struct bfd_sync_data *data)
 }
 
 void
+bfd_sync_swap(struct bfd_sync_data *data, struct sset *bfd_ports)
+{
+    sset_swap(&data->bfd_ports, bfd_ports);
+}
+
+void
+bfd_sync_destroy(struct bfd_sync_data *data)
+{
+    sset_destroy(&data->bfd_ports);
+}
+
+void
 northd_destroy(struct northd_data *data)
 {
     struct ovn_lb_datapaths *lb_dps;
@@ -19402,12 +19414,6 @@ void
 bfd_destroy(struct bfd_data *data)
 {
     __bfd_destroy(&data->bfd_connections);
-}
-
-void
-bfd_sync_destroy(struct bfd_sync_data *data)
-{
-    sset_destroy(&data->bfd_ports);
 }
 
 void

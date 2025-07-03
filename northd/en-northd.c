@@ -422,14 +422,20 @@ en_bfd_sync_run(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("NB_bfd", node));
     struct bfd_sync_data *bfd_sync_data = data;
 
-    bfd_sync_destroy(data);
-    bfd_sync_init(data);
+    struct sset new_bfd_ports = SSET_INITIALIZER(&new_bfd_ports);
     bfd_table_sync(eng_ctx->ovnsb_idl_txn, nbrec_bfd_table,
                    &northd_data->lr_ports, &bfd_data->bfd_connections,
                    &route_policies_data->bfd_active_connections,
                    &routes_data->bfd_active_connections,
-                   &bfd_sync_data->bfd_ports);
-    return EN_UPDATED;
+                   &new_bfd_ports);
+
+    enum engine_node_state new_state =
+        sset_equals(&new_bfd_ports, &bfd_sync_data->bfd_ports)
+        ? EN_UNCHANGED : EN_UPDATED;
+
+    bfd_sync_swap(bfd_sync_data, &new_bfd_ports);
+    sset_destroy(&new_bfd_ports);
+    return new_state;
 }
 
 void

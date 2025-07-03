@@ -857,6 +857,7 @@ void bfd_init(struct bfd_data *);
 void bfd_destroy(struct bfd_data *);
 
 void bfd_sync_init(struct bfd_sync_data *);
+void bfd_sync_swap(struct bfd_sync_data *, struct sset *bfd_ports);
 void bfd_sync_destroy(struct bfd_sync_data *);
 
 struct lflow_table;
