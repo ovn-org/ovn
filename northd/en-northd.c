@@ -135,8 +135,7 @@ en_northd_run(struct engine_node *node, void *data)
 
     COVERAGE_INC(northd_run);
     stopwatch_start(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
-    ovnnb_db_run(&input_data, data, eng_ctx->ovnnb_idl_txn,
-                 eng_ctx->ovnsb_idl_txn);
+    ovnnb_db_run(&input_data, data, eng_ctx->ovnsb_idl_txn);
     stopwatch_stop(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
     return EN_UPDATED;
 }

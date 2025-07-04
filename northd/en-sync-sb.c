@@ -406,11 +406,6 @@ en_sync_to_sb_pb_cleanup(void *data OVS_UNUSED)
 enum engine_input_handler_result
 sync_to_sb_pb_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
-    const struct engine_context *eng_ctx = engine_get_context();
-    if (!eng_ctx->ovnsb_idl_txn) {
-        return EN_UNHANDLED;
-    }
-
     struct northd_data *nd = engine_get_input_data("northd", node);
     if (!northd_has_tracked_data(&nd->trk_data) ||
             northd_has_lbs_in_tracked_data(&nd->trk_data)) {

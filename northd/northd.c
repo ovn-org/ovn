@@ -10909,10 +10909,6 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
                const struct hmap *sr_bfd_connections,
                struct sset *bfd_ports)
 {
-    if (!ovnsb_txn) {
-        return;
-    }
-
     unsigned long *bfd_src_ports = bitmap_allocate(BFD_UDP_SRC_PORT_LEN);
     struct hmap sync_bfd_connections = HMAP_INITIALIZER(&sync_bfd_connections);
 
@@ -19445,12 +19441,8 @@ routes_destroy(struct routes_data *data)
 void
 ovnnb_db_run(struct northd_input *input_data,
              struct northd_data *data,
-             struct ovsdb_idl_txn *ovnnb_txn,
              struct ovsdb_idl_txn *ovnsb_txn)
 {
-    if (!ovnsb_txn || !ovnnb_txn) {
-        return;
-    }
     stopwatch_start(BUILD_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
 
     use_ct_inv_match = smap_get_bool(input_data->nb_options,
@@ -19721,8 +19713,7 @@ handle_cr_port_binding_changes(const struct sbrec_port_binding *sb,
  * this column is not empty, it means we need to set the corresponding logical
  * port as 'up' in the northbound DB. */
 static void
-handle_port_binding_changes(struct ovsdb_idl_txn *ovnsb_txn,
-                const struct sbrec_port_binding_table *sb_pb_table,
+handle_port_binding_changes(const struct sbrec_port_binding_table *sb_pb_table,
                 const struct sbrec_ha_chassis_group_table *sb_ha_ch_grp_table,
                 struct hmap *ls_ports,
                 struct hmap *lr_ports,
@@ -19732,18 +19723,16 @@ handle_port_binding_changes(struct ovsdb_idl_txn *ovnsb_txn,
     const struct sbrec_port_binding *sb;
     bool build_ha_chassis_ref = false;
 
-    if (ovnsb_txn) {
-        const struct sbrec_ha_chassis_group *ha_ch_grp;
-        SBREC_HA_CHASSIS_GROUP_TABLE_FOR_EACH (ha_ch_grp, sb_ha_ch_grp_table) {
-            if (ha_ch_grp->n_ha_chassis > 1) {
-                struct ha_ref_chassis_info *ref_ch_info;
+    const struct sbrec_ha_chassis_group *ha_ch_grp;
+    SBREC_HA_CHASSIS_GROUP_TABLE_FOR_EACH (ha_ch_grp, sb_ha_ch_grp_table) {
+        if (ha_ch_grp->n_ha_chassis > 1) {
+            struct ha_ref_chassis_info *ref_ch_info;
 
-                ref_ch_info = xzalloc(sizeof *ref_ch_info);
-                ref_ch_info->ha_chassis_group = ha_ch_grp;
-                hmapx_init(&ref_ch_info->ref_chassis);
-                build_ha_chassis_ref = true;
-                shash_add(ha_ref_chassis_map, ha_ch_grp->name, ref_ch_info);
-            }
+            ref_ch_info = xzalloc(sizeof *ref_ch_info);
+            ref_ch_info->ha_chassis_group = ha_ch_grp;
+            hmapx_init(&ref_ch_info->ref_chassis);
+            build_ha_chassis_ref = true;
+            shash_add(ha_ref_chassis_map, ha_ch_grp->name, ref_ch_info);
         }
     }
 
@@ -19787,7 +19776,7 @@ handle_port_binding_changes(struct ovsdb_idl_txn *ovnsb_txn,
             sbrec_port_binding_set_up(op->sb, &up, 1);
         }
 
-        if (build_ha_chassis_ref && ovnsb_txn
+        if (build_ha_chassis_ref
             && (sb->chassis || sb->n_additional_chassis)) {
             /* Check and collect the chassis which has claimed this 'sb'
              * in relation to LR groups. */
@@ -19802,25 +19791,21 @@ handle_port_binding_changes(struct ovsdb_idl_txn *ovnsb_txn,
 
 /* Handle a fairly small set of changes in the southbound database. */
 void
-ovnsb_db_run(struct ovsdb_idl_txn *ovnnb_txn,
-             struct ovsdb_idl_txn *ovnsb_txn,
+ovnsb_db_run(struct ovsdb_idl_txn *ovnsb_txn,
              const struct sbrec_port_binding_table *sb_pb_table,
              const struct sbrec_ha_chassis_group_table *sb_ha_ch_grp_table,
              struct hmap *ls_ports,
              struct hmap *lr_ports)
 {
-    if (!ovnnb_txn ||
-        !ovsdb_idl_has_ever_connected(ovsdb_idl_txn_get_idl(ovnsb_txn))) {
+    if (!ovsdb_idl_has_ever_connected(ovsdb_idl_txn_get_idl(ovnsb_txn))) {
         return;
     }
 
     struct shash ha_ref_chassis_map = SHASH_INITIALIZER(&ha_ref_chassis_map);
-    handle_port_binding_changes(ovnsb_txn, sb_pb_table, sb_ha_ch_grp_table,
+    handle_port_binding_changes(sb_pb_table, sb_ha_ch_grp_table,
                                 ls_ports, lr_ports, &ha_ref_chassis_map);
-    if (ovnsb_txn) {
-        update_sb_ha_group_ref_chassis(sb_ha_ch_grp_table,
-                                       &ha_ref_chassis_map);
-    }
+    update_sb_ha_group_ref_chassis(sb_ha_ch_grp_table, &ha_ref_chassis_map);
+
     shash_destroy(&ha_ref_chassis_map);
 
     ovn_update_ipv6_prefix(lr_ports);

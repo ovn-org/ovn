@@ -67,10 +67,6 @@ enum engine_node_state
 en_global_config_run(struct engine_node *node , void *data)
 {
     const struct engine_context *eng_ctx = engine_get_context();
-    if (!eng_ctx->ovnnb_idl_txn || !eng_ctx->ovnsb_idl_txn) {
-        return EN_STALE;
-    }
-
     const struct nbrec_nb_global_table *nb_global_table =
         EN_OVSDB_GET(engine_get_input("NB_nb_global", node));
     const struct nbrec_logical_switch_table *nbrec_ls_table =

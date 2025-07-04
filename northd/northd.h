@@ -823,10 +823,8 @@ find_route_outport(const struct hmap *lr_ports, const char *output_port,
 
 void ovnnb_db_run(struct northd_input *input_data,
                   struct northd_data *data,
-                  struct ovsdb_idl_txn *ovnnb_txn,
                   struct ovsdb_idl_txn *ovnsb_txn);
-void ovnsb_db_run(struct ovsdb_idl_txn *ovnnb_txn,
-                  struct ovsdb_idl_txn *ovnsb_txn,
+void ovnsb_db_run(struct ovsdb_idl_txn *ovnsb_txn,
                   const struct sbrec_port_binding_table *,
                   const struct sbrec_ha_chassis_group_table *,
                   struct hmap *ls_ports,
