@@ -302,7 +302,7 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
     SSET_FOR_EACH_SAFE (vrf_name, &old_maintained_vrfs) {
         if (!sset_contains(&_maintained_vrfs, vrf_name)) {
             error = re_nl_delete_vrf(vrf_name);
-            if (error) {
+            if (error && error != ENODEV) {
                 /* If netlink transaction fails, we will retry next time. */
                 sset_add(&_maintained_vrfs, vrf_name);
                 SET_ROUTE_EXCHANGE_NL_STATUS(error);
