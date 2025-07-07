@@ -426,7 +426,8 @@ start_ic_ovsdb () {
 
 sync_status() {
     local ctl_file=$1
-    ovn-appctl -t $ctl_file ovsdb-server/sync-status | awk '{if(NR==1) print $2}'
+    ovn-appctl -t $ctl_file ovsdb-server/sync-status | \
+                  awk '/state:/ {print $2; exit}'
 }
 
 status_ovnnb() {
