@@ -138,9 +138,6 @@ OVN To-do List
 * Remove ssl_ciphersuites workaround for clustered databases from ovn-ctl
   after 26.03 release, assuming it will be an LTS release.
 
-* Remove OVS database schema parsing from features.c once server side column
-  types are available through IDL.
-
 * Dynamic Routing
 
   * Add incremental processing of en_dynamic_routes for stateful configuration

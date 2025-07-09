@@ -43,6 +43,7 @@
 #include "lflow-cache.h"
 #include "lflow-conj-ids.h"
 #include "lib/vswitch-idl.h"
+#include "lib/ovsdb-types.h"
 #include "local_data.h"
 #include "lport.h"
 #include "memory.h"
@@ -546,12 +547,13 @@ static void
 update_flow_table_prefixes(struct ovsdb_idl_txn *ovs_idl_txn,
                            const struct ovsrec_bridge *br_int)
 {
-    size_t max_prefixes = ovs_features_max_flow_table_prefixes_get();
+    const struct ovsdb_type *server_type;
     struct ds ds = DS_EMPTY_INITIALIZER;
     const char *prefixes[] = {
         "ip_src", "ip_dst", "ipv6_src", "ipv6_dst",
     };
     struct ovsrec_flow_table *ft;
+    size_t max_prefixes;
     size_t i;
 
     /* We must not attempt setting more prefixes than our IDL supports.
@@ -561,12 +563,14 @@ update_flow_table_prefixes(struct ovsdb_idl_txn *ovs_idl_txn,
         ARRAY_SIZE(prefixes) <=
         ovsrec_flow_table_columns[OVSREC_FLOW_TABLE_COL_PREFIXES].type.n_max);
 
-    if (!max_prefixes) {
-        /* Not discovered yet. */
+    server_type = ovsrec_flow_table_prefixes_server_type(
+                                ovsdb_idl_txn_get_idl(ovs_idl_txn));
+    if (!server_type) {
+        /* Not connected or not in the server's schema somehow. */
         return;
     }
 
-    max_prefixes = MIN(max_prefixes, ARRAY_SIZE(prefixes));
+    max_prefixes = MIN(server_type->n_max, ARRAY_SIZE(prefixes));
     if (br_int->n_flow_tables == N_FLOW_TABLES &&
         br_int->value_flow_tables[0]->n_prefixes == max_prefixes) {
         /* Already up to date.  Ideally, we would check every table,
@@ -6499,8 +6503,7 @@ main(int argc, char *argv[])
                 && ovs_feature_support_run(br_int_dp ?
                                            &br_int_dp->capabilities : NULL,
                                            br_int_remote.target,
-                                           br_int_remote.probe_interval,
-                                           ovs_remote)) {
+                                           br_int_remote.probe_interval)) {
                 VLOG_INFO("OVS feature set changed, force recompute.");
                 engine_set_force_recompute();
 
