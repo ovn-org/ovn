@@ -170,6 +170,29 @@ m_check_column() {
     fi
 }
 
+# m_add_internal_port NODE NETNS OVS_BRIDGE PORT IP [GW]
+#
+# Adds an OVS internal PORT to OVS_BRIDGE on NODE and moves the resulting
+# interface in the NETNS namespace.  It also configures it with the provided
+# IP and (optionally) default gateway GW.
+m_add_internal_port() {
+    local node=$1 ns=$2 br=$3 port=$4 ip=$5 gw=$6
+
+    if ! m_as $node ip netns list | grep $ns; then
+        check m_as $node ip netns add $ns
+        on_exit "m_as $node ip netns delete $ns"
+    fi
+    check m_as $node ovs-vsctl add-port $br $port -- set interface $port type=internal
+    on_exit "m_as $node ovs-vsctl del-port $port"
+    check m_as $node ip link set $port netns $ns
+    check m_as $node ip netns exec $ns ip link set $port up
+    check m_as $node ip netns exec $ns ip addr add $ip dev $port
+
+    if test -n "$gw"; then
+        check m_as $node ip netns exec $ns ip route add default via $gw dev $port
+    fi
+}
+
 # m_wait_for_ports_up [PORT...]
 #
 # With arguments, waits for specified Logical_Switch_Ports to come up.
