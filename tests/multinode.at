@@ -167,23 +167,9 @@ check multinode_nbctl lb-add lb0 10.0.0.1:8080 10.0.0.4:8080 udp
 check multinode_nbctl ls-lb-add sw0 lb0
 M_NS_DAEMONIZE([ovn-chassis-2], [sw0p2], [nc -u -l 8080 >/dev/null 2>&1], [nc.pid])
 
-m_as ovn-gw-1 ip netns add ovn-ext0
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext0 -- set interface ext0 type=internal
-m_as ovn-gw-1 ip link set ext0 netns ovn-ext0
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip link set ext0 up
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip addr add 172.20.0.1/24 dev ext0
-
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext1 -- set interface ext1 type=internal
-m_as ovn-gw-1 ip link set ext1 netns ovn-ext0
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip link set ext1 up
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip addr add 172.20.1.1/24 dev ext1
-
-m_as ovn-gw-1 ip netns add ovn-ext2
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext2 -- set interface ext2 type=internal
-m_as ovn-gw-1 ip link set ext2 netns ovn-ext2
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip link set ext2 up
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip addr add 172.20.1.2/24 dev ext2
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip route add default via 172.20.1.1 dev ext2
+m_add_internal_port ovn-gw-1 ovn-ext0 br-ex ext0 172.20.0.1/24
+m_add_internal_port ovn-gw-1 ovn-ext0 br-ex ext1 172.20.1.1/24
+m_add_internal_port ovn-gw-1 ovn-ext2 br-ex ext2 172.20.1.2/24 172.20.1.1
 
 m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 m_as ovn-chassis-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
@@ -310,23 +296,9 @@ check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 20.0.0.0/24
 check multinode_nbctl acl-add sw0 from-lport 1002 'ip4 || ip6'  allow-related
 check multinode_nbctl acl-add sw1 from-lport 1002 'ip4 || ip6'  allow-related
 
-m_as ovn-gw-1 ip netns add ovn-ext0
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext0 -- set interface ext0 type=internal
-m_as ovn-gw-1 ip link set ext0 netns ovn-ext0
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip link set ext0 up
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip addr add 172.20.0.1/24 dev ext0
-
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext1 -- set interface ext1 type=internal
-m_as ovn-gw-1 ip link set ext1 netns ovn-ext0
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip link set ext1 up
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip addr add 172.20.1.1/24 dev ext1
-
-m_as ovn-gw-1 ip netns add ovn-ext2
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext2 -- set interface ext2 type=internal
-m_as ovn-gw-1 ip link set ext2 netns ovn-ext2
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip link set ext2 up
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip addr add 172.20.1.2/24 dev ext2
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip route add default via 172.20.1.1 dev ext2
+m_add_internal_port ovn-gw-1 ovn-ext0 br-ex ext0 172.20.0.1/24
+m_add_internal_port ovn-gw-1 ovn-ext0 br-ex ext1 172.20.1.1/24
+m_add_internal_port ovn-gw-1 ovn-ext2 br-ex ext2 172.20.1.2/24 172.20.1.1
 
 m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 m_as ovn-chassis-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
@@ -442,23 +414,9 @@ check multinode_nbctl lrp-set-gateway-chassis lr0-sw1 ovn-chassis-2 10
 check multinode_nbctl acl-add sw0 from-lport 1002 'ip4 || ip6'  allow-related
 check multinode_nbctl acl-add sw1 from-lport 1002 'ip4 || ip6'  allow-related
 
-m_as ovn-gw-1 ip netns add ovn-ext0
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext0 -- set interface ext0 type=internal
-m_as ovn-gw-1 ip link set ext0 netns ovn-ext0
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip link set ext0 up
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip addr add 172.20.0.1/24 dev ext0
-
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext1 -- set interface ext1 type=internal
-m_as ovn-gw-1 ip link set ext1 netns ovn-ext0
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip link set ext1 up
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip addr add 172.20.1.1/24 dev ext1
-
-m_as ovn-gw-1 ip netns add ovn-ext2
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext2 -- set interface ext2 type=internal
-m_as ovn-gw-1 ip link set ext2 netns ovn-ext2
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip link set ext2 up
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip addr add 172.20.1.2/24 dev ext2
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip route add default via 172.20.1.1 dev ext2
+m_add_internal_port ovn-gw-1 ovn-ext0 br-ex ext0 172.20.0.1/24
+m_add_internal_port ovn-gw-1 ovn-ext0 br-ex ext1 172.20.1.1/24
+m_add_internal_port ovn-gw-1 ovn-ext2 br-ex ext2 172.20.1.2/24 172.20.1.1
 
 m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 m_as ovn-chassis-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
@@ -584,23 +542,9 @@ check multinode_nbctl lrp-set-gateway-chassis lr0-sw1 ovn-chassis-2 10
 check multinode_nbctl acl-add sw0 from-lport 1002 'ip4 || ip6'  allow-related
 check multinode_nbctl acl-add sw1 from-lport 1002 'ip4 || ip6'  allow-related
 
-m_as ovn-gw-1 ip netns add ovn-ext0
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext0 -- set interface ext0 type=internal
-m_as ovn-gw-1 ip link set ext0 netns ovn-ext0
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip link set ext0 up
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip addr add 172.20.0.1/24 dev ext0
-
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext1 -- set interface ext1 type=internal
-m_as ovn-gw-1 ip link set ext1 netns ovn-ext0
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip link set ext1 up
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip addr add 172.20.1.1/24 dev ext1
-
-m_as ovn-gw-1 ip netns add ovn-ext2
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext2 -- set interface ext2 type=internal
-m_as ovn-gw-1 ip link set ext2 netns ovn-ext2
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip link set ext2 up
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip addr add 172.20.1.2/24 dev ext2
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip route add default via 172.20.1.1 dev ext2
+m_add_internal_port ovn-gw-1 ovn-ext0 br-ex ext0 172.20.0.1/24
+m_add_internal_port ovn-gw-1 ovn-ext0 br-ex ext1 172.20.1.1/24
+m_add_internal_port ovn-gw-1 ovn-ext2 br-ex ext2 172.20.1.2/24 172.20.1.1
 
 m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 m_as ovn-chassis-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
@@ -720,23 +664,9 @@ check multinode_nbctl lb-add lb0 10.0.0.1:8080 20.0.0.3:8080 udp
 check multinode_nbctl lr-lb-add lr0 lb0
 M_NS_DAEMONIZE([ovn-chassis-2], [sw1p1], [nc -u -l 8080 >/dev/null 2>&1], [nc.pid])
 
-m_as ovn-gw-1 ip netns add ovn-ext0
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext0 -- set interface ext0 type=internal
-m_as ovn-gw-1 ip link set ext0 netns ovn-ext0
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip link set ext0 up
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip addr add 172.20.0.1/24 dev ext0
-
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext1 -- set interface ext1 type=internal
-m_as ovn-gw-1 ip link set ext1 netns ovn-ext0
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip link set ext1 up
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip addr add 172.20.1.1/24 dev ext1
-
-m_as ovn-gw-1 ip netns add ovn-ext2
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext2 -- set interface ext2 type=internal
-m_as ovn-gw-1 ip link set ext2 netns ovn-ext2
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip link set ext2 up
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip addr add 172.20.1.2/24 dev ext2
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip route add default via 172.20.1.1 dev ext2
+m_add_internal_port ovn-gw-1 ovn-ext0 br-ex ext0 172.20.0.1/24
+m_add_internal_port ovn-gw-1 ovn-ext0 br-ex ext1 172.20.1.1/24
+m_add_internal_port ovn-gw-1 ovn-ext2 br-ex ext2 172.20.1.2/24 172.20.1.1
 
 m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 m_as ovn-chassis-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
@@ -873,23 +803,9 @@ check multinode_nbctl lb-add lb0 10.0.0.1:8080 20.0.0.3:8080 udp
 check multinode_nbctl lr-lb-add lr0 lb0
 M_NS_DAEMONIZE([ovn-chassis-2], [sw1p1], [nc -u -l 8080 >/dev/null 2>&1], [nc.pid])
 
-m_as ovn-gw-1 ip netns add ovn-ext0
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext0 -- set interface ext0 type=internal
-m_as ovn-gw-1 ip link set ext0 netns ovn-ext0
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip link set ext0 up
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip addr add 172.20.0.1/24 dev ext0
-
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext1 -- set interface ext1 type=internal
-m_as ovn-gw-1 ip link set ext1 netns ovn-ext0
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip link set ext1 up
-m_as ovn-gw-1 ip netns exec ovn-ext0 ip addr add 172.20.1.1/24 dev ext1
-
-m_as ovn-gw-1 ip netns add ovn-ext2
-m_as ovn-gw-1 ovs-vsctl add-port br-ex ext2 -- set interface ext2 type=internal
-m_as ovn-gw-1 ip link set ext2 netns ovn-ext2
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip link set ext2 up
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip addr add 172.20.1.2/24 dev ext2
-m_as ovn-gw-1 ip netns exec ovn-ext2 ip route add default via 172.20.1.1 dev ext2
+m_add_internal_port ovn-gw-1 ovn-ext0 br-ex ext0 172.20.0.1/24
+m_add_internal_port ovn-gw-1 ovn-ext0 br-ex ext1 172.20.1.1/24
+m_add_internal_port ovn-gw-1 ovn-ext2 br-ex ext2 172.20.1.2/24 172.20.1.1
 
 m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 m_as ovn-chassis-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
@@ -1441,13 +1357,9 @@ rm -f *.stderr
 # Make sure that traffic from sw0 still goes out of localnet port
 # for IPs not managed by OVN.
 # Create a fake vm in br-ex on ovn-gw-1 with IP - 10.0.0.10
-m_as ovn-gw-1 ip netns add sw0-p10
-m_as ovn-gw-1 ovs-vsctl add-port br-ex sw0-p10 -- set interface sw0-p10 type=internal
+m_add_internal_port ovn-gw-1 sw0-p10 br-ex sw0-p10 10.0.0.10/24
 m_as ovn-gw-1 ovs-vsctl set port sw0-p10 tag=100
-m_as ovn-gw-1 ip link set sw0-p10 netns sw0-p10
-m_as ovn-gw-1 ip netns exec sw0-p10 ip link set sw0-p10 up
 m_as ovn-gw-1 ip netns exec sw0-p10 ip link set sw0-p10 address 32:31:8c:da:64:4f
-m_as ovn-gw-1 ip netns exec sw0-p10 ip addr add 10.0.0.10/24 dev sw0-p10
 
 # Ping from sw0p1 (on ovn-chassis-1) tp sw0-p10 which is in ovn-gw-1 on
 # external bridge.  The traffic path is
