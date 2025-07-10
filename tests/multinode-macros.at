@@ -81,8 +81,7 @@ multinode_sbctl () {
 
 check_fake_multinode_setup_by_nodes() {
     check m_as ovn-central-az1-1 ovn-nbctl --wait=sb sync
-    for c in $1
-    do
+    for c; do
         AT_CHECK([m_as $c ovn-appctl -t ovn-controller version], [0], [ignore])
         on_exit "m_as $c ovs-vsctl list Interface > interfaces-${c}.txt"
         on_exit "m_as $c ovs-vsctl show > ovs-${chassis}.txt"
@@ -92,22 +91,25 @@ check_fake_multinode_setup_by_nodes() {
 }
 
 check_fake_multinode_setup() {
-    check_fake_multinode_setup_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-gw-1 ovn-gw-2'
+    check_fake_multinode_setup_by_nodes                         \
+        ovn-chassis-1 ovn-chassis-2 ovn-chassis-3 ovn-chassis-4 \
+        ovn-gw-1 ovn-gw-2 ovn-gw-3 ovn-gw-4
 }
 
 cleanup_multinode_resources_by_nodes() {
     m_as ovn-central-az1-1 rm -f /etc/ovn/ovnnb_db.db
     m_as ovn-central-az1-1 /usr/share/ovn/scripts/ovn-ctl restart_northd
     check m_as ovn-central-az1-1 ovn-nbctl --wait=sb sync
-    for c in $1
-    do
+    for c; do
         m_as $c ovs-vsctl del-br br-int
         m_as $c ip --all netns delete
     done
 }
 
 cleanup_multinode_resources() {
-    cleanup_multinode_resources_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-gw-1'
+    cleanup_multinode_resources_by_nodes                        \
+        ovn-chassis-1 ovn-chassis-2 ovn-chassis-3 ovn-chassis-4 \
+        ovn-gw-1 ovn-gw-2 ovn-gw-3 ovn-gw-4
 }
 
 # multinode_cleanup_northd NODE
