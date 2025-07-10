@@ -1585,11 +1585,11 @@ AT_CLEANUP
 
 AT_SETUP([ovn multinode load-balancer with multiple DGPs and multiple chassis])
 
-# Check that ovn-fake-multinode setup is up and running - requires additional nodes
-check_fake_multinode_setup_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-chassis-3 ovn-chassis-4 ovn-gw-1 ovn-gw-2'
+# Check that ovn-fake-multinode setup is up and running.
+check_fake_multinode_setup
 
 # Delete the multinode NB and OVS resources before starting the test.
-cleanup_multinode_resources_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-chassis-3 ovn-chassis-4 ovn-gw-1 ovn-gw-2'
+cleanup_multinode_resources
 
 # Reset geneve tunnels
 for c in ovn-chassis-1 ovn-chassis-2 ovn-chassis-3 ovn-chassis-4 ovn-gw-1 ovn-gw-2
@@ -2103,11 +2103,11 @@ AT_CLEANUP
 
 AT_SETUP([ovn multinode load-balancer with multiple DGPs and multiple chassis - ECMP environment])
 
-# Check that ovn-fake-multinode setup is up and running - requires additional nodes
-check_fake_multinode_setup_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-chassis-3 ovn-gw-1 ovn-gw-2 ovn-gw-3 ovn-gw-4'
+# Check that ovn-fake-multinode setup is up and running
+check_fake_multinode_setup
 
 # Delete the multinode NB and OVS resources before starting the test.
-cleanup_multinode_resources_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-chassis-3 ovn-gw-1 ovn-gw-2 ovn-gw-3 ovn-gw-4'
+cleanup_multinode_resources
 
 # Reset geneve tunnels
 for c in ovn-chassis-1 ovn-chassis-2 ovn-chassis-3 ovn-gw-1 ovn-gw-2 ovn-gw-3 ovn-gw-4
@@ -2816,11 +2816,10 @@ AT_SETUP([Migration of container ports])
 # setting iface-id on dst resp. before and after requested-chassis.
 
 # Check that ovn-fake-multinode setup is up and running
-# check_fake_multinode_setup
-check_fake_multinode_setup_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-chassis-3'
+check_fake_multinode_setup
 
 # Delete the multinode NB and OVS resources before starting the test.
-cleanup_multinode_resources_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-chassis-3'
+cleanup_multinode_resources
 
 m_as ovn-chassis-1 ip link del migrator-p
 m_as ovn-chassis-2 ip link del sw0-port1-p
@@ -3124,10 +3123,10 @@ m_as ovn-gw-2 ovn-appctl vlog/set vconn:dbg
 m_as ovn-gw-1 ovn-appctl vlog/disable-rate-limit
 m_as ovn-gw-2 ovn-appctl vlog/disable-rate-limit
 
-check_fake_multinode_setup_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-gw-1 ovn-gw-2'
+check_fake_multinode_setup
 
 # Delete the multinode NB and OVS resources before starting the test.
-cleanup_multinode_resources_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-gw-1 ovn-gw-2'
+cleanup_multinode_resources
 
 ip_ch1=$(m_as ovn-chassis-1 ip a show dev eth1 | grep "inet " | awk '{print $2}'| cut -d '/' -f1)
 ip_gw1=$(m_as ovn-gw-1 ip a show dev eth1 | grep "inet " | awk '{print $2}'| cut -d '/' -f1)
