@@ -244,9 +244,20 @@ m4_define([FORMAT_CT],
 #
 m4_define([DAEMONIZE],
    [$1 & echo $! > $2
-     echo "kill \`cat $2\`" >> cleanup
-   ]
-)
+    on_exit "kill \`cat $2\`"
+   ])
+
+# RETIS_CHECK_AND_RUN()
+#
+# Start retis to track all the traffic passing through OVS.
+m4_define([RETIS_CHECK_AND_RUN],
+  [if test "$OVS_TEST_WITH_RETIS" = yes && retis --version > /dev/null; then
+       on_exit 'retis sort --utc retis.data > retis.sorted'
+       DAEMONIZE([retis -p ifdump collect --utc --allow-system-changes \
+                        --ovs-track --out --print 2>retis.err 1>retis.log],
+                 [retis.pid])
+       OVS_WAIT_UNTIL([grep -q 'loaded' retis.err])
+   fi])
 
 # NETNS_DAEMONIZE([namespace], [command], [pidfile])
 #

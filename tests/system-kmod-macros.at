@@ -30,6 +30,9 @@ m4_define([OVS_TRAFFIC_VSWITCHD_START],
    if test OVN_MONITOR_ALL = yes; then
         ovs-vsctl set open . external_ids:ovn-monitor-all=true
    fi
+
+   dnl Start retis capture if requested.
+   RETIS_CHECK_AND_RUN()
 ])
 
 # OVS_TRAFFIC_VSWITCHD_STOP([ALLOWLIST], [extra_cmds])
