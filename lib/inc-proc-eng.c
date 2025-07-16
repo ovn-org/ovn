@@ -325,9 +325,8 @@ engine_set_node_state(struct engine_node *node,
         va_start(args, reason_fmt);
         char *reason = xvasprintf(reason_fmt, args);
         VLOG_DBG("node: %s, old_state %s, new_state %s, reason: %s.",
-                 reason, node->name,
-                 engine_node_state_name[node->state],
-                 engine_node_state_name[state]);
+                 node->name, engine_node_state_name[node->state],
+                 engine_node_state_name[state], reason);
         va_end(args);
         free(reason);
     }
