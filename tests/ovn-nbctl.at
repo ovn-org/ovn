@@ -1701,7 +1701,21 @@ AT_CHECK([ovn-nbctl lrp-get-gateway-chassis lrp0], [0], [dnl
 lrp0-chassis2    10
 lrp0-chassis3     5
 lrp0-chassis1     1
-])])
+])
+gc_uuid=$(ovn-nbctl --bare --colum _uuid find gateway_chassis name='lrp0-chassis1')
+AT_CHECK([ovn-nbctl set gateway_chassis $gc_uuid name='lrp0_chassis1'])
+AT_CHECK([ovn-nbctl lrp-get-gateway-chassis lrp0], [0], [dnl
+lrp0-chassis2    10
+lrp0-chassis3     5
+lrp0_chassis1     1
+])
+AT_CHECK([ovn-nbctl lrp-set-gateway-chassis lrp0 chassis1 2])
+AT_CHECK([ovn-nbctl lrp-get-gateway-chassis lrp0], [0], [dnl
+lrp0-chassis2    10
+lrp0-chassis3     5
+lrp0_chassis1     2
+])
+])
 
 dnl ---------------------------------------------------------------------
 
