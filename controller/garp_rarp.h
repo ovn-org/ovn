@@ -21,6 +21,7 @@
 #include "cmap.h"
 #include "sset.h"
 #include "openvswitch/types.h"
+#include "if-status.h"
 
 /* Contains a single mac and ip address that should be announced. */
 struct garp_rarp_node {
@@ -36,6 +37,7 @@ struct garp_rarp_node {
     uint32_t port_key;           /* Port to inject the GARP into. */
     bool stale;                  /* Used during sync to remove stale
                                   * information. */
+    char *logical_port;          /* Name of the cr logical_port, if any */
 };
 
 /* Contains all required data for pinctrl to actually send garps. */
@@ -57,6 +59,7 @@ struct garp_rarp_ctx_in {
     const struct hmap *local_datapaths;
     const struct sset *active_tunnels;
     struct ed_type_garp_rarp *data;
+    struct if_status_mgr *mgr;
 };
 
 struct ed_type_garp_rarp {
@@ -75,5 +78,6 @@ bool garp_rarp_data_changed(void);
 
 struct ed_type_garp_rarp *garp_rarp_init(void);
 void garp_rarp_cleanup(struct ed_type_garp_rarp *);
+void garp_rarp_node_reset_timers(const char *logical_port);
 
 #endif /* GARP_RARP_H */

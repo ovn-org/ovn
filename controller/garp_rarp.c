@@ -24,6 +24,7 @@
 #include "ovn/lex.h"
 #include "garp_rarp.h"
 #include "ovn-sb-idl.h"
+#include "if-status.h"
 
 VLOG_DEFINE_THIS_MODULE(garp_rarp);
 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 20);
@@ -32,6 +33,11 @@ static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 20);
 
 static bool garp_rarp_data_has_changed = false;
 static struct garp_rarp_data garp_rarp_data;
+
+struct laddrs_port {
+    struct lport_addresses laddrs;
+    char *lport;
+};
 
 /* Get localnet vifs, local l3gw ports and ofport for localnet patch ports. */
 static void
@@ -146,14 +152,15 @@ consider_nat_address(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                      struct sset *non_local_lports,
                      struct sset *local_lports)
 {
-    struct lport_addresses *laddrs = xmalloc(sizeof *laddrs);
+    struct laddrs_port *laddrs_port = xmalloc(sizeof *laddrs_port);
+    struct lport_addresses *laddrs = &laddrs_port->laddrs;
     char *lport = NULL;
     bool rc = extract_addresses_with_port(nat_address, laddrs, &lport);
     if (!rc
         || (!lport && !strcmp(pb->type, "patch"))) {
         destroy_lport_addresses(laddrs);
-        free(laddrs);
         free(lport);
+        free(laddrs_port);
         return;
     }
     if (lport) {
@@ -161,14 +168,13 @@ consider_nat_address(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                                        chassis, lport)) {
             sset_add(non_local_lports, lport);
             destroy_lport_addresses(laddrs);
-            free(laddrs);
             free(lport);
+            free(laddrs_port);
             return;
         } else {
             sset_add(local_lports, lport);
         }
     }
-    free(lport);
 
     for (size_t i = 0; i < laddrs->n_ipv4_addrs; i++) {
         char *name = xasprintf("%s-%s", pb->logical_port,
@@ -181,7 +187,8 @@ consider_nat_address(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         sset_add(nat_address_keys, name);
         free(name);
     }
-    shash_add(nat_addresses, pb->logical_port, laddrs);
+    laddrs_port->lport = lport;
+    shash_add(nat_addresses, pb->logical_port, laddrs_port);
 }
 
 static void
@@ -271,9 +278,34 @@ garp_rarp_lookup(const struct eth_addr ea, ovs_be32 ipv4, uint32_t dp_key,
     return NULL;
 }
 
+void
+garp_rarp_node_reset_timers(const char *logical_port)
+{
+    struct garp_rarp_node *grn;
+    CMAP_FOR_EACH (grn, cmap_node, &garp_rarp_data.data) {
+        if (grn->logical_port && !strcmp(grn->logical_port, logical_port)) {
+            atomic_store(&grn->announce_time, time_msec() + 1000);
+            atomic_store(&grn->backoff, 1000);
+        }
+    }
+}
+
+static void
+reset_timers_for_claimed_cr(struct if_status_mgr *mgr)
+{
+    struct sset *claimed_cr = get_claimed_cr(mgr);
+    const char *cr_logical_port;
+    SSET_FOR_EACH_SAFE (cr_logical_port, claimed_cr) {
+        garp_rarp_node_reset_timers(cr_logical_port);
+        sset_delete(claimed_cr, SSET_NODE_FROM_NAME(cr_logical_port));
+    }
+
+}
+
 static void
 garp_rarp_node_add(const struct eth_addr ea, ovs_be32 ip,
-                   uint32_t dp_key, uint32_t port_key)
+                   uint32_t dp_key, uint32_t port_key,
+                   const char *logical_port)
 {
     struct garp_rarp_node *grn = garp_rarp_lookup(ea, ip, dp_key, port_key);
     if (grn) {
@@ -288,6 +320,7 @@ garp_rarp_node_add(const struct eth_addr ea, ovs_be32 ip,
     atomic_store(&grn->backoff, 1000); /* msec. */
     grn->dp_key = dp_key;
     grn->port_key = port_key;
+    grn->logical_port = nullable_xstrdup(logical_port);
     grn->stale = false;
     cmap_insert(&garp_rarp_data.data, &grn->cmap_node,
                 garp_rarp_node_hash_struct(grn));
@@ -353,13 +386,15 @@ send_garp_rarp_update(const struct garp_rarp_ctx_in *r_ctx_in,
      * distributed gateway ports. */
     if (!strcmp(binding_rec->type, "l3gateway")
         || !strcmp(binding_rec->type, "patch")) {
-        struct lport_addresses *laddrs = NULL;
-        while ((laddrs = shash_find_and_delete(nat_addresses,
+        struct laddrs_port *laddrs_port = NULL;
+        while ((laddrs_port = shash_find_and_delete(nat_addresses,
                                                binding_rec->logical_port))) {
+            struct lport_addresses *laddrs = &laddrs_port->laddrs;
             for (size_t i = 0; i < laddrs->n_ipv4_addrs; i++) {
                 garp_rarp_node_add(laddrs->ea, laddrs->ipv4_addrs[i].addr,
                                    binding_rec->datapath->tunnel_key,
-                                   binding_rec->tunnel_key);
+                                   binding_rec->tunnel_key,
+                                   laddrs_port->lport);
                 send_garp_locally(r_ctx_in, binding_rec, laddrs->ea,
                                   laddrs->ipv4_addrs[i].addr);
             }
@@ -370,10 +405,12 @@ send_garp_rarp_update(const struct garp_rarp_ctx_in *r_ctx_in,
             if (laddrs->n_ipv4_addrs == 0) {
                 garp_rarp_node_add(laddrs->ea, 0,
                                    binding_rec->datapath->tunnel_key,
-                                   binding_rec->tunnel_key);
+                                   binding_rec->tunnel_key,
+                                   laddrs_port->lport);
             }
             destroy_lport_addresses(laddrs);
-            free(laddrs);
+            free(laddrs_port->lport);
+            free(laddrs_port);
         }
         return;
     }
@@ -392,7 +429,7 @@ send_garp_rarp_update(const struct garp_rarp_ctx_in *r_ctx_in,
 
         garp_rarp_node_add(laddrs.ea, ip,
                            binding_rec->datapath->tunnel_key,
-                           binding_rec->tunnel_key);
+                           binding_rec->tunnel_key, NULL);
         if (ip) {
             send_garp_locally(r_ctx_in, binding_rec, laddrs.ea, ip);
         }
@@ -424,6 +461,7 @@ garp_rarp_run(struct garp_rarp_ctx_in *r_ctx_in)
         grn->stale = true;
     }
 
+    reset_timers_for_claimed_cr(r_ctx_in->mgr);
     get_localnet_vifs_l3gwports(r_ctx_in->sbrec_port_binding_by_datapath,
                                 r_ctx_in->chassis,
                                 r_ctx_in->local_datapaths,
@@ -460,10 +498,11 @@ garp_rarp_run(struct garp_rarp_ctx_in *r_ctx_in)
 
     struct shash_node *iter;
     SHASH_FOR_EACH_SAFE (iter, &nat_addresses) {
-        struct lport_addresses *laddrs = iter->data;
-        destroy_lport_addresses(laddrs);
+        struct laddrs_port *laddrs_port = iter->data;
+        destroy_lport_addresses(&laddrs_port->laddrs);
         shash_delete(&nat_addresses, iter);
-        free(laddrs);
+        free(laddrs_port->lport);
+        free(laddrs_port);
     }
     shash_destroy(&nat_addresses);
 
@@ -512,6 +551,7 @@ garp_rarp_data_changed(void) {
 void
 garp_rarp_node_free(struct garp_rarp_node *garp_rarp)
 {
+    free(garp_rarp->logical_port);
     free(garp_rarp);
 }
 

@@ -5459,6 +5459,8 @@ static enum engine_node_state
 en_garp_rarp_run(struct engine_node *node, void *data_)
 {
     struct ed_type_garp_rarp *data = data_;
+    struct controller_engine_ctx *ctrl_ctx =
+        engine_get_context()->client_ctx;
 
     const struct ovsrec_open_vswitch_table *ovs_table =
         EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
@@ -5508,6 +5510,7 @@ en_garp_rarp_run(struct engine_node *node, void *data_)
         .active_tunnels = &rt_data->active_tunnels,
         .local_datapaths = &rt_data->local_datapaths,
         .data = data,
+        .mgr = ctrl_ctx->if_mgr,
     };
 
     garp_rarp_run(&r_ctx_in);
@@ -5558,6 +5561,7 @@ garp_rarp_sb_port_binding_handler(struct engine_node *node,
         engine_ovsdb_node_get_index(
                 engine_get_input("SB_port_binding", node),
                 "name");
+    struct controller_engine_ctx *ctrl_ctx = engine_get_context()->client_ctx;
 
     const struct sbrec_port_binding *pb;
     SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb, port_binding_table) {
@@ -5585,6 +5589,15 @@ garp_rarp_sb_port_binding_handler(struct engine_node *node,
                                        pb->logical_port)) {
             /* XXX: actually handle this incrementally. */
             return EN_UNHANDLED;
+        }
+
+        /* If the cr_port was updated, bound to a different chassis in idl
+         * and (re)bound to our chassis in runtime data, make sure to reset
+         * garp timers*/
+        if (sbrec_port_binding_is_updated(pb,
+                                          SBREC_PORT_BINDING_COL_CHASSIS) &&
+            if_status_reclaimed(ctrl_ctx->if_mgr, pb->logical_port)) {
+            garp_rarp_node_reset_timers(pb->logical_port);
         }
     }
 
