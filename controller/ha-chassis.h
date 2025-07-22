@@ -46,5 +46,9 @@ struct ha_chassis_ordered *ha_chassis_get_ordered(
 
 void ha_chassis_destroy_ordered(
     struct ha_chassis_ordered *ordered_ha_ch);
+struct ha_chassis_ordered *get_ordered_ha_chassis_list(
+    const struct sbrec_ha_chassis_group *ha_ch_grp,
+    const struct sset *active_tunnels,
+    const struct sbrec_chassis *local_chassis);
 
 #endif /* OVN_HA_CHASSIS_H */
