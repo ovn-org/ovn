@@ -200,7 +200,7 @@ jobs:
 
     - name: Run fake-multinode system tests
       run: |
-        if ! sudo make check-multinode TESTSUITEFLAGS="${{ matrix.cfg.testsuiteflags }}"; then
+        if ! sudo -E make check-multinode TESTSUITEFLAGS="${{ matrix.cfg.testsuiteflags }}"; then
           sudo podman exec -it ovn-central-az1-1 ovn-nbctl show || :
           sudo podman exec -it ovn-central-az1-1 ovn-sbctl show || :
           sudo podman exec -it ovn-chassis-1 ovs-vsctl show || :
