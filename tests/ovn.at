@@ -2243,10 +2243,10 @@ mac_cache_use;
 
 # ct_nw_dst()
 reg1 = ct_nw_dst();
-    encodes as set_field:0->reg1,resubmit(,OFTABLE_CT_ORIG_NW_DST_LOAD),move:NXM_NX_REG1[[]]->NXM_NX_XXREG0[[64..95]]
+    encodes as set_field:0->reg4,resubmit(,OFTABLE_CT_ORIG_NW_DST_LOAD),move:NXM_NX_REG4[[]]->NXM_NX_XXREG0[[64..95]]
 
 xreg1[[3..34]] = ct_nw_dst();
-    encodes as set_field:0->reg1,resubmit(,OFTABLE_CT_ORIG_NW_DST_LOAD),move:NXM_NX_REG1[[]]->NXM_NX_XXREG0[[3..34]]
+    encodes as set_field:0->reg4,resubmit(,OFTABLE_CT_ORIG_NW_DST_LOAD),move:NXM_NX_REG4[[]]->NXM_NX_XXREG0[[3..34]]
 
 reg1[[3..34]] = ct_nw_dst();
     Cannot select bits 3 to 34 of 32-bit field reg1.
