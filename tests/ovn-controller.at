@@ -3380,7 +3380,7 @@ AT_CHECK([test $(ovn-appctl -t ovn-controller ct-zone-list | awk '/lr_snat/{prin
 n_flush=$(grep -c -i flush hv1/ovs-vswitchd.log)
 
 # Stop ovn-controller on hv1 with --restart flag
-OVN_CONTROLLER_EXIT([hv1])
+OVN_CONTROLLER_EXIT([hv1],[--restart])
 
 start_daemon ovn-controller --verbose="ct_zone:dbg"
 wait_for_ports_up
@@ -3398,7 +3398,7 @@ check_ct_zone_max 22
 AT_CHECK([test $(ovn-appctl -t ovn-controller ct-zone-list | awk '/lr_snat/{print $2}') -eq 0])
 
 n_flush=$(grep -c -i flush hv1/ovs-vswitchd.log)
-OVN_CONTROLLER_EXIT([hv1])
+OVN_CONTROLLER_EXIT([hv1],[--restart])
 start_daemon ovn-controller --verbose="ct_zone:dbg"
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
