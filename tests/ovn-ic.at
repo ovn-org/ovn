@@ -1569,12 +1569,12 @@ for az in `seq 1 $n_az`; do
         check ovn-nbctl lsp-set-type lsp-ls$az-$i-lr$az-$i router
         check ovn-nbctl lsp-set-options lsp-ls$az-$i-lr$az-$i router-port=lrp-lr$az-$i-ls$az-$i
 
-        check ovn-nbctl lrp-add lr$az-$i lrp-lr$az-$i-ts$i $lrp_ts_mac $lrp_ts_ip/24
-        check ovn-nbctl lsp-add ts$i lsp-ts$i-lr$az-$i
-        check ovn-nbctl lsp-set-addresses lsp-ts$i-lr$az-$i router
-        check ovn-nbctl lsp-set-type lsp-ts$i-lr$az-$i router
-        check ovn-nbctl lsp-set-options lsp-ts$i-lr$az-$i router-port=lrp-lr$az-$i-ts$i
-        check ovn-nbctl lrp-set-gateway-chassis lrp-lr$az-$i-ts$i gw$az
+        check ovn-nbctl -- lrp-add lr$az-$i lrp-lr$az-$i-ts$i $lrp_ts_mac $lrp_ts_ip/24 \
+                        -- lsp-add ts$i lsp-ts$i-lr$az-$i \
+                        -- lsp-set-addresses lsp-ts$i-lr$az-$i router \
+                        -- lsp-set-type lsp-ts$i-lr$az-$i router \
+                        -- lsp-set-options lsp-ts$i-lr$az-$i router-port=lrp-lr$az-$i-ts$i \
+                        -- lrp-set-gateway-chassis lrp-lr$az-$i-ts$i gw$az
     done
     check ovn-nbctl --wait=hv sync
     ovn-sbctl list Port_Binding > az$az.ports
