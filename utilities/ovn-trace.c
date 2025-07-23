@@ -3173,6 +3173,40 @@ execute_ct_save_state(const struct ovnact_result *dl, struct flow *uflow,
 }
 
 static void
+execute_ct_orig_tp_dst(const struct ovnact_result *res, struct flow *uflow,
+                       struct ovs_list *super)
+{
+    /* For ovn-trace, we simulate ct_tp_dst() by returning the current
+     * packet's destination port. */
+    struct mf_subfield sf = expr_resolve_field(&res->dst);
+    union mf_subvalue sv = { .be16_int = uflow->tp_dst };
+    mf_write_subfield_flow(&sf, &sv, uflow);
+
+    struct ds s = DS_EMPTY_INITIALIZER;
+    expr_field_format(&res->dst, &s);
+    ovntrace_node_append(super, OVNTRACE_NODE_MODIFY, "%s = %"PRIu16,
+                         ds_cstr(&s), ntohs(uflow->tp_dst));
+    ds_destroy(&s);
+}
+
+static void
+execute_ct_orig_proto(const struct ovnact_result *res, struct flow *uflow,
+                      struct ovs_list *super)
+{
+    /* For ovn-trace, we simulate ct_proto() by returning the current
+     * packet's protocol. */
+    struct mf_subfield sf = expr_resolve_field(&res->dst);
+    union mf_subvalue sv = { .u8_val = uflow->nw_proto };
+    mf_write_subfield_flow(&sf, &sv, uflow);
+
+    struct ds s = DS_EMPTY_INITIALIZER;
+    expr_field_format(&res->dst, &s);
+    ovntrace_node_append(super, OVNTRACE_NODE_MODIFY, "%s = %"PRIu8,
+                         ds_cstr(&s), uflow->nw_proto);
+    ds_destroy(&s);
+}
+
+static void
 execute_mirror(const struct ovnact_mirror *mirror,
                const struct ovntrace_datapath *dp,
                struct flow *uflow, struct ovs_list *super)
@@ -3539,6 +3573,10 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
         case OVNACT_CT_ORIG_IP6_DST:
             break;
         case OVNACT_CT_ORIG_TP_DST:
+            execute_ct_orig_tp_dst(ovnact_get_CT_ORIG_TP_DST(a), uflow, super);
+            break;
+        case OVNACT_CT_ORIG_PROTO:
+            execute_ct_orig_proto(ovnact_get_CT_ORIG_PROTO(a), uflow, super);
             break;
         case OVNACT_FLOOD_REMOTE:
             ovntrace_node_append(super, OVNTRACE_NODE_OUTPUT,

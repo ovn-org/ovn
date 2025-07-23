@@ -359,21 +359,6 @@ ovn_init_symtab(struct shash *symtab)
 
     expr_symtab_add_ovn_field(symtab, "icmp4.frag_mtu", OVN_ICMP4_FRAG_MTU);
     expr_symtab_add_ovn_field(symtab, "icmp6.frag_mtu", OVN_ICMP6_FRAG_MTU);
-
-    expr_symtab_add_field(symtab, "ct_proto", MFF_CT_NW_PROTO,
-                          "ct.trk", false);
-
-    expr_symtab_add_predicate(symtab, "ct_udp", "ct_proto == 17");
-    expr_symtab_add_field(symtab, "ct_udp.dst", MFF_CT_TP_DST,
-                          "ct_udp", false);
-
-    expr_symtab_add_predicate(symtab, "ct_tcp", "ct_proto == 6");
-    expr_symtab_add_field(symtab, "ct_tcp.dst", MFF_CT_TP_DST,
-                          "ct_tcp", false);
-
-    expr_symtab_add_predicate(symtab, "ct_sctp", "ct_proto == 132");
-    expr_symtab_add_field(symtab, "ct_sctp.dst", MFF_CT_TP_DST,
-                          "ct_sctp", false);
 }
 
 const char *

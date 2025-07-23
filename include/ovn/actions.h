@@ -134,6 +134,7 @@ struct collector_set_ids;
     OVNACT(CT_ORIG_NW_DST,    ovnact_result)          \
     OVNACT(CT_ORIG_IP6_DST,   ovnact_result)          \
     OVNACT(CT_ORIG_TP_DST,    ovnact_result)          \
+    OVNACT(CT_ORIG_PROTO,     ovnact_result)          \
     OVNACT(FLOOD_REMOTE,      ovnact_null)            \
     OVNACT(CT_STATE_SAVE,     ovnact_result)          \
     OVNACT(MIRROR,            ovnact_mirror)          \
@@ -423,7 +424,7 @@ struct ovnact_set_queue {
 };
 
 /* OVNACT_DNS_LOOKUP, OVNACT_CHK_LB_HAIRPIN, OVNACT_CHK_LB_HAIRPIN_REPLY,
- * OVNACT_CT_ORIG_NW_DST, CT_ORIG_IP6_DST, CT_ORIG_TP_DST */
+ * OVNACT_CT_ORIG_NW_DST, CT_ORIG_IP6_DST, CT_ORIG_TP_DST, CT_ORIG_PROTO */
 struct ovnact_result {
     struct ovnact ovnact;
     struct expr_field dst;      /* destination field. */
@@ -973,6 +974,8 @@ struct ovnact_encode_params {
                                      *  to resubmit. */
     uint32_t ct_tp_dst_load_table; /* OpenFlow table for 'ct_tp_dst'
                                     *  to resubmit. */
+    uint32_t ct_proto_load_table; /* OpenFlow table for 'ct_proto'
+                                   *  to resubmit. */
     uint32_t flood_remote_table; /* OpenFlow table for 'chassis_flood'
                                   * to resubmit. */
     uint32_t ct_state_save_table; /* OpenFlow table for saving ct_state to

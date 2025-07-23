@@ -193,6 +193,10 @@ tcp,orig=(src=172.16.1.2,dst=172.16.1.101,sport=<cleared>,dport=<cleared>),reply
 ])
 NS_CHECK_EXEC([alice1], [nc -z 172.16.1.101 8081])
 
+dnl There shouldn't be any DP flow with both +est and ct_tuple4. Otherwise HW
+dnl offload may not work.
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_tuple4' | grep '+est'], [1], [ignore])
+
 # Flush conntrack entries for easier output parsing of next test.
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
@@ -282,6 +286,10 @@ tcp,orig=(src=192.168.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),reply
 tcp,orig=(src=192.168.1.200,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=192.168.1.200,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
 ])
 NS_CHECK_EXEC([foo1], [nc -z 192.168.1.100 8081])
+
+dnl There shouldn't be any DP flow with both +est and ct_tuple4. Otherwise HW
+dnl offload may not work.
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_tuple4' | grep '+est'], [1], [ignore])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 as ovn-sb
@@ -1736,6 +1744,12 @@ ovs-appctl dpctl/dump-flows -m \
     | while read -r flow; do
         check_flow_assured "$flow"
 done
+
+ovs-ofctl dump-flows br-int > oflow
+ovn-sbctl lflow-list > lflow
+dnl There shouldn't be any DP flow with both +est and ct_tuple4. Otherwise HW
+dnl offload may not work.
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'ct_tuple4' | grep '+est'], [1], [ignore])
 
 ovs-appctl revalidator/resume
 

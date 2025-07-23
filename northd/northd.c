@@ -154,6 +154,8 @@ static bool vxlan_ic_mode;
 #define REG_LB_IPV4 "reg4"
 #define REG_LB_IPV6 "xxreg1"
 #define REG_LB_PORT "reg2[0..15]"
+#define REG_CT_TP_DST "reg1[0..15]"
+#define REG_CT_PROTO "reg1[16..23]"
 
 /* Registers for ACL evaluation */
 #define REGBIT_ACL_VERDICT_ALLOW "reg8[16]"
@@ -254,8 +256,10 @@ static const char *reg_ct_state[] = {
  * |    | REGBIT_ACL_HINT_{ALLOW_NEW/ALLOW/DROP/BLOCK} |   |                                   |
  * |    |     REGBIT_ACL_{LABEL/STATELESS}             | X |                                   |
  * +----+----------------------------------------------+ X |                                   |
- * | R1 |                   UNUSED                     | R |                                   |
- * +----+----------------------------------------------+ E |                                   |
+ * | R1 |       REG_CT_TP_DST (0..15)                  | R |                                   |
+ * |    |       REG_CT_PROTO (16..23)                  | E |                                   |
+ * |    |   (>= IN_CT_EXTRACT && <= IN_LB_AFF_LEARN)   | G |                                   |
+ * +----+----------------------------------------------+ 0 |                                   |
  * | R2 |                 REG_LB_PORT                  | G |                                   |
  * |    |  (>= IN_PRE_STATEFUL && <= IN_LB_AFF_LEARN)  | 0 |                                   |
  * |    |                 REG_ACL_ID                   |   |                                   |
@@ -289,9 +293,11 @@ static const char *reg_ct_state[] = {
  * |     |      NEXT_HOP_IPV4        | R |                 |   |                                    |
  * |     |   (>= IN_IP_ROUTING)      | E | INPORT_ETH_ADDR | X |                                    |
  * +-----+---------------------------+ G |   (< IP_INPUT)  | X |                                    |
- * | R1  |        UNUSED             | 0 |                 | R |                                    |
- * |     |                           |   |                 | E |  NEXT_HOP_IPV6 (>= IN_IP_ROUTING)  |
- * +-----+---------------------------+---+-----------------+ G |                                    |
+ * | R1  |     REG_CT_TP_DST (0..15) | 0 |                 | R |                                    |
+ * |     |     REG_CT_PROTO (16..23) |   |                 | E |  NEXT_HOP_IPV6 (>= IN_IP_ROUTING)  |
+ * |     |   (>= IN_CT_EXTRACT &&    |   |                 | G |                                    |
+ * |     |    <= IN_LB_AFF_LEARN)    |   |                 |   |                                    |
+ * +-----+---------------------------+---+-----------------+---+------------------------------------+
  * | R2  |  REG_DHCP_RELAY_DIP_IPV4  |   |                 | 0 |                                    |
  * |     |       REG_LB_PORT         | X |                 | 0 |                                    |
  * |     | (>= IN_LB_AFF_CHECK       | R |                 |   |                                    |
@@ -469,6 +475,29 @@ static const char *
 ovn_datapath_name(const struct sbrec_datapath_binding *sb)
 {
     return smap_get_def(&sb->external_ids, "name", "");
+}
+
+/* Convert protocol string to protocol number string.
+ * Returns the protocol number as a string for use in logical flows.
+ * Valid protocol strings are "tcp", "udp", and "sctp".
+ */
+static const char *
+get_protocol_number_str(const char *proto_str)
+{
+    if (!proto_str) {
+        return "0";
+    }
+
+    if (!strcmp(proto_str, "tcp")) {
+        return "6";    /* IPPROTO_TCP */
+    } else if (!strcmp(proto_str, "udp")) {
+        return "17";   /* IPPROTO_UDP */
+    } else if (!strcmp(proto_str, "sctp")) {
+        return "132";  /* IPPROTO_SCTP */
+    }
+
+    /* Default to 0 for unknown protocols */
+    return "0";
 }
 
 /* A group of logical router datapaths which are connected - either
@@ -8428,8 +8457,9 @@ build_lb_affinity_ls_flows(struct lflow_table *lflows,
                   ip_match, ip_match, lb_vip->vip_str);
 
     if (lb_vip->port_str) {
-        ds_put_format(&new_lb_match, " && ct_%s && ct_%s.dst == %s",
-                      lb->proto, lb->proto, lb_vip->port_str);
+        ds_put_format(&new_lb_match, " && "REG_CT_PROTO" == %s && "
+                      REG_CT_TP_DST" == %s",
+                      get_protocol_number_str(lb->proto), lb_vip->port_str);
     }
 
     static char *aff_check = REGBIT_KNOWN_LB_SESSION" = chk_lb_aff(); next;";
@@ -8552,6 +8582,8 @@ build_lswitch_lb_affinity_default_flows(struct ovn_datapath *od,
                   lflow_ref);
 }
 
+
+
 static void
 build_lrouter_lb_affinity_default_flows(struct ovn_datapath *od,
                                         struct lflow_table *lflows,
@@ -8592,7 +8624,8 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
                       lb_vip->vip_str);
         int priority = 110;
         if (lb_vip->port_str) {
-            ds_put_format(match, " && ct_%s.dst == %s", lb->proto,
+            ds_put_format(match, " && "REG_CT_PROTO" == %s && "REG_CT_TP_DST
+                          " == %s", get_protocol_number_str(lb->proto),
                           lb_vip->port_str);
             priority = 120;
         }
@@ -12575,8 +12608,9 @@ build_lrouter_nat_flows_for_lb(
                   ip_match, ip_match, lb_vip->vip_str);
     if (lb_vip->port_str) {
         prio = 120;
-        ds_put_format(match, " && ct_%s && ct_%s.dst == %s",
-                      lb->proto, lb->proto, lb_vip->port_str);
+        ds_put_format(match,
+                      " && "REG_CT_PROTO" == %s && "REG_CT_TP_DST" == %s",
+                      get_protocol_number_str(lb->proto), lb_vip->port_str);
     }
 
     /* Add logical flows to UNDNAT the load balanced reverse traffic in
@@ -16620,6 +16654,25 @@ build_lrouter_in_dnat_flow(struct lflow_table *lflows,
 }
 
 static void
+build_lrouter_in_ct_extract_flows(struct lflow_table *lflows,
+                                         const struct ovn_datapath *od,
+                                         struct lflow_ref *lflow_ref)
+{
+    /* Ingress PRE_LB table: Extract connection tracking fields for new
+     * connections.
+     * XXX: use a more graceful way to push/pop reg2 and reg3 which are used
+     * as intermediate registers by the ct_proto() and ct_tp_dst() actions.
+     */
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_CT_EXTRACT, 100,
+                  "ct.new && ip",
+                  "push(reg2); push(reg3); "
+                  REG_CT_PROTO " = ct_proto(); "
+                  REG_CT_TP_DST " = ct_tp_dst(); "
+                  "pop(reg3); pop(reg2); next;",
+                  lflow_ref);
+}
+
+static void
 build_lrouter_out_undnat_flow(struct lflow_table *lflows,
                               const struct ovn_datapath *od,
                               const struct ovn_nat *nat_entry,
@@ -17056,6 +17109,8 @@ static void build_lr_nat_defrag_and_lb_default_flows(
     ovn_lflow_add(lflows, od, S_ROUTER_OUT_CHECK_DNAT_LOCAL, 0, "1",
                   REGBIT_DST_NAT_IP_LOCAL" = 0; next;", lflow_ref);
     ovn_lflow_add(lflows, od, S_ROUTER_OUT_SNAT, 0, "1", "next;", lflow_ref);
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_CT_EXTRACT, 0, "1", "next;",
+                  lflow_ref);
     ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 0, "1", "next;", lflow_ref);
     ovn_lflow_add(lflows, od, S_ROUTER_OUT_UNDNAT, 0, "1", "next;", lflow_ref);
     ovn_lflow_add(lflows, od, S_ROUTER_OUT_POST_UNDNAT, 0, "1", "next;",
@@ -17276,6 +17331,10 @@ build_lrouter_nat_defrag_and_lb(
         ds_truncate(match, match_len);
         ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 50, ds_cstr(match),
                       "next;", lflow_ref);
+
+        /* Add connection tracking field extraction flows for ct.new packets.
+         */
+        build_lrouter_in_ct_extract_flows(lflows, od, lflow_ref);
     }
 
     /* NAT rules are only valid on Gateway routers and routers with
@@ -17891,6 +17950,21 @@ build_ls_stateful_flows(const struct ls_stateful_record *ls_stateful_rec,
     build_acls(ls_stateful_rec, od, lflows, ls_pgs, meter_groups,
                sampling_apps, features, ls_stateful_rec->lflow_ref,
                sbrec_acl_id_table);
+
+    /* Build CT extraction flows - only needed if this datapath has load
+     * balancers.
+     * XXX: use a more graceful way to push/pop reg2 and reg3 which are used
+     * as intermediate registers by the ct_proto() and ct_tp_dst() actions.*/
+    if (ls_stateful_rec->has_lb_vip) {
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_CT_EXTRACT, 100,
+                      "ct.new && ip",
+                      "push(reg2); push(reg3); "
+                      REG_CT_PROTO " = ct_proto(); "
+                      REG_CT_TP_DST " = ct_tp_dst(); "
+                      "pop(reg3); pop(reg2); next;",
+                      ls_stateful_rec->lflow_ref);
+    }
+
     build_lb_hairpin(ls_stateful_rec, od, lflows, ls_stateful_rec->lflow_ref);
 }
 
@@ -17945,6 +18019,10 @@ build_lswitch_and_lrouter_iterate_by_ls(struct ovn_datapath *od,
     build_lswitch_destination_lookup_bmcast(od, lsi->lflows, &lsi->actions,
                                             lsi->meter_groups, NULL);
     build_lswitch_output_port_sec_od(od, lsi->lflows, NULL);
+    /* CT extraction flows are built with stateful flows, but default rule is
+     * always needed */
+    ovn_lflow_add(lsi->lflows, od, S_SWITCH_IN_CT_EXTRACT, 0, "1", "next;",
+                  NULL);
     build_lswitch_lb_affinity_default_flows(od, lsi->lflows, NULL);
     build_lswitch_lflows_l2_unknown(od, lsi->lflows, NULL);
     build_mcast_flood_lswitch(od, lsi->lflows, &lsi->actions, NULL);
@@ -18545,7 +18623,7 @@ void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
     /* Parallel build may result in a suboptimal hash. Resize the
      * lflow map to a correct size before doing lookups */
     lflow_table_expand(lflows);
-    
+
     stopwatch_start(LFLOWS_TO_SB_STOPWATCH_NAME, time_msec());
     lflow_table_sync_to_sb(lflows, ovnsb_txn, input_data->ls_datapaths,
                            input_data->lr_datapaths,

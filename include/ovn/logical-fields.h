@@ -61,8 +61,10 @@ enum ovn_controller_event {
 
 #define MFF_LOG_CT_ORIG_NW_DST_ADDR         MFF_REG4   /* REG_LB_IPV4 */
 #define MFF_LOG_CT_ORIG_IP6_DST_ADDR        MFF_XXREG1 /* REG_LB_IPV6 */
-#define MFF_LOG_CT_ORIG_TP_DST_PORT         MFF_REG2   /* REG_LB_PORT
-                                                        * (bits 0..15). */
+#define MFF_LOG_CT_ORIG_TP_DST_PORT         MFF_REG2   /* Used by
+                                                        * ct_tp_dst() */
+#define MFF_LOG_CT_ORIG_PROTO               MFF_REG3   /* Used by
+                                                        * ct_proto() */
 #define MFF_LOG_CT_SAVED_STATE              MFF_REG4   /* REG_CT_STATE
                                                         * (bits 0..8). */
 

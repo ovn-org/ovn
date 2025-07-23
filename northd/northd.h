@@ -482,27 +482,28 @@ enum ovn_stage {
     PIPELINE_STAGE(SWITCH, IN,  ACL_SAMPLE,    10, "ls_in_acl_sample")    \
     PIPELINE_STAGE(SWITCH, IN,  ACL_ACTION,    11, "ls_in_acl_action")    \
     PIPELINE_STAGE(SWITCH, IN,  QOS,           12, "ls_in_qos")           \
-    PIPELINE_STAGE(SWITCH, IN,  LB_AFF_CHECK,  13, "ls_in_lb_aff_check")  \
-    PIPELINE_STAGE(SWITCH, IN,  LB,            14, "ls_in_lb")            \
-    PIPELINE_STAGE(SWITCH, IN,  LB_AFF_LEARN,  15, "ls_in_lb_aff_learn")  \
-    PIPELINE_STAGE(SWITCH, IN,  PRE_HAIRPIN,   16, "ls_in_pre_hairpin")   \
-    PIPELINE_STAGE(SWITCH, IN,  NAT_HAIRPIN,   17, "ls_in_nat_hairpin")   \
-    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       18, "ls_in_hairpin")       \
-    PIPELINE_STAGE(SWITCH, IN,  ACL_AFTER_LB_EVAL,  19, \
+    PIPELINE_STAGE(SWITCH, IN,  CT_EXTRACT,    13, "ls_in_ct_extract")    \
+    PIPELINE_STAGE(SWITCH, IN,  LB_AFF_CHECK,  14, "ls_in_lb_aff_check")  \
+    PIPELINE_STAGE(SWITCH, IN,  LB,            15, "ls_in_lb")            \
+    PIPELINE_STAGE(SWITCH, IN,  LB_AFF_LEARN,  16, "ls_in_lb_aff_learn")  \
+    PIPELINE_STAGE(SWITCH, IN,  PRE_HAIRPIN,   17, "ls_in_pre_hairpin")   \
+    PIPELINE_STAGE(SWITCH, IN,  NAT_HAIRPIN,   18, "ls_in_nat_hairpin")   \
+    PIPELINE_STAGE(SWITCH, IN,  HAIRPIN,       19, "ls_in_hairpin")       \
+    PIPELINE_STAGE(SWITCH, IN,  ACL_AFTER_LB_EVAL,  20, \
                    "ls_in_acl_after_lb_eval")    \
-     PIPELINE_STAGE(SWITCH, IN,  ACL_AFTER_LB_SAMPLE,  20, \
+     PIPELINE_STAGE(SWITCH, IN,  ACL_AFTER_LB_SAMPLE,  21, \
                    "ls_in_acl_after_lb_sample")  \
-    PIPELINE_STAGE(SWITCH, IN,  ACL_AFTER_LB_ACTION,  21,    \
+    PIPELINE_STAGE(SWITCH, IN,  ACL_AFTER_LB_ACTION,  22,    \
                    "ls_in_acl_after_lb_action")  \
-    PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      22, "ls_in_stateful")      \
-    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    23, "ls_in_arp_rsp")       \
-    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  24, "ls_in_dhcp_options")  \
-    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 25, "ls_in_dhcp_response") \
-    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    26, "ls_in_dns_lookup")    \
-    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  27, "ls_in_dns_response")  \
-    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 28, "ls_in_external_port") \
-    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       29, "ls_in_l2_lkup")       \
-    PIPELINE_STAGE(SWITCH, IN,  L2_UNKNOWN,    30, "ls_in_l2_unknown")    \
+    PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      23, "ls_in_stateful")      \
+    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    24, "ls_in_arp_rsp")       \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  25, "ls_in_dhcp_options")  \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 26, "ls_in_dhcp_response") \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    27, "ls_in_dns_lookup")    \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  28, "ls_in_dns_response")  \
+    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 29, "ls_in_external_port") \
+    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       30, "ls_in_l2_lkup")       \
+    PIPELINE_STAGE(SWITCH, IN,  L2_UNKNOWN,    31, "ls_in_l2_unknown")    \
                                                                           \
     /* Logical switch egress stages. */                                   \
     PIPELINE_STAGE(SWITCH, OUT, LOOKUP_FDB,      0, "ls_out_lookup_fdb")     \
@@ -529,27 +530,28 @@ enum ovn_stage {
     PIPELINE_STAGE(ROUTER, IN,  UNSNAT,          5, "lr_in_unsnat")       \
     PIPELINE_STAGE(ROUTER, IN,  POST_UNSNAT,     6, "lr_in_post_unsnat")  \
     PIPELINE_STAGE(ROUTER, IN,  DEFRAG,          7, "lr_in_defrag")       \
-    PIPELINE_STAGE(ROUTER, IN,  LB_AFF_CHECK,    8, "lr_in_lb_aff_check") \
-    PIPELINE_STAGE(ROUTER, IN,  DNAT,            9, "lr_in_dnat")         \
-    PIPELINE_STAGE(ROUTER, IN,  LB_AFF_LEARN,    10, "lr_in_lb_aff_learn") \
-    PIPELINE_STAGE(ROUTER, IN,  ECMP_STATEFUL,   11, "lr_in_ecmp_stateful") \
-    PIPELINE_STAGE(ROUTER, IN,  ND_RA_OPTIONS,   12, "lr_in_nd_ra_options") \
-    PIPELINE_STAGE(ROUTER, IN,  ND_RA_RESPONSE,  13, "lr_in_nd_ra_response") \
-    PIPELINE_STAGE(ROUTER, IN,  IP_ROUTING_PRE,  14, "lr_in_ip_routing_pre")  \
-    PIPELINE_STAGE(ROUTER, IN,  IP_ROUTING,      15, "lr_in_ip_routing")      \
-    PIPELINE_STAGE(ROUTER, IN,  IP_ROUTING_ECMP, 16, "lr_in_ip_routing_ecmp") \
-    PIPELINE_STAGE(ROUTER, IN,  POLICY,          17, "lr_in_policy")          \
-    PIPELINE_STAGE(ROUTER, IN,  POLICY_ECMP,     18, "lr_in_policy_ecmp")     \
-    PIPELINE_STAGE(ROUTER, IN,  DHCP_RELAY_RESP_CHK, 19,                      \
+    PIPELINE_STAGE(ROUTER, IN,  CT_EXTRACT,      8, "lr_in_ct_extract")   \
+    PIPELINE_STAGE(ROUTER, IN,  LB_AFF_CHECK,    9, "lr_in_lb_aff_check") \
+    PIPELINE_STAGE(ROUTER, IN,  DNAT,            10, "lr_in_dnat")         \
+    PIPELINE_STAGE(ROUTER, IN,  LB_AFF_LEARN,    11, "lr_in_lb_aff_learn") \
+    PIPELINE_STAGE(ROUTER, IN,  ECMP_STATEFUL,   12, "lr_in_ecmp_stateful") \
+    PIPELINE_STAGE(ROUTER, IN,  ND_RA_OPTIONS,   13, "lr_in_nd_ra_options") \
+    PIPELINE_STAGE(ROUTER, IN,  ND_RA_RESPONSE,  14, "lr_in_nd_ra_response") \
+    PIPELINE_STAGE(ROUTER, IN,  IP_ROUTING_PRE,  15, "lr_in_ip_routing_pre")  \
+    PIPELINE_STAGE(ROUTER, IN,  IP_ROUTING,      16, "lr_in_ip_routing")      \
+    PIPELINE_STAGE(ROUTER, IN,  IP_ROUTING_ECMP, 17, "lr_in_ip_routing_ecmp") \
+    PIPELINE_STAGE(ROUTER, IN,  POLICY,          18, "lr_in_policy")          \
+    PIPELINE_STAGE(ROUTER, IN,  POLICY_ECMP,     19, "lr_in_policy_ecmp")     \
+    PIPELINE_STAGE(ROUTER, IN,  DHCP_RELAY_RESP_CHK, 20,                      \
                   "lr_in_dhcp_relay_resp_chk")                                \
-    PIPELINE_STAGE(ROUTER, IN,  DHCP_RELAY_RESP, 20,                          \
+    PIPELINE_STAGE(ROUTER, IN,  DHCP_RELAY_RESP, 21,                          \
                   "lr_in_dhcp_relay_resp")                                    \
-    PIPELINE_STAGE(ROUTER, IN,  ARP_RESOLVE,     21, "lr_in_arp_resolve")     \
-    PIPELINE_STAGE(ROUTER, IN,  CHK_PKT_LEN,     22, "lr_in_chk_pkt_len")     \
-    PIPELINE_STAGE(ROUTER, IN,  LARGER_PKTS,     23, "lr_in_larger_pkts")     \
-    PIPELINE_STAGE(ROUTER, IN,  GW_REDIRECT,     24, "lr_in_gw_redirect")     \
-    PIPELINE_STAGE(ROUTER, IN,  NETWORK_ID,      25, "lr_in_network_id")      \
-    PIPELINE_STAGE(ROUTER, IN,  ARP_REQUEST,     26, "lr_in_arp_request")     \
+    PIPELINE_STAGE(ROUTER, IN,  ARP_RESOLVE,     22, "lr_in_arp_resolve")     \
+    PIPELINE_STAGE(ROUTER, IN,  CHK_PKT_LEN,     23, "lr_in_chk_pkt_len")     \
+    PIPELINE_STAGE(ROUTER, IN,  LARGER_PKTS,     24, "lr_in_larger_pkts")     \
+    PIPELINE_STAGE(ROUTER, IN,  GW_REDIRECT,     25, "lr_in_gw_redirect")     \
+    PIPELINE_STAGE(ROUTER, IN,  NETWORK_ID,      26, "lr_in_network_id")      \
+    PIPELINE_STAGE(ROUTER, IN,  ARP_REQUEST,     27, "lr_in_arp_request")     \
                                                                       \
     /* Logical router egress stages. */                               \
     PIPELINE_STAGE(ROUTER, OUT, CHECK_DNAT_LOCAL,   0,                       \

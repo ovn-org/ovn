@@ -3033,8 +3033,8 @@ physical_run(struct physical_ctx *p_ctx,
     add_default_drop_flow(p_ctx, OFTABLE_LOG_TO_PHY, flow_table);
 
     /* Table 81, 82 and 83
-     * Match on ct.trk and ct.est | ct.new and store the ct_nw_dst, ct_ip6_dst
-     * and ct_tp_dst in the registers. */
+     * Match on ct.trk and ct.est | ct.new and store the ct_nw_dst, ct_ip6_dst,
+     * ct_tp_dst and ct_proto in the registers. */
     uint32_t ct_state_est = OVS_CS_F_TRACKED | OVS_CS_F_ESTABLISHED;
     uint32_t ct_state_new = OVS_CS_F_TRACKED | OVS_CS_F_NEW;
     struct match match_new = MATCH_CATCHALL_INITIALIZER;
@@ -3057,6 +3057,20 @@ physical_run(struct physical_ctx *p_ctx,
     ofctrl_add_flow(flow_table, OFTABLE_CT_ORIG_TP_DST_LOAD, 100, 0,
                     &match_new, &ofpacts, hc_uuid);
 
+    /* Add the flows:
+     * match = (ct.trk && ct.est), action = (reg3[0..7] = ct_proto)
+     * table = 86
+     * match = (ct.trk && ct.new), action = (reg3[0..7] = ct_proto)
+     * table = 86
+     */
+     ofpbuf_clear(&ofpacts);
+     put_move(MFF_CT_NW_PROTO, 0,  MFF_LOG_CT_ORIG_PROTO, 0, 8, &ofpacts);
+     ofctrl_add_flow(flow_table, OFTABLE_CT_ORIG_PROTO_LOAD, 100, 0, &match,
+                     &ofpacts, hc_uuid);
+
+     put_move(MFF_CT_NW_PROTO, 0,  MFF_LOG_CT_ORIG_PROTO, 0, 8, &ofpacts);
+     ofctrl_add_flow(flow_table, OFTABLE_CT_ORIG_PROTO_LOAD, 100, 0,
+                     &match_new, &ofpacts, hc_uuid);
     /* Add the flows:
      * match = (ct.trk && ct.est && ip4), action = (reg4 = ct_nw_dst)
      * table = 81
