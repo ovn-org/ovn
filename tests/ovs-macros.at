@@ -372,7 +372,15 @@ dnl Cleanup commands are executed in the reverse order of calls to this
 dnl function.
 m4_divert_text([PREPARE_TESTS], [dnl
 on_exit () {
-    (echo "$1"; cat cleanup) > cleanup.tmp
+    if [ echo "$1" | grep -qe '^ovn-nbctl' ] ; then
+      (echo "test -e ovn-nb/ovn-nb.sock && $1"; cat cleanup;) > cleanup.tmp
+    elif [ echo "$1" | grep -qe '^ovn-sbctl' ]; then
+      (echo "test -e ovn-sb/ovn-sb.sock && $1"; cat cleanup) > cleanup.tmp
+    elif [ echo "$1" | grep -qe '^ovs-ofctl' -qe '^ovs-dpctl' ]; then
+      (echo "test -e $OVS_RUNDIR/ovs-vswitchd.pid && $1"; cat cleanup) > cleanup.tmp
+    else
+      (echo "$1"; cat cleanup) > cleanup.tmp
+    fi
     mv cleanup.tmp cleanup
 }
 ])
