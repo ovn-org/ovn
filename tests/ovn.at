@@ -9382,10 +9382,9 @@ as hv1 ovs-appctl netdev-dummy/receive hv1-ls1lp2 $packet
 # ARP packet should be received with Target IP Address set to 192.168.1.254 and
 # not 8.8.8.8
 
-$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/ls2lp2-tx.pcap | trim_zeros > packets
 expected="fffffffffffff0000000000208060001080006040001f00000000002c0a80101000000000000c0a801fe"
-echo $expected > expout
-AT_CHECK([cat packets], [0], [expout])
+echo $expected > expected
+OVN_CHECK_PACKETS([hv1/ls2lp2-tx.pcap], [expected])
 cat packets
 
 OVN_CLEANUP([hv1])
