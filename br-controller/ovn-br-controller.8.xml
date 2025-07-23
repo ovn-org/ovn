@@ -48,4 +48,32 @@
         </p>
       </dd>
     </dl>
+
+    <p>
+      <code>ovn-br-controller</code> reads the following values from the
+      <code>Open_vSwitch</code> database of the local OVS instance:
+    </p>
+
+    <dl>
+      <dt>
+        <code>external_ids:ovnbr-managed</code> from
+        <ref table="Interface" db="Open_vSwitch"/> table
+      </dt>
+      <dd>
+        <p>
+          If the value is <code>true</code>, then this interface is managed by
+          <code>ovn-br-controller</code> if this interface is connected to
+          the OVS bridge managed by <code>ovn-br-controller</code>.
+        </p>
+
+        <p>
+          Default value is true if this option is not defined.
+        </p>
+
+        <p>
+          CMS should set the value of this option to <code>false</code>
+          if it doesn't want <code>ovn-br-controller</code> to manage it.
+        </p>
+      </dd>
+    </dl>
 </manpage>

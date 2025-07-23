@@ -6,6 +6,8 @@ br_controller_ovn_br_controller_SOURCES = \
 	br-controller/en-bridge-data.h \
 	br-controller/en-lflow.c \
 	br-controller/en-lflow.h \
+	br-controller/en-pflow.c \
+	br-controller/en-pflow.h \
 	br-controller/ovn-br-controller.c
 
 br_controller_ovn_br_controller_LDADD = lib/libovn.la $(OVS_LIBDIR)/libopenvswitch.la

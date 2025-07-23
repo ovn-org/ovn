@@ -37,6 +37,7 @@
 /* OVN includes. */
 #include "en-bridge-data.h"
 #include "en-lflow.h"
+#include "en-pflow.h"
 #include "lib/ovn-br-idl.h"
 #include "lib/inc-proc-eng.h"
 #include "lib/ovn-util.h"
@@ -171,6 +172,7 @@ main(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
     /* Define inc-proc-engine nodes. */
     ENGINE_NODE(bridge_data);
     ENGINE_NODE(lflow_output);
+    ENGINE_NODE(pflow_output);
     ENGINE_NODE(br_controller_output);
 
 #define BRCTL_NODE(NAME) ENGINE_NODE_BR(NAME);
@@ -191,7 +193,11 @@ main(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
 
     engine_add_input(&en_lflow_output, &en_bridge_data, NULL);
     engine_add_input(&en_lflow_output, &en_ovnbr_logical_flow, NULL);
+
+    engine_add_input(&en_pflow_output, &en_bridge_data, NULL);
+
     engine_add_input(&en_br_controller_output, &en_lflow_output, NULL);
+    engine_add_input(&en_br_controller_output, &en_pflow_output, NULL);
 
     struct engine_arg engine_arg = {
         .ovs_idl = ovs_idl_loop.idl,
