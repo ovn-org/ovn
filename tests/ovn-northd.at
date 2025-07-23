@@ -13972,7 +13972,7 @@ AT_CHECK([grep "ls_in_l2_lkup" publicflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:ff02), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
 ])
 
-AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" lr0flows | ovn_strip_lflows], [0], [dnl
+AT_CHECK([grep -Fe "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && inport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(xreg0[[0..47]] = 00:00:00:00:ff:02; next;)
   table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.110), action=(eth.dst = 30:54:00:00:00:03; next;)
   table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.120), action=(eth.dst = 00:00:00:00:ff:02; next;)
@@ -13997,7 +13997,7 @@ AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3"
   table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat;)
 ])
 
-AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" publicflows | ovn_strip_lflows], [0], [dnl
+AT_CHECK([grep -Fe "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" publicflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && is_chassis_resident("sw0-port1")), action=(outport = "public-lr0"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:ff:02, 30:54:00:00:00:03} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.110), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
@@ -14147,7 +14147,7 @@ AT_CHECK([grep "ls_in_l2_lkup" publicflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:ff02 && is_chassis_resident("cr-public-lr0")), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
 ])
 
-AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" lr0flows | ovn_strip_lflows], [0], [dnl
+AT_CHECK([grep -Fe "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.110), action=(eth.dst = 00:00:00:00:ff:02; next;)
   table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.120), action=(eth.dst = 00:00:00:00:ff:02; next;)
   table=??(lr_in_arp_resolve  ), priority=150  , match=(inport == "lr0-public" && outport == "lr0-public" && ip4.dst == 172.168.0.110), action=(drop;)
@@ -14166,7 +14166,7 @@ AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3"
   table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat;)
 ])
 
-AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" publicflows | ovn_strip_lflows], [0], [dnl
+AT_CHECK([grep -Fe "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" publicflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && is_chassis_resident("sw0-port1")), action=(outport = "public-lr0"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:ff:02, 30:54:00:00:00:03} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.110 && !is_chassis_resident("cr-public-lr0")), action=(clone {outport = "cr-public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
@@ -14208,7 +14208,7 @@ check_row_count Port_Binding 0 logical_port=cr-public-lr0
 ovn-sbctl dump-flows lr0 > lr0flows
 ovn-sbctl dump-flows public > publicflows
 
-AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" lr0flows | ovn_strip_lflows], [0], [dnl
+AT_CHECK([grep -Fe "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && inport == "lr0-public" && is_chassis_resident("sw0-port1")), action=(xreg0[[0..47]] = 00:00:00:00:ff:02; next;)
   table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.110), action=(eth.dst = 30:54:00:00:00:03; next;)
   table=??(lr_in_arp_resolve  ), priority=100  , match=(outport == "lr0-public" && reg0 == 172.168.0.120), action=(eth.dst = 00:00:00:00:ff:02; next;)
@@ -14233,7 +14233,7 @@ AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3"
   table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat;)
 ])
 
-AT_CHECK([grep -e "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" publicflows | ovn_strip_lflows], [0], [dnl
+AT_CHECK([grep -Fe "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" publicflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && is_chassis_resident("sw0-port1")), action=(outport = "public-lr0"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:ff:02, 30:54:00:00:00:03} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.110), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
