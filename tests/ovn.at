@@ -20976,7 +20976,7 @@ echo $expected | ovstest test-ovn expr-to-packets > expected
 OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
 
 # Stop ovn-controller on hv2 with --restart flag
-OVN_CONTROLLER_EXIT([hv2])
+OVN_CONTROLLER_EXIT([hv2],[--restart])
 
 # Now send the packet again. This time, it should still arrive
 OVS_WAIT_UNTIL([as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"])
@@ -29654,7 +29654,7 @@ check test "$hvt2" -gt 0
 # Kill ovn-controller on chassis hv3, so that it won't update nb_cfg.
 # Then wait for 9 out of 10
 sleep 1
-OVN_CONTROLLER_EXIT([hv3])
+OVN_CONTROLLER_EXIT([hv3],[--restart])
 wait_for_ports_up
 check ovn-nbctl --wait=sb sync
 wait_row_count Chassis_Private 9 name!=hv3 nb_cfg=2
@@ -37071,7 +37071,7 @@ check_tunnel_port hv1 br-int hv2@192.168.0.2%192.168.0.1
 check_tunnel_port hv2 br-int hv1@192.168.0.1%192.168.0.2
 
 # Stop ovn-controller on hv1
-OVN_CONTROLLER_EXIT([hv1])
+OVN_CONTROLLER_EXIT([hv1],[--restart])
 
 # The tunnel should remain intact
 check_tunnel_port hv1 br-int hv2@192.168.0.2%192.168.0.1
@@ -37100,7 +37100,7 @@ check_tunnel_port hv2 br-int1 hv1@192.168.0.1%192.168.0.2
 check grep -q "Clearing old tunnel port \"ovn-hv1-0\" (hv1@192.168.0.1%192.168.0.2) from bridge \"br-int\"" hv2/ovn-controller.log
 
 # Stop ovn-controller on hv1
-OVN_CONTROLLER_EXIT([hv1])
+OVN_CONTROLLER_EXIT([hv1],[--restart])
 
 # The tunnel should remain intact
 check_tunnel_port hv1 br-int1 hv2@192.168.0.2%192.168.0.1
@@ -37190,7 +37190,7 @@ prev_id2=$(ovs-vsctl --bare --columns _uuid find port external_ids:ovn-chassis-i
 # The hv2 is running we can remove the override file
 rm -f ${OVN_SYSCONFDIR}/system-id-override
 
-OVN_CONTROLLER_EXIT([hv1])
+OVN_CONTROLLER_EXIT([hv1],[--restart])
 
 # for some reason SSL ovsdb configuration overrides CLI, so
 # delete ssl config from ovsdb to give CLI arguments priority
@@ -37985,7 +37985,7 @@ AT_CHECK([grep -c "NXT_CT_FLUSH_ZONE" hv1/ovs-vswitchd.log], [0], [dnl
 ])
 
 AS_BOX([Check conversion from UUID - restart])
-OVN_CONTROLLER_EXIT([hv1])
+OVN_CONTROLLER_EXIT([hv1],[--restart])
 
 replace_with_uuid lr0
 replace_with_uuid sw0

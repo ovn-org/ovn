@@ -1136,9 +1136,11 @@ m4_define([OVN_CHECK_SCAPY_EDNS_CLIENT_SUBNET_SUPPORT],
     AT_SKIP_IF([! echo "from scapy.layers.dns import EDNS0ClientSubnet" | python 2>&1 > /dev/null])
 ])
 
+# OVN_CONTROLLER_EXIT exits ovn-controller running on $1, with option $2 (e.g. --restart)
 m4_define([OVN_CONTROLLER_EXIT],
-  [TMPPID=$(cat $1/ovn-controller.pid)
-   AT_CHECK([as $1 ovn-appctl -t ovn-controller exit --restart])
+  [TMPPID=$(cat ./$1/ovn-controller.pid)
+   AT_CHECK([as $1
+check ovn-appctl -t ovn-controller exit $2])
    # Make sure ovn-controller stopped so that a future restart will not fail.
    # Checking debug/status is running is not enough as there might be a small race condition.
    echo "Waiting for pid $TMPPID"
