@@ -3331,7 +3331,7 @@ AT_CHECK([test $(ovn-appctl -t ovn-controller ct-zone-list | awk '/lr_snat/{prin
 n_flush=$(grep -c -i ct_flush_zone hv1/ovs-vswitchd.log)
 
 # Stop ovn-controller on hv1 with --restart flag
-OVN_CONTROLLER_EXIT([hv1])
+OVN_CONTROLLER_EXIT([hv1],[--restart])
 
 start_daemon ovn-controller --verbose="ct_zone:dbg"
 wait_for_ports_up
@@ -3349,7 +3349,7 @@ check_ct_zone_max 22
 AT_CHECK([test $(ovn-appctl -t ovn-controller ct-zone-list | awk '/lr_snat/{print $2}') -eq 0])
 
 n_flush=$(grep -c -i ct_flush_zone hv1/ovs-vswitchd.log)
-OVN_CONTROLLER_EXIT([hv1])
+OVN_CONTROLLER_EXIT([hv1],[--restart])
 start_daemon ovn-controller --verbose="ct_zone:dbg"
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
@@ -3729,12 +3729,12 @@ start_controller() {
 }
 
 # Stop ovn-controller, without any argument it will cleanup resources.
-check ovn-appctl -t ovn-controller exit
+OVN_CONTROLLER_EXIT([hv1],[])
 check grep -q "Exiting ovn-controller, resource cleanup: True" hv1/ovn-controller.log
 
 # Stop ovn-controller without cleanup.
 start_controller
-check ovn-appctl -t ovn-controller exit --restart
+OVN_CONTROLLER_EXIT([hv1],[--restart])
 check grep -q "Exiting ovn-controller, resource cleanup: False (--restart)" hv1/ovn-controller.log
 
 # Set cleanup on exit.
@@ -3742,12 +3742,12 @@ check ovs-vsctl set open . external-ids:ovn-cleanup-on_exit=true
 
 # Stop ovn-controller, without any argument it will cleanup resources.
 start_controller
-check ovn-appctl -t ovn-controller exit
+OVN_CONTROLLER_EXIT([hv1],[])
 check grep -q "Exiting ovn-controller, resource cleanup: True" hv1/ovn-controller.log
 
 # Stop ovn-controller, --restart flag has priority over external-ids, no cleanup.
 start_controller
-check ovn-appctl -t ovn-controller exit --restart
+OVN_CONTROLLER_EXIT([hv1],[--restart])
 check grep -q "Exiting ovn-controller, resource cleanup: False (--restart)" hv1/ovn-controller.log
 
 # Set cleanup on exit to false.
@@ -3755,12 +3755,12 @@ check ovs-vsctl set open . external-ids:ovn-cleanup-on-exit=false
 
 # Stop ovn-controller, without any argument it won't cleanup due to the external-ids.
 start_controller
-check ovn-appctl -t ovn-controller exit
+OVN_CONTROLLER_EXIT([hv1],[])
 check grep -q "Exiting ovn-controller, resource cleanup: False (--restart)" hv1/ovn-controller.log
 
 # Stop ovn-controller without cleanup.
 start_controller
-check ovn-appctl -t ovn-controller exit --restart
+OVN_CONTROLLER_EXIT([hv1],[--restart])
 check grep -q "Exiting ovn-controller, resource cleanup: False (--restart)" hv1/ovn-controller.log
 
 # Start the controller so the test cleanup routing doesn't get stuck.
