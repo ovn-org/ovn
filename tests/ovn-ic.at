@@ -1601,12 +1601,12 @@ for az in `seq 1 $n_az`; do
         check ovn-nbctl lsp-set-type lsp-ls$az-$i-lr$az-$i router
         check ovn-nbctl lsp-set-options lsp-ls$az-$i-lr$az-$i router-port=lrp-lr$az-$i-ls$az-$i
 
-        check ovn-nbctl lrp-add lr$az-$i lrp-lr$az-$i-ts$i $lrp_ts_mac $lrp_ts_ip/24
-        check ovn-nbctl lsp-add ts$i lsp-ts$i-lr$az-$i
-        check ovn-nbctl lsp-set-addresses lsp-ts$i-lr$az-$i router
-        check ovn-nbctl lsp-set-type lsp-ts$i-lr$az-$i router
-        check ovn-nbctl lsp-set-options lsp-ts$i-lr$az-$i router-port=lrp-lr$az-$i-ts$i
-        check ovn-nbctl lrp-set-gateway-chassis lrp-lr$az-$i-ts$i gw$az
+        check ovn-nbctl -- lrp-add lr$az-$i lrp-lr$az-$i-ts$i $lrp_ts_mac $lrp_ts_ip/24 \
+                        -- lsp-add ts$i lsp-ts$i-lr$az-$i \
+                        -- lsp-set-addresses lsp-ts$i-lr$az-$i router \
+                        -- lsp-set-type lsp-ts$i-lr$az-$i router \
+                        -- lsp-set-options lsp-ts$i-lr$az-$i router-port=lrp-lr$az-$i-ts$i \
+                        -- lrp-set-gateway-chassis lrp-lr$az-$i-ts$i gw$az
     done
     check ovn-nbctl --wait=hv sync
     ovn-sbctl list Port_Binding > az$az.ports
@@ -1721,21 +1721,9 @@ for s_az in $(seq 1 $n_az); do
 done
 OVS_WAIT_UNTIL([check_packets], [$at_diff -F'^---' expected received])
 
-# ts[i] become local datapaths in hv[az] right before we lrp-set the
-# gateway-chassis on lrp-lr$az-$i-ts$i.
-# For ts1 & ts2, there are recomputes after the gateway-chassis has been set
-# (e.g. when some tunnel_keys get added), and hence they get removed from
-# local datapaths.
-# However this is not the case for ts3: there is no recompute, and local
-# datapaths are usually not removed in I+P. Ignore this.
-# Also, ts3 remaining a local datapath, and lsp-ts3-lr[x]-3 being remote port, it
-# is a related port. Ignore this also
-ovn_as az1 OVN_CLEANUP_SBOX([hv1], [], ["lsp-ts3-lr2-3
-lsp-ts3-lr3-3"], [ts3])
-ovn_as az2 OVN_CLEANUP_SBOX([hv2], [], ["lsp-ts3-lr1-3
-lsp-ts3-lr3-3"], [ts3])
-ovn_as az3 OVN_CLEANUP_SBOX([hv3], [], ["lsp-ts3-lr1-3
-lsp-ts3-lr2-3"], [ts3])
+ovn_as az1 OVN_CLEANUP_SBOX([hv1])
+ovn_as az2 OVN_CLEANUP_SBOX([hv2])
+ovn_as az3 OVN_CLEANUP_SBOX([hv3])
 
 for az in `seq 1 $n_az`; do
     ovn_as az$az
