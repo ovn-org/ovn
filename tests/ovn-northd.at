@@ -3724,12 +3724,8 @@ flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
 ovn_trace --ct new --ct new ls "${flow}"
 AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_lb_mark {
-    push(reg2) -> 0x50;
-    push(reg3) -> 0;
     reg1[[16..23]] = 6;
     reg1[[0..15]] = 80;
-    pop(reg3) <- 0;
-    pop(reg2) <- 0x50;
     ct_lb_mark {
         reg0[[6]] = 0;
         reg0[[12]] = 0;
@@ -3744,12 +3740,8 @@ ct_lb_mark {
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
 AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_lb_mark {
-    push(reg2) -> 0x50;
-    push(reg3) -> 0;
     reg1[[16..23]] = 17;
     reg1[[0..15]] = 80;
-    pop(reg3) <- 0;
-    pop(reg2) <- 0x50;
     ct_lb_mark {
         reg0[[6]] = 0;
         reg0[[12]] = 0;
@@ -3776,12 +3768,8 @@ output("lsp2");
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
 AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_lb_mark {
-    push(reg2) -> 0x50;
-    push(reg3) -> 0;
     reg1[[16..23]] = 17;
     reg1[[0..15]] = 80;
-    pop(reg3) <- 0;
-    pop(reg2) <- 0x50;
     ct_lb_mark {
         reg0[[6]] = 0;
         reg0[[12]] = 0;
@@ -3878,12 +3866,8 @@ check ovn-nbctl --wait=sb sync
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_tcp}"
 AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_lb_mark {
-    push(reg2) -> 0x50;
-    push(reg3) -> 0;
     reg1[[16..23]] = 6;
     reg1[[0..15]] = 80;
-    pop(reg3) <- 0;
-    pop(reg2) <- 0x50;
     ct_lb_mark {
         reg0[[6]] = 0;
         reg0[[12]] = 0;
@@ -3898,12 +3882,8 @@ ct_lb_mark {
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
 AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_lb_mark {
-    push(reg2) -> 0x50;
-    push(reg3) -> 0;
     reg1[[16..23]] = 17;
     reg1[[0..15]] = 80;
-    pop(reg3) <- 0;
-    pop(reg2) <- 0x50;
     ct_lb_mark {
         reg0[[6]] = 0;
         reg0[[12]] = 0;
@@ -3930,12 +3910,8 @@ output("lsp2");
 flow="inport == \"lsp1\" && ${flow_eth} && ${flow_ip} && ${flow_udp}"
 AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal ls "${flow}"], [0], [dnl
 ct_lb_mark {
-    push(reg2) -> 0x50;
-    push(reg3) -> 0;
     reg1[[16..23]] = 17;
     reg1[[0..15]] = 80;
-    pop(reg3) <- 0;
-    pop(reg2) <- 0x50;
     ct_lb_mark {
         reg0[[6]] = 0;
         reg0[[12]] = 0;
@@ -7643,12 +7619,8 @@ flow="eth.dst == 00:00:00:00:01:00 && inport == \"rtr-ls\" && ip4.src == 42.42.4
 ovn_trace --ct new "${flow}" --lb-dst 42.42.42.42:4242
 AT_CHECK_UNQUOTED([ovn_trace --ct new --minimal "${flow}" --lb-dst 42.42.42.42:4242], [0], [dnl
 ct_dnat /* assuming no un-dnat entry, so no change */ {
-    push(reg2) -> 0;
-    push(reg3) -> 0;
     reg1[[16..23]] = 6;
     reg1[[0..15]] = 4343;
-    pop(reg3) <- 0;
-    pop(reg2) <- 0;
     ct_lb_mark /* default (use --ct to customize) */ {
         ip.ttl--;
         eth.src = 00:00:00:00:01:00;

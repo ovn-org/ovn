@@ -16658,17 +16658,12 @@ build_lrouter_in_ct_extract_flows(struct lflow_table *lflows,
                                          const struct ovn_datapath *od,
                                          struct lflow_ref *lflow_ref)
 {
-    /* Ingress PRE_LB table: Extract connection tracking fields for new
-     * connections.
-     * XXX: use a more graceful way to push/pop reg2 and reg3 which are used
-     * as intermediate registers by the ct_proto() and ct_tp_dst() actions.
-     */
+    /* Ingress CT_EXTRACT table: Extract connection tracking fields for new
+     * connections. */
     ovn_lflow_add(lflows, od, S_ROUTER_IN_CT_EXTRACT, 100,
                   "ct.new && ip",
-                  "push(reg2); push(reg3); "
                   REG_CT_PROTO " = ct_proto(); "
-                  REG_CT_TP_DST " = ct_tp_dst(); "
-                  "pop(reg3); pop(reg2); next;",
+                  REG_CT_TP_DST " = ct_tp_dst(); next;",
                   lflow_ref);
 }
 
@@ -17952,16 +17947,12 @@ build_ls_stateful_flows(const struct ls_stateful_record *ls_stateful_rec,
                sbrec_acl_id_table);
 
     /* Build CT extraction flows - only needed if this datapath has load
-     * balancers.
-     * XXX: use a more graceful way to push/pop reg2 and reg3 which are used
-     * as intermediate registers by the ct_proto() and ct_tp_dst() actions.*/
+     * balancers. */
     if (ls_stateful_rec->has_lb_vip) {
         ovn_lflow_add(lflows, od, S_SWITCH_IN_CT_EXTRACT, 100,
                       "ct.new && ip",
-                      "push(reg2); push(reg3); "
                       REG_CT_PROTO " = ct_proto(); "
-                      REG_CT_TP_DST " = ct_tp_dst(); "
-                      "pop(reg3); pop(reg2); next;",
+                      REG_CT_TP_DST " = ct_tp_dst(); next;",
                       ls_stateful_rec->lflow_ref);
     }
 

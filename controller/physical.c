@@ -3042,67 +3042,67 @@ physical_run(struct physical_ctx *p_ctx,
     ofpbuf_clear(&ofpacts);
 
     /* Add the flows:
-     * match = (ct.trk && ct.est), action = (reg8 = ct_tp_dst)
+     * match = (ct.trk && ct.est), action = (<reg_result> = ct_tp_dst)
      * table = 83
-     * match = (ct.trk && ct.new), action = (reg8 = ct_tp_dst)
+     * match = (ct.trk && ct.new), action = (<reg_result> = ct_tp_dst)
      * table = 83
      */
     match_set_ct_state_masked(&match, ct_state_est, ct_state_est);
-    put_move(MFF_CT_TP_DST, 0,  MFF_LOG_CT_ORIG_TP_DST_PORT, 0, 16, &ofpacts);
+    put_move(MFF_CT_TP_DST, 0,  MFF_LOG_RESULT_REG, 0, 16, &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_CT_ORIG_TP_DST_LOAD, 100, 0, &match,
                     &ofpacts, hc_uuid);
 
     match_set_ct_state_masked(&match_new, ct_state_new, ct_state_new);
-    put_move(MFF_CT_TP_DST, 0,  MFF_LOG_CT_ORIG_TP_DST_PORT, 0, 16, &ofpacts);
+    put_move(MFF_CT_TP_DST, 0,  MFF_LOG_RESULT_REG, 0, 16, &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_CT_ORIG_TP_DST_LOAD, 100, 0,
                     &match_new, &ofpacts, hc_uuid);
 
     /* Add the flows:
-     * match = (ct.trk && ct.est), action = (reg3[0..7] = ct_proto)
+     * match = (ct.trk && ct.est), action = (<reg_result> = ct_proto)
      * table = 86
-     * match = (ct.trk && ct.new), action = (reg3[0..7] = ct_proto)
+     * match = (ct.trk && ct.new), action = (<reg_result> = ct_proto)
      * table = 86
      */
      ofpbuf_clear(&ofpacts);
-     put_move(MFF_CT_NW_PROTO, 0,  MFF_LOG_CT_ORIG_PROTO, 0, 8, &ofpacts);
+     put_move(MFF_CT_NW_PROTO, 0,  MFF_LOG_RESULT_REG, 0, 8, &ofpacts);
      ofctrl_add_flow(flow_table, OFTABLE_CT_ORIG_PROTO_LOAD, 100, 0, &match,
                      &ofpacts, hc_uuid);
 
-     put_move(MFF_CT_NW_PROTO, 0,  MFF_LOG_CT_ORIG_PROTO, 0, 8, &ofpacts);
+     put_move(MFF_CT_NW_PROTO, 0,  MFF_LOG_RESULT_REG, 0, 8, &ofpacts);
      ofctrl_add_flow(flow_table, OFTABLE_CT_ORIG_PROTO_LOAD, 100, 0,
                      &match_new, &ofpacts, hc_uuid);
     /* Add the flows:
-     * match = (ct.trk && ct.est && ip4), action = (reg4 = ct_nw_dst)
+     * match = (ct.trk && ct.est && ip4), action = (<reg_result> = ct_nw_dst)
      * table = 81
-     * match = (ct.trk && ct.new && ip4), action = (reg4 = ct_nw_dst)
+     * match = (ct.trk && ct.new && ip4), action = (<reg_result> = ct_nw_dst)
      * table = 81
      */
     ofpbuf_clear(&ofpacts);
     match_set_dl_type(&match, htons(ETH_TYPE_IP));
-    put_move(MFF_CT_NW_DST, 0,  MFF_LOG_CT_ORIG_NW_DST_ADDR, 0, 32, &ofpacts);
+    put_move(MFF_CT_NW_DST, 0,  MFF_LOG_RESULT_REG, 0, 32, &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_CT_ORIG_NW_DST_LOAD, 100, 0, &match,
                     &ofpacts, hc_uuid);
 
     match_set_dl_type(&match_new, htons(ETH_TYPE_IP));
-    put_move(MFF_CT_NW_DST, 0,  MFF_LOG_CT_ORIG_NW_DST_ADDR, 0, 32, &ofpacts);
+    put_move(MFF_CT_NW_DST, 0,  MFF_LOG_RESULT_REG, 0, 32, &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_CT_ORIG_NW_DST_LOAD, 100, 0,
                     &match_new, &ofpacts, hc_uuid);
 
     /* Add the flows:
-     * match = (ct.trk && ct.est && ip6), action = (xxreg0 = ct_ip6_dst)
+     * match = (ct.trk && ct.est && ip6), action = (<reg_result> = ct_ip6_dst)
      * table = 82
-     * match = (ct.trk && ct.new && ip6), action = (xxreg0 = ct_ip6_dst)
+     * match = (ct.trk && ct.new && ip6), action = (<reg_result> = ct_ip6_dst)
      * table = 82
      */
     ofpbuf_clear(&ofpacts);
     match_set_dl_type(&match, htons(ETH_TYPE_IPV6));
-    put_move(MFF_CT_IPV6_DST, 0,  MFF_LOG_CT_ORIG_IP6_DST_ADDR, 0,
+    put_move(MFF_CT_IPV6_DST, 0,  MFF_LOG_RESULT_REG, 0,
              128, &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_CT_ORIG_IP6_DST_LOAD, 100, 0, &match,
                     &ofpacts, hc_uuid);
 
     match_set_dl_type(&match_new, htons(ETH_TYPE_IPV6));
-    put_move(MFF_CT_IPV6_DST, 0,  MFF_LOG_CT_ORIG_IP6_DST_ADDR, 0,
+    put_move(MFF_CT_IPV6_DST, 0,  MFF_LOG_RESULT_REG, 0,
              128, &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_CT_ORIG_IP6_DST_LOAD, 100, 0,
                     &match_new, &ofpacts, hc_uuid);

@@ -2236,10 +2236,16 @@ mac_cache_use;
 
 # ct_nw_dst()
 reg1 = ct_nw_dst();
-    encodes as set_field:0->reg4,resubmit(,OFTABLE_CT_ORIG_NW_DST_LOAD),move:NXM_NX_REG4[[]]->NXM_NX_XXREG0[[64..95]]
+    encodes as push:NXM_NX_XXREG1[[0..31]],set_field:0/0xffffffff->xxreg1,resubmit(,OFTABLE_CT_ORIG_NW_DST_LOAD),move:NXM_NX_XXREG1[[0..31]]->NXM_NX_XXREG0[[64..95]],pop:NXM_NX_XXREG1[[0..31]]
 
 xreg1[[3..34]] = ct_nw_dst();
-    encodes as set_field:0->reg4,resubmit(,OFTABLE_CT_ORIG_NW_DST_LOAD),move:NXM_NX_REG4[[]]->NXM_NX_XXREG0[[3..34]]
+    encodes as push:NXM_NX_XXREG1[[0..31]],set_field:0/0xffffffff->xxreg1,resubmit(,OFTABLE_CT_ORIG_NW_DST_LOAD),move:NXM_NX_XXREG1[[0..31]]->NXM_NX_XXREG0[[3..34]],pop:NXM_NX_XXREG1[[0..31]]
+
+reg4 = ct_nw_dst();
+    encodes as push:NXM_NX_XXREG1[[0..31]],set_field:0/0xffffffff->xxreg1,resubmit(,OFTABLE_CT_ORIG_NW_DST_LOAD),move:NXM_NX_XXREG1[[0..31]]->NXM_NX_XXREG1[[96..127]],pop:NXM_NX_XXREG1[[0..31]]
+
+reg7 = ct_nw_dst();
+    encodes as set_field:0/0xffffffff->xxreg1,resubmit(,OFTABLE_CT_ORIG_NW_DST_LOAD),move:NXM_NX_XXREG1[[0..31]]->NXM_NX_XXREG1[[0..31]]
 
 reg1[[3..34]] = ct_nw_dst();
     Cannot select bits 3 to 34 of 32-bit field reg1.
@@ -2271,7 +2277,10 @@ ct_ip6_dst();
 
 # ct_tp_dst()
 reg1[[0..15]] = ct_tp_dst();
-    encodes as set_field:0/0xffff->reg2,resubmit(,OFTABLE_CT_ORIG_TP_DST_LOAD),move:NXM_NX_REG2[[0..15]]->NXM_NX_XXREG0[[64..79]]
+    encodes as push:NXM_NX_XXREG1[[0..15]],set_field:0/0xffff->xxreg1,resubmit(,OFTABLE_CT_ORIG_TP_DST_LOAD),move:NXM_NX_XXREG1[[0..15]]->NXM_NX_XXREG0[[64..79]],pop:NXM_NX_XXREG1[[0..15]]
+
+reg4[[0..15]] = ct_tp_dst();
+    encodes as push:NXM_NX_XXREG1[[0..15]],set_field:0/0xffff->xxreg1,resubmit(,OFTABLE_CT_ORIG_TP_DST_LOAD),move:NXM_NX_XXREG1[[0..15]]->NXM_NX_XXREG1[[96..111]],pop:NXM_NX_XXREG1[[0..15]]
 
 reg1 = ct_tp_dst();
     Cannot use 32-bit field reg1[[0..31]] where 16-bit field is required.
@@ -2281,6 +2290,22 @@ ct_tp_dst;
 
 ct_tp_dst();
     Syntax error at `ct_tp_dst' expecting action.
+
+# ct_proto()
+reg1[[16..23]] = ct_proto();
+    encodes as push:NXM_NX_XXREG1[[0..7]],set_field:0/0xff->xxreg1,resubmit(,OFTABLE_CT_ORIG_PROTO_LOAD),move:NXM_NX_XXREG1[[0..7]]->NXM_NX_XXREG0[[80..87]],pop:NXM_NX_XXREG1[[0..7]]
+
+reg4[[0..7]] = ct_proto();
+    encodes as push:NXM_NX_XXREG1[[0..7]],set_field:0/0xff->xxreg1,resubmit(,OFTABLE_CT_ORIG_PROTO_LOAD),move:NXM_NX_XXREG1[[0..7]]->NXM_NX_XXREG1[[96..103]],pop:NXM_NX_XXREG1[[0..7]]
+
+reg1 = ct_proto();
+    Cannot use 32-bit field reg1[[0..31]] where 8-bit field is required.
+
+ct_proto;
+    Syntax error at `ct_proto' expecting action.
+
+ct_proto();
+    Syntax error at `ct_proto' expecting action.
 
 flood_remote;
     encodes as set_field:0x8000->reg6,resubmit(,OFTABLE_FLOOD_REMOTE_CHASSIS)

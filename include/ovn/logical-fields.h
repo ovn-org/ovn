@@ -55,18 +55,13 @@ enum ovn_controller_event {
 
 #define MFF_N_LOG_REGS 10
 
-#define MFF_LOG_LB_AFF_MATCH_IP4_ADDR       MFF_REG4
-#define MFF_LOG_LB_AFF_MATCH_IP6_ADDR       MFF_XXREG1
-#define MFF_LOG_LB_AFF_MATCH_PORT           MFF_REG2
+#define MFF_LOG_LB_AFF_MATCH_IP4_ADDR MFF_REG4
+#define MFF_LOG_LB_AFF_MATCH_IP6_ADDR MFF_XXREG1
+#define MFF_LOG_LB_AFF_MATCH_PORT     MFF_REG2
 
-#define MFF_LOG_CT_ORIG_NW_DST_ADDR         MFF_REG4   /* REG_LB_IPV4 */
-#define MFF_LOG_CT_ORIG_IP6_DST_ADDR        MFF_XXREG1 /* REG_LB_IPV6 */
-#define MFF_LOG_CT_ORIG_TP_DST_PORT         MFF_REG2   /* Used by
-                                                        * ct_tp_dst() */
-#define MFF_LOG_CT_ORIG_PROTO               MFF_REG3   /* Used by
-                                                        * ct_proto() */
-#define MFF_LOG_CT_SAVED_STATE              MFF_REG4   /* REG_CT_STATE
-                                                        * (bits 0..8). */
+#define MFF_LOG_RESULT_REG            MFF_XXREG1
+
+#define MFF_LOG_CT_SAVED_STATE        MFF_REG4
 
 /* Logical registers that are needed for backwards
  * compatibility with older northd versions.

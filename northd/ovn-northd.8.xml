@@ -1046,8 +1046,7 @@
         extracts connection tracking protocol and destination port information
         into registers <code>reg1[16..23]</code> (protocol) and
         <code>reg1[0..15]</code> (destination port) using the actions
-        <code>push(reg2); push(reg3); reg1[16..23] = ct_proto();
-        reg1[0..15] = ct_tp_dst(); pop(reg3); pop(reg2); next;</code>.
+        <code>reg1[16..23] = ct_proto(); reg1[0..15] = ct_tp_dst(); next;</code>.
       </li>
 
       <li>
@@ -3873,19 +3872,15 @@ next;
         </p>
 
         <pre>
-push(reg2); push(reg3);
-reg2[0..15] = ct_tp_dst();
-reg3[16..23] = ct_proto();
-pop(reg3); pop(reg2);
+reg1[16..23] = ct_proto();
+reg1[0..15] = ct_tp_dst();
 next;
         </pre>
 
         <p>
           This stores the connection tracking destination port in
-          <code>REG_CT_TP_DST</code> (reg2[0..15]) and the protocol
-          in <code>REG_CT_PROTO</code> (reg3[16..23]). The push/pop
-          operations protect the existing register values from being
-          overwritten.
+          <code>REG_CT_TP_DST</code> (reg1[0..15]) and the protocol
+          in <code>REG_CT_PROTO</code> (reg1[16..23]).
         </p>
       </li>
 
