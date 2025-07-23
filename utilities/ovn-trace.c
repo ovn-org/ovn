@@ -1621,12 +1621,8 @@ execute_pop(const struct ovnact_push_pop *p, struct ofpbuf *stack,
     const void *src = nx_stack_pop(stack, &src_bytes);
     if (src) {
         union mf_subvalue sv;
-        uint8_t dst_bytes = DIV_ROUND_UP(sf.n_bits, 8);
+        memset(&sv, 0, sizeof sv);
 
-        if (src_bytes < dst_bytes) {
-            memset(&sv.u8[sizeof sv - dst_bytes], 0,
-                   dst_bytes - src_bytes);
-        }
         memcpy(&sv.u8[sizeof sv - src_bytes], src, src_bytes);
         mf_write_subfield_flow(&sf, &sv, uflow);
         mf_format_subvalue(&sv, &s);
