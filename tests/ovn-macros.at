@@ -1253,6 +1253,7 @@ hex_to_mac() {
 }
 
 send_garp() {
+    AT_SKIP_IF([test $HAVE_SCAPY = no])
     local hv=$1 inport=$2 op=$3 eth_src=$4 eth_dst=$5 spa=$6 tpa=$7
 
     local packet=$(fmt_pkt "Ether(dst='${eth_dst}', src='${eth_src}')/ \
