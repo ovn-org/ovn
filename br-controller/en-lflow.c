@@ -68,6 +68,7 @@ struct lookup_port_aux {
     const struct ovn_bridge *br;
 };
 
+static void br_controller_extend_symtab(struct shash *symtab);
 static struct expr *convert_match_to_expr(
     const struct ovnbrrec_logical_flow *lflow, struct expr **prereqs,
     struct shash *symtab);
@@ -97,6 +98,7 @@ void *en_lflow_output_init(struct engine_node *node OVS_UNUSED,
     struct ed_type_lflow_output_data *lflow_data = xzalloc(sizeof *lflow_data);
     ovn_init_symtab(&lflow_data->pd.symtab);
     lflow_conj_ids_init(&lflow_data->conj_ids);
+    br_controller_extend_symtab(&lflow_data->pd.symtab);
 
     return lflow_data;
 }
@@ -129,6 +131,23 @@ en_lflow_output_run(struct engine_node *node OVS_UNUSED, void *data_)
 }
 
 /* Static functions. */
+
+static void
+br_controller_extend_symtab(struct shash *symtab)
+{
+    expr_symtab_add_field(symtab, "ct_snat_zone", MFF_LOG_SNAT_ZONE,
+                          NULL, false);
+    expr_symtab_add_field(symtab, "ct_dnat_zone", MFF_LOG_DNAT_ZONE,
+                          NULL, false);
+    expr_symtab_add_field(symtab, "metadata", MFF_METADATA, NULL, false);
+    expr_symtab_add_field(symtab, "tun.id", MFF_TUN_ID, NULL, false);
+    expr_symtab_add_field(symtab, "tun_ip4.src", MFF_TUN_SRC, "ip4", false);
+    expr_symtab_add_field(symtab, "tun_ip4.dst", MFF_TUN_DST, "ip4", false);
+    expr_symtab_add_field(symtab, "tun_ip6.src", MFF_TUN_IPV6_SRC,
+                          "ip6", false);
+    expr_symtab_add_field(symtab, "tun_ip6.dst", MFF_TUN_IPV6_DST,
+                          "ip6", false);
+}
 
 static void
 init_lflow_ctx(struct engine_node *node,

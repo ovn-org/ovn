@@ -188,6 +188,36 @@ AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br0 | ofctl_strip_all], [0], [dnl
 NXST_FLOW reply:
 ])
 
+check ovs-vsctl add-port br0 eth1 -- set interface eth1 ofport-request=4
+check as ovn-br ovn-brctl add-flow br0 3 100 "ip4 && metadata == 1000" "ct_snat_zone = 100; ct_snat;"
+check as ovn-br ovn-brctl add-flow br0 3 100 "ip4 && metadata == 1001" "ct_dnat_zone = 101; ct_dnat;"
+check as ovn-br ovn-brctl add-flow br0 4 100 "ip4 && metadata == 1000 && ip4.dst == 52.92.128.0/17" "tun.id = 1000; tun_ip4.dst = 10.100.100.1; eth.dst = 4c:96:14:14:01:b0; outport = \"eth1\"; output;"
+check as ovn-br ovn-brctl add-flow br0 4 101 "ip6 && metadata == 1000" "tun.id = 1000; tun_ip6.src = aef0::3; tun_ip6.dst = bef0::4; eth.dst = 4c:96:14:14:01:b0; outport = \"eth1\"; output;"
+
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br0 | grep -v NXST_FLOW | wc -l` -eq 17])
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br0 | ofctl_strip_all], [0], [dnl
+ priority=0 actions=NORMAL
+ priority=100,in_port=2 actions=load:0x2->NXM_NX_REG14[[]],resubmit(,8)
+ priority=100,in_port=4 actions=load:0x4->NXM_NX_REG14[[]],resubmit(,8)
+ table=10, priority=1000 actions=resubmit(,120)
+ table=11, priority=100,ip,metadata=0x3e8 actions=load:0x64->NXM_NX_REG12[[]],ct(table=12,zone=NXM_NX_REG12[[0..15]],nat)
+ table=11, priority=100,ip,metadata=0x3e9 actions=load:0x65->NXM_NX_REG11[[]],ct(table=12,zone=NXM_NX_REG11[[0..15]],nat)
+ table=12, priority=100,ip,metadata=0x3e8,nw_dst=52.92.128.0/17 actions=load:0x3e8->NXM_NX_TUN_ID[[]],load:0xa646401->NXM_NX_TUN_IPV4_DST[[]],mod_dl_dst:4c:96:14:14:01:b0,load:0x4->NXM_NX_REG15[[]],resubmit(,120)
+ table=12, priority=101,ipv6,metadata=0x3e8 actions=load:0x3e8->NXM_NX_TUN_ID[[]],load:0x3->NXM_NX_TUN_IPV6_SRC[[0..63]],load:0xaef0000000000000->NXM_NX_TUN_IPV6_SRC[[64..127]],load:0x4->NXM_NX_TUN_IPV6_DST[[0..63]],load:0xbef0000000000000->NXM_NX_TUN_IPV6_DST[[64..127]],mod_dl_dst:4c:96:14:14:01:b0,load:0x4->NXM_NX_REG15[[]],resubmit(,120)
+ table=120, priority=0 actions=resubmit(,121)
+ table=120, priority=100,reg14=0x2,reg15=0x2 actions=push:NXM_OF_IN_PORT[[]],load:0xffff->NXM_OF_IN_PORT[[]],resubmit(,121),pop:NXM_OF_IN_PORT[[]]
+ table=120, priority=100,reg14=0x4,reg15=0x4 actions=push:NXM_OF_IN_PORT[[]],load:0xffff->NXM_OF_IN_PORT[[]],resubmit(,121),pop:NXM_OF_IN_PORT[[]]
+ table=121, priority=0 actions=NORMAL
+ table=121, priority=100,reg15=0x2 actions=output:2
+ table=121, priority=100,reg15=0x4 actions=output:4
+ table=8, priority=1000,reg14=0x2 actions=resubmit(,9)
+ table=9, priority=1000,ip actions=resubmit(,10)
+ table=9, priority=1000,tcp actions=push:NXM_OF_IP_DST[[]],push:NXM_OF_IP_SRC[[]],pop:NXM_OF_IP_DST[[]],pop:NXM_OF_IP_SRC[[]],mod_tp_dst:8080,resubmit(,10)
+NXST_FLOW reply:
+])
+
+
 check ovs-vsctl add-br br1
 check ovs-vsctl add-port br1 br1-p1 -- set interface br1-p1 ofport-request=1
 check ovs-vsctl add-port br1 br1-p2 -- set interface br1-p2 ofport-request=2
