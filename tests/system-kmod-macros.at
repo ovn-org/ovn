@@ -19,8 +19,7 @@ m4_define([OVS_TRAFFIC_VSWITCHD_START],
   [AT_CHECK([modprobe openvswitch])
    on_exit 'modprobe -r openvswitch'
    m4_foreach([mod], [[vport_geneve], [vport_gre], [vport_vxlan]],
-              [modprobe -q mod || echo "Module mod not loaded."
-               on_exit 'modprobe -q -r mod'
+              [modprobe mod && on_exit 'modprobe -r mod' || echo "Module mod not loaded."
               ])
    on_exit 'ovs-dpctl show | grep ovs-system && ovs-dpctl del-dp ovs-system'
    on_exit 'test -e $OVS_RUNDIR/ovs-vswitchd.pid && ovs-appctl dpctl/flush-conntrack'
@@ -67,8 +66,7 @@ m4_define([CONFIGURE_VETH_OFFLOADS],
 m4_define([CHECK_CONNTRACK],
      m4_foreach([mod], [[nf_conntrack_ipv4], [nf_conntrack_ipv6], [nf_nat_ftp],
                         [nf_nat_tftp]],
-                [modprobe mod || echo "Module mod not loaded."
-                 on_exit 'modprobe -r mod'
+                [modprobe mod && on_exit 'modprobe -r mod' || echo "Module mod not loaded."
                 ])
      sysctl -w net.netfilter.nf_conntrack_helper=0
      on_exit "${ovs_builddir}/tests/ovstest test-netlink-conntrack flush"
