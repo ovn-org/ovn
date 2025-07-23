@@ -33,6 +33,7 @@ m4_divert_text([PREPARE_TESTS],
        [$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $rcv_pcap > rcv_tmp
         rcv_n=`wc -l < rcv_tmp`
         echo "rcv_n=$rcv_n exp_n=$exp_n"
+        cat rcv_tmp > $rcv_text
         test $rcv_n -ge $exp_n],
        [dump_diff__ "$rcv_pcap" "$exp_text"])
      sort $exp_text | $cmd > expout
@@ -50,6 +51,7 @@ m4_divert_text([PREPARE_TESTS],
         sed -i '/ffffffffffff/d' rcv_tmp
         rcv_n=`wc -l < rcv_tmp`
         echo "rcv_n=$rcv_n exp_n=$exp_n"
+        cat rcv_tmp > $rcv_text
         test $rcv_n -ge $exp_n],
        [dump_diff__ "$rcv_pcap" "$exp_text"])
      sort $exp_text | $cmd > expout
