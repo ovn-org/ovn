@@ -35,11 +35,13 @@
 
 
 /* OVN includes. */
+#include "br-ofctrl.h"
 #include "en-bridge-data.h"
 #include "en-lflow.h"
 #include "en-pflow.h"
 #include "lib/ovn-br-idl.h"
 #include "lib/inc-proc-eng.h"
+#include "lib/ofctrl-seqno.h"
 #include "lib/ovn-util.h"
 
 VLOG_DEFINE_THIS_MODULE(main);
@@ -54,6 +56,9 @@ static const char *ssl_ca_cert_file;
 
 /* --unixctl-path: Path to use for unixctl server socket. */
 static char *unixctl_path;
+
+/* Registered ofctrl seqno type for br_cfg propagation. */
+static size_t ofctrl_seq_type_br_cfg;
 
 #define BRCTL_NODES \
     BRCTL_NODE(br_global) \
@@ -110,7 +115,12 @@ en_br_controller_output_run(struct engine_node *node OVS_UNUSED,
 /* Static function declarations. */
 static void ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl);
 static void update_br_db(struct ovsdb_idl *ovs_idl,
-                         struct ovsdb_idl *ovn_br_idl);
+                         struct ovsdb_idl *ovnbr_idl,
+                         unsigned int *ovnbr_cond_seqno);
+static unsigned int update_ovnbr_monitors(struct ovsdb_idl *);
+static uint64_t get_ovnbr_cfg(const struct ovnbrrec_br_global_table *,
+                                  unsigned int cond_seqno,
+                                  unsigned int expected_cond_seqno);
 
 int
 main(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
@@ -137,6 +147,9 @@ main(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
                              &exit_args);
 
     daemonize_complete();
+
+    /* Register ofctrl seqno types. */
+    ofctrl_seq_type_br_cfg = ofctrl_seqno_add_type();
 
     /* Connect to OVS OVSDB instance. */
     struct ovsdb_idl_loop ovs_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
@@ -206,8 +219,12 @@ main(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
     engine_init(&en_br_controller_output, &engine_arg);
     engine_ovsdb_node_add_index(&en_ovs_bridge, "name", ovsrec_bridge_by_name);
 
-    unsigned int ovs_cond_seqno = UINT_MAX;
+    unsigned int ovnbr_expected_cond_seqno = UINT_MAX;
     unsigned int ovnbr_cond_seqno = UINT_MAX;
+    unsigned int ovs_cond_seqno = UINT_MAX;
+
+    struct ed_type_bridge_data *br_data =
+        engine_get_internal_data(&en_bridge_data);
 
     /* Main loop. */
     while (!exit_args.exiting) {
@@ -224,7 +241,8 @@ main(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
             ovs_cond_seqno = new_ovs_cond_seqno;
         }
 
-        update_br_db(ovs_idl_loop.idl, ovnbr_idl_loop.idl);
+        update_br_db(ovs_idl_loop.idl, ovnbr_idl_loop.idl,
+                     &ovnbr_expected_cond_seqno);
         struct ovsdb_idl_txn *ovnbr_idl_txn
             = ovsdb_idl_loop_run(&ovnbr_idl_loop);
         unsigned int new_ovnbr_cond_seqno
@@ -251,10 +269,48 @@ main(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
 
         if (ovsdb_idl_has_ever_connected(ovnbr_idl_loop.idl) && cfg) {
             engine_run(true);
+
+            br_data = engine_get_data(&en_bridge_data);
+            if (br_data) {
+                struct sset bridges_in_br_ofctrl =
+                    SSET_INITIALIZER(&bridges_in_br_ofctrl);
+                br_ofctrls_get_bridges(&bridges_in_br_ofctrl);
+                struct shash_node *node;
+                SHASH_FOR_EACH (node, &br_data->bridges) {
+                    struct ovn_bridge *br = node->data;
+
+                    if (br->ovs_br) {
+                        sset_find_and_delete(&bridges_in_br_ofctrl,
+                                             br->db_br->name);
+                        br_ofctrls_add_or_update_bridge(br);
+                    }
+                }
+
+                const char *bridge;
+                SSET_FOR_EACH (bridge, &bridges_in_br_ofctrl) {
+                    br_ofctrls_remove_bridge(bridge);
+                }
+
+                sset_destroy(&bridges_in_br_ofctrl);
+            }
+
+            br_ofctrls_run();
+
+            ofctrl_seqno_update_create(
+                ofctrl_seq_type_br_cfg,
+                get_ovnbr_cfg(ovnbrrec_br_global_table_get(ovnbr_idl_loop.idl),
+                              ovnbr_cond_seqno, ovnbr_expected_cond_seqno));
+
+            br_ofctrls_put(ofctrl_seqno_get_req_cfg(),
+                           engine_node_changed(&en_lflow_output),
+                           engine_node_changed(&en_pflow_output));
+
+            ofctrl_seqno_run(br_ofctrl_get_cur_cfg());
         }
 
         unixctl_server_run(unixctl);
 
+        br_ofctrls_wait();
         unixctl_server_wait(unixctl);
         if (exit_args.exiting) {
             poll_immediate_wake();
@@ -440,7 +496,8 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
 /* Retrieves the pointer to the OVN Bridge Controller database from 'ovs_idl'
  * and updates 'brdb_idl' with that pointer. */
 static void
-update_br_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnbr_idl)
+update_br_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnbr_idl,
+             unsigned int *ovnbr_cond_seqno)
 {
     const struct ovsrec_open_vswitch *cfg = ovsrec_open_vswitch_first(ovs_idl);
     if (!cfg) {
@@ -449,4 +506,55 @@ update_br_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnbr_idl)
 
     const char *remote = smap_get(&cfg->external_ids, "ovn-br-remote");
     ovsdb_idl_set_remote(ovnbr_idl, remote, true);
+
+    unsigned int next_cond_seqno = update_ovnbr_monitors(ovnbr_idl);
+    if (ovnbr_cond_seqno) {
+        *ovnbr_cond_seqno = next_cond_seqno;
+    }
+}
+
+/* Assume the table exists in the server schema and set its condition. */
+#define ovnbr_table_set_req_mon_condition(idl, table, cond) \
+    ovnbrrec_##table##_set_condition(idl, cond)
+
+static unsigned int
+update_ovnbr_monitors(struct ovsdb_idl *ovnbr_idl)
+{
+    struct ovsdb_idl_condition br = OVSDB_IDL_CONDITION_INIT(&br);
+    struct ovsdb_idl_condition lf = OVSDB_IDL_CONDITION_INIT(&lf);
+
+    ovsdb_idl_condition_add_clause_true(&br);
+    ovsdb_idl_condition_add_clause_true(&lf);
+
+    unsigned int cond_seqnos[] = {
+        ovnbr_table_set_req_mon_condition(ovnbr_idl, bridge, &br),
+        ovnbr_table_set_req_mon_condition(ovnbr_idl, logical_flow, &lf),
+    };
+
+    unsigned int expected_cond_seqno = 0;
+    for (size_t i = 0; i < ARRAY_SIZE(cond_seqnos); i++) {
+        expected_cond_seqno = MAX(expected_cond_seqno, cond_seqnos[i]);
+    }
+
+    return expected_cond_seqno;
+}
+
+static uint64_t
+get_ovnbr_cfg(const struct ovnbrrec_br_global_table *br_global_table,
+              unsigned int cond_seqno, unsigned int expected_cond_seqno)
+{
+    static uint64_t br_cfg = 0;
+
+    /* Delay getting br_cfg if there are monitor condition changes
+     * in flight.  It might be that those changes would instruct the
+     * server to send updates that happened before PR_Global.pr_cfg.
+     */
+    if (cond_seqno != expected_cond_seqno) {
+        return br_cfg;
+    }
+
+    const struct ovnbrrec_br_global *br_global
+        = ovnbrrec_br_global_table_first(br_global_table);
+    br_cfg = br_global ? br_global->br_cfg : 0;
+    return br_cfg;
 }

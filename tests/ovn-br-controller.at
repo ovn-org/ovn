@@ -1,0 +1,343 @@
+AT_BANNER([ovn_br_controller])
+
+# OVN_BR_CONTROLLER_START(SIM_NAME)
+#
+# $1 - optional simulator name. If none is given, runs ovn-br-controller
+#      in $ovs_dir.
+# Starts the test with a setup with ovn bridge controller.  Each test case must first
+# call this macro and ovn_start.
+#
+m4_define([OVN_BR_CONTROLLER_START], [
+    AT_KEYWORDS([ovn-br-controller])
+    mkdir -p "$ovs_dir" || return 1
+    mkdir "$ovs_base"/ovn-br || return 1
+
+    dnl Create databases (vswitch).
+    check ovsdb-tool create "$ovs_dir"/vswitchd.db $ovs_srcdir/vswitchd/vswitch.ovsschema
+    check ovsdb-tool create "$ovs_base"/ovn-br/ovn-br.db "$abs_top_srcdir"/ovn-br.ovsschema
+
+    dnl Start ovsdb-server.
+    start_daemon ovsdb-server --remote=punix:"$ovs_dir"/db.sock \
+                             "$ovs_dir"/vswitchd.db
+
+    ovn_br_remote=unix:"$ovs_base"/ovn-br/ovnbr_db.sock
+    dnl Start ovs-vswitchd.
+    start_daemon ovs-vswitchd --enable-dummy=system -vvconn -vofproto_dpif
+
+    ovs-vsctl \
+        -- set Open_vSwitch . external-ids:ovn-br-remote=$ovn_br_remote
+    dnl Start ovsdb-server for ovn-br.
+    as ovn-br start_daemon ovsdb-server --remote=punix:"$ovs_base"/ovn-br/ovnbr_db.sock \
+        "$ovs_base"/ovn-br/ovn-br.db
+
+    which ovn-br-controller
+    dnl Start ovn-br-controller.
+    start_daemon ovn-br-controller
+])
+
+m4_define([OVN_BR_CONTROLLER_STOP],[
+   echo
+   echo "Clean up ovn-br-controller related processes in $2"
+   test -n "$2" && as "$2"
+   OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+   OVS_APP_EXIT_AND_WAIT([ovs-vswitchd])
+   OVS_APP_EXIT_AND_WAIT([ovn-br-controller])
+
+   as ovn-br
+   OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+])
+
+AT_SETUP([ovn-br-controller - brctl test])
+OVN_BR_CONTROLLER_START
+
+check as ovn-br ovn-brctl show
+check as ovn-br ovn-brctl add-br br0
+
+AT_CHECK([as ovn-br ovn-brctl show | uuidfilt], [0],
+  [bridge <0> (br0)
+])
+
+AT_CHECK([as ovn-br ovn-brctl show br0 | uuidfilt], [0],
+  [bridge <0> (br0)
+])
+
+AT_CHECK([as ovn-br ovn-brctl show br1 | uuidfilt], [0], [],
+  [ovn-brctl: no row "br1" in table Bridge
+])
+
+check as ovn-br ovn-brctl del-br br0
+check as ovn-br ovn-brctl show
+
+check as ovn-br ovn-brctl add-br br0
+
+check as ovn-br ovn-brctl add-flow br0 0 1000 "ip4 && tcp" "drop;"
+check as ovn-br ovn-brctl add-flow br0 0 1000 "ip4 && udp" "next;"
+check as ovn-br ovn-brctl add-flow br0 1 0 "ip4 && udp" "output;"
+
+check as ovn-br ovn-brctl add-br br1
+
+check as ovn-br ovn-brctl add-flow br1 0 1000 "ip4 && tcp.dst == 1000 && ip4.dst == 10.0.0.10" "drop;"
+check as ovn-br ovn-brctl add-flow br1 0 0 "1" "output;"
+
+AT_CHECK([as ovn-br ovn-brctl dump-flows | uuidfilt], [0],
+  [dnl
+Bridge: br0 (<0>)
+  table=0 , priority=1000 , match=(ip4 && tcp), action=(drop;)
+  table=0 , priority=1000 , match=(ip4 && udp), action=(next;)
+  table=1 , priority=0    , match=(ip4 && udp), action=(output;)
+Bridge: br1 (<1>)
+  table=0 , priority=1000 , match=(ip4 && tcp.dst == 1000 && ip4.dst == 10.0.0.10), action=(drop;)
+  table=0 , priority=0    , match=(1), action=(output;)
+])
+
+as ovn-br ovn-brctl del-flows br1
+
+AT_CHECK([as ovn-br ovn-brctl dump-flows | uuidfilt], [0],
+  [dnl
+Bridge: br0 (<0>)
+  table=0 , priority=1000 , match=(ip4 && tcp), action=(drop;)
+  table=0 , priority=1000 , match=(ip4 && udp), action=(next;)
+  table=1 , priority=0    , match=(ip4 && udp), action=(output;)
+])
+
+lflow_uuid=$(as ovn-br ovn-brctl --bare --columns _uuid find logical_flow table_id=1)
+check as ovn-br ovn-brctl del-flow $lflow_uuid
+
+AT_CHECK([as ovn-br ovn-brctl dump-flows | uuidfilt], [0],
+  [dnl
+Bridge: br0 (<0>)
+  table=0 , priority=1000 , match=(ip4 && tcp), action=(drop;)
+  table=0 , priority=1000 , match=(ip4 && udp), action=(next;)
+])
+
+OVN_BR_CONTROLLER_STOP
+AT_CLEANUP
+
+AT_SETUP([ovn-br-controller - logical flows])
+OVN_BR_CONTROLLER_START
+
+check as ovn-br ovn-brctl add-br br0
+
+check ovs-vsctl add-br br0
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br0 | grep -v NXST_FLOW | wc -l` -eq 3])
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br0 | sort | ofctl_strip_all], [0], [dnl
+ priority=0 actions=NORMAL
+ table=120, priority=0 actions=resubmit(,121)
+ table=121, priority=0 actions=NORMAL
+NXST_FLOW reply:
+])
+
+check ovs-vsctl add-port br0 p1 -- set interface p1 ofport-request=2
+check ovs-vsctl add-port br0 p2 -- set interface p2 ofport-request=3
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br0 | grep -v NXST_FLOW | wc -l` -eq 9])
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br0 | sort | ofctl_strip_all], [0], [dnl
+ priority=0 actions=NORMAL
+ priority=100,in_port=2 actions=load:0x2->NXM_NX_REG14[[]],resubmit(,8)
+ priority=100,in_port=3 actions=load:0x3->NXM_NX_REG14[[]],resubmit(,8)
+ table=120, priority=0 actions=resubmit(,121)
+ table=120, priority=100,reg14=0x2,reg15=0x2 actions=push:NXM_OF_IN_PORT[[]],load:0xffff->NXM_OF_IN_PORT[[]],resubmit(,121),pop:NXM_OF_IN_PORT[[]]
+ table=120, priority=100,reg14=0x3,reg15=0x3 actions=push:NXM_OF_IN_PORT[[]],load:0xffff->NXM_OF_IN_PORT[[]],resubmit(,121),pop:NXM_OF_IN_PORT[[]]
+ table=121, priority=0 actions=NORMAL
+ table=121, priority=100,reg15=0x2 actions=output:2
+ table=121, priority=100,reg15=0x3 actions=output:3
+NXST_FLOW reply:
+])
+
+check as ovn-br ovn-brctl add-flow br0 0 1000 'inport == "p1"' "next;"
+check as ovn-br ovn-brctl add-flow br0 0 1000 'inport == "p2"' "drop;"
+check as ovn-br ovn-brctl add-flow br0 1 1000 'ip4 && tcp' "ip4.src <-> ip4.dst; tcp.dst = 8080; next;"
+check as ovn-br ovn-brctl add-flow br0 1 1000 'ip4' "next;"
+check as ovn-br ovn-brctl add-flow br0 2 1000 '1' "output;"
+
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br0 | grep -v NXST_FLOW | wc -l` -eq 14])
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br0 | ofctl_strip_all], [0], [dnl
+ priority=0 actions=NORMAL
+ priority=100,in_port=2 actions=load:0x2->NXM_NX_REG14[[]],resubmit(,8)
+ priority=100,in_port=3 actions=load:0x3->NXM_NX_REG14[[]],resubmit(,8)
+ table=10, priority=1000 actions=resubmit(,120)
+ table=120, priority=0 actions=resubmit(,121)
+ table=120, priority=100,reg14=0x2,reg15=0x2 actions=push:NXM_OF_IN_PORT[[]],load:0xffff->NXM_OF_IN_PORT[[]],resubmit(,121),pop:NXM_OF_IN_PORT[[]]
+ table=120, priority=100,reg14=0x3,reg15=0x3 actions=push:NXM_OF_IN_PORT[[]],load:0xffff->NXM_OF_IN_PORT[[]],resubmit(,121),pop:NXM_OF_IN_PORT[[]]
+ table=121, priority=0 actions=NORMAL
+ table=121, priority=100,reg15=0x2 actions=output:2
+ table=121, priority=100,reg15=0x3 actions=output:3
+ table=8, priority=1000,reg14=0x2 actions=resubmit(,9)
+ table=8, priority=1000,reg14=0x3 actions=drop
+ table=9, priority=1000,ip actions=resubmit(,10)
+ table=9, priority=1000,tcp actions=push:NXM_OF_IP_DST[[]],push:NXM_OF_IP_SRC[[]],pop:NXM_OF_IP_DST[[]],pop:NXM_OF_IP_SRC[[]],mod_tp_dst:8080,resubmit(,10)
+NXST_FLOW reply:
+])
+
+check ovs-vsctl del-port p2
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br0 | grep -v NXST_FLOW | wc -l` -eq 10])
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br0 | ofctl_strip_all], [0], [dnl
+ priority=0 actions=NORMAL
+ priority=100,in_port=2 actions=load:0x2->NXM_NX_REG14[[]],resubmit(,8)
+ table=10, priority=1000 actions=resubmit(,120)
+ table=120, priority=0 actions=resubmit(,121)
+ table=120, priority=100,reg14=0x2,reg15=0x2 actions=push:NXM_OF_IN_PORT[[]],load:0xffff->NXM_OF_IN_PORT[[]],resubmit(,121),pop:NXM_OF_IN_PORT[[]]
+ table=121, priority=0 actions=NORMAL
+ table=121, priority=100,reg15=0x2 actions=output:2
+ table=8, priority=1000,reg14=0x2 actions=resubmit(,9)
+ table=9, priority=1000,ip actions=resubmit(,10)
+ table=9, priority=1000,tcp actions=push:NXM_OF_IP_DST[[]],push:NXM_OF_IP_SRC[[]],pop:NXM_OF_IP_DST[[]],pop:NXM_OF_IP_SRC[[]],mod_tp_dst:8080,resubmit(,10)
+NXST_FLOW reply:
+])
+
+check ovs-vsctl add-br br1
+check ovs-vsctl add-port br1 br1-p1 -- set interface br1-p1 ofport-request=1
+check ovs-vsctl add-port br1 br1-p2 -- set interface br1-p2 ofport-request=2
+
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br1 | grep -v NXST_FLOW | wc -l` -eq 1])
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br1 | sort | ofctl_strip_all], [0], [dnl
+ priority=0 actions=NORMAL
+NXST_FLOW reply:
+])
+
+br_id="4830e8c3-9b6b-48db-ba52-e030d9db7256"
+as ovn-br ovn-brctl --id=${br_id} create bridge name=br1
+as ovn-br ovn-brctl list bridge
+
+# check as ovn-br ovn-brctl add-br br1
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br1 | grep -v NXST_FLOW | wc -l` -eq 9])
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br1 | sort | ofctl_strip_all], [0], [dnl
+ priority=0 actions=NORMAL
+ priority=100,in_port=1 actions=load:0x1->NXM_NX_REG14[[]],resubmit(,8)
+ priority=100,in_port=2 actions=load:0x2->NXM_NX_REG14[[]],resubmit(,8)
+ table=120, priority=0 actions=resubmit(,121)
+ table=120, priority=100,reg14=0x1,reg15=0x1 actions=push:NXM_OF_IN_PORT[[]],load:0xffff->NXM_OF_IN_PORT[[]],resubmit(,121),pop:NXM_OF_IN_PORT[[]]
+ table=120, priority=100,reg14=0x2,reg15=0x2 actions=push:NXM_OF_IN_PORT[[]],load:0xffff->NXM_OF_IN_PORT[[]],resubmit(,121),pop:NXM_OF_IN_PORT[[]]
+ table=121, priority=0 actions=NORMAL
+ table=121, priority=100,reg15=0x1 actions=output:1
+ table=121, priority=100,reg15=0x2 actions=output:2
+NXST_FLOW reply:
+])
+
+check as ovn-br ovn-brctl add-flow br1 1 1000 "ip4" "ct_snat;"
+check as ovn-br ovn-brctl add-flow br1 2 1000 "ip4 && ct.new && ct.trk && ip4.src == 10.0.0.11" "ct_snat(100.64.0.11); next;"
+check as ovn-br ovn-brctl add-flow br1 3 1000 "inport == \"br1-p1\"" "outport = \"br1-p2\"; output;"
+check as ovn-br ovn-brctl add-flow br1 3 1000 "inport == \"br1-p2\"" "outport = \"br1-p1\"; output;"
+
+lflow_id="75bf46aa-4204-4e36-af23-6114f59e3fe8"
+
+as ovn-br ovn-brctl --id=${lflow_id} create logical_flow \
+match='"ip4 && tcp.src > 0 && tcp.src < 1000 && tcp.dst > 1000 && tcp.dst < 2000"' \
+actions="next;" bridge=${br_id} table_id=10 priority=1000
+
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br1 | grep -v NXST_FLOW | wc -l` -eq 37])
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br1 | sort | ofctl_strip_all], [0], [dnl
+ priority=0 actions=NORMAL
+ priority=100,in_port=1 actions=load:0x1->NXM_NX_REG14[[]],resubmit(,8)
+ priority=100,in_port=2 actions=load:0x2->NXM_NX_REG14[[]],resubmit(,8)
+ table=10, priority=1000,ct_state=+new+trk,ip,nw_src=10.0.0.11 actions=ct(commit,table=11,zone=NXM_NX_REG12[[0..15]],nat(src=100.64.0.11)),resubmit(,11)
+ table=11, priority=1000,reg14=0x1 actions=load:0x2->NXM_NX_REG15[[]],resubmit(,120)
+ table=11, priority=1000,reg14=0x2 actions=load:0x1->NXM_NX_REG15[[]],resubmit(,120)
+ table=120, priority=0 actions=resubmit(,121)
+ table=120, priority=100,reg14=0x1,reg15=0x1 actions=push:NXM_OF_IN_PORT[[]],load:0xffff->NXM_OF_IN_PORT[[]],resubmit(,121),pop:NXM_OF_IN_PORT[[]]
+ table=120, priority=100,reg14=0x2,reg15=0x2 actions=push:NXM_OF_IN_PORT[[]],load:0xffff->NXM_OF_IN_PORT[[]],resubmit(,121),pop:NXM_OF_IN_PORT[[]]
+ table=121, priority=0 actions=NORMAL
+ table=121, priority=100,reg15=0x1 actions=output:1
+ table=121, priority=100,reg15=0x2 actions=output:2
+ table=18, priority=1000,conj_id=1644032429,tcp actions=resubmit(,19)
+ table=18, priority=1000,tcp,tp_dst=0x3ea/0xfffe actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x3ec/0xfffc actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x3f0/0xfff0 actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x400/0xfe00 actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x600/0xff00 actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x700/0xff80 actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x780/0xffc0 actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x7c0/0xfff0 actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_dst=1001 actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_src=0x10/0xfff0 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x100/0xff00 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x2/0xfffe actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x20/0xffe0 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x200/0xff00 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x300/0xff80 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x380/0xffc0 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x3c0/0xffe0 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x3e0/0xfff8 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x4/0xfffc actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x40/0xffc0 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x8/0xfff8 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x80/0xff80 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=1 actions=conjunction(1644032429,2/2)
+ table=9, priority=1000,ip actions=ct(table=10,zone=NXM_NX_REG12[[0..15]],nat)
+NXST_FLOW reply:
+])
+
+as ovn-br ovn-brctl set logical_flow ${lflow_id} match='"ip4 && sctp"'
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br1 | grep -v NXST_FLOW | wc -l` -eq 14])
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br1 | sort | ofctl_strip_all], [0], [dnl
+ priority=0 actions=NORMAL
+ priority=100,in_port=1 actions=load:0x1->NXM_NX_REG14[[]],resubmit(,8)
+ priority=100,in_port=2 actions=load:0x2->NXM_NX_REG14[[]],resubmit(,8)
+ table=10, priority=1000,ct_state=+new+trk,ip,nw_src=10.0.0.11 actions=ct(commit,table=11,zone=NXM_NX_REG12[[0..15]],nat(src=100.64.0.11)),resubmit(,11)
+ table=11, priority=1000,reg14=0x1 actions=load:0x2->NXM_NX_REG15[[]],resubmit(,120)
+ table=11, priority=1000,reg14=0x2 actions=load:0x1->NXM_NX_REG15[[]],resubmit(,120)
+ table=120, priority=0 actions=resubmit(,121)
+ table=120, priority=100,reg14=0x1,reg15=0x1 actions=push:NXM_OF_IN_PORT[[]],load:0xffff->NXM_OF_IN_PORT[[]],resubmit(,121),pop:NXM_OF_IN_PORT[[]]
+ table=120, priority=100,reg14=0x2,reg15=0x2 actions=push:NXM_OF_IN_PORT[[]],load:0xffff->NXM_OF_IN_PORT[[]],resubmit(,121),pop:NXM_OF_IN_PORT[[]]
+ table=121, priority=0 actions=NORMAL
+ table=121, priority=100,reg15=0x1 actions=output:1
+ table=121, priority=100,reg15=0x2 actions=output:2
+ table=18, priority=1000,sctp actions=resubmit(,19)
+ table=9, priority=1000,ip actions=ct(table=10,zone=NXM_NX_REG12[[0..15]],nat)
+NXST_FLOW reply:
+])
+
+# Make sure that the same conj_id is used when the lflow is updated with the conj match.
+as ovn-br ovn-brctl set logical_flow ${lflow_id} \
+match='"ip4 && tcp.src > 0 && tcp.src < 1000 && tcp.dst > 1000 && tcp.dst < 2000"'
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br1 | grep -v NXST_FLOW | wc -l` -eq 37])
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br1 | sort | ofctl_strip_all], [0], [dnl
+ priority=0 actions=NORMAL
+ priority=100,in_port=1 actions=load:0x1->NXM_NX_REG14[[]],resubmit(,8)
+ priority=100,in_port=2 actions=load:0x2->NXM_NX_REG14[[]],resubmit(,8)
+ table=10, priority=1000,ct_state=+new+trk,ip,nw_src=10.0.0.11 actions=ct(commit,table=11,zone=NXM_NX_REG12[[0..15]],nat(src=100.64.0.11)),resubmit(,11)
+ table=11, priority=1000,reg14=0x1 actions=load:0x2->NXM_NX_REG15[[]],resubmit(,120)
+ table=11, priority=1000,reg14=0x2 actions=load:0x1->NXM_NX_REG15[[]],resubmit(,120)
+ table=120, priority=0 actions=resubmit(,121)
+ table=120, priority=100,reg14=0x1,reg15=0x1 actions=push:NXM_OF_IN_PORT[[]],load:0xffff->NXM_OF_IN_PORT[[]],resubmit(,121),pop:NXM_OF_IN_PORT[[]]
+ table=120, priority=100,reg14=0x2,reg15=0x2 actions=push:NXM_OF_IN_PORT[[]],load:0xffff->NXM_OF_IN_PORT[[]],resubmit(,121),pop:NXM_OF_IN_PORT[[]]
+ table=121, priority=0 actions=NORMAL
+ table=121, priority=100,reg15=0x1 actions=output:1
+ table=121, priority=100,reg15=0x2 actions=output:2
+ table=18, priority=1000,conj_id=1644032429,tcp actions=resubmit(,19)
+ table=18, priority=1000,tcp,tp_dst=0x3ea/0xfffe actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x3ec/0xfffc actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x3f0/0xfff0 actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x400/0xfe00 actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x600/0xff00 actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x700/0xff80 actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x780/0xffc0 actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x7c0/0xfff0 actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_dst=1001 actions=conjunction(1644032429,1/2)
+ table=18, priority=1000,tcp,tp_src=0x10/0xfff0 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x100/0xff00 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x2/0xfffe actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x20/0xffe0 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x200/0xff00 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x300/0xff80 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x380/0xffc0 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x3c0/0xffe0 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x3e0/0xfff8 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x4/0xfffc actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x40/0xffc0 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x8/0xfff8 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=0x80/0xff80 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,tcp,tp_src=1 actions=conjunction(1644032429,2/2)
+ table=9, priority=1000,ip actions=ct(table=10,zone=NXM_NX_REG12[[0..15]],nat)
+NXST_FLOW reply:
+])
+
+OVN_BR_CONTROLLER_STOP
+AT_CLEANUP

@@ -46,7 +46,8 @@ TESTSUITE_AT = \
 	tests/ovn-lflow-conj-ids.at \
 	tests/ovn-ipsec.at \
 	tests/ovn-vif-plug.at \
-	tests/ovn-util.at
+	tests/ovn-util.at \
+	tests/ovn-br-controller.at
 
 SYSTEM_DPDK_TESTSUITE_AT = \
 	tests/system-dpdk-testsuite.at \
@@ -91,7 +92,7 @@ DISTCLEANFILES += tests/atconfig tests/atlocal
 MULTINODE_TESTSUITE = $(srcdir)/tests/multinode-testsuite
 MULTINODE_TESTSUITE_DIR = $(abs_top_builddir)/tests/multinode-testsuite.dir
 MULTINODE_TESTSUITE_RESULTS = $(MULTINODE_TESTSUITE_DIR)/results
-AUTOTEST_PATH = $(ovs_builddir)/utilities:$(ovs_builddir)/vswitchd:$(ovs_builddir)/ovsdb:$(ovs_builddir)/vtep:tests:$(PTHREAD_WIN32_DIR_DLL):$(SSL_DIR):controller-vtep:northd:utilities:controller:ic
+AUTOTEST_PATH = $(ovs_builddir)/utilities:$(ovs_builddir)/vswitchd:$(ovs_builddir)/ovsdb:$(ovs_builddir)/vtep:tests:$(PTHREAD_WIN32_DIR_DLL):$(SSL_DIR):controller-vtep:northd:utilities:controller:ic:br-controller
 
 export ovs_srcdir
 export ovs_builddir

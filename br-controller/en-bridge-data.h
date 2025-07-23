@@ -26,6 +26,10 @@ struct ovn_bridge {
 
     /* simap of ovs interface names to ofport numbers. */
     struct simap ovs_ifaces;
+
+    int probe_interval;
+    char *conn_target;
+    unsigned int wait_before_clear_time;
 };
 
 struct ed_type_bridge_data {
