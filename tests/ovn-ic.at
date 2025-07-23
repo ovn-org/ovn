@@ -912,7 +912,7 @@ check ovn_as az1 ovn-nbctl lb-add lb_v6 [[4242::1]]:80 "[[4242::2]]:80"
 check ovn_as az1 ovn-nbctl lr-lb-add lr1 lb_v6
 OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 4242])
 
-AT_CHECK([ovn-ic-sbctl list route | grep 4242 -A 2], [0], [dnl
+AT_CHECK([ovn-ic-sbctl list route | grep 'ip_prefix.*4242' -A 2], [0], [dnl
 ip_prefix           : "4242::1/128"
 nexthop             : "2001:db8:1::1"
 origin              : loadbalancer
