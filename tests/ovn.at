@@ -35375,15 +35375,6 @@ send_icmp6_echo_req() {
     as $hv ovs-appctl netdev-dummy/receive $dev $packet
 }
 
-send_na() {
-    local hv=$1 dev=$2 hdst=$3 hsrc=$4 idst=$5 isrc=$6
-    local packet=$(fmt_pkt "Ether(dst='${hdst}', src='${hsrc}')/ \
-                            IPv6(dst='${idst}', src='${isrc}')/ \
-                            ICMPv6ND_NA(tgt='${isrc}')/ \
-                            ICMPv6NDOptDstLLAddr(lladdr='${hsrc}')")
-    as $hv ovs-appctl netdev-dummy/receive $dev $packet
-}
-
 dump_icmp() {
     local hdst=$1 hsrc=$2 idst=$3 isrc=$4 ttl=$5 type=$6 chksum=$7
     local packet=$(fmt_pkt "Ether(dst='${hdst}', src='${hsrc}')/ \
@@ -35451,7 +35442,6 @@ dump_icmp 00:00:00:00:10:1a 00:00:00:00:10:00 192.168.10.100 192.168.20.2 253 0 
 OVN_CHECK_PACKETS_CONTAIN([hv1/public-tx.pcap], [expected])
 
 wait_row_count mac_binding 1 ip="192.168.20.2" logical_port="gw-join"
-n_arp=$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/arp_spa=192.168.20.2/{print substr($4,11,1)}')
 
 OVS_WAIT_UNTIL([$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | \
                   sed 's/reg15=0x.,metadata=0x./reg15=<cleared>,metadata=<cleared>/g' | \
@@ -35480,7 +35470,6 @@ check ovn-nbctl --wait=hv acl-del join
 wait_row_count mac_binding 0
 
 send_icmp6_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:50:01 fd12::2 fd11::64
-send_na hv1 vif1 00:00:00:00:10:00 00:00:00:00:50:01 fd11::1 fd11::64
 check_row_count mac_binding 1 mac=\"00:00:00:00:30:00\" ip=\"fd12::2\"
 
 n_ipv6=$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/ipv6_src=fd12::2/{print substr($4,11,1)}')
