@@ -10247,6 +10247,9 @@ AT_CHECK([ovn-nbctl ls-add ls1])
 
 AS_BOX([requested tag for parent1])
 AT_CHECK([ovn-nbctl --wait=sb lsp-add ls1 c0 parent1 3])
+
+# Adding a container port w/ tag is done in two operations by northd.
+check ovn-nbctl --wait=sb sync
 c0_tag=$(ovn-nbctl lsp-get-tag c0)
 echo c0_tag=$c0_tag
 check test "$c0_tag" = 3
@@ -10255,6 +10258,9 @@ check_row_count Port_Binding 1 logical_port=c0 tag=$c0_tag
 
 AS_BOX([tag allocation 1 for parent1])
 AT_CHECK([ovn-nbctl --wait=sb lsp-add ls1 c1 parent1 0])
+
+# Adding a container port w/ tag is done in two operations by northd.
+check ovn-nbctl --wait=sb sync
 c1_tag=$(ovn-nbctl lsp-get-tag c1)
 echo c1_tag=$c1_tag
 check test "$c1_tag" != "$c0_tag"
@@ -10262,6 +10268,9 @@ check_row_count Port_Binding 1 logical_port=c1 tag=$c1_tag
 
 AS_BOX([tag allocation 2 for parent1])
 AT_CHECK([ovn-nbctl --wait=sb lsp-add ls1 c2 parent1 0])
+
+# Adding a container port w/ tag is done in two operations by northd.
+check ovn-nbctl --wait=sb sync
 c2_tag=$(ovn-nbctl lsp-get-tag c2)
 echo c2_tag=$c2_tag
 check test "$c2_tag" != "$c0_tag"
@@ -10270,6 +10279,9 @@ check_row_count Port_Binding 1 logical_port=c2 tag=$c2_tag
 
 AS_BOX([tag allocation 3 for parent1])
 AT_CHECK([ovn-nbctl --wait=sb lsp-add ls1 c3 parent1 0])
+
+# Adding a container port w/ tag is done in two operations by northd.
+check ovn-nbctl --wait=sb sync
 c3_tag=$(ovn-nbctl lsp-get-tag c3)
 echo c3_tag=$c3_tag
 check test "$c3_tag" != "$c0_tag"
@@ -10279,12 +10291,18 @@ check_row_count Port_Binding 1 logical_port=c3 tag=$c3_tag
 
 AS_BOX([tag allocation 1 for parent2])
 AT_CHECK([ovn-nbctl --wait=sb lsp-add ls1 c4 parent2 0])
+
+# Adding a container port w/ tag is done in two operations by northd.
+check ovn-nbctl --wait=sb sync
 c4_tag=$(ovn-nbctl lsp-get-tag c4)
 echo c4_tag=$c4_tag
 check_row_count Port_Binding 1 logical_port=c4 tag=$c4_tag
 
 AS_BOX([tag allocation 2 for parent2])
 AT_CHECK([ovn-nbctl --wait=sb lsp-add ls1 c5 parent2 0])
+
+# Adding a container port w/ tag is done in two operations by northd.
+check ovn-nbctl --wait=sb sync
 c5_tag=$(ovn-nbctl lsp-get-tag c5)
 echo c5_tag=$c5_tag
 check test "$c5_tag" != "$c4_tag"
@@ -10293,6 +10311,9 @@ check_row_count Port_Binding 1 logical_port=c5 tag=$c5_tag
 AS_BOX([delete and add tag allocation for parent1])
 AT_CHECK([ovn-nbctl --wait=sb lsp-del c1])
 AT_CHECK([ovn-nbctl --wait=sb lsp-add ls1 c6 parent1 0])
+
+# Adding a container port w/ tag is done in two operations by northd.
+check ovn-nbctl --wait=sb sync
 c6_tag=$(ovn-nbctl lsp-get-tag c6)
 echo c6_tag=$c6_tag
 check_row_count Port_Binding 1 logical_port=c6 tag=$c6_tag
