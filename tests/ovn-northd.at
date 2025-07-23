@@ -4789,8 +4789,8 @@ check_stateful_flows() {
 
     AT_CHECK([grep "ls_in_lb " sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && !ct.rpl && reg0[[19]] == 1 && ip4), action=(reg4 = ct_nw_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && !ct.rpl && reg0[[19]] == 1 && ip6), action=(xxreg1 = ct_ip6_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && ct.est && !ct.rpl && reg0[[19]] == 1 && ip4), action=(reg4 = ct_nw_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && ct.est && !ct.rpl && reg0[[19]] == 1 && ip6), action=(xxreg1 = ct_ip6_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
   table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && ct_tcp.dst == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.4:8080);)
   table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.20 && ct_tcp.dst == 80), action=(reg4 = 10.0.0.20; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.40:8080);)
 ])
@@ -4897,8 +4897,8 @@ check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
 AT_CHECK([ovn-sbctl dump-flows sw0 | grep "ls_in_lb " | ovn_strip_lflows ], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.20), action=(drop;)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && !ct.rpl && reg0[[19]] == 1 && ip4), action=(reg4 = ct_nw_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && !ct.rpl && reg0[[19]] == 1 && ip6), action=(xxreg1 = ct_ip6_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && ct.est && !ct.rpl && reg0[[19]] == 1 && ip4), action=(reg4 = ct_nw_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && ct.est && !ct.rpl && reg0[[19]] == 1 && ip6), action=(xxreg1 = ct_ip6_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
 ])
 
 AT_CLEANUP
@@ -8149,8 +8149,8 @@ AT_CHECK([grep -e "ls_in_acl.*eval" -e "ls_in_acl_hint" lsflows | ovn_strip_lflo
 AT_CHECK([grep -e "ls_in_lb " lsflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.2), action=(reg4 = 10.0.0.2; ct_lb_mark(backends=10.0.0.10);)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && !ct.rpl && reg0[[19]] == 1 && ip4), action=(reg4 = ct_nw_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && !ct.rpl && reg0[[19]] == 1 && ip6), action=(xxreg1 = ct_ip6_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && ct.est && !ct.rpl && reg0[[19]] == 1 && ip4), action=(reg4 = ct_nw_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && ct.est && !ct.rpl && reg0[[19]] == 1 && ip6), action=(xxreg1 = ct_ip6_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
 ])
 
 AT_CHECK([grep -e "ls_in_stateful" lsflows | ovn_strip_lflows], [0], [dnl
@@ -8208,8 +8208,8 @@ AT_CHECK([grep -e "ls_in_acl.*eval" -e "ls_in_acl_hint" lsflows | ovn_strip_lflo
 AT_CHECK([grep -e "ls_in_lb " lsflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.2), action=(reg4 = 10.0.0.2; ct_lb_mark(backends=10.0.0.10);)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && !ct.rpl && reg0[[19]] == 1 && ip4), action=(reg4 = ct_nw_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && !ct.rpl && reg0[[19]] == 1 && ip6), action=(xxreg1 = ct_ip6_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && ct.est && !ct.rpl && reg0[[19]] == 1 && ip4), action=(reg4 = ct_nw_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && ct.est && !ct.rpl && reg0[[19]] == 1 && ip6), action=(xxreg1 = ct_ip6_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
 ])
 
 AT_CHECK([grep -e "ls_in_stateful" lsflows | ovn_strip_lflows], [0], [dnl
@@ -8267,8 +8267,8 @@ AT_CHECK([grep -e "ls_in_acl.*eval" -e "ls_in_acl_hint" lsflows | ovn_strip_lflo
 AT_CHECK([grep -e "ls_in_lb " lsflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.2), action=(reg4 = 10.0.0.2; ct_lb_mark(backends=10.0.0.10);)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && !ct.rpl && reg0[[19]] == 1 && ip4), action=(reg4 = ct_nw_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && !ct.rpl && reg0[[19]] == 1 && ip6), action=(xxreg1 = ct_ip6_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && ct.est && !ct.rpl && reg0[[19]] == 1 && ip4), action=(reg4 = ct_nw_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && ct.est && !ct.rpl && reg0[[19]] == 1 && ip6), action=(xxreg1 = ct_ip6_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
 ])
 
 AT_CHECK([grep -e "ls_in_stateful" lsflows | ovn_strip_lflows], [0], [dnl
@@ -9800,8 +9800,8 @@ AT_CHECK([grep "ls_in_lb_aff_check" S0flows | ovn_strip_lflows], [0], [dnl
 ])
 AT_CHECK([grep "ls_in_lb " S0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && !ct.rpl && reg0[[19]] == 1 && ip4), action=(reg4 = ct_nw_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
-  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && !ct.rpl && reg0[[19]] == 1 && ip6), action=(xxreg1 = ct_ip6_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && ct.est && !ct.rpl && reg0[[19]] == 1 && ip4), action=(reg4 = ct_nw_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
+  table=??(ls_in_lb           ), priority=110  , match=(ct.trk && ct.est && !ct.rpl && reg0[[19]] == 1 && ip6), action=(xxreg1 = ct_ip6_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
   table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 172.16.0.10 && ct_tcp.dst == 80), action=(reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80,20.0.0.2:80);)
   table=??(ls_in_lb           ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 10.0.0.2 && reg2[[0..15]] == 80), action=(reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.2:80);)
   table=??(ls_in_lb           ), priority=150  , match=(reg9[[6]] == 1 && ct.new && ip4.dst == 172.16.0.10 && reg4 == 20.0.0.2 && reg2[[0..15]] == 80), action=(reg4 = 172.16.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=20.0.0.2:80);)

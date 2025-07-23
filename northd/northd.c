@@ -8732,12 +8732,14 @@ build_lb_hairpin(const struct ls_stateful_record *ls_stateful_rec,
          * We need to find a better way to handle the fragmented packets.
          * */
         ovn_lflow_add(lflows, od, S_SWITCH_IN_LB, 110,
-                      "ct.trk && !ct.rpl && "REGBIT_IP_FRAG" == 1 && ip4",
+                      "ct.trk && ct.est && !ct.rpl && "REGBIT_IP_FRAG
+                      " == 1 && ip4",
                       REG_LB_IPV4 " = ct_nw_dst(); "
                       REG_LB_PORT " = ct_tp_dst(); next;",
                       lflow_ref);
         ovn_lflow_add(lflows, od, S_SWITCH_IN_LB, 110,
-                      "ct.trk && !ct.rpl && "REGBIT_IP_FRAG" == 1 && ip6",
+                      "ct.trk && ct.est && !ct.rpl && "REGBIT_IP_FRAG
+                      " == 1 && ip6",
                       REG_LB_IPV6 " = ct_ip6_dst(); "
                       REG_LB_PORT " = ct_tp_dst(); next;",
                       lflow_ref);
