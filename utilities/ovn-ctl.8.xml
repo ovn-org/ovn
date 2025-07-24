@@ -58,6 +58,15 @@
       <dt><code>restart_ic_ovsdb</code></dt>
       <dt><code>run_ic_nb_ovsdb</code></dt>
       <dt><code>run_ic_sb_ovsdb</code></dt>
+      <dt><code>start_ovnbr_ovsdb</code></dt>
+      <dt><code>start_br_controller</code></dt>
+      <dt><code>stop_ovnbr_ovsdb</code></dt>
+      <dt><code>stop_br_controller</code></dt>
+      <dt><code>restart_ovnbr_ovsdb</code></dt>
+      <dt><code>restart_br_controller</code></dt>
+      <dt><code>status_ovnbr_ovsdb</code></dt>
+      <dt><code>status_br_controller</code></dt>
+      <dt><code>run_ovnbr_ovsdb</code></dt>
     </dl>
 
     <h1>Options</h1>
@@ -69,6 +78,8 @@
     <p><code>--ovn-ic-wrapper=<var>WRAPPER</var></code></p>
     <p><code>--ovsdb-nb-wrapper=<var>WRAPPER</var></code></p>
     <p><code>--ovsdb-sb-wrapper=<var>WRAPPER</var></code></p>
+    <p><code>--ovn-br-controller-priority=<var>NICE</var></code></p>
+    <p><code>--ovn-br-controller-wrapper=<var>WRAPPER</var></code></p>
     <p><code>--ovn-user=<var>USER:GROUP</var></code></p>
     <p><code>-h</code> | <code>--help</code></p>
 
@@ -95,6 +106,15 @@
     <p><code>--ovn-controller-ssl-cert=<var>CERT</var></code></p>
     <p><code>--ovn-controller-ssl-ca-cert=<var>CERT</var></code></p>
     <p><code>--ovn-controller-ssl-bootstrap-ca-cert=<var>CERT</var></code></p>
+    <p><code>--db-ovnbr-sock=<var>SOCKET</var></code></p>
+    <p><code>--db-ovnbr-file=<var>FILE</var></code></p>
+    <p><code>--db-ovnbr-schema=<var>FILE</var></code></p>
+    <p><code>--db-ovnbr-create-insecure-remote=<var>yes|no</var></code></p>
+    <p><code>--db-ovnbr-config-file=<var>FILE</var></code></p>
+    <p><code>--ovn-br-controller-ssl-key=<var>KEY</var></code></p>
+    <p><code>--ovn-br-controller-ssl-cert=<var>CERT</var></code></p>
+    <p><code>--ovn-br-controller-ssl-ca-cert=<var>CERT</var></code></p>
+    <p><code>--ovn-br-controller-ssl-bootstrap-ca-cert=<var>CERT</var></code></p>
 
     <h1>Protocol, Cipher and Ciphersuite options</h1>
     <p><code>--ovn-controller-ssl-protocols=<var>PROTOCOLS</var></code></p>
@@ -118,6 +138,11 @@
     <p><code>--ovn-sb-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
     <p><code>--ovn-ic-nb-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
     <p><code>--ovn-ic-sb-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
+    <p><code>--ovn-br-controller-ssl-protocols=<var>PROTOCOLS</var></code></p>
+    <p><code>--ovn-br-db-ssl-protocols=<var>PROTOCOLS</var></code></p>
+    <p><code>--ovn-br-controller-ssl-ciphers=<var>CIPHERS</var></code></p>
+    <p><code>--ovn-br-db-ssl-ciphers=<var>CIPHERS</var></code></p>
+    <p><code>--ovn-br-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
 
     <h1>Address and port options</h1>
     <p><code>--db-nb-sync-from-addr=<var>IP ADDRESS</var></code></p>
@@ -273,6 +298,13 @@
       This command will be useful for starting the OVN IC-SB ovsdb-server in a
       container.
     </p>
+    <p><code># ovn-ctl run_ovnbr_ovsdb</code></p>
+    <p>
+      This command runs the OVN bridge db ovsdb-server without passing the
+      <code>detach</code> option, making it to block until ovsdb-server exits.
+      This command will be useful for starting the OVN br db ovsdb-server in a
+      container.
+    </p>
 
     <h1>Example Usage</h1>
     <h2>Run ovn-controller on a host already running OVS</h2>
@@ -372,4 +404,8 @@
         # ovsdb-client convert unix:/var/run/ovn/ovnsb_db.sock /usr/local/share/ovn/ovn-sb.ovsschema
       </code>
     </p>
+
+    <h2>Run OVN bridge controller services on a host already running OVS</h2>
+    <p><code># ovn-ctl start_ovnbr_ovsdb</code></p>
+    <p><code># ovn-ctl start_br_controller</code></p>
 </manpage>

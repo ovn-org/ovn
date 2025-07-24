@@ -444,6 +444,11 @@ start_ic_ovsdb () {
     start_ic_sb_ovsdb
 }
 
+
+start_ovnbr_ovsdb() {
+    start_ovsdb__ OVNBR br OVN_Bridge_Controller BR_Global
+}
+
 sync_status() {
     local ctl_file=$1
     ovn-appctl -t $ctl_file ovsdb-server/sync-status | \
@@ -510,6 +515,14 @@ status_ic_ovsdb () {
   fi
 }
 
+status_ovnbr_ovsdb() {
+    if ! pidfile_is_running $DB_OVNBR_PIDFILE; then
+        echo "not-running"
+    else
+        echo "running/$(sync_status $DB_OVNBR_CTRL_SOCK)"
+    fi
+}
+
 run_nb_ovsdb() {
     DB_NB_DETACH=no
     start_nb_ovsdb
@@ -533,6 +546,11 @@ run_ic_nb_ovsdb() {
 run_ic_sb_ovsdb() {
     DB_IC_SB_DETACH=no
     start_ic_sb_ovsdb
+}
+
+run_ovnbr_ovsdb() {
+    DB_NB_DETACH=no
+    start_ovnbr_ovsdb
 }
 
 start_northd () {
@@ -717,6 +735,40 @@ start_controller_vtep () {
     OVS_RUNDIR=${OVS_RUNDIR} start_ovn_daemon "$OVN_CONTROLLER_PRIORITY" "$OVN_CONTROLLER_WRAPPER" "$@"
 }
 
+start_ovnbr_controller () {
+    set ovn-br-controller
+    set "$@" -vconsole:emer -vsyslog:err -vfile:info
+    if test X"$OVNBR_CONTROLLER_SSL_KEY" != X; then
+        set "$@" --private-key=$OVNBR_CONTROLLER_SSL_KEY
+    fi
+    if test X"$OVNBR_CONTROLLER_SSL_CERT" != X; then
+        set "$@" --certificate=$OVNBR_CONTROLLER_SSL_CERT
+    fi
+    if test X"$OVNBR_CONTROLLER_SSL_CA_CERT" != X; then
+        set "$@" --ca-cert=$OVNBR_CONTROLLER_SSL_CA_CERT
+    fi
+    if test X"$OVNBR_CONTROLLER_SSL_BOOTSTRAP_CA_CERT" != X; then
+        set "$@" --bootstrap-ca-cert=$OVNBR_CONTROLLER_SSL_BOOTSTRAP_CA_CERT
+    fi
+    if test X"$OVNBR_CONTROLLER_SSL_PROTOCOLS" != X; then
+        set "$@" --ssl-protocols=$OVNBR_CONTROLLER_SSL_PROTOCOLS
+    fi
+    if test X"$OVNBR_CONTROLLER_SSL_CIPHERS" != X; then
+        set "$@" --ssl-ciphers=$OVNBR_CONTROLLER_SSL_CIPHERS
+    fi
+    if test X"$OVNBR_CONTROLLER_SSL_CIPHERSUITES" != X; then
+        set "$@" --ssl-ciphersuites=$OVNBR_CONTROLLER_SSL_CIPHERSUITES
+    fi
+
+    [ "$OVN_USER" != "" ] && set "$@" --user "$OVN_USER"
+
+    if test X"$extra_args" != X; then
+        set "$@" $extra_args
+    fi
+
+    OVS_RUNDIR=${OVS_RUNDIR} start_ovn_daemon "$OVN_CONTROLLER_PRIORITY" "$OVN_CONTROLLER_WRAPPER" "$@"
+}
+
 ## ---- ##
 ## stop ##
 ## ---- ##
@@ -745,6 +797,10 @@ stop_controller () {
 
 stop_controller_vtep () {
     OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn-controller-vtep
+}
+
+stop_ovnbr_controller () {
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn-br-controller
 }
 
 ## ------- ##
@@ -805,6 +861,16 @@ restart_ic_sb_ovsdb () {
 restart_sb_relay_ovsdb() {
     stop_sb_relay_ovsdb
     start_sb_relay_ovsdb
+}
+
+restart_ovnbr_ovsdb () {
+    stop_ovnbr_ovsdb
+    start_ovnbr_ovsdb
+}
+
+restart_ovnbr_controller () {
+    stop_ovnbr_controller
+    start_ovnbr_controller
 }
 
 ## ---- ##
@@ -870,6 +936,7 @@ set_defaults () {
     DB_SB_SCHEMA=$ovn_datadir/ovn-sb.ovsschema
     DB_IC_NB_SCHEMA=$ovn_datadir/ovn-ic-nb.ovsschema
     DB_IC_SB_SCHEMA=$ovn_datadir/ovn-ic-sb.ovsschema
+    DB_OVNBR_SCHEMA=$ovn_datadir/ovn-br.ovsschema
 
     DB_SOCK=$OVS_RUNDIR/db.sock
     DB_CONF_FILE=$dbdir/conf.db
@@ -1020,6 +1087,39 @@ set_defaults () {
     DB_CLUSTER_SCHEMA_UPGRADE="yes"
 
     OVN_CONTROLLER_SYSTEM_ID=""
+
+    DB_OVNBR_SOCK=$OVN_RUNDIR/ovnbr_db.sock
+    DB_OVNBR_PIDFILE=$OVN_RUNDIR/ovnbr_db.pid
+    DB_OVNBR_CTRL_SOCK=$OVN_RUNDIR/ovnbr_db.ctl
+    DB_OVNBR_FILE=$ovn_dbdir/ovnbr_db.db
+    DB_OVNBR_ADDR=0.0.0.0
+    DB_OVNBR_PORT=6651
+
+    OVNBR_CONTROLLER_PRIORITY=-10
+    OVNBR_CONTROLLER_WRAPPER=
+
+    OVNBR_CONTROLLER_LOG="-vconsole:emer -vsyslog:err -vfile:info"
+    OVN_OVNBR_LOGFILE="$ovn_logdir/ovsdb-server-ovnbr.log"
+
+    OVNBR_CONTROLLER_SSL_KEY=""
+    OVNBR_CONTROLLER_SSL_CERT=""
+    OVNBR_CONTROLLER_SSL_CA_CERT=""
+    OVNBR_CONTROLLER_SSL_BOOTSTRAP_CA_CERT=""
+    OVNBR_CONTROLLER_SSL_PROTOCOLS=""
+    OVNBR_CONTROLLER_SSL_CIPHERS=""
+    OVNBR_CONTROLLER_SSL_CIPHERSUITES=""
+
+    DB_OVNBR_CREATE_INSECURE_REMOTE="no"
+
+    DB_OVNBR_DETACH="yes"
+    DB_OVNBR_USE_REMOTE_IN_DB="yes"
+
+    OVNBR_DB_SSL_KEY=""
+    OVNBR_DB_SSL_CERT=""
+    OVNBR_DB_SSL_CA_CERT=""
+    OVNBR_DB_SSL_PROTOCOLS=""
+    OVNBR_DB_SSL_CIPHERS=""
+    OVNBR_DB_SSL_CIPHERSUITES=""
 }
 
 set_option () {
@@ -1096,6 +1196,15 @@ Commands:
   demote_ic_sb                demote ovn ic-southbound db active server to backup
   run_ic_nb_ovsdb                run ovn ic-northbound db ovsdb-server process
   run_ic_sb_ovsdb                run ovn ic-southbound db ovsdb-server process
+  start_ovnbr_ovsdb           start ovn bridge controller db ovsdb-server process
+  start_ovnbr_controller      start ovn-br-controller
+  stop_ovnbr_ovsdb            stop ovn bridge controller db ovsdb-server process
+  stop_ovnbr_controller       stop ovn-br-controller
+  restart_ovnbr_ovsdb         restart ovn bridge controller db ovsdb-server process
+  restart_ovnbr_controller    restart ovn-br-controller
+  status_ovnbr_ovsdb          status ovn bridge controller db ovsdb-server processes
+  status_ovnbr_controller     status ovn-br-controller
+  run_ovnbr_ovsdb             run bridge controller db ovsdb-server process
 
 Options:
   --ovn-northd-priority=NICE     set ovn-northd's niceness (default: $OVN_NORTHD_PRIORITY)
@@ -1173,6 +1282,24 @@ Options:
   --db-sb-relay-remote           Specifies upstream cluster/server remote for ovsdb relay
   --db-sb-relay-use-remote-in-db=no|yes
                                  OVN_Sorthbound db listen on target connection table (default: $DB_SB_RELAY_USE_REMOTE_IN_DB)
+  --ovn-br-controller-priority=NICE     set ovn-br-controller's niceness (default: $OVN_CONTROLLER_PRIORITY)
+  --ovn-br-controller-wrapper=WRAPPER   run with a wrapper like valgrind for debugging
+  --ovn-br-controller-ssl-key=KEY OVN Bridge Controller SSL/TLS private key file
+  --ovn-br-controller-ssl-cert=CERT OVN Bridge Controller SSL/TLS certificate file
+  --ovn-br-controller-ssl-ca-cert=CERT OVN Bridge Controller SSL/TLS CA certificate file
+  --ovn-br-controller-ssl-bootstrap-ca-cert=CERT Bootstrapped OVN Bridge Controller SSL/TLS CA certificate file
+  --ovn-br-controller-ssl-protocols=PROTOCOLS OVN Bridge Controller SSL/TLS protocols
+  --ovn-br-controller-ssl-ciphers=CIPHERS OVN Bridge Controller SSL/TLS cipher list
+  --ovn-br-controller-ssl-ciphersuites=CIPHERSUITES OVN Bridge Controller TLSv1.3+ ciphersuite list
+  --ovn-br-db-ssl-key=KEY OVN Bridge Controller DB SSL/TLS private key file
+  --ovn-br-db-ssl-cert=CERT OVN Bridge Controller DB SSL/TLS certificate file
+  --ovn-br-db-ssl-ca-cert=CERT OVN Bridge Controller DB SSL/TLS CA certificate file
+  --ovn-br-db-ssl-protocols=PROTOCOLS OVN Bridge Controller DB SSL/TLS protocols
+  --ovn-br-db-ssl-ciphers=CIPHERS OVN Bridge Controller DB SSL/TLS cipher list
+  --ovn-br-db-ssl-ciphersuites=CIPHERSUITES OVN Bridge Controller DB TLSv1.3+ ciphersuite list
+  --ovn-br-controller-log=STRING        ovn controller process logging params (default: $OVN_CONTROLLER_LOG)
+  --ovn-br-db-log=STRING             ovn brdb ovsdb-server processes logging params (default: $OVN_BR_DB_LOG)
+  --ovsdb-br-wrapper=WRAPPER     run with a wrapper like valgrind for debugging
   -h, --help                     display this help message
 
 File location options:
@@ -1305,12 +1432,22 @@ File location options:
   --ovn-sb-relay-db-ssl-cert=CERT OVN_Southbound DB relay SSL/TLS certificate file
   --ovn-sb-relay-db-ssl-ca-cert=CERT OVN OVN_Southbound DB relay SSL/TLS CA certificate file
   --db-cluster-schema-upgrade=yes|no (default: $DB_CLUSTER_SCHEMA_UPGRADE)
+  --db-ovnbr-sock=SOCKET  OVN_Bridge_Controller db socket (default: $DB_OVNBR_SOCK)
+  --db-ovnbr-file=FILE    OVN_Bridge_Controller db file (default: $DB_OVNBR_FILE)
+  --db-ovnbr-pidfile=FILE OVN_Bridge_Controller db pidfile (default: $DB_OVNBR_PIDFILE)
+  --db-ovnbr-schema=FILE  OVN_Bridge_Controller db file (default: $DB_OVNBR_SCHEMA)
+  --db-ovnbr-addr=ADDR    OVN_Bridge_Controller db ptcp address (default: $DB_OVNBR_ADDR)
+  --db-ovnbr-port=PORT    OVN_Bridge_Controller db ptcp port (default: $DB_OVNBR_PORT)
+  --db-ovnbr-ctrl-sock=SOCKET OVN_Bridge_Controller db control socket (default: $DB_OVNBR_CTRL_SOCK)
+  --ovn-ovnbr-logfile=FILE OVN_Bridge_Controller log file (default: $OVN_OVNBR_LOGFILE)
+  --db-ovnbr-create-insecure-remote=yes|no Create ptcp OVN_Bridge_Controller remote (default: $DB_OVNBR_CREATE_INSECURE_REMOTE)
 
 Default directories with "configure" option and environment variable override:
   logs: /usr/local/var/log/ovn (--with-logdir, OVN_LOGDIR)
   pidfiles and sockets: /usr/local/var/run/ovn (--with-rundir, OVN_RUNDIR)
   ovn-nb.db: /usr/local/etc/ovn (--with-dbdir, OVN_DBDIR)
   ovn-sb.db: /usr/local/etc/ovn (--with-dbdir, OVN_DBDIR)
+  ovn-ovnbr.db: /usr/local/etc/ovn (--with-dbdir, OVN_DBDIR)
   system configuration: /usr/local/etc (--sysconfdir, OVN_SYSCONFDIR)
   data files: /usr/local/share/ovn (--pkgdatadir, OVN_PKGDATADIR)
   user binaries: /usr/local/bin (--bindir, OVN_BINDIR)
@@ -1536,6 +1673,32 @@ case $command in
     run_ic_sb_ovsdb)
         run_ic_sb_ovsdb
         ;;
+    start_ovnbr_ovsdb)
+        start_ovnbr_ovsdb
+        ;;
+    start_ovnbr_controller)
+        start_ovnbr_controller
+        ;;
+    stop_ovnbr_ovsdb)
+        stop_ovnbr_ovsdb
+        ;;
+    stop_ovnbr_controller)
+        stop_ovnbr_controller
+        ;;
+    restart_ovnbr_ovsdb)
+        restart_ovnbr_ovsdb
+        ;;
+    restart_ovnbr_controller)
+        restart_ovnbr_controller
+        ;;
+    status_ovnbr_ovsdb)
+        status_ovnbr_ovsdb
+        ;;
+    status_ovnbr_controller)
+        daemon_status ovn-br-controller || exit 1
+        ;;
+    run_ovnbr_ovsdb)
+        run_ovnbr_ovsdb;;
     help)
         usage
         ;;
