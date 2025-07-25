@@ -161,6 +161,10 @@ struct northd_tracked_data {
     /* Tracked logical switches whose ACLs have changed.
      * hmapx node is 'struct ovn_datapath *'. */
     struct hmapx ls_with_changed_acls;
+
+    /* Tracked logical switches with IPAM whose LSPs have changed.
+     * hmapx node is 'struct ovn_datapath *'. */
+    struct hmapx ls_with_changed_ipam;
 };
 
 struct northd_data {
@@ -386,6 +390,7 @@ struct ovn_datapath {
 
     /* IPAM data. */
     struct ipam_info ipam_info;
+    bool ipam_info_initialized;
 
     /* Multicast data. */
     struct mcast_info mcast_info;
@@ -838,6 +843,7 @@ bool northd_handle_lr_changes(const struct northd_input *,
                               struct northd_data *);
 bool northd_handle_pgs_acl_changes(const struct northd_input *ni,
                                    struct northd_data *nd);
+bool northd_handle_ipam_changes(struct northd_data *nd);
 void destroy_northd_data_tracked_changes(struct northd_data *);
 void northd_destroy(struct northd_data *data);
 void northd_init(struct northd_data *data);

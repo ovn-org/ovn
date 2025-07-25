@@ -9236,7 +9236,7 @@ done
 # and addresses set by the user.
 check ovn-nbctl lsp-set-addresses p0 "0a:00:00:a8:01:17 192.168.1.2 192.168.1.12 192.168.1.14"
 check ovn-nbctl --wait=sb lsp-add sw0 p20 -- lsp-set-addresses p20 dynamic
-check_dynamic_addresses p20 "0a:00:00:a8:01:18 192.168.1.13"
+check_dynamic_addresses p20 "0a:00:00:a8:01:03 192.168.1.13"
 
 # Test for logical router port address management.
 check_uuid ovn-nbctl create Logical_Router name=R1
@@ -9245,12 +9245,12 @@ network="192.168.1.1/24" mac=\"0a:00:00:a8:01:19\" \
 -- add Logical_Router R1 ports @lrp -- lsp-add sw0 rp-sw0 \
 -- set Logical_Switch_Port rp-sw0 type=router options:router-port=sw0
 check ovn-nbctl --wait=sb lsp-add sw0 p21 -- lsp-set-addresses p21 dynamic
-check_dynamic_addresses p21 "0a:00:00:a8:01:1a 192.168.1.15"
+check_dynamic_addresses p21 "0a:00:00:a8:01:18 192.168.1.15"
 
 # Test for address reuse after logical port is deleted.
 check ovn-nbctl lsp-del p0
 check ovn-nbctl --wait=sb lsp-add sw0 p23 -- lsp-set-addresses p23 dynamic
-check_dynamic_addresses p23 "0a:00:00:a8:01:03 192.168.1.2"
+check_dynamic_addresses p23 "0a:00:00:a8:01:1a 192.168.1.2"
 
 # Test for multiple addresses to one logical port.
 check ovn-nbctl lsp-add sw0 p25 -- lsp-set-addresses p25 \
@@ -9310,19 +9310,19 @@ check_dynamic_addresses p33 "0a:00:00:a8:01:1f 192.168.1.22"
 check ovn-nbctl --wait=sb lsp-add sw0 p34 -- lsp-set-addresses p34 \
 "dynamic"
 # 192.168.1.51 should be assigned as 192.168.1.23-192.168.1.50 is excluded.
-check_dynamic_addresses p34 "0a:00:00:a8:01:34 192.168.1.51"
+check_dynamic_addresses p34 "0a:00:00:a8:01:20 192.168.1.51"
 
 # Now clear the exclude_ips list. 192.168.1.19 should be assigned.
 check ovn-nbctl --wait=sb set Logical-switch sw0 other_config:exclude_ips="invalid"
 check ovn-nbctl --wait=sb lsp-add sw0 p35 -- lsp-set-addresses p35 "dynamic"
-check_dynamic_addresses p35 "0a:00:00:a8:01:20 192.168.1.19"
+check_dynamic_addresses p35 "0a:00:00:a8:01:21 192.168.1.19"
 
 # Set invalid data in exclude_ips list. It should be ignored.
 check ovn-nbctl --wait=sb set Logical-switch sw0 other_config:exclude_ips="182.168.1.30"
 check ovn-nbctl --wait=sb lsp-add sw0 p36 -- lsp-set-addresses p36 \
 "dynamic"
 # 192.168.1.21 should be assigned as that's the next free one.
-check_dynamic_addresses p36 "0a:00:00:a8:01:21 192.168.1.21"
+check_dynamic_addresses p36 "0a:00:00:a8:01:22 192.168.1.21"
 
 # Clear the dynamic addresses assignment request.
 check ovn-nbctl --wait=sb clear logical_switch_port p36 addresses
@@ -9334,7 +9334,7 @@ check ovn-nbctl --wait=sb lsp-add sw0 p37 -- lsp-set-addresses p37 "dynamic"
 
 # With prefix aef0 and mac 0a:00:00:00:00:26, the dynamic IPv6 should be
 # - aef0::800:ff:fe00:26 (EUI64)
-check_dynamic_addresses p37 "0a:00:00:a8:01:21 192.168.1.21 aef0::800:ff:fea8:121"
+check_dynamic_addresses p37 "0a:00:00:a8:01:22 192.168.1.21 aef0::800:ff:fea8:122"
 
 check ovn-nbctl --wait=sb ls-add sw4
 check ovn-nbctl --wait=sb set Logical-switch sw4 other_config:ipv6_prefix="bef0::" \
@@ -9364,7 +9364,7 @@ check_dynamic_addresses p41 ''
 
 # Set a subnet. Now p41 should have an ipv4 address, too
 check ovn-nbctl --wait=sb add Logical-Switch sw5 other_config subnet=192.168.1.0/24
-check_dynamic_addresses p41 "0a:00:00:a8:01:22 192.168.1.2"
+check_dynamic_addresses p41 "0a:00:00:a8:01:23 192.168.1.2"
 
 # Clear the other_config. The IPv4 address should be gone
 check ovn-nbctl --wait=sb clear Logical-Switch sw5 other_config

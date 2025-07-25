@@ -70,13 +70,14 @@ init_ipam_info(struct ipam_info *info, const struct smap *config, const char *id
 void
 init_ipam_info_for_datapath(struct ovn_datapath *od)
 {
-    if (!od->nbs) {
+    if (!od->nbs || od->ipam_info_initialized) {
         return;
     }
 
     char uuid_s[UUID_LEN + 1];
     sprintf(uuid_s, UUID_FMT, UUID_ARGS(&od->key));
     init_ipam_info(&od->ipam_info, &od->nbs->other_config, uuid_s);
+    od->ipam_info_initialized = true;
 }
 
 void

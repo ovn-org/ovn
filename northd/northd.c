@@ -534,6 +534,7 @@ ovn_datapath_create(struct hmap *datapaths, const struct uuid *key,
     od->l3dgw_ports = VECTOR_EMPTY_INITIALIZER(struct ovn_port *);
     od->localnet_ports = VECTOR_EMPTY_INITIALIZER(struct ovn_port *);
     od->lb_with_stateless_mode = false;
+    od->ipam_info_initialized = false;
     return od;
 }
 
@@ -948,6 +949,10 @@ join_datapaths(const struct nbrec_logical_switch_table *nbrec_ls_table,
             ovs_list_remove(&od->list);
             ovs_list_push_back(both, &od->list);
             ovn_datapath_update_external_ids(od);
+            if (od->ipam_info_initialized) {
+                destroy_ipam_info(&od->ipam_info);
+                od->ipam_info_initialized = false;
+            }
         } else {
             od = ovn_datapath_create(datapaths, &nbs->header_.uuid,
                                      nbs, NULL, NULL);
@@ -4197,6 +4202,7 @@ destroy_northd_data_tracked_changes(struct northd_data *nd)
     hmapx_clear(&trk_changes->trk_nat_lrs);
     hmapx_clear(&trk_changes->ls_with_changed_lbs);
     hmapx_clear(&trk_changes->ls_with_changed_acls);
+    hmapx_clear(&trk_changes->ls_with_changed_ipam);
     trk_changes->type = NORTHD_TRACKED_NONE;
 }
 
@@ -4213,6 +4219,7 @@ init_northd_tracked_data(struct northd_data *nd)
     hmapx_init(&trk_data->trk_nat_lrs);
     hmapx_init(&trk_data->ls_with_changed_lbs);
     hmapx_init(&trk_data->ls_with_changed_acls);
+    hmapx_init(&trk_data->ls_with_changed_ipam);
 }
 
 static void
@@ -4228,6 +4235,7 @@ destroy_northd_tracked_data(struct northd_data *nd)
     hmapx_destroy(&trk_data->trk_nat_lrs);
     hmapx_destroy(&trk_data->ls_with_changed_lbs);
     hmapx_destroy(&trk_data->ls_with_changed_acls);
+    hmapx_destroy(&trk_data->ls_with_changed_ipam);
 }
 
 /* Check if a changed LSP can be handled incrementally within the I-P engine
@@ -4254,8 +4262,9 @@ lsp_can_be_inc_processed(const struct nbrec_logical_switch_port *nbsp)
     }
 
     for (size_t j = 0; j < nbsp->n_addresses; j++) {
-        /* Dynamic address handling is not supported for now. */
-        if (is_dynamic_lsp_address(nbsp->addresses[j])) {
+        /* Dynamic address was assigned in the last iteration. */
+        if (is_dynamic_lsp_address(nbsp->addresses[j]) &&
+            nbsp->dynamic_addresses) {
             return false;
         }
         /* "unknown" address handling is not supported for now.  XXX: Need to
@@ -4723,6 +4732,13 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
         if (is_ls_acls_changed(changed_ls)) {
             hmapx_add(&trk_data->ls_with_changed_acls, od);
         }
+        init_ipam_info_for_datapath(od);
+        bool ls_has_ipam = od->ipam_info.allocated_ipv4s ||
+                           od->ipam_info.ipv6_prefix_set ||
+                           od->ipam_info.mac_only;
+        if (ls_has_ipam) {
+            hmapx_add(&trk_data->ls_with_changed_ipam, od);
+        }
     }
 
     if (!hmapx_is_empty(&trk_data->trk_lsps.created)
@@ -4802,6 +4818,42 @@ northd_handle_pgs_acl_changes(const struct northd_input *ni,
 fail:
     destroy_northd_data_tracked_changes(nd);
     return false;
+}
+
+bool northd_handle_ipam_changes(struct northd_data *nd)
+{
+    struct northd_tracked_data *nd_changes = &nd->trk_data;
+    if (hmapx_is_empty(&nd_changes->ls_with_changed_ipam)) {
+        return false;
+    }
+
+    struct vector updates =
+        VECTOR_EMPTY_INITIALIZER(struct dynamic_address_update);
+
+    struct hmapx_node *hmapx_node;
+    HMAPX_FOR_EACH (hmapx_node, &nd_changes->ls_with_changed_ipam) {
+        struct ovn_datapath *od = hmapx_node->data;
+        if (od->ipam_info_initialized) {
+            destroy_ipam_info(&od->ipam_info);
+            od->ipam_info_initialized = false;
+        }
+        init_ipam_info_for_datapath(od);
+        update_ipam_ls(od, &updates, false);
+    }
+
+    bool lsps_changed = false;
+    struct dynamic_address_update *update;
+    VECTOR_FOR_EACH_PTR (&updates, update) {
+        if (hmapx_find(&nd_changes->trk_lsps.updated, update->op) ||
+            hmapx_find(&nd_changes->trk_lsps.created, update->op)) {
+            update_dynamic_addresses(update);
+            lsps_changed = true;
+        }
+        destroy_lport_addresses(&update->current_addresses);
+    }
+    vector_destroy(&updates);
+
+    return lsps_changed;
 }
 
 /* Returns true if the logical router has changes which can be
