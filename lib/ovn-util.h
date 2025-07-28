@@ -16,6 +16,7 @@
 #ifndef OVN_UTIL_H
 #define OVN_UTIL_H 1
 
+#include "openvswitch/meta-flow.h"
 #include "ovsdb-idl.h"
 #include "lib/packets.h"
 #include "lib/sset.h"
@@ -503,6 +504,11 @@ void ovn_debug_commands_register(void);
 const struct sbrec_port_binding *lport_lookup_by_name(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const char *name);
+
+void put_load_bytes(const void *value, size_t len, enum mf_field_id dst,
+                    size_t ofs, size_t n_bits, struct ofpbuf *ofpacts);
+void put_load(uint64_t value, enum mf_field_id dst, size_t ofs, size_t n_bits,
+              struct ofpbuf *ofpacts);
 
 /* __NARG__ provides a way to count the number of arguments passed to a
  * variadic macro. As defined below, it's capable of counting up to

@@ -1294,30 +1294,6 @@ consider_logical_flow(const struct sbrec_logical_flow *lflow,
 }
 
 static void
-put_load(const uint8_t *data, size_t len,
-         enum mf_field_id dst, int ofs, int n_bits,
-         struct ofpbuf *ofpacts)
-{
-    struct ofpact_set_field *sf = ofpact_put_set_field(ofpacts,
-                                                       mf_from_id(dst), NULL,
-                                                       NULL);
-    bitwise_copy(data, len, 0, sf->value, sf->field->n_bytes, ofs, n_bits);
-    bitwise_one(ofpact_set_field_mask(sf), sf->field->n_bytes, ofs, n_bits);
-}
-
-static void
-put_load64(uint64_t value, enum mf_field_id dst, int ofs, int n_bits,
-           struct ofpbuf *ofpacts)
-{
-    struct ofpact_set_field *sf = ofpact_put_set_field(ofpacts,
-                                                       mf_from_id(dst), NULL,
-                                                       NULL);
-    ovs_be64 n_value = htonll(value);
-    bitwise_copy(&n_value, 8, 0, sf->value, sf->field->n_bytes, ofs, n_bits);
-    bitwise_one(ofpact_set_field_mask(sf), sf->field->n_bytes, ofs, n_bits);
-}
-
-static void
 consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                        const struct hmap *local_datapaths,
                        const struct sbrec_mac_binding *b,
@@ -1409,18 +1385,16 @@ consider_neighbor_flow(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
     uint64_t stub[1024 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
-    uint8_t value = 1;
-    put_load(mac_addr.ea, sizeof mac_addr.ea, MFF_ETH_DST, 0, 48, &ofpacts);
-    put_load(&value, sizeof value, MFF_LOG_FLAGS, MLF_LOOKUP_MAC_BIT, 1,
-             &ofpacts);
+    put_load_bytes(mac_addr.ea, sizeof mac_addr.ea, MFF_ETH_DST, 0, 48,
+                   &ofpacts);
+    put_load(1, MFF_LOG_FLAGS, MLF_LOOKUP_MAC_BIT, 1, &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_MAC_BINDING, priority,
                     b ? b->header_.uuid.parts[0] : smb->header_.uuid.parts[0],
                     &get_arp_match, &ofpacts,
                     b ? &b->header_.uuid : &smb->header_.uuid);
 
     ofpbuf_clear(&ofpacts);
-    put_load(&value, sizeof value, MFF_LOG_FLAGS, MLF_LOOKUP_MAC_BIT, 1,
-             &ofpacts);
+    put_load(1, MFF_LOG_FLAGS, MLF_LOOKUP_MAC_BIT, 1, &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_MAC_LOOKUP, priority,
                     b ? b->header_.uuid.parts[0] : smb->header_.uuid.parts[0],
                     &lookup_arp_match, &ofpacts,
@@ -1663,9 +1637,7 @@ add_lb_vip_hairpin_flows(const struct ovn_controller_lb *lb,
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
     struct match hairpin_match = MATCH_CATCHALL_INITIALIZER;
 
-    uint8_t value = 1;
-    put_load(&value, sizeof value, MFF_LOG_FLAGS,
-             MLF_LOOKUP_LB_HAIRPIN_BIT, 1, &ofpacts);
+    put_load(1, MFF_LOG_FLAGS, MLF_LOOKUP_LB_HAIRPIN_BIT, 1, &ofpacts);
 
     if (IN6_IS_ADDR_V4MAPPED(&lb_vip->vip)) {
         ovs_be32 bip4 = in6_addr_get_mapped_ipv4(&lb_backend->ip);
@@ -2057,16 +2029,14 @@ consider_fdb_flows(const struct sbrec_fdb *fdb,
 
     uint64_t stub[1024 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
-    put_load64(fdb->port_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
+    put_load(fdb->port_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_GET_FDB, 100,
                     fdb->header_.uuid.parts[0], &match, &ofpacts,
                     &fdb->header_.uuid);
     ofpbuf_clear(&ofpacts);
 
-    uint8_t value = 1;
     uint8_t is_vif =  pb ? !strcmp(pb->type, "") : 0;
-    put_load(&value, sizeof value, MFF_LOG_FLAGS,
-             MLF_LOOKUP_FDB_BIT, 1, &ofpacts);
+    put_load(1, MFF_LOG_FLAGS, MLF_LOOKUP_FDB_BIT, 1, &ofpacts);
 
     struct match lookup_match = MATCH_CATCHALL_INITIALIZER;
     match_set_metadata(&lookup_match, htonll(fdb->dp_key));
@@ -2458,17 +2428,13 @@ reset_match_for_port_sec_flows(const struct sbrec_port_binding *pb,
 static void build_port_sec_deny_action(struct ofpbuf *ofpacts)
 {
     ofpbuf_clear(ofpacts);
-    uint8_t value = 1;
-    put_load(&value, sizeof value, MFF_LOG_FLAGS,
-             MLF_CHECK_PORT_SEC_BIT, 1, ofpacts);
+    put_load(1, MFF_LOG_FLAGS, MLF_CHECK_PORT_SEC_BIT, 1, ofpacts);
 }
 
 static void build_port_sec_allow_action(struct ofpbuf *ofpacts)
 {
     ofpbuf_clear(ofpacts);
-    uint8_t value = 0;
-    put_load(&value, sizeof value, MFF_LOG_FLAGS,
-             MLF_CHECK_PORT_SEC_BIT, 1, ofpacts);
+    put_load(0, MFF_LOG_FLAGS, MLF_CHECK_PORT_SEC_BIT, 1, ofpacts);
 }
 
 static void build_port_sec_adv_nd_check(struct ofpbuf *ofpacts)

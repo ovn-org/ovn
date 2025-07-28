@@ -1484,3 +1484,22 @@ ovn_mirror_port_name(const char *datapath_name,
 {
     return xasprintf("mp-%s-%s", datapath_name, port_name);
 }
+
+void
+put_load_bytes(const void *value, size_t len, enum mf_field_id dst,
+               size_t ofs, size_t n_bits, struct ofpbuf *ofpacts)
+{
+    struct ofpact_set_field *sf = ofpact_put_set_field(ofpacts,
+                                                       mf_from_id(dst), NULL,
+                                                       NULL);
+    bitwise_copy(value, len, 0, sf->value, sf->field->n_bytes, ofs, n_bits);
+    bitwise_one(ofpact_set_field_mask(sf), sf->field->n_bytes, ofs, n_bits);
+}
+
+void
+put_load(uint64_t value, enum mf_field_id dst, size_t ofs, size_t n_bits,
+         struct ofpbuf *ofpacts)
+{
+    ovs_be64 n_value = htonll(value);
+    put_load_bytes(&n_value, 8, dst, ofs, n_bits, ofpacts);
+}
