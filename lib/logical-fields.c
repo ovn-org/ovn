@@ -262,8 +262,12 @@ ovn_init_symtab(struct shash *symtab)
 
     /* Predefined IPv6 multicast groups (RFC 4291, 2.7.1). */
     expr_symtab_add_predicate(symtab, "ip6.mcast_rsvd",
-                              "ip6.dst[116..127] == 0xff0 && "
-                              "ip6.dst[0..111] == 0x0");
+                              "ip6.dst == { "
+                                  "ff00::0, ff01::0, ff02::0, ff03::0, "
+                                  "ff04::0, ff05::0, ff06::0, ff07::0, "
+                                  "ff08::0, ff09::0, ff0a::0, ff0b::0, "
+                                  "ff0c::0, ff0d::0, ff0e::0, ff0f::0 "
+                               "}");
     expr_symtab_add_predicate(symtab, "ip6.mcast_all_nodes",
                               "ip6.dst == ff01::1 || ip6.dst == ff02::1");
     expr_symtab_add_predicate(symtab, "ip6.mcast_all_rtrs",

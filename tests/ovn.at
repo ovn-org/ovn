@@ -40565,6 +40565,157 @@ OVN_CHECK_PACKETS([hv/vif1-tx.pcap], [expected-vif1])
 AT_CLEANUP
 ])
 
+dnl This test checks that the megaflows translated by ovs-vswitchd don't
+dnl have extensive matches on external IP addresses for simple routing.
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([IPv4/v6 routing to external - megaflow check for src/dst matches])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+check ovn-nbctl ls-add sw0
+
+check ovn-nbctl lsp-add sw0 vm0
+check ovn-nbctl lsp-set-addresses vm0 "f0:00:0f:01:02:03 10.0.0.3 1000::3"
+
+check ovn-nbctl ls-add sw1
+
+check ovn-nbctl lsp-add sw1 ext
+check ovn-nbctl lsp-set-addresses ext unknown
+check ovn-nbctl lsp-set-type ext localnet
+check ovn-nbctl lsp-set-options ext network_name=phys
+
+check ovn-nbctl lr-add lr0
+
+check ovn-nbctl lrp-add lr0 lr0-sw0 fa:16:3e:00:00:01 10.0.0.250/24 1000::f0/64
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 router
+check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+check ovn-nbctl lrp-add lr0 lr0-sw1 fa:16:3e:00:00:02 20.0.0.250/24 2000::f0/64
+check ovn-nbctl lsp-add sw1 sw1-lr0
+check ovn-nbctl lsp-set-type sw1-lr0 router
+check ovn-nbctl lsp-set-addresses sw1-lr0 router
+check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+
+dnl Add default routes for the external gateway.
+check ovn-nbctl lr-route-add lr0 "0.0.0.0/0" 20.0.0.254 lr0-sw1
+check ovn-nbctl lr-route-add lr0 "::/0" 2000::fe lr0-sw1
+
+net_add n1
+sim_add hv
+as hv
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+check ovs-vsctl add-port br-int vif1 -- \
+    set Interface vif1 external-ids:iface-id=vm0 \
+    options:tx_pcap=hv/vif1-tx.pcap \
+    options:rxq_pcap=hv/vif1-rx.pcap \
+    ofport-request=1
+
+check ovn-nbctl --wait=sb sync
+wait_for_ports_up
+
+dnl Create MAC binding entries for the external gateway, so OVN doesn't need
+dnl to ARP/ND for it.
+lr0_dp=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+check_uuid ovn-sbctl create mac_binding datapath=$lr0_dp logical_port=lr0-sw1 \
+    ip=\"2000::fe\" mac=\"f0:00:0f:01:02:fe\"
+check_uuid ovn-sbctl create mac_binding datapath=$lr0_dp logical_port=lr0-sw1 \
+    ip=\"20.0.0.254\" mac=\"f0:00:0f:01:02:fe\"
+check ovn-nbctl --wait=hv sync
+
+AS_BOX([IPv6 - from external to vm0])
+packet=$(fmt_pkt "Ether(dst='fa:16:3e:00:00:02', src='f0:00:0f:01:02:fe')/ \
+                  IPv6(dst='1000::3', src='3000::4', hlim=64)/ \
+                  UDP(sport=53, dport=4369)")
+as hv
+ovs-appctl ofproto/trace br-phys in_port=br-phys_n1 $packet --names > ext_ip6_ofproto_trace.txt
+check ovs-appctl netdev-dummy/receive br-phys_n1 $packet
+
+AT_CAPTURE_FILE([ext_ip6_ofproto_trace.txt])
+
+dnl Make sure the datapath flow doesn't match on a full external address.
+AT_CHECK([grep Megaflow ext_ip6_ofproto_trace.txt], [0], [stdout])
+AT_CHECK([grep Megaflow ext_ip6_ofproto_trace.txt | grep -q '3000::4'], [1])
+
+dnl Make sure that the packet was received by vm0.  The L2 addresses and the
+dnl hop limit will be different since the packet was routed.
+packet=$(fmt_pkt "Ether(dst='f0:00:0f:01:02:03', src='fa:16:3e:00:00:01')/ \
+                  IPv6(dst='1000::3', src='3000::4', hlim=63)/ \
+                  UDP(sport=53, dport=4369)")
+echo $packet >> expected-vif1
+OVN_CHECK_PACKETS([hv/vif1-tx.pcap], [expected-vif1])
+
+AS_BOX([IPv6 - from vm0 to external])
+packet=$(fmt_pkt "Ether(dst='fa:16:3e:00:00:01', src='f0:00:0f:01:02:03')/ \
+                  IPv6(dst='3000::4', src='1000::3', hlim=64)/ \
+                  UDP(sport=53, dport=4369)")
+as hv
+ovs-appctl ofproto/trace br-int in_port=vif1 $packet --names > vm0_ip6_ofproto_trace.txt
+check ovs-appctl netdev-dummy/receive vif1 $packet
+
+AT_CAPTURE_FILE([vm0_ip6_ofproto_trace.txt])
+
+dnl Make sure the datapath flow doesn't match on a full external address.
+AT_CHECK([grep Megaflow vm0_ip6_ofproto_trace.txt], [0], [stdout])
+AT_CHECK([grep Megaflow vm0_ip6_ofproto_trace.txt | grep -q '3000::4'], [1])
+
+dnl Make sure that the packet was received externally.  The L2 addresses and
+dnl the hop limit will be different since the packet was routed.
+packet=$(fmt_pkt "Ether(dst='f0:00:0f:01:02:fe', src='fa:16:3e:00:00:02')/ \
+                  IPv6(dst='3000::4', src='1000::3', hlim=63)/ \
+                  UDP(sport=53, dport=4369)")
+echo $packet >> expected-ext
+OVN_CHECK_PACKETS([hv/br-phys_n1-tx.pcap], [expected-ext])
+
+AS_BOX([IPv4 - from external to vm0])
+packet=$(fmt_pkt "Ether(dst='fa:16:3e:00:00:02', src='f0:00:0f:01:02:fe')/ \
+                  IP(dst='10.0.0.3', src='30.0.0.4', ttl=64)/ \
+                  UDP(sport=53, dport=4369)")
+as hv
+ovs-appctl ofproto/trace br-phys in_port=br-phys_n1 $packet --names > ext_ip4_ofproto_trace.txt
+check ovs-appctl netdev-dummy/receive br-phys_n1 $packet
+
+AT_CAPTURE_FILE([ext_ip4_ofproto_trace.txt])
+
+dnl Make sure the datapath flow doesn't match on a full external address.
+AT_CHECK([grep Megaflow ext_ip4_ofproto_trace.txt], [0], [stdout])
+AT_CHECK([grep Megaflow ext_ip4_ofproto_trace.txt | grep -q '30.0.0.4'], [1])
+
+dnl Make sure that the packet was received by vm0.  The L2 addresses and the
+dnl hop limit will be different since the packet was routed.
+packet=$(fmt_pkt "Ether(dst='f0:00:0f:01:02:03', src='fa:16:3e:00:00:01')/ \
+                  IP(dst='10.0.0.3', src='30.0.0.4', ttl=63)/ \
+                  UDP(sport=53, dport=4369)")
+echo $packet >> expected-vif1
+OVN_CHECK_PACKETS([hv/vif1-tx.pcap], [expected-vif1])
+
+AS_BOX([IPv4 - from vm0 to external])
+packet=$(fmt_pkt "Ether(dst='fa:16:3e:00:00:01', src='f0:00:0f:01:02:03')/ \
+                  IP(dst='30.0.0.4', src='10.0.0.3', ttl=64)/ \
+                  UDP(sport=53, dport=4369)")
+as hv
+ovs-appctl ofproto/trace br-int in_port=vif1 $packet --names > vm0_ip4_ofproto_trace.txt
+check ovs-appctl netdev-dummy/receive vif1 $packet
+
+AT_CAPTURE_FILE([vm0_ip4_ofproto_trace.txt])
+
+dnl Make sure the datapath flow doesn't match on a full external address.
+AT_CHECK([grep Megaflow vm0_ip4_ofproto_trace.txt], [0], [stdout])
+AT_CHECK([grep Megaflow vm0_ip4_ofproto_trace.txt | grep -q '30.0.0.4'], [1])
+
+dnl Make sure that the packet was received externally.  The L2 addresses and
+dnl the hop limit will be different since the packet was routed.
+packet=$(fmt_pkt "Ether(dst='f0:00:0f:01:02:fe', src='fa:16:3e:00:00:02')/ \
+                  IP(dst='30.0.0.4', src='10.0.0.3', ttl=63)/ \
+                  UDP(sport=53, dport=4369)")
+echo $packet >> expected-ext
+OVN_CHECK_PACKETS([hv/br-phys_n1-tx.pcap], [expected-ext])
+
+AT_CLEANUP
+])
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([Multichassis port I-P processing])
