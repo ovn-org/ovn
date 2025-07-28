@@ -44,17 +44,7 @@ EXTRA_DIST += \
     utilities/containers/py-requirements.txt \
     utilities/containers/prepare.sh \
     utilities/containers/fedora/Dockerfile \
-    utilities/containers/ubuntu/Dockerfile \
-    utilities/docker/Makefile \
-    utilities/docker/start-ovn \
-    utilities/docker/ovn_default_nb_port \
-    utilities/docker/ovn_default_sb_port \
-    utilities/docker/ovn_default_northd_host \
-    utilities/docker/debian/Dockerfile \
-    utilities/docker/debian/build.sh \
-    utilities/docker/rhel/Dockerfile \
-    utilities/docker/rhel/build.sh \
-    utilities/docker/install_ovn.sh
+    utilities/containers/ubuntu/Dockerfile
 
 CLEANFILES += \
     utilities/ovn-ctl.8 \
