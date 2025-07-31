@@ -16125,7 +16125,7 @@ blackhole 198.51.100.0/24 proto ovn metric 1000])
 # The last 3 of them are local to the current chassis so we expect a better
 # prio.
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-public \
-    options:dynamic-routing-redistribute="connected-as-host,static"
+    options:dynamic-routing-redistribute="connected-as-host,static,nat"
 
 OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
 blackhole 192.0.2.1 proto ovn metric 1000
@@ -16485,7 +16485,7 @@ blackhole 198.51.100.0/24 proto ovn metric 1000])
 # The last 3 of them are local to the current chassis so we expect a better
 # prio.
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-public \
-    options:dynamic-routing-redistribute="connected-as-host,static"
+    options:dynamic-routing-redistribute="connected-as-host,static,nat"
 
 OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
 blackhole 192.0.2.1 proto ovn metric 100

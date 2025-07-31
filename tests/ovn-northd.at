@@ -15545,7 +15545,7 @@ datapath=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
 # Configuring the LRP lr0-sw0 to send host routes.
 # As sw0 is quite empty we will only see the addresses of lr0-sw0.
 check ovn-nbctl --wait=sb set Logical_Router_Port lr0-sw0 \
-    options:dynamic-routing-redistribute="connected-as-host,static"
+    options:dynamic-routing-redistribute="connected-as-host,static,nat"
 check_row_count Advertised_Route 2
 check_column 10.0.0.1 Advertised_Route ip_prefix \
     datapath=$datapath logical_port=$sw0
@@ -15577,14 +15577,14 @@ check_column $lr1 Advertised_Route tracked_port \
 # Adding a NAT rule to lr1 will advertise it as well.
 check ovn-nbctl --wait=sb lr-nat-add lr1 dnat_and_snat 10.0.0.100 192.168.0.1
 check_row_count Advertised_Route 5
-check_row_count Advertised_Route 4 tracked_port!='[[]]'
-check_column $lr1 Advertised_Route tracked_port \
+check_row_count Advertised_Route 3 tracked_port!='[[]]'
+check_column '' Advertised_Route tracked_port \
     datapath=$datapath logical_port=$sw0 ip_prefix=10.0.0.100
 
 # Adding a static route to lr1 will be advertised just normally.
 check ovn-nbctl --wait=sb lr-route-add lr0 172.16.0.0/24 10.0.0.200
 check_row_count Advertised_Route 6
-check_row_count Advertised_Route 4 tracked_port!='[[]]'
+check_row_count Advertised_Route 3 tracked_port!='[[]]'
 check_row_count Advertised_Route 1 datapath=$datapath logical_port=$sw0 \
     ip_prefix=172.16.0.0/24
 
@@ -15593,16 +15593,16 @@ check_row_count Advertised_Route 1 datapath=$datapath logical_port=$sw0 \
 check ovn-nbctl lr-add lr2
 check ovn-nbctl lrp-add lr0 lr0-lr2 00:00:00:02:ff:01 10.10.0.1/24 peer=lr2-lr0
 check ovn-nbctl set Logical_Router_Port lr0-lr2 \
-    options:dynamic-routing-redistribute="connected-as-host,static"
+    options:dynamic-routing-redistribute="connected-as-host,static,nat"
 lr0lr2=$(fetch_column port_binding _uuid logical_port=lr0-lr2)
 check ovn-nbctl lrp-add lr2 lr2-lr0 00:00:00:02:ff:02 10.10.0.2/24 peer=lr0-lr2
 lr2lr0=$(fetch_column port_binding _uuid logical_port=lr2-lr0)
 check ovn-nbctl lrp-add lr2 lr2-sw1 00:00:00:02:ff:03 10.11.0.1/24
 check ovn-nbctl --wait=sb lr-nat-add lr2 dnat_and_snat 10.10.0.20 10.20.0.123
 check_row_count Advertised_Route 8
-check_row_count Advertised_Route 6 tracked_port!='[[]]'
+check_row_count Advertised_Route 4 tracked_port!='[[]]'
 check_row_count Advertised_Route 1 datapath=$datapath logical_port=$lr0lr2 \
-    ip_prefix=10.10.0.20 tracked_port=$lr2lr0
+    ip_prefix=10.10.0.20 tracked_port='[[]]'
 
 # Add a directly connected switch and make sure that northd is not confused.
 # The IP on a switch-switch port should be advertised.
@@ -15615,7 +15615,7 @@ check ovn-nbctl --wait=sb lsp-set-addresses sw0-sw1 \
     "11:aa:bb:cc:dd:ee 10.0.0.42"
 sw0sw1=$(fetch_column port_binding _uuid logical_port=sw0-sw1)
 check_row_count Advertised_Route 9
-check_row_count Advertised_Route 7 tracked_port!='[[]]'
+check_row_count Advertised_Route 5 tracked_port!='[[]]'
 check_column $sw0sw1 Advertised_Route tracked_port \
     datapath=$datapath logical_port=$sw0 ip_prefix=10.0.0.42
 

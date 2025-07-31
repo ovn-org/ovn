@@ -127,7 +127,6 @@ static void
 advertised_route_table_sync(
     struct ovsdb_idl_txn *ovnsb_txn,
     const struct sbrec_advertised_route_table *sbrec_advertised_route_table,
-    const struct lr_stateful_table *lr_stateful_table,
     const struct hmap *routes,
     const struct hmap *dynamic_routes,
     struct advertised_route_sync_data *data);
@@ -245,14 +244,11 @@ en_advertised_route_sync_run(struct engine_node *node, void *data OVS_UNUSED)
     const struct engine_context *eng_ctx = engine_get_context();
     const struct sbrec_advertised_route_table *sbrec_advertised_route_table =
         EN_OVSDB_GET(engine_get_input("SB_advertised_route", node));
-    struct ed_type_lr_stateful *lr_stateful_data =
-        engine_get_input_data("lr_stateful", node);
 
     stopwatch_start(ADVERTISED_ROUTE_SYNC_RUN_STOPWATCH_NAME, time_msec());
 
     advertised_route_table_sync(eng_ctx->ovnsb_idl_txn,
                                 sbrec_advertised_route_table,
-                                &lr_stateful_data->table,
                                 &routes_data->parsed_routes,
                                 &dynamic_routes_data->routes,
                                 routes_sync_data);
@@ -564,40 +560,10 @@ publish_lport_addresses(struct hmap *sync_routes,
     }
 }
 
-/* Collect all IP addresses connected via this LRP. */
-static void
-publish_host_routes_lrp(struct hmap *sync_routes,
-                        const struct lr_stateful_table *lr_stateful_table,
-                        const struct ovn_datapath *advertising_od,
-                        const struct ovn_port *advertising_op,
-                        struct advertised_route_sync_data *data,
-                        const struct ovn_port *lrp)
-{
-    /* This is a LSP connected to an LRP */
-    const struct lport_addresses *addresses = &lrp->lrp_networks;
-    publish_lport_addresses(sync_routes, advertising_od,
-                            advertising_op, addresses, lrp);
-
-    const struct lr_stateful_record *lr_stateful_rec;
-    lr_stateful_rec =
-        lr_stateful_table_find_by_index(lr_stateful_table, lrp->od->index);
-    /* We also need to track this LR as we need to recompute when
-     * any of its IPs change. */
-    uuidset_insert(&data->nb_lr, &lr_stateful_rec->nbr_uuid);
-    struct ovn_port_routable_addresses addrs =
-        get_op_addresses(lrp, lr_stateful_rec, false);
-    for (size_t i = 0; i < addrs.n_addrs; i++) {
-        publish_lport_addresses(sync_routes, advertising_od,
-                                advertising_op, &addrs.laddrs[i], lrp);
-    }
-    destroy_routable_addresses(&addrs);
-}
-
 /* Collect all IP addresses connected to the out_port of a route.
  * This traverses all LSPs on the LS connected to the out_port. */
 static void
 publish_host_routes(struct hmap *sync_routes,
-                    const struct lr_stateful_table *lr_stateful_table,
                     const struct ovn_datapath *advertising_od,
                     const struct ovn_port *advertising_op,
                     struct advertised_route_sync_data *data)
@@ -613,8 +579,9 @@ publish_host_routes(struct hmap *sync_routes,
 
     if (peer_od->nbr) {
         /* This is a LRP directly connected to another LRP. */
-        publish_host_routes_lrp(sync_routes, lr_stateful_table, advertising_od,
-                                advertising_op, data, advertising_op->peer);
+        const struct ovn_port *lrp = advertising_op->peer;
+        publish_lport_addresses(sync_routes, advertising_od,
+                                advertising_op, &lrp->lrp_networks, lrp);
         return;
     }
 
@@ -626,9 +593,9 @@ publish_host_routes(struct hmap *sync_routes,
     HMAP_FOR_EACH (port, dp_node, &peer_od->ports) {
         if (port->peer && port->peer->nbrp) {
             /* This is a LSP connected to an LRP */
-            publish_host_routes_lrp(sync_routes, lr_stateful_table,
-                                    advertising_od, advertising_op,
-                                    data, port->peer);
+            const struct ovn_port *lrp = port->peer;
+            publish_lport_addresses(sync_routes, advertising_od,
+                                    advertising_op, &lrp->lrp_networks, lrp);
         } else {
             /* This is just a plain LSP */
             for (size_t i = 0; i < port->n_lsp_addrs; i++) {
@@ -688,7 +655,6 @@ should_advertise_route(const struct uuidset *host_route_lrps,
  */
 static bool
 process_prereqs_advertise_route(
-    const struct lr_stateful_table *lr_stateful_table,
     struct advertised_route_sync_data *data,
     struct uuidset *host_route_lrps,
     struct hmap *sync_routes,
@@ -705,8 +671,7 @@ process_prereqs_advertise_route(
         if (drr_mode_CONNECTED_AS_HOST_is_set(drr)) {
             const struct uuid *lrp_uuid = &advertising_op->nbrp->header_.uuid;
             uuidset_insert(host_route_lrps, lrp_uuid);
-            publish_host_routes(sync_routes, lr_stateful_table,
-                                advertising_od, advertising_op,
+            publish_host_routes(sync_routes, advertising_od, advertising_op,
                                 data);
             return true;
         }
@@ -748,7 +713,6 @@ static void
 advertised_route_table_sync(
     struct ovsdb_idl_txn *ovnsb_txn,
     const struct sbrec_advertised_route_table *sbrec_advertised_route_table,
-    const struct lr_stateful_table *lr_stateful_table,
     const struct hmap *routes,
     const struct hmap *dynamic_routes,
     struct advertised_route_sync_data *data)
@@ -772,9 +736,9 @@ advertised_route_table_sync(
             continue;
         }
 
-        if (process_prereqs_advertise_route(lr_stateful_table, data,
-                                            &host_route_lrps, &sync_routes,
-                                            route->od, route->out_port,
+        if (process_prereqs_advertise_route(data, &host_route_lrps,
+                                            &sync_routes, route->od,
+                                            route->out_port,
                                             route->tracked_port,
                                             route->source)) {
             continue;
@@ -794,14 +758,22 @@ advertised_route_table_sync(
             continue;
         }
 
-        if (process_prereqs_advertise_route(lr_stateful_table, data,
-                                            &host_route_lrps, &sync_routes,
-                                            route_e->od, route_e->op,
-                                            route_e->tracked_port,
+        if (process_prereqs_advertise_route(data, &host_route_lrps,
+                                            &sync_routes, route_e->od,
+                                            route_e->op, route_e->tracked_port,
                                             route_e->source)) {
             continue;
         }
 
+        const struct sbrec_port_binding *tracked_pb =
+            route_e->tracked_port ? route_e->tracked_port->sb : NULL;
+        if (ar_entry_find(&sync_routes, route_e->od->sb, route_e->op->sb,
+                          route_e->ip_prefix, tracked_pb)) {
+            /* We could already have advertised route entry for LRP IP that
+             * corresponds to "snat" when "connected-as-host" is combined
+             * with "nat". Skip it. */
+            continue;
+        }
         ar_entry_add(&sync_routes, route_e->od, route_e->op,
                      route_e->ip_prefix, route_e->tracked_port,
                      route_e->source);
@@ -814,12 +786,17 @@ advertised_route_table_sync(
         route_e = ar_entry_find(&sync_routes, sb_route->datapath,
                                 sb_route->logical_port, sb_route->ip_prefix,
                                 sb_route->tracked_port);
-        if (route_e) {
-          hmap_remove(&sync_routes, &route_e->hmap_node);
-          ar_entry_free(route_e);
-        } else {
-          sbrec_advertised_route_delete(sb_route);
+        if (!route_e) {
+            sbrec_advertised_route_delete(sb_route);
+            continue;
         }
+
+        if (route_e->tracked_port && !sb_route->tracked_port) {
+            sbrec_advertised_route_set_tracked_port(
+                sb_route, route_e->tracked_port->sb);
+        }
+        hmap_remove(&sync_routes, &route_e->hmap_node);
+        ar_entry_free(route_e);
     }
 
     HMAP_FOR_EACH_POP (route_e, hmap_node, &sync_routes) {
