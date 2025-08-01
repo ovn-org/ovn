@@ -33,18 +33,24 @@ static struct ls_port_group *ls_port_group_create(
 static void ls_port_group_destroy(struct ls_port_group_table *,
                                   struct ls_port_group *);
 
-static bool ls_port_group_process(
+static void ls_port_group_process(
     struct ls_port_group_table *,
     struct port_group_ls_table *,
+    struct hmapx *,
     const struct hmap *ls_ports,
     const struct nbrec_port_group *,
-    struct hmapx *updated_ls_port_groups);
+    struct hmapx *updated_ls_port_groups,
+    struct sset *pruned_ls_port_group_recs);
 
 static void ls_port_group_record_clear(
     struct ls_port_group_table *,
     struct port_group_ls_record *,
     struct hmapx *cleared_ls_port_groups);
-static bool ls_port_group_record_prune(struct ls_port_group *);
+
+static bool ls_port_group_record_prune(
+    struct ls_port_group *,
+    const struct nbrec_port_group *,
+    struct sset *);
 
 static struct ls_port_group_record *ls_port_group_record_create(
     struct ls_port_group *,
@@ -118,8 +124,8 @@ ls_port_group_table_build(
 {
     const struct nbrec_port_group *nb_pg;
     NBREC_PORT_GROUP_TABLE_FOR_EACH (nb_pg, pg_table) {
-        ls_port_group_process(ls_port_groups, port_group_lses,
-                              ls_ports, nb_pg, NULL);
+        ls_port_group_process(ls_port_groups, port_group_lses, NULL,
+                              ls_ports, nb_pg, NULL, NULL);
     }
 }
 
@@ -206,20 +212,27 @@ ls_port_group_destroy(struct ls_port_group_table *ls_port_groups,
     }
 }
 
-/* Process a NB.Port_Group record and stores any updated ls_port_groups
- * in updated_ls_port_groups.  Returns true if a new ls_port_group had
- * to be created or destroyed.
+/* Process a NB.Port_Group record updated the ls_port_group_table and the
+ * port_group_ls_table. Stores a few different updates
+ *  1. Updated ls_port_groups are stored in updated_ls_port_groups so the I-P
+ *     can update the Southbound database
+ *  2. If a port_groups switch set changes the switch is stored in
+ *     ls_port_groups_sets_changed so that later I-P nodes can recalculate
+ *     lflows.
+ *  3. If a port_group has a switch removed from it's switch set it is stored
+ *     in pruned_ls_port_group_recs so that the SB entry can be deleted.
  */
-static bool
+static void
 ls_port_group_process(struct ls_port_group_table *ls_port_groups,
                       struct port_group_ls_table *port_group_lses,
+                      struct hmapx *ls_port_groups_sets_changed,
                       const struct hmap *ls_ports,
                       const struct nbrec_port_group *nb_pg,
-                      struct hmapx *updated_ls_port_groups)
+                      struct hmapx *updated_ls_port_groups,
+                      struct sset *pruned_ls_port_group_recs)
 {
     struct hmapx cleared_ls_port_groups =
         HMAPX_INITIALIZER(&cleared_ls_port_groups);
-    bool ls_pg_rec_created = false;
 
     struct port_group_ls_record *pg_ls =
         port_group_ls_table_find(port_group_lses, nb_pg);
@@ -232,54 +245,66 @@ ls_port_group_process(struct ls_port_group_table *ls_port_groups,
                                    &cleared_ls_port_groups);
     }
 
-    for (size_t i = 0; i < nb_pg->n_ports; i++) {
-        const char *port_name = nb_pg->ports[i]->name;
-        const struct ovn_datapath *od =
-            northd_get_datapath_for_port(ls_ports, port_name);
+    if (!nbrec_port_group_is_deleted(nb_pg)) {
 
-        if (!od) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_ERR_RL(&rl, "lport %s in port group %s not found.",
-                        port_name, nb_pg->name);
-            continue;
-        }
+        for (size_t i = 0; i < nb_pg->n_ports; i++) {
+            const char *port_name = nb_pg->ports[i]->name;
+            const struct ovn_datapath *od =
+                northd_get_datapath_for_port(ls_ports, port_name);
 
-        if (!od->nbs) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_WARN_RL(&rl, "lport %s in port group %s has no lswitch.",
-                         nb_pg->ports[i]->name,
-                         nb_pg->name);
-            continue;
-        }
+            if (!od) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_ERR_RL(&rl, "lport %s in port group %s not found.",
+                            port_name, nb_pg->name);
+                continue;
+            }
 
-        struct ls_port_group *ls_pg =
-            ls_port_group_table_find(ls_port_groups, od->nbs);
-        if (!ls_pg) {
-            ls_pg = ls_port_group_create(ls_port_groups, od->nbs, od->sb);
-        }
+            if (!od->nbs) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_WARN_RL(&rl, "lport %s in port group %s has no lswitch.",
+                             nb_pg->ports[i]->name,
+                             nb_pg->name);
+                continue;
+            }
 
-        struct ls_port_group_record *ls_pg_rec =
-            ls_port_group_record_find(ls_pg, nb_pg);
-        if (!ls_pg_rec) {
-            ls_pg_rec = ls_port_group_record_create(ls_pg, nb_pg);
-            ls_pg_rec_created = true;
-        }
-        sset_add(&ls_pg_rec->ports, port_name);
+            struct ls_port_group *ls_pg =
+                ls_port_group_table_find(ls_port_groups, od->nbs);
+            if (!ls_pg) {
+                ls_pg = ls_port_group_create(ls_port_groups, od->nbs, od->sb);
+            }
 
-        hmapx_add(&pg_ls->switches,
-                  CONST_CAST(struct nbrec_logical_switch *, od->nbs));
-        if (updated_ls_port_groups) {
-            hmapx_add(updated_ls_port_groups, ls_pg);
+            struct ls_port_group_record *ls_pg_rec =
+                ls_port_group_record_find(ls_pg, nb_pg);
+            if (!ls_pg_rec) {
+                ls_pg_rec = ls_port_group_record_create(ls_pg, nb_pg);
+                if (ls_port_groups_sets_changed) {
+                    hmapx_add(ls_port_groups_sets_changed,
+                              CONST_CAST(struct nbrec_logical_switch *,
+                                         od->nbs));
+                }
+            }
+            sset_add(&ls_pg_rec->ports, port_name);
+
+            hmapx_add(&pg_ls->switches,
+                      CONST_CAST(struct nbrec_logical_switch *, od->nbs));
+            if (updated_ls_port_groups) {
+                hmapx_add(updated_ls_port_groups, ls_pg);
+            }
         }
     }
 
-    bool ls_pg_rec_destroyed = false;
     struct hmapx_node *node;
     HMAPX_FOR_EACH (node, &cleared_ls_port_groups) {
         struct ls_port_group *ls_pg = node->data;
 
-        if (ls_port_group_record_prune(ls_pg)) {
-            ls_pg_rec_destroyed = true;
+        if (ls_port_group_record_prune(ls_pg,
+                                       nb_pg,
+                                       pruned_ls_port_group_recs)) {
+            if (ls_port_groups_sets_changed) {
+                hmapx_add(ls_port_groups_sets_changed,
+                    CONST_CAST(struct nbrec_logical_switch *,ls_pg->nbs));
+            }
+            hmapx_find_and_delete(&pg_ls->switches, ls_pg->nbs);
         }
 
         if (hmap_is_empty(&ls_pg->nb_pgs)) {
@@ -287,8 +312,6 @@ ls_port_group_process(struct ls_port_group_table *ls_port_groups,
         }
     }
     hmapx_destroy(&cleared_ls_port_groups);
-
-    return ls_pg_rec_created || ls_pg_rec_destroyed;
 }
 
 /* Destroys all the struct ls_port_group_record that might be associated to
@@ -320,17 +343,27 @@ ls_port_group_record_clear(struct ls_port_group_table *ls_to_port_groups,
 }
 
 static bool
-ls_port_group_record_prune(struct ls_port_group *ls_pg)
+ls_port_group_record_prune(struct ls_port_group *ls_pg,
+                           const struct nbrec_port_group *nb_pg,
+                           struct sset *pruned_ls_pg_rec)
 {
     struct ls_port_group_record *ls_pg_rec;
     bool records_pruned = false;
 
-    HMAP_FOR_EACH_SAFE (ls_pg_rec, key_node, &ls_pg->nb_pgs) {
-        if (sset_is_empty(&ls_pg_rec->ports)) {
-            ls_port_group_record_destroy(ls_pg, ls_pg_rec);
-            records_pruned = true;
+    struct ds sb_pg_name = DS_EMPTY_INITIALIZER;
+    ls_pg_rec = ls_port_group_record_find(ls_pg, nb_pg);
+    if (sset_is_empty(&ls_pg_rec->ports) ||
+        nbrec_port_group_is_deleted(ls_pg_rec->nb_pg)) {
+        if (pruned_ls_pg_rec) {
+            get_sb_port_group_name(ls_pg_rec->nb_pg->name,
+                                   ls_pg->sb_datapath_key,
+                                   &sb_pg_name);
+            sset_add(pruned_ls_pg_rec, ds_cstr(&sb_pg_name));
         }
+        ls_port_group_record_destroy(ls_pg, ls_pg_rec);
+        records_pruned = true;
     }
+    ds_destroy(&sb_pg_name);
     return records_pruned;
 }
 
@@ -460,6 +493,10 @@ en_port_group_init(struct engine_node *node OVS_UNUSED,
                    struct engine_arg *arg OVS_UNUSED)
 {
     struct port_group_data *pg_data = xmalloc(sizeof *pg_data);
+    *pg_data = (struct port_group_data) {
+        .ls_port_groups_sets_changed =
+            HMAPX_INITIALIZER(&pg_data->ls_port_groups_sets_changed),
+    };
 
     ls_port_group_table_init(&pg_data->ls_port_groups);
     port_group_ls_table_init(&pg_data->port_groups_lses);
@@ -473,6 +510,7 @@ en_port_group_cleanup(void *data_)
 
     ls_port_group_table_destroy(&data->ls_port_groups);
     port_group_ls_table_destroy(&data->port_groups_lses);
+    hmapx_destroy(&data->ls_port_groups_sets_changed);
 }
 
 void
@@ -480,7 +518,7 @@ en_port_group_clear_tracked_data(void *data_)
 {
     struct port_group_data *data = data_;
 
-    data->ls_port_groups_sets_changed = true;
+    hmapx_clear(&data->ls_port_groups_sets_changed);
 }
 
 enum engine_node_state
@@ -514,73 +552,72 @@ port_group_nb_port_group_handler(struct engine_node *node, void *data_)
     struct port_group_input input_data = port_group_get_input_data(node);
     const struct engine_context *eng_ctx = engine_get_context();
     struct port_group_data *data = data_;
-    bool success = true;
+    bool changed = false;
 
     const struct nbrec_port_group_table *nb_pg_table =
         EN_OVSDB_GET(engine_get_input("NB_port_group", node));
     const struct nbrec_port_group *nb_pg;
 
-    /* Return false if a port group is created or deleted.
-     * Handle I-P for only updated port groups. */
-    NBREC_PORT_GROUP_TABLE_FOR_EACH_TRACKED (nb_pg, nb_pg_table) {
-        if (nbrec_port_group_is_new(nb_pg) ||
-                nbrec_port_group_is_deleted(nb_pg)) {
-            return EN_UNHANDLED;
-        }
-    }
-
     struct hmapx updated_ls_port_groups =
         HMAPX_INITIALIZER(&updated_ls_port_groups);
 
+    struct sset stale_sb_port_groups = SSET_INITIALIZER(&stale_sb_port_groups);
     NBREC_PORT_GROUP_TABLE_FOR_EACH_TRACKED (nb_pg, nb_pg_table) {
-        if (ls_port_group_process(&data->ls_port_groups,
-                                  &data->port_groups_lses,
-                                  input_data.ls_ports,
-                                  nb_pg, &updated_ls_port_groups)) {
-            success = false;
-            break;
+        ls_port_group_process(&data->ls_port_groups,
+                              &data->port_groups_lses,
+                              &data->ls_port_groups_sets_changed,
+                              input_data.ls_ports,
+                              nb_pg, &updated_ls_port_groups,
+                              &stale_sb_port_groups);
         }
-    }
 
-    /* If changes have been successfully processed incrementally then update
+    /* Changes have been successfully processed incrementally now update
      * the SB too. */
-    if (success) {
-        struct ovsdb_idl_index *sbrec_port_group_by_name =
-            engine_ovsdb_node_get_index(
-                    engine_get_input("SB_port_group", node),
-                    "sbrec_port_group_by_name");
-        struct ds sb_pg_name = DS_EMPTY_INITIALIZER;
+    struct ovsdb_idl_index *sbrec_port_group_by_name =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_port_group", node),
+                "sbrec_port_group_by_name");
+    struct ds sb_pg_name = DS_EMPTY_INITIALIZER;
 
-        struct hmapx_node *updated_node;
-        HMAPX_FOR_EACH (updated_node, &updated_ls_port_groups) {
-            const struct ls_port_group *ls_pg = updated_node->data;
-            struct ls_port_group_record *ls_pg_rec;
+    struct hmapx_node *updated_node;
+    HMAPX_FOR_EACH (updated_node, &updated_ls_port_groups) {
+        changed = true;
+        const struct ls_port_group *ls_pg = updated_node->data;
+        struct ls_port_group_record *ls_pg_rec;
 
-            HMAP_FOR_EACH (ls_pg_rec, key_node, &ls_pg->nb_pgs) {
-                get_sb_port_group_name(ls_pg_rec->nb_pg->name,
-                                        ls_pg->sb_datapath_key,
-                                        &sb_pg_name);
+        HMAP_FOR_EACH (ls_pg_rec, key_node, &ls_pg->nb_pgs) {
+            get_sb_port_group_name(ls_pg_rec->nb_pg->name,
+                                   ls_pg->sb_datapath_key,
+                                   &sb_pg_name);
 
-                const char *sb_pg_name_cstr = ds_cstr(&sb_pg_name);
-                const struct sbrec_port_group *sb_pg =
-                    sb_port_group_lookup_by_name(sbrec_port_group_by_name,
-                                                 sb_pg_name_cstr);
-                if (!sb_pg) {
-                    sb_pg = create_sb_port_group(eng_ctx->ovnsb_idl_txn,
-                                                 sb_pg_name_cstr);
-                }
-                struct sorted_array nb_ports =
-                    sorted_array_from_sset(&ls_pg_rec->ports);
-                update_sb_port_group(&nb_ports, sb_pg);
-                sorted_array_destroy(&nb_ports);
+            const char *sb_pg_name_cstr = ds_cstr(&sb_pg_name);
+            const struct sbrec_port_group *sb_pg =
+                sb_port_group_lookup_by_name(sbrec_port_group_by_name,
+                                             sb_pg_name_cstr);
+            if (!sb_pg) {
+                sb_pg = create_sb_port_group(eng_ctx->ovnsb_idl_txn,
+                                             sb_pg_name_cstr);
             }
+            struct sorted_array nb_ports =
+                sorted_array_from_sset(&ls_pg_rec->ports);
+            update_sb_port_group(&nb_ports, sb_pg);
+            sorted_array_destroy(&nb_ports);
         }
-        ds_destroy(&sb_pg_name);
+    }
+    ds_destroy(&sb_pg_name);
+
+    const char *stale_sb_port_group_name;
+    SSET_FOR_EACH (stale_sb_port_group_name, &stale_sb_port_groups) {
+        changed = true;
+        const struct sbrec_port_group *sb_pg =
+            sb_port_group_lookup_by_name(sbrec_port_group_by_name,
+                                         stale_sb_port_group_name);
+            sbrec_port_group_delete(sb_pg);
     }
 
-    data->ls_port_groups_sets_changed = !success;
+    sset_destroy(&stale_sb_port_groups);
     hmapx_destroy(&updated_ls_port_groups);
-    return success ? EN_HANDLED_UPDATED : EN_UNHANDLED;
+    return changed ? EN_HANDLED_UPDATED : EN_HANDLED_UNCHANGED;
 }
 
 static void

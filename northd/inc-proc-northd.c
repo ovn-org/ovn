@@ -348,7 +348,11 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_lflow, &en_sampling_app, NULL);
 
     engine_add_input(&en_lflow, &en_northd, lflow_northd_handler);
-    engine_add_input(&en_lflow, &en_port_group, lflow_port_group_handler);
+    /* No need for an explicit handler for port_groups in the en_lflow node.
+     * Stateful configuration changes are passed through the en_ls_stateful
+     * input dependancy. Still needs access to en_port_port_group (input)
+     * data to look up port groups.  */
+    engine_add_input(&en_lflow, &en_port_group, engine_noop_handler);
     engine_add_input(&en_lflow, &en_lr_stateful, lflow_lr_stateful_handler);
     engine_add_input(&en_lflow, &en_ls_stateful, lflow_ls_stateful_handler);
     engine_add_input(&en_lflow, &en_multicast_igmp,

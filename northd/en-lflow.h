@@ -20,8 +20,6 @@ void *en_lflow_init(struct engine_node *node, struct engine_arg *arg);
 void en_lflow_cleanup(void *data);
 enum engine_input_handler_result lflow_northd_handler(struct engine_node *,
                                                       void *data);
-enum engine_input_handler_result lflow_port_group_handler(struct engine_node *,
-                                                          void *data);
 enum engine_input_handler_result
 lflow_lr_stateful_handler(struct engine_node *, void *data);
 enum engine_input_handler_result

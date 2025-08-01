@@ -158,22 +158,6 @@ lflow_northd_handler(struct engine_node *node,
 }
 
 enum engine_input_handler_result
-lflow_port_group_handler(struct engine_node *node, void *data OVS_UNUSED)
-{
-    struct port_group_data *pg_data =
-        engine_get_input_data("port_group", node);
-
-    /* If the set of switches per port group didn't change then there's no
-     * need to reprocess lflows.  Otherwise, there might be a need to
-     * add/delete port-group ACLs to/from switches. */
-    if (pg_data->ls_port_groups_sets_changed) {
-        return EN_UNHANDLED;
-    }
-
-    return EN_HANDLED_UPDATED;
-}
-
-enum engine_input_handler_result
 lflow_lr_stateful_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lr_stateful *lr_sful_data =

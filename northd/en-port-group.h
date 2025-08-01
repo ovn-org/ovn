@@ -104,7 +104,7 @@ struct port_group_input {
 struct port_group_data {
     struct ls_port_group_table ls_port_groups;
     struct port_group_ls_table port_groups_lses;
-    bool ls_port_groups_sets_changed;
+    struct hmapx ls_port_groups_sets_changed;
 };
 
 void *en_port_group_init(struct engine_node *, struct engine_arg *);
