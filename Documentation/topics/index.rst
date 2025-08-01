@@ -42,6 +42,7 @@ OVN
    ovn-news-2.8
    vif-plug-providers/index
    testing
+   test-development
 
 .. list-table::
 

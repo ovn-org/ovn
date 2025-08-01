@@ -25,6 +25,7 @@ DOC_SOURCE = \
 	Documentation/tutorials/ovn-interconnection.rst \
 	Documentation/topics/index.rst \
 	Documentation/topics/testing.rst \
+	Documentation/topics/test-development.rst \
 	Documentation/topics/high-availability.rst \
 	Documentation/topics/integration.rst \
 	Documentation/topics/ovn-news-2.8.rst \
