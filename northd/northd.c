@@ -5823,8 +5823,8 @@ build_lswitch_learn_fdb_od(
                   lflow_ref);
 }
 
-/* Egress tables 8: Egress port security - IP (priority 0)
- * Egress table 9: Egress port security L2 - multicast/broadcast
+/* Egress table 12: Egress port security - IP (priority 0)
+ * Egress table 13: Egress port security L2 - multicast/broadcast
  *                 (priority 100). */
 static void
 build_lswitch_output_port_sec_od(struct ovn_datapath *od,
@@ -8639,7 +8639,7 @@ build_lrouter_groups(struct hmap *lr_ports, struct ovn_datapaths *lr_datapaths)
 }
 
 /*
- * Ingress table 25: Flows that flood self originated ARP/RARP/ND packets in
+ * Ingress table 30: Flows that flood self originated ARP/RARP/ND packets in
  * the switching domain.
  */
 static void
@@ -8734,7 +8734,7 @@ lrouter_port_ipv6_reachable(const struct ovn_port *op,
 }
 
 /*
- * Ingress table 25: Flows that forward ARP/ND requests only to the routers
+ * Ingress table 30: Flows that forward ARP/ND requests only to the routers
  * that own the addresses. Other ARP/ND packets are still flooded in the
  * switching domain as regular broadcast.
  */
@@ -8818,7 +8818,7 @@ build_lswitch_rport_arp_req_flow(
 }
 
 /*
- * Ingress table 25: Flows that forward ARP/ND requests only to the routers
+ * Ingress table 30: Flows that forward ARP/ND requests only to the routers
  * that own the addresses.
  * Priorities:
  * - 80: self originated GARPs that need to follow regular processing.
@@ -8856,7 +8856,7 @@ build_lswitch_rport_arp_req_flows(struct ovn_port *op,
 }
 
 /*
- * Ingress table 25: Flows that forward ARP/ND requests only to the routers
+ * Ingress table 30: Flows that forward ARP/ND requests only to the routers
  * that own the addresses.
  * Priorities:
  * - 80: self originated GARPs that need to follow regular processing.
@@ -9350,7 +9350,7 @@ build_lswitch_lflows_l2_unknown(struct ovn_datapath *od,
                                 struct lflow_table *lflows,
                                 struct lflow_ref *lflow_ref)
 {
-    /* Ingress table 25/26: Destination lookup for unknown MACs. */
+    /* Ingress table 31: Destination lookup for unknown MACs. */
     if (od->has_unknown) {
         ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50,
                       "outport == \"none\"",
@@ -9365,8 +9365,10 @@ build_lswitch_lflows_l2_unknown(struct ovn_datapath *od,
                   "output;", lflow_ref);
 }
 
-/* Build pre-ACL and ACL tables for both ingress and egress.
- * Ingress tables 3 through 10.  Egress tables 0 through 7. */
+/* Build LB, ACL, QOS related flows for logical switch pipeline stages:
+ * - Ingress: tables 5-12, 17-19, 23
+ * - Egress: tables 2-8, 10-11
+ */
 static void
 build_lswitch_lflows_pre_acl_and_acl(
     struct ovn_datapath *od,
@@ -9428,7 +9430,7 @@ build_lswitch_lflows_admission_control(struct ovn_datapath *od,
                   lflow_ref);
 }
 
-/* Ingress table 19: ARP/ND responder, skip requests coming from localnet
+/* Ingress table 24: ARP/ND responder, skip requests coming from localnet
  * ports. (priority 100); see ovn-northd.8.xml for the rationale. */
 
 static void
@@ -9448,7 +9450,7 @@ build_lswitch_arp_nd_responder_skip_local(struct ovn_port *op,
                                       &op->nbsp->header_, op->lflow_ref);
 }
 
-/* Ingress table 19: ARP/ND responder, reply for known IPs.
+/* Ingress table 24: ARP/ND responder, reply for known IPs.
  * (priority 50). */
 static void
 build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
@@ -9783,7 +9785,7 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
     }
 }
 
-/* Ingress table 19: ARP/ND responder, by default goto next.
+/* Ingress table 24: ARP/ND responder, by default goto next.
  * (priority 0)*/
 static void
 build_lswitch_arp_nd_responder_default(struct ovn_datapath *od,
@@ -9795,7 +9797,7 @@ build_lswitch_arp_nd_responder_default(struct ovn_datapath *od,
                   lflow_ref);
 }
 
-/* Ingress table 19: ARP/ND responder for service monitor source ip.
+/* Ingress table 24: ARP/ND responder for service monitor source ip.
  * (priority 110)*/
 static void
 build_lswitch_arp_nd_service_monitor(const struct ovn_lb_datapaths *lb_dps,
@@ -9875,7 +9877,7 @@ build_lswitch_arp_nd_service_monitor(const struct ovn_lb_datapaths *lb_dps,
 }
 
 
-/* Logical switch ingress table 20 and 21: DHCP options and response
+/* Logical switch ingress table 25 and 26: DHCP options and response
  * priority 100 flows. */
 static void
 build_lswitch_dhcp_options_and_response(struct ovn_port *op,
@@ -9931,11 +9933,11 @@ build_lswitch_dhcp_options_and_response(struct ovn_port *op,
     }
 }
 
-/* Ingress table 20 and 21: DHCP options and response, by default goto
+/* Ingress table 25 and 26: DHCP options and response, by default goto
  * next. (priority 0).
- * Ingress table 22 and 23: DNS lookup and response, by default goto next.
+ * Ingress table 27 and 28: DNS lookup and response, by default goto next.
  * (priority 0).
- * Ingress table 24 - External port handling, by default goto next.
+ * Ingress table 29 - External port handling, by default goto next.
  * (priority 0). */
 static void
 build_lswitch_dhcp_and_dns_defaults(struct ovn_datapath *od,
@@ -10005,7 +10007,7 @@ build_lswitch_external_port(struct ovn_port *op,
     }
 }
 
-/* Ingress table 25: Destination lookup, broadcast and multicast handling
+/* Ingress table 30: Destination lookup, broadcast and multicast handling
  * (priority 70 - 100). */
 static void
 build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
@@ -10071,7 +10073,7 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
                   "outport = \""MC_FLOOD"\"; output;", lflow_ref);
 }
 
-/* Ingress table destination lookup, multicast handling (priority 80). */
+/* Ingress table 30: destination lookup, multicast handling (priority 80). */
 static void
 build_mcast_flood_lswitch(struct ovn_datapath *od, struct lflow_table *lflows,
                           struct ds *actions, struct lflow_ref *lflow_ref)
@@ -10114,7 +10116,7 @@ build_mcast_flood_lswitch(struct ovn_datapath *od, struct lflow_table *lflows,
 }
 
 
-/* Ingress table 25: Add IP multicast flows learnt from IGMP/MLD
+/* Ingress table 30: Add IP multicast flows learnt from IGMP/MLD
  * (priority 90). */
 static void
 build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
