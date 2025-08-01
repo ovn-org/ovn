@@ -68,7 +68,7 @@ static void ls_stateful_record_init(
     const struct ls_port_group_table *);
 static bool ls_has_lb_vip(const struct ovn_datapath *);
 static void ls_stateful_record_set_acls(
-    struct ls_stateful_record *, const struct ovn_datapath *,
+    struct ls_stateful_record *, const struct nbrec_logical_switch *,
     const struct ls_port_group_table *);
 static void ls_stateful_record_set_acls_(struct ls_stateful_record *,
                                          struct nbrec_acl **, size_t n_acls);
@@ -159,7 +159,7 @@ ls_stateful_northd_handler(struct engine_node *node, void *data_)
         struct ls_stateful_record *ls_stateful_rec =
             ls_stateful_table_find_(&data->table, od->nbs);
         ovs_assert(ls_stateful_rec);
-        ls_stateful_record_set_acls(ls_stateful_rec, od,
+        ls_stateful_record_set_acls(ls_stateful_rec, od->nbs,
                                     input_data.ls_port_groups);
 
         /* Add the ls_stateful_rec to the tracking data. */
@@ -304,7 +304,7 @@ ls_stateful_record_init(struct ls_stateful_record *ls_stateful_rec,
                       const struct ls_port_group_table *ls_pgs)
 {
     ls_stateful_rec->has_lb_vip = ls_has_lb_vip(od);
-    ls_stateful_record_set_acls(ls_stateful_rec, od, ls_pgs);
+    ls_stateful_record_set_acls(ls_stateful_rec, od->nbs, ls_pgs);
 }
 
 static bool
@@ -343,7 +343,7 @@ ls_has_lb_vip(const struct ovn_datapath *od)
 
 static void
 ls_stateful_record_set_acls(struct ls_stateful_record *ls_stateful_rec,
-                            const struct ovn_datapath *od,
+                            const struct nbrec_logical_switch *nbs,
                             const struct ls_port_group_table *ls_pgs)
 {
     ls_stateful_rec->has_stateful_acl = false;
@@ -352,10 +352,10 @@ ls_stateful_record_set_acls(struct ls_stateful_record *ls_stateful_rec,
     ls_stateful_rec->has_acls = false;
     uuidset_clear(&ls_stateful_rec->related_acls);
 
-    ls_stateful_record_set_acls_(ls_stateful_rec, od->nbs->acls,
-                                 od->nbs->n_acls);
+    ls_stateful_record_set_acls_(ls_stateful_rec, nbs->acls,
+                                 nbs->n_acls);
 
-    struct ls_port_group *ls_pg = ls_port_group_table_find(ls_pgs, od->nbs);
+    struct ls_port_group *ls_pg = ls_port_group_table_find(ls_pgs, nbs);
     if (!ls_pg) {
         return;
     }
