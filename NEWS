@@ -41,6 +41,11 @@ Post v25.03.0
    - Added support for running tests from the 'check-kernel' system test target
      under retis by setting OVS_TEST_WITH_RETIS=yes.  See the 'Testing' section
      of the documentation for more details.
+   - Dynamic Routing:
+     * Add the option "dynamic-routing-redistribute-local-only" to Logical
+       Routers and Logical Router Ports which refines the way in which
+       chassis-specific Advertised_Routes (e.g., for NAT and LB IPs) are
+       advertised.
 
 OVN v25.03.0 - 07 Mar 2025
 --------------------------

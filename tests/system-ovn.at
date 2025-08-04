@@ -16759,6 +16759,29 @@ OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
 blackhole 10.42.10.10 proto ovn metric 1000
 blackhole 172.16.1.150 proto ovn metric 1000])
 
+# Set LR/LRP.options.dynamic-routing-redistribute-local-only=true
+# and verify that lower priority routes are not advertised anymore.
+check ovn-nbctl --wait=hv set logical_router_port r1-join \
+    options:dynamic-routing-redistribute-local-only=true
+
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 172.16.1.150 proto ovn metric 1000])
+
+check ovn-nbctl --wait=hv remove logical_router_port r1-join     \
+    options dynamic-routing-redistribute-local-only              \
+    -- set logical_router R1                                     \
+            options:dynamic-routing-redistribute-local-only=true
+
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 172.16.1.150 proto ovn metric 1000])
+
+check ovn-nbctl --wait=hv remove logical_router R1  \
+    options dynamic-routing-redistribute-local-only
+
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 10.42.10.10 proto ovn metric 1000
+blackhole 172.16.1.150 proto ovn metric 1000])
+
 # Before cleanup of hv1 ovn-controller, trigger a recompute
 # to cleanup the local datapaths. Otherwise, the test will fail.
 # This is because we don't remove a datapath from
@@ -16899,6 +16922,29 @@ check ovn-nbctl                              \
     -- lrp-del-gateway-chassis r2-join hv1   \
     -- lrp-set-gateway-chassis r2-join hv123
 check ovn-nbctl --wait=hv sync
+
+OVN_ROUTE_V6_EQUAL([ovnvrf$vrf], [dnl
+blackhole 2001:db8:1001::150 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:3001::150 dev lo proto ovn metric 1000 pref medium])
+
+# Set LR/LRP.options.dynamic-routing-redistribute-local-only=true
+# and verify that lower priority routes are not advertised anymore.
+check ovn-nbctl --wait=hv set logical_router_port r1-join \
+    options:dynamic-routing-redistribute-local-only=true
+
+OVN_ROUTE_V6_EQUAL([ovnvrf$vrf], [dnl
+blackhole 2001:db8:1001::150 dev lo proto ovn metric 1000 pref medium])
+
+check ovn-nbctl --wait=hv remove logical_router_port r1-join     \
+    options dynamic-routing-redistribute-local-only              \
+    -- set logical_router R1                                     \
+            options:dynamic-routing-redistribute-local-only=true
+
+OVN_ROUTE_V6_EQUAL([ovnvrf$vrf], [dnl
+blackhole 2001:db8:1001::150 dev lo proto ovn metric 1000 pref medium])
+
+check ovn-nbctl --wait=hv remove logical_router R1  \
+    options dynamic-routing-redistribute-local-only
 
 OVN_ROUTE_V6_EQUAL([ovnvrf$vrf], [dnl
 blackhole 2001:db8:1001::150 dev lo proto ovn metric 1000 pref medium
@@ -17060,6 +17106,35 @@ check ovn-nbctl                             \
   -- ha-chassis-group-add-chassis g1 hv2 20 \
   -- ha-chassis-group-remove-chassis g1 hv1
 check ovn-nbctl --wait=hv sync
+
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 10.42.10.10 proto ovn metric 1000
+blackhole 10.42.10.11 proto ovn metric 1000
+blackhole 10.42.10.12 proto ovn metric 1000
+blackhole 10.42.10.13 proto ovn metric 1000
+blackhole 172.16.1.10 proto ovn metric 1000
+blackhole 172.16.1.11 proto ovn metric 1000])
+
+# Set LR/LRP.options.dynamic-routing-redistribute-local-only=true
+# and verify that lower priority routes are not advertised anymore.
+check ovn-nbctl --wait=hv set logical_router_port r1-join \
+    options:dynamic-routing-redistribute-local-only=true
+
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 172.16.1.10 proto ovn metric 1000
+blackhole 172.16.1.11 proto ovn metric 1000])
+
+check ovn-nbctl --wait=hv remove logical_router_port r1-join     \
+    options dynamic-routing-redistribute-local-only              \
+    -- set logical_router R1                                     \
+            options:dynamic-routing-redistribute-local-only=true
+
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 172.16.1.10 proto ovn metric 1000
+blackhole 172.16.1.11 proto ovn metric 1000])
+
+check ovn-nbctl --wait=hv remove logical_router R1  \
+    options dynamic-routing-redistribute-local-only
 
 OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
 blackhole 10.42.10.10 proto ovn metric 1000
@@ -17283,6 +17358,35 @@ blackhole 2001:db8:1004::151 dev lo proto ovn metric 1000 pref medium
 blackhole 2001:db8:1004::152 dev lo proto ovn metric 1000 pref medium
 blackhole 2001:db8:1004::153 dev lo proto ovn metric 1000 pref medium])
 
+# Set LR/LRP.options.dynamic-routing-redistribute-local-only=true
+# and verify that lower priority routes are not advertised anymore.
+check ovn-nbctl --wait=hv set logical_router_port r1-join \
+    options:dynamic-routing-redistribute-local-only=true
+
+OVN_ROUTE_V6_EQUAL([ovnvrf$vrf], [dnl
+blackhole 2001:db8:1003::150 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1003::151 dev lo proto ovn metric 1000 pref medium])
+
+check ovn-nbctl --wait=hv remove logical_router_port r1-join     \
+    options dynamic-routing-redistribute-local-only              \
+    -- set logical_router R1                                     \
+            options:dynamic-routing-redistribute-local-only=true
+
+OVN_ROUTE_V6_EQUAL([ovnvrf$vrf], [dnl
+blackhole 2001:db8:1003::150 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1003::151 dev lo proto ovn metric 1000 pref medium])
+
+check ovn-nbctl --wait=hv remove logical_router R1  \
+    options dynamic-routing-redistribute-local-only
+
+OVN_ROUTE_V6_EQUAL([ovnvrf$vrf], [dnl
+blackhole 2001:db8:1003::150 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1003::151 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1004::150 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1004::151 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1004::152 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1004::153 dev lo proto ovn metric 1000 pref medium])
+
 # Add "guest" LS connected the distributed router R2 and one "VM" called
 # guest1.
 # Also, connect R2 to ls-join via another DGW.
@@ -17339,6 +17443,183 @@ OVN_CLEANUP_CONTROLLER([hv1], [], [], [ls-join])
 # Ensure system resources are cleaned up.
 AT_CHECK([ip link | grep -q ovnvrf1003:.*UP], [1])
 AT_CHECK([test `ip -6 route show table 1003 | wc -l` -eq 2], [1])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/Failed to acquire.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([dynamic-routing - NAT IPs on DGP])
+AT_KEYWORDS([dynamic-routing])
+
+CHECK_VRF()
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+
+vrf=1000
+VRF_RESERVE([$vrf])
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-ext], [set Bridge br-ext fail-mode=standalone])
+
+dnl Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv1 \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+    -- set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+dnl Start ovn-controller.
+start_daemon ovn-controller
+
+OVS_WAIT_WHILE([ip link | grep -q ovnvrf$vrf:.*UP])
+
+
+dnl Logical topology:
+dnl
+dnl   +----+                  +----+
+dnl   |vif1| (chassis=hv1)    |vif2| (chassis=hv2)
+dnl   +-+--+                  +-+--+
+dnl     |                       |
+dnl     +-----------------------+
+dnl     |
+dnl  +--+---+
+dnl  |LS sw0|
+dnl  +--+---+
+dnl     |
+dnl  +--+--+
+dnl  | LR  | (distributed DNAT_AND_SNAT for vif1 and vif2)
+dnl  | R1  |
+dnl  +--+--+
+dnl     |
+dnl +---+------+
+dnl |LS public1|
+dnl +---+------+
+dnl     |
+dnl  +--+--+
+dnl  | LR  | (dynamic-routing=true, dynamic-routing-redistribute=nat,lb)
+dnl  | R2  |
+dnl  +--+--+
+dnl     |
+dnl +---+------+
+dnl |LS public2|
+dnl +----------+
+
+ADD_NAMESPACES(vif1)
+ADD_VETH(vif1, vif1, br-int, "192.168.1.100/24", "f0:00:00:00:01:00", "192.168.1.1")
+
+check ovn-nbctl                                           \
+    -- lr-add R1                                          \
+    -- lrp-add R1 R1-S0 00:00:01:01:02:03 192.168.1.1/24  \
+    -- lrp-add R1 R1-PUB1 00:00:02:01:02:03 172.16.1.1/24 \
+    -- lrp-set-gateway-chassis R1-PUB1 hv1
+
+check ovn-nbctl                                           \
+    -- lr-add R2                                          \
+    -- set Logical_Router R2                              \
+            options:requested-tnl-key=$vrf                \
+            options:dynamic-routing=true                  \
+            options:dynamic-routing-redistribute=lb,nat   \
+    -- lrp-add R2 R2-PUB1 00:02:02:01:02:03 172.16.1.2/24 \
+    -- lrp-add R2 R2-PUB2 00:03:02:01:02:03 42.42.42.1/24 \
+    -- lrp-set-options R2-PUB2                            \
+            dynamic-routing-maintain-vrf=true             \
+    -- lrp-set-gateway-chassis R2-PUB2 hv1
+
+check ovn-nbctl                                  \
+    -- ls-add S0                                 \
+    -- lsp-add S0 S0-R1                          \
+    -- set Logical_Switch_Port S0-R1 type=router \
+            options:router-port=R1-S0            \
+    -- lsp-set-addresses S0-R1 router            \
+    -- lsp-add S0 vif1                           \
+    -- lsp-add S0 vif2
+
+check ovn-nbctl                                    \
+    -- ls-add PUB1                                 \
+    -- lsp-add PUB1 PUB1-R1                        \
+    -- set Logical_Switch_Port PUB1-R1 type=router \
+            options:router-port=R1-PUB1            \
+    -- lsp-set-addresses PUB1-R1 router            \
+    -- lsp-add PUB1 PUB1-R2                        \
+    -- set Logical_Switch_Port PUB1-R2 type=router \
+            options:router-port=R2-PUB1            \
+    -- lsp-set-addresses PUB1-R2 router            \
+    -- lsp-add PUB1 ln1                            \
+    -- lsp-set-addresses ln1 unknown               \
+    -- lsp-set-type ln1 localnet                   \
+    -- lsp-set-options ln1 network_name=phynet
+
+check ovn-nbctl                                    \
+    -- ls-add PUB2                                 \
+    -- lsp-add PUB2 PUB2-R2                        \
+    -- set Logical_Switch_Port PUB2-R2 type=router \
+            options:router-port=R2-PUB2            \
+    -- lsp-set-addresses PUB2-R2 router            \
+    -- lsp-add PUB2 ln2                            \
+    -- lsp-set-addresses ln2 unknown               \
+    -- lsp-set-type ln2 localnet                   \
+    -- lsp-set-options ln2 network_name=phynet
+
+OVN_POPULATE_ARP
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up vif1
+
+AT_CHECK([test `ip route show table $vrf | wc -l` -eq 1], [1])
+AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP])
+
+dnl Create distributed NATs and associate them with vif1 and vif2.
+check ovn-nbctl --wait=hv                                                            \
+    -- lr-nat-add R1 dnat_and_snat 172.16.1.100 192.168.1.100 vif1 00:00:00:00:00:01 \
+    -- lr-nat-add R1 dnat_and_snat 172.16.1.200 192.168.1.200 vif2 00:00:00:00:00:02
+
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 172.16.1.100 proto ovn metric 100
+blackhole 172.16.1.200 proto ovn metric 1000])
+
+dnl Set LR/LRP.options.dynamic-routing-redistribute-local-only=true
+dnl and verify that lower priority routes are not advertised anymore.
+check ovn-nbctl --wait=hv set logical_router_port R2-PUB1 \
+    options:dynamic-routing-redistribute-local-only=true
+
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 172.16.1.100 proto ovn metric 100])
+
+check ovn-nbctl --wait=hv remove logical_router_port R2-PUB1     \
+    options dynamic-routing-redistribute-local-only              \
+    -- set logical_router R2                                     \
+            options:dynamic-routing-redistribute-local-only=true
+
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 172.16.1.100 proto ovn metric 100])
+
+check ovn-nbctl --wait=hv remove logical_router R2  \
+    options dynamic-routing-redistribute-local-only
+
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 172.16.1.100 proto ovn metric 100
+blackhole 172.16.1.200 proto ovn metric 1000])
+
+OVN_CLEANUP_CONTROLLER([hv1])
+
+dnl Ensure system resources are cleaned up.
+AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP], [1])
+AT_CHECK([test `ip route show table $vrf | wc -l` -eq 1], [1])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])

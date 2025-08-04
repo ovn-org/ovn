@@ -253,6 +253,10 @@ route_run(struct route_ctx_in *r_ctx_in,
 
         unsigned int priority = PRIORITY_DEFAULT;
         if (route->tracked_port) {
+            bool redistribute_local_bound_only =
+                smap_get_bool(&route->logical_port->options,
+                              "dynamic-routing-redistribute-local-only",
+                              false);
             if (lport_is_local(r_ctx_in->sbrec_port_binding_by_name,
                                r_ctx_in->chassis,
                                route->tracked_port->logical_port)) {
@@ -262,6 +266,11 @@ route_run(struct route_ctx_in *r_ctx_in,
             } else {
                 sset_add(r_ctx_out->tracked_ports_remote,
                          route->tracked_port->logical_port);
+                if (redistribute_local_bound_only) {
+                    /* We're not advertising routes whose 'tracked_port' is
+                     * not local, skip this route. */
+                    continue;
+                }
             }
         }
 
