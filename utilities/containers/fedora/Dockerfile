@@ -11,6 +11,7 @@ RUN dnf -y update \
         checkpolicy \
         clang \
         curl \
+        dhcp-client \
         dhcp-server \
         ethtool \
         gcc \
