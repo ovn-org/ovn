@@ -3878,6 +3878,24 @@ tcp.flags = RST;
       </column>
     </group>
 
+    <group title="Dynamic Routing">
+      <column name="options"
+          key="dynamic-routing-redistribute-local-only"
+          type='{"type": "boolean"}'>
+        <p>
+          Only relevant if <ref column="options" key="dynamic-routing"/>
+          is set to <code>true</code>.
+        </p>
+
+        <p>
+          This controls whether <code>ovn-controller</code> will advertise
+          <ref table="Advertised_Route" db="OVN_Southbound"/> records
+          only on the chassis where their <code>tracked_port</code> is
+          bound.  Default: <code>false</code>.
+        </p>
+      </column>
+    </group>
+
     <group title="Nested Containers">
       <p>
         These columns support containers nested within a VM.  Specifically,
