@@ -2987,6 +2987,317 @@ m_as ovn-chassis-3 killall tcpdump
 
 AT_CLEANUP
 
+AT_SETUP([ovn multinode bgp unnumbered])
+
+# Check that ovn-fake-multinode setup is up and running.
+check_fake_multinode_setup
+
+CHECK_VRF()
+
+# Delete the multinode NB and OVS resources before starting the test.
+cleanup_multinode_resources
+
+setup_frr() {
+    node=$1
+    bgp_as=$2
+    bgp_ip=$3
+    br_name=br-$node
+
+    check m_as $node ovs-vsctl add-br $br_name
+    on_exit "m_as $node ovs-vsctl del-br $br_name"
+    check m_as $node ip netns add frr-ns
+    on_exit "m_as $node ip netns del frr-ns"
+
+    check m_as $node ip netns exec frr-ns ip link set lo up
+    m_as $node ovs-vsctl add-port $br_name ext1 \
+        -- set interface ext1 type=internal
+
+    m_as $node ip link set ext1 netns frr-ns
+    m_as $node ip netns exec frr-ns ip link set ext1 up
+    m_as $node ip netns exec frr-ns ip addr add $bgp_ip dev ext1
+
+    # configure main frr
+    check m_as $node sed -i 's/bgpd=no/bgpd=yes/g' /etc/frr/daemons
+    check m_as $node sed -i 's/StartLimitBurst=.*/StartLimitBurst=100/g' /usr/lib/systemd/system/frr.service
+    check m_as $node systemctl daemon-reload
+
+    # setup frr namespace
+    check m_as $node mkdir -p /etc/frr/frr-ns
+    if m_is_fedora; then
+        check m_as $node chown -R frr:frr /etc/frr/frr-ns
+        check m_as $node mkdir -p /run/frr/frr-ns
+        check m_as $node chown -R frr:frr /run/frr/frr-ns
+        check m_as $node cp -r /etc/frr/daemons /etc/frr/frr.conf /etc/frr/frr-ns/
+    else
+        check m_as $node cp -r /etc/frr/daemons /etc/frr/frr.conf /etc/frr/support_bundle_commands.conf /etc/frr/frr-ns/
+    fi
+
+    on_exit "m_as $node rm -rf /etc/frr/frr-ns"
+    check m_as $node rm -rf /etc/frr/frr-ns/vtysh.conf
+    check m_as $node touch /etc/frr/frr-ns/vtysh.conf
+
+    check m_as $node systemctl stop frr
+    # start frr within namespace
+    if m_is_fedora; then
+        m_as $node ip netns exec frr-ns /usr/libexec/frr/frrinit.sh start frr-ns
+        on_exit "m_as $node ip netns exec frr-ns /usr/libexec/frr/frrinit.sh stop frr-ns"
+    else
+        m_as $node ip netns exec frr-ns /usr/lib/frr/frrinit.sh start frr-ns
+        on_exit "m_as $node ip netns exec frr-ns /usr/lib/frr/frrinit.sh stop frr-ns"
+    fi
+    on_exit "m_as $node systemctl stop frr"
+    check m_as $node systemctl start frr
+
+    frr_flags="-N frr-ns"
+    if m_is_fedora; then
+        frr_flags="--vty_socket /run/frr/frr-ns"
+    fi
+
+    # configure frr-ns frr
+    echo "configure
+    ip prefix-list accept-all seq 5 permit any
+
+    router bgp $bgp_as
+      bgp router-id $bgp_ip
+      neighbor ext1 interface remote-as external
+      address-family ipv4 unicast
+        neighbor ext1 soft-reconfiguration inbound
+        neighbor ext1 prefix-list accept-all in
+      exit-address-family
+      !
+      address-family ipv6 unicast
+        neighbor ext1 soft-reconfiguration inbound
+        neighbor ext1 activate
+      exit-address-family
+    " | podman exec -i $node vtysh $frr_flags
+}
+
+setup_ovn_bgp() {
+    node=$1
+    bgp_as=$2
+    bgp_ip=$3
+    bgp_mac=$4
+    vrf_id=$5
+    br_name=br-$node
+    physnet=physnet_${node}_ext0
+
+    check m_as $node ovs-vsctl set Open_vSwitch . \
+        external-ids:ovn-bridge-mappings="$physnet:$br_name"
+
+    # setup lr and lrp for bgp
+    check multinode_nbctl lr-add lr-$node-ext0
+    check multinode_nbctl set Logical_Router lr-$node-ext0             \
+        options:chassis=$node                                          \
+        options:dynamic-routing=true options:requested-tnl-key=$vrf_id
+
+    check multinode_nbctl lrp-add lr-$node-ext0 lrp-$node-ext0 $bgp_mac
+    check multinode_nbctl lrp-set-options lrp-$node-ext0 \
+        dynamic-routing-maintain-vrf=true                \
+        dynamic-routing-redistribute=nat
+
+    check multinode_nbctl ls-add ls-$node-ext0
+
+    check multinode_nbctl lsp-add ls-$node-ext0 lsp-$node-ext0
+    check multinode_nbctl lsp-set-type lsp-$node-ext0 router
+    check multinode_nbctl lsp-set-options lsp-$node-ext0 \
+        router-port=lrp-$node-ext0
+    check multinode_nbctl lsp-set-addresses lsp-$node-ext0 router
+
+    check multinode_nbctl lsp-add ls-$node-ext0 patch-$node-ext0
+    check multinode_nbctl lsp-set-addresses patch-$node-ext0 unknown
+    check multinode_nbctl lsp-set-type patch-$node-ext0 localnet
+    check multinode_nbctl lsp-set-options patch-$node-ext0 \
+        network_name=$physnet
+
+    OVS_WAIT_UNTIL([m_as $node ip link | grep -q ovnvrf${vrf_id}:.*UP])
+
+    check multinode_nbctl lsp-add ls-$node-ext0 lsp-$node-ext0-bgp
+    check multinode_nbctl lsp-set-addresses lsp-$node-ext0-bgp unknown
+
+    # set up lrp with proper configuration for BGP
+    check multinode_nbctl add Logical_Router_Port lrp-$node-ext0 \
+        options routing-protocols=\"BGP,BFD\"                    \
+                routing-protocol-redirect=lsp-$node-ext0-bgp
+    check multinode_nbctl set Logical_Router_Port lrp-$node-ext0 \
+        ipv6_ra_configs:send_periodic=true
+    check multinode_nbctl set Logical_Router_Port lrp-$node-ext0 \
+        ipv6_ra_configs:address_mode=slaac
+    check multinode_nbctl set Logical_Router_Port lrp-$node-ext0 \
+        ipv6_ra_configs:max_interval=1
+    check multinode_nbctl set Logical_Router_Port lrp-$node-ext0 \
+        ipv6_ra_configs:min_interval=1
+
+    check m_as $node ovs-vsctl add-port br-int ext0-bgp --     \
+        set Interface ext0-bgp type=internal  mac=\"$bgp_mac\" \
+        external-ids:iface-id=lsp-$node-ext0-bgp
+    on_exit "m_as $node ovs-vsctl del-port br-int ext0-bgp"
+
+    check m_as $node ip link set dev ext0-bgp master ovnvrf${vrf_id}
+    check m_as $node ip link set dev ext0-bgp up
+
+    check multinode_nbctl --wait=hv sync
+    m_wait_for_ports_up
+
+    # configure frr to work with ovn bgp
+    echo "configure
+    ip prefix-list no-default seq 5 deny 0.0.0.0/0
+    ip prefix-list no-default seq 10 permit 0.0.0.0/0 le 32
+
+    ipv6 prefix-list no-default seq 5 deny ::/0
+    ipv6 prefix-list no-default seq 10 permit ::/0 le 128
+
+    vrf ovnvrf${vrf_id}
+    exit-vrf
+
+    router bgp ${bgp_as} vrf ovnvrf${vrf_id}
+      bgp router-id $bgp_ip
+      neighbor ext0-bgp interface remote-as external
+      address-family ipv4 unicast
+        redistribute kernel
+        neighbor ext0-bgp prefix-list no-default out
+      exit-address-family
+      address-family ipv6 unicast
+        neighbor ext0-bgp soft-reconfiguration inbound
+        neighbor ext0-bgp prefix-list no-default out
+        redistribute kernel
+        neighbor ext0-bgp activate
+      exit-address-family
+    " | podman exec -i $node vtysh
+}
+
+add_guest_vm_and_connections() {
+    node=$1
+    vrf_id=$2
+    default_route_mac=$3
+    default_route=$4
+    default_route_gw=$5
+    guest_gw_ip=$6
+    guest_ip=$7
+
+    gw_lr=lr-$node-ext0
+    lrp_to_join=lrp-$node-to-join
+    lsp_join_to_lrp=join-to-lrp-$node
+    lrp_guest=lrp-guest-$node
+
+    ls_g=ls-guest-$node
+    lsp_g_lrg=lsp-guest-$node-lr-guest
+    lsp_g_iface=lsp-guest-$node-guest-vm
+    lrp_g_lsg=lrp-guest-ls-guest-$node
+
+    guest_gw_cidr="$guest_gw_ip/24"
+    guest_cidr="$guest_ip/24"
+
+    # set up connections to connect the new vm
+    check multinode_nbctl lrp-add $gw_lr $lrp_to_join $default_route_mac
+    check multinode_nbctl lrp-set-options $lrp_to_join \
+        dynamic-routing-redistribute=nat
+    check multinode_nbctl lsp-add $join_ls $lsp_join_to_lrp
+    check multinode_nbctl lsp-set-type $lsp_join_to_lrp router
+    check multinode_nbctl lsp-set-options $lsp_join_to_lrp \
+        router-port=$lrp_to_join
+    check multinode_nbctl lsp-set-addresses $lsp_join_to_lrp router
+
+    check multinode_nbctl ls-add $ls_g
+    check multinode_nbctl lrp-add $lr_guest $lrp_g_lsg \
+        00:16:03:01:03:03 $guest_gw_cidr
+    check multinode_nbctl lsp-add $ls_g $lsp_g_lrg
+    check multinode_nbctl lsp-set-type $lsp_g_lrg router
+    check multinode_nbctl lsp-set-options $lsp_g_lrg router-port=$lrp_g_lsg
+    check multinode_nbctl lsp-set-addresses $lsp_g_lrg router
+    check multinode_nbctl lsp-add $ls_g $lsp_g_iface
+    check multinode_nbctl lsp-set-addresses $lsp_g_iface \
+        '00:16:01:00:02:02 '$guest_cidr''
+
+    # create the new vm
+    m_as $node /data/create_fake_vm.sh $lsp_g_iface $guest_vm_ns \
+        00:16:01:00:02:02 1342 $guest_ip 24 $guest_gw_ip 1000::13/64 1000::a
+    neighbor_lla=$(m_as $node vtysh -c "show bgp vrf ovnvrf${vrf_id} neighbor ext0-bgp" | grep "^Foreign host:" | awk '{print $3}' | tr -d ',')
+
+    check multinode_nbctl lr-route-add lr-$node-ext0 "0.0.0.0/0" \
+        $neighbor_lla lrp-$node-ext0
+    check multinode_nbctl lr-route-add $lr_guest \
+        $default_route $default_route_gw $lrp_guest_join
+}
+
+setup_frr ovn-gw-1     4200000100 41.41.41.41
+setup_ovn_bgp ovn-gw-1 4210000000 14.14.14.14 12:fb:d6:66:99:1c 10
+
+setup_frr ovn-gw-2     4200000200 42.42.42.42
+setup_ovn_bgp ovn-gw-2 4210000000 24.24.24.24 22:fb:d6:66:99:2c 20
+
+OVS_WAIT_UNTIL([m_as ovn-gw-2 vtysh -c 'show bgp vrf ovnvrf20 neighbors' | grep -qE 'Connections established 1'])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 vtysh -c 'show bgp vrf ovnvrf10 neighbors' | grep -qE 'Connections established 1'])
+
+# Tor <-> ovn-gw via bgp
+# lr-guest with distributed gateway port
+# bgp on lr-ovn-gw-2-ext0
+#
+#                guest-1          guest-2
+#                       \        /
+#                        lr-guest
+#                          DGP
+#                           |
+#                        ls-join
+#                       /       \
+# tor <-> lr-ovn-gw-2-ext0*    lr-ovn-gw-1-ext0* <-> tor
+#               |                     |
+#         ls-ovn-gw-2-ext0     ls-ovn-gw-1-ext0
+#
+#
+#
+
+join_ls="ls-join"
+lsp_join_guest="lsp-join-guest"
+
+lr_guest="lr-guest"
+lrp_guest_join="lrp-guest-join-dgp"
+
+guest_vm_iface="guest-vm"
+guest_vm_ns="ns-guest"
+
+check multinode_nbctl ls-add $join_ls
+
+check multinode_nbctl lr-add $lr_guest
+check multinode_nbctl lrp-add $lr_guest $lrp_guest_join 00:16:06:12:f0:0d
+check multinode_nbctl lsp-add $join_ls $lsp_join_guest
+check multinode_nbctl lsp-set-type $lsp_join_guest router
+check multinode_nbctl lsp-set-options $lsp_join_guest \
+    router-port=$lrp_guest_join
+check multinode_nbctl lsp-set-addresses $lsp_join_guest router
+check multinode_nbctl lrp-set-gateway-chassis $lrp_guest_join ovn-gw-1 20
+check multinode_nbctl lrp-set-gateway-chassis $lrp_guest_join ovn-gw-2 20
+
+vrf_id=10
+default_route_mac=00:00:ff:00:00:01
+default_route=41.0.0.0/8
+default_route_gw=fe80::200:ffff:fe00:1
+guest_gw_ip=192.168.10.1
+guest_ip=192.168.10.10
+add_guest_vm_and_connections ovn-gw-1 $vrf_id           \
+    $default_route_mac $default_route $default_route_gw \
+    $guest_gw_ip $guest_ip
+
+vrf_id=20
+default_route_mac=00:00:ff:00:00:02
+default_route=42.0.0.0/8
+default_route_gw=fe80::200:ffff:fe00:2
+guest_gw_ip=192.168.20.1
+guest_ip=192.168.20.10
+add_guest_vm_and_connections ovn-gw-2 $vrf_id           \
+    $default_route_mac $default_route $default_route_gw \
+    $guest_gw_ip $guest_ip
+
+check multinode_nbctl --gateway-port $lrp_guest_join --add-route lr-nat-add \
+    $lr_guest dnat_and_snat 172.16.10.2 192.168.10.10
+
+OVS_WAIT_UNTIL([m_central_as ovn-sbctl list Advertised_Route | grep -q 172.16.10.2])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip route | grep -q 'ext1'])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ping -W 1 -c 1 172.16.10.2])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip route | grep -q 'ext1'])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ping -W 1 -c 1 172.16.10.2])
+
+AT_CLEANUP
+
 AT_SETUP([HA: Check for missing garp on leader when BFD goes back up])
 # Network topology
 #    ┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
