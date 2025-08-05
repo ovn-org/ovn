@@ -373,12 +373,13 @@ static void run_put_fdb(struct ovsdb_idl_txn *ovnsb_idl_txn,
                         struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac,
             struct ovsdb_idl_index *sbrec_port_binding_by_key,
             struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
-                        const struct fdb *fdb)
+                        struct fdb *fdb, uint64_t cur_cfg)
                         OVS_REQUIRES(pinctrl_mutex);
 static void run_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn,
             struct ovsdb_idl_index *sbrec_port_binding_by_key,
             struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
-                        struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac)
+                        struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac,
+                        uint64_t cur_cfg)
                         OVS_REQUIRES(pinctrl_mutex);
 static void wait_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn);
 static void pinctrl_handle_put_fdb(const struct flow *md,
@@ -4095,7 +4096,8 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
     bfd_monitor_run(ovnsb_idl_txn, bfd_table, sbrec_port_binding_by_name,
                     chassis);
     run_put_fdbs(ovnsb_idl_txn, sbrec_port_binding_by_key,
-                 sbrec_datapath_binding_by_key, sbrec_fdb_by_dp_key_mac);
+                 sbrec_datapath_binding_by_key, sbrec_fdb_by_dp_key_mac,
+                 cur_cfg);
     run_activated_ports(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
                         sbrec_port_binding_by_key, chassis);
     ovs_mutex_unlock(&pinctrl_mutex);
@@ -8564,7 +8566,7 @@ run_put_fdb(struct ovsdb_idl_txn *ovnsb_idl_txn,
             struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac,
             struct ovsdb_idl_index *sbrec_port_binding_by_key,
             struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
-            const struct fdb *fdb)
+            struct fdb *fdb, uint64_t cur_cfg)
 {
     /* Convert ethernet argument to string form for database. */
     char mac_string[ETH_ADDR_STRLEN + 1];
@@ -8574,39 +8576,52 @@ run_put_fdb(struct ovsdb_idl_txn *ovnsb_idl_txn,
     /* Update or add an FDB entry. */
     const struct sbrec_port_binding *sb_entry_pb = NULL;
     const struct sbrec_port_binding *new_entry_pb = NULL;
+    bool skip_fdb_update = false;
     const struct sbrec_fdb *sb_fdb =
             fdb_lookup(sbrec_fdb_by_dp_key_mac, fdb->data.dp_key, mac_string);
+
     if (!sb_fdb) {
         sb_fdb = sbrec_fdb_insert(ovnsb_idl_txn);
         sbrec_fdb_set_dp_key(sb_fdb, fdb->data.dp_key);
         sbrec_fdb_set_mac(sb_fdb, mac_string);
     } else {
-        /* check whether sb_fdb->port_key is vif or localnet type */
-        sb_entry_pb = lport_lookup_by_key(
-            sbrec_datapath_binding_by_key, sbrec_port_binding_by_key,
-            sb_fdb->dp_key, sb_fdb->port_key);
         new_entry_pb = lport_lookup_by_key(
             sbrec_datapath_binding_by_key, sbrec_port_binding_by_key,
             fdb->data.dp_key, fdb->data.port_key);
-    }
-    /* Do not have localnet overwrite a previous vif entry */
-    if (!sb_entry_pb || !new_entry_pb || strcmp(sb_entry_pb->type, "") ||
-        strcmp(new_entry_pb->type, "localnet")) {
-        sbrec_fdb_set_port_key(sb_fdb, fdb->data.port_key);
+
+        if (new_entry_pb && !strcmp(new_entry_pb->type, "localnet")) {
+            /* Have the commit fail if sb_fdb->port_key gets updated by other
+             * controller, to avoid overwriting a vif. */
+            sbrec_fdb_verify_port_key(sb_fdb);
+            sb_entry_pb = lport_lookup_by_key(
+                sbrec_datapath_binding_by_key, sbrec_port_binding_by_key,
+                sb_fdb->dp_key, sb_fdb->port_key);
+            /* Do not have localnet overwrite a previous vif entry */
+            if (sb_entry_pb && !strcmp(sb_entry_pb->type, "")) {
+                skip_fdb_update = true;
+            }
+        }
     }
 
-    /* For backward compatibility check if timestamp column is available
-     * in SB DB. */
-    if (pinctrl.fdb_can_timestamp) {
-        sbrec_fdb_set_timestamp(sb_fdb, time_wall_msec());
+    if (!skip_fdb_update) {
+        sbrec_fdb_set_port_key(sb_fdb, fdb->data.port_key);
+        fdb->cfg = cur_cfg;
+        /* For backward compatibility check if timestamp column is available
+         * in SB DB. */
+        if (pinctrl.fdb_can_timestamp) {
+            sbrec_fdb_set_timestamp(sb_fdb, time_wall_msec());
+        }
+    } else {
+        fdb_remove(&put_fdbs, fdb);
     }
+
 }
 
 static void
 run_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn,
              struct ovsdb_idl_index *sbrec_port_binding_by_key,
              struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
-             struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac)
+             struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac, uint64_t cur_cfg)
              OVS_REQUIRES(pinctrl_mutex)
 {
     if (!ovnsb_idl_txn) {
@@ -8616,11 +8631,12 @@ run_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn,
     long long now = time_msec();
     struct fdb *fdb;
     HMAP_FOR_EACH_SAFE (fdb, hmap_node, &put_fdbs) {
-        if (now >= fdb->timestamp) {
+        if (fdb->cfg >= 0 && pinctrl_is_sb_commited(fdb->cfg, cur_cfg)) {
+            fdb_remove(&put_fdbs, fdb);
+        } else if (now >= fdb->timestamp) {
             run_put_fdb(ovnsb_idl_txn, sbrec_fdb_by_dp_key_mac,
                         sbrec_port_binding_by_key,
-                        sbrec_datapath_binding_by_key, fdb);
-            fdb_remove(&put_fdbs, fdb);
+                        sbrec_datapath_binding_by_key, fdb, cur_cfg);
         }
     }
 }

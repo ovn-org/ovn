@@ -290,6 +290,7 @@ fdb_add(struct hmap *map, struct fdb_data fdb_data, long long timestamp)
 
     fdb->data = fdb_data;
     fdb->timestamp = timestamp;
+    fdb->cfg = -1;
 
     return fdb;
 }

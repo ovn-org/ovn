@@ -88,6 +88,7 @@ struct fdb {
     /* Reference to the SB FDB record. */
     const struct sbrec_fdb *sbrec_fdb;
     long long timestamp;
+    int64_t cfg;
 };
 
 struct mac_cache_stats {
