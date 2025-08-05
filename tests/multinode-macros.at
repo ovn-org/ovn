@@ -58,6 +58,17 @@ m4_define([M_FORMAT_CT],
 m4_define([M_FORMAT_CURL],
     [[sed 's/\(.*\)Connected to $1 ($1) port $2/Connected to $1 ($1) port $2\n/' | sed 's/\(.*\)200 OK/200 OK\n/' | grep -i -e connected -e "200 OK" | uniq ]])
 
+# CHECK_VRF()
+#
+# Perform a requirements check for running VRF tests.
+#
+m4_define([CHECK_VRF],
+[
+    rc=0
+    modprobe vrf || rc=$?
+    AT_SKIP_IF([test $rc -ne 0])
+    on_exit 'modprobe -r vrf'
+])
 
 OVS_START_SHELL_HELPERS
 

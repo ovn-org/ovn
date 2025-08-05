@@ -120,6 +120,7 @@ jobs:
       run:  |
         sudo apt update || true
         sudo apt install -y ${{ env.dependencies }}
+        sudo apt install -y linux-modules-extra-$(uname -r)
 
     - name: Fix /etc/hosts file
       run: |
