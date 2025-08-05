@@ -36,6 +36,7 @@
 
 VLOG_DEFINE_THIS_MODULE(route_exchange_netlink);
 
+#define NETNL_REQ_BUFFER_SIZE 128
 #define TABLE_ID_VALID(table_id) (table_id != RT_TABLE_UNSPEC &&              \
                                   table_id != RT_TABLE_COMPAT &&              \
                                   table_id != RT_TABLE_DEFAULT &&             \
@@ -56,10 +57,12 @@ re_nl_create_vrf(const char *ifname, uint32_t table_id)
 
     size_t linkinfo_off, infodata_off;
     struct ifinfomsg *ifinfo;
-    struct ofpbuf request;
     int err;
 
-    ofpbuf_init(&request, 0);
+    struct ofpbuf request;
+    uint8_t request_stub[NETNL_REQ_BUFFER_SIZE];
+    ofpbuf_use_stub(&request, request_stub, sizeof(request_stub));
+
     nl_msg_put_nlmsghdr(&request, 0, RTM_NEWLINK,
                         NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL);
     ifinfo = ofpbuf_put_zeros(&request, sizeof *ifinfo);
@@ -83,10 +86,12 @@ int
 re_nl_delete_vrf(const char *ifname)
 {
     struct ifinfomsg *ifinfo;
-    struct ofpbuf request;
     int err;
 
-    ofpbuf_init(&request, 0);
+    struct ofpbuf request;
+    uint8_t request_stub[NETNL_REQ_BUFFER_SIZE];
+    ofpbuf_use_stub(&request, request_stub, sizeof(request_stub));
+
     nl_msg_put_nlmsghdr(&request, 0, RTM_DELLINK, NLM_F_REQUEST | NLM_F_ACK);
     ifinfo = ofpbuf_put_zeros(&request, sizeof *ifinfo);
     nl_msg_put_string(&request, IFLA_IFNAME, ifname);
@@ -103,13 +108,15 @@ modify_route(uint32_t type, uint32_t flags_arg, uint32_t table_id,
 {
     uint32_t flags = NLM_F_REQUEST | NLM_F_ACK;
     bool is_ipv4 = IN6_IS_ADDR_V4MAPPED(dst);
-    struct ofpbuf request;
     struct rtmsg *rt;
     int err;
 
     flags |= flags_arg;
 
-    ofpbuf_init(&request, 0);
+    struct ofpbuf request;
+    uint8_t request_stub[NETNL_REQ_BUFFER_SIZE];
+    ofpbuf_use_stub(&request, request_stub, sizeof(request_stub));
+
     nl_msg_put_nlmsghdr(&request, 0, type, flags);
     rt = ofpbuf_put_zeros(&request, sizeof *rt);
     rt->rtm_family = is_ipv4 ? AF_INET : AF_INET6;
