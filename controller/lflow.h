@@ -38,7 +38,7 @@
 
 #include <stdint.h>
 #include "lflow-cache.h"
-#include "lflow-conj-ids.h"
+#include "lib/lflow-conj-ids.h"
 #include "openvswitch/hmap.h"
 #include "openvswitch/uuid.h"
 #include "openvswitch/list.h"

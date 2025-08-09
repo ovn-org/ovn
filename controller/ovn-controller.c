@@ -41,7 +41,7 @@
 #include "lb.h"
 #include "lflow.h"
 #include "lflow-cache.h"
-#include "lflow-conj-ids.h"
+#include "lib/lflow-conj-ids.h"
 #include "lib/vswitch-idl.h"
 #include "lib/ovsdb-types.h"
 #include "local_data.h"

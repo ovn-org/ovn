@@ -47,4 +47,4 @@ void lflow_conj_ids_clear(struct conj_ids *);
 void lflow_conj_ids_dump(struct conj_ids *, struct ds *out_data);
 void lflow_conj_ids_set_test_mode(bool);
 
-#endif /* controller/lflow-conj-ids.h */
+#endif /* lib/lflow-conj-ids.h */

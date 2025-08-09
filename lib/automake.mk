@@ -26,6 +26,8 @@ lib_libovn_la_SOURCES = \
 	lib/ovn-parallel-hmap.c \
 	lib/ip-mcast-index.c \
 	lib/ip-mcast-index.h \
+	lib/lflow-conj-ids.c \
+	lib/lflow-conj-ids.h \
 	lib/mac-binding-index.c \
 	lib/mac-binding-index.h \
 	lib/mcast-group-index.c \
