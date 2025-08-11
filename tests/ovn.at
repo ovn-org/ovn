@@ -40626,3 +40626,92 @@ AT_CHECK([grep -q "Postponing virtual lport sw0-vir" hv3/ovn-controller.log], [1
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([virtual port - parent port re-create])
+AT_KEYWORDS([virtual ports])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovn-appctl vlog/set dbg
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+check ovs-appctl -t ovn-controller vlog/set dbg
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3 1000::3"
+check ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03 10.0.0.3 10.0.0.10 1000::3"
+
+check ovn-nbctl lsp-add sw0 sw0-vir
+check ovn-nbctl lsp-set-addresses sw0-vir "50:54:00:00:00:10 10.0.0.10"
+check ovn-nbctl lsp-set-port-security sw0-vir "50:54:00:00:00:10 10.0.0.10"
+check ovn-nbctl lsp-set-type sw0-vir virtual
+check ovn-nbctl set logical_switch_port sw0-vir options:virtual-ip=10.0.0.10
+check ovn-nbctl set logical_switch_port sw0-vir options:virtual-parents=sw0-p1,sw0-p2,sw0-p3,sw0-p4
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+hv1_ch_uuid=$(ovn-sbctl --bare --columns _uuid find chassis name="hv1")
+
+# From sw0-p1 send GARP for 10.0.0.10. hv1 should claim sw0-vir
+# and sw0-p1 should be its virtual_parent.
+eth_src=50:54:00:00:00:03
+eth_dst=ff:ff:ff:ff:ff:ff
+spa=10.0.0.10
+tpa=10.0.0.10
+send_garp hv1 hv1-vif1 1 $eth_src $eth_dst $spa $tpa
+
+OVS_WAIT_UNTIL([test 1 = $(cat hv1/ovn-controller.log | \
+    grep "pinctrl received  packet-in" | \
+    grep opcode=BIND_VPORT | \
+    grep OF_Table_ID=$(ovn-debug lflow-stage-to-oftable ls_in_arp_rsp) | \
+    wc -l)])
+
+wait_row_count Port_Binding 1 logical_port=sw0-vir chassis=$hv1_ch_uuid
+check_row_count Port_Binding 1 logical_port=sw0-vir virtual_parent=sw0-p1
+wait_for_ports_up sw0-vir
+
+# Delete parent port.
+check ovn-nbctl lsp-del sw0-p1
+check ovn-nbctl --wait=hv sync
+wait_row_count Port_Binding 0 logical_port=sw0-vir chassis=$hv1_ch_uuid
+
+# Re-add parent port.
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3 1000::3"
+check ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03 10.0.0.3 10.0.0.10 1000::3"
+
+wait_for_ports_up
+
+# Must sleep for vport-backoff duration, otherwise ovn-controller will
+# increase the backoff and not claim the port.
+sleep_time=$(ovn-sbctl get Port_Binding sw0-vir options:vport-backoff)
+sleep $(echo "$sleep_time" | tr -d '"' | awk '{print $1/1000}')
+
+# From sw0-p1 send GARP for 10.0.0.10. hv1 should claim sw0-vir
+# and sw0-p1 should be its virtual_parent.
+send_garp hv1 hv1-vif1 1 $eth_src $eth_dst $spa $tpa
+
+OVS_WAIT_UNTIL([test 2 = $(cat hv1/ovn-controller.log | \
+    grep "pinctrl received  packet-in" | \
+    grep opcode=BIND_VPORT | \
+    grep OF_Table_ID=$(ovn-debug lflow-stage-to-oftable ls_in_arp_rsp) | \
+    wc -l)])
+
+wait_row_count Port_Binding 1 logical_port=sw0-vir chassis=$hv1_ch_uuid
+check_row_count Port_Binding 1 logical_port=sw0-vir virtual_parent=sw0-p1
+wait_for_ports_up sw0-vir
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
