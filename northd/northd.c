@@ -52,6 +52,8 @@
 #include "en-ls-stateful.h"
 #include "en-multicast.h"
 #include "en-sampling-app.h"
+#include "en-datapath-logical-switch.h"
+#include "en-datapath-logical-router.h"
 #include "lib/ovn-parallel-hmap.h"
 #include "ovn/actions.h"
 #include "ovn/features.h"
@@ -95,8 +97,6 @@ static bool default_acl_drop;
 /* If this option is 'true' northd will use limited 24-bit space for datapath
  * and ports tunnel key allocation (12 bits for each instead of default 16). */
 static bool vxlan_mode;
-
-static bool vxlan_ic_mode;
 
 #define MAX_OVN_TAGS 4096
 
@@ -512,6 +512,8 @@ struct lrouter_group {
     struct hmapx tmp_ha_ref_chassis;
 };
 
+static void init_mcast_info_for_datapath(struct ovn_datapath *od);
+
 static struct ovn_datapath *
 ovn_datapath_create(struct hmap *datapaths, const struct uuid *key,
                     const struct nbrec_logical_switch *nbs,
@@ -535,6 +537,8 @@ ovn_datapath_create(struct hmap *datapaths, const struct uuid *key,
     od->localnet_ports = VECTOR_EMPTY_INITIALIZER(struct ovn_port *);
     od->lb_with_stateless_mode = false;
     od->ipam_info_initialized = false;
+    od->tunnel_key = sb->tunnel_key;
+    init_mcast_info_for_datapath(od);
     return od;
 }
 
@@ -767,84 +771,6 @@ store_mcast_info_for_switch_datapath(const struct sbrec_ip_multicast *sb,
     }
 }
 
-static void
-ovn_datapath_update_external_ids(struct ovn_datapath *od)
-{
-    /* Get the NB  UUID to set in external-ids. */
-    char uuid_s[UUID_LEN + 1];
-    sprintf(uuid_s, UUID_FMT, UUID_ARGS(&od->key));
-
-    /* Get names to set in external-ids. */
-    const char *name = od->nbs ? od->nbs->name : od->nbr->name;
-    const char *name2 = (od->nbs
-                         ? smap_get(&od->nbs->external_ids,
-                                    "neutron:network_name")
-                         : smap_get(&od->nbr->external_ids,
-                                    "neutron:router_name"));
-
-    /* Set external-ids. */
-    struct smap ids = SMAP_INITIALIZER(&ids);
-    smap_add(&ids, "name", name);
-    if (name2 && name2[0]) {
-        smap_add(&ids, "name2", name2);
-    }
-
-    int64_t ct_zone_limit = ovn_smap_get_llong(od->nbs ?
-                                               &od->nbs->other_config :
-                                               &od->nbr->options,
-                                               "ct-zone-limit", -1);
-    if (ct_zone_limit > 0) {
-        smap_add_format(&ids, "ct-zone-limit", "%"PRId64, ct_zone_limit);
-    }
-
-    /* Set interconn-ts. */
-    if (od->nbs) {
-        const char *ts = smap_get(&od->nbs->other_config, "interconn-ts");
-        if (ts) {
-            smap_add(&ids, "interconn-ts", ts);
-        }
-
-        uint32_t age_threshold = smap_get_uint(&od->nbs->other_config,
-                                               "fdb_age_threshold", 0);
-        if (age_threshold) {
-            smap_add_format(&ids, "fdb_age_threshold",
-                            "%u", age_threshold);
-        }
-    }
-
-    /* Set snat-ct-zone */
-    if (od->nbr) {
-        int nat_default_ct = smap_get_int(&od->nbr->options,
-                                           "snat-ct-zone", -1);
-        if (nat_default_ct >= 0) {
-            smap_add_format(&ids, "snat-ct-zone", "%d", nat_default_ct);
-        }
-
-        bool learn_from_arp_request =
-            smap_get_bool(&od->nbr->options, "always_learn_from_arp_request",
-                          true);
-        if (!learn_from_arp_request) {
-            smap_add(&ids, "always_learn_from_arp_request", "false");
-        }
-
-        /* For timestamp refreshing, the smallest threshold of the option is
-         * set to SB to make sure all entries are refreshed in time.
-         * XXX: This approach simplifies processing in ovn-controller, but it
-         * may be enhanced, if necessary, to parse the complete CIDR-based
-         * threshold configurations to SB to reduce unnecessary refreshes. */
-        uint32_t age_threshold = min_mac_binding_age_threshold(
-                                       smap_get(&od->nbr->options,
-                                               "mac_binding_age_threshold"));
-        if (age_threshold) {
-            smap_add_format(&ids, "mac_binding_age_threshold",
-                            "%u", age_threshold);
-        }
-    }
-
-    sbrec_datapath_binding_set_external_ids(od->sb, &ids);
-    smap_destroy(&ids);
-}
-
 static enum dynamic_routing_redistribute_mode
 parse_dynamic_routing_redistribute(
     const struct smap *options,
@@ -897,177 +823,6 @@ parse_dynamic_routing_redistribute(
 }
 
 static void
-join_datapaths(const struct nbrec_logical_switch_table *nbrec_ls_table,
-               const struct nbrec_logical_router_table *nbrec_lr_table,
-               const struct sbrec_datapath_binding_table *sbrec_dp_table,
-               struct ovsdb_idl_txn *ovnsb_txn,
-               struct hmap *datapaths, struct ovs_list *sb_only,
-               struct ovs_list *nb_only, struct ovs_list *both)
-{
-    ovs_list_init(sb_only);
-    ovs_list_init(nb_only);
-    ovs_list_init(both);
-
-    const struct sbrec_datapath_binding *sb;
-    SBREC_DATAPATH_BINDING_TABLE_FOR_EACH_SAFE (sb, sbrec_dp_table) {
-        struct uuid key;
-        if (!datapath_get_nb_uuid(sb, &key)) {
-            ovsdb_idl_txn_add_comment(
-                ovnsb_txn,
-                "deleting Datapath_Binding "UUID_FMT" that lacks nb_uuid",
-                UUID_ARGS(&sb->header_.uuid));
-            sbrec_datapath_binding_delete(sb);
-            continue;
-        }
-
-        if (ovn_datapath_find_(datapaths, &key)) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_INFO_RL(
-                &rl, "deleting Datapath_Binding "UUID_FMT" with "
-                "duplicate nb_uuid "UUID_FMT,
-                UUID_ARGS(&sb->header_.uuid), UUID_ARGS(&sb->header_.uuid));
-            sbrec_datapath_binding_delete(sb);
-            continue;
-        }
-
-        struct ovn_datapath *od = ovn_datapath_create(datapaths,
-                                                      &sb->header_.uuid,
-                                                      NULL, NULL, sb);
-        ovs_list_push_back(sb_only, &od->list);
-    }
-
-    vxlan_ic_mode = false;
-    const struct nbrec_logical_switch *nbs;
-    NBREC_LOGICAL_SWITCH_TABLE_FOR_EACH (nbs, nbrec_ls_table) {
-        struct ovn_datapath *od = ovn_datapath_find_(datapaths,
-                                                     &nbs->header_.uuid);
-        if (od) {
-            od->nbs = nbs;
-            ovs_list_remove(&od->list);
-            ovs_list_push_back(both, &od->list);
-            ovn_datapath_update_external_ids(od);
-            if (od->ipam_info_initialized) {
-                destroy_ipam_info(&od->ipam_info);
-                od->ipam_info_initialized = false;
-            }
-        } else {
-            od = ovn_datapath_create(datapaths, &nbs->header_.uuid,
-                                     nbs, NULL, NULL);
-            ovs_list_push_back(nb_only, &od->list);
-        }
-
-        init_ipam_info_for_datapath(od);
-        init_mcast_info_for_datapath(od);
-
-        if (smap_get_bool(&nbs->other_config, "ic-vxlan_mode", false)) {
-            vxlan_ic_mode = true;
-        }
-
-        if (smap_get_bool(&nbs->other_config, "enable-stateless-acl-with-lb",
-                          false)) {
-            od->lb_with_stateless_mode = true;
-        }
-    }
-
-    const struct nbrec_logical_router *nbr;
-    NBREC_LOGICAL_ROUTER_TABLE_FOR_EACH (nbr, nbrec_lr_table) {
-        if (!lrouter_is_enabled(nbr)) {
-            continue;
-        }
-
-        struct ovn_datapath *od = ovn_datapath_find_(datapaths,
-                                                     &nbr->header_.uuid);
-        if (od) {
-            if (!od->nbs) {
-                od->nbr = nbr;
-                ovs_list_remove(&od->list);
-                ovs_list_push_back(both, &od->list);
-                ovn_datapath_update_external_ids(od);
-            } else {
-                /* Can't happen! */
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_WARN_RL(&rl,
-                             "duplicate UUID "UUID_FMT" in OVN_Northbound",
-                             UUID_ARGS(&nbr->header_.uuid));
-                continue;
-            }
-        } else {
-            od = ovn_datapath_create(datapaths, &nbr->header_.uuid,
-                                     NULL, nbr, NULL);
-            ovs_list_push_back(nb_only, &od->list);
-        }
-        init_mcast_info_for_datapath(od);
-        if (smap_get(&od->nbr->options, "chassis")) {
-            od->is_gw_router = true;
-        }
-        od->dynamic_routing = smap_get_bool(&od->nbr->options,
-                                            "dynamic-routing", false);
-        od->dynamic_routing_redistribute =
-            parse_dynamic_routing_redistribute(&od->nbr->options, DRRM_NONE,
-                                               od->nbr->name);
-    }
-}
-
-
-uint32_t
-get_ovn_max_dp_key_local(bool _vxlan_mode, bool _vxlan_ic_mode)
-{
-    if (_vxlan_mode) {
-        /* OVN_MAX_DP_GLOBAL_NUM doesn't apply for VXLAN mode. */
-        return _vxlan_ic_mode ? OVN_MAX_DP_VXLAN_KEY_LOCAL
-                              : OVN_MAX_DP_VXLAN_KEY;
-    }
-    return _vxlan_ic_mode ? OVN_MAX_DP_VXLAN_KEY_LOCAL : OVN_MAX_DP_KEY_LOCAL;
-}
-
-static void
-ovn_datapath_allocate_key(struct hmap *datapaths, struct hmap *dp_tnlids,
-                          struct ovn_datapath *od, uint32_t *hint)
-{
-    if (!od->tunnel_key) {
-        od->tunnel_key = ovn_allocate_tnlid(dp_tnlids, "datapath",
-            OVN_MIN_DP_KEY_LOCAL,
-            get_ovn_max_dp_key_local(vxlan_mode, vxlan_ic_mode), hint);
-        if (!od->tunnel_key) {
-            if (od->sb) {
-                sbrec_datapath_binding_delete(od->sb);
-            }
-            ovs_list_remove(&od->list);
-            ovn_datapath_destroy(datapaths, od);
-        }
-    }
-}
-
-static void
-ovn_datapath_assign_requested_tnl_id(
-    struct hmap *dp_tnlids, struct ovn_datapath *od)
-{
-    const struct smap *other_config = (od->nbs
-                                       ? &od->nbs->other_config
-                                       : &od->nbr->options);
-    uint32_t tunnel_key = smap_get_int(other_config, "requested-tnl-key", 0);
-    if (tunnel_key) {
-        const char *interconn_ts = smap_get(other_config, "interconn-ts");
-        if (!interconn_ts && vxlan_mode && tunnel_key >= 1 << 12) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_WARN_RL(&rl, "Tunnel key %"PRIu32" for datapath %s is "
-                         "incompatible with VXLAN", tunnel_key,
-                         od->nbs ? od->nbs->name : od->nbr->name);
-            return;
-        }
-        if (ovn_add_tnlid(dp_tnlids, tunnel_key)) {
-            od->tunnel_key = tunnel_key;
-        } else {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_WARN_RL(&rl, "Logical %s %s requests same tunnel key "
-                         "%"PRIu32" as another logical switch or router",
-                         od->nbs ? "switch" : "router",
-                         od->nbs ? od->nbs->name : od->nbr->name, tunnel_key);
-        }
-    }
-}
-
-static void
 ods_build_array_index(struct ovn_datapaths *datapaths)
 {
     /* Assign unique sequential indexes to all datapaths.  These are not
@@ -1086,87 +841,44 @@ ods_build_array_index(struct ovn_datapaths *datapaths)
     }
 }
 
-/* Updates the southbound Datapath_Binding table so that it contains the
- * logical switches and routers specified by the northbound database.
- *
- * Initializes 'datapaths' to contain a "struct ovn_datapath" for every logical
- * switch and router. */
+/* Initializes 'ls_datapaths' to contain a "struct ovn_datapath" for every
+ * logical switch, and initializes 'lr_datapaths' to contain a
+ * "struct ovn_datapath" for every logical router.
+ */
 static void
-build_datapaths(struct ovsdb_idl_txn *ovnsb_txn,
-                const struct nbrec_logical_switch_table *nbrec_ls_table,
-                const struct nbrec_logical_router_table *nbrec_lr_table,
-                const struct sbrec_datapath_binding_table *sbrec_dp_table,
+build_datapaths(const struct ovn_synced_logical_switch_map *ls_map,
+                const struct ovn_synced_logical_router_map *lr_map,
                 struct ovn_datapaths *ls_datapaths,
                 struct ovn_datapaths *lr_datapaths)
 {
-    struct ovs_list sb_only, nb_only, both;
-
-    struct hmap *datapaths = &ls_datapaths->datapaths;
-    join_datapaths(nbrec_ls_table, nbrec_lr_table, sbrec_dp_table, ovnsb_txn,
-                   datapaths, &sb_only, &nb_only, &both);
-
-    /* Assign explicitly requested tunnel ids first. */
-    struct hmap dp_tnlids = HMAP_INITIALIZER(&dp_tnlids);
-    struct ovn_datapath *od;
-    LIST_FOR_EACH (od, list, &both) {
-        ovn_datapath_assign_requested_tnl_id(&dp_tnlids, od);
-    }
-    LIST_FOR_EACH (od, list, &nb_only) {
-        ovn_datapath_assign_requested_tnl_id(&dp_tnlids, od);
-    }
-
-    /* Keep nonconflicting tunnel IDs that are already assigned. */
-    LIST_FOR_EACH (od, list, &both) {
-        if (!od->tunnel_key && ovn_add_tnlid(&dp_tnlids, od->sb->tunnel_key)) {
-            od->tunnel_key = od->sb->tunnel_key;
+    struct ovn_synced_logical_switch *ls;
+    HMAP_FOR_EACH (ls, hmap_node, &ls_map->synced_switches) {
+        struct ovn_datapath *od =
+            ovn_datapath_create(&ls_datapaths->datapaths,
+                                &ls->nb->header_.uuid,
+                                ls->nb, NULL, ls->sb);
+        init_ipam_info_for_datapath(od);
+        if (smap_get_bool(&od->nbs->other_config,
+                          "enable-stateless-acl-with-lb",
+                          false)) {
+            od->lb_with_stateless_mode = true;
         }
     }
 
-    /* Assign new tunnel ids where needed. */
-    uint32_t hint = 0;
-    LIST_FOR_EACH_SAFE (od, list, &both) {
-        ovn_datapath_allocate_key(datapaths, &dp_tnlids, od, &hint);
-    }
-    LIST_FOR_EACH_SAFE (od, list, &nb_only) {
-        ovn_datapath_allocate_key(datapaths, &dp_tnlids, od, &hint);
-    }
-
-    /* Sync tunnel ids from nb to sb. */
-    LIST_FOR_EACH (od, list, &both) {
-        if (od->sb->tunnel_key != od->tunnel_key) {
-            sbrec_datapath_binding_set_tunnel_key(od->sb, od->tunnel_key);
+    struct ovn_synced_logical_router *lr;
+    HMAP_FOR_EACH (lr, hmap_node, &lr_map->synced_routers) {
+        struct ovn_datapath *od =
+            ovn_datapath_create(&lr_datapaths->datapaths,
+                                &lr->nb->header_.uuid,
+                                NULL, lr->nb, lr->sb);
+        if (smap_get(&od->nbr->options, "chassis")) {
+            od->is_gw_router = true;
         }
-        ovn_datapath_update_external_ids(od);
-        sbrec_datapath_binding_set_type(od->sb, od->nbs ? "logical-switch" :
-                                        "logical-router");
-    }
-    LIST_FOR_EACH (od, list, &nb_only) {
-        od->sb = sbrec_datapath_binding_insert_persist_uuid(ovnsb_txn,
-                                                            &od->key);
-        ovn_datapath_update_external_ids(od);
-        sbrec_datapath_binding_set_tunnel_key(od->sb, od->tunnel_key);
-        sbrec_datapath_binding_set_type(od->sb, od->nbs ? "logical-switch" :
-                                        "logical-router");
-    }
-    ovn_destroy_tnlids(&dp_tnlids);
-
-    /* Delete southbound records without northbound matches. */
-    LIST_FOR_EACH_SAFE (od, list, &sb_only) {
-        ovs_list_remove(&od->list);
-        sbrec_datapath_binding_delete(od->sb);
-        ovn_datapath_destroy(datapaths, od);
-    }
-
-    /* Move lr datapaths to lr_datapaths, and ls datapaths will
-     * remain in datapaths/ls_datapaths. */
-    HMAP_FOR_EACH_SAFE (od, key_node, datapaths) {
-        if (!od->nbr) {
-            ovs_assert(od->nbs);
-            continue;
-        }
-        hmap_remove(datapaths, &od->key_node);
-        hmap_insert(&lr_datapaths->datapaths, &od->key_node,
-                    od->key_node.hash);
+        od->dynamic_routing = smap_get_bool(&od->nbr->options,
+                                            "dynamic-routing", false);
+        od->dynamic_routing_redistribute =
+            parse_dynamic_routing_redistribute(&od->nbr->options, DRRM_NONE,
+                                               od->nbr->name);
     }
 
     ods_build_array_index(ls_datapaths);
@@ -19171,10 +18883,8 @@ ovnnb_db_run(struct northd_input *input_data,
 
     vxlan_mode = input_data->vxlan_mode;
 
-    build_datapaths(ovnsb_txn,
-                    input_data->nbrec_logical_switch_table,
-                    input_data->nbrec_logical_router_table,
-                    input_data->sbrec_datapath_binding_table,
+    build_datapaths(input_data->synced_lses,
+                    input_data->synced_lrs,
                     &data->ls_datapaths,
                     &data->lr_datapaths);
     build_lb_datapaths(input_data->lbs, input_data->lbgrps,

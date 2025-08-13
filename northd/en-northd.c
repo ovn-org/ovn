@@ -119,6 +119,12 @@ northd_get_input_data(struct engine_node *node,
     input_data->svc_monitor_mac_ea = global_config->svc_monitor_mac_ea;
     input_data->features = &global_config->features;
     input_data->vxlan_mode = global_config->vxlan_mode;
+
+    input_data->synced_lses =
+        engine_get_input_data("datapath_synced_logical_switch", node);
+
+    input_data->synced_lrs =
+        engine_get_input_data("datapath_synced_logical_router", node);
 }
 
 enum engine_node_state

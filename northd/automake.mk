@@ -3,11 +3,19 @@ bin_PROGRAMS += northd/ovn-northd
 northd_ovn_northd_SOURCES = \
 	northd/aging.c \
 	northd/aging.h \
+	northd/datapath-sync.c \
+	northd/datapath-sync.h \
 	northd/debug.c \
 	northd/debug.h \
 	northd/northd.c \
 	northd/northd.h \
 	northd/ovn-northd.c \
+	northd/en-datapath-logical-switch.c \
+	northd/en-datapath-logical-switch.h \
+	northd/en-datapath-logical-router.c \
+	northd/en-datapath-logical-router.h \
+	northd/en-datapath-sync.c \
+	northd/en-datapath-sync.h \
 	northd/en-ecmp-nexthop.c \
 	northd/en-ecmp-nexthop.h \
 	northd/en-global-config.c \

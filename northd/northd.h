@@ -27,6 +27,7 @@
 #include "ovs-thread.h"
 #include "en-lr-stateful.h"
 #include "vec.h"
+#include "datapath-sync.h"
 
 struct northd_input {
     /* Northbound table references */
@@ -70,6 +71,10 @@ struct northd_input {
 
     /* ACL ID inputs. */
     const struct acl_id_data *acl_id_data;
+
+    /* Synced datapath inputs. */
+    const struct ovn_synced_logical_switch_map *synced_lses;
+    const struct ovn_synced_logical_router_map *synced_lrs;
 
     /* Indexes */
     struct ovsdb_idl_index *sbrec_chassis_by_name;
@@ -450,14 +455,6 @@ ovn_datapath_is_stale(const struct ovn_datapath *od)
 };
 
 /* Pipeline stages. */
-
-/* The two purposes for which ovn-northd uses OVN logical datapaths. */
-enum ovn_datapath_type {
-    DP_SWITCH,                  /* OVN logical switch. */
-    DP_ROUTER,                  /* OVN logical router. */
-    DP_MAX,
-};
-
 /* Returns an "enum ovn_stage" built from the arguments.
  *
  * (It's better to use ovn_stage_build() for type-safety reasons, but inline
@@ -983,8 +980,6 @@ lr_has_multiple_gw_ports(const struct ovn_datapath *od)
 {
     return vector_len(&od->l3dgw_ports) > 1 && !od->is_gw_router;
 }
-
-uint32_t get_ovn_max_dp_key_local(bool _vxlan_mode, bool ic_mode);
 
 /* Returns true if the logical router port 'enabled' column is empty or
  * set to true.  Otherwise, returns false. */

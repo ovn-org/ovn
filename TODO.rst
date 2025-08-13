@@ -153,3 +153,10 @@ OVN To-do List
     monitoring conditions to update before we actually try to learn routes.
     Otherwise we could try to add duplicated Learned_Routes and the ovnsb
     commit would fail.
+
+* Datapath sync nodes
+
+  * Migrate data stored in the ovn\_datapath structure to
+    ovn\_synced\_logical_router and ovn\_synced\_logical\_switch. This will
+    allow for the eventual removal of the ovn\_datapath structure from the
+    codebase.

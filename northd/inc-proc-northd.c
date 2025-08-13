@@ -47,6 +47,9 @@
 #include "en-advertised-route-sync.h"
 #include "en-learned-route-sync.h"
 #include "en-group-ecmp-route.h"
+#include "en-datapath-logical-router.h"
+#include "en-datapath-logical-switch.h"
+#include "en-datapath-sync.h"
 #include "unixctl.h"
 #include "util.h"
 
@@ -179,6 +182,11 @@ static ENGINE_NODE(advertised_route_sync);
 static ENGINE_NODE(learned_route_sync, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(dynamic_routes);
 static ENGINE_NODE(group_ecmp_route, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(datapath_logical_router);
+static ENGINE_NODE(datapath_logical_switch);
+static ENGINE_NODE(datapath_sync);
+static ENGINE_NODE(datapath_synced_logical_router);
+static ENGINE_NODE(datapath_synced_logical_switch);
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb)
@@ -208,6 +216,21 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
 
     engine_add_input(&en_acl_id, &en_nb_acl, NULL);
     engine_add_input(&en_acl_id, &en_sb_acl_id, NULL);
+
+    engine_add_input(&en_datapath_logical_switch, &en_nb_logical_switch, NULL);
+    engine_add_input(&en_datapath_logical_switch, &en_global_config, NULL);
+
+    engine_add_input(&en_datapath_logical_router, &en_nb_logical_router, NULL);
+
+    engine_add_input(&en_datapath_sync, &en_datapath_logical_switch, NULL);
+    engine_add_input(&en_datapath_sync, &en_datapath_logical_router, NULL);
+    engine_add_input(&en_datapath_sync, &en_sb_datapath_binding, NULL);
+    engine_add_input(&en_datapath_sync, &en_global_config, NULL);
+
+    engine_add_input(&en_datapath_synced_logical_router, &en_datapath_sync,
+                     NULL);
+    engine_add_input(&en_datapath_synced_logical_switch, &en_datapath_sync,
+                     NULL);
 
     engine_add_input(&en_northd, &en_nb_mirror, NULL);
     engine_add_input(&en_northd, &en_nb_mirror_rule, NULL);
@@ -248,6 +271,11 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_lb_data, northd_lb_data_handler);
     engine_add_input(&en_northd, &en_nb_port_group,
                      northd_nb_port_group_handler);
+
+    engine_add_input(&en_northd, &en_datapath_synced_logical_router,
+                     engine_noop_handler);
+    engine_add_input(&en_northd, &en_datapath_synced_logical_switch,
+                     engine_noop_handler);
 
     engine_add_input(&en_lr_nat, &en_northd, lr_nat_northd_handler);
 

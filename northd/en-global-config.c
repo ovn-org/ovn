@@ -63,6 +63,17 @@ en_global_config_init(struct engine_node *node OVS_UNUSED,
     return data;
 }
 
+static uint32_t
+get_ovn_max_dp_key_local(bool vxlan_mode, bool vxlan_ic_mode)
+{
+    if (vxlan_mode) {
+        /* OVN_MAX_DP_GLOBAL_NUM doesn't apply for VXLAN mode. */
+        return vxlan_ic_mode ? OVN_MAX_DP_VXLAN_KEY_LOCAL
+                             : OVN_MAX_DP_VXLAN_KEY;
+    }
+    return vxlan_ic_mode ? OVN_MAX_DP_VXLAN_KEY_LOCAL : OVN_MAX_DP_KEY_LOCAL;
+}
+
 enum engine_node_state
 en_global_config_run(struct engine_node *node , void *data)
 {
