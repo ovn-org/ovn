@@ -21,6 +21,7 @@
 #include <net/if.h>
 #include <stdbool.h>
 
+#include "openvswitch/poll-loop.h"
 #include "openvswitch/vlog.h"
 #include "openvswitch/list.h"
 
@@ -221,6 +222,9 @@ static int route_exchange_nl_status;
     do {                                        \
         if (!route_exchange_nl_status) {        \
             route_exchange_nl_status = (error); \
+            if (error) {                        \
+                poll_immediate_wake();          \
+            }                                   \
         }                                       \
     } while (0)
 
