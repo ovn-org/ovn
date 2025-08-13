@@ -518,11 +518,11 @@ static struct ovn_datapath *
 ovn_datapath_create(struct hmap *datapaths, const struct uuid *key,
                     const struct nbrec_logical_switch *nbs,
                     const struct nbrec_logical_router *nbr,
-                    const struct sbrec_datapath_binding *sb)
+                    const struct ovn_synced_datapath *sdp)
 {
     struct ovn_datapath *od = xzalloc(sizeof *od);
     od->key = *key;
-    od->sb = sb;
+    od->sdp = sdp;
     od->nbs = nbs;
     od->nbr = nbr;
     hmap_init(&od->port_tnlids);
@@ -537,7 +537,7 @@ ovn_datapath_create(struct hmap *datapaths, const struct uuid *key,
     od->localnet_ports = VECTOR_EMPTY_INITIALIZER(struct ovn_port *);
     od->lb_with_stateless_mode = false;
     od->ipam_info_initialized = false;
-    od->tunnel_key = sb->tunnel_key;
+    od->tunnel_key = sdp->sb_dp->tunnel_key;
     init_mcast_info_for_datapath(od);
     return od;
 }
@@ -628,7 +628,7 @@ ovn_datapath_from_sbrec(const struct hmap *ls_datapaths,
     }
 
     struct ovn_datapath *od = ovn_datapath_find_(dps, &key);
-    if (od && (od->sb == sb)) {
+    if (od && (od->sdp->sb_dp == sb)) {
         return od;
     }
 
@@ -747,7 +747,7 @@ store_mcast_info_for_switch_datapath(const struct sbrec_ip_multicast *sb,
 {
     struct mcast_switch_info *mcast_sw_info = &od->mcast_info.sw;
 
-    sbrec_ip_multicast_set_datapath(sb, od->sb);
+    sbrec_ip_multicast_set_datapath(sb, od->sdp->sb_dp);
     sbrec_ip_multicast_set_enabled(sb, &mcast_sw_info->enabled, 1);
     sbrec_ip_multicast_set_querier(sb, &mcast_sw_info->querier, 1);
     sbrec_ip_multicast_set_table_size(sb, &mcast_sw_info->table_size, 1);
@@ -856,7 +856,7 @@ build_datapaths(const struct ovn_synced_logical_switch_map *ls_map,
         struct ovn_datapath *od =
             ovn_datapath_create(&ls_datapaths->datapaths,
                                 &ls->nb->header_.uuid,
-                                ls->nb, NULL, ls->sb);
+                                ls->nb, NULL, ls->sdp);
         init_ipam_info_for_datapath(od);
         if (smap_get_bool(&od->nbs->other_config,
                           "enable-stateless-acl-with-lb",
@@ -870,7 +870,7 @@ build_datapaths(const struct ovn_synced_logical_switch_map *ls_map,
         struct ovn_datapath *od =
             ovn_datapath_create(&lr_datapaths->datapaths,
                                 &lr->nb->header_.uuid,
-                                NULL, lr->nb, lr->sb);
+                                NULL, lr->nb, lr->sdp);
         if (smap_get(&od->nbr->options, "chassis")) {
             od->is_gw_router = true;
         }
@@ -1441,7 +1441,7 @@ create_mirror_port(struct ovn_port *op, struct hmap *ports,
                    struct ovs_list *both_dbs, struct ovs_list *nb_only,
                    const struct nbrec_mirror *nb_mirror)
 {
-    char *mp_name = ovn_mirror_port_name(ovn_datapath_name(op->od->sb),
+    char *mp_name = ovn_mirror_port_name(ovn_datapath_name(op->od->sdp->sb_dp),
                                          nb_mirror->sink);
     struct ovn_port *mp = ovn_port_find(ports, mp_name);
     struct ovn_port *target_port = ovn_port_find(ports, nb_mirror->sink);
@@ -1485,7 +1485,7 @@ join_logical_ports_lsp(struct hmap *ports,
             = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_WARN_RL(&rl, "duplicate logical port %s", name);
         return NULL;
-    } else if (op && (!op->sb || op->sb->datapath == od->sb)) {
+    } else if (op && (!op->sb || op->sb->datapath == od->sdp->sb_dp)) {
         /*
          * Handle cases where lport type was explicitly changed
          * in the NBDB, in such cases:
@@ -1582,7 +1582,7 @@ join_logical_ports_lrp(struct hmap *ports,
                      name);
         destroy_lport_addresses(lrp_networks);
         return NULL;
-    } else if (op && (!op->sb || op->sb->datapath == od->sb)) {
+    } else if (op && (!op->sb || op->sb->datapath == od->sdp->sb_dp)) {
         ovn_port_set_nb(op, NULL, nbrp);
         ovs_list_remove(&op->list);
         ovs_list_push_back(both, &op->list);
@@ -1655,7 +1655,7 @@ create_cr_port(struct ovn_port *op, struct hmap *ports,
         op->nbsp ? op->nbsp->name : op->nbrp->name);
 
     struct ovn_port *crp = ovn_port_find(ports, redirect_name);
-    if (crp && crp->sb && crp->sb->datapath == op->od->sb) {
+    if (crp && crp->sb && crp->sb->datapath == op->od->sdp->sb_dp) {
         ovn_port_set_nb(crp, op->nbsp, op->nbrp);
         ovs_list_remove(&crp->list);
         ovs_list_push_back(both_dbs, &crp->list);
@@ -2513,7 +2513,7 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
                       unsigned long *queue_id_bitmap,
                       struct sset *active_ha_chassis_grps)
 {
-    sbrec_port_binding_set_datapath(op->sb, op->od->sb);
+    sbrec_port_binding_set_datapath(op->sb, op->od->sdp->sb_dp);
     if (op->nbrp) {
         /* Note: SB port binding options for router ports are set in
          * sync_pbs(). */
@@ -3829,7 +3829,7 @@ build_ports(struct ovsdb_idl_txn *ovnsb_txn,
         /* When reusing stale Port_Bindings, make sure that stale
          * Mac_Bindings are purged.
          */
-        if (op->od->sb != op->sb->datapath) {
+        if (op->od->sdp->sb_dp != op->sb->datapath) {
             remove_mac_bindings = true;
         }
         if (op->nbsp) {
@@ -5384,7 +5384,7 @@ build_mirror_lflows(struct ovn_port *op,
         }
 
         char *serving_port_name = ovn_mirror_port_name(
-                                        ovn_datapath_name(op->od->sb),
+                                        ovn_datapath_name(op->od->sdp->sb_dp),
                                         mirror->sink);
 
         struct ovn_port *serving_port = ovn_port_find(ls_ports,
@@ -18083,13 +18083,13 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
 
         const struct sbrec_multicast_group *sbmc_flood =
             mcast_group_lookup(lflow_input->sbrec_mcast_group_by_name_dp,
-                               MC_FLOOD, op->od->sb);
+                               MC_FLOOD, op->od->sdp->sb_dp);
         const struct sbrec_multicast_group *sbmc_flood_l2 =
             mcast_group_lookup(lflow_input->sbrec_mcast_group_by_name_dp,
-                               MC_FLOOD_L2, op->od->sb);
+                               MC_FLOOD_L2, op->od->sdp->sb_dp);
         const struct sbrec_multicast_group *sbmc_unknown =
             mcast_group_lookup(lflow_input->sbrec_mcast_group_by_name_dp,
-                               MC_UNKNOWN, op->od->sb);
+                               MC_UNKNOWN, op->od->sdp->sb_dp);
 
         struct ds match = DS_EMPTY_INITIALIZER;
         struct ds actions = DS_EMPTY_INITIALIZER;
@@ -18129,13 +18129,13 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
         /* Update SB multicast groups for the new port. */
         if (!sbmc_flood) {
             sbmc_flood = create_sb_multicast_group(ovnsb_txn,
-                op->od->sb, MC_FLOOD, OVN_MCAST_FLOOD_TUNNEL_KEY);
+                op->od->sdp->sb_dp, MC_FLOOD, OVN_MCAST_FLOOD_TUNNEL_KEY);
         }
         sbrec_multicast_group_update_ports_addvalue(sbmc_flood, op->sb);
 
         if (!sbmc_flood_l2) {
             sbmc_flood_l2 = create_sb_multicast_group(ovnsb_txn,
-                op->od->sb, MC_FLOOD_L2,
+                op->od->sdp->sb_dp, MC_FLOOD_L2,
                 OVN_MCAST_FLOOD_L2_TUNNEL_KEY);
         }
         sbrec_multicast_group_update_ports_addvalue(sbmc_flood_l2, op->sb);
@@ -18143,7 +18143,7 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
         if (op->has_unknown) {
             if (!sbmc_unknown) {
                 sbmc_unknown = create_sb_multicast_group(ovnsb_txn,
-                    op->od->sb, MC_UNKNOWN,
+                    op->od->sdp->sb_dp, MC_UNKNOWN,
                     OVN_MCAST_UNKNOWN_TUNNEL_KEY);
             }
             sbrec_multicast_group_update_ports_addvalue(sbmc_unknown,
@@ -18464,7 +18464,7 @@ sync_dns_entries(struct ovsdb_idl_txn *ovnsb_txn,
             dns_info->n_sbs++;
             dns_info->sbs = xrealloc(dns_info->sbs,
                                      dns_info->n_sbs * sizeof *dns_info->sbs);
-            dns_info->sbs[dns_info->n_sbs - 1] = od->sb;
+            dns_info->sbs[dns_info->n_sbs - 1] = od->sdp->sb_dp;
         }
     }
 
@@ -18581,7 +18581,7 @@ build_ip_mcast(struct ovsdb_idl_txn *ovnsb_txn,
         ovs_assert(od->nbs);
 
         const struct sbrec_ip_multicast *ip_mcast =
-            ip_mcast_lookup(sbrec_ip_mcast_by_dp, od->sb);
+            ip_mcast_lookup(sbrec_ip_mcast_by_dp, od->sdp->sb_dp);
 
         if (!ip_mcast) {
             ip_mcast = sbrec_ip_multicast_insert(ovnsb_txn);
@@ -18622,7 +18622,7 @@ build_static_mac_binding_table(
         }
 
         struct ovn_port *op = ovn_port_find(lr_ports, nb_smb->logical_port);
-        if (!op || !op->nbrp || !op->od || !op->od->sb) {
+        if (!op || !op->nbrp || !op->od || !op->od->sdp->sb_dp) {
             sbrec_static_mac_binding_delete(sb_smb);
         }
     }
@@ -18634,7 +18634,7 @@ build_static_mac_binding_table(
         struct ovn_port *op = ovn_port_find(lr_ports, nb_smb->logical_port);
         if (op && op->nbrp) {
             struct ovn_datapath *od = op->od;
-            if (od && od->sb) {
+            if (od && od->sdp->sb_dp) {
                 const struct uuid *nb_uuid = &nb_smb->header_.uuid;
                 const struct sbrec_static_mac_binding *mb =
                     sbrec_static_mac_binding_table_get_for_uuid(
@@ -18649,7 +18649,7 @@ build_static_mac_binding_table(
                     sbrec_static_mac_binding_set_mac(mb, nb_smb->mac);
                     sbrec_static_mac_binding_set_override_dynamic_mac(mb,
                         nb_smb->override_dynamic_mac);
-                    sbrec_static_mac_binding_set_datapath(mb, od->sb);
+                    sbrec_static_mac_binding_set_datapath(mb, od->sdp->sb_dp);
                 } else {
                     /* Update existing entry if there is a change*/
                     if (strcmp(mb->mac, nb_smb->mac)) {

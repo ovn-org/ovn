@@ -434,7 +434,7 @@ sync_multicast_groups_to_sb(
             continue;
         }
 
-        sbmc = create_sb_multicast_group(ovnsb_txn, mc->datapath->sb,
+        sbmc = create_sb_multicast_group(ovnsb_txn, mc->datapath->sdp->sb_dp,
                                          mc->group->name, mc->group->key);
         ovn_multicast_update_sbrec(mc, sbmc);
     }
@@ -579,7 +579,7 @@ ovn_igmp_group_add(struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp,
         const struct sbrec_multicast_group *mcgroup =
             mcast_group_lookup(sbrec_mcast_group_by_name_dp,
                                address_s,
-                               datapath->sb);
+                               datapath->sdp->sb_dp);
 
         igmp_group->datapath = datapath;
         igmp_group->address = *address;

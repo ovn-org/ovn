@@ -17694,3 +17694,59 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Datapath Sync incremental processing])
+ovn_start
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb ls-add sw0
+check_engine_stats datapath_sync norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set logical_switch sw0 other_config:fdb_age_threshold=5
+check_engine_stats datapath_sync norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set logical_switch sw0 other_config:requested-tnl-key=123
+check_engine_stats datapath_sync norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb ls-del sw0
+check_engine_stats datapath_sync norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-add lr0
+check_engine_stats datapath_sync norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl set Logical_Router lr0 options:ct-zone-limit=10
+check_engine_stats datapath_sync norecompute compute
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-del lr0
+check_engine_stats datapath_sync norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Global changes mostly should not trigger recomputes...
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set NB_Global . options:foo=bar
+check_engine_stats datapath_sync norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+#...unless we're changing vxlan mode.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check_uuid ovn-sbctl \
+    --id=@e create encap chassis_name=hv1 ip="192.168.0.1" type="vxlan" \
+    -- --id=@c create chassis name=hv1 encaps=@e
+# Sync just to be sure the encap change has propagated to northd
+check ovn-nbctl --wait=sb sync
+check_engine_stats datapath_sync recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AT_CLEANUP
+])

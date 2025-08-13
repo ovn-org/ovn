@@ -1118,7 +1118,7 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
     }
 
     if (lflow->od) {
-        sbrec_logical_flow_set_logical_datapath(sbflow, lflow->od->sb);
+        sbrec_logical_flow_set_logical_datapath(sbflow, lflow->od->sdp->sb_dp);
         sbrec_logical_flow_set_logical_dp_group(sbflow, NULL);
     } else {
         sbrec_logical_flow_set_logical_datapath(sbflow, NULL);
@@ -1226,7 +1226,7 @@ ovn_sb_insert_or_update_logical_dp_group(
 
     sb = xmalloc(bitmap_count1(dpg_bitmap, ods_size(datapaths)) * sizeof *sb);
     BITMAP_FOR_EACH_1 (index, ods_size(datapaths), dpg_bitmap) {
-        sb[n++] = datapaths->array[index]->sb;
+        sb[n++] = datapaths->array[index]->sdp->sb_dp;
     }
     if (!dp_group) {
         struct uuid dpg_uuid = uuid_random();

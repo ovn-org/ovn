@@ -250,7 +250,7 @@ en_datapath_synced_logical_switch_run(struct engine_node *node , void *data)
         *lsw = (struct ovn_synced_logical_switch) {
             .nb = CONTAINER_OF(sdp->nb_row, struct nbrec_logical_switch,
                                header_),
-            .sb = sdp->sb_dp,
+            .sdp = sdp,
         };
         hmap_insert(&switch_map->synced_switches, &lsw->hmap_node,
                     uuid_hash(&lsw->nb->header_.uuid));

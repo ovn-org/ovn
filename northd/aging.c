@@ -412,7 +412,7 @@ en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
     HMAP_FOR_EACH (od, key_node, &northd_data->lr_datapaths.datapaths) {
         ovs_assert(od->nbr);
 
-        if (!od->sb) {
+        if (!od->sdp->sb_dp) {
             continue;
         }
 
@@ -425,7 +425,7 @@ en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
 
         aging_context_set_threshold(&ctx, &threshold_config);
 
-        mac_binding_aging_run_for_datapath(od->sb,
+        mac_binding_aging_run_for_datapath(od->sdp->sb_dp,
                                            sbrec_mac_binding_by_datapath,
                                            &ctx);
         threshold_config_destroy(&threshold_config);
@@ -544,7 +544,7 @@ en_fdb_aging_run(struct engine_node *node, void *data OVS_UNUSED)
     HMAP_FOR_EACH (od, key_node, &northd_data->ls_datapaths.datapaths) {
         ovs_assert(od->nbs);
 
-        if (!od->sb) {
+        if (!od->sdp->sb_dp) {
             continue;
         }
 
@@ -553,7 +553,7 @@ en_fdb_aging_run(struct engine_node *node, void *data OVS_UNUSED)
         threshold_config.default_threshold =
             smap_get_uint(&od->nbs->other_config, "fdb_age_threshold", 0);
         aging_context_set_threshold(&ctx, &threshold_config);
-        fdb_run_for_datapath(od->sb, sbrec_fdb_by_dp_key, &ctx);
+        fdb_run_for_datapath(od->sdp->sb_dp, sbrec_fdb_by_dp_key, &ctx);
 
         if (aging_context_is_at_limit(&ctx)) {
             /* Schedule the next run after specified delay. */

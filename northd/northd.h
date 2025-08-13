@@ -42,7 +42,6 @@ struct northd_input {
     const struct nbrec_port_group_table *nbrec_port_group_table;
 
     /* Southbound table references */
-    const struct sbrec_datapath_binding_table *sbrec_datapath_binding_table;
     const struct sbrec_port_binding_table *sbrec_port_binding_table;
     const struct sbrec_mac_binding_table *sbrec_mac_binding_table;
     const struct sbrec_ha_chassis_group_table *sbrec_ha_chassis_group_table;
@@ -369,7 +368,7 @@ struct ovn_datapath {
 
     const struct nbrec_logical_switch *nbs;  /* May be NULL. */
     const struct nbrec_logical_router *nbr;  /* May be NULL. */
-    const struct sbrec_datapath_binding *sb; /* May be NULL. */
+    const struct ovn_synced_datapath *sdp; /* May be NULL. */
 
     struct ovs_list list;       /* In list of similar records. */
 

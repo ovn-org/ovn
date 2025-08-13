@@ -74,11 +74,35 @@ struct ovn_synced_datapath {
     struct hmap_node hmap_node;
     const struct ovsdb_idl_row *nb_row;
     const struct sbrec_datapath_binding *sb_dp;
+    /* This boolean indicates if the synced datapath
+     * has a transient sb_dp pointer. If "true", then
+     * it means the sb_dp field is the return value of
+     * sbrec_datapath_binding_insert(). If "false", then
+     * it means the sb_dp field was provided by an IDL
+     * update.
+     *
+     * This field is only necessary in order to distinguish
+     * duplicate southbound datapath binding records. If a
+     * mischievous agent inserts a datapath binding that walks,
+     * looks, and quacks like an existing datapath binding,
+     * this is what helps us distinguish that the inserted
+     * datapath is actually a duplicate of a known datapath.
+     */
+    bool pending_sb_dp;
 };
 
 struct ovn_synced_datapaths {
     struct hmap synced_dps;
     struct hmap dp_tnlids;
+
+    struct hmapx new;
+    struct hmapx updated;
+    struct hmapx deleted;
+
+    /* Cache the vxlan mode setting. This is an easy way for us to detect if
+     * the global configuration resulted in a change to this value.
+     */
+    bool vxlan_mode;
 };
 
 struct ovn_unsynced_datapath *ovn_unsynced_datapath_alloc(

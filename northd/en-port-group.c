@@ -270,7 +270,8 @@ ls_port_group_process(struct ls_port_group_table *ls_port_groups,
             struct ls_port_group *ls_pg =
                 ls_port_group_table_find(ls_port_groups, od->nbs);
             if (!ls_pg) {
-                ls_pg = ls_port_group_create(ls_port_groups, od->nbs, od->sb);
+                ls_pg = ls_port_group_create(ls_port_groups, od->nbs,
+                                             od->sdp->sb_dp);
             }
 
             struct ls_port_group_record *ls_pg_rec =
