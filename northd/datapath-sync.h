@@ -18,6 +18,7 @@
 
 #include "openvswitch/hmap.h"
 #include "smap.h"
+#include "hmapx.h"
 
 /* Datapath syncing API. This file consists of utility functions
  * that can be used when syncing northbound datapath types (e.g.
@@ -62,6 +63,11 @@ struct ovn_unsynced_datapath_map {
     /* ovn_unsynced_datapath */
     struct hmap dps;
     enum ovn_datapath_type dp_type;
+
+    /* Data for incremental case. */
+    struct hmapx new;
+    struct hmapx updated;
+    struct hmapx deleted;
 };
 
 struct ovn_synced_datapath {
@@ -82,5 +88,12 @@ void ovn_unsynced_datapath_destroy(struct ovn_unsynced_datapath *);
 void ovn_unsynced_datapath_map_init(struct ovn_unsynced_datapath_map *,
                                     enum ovn_datapath_type);
 void ovn_unsynced_datapath_map_destroy(struct ovn_unsynced_datapath_map *);
+
+struct ovn_unsynced_datapath *
+ovn_unsynced_datapath_find(const struct ovn_unsynced_datapath_map *,
+                           const struct uuid *);
+
+void ovn_unsynced_datapath_map_clear_tracked_data(
+    struct ovn_unsynced_datapath_map *);
 
 #endif /* DATAPATH_SYNC_H */

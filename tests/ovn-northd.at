@@ -17621,3 +17621,48 @@ check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Unsynced Logical Router Incremental Processing])
+ovn_start
+
+# Start by issuing a recompute just so we know that the engine
+# has run at least once.
+check as northd ovn-appctl -t ovn-northd inc-engine/recompute
+
+# Now all of our router changes should be handled incrementally.
+# There is no circumstance under which en-datapath-logical-router
+# should have to recompute.
+
+# Add a router
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-add lr1
+check_engine_stats datapath_logical_router norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Update router options
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set Logical_Router lr1 options:ct-zone-limit=10
+check_engine_stats datapath_logical_router norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Disable logical router.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set Logical_Router lr1 enabled=false
+check_engine_stats datapath_logical_router norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Re-enable logical router.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set Logical_Router lr1 enabled=true
+check_engine_stats datapath_logical_router norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Delete logical router
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-del lr1
+check_engine_stats datapath_logical_router norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AT_CLEANUP
+])

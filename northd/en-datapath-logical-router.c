@@ -37,6 +37,80 @@ en_datapath_logical_router_init(struct engine_node *node OVS_UNUSED,
     return map;
 }
 
+static void
+gather_external_ids(const struct nbrec_logical_router *nbr,
+                    struct smap *external_ids)
+{
+    smap_add(external_ids, "name", nbr->name);
+    const char *neutron_router = smap_get(&nbr->options,
+                                           "neutron:router_name");
+    if (neutron_router && neutron_router[0]) {
+        smap_add(external_ids, "name2", neutron_router);
+    }
+
+    int64_t ct_zone_limit = ovn_smap_get_llong(&nbr->options,
+                                               "ct-zone-limit", -1);
+    if (ct_zone_limit > 0) {
+        smap_add_format(external_ids, "ct-zone-limit", "%"PRId64,
+                        ct_zone_limit);
+    }
+
+    int nat_default_ct = smap_get_int(&nbr->options,
+                                      "snat-ct-zone", -1);
+    if (nat_default_ct >= 0) {
+        smap_add_format(external_ids, "snat-ct-zone", "%d",
+                        nat_default_ct);
+    }
+
+    bool learn_from_arp_request =
+        smap_get_bool(&nbr->options, "always_learn_from_arp_request",
+                      true);
+    if (!learn_from_arp_request) {
+        smap_add(external_ids, "always_learn_from_arp_request",
+                 "false");
+    }
+
+    /* For timestamp refreshing, the smallest threshold of the option is
+     * set to SB to make sure all entries are refreshed in time.
+     * This approach simplifies processing in ovn-controller, but it
+     * may be enhanced, if necessary, to parse the complete CIDR-based
+     * threshold configurations to SB to reduce unnecessary refreshes. */
+    uint32_t age_threshold = min_mac_binding_age_threshold(
+                                   smap_get(&nbr->options,
+                                           "mac_binding_age_threshold"));
+    if (age_threshold) {
+        smap_add_format(external_ids, "mac_binding_age_threshold",
+                        "%u", age_threshold);
+    }
+
+    /* For backwards-compatibility, also store the NB UUID in
+     * external-ids:logical-router. This is useful if ovn-controller
+     * has not updated and expects this to be where to find the
+     * UUID.
+     */
+    smap_add_format(external_ids, "logical-router", UUID_FMT,
+                    UUID_ARGS(&nbr->header_.uuid));
+}
+
+static struct ovn_unsynced_datapath *
+allocate_unsynced_router(const struct nbrec_logical_router *nbr)
+{
+    struct ovn_unsynced_datapath *dp =
+        ovn_unsynced_datapath_alloc(nbr->name, DP_ROUTER,
+                                    smap_get_int(&nbr->options,
+                                                 "requested-tnl-key", 0),
+                                    &nbr->header_);
+
+    gather_external_ids(nbr, &dp->external_ids);
+    return dp;
+}
+
+static bool
+logical_router_is_enabled(const struct nbrec_logical_router *nbr)
+{
+    return !nbr->enabled || *nbr->enabled;
+}
+
 enum engine_node_state
 en_datapath_logical_router_run(struct engine_node *node , void *data)
 {
@@ -50,69 +124,75 @@ en_datapath_logical_router_run(struct engine_node *node , void *data)
 
     const struct nbrec_logical_router *nbr;
     NBREC_LOGICAL_ROUTER_TABLE_FOR_EACH (nbr, nb_lr_table) {
-        if (nbr->enabled && !(*nbr->enabled)) {
+        if (!logical_router_is_enabled(nbr)) {
             continue;
         }
-        struct ovn_unsynced_datapath *dp =
-            ovn_unsynced_datapath_alloc(nbr->name, DP_ROUTER,
-                                        smap_get_int(&nbr->options,
-                                                     "requested-tnl-key", 0),
-                                        &nbr->header_);
-
-        smap_add(&dp->external_ids, "name", dp->name);
-        const char *neutron_router = smap_get(&nbr->options,
-                                               "neutron:router_name");
-        if (neutron_router && neutron_router[0]) {
-            smap_add(&dp->external_ids, "name2", neutron_router);
-        }
-
-        int64_t ct_zone_limit = ovn_smap_get_llong(&nbr->options,
-                                                   "ct-zone-limit", -1);
-        if (ct_zone_limit > 0) {
-            smap_add_format(&dp->external_ids, "ct-zone-limit", "%"PRId64,
-                            ct_zone_limit);
-        }
-
-        int nat_default_ct = smap_get_int(&nbr->options,
-                                          "snat-ct-zone", -1);
-        if (nat_default_ct >= 0) {
-            smap_add_format(&dp->external_ids, "snat-ct-zone", "%d",
-                            nat_default_ct);
-        }
-
-        bool learn_from_arp_request =
-            smap_get_bool(&nbr->options, "always_learn_from_arp_request",
-                          true);
-        if (!learn_from_arp_request) {
-            smap_add(&dp->external_ids, "always_learn_from_arp_request",
-                     "false");
-        }
-
-        /* For timestamp refreshing, the smallest threshold of the option is
-         * set to SB to make sure all entries are refreshed in time.
-         * This approach simplifies processing in ovn-controller, but it
-         * may be enhanced, if necessary, to parse the complete CIDR-based
-         * threshold configurations to SB to reduce unnecessary refreshes. */
-        uint32_t age_threshold = min_mac_binding_age_threshold(
-                                       smap_get(&nbr->options,
-                                               "mac_binding_age_threshold"));
-        if (age_threshold) {
-            smap_add_format(&dp->external_ids, "mac_binding_age_threshold",
-                            "%u", age_threshold);
-        }
-
-        /* For backwards-compatibility, also store the NB UUID in
-         * external-ids:logical-router. This is useful if ovn-controller
-         * has not updated and expects this to be where to find the
-         * UUID.
-         */
-        smap_add_format(&dp->external_ids, "logical-router", UUID_FMT,
-                        UUID_ARGS(&nbr->header_.uuid));
-
+        struct ovn_unsynced_datapath *dp = allocate_unsynced_router(nbr);
         hmap_insert(&map->dps, &dp->hmap_node, uuid_hash(&nbr->header_.uuid));
     }
 
     return EN_UPDATED;
+}
+
+void
+en_datapath_logical_router_clear_tracked_data(void *data)
+{
+    ovn_unsynced_datapath_map_clear_tracked_data(data);
+}
+
+enum engine_input_handler_result
+en_datapath_logical_router_logical_router_handler(struct engine_node *node,
+                                                  void *data)
+{
+    const struct nbrec_logical_router_table *nb_lr_table =
+        EN_OVSDB_GET(engine_get_input("NB_logical_router", node));
+
+    struct ovn_unsynced_datapath_map *map = data;
+
+    struct ovn_unsynced_datapath *udp;
+    const struct nbrec_logical_router *nbr;
+    NBREC_LOGICAL_ROUTER_TABLE_FOR_EACH_TRACKED (nbr, nb_lr_table) {
+        udp = ovn_unsynced_datapath_find(map, &nbr->header_.uuid);
+
+        if (nbrec_logical_router_is_deleted(nbr) && !udp) {
+            return EN_UNHANDLED;
+        }
+
+        if (nbrec_logical_router_is_new(nbr) && udp) {
+            return EN_UNHANDLED;
+        }
+
+        if (udp) {
+            if (nbrec_logical_router_is_deleted(nbr) ||
+                !logical_router_is_enabled(nbr)) {
+                hmap_remove(&map->dps, &udp->hmap_node);
+                hmapx_add(&map->deleted, udp);
+            } else {
+                /* We could try to modify the unsynced datapath external_ids
+                 * in place based on the new logical router, but it's easier to
+                 * just create a new map.
+                 */
+                udp->requested_tunnel_key =
+                    smap_get_int(&nbr->options, "requested-tnl-key", 0);
+                smap_destroy(&udp->external_ids);
+                smap_init(&udp->external_ids);
+                gather_external_ids(nbr, &udp->external_ids);
+                hmapx_add(&map->updated, udp);
+            }
+        } else if (logical_router_is_enabled(nbr)) {
+            udp = allocate_unsynced_router(nbr);
+            hmap_insert(&map->dps, &udp->hmap_node,
+                        uuid_hash(&nbr->header_.uuid));
+            hmapx_add(&map->new, udp);
+        }
+    }
+
+    if (!(hmapx_is_empty(&map->new) && hmapx_is_empty(&map->updated) &&
+        hmapx_is_empty(&map->deleted))) {
+        return EN_HANDLED_UPDATED;
+    }
+
+    return EN_HANDLED_UNCHANGED;
 }
 
 void
