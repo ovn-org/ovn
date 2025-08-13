@@ -5441,7 +5441,6 @@ en_route_exchange_status_run(struct engine_node *node OVS_UNUSED, void *data)
 
     if (res->netlink_trigger_run) {
         state = EN_UPDATED;
-        poll_immediate_wake();
     } else {
         state = EN_UNCHANGED;
     }
