@@ -183,7 +183,7 @@ static ENGINE_NODE(learned_route_sync, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(dynamic_routes);
 static ENGINE_NODE(group_ecmp_route, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(datapath_logical_router, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(datapath_logical_switch);
+static ENGINE_NODE(datapath_logical_switch, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(datapath_sync);
 static ENGINE_NODE(datapath_synced_logical_router);
 static ENGINE_NODE(datapath_synced_logical_switch);
@@ -217,8 +217,10 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_acl_id, &en_nb_acl, NULL);
     engine_add_input(&en_acl_id, &en_sb_acl_id, NULL);
 
-    engine_add_input(&en_datapath_logical_switch, &en_nb_logical_switch, NULL);
-    engine_add_input(&en_datapath_logical_switch, &en_global_config, NULL);
+    engine_add_input(&en_datapath_logical_switch, &en_nb_logical_switch,
+                     datapath_logical_switch_handler);
+    engine_add_input(&en_datapath_logical_switch, &en_global_config,
+                     datapath_logical_switch_handler);
 
     engine_add_input(&en_datapath_logical_router, &en_nb_logical_router,
                      en_datapath_logical_router_logical_router_handler);

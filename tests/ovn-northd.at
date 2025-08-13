@@ -17666,3 +17666,31 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Datapath Logical switch incremental processing])
+ovn_start
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb ls-add sw0
+check_engine_stats datapath_logical_switch norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set logical_switch sw0 other_config:fdb_age_threshold=5
+check_engine_stats datapath_logical_switch norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set logical_switch sw0 other_config:requested-tnl-key=123
+check_engine_stats datapath_logical_switch norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb ls-del sw0
+check_engine_stats datapath_logical_switch norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AT_CLEANUP
+])
+

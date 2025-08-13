@@ -23,9 +23,12 @@
 void *en_datapath_logical_switch_init(struct engine_node *,
                                       struct engine_arg *);
 
+enum engine_input_handler_result
+datapath_logical_switch_handler(struct engine_node *, void *data);
 enum engine_node_state en_datapath_logical_switch_run(struct engine_node *,
                                                       void *data);
 void en_datapath_logical_switch_cleanup(void *data);
+void en_datapath_logical_switch_clear_tracked_data(void *data);
 
 struct ovn_synced_logical_switch {
     struct hmap_node hmap_node;

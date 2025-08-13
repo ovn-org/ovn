@@ -38,6 +38,140 @@ en_datapath_logical_switch_init(struct engine_node *node OVS_UNUSED,
     return map;
 }
 
+static uint32_t
+get_requested_tunnel_key(const struct nbrec_logical_switch *nbs,
+                         bool vxlan_mode)
+{
+    uint32_t requested_tunnel_key = smap_get_int(&nbs->other_config,
+                                                 "requested-tnl-key", 0);
+    const char *ts = smap_get(&nbs->other_config, "interconn-ts");
+
+    if (!ts && vxlan_mode && requested_tunnel_key >= 1 << 12) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "Tunnel key %"PRIu32" for datapath %s is "
+                     "incompatible with VXLAN", requested_tunnel_key,
+                     nbs->name);
+        requested_tunnel_key = 0;
+    }
+
+    return requested_tunnel_key;
+}
+
+static void
+gather_external_ids(const struct nbrec_logical_switch *nbs,
+                    struct smap *external_ids)
+{
+    smap_add(external_ids, "name", nbs->name);
+    const char *neutron_network = smap_get(&nbs->other_config,
+                                           "neutron:network_name");
+    if (neutron_network && neutron_network[0]) {
+        smap_add(external_ids, "name2", neutron_network);
+    }
+
+    int64_t ct_zone_limit = ovn_smap_get_llong(&nbs->other_config,
+                                               "ct-zone-limit", -1);
+    if (ct_zone_limit > 0) {
+        smap_add_format(external_ids, "ct-zone-limit", "%"PRId64,
+                        ct_zone_limit);
+    }
+
+    const char *ts = smap_get(&nbs->other_config, "interconn-ts");
+    if (ts) {
+        smap_add(external_ids, "interconn-ts", ts);
+    }
+
+    uint32_t age_threshold = smap_get_uint(&nbs->other_config,
+                                           "fdb_age_threshold", 0);
+    if (age_threshold) {
+        smap_add_format(external_ids, "fdb_age_threshold",
+                        "%u", age_threshold);
+    }
+
+    /* For backwards-compatibility, also store the NB UUID in
+     * external-ids:logical-switch. This is useful if ovn-controller
+     * has not updated and expects this to be where to find the
+     * UUID.
+     */
+    smap_add_format(external_ids, "logical-switch", UUID_FMT,
+                    UUID_ARGS(&nbs->header_.uuid));
+}
+
+static struct ovn_unsynced_datapath *
+datapath_unsynced_new_logical_switch_handler(
+        const struct nbrec_logical_switch *nbs,
+        const struct ed_type_global_config *global_config,
+        struct ovn_unsynced_datapath_map *map)
+{
+    uint32_t requested_tunnel_key = get_requested_tunnel_key(
+        nbs, global_config->vxlan_mode);
+
+    struct ovn_unsynced_datapath *udp =
+        ovn_unsynced_datapath_alloc(nbs->name, DP_SWITCH,
+                                    requested_tunnel_key, &nbs->header_);
+
+    gather_external_ids(nbs, &udp->external_ids);
+    hmap_insert(&map->dps, &udp->hmap_node, uuid_hash(&nbs->header_.uuid));
+    return udp;
+}
+
+enum engine_input_handler_result
+datapath_logical_switch_handler(struct engine_node *node, void *data)
+{
+    const struct nbrec_logical_switch_table *nb_ls_table =
+        EN_OVSDB_GET(engine_get_input("NB_logical_switch", node));
+    const struct ed_type_global_config *global_config =
+        engine_get_input_data("global_config", node);
+    struct ovn_unsynced_datapath_map *map = data;
+
+    const struct nbrec_logical_switch *nbs;
+    NBREC_LOGICAL_SWITCH_TABLE_FOR_EACH_TRACKED (nbs, nb_ls_table) {
+        struct ovn_unsynced_datapath *udp =
+            ovn_unsynced_datapath_find(map, &nbs->header_.uuid);
+
+        if (nbrec_logical_switch_is_new(nbs)) {
+            if (udp) {
+                return EN_UNHANDLED;
+            }
+            udp = datapath_unsynced_new_logical_switch_handler(nbs,
+                                                               global_config,
+                                                               map);
+            hmapx_add(&map->new, udp);
+        } else if (nbrec_logical_switch_is_deleted(nbs)) {
+            if (!udp) {
+                return EN_UNHANDLED;
+            }
+            hmap_remove(&map->dps, &udp->hmap_node);
+            hmapx_add(&map->deleted, udp);
+        } else {
+            if (!udp) {
+                return EN_UNHANDLED;
+            }
+
+            udp->requested_tunnel_key = get_requested_tunnel_key(
+                    nbs, global_config->vxlan_mode);
+            smap_destroy(&udp->external_ids);
+            smap_init(&udp->external_ids);
+            gather_external_ids(nbs, &udp->external_ids);
+            hmapx_add(&map->updated, udp);
+        }
+    }
+
+    if (!(hmapx_is_empty(&map->new) &&
+          hmapx_is_empty(&map->updated) &&
+          hmapx_is_empty(&map->deleted))) {
+        return EN_HANDLED_UPDATED;
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
+void
+en_datapath_logical_switch_clear_tracked_data(void *data)
+{
+    struct ovn_unsynced_datapath_map *map = data;
+    ovn_unsynced_datapath_map_clear_tracked_data(map);
+}
+
 enum engine_node_state
 en_datapath_logical_switch_run(struct engine_node *node , void *data)
 {
@@ -53,57 +187,7 @@ en_datapath_logical_switch_run(struct engine_node *node , void *data)
 
     const struct nbrec_logical_switch *nbs;
     NBREC_LOGICAL_SWITCH_TABLE_FOR_EACH (nbs, nb_ls_table) {
-        uint32_t requested_tunnel_key = smap_get_int(&nbs->other_config,
-                                                     "requested-tnl-key", 0);
-        const char *ts = smap_get(&nbs->other_config, "interconn-ts");
-
-        if (!ts && global_config->vxlan_mode &&
-            requested_tunnel_key >= 1 << 12) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_WARN_RL(&rl, "Tunnel key %"PRIu32" for datapath %s is "
-                         "incompatible with VXLAN", requested_tunnel_key,
-                         nbs->name);
-            requested_tunnel_key = 0;
-        }
-
-        struct ovn_unsynced_datapath *dp
-            = ovn_unsynced_datapath_alloc(nbs->name, DP_SWITCH,
-                                          requested_tunnel_key, &nbs->header_);
-
-        smap_add(&dp->external_ids, "name", dp->name);
-        const char *neutron_network = smap_get(&nbs->other_config,
-                                               "neutron:network_name");
-        if (neutron_network && neutron_network[0]) {
-            smap_add(&dp->external_ids, "name2", neutron_network);
-        }
-
-        int64_t ct_zone_limit = ovn_smap_get_llong(&nbs->other_config,
-                                                   "ct-zone-limit", -1);
-        if (ct_zone_limit > 0) {
-            smap_add_format(&dp->external_ids, "ct-zone-limit", "%"PRId64,
-                            ct_zone_limit);
-        }
-
-        if (ts) {
-            smap_add(&dp->external_ids, "interconn-ts", ts);
-        }
-
-        uint32_t age_threshold = smap_get_uint(&nbs->other_config,
-                                               "fdb_age_threshold", 0);
-        if (age_threshold) {
-            smap_add_format(&dp->external_ids, "fdb_age_threshold",
-                            "%u", age_threshold);
-        }
-
-        /* For backwards-compatibility, also store the NB UUID in
-         * external-ids:logical-switch. This is useful if ovn-controller
-         * has not updated and expects this to be where to find the
-         * UUID.
-         */
-        smap_add_format(&dp->external_ids, "logical-switch", UUID_FMT,
-                        UUID_ARGS(&nbs->header_.uuid));
-
-        hmap_insert(&map->dps, &dp->hmap_node, uuid_hash(&nbs->header_.uuid));
+        datapath_unsynced_new_logical_switch_handler(nbs, global_config, map);
     }
 
     return EN_UPDATED;
