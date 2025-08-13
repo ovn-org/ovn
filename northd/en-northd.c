@@ -66,10 +66,6 @@ northd_get_input_data(struct engine_node *node,
             engine_get_input("NB_mirror", node),
             "nbrec_mirror_by_type_and_sink");
 
-    input_data->nbrec_logical_switch_table =
-        EN_OVSDB_GET(engine_get_input("NB_logical_switch", node));
-    input_data->nbrec_logical_router_table =
-        EN_OVSDB_GET(engine_get_input("NB_logical_router", node));
     input_data->nbrec_static_mac_binding_table =
         EN_OVSDB_GET(engine_get_input("NB_static_mac_binding", node));
     input_data->nbrec_chassis_template_var_table =

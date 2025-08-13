@@ -119,8 +119,8 @@ lb_data_load_balancer_handler(struct engine_node *, void *data);
 enum engine_input_handler_result
 lb_data_load_balancer_group_handler(struct engine_node *, void *data);
 enum engine_input_handler_result
-lb_data_logical_switch_handler(struct engine_node *, void *data);
+lb_data_synced_logical_switch_handler(struct engine_node *, void *data);
 enum engine_input_handler_result
-lb_data_logical_router_handler(struct engine_node *, void *data);
+lb_data_synced_logical_router_handler(struct engine_node *, void *data);
 
 #endif /* end of EN_NORTHD_LB_DATA_H */

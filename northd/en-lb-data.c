@@ -32,6 +32,8 @@
 #include "lib/ovn-sb-idl.h"
 #include "lib/ovn-util.h"
 #include "northd.h"
+#include "en-datapath-logical-switch.h"
+#include "en-datapath-logical-router.h"
 
 VLOG_DEFINE_THIS_MODULE(en_lb_data);
 
@@ -40,8 +42,8 @@ static void lb_data_destroy(struct ed_type_lb_data *);
 static void build_lbs(const struct nbrec_load_balancer_table *,
                       const struct nbrec_load_balancer_group_table *,
                       struct hmap *lbs, struct hmap *lb_groups);
-static void build_od_lb_map(const struct nbrec_logical_switch_table *,
-                            const struct nbrec_logical_router_table *,
+static void build_od_lb_map(const struct ovn_synced_logical_switch_map *,
+                            const struct ovn_synced_logical_router_map *,
                             struct hmap *ls_lb_map, struct hmap *lr_lb_map);
 static struct od_lb_data *find_od_lb_data(struct hmap *od_lb_map,
                                           const struct uuid *od_uuid);
@@ -73,10 +75,14 @@ static struct crupdated_lbgrp *
                                            struct tracked_lb_data *);
 static void add_deleted_lbgrp_to_tracked_data(
     struct ovn_lb_group *, struct tracked_lb_data *);
-static bool is_ls_lbs_changed(const struct nbrec_logical_switch *nbs);
-static bool is_ls_lbgrps_changed(const struct nbrec_logical_switch *nbs);
-static bool is_lr_lbs_changed(const struct nbrec_logical_router *);
-static bool is_lr_lbgrps_changed(const struct nbrec_logical_router *);
+static bool is_ls_lbs_changed(const struct nbrec_logical_switch *nbs,
+                              bool is_new);
+static bool is_ls_lbgrps_changed(const struct nbrec_logical_switch *nbs,
+                                 bool is_new);
+static bool is_lr_lbs_changed(const struct nbrec_logical_router *,
+                              bool is_new);
+static bool is_lr_lbgrps_changed(const struct nbrec_logical_router *,
+                                 bool is_new);
 
 /* 'lb_data' engine node manages the NB load balancers and load balancer
  * groups.  For each NB LB, it creates 'struct ovn_northd_lb' and
@@ -103,14 +109,14 @@ en_lb_data_run(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("NB_load_balancer", node));
     const struct nbrec_load_balancer_group_table *nb_lbg_table =
         EN_OVSDB_GET(engine_get_input("NB_load_balancer_group", node));
-    const struct nbrec_logical_switch_table *nb_ls_table =
-        EN_OVSDB_GET(engine_get_input("NB_logical_switch", node));
-    const struct nbrec_logical_router_table *nb_lr_table =
-        EN_OVSDB_GET(engine_get_input("NB_logical_router", node));
+    const struct ovn_synced_logical_switch_map *synced_lses =
+        engine_get_input_data("datapath_synced_logical_switch", node);
+    const struct ovn_synced_logical_router_map *synced_lrs =
+        engine_get_input_data("datapath_synced_logical_router", node);
 
     lb_data->tracked = false;
     build_lbs(nb_lb_table, nb_lbg_table, &lb_data->lbs, &lb_data->lbgrps);
-    build_od_lb_map(nb_ls_table, nb_lr_table, &lb_data->ls_lb_map,
+    build_od_lb_map(synced_lses, synced_lrs, &lb_data->ls_lb_map,
                     &lb_data->lr_lb_map);
 
     return EN_UPDATED;
@@ -320,115 +326,162 @@ lb_data_load_balancer_group_handler(struct engine_node *node, void *data)
     return EN_HANDLED_UPDATED;
 }
 
+static bool
+lb_data_handle_updated_logical_switch(const struct nbrec_logical_switch *nbs,
+                                      struct ed_type_lb_data *lb_data,
+                                      struct tracked_lb_data *trk_lb_data,
+                                      bool is_new)
+{
+    bool ls_lbs_changed = is_ls_lbs_changed(nbs, is_new);
+    bool ls_lbgrps_changed = is_ls_lbgrps_changed(nbs, is_new);
+    if (!ls_lbs_changed && !ls_lbgrps_changed) {
+        return false;
+    }
+    struct crupdated_od_lb_data *codlb = xmalloc(sizeof *codlb);
+    *codlb = (struct crupdated_od_lb_data) {
+        .od_uuid = nbs->header_.uuid,
+        .assoc_lbs = UUIDSET_INITIALIZER(&codlb->assoc_lbs),
+        .assoc_lbgrps = UUIDSET_INITIALIZER(&codlb->assoc_lbgrps),
+    };
+
+    struct od_lb_data *od_lb_data =
+        find_od_lb_data(&lb_data->ls_lb_map, &nbs->header_.uuid);
+    if (!od_lb_data) {
+        od_lb_data = create_od_lb_data(&lb_data->ls_lb_map,
+                                        &nbs->header_.uuid);
+    }
+
+    if (ls_lbs_changed) {
+        handle_od_lb_changes(nbs->load_balancer, nbs->n_load_balancer,
+                             od_lb_data, lb_data, codlb);
+    }
+
+    if (ls_lbgrps_changed) {
+        handle_od_lbgrp_changes(nbs->load_balancer_group,
+                                nbs->n_load_balancer_group,
+                                od_lb_data, lb_data, codlb);
+    }
+
+    ovs_list_insert(&trk_lb_data->crupdated_ls_lbs, &codlb->list_node);
+    return true;
+}
+
 enum engine_input_handler_result
-lb_data_logical_switch_handler(struct engine_node *node, void *data)
+lb_data_synced_logical_switch_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lb_data *lb_data = (struct ed_type_lb_data *) data;
-    const struct nbrec_logical_switch_table *nb_ls_table =
-        EN_OVSDB_GET(engine_get_input("NB_logical_switch", node));
+    const struct ovn_synced_logical_switch_map *synced_lses =
+        engine_get_input_data("datapath_synced_logical_switch", node);
 
     struct tracked_lb_data *trk_lb_data = &lb_data->tracked_lb_data;
     lb_data->tracked = true;
 
     bool changed = false;
     const struct nbrec_logical_switch *nbs;
-    NBREC_LOGICAL_SWITCH_TABLE_FOR_EACH_TRACKED (nbs, nb_ls_table) {
-        if (nbrec_logical_switch_is_deleted(nbs)) {
-            struct od_lb_data *od_lb_data =
-                find_od_lb_data(&lb_data->ls_lb_map, &nbs->header_.uuid);
-            if (od_lb_data) {
-                hmap_remove(&lb_data->ls_lb_map, &od_lb_data->hmap_node);
-                hmapx_add(&trk_lb_data->deleted_od_lb_data, od_lb_data);
-            }
-        } else {
-            bool ls_lbs_changed = is_ls_lbs_changed(nbs);
-            bool ls_lbgrps_changed = is_ls_lbgrps_changed(nbs);
-            if (!ls_lbs_changed && !ls_lbgrps_changed) {
-                continue;
-            }
-            changed = true;
-            struct crupdated_od_lb_data *codlb = xzalloc(sizeof *codlb);
-            codlb->od_uuid = nbs->header_.uuid;
-            uuidset_init(&codlb->assoc_lbs);
-            uuidset_init(&codlb->assoc_lbgrps);
-
-            struct od_lb_data *od_lb_data =
-                find_od_lb_data(&lb_data->ls_lb_map, &nbs->header_.uuid);
-            if (!od_lb_data) {
-                od_lb_data = create_od_lb_data(&lb_data->ls_lb_map,
-                                                &nbs->header_.uuid);
-            }
-
-            if (ls_lbs_changed) {
-                handle_od_lb_changes(nbs->load_balancer, nbs->n_load_balancer,
-                                     od_lb_data, lb_data, codlb);
-            }
-
-            if (ls_lbgrps_changed) {
-                handle_od_lbgrp_changes(nbs->load_balancer_group,
-                                        nbs->n_load_balancer_group,
-                                        od_lb_data, lb_data, codlb);
-            }
-
-            ovs_list_insert(&trk_lb_data->crupdated_ls_lbs, &codlb->list_node);
+    struct hmapx_node *h_node;
+    HMAPX_FOR_EACH (h_node, &synced_lses->deleted) {
+        struct ovn_synced_logical_switch *synced = h_node->data;
+        nbs = synced->nb;
+        struct od_lb_data *od_lb_data =
+            find_od_lb_data(&lb_data->ls_lb_map, &nbs->header_.uuid);
+        if (od_lb_data) {
+            hmap_remove(&lb_data->ls_lb_map, &od_lb_data->hmap_node);
+            hmapx_add(&trk_lb_data->deleted_od_lb_data, od_lb_data);
         }
+    }
+
+    HMAPX_FOR_EACH (h_node, &synced_lses->new) {
+        struct ovn_synced_logical_switch *synced = h_node->data;
+        nbs = synced->nb;
+        changed |= lb_data_handle_updated_logical_switch(nbs, lb_data,
+                                                         trk_lb_data, true);
+    }
+
+    HMAPX_FOR_EACH (h_node, &synced_lses->updated) {
+        struct ovn_synced_logical_switch *synced = h_node->data;
+        nbs = synced->nb;
+        changed |= lb_data_handle_updated_logical_switch(nbs, lb_data,
+                                                         trk_lb_data, false);
     }
 
     return changed ? EN_HANDLED_UPDATED : EN_HANDLED_UNCHANGED;
 }
 
+static bool
+lb_data_handle_updated_logical_router(const struct nbrec_logical_router *nbr,
+                                      struct ed_type_lb_data *lb_data,
+                                      struct tracked_lb_data *trk_lb_data,
+                                      bool is_new)
+{
+    bool lr_lbs_changed = is_lr_lbs_changed(nbr, is_new);
+    bool lr_lbgrps_changed = is_lr_lbgrps_changed(nbr, is_new);
+    if (!lr_lbs_changed && !lr_lbgrps_changed) {
+        return false;
+    }
+    struct crupdated_od_lb_data *codlb = xzalloc(sizeof *codlb);
+    codlb->od_uuid = nbr->header_.uuid;
+    uuidset_init(&codlb->assoc_lbs);
+    uuidset_init(&codlb->assoc_lbgrps);
+
+    struct od_lb_data *od_lb_data =
+        find_od_lb_data(&lb_data->lr_lb_map, &nbr->header_.uuid);
+    if (!od_lb_data) {
+        od_lb_data = create_od_lb_data(&lb_data->lr_lb_map,
+                                        &nbr->header_.uuid);
+    }
+
+    if (lr_lbs_changed) {
+        handle_od_lb_changes(nbr->load_balancer, nbr->n_load_balancer,
+                             od_lb_data, lb_data, codlb);
+    }
+
+    if (lr_lbgrps_changed) {
+        handle_od_lbgrp_changes(nbr->load_balancer_group,
+                                nbr->n_load_balancer_group,
+                                od_lb_data, lb_data, codlb);
+    }
+
+    ovs_list_insert(&trk_lb_data->crupdated_lr_lbs, &codlb->list_node);
+    return true;
+}
+
 enum engine_input_handler_result
-lb_data_logical_router_handler(struct engine_node *node, void *data)
+lb_data_synced_logical_router_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lb_data *lb_data = (struct ed_type_lb_data *) data;
-    const struct nbrec_logical_router_table *nbrec_lr_table =
-        EN_OVSDB_GET(engine_get_input("NB_logical_router", node));
+    const struct ovn_synced_logical_router_map *synced_lrs =
+        engine_get_input_data("datapath_synced_logical_router", node);
 
     struct tracked_lb_data *trk_lb_data = &lb_data->tracked_lb_data;
     lb_data->tracked = true;
 
     bool changed = false;
     const struct nbrec_logical_router *nbr;
-    NBREC_LOGICAL_ROUTER_TABLE_FOR_EACH_TRACKED (nbr, nbrec_lr_table) {
-        if (nbrec_logical_router_is_deleted(nbr)) {
-            struct od_lb_data *od_lb_data =
-                find_od_lb_data(&lb_data->lr_lb_map, &nbr->header_.uuid);
-            if (od_lb_data) {
-                hmap_remove(&lb_data->lr_lb_map, &od_lb_data->hmap_node);
-                hmapx_add(&trk_lb_data->deleted_od_lb_data, od_lb_data);
-            }
-        } else {
-            bool lr_lbs_changed = is_lr_lbs_changed(nbr);
-            bool lr_lbgrps_changed = is_lr_lbgrps_changed(nbr);
-            if (!lr_lbs_changed && !lr_lbgrps_changed) {
-                continue;
-            }
-            changed = true;
-            struct crupdated_od_lb_data *codlb = xzalloc(sizeof *codlb);
-            codlb->od_uuid = nbr->header_.uuid;
-            uuidset_init(&codlb->assoc_lbs);
-            uuidset_init(&codlb->assoc_lbgrps);
+    struct hmapx_node *h_node;
 
-            struct od_lb_data *od_lb_data =
-                find_od_lb_data(&lb_data->lr_lb_map, &nbr->header_.uuid);
-            if (!od_lb_data) {
-                od_lb_data = create_od_lb_data(&lb_data->lr_lb_map,
-                                                &nbr->header_.uuid);
-            }
-
-            if (lr_lbs_changed) {
-                handle_od_lb_changes(nbr->load_balancer, nbr->n_load_balancer,
-                                     od_lb_data, lb_data, codlb);
-            }
-
-            if (lr_lbgrps_changed) {
-                handle_od_lbgrp_changes(nbr->load_balancer_group,
-                                        nbr->n_load_balancer_group,
-                                        od_lb_data, lb_data, codlb);
-            }
-
-            ovs_list_insert(&trk_lb_data->crupdated_lr_lbs, &codlb->list_node);
+    HMAPX_FOR_EACH (h_node, &synced_lrs->deleted) {
+        struct ovn_synced_logical_router *synced = h_node->data;
+        nbr = synced->nb;
+        struct od_lb_data *od_lb_data =
+            find_od_lb_data(&lb_data->lr_lb_map, &nbr->header_.uuid);
+        if (od_lb_data) {
+            hmap_remove(&lb_data->lr_lb_map, &od_lb_data->hmap_node);
+            hmapx_add(&trk_lb_data->deleted_od_lb_data, od_lb_data);
         }
+    }
+
+    HMAPX_FOR_EACH (h_node, &synced_lrs->new) {
+        struct ovn_synced_logical_router *synced = h_node->data;
+        nbr = synced->nb;
+        changed |= lb_data_handle_updated_logical_router(nbr, lb_data,
+                                                         trk_lb_data, true);
+    }
+
+    HMAPX_FOR_EACH (h_node, &synced_lrs->updated) {
+        struct ovn_synced_logical_router *synced = h_node->data;
+        nbr = synced->nb;
+        changed |= lb_data_handle_updated_logical_router(nbr, lb_data,
+                                                         trk_lb_data, false);
     }
 
     return changed ? EN_HANDLED_UPDATED : EN_HANDLED_UNCHANGED;
@@ -523,12 +576,14 @@ create_lb_group(const struct nbrec_load_balancer_group *nbrec_lb_group,
 }
 
 static void
-build_od_lb_map(const struct nbrec_logical_switch_table *nbrec_ls_table,
-                const struct nbrec_logical_router_table *nbrec_lr_table,
+build_od_lb_map(const struct ovn_synced_logical_switch_map *synced_lses,
+                const struct ovn_synced_logical_router_map *synced_lrs,
                 struct hmap *ls_lb_map, struct hmap *lr_lb_map)
 {
     const struct nbrec_logical_switch *nbrec_ls;
-    NBREC_LOGICAL_SWITCH_TABLE_FOR_EACH (nbrec_ls, nbrec_ls_table) {
+    const struct ovn_synced_logical_switch *synced_ls;
+    HMAP_FOR_EACH (synced_ls, hmap_node, &synced_lses->synced_switches) {
+        nbrec_ls = synced_ls->nb;
         if (!nbrec_ls->n_load_balancer && !nbrec_ls->n_load_balancer_group) {
             continue;
         }
@@ -546,7 +601,9 @@ build_od_lb_map(const struct nbrec_logical_switch_table *nbrec_ls_table,
     }
 
     const struct nbrec_logical_router *nbrec_lr;
-    NBREC_LOGICAL_ROUTER_TABLE_FOR_EACH (nbrec_lr, nbrec_lr_table) {
+    const struct ovn_synced_logical_router *synced_lr;
+    HMAP_FOR_EACH (synced_lr, hmap_node, &synced_lrs->synced_routers) {
+        nbrec_lr = synced_lr->nb;
         if (!nbrec_lr->n_load_balancer && !nbrec_lr->n_load_balancer_group) {
             continue;
         }
@@ -793,29 +850,29 @@ add_deleted_lbgrp_to_tracked_data(struct ovn_lb_group *lbg,
 }
 
 static bool
-is_ls_lbs_changed(const struct nbrec_logical_switch *nbs) {
-    return ((nbrec_logical_switch_is_new(nbs) && nbs->n_load_balancer)
+is_ls_lbs_changed(const struct nbrec_logical_switch *nbs, bool is_new) {
+    return ((is_new && nbs->n_load_balancer)
             ||  nbrec_logical_switch_is_updated(nbs,
                         NBREC_LOGICAL_SWITCH_COL_LOAD_BALANCER));
 }
 
 static bool
-is_ls_lbgrps_changed(const struct nbrec_logical_switch *nbs) {
-    return ((nbrec_logical_switch_is_new(nbs) && nbs->n_load_balancer_group)
+is_ls_lbgrps_changed(const struct nbrec_logical_switch *nbs, bool is_new) {
+    return ((is_new && nbs->n_load_balancer_group)
             ||  nbrec_logical_switch_is_updated(nbs,
                         NBREC_LOGICAL_SWITCH_COL_LOAD_BALANCER_GROUP));
 }
 
 static bool
-is_lr_lbs_changed(const struct nbrec_logical_router *nbr) {
-    return ((nbrec_logical_router_is_new(nbr) && nbr->n_load_balancer)
+is_lr_lbs_changed(const struct nbrec_logical_router *nbr, bool is_new) {
+    return ((is_new && nbr->n_load_balancer)
             ||  nbrec_logical_router_is_updated(nbr,
                         NBREC_LOGICAL_ROUTER_COL_LOAD_BALANCER));
 }
 
 static bool
-is_lr_lbgrps_changed(const struct nbrec_logical_router *nbr) {
-    return ((nbrec_logical_router_is_new(nbr) && nbr->n_load_balancer_group)
+is_lr_lbgrps_changed(const struct nbrec_logical_router *nbr, bool is_new) {
+    return ((is_new && nbr->n_load_balancer_group)
             ||  nbrec_logical_router_is_updated(nbr,
                         NBREC_LOGICAL_ROUTER_COL_LOAD_BALANCER_GROUP));
 }

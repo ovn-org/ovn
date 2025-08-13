@@ -4474,12 +4474,16 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
     const struct nbrec_logical_switch *changed_ls;
     struct northd_tracked_data *trk_data = &nd->trk_data;
 
-    NBREC_LOGICAL_SWITCH_TABLE_FOR_EACH_TRACKED (changed_ls,
-                                             ni->nbrec_logical_switch_table) {
-        if (nbrec_logical_switch_is_new(changed_ls) ||
-            nbrec_logical_switch_is_deleted(changed_ls)) {
-            goto fail;
-        }
+    if (!hmapx_is_empty(&ni->synced_lses->new) ||
+        !hmapx_is_empty(&ni->synced_lses->deleted) ||
+        hmapx_is_empty(&ni->synced_lses->updated)) {
+        goto fail;
+    }
+
+    struct hmapx_node *node;
+    HMAPX_FOR_EACH (node, &ni->synced_lses->updated) {
+        const struct ovn_synced_logical_switch *synced = node->data;
+        changed_ls = synced->nb;
         struct ovn_datapath *od = ovn_datapath_find_(
                                     &nd->ls_datapaths.datapaths,
                                     &changed_ls->header_.uuid);
@@ -4716,12 +4720,16 @@ northd_handle_lr_changes(const struct northd_input *ni,
 {
     const struct nbrec_logical_router *changed_lr;
 
-    NBREC_LOGICAL_ROUTER_TABLE_FOR_EACH_TRACKED (changed_lr,
-                                             ni->nbrec_logical_router_table) {
-        if (nbrec_logical_router_is_new(changed_lr) ||
-            nbrec_logical_router_is_deleted(changed_lr)) {
-            goto fail;
-        }
+    if (!hmapx_is_empty(&ni->synced_lrs->new) ||
+        !hmapx_is_empty(&ni->synced_lrs->deleted) ||
+        hmapx_is_empty(&ni->synced_lrs->updated)) {
+        goto fail;
+    }
+
+    struct hmapx_node *node;
+    HMAPX_FOR_EACH (node, &ni->synced_lrs->updated) {
+        const struct ovn_synced_logical_router *synced = node->data;
+        changed_lr = synced->nb;
 
         /* Presently only able to handle load balancer,
          * load balancer group changes and NAT changes. */

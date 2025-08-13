@@ -12015,7 +12015,7 @@ check ovn-nbctl --wait=sb lr-add lr2 -- set logical_router lr2 enabled=false
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lb-add lb4 10.0.0.40:4040 10.0.40.40:4050 \
     -- lr-lb-add lr2 lb4
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 AT_CLEANUP
