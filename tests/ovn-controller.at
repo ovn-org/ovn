@@ -123,6 +123,7 @@ check_patches
 # another logical port bound to this chassis.
 check_uuid ovn-sbctl \
     -- --id=@dp101 create Datapath_Binding tunnel_key=101 external_ids:name=dp101 \
+       type=logical-switch \
     -- create Port_Binding datapath=@dp101 logical_port=localnet1 tunnel_key=1 \
         type=localnet options:network_name=physnet1
 check_patches
@@ -131,6 +132,7 @@ check_patches
 # Now we should get some patch ports created.
 check_uuid ovn-sbctl \
     -- --id=@dp102 create Datapath_Binding tunnel_key=102 external_ids:name=dp102 \
+       type=logical-switch \
     -- create Port_Binding datapath=@dp102 logical_port=localnet2 tunnel_key=1 \
         type=localnet options:network_name=physnet1 \
     -- create Port_Binding datapath=@dp102 logical_port=localvif2 tunnel_key=2
@@ -145,7 +147,9 @@ check_patches \
 # the set of OVS patch ports doesn't change.
 AT_CHECK([ovn-sbctl \
     -- --id=@dp1 create Datapath_Binding tunnel_key=1 external_ids:name=dp1 \
+       type=logical-switch \
     -- --id=@dp2 create Datapath_Binding tunnel_key=2 external_ids:name=dp2 \
+       type=logical-switch \
     -- create Port_Binding datapath=@dp1 logical_port=foo tunnel_key=1 type=patch options:peer=bar \
     -- create Port_Binding datapath=@dp2 logical_port=bar tunnel_key=2 type=patch options:peer=foo \
     -- create Port_Binding datapath=@dp1 logical_port=dp1vif tunnel_key=3 \

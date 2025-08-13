@@ -351,7 +351,7 @@ DRR_MODES
 #undef DRR_MODE
 
 /* The 'key' comes from nbs->header_.uuid or nbr->header_.uuid or
- * sb->external_ids:logical-switch. */
+ * sb->header_.uuid. */
 struct ovn_datapath {
     struct hmap_node key_node;  /* Index on 'key'. */
     struct uuid key;            /* (nbs/nbr)->header_.uuid. */
@@ -454,7 +454,8 @@ ovn_datapath_is_stale(const struct ovn_datapath *od)
 /* The two purposes for which ovn-northd uses OVN logical datapaths. */
 enum ovn_datapath_type {
     DP_SWITCH,                  /* OVN logical switch. */
-    DP_ROUTER                   /* OVN logical router. */
+    DP_ROUTER,                  /* OVN logical router. */
+    DP_MAX,
 };
 
 /* Returns an "enum ovn_stage" built from the arguments.

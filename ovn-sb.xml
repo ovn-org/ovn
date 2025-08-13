@@ -3236,18 +3236,14 @@ tcp.flags = RST;
         db="OVN_Northbound"/> database.
       </p>
 
-      <column name="external_ids" key="logical-switch" type='{"type": "uuid"}'>
-        For a logical datapath that represents a logical switch,
-        <code>ovn-northd</code> stores in this key the UUID of the
-        corresponding <ref table="Logical_Switch" db="OVN_Northbound"/> row in
-        the <ref db="OVN_Northbound"/> database.
-      </column>
-
-      <column name="external_ids" key="logical-router" type='{"type": "uuid"}'>
-        For a logical datapath that represents a logical router,
-        <code>ovn-northd</code> stores in this key the UUID of the
-        corresponding <ref table="Logical_Router" db="OVN_Northbound"/> row in
-        the <ref db="OVN_Northbound"/> database.
+      <column name="type" type='{"type": "string"}'>
+        This represents the type of the northbound logical datapath that is
+        represented by this southbound <code>Datapath_Binding</code>. The
+        possible values for this are:
+        <ul>
+          <li><code>logical-switch</code></li>
+          <li><code>logical-router</code></li>
+        </ul>
       </column>
 
       <column name="external_ids" key="interconn-ts" type='{"type": "string"}'>

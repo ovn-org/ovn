@@ -703,8 +703,7 @@ read_datapaths(void)
         const struct smap *ids = &sbdb->external_ids;
 
         dp->sb_uuid = sbdb->header_.uuid;
-        if (!smap_get_uuid(ids, "logical-switch", &dp->nb_uuid) &&
-            !smap_get_uuid(ids, "logical-router", &dp->nb_uuid)) {
+        if (!datapath_get_nb_uuid(sbdb, &dp->nb_uuid)) {
             dp->nb_uuid = dp->sb_uuid;
         }
 

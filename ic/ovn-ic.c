@@ -613,8 +613,7 @@ get_router_uuid_by_sb_pb(struct ic_context *ctx,
         return NULL;
     }
 
-    return smap_get_uuid(&router_pb->datapath->external_ids, "logical-router",
-                         router_uuid);
+    return datapath_get_nb_uuid(router_pb->datapath, router_uuid);
 }
 
 static void
@@ -2580,6 +2579,7 @@ main(int argc, char *argv[])
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_encap_col_options);
 
     ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_datapath_binding);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_datapath_binding_col_type);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl,
                          &sbrec_datapath_binding_col_external_ids);
 

@@ -1090,15 +1090,27 @@ cmd_lflow_list(struct ctl_context *ctx)
 
     if (ctx->argc > 1) {
         const struct ovsdb_idl_row *row;
-        char *error = ctl_get_row(ctx, &sbrec_table_datapath_binding,
-                                  ctx->argv[1], false, &row);
-        if (error) {
-            ctl_error(ctx, "%s", error);
-            free(error);
-            return;
-        }
+        struct uuid nb_uuid;
+        bool is_uuid = uuid_from_string(&nb_uuid, ctx->argv[1]);
+        if (is_uuid) {
+            datapath = sbrec_datapath_binding_get_for_uuid(ctx->idl, &nb_uuid);
+            if (!datapath) {
+                ctl_error(ctx, "No such logical datapath with UUID "
+                                UUID_FMT".",
+                          UUID_ARGS(&nb_uuid));
+                return;
+            }
+        } else {
+            char *error = ctl_get_row(ctx, &sbrec_table_datapath_binding,
+                                      ctx->argv[1], false, &row);
+            if (error) {
+                ctl_error(ctx, "%s", error);
+                free(error);
+                return;
+            }
 
-        datapath = (const struct sbrec_datapath_binding *)row;
+            datapath = (const struct sbrec_datapath_binding *) row;
+        }
         if (datapath) {
             ctx->argc--;
             ctx->argv++;
@@ -1492,9 +1504,7 @@ static const struct ctl_table_class tables[SBREC_N_TABLES] = {
 
     [SBREC_TABLE_DATAPATH_BINDING].row_ids
      = {{&sbrec_datapath_binding_col_external_ids, "name", NULL},
-        {&sbrec_datapath_binding_col_external_ids, "name2", NULL},
-        {&sbrec_datapath_binding_col_external_ids, "logical-switch", NULL},
-        {&sbrec_datapath_binding_col_external_ids, "logical-router", NULL}},
+        {&sbrec_datapath_binding_col_external_ids, "name2", NULL}},
 
     [SBREC_TABLE_PORT_BINDING].row_ids
      = {{&sbrec_port_binding_col_logical_port, NULL, NULL},

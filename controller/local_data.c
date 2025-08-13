@@ -708,7 +708,7 @@ local_datapath_peer_port_add(struct local_datapath *ld,
 static bool
 datapath_is_switch(const struct sbrec_datapath_binding *ldp)
 {
-    return smap_get(&ldp->external_ids, "logical-switch") != NULL;
+    return strcmp(datapath_get_nb_type(ldp), "logical-switch") == 0;
 }
 
 static bool
