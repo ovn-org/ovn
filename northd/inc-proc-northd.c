@@ -185,8 +185,8 @@ static ENGINE_NODE(group_ecmp_route, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(datapath_logical_router, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(datapath_logical_switch, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(datapath_sync, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(datapath_synced_logical_router);
-static ENGINE_NODE(datapath_synced_logical_switch);
+static ENGINE_NODE(datapath_synced_logical_router, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(datapath_synced_logical_switch, CLEAR_TRACKED_DATA);
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb)
@@ -235,9 +235,9 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                      datapath_sync_logical_router_handler);
 
     engine_add_input(&en_datapath_synced_logical_router, &en_datapath_sync,
-                     NULL);
+                     en_datapath_synced_logical_router_datapath_sync_handler);
     engine_add_input(&en_datapath_synced_logical_switch, &en_datapath_sync,
-                     NULL);
+                     en_datapath_synced_logical_switch_datapath_sync_handler);
 
     engine_add_input(&en_northd, &en_nb_mirror, NULL);
     engine_add_input(&en_northd, &en_nb_mirror_rule, NULL);

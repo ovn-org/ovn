@@ -19,6 +19,7 @@
 
 #include "lib/inc-proc-eng.h"
 #include "openvswitch/hmap.h"
+#include "lib/hmapx.h"
 
 void *en_datapath_logical_router_init(struct engine_node *,
                                       struct engine_arg *);
@@ -36,14 +37,27 @@ struct ovn_synced_logical_router {
 
 struct ovn_synced_logical_router_map {
     struct hmap synced_routers;
+
+    bool has_tracked_data;
+    struct hmapx new;
+    struct hmapx updated;
+    struct hmapx deleted;
 };
+
+struct uuid;
+struct ovn_synced_logical_router *
+ovn_synced_logical_router_find(const struct ovn_synced_logical_router_map *map,
+                               const struct uuid *nb_uuid);
 
 void *en_datapath_synced_logical_router_init(struct engine_node *,
                                              struct engine_arg *);
 
 enum engine_node_state en_datapath_synced_logical_router_run(
     struct engine_node *, void *data);
-
+void en_datapath_synced_logical_router_clear_tracked_data(void *data);
+enum engine_input_handler_result
+en_datapath_synced_logical_router_datapath_sync_handler(
+        struct engine_node *node, void *data);
 void en_datapath_synced_logical_router_cleanup(void *data);
 
 enum engine_input_handler_result

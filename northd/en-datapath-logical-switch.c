@@ -200,12 +200,30 @@ en_datapath_logical_switch_cleanup(void *data)
     ovn_unsynced_datapath_map_destroy(map);
 }
 
+struct ovn_synced_logical_switch *
+ovn_synced_logical_switch_find(const struct ovn_synced_logical_switch_map *map,
+                               const struct uuid *nb_uuid)
+{
+    struct ovn_synced_logical_switch *lsw;
+    HMAP_FOR_EACH_WITH_HASH (lsw, hmap_node, uuid_hash(nb_uuid),
+                             &map->synced_switches) {
+        if (uuid_equals(&lsw->nb->header_.uuid, nb_uuid)) {
+            return lsw;
+        }
+    }
+
+    return NULL;
+}
+
 static void
 synced_logical_switch_map_init(
     struct ovn_synced_logical_switch_map *switch_map)
 {
     *switch_map = (struct ovn_synced_logical_switch_map) {
         .synced_switches = HMAP_INITIALIZER(&switch_map->synced_switches),
+        .new = HMAPX_INITIALIZER(&switch_map->new),
+        .updated = HMAPX_INITIALIZER(&switch_map->updated),
+        .deleted = HMAPX_INITIALIZER(&switch_map->deleted),
     };
 }
 
@@ -213,7 +231,17 @@ static void
 synced_logical_switch_map_destroy(
     struct ovn_synced_logical_switch_map *switch_map)
 {
+    hmapx_destroy(&switch_map->new);
+    hmapx_destroy(&switch_map->updated);
+
+    struct hmapx_node *node;
     struct ovn_synced_logical_switch *ls;
+    HMAPX_FOR_EACH_SAFE (node, &switch_map->deleted) {
+        ls = node->data;
+        free(ls);
+        hmapx_delete(&switch_map->deleted, node);
+    }
+    hmapx_destroy(&switch_map->deleted);
     HMAP_FOR_EACH_POP (ls, hmap_node, &switch_map->synced_switches) {
         free(ls);
     }
@@ -231,6 +259,18 @@ en_datapath_synced_logical_switch_init(struct engine_node *node OVS_UNUSED,
     return switch_map;
 }
 
+static struct ovn_synced_logical_switch *
+synced_logical_switch_alloc(const struct ovn_synced_datapath *sdp)
+{
+    struct ovn_synced_logical_switch *lsw = xmalloc(sizeof *lsw);
+    *lsw = (struct ovn_synced_logical_switch) {
+        .nb = CONTAINER_OF(sdp->nb_row, struct nbrec_logical_switch,
+                           header_),
+        .sdp = sdp,
+    };
+    return lsw;
+}
+
 enum engine_node_state
 en_datapath_synced_logical_switch_run(struct engine_node *node , void *data)
 {
@@ -246,17 +286,95 @@ en_datapath_synced_logical_switch_run(struct engine_node *node , void *data)
         if (sdp->nb_row->table->class_ != &nbrec_table_logical_switch) {
             continue;
         }
-        struct ovn_synced_logical_switch *lsw = xmalloc(sizeof *lsw);
-        *lsw = (struct ovn_synced_logical_switch) {
-            .nb = CONTAINER_OF(sdp->nb_row, struct nbrec_logical_switch,
-                               header_),
-            .sdp = sdp,
-        };
+        struct ovn_synced_logical_switch *lsw =
+            synced_logical_switch_alloc(sdp);
         hmap_insert(&switch_map->synced_switches, &lsw->hmap_node,
                     uuid_hash(&lsw->nb->header_.uuid));
     }
 
     return EN_UPDATED;
+}
+
+void
+en_datapath_synced_logical_switch_clear_tracked_data(void *data)
+{
+    struct ovn_synced_logical_switch_map *switch_map = data;
+
+    hmapx_clear(&switch_map->new);
+    hmapx_clear(&switch_map->updated);
+
+    struct hmapx_node *node;
+    HMAPX_FOR_EACH_SAFE (node, &switch_map->deleted) {
+        struct ovn_synced_logical_router *lr = node->data;
+        free(lr);
+        hmapx_delete(&switch_map->deleted, node);
+    }
+}
+
+
+enum engine_input_handler_result
+en_datapath_synced_logical_switch_datapath_sync_handler(
+        struct engine_node *node, void *data)
+{
+    const struct ovn_synced_datapaths *dps =
+        engine_get_input_data("datapath_sync", node);
+    struct ovn_synced_logical_switch_map *switch_map = data;
+
+    if (hmapx_is_empty(&dps->deleted) &&
+        hmapx_is_empty(&dps->new) &&
+        hmapx_is_empty(&dps->updated)) {
+        return EN_UNHANDLED;
+    }
+
+    struct hmapx_node *hmapx_node;
+    struct ovn_synced_datapath *sdp;
+    struct ovn_synced_logical_switch *lsw;
+    HMAPX_FOR_EACH (hmapx_node, &dps->new) {
+        sdp = hmapx_node->data;
+        if (sdp->nb_row->table->class_ != &nbrec_table_logical_switch) {
+            continue;
+        }
+        lsw = synced_logical_switch_alloc(sdp);
+        hmap_insert(&switch_map->synced_switches, &lsw->hmap_node,
+                    uuid_hash(&lsw->nb->header_.uuid));
+        hmapx_add(&switch_map->new, lsw);
+    }
+
+    HMAPX_FOR_EACH (hmapx_node, &dps->deleted) {
+        sdp = hmapx_node->data;
+        if (sdp->nb_row->table->class_ != &nbrec_table_logical_switch) {
+            continue;
+        }
+        lsw = ovn_synced_logical_switch_find(switch_map, &sdp->nb_row->uuid);
+        if (!lsw) {
+            return EN_UNHANDLED;
+        }
+        hmap_remove(&switch_map->synced_switches, &lsw->hmap_node);
+        hmapx_add(&switch_map->deleted, lsw);
+    }
+
+    HMAPX_FOR_EACH (hmapx_node, &dps->updated) {
+        sdp = hmapx_node->data;
+        if (sdp->nb_row->table->class_ != &nbrec_table_logical_switch) {
+            continue;
+        }
+        lsw = ovn_synced_logical_switch_find(switch_map, &sdp->nb_row->uuid);
+        if (!lsw) {
+            return EN_UNHANDLED;
+        }
+        lsw->nb = CONTAINER_OF(sdp->nb_row, struct nbrec_logical_switch,
+                               header_);
+        lsw->sdp = sdp;
+        hmapx_add(&switch_map->updated, lsw);
+    }
+
+    if (hmapx_is_empty(&switch_map->new) &&
+        hmapx_is_empty(&switch_map->updated) &&
+        hmapx_is_empty(&switch_map->deleted)) {
+        return EN_HANDLED_UNCHANGED;
+    }
+
+    return EN_HANDLED_UPDATED;
 }
 
 void en_datapath_synced_logical_switch_cleanup(void *data)
