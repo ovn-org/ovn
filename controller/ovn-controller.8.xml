@@ -399,6 +399,14 @@
         the EVPN tunnels created by this ovn-controller. NOTE: this feature is
         experimental and may be subject to removal/change in the future.
       </dd>
+
+      <dt><code>external_ids:ovn-evpn-local-ip</code></dt>
+      <dd>
+        IP address used as a source address for the EVPN traffic leaving this
+        OVN setup. There is currently support only for single IP address
+        being specified. NOTE: this feature is experimental and may be subject
+        to removal/change in the future.
+      </dd>
     </dl>
 
     <p>

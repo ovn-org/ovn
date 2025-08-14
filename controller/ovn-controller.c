@@ -4630,6 +4630,9 @@ static void init_physical_ctx(struct engine_node *node,
     struct ed_type_northd_options *n_opts =
         engine_get_input_data("northd_options", node);
 
+    struct ed_type_evpn_vtep_binding *eb_data =
+        engine_get_input_data("evpn_vtep_binding", node);
+
     parse_encap_ips(ovs_table, &p_ctx->n_encap_ips, &p_ctx->encap_ips);
     p_ctx->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
     p_ctx->sbrec_port_binding_by_datapath = sbrec_port_binding_by_datapath;
@@ -4647,6 +4650,8 @@ static void init_physical_ctx(struct engine_node *node,
     p_ctx->patch_ofports = &non_vif_data->patch_ofports;
     p_ctx->chassis_tunnels = &non_vif_data->chassis_tunnels;
     p_ctx->always_tunnel = n_opts->always_tunnel;
+    p_ctx->evpn_bindings = &eb_data->bindings;
+    p_ctx->evpn_multicast_groups = &eb_data->multicast_groups;
 
     struct controller_engine_ctx *ctrl_ctx = engine_get_context()->client_ctx;
     p_ctx->if_mgr = ctrl_ctx->if_mgr;
@@ -4934,6 +4939,28 @@ pflow_output_debug_handler(struct engine_node *node, void *data)
         pfo->debug = debug;
         return EN_UNHANDLED;
     }
+    return EN_HANDLED_UPDATED;
+}
+static enum engine_input_handler_result
+pflow_output_evpn_binding_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_pflow_output *pfo = data;
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+    struct ed_type_non_vif_data *non_vif_data =
+        engine_get_input_data("non_vif_data", node);
+    struct ed_type_evpn_vtep_binding *eb_data =
+        engine_get_input_data("evpn_vtep_binding", node);
+
+    struct physical_ctx ctx;
+    init_physical_ctx(node, rt_data, non_vif_data, &ctx);
+
+    physical_handle_evpn_binding_changes(&ctx, &pfo->flow_table,
+                                         &eb_data->updated_bindings,
+                                         &eb_data->updated_multicast_groups,
+                                         &eb_data->removed_bindings,
+                                         &eb_data->removed_multicast_groups);
+    destroy_physical_ctx(&ctx);
     return EN_HANDLED_UPDATED;
 }
 
@@ -6672,9 +6699,8 @@ main(int argc, char *argv[])
     engine_add_input(&en_evpn_vtep_binding, &en_sb_datapath_binding,
                      evpn_vtep_binding_datapath_binding_handler);
 
-    /* TODO Add real handler to process all bindings. */
     engine_add_input(&en_pflow_output, &en_evpn_vtep_binding,
-                     engine_noop_handler);
+                     pflow_output_evpn_binding_handler);
 
     engine_add_input(&en_controller_output, &en_dns_cache,
                      NULL);

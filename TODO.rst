@@ -154,6 +154,10 @@ OVN To-do List
     Otherwise we could try to add duplicated Learned_Routes and the ovnsb
     commit would fail.
 
+  * Allow ovn-evpn-local-ip to accept list of
+    $VNI1:$LOCAL_IP1,$VNI2:$LOCAL_IP2 combinations which will be properly
+    reflected in physical flows for given LS with VNI.
+
 * Datapath sync nodes
 
   * Migrate data stored in the ovn\_datapath structure to

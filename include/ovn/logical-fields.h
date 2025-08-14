@@ -63,6 +63,9 @@ enum ovn_controller_event {
 
 #define MFF_LOG_CT_SAVED_STATE        MFF_REG4
 
+#define MFF_LOG_REMOTE_OUTPORT MFF_REG1  /* Logical remote output
+                                          * port (32 bits). */
+
 /* Logical registers that are needed for backwards
  * compatibility with older northd versions.
  * XXX: All of them can be removed in 26.09. */

@@ -40910,7 +40910,7 @@ check_output_flows_tunnelled() {
   dp_key=$2
   dp_rport=$3
   AT_CHECK_UNQUOTED([as $hv ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT,metadata=0x${dp_key},reg15=0x${dp_rport} | ofctl_strip_all | grep -v NXST_FLOW], [0], [dnl
- table=OFTABLE_REMOTE_OUTPUT, priority=100,reg13=0/0xffff0000,reg15=0x${dp_rport},metadata=0x${dp_key} actions=load:0x${dp_key}->NXM_NX_TUN_ID[[0..23]],set_field:0x${dp_rport}->tun_metadata0,move:NXM_NX_REG14[[0..14]]->NXM_NX_TUN_METADATA0[[16..30]],output:1,resubmit(,OFTABLE_LOCAL_OUTPUT)
+ table=OFTABLE_REMOTE_OUTPUT, priority=100,reg13=0/0xffff0000,reg15=0x${dp_rport},metadata=0x${dp_key} actions=load:0x${dp_key}->NXM_NX_TUN_ID[[0..23]],set_field:0x${dp_rport}->tun_metadata0,move:NXM_NX_REG14[[0..14]]->NXM_NX_TUN_METADATA0[[16..30]],output:1,resubmit(,OFTABLE_REMOTE_VTEP_OUTPUT)
 ])
 }
 

@@ -69,6 +69,8 @@ struct physical_ctx {
     const char **encap_ips;
     struct physical_debug debug;
     bool always_tunnel;
+    const struct hmap *evpn_bindings;
+    const struct hmap *evpn_multicast_groups;
 
     /* Set of port binding names that have been already reprocessed during
      * the I-P run. */
@@ -87,4 +89,10 @@ bool physical_handle_flows_for_lport(const struct sbrec_port_binding *,
 void physical_multichassis_reprocess(const struct sbrec_port_binding *,
                                      struct physical_ctx *,
                                      struct ovn_desired_flow_table *);
+void physical_handle_evpn_binding_changes(
+    struct physical_ctx *, struct ovn_desired_flow_table *,
+    const struct hmapx *updated_bindings,
+    const struct hmapx *updated_multicast_groups,
+    const struct uuidset *removed_bindings,
+    const struct uuidset *removed_multicast_groups);
 #endif /* controller/physical.h */

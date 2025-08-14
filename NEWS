@@ -49,6 +49,10 @@ Post v25.03.0
      * Add the option "external-ids:ovn-evpn-vxlan-ports" for the
        Open_vSwitch database. This option allows CMS to set list of UDP
        destination ports that will be used to create the VXLAN tunnels.
+     * Add the option "external-ids:ovn-evpn-local-ip" for the
+       Open_vSwitch database. This option allows CMS to set IP address that
+       will be used as source for the EVPN traffic egressing through
+       the tunnel.
 
 OVN v25.03.0 - 07 Mar 2025
 --------------------------

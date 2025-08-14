@@ -19,6 +19,7 @@
 #include "byte-order.h"
 #include "ct-zone.h"
 #include "encaps.h"
+#include "evpn-binding.h"
 #include "flow.h"
 #include "ha-chassis.h"
 #include "lflow.h"
@@ -475,7 +476,7 @@ put_remote_port_redirect_overlay(const struct sbrec_port_binding *binding,
                                   port_key, is_vtep_port, ofpacts_clone);
                 ofpact_put_OUTPUT(ofpacts_clone)->port = tun->ofport;
             }
-            put_resubmit(OFTABLE_LOCAL_OUTPUT, ofpacts_clone);
+            put_resubmit(OFTABLE_REMOTE_VTEP_OUTPUT, ofpacts_clone);
             ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 100,
                             binding->header_.uuid.parts[0], match,
                             ofpacts_clone, &binding->header_.uuid);
@@ -973,12 +974,12 @@ put_local_common_flows(uint32_t dp_key,
 
     uint32_t port_key = pb->tunnel_key;
 
-    /* Table 43, priority 100.
+    /* Table 45, priority 100.
      * =======================
      *
      * Implements output to local hypervisor.  Each flow matches a
      * logical output port on the local hypervisor, and resubmits to
-     * table 44.
+     * table 46.
      */
 
     ofpbuf_clear(ofpacts_p);
@@ -988,13 +989,13 @@ put_local_common_flows(uint32_t dp_key,
 
     put_zones_ofpacts(zone_ids, ofpacts_p);
 
-    /* Resubmit to table 44. */
+    /* Resubmit to table 46. */
     put_resubmit(OFTABLE_CHECK_LOOPBACK, ofpacts_p);
     ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100,
                     pb->header_.uuid.parts[0], &match, ofpacts_p,
                     &pb->header_.uuid);
 
-    /* Table 44, Priority 100.
+    /* Table 46, Priority 100.
      * =======================
      *
      * Drop packets whose logical inport and outport are the same
@@ -1772,12 +1773,12 @@ consider_port_binding(const struct physical_ctx *ctx,
             ha_chassis_group_is_active(binding->ha_chassis_group,
                                        ctx->active_tunnels, ctx->chassis))) {
 
-        /* Table 43, priority 100.
+        /* Table 45, priority 100.
          * =======================
          *
          * Implements output to local hypervisor.  Each flow matches a
          * logical output port on the local hypervisor, and resubmits to
-         * table 41.  For ports of type "chassisredirect", the logical
+         * table 46.  For ports of type "chassisredirect", the logical
          * output port is changed from the "chassisredirect" port to the
          * underlying distributed port. */
 
@@ -1818,7 +1819,7 @@ consider_port_binding(const struct physical_ctx *ctx,
              * go out from the same tunnel inport. */
             put_load(ofp_to_u16(OFPP_NONE), MFF_IN_PORT, 0, 16, ofpacts_p);
 
-            /* Resubmit to table 41. */
+            /* Resubmit to table 46. */
             put_resubmit(OFTABLE_CHECK_LOOPBACK, ofpacts_p);
         }
 
@@ -2049,7 +2050,7 @@ consider_port_binding(const struct physical_ctx *ctx,
                                               ofport, flow_table);
         }
 
-        /* Table 41, priority 160.
+        /* Table 46, priority 160.
          * =======================
          *
          * Do not forward local traffic from a localport to a localnet port.
@@ -2120,13 +2121,13 @@ consider_port_binding(const struct physical_ctx *ctx,
             }
         }
 
-        /* Table 42, priority 150.
+        /* Table 43, priority 150.
          * =======================
          *
          * Handles packets received from ports of type "localport".  These
          * ports are present on every hypervisor.  Traffic that originates at
          * one should never go over a tunnel to a remote hypervisor,
-         * so resubmit them to table 40 for local delivery. */
+         * so resubmit them to table 45 for local delivery. */
         if (type == LP_LOCALPORT) {
             ofpbuf_clear(ofpacts_p);
             put_resubmit(OFTABLE_LOCAL_OUTPUT, ofpacts_p);
@@ -2140,7 +2141,7 @@ consider_port_binding(const struct physical_ctx *ctx,
         }
     } else if (access_type == PORT_LOCALNET && !ctx->always_tunnel) {
         /* Remote port connected by localnet port */
-        /* Table 43, priority 100.
+        /* Table 45, priority 100.
          * =======================
          *
          * Implements switching to localnet port. Each flow matches a
@@ -2160,7 +2161,7 @@ consider_port_binding(const struct physical_ctx *ctx,
 
         put_load(localnet_port->tunnel_key, MFF_LOG_OUTPORT, 0, 32, ofpacts_p);
 
-        /* Resubmit to table 43. */
+        /* Resubmit to table 45. */
         put_resubmit(OFTABLE_LOCAL_OUTPUT, ofpacts_p);
         ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 100,
                         binding->header_.uuid.parts[0],
@@ -2516,15 +2517,13 @@ consider_mc_group(const struct physical_ctx *ctx,
 
     remote_ports = remote_ctx->ofpacts.size > 0;
     if (remote_ports) {
-        if (local_lports) {
-            put_resubmit(OFTABLE_LOCAL_OUTPUT, &remote_ctx->ofpacts);
-        }
+        put_resubmit(OFTABLE_REMOTE_VTEP_OUTPUT, &remote_ctx->ofpacts);
         mc_ofctrl_add_flow(mc, remote_ctx, false, flow_table);
     }
 
     if (ramp_ports && has_vtep) {
         put_load(mc->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &ramp_ctx->ofpacts);
-        put_resubmit(OFTABLE_LOCAL_OUTPUT, &ramp_ctx->ofpacts);
+        put_resubmit(OFTABLE_REMOTE_VTEP_OUTPUT, &ramp_ctx->ofpacts);
         mc_ofctrl_add_flow(mc, ramp_ctx, false, flow_table);
     }
 
@@ -2642,6 +2641,162 @@ physical_eval_remote_chassis_flows(const struct physical_ctx *ctx,
 }
 
 static void
+physical_consider_evpn_binding(const struct evpn_binding *binding,
+                               const struct in6_addr *local_ip,
+                               struct ofpbuf *ofpacts, struct match *match,
+                               struct ovn_desired_flow_table *flow_table,
+                               bool ipv4)
+{
+    /* Ingress flows. */
+    ofpbuf_clear(ofpacts);
+    match_init_catchall(match);
+
+    match_set_in_port(match, binding->tunnel_ofport);
+    match_set_tun_id(match, htonll(binding->vni));
+    if (ipv4) {
+        match_set_tun_src(match,
+                          in6_addr_get_mapped_ipv4(&binding->remote_ip));
+        match_set_tun_dst(match, in6_addr_get_mapped_ipv4(local_ip));
+    } else {
+        match_set_tun_ipv6_src(match, &binding->remote_ip);
+        match_set_tun_ipv6_dst(match, local_ip);
+    }
+
+    put_load(binding->dp_key, MFF_LOG_DATAPATH, 0, 32, ofpacts);
+    put_load(binding->binding_key, MFF_LOG_INPORT, 0, 32, ofpacts);
+    put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, ofpacts);
+
+    ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 1050,
+                    binding->flow_uuid.parts[0],
+                    match, ofpacts, &binding->flow_uuid);
+
+    /* Egress flows. */
+    ofpbuf_clear(ofpacts);
+    match_init_catchall(match);
+
+    match_outport_dp_and_port_keys(match, binding->dp_key,
+                                   binding->binding_key);
+
+    if (ipv4) {
+        ovs_be32 ip4 = in6_addr_get_mapped_ipv4(local_ip);
+        put_load_bytes(&ip4, sizeof ip4, MFF_TUN_SRC, 0, 32, ofpacts);
+        ip4 = in6_addr_get_mapped_ipv4(&binding->remote_ip);
+        put_load_bytes(&ip4, sizeof ip4, MFF_TUN_DST, 0, 32, ofpacts);
+    } else {
+        put_load_bytes(&local_ip, sizeof local_ip, MFF_TUN_IPV6_SRC,
+                       0, 128, ofpacts);
+        put_load_bytes(&binding->remote_ip, sizeof binding->remote_ip,
+                       MFF_TUN_IPV6_DST, 0, 128, ofpacts);
+    }
+    put_load(binding->vni, MFF_TUN_ID, 0, 24, ofpacts);
+
+    size_t ofpacts_size = ofpacts->size;
+    ofpact_put_OUTPUT(ofpacts)->port = binding->tunnel_ofport;
+
+    ofctrl_add_flow(flow_table, OFTABLE_REMOTE_VTEP_OUTPUT, 50,
+                    binding->flow_uuid.parts[0],
+                    match, ofpacts, &binding->flow_uuid);
+
+    /* Add flow that will match on LOOPBACK flag, in that case set
+     * in_port to none otherwise the hairpin traffic would be rejected
+     * by ovs. */
+    match_set_reg_masked(match, MFF_LOG_FLAGS - MFF_REG0,
+                         MLF_ALLOW_LOOPBACK, MLF_ALLOW_LOOPBACK);
+
+    ofpbuf_truncate(ofpacts, ofpacts_size);
+    put_load(ofp_to_u16(OFPP_NONE), MFF_IN_PORT, 0, 16, ofpacts);
+    ofpact_put_OUTPUT(ofpacts)->port = binding->tunnel_ofport;
+
+    ofctrl_add_flow(flow_table, OFTABLE_REMOTE_VTEP_OUTPUT, 55,
+                    binding->flow_uuid.parts[0],
+                    match, ofpacts, &binding->flow_uuid);
+}
+
+static void
+physical_consider_evpn_multicast(const struct evpn_multicast_group *mc_group,
+                                 const struct in6_addr *local_ip,
+                                 struct ofpbuf *ofpacts, struct match *match,
+                                 struct ovn_desired_flow_table *flow_table,
+                                 bool ipv4)
+{
+    const struct evpn_binding *binding = NULL;
+
+    ofpbuf_clear(ofpacts);
+    uint32_t multicast_tunnel_keys[] = {OVN_MCAST_FLOOD_TUNNEL_KEY,
+                                        OVN_MCAST_UNKNOWN_TUNNEL_KEY,
+                                        OVN_MCAST_FLOOD_L2_TUNNEL_KEY};
+    if (ipv4) {
+        ovs_be32 ip4 = in6_addr_get_mapped_ipv4(local_ip);
+        put_load_bytes(&ip4, sizeof ip4, MFF_TUN_SRC, 0, 32, ofpacts);
+    } else {
+        put_load_bytes(&local_ip, sizeof local_ip, MFF_TUN_IPV6_SRC,
+                       0, 128, ofpacts);
+    }
+    put_load(mc_group->vni, MFF_TUN_ID, 0, 24, ofpacts);
+
+    const struct hmapx_node *node;
+    HMAPX_FOR_EACH (node, &mc_group->bindings) {
+        binding = node->data;
+        if (ipv4) {
+            ovs_be32 ip4 = in6_addr_get_mapped_ipv4(&binding->remote_ip);
+            put_load_bytes(&ip4, sizeof ip4, MFF_TUN_DST, 0, 32, ofpacts);
+        } else {
+            put_load_bytes(&binding->remote_ip, sizeof binding->remote_ip,
+                           MFF_TUN_IPV6_DST, 0, 128, ofpacts);
+        }
+        ofpact_put_OUTPUT(ofpacts)->port = binding->tunnel_ofport;
+    }
+    put_resubmit(OFTABLE_LOCAL_OUTPUT, ofpacts);
+
+    ovs_assert(!hmapx_is_empty(&mc_group->bindings));
+    for (size_t i = 0; i < ARRAY_SIZE(multicast_tunnel_keys); i++) {
+        match_init_catchall(match);
+        match_outport_dp_and_port_keys(match, binding->dp_key,
+                                       multicast_tunnel_keys[i]);
+
+        ofctrl_add_flow(flow_table, OFTABLE_REMOTE_VTEP_OUTPUT, 50,
+                        mc_group->flow_uuid.parts[0],
+                        match, ofpacts, &mc_group->flow_uuid);
+    }
+}
+
+static void
+physical_eval_evpn_flows(const struct physical_ctx *ctx,
+                         struct ofpbuf *ofpacts,
+                         struct ovn_desired_flow_table *flow_table)
+{
+    if (hmap_is_empty(ctx->evpn_bindings) &&
+        hmap_is_empty(ctx->evpn_multicast_groups)) {
+        return;
+    }
+
+    const char *local_ip_str = smap_get_def(&ctx->chassis->other_config,
+                                            "ovn-evpn-local-ip", "");
+    struct in6_addr local_ip;
+    if (!ip46_parse(local_ip_str, &local_ip)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "EVPN enabled, but required 'evpn-local-ip' is "
+                          "missing or invalid %s ", local_ip_str);
+        return;
+    }
+
+    struct match match = MATCH_CATCHALL_INITIALIZER;
+    bool ipv4 = IN6_IS_ADDR_V4MAPPED(&local_ip);
+
+    const struct evpn_binding *binding;
+    HMAP_FOR_EACH (binding, hmap_node, ctx->evpn_bindings) {
+        physical_consider_evpn_binding(binding, &local_ip, ofpacts,
+                                       &match, flow_table, ipv4);
+    }
+
+    const struct evpn_multicast_group *mc_group;
+    HMAP_FOR_EACH (mc_group, hmap_node, ctx->evpn_multicast_groups) {
+        physical_consider_evpn_multicast(mc_group, &local_ip, ofpacts,
+                                         &match, flow_table, ipv4);
+    }
+}
+
+static void
 physical_eval_port_binding(struct physical_ctx *p_ctx,
                            const struct sbrec_port_binding *pb,
                            const enum en_lport_type type,
@@ -2749,6 +2904,55 @@ physical_handle_mc_group_changes(struct physical_ctx *p_ctx,
 }
 
 void
+physical_handle_evpn_binding_changes(
+    struct physical_ctx *ctx, struct ovn_desired_flow_table *flow_table,
+    const struct hmapx *updated_bindings,
+    const struct hmapx *updated_multicast_groups,
+    const struct uuidset *removed_bindings,
+    const struct uuidset *removed_multicast_groups)
+{
+    const char *local_ip_str = smap_get_def(&ctx->chassis->other_config,
+                                            "ovn-evpn-local-ip", "");
+    struct in6_addr local_ip;
+    if (!ip46_parse(local_ip_str, &local_ip)) {
+        return;
+    }
+
+    struct ofpbuf ofpacts;
+    ofpbuf_init(&ofpacts, 0);
+    struct match match = MATCH_CATCHALL_INITIALIZER;
+    bool ipv4 = IN6_IS_ADDR_V4MAPPED(&local_ip);
+
+    const struct hmapx_node *node;
+    HMAPX_FOR_EACH (node, updated_bindings) {
+        const struct evpn_binding *binding = node->data;
+
+        ofctrl_remove_flows(flow_table, &binding->flow_uuid);
+        physical_consider_evpn_binding(binding, &local_ip, &ofpacts,
+                                       &match, flow_table, ipv4);
+    }
+
+    HMAPX_FOR_EACH (node, updated_multicast_groups) {
+        const struct evpn_multicast_group *mc_group = node->data;
+
+        ofctrl_remove_flows(flow_table, &mc_group->flow_uuid);
+        physical_consider_evpn_multicast(mc_group, &local_ip, &ofpacts,
+                                         &match, flow_table, ipv4);
+    }
+
+    ofpbuf_uninit(&ofpacts);
+
+    const struct uuidset_node *uuidset_node;
+    UUIDSET_FOR_EACH (uuidset_node, removed_bindings) {
+        ofctrl_remove_flows(flow_table, &uuidset_node->uuid);
+    }
+
+    UUIDSET_FOR_EACH (uuidset_node, removed_multicast_groups) {
+        ofctrl_remove_flows(flow_table, &uuidset_node->uuid);
+    }
+}
+
+void
 physical_run(struct physical_ctx *p_ctx,
              struct ovn_desired_flow_table *flow_table)
 {
@@ -2797,7 +3001,7 @@ physical_run(struct physical_ctx *p_ctx,
      * have metadata about the ingress and egress logical ports.
      * VXLAN encapsulations have metadata about the egress logical port only.
      * We set MFF_LOG_DATAPATH, MFF_LOG_INPORT, and MFF_LOG_OUTPORT from the
-     * tunnel key data where possible, then resubmit to table 40 to handle
+     * tunnel key data where possible, then resubmit to table 45 to handle
      * packets to the local hypervisor. */
     struct chassis_tunnel *tun;
     HMAP_FOR_EACH (tun, hmap_node, p_ctx->chassis_tunnels) {
@@ -2910,7 +3114,7 @@ physical_run(struct physical_ctx *p_ctx,
      */
     add_default_drop_flow(p_ctx, OFTABLE_PHY_TO_LOG, flow_table);
 
-    /* Table 40-43, priority 0.
+    /* Table 41-42, priority 0.
      * ========================
      *
      * Default resubmit actions for OFTABLE_OUTPUT_LARGE_PKT_* tables.
@@ -2936,7 +3140,7 @@ physical_run(struct physical_ctx *p_ctx,
     ofctrl_add_flow(flow_table, OFTABLE_OUTPUT_LARGE_PKT_PROCESS, 0, 0, &match,
                     &ofpacts, hc_uuid);
 
-    /* Table 42, priority 150.
+    /* Table 43, priority 150.
      * =======================
      *
      * Handles packets received from a VXLAN tunnel which get resubmitted to
@@ -2949,13 +3153,13 @@ physical_run(struct physical_ctx *p_ctx,
     match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0, MLF_RCV_FROM_RAMP,
                          MLF_RCV_FROM_RAMP | MLF_ALLOW_LOOPBACK);
 
-    /* Resubmit to table 40. */
+    /* Resubmit to table 45. */
     ofpbuf_clear(&ofpacts);
     put_resubmit(OFTABLE_LOCAL_OUTPUT, &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 150, 0,
                     &match, &ofpacts, hc_uuid);
 
-    /* Table 42, priority 150.
+    /* Table 43, priority 150.
      * =======================
      *
      * Packets that should not be sent to other hypervisors.
@@ -2963,35 +3167,46 @@ physical_run(struct physical_ctx *p_ctx,
     match_init_catchall(&match);
     match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
                          MLF_LOCAL_ONLY, MLF_LOCAL_ONLY);
-    /* Resubmit to table 40. */
+    /* Resubmit to table 45. */
     ofpbuf_clear(&ofpacts);
     put_resubmit(OFTABLE_LOCAL_OUTPUT, &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 150, 0,
                     &match, &ofpacts, hc_uuid);
 
-    /* Table 42, Priority 0.
+    /* Table 43, Priority 0.
      * =======================
      *
-     * Resubmit packets that are not directed at tunnels or part of a
-     * multicast group to the local output table. */
+     * Resubmit packets that are not directed at OVN tunnels or part of a
+     * multicast group to the VTEP output table. */
     match_init_catchall(&match);
     ofpbuf_clear(&ofpacts);
-    put_resubmit(OFTABLE_LOCAL_OUTPUT, &ofpacts);
+    put_resubmit(OFTABLE_REMOTE_VTEP_OUTPUT, &ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 0, 0, &match,
                     &ofpacts, hc_uuid);
 
-    /* Table 40, priority 0.
+    /* Table 44, Priority 0.
+     * =======================
+     *
+     * Resubmit packets that are not directed to remote VTEP to the local
+     * output table. */
+    match_init_catchall(&match);
+    ofpbuf_clear(&ofpacts);
+    put_resubmit(OFTABLE_LOCAL_OUTPUT, &ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_REMOTE_VTEP_OUTPUT, 0, 0, &match,
+                    &ofpacts, hc_uuid);
+
+    /* Table 45, priority 0.
      * ======================
      *
      * Drop packets that do not match previous flows.
      */
     add_default_drop_flow(p_ctx, OFTABLE_LOCAL_OUTPUT, flow_table);
 
-    /* Table 41, Priority 0.
+    /* Table 46, Priority 0.
      * =======================
      *
      * Resubmit packets that don't output to the ingress port (already checked
-     * in table 40) to the logical egress pipeline, clearing the logical
+     * in table 44) to the logical egress pipeline, clearing the logical
      * registers (for consistent behavior with packets that get tunneled). */
     match_init_catchall(&match);
     ofpbuf_clear(&ofpacts);
@@ -3119,6 +3334,7 @@ physical_run(struct physical_ctx *p_ctx,
                     &match, &ofpacts, hc_uuid);
 
     physical_eval_remote_chassis_flows(p_ctx, &ofpacts, flow_table);
+    physical_eval_evpn_flows(p_ctx, &ofpacts, flow_table);
 
     ofpbuf_uninit(&ofpacts);
 }
