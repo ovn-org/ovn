@@ -98,6 +98,7 @@
 #include "neighbor.h"
 #include "neighbor-exchange.h"
 #include "neighbor-table-notify.h"
+#include "evpn-binding.h"
 
 VLOG_DEFINE_THIS_MODULE(main);
 
@@ -4558,6 +4559,23 @@ parse_encap_ips(const struct ovsrec_open_vswitch_table *ovs_table,
     }
 }
 
+struct ed_type_evpn_vtep_binding {
+    /* Contains 'struct evpn_binding'. */
+    struct hmap bindings;
+    /* Contains pointers to 'struct evpn_binding'. */
+    struct hmapx updated_bindings;
+    /* Contains 'flow_uuid' from removed 'struct evpn_binding'. */
+    struct uuidset removed_bindings;
+    /* Contains 'struct evpn_multicast_group'. */
+    struct hmap multicast_groups;
+    /* Contains pointers to 'struct evpn_multicast_group'. */
+    struct hmapx updated_multicast_groups;
+    /* Contains 'flow_uuid' from removed 'struct evpn_multicast_group'. */
+    struct uuidset removed_multicast_groups;
+    /* Contains 'struct tnlid_node". */
+    struct hmap tunnel_keys;
+};
+
 static void init_physical_ctx(struct engine_node *node,
                               struct ed_type_runtime_data *rt_data,
                               struct ed_type_non_vif_data *non_vif_data,
@@ -4984,14 +5002,6 @@ controller_output_route_exchange_handler(struct engine_node *node OVS_UNUSED,
 static enum engine_input_handler_result
 controller_output_garp_rarp_handler(struct engine_node *node OVS_UNUSED,
                                     void *data OVS_UNUSED)
-{
-    return EN_HANDLED_UPDATED;
-}
-
-static enum engine_input_handler_result
-controller_output_neighbor_exchange_handler(
-    struct engine_node *node OVS_UNUSED,
-    void *data OVS_UNUSED)
 {
     return EN_HANDLED_UPDATED;
 }
@@ -5943,6 +5953,153 @@ en_neighbor_exchange_status_run(struct engine_node *node OVS_UNUSED,
     return state;
 }
 
+static void *
+en_evpn_vtep_binding_init(struct engine_node *node OVS_UNUSED,
+                          struct engine_arg *arg OVS_UNUSED)
+{
+    struct ed_type_evpn_vtep_binding *data = xmalloc(sizeof *data);
+    *data = (struct ed_type_evpn_vtep_binding) {
+        .bindings = HMAP_INITIALIZER(&data->bindings),
+        .updated_bindings = HMAPX_INITIALIZER(&data->updated_bindings),
+        .removed_bindings = UUIDSET_INITIALIZER(&data->removed_bindings),
+        .multicast_groups = HMAP_INITIALIZER(&data->multicast_groups),
+        .updated_multicast_groups =
+            HMAPX_INITIALIZER(&data->updated_multicast_groups),
+        .removed_multicast_groups =
+            UUIDSET_INITIALIZER(&data->removed_multicast_groups),
+        .tunnel_keys = HMAP_INITIALIZER(&data->tunnel_keys),
+    };
+
+    return data;
+}
+
+static void
+en_evpn_vtep_binding_clear_tracked_data(void *data_)
+{
+    struct ed_type_evpn_vtep_binding *data = data_;
+    hmapx_clear(&data->updated_bindings);
+    uuidset_clear(&data->removed_bindings);
+    hmapx_clear(&data->updated_multicast_groups);
+    uuidset_clear(&data->removed_multicast_groups);
+}
+
+static void
+en_evpn_vtep_binding_cleanup(void *data_)
+{
+    struct ed_type_evpn_vtep_binding *data = data_;
+    evpn_bindings_destroy(&data->bindings);
+    hmapx_destroy(&data->updated_bindings);
+    uuidset_destroy(&data->removed_bindings);
+    evpn_multicast_groups_destroy(&data->multicast_groups);
+    hmapx_clear(&data->updated_multicast_groups);
+    uuidset_clear(&data->removed_multicast_groups);
+    ovn_destroy_tnlids(&data->tunnel_keys);
+}
+
+static enum engine_node_state
+en_evpn_vtep_binding_run(struct engine_node *node, void *data_)
+{
+    struct ed_type_evpn_vtep_binding *data = data_;
+    const struct ed_type_neighbor_exchange *ne_data =
+        engine_get_input_data("neighbor_exchange", node);
+    const struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
+    const struct ovsrec_bridge_table *bridge_table =
+        EN_OVSDB_GET(engine_get_input("OVS_bridge", node));
+    const struct ovsrec_bridge *br_int = get_br_int(bridge_table, ovs_table);
+
+    struct evpn_binding_ctx_in b_ctx_in = {
+        .br_int = br_int,
+        .local_datapaths = &rt_data->local_datapaths,
+        .remote_vteps = &ne_data->remote_vteps,
+    };
+
+    struct evpn_binding_ctx_out b_ctx_out = {
+        .bindings = &data->bindings,
+        .updated_bindings = &data->updated_bindings,
+        .removed_bindings = &data->removed_bindings,
+        .multicast_groups = &data->multicast_groups,
+        .updated_multicast_groups = &data->updated_multicast_groups,
+        .removed_multicast_groups = &data->removed_multicast_groups,
+        .tunnel_keys = &data->tunnel_keys,
+    };
+
+    evpn_binding_run(&b_ctx_in, &b_ctx_out);
+
+    if (hmapx_count(&data->updated_bindings) ||
+        uuidset_count(&data->removed_bindings) ||
+        hmapx_count(&data->updated_multicast_groups) ||
+        uuidset_count(&data->removed_multicast_groups)) {
+        return EN_UPDATED;
+    }
+
+    return EN_UNCHANGED;
+}
+
+static enum engine_input_handler_result
+evpn_vtep_binding_ovs_interface_handler(struct engine_node *node,
+                                        void *data OVS_UNUSED)
+{
+    const struct ovsrec_interface_table *iface_table =
+        EN_OVSDB_GET(engine_get_input("OVS_interface", node));
+
+    const struct ovsrec_interface *iface;
+    OVSREC_INTERFACE_TABLE_FOR_EACH_TRACKED (iface, iface_table) {
+        if (!smap_get_bool(&iface->external_ids, "ovn-evpn-tunnel", false)) {
+            continue;
+        }
+
+        if (ovsrec_interface_is_new(iface) ||
+            ovsrec_interface_is_deleted(iface) ||
+            ovsrec_interface_is_updated(iface, OVSREC_INTERFACE_COL_OFPORT)) {
+            return EN_UNHANDLED;
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
+static enum engine_input_handler_result
+evpn_vtep_binding_datapath_binding_handler(struct engine_node *node,
+                                           void *data OVS_UNUSED)
+{
+    const struct sbrec_datapath_binding_table *dp_table =
+        EN_OVSDB_GET(engine_get_input("SB_datapath_binding", node));
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+
+    const struct sbrec_datapath_binding *dp;
+    SBREC_DATAPATH_BINDING_TABLE_FOR_EACH_TRACKED (dp, dp_table) {
+        if (sbrec_datapath_binding_is_new(dp) ||
+            sbrec_datapath_binding_is_deleted(dp)) {
+            /* The removal and addition is handled via the
+             * en_neighbor_exchange I-P node. */
+            return EN_HANDLED_UNCHANGED;
+        }
+
+        struct local_datapath *ld =
+            get_local_datapath(&rt_data->local_datapaths, dp->tunnel_key);
+        if (!ld || !ld->is_switch) {
+            continue;
+        }
+
+        int64_t vni = ovn_smap_get_llong(&dp->external_ids,
+                                         "dynamic-routing-vni", -1);
+        if (!ovn_is_valid_vni(vni)) {
+            continue;
+        }
+
+        if (sbrec_datapath_binding_is_updated(
+                dp, SBREC_DATAPATH_BINDING_COL_TUNNEL_KEY)) {
+            return EN_UNHANDLED;
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
 /* Returns false if the northd internal version stored in SB_Global
  * and ovn-controller internal version don't match.
  */
@@ -6267,6 +6424,7 @@ main(int argc, char *argv[])
     ENGINE_NODE(neighbor_table_notify);
     ENGINE_NODE(neighbor_exchange);
     ENGINE_NODE(neighbor_exchange_status);
+    ENGINE_NODE(evpn_vtep_binding, CLEAR_TRACKED_DATA);
 
 #define SB_NODE(NAME) ENGINE_NODE_SB(NAME);
     SB_NODES
@@ -6502,6 +6660,22 @@ main(int argc, char *argv[])
     engine_add_input(&en_neighbor_exchange, &en_neighbor_exchange_status,
                      NULL);
 
+    engine_add_input(&en_evpn_vtep_binding, &en_ovs_open_vswitch, NULL);
+    engine_add_input(&en_evpn_vtep_binding, &en_ovs_bridge, NULL);
+    engine_add_input(&en_evpn_vtep_binding, &en_neighbor_exchange, NULL);
+    /* The runtime_data are needed only for local datapaths, any update of
+     * local datapath will be reflected via en_neighbor_exchange. */
+    engine_add_input(&en_evpn_vtep_binding, &en_runtime_data,
+                     engine_noop_handler);
+    engine_add_input(&en_evpn_vtep_binding, &en_ovs_interface,
+                     evpn_vtep_binding_ovs_interface_handler);
+    engine_add_input(&en_evpn_vtep_binding, &en_sb_datapath_binding,
+                     evpn_vtep_binding_datapath_binding_handler);
+
+    /* TODO Add real handler to process all bindings. */
+    engine_add_input(&en_pflow_output, &en_evpn_vtep_binding,
+                     engine_noop_handler);
+
     engine_add_input(&en_controller_output, &en_dns_cache,
                      NULL);
     engine_add_input(&en_controller_output, &en_lflow_output,
@@ -6520,9 +6694,6 @@ main(int argc, char *argv[])
     engine_add_input(&en_acl_id, &en_sb_acl_id, NULL);
     engine_add_input(&en_controller_output, &en_acl_id,
                      controller_output_acl_id_handler);
-
-    engine_add_input(&en_controller_output, &en_neighbor_exchange,
-                     controller_output_neighbor_exchange_handler);
 
     struct engine_arg engine_arg = {
         .sb_idl = ovnsb_idl_loop.idl,
@@ -6583,6 +6754,8 @@ main(int argc, char *argv[])
             engine_get_internal_data(&en_mac_cache);
     struct ed_type_neighbor_exchange *ne_data =
         engine_get_internal_data(&en_neighbor_exchange);
+    struct ed_type_evpn_vtep_binding *eb_data =
+        engine_get_internal_data(&en_evpn_vtep_binding);
 
     ofctrl_init(&lflow_output_data->group_table,
                 &lflow_output_data->meter_table);
@@ -6602,6 +6775,12 @@ main(int argc, char *argv[])
     unixctl_command_register("evpn/remote-vtep-list", "", 0, 0,
                              evpn_remote_vtep_list,
                              &ne_data->remote_vteps);
+    unixctl_command_register("evpn/vtep-binding-list", "", 0, 0,
+                             evpn_vtep_binding_list,
+                             &eb_data->bindings);
+    unixctl_command_register("evpn/vtep-multicast-group-list", "", 0, 0,
+                             evpn_multicast_group_list,
+                             &eb_data->multicast_groups);
 
     struct pending_pkt pending_pkt = { .conn = NULL };
     unixctl_command_register("inject-pkt", "MICROFLOW", 1, 1, inject_pkt,

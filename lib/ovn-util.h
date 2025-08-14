@@ -168,6 +168,9 @@ void set_idl_probe_interval(struct ovsdb_idl *idl, const char *remote,
 #define OVN_MIN_DP_VXLAN_KEY_GLOBAL (OVN_MAX_DP_VXLAN_KEY_LOCAL + 1)
 #define OVN_MAX_DP_VXLAN_KEY_GLOBAL ((1u << 12) - 1)
 
+#define OVN_MIN_EVPN_KEY (1u << 31)
+#define OVN_MAX_EVPN_KEY (OVN_MAX_DP_GLOBAL_NUM | OVN_MIN_EVPN_KEY)
+
 struct hmap;
 void ovn_destroy_tnlids(struct hmap *tnlids);
 bool ovn_add_tnlid(struct hmap *set, uint32_t tnlid);
