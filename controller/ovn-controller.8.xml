@@ -392,6 +392,13 @@
         exit. In order to keep backward compatibility the
         <code>--restart</code> exit flag has priority over this flag.
       </dd>
+
+      <dt><code>external_ids:ovn-evpn-vxlan-ports</code></dt>
+      <dd>
+        Comma separated list of UDP ports used as a destination port for
+        the EVPN tunnels created by this ovn-controller. NOTE: this feature is
+        experimental and may be subject to removal/change in the future.
+      </dd>
     </dl>
 
     <p>
@@ -624,6 +631,19 @@
           OVS interface have been processed by ovs-vswitchd.  At the same time
           a timestamp, in milliseconds since the epoch, is stored in
           <code>external_ids:ovn-installed-ts</code>.
+        </p>
+      </dd>
+
+      <dt>
+        <code>external_ids:ovn-evpn-tunnel</code> in the
+        <code>Port</code> and <code>Interface</code> table
+      </dt>
+
+      <dd>
+        <p>
+          Presence of this key indicates that the
+          <code>Port/Interface</code> was created by ovn-controller to
+          be used as tunnel port for EVPN traffic.
         </p>
       </dd>
     </dl>

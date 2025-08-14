@@ -64,6 +64,9 @@ struct tunnel_ctx {
      * adding a new tunnel. */
     struct sset port_names;
 
+    /* Contains 'struct ovsrec_port' by name if it's evpn tunnel. */
+    struct shash evpn_tunnels;
+
     struct ovsdb_idl_txn *ovs_txn;
     const struct ovsrec_open_vswitch_table *ovs_table;
     const struct ovsrec_bridge *br_int;
@@ -442,13 +445,107 @@ clear_old_tunnels(const struct ovsrec_bridge *old_br_int, const char *prefix,
     for (size_t i = 0; i < old_br_int->n_ports; i++) {
         const struct ovsrec_port *port = old_br_int->ports[i];
         const char *id = smap_get(&port->external_ids, OVN_TUNNEL_ID);
-        if (id && !strncmp(port->name, prefix, prefix_len)) {
+        const bool evpn_tunnel =
+            smap_get_bool(&port->external_ids, "ovn-evpn-tunnel", false);
+        if (!strncmp(port->name, prefix, prefix_len) &&
+            (id || evpn_tunnel)) {
             VLOG_DBG("Clearing old tunnel port \"%s\" (%s) from bridge "
                      "\"%s\".", port->name, id, old_br_int->name);
             ovsrec_bridge_update_ports_delvalue(old_br_int, port);
         }
     }
 }
+
+static bool
+is_evpn_tunnel_port(const struct ovsrec_port *port, const char *dst_port)
+{
+    if (!smap_get_bool(&port->external_ids, "ovn-evpn-tunnel", false)) {
+        return false;
+    }
+
+    if (port->n_interfaces != 1) {
+        return false;
+    }
+
+    const struct ovsrec_interface *iface = port->interfaces[0];
+    if (strcmp(iface->type, "vxlan")) {
+        return false;
+    }
+
+    if (strcmp(smap_get_def(&iface->options, "local_ip", ""), "flow") ||
+        strcmp(smap_get_def(&iface->options, "remote_ip", ""), "flow") ||
+        strcmp(smap_get_def(&iface->options, "key", ""), "flow") ||
+        strcmp(smap_get_def(&iface->options, "dst_port", ""), dst_port)) {
+        return false;
+    }
+
+    return true;
+}
+
+static void
+create_evpn_tunnels(struct tunnel_ctx *tc)
+{
+    const char *evpn_vxlan_ports =
+        smap_get(&tc->this_chassis->other_config, "ovn-evpn-vxlan-ports");
+    if (!evpn_vxlan_ports) {
+        return;
+    }
+
+    /* Create smap of common tunnel options. */
+    struct smap options = SMAP_INITIALIZER(&options);
+    smap_add(&options, "local_ip", "flow");
+    smap_add(&options, "remote_ip", "flow");
+    smap_add(&options, "key", "flow");
+
+    struct sset vxlan_ports;
+    sset_from_delimited_string(&vxlan_ports, evpn_vxlan_ports, ",");
+    const char *idx = get_chassis_idx(tc->ovs_table);
+
+    const char *vxlan_port;
+    SSET_FOR_EACH (vxlan_port, &vxlan_ports) {
+        unsigned short us;
+        if (!ovn_str_to_ushort(vxlan_port, 10, &us) || !us) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_WARN_RL(&rl, "Invalid VXLAN port number '%s'", vxlan_port);
+            continue;
+        }
+
+        char *name = xasprintf("ovn%s-evpn-%s", idx, vxlan_port);
+        const struct ovsrec_port *port =
+            shash_find_and_delete(&tc->evpn_tunnels, name);
+
+        if (!port) {
+            port = ovsrec_port_insert(tc->ovs_txn);
+            ovsrec_port_set_name(port, name);
+
+            const struct smap id = SMAP_CONST1(&id, "ovn-evpn-tunnel", "true");
+            ovsrec_port_set_external_ids(port, &id);
+
+            ovsrec_bridge_update_ports_addvalue(tc->br_int, port);
+        }
+
+        if (!is_evpn_tunnel_port(port, vxlan_port)) {
+            struct ovsrec_interface *iface =
+                ovsrec_interface_insert(tc->ovs_txn);
+            ovsrec_interface_set_name(iface, name);
+            ovsrec_interface_set_type(iface, "vxlan");
+
+            smap_replace(&options, "dst_port", vxlan_port);
+            ovsrec_interface_set_options(iface, &options);
+
+            const struct smap id = SMAP_CONST1(&id, "ovn-evpn-tunnel", "true");
+            ovsrec_port_set_external_ids(port, &id);
+
+            ovsrec_port_set_interfaces(port, &iface, 1);
+        }
+
+        free(name);
+    }
+
+    smap_destroy(&options);
+    sset_destroy(&vxlan_ports);
+}
+
 
 void
 encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
@@ -498,6 +595,7 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
     struct tunnel_ctx tc = {
         .tunnel = SHASH_INITIALIZER(&tc.tunnel),
         .port_names = SSET_INITIALIZER(&tc.port_names),
+        .evpn_tunnels = SHASH_INITIALIZER(&tc.evpn_tunnels),
         .br_int = br_int,
         .this_chassis = this_chassis,
         .ovs_table = ovs_table,
@@ -527,6 +625,10 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
                  * to delete this one. */
                 ovsrec_bridge_update_ports_delvalue(br_int, port);
             }
+        }
+
+        if (smap_get_bool(&port->external_ids, "ovn-evpn-tunnel", false)) {
+            shash_add(&tc.evpn_tunnels, port->name, port);
         }
     }
 
@@ -558,6 +660,8 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
         }
     }
 
+    create_evpn_tunnels(&tc);
+
     /* Delete any existing OVN tunnels that were not still around. */
     struct shash_node *node;
     SHASH_FOR_EACH_SAFE (node, &tc.tunnel) {
@@ -566,8 +670,17 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
         shash_delete(&tc.tunnel, node);
         free(tunnel);
     }
+
+    /* Delete any stale EVPN tunnels. */
+    SHASH_FOR_EACH_SAFE (node, &tc.evpn_tunnels) {
+        const struct ovsrec_port *port = node->data;
+        ovsrec_bridge_update_ports_delvalue(br_int, port);
+        shash_delete(&tc.evpn_tunnels, node);
+    }
+
     shash_destroy(&tc.tunnel);
     sset_destroy(&tc.port_names);
+    shash_destroy(&tc.evpn_tunnels);
 }
 
 /* Returns true if the database is all cleaned up, false if more work is

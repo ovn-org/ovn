@@ -221,6 +221,7 @@ char *str_tolower(const char *orig);
 
 long long ovn_smap_get_llong(const struct smap *smap, const char *key,
                              long long def);
+bool ovn_str_to_ushort(const char *, int base, unsigned short *);
 
 /* OVN daemon options. Taken from ovs/lib/daemon.h. */
 #define OVN_DAEMON_OPTION_ENUMS                     \

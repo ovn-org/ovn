@@ -58,6 +58,7 @@ struct ovs_chassis_cfg {
     const char *trim_limit_lflow_cache;
     const char *trim_wmark_perc_lflow_cache;
     const char *trim_timeout_ms;
+    const char *evpn_vxlan_port;
 
     /* Set of encap types parsed from the 'ovn-encap-type' external-id. */
     struct sset encap_type_set;
@@ -199,6 +200,13 @@ get_encap_csum(const struct smap *ext_ids, const char *chassis_id)
 }
 
 static const char *
+get_evpn_vxlan_port(const struct smap *ext_ids, const char *chassis_id)
+{
+    return get_chassis_external_id_value(ext_ids, chassis_id,
+                                         "ovn-evpn-vxlan-ports", "");
+}
+
+static const char *
 get_datapath_type(const struct ovsrec_bridge *br_int)
 {
     if (br_int && br_int->datapath_type) {
@@ -332,6 +340,8 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
         get_trim_wmark_perc_lflow_cache(&cfg->external_ids, chassis_id);
     ovs_cfg->trim_timeout_ms =
         get_trim_timeout(&cfg->external_ids, chassis_id);
+    ovs_cfg->evpn_vxlan_port =
+        get_evpn_vxlan_port(&cfg->external_ids, chassis_id);
 
     chassis_parse_ovs_encap_type(encap_type, &ovs_cfg->encap_type_set);
 
@@ -384,6 +394,7 @@ chassis_build_other_config(const struct ovs_chassis_cfg *ovs_cfg,
     smap_replace(config, "ovn-trim-timeout-ms", ovs_cfg->trim_timeout_ms);
     smap_replace(config, "iface-types", ds_cstr_ro(&ovs_cfg->iface_types));
     smap_replace(config, "ovn-chassis-mac-mappings", ovs_cfg->chassis_macs);
+    smap_replace(config, "ovn-evpn-vxlan-ports", ovs_cfg->evpn_vxlan_port);
     smap_replace(config, "is-interconn",
                  ovs_cfg->is_interconn ? "true" : "false");
     smap_replace(config, OVN_FEATURE_PORT_UP_NOTIF, "true");
@@ -503,6 +514,13 @@ chassis_other_config_changed(const struct ovs_chassis_cfg *ovs_cfg,
     if (chassis_is_interconn != ovs_cfg->is_interconn) {
         return true;
     }
+
+    const char *chassis_evpn_vxlan_port =
+        get_evpn_vxlan_port(&chassis_rec->other_config, chassis_rec->name);
+    if (strcmp(ovs_cfg->evpn_vxlan_port, chassis_evpn_vxlan_port)) {
+        return true;
+    }
+
 
     if (!smap_get_bool(&chassis_rec->other_config, OVN_FEATURE_PORT_UP_NOTIF,
                        false)) {
@@ -722,6 +740,7 @@ update_supported_sset(struct sset *supported)
     sset_add(supported, "iface-types");
     sset_add(supported, "ovn-chassis-mac-mappings");
     sset_add(supported, "is-interconn");
+    sset_add(supported, "ovn-evpn-vxlan-ports");
 
     /* Internal options. */
     sset_add(supported, "is-vtep");

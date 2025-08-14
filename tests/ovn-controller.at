@@ -3803,3 +3803,60 @@ check ovn-nbctl --wait=hv sync
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
+
+AT_SETUP([ovn-controller - EVPN tunnel])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11 24 geneve,vxlan
+check ovn-nbctl --wait=hv sync
+
+wait_ports() {
+    local n_ports=$1
+
+    OVS_WAIT_UNTIL([
+        test "$(ovs-vsctl --format=table --no-headings find port external-ids:ovn-evpn-tunnel="true" | wc -l)" = "$n_ports"
+    ])
+}
+
+check_tunnel_port() {
+    local port=$1
+
+    local tunnel_id=$(ovs-vsctl --bare --columns _uuid find port name="ovn-evpn-$port")
+    AT_CHECK([ovs-vsctl --bare --columns ports find bridge name="br-int" | grep -q "$tunnel_id"])
+}
+
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-evpn-vxlan-ports="4789"
+wait_ports 1
+check_tunnel_port 4789
+
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-evpn-vxlan-ports="4789,4790"
+wait_ports 2
+check_tunnel_port 4789
+check_tunnel_port 4790
+
+# Stop ovn-controller
+OVN_CONTROLLER_EXIT([hv1],[])
+start_daemon ovn-controller
+check ovn-nbctl --wait=hv sync
+
+wait_ports 2
+check_tunnel_port 4789
+check_tunnel_port 4790
+
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-evpn-vxlan-ports="4790"
+wait_ports 1
+check_tunnel_port 4790
+
+ovs-vsctl remove Open_vSwitch . external-ids ovn-evpn-vxlan-ports
+wait_ports 0
+
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-evpn-vxlan-ports="wrong"
+wait_ports 0
+
+OVN_CLEANUP([hv1
+/Invalid VXLAN port number.*/d])
+AT_CLEANUP

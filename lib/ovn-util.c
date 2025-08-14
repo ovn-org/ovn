@@ -865,6 +865,20 @@ ovn_smap_get_llong(const struct smap *smap, const char *key, long long def)
     return ll_value;
 }
 
+bool
+ovn_str_to_ushort(const char *s, int base, unsigned short *u)
+{
+    long long ll;
+    bool ok = str_to_llong(s, base, &ll);
+    if (!ok || ll < 0 || ll > USHRT_MAX) {
+        *u = 0;
+        return false;
+    } else {
+        *u = ll;
+        return true;
+    }
+}
+
 /* For a 'key' of the form "IP:port" or just "IP", sets 'port',
  * 'ip_address' and 'ip' ('struct in6_addr' IPv6 or IPv4 mapped address).
  * The caller must free() the memory allocated for 'ip_address'.

@@ -46,6 +46,9 @@ Post v25.03.0
        Routers and Logical Router Ports which refines the way in which
        chassis-specific Advertised_Routes (e.g., for NAT and LB IPs) are
        advertised.
+     * Add the option "external-ids:ovn-evpn-vxlan-ports" for the
+       Open_vSwitch database. This option allows CMS to set list of UDP
+       destination ports that will be used to create the VXLAN tunnels.
 
 OVN v25.03.0 - 07 Mar 2025
 --------------------------
