@@ -1380,6 +1380,7 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
                 .lb_hairpin_reply_ptable = OFTABLE_CHK_LB_HAIRPIN_REPLY,
                 .ct_snat_vip_ptable = OFTABLE_CT_SNAT_HAIRPIN,
                 .fdb_ptable = OFTABLE_GET_FDB,
+                .remote_fdb_ptable = OFTABLE_GET_REMOTE_FDB,
                 .fdb_lookup_ptable = OFTABLE_LOOKUP_FDB,
                 .common_nat_ct_zone = MFF_LOG_DNAT_ZONE,
                 .in_port_sec_ptable = OFTABLE_CHK_IN_PORT_SEC,

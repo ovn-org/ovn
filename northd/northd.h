@@ -406,6 +406,9 @@ struct ovn_datapath {
      * This is applicable only to routers with "remote" ports. */
     bool is_transit_router;
 
+    /* Indicates that the LS has valid vni associated with it. */
+    bool has_evpn_vni;
+
     /* OVN northd only needs to know about logical router gateway ports for
      * NAT/LB on a distributed router.  The "distributed gateway ports" are
      * populated only when there is a gateway chassis or ha chassis group

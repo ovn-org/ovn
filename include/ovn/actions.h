@@ -121,6 +121,7 @@ struct collector_set_ids;
     OVNACT(SCTP_ABORT,        ovnact_nest)            \
     OVNACT(PUT_FDB,           ovnact_put_fdb)         \
     OVNACT(GET_FDB,           ovnact_get_fdb)         \
+    OVNACT(GET_REMOTE_FDB,    ovnact_get_fdb)         \
     OVNACT(LOOKUP_FDB,        ovnact_lookup_fdb)      \
     OVNACT(CHECK_IN_PORT_SEC,  ovnact_result)         \
     OVNACT(CHECK_OUT_PORT_SEC, ovnact_result)         \
@@ -956,6 +957,8 @@ struct ovnact_encode_params {
                                   * 'ct_snat_to_vip' to resubmit. */
     uint8_t fdb_ptable; /* OpenFlow table for
                          * 'get_fdb' to resubmit. */
+    uint8_t remote_fdb_ptable; /* OpenFlow table for
+                                * 'get_remote_fdb' to resubmit. */
     uint8_t fdb_lookup_ptable; /* OpenFlow table for
                                 * 'lookup_fdb' to resubmit. */
     uint8_t in_port_sec_ptable; /* OpenFlow table for

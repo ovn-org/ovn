@@ -4385,19 +4385,22 @@ ovnact_put_fdb_free(struct ovnact_put_fdb *put_fdb OVS_UNUSED)
 }
 
 static void
-format_GET_FDB(const struct ovnact_get_fdb *get_fdb, struct ds *s)
+format_get_fdb(const struct ovnact_get_fdb *get_fdb, const char *type,
+               struct ds *s)
 {
     expr_field_format(&get_fdb->dst, s);
-    ds_put_cstr(s, " = get_fdb(");
+    ds_put_format(s, " = %s(", type);
     expr_field_format(&get_fdb->mac, s);
     ds_put_cstr(s, ");");
 }
 
 static void
-encode_GET_FDB(const struct ovnact_get_fdb *get_fdb,
+encode_get_fdb(const struct ovnact_get_fdb *get_fdb,
                const struct ovnact_encode_params *ep,
-               struct ofpbuf *ofpacts)
+               bool remote, struct ofpbuf *ofpacts)
 {
+    const enum mf_field_id outport_id =
+        remote ? MFF_LOG_REMOTE_OUTPORT : MFF_LOG_OUTPORT;
     struct mf_subfield dst = expr_resolve_field(&get_fdb->dst);
     ovs_assert(dst.field);
 
@@ -4405,17 +4408,45 @@ encode_GET_FDB(const struct ovnact_get_fdb *get_fdb,
         { expr_resolve_field(&get_fdb->mac), MFF_ETH_DST },
     };
     encode_setup_args(args, ARRAY_SIZE(args), ofpacts);
-    put_load(0, MFF_LOG_OUTPORT, 0, 32, ofpacts);
-    emit_resubmit(ofpacts, ep->fdb_ptable);
+    put_load(0, outport_id, 0, 32, ofpacts);
+    emit_resubmit(ofpacts, remote ? ep->remote_fdb_ptable : ep->fdb_ptable);
     encode_restore_args(args, ARRAY_SIZE(args), ofpacts);
 
-    if (dst.field->id != MFF_LOG_OUTPORT) {
+    if (dst.field->id != outport_id) {
         struct ofpact_reg_move *orm = ofpact_put_REG_MOVE(ofpacts);
         orm->dst = dst;
-        orm->src.field = mf_from_id(MFF_LOG_OUTPORT);
+        orm->src.field = mf_from_id(outport_id);
         orm->src.ofs = 0;
         orm->src.n_bits = 32;
     }
+}
+
+static void
+format_GET_FDB(const struct ovnact_get_fdb *get_fdb, struct ds *s)
+{
+    format_get_fdb(get_fdb, "get_fdb", s);
+}
+
+static void
+encode_GET_FDB(const struct ovnact_get_fdb *get_fdb,
+               const struct ovnact_encode_params *ep,
+               struct ofpbuf *ofpacts)
+{
+    encode_get_fdb(get_fdb, ep, false, ofpacts);
+}
+
+static void
+format_GET_REMOTE_FDB(const struct ovnact_get_fdb *get_fdb, struct ds *s)
+{
+    format_get_fdb(get_fdb, "get_remote_fdb", s);
+}
+
+static void
+encode_GET_REMOTE_FDB(const struct ovnact_get_fdb *get_fdb,
+                      const struct ovnact_encode_params *ep,
+                      struct ofpbuf *ofpacts)
+{
+    encode_get_fdb(get_fdb, ep, true, ofpacts);
 }
 
 static void
@@ -4423,7 +4454,7 @@ parse_get_fdb(struct action_context *ctx,
               struct expr_field *dst,
               struct ovnact_get_fdb *get_fdb)
 {
-    lexer_get(ctx->lexer); /* Skip get_bfd. */
+    lexer_get(ctx->lexer); /* Skip get_bfd/get_remote_fdb. */
     lexer_get(ctx->lexer); /* Skip '('. */
 
     /* Validate that the destination is a 32-bit, modifiable field if it
@@ -5765,6 +5796,10 @@ parse_set_action(struct action_context *ctx)
                    && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
             parse_get_fdb(
                 ctx, &lhs, ovnact_put_GET_FDB(ctx->ovnacts));
+        } else if (!strcmp(ctx->lexer->token.s, "get_remote_fdb")
+                   && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
+            parse_get_fdb(
+                ctx, &lhs, ovnact_put_GET_REMOTE_FDB(ctx->ovnacts));
         } else if (!strcmp(ctx->lexer->token.s, "lookup_fdb")
                    && lexer_lookahead(ctx->lexer) == LEX_T_LPAREN) {
             parse_lookup_fdb(

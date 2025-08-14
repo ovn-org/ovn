@@ -55,6 +55,9 @@ Post v25.03.0
        the tunnel.
      * Add the "other_config:dynamic-routing-vni" to Logical Switches. If set
        to valid integer the LS is considered to be connected to EVPN L2 domain.
+     * Add the "other_config:dynamic-routing-fdb-prefer-local" to Logical
+       Switches. If set to "true" the LS will prefer SB FDB table for
+       FDB lookup. Default is false.
 
 OVN v25.03.0 - 07 Mar 2025
 --------------------------

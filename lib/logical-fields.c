@@ -72,6 +72,11 @@ ovn_init_symtab(struct shash *symtab)
     expr_symtab_add_string(symtab, "inport", MFF_LOG_INPORT, NULL);
     expr_symtab_add_string(symtab, "outport", MFF_LOG_OUTPORT, NULL);
 
+    /* The port isn't reserved along the pipeline it's just defined as symbol
+     * to support matching on string and moving between string registers. */
+    expr_symtab_add_string(symtab, "remote_outport",
+                           MFF_LOG_REMOTE_OUTPORT, NULL);
+
     /* Logical registers:
      *     128-bit xxregs
      *     64-bit xregs

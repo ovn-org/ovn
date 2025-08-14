@@ -254,12 +254,14 @@ static const char *reg_ct_state[] = {
  * | R0 |     REGBIT_{CONNTRACK/DHCP/DNS}              |   |                                   |
  * |    |     REGBIT_{HAIRPIN/HAIRPIN_REPLY}           |   |                                   |
  * |    | REGBIT_ACL_HINT_{ALLOW_NEW/ALLOW/DROP/BLOCK} |   |                                   |
- * |    |     REGBIT_ACL_{LABEL/STATELESS}             | X |                                   |
- * +----+----------------------------------------------+ X |                                   |
- * | R1 |       REG_CT_TP_DST (0..15)                  | R |                                   |
- * |    |       REG_CT_PROTO (16..23)                  | E |                                   |
- * |    |   (>= IN_CT_EXTRACT && <= IN_LB_AFF_LEARN)   | G |                                   |
- * +----+----------------------------------------------+ 0 |                                   |
+ * |    |     REGBIT_ACL_{LABEL/STATELESS}             |   |                                   |
+ * +----+----------------------------------------------+   |                                   |
+ * | R1 |       REG_CT_TP_DST (0..15)                  |   |                                   |
+ * |    |       REG_CT_PROTO (16..23)                  |   |                                   |
+ * |    |   (>= IN_CT_EXTRACT && <= IN_LB_AFF_LEARN)   | X |                                   |
+ * |    |       remote_outport                         | X |                                   |
+ * |    |   (>= L2_LKUP && <= L2_UNKNOWN)              | R |                                   |
+ * +----+----------------------------------------------+ E |                                   |
  * | R2 |                 REG_LB_PORT                  | G |                                   |
  * |    |  (>= IN_PRE_STATEFUL && <= IN_LB_AFF_LEARN)  | 0 |                                   |
  * |    |                 REG_ACL_ID                   |   |                                   |
@@ -863,6 +865,10 @@ build_datapaths(const struct ovn_synced_logical_switch_map *ls_map,
                           false)) {
             od->lb_with_stateless_mode = true;
         }
+
+        int64_t vni = ovn_smap_get_llong(&od->nbs->other_config,
+                                         "dynamic-routing-vni", -1);
+        od->has_evpn_vni = ovn_is_valid_vni(vni);
     }
 
     struct ovn_synced_logical_router *lr;
@@ -5576,12 +5582,17 @@ build_lswitch_learn_fdb_od(
     struct lflow_ref *lflow_ref)
 {
     ovs_assert(od->nbs);
+    const char *lkp_action = od->has_evpn_vni
+        ? "outport = get_fdb(eth.dst); "
+          "remote_outport = get_remote_fdb(eth.dst); next;"
+        : "outport = get_fdb(eth.dst); next;";
+
     ovn_lflow_add(lflows, od, S_SWITCH_IN_LOOKUP_FDB, 0, "1", "next;",
                   lflow_ref);
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PUT_FDB, 0, "1", "next;",
                   lflow_ref);
     ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 0, "1",
-                  "outport = get_fdb(eth.dst); next;", lflow_ref);
+                  lkp_action, lflow_ref);
 
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_LOOKUP_FDB, 0, "1", "next;",
                   lflow_ref);
@@ -9109,6 +9120,36 @@ static bool
 is_vlan_transparent(const struct ovn_datapath *od)
 {
     return smap_get_bool(&od->nbs->other_config, "vlan-passthru", false);
+}
+
+static void
+build_lswitch_lflows_evpn_l2_unknown(struct ovn_datapath *od,
+                                     struct lflow_table *lflows,
+                                     struct lflow_ref *lflow_ref)
+{
+    if (od->has_unknown) {
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50,
+                      "outport == \"none\" && remote_outport == \"none\"",
+                      "outport = \""MC_UNKNOWN "\"; output;", lflow_ref);
+    } else {
+        ovn_lflow_add_drop_with_desc(
+            lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50, "outport == \"none\" && "
+            "remote_outport == \"none\"", "No L2 destination", lflow_ref);
+    }
+
+    if (smap_get_bool(&od->nbs->other_config,
+                  "dynamic-routing-fdb-prefer-local", false)) {
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 25,
+                      "outport == \"none\"",
+                      "outport = remote_outport; output;", lflow_ref);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 0, "1",
+                      "output;", lflow_ref);
+    } else {
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 25,
+                      "remote_outport == \"none\"", "output;", lflow_ref);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 0, "1",
+                      "outport = remote_outport; output;", lflow_ref);
+    }
 }
 
 static void
@@ -17366,7 +17407,11 @@ build_lswitch_and_lrouter_iterate_by_ls(struct ovn_datapath *od,
     ovn_lflow_add(lsi->lflows, od, S_SWITCH_IN_CT_EXTRACT, 0, "1", "next;",
                   NULL);
     build_lswitch_lb_affinity_default_flows(od, lsi->lflows, NULL);
-    build_lswitch_lflows_l2_unknown(od, lsi->lflows, NULL);
+    if (od->has_evpn_vni) {
+        build_lswitch_lflows_evpn_l2_unknown(od, lsi->lflows, NULL);
+    } else {
+        build_lswitch_lflows_l2_unknown(od, lsi->lflows, NULL);
+    }
     build_mcast_flood_lswitch(od, lsi->lflows, &lsi->actions, NULL);
 }
 

@@ -3535,6 +3535,12 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
             execute_get_fdb(ovnact_get_GET_FDB(a), dp, uflow);
             break;
 
+        case OVNACT_GET_REMOTE_FDB:
+            ovntrace_node_append(super, OVNTRACE_NODE_OUTPUT,
+                                 "/* The remote FDB table is different"
+                                 " per each chassis. */");
+            break;
+
         case OVNACT_LOOKUP_FDB:
             execute_lookup_fdb(ovnact_get_LOOKUP_FDB(a), dp, uflow, super);
             break;

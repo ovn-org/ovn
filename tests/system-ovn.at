@@ -18417,18 +18417,37 @@ AT_CHECK([grep "resubmit" oftable_remote_vtep_output | grep -c "load:0xa900000a"
 AT_CHECK([grep "resubmit" oftable_remote_vtep_output | grep -c "load:0xa9000014"], [0], [3
 ])
 
+# Simulate remote workload.
+check bridge fdb add f0:00:0f:16:10:50 dev vxlan-$vni dst 169.0.0.10 static extern_learn
+check bridge fdb add f0:00:0f:16:10:60 dev vxlan-$vni dst 169.0.0.20 static extern_learn
+
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-fdb-list | cut -d',' -f2- | sort], [0], [dnl
+ MAC: f0:00:0f:16:10:50, binding_key: 0x80000001, dp_key: $dp_key
+ MAC: f0:00:0f:16:10:60, binding_key: 0x80000002, dp_key: $dp_key
+])
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_GET_REMOTE_FDB | grep priority | \
+                   awk '{print $7, $8}' | sort], [0], [dnl
+priority=0 actions=load:0->NXM_NX_REG1[[]]
+priority=150,metadata=0x$dp_key,dl_dst=f0:00:0f:16:10:50 actions=load:0x80000001->NXM_NX_REG1[[]]
+priority=150,metadata=0x$dp_key,dl_dst=f0:00:0f:16:10:60 actions=load:0x80000002->NXM_NX_REG1[[]]
+])
+
 # Check that the recompute won't change the UUIDs and tunnel keys.
 ovn-appctl evpn/vtep-binding-list > bindings_before
 ovn-appctl evpn/vtep-multicast-group-list > mc_groups_before
+ovn-appctl evpn/vtep-fdb-list > fdb_before
 
 check ovn-appctl inc-engine/recompute
 check ovn-nbctl --wait=hv sync
 
 ovn-appctl evpn/vtep-binding-list > bindings_after
 ovn-appctl evpn/vtep-multicast-group-list > mc_groups_after
+ovn-appctl evpn/vtep-fdb-list > fdb_after
 
 check diff -q bindings_before bindings_after
 check diff -q mc_groups_before mc_groups_after
+check diff -q fdb_before fdb_after
 
 OVN_CLEANUP_CONTROLLER([hv1])
 

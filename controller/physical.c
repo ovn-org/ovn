@@ -3385,5 +3385,19 @@ physical_run(struct physical_ctx *p_ctx,
     physical_eval_remote_chassis_flows(p_ctx, &ofpacts, flow_table);
     physical_eval_evpn_flows(p_ctx, &ofpacts, flow_table);
 
+    /* Default flow for OFTABLE_GET_FDB table. */
+    match_init_catchall(&match);
+    ofpbuf_clear(&ofpacts);
+    put_load(0, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_GET_FDB, 0, 0,
+                    &match, &ofpacts, hc_uuid);
+
+    /* Default flow for OFTABLE_GET_REMOTE_FDB table. */
+    match_init_catchall(&match);
+    ofpbuf_clear(&ofpacts);
+    put_load(0, MFF_LOG_REMOTE_OUTPORT, 0, 32, &ofpacts);
+    ofctrl_add_flow(flow_table, OFTABLE_GET_REMOTE_FDB, 0, 0,
+                    &match, &ofpacts, hc_uuid);
+
     ofpbuf_uninit(&ofpacts);
 }

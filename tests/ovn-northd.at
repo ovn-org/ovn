@@ -17803,3 +17803,62 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LS dynamic-routing-fdb-prefer-local])
+ovn_start ovn-northd
+
+AS_BOX([Create logical switch.])
+check ovn-nbctl --wait=sb  ls-add ls-evpn
+ovn-sbctl dump-flows ls-evpn > lflows
+
+AT_CHECK([grep 'ls_in_l2_lkup' lflows | grep "get_fdb" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+])
+
+AT_CHECK([grep 'ls_in_l2_unknown' lflows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
+  table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(drop;)
+])
+
+check ovn-nbctl --wait=hv set logical_switch ls-evpn other_config:dynamic-routing-vni=10
+ovn-sbctl dump-flows ls-evpn > lflows
+
+AT_CHECK([grep 'ls_in_l2_lkup' lflows | grep "get_fdb" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); remote_outport = get_remote_fdb(eth.dst); next;)
+])
+
+AT_CHECK([grep 'ls_in_l2_unknown' lflows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(outport = remote_outport; output;)
+  table=??(ls_in_l2_unknown   ), priority=25   , match=(remote_outport == "none"), action=(output;)
+  table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none" && remote_outport == "none"), action=(drop;)
+])
+
+check ovn-nbctl --wait=hv set logical_switch ls-evpn other_config:dynamic-routing-fdb-prefer-local=true
+ovn-sbctl dump-flows ls-evpn > lflows
+
+AT_CHECK([grep 'ls_in_l2_lkup' lflows | grep "get_fdb" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); remote_outport = get_remote_fdb(eth.dst); next;)
+])
+
+AT_CHECK([grep 'ls_in_l2_unknown' lflows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
+  table=??(ls_in_l2_unknown   ), priority=25   , match=(outport == "none"), action=(outport = remote_outport; output;)
+  table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none" && remote_outport == "none"), action=(drop;)
+])
+
+check ovn-nbctl --wait=hv remove logical_switch ls-evpn other_config dynamic-routing-fdb-prefer-local
+ovn-sbctl dump-flows ls-evpn > lflows
+
+AT_CHECK([grep 'ls_in_l2_lkup' lflows | grep "get_fdb" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); remote_outport = get_remote_fdb(eth.dst); next;)
+])
+
+AT_CHECK([grep 'ls_in_l2_unknown' lflows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(outport = remote_outport; output;)
+  table=??(ls_in_l2_unknown   ), priority=25   , match=(remote_outport == "none"), action=(output;)
+  table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none" && remote_outport == "none"), action=(drop;)
+])
+
+AT_CLEANUP
+])

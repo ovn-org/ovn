@@ -2087,6 +2087,13 @@ reg15 = get_fdb(eth.dst);
 outport = get_fdb(ip4.dst);
     Cannot use 32-bit field ip4.dst[[0..31]] where 48-bit field is required.
 
+# get_remote_fdb
+reg1 = get_remote_fdb(eth.dst);
+    encodes as set_field:0->reg1,resubmit(,OFTABLE_GET_REMOTE_FDB),move:NXM_NX_REG1[[]]->NXM_NX_XXREG0[[64..95]]
+
+reg1 = get_remote_fdb(eth.src);
+    encodes as push:NXM_OF_ETH_DST[[]],push:NXM_OF_ETH_SRC[[]],pop:NXM_OF_ETH_DST[[]],set_field:0->reg1,resubmit(,OFTABLE_GET_REMOTE_FDB),pop:NXM_OF_ETH_DST[[]],move:NXM_NX_REG1[[]]->NXM_NX_XXREG0[[64..95]]
+
 # lookup_fdb
 reg0[[0]] = lookup_fdb(inport, eth.src);
     encodes as set_field:0/0x100->reg10,resubmit(,OFTABLE_LOOKUP_FDB),move:NXM_NX_REG10[[8]]->NXM_NX_XXREG0[[96]]
@@ -32987,10 +32994,12 @@ as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_GET_FDB > hv2_offlows_table71.t
 AT_CAPTURE_FILE([hv1_offlows_table71.txt])
 AT_CAPTURE_FILE([hv2_offlows_table71.txt])
 AT_CHECK_UNQUOTED([cat hv1_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=0 actions=load:0->NXM_NX_REG15[[]]
 priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:13 actions=load:0x$port_key->NXM_NX_REG15[[]]
 ])
 
 AT_CHECK_UNQUOTED([cat hv2_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=0 actions=load:0->NXM_NX_REG15[[]]
 priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:13 actions=load:0x$port_key->NXM_NX_REG15[[]]
 ])
 
@@ -33024,6 +33033,7 @@ AT_CAPTURE_FILE([hv3_offlows_table71.txt])
 AT_CAPTURE_FILE([hv3_offlows_table72.txt])
 
 AT_CHECK_UNQUOTED([cat hv3_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=0 actions=load:0->NXM_NX_REG15[[]]
 priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:13 actions=load:0x$port_key->NXM_NX_REG15[[]]
 ])
 
@@ -33056,16 +33066,19 @@ AT_CAPTURE_FILE([hv1_offlows_table71.txt])
 AT_CAPTURE_FILE([hv2_offlows_table71.txt])
 AT_CAPTURE_FILE([hv3_offlows_table71.txt])
 AT_CHECK_UNQUOTED([cat hv1_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=0 actions=load:0->NXM_NX_REG15[[]]
 priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:13 actions=load:0x$port_key->NXM_NX_REG15[[]]
 priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:14 actions=load:0x$port_key->NXM_NX_REG15[[]]
 ])
 
 AT_CHECK_UNQUOTED([cat hv2_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=0 actions=load:0->NXM_NX_REG15[[]]
 priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:13 actions=load:0x$port_key->NXM_NX_REG15[[]]
 priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:14 actions=load:0x$port_key->NXM_NX_REG15[[]]
 ])
 
 AT_CHECK_UNQUOTED([cat hv3_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=0 actions=load:0->NXM_NX_REG15[[]]
 priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:13 actions=load:0x$port_key->NXM_NX_REG15[[]]
 priority=100,metadata=0x$dp_key,dl_dst=50:54:00:00:00:14 actions=load:0x$port_key->NXM_NX_REG15[[]]
 ])
@@ -33258,10 +33271,12 @@ as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_GET_FDB > hv2_offlows_table71.t
 
 AT_CAPTURE_FILE([hv1_offlows_table71.txt])
 AT_CAPTURE_FILE([hv2_offlows_table71.txt])
-AT_CHECK([cat hv1_offlows_table71.txt | grep -v NXST], [1], [dnl
+AT_CHECK([cat hv1_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=0 actions=load:0->NXM_NX_REG15[[]]
 ])
 
-AT_CHECK([cat hv2_offlows_table71.txt | grep -v NXST], [1], [dnl
+AT_CHECK([cat hv2_offlows_table71.txt | grep -v NXST | cut -d ' ' -f8- | sort], [0], [dnl
+priority=0 actions=load:0->NXM_NX_REG15[[]]
 ])
 
 as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOOKUP_FDB > hv1_offlows_table72.txt
