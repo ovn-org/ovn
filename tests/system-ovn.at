@@ -18251,3 +18251,199 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([dynamic-routing - EVPN])
+AT_KEYWORDS([dynamic-routing])
+
+CHECK_VRF()
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+
+vni=10
+VRF_RESERVE([$vni])
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-ext], [set Bridge br-ext fail-mode=standalone])
+
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv1 \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+    -- set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext \
+    -- set Open_vSwitch . external-ids:ovn-evpn-local-ip=169.0.0.1 \
+    -- set Open_vSwitch . external-ids:ovn-evpn-vxlan-ports=4789 \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller.
+start_daemon ovn-controller
+
+OVS_WAIT_WHILE([ip link | grep -q ovnvrf$vni:.*UP])
+
+check ovn-nbctl                                                    \
+    -- ls-add ls-evpn                                              \
+    -- lsp-add ls-evpn workload1                                   \
+    -- lsp-set-addresses workload1 "f0:00:0f:16:01:10 172.16.1.10" \
+    -- lsp-add ls-evpn workload2                                   \
+    -- lsp-set-addresses workload2 "f0:00:0f:16:01:20 172.16.1.20" \
+    -- lsp-add ls-evpn ln_port                                     \
+    -- lsp-set-addresses ln_port unknown                           \
+    -- lsp-set-type ln_port localnet                               \
+    -- lsp-set-options ln_port network_name=phynet
+
+ADD_NAMESPACES(workload1)
+ADD_VETH(workload1, workload1, br-int, "172.16.1.1/24", "f0:00:0f:16:01:10", \
+         "172.16.1.10")
+
+ADD_NAMESPACES(workload2)
+ADD_VETH(workload2, workload2, br-int, "172.16.1.1/24", "f0:00:0f:16:01:20", \
+         "172.16.1.20")
+
+OVN_POPULATE_ARP
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up
+
+# Setup a VRF for the VNI.
+check ip link add vrf-$vni type vrf table $vni
+on_exit "ip link del vrf-$vni"
+check ip link set vrf-$vni up
+
+# Add VNI bridge.
+check ip link add br-$vni type bridge
+on_exit "ip link del br-$vni"
+check ip link set br-$vni master vrf-$vni addrgenmode none
+check ip link set dev br-$vni up
+
+# Add VXLAN VTEP for the VNI (linked to the OVS vxlan_sys_<port> interface).
+# Use a dstport different than the one used by OVS.
+# This is fine because we don't actually want traffic to pass through
+# the $vxlan interface.  FRR should read the dstport from the linked
+# vxlan_sys_${vxlan_port} device.
+dstport=$((60000 + $vni))
+check ip link add vxlan-$vni type vxlan \
+    id $vni dstport $dstport local 169.0.0.1 nolearning
+on_exit "ip link del vxlan-$vni"
+check ip link set dev vxlan-$vni up
+check ip link set vxlan-$vni master br-$vni
+
+# Add a dummy loopback to the VNI bridge to be used for advertising local
+# MACs.
+check ip link add name lo-$vni type dummy
+on_exit "ip link del lo-$vni"
+check ip link set lo-$vni master br-$vni
+check ip link set lo-$vni up
+
+check ovn-nbctl --wait=hv set logical_switch ls-evpn other_config:dynamic-routing-vni=$vni
+ofport=$(ovs-vsctl --bare --columns ofport find Interface name="ovn-evpn-4789")
+dp_key=$(fetch_column Datapath tunnel_key external_ids:name=ls-evpn)
+
+AT_CHECK([ovn-appctl evpn/remote-vtep-list], [0], [dnl
+])
+
+AT_CHECK([ovn-appctl evpn/vtep-binding-list], [0], [dnl
+])
+
+AT_CHECK([ovn-appctl evpn/vtep-multicast-group-list], [0], [dnl
+])
+
+# Simulate remote VTEP.
+check bridge fdb append 00:00:00:00:00:00 dev vxlan-$vni dst 169.0.0.10 static permanent
+
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/remote-vtep-list], [0], [dnl
+IP: 169.0.0.10, port: 4789, vni: $vni
+])
+
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-binding-list | cut -d',' -f2-], [0], [dnl
+ Remote IP: 169.0.0.10, vni: $vni, binding_key: 0x80000001, tunnel_ofport: $ofport, dp_key: $dp_key
+])
+
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-multicast-group-list | cut -d',' -f2-], [0], [dnl
+ Remote IPs: 169.0.0.10, vni: $vni
+])
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep priority=1050 | \
+                   awk '{print $7, $8}' | sort], [0], [dnl
+priority=1050,tun_id=0xa,tun_src=169.0.0.10,tun_dst=169.0.0.1,in_port=$ofport actions=load:0x$dp_key->OXM_OF_METADATA[[0..31]],load:0x80000001->NXM_NX_REG14[[]],resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
+])
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_VTEP_OUTPUT | grep output | \
+                   awk '{print $7, $8}' | sort], [0], [dnl
+priority=50,reg15=0x8000,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],load:0xa900000a->NXM_NX_TUN_IPV4_DST[[]],output:$ofport,resubmit(,OFTABLE_LOCAL_OUTPUT)
+priority=50,reg15=0x80000001,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa900000a->NXM_NX_TUN_IPV4_DST[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],output:$ofport
+priority=50,reg15=0x8001,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],load:0xa900000a->NXM_NX_TUN_IPV4_DST[[]],output:$ofport,resubmit(,OFTABLE_LOCAL_OUTPUT)
+priority=50,reg15=0x8004,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],load:0xa900000a->NXM_NX_TUN_IPV4_DST[[]],output:$ofport,resubmit(,OFTABLE_LOCAL_OUTPUT)
+priority=55,reg10=0x1/0x1,reg15=0x80000001,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa900000a->NXM_NX_TUN_IPV4_DST[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],load:0xffff->NXM_OF_IN_PORT[[]],output:$ofport
+])
+
+# Simulate second remote VTEP.
+check bridge fdb append 00:00:00:00:00:00 dev vxlan-$vni dst 169.0.0.20 static permanent
+
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/remote-vtep-list | sort], [0], [dnl
+IP: 169.0.0.10, port: 4789, vni: $vni
+IP: 169.0.0.20, port: 4789, vni: $vni
+])
+
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-binding-list | cut -d',' -f2- | sort], [0], [dnl
+ Remote IP: 169.0.0.10, vni: $vni, binding_key: 0x80000001, tunnel_ofport: $ofport, dp_key: $dp_key
+ Remote IP: 169.0.0.20, vni: $vni, binding_key: 0x80000002, tunnel_ofport: $ofport, dp_key: $dp_key
+])
+
+# We cannot check the output directly because the order might change.
+OVS_WAIT_UNTIL([ovn-appctl evpn/vtep-multicast-group-list | grep -q "169.0.0.10"])
+OVS_WAIT_UNTIL([ovn-appctl evpn/vtep-multicast-group-list | grep -q "169.0.0.20"])
+AT_CHECK([ovn-appctl evpn/vtep-multicast-group-list | wc -l], [0], [1
+])
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep priority=1050 | \
+                   awk '{print $7, $8}' | sort], [0], [dnl
+priority=1050,tun_id=0xa,tun_src=169.0.0.10,tun_dst=169.0.0.1,in_port=$ofport actions=load:0x$dp_key->OXM_OF_METADATA[[0..31]],load:0x80000001->NXM_NX_REG14[[]],resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
+priority=1050,tun_id=0xa,tun_src=169.0.0.20,tun_dst=169.0.0.1,in_port=$ofport actions=load:0x$dp_key->OXM_OF_METADATA[[0..31]],load:0x80000002->NXM_NX_REG14[[]],resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
+])
+
+ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_VTEP_OUTPUT > oftable_remote_vtep_output
+AT_CHECK_UNQUOTED([grep "output" oftable_remote_vtep_output | grep -v resubmit | \
+                   awk '{print $7, $8}' | sort], [0], [dnl
+priority=50,reg15=0x80000001,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa900000a->NXM_NX_TUN_IPV4_DST[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],output:$ofport
+priority=50,reg15=0x80000002,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa9000014->NXM_NX_TUN_IPV4_DST[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],output:$ofport
+priority=55,reg10=0x1/0x1,reg15=0x80000001,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa900000a->NXM_NX_TUN_IPV4_DST[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],load:0xffff->NXM_OF_IN_PORT[[]],output:$ofport
+priority=55,reg10=0x1/0x1,reg15=0x80000002,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa9000014->NXM_NX_TUN_IPV4_DST[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],load:0xffff->NXM_OF_IN_PORT[[]],output:$ofport
+])
+
+AT_CHECK([grep "resubmit" oftable_remote_vtep_output | grep -c "load:0xa900000a"], [0], [3
+])
+AT_CHECK([grep "resubmit" oftable_remote_vtep_output | grep -c "load:0xa9000014"], [0], [3
+])
+
+# Check that the recompute won't change the UUIDs and tunnel keys.
+ovn-appctl evpn/vtep-binding-list > bindings_before
+ovn-appctl evpn/vtep-multicast-group-list > mc_groups_before
+
+check ovn-appctl inc-engine/recompute
+check ovn-nbctl --wait=hv sync
+
+ovn-appctl evpn/vtep-binding-list > bindings_after
+ovn-appctl evpn/vtep-multicast-group-list > mc_groups_after
+
+check diff -q bindings_before bindings_after
+check diff -q mc_groups_before mc_groups_after
+
+OVN_CLEANUP_CONTROLLER([hv1])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/Failed to acquire.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])

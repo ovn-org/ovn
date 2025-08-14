@@ -53,6 +53,8 @@ Post v25.03.0
        Open_vSwitch database. This option allows CMS to set IP address that
        will be used as source for the EVPN traffic egressing through
        the tunnel.
+     * Add the "other_config:dynamic-routing-vni" to Logical Switches. If set
+       to valid integer the LS is considered to be connected to EVPN L2 domain.
 
 OVN v25.03.0 - 07 Mar 2025
 --------------------------
