@@ -20,6 +20,7 @@
 #include "tests/ovstest.h"
 #include "tests/test-utils.h"
 
+#include "controller/host-if-monitor.h"
 #include "controller/neighbor-exchange-netlink.h"
 #include "controller/neighbor-table-notify.h"
 #include "controller/neighbor.h"
@@ -143,6 +144,40 @@ test_neighbor_table_notify(struct ovs_cmdl_context *ctx)
 }
 
 static void
+test_host_if_monitor(struct ovs_cmdl_context *ctx)
+{
+    unsigned int shift = 1;
+
+    const char *if_name = test_read_value(ctx, shift++, "if_name");
+    if (!if_name) {
+        return;
+    }
+
+    const char *cmd = test_read_value(ctx, shift++, "shell_command");
+    if (!cmd) {
+        return;
+    }
+
+    const char *notify = test_read_value(ctx, shift++, "should_notify");
+    bool expect_notify = notify && !strcmp(notify, "true");
+
+    struct sset if_names = SSET_INITIALIZER(&if_names);
+    sset_add(&if_names, if_name);
+    host_if_monitor_update_watches(&if_names);
+
+    host_if_monitor_run();
+    host_if_monitor_wait();
+
+    int rc = system(cmd);
+    if (rc) {
+        exit(rc);
+    }
+    ovs_assert(host_if_monitor_run() == expect_notify);
+    printf("%"PRId32"\n", host_if_monitor_ifname_toindex(if_name));
+    sset_destroy(&if_names);
+}
+
+static void
 test_ovn_netlink(int argc, char *argv[])
 {
     set_program_name(argv[0]);
@@ -150,6 +185,7 @@ test_ovn_netlink(int argc, char *argv[])
         {"neighbor-sync", NULL, 2, INT_MAX, test_neighbor_sync, OVS_RO},
         {"neighbor-table-notify", NULL, 3, 4,
          test_neighbor_table_notify, OVS_RO},
+        {"host-if-monitor", NULL, 2, 3, test_host_if_monitor, OVS_RO},
         {NULL, NULL, 0, 0, NULL, OVS_RO},
     };
     struct ovs_cmdl_context ctx;

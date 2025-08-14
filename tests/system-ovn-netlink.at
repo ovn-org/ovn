@@ -275,3 +275,27 @@ check ovstest test-ovn-netlink neighbor-table-notify br-test $br_if_index \
         dev br-test-unused extern_learn' \
     false
 AT_CLEANUP
+
+AT_SETUP([netlink - host-if-monitor])
+AT_KEYWORDS([netlink])
+
+dnl Should notify if an interface whose name is monitored by OVN is added.
+on_exit 'ip link del lo-test'
+if_index=$(ovstest test-ovn-netlink host-if-monitor lo-test \
+    'ip link add lo-test type dummy && ip link set dev lo-test up' \
+    true)
+check test $? -eq 0
+AT_CHECK_UNQUOTED([netlink_if_index lo-test], [0], [dnl
+$if_index
+])
+
+dnl Should NOT notify if an interface whose name is not monitored by OVN
+dnl is added.
+check ip link del lo-test
+on_exit 'ip link del lo-test-unused'
+AT_CHECK([ovstest test-ovn-netlink host-if-monitor lo-test \
+    'ip link add lo-test-unused type dummy && ip link set dev lo-test-unused up' \
+    false], [0], [dnl
+0
+])
+AT_CLEANUP
