@@ -598,3 +598,19 @@ m4_define([OVN_ROUTE_EQUAL],
 m4_define([OVN_ROUTE_V6_EQUAL],
   [OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf $1 | sed -e 's|[[[[:space:]]]]*$||g' -e 's|proto 84|proto ovn|'], [$2])
 ])
+
+# OVN_NEIGH_EQUAL([interface], [options], [match], [string to compare])
+#
+# Will dump all matching v4 neighbors on the mentioned interface. Trailing
+# spaces will be removed.
+m4_define([OVN_NEIGH_EQUAL],
+  [OVS_WAIT_UNTIL_EQUAL([ip neigh show dev $1 $2 | sed -e 's|[[[[:space:]]]]*$||g' | grep $3 | sort], [$4])
+])
+
+# OVN_NEIGH_V6_EQUAL([interface], [options], [match], [string to compare])
+#
+# Will dump all matching v6 neighbors on the mentioned interface. Trailing
+# spaces will be removed.
+m4_define([OVN_NEIGH_V6_EQUAL],
+  [OVS_WAIT_UNTIL_EQUAL([ip -6 neigh show dev $1 $2 | sed -e 's|[[[[:space:]]]]*$||g' | grep $3 | sort], [$4])
+])

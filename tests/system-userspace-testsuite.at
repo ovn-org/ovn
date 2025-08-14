@@ -24,3 +24,4 @@ m4_include([tests/system-userspace-macros.at])
 m4_include([tests/system-common-macros.at])
 
 m4_include([tests/system-ovn.at])
+m4_include([tests/system-ovn-netlink.at])

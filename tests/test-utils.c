@@ -15,8 +15,10 @@
 
 #include <config.h>
 
+#include "packets.h"
 #include "test-utils.h"
 
+#include "ovn-util.h"
 #include "util.h"
 
 static bool
@@ -73,6 +75,40 @@ test_read_ullong_value(struct ovs_cmdl_context *ctx, unsigned int index,
 
     const char *arg = ctx->argv[index];
     if (!str_to_ullong(arg, 10, result)) {
+        fprintf(stderr, "Invalid %s: %s\n", descr, arg);
+        return false;
+    }
+    return true;
+}
+
+bool
+test_read_eth_addr_value(struct ovs_cmdl_context *ctx, unsigned int index,
+                         const char *descr, struct eth_addr *result)
+{
+    if (index >= ctx->argc) {
+        fprintf(stderr, "Missing %s argument\n", descr);
+        return false;
+    }
+
+    const char *arg = ctx->argv[index];
+    if (!eth_addr_from_string(arg, result)) {
+        fprintf(stderr, "Invalid %s: %s\n", descr, arg);
+        return false;
+    }
+    return true;
+}
+
+bool
+test_read_ipv6_mapped_value(struct ovs_cmdl_context *ctx, unsigned int index,
+                           const char *descr, struct in6_addr *result)
+{
+    if (index >= ctx->argc) {
+        fprintf(stderr, "Missing %s argument\n", descr);
+        return false;
+    }
+
+    const char *arg = ctx->argv[index];
+    if (!ip46_parse(arg, result)) {
         fprintf(stderr, "Invalid %s: %s\n", descr, arg);
         return false;
     }

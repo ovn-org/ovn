@@ -1,0 +1,222 @@
+AT_BANNER([system-ovn-netlink])
+
+AT_SETUP([sync netlink neighbors - learn VXLAN VTEP neighbors])
+AT_KEYWORDS([netlink-neighbors])
+
+check ip link add br-test type bridge
+on_exit 'ip link del br-test'
+check ip link set br-test address 00:00:00:00:00:01
+check ip link set dev br-test up
+
+check ip link add vxlan-test type vxlan id 42 \
+    dstport 4789 local 42.42.42.2 nolearning
+on_exit 'ip link del vxlan-test'
+check ip link set vxlan-test master br-test
+check ip link set vxlan-test address 00:00:00:00:00:02
+check ip link set dev vxlan-test up
+
+dnl Inject permanent (vxlan) entries.
+check bridge fdb append 00:00:00:00:00:00 dev vxlan-test \
+    dst 42.42.42.3 port 4789 self permanent
+check bridge fdb append 00:00:00:00:00:00 dev vxlan-test \
+    dst 42.42.42.4 port 4790 self permanent
+
+if_index=$(netlink_if_index vxlan-test)
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink neighbor-sync \
+    bridge $if_index 0 | sort], [0], [dnl
+Neighbor ifindex=$if_index vlan=0 eth=00:00:00:00:00:00 dst=42.42.42.3 port=0
+Neighbor ifindex=$if_index vlan=0 eth=00:00:00:00:00:00 dst=42.42.42.4 port=4790
+Neighbor ifindex=$if_index vlan=0 eth=00:00:00:00:00:02 dst=:: port=0
+])
+AT_CLEANUP
+
+AT_SETUP([sync netlink neighbors - learn VXLAN remote mac entries])
+AT_KEYWORDS([netlink-neighbors])
+
+check ip link add br-test type bridge
+on_exit 'ip link del br-test'
+check ip link set br-test address 00:00:00:00:00:01
+check ip link set dev br-test up
+
+check ip link add vxlan-test type vxlan id 42 \
+    dstport 4789 local 42.42.42.2 nolearning
+on_exit 'ip link del vxlan-test'
+check ip link set vxlan-test master br-test
+check ip link set vxlan-test address 00:00:00:00:00:02
+check ip link set dev vxlan-test up
+
+dnl Inject externally learnt (vxlan) mac entries.
+check bridge fdb add 00:00:00:00:00:03 dev vxlan-test \
+    dst 42.42.42.3 static extern_learn
+
+if_index=$(netlink_if_index vxlan-test)
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink neighbor-sync \
+    bridge $if_index 0 | sort], [0], [dnl
+Neighbor ifindex=$if_index vlan=0 eth=00:00:00:00:00:02 dst=:: port=0
+Neighbor ifindex=$if_index vlan=0 eth=00:00:00:00:00:03 dst=42.42.42.3 port=0
+])
+AT_CLEANUP
+
+AT_SETUP([sync netlink neighbors - inject OVN static mac entries])
+AT_KEYWORDS([netlink-neighbors])
+
+check ip link add br-test type bridge
+on_exit 'ip link del br-test'
+check ip link set br-test address 00:00:00:00:00:01
+check ip link set dev br-test up
+
+check ip link add lo-test type dummy
+on_exit 'ip link del lo-test'
+check ip link set lo-test master br-test
+check ip link set lo-test address 00:00:00:00:00:02
+check ip link set dev lo-test up
+
+dnl Let ovn inject some neighbor (mac) entries, we detect the lo-test mac and
+dnl the L2 multicast ones.
+if_index=$(netlink_if_index lo-test)
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink neighbor-sync \
+    bridge $if_index 2 00:00:00:00:01:00 00:00:00:00:02:00 | sort], [0], [dnl
+Neighbor ifindex=$if_index vlan=0 eth=00:00:00:00:00:02 dst=:: port=0
+Neighbor ifindex=$if_index vlan=0 eth=01:00:5e:00:00:01 dst=:: port=0
+Neighbor ifindex=$if_index vlan=0 eth=33:33:00:00:00:01 dst=:: port=0
+])
+
+dnl Check that OVN installed its entries (these are always installed
+dnl as "static").
+OVS_WAIT_FOR_OUTPUT([bridge fdb show dev lo-test | grep static | sort], [0],
+[dnl
+00:00:00:00:01:00 master br-test static
+00:00:00:00:01:00 vlan 1 master br-test static
+00:00:00:00:02:00 master br-test static
+00:00:00:00:02:00 vlan 1 master br-test static
+])
+
+dnl Remove the static entries, rerun the OVN test binary, they should be
+dnl readded.
+check bridge fdb del 00:00:00:00:01:00 dev lo-test master static
+check bridge fdb del 00:00:00:00:02:00 dev lo-test master static
+
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink neighbor-sync \
+    bridge $if_index 2 00:00:00:00:01:00 00:00:00:00:02:00 | sort], [0], [dnl
+Neighbor ifindex=$if_index vlan=0 eth=00:00:00:00:00:02 dst=:: port=0
+Neighbor ifindex=$if_index vlan=0 eth=01:00:5e:00:00:01 dst=:: port=0
+Neighbor ifindex=$if_index vlan=0 eth=33:33:00:00:00:01 dst=:: port=0
+])
+
+OVS_WAIT_FOR_OUTPUT([bridge fdb show dev lo-test | grep static | sort], [0],
+[dnl
+00:00:00:00:01:00 master br-test static
+00:00:00:00:01:00 vlan 1 master br-test static
+00:00:00:00:02:00 master br-test static
+00:00:00:00:02:00 vlan 1 master br-test static
+])
+
+dnl Inject some ovn-like entries, rerun the OVN test binary, they should
+dnl be removed.
+check bridge fdb add 00:00:00:00:03:00 dev lo-test master static
+check bridge fdb add 00:00:00:00:04:00 dev lo-test master static
+
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink neighbor-sync \
+    bridge $if_index 2 00:00:00:00:01:00 00:00:00:00:02:00 | sort], [0], [dnl
+Neighbor ifindex=$if_index vlan=0 eth=00:00:00:00:00:02 dst=:: port=0
+Neighbor ifindex=$if_index vlan=0 eth=01:00:5e:00:00:01 dst=:: port=0
+Neighbor ifindex=$if_index vlan=0 eth=33:33:00:00:00:01 dst=:: port=0
+])
+
+OVS_WAIT_FOR_OUTPUT([bridge fdb show dev lo-test | grep static | sort], [0],
+[dnl
+00:00:00:00:01:00 master br-test static
+00:00:00:00:01:00 vlan 1 master br-test static
+00:00:00:00:02:00 master br-test static
+00:00:00:00:02:00 vlan 1 master br-test static
+])
+
+AT_CLEANUP
+
+AT_SETUP([sync netlink neighbors - learn IP neighbors])
+AT_KEYWORDS([netlink-neighbors])
+CHECK_VRF()
+
+dnl NOTE: To avoid affecting the default routing table configure a test
+dnl interface into a separate vrf.
+check ip link add vrf-ovn type vrf table 42
+on_exit 'ip link del vrf-ovn'
+check ip link add br-test type bridge
+on_exit 'ip link del br-test'
+check ip link set br-test master vrf-ovn
+check ip link set br-test address 00:00:00:00:00:01
+check ip address add dev br-test 20.20.20.1/24
+check ip -6 address add dev br-test 20::1/64
+check ip link set dev br-test up
+
+dnl Inject externally learnt IP neighbor entries.
+check ip neigh add 10.10.10.10 \
+    lladdr 00:00:00:00:10:00 dev br-test extern_learn
+check ip -6 neigh add 10::10 \
+    lladdr 00:00:00:00:10:00 dev br-test extern_learn
+
+dnl Let OVN inject some IPv4 neighbors too and make sure it learnt the
+dnl external ones.
+if_index=$(netlink_if_index br-test)
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink neighbor-sync \
+    inet $if_index 1 00:00:00:00:20:00 20.20.20.20 | sort], [0], [dnl
+Neighbor ifindex=$if_index vlan=0 eth=00:00:00:00:10:00 dst=10.10.10.10 port=0
+])
+
+dnl Check that OVN installed its entries (these are always installed
+dnl as "noarp").
+OVN_NEIGH_EQUAL([br-test], [nud noarp], [20.20.20], [dnl
+20.20.20.20 lladdr 00:00:00:00:20:00 NOARP])
+
+dnl Let OVN inject some IPv6 neighbors too and make sure it learnt the
+dnl external ones.
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink neighbor-sync \
+    inet6 $if_index 1 00:00:00:00:20:00 20::20 | sort], [0], [dnl
+Neighbor ifindex=$if_index vlan=0 eth=00:00:00:00:10:00 dst=10::10 port=0
+])
+
+dnl Check that OVN installed its entries (these are always installed
+dnl as "noarp").
+OVN_NEIGH_V6_EQUAL([br-test], [nud noarp], [20::], [dnl
+20::20 lladdr 00:00:00:00:20:00 NOARP])
+
+dnl Remove the "noarp" entries, rerun the OVN test binary, they should be
+dnl readded.
+check ip neigh del dev br-test 20.20.20.20
+check ip -6 neigh del dev br-test 20::20
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink neighbor-sync \
+    inet $if_index 1 00:00:00:00:20:00 20.20.20.20 | sort], [0], [dnl
+Neighbor ifindex=$if_index vlan=0 eth=00:00:00:00:10:00 dst=10.10.10.10 port=0
+])
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink neighbor-sync \
+    inet6 $if_index 1 00:00:00:00:20:00 20::20 | sort], [0], [dnl
+Neighbor ifindex=$if_index vlan=0 eth=00:00:00:00:10:00 dst=10::10 port=0
+])
+
+OVN_NEIGH_EQUAL([br-test], [nud noarp], [20.20.20], [dnl
+20.20.20.20 lladdr 00:00:00:00:20:00 NOARP])
+OVN_NEIGH_V6_EQUAL([br-test], [nud noarp], [20::], [dnl
+20::20 lladdr 00:00:00:00:20:00 NOARP])
+
+dnl Inject some ovn-like entries, rerun the OVN test binary, they should
+dnl be removed.
+check ip neigh add 20.20.20.40 \
+    lladdr 00:00:00:00:40:00 dev br-test nud noarp
+check ip -6 neigh add 20::40 \
+    lladdr 00:00:00:00:40:00 dev br-test nud noarp
+
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink neighbor-sync \
+    inet $if_index 1 00:00:00:00:20:00 20.20.20.20 | sort], [0], [dnl
+Neighbor ifindex=$if_index vlan=0 eth=00:00:00:00:10:00 dst=10.10.10.10 port=0
+])
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink neighbor-sync \
+    inet6 $if_index 1 00:00:00:00:20:00 20::20 | sort], [0], [dnl
+Neighbor ifindex=$if_index vlan=0 eth=00:00:00:00:10:00 dst=10::10 port=0
+])
+
+OVN_NEIGH_EQUAL([br-test], [nud noarp], [20.20.20], [dnl
+20.20.20.20 lladdr 00:00:00:00:20:00 NOARP])
+OVN_NEIGH_V6_EQUAL([br-test], [nud noarp], [20::], [dnl
+20::20 lladdr 00:00:00:00:20:00 NOARP])
+
+AT_CLEANUP

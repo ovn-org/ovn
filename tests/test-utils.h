@@ -16,6 +16,10 @@
 #ifndef TEST_UTILS_H
 #define TEST_UTILS_H 1
 
+#include <sys/types.h>
+#include <netinet/in.h>
+
+#include "openvswitch/types.h"
 #include "ovstest.h"
 
 bool test_read_uint_value(struct ovs_cmdl_context *ctx, unsigned int index,
@@ -26,5 +30,9 @@ const char *test_read_value(struct ovs_cmdl_context *ctx, unsigned int index,
                             const char *descr);
 bool test_read_ullong_value(struct ovs_cmdl_context *ctx, unsigned int index,
                             const char *descr, unsigned long long int *result);
-
+bool test_read_eth_addr_value(struct ovs_cmdl_context *ctx, unsigned int index,
+                              const char *descr, struct eth_addr *result);
+bool test_read_ipv6_mapped_value(struct ovs_cmdl_context *ctx,
+                                 unsigned int index, const char *descr,
+                                 struct in6_addr *result);
 #endif /* tests/test-utils.h */

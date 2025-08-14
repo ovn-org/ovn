@@ -30,6 +30,8 @@ controller_ovn_controller_SOURCES = \
 	controller/ofctrl.h \
 	controller/ofctrl-seqno.c \
 	controller/ofctrl-seqno.h \
+	controller/neighbor.c \
+	controller/neighbor.h \
 	controller/pinctrl.c \
 	controller/pinctrl.h \
 	controller/patch.c \
@@ -65,6 +67,8 @@ controller_ovn_controller_SOURCES = \
 
 if HAVE_NETLINK
 controller_ovn_controller_SOURCES += \
+	controller/neighbor-exchange-netlink.h \
+	controller/neighbor-exchange-netlink.c \
 	controller/route-exchange-netlink.h \
 	controller/route-exchange-netlink.c \
 	controller/route-exchange.c \
