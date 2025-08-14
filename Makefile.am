@@ -350,13 +350,16 @@ check-tabs:
 	fi
 .PHONY: check-tabs
 
+# NOTE: test-ovn-netlink.c excluded due to use of system() to execute
+#       ip neigh / bridge fdb commands provided as arguments by test suite.
 ALL_LOCAL += thread-safety-check
 thread-safety-check:
 	@cd $(srcdir); \
 	if test -e .git && (git --version) >/dev/null 2>&1 && \
 	  grep -n -f build-aux/thread-safety-blacklist \
 	    `git ls-files | grep -v $(submodules) | grep '\.[ch]$$'` /dev/null \
-	      | $(EGREP) -v ':[ 	]*/?\*'; \
+	      | $(EGREP) -v ':[ 	]*/?\*' \
+	      | $(EGREP) -v '^tests/test-ovn-netlink.c'; \
 	then \
 	  echo "See above for list of calls to functions that are"; \
 	  echo "blacklisted due to thread safety issues"; \

@@ -220,3 +220,58 @@ OVN_NEIGH_V6_EQUAL([br-test], [nud noarp], [20::], [dnl
 20::20 lladdr 00:00:00:00:20:00 NOARP])
 
 AT_CLEANUP
+
+AT_SETUP([sync netlink neighbors - table notify])
+AT_KEYWORDS([netlink-neighbors])
+
+check ip link add br-test type bridge
+on_exit 'ip link del br-test'
+check ip link set br-test address 00:00:00:00:00:01
+check ip address add dev br-test 10.10.10.1/24
+check ip link set dev br-test up
+
+check ip link add lo-test type dummy
+on_exit 'ip link del lo-test'
+check ip link set lo-test master br-test
+check ip link set lo-test address 00:00:00:00:00:02
+check ip link set dev lo-test up
+lo_if_index=$(netlink_if_index lo-test)
+
+check ip link add br-test-unused type bridge
+on_exit 'ip link del br-test-unused'
+check ip link set br-test-unused address 00:00:00:00:00:03
+check ip address add dev br-test-unused 20.20.20.1/24
+check ip link set dev br-test-unused up
+
+check ip link add lo-test-unused type dummy
+on_exit 'ip link del lo-test-unused'
+check ip link set lo-test-unused master br-test-unused
+check ip link set lo-test-unused address 00:00:00:00:00:04
+check ip link set dev lo-test-unused up
+
+dnl Should notify if an entry is added to a bridge port monitored by OVN.
+check ovstest test-ovn-netlink neighbor-table-notify lo-test $lo_if_index \
+    'bridge fdb add 00:00:00:00:00:05 dev lo-test' \
+    true
+
+dnl Should NOT notify if an entry is added to a bridge port that's not
+dnl monitored by OVN.
+check ovstest test-ovn-netlink neighbor-table-notify lo-test $lo_if_index \
+    'bridge fdb add 00:00:00:00:00:05 dev lo-test-unused' \
+    false
+
+br_if_index=$(netlink_if_index br-test)
+dnl Should notify if an entry is added to a bridge that's monitored by
+dnl OVN.
+check ovstest test-ovn-netlink neighbor-table-notify br-test $br_if_index \
+    'ip neigh add 10.10.10.10 lladdr 00:00:00:00:10:00 \
+        dev br-test extern_learn' \
+    true
+
+dnl Should NOT notify if an entry is added to a bridge that's not monitored by
+dnl OVN.
+check ovstest test-ovn-netlink neighbor-table-notify br-test $br_if_index \
+    'ip neigh add 20.20.20.20 lladdr 00:00:00:00:20:00 \
+        dev br-test-unused extern_learn' \
+    false
+AT_CLEANUP

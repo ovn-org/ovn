@@ -297,6 +297,8 @@ if HAVE_NETLINK
 tests_ovstest_SOURCES += \
 	controller/neighbor-exchange-netlink.c \
 	controller/neighbor-exchange-netlink.h \
+	controller/neighbor-table-notify.c \
+	controller/neighbor-table-notify.h \
 	controller/neighbor.c \
 	controller/neighbor.h \
 	tests/test-ovn-netlink.c
