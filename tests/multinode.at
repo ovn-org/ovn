@@ -3055,10 +3055,10 @@ add_guest_vm_and_connections() {
         $default_route $default_route_gw $lrp_guest_join
 }
 
-m_setup_external_frr_router ovn-gw-1 4200000100 41.41.41.41
+m_setup_external_frr_router ovn-gw-1 4200000100 41.41.41.41 41.41.41.41/32
 m_setup_ovn_frr_router      ovn-gw-1 4210000000 14.14.14.14 12:fb:d6:66:99:1c 10
 
-m_setup_external_frr_router ovn-gw-2 4200000200 42.42.42.42
+m_setup_external_frr_router ovn-gw-2 4200000200 42.42.42.42 42.42.42.42/32
 m_setup_ovn_frr_router      ovn-gw-2 4210000000 24.24.24.24 22:fb:d6:66:99:2c 20
 
 OVS_WAIT_UNTIL([m_as ovn-gw-2 vtysh -c 'show bgp vrf ovnvrf20 neighbors' | grep -qE 'Connections established 1'])
@@ -3613,3 +3613,136 @@ check_migration_between_gw1_and_gw2 "kill_gw1"
 
 AT_CLEANUP
 ])
+
+AT_SETUP([ovn multinode bgp L2 EVPN])
+check_fake_multinode_setup
+
+# Delete the multinode NB and OVS resources before starting the test.
+cleanup_multinode_resources
+
+CHECK_VRF()
+
+vni=10
+ext_bgp_ip_gw1=42.42.$vni.11
+host_bgp_ip_gw1=42.42.$vni.12
+ext_bgp_ip_gw2=42.42.$vni.21
+host_bgp_ip_gw2=42.42.$vni.22
+
+# Create an flat, distributed OVN localnet switch, with EVPN configured.
+ check m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
+ check m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
+ check m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-evpn-local-ip=$host_bgp_ip_gw1
+ check m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-evpn-local-ip=$host_bgp_ip_gw2
+ # The tunnels need to be created before the call to "m_setup_host_frr_router()".
+ check m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-evpn-vxlan-ports=4789
+ check m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-evpn-vxlan-ports=4789
+
+m_setup_external_frr_router ovn-gw-1 4200000100 $ext_bgp_ip_gw1 $ext_bgp_ip_gw1/24 $vni
+m_setup_host_frr_router     ovn-gw-1 4210000000 $host_bgp_ip_gw1 $host_bgp_ip_gw1/24 $vni
+
+m_setup_external_frr_router ovn-gw-2 4200000200 $ext_bgp_ip_gw2 $ext_bgp_ip_gw2/24 $vni
+m_setup_host_frr_router     ovn-gw-2 4210000000 $host_bgp_ip_gw2 $host_bgp_ip_gw2/24 $vni
+
+OVS_WAIT_UNTIL([m_as ovn-gw-1 vtysh -c 'show bgp neighbors' | grep -qE 'Connections established 1'])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 vtysh -c 'show bgp neighbors' | grep -qE 'Connections established 1'])
+
+check multinode_nbctl ls-add ls                        \
+    -- lsp-add ls ls-ln -- lsp-set-type ls-ln localnet \
+    -- lsp-set-addresses ls-ln unknown                 \
+    -- lsp-set-options ls-ln network_name=public
+
+# Configure "workloads" (VIF LSPs) on both chassis.
+check multinode_nbctl lsp-add ls w1                       \
+    -- lsp-set-addresses w1 "00:00:00:00:00:01 10.0.0.11"
+check multinode_nbctl lsp-add ls w2                       \
+    -- lsp-set-addresses w2 "00:00:00:00:00:02 10.0.0.12"
+
+check m_as ovn-gw-1 /data/create_fake_vm.sh w1 w1 00:00:00:00:00:01 1500 10.0.0.11 24 10.0.0.1 1000::11/64 1000::1
+check m_as ovn-gw-2 /data/create_fake_vm.sh w2 w2 00:00:00:00:00:02 1500 10.0.0.12 24 10.0.0.1 1000::12/64 1000::1
+m_wait_for_ports_up
+
+# Enable EVPN support for the distributed logical switch and redistribute
+# local FDBs.
+check multinode_nbctl set logical_switch ls       \
+    other_config:dynamic-routing-vni=$vni         \
+    other_config:dynamic-routing-redistribute=fdb
+check multinode_nbctl --wait=hv sync
+
+OVS_WAIT_UNTIL([m_as ovn-gw-1 bridge fdb | grep vxlan-10 | grep -q "00:00:00:00:00:00"])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 bridge fdb | grep vxlan-10 | grep -q "00:00:00:00:00:00"])
+
+AS_BOX([Checking Remote VTEPs learned in OVN])
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([m_as ovn-gw-1 ovn-appctl evpn/remote-vtep-list | sort], [0], [dnl
+IP: $ext_bgp_ip_gw1, port: 4789, vni: 10
+])
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([m_as ovn-gw-2 ovn-appctl evpn/remote-vtep-list | sort], [0], [dnl
+IP: $ext_bgp_ip_gw2, port: 4789, vni: 10
+])
+
+AS_BOX([Check traffic to "fabric" hosts - simulate external workloads])
+check m_as ovn-gw-1 ip link add evpn_host type veth peer evpn_host_peer
+on_exit "m_as ovn-gw-1 ip link del evpn_host"
+check m_as ovn-gw-1 ip link set netns frr-ns evpn_host_peer
+check m_as ovn-gw-1 ip netns exec frr-ns ip link set evpn_host_peer master br-10
+check m_as ovn-gw-1 ip netns exec frr-ns ip link set evpn_host_peer up
+check m_as ovn-gw-1 ip link set evpn_host addr 00:00:00:00:01:00
+check m_as ovn-gw-1 ip addr add dev evpn_host 10.0.0.41/24
+check m_as ovn-gw-1 ip link set evpn_host up
+
+check m_as ovn-gw-2 ip link add evpn_host type veth peer evpn_host_peer
+on_exit "m_as ovn-gw-2 ip link del evpn_host"
+check m_as ovn-gw-2 ip link set netns frr-ns evpn_host_peer
+check m_as ovn-gw-2 ip netns exec frr-ns ip link set evpn_host_peer master br-10
+check m_as ovn-gw-2 ip netns exec frr-ns ip link set evpn_host_peer up
+check m_as ovn-gw-2 ip link set evpn_host addr 00:00:00:00:02:00
+check m_as ovn-gw-2 ip addr add dev evpn_host 10.0.0.42/24
+check m_as ovn-gw-2 ip link set evpn_host up
+
+AS_BOX([Checking EVPN MACs on External BGP host])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-1 ip netns exec frr-ns vtysh --vty_socket /run/frr/frr-ns -c 'show evpn mac vni all'], [0], [dnl
+
+VNI 10 #MACs (local and remote) 2
+
+Flags: N=sync-neighs, I=local-inactive, P=peer-active, X=peer-proxy
+MAC               Type   Flags Intf/Remote ES/VTEP            VLAN  Seq #'s
+00:00:00:00:00:01 remote       42.42.10.12                          0/0
+00:00:00:00:01:00 local        evpn_host_peer                       0/0
+])
+
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ip netns exec frr-ns vtysh --vty_socket /run/frr/frr-ns -c 'show evpn mac vni all'], [0], [dnl
+
+VNI 10 #MACs (local and remote) 2
+
+Flags: N=sync-neighs, I=local-inactive, P=peer-active, X=peer-proxy
+MAC               Type   Flags Intf/Remote ES/VTEP            VLAN  Seq #'s
+00:00:00:00:00:02 remote       42.42.10.22                          0/0
+00:00:00:00:02:00 local        evpn_host_peer                       0/0
+])
+
+AS_BOX([Check traffic to "fabric" hosts - ping from fabric])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ping -W 1 -c 1 10.0.0.11])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ping -W 1 -c 1 10.0.0.12])
+
+# Remove "workloads" (VIF LSPs) on both chassis.
+check multinode_nbctl --wait=hv lsp-del w1 -- lsp-del w2
+
+AS_BOX([Checking EVPN MACs on External BGP host])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-1 ip netns exec frr-ns vtysh --vty_socket /run/frr/frr-ns -c 'show evpn mac vni all'], [0], [dnl
+
+VNI 10 #MACs (local and remote) 1
+
+Flags: N=sync-neighs, I=local-inactive, P=peer-active, X=peer-proxy
+MAC               Type   Flags Intf/Remote ES/VTEP            VLAN  Seq #'s
+00:00:00:00:01:00 local        evpn_host_peer                       0/0
+])
+
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ip netns exec frr-ns vtysh --vty_socket /run/frr/frr-ns -c 'show evpn mac vni all'], [0], [dnl
+
+VNI 10 #MACs (local and remote) 1
+
+Flags: N=sync-neighs, I=local-inactive, P=peer-active, X=peer-proxy
+MAC               Type   Flags Intf/Remote ES/VTEP            VLAN  Seq #'s
+00:00:00:00:02:00 local        evpn_host_peer                       0/0
+])
+
+AT_CLEANUP

@@ -4,13 +4,50 @@
 
 OVS_START_SHELL_HELPERS
 
-# m_setup_external_frr_router NODE BGP_AS BGP_IP
+# m_setup_external_frr_vrf NODE VNI LOCAL_IP NETNS
+#
+# Sets up a VRF in NETNS so that it can be used by FRR running in that
+# namespace to advertise EVPN routes.
+m_setup_external_frr_vrf() {
+    local node=$1 vni=$2 local_ip=$3 ns=$4
+
+    local ns_prefix="ip netns exec $ns "
+    local vrf=vrf-$vni
+    local br=br-$vni
+    local vxlan=vxlan-$vni
+    local lo=lo-$vni
+
+    check m_as $node $ns_prefix ip link add $vrf type vrf table $vni
+    on_exit "m_as $node $ns_prefix ip link del $vrf"
+    check m_as $node $ns_prefix ip link set $vrf up
+
+    # Add VNI bridge.
+    check m_as $node $ns_prefix ip link add $br type bridge
+    on_exit "m_as $node $ns_prefix ip link del $br"
+    check m_as $node $ns_prefix ip link set $br master $vrf addrgenmode none
+    check m_as $node $ns_prefix ip link set dev $br up
+
+    # Add VXLAN VTEP for the VNI.
+    check m_as $node $ns_prefix ip link add $vxlan type vxlan id $vni dstport 4789 local $local_ip nolearning
+    on_exit "m_as $node $ns_prefix ip link del $vxlan"
+    check m_as $node $ns_prefix ip link set dev $vxlan up
+    check m_as $node $ns_prefix ip link set $vxlan master $br
+
+    # Add a dummy loopback to the VNI bridge to be used for advertising local
+    # MACs.
+    check m_as $node $ns_prefix ip link add name $lo type dummy
+    on_exit "m_as $node $ns_prefix ip link del $lo"
+    check m_as $node $ns_prefix ip link set $lo master $br
+    check m_as $node $ns_prefix ip link set $lo up
+}
+
+# m_setup_external_frr_router NODE BGP_AS BGP_ROUTER_ID BGP_IP [VNI]
 #
 # Sets up an external FRR BGP speaker in a network namespace on the
 # ovn-fake-multinode node NODE.  The BGP autonomous system is configured to be
 # BGP_AS.  The speaker uses as BGP IP address, BGP_IP
 m_setup_external_frr_router() {
-    local node=$1 bgp_as=$2 bgp_ip=$3
+    local node=$1 bgp_as=$2 bgp_router_id=$3 bgp_ip=$4 vni=$5
     local br_name=br-$node
 
     check m_as $node ovs-vsctl add-br $br_name
@@ -55,27 +92,38 @@ m_setup_external_frr_router() {
     on_exit "m_as $node systemctl stop frr"
     check m_as $node systemctl start frr
 
-    local frr_flags="-N frr-ns"
+    frr_flags="-N frr-ns"
     if m_is_fedora; then
         frr_flags="--vty_socket /run/frr/frr-ns"
     fi
 
+    # NOTE: we set "no bgp ebgp-requires-policy" to simplify EVPN deployments.
     echo "configure
     ip prefix-list accept-all seq 5 permit any
 
     router bgp $bgp_as
-      bgp router-id $bgp_ip
+      bgp router-id $bgp_router_id
+      no bgp ebgp-requires-policy
       neighbor ext1 interface remote-as external
       address-family ipv4 unicast
         neighbor ext1 soft-reconfiguration inbound
         neighbor ext1 prefix-list accept-all in
       exit-address-family
-      !
       address-family ipv6 unicast
         neighbor ext1 soft-reconfiguration inbound
         neighbor ext1 activate
       exit-address-family
+      address-family l2vpn evpn
+        neighbor ext1 activate
+        advertise-all-vni
+      exit-address-family
     " | podman exec -i $node vtysh $frr_flags
+
+    # Configure VRF, if any provided.
+    bgp_ip=$(echo $bgp_ip | cut -f 1 -d '/')
+    if [[[ -n "$vni" ]]]; then
+        m_setup_external_frr_vrf $node $vni $bgp_ip frr-ns
+    fi
 }
 
 # m_ovn_frr_router_name NODE
@@ -216,6 +264,107 @@ m_setup_ovn_frr_router() {
         neighbor ext0-bgp activate
       exit-address-family
     " | podman exec -i $node vtysh
+}
+
+# m_setup_host_frr_vrf NODE VNI LOCAL_IP
+#
+# Sets up a VRF in the default net namespace so that it can be used by OVN
+# and FRR to advertise EVPN routes.
+m_setup_host_frr_vrf() {
+    local node=$1 vni=$2 local_ip=$3
+
+    local vrf=vrf-$vni
+    local br=br-$vni
+    local vxlan=vxlan-$vni
+    local lo=lo-$vni
+    local vxlan_port=4789
+
+    # Setup a VRF for the VNI.
+    check m_as $node ip link add $vrf type vrf table $vni
+    on_exit "m_as $node ip link del $vrf"
+    check m_as $node ip link set $vrf up
+
+    # Add VNI bridge.
+    check m_as $node ip link add $br type bridge
+    on_exit "m_as $node ip link del $br"
+    check m_as $node ip link set $br master $vrf addrgenmode none
+    check m_as $node ip link set dev $br up
+
+    # Add VXLAN VTEP for the VNI (linked to the OVS vxlan_sys_<port> interface).
+    # Use a dstport different than the one used by OVS.
+    # This is fine because we don't actually want traffic to pass through
+    # the $vxlan interface.  FRR should read the dstport from the linked
+    # vxlan_sys_${vxlan_port} device.
+    local dstport=$((60000 + $vni))
+    check m_as $node ip link add $vxlan type vxlan   \
+        dev vxlan_sys_${vxlan_port}                  \
+        id $vni dstport $dstport local $local_ip nolearning
+    on_exit "m_as $node ip link del $vxlan"
+    check m_as $node ip link set dev $vxlan up
+    check m_as $node ip link set $vxlan master $br
+
+    # Add a dummy loopback to the VNI bridge to be used for advertising local
+    # MACs.
+    check m_as $node ip link add name $lo type dummy
+    on_exit "m_as $node ip link del $lo"
+    check m_as $node ip link set $lo master $br
+    check m_as $node ip link set $lo up
+}
+
+# m_setup_host_frr_router NODE BGP_AS BGP_ROUTER_ID BGP_IP VNI
+#
+# Sets up an FRR BGP speaker in the default network namespace on the
+# ovn-fake-multinode node NODE.  This speaker is running on a ovs bridge
+# interface (simulating the fabric connection).
+#
+# The BGP autonomous system is configured to be BGP_AS and the FRR instance
+# runs in vrf-VNI.
+m_setup_host_frr_router() {
+    local node=$1 bgp_as=$2 bgp_router_id=$3 bgp_ip=$4 vni=$5
+
+    local br_name=br-$node physnet=physnet_${node}_ext0
+    local lr=$(m_ovn_frr_router_name $node)
+    local lrp=$(m_ovn_frr_router_port_name $node)
+    local ls=$(m_ovn_frr_switch_name $node)
+    local lsp=$(m_ovn_frr_switch_port_name $node)
+    local lsp_bgp=$(m_ovn_frr_switch_bgp_port_name $node)
+    local lsp_ln=$(m_ovn_frr_switch_localnet_port_name $node)
+
+    # Configure the BGP IP on the bridge LOCAL interface.
+    check m_as $node ip addr add $bgp_ip dev $br_name
+    check m_as $node ip link set $br_name up
+
+    # NOTE: we set "no bgp ebgp-requires-policy" to simplify EVPN deployments.
+    echo "configure
+    ip prefix-list no-default seq 5 deny 0.0.0.0/0
+    ip prefix-list no-default seq 10 permit 0.0.0.0/0 le 32
+
+    ipv6 prefix-list no-default seq 5 deny ::/0
+    ipv6 prefix-list no-default seq 10 permit ::/0 le 128
+
+    router bgp ${bgp_as}
+      bgp router-id $bgp_router_id
+      no bgp ebgp-requires-policy
+      neighbor $br_name interface remote-as external
+      address-family ipv4 unicast
+        redistribute kernel
+        neighbor $br_name prefix-list no-default out
+      exit-address-family
+      address-family ipv6 unicast
+        neighbor $br_name soft-reconfiguration inbound
+        neighbor $br_name prefix-list no-default out
+        redistribute kernel
+        neighbor $br_name activate
+      exit-address-family
+      address-family l2vpn evpn
+        neighbor $br_name activate
+        advertise-all-vni
+      exit-address-family
+    " | podman exec -i $node vtysh
+
+    # Configure VRF.
+    bgp_ip=$(echo $bgp_ip | cut -f 1 -d '/')
+    m_setup_host_frr_vrf $node $vni $bgp_ip
 }
 
 OVS_END_SHELL_HELPERS
