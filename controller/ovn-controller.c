@@ -94,6 +94,10 @@
 #include "route-exchange.h"
 #include "route-table-notify.h"
 #include "garp_rarp.h"
+#include "host-if-monitor.h"
+#include "neighbor.h"
+#include "neighbor-exchange.h"
+#include "neighbor-table-notify.h"
 
 VLOG_DEFINE_THIS_MODULE(main);
 
@@ -4984,6 +4988,14 @@ controller_output_garp_rarp_handler(struct engine_node *node OVS_UNUSED,
     return EN_HANDLED_UPDATED;
 }
 
+static enum engine_input_handler_result
+controller_output_neighbor_exchange_handler(
+    struct engine_node *node OVS_UNUSED,
+    void *data OVS_UNUSED)
+{
+    return EN_HANDLED_UPDATED;
+}
+
 /* Handles sbrec_chassis changes.
  * If a new chassis is added or removed return false, so that
  * flows are recomputed.  For any updates, there is no need for
@@ -5656,6 +5668,199 @@ garp_rarp_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
     return EN_HANDLED_UNCHANGED;
 }
 
+struct ed_type_host_if_monitor {
+    /* For incremental processing this could be tracked per interface in
+     * the future. */
+    bool changed;
+};
+
+static void *
+en_host_if_monitor_init(struct engine_node *node OVS_UNUSED,
+                       struct engine_arg *arg OVS_UNUSED)
+{
+    struct ed_type_host_if_monitor *hifm = xmalloc(sizeof *hifm);
+
+    *hifm = (struct ed_type_host_if_monitor) {
+        .changed = true,
+    };
+    return hifm;
+}
+
+static void
+en_host_if_monitor_cleanup(void *data OVS_UNUSED)
+{
+}
+
+static enum engine_node_state
+en_host_if_monitor_run(struct engine_node *node OVS_UNUSED, void *data)
+{
+    struct ed_type_host_if_monitor *hifm = data;
+    enum engine_node_state state;
+    if (hifm->changed) {
+        state = EN_UPDATED;
+    } else {
+        state = EN_UNCHANGED;
+    }
+    hifm->changed = false;
+    return state;
+}
+
+struct ed_type_neighbor {
+    /* Contains struct neighbor_interface_monitor pointers. */
+    struct vector monitored_interfaces;
+};
+
+static void *
+en_neighbor_init(struct engine_node *node OVS_UNUSED,
+                 struct engine_arg *arg OVS_UNUSED)
+{
+    struct ed_type_neighbor *data = xzalloc(sizeof *data);
+
+    *data = (struct ed_type_neighbor) {
+        .monitored_interfaces =
+            VECTOR_EMPTY_INITIALIZER(struct neighbor_interface_monitor *),
+    };
+    return data;
+}
+
+static void
+en_neighbor_cleanup(void *data)
+{
+    struct ed_type_neighbor *ne_data = data;
+
+    neighbor_cleanup(&ne_data->monitored_interfaces);
+    vector_destroy(&ne_data->monitored_interfaces);
+}
+
+static enum engine_node_state
+en_neighbor_run(struct engine_node *node OVS_UNUSED, void *data)
+{
+    struct ed_type_neighbor *ne_data = data;
+    struct neighbor_ctx_in n_ctx_in = {
+    };
+
+    struct neighbor_ctx_out n_ctx_out = {
+        .monitored_interfaces = &ne_data->monitored_interfaces,
+    };
+
+    neighbor_cleanup(&ne_data->monitored_interfaces);
+    neighbor_run(&n_ctx_in, &n_ctx_out);
+
+    /* XXX: This should return EN_UPDATED once we actually process real SB
+     * changes, i.e.:
+     *
+     * return EN_UPDATED;
+     */
+
+    return EN_UNCHANGED;
+}
+
+struct ed_type_neighbor_table_notify {
+    /* For incremental processing this could be tracked per interface in
+     * the future. */
+    bool changed;
+};
+
+static void *
+en_neighbor_table_notify_init(struct engine_node *node OVS_UNUSED,
+                              struct engine_arg *arg OVS_UNUSED)
+{
+    struct ed_type_neighbor_table_notify *ntn = xmalloc(sizeof *ntn);
+
+    *ntn = (struct ed_type_neighbor_table_notify) {
+        .changed = true,
+    };
+    return ntn;
+}
+
+static void
+en_neighbor_table_notify_cleanup(void *data OVS_UNUSED)
+{
+}
+
+static enum engine_node_state
+en_neighbor_table_notify_run(struct engine_node *node OVS_UNUSED,
+                             void *data)
+{
+    struct ed_type_neighbor_table_notify *ntn = data;
+    enum engine_node_state state;
+    if (ntn->changed) {
+        state = EN_UPDATED;
+    } else {
+        state = EN_UNCHANGED;
+    }
+    ntn->changed = false;
+    return state;
+}
+
+static void *
+en_neighbor_exchange_init(struct engine_node *node OVS_UNUSED,
+                          struct engine_arg *arg OVS_UNUSED)
+{
+    return NULL;
+}
+
+static void
+en_neighbor_exchange_cleanup(void *data OVS_UNUSED)
+{
+}
+
+static enum engine_node_state
+en_neighbor_exchange_run(struct engine_node *node, void *data OVS_UNUSED)
+{
+    const struct ed_type_neighbor *neighbor_data =
+        engine_get_input_data("neighbor", node);
+
+    struct neighbor_exchange_ctx_in n_ctx_in = {
+        .monitored_interfaces = &neighbor_data->monitored_interfaces,
+    };
+    struct neighbor_exchange_ctx_out n_ctx_out = {
+        .neighbor_table_watches =
+            HMAP_INITIALIZER(&n_ctx_out.neighbor_table_watches),
+    };
+
+    neighbor_exchange_run(&n_ctx_in, &n_ctx_out);
+    neighbor_table_notify_update_watches(&n_ctx_out.neighbor_table_watches);
+
+    neighbor_table_watch_request_cleanup(&n_ctx_out.neighbor_table_watches);
+    hmap_destroy(&n_ctx_out.neighbor_table_watches);
+
+    return EN_UPDATED;
+}
+
+struct ed_type_neighbor_exchange_status {
+    bool netlink_trigger_run;
+};
+
+static void *
+en_neighbor_exchange_status_init(struct engine_node *node OVS_UNUSED,
+                                 struct engine_arg *arg OVS_UNUSED)
+{
+    return xzalloc(sizeof(struct ed_type_neighbor_exchange_status));
+}
+
+static void
+en_neighbor_exchange_status_cleanup(void *data OVS_UNUSED)
+{
+}
+
+static enum engine_node_state
+en_neighbor_exchange_status_run(struct engine_node *node OVS_UNUSED,
+                                void *data OVS_UNUSED)
+{
+    struct ed_type_neighbor_exchange_status *res = data;
+    enum engine_node_state state;
+
+    if (res->netlink_trigger_run) {
+        state = EN_UPDATED;
+    } else {
+        state = EN_UNCHANGED;
+    }
+    res->netlink_trigger_run = false;
+
+    return state;
+}
+
 /* Returns false if the northd internal version stored in SB_Global
  * and ovn-controller internal version don't match.
  */
@@ -5975,6 +6180,11 @@ main(int argc, char *argv[])
     ENGINE_NODE(route_exchange);
     ENGINE_NODE(route_exchange_status);
     ENGINE_NODE(garp_rarp);
+    ENGINE_NODE(host_if_monitor);
+    ENGINE_NODE(neighbor);
+    ENGINE_NODE(neighbor_table_notify);
+    ENGINE_NODE(neighbor_exchange);
+    ENGINE_NODE(neighbor_exchange_status);
 
 #define SB_NODE(NAME) ENGINE_NODE_SB(NAME);
     SB_NODES
@@ -6200,6 +6410,12 @@ main(int argc, char *argv[])
     engine_add_input(&en_garp_rarp, &en_runtime_data,
                      garp_rarp_runtime_data_handler);
 
+    engine_add_input(&en_neighbor_exchange, &en_neighbor, NULL);
+    engine_add_input(&en_neighbor_exchange, &en_host_if_monitor, NULL);
+    engine_add_input(&en_neighbor_exchange, &en_neighbor_table_notify, NULL);
+    engine_add_input(&en_neighbor_exchange, &en_neighbor_exchange_status,
+                     NULL);
+
     engine_add_input(&en_controller_output, &en_dns_cache,
                      NULL);
     engine_add_input(&en_controller_output, &en_lflow_output,
@@ -6218,6 +6434,9 @@ main(int argc, char *argv[])
     engine_add_input(&en_acl_id, &en_sb_acl_id, NULL);
     engine_add_input(&en_controller_output, &en_acl_id,
                      controller_output_acl_id_handler);
+
+    engine_add_input(&en_controller_output, &en_neighbor_exchange,
+                     controller_output_neighbor_exchange_handler);
 
     struct engine_arg engine_arg = {
         .sb_idl = ovnsb_idl_loop.idl,
@@ -6570,9 +6789,23 @@ main(int argc, char *argv[])
                         engine_get_internal_data(&en_route_table_notify);
                     rtn->changed = route_table_notify_run();
 
-                    struct ed_type_route_exchange_status *res =
+                    struct ed_type_host_if_monitor *hifm =
+                        engine_get_internal_data(&en_host_if_monitor);
+                    hifm->changed = host_if_monitor_run();
+
+                    struct ed_type_neighbor_table_notify *ntn =
+                        engine_get_internal_data(&en_neighbor_table_notify);
+                    ntn->changed = neighbor_table_notify_run();
+
+                    struct ed_type_route_exchange_status *rt_res =
                         engine_get_internal_data(&en_route_exchange_status);
-                    res->netlink_trigger_run = !!route_exchange_status_run();
+                    rt_res->netlink_trigger_run =
+                        !!route_exchange_status_run();
+
+                    struct ed_type_neighbor_exchange_status *neigh_res =
+                        engine_get_internal_data(&en_neighbor_exchange_status);
+                    neigh_res->netlink_trigger_run =
+                        !!neighbor_exchange_status_run();
 
                     stopwatch_start(CONTROLLER_LOOP_STOPWATCH_NAME,
                                     time_msec());
@@ -6884,6 +7117,8 @@ main(int argc, char *argv[])
 
             binding_wait();
             route_table_notify_wait();
+            host_if_monitor_wait();
+            neighbor_table_notify_wait();
         }
 
         unixctl_server_run(unixctl);

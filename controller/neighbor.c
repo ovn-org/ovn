@@ -52,6 +52,16 @@ neighbor_run(struct neighbor_ctx_in *n_ctx_in OVS_UNUSED,
              struct neighbor_ctx_out *n_ctx_out OVS_UNUSED)
 {
     /* XXX: Not implemented yet. */
+
+    /* XXX: TODO GLUE: get information from (n_ctx_in) SB (runtime-data) about:
+     * - local datapath vni (and listen on br-$vni, lo-$vni and vxlan-$vni)
+     *   for which we want to enable neighbor monitoring
+     *   https://issues.redhat.com/browse/FDP-1385
+     * - what FDB/neighbor entries to advertise
+     *   https://issues.redhat.com/browse/FDP-1389
+     *
+     * And populate that in n_ctx_out.
+     */
 }
 
 void

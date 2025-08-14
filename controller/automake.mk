@@ -64,6 +64,7 @@ controller_ovn_controller_SOURCES = \
 	controller/route.c \
 	controller/garp_rarp.h \
 	controller/garp_rarp.c \
+	controller/neighbor-exchange.h \
 	controller/neighbor-table-notify.h \
 	controller/host-if-monitor.h
 
@@ -72,6 +73,7 @@ controller_ovn_controller_SOURCES += \
 	controller/host-if-monitor.c \
 	controller/neighbor-exchange-netlink.h \
 	controller/neighbor-exchange-netlink.c \
+	controller/neighbor-exchange.c \
 	controller/neighbor-table-notify.c \
 	controller/route-exchange-netlink.h \
 	controller/route-exchange-netlink.c \
@@ -80,6 +82,7 @@ controller_ovn_controller_SOURCES += \
 else
 controller_ovn_controller_SOURCES += \
 	controller/host-if-monitor-stub.c \
+	controller/neighbor-exchange-stub.c \
 	controller/neighbor-table-notify-stub.c \
 	controller/route-exchange-stub.c \
 	controller/route-table-notify-stub.c
