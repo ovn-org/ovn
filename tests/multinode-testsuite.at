@@ -23,5 +23,6 @@ m4_include([tests/ofproto-macros.at])
 m4_include([tests/ovn-macros.at])
 m4_include([tests/system-common-macros.at])
 m4_include([tests/multinode-macros.at])
+m4_include([tests/multinode-bgp-macros.at])
 
 m4_include([tests/multinode.at])

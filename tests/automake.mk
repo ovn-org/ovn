@@ -71,6 +71,7 @@ PERF_TESTSUITE_AT = \
 	tests/perf-northd.at
 
 MULTINODE_TESTSUITE_AT = \
+	tests/multinode-bgp-macros.at \
 	tests/multinode-testsuite.at \
 	tests/multinode-macros.at \
 	tests/multinode.at

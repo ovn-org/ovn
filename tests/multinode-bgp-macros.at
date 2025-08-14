@@ -1,0 +1,221 @@
+#
+# Test helpers for setting up BGP in multinode scenarios.
+#
+
+OVS_START_SHELL_HELPERS
+
+# m_setup_external_frr_router NODE BGP_AS BGP_IP
+#
+# Sets up an external FRR BGP speaker in a network namespace on the
+# ovn-fake-multinode node NODE.  The BGP autonomous system is configured to be
+# BGP_AS.  The speaker uses as BGP IP address, BGP_IP
+m_setup_external_frr_router() {
+    local node=$1 bgp_as=$2 bgp_ip=$3
+    local br_name=br-$node
+
+    check m_as $node ovs-vsctl add-br $br_name
+    on_exit "m_as $node ovs-vsctl del-br $br_name"
+    check m_as $node ip netns add frr-ns
+    on_exit "m_as $node ip netns del frr-ns"
+
+    check m_as $node ip netns exec frr-ns ip link set lo up
+    check m_as $node ovs-vsctl add-port $br_name ext1 \
+        -- set interface ext1 type=internal
+
+    check m_as $node ip link set ext1 netns frr-ns
+    check m_as $node ip netns exec frr-ns ip link set ext1 up
+    check m_as $node ip netns exec frr-ns ip addr add $bgp_ip dev ext1
+
+    check m_as $node sed -i 's/bgpd=no/bgpd=yes/g' /etc/frr/daemons
+    check m_as $node sed -i 's/StartLimitBurst=.*/StartLimitBurst=100/g' /usr/lib/systemd/system/frr.service
+    check m_as $node systemctl daemon-reload
+
+    check m_as $node mkdir -p /etc/frr/frr-ns
+    if m_is_fedora; then
+        check m_as $node chown -R frr:frr /etc/frr/frr-ns
+        check m_as $node mkdir -p /run/frr/frr-ns
+        check m_as $node chown -R frr:frr /run/frr/frr-ns
+        check m_as $node cp -r /etc/frr/daemons /etc/frr/frr.conf /etc/frr/frr-ns/
+    else
+        check m_as $node cp -r /etc/frr/daemons /etc/frr/frr.conf /etc/frr/support_bundle_commands.conf /etc/frr/frr-ns/
+    fi
+
+    on_exit "m_as $node rm -rf /etc/frr/frr-ns"
+    check m_as $node rm -rf /etc/frr/frr-ns/vtysh.conf
+    check m_as $node touch /etc/frr/frr-ns/vtysh.conf
+
+    check m_as $node systemctl stop frr
+    if m_is_fedora; then
+        m_as $node ip netns exec frr-ns /usr/libexec/frr/frrinit.sh start frr-ns
+        on_exit "m_as $node ip netns exec frr-ns /usr/libexec/frr/frrinit.sh stop frr-ns"
+    else
+        m_as $node ip netns exec frr-ns /usr/lib/frr/frrinit.sh start frr-ns
+        on_exit "m_as $node ip netns exec frr-ns /usr/lib/frr/frrinit.sh stop frr-ns"
+    fi
+    on_exit "m_as $node systemctl stop frr"
+    check m_as $node systemctl start frr
+
+    local frr_flags="-N frr-ns"
+    if m_is_fedora; then
+        frr_flags="--vty_socket /run/frr/frr-ns"
+    fi
+
+    echo "configure
+    ip prefix-list accept-all seq 5 permit any
+
+    router bgp $bgp_as
+      bgp router-id $bgp_ip
+      neighbor ext1 interface remote-as external
+      address-family ipv4 unicast
+        neighbor ext1 soft-reconfiguration inbound
+        neighbor ext1 prefix-list accept-all in
+      exit-address-family
+      !
+      address-family ipv6 unicast
+        neighbor ext1 soft-reconfiguration inbound
+        neighbor ext1 activate
+      exit-address-family
+    " | podman exec -i $node vtysh $frr_flags
+}
+
+# m_ovn_frr_router_name NODE
+m_ovn_frr_router_name() {
+    local node=$1
+
+    echo lr-$node-ext0
+}
+
+# m_ovn_frr_router_port_name NODE
+m_ovn_frr_router_port_name() {
+    local node=$1
+
+    echo lrp-$node-ext0
+}
+
+# m_ovn_frr_switch_name NODE
+m_ovn_frr_switch_name() {
+    local node=$1
+
+    echo ls-$node-ext0
+}
+
+# m_ovn_frr_switch_port_name NODE
+m_ovn_frr_switch_port_name() {
+    local node=$1
+
+    echo lsp-$node-ext0
+}
+
+# m_ovn_frr_switch_bgp_port_name NODE
+m_ovn_frr_switch_bgp_port_name() {
+    local node=$1
+
+    echo $(m_ovn_frr_switch_port_name $node)-bgp
+}
+
+# m_ovn_frr_switch_localnet_port_name NODE
+m_ovn_frr_switch_localnet_port_name() {
+    local node=$1
+
+    echo $(m_ovn_frr_switch_port_name $node)-ln
+}
+
+# m_setup_ovn_frr_router NODE BGP_AS BGP_IP BGP_MAC VNI
+#
+# Sets up an FRR BGP speaker in a VRF in the default network namespace on the
+# ovn-fake-multinode node NODE.  This speaker is running on an interface bound
+# to a local OVN logical switch, ls-NODE-ext0, and uses the same BGP_IP and
+# BGP_MAC address as a logical router, lr-NODE-ext0, with
+# routing-protocol-redirect enabled.
+#
+# The BGP autonomous system is configured to be BGP_AS and the FRR instance
+# runs in vrf VNI.
+m_setup_ovn_frr_router() {
+    local node=$1 bgp_as=$2 bgp_ip=$3 bgp_mac=$4 vni=$5
+    local br_name=br-$node physnet=physnet_${node}_ext0
+    local lr=$(m_ovn_frr_router_name $node)
+    local lrp=$(m_ovn_frr_router_port_name $node)
+    local ls=$(m_ovn_frr_switch_name $node)
+    local lsp=$(m_ovn_frr_switch_port_name $node)
+    local lsp_bgp=$(m_ovn_frr_switch_bgp_port_name $node)
+    local lsp_ln=$(m_ovn_frr_switch_localnet_port_name $node)
+
+    check m_as $node ovs-vsctl set Open_vSwitch . \
+        external-ids:ovn-bridge-mappings="$physnet:$br_name"
+
+    check multinode_nbctl lr-add $lr
+    check multinode_nbctl set Logical_Router $lr options:chassis=$node \
+        options:dynamic-routing=true options:requested-tnl-key=$vni
+
+    check multinode_nbctl lrp-add $lr $lrp $bgp_mac
+    check multinode_nbctl lrp-set-options $lrp \
+        dynamic-routing-maintain-vrf=true      \
+        dynamic-routing-redistribute=nat
+
+    check multinode_nbctl ls-add $ls
+
+    check multinode_nbctl lsp-add $ls $lsp
+    check multinode_nbctl lsp-set-type $lsp router
+    check multinode_nbctl lsp-set-options $lsp router-port=$lrp
+    check multinode_nbctl lsp-set-addresses $lsp router
+
+    check multinode_nbctl lsp-add $ls $lsp_ln
+    check multinode_nbctl lsp-set-addresses $lsp_ln unknown
+    check multinode_nbctl lsp-set-type $lsp_ln localnet
+    check multinode_nbctl lsp-set-options $lsp_ln network_name=$physnet
+
+    OVS_WAIT_UNTIL([m_as $node ip link | grep -q ovnvrf${vni}:.*UP])
+
+    check multinode_nbctl lsp-add $ls $lsp_bgp
+    check multinode_nbctl lsp-set-addresses $lsp_bgp unknown
+
+    check multinode_nbctl add Logical_Router_Port $lrp \
+        options routing-protocols=\"BGP,BFD\"          \
+                routing-protocol-redirect=$lsp_bgp
+    check multinode_nbctl set Logical_Router_Port $lrp \
+        ipv6_ra_configs:send_periodic=true
+    check multinode_nbctl set Logical_Router_Port $lrp \
+        ipv6_ra_configs:address_mode=slaac
+    check multinode_nbctl set Logical_Router_Port $lrp \
+        ipv6_ra_configs:max_interval=1
+    check multinode_nbctl set Logical_Router_Port $lrp \
+        ipv6_ra_configs:min_interval=1
+
+    check m_as $node ovs-vsctl add-port br-int ext0-bgp --     \
+        set Interface ext0-bgp type=internal  mac=\"$bgp_mac\" \
+        external-ids:iface-id=$lsp_bgp
+    on_exit "m_as $node ovs-vsctl del-port br-int ext0-bgp"
+
+    check m_as $node ip link set dev ext0-bgp master ovnvrf${vni}
+    check m_as $node ip link set dev ext0-bgp up
+
+    check multinode_nbctl --wait=hv sync
+    m_wait_for_ports_up
+
+    echo "configure
+    ip prefix-list no-default seq 5 deny 0.0.0.0/0
+    ip prefix-list no-default seq 10 permit 0.0.0.0/0 le 32
+
+    ipv6 prefix-list no-default seq 5 deny ::/0
+    ipv6 prefix-list no-default seq 10 permit ::/0 le 128
+
+    vrf ovnvrf${vni}
+    exit-vrf
+
+    router bgp ${bgp_as} vrf ovnvrf${vni}
+      bgp router-id $bgp_ip
+      neighbor ext0-bgp interface remote-as external
+      address-family ipv4 unicast
+        redistribute kernel
+        neighbor ext0-bgp prefix-list no-default out
+      exit-address-family
+      address-family ipv6 unicast
+        neighbor ext0-bgp soft-reconfiguration inbound
+        neighbor ext0-bgp prefix-list no-default out
+        redistribute kernel
+        neighbor ext0-bgp activate
+      exit-address-family
+    " | podman exec -i $node vtysh
+}
+
+OVS_END_SHELL_HELPERS
