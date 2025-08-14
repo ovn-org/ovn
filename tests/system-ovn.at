@@ -18449,6 +18449,24 @@ check diff -q bindings_before bindings_after
 check diff -q mc_groups_before mc_groups_after
 check diff -q fdb_before fdb_after
 
+check ovn-nbctl --wait=hv set logical_switch ls-evpn other_config:dynamic-routing-redistribute=fdb
+OVS_WAIT_FOR_OUTPUT([bridge fdb show | grep "lo-10" | grep "f0:00:0f:16:01" | sort], [0], [dnl
+f0:00:0f:16:01:10 dev lo-10 master br-10 static
+f0:00:0f:16:01:10 dev lo-10 vlan 1 master br-10 static
+f0:00:0f:16:01:20 dev lo-10 master br-10 static
+f0:00:0f:16:01:20 dev lo-10 vlan 1 master br-10 static
+])
+
+check ovn-nbctl --wait=hv lsp-del workload2
+OVS_WAIT_FOR_OUTPUT([bridge fdb show | grep "lo-10" | grep "f0:00:0f:16:01" | sort], [0], [dnl
+f0:00:0f:16:01:10 dev lo-10 master br-10 static
+f0:00:0f:16:01:10 dev lo-10 vlan 1 master br-10 static
+])
+
+check ovn-nbctl --wait=hv remove logical_switch ls-evpn other_config dynamic-routing-redistribute
+OVS_WAIT_FOR_OUTPUT([bridge fdb show | grep "lo-10" | grep "f0:00:0f:16:01" | sort], [0], [dnl
+])
+
 OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb

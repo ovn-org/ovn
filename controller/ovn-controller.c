@@ -5771,6 +5771,8 @@ en_host_if_monitor_run(struct engine_node *node OVS_UNUSED, void *data)
 struct ed_type_neighbor {
     /* Contains struct neighbor_interface_monitor pointers. */
     struct vector monitored_interfaces;
+    /* Contains set of PB names that are currently advertised. */
+    struct sset advertised_pbs;
 };
 
 static void *
@@ -5782,6 +5784,7 @@ en_neighbor_init(struct engine_node *node OVS_UNUSED,
     *data = (struct ed_type_neighbor) {
         .monitored_interfaces =
             VECTOR_EMPTY_INITIALIZER(struct neighbor_interface_monitor *),
+        .advertised_pbs = SSET_INITIALIZER(&data->advertised_pbs),
     };
     return data;
 }
@@ -5793,6 +5796,7 @@ en_neighbor_cleanup(void *data)
 
     neighbor_cleanup(&ne_data->monitored_interfaces);
     vector_destroy(&ne_data->monitored_interfaces);
+    sset_destroy(&ne_data->advertised_pbs);
 }
 
 static enum engine_node_state
@@ -5801,25 +5805,68 @@ en_neighbor_run(struct engine_node *node OVS_UNUSED, void *data)
     struct ed_type_neighbor *ne_data = data;
     struct ed_type_runtime_data *rt_data =
         engine_get_input_data("runtime_data", node);
+    struct ovsdb_idl_index *sbrec_port_binding_by_datapath =
+        engine_ovsdb_node_get_index(
+            engine_get_input("SB_port_binding", node),
+            "datapath");
+    struct ovsdb_idl_index *sbrec_port_binding_by_name =
+        engine_ovsdb_node_get_index(
+            engine_get_input("SB_port_binding", node),
+            "name");
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
+    struct ovsdb_idl_index *sbrec_chassis_by_name =
+        engine_ovsdb_node_get_index(
+            engine_get_input("SB_chassis", node),
+            "name");
+
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    ovs_assert(chassis_id);
+    const struct sbrec_chassis *chassis =
+        chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
+    ovs_assert(chassis);
+
     struct neighbor_ctx_in n_ctx_in = {
         .local_datapaths = &rt_data->local_datapaths,
+        .sbrec_pb_by_dp = sbrec_port_binding_by_datapath,
+        .sbrec_pb_by_name = sbrec_port_binding_by_name,
+        .chassis = chassis,
     };
 
     struct neighbor_ctx_out n_ctx_out = {
         .monitored_interfaces = &ne_data->monitored_interfaces,
+        .advertised_pbs = &ne_data->advertised_pbs,
     };
 
     neighbor_cleanup(&ne_data->monitored_interfaces);
+    sset_clear(&ne_data->advertised_pbs);
     neighbor_run(&n_ctx_in, &n_ctx_out);
 
     return EN_UPDATED;
 }
 
 static enum engine_input_handler_result
-neighbor_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
+neighbor_runtime_data_handler(struct engine_node *node, void *data)
 {
+    struct ed_type_neighbor *ne_data = data;
     struct ed_type_runtime_data *rt_data =
         engine_get_input_data("runtime_data", node);
+    struct ovsdb_idl_index *sbrec_port_binding_by_name =
+        engine_ovsdb_node_get_index(
+            engine_get_input("SB_port_binding", node),
+            "name");
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
+    struct ovsdb_idl_index *sbrec_chassis_by_name =
+        engine_ovsdb_node_get_index(
+            engine_get_input("SB_chassis", node),
+            "name");
+
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    ovs_assert(chassis_id);
+    const struct sbrec_chassis *chassis =
+        chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
+    ovs_assert(chassis);
 
     /* There are no tracked data. Fall back to full recompute. */
     if (!rt_data->tracked) {
@@ -5843,6 +5890,22 @@ neighbor_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
         if (tdp->tracked_type == TRACKED_RESOURCE_NEW ||
             tdp->tracked_type == TRACKED_RESOURCE_REMOVED) {
             return EN_UNHANDLED;
+        }
+
+        const char *redistribute = smap_get(&ld->datapath->external_ids,
+                                            "dynamic-routing-redistribute");
+        if (!redistribute || strcmp(redistribute, "fdb")) {
+            continue;
+        }
+
+        const struct shash_node *shash_node;
+        SHASH_FOR_EACH (shash_node, &tdp->lports) {
+            if (neighbor_is_relevant_port_updated(sbrec_port_binding_by_name,
+                                                  chassis,
+                                                  &ne_data->advertised_pbs,
+                                                  shash_node->data)) {
+                return EN_UNHANDLED;
+            }
         }
     }
 
@@ -5876,6 +5939,30 @@ neighbor_sb_datapath_binding_handler(struct engine_node *node,
 
         if (sbrec_datapath_binding_is_updated(
                 dp, SBREC_DATAPATH_BINDING_COL_EXTERNAL_IDS)) {
+            return EN_UNHANDLED;
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
+static enum engine_input_handler_result
+neighbor_sb_port_binding_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_neighbor *ne_data = data;
+    const struct sbrec_port_binding_table *pb_table =
+        EN_OVSDB_GET(engine_get_input("SB_port_binding", node));
+
+    const struct sbrec_port_binding *pb;
+    SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb, pb_table) {
+        if (sbrec_port_binding_is_new(pb) ||
+            sbrec_port_binding_is_deleted(pb)) {
+            /* The removal and addition is handled via runtime_data. */
+            return EN_HANDLED_UNCHANGED;
+        }
+
+        if (sbrec_port_binding_is_updated(pb, SBREC_PORT_BINDING_COL_MAC) &&
+            sset_contains(&ne_data->advertised_pbs, pb->logical_port)) {
             return EN_UNHANDLED;
         }
     }
@@ -6786,10 +6873,14 @@ main(int argc, char *argv[])
     engine_add_input(&en_garp_rarp, &en_runtime_data,
                      garp_rarp_runtime_data_handler);
 
+    engine_add_input(&en_neighbor, &en_ovs_open_vswitch, NULL);
+    engine_add_input(&en_neighbor, &en_sb_chassis, NULL);
     engine_add_input(&en_neighbor, &en_runtime_data,
                      neighbor_runtime_data_handler);
     engine_add_input(&en_neighbor, &en_sb_datapath_binding,
                      neighbor_sb_datapath_binding_handler);
+    engine_add_input(&en_neighbor, &en_sb_port_binding,
+                     neighbor_sb_port_binding_handler);
     engine_add_input(&en_neighbor_exchange, &en_neighbor, NULL);
     engine_add_input(&en_neighbor_exchange, &en_host_if_monitor, NULL);
     engine_add_input(&en_neighbor_exchange, &en_neighbor_table_notify, NULL);

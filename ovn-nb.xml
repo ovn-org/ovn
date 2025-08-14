@@ -907,6 +907,26 @@
           removal/change in the future.
         </p>
       </column>
+
+      <column name="other_config" key="dynamic-routing-redistribute"
+              type='{"type": "string"}'>
+        <p>
+          Only relevant if <ref column="other_config" key="dynamic-routing-vni"
+                                table="Logical_switch"/> is set to valid VNI.
+        </p>
+
+        <p>
+          If <code>fdb</code> is specified then ovn-controller will advertise
+          all workloads that are local to the chassis. The applies to VIFs,
+          container ports, virtual ports, connected DGPs and connected GW
+          routers.
+        </p>
+
+        <p>
+          NOTE: this feature is experimental and may be subject to
+          removal/change in the future.
+        </p>
+      </column>
     </group>
 
     <group title="IP Multicast Snooping Options">

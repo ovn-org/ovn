@@ -92,6 +92,12 @@ gather_external_ids(const struct nbrec_logical_switch *nbs,
         smap_add(external_ids, "dynamic-routing-vni", vni);
     }
 
+    const char *redistribute =
+        smap_get(&nbs->other_config, "dynamic-routing-redistribute");
+    if (redistribute) {
+        smap_add(external_ids, "dynamic-routing-redistribute", redistribute);
+    }
+
     /* For backwards-compatibility, also store the NB UUID in
      * external-ids:logical-switch. This is useful if ovn-controller
      * has not updated and expects this to be where to find the
