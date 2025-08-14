@@ -501,6 +501,8 @@ bool find_prefix_in_set(const struct in6_addr *prefix, unsigned int plen,
 
 void ovn_debug_commands_register(void);
 
+bool ovn_is_valid_vni(int64_t vni);
+
 const struct sbrec_port_binding *lport_lookup_by_name(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const char *name);

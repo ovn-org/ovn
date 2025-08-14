@@ -1549,3 +1549,9 @@ datapath_get_nb_type(const struct sbrec_datapath_binding *sb)
     datapath_get_nb_uuid_and_type(sb, &nb_uuid, &type);
     return type;
 }
+
+bool
+ovn_is_valid_vni(int64_t vni)
+{
+    return vni >= 0 && (vni <= (1 << 24) - 1);
+}

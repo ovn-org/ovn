@@ -16,8 +16,13 @@
 #ifndef NEIGHBOR_EXCHANGE_H
 #define NEIGHBOR_EXCHANGE_H 1
 
-#include "lib/sset.h"
+#include <netinet/in.h>
+
 #include "openvswitch/hmap.h"
+
+#define DEFAULT_VXLAN_PORT 4789
+
+struct unixctl_conn;
 
 struct neighbor_exchange_ctx_in {
     /* Contains struct neighbor_interface_monitor pointers. */
@@ -27,10 +32,25 @@ struct neighbor_exchange_ctx_in {
 struct neighbor_exchange_ctx_out {
     /* Contains struct neighbor_table_watch_request. */
     struct hmap neighbor_table_watches;
+    /* Contains 'struct evpn_remote_vtep'. */
+    struct hmap *remote_vteps;
+};
+
+struct evpn_remote_vtep {
+    struct hmap_node hmap_node;
+    /* IP address of the remote tunnel. */
+    struct in6_addr ip;
+    /* Destination port of the remote tunnel. */
+    uint16_t port;
+    /* VNI of the VTEP. */
+    uint32_t vni;
 };
 
 void neighbor_exchange_run(const struct neighbor_exchange_ctx_in *,
                            struct neighbor_exchange_ctx_out *);
 int neighbor_exchange_status_run(void);
+void evpn_remote_vteps_clear(struct hmap *remote_vteps);
+void evpn_remote_vtep_list(struct unixctl_conn *, int argc,
+                           const char *argv[], void *data_);
 
 #endif  /* NEIGHBOR_EXCHANGE_H */

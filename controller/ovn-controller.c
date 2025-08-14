@@ -5736,7 +5736,10 @@ static enum engine_node_state
 en_neighbor_run(struct engine_node *node OVS_UNUSED, void *data)
 {
     struct ed_type_neighbor *ne_data = data;
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
     struct neighbor_ctx_in n_ctx_in = {
+        .local_datapaths = &rt_data->local_datapaths,
     };
 
     struct neighbor_ctx_out n_ctx_out = {
@@ -5746,13 +5749,75 @@ en_neighbor_run(struct engine_node *node OVS_UNUSED, void *data)
     neighbor_cleanup(&ne_data->monitored_interfaces);
     neighbor_run(&n_ctx_in, &n_ctx_out);
 
-    /* XXX: This should return EN_UPDATED once we actually process real SB
-     * changes, i.e.:
-     *
-     * return EN_UPDATED;
-     */
+    return EN_UPDATED;
+}
 
-    return EN_UNCHANGED;
+static enum engine_input_handler_result
+neighbor_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
+{
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+
+    /* There are no tracked data. Fall back to full recompute. */
+    if (!rt_data->tracked) {
+        return EN_UNHANDLED;
+    }
+
+    struct tracked_datapath *tdp;
+    HMAP_FOR_EACH (tdp, node, &rt_data->tracked_dp_bindings) {
+        struct local_datapath *ld =
+            get_local_datapath(&rt_data->local_datapaths, tdp->dp->tunnel_key);
+        if (!ld || !ld->is_switch) {
+            continue;
+        }
+
+        int64_t vni = ovn_smap_get_llong(&tdp->dp->external_ids,
+                                         "dynamic-routing-vni", -1);
+        if (!ovn_is_valid_vni(vni)) {
+            continue;
+        }
+
+        if (tdp->tracked_type == TRACKED_RESOURCE_NEW ||
+            tdp->tracked_type == TRACKED_RESOURCE_REMOVED) {
+            return EN_UNHANDLED;
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
+static enum engine_input_handler_result
+neighbor_sb_datapath_binding_handler(struct engine_node *node,
+                                     void *data OVS_UNUSED)
+{
+    const struct sbrec_datapath_binding_table *dp_table =
+        EN_OVSDB_GET(engine_get_input("SB_datapath_binding", node));
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+
+    const struct sbrec_datapath_binding *dp;
+    SBREC_DATAPATH_BINDING_TABLE_FOR_EACH_TRACKED (dp, dp_table) {
+        if (sbrec_datapath_binding_is_new(dp) ||
+            sbrec_datapath_binding_is_deleted(dp)) {
+            /* We are reflecting only datapaths that are becoming or are
+             * removed from being local, that is taken care of by runtime_data
+             * handler. */
+           return EN_HANDLED_UNCHANGED;
+        }
+
+        struct local_datapath *ld =
+            get_local_datapath(&rt_data->local_datapaths, dp->tunnel_key);
+        if (!ld || !ld->is_switch) {
+            continue;
+        }
+
+        if (sbrec_datapath_binding_is_updated(
+                dp, SBREC_DATAPATH_BINDING_COL_EXTERNAL_IDS)) {
+            return EN_UNHANDLED;
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
 }
 
 struct ed_type_neighbor_table_notify {
@@ -5793,23 +5858,39 @@ en_neighbor_table_notify_run(struct engine_node *node OVS_UNUSED,
     return state;
 }
 
+struct ed_type_neighbor_exchange {
+    /* Contains 'struct evpn_remote_vtep'. */
+    struct hmap remote_vteps;
+};
+
 static void *
 en_neighbor_exchange_init(struct engine_node *node OVS_UNUSED,
                           struct engine_arg *arg OVS_UNUSED)
 {
-    return NULL;
+    struct ed_type_neighbor_exchange *data = xmalloc(sizeof *data);
+    *data = (struct ed_type_neighbor_exchange) {
+        .remote_vteps = HMAP_INITIALIZER(&data->remote_vteps),
+    };
+
+    return data;
 }
 
 static void
-en_neighbor_exchange_cleanup(void *data OVS_UNUSED)
+en_neighbor_exchange_cleanup(void *data_)
 {
+    struct ed_type_neighbor_exchange *data = data_;
+    evpn_remote_vteps_clear(&data->remote_vteps);
+    hmap_destroy(&data->remote_vteps);
 }
 
 static enum engine_node_state
-en_neighbor_exchange_run(struct engine_node *node, void *data OVS_UNUSED)
+en_neighbor_exchange_run(struct engine_node *node, void *data_)
 {
+    struct ed_type_neighbor_exchange *data = data_;
     const struct ed_type_neighbor *neighbor_data =
         engine_get_input_data("neighbor", node);
+
+    evpn_remote_vteps_clear(&data->remote_vteps);
 
     struct neighbor_exchange_ctx_in n_ctx_in = {
         .monitored_interfaces = &neighbor_data->monitored_interfaces,
@@ -5817,6 +5898,7 @@ en_neighbor_exchange_run(struct engine_node *node, void *data OVS_UNUSED)
     struct neighbor_exchange_ctx_out n_ctx_out = {
         .neighbor_table_watches =
             HMAP_INITIALIZER(&n_ctx_out.neighbor_table_watches),
+        .remote_vteps = &data->remote_vteps,
     };
 
     neighbor_exchange_run(&n_ctx_in, &n_ctx_out);
@@ -6410,6 +6492,10 @@ main(int argc, char *argv[])
     engine_add_input(&en_garp_rarp, &en_runtime_data,
                      garp_rarp_runtime_data_handler);
 
+    engine_add_input(&en_neighbor, &en_runtime_data,
+                     neighbor_runtime_data_handler);
+    engine_add_input(&en_neighbor, &en_sb_datapath_binding,
+                     neighbor_sb_datapath_binding_handler);
     engine_add_input(&en_neighbor_exchange, &en_neighbor, NULL);
     engine_add_input(&en_neighbor_exchange, &en_host_if_monitor, NULL);
     engine_add_input(&en_neighbor_exchange, &en_neighbor_table_notify, NULL);
@@ -6495,6 +6581,8 @@ main(int argc, char *argv[])
         engine_get_internal_data(&en_lb_data);
     struct mac_cache_data *mac_cache_data =
             engine_get_internal_data(&en_mac_cache);
+    struct ed_type_neighbor_exchange *ne_data =
+        engine_get_internal_data(&en_neighbor_exchange);
 
     ofctrl_init(&lflow_output_data->group_table,
                 &lflow_output_data->meter_table);
@@ -6510,6 +6598,10 @@ main(int argc, char *argv[])
     unixctl_command_register("ct-zone-list", "", 0, 0,
                              ct_zone_list,
                              &ct_zones_data->ctx.current);
+
+    unixctl_command_register("evpn/remote-vtep-list", "", 0, 0,
+                             evpn_remote_vtep_list,
+                             &ne_data->remote_vteps);
 
     struct pending_pkt pending_pkt = { .conn = NULL };
     unixctl_command_register("inject-pkt", "MICROFLOW", 1, 1, inject_pkt,

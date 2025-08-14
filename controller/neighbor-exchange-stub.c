@@ -28,3 +28,15 @@ neighbor_exchange_status_run(void)
 {
     return 0;
 }
+
+void
+evpn_remote_vteps_clear(struct hmap *remote_vteps OVS_UNUSED)
+{
+}
+
+void
+evpn_remote_vtep_list(struct unixctl_conn *conn OVS_UNUSED,
+                      int argc OVS_UNUSED, const char *argv[] OVS_UNUSED,
+                      void *data_ OVS_UNUSED)
+{
+}

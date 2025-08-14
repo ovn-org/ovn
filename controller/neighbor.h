@@ -38,6 +38,8 @@ enum neighbor_family {
 };
 
 struct neighbor_ctx_in {
+    /* Contains 'struct local_datapath'. */
+    const struct hmap *local_datapaths;
 };
 
 struct neighbor_ctx_out {
@@ -45,9 +47,17 @@ struct neighbor_ctx_out {
     struct vector *monitored_interfaces;
 };
 
+enum neighbor_interface_type {
+    NEIGH_IFACE_BRIDGE,
+    NEIGH_IFACE_VXLAN,
+    NEIGH_IFACE_LOOPBACK,
+};
+
 struct neighbor_interface_monitor {
     enum neighbor_family family;
     char if_name[IFNAMSIZ + 1];
+    enum neighbor_interface_type type;
+    uint32_t vni;
 
     /* Contains struct advertise_neighbor_entry - the entries that OVN
      * advertises on this interface. */

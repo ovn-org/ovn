@@ -175,6 +175,15 @@ ne_is_ovn_owned(const struct ne_nl_received_neigh *nd)
            && !(nd->flags & NTF_EXT_LEARNED);
 }
 
+/* OVN expects that the VTEP entry doesn't have any MAC address (zeroed out)
+ * and the entry is marked as "permanent". */
+bool
+ne_is_valid_remote_vtep(struct ne_nl_received_neigh *ne)
+{
+    return eth_addr_is_zero(ne->lladdr) && (ne->state & NUD_NOARP) &&
+           (ne->state & NUD_PERMANENT);
+}
+
 static void
 ne_table_dump_one_ifindex(unsigned char address_family, int32_t if_index,
                           ne_table_handle_msg_callback *handle_msg_cb,

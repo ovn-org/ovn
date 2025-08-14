@@ -18,11 +18,26 @@
 #include "lib/hash.h"
 #include "lib/packets.h"
 #include "lib/sset.h"
+#include "local_data.h"
+#include "ovn-sb-idl.h"
 
 #include "neighbor.h"
 
+static const char *neighbor_interface_prefixes[] = {
+    [NEIGH_IFACE_BRIDGE] = "br-",
+    [NEIGH_IFACE_VXLAN] = "vxlan-",
+    [NEIGH_IFACE_LOOPBACK] = "lo-",
+};
+
 static void neighbor_interface_monitor_destroy(
     struct neighbor_interface_monitor *);
+static bool neighbor_interface_with_vni_exists(
+    struct vector *monitored_interfaces,
+    uint32_t vni);
+static struct neighbor_interface_monitor *
+neighbor_interface_monitor_alloc(enum neighbor_family family,
+                                 enum neighbor_interface_type type,
+                                 uint32_t vni);
 
 uint32_t
 advertise_neigh_hash(const struct eth_addr *eth, const struct in6_addr *ip)
@@ -48,20 +63,46 @@ advertise_neigh_find(const struct hmap *neighbors, struct eth_addr mac,
 }
 
 void
-neighbor_run(struct neighbor_ctx_in *n_ctx_in OVS_UNUSED,
-             struct neighbor_ctx_out *n_ctx_out OVS_UNUSED)
+neighbor_run(struct neighbor_ctx_in *n_ctx_in,
+             struct neighbor_ctx_out *n_ctx_out)
 {
-    /* XXX: Not implemented yet. */
+    struct local_datapath *ld;
+    HMAP_FOR_EACH (ld, hmap_node, n_ctx_in->local_datapaths) {
+        if (!ld->is_switch) {
+            continue;
+        }
 
-    /* XXX: TODO GLUE: get information from (n_ctx_in) SB (runtime-data) about:
-     * - local datapath vni (and listen on br-$vni, lo-$vni and vxlan-$vni)
-     *   for which we want to enable neighbor monitoring
-     *   https://issues.redhat.com/browse/FDP-1385
-     * - what FDB/neighbor entries to advertise
-     *   https://issues.redhat.com/browse/FDP-1389
-     *
-     * And populate that in n_ctx_out.
-     */
+        int64_t vni = ovn_smap_get_llong(&ld->datapath->external_ids,
+                                         "dynamic-routing-vni", -1);
+        if (!ovn_is_valid_vni(vni)) {
+            continue;
+        }
+
+        if (neighbor_interface_with_vni_exists(n_ctx_out->monitored_interfaces,
+                                               vni)) {
+            continue;
+        }
+
+        struct neighbor_interface_monitor *vxlan =
+            neighbor_interface_monitor_alloc(NEIGH_AF_BRIDGE,
+                                             NEIGH_IFACE_VXLAN, vni);
+        vector_push(n_ctx_out->monitored_interfaces, &vxlan);
+
+        struct neighbor_interface_monitor *lo =
+            neighbor_interface_monitor_alloc(NEIGH_AF_BRIDGE,
+                                             NEIGH_IFACE_LOOPBACK, vni);
+        vector_push(n_ctx_out->monitored_interfaces, &lo);
+
+        struct neighbor_interface_monitor *br_v4 =
+            neighbor_interface_monitor_alloc(NEIGH_AF_INET,
+                                             NEIGH_IFACE_BRIDGE, vni);
+        vector_push(n_ctx_out->monitored_interfaces, &br_v4);
+
+        struct neighbor_interface_monitor *br_v6 =
+            neighbor_interface_monitor_alloc(NEIGH_AF_INET6,
+                                             NEIGH_IFACE_BRIDGE, vni);
+        vector_push(n_ctx_out->monitored_interfaces, &br_v6);
+    }
 }
 
 void
@@ -84,4 +125,35 @@ neighbor_interface_monitor_destroy(struct neighbor_interface_monitor *nim)
     }
     hmap_destroy(&nim->announced_neighbors);
     free(nim);
+}
+
+static bool
+neighbor_interface_with_vni_exists(struct vector *monitored_interfaces,
+                                   uint32_t vni)
+{
+    const struct neighbor_interface_monitor *nim;
+    VECTOR_FOR_EACH (monitored_interfaces, nim) {
+        if (nim->vni == vni) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static struct neighbor_interface_monitor *
+neighbor_interface_monitor_alloc(enum neighbor_family family,
+                                 enum neighbor_interface_type type,
+                                 uint32_t vni)
+{
+    struct neighbor_interface_monitor *nim = xmalloc(sizeof *nim);
+    *nim = (struct neighbor_interface_monitor) {
+        .family = family,
+        .announced_neighbors = HMAP_INITIALIZER(&nim->announced_neighbors),
+        .type = type,
+        .vni = vni,
+    };
+    snprintf(nim->if_name, sizeof nim->if_name, "%s%"PRIu32,
+             neighbor_interface_prefixes[type], vni);
+    return nim;
 }
