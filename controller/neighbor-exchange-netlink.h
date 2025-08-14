@@ -55,6 +55,7 @@ int ne_nl_sync_neigh(uint8_t family, int32_t if_index,
 
 bool ne_is_ovn_owned(const struct ne_nl_received_neigh *nd);
 bool ne_is_valid_remote_vtep(struct ne_nl_received_neigh *ne);
+bool ne_is_valid_static_fdb(struct ne_nl_received_neigh *ne);
 
 int ne_table_parse(struct ofpbuf *, void *change);
 

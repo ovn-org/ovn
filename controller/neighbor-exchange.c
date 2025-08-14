@@ -38,7 +38,13 @@ static void evpn_remote_vtep_add(struct hmap *remote_vteps, struct in6_addr ip,
 static struct evpn_remote_vtep *evpn_remote_vtep_find(
     const struct hmap *remote_vteps, const struct in6_addr *ip,
     uint16_t port, uint32_t vni);
-
+static void evpn_static_fdb_add(struct hmap *static_fdbs, struct eth_addr mac,
+                                struct in6_addr ip, uint32_t vni);
+static struct evpn_static_fdb *evpn_static_fdb_find(
+    const struct hmap *static_fdbs, struct eth_addr mac,
+    struct in6_addr ip, uint32_t vni);
+static uint32_t evpn_static_fdb_hash(const struct eth_addr *mac,
+                                     const struct in6_addr *ip, uint32_t vni);
 
 /* Last neighbor_exchange netlink operation. */
 static int neighbor_exchange_nl_status;
@@ -96,6 +102,13 @@ neighbor_exchange_run(const struct neighbor_exchange_ctx_in *n_ctx_in,
                         evpn_remote_vtep_add(n_ctx_out->remote_vteps, ne->addr,
                                              port, nim->vni);
                     }
+                } else if (ne_is_valid_static_fdb(ne)) {
+                    if (!evpn_static_fdb_find(n_ctx_out->static_fdbs,
+                                              ne->lladdr, ne->addr,
+                                              nim->vni)) {
+                        evpn_static_fdb_add(n_ctx_out->static_fdbs, ne->lladdr,
+                                            ne->addr, nim->vni);
+                    }
                 }
             }
         }
@@ -138,6 +151,15 @@ evpn_remote_vtep_list(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
     unixctl_command_reply(conn, ds_cstr_ro(&ds));
     ds_destroy(&ds);
+}
+
+void
+evpn_static_fdbs_clear(struct hmap *static_fdbs)
+{
+    struct evpn_static_fdb *fdb;
+    HMAP_FOR_EACH_POP (fdb, hmap_node, static_fdbs) {
+        free(fdb);
+    }
 }
 
 static void
@@ -183,4 +205,49 @@ evpn_remote_vtep_hash(const struct in6_addr *ip, uint16_t port,
     hash = hash_add(hash, vni);
 
     return hash_finish(hash, 14);
+}
+
+static void
+evpn_static_fdb_add(struct hmap *static_fdbs, struct eth_addr mac,
+                    struct in6_addr ip, uint32_t vni)
+{
+    struct evpn_static_fdb *fdb = xmalloc(sizeof *fdb);
+    *fdb = (struct evpn_static_fdb) {
+        .mac = mac,
+        .ip = ip,
+        .vni = vni,
+    };
+
+    hmap_insert(static_fdbs, &fdb->hmap_node,
+                evpn_static_fdb_hash(&mac, &ip, vni));
+}
+
+static struct evpn_static_fdb *
+evpn_static_fdb_find(const struct hmap *static_fdbs, struct eth_addr mac,
+                     struct in6_addr ip, uint32_t vni)
+{
+    uint32_t hash = evpn_static_fdb_hash(&mac, &ip, vni);
+
+    struct evpn_static_fdb *fdb;
+    HMAP_FOR_EACH_WITH_HASH (fdb, hmap_node, hash, static_fdbs) {
+        if (eth_addr_equals(fdb->mac, mac) &&
+            ipv6_addr_equals(&fdb->ip, &ip) &&
+            fdb->vni == vni) {
+            return fdb;
+        }
+    }
+
+    return NULL;
+}
+
+static uint32_t
+evpn_static_fdb_hash(const struct eth_addr *mac, const struct in6_addr *ip,
+                     uint32_t vni)
+{
+    uint32_t hash = 0;
+    hash = hash_bytes(mac, sizeof *mac, hash);
+    hash = hash_add_in6_addr(hash, ip);
+    hash = hash_add(hash, vni);
+
+    return hash_finish(hash, 26);
 }

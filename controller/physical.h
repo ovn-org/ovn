@@ -71,6 +71,7 @@ struct physical_ctx {
     bool always_tunnel;
     const struct hmap *evpn_bindings;
     const struct hmap *evpn_multicast_groups;
+    const struct hmap *evpn_fdbs;
 
     /* Set of port binding names that have been already reprocessed during
      * the I-P run. */
@@ -95,4 +96,7 @@ void physical_handle_evpn_binding_changes(
     const struct hmapx *updated_multicast_groups,
     const struct uuidset *removed_bindings,
     const struct uuidset *removed_multicast_groups);
+void physical_handle_evpn_fdb_changes(struct ovn_desired_flow_table *,
+                                      const struct hmapx *updated_fdbs,
+                                      const struct uuidset *removed_fdbs);
 #endif /* controller/physical.h */

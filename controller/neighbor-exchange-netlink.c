@@ -184,6 +184,15 @@ ne_is_valid_remote_vtep(struct ne_nl_received_neigh *ne)
            (ne->state & NUD_PERMANENT);
 }
 
+/* OVN expects that the FDB entry doesn't have any IP address (zeroed out),
+ * has MAC address and the entry is marked as "extern learned". */
+bool
+ne_is_valid_static_fdb(struct ne_nl_received_neigh *ne)
+{
+    return !eth_addr_is_zero(ne->lladdr) &&
+           ipv6_addr_is_set(&ne->addr) && ne->flags & NTF_EXT_LEARNED;
+}
+
 static void
 ne_table_dump_one_ifindex(unsigned char address_family, int32_t if_index,
                           ne_table_handle_msg_callback *handle_msg_cb,

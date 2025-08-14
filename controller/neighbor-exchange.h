@@ -34,6 +34,8 @@ struct neighbor_exchange_ctx_out {
     struct hmap neighbor_table_watches;
     /* Contains 'struct evpn_remote_vtep'. */
     struct hmap *remote_vteps;
+    /* Contains 'struct evpn_static_fdb'. */
+    struct hmap *static_fdbs;
 };
 
 struct evpn_remote_vtep {
@@ -46,11 +48,22 @@ struct evpn_remote_vtep {
     uint32_t vni;
 };
 
+struct evpn_static_fdb {
+    struct hmap_node hmap_node;
+    /* MAC address of the remote workload. */
+    struct eth_addr mac;
+    /* Destination ip of the remote tunnel. */
+    struct in6_addr ip;
+    /* VNI of the VTEP. */
+    uint32_t vni;
+};
+
 void neighbor_exchange_run(const struct neighbor_exchange_ctx_in *,
                            struct neighbor_exchange_ctx_out *);
 int neighbor_exchange_status_run(void);
 void evpn_remote_vteps_clear(struct hmap *remote_vteps);
 void evpn_remote_vtep_list(struct unixctl_conn *, int argc,
                            const char *argv[], void *data_);
+void evpn_static_fdbs_clear(struct hmap *static_fdbs);
 
 #endif  /* NEIGHBOR_EXCHANGE_H */

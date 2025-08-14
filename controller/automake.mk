@@ -12,6 +12,8 @@ controller_ovn_controller_SOURCES = \
 	controller/encaps.h \
 	controller/evpn-binding.c \
 	controller/evpn-binding.h \
+	controller/evpn-fdb.c \
+	controller/evpn-fdb.h \
 	controller/ha-chassis.c \
 	controller/ha-chassis.h \
 	controller/if-status.c \
