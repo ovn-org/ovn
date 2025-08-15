@@ -831,6 +831,12 @@ struct parsed_route *parsed_route_add(
     const struct ovn_port *tracked_port,
     struct hmap *routes);
 
+struct svc_monitors_map_data {
+    const struct hmap *local_svc_monitors_map;
+    const struct hmap *ic_learned_svc_monitors_map;
+    struct lflow_ref *lflow_ref;
+};
+
 bool
 find_route_outport(const struct hmap *lr_ports, const char *output_port,
                    const char *ip_prefix, const char *nexthop, bool is_ipv4,
