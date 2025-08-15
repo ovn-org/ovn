@@ -183,6 +183,54 @@ options             : {vtep_logical_switch=l0, vtep_physical_switch=p0}
 
 dnl ---------------------------------------------------------------------
 
+OVN_SBCTL_TEST([ovn_sbctl_show_filter_option], [ovn-sbctl show filter option], [
+
+AT_CHECK([ovn-nbctl ls-add br-test])
+AT_CHECK([ovn-nbctl lsp-add br-test vif0])
+AT_CHECK([ovn-nbctl lsp-set-addresses vif0 f0:ab:cd:ef:01:02])
+AT_CHECK([ovn-sbctl chassis-add ch0 geneve 1.2.3.1])
+AT_CHECK([ovn-nbctl --wait=sb sync])
+AT_CHECK([ovn-sbctl lsp-bind vif0 ch0])
+
+AT_CHECK([ovn-sbctl show], [0], [dnl
+Chassis ch0
+    Encap geneve
+        ip: "1.2.3.1"
+        options: {csum="true"}
+    Port_Binding vif0
+])
+
+AT_CHECK([ovn-sbctl chassis-add ch2 geneve 1.2.3.2])
+AT_CHECK([ovn-sbctl chassis-add ch3 geneve 1.2.3.3])
+AT_CHECK([ovn-sbctl chassis-add ch4 vxlan 1.2.3.4])
+
+AT_CHECK([ovn-sbctl --filter='ch2,ch3' show | grep Chassis | sort], [0], [dnl
+Chassis ch2
+Chassis ch3
+])
+
+AT_CHECK([ovn-sbctl --filter='1.2.3.4,1.2.3.3' show | grep Chassis | sort], [0], [dnl
+Chassis ch3
+Chassis ch4
+])
+
+AT_CHECK([ovn-sbctl --filter='Encap(vxlan)' show | grep -E '(Chassis|Encap)' | sort], [0], [dnl
+    Encap vxlan
+Chassis ch0
+Chassis ch2
+Chassis ch3
+Chassis ch4
+])
+
+AT_CHECK([ovn-sbctl --filter='Encap(vxlan),ch4' show | grep -E '(Chassis|Encap)' | sort], [0], [dnl
+    Encap vxlan
+Chassis ch4
+])
+
+])
+
+dnl ---------------------------------------------------------------------
+
 OVN_SBCTL_TEST([ovn_sbctl_connection], [ovn-sbctl - connection], [
 AT_CHECK([ovn-sbctl --inactivity-probe=30000 set-connection ptcp:6641:127.0.0.1 punix:$OVS_RUNDIR/ovnsb_db.sock])
 AT_CHECK([ovn-sbctl list connection | grep inactivity_probe], [0], [dnl

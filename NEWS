@@ -60,6 +60,9 @@ Post v25.03.0
        FDB lookup. Default is false.
      * Add the "other_config:dynamic-routing-redistribute" to Logical
        Switches. The only accepted value at the moment is "fdb".
+   - ovn-sbctl:
+     * Added --filter option that allows filtering the command output. See
+       ovn-sbctl(8) for more details.
 
 OVN v25.03.0 - 07 Mar 2025
 --------------------------

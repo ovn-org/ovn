@@ -279,9 +279,19 @@
         been initialized, this command has no effect.
       </dd>
 
-      <dt><code>show</code></dt>
+      <dt>
+      [<code>--filter=</code><var>filter-rule</var>[,<var>filter-rule</var>]...]
+      <code>show</code>
+      </dt>
       <dd>
         Prints a brief overview of the database contents.
+        If <code>--filter</code> is specified, output is filtered according to
+        the rules. Each <var>filter-rule</var> has the form
+        <var>table-name</var>(<var>filter</var>[|<var>filter</var>]...).
+        If <var>table-name</var> is omitted, filtering is applied to
+        the <code>Chassis</code> table by default. A row is shown only if its
+        printed representation (including all referenced rows) contains at
+        least one of the specified <var>filter</var> substrings.
       </dd>
     </dl>
 
