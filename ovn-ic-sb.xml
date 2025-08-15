@@ -691,4 +691,60 @@
     </group>
   </table>
 
+  <table name="Service_Monitor">
+    <column name="ip">
+      IP of the service to be monitored. Copy from SBDB record.
+    </column>
+
+    <column name="protocol">
+      The protocol of the service.
+      Copy from source Southbound Database record.
+    </column>
+
+    <column name="port">
+      The TCP or UDP port of the service.
+      Copy from source Southbound Database record.
+    </column>
+
+    <column name="logical_port">
+      The VIF of the logical port on which the service is running. The
+      <code>ovn-controller</code> that binds this <code>logical_port</code>
+      monitors the service by sending periodic monitor packets.
+      Copy from source Southbound Database record.
+    </column>
+
+    <column name="src_ip">
+      Source IPv4 or IPv6 address to use in the service monitor packet.
+      Copy from source Southbound Database record.
+    </column>
+
+    <column name="src_mac">
+      Source Ethernet address to use in the service monitor packet.
+      Copy from Southbound Database record.
+    </column>
+
+    <column name="status">
+      The health status of the service monitor, synchronized from target
+      Southbound Database.
+    </column>
+
+    <column name="target_availability_zone">
+      The Availability Zone where the monitored service endpoint is located.
+    </column>
+
+    <column name="source_availability_zone">
+      Availability Zone that initiated this monitor entry in ICSB and retains
+      ownership for lifecycle management.
+    </column>
+
+    <column name="options">
+      Same as in Table Service_Monitor in SBDB.
+      Copy from source SBDB record.
+    </column>
+
+    <column name="external_ids">
+      Same as in Table Service_Monitor in SBDB.
+      Copy from source SBDB record.
+    </column>
+  </table>
 </database>

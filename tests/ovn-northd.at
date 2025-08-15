@@ -17800,7 +17800,85 @@ check ovn-nbctl --wait=sb lr-del lr0
 check_engine_stats datapath_synced_logical_switch norecompute compute
 check_engine_stats datapath_synced_logical_router norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
+AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([ip_port_mappings validation])
+ovn_start
+
+# ip_port_mappings syntax: ip:lport_name:src_ip:<az_name>(for remote lports)
+
+check ovn-nbctl ls-add ls1
+
+check ovn-nbctl lb-add lb1_ipv4 1.1.1.1:80 192.168.0.1:10880,192.168.0.2:10880,192.168.0.3:10880
+AT_CHECK([ovn-nbctl --wait=sb \
+          -- --id=@hc create Load_Balancer_Health_Check vip="1.1.1.1\:80" \
+             options:failure_count=100 \
+          -- add Load_Balancer lb1_ipv4 health_check @hc | uuidfilt], [0], [<0>
+])
+
+check ovn-nbctl ls-lb-add ls1 lb1_ipv4
+check ovn-nbctl lsp-add ls1 lport1
+check ovn-nbctl lsp-add ls1 sw0-p1
+
+check ovn-nbctl set load_balancer lb1_ipv4 ip_port_mappings:192.168.0.1=lport1:192.168.0.99
+
+# Check that the service monitor was created correctly.
+check_row_count sb:Service_Monitor 1
+check_column "192.168.0.1" sb:Service_Monitor ip logical_port=lport1
+check_column 10880 sb:Service_Monitor port logical_port=lport1
+check_column tcp sb:Service_Monitor protocol logical_port=lport1
+check_column "192.168.0.99" sb:Service_Monitor src_ip logical_port=lport1
+check_column false sb:Service_Monitor ic_learned logical_port=lport1
+check_column true sb:Service_Monitor local logical_port=lport1
+
+# Empty src_ip.
+check ovn-nbctl clear load_balancer lb1_ipv4 ip_port_mappings
+check ovn-nbctl set load_balancer lb1_ipv4 ip_port_mappings:192.168.0.1=lport1:
+OVS_WAIT_UNTIL([grep "Invalid svc mon src IP" northd/ovn-northd.log])
+check_row_count sb:Service_Monitor 0
+echo > northd/ovn-northd.log
+
+# Uncorrect ip_address.
+check ovn-nbctl set load_balancer lb1_ipv4 ip_port_mappings:invalid=lport2_az1:2.2.2.9
+OVS_WAIT_UNTIL([grep "bad IP address" northd/ovn-northd.log])
+echo > northd/ovn-northd.log
+
+check ovn-nbctl set load_balancer lb1_ipv4 ip_port_mappings:2.2.2.1=lport2_az1:invalid
+OVS_WAIT_UNTIL([grep "bad IP address" northd/ovn-northd.log])
+echo > northd/ovn-northd.log
+
+check ovn-nbctl set load_balancer lb1_ipv4 ip_port_mappings:2.2.2.1=:2.2.2.9
+OVS_WAIT_UNTIL([grep "bad IP address" northd/ovn-northd.log])
+echo > northd/ovn-northd.log
+
+check ovn-nbctl set load_balancer lb1_ipv4 ip_port_mappings:192.168.0.1=lport1:192.168.0.99:az_name
+
+check_row_count sb:Service_Monitor 1
+check_column "192.168.0.1" sb:Service_Monitor ip logical_port=lport1
+check_column 10880 sb:Service_Monitor port logical_port=lport1
+check_column tcp sb:Service_Monitor protocol logical_port=lport1
+check_column "192.168.0.99" sb:Service_Monitor src_ip logical_port=lport1
+check_column false sb:Service_Monitor ic_learned logical_port=lport1
+check_column false sb:Service_Monitor local logical_port=lport1
+
+uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find Service_Monitor logical_port=lport1)
+
+# Check az_name presence in options.
+AT_CHECK([ovn-sbctl get Service_Monitor ${uuid} options:az-name],
+[0], [az_name
+])
+
+AT_CHECK([ovn-sbctl get Service_Monitor ${uuid} options:failure_count],
+[0], ["100"
+])
+
+# Empty availability zone name.
+check ovn-nbctl set load_balancer lb1_ipv4 ip_port_mappings:192.168.0.1=lport1:192.168.0.99:
+check_row_count sb:Service_Monitor 0
+
+OVS_WAIT_UNTIL([grep "Empty AZ name specified" northd/ovn-northd.log])
 AT_CLEANUP
 ])
 
