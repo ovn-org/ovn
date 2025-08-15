@@ -229,6 +229,11 @@ struct ic_learned_svc_monitors_data {
     struct lflow_ref *lflow_ref;
 };
 
+struct svc_monitors_map_data
+svc_monitors_map_data_init(const struct hmap *local_svc_monitors_map,
+    const struct hmap *ic_learned_svc_monitors_map,
+    struct lflow_ref *ic_learned_svc_monitors_lflow_ref);
+
 struct lflow_ref;
 struct lr_nat_table;
 
@@ -1055,7 +1060,11 @@ void build_igmp_lflows(struct hmap *igmp_groups,
                        const struct hmap *ls_datapaths,
                        struct lflow_table *lflows,
                        struct lflow_ref *lflow_ref);
-
+void build_lswitch_arp_nd_ic_learned_svc_mon(
+    struct svc_monitors_map_data *svc_mons_data,
+    const struct hmap *ls_ports,
+    const char *svc_monitor_mac,
+    struct lflow_table *lflows);
 /* Structure representing logical router port routable addresses. This
  * includes DNAT and Load Balancer addresses. This structure will only
  * be filled in if the router port is a gateway router port. Otherwise,

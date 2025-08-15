@@ -321,6 +321,57 @@ lflow_group_ecmp_route_change_handler(struct engine_node *node,
     return EN_HANDLED_UPDATED;
 }
 
+enum engine_input_handler_result
+lflow_ic_learned_svc_mons_handler(struct engine_node *node,
+                                  void *data)
+{
+    struct ic_learned_svc_monitors_data *ic_learned_svc_monitors_data =
+        engine_get_input_data("ic_learned_svcs", node);
+
+    const struct engine_context *eng_ctx = engine_get_context();
+    struct lflow_data *lflow_data = data;
+    struct lflow_input lflow_input;
+    lflow_get_input_data(node, &lflow_input);
+
+    struct svc_monitors_map_data svc_mons_data =
+        svc_monitors_map_data_init(
+            NULL,
+            &ic_learned_svc_monitors_data->ic_learned_svc_monitors_map,
+            ic_learned_svc_monitors_data->lflow_ref);
+
+    if (!lflow_ref_resync_flows(
+            ic_learned_svc_monitors_data->lflow_ref,
+            lflow_data->lflow_table,
+            eng_ctx->ovnsb_idl_txn,
+            lflow_input.ls_datapaths,
+            lflow_input.lr_datapaths,
+            lflow_input.ovn_internal_version_changed,
+            lflow_input.sbrec_logical_flow_table,
+            lflow_input.sbrec_logical_dp_group_table)) {
+        return EN_UNHANDLED;
+    }
+
+    build_lswitch_arp_nd_ic_learned_svc_mon(
+        &svc_mons_data,
+        lflow_input.ls_ports,
+        lflow_input.svc_monitor_mac,
+        lflow_data->lflow_table);
+
+    if (!lflow_ref_sync_lflows(
+            ic_learned_svc_monitors_data->lflow_ref,
+            lflow_data->lflow_table,
+            eng_ctx->ovnsb_idl_txn,
+            lflow_input.ls_datapaths,
+            lflow_input.lr_datapaths,
+            lflow_input.ovn_internal_version_changed,
+            lflow_input.sbrec_logical_flow_table,
+            lflow_input.sbrec_logical_dp_group_table)) {
+        return EN_UNHANDLED;
+    }
+
+    return EN_HANDLED_UPDATED;
+}
+
 void *en_lflow_init(struct engine_node *node OVS_UNUSED,
                      struct engine_arg *arg OVS_UNUSED)
 {

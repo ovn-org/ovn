@@ -28,5 +28,6 @@ enum engine_input_handler_result
 lflow_multicast_igmp_handler(struct engine_node *node, void *data);
 enum engine_input_handler_result
 lflow_group_ecmp_route_change_handler(struct engine_node *node, void *data);
-
+enum engine_input_handler_result
+lflow_ic_learned_svc_mons_handler(struct engine_node *node, void *data);
 #endif /* EN_LFLOW_H */

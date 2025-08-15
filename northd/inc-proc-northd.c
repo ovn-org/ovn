@@ -393,7 +393,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_lflow, &en_multicast_igmp,
                      lflow_multicast_igmp_handler);
     engine_add_input(&en_lflow, &en_sb_acl_id, NULL);
-    engine_add_input(&en_lflow, &en_ic_learned_svc_monitors, NULL);
+    engine_add_input(&en_lflow, &en_ic_learned_svc_monitors,
+                     lflow_ic_learned_svc_mons_handler);
 
     engine_add_input(&en_sync_to_sb_addr_set, &en_northd, NULL);
     engine_add_input(&en_sync_to_sb_addr_set, &en_lr_stateful, NULL);
