@@ -1,5 +1,5 @@
-Post v25.03.0
--------------
+OVN v25.09.0 - xxx xx xxxx
+--------------------------
    - STT tunnels are no longer supported in ovn-encap-type.
      ** WARNING ** Existing setups must be fully reconfigured to use Geneve
      or VxLAN before upgrading.  To avoid potential database conversion issues
