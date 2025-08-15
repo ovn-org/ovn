@@ -64,6 +64,7 @@ struct ic_context {
     struct ovsdb_idl_txn *ovnsb_txn;
     struct ovsdb_idl_txn *ovninb_txn;
     struct ovsdb_idl_txn *ovnisb_txn;
+    const struct icsbrec_availability_zone *runned_az;
     struct ovsdb_idl_index *nbrec_ls_by_name;
     struct ovsdb_idl_index *nbrec_lrp_by_name;
     struct ovsdb_idl_index *nbrec_port_by_name;
@@ -167,6 +168,7 @@ az_run(struct ic_context *ctx)
 
     ICSBREC_AVAILABILITY_ZONE_FOR_EACH (az, ctx->ovnisb_idl) {
         if (!strcmp(az->name, az_name)) {
+            ctx->runned_az = az;
             return az;
         }
     }
@@ -176,6 +178,7 @@ az_run(struct ic_context *ctx)
         VLOG_INFO("Register AZ %s to interconnection DB.", az_name);
         az = icsbrec_availability_zone_insert(ctx->ovnisb_txn);
         icsbrec_availability_zone_set_name(az, az_name);
+        ctx->runned_az = az;
         return az;
     }
     return NULL;
@@ -406,7 +409,7 @@ sync_sb_gw_to_isb(struct ic_context *ctx,
 }
 
 static void
-gateway_run(struct ic_context *ctx, const struct icsbrec_availability_zone *az)
+gateway_run(struct ic_context *ctx)
 {
     if (!ctx->ovnisb_txn || !ctx->ovnsb_txn) {
         return;
@@ -416,7 +419,7 @@ gateway_run(struct ic_context *ctx, const struct icsbrec_availability_zone *az)
     struct shash remote_gws = SHASH_INITIALIZER(&remote_gws);
     const struct icsbrec_gateway *gw;
     ICSBREC_GATEWAY_FOR_EACH (gw, ctx->ovnisb_idl) {
-        if (gw->availability_zone == az) {
+        if (gw->availability_zone == ctx->runned_az) {
             shash_add(&local_gws, gw->name, gw);
         } else {
             shash_add(&remote_gws, gw->name, gw);
@@ -429,7 +432,7 @@ gateway_run(struct ic_context *ctx, const struct icsbrec_availability_zone *az)
             gw = shash_find_and_delete(&local_gws, chassis->name);
             if (!gw) {
                 gw = icsbrec_gateway_insert(ctx->ovnisb_txn);
-                icsbrec_gateway_set_availability_zone(gw, az);
+                icsbrec_gateway_set_availability_zone(gw, ctx->runned_az);
                 icsbrec_gateway_set_name(gw, chassis->name);
                 sync_sb_gw_to_isb(ctx, chassis, gw);
             } else if (is_gateway_data_changed(gw, chassis)) {
@@ -811,8 +814,7 @@ allocate_port_key(struct hmap *pb_tnlids)
 }
 
 static void
-port_binding_run(struct ic_context *ctx,
-                 const struct icsbrec_availability_zone *az)
+port_binding_run(struct ic_context *ctx)
 {
     if (!ctx->ovnisb_txn || !ctx->ovnnb_txn || !ctx->ovnsb_txn) {
         return;
@@ -824,7 +826,8 @@ port_binding_run(struct ic_context *ctx,
     const struct icsbrec_port_binding *isb_pb;
     const struct icsbrec_port_binding *isb_pb_key =
         icsbrec_port_binding_index_init_row(ctx->icsbrec_port_binding_by_az);
-    icsbrec_port_binding_index_set_availability_zone(isb_pb_key, az);
+    icsbrec_port_binding_index_set_availability_zone(isb_pb_key,
+                                                     ctx->runned_az);
 
     ICSBREC_PORT_BINDING_FOR_EACH_EQUAL (isb_pb, isb_pb_key,
                                          ctx->icsbrec_port_binding_by_az) {
@@ -849,7 +852,7 @@ port_binding_run(struct ic_context *ctx,
 
         ICSBREC_PORT_BINDING_FOR_EACH_EQUAL (isb_pb, isb_pb_key,
                                              ctx->icsbrec_port_binding_by_ts) {
-            if (isb_pb->availability_zone == az) {
+            if (isb_pb->availability_zone == ctx->runned_az) {
                 shash_add(&local_pbs, isb_pb->logical_port, isb_pb);
                 shash_find_and_delete(&isb_all_local_pbs,
                                       isb_pb->logical_port);
@@ -874,7 +877,8 @@ port_binding_run(struct ic_context *ctx,
                 isb_pb = shash_find_and_delete(&local_pbs, lsp->name);
                 if (!isb_pb) {
                     uint32_t pb_tnl_key = allocate_port_key(&pb_tnlids);
-                    create_isb_pb(ctx, sb_pb, az, ts->name, pb_tnl_key);
+                    create_isb_pb(ctx, sb_pb, ctx->runned_az,
+                                  ts->name, pb_tnl_key);
                 } else {
                     sync_local_port(ctx, isb_pb, sb_pb, lsp);
                 }
@@ -2089,20 +2093,20 @@ delete_orphan_ic_routes(struct ic_context *ctx,
 }
 
 static void
-route_run(struct ic_context *ctx,
-          const struct icsbrec_availability_zone *az)
+route_run(struct ic_context *ctx)
 {
     if (!ctx->ovnisb_txn || !ctx->ovnnb_txn) {
         return;
     }
 
-    delete_orphan_ic_routes(ctx, az);
+    delete_orphan_ic_routes(ctx, ctx->runned_az);
 
     struct hmap ic_lrs = HMAP_INITIALIZER(&ic_lrs);
     const struct icsbrec_port_binding *isb_pb;
     const struct icsbrec_port_binding *isb_pb_key =
         icsbrec_port_binding_index_init_row(ctx->icsbrec_port_binding_by_az);
-    icsbrec_port_binding_index_set_availability_zone(isb_pb_key, az);
+    icsbrec_port_binding_index_set_availability_zone(isb_pb_key,
+        ctx->runned_az);
 
     /* Each port on TS maps to a logical router, which is stored in the
      * external_ids:router-id of the IC SB port_binding record.
@@ -2170,7 +2174,7 @@ route_run(struct ic_context *ctx,
     }
     struct shash_node *node;
     SHASH_FOR_EACH (node, &routes_ad_by_ts) {
-        advertise_routes(ctx, az, node->name, node->data);
+        advertise_routes(ctx, ctx->runned_az, node->name, node->data);
         hmap_destroy(node->data);
     }
     shash_destroy_free_data(&routes_ad_by_ts);
@@ -2210,8 +2214,7 @@ route_run(struct ic_context *ctx,
  *    INB:nb_ic_cfg and INB:sb_ic_cfg to INB:nb_ic_cfg.
  */
 static void
-update_sequence_numbers(const struct icsbrec_availability_zone *az,
-                        struct ic_context *ctx,
+update_sequence_numbers(struct ic_context *ctx,
                         struct ovsdb_idl_loop *ic_sb_loop)
 {
     if (!ctx->ovnisb_txn || !ctx->ovninb_txn) {
@@ -2230,46 +2233,46 @@ update_sequence_numbers(const struct icsbrec_availability_zone *az,
     }
 
     if ((ic_nb->nb_ic_cfg != ic_sb->nb_ic_cfg) &&
-                          (ic_nb->nb_ic_cfg != az->nb_ic_cfg)) {
+                          (ic_nb->nb_ic_cfg != ctx->runned_az->nb_ic_cfg)) {
         /* Deal with potential overflows. */
-        if (az->nb_ic_cfg == LLONG_MAX) {
-            icsbrec_availability_zone_set_nb_ic_cfg(az, 0);
+        if (ctx->runned_az->nb_ic_cfg == LLONG_MAX) {
+            icsbrec_availability_zone_set_nb_ic_cfg(ctx->runned_az, 0);
         }
         ic_sb_loop->next_cfg = ic_nb->nb_ic_cfg;
-        ovsdb_idl_txn_increment(ctx->ovnisb_txn, &az->header_,
-                           &icsbrec_availability_zone_col_nb_ic_cfg, true);
+        ovsdb_idl_txn_increment(ctx->ovnisb_txn, &ctx->runned_az->header_,
+            &icsbrec_availability_zone_col_nb_ic_cfg, true);
         return;
     }
 
     /* handle cases where accidentally AZ:ic_nb_cfg exceeds
      * the INB:ic_nb_cfg.
      */
-    if (az->nb_ic_cfg != ic_sb_loop->cur_cfg) {
-        icsbrec_availability_zone_set_nb_ic_cfg(az, ic_sb_loop->cur_cfg);
+    if (ctx->runned_az->nb_ic_cfg != ic_sb_loop->cur_cfg) {
+        icsbrec_availability_zone_set_nb_ic_cfg(ctx->runned_az,
+                                                ic_sb_loop->cur_cfg);
         return;
     }
 
     const struct icsbrec_availability_zone *other_az;
     ICSBREC_AVAILABILITY_ZONE_FOR_EACH (other_az, ctx->ovnisb_idl) {
-        if (other_az->nb_ic_cfg != az->nb_ic_cfg) {
+        if (other_az->nb_ic_cfg != ctx->runned_az->nb_ic_cfg) {
             return;
         }
     }
     /* All the AZs are updated successfully, update SB/NB counter. */
     if (ic_nb->nb_ic_cfg != ic_sb->nb_ic_cfg) {
-        icsbrec_ic_sb_global_set_nb_ic_cfg(ic_sb, az->nb_ic_cfg);
-        icnbrec_ic_nb_global_set_sb_ic_cfg(ic_nb, az->nb_ic_cfg);
+        icsbrec_ic_sb_global_set_nb_ic_cfg(ic_sb, ctx->runned_az->nb_ic_cfg);
+        icnbrec_ic_nb_global_set_sb_ic_cfg(ic_nb, ctx->runned_az->nb_ic_cfg);
     }
 }
 
 static void
-ovn_db_run(struct ic_context *ctx,
-           const struct icsbrec_availability_zone *az)
+ovn_db_run(struct ic_context *ctx)
 {
-    gateway_run(ctx, az);
+    gateway_run(ctx);
     ts_run(ctx);
-    port_binding_run(ctx, az);
-    route_run(ctx, az);
+    port_binding_run(ctx);
+    route_run(ctx);
 }
 
 static void
@@ -2725,8 +2728,8 @@ main(int argc, char *argv[])
                 VLOG_DBG("Availability zone: %s", az ? az->name :
                                                "not created yet.");
                 if (az) {
-                    ovn_db_run(&ctx, az);
-                    update_sequence_numbers(az, &ctx, &ovnisb_idl_loop);
+                    ovn_db_run(&ctx);
+                    update_sequence_numbers(&ctx, &ovnisb_idl_loop);
                 }
             }
 
