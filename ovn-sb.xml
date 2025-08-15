@@ -5024,6 +5024,11 @@ tcp.flags = RST;
         The name of the chassis where the logical port is bound.
       </column>
 
+      <column name="ic_learned">
+        Set to true if the service monitor was propagated from another
+        OVN deployment via ovn-ic management.
+      </column>
+
       <column name="options" key="interval" type='{"type": "integer"}'>
         The interval, in seconds, between service monitor checks.
       </column>

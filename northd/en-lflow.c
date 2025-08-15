@@ -84,7 +84,8 @@ lflow_get_input_data(struct engine_node *node,
     lflow_input->ls_stateful_table = &ls_stateful_data->table;
     lflow_input->meter_groups = &sync_meters_data->meter_groups;
     lflow_input->lb_datapaths_map = &northd_data->lb_datapaths_map;
-    lflow_input->svc_monitor_map = &northd_data->svc_monitor_map;
+    lflow_input->local_svc_monitors_map =
+        &northd_data->local_svc_monitors_map;
     lflow_input->bfd_ports = &bfd_sync_data->bfd_ports;
     lflow_input->route_data = group_ecmp_route_data;
     lflow_input->route_tables = &routes_data->route_tables;

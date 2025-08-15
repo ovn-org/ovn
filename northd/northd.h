@@ -73,13 +73,17 @@ struct northd_input {
     const struct ovn_synced_logical_switch_map *synced_lses;
     const struct ovn_synced_logical_router_map *synced_lrs;
 
+    /* Service Monitor data for interconnect learned records.*/
+    struct hmap *ic_learned_svc_monitors_map;
+
     /* Indexes */
+    struct ovsdb_idl_index *nbrec_mirror_by_type_and_sink;
     struct ovsdb_idl_index *sbrec_chassis_by_name;
     struct ovsdb_idl_index *sbrec_chassis_by_hostname;
     struct ovsdb_idl_index *sbrec_ha_chassis_grp_by_name;
     struct ovsdb_idl_index *sbrec_ip_mcast_by_dp;
     struct ovsdb_idl_index *sbrec_fdb_by_dp_and_port;
-    struct ovsdb_idl_index *nbrec_mirror_by_type_and_sink;
+    struct ovsdb_idl_index *sbrec_service_monitor_by_learned_type;
 };
 
 /* A collection of datapaths. E.g. all logical switch datapaths, or all
@@ -178,7 +182,7 @@ struct northd_data {
     struct hmap lb_datapaths_map;
     struct hmap lb_group_datapaths_map;
     struct sset svc_monitor_lsps;
-    struct hmap svc_monitor_map;
+    struct hmap local_svc_monitors_map;
 
     /* Change tracking data. */
     struct northd_tracked_data trk_data;
@@ -220,6 +224,11 @@ struct bfd_sync_data {
     struct sset bfd_ports;
 };
 
+struct ic_learned_svc_monitors_data {
+    struct hmap ic_learned_svc_monitors_map;
+    struct lflow_ref *lflow_ref;
+};
+
 struct lflow_ref;
 struct lr_nat_table;
 
@@ -243,7 +252,6 @@ struct lflow_input {
     const struct hmap *lb_datapaths_map;
     const struct sset *bfd_ports;
     const struct chassis_features *features;
-    const struct hmap *svc_monitor_map;
     bool ovn_internal_version_changed;
     const char *svc_monitor_mac;
     const struct sampling_app_table *sampling_apps;
@@ -252,6 +260,9 @@ struct lflow_input {
     struct simap *route_tables;
     struct hmap *igmp_groups;
     struct lflow_ref *igmp_lflow_ref;
+    const struct hmap *local_svc_monitors_map;
+    const struct hmap *ic_learned_svc_monitors_map;
+    struct lflow_ref *ic_learned_svc_monitors_lflow_ref;
 };
 
 extern int parallelization_state;
@@ -864,6 +875,11 @@ void bfd_sync_init(struct bfd_sync_data *);
 void bfd_sync_swap(struct bfd_sync_data *, struct sset *bfd_ports);
 void bfd_sync_destroy(struct bfd_sync_data *);
 
+void ic_learned_svc_monitors_init(
+    struct ic_learned_svc_monitors_data *data);
+void ic_learned_svc_monitors_cleanup(
+    struct ic_learned_svc_monitors_data *data);
+
 struct lflow_table;
 struct lr_stateful_tracked_data;
 struct ls_stateful_tracked_data;
@@ -916,6 +932,11 @@ void bfd_table_sync(struct ovsdb_idl_txn *, const struct nbrec_bfd_table *,
                     struct sset *);
 void build_bfd_map(const struct nbrec_bfd_table *,
                    const struct sbrec_bfd_table *, struct hmap *);
+
+void build_ic_learned_svc_monitors_map(
+    struct hmap *ic_learned_svc_monitors_map,
+    struct ovsdb_idl_index *sbrec_service_monitor_by_learned_type);
+
 void run_update_worker_pool(int n_threads);
 
 const struct ovn_datapath *northd_get_datapath_for_port(

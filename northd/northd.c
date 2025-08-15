@@ -10462,6 +10462,34 @@ build_bfd_map(const struct nbrec_bfd_table *nbrec_bfd_table,
     }
 }
 
+void
+build_ic_learned_svc_monitors_map(
+    struct hmap *ic_learned_svc_monitors_map,
+    struct ovsdb_idl_index *sbrec_service_monitor_by_learned_type)
+{
+    struct sbrec_service_monitor *key;
+
+    key = sbrec_service_monitor_index_init_row(
+        sbrec_service_monitor_by_learned_type);
+
+    sbrec_service_monitor_set_ic_learned(key, true);
+
+    const struct sbrec_service_monitor *sbrec_mon;
+    SBREC_SERVICE_MONITOR_FOR_EACH_EQUAL (sbrec_mon, key,
+        sbrec_service_monitor_by_learned_type) {
+        uint32_t hash = sbrec_mon->port;
+        hash = hash_string(sbrec_mon->ip, hash);
+        hash = hash_string(sbrec_mon->logical_port, hash);
+        struct service_monitor_info *mon_info = xzalloc(sizeof *mon_info);
+        mon_info->sbrec_mon = sbrec_mon;
+        mon_info->required = true;
+        hmap_insert(ic_learned_svc_monitors_map,
+                    &mon_info->hmap_node, hash);
+    }
+
+    sbrec_service_monitor_index_destroy_row(key);
+}
+
 /* Returns a string of the IP address of the router port 'op' that
  * overlaps with 'ip_s".  If one is not found, returns NULL.
  *
@@ -17990,7 +18018,7 @@ void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
                                     lflows,
                                     input_data->meter_groups,
                                     input_data->lb_datapaths_map,
-                                    input_data->svc_monitor_map,
+                                    input_data->local_svc_monitors_map,
                                     input_data->bfd_ports,
                                     input_data->features,
                                     input_data->svc_monitor_mac,
@@ -18246,12 +18274,12 @@ lflow_handle_northd_lb_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                    lflow_input->meter_groups,
                                    lflow_input->lr_datapaths,
                                    lflow_input->lr_stateful_table,
-                                   lflow_input->svc_monitor_map,
+                                   lflow_input->local_svc_monitors_map,
                                    &match, &actions);
         build_lswitch_flows_for_lb(lb_dps, lflows,
                                    lflow_input->meter_groups,
                                    lflow_input->ls_datapaths,
-                                   lflow_input->svc_monitor_map,
+                                   lflow_input->local_svc_monitors_map,
                                    &match, &actions);
 
         ds_destroy(&match);
@@ -18785,7 +18813,7 @@ northd_init(struct northd_data *data)
     hmap_init(&data->lb_datapaths_map);
     hmap_init(&data->lb_group_datapaths_map);
     sset_init(&data->svc_monitor_lsps);
-    hmap_init(&data->svc_monitor_map);
+    hmap_init(&data->local_svc_monitors_map);
     init_northd_tracked_data(data);
 }
 
@@ -18830,6 +18858,13 @@ bfd_sync_destroy(struct bfd_sync_data *data)
 }
 
 void
+ic_learned_svc_monitors_init(struct ic_learned_svc_monitors_data *data)
+{
+    hmap_init(&data->ic_learned_svc_monitors_map);
+    data->lflow_ref = lflow_ref_create();
+}
+
+void
 northd_destroy(struct northd_data *data)
 {
     struct ovn_lb_datapaths *lb_dps;
@@ -18846,10 +18881,10 @@ northd_destroy(struct northd_data *data)
     hmap_destroy(&data->lb_group_datapaths_map);
 
     struct service_monitor_info *mon_info;
-    HMAP_FOR_EACH_POP (mon_info, hmap_node, &data->svc_monitor_map) {
+    HMAP_FOR_EACH_POP (mon_info, hmap_node, &data->local_svc_monitors_map) {
         free(mon_info);
     }
-    hmap_destroy(&data->svc_monitor_map);
+    hmap_destroy(&data->local_svc_monitors_map);
 
     /* XXX Having to explicitly clean up macam here
      * is a bit strange. We don't explicitly initialize
@@ -18882,6 +18917,23 @@ void
 bfd_destroy(struct bfd_data *data)
 {
     __bfd_destroy(&data->bfd_connections);
+}
+
+static void
+__ic_learned_svcs_cleanup(struct hmap *ic_learned_svc_monitors_map)
+{
+    struct service_monitor_info *mon_info;
+    HMAP_FOR_EACH_POP (mon_info, hmap_node, ic_learned_svc_monitors_map) {
+        free(mon_info);
+    }
+    hmap_destroy(ic_learned_svc_monitors_map);
+}
+
+void
+ic_learned_svc_monitors_cleanup(struct ic_learned_svc_monitors_data *data)
+{
+    __ic_learned_svcs_cleanup(&data->ic_learned_svc_monitors_map);
+    lflow_ref_destroy(data->lflow_ref);
 }
 
 void
@@ -18961,7 +19013,7 @@ ovnnb_db_run(struct northd_input *input_data,
                                &data->lb_datapaths_map,
                                &data->lb_group_datapaths_map,
                                &data->svc_monitor_lsps,
-                               &data->svc_monitor_map);
+                               &data->local_svc_monitors_map);
     build_lb_count_dps(&data->lb_datapaths_map,
                        ods_size(&data->ls_datapaths),
                        ods_size(&data->lr_datapaths));
