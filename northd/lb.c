@@ -100,6 +100,14 @@ void ovn_northd_lb_vip_init(struct ovn_northd_lb_vip *lb_vip_nb,
         ovn_lb_get_health_check(nbrec_lb, vip_port_str, template);
 }
 
+/*
+ * Initializes health check configuration for load balancer VIP
+ * backends. Parses the ip_port_mappings in the format :
+ * "ip:logical_port:src_ip[:az_name]".
+ * If az_name is present and non-empty, it indicates this is a
+ * remote service monitor (backend is in another availability zone),
+ * it should be propogated to another AZ by interconnection processing.
+ */
 static void
 ovn_lb_vip_backends_health_check_init(const struct ovn_northd_lb *lb,
                                       const struct ovn_lb_vip *lb_vip,
@@ -120,22 +128,64 @@ ovn_lb_vip_backends_health_check_init(const struct ovn_northd_lb *lb,
         }
 
         char *svc_mon_src_ip = NULL;
+        char *az_name = NULL;
+        bool is_remote = false;
         char *port_name = xstrdup(s);
-        char *p = strstr(port_name, ":");
-        if (p) {
-            *p = 0;
-            p++;
-            struct sockaddr_storage svc_mon_src_addr;
-            if (!inet_parse_address(p, &svc_mon_src_addr)) {
-                static struct vlog_rate_limit rl =
-                    VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_WARN_RL(&rl, "Invalid svc mon src IP %s", p);
-            } else {
-                struct ds src_ip_s = DS_EMPTY_INITIALIZER;
-                ss_format_address_nobracks(&svc_mon_src_addr,
-                                            &src_ip_s);
-                svc_mon_src_ip = ds_steal_cstr(&src_ip_s);
+        char *src_ip = NULL;
+
+        char *first_colon = strchr(port_name, ':');
+        if (!first_colon) {
+            free(port_name);
+            continue;
+        }
+        *first_colon = '\0';
+
+        if (first_colon[1] == '[') {
+            /* IPv6 case - format: port:[ipv6]:az or port:[ipv6] */
+            char *ip_end = strchr(first_colon + 2, ']');
+            if (!ip_end) {
+                VLOG_WARN("Malformed IPv6 address in backend %s", s);
+                free(port_name);
+                continue;
             }
+
+            src_ip = first_colon + 2;
+            *ip_end = '\0';
+
+            if (ip_end[1] == ':') {
+                az_name = ip_end + 2;
+                if (!*az_name) {
+                    VLOG_WARN("Empty AZ name specified for backend %s",
+                              port_name);
+                    free(port_name);
+                    continue;
+                }
+                is_remote = true;
+            }
+        } else {
+            /* IPv4 case - format: port:ip:az or port:ip */
+            src_ip = first_colon + 1;
+            char *az_colon = strchr(src_ip, ':');
+            if (az_colon) {
+                *az_colon = '\0';
+                az_name = az_colon + 1;
+                if (!*az_name) {
+                    VLOG_WARN("Empty AZ name specified for backend %s",
+                              port_name);
+                    free(port_name);
+                    continue;
+                }
+            is_remote = true;
+            }
+        }
+
+        struct sockaddr_storage svc_mon_src_addr;
+        if (!src_ip || !inet_parse_address(src_ip, &svc_mon_src_addr)) {
+            VLOG_WARN("Invalid svc mon src IP %s", src_ip ? src_ip : "NULL");
+        } else {
+            struct ds src_ip_s = DS_EMPTY_INITIALIZER;
+            ss_format_address_nobracks(&svc_mon_src_addr, &src_ip_s);
+            svc_mon_src_ip = ds_steal_cstr(&src_ip_s);
         }
 
         if (svc_mon_src_ip) {
@@ -144,6 +194,8 @@ ovn_lb_vip_backends_health_check_init(const struct ovn_northd_lb *lb,
             backend_nb->health_check = true;
             backend_nb->logical_port = xstrdup(port_name);
             backend_nb->svc_mon_src_ip = svc_mon_src_ip;
+            backend_nb->az_name = is_remote ? xstrdup(az_name) : NULL;
+            backend_nb->local_backend = !is_remote;
         }
         free(port_name);
     }
@@ -158,6 +210,7 @@ void ovn_northd_lb_vip_destroy(struct ovn_northd_lb_vip *vip)
     for (size_t i = 0; i < vip->n_backends; i++) {
         free(vip->backends_nb[i].logical_port);
         free(vip->backends_nb[i].svc_mon_src_ip);
+        free(vip->backends_nb[i].az_name);
     }
     free(vip->backends_nb);
 }

@@ -2292,6 +2292,9 @@
           Health checks are sent to this port with the specified source IP.
           For IPv6 square brackets must be used around IP address, e.g:
           <code><var>port_name</var>:<var>[sourc_ip]</var></code>
+          Remote endpoint:
+          Specify :target_zone_name at the end of the above syntax to create
+          remote health checks in a specific zone.
         </p>
 
         <p>
@@ -2299,11 +2302,15 @@
           defined as <code>10.0.0.4</code>=<code>sw0-p1:10.0.0.2</code> and
           <code>20.0.0.4</code>=<code>sw1-p1:20.0.0.2</code>, if the values
           given were suitable ports and IP addresses.
+          And remote endpoint:
+          <code>10.0.0.4</code>=<code>sw0-p1:10.0.0.2</code>:az1, where
+          <code>sw0-p1</code> - logical port in <code>az1</code>.
         </p>
 
         <p>
           For IPv6 IP to port mappings might be defined as
           <code>[2001::1]</code>=<code>sw0-p1:[2002::1]</code>.
+          Remote endpoint: same as for IP.
         </p>
       </column>
     </group>

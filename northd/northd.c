@@ -2983,13 +2983,28 @@ get_service_mon(const struct hmap *local_svc_monitors_map,
     return NULL;
 }
 
+static void
+set_service_mon_options(const struct sbrec_service_monitor *sbrec_mon,
+                        const struct smap *nb_hc_options,
+                        const char *target_az_name)
+{
+    struct smap sb_svc_options = SMAP_INITIALIZER(&sb_svc_options);
+
+    smap_clone(&sb_svc_options, nb_hc_options);
+    if (target_az_name) {
+        smap_add(&sb_svc_options, "az-name", target_az_name);
+    }
+    sbrec_service_monitor_set_options(sbrec_mon, &sb_svc_options);
+    smap_destroy(&sb_svc_options);
+}
+
 static struct service_monitor_info *
 create_or_get_service_mon(struct ovsdb_idl_txn *ovnsb_txn,
                           struct hmap *local_svc_monitors_map,
                           struct hmap *ic_learned_svc_monitors_map,
                           const char *ip, const char *logical_port,
                           uint16_t service_port, const char *protocol,
-                          const char *chassis_name)
+                          const char *chassis_name, bool local_backend)
 {
     struct service_monitor_info *mon_info =
         get_service_mon(local_svc_monitors_map,
@@ -3002,6 +3017,14 @@ create_or_get_service_mon(struct ovsdb_idl_txn *ovnsb_txn,
             sbrec_service_monitor_set_chassis_name(mon_info->sbrec_mon,
                                                    chassis_name);
         }
+        /*
+         * if a similar record was created by the interconet database,
+         * then we transfer ownership rights to delete to northd:
+         * northd will create logical flows and delete the entry
+         * when the backend is no longer used locally.
+         */
+        sbrec_service_monitor_set_ic_learned(mon_info->sbrec_mon,
+                                             false);
         return mon_info;
     }
 
@@ -3016,6 +3039,7 @@ create_or_get_service_mon(struct ovsdb_idl_txn *ovnsb_txn,
     sbrec_service_monitor_set_port(sbrec_mon, service_port);
     sbrec_service_monitor_set_logical_port(sbrec_mon, logical_port);
     sbrec_service_monitor_set_protocol(sbrec_mon, protocol);
+    sbrec_service_monitor_set_local(sbrec_mon, local_backend);
     sbrec_service_monitor_set_ic_learned(sbrec_mon, false);
     if (chassis_name) {
         sbrec_service_monitor_set_chassis_name(sbrec_mon, chassis_name);
@@ -3058,7 +3082,8 @@ ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
             struct ovn_port *op = ovn_port_find(ls_ports,
                                                 backend_nb->logical_port);
 
-            if (!op || !lsp_is_enabled(op->nbsp)) {
+            if (backend_nb->local_backend &&
+                (!op || !lsp_is_enabled(op->nbsp))) {
                 continue;
             }
 
@@ -3068,7 +3093,7 @@ ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
             }
 
             const char *chassis_name = NULL;
-            if (op->sb->chassis) {
+            if (backend_nb->local_backend && op->sb->chassis) {
                 chassis_name = op->sb->chassis->name;
             }
 
@@ -3080,10 +3105,12 @@ ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
                                           backend_nb->logical_port,
                                           backend->port,
                                           protocol,
-                                          chassis_name);
+                                          chassis_name,
+                                          backend_nb->local_backend);
             ovs_assert(mon_info);
-            sbrec_service_monitor_set_options(
-                mon_info->sbrec_mon, &lb_vip_nb->lb_health_check->options);
+            set_service_mon_options(mon_info->sbrec_mon,
+                                    &lb_vip_nb->lb_health_check->options,
+                                    backend_nb->az_name);
             struct eth_addr ea;
             if (!mon_info->sbrec_mon->src_mac ||
                 !eth_addr_from_string(mon_info->sbrec_mon->src_mac, &ea) ||
@@ -3100,7 +3127,8 @@ ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
                     backend_nb->svc_mon_src_ip);
             }
 
-            if ((!op->sb->n_up || !op->sb->up[0])
+            if (backend_nb->local_backend &&
+                (!op->sb->n_up || !op->sb->up[0])
                 && mon_info->sbrec_mon->status
                 && !strcmp(mon_info->sbrec_mon->status, "online")) {
                 sbrec_service_monitor_set_status(mon_info->sbrec_mon,
