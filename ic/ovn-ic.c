@@ -2329,8 +2329,8 @@ create_pushed_svcs_mon(struct ic_context *ctx,
     const struct sbrec_service_monitor *sb_rec;
     SBREC_SERVICE_MONITOR_FOR_EACH_EQUAL (sb_rec, key,
         ctx->sbrec_service_monitor_by_local_type) {
-        const char *target_az_name = smap_get_def(&sb_rec->options,
-                                                  "az-name", "");
+        const char *target_az_name = smap_get(&sb_rec->options,
+                                              "az-name");
         if (!target_az_name) {
             continue;
         }
@@ -2493,13 +2493,14 @@ create_service_monitor_data(struct ic_context *ctx,
 {
     const struct sbrec_sb_global *ic_sb = sbrec_sb_global_first(
                                                 ctx->ovnsb_idl);
-    const char *svc_monitor_mac = smap_get_def(&ic_sb->options,
-        "svc_monitor_mac", "");
+    const char *svc_monitor_mac = smap_get(&ic_sb->options,
+                                           "svc_monitor_mac");
 
-    if (svc_monitor_mac) {
-        sync_data->prpg_svc_monitor_mac = xstrdup(svc_monitor_mac);
+    if (!svc_monitor_mac) {
+        return;
     }
 
+    sync_data->prpg_svc_monitor_mac = xstrdup(svc_monitor_mac);
     create_pushed_svcs_mon(ctx, &sync_data->pushed_svcs_map);
     create_synced_svcs_mon(ctx, &sync_data->synced_svcs_map);
     create_local_ic_svcs_map(ctx, &sync_data->local_ic_svcs_map);
