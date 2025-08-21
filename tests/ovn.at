@@ -39831,6 +39831,14 @@ expected_flow_count=$(($expected_flow_count + 4))
 check_flow_count hv1 $expected_flow_count
 check_flow_count hv2 $expected_flow_count
 
+AT_CHECK([test 5 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+# Do not check number of PACKET_IN2 on hv2, as vif14 => 99 as well as vif15 => vif25
+# might have caused PACKET_IN2, but without any guarantee.
+# e.g. (1) packet => hv1 ovs, (2) PACKET_IN2 => hv1 ovn, (3) FDB => sb,
+# (4) FDB => hv2 ovn, (5) flows => hv2 ovs.
+# If packet is received by hv2 ovs before (5), there will be a PACKET_IN2.
+# If packet is only received by hv2 ovs after (5), there will be no PACKET_IN2.
+
 AS_BOX([$(date +%H:%M:%S.%03N) Packet from external])
 arp_req=$(fmt_pkt "Ether(dst='00:00:00:00:10:50', src='00:00:00:00:10:40')/ARP(op=2, pdst='192.168.10.50', psrc='192.168.10.40')")
 as hv2 ovs-appctl netdev-dummy/receive ext0 $arp_req
@@ -39917,17 +39925,10 @@ wake_up_controller hv1
 ensure_controller_run hv1
 wait_column "$vif23_key" fdb port_key mac='"00:00:00:00:10:23"'
 
-# In both controllers
-# - vif11 <=> vif21: 1 PACKET_IN
-# - vif12 <=> vif22: 2 PACKET_IN
-# - vif13 <=> vif23: 2 PACKET_IN
-# - vif14 <=> 99: 1 PACKET_IN
-# - vif24 <=> vif14: 1 PACKET_IN
-# - vif25 <=> vif15: 2 PACKET_IN
-# - ext0: 1 PACKET_IN
-# controller + .
-AT_CHECK([test 10 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
-AT_CHECK([test 10 = `cat hv2/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+# Do not check number of PACKET_IN2, as multiple packets might have causes PACKET_IN2,
+# but without any guarantee.
+n_packet_in_hv1=$(cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l)
+n_packet_in_hv2=$(cat hv2/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l)
 
 # Send a few more packets
 send_packet hv1 13 23
@@ -39948,8 +39949,8 @@ for i in 1 2; do
 done
 
 # The last packets should have gone through the fast path
-AT_CHECK([test 10 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
-AT_CHECK([test 10 = `cat hv2/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+AT_CHECK([test $n_packet_in_hv1 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+AT_CHECK([test $n_packet_in_hv2 = `cat hv2/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
 
 # Check that there are no bad surprises
 wait_column "$vif11_key" fdb port_key mac='"00:00:00:00:10:11"'
