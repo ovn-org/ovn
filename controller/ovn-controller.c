@@ -5184,6 +5184,16 @@ check_northd_version(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
     return true;
 }
 
+static void
+ovsdb_idl_loop_next_cfg_inc(struct ovsdb_idl_loop *idl_loop)
+{
+    if (idl_loop->next_cfg == INT64_MAX) {
+        idl_loop->next_cfg = 0;
+    } else {
+        idl_loop->next_cfg++;
+    }
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -5732,6 +5742,7 @@ main(int argc, char *argv[])
     VLOG_INFO("OVN internal version is : [%s]", ovn_version);
 
     /* Main loop. */
+    int ovnsb_txn_status = 1;
     bool sb_monitor_all = false;
     while (!exit_args.exiting) {
         memory_run();
@@ -5779,6 +5790,9 @@ main(int argc, char *argv[])
             = ovsdb_idl_loop_run(&ovnsb_idl_loop);
         unsigned int new_ovnsb_cond_seqno
             = ovsdb_idl_get_condition_seqno(ovnsb_idl_loop.idl);
+        if (ovnsb_idl_txn && ovnsb_txn_status == -1) {
+            ovsdb_idl_loop_next_cfg_inc(&ovnsb_idl_loop);
+        }
         if (new_ovnsb_cond_seqno != ovnsb_cond_seqno) {
             if (!new_ovnsb_cond_seqno) {
                 VLOG_INFO("OVNSB IDL reconnected, force recompute.");
@@ -6185,16 +6199,12 @@ main(int argc, char *argv[])
             poll_immediate_wake();
         }
 
-        int ovnsb_txn_status = ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop);
+        ovnsb_txn_status = ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop);
         if (!ovnsb_txn_status) {
             VLOG_INFO("OVNSB commit failed, force recompute next time.");
             engine_set_force_recompute_immediate();
         } else if (ovnsb_txn_status == 1) {
-            if (ovnsb_idl_loop.next_cfg == INT64_MAX) {
-                ovnsb_idl_loop.next_cfg = 0;
-            } else {
-                ovnsb_idl_loop.next_cfg++;
-            }
+            ovsdb_idl_loop_next_cfg_inc(&ovnsb_idl_loop);
         } else if (ovnsb_txn_status == -1) {
             /* The commit is still in progress */
         } else {
