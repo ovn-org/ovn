@@ -87,6 +87,7 @@ struct fdb {
     struct fdb_data data;
     /* Reference to the SB FDB record. */
     const struct sbrec_fdb *sbrec_fdb;
+    int64_t cfg;
 };
 
 struct bp_packet_data {

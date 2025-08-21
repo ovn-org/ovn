@@ -318,6 +318,7 @@ fdb_add(struct hmap *map, struct fdb_data fdb_data) {
     }
 
     fdb->data = fdb_data;
+    fdb->cfg = -1;
 
     return fdb;
 }
