@@ -156,3 +156,10 @@ OVN To-do List
     monitoring conditions to update before we actually try to learn routes.
     Otherwise we could try to add duplicated Learned_Routes and the ovnsb
     commit would fail.
+
+* CI
+
+  * ovn-kubernetes: Only a subset of the ovn-kubernetes features is currently
+    tested in GitHub CI.  We should extend our testing to support
+    OVN_ENABLE_INTERCONNECT=true and potentially more of the CI lanes
+    ovn-kubernetes/ovn-kubernetes defines in its GitHub project.

@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  OVNKUBE_COMMIT: "release-1.0"
+  OVNKUBE_COMMIT: "release-1.1"
   KIND_CLUSTER_NAME: ovn
   KIND_INSTALL_INGRESS: true
   KIND_ALLOW_SYSTEM_WRITES: true
@@ -96,11 +96,14 @@ jobs:
       KIND_INSTALL_METALLB: "${{ matrix.target == 'control-plane' }}"
       OVN_MULTICAST_ENABLE:  "${{ matrix.target == 'control-plane' }}"
       OVN_EMPTY_LB_EVENTS: "${{ matrix.target == 'control-plane' }}"
+      # TODO: We have been testing only non-interconnect ovn-k8s jobs until
+      # now.  Both modes should be tested in the future.
+      OVN_ENABLE_INTERCONNECT: "false"
       OVN_HA: "true"
       OVN_DISABLE_SNAT_MULTIPLE_GWS: "${{ matrix.disable-snat-multiple-gws == 'noSnatGW' }}"
       OVN_GATEWAY_MODE: "${{ matrix.gateway-mode }}"
-      KIND_IPV4_SUPPORT: "${{ matrix.ipfamily == 'IPv4' || matrix.ipfamily == 'dualstack' }}"
-      KIND_IPV6_SUPPORT: "${{ matrix.ipfamily == 'IPv6' || matrix.ipfamily == 'dualstack' }}"
+      PLATFORM_IPV4_SUPPORT: "${{ matrix.ipfamily == 'IPv4' || matrix.ipfamily == 'dualstack' }}"
+      PLATFORM_IPV6_SUPPORT: "${{ matrix.ipfamily == 'IPv6' || matrix.ipfamily == 'dualstack' }}"
     steps:
 
     - name: Check out ovn
@@ -179,7 +182,7 @@ jobs:
       if: always()
       run: |
         mkdir -p /tmp/kind/logs
-        kind export logs --name ${KIND_CLUSTER_NAME} --loglevel=debug /tmp/kind/logs
+        kind export logs --name ${KIND_CLUSTER_NAME} --verbosity 4 /tmp/kind/logs
       working-directory: src/github.com/ovn-kubernetes/ovn-kubernetes
 
     - name: Upload logs
