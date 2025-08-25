@@ -39097,7 +39097,7 @@ OVN_FOR_EACH_NORTHD([
 AT_SETUP([pod to pod with localnet_learn_fdb])
 AT_SKIP_IF([test $HAVE_SCAPY = no])
 
-# 6 VIFs, 3 per HV: vif11, vif12, vif13 on hv1.
+# 10 VIFs, 5 per HV: vif11, vif12, vif13, vif14 and vif15 on hv1.
 # vif11 will exchange packets with vif21, vif12 w/ vif22 and so on.
 #
 ovn_start
@@ -39110,7 +39110,7 @@ check ovn-nbctl lsp-add ls0 ln_port -- \
       lsp-set-type ln_port localnet -- \
       lsp-set-options ln_port network_name=physnet1
 
-for i in $(seq 1 3); do
+for i in $(seq 1 5); do
     check ovn-nbctl lsp-add ls0 vif1$i -- \
           lsp-set-addresses vif1$i unknown
     check ovn-nbctl lsp-add ls0 vif2$i -- \
@@ -39125,7 +39125,7 @@ for hv in 1 2; do
     ovs-vsctl add-br br-phys
     ovn_attach n1 br-phys 192.168.0.${hv}
 
-    for i in $(seq 1 3); do
+    for i in $(seq 1 5); do
         ovs-vsctl -- add-port br-int vif${hv}${i} -- \
             set interface vif${hv}${i} external-ids:iface-id=vif${hv}${i} \
             options:tx_pcap=hv${hv}/vif${hv}${i}-tx.pcap \
@@ -39136,7 +39136,7 @@ for hv in 1 2; do
         set interface ext0 \
         options:tx_pcap=hv${hv}/ext0-tx.pcap \
         options:rxq_pcap=hv${hv}/ext0-rx.pcap \
-        ofport-request=4
+        ofport-request=6
     ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
 done
 
@@ -39148,9 +39148,13 @@ ln_port_key=$(fetch_column port_binding tunnel_key logical_port=ln_port)
 vif11_key=$(fetch_column port_binding tunnel_key logical_port=vif11)
 vif12_key=$(fetch_column port_binding tunnel_key logical_port=vif12)
 vif13_key=$(fetch_column port_binding tunnel_key logical_port=vif13)
+vif14_key=$(fetch_column port_binding tunnel_key logical_port=vif14)
+vif15_key=$(fetch_column port_binding tunnel_key logical_port=vif15)
 vif21_key=$(fetch_column port_binding tunnel_key logical_port=vif21)
 vif22_key=$(fetch_column port_binding tunnel_key logical_port=vif22)
 vif23_key=$(fetch_column port_binding tunnel_key logical_port=vif23)
+vif24_key=$(fetch_column port_binding tunnel_key logical_port=vif24)
+vif25_key=$(fetch_column port_binding tunnel_key logical_port=vif25)
 
 ensure_controller_run() {
 # We want to make sure controller could run at least one full loop.
@@ -39219,14 +39223,19 @@ for i in 2 3; do
 done
 wait_column "$vif21_key" fdb port_key mac='"00:00:00:00:10:21"'
 
-check_flow_count hv1 2
-check_flow_count hv2 2
-
+# Expect flows for 10:11 and 10:21
+expected_flow_count=2
+check_flow_count hv1 $expected_flow_count
+check_flow_count hv2 $expected_flow_count
 # We now enable localnet_learn_fdb
 # We check how it behaves with existing vif entries in fdb
 check ovn-nbctl --wait=hv set logical_switch_port ln_port options:localnet_learn_fdb=true
 
 AS_BOX([$(date +%H:%M:%S.%03N) vif11 <=> vif21 after learn_fdb])
+# Expect flows for 10:11 and 10:21 (x2 as now using learn fdb i.e. also have flows with MLF_LOCALNET_BIT.
+expected_flow_count=$(($expected_flow_count * 2))
+check_flow_count hv1 $expected_flow_count
+check_flow_count hv2 $expected_flow_count
 send_packet hv1 11 21
 
 wait_for_packets hv2 vif21
@@ -39248,8 +39257,9 @@ wait_column "$vif21_key" fdb port_key mac='"00:00:00:00:10:21"'
 AT_CHECK([test 1 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
 AT_CHECK([test 1 = `cat hv2/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
 
-check_flow_count hv1 4
-check_flow_count hv2 4
+# Expect flows for 10:11, and 10:21
+check_flow_count hv1 $expected_flow_count
+check_flow_count hv2 $expected_flow_count
 
 # Send a few more packets
 send_packet hv1 11 21
@@ -39271,9 +39281,103 @@ AT_CHECK([test 1 = `cat hv2/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
 wait_column "$vif11_key" fdb port_key mac='"00:00:00:00:10:11"'
 wait_column "$vif21_key" fdb port_key mac='"00:00:00:00:10:21"'
 
-# We will now create fdb entries AFTER enabing localnet_learn_fdb
+# We will now create fdb entries AFTER enabling localnet_learn_fdb
 # We make ovn_controller (hv1 or hv2) to sleep to control who writes first to fdb
 # as otherwise no guarentee.
+
+as hv1 ovn-appctl vlog/set pinctrl:dbg
+as hv2 ovn-appctl vlog/set pinctrl:dbg
+as hv1 ovn-appctl vlog/set jsonrpc:dbg
+as hv2 ovn-appctl vlog/set jsonrpc:dbg
+
+send_packet hv1 14 99
+ensure_controller_run hv1
+
+for i in 1 2 3; do
+    wait_for_packets hv1 vif1${i}
+done
+for i in 1 2 3; do
+    wait_for_packets hv2 vif2${i}
+done
+
+# In this test we will cause transaction errors in hv2 for a FDB update containing vif24 update
+# Make both hv2 ovn-controller and sb to sleep (i.e. be very slow ...)
+sleep_sb
+sleep_controller hv2
+
+AS_BOX([$(date +%H:%M:%S.%03N) Sending ARP 14 -> 24])
+arp_req=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='00:00:00:00:10:14')/ARP(op=1, pdst='192.168.10.24', psrc='192.168.10.14')")
+as hv1 ovs-appctl netdev-dummy/receive vif14 $arp_req
+ensure_controller_run hv1
+
+AS_BOX([$(date +%H:%M:%S.%03N) Sending ARP 24 -> 14])
+arp_req=$(fmt_pkt "Ether(dst='00:00:00:00:10:14', src='00:00:00:00:10:24')/ARP(op=2, pdst='192.168.10.14', psrc='192.168.10.24')")
+as hv2 ovs-appctl netdev-dummy/receive vif24 $arp_req
+sleep 1
+
+# hv2 ovn-controller has been sleeping for 1 sec.
+# When it makes up, it should receive PUT_FDB for 00:00:10:24 (vif24).
+wake_up_controller hv2
+
+# hv2 sent update for 00:00:10:24 (vif24) to sb, but
+# it will fail as hv1 as already sent an update for 00:00:10:24 (localnet) to sb ... which is also sleeping
+# When sb wakes up, it will see the hv2 update as a transaction error.
+ensure_controller_run hv2
+wake_up_sb
+echo "ln=$ln_port_key, vif14=$vif14_key, vif24=$vif24_key"
+wait_column "$vif14_key" fdb port_key mac='"00:00:00:00:10:14"'
+wait_column "$vif24_key" fdb port_key mac='"00:00:00:00:10:24"'
+
+# Expect new flows for 10:14, and 10:24
+expected_flow_count=$(($expected_flow_count + 4))
+check_flow_count hv1 $expected_flow_count
+check_flow_count hv2 $expected_flow_count
+
+# In this test we will cause transaction errors in hv2 for a FDB update containing vif15 & vif25 update
+# Make both hv2 ovn-controller and sb to sleep (i.e. be very slow ...)
+sleep_sb
+sleep_controller hv2
+
+AS_BOX([$(date +%H:%M:%S.%03N) Sending ARP 15 -> 25])
+arp_req=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='00:00:00:00:10:15')/ARP(op=1, pdst='192.168.10.25', psrc='192.168.10.15')")
+as hv1 ovs-appctl netdev-dummy/receive vif15 $arp_req
+ensure_controller_run hv1
+
+AS_BOX([$(date +%H:%M:%S.%03N) Sending ARP 25 -> 15])
+arp_req=$(fmt_pkt "Ether(dst='00:00:00:00:10:15', src='00:00:00:00:10:25')/ARP(op=2, pdst='192.168.10.15', psrc='192.168.10.25')")
+as hv2 ovs-appctl netdev-dummy/receive vif25 $arp_req
+
+sleep 1
+
+# hv2 ovn-controller has been sleeping for 1 sec.
+# When it makes up, it should receive PUT_FDB for 00:00:10:15 (localnet).
+wake_up_controller hv2
+
+# hv2 sent update for 00:00:10:15 (localnet) to sb, but
+# it will fail as hv1 as already sent an update for 00:00:10:15 (vif15) to sb ... which is also sleeping
+# When sb wakes up, it will see the hv2 update as a transaction error.
+ensure_controller_run hv2
+wake_up_sb
+
+echo "ln=$ln_port_key, vif15=$vif15_key, vif25=$vif25_key"
+wait_column "$vif15_key" fdb port_key mac='"00:00:00:00:10:15"'
+wait_column "$vif25_key" fdb port_key mac='"00:00:00:00:10:25"'
+
+# Expect new flows for 10:15, and 10:25
+expected_flow_count=$(($expected_flow_count + 4))
+check_flow_count hv1 $expected_flow_count
+check_flow_count hv2 $expected_flow_count
+
+AS_BOX([$(date +%H:%M:%S.%03N) Packet from external])
+arp_req=$(fmt_pkt "Ether(dst='00:00:00:00:10:50', src='00:00:00:00:10:40')/ARP(op=2, pdst='192.168.10.50', psrc='192.168.10.40')")
+as hv2 ovs-appctl netdev-dummy/receive ext0 $arp_req
+wait_column "$ln_port_key" fdb port_key mac='"00:00:00:00:10:40"'
+
+# Expect new flows for 10:40
+expected_flow_count=$(($expected_flow_count + 1))
+check_flow_count hv1 $expected_flow_count
+check_flow_count hv2 $expected_flow_count
+
 AS_BOX([$(date +%H:%M:%S.%03N) vif12 <=> vif22])
 # We make sure that the fdb update by the vif is done after the localnet update
 sleep_controller hv1
@@ -39303,8 +39407,10 @@ wait_column "$ln_port_key" fdb port_key mac='"00:00:00:00:10:22"'
 wake_up_controller hv2
 wait_column "$vif22_key" fdb port_key mac='"00:00:00:00:10:22"'
 
-check_flow_count hv1 8
-check_flow_count hv2 8
+# Expect new flows for 10:12, 10:22
+expected_flow_count=$(($expected_flow_count + 4))
+check_flow_count hv1 $expected_flow_count
+check_flow_count hv2 $expected_flow_count
 
 AS_BOX([$(date +%H:%M:%S.%03N) vif13 <=> vif23 ])
 # Now we do the other way around: we make sure that the localnet update is done after the vif update.
@@ -39352,9 +39458,13 @@ wait_column "$vif23_key" fdb port_key mac='"00:00:00:00:10:23"'
 # - vif11 <=> vif21: 1 PACKET_IN
 # - vif12 <=> vif22: 2 PACKET_IN
 # - vif13 <=> vif23: 2 PACKET_IN
+# - vif14 <=> 99: 1 PACKET_IN
+# - vif24 <=> vif14: 1 PACKET_IN
+# - vif25 <=> vif15: 2 PACKET_IN
+# - ext0: 1 PACKET_IN
 # controller + .
-AT_CHECK([test 5 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
-AT_CHECK([test 5 = `cat hv2/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+AT_CHECK([test 10 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+AT_CHECK([test 10 = `cat hv2/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
 
 # Send a few more packets
 send_packet hv1 13 23
@@ -39375,19 +39485,25 @@ for i in 1 2; do
 done
 
 # The last packets should have gone through the fast path
-AT_CHECK([test 5 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
-AT_CHECK([test 5 = `cat hv2/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+AT_CHECK([test 10 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+AT_CHECK([test 10 = `cat hv2/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
 
 # Check that there are no bad surprises
 wait_column "$vif11_key" fdb port_key mac='"00:00:00:00:10:11"'
 wait_column "$vif12_key" fdb port_key mac='"00:00:00:00:10:12"'
 wait_column "$vif13_key" fdb port_key mac='"00:00:00:00:10:13"'
+wait_column "$vif14_key" fdb port_key mac='"00:00:00:00:10:14"'
+wait_column "$vif15_key" fdb port_key mac='"00:00:00:00:10:15"'
 wait_column "$vif21_key" fdb port_key mac='"00:00:00:00:10:21"'
 wait_column "$vif22_key" fdb port_key mac='"00:00:00:00:10:22"'
 wait_column "$vif23_key" fdb port_key mac='"00:00:00:00:10:23"'
+wait_column "$vif24_key" fdb port_key mac='"00:00:00:00:10:24"'
+wait_column "$vif25_key" fdb port_key mac='"00:00:00:00:10:25"'
 
-check_flow_count hv1 12
-check_flow_count hv2 12
+# Expect new flows for 10:13, 10:23
+expected_flow_count=$(($expected_flow_count + 4))
+check_flow_count hv1 $expected_flow_count
+check_flow_count hv2 $expected_flow_count
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
