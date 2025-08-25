@@ -71,7 +71,8 @@ FROM fedora:$FEDORA_VERSION
 
 # install needed dependencies
 RUN INSTALL_PKGS=" \
-    iptables iproute iputils hostname unbound-libs kubernetes-client kmod socat" && \
+    iptables nftables iproute iputils hostname unbound-libs \
+    kubernetes-client kmod socat" && \
     dnf install --best --refresh -y --setopt=tsflags=nodocs $INSTALL_PKGS
 
 RUN mkdir -p /var/run/openvswitch
