@@ -70,7 +70,7 @@ bfd_calculate_active_tunnels(const struct ovsrec_bridge *br_int,
                                                   "state");
                     if (status && !strcmp(status, "up")) {
                         const char *id = smap_get(&port_rec->external_ids,
-                                                  "ovn-chassis-id");
+                                                  OVN_TUNNEL_ID);
                         if (id) {
                             char *chassis_name = NULL;
 
@@ -185,7 +185,8 @@ bfd_run(const struct ovsrec_interface_table *interface_table,
         const struct ovsrec_bridge *br_int,
         const struct sset *bfd_chassis,
         const struct sbrec_chassis *chassis_rec,
-        const struct sbrec_sb_global_table *sb_global_table)
+        const struct sbrec_sb_global_table *sb_global_table,
+        const struct ovsrec_open_vswitch_table *ovs_table)
 {
     if (!chassis_rec) {
         return;
@@ -196,7 +197,7 @@ bfd_run(const struct ovsrec_interface_table *interface_table,
     struct sset bfd_ifaces = SSET_INITIALIZER(&bfd_ifaces);
     for (size_t k = 0; k < br_int->n_ports; k++) {
         const char *tunnel_id = smap_get(&br_int->ports[k]->external_ids,
-                                          "ovn-chassis-id");
+                                          OVN_TUNNEL_ID);
         if (tunnel_id) {
             char *chassis_name = NULL;
             char *port_name = br_int->ports[k]->name;
@@ -210,6 +211,15 @@ bfd_run(const struct ovsrec_interface_table *interface_table,
                 free(chassis_name);
             }
         }
+    }
+
+    /* Warn if BFD is needed but flow-based tunnels are enabled */
+    if (is_flow_based_tunnels_enabled(ovs_table, chassis_rec)
+        && !sset_is_empty(bfd_chassis)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "Flow-based tunnels are enabled but BFD is required "
+                     "for HA chassis groups. BFD will not function correctly "
+                     "with flow-based tunnels.");
     }
 
     const struct sbrec_sb_global *sb

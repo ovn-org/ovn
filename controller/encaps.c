@@ -29,14 +29,6 @@
 
 VLOG_DEFINE_THIS_MODULE(encaps);
 
-/*
- * Given there could be multiple tunnels with different IPs to the same
- * chassis we annotate the external_ids:ovn-chassis-id in tunnel port with
- * <chassis_name>@<remote IP>%<local IP>. The external_id key
- * "ovn-chassis-id" is kept for backward compatibility.
- */
-#define OVN_TUNNEL_ID "ovn-chassis-id"
-
 static char *current_br_int_name = NULL;
 
 void
@@ -550,6 +542,172 @@ create_evpn_tunnels(struct tunnel_ctx *tc)
 }
 
 
+bool
+is_flow_based_tunnels_enabled(
+    const struct ovsrec_open_vswitch_table *ovs_table,
+    const struct sbrec_chassis *chassis)
+{
+    const struct ovsrec_open_vswitch *cfg =
+        ovsrec_open_vswitch_table_first(ovs_table);
+
+    return cfg ? get_chassis_external_id_value_bool(
+                        &cfg->external_ids, chassis->name,
+                        "ovn-enable-flow-based-tunnels", false)
+               : false;
+}
+
+static char *
+flow_based_tunnel_name(const char *tunnel_type, const char *chassis_idx)
+{
+    return xasprintf("ovn%s-%s", chassis_idx, tunnel_type);
+}
+
+static void
+flow_based_tunnel_ensure(struct tunnel_ctx *tc, const char *tunnel_type,
+                         const char *port_name,
+                         const struct sbrec_sb_global *sbg,
+                         const struct ovsrec_open_vswitch_table *ovs_table)
+{
+    /* Check if flow-based tunnel already exists. */
+    const struct ovsrec_port *existing_port = NULL;
+    for (size_t i = 0; i < tc->br_int->n_ports; i++) {
+        const struct ovsrec_port *port = tc->br_int->ports[i];
+        if (!strcmp(port->name, port_name)) {
+            existing_port = port;
+            break;
+        }
+    }
+
+    if (existing_port) {
+        return;
+    }
+
+    /* Create flow-based tunnel port. */
+    struct smap options = SMAP_INITIALIZER(&options);
+    smap_add(&options, "remote_ip", "flow");
+    smap_add(&options, "local_ip", "flow");
+    smap_add(&options, "key", "flow");
+
+    if (sbg->ipsec) {
+        /* For flow-based tunnels, we can't specify remote_name since
+         * remote chassis varies. IPsec will need to handle this differently.
+         */
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "IPsec is not supported for flow-based tunnels. "
+                     "Ignoring IPsec settings.");
+    }
+
+    /* Add other tunnel options from OVS config. */
+    const struct ovsrec_open_vswitch *cfg =
+        ovsrec_open_vswitch_table_first(ovs_table);
+    if (cfg) {
+        const char *encap_tos =
+            get_chassis_external_id_value(&cfg->external_ids,
+                                         tc->this_chassis->name,
+                                         "ovn-encap-tos", "none");
+        if (encap_tos && strcmp(encap_tos, "none")) {
+            smap_add(&options, "tos", encap_tos);
+        }
+
+        const char *encap_df =
+            get_chassis_external_id_value(&cfg->external_ids,
+                                         tc->this_chassis->name,
+                                         "ovn-encap-df_default", NULL);
+        if (encap_df) {
+            smap_add(&options, "df_default", encap_df);
+        }
+    }
+
+    /* Create interface. */
+    struct ovsrec_interface *iface = ovsrec_interface_insert(tc->ovs_txn);
+    ovsrec_interface_set_name(iface, port_name);
+    ovsrec_interface_set_type(iface, tunnel_type);
+    ovsrec_interface_set_options(iface, &options);
+
+    /* Create port. */
+    struct ovsrec_port *port = ovsrec_port_insert(tc->ovs_txn);
+    ovsrec_port_set_name(port, port_name);
+    ovsrec_port_set_interfaces(port, &iface, 1);
+
+    /* Set external IDs to mark as flow-based tunnel using unified
+     * OVN_TUNNEL_ID. */
+    const struct smap external_ids = SMAP_CONST2(&external_ids,
+                                                  OVN_TUNNEL_ID, "flow",
+                                                  "ovn-tunnel-type",
+                                                  tunnel_type);
+    ovsrec_port_set_external_ids(port, &external_ids);
+
+    /* Add to bridge. */
+    ovsrec_bridge_update_ports_addvalue(tc->br_int, port);
+
+    VLOG_INFO("Created flow-based %s tunnel port: %s", tunnel_type, port_name);
+
+    smap_destroy(&options);
+}
+
+static void
+create_flow_based_tunnels(struct tunnel_ctx *tc,
+                          const struct sbrec_sb_global *sbg)
+{
+    struct sset tunnel_types = SSET_INITIALIZER(&tunnel_types);
+
+    for (size_t i = 0; i < tc->this_chassis->n_encaps; i++) {
+        sset_add(&tunnel_types, tc->this_chassis->encaps[i]->type);
+    }
+
+    const char *tunnel_type;
+    SSET_FOR_EACH (tunnel_type, &tunnel_types) {
+        char *port_name = flow_based_tunnel_name(tunnel_type,
+                                             get_chassis_idx(tc->ovs_table));
+        flow_based_tunnel_ensure(tc, tunnel_type, port_name, sbg,
+                                 tc->ovs_table);
+        /* Remove any existing tunnel with this name from tracking so it
+         * doesn't get deleted. */
+        struct tunnel_node *exist_tun = shash_find_and_delete(&tc->tunnel,
+                                                              port_name);
+        free(exist_tun);
+        free(port_name);
+    }
+
+    sset_destroy(&tunnel_types);
+}
+
+static void
+create_port_based_tunnels(struct tunnel_ctx *tc,
+                          const struct sbrec_chassis_table *chassis_table,
+                          const struct sbrec_sb_global *sbg,
+                          const struct sset *transport_zones)
+{
+    const struct sbrec_chassis *chassis_rec;
+    SBREC_CHASSIS_TABLE_FOR_EACH (chassis_rec, chassis_table) {
+        if (strcmp(chassis_rec->name, tc->this_chassis->name)) {
+            /* Create tunnels to the other Chassis belonging to the
+             * same transport zone */
+            if (!chassis_tzones_overlap(transport_zones, chassis_rec)) {
+                VLOG_DBG("Skipping encap creation for Chassis '%s' because "
+                         "it belongs to different transport zones",
+                         chassis_rec->name);
+                continue;
+            }
+
+            if (smap_get_bool(&chassis_rec->other_config, "is-remote", false)
+                && !smap_get_bool(&tc->this_chassis->other_config,
+                                  "is-interconn", false)) {
+                VLOG_DBG("Skipping encap creation for Chassis '%s' because "
+                         "it is remote but this chassis is not interconn.",
+                         chassis_rec->name);
+                continue;
+            }
+
+            if (chassis_tunnel_add(chassis_rec, sbg, tc->ovs_table, tc,
+                                   tc->this_chassis) == 0) {
+                VLOG_INFO("Creating encap for '%s' failed", chassis_rec->name);
+                continue;
+            }
+        }
+    }
+}
+
 void
 encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
            struct ovsdb_idl_txn *ovnsb_idl_txn,
@@ -564,6 +722,11 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
     if (!ovs_idl_txn || !ovnsb_idl_txn || !br_int) {
         return;
     }
+
+    bool use_flow_based = is_flow_based_tunnels_enabled(ovs_table,
+                                                        this_chassis);
+    VLOG_DBG("Using %s tunnels for this chassis.",
+             use_flow_based ? "flow-based" : "port-based");
 
     if (!current_br_int_name) {
         /* The controller has just started, we need to look through all
@@ -594,8 +757,6 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
         current_br_int_name = xstrdup(br_int->name);
     }
 
-    const struct sbrec_chassis *chassis_rec;
-
     struct tunnel_ctx tc = {
         .tunnel = SHASH_INITIALIZER(&tc.tunnel),
         .port_names = SSET_INITIALIZER(&tc.port_names),
@@ -610,24 +771,30 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
                               "ovn-controller: modifying OVS tunnels '%s'",
                               this_chassis->name);
 
-    /* Collect all port names into tc.port_names.
-     *
-     * Collect all the OVN-created tunnels into tc.tunnel_hmap. */
+    /* Collect existing port names and tunnel ports for cleanup. */
     for (size_t i = 0; i < br_int->n_ports; i++) {
         const struct ovsrec_port *port = br_int->ports[i];
         sset_add(&tc.port_names, port->name);
 
         const char *id = smap_get(&port->external_ids, OVN_TUNNEL_ID);
         if (id) {
-            if (!shash_find(&tc.tunnel, id)) {
-                struct tunnel_node *tunnel = xzalloc(sizeof *tunnel);
-                tunnel->bridge = br_int;
-                tunnel->port = port;
-                shash_add_assert(&tc.tunnel, id, tunnel);
+            struct tunnel_node *tunnel = xzalloc(sizeof *tunnel);
+            tunnel->bridge = br_int;
+            tunnel->port = port;
+
+            if (use_flow_based) {
+                /* Flow-based: track by port name */
+                shash_add(&tc.tunnel, port->name, tunnel);
             } else {
-                /* Duplicate port for tunnel-id.  Arbitrarily choose
-                 * to delete this one. */
-                ovsrec_bridge_update_ports_delvalue(br_int, port);
+                /* Port-based: track by tunnel ID, handle duplicates */
+                if (!shash_find(&tc.tunnel, id)) {
+                    shash_add_assert(&tc.tunnel, id, tunnel);
+                } else {
+                    /* Duplicate port for tunnel-id. Arbitrarily choose
+                     * to delete this one. */
+                    ovsrec_bridge_update_ports_delvalue(br_int, port);
+                    free(tunnel);
+                }
             }
         }
 
@@ -636,32 +803,11 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
         }
     }
 
-    SBREC_CHASSIS_TABLE_FOR_EACH (chassis_rec, chassis_table) {
-        if (strcmp(chassis_rec->name, this_chassis->name)) {
-            /* Create tunnels to the other Chassis belonging to the
-             * same transport zone */
-            if (!chassis_tzones_overlap(transport_zones, chassis_rec)) {
-                VLOG_DBG("Skipping encap creation for Chassis '%s' because "
-                         "it belongs to different transport zones",
-                         chassis_rec->name);
-                continue;
-            }
-
-            if (smap_get_bool(&chassis_rec->other_config, "is-remote", false)
-                && !smap_get_bool(&this_chassis->other_config, "is-interconn",
-                                  false)) {
-                VLOG_DBG("Skipping encap creation for Chassis '%s' because "
-                         "it is remote but this chassis is not interconn.",
-                         chassis_rec->name);
-                continue;
-            }
-
-            if (chassis_tunnel_add(chassis_rec, sbg, ovs_table, &tc,
-                                   this_chassis) == 0) {
-                VLOG_INFO("Creating encap for '%s' failed", chassis_rec->name);
-                continue;
-            }
-        }
+    /* Create OVN tunnels (mode-specific). */
+    if (use_flow_based) {
+        create_flow_based_tunnels(&tc, sbg);
+    } else {
+        create_port_based_tunnels(&tc, chassis_table, sbg, transport_zones);
     }
 
     create_evpn_tunnels(&tc);

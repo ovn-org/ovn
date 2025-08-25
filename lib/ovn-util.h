@@ -350,7 +350,8 @@ hash_add_in6_addr(uint32_t hash, const struct in6_addr *addr)
 enum chassis_tunnel_type {
     TUNNEL_TYPE_INVALID = -1,
     VXLAN  = 0,
-    GENEVE = 1
+    GENEVE = 1,
+    TUNNEL_TYPE_MAX = 2  /* Number of valid tunnel types */
 };
 
 enum chassis_tunnel_type get_tunnel_type(const char *name);

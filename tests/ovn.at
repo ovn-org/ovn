@@ -2508,7 +2508,7 @@ AT_CLEANUP
 ])
 
 # 3 hypervisors, one logical switch, 3 logical ports per hypervisor
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_FLOW_TUNNEL([
 AT_SETUP([3 HVs, 1 LS, 3 lports/HV])
 AT_KEYWORDS([ovnarp])
 AT_KEYWORDS([slowtest])
@@ -2785,7 +2785,7 @@ AT_CLEANUP
 
 # 2 hypervisors, one logical switch, 2 logical ports per hypervisor
 # logical ports bound to chassis encap-ip.
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_FLOW_TUNNEL([
 AT_SETUP([2 HVs, 1 LS, 2 lports/HV])
 AT_KEYWORDS([ovnarp])
 ovn_start
@@ -3188,7 +3188,7 @@ AT_CLEANUP
 # 2 hypervisors, 4 logical ports per HV
 # 2 locally attached networks (one flat, one vlan tagged over same device)
 # 2 ports per HV on each network
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_FLOW_TUNNEL([
 AT_SETUP([2 HVs, 4 lports/HV, localnet ports])
 ovn_start
 
@@ -3522,7 +3522,7 @@ OVN_CLEANUP([hv-1
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_FLOW_TUNNEL([
 AT_SETUP([2 HVs, 2 LS, broadcast traffic with multiple localnet ports per switch])
 ovn_start
 
@@ -4756,7 +4756,7 @@ AT_CLEANUP
 ])
 
 # Similar test to "hardware GW"
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_FLOW_TUNNEL([
 AT_SETUP([3 HVs, 1 VIFs/HV, 1 software GW, 1 LS])
 ovn_start
 
@@ -4915,7 +4915,7 @@ AT_CLEANUP
 ])
 
 # 3 hypervisors, 3 logical switches with 3 logical ports each, 1 logical router
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_FLOW_TUNNEL([
 AT_SETUP([3 HVs, 3 LS, 3 lports/LS, 1 LR])
 AT_KEYWORDS([slowtest])
 AT_SKIP_IF([test $HAVE_SCAPY = no])
@@ -5352,7 +5352,7 @@ OVN_CLEANUP([hv1], [hv2], [hv3])
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
+OVN_FOR_EACH_NORTHD_FLOW_TUNNEL([
 AT_SETUP([IP relocation using GARP request])
 AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
@@ -31365,6 +31365,7 @@ for i in 1 2; do
     ovs-vsctl add-br br-phys-$j
     ovn_attach n1 br-phys-$j 192.168.0.${i}1
     ovs-vsctl set open . external_ids:ovn-encap-ip=192.168.0.${i}1,192.168.0.${i}2
+    ovs-vsctl set open . external_ids:ovn-enable-flow-based-tunnels=false
 
     for j in 1 2; do
         ovs-vsctl add-port br-int vif$i$j -- set Interface vif$i$j \
@@ -31418,6 +31419,7 @@ vif_to_hv() {
 # tunnel that matches the VIFs' encap_ip configurations.
 check_packet_tunnel() {
     local src=$1 dst=$2
+    local flow_based_tunnel=$3
     local src_mac=f0:00:00:00:00:$src
     local dst_mac=f0:00:00:00:00:$dst
     local src_ip=10.0.0.$src
@@ -31430,8 +31432,17 @@ check_packet_tunnel() {
     hv=`vif_to_hv vif$src`
     as $hv
     echo "vif$src -> vif$dst should go through tunnel $local_encap_ip -> $remote_encap_ip"
-    tunnel_ofport=$(ovs-vsctl --bare --column=ofport find interface options:local_ip=$local_encap_ip options:remote_ip=$remote_encap_ip)
+    if test x$flow_based_tunnel == xtrue; then
+        tunnel_ofport=$(ovs-vsctl --bare --column=ofport list interface ovn-geneve)
+    else
+        tunnel_ofport=$(ovs-vsctl --bare --column=ofport find interface options:local_ip=$local_encap_ip options:remote_ip=$remote_encap_ip)
+    fi
     AT_CHECK([test $(ovs-appctl ofproto/trace br-int in_port=vif$src $packet | grep "output:" | awk -F ':' '{ print $2 }') == $tunnel_ofport])
+    if test x$flow_based_tunnel == xtrue; then
+        trace_output=$(ovs-appctl ofproto/trace br-int in_port=vif$src $packet)
+        AT_CHECK([echo "$trace_output" | grep -q "set_field:$local_encap_ip->tun_src"])
+        AT_CHECK([echo "$trace_output" | grep -q "set_field:$remote_encap_ip->tun_dst"])
+    fi
 }
 
 for i in 1 2; do
@@ -31439,6 +31450,20 @@ for i in 1 2; do
         check_packet_tunnel 1$i 2$j
     done
 done
+
+# Test flow-based tunnels
+for i in 1 2; do
+    as hv$i
+    ovs-vsctl set open . external_ids:ovn-enable-flow-based-tunnels=true
+done
+check ovn-nbctl --wait=hv sync
+
+for i in 1 2; do
+    for j in 1 2; do
+        check_packet_tunnel 1$i 2$j true
+    done
+done
+
 
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
@@ -31461,6 +31486,7 @@ for i in 1 2; do
     ovs-vsctl add-br br-phys-$j
     ovn_attach n1 br-phys-$j 192.168.0.${i}1
     ovs-vsctl set open . external_ids:ovn-encap-ip=192.168.0.${i}1,192.168.0.${i}2
+    ovs-vsctl set open . external_ids:ovn-enable-flow-based-tunnels=false
 
     check ovn-nbctl ls-add ls$i -- \
         lrp-add lr lrp-ls$i f0:00:00:00:88:0$i 10.0.$i.88/24 -- \
@@ -31497,24 +31523,13 @@ vif_to_ip() {
 # tunnel that matches the VIFs' encap_ip configurations.
 check_packet_tunnel() {
     local src=$1 dst=$2
+    local local_encap_ip=$3
+    local remote_encap_ip=$4
+    local flow_based_tunnel=$5
     local src_mac=f0:00:00:00:00:$src
     local dst_mac=f0:00:00:00:88:01 # lrp-ls1's MAC
     local src_ip=$(vif_to_ip vif$src)
     local dst_ip=$(vif_to_ip vif$dst)
-
-    local local_encap_ip
-    if test -n "$3"; then
-        local_encap_ip=$3
-    else
-        local_encap_ip=192.168.0.$src
-    fi
-
-    local remote_encap_ip
-    if test -n "$4"; then
-        remote_encap_ip=$4
-    else
-        remote_encap_ip=192.168.0.$dst
-    fi
 
     local packet=$(fmt_pkt "Ether(dst='${dst_mac}', src='${src_mac}')/ \
                             IP(dst='${dst_ip}', src='${src_ip}')/ \
@@ -31522,13 +31537,23 @@ check_packet_tunnel() {
     hv=`vif_to_hv vif$src`
     as $hv
     echo "vif$src -> vif$dst should go through tunnel $local_encap_ip -> $remote_encap_ip"
-    tunnel_ofport=$(ovs-vsctl --bare --column=ofport find interface options:local_ip=$local_encap_ip options:remote_ip=$remote_encap_ip)
+
+    if test x$flow_based_tunnel == xtrue; then
+        tunnel_ofport=$(ovs-vsctl --bare --column=ofport list interface ovn-geneve)
+    else
+        tunnel_ofport=$(ovs-vsctl --bare --column=ofport find interface options:local_ip=$local_encap_ip options:remote_ip=$remote_encap_ip)
+    fi
     AT_CHECK([test $(ovs-appctl ofproto/trace br-int in_port=vif$src $packet | grep "output:" | awk -F ':' '{ print $2 }') == $tunnel_ofport])
+    if test x$flow_based_tunnel == xtrue; then
+        trace_output=$(ovs-appctl ofproto/trace br-int in_port=vif$src $packet)
+        AT_CHECK([echo "$trace_output" | grep -q "set_field:$local_encap_ip->tun_src"])
+        AT_CHECK([echo "$trace_output" | grep -q "set_field:$remote_encap_ip->tun_dst"])
+    fi
 }
 
 for i in 1 2; do
     for j in 1 2; do
-        check_packet_tunnel 1$i 2$j
+        check_packet_tunnel 1$i 2$j 192.168.0.1$i 192.168.0.2$j
     done
 done
 
@@ -31549,6 +31574,36 @@ check ovn-nbctl --wait=hv sync
 for i in 1 2; do
     for j in 1 2; do
         check_packet_tunnel 1$i 2$j 192.168.0.12 192.168.0.22
+    done
+done
+
+# Test flow-based tunnels
+for i in 1 2; do
+    as hv$i
+    check ovs-vsctl set open . external_ids:ovn-enable-flow-based-tunnels=true
+    for j in 1 2; do
+        check ovs-vsctl set Interface vif$i$j external_ids:encap-ip=192.168.0.$i$j
+    done
+done
+check ovn-nbctl --wait=hv sync
+
+for i in 1 2; do
+    for j in 1 2; do
+        check_packet_tunnel 1$i 2$j 192.168.0.1$i 192.168.0.2$j true
+    done
+done
+
+for i in 1 2; do
+    as hv$i
+    for j in 1 2; do
+        check ovs-vsctl remove Interface vif$i$j external_ids encap-ip
+    done
+done
+check ovn-nbctl --wait=hv sync
+
+for i in 1 2; do
+    for j in 1 2; do
+        check_packet_tunnel 1$i 2$j 192.168.0.12 192.168.0.22 true
     done
 done
 
@@ -31579,6 +31634,7 @@ for i in 1 2; do
     ovs-vsctl add-br br-phys-$j
     ovn_attach n1 br-phys-$j 192.168.0.${i}1
     ovs-vsctl set open . external_ids:ovn-encap-ip=192.168.0.${i}1,192.168.0.${i}2
+    ovs-vsctl set open . external_ids:ovn-enable-flow-based-tunnels=false
 
     ovs-vsctl add-br br-ext
     ovs-vsctl add-port br-ext vif$i -- set Interface vif$i \
@@ -31624,14 +31680,26 @@ check_packet_tunnel() {
     local local_encap_ip=$3
     local remote_encap_ip=$4
 
+    local flow_based_tunnel=$5
+
     local packet=$(fmt_pkt "Ether(dst='${dst_mac}', src='${src_mac}')/ \
                             IP(dst='${dst_ip}', src='${src_ip}')/ \
                             ICMP(type=8)")
     hv=`vif_to_hv vif$src`
     as $hv
     echo "vif$src -> vif$dst should go through tunnel $local_encap_ip -> $remote_encap_ip"
-    tunnel_ofport=$(ovs-vsctl --bare --column=ofport find interface options:local_ip=$local_encap_ip options:remote_ip=$remote_encap_ip)
+    if test x$flow_based_tunnel == xtrue; then
+        tunnel_ofport=$(ovs-vsctl --bare --column=ofport list interface ovn-geneve)
+    else
+        tunnel_ofport=$(ovs-vsctl --bare --column=ofport find interface options:local_ip=$local_encap_ip options:remote_ip=$remote_encap_ip)
+    fi
+    ovs-appctl ofproto/trace br-ext in_port=vif$src $packet
     AT_CHECK([test $(ovs-appctl ofproto/trace br-ext in_port=vif$src $packet | grep "output:" | awk -F ':' '{ print $2 }') == $tunnel_ofport])
+    if test x$flow_based_tunnel == xtrue; then
+        trace_output=$(ovs-appctl ofproto/trace br-ext in_port=vif$src $packet)
+        AT_CHECK([echo "$trace_output" | grep -q "set_field:$local_encap_ip->tun_src"])
+        AT_CHECK([echo "$trace_output" | grep -q "set_field:$remote_encap_ip->tun_dst"])
+    fi
 }
 
 # Create mac-binding for the destination so that there is no need to trigger
@@ -31651,6 +31719,23 @@ for e in 1 2; do
     check ovn-nbctl --wait=hv sync
 
     check_packet_tunnel 1 2 192.168.0.1${e} 192.168.0.2${e}
+done
+
+# Test flow-based tunnels
+for i in 1 2; do
+    as hv$i
+    check ovs-vsctl set open . external_ids:ovn-enable-flow-based-tunnels=true
+done
+check ovn-nbctl --wait=hv sync
+
+for e in 1 2; do
+    for i in 1 2; do
+        as hv$i
+        check ovs-vsctl set open . external_ids:ovn-encap-ip-default=192.168.0.${i}${e}
+    done
+    check ovn-nbctl --wait=hv sync
+
+    check_packet_tunnel 1 2 192.168.0.1${e} 192.168.0.2${e} true
 done
 
 OVN_CLEANUP([hv1],[hv2])

@@ -28,6 +28,7 @@
 struct sbrec_datapath_binding;
 struct sbrec_port_binding;
 struct sbrec_chassis;
+struct sbrec_chassis_table;
 struct ovsdb_idl_index;
 struct ovsrec_bridge;
 struct ovsrec_interface_table;
@@ -147,10 +148,21 @@ struct chassis_tunnel {
     bool is_ipv6;
 };
 
+/* Flow-based tunnel that consolidates multiple endpoints into a single
+ * port. Array is indexed by tunnel type (VXLAN=0, GENEVE=1).
+ * The type is implicit from the array index, so not stored. */
+struct flow_based_tunnel {
+    ofp_port_t ofport;              /* Single port for all endpoints */
+    bool is_ipv6;
+    char *port_name;                /* e.g., "ovn-geneve" */
+};
+
+
 void local_nonvif_data_run(const struct ovsrec_bridge *br_int,
-                           const struct sbrec_chassis *,
+                           const struct sbrec_chassis *chassis,
                            struct simap *patch_ofports,
-                           struct hmap *chassis_tunnels);
+                           struct hmap *chassis_tunnels,
+                           struct flow_based_tunnel *flow_tunnels);
 
 bool local_nonvif_data_handle_ovs_iface_changes(
     const struct ovsrec_interface_table *);
@@ -165,6 +177,22 @@ bool get_chassis_tunnel_ofport(const struct hmap *chassis_tunnels,
                                ofp_port_t *ofport);
 
 void chassis_tunnels_destroy(struct hmap *chassis_tunnels);
+
+/* Flow-based tunnel management functions. */
+void flow_based_tunnels_init(struct flow_based_tunnel *);
+void flow_based_tunnels_destroy(struct flow_based_tunnel *);
+ofp_port_t get_flow_based_tunnel_port(
+    enum chassis_tunnel_type, const struct flow_based_tunnel *);
+
+/* Direct tunnel endpoint selection utilities. */
+enum chassis_tunnel_type select_preferred_tunnel_type(
+    const struct sbrec_chassis *local_chassis,
+    const struct sbrec_chassis *remote_chassis);
+const char *select_default_encap_ip(const struct sbrec_chassis *,
+                                    enum chassis_tunnel_type);
+const char *select_port_encap_ip(const struct sbrec_port_binding *,
+                                 enum chassis_tunnel_type);
+
 void local_datapath_memory_usage(struct simap *usage);
 void add_local_datapath_external_port(struct local_datapath *ld,
                                       char *logical_port, const void *data);

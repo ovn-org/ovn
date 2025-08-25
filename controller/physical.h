@@ -51,6 +51,7 @@ struct physical_debug {
 struct physical_ctx {
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
     struct ovsdb_idl_index *sbrec_port_binding_by_datapath;
+    struct ovsdb_idl_index *sbrec_chassis_by_name;
     const struct sbrec_port_binding_table *port_binding_table;
     const struct ovsrec_interface_table *ovs_interface_table;
     const struct sbrec_multicast_group_table *mc_group_table;
@@ -65,6 +66,8 @@ struct physical_ctx {
     struct shash *local_bindings;
     struct simap *patch_ofports;
     struct hmap *chassis_tunnels;
+    bool use_flow_based_tunnels;
+    struct flow_based_tunnel *flow_tunnels;
     size_t n_encap_ips;
     const char **encap_ips;
     struct physical_debug debug;

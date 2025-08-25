@@ -219,6 +219,36 @@
         <code>false</code> to clear the DF flag.
       </dd>
 
+      <dt><code>external_ids:ovn-enable-flow-based-tunnels</code></dt>
+      <dd>
+        <p>
+          The boolean flag indicates if <code>ovn-controller</code> should
+          use flow-based tunnels instead of port-based tunnels for overlay
+          network connectivity. Default value is <code>false</code>.
+        </p>
+        <p>
+          <em>Port-based tunnels</em> (default mode) create a dedicated tunnel
+          port for each combination of remote chassis and local encap IP,
+          while <em>Flow-based tunnels</em> create a single shared tunnel port
+          for each tunnel type, and use OpenFlow <code>set_field</code> actions
+          to dynamically set tunnel source and destination IP addresses per
+          packet.
+        </p>
+        <p>
+          This feature is experimental and is disabled by default. There are
+          some known limitations to the feature:
+          <ul>
+            <li>
+              IPSec is not supported.
+            </li>
+            <li>
+              BFD between tunnel endpoints is not supported, thus HA chassis
+              (e.g. for Distributed Gateway Port redundancy) is not supported.
+            </li>
+          </ul>
+        </p>
+      </dd>
+
       <dt><code>external_ids:ovn-bridge-mappings</code></dt>
       <dd>
         A list of key-value pairs that map a physical network name to a local

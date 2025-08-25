@@ -3465,6 +3465,10 @@ struct ed_type_non_vif_data {
     struct simap patch_ofports; /* simap of patch ovs ports. */
     struct hmap chassis_tunnels; /* hmap of 'struct chassis_tunnel' from the
                                   * tunnel OVS ports. */
+    struct flow_based_tunnel flow_tunnels[TUNNEL_TYPE_MAX];
+                                 /* Array of flow-based tunnels indexed by
+                                  * tunnel type. */
+    bool use_flow_based_tunnels; /* Enable flow-based tunnels. */
 };
 
 static void *
@@ -3474,6 +3478,8 @@ en_non_vif_data_init(struct engine_node *node OVS_UNUSED,
     struct ed_type_non_vif_data *data = xzalloc(sizeof *data);
     simap_init(&data->patch_ofports);
     hmap_init(&data->chassis_tunnels);
+    flow_based_tunnels_init(data->flow_tunnels);
+    data->use_flow_based_tunnels = false;
     return data;
 }
 
@@ -3483,6 +3489,7 @@ en_non_vif_data_cleanup(void *data OVS_UNUSED)
     struct ed_type_non_vif_data *ed_non_vif_data = data;
     simap_destroy(&ed_non_vif_data->patch_ofports);
     chassis_tunnels_destroy(&ed_non_vif_data->chassis_tunnels);
+    flow_based_tunnels_destroy(ed_non_vif_data->flow_tunnels);
 }
 
 static enum engine_node_state
@@ -3491,8 +3498,11 @@ en_non_vif_data_run(struct engine_node *node, void *data)
     struct ed_type_non_vif_data *ed_non_vif_data = data;
     simap_destroy(&ed_non_vif_data->patch_ofports);
     chassis_tunnels_destroy(&ed_non_vif_data->chassis_tunnels);
+    flow_based_tunnels_destroy(ed_non_vif_data->flow_tunnels);
+
     simap_init(&ed_non_vif_data->patch_ofports);
     hmap_init(&ed_non_vif_data->chassis_tunnels);
+    flow_based_tunnels_init(ed_non_vif_data->flow_tunnels);
 
     const struct ovsrec_open_vswitch_table *ovs_table =
         EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
@@ -3512,8 +3522,14 @@ en_non_vif_data_run(struct engine_node *node, void *data)
         = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
     ovs_assert(chassis);
 
-    local_nonvif_data_run(br_int, chassis, &ed_non_vif_data->patch_ofports,
-                          &ed_non_vif_data->chassis_tunnels);
+    ed_non_vif_data->use_flow_based_tunnels =
+        is_flow_based_tunnels_enabled(ovs_table, chassis);
+
+    local_nonvif_data_run(br_int, chassis,
+                          &ed_non_vif_data->patch_ofports,
+                          &ed_non_vif_data->chassis_tunnels,
+                          ed_non_vif_data->flow_tunnels);
+
     return EN_UPDATED;
 }
 
@@ -4622,6 +4638,7 @@ static void init_physical_ctx(struct engine_node *node,
     parse_encap_ips(ovs_table, &p_ctx->n_encap_ips, &p_ctx->encap_ips);
     p_ctx->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
     p_ctx->sbrec_port_binding_by_datapath = sbrec_port_binding_by_datapath;
+    p_ctx->sbrec_chassis_by_name = sbrec_chassis_by_name;
     p_ctx->port_binding_table = port_binding_table;
     p_ctx->ovs_interface_table = ovs_interface_table;
     p_ctx->mc_group_table = multicast_group_table;
@@ -4635,6 +4652,8 @@ static void init_physical_ctx(struct engine_node *node,
     p_ctx->local_bindings = &rt_data->lbinding_data.bindings;
     p_ctx->patch_ofports = &non_vif_data->patch_ofports;
     p_ctx->chassis_tunnels = &non_vif_data->chassis_tunnels;
+    p_ctx->flow_tunnels = non_vif_data->flow_tunnels;
+    p_ctx->use_flow_based_tunnels = non_vif_data->use_flow_based_tunnels;
     p_ctx->always_tunnel = n_opts->always_tunnel;
     p_ctx->evpn_bindings = &eb_data->bindings;
     p_ctx->evpn_multicast_groups = &eb_data->multicast_groups;
@@ -7653,7 +7672,8 @@ main(int argc, char *argv[])
                                 ovsrec_interface_table_get(ovs_idl_loop.idl),
                                 br_int, &bfd_chassis_data->bfd_chassis,
                                 chassis, sbrec_sb_global_table_get(
-                                    ovnsb_idl_loop.idl)
+                                    ovnsb_idl_loop.idl),
+                                ovs_table
                             );
                             stopwatch_stop(
                                 BFD_RUN_STOPWATCH_NAME, time_msec());

@@ -18,6 +18,17 @@
 
 #include <stdbool.h>
 
+/*
+ * Given there could be multiple tunnels with different IPs to the same
+ * chassis we annotate the external_ids:ovn-chassis-id in tunnel port with
+ * <chassis_name>@<remote IP>%<local IP>. The external_id key
+ * "ovn-chassis-id" is kept for backward compatibility.
+ *
+ * For flow-based tunnels, we use the special value "flow" to identify
+ * shared tunnel ports that handle dynamic endpoint resolution.
+ */
+#define OVN_TUNNEL_ID "ovn-chassis-id"
+
 struct ovsdb_idl;
 struct ovsdb_idl_txn;
 struct ovsrec_bridge;
@@ -38,6 +49,10 @@ void encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
                 const struct ovsrec_open_vswitch_table *,
                 const struct sset *transport_zones,
                 const struct ovsrec_bridge_table *bridge_table);
+
+bool is_flow_based_tunnels_enabled(
+    const struct ovsrec_open_vswitch_table *ovs_table,
+    const struct sbrec_chassis *chassis);
 
 bool encaps_cleanup(struct ovsdb_idl_txn *ovs_idl_txn,
                     const struct ovsrec_bridge *br_int);

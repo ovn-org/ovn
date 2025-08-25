@@ -33,7 +33,8 @@ void bfd_run(const struct ovsrec_interface_table *,
              const struct ovsrec_bridge *,
              const struct sset *,
              const struct sbrec_chassis *,
-             const struct sbrec_sb_global_table *);
+             const struct sbrec_sb_global_table *,
+             const struct ovsrec_open_vswitch_table *);
 
 void bfd_calculate_chassis(
     const struct sbrec_chassis *,

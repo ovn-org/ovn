@@ -66,9 +66,13 @@ Post v25.09.0
      specified LS.
    - Add ovn-nbctl lsp-add-localnet-port which will create localnet port on
      specified LS.
-  - Add a new experimental service - ovn-br-controller to program and
-    manage OVS bridges (not managed by ovn-controller) using OVN logical flows.
-    For more details see man ovn-br(5).
+   - Add a new experimental service - ovn-br-controller to program and
+     manage OVS bridges (not managed by ovn-controller) using OVN logical
+     flows. For more details see man ovn-br(5).
+   - Added experimental flow-based tunnel support. Enable via
+     external_ids:ovn-enable-flow-based-tunnels=true to use shared tunnel
+     ports instead of per-chassis ports, reducing port count for large scale
+     environments. Default is disabled.
 
 OVN v25.09.0 - xxx xx xxxx
 --------------------------

@@ -51,6 +51,10 @@ static struct tracked_datapath *tracked_datapath_create(
     enum en_tracked_resource_type tracked_type,
     struct hmap *tracked_datapaths);
 
+static void track_flow_based_tunnel(
+    const struct ovsrec_port *, const struct sbrec_chassis *,
+    struct flow_based_tunnel *flow_tunnels);
+
 static bool datapath_is_switch(const struct sbrec_datapath_binding *);
 static bool datapath_is_transit_switch(const struct sbrec_datapath_binding *);
 
@@ -454,7 +458,8 @@ void
 local_nonvif_data_run(const struct ovsrec_bridge *br_int,
                       const struct sbrec_chassis *chassis_rec,
                       struct simap *patch_ofports,
-                      struct hmap *chassis_tunnels)
+                      struct hmap *chassis_tunnels,
+                      struct flow_based_tunnel *flow_tunnels)
 {
     for (int i = 0; i < br_int->n_ports; i++) {
         const struct ovsrec_port *port_rec = br_int->ports[i];
@@ -463,12 +468,14 @@ local_nonvif_data_run(const struct ovsrec_bridge *br_int,
         }
 
         const char *tunnel_id = smap_get(&port_rec->external_ids,
-                                         "ovn-chassis-id");
+                                         OVN_TUNNEL_ID);
         if (tunnel_id && encaps_tunnel_id_match(tunnel_id,
                                                 chassis_rec->name,
                                                 NULL, NULL)) {
             continue;
         }
+
+        track_flow_based_tunnel(port_rec, chassis_rec, flow_tunnels);
 
         const char *localnet = smap_get(&port_rec->external_ids,
                                         "ovn-localnet-port");
@@ -756,4 +763,181 @@ lb_is_local(const struct sbrec_load_balancer *sbrec_lb,
     }
 
     return false;
+}
+
+/* Flow-based tunnel management functions. */
+
+void
+flow_based_tunnels_init(struct flow_based_tunnel *flow_tunnels)
+{
+    for (size_t i = 0; i < TUNNEL_TYPE_MAX; i++) {
+        flow_tunnels[i] = (struct flow_based_tunnel) {
+            .ofport = 0,
+            .is_ipv6 = false,
+            .port_name = NULL,
+        };
+    }
+}
+
+void
+flow_based_tunnels_destroy(struct flow_based_tunnel *flow_tunnels)
+{
+    for (size_t i = 0; i < TUNNEL_TYPE_MAX; i++) {
+        free(flow_tunnels[i].port_name);
+        flow_tunnels[i].port_name = NULL;
+        flow_tunnels[i].ofport = 0;
+    }
+}
+
+ofp_port_t
+get_flow_based_tunnel_port(enum chassis_tunnel_type type,
+                           const struct flow_based_tunnel *flow_tunnels)
+{
+    if (type < 0 || type >= TUNNEL_TYPE_MAX) {
+        return 0;
+    }
+    return flow_tunnels[type].ofport;
+}
+
+/* Direct tunnel endpoint selection utilities. */
+
+enum chassis_tunnel_type
+select_preferred_tunnel_type(const struct sbrec_chassis *local_chassis,
+                             const struct sbrec_chassis *remote_chassis)
+{
+    /* Determine what tunnel types both chassis support */
+    bool local_supports_geneve = false;
+    bool local_supports_vxlan = false;
+    bool remote_supports_geneve = false;
+    bool remote_supports_vxlan = false;
+
+    for (size_t i = 0; i < local_chassis->n_encaps; i++) {
+        const char *type = local_chassis->encaps[i]->type;
+        if (!strcmp(type, "geneve")) {
+            local_supports_geneve = true;
+        } else if (!strcmp(type, "vxlan")) {
+            local_supports_vxlan = true;
+        }
+    }
+
+    for (size_t i = 0; i < remote_chassis->n_encaps; i++) {
+        const char *type = remote_chassis->encaps[i]->type;
+        if (!strcmp(type, "geneve")) {
+            remote_supports_geneve = true;
+        } else if (!strcmp(type, "vxlan")) {
+            remote_supports_vxlan = true;
+        }
+    }
+
+    /* Return preferred common tunnel type: geneve > vxlan */
+    if (local_supports_geneve && remote_supports_geneve) {
+        return GENEVE;
+    } else if (local_supports_vxlan && remote_supports_vxlan) {
+        return VXLAN;
+    } else {
+        return TUNNEL_TYPE_INVALID;  /* No common tunnel type */
+    }
+}
+
+const char *
+select_default_encap_ip(const struct sbrec_chassis *chassis,
+                       enum chassis_tunnel_type tunnel_type)
+{
+    const char *default_ip = NULL;
+    const char *tunnel_type_str = tunnel_type == GENEVE ? "geneve" : "vxlan";
+
+    for (size_t i = 0; i < chassis->n_encaps; i++) {
+        const struct sbrec_encap *encap = chassis->encaps[i];
+
+        if (strcmp(encap->type, tunnel_type_str)) {
+            continue;
+        }
+
+        if (!default_ip) {
+            default_ip = encap->ip;
+        }
+
+        if (smap_get_bool(&encap->options, "default-encap-ip", false)) {
+            default_ip = encap->ip;
+            break;  /* Found explicit default */
+        }
+    }
+
+    return default_ip;
+}
+
+const char *
+select_port_encap_ip(const struct sbrec_port_binding *binding,
+                     enum chassis_tunnel_type tunnel_type)
+{
+    const char *tunnel_type_str = tunnel_type == GENEVE ? "geneve" : "vxlan";
+
+    if (binding->encap && !strcmp(binding->encap->type, tunnel_type_str)) {
+        VLOG_DBG("Using port-specific encap IP %s for binding %s",
+                 binding->encap->ip, binding->logical_port);
+        return binding->encap->ip;
+    }
+
+    /* Fall back to chassis default encap IP */
+    return select_default_encap_ip(binding->chassis, tunnel_type);
+}
+
+static void
+track_flow_based_tunnel(const struct ovsrec_port *port_rec,
+                        const struct sbrec_chassis *chassis_rec,
+                        struct flow_based_tunnel *flow_tunnels)
+{
+    if (port_rec->n_interfaces != 1) {
+        return;
+    }
+
+    const struct ovsrec_interface *iface_rec = port_rec->interfaces[0];
+
+    /* Check if this is a flow-based tunnel port using unified
+     * OVN_TUNNEL_ID. */
+    const char *tunnel_id = smap_get(&port_rec->external_ids, OVN_TUNNEL_ID);
+    const char *tunnel_type_str = smap_get(&port_rec->external_ids,
+                                           "ovn-tunnel-type");
+
+    if (!tunnel_id || !tunnel_type_str || strcmp(tunnel_id, "flow")) {
+        return;
+    }
+
+    /* Get tunnel type. */
+    enum chassis_tunnel_type tunnel_type = get_tunnel_type(tunnel_type_str);
+    if (tunnel_type == TUNNEL_TYPE_INVALID) {
+        return;
+    }
+
+    /* Check if we already track this tunnel type. */
+    if (flow_tunnels[tunnel_type].ofport != 0) {
+        return;
+    }
+
+    int64_t ofport = iface_rec->ofport ? *iface_rec->ofport : 0;
+    if (ofport <= 0 || ofport > UINT16_MAX) {
+        VLOG_INFO("Invalid ofport %"PRId64" for flow-based tunnel %s",
+                  ofport, port_rec->name);
+        return;
+    }
+
+    /* Detect if this tunnel will use IPv6 by checking chassis encap IPs. */
+    bool is_ipv6 = false;
+    for (size_t i = 0; i < chassis_rec->n_encaps; i++) {
+        const struct sbrec_encap *encap = chassis_rec->encaps[i];
+        if (!strcmp(encap->type, tunnel_type_str) &&
+            addr_is_ipv6(encap->ip)) {
+            is_ipv6 = true;
+            break;
+        }
+    }
+
+    /* Store in array using tunnel_type as index. */
+    flow_tunnels[tunnel_type].ofport = u16_to_ofp(ofport);
+    flow_tunnels[tunnel_type].is_ipv6 = is_ipv6;
+    flow_tunnels[tunnel_type].port_name = xstrdup(port_rec->name);
+
+    VLOG_DBG("Tracking flow-based tunnel: port=%s, type=%s, ofport=%"PRId64
+             ", is_ipv6=%s", port_rec->name, tunnel_type_str, ofport,
+             is_ipv6 ? "true" : "false");
 }

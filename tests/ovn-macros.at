@@ -109,7 +109,12 @@ m4_divert_text([PREPARE_TESTS],
      echo "$3: waiting for flows for remote output on $hv1"
      # Wait for a flow outputing  to remote output
      OVS_WAIT_UNTIL([
-         ofport=$(as $hv1 ovs-vsctl --bare --columns ofport find Interface name=ovn-${hv2}-0)
+         if test X$OVN_ENABLE_FLOW_BASED_TUNNELS = Xyes; then
+             tun_name=ovn-geneve
+         else
+             tun_name=ovn-${hv2}-0
+         fi
+         ofport=$(as $hv1 ovs-vsctl --bare --columns ofport find Interface name=$tun_name)
          echo "tunnel port=$ofport"
          test -n "$ofport" && test 1 -le $(as $hv1 ovs-ofctl dump-flows br-int | grep -c "output:$ofport")
      ])
@@ -121,7 +126,12 @@ m4_divert_text([PREPARE_TESTS],
      echo "$3: waiting for flows for remote input on $hv1"
      # Wait for a flow outputing  to remote input
      OVS_WAIT_UNTIL([
-         ofport=$(as $hv1 ovs-vsctl --bare --columns ofport find Interface name=ovn-${hv2}-0)
+         if test X$OVN_ENABLE_FLOW_BASED_TUNNELS = Xyes; then
+             tun_name=ovn-geneve
+         else
+             tun_name=ovn-${hv2}-0
+         fi
+         ofport=$(as $hv1 ovs-vsctl --bare --columns ofport find Interface name=$tun_name)
          echo "tunnel port=$ofport"
          test -n "$ofport" && test 1 -le $(as $hv1 ovs-ofctl dump-flows br-int | grep -c "in_port=$ofport")
      ])
@@ -778,6 +788,13 @@ ovn_az_attach() {
     #
     if test X$OVN_MONITOR_ALL = Xyes; then
         ovs-vsctl set open . external_ids:ovn-monitor-all=true
+    fi
+
+    # Configure flow-based tunnels if the test variable is set
+    if test X$OVN_ENABLE_FLOW_BASED_TUNNELS = Xyes; then
+        ovs-vsctl set open . external_ids:ovn-enable-flow-based-tunnels=true
+    elif test X$OVN_ENABLE_FLOW_BASED_TUNNELS = Xno; then
+        ovs-vsctl set open . external_ids:ovn-enable-flow-based-tunnels=false
     fi
 
     start_daemon ovn-controller --enable-dummy-vif-plug ${cli_args} || return 1
@@ -1458,6 +1475,16 @@ m4_define([OVN_FOR_EACH_NORTHD_NO_HV],
 m4_define([OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION],
   [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes, no], [$1
 ])])
+
+# Defines versions of the test with all combinations of northd,
+# parallelization enabled, conditional monitoring on/off, and flow-based
+# tunnels on/off. Use this for tests that need to verify behavior with both
+# port-based and flow-based tunnel implementations.
+m4_define([OVN_FOR_EACH_NORTHD_FLOW_TUNNEL],
+  [m4_foreach([NORTHD_USE_PARALLELIZATION], [yes],
+     [m4_foreach([OVN_MONITOR_ALL], [yes, no],
+        [m4_foreach([OVN_ENABLE_FLOW_BASED_TUNNELS], [yes, no], [$1
+])])])])
 
 # OVN_NBCTL(NBCTL_COMMAND) adds NBCTL_COMMAND to list of commands to be run by RUN_OVN_NBCTL().
 m4_define([OVN_NBCTL], [

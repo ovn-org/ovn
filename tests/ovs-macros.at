@@ -9,12 +9,14 @@ dnl - If NORTHD_USE_DP_GROUPS is defined, then append it to the test name and
 dnl   set it as a shell variable as well.
 m4_rename([AT_SETUP], [OVS_AT_SETUP])
 m4_define([AT_SETUP],
-  [OVS_AT_SETUP($@[]m4_ifdef([NORTHD_USE_PARALLELIZATION], [ -- parallelization=NORTHD_USE_PARALLELIZATION])[]m4_ifdef([OVN_MONITOR_ALL], [ -- ovn_monitor_all=OVN_MONITOR_ALL]))
+  [OVS_AT_SETUP($@[]m4_ifdef([NORTHD_USE_PARALLELIZATION], [ -- parallelization=NORTHD_USE_PARALLELIZATION])[]m4_ifdef([OVN_MONITOR_ALL], [ -- ovn_monitor_all=OVN_MONITOR_ALL])[]m4_ifdef([OVN_ENABLE_FLOW_BASED_TUNNELS], [ -- flow_based_tunnels=OVN_ENABLE_FLOW_BASED_TUNNELS]))
 m4_ifdef([NORTHD_USE_PARALLELIZATION], [[NORTHD_USE_PARALLELIZATION]=NORTHD_USE_PARALLELIZATION
 ])dnl
 m4_ifdef([NORTHD_DUMMY_NUMA], [[NORTHD_DUMMY_NUMA]=NORTHD_DUMMY_NUMA
 ])dnl
 m4_ifdef([OVN_MONITOR_ALL], [[OVN_MONITOR_ALL]=OVN_MONITOR_ALL
+])dnl
+m4_ifdef([OVN_ENABLE_FLOW_BASED_TUNNELS], [[OVN_ENABLE_FLOW_BASED_TUNNELS]=OVN_ENABLE_FLOW_BASED_TUNNELS
 ])dnl
 ovs_init
 ])
