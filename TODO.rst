@@ -170,3 +170,10 @@ OVN To-do List
     ovn\_synced\_logical_router and ovn\_synced\_logical\_switch. This will
     allow for the eventual removal of the ovn\_datapath structure from the
     codebase.
+
+* CI
+
+  * ovn-kubernetes: Only a subset of the ovn-kubernetes features is currently
+    tested in GitHub CI.  We should extend our testing to support
+    OVN_ENABLE_INTERCONNECT=true and potentially more of the CI lanes
+    ovn-kubernetes/ovn-kubernetes defines in its GitHub project.
