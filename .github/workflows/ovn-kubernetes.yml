@@ -45,13 +45,13 @@ jobs:
     - name: Check out ovn-kubernetes
       uses: actions/checkout@v4
       with:
-          path: src/github.com/ovn-org/ovn-kubernetes
-          repository: ovn-org/ovn-kubernetes
+          path: src/github.com/ovn-kubernetes/ovn-kubernetes
+          repository: ovn-kubernetes/ovn-kubernetes
           ref: ${{ env.OVNKUBE_COMMIT }}
 
     - name: Prepare
       run: |
-        .ci/ovn-kubernetes/prepare.sh src/github.com/ovn-org/ovn-kubernetes $GITHUB_ENV
+        .ci/ovn-kubernetes/prepare.sh src/github.com/ovn-kubernetes/ovn-kubernetes $GITHUB_ENV
 
     - name: Build ovn-kubernetes container
       run: |
@@ -119,13 +119,13 @@ jobs:
     - name: Check out ovn-kubernetes
       uses: actions/checkout@v4
       with:
-          path: src/github.com/ovn-org/ovn-kubernetes
-          repository: ovn-org/ovn-kubernetes
+          path: src/github.com/ovn-kubernetes/ovn-kubernetes
+          repository: ovn-kubernetes/ovn-kubernetes
           ref: ${{ env.OVNKUBE_COMMIT }}
 
     - name: Prepare
       run: |
-        .ci/ovn-kubernetes/prepare.sh src/github.com/ovn-org/ovn-kubernetes $GITHUB_ENV
+        .ci/ovn-kubernetes/prepare.sh src/github.com/ovn-kubernetes/ovn-kubernetes $GITHUB_ENV
 
     - name: Set up Go
       uses: actions/setup-go@v5
@@ -158,7 +158,7 @@ jobs:
       run: |
         export OVN_IMAGE="ovn-daemonset-f:dev"
         make -C test install-kind
-      working-directory: src/github.com/ovn-org/ovn-kubernetes
+      working-directory: src/github.com/ovn-kubernetes/ovn-kubernetes
 
     - name: Run Tests
       # e2e tests take ~60 minutes normally, 120 should be more than enough
@@ -166,21 +166,21 @@ jobs:
       timeout-minutes: ${{ matrix.target == 'control-plane' && 180 || 120 }}
       run: |
         make -C test ${{ matrix.target }}
-      working-directory: src/github.com/ovn-org/ovn-kubernetes
+      working-directory: src/github.com/ovn-kubernetes/ovn-kubernetes
 
     - name: Upload Junit Reports
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: kind-junit-${{ env.JOB_NAME }}-${{ github.run_id }}
-        path: 'src/github.com/ovn-org/ovn-kubernetes/test/_artifacts/*.xml'
+        path: 'src/github.com/ovn-kubernetes/ovn-kubernetes/test/_artifacts/*.xml'
 
     - name: Export logs
       if: always()
       run: |
         mkdir -p /tmp/kind/logs
         kind export logs --name ${KIND_CLUSTER_NAME} --loglevel=debug /tmp/kind/logs
-      working-directory: src/github.com/ovn-org/ovn-kubernetes
+      working-directory: src/github.com/ovn-kubernetes/ovn-kubernetes
 
     - name: Upload logs
       if: always()

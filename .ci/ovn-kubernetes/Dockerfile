@@ -42,7 +42,7 @@ ARG FEDORA_VERSION
 
 # Clone OVN Kubernetes and build the binary based on the commit passed as argument
 WORKDIR /root
-RUN git clone https://github.com/ovn-org/ovn-kubernetes.git
+RUN git clone https://github.com/ovn-kubernetes/ovn-kubernetes.git
 WORKDIR /root/ovn-kubernetes
 RUN git checkout ${OVNKUBE_COMMIT} && git log -n 1
 
@@ -55,8 +55,10 @@ RUN .ci/ovn-kubernetes/prepare.sh /root/ovn-kubernetes /dev/null
 
 WORKDIR /root/ovn-kubernetes/go-controller
 # Get a working version of libovsdb (for modelgen).
-RUN GO111MODULE=on go install github.com/ovn-org/libovsdb/cmd/modelgen@$( \
-    go list -mod=mod -m -f '{{ .Version }}' github.com/ovn-org/libovsdb \
+RUN GO111MODULE=on go install \
+    github.com/ovn-kubernetes/libovsdb/cmd/modelgen@$( \
+    go list -mod=mod -m -f '{{ .Version }}' \
+    github.com/ovn-kubernetes/libovsdb \
 )
 
 # Make sure we use the OVN NB/SB schema from the local code.
