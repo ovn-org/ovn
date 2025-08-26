@@ -7951,6 +7951,14 @@ wait_row_count sb:Static_MAC_Binding 1 logical_port=lr-lrp ip=1.1.1.2 mac="00\:0
 check ovn-nbctl lr-del lr
 wait_row_count sb:Static_MAC_Binding 0
 
+dnl Also check for router (and router port) being recreated in the same
+dnl transaction.
+check ovn-nbctl lr-add lr -- lrp-add lr lr-lrp 00:00:00:00:00:01 1.1.1.1/24
+wait_row_count sb:Static_MAC_Binding 1 logical_port=lr-lrp ip=1.1.1.2 mac="00\:00\:00\:00\:00\:02"
+check ovn-nbctl lrp-del lr-lrp -- lr-del lr -- lr-add lr -- lrp-add lr lr-lrp 00:00:00:00:00:01 1.1.1.1/24
+wait_row_count sb:Static_MAC_Binding 1
+check ovn-nbctl --wait=sb sync
+
 AT_CLEANUP
 ])
 
