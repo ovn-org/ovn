@@ -8505,6 +8505,15 @@ wait_row_count Static_MAC_Binding 1 logical_port=lr0-p1 ip=10.0.0.10 mac="00\:00
 check ovn-nbctl --may-exist static-mac-binding-add lr0-p0 192.168.10.100 00:00:22:33:55:66
 wait_row_count Static_MAC_Binding 1 logical_port=lr0-p0 ip=192.168.10.100 mac="00\:00\:22\:33\:55\:66"
 
+# Update the logical port.
+mb_uuid=$(fetch_column nb:Static_MAC_Binding _uuid logical_port=lr0-p0 ip=192.168.10.100)
+check ovn-nbctl --wait=sb set Static_MAC_Binding $mb_uuid logical_port=lr0-p1
+check_row_count Static_MAC_Binding 1 logical_port=lr0-p1 ip=192.168.10.100 mac="00\:00\:22\:33\:55\:66"
+
+# Update the IP.
+check ovn-nbctl --wait=sb set Static_MAC_Binding $mb_uuid ip=192.168.10.200
+check_row_count Static_MAC_Binding 1 logical_port=lr0-p1 ip=192.168.10.200 mac="00\:00\:22\:33\:55\:66"
+
 AT_CLEANUP
 ])
 
