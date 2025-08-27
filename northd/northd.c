@@ -18894,6 +18894,16 @@ build_static_mac_binding_table(
                     if (strcmp(mb->mac, nb_smb->mac)) {
                         sbrec_static_mac_binding_set_mac(mb, nb_smb->mac);
                     }
+
+                    if (strcmp(mb->logical_port, nb_smb->logical_port)) {
+                        sbrec_static_mac_binding_set_logical_port(mb,
+                            nb_smb->logical_port);
+                    }
+
+                    if (strcmp(mb->ip, nb_smb->ip)) {
+                        sbrec_static_mac_binding_set_ip(mb, nb_smb->ip);
+                    }
+
                     if (mb->override_dynamic_mac !=
                         nb_smb->override_dynamic_mac) {
                         sbrec_static_mac_binding_set_override_dynamic_mac(mb,
