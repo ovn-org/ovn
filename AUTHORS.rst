@@ -304,6 +304,7 @@ Natasha Gude
 Neal Shrader                       neal@digitalocean.com
 Neil McKee                         neil.mckee@inmon.com
 Neil Zhu                           zhuj@centecnetworks.com
+Nicholas Hubbard                   nhubbard@redhat.com
 Nimay Desai                        nimaydesai1@gmail.com
 Nithin Raju                        nithin@vmware.com
 Niti Rohilla                       niti.rohilla@tcs.com
