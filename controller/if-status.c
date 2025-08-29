@@ -206,6 +206,10 @@ struct if_status_mgr {
     /* All local interfaces, stored per state. */
     struct hmapx ifaces_per_state[OIF_MAX];
 
+    /* All chassisredirect ports bound to different chassis in idl and bound in
+     * this loop. */
+    struct sset claimed_cr;
+
     /* Registered ofctrl seqno type for port_binding flow installation. */
     size_t iface_seq_type_pb_cfg;
 
@@ -245,6 +249,7 @@ if_status_mgr_create(void)
         hmapx_init(&mgr->ifaces_per_state[i]);
     }
     shash_init(&mgr->ifaces);
+    sset_init(&mgr->claimed_cr);
     shash_init(&mgr->ovn_uninstall_hash);
     return mgr;
 }
@@ -258,6 +263,8 @@ if_status_mgr_clear(struct if_status_mgr *mgr)
         ovs_iface_destroy(mgr, node->data);
     }
     ovs_assert(shash_is_empty(&mgr->ifaces));
+
+    sset_clear(&mgr->claimed_cr);
 
     SHASH_FOR_EACH_SAFE (node, &mgr->ovn_uninstall_hash) {
         ovn_uninstall_hash_destroy(mgr, node);
@@ -274,6 +281,7 @@ if_status_mgr_destroy(struct if_status_mgr *mgr)
 {
     if_status_mgr_clear(mgr);
     shash_destroy(&mgr->ifaces);
+    sset_destroy(&mgr->claimed_cr);
     shash_destroy(&mgr->ovn_uninstall_hash);
     for (size_t i = 0; i < ARRAY_SIZE(mgr->ifaces_per_state); i++) {
         hmapx_destroy(&mgr->ifaces_per_state[i]);
@@ -313,6 +321,11 @@ if_status_mgr_claim_iface(struct if_status_mgr *mgr,
         memcpy(&iface->parent_pb_uuid, &parent_pb->header_.uuid,
                sizeof(iface->pb_uuid));
     }
+    if (pb->chassis && pb->chassis != chassis_rec &&
+        !strcmp(pb->type, "chassisredirect")) {
+        sset_add(&mgr->claimed_cr, pb->logical_port);
+    }
+
     if (!sb_readonly) {
         if (bind_type == CAN_BIND_AS_MAIN) {
             set_pb_chassis_in_sbrec(pb, chassis_rec, true);
@@ -344,6 +357,18 @@ bool
 if_status_mgr_iface_is_present(struct if_status_mgr *mgr, const char *iface_id)
 {
     return !!shash_find_data(&mgr->ifaces, iface_id);
+}
+
+bool
+if_status_reclaimed(struct if_status_mgr *mgr, const char *iface_id)
+{
+    return sset_find(&mgr->claimed_cr, iface_id);
+}
+
+struct sset *
+get_claimed_cr(struct if_status_mgr *mgr)
+{
+    return &mgr->claimed_cr;
 }
 
 void
@@ -707,6 +732,7 @@ if_status_mgr_run(struct if_status_mgr *mgr,
     if_status_mgr_update_bindings(mgr, binding_data, chassis_rec,
                                   iface_table, pb_table,
                                   sb_readonly, ovs_readonly);
+    sset_clear(&mgr->claimed_cr);
 }
 
 static void

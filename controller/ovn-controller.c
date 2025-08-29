@@ -6450,7 +6450,8 @@ main(int argc, char *argv[])
                                     &runtime_data->local_active_ports_ras,
                                     ovsrec_open_vswitch_table_get(
                                             ovs_idl_loop.idl),
-                                    ovnsb_idl_loop.cur_cfg);
+                                    ovnsb_idl_loop.cur_cfg,
+                                    if_mgr);
                         stopwatch_stop(PINCTRL_RUN_STOPWATCH_NAME,
                                        time_msec());
                         mirror_run(ovs_idl_txn,
