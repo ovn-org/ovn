@@ -257,12 +257,6 @@ static void pinctrl_handle_nd_ns(struct rconn *swconn,
                                  const struct ofputil_packet_in *pin,
                                  struct ofpbuf *userdata,
                                  const struct ofpbuf *continuation);
-static void pinctrl_handle_put_icmp_frag_mtu(struct rconn *swconn,
-                                             const struct flow *in_flow,
-                                             struct dp_packet *pkt_in,
-                                             struct ofputil_packet_in *pin,
-                                             struct ofpbuf *userdata,
-                                             struct ofpbuf *continuation);
 static void
 pinctrl_handle_event(struct ofpbuf *userdata)
     OVS_REQUIRES(pinctrl_mutex);
@@ -3750,12 +3744,6 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
                               &userdata);
         break;
 
-    case ACTION_OPCODE_PUT_ICMP4_FRAG_MTU:
-    case ACTION_OPCODE_PUT_ICMP6_FRAG_MTU:
-        pinctrl_handle_put_icmp_frag_mtu(swconn, &headers, &packet, &pin,
-                                         &userdata, &continuation);
-        break;
-
     case ACTION_OPCODE_EVENT:
         ovs_mutex_lock(&pinctrl_mutex);
         pinctrl_handle_event(&userdata);
@@ -3797,6 +3785,16 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         pinctrl_split_buf_action_handler(swconn, &packet, &pin.flow_metadata,
                                          &userdata);
         break;
+
+    /* Deprecated actions. */
+    case ACTION_OPCODE_PUT_ICMP4_FRAG_MTU:
+    case ACTION_OPCODE_PUT_ICMP6_FRAG_MTU: {
+        char *opc_str = ovnact_op_to_string(ntohl(ah->opcode));
+        VLOG_WARN_RL(&rl, "pinctrl received deprecated packet-in | opcode=%s",
+                     opc_str);
+        free(opc_str);
+        break;
+    }
 
     default:
         VLOG_WARN_RL(&rl, "unrecognized packet-in opcode %"PRIu32,
@@ -6516,74 +6514,6 @@ exit:
     }
     queue_msg(swconn, ofputil_encode_resume(pin, continuation, proto));
     dp_packet_uninit(pkt_out_ptr);
-}
-
-/* Called with in the pinctrl_handler thread context. */
-/* XXX: This handler can be removed in next version (25.03). */
-static void
-pinctrl_handle_put_icmp_frag_mtu(struct rconn *swconn,
-                                 const struct flow *in_flow,
-                                 struct dp_packet *pkt_in,
-                                 struct ofputil_packet_in *pin,
-                                 struct ofpbuf *userdata,
-                                 struct ofpbuf *continuation)
-{
-    enum ofp_version version = rconn_get_version(swconn);
-    enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
-    struct dp_packet *pkt_out = NULL;
-
-    /* This action only works for ICMPv4/v6 packets. */
-    if (!is_icmpv4(in_flow, NULL) && !is_icmpv6(in_flow, NULL)) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-        VLOG_WARN_RL(&rl,
-                     "put_icmp(4/6)_frag_mtu action on non-ICMPv4/v6 packet");
-        goto exit;
-    }
-
-    pkt_out = dp_packet_clone(pkt_in);
-    pkt_out->l2_5_ofs = pkt_in->l2_5_ofs;
-    pkt_out->l2_pad_size = pkt_in->l2_pad_size;
-    pkt_out->l3_ofs = pkt_in->l3_ofs;
-    pkt_out->l4_ofs = pkt_in->l4_ofs;
-
-    if (is_icmpv4(in_flow, NULL)) {
-        ovs_be16 *mtu = ofpbuf_try_pull(userdata, sizeof *mtu);
-        if (!mtu) {
-            goto exit;
-        }
-
-        struct ip_header *nh = dp_packet_l3(pkt_out);
-        struct icmp_header *ih = dp_packet_l4(pkt_out);
-        ovs_be16 old_frag_mtu = ih->icmp_fields.frag.mtu;
-        ih->icmp_fields.frag.mtu = *mtu;
-        ih->icmp_csum = recalc_csum16(ih->icmp_csum, old_frag_mtu, *mtu);
-        nh->ip_csum = 0;
-        nh->ip_csum = csum(nh, sizeof *nh);
-    } else {
-        ovs_be32 *mtu = ofpbuf_try_pull(userdata, sizeof *mtu);
-        if (!mtu) {
-            goto exit;
-        }
-
-        struct icmp6_data_header *ih = dp_packet_l4(pkt_out);
-        put_16aligned_be32(ih->icmp6_data.be32, *mtu);
-
-        /* compute checksum and set correct mtu */
-        ih->icmp6_base.icmp6_cksum = 0;
-        uint32_t csum = packet_csum_pseudoheader6(dp_packet_l3(pkt_out));
-        uint32_t size = (uint8_t *)dp_packet_tail(pkt_out) - (uint8_t *)ih;
-        ih->icmp6_base.icmp6_cksum = csum_finish(
-                csum_continue(csum, ih, size));
-    }
-
-    pin->packet = dp_packet_data(pkt_out);
-    pin->packet_len = dp_packet_size(pkt_out);
-
-exit:
-    queue_msg(swconn, ofputil_encode_resume(pin, continuation, proto));
-    if (pkt_out) {
-        dp_packet_delete(pkt_out);
-    }
 }
 
 static void

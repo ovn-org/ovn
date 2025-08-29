@@ -730,8 +730,8 @@ OVNACTS
      */                                                                       \
     ACTION_OPCODE(ND_NA_ROUTER)                                               \
                                                                               \
-    /* MTU value (to put in the icmp4 header field - frag_mtu) follow the
-     * action header. */                                                      \
+    /* DEPRECATED: MTU value (to put in the icmp4 header field - frag_mtu)
+     * follow the action header. */                                           \
     ACTION_OPCODE(PUT_ICMP4_FRAG_MTU)                                         \
                                                                               \
     /* "icmp4_error { ...actions... }".
@@ -776,8 +776,8 @@ OVNACTS
      */                                                                       \
     ACTION_OPCODE(ICMP6_ERROR)                                                \
                                                                               \
-    /* MTU value (to put in the icmp6 header field - frag_mtu) follow the
-     * action header. */                                                      \
+    /* DEPRECATED: MTU value (to put in the icmp6 header field - frag_mtu)
+     * follow the action header. */                                           \
     ACTION_OPCODE(PUT_ICMP6_FRAG_MTU)                                         \
                                                                               \
     /* "reject { ...actions... }".
