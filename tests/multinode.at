@@ -1471,10 +1471,10 @@ for chassis in ovn-gw-1 ovn-gw-2 ovn-chassis-1 ovn-chassis-2; do
     on_exit "if test $test_success != 1; then m_as $chassis ovs-vsctl get open . external_ids > extids-${chassis}.txt; fi"
 done
 
-check_fake_multinode_setup_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-gw-1 ovn-gw-2'
+check_fake_multinode_setup
 
 # Delete the multinode NB and OVS resources before starting the test.
-cleanup_multinode_resources_by_nodes 'ovn-chassis-1 ovn-chassis-2 ovn-gw-1 ovn-gw-2'
+cleanup_multinode_resources
 
 ip_ch1=$(m_as ovn-chassis-1 ip a show dev eth1 | grep "inet " | awk '{print $2}'| cut -d '/' -f1)
 ip_gw1=$(m_as ovn-gw-1 ip a show dev eth1 | grep "inet " | awk '{print $2}'| cut -d '/' -f1)
@@ -1537,8 +1537,8 @@ m_as ovn-chassis-2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:
 m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 
-m_as ovn-chassis-1 /data/create_fake_vm.sh inside1 hv1-vif1 f0:00:c0:a8:01:01 1500 192.168.1.1 24 192.168.1.254 2000::1/64 2000::a
-m_as ovn-chassis-2 /data/create_fake_vm.sh ext1 ext1 00:00:c0:a8:00:01 1500 192.168.0.1 24 192.168.0.254 1000::3/64 1000::a
+m_as ovn-chassis-1 /data/create_fake_vm.sh inside1 hv1-vif1 f0:00:c0:a8:01:01 192.168.1.1 24 192.168.1.254 2000::1/64 2000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh ext1 ext1 00:00:c0:a8:00:01 192.168.0.1 24 192.168.0.254 1000::3/64 1000::a
 
 # There should be one ha_chassis_group with the name "R1_outside"
 m_check_row_count HA_Chassis_Group 1 name=R1_outside
