@@ -1338,16 +1338,30 @@ remove_additional_chassis(const struct sbrec_port_binding *pb,
 }
 
 bool
-lport_maybe_postpone(const char *port_name, long long int now,
+lport_maybe_postpone(const struct sbrec_port_binding *pb,
+                     const struct sbrec_chassis *chassis_rec,
+                     long long int now,
                      struct sset *postponed_ports)
 {
-    long long int last_claimed = get_claim_timestamp(port_name);
+    if (pb->ha_chassis_group) {
+        struct ha_chassis_ordered *ordered_ha_ch =
+            get_ordered_ha_chassis_list(pb->ha_chassis_group, NULL,
+                                        chassis_rec);
+        if (ordered_ha_ch &&
+            ordered_ha_ch->ha_ch[0].chassis == chassis_rec) {
+            ha_chassis_destroy_ordered(ordered_ha_ch);
+            return false;
+        } else {
+            ha_chassis_destroy_ordered(ordered_ha_ch);
+        }
+    }
+    long long int last_claimed = get_claim_timestamp(pb->logical_port);
     if (now - last_claimed >= CLAIM_TIME_THRESHOLD_MS) {
         return false;
     }
 
-    sset_add(postponed_ports, port_name);
-    VLOG_DBG("Postponed claim on logical port %s.", port_name);
+    sset_add(postponed_ports, pb->logical_port);
+    VLOG_DBG("Postponed claim on logical port %s.", pb->logical_port);
 
     return true;
 }
@@ -1378,7 +1392,7 @@ claim_lport(const struct sbrec_port_binding *pb,
         if (pb->chassis != chassis_rec) {
             long long int now = time_msec();
             if (pb->chassis) {
-                if (lport_maybe_postpone(pb->logical_port, now,
+                if (lport_maybe_postpone(pb, chassis_rec, now,
                                          postponed_ports)) {
                     return true;
                 }
