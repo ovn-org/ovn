@@ -49,7 +49,7 @@ VLOG_DEFINE_THIS_MODULE(binding);
 
 #define OVN_QOS_TYPE "linux-htb"
 
-#define CLAIM_TIME_THRESHOLD_MS 500
+#define CLAIM_TIME_THRESHOLD_MS 2000
 
 struct claimed_port {
     long long int last_claimed;

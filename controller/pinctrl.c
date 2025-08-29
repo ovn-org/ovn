@@ -239,7 +239,8 @@ static void send_garp_rarp_prepare(
     const struct ovsrec_bridge *,
     const struct sbrec_chassis *,
     const struct hmap *local_datapaths,
-    const struct ovsrec_open_vswitch_table *ovs_table)
+    const struct ovsrec_open_vswitch_table *ovs_table,
+    struct if_status_mgr *mgr)
     OVS_REQUIRES(pinctrl_mutex);
 static void send_garp_rarp_run(struct rconn *swconn,
                                long long int *send_garp_rarp_time)
@@ -3630,7 +3631,8 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             const struct shash *local_active_ports_ipv6_pd,
             const struct shash *local_active_ports_ras,
             const struct ovsrec_open_vswitch_table *ovs_table,
-            int64_t cur_cfg)
+            int64_t cur_cfg,
+            struct if_status_mgr *mgr)
 {
     ovs_mutex_lock(&pinctrl_mutex);
     run_put_mac_bindings(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
@@ -3641,7 +3643,7 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
     send_garp_rarp_prepare(ovnsb_idl_txn, sbrec_port_binding_by_datapath,
                            sbrec_port_binding_by_name,
                            sbrec_mac_binding_by_lport_ip, br_int, chassis,
-                           local_datapaths, ovs_table);
+                           local_datapaths, ovs_table, mgr);
     prepare_ipv6_ras(local_active_ports_ras, sbrec_port_binding_by_name);
     prepare_ipv6_prefixd(ovnsb_idl_txn, sbrec_port_binding_by_name,
                          local_active_ports_ipv6_pd, chassis,
@@ -4542,6 +4544,7 @@ wait_put_mac_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn)
  * their port-mac and ARP tables.
  */
 struct garp_rarp_data {
+    struct cmap_node cmap_node;
     struct eth_addr ea;          /* Ethernet address of port. */
     ovs_be32 ipv4;               /* Ipv4 address of port. */
     long long int announce_time; /* Next announcement in ms. */
@@ -4549,10 +4552,16 @@ struct garp_rarp_data {
                                   * announcement (in msecs). */
     uint32_t dp_key;             /* Datapath used to output this GARP. */
     uint32_t port_key;           /* Port to inject the GARP into. */
+    char *logical_port;          /* Name of the cr logical_port, if any */
 };
 
 /* Contains GARPs/RARPs to be sent. Protected by pinctrl_mutex*/
 static struct shash send_garp_rarp_data;
+
+struct laddrs_port {
+    struct lport_addresses laddrs;
+    char *lport;
+};
 
 static void
 init_send_garps_rarps(void)
@@ -4563,13 +4572,52 @@ init_send_garps_rarps(void)
 static void
 destroy_send_garps_rarps(void)
 {
+    struct shash_node *iter;
+    SHASH_FOR_EACH (iter, &send_garp_rarp_data) {
+        struct garp_rarp_data *garp_rarp = iter->data;
+        free(garp_rarp->logical_port);
+    }
+
     shash_destroy_free_data(&send_garp_rarp_data);
 }
+
+static void
+garp_rarp_node_reset_timers(const char *logical_port)
+{
+    struct shash_node *iter;
+    bool changed = false;
+    SHASH_FOR_EACH (iter, &send_garp_rarp_data) {
+        struct garp_rarp_data *garp_rarp_data = iter->data;
+        if (garp_rarp_data->logical_port &&
+            !strcmp(garp_rarp_data->logical_port, logical_port)) {
+            changed = true;
+            garp_rarp_data->announce_time = time_msec() + 1000;
+            garp_rarp_data->backoff = 1000;
+        }
+    }
+    if (changed) {
+        notify_pinctrl_handler();
+    }
+}
+
+static void
+reset_timers_for_claimed_cr(struct if_status_mgr *mgr)
+{
+    struct sset *claimed_cr = get_claimed_cr(mgr);
+    const char *cr_logical_port;
+    SSET_FOR_EACH_SAFE (cr_logical_port, claimed_cr) {
+        garp_rarp_node_reset_timers(cr_logical_port);
+        sset_delete(claimed_cr, SSET_NODE_FROM_NAME(cr_logical_port));
+    }
+
+}
+
 
 /* Runs with in the main ovn-controller thread context. */
 static void
 add_garp_rarp(const char *name, const struct eth_addr ea, ovs_be32 ip,
-              uint32_t dp_key, uint32_t port_key)
+              uint32_t dp_key, uint32_t port_key,
+              const char *logical_port)
 {
     struct garp_rarp_data *garp_rarp = xmalloc(sizeof *garp_rarp);
     garp_rarp->ea = ea;
@@ -4578,6 +4626,7 @@ add_garp_rarp(const char *name, const struct eth_addr ea, ovs_be32 ip,
     garp_rarp->backoff = 1000; /* msec. */
     garp_rarp->dp_key = dp_key;
     garp_rarp->port_key = port_key;
+    garp_rarp->logical_port = nullable_xstrdup(logical_port);
     shash_add(&send_garp_rarp_data, name, garp_rarp);
 
     /* Notify pinctrl_handler so that it can wakeup and process
@@ -4608,9 +4657,10 @@ send_garp_rarp_update(struct ovsdb_idl_txn *ovnsb_idl_txn,
      * distributed gateway ports. */
     if (!strcmp(binding_rec->type, "l3gateway")
         || !strcmp(binding_rec->type, "patch")) {
-        struct lport_addresses *laddrs = NULL;
-        while ((laddrs = shash_find_and_delete(nat_addresses,
-                                               binding_rec->logical_port))) {
+        struct laddrs_port *laddrs_port = NULL;
+        while ((laddrs_port = shash_find_and_delete(nat_addresses,
+                                                binding_rec->logical_port))) {
+            struct lport_addresses *laddrs = &laddrs_port->laddrs;
             int i;
             for (i = 0; i < laddrs->n_ipv4_addrs; i++) {
                 char *name = xasprintf("%s-%s", binding_rec->logical_port,
@@ -4629,7 +4679,8 @@ send_garp_rarp_update(struct ovsdb_idl_txn *ovnsb_idl_txn,
                     add_garp_rarp(name, laddrs->ea,
                                   laddrs->ipv4_addrs[i].addr,
                                   binding_rec->datapath->tunnel_key,
-                                  binding_rec->tunnel_key);
+                                  binding_rec->tunnel_key,
+                                  laddrs_port->lport);
                     send_garp_locally(ovnsb_idl_txn,
                                       sbrec_mac_binding_by_lport_ip,
                                       local_datapaths, binding_rec, laddrs->ea,
@@ -4658,12 +4709,14 @@ send_garp_rarp_update(struct ovsdb_idl_txn *ovnsb_idl_txn,
                     } else {
                         add_garp_rarp(name, laddrs->ea,
                                       0, binding_rec->datapath->tunnel_key,
-                                      binding_rec->tunnel_key);
+                                      binding_rec->tunnel_key,
+                                      laddrs_port->lport);
                     }
                     free(name);
             }
             destroy_lport_addresses(laddrs);
-            free(laddrs);
+            free(laddrs_port->lport);
+            free(laddrs_port);
         }
         return;
     }
@@ -4699,7 +4752,7 @@ send_garp_rarp_update(struct ovsdb_idl_txn *ovnsb_idl_txn,
         add_garp_rarp(binding_rec->logical_port,
                       laddrs.ea, ip,
                       binding_rec->datapath->tunnel_key,
-                      binding_rec->tunnel_key);
+                      binding_rec->tunnel_key, NULL);
         if (ip) {
             send_garp_locally(ovnsb_idl_txn, sbrec_mac_binding_by_lport_ip,
                               local_datapaths, binding_rec, laddrs.ea, ip);
@@ -4716,6 +4769,7 @@ send_garp_rarp_delete(const char *lport)
 {
     struct garp_rarp_data *garp_rarp = shash_find_and_delete
                                        (&send_garp_rarp_data, lport);
+    free(garp_rarp->logical_port);
     free(garp_rarp);
     notify_pinctrl_handler();
 }
@@ -6016,7 +6070,9 @@ consider_nat_address(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                      const struct sbrec_chassis *chassis,
                      struct shash *nat_addresses)
 {
-    struct lport_addresses *laddrs = xmalloc(sizeof *laddrs);
+    struct laddrs_port *laddrs_port = xmalloc(sizeof *laddrs_port);
+    struct lport_addresses *laddrs = &laddrs_port->laddrs;
+
     char *lport = NULL;
     const struct sbrec_port_binding *cr_pb = NULL;
     bool rc = extract_addresses_with_port(nat_address, laddrs, &lport);
@@ -6027,11 +6083,10 @@ consider_nat_address(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         || (!lport && !strcmp(pb->type, "patch"))
         || (lport && (!cr_pb || (cr_pb->chassis != chassis)))) {
         destroy_lport_addresses(laddrs);
-        free(laddrs);
         free(lport);
+        free(laddrs_port);
         return;
     }
-    free(lport);
 
     int i;
     for (i = 0; i < laddrs->n_ipv4_addrs; i++) {
@@ -6045,7 +6100,8 @@ consider_nat_address(struct ovsdb_idl_index *sbrec_port_binding_by_name,
         sset_add(nat_address_keys, name);
         free(name);
     }
-    shash_add(nat_addresses, pb->logical_port, laddrs);
+    laddrs_port->lport = lport;
+    shash_add(nat_addresses, pb->logical_port, laddrs_port);
 }
 
 static void
@@ -6128,7 +6184,8 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
                        const struct ovsrec_bridge *br_int,
                        const struct sbrec_chassis *chassis,
                        const struct hmap *local_datapaths,
-                       const struct ovsrec_open_vswitch_table *ovs_table)
+                       const struct ovsrec_open_vswitch_table *ovs_table,
+                       struct if_status_mgr *mgr)
     OVS_REQUIRES(pinctrl_mutex)
 {
     struct sset localnet_vifs = SSET_INITIALIZER(&localnet_vifs);
@@ -6150,6 +6207,7 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
     shash_init(&nat_addresses);
 
+    reset_timers_for_claimed_cr(mgr);
     get_localnet_vifs_l3gwports(sbrec_port_binding_by_datapath,
                                 sbrec_port_binding_by_name,
                                 br_int, chassis, local_datapaths,
@@ -6199,10 +6257,11 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
     sset_destroy(&local_l3gw_ports);
 
     SHASH_FOR_EACH_SAFE (iter, &nat_addresses) {
-        struct lport_addresses *laddrs = iter->data;
-        destroy_lport_addresses(laddrs);
+        struct laddrs_port *laddrs_port = iter->data;
+        destroy_lport_addresses(&laddrs_port->laddrs);
         shash_delete(&nat_addresses, iter);
-        free(laddrs);
+        free(laddrs_port->lport);
+        free(laddrs_port);
     }
     shash_destroy(&nat_addresses);
 
