@@ -3392,19 +3392,6 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
     }
 }
 
-static bool
-mac_binding_is_stale(const struct hmap *lr_datapaths,
-                     const struct hmap *lr_ports,
-                     const struct sbrec_datapath_binding *dp,
-                     const char *logical_port)
-{
-    const struct ovn_datapath *od =
-        ovn_datapath_from_sbrec(NULL, lr_datapaths, dp);
-
-    return !od || ovn_datapath_is_stale(od) ||
-           !ovn_port_find(lr_ports, logical_port);
-}
-
 /* Remove mac_binding entries that refer to logical_ports which are
  * deleted. */
 static void
@@ -3414,8 +3401,11 @@ cleanup_mac_bindings(
 {
     const struct sbrec_mac_binding *b;
     SBREC_MAC_BINDING_TABLE_FOR_EACH_SAFE (b, sbrec_mac_binding_table) {
-        if (mac_binding_is_stale(lr_datapaths, lr_ports, b->datapath,
-                                 b->logical_port)) {
+        const struct ovn_datapath *od =
+            ovn_datapath_from_sbrec(NULL, lr_datapaths, b->datapath);
+
+        if (!od || ovn_datapath_is_stale(od) ||
+            !ovn_port_find(lr_ports, b->logical_port)) {
             sbrec_mac_binding_delete(b);
         }
     }
@@ -18933,58 +18923,24 @@ build_mcast_groups(const struct sbrec_igmp_group_table *sbrec_igmp_group_table,
     }
 }
 
-static const struct nbrec_static_mac_binding *
-static_mac_binding_by_port_ip(
-    const struct nbrec_static_mac_binding_table *nbrec_static_mb_table,
-    const char *logical_port, const char *ip)
-{
-    const struct nbrec_static_mac_binding *nb_smb = NULL;
-
-    NBREC_STATIC_MAC_BINDING_TABLE_FOR_EACH (nb_smb, nbrec_static_mb_table) {
-        if (!strcmp(nb_smb->logical_port, logical_port) &&
-            !strcmp(nb_smb->ip, ip)) {
-            break;
-        }
-    }
-
-    return nb_smb;
-}
-
 static void
 build_static_mac_binding_table(
     struct ovsdb_idl_txn *ovnsb_txn,
     const struct nbrec_static_mac_binding_table *nbrec_static_mb_table,
     const struct sbrec_static_mac_binding_table *sbrec_static_mb_table,
     struct ovsdb_idl_index *sbrec_static_mac_binding_by_lport_ip,
-    const struct hmap *lr_datapaths, const struct hmap *lr_ports)
+    const struct hmap *lr_ports)
 {
-    /* Cleanup SB Static_MAC_Binding entries which do not have corresponding
-     * NB Static_MAC_Binding entries, and SB Static_MAC_Binding entries for
-     * which there is not a NB Logical_Router_Port of the same name or
-     * entries which SB Datapath_Binding reference is considered
-     * stale/removed. */
-    const struct nbrec_static_mac_binding *nb_smb;
+    struct hmapx stale = HMAPX_INITIALIZER(&stale);
     const struct sbrec_static_mac_binding *sb_smb;
-    SBREC_STATIC_MAC_BINDING_TABLE_FOR_EACH_SAFE (sb_smb,
-        sbrec_static_mb_table) {
-        nb_smb = static_mac_binding_by_port_ip(nbrec_static_mb_table,
-                                               sb_smb->logical_port,
-                                               sb_smb->ip);
-        if (!nb_smb) {
-            sbrec_static_mac_binding_delete(sb_smb);
-            continue;
-        }
-
-        if (mac_binding_is_stale(lr_datapaths, lr_ports, sb_smb->datapath,
-                                 sb_smb->logical_port)) {
-            sbrec_static_mac_binding_delete(sb_smb);
-        }
+    SBREC_STATIC_MAC_BINDING_TABLE_FOR_EACH (sb_smb, sbrec_static_mb_table) {
+        hmapx_add(&stale, CONST_CAST(void *, sb_smb));
     }
 
     /* Create/Update SB Static_MAC_Binding entries with corresponding values
      * from NB Static_MAC_Binding entries. */
-    NBREC_STATIC_MAC_BINDING_TABLE_FOR_EACH (
-        nb_smb, nbrec_static_mb_table) {
+    const struct nbrec_static_mac_binding *nb_smb;
+    NBREC_STATIC_MAC_BINDING_TABLE_FOR_EACH (nb_smb, nbrec_static_mb_table) {
         struct ovn_port *op = ovn_port_find(lr_ports, nb_smb->logical_port);
         if (op && op->nbrp) {
             struct ovn_datapath *od = op->od;
@@ -19005,6 +18961,10 @@ build_static_mac_binding_table(
                     sbrec_static_mac_binding_set_datapath(mb, od->sb);
                 } else {
                     /* Update existing entry if there is a change*/
+                    if (mb->datapath != od->sb) {
+                        sbrec_static_mac_binding_set_datapath(mb, od->sb);
+                    }
+
                     if (strcmp(mb->mac, nb_smb->mac)) {
                         sbrec_static_mac_binding_set_mac(mb, nb_smb->mac);
                     }
@@ -19013,10 +18973,19 @@ build_static_mac_binding_table(
                         sbrec_static_mac_binding_set_override_dynamic_mac(mb,
                             nb_smb->override_dynamic_mac);
                     }
+
+                    hmapx_find_and_delete(&stale, mb);
                 }
             }
         }
     }
+
+    /* Cleanup SB Static_MAC_Binding entries which are no longer needed. */
+    struct hmapx_node *node;
+    HMAPX_FOR_EACH (node, &stale) {
+        sbrec_static_mac_binding_delete(node->data);
+    }
+    hmapx_destroy(&stale);
 }
 
 static void
@@ -19276,7 +19245,7 @@ ovnnb_db_run(struct northd_input *input_data,
         input_data->nbrec_static_mac_binding_table,
         input_data->sbrec_static_mac_binding_table,
         input_data->sbrec_static_mac_binding_by_lport_ip,
-        &data->lr_datapaths.datapaths, &data->lr_ports);
+        &data->lr_ports);
     stopwatch_stop(BUILD_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
     stopwatch_start(CLEAR_LFLOWS_CTX_STOPWATCH_NAME, time_msec());
 
