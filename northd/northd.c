@@ -636,12 +636,6 @@ ovn_datapath_from_sbrec(const struct hmap *ls_datapaths,
     return NULL;
 }
 
-static bool
-lrouter_is_enabled(const struct nbrec_logical_router *lrouter)
-{
-    return !lrouter->enabled || *lrouter->enabled;
-}
-
 static void
 init_mcast_info_for_router_datapath(struct ovn_datapath *od)
 {
