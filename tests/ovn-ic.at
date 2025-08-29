@@ -3526,6 +3526,17 @@ OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
 192.168.0.0/24 169.254.101.22
 ])
 
+check ovn_as az1 ovn-nbctl set logical_router lr11 enable=false
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+])
+
+check ovn_as az1 ovn-nbctl set logical_router lr11 enable=true
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.101.22
+])
+
 OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP

@@ -40,6 +40,7 @@
 #define VXLAN_TUNNEL_OVERHEAD 30
 
 struct eth_addr;
+struct nbrec_logical_router;
 struct nbrec_logical_router_port;
 struct ovsrec_flow_sample_collector_set_table;
 struct sbrec_datapath_binding;
@@ -100,6 +101,7 @@ ipv6_is_all_site_router(const struct in6_addr *addr)
     return ipv6_addr_equals(addr, &in6addr_all_site_routers);
 }
 
+bool lrouter_is_enabled(const struct nbrec_logical_router *);
 bool is_dynamic_lsp_address(const char *address);
 bool extract_addresses(const char *address, struct lport_addresses *,
                        int *ofs);

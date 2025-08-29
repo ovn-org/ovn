@@ -39,6 +39,12 @@ VLOG_DEFINE_THIS_MODULE(ovn_util);
 
 #define DEFAULT_PROBE_INTERVAL_MSEC 5000
 
+bool
+lrouter_is_enabled(const struct nbrec_logical_router *lrouter)
+{
+    return !lrouter->enabled || *lrouter->enabled;
+}
+
 void ovn_conn_show(struct unixctl_conn *conn, int argc OVS_UNUSED,
                    const char *argv[] OVS_UNUSED, void *idl_)
 {
