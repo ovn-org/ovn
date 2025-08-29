@@ -593,12 +593,6 @@ ovn_datapath_add_ls_peer(struct ovn_datapath *od, struct ovn_datapath *peer)
     od->ls_peers[od->n_ls_peers++] = peer;
 }
 
-static bool
-lrouter_is_enabled(const struct nbrec_logical_router *lrouter)
-{
-    return !lrouter->enabled || *lrouter->enabled;
-}
-
 static void
 init_ipam_info_for_datapath(struct ovn_datapath *od)
 {
