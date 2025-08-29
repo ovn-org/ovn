@@ -1323,6 +1323,10 @@ route_need_learn(const struct nbrec_logical_router *lr,
         return false;
     }
 
+    if (!lrouter_is_enabled(lr)) {
+        return false;
+    }
+
     if (prefix_is_link_local(prefix, plen)) {
         return false;
     }
@@ -1486,6 +1490,9 @@ sync_learned_routes(struct ic_context *ctx,
     const struct nbrec_logical_router_port *lrp;
     for (int i = 0; i < ic_lr->n_isb_pbs; i++) {
         isb_pb = ic_lr->isb_pbs[i];
+        if (!strcmp(isb_pb->address, "")) {
+            continue;
+        }
         lrp_name = get_lrp_name_by_ts_port_name(ctx, isb_pb->logical_port);
         lrp = get_lrp_by_lrp_name(ctx, lrp_name);
         ts_route_table = get_route_table_by_lrp_name(ctx, lrp_name);
@@ -2242,6 +2249,8 @@ main(int argc, char *argv[])
                          &nbrec_logical_router_col_options);
     ovsdb_idl_add_column(ovnnb_idl_loop.idl,
                          &nbrec_logical_router_col_external_ids);
+    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
+                         &nbrec_logical_router_col_enabled);
 
     ovsdb_idl_add_table(ovnnb_idl_loop.idl, &nbrec_table_logical_router_port);
     ovsdb_idl_add_column(ovnnb_idl_loop.idl,
