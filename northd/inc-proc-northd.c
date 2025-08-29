@@ -629,6 +629,23 @@ chassis_features_list(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
     ds_put_format(&ds, "mac_binding_timestamp: %s\n",
                   features->mac_binding_timestamp ? "true" : "false");
+    ds_put_format(&ds, "fdb_timestamp: %s\n",
+                  features->fdb_timestamp ? "true" : "false");
+    ds_put_format(&ds, "ls_dpg_column: %s\n",
+                  features->ls_dpg_column ? "true" : "false");
+    ds_put_format(&ds, "ct_commit_nat_v2: %s\n",
+                  features->ct_commit_nat_v2 ? "true" : "false");
+    ds_put_format(&ds, "ct_commit_to_zone: %s\n",
+                  features->ct_commit_to_zone ? "true" : "false");
+    ds_put_format(&ds, "sample_with_reg: %s\n",
+                  features->sample_with_reg ? "true" : "false");
+    ds_put_format(&ds, "ct_next_zone: %s\n",
+                  features->ct_next_zone ? "true" : "false");
+    ds_put_format(&ds, "ct_label_flush: %s\n",
+                  features->ct_label_flush ? "true" : "false");
+    ds_put_format(&ds, "ct_state_save: %s\n",
+                  features->ct_state_save ? "true" : "false");
+
     unixctl_command_reply(conn, ds_cstr(&ds));
     ds_destroy(&ds);
 }

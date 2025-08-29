@@ -10537,7 +10537,7 @@ check ovn-sbctl chassis-add hv1 geneve 127.0.0.1 \
 
 check ovn-nbctl --wait=sb sync
 
-AT_CHECK([as northd ovn-appctl -t ovn-northd debug/chassis-features-list], [0], [dnl
+AT_CHECK([as northd ovn-appctl -t ovn-northd debug/chassis-features-list | grep "mac_binding_timestamp"], [0], [dnl
 mac_binding_timestamp: true
 ])
 
@@ -10548,7 +10548,7 @@ check ovn-sbctl chassis-add hv2 geneve 127.0.0.2 \
 
 check ovn-nbctl --wait=sb sync
 
-AT_CHECK([as northd ovn-appctl -t ovn-northd debug/chassis-features-list], [0], [dnl
+AT_CHECK([as northd ovn-appctl -t ovn-northd debug/chassis-features-list | grep "mac_binding_timestamp"], [0], [dnl
 mac_binding_timestamp: true
 ])
 

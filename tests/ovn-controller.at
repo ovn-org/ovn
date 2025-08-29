@@ -641,12 +641,25 @@ ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
 
 # Wait for ovn-controller to register in the SB.
-OVS_WAIT_UNTIL([
-    test "$(ovn-sbctl get chassis hv1 other_config:port-up-notif)" = '"true"'
-])
+wait_row_count Chassis 1 name=hv1 other_config:mac-binding-timestamp="true"
+check_row_count Chassis 1 name=hv1 other_config:fdb-timestamp="true"
+check_row_count Chassis 1 name=hv1 other_config:ls-dpg-column="true"
+check_row_count Chassis 1 name=hv1 other_config:ct-commit-nat-v2="true"
+check_row_count Chassis 1 name=hv1 other_config:ct-commit-to-zone="true"
+check_row_count Chassis 1 name=hv1 other_config:fdb-timestamp="true"
+check_row_count Chassis 1 name=hv1 other_config:ct-next-zone="true"
+check_row_count Chassis 1 name=hv1 other_config:ct-state-save="true"
 
-OVS_WAIT_UNTIL([
-    test "$(ovn-sbctl get chassis hv1 other_config:ls-dpg-column)" = '"true"'
+# Check the features reported by northd without features that are detected from ovs.
+AT_CHECK([as northd ovn-appctl -t ovn-northd debug/chassis-features-list | sort | \
+          grep -v "sample_with_reg" | grep -v "ct_label_flush"], [0], [dnl
+ct_commit_nat_v2: true
+ct_commit_to_zone: true
+ct_next_zone: true
+ct_state_save: true
+fdb_timestamp: true
+ls_dpg_column: true
+mac_binding_timestamp: true
 ])
 
 OVN_CLEANUP([hv1])

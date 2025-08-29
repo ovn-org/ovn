@@ -21,10 +21,7 @@
 #include "smap.h"
 
 /* ovn-controller supported feature names. */
-#define OVN_FEATURE_PORT_UP_NOTIF      "port-up-notif"
-#define OVN_FEATURE_CT_NO_MASKED_LABEL "ct-no-masked-label"
 #define OVN_FEATURE_MAC_BINDING_TIMESTAMP "mac-binding-timestamp"
-#define OVN_FEATURE_CT_LB_RELATED "ovn-ct-lb-related"
 #define OVN_FEATURE_FDB_TIMESTAMP "fdb-timestamp"
 #define OVN_FEATURE_LS_DPG_COLUMN "ls-dpg-column"
 #define OVN_FEATURE_CT_COMMIT_NAT_V2 "ct-commit-nat-v2"
