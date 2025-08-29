@@ -509,8 +509,11 @@ if_status_mgr_update(struct if_status_mgr *mgr,
                 chassis_rec)) {
                 if (!sb_readonly) {
                     long long int now = time_msec();
-                    if (lport_maybe_postpone(iface->id, now,
-                                             get_postponed_ports())) {
+                    const struct sbrec_port_binding *pb =
+                        sbrec_port_binding_table_get_for_uuid(pb_table,
+                                                              &iface->pb_uuid);
+                    if (pb && lport_maybe_postpone(pb, chassis_rec, now,
+                                                   get_postponed_ports())) {
                         continue;
                     }
                     local_binding_set_pb(bindings, iface->id, chassis_rec,
@@ -566,8 +569,11 @@ if_status_mgr_update(struct if_status_mgr *mgr,
             if (!local_bindings_pb_chassis_is_set(bindings, iface->id,
                 chassis_rec)) {
                 long long int now = time_msec();
-                if (lport_maybe_postpone(iface->id, now,
-                                         get_postponed_ports())) {
+                const struct sbrec_port_binding *pb =
+                    sbrec_port_binding_table_get_for_uuid(pb_table,
+                                                          &iface->pb_uuid);
+                if (pb && lport_maybe_postpone(pb, chassis_rec, now,
+                                               get_postponed_ports())) {
                     continue;
                 }
                 local_binding_set_pb(bindings, iface->id, chassis_rec,

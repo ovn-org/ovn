@@ -59,7 +59,7 @@ compare_chassis_prio_(const void *a_, const void *b_)
  * If active_tunnels is set is empty and local_chassis is HA3,
  * then it returns NULL.
  */
-static struct ha_chassis_ordered *
+struct ha_chassis_ordered *
 get_ordered_ha_chassis_list(const struct sbrec_ha_chassis_group *ha_ch_grp,
                             const struct sset *active_tunnels,
                             const struct sbrec_chassis *local_chassis)
