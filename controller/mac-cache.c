@@ -373,6 +373,10 @@ void
 mac_binding_stats_process_flow_stats(struct ovs_list *stats_list,
                                      struct ofputil_flow_stats *ofp_stats)
 {
+    if (ofp_stats->idle_age == ofp_stats->duration_sec) {
+        return;
+    }
+
     struct mac_cache_stats *stats = xmalloc(sizeof *stats);
 
     stats->idle_age_ms = ofp_stats->idle_age * 1000;
@@ -479,6 +483,10 @@ void
 fdb_stats_process_flow_stats(struct ovs_list *stats_list,
                              struct ofputil_flow_stats *ofp_stats)
 {
+    if (ofp_stats->idle_age == ofp_stats->duration_sec) {
+        return;
+    }
+
     struct mac_cache_stats *stats = xmalloc(sizeof *stats);
 
     stats->idle_age_ms = ofp_stats->idle_age * 1000;
