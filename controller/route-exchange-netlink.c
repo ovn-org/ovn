@@ -201,6 +201,7 @@ struct route_msg_handle_data {
     struct hmapx *routes_to_advertise;
     struct vector *learned_routes;
     const struct hmap *routes;
+    uint32_t table_id; /* requested table id. */
     int ret;
 };
 
@@ -211,6 +212,13 @@ handle_route_msg(const struct route_table_msg *msg, void *data)
     const struct route_data *rd = &msg->rd;
     struct advertise_route_entry *ar;
     int err;
+
+    if (handle_data->table_id != rd->rta_table_id) {
+        /* We do not have the NLM_F_DUMP_FILTERED info here, so check if the
+         * reported table_id matches the requested one.
+         */
+        return;
+    }
 
     /* This route is not from us, so we learn it. */
     if (rd->rtm_protocol != RTPROT_OVN) {
@@ -293,6 +301,7 @@ re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
         .routes_to_advertise = &routes_to_advertise,
         .learned_routes = learned_routes,
         .db = db,
+        .table_id = table_id,
     };
     route_table_dump_one_table(table_id, handle_route_msg, &data);
     ret = data.ret;
@@ -333,6 +342,7 @@ re_nl_cleanup_routes(uint32_t table_id)
     struct route_msg_handle_data data = {
         .routes_to_advertise = NULL,
         .learned_routes = NULL,
+        .table_id = table_id,
     };
     route_table_dump_one_table(table_id, handle_route_msg, &data);
 
