@@ -1091,13 +1091,11 @@ ovn_port_destroy(struct hmap *ports, struct ovn_port *port)
     }
 }
 
-/* Returns the ovn_port that matches 'name'.  If 'prefer_bound' is true and
- * multiple ports share the same name, gives precendence to ports bound to
- * an ovn_datapath.
+/* Returns the ovn_port that matches 'name'.  If multiple ports share the
+ * same name, gives precendence to ports bound to an ovn_datapath.
  */
-static struct ovn_port *
-ovn_port_find__(const struct hmap *ports, const char *name,
-                bool prefer_bound)
+struct ovn_port *
+ovn_port_find(const struct hmap *ports, const char *name)
 {
     struct ovn_port *matched_op = NULL;
     struct ovn_port *op;
@@ -1105,24 +1103,12 @@ ovn_port_find__(const struct hmap *ports, const char *name,
     HMAP_FOR_EACH_WITH_HASH (op, key_node, hash_string(name, 0), ports) {
         if (!strcmp(op->key, name)) {
             matched_op = op;
-            if (!prefer_bound || op->od) {
+            if (op->od) {
                 return op;
             }
         }
     }
     return matched_op;
-}
-
-struct ovn_port *
-ovn_port_find(const struct hmap *ports, const char *name)
-{
-    return ovn_port_find__(ports, name, false);
-}
-
-static struct ovn_port *
-ovn_port_find_bound(const struct hmap *ports, const char *name)
-{
-    return ovn_port_find__(ports, name, true);
 }
 
 static bool
@@ -1497,7 +1483,7 @@ join_logical_ports_lsp(struct hmap *ports,
                        struct hmap *tag_alloc_table,
                        struct hmapx *mirror_attached_ports)
 {
-    struct ovn_port *op = ovn_port_find_bound(ports, name);
+    struct ovn_port *op = ovn_port_find(ports, name);
     if (op && (op->od || op->nbsp || op->nbrp)) {
         static struct vlog_rate_limit rl
             = VLOG_RATE_LIMIT_INIT(5, 1);
@@ -1592,7 +1578,7 @@ join_logical_ports_lrp(struct hmap *ports,
       return NULL;
     }
 
-    struct ovn_port *op = ovn_port_find_bound(ports, name);
+    struct ovn_port *op = ovn_port_find(ports, name);
     if (op && (op->od || op->nbsp || op->nbrp)) {
         static struct vlog_rate_limit rl
             = VLOG_RATE_LIMIT_INIT(5, 1);
