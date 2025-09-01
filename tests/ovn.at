@@ -35188,6 +35188,68 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([MAC binding aging - unused entries])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovn-appctl -t ovn-controller vlog/set mac_cache:file:dbg pinctrl:file:dbg
+
+check ovn-nbctl                                                     \
+    -- ls-add ls1                                                   \
+    -- lr-add lr                                                    \
+    -- set logical_router lr options:mac_binding_age_threshold=4    \
+    -- lrp-add lr lr-ls1 00:00:00:00:10:00 192.168.10.1/24          \
+    -- lsp-add ls1 ls1-lr                                           \
+    -- lsp-set-type ls1-lr router                                   \
+    -- lsp-set-addresses ls1-lr router                              \
+    -- lsp-set-options ls1-lr router-port=lr-ls1                    \
+    -- lsp-add ls1 vif1                                             \
+    -- lsp-set-addresses vif1 "00:00:00:00:10:10 192.168.10.10"
+
+check ovs-vsctl                                      \
+    -- add-port br-int vif1                          \
+    -- set interface vif1 external-ids:iface-id=vif1
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl Wait for pinctrl thread to be connected.
+OVS_WAIT_UNTIL([grep pinctrl hv1/ovn-controller.log | grep -q connected])
+
+dnl Create the MAC_Binding directly in the database to ensure it is never used.
+dnl The timestamp is set to now.
+dp=$(fetch_column Datapath_Binding _uuid external_ids:name=lr)
+now=$(date +%s)000
+check_uuid ovn-sbctl create MAC_Binding datapath=$dp logical_port=lr-ls1 \
+           ip=192.168.10.20 'mac="00:00:00:11:22:33"' timestamp=$now
+
+dnl Wait until the flow is installed locally
+OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | grep 192.168.10.20])
+
+dnl Wait long enough to give ovn-controller the chance to decide if the entry
+dnl should be bumped or not.
+sleep 2
+
+dnl The entry should still be there and the timestamp should not have been
+dnl updated
+check_row_count mac_binding 1 ip="192.168.10.20"
+new_ts=$(fetch_column MAC_Binding timestamp ip="192.168.10.20")
+check test "$now" = "$new_ts"
+
+dnl After waiting until the age threshold the entry should be deleted
+sleep 3
+check_row_count mac_binding 0 ip="192.168.10.20"
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([MAC binding aging - probing])
 AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
@@ -35453,7 +35515,7 @@ OVS_WAIT_UNTIL([$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | \
 n_arp=$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/arp_spa=192.168.20.2/{print substr($4,11,1)}')
 # Check GW router does not send any ARP requests in this case.
 OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
-                       awk '/nw_src=192.168.10.100/{print substr($6,10,1)}') -ge $((aging_th/2))])
+                       awk '/nw_src=192.168.10.100/{print substr($6,10,1)}') -ge $((aging_th*3/16))])
 AT_CHECK([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/arp_spa=192.168.20.2/{print substr($4,11,1)}') -eq $n_arp])
 
 send_imcp_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:10:1a 192.168.20.2 192.168.10.100
@@ -35474,7 +35536,7 @@ check_row_count mac_binding 1 mac=\"00:00:00:00:30:00\" ip=\"fd12::2\"
 
 n_ipv6=$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/ipv6_src=fd12::2/{print substr($4,11,1)}')
 OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
-                       awk '/ipv6_src=fd12::2/{print substr($6,10,1)}') -ge $((aging_th/2))])
+                       awk '/ipv6_src=fd12::2/{print substr($6,10,1)}') -ge $((aging_th*3/16))])
 # Check GW router does not send any NS requests in this case.
 AT_CHECK([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/ipv6_src=fd12::2/{print substr($4,11,1)}') -eq $n_ipv6])
 send_icmp6_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:50:01 fd12::2 fd11::64
