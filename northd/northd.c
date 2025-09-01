@@ -1300,13 +1300,11 @@ ovn_port_destroy(struct hmap *ports, struct ovn_port *port)
     }
 }
 
-/* Returns the ovn_port that matches 'name'.  If 'prefer_bound' is true and
- * multiple ports share the same name, gives precendence to ports bound to
- * an ovn_datapath.
+/* Returns the ovn_port that matches 'name'.  If multiple ports share the
+ * same name, gives precendence to ports bound to an ovn_datapath.
  */
 static struct ovn_port *
-ovn_port_find__(const struct hmap *ports, const char *name,
-                bool prefer_bound)
+ovn_port_find(const struct hmap *ports, const char *name)
 {
     struct ovn_port *matched_op = NULL;
     struct ovn_port *op;
@@ -1314,18 +1312,12 @@ ovn_port_find__(const struct hmap *ports, const char *name,
     HMAP_FOR_EACH_WITH_HASH (op, key_node, hash_string(name, 0), ports) {
         if (!strcmp(op->key, name)) {
             matched_op = op;
-            if (!prefer_bound || op->od) {
+            if (op->od) {
                 return op;
             }
         }
     }
     return matched_op;
-}
-
-static struct ovn_port *
-ovn_port_find(const struct hmap *ports, const char *name)
-{
-    return ovn_port_find__(ports, name, false);
 }
 
 static bool
@@ -1340,12 +1332,6 @@ lsp_is_clone_to_unknown(const struct nbrec_logical_switch_port *nbsp)
         }
     }
     return false;
-}
-
-static struct ovn_port *
-ovn_port_find_bound(const struct hmap *ports, const char *name)
-{
-    return ovn_port_find__(ports, name, true);
 }
 
 /* Returns true if the logical switch port 'enabled' column is empty or
@@ -2218,7 +2204,7 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
         for (size_t i = 0; i < od->nbs->n_ports; i++) {
             const struct nbrec_logical_switch_port *nbsp
                 = od->nbs->ports[i];
-            struct ovn_port *op = ovn_port_find_bound(ports, nbsp->name);
+            struct ovn_port *op = ovn_port_find(ports, nbsp->name);
             if (op && (op->od || op->nbsp || op->nbrp)) {
                 static struct vlog_rate_limit rl
                     = VLOG_RATE_LIMIT_INIT(5, 1);
@@ -2320,7 +2306,7 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
                 continue;
             }
 
-            struct ovn_port *op = ovn_port_find_bound(ports, nbrp->name);
+            struct ovn_port *op = ovn_port_find(ports, nbrp->name);
             if (op && (op->od || op->nbsp || op->nbrp)) {
                 static struct vlog_rate_limit rl
                     = VLOG_RATE_LIMIT_INIT(5, 1);
