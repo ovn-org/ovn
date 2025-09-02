@@ -15411,6 +15411,33 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - route learning cleanup - router recreation])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+check ovn-nbctl --wait=sb                             \
+    -- lr-add lr                                      \
+       -- lrp-add lr lrp 00:00:00:00:00:01 1.1.1.1/24
+
+lr_dp=$(fetch_column Datapath_Binding _uuid external_ids:name=lr)
+lrp_pb=$(fetch_column Port_Binding _uuid logical_port=lrp)
+check_uuid ovn-sbctl create Learned_Route       \
+    datapath=$lr_dp logical_port=$lrp_pb        \
+    ip_prefix=42.42.42.42/32 nexthop=1.1.1.2/24
+
+dnl Delete old router, create a new one with the same name, learned routes
+dnl should be removed.
+check ovn-nbctl --wait=sb                             \
+    -- lrp-del lrp                                    \
+    -- lr-del lr                                      \
+    -- lr-add lr                                      \
+       -- lrp-add lr lrp 00:00:00:00:00:01 1.1.1.1/24
+check_row_count Learned_Route 0
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([dynamic-routing - host routes])
 AT_KEYWORDS([dynamic-routing])
 ovn_start
