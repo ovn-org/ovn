@@ -3021,6 +3021,8 @@ main(int argc, char *argv[])
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_datapath_binding_col_type);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl,
                          &sbrec_datapath_binding_col_external_ids);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
+                         &sbrec_datapath_binding_col_nb_uuid);
 
     ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_port_binding);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl,

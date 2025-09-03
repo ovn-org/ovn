@@ -1522,10 +1522,10 @@ bool
 datapath_get_nb_uuid_and_type(const struct sbrec_datapath_binding *sb,
                               struct uuid *nb_uuid, const char **type)
 {
-    if (sb->type && *sb->type) {
-        /* New style. The UUID is propagated from the NB logical datapath
-         * and the type is a direct column, so use those. */
-        *nb_uuid = sb->header_.uuid;
+    if (sb->nb_uuid && sb->type && *sb->type) {
+        /* New style. The UUID and the type are direct columns,
+         * so use those. */
+        *nb_uuid = *sb->nb_uuid;
         *type = sb->type;
         return true;
     }
