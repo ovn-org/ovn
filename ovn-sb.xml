@@ -3246,6 +3246,11 @@ tcp.flags = RST;
         </ul>
       </column>
 
+      <column name="nb_uuid" type='{"type": "string"}'>
+        This is the UUID of the corresponding northbound logical datapath
+        represented by this southbound <code>Datapath_Binding</code>.
+      </column>
+
       <column name="external_ids" key="interconn-ts" type='{"type": "string"}'>
         For a logical datapath that represents a logical switch that represents
         a transit switch for interconnection, <code>ovn-northd</code> stores in

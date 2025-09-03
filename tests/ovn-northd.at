@@ -1893,7 +1893,7 @@ check ovn-nbctl --wait=sb \
 
 check_row_count Datapath_Binding 1
 
-nb_uuid=$(ovn-sbctl get Datapath_Binding . _uuid)
+nb_uuid=$(ovn-sbctl get Datapath_Binding . nb_uuid)
 lr_uuid=$(ovn-nbctl get Logical_Router . _uuid)
 echo nb_uuid="$nb_uuid" lr_uuid="$lr_uuid"
 AT_CHECK([test "${nb_uuid}" = "${lr_uuid}"])
@@ -7579,6 +7579,26 @@ AT_CHECK([grep -E "ls_.*fdb.*S1-" S1flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lookup_fdb   ), priority=100  , match=(inport == "S1-S2"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
   table=??(ls_in_put_fdb      ), priority=100  , match=(inport == "S1-S2" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
 ])
+
+AT_CLEANUP
+])
+
+# Duplicated datapaths shouldn't be created, but in case it is created because
+# of bug or dirty data, it should be properly deleted instead of causing
+# permanent failure in northd.
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([handling duplicated datapaths])
+ovn_start
+
+check ovn-nbctl --wait=sb ls-add ls1
+ls1_uuid=$(fetch_column nb:Logical_Switch _uuid)
+
+# create a duplicated sb datapath (and an IP_Mulicast record that references
+# it) on purpose.
+AT_CHECK([ovn-sbctl --id=@dp create Datapath_Binding nb_uuid=$ls1_uuid type=logical-switch external_ids:name=ls1 tunnel_key=123 -- create IP_Multicast datapath=@dp], [0], [ignore])
+
+# northd should delete one of the datapaths in the end
+wait_row_count Datapath_Binding 1
 
 AT_CLEANUP
 ])

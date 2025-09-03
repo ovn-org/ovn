@@ -22239,8 +22239,7 @@ AT_CAPTURE_FILE([sbflows])
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int  \
 | grep "check_pkt_larger" | wc -l], [0], [[0
 ]])
-dp_uuid=$(ovn-sbctl find datapath_binding | grep lr0 -B2 | grep _uuid | \
-awk '{print $3}')
+dp_uuid=$(fetch_column Datapath_Binding _uuid external-ids:name=lr0)
 check_uuid ovn-sbctl create MAC_Binding ip=172.168.0.3 datapath=$dp_uuid \
 logical_port=lr0-public mac="00\:00\:00\:12\:af\:11"
 
@@ -22310,8 +22309,7 @@ check ovn-nbctl lr-nat-add lr1 snat 172.168.0.100 10.0.0.0/24
 check ovn-nbctl lr-nat-add lr1 snat 2000::1 1000::/64
 check ovn-nbctl --wait=sb sync
 
-dp_uuid=$(ovn-sbctl find datapath_binding | grep lr1 -B2 | grep _uuid | \
-awk '{print $3}')
+dp_uuid=$(fetch_column Datapath_Binding _uuid external-ids:name=lr1)
 check_uuid ovn-sbctl create MAC_Binding ip=172.168.0.3 datapath=$dp_uuid \
 logical_port=lr1-public mac="00\:00\:00\:12\:af\:11"
 
