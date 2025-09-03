@@ -251,7 +251,7 @@ EOF
             n_ics=$optarg
             ;;
         --n-ic*)
-            prev=n_ics_
+            prev=n_ics
             ;;
         --n-controller*=*)
             n_controllers=$optarg
