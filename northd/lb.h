@@ -88,8 +88,8 @@ struct ovn_northd_lb_vip {
 
 struct ovn_northd_lb_backend {
     bool health_check;
-     /* Set to true if port locates in local AZ. */
-    bool local_backend;
+     /* Set to true if port does not locate in local AZ. */
+    bool remote_backend;
     /* Logical port to which the ip belong to. */
     char *logical_port;
     /* Source IP address to be used for service monitoring. */

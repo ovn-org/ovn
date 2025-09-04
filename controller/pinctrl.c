@@ -7034,7 +7034,7 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
         const struct sbrec_port_binding *pb
             = lport_lookup_by_name(sbrec_port_binding_by_name,
                                    sb_svc_mon->logical_port);
-        if (!pb || !sb_svc_mon->local) {
+        if (!pb || sb_svc_mon->remote) {
             continue;
         }
 

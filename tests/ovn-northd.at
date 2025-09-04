@@ -17895,7 +17895,7 @@ check_column 10880 sb:Service_Monitor port logical_port=lport1
 check_column tcp sb:Service_Monitor protocol logical_port=lport1
 check_column "192.168.0.99" sb:Service_Monitor src_ip logical_port=lport1
 check_column false sb:Service_Monitor ic_learned logical_port=lport1
-check_column true sb:Service_Monitor local logical_port=lport1
+check_column false sb:Service_Monitor remote logical_port=lport1
 
 # Empty src_ip.
 check ovn-nbctl clear load_balancer lb1_ipv4 ip_port_mappings
@@ -17925,7 +17925,7 @@ check_column 10880 sb:Service_Monitor port logical_port=lport1
 check_column tcp sb:Service_Monitor protocol logical_port=lport1
 check_column "192.168.0.99" sb:Service_Monitor src_ip logical_port=lport1
 check_column false sb:Service_Monitor ic_learned logical_port=lport1
-check_column false sb:Service_Monitor local logical_port=lport1
+check_column true sb:Service_Monitor remote logical_port=lport1
 
 uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find Service_Monitor logical_port=lport1)
 

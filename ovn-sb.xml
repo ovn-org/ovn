@@ -5033,8 +5033,8 @@ tcp.flags = RST;
         The name of the chassis where the logical port is bound.
       </column>
 
-      <column name="local">
-        Set to true if backend locates on local ovn deployment.
+      <column name="remote">
+        Set to true if backend locates on remote ovn deployment.
       </column>
 
       <column name="ic_learned">

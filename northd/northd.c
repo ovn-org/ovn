@@ -2990,7 +2990,7 @@ create_or_get_service_mon(struct ovsdb_idl_txn *ovnsb_txn,
                           struct hmap *ic_learned_svc_monitors_map,
                           const char *ip, const char *logical_port,
                           uint16_t service_port, const char *protocol,
-                          const char *chassis_name, bool local_backend)
+                          const char *chassis_name, bool remote_backend)
 {
     struct service_monitor_info *mon_info =
         get_service_mon(local_svc_monitors_map,
@@ -3025,7 +3025,7 @@ create_or_get_service_mon(struct ovsdb_idl_txn *ovnsb_txn,
     sbrec_service_monitor_set_port(sbrec_mon, service_port);
     sbrec_service_monitor_set_logical_port(sbrec_mon, logical_port);
     sbrec_service_monitor_set_protocol(sbrec_mon, protocol);
-    sbrec_service_monitor_set_local(sbrec_mon, local_backend);
+    sbrec_service_monitor_set_remote(sbrec_mon, remote_backend);
     sbrec_service_monitor_set_ic_learned(sbrec_mon, false);
     if (chassis_name) {
         sbrec_service_monitor_set_chassis_name(sbrec_mon, chassis_name);
@@ -3068,7 +3068,7 @@ ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
             struct ovn_port *op = ovn_port_find(ls_ports,
                                                 backend_nb->logical_port);
 
-            if (backend_nb->local_backend &&
+            if (!backend_nb->remote_backend &&
                 (!op || !lsp_is_enabled(op->nbsp))) {
                 continue;
             }
@@ -3079,7 +3079,7 @@ ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
             }
 
             const char *chassis_name = NULL;
-            if (backend_nb->local_backend && op->sb->chassis) {
+            if (!backend_nb->remote_backend && op->sb->chassis) {
                 chassis_name = op->sb->chassis->name;
             }
 
@@ -3092,7 +3092,7 @@ ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
                                           backend->port,
                                           protocol,
                                           chassis_name,
-                                          backend_nb->local_backend);
+                                          backend_nb->remote_backend);
             ovs_assert(mon_info);
             set_service_mon_options(mon_info->sbrec_mon,
                                     &lb_vip_nb->lb_health_check->options,
@@ -3113,7 +3113,7 @@ ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
                     backend_nb->svc_mon_src_ip);
             }
 
-            if (backend_nb->local_backend &&
+            if (!backend_nb->remote_backend &&
                 (!op->sb->n_up || !op->sb->up[0])
                 && mon_info->sbrec_mon->status
                 && !strcmp(mon_info->sbrec_mon->status, "online")) {
