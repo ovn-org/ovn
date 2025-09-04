@@ -83,6 +83,11 @@ gather_external_ids(const struct nbrec_logical_router *nbr,
                         "%u", age_threshold);
     }
 
+    bool disable_garp_rarp = smap_get_bool(&nbr->options, "disable_garp_rarp",
+                                           false);
+    smap_add_format(external_ids, "disable_garp_rarp",
+                    disable_garp_rarp ? "true" : "false");
+
     /* For backwards-compatibility, also store the NB UUID in
      * external-ids:logical-router. This is useful if ovn-controller
      * has not updated and expects this to be where to find the

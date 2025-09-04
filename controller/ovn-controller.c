@@ -5680,6 +5680,32 @@ garp_rarp_sb_port_binding_handler(struct engine_node *node,
 }
 
 static enum engine_input_handler_result
+garp_rarp_sb_datapath_binding_handler(struct engine_node *node,
+                                      void *data_ OVS_UNUSED)
+{
+    struct ed_type_runtime_data *rt_data =
+            engine_get_input_data("runtime_data", node);
+
+    const struct sbrec_datapath_binding_table *dp_binding_table =
+        EN_OVSDB_GET(engine_get_input("SB_datapath_binding", node));
+    const struct sbrec_datapath_binding *dp;
+    SBREC_DATAPATH_BINDING_TABLE_FOR_EACH_TRACKED (dp, dp_binding_table) {
+        struct local_datapath *ld = get_local_datapath(
+            &rt_data->local_datapaths, dp->tunnel_key);
+        if (!ld || ld->is_switch) {
+            continue;
+        }
+
+        if (sbrec_datapath_binding_is_updated(
+                    dp, SBREC_DATAPATH_BINDING_COL_EXTERNAL_IDS)) {
+            return EN_UNHANDLED;
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
+static enum engine_input_handler_result
 garp_rarp_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     /* We use two elements from rt_data:
@@ -6868,6 +6894,8 @@ main(int argc, char *argv[])
     engine_add_input(&en_garp_rarp, &en_sb_chassis, NULL);
     engine_add_input(&en_garp_rarp, &en_sb_port_binding,
                      garp_rarp_sb_port_binding_handler);
+    engine_add_input(&en_garp_rarp, &en_sb_datapath_binding,
+                     garp_rarp_sb_datapath_binding_handler);
     /* The mac_binding data is just used in an index to filter duplicates when
      * inserting data to the southbound. */
     engine_add_input(&en_garp_rarp, &en_sb_mac_binding, engine_noop_handler);

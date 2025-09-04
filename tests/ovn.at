@@ -26309,6 +26309,97 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([Disabling RARP/GARP announcements from Router options])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovs-vsctl add-port br-phys snoopvif -- set Interface snoopvif options:tx_pcap=hv1/snoopvif-tx.pcap options:rxq_pcap=hv1/snoopvif-rx.pcap
+check ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=lsp1
+check ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=lsp2
+
+check ovs-vsctl set Open_vSwitch . external-ids:garp-max-timeout-sec=1
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 ln1
+check ovn-nbctl lsp-set-addresses ln1 unknown
+check ovn-nbctl lsp-set-type ln1 localnet
+check ovn-nbctl lsp-set-options ln1 network_name=phys
+check ovn-nbctl lsp-add ls1 lsp1
+check ovn-nbctl lsp-set-addresses lsp1 "00:00:00:00:00:12 192.168.1.2"
+check ovn-nbctl --wait=hv sync
+
+check ovn-nbctl ls-add ls2
+check ovn-nbctl lsp-add ls2 lsp2
+check ovn-nbctl lsp-set-addresses lsp2 "00:00:00:00:00:13 10.0.0.2"
+check ovn-nbctl --wait=hv sync
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl set Logical_Router lr1 options:disable_garp_rarp="true"
+check ovn-nbctl lrp-add lr1 lrp1 00:00:00:00:00:11 192.168.1.1/24
+check ovn-nbctl lrp-add lr1 lrp2 00:00:00:00:00:14 10.0.0.1/24
+check ovn-nbctl lsp-add ls1 ls-lrp1 \
+    -- set Logical_Switch_Port ls-lrp1 type=router \
+    options:router-port=lrp1 addresses=\"00:00:00:00:00:11\"
+check ovn-nbctl lsp-add ls2 ls-lrp2 \
+    -- set Logical_Switch_Port ls-lrp2 type=router \
+    options:router-port=lrp2 addresses=\"00:00:00:00:00:14\"
+check ovn-nbctl lsp-set-options ls-lrp1 router-port=lrp1 nat-addresses="router"
+check ovn-nbctl lr-nat-add lr1 snat 192.168.1.10 10.0.0.0/24
+check ovn-nbctl lrp-set-gateway-chassis lrp1 hv1
+check ovn-nbctl --wait=hv sync
+
+wait_for_ports_up
+
+garp_lrp=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='00:00:00:00:00:11')/ \
+                    ARP(hwsrc='00:00:00:00:00:11', psrc='192.168.1.1', pdst='192.168.1.1')")
+garp_vif=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='00:00:00:00:00:12')/ \
+                    ARP(hwsrc='00:00:00:00:00:12', psrc='192.168.1.2', pdst='192.168.1.2')")
+garp_nat=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='00:00:00:00:00:11')/ \
+                    ARP(hwsrc='00:00:00:00:00:11', psrc='192.168.1.10', pdst='192.168.1.10')")
+# GARP packet for vif
+echo $garp_vif > expected
+OVN_CHECK_PACKETS_UNIQ([hv1/snoopvif-tx.pcap], [expected])
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap > hv1/snoopvif-tx.packets
+AT_CHECK([grep -q "$garp_lrp" hv1/snoopvif-tx.packets], [1])
+
+# GARP packet for lrp
+echo $garp_lrp >> expected
+echo $garp_nat >> expected
+check ovn-nbctl --wait=hv set Logical_Router lr1 options:disable_garp_rarp="false"
+OVN_CHECK_PACKETS_UNIQ([hv1/snoopvif-tx.pcap], [expected])
+
+# Check for GW router
+check ovn-nbctl lrp-del-gateway-chassis lrp1 hv1
+check ovn-nbctl set Logical_Router lr1 options:chassis="hv1"
+check ovn-nbctl set Logical_Router lr1 options:disable_garp_rarp="true"
+check ovn-nbctl --wait=hv sync
+
+sleep_controller hv1
+reset_pcap_file snoopvif hv1/snoopvif
+wake_up_controller hv1
+
+echo $garp_vif > expected
+OVN_CHECK_PACKETS_UNIQ([hv1/snoopvif-tx.pcap], [expected])
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/snoopvif-tx.pcap > hv1/snoopvif-tx.packets
+AT_CHECK([grep -q "$garp_lrp" hv1/snoopvif-tx.packets], [1])
+
+echo $garp_lrp >> expected
+echo $garp_nat >> expected
+check ovn-nbctl set Logical_Router lr1 options:disable_garp_rarp="false"
+check ovn-nbctl --wait=hv sync
+OVN_CHECK_PACKETS_UNIQ([hv1/snoopvif-tx.pcap], [expected])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([Stateless Floating IP])
 ovn_start
 
