@@ -15592,6 +15592,78 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - host routes - unnumbered LRP interfaces])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+dnl Logical topology:
+dnl
+dnl                       internal-lr
+dnl                           |
+dnl                           |
+dnl                       internal-ls
+dnl                           |
+dnl                   +-------+----+
+dnl                   |            |
+dnl                   |            +--- ovs-bridge
+dnl                   |            |
+dnl                   |       +----+
+dnl                   |       |
+dnl                   |   public-ls
+dnl                   |       |
+dnl                   |       |
+dnl                   |       | (explicit IP)
+dnl  (no explicit IP) +-- public-lr (BGP enabled)
+dnl     (just LLA)            |
+dnl                           |
+dnl                        <fabric>
+dnl
+dnl When configured to advertise connected-routes "as-host" prefixes
+dnl router ports should also include connected router/switch IPs reachable
+dnl via unnumbered router ports (that only have LLA configured).
+
+check ovn-nbctl --wait=sb                                             \
+  -- lr-add internal-lr                                               \
+     -- lrp-add internal-lr internal-lrp 00:00:00:00:00:01 1.1.1.1/24 \
+  -- ls-add internal-ls                                               \
+     -- lsp-add internal-ls internal-ls-lrp                           \
+     -- lsp-set-type internal-ls-lrp router                           \
+     -- lsp-set-options internal-ls-lrp router-port=internal-lrp      \
+     -- lsp-set-addresses internal-ls-lrp router                      \
+     -- lsp-add internal-ls internal-ls-lla-lrp                       \
+     -- lsp-set-type internal-ls-lla-lrp router                       \
+     -- lsp-set-options internal-ls-lla-lrp router-port=lla-lrp       \
+     -- lsp-set-addresses internal-ls-lla-lrp router                  \
+     -- lsp-add internal-ls internal-ls-localnet                      \
+     -- lsp-set-type internal-ls-localnet localnet                    \
+  -- ls-add public-ls                                                 \
+     -- lsp-add public-ls public-ls-lrp                               \
+     -- lsp-set-type public-ls-lrp router                             \
+     -- lsp-set-options public-ls-lrp router-port=public-lrp          \
+     -- lsp-set-addresses public-ls-lrp router                        \
+     -- lsp-add public-ls public-ls-localnet                          \
+     -- lsp-set-type public-ls-localnet localnet                      \
+  -- lr-add public-lr                                                 \
+     -- lrp-add public-lr public-lrp 00:00:00:00:00:02 1.1.1.2/24     \
+     -- lrp-add public-lr lla-lrp 00:00:00:00:00:03                   \
+     -- lrp-add public-lr fab-lrp 00:00:00:00:00:04 2.2.2.1/24        \
+     -- set Logical_Router public-lr option:dynamic-routing=true      \
+     -- set Logical_Router_Port lla-lrp                               \
+        options:dynamic-routing-redistribute="connected-as-host"
+
+pub_lr_dp=$(fetch_column Datapath_Binding _uuid external_ids:name=public-lr)
+lla_lrp_pb=$(fetch_column Port_Binding _uuid logical_port=lla-lrp)
+int_lrp_pb=$(fetch_column Port_Binding _uuid logical_port=internal-lrp)
+check_column 1.1.1.1 Advertised_Route ip_prefix \
+    datapath=$pub_lr_dp                         \
+    logical_port=$lla_lrp_pb                    \
+    tracked_port=$int_lrp_pb
+check_row_count Advertised_Route 1
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([dynamic-routing incremental processing])
 AT_KEYWORDS([dynamic-routing])
 ovn_start
