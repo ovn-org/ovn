@@ -446,6 +446,25 @@ garp_rarp_clear(struct garp_rarp_ctx_in *r_ctx_in)
     sset_clear(&r_ctx_in->data->local_lports);
 }
 
+static bool
+garp_rarp_is_enabled(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                     const struct sbrec_port_binding *pb)
+{
+    if (smap_get_bool(&pb->options, "disable_garp_rarp", false)) {
+        return false;
+    }
+
+    /* Check if GARP probing is disabled on the peer logical router. */
+    const struct sbrec_port_binding *peer = lport_get_peer(
+            pb, sbrec_port_binding_by_name);
+    if (peer && smap_get_bool(&peer->datapath->external_ids,
+                              "disable_garp_rarp", false)) {
+        return false;
+    }
+
+    return true;
+}
+
 void
 garp_rarp_run(struct garp_rarp_ctx_in *r_ctx_in)
 {
@@ -478,7 +497,8 @@ garp_rarp_run(struct garp_rarp_ctx_in *r_ctx_in)
     SSET_FOR_EACH (iface_id, &localnet_vifs) {
         const struct sbrec_port_binding *pb = lport_lookup_by_name(
             r_ctx_in->sbrec_port_binding_by_name, iface_id);
-        if (pb && !smap_get_bool(&pb->options, "disable_garp_rarp", false)) {
+        if (pb &&
+            garp_rarp_is_enabled(r_ctx_in->sbrec_port_binding_by_name, pb)) {
             send_garp_rarp_update(r_ctx_in, pb, &nat_addresses);
         }
     }
@@ -488,7 +508,8 @@ garp_rarp_run(struct garp_rarp_ctx_in *r_ctx_in)
     SSET_FOR_EACH (gw_port, &local_l3gw_ports) {
         const struct sbrec_port_binding *pb = lport_lookup_by_name(
             r_ctx_in->sbrec_port_binding_by_name, gw_port);
-        if (pb && !smap_get_bool(&pb->options, "disable_garp_rarp", false)) {
+        if (pb &&
+            garp_rarp_is_enabled(r_ctx_in->sbrec_port_binding_by_name, pb)) {
             send_garp_rarp_update(r_ctx_in, pb, &nat_addresses);
         }
     }

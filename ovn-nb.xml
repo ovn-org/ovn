@@ -3333,6 +3333,15 @@ or
           routes in <code>ovn-ic</code> daemon.
         </p>
       </column>
+
+      <column name="options" key="disable_garp_rarp"
+              type='{"type": "boolean"}'>
+        <p>
+          If set to <code>true</code>, GARP and RARP announcements are not
+          sent by all the VIF peer ports of this logical router.
+          The default value is <code>false</code>.
+        </p>
+      </column>
     </group>
     <group title="Common Columns">
       <column name="external_ids">
