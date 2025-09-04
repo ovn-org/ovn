@@ -195,7 +195,7 @@ ovn_lb_vip_backends_health_check_init(const struct ovn_northd_lb *lb,
             backend_nb->logical_port = xstrdup(port_name);
             backend_nb->svc_mon_src_ip = svc_mon_src_ip;
             backend_nb->az_name = is_remote ? xstrdup(az_name) : NULL;
-            backend_nb->local_backend = !is_remote;
+            backend_nb->remote_backend = is_remote;
         }
         free(port_name);
     }

@@ -3723,21 +3723,21 @@ check_column 10880 sb:Service_Monitor port logical_port=lport3_az2
 check_column tcp sb:Service_Monitor protocol logical_port=lport3_az2
 check_column "3.3.3.9" sb:Service_Monitor src_ip logical_port=lport3_az2
 check_column false sb:Service_Monitor ic_learned logical_port=lport3_az2
-check_column false sb:Service_Monitor local logical_port=lport3_az2
+check_column true sb:Service_Monitor remote logical_port=lport3_az2
 
 check_column "1.1.1.1" sb:Service_Monitor ip logical_port=lport1_az1
 check_column 10880 sb:Service_Monitor port logical_port=lport1_az1
 check_column tcp sb:Service_Monitor protocol logical_port=lport1_az1
 check_column "1.1.1.9" sb:Service_Monitor src_ip logical_port=lport1_az1
 check_column false sb:Service_Monitor ic_learned logical_port=lport1_az1
-check_column true sb:Service_Monitor local logical_port=lport1_az1
+check_column false sb:Service_Monitor remote logical_port=lport1_az1
 
 check_column "5.5.5.1" sb:Service_Monitor ip logical_port=lport5_az3
 check_column 10880 sb:Service_Monitor port logical_port=lport5_az3
 check_column tcp sb:Service_Monitor protocol logical_port=lport5_az3
 check_column "5.5.5.9" sb:Service_Monitor src_ip logical_port=lport5_az3
 check_column false sb:Service_Monitor ic_learned logical_port=lport5_az3
-check_column false sb:Service_Monitor local logical_port=lport5_az3
+check_column true sb:Service_Monitor remote logical_port=lport5_az3
 
 check_row_count ic-sb:Service_Monitor 2
 
@@ -3786,11 +3786,11 @@ check_row_count sb:Service_Monitor 3
 
 # Check that the local backend, which intersects with the one created in another availability zone, remains local
 check_column false sb:Service_Monitor ic_learned logical_port=lport1_az1
-check_column true sb:Service_Monitor local logical_port=lport1_az1
+check_column false sb:Service_Monitor remote logical_port=lport1_az1
 
 ovn_as az2
 check_column false sb:Service_Monitor ic_learned logical_port=lport1_az1
-check_column false sb:Service_Monitor local logical_port=lport1_az1
+check_column true sb:Service_Monitor remote logical_port=lport1_az1
 
 # Сheck that all remote and local service monitors have been created.
 check_column az2 ic-sb:Service_Monitor target_availability_zone logical_port=lport3_az2
@@ -3823,7 +3823,7 @@ check_column 10880 sb:Service_Monitor port logical_port=lport5_az3
 check_column tcp sb:Service_Monitor protocol logical_port=lport5_az3
 check_column "5.5.5.9" sb:Service_Monitor src_ip logical_port=lport5_az3
 check_column true sb:Service_Monitor ic_learned logical_port=lport5_az3
-check_column true sb:Service_Monitor local logical_port=lport5_az3
+check_column false sb:Service_Monitor remote logical_port=lport5_az3
 
 # Check that logical flows are created for ic_learned service monitors when we have no load balancers.
 AT_CHECK([ovn-sbctl lflow-list az3_ls1 | grep 'ls_in_arp_rsp' | ovn_strip_lflows], [0], [dnl
@@ -3849,7 +3849,7 @@ check ovn-nbctl set load_balancer az2_lb2 ip_port_mappings:6.6.6.1=lport6_az3:6.
 ovn_as az1
 check_row_count sb:Service_Monitor 4
 check_column true sb:Service_Monitor ic_learned logical_port=lport2_az1
-check_column true sb:Service_Monitor local logical_port=lport2_az1
+check_column false sb:Service_Monitor remote logical_port=lport2_az1
 
 ovn_as az2
 check_row_count sb:Service_Monitor 4

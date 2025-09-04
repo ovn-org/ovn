@@ -70,9 +70,9 @@ struct ic_context {
     struct ovsdb_idl_index *nbrec_port_by_name;
     struct ovsdb_idl_index *sbrec_chassis_by_name;
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
-    struct ovsdb_idl_index *sbrec_service_monitor_by_local_type;
+    struct ovsdb_idl_index *sbrec_service_monitor_by_remote_type;
     struct ovsdb_idl_index *sbrec_service_monitor_by_ic_learned;
-    struct ovsdb_idl_index *sbrec_service_monitor_by_local_type_logical_port;
+    struct ovsdb_idl_index *sbrec_service_monitor_by_remote_type_logical_port;
     struct ovsdb_idl_index *icnbrec_transit_switch_by_name;
     struct ovsdb_idl_index *icsbrec_port_binding_by_az;
     struct ovsdb_idl_index *icsbrec_port_binding_by_ts;
@@ -2322,13 +2322,13 @@ create_pushed_svcs_mon(struct ic_context *ctx,
 {
     struct sbrec_service_monitor *key =
         sbrec_service_monitor_index_init_row(
-            ctx->sbrec_service_monitor_by_local_type);
+            ctx->sbrec_service_monitor_by_remote_type);
 
-    sbrec_service_monitor_index_set_local(key, false);
+    sbrec_service_monitor_index_set_remote(key, true);
 
     const struct sbrec_service_monitor *sb_rec;
     SBREC_SERVICE_MONITOR_FOR_EACH_EQUAL (sb_rec, key,
-        ctx->sbrec_service_monitor_by_local_type) {
+        ctx->sbrec_service_monitor_by_remote_type) {
         const char *target_az_name = smap_get(&sb_rec->options,
                                               "az-name");
         if (!target_az_name) {
@@ -2430,14 +2430,14 @@ lookup_sb_svc_rec(struct ic_context *ctx,
         svc_mon->db_rec.ic_rec;
     struct sbrec_service_monitor *key =
         sbrec_service_monitor_index_init_row(
-            ctx->sbrec_service_monitor_by_local_type_logical_port);
+            ctx->sbrec_service_monitor_by_remote_type_logical_port);
 
-    sbrec_service_monitor_index_set_local(key, true);
+    sbrec_service_monitor_index_set_remote(key, false);
     sbrec_service_monitor_index_set_logical_port(key, db_rec->logical_port);
 
     const struct sbrec_service_monitor *sb_rec;
     SBREC_SERVICE_MONITOR_FOR_EACH_EQUAL (sb_rec, key,
-        ctx->sbrec_service_monitor_by_local_type_logical_port) {
+        ctx->sbrec_service_monitor_by_remote_type_logical_port) {
         if (db_rec->port == sb_rec->port &&
             !strcmp(db_rec->ip, sb_rec->ip) &&
             !strcmp(db_rec->src_ip, sb_rec->src_ip) &&
@@ -2590,7 +2590,7 @@ sync_service_monitor(struct ic_context *ctx)
                 db_rec->protocol);
             sbrec_service_monitor_set_logical_port(sb_rec,
                 db_rec->logical_port);
-            sbrec_service_monitor_set_local(sb_rec, true);
+            sbrec_service_monitor_set_remote(sb_rec, false);
             sbrec_service_monitor_set_ic_learned(sb_rec, true);
         }
 
@@ -3059,7 +3059,7 @@ main(int argc, char *argv[])
     ovsdb_idl_add_column(ovnsb_idl_loop.idl,
                          &sbrec_service_monitor_col_src_mac);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_service_monitor_col_local);
+                         &sbrec_service_monitor_col_remote);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl,
                          &sbrec_service_monitor_col_ic_learned);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl,
@@ -3084,17 +3084,17 @@ main(int argc, char *argv[])
         = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
                                   &sbrec_chassis_col_name);
 
-   struct ovsdb_idl_index *sbrec_service_monitor_by_local_type
+   struct ovsdb_idl_index *sbrec_service_monitor_by_remote_type
         = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_service_monitor_col_local);
+                                  &sbrec_service_monitor_col_remote);
 
     struct ovsdb_idl_index *sbrec_service_monitor_by_ic_learned
         = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
                                   &sbrec_service_monitor_col_ic_learned);
 
-    struct ovsdb_idl_index *sbrec_service_monitor_by_local_type_logical_port
+    struct ovsdb_idl_index *sbrec_service_monitor_by_remote_type_logical_port
         = ovsdb_idl_index_create2(ovnsb_idl_loop.idl,
-                                  &sbrec_service_monitor_col_local,
+                                  &sbrec_service_monitor_col_remote,
                                   &sbrec_service_monitor_col_logical_port);
 
     struct ovsdb_idl_index *icnbrec_transit_switch_by_name
@@ -3191,12 +3191,12 @@ main(int argc, char *argv[])
                 .nbrec_port_by_name = nbrec_port_by_name,
                 .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
                 .sbrec_chassis_by_name = sbrec_chassis_by_name,
-                .sbrec_service_monitor_by_local_type =
-                    sbrec_service_monitor_by_local_type,
+                .sbrec_service_monitor_by_remote_type =
+                    sbrec_service_monitor_by_remote_type,
                 .sbrec_service_monitor_by_ic_learned =
                     sbrec_service_monitor_by_ic_learned,
-                .sbrec_service_monitor_by_local_type_logical_port =
-                    sbrec_service_monitor_by_local_type_logical_port,
+                .sbrec_service_monitor_by_remote_type_logical_port =
+                    sbrec_service_monitor_by_remote_type_logical_port,
                 .icnbrec_transit_switch_by_name =
                     icnbrec_transit_switch_by_name,
                 .icsbrec_port_binding_by_az = icsbrec_port_binding_by_az,
