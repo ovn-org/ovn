@@ -653,36 +653,44 @@ should_advertise_route(const struct uuidset *host_route_lrps,
     }
 }
 
-/* Returns true if the route has already been fully processed for
- * advertising (e.g., for connected routes when connected-as-host is set).
- * Returns false otherwise, in which case the a new 'ar_entry' needs to
- * be created for this route.
- */
+/* Returns true if the connected route was advertised as a set of host routes
+ * (/32 for IPv4 and /128 for IPv6), one for each individual IP known to be
+ * reachable in the connected route's subnet.  Returns false otherwise. */
 static bool
-process_prereqs_advertise_route(
+advertise_routes_as_host_prefix(
     struct advertised_route_sync_data *data,
     struct uuidset *host_route_lrps,
     struct hmap *sync_routes,
     const struct ovn_datapath *advertising_od,
     const struct ovn_port *advertising_op,
-    const struct ovn_port *tracked_op,
-    enum route_source source)
+    enum route_source source
+)
 {
+    if (source != ROUTE_SOURCE_CONNECTED) {
+        return false;
+    }
+
     enum dynamic_routing_redistribute_mode drr =
         advertising_op->dynamic_routing_redistribute;
+    if (!drr_mode_CONNECTED_AS_HOST_is_set(drr)) {
+        return false;
+    }
 
+    uuidset_insert(host_route_lrps, &advertising_op->nbrp->header_.uuid);
+    publish_host_routes(sync_routes, advertising_od, advertising_op, data);
+    return true;
+}
+
+/* Track datapaths (routers/switches) whose changes should trigger
+ * the set of advertised routes.  That includes NAT and LB related
+ * advertised routes. */
+static void
+advertise_route_track_od(struct advertised_route_sync_data *data,
+                         const struct ovn_datapath *advertising_od,
+                         const struct ovn_port *tracked_op,
+                         enum route_source source)
+{
     switch (source) {
-    case ROUTE_SOURCE_CONNECTED:
-        if (drr_mode_CONNECTED_AS_HOST_is_set(drr)) {
-            const struct uuid *lrp_uuid = &advertising_op->nbrp->header_.uuid;
-            uuidset_insert(host_route_lrps, lrp_uuid);
-            publish_host_routes(sync_routes, advertising_od, advertising_op,
-                                data);
-            return true;
-        }
-        break;
-    case ROUTE_SOURCE_STATIC:
-        break;
     case ROUTE_SOURCE_NAT:
         /* If NAT route tracks port on a different DP than the one that
          * advertises the route, we need to watch for changes on that DP as
@@ -706,12 +714,14 @@ process_prereqs_advertise_route(
                            &tracked_op->od->nbr->header_.uuid);
         }
         break;
+    case ROUTE_SOURCE_CONNECTED:
+    case ROUTE_SOURCE_STATIC:
+        break;
     case ROUTE_SOURCE_LEARNED:
         OVS_NOT_REACHED();
     default:
         OVS_NOT_REACHED();
     }
-    return false;
 }
 
 static void
@@ -732,22 +742,24 @@ advertised_route_table_sync(
             continue;
         }
 
-        if (prefix_is_link_local(&route->prefix, route->plen)) {
-            continue;
-        }
-
         if (!should_advertise_route(&host_route_lrps, route->od,
                                     route->out_port, route->source)) {
             continue;
         }
 
-        if (process_prereqs_advertise_route(data, &host_route_lrps,
+        if (advertise_routes_as_host_prefix(data, &host_route_lrps,
                                             &sync_routes, route->od,
                                             route->out_port,
-                                            route->tracked_port,
                                             route->source)) {
             continue;
         }
+
+        if (prefix_is_link_local(&route->prefix, route->plen)) {
+            continue;
+        }
+
+        advertise_route_track_od(data, route->od, route->tracked_port,
+                                 route->source);
 
         ar_entry_add_nocopy(&sync_routes, route->od, route->out_port,
                             normalize_v46_prefix(&route->prefix, route->plen),
@@ -763,12 +775,8 @@ advertised_route_table_sync(
             continue;
         }
 
-        if (process_prereqs_advertise_route(data, &host_route_lrps,
-                                            &sync_routes, route_e->od,
-                                            route_e->op, route_e->tracked_port,
-                                            route_e->source)) {
-            continue;
-        }
+        advertise_route_track_od(data, route_e->od, route_e->tracked_port,
+                                 route_e->source);
 
         const struct sbrec_port_binding *tracked_pb =
             route_e->tracked_port ? route_e->tracked_port->sb : NULL;
