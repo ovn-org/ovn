@@ -296,8 +296,8 @@ lr_stateful_lb_data_handler(struct engine_node *node, void *data_)
             const struct ovn_lb_datapaths *lb_dps = ovn_lb_datapaths_find(
                 input_data.lb_datapaths_map, lb_uuid);
             ovs_assert(lb_dps);
-            for (size_t i = 0; i < lbgrp_dps->n_lr; i++) {
-                const struct ovn_datapath *od = lbgrp_dps->lr[i];
+            struct ovn_datapath *od;
+            VECTOR_FOR_EACH (&lbgrp_dps->lr, od) {
                 struct lr_stateful_record *lr_stateful_rec =
                     lr_stateful_table_find_(&data->table, od->nbr);
                 ovs_assert(lr_stateful_rec);

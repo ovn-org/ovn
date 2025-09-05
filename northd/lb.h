@@ -184,9 +184,11 @@ struct ovn_lb_datapaths *ovn_lb_datapaths_find(const struct hmap *,
 void ovn_lb_datapaths_destroy(struct ovn_lb_datapaths *);
 
 void ovn_lb_datapaths_add_lr(struct ovn_lb_datapaths *, size_t n,
-                             struct ovn_datapath **);
+                             struct ovn_datapath **,
+                             size_t n_lr_datapaths);
 void ovn_lb_datapaths_add_ls(struct ovn_lb_datapaths *, size_t n,
-                             struct ovn_datapath **);
+                             struct ovn_datapath **,
+                             size_t n_ls_datapaths);
 
 struct ovn_lb_group_datapaths {
     struct hmap_node hmap_node;
@@ -194,10 +196,8 @@ struct ovn_lb_group_datapaths {
     const struct ovn_lb_group *lb_group;
 
     /* Datapaths to which 'lb_group' is applied. */
-    size_t n_ls;
-    struct ovn_datapath **ls;
-    size_t n_lr;
-    struct ovn_datapath **lr;
+    struct vector ls;
+    struct vector lr;
 };
 
 struct ovn_lb_group_datapaths *ovn_lb_group_datapaths_create(
@@ -210,17 +210,16 @@ struct ovn_lb_group_datapaths *ovn_lb_group_datapaths_find(
 
 static inline void
 ovn_lb_group_datapaths_add_ls(struct ovn_lb_group_datapaths *lbg_dps, size_t n,
-                               struct ovn_datapath **ods)
+                              struct ovn_datapath **ods)
 {
-    memcpy(&lbg_dps->ls[lbg_dps->n_ls], ods, n * sizeof *ods);
-    lbg_dps->n_ls += n;
+    vector_push_array(&lbg_dps->ls, ods, n);
 }
 
 static inline void
 ovn_lb_group_datapaths_add_lr(struct ovn_lb_group_datapaths *lbg_dps,
-                               struct ovn_datapath *lr)
+                              struct ovn_datapath *lr)
 {
-    lbg_dps->lr[lbg_dps->n_lr++] = lr;
+    vector_push(&lbg_dps->lr, &lr);
 }
 
 #endif /* OVN_NORTHD_LB_H */
