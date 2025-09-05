@@ -153,6 +153,10 @@ multicast_igmp_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
         return EN_UNHANDLED;
     }
 
+    if (hmapx_count(&northd_data->trk_data.trk_switches.deleted)) {
+        return EN_UNHANDLED;
+    }
+
     /* This node uses the below data from the en_northd engine node.
      *      - northd_data->lr_datapaths
      *      - northd_data->ls_ports

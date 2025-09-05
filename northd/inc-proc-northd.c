@@ -254,7 +254,6 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_sb_meter, NULL);
     engine_add_input(&en_northd, &en_sb_dns, NULL);
     engine_add_input(&en_northd, &en_sb_ha_chassis_group, NULL);
-    engine_add_input(&en_northd, &en_sb_ip_multicast, NULL);
     engine_add_input(&en_northd, &en_sb_service_monitor, NULL);
     engine_add_input(&en_northd, &en_sb_static_mac_binding, NULL);
     engine_add_input(&en_northd, &en_sb_chassis_template_var, NULL);
@@ -283,6 +282,10 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_lb_data, northd_lb_data_handler);
     engine_add_input(&en_northd, &en_nb_port_group,
                      northd_nb_port_group_handler);
+
+    /* No need for an explicit handler for the SB datapath and
+     * SB IP Multicast changes.*/
+    engine_add_input(&en_northd, &en_sb_ip_multicast, engine_noop_handler);
 
     engine_add_input(&en_lr_nat, &en_northd, lr_nat_northd_handler);
 

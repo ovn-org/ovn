@@ -14581,6 +14581,67 @@ AT_CHECK([grep "lr_in_dnat" lr1flows | ovn_strip_lflows | grep "30.0.0.1"], [0],
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Logical switch incremental processing])
+
+ovn_start
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb ls-add sw0
+check_engine_stats northd norecompute compute
+check_engine_stats ls_stateful recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+# For the below engine nodes, en_northd is input.  So check
+# their engine status.
+check_engine_stats lr_stateful norecompute compute
+check_engine_stats route_policies norecompute compute
+check_engine_stats routes norecompute compute
+check_engine_stats bfd_sync norecompute compute
+check_engine_stats sync_to_sb_lb norecompute compute
+check_engine_stats sync_to_sb_pb norecompute compute
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE((1))
+
+# Update the logical switch.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set logical_switch sw0 other_config:foo=bar
+
+check_engine_stats northd recompute nocompute
+check_engine_stats ls_stateful recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+# For the below engine nodes, en_northd is input.  So check
+# their engine status.
+check_engine_stats lr_stateful recompute nocompute
+check_engine_stats route_policies recompute nocompute
+check_engine_stats routes recompute nocompute
+check_engine_stats bfd_sync recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_pb recompute nocompute
+
+# Create a logical port
+check ovn-nbctl --wait=sb lsp-add sw0 lsp0
+
+# Delete the logical switch
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb ls-del sw0
+check_engine_stats northd norecompute compute
+check_engine_stats ls_stateful recompute nocompute
+check_engine_stats lflow recompute nocompute
+
+# For the below engine nodes, en_northd is input.  So check
+# their engine status.
+check_engine_stats lr_stateful norecompute compute
+check_engine_stats route_policies norecompute compute
+check_engine_stats routes norecompute compute
+check_engine_stats bfd_sync norecompute compute
+check_engine_stats sync_to_sb_lb norecompute compute
+check_engine_stats sync_to_sb_pb norecompute compute
+
+AT_CLEANUP
+])
+
 AT_SETUP([RBAC -- Recover builtin role and permissions])
 ovn_start
 
