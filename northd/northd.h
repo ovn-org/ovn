@@ -93,7 +93,8 @@ struct ovn_datapaths {
     struct hmap datapaths;
 
     /* The array index of each element in 'datapaths'. */
-    struct ovn_datapath **array;
+    struct dynamic_bitmap dps_index_map;
+    struct vector dps;
 };
 
 static inline size_t
@@ -456,8 +457,8 @@ static inline struct ovn_datapath *
 ovn_datapaths_find_by_index(const struct ovn_datapaths *ovn_datapaths,
                             size_t od_index)
 {
-    ovs_assert(od_index <= hmap_count(&ovn_datapaths->datapaths));
-    return ovn_datapaths->array[od_index];
+    ovs_assert(od_index <= vector_len(&ovn_datapaths->dps));
+    return vector_get(&ovn_datapaths->dps, od_index, struct ovn_datapath *);
 }
 
 struct ovn_datapath *ovn_datapath_from_sbrec(

@@ -1007,12 +1007,12 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
 
     if (ovn_stage_to_datapath_type(lflow->stage) == DP_SWITCH) {
         n_datapaths = ods_size(ls_datapaths);
-        datapaths_array = ls_datapaths->array;
+        datapaths_array = vector_get_array(&ls_datapaths->dps);
         dp_groups = &lflow_table->ls_dp_groups;
         is_switch = true;
     } else {
         n_datapaths = ods_size(lr_datapaths);
-        datapaths_array = lr_datapaths->array;
+        datapaths_array = vector_get_array(&lr_datapaths->dps);
         dp_groups = &lflow_table->lr_dp_groups;
         is_switch = false;
     }
@@ -1226,7 +1226,9 @@ ovn_sb_insert_or_update_logical_dp_group(
 
     sb = xmalloc(bitmap_count1(dpg_bitmap, ods_size(datapaths)) * sizeof *sb);
     BITMAP_FOR_EACH_1 (index, ods_size(datapaths), dpg_bitmap) {
-        sb[n++] = datapaths->array[index]->sdp->sb_dp;
+        struct ovn_datapath *od = vector_get(&datapaths->dps, index,
+                                             struct ovn_datapath *);
+        sb[n++] = od->sdp->sb_dp;
     }
     if (!dp_group) {
         struct uuid dpg_uuid = uuid_random();
