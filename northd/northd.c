@@ -18712,6 +18712,17 @@ lflow_handle_ls_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
         }
     }
 
+    HMAPX_FOR_EACH (hmapx_node, &trk_data->deleted) {
+        struct ls_stateful_record *ls_stateful_rec = hmapx_node->data;
+        const struct ovn_datapath *od =
+            ovn_datapaths_find_by_index(lflow_input->ls_datapaths,
+                                        ls_stateful_rec->ls_index);
+        ovs_assert(od->nbs && uuid_equals(&od->nbs->header_.uuid,
+                                          &ls_stateful_rec->nbs_uuid));
+
+        lflow_ref_unlink_lflows(ls_stateful_rec->lflow_ref);
+    }
+
     return true;
 }
 
