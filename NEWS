@@ -1,4 +1,4 @@
-OVN v25.09.0 - xxx xx xxxx
+OVN v25.09.0 - 05 Sep 2025
 --------------------------
    - STT tunnels are no longer supported in ovn-encap-type.
      ** WARNING ** Existing setups must be fully reconfigured to use Geneve
