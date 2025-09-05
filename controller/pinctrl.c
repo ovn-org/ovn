@@ -5240,15 +5240,24 @@ destroy_send_arps_nds(void)
     hmap_destroy(&send_arp_nd_data);
 }
 
+static uint32_t
+arp_nd_data_get_hash(const struct in6_addr *dst_ip, const uint32_t dp_key,
+                     const uint32_t port_key)
+{
+    uint32_t hash = 0;
+    hash = hash_add_in6_addr(hash, dst_ip);
+    hash = hash_add(hash, dp_key);
+    hash = hash_add(hash, port_key);
+
+    return hash_finish(hash, 24);
+}
+
 static struct arp_nd_data *
 arp_nd_find_data(const struct sbrec_port_binding *pb,
                  const struct in6_addr *nexthop)
 {
-    uint32_t hash = 0;
-
-    hash = hash_add_in6_addr(hash, nexthop);
-    hash = hash_add(hash, pb->datapath->tunnel_key);
-    hash = hash_add(hash, pb->tunnel_key);
+    uint32_t hash = arp_nd_data_get_hash(nexthop, pb->datapath->tunnel_key,
+                                         pb->tunnel_key);
 
     struct arp_nd_data *e;
     HMAP_FOR_EACH_WITH_HASH (e, hmap_node, hash, &send_arp_nd_data) {
@@ -5259,15 +5268,6 @@ arp_nd_find_data(const struct sbrec_port_binding *pb,
     }
 
     return NULL;
-}
-
-static uint32_t
-arp_nd_data_get_hash(struct arp_nd_data *e)
-{
-    uint32_t hash = 0;
-    hash = hash_add_in6_addr(hash, &e->dst_ip);
-    hash = hash_add(hash, e->dp_key);
-    return hash_add(hash, e->port_key);
 }
 
 static struct arp_nd_data *
@@ -5284,7 +5284,7 @@ arp_nd_alloc_data(const struct eth_addr ea,
     e->dp_key = pb->datapath->tunnel_key;
     e->port_key = pb->tunnel_key;
 
-    uint32_t hash = arp_nd_data_get_hash(e);
+    uint32_t hash = arp_nd_data_get_hash(&e->dst_ip, e->dp_key, e->port_key);
     hmap_insert(&send_arp_nd_data, &e->hmap_node, hash);
     notify_pinctrl_handler();
 
@@ -5307,7 +5307,8 @@ arp_nd_sync_data(const struct sbrec_ecmp_nexthop_table *ecmp_nh_table)
                                                  &nexthop);
         if (e) {
             hmap_remove(&send_arp_nd_data, &e->hmap_node);
-            uint32_t hash = arp_nd_data_get_hash(e);
+            uint32_t hash = arp_nd_data_get_hash(&e->dst_ip, e->dp_key,
+                                                 e->port_key);
             hmap_insert(&arp_nd_active, &e->hmap_node, hash);
         }
     }

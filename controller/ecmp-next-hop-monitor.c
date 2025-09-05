@@ -62,6 +62,17 @@ void ecmp_nexthop_destroy(void)
     ecmp_nexthop_destroy_map(&ecmp_nexthop);
 }
 
+static uint32_t
+ecmp_nexthop_hash(const char *nexthop, const char *mac,
+                  const uint16_t zone_id)
+{
+    uint32_t hash = hash_string(nexthop, 0);
+    hash = hash_add(hash, hash_string(mac, 0));
+    hash = hash_add(hash, zone_id);
+
+    return hash_finish(hash, 64);
+}
+
 static struct ecmp_nexthop_data *
 ecmp_nexthop_alloc_entry(const char *nexthop, const char *mac,
                          const uint16_t zone_id, struct hmap *map)
@@ -71,10 +82,7 @@ ecmp_nexthop_alloc_entry(const char *nexthop, const char *mac,
     e->mac = xstrdup(mac);
     e->zone_id = zone_id;
 
-    uint32_t hash = hash_string(nexthop, 0);
-    hash = hash_add(hash, hash_string(mac, 0));
-    hash = hash_add(hash, zone_id);
-    hmap_insert(map, &e->hmap_node, hash);
+    hmap_insert(map, &e->hmap_node, ecmp_nexthop_hash(nexthop, mac, zone_id));
 
     return e;
 }
@@ -83,9 +91,7 @@ static struct ecmp_nexthop_data *
 ecmp_nexthop_find_entry(const char *nexthop, const char *mac,
                         const uint16_t zone_id, const struct hmap *map)
 {
-    uint32_t hash = hash_string(nexthop, 0);
-    hash = hash_add(hash, hash_string(mac, 0));
-    hash = hash_add(hash, zone_id);
+    uint32_t hash = ecmp_nexthop_hash(nexthop, mac, zone_id);
 
     struct ecmp_nexthop_data *e;
     HMAP_FOR_EACH_WITH_HASH (e, hmap_node, hash, map) {
