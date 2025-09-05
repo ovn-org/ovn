@@ -96,7 +96,7 @@ route_table_deregister_notifiers(void)
 static uint32_t
 route_table_notify_hash_watch(uint32_t table_id)
 {
-    return hash_add(0, table_id);
+    return hash_int(table_id, 0);
 }
 
 void

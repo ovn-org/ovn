@@ -39,6 +39,15 @@ struct ecmp_nexthop_data {
     const struct sbrec_ecmp_nexthop *sb_ecmp_nh;
 };
 
+static uint32_t
+ecmp_nexthop_hash(const char *nexthop, const uint32_t port_key)
+{
+    uint32_t hash = hash_string(nexthop, 0);
+    hash = hash_add(hash, port_key);
+
+    return hash_finish(hash, 64);
+}
+
 static struct ecmp_nexthop_data *
 ecmp_nexthop_insert_entry(const struct sbrec_ecmp_nexthop *sb_ecmp_nh,
                           struct hmap *map)
@@ -46,8 +55,8 @@ ecmp_nexthop_insert_entry(const struct sbrec_ecmp_nexthop *sb_ecmp_nh,
     struct ecmp_nexthop_data *e = xmalloc(sizeof *e);
     e->sb_ecmp_nh = sb_ecmp_nh;
 
-    uint32_t hash = hash_string(sb_ecmp_nh->nexthop, 0);
-    hash = hash_add(hash, hash_int(sb_ecmp_nh->port->tunnel_key, 0));
+    uint32_t hash = ecmp_nexthop_hash(sb_ecmp_nh->nexthop,
+                                      sb_ecmp_nh->port->tunnel_key);
     hmap_insert(map, &e->hmap_node, hash);
 
     return e;
@@ -58,8 +67,7 @@ ecmp_nexthop_find_entry(const char *nexthop,
                         const struct sbrec_port_binding *port,
                         struct hmap *map)
 {
-    uint32_t hash = hash_string(nexthop, 0);
-    hash = hash_add(hash, hash_int(port->tunnel_key, 0));
+    uint32_t hash = ecmp_nexthop_hash(nexthop, port->tunnel_key);
 
     struct ecmp_nexthop_data *e;
     HMAP_FOR_EACH_WITH_HASH (e, hmap_node, hash, map) {
