@@ -142,11 +142,9 @@ struct ovn_lb_datapaths {
     struct hmap_node hmap_node;
 
     const struct ovn_northd_lb *lb;
-    size_t n_nb_ls;
-    unsigned long *nb_ls_map;
 
-    size_t n_nb_lr;
-    unsigned long *nb_lr_map;
+    struct dynamic_bitmap nb_ls_map;
+    struct dynamic_bitmap nb_lr_map;
 
     struct hmapx ls_lb_with_stateless_mode;
 
