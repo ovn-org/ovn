@@ -36,8 +36,6 @@ OVN v25.09.0 - xxx xx xxxx
    - Added a new ACL option "--all" to "acl-list" command. When set,
      "acl-list" command will also list port groups ACLs associated with
      each port of the target logical switch.
-   - Adjusted priorities of src-ip based static routes to be lower than other
-     types of routes regardless of prefix length.
    - Added support for running tests from the 'check-kernel' system test target
      under retis by setting OVS_TEST_WITH_RETIS=yes.  See the 'Testing' section
      of the documentation for more details.

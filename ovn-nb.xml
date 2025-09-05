@@ -4432,9 +4432,9 @@ or
     </p>
 
     <p>
-      When multiple routes match a packet, a <code>dst-ip</code> route is
-      preferred over a <code>src-ip</code> route. Among the same type of
-      routes, the longest-prefix match is chosen.
+      When multiple routes match a packet, the longest-prefix match is chosen.
+      For a given prefix length, a <code>dst-ip</code> route is preferred over
+      a <code>src-ip</code> route.
     </p>
 
     <p>
