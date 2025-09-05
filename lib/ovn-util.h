@@ -18,6 +18,7 @@
 
 #include "openvswitch/meta-flow.h"
 #include "ovsdb-idl.h"
+#include "lib/bitmap.h"
 #include "lib/packets.h"
 #include "lib/sset.h"
 #include "lib/svec.h"
@@ -483,6 +484,100 @@ void sorted_array_apply_diff(const struct sorted_array *a1,
                                                     const char *item,
                                                     bool add),
                              const void *arg);
+
+struct dynamic_bitmap {
+    unsigned long *map;
+    size_t n_elems;
+    size_t capacity;
+};
+
+static inline unsigned long *
+ovn_bitmap_realloc(unsigned long *bitmap, size_t n_bits_old,
+                   size_t n_bits_new)
+{
+    ovs_assert(n_bits_new >= n_bits_old);
+
+    if (bitmap_n_bytes(n_bits_old) == bitmap_n_bytes(n_bits_new)) {
+        return bitmap;
+    }
+
+    bitmap = xrealloc(bitmap, bitmap_n_bytes(n_bits_new));
+    /* Set the unitialized bits to 0 as xrealloc doesn't initialize the
+     * added memory. */
+    size_t delta = BITMAP_N_LONGS(n_bits_new) - BITMAP_N_LONGS(n_bits_old);
+    memset(&bitmap[BITMAP_N_LONGS(n_bits_old)], 0, delta * sizeof *bitmap);
+
+    return bitmap;
+}
+
+static inline void
+dynamic_bitmap_alloc(struct dynamic_bitmap *db, size_t n_elems)
+{
+    db->map = bitmap_allocate(n_elems);
+    db->capacity = n_elems;
+}
+
+static inline void
+dynamic_bitmap_free(struct dynamic_bitmap *db)
+{
+    bitmap_free(db->map);
+}
+
+static inline void
+dynamic_bitmap_realloc(struct dynamic_bitmap *db, size_t new_n_elems)
+{
+    if (new_n_elems > db->capacity) {
+        db->map = ovn_bitmap_realloc(db->map, db->capacity, new_n_elems);
+        db->capacity = new_n_elems;
+    }
+}
+
+static inline bool
+dynamic_bitmap_is_empty(const struct dynamic_bitmap *db)
+{
+    return !db->n_elems;
+}
+
+static inline int
+dynamic_bitmap_get_n_elems(const struct dynamic_bitmap *db)
+{
+    return db->n_elems;
+}
+
+static inline void
+dynamic_bitmap_set1(struct dynamic_bitmap *db, int index)
+{
+    ovs_assert(index < db->capacity);
+    if (!bitmap_is_set(db->map, index)) {
+        bitmap_set1(db->map, index);
+        db->n_elems++;
+    }
+}
+
+static inline void
+dynamic_bitmap_set0(struct dynamic_bitmap *db, int index)
+{
+    ovs_assert(index < db->capacity);
+    if (bitmap_is_set(db->map, index)) {
+        bitmap_set0(db->map, index);
+        db->n_elems--;
+    }
+}
+
+static inline unsigned long *
+dynamic_bitmap_clone_map(struct dynamic_bitmap *db)
+{
+    return bitmap_clone(db->map, db->capacity);
+}
+
+static inline size_t
+dynamic_bitmap_scan(struct dynamic_bitmap *dp, bool target, size_t start)
+{
+    return bitmap_scan(dp->map, target, start, dp->capacity);
+}
+
+#define DYNAMIC_BITMAP_FOR_EACH_1(IDX, MAP)   \
+        BITMAP_FOR_EACH_1(IDX, (MAP)->capacity, (MAP)->map)
 
 /* Utilities around properly handling exit command. */
 struct ovn_exit_args {

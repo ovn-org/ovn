@@ -251,8 +251,7 @@ lr_stateful_lb_data_handler(struct engine_node *node, void *data_)
         ovs_assert(lb_dps);
 
         size_t index;
-        BITMAP_FOR_EACH_1 (index, ods_size(input_data.lr_datapaths),
-                           lb_dps->nb_lr_map) {
+        DYNAMIC_BITMAP_FOR_EACH_1 (index, &lb_dps->nb_lr_map) {
             const struct ovn_datapath *od =
                 ovn_datapaths_find_by_index(input_data.lr_datapaths, index);
 

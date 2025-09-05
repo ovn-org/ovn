@@ -631,8 +631,8 @@ ovn_lb_datapaths_create(const struct ovn_northd_lb *lb, size_t n_ls_datapaths,
 {
     struct ovn_lb_datapaths *lb_dps = xzalloc(sizeof *lb_dps);
     lb_dps->lb = lb;
-    lb_dps->nb_ls_map = bitmap_allocate(n_ls_datapaths);
-    lb_dps->nb_lr_map = bitmap_allocate(n_lr_datapaths);
+    dynamic_bitmap_alloc(&lb_dps->nb_ls_map, n_ls_datapaths);
+    dynamic_bitmap_alloc(&lb_dps->nb_lr_map, n_lr_datapaths);
     lb_dps->lflow_ref = lflow_ref_create();
     hmapx_init(&lb_dps->ls_lb_with_stateless_mode);
     return lb_dps;
@@ -641,8 +641,8 @@ ovn_lb_datapaths_create(const struct ovn_northd_lb *lb, size_t n_ls_datapaths,
 void
 ovn_lb_datapaths_destroy(struct ovn_lb_datapaths *lb_dps)
 {
-    bitmap_free(lb_dps->nb_lr_map);
-    bitmap_free(lb_dps->nb_ls_map);
+    dynamic_bitmap_free(&lb_dps->nb_lr_map);
+    dynamic_bitmap_free(&lb_dps->nb_ls_map);
     lflow_ref_destroy(lb_dps->lflow_ref);
     hmapx_destroy(&lb_dps->ls_lb_with_stateless_mode);
     free(lb_dps);
@@ -653,10 +653,7 @@ ovn_lb_datapaths_add_lr(struct ovn_lb_datapaths *lb_dps, size_t n,
                         struct ovn_datapath **ods)
 {
     for (size_t i = 0; i < n; i++) {
-        if (!bitmap_is_set(lb_dps->nb_lr_map, ods[i]->index)) {
-            bitmap_set1(lb_dps->nb_lr_map, ods[i]->index);
-            lb_dps->n_nb_lr++;
-        }
+        dynamic_bitmap_set1(&lb_dps->nb_lr_map, ods[i]->index);
     }
 }
 
@@ -665,10 +662,7 @@ ovn_lb_datapaths_add_ls(struct ovn_lb_datapaths *lb_dps, size_t n,
                         struct ovn_datapath **ods)
 {
     for (size_t i = 0; i < n; i++) {
-        if (!bitmap_is_set(lb_dps->nb_ls_map, ods[i]->index)) {
-            bitmap_set1(lb_dps->nb_ls_map, ods[i]->index);
-            lb_dps->n_nb_ls++;
-        }
+        dynamic_bitmap_set1(&lb_dps->nb_ls_map, ods[i]->index);
     }
 }
 
