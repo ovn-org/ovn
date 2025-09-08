@@ -331,7 +331,8 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
              * for those. */
             const struct sbrec_port_binding *local_pb
                 = local_binding_get_primary_pb(local_bindings, name);
-            if (local_pb && get_lport_type(local_pb) == LP_VIF) {
+            if (local_pb && get_lport_type(local_pb) == LP_VIF &&
+                local_pb->chassis == chassis) {
                 continue;
             }
             sbrec_port_binding_add_clause_logical_port(&pb, OVSDB_F_EQ, name);

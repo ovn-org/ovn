@@ -40327,11 +40327,22 @@ check ovn-nbctl --wait=hv sync
 
 OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep -c check_pkt_larger) -eq 0])
 
-check ovn-nbctl --wait=hv lsp-set-options multi requested-chassis=hv1,hv2
-OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep -c check_pkt_larger) -eq 4])
+for in in $(seq 1 10); do
+    check ovn-nbctl --wait=hv lsp-set-options multi requested-chassis=hv1,hv2
+    OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep -c check_pkt_larger) -eq 4])
 
-check ovn-nbctl --wait=hv lsp-set-options multi requested-chassis=hv1
-OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep -c check_pkt_larger) -eq 0])
+    check ovn-nbctl --wait=hv lsp-set-options multi requested-chassis=hv1
+    OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep -c check_pkt_larger) -eq 0])
+done
+
+for in in $(seq 1 10); do
+    as hv2 ovn-appctl recompute
+    check ovn-nbctl --wait=hv lsp-set-options multi requested-chassis=hv1,hv2
+    OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep -c check_pkt_larger) -eq 4])
+
+    check ovn-nbctl --wait=hv lsp-set-options multi requested-chassis=hv1
+    OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep -c check_pkt_larger) -eq 0])
+done
 
 check ovn-nbctl --wait=hv lsp-set-options multi requested-chassis=hv1,hv2
 OVS_WAIT_UNTIL([test $(as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_OUTPUT_LARGE_PKT_DETECT | grep -c check_pkt_larger) -eq 4])
