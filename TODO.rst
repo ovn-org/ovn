@@ -189,6 +189,10 @@ but it will still be parsed and processed. There should be also clearly stated
 when the feature/action will move from ``Deprecated`` to ``Removed``.
 ``Removed`` will print a warning and won't be processed further.
 
+* 26.03 Deprecated
+
+  * ``ct_lb`` action, should be removed in 26.09.
+
 * 26.03 Removed
 
   * ``PUT_ICMP4_FRAG_MTU`` action
