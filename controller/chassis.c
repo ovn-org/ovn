@@ -408,7 +408,10 @@ chassis_build_other_config(const struct ovs_chassis_cfg *ovs_cfg,
     smap_replace(config, "ovn-evpn-local-ip", ovs_cfg->evpn_local_ip);
     smap_replace(config, "is-interconn",
                  ovs_cfg->is_interconn ? "true" : "false");
+    smap_replace(config, OVN_FEATURE_PORT_UP_NOTIF, "true");
+    smap_replace(config, OVN_FEATURE_CT_NO_MASKED_LABEL, "true");
     smap_replace(config, OVN_FEATURE_MAC_BINDING_TIMESTAMP, "true");
+    smap_replace(config, OVN_FEATURE_CT_LB_RELATED, "true");
     smap_replace(config, OVN_FEATURE_FDB_TIMESTAMP, "true");
     smap_replace(config, OVN_FEATURE_LS_DPG_COLUMN, "true");
     smap_replace(config, OVN_FEATURE_CT_COMMIT_NAT_V2, "true");
@@ -535,8 +538,25 @@ chassis_other_config_changed(const struct ovs_chassis_cfg *ovs_cfg,
         return true;
     }
 
+    if (!smap_get_bool(&chassis_rec->other_config, OVN_FEATURE_PORT_UP_NOTIF,
+                       false)) {
+        return true;
+    }
+
+    if (!smap_get_bool(&chassis_rec->other_config,
+                       OVN_FEATURE_CT_NO_MASKED_LABEL,
+                       false)) {
+        return true;
+    }
+
     if (!smap_get_bool(&chassis_rec->other_config,
                        OVN_FEATURE_MAC_BINDING_TIMESTAMP,
+                       false)) {
+        return true;
+    }
+
+    if (!smap_get_bool(&chassis_rec->other_config,
+                       OVN_FEATURE_CT_LB_RELATED,
                        false)) {
         return true;
     }
@@ -742,7 +762,10 @@ update_supported_sset(struct sset *supported)
     /* Internal options. */
     sset_add(supported, "is-vtep");
     sset_add(supported, "is-remote");
+    sset_add(supported, OVN_FEATURE_PORT_UP_NOTIF);
+    sset_add(supported, OVN_FEATURE_CT_NO_MASKED_LABEL);
     sset_add(supported, OVN_FEATURE_MAC_BINDING_TIMESTAMP);
+    sset_add(supported, OVN_FEATURE_CT_LB_RELATED);
     sset_add(supported, OVN_FEATURE_FDB_TIMESTAMP);
     sset_add(supported, OVN_FEATURE_LS_DPG_COLUMN);
     sset_add(supported, OVN_FEATURE_CT_COMMIT_NAT_V2);
