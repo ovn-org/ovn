@@ -1024,6 +1024,16 @@ send_garp() {
     check as $hv ovs-appctl netdev-dummy/receive $inport $packet
 }
 
+send_na() {
+    local hv=$1 dev=$2 hsrc=$3 hdst=$4 isrc=$5 idst=$6
+    local packet=$(fmt_pkt "Ether(dst='${hdst}', src='${hsrc}')/ \
+                            IPv6(dst='${idst}', src='${isrc}')/ \
+                            ICMPv6ND_NA(tgt='${isrc}')/ \
+                            ICMPv6NDOptDstLLAddr(lladdr='${hsrc}')")
+    echo "${packet}"
+    check as $hv ovs-appctl netdev-dummy/receive $dev $packet >&2
+}
+
 # Wrapper on top of ovn-trace, stripping some things and storing the trace
 # output to a file called 'trace'.  For now it strips the rows starting
 # with a '#'.  This should correspond to the flow key and might be displayed
