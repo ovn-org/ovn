@@ -177,3 +177,27 @@ OVN To-do List
     tested in GitHub CI.  We should extend our testing to support
     OVN_ENABLE_INTERCONNECT=true and potentially more of the CI lanes
     ovn-kubernetes/ovn-kubernetes defines in its GitHub project.
+
+==============
+OVN Deprecation plan
+==============
+
+The following section contains deprecation plan for certain internal features
+and actions. For each OVN version it contains ``Deprecated`` and ``Removed``.
+``Deprecated`` means that the internal action will print a warning on usage,
+but it will still be parsed and processed. There should be also clearly stated
+when the feature/action will move from ``Deprecated`` to ``Removed``.
+``Removed`` will print a warning and won't be processed further.
+
+* 26.03 Removed
+
+  * ``PUT_ICMP4_FRAG_MTU`` action
+  * ``PUT_ICMP6_FRAG_MTU`` action
+
+* 24.09 Deprecated
+
+  * ``OVN_FEATURE_PORT_UP_NOTIF`` feature, should be removed in 26.09.
+  * ``OVN_FEATURE_CT_NO_MASKED_LABEL``, should be removed in 26.09.
+  * ``OVN_FEATURE_CT_LB_RELATED``, should be removed in 26.09.
+  * ``PUT_ICMP4_FRAG_MTU`` action, should be removed in 26.03
+  * ``PUT_ICMP6_FRAG_MTU`` action, should be removed in 26.03.
