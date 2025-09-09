@@ -22370,8 +22370,8 @@ send_icmp_packet() {
 }
 
 send_icmp6_packet() {
-    local inport=$1 hv=$2 eth_src=$3 eth_dst=$4 ipv6_src=$5 ipv6_dst=$6 ipv6_router=$7 exp_icmp_chksum=$8
-    shift 8
+    local inport=$1 hv=$2 eth_src=$3 eth_dst=$4 ipv6_src=$5 ipv6_dst=$6
+    AT_CHECK(shift 6)
 
     local ip6_hdr=6000000000083aff${ipv6_src}${ipv6_dst}
     local packet=${eth_dst}${eth_src}86dd${ip6_hdr}8000dcb662f00001
