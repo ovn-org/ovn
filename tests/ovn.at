@@ -16696,17 +16696,6 @@ m4_define([ACTIVATION_STRATEGY_TEST],
         echo "${request}"
     }
 
-    send_na() {
-        local hv=${1} inport=${2} eth_src=${3} spa=${4}
-        local request=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${eth_src}')/ \
-                                 IPv6(dst='ff02::1', src='${spa}')/ \
-                                 ICMPv6ND_NA(tgt='${spa}')/ \
-                                 ICMPv6NDOptDstLLAddr(lladdr='${eth_src}')")
-        as ${hv} ovs-appctl netdev-dummy/receive $inport $request
-        echo "${request}"
-    }
-
-
     reset_env() {
         as hv1 reset_pcap_file migrator hv1/migrator
         as hv2 reset_pcap_file migrator hv2/migrator
@@ -16774,7 +16763,7 @@ m4_define([ACTIVATION_STRATEGY_TEST],
     if [[ "$1" == "rarp" ]]; then
         request=$(send_rarp hv2 migrator "00:00:00:00:00:10" "10.0.0.10")
     elif [[ "$1" == "na" ]]; then
-        request=$(send_na hv2 migrator "00:00:00:00:00:10" "fd10::10")
+        request=$(send_na hv2 migrator "00:00:00:00:00:10" "ff:ff:ff:ff:ff:ff" "fd10::10" "ff02::1")
     else
         request=$(send_arp hv2 migrator 1 "00:00:00:00:00:10" "ff:ff:ff:ff:ff:ff" "10.0.0.10" "10.0.0.10")
     fi
@@ -22402,14 +22391,6 @@ send_arp_reply() {
     as hv$hv ovs-appctl netdev-dummy/receive hv${hv}-vif$inport $request
 }
 
-send_na() {
-    local hv=$1 inport=$2 eth_src=$3 eth_dst=$4 src_ip=$5 dst_ip=$6
-    local ip6_hdr=6000000000203aff${src_ip}${dst_ip}
-    local request=${eth_dst}${eth_src}86dd${ip6_hdr}8800d78440000000${src_ip}0201${eth_src}
-
-    as hv$hv ovs-appctl netdev-dummy/receive hv${hv}-vif$inport $request
-}
-
 get_nd() {
     local eth_src=$1 src_ip=$2 dst_ip=$3 ta=$4
     local ip6_hdr=6000000000203aff${src_ip}${dst_ip}
@@ -22511,7 +22492,7 @@ ip6_hdr=6000000000083afe${router_ip6}${dst_ip6}
 send_icmp6_packet 1 1 $src_mac $router_mac0 $src_ip6 $dst_ip6
 echo $(get_nd $router_mac1 $nd_src_ip6 $nd_ip $dst_ip6) >> expected
 echo "${dst_mac}${router_mac1}86dd${ip6_hdr}8000dcb662f00001" >> expected
-send_na 2 1 $dst_mac $router_mac1 $dst_ip6 $router_ip6
+send_na hv2 hv2-vif1 "00:11:22:33:44:55" "00:00:02:01:02:03" "2002::10" "2002::1"
 
 OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
 
@@ -36657,15 +36638,6 @@ send_udp6() {
     as $hv ovs-appctl netdev-dummy/receive $dev $packet
 }
 
-send_na() {
-    local hv=$1 dev=$2 hdst=$3 hsrc=$4 idst=$5 isrc=$6
-    local packet=$(fmt_pkt "Ether(dst='${hdst}', src='${hsrc}')/ \
-                            IPv6(dst='${idst}', src='${isrc}')/ \
-                            ICMPv6ND_NA(tgt='${isrc}')/ \
-                            ICMPv6NDOptDstLLAddr(lladdr='${hsrc}')")
-    as $hv ovs-appctl netdev-dummy/receive $dev $packet
-}
-
 dump_arp() {
     local op=$1 eth_src=$2 eth_dst=$3 spa=$4 tpa=$5 hwdst=$6
 
@@ -36782,8 +36754,8 @@ wait_row_count mac_binding 0
 send_udp6 hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a fd12::64 fd11::64
 send_udp6 hv1 vif2 00:00:00:00:20:00 00:00:00:00:10:2b fd11::64 fd12::64
 # Send NA to resolve L2 addresses.
-send_na hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:1a fd11::1 fd11::64
-send_na hv1 vif2 00:00:00:00:20:00 00:00:00:00:10:1b fd12::1 fd12::64
+send_na hv1 vif1 00:00:00:00:10:1a 00:00:00:00:10:00 fd11::64 fd11::1
+send_na hv1 vif2 00:00:00:00:10:1b 00:00:00:00:20:00 fd12::64 fd12::1
 
 check_row_count mac_binding 1 mac=\"00:00:00:00:10:1a\" ip=\"fd11::64\"
 check_row_count mac_binding 1 mac=\"00:00:00:00:10:1b\" ip=\"fd12::64\"
@@ -36799,7 +36771,7 @@ dump_ns 33:33:ff:00:00:64 00:00:00:00:10:00 ff02::1:ff00:64 fd11::1 fd11::64 > e
 dump_ns 33:33:ff:00:00:64 00:00:00:00:10:00 ff02::1:ff00:64 fd11::1 fd11::64 >> expected2
 OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [expected2])
 
-send_na hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:1a fd11::1 fd11::64
+send_na hv1 vif1 00:00:00:00:10:1a 00:00:00:00:10:00 fd11::64 fd11::1
 OVS_WAIT_UNTIL([test $(fetch_column Mac_Binding timestamp mac=\"00:00:00:00:10:1a\" ip=\"fd11::64\") -gt $ts0])
 AT_CHECK([test "$(fetch_column Mac_Binding _uuid mac=\"00:00:00:00:10:1a\" ip=\"fd11::64\")" = "$uuid"])
 
