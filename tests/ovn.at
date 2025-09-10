@@ -12015,11 +12015,19 @@ sim_add gw1
 as gw1
 check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.2
+check ovs-vsctl set Open_vSwitch . external-ids:garp-max-timeout-sec=2
 
 sim_add gw2
 as gw2
 check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.4
+check ovs-vsctl set Open_vSwitch . external-ids:garp-max-timeout-sec=2
+
+sim_add gw3
+as gw3
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.6
+check ovs-vsctl set Open_vSwitch . external-ids:garp-max-timeout-sec=2
 
 sim_add ext1
 as ext1
@@ -12070,7 +12078,7 @@ check ovn-nbctl lr-route-add R0 0.0.0.0/0 100.60.1.2
 check ovn-nbctl lr-route-add R1 192.168.0.0/16 100.60.1.1
 
 # Connect alice to R1 as distributed router gateway port on gw1
-check ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.1/24
+check ovn-nbctl lrp-add R1 alice 00:00:02:01:02:03 172.16.1.1/24 fd10::1/64
 
 AT_CHECK([ovn-nbctl \
     --id=@gc0 create Gateway_Chassis name=alice_gw1 \
@@ -12079,8 +12087,12 @@ AT_CHECK([ovn-nbctl \
     --id=@gc1 create Gateway_Chassis name=alice_gw2 \
                                      chassis_name=gw2 \
                                      priority=10 -- \
-    set Logical_Router_Port alice 'gateway_chassis=[@gc0,@gc1]' | uuidfilt], [0], [<0>
+    --id=@gc2 create Gateway_Chassis name=alice_gw3 \
+                                     chassis_name=gw3 \
+                                     priority=5 -- \
+    set Logical_Router_Port alice 'gateway_chassis=[@gc0,@gc1,@gc2]' | uuidfilt], [0], [<0>
 <1>
+<2>
 ])
 
 check ovn-nbctl lsp-add alice rp-alice -- set Logical_Switch_Port rp-alice \
@@ -12093,7 +12105,7 @@ check ovn-nbctl lsp-add foo foo1 \
 
 # Create logical port outside1 in outside
 check ovn-nbctl lsp-add outside outside1 \
--- lsp-set-addresses outside1 "f0:00:00:01:02:04 172.16.1.3"
+-- lsp-set-addresses outside1 unknown
 
 # Create localnet port in alice
 check ovn-nbctl lsp-add alice ln-alice
@@ -12111,11 +12123,12 @@ check ovn-nbctl lsp-set-options ln-outside network_name=phys
 # mapping to the external network, is the one generating packets
 check as gw1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 check as gw2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+check as gw3 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 check as ext1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 wait_for_ports_up
 check ovn-nbctl --wait=sb sync
-OVN_WAIT_PATCH_PORT_FLOWS(["ln-alice"], ["gw1"] ["gw2"])
+OVN_WAIT_PATCH_PORT_FLOWS(["ln-alice"], ["gw1"] ["gw2"],["gw3"])
 OVN_WAIT_PATCH_PORT_FLOWS(["ln-outside"], ["ext1"])
 
 ovn-sbctl dump-flows > sbflows
@@ -12132,15 +12145,23 @@ check ovn-nbctl --wait=hv sync
 
 hv1_gw1_ofport=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=ovn-gw1-0)
 hv1_gw2_ofport=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=ovn-gw2-0)
+hv1_gw3_ofport=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=ovn-gw3-0)
 
 OVS_WAIT_UNTIL([
-    test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | grep -c "active_backup,ofport,members:$hv1_gw1_ofport,$hv1_gw2_ofport")
+    test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | grep -c "active_backup,ofport,members:$hv1_gw1_ofport,$hv1_gw2_ofport,$hv1_gw3_ofport")
 ])
 
+n_external_ip=50
 test_ip_packet()
 {
     local active_gw=$1
     local backup_gw=$2
+
+    # Send many GARP/ND_NA from outside1 to the router.
+    for i in $(seq 11 $((n_external_ip + 10))); do
+        send_garp ext1 ext1-vif1 1 "00:00:00:00:20:$i" "ff:ff:ff:ff:ff:ff" 172.16.1.$i 172.16.1.$i
+        send_na ext1 ext1-vif1 "00:00:00:00:30:$i" "33:33:00:00:00:01" "fd10::$i" "ff02::1"
+    done
 
     # Send ip packet between foo1 and outside1
     src_mac="f00000010203" # foo1 mac
@@ -12177,6 +12198,10 @@ grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
     dst_ip=`ip_to_hex 172 16 1 3`
     expected=${dst_mac}${src_mac}08004500001c000000003e110200${src_ip}${dst_ip}0035111100080000
     echo $expected > ext1-vif1.expected
+
+    # Wait for first packet to be received before resetting pcap on ext1
+    OVN_CHECK_PACKETS_CONTAIN([ext1/vif1-tx.pcap], [ext1-vif1.expected])
+
     exp_gw_ip_garp=ffffffffffff00000201020308060001080006040001000002010203ac100101000000000000ac100101
     echo $exp_gw_ip_garp >> ext1-vif1.expected
 
@@ -12209,15 +12234,28 @@ AT_CHECK([ovn-nbctl --wait=hv \
     --id=@gc1 create Gateway_Chassis name=alice_gw2 \
                                      chassis_name=gw2 \
                                      priority=20 -- \
-    set Logical_Router_Port alice 'gateway_chassis=[@gc0,@gc1]' | uuidfilt], [0], [<0>
+    --id=@gc2 create Gateway_Chassis name=alice_gw3 \
+                                     chassis_name=gw3 \
+                                     priority=5 -- \
+    set Logical_Router_Port alice 'gateway_chassis=[@gc0,@gc1,@gc2]' | uuidfilt], [0], [<0>
 <1>
+<2>
 ])
 
 OVS_WAIT_UNTIL([
-    test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | grep -c "active_backup,ofport,members:$hv1_gw2_ofport,$hv1_gw1_ofport")
+    test 1 = $(as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_OUTPUT | grep -c "active_backup,ofport,members:$hv1_gw2_ofport,$hv1_gw1_ofport,$hv1_gw3_ofport")
 ])
 
 test_ip_packet gw2 gw1
+
+# n_external_ip * 2 + **1** as 172.16.1.3.
+# 172.16.1.1 (i.e. the router port) might sometimes be seen as a mac_binding. Ignore it.
+wait_row_count MAC_Binding $((n_external_ip * 2 + 1)) ip!=172.16.1.1
+
+for i in gw1 gw2 gw3; do
+    AT_CHECK([grep -c "Transaction causes multiple rows" $i/ovn-controller.log], [1], [0
+])
+done
 
 OVN_CLEANUP([hv1],[gw1],[gw2],[ext1])
 AT_CLEANUP

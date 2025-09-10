@@ -13577,6 +13577,19 @@ build_neigh_learning_flows_for_lrouter_port(
                                 &op->nbrp->header_,
                                 lflow_ref);
     }
+
+    if (is_l3dgw_port(op)) {
+        ds_clear(match);
+        ds_put_format(match, "inport == %s && (nd_na || nd_ns) && "
+                             "!is_chassis_resident(%s)", op->json_key,
+                             op->cr_port->json_key);
+        ovn_lflow_add_with_hint(lflows, op->od,
+                                S_ROUTER_IN_LOOKUP_NEIGHBOR, 120,
+                                ds_cstr(match),
+                                REGBIT_LOOKUP_NEIGHBOR_RESULT" = 1; next;",
+                                &op->nbrp->header_,
+                                lflow_ref);
+    }
 }
 
 /* Logical router ingress table ND_RA_OPTIONS & ND_RA_RESPONSE: IPv6 Router
