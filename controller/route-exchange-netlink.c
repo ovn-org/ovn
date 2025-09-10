@@ -208,9 +208,18 @@ struct route_msg_handle_data {
     const struct sbrec_datapath_binding *db;
     struct hmapx *routes_to_advertise;
     struct ovs_list *learned_routes;
+    struct ovs_list *stale_routes;
     const struct hmap *routes;
     uint32_t table_id; /* requested table id. */
-    int ret;
+};
+
+struct re_nl_stale_entry {
+    uint32_t rta_table_id;
+    struct in6_addr rta_dst;
+    unsigned char rtm_dst_len;
+    uint32_t rta_priority;
+
+    struct ovs_list node;
 };
 
 static void
@@ -219,7 +228,6 @@ handle_route_msg(const struct route_table_msg *msg, void *data)
     struct route_msg_handle_data *handle_data = data;
     const struct route_data *rd = &msg->rd;
     struct advertise_route_entry *ar;
-    int err;
 
     if (handle_data->table_id != rd->rta_table_id) {
         /* We do not have the NLM_F_DUMP_FILTERED info here, so check if the
@@ -266,23 +274,45 @@ handle_route_msg(const struct route_table_msg *msg, void *data)
             }
         }
     }
-    err = re_nl_delete_route(rd->rta_table_id, &rd->rta_dst,
-                             rd->rtm_dst_len, rd->rta_priority);
-    if (err) {
-        char addr_s[INET6_ADDRSTRLEN + 1];
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 20);
-        VLOG_WARN_RL(&rl, "Delete route table_id=%"PRIu32" dst=%s plen=%d "
-                     "failed: %s", rd->rta_table_id,
-                     ipv6_string_mapped(
-                         addr_s, &rd->rta_dst) ? addr_s : "(invalid)",
-                     rd->rtm_dst_len,
-                     ovs_strerror(err));
 
-        if (!handle_data->ret) {
-            /* Report the first error value to the caller. */
-            handle_data->ret = err;
-        }
+    if (handle_data->stale_routes) {
+        struct re_nl_stale_entry *stale = xmalloc(sizeof *stale);
+        *stale = (struct re_nl_stale_entry) {
+            .rta_table_id = rd->rta_table_id,
+            .rta_dst =  rd->rta_dst,
+            .rtm_dst_len = rd->rtm_dst_len,
+            .rta_priority = rd->rta_priority,
+        };
+        ovs_list_push_back(handle_data->stale_routes, &stale->node);
     }
+}
+
+static int
+re_nl_delete_stale_routes(struct ovs_list *stale_routes)
+{
+    int ret = 0;
+
+    struct re_nl_stale_entry *e;
+    LIST_FOR_EACH_POP (e, node, stale_routes) {
+        int err = re_nl_delete_route(e->rta_table_id, &e->rta_dst,
+                                     e->rtm_dst_len, e->rta_priority);
+        if (err) {
+            char addr_s[INET6_ADDRSTRLEN + 1];
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 20);
+            VLOG_WARN_RL(&rl, "Delete route table_id=%"PRIu32" dst=%s plen=%d "
+                         "failed: %s", e->rta_table_id,
+                         ipv6_string_mapped(
+                             addr_s, &e->rta_dst) ? addr_s : "(invalid)",
+                         e->rtm_dst_len,
+                         ovs_strerror(err));
+            if (!ret) {
+                ret = err;
+            }
+        }
+        free(e);
+    }
+
+    return ret;
 }
 
 int
@@ -291,8 +321,9 @@ re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
                   const struct sbrec_datapath_binding *db)
 {
     struct hmapx routes_to_advertise = HMAPX_INITIALIZER(&routes_to_advertise);
+    struct ovs_list stale_routes = OVS_LIST_INITIALIZER(&stale_routes);
     struct advertise_route_entry *ar;
-    int ret;
+    int ret = 0;
 
     HMAP_FOR_EACH (ar, node, routes) {
         hmapx_add(&routes_to_advertise, ar);
@@ -305,11 +336,11 @@ re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
         .routes = routes,
         .routes_to_advertise = &routes_to_advertise,
         .learned_routes = learned_routes,
+        .stale_routes = &stale_routes,
         .db = db,
         .table_id = table_id,
     };
     route_table_dump_one_table(table_id, handle_route_msg, &data);
-    ret = data.ret;
 
     /* Add any remaining routes in the routes_to_advertise hmapx to the
      * system routing table. */
@@ -333,6 +364,12 @@ re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
             }
         }
     }
+
+    int err = re_nl_delete_stale_routes(&stale_routes);
+    if (!ret) {
+        ret = err;
+    }
+
     hmapx_destroy(&routes_to_advertise);
 
     return ret;
@@ -341,15 +378,23 @@ re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
 int
 re_nl_cleanup_routes(uint32_t table_id)
 {
+    int ret = 0;
+    struct ovs_list stale_routes = OVS_LIST_INITIALIZER(&stale_routes);
     /* Remove routes from the system that are not in the host_routes hmap and
      * remove entries from host_routes hmap that match routes already installed
      * in the system. */
     struct route_msg_handle_data data = {
         .routes_to_advertise = NULL,
         .learned_routes = NULL,
+        .stale_routes = &stale_routes,
         .table_id = table_id,
     };
     route_table_dump_one_table(table_id, handle_route_msg, &data);
 
-    return data.ret;
+    int err = re_nl_delete_stale_routes(&stale_routes);
+    if (!ret) {
+        ret = err;
+    }
+
+    return ret;
 }
