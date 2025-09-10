@@ -58,9 +58,6 @@ struct ne_msg_handle_data {
 
     /* Stores 'struct advertise_neighbor_entry'. */
     const struct hmap *neighbors;
-
-    /* Non-zero error code if any netlink operation failed. */
-    int ret;
 };
 
 static void handle_ne_msg(const struct ne_table_msg *, void *data);
@@ -96,7 +93,7 @@ ne_nl_sync_neigh(uint8_t family, int32_t if_index,
     struct vector stale_neighbors =
         VECTOR_EMPTY_INITIALIZER(struct ne_nl_received_neigh);
     struct advertise_neighbor_entry *an;
-    int ret;
+    int ret = 0;
 
     HMAP_FOR_EACH (an, node, neighbors) {
         hmapx_add(&neighbors_to_advertise, an);
@@ -109,7 +106,6 @@ ne_nl_sync_neigh(uint8_t family, int32_t if_index,
         .neighbors = neighbors,
     };
     ne_table_dump_one_ifindex(family, if_index, handle_ne_msg, &data);
-    ret = data.ret;
 
     /* Add any remaining neighbors in the neighbors_to_advertise hmapx to the
      * system table. */
