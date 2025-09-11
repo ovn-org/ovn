@@ -290,6 +290,11 @@ static void remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *,
                                          struct sb_to_flow *,
                                          const char *log_msg,
                                          struct uuidset *flood_remove_nodes);
+static void ovn_flow_uninit(struct ovn_flow *f);
+static void ovn_flow_init(struct ovn_flow *f, uint8_t table_id,
+                          uint16_t priority, uint64_t cookie,
+                          const struct match *match, void *actions,
+                          size_t action_len, uint32_t meter_id);
 
 /* OpenFlow connection to the switch. */
 static struct rconn *swconn;
@@ -1300,77 +1305,92 @@ ofpact_ref_find(const struct hmap *refs, const struct ofpact *ofpact)
     return NULL;
 }
 
-static void
-ofpact_refs_destroy(struct hmap *refs)
+static inline void
+ofpacts_append(struct ovn_flow *flow, const struct ofpbuf *append)
 {
-    struct ofpact_ref *ref;
-    HMAP_FOR_EACH_POP (ref, hmap_node, refs) {
-        free(ref);
+    size_t new_len = flow->ofpacts_len + append->size;
+
+    flow->ofpacts = xrealloc(flow->ofpacts, new_len);
+    memcpy((uint8_t *) flow->ofpacts + flow->ofpacts_len,
+           append->data, append->size);
+    flow->ofpacts_len = new_len;
+}
+
+static inline struct ofpbuf *
+create_conjunction_actions(const struct vector *conjunctions,
+                          const struct hmap *existing)
+{
+    size_t len = vector_len(conjunctions);
+    struct ofpbuf *ofpbuf =
+        ofpbuf_new(sizeof(struct ofpact_conjunction) * len);
+
+    const struct cls_conjunction *cls;
+    VECTOR_FOR_EACH_PTR (conjunctions, cls) {
+        struct ofpact_conjunction *conj = ofpact_put_CONJUNCTION(ofpbuf);
+        conj->id = cls->id;
+        conj->clause = cls->clause;
+        conj->n_clauses = cls->n_clauses;
+
+        if (existing && ofpact_ref_find(existing, &conj->ofpact)) {
+            ofpbuf_pull(ofpbuf, sizeof *conj);
+        }
     }
-    hmap_destroy(refs);
+
+    return ofpbuf;
 }
 
 /* Either add a new flow, or append actions on an existing flow. If the
  * flow existed, a new link will also be created between the new sb_uuid
  * and the existing flow. */
 void
-ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
-                          uint8_t table_id, uint16_t priority, uint64_t cookie,
-                          const struct match *match,
-                          const struct ofpbuf *actions,
-                          const struct uuid *sb_uuid,
-                          uint32_t meter_id,
-                          const struct addrset_info *as_info)
+ofctrl_add_or_append_conj_flow(struct ovn_desired_flow_table *desired_flows,
+                               uint8_t table_id, uint16_t priority,
+                               const struct match *match,
+                               const struct vector *conjunctions,
+                               const struct uuid *sb_uuid,
+                               uint32_t meter_id,
+                               const struct addrset_info *as_info)
 {
     struct desired_flow *existing;
     struct desired_flow *f;
+    struct ofpbuf *actions;
 
-    f = desired_flow_alloc(table_id, priority, cookie, match, actions,
-                           meter_id);
-    existing = desired_flow_lookup_conjunctive(desired_flows, &f->flow);
+    /* Create flow just to search for existing one, this avoids the allocation
+     * of ofpacts buffer if it's not needed yet. */
+    struct ovn_flow search_flow;
+    ovn_flow_init(&search_flow, table_id, priority, 0,
+                  match, NULL, 0, meter_id);
+    existing = desired_flow_lookup_conjunctive(desired_flows, &search_flow);
     if (existing) {
         struct hmap existing_conj = HMAP_INITIALIZER(&existing_conj);
+        /* We can calculate the length directly because the flow actions
+         * consist only of conjunctions. Make a rough assert to ensure
+         * that is that case in the future. */
+        size_t conj_size = sizeof(struct ofpact_conjunction);
+        ovs_assert(!(existing->flow.ofpacts_len % conj_size));
+        struct ofpact_ref *refs =
+            xmalloc(sizeof *refs * existing->flow.ofpacts_len / conj_size);
 
+        size_t index = 0;
         struct ofpact *ofpact;
         OFPACT_FOR_EACH (ofpact, existing->flow.ofpacts,
                          existing->flow.ofpacts_len) {
-            if (ofpact->type != OFPACT_CONJUNCTION) {
-                continue;
-            }
-
-            struct ofpact_ref *ref = xmalloc(sizeof *ref);
+            ovs_assert(ofpact->type == OFPACT_CONJUNCTION);
+            struct ofpact_ref *ref = &refs[index++];
             ref->ofpact = ofpact;
             uint32_t hash = hash_bytes(ofpact, ofpact->len, 0);
             hmap_insert(&existing_conj, &ref->hmap_node, hash);
         }
 
-        /* There's already a flow with this particular match and action
-         * 'conjunction'. Append the action to that flow rather than
-         * adding a new flow.
-         */
-        uint64_t compound_stub[64 / 8];
-        struct ofpbuf compound;
-        ofpbuf_use_stub(&compound, compound_stub, sizeof(compound_stub));
-        ofpbuf_put(&compound, existing->flow.ofpacts,
-                   existing->flow.ofpacts_len);
-
-        OFPACT_FOR_EACH (ofpact, f->flow.ofpacts, f->flow.ofpacts_len) {
-            if (ofpact->type != OFPACT_CONJUNCTION ||
-                !ofpact_ref_find(&existing_conj, ofpact)) {
-                ofpbuf_put(&compound, ofpact, OFPACT_ALIGN(ofpact->len));
-            }
-        }
-
-        ofpact_refs_destroy(&existing_conj);
-
+        actions = create_conjunction_actions(conjunctions, &existing_conj);
         mem_stats.desired_flow_usage -= desired_flow_size(existing);
-        free(existing->flow.ofpacts);
-        existing->flow.ofpacts = xmemdup(compound.data, compound.size);
-        existing->flow.ofpacts_len = compound.size;
+        ofpacts_append(&existing->flow, actions);
         mem_stats.desired_flow_usage += desired_flow_size(existing);
 
-        ofpbuf_uninit(&compound);
-        desired_flow_destroy(f);
+
+        free(refs);
+        hmap_destroy(&existing_conj);
+
         f = existing;
 
         /* Since the flow now shared by more than one SB lflows, don't track
@@ -1388,17 +1408,20 @@ ofctrl_add_or_append_flow(struct ovn_desired_flow_table *desired_flows,
         }
         link_flow_to_sb(desired_flows, f, sb_uuid, NULL);
     } else {
+        actions = create_conjunction_actions(conjunctions, NULL);
+        f = desired_flow_alloc(table_id, priority, 0, match, actions,
+                               meter_id);
         hmap_insert(&desired_flows->match_flow_table, &f->match_hmap_node,
                     f->flow.hash);
         link_flow_to_sb(desired_flows, f, sb_uuid, as_info);
     }
     track_flow_add_or_modify(desired_flows, f);
 
-    if (existing) {
-        ovn_flow_log(&f->flow, "ofctrl_add_or_append_flow (append)");
-    } else {
-        ovn_flow_log(&f->flow, "ofctrl_add_or_append_flow (add)");
-    }
+    ovn_flow_log(&f->flow, existing
+                 ? "ofctrl_add_or_append_conj_flow (append)"
+                 : "ofctrl_add_or_append_conj_flow (add)");
+    ovn_flow_uninit(&search_flow);
+    ofpbuf_delete(actions);
 }
 
 void
@@ -1621,13 +1644,13 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
 static void
 ovn_flow_init(struct ovn_flow *f, uint8_t table_id, uint16_t priority,
               uint64_t cookie, const struct match *match,
-              const struct ofpbuf *actions, uint32_t meter_id)
+              void *actions, size_t action_len, uint32_t meter_id)
 {
     f->table_id = table_id;
     f->priority = priority;
     minimatch_init(&f->match, match);
-    f->ofpacts = xmemdup(actions->data, actions->size);
-    f->ofpacts_len = actions->size;
+    f->ofpacts = actions ? xmemdup(actions, action_len) : NULL;
+    f->ofpacts_len = action_len;
     f->hash = ovn_flow_match_hash(f);
     f->cookie = cookie;
     f->ctrl_meter_id = meter_id;
@@ -1651,8 +1674,8 @@ desired_flow_alloc(uint8_t table_id, uint16_t priority, uint64_t cookie,
     ovs_list_init(&f->track_list_node);
     f->installed_flow = NULL;
     f->is_deleted = false;
-    ovn_flow_init(&f->flow, table_id, priority, cookie, match, actions,
-                  meter_id);
+    ovn_flow_init(&f->flow, table_id, priority, cookie, match, actions->data,
+                  actions->size, meter_id);
 
     mem_stats.desired_flow_usage += desired_flow_size(f);
     return f;

@@ -938,24 +938,11 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
             if (vector_len(&m->conjunctions) > 1) {
                 ovs_assert(!as_info.name);
             }
-            uint64_t conj_stubs[64 / 8];
-            struct ofpbuf conj;
-
-            ofpbuf_use_stub(&conj, conj_stubs, sizeof conj_stubs);
-            const struct cls_conjunction *src;
-            VECTOR_FOR_EACH_PTR (&m->conjunctions, src) {
-                struct ofpact_conjunction *dst = ofpact_put_CONJUNCTION(&conj);
-                dst->id = src->id;
-                dst->clause = src->clause;
-                dst->n_clauses = src->n_clauses;
-            }
-
-            ofctrl_add_or_append_flow(l_ctx_out->flow_table, ptable,
-                                      lflow->priority, 0,
-                                      &m->match, &conj, &lflow->header_.uuid,
-                                      ctrl_meter_id,
-                                      as_info.name ? &as_info : NULL);
-            ofpbuf_uninit(&conj);
+            ofctrl_add_or_append_conj_flow(l_ctx_out->flow_table, ptable,
+                                           lflow->priority, &m->match,
+                                           &m->conjunctions,
+                                           &lflow->header_.uuid, ctrl_meter_id,
+                                           as_info.name ? &as_info : NULL);
         }
     }
 

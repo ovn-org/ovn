@@ -34,6 +34,7 @@ struct sbrec_meter_table;
 struct sbrec_ecmp_nexthop_table;
 struct shash;
 struct tracked_acl_ids;
+struct vector;
 
 struct ovn_desired_flow_table {
     /* Hash map flow table using flow match conditions as hash key.*/
@@ -96,13 +97,13 @@ void ofctrl_add_flow(struct ovn_desired_flow_table *, uint8_t table_id,
                      const struct match *, const struct ofpbuf *ofpacts,
                      const struct uuid *);
 
-void ofctrl_add_or_append_flow(struct ovn_desired_flow_table *,
-                               uint8_t table_id, uint16_t priority,
-                               uint64_t cookie, const struct match *,
-                               const struct ofpbuf *actions,
-                               const struct uuid *sb_uuid,
-                               uint32_t meter_id,
-                               const struct addrset_info *);
+void ofctrl_add_or_append_conj_flow(struct ovn_desired_flow_table *,
+                                    uint8_t table_id, uint16_t priority,
+                                    const struct match *,
+                                    const struct vector *conjunctions,
+                                    const struct uuid *sb_uuid,
+                                    uint32_t meter_id,
+                                    const struct addrset_info *);
 
 void ofctrl_add_flow_metered(struct ovn_desired_flow_table *desired_flows,
                              uint8_t table_id, uint16_t priority,
