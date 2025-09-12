@@ -831,6 +831,7 @@ OVN_CLEANUP([hv1
 /Certificate must be configured to use SSL/d
 /SSL_read: error/d
 /receive error: Input/d
+/receive error: I\/O error/d
 /connection dropped/d
 ])
 AT_CLEANUP
