@@ -408,7 +408,7 @@ check_sbdb_connection () {
 
 OVS_WAIT_UNTIL([check_sbdb_connection connected])
 
-ovs-vsctl set open . external_ids:ovn-remote=tcp:192.168.0.10:6642
+ovs-vsctl set open . external_ids:ovn-remote=tcp:127.0.0.1:12345
 OVS_WAIT_UNTIL([check_sbdb_connection 'not connected'])
 
 # reset the remote for clean-up
