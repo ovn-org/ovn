@@ -100,6 +100,7 @@ static bool vxlan_mode;
 
 #define MAX_OVN_TAGS 4096
 
+#define MAX_OVN_NF_GROUP_IDS 256
 
 /* Due to various hard-coded priorities need to implement ACLs, the
  * northbound database supports a smaller range of ACL priorities than
@@ -163,6 +164,12 @@ static bool vxlan_mode;
 #define REGBIT_ACL_VERDICT_REJECT "reg8[18]"
 #define REGBIT_ACL_OBS_STAGE "reg8[19..20]"
 #define REG_ACL_TIER "reg8[30..31]"
+
+/* Logical switch registers for network function */
+#define REGBIT_NF_ENABLED         "reg8[21]"
+#define REGBIT_NF_ORIG_DIR        "reg8[22]"
+#define REGBIT_NF_EGRESS_LOOPBACK "reg8[23]"
+#define REG_NF_GROUP_ID           "reg0[22..29]"
 
 enum acl_observation_stage {
     ACL_OBS_FROM_LPORT          = 0,
@@ -255,6 +262,8 @@ static const char *reg_ct_state[] = {
  * |    |     REGBIT_{HAIRPIN/HAIRPIN_REPLY}           |   |                                   |
  * |    | REGBIT_ACL_HINT_{ALLOW_NEW/ALLOW/DROP/BLOCK} |   |                                   |
  * |    |     REGBIT_ACL_{LABEL/STATELESS}             |   |                                   |
+ * |    |     REG_NF_GROUP_ID (22..29)                 |   |                                   |
+ * |    |     (>= ACL_EVAL* && <= NF*)                 |   |                                   |
  * +----+----------------------------------------------+   |                                   |
  * | R1 |       REG_CT_TP_DST (0..15)                  |   |                                   |
  * |    |       REG_CT_PROTO (16..23)                  |   |                                   |
@@ -283,8 +292,11 @@ static const char *reg_ct_state[] = {
  * | R8 |           REG_OBS_COLLECTOR_ID_NEW           | X |                                   |
  * |    |           REG_OBS_COLLECTOR_ID_EST           | R |                                   |
  * |    |       (>= ACL_EVAL* && <= ACL_ACTION*)       | E |                                   |
- * +----+----------------------------------------------+ G +-----------------------------------+
- * | R9 |              OBS_POINT_ID_EST                | 4 |                                   |
+ * |    | REGBIT_NF_{ENABLED/ORIG_DIR/                 | G |                                   |
+ * |    |            EGRESS_LOOPBACK}                  | 4 |                                   |
+ * |    |       (>= ACL_EVAL* && <= NF*)               |   |                                   |
+ * +----+----------------------------------------------+   +-----------------------------------+
+ * | R9 |              OBS_POINT_ID_EST                |   |                                   |
  * |    |       (>= ACL_EVAL* && <= ACL_ACTION*)       |   |                                   |
  * +----+----------------------------------------------+---+-----------------------------------+
  *
@@ -1142,6 +1154,26 @@ lsp_is_clone_to_unknown(const struct nbrec_logical_switch_port *nbsp)
         }
     }
     return false;
+}
+
+/* For a given port name and a given logical_switch datapath, search for a
+ * logical-switch-port with that name or a logical-switch-port that has this
+ * port as parent. Return the port found.
+ *
+ * NOTE: This function could be optimized in future by using a hmap indexed
+ * by parent_name for optimal lookups. */
+static struct ovn_port *
+ovn_port_find_port_or_child(const struct ovn_datapath *od, const char *name)
+{
+    struct ovn_port *op;
+    HMAP_FOR_EACH (op, dp_node, &od->ports) {
+        ovs_assert(op->nbsp);
+        if (!strcmp(op->nbsp->name, name) ||
+            (op->nbsp->parent_name && !strcmp(op->nbsp->parent_name, name))) {
+            return op;
+        }
+    }
+    return NULL;
 }
 
 /* Returns true only if the logical switch port 'up' column is set to true.
@@ -5822,7 +5854,8 @@ build_lswitch_learn_fdb_op(
 
     bool remote = lsp_is_remote(op->nbsp);
 
-    if (remote || !strcmp(op->nbsp->type, "") || lsp_is_switch(op->nbsp)
+    if (remote || (!strcmp(op->nbsp->type, "") && lsp_can_learn_mac(op->nbsp))
+        || lsp_is_switch(op->nbsp)
         || (lsp_is_localnet(op->nbsp) && localnet_can_learn_mac(op->nbsp))) {
         ds_clear(match);
         ds_clear(actions);
@@ -7035,6 +7068,13 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
         || !strcmp(acl->action, "pass")
         || !strcmp(acl->action, "allow-stateless")) {
 
+        if (acl->network_function_group) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_ERR_RL(&rl, "ACL action %s does not support "
+                        "network-function-group", acl->action);
+            return;
+        }
+
         /* For stateless ACLs just sample "new" packets. */
         build_acl_sample_label_action(actions, acl, acl->sample_new, NULL,
                                       obs_stage);
@@ -7098,6 +7138,17 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
         /* For stateful ACLs sample "new" and "established" packets. */
         build_acl_sample_label_action(actions, acl, acl->sample_new,
                                       acl->sample_est, obs_stage);
+
+        /* If ACL has network-function-group configured, populate registers
+         * That will be used later in the network_function stage for packet
+         * redirection. Also, the nfg id from the register setting here, is
+         * copied over to CT label in the stateful stage. */
+        if (acl->network_function_group) {
+            ds_put_format(actions, REGBIT_NF_ENABLED" = 1; "
+                                   REGBIT_NF_ORIG_DIR" = 1; "
+                                   REG_NF_GROUP_ID" = %"PRIu8"; ",
+                          (uint8_t) acl->network_function_group->id);
+        }
         ds_put_cstr(actions, "next;");
         ovn_lflow_add_with_hint(lflows, od, stage, priority,
                                 ds_cstr(match), ds_cstr(actions),
@@ -7108,26 +7159,39 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
          * deletion. We use this to ensure that this
          * connection is still allowed by the currently defined
          * policy. Match untracked packets too.
-         * Commit the connection only if the ACL has a label. This is done
-         * to update the connection tracking entry label in case the ACL
-         * allowing the connection changes. */
+         * Commit the connection only if the ACL has a label or nfg. This is
+         * done to update the connection tracking entry label or nfg config
+         * in case the ACL allowing the connection changes. */
         ds_truncate(match, match_tier_len);
         ds_truncate(actions, log_verdict_len);
         ds_put_format(match, REGBIT_ACL_HINT_ALLOW " == 1 && (%s)",
                       acl->match);
-        if (acl->label || acl->sample_est) {
+        if (acl->label || acl->sample_est || acl->network_function_group) {
             ds_put_cstr(actions, REGBIT_CONNTRACK_COMMIT" = 1; ");
         }
 
         /* For stateful ACLs sample "new" and "established" packets. */
         build_acl_sample_label_action(actions, acl, acl->sample_new,
                                       acl->sample_est, obs_stage);
+
+        if (acl->network_function_group) {
+            ds_put_format(actions, REGBIT_NF_ENABLED" = 1; "
+                                   REGBIT_NF_ORIG_DIR" = 1; "
+                                   REG_NF_GROUP_ID" = %"PRIu8"; ",
+                          (uint8_t) acl->network_function_group->id);
+        }
         ds_put_cstr(actions, "next;");
         ovn_lflow_add_with_hint(lflows, od, stage, priority,
                                 ds_cstr(match), ds_cstr(actions),
                                 &acl->header_, lflow_ref);
     } else if (!strcmp(acl->action, "drop")
                || !strcmp(acl->action, "reject")) {
+        if (acl->network_function_group) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_ERR_RL(&rl, "Acl action %s does not support "
+                        "network-function-group", acl->action);
+            return;
+        }
         /* The implementation of "drop" differs if stateful ACLs are in
          * use for this datapath.  In that case, the actions differ
          * depending on whether the connection was previously committed
@@ -7385,6 +7449,7 @@ build_acl_log_related_flows(const struct ovn_datapath *od,
 
     ds_clear(actions);
     build_acl_log(actions, acl, meter_groups);
+    ds_put_cstr(actions, REGBIT_NF_ENABLED" = ct_label.nf_group; ");
     ds_put_cstr(actions, REGBIT_ACL_VERDICT_ALLOW" = 1; next;");
     /* Related/reply flows need to be set on the opposite pipeline
      * from where the ACL itself is set.
@@ -7556,10 +7621,12 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
                       ds_cstr(&match), REGBIT_ACL_HINT_DROP" = 0; "
                       REGBIT_ACL_HINT_BLOCK" = 0; "
                       REGBIT_ACL_HINT_ALLOW_REL" = 1; "
+                      REGBIT_NF_ENABLED" = ct_label.nf_group; "
                       REGBIT_ACL_VERDICT_ALLOW" = 1; next;",
                       lflow_ref);
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL_EVAL, UINT16_MAX - 3,
                       ds_cstr(&match),
+                      REGBIT_NF_ENABLED" = ct_label.nf_group; "
                       REGBIT_ACL_VERDICT_ALLOW " = 1; next;",
                       lflow_ref);
 
@@ -7577,8 +7644,10 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
          * that's generated from a non-listening UDP port.  */
         const char *ct_in_acl_action =
             REGBIT_ACL_HINT_ALLOW_REL" = 1; "
+            REGBIT_NF_ENABLED" = ct_label.nf_group; "
             REGBIT_ACL_VERDICT_ALLOW" = 1; ct_commit_nat;";
         const char *ct_out_acl_action =
+            REGBIT_NF_ENABLED" = ct_label.nf_group; "
             REGBIT_ACL_VERDICT_ALLOW" = 1; ct_commit_nat;";
         ds_clear(&match);
         ds_put_cstr(&match, "!ct.est && ct.rel && !ct.new && "
@@ -7603,8 +7672,12 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
         ds_clear(&match);
         const char *pre_lb_persisted_acl_action =
             REGBIT_ACL_HINT_ALLOW_PERSISTED" = 1; "
+            REGBIT_NF_ENABLED" = ct_label.nf_group; "
+            REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
+        const char *post_lb_persisted_acl_action =
             REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
         const char *persisted_acl_action =
+            REGBIT_NF_ENABLED" = ct_label.nf_group; "
             REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
         ds_put_format(&match, "ct.est && ct_mark.allow_established == 1");
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_EVAL, UINT16_MAX - 3,
@@ -7618,7 +7691,7 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_AFTER_LB_EVAL,
                       UINT16_MAX - 3,
                       REGBIT_ACL_HINT_ALLOW_PERSISTED" == 1",
-                      persisted_acl_action,
+                      post_lb_persisted_acl_action,
                       lflow_ref);
     }
 
@@ -7645,6 +7718,13 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
     build_acl_sample_default_flows(od, lflows, lflow_ref);
 
     /* Ingress or Egress ACL Table (Various priorities). */
+    /* In case network-function insertion is being used in any of these ACLs,
+     * that ACL will allow the matching packets to proceed
+     * to network-function table to be redirected. As for the same packets then
+     * emerging from the other port of the network-function, the CMS needs to
+     * ensure that the acl_eval stage allows those. For example, if
+     * default_acl_drop is set, there needs to be a rule configured to allow
+     * the packets from network-functions. */
     for (size_t i = 0; i < od->nbs->n_acls; i++) {
         struct nbrec_acl *acl = od->nbs->acls[i];
         build_acl_log_related_flows(od, lflows, acl, has_stateful,
@@ -8343,6 +8423,8 @@ build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
                     "ct_mark.obs_collector_id = " REG_OBS_COLLECTOR_ID_EST "; "
                     "ct_label.obs_point_id = " REG_OBS_POINT_ID_EST "; "
                     "ct_label.acl_id = " REG_ACL_ID "; "
+                    "ct_label.nf_group = 0; "
+                    "ct_label.nf_group_id = 0; "
                   "}; next;");
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
                   REGBIT_CONNTRACK_COMMIT" == 1 && "
@@ -8365,6 +8447,8 @@ build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
                    "ct_mark.blocked = 0; "
                    "ct_mark.allow_established = " REGBIT_ACL_PERSIST_ID "; "
                    "ct_label.acl_id = " REG_ACL_ID "; "
+                   "ct_label.nf_group = 0; "
+                   "ct_label.nf_group_id = 0; "
                 "}; next;");
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
                   REGBIT_CONNTRACK_COMMIT" == 1 && "
@@ -8376,6 +8460,59 @@ build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
                   REGBIT_ACL_LABEL" == 0",
                   ds_cstr(&actions),
                   lflow_ref);
+
+    /* If REGBIT_CONNTRACK_COMMIT is 1 and REGBIT_NF_ENABLED is 1 add
+     * nf_group id to ct label.
+     */
+    ds_clear(&actions);
+    ds_put_cstr(&actions,
+                 "ct_commit { "
+                    "ct_mark.blocked = 0; "
+                    "ct_mark.allow_established = " REGBIT_ACL_PERSIST_ID "; "
+                    "ct_label.acl_id = " REG_ACL_ID "; "
+                    "ct_label.nf_group = 1; "
+                    "ct_label.nf_group_id = " REG_NF_GROUP_ID "; }; next;");
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 110,
+                  REGBIT_CONNTRACK_COMMIT" == 1 && "
+                  REGBIT_ACL_LABEL" == 0 && "
+                  REGBIT_NF_ENABLED" == 1",
+                  ds_cstr(&actions),
+                  lflow_ref);
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_STATEFUL, 110,
+                  REGBIT_CONNTRACK_COMMIT" == 1 && "
+                  REGBIT_ACL_LABEL" == 0 && "
+                  REGBIT_NF_ENABLED" == 1",
+                  ds_cstr(&actions),
+                  lflow_ref);
+
+    /* If REGBIT_CONNTRACK_COMMIT is 1, REGBIT_ACL_LABEL is 1 and
+     * REGBIT_NF_ENABLED is 1, add nf_group id to ct label and also populate
+     * ct_label.label.
+     */
+    ds_clear(&actions);
+    ds_put_cstr(&actions,
+                 "ct_commit { "
+                    "ct_mark.blocked = 0; "
+                    "ct_mark.allow_established = " REGBIT_ACL_PERSIST_ID "; "
+                    "ct_mark.obs_stage = " REGBIT_ACL_OBS_STAGE "; "
+                    "ct_mark.obs_collector_id = " REG_OBS_COLLECTOR_ID_EST "; "
+                    "ct_label.obs_point_id = " REG_OBS_POINT_ID_EST "; "
+                    "ct_label.acl_id = " REG_ACL_ID "; "
+                    "ct_label.nf_group = 1; "
+                    "ct_label.nf_group_id = " REG_NF_GROUP_ID "; }; next;");
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 110,
+                  REGBIT_CONNTRACK_COMMIT" == 1 && "
+                  REGBIT_ACL_LABEL" == 1 && "
+                  REGBIT_NF_ENABLED" == 1",
+                  ds_cstr(&actions),
+                  lflow_ref);
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_STATEFUL, 110,
+                  REGBIT_CONNTRACK_COMMIT" == 1 && "
+                  REGBIT_ACL_LABEL" == 1 && "
+                  REGBIT_NF_ENABLED" == 1",
+                  ds_cstr(&actions),
+                  lflow_ref);
+
     ds_destroy(&actions);
 }
 
@@ -17794,6 +17931,272 @@ build_ls_stateful_flows(const struct ls_stateful_record *ls_stateful_rec,
     build_lb_hairpin(ls_stateful_rec, od, lflows, ls_stateful_rec->lflow_ref);
 }
 
+static struct nbrec_network_function *
+nf_get_active(const struct nbrec_network_function_group *nfg)
+{
+    /* Another patch adds the healthmon support. This is temporary. */
+    return nfg->n_network_function ? nfg->network_function[0] : NULL;
+}
+
+static void
+consider_network_function(struct lflow_table *lflows,
+                          const struct ovn_datapath *od,
+                          struct nbrec_network_function_group *nfg,
+                          bool ingress, struct lflow_ref *lflow_ref)
+{
+    struct ds match = DS_EMPTY_INITIALIZER;
+    struct ds action = DS_EMPTY_INITIALIZER;
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+
+    /* Currently we support only one active port-pair in a group.
+     * If there are multiple active pairs, take the first one.
+     * Load balancing would be added in future. */
+    struct nbrec_network_function *nf = nf_get_active(nfg);
+    if (!nf) {
+        VLOG_ERR_RL(&rl, "No active network function available, nfg:%s",
+                    nfg->name);
+        return;
+    }
+
+    /* If NF ports are present on this LS, use those; otherwise look for child
+     * ports. */
+    struct ovn_port *input_port =
+        ovn_port_find_port_or_child(od, nf->inport->name);
+    struct ovn_port *output_port =
+        ovn_port_find_port_or_child(od, nf->outport->name);
+    if (!input_port || !output_port) {
+        VLOG_ERR_RL(&rl, "Ports not found for network_function %s", nf->name);
+        return;
+    }
+
+    enum ovn_stage fwd_stage, rev_stage;
+    struct ovn_port *redirect_port = NULL;
+    struct ovn_port *reverse_redirect_port = NULL;
+    if (ingress) {
+        fwd_stage = S_SWITCH_IN_NF;
+        rev_stage = S_SWITCH_OUT_NF;
+        redirect_port = input_port;
+        reverse_redirect_port = output_port;
+    } else {
+        fwd_stage = S_SWITCH_OUT_NF;
+        rev_stage = S_SWITCH_IN_NF;
+        redirect_port = output_port;
+        reverse_redirect_port = input_port;
+    }
+
+    /* Add forward flows for redirection:
+     * Flows to handle request packets for new or existing connections.
+     *
+     * from-lport ACL in_nf priority 99:
+     * in_acl_eval has already categorized it and populated nf_enabled,
+     * direction and nfg_id registers. Here this rule sets the outport to the
+     * NF port and does output action to skip the rest of the ingress pipeline.
+     *
+     * to-lport ACL out_nf priority 99:
+     * out_acl_eval does the setting of nf related registers. Then the
+     * out_nf stage sets the outport to NF port and submits the
+     * packet back to ingress pipeline l2_lkup table. The l2_lkup would skip
+     * mac based lookup as the NF_EGRESS_LOOPBACK is set.
+     */
+    if (ingress) {
+        ds_put_format(&action, "outport = %s; output;",
+                      redirect_port->json_key);
+    } else {
+        ds_put_format(&action, "outport = %s; "
+                               REGBIT_NF_EGRESS_LOOPBACK" = 1; "
+                               "next(pipeline=ingress, table=%d);",
+                      redirect_port->json_key,
+                      ovn_stage_get_table(S_SWITCH_IN_L2_LKUP));
+    }
+    ds_put_format(&match, REGBIT_NF_ENABLED" == 1 && "
+                          REGBIT_NF_ORIG_DIR" == 1 && "
+                          REG_NF_GROUP_ID " == %"PRIu8,
+                  (uint8_t) nfg->id);
+    ovn_lflow_add(lflows, od, fwd_stage, 99, ds_cstr(&match),
+                  ds_cstr(&action), lflow_ref);
+    ds_clear(&match);
+    ds_clear(&action);
+
+    /* Add reverse flows for redirection:
+     * Flows to handle response packets for existing connections.
+     *
+     * from-lport ACL out_nf priority 99:
+     * out_acl stage sets the nf_enabled register based on CT label.
+     * Here this rule sets the outport to the NF port based on nfg_id fetched
+     * from the CT label. Then it submits the packet back to ingress pipeline
+     * l2_lkup table. The l2_lkup would skip mac lookup as the
+     * NF_EGRESS_LOOPBACK is set.
+     *
+     * to-lport ACL in_nf priority 99:
+     * in_acl stage sets the nf_enabled register based on CT label.
+     * Here this rule sets the outport to the NF port based on nfg_id fetched
+     * from the CT label. The output action sends the packet out.
+     */
+    if (ingress) {
+        ds_put_format(&action, "outport = %s; "
+                               REGBIT_NF_EGRESS_LOOPBACK" = 1; "
+                               "next(pipeline=ingress, table=%d);",
+                      reverse_redirect_port->json_key,
+                      ovn_stage_get_table(S_SWITCH_IN_L2_LKUP));
+    } else {
+        ds_put_format(&action, "outport = %s; output;",
+                      reverse_redirect_port->json_key);
+    }
+    ds_put_format(&match, REGBIT_NF_ENABLED" == 1 && "
+                          REGBIT_NF_ORIG_DIR" == 0 && "
+                          "ct_label.nf_group_id == %"PRIu8,
+                 (uint8_t) nfg->id);
+    ovn_lflow_add(lflows, od, rev_stage, 99, ds_cstr(&match), ds_cstr(&action),
+                  lflow_ref);
+    ds_clear(&match);
+    ds_clear(&action);
+
+    /* Priority 100 flow in in_nf:
+     * Allow packets to go through if coming from network-function port as
+     * we don't want the packets to be redirected again based on from-lport
+     * match.
+     */
+    ds_put_format(&match, "inport == %s", input_port->json_key);
+    ds_put_format(&action, "next;");
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_NF, 100,
+                  ds_cstr(&match), ds_cstr(&action), lflow_ref);
+    ds_clear(&match);
+
+    ds_put_format(&match, "inport == %s", output_port->json_key);
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_NF, 100,
+                  ds_cstr(&match), ds_cstr(&action), lflow_ref);
+    ds_clear(&match);
+    ds_clear(&action);
+
+    /* Priority 100 flow in out_nf:
+     * Allow packets to go through if outport is network-function port as
+     * we don't want the packets to be redirected again based on to-lport
+     * match.
+     */
+    ds_put_format(&match, "outport == %s", input_port->json_key);
+    ds_put_format(&action, "next;");
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_NF, 100,
+                  ds_cstr(&match), ds_cstr(&action), lflow_ref);
+    ds_clear(&match);
+
+    ds_put_format(&match, "outport == %s", output_port->json_key);
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_NF, 100,
+                  ds_cstr(&match), ds_cstr(&action), lflow_ref);
+    ds_clear(&match);
+    ds_clear(&action);
+
+    /* For packets redirected from egress pipleline to the NF, when they come
+     * out from the other NF port, we don't want to process them again through
+     * egress stages they already went through, especially not again through
+     * conntrack as these packets are already accounted for there. Hence we
+     * need to skip the initial pipeline stages for such packets and directly
+     * start from the NF table. The packets that fall under this category are
+     * the response packets from NF for from-lport ACLs and request packets
+     * received from NF for to-lport ACLs. */
+    ds_put_format(&match, "inport == %s", input_port->json_key);
+    ds_put_format(&action, "next(pipeline=egress, table=%d);",
+                  (ovn_stage_get_table(S_SWITCH_OUT_NF) + 1));
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL, 110, ds_cstr(&match),
+                  ds_cstr(&action), lflow_ref);
+
+    ds_destroy(&match);
+    ds_destroy(&action);
+}
+
+static void
+build_network_function(const struct ovn_datapath *od,
+                       struct lflow_table *lflows,
+                       const struct ls_port_group_table *ls_pgs,
+                       struct lflow_ref *lflow_ref)
+{
+    unsigned long *nfg_ingress_bitmap = bitmap_allocate(MAX_OVN_NF_GROUP_IDS);
+    unsigned long *nfg_egress_bitmap = bitmap_allocate(MAX_OVN_NF_GROUP_IDS);
+
+    /* This flow matches packets injected from out_nf stage -
+     * after it sets the outport - back to in_l2_lkup stage. This rule must be
+     * higher priority than the flows that set outport based on destination mac
+     */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
+                  REGBIT_NF_EGRESS_LOOPBACK" == 1",
+                  "output;", lflow_ref);
+
+    /* Ingress and Egress NF Table (Priority 100): ACL stage determined these
+     * packets should be redirected, but these are multicast/broadcast
+     * packets which can cause L2 loop if redirected to NF. */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_NF, 100,
+                  REGBIT_NF_ENABLED" == 1 && eth.mcast",
+                  "next;", lflow_ref);
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_NF, 100,
+                  REGBIT_NF_ENABLED" == 1 && eth.mcast",
+                  "next;", lflow_ref);
+
+    /* Ingress and Egress NF Table (Priority 0): Packets are forwarded to
+     * next table by default. */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_NF, 0, "1", "next;", lflow_ref);
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_NF, 0, "1", "next;", lflow_ref);
+
+    /* Ingress and Egress NF Table (Priority 1): ACL stage determined these
+     * packets should be redirected, but there are no NF ports found on this
+     * LS. Drop such packets.
+     */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_NF, 1, REGBIT_NF_ENABLED" == 1",
+                  debug_drop_action(), lflow_ref);
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_NF, 1, REGBIT_NF_ENABLED" == 1",
+                  debug_drop_action(), lflow_ref);
+
+    /* Rules for each NF is configured once even if it is referred from
+     * multiple ACLs. */
+
+    /* Add NF flows for ACLs applied to LSs */
+    for (size_t i = 0; i < od->nbs->n_acls; i++) {
+        struct nbrec_acl *acl = od->nbs->acls[i];
+        if (acl->network_function_group) {
+            bool ingress = !strcmp(acl->direction, "from-lport")
+                           ? true : false;
+            unsigned long *nfg_bitmap = ingress ? nfg_ingress_bitmap
+                                                : nfg_egress_bitmap;
+            unsigned int nfg_id = acl->network_function_group->id;
+            if (bitmap_is_set(nfg_bitmap, nfg_id)) {
+                /* Skip if same NF is used again. */
+                continue;
+            }
+            nfg_bitmap = bitmap_set1(nfg_bitmap, nfg_id);
+            consider_network_function(lflows, od, acl->network_function_group,
+                                      ingress, lflow_ref);
+        }
+    }
+
+    /* Add NF flows for ACLs applied to PGs */
+    const struct ls_port_group *ls_pg =
+        ls_port_group_table_find(ls_pgs, od->nbs);
+    if (ls_pg) {
+        const struct ls_port_group_record *ls_pg_rec;
+        HMAP_FOR_EACH (ls_pg_rec, key_node, &ls_pg->nb_pgs) {
+            for (size_t i = 0; i < ls_pg_rec->nb_pg->n_acls; i++) {
+                struct nbrec_acl *acl = ls_pg_rec->nb_pg->acls[i];
+                if (acl->network_function_group) {
+                    bool ingress = !strcmp(acl->direction, "from-lport")
+                                   ? true : false;
+                    unsigned long *nfg_bitmap = ingress
+                                                ? nfg_ingress_bitmap
+                                                : nfg_egress_bitmap;
+                    unsigned int nfg_id = acl->network_function_group->id;
+                    if (bitmap_is_set(nfg_bitmap, nfg_id)) {
+                        /* Skip if same NF is used again. */
+                        continue;
+                    }
+                    nfg_bitmap = bitmap_set1(nfg_bitmap, nfg_id);
+                    consider_network_function(lflows, od,
+                                              acl->network_function_group,
+                                              ingress, lflow_ref);
+                }
+            }
+        }
+    }
+    bitmap_free(nfg_ingress_bitmap);
+    bitmap_free(nfg_egress_bitmap);
+}
+
 struct lswitch_flow_build_info {
     const struct ovn_datapaths *ls_datapaths;
     const struct ovn_datapaths *lr_datapaths;
@@ -17835,7 +18238,7 @@ build_lswitch_and_lrouter_iterate_by_ls(struct ovn_datapath *od,
     build_mirror_default_lflow(od, lsi->lflows);
     build_lswitch_lflows_pre_acl_and_acl(od, lsi->lflows,
                                          lsi->meter_groups, NULL);
-
+    build_network_function(od, lsi->lflows, lsi->ls_port_groups, NULL);
     build_fwd_group_lflows(od, lsi->lflows, NULL);
     build_lswitch_lflows_admission_control(od, lsi->lflows, NULL);
     build_lswitch_learn_fdb_od(od, lsi->lflows, NULL);
@@ -18660,6 +19063,10 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
         /* Make sure 'op' is an lsp and not lrp. */
         ovs_assert(op->nbsp);
 
+        if (!lsp_can_receive_multicast(op->nbsp)) {
+            continue;
+        }
+
         const struct sbrec_multicast_group *sbmc_flood =
             mcast_group_lookup(lflow_input->sbrec_mcast_group_by_name_dp,
                                MC_FLOOD, op->od->sdp->sb_dp);
@@ -18916,6 +19323,9 @@ lflow_handle_ls_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                 lflow_input->features,
                                 lflows,
                                 lflow_input->sbrec_acl_id_table);
+        build_network_function(od, lflows,
+                               lflow_input->ls_port_groups,
+                               ls_stateful_rec->lflow_ref);
 
         /* Sync the new flows to SB. */
         bool handled = lflow_ref_sync_lflows(

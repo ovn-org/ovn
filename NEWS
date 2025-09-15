@@ -14,6 +14,28 @@ Post v25.09.0
        Switches. If set to "true" ovn-controller will give preference to SB
        (Static_)MAC_Bindings of adjacent logical routers over ARPs learned
        through EVPN on the switch.
+   - Add support for Network Function insertion in OVN with stateful traffic
+     redirection capability in Logical Switch datapath. The feature introduces
+     three new NB database tables:
+     * Network_Function: Defines network function entities with inport/outport
+       pairs. These logical_switch_ports need to point to each other using
+       "nf-linked-port" option and also "is-nf" option set to true.
+     * Network_Function_Group: Groups multiple network functions for redundancy
+     * Network_Function_Health_Check: Configurable health monitoring with
+       interval, timeout, success_count and failure_count parameters.
+     Traffic matching ACLs can be redirected through inline network functions
+     using the network_function_group column in ACL. A network function
+     from the group gets automatically selected. Network functions operate in
+     "inline" mode, transparently processing packets without modifying headers,
+     and support both ingress (from-lport) and egress (to-lport) traffic flows.
+     Two new options have been added to Logical_Switch_Port which need to
+     be set to false for ports used as network function inport or outport.
+     - "lsp_learn_mac": This can be used to control mac learning on the port.
+     - "receive_multicast": This can used to control whether multicast packets
+       can be received by the port.
+     NOTE:
+     * Network functions must not modify packet headers.
+     * The feature is not supported in conjunction with Load Balancer.
 
 OVN v25.09.0 - xxx xx xxxx
 --------------------------

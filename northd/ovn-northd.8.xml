@@ -803,6 +803,19 @@
         next tables to commit the label to conntrack).
       </li>
       <li>
+        For <code>allow</code> and <code>allow-related</code> ACL, an
+        additonal set of registers get set in case the ACL has the column
+        <code>network_function_group</code> set to the <var>id</var> of one
+        of the entities in <code>Network_Function_Group</code> table. The
+        <var>id</var> is an internally generated unique identifier for a
+        <code>Network_Function_Group</code> entity. The flow sets
+        <code>reg8[21] = 1</code> (to indicate need for packet redirection),
+        <code>reg8[22] = 1</code> (to indicate this is a request packet) and
+        <code>reg0[22..29] = <var>id</var></code>. These registers are later
+        used in the <code>Network Function</code> table.
+      </li>
+
+      <li>
         <code>allow-stateless</code> ACLs translate into logical flows that set
         the allow bit and advance to the next table.
       </li>
@@ -884,6 +897,12 @@
         If ACL logging and logging of related packets is enabled, then a
         companion priority-65533 flow will be installed that
         accomplishes the same thing but also logs the traffic.
+      </li>
+
+      <li>
+        The priority-65532 flows that allow response and related traffic, also
+        set <code>reg8[21] = ct_label.nf_group</code>, which gets checked in
+        the <code>Network Function</code> table.
       </li>
 
       <li>
@@ -1470,12 +1489,109 @@
         action based on a hint provided by the previous tables (with a match
         for <code>reg0[1] == 1 &amp;&amp; reg0[13] == 0</code>).
       </li>
+
+      <li>
+        Corresponding to each of the two priority 100 flows above, a priority
+        110 flow is added, which has the following extra match and
+        action, but otherwise identical to the priority 100 flow.
+        Match: <code>reg8[21] == 1</code> (packet matched an ACL with
+        <code>network_function_group</code> set)
+        Action: <code>ct_label.nf_group = 1;
+        ct_label.nf_group_id = reg0[22..29];</code>
+        This is to commit the network_function information in conntrack so that
+        the response and related packets can be redirected to it as well.
+      </li>
+
       <li>
         A priority-0 flow that simply moves traffic to the next table.
       </li>
     </ul>
 
-    <h3>Ingress Table 24: ARP/ND responder</h3>
+    <h3>Ingress Table 25: Network Function</h3>
+    <p>
+      This table implements the packet redirection rules for network function.
+      If <code>network_function_group</code> column in <code>from-lport</code>
+      ACL is set to <var>id</var> of a <code>Network_Function_Group</code>
+      entity, the ingress ACL eval stage sets a set of registers as described
+      before. Those registers get used here. In case of <code>to-lport</code>
+      ACLs, the request packet is redirected in egress pipeline as described
+      later. The response is handled here using the network_function_group id
+      committed in ct_label during request processing.
+    </p>
+
+    <p>
+      There can be one or more network_functions in a group. Health monitoring
+      is done by sending datapath probes as par parameters defined in
+      <code>Network_Function_Health_Check</code>. One of the healthy
+      network_functions is selected for each network_function_group.
+      If none are healthy, or if health monitoring is not configured, any one
+      from the group is selected. The rules in this table redirects request
+      packets for <code>from-lport</code> ACLs and response packets for
+      <code>to-lport</code> ACLs to the selected network_function's
+      <code>inport</code>. If the network_function ports are not present on
+      this logical switch, their child ports if any, are used. In the below
+      statements when network function ports are referred it implies the parent
+      or child ports as applicable to this logical switch.
+    </p>
+
+    <ul>
+      <li>
+        For each network_function port <var>P</var>, a priority-100 flow is
+        added that matches <code>inport == <var>P</var></code> and advances
+        packets to the next table. Thus packets coming from network function
+        are not subject to redirection. This flow also sets
+        <code>reg5[16..31] = ct_label.tun_if_id</code>. This is used for
+        tunneling packet to originating host in case of cross host traffic
+        redirection for VLAN subnet. This ct_label field stores the openflow
+        tunnel interface id of the originating host for this connection and
+        gets populated in egress <code>Stateful</code> table.
+      </li>
+
+      <li>
+        For each network_function_group <var>id</var>, a priority-99 flow
+        matches <code>reg8[21] == 1 &amp;&amp; reg8[22] == 1 &amp;&amp;
+        reg0[22..29] == <var>id</var></code> and sets
+        <code>outport=<var>P</var>; output;</code> where <var>P</var> is the
+        <code>inport</code> of the selected network function. This ensures
+        redirection of request packets for flows matching
+        <code>from-lport</code> ACLs with network_function.
+      </li>
+
+      <li>
+        For each network_function_group <var>id</var>, a priority-99 rule
+        matches <code>reg8[21] == 1 &amp;&amp; reg8[22] == 0 &amp;&amp;
+        ct_label.nf_group_id == <var>id</var></code> and takes
+        identical action as above. This ensures redirection of response and
+        related packets matching <code>to-lport</code> ACLs with
+        network_function.
+      </li>
+
+      <li>
+        In each of the above cases, when the same packet comes out unchanged
+        through the other port of the network_function, it would match the
+        priority 100 flow and be forwarded to the next table.
+      </li>
+
+      <li>
+        One priority-100 rule to skip redirection of multicast packets that hit
+        a network_function ACL. Match on <code>8[21] == 1 &amp;&amp;
+        eth.mcast</code> and action is to advance to the next table.
+      </li>
+
+      <li>
+        One priority-1 rule that checks <code>reg8[[21]] == 1</code>, and drops
+        such packets. This is to address the case where a packet hit an ACL
+        with network function but the network function does not have ports or
+        child ports on this logical switch.
+      </li>
+
+      <li>
+        One priority-0 fallback flow that matches all packets and advances to
+        the next table.
+      </li>
+    </ul>
+
+    <h3>Ingress Table 25: ARP/ND responder</h3>
 
     <p>
       This table implements ARP/ND responder in a logical switch for known
@@ -1810,7 +1926,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 25: DHCP option processing</h3>
+    <h3>Ingress Table 26: DHCP option processing</h3>
 
     <p>
       This table adds the DHCPv4 options to a DHCPv4 packet from the
@@ -1871,7 +1987,7 @@ next;
       </li>
     </ul>
 
-    <h3>Ingress Table 26: DHCP responses</h3>
+    <h3>Ingress Table 27: DHCP responses</h3>
 
     <p>
       This table implements DHCP responder for the DHCP replies generated by
@@ -1952,7 +2068,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 27 DNS Lookup</h3>
+    <h3>Ingress Table 28 DNS Lookup</h3>
 
     <p>
       This table looks up and resolves the DNS names to the corresponding
@@ -1981,7 +2097,7 @@ reg0[4] = dns_lookup(); next;
       </li>
     </ul>
 
-    <h3>Ingress Table 28 DNS Responses</h3>
+    <h3>Ingress Table 29 DNS Responses</h3>
 
     <p>
       This table implements DNS responder for the DNS replies generated by
@@ -2016,7 +2132,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress table 29 External ports</h3>
+    <h3>Ingress table 30 External ports</h3>
 
     <p>
       Traffic from the <code>external</code> logical ports enter the ingress
@@ -2059,7 +2175,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 30 Destination Lookup</h3>
+    <h3>Ingress Table 31 Destination Lookup</h3>
 
     <p>
       This table implements switching behavior.  It contains these logical
@@ -2087,6 +2203,14 @@ output;
         A priority-100 flow that forwards all DHCP broadcast packets coming
         from VIFs to the logical router port's MAC when DHCP relay is enabled
         on the logical switch.
+      </li>
+
+      <li>
+        A priority-100 flow that matches <code>reg8[23] == 1</code> and does
+        <code>output</code> action. This ensures that packets that got injected
+        back into this table from egress table <code>Network Function</code>
+        (after it set the <code>outport</code> for packet redirection) get
+        forwarded without any further processing.
       </li>
 
       <li>
@@ -2285,7 +2409,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 31 Destination unknown</h3>
+    <h3>Ingress Table 32 Destination unknown</h3>
 
     <p>
       This table handles the packets whose destination was not found or
@@ -2384,6 +2508,17 @@ output;
       logical router datapath from logical switch datapath for routing.
     </p>
 
+    <p>
+      This table also has a priority-110 flow for each network_function
+      <code>inport</code> <var>P</var> that matches <code>inport ==
+      <var>P</var></code>. The action is to skip all the egress tables up to
+      the <code>Network Function</code> table and advance the packet directly
+      to the table after that. This is for the case where packet redirection
+      happens in egress <code>Network Function</code> table. The same packet
+      when it comes out of the other port of network function, they should not
+      be processed again by the same egress stages, specially they should
+      skip the conntrack processing.
+    </p>
 
     <h3>Egress Table 3: Pre-LB</h3>
 
@@ -2464,6 +2599,13 @@ output;
       <code>Allow-type</code> ACLs set <code>reg8[16]</code>, <code>drop</code>
       ACLs set <code>reg8[17]</code>, and <code>reject</code> ACLs set
       <code>reg8[18]</code>.
+    </p>
+
+    <p>
+      Also like with ingress ACLs, egress ACLs can have network_function_group
+      <var>id</var> and in that case the flow will set <code>reg8[21] = 1;
+      reg8[22] = 1; reg0[22..29] = <var>id</var></code>. These registers are used
+      in the <code>Network Function</code> table.
     </p>
 
     <p>
@@ -2565,7 +2707,84 @@ output;
       there are no rules added for load balancing new connections.
     </p>
 
-    <h3>Egress Table 12: Egress Port Security - check</h3>
+    <ul>
+      <li>
+        A priority 120 flow is added for each network function port
+        <var>P</var> that is identical to the priority 100 flow except for
+        additional match <code>outport == <var>P</var></code> and additional
+        action  <code>ct_label.tun_if_id = reg5[16..31]</code>. In case packets
+        redirected by network function logic gets tunneled from host1 to host2
+        where the network function port resides, host2's physical table 0
+        populates reg5[16..31] with the openflow tunnel interface id on which
+        the packet was received. This priority 120 flow commits the tunnel id
+        to the ct_label. That way, when the same packet comes out of the other
+        port of the network function it can retrieve this information from the
+        peer port's CT entry and tunnel the packet back to host1. This is
+        required to make cross host traffic redirection work for VLAN subnet.
+      </li>
+    </ul>
+
+    <h3>Egress Table 12: Network Function</h3>
+
+    <p>
+      This table is similar to ingress table <code>Network Function</code>
+      except for the role of <code>from-lport</code> and <code>to-lport</code>
+      ACLs reversed, and the packet redirection happening to the selected
+      network function's <code>outport</code> rather than to its
+      <code>inport</code>. Another difference is that the action injects the
+      packets back into the ingress pipeline.
+    </p>
+
+    <ul>
+      <li>
+        Similar to ingress <code>Network Function</code> a priority-100 flow is
+        added for each network_function port, that matches the inport with the
+        network function port and advances the packet to the next table.
+      </li>
+
+      <li>
+        For each network_function_group <var>id</var>, a priority-99 flow
+        matches <code>reg8[21] == 1 &amp;&amp; reg8[22] == 1 &amp;&amp;
+        reg0[22..29] == <var>id</var></code> and sets <code>outport=<var>P</var>;
+        reg8[23] = 1; next(pipeline=ingress, table=<var>T</var>)</code> where
+        <var>P</var> is the <code>outport</code> of the selected
+        network_function and <var>T</var> is the ingress table
+        <code>Destination Lookup</code>. This ensures redirection of request
+        packets matching <code>to-lport</code> ACL with network_function. The
+        packets are injected back to the ingress pipeline from where they get
+        sent out skipping any further lookup because of <code>reg8[23]</code>.
+      </li>
+
+      <li>
+        For each network_function_group <var>id</var>, a priority-99 rule
+        matches <code>reg8[21] == 1 &amp;&amp; reg8[22] == 0 &amp;&amp;
+        ct_label.nf_group_id == <var>id</var></code> and takes
+        identical action as above. This ensures redirection if response and
+        related packets for flows matching <code>from-lport</code> ACLs with
+        network_function.
+      </li>
+
+      <li>
+        In each of the above cases, when the same packet comes out unchanged
+        through the other port of the network_function, it would match the
+        priority 100 flow and be forwarded to the next table.
+      </li>
+
+      <li>
+        One priority-100 multicast match flow same as
+        ingress <code>Network Function</code>.
+      </li>
+
+      <li>
+        One priority-1 flow same as ingress <code>Network Function</code>.
+      </li>
+
+      <li>
+        One priority-0 flow same as ingress <code>Network Function</code>.
+      </li>
+    </ul>
+
+    <h3>Egress Table 13: Egress Port Security - check</h3>
 
     <p>
       This is similar to the port security logic in table
@@ -2594,7 +2813,7 @@ output;
       </li>
     </ul>
 
-    <h3>Egress Table 13: Egress Port Security - Apply</h3>
+    <h3>Egress Table 14: Egress Port Security - Apply</h3>
 
     <p>
       This is similar to the ingress port security logic in ingress table

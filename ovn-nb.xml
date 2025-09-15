@@ -1567,6 +1567,19 @@
           Default: <code>false</code>.
         </column>
 
+        <column name="options" key="lsp_learn_mac"
+                type='{"type": "boolean"}'>
+          If set to <code>false</code>, source MAC address is not learnt by FDB
+          when packets are received on this port. The default value is
+          <code>true</code>.
+        </column>
+
+        <column name="options" key="receive_multicast"
+                type='{"type": "boolean"}'>
+          If set to <code>false</code>, multicast traffic is not forwarded to
+          this port. The default value is <code>true</code>.
+        </column>
+
         <group title="VIF Plugging Options">
           <column name="options" key="vif-plug-type">
             If set, OVN will attempt to perform plugging of this VIF.  In order

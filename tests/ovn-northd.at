@@ -2726,9 +2726,9 @@ check ovn-nbctl --wait=sb \
 AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e ls_in_acl -e ls_out_acl | grep 'ct\.' | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_acl_eval     ), priority=1    , match=(ip && !ct.est), action=(next;)
   table=??(ls_in_acl_eval     ), priority=1    , match=(ip && ct.est && ct_mark.blocked == 1), action=(reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=1    , match=(ct.est && ct_mark.blocked == 0), action=(reg0[[10]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=2    , match=(ct.est && ct_mark.blocked == 1), action=(reg0[[9]] = 1; next;)
@@ -2739,9 +2739,9 @@ AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e
   table=??(ls_in_acl_hint     ), priority=7    , match=(ct.new && !ct.est), action=(reg0[[7]] = 1; reg0[[9]] = 1; reg0[[1]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=1    , match=(ip && !ct.est), action=(next;)
   table=??(ls_out_acl_eval    ), priority=1    , match=(ip && ct.est && ct_mark.blocked == 1), action=(reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_out_acl_hint    ), priority=1    , match=(ct.est && ct_mark.blocked == 0), action=(reg0[[10]] = 1; next;)
   table=??(ls_out_acl_hint    ), priority=2    , match=(ct.est && ct_mark.blocked == 1), action=(reg0[[9]] = 1; next;)
@@ -2770,9 +2770,9 @@ AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e
   table=??(ls_in_acl_eval     ), priority=1001 , match=(reg0[[7]] == 1 && (ip)), action=(reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=1001 , match=(reg0[[8]] == 1 && (ip)), action=(reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=34000, match=(eth.dst == $svc_monitor_mac), action=(reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=0    , match=(1), action=(next;)
@@ -2789,9 +2789,9 @@ AT_CHECK([ovn-sbctl lflow-list ls | grep -e ls_in_acl_hint -e ls_out_acl_hint -e
   table=??(ls_out_acl_eval    ), priority=1001 , match=(reg0[[7]] == 1 && (ip)), action=(reg8[[16]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=1001 , match=(reg0[[8]] == 1 && (ip)), action=(reg8[[16]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=34000, match=(eth.src == $svc_monitor_mac), action=(reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
   table=??(ls_out_acl_hint    ), priority=0    , match=(1), action=(next;)
@@ -4846,8 +4846,10 @@ check_stateful_flows() {
 
     AT_CHECK([grep "ls_in_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; }; next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 0 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 1 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
 ])
 
     AT_CHECK_UNQUOTED([grep "ls_out_pre_lb" sw0flows | ovn_strip_lflows], [0], [dnl
@@ -4870,8 +4872,10 @@ check_stateful_flows() {
 
     AT_CHECK([grep "ls_out_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_out_stateful    ), priority=0    , match=(1), action=(next;)
-  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; }; next;)
-  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; }; next;)
+  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_out_stateful    ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 0 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
+  table=??(ls_out_stateful    ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 1 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
 ])
 }
 
@@ -4914,8 +4918,10 @@ AT_CHECK([grep "ls_in_lb " sw0flows | ovn_strip_lflows], [0], [dnl
 
 AT_CHECK([grep "ls_in_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; }; next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 0 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 1 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
 ])
 
 AT_CHECK([grep "ls_out_pre_lb" sw0flows | ovn_strip_lflows], [0], [dnl
@@ -4935,8 +4941,10 @@ AT_CHECK([grep "ls_out_pre_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
 
 AT_CHECK([grep "ls_out_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_out_stateful    ), priority=0    , match=(1), action=(next;)
-  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; }; next;)
-  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; }; next;)
+  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_out_stateful    ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 0 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
+  table=??(ls_out_stateful    ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 1 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
 ])
 
 # LB with event=false and reject=false
@@ -4972,8 +4980,10 @@ AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 2002 | ovn_strip_lflows], [0]
 ])
 AT_CHECK([grep "ls_in_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; }; next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 0 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 1 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
 ])
 
 AT_CHECK([grep -w "ls_out_acl_eval" sw0flows | grep 2002 | ovn_strip_lflows], [0], [dnl
@@ -4982,8 +4992,10 @@ AT_CHECK([grep -w "ls_out_acl_eval" sw0flows | grep 2002 | ovn_strip_lflows], [0
 ])
 AT_CHECK([grep "ls_out_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_out_stateful    ), priority=0    , match=(1), action=(next;)
-  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; }; next;)
-  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; }; next;)
+  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_out_stateful    ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 0 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
+  table=??(ls_out_stateful    ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 1 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
 ])
 
 # Add new ACL without label
@@ -5001,8 +5013,10 @@ AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 2002 | ovn_strip_lflows], [0]
 ])
 AT_CHECK([grep "ls_in_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; }; next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 0 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 1 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
 ])
 
 AT_CHECK([grep -w "ls_out_acl_eval" sw0flows | grep 2002 | ovn_strip_lflows], [0], [dnl
@@ -5013,8 +5027,10 @@ AT_CHECK([grep -w "ls_out_acl_eval" sw0flows | grep 2002 | ovn_strip_lflows], [0
 ])
 AT_CHECK([grep "ls_out_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_out_stateful    ), priority=0    , match=(1), action=(next;)
-  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; }; next;)
-  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; }; next;)
+  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_out_stateful    ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 0 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
+  table=??(ls_out_stateful    ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 1 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
 ])
 
 # Delete new ACL with label
@@ -5030,8 +5046,10 @@ AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 2002 | ovn_strip_lflows], [0]
 ])
 AT_CHECK([grep "ls_in_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; }; next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 0 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 1 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
 ])
 
 AT_CHECK([grep -w "ls_out_acl_eval" sw0flows | grep 2002 | ovn_strip_lflows], [0], [dnl
@@ -5040,8 +5058,10 @@ AT_CHECK([grep -w "ls_out_acl_eval" sw0flows | grep 2002 | ovn_strip_lflows], [0
 ])
 AT_CHECK([grep "ls_out_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_out_stateful    ), priority=0    , match=(1), action=(next;)
-  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; }; next;)
-  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; }; next;)
+  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_out_stateful    ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_out_stateful    ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 0 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
+  table=??(ls_out_stateful    ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 1 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
 ])
 AT_CLEANUP
 ])
@@ -5069,7 +5089,7 @@ check ovn-nbctl --wait=sb -- acl-del ls -- --label=1234 acl-add ls from-lport 1 
 
 dnl Check that the label is committed to conntrack in the ingress pipeline
 AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --ct new ls "$flow" | grep -e ls_in_stateful -A 2 | grep commit], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
 ])
 
 AS_BOX([from-lport --apply-after-lb allow-related ACL])
@@ -5077,7 +5097,7 @@ check ovn-nbctl --wait=sb -- acl-del ls -- --apply-after-lb --label=1234 acl-add
 
 dnl Check that the label is committed to conntrack in the ingress pipeline
 AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --ct new ls "$flow" | grep -e ls_in_stateful -A 2 | grep commit], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
 ])
 
 AS_BOX([to-lport allow-related ACL])
@@ -5085,7 +5105,7 @@ check ovn-nbctl --wait=sb -- acl-del ls -- --label=1234 acl-add ls to-lport 1 ip
 
 dnl Check that the label is committed to conntrack in the ingress pipeline
 AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --ct new ls "$flow" | grep -e ls_out_stateful -A 2 | grep commit], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
 ])
 
 AT_CLEANUP
@@ -5104,17 +5124,17 @@ ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 6553 | ovn_strip_lflows], [0], [dnl
-  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
 ])
 
 AT_CHECK([grep -w "ls_out_acl_eval" sw0flows | grep 6553 | ovn_strip_lflows], [0], [dnl
-  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
 ])
@@ -5126,18 +5146,18 @@ ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 6553 | ovn_strip_lflows], [0], [dnl
-  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
   table=??(ls_in_acl_eval     ), priority=65532, match=((ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
 ])
 
 AT_CHECK([grep -w "ls_out_acl_eval" sw0flows | grep 6553 | ovn_strip_lflows], [0], [dnl
-  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
   table=??(ls_out_acl_eval    ), priority=65532, match=((ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
 ])
 
@@ -5152,17 +5172,17 @@ ovn-sbctl dump-flows sw0 > sw0flows
 AT_CAPTURE_FILE([sw0flows])
 
 AT_CHECK([grep -w "ls_in_acl_eval" sw0flows | grep 6553 | ovn_strip_lflows], [0], [dnl
-  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
 ])
 
 AT_CHECK([grep -w "ls_out_acl_eval" sw0flows | grep 6553 | ovn_strip_lflows], [0], [dnl
-  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
 ])
@@ -5670,6 +5690,7 @@ check ovn-nbctl --wait=sb sync
 ovn-sbctl lflow-list ls1 > ls1_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
@@ -5682,6 +5703,7 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
 ovn-sbctl lflow-list ls2 > ls2_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls2_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:01), action=(outport = "ls2-ro2"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "vm2"; output;)
@@ -5702,6 +5724,7 @@ check ovn-nbctl --wait=sb lr-nat-add ro2 snat 20.0.0.200 192.168.2.200/30
 ovn-sbctl lflow-list ls1 > ls1_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
@@ -5716,6 +5739,7 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
 ovn-sbctl lflow-list ls2 > ls2_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls2_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:01), action=(outport = "ls2-ro2"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "vm2"; output;)
@@ -5738,6 +5762,7 @@ check ovn-nbctl --wait=sb lr-nat-add ro2 snat 40.0.0.200 192.168.2.148/30
 ovn-sbctl lflow-list ls1 > ls1_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
@@ -5754,6 +5779,7 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
 ovn-sbctl lflow-list ls2 > ls2_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls2_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:01), action=(outport = "ls2-ro2"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "vm2"; output;)
@@ -5775,6 +5801,7 @@ check ovn-nbctl --wait=sb lr-lb-add ro1 lb1
 ovn-sbctl lflow-list ls1 > ls1_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
@@ -5795,6 +5822,7 @@ check ovn-nbctl --wait=sb lb-add lb1 192.168.4.100:80 10.0.0.10:80
 ovn-sbctl lflow-list ls1 > ls1_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
@@ -5822,6 +5850,7 @@ check ovn-nbctl --wait=sb lsp-add ls1 ln-ls1 -- lsp-set-type ln-ls1 localnet
 ovn-sbctl lflow-list ls1 > ls1_lflows
 AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01 && is_chassis_resident("cr-ro1-ls1")), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
@@ -7926,10 +7955,10 @@ check_log_flows_count 0 in
 
 # Now ensure the flows are what we expect them to be for the ACLs we created
 AT_CHECK([cat log_flows], [0], [dnl
-  table=??(ls_out_acl_eval    ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
 ])
 
 rm log_flows
@@ -7947,10 +7976,10 @@ check_log_flows_count 0 in
 
 # And the log flows will remain the same since the stateless ACL will not be represented.
 AT_CHECK([cat log_flows], [0], [dnl
-  table=??(ls_out_acl_eval    ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
 ])
 
 rm log_flows
@@ -7969,8 +7998,8 @@ check_log_flows_count 0 in
 
 # And make sure only the allow ACL has the log flows installed
 AT_CHECK([cat log_flows], [0], [dnl
-  table=??(ls_out_acl_eval    ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
 ])
 
 rm log_flows
@@ -7986,8 +8015,8 @@ check_log_flows_count 0 in
 
 # And make sure only the allow ACL has the log flows installed
 AT_CHECK([cat log_flows], [0], [dnl
-  table=??(ls_out_acl_eval    ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
 ])
 
 rm log_flows
@@ -8031,10 +8060,10 @@ check_log_flows_count 0 out
 
 # Now ensure the flows are what we expect them to be for the ACLs we created
 AT_CHECK([cat log_flows], [0], [dnl
-  table=??(ls_in_acl_eval     ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
 ])
 
 rm log_flows
@@ -8052,10 +8081,10 @@ check_log_flows_count 0 out
 
 # And the log flows will remain the same since the stateless ACL will not be represented.
 AT_CHECK([cat log_flows], [0], [dnl
-  table=??(ls_in_acl_eval     ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 2), action=(log(name="allow_related_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
 ])
 
 rm log_flows
@@ -8074,8 +8103,8 @@ check_log_flows_count 0 out
 
 # And make sure only the allow ACL has the log flows installed
 AT_CHECK([cat log_flows], [0], [dnl
-  table=??(ls_in_acl_eval     ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
 ])
 
 rm log_flows
@@ -8091,8 +8120,8 @@ check_log_flows_count 0 out
 
 # And make sure only the allow ACL has the log flows installed
 AT_CHECK([cat log_flows], [0], [dnl
-  table=??(ls_in_acl_eval     ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65533, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65533, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0 && ct_label.label == 1), action=(log(name="allow_acl", severity=info, verdict=allow); reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
 ])
 
 rm log_flows
@@ -8192,9 +8221,9 @@ AT_CHECK([grep -e "ls_in_acl.*eval" -e "ls_in_acl_hint" lsflows | ovn_strip_lflo
   table=??(ls_in_acl_eval     ), priority=2004 , match=(reg0[[10]] == 1 && (ip4 && ip4.dst == 10.0.0.2)), action=(reg8[[17]] = 1; ct_commit { ct_mark.blocked = 1; ct_label.obs_point_id = 0; }; next;)
   table=??(ls_in_acl_eval     ), priority=2004 , match=(reg0[[9]] == 1 && (ip4 && ip4.dst == 10.0.0.2)), action=(reg8[[17]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=34000, match=(eth.dst == $svc_monitor_mac), action=(reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=0    , match=(1), action=(next;)
@@ -8216,8 +8245,10 @@ AT_CHECK([grep -e "ls_in_lb " lsflows | ovn_strip_lflows], [0], [dnl
 
 AT_CHECK([grep -e "ls_in_stateful" lsflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; }; next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 0 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 1 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
 ])
 
 AS_BOX([Remove and add the ACLs back with the apply-after-lb option])
@@ -8251,9 +8282,9 @@ AT_CHECK([grep -e "ls_in_acl.*eval" -e "ls_in_acl_hint" lsflows | ovn_strip_lflo
   table=??(ls_in_acl_eval     ), priority=1    , match=(ip && !ct.est), action=(next;)
   table=??(ls_in_acl_eval     ), priority=1    , match=(ip && ct.est && ct_mark.blocked == 1), action=(reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=34000, match=(eth.dst == $svc_monitor_mac), action=(reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=0    , match=(1), action=(next;)
@@ -8275,8 +8306,10 @@ AT_CHECK([grep -e "ls_in_lb " lsflows | ovn_strip_lflows], [0], [dnl
 
 AT_CHECK([grep -e "ls_in_stateful" lsflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; }; next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 0 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 1 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
 ])
 
 AS_BOX([Remove and add the ACLs back with a few ACLs with apply-after-lb option])
@@ -8310,9 +8343,9 @@ AT_CHECK([grep -e "ls_in_acl.*eval" -e "ls_in_acl_hint" lsflows | ovn_strip_lflo
   table=??(ls_in_acl_eval     ), priority=2003 , match=(reg0[[7]] == 1 && (ip4 && icmp)), action=(reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=2003 , match=(reg0[[8]] == 1 && (ip4 && icmp)), action=(reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=34000, match=(eth.dst == $svc_monitor_mac), action=(reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=0    , match=(1), action=(next;)
@@ -8334,8 +8367,10 @@ AT_CHECK([grep -e "ls_in_lb " lsflows | ovn_strip_lflows], [0], [dnl
 
 AT_CHECK([grep -e "ls_in_stateful" lsflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_stateful     ), priority=0    , match=(1), action=(next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; }; next;)
-  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 0 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 1 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
 ])
 
 AT_CLEANUP
@@ -8872,9 +8907,9 @@ AT_CHECK([ovn-sbctl dump-flows | grep -E "ls_.*_acl" | ovn_strip_lflows], [0], [
   table=??(ls_in_acl_eval     ), priority=1001 , match=(reg0[[7]] == 1 && (ip4 && tcp)), action=(reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=1001 , match=(reg0[[8]] == 1 && (ip4 && tcp)), action=(reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=34000, match=(eth.dst == $svc_monitor_mac), action=(reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=0    , match=(1), action=(next;)
@@ -8900,9 +8935,9 @@ AT_CHECK([ovn-sbctl dump-flows | grep -E "ls_.*_acl" | ovn_strip_lflows], [0], [
   table=??(ls_out_acl_eval    ), priority=1    , match=(ip && !ct.est), action=(next;)
   table=??(ls_out_acl_eval    ), priority=1    , match=(ip && ct.est && ct_mark.blocked == 1), action=(reg8[[16]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=34000, match=(eth.src == $svc_monitor_mac), action=(reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
   table=??(ls_out_acl_hint    ), priority=0    , match=(1), action=(next;)
@@ -9072,9 +9107,9 @@ AT_CHECK([ovn-sbctl dump-flows | grep -E "ls_.*_acl" | ovn_strip_lflows], [0], [
   table=??(ls_in_acl_eval     ), priority=1    , match=(ip && !ct.est), action=(next;)
   table=??(ls_in_acl_eval     ), priority=1    , match=(ip && ct.est && ct_mark.blocked == 1), action=(reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=34000, match=(eth.dst == $svc_monitor_mac), action=(reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=0    , match=(1), action=(next;)
@@ -9100,9 +9135,9 @@ AT_CHECK([ovn-sbctl dump-flows | grep -E "ls_.*_acl" | ovn_strip_lflows], [0], [
   table=??(ls_out_acl_eval    ), priority=1    , match=(ip && !ct.est), action=(next;)
   table=??(ls_out_acl_eval    ), priority=1    , match=(ip && ct.est && ct_mark.blocked == 1), action=(reg8[[16]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=34000, match=(eth.src == $svc_monitor_mac), action=(reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
   table=??(ls_out_acl_hint    ), priority=0    , match=(1), action=(next;)
@@ -9270,9 +9305,9 @@ AT_CHECK([ovn-sbctl dump-flows | grep -E "ls_.*_acl" | ovn_strip_lflows], [0], [
   table=??(ls_in_acl_eval     ), priority=1    , match=(ip && !ct.est), action=(next;)
   table=??(ls_in_acl_eval     ), priority=1    , match=(ip && ct.est && ct_mark.blocked == 1), action=(reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=34000, match=(eth.dst == $svc_monitor_mac), action=(reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[16]] = 1; next;)
-  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_in_acl_eval     ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
   table=??(ls_in_acl_hint     ), priority=0    , match=(1), action=(next;)
@@ -9300,9 +9335,9 @@ AT_CHECK([ovn-sbctl dump-flows | grep -E "ls_.*_acl" | ovn_strip_lflows], [0], [
   table=??(ls_out_acl_eval    ), priority=1001 , match=(reg0[[7]] == 1 && (ip4 && tcp)), action=(reg8[[16]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=1001 , match=(reg0[[8]] == 1 && (ip4 && tcp)), action=(reg8[[16]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=34000, match=(eth.src == $svc_monitor_mac), action=(reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
   table=??(ls_out_acl_hint    ), priority=0    , match=(1), action=(next;)
@@ -9460,6 +9495,7 @@ ovn_strip_lflows ], [0], [dnl
   table=??(ls_in_check_port_sec), priority=105  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
@@ -9490,6 +9526,7 @@ ovn_strip_lflows ], [0], [dnl
   table=??(ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.src == 00:00:00:00:02:02 && outport == "sw0p2" && !is_chassis_resident("sw0p2") && flags.tunnel_rx == 1), action=(outport <-> inport; next;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:01), action=(outport = "sw0p1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:02), action=(outport = "sw0p2"; output;)
@@ -9523,6 +9560,7 @@ ovn_strip_lflows ], [0], [dnl
   table=??(ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.src == 00:00:00:00:02:02 && outport == "sw0p2" && !is_chassis_resident("sw0p2") && flags.tunnel_rx == 1), action=(outport <-> inport; next;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:01), action=(outport = "sw0p1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:02), action=(outport = "sw0p2"; output;)
@@ -9557,6 +9595,7 @@ ovn_strip_lflows ], [0], [dnl
   table=??(ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.src == 00:00:00:00:02:02 && outport == "sw0p2" && !is_chassis_resident("sw0p2") && flags.tunnel_rx == 1), action=(outport <-> inport; next;)
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:01), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:02), action=(outport = "sw0p2"; output;)
@@ -9591,6 +9630,7 @@ ovn_strip_lflows ], [0], [dnl
   table=??(ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_check_port_sec), priority=70   , match=(inport == "sw0p2"), action=(set_queue(10); reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:01), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:02), action=(outport = "sw0p2"; output;)
@@ -9629,6 +9669,7 @@ ovn_strip_lflows ], [0], [dnl
   table=??(ls_in_check_port_sec), priority=70   , match=(inport == "sw0p1"), action=(reg0[[14]] = 1; next(pipeline=ingress, table=??);)
   table=??(ls_in_check_port_sec), priority=70   , match=(inport == "sw0p2"), action=(set_queue(10); reg0[[15]] = check_in_port_sec(); next;)
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:01), action=(outport = "sw0p1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:00:02), action=(outport = "sw0p2"; output;)
@@ -10888,8 +10929,8 @@ dnl commits to happen:
 dnl - in the egress pipeline of S1, when sending the packet out on s1_r1
 dnl - in the ingress pipeline of S2, when processing the packet on s2_r1
 AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --ct new s1 "$flow" | grep -e ls_in_stateful -e ls_out_stateful -A 2 | grep commit], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; };
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
 ])
 
 AT_CLEANUP
@@ -13213,7 +13254,7 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e ls_in_acl_sample -e ls_in_acl_eval -e l
 dnl Trace new connections.
 flow="$base_flow"
 AT_CHECK_UNQUOTED([ovn_trace --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg9 = 4302;
     sample(probability=65535,collector_set=100,obs_domain=42,obs_point=4301);
     sample(probability=65535,collector_set=200,obs_domain=42,obs_point=4301);
@@ -13222,7 +13263,7 @@ AT_CHECK_UNQUOTED([ovn_trace --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
 dnl Trace estasblished connections.
 flow="$base_flow && ct_label.obs_point_id == 4302"
 AT_CHECK_UNQUOTED([ovn_trace --ct est ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg9 = 4302;
     sample(probability=65535,collector_set=100,obs_domain=43,obs_point=4302);
     sample(probability=65535,collector_set=200,obs_domain=43,obs_point=4302);
@@ -13244,7 +13285,7 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e ls_in_acl_sample -e ls_in_acl_eval -e l
 dnl Trace new connections.
 flow="$base_flow"
 AT_CHECK_UNQUOTED([ovn_trace --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg9 = 0;
     sample(probability=65535,collector_set=100,obs_domain=42,obs_point=4301);
     sample(probability=65535,collector_set=200,obs_domain=42,obs_point=4301);
@@ -13276,7 +13317,7 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e ls_in_acl_after_lb_sample -e ls_in_acl_
 dnl Trace new connections.
 flow="$base_flow"
 AT_CHECK_UNQUOTED([ovn_trace --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg9 = 4302;
     sample(probability=65535,collector_set=100,obs_domain=42,obs_point=4301);
     sample(probability=65535,collector_set=200,obs_domain=42,obs_point=4301);
@@ -13285,7 +13326,7 @@ AT_CHECK_UNQUOTED([ovn_trace --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
 dnl Trace estasblished connections.
 flow="$base_flow && ct_label.obs_point_id == 4302"
 AT_CHECK_UNQUOTED([ovn_trace --ct est ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg9 = 4302;
     sample(probability=65535,collector_set=100,obs_domain=43,obs_point=4302);
     sample(probability=65535,collector_set=200,obs_domain=43,obs_point=4302);
@@ -13307,7 +13348,7 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e ls_in_acl_after_lb_sample -e ls_in_acl_
 dnl Trace new connections.
 flow="$base_flow"
 AT_CHECK_UNQUOTED([ovn_trace --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg9 = 0;
     sample(probability=65535,collector_set=100,obs_domain=42,obs_point=4301);
     sample(probability=65535,collector_set=200,obs_domain=42,obs_point=4301);
@@ -13339,8 +13380,8 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e ls_out_acl_sample -e ls_out_acl_eval -e
 dnl Trace new connections.
 flow="$base_flow"
 AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; };
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg9 = 4302;
     sample(probability=65535,collector_set=100,obs_domain=42,obs_point=4301);
     sample(probability=65535,collector_set=200,obs_domain=42,obs_point=4301);
@@ -13349,7 +13390,7 @@ AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new ls "$flow" | TRACE_FILTER], [0], 
 dnl Trace estasblished connections.
 flow="$base_flow && ct_label.obs_point_id == 4302"
 AT_CHECK_UNQUOTED([ovn_trace --ct est --ct est ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg9 = 4302;
     sample(probability=65535,collector_set=100,obs_domain=43,obs_point=4302);
     sample(probability=65535,collector_set=200,obs_domain=43,obs_point=4302);
@@ -13371,8 +13412,8 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e ls_out_acl_sample -e ls_out_acl_eval -e
 dnl Trace new connections.
 flow="$base_flow"
 AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; };
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg9 = 0;
     sample(probability=65535,collector_set=100,obs_domain=42,obs_point=4301);
     sample(probability=65535,collector_set=200,obs_domain=42,obs_point=4301);
@@ -13434,7 +13475,7 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e ls_in_acl_sample -e ls_in_acl_eval -e l
 dnl Trace new connections.
 flow="$base_flow"
 AT_CHECK_UNQUOTED([ovn_trace --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg8[[0..7]] = 1;
     reg8[[8..15]] = 1;
     reg9 = 4302;
@@ -13444,7 +13485,7 @@ AT_CHECK_UNQUOTED([ovn_trace --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
 dnl Trace estasblished connections.
 flow="$base_flow && ct_label.obs_point_id == 4302"
 AT_CHECK_UNQUOTED([ovn_trace --ct est ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg8[[0..7]] = 1;
     reg8[[8..15]] = 1;
     reg9 = 4302;
@@ -13472,7 +13513,7 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e ls_in_acl_sample -e ls_in_acl_eval -e l
 dnl Trace new connections.
 flow="$base_flow"
 AT_CHECK_UNQUOTED([ovn_trace --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg8[[0..7]] = 1;
     reg8[[8..15]] = 1;
     reg9 = 4302;
@@ -13482,7 +13523,7 @@ AT_CHECK_UNQUOTED([ovn_trace --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
 dnl Trace estasblished connections.
 flow="$base_flow && ct_label.obs_point_id == 4302 && ct_mark.obs_stage == 0 && ct_mark.obs_collector_id == 1"
 AT_CHECK_UNQUOTED([ovn_trace --ct est ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg8[[0..7]] = 1;
     reg8[[8..15]] = 1;
     reg9 = 4302;
@@ -13505,7 +13546,7 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e ls_in_acl_sample -e ls_in_acl_eval -e l
 dnl Trace new connections.
 flow="$base_flow"
 AT_CHECK_UNQUOTED([ovn_trace --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg8[[0..7]] = 1;
     reg8[[8..15]] = 0;
     reg9 = 0;
@@ -13540,7 +13581,7 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e ls_in_acl_after_lb_sample -e ls_in_acl_
 dnl Trace new connections.
 flow="$base_flow"
 AT_CHECK_UNQUOTED([ovn_trace --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg8[[0..7]] = 1;
     reg8[[8..15]] = 1;
     reg9 = 4302;
@@ -13550,7 +13591,7 @@ AT_CHECK_UNQUOTED([ovn_trace --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
 dnl Trace estasblished connections.
 flow="$base_flow && ct_label.obs_point_id == 4302 && ct_mark.obs_stage == 1 && ct_mark.obs_collector_id == 1"
 AT_CHECK_UNQUOTED([ovn_trace --ct est ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg8[[0..7]] = 1;
     reg8[[8..15]] = 1;
     reg9 = 4302;
@@ -13573,7 +13614,7 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e ls_in_acl_after_lb_sample -e ls_in_acl_
 dnl Trace new connections.
 flow="$base_flow"
 AT_CHECK_UNQUOTED([ovn_trace --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg8[[0..7]] = 1;
     reg8[[8..15]] = 0;
     reg9 = 0;
@@ -13608,8 +13649,8 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e ls_out_acl_sample -e ls_out_acl_eval -e
 dnl Trace new connections.
 flow="$base_flow"
 AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; };
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg8[[0..7]] = 1;
     reg8[[8..15]] = 1;
     reg9 = 4302;
@@ -13619,7 +13660,7 @@ AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new ls "$flow" | TRACE_FILTER], [0], 
 dnl Trace estasblished connections.
 flow="$base_flow && ct_label.obs_point_id == 4302 && ct_mark.obs_stage == 2 && ct_mark.obs_collector_id == 1"
 AT_CHECK_UNQUOTED([ovn_trace --ct est --ct est ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg8[[0..7]] = 1;
     reg8[[8..15]] = 1;
     reg9 = 4302;
@@ -13642,8 +13683,8 @@ AT_CHECK([ovn-sbctl lflow-list | grep -e ls_out_acl_sample -e ls_out_acl_eval -e
 dnl Trace new connections.
 flow="$base_flow"
 AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new ls "$flow" | TRACE_FILTER], [0], [dnl
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; };
-    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
+    ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; };
     reg8[[0..7]] = 1;
     reg8[[8..15]] = 0;
     reg9 = 0;
@@ -13953,6 +13994,7 @@ AT_CHECK([grep "lr_out_egr_loop" lr0flows | ovn_strip_lflows], [0], [dnl
 
 AT_CHECK([grep "ls_in_l2_lkup" publicflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:ff:02 && is_chassis_resident("cr-lr0-public")), action=(outport = "public-lr0"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && is_chassis_resident("sw0-port1")), action=(outport = "public-lr0"; output;)
@@ -14122,6 +14164,7 @@ AT_CHECK([grep "lr_out_egr_loop" lr0flows | ovn_strip_lflows], [0], [dnl
 
 AT_CHECK([grep "ls_in_l2_lkup" publicflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:ff:02 && !is_chassis_resident("cr-public-lr0")), action=(outport = "cr-public-lr0"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:ff:02 && is_chassis_resident("cr-public-lr0")), action=(outport = "public-lr0"; output;)
@@ -17671,9 +17714,9 @@ AT_CHECK(
 
 AT_CHECK(
   [grep -E 'ls_out_acl_eval' sw0flows | grep 65532 | ovn_strip_lflows], [0], [dnl
-  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(ct.inv || (ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
 ])
@@ -17691,10 +17734,10 @@ AT_CHECK(
 # We do not match conntrack invalid packets in case of load balancers with stateless ACLs.
 AT_CHECK(
   [grep -E 'ls_out_acl_eval' sw0flows | grep 65532 | ovn_strip_lflows], [0], [dnl
-  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
   table=??(ls_out_acl_eval    ), priority=65532, match=((ct.est && ct.rpl && ct_mark.blocked == 1)), action=(reg8[[17]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[16]] = 1; next;)
-  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
   table=??(ls_out_acl_eval    ), priority=65532, match=(nd || nd_ra || nd_rs || mldv1 || mldv2), action=(reg8[[16]] = 1; next;)
 ])
 
@@ -18210,6 +18253,253 @@ AT_CHECK([grep 'ls_in_l2_unknown' lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(outport = remote_outport; output;)
   table=??(ls_in_l2_unknown   ), priority=25   , match=(remote_outport == "none"), action=(output;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none" && remote_outport == "none"), action=(drop;)
+])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Check network function])
+ovn_start
+
+# Create a NF and add it to a from-lport ACL.
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-nf-p1
+check ovn-nbctl lsp-add sw0 sw0-nf-p2
+check ovn-nbctl set logical_switch_port sw0-nf-p1 \
+    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:is-nf=true options:nf-linked-port=sw0-nf-p2
+check ovn-nbctl set logical_switch_port sw0-nf-p2 \
+    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:is-nf=true options:nf-linked-port=sw0-nf-p1
+check ovn-nbctl nf-add nf0 sw0-nf-p1 sw0-nf-p2
+check ovn-nbctl nfg-add nfg0 1 inline nf0
+
+check ovn-nbctl lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 "00:00:00:00:00:01 10.0.0.2"
+check ovn-nbctl lsp-add sw0 sw0-p2 -- lsp-set-addresses sw0-p2 "00:00:00:00:00:02 10.0.0.3"
+check ovn-nbctl lsp-add sw0 sw0-p3 -- lsp-set-addresses sw0-p3 "00:00:00:00:00:03 10.0.0.4"
+
+check ovn-nbctl pg-add pg0 sw0-p1
+check ovn-nbctl acl-add pg0 from-lport 1002 "inport == @pg0 && ip4.dst == 10.0.0.3" allow-related nfg0
+
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows sw0 > sw0flows
+AT_CAPTURE_FILE([sw0flows])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_acl_eval' sw0flows | ovn_strip_lflows | grep pg0 | sort], [0], [dnl
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[7]] == 1 && (inport == @pg0 && ip4.dst == 10.0.0.3)), action=(reg8[[16]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[8]] == 1 && (inport == @pg0 && ip4.dst == 10.0.0.3)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 1; next;)
+])
+
+AT_CHECK([grep "ls_in_stateful" sw0flows | ovn_strip_lflows | grep nf_group], [0], [dnl
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 0), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=100  , match=(reg0[[1]] == 1 && reg0[[13]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 0; ct_label.nf_group_id = 0; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 0 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
+  table=??(ls_in_stateful     ), priority=110  , match=(reg0[[1]] == 1 && reg0[[13]] == 1 && reg8[[21]] == 1), action=(ct_commit { ct_mark.blocked = 0; ct_mark.allow_established = reg0[[20]]; ct_mark.obs_stage = reg8[[19..20]]; ct_mark.obs_collector_id = reg8[[8..15]]; ct_label.obs_point_id = reg9; ct_label.acl_id = reg2[[16..31]]; ct_label.nf_group = 1; ct_label.nf_group_id = reg0[[22..29]]; }; next;)
+])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_network_function' sw0flows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(ls_in_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "sw0-nf-p1"), action=(next;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "sw0-nf-p2"), action=(next;)
+  table=??(ls_in_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(outport = "sw0-nf-p1"; output;)
+  table=??(ls_out_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "sw0-nf-p1"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "sw0-nf-p2"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_group_id == 1), action=(outport = "sw0-nf-p2"; reg8[[23]] = 1; next(pipeline=ingress, table=??);)
+])
+
+AT_CHECK([grep "ls_in_l2_lkup" sw0flows | ovn_strip_lflows | grep 'priority=100'], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
+])
+
+AT_CHECK([grep "ls_out_pre_acl" sw0flows | ovn_strip_lflows | grep 'sw0-nf-p1'], [0], [dnl
+  table=??(ls_out_pre_acl     ), priority=110  , match=(inport == "sw0-nf-p1"), action=(next(pipeline=egress, table=??);)
+])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_acl_eval' sw0flows | ovn_strip_lflows | grep nf_group | sort], [0], [dnl
+  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[21]] = ct_label.nf_group; reg8[[16]] = 1; next;)
+])
+
+# ICMP packets from sw0-p1 should be redirected to sw0-nf-p1, but in revervse direction should not.
+flow_eth_from_p1='eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02'
+flow_ip_from_p1='ip.ttl==64 && ip4.src == 10.0.0.2 && ip4.dst == 10.0.0.3'
+flow_icmp='icmp4.type == 8'
+flow_from_p1="inport == \"sw0-p1\" && ${flow_eth_from_p1} && ${flow_ip_from_p1} && ${flow_icmp}"
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal sw0 "${flow_from_p1}"], [0], [dnl
+ct_next(ct_state=new|trk) {
+    ct_next(ct_state=new|trk) {
+        output("sw0-nf-p1");
+    };
+};
+])
+flow_eth_rev='eth.src == 00:00:00:00:00:02 && eth.dst == 00:00:00:00:00:01'
+flow_ip_rev='ip.ttl==64 && ip4.src == 10.0.0.3 && ip4.dst == 10.0.0.2'
+flow_rev="inport == \"sw0-p2\" && ${flow_eth_rev} && ${flow_ip_rev} && ${flow_icmp}"
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal sw0 "${flow_rev}"], [0], [dnl
+ct_next(ct_state=new|trk) {
+    ct_next(ct_state=new|trk) {
+        output("sw0-p1");
+    };
+};
+])
+
+# Create another NF and add it to a to-lport ACL.
+check ovn-nbctl lsp-add sw0 sw0-nf-p3
+check ovn-nbctl lsp-add sw0 sw0-nf-p4
+check ovn-nbctl set logical_switch_port sw0-nf-p3 \
+    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:is-nf=true options:nf-linked-port=sw0-nf-p4
+check ovn-nbctl set logical_switch_port sw0-nf-p4 \
+    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:is-nf=true options:nf-linked-port=sw0-nf-p3
+check ovn-nbctl nf-add nf1 sw0-nf-p3 sw0-nf-p4
+check ovn-nbctl nfg-add nfg1 2 inline nf1
+check ovn-nbctl acl-add pg0 to-lport 1003 "outport == @pg0 && ip4.src == 10.0.0.4" allow-related nfg1
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows sw0 > sw0flows
+AT_CAPTURE_FILE([sw0flows])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_acl_eval' sw0flows | ovn_strip_lflows | grep pg0 | sort], [0], [dnl
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[7]] == 1 && (inport == @pg0 && ip4.dst == 10.0.0.3)), action=(reg8[[16]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[8]] == 1 && (inport == @pg0 && ip4.dst == 10.0.0.3)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=2003 , match=(reg0[[7]] == 1 && (outport == @pg0 && ip4.src == 10.0.0.4)), action=(reg8[[16]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 2; next;)
+  table=??(ls_out_acl_eval    ), priority=2003 , match=(reg0[[8]] == 1 && (outport == @pg0 && ip4.src == 10.0.0.4)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 2; next;)
+])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_network_function' sw0flows | ovn_strip_lflows |  sort], [0], [dnl
+  table=??(ls_in_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "sw0-nf-p1"), action=(next;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "sw0-nf-p2"), action=(next;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "sw0-nf-p3"), action=(next;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "sw0-nf-p4"), action=(next;)
+  table=??(ls_in_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_group_id == 2), action=(outport = "sw0-nf-p3"; output;)
+  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(outport = "sw0-nf-p1"; output;)
+  table=??(ls_out_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "sw0-nf-p1"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "sw0-nf-p2"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "sw0-nf-p3"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "sw0-nf-p4"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_group_id == 1), action=(outport = "sw0-nf-p2"; reg8[[23]] = 1; next(pipeline=ingress, table=??);)
+  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 2), action=(outport = "sw0-nf-p4"; reg8[[23]] = 1; next(pipeline=ingress, table=??);)
+])
+
+# ICMP packets to sw0-p1 should be redirected to sw0-nf-p4.
+flow_eth_to_p1='eth.src == 00:00:00:00:00:03 && eth.dst == 00:00:00:00:00:01'
+flow_ip_to_p1='ip.ttl==64 && ip4.src == 10.0.0.4 && ip4.dst == 10.0.0.2'
+flow_to_p1="inport == \"sw0-p3\" && ${flow_eth_to_p1} && ${flow_ip_to_p1} && ${flow_icmp}"
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --ct new --minimal sw0 "${flow_to_p1}"], [0], [dnl
+ct_next(ct_state=new|trk) {
+    ct_next(ct_state=new|trk) {
+        ct_next(ct_state=new|trk) {
+            output("sw0-nf-p4");
+        };
+    };
+};
+])
+
+# Create another LS and add a port as member of pg0.
+# Create child of NF ports on the new LS.
+# The redirection rules on the new LS should use the child ports.
+check ovn-nbctl ls-add sw1
+check ovn-nbctl lsp-add sw1 sw1-p1 -- lsp-set-addresses sw1-p1 "00:00:00:00:00:04 10.1.0.2"
+check ovn-nbctl lsp-add sw1 sw1-p2 -- lsp-set-addresses sw1-p2 "00:00:00:00:00:05 10.1.0.3"
+check ovn-nbctl pg-set-ports pg0 sw0-p1 sw1-p1
+check ovn-nbctl lsp-add sw1 sw1-nf-p1 sw0-nf-p1 100
+check ovn-nbctl lsp-add sw1 sw1-nf-p2 sw0-nf-p2 100
+check ovn-nbctl lsp-add sw1 sw1-nf-p3 sw0-nf-p3 100
+check ovn-nbctl lsp-add sw1 sw1-nf-p4 sw0-nf-p4 100
+check ovn-nbctl set logical_switch_port sw1-nf-p1 \
+    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:is-nf=true options:nf-linked-port=sw1-nf-p2
+check ovn-nbctl set logical_switch_port sw1-nf-p2 \
+    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:is-nf=true options:nf-linked-port=sw1-nf-p1
+check ovn-nbctl set logical_switch_port sw1-nf-p3 \
+    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:is-nf=true options:nf-linked-port=sw1-nf-p4
+check ovn-nbctl set logical_switch_port sw1-nf-p4 \
+    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:is-nf=true options:nf-linked-port=sw1-nf-p3
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows sw1 > sw1flows
+AT_CAPTURE_FILE([sw1flows])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_acl_eval' sw0flows | ovn_strip_lflows | grep pg0 | sort], [0], [dnl
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[7]] == 1 && (inport == @pg0 && ip4.dst == 10.0.0.3)), action=(reg8[[16]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[8]] == 1 && (inport == @pg0 && ip4.dst == 10.0.0.3)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=2003 , match=(reg0[[7]] == 1 && (outport == @pg0 && ip4.src == 10.0.0.4)), action=(reg8[[16]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 2; next;)
+  table=??(ls_out_acl_eval    ), priority=2003 , match=(reg0[[8]] == 1 && (outport == @pg0 && ip4.src == 10.0.0.4)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 2; next;)
+])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_network_function' sw1flows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(ls_in_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "sw1-nf-p1"), action=(next;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "sw1-nf-p2"), action=(next;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "sw1-nf-p3"), action=(next;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "sw1-nf-p4"), action=(next;)
+  table=??(ls_in_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_group_id == 2), action=(outport = "sw1-nf-p3"; output;)
+  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(outport = "sw1-nf-p1"; output;)
+  table=??(ls_out_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "sw1-nf-p1"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "sw1-nf-p2"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "sw1-nf-p3"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "sw1-nf-p4"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_group_id == 1), action=(outport = "sw1-nf-p2"; reg8[[23]] = 1; next(pipeline=ingress, table=??);)
+  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 2), action=(outport = "sw1-nf-p4"; reg8[[23]] = 1; next(pipeline=ingress, table=??);)
+])
+
+# ICMP packets from sw1-p1 should be redirected to sw1-nf-p1.
+flow_eth_from_sw1p1='eth.src == 00:00:00:00:00:04 && eth.dst == 00:00:00:00:00:02'
+flow_ip_from_sw1p1='ip.ttl==64 && ip4.src == 10.1.0.2 && ip4.dst == 10.0.0.3'
+flow_from_sw1p1="inport == \"sw1-p1\" && ${flow_eth_from_sw1p1} && ${flow_ip_from_sw1p1} && ${flow_icmp}"
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal sw1 "${flow_from_sw1p1}"], [0], [dnl
+ct_next(ct_state=new|trk) {
+    ct_next(ct_state=new|trk) {
+        output("sw1-nf-p1");
+    };
+};
+])
+
+# ICMP packets to sw1-p1 should be redirected to sw1-nf-p4.
+flow_eth_to_sw1p1='eth.src == 00:00:00:00:00:05 && eth.dst == 00:00:00:00:00:04'
+flow_ip_to_sw1p1='ip.ttl==64 && ip4.src == 10.0.0.4 && ip4.dst == 10.1.0.2'
+flow_to_sw1p1="inport == \"sw1-p2\" && ${flow_eth_to_sw1p1} && ${flow_ip_to_sw1p1} && ${flow_icmp}"
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --ct new --minimal sw1 "${flow_to_sw1p1}"], [0], [dnl
+ct_next(ct_state=new|trk) {
+    ct_next(ct_state=new|trk) {
+        ct_next(ct_state=new|trk) {
+            output("sw1-nf-p4");
+        };
+    };
+};
 ])
 
 AT_CLEANUP

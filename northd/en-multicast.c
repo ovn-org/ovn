@@ -227,7 +227,7 @@ build_mcast_groups(struct multicast_igmp_data *data,
     }
 
     HMAP_FOR_EACH (op, key_node, ls_ports) {
-        if (lsp_is_enabled(op->nbsp)) {
+        if (lsp_is_enabled(op->nbsp) && lsp_can_receive_multicast(op->nbsp)) {
             ovn_multicast_add(&data->mcast_groups, &mc_flood, op);
 
             if (!lsp_is_router(op->nbsp)) {
