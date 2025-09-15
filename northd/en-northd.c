@@ -123,6 +123,10 @@ northd_get_input_data(struct engine_node *node,
     input_data->sb_options = &global_config->sb_options;
     input_data->svc_monitor_mac = global_config->svc_monitor_mac;
     input_data->svc_monitor_mac_ea = global_config->svc_monitor_mac_ea;
+    input_data->svc_monitor_mac_dst = global_config->svc_monitor_mac_dst;
+    input_data->svc_monitor_mac_ea_dst = global_config->svc_monitor_mac_ea_dst;
+    input_data->svc_monitor_ip = global_config->svc_monitor_ip;
+    input_data->svc_monitor_ip_dst = global_config->svc_monitor_ip_dst;
     input_data->features = &global_config->features;
     input_data->vxlan_mode = global_config->vxlan_mode;
 

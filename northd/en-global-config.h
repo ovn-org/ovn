@@ -37,13 +37,19 @@ struct ed_type_global_config {
     const struct nbrec_nb_global *nb_global;
     const struct sbrec_sb_global *sb_global;
 
-    /* MAC allocated for service monitor usage. Just one mac is allocated
+    /* MAC allocated for service monitor usage. Just one pair is allocated
      * for this purpose and ovn-controller's on each chassis will make use
-     * of this mac when sending out the packets to monitor the services
+     * of this pair when sending out the packets to monitor the services
      * defined in Service_Monitor Southbound table. Since these packets
-     * are locally handled, having just one mac is good enough. */
+     * are locally handled, having just one pair is good enough. */
     char svc_monitor_mac[ETH_ADDR_STRLEN + 1];
     struct eth_addr svc_monitor_mac_ea;
+    char svc_monitor_mac_dst[ETH_ADDR_STRLEN + 1];
+    struct eth_addr svc_monitor_mac_ea_dst;
+
+    /* IP addresses configured for NF service monitor usage. */
+    char *svc_monitor_ip;
+    char *svc_monitor_ip_dst;
 
     struct chassis_features features;
 

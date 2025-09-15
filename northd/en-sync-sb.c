@@ -49,7 +49,8 @@ static void sync_addr_sets(struct ovsdb_idl_txn *ovnsb_txn,
                            const struct sbrec_address_set_table *,
                            const struct lr_stateful_table *,
                            const struct ovn_datapaths *,
-                           const char *svc_monitor_macp);
+                           const char *svc_monitor_macp,
+                           const char *svc_monitor_macp_dst);
 static const struct sbrec_address_set *sb_address_set_lookup_by_name(
     struct ovsdb_idl_index *, const char *name);
 static void update_sb_addr_set(struct sorted_array *,
@@ -104,7 +105,8 @@ en_sync_to_sb_addr_set_run(struct engine_node *node, void *data OVS_UNUSED)
                    nb_port_group_table, sb_address_set_table,
                    &lr_stateful_data->table,
                    &northd_data->lr_datapaths,
-                   global_config->svc_monitor_mac);
+                   global_config->svc_monitor_mac,
+                   global_config->svc_monitor_mac_dst);
 
     return EN_UPDATED;
 }
@@ -464,7 +466,8 @@ sync_addr_sets(struct ovsdb_idl_txn *ovnsb_txn,
                const struct sbrec_address_set_table *sb_address_set_table,
                const struct lr_stateful_table *lr_statefuls,
                const struct ovn_datapaths *lr_datapaths,
-               const char *svc_monitor_macp)
+               const char *svc_monitor_macp,
+               const char *svc_monitor_macp_dst)
 {
     struct shash sb_address_sets = SHASH_INITIALIZER(&sb_address_sets);
 
@@ -474,8 +477,10 @@ sync_addr_sets(struct ovsdb_idl_txn *ovnsb_txn,
         shash_add(&sb_address_sets, sb_address_set->name, sb_address_set);
     }
 
-    /* Service monitor MAC. */
-    struct sorted_array svc = sorted_array_create(&svc_monitor_macp, 1, false);
+    /* Service monitor MACs. */
+    const char *svc_macs[] = {svc_monitor_macp, svc_monitor_macp_dst};
+    struct sorted_array svc =
+        sorted_array_from_unsorted(svc_macs, ARRAY_SIZE(svc_macs), false);
     sync_addr_set(ovnsb_txn, "svc_monitor_mac", &svc, &sb_address_sets);
     sorted_array_destroy(&svc);
 

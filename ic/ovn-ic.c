@@ -2471,6 +2471,9 @@ lookup_sb_svc_rec(struct ic_context *ctx,
     SBREC_SERVICE_MONITOR_FOR_EACH_EQUAL (sb_rec, key,
         ctx->sbrec_service_monitor_by_remote_type_logical_port) {
         if (db_rec->port == sb_rec->port &&
+            ((db_rec->type && sb_rec->type &&
+              !strcmp(db_rec->type, sb_rec->type)) ||
+             (!db_rec->type && !sb_rec->type)) &&
             !strcmp(db_rec->ip, sb_rec->ip) &&
             !strcmp(db_rec->src_ip, sb_rec->src_ip) &&
             !strcmp(db_rec->protocol, sb_rec->protocol)) {
@@ -2505,6 +2508,9 @@ lookup_icsb_svc_rec(struct ic_context *ctx,
     ICSBREC_SERVICE_MONITOR_FOR_EACH_EQUAL (ic_rec, key,
         ctx->icsbrec_service_monitor_by_target_az_logical_port) {
         if (db_rec->port == ic_rec->port &&
+            ((db_rec->type && ic_rec->type &&
+              !strcmp(db_rec->type, ic_rec->type)) ||
+             (!db_rec->type && !ic_rec->type)) &&
             !strcmp(db_rec->ip, ic_rec->ip) &&
             !strcmp(db_rec->src_ip, ic_rec->src_ip) &&
             !strcmp(db_rec->protocol, ic_rec->protocol) &&
@@ -2582,6 +2588,7 @@ sync_service_monitor(struct ic_context *ctx)
             sbrec_service_monitor_set_status(db_rec, ic_rec->status);
         } else {
             ic_rec = icsbrec_service_monitor_insert(ctx->ovnisb_txn);
+            icsbrec_service_monitor_set_type(ic_rec, db_rec->type);
             icsbrec_service_monitor_set_ip(ic_rec, db_rec->ip);
             icsbrec_service_monitor_set_port(ic_rec, db_rec->port);
             icsbrec_service_monitor_set_src_ip(ic_rec, db_rec->src_ip);
@@ -2612,6 +2619,7 @@ sync_service_monitor(struct ic_context *ctx)
                                                sb_rec->status);
         } else {
             sb_rec = sbrec_service_monitor_insert(ctx->ovnsb_txn);
+            sbrec_service_monitor_set_type(sb_rec, db_rec->type);
             sbrec_service_monitor_set_ip(sb_rec, db_rec->ip);
             sbrec_service_monitor_set_port(sb_rec, db_rec->port);
             sbrec_service_monitor_set_src_ip(sb_rec, db_rec->src_ip);
@@ -3080,6 +3088,8 @@ main(int argc, char *argv[])
                          &sbrec_service_monitor_col_chassis_name);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl,
                          &sbrec_service_monitor_col_external_ids);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
+                         &sbrec_service_monitor_col_type);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl,
                          &sbrec_service_monitor_col_ip);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl,

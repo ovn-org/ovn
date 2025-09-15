@@ -18516,3 +18516,193 @@ ct_next(ct_state=new|trk) {
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Network function health check])
+AT_KEYWORDS([ovn])
+ovn_start
+
+check ovn-nbctl  set nb_global . options:svc_monitor_ip=169.254.100.10
+check ovn-nbctl  set nb_global . options:svc_monitor_ip_dst=169.254.100.11
+sw="sw0"
+check ovn-nbctl ls-add $sw
+for i in 1 2; do
+    port=$sw-p$i
+    check ovn-nbctl lsp-add $sw $port
+    check ovn-nbctl lsp-set-addresses $port "52:54:00:00:00:0$i"
+done
+
+nfsw="nf-sw"
+check ovn-nbctl ls-add $nfsw
+for i in {1..4}; do
+    port=$nfsw-p$i
+    check ovn-nbctl lsp-add $nfsw $port
+    check ovn-sbctl set port_binding $port up=true
+    check ovn-nbctl lsp-add $sw child-$i $port 100
+done
+check ovn-nbctl set logical_switch_port $nfsw-p1 \
+    options:receive_multicast=false options:lsp_learn_fdb=false \
+    options:is-nf=true options:nf-linked-port=$nfsw-p2
+check ovn-nbctl set logical_switch_port $nfsw-p2 \
+    options:receive_multicast=false options:lsp_learn_fdb=false \
+    options:is-nf=true options:nf-linked-port=$nfsw-p1
+check ovn-nbctl set logical_switch_port $nfsw-p3 \
+    options:receive_multicast=false options:lsp_learn_fdb=false \
+    options:is-nf=true options:nf-linked-port=$nfsw-p4
+check ovn-nbctl set logical_switch_port $nfsw-p4 \
+    options:receive_multicast=false options:lsp_learn_fdb=false \
+    options:is-nf=true options:nf-linked-port=$nfsw-p3
+
+check ovn-nbctl nf-add nf0 $nfsw-p1 $nfsw-p2
+check ovn-nbctl nf-add nf1 $nfsw-p3 $nfsw-p4
+nf0_uuid=$(fetch_column nb:network_function _uuid name=nf0)
+nf1_uuid=$(fetch_column nb:network_function _uuid name=nf1)
+AT_CHECK(
+  [ovn-nbctl --wait=sb \
+          -- --id=@hc create network_function_health_check name=nf_health_cfg \
+             options:interval=5 options:timeout=1 options:success_count=3 options:failure_count=3 \
+          -- add network_function $nf0_uuid health_check @hc | uuidfilt], [0], [<0>
+])
+nf_health_uuid=$(fetch_column nb:network_function_health_check _uuid name=nf_health_cfg)
+check ovn-nbctl set network_function $nf1_uuid health_check=$nf_health_uuid
+check ovn-nbctl nfg-add nfg0 1 inline nf0 nf1
+
+check ovn-nbctl pg-add pg0 $sw-p1
+check ovn-nbctl acl-add pg0 from-lport 1001 "inport == @pg0 && ip4.dst == 192.168.2.10" allow-related nfg0
+check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4.src == 192.168.1.10" allow-related nfg0
+check ovn-nbctl --wait=sb sync
+
+# Set the service monitor for nf0 to online and nf1 to online
+# and verify nf0 is considered active.
+
+AS_BOX([Set the service monitor for nf0 to online and nf1 to offline])
+check ovn-sbctl set service_monitor $nfsw-p2 status=online
+check ovn-sbctl set service_monitor $nfsw-p4 status=offline
+wait_row_count Service_Monitor 1 logical_port=$nfsw-p2 status=online
+wait_row_count Service_Monitor 1 logical_port=$nfsw-p4 status=offline
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows $sw > lflows
+AT_CAPTURE_FILE([lflows])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_acl_eval' lflows | ovn_strip_lflows | grep pg0 | sort], [0], [dnl
+  table=??(ls_in_acl_eval     ), priority=2001 , match=(reg0[[7]] == 1 && (inport == @pg0 && ip4.dst == 192.168.2.10)), action=(reg8[[16]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=2001 , match=(reg0[[8]] == 1 && (inport == @pg0 && ip4.dst == 192.168.2.10)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=2002 , match=(reg0[[7]] == 1 && (outport == @pg0 && ip4.src == 192.168.1.10)), action=(reg8[[16]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=2002 , match=(reg0[[8]] == 1 && (outport == @pg0 && ip4.src == 192.168.1.10)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 1; next;)
+])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_network_function' lflows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(ls_in_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "child-1"), action=(reg5[[16..31]] = ct_label.tun_if_id; next;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "child-2"), action=(reg5[[16..31]] = ct_label.tun_if_id; next;)
+  table=??(ls_in_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_group_id == 1), action=(outport = "child-1"; output;)
+  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(outport = "child-1"; output;)
+  table=??(ls_out_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "child-1"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "child-2"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_group_id == 1), action=(outport = "child-2"; reg8[[23]] = 1; next(pipeline=ingress, table=??);)
+  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(outport = "child-2"; reg8[[23]] = 1; next(pipeline=ingress, table=??);)
+])
+
+# Set the service monitor for nf0 to online and nf1 to online
+# and verify nf0 is still the active.
+
+AS_BOX([Set the service monitor for nf0 to online and nf1 to online])
+check ovn-sbctl set service_monitor $nfsw-p2 status=online
+check ovn-sbctl set service_monitor $nfsw-p4 status=online
+wait_row_count Service_Monitor 1 logical_port=$nfsw-p2 status=online
+wait_row_count Service_Monitor 1 logical_port=$nfsw-p4 status=online
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows $sw > lflows
+AT_CAPTURE_FILE([lflows])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_network_function' lflows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(ls_in_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "child-1"), action=(reg5[[16..31]] = ct_label.tun_if_id; next;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "child-2"), action=(reg5[[16..31]] = ct_label.tun_if_id; next;)
+  table=??(ls_in_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_group_id == 1), action=(outport = "child-1"; output;)
+  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(outport = "child-1"; output;)
+  table=??(ls_out_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "child-1"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "child-2"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_group_id == 1), action=(outport = "child-2"; reg8[[23]] = 1; next(pipeline=ingress, table=??);)
+  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(outport = "child-2"; reg8[[23]] = 1; next(pipeline=ingress, table=??);)
+])
+
+# Set the service monitor for nf0 to offline and nf1 to online
+# and verify nf1 is the active.
+
+AS_BOX([Set the service monitor for nf0 to offline and nf1 to online])
+check ovn-sbctl set service_monitor $nfsw-p2 status=offline
+check ovn-sbctl set service_monitor $nfsw-p4 status=online
+wait_row_count Service_Monitor 1 logical_port=$nfsw-p2 status=offline
+wait_row_count Service_Monitor 1 logical_port=$nfsw-p4 status=online
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows $sw > lflows
+AT_CAPTURE_FILE([lflows])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_network_function' lflows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(ls_in_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "child-3"), action=(reg5[[16..31]] = ct_label.tun_if_id; next;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "child-4"), action=(reg5[[16..31]] = ct_label.tun_if_id; next;)
+  table=??(ls_in_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_group_id == 1), action=(outport = "child-3"; output;)
+  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(outport = "child-3"; output;)
+  table=??(ls_out_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "child-3"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "child-4"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_group_id == 1), action=(outport = "child-4"; reg8[[23]] = 1; next(pipeline=ingress, table=??);)
+  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(outport = "child-4"; reg8[[23]] = 1; next(pipeline=ingress, table=??);)
+])
+
+# Set the service monitor for nf0 to offline and nf1 to offline
+# and verify nf1 is still the active.
+
+AS_BOX([Set the service monitor for nf0 to offline and nf1 to offline])
+check ovn-sbctl set service_monitor $nfsw-p2 status=offline
+check ovn-sbctl set service_monitor $nfsw-p4 status=offline
+wait_row_count Service_Monitor 1 logical_port=$nfsw-p2 status=offline
+wait_row_count Service_Monitor 1 logical_port=$nfsw-p4 status=offline
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows $sw > lflows
+AT_CAPTURE_FILE([lflows])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_network_function' lflows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(ls_in_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "child-3"), action=(reg5[[16..31]] = ct_label.tun_if_id; next;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "child-4"), action=(reg5[[16..31]] = ct_label.tun_if_id; next;)
+  table=??(ls_in_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_group_id == 1), action=(outport = "child-3"; output;)
+  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(outport = "child-3"; output;)
+  table=??(ls_out_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "child-3"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "child-4"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_group_id == 1), action=(outport = "child-4"; reg8[[23]] = 1; next(pipeline=ingress, table=??);)
+  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(outport = "child-4"; reg8[[23]] = 1; next(pipeline=ingress, table=??);)
+])
+
+AT_CLEANUP
+])

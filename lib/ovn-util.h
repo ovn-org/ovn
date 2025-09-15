@@ -473,6 +473,22 @@ sorted_array_from_sset(struct sset *s)
     return sorted_array_create(sset_sort(s), sset_count(s), true);
 }
 
+static inline int
+name_cmp(const void *s1_, const void *s2_)
+{
+    const char *s1 = *(char **) s1_;
+    const char *s2 = *(char **) s2_;
+    return strcmp(s1, s2);
+}
+
+static inline struct sorted_array
+sorted_array_from_unsorted(const char **unsorted_data, size_t n,
+                           bool take_ownership)
+{
+    qsort(unsorted_data, n, sizeof *unsorted_data, name_cmp);
+    return sorted_array_create(unsorted_data, n, take_ownership);
+}
+
 /* DB set columns are already sorted, just wrap them into a sorted array. */
 #define sorted_array_from_dbrec(dbrec, column)           \
     sorted_array_create((const char **) (dbrec)->column, \

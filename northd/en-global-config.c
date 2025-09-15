@@ -20,6 +20,7 @@
 
 /* OVS includes */
 #include "openvswitch/vlog.h"
+#include "socket-util.h"
 
 /* OVN includes */
 #include "debug.h"
@@ -74,6 +75,25 @@ get_ovn_max_dp_key_local(bool vxlan_mode, bool vxlan_ic_mode)
     return vxlan_ic_mode ? OVN_MAX_DP_VXLAN_KEY_LOCAL : OVN_MAX_DP_KEY_LOCAL;
 }
 
+static void
+update_svc_monitor_addr(const char *new_ip, char **old_ip_pptr)
+{
+    if (new_ip && *old_ip_pptr) {
+        if (!strcmp(new_ip, *old_ip_pptr)) {
+            return;
+        }
+    }
+    free(*old_ip_pptr);
+
+    /* Parse and set the new IP address if valid */
+    struct in6_addr svc_mon_addr;
+    if (new_ip && ip46_parse(new_ip, &svc_mon_addr)) {
+        *old_ip_pptr = xstrdup(new_ip);
+    } else {
+        *old_ip_pptr = NULL;
+    }
+}
+
 enum engine_node_state
 en_global_config_run(struct engine_node *node , void *data)
 {
@@ -117,6 +137,27 @@ en_global_config_run(struct engine_node *node , void *data)
         }
     }
 
+    const char *dst_monitor_mac = smap_get(&nb->options,
+                                           "svc_monitor_mac_dst");
+    if (dst_monitor_mac) {
+        if (eth_addr_from_string(dst_monitor_mac,
+                                 &config_data->svc_monitor_mac_ea_dst)) {
+            snprintf(config_data->svc_monitor_mac_dst,
+                     sizeof config_data->svc_monitor_mac_dst,
+                     ETH_ADDR_FMT,
+                     ETH_ADDR_ARGS(config_data->svc_monitor_mac_ea_dst));
+        } else {
+            dst_monitor_mac = NULL;
+        }
+    }
+
+    const char *monitor_ip = smap_get(&nb->options, "svc_monitor_ip");
+    update_svc_monitor_addr(monitor_ip, &config_data->svc_monitor_ip);
+
+    const char *monitor_ip_dst = smap_get(&nb->options, "svc_monitor_ip_dst");
+    update_svc_monitor_addr(monitor_ip_dst,
+                            &config_data->svc_monitor_ip_dst);
+
     struct smap *options = &config_data->nb_options;
     smap_destroy(options);
     smap_clone(options, &nb->options);
@@ -130,6 +171,15 @@ en_global_config_run(struct engine_node *node , void *data)
                  ETH_ADDR_ARGS(config_data->svc_monitor_mac_ea));
         smap_replace(options, "svc_monitor_mac",
                      config_data->svc_monitor_mac);
+    }
+
+    if (!dst_monitor_mac) {
+        eth_addr_random(&config_data->svc_monitor_mac_ea_dst);
+        snprintf(config_data->svc_monitor_mac_dst,
+                 sizeof config_data->svc_monitor_mac_dst, ETH_ADDR_FMT,
+                 ETH_ADDR_ARGS(config_data->svc_monitor_mac_ea_dst));
+        smap_replace(options, "svc_monitor_mac_dst",
+                     config_data->svc_monitor_mac_dst);
     }
 
     bool ic_vxlan_mode = false;
@@ -194,6 +244,8 @@ void en_global_config_cleanup(void *data OVS_UNUSED)
     struct ed_type_global_config *config_data = data;
     smap_destroy(&config_data->nb_options);
     smap_destroy(&config_data->sb_options);
+    free(config_data->svc_monitor_ip);
+    free(config_data->svc_monitor_ip_dst);
     destroy_debug_config();
 }
 
@@ -251,6 +303,21 @@ global_config_nb_global_handler(struct engine_node *node, void *data)
     /* Check if svc_monitor_mac has changed or not. */
     if (config_out_of_sync(&nb->options, &config_data->nb_options,
                            "svc_monitor_mac", true)) {
+        return EN_UNHANDLED;
+    }
+
+    if (config_out_of_sync(&nb->options, &config_data->nb_options,
+                           "svc_monitor_mac_dst", true)) {
+        return EN_UNHANDLED;
+    }
+
+    if (config_out_of_sync(&nb->options, &config_data->nb_options,
+                           "svc_monitor_ip", false)) {
+        return EN_UNHANDLED;
+    }
+
+    if (config_out_of_sync(&nb->options, &config_data->nb_options,
+                           "svc_monitor_ip_dst", false)) {
         return EN_UNHANDLED;
     }
 

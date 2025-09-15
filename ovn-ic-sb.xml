@@ -692,6 +692,10 @@
   </table>
 
   <table name="Service_Monitor">
+    <column name="type">
+      The type of the service. Only the value "load-balancer" is supported.
+     </column>
+
     <column name="ip">
       IP of the service to be monitored. Copy from SBDB record.
     </column>

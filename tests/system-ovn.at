@@ -18934,6 +18934,150 @@ validate_single_nf_no_health_check "client" "server" "192.168.1.20" "Inbound"
 AS_BOX([Verify outbound traffic forwarding through NF without health check])
 validate_single_nf_no_health_check "server" "client" "192.168.1.10" "Outbound"
 
+AS_BOX([Test-2: Two NFs with health check config enabled])
+
+# Add second NF
+check ovn-nbctl nf-add nf1 nf-p3 nf-p4
+nf1_uuid=$(fetch_column nb:network_function _uuid name=nf1)
+
+# Add bridge for nf1
+NS_CHECK_EXEC([nf], [ip link add name br1 type bridge])
+NS_CHECK_EXEC([nf], [ip link set dev nf-p3 master br1])
+NS_CHECK_EXEC([nf], [ip link set dev nf-p4 master br1])
+
+# Set monitor IPs for health check
+check ovn-nbctl  set nb_global . options:svc_monitor_ip=169.254.100.10
+check ovn-nbctl  set nb_global . options:svc_monitor_ip_dst=169.254.100.11
+
+# Create health check configuration and assign to both NFs
+AT_CHECK(
+  [ovn-nbctl --wait=sb \
+          -- --id=@hc create network_function_health_check name=nf_health_cfg \
+             options:interval=1 options:timeout=1 options:success_count=2 options:failure_count=2 \
+          -- add network_function $nf0_uuid health_check @hc | uuidfilt], [0], [<0>
+])
+nf_health_uuid=$(fetch_column nb:network_function_health_check _uuid name=nf_health_cfg)
+check ovn-nbctl set network_function $nf1_uuid health_check=$nf_health_uuid
+
+# Update NFG to include both NFs
+check ovn-nbctl nfg-add-nf nfg0 nf1
+
+check ovn-nbctl --wait=hv sync
+
+validate_nf_with_traffic() {
+    client_ns=$1; server_ns=$2; sip=$3; direction=$4
+
+    # Start a TCP server
+    NETNS_DAEMONIZE($server_ns, [server.py -i $sip -p 10000], [server.pid])
+    on_exit 'kill $(cat server.pid)'
+
+    # Ensure TCP server is ready for connections
+    OVS_WAIT_FOR_OUTPUT([cat output.txt], [0], [dnl
+Server Ready
+])
+    : > output.txt
+
+    # Make a FIFO and send its output to a server
+    mkfifo /tmp/nffifo
+    on_exit 'rm -rf /tmp/nffifo'
+
+    NETNS_DAEMONIZE($client_ns, [client.py -f "/tmp/nffifo" -i $sip -p 10000], [client.pid])
+    on_exit 'kill $(cat client.pid)'
+
+    AS_BOX([$direction: Verify traffic forwarding through NF when nf0 is active])
+    NS_CHECK_EXEC([nf], [ip link set dev br0 up])
+    NS_CHECK_EXEC([nf], [ip link set dev br1 down])
+
+    NS_CHECK_EXEC([nf], [tcpdump -l -nvv -i nf-p1 tcp > pkt.pcap 2>tcpdump_err &])
+    OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
+    on_exit 'kill $(pidof tcpdump)'
+
+    # sleep to allow service_monitor to detect the state
+    sleep 5
+
+    ovn-sbctl dump-flows sw0 > lflows_nf0_active
+    ovn-sbctl list service_monitor
+
+    validate_traffic "test" "test" 5
+
+    AS_BOX([$direction: Verify traffic forwarding through NF when nf1 is active])
+
+    kill $(pidof tcpdump)
+    NS_CHECK_EXEC([nf], [tcpdump -l -nvv -i nf-p3 tcp > pkt.pcap 2>tcpdump_err &])
+    OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
+    on_exit 'kill $(pidof tcpdump)'
+
+    # Bring nf0 down and nf1 up
+    NS_CHECK_EXEC([nf], [ip link set dev br0 down])
+    NS_CHECK_EXEC([nf], [ip link set dev br1 up])
+    # sleep to allow service_monitor to detect the state
+    sleep 5
+
+    ovn-sbctl dump-flows sw0 > lflows_nf1_active
+    ovn-sbctl list service_monitor
+
+    validate_traffic "test" "test" 2
+
+    AS_BOX([$direction: Verify traffic forwarding through NF when nf0 and nf1 are down])
+
+    kill $(pidof tcpdump)
+    NS_CHECK_EXEC([nf], [tcpdump -l -nvv -i nf-p3 tcp > pkt.pcap 2>tcpdump_err &])
+    OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
+    on_exit 'kill $(pidof tcpdump)'
+
+    # Bring nf0 down and nf1 up
+    NS_CHECK_EXEC([nf], [ip link set dev br1 down])
+    # sleep to allow service_monitor to detect the state
+    sleep 5
+
+    ovn-sbctl dump-flows sw0 > lflows_nf1_active
+    ovn-sbctl list service_monitor
+
+    validate_traffic "test" "" 0
+
+    kill $(cat client.pid)
+    kill $(cat server.pid)
+    rm -f client.pid
+    rm -f server.pid
+    rm -f /tmp/nffifo
+}
+
+AS_BOX([IPv4 Testing with Health Checks])
+AS_BOX([Verify inbound traffic forwarding through NF when nf0 is active])
+validate_nf_with_traffic "client" "server" "192.168.1.20" "Inbound"
+
+AS_BOX([Verify outbound traffic forwarding through NF when nf0 is active])
+validate_nf_with_traffic "server" "client" "192.168.1.10" "Outbound"
+
+AS_BOX([IPv6 Testing - Setup])
+# Remove IPv4 addresses from namespaces
+ip netns exec client ip addr del 192.168.1.10/24 dev client
+ip netns exec server ip addr del 192.168.1.20/24 dev server
+
+# Add IPv6 addresses to client and server
+ip netns exec client ip -6 addr add fd00:192:168:1::10/64 dev client
+ip netns exec server ip -6 addr add fd00:192:168:1::20/64 dev server
+
+# Update service monitor IPs to IPv6
+check ovn-nbctl set nb_global . options:svc_monitor_ip=fd00:169:254:100::10
+check ovn-nbctl set nb_global . options:svc_monitor_ip_dst=fd00:169:254:100::11
+
+# Configure IPv6-only addresses on logical ports (remove IPv4)
+check ovn-nbctl lsp-set-addresses client "f0:00:00:01:02:10 fd00:192:168:1::10"
+check ovn-nbctl lsp-set-addresses server "f0:00:00:01:02:20 fd00:192:168:1::20"
+
+# Add IPv6 ACLs
+check ovn-nbctl acl-add pg0 from-lport 1003 "inport == @pg0 && ip6.dst == fd00:192:168:1::10" allow-related nfg0
+check ovn-nbctl acl-add pg0 to-lport 1004 "outport == @pg0 && ip6.src == fd00:192:168:1::10" allow-related nfg0
+
+check ovn-nbctl --wait=hv sync
+
+AS_BOX([IPv6 Testing with Health Checks - Verify inbound traffic forwarding through NF when nf0 is active])
+validate_nf_with_traffic "client" "server" "fd00:192:168:1::20" "IPv6 Inbound"
+
+AS_BOX([IPv6 Testing with Health Checks - Verify outbound traffic forwarding through NF when nf0 is active])
+validate_nf_with_traffic "server" "client" "fd00:192:168:1::10" "IPv6 Outbound"
+
 OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb

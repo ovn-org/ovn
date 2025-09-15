@@ -8036,14 +8036,6 @@ cmd_pg_del(struct ctl_context *ctx)
     nbrec_port_group_delete(pg);
 }
 
-static int
-port_name_cmp(const void *s1_, const void *s2_)
-{
-    const char *s1 = *(char **) s1_;
-    const char *s2 = *(char **) s2_;
-    return strcmp(s1, s2);
-}
-
 static void
 cmd_pg_get_ports(struct ctl_context *ctx)
 {
@@ -8064,7 +8056,7 @@ cmd_pg_get_ports(struct ctl_context *ctx)
         port_names[i] = pg->ports[i]->name;
     }
 
-    qsort(port_names, pg->n_ports, sizeof *port_names, port_name_cmp);
+    qsort(port_names, pg->n_ports, sizeof *port_names, name_cmp);
 
     ds_put_format(&ctx->output, "%s", port_names[0]);
     for (size_t i = 1; i < pg->n_ports; i++) {

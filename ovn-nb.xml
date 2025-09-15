@@ -441,6 +441,38 @@
         </p>
       </column>
 
+      <group title="Options for services health check confguration">
+        <p>
+          These options are used when health configuration is enabled for
+          <ref table="Load_Balancer" db="OVN_Northbound"/>
+          and <ref table="Network_Function" db="OVN_Northbound"/> services.
+        </p>
+
+        <column name="options" key="svc_monitor_mac">
+          MAC Address used as the Ethernet source in health check probes.
+          If unspecified, a MAC address is automatically generated.
+        </column>
+
+        <column name="options" key="svc_monitor_mac_dst">
+          MAC Address used as the Ethernet destination in health check probes.
+          If unspecified, a MAC address is automatically generated.
+          This applies only to Network Function health check probes deployed
+          in inline mode.
+        </column>
+
+        <column name="options" key="svc_monitor_ip">
+          IP Address (IPv4 or IPv6) used as the source in health check probes.
+          This applies only to Network Function health check probes deployed
+          in inline mode.
+        </column>
+
+        <column name="options" key="svc_monitor_ip_dst">
+          IP Address (IPv4 or IPv6) used as the destination in health check
+          probes. This applies only to Network Function health check probes
+          deployed in inline mode.
+        </column>
+      </group>
+
       <group title="Options for configuring interconnection route advertisement">
         <p>
           These options control how routes are advertised between OVN

@@ -5003,22 +5003,50 @@ tcp.flags = RST;
         service monitor.
       </p>
 
+      <column name="type">
+        The type of the service. Supported values are "load-balancer" and
+        "network-function".
+      </column>
+
       <column name="ip">
-        IP of the service to be monitored.
+        Destination IP used in monitor packets. For load-balancer service this
+        is the IP of the service to be monitored. For network-function service
+        this IP is used to send probe packets through the associated
+        Network Function port pair.
+      </column>
+
+      <column name="mac">
+        Destination MAC address used in monitor packets. This is applicable
+        only for network-function services.
       </column>
 
       <column name="protocol">
         The protocol of the service.
+        For <code>type</code> load-balancer, supported protocols are tcp and
+        udp. For <code>type</code> "network-function", supported protocol is
+        icmp, and the health probe is done by injecting an icmp echo request
+        packet into the <code>inport</code> of the Network_Function and then
+        montoring the same packet coming out of the <code>outport</code>.
       </column>
 
       <column name="port">
         The TCP or UDP port of the service.
       </column>
 
+      <column name="logical_input_port">
+        This is applicable only for network-function type. The VIF of the
+        logical port on which monitor packets have to be sent. The
+        <code>ovn-controller</code> that binds this <code>logical_port</code>
+        monitors the service by sending periodic monitor packets.
+      </column>
+
       <column name="logical_port">
         The VIF of the logical port on which the service is running. The
         <code>ovn-controller</code> that binds this <code>logical_port</code>
-        monitors the service by sending periodic monitor packets.
+        monitors the service by sending periodic monitor packets. For
+        load-balancer this is the port to which monitor packets are sent and
+        from which response packets are received. For network-function this
+        is the port from which the forwarded monitor packets are received.
       </column>
 
       <column name="src_mac">

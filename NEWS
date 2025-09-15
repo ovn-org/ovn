@@ -24,8 +24,10 @@ Post v25.09.0
      * Network_Function_Health_Check: Configurable health monitoring with
        interval, timeout, success_count and failure_count parameters.
      Traffic matching ACLs can be redirected through inline network functions
-     using the network_function_group column in ACL. A network function
-     from the group gets automatically selected. Network functions operate in
+     using the network_function_group column in ACL. A healthy network function
+     from the group gets automatically selected based on ICMP forwarding probes
+     with failover to some other member of the group when currently active
+     network function becomes unavailable. Network functions operate in
      "inline" mode, transparently processing packets without modifying headers,
      and support both ingress (from-lport) and egress (to-lport) traffic flows.
      Two new options have been added to Logical_Switch_Port which need to
