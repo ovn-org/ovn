@@ -761,8 +761,17 @@ advertised_route_table_sync(
         advertise_route_track_od(data, route->od, route->tracked_port,
                                  route->source);
 
+        const struct sbrec_port_binding *tracked_port =
+            route->tracked_port ? route->tracked_port->sb : NULL;
+        char *ip_prefix = normalize_v46_prefix(&route->prefix, route->plen);
+        if (ar_entry_find(&sync_routes, route->od->sb,
+                          route->out_port->sb, ip_prefix,
+                          tracked_port)) {
+            free(ip_prefix);
+            continue;
+        }
         ar_entry_add_nocopy(&sync_routes, route->od, route->out_port,
-                            normalize_v46_prefix(&route->prefix, route->plen),
+                            ip_prefix,
                             route->tracked_port,
                             route->source);
     }

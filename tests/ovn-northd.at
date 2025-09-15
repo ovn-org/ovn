@@ -15090,6 +15090,15 @@ check_row_count Advertised_Route 3
 check_row_count Advertised_Route 2 logical_port=$pb
 check_row_count Advertised_Route 1 logical_port=$pb ip_prefix=192.168.0.0/24
 
+# Adding two static ECMP routes adds no additional entry.
+check ovn-nbctl --wait=sb lr-route-del lr0 192.168.0.0/24 10.0.0.10
+check ovn-nbctl --wait=sb --ecmp lr-route-add lr0 192.168.0.0/24 10.0.0.10
+check ovn-nbctl --wait=sb --ecmp lr-route-add lr0 192.168.0.0/24 10.0.0.11
+
+check_row_count Advertised_Route 3
+check_row_count Advertised_Route 2 logical_port=$pb
+check_row_count Advertised_Route 1 logical_port=$pb ip_prefix=192.168.0.0/24
+
 # Adding an ipv6 LRP adds an addition route entry.
 check ovn-nbctl --wait=sb lrp-add lr0 lr0-sw2 00:00:00:00:ff:03 2001:db8::1/64 fe80::1/64
 pb3=$(fetch_column port_binding _uuid logical_port=lr0-sw2)
