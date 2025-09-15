@@ -2739,6 +2739,13 @@ or
       </p>
     </column>
 
+    <column name="network_function_group">
+      <p>
+        Group of network functions to which the traffic matching this ACL
+        is redirected.
+      </p>
+    </column>
+
     <group title="options">
       <p>
         ACLs options.
@@ -6135,4 +6142,134 @@ or
       </column>
     </group>
   </table>
+
+  <table name="Network_Function_Group"
+   title="network function group">
+    <p>
+      Each row contains a list of <ref table="Network_Function"/>. Traffic
+      redirection is achieved by referencing a
+      <code>Network_Function_Group</code> from an <ref table="ACL"/>. Health
+      monitoring of each <code>Network_Function</code> is performed based on
+      parameters defined in <ref table="Network_Function_Health_Check"/>.
+      Traffic matching the ACL is redirected to one of the active
+      <code>Network_Functions</code>. If all are detected as down, traffic is
+      redirected to one of the <code>Network_Functions</code> regardless of
+      status.
+    </p>
+
+    <column name="name">
+      Name of the <ref table="Network_Function_Group"/>. Name should be unique.
+    </column>
+
+    <column name="id">
+      A unique integer between 1 and 255 must be assigned to each
+      <code>Network_Function_Group</code>.
+    </column>
+
+    <column name="network_function">
+      A list of network functions which belong to this group.
+    </column>
+
+    <column name="network_function_active">
+      Current active Network_Function. This column is populated by northd
+      based on health monitoring status.
+    </column>
+
+    <column name="mode">
+      Traffic forwarding mode, with default and only value as "inline". The
+      "inline" mode means that the network function is directly in the path
+      of traffic, with traffic being redirected through it.
+    </column>
+
+    <group title="Common Columns">
+      <column name="external_ids">
+        See <em>External IDs</em> at the beginning of this document.
+      </column>
+    </group>
+  </table>
+
+  <table name="Network_Function" title="network function">
+    <p>
+      Each row represents one network function entity. This contains a pair
+      of logical_switch_ports. Traffic that matches the ACL is redirected to
+      <code>inport</code> for from-lport ACLs and to <code>outport</code>
+      for to-lport ACLs. Once the traffic is received on the other port, it
+      continues through the standard OVN pipeline.
+      Response traffic follows the reverse path: it is redirected to the
+      <code>outport</code> for from-lport ACLs and to the <code>inport</code>
+      for to-lport ACLs. Once the traffic is received on the other port, it is
+      processed by the regular OVN pipeline.
+
+      <code>NOTE</code>:
+        1. The Network Function MUST NOT modify the packet headers.
+        2. The Network Function is not supported when used in conjunction with
+           Load Balancer.
+    </p>
+
+    <column name="name">
+      Name of the <ref table="Network_Function"/>. Name should be unique.
+    </column>
+
+    <column name="inport">
+      <ref table="Logical_Switch_Port"/>  where request traffic for from-lport
+      ACL and response traffic for to-lport ACL is redirected.
+    </column>
+
+    <column name="outport">
+      <ref table="Logical_Switch_Port"/> where request traffic for to-lport ACL
+      and response traffic for from-lport ACL is redirected.
+    </column>
+
+    <column name="health_check">
+      <ref table="Network_Function_Health_Check"/> associated with this network
+      function.
+    </column>
+
+    <group title="Common Columns">
+      <column name="external_ids">
+        See <em>External IDs</em> at the beginning of this document.
+      </column>
+    </group>
+  </table>
+
+  <table name="Network_Function_Health_Check"
+   title="network function health check">
+    <p>
+      Each row represents one network function health check.
+    </p>
+
+    <column name="name">
+      Name of the <ref table="Network_Function_Health_Check"/>.
+      Name should be unique.
+    </column>
+
+
+    <group title="Health check options">
+      <column name="options" key="interval" type='{"type": "integer"}'>
+        The interval, in seconds, between health checks. Default: 5s.
+      </column>
+
+      <column name="options" key="timeout" type='{"type": "integer"}'>
+        The time, in seconds, after which a health check times out.
+        Default: 3s.
+      </column>
+
+      <column name="options" key="success_count" type='{"type": "integer"}'>
+        The number of successful checks after which the Network_Function is
+        considered online. Default: 1.
+      </column>
+
+      <column name="options" key="failure_count" type='{"type": "integer"}'>
+        The number of failure checks after which the Network_Function is
+        considered offline. Default: 1.
+      </column>
+    </group>
+
+    <group title="Common Columns">
+      <column name="external_ids">
+        See <em>External IDs</em> at the beginning of this document.
+      </column>
+    </group>
+  </table>
+
 </database>
