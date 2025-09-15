@@ -283,7 +283,7 @@ Logical switch commands:\n\
 \n\
 ACL commands:\n\
   [--type={switch | port-group}] [--log] [--severity=SEVERITY] [--name=NAME] [--may-exist]\n\
-  acl-add {SWITCH | PORTGROUP} DIRECTION PRIORITY MATCH ACTION\n\
+  acl-add {SWITCH | PORTGROUP} DIRECTION PRIORITY MATCH ACTION [NETWORK-FUNCTION-GROUP]\n\
                             add an ACL to SWITCH/PORTGROUP\n\
   [--type={switch | port-group}]\n\
   acl-del {SWITCH | PORTGROUP} [DIRECTION [PRIORITY MATCH]]\n\
@@ -373,6 +373,26 @@ Forwarding group commands:\n\
   fwd-group-del GROUP       delete a forwarding group\n\
   fwd-group-list [SWITCH]   print forwarding groups\n\
 \n\
+Network function group commands:\n\
+  nfg-add NETWORK-FUNCTION-GROUP ID MODE [NETWORK-FUNCTION]...\n\
+                            create a network-function-group\n\
+  nfg-del NETWORK-FUNCTION-GROUP\n\
+                            delete a network-function-group\n\
+  nfg-list print all network-function-groups\n\
+  nfg-add-nf NETWORK-FUNCTION-GROUP NETWORK-FUNCTION\n\
+                            add a network-function to a\n\
+                            network-function-group\n\
+  nfg-del-nf NETWORK-FUNCTION-GROUP NETWORK-FUNCTION\n\
+                            delete a network-function from a\n\
+                            network-function-group\n\
+\n\
+Network function commands:\n\
+  nf-add NETWORK-FUNCTION PORT-IN PORT-OUT\n\
+                           create a network-function\n\
+  nf-del NETWORK-FUNCTION  delete a network-function\n\
+  nf-list                  print all network-functions\n\
+\n\n",program_name, program_name);
+    printf("\
 Logical router commands:\n\
   lr-add [ROUTER]           create a logical router named ROUTER\n\
   lr-del ROUTER             delete ROUTER and all its ports\n\
@@ -429,7 +449,7 @@ Policy commands:\n\
   lr-policy-del ROUTER [{PRIORITY | UUID} [MATCH]]\n\
                             remove policies from ROUTER\n\
   lr-policy-list ROUTER     print policies for ROUTER\n\
-\n\n",program_name, program_name);
++\n\n");
     printf("\
 NAT commands:\n\
   [--stateless]\n\
@@ -2135,6 +2155,438 @@ nbctl_lsp_get_ls(struct ctl_context *ctx)
     }
 }
 
+static char * OVS_WARN_UNUSED_RESULT
+nf_group_by_name_or_uuid(
+    struct ctl_context *ctx, const char *id,
+    bool must_exist,
+    const struct nbrec_network_function_group **nf_group_p)
+{
+    struct uuid nf_group_uuid;
+    bool is_uuid = uuid_from_string(&nf_group_uuid, id);
+
+    *nf_group_p = NULL;
+    if (is_uuid) {
+        *nf_group_p =
+            nbrec_network_function_group_get_for_uuid(ctx->idl,
+                                                      &nf_group_uuid);
+    }
+
+    if (!*nf_group_p) {
+        const struct nbrec_network_function_group *iter;
+        NBREC_NETWORK_FUNCTION_GROUP_FOR_EACH (iter, ctx->idl) {
+            if (!strcmp(iter->name, id)) {
+                *nf_group_p = iter;
+                break;
+            }
+        }
+    }
+    if (!*nf_group_p && must_exist) {
+        return xasprintf("%s: network function group %s not found", id,
+                         is_uuid ? "UUID" : "name");
+    }
+    return NULL;
+}
+
+static char * OVS_WARN_UNUSED_RESULT
+nf_by_name_or_uuid(
+    struct ctl_context *ctx, const char *id,
+    bool must_exist, const struct nbrec_network_function **nf_p)
+{
+    struct uuid nf_uuid;
+    bool is_uuid = uuid_from_string(&nf_uuid, id);
+
+    *nf_p = NULL;
+    if (is_uuid) {
+        *nf_p = nbrec_network_function_get_for_uuid(ctx->idl, &nf_uuid);
+    }
+
+    if (!*nf_p) {
+        const struct nbrec_network_function *iter;
+        NBREC_NETWORK_FUNCTION_FOR_EACH (iter, ctx->idl) {
+            if (!strcmp(iter->name, id)) {
+                *nf_p = iter;
+                break;
+            }
+        }
+    }
+    if (!*nf_p && must_exist) {
+        return xasprintf("%s: network function %s not found", id,
+                         is_uuid ? "UUID" : "name");
+    }
+    return NULL;
+}
+
+/*
+ *  Network Function Groups CLI Functions
+ */
+static void
+nbctl_pre_nf_group_add(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_group_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_group_col_id);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_group_col_mode);
+    ovsdb_idl_add_column(
+        ctx->idl, &nbrec_network_function_group_col_network_function);
+}
+
+static char *
+set_network_function_in_network_function_group(
+    struct ctl_context *ctx,
+    const struct nbrec_network_function_group *nf_group,
+    char **new_network_function, size_t num_new_network_function)
+{
+    struct nbrec_network_function **nfs =
+        xmalloc(sizeof *nfs * num_new_network_function);
+
+    for (size_t i = 0; i < num_new_network_function; i++) {
+        const struct nbrec_network_function *nf;
+        char *error = nf_by_name_or_uuid(ctx, new_network_function[i],
+                                         true, &nf);
+        if (error) {
+            free(nfs);
+            return error;
+        }
+        nfs[i] = CONST_CAST(struct nbrec_network_function *, nf);
+    }
+    nbrec_network_function_group_verify_network_function(nf_group);
+    nbrec_network_function_group_set_network_function(
+        nf_group, nfs, num_new_network_function);
+    free(nfs);
+    return NULL;
+}
+
+static void
+nbctl_nf_group_add(struct ctl_context *ctx)
+{
+    const struct nbrec_network_function_group *nf_group;
+    const char *nfg_name = ctx->argv[1];
+    bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
+
+    /* Check if group already exists */
+    bool found = false;
+    NBREC_NETWORK_FUNCTION_GROUP_FOR_EACH (nf_group, ctx->idl) {
+        if (!strcmp(nf_group->name, nfg_name)) {
+            found = true;
+            if (!may_exist) {
+                ctl_error(ctx, "%s: a network-function-group with this name "
+                          "already exists", nfg_name);
+                return;
+            }
+            break;
+        }
+    }
+
+    /* Create new group if not found */
+    if (!found) {
+        nf_group = nbrec_network_function_group_insert(ctx->txn);
+        nbrec_network_function_group_set_name(nf_group, nfg_name);
+    }
+
+    /* Validate and set ID */
+    int64_t nfg_id = 0;
+    if (!ovs_scan(ctx->argv[2], "%"SCNd64, &nfg_id)
+            || nfg_id < 1 || nfg_id > 255) {
+        ctl_error(ctx, "network-function-group id must be between 1 and 255");
+        return;
+    }
+    nbrec_network_function_group_set_id(nf_group, nfg_id);
+
+    /* Validate and set mode */
+    const char *nfg_mode = ctx->argv[3];
+    if (strcmp(nfg_mode, "inline")) {
+        ctl_error(ctx, "Unsupported mode provided for "
+                  "network-function-group:%s, supported values: inline",
+                  nfg_name);
+        return;
+    }
+    nbrec_network_function_group_set_mode(nf_group, nfg_mode);
+
+    /* Set network functions if provided */
+    if (ctx->argc > 4) {
+        ctx->error = set_network_function_in_network_function_group(
+            ctx, nf_group, ctx->argv + 4, ctx->argc - 4);
+    }
+}
+
+static void
+nbctl_pre_nf_group_del(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_group_col_name);
+}
+
+static void
+nbctl_nf_group_del(struct ctl_context *ctx)
+{
+    const struct nbrec_network_function_group *nf_group;
+    bool must_exist = !shash_find(&ctx->options, "--if-exists");
+
+    char *error = nf_group_by_name_or_uuid(
+        ctx, ctx->argv[1], must_exist, &nf_group);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+    if (!nf_group) {
+        return;
+    }
+
+    nbrec_network_function_group_delete(nf_group);
+}
+
+static void
+nbctl_pre_nf_group_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_network_function_group_col_network_function);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_group_col_name);
+}
+
+static void
+nbctl_nf_group_list(struct ctl_context *ctx)
+{
+    const struct nbrec_network_function_group *nf_group;
+    struct smap nf_groups = SMAP_INITIALIZER(&nf_groups);
+
+    NBREC_NETWORK_FUNCTION_GROUP_FOR_EACH (nf_group, ctx->idl) {
+        smap_add_format(&nf_groups, nf_group->name,
+                        UUID_FMT " (%s)",
+                        UUID_ARGS(&nf_group->header_.uuid),
+                        nf_group->name);
+    }
+    const struct smap_node **nodes = smap_sort(&nf_groups);
+    for (size_t i = 0; i < smap_count(&nf_groups); i++) {
+        const struct smap_node *node = nodes[i];
+        ds_put_format(&ctx->output, "%s\n", node->value);
+    }
+    smap_destroy(&nf_groups);
+    free(nodes);
+}
+
+static void
+nbctl_pre_nf_group_add_network_function(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_network_function_group_col_network_function);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_group_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_name);
+}
+
+static void
+nbctl_nf_group_add_network_function(struct ctl_context *ctx)
+{
+    const struct nbrec_network_function_group *nf_group;
+    const struct nbrec_network_function *nf;
+    bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
+
+    char *error = nf_group_by_name_or_uuid(ctx, ctx->argv[1], true,
+                                           &nf_group);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+    if (!nf_group) {
+        return;
+    }
+
+    /* Check that network-function exists  */
+    error = nf_by_name_or_uuid(ctx, ctx->argv[2], true, &nf);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    /* Do not add network_function more than once in a given
+     * network-function-group */
+    for (size_t i = 0; i < nf_group->n_network_function; i++) {
+        if (nf_group->network_function[i] == nf) {
+            if (!may_exist) {
+                ctl_error(ctx, "network-function %s is already added to "
+                          "network-function-group %s",
+                          ctx->argv[2], ctx->argv[1]);
+                return;
+            }
+            return;
+        }
+    }
+
+    /* Insert the logical network-function into the logical
+     * network-function-group. */
+    nbrec_network_function_group_verify_network_function(nf_group);
+    nbrec_network_function_group_update_network_function_addvalue(nf_group,
+                                                                  nf);
+}
+
+static void
+nbctl_pre_nf_group_del_network_function(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_network_function_group_col_network_function);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_group_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_name);
+}
+
+static void
+nbctl_nf_group_del_network_function(struct ctl_context *ctx)
+{
+    const struct nbrec_network_function *nf;
+    const struct nbrec_network_function_group *nf_group;
+    bool must_exist = !shash_find(&ctx->options, "--if-exists");
+
+    char * error = nf_group_by_name_or_uuid(ctx, ctx->argv[1], must_exist,
+                                            &nf_group);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+    if (!nf_group) {
+        return;
+    }
+
+    error = nf_by_name_or_uuid(ctx, ctx->argv[2], must_exist, &nf);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    /* Find the network-function_group that contains 'network-function',
+     * then delete it. */
+    for (size_t i = 0; i < nf_group->n_network_function; i++) {
+        if (nf_group->network_function[i] == nf) {
+            nbrec_network_function_group_verify_network_function(nf_group);
+            nbrec_network_function_group_update_network_function_delvalue(
+                nf_group, nf);
+            return;
+        }
+    }
+    if (must_exist) {
+        ctl_error(ctx, "network-function %s is not part of any group",
+                  ctx->argv[1]);
+        return;
+    }
+}
+/* End of network-function-group operations */
+
+/*
+ * network-function operations
+ */
+static void
+nbctl_pre_nf_add(struct ctl_context *ctx)
+{
+    nbctl_pre_context(ctx);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_inport);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_outport);
+}
+
+static void
+nbctl_nf_add(struct ctl_context *ctx)
+{
+    const struct nbrec_logical_switch_port *lsp_in, *lsp_out;
+    const struct nbrec_network_function *nf;
+
+    bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
+
+    char * error = lsp_by_name_or_uuid(ctx, ctx->argv[2], true, &lsp_in);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+    error = lsp_by_name_or_uuid(ctx, ctx->argv[3], true, &lsp_out);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+
+    const char *nf_name = ctx->argv[1];
+
+    /* Check if network function already exists */
+    bool found = false;
+    NBREC_NETWORK_FUNCTION_FOR_EACH (nf, ctx->idl) {
+        if (!strcmp(nf->name, nf_name)) {
+            found = true;
+            if (!may_exist) {
+                ctl_error(ctx, "%s: same name network-function already exists",
+                          nf_name);
+                return;
+            }
+            break;
+        }
+    }
+
+    /* Create new network function if not found */
+    if (!found) {
+        nf = nbrec_network_function_insert(ctx->txn);
+        nbrec_network_function_set_name(nf, nf_name);
+    }
+
+    /* Set/update the ports */
+    nbrec_network_function_set_inport(nf, lsp_in);
+    nbrec_network_function_set_outport(nf, lsp_out);
+}
+
+static void
+nbctl_pre_nf_del(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_name);
+}
+
+static void
+nbctl_nf_del(struct ctl_context *ctx)
+{
+    const struct nbrec_network_function *nf;
+    bool must_exist = !shash_find(&ctx->options, "--if-exists");
+
+    char *error = nf_by_name_or_uuid(ctx, ctx->argv[1], must_exist, &nf);
+    if (error) {
+        ctx->error = error;
+        return;
+    }
+    if (!nf) {
+        return;
+    }
+    nbrec_network_function_delete(nf);
+}
+
+static void
+nbctl_pre_nf_list(struct ctl_context *ctx)
+{
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_inport);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_outport);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
+}
+
+static void
+nbctl_nf_list(struct ctl_context *ctx)
+{
+    const struct nbrec_network_function *nf;
+    struct smap nfs = SMAP_INITIALIZER(&nfs);
+
+    NBREC_NETWORK_FUNCTION_FOR_EACH (nf, ctx->idl) {
+        const struct nbrec_logical_switch_port *linport  = nf->inport;
+        const struct nbrec_logical_switch_port *loutport = nf->outport;
+        const char *linport_name = linport ? linport->name : "<not_set>";
+        const char *loutport_name = loutport ? loutport->name : "<not_set>";
+        smap_add_format(&nfs, nf->name,
+                        UUID_FMT " (%s) in:%s out:%s",
+                        UUID_ARGS(&nf->header_.uuid),
+                        nf->name, linport_name, loutport_name);
+    }
+    const struct smap_node **nodes = smap_sort(&nfs);
+    for (size_t i = 0; i < smap_count(&nfs); i++) {
+        const struct smap_node *node = nodes[i];
+        ds_put_format(&ctx->output, "%s\n", node->value);
+    }
+    smap_destroy(&nfs);
+    free(nodes);
+}
+
+/* End of network-function operations */
+
+
 enum {
     DIR_FROM_LPORT,
     DIR_TO_LPORT
@@ -2232,6 +2684,10 @@ nbctl_acl_print(struct ctl_context *ctx, const struct nbrec_acl **acls,
         ds_put_format(&ctx->output, "%10s %5"PRId64" (%s) %s",
                       acl->direction, acl->priority, acl->match,
                       acl->action);
+        if (acl->network_function_group) {
+            ds_put_format(&ctx->output, " network-function-group=%s",
+                          acl->network_function_group->name);
+        }
         if (acl->log) {
             ds_put_cstr(&ctx->output, " log(");
             if (acl->name) {
@@ -2405,6 +2861,8 @@ nbctl_pre_acl(struct ctl_context *ctx)
 
     ovsdb_idl_add_table(ctx->idl, &nbrec_table_sample_collector);
     ovsdb_idl_add_table(ctx->idl, &nbrec_table_sample);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_acl_col_network_function_group);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_group_col_name);
 }
 
 static void
@@ -2461,10 +2919,21 @@ nbctl_acl_add(struct ctl_context *ctx)
 
     /* Create the acl. */
     struct nbrec_acl *acl = nbrec_acl_insert(ctx->txn);
+    const struct nbrec_network_function_group *network_function_group = NULL;
     nbrec_acl_set_priority(acl, priority);
     nbrec_acl_set_direction(acl, direction);
     nbrec_acl_set_match(acl, ctx->argv[4]);
     nbrec_acl_set_action(acl, action);
+    if (ctx->argc > 6) {
+        error = nf_group_by_name_or_uuid(ctx, ctx->argv[6], true,
+                                          &network_function_group);
+        if (error) {
+            ctx->error = error;
+            return;
+        }
+
+        nbrec_acl_set_network_function_group(acl, network_function_group);
+    }
 
     /* Logging options. */
     bool log = shash_find(&ctx->options, "--log") != NULL;
@@ -8297,7 +8766,8 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     { "ls-list", 0, 0, "", nbctl_pre_ls_list, nbctl_ls_list, NULL, "", RO },
 
     /* acl commands. */
-    { "acl-add", 5, 6, "{SWITCH | PORTGROUP} DIRECTION PRIORITY MATCH ACTION",
+    { "acl-add", 5, 7,
+      "{SWITCH | PORTGROUP} DIRECTION PRIORITY MATCH ACTION [NETWORK-FUNCTION-GROUP]",
       nbctl_pre_acl, nbctl_acl_add, NULL,
       "--log,--may-exist,--type=,--name=,--severity=,--meter=,--label=,"
       "--apply-after-lb,--tier=,--sample-new=,--sample-est=", RW },
@@ -8388,6 +8858,39 @@ static const struct ctl_command_syntax nbctl_commands[] = {
       nbctl_lsp_attach_mirror, NULL, "--may-exist", RW },
     { "lsp-detach-mirror", 2, 2, "PORT MIRROR", nbctl_pre_lsp_mirror,
       nbctl_lsp_detach_mirror, NULL, "", RW },
+
+    /* network-function-group commands. */
+    { "nfg-add", 3, INT_MAX,
+      "NETWORK-FUNCTION-GROUP ID MODE [NETWORK-FUNCTION]",
+      nbctl_pre_nf_group_add,
+      nbctl_nf_group_add, NULL, "--may-exist", RW },
+    { "nfg-del", 1, 1, "NETWORK-FUNCTION-GROUP",
+      nbctl_pre_nf_group_del,
+      nbctl_nf_group_del,
+      NULL, "--if-exists", RW },
+    { "nfg-list", 0, 1, "[NETWORK-FUNCTION-GROUP]",
+      nbctl_pre_nf_group_list,
+      nbctl_nf_group_list,
+      NULL, "", RO },
+    { "nfg-add-nf", 2, 2,
+      "NETWORK-FUNCTION-GROUP NETWORK-FUNCTION",
+      nbctl_pre_nf_group_add_network_function,
+      nbctl_nf_group_add_network_function, NULL, "--may-exist", RW },
+    { "nfg-del-nf", 2, 2,
+      "NETWORK-FUNCTION-GROUP NETWORK-FUNCTION",
+      nbctl_pre_nf_group_del_network_function,
+      nbctl_nf_group_del_network_function, NULL, "--if-exists", RW },
+
+    /* network-function commands. */
+    { "nf-add", 3, 3, "NETWORK-FUNCTION PORT-IN PORT-OUT",
+      nbctl_pre_nf_add,
+      nbctl_nf_add,
+      NULL, "--may-exist", RW },
+    { "nf-del", 1, 1, "NETWORK-FUNCTION", nbctl_pre_nf_del,
+      nbctl_nf_del,
+      NULL, "--if-exists", RW },
+    { "nf-list", 0, 0, "", nbctl_pre_nf_list,
+      nbctl_nf_list, NULL, "", RO },
 
     /* forwarding group commands. */
     { "fwd-group-add", 4, INT_MAX, "SWITCH GROUP VIP VMAC PORT...",

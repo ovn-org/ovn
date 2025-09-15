@@ -399,7 +399,7 @@
       must be either <code>switch</code> or <code>port-group</code>.
     </p>
     <dl>
-        <dt>[<code>--type=</code>{<code>switch</code> | <code>port-group</code>}] [<code>--log</code>] [<code>--meter=</code><var>meter</var>] [<code>--severity=</code><var>severity</var>] [<code>--name=</code><var>name</var>] [<code>--label=</code><var>label</var>] [<code>--sample-new=</code><var>sample</var>] [<code>--sample-est=</code><var>sample</var>] [<code>--may-exist</code>] [<code>--apply-after-lb</code>] [<code>--tier</code>] <code>acl-add</code> <var>entity</var> <var>direction</var> <var>priority</var> <var>match</var> <var>verdict</var></dt>
+        <dt>[<code>--type=</code>{<code>switch</code> | <code>port-group</code>}] [<code>--log</code>] [<code>--meter=</code><var>meter</var>] [<code>--severity=</code><var>severity</var>] [<code>--name=</code><var>name</var>] [<code>--label=</code><var>label</var>] [<code>--sample-new=</code><var>sample</var>] [<code>--sample-est=</code><var>sample</var>] [<code>--may-exist</code>] [<code>--apply-after-lb</code>] [<code>--tier</code>] <code>acl-add</code> <var>entity</var> <var>direction</var> <var>priority</var> <var>match</var> <var>verdict</var> [<var>network-function-group</var>]</dt>
       <dd>
         <p>
           Adds the specified ACL to <var>entity</var>.  <var>direction</var>
@@ -468,6 +468,108 @@
           The <code>--all</code> option will also list the port group ACLs
           associated with each logical switch port, when a logical switch
           is provided as an argument.
+        </p>
+      </dd>
+    </dl>
+
+    <h2>Network Function Commands</h2>
+
+    <dl>
+      <dt>[<code>--may-exist</code>] <code>nf-add</code> <var>nf</var> <var>inport</var> <var>outport</var></dt>
+      <dd>
+        <p>
+          Creates a new network function named <var>nf</var> with logical
+          switch ports <var>inport</var> and <var>outport</var>. Both the
+          ports must be on the same logical switch and must be already
+          created. When used in an ACL action, traffic matching the ACL
+          are redirected to the <var>inport</var> if it is from-lport ACL
+          and to the <var>outport</var> if it is to-lport ACL. The response
+          packets are sent through the same ports in reverse order.
+        </p>
+
+        <p>
+          Without any options, this command regards it as an error if
+          <var>nf</var> is a duplicate name.  With <code>--may-exist</code>,
+          adding network function with duplicate name overwrites the existing
+          config.
+        </p>
+      </dd>
+
+      <dt>[<code>--if-exists</code>] <code>nf-del</code> <var>nf</var></dt>
+      <dd>
+        <p>
+          Deletes <var>nf</var> specified as name or uuid. It is an error if
+          <var>nf</var> does not exist, unless <code>--if-exists</code> is
+          specified.
+      </p>
+      </dd>
+
+      <dt><code>nf-list</code></dt>
+      <dd>
+        <p>
+          Lists all network functions.
+        </p>
+      </dd>
+
+      <dt>[<code>--may-exist</code>] <code>nfg-add</code> <var>nfg</var> <var>id</var> <var>mode</var> [<var>nf</var>]...</dt>
+      <dd>
+        <p>
+          Creates a new network function group named <var>nfg</var> with
+          optionally one of more <code>nf</code> added to the group. The nfs
+          must be already created. Traffic redirection would be done towards
+          one of the active network functions, based on health monitoring.
+          If all are down, any one would be chosen for redirection.
+        </p>
+
+        <p>
+          Each network function group must have a unique <var>id</var> between
+          <code>1</code> and <code>255</code>. The <var>mode</var> must be
+          <code>inline</code> which is currently the only supported mode.
+        </p>
+
+        <p>
+          Without any options, this command regards it as an error if
+          <var>nfg</var> is a duplicate name.  With <code>--may-exist</code>,
+          adding network function group with duplicate name overwrites the
+          existing config.
+        </p>
+      </dd>
+
+      <dt>[<code>--if-exists</code>] <code>nfg-del</code> <var>nfg</var></dt>
+      <dd>
+        <p>
+          Deletes <var>nfg</var> specified as name or uuid. It is an error if
+          <var>nfg</var> does not exist, unless <code>--if-exists</code> is
+          specified.
+      </p>
+      </dd>
+
+      <dt><code>nfg-list</code></dt>
+      <dd>
+        <p>
+          Lists all network function groups.
+        </p>
+      </dd>
+
+      <dt>[<code>--may-exist</code>] <code>nfg-add-nf</code> <var>nfg</var> <var>nf</var></dt>
+      <dd>
+        <p>
+          Add a network function named <var>nf</var> to a network function
+          group named <var>nfg</var>. It is an error if <var>nfg</var> or
+          <var>nf</var> does not exist. Unless <code>--may-exist</code> is
+          specified, it is an error if the <var>nf</var> being added is
+          already a part of the <var>nfg</var>.
+        </p>
+      </dd>
+
+      <dt><code>nfg-del-nf</code> <var>nfg</var> <var>nf</var></dt>
+      <dd>
+        <p>
+          Delete a network function named <var>nf</var> from a network function
+          group named <var>nfg</var>. It is an error if <var>nfg</var> or
+          <var>nf</var> does not exist. It is an error if <var>nf</var> is not
+          a part of the <var>nfg</var>, unless <code>--if-exists</code> is
+          specified.
         </p>
       </dd>
     </dl>
