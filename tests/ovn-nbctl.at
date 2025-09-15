@@ -3235,10 +3235,10 @@ AT_CHECK([check ovn-nbctl lsp-add ls0 svc-port0])
 AT_CHECK([check ovn-nbctl lsp-add ls0 svc-port1])
 AT_CHECK([check ovn-nbctl set logical_switch_port svc-port0 \
     options:receive_multicast=false options:lsp_learn_fdb=false \
-    options:network-function=true options:network-function-linked-port=svc-port1])
+    options:is-nf=true options:nf-linked-port=svc-port1])
 AT_CHECK([check ovn-nbctl set logical_switch_port svc-port1 \
     options:receive_multicast=false options:lsp_learn_fdb=false \
-    options:network-function=true options:network-function-linked-port=svc-port0])
+    options:is-nf=true options:nf-linked-port=svc-port0])
 
 # Create network-function.
 AT_CHECK([ovn-nbctl nf-add nf0 svc-port0 svc-port1])
@@ -3255,10 +3255,10 @@ AT_CHECK([check ovn-nbctl lsp-add ls0 svc-port4])
 AT_CHECK([check ovn-nbctl lsp-add ls0 svc-port5])
 AT_CHECK([check ovn-nbctl set logical_switch_port svc-port4 \
     options:receive_multicast=false options:lsp_learn_fdb=false \
-    options:network-function=true options:network-function-linked-port=svc-port5])
+    options:is-nf=true options:nf-linked-port=svc-port5])
 AT_CHECK([check ovn-nbctl set logical_switch_port svc-port5 \
     options:receive_multicast=false options:lsp_learn_fdb=false \
-    options:network-function=true options:network-function-linked-port=svc-port4])
+    options:is-nf=true options:nf-linked-port=svc-port4])
 AT_CHECK([ovn-nbctl --may-exist nf-add nf0 svc-port4 svc-port5])
 AT_CHECK([ovn-nbctl nf-list | uuidfilt], [0], [dnl
 <0> (nf0) in:svc-port4 out:svc-port5

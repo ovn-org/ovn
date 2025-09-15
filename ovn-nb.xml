@@ -1580,6 +1580,22 @@
           this port. The default value is <code>true</code>.
         </column>
 
+        <column name="options" key="is-nf"
+                type='{"type": "boolean"}'>
+          Needs to be set to <code>true</code> for Network Function ports.
+          These are the ports used as <code>inport</code> or
+          <code>outport</code> in Network_Function table.
+          The default value is <code>false</code>.
+        </column>
+
+        <column name="options" key="nf-linked-port"
+                type='{"type": "string"}'>
+          Each row in Network_Function table refers to two logical switch ports
+          under the columns <code>inport</code> and <code>outport</code>. The
+          port identified as <code>inport</code> needs to have this option set
+          to the port identified as <code>outport</code>, and vice-versa.
+        </column>
+
         <group title="VIF Plugging Options">
           <column name="options" key="vif-plug-type">
             If set, OVN will attempt to perform plugging of this VIF.  In order

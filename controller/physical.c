@@ -177,6 +177,8 @@ put_decapsulation(enum mf_field_id mff_ovn_geneve,
         put_move(MFF_TUN_ID, 0,  MFF_LOG_DATAPATH, 0, 24, ofpacts);
         put_move(mff_ovn_geneve, 16, MFF_LOG_INPORT, 0, 15, ofpacts);
         put_move(mff_ovn_geneve, 0, MFF_LOG_OUTPORT, 0, 16, ofpacts);
+        put_load(ofp_to_u16(tun->ofport), MFF_LOG_TUN_OFPORT,
+                 16, 16, ofpacts);
     } else if (tun->type == VXLAN) {
         /* Add flows for non-VTEP tunnels. Split VNI into two 12-bit
          * sections and use them for datapath and outport IDs. */
@@ -389,6 +391,15 @@ match_outport_dp_and_port_keys(struct match *match,
     match_set_reg(match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
 }
 
+static void
+match_inport_dp_and_port_keys(struct match *match,
+                              uint32_t dp_key, uint32_t port_key)
+{
+    match_init_catchall(match);
+    match_set_metadata(match, htonll(dp_key));
+    match_set_reg(match, MFF_LOG_INPORT - MFF_REG0, port_key);
+}
+
 static struct sbrec_encap *
 find_additional_encap_for_chassis(const struct sbrec_port_binding *pb,
                                   const struct sbrec_chassis *chassis_rec)
@@ -454,7 +465,8 @@ put_remote_port_redirect_overlay(const struct sbrec_port_binding *binding,
                                  uint32_t port_key,
                                  struct match *match,
                                  struct ofpbuf *ofpacts_p,
-                                 struct ovn_desired_flow_table *flow_table)
+                                 struct ovn_desired_flow_table *flow_table,
+                                 bool allow_hairpin)
 {
     /* Setup encapsulation */
     for (size_t i = 0; i < ctx->n_encap_ips; i++) {
@@ -473,6 +485,14 @@ put_remote_port_redirect_overlay(const struct sbrec_port_binding *binding,
                          ofpacts_clone);
             }
 
+            /* Clear the MFF_INPORT if the same packet may need to go out from
+             * the same tunnel inport. */
+            if (allow_hairpin) {
+                put_stack(MFF_IN_PORT, ofpact_put_STACK_PUSH(ofpacts_clone));
+                put_load(ofp_to_u16(OFPP_NONE), MFF_IN_PORT, 0, 16,
+                         ofpacts_clone);
+            }
+
             const struct chassis_tunnel *tun;
             VECTOR_FOR_EACH (&tuns, tun) {
                 put_encapsulation(ctx->mff_ovn_geneve, tun, binding->datapath,
@@ -480,6 +500,11 @@ put_remote_port_redirect_overlay(const struct sbrec_port_binding *binding,
                 ofpact_put_OUTPUT(ofpacts_clone)->port = tun->ofport;
             }
             put_resubmit(OFTABLE_REMOTE_VTEP_OUTPUT, ofpacts_clone);
+
+            if (allow_hairpin) {
+                put_stack(MFF_IN_PORT, ofpact_put_STACK_POP(ofpacts_clone));
+            }
+
             ofctrl_add_flow(flow_table, OFTABLE_REMOTE_OUTPUT, 100,
                             binding->header_.uuid.parts[0], match,
                             ofpacts_clone, &binding->header_.uuid);
@@ -487,6 +512,233 @@ put_remote_port_redirect_overlay(const struct sbrec_port_binding *binding,
         vector_destroy(&tuns);
         ofpbuf_delete(ofpacts_clone);
     }
+}
+
+static const struct sbrec_port_binding *
+get_binding_network_function_linked_port(
+    struct ovsdb_idl_index *sbrec_port_binding_by_name,
+    const struct sbrec_port_binding *binding)
+{
+    const char *nf_linked_name = smap_get(&binding->options, "nf-linked-port");
+    if (!nf_linked_name) {
+        return NULL;
+    }
+
+    VLOG_DBG("get NF linked port_binding %s:%s",
+             binding->logical_port, nf_linked_name);
+
+    const struct sbrec_port_binding *nf_linked_port =
+        lport_lookup_by_name(sbrec_port_binding_by_name, nf_linked_name);
+
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+    if (!nf_linked_port) {
+        VLOG_INFO_RL(&rl, "Binding not found for nf-linked-port"
+                  " %s", nf_linked_name);
+        return NULL;
+    }
+    if (strcmp(nf_linked_port->type, binding->type)) {
+        VLOG_ERR_RL(&rl, "Binding type mismatch between %s and "
+                  "nf-linked-port %s",
+                  binding->logical_port,  nf_linked_name);
+        return NULL;
+    }
+
+    const char *nf_linked_linked_name = smap_get(&nf_linked_port->options,
+                                                 "nf-linked-port");
+    if (!nf_linked_linked_name || strcmp(nf_linked_linked_name,
+                                         binding->logical_port)) {
+        VLOG_INFO_RL(&rl, "LSP name %s does not match linked_linked_name",
+                  binding->logical_port);
+        return NULL;
+    }
+
+    return nf_linked_port;
+}
+
+static void
+send_traffic_by_tunnel(const struct sbrec_port_binding *binding,
+                       struct match *match,
+                       struct ofpbuf *ofpacts_p,
+                       uint32_t dp_key,
+                       uint32_t port_key,
+                       struct chassis_tunnel *tun,
+                       enum mf_field_id mff_ovn_geneve,
+                       struct ovn_desired_flow_table *flow_table)
+{
+    match_init_catchall(match);
+    ofpbuf_clear(ofpacts_p);
+
+    match_inport_dp_and_port_keys(match, dp_key, port_key);
+    match_set_reg_masked(match, MFF_LOG_FLAGS - MFF_REG0, MLF_RECIRC,
+                         MLF_RECIRC);
+    ovs_u128 of_tun_ct_label_id_val = {
+        .u64.hi = ((uint32_t) ofp_to_u16(tun->ofport)) << 16,
+    };
+    ovs_u128 of_tun_ct_label_id_mask = {
+        .u64.hi = 0x00000000ffff0000,
+    };
+
+    match_set_ct_label_masked(match, of_tun_ct_label_id_val,
+                              of_tun_ct_label_id_mask);
+
+    put_load(binding->datapath->tunnel_key, MFF_TUN_ID, 0, 24, ofpacts_p);
+    put_move(MFF_LOG_OUTPORT, 0, mff_ovn_geneve, 0, 32, ofpacts_p);
+    put_load(port_key, mff_ovn_geneve, 16, 15, ofpacts_p);
+
+    ofpact_put_OUTPUT(ofpacts_p)->port = tun->ofport;
+    ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 109,
+                    binding->header_.uuid.parts[0], match,
+                    ofpacts_p, &binding->header_.uuid);
+}
+
+static void
+put_redirect_overlay_to_source(const struct sbrec_port_binding *binding,
+                               int linked_ct_zone,
+                               const struct hmap *chassis_tunnels,
+                               enum mf_field_id mff_ovn_geneve,
+                               struct match *match,
+                               struct ofpbuf *ofpacts_p,
+                               struct ovn_desired_flow_table *flow_table)
+{
+    uint32_t dp_key = binding->datapath->tunnel_key;
+    uint32_t port_key = binding->tunnel_key;
+
+    /* Say, a network function has ports nf1 and nf2. The source port p1 is on
+     * a different host. The packet redirected from p1 was tunneled to the NF
+     * host. In PHY_TO_LOG table the tunnel interface id is stored in
+     * MFF_LOG_TUN_OFPORT. The egress pipeline then commits it into ct_label
+     * tun_if_id in nf1's zone (out_stateful priority 120 rule). When the same
+     * packet comes out from nf2, two rules process it:
+     * first rule sets recirc bit to 1 and processes the packet through nf1's
+     * ct zone and resubmits to same table. When the recirculated packet comes
+     * back, the second rule (which checks recirc bit == 1) uses the tun_if_id
+     * from ct_label to send the packet back to p1's host.
+     */
+
+    /* Table 45 (LOCAL_OUTPUT), priority 110
+     * =====================================
+     *
+     * Each flow matches a logical inport to a nf port and checks if
+     * recirc bit is 0 (i.e. packet first time being processed by this table).
+     * The action processes the packet through ct zone of the linked nf port
+     * and resubmits to the same table after setting recirc bit to 1.
+     * match: inport == svc-port[i] && MLF_RECIRC_BIT = 0
+     * action: MLF_RECIRC_BIT = 1, ct(zone=linked-zone[i], table=LOCAL)
+     */
+    match_init_catchall(match);
+    ofpbuf_clear(ofpacts_p);
+    match_inport_dp_and_port_keys(match, dp_key, port_key);
+    match_set_dl_type(match, htons(ETH_TYPE_IP));
+    match_set_reg_masked(match, MFF_LOG_FLAGS - MFF_REG0, 0, MLF_RECIRC);
+
+    put_load(1, MFF_LOG_FLAGS, MLF_RECIRC_BIT, 1, ofpacts_p);
+    put_load(linked_ct_zone, MFF_LOG_CT_ZONE, 0, 16, ofpacts_p);
+
+    struct ofpact_conntrack *ct = ofpact_put_CT(ofpacts_p);
+    ct->recirc_table = OFTABLE_LOCAL_OUTPUT;
+    ct->zone_src.field = mf_from_id(MFF_LOG_CT_ZONE);
+    ct->zone_src.ofs = 0;
+    ct->zone_src.n_bits = 16;
+    ct->flags = 0;
+    ct->alg = 0;
+    ofpact_finish(ofpacts_p, &ct->ofpact);
+
+    ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 110,
+                    binding->header_.uuid.parts[0], match,
+                    ofpacts_p, &binding->header_.uuid);
+
+    /* Table 45 (LOCAL_OUTPUT), priority 110
+     * In case NF is sending back a response on the port it received the
+     * packet on, instead of forwarding out of the other port (e.g. NF sending
+     * RST to the SYN received), the ct lookup in linked port's zone would
+     * fail. Based on ct.inv check the packet is then tunneled back using
+     * the tunnel id from this port's zone itself. The above rule has
+     * overwritten the zone info by now, so we recover it from the register
+     * that was populated by in_network_function stage with the tunnel id.
+     * match: inport == svc-port[i] && MLF_RECIRC_BIT = 1
+     *        && ct.inv && MFF_LOG_TUN_OFPORT == <tun-id>
+     * action: tunnel back using above tun-id
+     */
+    struct chassis_tunnel *tun;
+    HMAP_FOR_EACH (tun, hmap_node, chassis_tunnels) {
+        match_init_catchall(match);
+        ofpbuf_clear(ofpacts_p);
+        match_inport_dp_and_port_keys(match, dp_key, port_key);
+        match_set_reg_masked(match, MFF_LOG_FLAGS - MFF_REG0, MLF_RECIRC,
+                             MLF_RECIRC);
+        match_set_ct_state_masked(match, OVS_CS_F_INVALID, OVS_CS_F_INVALID);
+        match_set_reg_masked(match, MFF_LOG_TUN_OFPORT - MFF_REG0,
+                             ((uint32_t) ofp_to_u16(tun->ofport)) << 16,
+                             ((uint32_t) 0xffff) << 16);
+        put_load(binding->datapath->tunnel_key, MFF_TUN_ID, 0, 24, ofpacts_p);
+        put_move(MFF_LOG_OUTPORT, 0, mff_ovn_geneve, 0, 32, ofpacts_p);
+        put_load(port_key, mff_ovn_geneve, 16, 15, ofpacts_p);
+
+        ofpact_put_OUTPUT(ofpacts_p)->port = tun->ofport;
+        ofctrl_add_flow(flow_table, OFTABLE_LOCAL_OUTPUT, 110,
+                        binding->header_.uuid.parts[0], match,
+                        ofpacts_p, &binding->header_.uuid);
+    }
+
+    /* Table 45 (LOCAL_OUTPUT), priority 109
+     * =====================================
+     *
+     * A flow is installed For each {remote tunnel_id, nf port} combination. It
+     * matches the inport with the nf port and the ct_label.tun_if_id with the
+     * tunnel_id. Also checks if the recirc bit is 1 (i.e. packet being
+     * processed by this table second time). The action is to send the packet
+     * out using the tunnel interface.
+     * match: inport == svc-port[i] && MLF_RECIRC_BIT = 1
+     *        && ct_label.tun_if_id == <tun-id>
+     * action: tunnel back using tun-id
+     */
+    HMAP_FOR_EACH (tun, hmap_node, chassis_tunnels) {
+        send_traffic_by_tunnel(binding, match, ofpacts_p, dp_key, port_key,
+                               tun, mff_ovn_geneve, flow_table);
+    }
+    ofpbuf_clear(ofpacts_p);
+}
+
+static void
+put_redirect_overlay_to_source_from_nf_port(
+    const struct sbrec_port_binding *binding,
+    struct ovsdb_idl_index *sbrec_port_binding_by_name,
+    const struct hmap *chassis_tunnels,
+    const struct shash *ct_zones,
+    enum mf_field_id mff_ovn_geneve,
+    struct match *match,
+    struct ofpbuf *ofpacts_p,
+    struct ovn_desired_flow_table *flow_table)
+{
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+
+    const struct sbrec_port_binding *linked_pb =
+        get_binding_network_function_linked_port(sbrec_port_binding_by_name,
+                                                 binding);
+    if (!linked_pb) {
+        VLOG_INFO_RL(&rl, "Linked port not found for %s",
+                     binding->logical_port);
+        return;
+    }
+    struct zone_ids zone = get_zone_ids(binding, ct_zones);
+    if (!zone.ct) {
+        VLOG_INFO_RL(&rl, "Port zone not found for %s", binding->logical_port);
+        return;
+    }
+    struct zone_ids linked_zone = get_zone_ids(linked_pb, ct_zones);
+    if (!linked_zone.ct) {
+        VLOG_INFO_RL(&rl, "Linked port zone not found for %s",
+                     binding->logical_port);
+        return;
+    }
+
+    VLOG_DBG("Both port zones found for NF port %s", binding->logical_port);
+    put_redirect_overlay_to_source(binding, linked_zone.ct, chassis_tunnels,
+                                   mff_ovn_geneve, match, ofpacts_p,
+                                   flow_table);
+    put_redirect_overlay_to_source(linked_pb, zone.ct, chassis_tunnels,
+                                   mff_ovn_geneve,  match, ofpacts_p,
+                                   flow_table);
 }
 
 static void
@@ -964,6 +1216,29 @@ add_default_drop_flow(const struct physical_ctx *p_ctx,
     ofpbuf_uninit(&ofpacts);
 }
 
+/* Clear logical registers for network function datapaths.
+ * Resets all logical registers to zero except MFF_LOG_TUN_OFPORT, which is
+ * partially cleared. Bits 16-31 store the geneve tunnel interface ID of
+ * received packets and are preserved for the egress pipeline.
+ * Bits 0-15 are cleared.
+ */
+static void
+clear_registers_for_nf_datapath(struct ofpbuf *ofpacts_p)
+{
+    /* Clear all logical registers except MFF_LOG_TUN_OFPORT */
+    for (size_t i = 0; i < MFF_N_LOG_REGS; i++) {
+        if ((MFF_REG0 + i) != MFF_LOG_TUN_OFPORT) {
+            /* Clear entire 32-bit register */
+            put_load(0, MFF_REG0 + i, 0, 32, ofpacts_p);
+        }
+    }
+
+    /* Partially clear MFF_LOG_TUN_OFPORT register:
+     * - Bits 16-31: Preserve geneve tunnel ID for egress pipeline
+     * - Bits 0-15: Clear to zero for clean state */
+    put_load(0, MFF_LOG_TUN_OFPORT, 0, 16, ofpacts_p);
+}
+
 static void
 put_local_common_flows(uint32_t dp_key,
                        const struct sbrec_port_binding *pb,
@@ -1014,6 +1289,24 @@ put_local_common_flows(uint32_t dp_key,
     ofctrl_add_flow(flow_table, OFTABLE_CHECK_LOOPBACK, 100,
                     pb->header_.uuid.parts[0], &match, ofpacts_p,
                     &pb->header_.uuid);
+
+    /* Table 46, Priority 1.
+     * =======================
+     * For datapath with network function ports, add a flow to clear only the
+     * required logical registers.
+     * In the default case, priority 0 rule clears all the registers.
+     */
+    bool nf_port = smap_get_bool(&pb->options, "is-nf", false);
+    if (nf_port) {
+        match_init_catchall(&match);
+        ofpbuf_clear(ofpacts_p);
+        match_set_metadata(&match, htonll(dp_key));
+        clear_registers_for_nf_datapath(ofpacts_p);
+        put_resubmit(OFTABLE_LOG_EGRESS_PIPELINE, ofpacts_p);
+        ofctrl_add_flow(flow_table, OFTABLE_CHECK_LOOPBACK, 1,
+                        pb->datapath->header_.uuid.parts[0], &match,
+                        ofpacts_p, &pb->datapath->header_.uuid);
+    }
 
     /* Table 64, Priority 100.
      * =======================
@@ -1907,12 +2200,14 @@ consider_port_binding(const struct physical_ctx *ctx,
     struct ha_chassis_ordered *ha_ch_ordered;
     ha_ch_ordered = ha_chassis_get_ordered(binding->ha_chassis_group);
 
+    bool is_nf = smap_get_bool(&binding->options, "is-nf", false);
+
     /* Determine how the port is accessed. */
     enum access_type access_type = PORT_LOCAL;
     if (!ofport) {
         /* Enforce tunneling while we clone packets to additional chassis b/c
          * otherwise upstream switch won't flood the packet to both chassis. */
-        if (localnet_port && !binding->additional_chassis) {
+        if (localnet_port && !binding->additional_chassis && !is_nf) {
             ofport = u16_to_ofp(simap_get(ctx->patch_ofports,
                                           localnet_port->logical_port));
             if (!ofport) {
@@ -2142,6 +2437,20 @@ consider_port_binding(const struct physical_ctx *ctx,
                             binding->header_.uuid.parts[0], &match,
                             ofpacts_p, &binding->header_.uuid);
         }
+
+        /* Packets egressing from network function ports need to be sent to the
+         * source. */
+        if (is_nf && localnet_port) {
+            put_redirect_overlay_to_source_from_nf_port(
+                                 binding,
+                                 ctx->sbrec_port_binding_by_name,
+                                 ctx->chassis_tunnels,
+                                 ctx->ct_zones,
+                                 ctx->mff_ovn_geneve,
+                                 &match,
+                                 ofpacts_p,
+                                 flow_table);
+        }
     } else if (access_type == PORT_LOCALNET && !ctx->always_tunnel) {
         /* Remote port connected by localnet port */
         /* Table 45, priority 100.
@@ -2201,7 +2510,8 @@ consider_port_binding(const struct physical_ctx *ctx,
             &match, ofpacts_p, ctx->chassis_tunnels, flow_table);
     } else {
         put_remote_port_redirect_overlay(
-            binding, type, ctx, port_key, &match, ofpacts_p, flow_table);
+            binding, type, ctx, port_key, &match, ofpacts_p, flow_table,
+            is_nf);
     }
 out:
     if (ha_ch_ordered) {
@@ -3245,7 +3555,7 @@ physical_run(struct physical_ctx *p_ctx,
      *
      * Handles packets received from a VXLAN tunnel which get resubmitted to
      * OFTABLE_LOG_INGRESS_PIPELINE due to lack of needed metadata in VXLAN,
-     * explicitly skip sending back out any tunnels and resubmit to table 40
+     * explicitly skip sending back out any tunnels and resubmit to table 43
      * for local delivery, except packets which have MLF_ALLOW_LOOPBACK bit
      * set.
      */

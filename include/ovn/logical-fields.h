@@ -42,6 +42,7 @@ enum ovn_controller_event {
                                        * (16..31 of the 32 bits). */
 #define MFF_LOG_INPORT     MFF_REG14  /* Logical input port (32 bits). */
 #define MFF_LOG_OUTPORT    MFF_REG15  /* Logical output port (32 bits). */
+#define MFF_LOG_TUN_OFPORT MFF_REG5   /* 16..31 of the 32 bits */
 
 /* Logical registers.
  *
@@ -105,6 +106,7 @@ enum mff_log_flags_bits {
     MLF_UNSNAT_NOT_TRACKED_BIT = 21,
     MLF_IGMP_IGMP_SNOOP_INJECT_BIT = 22,
     MLF_PKT_SAMPLED_BIT = 23,
+    MLF_RECIRC_BIT = 24,
     MLF_NETWORK_ID_START_BIT = 28,
     MLF_NETWORK_ID_END_BIT = 31,
 };
@@ -178,6 +180,9 @@ enum mff_log_flags {
      * conntrack zone. */
     MLF_PKT_SAMPLED = (1 << MLF_PKT_SAMPLED_BIT),
 
+    /* Indicate the packet has been processed by LOCAL table once before. */
+    MLF_RECIRC = (1 << MLF_RECIRC_BIT),
+
     /* Assign network ID to packet to choose correct network for snat when
      * lb_force_snat_ip=router_ip. */
     MLF_NETWORK_ID = (OVN_MAX_NETWORK_ID << MLF_NETWORK_ID_START_BIT),
@@ -245,15 +250,19 @@ const struct ovn_field *ovn_field_from_name(const char *name);
 #define OVN_CT_OBS_STAGE_END_BIT 5
 #define OVN_CT_ALLOW_ESTABLISHED_BIT 6
 #define OVN_CT_NF_GROUP_BIT 7
+#define OVN_CT_TUN_IF_BIT 8
 
 #define OVN_CT_BLOCKED 1
 #define OVN_CT_NATTED  2
 #define OVN_CT_LB_SKIP_SNAT 4
 #define OVN_CT_LB_FORCE_SNAT 8
 #define OVN_CT_NF_GROUP 128
+#define OVN_CT_TUN_IF 256
 
 #define OVN_CT_NF_GROUP_ID_1ST_BIT 17
 #define OVN_CT_NF_GROUP_ID_END_BIT 24
+#define OVN_CT_TUN_IF_1ST_BIT 80
+#define OVN_CT_TUN_IF_END_BIT 95
 
 #define OVN_CT_ECMP_ETH_1ST_BIT 32
 #define OVN_CT_ECMP_ETH_END_BIT 79

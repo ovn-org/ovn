@@ -18787,3 +18787,167 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Network Function])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv1 \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+ADD_NAMESPACES(client)
+ADD_VETH(client, client, br-int, "192.168.1.10/24", "f0:00:00:01:02:10")
+ADD_NAMESPACES(server)
+ADD_VETH(server, server, br-int, "192.168.1.20/24", "f0:00:00:01:02:20")
+ADD_NAMESPACES(nf)
+ADD_VETH(nf-p1, nf, br-int, "0", "f0:00:00:01:02:30")
+ADD_VETH(nf-p2, nf, br-int, "0", "f0:00:00:01:02:40")
+ADD_VETH(nf-p3, nf, br-int, "0", "f0:00:00:01:02:50")
+ADD_VETH(nf-p4, nf, br-int, "0", "f0:00:00:01:02:60")
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 client \
+    -- lsp-set-addresses client "f0:00:00:01:02:10 192.168.1.10/24"
+check ovn-nbctl lsp-add sw0 server \
+    -- lsp-set-addresses server "f0:00:00:01:02:20 192.168.1.20/24"
+check ovn-nbctl ls-add nf
+check ovn-nbctl lsp-add nf nf-p1
+check ovn-nbctl lsp-add nf nf-p2
+check ovn-nbctl lsp-add nf nf-p3
+check ovn-nbctl lsp-add nf nf-p4
+check ovn-nbctl set logical_switch_port nf-p1 options:receive_multicast=false options:lsp_learn_fdb=false \
+                                              options:is-nf=true options:nf-linked-port=nf-p2
+check ovn-nbctl set logical_switch_port nf-p2 options:receive_multicast=false options:lsp_learn_fdb=false \
+                                              options:is-nf=true options:nf-linked-port=nf-p1
+check ovn-nbctl set logical_switch_port nf-p3 options:receive_multicast=false options:lsp_learn_fdb=false \
+                                              options:is-nf=true options:nf-linked-port=nf-p4
+check ovn-nbctl set logical_switch_port nf-p4 options:receive_multicast=false options:lsp_learn_fdb=false \
+                                              options:is-nf=true options:nf-linked-port=nf-p3
+check ovn-nbctl lsp-add sw0 child-1 nf-p1 100
+check ovn-nbctl lsp-add sw0 child-2 nf-p2 100
+check ovn-nbctl lsp-add sw0 child-3 nf-p3 100
+check ovn-nbctl lsp-add sw0 child-4 nf-p4 100
+check ovn-nbctl set logical_switch_port child-1 options:receive_multicast=false options:lsp_learn_fdb=false \
+                                                options:is-nf=true options:nf-linked-port=child-2
+check ovn-nbctl set logical_switch_port child-2 options:receive_multicast=false options:lsp_learn_fdb=false \
+                                                options:is-nf=true options:nf-linked-port=child-1
+check ovn-nbctl set logical_switch_port child-3 options:receive_multicast=false options:lsp_learn_fdb=false \
+                                                options:is-nf=true options:nf-linked-port=child-4
+check ovn-nbctl set logical_switch_port child-4 options:receive_multicast=false options:lsp_learn_fdb=false \
+                                                options:is-nf=true options:nf-linked-port=child-3
+
+AS_BOX([Test-1: Single NF without health check])
+
+check ovn-nbctl nf-add nf0 nf-p1 nf-p2
+nf0_uuid=$(fetch_column nb:network_function _uuid name=nf0)
+check ovn-nbctl nfg-add nfg0 1 inline nf0
+
+check ovn-nbctl pg-add pg0 server
+check ovn-nbctl acl-add pg0 from-lport 1001 "inport == @pg0 && ip4.dst == 192.168.1.10" allow-related nfg0
+check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4.src == 192.168.1.10" allow-related nfg0
+
+check ovn-nbctl --wait=hv sync
+
+# configure bridge inside nf namespace for nf0 to simulate NF behaviour
+NS_CHECK_EXEC([nf], [ip link add name br0 type bridge])
+NS_CHECK_EXEC([nf], [ip link set dev nf-p1 master br0])
+NS_CHECK_EXEC([nf], [ip link set dev nf-p2 master br0])
+NS_CHECK_EXEC([nf], [ip link set dev br0 up])
+
+validate_traffic() {
+    send_data=$1; recv_data=$2; pkt_cnt=$3;
+    AT_CHECK([printf "$send_data\n" > /tmp/nffifo], [0], [dnl
+])
+
+    if [[ -n "$recv_data" ]]; then
+        OVS_WAIT_FOR_OUTPUT_UNQUOTED([cat output.txt], [0], [dnl
+$recv_data
+])
+    else
+        OVS_WAIT_FOR_OUTPUT([cat output.txt], [0], [dnl
+])
+    fi
+
+    : > output.txt
+
+    OVS_WAIT_UNTIL([
+        total_pkts=$(cat pkt.pcap | wc -l)
+        test ${total_pkts} -ge ${pkt_cnt}
+    ])
+}
+
+validate_single_nf_no_health_check() {
+    client_ns=$1; server_ns=$2; sip=$3; direction=$4
+
+    # Start a TCP server
+    NETNS_DAEMONIZE($server_ns, [server.py -i $sip -p 10000], [server.pid])
+    on_exit 'kill $(cat server.pid)'
+
+    # Ensure TCP server is ready for connections
+    OVS_WAIT_FOR_OUTPUT([cat output.txt], [0], [dnl
+Server Ready
+])
+    : > output.txt
+
+    # Make a FIFO and send its output to a server
+    mkfifo /tmp/nffifo
+    on_exit 'rm -rf /tmp/nffifo'
+
+    NETNS_DAEMONIZE($client_ns, [client.py -f "/tmp/nffifo" -i $sip -p 10000], [client.pid])
+    on_exit 'kill $(cat client.pid)'
+
+    AS_BOX([$direction: Verify traffic forwarding through single NF without health check])
+
+    # Capture traffic on nf0
+    NS_CHECK_EXEC([nf], [tcpdump -l -nvv -i nf-p1 tcp > pkt.pcap 2>tcpdump_err &])
+    OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
+    on_exit 'kill $(pidof tcpdump)'
+
+    # Verify no service monitors exist when health check is not configured
+    #AT_CHECK([ovn-sbctl list service_monitor | grep -v "^$"], [1])
+    AT_CHECK([ovn-sbctl list service_monitor | wc -l], [0], [dnl
+0
+])
+
+    validate_traffic "test" "test" 5
+
+    kill $(pidof tcpdump)
+    kill $(cat client.pid)
+    kill $(cat server.pid)
+    rm -f client.pid server.pid /tmp/nffifo
+}
+
+AS_BOX([Verify inbound traffic forwarding through NF without health check])
+validate_single_nf_no_health_check "client" "server" "192.168.1.20" "Inbound"
+
+AS_BOX([Verify outbound traffic forwarding through NF without health check])
+validate_single_nf_no_health_check "server" "client" "192.168.1.10" "Outbound"
+
+OVN_CLEANUP_CONTROLLER([hv1])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
+/failed to query port patch-.*/d
+/.*terminating with signal 15.*/d"])
+AT_CLEANUP
+])

@@ -240,6 +240,10 @@ static const char *reg_ct_state[] = {
 #undef CS_STATE
 };
 
+/* Register used for storing tunnel openflow interface id, in a Logical Switch.
+ * Must match the MFF_LOG_TUN_OFPORT in logical-fields.h */
+#define REG_TUN_OFPORT "reg5[16..31]"
+
 /* Register used for temporarily store ECMP eth.src to avoid masked ct_label
  * access. It doesn't really occupy registers because the content of the
  * register is saved to stack and then restored in the same flow.
@@ -283,7 +287,7 @@ static const char *reg_ct_state[] = {
  * | R4 |                 REG_LB_IPV4                  |   |                                   |
  * | R4 |    (>= IN_PRE_STATEFUL && <= IN_HAIRPIN)     | X |                                   |
  * +----+----------------------------------------------+ X |           REG_LB_IPV6             |
- * | R5 |                   UNUSED                     | R |      (>= IN_PRE_STATEFUL &&       |
+ * | R5 |           REG_TUN_OFPORT (16..31)            | R |      (>= IN_PRE_STATEFUL &&       |
  * +----+----------------------------------------------+ E |       <= IN_HAIRPIN)              |
  * | R6 |                   UNUSED                     | G |                                   |
  * +----+----------------------------------------------+ 1 |                                   |
@@ -17938,6 +17942,49 @@ nf_get_active(const struct nbrec_network_function_group *nfg)
     return nfg->n_network_function ? nfg->network_function[0] : NULL;
 }
 
+/* For packets received on tunnel and egressing towards a network-function port
+ * commit the tunnel interface id in CT. This will be utilized when the packet
+ * comes out of the other network-function interface of the service VM. The
+ * packet then will be tunneled back to the source host. */
+static void
+build_lswitch_stateful_nf(struct ovn_port *op,
+                          struct ds *actions, struct ds *match,
+                          struct lflow_table *lflows,
+                          struct lflow_ref *lflow_ref)
+{
+    ds_clear(actions);
+    ds_clear(match);
+
+    ds_put_cstr(actions,
+                "ct_commit { "
+                   "ct_mark.blocked = 0; "
+                   "ct_mark.allow_established = " REGBIT_ACL_PERSIST_ID "; "
+                   "ct_label.acl_id = " REG_ACL_ID "; "
+                   "ct_label.tun_if_id = " REG_TUN_OFPORT "; "
+                "}; next;");
+    ds_put_format(match, "outport == %s && " REGBIT_ACL_LABEL" == 0",
+                  op->json_key);
+    ovn_lflow_add(lflows, op->od, S_SWITCH_OUT_STATEFUL, 120,
+                  ds_cstr(match), ds_cstr(actions), lflow_ref);
+
+    ds_clear(actions);
+    ds_clear(match);
+    ds_put_format(match, "outport == %s && " REGBIT_ACL_LABEL" == 1",
+                  op->json_key);
+    ds_put_cstr(actions,
+                "ct_commit { "
+                   "ct_mark.blocked = 0; "
+                   "ct_mark.allow_established = " REGBIT_ACL_PERSIST_ID "; "
+                   "ct_label.acl_id = " REG_ACL_ID "; "
+                   "ct_mark.obs_stage = " REGBIT_ACL_OBS_STAGE "; "
+                   "ct_mark.obs_collector_id = " REG_OBS_COLLECTOR_ID_EST "; "
+                   "ct_label.obs_point_id = " REG_OBS_POINT_ID_EST "; "
+                   "ct_label.tun_if_id = " REG_TUN_OFPORT "; "
+                "}; next;");
+    ovn_lflow_add(lflows, op->od, S_SWITCH_OUT_STATEFUL, 120,
+                  ds_cstr(match), ds_cstr(actions), lflow_ref);
+}
+
 static void
 consider_network_function(struct lflow_table *lflows,
                           const struct ovn_datapath *od,
@@ -18057,7 +18104,7 @@ consider_network_function(struct lflow_table *lflows,
      * match.
      */
     ds_put_format(&match, "inport == %s", input_port->json_key);
-    ds_put_format(&action, "next;");
+    ds_put_format(&action, REG_TUN_OFPORT" = ct_label.tun_if_id; next;");
     ovn_lflow_add(lflows, od, S_SWITCH_IN_NF, 100,
                   ds_cstr(&match), ds_cstr(&action), lflow_ref);
     ds_clear(&match);
@@ -18098,6 +18145,13 @@ consider_network_function(struct lflow_table *lflows,
                   (ovn_stage_get_table(S_SWITCH_OUT_NF) + 1));
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL, 110, ds_cstr(&match),
                   ds_cstr(&action), lflow_ref);
+
+    /* Priority 120 flows in out_stateful:
+     * If packet was received on a tunnel interface and being forwarded to a
+     * NF port, commit openflow tunnel interface id in ct_label.
+     */
+    build_lswitch_stateful_nf(output_port, &action, &match, lflows, lflow_ref);
+    build_lswitch_stateful_nf(input_port, &action, &match, lflows, lflow_ref);
 
     ds_destroy(&match);
     ds_destroy(&action);

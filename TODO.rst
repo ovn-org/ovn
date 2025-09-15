@@ -177,6 +177,11 @@ OVN To-do List
     have more than one nexthop (ECMP).  This probably requires a redesign of
     the Northbound Logical_Router_Policy database schema.
 
+* Network function insertion
+
+  * Geneve tunnel is used for supporting this feature for VLAN network.
+    Extend the support over VxLAN tunnel as well.
+
 * CI
 
   * ovn-kubernetes: Only a subset of the ovn-kubernetes features is currently
