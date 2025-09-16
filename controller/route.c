@@ -52,12 +52,21 @@ advertise_route_hash(const struct in6_addr *dst, unsigned int plen)
 const struct sbrec_port_binding*
 route_exchange_find_port(struct ovsdb_idl_index *sbrec_port_binding_by_name,
                          const struct sbrec_chassis *chassis,
-                         const struct sbrec_port_binding *pb)
+                         const struct sbrec_port_binding *pb,
+                         const char **dynamic_routing_port_name)
 {
+    if (dynamic_routing_port_name) {
+        *dynamic_routing_port_name = NULL;
+    }
+
     if (!pb) {
         return NULL;
     }
     if (route_exchange_relevant_port(pb)) {
+        if (dynamic_routing_port_name) {
+            *dynamic_routing_port_name =
+                smap_get(&pb->options, "dynamic-routing-port-name");
+        }
         return pb;
     }
 
@@ -66,6 +75,11 @@ route_exchange_find_port(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 
     if (!cr_pb) {
         return NULL;
+    }
+
+    if (dynamic_routing_port_name) {
+        *dynamic_routing_port_name =
+            smap_get(&cr_pb->options, "dynamic-routing-port-name");
     }
 
     if (!lport_pb_is_chassis_resident(chassis, cr_pb)) {
@@ -150,7 +164,6 @@ void
 route_run(struct route_ctx_in *r_ctx_in,
           struct route_ctx_out *r_ctx_out)
 {
-    struct advertise_datapath_entry *ad;
     const struct local_datapath *ld;
     struct smap port_mapping = SMAP_INITIALIZER(&port_mapping);
 
@@ -160,17 +173,23 @@ route_run(struct route_ctx_in *r_ctx_in,
         if (vector_is_empty(&ld->peer_ports) || ld->is_switch) {
             continue;
         }
-        ad = NULL;
+        struct advertise_datapath_entry *ad = NULL;
+        bool lr_has_port_name_filter = false;
 
         /* This is a LR datapath, find LRPs with route exchange options
          * that are bound locally. */
         const struct peer_ports *peers;
         VECTOR_FOR_EACH_PTR (&ld->peer_ports, peers) {
             const struct sbrec_port_binding *local_peer = peers->local;
+            const char *port_name;
+
             const struct sbrec_port_binding *repb =
                 route_exchange_find_port(r_ctx_in->sbrec_port_binding_by_name,
                                          r_ctx_in->chassis,
-                                         local_peer);
+                                         local_peer, &port_name);
+            if (port_name) {
+                lr_has_port_name_filter = true;
+            }
             if (!repb) {
                 continue;
             }
@@ -203,8 +222,6 @@ route_run(struct route_ctx_in *r_ctx_in,
                          ad->db->tunnel_key);
             }
 
-            const char *port_name = smap_get(&repb->options,
-                                            "dynamic-routing-port-name");
             if (!port_name) {
                 /* No port-name set, so we learn routes from all ports. */
                 smap_add_nocopy(&ad->bound_ports,
@@ -225,6 +242,18 @@ route_run(struct route_ctx_in *r_ctx_in,
         }
 
         if (ad) {
+            /* If at least one bound port has dynamic-routing-port-name
+             * configured, ignore the ones that don't. */
+            if (lr_has_port_name_filter) {
+                struct smap_node *node;
+
+                SMAP_FOR_EACH_SAFE (node, &ad->bound_ports) {
+                    if (!node->value) {
+                        smap_remove_node(&ad->bound_ports, node);
+                    }
+                }
+            }
+
             tracked_datapath_add(ld->datapath, TRACKED_RESOURCE_NEW,
                                  r_ctx_out->tracked_re_datapaths);
             hmap_insert(r_ctx_out->announce_routes, &ad->node,
@@ -235,8 +264,9 @@ route_run(struct route_ctx_in *r_ctx_in,
     const struct sbrec_advertised_route *route;
     SBREC_ADVERTISED_ROUTE_TABLE_FOR_EACH (route,
                                            r_ctx_in->advertised_route_table) {
-        ad = advertise_datapath_find(r_ctx_out->announce_routes,
-                                     route->datapath);
+        struct advertise_datapath_entry *ad =
+            advertise_datapath_find(r_ctx_out->announce_routes,
+                                    route->datapath);
         if (!ad) {
             continue;
         }

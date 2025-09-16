@@ -16374,8 +16374,7 @@ check ovn-nbctl lr-add internet \
 check ovn-nbctl lrp-add internet internet-public \
         00:00:02:01:02:03 192.0.2.1/24 \
     -- set Logical_Router_Port internet-public \
-            options:dynamic-routing-redistribute="connected,static" \
-            options:dynamic-routing-port-name=wedontlearnstuffhere
+            options:dynamic-routing-redistribute="connected,static"
 check ovn-nbctl lsp-add public public-internet \
     -- set Logical_Switch_Port public-internet type=router \
             options:router-port=internet-public \
@@ -16548,7 +16547,9 @@ check ovn-nbctl set Logical_Router_Port internet-phys \
 check_row_count Learned_Route 0
 check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
 check ovn-nbctl --wait=hv sync
-check_row_count Learned_Route 1
+# With a Gateway Router all LRPs are locally bound, and without explicit
+# mapping/filtering they will all learn the route.
+check_row_count Learned_Route 2
 lp=$(fetch_column port_binding _uuid logical_port=internet-phys)
 check_row_count Learned_Route 1 logical_port=$lp ip_prefix=233.252.0.0/24 nexthop=192.168.10.10
 
