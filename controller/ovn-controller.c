@@ -5240,7 +5240,7 @@ route_runtime_data_handler(struct engine_node *node, void *data)
             struct tracked_lport *lport = shash_node->data;
 
             if (route_exchange_find_port(sbrec_port_binding_by_name, chassis,
-                                         lport->pb)) {
+                                         lport->pb, NULL)) {
                 /* XXX: Until we get I-P support for route exchange we need to
                  * request recompute. */
                 return EN_UNHANDLED;
@@ -5320,7 +5320,7 @@ route_sb_port_binding_data_handler(struct engine_node *node, void *data)
         }
 
         if (route_exchange_find_port(sbrec_port_binding_by_name,
-                                     chassis, sbrec_pb)) {
+                                     chassis, sbrec_pb, NULL)) {
             /* XXX: Until we get I-P support for route exchange we need to
              * request recompute. */
             return EN_UNHANDLED;

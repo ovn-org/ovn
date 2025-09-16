@@ -80,7 +80,8 @@ struct advertise_route_entry {
 const struct sbrec_port_binding *route_exchange_find_port(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const struct sbrec_chassis *chassis,
-    const struct sbrec_port_binding *pb);
+    const struct sbrec_port_binding *pb,
+    const char **dynamic_routing_port_name);
 uint32_t advertise_route_hash(const struct in6_addr *dst, unsigned int plen);
 void route_run(struct route_ctx_in *, struct route_ctx_out *);
 void route_cleanup(struct hmap *announce_routes);
