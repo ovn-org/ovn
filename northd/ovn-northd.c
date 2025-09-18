@@ -1031,6 +1031,14 @@ main(int argc, char *argv[])
                     clear_idl_track = false;
                 }
 
+                /* Make sure we don't bump the next_cfg when we shouldn't.
+                 * This should prevent ovn-nbctl sync calls to return before
+                 * the SB updates are actually done. */
+                if (!activity && ovnsb_txn &&
+                    ovnsb_idl_loop.cur_cfg != ovnsb_idl_loop.next_cfg) {
+                    ovsdb_idl_txn_abort(ovnsb_txn);
+                }
+
                 /* If there are any errors, we force a full recompute in order
                  * to ensure we handle all changes. */
                 if (!ovsdb_idl_loop_commit_and_wait(&ovnnb_idl_loop)) {
