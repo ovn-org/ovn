@@ -4079,7 +4079,6 @@ destroy_northd_tracked_data(struct northd_data *nd)
     trk_data->type = NORTHD_TRACKED_NONE;
     hmapx_destroy(&trk_data->trk_switches.crupdated);
     hmapx_destroy(&trk_data->trk_lsps.created);
-    destroy_tracked_deleted_dps(&trk_data->trk_switches);
     hmapx_destroy(&trk_data->trk_switches.deleted);
     hmapx_destroy(&trk_data->trk_lsps.updated);
     hmapx_destroy(&trk_data->trk_lsps.deleted);
