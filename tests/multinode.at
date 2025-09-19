@@ -2255,3 +2255,91 @@ check_migration_between_gw1_and_gw2 "kill_gw1"
 export test_success=1
 AT_CLEANUP
 ])
+
+AT_SETUP([redirect-bridged to non-gw destination switch port])
+
+check_fake_multinode_setup
+cleanup_multinode_resources
+# This test uses the following logical network:
+#
+# +-----------+
+# | ls-public |
+# +-----------+
+#       |
+#       |
+# +-----------+
+# | gw-router |
+# +-----------+
+#       |
+#       |
+# +-----------+
+# | ls-local  |
+# +-----------+
+#
+# The router port from gw-router to ls-public is a distributed gateway port.
+# It also has options:redirect-type=bridged set.
+#
+# We create vm1 attached to ls-local that is bound to ovn-chassis-1. We
+# also create vm2 attached to ls-public that is bound to ovn-chassis-1.
+# The DGP on gw-router is bound to ovn-gw-1.
+#
+# Our goal is to successfully ping from vm1 to vm2. In order for this to
+# work, the ping will have to traverse gw-router. vm1 and vm2 are bound to
+# the same chassis, but the DGP is bound to ovn-gw-1. We therefore expect
+# the following:
+#
+# The ping starts by entering ls-local on ovn-chassis-1.
+# The ping then goes through the ingress pipeline of gw-router on ovn-chassis-1.
+# The ping then goes through ls-public's localnet port to reach ovn-gw-1.
+# The ping's destination MAC should be the DGP's MAC. So the ping will
+# get processed first by ls-public on ovn-gw-1, then will be redirected to
+# gw-router on ovn-gw-1. The packet will then re-enter ls-public on ovn-gw-1.
+# The ping will then get redirected over the localnet back to ovn-chassis-1.
+# From here, the ls-public pipeline can run and the ping will be output to vm2.
+#
+
+check multinode_nbctl ls-add ls-local
+check multinode_nbctl lsp-add ls-local vm1
+check multinode_nbctl lsp-set-addresses vm1 "00:00:00:00:01:02 10.0.0.2 10::2"
+
+check multinode_nbctl ls-add ls-public
+check multinode_nbctl lsp-add ls-public vm2
+check multinode_nbctl lsp-set-addresses vm2 "00:00:00:00:02:02 20.0.0.2 20::2"
+
+check multinode_nbctl lsp-add ls-public ln-public
+check multinode_nbctl lsp-set-type ln-public localnet
+check multinode_nbctl lsp-set-addresses ln-public unknown
+check multinode_nbctl lsp-set-options ln-public network_name=public
+
+check multinode_nbctl lr-add gw-router
+
+check multinode_nbctl lrp-add gw-router ro-local 00:00:00:00:01:01 10.0.0.1/8 10::1/64
+check multinode_nbctl lsp-add ls-local local-ro
+check multinode_nbctl lsp-set-type local-ro router
+check multinode_nbctl lsp-set-addresses local-ro router
+check multinode_nbctl lsp-set-options local-ro router-port=ro-local
+
+check multinode_nbctl lrp-add gw-router ro-public 00:00:00:00:02:01 20.0.0.1/8 20::1/64
+check multinode_nbctl lsp-add ls-public public-ro
+check multinode_nbctl lsp-set-type public-ro router
+check multinode_nbctl lsp-set-addresses public-ro router
+check multinode_nbctl lsp-set-options public-ro router-port=ro-public
+
+check multinode_nbctl lrp-set-gateway-chassis ro-public ovn-gw-1
+check multinode_nbctl lrp-set-redirect-type ro-public bridged
+
+m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
+m_as ovn-chassis-1 ovs-vsctl set open . external-ids:ovn-chassis-mac-mappings="public:aa:bb:cc:dd:01:01"
+m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-chassis-mac-mappings="public:aa:bb:cc:dd:02:01"
+
+m_as ovn-chassis-1 /data/create_fake_vm.sh vm1 vm1 00:00:00:00:01:02 1342 10.0.0.2 8 10.0.0.1 10::2/64 10::1
+m_as ovn-chassis-1 /data/create_fake_vm.sh vm2 vm2 00:00:00:00:02:02 1342 20.0.0.2 8 20.0.0.1 20::2/64 20::1
+
+m_wait_for_ports_up
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [vm1], [ping -q -c 3 -i 0.3 -w 2 20.0.0.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+AT_CLEANUP

@@ -14480,6 +14480,15 @@ build_arp_resolve_flows_for_lsp(
                         continue;
                     }
 
+                    if (is_l3dgw_port(peer)) {
+                        const char *redirect_type =
+                            smap_get(&peer->nbrp->options, "redirect-type");
+                        if (redirect_type &&
+                            !strcasecmp(redirect_type, "bridged")) {
+                            continue;
+                        }
+                    }
+
                     if (!find_lrp_member_ip(peer, ip_s)) {
                         continue;
                     }
