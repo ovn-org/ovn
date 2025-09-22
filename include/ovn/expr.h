@@ -537,8 +537,7 @@ void expr_constant_destroy(const struct expr_constant *,
 
 /* A collection of "union expr_constant"s of the same type. */
 struct expr_constant_set {
-    struct expr_constant *values; /* Constants. */
-    size_t n_values;              /* Number of constants. */
+    struct vector values;         /* Constants. */
     enum expr_constant_type type; /* Type of the constants. */
     bool in_curlies;              /* Whether the constants were in {}. */
 };

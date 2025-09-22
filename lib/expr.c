@@ -585,8 +585,9 @@ type_check(struct expr_context *ctx, const struct expr_field *f,
     }
 
     if (f->symbol->width) {
-        for (size_t i = 0; i < cs->n_values; i++) {
-            int w = expr_constant_width(&cs->values[i]);
+        const struct expr_constant *c;
+        VECTOR_FOR_EACH_PTR (&cs->values, c) {
+            int w = expr_constant_width(c);
             if (w > f->symbol->width) {
                 lexer_error(ctx->lexer,
                             "%d-bit constant is not compatible with %d-bit "
@@ -624,12 +625,13 @@ make_cmp(struct expr_context *ctx,
                         f->symbol->name);
             goto exit;
         }
-        if (!cs->n_values) {
+        if (!vector_len(&cs->values)) {
             lexer_error(ctx->lexer, "Only == and != operators may be used "
                         "to compare a field against an empty value set.");
             goto exit;
         }
-        if (cs->values[0].masked) {
+        const struct expr_constant *c = vector_get_ptr(&cs->values, 0);
+        if (c->masked) {
             lexer_error(ctx->lexer, "Only == and != operators may be used "
                         "with masked constants.  Consider using subfields "
                         "instead (e.g. eth.src[0..15] > 0x1111 in place of "
@@ -641,9 +643,9 @@ make_cmp(struct expr_context *ctx,
     if (f->symbol->level == EXPR_L_NOMINAL) {
         if (f->symbol->predicate) {
             ovs_assert(f->symbol->width > 0);
-            for (size_t i = 0; i < cs->n_values; i++) {
-                const union mf_subvalue *value = &cs->values[i].value;
-                bool positive = (value->integer & htonll(1)) != 0;
+            const struct expr_constant *c;
+            VECTOR_FOR_EACH_PTR (&cs->values, c) {
+                bool positive = (c->value.integer & htonll(1)) != 0;
                 positive ^= r == EXPR_R_NE;
                 positive ^= ctx->not;
                 if (!positive) {
@@ -664,14 +666,15 @@ make_cmp(struct expr_context *ctx,
         }
     }
 
-    if (!cs->n_values) {
+    if (!vector_len(&cs->values)) {
         e = expr_create_boolean(r == EXPR_R_NE);
         goto exit;
     }
-    e = make_cmp__(f, r, &cs->values[0]);
-    for (size_t i = 1; i < cs->n_values; i++) {
+    e = make_cmp__(f, r, vector_get_ptr(&cs->values, 0));
+    const struct expr_constant *values = vector_get_array(&cs->values);
+    for (size_t i = 1; i < vector_len(&cs->values); i++) {
         e = expr_combine(r == EXPR_R_EQ ? EXPR_T_OR : EXPR_T_AND,
-                         e, make_cmp__(f, r, &cs->values[i]));
+                         e, make_cmp__(f, r, &values[i]));
     }
 
 exit:
@@ -767,7 +770,7 @@ assign_constant_set_type(struct expr_context *ctx,
                          struct expr_constant_set *cs,
                          enum expr_constant_type type)
 {
-    if (!cs->n_values || cs->type == type) {
+    if (!vector_len(&cs->values) || cs->type == type) {
         cs->type = type;
         return true;
     } else {
@@ -778,8 +781,7 @@ assign_constant_set_type(struct expr_context *ctx,
 }
 
 static bool
-parse_addr_sets(struct expr_context *ctx, struct expr_constant_set *cs,
-                size_t *allocated_values)
+parse_addr_sets(struct expr_context *ctx, struct expr_constant_set *cs)
 {
     if (ctx->addr_sets_ref) {
         size_t *ref_count = shash_find_data(ctx->addr_sets_ref,
@@ -806,23 +808,19 @@ parse_addr_sets(struct expr_context *ctx, struct expr_constant_set *cs,
     }
 
     struct expr_constant_set *addr_sets = node->data;
-    size_t n_values = cs->n_values + addr_sets->n_values;
-    if (n_values >= *allocated_values) {
-        cs->values = xrealloc(cs->values, n_values * sizeof *cs->values);
-        *allocated_values = n_values;
-    }
-    for (size_t i = 0; i < addr_sets->n_values; i++) {
-        struct expr_constant *c = &cs->values[cs->n_values++];
-        *c = addr_sets->values[i];
-        c->as_name = node->name;
+    vector_reserve(&cs->values, vector_len(&addr_sets->values));
+
+    struct expr_constant c;
+    VECTOR_FOR_EACH (&addr_sets->values, c) {
+        c.as_name = node->name;
+        vector_push(&cs->values, &c);
     }
 
     return true;
 }
 
 static bool
-parse_port_group(struct expr_context *ctx, struct expr_constant_set *cs,
-                 size_t *allocated_values)
+parse_port_group(struct expr_context *ctx, struct expr_constant_set *cs)
 {
     struct ds sb_name = DS_EMPTY_INITIALIZER;
 
@@ -847,29 +845,22 @@ parse_port_group(struct expr_context *ctx, struct expr_constant_set *cs,
         return false;
     }
 
-    size_t n_values = cs->n_values + port_group->n_values;
-    if (n_values >= *allocated_values) {
-        cs->values = xrealloc(cs->values, n_values * sizeof *cs->values);
-        *allocated_values = n_values;
-    }
-    for (size_t i = 0; i < port_group->n_values; i++) {
-        struct expr_constant *c = &cs->values[cs->n_values++];
-        c->string = xstrdup(port_group->values[i].string);
-        c->as_name = NULL;
+
+    vector_reserve(&cs->values, vector_len(&port_group->values));
+
+    struct expr_constant c;
+    VECTOR_FOR_EACH (&port_group->values, c) {
+        c.string = xstrdup(c.string);
+        c.as_name = NULL;
+        vector_push(&cs->values, &c);
     }
 
     return true;
 }
 
 static bool
-parse_constant(struct expr_context *ctx, struct expr_constant_set *cs,
-               size_t *allocated_values)
+parse_constant(struct expr_context *ctx, struct expr_constant_set *cs)
 {
-    if (cs->n_values >= *allocated_values) {
-        cs->values = x2nrealloc(cs->values, allocated_values,
-                                sizeof *cs->values);
-    }
-
     if (ctx->lexer->token.type == LEX_T_TEMPLATE) {
         lexer_error(ctx->lexer, "Unexpanded template.");
         return false;
@@ -877,9 +868,11 @@ parse_constant(struct expr_context *ctx, struct expr_constant_set *cs,
         if (!assign_constant_set_type(ctx, cs, EXPR_C_STRING)) {
             return false;
         }
-        struct expr_constant *c = &cs->values[cs->n_values++];
-        c->string = xstrdup(ctx->lexer->token.s);
-        c->as_name = NULL;
+
+        struct expr_constant c = (struct expr_constant) {
+            .string = xstrdup(ctx->lexer->token.s),
+        };
+        vector_push(&cs->values, &c);
         lexer_get(ctx->lexer);
         return true;
     } else if (ctx->lexer->token.type == LEX_T_INTEGER ||
@@ -888,24 +881,26 @@ parse_constant(struct expr_context *ctx, struct expr_constant_set *cs,
             return false;
         }
 
-        struct expr_constant *c = &cs->values[cs->n_values++];
-        c->value = ctx->lexer->token.value;
-        c->format = ctx->lexer->token.format;
-        c->masked = ctx->lexer->token.type == LEX_T_MASKED_INTEGER;
-        if (c->masked) {
-            c->mask = ctx->lexer->token.mask;
+        bool masked = ctx->lexer->token.type == LEX_T_MASKED_INTEGER;
+        struct expr_constant c = (struct expr_constant) {
+            .value = ctx->lexer->token.value,
+            .format = ctx->lexer->token.format,
+            .masked = masked,
+        };
+        if (masked) {
+            c.mask = ctx->lexer->token.mask;
         }
-        c->as_name = NULL;
+        vector_push(&cs->values, &c);
         lexer_get(ctx->lexer);
         return true;
     } else if (ctx->lexer->token.type == LEX_T_MACRO) {
-        if (!parse_addr_sets(ctx, cs, allocated_values)) {
+        if (!parse_addr_sets(ctx, cs)) {
             return false;
         }
         lexer_get(ctx->lexer);
         return true;
     } else if (ctx->lexer->token.type == LEX_T_PORT_GROUP) {
-        if (!parse_port_group(ctx, cs, allocated_values)) {
+        if (!parse_port_group(ctx, cs)) {
             return false;
         }
         lexer_get(ctx->lexer);
@@ -923,22 +918,23 @@ parse_constant(struct expr_context *ctx, struct expr_constant_set *cs,
 static bool
 parse_constant_set(struct expr_context *ctx, struct expr_constant_set *cs)
 {
-    size_t allocated_values = 0;
     bool ok;
 
-    memset(cs, 0, sizeof *cs);
+    *cs = (struct expr_constant_set) {
+        .values = VECTOR_EMPTY_INITIALIZER(struct expr_constant),
+    };
     if (lexer_match(ctx->lexer, LEX_T_LCURLY)) {
         ok = true;
         cs->in_curlies = true;
         do {
-            if (!parse_constant(ctx, cs, &allocated_values)) {
+            if (!parse_constant(ctx, cs)) {
                 ok = false;
                 break;
             }
             lexer_match(ctx->lexer, LEX_T_COMMA);
         } while (!lexer_match(ctx->lexer, LEX_T_RCURLY));
     } else {
-        ok = parse_constant(ctx, cs, &allocated_values);
+        ok = parse_constant(ctx, cs);
     }
     if (!ok) {
         expr_constant_set_destroy(cs);
@@ -964,13 +960,13 @@ expr_constant_parse(struct lexer *lexer, const struct expr_field *f,
         .lexer = lexer,
     };
 
-    struct expr_constant_set cs;
-    memset(&cs, 0, sizeof cs);
-    size_t allocated_values = 0;
-    if (parse_constant(&ctx, &cs, &allocated_values)
+    struct expr_constant_set cs = (struct expr_constant_set) {
+        .values = VECTOR_EMPTY_INITIALIZER(struct expr_constant),
+    };
+    if (parse_constant(&ctx, &cs)
         && type_check(&ctx, f, &cs)) {
-        *c = cs.values[0];
-        cs.n_values = 0;
+        *c = vector_get(&cs.values, 0, struct expr_constant);
+        vector_clear(&cs.values);
     }
     expr_constant_set_destroy(&cs);
 
@@ -1031,19 +1027,18 @@ expr_constant_set_parse(struct lexer *lexer, struct expr_constant_set *cs)
 void
 expr_constant_set_format(const struct expr_constant_set *cs, struct ds *s)
 {
-    bool curlies = cs->in_curlies || cs->n_values != 1;
+    bool curlies = cs->in_curlies || vector_len(&cs->values) != 1;
     if (curlies) {
         ds_put_char(s, '{');
     }
 
-    for (const struct expr_constant *c = cs->values;
-         c < &cs->values[cs->n_values]; c++) {
-        if (c != cs->values) {
-            ds_put_cstr(s, ", ");
-        }
-
+    const struct expr_constant *c;
+    VECTOR_FOR_EACH_PTR (&cs->values, c) {
         expr_constant_format(c, cs->type, s);
+        ds_put_cstr(s, ", ");
     }
+    ds_chomp(s, ' ');
+    ds_chomp(s, ',');
 
     if (curlies) {
         ds_put_char(s, '}');
@@ -1055,11 +1050,12 @@ expr_constant_set_destroy(struct expr_constant_set *cs)
 {
     if (cs) {
         if (cs->type == EXPR_C_STRING) {
-            for (size_t i = 0; i < cs->n_values; i++) {
-                free(cs->values[i].string);
+            const struct expr_constant *c;
+            VECTOR_FOR_EACH_PTR (&cs->values, c) {
+                free(c->string);
             }
         }
-        free(cs->values);
+        vector_destroy(&cs->values);
     }
 }
 
@@ -1092,8 +1088,7 @@ expr_constant_set_create_integers(const char *const *values, size_t n_values)
 {
     struct expr_constant_set *cs = xzalloc(sizeof *cs);
     cs->in_curlies = true;
-    cs->n_values = 0;
-    cs->values = xmalloc(n_values * sizeof *cs->values);
+    cs->values = VECTOR_CAPACITY_INITIALIZER(struct expr_constant, n_values);
     cs->type = EXPR_C_INTEGER;
     for (size_t i = 0; i < n_values; i++) {
         /* Use the lexer to convert each constant set into the proper
@@ -1106,40 +1101,41 @@ expr_constant_set_create_integers(const char *const *values, size_t n_values)
             VLOG_WARN("Invalid constant set entry: '%s', token type: %d",
                       values[i], lex.token.type);
         } else {
-            struct expr_constant *c = &cs->values[cs->n_values++];
-            c->value = lex.token.value;
-            c->format = lex.token.format;
-            c->masked = lex.token.type == LEX_T_MASKED_INTEGER;
-            if (c->masked) {
-                c->mask = lex.token.mask;
+            bool masked = lex.token.type == LEX_T_MASKED_INTEGER;
+            struct expr_constant c = (struct expr_constant) {
+                .value = lex.token.value,
+                .format = lex.token.format,
+                .masked = masked,
+            };
+            if (masked) {
+                c.mask = lex.token.mask;
             }
+            vector_push(&cs->values, &c);
         }
         lexer_destroy(&lex);
     }
 
     /* Sort the result, so that it is efficient to generate diffs in the
      * function expr_constant_set_diff */
-    qsort(cs->values, cs->n_values, sizeof *cs->values,
-          compare_expr_constant_integer_cb);
+    vector_qsort(&cs->values, compare_expr_constant_integer_cb);
 
     return cs;
 }
 
 static void
 expr_constant_set_add_value(struct expr_constant_set **p_cs,
-                            struct expr_constant *c, size_t *allocated)
+                            const struct expr_constant *c)
 {
     struct expr_constant_set *cs = *p_cs;
     if (!cs) {
         cs = xzalloc(sizeof *cs);
+        *cs = (struct expr_constant_set) {
+        .values = VECTOR_CAPACITY_INITIALIZER(struct expr_constant, 1),
+        };
         *p_cs = cs;
     }
 
-    if (cs->n_values >= *allocated) {
-        cs->values = x2nrealloc(cs->values, allocated,
-                                sizeof *cs->values);
-    }
-    cs->values[cs->n_values++] = *c;
+    vector_push(&cs->values, c);
 }
 
 /* Find the differences between old and new. Both old and new must be integer
@@ -1159,33 +1155,33 @@ expr_constant_set_integers_diff(struct expr_constant_set *old,
     struct expr_constant_set *diff_added = NULL;
     struct expr_constant_set *diff_deleted = NULL;
 
-    size_t oi, ni, added_n_allocated, deleted_n_allocated;
-    added_n_allocated = deleted_n_allocated = 0;
+    size_t oi, ni;
 
-    for (oi = ni = 0; oi < old->n_values && ni < new->n_values;) {
-        int d = compare_expr_constant_integer_cb(&old->values[oi],
-                                                 &new->values[ni]);
+    const struct expr_constant *old_c = vector_get_array(&old->values);
+    size_t old_n_values = vector_len(&old->values);
+
+    const struct expr_constant *new_c = vector_get_array(&new->values);
+    size_t new_n_values = vector_len(&new->values);
+
+    for (oi = ni = 0; oi < old_n_values && ni < new_n_values;) {
+        int d = compare_expr_constant_integer_cb(&old_c[oi], &new_c[ni]);
         if (d < 0) {
-            expr_constant_set_add_value(&diff_deleted, &old->values[oi],
-                                        &deleted_n_allocated);
+            expr_constant_set_add_value(&diff_deleted, &old_c[oi]);
             oi++;
         } else if (d > 0) {
-            expr_constant_set_add_value(&diff_added, &new->values[ni],
-                                        &added_n_allocated);
+            expr_constant_set_add_value(&diff_added, &new_c[ni]);
             ni++;
         } else {
             oi++; ni++;
         }
     }
 
-    for (; oi < old->n_values; oi++) {
-        expr_constant_set_add_value(&diff_deleted, &old->values[oi],
-                                    &deleted_n_allocated);
+    for (; oi < old_n_values; oi++) {
+        expr_constant_set_add_value(&diff_deleted, &old_c[oi]);
     }
 
-    for (; ni < new->n_values; ni++) {
-        expr_constant_set_add_value(&diff_added, &new->values[ni],
-                                    &added_n_allocated);
+    for (; ni < new_n_values; ni++) {
+        expr_constant_set_add_value(&diff_added, &new_c[ni]);
     }
 
     *p_diff_added = diff_added;
@@ -1228,8 +1224,7 @@ expr_const_sets_add_strings(struct shash *const_sets, const char *name,
 {
     struct expr_constant_set *cs = xzalloc(sizeof *cs);
     cs->in_curlies = true;
-    cs->n_values = 0;
-    cs->values = xmalloc(n_values * sizeof *cs->values);
+    cs->values = VECTOR_CAPACITY_INITIALIZER(struct expr_constant, n_values);
     cs->type = EXPR_C_STRING;
     for (size_t i = 0; i < n_values; i++) {
         if (filter && !sset_find(filter, values[i])) {
@@ -1238,8 +1233,10 @@ expr_const_sets_add_strings(struct shash *const_sets, const char *name,
                         values[i], name);
             continue;
         }
-        struct expr_constant *c = &cs->values[cs->n_values++];
-        c->string = xstrdup(values[i]);
+        struct expr_constant c = (struct expr_constant) {
+            .string =  xstrdup(values[i]),
+        };
+        vector_push(&cs->values, &c);
     }
 
     expr_const_sets_add(const_sets, name, cs);
@@ -1351,14 +1348,15 @@ expr_parse_primary(struct expr_context *ctx, bool *atomic)
 
             *atomic = true;
 
-            struct expr_constant *cst = xzalloc(sizeof *cst);
-            cst->format = LEX_F_HEXADECIMAL;
-            cst->masked = false;
+            struct expr_constant cst = (struct expr_constant) {
+                .format = LEX_F_HEXADECIMAL,
+                .masked = false,
+            };
 
+            c.values = VECTOR_CAPACITY_INITIALIZER(struct expr_constant, 1);
             c.type = EXPR_C_INTEGER;
-            c.values = cst;
-            c.n_values = 1;
             c.in_curlies = false;
+            vector_push(&c.values, &cst);
             return make_cmp(ctx, &f, EXPR_R_NE, &c);
         } else if (parse_relop(ctx, &r) && parse_constant_set(ctx, &c)) {
             return make_cmp(ctx, &f, r, &c);
@@ -1371,13 +1369,14 @@ expr_parse_primary(struct expr_context *ctx, bool *atomic)
             return NULL;
         }
 
+        struct expr_constant *c = vector_get_ptr(&c1.values, 0);
         if (!expr_relop_from_token(ctx->lexer->token.type, NULL)
-            && c1.n_values == 1
+            && vector_len(&c1.values) == 1
             && c1.type == EXPR_C_INTEGER
-            && c1.values[0].format == LEX_F_DECIMAL
-            && !c1.values[0].masked
+            && c->format == LEX_F_DECIMAL
+            && !c->masked
             && !c1.in_curlies) {
-            uint64_t x = ntohll(c1.values[0].value.integer);
+            uint64_t x = ntohll(c->value.integer);
             if (x <= 1) {
                 *atomic = true;
                 expr_constant_set_destroy(&c1);

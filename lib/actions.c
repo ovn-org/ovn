@@ -2109,7 +2109,7 @@ encode_event_empty_lb_backends_opts(struct ofpbuf *ofpacts,
         /* All empty_lb_backends fields are of type 'str' */
         ovs_assert(!strcmp(o->option->type, "str"));
 
-        const struct expr_constant *c = o->value.values;
+        const struct expr_constant *c = vector_get_ptr(&o->value.values, 0);
         size_t size = strlen(c->string);
         struct controller_event_opt_header hdr =
             (struct controller_event_opt_header) {
@@ -2585,11 +2585,11 @@ validate_empty_lb_backends(struct action_context *ctx,
 {
     for (size_t i = 0; i < n_options; i++) {
         const struct ovnact_gen_option *o = &options[i];
-        const struct expr_constant *c = o->value.values;
+        const struct expr_constant *c = vector_get_ptr(&o->value.values, 0);
         struct sockaddr_storage ss;
         struct uuid uuid;
 
-        if (o->value.n_values > 1 || !c->string) {
+        if (vector_len(&o->value.values) > 1 || !c->string) {
             lexer_error(ctx->lexer, "Invalid value for \"%s\" option",
                         o->option->name);
             return;
@@ -2889,8 +2889,8 @@ encode_put_dhcpv4_option(const struct ovnact_gen_option *o,
     uint8_t *opt_header = ofpbuf_put_zeros(ofpacts, 2);
     opt_header[0] = o->option->code;
 
-    const struct expr_constant *c = o->value.values;
-    size_t n_values = o->value.n_values;
+    const struct expr_constant *c = vector_get_ptr(&o->value.values, 0);
+    size_t n_values = vector_len(&o->value.values);
     if (!strcmp(o->option->type, "bool") ||
         !strcmp(o->option->type, "uint8")) {
         opt_header[1] = 1;
@@ -3055,8 +3055,8 @@ encode_put_dhcpv6_option(const struct ovnact_gen_option *o,
                          struct ofpbuf *ofpacts)
 {
     struct dhcpv6_opt_header *opt = ofpbuf_put_uninit(ofpacts, sizeof *opt);
-    const struct expr_constant *c = o->value.values;
-    size_t n_values = o->value.n_values;
+    const struct expr_constant *c = vector_get_ptr(&o->value.values, 0);
+    size_t n_values = vector_len(&o->value.values);
     size_t size;
 
     opt->code = htons(o->option->code);
@@ -3103,7 +3103,9 @@ encode_PUT_DHCPV4_OPTS(const struct ovnact_put_opts *pdo,
      * (skipping offerip the second time around). */
     const struct ovnact_gen_option *offerip_opt = find_opt(
         pdo->options, pdo->n_options, 0);
-    ovs_be32 offerip = offerip_opt->value.values[0].value.ipv4;
+    const struct expr_constant *c =
+        vector_get_ptr(&offerip_opt->value.values, 0);
+    ovs_be32 offerip = c->value.ipv4;
     ofpbuf_put(ofpacts, &offerip, sizeof offerip);
 
     /* Encode bootfile_name opt (67) */
@@ -3111,7 +3113,7 @@ encode_PUT_DHCPV4_OPTS(const struct ovnact_put_opts *pdo,
         find_opt(pdo->options, pdo->n_options, DHCP_OPT_BOOTFILE_CODE);
     if (boot_opt) {
         uint8_t *opt_header = ofpbuf_put_zeros(ofpacts, 2);
-        const struct expr_constant *c = boot_opt->value.values;
+        c = vector_get_ptr(&boot_opt->value.values, 0);
         opt_header[0] = boot_opt->option->code;
         opt_header[1] = strlen(c->string);
         ofpbuf_put(ofpacts, c->string, opt_header[1]);
@@ -3121,7 +3123,7 @@ encode_PUT_DHCPV4_OPTS(const struct ovnact_put_opts *pdo,
         find_opt(pdo->options, pdo->n_options, DHCP_OPT_BOOTFILE_ALT_CODE);
     if (boot_alt_opt) {
         uint8_t *opt_header = ofpbuf_put_zeros(ofpacts, 2);
-        const struct expr_constant *c = boot_alt_opt->value.values;
+        c = vector_get_ptr(&boot_alt_opt->value.values, 0);
         opt_header[0] = boot_alt_opt->option->code;
         opt_header[1] = strlen(c->string);
         ofpbuf_put(ofpacts, c->string, opt_header[1]);
@@ -3131,7 +3133,7 @@ encode_PUT_DHCPV4_OPTS(const struct ovnact_put_opts *pdo,
         pdo->options, pdo->n_options, DHCP_OPT_NEXT_SERVER_CODE);
     if (next_server_opt) {
         uint8_t *opt_header = ofpbuf_put_zeros(ofpacts, 2);
-        const struct expr_constant *c = next_server_opt->value.values;
+        c = vector_get_ptr(&next_server_opt->value.values, 0);
         opt_header[0] = next_server_opt->option->code;
         opt_header[1] = sizeof(ovs_be32);
         ofpbuf_put(ofpacts, &c->value.ipv4, sizeof(ovs_be32));
@@ -3344,8 +3346,8 @@ parse_put_nd_ra_opts(struct action_context *ctx, const struct expr_field *dst,
     /* Let's validate the options. */
     for (size_t i = 0; i < po->n_options; i++) {
         const struct ovnact_gen_option *o = &po->options[i];
-        const struct expr_constant *c = o->value.values;
-        if (o->value.n_values > 1) {
+        const struct expr_constant *c = vector_get_ptr(&o->value.values, 0);
+        if (vector_len(&o->value.values) > 1) {
             lexer_error(ctx->lexer, "Invalid value for \"%s\" option",
                         o->option->name);
             return;
@@ -3527,7 +3529,7 @@ static void
 encode_put_nd_ra_option(const struct ovnact_gen_option *o,
                         struct ofpbuf *ofpacts, ptrdiff_t ra_offset)
 {
-    const struct expr_constant *c = o->value.values;
+    const struct expr_constant *c = vector_get_ptr(&o->value.values, 0);
 
     switch (o->option->code) {
     case ND_RA_FLAG_ADDR_MODE:

@@ -447,21 +447,24 @@ consider_lflow_for_added_as_ips__(
     struct expr_constant_set *new_fake_as = NULL;
     struct in6_addr dummy_ip;
     bool has_dummy_ip = false;
-    ovs_assert(as_diff_added->n_values);
+    ovs_assert(vector_len(&as_diff_added->values));
 
     /* When there is only 1 element, we append a dummy address and create a
      * fake address set with 2 elements, so that the lflow parsing would
      * generate exactly the same format of flows as it would when parsing with
      * the original address set. */
-    if (as_diff_added->n_values == 1) {
+    if (vector_len(&as_diff_added->values) == 1) {
         new_fake_as = xzalloc(sizeof *new_fake_as);
-        new_fake_as->values = xzalloc(sizeof *new_fake_as->values * 2);
-        new_fake_as->n_values = 2;
-        new_fake_as->values[0] = new_fake_as->values[1] =
-            as_diff_added->values[0];
+        new_fake_as->values =
+            VECTOR_CAPACITY_INITIALIZER(struct expr_constant, 2);
+        struct expr_constant c =
+            vector_get(&as_diff_added->values, 0, struct expr_constant);
+        vector_push(&new_fake_as->values, &c);
         /* Make a dummy ip that is different from the real one. */
-        new_fake_as->values[1].value.u8_val++;
-        dummy_ip = new_fake_as->values[1].value.ipv6;
+        c.value.u8_val++;
+        dummy_ip = c.value.ipv6;
+        vector_push(&new_fake_as->values, &c);
+
         has_dummy_ip = true;
         fake_as = new_fake_as;
     }
@@ -528,13 +531,14 @@ consider_lflow_for_added_as_ips__(
      * the generated matches can't be mapped from the items in the
      * as_diff_added. So we need to fall back to reprocessing the lflow.
      */
-    if (hmap_count(&matches) != as_ref_count * as_diff_added->n_values) {
+    size_t n_values = vector_len(&as_diff_added->values);
+    if (hmap_count(&matches) != as_ref_count * n_values) {
         VLOG_DBG("lflow "UUID_FMT", addrset %s: Generated flows count "
                  "(%"PRIuSIZE") " "doesn't match added addresses count "
                  "(%"PRIuSIZE") and ref_count (%"PRIuSIZE"). "
                  "Need reprocessing.",
                  UUID_ARGS(&lflow->header_.uuid), as_name,
-                 hmap_count(&matches), as_diff_added->n_values, as_ref_count);
+                 hmap_count(&matches), n_values, as_ref_count);
         handled = false;
         goto done;
     }
@@ -610,19 +614,21 @@ as_update_can_be_handled(const char *as_name, struct addr_set_diff *as_diff,
     struct expr_constant_set *as = shash_find_data(l_ctx_in->addr_sets,
                                                    as_name);
     ovs_assert(as);
-    size_t n_added = as_diff->added ? as_diff->added->n_values : 0;
-    size_t n_deleted = as_diff->deleted ? as_diff->deleted->n_values : 0;
-    size_t old_as_size = as->n_values + n_deleted - n_added;
+    size_t n_values = vector_len(&as->values);
+    size_t n_added = as_diff->added ? vector_len(&as_diff->added->values) : 0;
+    size_t n_deleted =
+        as_diff->deleted ? vector_len(&as_diff->deleted->values) : 0;
+    size_t old_as_size = n_values + n_deleted - n_added;
 
     /* If the change may impact n_conj, i.e. the template of the flows would
      * change, we must reprocess the lflow. */
-    if (old_as_size <= 1 || as->n_values <= 1) {
+    if (old_as_size <= 1 || n_values <= 1) {
         return false;
     }
 
     /* If the size of the diff is too big, reprocessing may be more
      * efficient than incrementally processing the diffs.  */
-    if ((n_added + n_deleted) >= as->n_values) {
+    if ((n_added + n_deleted) >= n_values) {
         return false;
     }
 
@@ -719,8 +725,8 @@ lflow_handle_addr_set_update(const char *as_name,
 
         if (as_diff->deleted) {
             struct addrset_info as_info;
-            for (size_t i = 0; i < as_diff->deleted->n_values; i++) {
-                struct expr_constant *c = &as_diff->deleted->values[i];
+            const struct expr_constant *c;
+            VECTOR_FOR_EACH_PTR (&as_diff->deleted->values, c) {
                 if (!as_info_from_expr_const(as_name, c, &as_info)) {
                     continue;
                 }
