@@ -2,6 +2,7 @@ Post v25.09.0
 -------------
    - Added disable_garp_rarp option to logical_router table in order to disable
      GARP/RARP announcements by all the peer ports of this logical router.
+   - Support for specifying output_port for logical router reroute policies.
 
 OVN v25.09.0 - xxx xx xxxx
 --------------------------

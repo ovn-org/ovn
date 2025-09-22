@@ -192,7 +192,7 @@ parse_route_from_sbrec_route(struct hmap *parsed_routes_out,
     const char *lrp_addr_s = NULL;
     struct ovn_port *out_port = NULL;
     if (!find_route_outport(lr_ports, route->logical_port->logical_port,
-                            route->ip_prefix, route->nexthop,
+                            "static route", route->ip_prefix, route->nexthop,
                             IN6_IS_ADDR_V4MAPPED(&prefix),
                             false,
                             &out_port, &lrp_addr_s)) {

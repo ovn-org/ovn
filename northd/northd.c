@@ -10754,29 +10754,59 @@ lrp_find_member_ip(const struct ovn_port *op, const char *ip_s)
     return find_lport_address(&op->lrp_networks, ip_s);
 }
 
-static struct ovn_port*
-get_outport_for_routing_policy_nexthop(struct ovn_datapath *od,
-                                       const struct hmap *lr_ports,
-                                       int priority, const char *nexthop)
+/* Returns true if the output port to be used for forwarding traffic through
+ * this policy could be determined.  Stores a pointer to the output port
+ * in 'p_output_port' and a pointer to the router IP address to be used for
+ * this policy, in 'p_lrp_addr_s'. */
+static bool
+find_policy_outport(struct ovn_datapath *od, const struct hmap *lr_ports,
+                    const struct nbrec_logical_router_policy *policy,
+                    const char *nexthop, bool is_ipv4,
+                    const char **p_lrp_addr_s, struct ovn_port **p_out_port)
 {
     if (nexthop == NULL) {
-        return NULL;
+        return false;
     }
 
-    /* Find the router port matching the next hop. */
-    for (int i = 0; i < od->nbr->n_ports; i++) {
-       struct nbrec_logical_router_port *lrp = od->nbr->ports[i];
+    struct ovn_port *out_port = NULL;
+    const char *lrp_addr_s = NULL;
 
-       struct ovn_port *out_port = ovn_port_find(lr_ports, lrp->name);
-       if (out_port && lrp_find_member_ip(out_port, nexthop)) {
-           return out_port;
-       }
+    if (policy->output_port) {
+        if (!find_route_outport(lr_ports, policy->output_port->name,
+                                "policy", policy->match,
+                                nexthop, is_ipv4, true, &out_port,
+                                &lrp_addr_s)) {
+            return false;
+        }
+    } else {
+        /* If output_port is not specified, find the router port matching
+         * the next hop. */
+        HMAP_FOR_EACH (out_port, dp_node, &od->ports) {
+            lrp_addr_s = lrp_find_member_ip(out_port, nexthop);
+            if (lrp_addr_s) {
+                break;
+            }
+        }
     }
 
-    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-    VLOG_WARN_RL(&rl, "No path for routing policy priority %d on router %s; "
-                 "next hop %s", priority, od->nbr->name, nexthop);
-    return NULL;
+    if (!out_port || !lrp_addr_s) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "Logical Router: %s, policy "
+                          "(chain: '%s', match: '%s', priority %"PRId64"): "
+                          "no path for next hop %s",
+                     od->nbr->name,
+                     policy->chain ? policy->chain : "<Default>",
+                     policy->match, policy->priority, nexthop);
+        return false;
+    }
+    if (p_out_port) {
+        *p_out_port = out_port;
+    }
+    if (p_lrp_addr_s) {
+        *p_lrp_addr_s = lrp_addr_s;
+    }
+
+    return true;
 }
 
 static bool check_bfd_state(const struct nbrec_logical_router_policy *rule,
@@ -10852,18 +10882,12 @@ build_routing_policy_flow(struct lflow_table *lflows, struct ovn_datapath *od,
         }
 
         char *nexthop = rp->valid_nexthops[0];
-        struct ovn_port *out_port = get_outport_for_routing_policy_nexthop(
-             od, lr_ports, rule->priority, nexthop);
-        if (!out_port) {
-            return;
-        }
+        bool is_ipv4 = strchr(nexthop, '.') ? true : false;
+        const char *lrp_addr_s = NULL;
+        struct ovn_port *out_port = NULL;
 
-        const char *lrp_addr_s = lrp_find_member_ip(out_port, nexthop);
-        if (!lrp_addr_s) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_WARN_RL(&rl, "lrp_addr not found for routing policy "
-                         " priority %"PRId64" nexthop %s",
-                         rule->priority, nexthop);
+        if (!find_policy_outport(od, lr_ports, rule, nexthop, is_ipv4,
+                                 &lrp_addr_s, &out_port)) {
             return;
         }
 
@@ -10872,7 +10896,6 @@ build_routing_policy_flow(struct lflow_table *lflows, struct ovn_datapath *od,
             ds_put_format(&actions, "pkt.mark = %u; ", pkt_mark);
         }
 
-        bool is_ipv4 = strchr(nexthop, '.') ? true : false;
         ds_put_format(&actions, "%s = %s; "
                       "%s = %s; "
                       "eth.src = %s; "
@@ -10952,19 +10975,12 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
     struct ds actions = DS_EMPTY_INITIALIZER;
 
     for (size_t i = 0; i < rp->n_valid_nexthops; i++) {
-        struct ovn_port *out_port = get_outport_for_routing_policy_nexthop(
-             od, lr_ports, rule->priority, rp->valid_nexthops[i]);
-        if (!out_port) {
-            goto cleanup;
-        }
+        bool is_ipv4 = strchr(rp->valid_nexthops[i], '.') ? true : false;
+        const char *lrp_addr_s = NULL;
+        struct ovn_port *out_port = NULL;
 
-        const char *lrp_addr_s =
-            lrp_find_member_ip(out_port, rp->valid_nexthops[i]);
-        if (!lrp_addr_s) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_WARN_RL(&rl, "lrp_addr not found for routing policy "
-                            " priority %"PRId64" nexthop %s",
-                            rule->priority, rp->valid_nexthops[i]);
+        if (!find_policy_outport(od, lr_ports, rule, rp->valid_nexthops[i],
+                                 is_ipv4, &lrp_addr_s, &out_port)) {
             goto cleanup;
         }
 
@@ -10974,7 +10990,6 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
             ds_put_format(&actions, "pkt.mark = %u; ", pkt_mark);
         }
 
-        bool is_ipv4 = strchr(rp->valid_nexthops[i], '.') ? true : false;
 
         ds_put_format(&actions, "%s = %s; "
                       "%s = %s; "
@@ -11571,15 +11586,16 @@ build_route_match(const struct ovn_port *op_inport, uint32_t rtb_id,
 
 bool
 find_route_outport(const struct hmap *lr_ports, const char *output_port,
-                   const char *ip_prefix, const char *nexthop, bool is_ipv4,
+                   const char *route_type, const char *route_desc,
+                   const char *nexthop, bool is_ipv4,
                    bool force_out_port,
                    struct ovn_port **out_port, const char **lrp_addr_s)
 {
     *out_port = ovn_port_find(lr_ports, output_port);
     if (!*out_port) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "Bad out port %s for static route %s",
-                     output_port, ip_prefix);
+        VLOG_WARN_RL(&rl, "Bad out port %s for %s %s",
+                     output_port, route_type, route_desc);
         return false;
     }
     if (nexthop[0]) {
@@ -11619,8 +11635,10 @@ find_static_route_outport(const struct ovn_datapath *od,
     struct ovn_port *out_port = NULL;
     if (route->output_port) {
         /* XXX: we should be able to use &od->ports instead of lr_ports. */
-        if (!find_route_outport(lr_ports, route->output_port, route->ip_prefix,
-              route->nexthop, is_ipv4, true, &out_port, &lrp_addr_s)) {
+        if (!find_route_outport(lr_ports, route->output_port,
+                                "static route", route->ip_prefix,
+                                route->nexthop, is_ipv4, true, &out_port,
+                                &lrp_addr_s)) {
             return false;
         }
     } else {
@@ -14217,16 +14235,33 @@ build_route_policies(struct ovn_datapath *od, const struct hmap *lr_ports,
         if (!strcmp(rule->action, "reroute")) {
             size_t n_nexthops = rule->n_nexthops ? rule->n_nexthops : 1;
 
+            if (rule->output_port && n_nexthops != 1) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+                VLOG_WARN_RL(&rl,
+                             "Logical router: %s, policy "
+                             "(chain: '%s', match: '%s', priority %"PRId64"): "
+                             "output_port only supported on non-ECMP "
+                             "reroute policies",
+                             od->nbr->name,
+                             rule->chain ? rule->chain : "<Default>",
+                             rule->match, rule->priority);
+                continue;
+            }
+
             valid_nexthops = xcalloc(n_nexthops, sizeof *valid_nexthops);
             for (size_t j = 0; j < n_nexthops; j++) {
                 char *nexthop = rule->n_nexthops
                     ? rule->nexthops[j] : rule->nexthop;
-                struct ovn_port *out_port =
-                    get_outport_for_routing_policy_nexthop(
-                            od, lr_ports, rule->priority, nexthop);
-                if (!out_port || !check_bfd_state(rule, out_port, nexthop,
-                                                  bfd_connections,
-                                                  bfd_active_connections)) {
+                struct ovn_port *out_port = NULL;
+                bool is_ipv4 = strchr(nexthop, '.') ? true : false;
+
+                if (!find_policy_outport(od, lr_ports, rule, nexthop, is_ipv4,
+                                         NULL, &out_port)) {
+                    continue;
+                }
+                if (!check_bfd_state(rule, out_port, nexthop,
+                                     bfd_connections,
+                                     bfd_active_connections)) {
                     continue;
                 }
                 valid_nexthops[n_valid_nexthops++] = nexthop;

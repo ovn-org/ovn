@@ -3644,6 +3644,39 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Router policies - output_port])
+ovn_start
+
+dnl Test with a simple non-ECMP reroute policy with an explicit output-port set.
+check ovn-nbctl                                                          \
+    -- lr-add lr0                                                        \
+    -- lrp-add lr0 lrp1 00:00:00:00:00:01 1.1.1.1/24                     \
+    -- lrp-add lr0 lrp2 00:00:00:00:00:02 2.2.2.1/24                     \
+    -- --output-port=lrp2 lr-policy-add lr0 100 "ip4.src == 42.42.42.42" \
+                                        reroute 3.3.3.3
+
+dnl Also add an ECMP reroute policy and forcefully set output-port; ovn-northd
+dnl should warn and ignore this second policy.
+check ovn-nbctl lr-policy-add lr0 200 "ip4.src == 43.43.43.43" reroute 3.3.3.4,3.3.3.5
+lrpol=$(fetch_column nb:logical_router_policy _uuid priority=200)
+lrp2=$(fetch_column nb:logical_router_port _uuid name=lrp2)
+check ovn-nbctl set logical_router_policy $lrpol output_port=$lrp2
+check ovn-nbctl --wait=sb sync
+
+check grep -qE "output_port only supported on non-ECMP reroute policies" northd/ovn-northd.log
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CAPTURE_FILE([lr0flows])
+
+AT_CHECK([grep "lr_in_policy[[^_]]" lr0flows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = 0; next;)
+  table=??(lr_in_policy       ), priority=100  , match=(ip4.src == 42.42.42.42), action=(reg0 = 3.3.3.3; reg5 = 2.2.2.1; eth.src = 00:00:00:00:00:02; outport = "lrp2"; flags.loopback = 1; reg8[[0..15]] = 0; reg9[[9]] = 1; next;)
+])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ACL allow-stateless omit conntrack - Logical_Switch])
 ovn_start
 
@@ -12731,6 +12764,18 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 # Create router Policy
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-policy-add lr0  10 "ip4.src == 10.0.0.3" reroute 172.168.0.101,172.168.0.102
+check_engine_stats northd recompute nocompute
+check_engine_stats lr_nat recompute nocompute
+check_engine_stats lr_stateful recompute nocompute
+check_engine_stats sync_to_sb_pb recompute nocompute
+check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Change router Policy to use explicit output port.
+lrp_lr0_sw0=$(fetch_column nb:logical_router_port _uuid name=lr0-sw0)
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set logical_router_policy . output_port=$lrp_lr0_sw0
 check_engine_stats northd recompute nocompute
 check_engine_stats lr_nat recompute nocompute
 check_engine_stats lr_stateful recompute nocompute

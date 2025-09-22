@@ -4725,6 +4725,23 @@ or
       </p>
     </column>
 
+    <column name="output_port">
+      <p>
+        The <ref table="Logical_Router_Port"/> via which the packet
+        needs to be sent out.  This is optional and when not specified,
+        OVN will automatically figure this out based on the
+        <ref column="nexthops"/> column.  When this is specified and there are
+        multiple IP addresses on the router port and none of them are in the
+        same subnet of <ref column="nexthops"/>, OVN chooses the first IP
+        address as the one via which the <ref column="nexthops"/> are
+        reachable.
+
+        NOTE: for now OVN does not support configuring the output port on
+        ECMP reroute policies (with more than one value in the
+        <ref column="nexthops"/> column).
+      </p>
+    </column>
+
     <column name="bfd_sessions">
       <p>
         Reference to <ref table="BFD"/> row if the route policy has associated

@@ -2512,6 +2512,21 @@ AT_CHECK([ovn-nbctl lr-policy-add lr0 100 "ip4.src == 2.1.1.0/24" jump], [1], []
   [ovn-nbctl: Chain name is required when action is jump.
 ])
 
+AT_CHECK([ovn-nbctl --output-port=lrp0 lr-policy-add lr0 101 "ip4.src == 3.1.1.0/24" drop], [1], [],
+  [ovn-nbctl: Specifying output-port is only allowed for reroute policies.
+])
+
+AT_CHECK([ovn-nbctl --output-port=lrp0 lr-policy-add lr0 101 "ip4.src == 3.1.1.0/24" reroute 192.168.0.10,192.168.0.11], [1], [],
+  [ovn-nbctl: output-port option is supported only for policies with a single reroute next hop
+])
+
+AT_CHECK([ovn-nbctl --output-port=lrp0 lr-policy-add lr0 101 "ip4.src == 3.1.1.0/24" reroute 192.168.0.10], [1], [],
+  [ovn-nbctl: unknown output-port: lrp0
+])
+
+check ovn-nbctl lrp-add lr0 lrp0 00:00:00:00:00:01 192.168.0.1/24
+check ovn-nbctl --output-port=lrp0 lr-policy-add lr0 101 "ip4.src == 3.1.1.0/24" reroute 192.168.0.10
+
 dnl Add duplicated policy
 AT_CHECK([ovn-nbctl lr-policy-add lr0 100 "ip4.src == 1.1.1.0/24" drop], [1], [],
   [ovn-nbctl: Same routing policy already existed on the logical router lr0.
@@ -2532,6 +2547,7 @@ Routing Policies
 Chain <Default>:
        101                              ip4.src == 2.1.1.0/24           allow
        101                              ip4.src == 2.1.2.0/24            drop
+       101                              ip4.src == 3.1.1.0/24         reroute              192.168.0.10 lrp0
        101                               ip6.src == 2002::/64            drop
        100                              ip4.src == 1.1.2.0/24           allow               pkt_mark=100,foo=bar
 
@@ -2549,6 +2565,7 @@ Routing Policies
 Chain <Default>:
        101                              ip4.src == 2.1.1.0/24           allow
        101                              ip4.src == 2.1.2.0/24            drop
+       101                              ip4.src == 3.1.1.0/24         reroute              192.168.0.10 lrp0
        101                               ip6.src == 2002::/64            drop
        100                              ip4.src == 1.1.2.0/24           allow               pkt_mark=100,foo=bar
 

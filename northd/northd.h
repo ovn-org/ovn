@@ -855,7 +855,8 @@ struct svc_monitors_map_data {
 
 bool
 find_route_outport(const struct hmap *lr_ports, const char *output_port,
-                   const char *ip_prefix, const char *nexthop, bool is_ipv4,
+                   const char *route_type, const char *route_desc,
+                   const char *nexthop, bool is_ipv4,
                    bool force_out_port,
                    struct ovn_port **out_port, const char **lrp_addr_s);
 

@@ -4189,6 +4189,9 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
     const struct nbrec_bfd **bfd_sessions = NULL;
     char *chain_s = shash_find_data(&ctx->options, "--chain");
 
+    const char *output_port = shash_find_data(&ctx->options, "--output-port");
+    const struct nbrec_logical_router_port *out_lrp = NULL;
+
     bool reroute = false;
     bool jump = false;
 
@@ -4205,6 +4208,10 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
             return;
         }
         reroute = true;
+    } else if (output_port) {
+        ctl_error(ctx, "Specifying output-port is only allowed for "
+                       "reroute policies.");
+        return;
     }
 
     if (!strcmp(action, "jump")) {
@@ -4264,6 +4271,21 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
         }
 
         free(nexthops_arg);
+
+        if (output_port) {
+            if (vector_len(&nexthops) != 1) {
+                ctl_error(ctx, "output-port option is supported only for "
+                               "policies with a single reroute next hop");
+                goto free_nexthops;
+            }
+
+            error = lrp_by_name_or_uuid(ctx, output_port, true, &out_lrp);
+            if (error) {
+                ctl_error(ctx, "unknown output-port: %s", output_port);
+                free(error);
+                goto free_nexthops;
+            }
+        }
     }
 
     struct nbrec_logical_router_policy *policy;
@@ -4283,6 +4305,7 @@ nbctl_lr_policy_add(struct ctl_context *ctx)
     if (reroute) {
         nbrec_logical_router_policy_set_nexthops(
             policy, vector_get_array(&nexthops), vector_len(&nexthops));
+        nbrec_logical_router_policy_set_output_port(policy, out_lrp);
     }
 
     /* Parse the options. */
@@ -4505,6 +4528,10 @@ print_routing_policy(const struct nbrec_logical_router_policy *policy,
         free(next_hop);
     }
 
+    if (policy->output_port) {
+        ds_put_format(s, " %s", policy->output_port->name);
+    }
+
     if (!smap_is_empty(&policy->options) || policy->n_bfd_sessions) {
         ds_put_format(s, "%15s", "");
         if (policy->n_bfd_sessions) {
@@ -4526,10 +4553,14 @@ nbctl_pre_lr_policy_list(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_name);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_col_policies);
 
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_name);
+
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_priority);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_match);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_nexthops);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_action);
+    ovsdb_idl_add_column(ctx->idl,
+                         &nbrec_logical_router_policy_col_output_port);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_policy_col_options);
     ovsdb_idl_add_column(ctx->idl,
                          &nbrec_logical_router_policy_col_bfd_sessions);
@@ -8418,7 +8449,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     { "lr-policy-add", 4, INT_MAX,
      "ROUTER PRIORITY MATCH ACTION [NEXTHOP] [OPTIONS - KEY=VALUE ...]",
      nbctl_pre_lr_policy_add, nbctl_lr_policy_add, NULL,
-     "--may-exist,--bfd?,--chain=", RW },
+     "--may-exist,--bfd?,--chain=,--output-port=", RW },
     { "lr-policy-del", 1, 3, "ROUTER [{PRIORITY | UUID} [MATCH]]",
       nbctl_pre_lr_policy_del, nbctl_lr_policy_del, NULL,
       "--if-exists,--chain=", RW },

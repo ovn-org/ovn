@@ -171,6 +171,12 @@ OVN To-do List
     allow for the eventual removal of the ovn\_datapath structure from the
     codebase.
 
+* Logical Router Policies
+
+  * Add support for configuring output\_port for reroute router policies that
+    have more than one nexthop (ECMP).  This probably requires a redesign of
+    the Northbound Logical_Router_Policy database schema.
+
 * CI
 
   * ovn-kubernetes: Only a subset of the ovn-kubernetes features is currently
