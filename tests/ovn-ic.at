@@ -4058,3 +4058,196 @@ OVN_CLEANUP_IC([az1], [az2], [az3])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- prefix filter -- deny route adv])
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
+done
+
+# Create routers and connect to transit switch
+for i in 1 2; do
+    ovn_as az$i
+    lr=lr1$i
+    check ovn-nbctl lr-add $lr
+    lrp=lrp-$lr-ts1
+    lsp=lsp-ts1-$lr
+    check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:ab:0$i 169.254.101.$i/24 fe80:10::$i/64
+    check ovn-nbctl lsp-add ts1 $lsp \
+        -- lsp-set-addresses $lsp router \
+        -- lsp-set-type $lsp router \
+        -- lsp-set-options $lsp router-port=$lrp
+done
+
+# Add directly connected routes to lr12 (first two test prefixes reused)
+ovn_as az2 check ovn-nbctl lrp-add lr12 lrp-lr12-1 aa:aa:aa:aa:cc:01 "192.168.100.1/24" "2001:db12::1/64"
+ovn_as az2 check ovn-nbctl lrp-add lr12 lrp-lr12-2 aa:aa:aa:aa:cc:02 "192.168.200.1/24" "2001:db22::1/64"
+
+# Sync IC DB
+check ovn-ic-nbctl --wait=sb sync
+
+# Validate lr11 learns both IPv4 and IPv6 routes from lr12
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep -E '192.168|2001' | grep learned | awk '{print $1, $2}' | sort], [0], [dnl
+192.168.100.0/24 169.254.101.2
+192.168.200.0/24 169.254.101.2
+2001:db12::/64 fe80:10::2
+2001:db22::/64 fe80:10::2
+])
+
+# Set deny-adv on lrp-lr12-ts1 for 192.168.100.0/24
+ovn_as az2 check ovn-nbctl set logical_router_port lrp-lr12-ts1 options:ic-route-deny-adv=192.168.100.0/24
+
+# Only 192.168.200.0/24 should now be learned
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 | grep learned | awk '{print $1, $2}' | sort], [0], [dnl
+192.168.200.0/24 169.254.101.2
+])
+
+# Add IPv6 deny prefix too
+ovn_as az2 check ovn-nbctl set logical_router_port lrp-lr12-ts1 options:ic-route-deny-adv="192.168.100.0/24,2001:db12::/64"
+
+# Only 2001:db22::/64 should be learned now
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 2001 | grep learned | awk '{print $1, $2}' | sort], [0], [dnl
+2001:db22::/64 fe80:10::2
+])
+
+# Remove deny-adv and validate all are learned again
+ovn_as az2 check ovn-nbctl remove logical_router_port lrp-lr12-ts1 options ic-route-deny-adv
+
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep learned | awk '{print $1, $2}' | sort], [0], [dnl
+192.168.100.0/24 169.254.101.2
+192.168.200.0/24 169.254.101.2
+2001:db12::/64 fe80:10::2
+2001:db22::/64 fe80:10::2
+])
+
+# --- Test ic-route-deny-learn ---
+
+# Set deny-learn on lrp-lr11-ts1 for 192.168.200.0/24 and 2001:db22::/64
+ovn_as az1 check ovn-nbctl set logical_router_port lrp-lr11-ts1 options:ic-route-deny-learn="192.168.200.0/24,2001:db22::/64"
+
+# Now lr11 should only learn 192.168.100.0/24 and 2001:db12::/64
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep -E '192.168|2001' | grep learned | awk '{print $1, $2}' | sort], [0], [dnl
+192.168.100.0/24 169.254.101.2
+2001:db12::/64 fe80:10::2
+])
+
+# Remove deny-learn and confirm full route learning resumes
+ovn_as az1 check ovn-nbctl remove logical_router_port lrp-lr11-ts1 options ic-route-deny-learn
+
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep -E '192.168|2001' | grep learned | awk '{print $1, $2}' | sort], [0], [dnl
+192.168.100.0/24 169.254.101.2
+192.168.200.0/24 169.254.101.2
+2001:db12::/64 fe80:10::2
+2001:db22::/64 fe80:10::2
+])
+
+# --- Test setting deny options on logical router ---
+
+# Set deny-adv on lr12 for 192.168.100.0/24
+ovn_as az2 check ovn-nbctl set logical_router lr12 options:ic-route-deny-adv="192.168.100.0/24"
+
+# Sync again after router option is applied
+check ovn-ic-nbctl --wait=sb sync
+
+# Only 192.168.200.0/24 should now be learned
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 | grep learned | awk '{print $1, $2}' | sort], [0], [dnl
+192.168.200.0/24 169.254.101.2
+])
+
+# Set deny-learn on lr11 for 2001:db22::/64
+ovn_as az1 check ovn-nbctl set logical_router lr11 options:ic-route-deny-learn="2001:db22::/64"
+
+# Only 2001:db12::/64 should now be learned
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 2001 | grep learned | awk '{print $1, $2}' | sort], [0], [dnl
+2001:db12::/64 fe80:10::2
+])
+
+# Clean up router-level options
+ovn_as az2 check ovn-nbctl remove logical_router lr12 options ic-route-deny-adv
+ovn_as az1 check ovn-nbctl remove logical_router lr11 options ic-route-deny-learn
+
+# Confirm all routes are back
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep learned | awk '{print $1, $2}' | sort], [0], [dnl
+192.168.100.0/24 169.254.101.2
+192.168.200.0/24 169.254.101.2
+2001:db12::/64 fe80:10::2
+2001:db22::/64 fe80:10::2
+])
+
+# --- Test ic-route-denylist (global option) ---
+
+# Set global denylist to block 192.168.100.0/24 and 2001:db12::/64
+ovn_as az2 check ovn-nbctl set nb_global . options:ic-route-denylist="192.168.100.0/24,2001:db12::/64"
+
+# Now lr11 should only learn 192.168.200.0/24 and 2001:db22::/64
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep -E '192.168|2001' | grep learned | awk '{print $1, $2}' | sort], [0], [dnl
+192.168.200.0/24 169.254.101.2
+2001:db22::/64 fe80:10::2
+])
+
+# Remove global denylist
+ovn_as az2 check ovn-nbctl remove nb_global . options ic-route-denylist
+
+# Confirm all routes are learned again
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep -E '192.168|2001' | grep learned | awk '{print $1, $2}' | sort], [0], [dnl
+192.168.100.0/24 169.254.101.2
+192.168.200.0/24 169.254.101.2
+2001:db12::/64 fe80:10::2
+2001:db22::/64 fe80:10::2
+])
+
+# --- Test combination of deny options ---
+
+# Set all deny filters
+ovn_as az2 check ovn-nbctl set logical_router_port lrp-lr12-ts1 options:ic-route-deny-adv="192.168.100.0/24"
+ovn_as az1 check ovn-nbctl set logical_router_port lrp-lr11-ts1 options:ic-route-deny-learn="192.168.200.0/24"
+ovn_as az2 check ovn-nbctl set nb_global . options:ic-route-denylist="2001:db12::/64"
+
+# Validate only 2001:db22::/64 is learned
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep -E '192.168|2001' | grep learned | awk '{print $1, $2}' | sort], [0], [dnl
+2001:db22::/64 fe80:10::2
+])
+
+# Clean up for interaction tests
+ovn_as az2 check ovn-nbctl remove logical_router_port lrp-lr12-ts1 options ic-route-deny-adv
+ovn_as az1 check ovn-nbctl remove logical_router_port lrp-lr11-ts1 options ic-route-deny-learn
+ovn_as az2 check ovn-nbctl remove nb_global . options ic-route-denylist
+
+# --- Test interactions between different filter options ---
+
+# Test ic-route-filter-adv vs ic-route-deny-adv precedence
+# Set both filter-adv (allow) and deny-adv (deny) for same CIDR - deny should take precedence
+ovn_as az2 check ovn-nbctl set logical_router_port lrp-lr12-ts1 options:ic-route-filter-adv="192.168.100.0/24,192.168.200.0/24"
+ovn_as az2 check ovn-nbctl set logical_router_port lrp-lr12-ts1 options:ic-route-deny-adv="192.168.100.0/24"
+
+# Only 192.168.200.0/24 should be learned (192.168.100.0/24 denied despite being in filter-adv)
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 | grep learned | awk '{print $1, $2}' | sort], [0], [dnl
+192.168.200.0/24 169.254.101.2
+])
+
+# Clean up
+ovn_as az2 check ovn-nbctl remove logical_router_port lrp-lr12-ts1 options ic-route-filter-adv
+ovn_as az2 check ovn-nbctl remove logical_router_port lrp-lr12-ts1 options ic-route-deny-adv
+
+# Test cross-router interaction: filter-adv on lr12 vs deny-learn on lr11
+# lr12 allows advertising 192.168.100.0/24, but lr11 denies learning it
+ovn_as az2 check ovn-nbctl set logical_router_port lrp-lr12-ts1 options:ic-route-filter-adv="192.168.100.0/24"
+ovn_as az1 check ovn-nbctl set logical_router_port lrp-lr11-ts1 options:ic-route-deny-learn="192.168.100.0/24"
+
+# 192.168.100.0/24 should not be learned (deny-learn takes precedence over filter-adv)
+# No routes should be learned since only 192.168.100.0/24 is allowed to be advertised but it's denied for learning
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 | grep learned | wc -l], [0], [0
+])
+
+# Clean up interaction tests
+ovn_as az2 check ovn-nbctl remove logical_router_port lrp-lr12-ts1 options ic-route-filter-adv
+ovn_as az1 check ovn-nbctl remove logical_router_port lrp-lr11-ts1 options ic-route-deny-learn
+
+
+OVN_CLEANUP_IC([az1], [az2])
+AT_CLEANUP
+])

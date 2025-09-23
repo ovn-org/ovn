@@ -1121,26 +1121,50 @@ prefix_is_filtered(struct in6_addr *prefix,
 }
 
 static bool
-prefix_is_deny_listed(const struct smap *nb_options,
-                      struct in6_addr *prefix,
-                      unsigned int plen)
+prefix_is_deny_filtered(struct in6_addr *prefix,
+                        unsigned int plen,
+                        const struct smap *nb_options,
+                        const struct nbrec_logical_router *nb_lr,
+                        const struct nbrec_logical_router_port *ts_lrp,
+                        bool is_advertisement)
 {
-    const char *filter_name = "ic-route-denylist";
-    const char *denylist = smap_get(nb_options, filter_name);
-    if (!denylist || !denylist[0]) {
-        denylist = smap_get(nb_options, "ic-route-blacklist");
-        if (!denylist || !denylist[0]) {
-            return false;
+    struct ds deny_list = DS_EMPTY_INITIALIZER;
+    const char *deny_key = is_advertisement ? "ic-route-deny-adv" :
+                                              "ic-route-deny-learn";
+
+    if (ts_lrp) {
+        const char *lrp_deny_filter = smap_get(&ts_lrp->options, deny_key);
+        if (lrp_deny_filter) {
+            ds_put_format(&deny_list, "%s,", lrp_deny_filter);
+        }
+    }
+
+    if (nb_lr) {
+        const char *lr_deny_filter = smap_get(&nb_lr->options, deny_key);
+        if (lr_deny_filter) {
+            ds_put_format(&deny_list, "%s,", lr_deny_filter);
+        }
+    }
+
+    if (nb_options) {
+        const char *global_deny = smap_get(nb_options, "ic-route-denylist");
+        if (!global_deny || !global_deny[0]) {
+            global_deny = smap_get(nb_options, "ic-route-blacklist");
+        }
+        if (global_deny && global_deny[0]) {
+            ds_put_format(&deny_list, "%s,", global_deny);
         }
     }
 
     struct sset prefix_set = SSET_INITIALIZER(&prefix_set);
-    sset_from_delimited_string(&prefix_set, denylist, ",");
+    sset_from_delimited_string(&prefix_set, ds_cstr(&deny_list), ",");
 
     bool denied = false;
     if (!sset_is_empty(&prefix_set)) {
-        denied = find_prefix_in_set(prefix, plen, &prefix_set, filter_name);
+        denied = find_prefix_in_set(prefix, plen, &prefix_set, deny_key);
     }
+
+    ds_destroy(&deny_list);
     sset_destroy(&prefix_set);
     return denied;
 }
@@ -1170,7 +1194,8 @@ route_need_advertise(const char *policy,
         return false;
     }
 
-    if (prefix_is_deny_listed(nb_options, prefix, plen)) {
+    if (prefix_is_deny_filtered(prefix, plen, nb_options,
+                                nb_lr, ts_lrp, true)) {
         return false;
     }
 
@@ -1527,7 +1552,7 @@ route_need_learn(const struct nbrec_logical_router *lr,
         return false;
     }
 
-    if (prefix_is_deny_listed(nb_options, prefix, plen)) {
+    if (prefix_is_deny_filtered(prefix, plen, nb_options, lr, ts_lrp, false)) {
         return false;
     }
 

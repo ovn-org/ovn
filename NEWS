@@ -3,6 +3,9 @@ Post v25.09.0
    - Added disable_garp_rarp option to logical_router table in order to disable
      GARP/RARP announcements by all the peer ports of this logical router.
    - Support for specifying output_port for logical router reroute policies.
+   - Added "ic-route-deny-adv" and "ic-route-deny-learn" options to
+     the Logical_Router/Logical_Router_Port tables to allow users to
+     deny filter advertised/learned IC routes.
 
 OVN v25.09.0 - xxx xx xxxx
 --------------------------

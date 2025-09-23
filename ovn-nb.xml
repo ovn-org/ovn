@@ -3315,7 +3315,7 @@ or
       <column name="options" key="ic-route-filter-adv">
         <p>
           This option expects list of CIDRs delimited by "," that's present
-          in the Logical Router. A route will not be advertised if the
+          in the Logical Router. A route will be advertised if the
           route's prefix belongs to any of the CIDRs listed.
 
           This allows to filter CIDR prefixes in the process of advertising
@@ -3324,6 +3324,28 @@ or
       </column>
 
       <column name="options" key="ic-route-filter-learn">
+        <p>
+          This option expects list of CIDRs delimited by "," that's present
+          in the Logical Router. A route will be learned if the
+          route's prefix belongs to any of the CIDRs listed.
+
+          This allows to filter CIDR prefixes in the process of learning
+          routes in <code>ovn-ic</code> daemon.
+        </p>
+      </column>
+
+      <column name="options" key="ic-route-deny-adv">
+        <p>
+          This option expects list of CIDRs delimited by "," that's present
+          in the Logical Router. A route will not be advertised if the
+          route's prefix belongs to any of the CIDRs listed.
+
+          This allows to filter CIDR prefixes in the process of advertising
+          routes in <code>ovn-ic</code> daemon.
+        </p>
+      </column>
+
+      <column name="options" key="ic-route-deny-learn">
         <p>
           This option expects list of CIDRs delimited by "," that's present
           in the Logical Router. A route will not be learned if the
@@ -4352,18 +4374,40 @@ or
            This allows to filter CIDR prefixes in the process of advertising
            routes in <code>ovn-ic</code> daemon.
          </p>
-       </column>
+      </column>
 
-       <column name="options" key="ic-route-filter-learn">
-         <p>
-           This option expects list of CIDRs delimited by "," that's present
-           in the Logical Router Port. A route will be learned if the
-           route's prefix belongs to any of the CIDRs listed.
+      <column name="options" key="ic-route-filter-learn">
+        <p>
+          This option expects list of CIDRs delimited by "," that's present
+          in the Logical Router Port. A route will be learned if the
+          route's prefix belongs to any of the CIDRs listed.
 
-           This allows to filter CIDR prefixes in the process of learning
-           routes in <code>ovn-ic</code> daemon.
-         </p>
-       </column>
+          This allows to filter CIDR prefixes in the process of learning
+          routes in <code>ovn-ic</code> daemon.
+        </p>
+      </column>
+
+      <column name="options" key="ic-route-deny-adv">
+        <p>
+          This option expects list of CIDRs delimited by "," that's present
+          in the Logical Router Port. A route will not be advertised if the
+          route's prefix belongs to any of the CIDRs listed.
+
+          This allows to filter CIDR prefixes in the process of advertising
+          routes in <code>ovn-ic</code> daemon.
+        </p>
+      </column>
+
+      <column name="options" key="ic-route-deny-learn">
+        <p>
+          This option expects list of CIDRs delimited by "," that's present in
+          the Logical Router Port. A route will not be learned if the
+          route's prefix belongs to any of the CIDRs listed.
+
+          This allows to filter CIDR prefixes in the process of learning
+          routes in <code>ovn-ic</code> daemon.
+        </p>
+      </column>
     </group>
 
     <group title="Attachment">
