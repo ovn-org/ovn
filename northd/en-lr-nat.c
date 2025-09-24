@@ -45,8 +45,8 @@ static void lr_nat_table_destroy(struct lr_nat_table *);
 static void lr_nat_table_build(struct lr_nat_table *,
                                const struct ovn_datapaths *lr_datapaths,
                                const struct hmap *lr_ports);
-static struct lr_nat_record *lr_nat_table_find_by_index_(
-    const struct lr_nat_table *, size_t od_index);
+static struct lr_nat_record *lr_nat_table_find_by_uuid_(
+    const struct lr_nat_table *, struct uuid nb_uuid);
 
 static struct lr_nat_record *lr_nat_record_create(struct lr_nat_table *,
                                                   const struct ovn_datapath *,
@@ -68,10 +68,10 @@ static void snat_ip_add(struct lr_nat_record *, const char *ip,
                         struct ovn_nat *);
 
 const struct lr_nat_record *
-lr_nat_table_find_by_index(const struct lr_nat_table *table,
-                           size_t od_index)
+lr_nat_table_find_by_uuid(const struct lr_nat_table *table,
+                          struct uuid nb_uuid)
 {
-    return lr_nat_table_find_by_index_(table, od_index);
+    return lr_nat_table_find_by_uuid_(table, nb_uuid);
 }
 
 /* 'lr_nat' engine node manages the NB logical router NAT data.
@@ -83,6 +83,7 @@ en_lr_nat_init(struct engine_node *node OVS_UNUSED,
     struct ed_type_lr_nat_data *data = xzalloc(sizeof *data);
     lr_nat_table_init(&data->lr_nats);
     hmapx_init(&data->trk_data.crupdated);
+    hmapx_init(&data->trk_data.deleted);
     return data;
 }
 
@@ -92,6 +93,7 @@ en_lr_nat_cleanup(void *data_)
     struct ed_type_lr_nat_data *data = (struct ed_type_lr_nat_data *) data_;
     lr_nat_table_destroy(&data->lr_nats);
     hmapx_destroy(&data->trk_data.crupdated);
+    hmapx_destroy(&data->trk_data.deleted);
 }
 
 void
@@ -99,6 +101,11 @@ en_lr_nat_clear_tracked_data(void *data_)
 {
     struct ed_type_lr_nat_data *data = (struct ed_type_lr_nat_data *) data_;
     hmapx_clear(&data->trk_data.crupdated);
+    struct hmapx_node *hmapx_node;
+    HMAPX_FOR_EACH_SAFE (hmapx_node, &data->trk_data.deleted) {
+        lr_nat_record_destroy(hmapx_node->data);
+        hmapx_delete(&data->trk_data.deleted, hmapx_node);
+    }
 }
 
 enum engine_node_state
@@ -125,11 +132,8 @@ lr_nat_northd_handler(struct engine_node *node, void *data_)
         return EN_UNHANDLED;
     }
 
-    if (northd_has_lrouters_in_tracked_data(&northd_data->trk_data)) {
-        return EN_UNHANDLED;
-    }
-
-    if (!northd_has_lr_nats_in_tracked_data(&northd_data->trk_data)) {
+    if (!northd_has_lr_nats_in_tracked_data(&northd_data->trk_data) &&
+        hmapx_count(&northd_data->trk_data.trk_routers.deleted) == 0) {
         return EN_HANDLED_UNCHANGED;
     }
 
@@ -137,17 +141,27 @@ lr_nat_northd_handler(struct engine_node *node, void *data_)
     struct lr_nat_record *lrnat_rec;
     const struct ovn_datapath *od;
     struct hmapx_node *hmapx_node;
+    struct lr_nat_table  *table = &data->lr_nats;
 
     HMAPX_FOR_EACH (hmapx_node, &northd_data->trk_data.trk_nat_lrs) {
         od = hmapx_node->data;
-        lrnat_rec = lr_nat_table_find_by_index_(&data->lr_nats, od->index);
-        ovs_assert(lrnat_rec);
-        lr_nat_record_reinit(lrnat_rec, od, &northd_data->lr_ports);
+        lrnat_rec = lr_nat_table_find_by_uuid_(&data->lr_nats, od->key);
+        if (lrnat_rec) {
+            lr_nat_record_reinit(lrnat_rec, od, &northd_data->lr_ports);
+        } else {
+            lrnat_rec = lr_nat_record_create(table, od,
+                                             &northd_data->lr_ports);
+        }
 
         /* Add the lrnet rec to the tracking data. */
         hmapx_add(&data->trk_data.crupdated, lrnat_rec);
     }
-
+    HMAPX_FOR_EACH (hmapx_node, &northd_data->trk_data.trk_routers.deleted) {
+        od = hmapx_node->data;
+        lrnat_rec = lr_nat_table_find_by_uuid_(table, od->key);
+        hmap_remove(&table->entries, &lrnat_rec->key_node);
+        hmapx_add(&data->trk_data.deleted, lrnat_rec);
+    }
     if (lr_nat_has_tracked_data(&data->trk_data)) {
         return EN_HANDLED_UPDATED;
     }
@@ -171,9 +185,6 @@ lr_nat_table_clear(struct lr_nat_table *table)
     HMAP_FOR_EACH_POP (lrnat_rec, key_node, &table->entries) {
         lr_nat_record_destroy(lrnat_rec);
     }
-
-    free(table->array);
-    table->array = NULL;
 }
 
 static void
@@ -181,8 +192,6 @@ lr_nat_table_build(struct lr_nat_table *table,
                    const struct ovn_datapaths *lr_datapaths,
                    const struct hmap *lr_ports)
 {
-    table->array = xrealloc(table->array,
-                            ods_size(lr_datapaths) * sizeof *table->array);
 
     const struct ovn_datapath *od;
     HMAP_FOR_EACH (od, key_node, &lr_datapaths->datapaths) {
@@ -197,13 +206,19 @@ lr_nat_table_destroy(struct lr_nat_table *table)
     hmap_destroy(&table->entries);
 }
 
-struct lr_nat_record *
-lr_nat_table_find_by_index_(const struct lr_nat_table *table,
-                            size_t od_index)
+static struct lr_nat_record *
+lr_nat_table_find_by_uuid_(const struct lr_nat_table *table,
+                           struct uuid nb_uuid)
 {
-    ovs_assert(od_index <= hmap_count(&table->entries));
-
-    return table->array[od_index];
+    struct lr_nat_record *record;
+    HMAP_FOR_EACH_WITH_HASH (record, key_node,
+                             uuid_hash(&nb_uuid),
+                             &table->entries){
+        if (uuid_equals(&record->nbr_uuid, &nb_uuid)) {
+            return record;
+        }
+    }
+    return NULL;
 }
 
 static struct lr_nat_record *
@@ -218,7 +233,6 @@ lr_nat_record_create(struct lr_nat_table *table,
 
     hmap_insert(&table->entries, &lrnat_rec->key_node,
                 uuid_hash(&od->nbr->header_.uuid));
-    table->array[od->index] = lrnat_rec;
     return lrnat_rec;
 }
 

@@ -12557,7 +12557,7 @@ check ovn-nbctl --wait=sb lsp-add sw0 sw0p1 -- lsp-set-addresses sw0p1 "00:00:20
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-add lr0
 check_engine_stats northd norecompute compute
-check_engine_stats lr_nat recompute nocompute
+check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
 check_engine_stats sync_to_sb_lb norecompute compute
@@ -12568,7 +12568,7 @@ check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-del lr0
 
 check_engine_stats northd norecompute compute
-check_engine_stats lr_nat recompute nocompute
+check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
 check_engine_stats sync_to_sb_lb norecompute compute

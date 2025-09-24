@@ -135,7 +135,8 @@ enum engine_input_handler_result
 lr_stateful_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
-    if (!northd_has_tracked_data(&northd_data->trk_data)) {
+    if (!northd_has_tracked_data(&northd_data->trk_data) ||
+        northd_has_lrouters_in_tracked_data(&northd_data->trk_data)) {
         return EN_UNHANDLED;
     }
 
@@ -187,8 +188,8 @@ lr_stateful_lb_data_handler(struct engine_node *node, void *data_)
         struct lr_stateful_record *lr_stateful_rec =
             lr_stateful_table_find_(&data->table, od->nbr);
         if (!lr_stateful_rec) {
-            const struct lr_nat_record *lrnat_rec = lr_nat_table_find_by_index(
-                input_data.lr_nats, od->index);
+            const struct lr_nat_record *lrnat_rec = lr_nat_table_find_by_uuid(
+                input_data.lr_nats, od->key);
             ovs_assert(lrnat_rec);
 
             lr_stateful_rec =

@@ -97,17 +97,16 @@ struct lr_nat_record {
 struct lr_nat_tracked_data {
     /* Created or updated logical router with NAT data. */
     struct hmapx crupdated;
+    /* Deleted logical router with NAT data. */
+    struct hmapx deleted;
 };
 
 struct lr_nat_table {
     struct hmap entries; /* Stores struct lr_nat_record. */
-
-    /* The array index of each element in 'entries'. */
-    struct lr_nat_record **array;
 };
 
-const struct lr_nat_record * lr_nat_table_find_by_index(
-    const struct lr_nat_table *, size_t od_index);
+const struct lr_nat_record * lr_nat_table_find_by_uuid(
+    const struct lr_nat_table *, struct uuid nb_uuid);
 
 #define LR_NAT_TABLE_FOR_EACH(LR_NAT_REC, TABLE) \
     HMAP_FOR_EACH (LR_NAT_REC, key_node, &(TABLE)->entries)
@@ -134,7 +133,8 @@ nat_entry_is_v6(const struct ovn_nat *nat_entry)
 
 static inline bool
 lr_nat_has_tracked_data(struct lr_nat_tracked_data *trk_data) {
-    return !hmapx_is_empty(&trk_data->crupdated);
+    return !hmapx_is_empty(&trk_data->crupdated) ||
+           !hmapx_is_empty(&trk_data->deleted);
 }
 
 #endif /* EN_LR_NAT_H */
