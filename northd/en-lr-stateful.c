@@ -49,10 +49,8 @@ VLOG_DEFINE_THIS_MODULE(en_lr_stateful);
 static void lr_stateful_table_init(struct lr_stateful_table *);
 static void lr_stateful_table_clear(struct lr_stateful_table *);
 static void lr_stateful_table_destroy(struct lr_stateful_table *);
-static struct lr_stateful_record *lr_stateful_table_find_(
-    const struct lr_stateful_table *, const struct nbrec_logical_router *);
-static struct lr_stateful_record *lr_stateful_table_find_by_index_(
-    const struct lr_stateful_table *table, size_t od_index);
+static struct lr_stateful_record *lr_stateful_table_find_by_uuid_(
+    const struct lr_stateful_table *table, struct uuid nb_uuid);
 
 static void lr_stateful_table_build(struct lr_stateful_table *,
                                     const struct lr_nat_table *,
@@ -93,6 +91,7 @@ en_lr_stateful_init(struct engine_node *node OVS_UNUSED,
     struct ed_type_lr_stateful *data = xzalloc(sizeof *data);
     lr_stateful_table_init(&data->table);
     hmapx_init(&data->trk_data.crupdated);
+    hmapx_init(&data->trk_data.deleted);
     return data;
 }
 
@@ -102,6 +101,7 @@ en_lr_stateful_cleanup(void *data_)
     struct ed_type_lr_stateful *data = data_;
     lr_stateful_table_destroy(&data->table);
     hmapx_destroy(&data->trk_data.crupdated);
+    hmapx_destroy(&data->trk_data.deleted);
 }
 
 void
@@ -110,6 +110,11 @@ en_lr_stateful_clear_tracked_data(void *data_)
     struct ed_type_lr_stateful *data = data_;
 
     hmapx_clear(&data->trk_data.crupdated);
+    struct hmapx_node *hmapx_node;
+    HMAPX_FOR_EACH_SAFE (hmapx_node, &data->trk_data.deleted) {
+        lr_stateful_record_destroy(hmapx_node->data);
+        hmapx_delete(&data->trk_data.deleted, hmapx_node);
+    }
     data->trk_data.vip_nats_changed = false;
 }
 
@@ -135,8 +140,7 @@ enum engine_input_handler_result
 lr_stateful_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
-    if (!northd_has_tracked_data(&northd_data->trk_data) ||
-        northd_has_lrouters_in_tracked_data(&northd_data->trk_data)) {
+    if (!northd_has_tracked_data(&northd_data->trk_data)) {
         return EN_UNHANDLED;
     }
 
@@ -144,10 +148,6 @@ lr_stateful_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
      * See (lr_stateful_get_input_data())
      *   1. northd_data->lr_datapaths
      *      This data gets updated when a logical router is created or deleted.
-     *      northd engine node presently falls back to full recompute when
-     *      this happens and so does this node.
-     *      Note: When we add I-P to the created/deleted logical routers, we
-     *      need to revisit this handler.
      *
      *      This node also accesses the router ports of the logical router
      *      (od->ports).  When these logical router ports gets updated,
@@ -186,7 +186,7 @@ lr_stateful_lb_data_handler(struct engine_node *node, void *data_)
         ovs_assert(od);
 
         struct lr_stateful_record *lr_stateful_rec =
-            lr_stateful_table_find_(&data->table, od->nbr);
+            lr_stateful_table_find_by_uuid_(&data->table, od->key);
         if (!lr_stateful_rec) {
             const struct lr_nat_record *lrnat_rec = lr_nat_table_find_by_uuid(
                 input_data.lr_nats, od->key);
@@ -257,7 +257,7 @@ lr_stateful_lb_data_handler(struct engine_node *node, void *data_)
                 ovn_datapaths_find_by_index(input_data.lr_datapaths, index);
 
             struct lr_stateful_record *lr_stateful_rec =
-                lr_stateful_table_find_(&data->table, od->nbr);
+                lr_stateful_table_find_by_uuid_(&data->table, od->key);
             ovs_assert(lr_stateful_rec);
 
             /* Update the od->lb_ips with the deleted and inserted
@@ -300,7 +300,7 @@ lr_stateful_lb_data_handler(struct engine_node *node, void *data_)
             struct ovn_datapath *od;
             VECTOR_FOR_EACH (&lbgrp_dps->lr, od) {
                 struct lr_stateful_record *lr_stateful_rec =
-                    lr_stateful_table_find_(&data->table, od->nbr);
+                    lr_stateful_table_find_by_uuid_(&data->table, od->key);
                 ovs_assert(lr_stateful_rec);
                 /* Add the lb_ips of lb_dps to the lr lb data. */
                 build_lrouter_lb_ips(lr_stateful_rec->lb_ips, lb_dps->lb);
@@ -348,13 +348,24 @@ lr_stateful_lr_nat_handler(struct engine_node *node, void *data_)
     struct ed_type_lr_stateful *data = data_;
     struct hmapx_node *hmapx_node;
 
+    HMAPX_FOR_EACH (hmapx_node, &lr_nat_data->trk_data.deleted) {
+        struct lr_nat_record *lr_nat_rec = hmapx_node->data;
+        struct lr_stateful_record *lr_stateful_rec =
+            lr_stateful_table_find_by_uuid_(&data->table,
+                                             lr_nat_rec->nbr_uuid);
+        if (lr_stateful_rec) {
+            hmap_remove(&data->table.entries, &lr_stateful_rec->key_node);
+            hmapx_add(&data->trk_data.deleted, lr_stateful_rec);
+        }
+    }
+
     HMAPX_FOR_EACH (hmapx_node, &lr_nat_data->trk_data.crupdated) {
         const struct lr_nat_record *lrnat_rec = hmapx_node->data;
         const struct ovn_datapath *od =
                 ovn_datapaths_find_by_index(input_data.lr_datapaths,
                                             lrnat_rec->lr_index);
         struct lr_stateful_record *lr_stateful_rec =
-            lr_stateful_table_find_(&data->table, od->nbr);
+            lr_stateful_table_find_by_uuid_(&data->table, od->key);
         if (!lr_stateful_rec) {
             lr_stateful_rec =
                 lr_stateful_record_create(&data->table, lrnat_rec, od,
@@ -381,10 +392,10 @@ lr_stateful_lr_nat_handler(struct engine_node *node, void *data_)
 }
 
 const struct lr_stateful_record *
-lr_stateful_table_find_by_index(const struct lr_stateful_table *table,
-                                   size_t od_index)
+lr_stateful_table_find_by_uuid(const struct lr_stateful_table *table,
+                                   struct uuid nbr_uuid)
 {
-    return lr_stateful_table_find_by_index_(table, od_index);
+    return lr_stateful_table_find_by_uuid_(table, nbr_uuid);
 }
 
 /* static functions. */
@@ -410,9 +421,6 @@ lr_stateful_table_clear(struct lr_stateful_table *table)
     HMAP_FOR_EACH_POP (lr_stateful_rec, key_node, &table->entries) {
         lr_stateful_record_destroy(lr_stateful_rec);
     }
-
-    free(table->array);
-    table->array = NULL;
 }
 
 static void
@@ -422,8 +430,6 @@ lr_stateful_table_build(struct lr_stateful_table *table,
                         const struct hmap *lb_datapaths_map,
                         const struct hmap *lbgrp_datapaths_map)
 {
-    table->array = xrealloc(table->array,
-                            ods_size(lr_datapaths) * sizeof *table->array);
     const struct lr_nat_record *lrnat_rec;
     LR_NAT_TABLE_FOR_EACH (lrnat_rec, lr_nats) {
         const struct ovn_datapath *od =
@@ -434,26 +440,17 @@ lr_stateful_table_build(struct lr_stateful_table *table,
 }
 
 static struct lr_stateful_record *
-lr_stateful_table_find_(const struct lr_stateful_table *table,
-                        const struct nbrec_logical_router *nbr)
+lr_stateful_table_find_by_uuid_(const struct lr_stateful_table *table,
+                                struct uuid nbr_uuid)
 {
     struct lr_stateful_record *lr_stateful_rec;
-
     HMAP_FOR_EACH_WITH_HASH (lr_stateful_rec, key_node,
-                             uuid_hash(&nbr->header_.uuid), &table->entries) {
-        if (uuid_equals(&lr_stateful_rec->nbr_uuid, &nbr->header_.uuid)) {
+                             uuid_hash(&nbr_uuid), &table->entries) {
+        if (uuid_equals(&lr_stateful_rec->nbr_uuid, &nbr_uuid)) {
             return lr_stateful_rec;
         }
     }
     return NULL;
-}
-
-static struct lr_stateful_record *
-lr_stateful_table_find_by_index_(const struct lr_stateful_table *table,
-                                 size_t od_index)
-{
-    ovs_assert(od_index <= hmap_count(&table->entries));
-    return table->array[od_index];
 }
 
 static struct lr_stateful_record *
@@ -534,8 +531,6 @@ lr_stateful_record_create(struct lr_stateful_table *table,
 
     hmap_insert(&table->entries, &lr_stateful_rec->key_node,
                 uuid_hash(&lr_stateful_rec->nbr_uuid));
-
-    table->array[od->index] = lr_stateful_rec;
 
     return lr_stateful_rec;
 }

@@ -338,8 +338,8 @@ build_nat_connected_routes(
         /* This is a directly connected LR peer. */
         if (peer_od->nbr) {
             const struct lr_stateful_record *peer_lr_stateful =
-                lr_stateful_table_find_by_index(lr_stateful_table,
-                                                 peer_od->index);
+                lr_stateful_table_find_by_uuid(lr_stateful_table,
+                                                 peer_od->key);
             if (!peer_lr_stateful) {
                 continue;
             }
@@ -360,8 +360,8 @@ build_nat_connected_routes(
             }
 
             const struct lr_stateful_record *peer_lr_stateful =
-                lr_stateful_table_find_by_index(lr_stateful_table,
-                                                rp->peer->od->index);
+                lr_stateful_table_find_by_uuid(lr_stateful_table,
+                                                rp->peer->od->key);
             if (!peer_lr_stateful) {
                 continue;
             }
@@ -419,8 +419,8 @@ build_lb_connected_routes(const struct ovn_datapath *od,
         const struct lr_stateful_record *lr_stateful_rec;
         /* This is directly connected LR peer. */
         if (peer_od->nbr) {
-            lr_stateful_rec = lr_stateful_table_find_by_index(
-                lr_stateful_table, peer_od->index);
+            lr_stateful_rec = lr_stateful_table_find_by_uuid(
+                lr_stateful_table, peer_od->key);
             build_lb_route_for_port(op, op->peer, lr_stateful_rec->lb_ips,
                                     routes);
             continue;
@@ -435,8 +435,8 @@ build_lb_connected_routes(const struct ovn_datapath *od,
                  * function.*/
                 continue;
             }
-            lr_stateful_rec = lr_stateful_table_find_by_index(
-                lr_stateful_table, rp->peer->od->index);
+            lr_stateful_rec = lr_stateful_table_find_by_uuid(
+                lr_stateful_table, rp->peer->od->key);
 
             build_lb_route_for_port(op, rp->peer, lr_stateful_rec->lb_ips,
                                     routes);

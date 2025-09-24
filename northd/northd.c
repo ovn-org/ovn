@@ -3568,8 +3568,8 @@ sync_pb_for_lsp(struct ovn_port *op,
                 const struct lr_stateful_record *lr_stateful_rec = NULL;
 
                 if (include_lb_vips) {
-                    lr_stateful_rec = lr_stateful_table_find_by_index(
-                        lr_stateful_table, op->peer->od->index);
+                    lr_stateful_rec = lr_stateful_table_find_by_uuid(
+                        lr_stateful_table, op->peer->od->key);
                 }
                 nats = get_nat_addresses(op->peer, &n_nats, false,
                                          include_lb_vips, lr_stateful_rec);
@@ -3669,7 +3669,7 @@ sync_pb_for_lrp(struct ovn_port *op,
     const char *chassis_name = smap_get(&op->od->nbr->options, "chassis");
     if (is_cr_port(op)) {
         const struct lr_stateful_record *lr_stateful_rec =
-            lr_stateful_table_find_by_index(lr_stateful_table, op->od->index);
+            lr_stateful_table_find_by_uuid(lr_stateful_table, op->od->key);
         ovs_assert(lr_stateful_rec);
 
         smap_add(&new, "distributed-port", op->primary_port->key);
@@ -12439,7 +12439,7 @@ build_lrouter_nat_flows_for_lb(
         enum lrouter_nat_lb_flow_type type;
 
         const struct lr_stateful_record *lr_stateful_rec =
-            lr_stateful_table_find_by_index(lr_stateful_table, od->index);
+            lr_stateful_table_find_by_uuid(lr_stateful_table, od->key);
         ovs_assert(lr_stateful_rec);
 
         const struct lr_nat_record *lrnat_rec = lr_stateful_rec->lrnat_rec;
@@ -17629,8 +17629,8 @@ build_lbnat_lflows_iterate_by_lsp(
     }
 
     const struct lr_stateful_record *lr_stateful_rec;
-    lr_stateful_rec = lr_stateful_table_find_by_index(lr_stateful_table,
-                                                      op->peer->od->index);
+    lr_stateful_rec = lr_stateful_table_find_by_uuid(lr_stateful_table,
+                                                     op->peer->od->key);
     ovs_assert(lr_stateful_rec);
 
     build_lsp_lflows_for_lbnats(op, lr_stateful_rec,
@@ -17692,8 +17692,8 @@ build_lbnat_lflows_iterate_by_lrp(
     ovs_assert(op->nbrp);
 
     const struct lr_stateful_record *lr_stateful_rec;
-    lr_stateful_rec = lr_stateful_table_find_by_index(lr_stateful_table,
-                                                      op->od->index);
+    lr_stateful_rec = lr_stateful_table_find_by_uuid(lr_stateful_table,
+                                                     op->od->key);
     ovs_assert(lr_stateful_rec);
 
     build_lrp_lflows_for_lbnats(op, lr_stateful_rec, meter_groups, match,
