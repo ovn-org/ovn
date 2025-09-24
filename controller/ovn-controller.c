@@ -3143,7 +3143,7 @@ mac_cache_mb_handle_for_datapath(struct mac_cache_data *data,
                                  const struct sbrec_datapath_binding *dp,
                                  struct ovsdb_idl_index *sbrec_mb_by_dp)
 {
-    bool has_threshold = mac_cache_threshold_find(data, dp->tunnel_key);
+    bool has_threshold = !!mac_cache_threshold_find(data, dp->tunnel_key);
 
     struct sbrec_mac_binding *mb_index_row =
             sbrec_mac_binding_index_init_row(sbrec_mb_by_dp);
@@ -3166,7 +3166,7 @@ mac_cache_fdb_handle_for_datapath(struct mac_cache_data *data,
                                   const struct sbrec_datapath_binding *dp,
                                   struct ovsdb_idl_index *sbrec_fdb_by_dp_key)
 {
-    bool has_threshold = mac_cache_threshold_find(data, dp->tunnel_key);
+    bool has_threshold = !!mac_cache_threshold_find(data, dp->tunnel_key);
 
     struct sbrec_fdb *fdb_index_row =
             sbrec_fdb_index_init_row(sbrec_fdb_by_dp_key);
