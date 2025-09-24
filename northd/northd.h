@@ -155,6 +155,7 @@ enum northd_tracked_data_type {
     NORTHD_TRACKED_LS_LBS   = (1 << 3),
     NORTHD_TRACKED_LS_ACLS  = (1 << 4),
     NORTHD_TRACKED_SWITCHES = (1 << 5),
+    NORTHD_TRACKED_ROUTERS  = (1 << 6),
 };
 
 /* Track what's changed in the northd engine node.
@@ -164,6 +165,7 @@ struct northd_tracked_data {
     /* Indicates the type of data tracked.  One or all of NORTHD_TRACKED_*. */
     enum northd_tracked_data_type type;
     struct tracked_dps trk_switches;
+    struct tracked_dps trk_routers;
     struct tracked_ovn_ports trk_lsps;
     struct tracked_lbs trk_lbs;
 
@@ -1013,6 +1015,13 @@ northd_has_lswitches_in_tracked_data(
         struct northd_tracked_data *trk_nd_changes)
 {
     return trk_nd_changes->type & NORTHD_TRACKED_SWITCHES;
+}
+
+static inline bool
+northd_has_lrouters_in_tracked_data(
+        struct northd_tracked_data *trk_nd_changes)
+{
+    return trk_nd_changes->type & NORTHD_TRACKED_ROUTERS;
 }
 
 /* Returns 'true' if the IPv4 'addr' is on the same subnet with one of the

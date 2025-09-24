@@ -125,6 +125,10 @@ lr_nat_northd_handler(struct engine_node *node, void *data_)
         return EN_UNHANDLED;
     }
 
+    if (northd_has_lrouters_in_tracked_data(&northd_data->trk_data)) {
+        return EN_UNHANDLED;
+    }
+
     if (!northd_has_lr_nats_in_tracked_data(&northd_data->trk_data)) {
         return EN_HANDLED_UNCHANGED;
     }

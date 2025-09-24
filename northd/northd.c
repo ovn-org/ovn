@@ -4051,6 +4051,7 @@ destroy_northd_data_tracked_changes(struct northd_data *nd)
     hmapx_clear(&trk_changes->ls_with_changed_acls);
     hmapx_clear(&trk_changes->ls_with_changed_ipam);
     destroy_tracked_dps(&trk_changes->trk_switches);
+    destroy_tracked_dps(&trk_changes->trk_routers);
     trk_changes->type = NORTHD_TRACKED_NONE;
 }
 
@@ -4059,6 +4060,8 @@ init_northd_tracked_data(struct northd_data *nd)
 {
     struct northd_tracked_data *trk_data = &nd->trk_data;
     trk_data->type = NORTHD_TRACKED_NONE;
+    hmapx_init(&trk_data->trk_routers.crupdated);
+    hmapx_init(&trk_data->trk_routers.deleted);
     hmapx_init(&trk_data->trk_switches.crupdated);
     hmapx_init(&trk_data->trk_switches.deleted);
     hmapx_init(&trk_data->trk_lsps.created);
@@ -4088,6 +4091,8 @@ destroy_northd_tracked_data(struct northd_data *nd)
     hmapx_destroy(&trk_data->ls_with_changed_lbs);
     hmapx_destroy(&trk_data->ls_with_changed_acls);
     hmapx_destroy(&trk_data->ls_with_changed_ipam);
+    hmapx_destroy(&trk_data->trk_routers.crupdated);
+    hmapx_destroy(&trk_data->trk_routers.deleted);
 }
 
 /* Check if a changed LSP can be handled incrementally within the I-P engine
@@ -4930,13 +4935,37 @@ northd_handle_lr_changes(const struct northd_input *ni,
 {
     const struct nbrec_logical_router *changed_lr;
 
-    if (!hmapx_is_empty(&ni->synced_lrs->new) ||
-        !hmapx_is_empty(&ni->synced_lrs->deleted) ||
-        hmapx_is_empty(&ni->synced_lrs->updated)) {
+    if (hmapx_is_empty(&ni->synced_lrs->new) &&
+        hmapx_is_empty(&ni->synced_lrs->updated) &&
+        hmapx_is_empty(&ni->synced_lrs->deleted)) {
         goto fail;
     }
 
     struct hmapx_node *node;
+    HMAPX_FOR_EACH (node, &ni->synced_lrs->new) {
+        const struct ovn_synced_logical_router *synced = node->data;
+        const struct nbrec_logical_router *new_lr = synced->nb;
+
+        /* If the logical router is create with the below columns set,
+         * then we can't handle it in the incremental processor goto fail. */
+        if (new_lr->copp || (new_lr->n_ports > 0)) {
+            goto fail;
+        }
+        struct ovn_datapath *od = ovn_datapath_create(
+            &nd->lr_datapaths.datapaths, &new_lr->header_.uuid,
+            NULL, new_lr, synced->sdp);
+        ods_assign_array_index(&nd->lr_datapaths, od);
+
+        od->is_gw_router = !!smap_get(&od->nbr->options, "chassis");
+        od->dynamic_routing = smap_get_bool(&od->nbr->options,
+                                            "dynamic-routing", false);
+        od->dynamic_routing_redistribute =
+            parse_dynamic_routing_redistribute(&od->nbr->options, DRRM_NONE,
+                                               od->nbr->name);
+        hmapx_add(&nd->trk_data.trk_nat_lrs,od);
+        hmapx_add(&nd->trk_data.trk_routers.crupdated, od);
+    }
+
     HMAPX_FOR_EACH (node, &ni->synced_lrs->updated) {
         const struct ovn_synced_logical_router *synced = node->data;
         changed_lr = synced->nb;
@@ -4964,8 +4993,49 @@ northd_handle_lr_changes(const struct northd_input *ni,
         }
     }
 
+    HMAPX_FOR_EACH (node, &ni->synced_lrs->deleted) {
+        const struct ovn_synced_logical_router *synced = node->data;
+        const struct nbrec_logical_router *deleted_lr = synced->nb;
+
+        struct ovn_datapath *od = ovn_datapath_find_(
+                                    &nd->lr_datapaths.datapaths,
+                                    &deleted_lr->header_.uuid);
+        if (!od) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_WARN_RL(&rl, "Internal error: a tracked deleted LR doesn't "
+                         "exist in lr_datapaths: "UUID_FMT,
+                         UUID_ARGS(&deleted_lr->header_.uuid));
+            goto fail;
+        }
+
+        if (deleted_lr->copp ||
+            deleted_lr->n_ports > 0 ||
+            deleted_lr->n_policies > 0 ||
+            deleted_lr->n_static_routes > 0) {
+            goto fail;
+        }
+        /* Since there are no ports the lr_group should be empty. If
+         * a logical router is deleted before the db gets
+         * recalculated nothing will create the lr_group. */
+        if (od->lr_group) {
+            free(od->lr_group->router_dps);
+            free(od->lr_group);
+        }
+
+        hmap_remove(&nd->lr_datapaths.datapaths, &od->key_node);
+        vector_get(&nd->lr_datapaths.dps,
+                   od->index, struct ovn_datapath *) = NULL;
+        dynamic_bitmap_set0(&nd->lr_datapaths.dps_index_map, od->index);
+
+        hmapx_add(&nd->trk_data.trk_routers.deleted, od);
+    }
+
     if (!hmapx_is_empty(&nd->trk_data.trk_nat_lrs)) {
         nd->trk_data.type |= NORTHD_TRACKED_LR_NATS;
+    }
+    if (!hmapx_is_empty(&nd->trk_data.trk_routers.crupdated) ||
+        !hmapx_is_empty(&nd->trk_data.trk_routers.deleted)) {
+        nd->trk_data.type |= NORTHD_TRACKED_ROUTERS;
     }
 
     return true;

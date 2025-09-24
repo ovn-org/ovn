@@ -12556,14 +12556,26 @@ check ovn-nbctl --wait=sb lsp-add sw0 sw0p1 -- lsp-set-addresses sw0p1 "00:00:20
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-add lr0
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats lr_nat recompute nocompute
 check_engine_stats lr_stateful recompute nocompute
 check_engine_stats sync_to_sb_pb recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
+check_engine_stats sync_to_sb_lb norecompute compute
 check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-del lr0
+
+check_engine_stats northd norecompute compute
+check_engine_stats lr_nat recompute nocompute
+check_engine_stats lr_stateful recompute nocompute
+check_engine_stats sync_to_sb_pb recompute nocompute
+check_engine_stats sync_to_sb_lb norecompute compute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check ovn-nbctl --wait=sb lr-add lr0
 # Adding a logical router port should result in recompute
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
