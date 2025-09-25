@@ -18850,9 +18850,9 @@ noop_callback(struct worker_pool *pool OVS_UNUSED,
 static void
 fix_flow_table_size(struct lflow_table *lflow_table,
                   struct lswitch_flow_build_info *lsiv,
-                  size_t n_lsiv)
+                  size_t n_lsiv, size_t start)
 {
-    size_t total = 0;
+    size_t total = start;
     for (size_t i = 0; i < n_lsiv; i++) {
         total += lsiv[i].thread_lflow_counter;
     }
@@ -18927,8 +18927,10 @@ build_lswitch_and_lrouter_flows(
         }
 
         /* Run thread pool. */
+        size_t current_lflow_table_size = hmap_count(&lflows->entries);
         run_pool_callback(build_lflows_pool, NULL, NULL, noop_callback);
-        fix_flow_table_size(lflows, lsiv, build_lflows_pool->size);
+        fix_flow_table_size(lflows, lsiv, build_lflows_pool->size,
+                            current_lflow_table_size);
 
         for (index = 0; index < build_lflows_pool->size; index++) {
             ds_destroy(&lsiv[index].match);
