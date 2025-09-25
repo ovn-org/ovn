@@ -5200,27 +5200,11 @@ northd_handle_sb_port_binding_changes(
     const struct sbrec_port_binding *pb;
     static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
     SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb, sbrec_port_binding_table) {
-        bool is_router_port = is_pb_router_type(pb);
-        struct ovn_port *op = NULL;
-
-        if (is_router_port) {
-            /* A router port binding 'pb' can belong to
-             *   - a logical switch port of type router or
-             *   - a logical router port.
-             *
-             * So, first search in lr_ports hmap.  If not found, search in
-             * ls_ports hmap.
-             * */
-            op = ovn_port_find(lr_ports, pb->logical_port);
-        }
-
-        if (!op) {
-            op = ovn_port_find(ls_ports, pb->logical_port);
-
-            if (op) {
-                is_router_port = false;
-            }
-        }
+        bool is_lrp =
+            !strcmp(datapath_get_nb_type(pb->datapath),
+                    ovn_datapath_type_to_string(DP_ROUTER));
+        struct ovn_port *op =
+            ovn_port_find(is_lrp ? lr_ports : ls_ports, pb->logical_port);
 
         if (sbrec_port_binding_is_new(pb)) {
             /* Most likely the PB was created by northd and this is the
@@ -5229,7 +5213,7 @@ northd_handle_sb_port_binding_changes(
             if (!op) {
                 VLOG_WARN_RL(&rl, "A port-binding for %s is created but the "
                             "%s is not found.", pb->logical_port,
-                            is_router_port ? "LRP" : "LSP");
+                            is_lrp ? "LRP" : "LSP");
                 return false;
             }
             op->sb = pb;
@@ -5261,7 +5245,7 @@ northd_handle_sb_port_binding_changes(
             if (!op) {
                 VLOG_WARN_RL(&rl, "A port-binding for %s is updated but the "
                             "%s is not found.", pb->logical_port,
-                            is_router_port ? "LRP" : "LSP");
+                            is_lrp ? "LRP" : "LSP");
                 return false;
             }
             if (op->sb != pb) {

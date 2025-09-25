@@ -433,7 +433,6 @@ enum en_lport_type {
 
 enum en_lport_type get_lport_type(const struct sbrec_port_binding *);
 char *get_lport_type_str(enum en_lport_type lport_type);
-bool is_pb_router_type(const struct sbrec_port_binding *);
 
 /* A wrapper that holds sorted arrays of strings. */
 struct sorted_array {

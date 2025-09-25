@@ -1283,34 +1283,6 @@ get_lport_type_str(enum en_lport_type lport_type)
     OVS_NOT_REACHED();
 }
 
-bool
-is_pb_router_type(const struct sbrec_port_binding *pb)
-{
-    enum en_lport_type lport_type = get_lport_type(pb);
-
-    switch (lport_type) {
-    case LP_PATCH:
-    case LP_CHASSISREDIRECT:
-    case LP_L3GATEWAY:
-    case LP_L2GATEWAY:
-    case LP_REMOTE:
-        return true;
-
-    case LP_VIF:
-    case LP_CONTAINER:
-    case LP_MIRROR:
-    case LP_VIRTUAL:
-    case LP_LOCALNET:
-    case LP_LOCALPORT:
-    case LP_VTEP:
-    case LP_EXTERNAL:
-    case LP_UNKNOWN:
-        return false;
-    }
-
-    return false;
-}
-
 void
 sorted_array_apply_diff(const struct sorted_array *a1,
                         const struct sorted_array *a2,
