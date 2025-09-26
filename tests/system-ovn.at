@@ -13970,6 +13970,132 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- ACL Sampling - Stateful ACL - routed traffic])
+AT_SKIP_IF([test $HAVE_NFCAPD = no])
+AT_KEYWORDS([ACL])
+
+CHECK_CONNTRACK()
+CHECK_CONNTRACK_NAT()
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+dnl Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+dnl Start ovn-controller
+start_daemon ovn-controller
+
+dnl Logical network:
+dnl 1 router
+dnl 2 logical switch
+dnl 2 VIF
+
+check ovn-nbctl                                      \
+  -- lr-add lr                                       \
+  -- lrp-add lr lrp1 00:00:00:00:01:00 42.42.42.1/24 \
+  -- lrp-add lr lrp2 00:00:00:00:02:00 43.43.43.1/24 \
+  -- ls-add ls1                                      \
+  -- ls-add ls2                                      \
+  -- lsp-add ls1 vm1                                 \
+  -- lsp-add ls2 vm2                                 \
+  -- lsp-set-addresses vm1 00:00:00:00:00:01         \
+  -- lsp-set-addresses vm2 00:00:00:00:00:02         \
+  -- lsp-add ls1 ls1-lr                              \
+  -- lsp-add ls2 ls2-lr                              \
+  -- lsp-set-type ls1-lr router                      \
+  -- lsp-set-type ls2-lr router                      \
+  -- lsp-set-options ls1-lr router-port=lrp1         \
+  -- lsp-set-options ls2-lr router-port=lrp2         \
+  -- lsp-set-addresses ls1-lr router                 \
+  -- lsp-set-addresses ls2-lr router
+check ovn-nbctl --wait=hv sync
+
+ADD_NAMESPACES(vm1)
+ADD_VETH(vm1, vm1, br-int, "42.42.42.2/24", "00:00:00:00:00:01", "42.42.42.1")
+ADD_NAMESPACES(vm2)
+ADD_VETH(vm2, vm2, br-int, "43.43.43.2/24", "00:00:00:00:00:02", "43.43.43.1")
+
+wait_for_ports_up
+
+NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 43.43.43.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+collector1=$(ovn-nbctl create Sample_Collector id=1 name=c1 probability=65535 set_id=100)
+collector2=$(ovn-nbctl create Sample_Collector id=2 name=c2 probability=65535 set_id=200)
+check_row_count nb:Sample_Collector 2
+
+check_uuid ovn-nbctl create Sampling_App type="acl-est" id="43"
+check_row_count nb:Sampling_App 1
+
+check ovn-nbctl pg-add pg vm1 vm2
+check_uuid ovn-nbctl                                                                         \
+    -- --id=@sample1 create Sample collector="$collector1" metadata=1001                     \
+    -- --sample-est=@sample1 acl-add pg from-lport 200 "inport == @pg && udp" allow-related  \
+    -- --id=@sample2 create Sample collector="$collector2" metadata=1004                     \
+    -- --sample-est=@sample2 acl-add pg to-lport 200 "outport == @pg && udp" allow-related
+check ovn-nbctl --wait=hv sync
+check_row_count nb:ACL 2
+check_row_count nb:Sample 2
+
+NETNS_DAEMONIZE([vm1], [nc -l -u 1234], [udp1.pid])
+NETNS_DAEMONIZE([vm2], [nc -l -u 1235], [udp2.pid])
+
+dnl Start an IPFIX collector.
+DAEMONIZE([nfcapd -B 1024000 -w . -p 4242 2> collector.err], [collector.pid])
+dnl Wait for the collector to be up.
+OVS_WAIT_UNTIL([grep -q 'Startup nfcapd.' collector.err])
+
+dnl Configure the OVS flow sample collector.
+ovs-vsctl --id=@br get Bridge br-int \
+    -- --id=@ipfix1 create IPFIX targets=\"127.0.0.1:4242\" template_interval=1   \
+    -- --id=@cs1 create Flow_Sample_Collector_Set id=100 bridge=@br ipfix=@ipfix1 \
+    -- --id=@ipfix2 create IPFIX targets=\"127.0.0.1:4242\" template_interval=1   \
+    -- --id=@cs2 create Flow_Sample_Collector_Set id=200 bridge=@br ipfix=@ipfix2
+
+check ovn-nbctl --wait=hv sync
+dnl And wait for it to be up and running.
+OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q '2 ids'])
+
+# Create the connection in the CT table.
+echo "Hello" > Hello
+NS_EXEC([vm1], [nc -p 1234 -u 43.43.43.2 1235 < Hello])
+NS_EXEC([vm2], [nc -p 1235 -u 42.42.42.2 1234 < Hello])
+# Send some more packets.
+for i in $(seq 10); do
+NS_EXEC([vm1], [nc -p 1234 -u 43.43.43.2 1235 < Hello])
+NS_EXEC([vm2], [nc -p 1235 -u 42.42.42.2 1234 < Hello])
+done
+
+OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep 'id 100' | grep -q 'sampled pkts=21'])
+OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep 'id 200' | grep -q 'sampled pkts=21'])
+
+OVN_CLEANUP_CONTROLLER([hv1])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([SB Disconnect - MAC_Binding])
 ovn_start
 OVS_TRAFFIC_VSWITCHD_START()

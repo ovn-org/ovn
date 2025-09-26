@@ -104,6 +104,7 @@ enum mff_log_flags_bits {
     MLF_UNSNAT_NEW_BIT = 20,
     MLF_UNSNAT_NOT_TRACKED_BIT = 21,
     MLF_IGMP_IGMP_SNOOP_INJECT_BIT = 22,
+    MLF_PKT_SAMPLED_BIT = 23,
     MLF_NETWORK_ID_START_BIT = 28,
     MLF_NETWORK_ID_END_BIT = 31,
 };
@@ -172,6 +173,10 @@ enum mff_log_flags {
 
     /* Indicate that this is an IGMP packet reinjected by ovn-controller. */
     MLF_IGMP_IGMP_SNOOP = (1 << MLF_IGMP_IGMP_SNOOP_INJECT_BIT),
+
+    /* Indicate that this packet has already been sampled in the current
+     * conntrack zone. */
+    MLF_PKT_SAMPLED = (1 << MLF_PKT_SAMPLED_BIT),
 
     /* Assign network ID to packet to choose correct network for snat when
      * lb_force_snat_ip=router_ip. */
