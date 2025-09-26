@@ -6,6 +6,14 @@ Post v25.09.0
    - Added "ic-route-deny-adv" and "ic-route-deny-learn" options to
      the Logical_Router/Logical_Router_Port tables to allow users to
      deny filter advertised/learned IC routes.
+   - Dynamic Routing:
+     * Extend the Logical Switch EVPN support to now automatically learn
+       IP neighbors (Type-2 MAC+IP EVPN routes) and automatically inject them
+       into the pipelines of the adjacent logical routers.
+     * Add the "other_config:dynamic-routing-arp-prefer-local" to Logical
+       Switches. If set to "true" ovn-controller will give preference to SB
+       (Static_)MAC_Bindings of adjacent logical routers over ARPs learned
+       through EVPN on the switch.
 
 OVN v25.09.0 - xxx xx xxxx
 --------------------------

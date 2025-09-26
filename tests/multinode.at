@@ -3667,6 +3667,7 @@ check multinode_nbctl set logical_switch ls       \
     other_config:dynamic-routing-vni=$vni         \
     other_config:dynamic-routing-redistribute=fdb
 check multinode_nbctl --wait=hv sync
+dp_key=$(m_fetch_column Datapath_Binding tunnel_key external_ids:name=ls)
 
 OVS_WAIT_UNTIL([m_as ovn-gw-1 bridge fdb | grep vxlan-10 | grep -q "00:00:00:00:00:00"])
 OVS_WAIT_UNTIL([m_as ovn-gw-2 bridge fdb | grep vxlan-10 | grep -q "00:00:00:00:00:00"])
@@ -3680,23 +3681,33 @@ IP: $ext_bgp_ip_gw2, port: 4789, vni: 10
 ])
 
 AS_BOX([Check traffic to "fabric" hosts - simulate external workloads])
+check m_as ovn-gw-1 ip netns add fabric_workload
+on_exit "m_as ovn-gw-1 ip netns del fabric_workload"
 check m_as ovn-gw-1 ip link add evpn_host type veth peer evpn_host_peer
 on_exit "m_as ovn-gw-1 ip link del evpn_host"
 check m_as ovn-gw-1 ip link set netns frr-ns evpn_host_peer
 check m_as ovn-gw-1 ip netns exec frr-ns ip link set evpn_host_peer master br-10
 check m_as ovn-gw-1 ip netns exec frr-ns ip link set evpn_host_peer up
-check m_as ovn-gw-1 ip link set evpn_host addr 00:00:00:00:01:00
-check m_as ovn-gw-1 ip addr add dev evpn_host 10.0.0.41/24
-check m_as ovn-gw-1 ip link set evpn_host up
+check m_as ovn-gw-1 ip link set netns fabric_workload evpn_host
+check m_as ovn-gw-1 ip netns exec fabric_workload ip link set evpn_host addr 00:00:00:00:01:00
+check m_as ovn-gw-1 ip netns exec fabric_workload ip addr add dev evpn_host 10.0.0.41/24
+check m_as ovn-gw-1 ip netns exec fabric_workload ip link set evpn_host up
+check m_as ovn-gw-1 ip netns exec fabric_workload ip r a default via 10.0.0.1
+check m_as ovn-gw-1 ip netns exec frr-ns ip a a dev br-10 10.0.0.81/24
 
+check m_as ovn-gw-2 ip netns add fabric_workload
+on_exit "m_as ovn-gw-2 ip netns del fabric_workload"
 check m_as ovn-gw-2 ip link add evpn_host type veth peer evpn_host_peer
 on_exit "m_as ovn-gw-2 ip link del evpn_host"
 check m_as ovn-gw-2 ip link set netns frr-ns evpn_host_peer
 check m_as ovn-gw-2 ip netns exec frr-ns ip link set evpn_host_peer master br-10
 check m_as ovn-gw-2 ip netns exec frr-ns ip link set evpn_host_peer up
-check m_as ovn-gw-2 ip link set evpn_host addr 00:00:00:00:02:00
-check m_as ovn-gw-2 ip addr add dev evpn_host 10.0.0.42/24
-check m_as ovn-gw-2 ip link set evpn_host up
+check m_as ovn-gw-2 ip link set netns fabric_workload evpn_host
+check m_as ovn-gw-2 ip netns exec fabric_workload ip link set evpn_host addr 00:00:00:00:02:00
+check m_as ovn-gw-2 ip netns exec fabric_workload ip addr add dev evpn_host 10.0.0.42/24
+check m_as ovn-gw-2 ip netns exec fabric_workload ip link set evpn_host up
+check m_as ovn-gw-2 ip netns exec fabric_workload ip r a default via 10.0.0.1
+check m_as ovn-gw-2 ip netns exec frr-ns ip a a dev br-10 10.0.0.82/24
 
 AS_BOX([Checking EVPN MACs on External BGP host])
 OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-1 ip netns exec frr-ns vtysh --vty_socket /run/frr/frr-ns -c 'show evpn mac vni all'], [0], [dnl
@@ -3720,8 +3731,83 @@ MAC               Type   Flags Intf/Remote ES/VTEP            VLAN  Seq #'s
 ])
 
 AS_BOX([Check traffic to "fabric" hosts - ping from fabric])
-OVS_WAIT_UNTIL([m_as ovn-gw-1 ping -W 1 -c 1 10.0.0.11])
-OVS_WAIT_UNTIL([m_as ovn-gw-2 ping -W 1 -c 1 10.0.0.12])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec fabric_workload ping -W 1 -c 1 10.0.0.11])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec fabric_workload ping -W 1 -c 1 10.0.0.12])
+
+AS_BOX([Check type-2 MAC+IP EVPN route advertisements])
+# Ping from the frr-ns to the fabric workload so that its IP is learned on
+# the fabric EVPN peer (and advertised to OVN).
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-10 ping -W 1 -c 1 10.0.0.41])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-10 ping -W 1 -c 1 10.0.0.42])
+
+# Check that OVN learned the ARPs.
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([m_as ovn-gw-1 ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | sort], [0], [dnl
+ VNI: 10, MAC: 00:00:00:00:01:00, IP: 10.0.0.41, dp_key: $dp_key
+])
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([m_as ovn-gw-2 ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | sort], [0], [dnl
+ VNI: 10, MAC: 00:00:00:00:02:00, IP: 10.0.0.42, dp_key: $dp_key
+])
+
+AS_BOX([Check that OVN routers used ARP entries learned through type-2 EVPN MAC+IP routes])
+# Add an OVN router with an internal switch and internal workload.
+check multinode_nbctl --wait=hv                               \
+    -- lr-add lr                                              \
+    -- lrp-add lr lr-ls 00:00:00:01:00:00 10.0.0.1/24         \
+    -- lrp-add lr lr-ls-int 00:00:00:02:00:00 20.0.0.1/24     \
+    -- lsp-add ls ls-lr                                       \
+    -- lsp-set-type ls-lr router                              \
+    -- lsp-set-options ls-lr router-port=lr-ls                \
+    -- lsp-set-addresses ls-lr router                         \
+    -- ls-add ls-int                                          \
+    -- lsp-add ls-int ls-int-lr                               \
+    -- lsp-set-type ls-int-lr router                          \
+    -- lsp-set-options ls-int-lr router-port=lr-ls-int        \
+    -- lsp-set-addresses ls-int-lr router                     \
+    -- lsp-add ls-int w-int1                                  \
+    -- lsp-set-addresses w-int1 "00:00:00:02:00:01 20.0.0.11" \
+    -- lsp-add ls-int w-int2                                  \
+    -- lsp-set-addresses w-int2 "00:00:00:02:00:02 20.0.0.12"
+
+rtr_dp_key=$(m_fetch_column Datapath tunnel_key external_ids:name=lr)
+rtr_port_key=$(m_fetch_column Port_Binding tunnel_key logical_port=lr-ls)
+
+check m_as ovn-gw-1 /data/create_fake_vm.sh w-int1 w-int1 00:00:00:02:00:01 1500 20.0.0.11 24 20.0.0.1 2000::11/64 2000::1
+check m_as ovn-gw-2 /data/create_fake_vm.sh w-int2 w-int2 00:00:00:02:00:02 1500 20.0.0.12 24 20.0.0.1 2000::12/64 2000::1
+m_wait_for_ports_up
+
+# Check that flows are created for the type-2 EVPN MAC+IP routes, in the
+# router pipeline.
+AT_CHECK_UNQUOTED([m_as ovn-gw-1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
+                   awk '{print $7, $8}' | sort], [0], [dnl
+priority=100,reg0=0xa00000b,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:00:01,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xa00000c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:00:02,load:0x1->NXM_NX_REG10[[6]]
+priority=200,reg0=0xa000029,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:01:00,load:0x1->NXM_NX_REG10[[6]]
+])
+
+AT_CHECK_UNQUOTED([m_as ovn-gw-1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
+                   awk '{print $7, $8}' | sort], [0], [dnl
+priority=100,arp,reg0=0xa00000b,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:00:01 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xa00000c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:00:02 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=200,arp,reg0=0xa000029,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:01:00 actions=load:0x1->NXM_NX_REG10[[6]]
+])
+
+AT_CHECK_UNQUOTED([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
+                   awk '{print $7, $8}' | sort], [0], [dnl
+priority=100,reg0=0xa00000b,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:00:01,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xa00000c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:00:02,load:0x1->NXM_NX_REG10[[6]]
+priority=200,reg0=0xa00002a,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:02:00,load:0x1->NXM_NX_REG10[[6]]
+])
+
+AT_CHECK_UNQUOTED([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
+                   awk '{print $7, $8}' | sort], [0], [dnl
+priority=100,arp,reg0=0xa00000b,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:00:01 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xa00000c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:00:02 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=200,arp,reg0=0xa00002a,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:02:00 actions=load:0x1->NXM_NX_REG10[[6]]
+])
+
+AS_BOX([Check traffic to "fabric" hosts - ping from internal hosts])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec w-int1 ping -W 1 -c 1 10.0.0.41])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec w-int2 ping -W 1 -c 1 10.0.0.42])
 
 # Remove "workloads" (VIF LSPs) on both chassis.
 check multinode_nbctl --wait=hv lsp-del w1 -- lsp-del w2

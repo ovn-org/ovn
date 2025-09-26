@@ -908,6 +908,29 @@
         </p>
       </column>
 
+      <column name="other_config" key="dynamic-routing-arp-prefer-local"
+              type='{"type": "boolean"}'>
+        <p>
+          This option defines the preference of ARP/ND lookup.  If set to
+          true OVN routers connected to EVPN Logical Switches on which remote
+          neighbor entries have been learned (Type-2 MAC+IP EVPN routes) will
+          give precedence to any ARP/ND entries they might have in the SB
+          <code>Mac_Binding</code> table before trying to resolve the MAC
+          address via the <code>ovn-controller</code> local EVPN ARP/ND cache.
+          The option defaults to false.
+        </p>
+
+        <p>
+          Only relevant if <ref column="other_config" key="dynamic-routing-vni"
+                                table="Logical_switch"/> is set to valid VNI.
+        </p>
+
+        <p>
+          NOTE: this feature is experimental and may be subject to
+          removal/change in the future.
+        </p>
+      </column>
+
       <column name="other_config" key="dynamic-routing-redistribute"
               type='{"type": "string"}'>
         <p>

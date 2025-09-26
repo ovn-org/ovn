@@ -42,6 +42,6 @@ evpn_remote_vtep_list(struct unixctl_conn *conn OVS_UNUSED,
 }
 
 void
-evpn_static_fdbs_clear(struct hmap *static_fdbs OVS_UNUSED)
+evpn_static_entries_clear(struct hmap *static_entries OVS_UNUSED)
 {
 }

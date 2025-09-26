@@ -98,6 +98,13 @@ gather_external_ids(const struct nbrec_logical_switch *nbs,
         smap_add(external_ids, "dynamic-routing-redistribute", redistribute);
     }
 
+    const char *prefer_evpn_arp_local =
+        smap_get(&nbs->other_config, "dynamic-routing-arp-prefer-local");
+    if (prefer_evpn_arp_local) {
+        smap_add(external_ids, "dynamic-routing-arp-prefer-local",
+                 prefer_evpn_arp_local);
+    }
+
     /* For backwards-compatibility, also store the NB UUID in
      * external-ids:logical-switch. This is useful if ovn-controller
      * has not updated and expects this to be where to find the

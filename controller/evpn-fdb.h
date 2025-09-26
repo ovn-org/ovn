@@ -27,7 +27,7 @@ struct unixctl_conn;
 struct evpn_fdb_ctx_in {
     /* Contains 'struct evpn_binding'. */
     const struct hmap *bindings;
-    /* Contains 'struct evpn_static_fdb'. */
+    /* Contains 'struct evpn_static_entry', one for each FDB. */
     const struct hmap *static_fdbs;
 };
 

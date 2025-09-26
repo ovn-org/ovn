@@ -98,6 +98,7 @@
 #include "neighbor.h"
 #include "neighbor-exchange.h"
 #include "neighbor-table-notify.h"
+#include "evpn-arp.h"
 #include "evpn-binding.h"
 #include "evpn-fdb.h"
 
@@ -4589,6 +4590,15 @@ struct ed_type_evpn_fdb {
     struct uuidset removed_fdbs;
 };
 
+struct ed_type_evpn_arp {
+    /* Contains 'struct evpn_arp'. */
+    struct hmap arps;
+    /* Contains pointers to 'struct evpn_arp'. */
+    struct hmapx updated_arps;
+    /* Contains 'flow_uuid' from removed 'struct evpn_arps'. */
+    struct uuidset removed_arps;
+};
+
 static void init_physical_ctx(struct engine_node *node,
                               struct ed_type_runtime_data *rt_data,
                               struct ed_type_non_vif_data *non_vif_data,
@@ -4649,6 +4659,9 @@ static void init_physical_ctx(struct engine_node *node,
     struct ed_type_evpn_fdb *efdb_data =
         engine_get_input_data("evpn_fdb", node);
 
+    struct ed_type_evpn_arp *earp_data =
+        engine_get_input_data("evpn_arp", node);
+
     parse_encap_ips(ovs_table, &p_ctx->n_encap_ips, &p_ctx->encap_ips);
     p_ctx->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
     p_ctx->sbrec_port_binding_by_datapath = sbrec_port_binding_by_datapath;
@@ -4669,6 +4682,7 @@ static void init_physical_ctx(struct engine_node *node,
     p_ctx->evpn_bindings = &eb_data->bindings;
     p_ctx->evpn_multicast_groups = &eb_data->multicast_groups;
     p_ctx->evpn_fdbs = &efdb_data->fdbs;
+    p_ctx->evpn_arps = &earp_data->arps;
 
     struct controller_engine_ctx *ctrl_ctx = engine_get_context()->client_ctx;
     p_ctx->if_mgr = ctrl_ctx->if_mgr;
@@ -4990,6 +5004,22 @@ pflow_output_fdb_handler(struct engine_node *node, void *data)
 
     physical_handle_evpn_fdb_changes(&pfo->flow_table, &ef_data->updated_fdbs,
                                      &ef_data->removed_fdbs);
+    return EN_HANDLED_UPDATED;
+}
+
+static enum engine_input_handler_result
+pflow_output_arp_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_pflow_output *pfo = data;
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+    struct ed_type_evpn_arp *ea_data =
+        engine_get_input_data("evpn_arp", node);
+
+    physical_handle_evpn_arp_changes(&rt_data->local_datapaths,
+                                     &pfo->flow_table,
+                                     &ea_data->updated_arps,
+                                     &ea_data->removed_arps);
     return EN_HANDLED_UPDATED;
 }
 
@@ -6040,8 +6070,12 @@ en_neighbor_table_notify_run(struct engine_node *node OVS_UNUSED,
 struct ed_type_neighbor_exchange {
     /* Contains 'struct evpn_remote_vtep'. */
     struct hmap remote_vteps;
-    /* Contains 'struct evpn_static_fdb'. */
+    /* Contains 'struct evpn_static_entry', remote FDB entries learned through
+     * EVPN. */
     struct hmap static_fdbs;
+    /* Contains 'struct evpn_static_entry', remote ARP entries learned through
+     * EVPN. */
+    struct hmap static_arps;
 };
 
 static void *
@@ -6052,6 +6086,7 @@ en_neighbor_exchange_init(struct engine_node *node OVS_UNUSED,
     *data = (struct ed_type_neighbor_exchange) {
         .remote_vteps = HMAP_INITIALIZER(&data->remote_vteps),
         .static_fdbs = HMAP_INITIALIZER(&data->static_fdbs),
+        .static_arps = HMAP_INITIALIZER(&data->static_arps),
     };
 
     return data;
@@ -6062,9 +6097,11 @@ en_neighbor_exchange_cleanup(void *data_)
 {
     struct ed_type_neighbor_exchange *data = data_;
     evpn_remote_vteps_clear(&data->remote_vteps);
-    evpn_static_fdbs_clear(&data->static_fdbs);
+    evpn_static_entries_clear(&data->static_fdbs);
+    evpn_static_entries_clear(&data->static_arps);
     hmap_destroy(&data->remote_vteps);
     hmap_destroy(&data->static_fdbs);
+    hmap_destroy(&data->static_arps);
 }
 
 static enum engine_node_state
@@ -6075,7 +6112,8 @@ en_neighbor_exchange_run(struct engine_node *node, void *data_)
         engine_get_input_data("neighbor", node);
 
     evpn_remote_vteps_clear(&data->remote_vteps);
-    evpn_static_fdbs_clear(&data->static_fdbs);
+    evpn_static_entries_clear(&data->static_fdbs);
+    evpn_static_entries_clear(&data->static_arps);
 
     struct neighbor_exchange_ctx_in n_ctx_in = {
         .monitored_interfaces = &neighbor_data->monitored_interfaces,
@@ -6085,6 +6123,7 @@ en_neighbor_exchange_run(struct engine_node *node, void *data_)
             HMAP_INITIALIZER(&n_ctx_out.neighbor_table_watches),
         .remote_vteps = &data->remote_vteps,
         .static_fdbs = &data->static_fdbs,
+        .static_arps = &data->static_arps,
     };
 
     neighbor_exchange_run(&n_ctx_in, &n_ctx_out);
@@ -6343,6 +6382,81 @@ en_evpn_fdb_run(struct engine_node *node, void *data_)
 
 static enum engine_input_handler_result
 evpn_fdb_vtep_binding_handler(struct engine_node *node, void *data OVS_UNUSED)
+{
+    const struct ed_type_evpn_vtep_binding *eb_data =
+        engine_get_input_data("evpn_vtep_binding", node);
+
+    if (hmapx_is_empty(&eb_data->updated_bindings) &&
+        uuidset_is_empty(&eb_data->removed_bindings)) {
+        return EN_HANDLED_UNCHANGED;
+    }
+
+    return EN_UNHANDLED;
+}
+
+static void *
+en_evpn_arp_init(struct engine_node *node OVS_UNUSED,
+                 struct engine_arg *arg OVS_UNUSED)
+{
+    struct ed_type_evpn_arp *data = xmalloc(sizeof *data);
+    *data = (struct ed_type_evpn_arp) {
+        .arps = HMAP_INITIALIZER(&data->arps),
+        .updated_arps = HMAPX_INITIALIZER(&data->updated_arps),
+        .removed_arps = UUIDSET_INITIALIZER(&data->removed_arps),
+    };
+
+    return data;
+}
+
+static void
+en_evpn_arp_clear_tracked_data(void *data_)
+{
+    struct ed_type_evpn_arp *data = data_;
+    hmapx_clear(&data->updated_arps);
+    uuidset_clear(&data->removed_arps);
+}
+
+static void
+en_evpn_arp_cleanup(void *data_)
+{
+    struct ed_type_evpn_arp *data = data_;
+    evpn_arps_destroy(&data->arps);
+    hmapx_destroy(&data->updated_arps);
+    uuidset_destroy(&data->removed_arps);
+}
+
+static enum engine_node_state
+en_evpn_arp_run(struct engine_node *node, void *data_)
+{
+    struct ed_type_evpn_arp *data = data_;
+    const struct ed_type_neighbor_exchange *ne_data =
+        engine_get_input_data("neighbor_exchange", node);
+    const struct ed_type_evpn_vtep_binding *eb_data =
+        engine_get_input_data("evpn_vtep_binding", node);
+
+    struct evpn_arp_ctx_in f_ctx_in = {
+        .datapaths = &eb_data->datapaths,
+        .static_arps = &ne_data->static_arps,
+    };
+
+    struct evpn_arp_ctx_out f_ctx_out = {
+        .arps = &data->arps,
+        .updated_arps = &data->updated_arps,
+        .removed_arps = &data->removed_arps,
+    };
+
+    evpn_arp_run(&f_ctx_in, &f_ctx_out);
+
+    if (hmapx_count(&data->updated_arps) ||
+        uuidset_count(&data->removed_arps)) {
+        return EN_UPDATED;
+    }
+
+    return EN_UNCHANGED;
+}
+
+static enum engine_input_handler_result
+evpn_arp_vtep_binding_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct ed_type_evpn_vtep_binding *eb_data =
         engine_get_input_data("evpn_vtep_binding", node);
@@ -6681,6 +6795,7 @@ main(int argc, char *argv[])
     ENGINE_NODE(neighbor_exchange_status);
     ENGINE_NODE(evpn_vtep_binding, CLEAR_TRACKED_DATA);
     ENGINE_NODE(evpn_fdb, CLEAR_TRACKED_DATA);
+    ENGINE_NODE(evpn_arp, CLEAR_TRACKED_DATA);
 
 #define SB_NODE(NAME) ENGINE_NODE_SB(NAME);
     SB_NODES
@@ -6938,10 +7053,16 @@ main(int argc, char *argv[])
     engine_add_input(&en_evpn_fdb, &en_evpn_vtep_binding,
                      evpn_fdb_vtep_binding_handler);
 
+    engine_add_input(&en_evpn_arp, &en_neighbor_exchange, NULL);
+    engine_add_input(&en_evpn_arp, &en_evpn_vtep_binding,
+                     evpn_arp_vtep_binding_handler);
+
     engine_add_input(&en_pflow_output, &en_evpn_vtep_binding,
                      pflow_output_evpn_binding_handler);
     engine_add_input(&en_pflow_output, &en_evpn_fdb,
                      pflow_output_fdb_handler);
+    engine_add_input(&en_pflow_output, &en_evpn_arp,
+                     pflow_output_arp_handler);
 
     engine_add_input(&en_controller_output, &en_dns_cache,
                      NULL);
@@ -7025,6 +7146,8 @@ main(int argc, char *argv[])
         engine_get_internal_data(&en_evpn_vtep_binding);
     struct ed_type_evpn_fdb *efdb_data =
         engine_get_internal_data(&en_evpn_fdb);
+    struct ed_type_evpn_arp *earp_data =
+        engine_get_internal_data(&en_evpn_arp);
 
     ofctrl_init(&lflow_output_data->group_table,
                 &lflow_output_data->meter_table);
@@ -7053,6 +7176,9 @@ main(int argc, char *argv[])
     unixctl_command_register("evpn/vtep-fdb-list", "", 0, 0,
                              evpn_fdb_list,
                              &efdb_data->fdbs);
+    unixctl_command_register("evpn/vtep-arp-list", "", 0, 0,
+                             evpn_arp_list,
+                             &earp_data->arps);
 
     struct pending_pkt pending_pkt = { .conn = NULL };
     unixctl_command_register("inject-pkt", "MICROFLOW", 1, 1, inject_pkt,

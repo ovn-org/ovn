@@ -20,6 +20,7 @@
 #include "ct-zone.h"
 #include "encaps.h"
 #include "evpn-binding.h"
+#include "evpn-arp.h"
 #include "evpn-fdb.h"
 #include "flow.h"
 #include "ha-chassis.h"
@@ -54,6 +55,7 @@
 #include "util.h"
 #include "vswitch-idl.h"
 #include "hmapx.h"
+#include "neighbor-of.h"
 
 VLOG_DEFINE_THIS_MODULE(physical);
 
@@ -2779,13 +2781,36 @@ physical_consider_evpn_fdb(const struct evpn_fdb *fdb,
 }
 
 static void
+physical_consider_evpn_arp(const struct hmap *local_datapaths,
+                           const struct evpn_arp *arp,
+                           struct ovn_desired_flow_table *flow_table)
+{
+    /* Walk connected OVN routers and install neighbor flows for the ARPs
+     * learned on EVPN datapaths.*/
+    const struct peer_ports *peers;
+    VECTOR_FOR_EACH_PTR (&arp->ldp->peer_ports, peers) {
+        const struct sbrec_port_binding *remote_pb = peers->remote;
+        struct local_datapath *peer_ld =
+            get_local_datapath(local_datapaths,
+                               remote_pb->datapath->tunnel_key);
+        if (!peer_ld || peer_ld->is_switch) {
+            continue;
+        }
+
+        consider_neighbor_flow(remote_pb, &arp->flow_uuid, &arp->ip, arp->mac,
+                               flow_table, arp->priority, false);
+    }
+}
+
+static void
 physical_eval_evpn_flows(const struct physical_ctx *ctx,
                          struct ofpbuf *ofpacts,
                          struct ovn_desired_flow_table *flow_table)
 {
     if (hmap_is_empty(ctx->evpn_bindings) &&
         hmap_is_empty(ctx->evpn_multicast_groups) &&
-        hmap_is_empty(ctx->evpn_fdbs)) {
+        hmap_is_empty(ctx->evpn_fdbs) &&
+        hmap_is_empty(ctx->evpn_arps)) {
         return;
     }
 
@@ -2817,6 +2842,11 @@ physical_eval_evpn_flows(const struct physical_ctx *ctx,
     const struct evpn_fdb *fdb;
     HMAP_FOR_EACH (fdb, hmap_node, ctx->evpn_fdbs) {
         physical_consider_evpn_fdb(fdb, ofpacts, &match, flow_table);
+    }
+
+    const struct evpn_arp *arp;
+    HMAP_FOR_EACH (arp, hmap_node, ctx->evpn_arps) {
+        physical_consider_evpn_arp(ctx->local_datapaths, arp, flow_table);
     }
 }
 
@@ -2997,6 +3027,27 @@ physical_handle_evpn_fdb_changes(struct ovn_desired_flow_table *flow_table,
 
     const struct uuidset_node *uuidset_node;
     UUIDSET_FOR_EACH (uuidset_node, removed_fdbs) {
+        ofctrl_remove_flows(flow_table, &uuidset_node->uuid);
+    }
+}
+
+void
+physical_handle_evpn_arp_changes(const struct hmap *local_datapaths,
+                                 struct ovn_desired_flow_table *flow_table,
+                                 const struct hmapx *updated_arps,
+                                 const struct uuidset *removed_arps)
+{
+
+    const struct hmapx_node *node;
+    HMAPX_FOR_EACH (node, updated_arps) {
+        const struct evpn_arp *arp = node->data;
+
+        ofctrl_remove_flows(flow_table, &arp->flow_uuid);
+        physical_consider_evpn_arp(local_datapaths, arp, flow_table);
+    }
+
+    const struct uuidset_node *uuidset_node;
+    UUIDSET_FOR_EACH (uuidset_node, removed_arps) {
         ofctrl_remove_flows(flow_table, &uuidset_node->uuid);
     }
 }

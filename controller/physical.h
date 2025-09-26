@@ -72,6 +72,7 @@ struct physical_ctx {
     const struct hmap *evpn_bindings;
     const struct hmap *evpn_multicast_groups;
     const struct hmap *evpn_fdbs;
+    const struct hmap *evpn_arps;
 
     /* Set of port binding names that have been already reprocessed during
      * the I-P run. */
@@ -99,4 +100,8 @@ void physical_handle_evpn_binding_changes(
 void physical_handle_evpn_fdb_changes(struct ovn_desired_flow_table *,
                                       const struct hmapx *updated_fdbs,
                                       const struct uuidset *removed_fdbs);
+void physical_handle_evpn_arp_changes(const struct hmap *local_datapaths,
+                                      struct ovn_desired_flow_table *,
+                                      const struct hmapx *updated_arps,
+                                      const struct uuidset *removed_arps);
 #endif /* controller/physical.h */

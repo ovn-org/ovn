@@ -43,7 +43,7 @@ evpn_fdb_run(const struct evpn_fdb_ctx_in *f_ctx_in,
         hmapx_add(&stale_fdbs, fdb);
     }
 
-    const struct evpn_static_fdb *static_fdb;
+    const struct evpn_static_entry *static_fdb;
     HMAP_FOR_EACH (static_fdb, hmap_node, f_ctx_in->static_fdbs) {
         const struct evpn_binding *binding =
             evpn_binding_find(f_ctx_in->bindings, &static_fdb->ip,
