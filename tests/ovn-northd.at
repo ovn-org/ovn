@@ -7311,9 +7311,9 @@ AT_CHECK([grep lr_in_lookup_neighbor lrflows | grep cr-DR | ovn_strip_lflows], [
   table=??(lr_in_lookup_neighbor), priority=100  , match=(inport == "DR-S1" && arp.spa == 172.16.1.0/24 && arp.op == 1 && is_chassis_resident("cr-DR-S1")), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); next;)
   table=??(lr_in_lookup_neighbor), priority=100  , match=(inport == "DR-S2" && arp.spa == 172.16.2.0/24 && arp.op == 1 && is_chassis_resident("cr-DR-S2")), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); next;)
   table=??(lr_in_lookup_neighbor), priority=100  , match=(inport == "DR-S3" && arp.spa == 172.16.3.0/24 && arp.op == 1 && is_chassis_resident("cr-DR-S3")), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); next;)
-  table=??(lr_in_lookup_neighbor), priority=120  , match=(inport == "DR-S1" && (nd_na || nd_ns) && !is_chassis_resident("cr-DR-S1")), action=(reg9[[2]] = 1; next;)
-  table=??(lr_in_lookup_neighbor), priority=120  , match=(inport == "DR-S2" && (nd_na || nd_ns) && !is_chassis_resident("cr-DR-S2")), action=(reg9[[2]] = 1; next;)
-  table=??(lr_in_lookup_neighbor), priority=120  , match=(inport == "DR-S3" && (nd_na || nd_ns) && !is_chassis_resident("cr-DR-S3")), action=(reg9[[2]] = 1; next;)
+  table=??(lr_in_lookup_neighbor), priority=120  , match=(inport == "DR-S1" && (nd_na || nd_ns) && eth.mcast && !is_chassis_resident("cr-DR-S1")), action=(reg9[[2]] = 1; next;)
+  table=??(lr_in_lookup_neighbor), priority=120  , match=(inport == "DR-S2" && (nd_na || nd_ns) && eth.mcast && !is_chassis_resident("cr-DR-S2")), action=(reg9[[2]] = 1; next;)
+  table=??(lr_in_lookup_neighbor), priority=120  , match=(inport == "DR-S3" && (nd_na || nd_ns) && eth.mcast && !is_chassis_resident("cr-DR-S3")), action=(reg9[[2]] = 1; next;)
 ])
 # Check the flows in lr_in_gw_redirect stage
 AT_CHECK([grep lr_in_gw_redirect lrflows | grep cr-DR | ovn_strip_lflows], [0], [dnl

@@ -313,7 +313,7 @@ m_check_column() {
 # interface in the NETNS namespace.  It also configures it with the provided
 # IP and (optionally) default gateway GW.
 m_add_internal_port() {
-    local node=$1 ns=$2 br=$3 port=$4 ip=$5 gw=$6
+    local node=$1 ns=$2 br=$3 port=$4 ip=$5 gw=$6 ip6=$7
 
     if ! m_as $node ip netns list | grep $ns; then
         check m_as $node ip netns add $ns
@@ -327,6 +327,9 @@ m_add_internal_port() {
 
     if test -n "$gw"; then
         check m_as $node ip netns exec $ns ip route add default via $gw dev $port
+    fi
+    if test -n "$ip6"; then
+        check m_as $node ip netns exec $ns ip addr add $ip6 dev $port
     fi
 }
 
