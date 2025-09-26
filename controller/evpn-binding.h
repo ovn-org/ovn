@@ -36,6 +36,8 @@ struct evpn_binding_ctx_in {
 struct evpn_binding_ctx_out {
     /* Contains 'struct evpn_binding'. */
     struct hmap *bindings;
+    /* Contains 'struct evpn_datapath'. */
+    struct hmap *datapaths;
     /* Contains pointers to 'struct evpn_binding'. */
     struct hmapx *updated_bindings;
     /* Contains 'flow_uuid' from removed 'struct evpn_binding'. */
@@ -64,6 +66,13 @@ struct evpn_binding {
     uint32_t dp_key;
 };
 
+struct evpn_datapath {
+    struct hmap_node hmap_node;
+
+    const struct local_datapath *ldp;
+    uint32_t vni;
+};
+
 struct evpn_multicast_group {
     struct hmap_node hmap_node;
     /* UUID used to identify physical flows related to this mutlicast group. */
@@ -81,6 +90,10 @@ struct evpn_binding *evpn_binding_find(const struct hmap *evpn_bindings,
 void evpn_bindings_destroy(struct hmap *bindings);
 void evpn_vtep_binding_list(struct unixctl_conn *conn, int argc,
                              const char *argv[], void *data_);
+const struct evpn_datapath *evpn_datapath_find(
+        const struct hmap *evpn_datapaths, uint32_t vni);
+void evpn_datapaths_clear(struct hmap *evpn_datapaths);
+void evpn_datapaths_destroy(struct hmap *evpn_datapaths);
 void evpn_multicast_groups_destroy(struct hmap *multicast_groups);
 void evpn_multicast_group_list(struct unixctl_conn *conn, int argc,
                                 const char *argv[], void *data_);

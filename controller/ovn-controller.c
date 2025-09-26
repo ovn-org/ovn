@@ -4568,6 +4568,8 @@ struct ed_type_evpn_vtep_binding {
     struct hmapx updated_bindings;
     /* Contains 'flow_uuid' from removed 'struct evpn_binding'. */
     struct uuidset removed_bindings;
+    /* Contains 'struct evpn_datapath'. */
+    struct hmap datapaths;
     /* Contains 'struct evpn_multicast_group'. */
     struct hmap multicast_groups;
     /* Contains pointers to 'struct evpn_multicast_group'. */
@@ -6136,6 +6138,7 @@ en_evpn_vtep_binding_init(struct engine_node *node OVS_UNUSED,
         .bindings = HMAP_INITIALIZER(&data->bindings),
         .updated_bindings = HMAPX_INITIALIZER(&data->updated_bindings),
         .removed_bindings = UUIDSET_INITIALIZER(&data->removed_bindings),
+        .datapaths = HMAP_INITIALIZER(&data->datapaths),
         .multicast_groups = HMAP_INITIALIZER(&data->multicast_groups),
         .updated_multicast_groups =
             HMAPX_INITIALIZER(&data->updated_multicast_groups),
@@ -6153,6 +6156,7 @@ en_evpn_vtep_binding_clear_tracked_data(void *data_)
     struct ed_type_evpn_vtep_binding *data = data_;
     hmapx_clear(&data->updated_bindings);
     uuidset_clear(&data->removed_bindings);
+    evpn_datapaths_clear(&data->datapaths);
     hmapx_clear(&data->updated_multicast_groups);
     uuidset_clear(&data->removed_multicast_groups);
 }
@@ -6164,6 +6168,7 @@ en_evpn_vtep_binding_cleanup(void *data_)
     evpn_bindings_destroy(&data->bindings);
     hmapx_destroy(&data->updated_bindings);
     uuidset_destroy(&data->removed_bindings);
+    evpn_datapaths_destroy(&data->datapaths);
     evpn_multicast_groups_destroy(&data->multicast_groups);
     hmapx_clear(&data->updated_multicast_groups);
     uuidset_clear(&data->removed_multicast_groups);
@@ -6194,6 +6199,7 @@ en_evpn_vtep_binding_run(struct engine_node *node, void *data_)
         .bindings = &data->bindings,
         .updated_bindings = &data->updated_bindings,
         .removed_bindings = &data->removed_bindings,
+        .datapaths = &data->datapaths,
         .multicast_groups = &data->multicast_groups,
         .updated_multicast_groups = &data->updated_multicast_groups,
         .removed_multicast_groups = &data->removed_multicast_groups,

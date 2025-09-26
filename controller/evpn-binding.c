@@ -30,15 +30,8 @@ VLOG_DEFINE_THIS_MODULE(evpn_binding);
 
 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
 
-struct evpn_datapath {
-    uint32_t vni;
-    uint32_t dp_key;
-};
-
-static struct vector collect_evpn_datapaths(
-    const struct hmap *local_datapaths);
-static const struct evpn_datapath *evpn_datapath_find(
-    const struct vector *evpn_datapaths, uint32_t vni);
+static void collect_evpn_datapaths(const struct hmap *local_datapaths,
+                                   struct hmap *evpn_datapaths);
 
 struct evpn_tunnel {
     uint16_t dst_port;
@@ -64,12 +57,12 @@ void
 evpn_binding_run(const struct evpn_binding_ctx_in *b_ctx_in,
                  struct evpn_binding_ctx_out *b_ctx_out)
 {
-    struct vector datapaths =
-        collect_evpn_datapaths(b_ctx_in->local_datapaths);
     struct vector tunnels = collect_evpn_tunnel_interfaces(b_ctx_in->br_int);
     struct hmapx stale_bindings = HMAPX_INITIALIZER(&stale_bindings);
     struct hmapx stale_mc_groups = HMAPX_INITIALIZER(&stale_mc_groups);
     uint32_t hint = OVN_MIN_EVPN_KEY;
+
+    collect_evpn_datapaths(b_ctx_in->local_datapaths, b_ctx_out->datapaths);
 
     struct evpn_binding *binding;
     HMAP_FOR_EACH (binding, hmap_node, b_ctx_out->bindings) {
@@ -90,8 +83,8 @@ evpn_binding_run(const struct evpn_binding_ctx_in *b_ctx_in,
             continue;
         }
 
-        const struct evpn_datapath *edp = evpn_datapath_find(&datapaths,
-                                                             vtep->vni);
+        const struct evpn_datapath *edp =
+            evpn_datapath_find(b_ctx_out->datapaths, vtep->vni);
         if (!edp) {
             VLOG_WARN_RL(&rl, "Couldn't find EVPN datapath for %"PRIu16" VNI",
                          vtep->vni);
@@ -123,8 +116,8 @@ evpn_binding_run(const struct evpn_binding_ctx_in *b_ctx_in,
             updated = true;
         }
 
-        if (binding->dp_key != edp->dp_key) {
-            binding->dp_key = edp->dp_key;
+        if (binding->dp_key != edp->ldp->datapath->tunnel_key) {
+            binding->dp_key = edp->ldp->datapath->tunnel_key;
             updated = true;
         }
 
@@ -163,7 +156,6 @@ evpn_binding_run(const struct evpn_binding_ctx_in *b_ctx_in,
         free(binding);
     }
 
-    vector_destroy(&datapaths);
     vector_destroy(&tunnels);
     hmapx_destroy(&stale_bindings);
     hmapx_destroy(&stale_mc_groups);
@@ -219,6 +211,35 @@ evpn_vtep_binding_list(struct unixctl_conn *conn, int argc OVS_UNUSED,
     ds_destroy(&ds);
 }
 
+const struct evpn_datapath *
+evpn_datapath_find(const struct hmap *evpn_datapaths, uint32_t vni)
+{
+    const struct evpn_datapath *edp;
+    HMAP_FOR_EACH_WITH_HASH (edp, hmap_node, vni, evpn_datapaths) {
+        if (edp->vni == vni) {
+            return edp;
+        }
+    }
+
+    return NULL;
+}
+
+void
+evpn_datapaths_clear(struct hmap *evpn_datapaths)
+{
+    struct evpn_datapath *edp;
+    HMAP_FOR_EACH_POP (edp, hmap_node, evpn_datapaths) {
+        free(edp);
+    }
+}
+
+void
+evpn_datapaths_destroy(struct hmap *evpn_datapaths)
+{
+    evpn_datapaths_clear(evpn_datapaths);
+    hmap_destroy(evpn_datapaths);
+}
+
 void
 evpn_multicast_groups_destroy(struct hmap *multicast_groups)
 {
@@ -257,12 +278,10 @@ evpn_multicast_group_list(struct unixctl_conn *conn, int argc OVS_UNUSED,
     ds_destroy(&ds);
 }
 
-static struct vector
-collect_evpn_datapaths(const struct hmap *local_datapaths)
+static void
+collect_evpn_datapaths(const struct hmap *local_datapaths,
+                       struct hmap *evpn_datapaths)
 {
-    struct vector evpn_datapaths =
-        VECTOR_EMPTY_INITIALIZER(struct evpn_datapath);
-
     struct local_datapath *ld;
     HMAP_FOR_EACH (ld, hmap_node, local_datapaths) {
         if (!ld->is_switch) {
@@ -275,33 +294,20 @@ collect_evpn_datapaths(const struct hmap *local_datapaths)
             continue;
         }
 
-        if (evpn_datapath_find(&evpn_datapaths, vni)) {
+        if (evpn_datapath_find(evpn_datapaths, vni)) {
             VLOG_WARN_RL(&rl, "Datapath "UUID_FMT" with duplicate VNI %"PRIi64,
                          UUID_ARGS(&ld->datapath->header_.uuid), vni);
             continue;
         }
 
-        struct evpn_datapath edp = {
+        struct evpn_datapath *edp = xmalloc(sizeof *edp);
+        *edp = (struct evpn_datapath) {
+            .ldp = ld,
             .vni = vni,
-            .dp_key = ld->datapath->tunnel_key,
         };
-        vector_push(&evpn_datapaths, &edp);
+
+        hmap_insert(evpn_datapaths, &edp->hmap_node, edp->vni);
     }
-
-    return evpn_datapaths;
-}
-
-static const struct evpn_datapath *
-evpn_datapath_find(const struct vector *evpn_datapaths, uint32_t vni)
-{
-    const struct evpn_datapath *edp;
-    VECTOR_FOR_EACH_PTR (evpn_datapaths, edp) {
-        if (edp->vni == vni) {
-            return edp;
-        }
-    }
-
-    return NULL;
 }
 
 static struct vector
