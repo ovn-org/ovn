@@ -18296,12 +18296,12 @@ check ovn-nbctl                                                    \
     -- lsp-set-options ln_port network_name=phynet
 
 ADD_NAMESPACES(workload1)
-ADD_VETH(workload1, workload1, br-int, "172.16.1.1/24", "f0:00:0f:16:01:10", \
-         "172.16.1.10")
+ADD_VETH(workload1, workload1, br-int, "172.16.1.10/24", "f0:00:0f:16:01:10", \
+         "172.16.1.1")
 
 ADD_NAMESPACES(workload2)
-ADD_VETH(workload2, workload2, br-int, "172.16.1.1/24", "f0:00:0f:16:01:20", \
-         "172.16.1.20")
+ADD_VETH(workload2, workload2, br-int, "172.16.1.20/24", "f0:00:0f:16:01:20", \
+         "172.16.1.1")
 
 OVN_POPULATE_ARP
 check ovn-nbctl --wait=hv sync
