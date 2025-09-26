@@ -36,6 +36,8 @@ controller_ovn_controller_SOURCES = \
 	controller/ofctrl-seqno.h \
 	controller/neighbor.c \
 	controller/neighbor.h \
+	controller/neighbor-of.c \
+	controller/neighbor-of.h \
 	controller/pinctrl.c \
 	controller/pinctrl.h \
 	controller/patch.c \
