@@ -75,6 +75,11 @@ cleanup_multinode_resources() {
     do
         m_as $c ovs-vsctl del-br br-int
         m_as $c ip --all netns delete
+        # Deleting br-int & nb.db deleted patch ports such as patch-br-int-to-public1-ln
+        # but not the patch ports attached to br-ex such as patch-public1-ln-to-br-int.
+        for i in $(m_as $c ovs-vsctl --bare --columns name list port | grep patch); do
+            m_as $c ovs-vsctl del-port $i;
+        done
     done
 }
 
