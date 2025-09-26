@@ -3834,3 +3834,133 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [vm1], [ping -q -c 3 -i 0.3 -w 2 20.0.0.2 | FOR
 ])
 
 AT_CLEANUP
+
+AT_SETUP([IPv6 NA received on non resident chassis])
+m_as ovn-chassis-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
+m_as ovn-chassis-2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
+
+check_fake_multinode_setup
+
+# Delete the multinode NB and OVS resources before starting the test.
+cleanup_multinode_resources
+
+m_as ovn-chassis-1 ip link del ls1p1-p
+m_as ovn-chassis-1 ip link del ls1p2-p
+m_as ovn-chassis-1 ip link del ls2p1-p
+
+OVS_WAIT_UNTIL([m_as ovn-chassis-1 ip link show | grep -q genev_sys])
+OVS_WAIT_UNTIL([m_as ovn-chassis-2 ip link show | grep -q genev_sys])
+
+check multinode_nbctl ls-add ls1
+check multinode_nbctl lsp-add ls1 ls1p1
+check multinode_nbctl lsp-set-addresses ls1p1 "00:00:00:01:01:02 192.168.1.1 2001::1"
+check multinode_nbctl lsp-add ls1 ls1p2
+check multinode_nbctl lsp-set-addresses ls1p2 "00:00:00:01:02:02 192.168.1.2 2001::2"
+check multinode_nbctl lr-add lr1
+check multinode_nbctl lrp-add lr1 lr1-ls1 00:00:00:00:00:01 192.168.1.254/24 2001::a/64
+check multinode_nbctl lsp-add ls1 ls1-lr1
+check multinode_nbctl lsp-set-addresses ls1-lr1 "00:00:00:00:00:01 192.168.1.254 2001::a"
+check multinode_nbctl lsp-set-type ls1-lr1 router
+check multinode_nbctl lsp-set-options ls1-lr1 router-port=lr1-ls1
+
+check multinode_nbctl lrp-add lr1 lr1-ls2 00:00:00:00:00:02 192.168.2.254/24 2002::a/64
+check multinode_nbctl ls-add ls2
+check multinode_nbctl lsp-add ls2 ls2-lr1
+check multinode_nbctl lsp-set-addresses ls2-lr1 "00:00:00:00:00:02 192.168.2.254 2002::a"
+check multinode_nbctl lsp-set-type ls2-lr1 router
+check multinode_nbctl lsp-set-options ls2-lr1 router-port=lr1-ls2
+check multinode_nbctl lsp-add ls2 ls2p1
+check multinode_nbctl lsp-set-addresses ls2p1 "00:00:00:02:01:02 192.168.2.1 2002::1"
+
+check multinode_nbctl lsp-add ls1 ls1p3
+check multinode_nbctl lsp-set-addresses ls1p3 "00:00:00:01:03:02 192.168.1.3 2001::3"
+check multinode_nbctl lrp-add lr1 lr1-pub 0a:0a:56:33:02:ff 172.18.86.254/24 6812:86::254/64
+check multinode_nbctl ls-add pub                    \
+    -- lsp-add pub pub-lr1                          \
+    -- lsp-set-type pub-lr1 router                  \
+    -- lsp-set-addresses pub-lr1 router             \
+    -- lsp-set-options pub-lr1 router-port=lr1-pub  \
+    -- lsp-add pub pub-ln                           \
+    -- lsp-set-type pub-ln localnet                 \
+    -- lsp-set-addresses pub-ln unknown             \
+    -- lsp-set-options pub-ln network_name=public
+
+check multinode_nbctl lrp-set-gateway-chassis lr1-pub ovn-chassis-2
+
+check multinode_nbctl lr-nat-add lr1 dnat_and_snat 172.18.86.11 192.168.1.1 ls1p1 0a:0a:56:33:02:11
+check multinode_nbctl lr-nat-add lr1 dnat_and_snat 6812:86::11 2001::1 ls1p1 0a:0a:56:33:02:11
+
+m_as ovn-chassis-1 /data/create_fake_vm.sh ls1p1 ls1p1 00:00:00:01:01:02 1500 192.168.1.1 24 192.168.1.254 2001::1/64 2001::a
+m_as ovn-chassis-1 /data/create_fake_vm.sh ls1p2 ls1p2 00:00:00:01:02:02 1500 192.168.1.2 24 192.168.1.254 2001::2/64 2001::a
+m_as ovn-chassis-1 /data/create_fake_vm.sh ls2p1 ls2p1 00:00:00:02:01:02 1500 192.168.2.1 24 192.168.2.254 2002::2/64 2002::a
+m_add_internal_port ovn-chassis-1 ovn-ext1 br-ex ext1 172.18.86.101/24 "" 6812:86::101/64
+m_add_internal_port ovn-chassis-2 ovn-ext2 br-ex ext2 172.18.86.102/24 "" 6812:86::102/64
+
+m_central_as ovn-sbctl --all destroy  mac_binding
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [ls1p1], [ping -q -c 3 -i 0.3 -w 2 172.18.86.101 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+m_wait_row_count mac_binding 1 ip="172.18.86.101" logical_port="lr1-pub"
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [ls1p1], [ping -q -c 3 -i 0.3 -w 2 172.18.86.102 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+m_wait_row_count mac_binding 1 ip="172.18.86.102" logical_port="lr1-pub"
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [ls1p1], [ping6 -q -c 3 -i 0.3 -w 2 6812:86::101 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+m_wait_row_count mac_binding 1 ip="6812\:86\:\:101" logical_port="lr1-pub"
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [ls1p1], [ping6 -q -c 3 -i 0.3 -w 2 6812:86::102 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+m_wait_row_count mac_binding 1 ip="6812\:86\:\:102" logical_port="lr1-pub"
+
+# We remove all mac_bindings to check that neighbor learning works also in the other direction.
+m_central_as ovn-sbctl --all destroy  mac_binding
+
+# Also remove addresses learned on ovn-ext
+M_NS_CHECK_EXEC([ovn-chassis-1], [ovn-ext1], [ip -6 neigh del 6812:86::11 dev ext1 lladdr 0a:0a:56:33:02:11])
+M_NS_CHECK_EXEC([ovn-chassis-2], [ovn-ext2], [ip -6 neigh del 6812:86::11 dev ext2 lladdr 0a:0a:56:33:02:11])
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [ovn-ext1], [ping -q -c 3 -i 0.3 -w 2 172.18.86.11 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+m_wait_row_count mac_binding 1 ip="172.18.86.101" logical_port="lr1-pub"
+
+M_NS_CHECK_EXEC([ovn-chassis-2], [ovn-ext2], [ping -q -c 3 -i 0.3 -w 2 172.18.86.11 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+m_wait_row_count mac_binding 1 ip="172.18.86.101" logical_port="lr1-pub"
+
+M_NS_CHECK_EXEC([ovn-chassis-1], [ovn-ext1], [ping6 -q -c 3 -i 0.3 -w 2 6812:86::11 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+m_wait_row_count mac_binding 1 ip="6812\:86\:\:101" logical_port="lr1-pub"
+
+M_NS_CHECK_EXEC([ovn-chassis-2], [ovn-ext2], [ping6 -q -c 3 -i 0.3 -w 2 6812:86::11 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+m_wait_row_count mac_binding 1 ip="6812\:86\:\:102" logical_port="lr1-pub"
+
+# Ping from ext2 while no mac_binding yet.
+m_central_as ovn-sbctl --all destroy  mac_binding
+M_NS_CHECK_EXEC([ovn-chassis-2], [ovn-ext2], [ip -6 neigh del 6812:86::11 dev ext2 lladdr 0a:0a:56:33:02:11])
+
+M_NS_CHECK_EXEC([ovn-chassis-2], [ovn-ext2], [ping6 -q -c 3 -i 0.3 -w 2 6812:86::11 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+m_wait_row_count mac_binding 1 ip="6812\:86\:\:102" logical_port="lr1-pub"
+
+AT_CLEANUP
