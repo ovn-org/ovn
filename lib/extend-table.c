@@ -33,11 +33,15 @@ void
 ovn_extend_table_init(struct ovn_extend_table *table, const char *table_name,
                       uint32_t n_ids)
 {
+    /* Table id 0 is invalid, set id-pool base to 1. */
+    uint32_t meter_base = 1;
+
+    n_ids = MIN(n_ids, UINT32_MAX - meter_base);
+
     *table = (struct ovn_extend_table) {
         .name = xstrdup(table_name),
         .n_ids = n_ids,
-        /* Table id 0 is invalid, set id-pool base to 1. */
-        .table_ids = id_pool_create(1, n_ids),
+        .table_ids = id_pool_create(meter_base, n_ids),
         .desired = HMAP_INITIALIZER(&table->desired),
         .lflow_to_desired = HMAP_INITIALIZER(&table->lflow_to_desired),
         .existing = HMAP_INITIALIZER(&table->existing),
@@ -47,10 +51,15 @@ ovn_extend_table_init(struct ovn_extend_table *table, const char *table_name,
 void
 ovn_extend_table_reinit(struct ovn_extend_table *table, uint32_t n_ids)
 {
+    /* Table id 0 is invalid, set id-pool base to 1. */
+    uint32_t meter_base = 1;
+
+    n_ids = MIN(n_ids, UINT32_MAX - meter_base);
+
     if (n_ids != table->n_ids) {
         ovn_extend_table_clear(table, true);
         id_pool_destroy(table->table_ids);
-        table->table_ids = id_pool_create(1, n_ids);
+        table->table_ids = id_pool_create(meter_base, n_ids);
         table->n_ids = n_ids;
     }
 }
