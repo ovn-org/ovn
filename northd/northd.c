@@ -11303,8 +11303,8 @@ parsed_routes_add_connected(const struct ovn_datapath *od,
     for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
         const struct ipv4_netaddr *addr = &op->lrp_networks.ipv4_addrs[i];
         struct in6_addr prefix;
-        ip46_parse(addr->network_s, &prefix);
 
+        in6_addr_set_mapped_ipv4(&prefix, addr->network);
         parsed_route_add(od, NULL, &prefix, addr->plen,
                          false, addr->addr_s, op,
                          0, false,
@@ -11314,10 +11314,8 @@ parsed_routes_add_connected(const struct ovn_datapath *od,
 
     for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
         const struct ipv6_netaddr *addr = &op->lrp_networks.ipv6_addrs[i];
-        struct in6_addr prefix;
-        ip46_parse(addr->network_s, &prefix);
 
-        parsed_route_add(od, NULL, &prefix, addr->plen,
+        parsed_route_add(od, NULL, &addr->network, addr->plen,
                          false, addr->addr_s, op,
                          0, false,
                          false, NULL, ROUTE_SOURCE_CONNECTED,
