@@ -14224,11 +14224,19 @@ build_routing_protocols_redirect_rule__(
         const char *s_addr, const char *redirect_port_name, int protocol_port,
         const char *proto, bool is_ipv6, struct ovn_port *ls_peer,
         struct lflow_table *lflows, struct ds *match, struct ds *actions,
-        struct lflow_ref *lflow_ref)
+        struct lflow_ref *lflow_ref, bool clone)
 {
     int ip_ver = is_ipv6 ? 6 : 4;
     ds_clear(actions);
-    ds_put_format(actions, "outport = \"%s\"; output;", redirect_port_name);
+    if (clone) {
+        ds_put_format(actions,
+                      "clone { outport = \"%s\"; output; }; "
+                      "outport = %s; output;",
+                      redirect_port_name, ls_peer->json_key);
+    } else {
+        ds_put_format(actions, "outport = \"%s\"; output;",
+                      redirect_port_name);
+    }
 
     /* Redirect packets in the input pipeline destined for LR's IP
      * and the routing protocol's port to the LSP specified in
@@ -14256,20 +14264,21 @@ static void
 apply_routing_protocols_redirect__(
         const char *s_addr, const char *redirect_port_name, int protocol_flags,
         bool is_ipv6, struct ovn_port *ls_peer, struct lflow_table *lflows,
-        struct ds *match, struct ds *actions, struct lflow_ref *lflow_ref)
+        struct ds *match, struct ds *actions, struct lflow_ref *lflow_ref,
+        bool clone_bfd_traffic)
 {
     if (protocol_flags & REDIRECT_BGP) {
         build_routing_protocols_redirect_rule__(s_addr, redirect_port_name,
                                                 179, "tcp", is_ipv6, ls_peer,
                                                 lflows, match, actions,
-                                                lflow_ref);
+                                                lflow_ref, false);
     }
 
     if (protocol_flags & REDIRECT_BFD) {
         build_routing_protocols_redirect_rule__(s_addr, redirect_port_name,
                                                 3784, "udp", is_ipv6, ls_peer,
                                                 lflows, match, actions,
-                                                lflow_ref);
+                                                lflow_ref, clone_bfd_traffic);
     }
 
     /* Because the redirected port shares IP and MAC addresses with the LRP,
@@ -14337,7 +14346,7 @@ static void
 build_lrouter_routing_protocol_redirect(
         struct ovn_port *op, struct lflow_table *lflows, struct ds *match,
         struct ds *actions, struct lflow_ref *lflow_ref,
-        const struct hmap *ls_ports)
+        const struct hmap *ls_ports, const struct sset *bfd_ports)
 {
     /* LRP has to have a peer.*/
     if (!op->peer) {
@@ -14401,6 +14410,11 @@ build_lrouter_routing_protocol_redirect(
         return;
     }
 
+    /* If BFD support is enabled in OVN we need to forward it to router
+     * pipeline.
+     */
+    bool clone_bfd_traffic = (redirected_protocols & REDIRECT_BFD) &&
+                             bfd_is_port_running(bfd_ports, op->key);
     /* Redirect traffic destined for LRP's IPs and the specified routing
      * protocol ports to the port defined in 'routing-protocol-redirect'
      * option.*/
@@ -14409,14 +14423,14 @@ build_lrouter_routing_protocol_redirect(
         apply_routing_protocols_redirect__(ip_s, redirect_port_name,
                                            redirected_protocols, false,
                                            op->peer, lflows, match, actions,
-                                           lflow_ref);
+                                           lflow_ref, clone_bfd_traffic);
     }
     for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
         const char *ip_s = op->lrp_networks.ipv6_addrs[i].addr_s;
         apply_routing_protocols_redirect__(ip_s, redirect_port_name,
                                            redirected_protocols, true,
                                            op->peer, lflows, match, actions,
-                                           lflow_ref);
+                                           lflow_ref, clone_bfd_traffic);
     }
 
     /* Drop ARP replies and IPv6 RA/NA packets originating from
@@ -17550,7 +17564,7 @@ build_lswitch_and_lrouter_iterate_by_lrp(struct ovn_port *op,
                                                  &lsi->actions, op->lflow_ref);
     build_lrouter_routing_protocol_redirect(op, lsi->lflows, &lsi->match,
                                             &lsi->actions, op->lflow_ref,
-                                            lsi->ls_ports);
+                                            lsi->ls_ports, lsi->bfd_ports);
 }
 
 static void *
