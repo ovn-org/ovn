@@ -64,6 +64,7 @@ struct evpn_binding {
 
     ofp_port_t tunnel_ofport;
     uint32_t dp_key;
+    uint16_t fdb_age_threshold;
 };
 
 struct evpn_datapath {

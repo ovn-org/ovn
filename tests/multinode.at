@@ -3693,6 +3693,7 @@ check m_as ovn-gw-1 ip netns exec fabric_workload ip link set evpn_host addr 00:
 check m_as ovn-gw-1 ip netns exec fabric_workload ip addr add dev evpn_host 10.0.0.41/24
 check m_as ovn-gw-1 ip netns exec fabric_workload ip link set evpn_host up
 check m_as ovn-gw-1 ip netns exec fabric_workload ip r a default via 10.0.0.1
+check m_as ovn-gw-1 ip netns exec frr-ns ip link set address 00:00:10:00:00:81 dev br-10
 check m_as ovn-gw-1 ip netns exec frr-ns ip a a dev br-10 10.0.0.81/24
 
 check m_as ovn-gw-2 ip netns add fabric_workload
@@ -3707,6 +3708,7 @@ check m_as ovn-gw-2 ip netns exec fabric_workload ip link set evpn_host addr 00:
 check m_as ovn-gw-2 ip netns exec fabric_workload ip addr add dev evpn_host 10.0.0.42/24
 check m_as ovn-gw-2 ip netns exec fabric_workload ip link set evpn_host up
 check m_as ovn-gw-2 ip netns exec fabric_workload ip r a default via 10.0.0.1
+check m_as ovn-gw-2 ip netns exec frr-ns ip link set address 00:00:10:00:00:82 dev br-10
 check m_as ovn-gw-2 ip netns exec frr-ns ip a a dev br-10 10.0.0.82/24
 
 AS_BOX([Checking EVPN MACs on External BGP host])
@@ -3809,6 +3811,18 @@ AS_BOX([Check traffic to "fabric" hosts - ping from internal hosts])
 OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec w-int1 ping -W 1 -c 1 10.0.0.41])
 OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec w-int2 ping -W 1 -c 1 10.0.0.42])
 
+AS_BOX([Check traffic to "fabric" hosts - ping from VNI bridge])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-10 ping -W 1 -c 3 10.0.0.11])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-10 ping -W 1 -c 3 10.0.0.12])
+
+# Check if the dynamic FDB was created.
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-1 ovs-ofctl dump-flows br-int table=OFTABLE_GET_REMOTE_FDB,dl_dst=00:00:10:00:00:81 | grep -c "cookie"], [0], [dnl
+1
+])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_GET_REMOTE_FDB,dl_dst=00:00:10:00:00:82 | grep -c "cookie"], [0], [dnl
+1
+])
+
 # Remove "workloads" (VIF LSPs) on both chassis.
 check multinode_nbctl --wait=hv lsp-del w1 -- lsp-del w2
 
@@ -3830,6 +3844,11 @@ Flags: N=sync-neighs, I=local-inactive, P=peer-active, X=peer-proxy
 MAC               Type   Flags Intf/Remote ES/VTEP            VLAN  Seq #'s
 00:00:00:00:02:00 local        evpn_host_peer                       0/0
 ])
+
+# Check if the dynamic FDB was removed.
+check multinode_nbctl --wait=hv remove logical_switch ls other_config dynamic-routing-vni
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-1 ovs-ofctl dump-flows br-int table=OFTABLE_GET_REMOTE_FDB,dl_dst=00:00:10:00:00:81 | grep -q "cookie"], [1])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_GET_REMOTE_FDB,dl_dst=00:00:10:00:00:82 | grep -q "cookie"], [1])
 
 AT_CLEANUP
 

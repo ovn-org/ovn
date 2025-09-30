@@ -121,6 +121,14 @@ evpn_binding_run(const struct evpn_binding_ctx_in *b_ctx_in,
             updated = true;
         }
 
+        uint16_t fdb_age_threshold =
+            MIN(smap_get_uint(&edp->ldp->datapath->external_ids,
+                              "fdb_age_threshold", 0), UINT16_MAX);
+        if (binding->fdb_age_threshold != fdb_age_threshold) {
+            binding->fdb_age_threshold = fdb_age_threshold;
+            updated = true;
+        }
+
         if (updated) {
             hmapx_add(b_ctx_out->updated_bindings, binding);
 

@@ -2977,6 +2977,7 @@ physical_consider_evpn_binding(const struct evpn_binding *binding,
 
     put_load(binding->dp_key, MFF_LOG_DATAPATH, 0, 32, ofpacts);
     put_load(binding->binding_key, MFF_LOG_INPORT, 0, 32, ofpacts);
+    put_resubmit(OFTABLE_LEARN_REMOTE_FDB, ofpacts);
     put_resubmit(OFTABLE_LOG_INGRESS_PIPELINE, ofpacts);
 
     ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 1050,
@@ -3021,6 +3022,61 @@ physical_consider_evpn_binding(const struct evpn_binding *binding,
     ofpact_put_OUTPUT(ofpacts)->port = binding->tunnel_ofport;
 
     ofctrl_add_flow(flow_table, OFTABLE_REMOTE_VTEP_OUTPUT, 55,
+                    binding->flow_uuid.parts[0],
+                    match, ofpacts, &binding->flow_uuid);
+
+    /* Dynamic FDB learn flows. */
+    ofpbuf_clear(ofpacts);
+    match_init_catchall(match);
+
+    match_set_metadata(match, htonll(binding->dp_key));
+    match_set_reg(match, MFF_LOG_INPORT - MFF_REG0, binding->binding_key);
+
+    /* This has to match the flow format installed by
+     * physical_consider_evpn_fdb(). */
+    size_t ol_offset = ofpacts->size;
+    struct ofpact_learn_spec *ol_spec;
+    struct ofpact_learn *ol = ofpact_put_LEARN(ofpacts);
+    ol->cookie = htonll(binding->flow_uuid.parts[0]);
+    ol->flags = NX_LEARN_F_DELETE_LEARNED;
+    ol->priority = 150;
+    ol->table_id = OFTABLE_GET_REMOTE_FDB;
+    ol->idle_timeout = binding->fdb_age_threshold;
+
+    /* Match the learned flow on the same metadata. */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field = mf_from_id(MFF_METADATA);
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_FIELD;
+    ol_spec->src.field = mf_from_id(MFF_METADATA);
+
+    /* Match ETH_DST on ETH_SRC of the incoming packet. */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field = mf_from_id(MFF_ETH_DST);
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_MATCH;
+    ol_spec->src_type = NX_LEARN_SRC_FIELD;
+    ol_spec->src.field = mf_from_id(MFF_ETH_SRC);
+
+    /* Load the INPORT value into REMOTE_OUTPORT. */
+    ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
+    ol_spec->dst.field = mf_from_id(MFF_LOG_REMOTE_OUTPORT);
+    ol_spec->dst.ofs = 0;
+    ol_spec->dst.n_bits = ol_spec->dst.field->n_bits;
+    ol_spec->n_bits = ol_spec->dst.n_bits;
+    ol_spec->dst_type = NX_LEARN_DST_LOAD;
+    ol_spec->src_type = NX_LEARN_SRC_FIELD;
+    ol_spec->src.field = mf_from_id(MFF_LOG_INPORT);
+
+    ol = ofpbuf_at_assert(ofpacts, ol_offset, sizeof *ol);
+    ofpact_finish_LEARN(ofpacts, &ol);
+
+    ofctrl_add_flow(flow_table, OFTABLE_LEARN_REMOTE_FDB, 100,
                     binding->flow_uuid.parts[0],
                     match, ofpacts, &binding->flow_uuid);
 }
@@ -3078,6 +3134,7 @@ physical_consider_evpn_fdb(const struct evpn_fdb *fdb,
                            struct ofpbuf *ofpacts, struct match *match,
                            struct ovn_desired_flow_table *flow_table)
 {
+    /* Static FDB flow. */
     ofpbuf_clear(ofpacts);
     match_init_catchall(match);
 
@@ -3086,6 +3143,18 @@ physical_consider_evpn_fdb(const struct evpn_fdb *fdb,
 
     put_load(fdb->binding_key, MFF_LOG_REMOTE_OUTPORT, 0, 32, ofpacts);
     ofctrl_add_flow(flow_table, OFTABLE_GET_REMOTE_FDB, 150,
+                    fdb->flow_uuid.parts[0],
+                    match, ofpacts, &fdb->flow_uuid);
+
+    /* Prevent dynamic learning if it's already known via static FDB. */
+    ofpbuf_clear(ofpacts);
+    match_init_catchall(match);
+
+    match_set_metadata(match, htonll(fdb->dp_key));
+    match_set_reg(match, MFF_LOG_INPORT - MFF_REG0, fdb->binding_key);
+    match_set_dl_src(match, fdb->mac);
+
+    ofctrl_add_flow(flow_table, OFTABLE_LEARN_REMOTE_FDB, 150,
                     fdb->flow_uuid.parts[0],
                     match, ofpacts, &fdb->flow_uuid);
 }

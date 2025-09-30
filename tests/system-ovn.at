@@ -18438,7 +18438,7 @@ OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-multicast-group-list | cut -d
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep priority=1050 | \
                    awk '{print $7, $8}' | sort], [0], [dnl
-priority=1050,tun_id=0xa,tun_src=169.0.0.10,tun_dst=169.0.0.1,in_port=$ofport actions=load:0x$dp_key->OXM_OF_METADATA[[0..31]],load:0x80000001->NXM_NX_REG14[[]],resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
+priority=1050,tun_id=0xa,tun_src=169.0.0.10,tun_dst=169.0.0.1,in_port=$ofport actions=load:0x$dp_key->OXM_OF_METADATA[[0..31]],load:0x80000001->NXM_NX_REG14[[]],resubmit(,OFTABLE_LEARN_REMOTE_FDB),resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_VTEP_OUTPUT | grep output | \
@@ -18448,6 +18448,11 @@ priority=50,reg15=0x80000001,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_
 priority=50,reg15=0x8001,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],load:0xa900000a->NXM_NX_TUN_IPV4_DST[[]],output:$ofport,resubmit(,OFTABLE_LOCAL_OUTPUT)
 priority=50,reg15=0x8004,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],load:0xa900000a->NXM_NX_TUN_IPV4_DST[[]],output:$ofport,resubmit(,OFTABLE_LOCAL_OUTPUT)
 priority=55,reg10=0x1/0x1,reg15=0x80000001,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa900000a->NXM_NX_TUN_IPV4_DST[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],load:0xffff->NXM_OF_IN_PORT[[]],output:$ofport
+])
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_LEARN_REMOTE_FDB | grep priority | \
+                   awk '{print $7, $8}' | strip_cookie | sort], [0], [dnl
+priority=100,reg14=0x80000001,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
 ])
 
 # Simulate second remote VTEP.
@@ -18471,8 +18476,8 @@ AT_CHECK([ovn-appctl evpn/vtep-multicast-group-list | wc -l], [0], [1
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep priority=1050 | \
                    awk '{print $7, $8}' | sort], [0], [dnl
-priority=1050,tun_id=0xa,tun_src=169.0.0.10,tun_dst=169.0.0.1,in_port=$ofport actions=load:0x$dp_key->OXM_OF_METADATA[[0..31]],load:0x80000001->NXM_NX_REG14[[]],resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
-priority=1050,tun_id=0xa,tun_src=169.0.0.20,tun_dst=169.0.0.1,in_port=$ofport actions=load:0x$dp_key->OXM_OF_METADATA[[0..31]],load:0x80000002->NXM_NX_REG14[[]],resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
+priority=1050,tun_id=0xa,tun_src=169.0.0.10,tun_dst=169.0.0.1,in_port=$ofport actions=load:0x$dp_key->OXM_OF_METADATA[[0..31]],load:0x80000001->NXM_NX_REG14[[]],resubmit(,OFTABLE_LEARN_REMOTE_FDB),resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
+priority=1050,tun_id=0xa,tun_src=169.0.0.20,tun_dst=169.0.0.1,in_port=$ofport actions=load:0x$dp_key->OXM_OF_METADATA[[0..31]],load:0x80000002->NXM_NX_REG14[[]],resubmit(,OFTABLE_LEARN_REMOTE_FDB),resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
 ])
 
 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_VTEP_OUTPUT > oftable_remote_vtep_output
@@ -18482,6 +18487,12 @@ priority=50,reg15=0x80000001,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_
 priority=50,reg15=0x80000002,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa9000014->NXM_NX_TUN_IPV4_DST[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],output:$ofport
 priority=55,reg10=0x1/0x1,reg15=0x80000001,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa900000a->NXM_NX_TUN_IPV4_DST[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],load:0xffff->NXM_OF_IN_PORT[[]],output:$ofport
 priority=55,reg10=0x1/0x1,reg15=0x80000002,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa9000014->NXM_NX_TUN_IPV4_DST[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],load:0xffff->NXM_OF_IN_PORT[[]],output:$ofport
+])
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_LEARN_REMOTE_FDB | grep priority | \
+                   awk '{print $7, $8}' | strip_cookie | sort], [0], [dnl
+priority=100,reg14=0x80000001,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
+priority=100,reg14=0x80000002,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
 ])
 
 AT_CHECK([grep "resubmit" oftable_remote_vtep_output | grep -c "load:0xa900000a"], [0], [3
@@ -18503,6 +18514,14 @@ AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_GET_REMOTE_FDB | gr
 priority=0 actions=load:0->NXM_NX_REG1[[]]
 priority=150,metadata=0x$dp_key,dl_dst=f0:00:0f:16:10:50 actions=load:0x80000001->NXM_NX_REG1[[]]
 priority=150,metadata=0x$dp_key,dl_dst=f0:00:0f:16:10:60 actions=load:0x80000002->NXM_NX_REG1[[]]
+])
+
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_LEARN_REMOTE_FDB | grep priority | \
+                   awk '{print $7, $8}' | strip_cookie | sort], [0], [dnl
+priority=100,reg14=0x80000001,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
+priority=100,reg14=0x80000002,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
+priority=150,reg14=0x80000001,metadata=0x$dp_key,dl_src=f0:00:0f:16:10:50 actions=drop
+priority=150,reg14=0x80000002,metadata=0x$dp_key,dl_src=f0:00:0f:16:10:60 actions=drop
 ])
 
 # Check that the recompute won't change the UUIDs and tunnel keys.
@@ -18539,6 +18558,25 @@ f0:00:0f:16:01:10 dev lo-10 vlan 1 master br-10 static
 
 check ovn-nbctl --wait=hv remove logical_switch ls-evpn other_config dynamic-routing-redistribute
 OVS_WAIT_FOR_OUTPUT([bridge fdb show | grep "lo-10" | grep "f0:00:0f:16:01" | sort], [0], [dnl
+])
+
+check ovn-nbctl --wait=hv set logical_switch ls-evpn other_config:fdb_age_threshold=300
+ovs-ofctl dump-flows br-int table=OFTABLE_LEARN_REMOTE_FDB
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_LEARN_REMOTE_FDB | grep priority | \
+                   awk '{print $7, $8}' | strip_cookie | sort], [0], [dnl
+priority=100,reg14=0x80000001,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,idle_timeout=300,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
+priority=100,reg14=0x80000002,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,idle_timeout=300,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
+priority=150,reg14=0x80000001,metadata=0x$dp_key,dl_src=f0:00:0f:16:10:50 actions=drop
+priority=150,reg14=0x80000002,metadata=0x$dp_key,dl_src=f0:00:0f:16:10:60 actions=drop
+])
+
+check ovn-nbctl --wait=hv remove logical_switch ls-evpn other_config fdb_age_threshold
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_LEARN_REMOTE_FDB | grep priority | \
+                   awk '{print $7, $8}' | strip_cookie | sort], [0], [dnl
+priority=100,reg14=0x80000001,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
+priority=100,reg14=0x80000002,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
+priority=150,reg14=0x80000001,metadata=0x$dp_key,dl_src=f0:00:0f:16:10:50 actions=drop
+priority=150,reg14=0x80000002,metadata=0x$dp_key,dl_src=f0:00:0f:16:10:60 actions=drop
 ])
 
 AS_BOX([L2 EVPN ARP learning])

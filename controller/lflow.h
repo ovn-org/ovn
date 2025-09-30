@@ -103,6 +103,7 @@ struct uuid;
 #define OFTABLE_CT_STATE_SAVE            85
 #define OFTABLE_CT_ORIG_PROTO_LOAD       86
 #define OFTABLE_GET_REMOTE_FDB           87
+#define OFTABLE_LEARN_REMOTE_FDB         88
 
 /* Common defines shared between some controller components. */
 #define CHASSIS_FLOOD_INDEX_START 0x8000
