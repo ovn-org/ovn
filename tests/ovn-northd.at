@@ -14260,6 +14260,16 @@ AT_CHECK([ovn-sbctl dump-flows ls | grep ls_in_check_port_sec | grep "priority=8
   table=??(ls_in_check_port_sec), priority=80   , match=(inport == "lsp-bgp" && nd_ra), action=(reg0[[15]] = 1; next;)
 ])
 
+# Add OVN BFD static routes and check the BFD control packets are properly
+# cloned and redirected to "lsp-bgp".
+check ovn-nbctl --wait=sb --bfd lr-route-add lr 100.0.0.0/8 172.16.1.2 lr-ls
+AT_CHECK([ovn-sbctl dump-flows ls | grep ls_in_l2_lkup | grep -E "udp.dst == 3784|udp.src == 3784" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(ip4.dst == 172.16.1.1 && udp.dst == 3784), action=(clone { outport = "lsp-bgp"; output; }; outport = "ls-lr"; output;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(ip4.dst == 172.16.1.1 && udp.src == 3784), action=(clone { outport = "lsp-bgp"; output; }; outport = "ls-lr"; output;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(ip6.dst == fe80::ac:10ff:fe01:1 && udp.dst == 3784), action=(clone { outport = "lsp-bgp"; output; }; outport = "ls-lr"; output;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(ip6.dst == fe80::ac:10ff:fe01:1 && udp.src == 3784), action=(clone { outport = "lsp-bgp"; output; }; outport = "ls-lr"; output;)
+])
+
 # Remove 'bgp-redirect' option from LRP and check that rules are removed
 check ovn-nbctl --wait=sb remove logical_router_port lr-ls options routing-protocol-redirect
 check ovn-nbctl --wait=sb remove logical_router_port lr-ls options routing-protocols

@@ -7290,6 +7290,11 @@ check ovn-nbctl set logical_router R1 options:chassis=hv1
 check ovn-nbctl set logical_router R1 options:dynamic-routing=true
 check ovn-nbctl set Logical_Router_Port rp-public options:dynamic-routing-redistribute="connected,static"
 check ovn-nbctl set logical_router_static_route $route_uuid bfd=$uuid
+# set option that redirects BGP and BFD traffic to a LSP "bgp-daemon".
+# OVN should continue to keep BFD static route state.
+check ovn-nbctl lsp-add public bgp-daemon -- lsp-set-addresses bgp-daemon unknown
+check ovn-nbctl --wait=sb set logical_router_port rp-public options:routing-protocol-redirect=bgp-daemon
+check ovn-nbctl --wait=sb set logical_router_port rp-public options:routing-protocols=BGP,BFD
 
 # restart bfdd
 NETNS_DAEMONIZE([server], [bfdd-beacon  --nofork --tee --listen=172.16.1.50 >beacon.stdout 2>&1], [beacon.pid])
