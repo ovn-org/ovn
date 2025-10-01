@@ -18505,8 +18505,8 @@ check bridge fdb add f0:00:0f:16:10:50 dev vxlan-$vni dst 169.0.0.10 static exte
 check bridge fdb add f0:00:0f:16:10:60 dev vxlan-$vni dst 169.0.0.20 static extern_learn
 
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-fdb-list | cut -d',' -f2- | sort], [0], [dnl
- MAC: f0:00:0f:16:10:50, binding_key: 0x80000001, dp_key: $dp_key
- MAC: f0:00:0f:16:10:60, binding_key: 0x80000002, dp_key: $dp_key
+ MAC: f0:00:0f:16:10:50, vni: $vni, binding_key: 0x80000001, dp_key: $dp_key
+ MAC: f0:00:0f:16:10:60, vni: $vni, binding_key: 0x80000002, dp_key: $dp_key
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_GET_REMOTE_FDB | grep priority | \

@@ -28,9 +28,11 @@ VLOG_DEFINE_THIS_MODULE(evpn_fdb);
 
 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
 
-static struct evpn_fdb *evpn_fdb_add(struct hmap *evpn_fdbs, struct eth_addr);
+static struct evpn_fdb *evpn_fdb_add(struct hmap *evpn_fdbs, struct eth_addr,
+                                     uint32_t vni);
 static struct evpn_fdb *evpn_fdb_find(const struct hmap *evpn_fdbs,
-                                      struct eth_addr);
+                                      struct eth_addr, uint32_t vni);
+static uint32_t evpn_fdb_hash(const struct eth_addr *mac, uint32_t vni);
 
 void
 evpn_fdb_run(const struct evpn_fdb_ctx_in *f_ctx_in,
@@ -54,9 +56,10 @@ evpn_fdb_run(const struct evpn_fdb_ctx_in *f_ctx_in,
             continue;
         }
 
-        fdb = evpn_fdb_find(f_ctx_out->fdbs, static_fdb->mac);
+        fdb = evpn_fdb_find(f_ctx_out->fdbs, static_fdb->mac, static_fdb->vni);
         if (!fdb) {
-            fdb = evpn_fdb_add(f_ctx_out->fdbs, static_fdb->mac);
+            fdb = evpn_fdb_add(f_ctx_out->fdbs, static_fdb->mac,
+                               static_fdb->vni);
         }
 
         bool updated = false;
@@ -109,9 +112,10 @@ evpn_fdb_list(struct unixctl_conn *conn, int argc OVS_UNUSED,
     const struct evpn_fdb *fdb;
     HMAP_FOR_EACH (fdb, hmap_node, fdbs) {
         ds_put_format(&ds, "UUID: "UUID_FMT", MAC: "ETH_ADDR_FMT", "
-                      "binding_key: %#"PRIx32", dp_key: %"PRIu32"\n",
+                      "vni: %"PRIu32", binding_key: %#"PRIx32", "
+                      "dp_key: %"PRIu32"\n",
                       UUID_ARGS(&fdb->flow_uuid), ETH_ADDR_ARGS(fdb->mac),
-                      fdb->binding_key, fdb->dp_key);
+                      fdb->vni, fdb->binding_key, fdb->dp_key);
     }
 
     unixctl_command_reply(conn, ds_cstr_ro(&ds));
@@ -119,33 +123,43 @@ evpn_fdb_list(struct unixctl_conn *conn, int argc OVS_UNUSED,
 }
 
 static struct evpn_fdb *
-evpn_fdb_add(struct hmap *evpn_fdbs, struct eth_addr mac)
+evpn_fdb_add(struct hmap *evpn_fdbs, struct eth_addr mac, uint32_t vni)
 {
     struct evpn_fdb *fdb = xmalloc(sizeof *fdb);
     *fdb = (struct evpn_fdb) {
         .flow_uuid = uuid_random(),
         .mac = mac,
-        .binding_key = 0,
-        .dp_key = 0,
+        .vni = vni,
     };
 
-    uint32_t hash = hash_bytes(&mac, sizeof mac, 0);
+    uint32_t hash = evpn_fdb_hash(&mac, vni);
     hmap_insert(evpn_fdbs, &fdb->hmap_node, hash);
 
     return fdb;
 }
 
 static struct evpn_fdb *
-evpn_fdb_find(const struct hmap *evpn_fdbs, struct eth_addr mac)
+evpn_fdb_find(const struct hmap *evpn_fdbs, struct eth_addr mac, uint32_t vni)
 {
-    uint32_t hash = hash_bytes(&mac, sizeof mac, 0);
+    uint32_t hash = evpn_fdb_hash(&mac, vni);
 
     struct evpn_fdb *fdb;
     HMAP_FOR_EACH_WITH_HASH (fdb, hmap_node, hash, evpn_fdbs) {
-        if (eth_addr_equals(fdb->mac, mac)) {
+        if (eth_addr_equals(fdb->mac, mac) &&
+            fdb->vni == vni) {
             return fdb;
         }
     }
 
     return NULL;
+}
+
+static uint32_t
+evpn_fdb_hash(const struct eth_addr *mac, uint32_t vni)
+{
+    uint32_t hash = 0;
+    hash = hash_bytes(mac, sizeof *mac, hash);
+    hash = hash_add(hash, vni);
+
+    return hash_finish(hash, 10);
 }
