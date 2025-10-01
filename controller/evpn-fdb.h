@@ -46,6 +46,7 @@ struct evpn_fdb {
     struct uuid flow_uuid;
     /* IP address of the remote VTEP. */
     struct eth_addr mac;
+    uint32_t vni;
     /* Local tunnel key to identify the binding. */
     uint32_t binding_key;
     uint32_t dp_key;
