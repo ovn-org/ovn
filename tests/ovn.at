@@ -36940,7 +36940,7 @@ dump_icmp() {
     echo $packet
 }
 
-aging_th=10
+aging_th=5
 net_add n1
 sim_add hv1
 as hv1
@@ -37006,43 +37006,37 @@ OVS_WAIT_UNTIL([$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | \
                   sed 's/reg15=0x.,metadata=0x./reg15=<cleared>,metadata=<cleared>/g' | \
                   grep -q "reg0=0xc0a81402,reg15=<cleared>,metadata=<cleared> actions=mod_dl_dst:00:00:00:00:30:00")])
 
-n_arp=$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/arp_spa=192.168.20.2/{print substr($4,11,1)}')
-# Check GW router does not send any ARP requests in this case.
-OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
-                       awk '/nw_src=192.168.10.100/{print substr($6,10,1)}') -ge $((aging_th*3/16))])
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/arp_spa=192.168.20.2/{print substr($4,11,1)}') -eq $n_arp])
-
+# Wait until ovn-controller sends the ARP request.
+OVS_WAIT_UNTIL([test $(grep -c "Sending ARP/ND.*ip: 192.168.20.2" hv1/ovn-controller.log) -eq 1])
 send_imcp_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:10:1a 192.168.20.2 192.168.10.100
+
 # Now drop ICMP echo reply in order to force OVN to arp the mac binding entry
 # for the distributed router lr.
 check ovn-nbctl --wait=hv acl-add join from-lport 1000 'inport == "join-lr" && icmp' drop
-n_arp=$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/arp_spa=192.168.20.2/{print substr($4,11,1)}')
-OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
-                       awk '/nw_src=192.168.10.100/{print substr($6,10,1)}') -ge $((aging_th/2))])
+
+sleep $((aging_th / 2))
 send_imcp_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:10:1a 192.168.20.2 192.168.10.100
-OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/arp_spa=192.168.20.2/{print substr($4,11,1)}') -ge $((n_arp+1))])
+OVS_WAIT_UNTIL([test $(grep -c "Sending ARP/ND.*ip: 192.168.20.2" hv1/ovn-controller.log) -eq 2])
 
 check ovn-nbctl --wait=hv acl-del join
 wait_row_count mac_binding 0
 
 send_icmp6_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:50:01 fd12::2 fd11::64
-check_row_count mac_binding 1 mac=\"00:00:00:00:30:00\" ip=\"fd12::2\"
+wait_row_count mac_binding 1 mac=\"00:00:00:00:30:00\" ip=\"fd12::2\"
 
-n_ipv6=$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/ipv6_src=fd12::2/{print substr($4,11,1)}')
-OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
-                       awk '/ipv6_src=fd12::2/{print substr($6,10,1)}') -ge $((aging_th*3/16))])
-# Check GW router does not send any NS requests in this case.
-AT_CHECK([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/ipv6_src=fd12::2/{print substr($4,11,1)}') -eq $n_ipv6])
+# Wait until ovn-controller sends the NS request.
+OVS_WAIT_UNTIL([test $(grep -c "Sending ARP/ND.*ip: fd12::2" hv1/ovn-controller.log) -eq 1])
 send_icmp6_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:50:01 fd12::2 fd11::64
 
 # Now drop ICMPv6 echo reply in order to force OVN to send NS for the lr mac binding entry.
 check ovn-nbctl --wait=hv acl-add join from-lport 1010 'inport == "join-lr" && ip6 && icmp6.type == 0x87' allow
 check ovn-nbctl --wait=hv acl-add join from-lport 1000 'inport == "join-lr" && icmp' drop
-n_ipv6=$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/ipv6_src=fd12::2/{print substr($4,11,1)}')
-OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
-                       awk '/ipv6_src=fd12::2/{print substr($6,10,1)}') -ge $((aging_th/2))])
+
+sleep $((aging_th / 2))
 send_icmp6_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:50:01 fd12::2 fd11::64
-OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |awk '/ipv6_src=fd12::2/{print substr($4,11,1)}') -ge $((n_ipv6+1))])
+OVS_WAIT_UNTIL([test $(grep -c "Sending ARP/ND.*ip: fd12::2" hv1/ovn-controller.log) -eq 2])
+
+wait_row_count mac_binding 0
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
