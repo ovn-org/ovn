@@ -18716,3 +18716,82 @@ AT_CHECK(
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Unicast ARP flows])
+ovn_start
+
+# Typically on logical switches, the ARP responder stage installs nothing
+# for unicast ARPs towards VIF MACs. Instead, we rely on the default priority
+# 1 "next;" action to move these ARPs through the pipeline, eventually resulting
+# in the ARP reaching the destination. When proxy ARP is configured, we need
+# to install explicit flows for the unicast ARPs at a higher priority. Otherwise
+# the proxy ARP responder may respond with incorrect information.
+#
+# In this test, we are ensuring that the unicast flows in the ARP responder stage
+# are only installed when proxy ARP is enabled.
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 vm1 -- \
+      lsp-set-addresses vm1 "00:00:00:00:00:02 192.168.0.2 fd01::2"
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-ls1 00:00:00:00:00:01 192.168.0.1 fd01::1
+check ovn-nbctl lsp-add ls1 ls1-lr1 -- \
+      lsp-set-addresses ls1-lr1 router -- \
+      lsp-set-type ls1-lr1 router -- \
+      lsp-set-options ls1-lr1 router-port=lr1-ls1
+
+check ovn-nbctl --wait=sb sync
+
+# If we check the ARP responder flows in ls1, we should not see any unicast
+# flows for vm1 (00:00:00:00:00:02). We also should not see any unicast
+# IPv6 ND flows for vm1 (fd01::2)
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_arp_rsp | grep "eth.dst == 00:00:00:00:00:02" | ovn_strip_lflows], [0], [dnl
+])
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_arp_rsp | grep "ip6.dst == fd01::2" | ovn_strip_lflows], [0], [dnl
+])
+
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_arp_rsp | grep "eth.dst == 00:00:00:00:00:01" | ovn_strip_lflows], [0], [dnl
+])
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_arp_rsp | grep "ip6.dst == fd01::1" | ovn_strip_lflows], [0], [dnl
+])
+
+# Add ARP proxy configuration on the router port.
+check ovn-nbctl set logical_switch_port ls1-lr1 options:arp_proxy="192.168.0.0/24 fd01::/64"
+check ovn-nbctl --wait=sb sync
+
+# Now that we have ARP proxy configured, we should see flows for
+# vm1's MAC.
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_arp_rsp | grep "eth.dst == 00:00:00:00:00:02" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(arp.tpa == 192.168.0.2 && arp.op == 1 && eth.dst == 00:00:00:00:00:02), action=(next;)
+])
+# And we should see unicast ND flows for vm1's IP address
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_arp_rsp | grep "ip6.dst == fd01::2" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(nd_ns && ip6.dst == fd01::2 && nd.target == fd01::2), action=(next;)
+])
+
+# We should also see an ARP flow for ls1-lr1's MAC.
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_arp_rsp | grep "eth.dst == 00:00:00:00:00:01" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(arp.tpa == 192.168.0.1 && arp.op == 1 && eth.dst == 00:00:00:00:00:01), action=(next;)
+])
+# And we should see an ND flow for ls1-lr1's IPv6 address.
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_arp_rsp | grep "ip6.dst == fd01::1" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(nd_ns && ip6.dst == fd01::1 && nd.target == fd01::1), action=(next;)
+])
+
+check ovn-nbctl remove logical_switch_port ls1-lr1 options arp_proxy
+check ovn-nbctl --wait=sb sync
+
+# We have removed ARP proxy, so we should no longer see a unicast ARP or ND flow.
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_arp_rsp | grep "eth.dst == 00:00:00:00:00:02" | ovn_strip_lflows], [0], [dnl
+])
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_arp_rsp | grep "ip6.dst == fd01::2" | ovn_strip_lflows], [0], [dnl
+])
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_arp_rsp | grep "eth.dst == 00:00:00:00:00:01" | ovn_strip_lflows], [0], [dnl
+])
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_arp_rsp | grep "ip6.dst == fd01::1" | ovn_strip_lflows], [0], [dnl
+])
+
+AT_CLEANUP
+])
