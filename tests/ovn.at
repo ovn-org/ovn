@@ -43314,3 +43314,80 @@ wait_for_ports_up sw0-vir
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Unicast ARP when proxy ARP is configured])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 vm1 -- \
+      lsp-set-addresses vm1 "00:00:00:00:00:02 10.0.0.2 fd01::2"
+check ovn-nbctl lsp-add ls1 vm2 -- \
+      lsp-set-addresses vm2 "00:00:00:00:00:03 10.0.0.3 fd01::3"
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-ls1 00:00:00:00:00:01 10.0.0.1 fd01::1
+check ovn-nbctl lsp-add ls1 ls1-lr1 -- \
+      lsp-set-addresses ls1-lr1 router -- \
+      lsp-set-type ls1-lr1 router -- \
+      lsp-set-options ls1-lr1 router-port=lr1-ls1
+
+check ovn-nbctl --wait=hv sync
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=vm1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap
+ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=vm2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap
+
+OVN_POPULATE_ARP
+
+wait_for_ports_up
+
+arp=$(fmt_pkt "Ether(dst='00:00:00:00:00:02', src='00:00:00:00:00:03')/ \
+               ARP(hwsrc='00:00:00:00:00:03', hwdst='00:00:00:00:00:02',
+                   psrc='10.0.0.3', pdst='10.0.0.2')")
+nd_ns=$(fmt_pkt "Ether(dst='00:00:00:00:00:02', src='00:00:00:00:00:03')/ \
+                 IPv6(src='fd01::3', dst='fd01::2')/ \
+                 ICMPv6ND_NS(tgt='fd01::2')")
+
+# If we send a unicast ARP from vm2 towards vm1, the ARP should be forwarded
+# to vm1 by ls1.
+as hv1 ovs-appctl netdev-dummy/receive vif2 $arp
+echo $arp > expected
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], expected)
+
+# And if we send a unicast ND_NS from vm2 towards vm1, the ND_NS should be
+# forwarded to vm1 by ls1.
+as hv1 ovs-appctl netdev-dummy/receive vif2 $nd_ns
+echo $nd_ns >> expected
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], expected)
+
+
+# Add ARP proxy configuration on the router port. The subnet for the ARP proxy
+# addresses overlaps with the VIF addresses for vm1 and vm2.
+check ovn-nbctl set logical_switch_port ls1-lr1 options:arp_proxy="10.0.0.0/8 fd01::/64"
+check ovn-nbctl --wait=hv sync
+
+# Sending a unicast ARP from vm2 towards vm1 should still result in the ARP being
+# forwarded to vm1 by ls1.
+as hv1 ovs-appctl netdev-dummy/receive vif2 $arp
+echo $arp >> expected
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], expected)
+
+# Sending a unicast ND_NS from vm2 towards vm1 should still result in the ND_NS being
+# forwarded to vm1 by ls1.
+as hv1 ovs-appctl netdev-dummy/receive vif2 $nd_ns
+echo $nd_ns >> expected
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], expected)
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
