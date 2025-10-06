@@ -19176,6 +19176,7 @@ lflow_reset_northd_refs(struct lflow_input *lflow_input)
     struct ls_stateful_record *ls_stateful_rec;
     struct ovn_lb_datapaths *lb_dps;
     struct ovn_port *op;
+    const struct ovn_datapath *od;
 
     LR_STATEFUL_TABLE_FOR_EACH (lr_stateful_rec,
                                 lflow_input->lr_stateful_table) {
@@ -19199,6 +19200,14 @@ lflow_reset_northd_refs(struct lflow_input *lflow_input)
 
     HMAP_FOR_EACH (lb_dps, hmap_node, lflow_input->lb_datapaths_map) {
         lflow_ref_clear(lb_dps->lflow_ref);
+    }
+
+    HMAP_FOR_EACH (od, key_node, &lflow_input->lr_datapaths->datapaths) {
+        lflow_ref_clear(od->datapath_lflows);
+    }
+
+    HMAP_FOR_EACH (od, key_node, &lflow_input->ls_datapaths->datapaths) {
+        lflow_ref_clear(od->datapath_lflows);
     }
 }
 
