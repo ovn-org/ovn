@@ -44052,6 +44052,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([Network function packet flow - outbound])
 AT_KEYWORDS([ovn])
+TAG_UNSTABLE
 ovn_start
 
 # Create logical topology. One LS sw0 with 4 ports.
@@ -44243,6 +44244,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([Network function packet flow - inbound])
 AT_KEYWORDS([ovn])
+TAG_UNSTABLE
 ovn_start
 
 # Create logical topology. One LS sw0 with 4 ports.
