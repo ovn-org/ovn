@@ -1734,15 +1734,18 @@ sync_learned_routes(struct ic_context *ctx,
 
         ICSBREC_ROUTE_FOR_EACH_EQUAL (isb_route, isb_route_key,
                                       ctx->icsbrec_route_by_ts) {
+            /* Filters ICSB routes, skipping those that either belong to
+             * current logical router or are legacy routes from the current
+             * availability zone (withoud lr-id).
+             */
             const char *lr_id = smap_get(&isb_route->external_ids, "lr-id");
-            if (lr_id == NULL) {
-                continue;
-            }
             struct uuid lr_uuid;
-            if (!uuid_from_string(&lr_uuid, lr_id)) {
-                continue;
-            }
-            if (uuid_equals(&ic_lr->lr->header_.uuid, &lr_uuid)) {
+            if (lr_id) {
+                if (!uuid_from_string(&lr_uuid, lr_id)
+                    || uuid_equals(&ic_lr->lr->header_.uuid, &lr_uuid)) {
+                    continue;
+                }
+            } else if (isb_route->availability_zone == ctx->runned_az) {
                 continue;
             }
 
