@@ -3171,7 +3171,7 @@ mac_cache_fdb_handle_for_datapath(struct mac_cache_data *data,
 
     struct sbrec_fdb *fdb_index_row =
             sbrec_fdb_index_init_row(sbrec_fdb_by_dp_key);
-    sbrec_fdb_set_dp_key(fdb_index_row, dp->tunnel_key);
+    sbrec_fdb_index_set_dp_key(fdb_index_row, dp->tunnel_key);
 
     const struct sbrec_fdb *fdb;
     SBREC_FDB_FOR_EACH_EQUAL (fdb, fdb_index_row, sbrec_fdb_by_dp_key) {

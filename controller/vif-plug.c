@@ -214,7 +214,7 @@ iface_lookup_by_name(struct ovsdb_idl_index *ovsrec_interface_by_name,
 {
     struct ovsrec_interface *iface = ovsrec_interface_index_init_row(
         ovsrec_interface_by_name);
-    ovsrec_interface_set_name(iface, name);
+    ovsrec_interface_index_set_name(iface, name);
 
     const struct ovsrec_interface *retval
         = ovsrec_interface_index_find(ovsrec_interface_by_name,

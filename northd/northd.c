@@ -3510,7 +3510,7 @@ build_svcs(
         sbrec_service_monitor_index_init_row(
             sbrec_service_monitor_by_learned_type);
 
-    sbrec_service_monitor_set_ic_learned(key, false);
+    sbrec_service_monitor_index_set_ic_learned(key, false);
 
     SBREC_SERVICE_MONITOR_FOR_EACH_EQUAL (sbrec_mon, key,
         sbrec_service_monitor_by_learned_type) {
@@ -11042,7 +11042,7 @@ build_ic_learned_svc_monitors_map(
     key = sbrec_service_monitor_index_init_row(
         sbrec_service_monitor_by_learned_type);
 
-    sbrec_service_monitor_set_ic_learned(key, true);
+    sbrec_service_monitor_index_set_ic_learned(key, true);
 
     const struct sbrec_service_monitor *sbrec_mon;
     SBREC_SERVICE_MONITOR_FOR_EACH_EQUAL (sbrec_mon, key,
