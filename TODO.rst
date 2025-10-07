@@ -200,6 +200,7 @@ when the feature/action will move from ``Deprecated`` to ``Removed``.
 * 26.03 Deprecated
 
   * ``ct_lb`` action, should be removed in 26.09.
+  * ``SPLIT_BUF_ACTION`` action, should be removed in 28.09.
 
 * 26.03 Removed
 

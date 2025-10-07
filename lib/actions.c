@@ -5637,7 +5637,6 @@ encode_FLOOD_REMOTE(const struct ovnact_null *null OVS_UNUSED,
                     const struct ovnact_encode_params *ep,
                      struct ofpbuf *ofpacts)
 {
-    put_load(CHASSIS_FLOOD_INDEX_START, MFF_REG6, 0, 32, ofpacts);
     emit_resubmit(ofpacts, ep->flood_remote_table);
 }
 

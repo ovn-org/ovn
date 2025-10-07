@@ -2847,57 +2847,6 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
-OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn-controller - multicast group buffer split])
-AT_KEYWORDS([ovn])
-ovn_start
-
-net_add n1
-
-sim_add hv1
-as hv1
-ovs-vsctl add-br br-phys
-ovn_attach n1 br-phys 192.168.0.1
-
-for i in $(seq 1 320); do
-    OVS_VSCTL(add-port br-int hv1-vif$i -- \
-        set interface hv1-vif$i external-ids:iface-id=sw0-p$i \
-        options:tx_pcap=hv1/vif${i}-tx.pcap \
-        options:rxq_pcap=hv1/vif${i}-rx.pcap \
-        ofport-request=$i)
-done
-RUN_OVS_VSCTL
-
-check ovn-nbctl ls-add sw0
-for i in $(seq 1 320); do
-    OVN_NBCTL(lsp-add sw0 sw0-p$i)
-    OVN_NBCTL(lsp-set-addresses sw0-p$i "unknown")
-done
-RUN_OVN_NBCTL
-
-wait_for_ports_up
-check ovn-nbctl --wait=hv sync
-
-OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT | grep reg15=0x8000,metadata=0x1 | grep -c "controller(userdata=00.00.00.1b"], [0],[dnl
-3
-])
-
-for i in $(seq 1 280); do
-    OVN_NBCTL(lsp-del sw0-p$i)
-done
-RUN_OVN_NBCTL
-check ovn-nbctl --wait=hv sync
-
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT | grep -q controller], [1])
-
-# Since we add many ports in one nbctl command, we might get some warnings on slow systems.
-OVN_CLEANUP([hv1
-/Unreasonably long/d
-/faults:/d
-/context switches/d])
-AT_CLEANUP
-])
-
 AT_SETUP([ovn-controller - ssl/tls ciphers using command line options])
 AT_KEYWORDS([ovn])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
@@ -3703,10 +3652,6 @@ AT_CHECK([grep -c 'move:OXM_OF_METADATA\[[0..23\]]->NXM_NX_TUN_ID\[[0..23\]],set
 
 # VXLAN
 AT_CHECK([grep -c 'move:NXM_NX_REG14\[[0..11\]]->NXM_NX_TUN_ID\[[12..23\]],move:OXM_OF_METADATA\[[0..11\]]->NXM_NX_TUN_ID\[[0..11\]],output:"ovn-hv3-0"' flood_flows], [0], [dnl
-1
-])
-
-AT_CHECK([grep -c "reg6=0x8000" flood_flows], [0], [dnl
 1
 ])
 

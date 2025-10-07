@@ -105,9 +105,6 @@ struct uuid;
 #define OFTABLE_GET_REMOTE_FDB           87
 #define OFTABLE_LEARN_REMOTE_FDB         88
 
-/* Common defines shared between some controller components. */
-#define CHASSIS_FLOOD_INDEX_START 0x8000
-
 
 struct lflow_ctx_in {
     struct ovsdb_idl_index *sbrec_multicast_group_by_name_datapath;
