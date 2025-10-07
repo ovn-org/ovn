@@ -4058,3 +4058,55 @@ OVN_CLEANUP_IC([az1], [az2], [az3])
 AT_CLEANUP
 ])
 
+AT_BANNER([Learning routes backward compatibility])
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- Backward compatibility of learning routes in the same AZ])
+
+ovn_init_ic_db
+ovn_start az1
+
+# Enable route learning at AZ level
+check ovn-nbctl set nb_global . options:ic-route-learn=true
+# Enable route advertising at AZ level
+check ovn-nbctl set nb_global . options:ic-route-adv=true
+
+# Create a fake availability zone to announce a route from.
+# This route will not have an lr-id in its external_ids, simulating
+# the behavior of the legacy code. The system is expected to
+# learn this route to maintain backward compatibility.
+check_uuid ovn-ic-sbctl create Availability_Zone name=fake_az
+fake_az_uuid=$(fetch_column ic-sb:availability-zone _uuid name="fake_az")
+check_uuid ovn-ic-sbctl create Gateway name=fake_az_gw availability_zone=$fake_az_uuid \
+    encap=@encap -- --id=@encap create encap type=geneve ip="192.168.0.2"
+
+check ovn-ic-nbctl ts-add ts1
+check ovn-ic-nbctl ts-add ts2
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp-lr1-ts1 aa:aa:aa:aa:aa:02 169.254.100.1/24
+check ovn-nbctl lsp-add ts1 lsp-ts1-lr1 -- \
+    lsp-set-addresses lsp-ts1-lr1 router -- \
+    lsp-set-type lsp-ts1-lr1 router -- \
+    lsp-set-options lsp-ts1-lr1 router-port=lrp-lr1-ts1
+
+# Check ISB
+check_row_count ic-sb:Datapath_Binding 1 transit_switch=ts1
+check_row_count ic-sb:Datapath_Binding 1 transit_switch=ts2
+
+check_uuid ovn-ic-sbctl create Route availability_zone=$fake_az_uuid \
+    ip_prefix="172.31.0.0/24" nexthop="169.254.100.2" origin=connected \
+    transit_switch=ts1
+
+AT_CHECK([ovn-ic-sbctl find Route nexthop="169.254.100.2" | grep external_ids], [0], [dnl
+external_ids        : {}
+])
+
+AT_CHECK([ovn-nbctl lr-route-list lr1], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+            172.31.0.0/24             169.254.100.2 dst-ip (learned)
+])
+
+OVN_CLEANUP_IC([az1])
+AT_CLEANUP
+])
