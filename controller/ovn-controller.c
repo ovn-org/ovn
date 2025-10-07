@@ -5598,21 +5598,15 @@ en_garp_rarp_run(struct engine_node *node, void *data_)
                 engine_get_input("SB_mac_binding", node),
                 "lport_ip");
 
-    struct ovsdb_idl_txn *ovnsb_idl_txn = engine_get_context()->ovnsb_idl_txn;
-
-    const struct sbrec_ecmp_nexthop_table *ecmp_nh_table =
-        sbrec_ecmp_nexthop_table_get(ovsdb_idl_txn_get_idl(ovnsb_idl_txn));
-
     struct ed_type_runtime_data *rt_data =
         engine_get_input_data("runtime_data", node);
 
     struct garp_rarp_ctx_in r_ctx_in = {
-        .ovnsb_idl_txn = ovnsb_idl_txn,
+        .ovnsb_idl_txn = engine_get_context()->ovnsb_idl_txn,
         .cfg = cfg,
         .sbrec_port_binding_by_datapath = sbrec_port_binding_by_datapath,
         .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
         .sbrec_mac_binding_by_lport_ip = sbrec_mac_binding_by_lport_ip,
-        .ecmp_nh_table = ecmp_nh_table,
         .chassis = chassis,
         .active_tunnels = &rt_data->active_tunnels,
         .local_datapaths = &rt_data->local_datapaths,
