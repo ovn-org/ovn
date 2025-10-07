@@ -297,6 +297,11 @@ enum {
     STATE_USE_PARALLELIZATION /* parallelization is on */
 };
 
+extern int search_mode;
+enum ovn_lflow_table_search_mode {
+    LFLOW_TABLE_SEARCH_FIELDS,
+    LFLOW_TABLE_SEARCH_SBUUID,
+};
 extern thread_local size_t thread_lflow_counter;
 
 /*

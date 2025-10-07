@@ -47,6 +47,8 @@
 
 VLOG_DEFINE_THIS_MODULE(ovn_northd);
 
+int search_mode = LFLOW_TABLE_SEARCH_FIELDS;
+
 static unixctl_cb_func ovn_northd_pause;
 static unixctl_cb_func ovn_northd_resume;
 static unixctl_cb_func ovn_northd_is_paused;
@@ -1064,12 +1066,14 @@ main(int argc, char *argv[])
                 VLOG_INFO("ovn-northd lock acquired. "
                         "This ovn-northd instance is now active.");
                 state.had_lock = true;
+                search_mode = LFLOW_TABLE_SEARCH_FIELDS;
             } else if (state.had_lock &&
                        !ovsdb_idl_has_lock(ovnsb_idl_loop.idl))
             {
                 VLOG_INFO("ovn-northd lock lost. "
                         "This ovn-northd instance is now on standby.");
                 state.had_lock = false;
+                search_mode = LFLOW_TABLE_SEARCH_FIELDS;
             }
 
             if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {

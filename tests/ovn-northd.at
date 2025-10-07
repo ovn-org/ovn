@@ -920,6 +920,21 @@ Status: standby
 check ovn-nbctl --wait=sb sync
 check_row_count Datapath_Binding 1
 
+ovn-sbctl list logical_flow >> before_change_active
+
+AS_BOX([Pause the main northd and check backup is active])
+check as northd ovn-appctl -t ovn-northd pause
+AT_CHECK([get_northd_status], [0], [true
+Status: paused
+false
+Status: active
+])
+
+check as northd-backup ovn-appctl -t ovn-northd inc-engine/recompute
+ovn-sbctl list logical_flow >> after_change_active
+AT_CHECK([as northd diff before_change_active after_change_active], [0], [dnl
+])
+
 AT_CLEANUP
 ])
 
@@ -946,6 +961,23 @@ check_row_count Datapath_Binding 1
 # Now resume ovn-northd.  Changes should catch up.
 ovn_start_northd
 wait_row_count Datapath_Binding 2
+
+ovn-sbctl list logical_flow >> before_restart
+
+# Kill northd.
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+sleep 5
+# Now resume ovn-northd.  Changes should catch up.
+ovn_start_northd
+
+check as northd ovn-appctl -t ovn-northd inc-engine/recompute
+
+ovn-sbctl list logical_flow >> after_restart
+
+AT_CHECK([as northd diff before_restart after_restart], [0], [dnl
+])
 
 AT_CLEANUP
 ])
@@ -12567,6 +12599,38 @@ check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb clear load_balancer lb3 vips
 check_engine_stats lflow norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+lb_lflow_dp=$(ovn-sbctl --bare --columns logical_datapath list logical_flow $lb_lflow_uuid)
+AT_CHECK([test "$lb_lflow_dp" = ""])
+
+lb_lflow_dpgrp=$(ovn-sbctl --bare --columns logical_dp_group list logical_flow $lb_lflow_uuid)
+AT_CHECK([test "$lb_lflow_dpgrp" != ""])
+
+dpgrp_dps=$(ovn-sbctl --bare --columns datapaths list logical_dp_group $lb_lflow_dpgrp)
+
+echo "dpgrp dps - $dpgrp_dps"
+
+AT_CHECK([echo $dpgrp_dps | grep $sw0_uuid], [1], [ignore])
+AT_CHECK([echo $dpgrp_dps | grep $sw1_uuid], [1], [ignore])
+AT_CHECK([echo $dpgrp_dps | grep $sw2_uuid], [1], [ignore])
+AT_CHECK([echo $dpgrp_dps | grep $sw3_uuid], [0], [ignore])
+AT_CHECK([echo $dpgrp_dps | grep $sw4_uuid], [0], [ignore])
+AT_CHECK([echo $dpgrp_dps | grep $sw5_uuid], [0], [ignore])
+
+# Clear the SB:Logical_Flow.logical_dp_groups column of all the
+# logical flows and then modify the NB:Load_balancer.  ovn-northd
+# should resync the logical flows.
+for l in $(ovn-sbctl --bare --columns _uuid list logical_flow)
+do
+    check ovn-sbctl clear logical_flow $l logical_dp_group
+done
+
+check ovn-nbctl --wait=sb set load_balancer lb2 vips='{"10.0.0.10:80"="10.0.0.3:80,10.0.0.4:80"}'
+check_engine_stats lflow recompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+lb_lflow_uuid=$(fetch_column Logical_flow _uuid match='"ct.new && ip4.dst == 10.0.0.10 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80"')
+AT_CHECK([test "$lb_lflow_uuid" != ""])
 
 lb_lflow_dp=$(ovn-sbctl --bare --columns logical_datapath list logical_flow $lb_lflow_uuid)
 AT_CHECK([test "$lb_lflow_dp" = ""])

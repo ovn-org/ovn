@@ -26,10 +26,16 @@ struct ovn_datapath;
 struct ovsdb_idl_row;
 
 /* lflow map which stores the logical flows. */
-struct lflow_table;
+struct lflow_table {
+    struct hmap entries; /* hmap of lflows. */
+    struct hmap ls_dp_groups; /* hmap of logical switch dp groups. */
+    struct hmap lr_dp_groups; /* hmap of logical router dp groups. */
+    ssize_t max_seen_lflow_size;
+};
+
 struct lflow_table *lflow_table_alloc(void);
 void lflow_table_init(struct lflow_table *);
-void lflow_table_clear(struct lflow_table *);
+void lflow_table_clear(struct lflow_table *, bool);
 void lflow_table_destroy(struct lflow_table *);
 void lflow_table_expand(struct lflow_table *);
 void lflow_table_set_size(struct lflow_table *, size_t);

@@ -39,6 +39,8 @@
 
 VLOG_DEFINE_THIS_MODULE(en_lflow);
 
+extern int search_mode;
+
 static void
 lflow_get_input_data(struct engine_node *node,
                      struct lflow_input *lflow_input)
@@ -122,7 +124,8 @@ en_lflow_run(struct engine_node *node, void *data)
     stopwatch_start(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
 
     struct lflow_data *lflow_data = data;
-    lflow_table_clear(lflow_data->lflow_table);
+    lflow_table_clear(lflow_data->lflow_table,
+        search_mode == LFLOW_TABLE_SEARCH_FIELDS);
     lflow_reset_northd_refs(&lflow_input);
     lflow_ref_clear(lflow_input.igmp_lflow_ref);
 

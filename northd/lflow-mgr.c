@@ -26,6 +26,7 @@
 #include "lflow-mgr.h"
 #include "lib/ovn-parallel-hmap.h"
 #include "lib/ovn-util.h"
+#include "lib/uuidset.h"
 
 VLOG_DEFINE_THIS_MODULE(lflow_mgr);
 
@@ -37,7 +38,8 @@ static void ovn_lflow_init(struct ovn_lflow *, struct ovn_datapath *od,
                            uint16_t priority, char *match,
                            char *actions, char *io_port,
                            char *ctrl_meter, char *stage_hint,
-                           const char *where, const char *flow_desc);
+                           const char *where, const char *flow_desc,
+                           struct uuid sbuuid);
 static struct ovn_lflow *ovn_lflow_find(const struct hmap *lflows,
                                         enum ovn_stage stage,
                                         uint16_t priority, const char *match,
@@ -99,6 +101,8 @@ static bool sync_lflow_to_sb(struct ovn_lflow *,
  * and modifying in both northd.c and lflow-mgr.c. */
 extern int parallelization_state;
 extern thread_local size_t thread_lflow_counter;
+extern int search_mode;
+
 
 struct dp_refcnt;
 static struct dp_refcnt *dp_refcnt_find(struct hmap *dp_refcnts_map,
@@ -147,6 +151,13 @@ static struct ovs_mutex lflow_hash_locks[LFLOW_HASH_LOCK_MASK + 1];
  */
 extern struct ovs_mutex fake_hash_mutex;
 
+
+enum ovn_lflow_state {
+    LFLOW_STALE,
+    LFLOW_TO_SYNC,
+    LFLOW_SYNCED,
+};
+
 /* Represents a logical ovn flow (lflow).
  *
  * A logical flow with match 'M' and actions 'A' - L(M, A) is created
@@ -181,14 +192,7 @@ struct ovn_lflow {
     struct hmap dp_refcnts_map; /* Maintains the number of times this ovn_lflow
                                  * is referenced by a given datapath.
                                  * Contains 'struct dp_refcnt' in the map. */
-};
-
-/* Logical flow table. */
-struct lflow_table {
-    struct hmap entries; /* hmap of lflows. */
-    struct hmap ls_dp_groups; /* hmap of logical switch dp groups. */
-    struct hmap lr_dp_groups; /* hmap of logical router dp groups. */
-    ssize_t max_seen_lflow_size;
+    enum ovn_lflow_state sync_state;
 };
 
 struct lflow_table *
@@ -210,11 +214,15 @@ lflow_table_init(struct lflow_table *lflow_table)
 }
 
 void
-lflow_table_clear(struct lflow_table *lflow_table)
+lflow_table_clear(struct lflow_table *lflow_table, bool destroy_all)
 {
     struct ovn_lflow *lflow;
     HMAP_FOR_EACH_SAFE (lflow, hmap_node, &lflow_table->entries) {
-        ovn_lflow_destroy(lflow_table, lflow);
+        if (!destroy_all) {
+            lflow->sync_state = LFLOW_STALE;
+        } else {
+            ovn_lflow_destroy(lflow_table, lflow);
+        }
     }
 
     ovn_dp_groups_clear(&lflow_table->ls_dp_groups);
@@ -224,7 +232,7 @@ lflow_table_clear(struct lflow_table *lflow_table)
 void
 lflow_table_destroy(struct lflow_table *lflow_table)
 {
-    lflow_table_clear(lflow_table);
+    lflow_table_clear(lflow_table, true);
     hmap_destroy(&lflow_table->entries);
     ovn_dp_groups_destroy(&lflow_table->ls_dp_groups);
     ovn_dp_groups_destroy(&lflow_table->lr_dp_groups);
@@ -257,16 +265,48 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
                        const struct sbrec_logical_flow_table *sb_flow_table,
                        const struct sbrec_logical_dp_group_table *dpgrp_table)
 {
+    struct uuidset sb_uuid_set = UUIDSET_INITIALIZER(&sb_uuid_set);
     struct hmap lflows_temp = HMAP_INITIALIZER(&lflows_temp);
     struct hmap *lflows = &lflow_table->entries;
     struct ovn_lflow *lflow;
+    const struct sbrec_logical_flow *sbflow;
 
     fast_hmap_size_for(&lflows_temp,
                        lflow_table->max_seen_lflow_size);
 
+    HMAP_FOR_EACH_SAFE (lflow, hmap_node, lflows) {
+        if (search_mode != LFLOW_TABLE_SEARCH_SBUUID) {
+            break;
+        }
+
+        if (lflow->sync_state == LFLOW_STALE) {
+            ovn_lflow_destroy(lflow_table, lflow);
+            continue;
+        }
+        sbflow = NULL;
+        if (!uuid_is_zero(&lflow->sb_uuid)) {
+            sbflow = sbrec_logical_flow_table_get_for_uuid(sb_flow_table,
+                                                           &lflow->sb_uuid);
+        }
+        sync_lflow_to_sb(lflow, ovnsb_txn, lflow_table, ls_datapaths,
+                         lr_datapaths, ovn_internal_version_changed,
+                         sbflow, dpgrp_table);
+        uuidset_insert(&sb_uuid_set, &lflow->sb_uuid);
+        hmap_remove(lflows, &lflow->hmap_node);
+        hmap_insert(&lflows_temp, &lflow->hmap_node,
+                    hmap_node_hash(&lflow->hmap_node));
+    }
     /* Push changes to the Logical_Flow table to database. */
-    const struct sbrec_logical_flow *sbflow;
     SBREC_LOGICAL_FLOW_TABLE_FOR_EACH_SAFE (sbflow, sb_flow_table) {
+        if (search_mode == LFLOW_TABLE_SEARCH_SBUUID) {
+            struct uuidset_node *node = uuidset_find(&sb_uuid_set,
+                                                     &sbflow->header_.uuid);
+            if (!node) {
+                sbrec_logical_flow_delete(sbflow);
+                continue;
+            }
+            uuidset_delete(&sb_uuid_set, node);
+        }
         struct sbrec_logical_dp_group *dp_group = sbflow->logical_dp_group;
         struct ovn_datapath *logical_datapath_od = NULL;
         size_t i;
@@ -298,6 +338,10 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
             continue;
         }
 
+        if (search_mode != LFLOW_TABLE_SEARCH_FIELDS) {
+            continue;
+        }
+
         enum ovn_pipeline pipeline
             = !strcmp(sbflow->pipeline, "ingress") ? P_IN : P_OUT;
 
@@ -321,6 +365,9 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
     }
 
     HMAP_FOR_EACH_SAFE (lflow, hmap_node, lflows) {
+        if (search_mode != LFLOW_TABLE_SEARCH_FIELDS) {
+            break;
+        }
         sync_lflow_to_sb(lflow, ovnsb_txn, lflow_table, ls_datapaths,
                          lr_datapaths, ovn_internal_version_changed,
                          NULL, dpgrp_table);
@@ -329,6 +376,8 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
         hmap_insert(&lflows_temp, &lflow->hmap_node,
                     hmap_node_hash(&lflow->hmap_node));
     }
+    search_mode = LFLOW_TABLE_SEARCH_SBUUID;
+    uuidset_destroy(&sb_uuid_set);
     hmap_swap(lflows, &lflows_temp);
     hmap_destroy(&lflows_temp);
 }
@@ -847,7 +896,7 @@ ovn_lflow_init(struct ovn_lflow *lflow, struct ovn_datapath *od,
                size_t dp_bitmap_len, enum ovn_stage stage, uint16_t priority,
                char *match, char *actions, char *io_port, char *ctrl_meter,
                char *stage_hint, const char *where,
-               const char *flow_desc)
+               const char *flow_desc, struct uuid sbuuid)
 {
     lflow->dpg_bitmap = bitmap_allocate(dp_bitmap_len);
     lflow->od = od;
@@ -861,7 +910,8 @@ ovn_lflow_init(struct ovn_lflow *lflow, struct ovn_datapath *od,
     lflow->flow_desc = flow_desc;
     lflow->dpg = NULL;
     lflow->where = where;
-    lflow->sb_uuid = UUID_ZERO;
+    lflow->sb_uuid = sbuuid;
+    lflow->sync_state = LFLOW_TO_SYNC;
     hmap_init(&lflow->dp_refcnts_map);
     ovs_list_init(&lflow->referenced_by);
 }
@@ -957,13 +1007,18 @@ do_ovn_lflow_add(struct lflow_table *lflow_table, size_t dp_bitmap_len,
 {
     struct ovn_lflow *old_lflow;
     struct ovn_lflow *lflow;
+    struct uuid sbuuid = UUID_ZERO;
 
     ovs_assert(dp_bitmap_len);
 
     old_lflow = ovn_lflow_find(&lflow_table->entries, stage,
                                priority, match, actions, ctrl_meter, hash);
     if (old_lflow) {
-        return old_lflow;
+        if (old_lflow->sync_state != LFLOW_STALE) {
+            return old_lflow;
+        }
+        sbuuid = old_lflow->sb_uuid;
+        ovn_lflow_destroy(lflow_table, old_lflow);
     }
 
     lflow = xzalloc(sizeof *lflow);
@@ -975,14 +1030,16 @@ do_ovn_lflow_add(struct lflow_table *lflow_table, size_t dp_bitmap_len,
                    io_port ? xstrdup(io_port) : NULL,
                    nullable_xstrdup(ctrl_meter),
                    ovn_lflow_hint(stage_hint), where,
-                   flow_desc);
+                   flow_desc, sbuuid);
 
     if (parallelization_state != STATE_USE_PARALLELIZATION) {
         hmap_insert(&lflow_table->entries, &lflow->hmap_node, hash);
     } else {
         hmap_insert_fast(&lflow_table->entries, &lflow->hmap_node,
                          hash);
-        thread_lflow_counter++;
+        if (uuid_is_zero(&lflow->sb_uuid)) {
+            thread_lflow_counter++;
+        }
     }
 
     return lflow;
@@ -1150,6 +1207,7 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
                             "referencing the dp group ["UUID_FMT"]",
                             UUID_ARGS(&sbflow->header_.uuid),
                             UUID_ARGS(&lflow->dpg->dpg_uuid));
+                lflow->sync_state = LFLOW_STALE;
                 return false;
             }
         } else {
@@ -1169,6 +1227,7 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
         ovn_dp_group_release(dp_groups, pre_sync_dpg);
     }
 
+    lflow->sync_state = LFLOW_SYNCED;
     return true;
 }
 
