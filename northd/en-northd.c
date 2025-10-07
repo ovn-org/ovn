@@ -76,8 +76,6 @@ northd_get_input_data(struct engine_node *node,
         EN_OVSDB_GET(engine_get_input("NB_chassis_template_var", node));
     input_data->nbrec_mirror_table =
         EN_OVSDB_GET(engine_get_input("NB_mirror", node));
-    input_data->nbrec_mirror_rule_table =
-        EN_OVSDB_GET(engine_get_input("NB_mirror_rule", node));
     input_data->nbrec_port_group_table =
         EN_OVSDB_GET(engine_get_input("NB_port_group", node));
     input_data->nbrec_network_function_table =
