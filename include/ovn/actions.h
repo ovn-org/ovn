@@ -804,7 +804,7 @@ OVNACTS
     /* activation_strategy() */                                               \
     ACTION_OPCODE(ACTIVATION_STRATEGY)                                        \
                                                                               \
-    /* split buffer action. */                                                \
+    /*  DEPRECATED: split buffer action. */                                   \
     ACTION_OPCODE(SPLIT_BUF_ACTION)                                           \
                                                                               \
     /* "dhcp_relay_req_chk(relay_ip, server_ip)".

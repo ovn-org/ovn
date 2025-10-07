@@ -3793,10 +3793,16 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         ovs_mutex_unlock(&pinctrl_mutex);
         break;
 
-    case ACTION_OPCODE_SPLIT_BUF_ACTION:
+    /* Deprecated actions. */
+    case ACTION_OPCODE_SPLIT_BUF_ACTION: {
+        char *opc_str = ovnact_op_to_string(ntohl(ah->opcode));
+        VLOG_WARN_RL(&rl, "pinctrl received deprecated packet-in | opcode=%s",
+                     opc_str);
+        free(opc_str);
         pinctrl_split_buf_action_handler(swconn, &packet, &pin.flow_metadata,
                                          &userdata);
         break;
+    }
 
     default:
         VLOG_WARN_RL(&rl, "unrecognized packet-in opcode %"PRIu32,

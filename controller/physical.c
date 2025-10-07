@@ -222,44 +222,11 @@ match_set_chassis_flood_outport(struct match *match,
 }
 
 static void
-match_set_chassis_flood_remote(struct match *match, uint32_t index)
-{
-    match_init_catchall(match);
-    match_set_reg(match, MFF_REG6 - MFF_REG0, index);
-    /* Match if the packet wasn't already received from tunnel.
-     * This prevents from looping it back to the tunnel again. */
-    match_set_reg_masked(match, MFF_LOG_FLAGS - MFF_REG0, 0,
-                         MLF_RX_FROM_TUNNEL);
-}
-
-
-static void
 put_stack(enum mf_field_id field, struct ofpact_stack *stack)
 {
     stack->subfield.field = mf_from_id(field);
     stack->subfield.ofs = 0;
     stack->subfield.n_bits = stack->subfield.field->n_bits;
-}
-
-/* Split the ofpacts buffer to prevent overflow of the
- * MAX_ACTIONS_BUFSIZE netlink buffer size supported by the kernel.
- * In order to avoid all the action buffers to be squashed together by
- * ovs, add a controller action for each configured openflow.
- */
-static void
-put_split_buf_function(uint32_t index, uint32_t outport, uint8_t stage,
-                       struct ofpbuf *ofpacts)
-{
-    ovs_be32 values[2] = {
-        htonl(index),
-        htonl(outport)
-    };
-    size_t oc_offset =
-           encode_start_controller_op(ACTION_OPCODE_SPLIT_BUF_ACTION, false,
-                                      NX_CTLR_NO_METER, ofpacts);
-    ofpbuf_put(ofpacts, values, sizeof values);
-    ofpbuf_put(ofpacts, &stage, sizeof stage);
-    encode_finish_controller_op(oc_offset, ofpacts);
 }
 
 static const struct sbrec_port_binding *
@@ -2288,11 +2255,7 @@ local_set_ct_zone_and_output_pb(int tunnel_key, int64_t zone_id,
     put_resubmit(OFTABLE_CHECK_LOOPBACK, ofpacts);
 }
 
-#define MC_OFPACTS_MAX_MSG_SIZE     8192
-#define MC_BUF_START_ID             0x9000
-
-struct mc_buf_split_ctx {
-    uint8_t index;
+struct mc_flow_ctx {
     uint8_t stage;
     uint16_t prio;
     uint32_t flags;
@@ -2300,18 +2263,17 @@ struct mc_buf_split_ctx {
     struct ofpbuf ofpacts;
 };
 
-enum mc_buf_split_type {
-    MC_BUF_SPLIT_LOCAL,
-    MC_BUF_SPLIT_REMOTE,
-    MC_BUF_SPLIT_REMOTE_RAMP,
-    MC_BUF_SPLIT_MAX,
+enum mc_flows_type {
+    MC_FLOWS_LOCAL,
+    MC_FLOWS_REMOTE,
+    MC_FLOWS_REMOTE_RAMP,
+    MC_FLOWS_MAX,
 };
 
 static void
 mc_ofctrl_add_flow(const struct sbrec_multicast_group *mc,
-                   struct mc_buf_split_ctx *ctx, bool split,
+                   struct mc_flow_ctx *ctx,
                    struct ovn_desired_flow_table *flow_table)
-
 {
     struct match match = MATCH_CATCHALL_INITIALIZER;
 
@@ -2319,24 +2281,10 @@ mc_ofctrl_add_flow(const struct sbrec_multicast_group *mc,
                                    mc->tunnel_key);
     match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0,
                          ctx->flags, ctx->flags_mask);
-
-    uint16_t prio = ctx->prio;
-    if (ctx->index) {
-        match_set_reg(&match, MFF_REG6 - MFF_REG0,
-                      MC_BUF_START_ID + ctx->index);
-        prio += 10;
-    }
-
-    if (split) {
-        put_split_buf_function(MC_BUF_START_ID + ctx->index + 1,
-                               mc->tunnel_key, ctx->stage, &ctx->ofpacts);
-    }
-
-    ofctrl_add_flow(flow_table, ctx->stage, prio, mc->header_.uuid.parts[0],
-                    &match, &ctx->ofpacts, &mc->header_.uuid);
+    ofctrl_add_flow(flow_table, ctx->stage, ctx->prio,
+                    mc->header_.uuid.parts[0], &match, &ctx->ofpacts,
+                    &mc->header_.uuid);
     ofpbuf_clear(&ctx->ofpacts);
-    /* reset MFF_REG6. */
-    put_load(0, MFF_REG6, 0, 32, &ctx->ofpacts);
 }
 
 static void
@@ -2375,7 +2323,7 @@ consider_mc_group(const struct physical_ctx *ctx,
      */
     bool has_vtep = has_vtep_port(ctx->local_datapaths,
                                   mc->datapath->tunnel_key);
-    struct mc_buf_split_ctx mc_split[MC_BUF_SPLIT_MAX] = {
+    struct mc_flow_ctx mc_flows[MC_FLOWS_MAX] = {
         {
             .stage = OFTABLE_LOCAL_OUTPUT,
             .prio = 100,
@@ -2392,15 +2340,14 @@ consider_mc_group(const struct physical_ctx *ctx,
             .flags_mask = MLF_RCV_FROM_RAMP | MLF_ALLOW_LOOPBACK,
         },
     };
-    for (size_t i = 0; i < MC_BUF_SPLIT_MAX; i++) {
-        struct mc_buf_split_ctx *split_ctx = &mc_split[i];
-        ofpbuf_init(&split_ctx->ofpacts, 0);
-        put_load(0, MFF_REG6, 0, 32, &split_ctx->ofpacts);
+    for (size_t i = 0; i < MC_FLOWS_MAX; i++) {
+        struct mc_flow_ctx *flow_ctx = &mc_flows[i];
+        ofpbuf_init(&flow_ctx->ofpacts, 0);
     }
 
-    struct mc_buf_split_ctx *local_ctx = &mc_split[MC_BUF_SPLIT_LOCAL];
-    struct mc_buf_split_ctx *remote_ctx = &mc_split[MC_BUF_SPLIT_REMOTE];
-    struct mc_buf_split_ctx *ramp_ctx = &mc_split[MC_BUF_SPLIT_REMOTE_RAMP];
+    struct mc_flow_ctx *local_ctx = &mc_flows[MC_FLOWS_LOCAL];
+    struct mc_flow_ctx *remote_ctx = &mc_flows[MC_FLOWS_REMOTE];
+    struct mc_flow_ctx *ramp_ctx = &mc_flows[MC_FLOWS_REMOTE_RAMP];
 
     for (size_t i = 0; i < mc->n_ports; i++) {
         struct sbrec_port_binding *port = mc->ports[i];
@@ -2484,17 +2431,6 @@ consider_mc_group(const struct physical_ctx *ctx,
                 }
             }
         }
-
-        for (size_t n = 0; n < MC_BUF_SPLIT_MAX; n++) {
-            struct mc_buf_split_ctx *split_ctx = &mc_split[n];
-            if (!has_vtep && n == MC_BUF_SPLIT_REMOTE_RAMP) {
-                continue;
-            }
-            if (split_ctx->ofpacts.size >= MC_OFPACTS_MAX_MSG_SIZE) {
-                mc_ofctrl_add_flow(mc, split_ctx, true, flow_table);
-                split_ctx->index++;
-            }
-        }
     }
 
     bool local_lports = local_ctx->ofpacts.size > 0;
@@ -2503,7 +2439,7 @@ consider_mc_group(const struct physical_ctx *ctx,
 
     if (local_lports) {
         put_load(mc->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &local_ctx->ofpacts);
-        mc_ofctrl_add_flow(mc, local_ctx, false, flow_table);
+        mc_ofctrl_add_flow(mc, local_ctx, flow_table);
     }
 
     if (remote_ports) {
@@ -2519,23 +2455,21 @@ consider_mc_group(const struct physical_ctx *ctx,
     remote_ports = remote_ctx->ofpacts.size > 0;
     if (remote_ports) {
         put_resubmit(OFTABLE_REMOTE_VTEP_OUTPUT, &remote_ctx->ofpacts);
-        mc_ofctrl_add_flow(mc, remote_ctx, false, flow_table);
+        mc_ofctrl_add_flow(mc, remote_ctx, flow_table);
     }
 
     if (ramp_ports && has_vtep) {
         put_load(mc->tunnel_key, MFF_LOG_OUTPORT, 0, 32, &ramp_ctx->ofpacts);
         put_resubmit(OFTABLE_REMOTE_VTEP_OUTPUT, &ramp_ctx->ofpacts);
-        mc_ofctrl_add_flow(mc, ramp_ctx, false, flow_table);
+        mc_ofctrl_add_flow(mc, ramp_ctx, flow_table);
     }
 
-    for (size_t i = 0; i < MC_BUF_SPLIT_MAX; i++) {
-        ofpbuf_uninit(&mc_split[i].ofpacts);
+    for (size_t i = 0; i < MC_FLOWS_MAX; i++) {
+        ofpbuf_uninit(&mc_flows[i].ofpacts);
     }
     sset_destroy(&remote_chassis);
     sset_destroy(&vtep_chassis);
 }
-
-#define CHASSIS_FLOOD_MAX_MSG_SIZE MC_OFPACTS_MAX_MSG_SIZE
 
 static void
 physical_eval_remote_chassis_flows(const struct physical_ctx *ctx,
@@ -2543,7 +2477,6 @@ physical_eval_remote_chassis_flows(const struct physical_ctx *ctx,
                                    struct ovn_desired_flow_table *flow_table)
 {
     struct match match = MATCH_CATCHALL_INITIALIZER;
-    uint32_t index = CHASSIS_FLOOD_INDEX_START;
     struct chassis_tunnel *prev = NULL;
 
     uint8_t actions_stub[256];
@@ -2579,18 +2512,6 @@ physical_eval_remote_chassis_flows(const struct physical_ctx *ctx,
 
         ofpact_put_OUTPUT(egress_ofpacts)->port = tun->ofport;
         prev = tun;
-
-        if (egress_ofpacts->size > CHASSIS_FLOOD_MAX_MSG_SIZE) {
-            match_set_chassis_flood_remote(&match, index++);
-            put_split_buf_function(index, 0, OFTABLE_FLOOD_REMOTE_CHASSIS,
-                                   egress_ofpacts);
-
-            ofctrl_add_flow(flow_table, OFTABLE_FLOOD_REMOTE_CHASSIS, 100, 0,
-                            &match, egress_ofpacts, hc_uuid);
-
-            ofpbuf_clear(egress_ofpacts);
-            prev = NULL;
-        }
 
 
         ofpbuf_clear(&ingress_ofpacts);
@@ -2632,8 +2553,11 @@ physical_eval_remote_chassis_flows(const struct physical_ctx *ctx,
     }
 
     if (egress_ofpacts->size > 0) {
-        match_set_chassis_flood_remote(&match, index++);
-
+        match_init_catchall(&match);
+        /* Match if the packet wasn't already received from tunnel.
+         * This prevents from looping it back to the tunnel again. */
+        match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0, 0,
+                             MLF_RX_FROM_TUNNEL);
         ofctrl_add_flow(flow_table, OFTABLE_FLOOD_REMOTE_CHASSIS, 100, 0,
                         &match, egress_ofpacts, hc_uuid);
     }

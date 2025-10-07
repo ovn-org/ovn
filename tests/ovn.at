@@ -2315,7 +2315,7 @@ ct_proto();
     Syntax error at `ct_proto' expecting action.
 
 flood_remote;
-    encodes as set_field:0x8000->reg6,resubmit(,OFTABLE_FLOOD_REMOTE_CHASSIS)
+    encodes as resubmit(,OFTABLE_FLOOD_REMOTE_CHASSIS)
 
 flood_remote();
     Syntax error at `(' expecting `;'.
@@ -39563,65 +39563,6 @@ check_zones_in_ovsdb "$zone_list" sw0
 AT_CHECK([grep -c "NXT_CT_FLUSH_ZONE" hv1/ovs-vswitchd.log], [0], [dnl
 8
 ])
-
-OVN_CLEANUP([hv1])
-AT_CLEANUP
-])
-
-OVN_FOR_EACH_NORTHD([
-AT_SETUP([multicast group buffer split])
-AT_KEYWORDS([ovn-mc-split])
-AT_SKIP_IF([test $HAVE_SCAPY = no])
-ovn_start
-
-net_add n
-sim_add hv1
-
-as hv1
-check ovs-vsctl add-br br-phys
-ovn_attach n br-phys 192.168.0.1
-check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
-
-for i in $(seq 1 320); do
-    OVS_VSCTL( add-port br-int hv1-vif$i -- \
-        set interface hv1-vif$i external-ids:iface-id=sw0-port$i \
-        options:tx_pcap=hv1/vif$i-tx.pcap \
-        options:rxq_pcap=hv1/vif$i-rx.pcap)
-done
-RUN_OVS_VSCTL
-
-check ovn-nbctl ls-add sw0
-
-check ovn-nbctl lsp-add sw0 sw0-port1
-check ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:01 10.0.0.2"
-for i in $(seq 2 320); do
-    OVN_NBCTL(lsp-add sw0 sw0-port$i -- lsp-set-addresses sw0-port$i "unknown")
-done
-RUN_OVN_NBCTL
-
-check ovn-nbctl --wait=hv sync
-wait_for_ports_up
-OVN_POPULATE_ARP
-
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT | grep -c controller], [0],[dnl
-9
-])
-
-arp_req=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='50:54:00:00:00:01')/ARP(pdst='10.0.0.254', psrc='10.0.0.1')")
-echo $arp_req > expected
-as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $arp_req
-
-OVS_WAIT_UNTIL([test $($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap | wc -l) -ge 1])
-OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected])
-
-OVS_WAIT_UNTIL([test $($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif100-tx.pcap | wc -l) -ge 1])
-OVN_CHECK_PACKETS([hv1/vif100-tx.pcap], [expected])
-
-OVS_WAIT_UNTIL([test $($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif150-tx.pcap | wc -l) -ge 1])
-OVN_CHECK_PACKETS([hv1/vif150-tx.pcap], [expected])
-
-OVS_WAIT_UNTIL([test $($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif300-tx.pcap | wc -l) -ge 1])
-OVN_CHECK_PACKETS([hv1/vif150-tx.pcap], [expected])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
