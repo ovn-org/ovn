@@ -8451,13 +8451,6 @@ pinctrl_handle_svc_check(struct rconn *swconn, const struct flow *ip_flow,
             }
         }
 
-        if (!orig_uh) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-            VLOG_WARN_RL(&rl, "UDP header not found in the original "
-                         "IP datagram");
-            return;
-        }
-
         uint32_t hash =
             hash_bytes(&ip_addr, sizeof ip_addr,
                        hash_3words(dp_key, port_key, ntohs(orig_uh->udp_dst)));
