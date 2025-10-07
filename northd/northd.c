@@ -3135,7 +3135,7 @@ ovn_nf_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
             return;
         }
 
-        if (op->sb && op->sb->chassis) {
+        if (op->sb->chassis) {
             if (chassis_name == NULL) {
                 chassis_name = op->sb->chassis->name;
             } else if (strcmp(chassis_name, op->sb->chassis->name)) {
