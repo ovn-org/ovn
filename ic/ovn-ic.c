@@ -2710,7 +2710,7 @@ update_sequence_numbers(struct ic_context *ctx,
     if ((ic_nb->nb_ic_cfg != ic_sb->nb_ic_cfg) &&
                           (ic_nb->nb_ic_cfg != ctx->runned_az->nb_ic_cfg)) {
         /* Deal with potential overflows. */
-        if (ctx->runned_az->nb_ic_cfg == LLONG_MAX) {
+        if (ctx->runned_az->nb_ic_cfg == INT64_MAX) {
             icsbrec_availability_zone_set_nb_ic_cfg(ctx->runned_az, 0);
         }
         ic_sb_loop->next_cfg = ic_nb->nb_ic_cfg;

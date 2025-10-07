@@ -95,7 +95,7 @@ nbctl_pre_execute(struct ovsdb_idl *idl, struct ovsdb_idl_txn *txn,
     }
 
     /* Deal with potential overflows. */
-    if (nb->nb_cfg == LLONG_MAX) {
+    if (nb->nb_cfg == INT64_MAX) {
         nbrec_nb_global_set_nb_cfg(nb, 0);
     }
 

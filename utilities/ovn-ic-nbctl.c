@@ -830,7 +830,7 @@ do_ic_nbctl(const char *args, struct ctl_command *commands, size_t n_commands,
     if (wait_type != NBCTL_WAIT_NONE) {
 
         /* Deal with potential overflows. */
-        if (inb->nb_ic_cfg == LLONG_MAX) {
+        if (inb->nb_ic_cfg == INT64_MAX) {
             icnbrec_ic_nb_global_set_nb_ic_cfg(inb, 0);
         }
         ovsdb_idl_txn_increment(txn, &inb->header_,
