@@ -36,7 +36,6 @@ struct northd_input {
     const struct nbrec_chassis_template_var_table
         *nbrec_chassis_template_var_table;
     const struct nbrec_mirror_table *nbrec_mirror_table;
-    const struct nbrec_mirror_rule_table *nbrec_mirror_rule_table;
     const struct nbrec_port_group_table *nbrec_port_group_table;
 
     /* Southbound table references */
