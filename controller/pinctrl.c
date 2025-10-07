@@ -8010,14 +8010,10 @@ svc_monitor_send_icmp_health_check__(struct rconn *swconn,
     struct dp_packet packet;
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
 
-    struct eth_addr eth_src;
-    eth_addr_from_string(svc_mon->sb_svc_mon->src_mac, &eth_src);
-
     if (!svc_mon->is_ip6) {
         /* IPv4 ICMP health check */
-        ovs_be32 ip4_src;
-        ip_parse(svc_mon->sb_svc_mon->src_ip, &ip4_src);
-        pinctrl_compose_ipv4(&packet, eth_src, svc_mon->ea, ip4_src,
+        pinctrl_compose_ipv4(&packet, svc_mon->src_mac, svc_mon->ea,
+                             in6_addr_get_mapped_ipv4(&svc_mon->src_ip),
                              in6_addr_get_mapped_ipv4(&svc_mon->ip),
                              IPPROTO_ICMP, 255, ICMP_HEADER_LEN);
 
@@ -8032,7 +8028,7 @@ svc_monitor_send_icmp_health_check__(struct rconn *swconn,
         ih->icmp_csum = csum(ih, sizeof *ih);
     } else {
         /* IPv6 ICMP health check */
-        pinctrl_compose_ipv6(&packet, eth_src, svc_mon->ea,
+        pinctrl_compose_ipv6(&packet, svc_mon->src_mac, svc_mon->ea,
                              &svc_mon->src_ip, &svc_mon->ip,
                              IPPROTO_ICMPV6, 255, ICMP6_DATA_HEADER_LEN);
 
