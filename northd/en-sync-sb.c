@@ -409,9 +409,8 @@ enum engine_input_handler_result
 sync_to_sb_pb_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     struct northd_data *nd = engine_get_input_data("northd", node);
-    if (!northd_has_tracked_data(&nd->trk_data) ||
-            northd_has_lbs_in_tracked_data(&nd->trk_data)) {
-        /* Return false if no tracking data or if lbs changed. */
+    if (!northd_has_tracked_data(&nd->trk_data)) {
+        /* Return false if no tracking data */
         return EN_UNHANDLED;
     }
 
