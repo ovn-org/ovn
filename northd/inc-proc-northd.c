@@ -431,7 +431,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
 
     engine_add_input(&en_sync_to_sb_pb, &en_northd,
                      sync_to_sb_pb_northd_handler);
-    engine_add_input(&en_sync_to_sb_pb, &en_lr_stateful, NULL);
+    engine_add_input(&en_sync_to_sb_pb, &en_lr_stateful,
+                     sync_to_sb_pb_lr_stateful_handler);
 
     /* en_sync_to_sb engine node syncs the SB database tables from
      * the NB database tables.

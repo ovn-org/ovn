@@ -991,6 +991,10 @@ void sync_pbs_for_northd_changed_ovn_ports(
     struct tracked_ovn_ports *,
     const struct lr_stateful_table *);
 
+void sync_pbs_for_lr_stateful_changes(
+    const struct ovn_datapath *od,
+    const struct lr_stateful_table *lr_stateful);
+
 static inline bool
 northd_has_tracked_data(struct northd_tracked_data *trk_nd_changes) {
     return trk_nd_changes->type != NORTHD_TRACKED_NONE;

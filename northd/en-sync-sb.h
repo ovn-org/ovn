@@ -31,5 +31,7 @@ enum engine_node_state en_sync_to_sb_pb_run(struct engine_node *, void *data);
 void en_sync_to_sb_pb_cleanup(void *data);
 enum engine_input_handler_result
 sync_to_sb_pb_northd_handler(struct engine_node *, void *data OVS_UNUSED);
+enum engine_input_handler_result
+sync_to_sb_pb_lr_stateful_handler(struct engine_node *, void *data OVS_UNUSED);
 
 #endif /* end of EN_SYNC_SB_H */

@@ -422,6 +422,28 @@ sync_to_sb_pb_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
     return EN_HANDLED_UPDATED;
 }
 
+enum engine_input_handler_result
+sync_to_sb_pb_lr_stateful_handler(struct engine_node *node,
+                                  void *data OVS_UNUSED)
+{
+    struct ed_type_lr_stateful *lr_stateful_data =
+        engine_get_input_data("lr_stateful", node);
+    struct northd_data *northd_data = engine_get_input_data("northd", node);
+
+    const struct ovn_datapaths *lr_datapaths = &northd_data->lr_datapaths;
+    struct hmapx_node *hmapx_node;
+    HMAPX_FOR_EACH (hmapx_node, &lr_stateful_data->trk_data.crupdated) {
+        const struct lr_stateful_record *lr_stateful_rec =  hmapx_node->data;
+        const struct ovn_datapath *od =
+            ovn_datapaths_find_by_index(lr_datapaths,
+                                        lr_stateful_rec->lr_index);
+        sync_pbs_for_lr_stateful_changes(od,
+                                         &lr_stateful_data->table);
+    }
+
+    return EN_HANDLED_UPDATED;
+}
+
 /* static functions. */
 static void
 sync_addr_set(struct ovsdb_idl_txn *ovnsb_txn, const char *name,

@@ -3941,6 +3941,24 @@ sync_pbs_for_northd_changed_ovn_ports(
     }
 }
 
+void
+sync_pbs_for_lr_stateful_changes(const struct ovn_datapath *od,
+                                 const struct lr_stateful_table *lr_stateful)
+{
+    struct ovn_port *op;
+    HMAP_FOR_EACH (op, dp_node, &od->ports) {
+        sync_pb_for_lrp(op, lr_stateful);
+
+        if (op->peer && op->peer->nbsp) {
+            sync_pb_for_lsp(op->peer, lr_stateful);
+        }
+
+        if (op->cr_port) {
+            sync_pb_for_lrp(op->cr_port, lr_stateful);
+        }
+    }
+}
+
 static bool
 ovn_port_add_tnlid(struct ovn_port *op, uint32_t tunnel_key)
 {

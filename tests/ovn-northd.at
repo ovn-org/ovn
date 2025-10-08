@@ -12609,7 +12609,7 @@ check ovn-nbctl --wait=sb lr-add lr0
 check_engine_stats northd norecompute compute
 check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
-check_engine_stats sync_to_sb_pb recompute nocompute
+check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
 check_engine_stats lflow norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -12619,7 +12619,7 @@ check ovn-nbctl --wait=sb lr-del lr0
 check_engine_stats northd norecompute compute
 check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
-check_engine_stats sync_to_sb_pb recompute nocompute
+check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
 check_engine_stats lflow norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -12687,7 +12687,7 @@ check ovn-nbctl --wait=sb lr-nat-add lr0 dnat_and_snat  172.168.0.110 10.0.0.4
 check_engine_stats northd norecompute compute
 check_engine_stats lr_nat norecompute compute
 check_engine_stats lflow norecompute compute
-check_engine_stats sync_to_sb_pb recompute nocompute
+check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
@@ -12697,7 +12697,7 @@ check ovn-nbctl --wait=sb set NAT . options:foo=bar
 check_engine_stats northd norecompute compute
 check_engine_stats lr_nat norecompute compute
 check_engine_stats lflow norecompute compute
-check_engine_stats sync_to_sb_pb recompute nocompute
+check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
@@ -12708,7 +12708,7 @@ check_engine_stats northd norecompute compute
 check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
 check_engine_stats lflow norecompute compute
-check_engine_stats sync_to_sb_pb recompute nocompute
+check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
@@ -12719,7 +12719,7 @@ check_engine_stats northd norecompute compute
 check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
 check_engine_stats lflow norecompute compute
-check_engine_stats sync_to_sb_pb recompute nocompute
+check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
@@ -12730,7 +12730,7 @@ check_engine_stats northd norecompute compute
 check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
 check_engine_stats lflow norecompute compute
-check_engine_stats sync_to_sb_pb recompute nocompute
+check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
@@ -12741,7 +12741,7 @@ check_engine_stats northd norecompute compute
 check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
 check_engine_stats lflow norecompute compute
-check_engine_stats sync_to_sb_pb recompute nocompute
+check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
@@ -12753,7 +12753,7 @@ check_engine_stats northd norecompute compute
 check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
 check_engine_stats lflow norecompute compute
-check_engine_stats sync_to_sb_pb recompute nocompute
+check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
@@ -12770,7 +12770,7 @@ check ovn-nbctl --wait=sb lr-nat-add lr0 dnat_and_snat 172.168.0.140 10.0.0.20
 check_engine_stats northd norecompute compute
 check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
-check_engine_stats sync_to_sb_pb recompute nocompute
+check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
 check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -12782,7 +12782,7 @@ check ovn-nbctl --wait=sb lr-nat-add lr0 dnat_and_snat 172.168.0.150 10.0.0.41
 check_engine_stats northd norecompute compute
 check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
-check_engine_stats sync_to_sb_pb recompute nocompute
+check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
 check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -12794,7 +12794,7 @@ check ovn-nbctl --wait=sb lr-nat-del lr0 dnat_and_snat 172.168.0.150
 check_engine_stats northd norecompute compute
 check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
-check_engine_stats sync_to_sb_pb recompute nocompute
+check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
 check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -12806,7 +12806,7 @@ check ovn-nbctl --wait=sb lr-nat-del lr0 dnat_and_snat 172.168.0.140
 check_engine_stats northd norecompute compute
 check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
-check_engine_stats sync_to_sb_pb recompute nocompute
+check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
 check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -12818,7 +12818,7 @@ check_engine_stats northd norecompute compute
 check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
 check_engine_stats lflow norecompute compute
-check_engine_stats sync_to_sb_pb recompute nocompute
+check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
