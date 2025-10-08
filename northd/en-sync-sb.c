@@ -417,11 +417,8 @@ sync_to_sb_pb_northd_handler(struct engine_node *node, void *data OVS_UNUSED)
     struct ed_type_lr_stateful *lr_stateful_data =
         engine_get_input_data("lr_stateful", node);
 
-    if (!sync_pbs_for_northd_changed_ovn_ports(&nd->trk_data.trk_lsps,
-                                               &lr_stateful_data->table)) {
-        return EN_UNHANDLED;
-    }
-
+    sync_pbs_for_northd_changed_ovn_ports(&nd->trk_data.trk_lsps,
+                                          &lr_stateful_data->table);
     return EN_HANDLED_UPDATED;
 }
 

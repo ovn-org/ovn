@@ -987,7 +987,7 @@ struct lr_stateful_table;
 void sync_pbs(struct ovsdb_idl_txn *, struct hmap *ls_ports,
               struct hmap *lr_ports,
               const struct lr_stateful_table *);
-bool sync_pbs_for_northd_changed_ovn_ports(
+void sync_pbs_for_northd_changed_ovn_ports(
     struct tracked_ovn_ports *,
     const struct lr_stateful_table *);
 

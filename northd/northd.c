@@ -3925,7 +3925,7 @@ sync_pbs(struct ovsdb_idl_txn *ovnsb_idl_txn, struct hmap *ls_ports,
 
 /* Sync the SB Port bindings for the added and updated logical switch ports
  * of the tracked northd engine data. */
-bool
+void
 sync_pbs_for_northd_changed_ovn_ports(
     struct tracked_ovn_ports *trk_ovn_ports,
     const struct lr_stateful_table *lr_stateful_table)
@@ -3939,8 +3939,6 @@ sync_pbs_for_northd_changed_ovn_ports(
     HMAPX_FOR_EACH (hmapx_node, &trk_ovn_ports->updated) {
         sync_pb_for_lsp(hmapx_node->data, lr_stateful_table);
     }
-
-    return true;
 }
 
 static bool
