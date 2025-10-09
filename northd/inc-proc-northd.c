@@ -153,22 +153,22 @@ enum sb_engine_node {
 
 /* Define engine nodes for other nodes. They should be defined as static to
  * avoid sparse errors. */
-static ENGINE_NODE(northd, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(sync_from_sb);
+static ENGINE_NODE(northd, CLEAR_TRACKED_DATA, SB_WRITE);
+static ENGINE_NODE(sync_from_sb, SB_WRITE);
 static ENGINE_NODE(sampling_app);
-static ENGINE_NODE(lflow);
-static ENGINE_NODE(mac_binding_aging);
+static ENGINE_NODE(lflow, SB_WRITE);
+static ENGINE_NODE(mac_binding_aging, SB_WRITE);
 static ENGINE_NODE(mac_binding_aging_waker);
 static ENGINE_NODE(northd_output);
-static ENGINE_NODE(sync_meters);
-static ENGINE_NODE(sync_to_sb);
-static ENGINE_NODE(sync_to_sb_addr_set);
-static ENGINE_NODE(port_group, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(fdb_aging);
+static ENGINE_NODE(sync_meters, SB_WRITE);
+static ENGINE_NODE(sync_to_sb, SB_WRITE);
+static ENGINE_NODE(sync_to_sb_addr_set, SB_WRITE);
+static ENGINE_NODE(port_group, CLEAR_TRACKED_DATA, SB_WRITE);
+static ENGINE_NODE(fdb_aging, SB_WRITE);
 static ENGINE_NODE(fdb_aging_waker);
-static ENGINE_NODE(sync_to_sb_lb);
-static ENGINE_NODE(sync_to_sb_pb);
-static ENGINE_NODE(global_config, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(sync_to_sb_lb, SB_WRITE);
+static ENGINE_NODE(sync_to_sb_pb, SB_WRITE);
+static ENGINE_NODE(global_config, CLEAR_TRACKED_DATA, SB_WRITE);
 static ENGINE_NODE(lb_data, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(lr_nat, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(lr_stateful, CLEAR_TRACKED_DATA);
@@ -176,20 +176,20 @@ static ENGINE_NODE(ls_stateful, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(route_policies);
 static ENGINE_NODE(routes);
 static ENGINE_NODE(bfd);
-static ENGINE_NODE(bfd_sync);
-static ENGINE_NODE(ecmp_nexthop);
-static ENGINE_NODE(multicast_igmp);
-static ENGINE_NODE(acl_id);
-static ENGINE_NODE(advertised_route_sync);
-static ENGINE_NODE(learned_route_sync, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(bfd_sync, SB_WRITE);
+static ENGINE_NODE(ecmp_nexthop, SB_WRITE);
+static ENGINE_NODE(multicast_igmp, SB_WRITE);
+static ENGINE_NODE(acl_id, SB_WRITE);
+static ENGINE_NODE(advertised_route_sync, SB_WRITE);
+static ENGINE_NODE(learned_route_sync, CLEAR_TRACKED_DATA, SB_WRITE);
 static ENGINE_NODE(dynamic_routes);
 static ENGINE_NODE(group_ecmp_route, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(datapath_logical_router, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(datapath_logical_switch, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(datapath_sync, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(datapath_sync, CLEAR_TRACKED_DATA, SB_WRITE);
 static ENGINE_NODE(datapath_synced_logical_router, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(datapath_synced_logical_switch, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(ic_learned_svc_monitors);
+static ENGINE_NODE(ic_learned_svc_monitors, SB_WRITE);
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb)

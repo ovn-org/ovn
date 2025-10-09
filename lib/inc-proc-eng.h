@@ -272,6 +272,9 @@ struct engine_node {
 
     /* Engine stats. */
     struct engine_stats stats;
+
+    /* Indication if the node writes to SB DB. */
+    bool sb_write;
 };
 
 /* Initialize the data for the engine nodes. It calls each node's
@@ -434,6 +437,9 @@ void engine_ovsdb_node_add_index(struct engine_node *, const char *name,
 
 #define COMPUTE_FAIL_INFO(NAME) \
         .get_compute_failure_info = en_##NAME##_compute_failure_info,
+
+#define SB_WRITE(NAME) \
+    .sb_write = true
 
 #define ENGINE_NODE2(NAME, ARG1) \
     ENGINE_NODE_DEF_START(NAME, #NAME) \

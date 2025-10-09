@@ -6758,7 +6758,7 @@ main(int argc, char *argv[])
     ENGINE_NODE(template_vars, CLEAR_TRACKED_DATA);
     ENGINE_NODE(ct_zones, CLEAR_TRACKED_DATA, IS_VALID);
     ENGINE_NODE(ovs_interface_shadow, CLEAR_TRACKED_DATA);
-    ENGINE_NODE(runtime_data, CLEAR_TRACKED_DATA);
+    ENGINE_NODE(runtime_data, CLEAR_TRACKED_DATA, SB_WRITE);
     ENGINE_NODE(non_vif_data);
     ENGINE_NODE(mff_ovn_geneve);
     ENGINE_NODE(ofctrl_is_connected);
@@ -6779,9 +6779,9 @@ main(int argc, char *argv[])
     ENGINE_NODE(acl_id, IS_VALID);
     ENGINE_NODE(route);
     ENGINE_NODE(route_table_notify);
-    ENGINE_NODE(route_exchange);
+    ENGINE_NODE(route_exchange, SB_WRITE);
     ENGINE_NODE(route_exchange_status);
-    ENGINE_NODE(garp_rarp);
+    ENGINE_NODE(garp_rarp, SB_WRITE);
     ENGINE_NODE(host_if_monitor);
     ENGINE_NODE(neighbor);
     ENGINE_NODE(neighbor_table_notify);
