@@ -310,7 +310,7 @@ Nithin Raju                        nithin@vmware.com
 Niti Rohilla                       niti.rohilla@tcs.com
 Nitin Katiyar                      nitin.katiyar@ericsson.com
 Naveen Yerramneni                  naveen.yerramneni@nutanix.com
-Numan Siddique                     nusiddiq@redhat.com
+Numan Siddique                     numans@ovn.org
 Nobuhiro MIKI                      nmiki@yahoo-corp.jp
 Ofer Ben-Yacov                     ofer.benyacov@gmail.com
 Ophir Munk                         ophirmu@mellanox.com

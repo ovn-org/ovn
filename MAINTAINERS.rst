@@ -52,7 +52,7 @@ This is the current list of active OVN committers:
    * - Mark Michelson
      - mmichels@redhat.com
    * - Numan Siddique
-     - nusiddiq@redhat.com\, numans@ovn.org
+     - numans@ovn.org
 
 The project also maintains a list of Emeritus Committers (or Maintainers).
 More information about Emeritus Committers can be found here:
