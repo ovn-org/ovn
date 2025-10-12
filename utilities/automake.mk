@@ -17,7 +17,6 @@ man_MANS += \
 MAN_ROOTS += \
     utilities/ovn-detrace.1.in
 
-# Docker drivers
 bin_SCRIPTS += \
     utilities/ovn-docker-overlay-driver \
     utilities/ovn-docker-underlay-driver \
