@@ -3055,11 +3055,11 @@ add_guest_vm_and_connections() {
         $default_route $default_route_gw $lrp_guest_join
 }
 
-m_setup_external_frr_router ovn-gw-1 4200000100 41.41.41.41 41.41.41.41/32
-m_setup_ovn_frr_router      ovn-gw-1 4210000000 14.14.14.14 12:fb:d6:66:99:1c 10
+m_setup_external_frr_router ovn-gw-1 4200000100 41.41.41.41 41.41.41.41/32 12:fb:d6:66:99:0c
+m_setup_ovn_frr_router      ovn-gw-1 4210000000 14.14.14.14                12:fb:d6:66:99:1c 10
 
-m_setup_external_frr_router ovn-gw-2 4200000200 42.42.42.42 42.42.42.42/32
-m_setup_ovn_frr_router      ovn-gw-2 4210000000 24.24.24.24 22:fb:d6:66:99:2c 20
+m_setup_external_frr_router ovn-gw-2 4200000200 42.42.42.42 42.42.42.42/32 22:fb:d6:66:99:0c
+m_setup_ovn_frr_router      ovn-gw-2 4210000000 24.24.24.24                22:fb:d6:66:99:2c 20
 
 OVS_WAIT_UNTIL([m_as ovn-gw-2 vtysh -c 'show bgp vrf ovnvrf20 neighbors' | grep -qE 'Connections established 1'])
 OVS_WAIT_UNTIL([m_as ovn-gw-1 vtysh -c 'show bgp vrf ovnvrf10 neighbors' | grep -qE 'Connections established 1'])
@@ -3624,9 +3624,13 @@ CHECK_VRF()
 
 vni=10
 ext_bgp_ip_gw1=42.42.$vni.11
+ext_bgp_mac_gw1=00:00:01:00:00:$vni
 host_bgp_ip_gw1=42.42.$vni.12
+host_bgp_mac_gw1=00:00:00:01:00:$vni
 ext_bgp_ip_gw2=42.42.$vni.21
+ext_bgp_mac_gw2=00:00:02:00:00:$vni
 host_bgp_ip_gw2=42.42.$vni.22
+host_bgp_mac_gw2=00:00:00:02:00:$vni
 
 # Create an flat, distributed OVN localnet switch, with EVPN configured.
  check m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
@@ -3637,11 +3641,11 @@ host_bgp_ip_gw2=42.42.$vni.22
  check m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-evpn-vxlan-ports=4789
  check m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-evpn-vxlan-ports=4789
 
-m_setup_external_frr_router ovn-gw-1 4200000100 $ext_bgp_ip_gw1 $ext_bgp_ip_gw1/24 $vni
-m_setup_host_frr_router     ovn-gw-1 4210000000 $host_bgp_ip_gw1 $host_bgp_ip_gw1/24 $vni
+m_setup_external_frr_router ovn-gw-1 4200000100 $ext_bgp_ip_gw1  $ext_bgp_ip_gw1/24  $ext_bgp_mac_gw1  $vni
+m_setup_host_frr_router     ovn-gw-1 4210000000 $host_bgp_ip_gw1 $host_bgp_ip_gw1/24 $host_bgp_mac_gw1 $vni
 
-m_setup_external_frr_router ovn-gw-2 4200000200 $ext_bgp_ip_gw2 $ext_bgp_ip_gw2/24 $vni
-m_setup_host_frr_router     ovn-gw-2 4210000000 $host_bgp_ip_gw2 $host_bgp_ip_gw2/24 $vni
+m_setup_external_frr_router ovn-gw-2 4200000200 $ext_bgp_ip_gw2  $ext_bgp_ip_gw2/24  $ext_bgp_mac_gw2  $vni
+m_setup_host_frr_router     ovn-gw-2 4210000000 $host_bgp_ip_gw2 $host_bgp_ip_gw2/24 $host_bgp_mac_gw2 $vni
 
 OVS_WAIT_UNTIL([m_as ovn-gw-1 vtysh -c 'show bgp neighbors' | grep -qE 'Connections established 1'])
 OVS_WAIT_UNTIL([m_as ovn-gw-2 vtysh -c 'show bgp neighbors' | grep -qE 'Connections established 1'])
