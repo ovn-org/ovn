@@ -118,7 +118,9 @@ neighbor_exchange_run(const struct neighbor_exchange_ctx_in *n_ctx_in,
                         evpn_remote_vtep_add(n_ctx_out->remote_vteps, ne->addr,
                                              port, nim->vni);
                     }
-                } else if (ne_is_valid_static_fdb(ne)) {
+                }
+
+                if (ne_is_valid_static_fdb(ne)) {
                     if (!evpn_static_entry_find(n_ctx_out->static_fdbs,
                                                 ne->lladdr, ne->addr,
                                                 nim->vni)) {
