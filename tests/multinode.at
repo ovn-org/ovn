@@ -3055,11 +3055,15 @@ add_guest_vm_and_connections() {
         $default_route $default_route_gw $lrp_guest_join
 }
 
-m_setup_external_frr_router ovn-gw-1 4200000100 41.41.41.41 41.41.41.41/32 12:fb:d6:66:99:0c
-m_setup_ovn_frr_router      ovn-gw-1 4210000000 14.14.14.14                12:fb:d6:66:99:1c 10
+m_setup_external_frr_router  ovn-gw-1                        41.41.41.41/32
+m_config_external_frr_router ovn-gw-1 4200000100 41.41.41.41 41.41.41.41/32 12:fb:d6:66:99:0c
+m_setup_ovn_frr_router       ovn-gw-1                                       12:fb:d6:66:99:1c 10
+m_config_ovn_frr_router      ovn-gw-1 4210000000 14.14.14.14                                  10
 
-m_setup_external_frr_router ovn-gw-2 4200000200 42.42.42.42 42.42.42.42/32 22:fb:d6:66:99:0c
-m_setup_ovn_frr_router      ovn-gw-2 4210000000 24.24.24.24                22:fb:d6:66:99:2c 20
+m_setup_external_frr_router  ovn-gw-2                        42.42.42.42/32
+m_config_external_frr_router ovn-gw-2 4200000200 42.42.42.42 42.42.42.42/32 22:fb:d6:66:99:0c
+m_setup_ovn_frr_router       ovn-gw-2                                       22:fb:d6:66:99:2c 20
+m_config_ovn_frr_router      ovn-gw-2 4210000000 24.24.24.24                                  20
 
 OVS_WAIT_UNTIL([m_as ovn-gw-2 vtysh -c 'show bgp vrf ovnvrf20 neighbors' | grep -qE 'Connections established 1'])
 OVS_WAIT_UNTIL([m_as ovn-gw-1 vtysh -c 'show bgp vrf ovnvrf10 neighbors' | grep -qE 'Connections established 1'])
@@ -3637,15 +3641,19 @@ host_bgp_mac_gw2=00:00:00:02:00:$vni
  check m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
  check m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-evpn-local-ip=$host_bgp_ip_gw1
  check m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-evpn-local-ip=$host_bgp_ip_gw2
- # The tunnels need to be created before the call to "m_setup_host_frr_router()".
+ # The tunnels need to be created before the call to "m_config_host_frr_router()".
  check m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-evpn-vxlan-ports=4789
  check m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-evpn-vxlan-ports=4789
 
-m_setup_external_frr_router ovn-gw-1 4200000100 $ext_bgp_ip_gw1  $ext_bgp_ip_gw1/24  $ext_bgp_mac_gw1  $vni
-m_setup_host_frr_router     ovn-gw-1 4210000000 $host_bgp_ip_gw1 $host_bgp_ip_gw1/24 $host_bgp_mac_gw1 $vni
+m_setup_external_frr_router  ovn-gw-1                             $ext_bgp_ip_gw1/24
+m_config_external_frr_router ovn-gw-1 4200000100 $ext_bgp_ip_gw1  $ext_bgp_ip_gw1/24  $ext_bgp_mac_gw1 $vni
+m_setup_host_frr_router      ovn-gw-1 4210000000 $host_bgp_ip_gw1 $host_bgp_ip_gw1/24 $host_bgp_mac_gw1 $vni
+m_config_host_frr_router     ovn-gw-1 4210000000 $host_bgp_ip_gw1 $host_bgp_ip_gw1/24 $host_bgp_mac_gw1 $vni
 
-m_setup_external_frr_router ovn-gw-2 4200000200 $ext_bgp_ip_gw2  $ext_bgp_ip_gw2/24  $ext_bgp_mac_gw2  $vni
-m_setup_host_frr_router     ovn-gw-2 4210000000 $host_bgp_ip_gw2 $host_bgp_ip_gw2/24 $host_bgp_mac_gw2 $vni
+m_setup_external_frr_router  ovn-gw-2                             $ext_bgp_ip_gw2/24
+m_config_external_frr_router ovn-gw-2 4200000200 $ext_bgp_ip_gw2  $ext_bgp_ip_gw2/24  $ext_bgp_mac_gw2 $vni
+m_setup_host_frr_router      ovn-gw-2 4210000000 $host_bgp_ip_gw2 $host_bgp_ip_gw2/24 $host_bgp_mac_gw2 $vni
+m_config_host_frr_router     ovn-gw-2 4210000000 $host_bgp_ip_gw2 $host_bgp_ip_gw2/24 $host_bgp_mac_gw2 $vni
 
 OVS_WAIT_UNTIL([m_as ovn-gw-1 vtysh -c 'show bgp neighbors' | grep -qE 'Connections established 1'])
 OVS_WAIT_UNTIL([m_as ovn-gw-2 vtysh -c 'show bgp neighbors' | grep -qE 'Connections established 1'])
