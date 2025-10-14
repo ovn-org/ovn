@@ -44,14 +44,13 @@ m_setup_external_frr_vrf() {
     check m_as $node $ns_prefix ip link set $lo up
 }
 
-# m_setup_external_frr_router NODE BGP_AS BGP_ROUTER_ID BGP_IP BGP_MAC [VNI]
+# m_setup_external_frr_router NODE BGP_IP
 #
 # Sets up an external FRR BGP speaker in a network namespace on the
-# ovn-fake-multinode node NODE.  The BGP autonomous system is configured to be
-# BGP_AS.  The speaker uses as BGP IP address, BGP_IP and BGP_MAC as mac
+# ovn-fake-multinode node NODE.  The speaker uses as BGP IP address, BGP_IP.
 # address.
 m_setup_external_frr_router() {
-    local node=$1 bgp_as=$2 bgp_router_id=$3 bgp_ip=$4 bgp_mac=$5 vni=$6
+    local node=$1 bgp_ip=$2
     local br_name=br-$node
 
     check m_as $node ovs-vsctl add-br $br_name
@@ -95,6 +94,17 @@ m_setup_external_frr_router() {
     fi
     on_exit "m_as $node systemctl stop frr"
     check m_as $node systemctl start frr
+}
+
+# m_config_external_frr_router NODE BGP_AS BGP_ROUTER_ID BGP_IP BGP_MAC [VNI]
+#
+# Configures an external FRR BGP speaker in a network namespace on the
+# ovn-fake-multinode node NODE.  The BGP autonomous system is configured to be
+# BGP_AS.  The speaker uses as BGP IP address, BGP_IP and BGP_MAC as mac
+# address.
+m_config_external_frr_router() {
+    local node=$1 bgp_as=$2 bgp_router_id=$3 bgp_ip=$4 bgp_mac=$5 vni=$6
+    local br_name=br-$node
 
     frr_flags="-N frr-ns"
     if m_is_fedora; then
@@ -173,17 +183,17 @@ m_ovn_frr_switch_localnet_port_name() {
 }
 
 # m_setup_ovn_frr_router NODE BGP_AS BGP_IP BGP_MAC VNI
+# m_setup_ovn_frr_router NODE BGP_MAC VNI
 #
 # Sets up an FRR BGP speaker in a VRF in the default network namespace on the
 # ovn-fake-multinode node NODE.  This speaker is running on an interface bound
-# to a local OVN logical switch, ls-NODE-ext0, and uses the same BGP_IP and
-# BGP_MAC address as a logical router, lr-NODE-ext0, with
-# routing-protocol-redirect enabled.
+# to a local OVN logical switch, ls-NODE-ext0, and uses the same BGP_MAC
+# address as a logical router, lr-NODE-ext0, with routing-protocol-redirect
+# enabled.
 #
-# The BGP autonomous system is configured to be BGP_AS and the FRR instance
-# runs in vrf VNI.
+# The FRR instance runs in vrf VNI.
 m_setup_ovn_frr_router() {
-    local node=$1 bgp_as=$2 bgp_ip=$3 bgp_mac=$4 vni=$5
+    local node=$1 bgp_mac=$2 vni=$3
     local br_name=br-$node physnet=physnet_${node}_ext0
     local lr=$(m_ovn_frr_router_name $node)
     local lrp=$(m_ovn_frr_router_port_name $node)
@@ -243,8 +253,21 @@ m_setup_ovn_frr_router() {
 
     check multinode_nbctl --wait=hv sync
     m_wait_for_ports_up
+}
 
-    echo "configure
+# m_config_ovn_frr_router NODE BGP_AS BGP_IP VNI
+#
+# Configures an FRR BGP speaker in a VRF in the default network namespace on
+# the ovn-fake-multinode node NODE.  This speaker is running on an interface
+# bound to a local OVN logical switch, ls-NODE-ext0, and uses the same BGP_IP
+# as a logical router, lr-NODE-ext0, with routing-protocol-redirect enabled.
+#
+# The BGP autonomous system is configured to be BGP_AS and the FRR instance
+# runs in vrf VNI.
+m_config_ovn_frr_router() {
+    local node=$1 bgp_as=$2 bgp_ip=$3 vni=$4
+
+echo "configure
     ip prefix-list no-default seq 5 deny 0.0.0.0/0
     ip prefix-list no-default seq 10 permit 0.0.0.0/0 le 32
 
@@ -338,6 +361,26 @@ m_setup_host_frr_router() {
     # Configure the BGP IP on the bridge LOCAL interface.
     check m_as $node ip addr add $bgp_ip dev $br_name
     check m_as $node ip link set $br_name up
+}
+
+# m_config_host_frr_router NODE BGP_AS BGP_ROUTER_ID BGP_IP BGP_MAC VNI
+#
+# Sets up an FRR BGP speaker in the default network namespace on the
+# ovn-fake-multinode node NODE.  This speaker is running on a ovs bridge
+# interface (simulating the fabric connection).
+#
+# The BGP autonomous system is configured to be BGP_AS and the FRR instance
+# runs in vrf-VNI.
+m_config_host_frr_router() {
+    local node=$1 bgp_as=$2 bgp_router_id=$3 bgp_ip=$4 bgp_mac=$5 vni=$6
+
+    local br_name=br-$node physnet=physnet_${node}_ext0
+    local lr=$(m_ovn_frr_router_name $node)
+    local lrp=$(m_ovn_frr_router_port_name $node)
+    local ls=$(m_ovn_frr_switch_name $node)
+    local lsp=$(m_ovn_frr_switch_port_name $node)
+    local lsp_bgp=$(m_ovn_frr_switch_bgp_port_name $node)
+    local lsp_ln=$(m_ovn_frr_switch_localnet_port_name $node)
 
     # NOTE: we set "no bgp ebgp-requires-policy" to simplify EVPN deployments.
     echo "configure
