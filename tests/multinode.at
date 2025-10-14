@@ -3864,6 +3864,165 @@ OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_GET
 
 AT_CLEANUP
 
+AT_SETUP([ovn multinode bgp L3 EVPN])
+check_fake_multinode_setup
+
+# Delete the multinode NB and OVS resources before starting the test.
+cleanup_multinode_resources
+
+CHECK_VRF()
+
+vni=10
+ext_bgp_ip_gw1=42.10.$vni.11
+ext_bgp_mac_gw1=00:00:01:00:00:$vni
+host_bgp_ip_gw1=42.10.$vni.12
+host_bgp_mac_gw1=00:00:00:01:00:$vni
+ext_bgp_ip_gw2=42.20.$vni.21
+ext_bgp_mac_gw2=00:00:02:00:00:$vni
+host_bgp_ip_gw2=42.20.$vni.22
+host_bgp_mac_gw2=00:00:00:02:00:$vni
+
+# Create an flat, distributed OVN localnet switch, with EVPN configured.
+ check m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
+ check m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
+ check m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-evpn-local-ip=$host_bgp_ip_gw1
+ check m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-evpn-local-ip=$host_bgp_ip_gw2
+ # The tunnels need to be created before the call to "m_config_host_frr_router()".
+ check m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-evpn-vxlan-ports=4789
+ check m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-evpn-vxlan-ports=4789
+
+m_setup_external_frr_router     ovn-gw-1                             $ext_bgp_ip_gw1/24
+m_config_external_frr_router_l3 ovn-gw-1 4200000100 $ext_bgp_ip_gw1  $ext_bgp_ip_gw1/24  $ext_bgp_mac_gw1 $vni
+m_setup_host_frr_router         ovn-gw-1 4210000000 $host_bgp_ip_gw1 $host_bgp_ip_gw1/24 $host_bgp_mac_gw1 $vni
+m_config_host_frr_router_l3     ovn-gw-1 4210000000 $host_bgp_ip_gw1 $host_bgp_ip_gw1/24 $host_bgp_mac_gw1 $vni
+
+m_setup_external_frr_router     ovn-gw-2                             $ext_bgp_ip_gw2/24
+m_config_external_frr_router_l3 ovn-gw-2 4200000200 $ext_bgp_ip_gw2  $ext_bgp_ip_gw2/24  $ext_bgp_mac_gw2 $vni
+m_setup_host_frr_router         ovn-gw-2 4210000000 $host_bgp_ip_gw2 $host_bgp_ip_gw2/24 $host_bgp_mac_gw2 $vni
+m_config_host_frr_router_l3     ovn-gw-2 4210000000 $host_bgp_ip_gw2 $host_bgp_ip_gw2/24 $host_bgp_mac_gw2 $vni
+
+OVS_WAIT_UNTIL([m_as ovn-gw-1 vtysh -c 'show bgp neighbors' | grep -qE 'Connections established 1'])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 vtysh -c 'show bgp neighbors' | grep -qE 'Connections established 1'])
+
+AS_BOX([Simulate external "fabric" hosts])
+check m_as ovn-gw-1 ip link add name lo-wl-$vni type dummy
+on_exit "m_as ovn-gw-1 ip link del lo-wl-$vni"
+check m_as ovn-gw-1 ip link set lo-wl-$vni address 00:01:01:01:01:$vni
+check m_as ovn-gw-1 ip link set lo-wl-$vni master vrf-$vni
+check m_as ovn-gw-1 ip a a dev lo-wl-$vni 77.77.1.$vni/32
+check m_as ovn-gw-1 ip link set lo-wl-$vni up
+
+check m_as ovn-gw-2 ip link add name lo-wl-$vni type dummy
+on_exit "m_as ovn-gw-2 ip link del lo-wl-$vni"
+check m_as ovn-gw-2 ip link set lo-wl-$vni address 00:02:02:02:02:$vni
+check m_as ovn-gw-2 ip link set lo-wl-$vni master vrf-$vni
+check m_as ovn-gw-2 ip a a dev lo-wl-$vni 77.77.2.$vni/32
+check m_as ovn-gw-2 ip link set lo-wl-$vni up
+
+check multinode_nbctl                                                     \
+    -- lr-add lr                                                          \
+      -- set logical_router lr options:dynamic-routing=true               \
+                               options:requested-tnl-key=$vni             \
+      -- lrp-add lr lr-gw1 $host_bgp_mac_gw1 $host_bgp_ip_gw1/24          \
+        -- lrp-set-gateway-chassis lr-gw1 ovn-gw-1 10                     \
+      -- lrp-add lr lr-gw2 $host_bgp_mac_gw2 $host_bgp_ip_gw2/24          \
+        -- lrp-set-gateway-chassis lr-gw2 ovn-gw-2 10                     \
+      -- lrp-add lr lr-int1 00:00:00:00:01:02 30.0.1.1/24                 \
+        -- lrp-set-options lr-int1 dynamic-routing-redistribute=connected \
+      -- lrp-add lr lr-int2 00:00:00:00:01:02 30.0.2.1/24                 \
+        -- lrp-set-options lr-int2 dynamic-routing-redistribute=connected \
+    -- ls-add ls                                                          \
+      -- lsp-add ls ls-ln                                                 \
+        -- lsp-set-type ls-ln localnet                                    \
+        -- lsp-set-addresses ls-ln unknown                                \
+        -- lsp-set-options ls-ln network_name=public                      \
+      -- lsp-add ls ls-lr-gw1                                             \
+        -- lsp-set-type ls-lr-gw1 router                                  \
+        -- lsp-set-options ls-lr-gw1 router-port=lr-gw1                   \
+        -- lsp-set-addresses ls-lr-gw1 router                             \
+      -- lsp-add ls ls-lr-gw2                                             \
+        -- lsp-set-type ls-lr-gw2 router                                  \
+        -- lsp-set-options ls-lr-gw2 router-port=lr-gw2                   \
+        -- lsp-set-addresses ls-lr-gw2 router                             \
+    -- ls-add ls-int1                                                     \
+      -- lsp-add ls-int1 ls-int1-lr                                       \
+        -- lsp-set-type ls-int1-lr router                                 \
+        -- lsp-set-options ls-int1-lr router-port=lr-int1                 \
+        -- lsp-set-addresses ls-int1-lr router                            \
+    -- ls-add ls-int2                                                     \
+      -- lsp-add ls-int2 ls-int2-lr                                       \
+        -- lsp-set-type ls-int2-lr router                                 \
+        -- lsp-set-options ls-int2-lr router-port=lr-int2                 \
+        -- lsp-set-addresses ls-int2-lr router
+
+check multinode_nbctl                                       \
+    -- lsp-add ls-int1 w1                                   \
+      -- lsp-set-addresses w1 "00:00:00:00:00:01 30.0.1.11" \
+    -- lsp-add ls-int2 w2                                   \
+      -- lsp-set-addresses w2 "00:00:00:00:00:02 30.0.2.11"
+
+check m_as ovn-gw-1 /data/create_fake_vm.sh w1 w1 \
+    00:00:00:00:00:01 1500 30.0.1.11 24 30.0.1.1 1000::11/64 1000::1
+check m_as ovn-gw-2 /data/create_fake_vm.sh w2 w2 \
+    00:00:00:00:00:02 1500 30.0.2.11 24 30.0.2.1 1000::11/64 1000::1
+
+m_wait_for_ports_up
+
+# Enable EVPN support for the distributed logical switch.
+check multinode_nbctl set logical_switch ls \
+    other_config:dynamic-routing-vni=$vni
+
+check multinode_nbctl --wait=hv sync
+dp_key=$(m_fetch_column Datapath_Binding tunnel_key external_ids:name=ls)
+
+OVS_WAIT_UNTIL([m_as ovn-gw-1 bridge fdb | grep vxlan-10 | grep -q "$ext_bgp_mac_gw1"])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 bridge fdb | grep vxlan-10 | grep -q "$ext_bgp_mac_gw2"])
+
+AS_BOX([Checking Remote VTEPs learned in OVN])
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([m_as ovn-gw-1 ovn-appctl evpn/remote-vtep-list | sort], [0], [dnl
+IP: $ext_bgp_ip_gw1, port: 4789, vni: 10
+])
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([m_as ovn-gw-2 ovn-appctl evpn/remote-vtep-list | sort], [0], [dnl
+IP: $ext_bgp_ip_gw2, port: 4789, vni: 10
+])
+
+# TODO FIXME: https://issues.redhat.com/browse/FDP-1390
+# OVN should support advertising router IPs on EVPN logical switches connected
+# to logical routers.  Until then simulate that with a blackhole route.
+check m_as ovn-gw-1 ip route add table $vni blackhole $host_bgp_ip_gw1/32
+on_exit "m_as ovn-gw-1 ip route del table $vni $host_bgp_ip_gw1/32"
+check m_as ovn-gw-2 ip route add table $vni blackhole $host_bgp_ip_gw2/32
+on_exit "m_as ovn-gw-2 ip route del table $vni $host_bgp_ip_gw2/32"
+
+AS_BOX([Check traffic to "fabric" hosts - ping from fabric])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 30.0.1.11])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 30.0.2.11])
+
+# Check that OVN learned the ARPs.
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([m_as ovn-gw-1 ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | sort], [0], [dnl
+ VNI: $vni, MAC: 00:00:01:00:00:10, IP: 42.10.10.11, dp_key: $dp_key
+])
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([m_as ovn-gw-2 ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | sort], [0], [dnl
+ VNI: $vni, MAC: 00:00:02:00:00:10, IP: 42.20.10.21, dp_key: $dp_key
+])
+
+# Check that no dynamic FDB was created (only the external bridge MAC should
+# be present in the OFTABLE_GET_REMOTE_FDB table and the default flow).
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-1 ovs-ofctl dump-flows br-int table=OFTABLE_GET_REMOTE_FDB,dl_dst=00:00:01:00:00:10 | grep -c "cookie"], [0], [dnl
+1
+])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-1 ovs-ofctl dump-flows br-int table=OFTABLE_GET_REMOTE_FDB | grep -c "cookie"], [0], [dnl
+2
+])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_GET_REMOTE_FDB,dl_dst=00:00:02:00:00:10 | grep -c "cookie"], [0], [dnl
+1
+])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_GET_REMOTE_FDB | grep -c "cookie"], [0], [dnl
+2
+])
+
+AT_CLEANUP
+
 AT_SETUP([redirect-bridged to non-gw destination switch port])
 
 check_fake_multinode_setup

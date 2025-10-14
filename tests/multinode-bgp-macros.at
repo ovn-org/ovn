@@ -4,6 +4,20 @@
 
 OVS_START_SHELL_HELPERS
 
+# m_frr_ns_flags NETNS
+#
+# Builds the argument flags string to be passed to FRR when running in a
+# network namespace.
+m_frr_ns_flags() {
+    local ns=$1
+
+    if m_is_fedora; then
+        echo "--vty_socket /run/frr/$ns"
+    else
+        echo "-N $ns"
+    fi
+}
+
 # m_setup_external_frr_vrf NODE VNI VXLAN_IP LOCAL_MAC LOCAL_IP NETNS
 #
 # Sets up a VRF in NETNS so that it can be used by FRR running in that
@@ -104,12 +118,8 @@ m_setup_external_frr_router() {
 # address.
 m_config_external_frr_router() {
     local node=$1 bgp_as=$2 bgp_router_id=$3 bgp_ip=$4 bgp_mac=$5 vni=$6
+    local frr_flags=$(m_frr_ns_flags frr-ns)
     local br_name=br-$node
-
-    frr_flags="-N frr-ns"
-    if m_is_fedora; then
-        frr_flags="--vty_socket /run/frr/frr-ns"
-    fi
 
     # NOTE: we set "no bgp ebgp-requires-policy" to simplify EVPN deployments.
     echo "configure
@@ -138,6 +148,64 @@ m_config_external_frr_router() {
     if [[[ -n "$vni" ]]]; then
         m_setup_external_frr_vrf $node $vni $vxlan_ip $bgp_mac $bgp_ip frr-ns
     fi
+}
+
+# m_config_external_frr_router_l3 NODE BGP_AS BGP_ROUTER_ID BGP_IP BGP_MAC VNI
+#
+# Configures an external FRR BGP speaker for L3 EVPN in a network namespace
+# on the ovn-fake-multinode node NODE.  The BGP autonomous system is
+# configured to be BGP_AS.  The speaker uses as BGP IP address, BGP_IP and
+# BGP_MAC as mac address.
+m_config_external_frr_router_l3() {
+    local node=$1 bgp_as=$2 bgp_router_id=$3 bgp_ip=$4 bgp_mac=$5 vni=$6
+    local frr_flags=$(m_frr_ns_flags frr-ns)
+    local br_name=br-$node
+
+    # NOTE: we set "no bgp ebgp-requires-policy" to simplify EVPN deployments.
+    echo "configure
+    ip prefix-list accept-all seq 5 permit any
+
+    vrf vrf-$vni
+     vni $vni
+    exit-vrf
+
+    router bgp $bgp_as
+      bgp router-id $bgp_router_id
+      no bgp ebgp-requires-policy
+
+      neighbor ext1 soft-reconfiguration inbound
+      neighbor ext1 interface remote-as external
+
+      address-family l2vpn evpn
+        neighbor ext1 activate
+        advertise-all-vni
+        advertise-svi-ip
+      exit-address-family
+    exit
+
+    router bgp $bgp_as vrf vrf-$vni
+      bgp router-id $bgp_router_id
+      no bgp ebgp-requires-policy
+
+      address-family ipv4 unicast
+       redistribute kernel
+       redistribute connected
+      exit-address-family
+
+      address-family ipv6 unicast
+       redistribute kernel
+       redistribute connected
+      exit-address-family
+
+      address-family l2vpn evpn
+       advertise ipv4 unicast
+      exit-address-family
+    exit
+    " | podman exec -i $node vtysh $frr_flags
+
+    # Configure VRF, if any provided.
+    vxlan_ip=$(echo $bgp_ip | cut -f 1 -d '/')
+    m_setup_external_frr_vrf $node $vni $vxlan_ip $bgp_mac $bgp_ip frr-ns
 }
 
 # m_ovn_frr_router_name NODE
@@ -408,6 +476,69 @@ m_config_host_frr_router() {
         neighbor $br_name activate
         advertise-all-vni
       exit-address-family
+    " | podman exec -i $node vtysh
+
+    # Configure VRF.
+    vxlan_ip=$(echo $bgp_ip | cut -f 1 -d '/')
+    m_setup_host_frr_vrf $node $vni $vxlan_ip $bgp_mac $bgp_ip
+}
+
+# m_config_host_frr_router_l3 NODE BGP_AS BGP_ROUTER_ID BGP_IP BGP_MAC VNI
+#
+# Sets up an FRR BGP speaker speaker for L3 EVPN in the default network
+# namespace on the ovn-fake-multinode node NODE.  This speaker is running on
+# a ovs bridge interface (simulating the fabric connection).
+#
+# The BGP autonomous system is configured to be BGP_AS and the FRR instance
+# runs in vrf-VNI.
+m_config_host_frr_router_l3() {
+    local node=$1 bgp_as=$2 bgp_router_id=$3 bgp_ip=$4 bgp_mac=$5 vni=$6
+
+    local br_name=br-$node physnet=physnet_${node}_ext0
+    local lr=$(m_ovn_frr_router_name $node)
+    local lrp=$(m_ovn_frr_router_port_name $node)
+    local ls=$(m_ovn_frr_switch_name $node)
+    local lsp=$(m_ovn_frr_switch_port_name $node)
+    local lsp_bgp=$(m_ovn_frr_switch_bgp_port_name $node)
+    local lsp_ln=$(m_ovn_frr_switch_localnet_port_name $node)
+
+    # NOTE: we set "no bgp ebgp-requires-policy" to simplify EVPN deployments.
+    echo "configure
+    vrf vrf-$vni
+     vni $vni
+    exit-vrf
+
+    ip prefix-list no-default seq 5 deny 0.0.0.0/0
+    ip prefix-list no-default seq 10 permit 0.0.0.0/0 le 32
+
+    ipv6 prefix-list no-default seq 5 deny ::/0
+    ipv6 prefix-list no-default seq 10 permit ::/0 le 128
+
+    router bgp ${bgp_as}
+      bgp router-id $bgp_router_id
+      no bgp ebgp-requires-policy
+      neighbor $br_name interface remote-as external
+
+      address-family l2vpn evpn
+        neighbor $br_name activate
+        advertise-all-vni
+        advertise-svi-ip
+      exit-address-family
+    exit
+
+    router bgp ${bgp_as} vrf vrf-$vni
+      bgp router-id $bgp_router_id
+      no bgp ebgp-requires-policy
+
+      address-family ipv4 unicast
+       redistribute kernel
+       redistribute connected
+      exit-address-family
+
+      address-family l2vpn evpn
+       advertise ipv4 unicast
+      exit-address-family
+    exit
     " | podman exec -i $node vtysh
 
     # Configure VRF.
