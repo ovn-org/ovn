@@ -218,7 +218,7 @@ skip_committer_signoff_check = False
 #
 # Python isn't checked as flake8 performs these checks during build.
 line_length_blacklist = re.compile(
-    r'\.(am|at|etc|in|m4|mk|patch|py|yml)$|^debian/.*$')
+    r'\.(am|at|etc|in|m4|mailmap|mk|patch|py|yml)$|^debian/.*$')
 
 # Don't enforce a requirement that leading whitespace be all spaces on
 # files that include these characters in their name, since these kinds
