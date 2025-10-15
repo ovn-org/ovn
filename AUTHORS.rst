@@ -187,7 +187,7 @@ Ian Campbell                       Ian.Campbell@citrix.com
 Ian Stokes                         ian.stokes@intel.com
 Igal Tsoiref                       itsoiref@redhat.com
 Igor Zhukov                        ivzhukov@sbercloud.ru
-Ihar Hrachyshka                    ihrachys@redhat.com
+Ihar Hrachyshka                    ihar.hrachyshka@gmail.com
 Ihtisham ul Haq                    Ihtisham.ul_Haq@mail.schwarz
 Ilya Maximets                      i.maximets@samsung.com
 Iman Tabrizian                     tabrizian@outlook.com
