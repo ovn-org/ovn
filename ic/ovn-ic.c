@@ -1502,6 +1502,7 @@ lrp_is_ts_port(struct ic_context *ctx, struct ic_router_info *ic_lr,
 
 static void
 sync_learned_routes(struct ic_context *ctx,
+                    const struct icsbrec_availability_zone *az,
                     struct ic_router_info *ic_lr)
 {
     ovs_assert(ctx->ovnnb_txn);
@@ -1536,15 +1537,18 @@ sync_learned_routes(struct ic_context *ctx,
 
         ICSBREC_ROUTE_FOR_EACH_EQUAL (isb_route, isb_route_key,
                                       ctx->icsbrec_route_by_ts) {
+            /* Filters ICSB routes, skipping those that either belong to
+             * current logical router or are legacy routes from the current
+             * availability zone (withoud lr-id).
+             */
             const char *lr_id = smap_get(&isb_route->external_ids, "lr-id");
-            if (lr_id == NULL) {
-                continue;
-            }
             struct uuid lr_uuid;
-            if (!uuid_from_string(&lr_uuid, lr_id)) {
-                continue;
-            }
-            if (uuid_equals(&ic_lr->lr->header_.uuid, &lr_uuid)) {
+            if (lr_id) {
+                if (!uuid_from_string(&lr_uuid, lr_id)
+                    || uuid_equals(&ic_lr->lr->header_.uuid, &lr_uuid)) {
+                    continue;
+                }
+            } else if (isb_route->availability_zone == az) {
                 continue;
             }
 
@@ -1981,7 +1985,7 @@ route_run(struct ic_context *ctx,
     struct shash routes_ad_by_ts = SHASH_INITIALIZER(&routes_ad_by_ts);
     HMAP_FOR_EACH_SAFE (ic_lr, node, &ic_lrs) {
         collect_lr_routes(ctx, ic_lr, &routes_ad_by_ts);
-        sync_learned_routes(ctx, ic_lr);
+        sync_learned_routes(ctx, az, ic_lr);
         free(ic_lr->isb_pbs);
         hmap_destroy(&ic_lr->routes_learned);
         hmap_remove(&ic_lrs, &ic_lr->node);
