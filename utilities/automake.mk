@@ -105,7 +105,7 @@ utilities_ovn_appctl_SOURCES = utilities/ovn-appctl.c
 utilities_ovn_appctl_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBDIR)/libopenvswitch.la
 
 # ovn-detrace
-INSTALL_DATA_LOCAL += ovn-detrace-install
+INSTALL_DATA_HOOK += ovn-detrace-install
 ovn-detrace-install:
 	ln -sf ovn_detrace.py $(DESTDIR)$(bindir)/ovn-detrace
 

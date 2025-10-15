@@ -128,6 +128,7 @@ dist_scripts_SCRIPTS =
 dist_scripts_DATA =
 EXTRA_PROGRAMS =
 INSTALL_DATA_LOCAL =
+INSTALL_DATA_HOOK =
 UNINSTALL_LOCAL =
 man_MANS =
 MAN_FRAGMENTS =
@@ -487,8 +488,9 @@ dist-hook: $(DIST_HOOKS)
 all-local: $(ALL_LOCAL)
 clean-local: $(CLEAN_LOCAL)
 install-data-local: $(INSTALL_DATA_LOCAL)
+install-data-hook: $(INSTALL_DATA_HOOK)
 uninstall-local: $(UNINSTALL_LOCAL)
-.PHONY: $(DIST_HOOKS) $(CLEAN_LOCAL) $(INSTALL_DATA_LOCAL) $(UNINSTALL_LOCAL)
+.PHONY: $(DIST_HOOKS) $(CLEAN_LOCAL) $(INSTALL_DATA_LOCAL) $(INSTALL_DATA_HOOK) $(UNINSTALL_LOCAL)
 
 dist-docs:
 	VERSION=$(VERSION) MAKE='$(MAKE)' $(srcdir)/build-aux/dist-docs $(srcdir) $(docs)
