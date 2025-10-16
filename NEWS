@@ -51,6 +51,10 @@ Post v25.09.0
     * Support the creation of Transit Router Ports.
     * Added new ovn-ic-nbctl 'trp-add' and 'tpr-del' commands to manage
         Transit Router Ports.
+   - Add ovn-nbctl lsp-add-router-port which will create router port on
+     specified LS.
+   - Add ovn-nbctl lsp-add-localnet-port which will create localnet port on
+     specified LS.
 
 OVN v25.09.0 - xxx xx xxxx
 --------------------------

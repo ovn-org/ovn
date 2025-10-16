@@ -365,6 +365,12 @@ Logical switch port commands:\n\
   lsp-get-ls PORT           get the logical switch which the port belongs to\n\
   lsp-attach-mirror PORT MIRROR   attach source PORT to MIRROR\n\
   lsp-detach-mirror PORT MIRROR   detach source PORT from MIRROR\n\
+  lsp-add-router-port LS PORT LRP_PEER\n\
+                                    Create LSP of type router with\n\
+                                    router-port set to LRP_PEER\n\
+  lsp-add-localnet-port LS PORT NETWORK\n\
+                                    Create LSP of type localnet with\n\
+                                    network_name set to NETWORK\n\
 \n\
 Forwarding group commands:\n\
   [--liveness]\n\
@@ -8582,6 +8588,95 @@ nbctl_mirror_list(struct ctl_context *ctx)
     vector_destroy(&mirrors);
 }
 
+static void
+nbctl_pre_lsp_add_misc_port(struct ctl_context *ctx)
+{
+    nbctl_pre_context(ctx);
+
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_type);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_options);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_addresses);
+}
+
+static void
+nbctl_lsp_add_misc_port(struct ctl_context *ctx)
+{
+    struct nbctl_context *nbctx = nbctl_context_get(ctx);
+
+    bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
+    bool router_port = !strcmp(ctx->argv[0], "lsp-add-router-port");
+    const char *ls_name = ctx->argv[1];
+    const char *lsp_name = ctx->argv[2];
+    const char *option = ctx->argv[3];
+    const char *type = router_port ? "router" : "localnet";
+    const char *option_name = router_port ? "router-port" : "network_name";
+
+    const struct nbrec_logical_switch *ls;
+    ctx->error = ls_by_name_or_uuid(ctx, ls_name, true, &ls);
+    if (ctx->error) {
+        return;
+    }
+
+    const struct nbrec_logical_switch_port *lsp;
+    ctx->error = lsp_by_name_or_uuid(ctx, lsp_name, false, &lsp);
+    if (ctx->error) {
+        return;
+    }
+
+    if (lsp) {
+        if (!may_exist) {
+            ctl_error(ctx, "%s: a port with this name already exists",
+                      lsp_name);
+            return;
+        }
+
+        const struct nbrec_logical_switch *lsw;
+        ctx->error = lsp_to_ls(ctx, lsp, &lsw);
+        if (ctx->error) {
+            return;
+        }
+
+        if (lsw != ls) {
+            char uuid_s[UUID_LEN + 1];
+            ctl_error(ctx, "%s: a port already exists but in switch %s",
+                      lsp_name, ls_get_name(lsw, uuid_s, sizeof uuid_s));
+            return;
+        }
+
+        if (strcmp(lsp->type, type)) {
+            ctl_error(ctx, "%s: a port already exists but with different"
+                      " type \"%s\"", lsp_name, lsp->type);
+            return;
+        }
+
+        const char *lsp_option =
+            smap_get_def(&lsp->options, option_name, "");
+        if (strcmp(lsp_option, option)) {
+            ctl_error(ctx, "%s: a port already exists but with different"
+                      " %s \"%s\"", lsp_name, option_name, lsp_option);
+            return;
+        }
+
+        return;
+    }
+
+    lsp = nbrec_logical_switch_port_insert(ctx->txn);
+    nbrec_logical_switch_port_set_name(lsp, lsp_name);
+    nbrec_logical_switch_port_set_type(lsp, type);
+
+    const char *addresses[] = { router_port ? "router": "unknown" };
+    nbrec_logical_switch_port_set_addresses(lsp, addresses, 1);
+
+    struct smap options = SMAP_CONST1(&options, option_name, option);
+    nbrec_logical_switch_port_set_options(lsp, &options);
+
+    /* Insert the logical port into the logical switch. */
+    nbrec_logical_switch_update_ports_addvalue(ls, lsp);
+
+    /* Updating runtime cache. */
+    shash_add(&nbctx->lsp_to_ls_map, lsp_name, ls);
+}
+
 static const struct ctl_table_class tables[NBREC_N_TABLES] = {
     [NBREC_TABLE_DHCP_OPTIONS].row_ids
     = {{&nbrec_logical_switch_port_col_name, NULL,
@@ -8752,6 +8847,12 @@ static const struct ctl_command_syntax nbctl_commands[] = {
       nbctl_lsp_attach_mirror, NULL, "--may-exist", RW },
     { "lsp-detach-mirror", 2, 2, "PORT MIRROR", nbctl_pre_lsp_mirror,
       nbctl_lsp_detach_mirror, NULL, "", RW },
+    { "lsp-add-router-port", 3, 3, "LOGICAL_SWITCH PORT LRP_PEER",
+      nbctl_pre_lsp_add_misc_port, nbctl_lsp_add_misc_port, NULL,
+      "--may-exist", RW },
+    { "lsp-add-localnet-port", 3, 3, "LOGICAL_SWITCH PORT NETWORK",
+      nbctl_pre_lsp_add_misc_port, nbctl_lsp_add_misc_port, NULL,
+      "--may-exist", RW },
 
     /* network-function-group commands. */
     { "nfg-add", 3, INT_MAX,
