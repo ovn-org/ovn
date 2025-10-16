@@ -3060,3 +3060,95 @@ ovn-nbctl: 11111111-1111-1111-1111-111111111111: ha_chassis_group UUID not found
 ])
 OVN_NBCTL_TEST_STOP "/terminating with signal 15/d"
 AT_CLEANUP
+
+dnl ---------------------------------------------------------------------
+
+OVN_NBCTL_TEST([ls_add_router_port], [Add router port], [
+AT_CHECK([ovn-nbctl lsp-add-router-port ls ls-lr lr-ls], [1], [],
+  [ovn-nbctl: ls: switch name not found
+])
+
+check ovn-nbctl ls-add ls
+ovn-nbctl lsp-add-router-port ls ls-lr lr-ls
+check_row_count nb:Logical_Switch_Port 1 addresses=[[router]] options:router-port="lr-ls"
+AT_CHECK([ovn-nbctl show | uuidfilt], [0], [dnl
+switch <0> (ls)
+    port ls-lr
+        type: router
+        router-port: lr-ls
+])
+
+check ovn-nbctl lsp-del ls-lr
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 ls-lr
+
+AT_CHECK([ovn-nbctl lsp-add-router-port ls ls-lr lr-ls], [1], [],
+  [ovn-nbctl: ls-lr: a port with this name already exists
+])
+
+AT_CHECK([ovn-nbctl --may-exist lsp-add-router-port ls ls-lr lr-ls], [1], [],
+  [ovn-nbctl: ls-lr: a port already exists but in switch ls1
+])
+
+check ovn-nbctl lsp-del ls-lr
+check ovn-nbctl lsp-add ls ls-lr -- lsp-set-options ls-lr router-port=lr-ls2
+
+AT_CHECK([ovn-nbctl --may-exist lsp-add-router-port ls ls-lr lr-ls], [1], [],
+  [ovn-nbctl: ls-lr: a port already exists but with different type ""
+])
+
+check ovn-nbctl lsp-set-type ls-lr router
+AT_CHECK([ovn-nbctl --may-exist lsp-add-router-port ls ls-lr lr-ls], [1], [],
+  [ovn-nbctl: ls-lr: a port already exists but with different router-port "lr-ls2"
+])
+
+check ovn-nbctl lsp-set-options ls-lr router-port=lr-ls
+check ovn-nbctl --may-exist lsp-add-router-port ls ls-lr lr-ls
+])
+
+dnl ---------------------------------------------------------------------
+
+OVN_NBCTL_TEST([ls_add_localnet_port], [Add localnet port], [
+AT_CHECK([ovn-nbctl lsp-add-localnet-port ls ln_port net1], [1], [],
+  [ovn-nbctl: ls: switch name not found
+])
+
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add-localnet-port ls ln_port net1
+check_row_count nb:Logical_Switch_Port 1 addresses=[[unknown]] options:network_name="net1"
+AT_CHECK([ovn-nbctl show | uuidfilt], [0], [dnl
+switch <0> (ls)
+    port ln_port
+        type: localnet
+        addresses: [["unknown"]]
+])
+
+check ovn-nbctl lsp-del ln_port
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 ln_port
+
+AT_CHECK([ovn-nbctl lsp-add-localnet-port ls ln_port net1], [1], [],
+  [ovn-nbctl: ln_port: a port with this name already exists
+])
+
+AT_CHECK([ovn-nbctl --may-exist lsp-add-localnet-port ls ln_port net1], [1], [],
+  [ovn-nbctl: ln_port: a port already exists but in switch ls1
+])
+
+check ovn-nbctl lsp-del ln_port
+check ovn-nbctl lsp-add ls ln_port -- lsp-set-options ln_port network_name=net2
+
+AT_CHECK([ovn-nbctl --may-exist lsp-add-localnet-port ls ln_port net1], [1], [],
+  [ovn-nbctl: ln_port: a port already exists but with different type ""
+])
+
+check ovn-nbctl lsp-set-type ln_port localnet
+AT_CHECK([ovn-nbctl --may-exist lsp-add-localnet-port ls ln_port net1], [1], [],
+  [ovn-nbctl: ln_port: a port already exists but with different network_name "net2"
+])
+
+check ovn-nbctl lsp-set-options ln_port network_name=net1
+check ovn-nbctl --may-exist lsp-add-localnet-port ls ln_port net1
+])
