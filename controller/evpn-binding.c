@@ -147,6 +147,7 @@ evpn_binding_run(const struct evpn_binding_ctx_in *b_ctx_in,
         uuidset_insert(b_ctx_out->removed_multicast_groups,
                        &mc_group->flow_uuid);
         hmap_remove(b_ctx_out->multicast_groups, &mc_group->hmap_node);
+        hmapx_destroy(&mc_group->bindings);
         free(mc_group);
     }
 
