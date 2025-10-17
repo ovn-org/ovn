@@ -76,19 +76,25 @@ jobs:
       fail-fast: false
       matrix:
         # Valid options are:
-        # target: ["shard-conformance", "control-plane" ]
+        # target: ["shard-conformance", "control-plane", "external-gateway" ]
         #         shard-conformance: hybrid-overlay = multicast-enable = emptylb-enable = false
         #         control-plane: hybrid-overlay = multicast-enable = emptylb-enable = true
+        # ha: ["HA", "noHA"]
         # gateway-mode: ["local", "shared"]
         # ipfamily: ["ipv4", "ipv6", "dualstack"]
         # disable-snat-multiple-gws: ["noSnatGW", "snatGW"]
+        # second-bridge: ["2br", "1br"]
+        # ic: ["ic-disabled", "ic-single-node-zones", "ic-multi-node-zones"]
         include:
-          - {"target": "shard-conformance", "ha": "HA",   "gateway-mode": "local",  "ipfamily": "ipv6",      "disable-snat-multiple-gws": "snatGW"}
-          - {"target": "shard-conformance", "ha": "HA",   "gateway-mode": "local",  "ipfamily": "dualstack", "disable-snat-multiple-gws": "snatGW"}
-          - {"target": "shard-conformance", "ha": "HA",   "gateway-mode": "shared", "ipfamily": "ipv4",      "disable-snat-multiple-gws": "snatGW"}
-          - {"target": "shard-conformance", "ha": "HA",   "gateway-mode": "shared", "ipfamily": "ipv6",      "disable-snat-multiple-gws": "snatGW"}
-          - {"target": "control-plane",     "ha": "HA",   "gateway-mode": "shared", "ipfamily": "ipv4",      "disable-snat-multiple-gws": "noSnatGW"}
-          - {"target": "control-plane",     "ha": "HA",   "gateway-mode": "shared", "ipfamily": "ipv4",      "disable-snat-multiple-gws": "snatGW"}
+          - {"target": "shard-conformance", "ha": "HA",   "gateway-mode": "local",  "ipfamily": "ipv6",      "disable-snat-multiple-gws": "snatGW",   "ic": "ic-disabled"}
+          - {"target": "shard-conformance", "ha": "HA",   "gateway-mode": "local",  "ipfamily": "dualstack", "disable-snat-multiple-gws": "snatGW",   "ic": "ic-disabled"}
+          - {"target": "shard-conformance", "ha": "HA",   "gateway-mode": "shared", "ipfamily": "ipv4",      "disable-snat-multiple-gws": "snatGW",   "ic": "ic-disabled"}
+          - {"target": "shard-conformance", "ha": "HA",   "gateway-mode": "shared", "ipfamily": "ipv6",      "disable-snat-multiple-gws": "snatGW",   "ic": "ic-disabled"}
+          - {"target": "control-plane",     "ha": "HA",   "gateway-mode": "shared", "ipfamily": "ipv4",      "disable-snat-multiple-gws": "noSnatGW", "ic": "ic-disabled"}
+          - {"target": "control-plane",     "ha": "HA",   "gateway-mode": "shared", "ipfamily": "ipv4",      "disable-snat-multiple-gws": "snatGW",   "ic": "ic-disabled"}
+          - {"target": "external-gateway",  "ha": "noHA", "gateway-mode": "shared", "ipfamily": "ipv4",      "disable-snat-multiple-gws": "noSnatGW", "second-bridge": "2br", "ic": "ic-single-node-zones"}
+          - {"target": "external-gateway",  "ha": "noHA", "gateway-mode": "local",  "ipfamily": "ipv6",      "disable-snat-multiple-gws": "noSnatGW", "second-bridge": "1br", "ic": "ic-single-node-zones"}
+
     needs: [build]
     env:
       JOB_NAME: "${{ matrix.target }}-${{ matrix.ha }}-${{ matrix.gateway-mode }}-${{ matrix.ipfamily }}-${{ matrix.disable-snat-multiple-gws }}-${{ matrix.second-bridge }}"
@@ -97,11 +103,14 @@ jobs:
       OVN_MULTICAST_ENABLE:  "${{ matrix.target == 'control-plane' }}"
       OVN_EMPTY_LB_EVENTS: "${{ matrix.target == 'control-plane' }}"
       # TODO: We have been testing only non-interconnect ovn-k8s jobs until
-      # now.  Both modes should be tested in the future.
-      OVN_ENABLE_INTERCONNECT: "false"
-      OVN_HA: "true"
+      # now.  We only enable interconnect mode for the external-gateway jobs.
+      # However, both modes should be tested in the future, similar to what
+      # upstream ovn-k8s does.
+      OVN_ENABLE_INTERCONNECT: "${{ matrix.ic == 'ic-single-node-zones' ||  matrix.ic == 'ic-multi-node-zones'}}"
+      OVN_HA: "${{ matrix.ha == 'HA' }}"
       OVN_DISABLE_SNAT_MULTIPLE_GWS: "${{ matrix.disable-snat-multiple-gws == 'noSnatGW' }}"
       OVN_GATEWAY_MODE: "${{ matrix.gateway-mode }}"
+      OVN_SECOND_BRIDGE: "${{ matrix.second-bridge == '2br' }}"
       PLATFORM_IPV4_SUPPORT: "${{ matrix.ipfamily == 'IPv4' || matrix.ipfamily == 'dualstack' }}"
       PLATFORM_IPV6_SUPPORT: "${{ matrix.ipfamily == 'IPv6' || matrix.ipfamily == 'dualstack' }}"
     steps:
@@ -168,7 +177,11 @@ jobs:
       # set 180 for control-plane tests as these might take a while
       timeout-minutes: ${{ matrix.target == 'control-plane' && 180 || 120 }}
       run: |
-        make -C test ${{ matrix.target }}
+        if [ "${{ matrix.target }}" == "external-gateway" ]; then
+            make -C test control-plane WHAT="External Gateway"
+        else
+            make -C test ${{ matrix.target }}
+        fi
       working-directory: src/github.com/ovn-kubernetes/ovn-kubernetes
 
     - name: Upload Junit Reports
