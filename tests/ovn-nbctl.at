@@ -3335,3 +3335,72 @@ AT_CHECK([ovn-nbctl nf-list | uuidfilt], [0], [dnl
 AT_CHECK([ovn-nbctl nf-del nf2])
 AT_CHECK([ovn-nbctl nf-list | uuidfilt], [0], [])
 ])
+
+AT_SETUP([ovn-nbctl - TLS server name indication (SNI) with --ssl-server-name])
+AT_KEYWORDS([ovn-nbctl ssl tls sni client])
+AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
+
+# This test validates the --ssl-server-name option for SNI in ovn-nbctl.
+# Test 1: Connect to IP with --ssl-server-name to verify SNI override.
+# Test 2: Connect to same IP without --ssl-server-name (no SNI sent).
+
+# Create ovn-nb database
+AT_CHECK([ovsdb-tool create ovn-nb.db $abs_top_srcdir/ovn-nb.ovsschema])
+
+PKIDIR=$abs_top_builddir/tests
+AT_CAPTURE_FILE([ovsdb-server.log])
+on_exit 'kill $(cat ovsdb-server.pid)'
+
+# Start ovsdb-server with SSL and debug logging
+AT_CHECK([ovsdb-server --log-file --detach --no-chdir --pidfile \
+    --private-key=$PKIDIR/testpki-test-privkey.pem \
+    --certificate=$PKIDIR/testpki-test-cert.pem \
+    --ca-cert=$PKIDIR/testpki-cacert.pem \
+    --remote=pssl:0:127.0.0.1 \
+    -vstream_ssl:file:dbg ovn-nb.db], [0], [ignore], [ignore])
+PARSE_LISTENING_PORT([ovsdb-server.log], [SSL_PORT])
+
+# Initialize the database
+AT_CHECK([ovn-nbctl --db=ssl:127.0.0.1:$SSL_PORT \
+    --private-key=$PKIDIR/testpki-test-privkey.pem \
+    --certificate=$PKIDIR/testpki-test-cert.pem \
+    --ca-cert=$PKIDIR/testpki-cacert.pem \
+    init])
+
+# Test 1: SNI override - connect to IP but specify server name.
+# This validates that --ssl-server-name overrides connection hostname.
+AT_CHECK([ovn-nbctl -t 5 \
+    --db=ssl:127.0.0.1:$SSL_PORT \
+    --private-key=$PKIDIR/testpki-test-privkey.pem \
+    --certificate=$PKIDIR/testpki-test-cert.pem \
+    --ca-cert=$PKIDIR/testpki-cacert.pem \
+    --ssl-server-name=sni-test.example \
+    ls-add test-ls])
+
+# Verify SNI was sent with the overridden name.
+OVS_WAIT_UNTIL([grep -q \
+    "connection indicated server name sni-test.example" \
+    ovsdb-server.log])
+
+# Save current log size for Test 2.
+LOG_SIZE=$(wc -l < ovsdb-server.log)
+
+# Test 2: Default behavior without SNI override - should NOT show SNI
+# connecting to IP address (no hostname to extract).
+AT_CHECK([ovn-nbctl -t 5 \
+    --db=ssl:127.0.0.1:$SSL_PORT \
+    --private-key=$PKIDIR/testpki-test-privkey.pem \
+    --certificate=$PKIDIR/testpki-test-cert.pem \
+    --ca-cert=$PKIDIR/testpki-cacert.pem \
+    ls-del test-ls])
+
+# Stop server to ensure logs are flushed before checking.
+AT_CHECK([ovs-appctl -t ovsdb-server exit])
+OVS_WAIT_WHILE([kill -0 $(cat ovsdb-server.pid) 2>/dev/null])
+
+# Check that no new SNI messages appeared in Test 2 (connecting to IP
+# without --ssl-server-name should not generate SNI).
+AT_CHECK([tail -n +$(($LOG_SIZE + 1)) ovsdb-server.log | \
+    grep -q "connection indicated server name"], [1])
+
+AT_CLEANUP

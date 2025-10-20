@@ -622,6 +622,10 @@ apply_options_direct(const struct ovn_dbctl_options *dbctl_options,
             stream_ssl_set_ciphersuites(optarg);
             break;
 
+        case OPT_SSL_SERVER_NAME:
+            stream_ssl_set_server_name(optarg);
+            break;
+
         case OPT_BOOTSTRAP_CA_CERT:
             stream_ssl_set_ca_cert_file(po->arg, true);
             break;
