@@ -284,15 +284,9 @@ m_setup_ovn_frr_router() {
 
     check multinode_nbctl ls-add $ls
 
-    check multinode_nbctl lsp-add $ls $lsp
-    check multinode_nbctl lsp-set-type $lsp router
-    check multinode_nbctl lsp-set-options $lsp router-port=$lrp
-    check multinode_nbctl lsp-set-addresses $lsp router
+    check multinode_nbctl lsp-add-router-port $ls $lsp $lrp
 
-    check multinode_nbctl lsp-add $ls $lsp_ln
-    check multinode_nbctl lsp-set-addresses $lsp_ln unknown
-    check multinode_nbctl lsp-set-type $lsp_ln localnet
-    check multinode_nbctl lsp-set-options $lsp_ln network_name=$physnet
+    check multinode_nbctl lsp-add-localnet-port $ls $lsp_ln $physnet
 
     OVS_WAIT_UNTIL([m_as $node ip link | grep -q ovnvrf${vni}:.*UP])
 

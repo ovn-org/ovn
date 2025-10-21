@@ -50,16 +50,10 @@ check multinode_nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3 20
 # Create a logical router and attach both logical switches
 check multinode_nbctl lr-add lr0
 check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
-check multinode_nbctl lsp-add sw0 sw0-lr0
-check multinode_nbctl lsp-set-type sw0-lr0 router
-check multinode_nbctl lsp-set-addresses sw0-lr0 router
-check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
-check multinode_nbctl lsp-add sw1 sw1-lr0
-check multinode_nbctl lsp-set-type sw1-lr0 router
-check multinode_nbctl lsp-set-addresses sw1-lr0 router
-check multinode_nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::4/64 1000::a
 
@@ -127,31 +121,19 @@ check multinode_nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3 20
 # Create a logical router and attach both logical switches
 check multinode_nbctl lr-add lr0
 check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
-check multinode_nbctl lsp-add sw0 sw0-lr0
-check multinode_nbctl lsp-set-type sw0-lr0 router
-check multinode_nbctl lsp-set-addresses sw0-lr0 router
-check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
-check multinode_nbctl lsp-add sw1 sw1-lr0
-check multinode_nbctl lsp-set-type sw1-lr0 router
-check multinode_nbctl lsp-set-addresses sw1-lr0 router
-check multinode_nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
 # create exteranl connection for N/S traffic
 check multinode_nbctl ls-add public
-check multinode_nbctl lsp-add public ln-lublic
-check multinode_nbctl lsp-set-type ln-lublic localnet
-check multinode_nbctl lsp-set-addresses ln-lublic unknown
-check multinode_nbctl lsp-set-options ln-lublic network_name=public
+check multinode_nbctl lsp-add-localnet-port public ln-public public
 
 check multinode_nbctl lrp-add lr0 lr0-public 00:11:22:00:ff:01 172.20.0.100/24
-check multinode_nbctl lsp-add public public-lr0
-check multinode_nbctl lsp-set-type public-lr0 router
-check multinode_nbctl lsp-set-addresses public-lr0 router
-check multinode_nbctl lsp-set-options public-lr0 router-port=lr0-public
+check multinode_nbctl lsp-add-router-port public public-lr0 lr0-public
 check multinode_nbctl lrp-set-gateway-chassis lr0-public ovn-gw-1 10
 check multinode_nbctl lr-route-add lr0 0.0.0.0/0 172.20.0.1
 
@@ -261,31 +243,19 @@ check multinode_nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3 20
 # Create a logical router and attach both logical switches
 check multinode_nbctl lr-add lr0
 check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
-check multinode_nbctl lsp-add sw0 sw0-lr0
-check multinode_nbctl lsp-set-type sw0-lr0 router
-check multinode_nbctl lsp-set-addresses sw0-lr0 router
-check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
-check multinode_nbctl lsp-add sw1 sw1-lr0
-check multinode_nbctl lsp-set-type sw1-lr0 router
-check multinode_nbctl lsp-set-addresses sw1-lr0 router
-check multinode_nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
 # create exteranl connection for N/S traffic
 check multinode_nbctl ls-add public
-check multinode_nbctl lsp-add public ln-lublic
-check multinode_nbctl lsp-set-type ln-lublic localnet
-check multinode_nbctl lsp-set-addresses ln-lublic unknown
-check multinode_nbctl lsp-set-options ln-lublic network_name=public
+check multinode_nbctl lsp-add-localnet-port public ln-public public
 
 check multinode_nbctl lrp-add lr0 lr0-public 00:11:22:00:ff:01 172.20.0.100/24
-check multinode_nbctl lsp-add public public-lr0
-check multinode_nbctl lsp-set-type public-lr0 router
-check multinode_nbctl lsp-set-addresses public-lr0 router
-check multinode_nbctl lsp-set-options public-lr0 router-port=lr0-public
+check multinode_nbctl lsp-add-router-port public public-lr0 lr0-public
 check multinode_nbctl lrp-set-gateway-chassis lr0-public ovn-gw-1 10
 check multinode_nbctl lr-route-add lr0 0.0.0.0/0 172.20.0.1
 
@@ -376,31 +346,19 @@ check multinode_nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3 20
 # Create a logical router and attach both logical switches
 check multinode_nbctl lr-add lr0
 check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
-check multinode_nbctl lsp-add sw0 sw0-lr0
-check multinode_nbctl lsp-set-type sw0-lr0 router
-check multinode_nbctl lsp-set-addresses sw0-lr0 router
-check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
-check multinode_nbctl lsp-add sw1 sw1-lr0
-check multinode_nbctl lsp-set-type sw1-lr0 router
-check multinode_nbctl lsp-set-addresses sw1-lr0 router
-check multinode_nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
 # create exteranl connection for N/S traffic
 check multinode_nbctl ls-add public
-check multinode_nbctl lsp-add public ln-lublic
-check multinode_nbctl lsp-set-type ln-lublic localnet
-check multinode_nbctl lsp-set-addresses ln-lublic unknown
-check multinode_nbctl lsp-set-options ln-lublic network_name=public
+check multinode_nbctl lsp-add-localnet-port public ln-public public
 
 check multinode_nbctl lrp-add lr0 lr0-public 00:11:22:00:ff:01 172.20.0.100/24
-check multinode_nbctl lsp-add public public-lr0
-check multinode_nbctl lsp-set-type public-lr0 router
-check multinode_nbctl lsp-set-addresses public-lr0 router
-check multinode_nbctl lsp-set-options public-lr0 router-port=lr0-public
+check multinode_nbctl lsp-add-router-port public public-lr0 lr0-public
 check multinode_nbctl lrp-set-gateway-chassis lr0-public ovn-gw-1 10
 check multinode_nbctl lr-route-add lr0 0.0.0.0/0 172.20.0.1
 
@@ -504,31 +462,19 @@ check multinode_nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3 20
 # Create a logical router and attach both logical switches
 check multinode_nbctl lr-add lr0
 check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
-check multinode_nbctl lsp-add sw0 sw0-lr0
-check multinode_nbctl lsp-set-type sw0-lr0 router
-check multinode_nbctl lsp-set-addresses sw0-lr0 router
-check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
-check multinode_nbctl lsp-add sw1 sw1-lr0
-check multinode_nbctl lsp-set-type sw1-lr0 router
-check multinode_nbctl lsp-set-addresses sw1-lr0 router
-check multinode_nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
 # create exteranl connection for N/S traffic
 check multinode_nbctl ls-add public
-check multinode_nbctl lsp-add public ln-lublic
-check multinode_nbctl lsp-set-type ln-lublic localnet
-check multinode_nbctl lsp-set-addresses ln-lublic unknown
-check multinode_nbctl lsp-set-options ln-lublic network_name=public
+check multinode_nbctl lsp-add-localnet-port public ln-public public
 
 check multinode_nbctl lrp-add lr0 lr0-public 00:11:22:00:ff:01 172.20.0.100/24
-check multinode_nbctl lsp-add public public-lr0
-check multinode_nbctl lsp-set-type public-lr0 router
-check multinode_nbctl lsp-set-addresses public-lr0 router
-check multinode_nbctl lsp-set-options public-lr0 router-port=lr0-public
+check multinode_nbctl lsp-add-router-port public public-lr0 lr0-public
 check multinode_nbctl lrp-set-gateway-chassis lr0-public ovn-gw-1 10
 check multinode_nbctl lr-route-add lr0 0.0.0.0/0 172.20.0.1
 
@@ -625,31 +571,19 @@ check multinode_nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3 20
 # Create a logical router and attach both logical switches
 check multinode_nbctl lr-add lr0 -- set Logical_Router lr0 options:chassis=ovn-gw-1
 check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
-check multinode_nbctl lsp-add sw0 sw0-lr0
-check multinode_nbctl lsp-set-type sw0-lr0 router
-check multinode_nbctl lsp-set-addresses sw0-lr0 router
-check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
-check multinode_nbctl lsp-add sw1 sw1-lr0
-check multinode_nbctl lsp-set-type sw1-lr0 router
-check multinode_nbctl lsp-set-addresses sw1-lr0 router
-check multinode_nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
 # create exteranl connection for N/S traffic
 check multinode_nbctl ls-add public
-check multinode_nbctl lsp-add public ln-lublic
-check multinode_nbctl lsp-set-type ln-lublic localnet
-check multinode_nbctl lsp-set-addresses ln-lublic unknown
-check multinode_nbctl lsp-set-options ln-lublic network_name=public
+check multinode_nbctl lsp-add-localnet-port public ln-public public
 
 check multinode_nbctl lrp-add lr0 lr0-public 00:11:22:00:ff:01 172.20.0.100/24
-check multinode_nbctl lsp-add public public-lr0
-check multinode_nbctl lsp-set-type public-lr0 router
-check multinode_nbctl lsp-set-addresses public-lr0 router
-check multinode_nbctl lsp-set-options public-lr0 router-port=lr0-public
+check multinode_nbctl lsp-add-router-port public public-lr0 lr0-public
 check multinode_nbctl lr-route-add lr0 0.0.0.0/0 172.20.0.1
 
 check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 10.0.0.0/24
@@ -764,31 +698,19 @@ check multinode_nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3 20
 # Create a logical router and attach both logical switches
 check multinode_nbctl lr-add lr0 -- set Logical_Router lr0 options:chassis=ovn-gw-1
 check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
-check multinode_nbctl lsp-add sw0 sw0-lr0
-check multinode_nbctl lsp-set-type sw0-lr0 router
-check multinode_nbctl lsp-set-addresses sw0-lr0 router
-check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
-check multinode_nbctl lsp-add sw1 sw1-lr0
-check multinode_nbctl lsp-set-type sw1-lr0 router
-check multinode_nbctl lsp-set-addresses sw1-lr0 router
-check multinode_nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
 # create exteranl connection for N/S traffic
 check multinode_nbctl ls-add public
-check multinode_nbctl lsp-add public ln-lublic
-check multinode_nbctl lsp-set-type ln-lublic localnet
-check multinode_nbctl lsp-set-addresses ln-lublic unknown
-check multinode_nbctl lsp-set-options ln-lublic network_name=public
+check multinode_nbctl lsp-add-localnet-port public ln-public public
 
 check multinode_nbctl lrp-add lr0 lr0-public 00:11:22:00:ff:01 172.20.0.100/24
-check multinode_nbctl lsp-add public public-lr0
-check multinode_nbctl lsp-set-type public-lr0 router
-check multinode_nbctl lsp-set-addresses public-lr0 router
-check multinode_nbctl lsp-set-options public-lr0 router-port=lr0-public
+check multinode_nbctl lsp-add-router-port public public-lr0 lr0-public
 check multinode_nbctl lr-route-add lr0 0.0.0.0/0 172.20.0.1
 
 check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 10.0.0.0/24
@@ -898,16 +820,10 @@ check multinode_nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3 20
 # Create a logical router and attach both logical switches
 check multinode_nbctl lr-add lr0
 check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
-check multinode_nbctl lsp-add sw0 sw0-lr0
-check multinode_nbctl lsp-set-type sw0-lr0 router
-check multinode_nbctl lsp-set-addresses sw0-lr0 router
-check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
-check multinode_nbctl lsp-add sw1 sw1-lr0
-check multinode_nbctl lsp-set-type sw1-lr0 router
-check multinode_nbctl lsp-set-addresses sw1-lr0 router
-check multinode_nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
@@ -1004,31 +920,19 @@ check multinode_nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3 20
 # Create a logical router and attach both logical switches
 check multinode_nbctl lr-add lr0
 check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
-check multinode_nbctl lsp-add sw0 sw0-lr0
-check multinode_nbctl lsp-set-type sw0-lr0 router
-check multinode_nbctl lsp-set-addresses sw0-lr0 router
-check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
-check multinode_nbctl lsp-add sw1 sw1-lr0
-check multinode_nbctl lsp-set-type sw1-lr0 router
-check multinode_nbctl lsp-set-addresses sw1-lr0 router
-check multinode_nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
 # create exteranl connection for N/S traffic
 check multinode_nbctl ls-add public
-check multinode_nbctl lsp-add public ln-public
-check multinode_nbctl lsp-set-type ln-public localnet
-check multinode_nbctl lsp-set-addresses ln-public unknown
-check multinode_nbctl lsp-set-options ln-public network_name=public
+check multinode_nbctl lsp-add-localnet-port public ln-public public
 
 check multinode_nbctl lrp-add lr0 lr0-public 00:11:22:00:ff:01 172.20.0.100/24
-check multinode_nbctl lsp-add public public-lr0
-check multinode_nbctl lsp-set-type public-lr0 router
-check multinode_nbctl lsp-set-addresses public-lr0 router
-check multinode_nbctl lsp-set-options public-lr0 router-port=lr0-public
+check multinode_nbctl lsp-add-router-port public public-lr0 lr0-public
 check multinode_nbctl lrp-set-gateway-chassis lr0-public ovn-gw-1 10
 
 check multinode_nbctl lr-nat-add lr0 dnat_and_snat 172.20.0.110 10.0.0.3 sw0-port1 30:54:00:00:00:03
@@ -1192,31 +1096,19 @@ check multinode_nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3 20
 # Create a logical router and attach both logical switches
 check multinode_nbctl lr-add lr0
 check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
-check multinode_nbctl lsp-add sw0 sw0-lr0
-check multinode_nbctl lsp-set-type sw0-lr0 router
-check multinode_nbctl lsp-set-addresses sw0-lr0 router
-check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
-check multinode_nbctl lsp-add sw1 sw1-lr0
-check multinode_nbctl lsp-set-type sw1-lr0 router
-check multinode_nbctl lsp-set-addresses sw1-lr0 router
-check multinode_nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
 # create exteranl connection for N/S traffic
 check multinode_nbctl ls-add public
-check multinode_nbctl lsp-add public ln-lublic
-check multinode_nbctl lsp-set-type ln-lublic localnet
-check multinode_nbctl lsp-set-addresses ln-lublic unknown
-check multinode_nbctl lsp-set-options ln-lublic network_name=public
+check multinode_nbctl lsp-add-localnet-port public ln-public public
 
 check multinode_nbctl lrp-add lr0 lr0-public 00:11:22:00:ff:01 172.20.0.100/24
-check multinode_nbctl lsp-add public public-lr0
-check multinode_nbctl lsp-set-type public-lr0 router
-check multinode_nbctl lsp-set-addresses public-lr0 router
-check multinode_nbctl lsp-set-options public-lr0 router-port=lr0-public
+check multinode_nbctl lsp-add-router-port public public-lr0 lr0-public
 check multinode_nbctl lrp-set-gateway-chassis lr0-public ovn-gw-1 10
 check multinode_nbctl lr-route-add lr0 0.0.0.0/0 172.20.0.1
 
@@ -1224,16 +1116,10 @@ check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 10.0.0.0/24
 check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 20.0.0.0/24
 
 # create localnet ports for sw0 and sw1
-check multinode_nbctl lsp-add sw0 ln-sw0
-check multinode_nbctl lsp-set-type ln-sw0 localnet
-check multinode_nbctl lsp-set-addresses ln-sw0 unknown
-check multinode_nbctl lsp-set-options ln-sw0 network_name=public
+check multinode_nbctl lsp-add-localnet-port sw0 ln-sw0 public
 check multinode_nbctl set logical_switch_port ln-sw0 tag_request=100
 
-check multinode_nbctl lsp-add sw1 ln-sw1
-check multinode_nbctl lsp-set-type ln-sw1 localnet
-check multinode_nbctl lsp-set-addresses ln-sw1 unknown
-check multinode_nbctl lsp-set-options ln-sw1 network_name=public
+check multinode_nbctl lsp-add-localnet-port sw1 ln-sw1 public
 check multinode_nbctl set logical_switch_port ln-sw1 tag_request=101
 
 check multinode_nbctl --wait=hv sync
@@ -1561,26 +1447,17 @@ M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ping -q -c 3 -i 0.3 -w 2 10.0.1.3 | F
 # Create a logical router and attach to sw0
 check multinode_nbctl lr-add lr0
 check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.1.1/24 1000::a/64
-check multinode_nbctl lsp-add sw0 sw0-lr0
-check multinode_nbctl lsp-set-type sw0-lr0 router
-check multinode_nbctl lsp-set-addresses sw0-lr0 router
-check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 # create external connection for N/S traffic using multiple DGPs
 check multinode_nbctl ls-add public
 
 # create external connection for N/S traffic
 # DGP public1
-check multinode_nbctl lsp-add public ln-public-1
-check multinode_nbctl lsp-set-type ln-public-1 localnet
-check multinode_nbctl lsp-set-addresses ln-public-1 unknown
-check multinode_nbctl lsp-set-options ln-public-1 network_name=public1
+check multinode_nbctl lsp-add-localnet-port public ln-public-1 public1
 
 # DGP public2
-check multinode_nbctl lsp-add public ln-public-2
-check multinode_nbctl lsp-set-type ln-public-2 localnet
-check multinode_nbctl lsp-set-addresses ln-public-2 unknown
-check multinode_nbctl lsp-set-options ln-public-2 network_name=public2
+check multinode_nbctl lsp-add-localnet-port public ln-public-2 public2
 
 # Attach DGP public1 to GW-1 and chassis-3 (overlay connectivity)
 m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public1:br-ex
@@ -1595,10 +1472,7 @@ check multinode_nbctl lsp-add public public-port1
 check multinode_nbctl lsp-set-addresses public-port1 "40:54:00:00:00:03 20.0.1.3 2000::3"
 
 check multinode_nbctl lrp-add lr0 lr0-public-p1 00:00:00:00:ff:02 20.0.1.1/24 2000::a/64
-check multinode_nbctl lsp-add public public-lr0-p1
-check multinode_nbctl lsp-set-type public-lr0-p1 router
-check multinode_nbctl lsp-set-addresses public-lr0-p1 router
-check multinode_nbctl lsp-set-options public-lr0-p1 router-port=lr0-public-p1
+check multinode_nbctl lsp-add-router-port public public-lr0-p1 lr0-public-p1
 check multinode_nbctl lrp-set-gateway-chassis lr0-public-p1 ovn-gw-1 10
 
 # Create a VM on ovn-chassis-3 in the same public1 overlay
@@ -1611,10 +1485,7 @@ check multinode_nbctl lsp-add public public-port2
 check multinode_nbctl lsp-set-addresses public-port2 "60:54:00:00:00:03 30.0.1.3 3000::3"
 
 check multinode_nbctl lrp-add lr0 lr0-public-p2 00:00:00:00:ff:03 30.0.1.1/24 3000::a/64
-check multinode_nbctl lsp-add public public-lr0-p2
-check multinode_nbctl lsp-set-type public-lr0-p2 router
-check multinode_nbctl lsp-set-addresses public-lr0-p2 router
-check multinode_nbctl lsp-set-options public-lr0-p2 router-port=lr0-public-p2
+check multinode_nbctl lsp-add-router-port public public-lr0-p2 lr0-public-p2
 check multinode_nbctl lrp-set-gateway-chassis lr0-public-p2 ovn-gw-2 10
 
 # Create a VM on ovn-chassis-4 in the same public2 overlay
@@ -2094,26 +1965,17 @@ M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ping -q -c 3 -i 0.3 -w 2 10.0.2.3 | F
 # Create a logical router and attach to sw0
 check multinode_nbctl lr-add lr0
 check multinode_nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.2.1/24 1000::a/64
-check multinode_nbctl lsp-add sw0 sw0-lr0
-check multinode_nbctl lsp-set-type sw0-lr0 router
-check multinode_nbctl lsp-set-addresses sw0-lr0 router
-check multinode_nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 # create external connection for N/S traffic using multiple DGPs
 check multinode_nbctl ls-add public
 
 # create external connection for N/S traffic
 # DGP public1
-check multinode_nbctl lsp-add public ln-public-1
-check multinode_nbctl lsp-set-type ln-public-1 localnet
-check multinode_nbctl lsp-set-addresses ln-public-1 unknown
-check multinode_nbctl lsp-set-options ln-public-1 network_name=public1
+check multinode_nbctl lsp-add-localnet-port public ln-public-1 public1
 
 # DGP public2
-check multinode_nbctl lsp-add public ln-public-2
-check multinode_nbctl lsp-set-type ln-public-2 localnet
-check multinode_nbctl lsp-set-addresses ln-public-2 unknown
-check multinode_nbctl lsp-set-options ln-public-2 network_name=public2
+check multinode_nbctl lsp-add-localnet-port public ln-public-2 public2
 
 # Attach DGP public1 to GW-1 public1 (overlay connectivity)
 m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public1:br-ex
@@ -2122,10 +1984,7 @@ m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public1:br-e
 m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public2:br-ex
 
 check multinode_nbctl lrp-add lr0 lr0-public-p1 40:54:00:00:00:01 20.0.2.1/24 2000::1/64
-check multinode_nbctl lsp-add public public-lr0-p1
-check multinode_nbctl lsp-set-type public-lr0-p1 router
-check multinode_nbctl lsp-set-addresses public-lr0-p1 router
-check multinode_nbctl lsp-set-options public-lr0-p1 router-port=lr0-public-p1
+check multinode_nbctl lsp-add-router-port public public-lr0-p1 lr0-public-p1
 check multinode_nbctl lrp-set-gateway-chassis lr0-public-p1 ovn-gw-1 10
 
 m_wait_for_ports_up
@@ -2136,10 +1995,7 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 20.0.2.1 | F
 ])
 
 check multinode_nbctl lrp-add lr0 lr0-public-p2 40:54:00:00:00:02 20.0.2.2/24 2000::2/64
-check multinode_nbctl lsp-add public public-lr0-p2
-check multinode_nbctl lsp-set-type public-lr0-p2 router
-check multinode_nbctl lsp-set-addresses public-lr0-p2 router
-check multinode_nbctl lsp-set-options public-lr0-p2 router-port=lr0-public-p2
+check multinode_nbctl lsp-add-router-port public public-lr0-p2 lr0-public-p2
 check multinode_nbctl lrp-set-gateway-chassis lr0-public-p2 ovn-gw-2 10
 
 M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ping -q -c 3 -i 0.3 -w 2 20.0.2.2 | FORMAT_PING], \
@@ -2150,26 +2006,17 @@ M_NS_CHECK_EXEC([ovn-chassis-2], [sw0p2], [ping -q -c 3 -i 0.3 -w 2 20.0.2.2 | F
 # Create a logical router and attach to sw1
 check multinode_nbctl lr-add lr1
 check multinode_nbctl lrp-add lr1 lr1-sw1 00:00:00:00:ff:02 40.0.2.1/24 5000::a/64
-check multinode_nbctl lsp-add sw1 sw1-lr1
-check multinode_nbctl lsp-set-type sw1-lr1 router
-check multinode_nbctl lsp-set-addresses sw1-lr1 router
-check multinode_nbctl lsp-set-options sw1-lr1 router-port=lr1-sw1
+check multinode_nbctl lsp-add-router-port sw1 sw1-lr1 lr1-sw1
 
 # create external connection for N/S traffic
 # DGP public3
-check multinode_nbctl lsp-add public ln-public-3
-check multinode_nbctl lsp-set-type ln-public-3 localnet
-check multinode_nbctl lsp-set-addresses ln-public-3 unknown
-check multinode_nbctl lsp-set-options ln-public-3 network_name=public3
+check multinode_nbctl lsp-add-localnet-port public ln-public-3 public3
 
 # Attach DGP public3 to GW-3 public3 (overlay connectivity)
 m_as ovn-gw-3 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public3:br-ex
 
 check multinode_nbctl lrp-add lr1 lr1-public-p3 40:54:00:00:00:03 20.0.2.3/24 2000::3/64
-check multinode_nbctl lsp-add public public-lr1-p3
-check multinode_nbctl lsp-set-type public-lr1-p3 router
-check multinode_nbctl lsp-set-addresses public-lr1-p3 router
-check multinode_nbctl lsp-set-options public-lr1-p3 router-port=lr1-public-p3
+check multinode_nbctl lsp-add-router-port public public-lr1-p3 lr1-public-p3
 check multinode_nbctl lrp-set-gateway-chassis lr1-public-p3 ovn-gw-3 10
 
 M_NS_CHECK_EXEC([ovn-chassis-3], [sw1p1], [ping -q -c 3 -i 0.3 -w 2 40.0.2.1 | FORMAT_PING], \
@@ -2203,19 +2050,13 @@ M_NS_CHECK_EXEC([ovn-chassis-3], [sw1p1], [ping -q -c 3 -i 0.3 -w 2 20.0.2.2 | F
 
 # Configure the second DGP for the lr1
 # DGP public4
-check multinode_nbctl lsp-add public ln-public-4
-check multinode_nbctl lsp-set-type ln-public-4 localnet
-check multinode_nbctl lsp-set-addresses ln-public-4 unknown
-check multinode_nbctl lsp-set-options ln-public-4 network_name=public4
+check multinode_nbctl lsp-add-localnet-port public ln-public-4 public4
 
 # Attach DGP public4 to GW-2 public4 (overlay connectivity)
 m_as ovn-gw-4 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public4:br-ex
 
 check multinode_nbctl lrp-add lr1 lr1-public-p4 40:54:00:00:00:04 20.0.2.4/24 2000::4/64
-check multinode_nbctl lsp-add public public-lr1-p4
-check multinode_nbctl lsp-set-type public-lr1-p4 router
-check multinode_nbctl lsp-set-addresses public-lr1-p4 router
-check multinode_nbctl lsp-set-options public-lr1-p4 router-port=lr1-public-p4
+check multinode_nbctl lsp-add-router-port public public-lr1-p4 lr1-public-p4
 check multinode_nbctl lrp-set-gateway-chassis lr1-public-p4 ovn-gw-4 10
 
 M_NS_CHECK_EXEC([ovn-chassis-3], [sw1p1], [ping -q -c 3 -i 0.3 -w 2 20.0.2.4 | FORMAT_PING], \
@@ -2555,10 +2396,7 @@ for i in 1 2; do
 
     check m_as $chassis ovn-nbctl ls-add public
 
-    check m_as $chassis ovn-nbctl lsp-add public public-gw
-    check m_as $chassis ovn-nbctl lsp-set-type public-gw router
-    check m_as $chassis ovn-nbctl lsp-set-addresses public-gw router
-    check m_as $chassis ovn-nbctl lsp-set-options public-gw router-port=gw-public
+    check m_as $chassis ovn-nbctl lsp-add-router-port public public-gw gw-public
 
     check m_as $chassis ovn-nbctl lr-add gw
     check m_as $chassis ovn-nbctl lrp-add gw gw-public 00:00:00:00:20:00 192.168.100.$i/24 1000::$i/64
@@ -2569,10 +2407,7 @@ for i in 1 2; do
     check m_as $chassis ovn-nbctl ls-add ts
     check m_as $chassis ovn-nbctl set logical_switch ts other_config:requested-tnl-key=10
 
-    check m_as $chassis ovn-nbctl lsp-add ts ts-tr
-    check m_as $chassis ovn-nbctl lsp-set-type ts-tr router
-    check m_as $chassis ovn-nbctl lsp-set-addresses ts-tr router
-    check m_as $chassis ovn-nbctl lsp-set-options ts-tr router-port=tr-ts
+    check m_as $chassis ovn-nbctl lsp-add-router-port ts ts-tr tr-ts
 
     check m_as $chassis ovn-nbctl lr-add tr
     check m_as $chassis ovn-nbctl lrp-add tr tr-ts 00:00:00:00:10:00 10.100.200.1/24 10:200::1/64
@@ -3027,19 +2862,12 @@ add_guest_vm_and_connections() {
     check multinode_nbctl lrp-add $gw_lr $lrp_to_join $default_route_mac
     check multinode_nbctl lrp-set-options $lrp_to_join \
         dynamic-routing-redistribute=nat
-    check multinode_nbctl lsp-add $join_ls $lsp_join_to_lrp
-    check multinode_nbctl lsp-set-type $lsp_join_to_lrp router
-    check multinode_nbctl lsp-set-options $lsp_join_to_lrp \
-        router-port=$lrp_to_join
-    check multinode_nbctl lsp-set-addresses $lsp_join_to_lrp router
+    check multinode_nbctl lsp-add-router-port $join_ls $lsp_join_to_lrp $lrp_to_join
 
     check multinode_nbctl ls-add $ls_g
     check multinode_nbctl lrp-add $lr_guest $lrp_g_lsg \
         00:16:03:01:03:03 $guest_gw_cidr
-    check multinode_nbctl lsp-add $ls_g $lsp_g_lrg
-    check multinode_nbctl lsp-set-type $lsp_g_lrg router
-    check multinode_nbctl lsp-set-options $lsp_g_lrg router-port=$lrp_g_lsg
-    check multinode_nbctl lsp-set-addresses $lsp_g_lrg router
+    check multinode_nbctl lsp-add-router-port $ls_g $lsp_g_lrg $lrp_g_lsg
     check multinode_nbctl lsp-add $ls_g $lsp_g_iface
     check multinode_nbctl lsp-set-addresses $lsp_g_iface \
         '00:16:01:00:02:02 '$guest_cidr''
@@ -3099,11 +2927,7 @@ check multinode_nbctl ls-add $join_ls
 
 check multinode_nbctl lr-add $lr_guest
 check multinode_nbctl lrp-add $lr_guest $lrp_guest_join 00:16:06:12:f0:0d
-check multinode_nbctl lsp-add $join_ls $lsp_join_guest
-check multinode_nbctl lsp-set-type $lsp_join_guest router
-check multinode_nbctl lsp-set-options $lsp_join_guest \
-    router-port=$lrp_guest_join
-check multinode_nbctl lsp-set-addresses $lsp_join_guest router
+check multinode_nbctl lsp-add-router-port $join_ls $lsp_join_guest $lrp_guest_join
 check multinode_nbctl lrp-set-gateway-chassis $lrp_guest_join ovn-gw-1 20
 check multinode_nbctl lrp-set-gateway-chassis $lrp_guest_join ovn-gw-2 20
 
@@ -3242,16 +3066,10 @@ multinode_nbctl -- --id=@gc0 create Gateway_Chassis name=outside_gw1 chassis_nam
                 -- set Logical_Router_Port R1_outside 'gateway_chassis=[@gc0,@gc1,@gc2]'
 
 # Create localnet port in outside
-check multinode_nbctl lsp-add outside ln-outside
-check multinode_nbctl lsp-set-addresses ln-outside unknown
-check multinode_nbctl lsp-set-type ln-outside localnet
-check multinode_nbctl lsp-set-options ln-outside network_name=public
+check multinode_nbctl lsp-add-localnet-port outside ln-outside public
 
 # Create localnet port in ext1
-check multinode_nbctl lsp-add ext ln-ext1
-check multinode_nbctl lsp-set-addresses ln-ext1 unknown
-check multinode_nbctl lsp-set-type ln-ext1 localnet
-check multinode_nbctl lsp-set-options ln-ext1 network_name=public
+check multinode_nbctl lsp-add-localnet-port ext ln-ext1 public
 
 # Make sure garp-max-timeout-sec is not set
 m_as ovn-gw-1 ovs-vsctl remove open . external_ids garp-max-timeout-sec
@@ -3659,9 +3477,7 @@ OVS_WAIT_UNTIL([m_as ovn-gw-1 vtysh -c 'show bgp neighbors' | grep -qE 'Connecti
 OVS_WAIT_UNTIL([m_as ovn-gw-2 vtysh -c 'show bgp neighbors' | grep -qE 'Connections established 1'])
 
 check multinode_nbctl ls-add ls                        \
-    -- lsp-add ls ls-ln -- lsp-set-type ls-ln localnet \
-    -- lsp-set-addresses ls-ln unknown                 \
-    -- lsp-set-options ls-ln network_name=public
+    -- lsp-add-localnet-port ls ls-ln public
 
 # Configure "workloads" (VIF LSPs) on both chassis.
 check multinode_nbctl lsp-add ls w1                       \
@@ -3768,15 +3584,9 @@ check multinode_nbctl --wait=hv                               \
     -- lr-add lr                                              \
     -- lrp-add lr lr-ls 00:00:00:01:00:00 10.0.0.1/24         \
     -- lrp-add lr lr-ls-int 00:00:00:02:00:00 20.0.0.1/24     \
-    -- lsp-add ls ls-lr                                       \
-    -- lsp-set-type ls-lr router                              \
-    -- lsp-set-options ls-lr router-port=lr-ls                \
-    -- lsp-set-addresses ls-lr router                         \
+    -- lsp-add-router-port ls ls-lr lr-ls                      \
     -- ls-add ls-int                                          \
-    -- lsp-add ls-int ls-int-lr                               \
-    -- lsp-set-type ls-int-lr router                          \
-    -- lsp-set-options ls-int-lr router-port=lr-ls-int        \
-    -- lsp-set-addresses ls-int-lr router                     \
+    -- lsp-add-router-port ls-int ls-int-lr lr-ls-int          \
     -- lsp-add ls-int w-int1                                  \
     -- lsp-set-addresses w-int1 "00:00:00:02:00:01 20.0.0.11" \
     -- lsp-add ls-int w-int2                                  \
@@ -3932,28 +3742,13 @@ check multinode_nbctl                                                     \
       -- lrp-add lr lr-int2 00:00:00:00:01:02 30.0.2.1/24                 \
         -- lrp-set-options lr-int2 dynamic-routing-redistribute=connected \
     -- ls-add ls                                                          \
-      -- lsp-add ls ls-ln                                                 \
-        -- lsp-set-type ls-ln localnet                                    \
-        -- lsp-set-addresses ls-ln unknown                                \
-        -- lsp-set-options ls-ln network_name=public                      \
-      -- lsp-add ls ls-lr-gw1                                             \
-        -- lsp-set-type ls-lr-gw1 router                                  \
-        -- lsp-set-options ls-lr-gw1 router-port=lr-gw1                   \
-        -- lsp-set-addresses ls-lr-gw1 router                             \
-      -- lsp-add ls ls-lr-gw2                                             \
-        -- lsp-set-type ls-lr-gw2 router                                  \
-        -- lsp-set-options ls-lr-gw2 router-port=lr-gw2                   \
-        -- lsp-set-addresses ls-lr-gw2 router                             \
+      -- lsp-add-localnet-port ls ls-ln public                             \
+      -- lsp-add-router-port ls ls-lr-gw1 lr-gw1                           \
+      -- lsp-add-router-port ls ls-lr-gw2 lr-gw2                           \
     -- ls-add ls-int1                                                     \
-      -- lsp-add ls-int1 ls-int1-lr                                       \
-        -- lsp-set-type ls-int1-lr router                                 \
-        -- lsp-set-options ls-int1-lr router-port=lr-int1                 \
-        -- lsp-set-addresses ls-int1-lr router                            \
+      -- lsp-add-router-port ls-int1 ls-int1-lr lr-int1                    \
     -- ls-add ls-int2                                                     \
-      -- lsp-add ls-int2 ls-int2-lr                                       \
-        -- lsp-set-type ls-int2-lr router                                 \
-        -- lsp-set-options ls-int2-lr router-port=lr-int2                 \
-        -- lsp-set-addresses ls-int2-lr router
+      -- lsp-add-router-port ls-int2 ls-int2-lr lr-int2
 
 check multinode_nbctl                                       \
     -- lsp-add ls-int1 w1                                   \
@@ -4073,24 +3868,15 @@ check multinode_nbctl ls-add ls-public
 check multinode_nbctl lsp-add ls-public vm2
 check multinode_nbctl lsp-set-addresses vm2 "00:00:00:00:02:02 20.0.0.2 20::2"
 
-check multinode_nbctl lsp-add ls-public ln-public
-check multinode_nbctl lsp-set-type ln-public localnet
-check multinode_nbctl lsp-set-addresses ln-public unknown
-check multinode_nbctl lsp-set-options ln-public network_name=public
+check multinode_nbctl lsp-add-localnet-port ls-public ln-public public
 
 check multinode_nbctl lr-add gw-router
 
 check multinode_nbctl lrp-add gw-router ro-local 00:00:00:00:01:01 10.0.0.1/8 10::1/64
-check multinode_nbctl lsp-add ls-local local-ro
-check multinode_nbctl lsp-set-type local-ro router
-check multinode_nbctl lsp-set-addresses local-ro router
-check multinode_nbctl lsp-set-options local-ro router-port=ro-local
+check multinode_nbctl lsp-add-router-port ls-local local-ro ro-local
 
 check multinode_nbctl lrp-add gw-router ro-public 00:00:00:00:02:01 20.0.0.1/8 20::1/64
-check multinode_nbctl lsp-add ls-public public-ro
-check multinode_nbctl lsp-set-type public-ro router
-check multinode_nbctl lsp-set-addresses public-ro router
-check multinode_nbctl lsp-set-options public-ro router-port=ro-public
+check multinode_nbctl lsp-add-router-port ls-public public-ro ro-public
 
 check multinode_nbctl lrp-set-gateway-chassis ro-public ovn-gw-1
 check multinode_nbctl lrp-set-redirect-type ro-public bridged
@@ -4134,17 +3920,11 @@ check multinode_nbctl lsp-add ls1 ls1p2
 check multinode_nbctl lsp-set-addresses ls1p2 "00:00:00:01:02:02 192.168.1.2 2001::2"
 check multinode_nbctl lr-add lr1
 check multinode_nbctl lrp-add lr1 lr1-ls1 00:00:00:00:00:01 192.168.1.254/24 2001::a/64
-check multinode_nbctl lsp-add ls1 ls1-lr1
-check multinode_nbctl lsp-set-addresses ls1-lr1 "00:00:00:00:00:01 192.168.1.254 2001::a"
-check multinode_nbctl lsp-set-type ls1-lr1 router
-check multinode_nbctl lsp-set-options ls1-lr1 router-port=lr1-ls1
+check multinode_nbctl lsp-add-router-port ls1 ls1-lr1 lr1-ls1
 
 check multinode_nbctl lrp-add lr1 lr1-ls2 00:00:00:00:00:02 192.168.2.254/24 2002::a/64
 check multinode_nbctl ls-add ls2
-check multinode_nbctl lsp-add ls2 ls2-lr1
-check multinode_nbctl lsp-set-addresses ls2-lr1 "00:00:00:00:00:02 192.168.2.254 2002::a"
-check multinode_nbctl lsp-set-type ls2-lr1 router
-check multinode_nbctl lsp-set-options ls2-lr1 router-port=lr1-ls2
+check multinode_nbctl lsp-add-router-port ls2 ls2-lr1 lr1-ls2
 check multinode_nbctl lsp-add ls2 ls2p1
 check multinode_nbctl lsp-set-addresses ls2p1 "00:00:00:02:01:02 192.168.2.1 2002::1"
 
@@ -4152,14 +3932,8 @@ check multinode_nbctl lsp-add ls1 ls1p3
 check multinode_nbctl lsp-set-addresses ls1p3 "00:00:00:01:03:02 192.168.1.3 2001::3"
 check multinode_nbctl lrp-add lr1 lr1-pub 0a:0a:56:33:02:ff 172.18.86.254/24 6812:86::254/64
 check multinode_nbctl ls-add pub                    \
-    -- lsp-add pub pub-lr1                          \
-    -- lsp-set-type pub-lr1 router                  \
-    -- lsp-set-addresses pub-lr1 router             \
-    -- lsp-set-options pub-lr1 router-port=lr1-pub  \
-    -- lsp-add pub pub-ln                           \
-    -- lsp-set-type pub-ln localnet                 \
-    -- lsp-set-addresses pub-ln unknown             \
-    -- lsp-set-options pub-ln network_name=public
+    -- lsp-add-router-port pub pub-lr1 lr1-pub       \
+    -- lsp-add-localnet-port pub pub-ln public
 
 check multinode_nbctl lrp-set-gateway-chassis lr1-pub ovn-chassis-2
 

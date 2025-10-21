@@ -151,10 +151,7 @@ check ovn-nbctl lr-add lr1
 check ovn-nbctl lrp-add lr1 lrp1 00:00:00:00:00:01 10.0.0.1/24
 check ovn-nbctl lrp-set-gateway-chassis lrp1 gw-az1
 
-check ovn-nbctl lsp-add ts1 lsp1 -- \
-    lsp-set-addresses lsp1 router -- \
-    lsp-set-type lsp1 router -- \
-    lsp-set-options lsp1 router-port=lrp1
+check ovn-nbctl lsp-add-router-port ts1 lsp1 lrp1
 
 wait_row_count Datapath_Binding 1 external_ids:interconn-ts=ts1
 
@@ -219,10 +216,7 @@ create_ic_infra() {
     check ovn-nbctl --wait=sb lrp-add $lr $lrp 00:00:00:00:00:0$az_id 10.0.$az_id.1/24
     check ovn-nbctl lrp-set-gateway-chassis $lrp gw-$az
 
-    check ovn-nbctl lsp-add $ts $lsp -- \
-        lsp-set-addresses $lsp router -- \
-        lsp-set-type $lsp router -- \
-        lsp-set-options $lsp router-port=$lrp
+    check ovn-nbctl lsp-add-router-port $ts $lsp $lrp
 
     check ovn-nbctl --wait=sb lr-route-add $lr 192.168.0.0/16 10.0.$az_id.10
 }
@@ -287,10 +281,7 @@ for i in 1 2; do
     check ovn-nbctl lrp-add lr1 lrp$i 00:00:00:00:0$i:01 10.0.$i.1/24
     check ovn-nbctl lrp-set-gateway-chassis lrp$i gw-az$i
 
-    check ovn-nbctl --wait=sb lsp-add ts1 lsp$i -- \
-        lsp-set-addresses lsp$i router -- \
-        lsp-set-type lsp$i router -- \
-        lsp-set-options lsp$i router-port=lrp$i
+    check ovn-nbctl --wait=sb lsp-add-router-port ts1 lsp$i lrp$i
 done
 
 ovn_as az1
@@ -353,10 +344,7 @@ for i in 1 2; do
     check ovn-nbctl lrp-add lr1 lrp-dup2 00:00:00:00:0$i:51 10.0.42.1/24
     check ovn-nbctl lrp-set-gateway-chassis lrp$i gw-az$i
 
-    check ovn-nbctl --wait=sb lsp-add ts1 lsp$i -- \
-        lsp-set-addresses lsp$i router -- \
-        lsp-set-type lsp$i router -- \
-        lsp-set-options lsp$i router-port=lrp$i
+    check ovn-nbctl --wait=sb lsp-add-router-port ts1 lsp$i lrp$i
     check ovn-ic-nbctl --wait=sb sync
 
     check \
@@ -452,10 +440,7 @@ ovn_as az1
 # Create LRP and connect to TS
 check ovn-nbctl lr-add lr1
 check ovn-nbctl lrp-add lr1 lrp-lr1-ts1 aa:aa:aa:aa:aa:01 169.254.100.1/24
-check ovn-nbctl lsp-add ts1 lsp-ts1-lr1
-check ovn-nbctl lsp-set-addresses lsp-ts1-lr1 router
-check ovn-nbctl lsp-set-type lsp-ts1-lr1 router
-check ovn-nbctl --wait=hv lsp-set-options lsp-ts1-lr1 router-port=lrp-lr1-ts1
+check ovn-nbctl --wait=hv lsp-add-router-port ts1 lsp-ts1-lr1 lrp-lr1-ts1
 OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl show | grep lsp-ts1-lr1])
 ovn_as az2 ovn-nbctl lsp-set-options lsp-ts1-lr1 requested-chassis=gw1
 
@@ -520,10 +505,7 @@ for i in 1 2; do
     # Create LRP and connect to TS
     check ovn-nbctl lr-add lr$i
     check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
-    check ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
-            -- lsp-set-addresses lsp-ts1-lr$i router \
-            -- lsp-set-type lsp-ts1-lr$i router \
-            -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
+    check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr$i lrp-lr$i-ts1
 
     # Create static routes
     check ovn-nbctl lr-route-add lr$i 10.11.$i.0/24 169.254.0.1
@@ -664,10 +646,7 @@ for i in 1 2; do
         echo lr: $lr, ts: $ts
         check ovn-nbctl lr-add $lr
         check ovn-nbctl lrp-add $lr lrp-$lr-$ts aa:aa:aa:aa:aa:0$j 169.254.100.$i/24
-        check ovn-nbctl lsp-add $ts lsp-$ts-$lr \
-                -- lsp-set-addresses lsp-$ts-$lr router \
-                -- lsp-set-type lsp-$ts-$lr router \
-                -- lsp-set-options lsp-$ts-$lr router-port=lrp-$lr-$ts
+        check ovn-nbctl lsp-add-router-port $ts lsp-$ts-$lr lrp-$lr-$ts
     done
 done
 
@@ -715,10 +694,7 @@ for i in 1 2; do
     # Create LRP and connect to TS
     check ovn-nbctl lr-add lr$i
     check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
-    check ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
-            -- lsp-set-addresses lsp-ts1-lr$i router \
-            -- lsp-set-type lsp-ts1-lr$i router \
-            -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
+    check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr$i lrp-lr$i-ts1
 
     check ovn-nbctl lrp-add lr$i lrp-lr$i-p$i 00:00:00:00:00:0$i 192.168.$i.1/24
 
@@ -775,10 +751,7 @@ for i in 1 2; do
     # Create LRP and connect to TS
     check ovn-nbctl lr-add lr$i
     check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24 2001:db8:1::$i/64
-    check ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
-            -- lsp-set-addresses lsp-ts1-lr$i router \
-            -- lsp-set-type lsp-ts1-lr$i router \
-            -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
+    check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr$i lrp-lr$i-ts1
 
     # Create LB
     check ovn-nbctl lb-add lb$i 200.1.$i.50:80 1.1.$i.1:80,1.1.$i.2:80
@@ -1012,10 +985,7 @@ check ovn-nbctl set nb_global . options:ic-route-learn-lb=true
 
 check ovn-nbctl lr-add lr3
 check ovn-nbctl lrp-add lr3 lrp-lr3-ts1 aa:aa:aa:aa:aa:03 169.254.100.3/24 2001:db8:1::3/64
-check ovn-nbctl lsp-add ts1 lsp-ts1-lr3 \
-        -- lsp-set-addresses lsp-ts1-lr3 router \
-        -- lsp-set-type lsp-ts1-lr3 router \
-        -- lsp-set-options lsp-ts1-lr3 router-port=lrp-lr3-ts1
+check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr3 lrp-lr3-ts1
 
 # Create LB in 3rd az and check that the route propagates to az1 LR
 check ovn_as az3 ovn-nbctl lb-add lb3 200.1.3.50:80 1.1.3.1:80,1.1.3.2:80
@@ -1066,10 +1036,7 @@ for i in 1 2; do
     # Create LRP and connect to TS
     check ovn-nbctl lr-add lr$i
     check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 2001:db8:1::$i/64
-    check ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
-            -- lsp-set-addresses lsp-ts1-lr$i router \
-            -- lsp-set-type lsp-ts1-lr$i router \
-            -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
+    check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr$i lrp-lr$i-ts1
 
     check ovn-nbctl --wait=sb lrp-add lr$i lrp-lr$i-p$i 00:00:00:00:00:0$i 2002:db8:1::$i/64
 done
@@ -1113,10 +1080,7 @@ for i in 1 2; do
     # Create LRP and connect to TS
     check ovn-nbctl lr-add lr$i
     check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
-    check ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
-            -- lsp-set-addresses lsp-ts1-lr$i router \
-            -- lsp-set-type lsp-ts1-lr$i router \
-            -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
+    check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr$i lrp-lr$i-ts1
 
     # Create static routes
     check ovn-nbctl lr-route-add lr$i 10.11.$i.0/24 169.254.0.1
@@ -1328,10 +1292,7 @@ for i in 1 2; do
         # Create LRP and connect to TS
         check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
         check ovn-nbctl lrp-set-options $lrp route_table=rtb$j
-        check ovn-nbctl lsp-add $ts $lsp \
-                -- lsp-set-addresses $lsp router \
-                -- lsp-set-type $lsp router \
-                -- lsp-set-options $lsp router-port=$lrp
+        check ovn-nbctl lsp-add-router-port $ts $lsp $lrp
     done
 done
 
@@ -1353,10 +1314,7 @@ for i in 1 2; do
         # Create LRP and connect to TS
         check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
         check ovn-nbctl lrp-set-options $lrp route_table=rtb$j
-        check ovn-nbctl lsp-add $ts $lsp \
-                -- lsp-set-addresses $lsp router \
-                -- lsp-set-type $lsp router \
-                -- lsp-set-options $lsp router-port=$lrp
+        check ovn-nbctl lsp-add-router-port $ts $lsp $lrp
     done
 done
 
@@ -1455,10 +1413,7 @@ for i in 1 2; do
         # Create LRP and connect to TS
         check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 2001:db8:$j::$i/64
         check ovn-nbctl lrp-set-options $lrp route_table=rtb$j
-        check ovn-nbctl lsp-add $ts $lsp \
-                -- lsp-set-addresses $lsp router \
-                -- lsp-set-type $lsp router \
-                -- lsp-set-options $lsp router-port=$lrp
+        check ovn-nbctl lsp-add-router-port $ts $lsp $lrp
     done
 done
 
@@ -1480,10 +1435,7 @@ for i in 1 2; do
         # Create LRP and connect to TS
         check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 2001:db8:$j::$i/64
         check ovn-nbctl lrp-set-options $lrp route_table=rtb$j
-        check ovn-nbctl lsp-add $ts $lsp \
-                -- lsp-set-addresses $lsp router \
-                -- lsp-set-type $lsp router \
-                -- lsp-set-options $lsp router-port=$lrp
+        check ovn-nbctl lsp-add-router-port $ts $lsp $lrp
     done
 done
 
@@ -1566,10 +1518,7 @@ for i in 1 2; do
     lsp=lsp-ts1-$lr
     # Create LRP and connect to TS
     check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
-    check ovn-nbctl lsp-add ts1 $lsp \
-        -- lsp-set-addresses $lsp router \
-        -- lsp-set-type $lsp router \
-        -- lsp-set-options $lsp router-port=$lrp
+    check ovn-nbctl lsp-add-router-port ts1 $lsp $lrp
     check ovn-nbctl lrp-add $lr lrp-local-subnet 00:00:00:00:00:0$i 192.168.$i.1/24
     ovn-nbctl list logical-router-static-route
     check ovn-nbctl lr-route-add $lr 10.0.0.0/24 192.168.$i.10
@@ -1629,10 +1578,7 @@ lrp=lrp-$lr-ts1
 lsp=lsp-ts1-$lr
 # Create LRP and connect to TS
 check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a1:01 169.254.10.11/24
-check ovn-nbctl lsp-add ts1 $lsp \
-        -- lsp-set-addresses $lsp router \
-        -- lsp-set-type $lsp router \
-        -- lsp-set-options $lsp router-port=$lrp
+check ovn-nbctl lsp-add-router-port ts1 $lsp $lrp
 
 ovn_as az2
 for i in 1 2; do
@@ -1643,10 +1589,7 @@ for i in 1 2; do
     lsp=lsp-ts1-$lr
     # Create LRP and connect to TS
     check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a2:0$i 169.254.10.2$i/24
-    check ovn-nbctl lsp-add ts1 $lsp \
-            -- lsp-set-addresses $lsp router \
-            -- lsp-set-type $lsp router \
-            -- lsp-set-options $lsp router-port=$lrp
+    check ovn-nbctl lsp-add-router-port ts1 $lsp $lrp
 done
 
 # Create directly-connected routes
@@ -1748,10 +1691,7 @@ for i in 1 2; do
     check ovn-nbctl lr-add lr$i
     check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i \
             2001:db8:1::$i/64
-    check ovn-nbctl lsp-add ts1 lsp-ts1-lr$i \
-            -- lsp-set-addresses lsp-ts1-lr$i router \
-            -- lsp-set-type lsp-ts1-lr$i router \
-            -- lsp-set-options lsp-ts1-lr$i router-port=lrp-lr$i-ts1
+    check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr$i lrp-lr$i-ts1
 
     check ovn-nbctl lrp-add lr$i lrp-lr$i-p$i 00:00:00:00:00:0$i \
             2002:db8:1::$i/64
@@ -1892,16 +1832,10 @@ for az in `seq 1 $n_az`; do
         check ovn-nbctl lr-add lr$az-$i
 
         check ovn-nbctl lrp-add lr$az-$i lrp-lr$az-$i-ls$az-$i $lrp_ls_mac $lrp_ls_ip/24
-        check ovn-nbctl lsp-add ls$az-$i lsp-ls$az-$i-lr$az-$i
-        check ovn-nbctl lsp-set-addresses lsp-ls$az-$i-lr$az-$i router
-        check ovn-nbctl lsp-set-type lsp-ls$az-$i-lr$az-$i router
-        check ovn-nbctl lsp-set-options lsp-ls$az-$i-lr$az-$i router-port=lrp-lr$az-$i-ls$az-$i
+        check ovn-nbctl lsp-add-router-port ls$az-$i lsp-ls$az-$i-lr$az-$i lrp-lr$az-$i-ls$az-$i
 
         check ovn-nbctl -- lrp-add lr$az-$i lrp-lr$az-$i-ts$i $lrp_ts_mac $lrp_ts_ip/24 \
-                        -- lsp-add ts$i lsp-ts$i-lr$az-$i \
-                        -- lsp-set-addresses lsp-ts$i-lr$az-$i router \
-                        -- lsp-set-type lsp-ts$i-lr$az-$i router \
-                        -- lsp-set-options lsp-ts$i-lr$az-$i router-port=lrp-lr$az-$i-ts$i \
+                        -- lsp-add-router-port ts$i lsp-ts$i-lr$az-$i lrp-lr$az-$i-ts$i \
                         -- lrp-set-gateway-chassis lrp-lr$az-$i-ts$i gw$az
     done
     check ovn-nbctl --wait=hv sync
@@ -2116,15 +2050,9 @@ check ovn-nbctl lr-add lr1 \
     -- lrp-add lr1 lr1-ls1 00:00:00:01:01:00 43.43.43.1/24 \
     -- lrp-set-gateway-chassis lr1-ts hv1
 check ovn-nbctl ls-add ls1 \
-    -- lsp-add ls1 ls1-lr1 \
-    -- lsp-set-addresses ls1-lr1 router \
-    -- lsp-set-type ls1-lr1 router \
-    -- lsp-set-options ls1-lr1 router-port=lr1-ls1 \
+    -- lsp-add-router-port ls1 ls1-lr1 lr1-ls1 \
     -- lsp-add ls1 lsp1
-check ovn-nbctl lsp-add ts ts-lr1 \
-    -- lsp-set-addresses ts-lr1 router \
-    -- lsp-set-type ts-lr1 router \
-    -- lsp-set-options ts-lr1 router-port=lr1-ts
+check ovn-nbctl lsp-add-router-port ts ts-lr1 lr1-ts
 wait_for_ports_up
 
 ovn_as az2
@@ -2133,31 +2061,19 @@ check ovn-nbctl lr-add lr2 \
     -- lrp-add lr2 lr2-ls2 00:00:00:02:01:00 44.44.44.1/24 \
     -- lrp-set-gateway-chassis lr2-ts hv2
 check ovn-nbctl ls-add ls2 \
-    -- lsp-add ls2 ls2-lr2 \
-    -- lsp-set-addresses ls2-lr2 router \
-    -- lsp-set-type ls2-lr2 router \
-    -- lsp-set-options ls2-lr2 router-port=lr2-ls2 \
+    -- lsp-add-router-port ls2 ls2-lr2 lr2-ls2 \
     -- lsp-add ls2 lsp2 \
     -- lsp-add ls2 lsp4
-check ovn-nbctl lsp-add ts ts-lr2 \
-    -- lsp-set-addresses ts-lr2 router \
-    -- lsp-set-type ts-lr2 router \
-    -- lsp-set-options ts-lr2 router-port=lr2-ts
+check ovn-nbctl lsp-add-router-port ts ts-lr2 lr2-ts
 
 check ovn-nbctl lr-add lr3 \
     -- lrp-add lr3 lr3-ts 00:00:00:02:00:02 42.42.42.3/24 \
     -- lrp-add lr3 lr3-ls3 00:00:00:02:02:00 44.44.45.1/24 \
     -- lrp-set-gateway-chassis lr3-ts hv2
 check ovn-nbctl ls-add ls3 \
-    -- lsp-add ls3 ls3-lr3 \
-    -- lsp-set-addresses ls3-lr3 router \
-    -- lsp-set-type ls3-lr3 router \
-    -- lsp-set-options ls3-lr3 router-port=lr3-ls3 \
+    -- lsp-add-router-port ls3 ls3-lr3 lr3-ls3 \
     -- lsp-add ls3 lsp3
-check ovn-nbctl lsp-add ts ts-lr3 \
-    -- lsp-set-addresses ts-lr3 router \
-    -- lsp-set-type ts-lr3 router \
-    -- lsp-set-options ts-lr3 router-port=lr3-ts
+check ovn-nbctl lsp-add-router-port ts ts-lr3 lr3-ts
 
 wait_for_ports_up
 check ovn-ic-nbctl --wait=sb sync
@@ -2342,15 +2258,9 @@ check ovn-nbctl lr-add lr1 \
     -- lrp-add lr1 lr1-ls1 00:00:00:01:01:00 43.43.43.1/24 4343::1/64\
     -- lrp-set-gateway-chassis lr1-ts hv1
 check ovn-nbctl ls-add ls1 \
-    -- lsp-add ls1 ls1-lr1 \
-    -- lsp-set-addresses ls1-lr1 router \
-    -- lsp-set-type ls1-lr1 router \
-    -- lsp-set-options ls1-lr1 router-port=lr1-ls1 \
+    -- lsp-add-router-port ls1 ls1-lr1 lr1-ls1 \
     -- lsp-add ls1 lsp1
-check ovn-nbctl lsp-add ts ts-lr1 \
-    -- lsp-set-addresses ts-lr1 router \
-    -- lsp-set-type ts-lr1 router \
-    -- lsp-set-options ts-lr1 router-port=lr1-ts
+check ovn-nbctl lsp-add-router-port ts ts-lr1 lr1-ts
 wait_for_ports_up
 
 ovn_as az2
@@ -2359,15 +2269,9 @@ check ovn-nbctl lr-add lr2 \
     -- lrp-add lr2 lr2-ls2 00:00:00:02:01:00 44.44.44.1/24 4444::1/64 \
     -- lrp-set-gateway-chassis lr2-ts hv2
 check ovn-nbctl ls-add ls2 \
-    -- lsp-add ls2 ls2-lr2 \
-    -- lsp-set-addresses ls2-lr2 router \
-    -- lsp-set-type ls2-lr2 router \
-    -- lsp-set-options ls2-lr2 router-port=lr2-ls2 \
+    -- lsp-add-router-port ls2 ls2-lr2 lr2-ls2 \
     -- lsp-add ls2 lsp2
-check ovn-nbctl lsp-add ts ts-lr2 \
-    -- lsp-set-addresses ts-lr2 router \
-    -- lsp-set-type ts-lr2 router \
-    -- lsp-set-options ts-lr2 router-port=lr2-ts
+check ovn-nbctl lsp-add-router-port ts ts-lr2 lr2-ts
 check ovn-nbctl lsp-add ts lsp4 \
     -- lsp-set-addresses lsp4 unknown
 
@@ -2376,15 +2280,9 @@ check ovn-nbctl lr-add lr3 \
     -- lrp-add lr3 lr3-ls3 00:00:00:02:02:00 44.44.45.1/24 4445::1/64 \
     -- lrp-set-gateway-chassis lr3-ts hv2
 check ovn-nbctl ls-add ls3 \
-    -- lsp-add ls3 ls3-lr3 \
-    -- lsp-set-addresses ls3-lr3 router \
-    -- lsp-set-type ls3-lr3 router \
-    -- lsp-set-options ls3-lr3 router-port=lr3-ls3 \
+    -- lsp-add-router-port ls3 ls3-lr3 lr3-ls3 \
     -- lsp-add ls3 lsp3
-check ovn-nbctl lsp-add ts ts-lr3 \
-    -- lsp-set-addresses ts-lr3 router \
-    -- lsp-set-type ts-lr3 router \
-    -- lsp-set-options ts-lr3 router-port=lr3-ts
+check ovn-nbctl lsp-add-router-port ts ts-lr3 lr3-ts
 
 wait_for_ports_up
 check ovn-ic-nbctl --wait=sb sync
@@ -2622,15 +2520,9 @@ check ovn-nbctl lr-add lr1 \
     -- lrp-add lr1 lr1-ls1 00:00:00:01:01:00 43.43.43.1/24 4343::1/64\
     -- lrp-set-gateway-chassis lr1-ts hv1
 check ovn-nbctl ls-add ls1 \
-    -- lsp-add ls1 ls1-lr1 \
-    -- lsp-set-addresses ls1-lr1 router \
-    -- lsp-set-type ls1-lr1 router \
-    -- lsp-set-options ls1-lr1 router-port=lr1-ls1 \
+    -- lsp-add-router-port ls1 ls1-lr1 lr1-ls1 \
     -- lsp-add ls1 lsp1
-check ovn-nbctl lsp-add ts ts-lr1 \
-    -- lsp-set-addresses ts-lr1 router \
-    -- lsp-set-type ts-lr1 router \
-    -- lsp-set-options ts-lr1 router-port=lr1-ts
+check ovn-nbctl lsp-add-router-port ts ts-lr1 lr1-ts
 wait_for_ports_up
 
 ovn_as az2
@@ -2639,30 +2531,18 @@ check ovn-nbctl lr-add lr2 \
     -- lrp-add lr2 lr2-ls2 00:00:00:02:01:00 44.44.44.1/24 4444::1/64 \
     -- lrp-set-gateway-chassis lr2-ts hv2
 check ovn-nbctl ls-add ls2 \
-    -- lsp-add ls2 ls2-lr2 \
-    -- lsp-set-addresses ls2-lr2 router \
-    -- lsp-set-type ls2-lr2 router \
-    -- lsp-set-options ls2-lr2 router-port=lr2-ls2 \
+    -- lsp-add-router-port ls2 ls2-lr2 lr2-ls2 \
     -- lsp-add ls2 lsp2
-check ovn-nbctl lsp-add ts ts-lr2 \
-    -- lsp-set-addresses ts-lr2 router \
-    -- lsp-set-type ts-lr2 router \
-    -- lsp-set-options ts-lr2 router-port=lr2-ts
+check ovn-nbctl lsp-add-router-port ts ts-lr2 lr2-ts
 
 check ovn-nbctl lr-add lr3 \
     -- lrp-add lr3 lr3-ts 00:00:00:02:00:02 42.42.42.3/24 4242::3/64 \
     -- lrp-add lr3 lr3-ls3 00:00:00:02:02:00 44.44.45.1/24 4445::1/64 \
     -- lrp-set-gateway-chassis lr3-ts hv2
 check ovn-nbctl ls-add ls3 \
-    -- lsp-add ls3 ls3-lr3 \
-    -- lsp-set-addresses ls3-lr3 router \
-    -- lsp-set-type ls3-lr3 router \
-    -- lsp-set-options ls3-lr3 router-port=lr3-ls3 \
+    -- lsp-add-router-port ls3 ls3-lr3 lr3-ls3 \
     -- lsp-add ls3 lsp3
-check ovn-nbctl lsp-add ts ts-lr3 \
-    -- lsp-set-addresses ts-lr3 router \
-    -- lsp-set-type ts-lr3 router \
-    -- lsp-set-options ts-lr3 router-port=lr3-ts
+check ovn-nbctl lsp-add-router-port ts ts-lr3 lr3-ts
 
 wait_for_ports_up
 check ovn-ic-nbctl --wait=sb sync
@@ -2830,10 +2710,7 @@ for i in 1 2; do
         lsp=lsp-$ts-$lr
         # Create LRP and connect to TS
         check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
-        check ovn-nbctl lsp-add $ts $lsp \
-                -- lsp-set-addresses $lsp router \
-                -- lsp-set-type $lsp router \
-                -- lsp-set-options $lsp router-port=$lrp
+        check ovn-nbctl lsp-add-router-port $ts $lsp $lrp
     done
 done
 
@@ -2853,10 +2730,7 @@ for i in 1 2; do
         lsp=lsp-$ts-$lr
         # Create LRP and connect to TS
         check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
-        check ovn-nbctl lsp-add $ts $lsp \
-                -- lsp-set-addresses $lsp router \
-                -- lsp-set-type $lsp router \
-                -- lsp-set-options $lsp router-port=$lrp
+        check ovn-nbctl lsp-add-router-port $ts $lsp $lrp
     done
 done
 
@@ -2888,31 +2762,19 @@ ovn-ic-nbctl --wait=sb --may-exist ts-add tspeer
 # Create LRPs and connect to the peering TS
 ovn_as az1
 check ovn-nbctl lrp-add lr11 lrp-lr11-tspeer aa:aa:aa:aa:11:01 169.254.103.11/24
-check ovn-nbctl lsp-add tspeer lsp-tspeer-lr11 \
-        -- lsp-set-addresses lsp-tspeer-lr11 router \
-        -- lsp-set-type lsp-tspeer-lr11 router \
-        -- lsp-set-options lsp-tspeer-lr11 router-port=lrp-lr11-tspeer
+check ovn-nbctl lsp-add-router-port tspeer lsp-tspeer-lr11 lrp-lr11-tspeer
 
 ovn_as az2
 check ovn-nbctl lrp-add lr12 lrp-lr12-tspeer aa:aa:aa:aa:12:01 169.254.103.12/24
-check ovn-nbctl lsp-add tspeer lsp-tspeer-lr12 \
-        -- lsp-set-addresses lsp-tspeer-lr12 router \
-        -- lsp-set-type lsp-tspeer-lr12 router \
-        -- lsp-set-options lsp-tspeer-lr12 router-port=lrp-lr12-tspeer
+check ovn-nbctl lsp-add-router-port tspeer lsp-tspeer-lr12 lrp-lr12-tspeer
 
 ovn_as az1
 check ovn-nbctl lrp-add lr21 lrp-lr21-tspeer aa:aa:aa:aa:21:01 169.254.103.21/24
-check ovn-nbctl lsp-add tspeer lsp-tspeer-lr21 \
-        -- lsp-set-addresses lsp-tspeer-lr21 router \
-        -- lsp-set-type lsp-tspeer-lr21 router \
-        -- lsp-set-options lsp-tspeer-lr21 router-port=lrp-lr21-tspeer
+check ovn-nbctl lsp-add-router-port tspeer lsp-tspeer-lr21 lrp-lr21-tspeer
 
 ovn_as az2
 check ovn-nbctl lrp-add lr22 lrp-lr22-tspeer aa:aa:aa:aa:22:01 169.254.103.22/24
-check ovn-nbctl lsp-add tspeer lsp-tspeer-lr22 \
-        -- lsp-set-addresses lsp-tspeer-lr22 router \
-        -- lsp-set-type lsp-tspeer-lr22 router \
-        -- lsp-set-options lsp-tspeer-lr22 router-port=lrp-lr22-tspeer
+check ovn-nbctl lsp-add-router-port tspeer lsp-tspeer-lr22 lrp-lr22-tspeer
 
 check ovn-ic-nbctl --wait=sb sync
 
@@ -3353,10 +3215,7 @@ for i in 1 2; do
         lsp=lsp-$ts-$lr
         # Create LRP and connect to TS
         check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
-        check ovn-nbctl lsp-add $ts $lsp \
-                -- lsp-set-addresses $lsp router \
-                -- lsp-set-type $lsp router \
-                -- lsp-set-options $lsp router-port=$lrp
+        check ovn-nbctl lsp-add-router-port $ts $lsp $lrp
     done
 done
 
@@ -3418,10 +3277,7 @@ for i in 1 2; do
         lsp=lsp-$ts-$lr
         # Create LRP and connect to TS
         check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
-        check ovn-nbctl lsp-add $ts $lsp \
-                -- lsp-set-addresses $lsp router \
-                -- lsp-set-type $lsp router \
-                -- lsp-set-options $lsp router-port=$lrp
+        check ovn-nbctl lsp-add-router-port $ts $lsp $lrp
     done
 done
 
@@ -3483,10 +3339,7 @@ for i in 1 2; do
         lsp=lsp-$ts-$lr
         # Create LRP and connect to TS
         check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i/24
-        check ovn-nbctl lsp-add $ts $lsp \
-                -- lsp-set-addresses $lsp router \
-                -- lsp-set-type $lsp router \
-                -- lsp-set-options $lsp router-port=$lrp
+        check ovn-nbctl lsp-add-router-port $ts $lsp $lrp
     done
 done
 
@@ -3514,10 +3367,7 @@ for i in 1 2; do
         lsp=lsp-$ts-$lr
         # Create LRP and connect to TS
         check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a$j:0$i 169.254.10$j.$i$i/24
-        check ovn-nbctl lsp-add $ts $lsp \
-                -- lsp-set-addresses $lsp router \
-                -- lsp-set-type $lsp router \
-                -- lsp-set-options $lsp router-port=$lrp
+        check ovn-nbctl lsp-add-router-port $ts $lsp $lrp
     done
 done
 
@@ -3567,10 +3417,7 @@ for i in 1 2; do
     lsp=lsp-ts1-$lr
     # Create LRP and connect to TS.
     check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:ab:0$i 169.254.101.$i/24 fe80:10::$i/64
-    check ovn-nbctl lsp-add ts1 $lsp \
-            -- lsp-set-addresses $lsp router \
-            -- lsp-set-type $lsp router \
-            -- lsp-set-options $lsp router-port=$lrp
+    check ovn-nbctl lsp-add-router-port ts1 $lsp $lrp
 done
 
 # Create directly-connected route in lr12.
@@ -4084,10 +3931,7 @@ check ovn-ic-nbctl ts-add ts2
 
 check ovn-nbctl lr-add lr1
 check ovn-nbctl lrp-add lr1 lrp-lr1-ts1 aa:aa:aa:aa:aa:02 169.254.100.1/24
-check ovn-nbctl lsp-add ts1 lsp-ts1-lr1 -- \
-    lsp-set-addresses lsp-ts1-lr1 router -- \
-    lsp-set-type lsp-ts1-lr1 router -- \
-    lsp-set-options lsp-ts1-lr1 router-port=lrp-lr1-ts1
+check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr1 lrp-lr1-ts1
 
 # Check ISB
 check_row_count ic-sb:Datapath_Binding 1 transit_switch=ts1
@@ -4130,10 +3974,7 @@ for i in 1 2; do
     lrp=lrp-$lr-ts1
     lsp=lsp-ts1-$lr
     check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:ab:0$i 169.254.101.$i/24 fe80:10::$i/64
-    check ovn-nbctl lsp-add ts1 $lsp \
-        -- lsp-set-addresses $lsp router \
-        -- lsp-set-type $lsp router \
-        -- lsp-set-options $lsp router-port=$lrp
+    check ovn-nbctl lsp-add-router-port ts1 $lsp $lrp
 done
 
 # Add directly connected routes to lr12 (first two test prefixes reused)
