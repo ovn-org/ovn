@@ -986,17 +986,11 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovn-nbctl lr-add lr0 \
     -- lrp-add lr0 rp-ls0 00:00:01:01:02:02 192.168.0.254/24 \
     -- ls-add ls0 \
-    -- lsp-add ls0 ls0-rp \
-    -- lsp-set-type ls0-rp router \
-    -- lsp-set-addresses ls0-rp router \
-    -- lsp-set-options ls0-rp router-port=rp-ls0 \
+    -- lsp-add-router-port ls0 ls0-rp rp-ls0 \
     -- lsp-add ls0 lsp0 \
     -- lsp-set-addresses lsp0 "00:11:00:00:00:01 192.168.0.1" \
     -- ls-add ls1 \
-    -- lsp-add ls1 ls1-rp \
-    -- lsp-set-type ls1-rp router \
-    -- lsp-set-addresses ls1-rp router \
-    -- lsp-set-options ls1-rp router-port=rp-ls1 \
+    -- lsp-add-router-port ls1 ls1-rp rp-ls1 \
     -- lsp-add ls1 lsp1 \
     -- lsp-set-addresses lsp1 "00:00:00:00:00:01 192.168.1.1"
 
@@ -2527,32 +2521,17 @@ check ovn-nbctl ls-add ls1 \
     -- lsp-set-addresses lsp1 "f0:00:00:00:00:01 10.0.1.2"
 check ovn-nbctl lr-add lr1 \
     -- lrp-add lr1 lrp-lr1-ls1 f0:00:aa:00:01:01 10.0.1.1/24 \
-    -- lsp-add ls1 lsp-ls1-lr1 \
-    -- lsp-set-type lsp-ls1-lr1 router \
-    -- lsp-set-options lsp-ls1-lr1 router-port=lrp-lr1-ls1 \
-    -- lsp-set-addresses lsp-ls1-lr1 router
+    -- lsp-add-router-port ls1 lsp-ls1-lr1 lrp-lr1-ls1
 check ovn-nbctl ls-add ls2 \
     -- lrp-add lr1 lrp-lr1-ls2 f0:00:aa:00:01:02 10.0.2.1/24 \
-    -- lsp-add ls2 lsp-ls2-lr1 \
-    -- lsp-set-type lsp-ls2-lr1 router \
-    -- lsp-set-options lsp-ls2-lr1 router-port=lrp-lr1-ls2 \
-    -- lsp-set-addresses lsp-ls2-lr1 router
+    -- lsp-add-router-port ls2 lsp-ls2-lr1 lrp-lr1-ls2
 check ovn-nbctl lr-add lr2 \
     -- lrp-add lr2 lrp-lr2-ls2 f0:00:aa:00:02:02 10.0.2.2/24 \
-    -- lsp-add ls2 lsp-ls2-lr2 \
-    -- lsp-set-type lsp-ls2-lr2 router \
-    -- lsp-set-options lsp-ls2-lr2 router-port=lrp-lr2-ls2 \
-    -- lsp-set-addresses lsp-ls2-lr2 router
+    -- lsp-add-router-port ls2 lsp-ls2-lr2 lrp-lr2-ls2
 check ovn-nbctl ls-add ls-ext \
     -- lrp-add lr2 lrp-lr2-ext f0:00:aa:00:02:03 10.0.3.1/24 \
-    -- lsp-add ls-ext lsp-ext-lr2 \
-    -- lsp-set-type lsp-ext-lr2 router \
-    -- lsp-set-options lsp-ext-lr2 router-port=lrp-lr2-ext \
-    -- lsp-set-addresses lsp-ext-lr2 router
-check ovn-nbctl lsp-add ls-ext lsp-ext \
-    -- lsp-set-type lsp-ext localnet \
-    -- lsp-set-options lsp-ext network_name=extnet \
-    -- lsp-set-addresses lsp-ext unknown
+    -- lsp-add-router-port ls-ext lsp-ext-lr2 lrp-lr2-ext
+check ovn-nbctl lsp-add-localnet-port ls-ext lsp-ext extnet
 check ovn-nbctl --wait=hv sync
 
 # Patch port might be created by ovn-controller after handling nb_cfg sync, if ovs db is busy handling command.
@@ -3232,19 +3211,13 @@ check ovn-nbctl ls-add ls1
 check ovn-nbctl set logical_router lr options:chassis=hv1
 
 check ovn-nbctl lrp-add lr lr-ls0 00:00:00:00:ff:01 10.0.0.1/24
-check ovn-nbctl lsp-add ls0 ls0-lr
-check ovn-nbctl lsp-set-type ls0-lr router
-check ovn-nbctl lsp-set-addresses ls0-lr 00:00:00:00:ff:01
-check ovn-nbctl lsp-set-options ls0-lr router-port=lr-ls0
+check ovn-nbctl lsp-add-router-port ls0 ls0-lr lr-ls0
 
 check ovn-nbctl lsp-add ls0 lsp0
 check ovn-nbctl lsp-set-addresses lsp0 "00:00:00:00:00:02 10.0.0.2"
 
 check ovn-nbctl lrp-add lr lr-ls1 00:00:00:00:ff:02 172.16.0.1/24
-check ovn-nbctl lsp-add ls1 ls1-lr
-check ovn-nbctl lsp-set-type ls1-lr router
-check ovn-nbctl lsp-set-addresses ls1-lr 00:00:00:00:ff:02
-check ovn-nbctl lsp-set-options ls1-lr router-port=lr-ls1
+check ovn-nbctl lsp-add-router-port ls1 ls1-lr lr-ls1
 
 check ovn-nbctl lsp-add ls1 lsp1
 check ovn-nbctl lsp-set-addresses lsp1 "00:00:00:00:00:02 172.16.0.2"
@@ -3529,16 +3502,10 @@ check ovn-nbctl lr-add lr0
 check ovn-nbctl lr-add lr1
 
 check ovn-nbctl lrp-add lr0 lr0-ls0 00:00:00:00:20:00 192.168.20.1/24
-check ovn-nbctl lsp-add ls0 ls0-lr0 \
-    -- lsp-set-type ls0-lr0 router \
-    -- lsp-set-addresses ls0-lr0 router \
-    -- lsp-set-options ls0-lr0 router-port=lr0-ls0
+check ovn-nbctl lsp-add-router-port ls0 ls0-lr0 lr0-ls0
 
 check ovn-nbctl lrp-add lr0 lr1-ls1 00:00:00:00:30:00 192.168.30.1/24
-check ovn-nbctl lsp-add ls0 ls1-lr1 \
-    -- lsp-set-type ls1-lr1 router \
-    -- lsp-set-addresses ls1-lr1 router \
-    -- lsp-set-options ls1-lr1 router-port=lr1-ls1
+check ovn-nbctl lsp-add-router-port ls0 ls1-lr1 lr1-ls1
 
 check ovs-vsctl -- add-port br-int vif0 \
     -- set Interface vif0 external-ids:iface-id=vif0
