@@ -767,17 +767,12 @@ check ovn-nbctl lb-add r1_lb 30.0.0.1 172.16.0.102
 check ovn-nbctl lr-lb-add r1 r1_lb
 
 check ovn-nbctl ls-add s1
-check ovn-nbctl lsp-add s1 s1_r1
-check ovn-nbctl lsp-set-type s1_r1 router
-check ovn-nbctl lsp-set-addresses s1_r1 router
-check ovn-nbctl lsp-set-options s1_r1 router-port=r1_s1
+check ovn-nbctl lsp-add-router-port s1 s1_r1 r1_s1
 
 check ovn-nbctl lsp-add s1 vm1
 check ovn-nbctl lsp-set-addresses vm1 "00:de:ad:01:00:01 173.0.1.2"
 
-check ovn-nbctl lsp-add public public_r1
-check ovn-nbctl lsp-set-type public_r1 router
-check ovn-nbctl lsp-set-addresses public_r1 router
+check ovn-nbctl lsp-add-router-port public public_r1 r1_public
 check ovn-nbctl lsp-set-options public_r1 router-port=r1_public nat-addresses=router
 
 check ovn-nbctl lr-add r2
@@ -787,17 +782,12 @@ check ovn-nbctl lr-nat-add r2 dnat_and_snat 172.16.0.102 173.0.2.2
 check ovn-nbctl lrp-set-gateway-chassis r2_public hv1
 
 check ovn-nbctl ls-add s2
-check ovn-nbctl lsp-add s2 s2_r2
-check ovn-nbctl lsp-set-type s2_r2 router
-check ovn-nbctl lsp-set-addresses s2_r2 router
-check ovn-nbctl lsp-set-options s2_r2 router-port=r2_s2
+check ovn-nbctl lsp-add-router-port s2 s2_r2 r2_s2
 
 check ovn-nbctl lsp-add s2 vm2
 check ovn-nbctl lsp-set-addresses vm2 "00:de:ad:01:00:02 173.0.2.2"
 
-check ovn-nbctl lsp-add public public_r2
-check ovn-nbctl lsp-set-type public_r2 router
-check ovn-nbctl lsp-set-addresses public_r2 router
+check ovn-nbctl lsp-add-router-port public public_r2 r2_public
 check ovn-nbctl lsp-set-options public_r2 router-port=r2_public nat-addresses=router
 
 ADD_NAMESPACES(vm1)
@@ -949,10 +939,7 @@ check ovn-nbctl lrp-add lr lr-internal 00:00:01:01:02:04 172.16.1.1/24
 check ovn-nbctl lsp-add internal internal-lr -- set Logical_Switch_Port internal-lr \
     type=router options:router-port=lr-internal addresses=\"00:00:01:01:02:04\"
 
-check ovn-nbctl lsp-add public ln_port \
-                -- lsp-set-addresses ln_port unknown \
-                -- lsp-set-type ln_port localnet \
-                -- lsp-set-options ln_port network_name=phynet
+check ovn-nbctl lsp-add-localnet-port public ln_port phynet
 
 ADD_NAMESPACES(server1)
 ADD_VETH([server1], [server1], [br-ext], ["192.168.1.2/24"],
@@ -1108,10 +1095,7 @@ check ovn-nbctl ls-lb-add sw lb-ipv4-udp
 
 check ovn-nbctl lr-add rtr
 check ovn-nbctl lrp-add rtr rtr-sw 00:00:00:00:01:00 42.42.42.254/24
-check ovn-nbctl lsp-add sw sw-rtr                       \
-    -- lsp-set-type sw-rtr router                 \
-    -- lsp-set-addresses sw-rtr 00:00:00:00:01:00 \
-    -- lsp-set-options sw-rtr router-port=rtr-sw
+check ovn-nbctl lsp-add-router-port sw sw-rtr rtr-sw
 
 ADD_NAMESPACES(lsp)
 ADD_VETH(lsp, lsp, br-int, "42.42.42.1/24", "00:00:00:00:00:01", \
@@ -1181,10 +1165,7 @@ check ovn-nbctl ls-lb-add sw lb-ipv6-udp
 
 check ovn-nbctl lr-add rtr
 check ovn-nbctl lrp-add rtr rtr-sw 00:00:00:00:01:00 4200::00ff/64
-check ovn-nbctl lsp-add sw sw-rtr                       \
-    -- lsp-set-type sw-rtr router                 \
-    -- lsp-set-addresses sw-rtr 00:00:00:00:01:00 \
-    -- lsp-set-options sw-rtr router-port=rtr-sw
+check ovn-nbctl lsp-add-router-port sw sw-rtr rtr-sw
 
 check ovn-nbctl --wait=hv sync
 
@@ -1248,17 +1229,11 @@ check ovn-nbctl lrp-add lr lr-ls2 00:00:00:00:02:00 42.42.42.2/24
 check ovn-nbctl ls-add ls1
 check ovn-nbctl ls-add ls2
 
-check ovn-nbctl lsp-add ls1 ls1-lr
-check ovn-nbctl lsp-set-addresses ls1-lr 00:00:00:00:01:00
-check ovn-nbctl lsp-set-type ls1-lr router
-check ovn-nbctl lsp-set-options ls1-lr router-port=lr-ls1
+check ovn-nbctl lsp-add-router-port ls1 ls1-lr lr-ls1
 check ovn-nbctl lsp-add ls1 vm1
 check ovn-nbctl lsp-set-addresses vm1 00:00:00:00:00:01
 
-check ovn-nbctl lsp-add ls2 ls2-lr
-check ovn-nbctl lsp-set-addresses ls2-lr 00:00:00:00:02:00
-check ovn-nbctl lsp-set-type ls2-lr router
-check ovn-nbctl lsp-set-options ls2-lr router-port=lr-ls2
+check ovn-nbctl lsp-add-router-port ls2 ls2-lr lr-ls2
 check ovn-nbctl lsp-add ls2 vm2
 check ovn-nbctl lsp-set-addresses vm2 00:00:00:00:00:02
 

@@ -2458,10 +2458,7 @@ for i in 1 2; do
     check ovn-nbctl --wait=sb add Logical-Switch lsw$i other_config vlan-passthru=true
 
     ln_port_name=ln-$i
-    check ovn-nbctl lsp-add lsw$i $ln_port_name
-    check ovn-nbctl lsp-set-addresses $ln_port_name unknown
-    check ovn-nbctl lsp-set-type $ln_port_name localnet
-    check ovn-nbctl lsp-set-options $ln_port_name network_name=phys
+    check ovn-nbctl lsp-add-localnet-port lsw$i $ln_port_name phys
     net_add n
 done
 
@@ -3241,14 +3238,10 @@ for i in 1 2 3; do
     ls_name=ls$i
     check ovn-nbctl ls-add $ls_name
     ln_port_name=ln$i
+    check ovn-nbctl lsp-add-localnet-port $ls_name $ln_port_name phys
     if test $i -eq 2; then
-        check ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
-    else
-        check ovn-nbctl lsp-add $ls_name $ln_port_name
+        check ovn-nbctl set logical_switch_port $ln_port_name tag_request=101
     fi
-    check ovn-nbctl lsp-set-addresses $ln_port_name unknown
-    check ovn-nbctl lsp-set-type $ln_port_name localnet
-    check ovn-nbctl lsp-set-options $ln_port_name network_name=phys
 done
 
 # lsp_to_ls LSP
@@ -3432,10 +3425,8 @@ for i in 1 2; do
     check ovn-nbctl ls-add $lsname
     for tag in `seq ${i}1 ${i}9`; do
         ln_port_name=ln-$tag
-        check ovn-nbctl lsp-add $lsname $ln_port_name "" $tag
-        check ovn-nbctl lsp-set-addresses $ln_port_name unknown
-        check ovn-nbctl lsp-set-type $ln_port_name localnet
-        check ovn-nbctl lsp-set-options $ln_port_name network_name=phys-$tag
+        check ovn-nbctl lsp-add-localnet-port $lsname $ln_port_name phys-$tag
+        check ovn-nbctl set logical_switch_port $ln_port_name tag_request=$tag
     done
 done
 
@@ -3575,10 +3566,8 @@ for i in 1 2; do
     check ovn-nbctl ls-add $lsname
     for tag in `seq ${i}1 ${i}9`; do
         ln_port_name=ln-$tag
-        check ovn-nbctl lsp-add $lsname $ln_port_name "" $tag
-        check ovn-nbctl lsp-set-addresses $ln_port_name unknown
-        check ovn-nbctl lsp-set-type $ln_port_name localnet
-        check ovn-nbctl lsp-set-options $ln_port_name network_name=phys-$tag
+        check ovn-nbctl lsp-add-localnet-port $lsname $ln_port_name phys-$tag
+        check ovn-nbctl set logical_switch_port $ln_port_name tag_request=$tag
     done
 done
 
@@ -3718,10 +3707,8 @@ for i in 1 2; do
     check ovn-nbctl ls-add ls-$i
     for tag in `seq 10 20`; do
         ln_port_name=ln-$i-$tag
-        check ovn-nbctl lsp-add ls-$i $ln_port_name "" $tag
-        check ovn-nbctl lsp-set-addresses $ln_port_name unknown
-        check ovn-nbctl lsp-set-type $ln_port_name localnet
-        check ovn-nbctl lsp-set-options $ln_port_name network_name=phys-$tag
+        check ovn-nbctl lsp-add-localnet-port ls-$i $ln_port_name phys-$tag
+        check ovn-nbctl set logical_switch_port $ln_port_name tag_request=$tag
     done
 done
 
@@ -3980,10 +3967,8 @@ check ovn-nbctl ls-add ls
 check ovn-nbctl --wait=sb add Logical-Switch ls other_config vlan-passthru=true
 
 ln_port_name=ln-100
-check ovn-nbctl lsp-add ls $ln_port_name "" 100
-check ovn-nbctl lsp-set-addresses $ln_port_name unknown
-check ovn-nbctl lsp-set-type $ln_port_name localnet
-check ovn-nbctl lsp-set-options $ln_port_name network_name=phys-100
+check ovn-nbctl lsp-add-localnet-port ls $ln_port_name phys-100
+check ovn-nbctl set logical_switch_port $ln_port_name tag_request=100
 net_add n-100
 
 # two hypervisors, each connected to the same network
@@ -4135,10 +4120,7 @@ check ovn-nbctl ls-add ls
 check ovn-nbctl --wait=sb add Logical-Switch ls other_config vlan-passthru=true
 
 ln_port_name=ln
-check ovn-nbctl lsp-add ls $ln_port_name
-check ovn-nbctl lsp-set-addresses $ln_port_name unknown
-check ovn-nbctl lsp-set-type $ln_port_name localnet
-check ovn-nbctl lsp-set-options $ln_port_name network_name=phys
+check ovn-nbctl lsp-add-localnet-port ls $ln_port_name phys
 net_add n
 
 # two hypervisors, each connected to the same network
@@ -4357,10 +4339,8 @@ ovn_start
 check ovn-nbctl ls-add ls1
 for tag in 10 20; do
     ln_port_name=ln-$tag
-    check ovn-nbctl lsp-add ls1 $ln_port_name "" $tag
-    check ovn-nbctl lsp-set-addresses $ln_port_name unknown
-    check ovn-nbctl lsp-set-type $ln_port_name localnet
-    check ovn-nbctl lsp-set-options $ln_port_name network_name=phys-$tag
+    check ovn-nbctl lsp-add-localnet-port ls1 $ln_port_name phys-$tag
+    check ovn-nbctl set logical_switch_port $ln_port_name tag_request=$tag
 done
 
 # create fabric networks
@@ -6578,10 +6558,7 @@ AT_CHECK([ovn-nbctl lsp-set-addresses localvif1 "f0:00:00:00:00:01 192.168.1.2"]
 AT_CHECK([ovn-nbctl lsp-set-port-security localvif1 "f0:00:00:00:00:01"])
 
 # Create a localnet port.
-AT_CHECK([ovn-nbctl lsp-add lsw0 ln_port])
-AT_CHECK([ovn-nbctl lsp-set-addresses ln_port unknown])
-AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
-AT_CHECK([ovn-nbctl lsp-set-options ln_port network_name=physnet1])
+AT_CHECK([ovn-nbctl lsp-add-localnet-port lsw0 ln_port physnet1])
 
 AT_CHECK([ovs-vsctl add-port br-int localvif1 -- set Interface localvif1 external_ids:iface-id=localvif1])
 
@@ -9337,8 +9314,7 @@ check ovn-nbctl ls-add ls0
 check_uuid ovn-nbctl create Logical_Router name=lr0 options:chassis=hv1
 # Add router port to gateway router
 check ovn-nbctl lrp-add lr0 lrp0 f0:00:00:00:00:01 192.168.0.1/24
-check ovn-nbctl lsp-add ls0 lrp0-rp -- set Logical_Switch_Port lrp0-rp \
-    type=router options:router-port=lrp0 addresses='"f0:00:00:00:00:01"'
+check ovn-nbctl lsp-add-router-port ls0 lrp0-rp lrp0
 # Add nat-address option
 check ovn-nbctl lsp-set-options lrp0-rp router-port=lrp0 nat-addresses="f0:00:00:00:00:01 192.168.0.2"
 
@@ -9355,10 +9331,7 @@ AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1
 AT_CHECK([ovs-vsctl add-port br-eth0 snoopvif -- set Interface snoopvif options:tx_pcap=hv1/snoopvif-tx.pcap options:rxq_pcap=hv1/snoopvif-rx.pcap])
 
 # Create a localnet port.
-AT_CHECK([ovn-nbctl lsp-add ls0 ln_port])
-AT_CHECK([ovn-nbctl lsp-set-addresses ln_port unknown])
-AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
-AT_CHECK([ovn-nbctl --wait=hv lsp-set-options ln_port network_name=physnet1])
+AT_CHECK([ovn-nbctl lsp-add-localnet-port ls0 ln_port physnet1])
 
 # Wait until the patch ports are created in hv1 to connect br-int to br-eth0
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-vsctl show | \
@@ -9417,10 +9390,7 @@ check ovn-nbctl lsp-add ls0 ls0-lr0 -- set Logical_Switch_Port ls0-lr0 \
     type=router options:router-port=lr0-ls0 addresses='"f0:00:00:00:00:01"'
 
 # Create a localnet port.
-check ovn-nbctl lsp-add ls0 ln_port
-check ovn-nbctl lsp-set-addresses ln_port unknown
-check ovn-nbctl lsp-set-type ln_port localnet
-check ovn-nbctl --wait=hv lsp-set-options ln_port network_name=physnet1
+check ovn-nbctl lsp-add-localnet-port ls0 ln_port physnet1
 
 # Prepare packets
 touch empty_expected
@@ -9549,10 +9519,7 @@ AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1
 AT_CHECK([ovs-vsctl add-port br-eth0 snoopvif -- set Interface snoopvif options:tx_pcap=hv1/snoopvif-tx.pcap options:rxq_pcap=hv1/snoopvif-rx.pcap])
 
 # Create a localnet port.
-AT_CHECK([ovn-nbctl lsp-add ls0 ln_port])
-AT_CHECK([ovn-nbctl lsp-set-addresses ln_port unknown])
-AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
-AT_CHECK([ovn-nbctl lsp-set-options ln_port network_name=physnet1])
+AT_CHECK([ovn-nbctl lsp-add-localnet-port ls0 ln_port physnet1])
 
 # Wait until the patch ports are created to connect br-int to br-eth0
 OVS_WAIT_UNTIL([test 1 = `ovs-vsctl show | \
@@ -9631,10 +9598,7 @@ AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1
 AT_CHECK([ovs-vsctl add-port br-eth0 snoopvif -- set Interface snoopvif options:tx_pcap=hv1/snoopvif-tx.pcap options:rxq_pcap=hv1/snoopvif-rx.pcap])
 
 # Create a localnet port.
-AT_CHECK([ovn-nbctl lsp-add ls0 ln_port])
-AT_CHECK([ovn-nbctl lsp-set-addresses ln_port unknown])
-AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
-AT_CHECK([ovn-nbctl lsp-set-options ln_port network_name=physnet1])
+AT_CHECK([ovn-nbctl lsp-add-localnet-port ls0 ln_port physnet1])
 
 # Wait until the patch ports are created to connect br-int to br-eth0
 OVS_WAIT_UNTIL([test 1 = `ovs-vsctl show | \
@@ -9896,10 +9860,7 @@ for i in 1 2; do
 done
 
 # Create a localnet port.
-AT_CHECK([ovn-nbctl lsp-add lsw0 ln_port])
-AT_CHECK([ovn-nbctl lsp-set-addresses ln_port unknown])
-AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
-AT_CHECK([ovn-nbctl lsp-set-options ln_port network_name=physnet1])
+AT_CHECK([ovn-nbctl lsp-add-localnet-port lsw0 ln_port physnet1])
 
 
 # Create 3 vifs.
@@ -11776,16 +11737,10 @@ check ovn-nbctl lsp-add outside outside1 \
 -- lsp-set-addresses outside1 "f0:00:00:01:02:04 172.16.1.3"
 
 # Create localnet port in alice
-check ovn-nbctl lsp-add alice ln-alice
-check ovn-nbctl lsp-set-addresses ln-alice unknown
-check ovn-nbctl lsp-set-type ln-alice localnet
-check ovn-nbctl lsp-set-options ln-alice network_name=phys
+check ovn-nbctl lsp-add-localnet-port alice ln-alice phys
 
 # Create localnet port in outside
-check ovn-nbctl lsp-add outside ln-outside
-check ovn-nbctl lsp-set-addresses ln-outside unknown
-check ovn-nbctl lsp-set-type ln-outside localnet
-check ovn-nbctl lsp-set-options ln-outside network_name=phys
+check ovn-nbctl lsp-add-localnet-port outside ln-outside phys
 
 # Create bridge-mappings on gw1, gw2 and ext1, hv1 doesn't need
 # mapping to the external network, is the one generating packets
@@ -12045,16 +12000,10 @@ check ovn-nbctl lsp-add outside outside1 \
 -- lsp-set-addresses outside1 unknown
 
 # Create localnet port in alice
-check ovn-nbctl lsp-add alice ln-alice
-check ovn-nbctl lsp-set-addresses ln-alice unknown
-check ovn-nbctl lsp-set-type ln-alice localnet
-check ovn-nbctl lsp-set-options ln-alice network_name=phys
+check ovn-nbctl lsp-add-localnet-port alice ln-alice phys
 
 # Create localnet port in outside
-check ovn-nbctl lsp-add outside ln-outside
-check ovn-nbctl lsp-set-addresses ln-outside unknown
-check ovn-nbctl lsp-set-type ln-outside localnet
-check ovn-nbctl lsp-set-options ln-outside network_name=phys
+check ovn-nbctl lsp-add-localnet-port outside ln-outside phys
 
 # Create bridge-mappings on gw1, gw2 and ext1, hv1 doesn't need
 # mapping to the external network, is the one generating packets
@@ -12290,18 +12239,12 @@ check ovn-nbctl lsp-add outside outside1 \
     -- lsp-set-addresses outside1 "f0:00:00:01:02:04 172.16.1.3"
 
 # Create localnet port in alice
-check ovn-nbctl --wait=sb lsp-add alice ln-alice \
+check ovn-nbctl --wait=sb lsp-add-localnet-port alice ln-alice phys\
     -- set Logical_Switch_Port ln-alice options:requested-tnl-key=2
-check ovn-nbctl lsp-set-addresses ln-alice unknown
-check ovn-nbctl lsp-set-type ln-alice localnet
-check ovn-nbctl lsp-set-options ln-alice network_name=phys
 
 # Create localnet port in outside
-check ovn-nbctl --wait=sb lsp-add outside ln-outside \
+check ovn-nbctl --wait=sb lsp-add-localnet-port outside ln-outside phys\
     -- set Logical_Switch_Port ln-outside options:requested-tnl-key=2
-check ovn-nbctl lsp-set-addresses ln-outside unknown
-check ovn-nbctl lsp-set-type ln-outside localnet
-check ovn-nbctl lsp-set-options ln-outside network_name=phys
 
 # Create bridge-mappings on hv1 and hv3, leaving hv2 for later
 check as hv1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
@@ -12550,12 +12493,10 @@ check_uuid ovn-nbctl create Logical_Router name=lr0
 # Add distributed gateway port to distributed router
 check ovn-nbctl lrp-add lr0 lrp0 f0:00:00:00:00:01 192.168.0.1/24 \
     -- lrp-set-gateway-chassis lrp0 hv2
-check ovn-nbctl lsp-add ls0 lrp0-rp -- set Logical_Switch_Port lrp0-rp \
-    type=router options:router-port=lrp0 addresses="router"
+check ovn-nbctl lsp-add-router-port ls0 lrp0-rp lrp0
 # Add router port to ls1
 check ovn-nbctl lrp-add lr0 lrp1 f0:00:00:00:00:02 10.0.0.1/24
-check ovn-nbctl lsp-add ls1 lrp1-rp -- set Logical_Switch_Port lrp1-rp \
-    type=router options:router-port=lrp1 addresses="router"
+check ovn-nbctl lsp-add-router-port ls1 lrp1-rp lrp1
 # Add logical ports for NAT rules
 check ovn-nbctl lsp-add ls1 foo1 \
 -- lsp-set-addresses foo1 "00:00:00:00:00:03 10.0.0.3"
@@ -12591,10 +12532,7 @@ ovn_attach n1 br-phys 192.168.0.3
 # Initially test with no bridge-mapping on hv3
 
 # Create a localnet port.
-AT_CHECK([ovn-nbctl lsp-add ls0 ln_port])
-AT_CHECK([ovn-nbctl lsp-set-addresses ln_port unknown])
-AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
-AT_CHECK([ovn-nbctl --wait=hv lsp-set-options ln_port network_name=physnet1])
+AT_CHECK([ovn-nbctl lsp-add-localnet-port ls0 ln_port physnet1])
 
 # Expect no packets when hv2 bridge-mapping is not present
 : > packets
@@ -12776,23 +12714,14 @@ check ovn-nbctl lr-route-add R1 "0.0.0.0/0" 172.16.1.1 alice
 AT_CHECK([ovn-nbctl lr-nat-add R1 snat 172.16.1.6 192.168.1.1/24])
 check ovn-nbctl set Logical_Switch_Port rp-alice options:nat-addresses=router
 
-check ovn-nbctl lsp-add foo ln-foo
-check ovn-nbctl lsp-set-addresses ln-foo unknown
-check ovn-nbctl lsp-set-options ln-foo network_name=public
-check ovn-nbctl lsp-set-type ln-foo localnet
+check ovn-nbctl lsp-add-localnet-port foo ln-foo public
 check ovn-nbctl set Logical_Switch_Port ln-foo tag_request=2
 
 AS_BOX([Create localnet port in alice])
-check ovn-nbctl lsp-add alice ln-alice
-check ovn-nbctl lsp-set-addresses ln-alice unknown
-check ovn-nbctl lsp-set-type ln-alice localnet
-check ovn-nbctl lsp-set-options ln-alice network_name=phys
+check ovn-nbctl lsp-add-localnet-port alice ln-alice phys
 
 AS_BOX([Create localnet port in outside])
-check ovn-nbctl lsp-add outside ln-outside
-check ovn-nbctl lsp-set-addresses ln-outside unknown
-check ovn-nbctl lsp-set-type ln-outside localnet
-check ovn-nbctl lsp-set-options ln-outside network_name=phys
+check ovn-nbctl lsp-add-localnet-port outside ln-outside phys
 
 AS_BOX([Verify logical flow to set outport to rp-foo])
 OVS_WAIT_UNTIL([test 1 = `ovn-sbctl dump-flows foo | grep ls_in_l2_lkup | \
@@ -13497,10 +13426,7 @@ check ovn-nbctl ls-add ls \
     -- lsp-add ls lp \
     -- lsp-set-type lp localport \
     -- lsp-set-addresses lp "00:00:00:00:00:01 10.0.0.1" \
-    -- lsp-add ls ln \
-    -- lsp-set-type ln localnet \
-    -- lsp-set-addresses ln unknown \
-    -- lsp-set-options ln network_name=phys \
+    -- lsp-add-localnet-port ls ln phys\
     -- lsp-add ls lsp \
     -- lsp-set-addresses lsp "00:00:00:00:00:02 10.0.0.2"
 
@@ -13574,10 +13500,7 @@ check ovn-nbctl lsp-set-type lext external
 hagrp_uuid=`ovn-nbctl --bare --columns _uuid find ha_chassis_group name=hagrp`
 check ovn-nbctl set logical_switch_port lext ha_chassis_group=$hagrp_uuid
 
-check ovn-nbctl lsp-add ls ln
-check ovn-nbctl lsp-set-addresses ln unknown
-check ovn-nbctl lsp-set-type ln localnet
-check ovn-nbctl lsp-set-options ln network_name=phys
+check ovn-nbctl lsp-add-localnet-port ls ln phys
 check ovn-nbctl --wait=hv sync
 
 # also create second external port AFTER localnet to check that order is irrelevant
@@ -13763,10 +13686,7 @@ check ovn-nbctl lsp-add outside rp-outside -- set Logical_Switch_Port rp-outside
     -- lsp-set-addresses rp-outside router
 
 # Create localnet port in outside
-check ovn-nbctl lsp-add outside ln-outside
-check ovn-nbctl lsp-set-addresses ln-outside unknown
-check ovn-nbctl lsp-set-type ln-outside localnet
-check ovn-nbctl lsp-set-options ln-outside network_name=phys
+check ovn-nbctl lsp-add-localnet-port outside ln-outside phys
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
 wait_for_ports_up
@@ -14235,10 +14155,7 @@ ovn_attach n1 br-phys 192.168.0.3
 AT_CHECK([as hv3 ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1:br-phys])
 
 # Create a localnet port.
-AT_CHECK([ovn-nbctl lsp-add ls0 ln_port])
-AT_CHECK([ovn-nbctl lsp-set-addresses ln_port unknown])
-AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
-AT_CHECK([ovn-nbctl lsp-set-options ln_port network_name=physnet1])
+AT_CHECK([ovn-nbctl lsp-add-localnet-port ls0 ln_port physnet1])
 
 # wait for earlier changes to take effect
 wait_for_ports_up
@@ -14395,10 +14312,7 @@ check ovn-nbctl lsp-add outside rp-outside -- set Logical_Switch_Port rp-outside
     -- lsp-set-addresses rp-outside router
 
 # Create localnet port in outside
-check ovn-nbctl lsp-add outside ln-outside
-check ovn-nbctl lsp-set-addresses ln-outside unknown
-check ovn-nbctl lsp-set-type ln-outside localnet
-check ovn-nbctl lsp-set-options ln-outside network_name=phys
+check ovn-nbctl lsp-add-localnet-port outside ln-outside phys
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
 wait_for_ports_up
@@ -14577,17 +14491,11 @@ check ovn-nbctl lsp-set-port-security sw0_ip6-port1 \
 
 check ovn-nbctl lr-add lr0_ip6
 check ovn-nbctl lrp-add lr0_ip6 lrp0_ip6 00:00:00:00:af:01 aef0:0:0:0:0:0:0:0/64
-check ovn-nbctl lsp-add sw0_ip6 lrp0_ip6-attachment
-check ovn-nbctl lsp-set-type lrp0_ip6-attachment router
-check ovn-nbctl lsp-set-addresses lrp0_ip6-attachment router
-check ovn-nbctl lsp-set-options lrp0_ip6-attachment router-port=lrp0_ip6
+check ovn-nbctl lsp-add-router-port sw0_ip6 lrp0_ip6-attachment lrp0_ip6
 check ovn-nbctl set logical_router_port lrp0_ip6 ipv6_ra_configs:address_mode=slaac
 
 check ovn-nbctl ls-add public
-check ovn-nbctl lsp-add public ln-public
-check ovn-nbctl lsp-set-addresses ln-public unknown
-check ovn-nbctl lsp-set-type ln-public localnet
-check ovn-nbctl lsp-set-options ln-public network_name=phys
+check ovn-nbctl lsp-add-localnet-port public ln-public phys
 
 check ovn-nbctl lrp-add lr0_ip6 ip6_public 00:00:02:01:02:04 \
 2001:db8:1:0:200:02ff:fe01:0204/64 \
@@ -14612,10 +14520,7 @@ check ovn-nbctl lsp-set-addresses sw1_ip6-port1 \
 
 check ovn-nbctl lr-add lr1_ip6
 check ovn-nbctl lrp-add lr1_ip6 lrp1_ip6 00:00:00:01:af:01 aef1:0:0:0:0:0:0:0/64
-check ovn-nbctl lsp-add sw1_ip6 lrp1_ip6-attachment
-check ovn-nbctl lsp-set-type lrp1_ip6-attachment router
-check ovn-nbctl lsp-set-addresses lrp1_ip6-attachment router
-check ovn-nbctl lsp-set-options lrp1_ip6-attachment router-port=lrp1_ip6
+check ovn-nbctl lsp-add-router-port sw1_ip6 lrp1_ip6-attachment lrp1_ip6
 
 check ovn-nbctl lrp-add lr1_ip6 ip6_public_1 00:01:02:01:02:04 \
 2002:db8:1:0:200:02ff:fe01:0204/64 \
@@ -15417,10 +15322,7 @@ check ovn-nbctl lsp-set-addresses second "00:00:00:00:00:02 10.0.0.2"
 check ovn-nbctl lsp-set-addresses third "00:00:00:00:00:03 10.0.0.3"
 check ovn-nbctl lsp-set-addresses migrator "00:00:00:00:00:ff 10.0.0.100"
 
-check ovn-nbctl lsp-add ls0 public
-check ovn-nbctl lsp-set-type public localnet
-check ovn-nbctl lsp-set-addresses public unknown
-check ovn-nbctl lsp-set-options public network_name=phys
+check ovn-nbctl lsp-add-localnet-port ls0 public phys
 
 # The test scenario will migrate Migrator port between hv1 and hv2 and check
 # that connectivity to and from the port is functioning properly for both
@@ -15828,10 +15730,7 @@ m4_define([MULTICHASSIS_PATH_MTU_DISCOVERY_TEST],
    check ovn-nbctl lsp-set-addresses multi1 "${multi1_mac} ${multi1_ip} ${multi1_ip6}"
    check ovn-nbctl lsp-set-addresses multi2 "${multi2_mac} ${multi2_ip} ${multi2_ip6}"
 
-   check ovn-nbctl lsp-add ls0 public
-   check ovn-nbctl lsp-set-type public localnet
-   check ovn-nbctl lsp-set-addresses public unknown
-   check ovn-nbctl lsp-set-options public network_name=phys
+   check ovn-nbctl lsp-add-localnet-port ls0 public phys
 
    check ovn-nbctl lsp-set-options first requested-chassis=hv1
    check ovn-nbctl lsp-set-options second requested-chassis=hv2
@@ -16846,10 +16745,7 @@ check ovn-nbctl lr-add ro
 check ovn-nbctl lrp-add ro ro-sw 00:00:00:00:00:01 20.0.0.1/24
 
 check ovn-nbctl ls-add sw
-check ovn-nbctl lsp-add sw sw-ro
-check ovn-nbctl lsp-set-type sw-ro router
-check ovn-nbctl lsp-set-options sw-ro router-port=ro-sw
-check ovn-nbctl lsp-set-addresses sw-ro 00:00:00:00:00:01
+check ovn-nbctl lsp-add-router-port sw sw-ro ro-sw
 check ovn-nbctl lsp-add sw sw-p1
 check ovn-nbctl lsp-set-addresses sw-p1 "00:00:00:00:00:02 aef0::200:ff:fe00:2"
 check ovn-nbctl lsp-add sw sw-p2
@@ -17013,10 +16909,7 @@ check ovn-nbctl ls-add ls0
 check ovn-nbctl lsp-add ls0 port
 check ovn-nbctl lsp-set-addresses port "00:00:00:00:00:01 10.0.0.1"
 
-check ovn-nbctl lsp-add ls0 public
-check ovn-nbctl lsp-set-addresses public unknown
-check ovn-nbctl lsp-set-type public localnet
-check ovn-nbctl lsp-set-options public network_name=phys
+check ovn-nbctl lsp-add-localnet-port ls0 public phys
 
 for hv in hv1 hv2; do
     as $hv check ovs-vsctl -- add-port br-int port -- \
@@ -17098,15 +16991,9 @@ check ovn-nbctl lr-add ro
 check ovn-nbctl lrp-add ro ro-sw 00:00:00:00:00:01 20.0.0.1/24
 
 check ovn-nbctl ls-add sw
-check ovn-nbctl lsp-add sw ln
-check ovn-nbctl lsp-set-addresses ln unknown
-check ovn-nbctl lsp-set-type ln localnet
-check ovn-nbctl lsp-set-options ln network_name=phys
+check ovn-nbctl lsp-add-localnet-port sw ln phys
 
-check ovn-nbctl lsp-add sw sw-ro
-check ovn-nbctl lsp-set-type sw-ro router
-check ovn-nbctl lsp-set-options sw-ro router-port=ro-sw
-check ovn-nbctl lsp-set-addresses sw-ro 00:00:00:00:00:01
+check ovn-nbctl lsp-add-router-port sw sw-ro ro-sw
 check ovn-nbctl lsp-add sw sw-p1
 check ovn-nbctl lsp-set-addresses sw-p1 "00:00:00:00:00:02 aef0::200:ff:fe00:2"
 check ovn-nbctl lsp-add sw sw-p2
@@ -17253,15 +17140,9 @@ check ovn-nbctl lr-add ro -- set Logical_Router ro options:chassis="hv1"
 check ovn-nbctl lrp-add ro ro-sw 00:00:00:00:00:01 20.0.0.1/24
 
 check ovn-nbctl ls-add sw
-check ovn-nbctl lsp-add sw ln
-check ovn-nbctl lsp-set-addresses ln unknown
-check ovn-nbctl lsp-set-type ln localnet
-check ovn-nbctl lsp-set-options ln network_name=phys
+check ovn-nbctl lsp-add-localnet-port sw ln phys
 
-check ovn-nbctl lsp-add sw sw-ro
-check ovn-nbctl lsp-set-type sw-ro router
-check ovn-nbctl lsp-set-options sw-ro router-port=ro-sw
-check ovn-nbctl lsp-set-addresses sw-ro 00:00:00:00:00:01
+check ovn-nbctl lsp-add-router-port sw sw-ro ro-sw
 check ovn-nbctl lsp-add sw sw-p1
 check ovn-nbctl lsp-set-addresses sw-p1 "00:00:00:00:00:02 aef0::200:ff:fe00:2"
 check ovn-nbctl lsp-add sw sw-p2
@@ -17658,10 +17539,7 @@ check ovn-nbctl lsp-add ls1 ls1-lp1 \
 check ovn-nbctl lsp-add ls2 ls2-lp1 \
 -- lsp-set-addresses ls2-lp1 "00:00:00:01:02:04 172.16.1.2"
 
-check ovn-nbctl lsp-add ls1 ln-public
-check ovn-nbctl lsp-set-type ln-public localnet
-check ovn-nbctl lsp-set-addresses ln-public unknown
-check ovn-nbctl lsp-set-options ln-public network_name=public
+check ovn-nbctl lsp-add-localnet-port ls1 ln-public public
 
 # Create one hypervisor and create OVS ports corresponding to logical ports.
 net_add n1
@@ -18026,10 +17904,7 @@ check ovn-nbctl lsp-add ls2 ls2-lp1 \
 check ovn-nbctl lsp-add ls2 ls2-lp2 \
 -- lsp-set-addresses ls2-lp2 "00:00:00:01:03:04 172.16.1.3"
 
-check ovn-nbctl lsp-add ls1 ln-public
-check ovn-nbctl lsp-set-type ln-public localnet
-check ovn-nbctl lsp-set-addresses ln-public unknown
-check ovn-nbctl lsp-set-options ln-public network_name=public
+check ovn-nbctl lsp-add-localnet-port ls1 ln-public public
 
 # Create 2 hypervisors and create OVS ports corresponding to logical ports for hv1.
 net_add n1
@@ -20304,10 +20179,7 @@ grep controller | grep tp_src=546 | grep \
 ])
 
 # Add the localnet port to the logical switch ls1
-check ovn-nbctl lsp-add ls1 ln-public
-check ovn-nbctl lsp-set-addresses ln-public unknown
-check ovn-nbctl lsp-set-type ln-public localnet
-check ovn-nbctl --wait=hv lsp-set-options ln-public network_name=phys
+check ovn-nbctl lsp-add-localnet-port ls1 ln-public phys
 
 ln_public_key=$(fetch_column Port_Binding tunnel_key logical_port=ln-public)
 
@@ -21101,23 +20973,14 @@ check ovn-nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:02 10.0.0.4 1000::4"
 
 check ovn-nbctl lr-add lr0
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::1/64
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 router
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check ovn-nbctl ls-add public
 check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24 2000::1/64
-check ovn-nbctl lsp-add public public-lr0
-check ovn-nbctl lsp-set-type public-lr0 router
-check ovn-nbctl lsp-set-addresses public-lr0 router
-check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+check ovn-nbctl lsp-add-router-port public public-lr0 lr0-public
 
 # localnet port
-check ovn-nbctl lsp-add public ln-public
-check ovn-nbctl lsp-set-type ln-public localnet
-check ovn-nbctl lsp-set-addresses ln-public unknown
-check ovn-nbctl lsp-set-options ln-public network_name=phys
+check ovn-nbctl lsp-add-localnet-port public ln-public phys
 
 check ovn-nbctl lrp-set-gateway-chassis lr0-public hv1 20
 check ovn-nbctl lr-nat-add lr0 snat 172.168.0.100 10.0.0.0/24
@@ -21451,17 +21314,11 @@ check ovn-nbctl lsp-del sw0-lr0
 check ovn-nbctl lr-del lr0
 check_uuid ovn-nbctl create Logical_Router name=lr1 options:chassis="hv1"
 check ovn-nbctl lrp-add lr1 lr1-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::1/64
-check ovn-nbctl lsp-add sw0 sw0-lr1
-check ovn-nbctl lsp-set-type sw0-lr1 router
-check ovn-nbctl lsp-set-addresses sw0-lr1 router
-check ovn-nbctl lsp-set-options sw0-lr1 router-port=lr1-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr1 lr1-sw0
 
 check ovn-nbctl lrp-add lr1 lr1-public 00:00:20:20:12:13 172.168.0.100/24 2000::1/64
 check ovn-nbctl lsp-del public-lr0
-check ovn-nbctl lsp-add public public-lr1
-check ovn-nbctl lsp-set-type public-lr1 router
-check ovn-nbctl lsp-set-addresses public-lr1 router
-check ovn-nbctl lsp-set-options public-lr1 router-port=lr1-public
+check ovn-nbctl lsp-add-router-port public public-lr1 lr1-public
 
 check ovn-nbctl lr-nat-add lr1 snat 172.168.0.100 10.0.0.0/24
 check ovn-nbctl lr-nat-add lr1 snat 2000::1 1000::/64
@@ -21724,10 +21581,7 @@ check ovn-nbctl ls-add sw1
 check ovn-nbctl ls-add pub
 
 # Created localnet port on public switch
-check ovn-nbctl lsp-add pub ln-pub
-check ovn-nbctl lsp-set-type ln-pub localnet
-check ovn-nbctl lsp-set-addresses ln-pub unknown
-check ovn-nbctl lsp-set-options ln-pub network_name=phys
+check ovn-nbctl lsp-add-localnet-port pub ln-pub phys
 
 # Create logical routers and connect them to public switch
 check_uuid ovn-nbctl create Logical_Router name=lr0
@@ -22068,14 +21922,12 @@ for i in 1 2; do
     ls_name=ls$i
     check ovn-nbctl ls-add $ls_name
     ln_port_name=ln$i
+    check ovn-nbctl lsp-add-localnet-port $ls_name $ln_port_name phys
     if test $i -eq 1; then
-        check ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
+        check ovn-nbctl set logical_switch_port $ln_port_name tag_request=101
     elif test $i -eq 2; then
-        check ovn-nbctl lsp-add $ls_name $ln_port_name "" 201
+        check ovn-nbctl set logical_switch_port $ln_port_name tag_request=201
     fi
-    check ovn-nbctl lsp-set-addresses $ln_port_name unknown
-    check ovn-nbctl lsp-set-type $ln_port_name localnet
-    check ovn-nbctl lsp-set-options $ln_port_name network_name=phys
 done
 
 # lsp_to_ls LSP
@@ -22359,16 +22211,10 @@ check ovn-nbctl lsp-set-port-security sw1-p1 "40:54:00:00:00:03 20.0.0.3 2000::3
 # Create a logical router and attach both logical switches
 check ovn-nbctl lr-add lr0
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
-check ovn-nbctl lsp-add sw1 sw1-lr0
-check ovn-nbctl lsp-set-type sw1-lr0 router
-check ovn-nbctl lsp-set-addresses sw1-lr0 00:00:00:00:ff:02
-check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check ovn-nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 # Add an ACL that matches on sw0-vir/sw0-vir6 being bound locally.
 check ovn-nbctl acl-add sw0 to-lport 1000 'is_chassis_resident("sw0-vir") && ip4' allow
@@ -22376,16 +22222,10 @@ check ovn-nbctl acl-add sw0 to-lport 1000 'is_chassis_resident("sw0-vir6") && ip
 
 check ovn-nbctl ls-add public
 check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24 2001:db8::1/64
-check ovn-nbctl lsp-add public public-lr0
-check ovn-nbctl lsp-set-type public-lr0 router
-check ovn-nbctl lsp-set-addresses public-lr0 router
-check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+check ovn-nbctl lsp-add-router-port public public-lr0 lr0-public
 
 # localnet port
-check ovn-nbctl lsp-add public ln-public
-check ovn-nbctl lsp-set-type ln-public localnet
-check ovn-nbctl lsp-set-addresses ln-public unknown
-check ovn-nbctl lsp-set-options ln-public network_name=public
+check ovn-nbctl lsp-add-localnet-port public ln-public public
 
 # schedule the gw router port to a chassis. Change the name of the chassis
 check ovn-nbctl --wait=hv lrp-set-gateway-chassis lr0-public hv1 20
@@ -23025,27 +22865,16 @@ check ovn-nbctl lsp-add sw2 sw2-p1
 check ovn-nbctl lsp-add sw2 sw2-p2
 check ovn-nbctl lsp-add sw3 sw3-p1
 check ovn-nbctl lsp-add sw3 sw3-p2
-check ovn-nbctl lsp-add sw3 sw3-ln                    \
-    -- lsp-set-type sw3-ln localnet             \
-    -- lsp-set-options sw3-ln network_name=phys
+check ovn-nbctl lsp-add-localnet-port sw3 sw3-ln phys
 
 check ovn-nbctl lr-add rtr
 check ovn-nbctl lrp-add rtr rtr-sw1 00:00:00:00:01:00 10.0.0.254/24
 check ovn-nbctl lrp-add rtr rtr-sw2 00:00:00:00:02:00 20.0.0.254/24
 check ovn-nbctl lrp-add rtr rtr-sw3 00:00:00:00:03:00 30.0.0.254/24
 
-check ovn-nbctl lsp-add sw1 sw1-rtr                      \
-    -- lsp-set-type sw1-rtr router                 \
-    -- lsp-set-addresses sw1-rtr 00:00:00:00:01:00 \
-    -- lsp-set-options sw1-rtr router-port=rtr-sw1
-check ovn-nbctl lsp-add sw2 sw2-rtr                \
-    -- lsp-set-type sw2-rtr router                 \
-    -- lsp-set-addresses sw2-rtr 00:00:00:00:02:00 \
-    -- lsp-set-options sw2-rtr router-port=rtr-sw2
-check ovn-nbctl lsp-add sw3 sw3-rtr                \
-    -- lsp-set-type sw3-rtr router                 \
-    -- lsp-set-addresses sw3-rtr 00:00:00:00:03:00 \
-    -- lsp-set-options sw3-rtr router-port=rtr-sw3
+check ovn-nbctl lsp-add-router-port sw1 sw1-rtr rtr-sw1
+check ovn-nbctl lsp-add-router-port sw2 sw2-rtr rtr-sw2
+check ovn-nbctl lsp-add-router-port sw3 sw3-rtr rtr-sw3
 
 net_add n1
 sim_add hv1
@@ -23599,14 +23428,8 @@ check ovn-nbctl lr-add rtr                                 \
     -- lrp-add rtr rtr-sw1 00:00:00:00:01:00 10.0.0.254/24 \
     -- lrp-add rtr rtr-sw2 00:00:00:00:02:00 20.0.0.254/24
 
-check ovn-nbctl lsp-add sw1 sw1-rtr                      \
-    -- lsp-set-type sw1-rtr router                 \
-    -- lsp-set-addresses sw1-rtr 00:00:00:00:01:00 \
-    -- lsp-set-options sw1-rtr router-port=rtr-sw1
-check ovn-nbctl lsp-add sw2 sw2-rtr                \
-    -- lsp-set-type sw2-rtr router                 \
-    -- lsp-set-addresses sw2-rtr 00:00:00:00:02:00 \
-    -- lsp-set-options sw2-rtr router-port=rtr-sw2
+check ovn-nbctl lsp-add-router-port sw1 sw1-rtr rtr-sw1
+check ovn-nbctl lsp-add-router-port sw2 sw2-rtr rtr-sw2
 check ovn-nbctl lrp-set-gateway-chassis rtr-sw1 hv1 10
 check ovn-nbctl lrp-set-gateway-chassis rtr-sw2 hv2 10
 
@@ -23748,27 +23571,16 @@ check ovn-nbctl lsp-add sw2 sw2-p1
 check ovn-nbctl lsp-add sw2 sw2-p2
 check ovn-nbctl lsp-add sw3 sw3-p1
 check ovn-nbctl lsp-add sw3 sw3-p2
-check ovn-nbctl lsp-add sw3 sw3-ln              \
-    -- lsp-set-type sw3-ln localnet             \
-    -- lsp-set-options sw3-ln network_name=phys
+check ovn-nbctl lsp-add-localnet-port sw3 sw3-ln phys
 
 check ovn-nbctl lr-add rtr
 check ovn-nbctl lrp-add rtr rtr-sw1 00:00:00:00:01:00 10::fe/64
 check ovn-nbctl lrp-add rtr rtr-sw2 00:00:00:00:02:00 20::fe/64
 check ovn-nbctl lrp-add rtr rtr-sw3 00:00:00:00:03:00 30::fe/64
 
-check ovn-nbctl lsp-add sw1 sw1-rtr                \
-    -- lsp-set-type sw1-rtr router                 \
-    -- lsp-set-addresses sw1-rtr 00:00:00:00:01:00 \
-    -- lsp-set-options sw1-rtr router-port=rtr-sw1
-check ovn-nbctl lsp-add sw2 sw2-rtr                \
-    -- lsp-set-type sw2-rtr router                 \
-    -- lsp-set-addresses sw2-rtr 00:00:00:00:02:00 \
-    -- lsp-set-options sw2-rtr router-port=rtr-sw2
-check ovn-nbctl lsp-add sw3 sw3-rtr                \
-    -- lsp-set-type sw3-rtr router                 \
-    -- lsp-set-addresses sw3-rtr 00:00:00:00:03:00 \
-    -- lsp-set-options sw3-rtr router-port=rtr-sw3
+check ovn-nbctl lsp-add-router-port sw1 sw1-rtr rtr-sw1
+check ovn-nbctl lsp-add-router-port sw2 sw2-rtr rtr-sw2
+check ovn-nbctl lsp-add-router-port sw3 sw3-rtr rtr-sw3
 
 # Conntrack marks all IPv6 Neighbor Discovery and MLD packets as invalid,
 # make sure to test that conntrack is bypassed for MLD by adding an empty
@@ -24329,9 +24141,7 @@ ovn_start
 
 check ovn-nbctl                                                  \
     -- ls-add sw1                                                \
-      -- lsp-add sw1 sw1-ln                                      \
-        -- lsp-set-type sw1-ln localnet                          \
-        -- lsp-set-options sw1-ln network_name=phys-1            \
+      -- lsp-add-localnet-port sw1 sw1-ln phys-1                  \
       -- lsp-add sw1 sw1-p1                                      \
       -- lsp-add sw1 sw1-p2                                      \
       -- lsp-add sw1 sw1-p3                                      \
@@ -24529,14 +24339,12 @@ m4_define([DVR_N_S_ARP_HANDLING],
        ls_name=ls$i
        check ovn-nbctl ls-add $ls_name
        ln_port_name=ln$i
+       check ovn-nbctl lsp-add-localnet-port $ls_name $ln_port_name phys
        if test $i -eq 1; then
-           check ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
+           check ovn-nbctl set logical_switch_port $ln_port_name tag_request=101
        elif test $i -eq 2; then
-           check ovn-nbctl lsp-add $ls_name $ln_port_name "" 201
+           check ovn-nbctl set logical_switch_port $ln_port_name tag_request=201
        fi
-       check ovn-nbctl lsp-set-addresses $ln_port_name unknown
-       check ovn-nbctl lsp-set-type $ln_port_name localnet
-       check ovn-nbctl lsp-set-options $ln_port_name network_name=phys
    done
 
    # lsp_to_ls LSP
@@ -24586,16 +24394,12 @@ m4_define([DVR_N_S_ARP_HANDLING],
    done
 
    check ovn-nbctl ls-add ls-underlay
-   check ovn-nbctl lsp-add ls-underlay ln3 "" 1000
-   check ovn-nbctl lsp-set-addresses ln3 unknown
-   check ovn-nbctl lsp-set-type ln3 localnet
-   check ovn-nbctl lsp-set-options ln3 network_name=phys
+   check ovn-nbctl lsp-add-localnet-port ls-underlay ln3 phys
+   check ovn-nbctl set logical_switch_port ln3 tag_request=1000
 
    check ovn-nbctl ls-add ls-north
-   check ovn-nbctl lsp-add ls-north ln4 "" 1000
-   check ovn-nbctl lsp-set-addresses ln4 unknown
-   check ovn-nbctl lsp-set-type ln4 localnet
-   check ovn-nbctl lsp-set-options ln4 network_name=phys
+   check ovn-nbctl lsp-add-localnet-port ls-north ln4 phys
+   check ovn-nbctl set logical_switch_port ln4 tag_request=1000
 
    # Add a VM on ls-north
    check ovn-nbctl lsp-add ls-north lp-north
@@ -24808,14 +24612,12 @@ m4_define([DVR_N_S_PING],
        ls_name=ls$i
        check ovn-nbctl ls-add $ls_name
        ln_port_name=ln$i
+       check ovn-nbctl lsp-add-localnet-port $ls_name $ln_port_name phys
        if test $i -eq 1; then
-           check ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
+           check ovn-nbctl set logical_switch_port $ln_port_name tag_request=101
        elif test $i -eq 2; then
-           check ovn-nbctl lsp-add $ls_name $ln_port_name "" 201
+           check ovn-nbctl set logical_switch_port $ln_port_name tag_request=201
        fi
-       check ovn-nbctl lsp-set-addresses $ln_port_name unknown
-       check ovn-nbctl lsp-set-type $ln_port_name localnet
-       check ovn-nbctl lsp-set-options $ln_port_name network_name=phys
    done
 
    # lsp_to_ls LSP
@@ -24865,16 +24667,12 @@ m4_define([DVR_N_S_PING],
    done
 
    check ovn-nbctl ls-add ls-underlay
-   check ovn-nbctl lsp-add ls-underlay ln3 "" 1000
-   check ovn-nbctl lsp-set-addresses ln3 unknown
-   check ovn-nbctl lsp-set-type ln3 localnet
-   check ovn-nbctl lsp-set-options ln3 network_name=phys
+   check ovn-nbctl lsp-add-localnet-port ls-underlay ln3 phys
+   check ovn-nbctl set logical_switch_port ln3 tag_request=1000
 
    check ovn-nbctl ls-add ls-north
-   check ovn-nbctl lsp-add ls-north ln4 "" 1000
-   check ovn-nbctl lsp-set-addresses ln4 unknown
-   check ovn-nbctl lsp-set-type ln4 localnet
-   check ovn-nbctl lsp-set-options ln4 network_name=phys
+   check ovn-nbctl lsp-add-localnet-port ls-north ln4 phys
+   check ovn-nbctl set logical_switch_port ln4 tag_request=1000
 
    # Add a VM on ls-north
    check ovn-nbctl lsp-add ls-north lp-north
@@ -25140,16 +24938,10 @@ check ovn-nbctl lsp-set-port-security sw1-p1 "40:54:00:00:00:03 20.0.0.3"
 # Create a logical router and attach both logical switches
 check ovn-nbctl lr-add lr0
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
-check ovn-nbctl lsp-add sw1 sw1-lr0
-check ovn-nbctl lsp-set-type sw1-lr0 router
-check ovn-nbctl lsp-set-addresses sw1-lr0 00:00:00:00:ff:02
-check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check ovn-nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 OVN_POPULATE_ARP
 wait_for_ports_up
@@ -25323,10 +25115,8 @@ ovn_start
 # This VIF will be assigned a MAC address only (i.e. no ip).
 
 check ovn-nbctl ls-add ls1
-check ovn-nbctl lsp-add ls1 ln1 "" 101
-check ovn-nbctl lsp-set-addresses ln1 unknown
-check ovn-nbctl lsp-set-type ln1 localnet
-check ovn-nbctl lsp-set-options ln1 network_name=phys
+check ovn-nbctl lsp-add-localnet-port ls1 ln1 phys
+check ovn-nbctl set logical_switch_port ln1 tag_request=101
 
 net_add n1
 
@@ -25408,14 +25198,12 @@ for i in 1 2; do
     ls_name=ls$i
     check ovn-nbctl ls-add $ls_name
     ln_port_name=ln$i
+    check ovn-nbctl lsp-add-localnet-port $ls_name $ln_port_name phys
     if test $i -eq 1; then
-        check ovn-nbctl lsp-add $ls_name $ln_port_name "" 101
+        check ovn-nbctl set logical_switch_port $ln_port_name tag_request=101
     elif test $i -eq 2; then
-        check ovn-nbctl lsp-add $ls_name $ln_port_name "" 201
+        check ovn-nbctl set logical_switch_port $ln_port_name tag_request=201
     fi
-    check ovn-nbctl lsp-set-addresses $ln_port_name unknown
-    check ovn-nbctl lsp-set-type $ln_port_name localnet
-    check ovn-nbctl lsp-set-options $ln_port_name network_name=phys
 done
 
 # lsp_to_ls LSP
@@ -25465,16 +25253,12 @@ for i in 1 2; do
 done
 
 check ovn-nbctl ls-add ls-underlay
-check ovn-nbctl lsp-add ls-underlay ln3 "" 1000
-check ovn-nbctl lsp-set-addresses ln3 unknown
-check ovn-nbctl lsp-set-type ln3 localnet
-check ovn-nbctl lsp-set-options ln3 network_name=phys
+check ovn-nbctl lsp-add-localnet-port ls-underlay ln3 phys
+check ovn-nbctl set logical_switch_port ln3 tag_request=1000
 
 check ovn-nbctl ls-add ls-north
-check ovn-nbctl lsp-add ls-north ln4 "" 1000
-check ovn-nbctl lsp-set-addresses ln4 unknown
-check ovn-nbctl lsp-set-type ln4 localnet
-check ovn-nbctl lsp-set-options ln4 network_name=phys
+check ovn-nbctl lsp-add-localnet-port ls-north ln4 phys
+check ovn-nbctl set logical_switch_port ln4 tag_request=1000
 
 # Add a VM on ls-north
 check ovn-nbctl lsp-add ls-north lp-north
@@ -25750,16 +25534,10 @@ check ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4 && ip4.src == 
 # Create a logical router and attach both logical switches
 check ovn-nbctl lr-add lr0
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 router
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
-check ovn-nbctl lsp-add sw1 sw1-lr0
-check ovn-nbctl lsp-set-type sw1-lr0 router
-check ovn-nbctl lsp-set-addresses sw1-lr0 router
-check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check ovn-nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 check ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
 OVN_LB_ID=$(ovn-nbctl --bare --column _uuid find load_balancer name=lb1)
@@ -25780,16 +25558,10 @@ check ovn-nbctl --wait=sb lr-lb-add lr0 lb1
 
 check ovn-nbctl ls-add public
 check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24
-check ovn-nbctl lsp-add public public-lr0
-check ovn-nbctl lsp-set-type public-lr0 router
-check ovn-nbctl lsp-set-addresses public-lr0 router
-check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+check ovn-nbctl lsp-add-router-port public public-lr0 lr0-public
 
 # localnet port
-check ovn-nbctl lsp-add public ln-public
-check ovn-nbctl lsp-set-type ln-public localnet
-check ovn-nbctl lsp-set-addresses ln-public unknown
-check ovn-nbctl lsp-set-options ln-public network_name=public
+check ovn-nbctl lsp-add-localnet-port public ln-public public
 
 # schedule the gw router port to a chassis. Change the name of the chassis
 check ovn-nbctl --wait=hv lrp-set-gateway-chassis lr0-public hv1 20
@@ -25949,16 +25721,10 @@ check ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip6 && ip6.src == 
 # Create a logical router and attach both logical switches
 check ovn-nbctl lr-add lr0
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 2001::1/64
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 router
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 2001::a/64
-check ovn-nbctl lsp-add sw1 sw1-lr0
-check ovn-nbctl lsp-set-type sw1-lr0 router
-check ovn-nbctl lsp-set-addresses sw1-lr0 router
-check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check ovn-nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 check ovn-nbctl lb-add lb1 [[2001::a]]:80 [[2001::3]]:80,[[2002::3]]:80
 OVN_LB_ID=$(ovn-nbctl --bare --column _uuid find load_balancer name=lb1)
@@ -25979,16 +25745,10 @@ check ovn-nbctl --wait=sb lr-lb-add lr0 lb1
 
 check ovn-nbctl ls-add public
 check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 2003::1/64
-check ovn-nbctl lsp-add public public-lr0
-check ovn-nbctl lsp-set-type public-lr0 router
-check ovn-nbctl lsp-set-addresses public-lr0 router
-check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+check ovn-nbctl lsp-add-router-port public public-lr0 lr0-public
 
 # localnet port
-check ovn-nbctl lsp-add public ln-public
-check ovn-nbctl lsp-set-type ln-public localnet
-check ovn-nbctl lsp-set-addresses ln-public unknown
-check ovn-nbctl lsp-set-options ln-public network_name=public
+check ovn-nbctl lsp-add-localnet-port public ln-public public
 
 # schedule the gw router port to a chassis. Change the name of the chassis
 check ovn-nbctl --wait=hv lrp-set-gateway-chassis lr0-public hv1 20
@@ -26146,16 +25906,10 @@ check ovn-nbctl lsp-set-port-security sw1-p1 "40:54:00:00:00:03 20.0.0.3"
 # Create a logical router and attach both logical switches
 check ovn-nbctl lr-add lr0
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 router
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
-check ovn-nbctl lsp-add sw1 sw1-lr0
-check ovn-nbctl lsp-set-type sw1-lr0 router
-check ovn-nbctl lsp-set-addresses sw1-lr0 router
-check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check ovn-nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 check ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80 sctp
 
@@ -26172,16 +25926,10 @@ check ovn-nbctl --wait=sb lr-lb-add lr0 lb1
 
 check ovn-nbctl ls-add public
 check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24
-check ovn-nbctl lsp-add public public-lr0
-check ovn-nbctl lsp-set-type public-lr0 router
-check ovn-nbctl lsp-set-addresses public-lr0 router
-check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+check ovn-nbctl lsp-add-router-port public public-lr0 lr0-public
 
 # localnet port
-check ovn-nbctl lsp-add public ln-public
-check ovn-nbctl lsp-set-type ln-public localnet
-check ovn-nbctl lsp-set-addresses ln-public unknown
-check ovn-nbctl lsp-set-options ln-public network_name=public
+check ovn-nbctl lsp-add-localnet-port public ln-public public
 
 # schedule the gw router port to a chassis. Change the name of the chassis
 check ovn-nbctl --wait=hv lrp-set-gateway-chassis lr0-public hv1 20
@@ -26266,20 +26014,11 @@ check ovn-nbctl ls-add sw-agg
 check ovn-nbctl lsp-add sw-agg sw-agg-ext \
     -- lsp-set-addresses sw-agg-ext 00:00:00:00:00:01
 
-check ovn-nbctl lsp-add sw-agg sw-rtr1             \
-    -- lsp-set-type sw-rtr1 router                 \
-    -- lsp-set-addresses sw-rtr1 00:00:00:00:01:00 \
-    -- lsp-set-options sw-rtr1 router-port=rtr1-sw
-check ovn-nbctl lsp-add sw-agg sw-rtr2             \
-    -- lsp-set-type sw-rtr2 router                 \
-    -- lsp-set-addresses sw-rtr2 00:00:00:00:02:00 \
-    -- lsp-set-options sw-rtr2 router-port=rtr2-sw
+check ovn-nbctl lsp-add-router-port sw-agg sw-rtr1 rtr1-sw
+check ovn-nbctl lsp-add-router-port sw-agg sw-rtr2 rtr2-sw
 
 # Localnet port on the Aggregation Switch.
-check ovn-nbctl lsp-add sw-agg sw-agg-ln
-check ovn-nbctl lsp-set-addresses sw-agg-ln unknown
-check ovn-nbctl lsp-set-type sw-agg-ln localnet
-check ovn-nbctl lsp-set-options sw-agg-ln network_name=phys
+check ovn-nbctl lsp-add-localnet-port sw-agg sw-agg-ln phys
 
 # Configure L3 interface IPv4 & IPv6 on both routers.
 check ovn-nbctl lr-add rtr1
@@ -26300,10 +26039,7 @@ check ovn-nbctl lsp-add sw1 sw1-p1 \
     -- lsp-set-addresses sw1-p1 00:00:00:01:00:00
 check ovn-nbctl lsp-add sw1 sw1-p2 \
     -- lsp-set-addresses sw1-p2 00:00:00:02:00:00
-check ovn-nbctl lsp-add sw1 sw1-rtr1                 \
-    -- lsp-set-type sw1-rtr1 router                  \
-    -- lsp-set-addresses sw1-rtr1 00:00:01:00:00:00  \
-    -- lsp-set-options sw1-rtr1 router-port=rtr1-sw1
+check ovn-nbctl lsp-add-router-port sw1 sw1-rtr1 rtr1-sw1
 
 # Bind a "VM" connected to sw-agg on hv1.
 as hv1
@@ -26748,9 +26484,7 @@ check ovn-nbctl ls-add ls2
 
 for i in 1 2; do
     check ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
-    check ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
-        -- lsp-set-options lsp-ls${i}-lr1 router-port=lrp-lr1-ls${i} \
-        -- lsp-set-addresses lsp-ls${i}-lr1 router
+    check ovn-nbctl lsp-add-router-port ls${i} lsp-ls${i}-lr1 lrp-lr1-ls${i}
 done
 
 #install static routes
@@ -26868,9 +26602,7 @@ check ovn-nbctl lr-add lr1
 for i in 1 2; do
     check ovn-nbctl ls-add ls${i}
     check ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
-    check ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
-        -- lsp-set-options lsp-ls${i}-lr1 router-port=lrp-lr1-ls${i} \
-        -- lsp-set-addresses lsp-ls${i}-lr1 router
+    check ovn-nbctl lsp-add-router-port ls${i} lsp-ls${i}-lr1 lrp-lr1-ls${i}
 done
 
 # install static routes
@@ -27034,9 +26766,7 @@ check ovn-nbctl lr-add lr1
 for i in 1 2; do
     check ovn-nbctl ls-add ls${i}
     check ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
-    check ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
-        -- lsp-set-options lsp-ls${i}-lr1 router-port=lrp-lr1-ls${i} \
-        -- lsp-set-addresses lsp-ls${i}-lr1 router
+    check ovn-nbctl lsp-add-router-port ls${i} lsp-ls${i}-lr1 lrp-lr1-ls${i}
 done
 
 # install static route, which is more specific than directly-connected route
@@ -27174,9 +26904,7 @@ check ovn-nbctl lr-add lr1
 for i in $(seq 1 4); do
     check ovn-nbctl ls-add ls${i}
     check ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 192.168.${i}.1/24
-    check ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
-        -- lsp-set-options lsp-ls${i}-lr1 router-port=lrp-lr1-ls${i} \
-        -- lsp-set-addresses lsp-ls${i}-lr1 router
+    check ovn-nbctl lsp-add-router-port ls${i} lsp-ls${i}-lr1 lrp-lr1-ls${i}
     check ovn-nbctl lsp-add ls$i lsp${i}1 -- \
         lsp-set-addresses lsp${i}1 "f0:00:00:00:0${i}:1${i} 192.168.${i}.${i}1"
 done
@@ -27287,9 +27015,7 @@ check ovn-nbctl lr-add lr1
 for i in $(seq 1 4); do
     check ovn-nbctl ls-add ls${i}
     check ovn-nbctl lrp-add lr1 lrp-lr1-ls${i} 00:00:00:01:0${i}:01 2001:db8:${i}::1/64
-    check ovn-nbctl lsp-add ls${i} lsp-ls${i}-lr1 -- lsp-set-type lsp-ls${i}-lr1 router \
-        -- lsp-set-options lsp-ls${i}-lr1 router-port=lrp-lr1-ls${i} \
-        -- lsp-set-addresses lsp-ls${i}-lr1 router
+    check ovn-nbctl lsp-add-router-port ls${i} lsp-ls${i}-lr1 lrp-lr1-ls${i}
     check ovn-nbctl lsp-add ls$i lsp${i}1 -- \
         lsp-set-addresses lsp${i}1 "f0:00:00:00:0${i}:1${i} 2001:db8:${i}::${i}1"
 done
@@ -27592,10 +27318,7 @@ check ovn-nbctl ls-lb-add sw lb-ipv6-udp-dup
 
 check ovn-nbctl lr-add rtr
 check ovn-nbctl lrp-add rtr rtr-sw 00:00:00:00:01:00 42.42.42.254/24 4200::00ff/64
-check ovn-nbctl lsp-add sw sw-rtr                       \
-    -- lsp-set-type sw-rtr router                 \
-    -- lsp-set-addresses sw-rtr 00:00:00:00:01:00 \
-    -- lsp-set-options sw-rtr router-port=rtr-sw
+check ovn-nbctl lsp-add-router-port sw sw-rtr rtr-sw
 
 check ovn-nbctl --wait=hv sync
 wait_for_ports_up
@@ -28049,23 +27772,14 @@ check ovn-nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 aef0::4"
 
 check ovn-nbctl lr-add lr0
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 aef0::1/64
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 router
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check ovn-nbctl ls-add public
 check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24 bef0::1/64
-check ovn-nbctl lsp-add public public-lr0
-check ovn-nbctl lsp-set-type public-lr0 router
-check ovn-nbctl lsp-set-addresses public-lr0 router
-check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+check ovn-nbctl lsp-add-router-port public public-lr0 lr0-public
 
 # localnet port
-check ovn-nbctl lsp-add public ln-public
-check ovn-nbctl lsp-set-type ln-public localnet
-check ovn-nbctl lsp-set-addresses ln-public unknown
-check ovn-nbctl lsp-set-options ln-public network_name=public
+check ovn-nbctl lsp-add-localnet-port public ln-public public
 
 check ovn-nbctl lrp-set-gateway-chassis lr0-public hv1 20
 check ovn-nbctl lr-nat-add lr0 snat 172.168.0.100 10.0.0.0/24
@@ -28430,16 +28144,10 @@ check ovn-nbctl acl-add pg1 to-lport 1002 "outport == @pg1 && ip4 && ip4.src == 
 check ovn-nbctl lr-add lr0
 check ovn-nbctl set logical_router lr0 options:chassis=hv1
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 router
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24
-check ovn-nbctl lsp-add sw1 sw1-lr0
-check ovn-nbctl lsp-set-type sw1-lr0 router
-check ovn-nbctl lsp-set-addresses sw1-lr0 router
-check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check ovn-nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 check ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
 lb1_uuid=$(ovn-nbctl --bare --columns _uuid list load_balancer)
@@ -28677,10 +28385,7 @@ check ovn-nbctl ls-add sw0
 check ovn-nbctl lsp-add sw0 sw0-p1
 check ovn-nbctl lsp-set-addresses sw0-p1 "00:00:00:01:01:02 192.168.1.2"
 
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
-check ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:00:01
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check ovn-nbctl lr-add lr0
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:00:01 192.168.1.1/24 aef0:0:0:0:0:0:0:1/64
@@ -29776,29 +29481,17 @@ check ovn-nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3 2000::3"
 
 check ovn-nbctl lr-add lr0
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 router
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
-check ovn-nbctl lsp-add sw1 sw1-lr0
-check ovn-nbctl lsp-set-type sw1-lr0 router
-check ovn-nbctl lsp-set-addresses sw1-lr0 router
-check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check ovn-nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 check ovn-nbctl ls-add public
 check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.16.0.100/24 3000::a/64
-check ovn-nbctl lsp-add public public-lr0
-check ovn-nbctl lsp-set-type public-lr0 router
-check ovn-nbctl lsp-set-addresses public-lr0 router
-check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+check ovn-nbctl lsp-add-router-port public public-lr0 lr0-public
 
 # localnet port
-check ovn-nbctl lsp-add public ln-public
-check ovn-nbctl lsp-set-type ln-public localnet
-check ovn-nbctl lsp-set-addresses ln-public unknown
-check ovn-nbctl lsp-set-options ln-public network_name=physnet1
+check ovn-nbctl lsp-add-localnet-port public ln-public physnet1
 
 # schedule the gw router port to a chassis.
 check ovn-nbctl lrp-set-gateway-chassis lr0-public hv1 20
@@ -29824,35 +29517,23 @@ check ovn-nbctl lsp-set-addresses sw3-port1 "20:14:00:00:00:03 30.0.0.3 3000::3"
 
 check ovn-nbctl lr-add lr1
 check ovn-nbctl lrp-add lr1 lr1-sw3 00:00:00:10:ff:03 30.0.0.1/24 3000::a/64
-check ovn-nbctl lsp-add sw3 sw3-lr1
-check ovn-nbctl lsp-set-type sw3-lr1 router
-check ovn-nbctl lsp-set-addresses sw3-lr1 router
-check ovn-nbctl lsp-set-options sw3-lr1 router-port=lr1-sw3
+check ovn-nbctl lsp-add-router-port sw3 sw3-lr1 lr1-sw3
 
 check ovn-nbctl ls-add join
 
 # Connect lr1 to join
 check ovn-nbctl lrp-add lr1 lr1-join 00:00:04:01:02:03 170.0.0.1/24
-check ovn-nbctl lsp-add join join-lr1
-check ovn-nbctl lsp-set-type join-lr1 router
-check ovn-nbctl lsp-set-addresses join-lr1 router
-check ovn-nbctl lsp-set-options join-lr1 router-port=lr1-join
+check ovn-nbctl lsp-add-router-port join join-lr1 lr1-join
 
 # Create GW router
 check ovn-nbctl lr-add gw_router
 # connect gw_router to join
 check ovn-nbctl lrp-add gw_router gw_router-join 00:00:03:11:12:13 170.0.0.2/24
-check ovn-nbctl lsp-add join join-gw_router
-check ovn-nbctl lsp-set-type join-gw_router router
-check ovn-nbctl lsp-set-addresses join-gw_router router
-check ovn-nbctl lsp-set-options join-gw_router router-port=gw_router-join
+check ovn-nbctl lsp-add-router-port join join-gw_router gw_router-join
 
 # Connect gw_router to public
 check ovn-nbctl lrp-add gw_router gw_router-public 00:00:30:30:32:33 172.16.0.200/24 3000::b/64
-check ovn-nbctl lsp-add public public-gw_router
-check ovn-nbctl lsp-set-type public-gw_router router
-check ovn-nbctl lsp-set-addresses public-gw_router router
-check ovn-nbctl lsp-set-options public-gw_router router-port=gw_router-public
+check ovn-nbctl lsp-add-router-port public public-gw_router gw_router-public
 
 # Pin gw_router to hv3
 check ovn-nbctl set logical_router gw_router options:chassis=hv3
@@ -30446,9 +30127,7 @@ for i in 1 2; do
 
     check ovn-nbctl ls-add ls$i -- \
         lrp-add lr lrp-ls$i f0:00:00:00:88:0$i 10.0.$i.88/24 -- \
-        lsp-add ls$i lsp-lr-$i -- lsp-set-type lsp-lr-$i router -- \
-        lsp-set-addresses lsp-lr-$i router -- \
-        lsp-set-options lsp-lr-$i router-port=lrp-ls$i
+        lsp-add-router-port ls$i lsp-lr-$i lrp-ls$i
 
     for j in 1 2; do
         ovs-vsctl add-port br-int vif$i$j -- set Interface vif$i$j \
@@ -31545,16 +31224,10 @@ check ovn-nbctl lsp-set-port-security sw1-p2 "40:54:00:00:00:04 11.0.0.4"
 # Create a logical router and attach both logical switches
 check ovn-nbctl lr-add lr0
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 router
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 11.0.0.1/24
-check ovn-nbctl lsp-add sw1 sw1-lr0
-check ovn-nbctl lsp-set-type sw1-lr0 router
-check ovn-nbctl lsp-set-addresses sw1-lr0 router
-check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check ovn-nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 check ovn-nbctl --wait=hv sync
 
 net_add n1
@@ -32664,10 +32337,7 @@ for i in $(seq 0 9); do
     check ovn-nbctl ls-add ls$i
     check ovn-nbctl lrp-add lr0 lrp_lr0_ls$i aa:bb:bb:00:00:0$i 192.168.${i}.1/24
 
-    check ovn-nbctl lsp-add ls$i lsp_ls${i}_lr0 -- \
-        lsp-set-addresses lsp_ls${i}_lr0 router -- \
-        lsp-set-type lsp_ls${i}_lr0 router -- \
-        lsp-set-options lsp_ls${i}_lr0 router-port=lrp_lr0_ls${i}
+    check ovn-nbctl lsp-add-router-port ls$i lsp_ls${i}_lr0 lrp_lr0_ls${i}
 
     for j in 0 1; do
         check ovn-nbctl lsp-add ls$i lsp${i}-${j} -- \
@@ -32775,10 +32445,7 @@ check ovn-nbctl \
     -- lr-add lr \
     -- ls-add ls \
     -- lrp-add lr lrp_ls 00:00:00:00:00:01 42.42.42.1/24 \
-    -- lsp-add ls ls_lr \
-    -- lsp-set-addresses ls_lr router \
-    -- lsp-set-type ls_lr router \
-    -- lsp-set-options ls_lr router-port=lr_ls \
+    -- lsp-add-router-port ls ls_lr lr_ls \
     -- lsp-add ls vm1
 
 check ovn-nbctl pg-add pg ls_lr \
@@ -32826,10 +32493,7 @@ check ovn-nbctl ls-add sw1
 
 # Connect sw1 to lr1
 check ovn-nbctl lrp-add lr1 lr1-sw1 00:00:01:01:02:03 10.0.0.1/24
-check ovn-nbctl lsp-add sw1 sw1-lr1
-check ovn-nbctl lsp-set-type sw1-lr1 router
-check ovn-nbctl lsp-set-addresses sw1-lr1 router
-check ovn-nbctl lsp-set-options sw1-lr1 router-port=lr1-sw1
+check ovn-nbctl lsp-add-router-port sw1 sw1-lr1 lr1-sw1
 
 # Create logical port sw1-lp1 in sw1
 check ovn-nbctl lsp-add sw1 sw1-lp1 \
@@ -33230,40 +32894,22 @@ check ovn-nbctl lrp-add DR DR-S3 04:ac:10:01:00:01 192.168.0.1/24
 check ovn-nbctl lrp-add DR DR-ls 06:ac:10:01:00:01 20.0.0.1/24
 
 check ovn-nbctl ls-add S1
-check ovn-nbctl lsp-add S1 S1-DR
-check ovn-nbctl lsp-set-type S1-DR router
-check ovn-nbctl lsp-set-addresses S1-DR router
-check ovn-nbctl --wait=sb lsp-set-options S1-DR router-port=DR-S1
-check ovn-nbctl lsp-add S1 ln1 "" 1000
-check ovn-nbctl lsp-set-addresses ln1 unknown
-check ovn-nbctl lsp-set-type ln1 localnet
-check ovn-nbctl lsp-set-options ln1 network_name=phys
+check ovn-nbctl lsp-add-router-port S1 S1-DR DR-S1
+check ovn-nbctl lsp-add-localnet-port S1 ln1 phys
+check ovn-nbctl set logical_switch_port ln1 tag_request=1000
 
 check ovn-nbctl ls-add S2
-check ovn-nbctl lsp-add S2 S2-DR
-check ovn-nbctl lsp-set-type S2-DR router
-check ovn-nbctl lsp-set-addresses S2-DR router
-check ovn-nbctl --wait=sb lsp-set-options S2-DR router-port=DR-S2
-check ovn-nbctl lsp-add S2 ln2 "" 2000
-check ovn-nbctl lsp-set-addresses ln2 unknown
-check ovn-nbctl lsp-set-type ln2 localnet
-check ovn-nbctl lsp-set-options ln2 network_name=phys
+check ovn-nbctl lsp-add-router-port S2 S2-DR DR-S2
+check ovn-nbctl lsp-add-localnet-port S2 ln2 phys
+check ovn-nbctl set logical_switch_port ln2 tag_request=2000
 
 check ovn-nbctl ls-add S3
-check ovn-nbctl lsp-add S3 S3-DR
-check ovn-nbctl lsp-set-type S3-DR router
-check ovn-nbctl lsp-set-addresses S3-DR router
-check ovn-nbctl --wait=sb lsp-set-options S3-DR router-port=DR-S3
-check ovn-nbctl lsp-add S3 ln3 "" 3000
-check ovn-nbctl lsp-set-addresses ln3 unknown
-check ovn-nbctl lsp-set-type ln3 localnet
-check ovn-nbctl lsp-set-options ln3 network_name=phys
+check ovn-nbctl lsp-add-router-port S3 S3-DR DR-S3
+check ovn-nbctl lsp-add-localnet-port S3 ln3 phys
+check ovn-nbctl set logical_switch_port ln3 tag_request=3000
 
 check ovn-nbctl ls-add ls
-check ovn-nbctl lsp-add ls ls-DR
-check ovn-nbctl lsp-set-type ls-DR router
-check ovn-nbctl lsp-set-addresses ls-DR router
-check ovn-nbctl --wait=sb lsp-set-options ls-DR router-port=DR-ls
+check ovn-nbctl lsp-add-router-port ls ls-DR DR-ls
 
 # Add the lsp lp11 to ls. This will map to VIF11.
 check ovn-nbctl lsp-add ls lp11
@@ -33272,10 +32918,8 @@ check ovn-nbctl lsp-set-port-security lp11 f0:00:00:00:00:10
 
 # Add the Northbound endpoint, lp-north1
 check ovn-nbctl ls-add ls-north1
-check ovn-nbctl lsp-add ls-north1 ln4 "" 1000
-check ovn-nbctl lsp-set-addresses ln4 unknown
-check ovn-nbctl lsp-set-type ln4 localnet
-check ovn-nbctl lsp-set-options ln4 network_name=phys
+check ovn-nbctl lsp-add-localnet-port ls-north1 ln4 phys
+check ovn-nbctl set logical_switch_port ln4 tag_request=1000
 
 check ovn-nbctl lsp-add ls-north1 lp-north1
 check ovn-nbctl lsp-set-addresses lp-north1 "f0:f0:00:00:00:11 172.16.1.10"
@@ -33283,10 +32927,8 @@ check ovn-nbctl lsp-set-port-security lp-north1 f0:f0:00:00:00:11
 
 # Add the Northbound endpoint, lp-north2
 check ovn-nbctl ls-add ls-north2
-check ovn-nbctl lsp-add ls-north2 ln5 "" 2000
-check ovn-nbctl lsp-set-addresses ln5 unknown
-check ovn-nbctl lsp-set-type ln5 localnet
-check ovn-nbctl lsp-set-options ln5 network_name=phys
+check ovn-nbctl lsp-add-localnet-port ls-north2 ln5 phys
+check ovn-nbctl set logical_switch_port ln5 tag_request=2000
 
 check ovn-nbctl lsp-add ls-north2 lp-north2
 check ovn-nbctl lsp-set-addresses lp-north2 "f0:f0:00:00:00:22 10.0.0.10"
@@ -33294,10 +32936,8 @@ check ovn-nbctl lsp-set-port-security lp-north2 f0:f0:00:00:00:22
 
 # Add the Northbound endpoint, lp-north3
 check ovn-nbctl ls-add ls-north3
-check ovn-nbctl lsp-add ls-north3 ln6 "" 3000
-check ovn-nbctl lsp-set-addresses ln6 unknown
-check ovn-nbctl lsp-set-type ln6 localnet
-check ovn-nbctl lsp-set-options ln6 network_name=phys
+check ovn-nbctl lsp-add-localnet-port ls-north3 ln6 phys
+check ovn-nbctl set logical_switch_port ln6 tag_request=3000
 
 check ovn-nbctl lsp-add ls-north3 lp-north3
 check ovn-nbctl lsp-set-addresses lp-north3 "f0:f0:00:00:00:33 192.168.0.10"
@@ -33544,10 +33184,7 @@ for i in 1 2; do
     lrp=lrp_lr_ls$i
     lsp_lr=lsp_ls${i}_lr
     check ovn-nbctl lrp-add lr $lrp f0:00:00:00:aa:0$i 10.0.$i.1/24 \
-        -- lsp-add ls$i $lsp_lr \
-        -- lsp-set-type $lsp_lr router \
-        -- lsp-set-options $lsp_lr router-port=$lrp \
-        -- lsp-set-addresses $lsp_lr router \
+        -- lsp-add-router-port ls$i $lsp_lr $lrp \
         -- lrp-set-gateway-chassis $lrp hv$i 1
 done
 
@@ -33744,10 +33381,7 @@ check ovn-nbctl lsp-set-type sw0-port2 localport
 
 check ovn-nbctl lr-add lr0
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 wait_for_ports_up sw0-port1
 
@@ -33785,10 +33419,7 @@ grep sw1-port1 -c], [0], [1
 ])
 
 # Attach sw1 to lr0
-check ovn-nbctl lsp-add sw1 sw1-lr0
-check ovn-nbctl lsp-set-type sw1-lr0 router
-check ovn-nbctl lsp-set-addresses sw1-lr0 00:00:00:00:ff:02
-check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check ovn-nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 # There should be no ct-zone id allocated for sw1-lr0
 AT_CHECK([as hv1 ovn-appctl -t ovn-controller ct-zone-list | \
@@ -34145,22 +33776,14 @@ check ovn-nbctl lrp-add lr0 lr0-ext-ls0 00:00:11:11:33:33 172.16.1.10/24
 
 # Create logical switch and connect to logical router
 check ovn-nbctl ls-add ls0
-check ovn-nbctl lsp-add ls0 ls0-lr0
-check ovn-nbctl lsp-set-type ls0-lr0 router
-check ovn-nbctl lsp-set-addresses ls0-lr0 router
-check ovn-nbctl --wait=sb lsp-set-options ls0-lr0 router-port=lr0-ls0
+check ovn-nbctl lsp-add-router-port ls0 ls0-lr0 lr0-ls0
 
 # Create external gateway switch and connect to logical router
 check ovn-nbctl ls-add ext-ls0
-check ovn-nbctl lsp-add ext-ls0 ext-ls0-lr0
-check ovn-nbctl lsp-set-type ext-ls0-lr0 router
-check ovn-nbctl lsp-set-addresses ext-ls0-lr0 router
-check ovn-nbctl --wait=sb lsp-set-options ext-ls0-lr0 router-port=lr0-ext-ls0
+check ovn-nbctl lsp-add-router-port ext-ls0 ext-ls0-lr0 lr0-ext-ls0
 
-check ovn-nbctl lsp-add ext-ls0 ln0 "" 1000
-check ovn-nbctl lsp-set-addresses ln0 unknown
-check ovn-nbctl lsp-set-type ln0 localnet
-check ovn-nbctl lsp-set-options ln0 network_name=phys
+check ovn-nbctl lsp-add-localnet-port ext-ls0 ln phys
+check ovn-nbctl set logical_switch_port ln tag_request=1000
 
 # Add the lsp lp11 to ls0. This will map to VIF11.
 check ovn-nbctl lsp-add ls0 lp11
@@ -34245,20 +33868,11 @@ wait_row_count Chassis 1 name=hv2 other_config:ovn-monitor-all=true
 check ovn-nbctl ls-add public
 check ovn-nbctl ls-add internal
 
-check ovn-nbctl lsp-add public ln_port
-check ovn-nbctl lsp-set-addresses ln_port unknown
-check ovn-nbctl lsp-set-type ln_port localnet
-check ovn-nbctl lsp-set-options ln_port network_name=phys
+check ovn-nbctl lsp-add-localnet-port public ln_port phys
 
-check ovn-nbctl lsp-add public public-gw
-check ovn-nbctl lsp-set-type public-gw router
-check ovn-nbctl lsp-set-addresses public-gw router
-check ovn-nbctl lsp-set-options public-gw router-port=gw-public
+check ovn-nbctl lsp-add-router-port public public-gw gw-public
 
-check ovn-nbctl lsp-add internal internal-gw
-check ovn-nbctl lsp-set-type internal-gw router
-check ovn-nbctl lsp-set-addresses internal-gw router
-check ovn-nbctl lsp-set-options internal-gw router-port=gw-internal
+check ovn-nbctl lsp-add-router-port internal internal-gw gw-internal
 
 check ovn-nbctl lsp-add internal vif1
 check ovn-nbctl lsp-set-addresses vif1 "00:00:00:00:20:11 192.168.20.11"
@@ -34684,10 +34298,7 @@ net_add n1
 
 AT_CHECK([ovn-nbctl ls-add ls0])
 
-AT_CHECK([ovn-nbctl lsp-add ls0 ln_port])
-AT_CHECK([ovn-nbctl lsp-set-addresses ln_port unknown])
-AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
-AT_CHECK([ovn-nbctl lsp-set-options ln_port network_name=physnet1])
+AT_CHECK([ovn-nbctl lsp-add-localnet-port ls0 ln_port physnet1])
 
 AT_CHECK([ovn-nbctl lsp-add ls0 vif0])
 AT_CHECK([ovn-nbctl lsp-set-addresses vif0 "00:00:00:00:10:10 192.168.10.10"])
@@ -34755,25 +34366,13 @@ net_add n1
 AT_CHECK([ovn-nbctl ls-add public])
 AT_CHECK([ovn-nbctl ls-add internal])
 
-AT_CHECK([ovn-nbctl lsp-add public ln_port])
-AT_CHECK([ovn-nbctl lsp-set-addresses ln_port unknown])
-AT_CHECK([ovn-nbctl lsp-set-type ln_port localnet])
-AT_CHECK([ovn-nbctl lsp-set-options ln_port network_name=physnet1])
+AT_CHECK([ovn-nbctl lsp-add-localnet-port public ln_port physnet1])``
 
-AT_CHECK([ovn-nbctl lsp-add public public-gw-1])
-AT_CHECK([ovn-nbctl lsp-set-type public-gw-1 router])
-AT_CHECK([ovn-nbctl lsp-set-addresses public-gw-1 00:00:00:00:10:00 router])
-AT_CHECK([ovn-nbctl lsp-set-options public-gw-1 router-port=gw-1-public])
+AT_CHECK([ovn-nbctl lsp-add-router-port public public-gw-1 gw-1-public])
 
-AT_CHECK([ovn-nbctl lsp-add public public-gw-2])
-AT_CHECK([ovn-nbctl lsp-set-type public-gw-2 router])
-AT_CHECK([ovn-nbctl lsp-set-addresses public-gw-2 00:00:00:00:30:00 router])
-AT_CHECK([ovn-nbctl lsp-set-options public-gw-2 router-port=gw-2-public])
+AT_CHECK([ovn-nbctl lsp-add-router-port public public-gw-2 gw-2-public])
 
-AT_CHECK([ovn-nbctl lsp-add internal internal-gw])
-AT_CHECK([ovn-nbctl lsp-set-type internal-gw router])
-AT_CHECK([ovn-nbctl lsp-set-addresses internal-gw 00:00:00:00:20:00 router])
-AT_CHECK([ovn-nbctl lsp-set-options internal-gw router-port=gw-internal])
+AT_CHECK([ovn-nbctl lsp-add-router-port internal internal-gw gw-internal])
 
 AT_CHECK([ovn-nbctl lsp-add internal vif1])
 AT_CHECK([ovn-nbctl lsp-set-addresses vif1 "00:00:00:00:20:10 192.168.20.10"])
@@ -35042,16 +34641,10 @@ check ovn-nbctl                                                     \
     -- set logical_router lr options:mac_binding_age_threshold=3600 \
     -- lrp-add lr lr-ls1 00:00:00:00:10:00 192.168.10.1/24          \
     -- lrp-add lr lr-ls2 00:00:00:00:20:00 192.168.20.1/24          \
-    -- lsp-add ls1 ls1-lr                                           \
-    -- lsp-set-type ls1-lr router                                   \
-    -- lsp-set-addresses ls1-lr router                              \
-    -- lsp-set-options ls1-lr router-port=lr-ls1                    \
+    -- lsp-add-router-port ls1 ls1-lr lr-ls1                         \
     -- lsp-add ls1 vif1                                             \
     -- lsp-set-addresses vif1 "00:00:00:00:10:10 192.168.10.10"     \
-    -- lsp-add ls2 ls2-lr                                           \
-    -- lsp-set-type ls2-lr router                                   \
-    -- lsp-set-addresses ls2-lr router                              \
-    -- lsp-set-options ls2-lr router-port=lr-ls2                    \
+    -- lsp-add-router-port ls2 ls2-lr lr-ls2                         \
     -- lsp-add ls2 vif2                                             \
     -- lsp-set-addresses vif2 "00:00:00:00:20:10 192.168.20.10"
 
@@ -35153,16 +34746,10 @@ check ovn-nbctl                                                     \
     -- set logical_router lr options:mac_binding_age_threshold=4    \
     -- lrp-add lr lr-ls1 00:00:00:00:10:00 192.168.10.1/24          \
     -- lrp-add lr lr-ls2 00:00:00:00:20:00 192.168.20.1/24          \
-    -- lsp-add ls1 ls1-lr                                           \
-    -- lsp-set-type ls1-lr router                                   \
-    -- lsp-set-addresses ls1-lr router                              \
-    -- lsp-set-options ls1-lr router-port=lr-ls1                    \
+    -- lsp-add-router-port ls1 ls1-lr lr-ls1                         \
     -- lsp-add ls1 vif1                                             \
     -- lsp-set-addresses vif1 "00:00:00:00:10:10 192.168.10.10"     \
-    -- lsp-add ls2 ls2-lr                                           \
-    -- lsp-set-type ls2-lr router                                   \
-    -- lsp-set-addresses ls2-lr router                              \
-    -- lsp-set-options ls2-lr router-port=lr-ls2                    \
+    -- lsp-add-router-port ls2 ls2-lr lr-ls2                         \
     -- lsp-add ls2 vif2                                             \
     -- lsp-set-addresses vif2 "00:00:00:00:20:10 192.168.20.10"
 
@@ -35233,10 +34820,7 @@ check ovn-nbctl                                                     \
     -- lr-add lr                                                    \
     -- set logical_router lr options:mac_binding_age_threshold=4    \
     -- lrp-add lr lr-ls1 00:00:00:00:10:00 192.168.10.1/24          \
-    -- lsp-add ls1 ls1-lr                                           \
-    -- lsp-set-type ls1-lr router                                   \
-    -- lsp-set-addresses ls1-lr router                              \
-    -- lsp-set-options ls1-lr router-port=lr-ls1                    \
+    -- lsp-add-router-port ls1 ls1-lr lr-ls1                         \
     -- lsp-add ls1 vif1                                             \
     -- lsp-set-addresses vif1 "00:00:00:00:10:10 192.168.10.10"
 
@@ -35331,16 +34915,10 @@ check ovn-nbctl                                                             \
     -- set logical_router lr options:mac_binding_age_threshold=$aging_th    \
     -- lrp-add lr lr-ls1 00:00:00:00:10:00 192.168.10.1/24 fd11::1/64       \
     -- lrp-add lr lr-ls2 00:00:00:00:20:00 192.168.20.1/24 fd12::1/64       \
-    -- lsp-add ls1 ls1-lr                                                   \
-    -- lsp-set-type ls1-lr router                                           \
-    -- lsp-set-addresses ls1-lr router                                      \
-    -- lsp-set-options ls1-lr router-port=lr-ls1                            \
+    -- lsp-add-router-port ls1 ls1-lr lr-ls1                                 \
     -- lsp-add ls1 vif1                                                     \
     -- lsp-set-addresses vif1 "unknown"                                     \
-    -- lsp-add ls2 ls2-lr                                                   \
-    -- lsp-set-type ls2-lr router                                           \
-    -- lsp-set-addresses ls2-lr router                                      \
-    -- lsp-set-options ls2-lr router-port=lr-ls2                            \
+    -- lsp-add-router-port ls2 ls2-lr lr-ls2                                 \
     -- lsp-add ls2 vif2                                                     \
     -- lsp-set-addresses vif2 "unknown"
 
@@ -35485,21 +35063,12 @@ check ovn-nbctl                                                             \
     -- set logical_router gw options:dynamic_neigh_routers=true             \
     -- lrp-add gw gw-public 00:00:00:00:10:00 192.168.10.1/24 fd11::1/64    \
     -- lrp-add gw gw-join 00:00:00:00:20:00 192.168.20.1/24 fd12::1/64      \
-    -- lsp-add public public-gw                                             \
-    -- lsp-set-type public-gw router                                        \
-    -- lsp-set-addresses public-gw router                                   \
-    -- lsp-set-options public-gw router-port=gw-public                      \
+    -- lsp-add-router-port public public-gw gw-public                        \
     -- lsp-add public public                                                \
     -- lsp-set-addresses public "unknown"                                   \
-    -- lsp-add join join-gw                                                 \
-    -- lsp-set-type join-gw router                                          \
-    -- lsp-set-addresses join-gw router                                     \
-    -- lsp-set-options join-gw router-port=gw-join                          \
+    -- lsp-add-router-port join join-gw gw-join                              \
     -- lrp-add lr lr-join 00:00:00:00:30:00 192.168.20.2/24 fd12::2/64      \
-    -- lsp-add join join-lr                                                 \
-    -- lsp-set-type join-lr router                                          \
-    -- lsp-set-addresses join-lr router                                     \
-    -- lsp-set-options join-lr router-port=lr-join                          \
+    -- lsp-add-router-port join join-lr lr-join                              \
     -- lr-route-add lr 0.0.0.0/0 192.168.20.1                               \
     -- lr-route-add lr ::/0 fd12::1
 
@@ -35587,9 +35156,7 @@ ovs-vsctl -- add-port br-int hv1-vif1 -- \
 check ovn-nbctl ls-add sw0
 check ovn-nbctl lr-add ro0
 check ovn-nbctl lsp-add sw0 sw0-p1
-check ovn-nbctl lsp-add sw0 lsp
-check ovn-nbctl lsp-set-type lsp router
-check ovn-nbctl lsp-set-options lsp router-port=lrp
+check ovn-nbctl lsp-add-router-port sw0 lsp lrp
 check ovn-nbctl lsp-set-addresses lsp  00:00:00:00:00:01
 check ovn-nbctl lrp-add ro0 lrp 00:00:00:00:00:01 aef0:0:0:0:0:0:0:1/64
 check ovn-nbctl set Logical_Router_Port lrp ipv6_ra_configs:send_periodic=true \
@@ -35683,9 +35250,7 @@ ovs-vsctl -- add-port br-int hv1-vif1 -- \
 check ovn-nbctl ls-add sw0
 check ovn-nbctl lr-add ro0
 check ovn-nbctl lsp-add sw0 sw0-p1
-check ovn-nbctl lsp-add sw0 lsp
-check ovn-nbctl lsp-set-type lsp router
-check ovn-nbctl lsp-set-options lsp router-port=lrp
+check ovn-nbctl lsp-add-router-port sw0 lsp lrp
 check ovn-nbctl lsp-set-addresses lsp  00:00:00:00:00:01
 check ovn-nbctl --wait=hv lrp-add ro0 lrp 00:00:00:00:00:01 aef0:0:0:0:0:0:0:1/64
 check ovn-nbctl --wait=hv lsp-del lsp
@@ -36835,10 +36400,7 @@ check ovn-nbctl ls-add ls
 check ovn-nbctl lsp-add ls lp1
 check ovn-nbctl lsp-set-addresses lp1 "00:00:00:00:00:01 10.0.0.1"
 
-check ovn-nbctl lsp-add ls ln_port
-check ovn-nbctl lsp-set-addresses ln_port unknown
-check ovn-nbctl lsp-set-type ln_port localnet
-check ovn-nbctl lsp-set-options ln_port network_name=phys-1
+check ovn-nbctl lsp-add-localnet-port ls ln_port phys-1
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
@@ -36930,10 +36492,7 @@ check ovn-nbctl \
 check ovn-nbctl lsp-add ls lp1
 check ovn-nbctl lsp-set-addresses lp1 "00:00:00:00:00:01 10.0.0.1"
 
-check ovn-nbctl lsp-add ls ln_port
-check ovn-nbctl lsp-set-addresses ln_port unknown
-check ovn-nbctl lsp-set-type ln_port localnet
-check ovn-nbctl lsp-set-options ln_port network_name=phys
+check ovn-nbctl lsp-add-localnet-port ls ln_port phys
 
 ovs-vsctl -- add-port br-int vif1 -- \
     set interface vif1 external-ids:iface-id=lp1 \
@@ -37287,10 +36846,7 @@ AT_SETUP([OVN QoS])
 ovn_start
 
 check ovn-nbctl ls-add ls0
-check ovn-nbctl lsp-add ls0 public0
-check ovn-nbctl lsp-set-addresses public0 unknown
-check ovn-nbctl lsp-set-type public0 localnet
-check ovn-nbctl lsp-set-options public0 network_name=phys
+check ovn-nbctl lsp-add-localnet-port ls0 public0 phys
 net_add n
 
 # two hypervisors, each connected to the same network
@@ -37423,10 +36979,7 @@ OVS_WAIT_UNTIL([test $(as hv-1 ovs-vsctl list queue | grep -c 'max-rate="200000"
 OVS_WAIT_UNTIL([test $(as hv-1 ovs-vsctl list queue | grep -c 'burst="3000000"') -eq 1])
 
 check ovn-nbctl ls-add ls1
-check ovn-nbctl lsp-add ls1 public1
-check ovn-nbctl lsp-set-addresses public1 unknown
-check ovn-nbctl lsp-set-type public1 localnet
-check ovn-nbctl lsp-set-options public1 network_name=phys
+check ovn-nbctl lsp-add-localnet-port ls1 public1 phys
 
 check ovn-nbctl lsp-add ls1 lsp5
 check ovn-nbctl lsp-set-addresses lsp5 f0:00:00:00:00:05
@@ -37486,10 +37039,7 @@ net_add n1
 
 check ovn-nbctl ls-add ls0
 
-check ovn-nbctl lsp-add ls0 ln_port -- \
-      lsp-set-addresses ln_port unknown -- \
-      lsp-set-type ln_port localnet -- \
-      lsp-set-options ln_port network_name=physnet1 -- \
+check ovn-nbctl lsp-add-localnet-port ls0 ln_port physnet1 -- \
       set logical_switch_port ln_port options:localnet_learn_fdb=true
 
 check ovn-nbctl lsp-add ls0 vif1 -- \
@@ -37566,10 +37116,7 @@ net_add n1
 
 check ovn-nbctl ls-add ls0
 
-check ovn-nbctl lsp-add ls0 ln_port -- \
-      lsp-set-addresses ln_port unknown -- \
-      lsp-set-type ln_port localnet -- \
-      lsp-set-options ln_port network_name=physnet1 -- \
+check ovn-nbctl lsp-add-localnet-port ls0 ln_port physnet1 -- \
       set logical_switch_port ln_port options:localnet_learn_fdb=true -- \
       set logical_switch ls0 other_config:fdb_age_threshold=4
 
@@ -37700,24 +37247,15 @@ check ovn-nbctl lsp-add sw0 sw0-port1
 check ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:01 10.0.0.2"
 
 check ovn-nbctl ls-add public
-check ovn-nbctl lsp-add public ln-public
-check ovn-nbctl lsp-set-type ln-public localnet
-check ovn-nbctl lsp-set-addresses ln-public unknown
-check ovn-nbctl lsp-set-options ln-public network_name=phys
+check ovn-nbctl lsp-add-localnet-port public ln-public phys
 check ovn-nbctl lsp-add public public-port1
 check ovn-nbctl lsp-set-addresses public-port1 "50:54:00:00:00:88 172.168.0.200"
 
 check ovn-nbctl lr-add lr0
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 router
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.1/24
-check ovn-nbctl lsp-add public public-lr0
-check ovn-nbctl lsp-set-type public-lr0 router
-check ovn-nbctl lsp-set-addresses public-lr0 router
-check ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+check ovn-nbctl lsp-add-router-port public public-lr0 lr0-public
 
 check ovn-nbctl lrp-set-gateway-chassis lr0-public hv2 20
 
@@ -37763,10 +37301,7 @@ AT_SETUP([OVN QoS port deletion])
 ovn_start
 
 check ovn-nbctl ls-add ls1
-check ovn-nbctl lsp-add ls1 public1
-check ovn-nbctl lsp-set-addresses public1 unknown
-check ovn-nbctl lsp-set-type public1 localnet
-check ovn-nbctl lsp-set-options public1 network_name=phys
+check ovn-nbctl lsp-add-localnet-port ls1 public1 phys
 net_add n
 
 # two hypervisors, each connected to the same network
@@ -37864,10 +37399,7 @@ sleep_ovsdb hv1
 # As ovsdb is sleeping those multiple updates would resulti in requests to ovsdb being
 # postponed as ovsdb becomes ro.
 # Hence, patch port creation would be delayed after ovsdb becomes rw.
-check ovn-nbctl --wait=hv lsp-add ls1 ln1                  \
-                -- lsp-set-addresses ln1 unknown \
-                -- lsp-set-type ln1 localnet     \
-                -- lsp-set-options ln1 network_name=phys
+check ovn-nbctl --wait=hv lsp-add-localnet-port ls1 ln1 phys
 
 # Controller should now have created the patch port, but is not yet notified of the ofport of those interfaces
 sleep_controller hv1
@@ -37944,10 +37476,7 @@ check ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:01 192.168.0.2"
 ovs-vsctl add-port br-int p1 -- \
     set Interface p1 external_ids:iface-id=sw0-port1
 
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check ovn-appctl -t ovn-controller vlog/set dbg:main
 
@@ -38126,10 +37655,7 @@ check ovn-nbctl lsp-set-port-security sw0-p1 "50:54:00:00:00:03 10.0.0.3 10.0.0.
 # Create a logical router and attach both logical switches
 check ovn-nbctl lr-add lr0
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 00:00:00:00:ff:01
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
@@ -38180,10 +37706,7 @@ net_add n1
 
 check ovn-nbctl ls-add ls0
 
-check ovn-nbctl lsp-add ls0 ln_port -- \
-      lsp-set-addresses ln_port unknown -- \
-      lsp-set-type ln_port localnet -- \
-      lsp-set-options ln_port network_name=physnet1
+check ovn-nbctl lsp-add-localnet-port ls0 ln_port physnet1
 
 for i in $(seq 1 5); do
     check ovn-nbctl lsp-add ls0 vif1$i -- \
@@ -38643,10 +38166,7 @@ check ovn-nbctl lrp-add lr0 lr0-ls0 f0:00:00:00:00:01 192.168.0.1/24
 check ovn-nbctl lsp-add ls0 ls0-lr0 -- set Logical_Switch_Port ls0-lr0 \
     type=router options:router-port=lr0-ls0 addresses='"f0:00:00:00:00:01"'
 
-check ovn-nbctl lsp-add ls0 ln_port
-check ovn-nbctl lsp-set-addresses ln_port unknown
-check ovn-nbctl lsp-set-type ln_port localnet
-check ovn-nbctl --wait=hv lsp-set-options ln_port network_name=physnet1
+check ovn-nbctl --wait=hv lsp-add-localnet-port ls0 ln_port physnet1
 
 net_add n1
 sim_add hv1
@@ -39136,10 +38656,7 @@ check ovn-nbctl lsp-set-addresses vm1 "f0:00:0f:01:02:04 10.0.0.4 1000::4"
 
 check ovn-nbctl lr-add lr0
 check ovn-nbctl lrp-add lr0 lr0-sw0 fa:16:3e:00:00:01 10.0.0.1 1000::1/64
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 router
-check ovn-nbctl --wait=hv lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 net_add n1
 sim_add hv
@@ -39300,24 +38817,15 @@ check ovn-nbctl lsp-set-addresses vm0 "f0:00:0f:01:02:03 10.0.0.3 1000::3"
 
 check ovn-nbctl ls-add sw1
 
-check ovn-nbctl lsp-add sw1 ext
-check ovn-nbctl lsp-set-addresses ext unknown
-check ovn-nbctl lsp-set-type ext localnet
-check ovn-nbctl lsp-set-options ext network_name=phys
+check ovn-nbctl lsp-add-localnet-port sw1 ext phys
 
 check ovn-nbctl lr-add lr0
 
 check ovn-nbctl lrp-add lr0 lr0-sw0 fa:16:3e:00:00:01 10.0.0.250/24 1000::f0/64
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 router
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check ovn-nbctl lrp-add lr0 lr0-sw1 fa:16:3e:00:00:02 20.0.0.250/24 2000::f0/64
-check ovn-nbctl lsp-add sw1 sw1-lr0
-check ovn-nbctl lsp-set-type sw1-lr0 router
-check ovn-nbctl lsp-set-addresses sw1-lr0 router
-check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check ovn-nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 dnl Add default routes for the external gateway.
 check ovn-nbctl lr-route-add lr0 "0.0.0.0/0" 20.0.0.254 lr0-sw1
@@ -39460,10 +38968,7 @@ check ovn-nbctl ls-add ls
 check ovn-nbctl lsp-add ls multi
 check ovn-nbctl lsp-set-options multi requested-chassis=hv1
 
-check ovn-nbctl lsp-add ls ln
-check ovn-nbctl lsp-set-type ln localnet
-check ovn-nbctl lsp-set-addresses ln unknown
-check ovn-nbctl lsp-set-options ln network_name=phys
+check ovn-nbctl lsp-add-localnet-port ls ln phys
 
 check ovn-nbctl lsp-add ls lsp1 \
     -- lsp-set-options lsp1 requested-chassis=hv1
@@ -39531,16 +39036,10 @@ check ovn-nbctl lr-add lr1
 check ovn-nbctl lrp-add lr1 lr1-ls1 00:00:01:ff:02:03 192.168.1.254/24
 
 check ovn-nbctl ls-add ls1
-check ovn-nbctl lsp-add ls1 ls1-lr1
-check ovn-nbctl lsp-set-type ls1-lr1 router
-check ovn-nbctl lsp-set-options ls1-lr1 router-port=lr1-ls1
-check ovn-nbctl lsp-set-addresses ls1-lr1 router
+check ovn-nbctl lsp-add-router-port ls1 ls1-lr1 lr1-ls1
 
 check ovn-nbctl ls-add pub
-check ovn-nbctl lsp-add pub pub-lr1
-check ovn-nbctl lsp-set-type pub-lr1 router
-check ovn-nbctl lsp-set-options pub-lr1 router-port=lr1-pub
-check ovn-nbctl lsp-set-addresses pub-lr1 router
+check ovn-nbctl lsp-add-router-port pub pub-lr1 lr1-pub
 
 check ovn-nbctl lrp-add lr1 lr1-pub 00:00:01:ff:01:03 172.16.1.254/24
 check ovn-nbctl lrp-set-gateway-chassis lr1-pub hv1
@@ -39548,8 +39047,8 @@ check ovn-nbctl lrp-set-gateway-chassis lr1-pub hv1
 check ovn-nbctl --wait=hv sync
 wait_for_ports_up
 
-check ovn-nbctl -- lsp-add pub pub-ln -- lsp-set-type pub-ln localnet -- lsp-set-addresses pub-ln unknown -- lsp-set-options pub-ln network_name=phys
-check ovn-nbctl -- lsp-add ls1 ls1-ln -- lsp-set-type ls1-ln localnet -- lsp-set-addresses ls1-ln unknown -- lsp-set-options ls1-ln network_name=phys
+check ovn-nbctl -- lsp-add-localnet-port pub pub-ln phys
+check ovn-nbctl -- lsp-add-localnet-port ls1 ls1-ln phys
 
 # Wait for ofports.
 OVS_WAIT_UNTIL([
@@ -39751,16 +39250,10 @@ check ovn-nbctl lsp-set-addresses sw1-p1 "50:54:20:00:00:01 20.0.0.1"
 check ovn-nbctl lr-add lr0
 check ovn-nbctl set logical_router lr0 options:chassis=hv1
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.254/24
-check ovn-nbctl lsp-add sw0 sw0-lr0
-check ovn-nbctl lsp-set-type sw0-lr0 router
-check ovn-nbctl lsp-set-addresses sw0-lr0 router
-check ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.254/24
-check ovn-nbctl lsp-add sw1 sw1-lr0
-check ovn-nbctl lsp-set-type sw1-lr0 router
-check ovn-nbctl lsp-set-addresses sw1-lr0 router
-check ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+check ovn-nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
 check ovn-nbctl lb-add lb1 10.0.0.10:80 20.0.0.1:80 udp
 check ovn-nbctl ls-lb-add sw0 lb1
@@ -40072,10 +39565,7 @@ check ovn-nbctl lsp-add ls1 vm2 -- \
 
 check ovn-nbctl lr-add lr1
 check ovn-nbctl lrp-add lr1 lr1-ls1 00:00:00:00:00:01 10.0.0.1 fd01::1
-check ovn-nbctl lsp-add ls1 ls1-lr1 -- \
-      lsp-set-addresses ls1-lr1 router -- \
-      lsp-set-type ls1-lr1 router -- \
-      lsp-set-options ls1-lr1 router-port=lr1-ls1
+check ovn-nbctl lsp-add-router-port ls1 ls1-lr1 lr1-ls1
 
 check ovn-nbctl --wait=hv sync
 

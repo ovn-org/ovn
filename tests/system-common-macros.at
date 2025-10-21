@@ -221,10 +221,7 @@ check ovn-nbctl lsp-add sw1 sw11 \
     -- lsp-set-addresses sw11 "f0:00:00:02:02:03 192.168.2.2"
 
 AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext])
-check ovn-nbctl lsp-add public public1 \
-        -- lsp-set-addresses public1 unknown \
-        -- lsp-set-type public1 localnet \
-        -- lsp-set-options public1 network_name=phynet
+check ovn-nbctl lsp-add-localnet-port public public1 phynet
 
 check ovn-nbctl set logical_router_port rp-public options:prefix_delegation=true
 check ovn-nbctl set logical_router_port rp-public options:prefix=true
