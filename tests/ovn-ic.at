@@ -4304,3 +4304,35 @@ ovn_as az1 check ovn-nbctl remove logical_router_port lrp-lr11-ts1 options ic-ro
 OVN_CLEANUP_IC([az1], [az2])
 AT_CLEANUP
 ])
+
+AT_BANNER([OVN Interconnection Controller Transit Router])
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- Add transit router])
+
+ovn_init_ic_db
+ovn_start az1
+ovn_start az2
+
+check ovn-ic-nbctl --wait=sb sync
+AT_CHECK([ovn-ic-sbctl show], [0], [dnl
+availability-zone az1
+availability-zone az2
+])
+
+ovn_as az1
+check ovn-ic-nbctl tr-add tr0
+wait_row_count Datapath_Binding 1
+az1_tunnel_key=$(ovn_as az1 ovn-sbctl --bare --columns=tunnel_key find Datapath_Binding)
+check_row_count nb:Logical_Router 1 options:requested-tnl-key="${az1_tunnel_key}"
+
+ovn_as az2
+wait_row_count Datapath_Binding 1
+az2_tunnel_key=$(ovn_as az2 ovn-sbctl --bare --columns=tunnel_key find Datapath_Binding)
+check_row_count nb:Logical_Router 1 options:requested-tnl-key="${az2_tunnel_key}"
+check test "${az1_tunnel_key}"=="${az2_tunnel_key}"
+check ovn-ic-nbctl tr-del tr0
+wait_row_count Datapath_Binding 0
+
+OVN_CLEANUP_IC([az1], [az2])
+AT_CLEANUP
+])

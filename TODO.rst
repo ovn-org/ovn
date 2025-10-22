@@ -25,6 +25,8 @@
 OVN To-do List
 ==============
 
+* Add vxlan_mode handling for Transit Router.
+
 * Refactor ovn-northd code to have separate functions to add logical flows
   for gateway logical routers and logical routers with distributed gateway
   port.

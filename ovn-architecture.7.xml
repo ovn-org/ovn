@@ -2372,17 +2372,19 @@
   <p>
     A global OVN Interconnection Northbound database is introduced for the
     operator (probably through CMS systems) to configure transit logical
-    switches that connect logical routers from different AZs.  A transit
-    switch is similar to a regular logical switch, but it is used for
+    switches/routers that connect logical routers/switches from different AZs.
+    A transit switch is similar to a regular logical switch, but it is used for
     interconnection purpose only.  Typically, each transit switch can be used
     to connect all logical routers that belong to same tenant across all AZs.
+    A Transit router is similar to distributed router, with a bonus that it
+    works across AZs.
   </p>
 
   <p>
     A dedicated daemon process <code>ovn-ic</code>, OVN interconnection
     controller, in each AZ will consume this data and populate corresponding
-    logical switches to their own northbound databases for each AZ, so that
-    logical routers can be connected to the transit switch by creating
+    logical switches/routers to their own northbound databases for each AZ. So
+    that logical routers can be connected to the transit switch by creating
     patch port pairs in their northbound databases.  Any router ports
     connected to the transit switches are considered interconnection ports,
     which will be exchanged between AZs.

@@ -337,6 +337,11 @@ Transit switch commands:\n\
   ts-del SWITCH              delete SWITCH\n\
   ts-list                    print all transit switches\n\
 \n\
+Transit router commands:\n\
+  tr-add ROUTER              create a transit router named ROUTER\n\
+  tr-del ROUTER              delete ROUTER\n\
+  tr-list                    print all transit routers\n\
+\n\
 Connection commands:\n\
   get-connection             print the connections\n\
   del-connection             delete the connections\n\
@@ -397,7 +402,12 @@ struct ic_nbctl_context {
 static struct cmd_show_table cmd_show_tables[] = {
     {&icnbrec_table_transit_switch,
      &icnbrec_transit_switch_col_name,
-     {NULL},
+     {NULL, NULL, NULL},
+     {NULL, NULL, NULL}},
+
+    {&icnbrec_table_transit_router,
+     &icnbrec_transit_router_col_name,
+     {NULL, NULL, NULL},
      {NULL, NULL, NULL}},
 
     {NULL, NULL, {NULL, NULL, NULL}, {NULL, NULL, NULL}},
@@ -507,6 +517,107 @@ ic_nbctl_ts_list(struct ctl_context *ctx)
     smap_destroy(&switches);
     free(nodes);
 }
+
+static char *
+tr_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
+                   const struct icnbrec_transit_router **tr_p)
+{
+    const struct icnbrec_transit_router *tr = NULL;
+    *tr_p = NULL;
+
+    struct uuid tr_uuid;
+    bool is_uuid = uuid_from_string(&tr_uuid, id);
+    if (is_uuid) {
+        tr = icnbrec_transit_router_get_for_uuid(ctx->idl, &tr_uuid);
+    }
+
+    if (!tr) {
+        const struct icnbrec_transit_router *iter;
+
+        ICNBREC_TRANSIT_ROUTER_FOR_EACH (iter, ctx->idl) {
+            if (!strcmp(iter->name, id)) {
+                tr = iter;
+                break;
+            }
+        }
+    }
+
+    if (!tr && must_exist) {
+        return xasprintf("%s: router %s not found",
+                         id, is_uuid ? "UUID" : "name");
+    }
+
+    *tr_p = tr;
+    return NULL;
+}
+
+static void
+ic_nbctl_tr_add(struct ctl_context *ctx)
+{
+    if (!ovsdb_idl_server_has_table(ctx->idl, &icnbrec_table_transit_router)) {
+        VLOG_WARN("icnbrec_table_transit_router missing");
+    }
+
+    const char *tr_name = ctx->argv[1];
+    bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
+
+    const struct icnbrec_transit_router *tr = NULL;
+    ICNBREC_TRANSIT_ROUTER_FOR_EACH (tr, ctx->idl) {
+        if (!strcmp(tr->name, tr_name)) {
+            if (may_exist) {
+                return;
+            }
+            ctl_error(ctx, "%s: a transit router with this name already "
+                      "exists", tr_name);
+            return;
+        }
+    }
+
+    tr = icnbrec_transit_router_insert(ctx->txn);
+    icnbrec_transit_router_set_name(tr, tr_name);
+}
+
+static void
+ic_nbctl_tr_del(struct ctl_context *ctx)
+{
+    bool must_exist = !shash_find(&ctx->options, "--if-exists");
+    const char *id = ctx->argv[1];
+    const struct icnbrec_transit_router *tr = NULL;
+
+    ctx->error = tr_by_name_or_uuid(ctx, id, must_exist, &tr);
+    if (ctx->error) {
+        return;
+    }
+
+    if (!tr) {
+        return;
+    }
+
+    icnbrec_transit_router_delete(tr);
+}
+
+static void
+ic_nbctl_tr_list(struct ctl_context *ctx)
+{
+    const struct icnbrec_transit_router *tr;
+    struct smap routers;
+
+    smap_init(&routers);
+    ICNBREC_TRANSIT_ROUTER_FOR_EACH (tr, ctx->idl) {
+        smap_add_format(&routers, tr->name, UUID_FMT " (%s)",
+                        UUID_ARGS(&tr->header_.uuid), tr->name);
+    }
+
+    const struct smap_node **nodes = smap_sort(&routers);
+    for (size_t i = 0; i < smap_count(&routers); i++) {
+        const struct smap_node *node = nodes[i];
+        ds_put_format(&ctx->output, "%s\n", node->value);
+    }
+
+    smap_destroy(&routers);
+    free(nodes);
+}
+
 static void
 verify_connections(struct ctl_context *ctx)
 {
@@ -714,6 +825,9 @@ cmd_set_ssl(struct ctl_context *ctx)
 static const struct ctl_table_class tables[ICNBREC_N_TABLES] = {
     [ICNBREC_TABLE_TRANSIT_SWITCH].row_ids[0] =
     {&icnbrec_transit_switch_col_name, NULL, NULL},
+
+    [ICNBREC_TABLE_TRANSIT_ROUTER].row_ids[0] =
+    {&icnbrec_transit_router_col_name, NULL, NULL},
 };
 
 
@@ -1014,6 +1128,13 @@ static const struct ctl_command_syntax ic_nbctl_commands[] = {
     { "ts-add", 1, 1, "SWITCH", NULL, ic_nbctl_ts_add, NULL, "--may-exist", RW },
     { "ts-del", 1, 1, "SWITCH", NULL, ic_nbctl_ts_del, NULL, "--if-exists", RW },
     { "ts-list", 0, 0, "", NULL, ic_nbctl_ts_list, NULL, "", RO },
+
+    /* transit router commands. */
+    { "tr-add", 1, 1, "ROUTER", NULL, ic_nbctl_tr_add, NULL, "--may-exist",
+        RW },
+    { "tr-del", 1, 1, "ROUTER", NULL, ic_nbctl_tr_del, NULL, "--if-exists",
+        RW },
+    { "tr-list", 0, 0, "", NULL, ic_nbctl_tr_list, NULL, "", RO },
 
     /* Connection commands. */
     {"get-connection", 0, 0, "", pre_connection, cmd_get_connection, NULL, "",

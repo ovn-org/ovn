@@ -44,6 +44,10 @@ Post v25.09.0
        function and the chassis hosting the port where the ACL is being
        enforced). Proper MTU needs to be configured to accomodate this
        encapsulation.
+   - Added Transit Router support:
+    * Support the creation of Transit Routers.
+    * Added new ovn-ic-nbctl 'tr-add','tr-del','tr-list' commands to manage
+        Transit Router.
 
 OVN v25.09.0 - xxx xx xxxx
 --------------------------

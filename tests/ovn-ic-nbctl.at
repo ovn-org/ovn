@@ -63,3 +63,39 @@ AT_CHECK([ovn-ic-nbctl --if-exists ts-del ts2])
 
 OVN_IC_NBCTL_TEST_STOP
 AT_CLEANUP
+
+AT_SETUP([ovn-ic-nbctl])
+OVN_IC_NBCTL_TEST_START
+
+AT_CHECK([ovn-ic-nbctl tr-add tr0])
+AT_CHECK([ovn-ic-nbctl tr-list | uuidfilt], [0], [dnl
+<0> (tr0)
+])
+
+AT_CHECK([ovn-ic-nbctl tr-add tr1])
+AT_CHECK([ovn-ic-nbctl tr-list | uuidfilt], [0], [dnl
+<0> (tr0)
+<1> (tr1)
+])
+
+AT_CHECK([ovn-ic-nbctl tr-del tr1])
+AT_CHECK([ovn-ic-nbctl tr-list | uuidfilt], [0], [dnl
+<0> (tr0)
+])
+
+AT_CHECK([ovn-ic-nbctl tr-add tr0], [1], [],
+  [ovn-ic-nbctl: tr0: a transit router with this name already exists
+])
+
+AT_CHECK([ovn-ic-nbctl --may-exist tr-add tr0])
+AT_CHECK([ovn-ic-nbctl tr-list | uuidfilt], [0], [dnl
+<0> (tr0)
+])
+
+AT_CHECK([ovn-ic-nbctl tr-del tr2], [1], [],
+  [ovn-ic-nbctl: tr2: router name not found
+])
+
+AT_CHECK([ovn-ic-nbctl --if-exists tr-del tr2])
+OVN_IC_NBCTL_TEST_STOP
+AT_CLEANUP

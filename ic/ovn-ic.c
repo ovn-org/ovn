@@ -90,6 +90,8 @@ struct ic_state {
     bool paused;
 };
 
+enum ic_datapath_type { IC_SWITCH, IC_ROUTER, IC_DATAPATH_MAX };
+
 static const char *ovnnb_db;
 static const char *ovnsb_db;
 static const char *ovn_ic_nb_db;
@@ -194,29 +196,50 @@ az_run(struct ic_context *ctx)
 }
 
 static uint32_t
-allocate_ts_dp_key(struct hmap *dp_tnlids, bool vxlan_mode)
+allocate_dp_key(struct hmap *dp_tnlids, bool vxlan_mode, const char *name)
 {
     uint32_t hint = vxlan_mode ? OVN_MIN_DP_VXLAN_KEY_GLOBAL
                                : OVN_MIN_DP_KEY_GLOBAL;
-    return ovn_allocate_tnlid(dp_tnlids, "transit switch datapath", hint,
+    return ovn_allocate_tnlid(dp_tnlids, name, hint,
             vxlan_mode ? OVN_MAX_DP_VXLAN_KEY_GLOBAL : OVN_MAX_DP_KEY_GLOBAL,
             &hint);
 }
 
+static enum ic_datapath_type
+ic_dp_get_type(const struct icsbrec_datapath_binding *isb_dp)
+{
+    if (isb_dp->type && !strcmp(isb_dp->type, "transit-router")) {
+        return IC_ROUTER;
+    }
+
+    return IC_SWITCH;
+}
+
 static void
-ts_run(struct ic_context *ctx)
+enumerate_datapaths(struct ic_context *ctx, struct hmap *dp_tnlids,
+                    struct shash *isb_ts_dps, struct shash *isb_tr_dps)
+{
+    const struct icsbrec_datapath_binding *isb_dp;
+    ICSBREC_DATAPATH_BINDING_FOR_EACH (isb_dp, ctx->ovnisb_idl) {
+        ovn_add_tnlid(dp_tnlids, isb_dp->tunnel_key);
+
+        enum ic_datapath_type dp_type = ic_dp_get_type(isb_dp);
+        if (dp_type == IC_ROUTER) {
+            char *uuid_str = uuid_to_string(isb_dp->nb_ic_uuid);
+            shash_add(isb_tr_dps, uuid_str, isb_dp);
+            free(uuid_str);
+        } else {
+            shash_add(isb_ts_dps, isb_dp->transit_switch, isb_dp);
+        }
+    }
+}
+
+static void
+ts_run(struct ic_context *ctx, struct hmap *dp_tnlids,
+       struct shash *isb_ts_dps)
 {
     const struct icnbrec_transit_switch *ts;
     bool dp_key_refresh = false;
-
-    struct hmap dp_tnlids = HMAP_INITIALIZER(&dp_tnlids);
-    struct shash isb_dps = SHASH_INITIALIZER(&isb_dps);
-    const struct icsbrec_datapath_binding *isb_dp;
-    ICSBREC_DATAPATH_BINDING_FOR_EACH (isb_dp, ctx->ovnisb_idl) {
-        shash_add(&isb_dps, isb_dp->transit_switch, isb_dp);
-        ovn_add_tnlid(&dp_tnlids, isb_dp->tunnel_key);
-    }
-
     bool vxlan_mode = false;
     const struct icnbrec_ic_nb_global *ic_nb =
         icnbrec_ic_nb_global_first(ctx->ovninb_idl);
@@ -266,7 +289,8 @@ ts_run(struct ic_context *ctx)
                 }
             }
 
-            isb_dp = shash_find_data(&isb_dps, ts->name);
+            const struct icsbrec_datapath_binding *isb_dp;
+            isb_dp = shash_find_data(isb_ts_dps, ts->name);
             if (isb_dp) {
                 int64_t nb_tnl_key = smap_get_int(&ls->other_config,
                                                   "requested-tnl-key",
@@ -298,10 +322,12 @@ ts_run(struct ic_context *ctx)
     if (ctx->ovnisb_txn) {
         /* Create ISB Datapath_Binding */
         ICNBREC_TRANSIT_SWITCH_FOR_EACH (ts, ctx->ovninb_idl) {
-            isb_dp = shash_find_and_delete(&isb_dps, ts->name);
+            const struct icsbrec_datapath_binding *isb_dp =
+                shash_find_and_delete(isb_ts_dps, ts->name);
             if (!isb_dp) {
                 /* Allocate tunnel key */
-                int64_t dp_key = allocate_ts_dp_key(&dp_tnlids, vxlan_mode);
+                int64_t dp_key = allocate_dp_key(dp_tnlids, vxlan_mode,
+                                                 "transit switch datapath");
                 if (!dp_key) {
                     continue;
                 }
@@ -310,22 +336,107 @@ ts_run(struct ic_context *ctx)
                 icsbrec_datapath_binding_set_transit_switch(isb_dp, ts->name);
                 icsbrec_datapath_binding_set_tunnel_key(isb_dp, dp_key);
             } else if (dp_key_refresh) {
-                /* Refresh tunnel key since encap mode has changhed. */
-                int64_t dp_key = allocate_ts_dp_key(&dp_tnlids, vxlan_mode);
+                /* Refresh tunnel key since encap mode has changed. */
+                int64_t dp_key = allocate_dp_key(dp_tnlids, vxlan_mode,
+                                                 "transit switch datapath");
                 if (dp_key) {
                     icsbrec_datapath_binding_set_tunnel_key(isb_dp, dp_key);
                 }
             }
+
+            if (!isb_dp->type) {
+                icsbrec_datapath_binding_set_type(isb_dp, "transit-switch");
+            }
+
+            if (!isb_dp->nb_ic_uuid) {
+                icsbrec_datapath_binding_set_nb_ic_uuid(isb_dp,
+                                                        &ts->header_.uuid, 1);
+            }
         }
 
-        /* Delete extra ISB Datapath_Binding */
         struct shash_node *node;
-        SHASH_FOR_EACH (node, &isb_dps) {
+        SHASH_FOR_EACH (node, isb_ts_dps) {
             icsbrec_datapath_binding_delete(node->data);
         }
     }
-    ovn_destroy_tnlids(&dp_tnlids);
-    shash_destroy(&isb_dps);
+}
+
+static void
+tr_run(struct ic_context *ctx, struct hmap *dp_tnlids,
+       struct shash *isb_tr_dps)
+{
+    const struct nbrec_logical_router *lr;
+
+    if (ctx->ovnnb_txn) {
+        struct shash nb_tres = SHASH_INITIALIZER(&nb_tres);
+        NBREC_LOGICAL_ROUTER_FOR_EACH (lr, ctx->ovnnb_idl) {
+            const char *tr_name = smap_get(&lr->options, "interconn-tr");
+            if (tr_name) {
+                shash_add(&nb_tres, tr_name, lr);
+            }
+        }
+
+        const struct icnbrec_transit_router *tr;
+        ICNBREC_TRANSIT_ROUTER_FOR_EACH (tr, ctx->ovninb_idl) {
+            lr = shash_find_and_delete(&nb_tres, tr->name);
+            if (!lr) {
+                lr = nbrec_logical_router_insert(ctx->ovnnb_txn);
+                nbrec_logical_router_set_name(lr, tr->name);
+                nbrec_logical_router_update_options_setkey(
+                    lr, "interconn-tr", tr->name);
+            }
+            char *uuid_str = uuid_to_string(&tr->header_.uuid);
+            struct icsbrec_datapath_binding *isb_dp = shash_find_data(
+                isb_tr_dps, uuid_str);
+            free(uuid_str);
+
+            if (isb_dp) {
+                char *tnl_key_str = xasprintf("%"PRId64, isb_dp->tunnel_key);
+                nbrec_logical_router_update_options_setkey(
+                    lr, "requested-tnl-key", tnl_key_str);
+                free(tnl_key_str);
+            }
+        }
+
+        struct shash_node *node;
+        SHASH_FOR_EACH (node, &nb_tres) {
+            nbrec_logical_router_delete(node->data);
+        }
+        shash_destroy(&nb_tres);
+    }
+
+    /* Sync TR between INB and ISB.  This is performed after syncing with AZ
+     * SB, to avoid uncommitted ISB datapath tunnel key to be synced back to
+     * AZ. */
+    if (ctx->ovnisb_txn) {
+        /* Create ISB Datapath_Binding */
+        const struct icnbrec_transit_router *tr;
+        ICNBREC_TRANSIT_ROUTER_FOR_EACH (tr, ctx->ovninb_idl) {
+            char *uuid_str = uuid_to_string(&tr->header_.uuid);
+            struct icsbrec_datapath_binding *isb_dp =
+                shash_find_and_delete(isb_tr_dps, uuid_str);
+            free(uuid_str);
+
+            if (!isb_dp) {
+                int dp_key = allocate_dp_key(dp_tnlids, false,
+                                             "transit router datapath");
+                if (!dp_key) {
+                    continue;
+                }
+
+                isb_dp = icsbrec_datapath_binding_insert(ctx->ovnisb_txn);
+                icsbrec_datapath_binding_set_tunnel_key(isb_dp, dp_key);
+                icsbrec_datapath_binding_set_nb_ic_uuid(isb_dp,
+                                                        &tr->header_.uuid, 1);
+                icsbrec_datapath_binding_set_type(isb_dp, "transit-router");
+            }
+        }
+
+        struct shash_node *node;
+        SHASH_FOR_EACH (node, isb_tr_dps) {
+            icsbrec_datapath_binding_delete(node->data);
+        }
+    }
 }
 
 /* Returns true if any information in gw and chassis is different. */
@@ -2744,11 +2855,21 @@ update_sequence_numbers(struct ic_context *ctx,
 static void
 ovn_db_run(struct ic_context *ctx)
 {
+    struct hmap dp_tnlids = HMAP_INITIALIZER(&dp_tnlids);
+    struct shash isb_ts_dps = SHASH_INITIALIZER(&isb_ts_dps);
+    struct shash isb_tr_dps = SHASH_INITIALIZER(&isb_tr_dps);
+
     gateway_run(ctx);
-    ts_run(ctx);
+    enumerate_datapaths(ctx, &dp_tnlids, &isb_ts_dps, &isb_tr_dps);
+    ts_run(ctx, &dp_tnlids, &isb_ts_dps);
+    tr_run(ctx, &dp_tnlids, &isb_tr_dps);
     port_binding_run(ctx);
     route_run(ctx);
     sync_service_monitor(ctx);
+
+    ovn_destroy_tnlids(&dp_tnlids);
+    shash_destroy(&isb_ts_dps);
+    shash_destroy(&isb_tr_dps);
 }
 
 static void
