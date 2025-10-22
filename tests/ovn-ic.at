@@ -4400,3 +4400,52 @@ check_row_count sb:Datapath_Binding 0
 OVN_CLEANUP_IC([az1], [az2])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- Advertise discard static routes])
+
+ovn_init_ic_db
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+
+    # Enable route learning at AZ level
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
+done
+
+# Create new transit switches and LRs. Test topology is next:
+#
+# logical router (lr11) - transit switch (ts11) - logical router (lr12)
+#
+
+# Create lr11, lr12 and ts11 and connect them
+for i in 1 2; do
+    ovn_as az$i
+
+    lr=lr1$i
+    check ovn-nbctl lr-add $lr
+
+    ts=ts11
+    check ovn-ic-nbctl --wait=sb --may-exist ts-add $ts
+
+    lrp=lrp-$lr-$ts
+    lsp=lsp-$ts-$lr
+    # Create LRP and connect to TS
+    check ovn-nbctl lrp-add $lr $lrp aa:aa:aa:aa:a1:0$i 169.254.101.$i/24
+    check ovn-nbctl lsp-add-router-port $ts $lsp $lrp
+done
+
+# Create directly-connected route in lr11
+check ovn_as az2 ovn-nbctl lr-route-add lr12 192.168.0.0/24 discard
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.101.2
+])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])

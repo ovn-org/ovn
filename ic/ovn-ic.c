@@ -1376,7 +1376,8 @@ parse_route(const char *s_prefix, const char *s_nexthop,
     }
 
     unsigned int nlen;
-    if (!ip46_parse_cidr(s_nexthop, nexthop, &nlen)) {
+    if (strcmp(s_nexthop, "discard") &&
+        !ip46_parse_cidr(s_nexthop, nexthop, &nlen)) {
         return false;
     }
 
