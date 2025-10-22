@@ -120,6 +120,76 @@
     </group>
   </table>
 
+  <table name="Transit_Router" title="Transit logical router">
+    <p>
+      Each row represents one transit logical router for interconnection
+      between different OVN deployments (availability zones).
+    </p>
+
+    <group title="Naming">
+      <column name="name">
+        A name that uniquely identifies the transit logical router.
+      </column>
+    </group>
+
+    <column name="ports">
+      The router's ports.
+    </column>
+
+    <group title="Common Columns">
+      <column name="other_config"/>
+      <column name="external_ids">
+        See <em>External IDs</em> at the beginning of this document.
+      </column>
+    </group>
+  </table>
+
+  <table name="Transit_Router_Port" title="Transit logical router">
+    <p>
+      Each row represents one transit logical router for interconnection
+      between different OVN deployments (availability zones).
+    </p>
+
+    <group title="Naming">
+      <column name="name">
+        A name that uniquely identifies the transit logical router port.
+      </column>
+    </group>
+
+    <column name="mac">
+      The Ethernet address that belongs to this router port.
+    </column>
+
+    <column name="chassis">
+      The chassis this router port should be bound to.
+    </column>
+
+    <column name="tr_uuid">
+       This is the UUID of the northbound IC logical datapath this port is
+       associated with.
+    </column>
+
+    <column name="networks">
+      <p>
+        The IP addresses and netmasks of the router port.  For example,
+        <code>192.168.0.1/24</code> indicates that the router's IP
+        address is 192.168.0.1 and that packets destined to
+        192.168.0.<var>x</var> should be routed to this port.
+        These are optional.
+      </p>
+
+      <p>
+        A logical router port always adds a link-local IPv6 address
+        (fe80::/64) automatically generated from the interface's MAC
+        address using the modified EUI-64 format.
+      </p>
+    </column>
+
+    <group title="Common Columns">
+      <column name="other_config"/>
+    </group>
+  </table>
+
   <table name="SSL">
     SSL/TLS configuration for ovn-nb database access.
 

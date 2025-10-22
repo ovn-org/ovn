@@ -208,9 +208,22 @@
     </p>
 
     <column name="transit_switch">
-      The name of the transit logical switch that is configured in the OVN
-      Interconnection Northbound database's <ref table="Transit_Switch"
+      The name of the transit logical switch or router that is configured in
+      the OVN Interconnection Northbound database's <ref table="Transit_Switch"
+      db="OVN_IC_Northbound"/> or <ref table="Transit_Router"
       db="OVN_IC_Northbound"/> table.
+
+      Note: The name of transit router is stored in the same column due to
+      the backward compatibility.
+    </column>
+
+    <column name="type">
+      Can be one of <code>transit-switch</code> or <code>transit-router</code>
+    </column>
+
+    <column name="nb_ic_uuid" type='{"type": "uuid"}'>
+      This is the UUID of the corresponding northbound IC logical datapath
+      represented by this southbound <code>Datapath_Binding</code>.
     </column>
 
     <column name="tunnel_key">
@@ -301,6 +314,15 @@
           db="OVN_Northbound"/> table.
         </p>
       </column>
+
+    <column name="type">
+      Can be one of <code>switch-port</code> or <code>router-port</code>
+    </column>
+
+    <column name="nb_ic_uuid" type='{"type": "uuid"}'>
+      This is the UUID of the corresponding northbound IC logical datapath
+      represented by this southbound <code>Datapath_Binding</code>.
+    </column>
 
     </group>
 
