@@ -672,4 +672,18 @@ bool datapath_get_nb_uuid(const struct sbrec_datapath_binding *sb,
 
 const char *datapath_get_nb_type(const struct sbrec_datapath_binding *sb);
 
+struct sset *lrp_network_sset(const char **networks, int n_networks);
+
+char *normalize_ipv4_prefix_str(const char *orig_prefix);
+
+char *normalize_ipv6_prefix_str(const char *orig_prefix);
+
+char *normalize_prefix_str(const char *orig_prefix);
+
+char *normalize_ipv4_addr_str(const char *orig_addr);
+
+char *normalize_ipv6_addr_str(const char *orig_addr);
+
+char *normalize_addr_str(const char *orig_addr);
+
 #endif /* OVN_UTIL_H */

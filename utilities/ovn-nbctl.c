@@ -4534,87 +4534,6 @@ nbctl_dhcp_options_list(struct ctl_context *ctx)
     free(nodes);
 }
 
-static char *
-normalize_ipv4_prefix_str(const char *orig_prefix)
-{
-    unsigned int plen;
-    ovs_be32 ipv4;
-    char *error;
-
-    error = ip_parse_cidr(orig_prefix, &ipv4, &plen);
-    if (error) {
-        free(error);
-        return NULL;
-    }
-    return normalize_ipv4_prefix(ipv4, plen);
-}
-
-static char *
-normalize_ipv6_prefix_str(const char *orig_prefix)
-{
-    unsigned int plen;
-    struct in6_addr ipv6;
-    char *error;
-
-    error = ipv6_parse_cidr(orig_prefix, &ipv6, &plen);
-    if (error) {
-        free(error);
-        return NULL;
-    }
-    return normalize_ipv6_prefix(&ipv6, plen);
-}
-
-/* The caller must free the returned string. */
-static char *
-normalize_prefix_str(const char *orig_prefix)
-{
-    char *ret;
-
-    ret = normalize_ipv4_prefix_str(orig_prefix);
-    if (!ret) {
-        ret = normalize_ipv6_prefix_str(orig_prefix);
-    }
-    return ret;
-}
-
-static char *
-normalize_ipv4_addr_str(const char *orig_addr)
-{
-    ovs_be32 ipv4;
-
-    if (!ip_parse(orig_addr, &ipv4)) {
-        return NULL;
-    }
-
-    return normalize_ipv4_prefix(ipv4, 32);
-}
-
-static char *
-normalize_ipv6_addr_str(const char *orig_addr)
-{
-    struct in6_addr ipv6;
-
-    if (!ipv6_parse(orig_addr, &ipv6)) {
-        return NULL;
-    }
-
-    return normalize_ipv6_prefix(&ipv6, 128);
-}
-
-/* Similar to normalize_prefix_str but must be an un-masked address.
- * The caller must free the returned string. */
-OVS_UNUSED static char *
-normalize_addr_str(const char *orig_addr)
-{
-    char *ret;
-
-    ret = normalize_ipv4_addr_str(orig_addr);
-    if (!ret) {
-        ret = normalize_ipv6_addr_str(orig_addr);
-    }
-    return ret;
-}
-
 static bool
 ip_in_lrp_networks(const struct nbrec_logical_router_port *lrp,
                    const char *ip_s);
@@ -6550,23 +6469,6 @@ nbctl_lrp_get_gateway_chassis(struct ctl_context *ctx)
     }
 
     free(gcs);
-}
-
-static struct sset *
-lrp_network_sset(const char **networks, int n_networks)
-{
-    struct sset *network_set = xzalloc(sizeof *network_set);
-    sset_init(network_set);
-    for (int i = 0; i < n_networks; i++) {
-        char *norm = normalize_prefix_str(networks[i]);
-        if (!norm) {
-            sset_destroy(network_set);
-            free(network_set);
-            return NULL;
-        }
-        sset_add_and_free(network_set, norm);
-    }
-    return network_set;
 }
 
 static void
