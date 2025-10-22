@@ -341,6 +341,9 @@ Transit router commands:\n\
   tr-add ROUTER              create a transit router named ROUTER\n\
   tr-del ROUTER              delete ROUTER\n\
   tr-list                    print all transit routers\n\
+  trp-add ROUTER PORT MAC [NETWORK]...[chassis=CHASSIS]\n\
+                             add a transit router PORT\n\
+  trp-del PORT               delete a transit router PORT\n\
 \n\
 Connection commands:\n\
   get-connection             print the connections\n\
@@ -408,6 +411,11 @@ static struct cmd_show_table cmd_show_tables[] = {
     {&icnbrec_table_transit_router,
      &icnbrec_transit_router_col_name,
      {NULL, NULL, NULL},
+     {NULL, NULL, NULL}},
+
+    {&icnbrec_table_transit_router_port,
+     &icnbrec_transit_router_port_col_name,
+     {&icnbrec_transit_router_port_col_tr_uuid, NULL, NULL},
      {NULL, NULL, NULL}},
 
     {NULL, NULL, {NULL, NULL, NULL}, {NULL, NULL, NULL}},
@@ -577,6 +585,38 @@ ic_nbctl_tr_add(struct ctl_context *ctx)
     icnbrec_transit_router_set_name(tr, tr_name);
 }
 
+static char *
+trp_by_name_or_uuid(struct ctl_context *ctx, const char *id, bool must_exist,
+                    const struct icnbrec_transit_router_port **trp_p)
+{
+    const struct icnbrec_transit_router_port *trp = NULL;
+    *trp_p = NULL;
+    struct uuid trp_uuid;
+    bool is_uuid = uuid_from_string(&trp_uuid, id);
+    if (is_uuid) {
+        trp = icnbrec_transit_router_port_get_for_uuid(ctx->idl, &trp_uuid);
+    }
+
+    if (!trp) {
+        const struct icnbrec_transit_router_port *iter;
+
+        ICNBREC_TRANSIT_ROUTER_PORT_FOR_EACH (iter, ctx->idl) {
+            if (!strcmp(iter->name, id)) {
+                trp = iter;
+                break;
+            }
+        }
+    }
+
+    if (!trp && must_exist) {
+        return xasprintf("%s: router port %s not found", id,
+                         is_uuid ? "UUID" : "name");
+    }
+
+    *trp_p = trp;
+    return NULL;
+}
+
 static void
 ic_nbctl_tr_del(struct ctl_context *ctx)
 {
@@ -594,6 +634,38 @@ ic_nbctl_tr_del(struct ctl_context *ctx)
     }
 
     icnbrec_transit_router_delete(tr);
+}
+
+static void
+ic_nbctl_trp_del(struct ctl_context *ctx)
+{
+    bool must_exist = !shash_find(&ctx->options, "--if-exists");
+    const char *trp_name = ctx->argv[1];
+    const struct icnbrec_transit_router_port *trp = NULL;
+
+    ctx->error = trp_by_name_or_uuid(ctx, trp_name, must_exist, &trp);
+    if (ctx->error) {
+        return;
+    }
+
+    if (!trp) {
+        return;
+    }
+
+    const struct icnbrec_transit_router *tr = NULL;
+    char *tr_uuid = uuid_to_string(&trp->tr_uuid);
+    ctx->error = tr_by_name_or_uuid(ctx, tr_uuid, true, &tr);
+    free(tr_uuid);
+    if (ctx->error) {
+        return;
+    }
+
+    if (!trp) {
+        return;
+    }
+
+    icnbrec_transit_router_update_ports_delvalue(tr, trp);
+    icnbrec_transit_router_port_delete(trp);
 }
 
 static void
@@ -616,6 +688,122 @@ ic_nbctl_tr_list(struct ctl_context *ctx)
 
     smap_destroy(&routers);
     free(nodes);
+}
+
+static void
+ic_nbctl_trp_add(struct ctl_context *ctx)
+{
+    bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
+    const char *tr_name = ctx->argv[1];
+    const char *trp_name = ctx->argv[2];
+    const char *mac = ctx->argv[3];
+    const char **networks = (const char **) &ctx->argv[4];
+    const struct icnbrec_transit_router *tr;
+
+    ctx->error = tr_by_name_or_uuid(ctx, tr_name, true, &tr);
+    if (ctx->error) {
+        return;
+    }
+
+    const struct icnbrec_transit_router_port *trp;
+    ctx->error = trp_by_name_or_uuid(ctx, trp_name, false, &trp);
+    if (ctx->error) {
+        return;
+    }
+
+    /* Parse networks*/
+    int n_networks = ctx->argc - 4;
+    for (int i = 4; i < ctx->argc; i++) {
+        if (strchr(ctx->argv[i], '=')) {
+            n_networks = i - 4;
+            break;
+        }
+    }
+
+    char **settings = (char **) &ctx->argv[n_networks + 4];
+    int n_settings = ctx->argc - 4 - n_networks;
+    struct eth_addr ea;
+    if (!eth_addr_from_string(mac, &ea)) {
+        ctl_error(ctx, "%s: invalid mac address %s", trp_name, mac);
+        return;
+    }
+
+    if (trp) {
+        if (!may_exist) {
+            ctl_error(ctx, "%s: a port with this name already exists",
+                      trp_name);
+            return;
+        }
+
+        struct eth_addr lrp_ea;
+        eth_addr_from_string(trp->mac, &lrp_ea);
+        if (!eth_addr_equals(ea, lrp_ea)) {
+            ctl_error(ctx, "%s: port already exists with mac %s", trp_name,
+                      trp->mac);
+            return;
+        }
+
+        struct sset *new_networks = lrp_network_sset(networks, n_networks);
+        if (!new_networks) {
+            ctl_error(ctx, "%s: Invalid networks configured", trp_name);
+            return;
+        }
+
+        struct sset *orig_networks =
+            lrp_network_sset((const char **) trp->networks, trp->n_networks);
+        if (!orig_networks) {
+            ctl_error(ctx, "%s: Existing port has invalid networks configured",
+                      trp_name);
+            sset_destroy(new_networks);
+            free(new_networks);
+            return;
+        }
+
+        bool same_networks = sset_equals(orig_networks, new_networks);
+        sset_destroy(orig_networks);
+        free(orig_networks);
+        sset_destroy(new_networks);
+        free(new_networks);
+        if (!same_networks) {
+            ctl_error(ctx, "%s: port already exists with different network",
+                      trp_name);
+            return;
+        }
+
+        return;
+    }
+
+    for (int i = 0; i < n_networks; i++) {
+        ovs_be32 ipv4;
+        unsigned int plen;
+        char *error = ip_parse_cidr(networks[i], &ipv4, &plen);
+        if (error) {
+            free(error);
+            struct in6_addr ipv6;
+            error = ipv6_parse_cidr(networks[i], &ipv6, &plen);
+            if (error) {
+                free(error);
+                ctl_error(ctx, "%s: invalid network address: %s", trp_name,
+                          networks[i]);
+                return;
+            }
+        }
+    }
+
+    trp = icnbrec_transit_router_port_insert(ctx->txn);
+    icnbrec_transit_router_port_set_name(trp, trp_name);
+    icnbrec_transit_router_port_set_mac(trp, mac);
+    icnbrec_transit_router_port_set_tr_uuid(trp, tr->header_.uuid);
+    icnbrec_transit_router_port_set_networks(trp, networks, n_networks);
+    for (int i = 0; i < n_settings; i++) {
+        ctx->error = ctl_set_column("Transit_Router_Port", &trp->header_,
+                                    settings[i], ctx->symtab);
+        if (ctx->error) {
+            return;
+        }
+    }
+
+    icnbrec_transit_router_update_ports_addvalue(tr, trp);
 }
 
 static void
@@ -828,6 +1016,11 @@ static const struct ctl_table_class tables[ICNBREC_N_TABLES] = {
 
     [ICNBREC_TABLE_TRANSIT_ROUTER].row_ids[0] =
     {&icnbrec_transit_router_col_name, NULL, NULL},
+
+    [ICNBREC_TABLE_TRANSIT_ROUTER_PORT].row_ids =
+        {{&icnbrec_transit_router_port_col_name, NULL, NULL},
+        {&icnbrec_transit_router_port_col_tr_uuid, NULL, NULL},
+        {&icnbrec_transit_router_port_col_mac, NULL, NULL}},
 };
 
 
@@ -1135,6 +1328,11 @@ static const struct ctl_command_syntax ic_nbctl_commands[] = {
     { "tr-del", 1, 1, "ROUTER", NULL, ic_nbctl_tr_del, NULL, "--if-exists",
         RW },
     { "tr-list", 0, 0, "", NULL, ic_nbctl_tr_list, NULL, "", RO },
+    { "trp-add", 5, INT_MAX,
+        "ROUTER PORT MAC [NETWORK]...[COLUMN[:KEY]=VALUE]...",
+        NULL, ic_nbctl_trp_add, NULL, "--may-exist", RW },
+    { "trp-del", 1, 1, "PORT", NULL, ic_nbctl_trp_del, NULL, "--if-exists",
+        RW },
 
     /* Connection commands. */
     {"get-connection", 0, 0, "", pre_connection, cmd_get_connection, NULL, "",

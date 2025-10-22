@@ -97,5 +97,34 @@ AT_CHECK([ovn-ic-nbctl tr-del tr2], [1], [],
 ])
 
 AT_CHECK([ovn-ic-nbctl --if-exists tr-del tr2])
+AT_CHECK([ovn-ic-nbctl tr-del tr0])
+
+AT_CHECK([ovn-ic-nbctl trp-add tr0 tr0-p0 00:11:22:11:22:33 192.168.10.10/24 chassis=chassis], [1], [],
+  [ovn-ic-nbctl: tr0: router name not found
+])
+
+AT_CHECK([ovn-ic-nbctl tr-add tr0])
+AT_CHECK([ovn-ic-nbctl trp-add tr0 tr0-p0], [1], [],
+  [ovn-ic-nbctl: 'trp-add' command requires at least 5 arguments
+])
+
+AT_CHECK([ovn-ic-nbctl trp-add tr0 tr0-p0 00:11:22:11:22:33 192.168.10.10/24 chassis=chassis])
+AT_CHECK([ovn-ic-nbctl trp-add tr0 tr0-p0 00:11:22:11:22:33 192.168.10.10/24 chassis=chassis], [1], [],
+  [ovn-ic-nbctl: tr0-p0: a port with this name already exists
+])
+
+AT_CHECK([ovn-ic-nbctl --may-exist trp-add tr0 tr0-p0 00:11:22:11:22:33 192.168.10.10/24 chassis=chassis])
+
+AT_CHECK([ovn-ic-nbctl trp-del], [1], [],
+  [ovn-ic-nbctl: 'trp-del' command requires at least 1 arguments
+])
+AT_CHECK([ovn-ic-nbctl trp-del tr0-p0])
+AT_CHECK([ovn-ic-nbctl trp-del tr0-p0], [1], [],
+  [ovn-ic-nbctl: tr0-p0: router port name not found
+])
+AT_CHECK([ovn-ic-nbctl --if-exists trp-del tr0-p0])
+
+AT_CHECK([ovn-ic-nbctl --if-exists tr-del tr0])
+
 OVN_IC_NBCTL_TEST_STOP
 AT_CLEANUP

@@ -4336,3 +4336,226 @@ wait_row_count Datapath_Binding 0
 OVN_CLEANUP_IC([az1], [az2])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- Add transit router remote port])
+
+ovn_init_ic_db
+net_add n1
+net_add n2
+ovn_start az1
+ovn_start az2
+
+OVS_WAIT_UNTIL([test 2 = `ovn-ic-sbctl show | wc -l`])
+
+check ovn-ic-nbctl --wait=sb sync
+AT_CHECK([ovn-ic-sbctl show], [0], [dnl
+availability-zone az1
+availability-zone az2
+])
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.0.1
+ovs-vsctl set open . external-ids:ovn-is-interconn=true
+wait_row_count Chassis 1 name=hv1
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_az_attach az2 n2 br-phys 192.168.0.2
+ovs-vsctl set open . external-ids:ovn-is-interconn=true
+wait_row_count Chassis 1 name=hv2
+
+ovn_as az1
+check ovn-ic-nbctl tr-add tr0
+check ovn-ic-nbctl trp-add tr0 tr0-p0 00:00:00:11:22:00 192.168.10.10/24 192.168.10.20/24 chassis=hv2
+wait_row_count Port_Binding 1
+
+# Check that port type is correctly set to remote
+check_row_count sb:Port_Binding 1 logical_port=tr0-p0
+check_row_count sb:Port_Binding 1 type=remote
+az1_tunnel_key=$(ovn-sbctl --bare --columns=tunnel_key find Port_Binding)
+az1_mac=$(ovn-sbctl --bare --columns=mac find Port_Binding)
+check_row_count nb:Logical_Router_Port 1 options:requested-tnl-key="${az1_tunnel_key}"
+
+ovn_as az2
+wait_row_count Port_Binding 1
+# Check that port type is correctly set to local
+check_row_count sb:Port_Binding 1 logical_port=tr0-p0
+check_row_count sb:Port_Binding 1 type=patch
+az2_tunnel_key=$(ovn-sbctl --bare --columns=tunnel_key find Port_Binding)
+az2_mac=$(ovn-sbctl --bare --columns=mac find Port_Binding)
+# Check that nbctl port tunnel_key matches sbctl
+check_row_count nb:Logical_Router_Port 1 options:requested-tnl-key="${az1_tunnel_key}"
+check test "${az1_tunnel_key}"=="${az2_tunnel_key}"
+check test "${az1_mac}"=="${az2_mac}"
+OVN_CLEANUP_IC([az1], [az2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- Transit router delete port])
+
+ovn_init_ic_db
+net_add n1
+net_add n2
+ovn_start az1
+ovn_start az2
+
+check ovn-ic-nbctl --wait=sb sync
+AT_CHECK([ovn-ic-sbctl show], [0], [dnl
+availability-zone az1
+availability-zone az2
+])
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.0.1
+ovs-vsctl set open . external-ids:ovn-is-interconn=true
+check ovs-vsctl set open . external_ids:ovn-monitor-all=true
+wait_row_count Chassis 1 name=hv1
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_az_attach az2 n2 br-phys 192.168.0.2
+ovs-vsctl set open . external-ids:ovn-is-interconn=true
+check ovs-vsctl set open . external_ids:ovn-monitor-all=true
+wait_row_count Chassis 1 name=hv2
+
+ovn_as az1
+check ovn-ic-nbctl --wait=sb tr-add tr0
+check ovn-ic-nbctl --wait=sb trp-add tr0 tr0-p0 00:00:00:11:22:00 192.168.10.10/24 192.168.10.20/24 chassis=hv2
+wait_row_count Port_Binding 1
+check_row_count sb:Port_Binding 1 logical_port=tr0-p0
+
+ovn_as az2
+wait_row_count Port_Binding 1
+check_row_count sb:Port_Binding 1 logical_port=tr0-p0
+
+ovn_as az1
+check ovn-ic-nbctl --wait=sb trp-del tr0-p0
+wait_row_count Port_Binding 0
+
+ovn_as az2
+wait_row_count Port_Binding 0
+
+OVN_CLEANUP_IC([az1], [az2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- Port binding deletion upon transit router deletion])
+
+ovn_init_ic_db
+net_add n1
+net_add n2
+ovn_start az1
+ovn_start az2
+
+check ovn-ic-nbctl --wait=sb sync
+AT_CHECK([ovn-ic-sbctl show], [0], [dnl
+availability-zone az1
+availability-zone az2
+])
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.0.1
+ovs-vsctl set open . external-ids:ovn-is-interconn=true
+check ovs-vsctl set open . external_ids:ovn-monitor-all=true
+wait_row_count Chassis 1 name=hv1
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_az_attach az2 n2 br-phys 192.168.0.2
+ovs-vsctl set open . external-ids:ovn-is-interconn=true
+check ovs-vsctl set open . external_ids:ovn-monitor-all=true
+wait_row_count Chassis 1 name=hv2
+
+ovn_as az1
+check ovn-ic-nbctl --wait=sb tr-add tr0
+check ovn-ic-nbctl --wait=sb trp-add tr0 tr0-p0 00:00:00:11:22:00 192.168.10.10/24 192.168.10.20/24 chassis=hv2
+wait_row_count Port_Binding 1
+check_row_count sb:Port_Binding 1 logical_port=tr0-p0
+
+ovn_as az2
+wait_row_count Port_Binding 1
+check_row_count sb:Port_Binding 1 logical_port=tr0-p0
+
+ovn_as az1
+check ovn-ic-nbctl tr-del tr0
+wait_row_count Port_Binding 0
+
+ovn_as az2
+wait_row_count Port_Binding 0
+
+AT_CHECK([ovn-ic-nbctl list Transit_Router], [0], [dnl
+])
+AT_CHECK([ovn-ic-nbctl list Transit_Router_Port], [0], [dnl
+])
+
+OVN_CLEANUP_IC([az1], [az2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- Duplicate port addresses])
+
+ovn_init_ic_db
+net_add n1
+net_add n2
+ovn_start az1
+ovn_start az2
+
+OVS_WAIT_UNTIL([test 2 = `ovn-ic-sbctl show | wc -l`])
+
+check ovn-ic-nbctl --wait=sb sync
+AT_CHECK([ovn-ic-sbctl show], [0], [dnl
+availability-zone az1
+availability-zone az2
+])
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.0.1
+ovs-vsctl set open . external-ids:ovn-is-interconn=true
+check ovs-vsctl set open . external_ids:ovn-monitor-all=true
+wait_row_count Chassis 1 name=hv1
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_az_attach az2 n2 br-phys 192.168.0.2
+ovs-vsctl set open . external-ids:ovn-is-interconn=true
+check ovs-vsctl set open . external_ids:ovn-monitor-all=true
+wait_row_count Chassis 1 name=hv2
+
+ovn_as az1
+check ovn-ic-nbctl --wait=sb tr-add tr0
+check ovn-ic-nbctl --wait=sb trp-add tr0 tr0-p0 00:00:00:11:22:00 \
+    192.168.10.10/24 192.168.10.20/24 192.168.10.10/24 192.168.10.20/24 \
+    chassis=hv2
+wait_row_count Port_Binding 1 logical_port=tr0-p0
+check_row_count nb:Logical_Router_Port 1 networks="192.168.10.10/24 192.168.10.20/24"
+
+ovn_as az2
+wait_row_count Port_Binding 1 logical_port=tr0-p0
+check_row_count nb:Logical_Router_Port 1 networks="192.168.10.10/24 192.168.10.20/24"
+
+ovn_as az1
+check ovn-ic-nbctl --wait=sb tr-del tr0
+check_row_count sb:Datapath_Binding 0
+
+ovn_as az2
+check_row_count sb:Datapath_Binding 0
+
+OVN_CLEANUP_IC([az1], [az2])
+AT_CLEANUP
+])

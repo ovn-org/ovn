@@ -48,6 +48,9 @@ Post v25.09.0
     * Support the creation of Transit Routers.
     * Added new ovn-ic-nbctl 'tr-add','tr-del','tr-list' commands to manage
         Transit Router.
+    * Support the creation of Transit Router Ports.
+    * Added new ovn-ic-nbctl 'trp-add' and 'tpr-del' commands to manage
+        Transit Router Ports.
 
 OVN v25.09.0 - xxx xx xxxx
 --------------------------
