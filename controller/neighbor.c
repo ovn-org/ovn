@@ -20,6 +20,7 @@
 #include "lib/sset.h"
 #include "local_data.h"
 #include "lport.h"
+#include "openvswitch/ofp-parse.h"
 #include "ovn-sb-idl.h"
 
 #include "neighbor.h"
@@ -41,6 +42,10 @@ neighbor_interface_monitor_alloc(enum neighbor_family family,
                                  uint32_t vni);
 static void neighbor_collect_mac_to_advertise(
     const struct neighbor_ctx_in *, struct hmap *neighbors,
+    struct sset *advertised_pbs, const struct sbrec_datapath_binding *);
+static void neighbor_collect_ip_mac_to_advertise(
+    const struct neighbor_ctx_in *,
+    struct hmap *neighbors_v4, struct hmap *neighbors_v6,
     struct sset *advertised_pbs, const struct sbrec_datapath_binding *);
 static const struct sbrec_port_binding *neighbor_get_relevant_port_binding(
     struct ovsdb_idl_index *sbrec_pb_by_name,
@@ -114,13 +119,20 @@ neighbor_run(struct neighbor_ctx_in *n_ctx_in,
 
         const char *redistribute = smap_get(&ld->datapath->external_ids,
                                             "dynamic-routing-redistribute");
-        if (!redistribute || strcmp(redistribute, "fdb")) {
-            continue;
+        if (redistribute && !strcmp(redistribute, "fdb")) {
+            neighbor_collect_mac_to_advertise(n_ctx_in,
+                                              &lo->announced_neighbors,
+                                              n_ctx_out->advertised_pbs,
+                                              ld->datapath);
+        }
+        if (redistribute && !strcmp(redistribute, "ip")) {
+            neighbor_collect_ip_mac_to_advertise(n_ctx_in,
+                                                 &br_v4->announced_neighbors,
+                                                 &br_v6->announced_neighbors,
+                                                 n_ctx_out->advertised_pbs,
+                                                 ld->datapath);
         }
 
-        neighbor_collect_mac_to_advertise(n_ctx_in, &lo->announced_neighbors,
-                                          n_ctx_out->advertised_pbs,
-                                          ld->datapath);
     }
 }
 
@@ -234,6 +246,52 @@ neighbor_collect_mac_to_advertise(const struct neighbor_ctx_in *n_ctx_in,
     }
 
     sbrec_port_binding_index_destroy_row(target);
+}
+
+static void
+neighbor_collect_ip_mac_to_advertise(
+        const struct neighbor_ctx_in *n_ctx_in,
+        struct hmap *neighbors_v4,
+        struct hmap *neighbors_v6,
+        struct sset *advertised_pbs,
+        const struct sbrec_datapath_binding *dp)
+{
+    struct sbrec_advertised_mac_binding *target =
+        sbrec_advertised_mac_binding_index_init_row(
+                n_ctx_in->sbrec_amb_by_dp);
+    sbrec_advertised_mac_binding_index_set_datapath(target, dp);
+
+    const struct sbrec_advertised_mac_binding *adv_mb;
+    SBREC_ADVERTISED_MAC_BINDING_FOR_EACH_EQUAL (adv_mb, target,
+                                                 n_ctx_in->sbrec_amb_by_dp) {
+        const struct sbrec_port_binding *pb =
+            neighbor_get_relevant_port_binding(n_ctx_in->sbrec_pb_by_name,
+                                               adv_mb->logical_port);
+        if (!lport_pb_is_chassis_resident(n_ctx_in->chassis, pb)) {
+            continue;
+        }
+
+        struct in6_addr ip;
+        if (!ip46_parse(adv_mb->ip, &ip)) {
+            continue;
+        }
+
+        struct eth_addr ea;
+        char *err = str_to_mac(adv_mb->mac, &ea);
+        if (err) {
+            free(err);
+            continue;
+        }
+
+        struct hmap *neighbors = IN6_IS_ADDR_V4MAPPED(&ip)
+                                 ? neighbors_v4 : neighbors_v6;
+        if (!advertise_neigh_find(neighbors, ea, &ip)) {
+            advertise_neigh_add(neighbors, ea, ip);
+        }
+        sset_add(advertised_pbs, pb->logical_port);
+    }
+
+    sbrec_advertised_mac_binding_index_destroy_row(target);
 }
 
 static const struct sbrec_port_binding *

@@ -18436,6 +18436,41 @@ AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep p
                    awk '{print $7, $8}' | sort], [0], [dnl
 ])
 
+AS_BOX([L2 EVPN ARP advertising])
+# Add a router connected to the EVPN logical switch.
+check ovn-nbctl --wait=hv                                    \
+    -- lr-add lr                                             \
+    -- set Logical_Router lr options:chassis=hv1             \
+    -- lrp-add lr lr-ls-evpn f0:00:0f:16:01:01 172.16.1.1/24
+
+ls_evpn_uuid=$(fetch_column Datapath_Binding _uuid external_ids:name=ls-evpn)
+check ovn-nbctl --wait=hv set logical_switch ls-evpn other_config:dynamic-routing-redistribute=ip
+check_row_count Advertised_MAC_Binding 1 ip=172.16.1.10 mac='f0\:00\:0f\:16\:01\:10' datapath=$ls_evpn_uuid
+check_row_count Advertised_MAC_Binding 1 ip=172.16.1.1 mac='f0\:00\:0f\:16\:01\:01' datapath=$ls_evpn_uuid
+
+AT_CHECK([ip neigh show dev br-10 nud noarp | grep -q '172.16.1.10 lladdr f0:00:0f:16:01:10 NOARP'])
+AT_CHECK([ip neigh show dev br-10 nud noarp | grep -q '172.16.1.1 lladdr f0:00:0f:16:01:01 NOARP'])
+
+check ovn-nbctl --wait=hv lsp-add ls-evpn workload2         \
+    -- lsp-set-addresses workload2 "f0:00:0f:16:01:20 172.16.1.20"
+
+check_row_count Advertised_MAC_Binding 1 ip=172.16.1.20 mac='f0\:00\:0f\:16\:01\:20' datapath=$ls_evpn_uuid
+AT_CHECK([ip neigh show dev br-10 nud noarp | grep -q '172.16.1.20 lladdr f0:00:0f:16:01:20 NOARP'])
+
+check ovn-nbctl --wait=hv lsp-del workload2
+AT_CHECK([ip neigh show dev br-10 nud noarp | grep -q '172.16.1.20 lladdr f0:00:0f:16:01:20 NOARP'], [1])
+
+check ovn-nbctl --wait=hv lsp-del workload1
+check_row_count Advertised_MAC_Binding 1
+AT_CHECK([ip neigh show dev br-10 nud noarp | grep -q '172.16.1.10 lladdr f0:00:0f:16:01:10 NOARP'], [1])
+
+check ovn-nbctl --wait=hv lrp-del lr-ls-evpn
+check_row_count Advertised_MAC_Binding 0
+AT_CHECK([ip neigh show dev br-10 nud noarp | grep -q '172.16.1.1 lladdr f0:00:0f:16:01:01 NOARP'], [1])
+
+check ovn-nbctl --wait=hv ls-del ls-evpn
+check ovn-nbctl --wait=hv lr-del lr
+
 OVN_CLEANUP_CONTROLLER([hv1])
 
 as ovn-sb

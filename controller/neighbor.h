@@ -44,6 +44,8 @@ struct neighbor_ctx_in {
     const struct hmap *local_datapaths;
     /* Index for Port Binding by Datapath. */
     struct ovsdb_idl_index *sbrec_pb_by_dp;
+    /* Index for Advertised_Mac_Binding by Datapath. */
+    struct ovsdb_idl_index *sbrec_amb_by_dp;
     /* Index for Port Binding by name. */
     struct ovsdb_idl_index *sbrec_pb_by_name;
     const struct sbrec_chassis *chassis;

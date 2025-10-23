@@ -267,6 +267,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
     struct ovsdb_idl_condition nh = OVSDB_IDL_CONDITION_INIT(&nh);
     struct ovsdb_idl_condition ar = OVSDB_IDL_CONDITION_INIT(&ar);
     struct ovsdb_idl_condition lr = OVSDB_IDL_CONDITION_INIT(&lr);
+    struct ovsdb_idl_condition amb = OVSDB_IDL_CONDITION_INIT(&amb);
 
     /* Always monitor all logical datapath groups. Otherwise, DPG updates may
      * be received *after* the lflows using it are seen by ovn-controller.
@@ -301,6 +302,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         ovsdb_idl_condition_add_clause_true(&tv);
         ovsdb_idl_condition_add_clause_true(&nh);
         ovsdb_idl_condition_add_clause_true(&ar);
+        ovsdb_idl_condition_add_clause_true(&amb);
         goto out;
     }
 
@@ -400,6 +402,8 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
                                                    uuid);
             sbrec_ecmp_nexthop_add_clause_datapath(&nh, OVSDB_F_EQ, uuid);
             sbrec_advertised_route_add_clause_datapath(&ar, OVSDB_F_EQ, uuid);
+            sbrec_advertised_mac_binding_add_clause_datapath(&amb, OVSDB_F_EQ,
+                                                             uuid);
         }
 
         /* Datapath groups are immutable, which means a new group record is
@@ -430,6 +434,8 @@ out:;
         sb_table_set_opt_mon_condition(ovnsb_idl, ecmp_nexthop, &nh),
         sb_table_set_opt_mon_condition(ovnsb_idl, advertised_route, &ar),
         sb_table_set_opt_mon_condition(ovnsb_idl, learned_route, &lr),
+        sb_table_set_opt_mon_condition(ovnsb_idl, advertised_mac_binding,
+                                       &amb),
     };
 
     unsigned int expected_cond_seqno = 0;
@@ -452,6 +458,7 @@ out:;
     ovsdb_idl_condition_destroy(&nh);
     ovsdb_idl_condition_destroy(&ar);
     ovsdb_idl_condition_destroy(&lr);
+    ovsdb_idl_condition_destroy(&amb);
     return expected_cond_seqno;
 }
 
@@ -1014,7 +1021,8 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     SB_NODE(chassis_template_var) \
     SB_NODE(acl_id) \
     SB_NODE(advertised_route) \
-    SB_NODE(learned_route)
+    SB_NODE(learned_route) \
+    SB_NODE(advertised_mac_binding)
 
 enum sb_engine_node {
 #define SB_NODE(NAME) SB_##NAME,
@@ -5872,6 +5880,10 @@ en_neighbor_run(struct engine_node *node OVS_UNUSED, void *data)
         engine_ovsdb_node_get_index(
             engine_get_input("SB_chassis", node),
             "name");
+    struct ovsdb_idl_index *sbrec_advertised_mac_binding_by_datapath =
+        engine_ovsdb_node_get_index(
+            engine_get_input("SB_advertised_mac_binding", node),
+            "datapath");
 
     const char *chassis_id = get_ovs_chassis_id(ovs_table);
     ovs_assert(chassis_id);
@@ -5882,6 +5894,7 @@ en_neighbor_run(struct engine_node *node OVS_UNUSED, void *data)
     struct neighbor_ctx_in n_ctx_in = {
         .local_datapaths = &rt_data->local_datapaths,
         .sbrec_pb_by_dp = sbrec_port_binding_by_datapath,
+        .sbrec_amb_by_dp = sbrec_advertised_mac_binding_by_datapath,
         .sbrec_pb_by_name = sbrec_port_binding_by_name,
         .chassis = chassis,
     };
@@ -5947,7 +5960,10 @@ neighbor_runtime_data_handler(struct engine_node *node, void *data)
 
         const char *redistribute = smap_get(&ld->datapath->external_ids,
                                             "dynamic-routing-redistribute");
-        if (!redistribute || strcmp(redistribute, "fdb")) {
+        if (!redistribute) {
+            continue;
+        }
+        if (strcmp(redistribute, "fdb") && strcmp(redistribute, "ip")) {
             continue;
         }
 
@@ -6684,6 +6700,9 @@ main(int argc, char *argv[])
     struct ovsdb_idl_index *sbrec_learned_route_index_by_datapath
         = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
                                   &sbrec_learned_route_col_datapath);
+    struct ovsdb_idl_index *sbrec_advertised_mac_binding_index_by_dp
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_advertised_mac_binding_col_datapath);
 
     ovsdb_idl_track_add_all(ovnsb_idl_loop.idl);
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
@@ -6718,6 +6737,8 @@ main(int argc, char *argv[])
                    &sbrec_advertised_route_col_external_ids);
     ovsdb_idl_omit(ovnsb_idl_loop.idl,
                    &sbrec_learned_route_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl,
+                   &sbrec_advertised_mac_binding_col_external_ids);
 
     /* We don't want to monitor Connection table at all. So omit all the
      * columns. */
@@ -7019,6 +7040,7 @@ main(int argc, char *argv[])
 
     engine_add_input(&en_neighbor, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_neighbor, &en_sb_chassis, NULL);
+    engine_add_input(&en_neighbor, &en_sb_advertised_mac_binding, NULL);
     engine_add_input(&en_neighbor, &en_runtime_data,
                      neighbor_runtime_data_handler);
     engine_add_input(&en_neighbor, &en_sb_datapath_binding,
@@ -7108,6 +7130,8 @@ main(int argc, char *argv[])
                                 sbrec_chassis_template_var_index_by_chassis);
     engine_ovsdb_node_add_index(&en_sb_learned_route, "datapath",
                                 sbrec_learned_route_index_by_datapath);
+    engine_ovsdb_node_add_index(&en_sb_advertised_mac_binding, "datapath",
+                                sbrec_advertised_mac_binding_index_by_dp);
     engine_ovsdb_node_add_index(&en_sb_mac_binding, "lport_ip",
                                 sbrec_mac_binding_by_lport_ip);
     engine_ovsdb_node_add_index(&en_ovs_flow_sample_collector_set, "id",
