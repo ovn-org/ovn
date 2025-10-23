@@ -978,6 +978,12 @@
         </p>
 
         <p>
+          If <code>ip</code> is specified then ovn-controller will advertise
+          all IPs/MACs bindings that are local to the chassis. This applies to
+          VIFs and router ports.
+        </p>
+
+        <p>
           NOTE: this feature is experimental and may be subject to
           removal/change in the future.
         </p>

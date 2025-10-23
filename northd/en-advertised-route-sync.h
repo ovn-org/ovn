@@ -42,4 +42,13 @@ enum engine_node_state en_advertised_route_sync_run(struct engine_node *,
 void *en_dynamic_routes_init(struct engine_node *, struct engine_arg *);
 void en_dynamic_routes_cleanup(void *data);
 enum engine_node_state en_dynamic_routes_run(struct engine_node *, void *data);
+
+void *en_advertised_mac_binding_sync_init(struct engine_node *,
+                                          struct engine_arg *);
+void en_advertised_mac_binding_sync_cleanup(void *data);
+enum engine_node_state
+en_advertised_mac_binding_sync_run(struct engine_node *, void *data);
+enum engine_input_handler_result
+northd_output_advertised_mac_binding_sync_handler(struct engine_node *,
+                                                  void *data);
 #endif /* EN_ADVERTISED_ROUTE_SYNC_H */

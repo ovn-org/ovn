@@ -18527,3 +18527,41 @@ AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_arp_rsp | grep "ip6.dst == fd01:
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LS EVPN Advertised_MAC_Binding sync])
+ovn_start ovn-northd
+
+AS_BOX([Create logical switch])
+check ovn-nbctl ls-add ls-evpn                                          \
+    -- set logical_switch ls-evpn other_config:dynamic-routing-vni=10   \
+    -- lsp-add ls-evpn vm1                                              \
+    -- lsp-set-addresses vm1 "00:00:00:00:01:00 10.0.0.2"
+check ovn-nbctl --wait=sb sync
+check_row_count Advertised_MAC_Binding 0
+ls_evpn_uuid=$(fetch_column Datapath_Binding _uuid external_ids:name=ls-evpn)
+
+check ovn-nbctl --wait=sb set logical_switch ls-evpn other_config:dynamic-routing-redistribute=ip
+check_row_count Advertised_MAC_Binding 1 ip=10.0.0.2 datapath=$ls_evpn_uuid mac='00\:00\:00\:00\:01\:00'
+
+check ovn-nbctl lr-add lr                                       \
+    -- lrp-add lr lrp 00:00:00:00:01:01 10.0.0.1/24             \
+    -- lsp-add ls-evpn ls-evpn-lrp                              \
+    -- lsp-set-type ls-evpn-lrp router                          \
+    -- lsp-set-addresses ls-evpn-lrp 00:00:00:00:01:01          \
+    -- lsp-set-options ls-evpn-lrp router-port=lrp
+check ovn-nbctl --wait=sb sync
+
+check_row_count Advertised_MAC_Binding 1 ip=10.0.0.2 datapath=$ls_evpn_uuid mac='00\:00\:00\:00\:01\:00'
+check_row_count Advertised_MAC_Binding 1 ip=10.0.0.1 datapath=$ls_evpn_uuid mac='00\:00\:00\:00\:01\:01'
+check_row_count Advertised_MAC_Binding 2
+
+check ovn-nbctl --wait=sb lsp-del vm1
+check_row_count Advertised_MAC_Binding 1 ip=10.0.0.1 datapath=$ls_evpn_uuid mac='00\:00\:00\:00\:01\:01'
+check_row_count Advertised_MAC_Binding 1
+
+check ovn-nbctl --wait=sb clear logical_switch ls-evpn other_config
+check_row_count Advertised_MAC_Binding 0
+
+AT_CLEANUP
+])

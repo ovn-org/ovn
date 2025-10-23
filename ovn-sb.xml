@@ -5457,4 +5457,34 @@ tcp.flags = RST;
       <code>allow-established</code> ACL.
     </column>
   </table>
+
+  <table name="Advertised_MAC_Binding">
+    <p>
+      Each record represents an ip/mac binding the
+      <code>OVN_Northbound.Logical_Switch</code> is announcing outside
+      the network fabric if <code>EVPN</code> is enabled on the datapath.
+    </p>
+
+    <column name="datapath">
+      The datapath corresponding to the
+      <code>OVN_Northbound.Logical_Switch</code> this ip/mac binding
+      belongs to.
+    </column>
+
+    <column name="logical_port">
+      This is the <ref table="Port_Binding"/> this ip/mac binding belongs to.
+    </column>
+
+    <column name="ip">
+      Announced IP (e.g. 192.168.100.1).
+    </column>
+
+    <column name="mac">
+      Announced mac address.
+    </column>
+
+    <column name="external_ids">
+      See <em>External IDs</em> at the beginning of this document.
+    </column>
+  </table>
 </database>

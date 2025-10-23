@@ -14,6 +14,9 @@ Post v25.09.0
        Switches. If set to "true" ovn-controller will give preference to SB
        (Static_)MAC_Bindings of adjacent logical routers over ARPs learned
        through EVPN on the switch.
+     * Add the "other_config:dynamic-routing-redistribute=ip" to Logical
+       Switches to announce local IPs/MAC bindings belonging to the same
+       EVPN domain.
    - Add support for Network Function insertion in OVN with stateful traffic
      redirection capability in Logical Switch datapath. The feature introduces
      three new NB database tables:
