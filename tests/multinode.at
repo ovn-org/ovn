@@ -3765,7 +3765,8 @@ m_wait_for_ports_up
 
 # Enable EVPN support for the distributed logical switch.
 check multinode_nbctl set logical_switch ls \
-    other_config:dynamic-routing-vni=$vni
+    other_config:dynamic-routing-vni=$vni   \
+    other_config:dynamic-routing-redistribute=ip
 
 check multinode_nbctl --wait=hv sync
 dp_key=$(m_fetch_column Datapath_Binding tunnel_key external_ids:name=ls)
@@ -3780,14 +3781,6 @@ IP: $ext_bgp_ip_gw1, port: 4789, vni: 10
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([m_as ovn-gw-2 ovn-appctl evpn/remote-vtep-list | sort], [0], [dnl
 IP: $ext_bgp_ip_gw2, port: 4789, vni: 10
 ])
-
-# TODO FIXME: https://issues.redhat.com/browse/FDP-1390
-# OVN should support advertising router IPs on EVPN logical switches connected
-# to logical routers.  Until then simulate that with a blackhole route.
-check m_as ovn-gw-1 ip route add table $vni blackhole $host_bgp_ip_gw1/32
-on_exit "m_as ovn-gw-1 ip route del table $vni $host_bgp_ip_gw1/32"
-check m_as ovn-gw-2 ip route add table $vni blackhole $host_bgp_ip_gw2/32
-on_exit "m_as ovn-gw-2 ip route del table $vni $host_bgp_ip_gw2/32"
 
 AS_BOX([Check traffic to "fabric" hosts - ping from fabric])
 OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 30.0.1.11])
