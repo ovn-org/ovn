@@ -440,10 +440,10 @@ AT_CHECK([simplify 'tcp.dst <= 65535'], [0],
     [ip.proto == 0x6 && (eth.type == 0x800 || eth.type == 0x86dd)
 ])
 AT_CHECK([simplify 'tcp.dst > 0'], [0],
-    [[(tcp.dst[0] || tcp.dst[1] || tcp.dst[2] || tcp.dst[3] || tcp.dst[4] || tcp.dst[5] || tcp.dst[6] || tcp.dst[7] || tcp.dst[8] || tcp.dst[9] || tcp.dst[10] || tcp.dst[11] || tcp.dst[12] || tcp.dst[13] || tcp.dst[14] || tcp.dst[15]) && ip.proto == 0x6 && (eth.type == 0x800 || eth.type == 0x86dd)
+    [[(tcp.dst == 0x1 || tcp.dst[1..15] == 0x1 || tcp.dst[2..15] == 0x1 || tcp.dst[3..15] == 0x1 || tcp.dst[4..15] == 0x1 || tcp.dst[5..15] == 0x1 || tcp.dst[6..15] == 0x1 || tcp.dst[7..15] == 0x1 || tcp.dst[8..15] == 0x1 || tcp.dst[9..15] == 0x1 || tcp.dst[10..15] == 0x1 || tcp.dst[11..15] == 0x1 || tcp.dst[12..15] == 0x1 || tcp.dst[13..15] == 0x1 || tcp.dst[14..15] == 0x1 || tcp.dst[15]) && ip.proto == 0x6 && (eth.type == 0x800 || eth.type == 0x86dd)
 ]])
 AT_CHECK([simplify 'tcp.dst < 65535'], [0],
-    [[(!tcp.dst[0] || !tcp.dst[1] || !tcp.dst[2] || !tcp.dst[3] || !tcp.dst[4] || !tcp.dst[5] || !tcp.dst[6] || !tcp.dst[7] || !tcp.dst[8] || !tcp.dst[9] || !tcp.dst[10] || !tcp.dst[11] || !tcp.dst[12] || !tcp.dst[13] || !tcp.dst[14] || !tcp.dst[15]) && ip.proto == 0x6 && (eth.type == 0x800 || eth.type == 0x86dd)
+    [[(tcp.dst == 0xfffe || tcp.dst[1..15] == 0x7ffe || tcp.dst[2..15] == 0x3ffe || tcp.dst[3..15] == 0x1ffe || tcp.dst[4..15] == 0xffe || tcp.dst[5..15] == 0x7fe || tcp.dst[6..15] == 0x3fe || tcp.dst[7..15] == 0x1fe || tcp.dst[8..15] == 0xfe || tcp.dst[9..15] == 0x7e || tcp.dst[10..15] == 0x3e || tcp.dst[11..15] == 0x1e || tcp.dst[12..15] == 0xe || tcp.dst[13..15] == 0x6 || tcp.dst[14..15] == 0x2 || !tcp.dst[15]) && ip.proto == 0x6 && (eth.type == 0x800 || eth.type == 0x86dd)
 ]])
 AT_CLEANUP
 
@@ -565,6 +565,27 @@ AT_CHECK([expr_to_flow 'inport == "eth0" && inport == "eth1"'], [0], [dnl
 ])
 AT_CLEANUP
 
+AT_SETUP([converting expressions to flows -- OR supersets])
+AT_KEYWORDS([expression])
+expr_to_flow () {
+    echo "$1" | ovstest test-ovn expr-to-flows | sort
+}
+AT_CHECK([expr_to_flow 'dnl
+    (ip4.src[[8]] == 0 || ip4.src[[9]] == 1 || ip4.src[[10]] == 0) && dnl
+    (ip4.src[[8]] == 0 || ip4.src[[9]] == 0 || ip4.src[[10]] == 1)'] , [0], [dnl
+ip,nw_src=0.0.0.0/0.0.1.0
+ip,nw_src=0.0.0.0/0.0.6.0
+ip,nw_src=0.0.6.0/0.0.6.0
+])
+AT_CHECK([expr_to_flow 'dnl
+    (ip4.src[[8]] != 0 || ip4.src[[9]] != 1 || ip4.src[[10]] != 0) && dnl
+    (ip4.src[[8]] != 0 || ip4.src[[9]] != 0 || ip4.src[[10]] != 1)'] , [0], [dnl
+ip,nw_src=0.0.0.0/0.0.6.0
+ip,nw_src=0.0.1.0/0.0.1.0
+ip,nw_src=0.0.6.0/0.0.6.0
+])
+AT_CLEANUP
+
 AT_SETUP([converting expressions to flows -- address sets])
 AT_KEYWORDS([expression])
 expr_to_flow () {
@@ -633,24 +654,24 @@ AT_CHECK([expr_to_flow 'ip4.src != {$set4}'], [0], [dnl
 
 ])
 AT_CHECK([expr_to_flow 'ip4.src != {1.0.0.0/8, $set4}'], [0], [dnl
-ip,nw_src=0.0.0.0/1.0.0.0
+ip,nw_src=0.0.0.0/8
 ip,nw_src=128.0.0.0/1
-ip,nw_src=16.0.0.0/16.0.0.0
-ip,nw_src=2.0.0.0/2.0.0.0
-ip,nw_src=32.0.0.0/32.0.0.0
-ip,nw_src=4.0.0.0/4.0.0.0
-ip,nw_src=64.0.0.0/64.0.0.0
-ip,nw_src=8.0.0.0/8.0.0.0
+ip,nw_src=16.0.0.0/4
+ip,nw_src=2.0.0.0/7
+ip,nw_src=32.0.0.0/3
+ip,nw_src=4.0.0.0/6
+ip,nw_src=64.0.0.0/2
+ip,nw_src=8.0.0.0/5
 ])
 AT_CHECK([expr_to_flow 'ip4.src != 1.0.0.0/8 && ip4.src != {$set4}'], [0], [dnl
-ip,nw_src=0.0.0.0/1.0.0.0
+ip,nw_src=0.0.0.0/8
 ip,nw_src=128.0.0.0/1
-ip,nw_src=16.0.0.0/16.0.0.0
-ip,nw_src=2.0.0.0/2.0.0.0
-ip,nw_src=32.0.0.0/32.0.0.0
-ip,nw_src=4.0.0.0/4.0.0.0
-ip,nw_src=64.0.0.0/64.0.0.0
-ip,nw_src=8.0.0.0/8.0.0.0
+ip,nw_src=16.0.0.0/4
+ip,nw_src=2.0.0.0/7
+ip,nw_src=32.0.0.0/3
+ip,nw_src=4.0.0.0/6
+ip,nw_src=64.0.0.0/2
+ip,nw_src=8.0.0.0/5
 ])
 AT_CHECK([expr_to_flow 'ip4.dst == 172.27.0.65 && ip4.src == $set1 && ip4.dst != 10.128.0.0/14'], [0], [dnl
 ip,nw_src=10.0.0.1,nw_dst=172.27.0.65
@@ -658,17 +679,18 @@ ip,nw_src=10.0.0.2,nw_dst=172.27.0.65
 ip,nw_src=10.0.0.3,nw_dst=172.27.0.65
 ])
 AT_CHECK([expr_to_flow 'ip4.src == 172.168.13.0/16 && ip4.src != {172.168.13.0/24, 172.168.14.0/24}'], [0], [dnl
-ip,nw_src=172.168.0.0/255.255.3.0
-ip,nw_src=172.168.0.0/255.255.4.0
-ip,nw_src=172.168.0.0/255.255.8.0
+ip,nw_src=172.168.0.0/21
+ip,nw_src=172.168.12.0/24
 ip,nw_src=172.168.128.0/17
-ip,nw_src=172.168.16.0/255.255.16.0
-ip,nw_src=172.168.3.0/255.255.3.0
-ip,nw_src=172.168.32.0/255.255.32.0
-ip,nw_src=172.168.64.0/255.255.64.0
+ip,nw_src=172.168.15.0/24
+ip,nw_src=172.168.16.0/20
+ip,nw_src=172.168.32.0/19
+ip,nw_src=172.168.64.0/18
+ip,nw_src=172.168.8.0/22
 ])
 dnl Negative match flow explosion.
 AT_CHECK([test $(expr_to_flow 'ip4.src != {172.168.13.0/24, 172.168.14.0/24, 172.168.15.0/24}' | wc -l) -le 30])
+AT_CHECK([test $(expr_to_flow 'ip4.dst != {179.141.79.238/32, 23.87.193.64/32, 240.238.112.253/32}' | wc -l) -le 100])
 AT_CLEANUP
 
 AT_SETUP([converting expressions to flows -- port groups])
