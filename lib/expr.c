@@ -2139,9 +2139,12 @@ expr_simplify_ne(struct expr *expr)
         e->type = EXPR_T_CMP;
         e->cmp.symbol = expr->cmp.symbol;
         e->cmp.relop = EXPR_R_EQ;
-        bitwise_put_bit(&e->cmp.value, sizeof e->cmp.value, i,
-                        !bitwise_get_bit(value, sizeof *value, i));
-        bitwise_put1(&e->cmp.mask, sizeof e->cmp.mask, i);
+
+        bitwise_copy(mask, sizeof *mask, i,
+                     &e->cmp.mask, sizeof e->cmp.mask, i, w - i);
+        bitwise_copy(value, sizeof *value, i,
+                     &e->cmp.value, sizeof e->cmp.value, i, w - i);
+        bitwise_toggle_bit(&e->cmp.value, sizeof e->cmp.value, i);
 
         new = expr_combine(EXPR_T_OR, new, e);
     }
