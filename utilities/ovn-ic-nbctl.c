@@ -660,10 +660,6 @@ ic_nbctl_trp_del(struct ctl_context *ctx)
         return;
     }
 
-    if (!trp) {
-        return;
-    }
-
     icnbrec_transit_router_update_ports_delvalue(tr, trp);
     icnbrec_transit_router_port_delete(trp);
 }
