@@ -3000,6 +3000,10 @@ AT_CHECK([ovn-nbctl --id=@ls create logical_switch name=foo -- \
          [1], [], [dnl
 ovn-nbctl: no row "foo1" in table Logical_Switch
 ])
+AT_CHECK([ovn-nbctl -- set logical_switch_port ln tag-request 100 -- show],
+         [1], [], [dnl
+ovn-nbctl: Logical_Switch_Port does not contain a column whose name matches "100"
+])
 ])
 
 dnl ---------------------------------------------------------------------

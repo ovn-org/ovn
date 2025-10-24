@@ -654,13 +654,19 @@ run_prerequisites(const struct ovn_dbctl_options *dbctl_options,
 {
     dbctl_options->add_base_prerequisites(idl, wait_type);
 
+    /* Make sure all commands are properly initialized before checking
+     * prerequisites. */
+    for (size_t i = 0; i < n_commands; i++) {
+        struct ctl_command *c = &commands[i];
+
+        ds_init(&c->output);
+        c->table = NULL;
+    }
+
     for (size_t i = 0; i < n_commands; i++) {
         struct ctl_command *c = &commands[i];
         if (c->syntax->prerequisites) {
             struct ctl_context ctx;
-
-            ds_init(&c->output);
-            c->table = NULL;
 
             ctl_context_init(&ctx, c, idl, NULL, NULL, NULL);
             (c->syntax->prerequisites)(&ctx);
@@ -735,11 +741,7 @@ do_dbctl(const struct ovn_dbctl_options *dbctl_options,
     dbctl_options->pre_execute(idl, txn, wait_type);
 
     symtab = ovsdb_symbol_table_create();
-    for (size_t i = 0; i < n_commands; i++) {
-        struct ctl_command *c = &commands[i];
-        ds_init(&c->output);
-        c->table = NULL;
-    }
+
     struct ctl_context *ctx = dbctl_options->ctx_create();
     ctl_context_init(ctx, NULL, idl, txn, symtab, NULL);
     for (size_t i = 0; i < n_commands; i++) {
