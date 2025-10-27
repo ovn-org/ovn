@@ -9824,7 +9824,7 @@ AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1
 AT_CHECK([ovs-vsctl add-port br-eth0 snoopvif -- set Interface snoopvif options:tx_pcap=hv1/snoopvif-tx.pcap options:rxq_pcap=hv1/snoopvif-rx.pcap])
 
 # Create a localnet port.
-AT_CHECK([ovn-nbctl lsp-add-localnet-port ls0 ln_port physnet1])
+AT_CHECK([ovn-nbctl --wait=hv lsp-add-localnet-port ls0 ln_port physnet1])
 
 # Wait until the patch ports are created in hv1 to connect br-int to br-eth0
 OVS_WAIT_UNTIL([test 1 = `as hv1 ovs-vsctl show | \
@@ -9883,7 +9883,7 @@ check ovn-nbctl lsp-add ls0 ls0-lr0 -- set Logical_Switch_Port ls0-lr0 \
     type=router options:router-port=lr0-ls0 addresses='"f0:00:00:00:00:01"'
 
 # Create a localnet port.
-check ovn-nbctl lsp-add-localnet-port ls0 ln_port physnet1
+check ovn-nbctl --wait=hv lsp-add-localnet-port ls0 ln_port physnet1
 
 # Prepare packets
 touch empty_expected
@@ -13052,7 +13052,7 @@ ovn_attach n1 br-phys 192.168.1.3
 # Initially test with no bridge-mapping on hv3
 
 # Create a localnet port.
-AT_CHECK([ovn-nbctl lsp-add-localnet-port ls0 ln_port physnet1])
+AT_CHECK([ovn-nbctl --wait=hv lsp-add-localnet-port ls0 ln_port physnet1])
 
 # Expect no packets when hv2 bridge-mapping is not present
 : > packets
@@ -21049,7 +21049,7 @@ grep controller | grep tp_src=546 | grep \
 ])
 
 # Add the localnet port to the logical switch ls1
-check ovn-nbctl lsp-add-localnet-port ls1 ln-public phys
+check ovn-nbctl --wait=hv lsp-add-localnet-port ls1 ln-public phys
 
 ln_public_key=$(fetch_column Port_Binding tunnel_key logical_port=ln-public)
 
@@ -40702,7 +40702,7 @@ check ovn-nbctl lsp-set-addresses vm1 "f0:00:0f:01:02:04 10.0.0.4 1000::4"
 
 check ovn-nbctl lr-add lr0
 check ovn-nbctl lrp-add lr0 lr0-sw0 fa:16:3e:00:00:01 10.0.0.1 1000::1/64
-check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
+check ovn-nbctl --wait=hv lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 net_add n1
 sim_add hv
