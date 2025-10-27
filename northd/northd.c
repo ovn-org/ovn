@@ -5737,7 +5737,7 @@ build_stateless_filter(const struct ovn_datapath *od,
                                 action,
                                 &acl->header_,
                                 lflow_ref);
-    } else if (!od->lb_with_stateless_mode) {
+    } else {
         ovn_lflow_add_with_hint(lflows, od, S_SWITCH_OUT_PRE_ACL,
                                 acl->priority + OVN_ACL_PRI_OFFSET,
                                 acl->match,
@@ -8017,6 +8017,29 @@ build_lrouter_lb_affinity_default_flows(struct ovn_datapath *od,
                   lflow_ref);
     ovn_lflow_add(lflows, od, S_ROUTER_IN_LB_AFF_LEARN, 0, "1", "next;",
                   lflow_ref);
+}
+
+static void
+build_lb_rules_for_stateless_acl(struct lflow_table *lflows,
+                                 struct ovn_lb_datapaths *lb_dps)
+{
+    /* When enable-stateless-acl-with-lb is enabled:
+     * 1. All stateless traffic must first pass through connection tracker
+     * in egress.
+     * 2. New connections (ct.new) will bypass commit phase.
+     */
+    struct hmapx_node *hmapx_node;
+    struct ovn_datapath *od;
+
+    HMAPX_FOR_EACH (hmapx_node, &lb_dps->ls_lb_with_stateless_mode) {
+        od = hmapx_node->data;
+        ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB, 115,
+                      REGBIT_ACL_STATELESS" == 1",
+                      REGBIT_CONNTRACK_NAT" = 1; next;", lb_dps->lflow_ref);
+        ovn_lflow_add(lflows, od, S_SWITCH_OUT_STATEFUL, 110,
+                      REGBIT_ACL_STATELESS " == 1 && ct.new",
+                      "next;", lb_dps->lflow_ref);
+    }
 }
 
 static void
@@ -12362,6 +12385,7 @@ build_lswitch_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
     build_lb_rules_pre_stateful(lflows, lb_dps, ls_datapaths, match, action);
     build_lb_rules(lflows, lb_dps, ls_datapaths, match, action,
                    meter_groups, svc_mons_data);
+    build_lb_rules_for_stateless_acl(lflows, lb_dps);
 }
 
 /* If there are any load balancing rules, we should send the packet to

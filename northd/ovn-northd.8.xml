@@ -2361,8 +2361,6 @@ output;
     <p>
       This is similar to ingress table <code>Pre-ACLs</code> except for
      <code>to-lport</code> traffic.
-     Except when the option enable-stateless-acl-with-lb is enabled:
-     REGBIT_ACL_STATELESS ignored.
     </p>
 
     <p>
@@ -2418,6 +2416,12 @@ output;
       is the peer of a logical router port. This flow is added to
       skip the connection tracking of packets which will be entering
       logical router datapath from logical switch datapath for routing.
+    </p>
+
+    <p>
+      When <code>enable-stateless-acl-with-lb</code> is enabled,
+      additional priority-115 flow is added to match traffic with
+      <code>REGBIT_ACL_STATELESS</code> set and pass connection tracking.
     </p>
 
     <h3>Egress Table 4: Pre-stateful</h3>
@@ -2563,6 +2567,8 @@ output;
     <p>
       This is similar to ingress table <code>Stateful</code> except that
       there are no rules added for load balancing new connections.
+      When <code>enable-stateless-acl-with-lb</code> is enabled, new
+      stateless connections bypass connection tracking.
     </p>
 
     <h3>Egress Table 12: Egress Port Security - check</h3>

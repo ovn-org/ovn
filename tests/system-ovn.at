@@ -5102,10 +5102,11 @@ OVN_FOR_EACH_NORTHD([
 AT_SETUP([enable-stateless-acl-with-lb usage])
 AT_SKIP_IF([test $HAVE_NC = no])
 
+CHECK_CONNTRACK()
 ovn_start
 OVS_TRAFFIC_VSWITCHD_START()
-
 ADD_BR([br-int])
+ADD_BR([br-ext], [set Bridge br-ext fail-mode=standalone])
 
 # Set external-ids in br-int needed for ovn-controller
 ovs-vsctl \
@@ -5115,62 +5116,122 @@ ovs-vsctl \
         -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
         -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
 
+ovs-vsctl set Open_Vswitch . external_ids:ovn-bridge-mappings=phynet:br-ext
+
 # Start ovn-controller
 start_daemon ovn-controller
 
 # Logical network:
-# One logical switch with IPv4 load balancers that hairpin the traffic.
-check ovn-nbctl ls-add sw
-check ovn-nbctl lsp-add sw lsp1 -- lsp-set-addresses lsp1 00:00:00:00:00:01
-check ovn-nbctl lsp-add sw lsp2 -- lsp-set-addresses lsp2 00:00:00:00:00:02
+# Two LSs and one Lr - outside ls has access to a physical network
+#                    - ls1 has load balancers
+#   outside - lr1 - ls1
+# Сheck that lb work with stateless acl, external traffic not related
+# to lb doesn't create conntrack records.
+# In switches egress pipeline, on which the balancers and stateless ACL
+# are condigured together - all traffic is checked for connection tracker,
+# but only traffic related to balancing is committed (established connection)
 
-check ovn-nbctl lb-add lb-ipv4-tcp 88.88.88.88:8080 42.42.42.1:4041 tcp
-check ovn-nbctl ls-lb-add sw lb-ipv4-tcp
+check ovn-nbctl ls-add outside
 
-check ovn-nbctl lr-add rtr
-check ovn-nbctl lrp-add rtr rtr-sw 00:00:00:00:01:00 42.42.42.254/24
-check ovn-nbctl lsp-add-router-port sw sw-rtr rtr-sw
+check ovn-nbctl lsp-add-localnet-port outside public phynet
+
+check ovn-nbctl lsp-add outside outside-down
+check ovn-nbctl lsp-set-addresses outside-down router
+check ovn-nbctl lsp-set-type outside-down router
+check ovn-nbctl lsp-set-options outside-down router-port=lr1-up
+
+check ovn-nbctl lr-add lr1
+
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:01:01:02:03 169.254.0.1/24
+check ovn-nbctl lrp-add lr1 lr1-down 00:00:02:01:02:03 192.168.0.1/24 \
+      -- lrp-set-gateway-chassis lr1-up hv1
+
+check ovn-nbctl ls-add ls1
+
+check ovn-nbctl lsp-add-router-port ls1 ls1-up lr1-down
+
+check ovn-nbctl lb-add lb-ipv4-tcp 192.168.0.1:8080 192.168.0.101:4041 tcp
+check ovn-nbctl ls-lb-add ls1 lb-ipv4-tcp
+
+check ovn-nbctl lb-add lb-ipv4-udp 192.168.0.1:8081 192.168.0.101:4042 udp
+check ovn-nbctl ls-lb-add ls1 lb-ipv4-udp
 
 ADD_NAMESPACES(lsp1)
-ADD_VETH(lsp1, lsp1, br-int, "42.42.42.1/24", "00:00:00:00:00:01", \
-         "42.42.42.254")
+ADD_VETH(lsp1, lsp1, br-int, "192.168.0.101/24", "00:00:00:00:00:01", \
+         "192.168.0.1")
+check ovn-nbctl lsp-add ls1 lsp1 \
+-- lsp-set-addresses lsp1 "00:00:00:00:00:01 192.168.0.101"
 
 ADD_NAMESPACES(lsp2)
-ADD_VETH(lsp2, lsp2, br-int, "42.42.42.2/24", "00:00:00:00:00:02", \
-         "42.42.42.254")
+ADD_VETH(lsp2, lsp2, br-int, "192.168.0.102/24", "00:00:00:00:00:02", \
+         "192.168.0.1")
+check ovn-nbctl lsp-add ls1 lsp2 \
+-- lsp-set-addresses lsp2 "00:00:00:00:00:02 192.168.0.102"
 
 # Wait for ovn-controller to catch up.
-wait_for_ports_up
+wait_for_ports_up lsp1 lsp2
 check ovn-nbctl --wait=hv sync
 
-# Start IPv4 TCP server on lsp1.
-NETNS_DAEMONIZE([lsp1], [nc -l -k 42.42.42.1 4041], [lsp1.pid])
+ADD_NAMESPACES(external)
+ADD_VETH(external, external, br-ext, "169.254.0.101/24", "00:00:00:00:00:04", \
+         "169.254.0.1")
 
-# Send the packet to VIP.
-NS_CHECK_EXEC([lsp1], [nc -z 88.88.88.88 8080], [0], [ignore], [ignore])
-NS_CHECK_EXEC([lsp2], [nc -z 88.88.88.88 8080], [0], [ignore], [ignore])
+NS_EXEC([external], [ip r add 192.168.0.0/24 via 169.254.0.1])
+NS_EXEC([lsp1], [ip r add 169.254.0.0/24 via 192.168.0.1])
+NS_EXEC([lsp2], [ip r add 169.254.0.1/24 via 192.168.0.1])
 
-check ovn-nbctl --wait=hv acl-add sw to-lport 2000 'ip' allow-stateless
-check ovn-nbctl --wait=hv acl-add sw from-lport 2000 'ip' allow-stateless
+# Add stateless acl with load balancers.
+check ovn-nbctl acl-add ls1 to-lport 2000 1 allow-stateless
+check ovn-nbctl acl-add ls1 from-lport 2000 1 allow-stateless
 
-# To provide work of load balancer with stateless ACL this is necessary
-# to set enable-stateless-acl-lb to true.
-check ovn-nbctl set logical_switch sw other_config:enable-stateless-acl-with-lb=true
+check ovn-nbctl --wait=sb set logical_switch ls1 other_config:enable-stateless-acl-with-lb=true
 
-check ovn-nbctl --wait=hv sync
+# Checking connectivity
+NS_CHECK_EXEC([external], [ping -q -c 3 -i 0.3 -w 2 192.168.0.101 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
 
-# Send the packet to VIP after add stateless acl.
-NS_CHECK_EXEC([lsp1], [nc -z 88.88.88.88 8080], [0], [ignore], [ignore])
-NS_CHECK_EXEC([lsp2], [nc -z 88.88.88.88 8080], [0], [ignore], [ignore])
+NS_CHECK_EXEC([lsp1], [ping -q -c 3 -i 0.3 -w 2 192.168.0.102 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
 
-check ovn-nbctl --wait=hv acl-add sw to-lport 2001 'ip' allow-related
-check ovn-nbctl --wait=hv acl-add sw from-lport 2001 'ip' allow-related
+zone_lsp1_id=$(ovn-appctl -t ovn-controller ct-zone-list | grep lsp1 | cut -d ' ' -f2)
+zone_lsp2_id=$(ovn-appctl -t ovn-controller ct-zone-list | grep lsp2 | cut -d ' ' -f2)
 
-# Send the packet to VIP after add related acls.
-NS_CHECK_EXEC([lsp1], [nc -z 88.88.88.88 8080], [0], [ignore], [ignore])
-NS_CHECK_EXEC([lsp2], [nc -z 88.88.88.88 8080], [0], [ignore], [ignore])
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
-OVN_CLEANUP_CONTROLLER([hv1])
+# Start IPv4 TCP and UDP server on lsp1.
+NETNS_DAEMONIZE([lsp1], [nc -l -k 192.168.0.101 4041], [lsp1_tcp.pid])
+NETNS_DAEMONIZE([lsp1], [nc -u -l 192.168.0.101 4042], [lsp1_udp.pid])
+
+# Create another server without load balancer to check that it
+# does not create conntrack records.
+NETNS_DAEMONIZE([lsp1], [nc -l -k 192.168.0.101 4043], [lsp1_non_lb.pid])
+
+# Send the packet to VIP from private network.
+NS_CHECK_EXEC([lsp1], [nc -z 192.168.0.1 8080], [0], [ignore], [ignore])
+
+# Udp connections
+NS_CHECK_EXEC([lsp1], [echo a | nc -u 192.168.0.1 8081], [ignore], [ignore], [ignore])
+
+# Check conntrack zone of lsp1 has tcp entry for lb
+AT_CHECK([ovs-appctl dpctl/dump-conntrack zone=$zone_lsp1_id | \
+FORMAT_CT(192.168.0.1) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+tcp,orig=(src=192.168.0.101,dst=192.168.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.0.101,dst=192.168.0.101,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+udp,orig=(src=192.168.0.101,dst=192.168.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.0.101,dst=192.168.0.101,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2
+])
+
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+
+# Check that internal traffic not related to lb doesn't create conntrack records
+NS_CHECK_EXEC([external], [nc -z 192.168.0.101 4043], [0], [])
+
+AT_CHECK([ovs-appctl dpctl/dump-conntrack zone=$zone_lsp1_id | FORMAT_CT(192.168.0.101) | sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
