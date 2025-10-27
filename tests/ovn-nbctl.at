@@ -3336,7 +3336,6 @@ AT_CHECK([ovn-nbctl nf-del nf2])
 AT_CHECK([ovn-nbctl nf-list | uuidfilt], [0], [])
 ])
 
-<<<<<<< HEAD
 AT_SETUP([ovn-nbctl - TLS server name indication (SNI) with --ssl-server-name])
 AT_KEYWORDS([ovn-nbctl ssl tls sni client])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
