@@ -228,7 +228,7 @@ check ovn-nbctl lr-add R1
 check ovn-nbctl lrp-add R1 R1-S1 02:ac:10:01:00:01 172.16.1.1/24
 
 check ovn-nbctl ls-add S1
-check ovn-nbctl lsp-add-router-port S1 S1-R1 R1-S1
+check ovn-nbctl --wait=sb lsp-add-router-port S1 S1-R1 R1-S1
 AT_CHECK([test x`ovn-nbctl lsp-get-up S1-R1` = xup])
 
 AT_CLEANUP
@@ -244,7 +244,7 @@ check_uuid ovn-nbctl create Logical_Router name=R1 options:chassis=gw1
 check ovn-nbctl lrp-add R1 R1-S1 02:ac:10:01:00:01 172.16.1.1/24
 
 check ovn-nbctl ls-add S1
-check ovn-nbctl lsp-add-router-port S1 S1-R1 R1-S1
+check ovn-nbctl --wait=sb lsp-add-router-port S1 S1-R1 R1-S1
 
 check ovn-sbctl lsp-bind S1-R1 gw1
 AT_CHECK([test x`ovn-nbctl lsp-get-up S1-R1` = xup])
@@ -263,7 +263,7 @@ check ovn-nbctl lrp-add R1 R1-S1 02:ac:10:01:00:01 172.16.1.1/24
 check ovn-nbctl lrp-set-gateway-chassis R1-S1 gw1
 
 check ovn-nbctl ls-add S1
-check ovn-nbctl lsp-add-router-port S1 S1-R1 R1-S1
+check ovn-nbctl --wait=sb lsp-add-router-port S1 S1-R1 R1-S1
 AT_CHECK([test x`ovn-nbctl lsp-get-up S1-R1` = xup])
 
 AT_CLEANUP
@@ -610,7 +610,7 @@ check ovn-sbctl chassis-add comp2 geneve 127.0.0.6
 check ovn-sbctl chassis-add cadd1 geneve 127.0.0.7
 
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:20:20:12:14 10.0.0.1/24
-check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
+check ovn-nbctl --wait=sb lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 
 check ovn-sbctl lsp-bind sw0-p1 comp1
 wait_row_count nb:Logical_Switch_Port 1 name=sw0-p1 up=true
@@ -641,7 +641,7 @@ wait_column "$comp2_ch_uuid" HA_Chassis_Group ref_chassis
 check ovn-nbctl ls-add sw1
 check ovn-nbctl lsp-add sw1 sw1-p1
 check ovn-nbctl lrp-add lr1 lr1-sw1 00:00:20:20:12:15 20.0.0.1/24
-check ovn-nbctl lsp-add-router-port sw1 sw1-lr1 lr1-sw1
+check ovn-nbctl --wait=sb lsp-add-router-port sw1 sw1-lr1 lr1-sw1
 
 # Bind sw1-p1 in comp1.
 check ovn-sbctl lsp-bind sw1-p1 comp1
@@ -653,7 +653,7 @@ wait_column "$comp2_ch_uuid" HA_Chassis_Group ref_chassis
 
 # Now attach sw0 to lr1
 check ovn-nbctl lrp-add lr1 lr1-sw0 00:00:20:20:12:16 10.0.0.10/24
-check ovn-nbctl lsp-add-router-port sw0 sw0-lr1 lr1-sw0
+check ovn-nbctl --wait=sb lsp-add-router-port sw0 sw0-lr1 lr1-sw0
 
 # Both comp1 and comp2 should be in 'ref_chassis' as sw1 is indirectly
 # connected to lr0
@@ -12000,7 +12000,7 @@ check ovn-nbctl lrp-set-gateway-chassis R1-S1 gw1
 
 # Add a external network connected to R1
 check ovn-nbctl ls-add S1
-check ovn-nbctl lsp-add-router-port S1 S1-R1 R1-S1
+check ovn-nbctl --wait=sb lsp-add-router-port S1 S1-R1 R1-S1
 AT_CHECK([test x`ovn-nbctl lsp-get-up S1-R1` = xup])
 
 # Add a external network vif
@@ -12755,7 +12755,7 @@ check ovn-nbctl ls-add sw0
 check ovn-nbctl lr-add lr0
 check ovn-nbctl lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 "00:00:20:20:00:03 10.0.0.3"
 check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:20:20:12:14 10.0.0.1/24
-check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
+check ovn-nbctl --wait=sb lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 
 # This should not result in recomputes.
