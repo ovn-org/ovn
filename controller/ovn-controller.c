@@ -5135,6 +5135,11 @@ struct ed_type_route {
      * locally. */
     struct sset tracked_ports_remote;
 
+    /* Contains all the currently configured dynamic-routing-port-name values
+     * on all datapaths.
+     */
+    struct sset filtered_ports;
+
     /* Contains struct advertise_datapath_entry */
     struct hmap announce_routes;
 
@@ -5186,6 +5191,7 @@ en_route_run(struct engine_node *node, void *data)
     struct route_ctx_out r_ctx_out = {
         .tracked_re_datapaths = &re_data->tracked_route_datapaths,
         .tracked_ports_local = &re_data->tracked_ports_local,
+        .filtered_ports = &re_data->filtered_ports,
         .tracked_ports_remote = &re_data->tracked_ports_remote,
         .announce_routes = &re_data->announce_routes,
     };
@@ -5194,6 +5200,7 @@ en_route_run(struct engine_node *node, void *data)
     tracked_datapaths_clear(r_ctx_out.tracked_re_datapaths);
     sset_clear(r_ctx_out.tracked_ports_local);
     sset_clear(r_ctx_out.tracked_ports_remote);
+    sset_clear(r_ctx_out.filtered_ports);
 
     route_run(&r_ctx_in, &r_ctx_out);
     return EN_UPDATED;
@@ -5209,6 +5216,7 @@ en_route_init(struct engine_node *node OVS_UNUSED,
     hmap_init(&data->tracked_route_datapaths);
     sset_init(&data->tracked_ports_local);
     sset_init(&data->tracked_ports_remote);
+    sset_init(&data->filtered_ports);
     hmap_init(&data->announce_routes);
     data->ovnsb_idl = arg->sb_idl;
 
@@ -5223,6 +5231,7 @@ en_route_cleanup(void *data)
     tracked_datapaths_destroy(&re_data->tracked_route_datapaths);
     sset_destroy(&re_data->tracked_ports_local);
     sset_destroy(&re_data->tracked_ports_remote);
+    sset_destroy(&re_data->filtered_ports);
     route_cleanup(&re_data->announce_routes);
     hmap_destroy(&re_data->announce_routes);
 }
@@ -5300,6 +5309,14 @@ route_runtime_data_handler(struct engine_node *node, void *data)
                 return EN_UNHANDLED;
             }
 
+            /* If this logical port name is used to filter on which router
+             * ports learning should happen then process the changes. */
+            if (sset_find(&re_data->filtered_ports, name)) {
+                /* XXX: Until we get I-P support for route exchange we need to
+                * request recompute. */
+                return EN_UNHANDLED;
+            }
+
             const char *dp_name = smap_get(&lport->pb->options,
                                            "distributed-port");
             if (dp_name && sset_contains(tracked_ports, dp_name)) {
@@ -5361,6 +5378,14 @@ route_sb_port_binding_data_handler(struct engine_node *node, void *data)
 
         if (route_exchange_find_port(sbrec_port_binding_by_name,
                                      chassis, sbrec_pb, NULL)) {
+            /* XXX: Until we get I-P support for route exchange we need to
+             * request recompute. */
+            return EN_UNHANDLED;
+        }
+
+        /* If this logical port name is used to filter on which router
+         * ports learning should happen then process the changes. */
+        if (sset_find(&re_data->filtered_ports, sbrec_pb->logical_port)) {
             /* XXX: Until we get I-P support for route exchange we need to
              * request recompute. */
             return EN_UNHANDLED;

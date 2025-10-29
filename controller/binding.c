@@ -808,8 +808,6 @@ static struct binding_lport *local_binding_add_lport(
     struct local_binding *,
     const struct sbrec_port_binding *,
     enum en_lport_type);
-static struct binding_lport *local_binding_get_primary_lport(
-    struct local_binding *);
 static struct binding_lport *local_binding_get_first_lport(
     struct local_binding *lbinding);
 static struct binding_lport *local_binding_get_primary_or_localport_lport(
@@ -896,6 +894,27 @@ local_binding_get_primary_pb(const struct shash *local_bindings,
     struct binding_lport *b_lport = local_binding_get_primary_lport(lbinding);
 
     return b_lport ? b_lport->pb : NULL;
+}
+
+/* Returns the primary binding lport if present in lbinding's
+ * binding lports list.  A binding lport is considered primary
+ * if binding lport's type is LP_VIF and the name matches
+ * with the 'lbinding'.
+ */
+struct binding_lport *
+local_binding_get_primary_lport(struct local_binding *lbinding)
+{
+    if (!lbinding) {
+        return NULL;
+    }
+
+    struct binding_lport *b_lport = local_binding_get_first_lport(lbinding);
+    if (b_lport && b_lport->type == LP_VIF &&
+            !strcmp(lbinding->name, b_lport->name)) {
+        return b_lport;
+    }
+
+    return NULL;
 }
 
 ofp_port_t
@@ -3500,27 +3519,6 @@ local_binding_get_first_lport(struct local_binding *lbinding)
         b_lport = CONTAINER_OF(ovs_list_front(&lbinding->binding_lports),
                                struct binding_lport, list_node);
 
-        return b_lport;
-    }
-
-    return NULL;
-}
-
-/* Returns the primary binding lport if present in lbinding's
- * binding lports list.  A binding lport is considered primary
- * if binding lport's type is LP_VIF and the name matches
- * with the 'lbinding'.
- */
-static struct binding_lport *
-local_binding_get_primary_lport(struct local_binding *lbinding)
-{
-    if (!lbinding) {
-        return NULL;
-    }
-
-    struct binding_lport *b_lport = local_binding_get_first_lport(lbinding);
-    if (b_lport && b_lport->type == LP_VIF &&
-            !strcmp(lbinding->name, b_lport->name)) {
         return b_lport;
     }
 

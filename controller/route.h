@@ -49,6 +49,11 @@ struct route_ctx_out {
      * locally. */
     struct sset *tracked_ports_remote;
 
+    /* Contains all the currently configured dynamic-routing-port-name values
+     * on all datapaths.
+     */
+    struct sset *filtered_ports;
+
     /* Contains struct advertise_datapath_entry */
     struct hmap *announce_routes;
 };
