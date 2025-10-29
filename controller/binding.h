@@ -163,6 +163,7 @@ void local_binding_data_destroy(struct local_binding_data *);
 
 const struct sbrec_port_binding *local_binding_get_primary_pb(
     const struct shash *local_bindings, const char *pb_name);
+struct binding_lport *local_binding_get_primary_lport(struct local_binding *);
 ofp_port_t local_binding_get_lport_ofport(const struct shash *local_bindings,
                                           const char *pb_name);
 

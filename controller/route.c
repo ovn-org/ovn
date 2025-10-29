@@ -125,13 +125,15 @@ ifname_from_port_name(const struct smap *port_mapping,
         return iface;
     }
 
-    if (!local_binding_is_up(local_bindings, port_name, chassis)) {
+    const struct binding_lport *b_lport =
+        local_binding_get_primary_lport(local_binding_find(local_bindings,
+                                                           port_name));
+
+    if (!b_lport || !lport_pb_is_chassis_resident(chassis, b_lport->pb)) {
         return NULL;
     }
 
-    struct local_binding *binding = local_binding_find(local_bindings,
-                                                       port_name);
-    return binding->iface->name;
+    return b_lport->lbinding->iface->name;
 }
 
 static void
@@ -238,6 +240,7 @@ route_run(struct route_ctx_in *r_ctx_in,
                     smap_add(&ad->bound_ports, local_peer->logical_port,
                              ifname);
                 }
+                sset_add(r_ctx_out->filtered_ports, port_name);
             }
         }
 

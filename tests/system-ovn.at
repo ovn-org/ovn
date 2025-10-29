@@ -17277,6 +17277,96 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([dynamic-routing - route learning filter port name])
+
+VRF_RESERVE([1337])
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+
+ADD_BR([br-int])
+check ovs-vsctl                                                                     \
+    -- set Open_vSwitch . external-ids:system-id=hv1                                \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve                        \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1                       \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+check ovn-nbctl                                                 \
+    -- lr-add lr                                                \
+      -- set logical_router lr options:chassis=hv1              \
+                               options:dynamic-routing=true     \
+                               options:requested-tnl-key=1337   \
+    -- lrp-add lr lrp1 00:00:00:00:00:01 1.1.1.1/24             \
+    -- lrp-add lr lrp2 00:00:00:00:00:02 2.2.2.1/24             \
+      -- lrp-set-options lrp2 dynamic-routing-port-name=vif2    \
+                              dynamic-routing-maintain-vrf=true \
+    -- ls-add ls1                                               \
+      -- lsp-add-router-port ls1 ls1-lr lrp1                    \
+      -- lsp-add ls1 vif1                                       \
+    -- ls-add ls2                                               \
+      -- lsp-add-router-port ls2 ls2-lr lrp2                    \
+      -- lsp-add ls2 vif2
+
+check ovs-vsctl add-port br-int vif1 \
+    -- set interface vif1 type=internal external_ids:iface-id=vif1
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up vif1
+
+lrp1=$(fetch_column port_binding _uuid logical_port="lrp1")
+lrp2=$(fetch_column port_binding _uuid logical_port="lrp2")
+
+AT_CHECK([ip vrf show ovnvrf1337], [0], [dnl
+ovnvrf1337 1337
+])
+
+AS_BOX([Unbound vif2: no routes learned])
+check ovs-vsctl add-port br-int vif2 \
+    -- set interface vif2 type=internal
+check ip link set vif2 up
+check ip route add 3.3.3.0/24 via 2.2.2.2 dev vif2 onlink vrf ovnvrf1337
+check ovn-nbctl --wait=hv sync
+check_row_count Learned_Route 0
+
+AS_BOX([Bound vif2: routes learned on lrp2])
+check ovs-vsctl set interface vif2 external-ids:iface-id=vif2
+wait_for_ports_up vif2
+check_row_count Learned_Route 1 ip_prefix=3.3.3.0/24 \
+                                nexthop=2.2.2.2      \
+                                logical_port=$lrp2
+check_row_count Learned_Route 1
+
+AS_BOX([No dynamic-routing-port-name: routes learned on lrp1 and lrp2])
+check ovn-nbctl --wait=hv \
+    remove logical_router_port lrp2 options dynamic-routing-port-name
+check_row_count Learned_Route 1 ip_prefix=3.3.3.0/24 \
+                                nexthop=2.2.2.2      \
+                                logical_port=$lrp1
+check_row_count Learned_Route 1 ip_prefix=3.3.3.0/24 \
+                                nexthop=2.2.2.2      \
+                                logical_port=$lrp2
+check_row_count Learned_Route 2
+
+OVN_CLEANUP_CONTROLLER([hv1])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([Mac binding aging - Probing])
 AT_KEYWORDS([mac_binding_probing])
 ovn_start
