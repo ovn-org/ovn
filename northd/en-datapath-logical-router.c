@@ -88,6 +88,13 @@ gather_external_ids(const struct nbrec_logical_router *nbr,
     smap_add_format(external_ids, "disable_garp_rarp",
                     disable_garp_rarp ? "true" : "false");
 
+    int64_t vrf_id = ovn_smap_get_llong(&nbr->options,
+                                        "dynamic-routing-vrf-id", -1);
+    if (vrf_id > 0) {
+        smap_add_format(external_ids, "dynamic-routing-vrf-id", "%"PRId64,
+                        vrf_id);
+    }
+
     /* For backwards-compatibility, also store the NB UUID in
      * external-ids:logical-router. This is useful if ovn-controller
      * has not updated and expects this to be where to find the

@@ -15821,7 +15821,7 @@ check ovn-nbctl ls-add p2
 
 check ovn-nbctl lr-add internet \
     -- set Logical_Router internet options:dynamic-routing=true \
-                                   options:requested-tnl-key=1337
+                                   options:dynamic-routing-vrf-id=1337
 
 check ovn-nbctl lrp-add internet internet-public \
         00:00:02:01:02:03 192.0.2.1/24 \
@@ -15845,7 +15845,7 @@ check ovn-nbctl lsp-add phys phys-internet \
 # LR pr1 setup.
 
 check ovn-nbctl lr-add pr1 \
-    -- set Logical_Router pr1 options:requested-tnl-key=1338
+    -- set Logical_Router pr1 options:dynamic-routing-vrf-id=1338
 
 check ovn-nbctl lrp-add pr1 pr1-public \
         00:00:02:01:02:04 192.0.2.2/24
@@ -15867,7 +15867,7 @@ check ovn-nbctl lr-route-add pr1 0.0.0.0/0 192.0.2.1
 # LR pr2 setup.
 
 check ovn-nbctl lr-add pr2 \
-    -- set Logical_Router pr2 options:requested-tnl-key=1339
+    -- set Logical_Router pr2 options:dynamic-routing-vrf-id=1339
 
 check ovn-nbctl lrp-add pr2 pr2-public \
         00:00:02:01:02:05 192.0.2.3/24
@@ -16177,7 +16177,7 @@ check ovn-nbctl ls-add p2
 
 check ovn-nbctl lr-add internet \
     -- set Logical_Router internet options:dynamic-routing=true \
-                                   options:requested-tnl-key=1337 \
+                                   options:dynamic-routing-vrf-id=1337 \
                                    options:chassis=hv1
 
 check ovn-nbctl lrp-add internet internet-public \
@@ -16201,7 +16201,7 @@ check ovn-nbctl lsp-add phys phys-internet \
 # LR pr1 setup.
 
 check ovn-nbctl lr-add pr1 \
-    -- set Logical_Router pr1 options:requested-tnl-key=1338
+    -- set Logical_Router pr1 options:dynamic-routing-vrf-id=1338
 
 check ovn-nbctl lrp-add pr1 pr1-public \
         00:00:02:01:02:04 192.0.2.2/24
@@ -16223,7 +16223,7 @@ check ovn-nbctl lr-route-add pr1 0.0.0.0/0 192.0.2.1
 # LR pr2 setup.
 
 check ovn-nbctl lr-add pr2 \
-    -- set Logical_Router pr2 options:requested-tnl-key=1339
+    -- set Logical_Router pr2 options:dynamic-routing-vrf-id=1339
 
 check ovn-nbctl lrp-add pr2 pr2-public \
         00:00:02:01:02:05 192.0.2.3/24
@@ -16484,7 +16484,7 @@ OVS_WAIT_WHILE([ip link | grep -q ovnvrf$vrf:.*UP])
 check ovn-nbctl                                             \
     -- lr-add R1                                            \
     -- set Logical_Router R1                                \
-            options:requested-tnl-key=$vrf                  \
+            options:dynamic-routing-vrf-id=$vrf             \
             options:dynamic-routing=true                    \
     -- ls-add sw0                                           \
     -- ls-add public                                        \
@@ -16642,7 +16642,7 @@ OVS_WAIT_WHILE([ip link | grep -q ovnvrf$vrf:.*UP])
 check ovn-nbctl                                                   \
     -- lr-add R1                                                  \
     -- set Logical_Router R1                                      \
-            options:requested-tnl-key=$vrf                        \
+            options:dynamic-routing-vrf-id=$vrf                   \
             options:dynamic-routing=true                          \
     -- ls-add sw0                                                 \
     -- ls-add public                                              \
@@ -16802,7 +16802,7 @@ OVS_WAIT_WHILE([ip link | grep -q ovnvrf$vrf:.*UP])
 check ovn-nbctl                                             \
     -- lr-add R1                                            \
     -- set Logical_Router R1                                \
-            options:requested-tnl-key=$vrf                  \
+            options:dynamic-routing-vrf-id=$vrf             \
             options:dynamic-routing=true                    \
     -- ls-add sw0                                           \
     -- ls-add public                                        \
@@ -17032,7 +17032,7 @@ OVS_WAIT_WHILE([ip link | grep -q ovnvrf$vrf:.*UP])
 check ovn-nbctl                                                   \
     -- lr-add R1                                                  \
     -- set Logical_Router R1                                      \
-            options:requested-tnl-key=$vrf                        \
+            options:dynamic-routing-vrf-id=$vrf                   \
             options:dynamic-routing=true                          \
     -- ls-add sw0                                                 \
     -- ls-add public                                              \
@@ -17297,7 +17297,7 @@ check ovn-nbctl                                           \
 check ovn-nbctl                                           \
     -- lr-add R2                                          \
     -- set Logical_Router R2                              \
-            options:requested-tnl-key=$vrf                \
+            options:dynamic-routing-vrf-id=$vrf           \
             options:dynamic-routing=true                  \
             options:dynamic-routing-redistribute=lb,nat   \
     -- lrp-add R2 R2-PUB1 00:02:02:01:02:03 172.16.1.2/24 \
