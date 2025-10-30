@@ -126,6 +126,11 @@ static const char *rbac_bfd_auth[] =
 static const char *rbac_bfd_update[] =
     {"status"};
 
+static const char *rbac_learned_route_auth[] =
+    {""};
+static const char *rbac_learned_route_update[] =
+    {"datapath", "logical_port", "ip_prefix", "nexthop", "external_ids"};
+
 static struct rbac_perm_cfg {
     const char *table;
     const char **auth;
@@ -214,6 +219,14 @@ static struct rbac_perm_cfg {
         .insdel = false,
         .update = rbac_bfd_update,
         .n_update = ARRAY_SIZE(rbac_bfd_update),
+        .row = NULL
+    },{
+        .table = "Learned_Route",
+        .auth = rbac_learned_route_auth,
+        .n_auth = ARRAY_SIZE(rbac_learned_route_auth),
+        .insdel = true,
+        .update = rbac_learned_route_update,
+        .n_update = ARRAY_SIZE(rbac_learned_route_update),
         .row = NULL
     },{
         .table = NULL,
