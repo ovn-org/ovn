@@ -19,6 +19,7 @@
 #define ROUTE_EXCHANGE_NETLINK_H 1
 
 #include <stdint.h>
+#include <linux/rtnetlink.h>
 #include <netinet/in.h>
 #include <net/if.h>
 
@@ -27,6 +28,13 @@
 #ifndef RTPROT_OVN
 #define RTPROT_OVN 84
 #endif
+
+#define TABLE_ID_VALID(table_id) (table_id != RT_TABLE_UNSPEC &&              \
+                                  table_id != RT_TABLE_COMPAT &&              \
+                                  table_id != RT_TABLE_DEFAULT &&             \
+                                  table_id != RT_TABLE_MAIN &&                \
+                                  table_id != RT_TABLE_LOCAL &&               \
+                                  table_id != RT_TABLE_MAX)
 
 struct in6_addr;
 struct hmap;
