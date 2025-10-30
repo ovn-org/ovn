@@ -245,10 +245,12 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
     HMAP_FOR_EACH (ad, node, r_ctx_in->announce_routes) {
         uint32_t table_id = route_get_table_id(ad->db);
 
-        if (!ovn_add_tnlid(&table_ids, table_id)) {
+        bool valid = TABLE_ID_VALID(table_id);
+        if (!valid || !ovn_add_tnlid(&table_ids, table_id)) {
             VLOG_WARN_RL(&rl, "Unable to sync routes for datapath "UUID_FMT": "
-                         "duplicate table id: %"PRIu32,
-                         UUID_ARGS(&ad->db->header_.uuid), table_id);
+                         "%s table id: %"PRIu32,
+                         UUID_ARGS(&ad->db->header_.uuid),
+                         !valid ? "invalid" : "duplicate", table_id);
             continue;
         }
 

@@ -19,7 +19,6 @@
 
 #include <errno.h>
 #include <inttypes.h>
-#include <linux/rtnetlink.h>
 #include <net/if.h>
 #include <netinet/in.h>
 
@@ -37,12 +36,6 @@
 VLOG_DEFINE_THIS_MODULE(route_exchange_netlink);
 
 #define NETNL_REQ_BUFFER_SIZE 128
-#define TABLE_ID_VALID(table_id) (table_id != RT_TABLE_UNSPEC &&              \
-                                  table_id != RT_TABLE_COMPAT &&              \
-                                  table_id != RT_TABLE_DEFAULT &&             \
-                                  table_id != RT_TABLE_MAIN &&                \
-                                  table_id != RT_TABLE_LOCAL &&               \
-                                  table_id != RT_TABLE_MAX)
 
 int
 re_nl_create_vrf(const char *ifname, uint32_t table_id)
