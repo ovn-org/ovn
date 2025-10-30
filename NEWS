@@ -5,6 +5,8 @@ OVN v25.03.2 - xx xxx xxxx
        Routers and Logical Router Ports which refines the way in which
        chassis-specific Advertised_Routes (e.g., for NAT and LB IPs) are
        advertised.
+     * Add the option "dynamic-routing-vrf-id" to Logical Routers which allows
+       CMS to specify the Linux routing table id for a given vrf.
    - Add ovn-nbctl lsp-add-router-port which will create router port on
      specified LS.
    - Add ovn-nbctl lsp-add-localnet-port which will create localnet port on

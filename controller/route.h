@@ -29,6 +29,7 @@ struct hmap;
 struct ovsdb_idl_index;
 struct sbrec_chassis;
 struct sbrec_port_binding;
+struct sbrec_datapath_binding;
 
 struct route_ctx_in {
     const struct sbrec_advertised_route_table *advertised_route_table;
@@ -91,5 +92,6 @@ const struct sbrec_port_binding *route_exchange_find_port(
 uint32_t advertise_route_hash(const struct in6_addr *dst, unsigned int plen);
 void route_run(struct route_ctx_in *, struct route_ctx_out *);
 void route_cleanup(struct hmap *announce_routes);
+uint32_t route_get_table_id(const struct sbrec_datapath_binding *);
 
 #endif /* ROUTE_H */

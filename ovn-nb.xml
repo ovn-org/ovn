@@ -3164,7 +3164,9 @@ or
         <p>
           This defines the name of the vrf the ovn-controller will use to
           advertise and learn routes. If not set the vrf will be named "ovnvrf"
-          with the datapath id of the Logical Router appended to it.
+          with the <ref column="options" key="dynamic-routing-vrf-id"
+          table="Logical_Router"/> or datapath id of the Logical Router
+          appended to it.
         </p>
 
         <p>
@@ -3175,6 +3177,27 @@ or
         <p>
           The vrf table id is not affected by this setting. For details see
           <ref column="options" key="dynamic-routing-maintain-vrf"
+               table="Logical_Router"/> on the Logical_Router.
+        </p>
+      </column>
+
+      <column name="options" key="dynamic-routing-vrf-id"
+              type='{"type": "integer", "minInteger": 1,
+                     "maxInteger": 4294967295}'>
+        <p>
+          Only relevant if <ref column="options" key="dynamic-routing"/>
+          is set to <code>true</code>.
+        </p>
+
+        <p>
+          This defines the vrf table id used by the specified vrf. When not
+          set or set to invalid value datapath id of the Logical Router
+          will be used instead.
+        </p>
+
+        <p>
+          This can also affect the vrf name. For details see
+          <ref column="options" key="dynamic-routing-vrf-name"
                table="Logical_Router"/> on the Logical_Router.
         </p>
       </column>
@@ -4102,7 +4125,9 @@ or
           this LRP.
           Unless <ref column="options" key="dynamic-routing-vrf-name"
           table="Logical_Router"/> is set the vrf will be named "ovnvrf" with
-          the datapath id of the Logical Router appended to it.
+          the <ref column="options" key="dynamic-routing-vrf-id"
+          table="Logical_Router"/> or datapath id of the Logical Router
+          appended to it.
         </p>
 
         <p>

@@ -820,6 +820,13 @@ ovn_datapath_update_external_ids(struct ovn_datapath *od)
             smap_add_format(&ids, "mac_binding_age_threshold",
                             "%u", age_threshold);
         }
+
+        int64_t vrf_id = ovn_smap_get_llong(&od->nbr->options,
+                                            "dynamic-routing-vrf-id", -1);
+        if (vrf_id > 0) {
+            smap_add_format(&ids, "dynamic-routing-vrf-id", "%"PRId64,
+                            vrf_id);
+        }
     }
 
     sbrec_datapath_binding_set_external_ids(od->sb, &ids);
