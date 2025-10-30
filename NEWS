@@ -6,6 +6,9 @@ OVN v25.09.1 - xx xxx xxxx
      specified LS.
    - Add ovn-nbctl lsp-add-localnet-port which will create localnet port on
      specified LS.
+   - Dynamic Routing:
+     * Add the option "dynamic-routing-vrf-id" to Logical Routers which allows
+       CMS to specify the Linux routing table id for a given vrf.
 
 OVN v25.09.0 - 05 Sep 2025
 --------------------------

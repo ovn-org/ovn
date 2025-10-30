@@ -220,8 +220,8 @@ route_run(struct route_ctx_in *r_ctx_in,
             if (vrf_name) {
                 memcpy(ad->vrf_name, vrf_name, strlen(vrf_name) + 1);
             } else {
-                snprintf(ad->vrf_name, sizeof ad->vrf_name, "ovnvrf%"PRIi64,
-                         ad->db->tunnel_key);
+                snprintf(ad->vrf_name, sizeof ad->vrf_name, "ovnvrf%"PRIu32,
+                         route_get_table_id(ad->db));
             }
 
             if (!port_name) {
@@ -325,4 +325,12 @@ route_cleanup(struct hmap *announce_routes)
     HMAP_FOR_EACH_POP (ad, node, announce_routes) {
         advertise_datapath_cleanup(ad);
     }
+}
+
+uint32_t
+route_get_table_id(const struct sbrec_datapath_binding *dp)
+{
+    int64_t vrf_id = ovn_smap_get_llong(&dp->external_ids,
+                                        "dynamic-routing-vrf-id", -1);
+    return (vrf_id >= 1 && vrf_id <= UINT32_MAX) ? vrf_id : dp->tunnel_key;
 }

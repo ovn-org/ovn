@@ -207,7 +207,7 @@ m_setup_ovn_frr_router() {
 
     check multinode_nbctl lr-add $lr
     check multinode_nbctl set Logical_Router $lr options:chassis=$node \
-        options:dynamic-routing=true options:requested-tnl-key=$vni
+        options:dynamic-routing=true options:dynamic-routing-vrf-id=$vni
 
     check multinode_nbctl lrp-add $lr $lrp $bgp_mac
     check multinode_nbctl lrp-set-options $lrp \
