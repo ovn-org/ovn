@@ -3233,10 +3233,13 @@ or
 
       <p>
         In order for the <code>Transit Router</code> to work properly all the
-        tunnel keys for the <code>Transit Router</code> itself and the remote
-        ports keys needs to match  in all AZs e.g. TR in AZ1 and AZ2 needs to
-        have the same tunnel key. Remote port for AZ2 in AZ1 needs to have the
-        same tunnel key as local port in AZ2 and vice vers.
+        tunnel keys for the <code>Transit Router</code> itself and its router
+        ports need to match in all AZs e.g. TR in AZ1 and AZ2 need to have
+        the same tunnel key. Remote ports for AZ2 in AZ1 need to have the
+        same tunnel key as local ports in AZ2 and vice versa.  It's also
+        possible that the router has non-transit ports, without
+        <code>options:requested-chassis</code> set; their keys also need to
+        match in all AZs.
       </p>
 
       <p>
