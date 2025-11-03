@@ -10736,10 +10736,10 @@ check ovn-nbctl                                          \
   -- lrp-add r1 r1_s2 00:de:ad:fe:00:02 173.0.2.1/24     \
                                                          \
   -- ls-add s1                                           \
-  -- lsp-add-router-port s1 s1_r1 r1_s1                   \
+  -- lsp-add-router-port s1 s1_r1 r1_s1                  \
                                                          \
   -- ls-add s2                                           \
-  -- lsp-add-router-port s2 s2_r1 r1_s2                   \
+  -- lsp-add-router-port s2 s2_r1 r1_s2                  \
                                                          \
   -- lsp-add s1 vm1                                      \
   -- lsp-set-addresses vm1 "00:de:ad:01:00:01 173.0.1.2" \
@@ -15624,12 +15624,12 @@ check ovn-nbctl --wait=sb                                             \
   -- lr-add internal-lr                                               \
      -- lrp-add internal-lr internal-lrp 00:00:00:00:00:01 1.1.1.1/24 \
   -- ls-add internal-ls                                               \
-     -- lsp-add-router-port internal-ls internal-ls-lrp internal-lrp   \
-     -- lsp-add-router-port internal-ls internal-ls-lla-lrp lla-lrp    \
+     -- lsp-add-router-port internal-ls internal-ls-lrp internal-lrp  \
+     -- lsp-add-router-port internal-ls internal-ls-lla-lrp lla-lrp   \
      -- lsp-add internal-ls internal-ls-localnet                      \
      -- lsp-set-type internal-ls-localnet localnet                    \
   -- ls-add public-ls                                                 \
-     -- lsp-add-router-port public-ls public-ls-lrp public-lrp          \
+     -- lsp-add-router-port public-ls public-ls-lrp public-lrp        \
      -- lsp-add public-ls public-ls-localnet                          \
      -- lsp-set-type public-ls-localnet localnet                      \
   -- lr-add public-lr                                                 \
@@ -16748,14 +16748,14 @@ dnl    lr-ext1 lr-ext2 lr-ext3 lr-ext4 lr-ext5 (with NAT/LB configured)
 
 check ovn-nbctl                                                         \
     -- lr-add lr-int                                                    \
-      -- set logical_router lr-int options:chassis=hv1                 \
-      -- lrp-add lr-int lrp-int 00:00:00:00:00:01 10.0.0.1/24          \
+      -- set logical_router lr-int options:chassis=hv1                  \
+      -- lrp-add lr-int lrp-int 00:00:00:00:00:01 10.0.0.1/24           \
       -- lr-nat-add lr-int dnat_and_snat 10.0.0.42 1.1.1.1              \
       -- lb-add lb-int 30.0.0.1 1.1.1.1                                 \
       -- lr-lb-add lr-int lb-int                                        \
     -- ls-add ls-int                                                    \
-       -- lsp-add-router-port ls-int lsp-internal lrp-int                \
-       -- lsp-add-router-port ls-int lsp-bgp lrp-bgp-internal            \
+       -- lsp-add-router-port ls-int lsp-internal lrp-int               \
+       -- lsp-add-router-port ls-int lsp-bgp lrp-bgp-internal           \
     -- lr-add lr-bgp                                                    \
        -- set logical_router lr-bgp options:chassis=hv1                 \
        -- lrp-add lr-bgp lrp-bgp-internal 00:00:00:00:00:02 10.0.0.2/24

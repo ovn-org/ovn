@@ -25042,7 +25042,7 @@ ovn_start
 
 check ovn-nbctl                                                  \
     -- ls-add sw1                                                \
-      -- lsp-add-localnet-port sw1 sw1-ln phys-1                  \
+      -- lsp-add-localnet-port sw1 sw1-ln phys-1                 \
       -- lsp-add sw1 sw1-p1                                      \
       -- lsp-add sw1 sw1-p2                                      \
       -- lsp-add sw1 sw1-p3                                      \
@@ -36134,10 +36134,10 @@ check ovn-nbctl                                                     \
     -- set logical_router lr options:mac_binding_age_threshold=3600 \
     -- lrp-add lr lr-ls1 00:00:00:00:10:00 192.168.10.1/24          \
     -- lrp-add lr lr-ls2 00:00:00:00:20:00 192.168.20.1/24          \
-    -- lsp-add-router-port ls1 ls1-lr lr-ls1                         \
+    -- lsp-add-router-port ls1 ls1-lr lr-ls1                        \
     -- lsp-add ls1 vif1                                             \
     -- lsp-set-addresses vif1 "00:00:00:00:10:10 192.168.10.10"     \
-    -- lsp-add-router-port ls2 ls2-lr lr-ls2                         \
+    -- lsp-add-router-port ls2 ls2-lr lr-ls2                        \
     -- lsp-add ls2 vif2                                             \
     -- lsp-set-addresses vif2 "00:00:00:00:20:10 192.168.20.10"
 
@@ -36228,10 +36228,10 @@ check ovn-nbctl                                                     \
     -- set logical_router lr options:mac_binding_age_threshold=4    \
     -- lrp-add lr lr-ls1 00:00:00:00:10:00 192.168.10.1/24          \
     -- lrp-add lr lr-ls2 00:00:00:00:20:00 192.168.20.1/24          \
-    -- lsp-add-router-port ls1 ls1-lr lr-ls1                         \
+    -- lsp-add-router-port ls1 ls1-lr lr-ls1                        \
     -- lsp-add ls1 vif1                                             \
     -- lsp-set-addresses vif1 "00:00:00:00:10:10 192.168.10.10"     \
-    -- lsp-add-router-port ls2 ls2-lr lr-ls2                         \
+    -- lsp-add-router-port ls2 ls2-lr lr-ls2                        \
     -- lsp-add ls2 vif2                                             \
     -- lsp-set-addresses vif2 "00:00:00:00:20:10 192.168.20.10"
 
@@ -36302,7 +36302,7 @@ check ovn-nbctl                                                     \
     -- lr-add lr                                                    \
     -- set logical_router lr options:mac_binding_age_threshold=4    \
     -- lrp-add lr lr-ls1 00:00:00:00:10:00 192.168.10.1/24          \
-    -- lsp-add-router-port ls1 ls1-lr lr-ls1                         \
+    -- lsp-add-router-port ls1 ls1-lr lr-ls1                        \
     -- lsp-add ls1 vif1                                             \
     -- lsp-set-addresses vif1 "00:00:00:00:10:10 192.168.10.10"
 
@@ -36397,10 +36397,10 @@ check ovn-nbctl                                                             \
     -- set logical_router lr options:mac_binding_age_threshold=$aging_th    \
     -- lrp-add lr lr-ls1 00:00:00:00:10:00 192.168.10.1/24 fd11::1/64       \
     -- lrp-add lr lr-ls2 00:00:00:00:20:00 192.168.20.1/24 fd12::1/64       \
-    -- lsp-add-router-port ls1 ls1-lr lr-ls1                                 \
+    -- lsp-add-router-port ls1 ls1-lr lr-ls1                                \
     -- lsp-add ls1 vif1                                                     \
     -- lsp-set-addresses vif1 "unknown"                                     \
-    -- lsp-add-router-port ls2 ls2-lr lr-ls2                                 \
+    -- lsp-add-router-port ls2 ls2-lr lr-ls2                                \
     -- lsp-add ls2 vif2                                                     \
     -- lsp-set-addresses vif2 "unknown"
 
@@ -36545,12 +36545,12 @@ check ovn-nbctl                                                             \
     -- set logical_router gw options:dynamic_neigh_routers=true             \
     -- lrp-add gw gw-public 00:00:00:00:10:00 192.168.10.1/24 fd11::1/64    \
     -- lrp-add gw gw-join 00:00:00:00:20:00 192.168.20.1/24 fd12::1/64      \
-    -- lsp-add-router-port public public-gw gw-public                        \
+    -- lsp-add-router-port public public-gw gw-public                       \
     -- lsp-add public public                                                \
     -- lsp-set-addresses public "unknown"                                   \
-    -- lsp-add-router-port join join-gw gw-join                              \
+    -- lsp-add-router-port join join-gw gw-join                             \
     -- lrp-add lr lr-join 00:00:00:00:30:00 192.168.20.2/24 fd12::2/64      \
-    -- lsp-add-router-port join join-lr lr-join                              \
+    -- lsp-add-router-port join join-lr lr-join                             \
     -- lr-route-add lr 0.0.0.0/0 192.168.20.1                               \
     -- lr-route-add lr ::/0 fd12::1
 
