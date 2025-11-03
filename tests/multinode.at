@@ -3454,7 +3454,7 @@ ext_bgp_mac_gw2=00:00:02:00:00:$vni
 host_bgp_ip_gw2=42.42.$vni.22
 host_bgp_mac_gw2=00:00:00:02:00:$vni
 
-# Create an flat, distributed OVN localnet switch, with EVPN configured.
+# Create a flat, distributed OVN localnet switch, with EVPN configured.
  check m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
  check m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
  check m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-evpn-local-ip=$host_bgp_ip_gw1
@@ -3692,7 +3692,7 @@ ext_bgp_mac_gw2=00:00:02:00:00:$vni
 host_bgp_ip_gw2=42.20.$vni.22
 host_bgp_mac_gw2=00:00:00:02:00:$vni
 
-# Create an flat, distributed OVN localnet switch, with EVPN configured.
+# Create a flat, distributed OVN localnet switch, with EVPN configured.
  check m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
  check m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
  check m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-evpn-local-ip=$host_bgp_ip_gw1
