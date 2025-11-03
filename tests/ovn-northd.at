@@ -10341,10 +10341,10 @@ check ovn-nbctl                                          \
   -- lrp-add r1 r1_s2 00:de:ad:fe:00:02 173.0.2.1/24     \
                                                          \
   -- ls-add s1                                           \
-  -- lsp-add-router-port s1 s1_r1 r1_s1                   \
+  -- lsp-add-router-port s1 s1_r1 r1_s1                  \
                                                          \
   -- ls-add s2                                           \
-  -- lsp-add-router-port s2 s2_r1 r1_s2                   \
+  -- lsp-add-router-port s2 s2_r1 r1_s2                  \
                                                          \
   -- lsp-add s1 vm1                                      \
   -- lsp-set-addresses vm1 "00:de:ad:01:00:01 173.0.1.2" \

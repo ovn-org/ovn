@@ -5666,7 +5666,7 @@ check ovn-nbctl                                                  \
     -- lr-add rtr                                                \
     -- lrp-add rtr rtr-ls 00:00:00:00:01:00 42.42.42.1/24        \
     -- ls-add ls                                                 \
-    -- lsp-add-router-port ls ls-rtr rtr-ls                       \
+    -- lsp-add-router-port ls ls-rtr rtr-ls                      \
     -- lsp-add ls vm1 -- lsp-set-addresses vm1 00:00:00:00:00:01 \
     -- lsp-add ls vm2 -- lsp-set-addresses vm2 00:00:00:00:00:02 \
     -- lb-add lb-test 66.66.66.66:666 42.42.42.2:4242 tcp        \
@@ -5773,7 +5773,7 @@ check ovn-nbctl                                                  \
     -- lr-add rtr                                                \
     -- lrp-add rtr rtr-ls 00:00:00:00:01:00 4242::1/64           \
     -- ls-add ls                                                 \
-    -- lsp-add-router-port ls ls-rtr rtr-ls                       \
+    -- lsp-add-router-port ls ls-rtr rtr-ls                      \
     -- lsp-add ls vm1 -- lsp-set-addresses vm1 00:00:00:00:00:01 \
     -- lsp-add ls vm2 -- lsp-set-addresses vm2 00:00:00:00:00:02 \
     -- lb-add lb-test [[6666::1]]:666 [[4242::2]]:4242 tcp       \
@@ -9158,11 +9158,11 @@ check ovn-nbctl                                                   \
     -- lrp-add rtr rtr-ls1 00:00:00:00:01:00 42.42.42.1/24        \
     -- lrp-add rtr rtr-ls2 00:00:00:00:02:00 43.43.43.1/24        \
     -- ls-add ls1                                                 \
-    -- lsp-add-router-port ls1 ls1-rtr rtr-ls1                     \
+    -- lsp-add-router-port ls1 ls1-rtr rtr-ls1                    \
     -- lsp-add ls1 vm1 -- lsp-set-addresses vm1 00:00:00:00:00:01 \
     -- lsp-add ls1 vm2 -- lsp-set-addresses vm2 00:00:00:00:00:02 \
     -- ls-add ls2                                                 \
-    -- lsp-add-router-port ls2 ls2-rtr rtr-ls2                     \
+    -- lsp-add-router-port ls2 ls2-rtr rtr-ls2                    \
     -- lsp-add ls2 vm3 -- lsp-set-addresses vm3 00:00:00:00:00:03
 
 # Add a TCP template LB that eventually expands to:
@@ -9303,11 +9303,11 @@ check ovn-nbctl                                                   \
     -- lrp-add rtr rtr-ls1 00:00:00:00:01:00 4242::1/64           \
     -- lrp-add rtr rtr-ls2 00:00:00:00:02:00 4343::1/64           \
     -- ls-add ls1                                                 \
-    -- lsp-add-router-port ls1 ls1-rtr rtr-ls1                     \
+    -- lsp-add-router-port ls1 ls1-rtr rtr-ls1                    \
     -- lsp-add ls1 vm1 -- lsp-set-addresses vm1 00:00:00:00:00:01 \
     -- lsp-add ls1 vm2 -- lsp-set-addresses vm2 00:00:00:00:00:02 \
     -- ls-add ls2                                                 \
-    -- lsp-add-router-port ls2 ls2-rtr rtr-ls2                     \
+    -- lsp-add-router-port ls2 ls2-rtr rtr-ls2                    \
     -- lsp-add ls2 vm3 -- lsp-set-addresses vm3 00:00:00:00:00:03
 
 # Add a template LB that eventually expands to:
@@ -12809,7 +12809,7 @@ check ovn-nbctl                                                  \
     -- lr-add rtr                                                \
     -- lrp-add rtr rtr-ls 00:00:00:00:01:00 42.42.42.1/24        \
     -- ls-add ls                                                 \
-    -- lsp-add-router-port ls ls-rtr rtr-ls                       \
+    -- lsp-add-router-port ls ls-rtr rtr-ls                      \
     -- lsp-add ls vm1 -- lsp-set-addresses vm1 00:00:00:00:00:01 \
     -- lsp-add ls vm2 -- lsp-set-addresses vm2 00:00:00:00:00:02 \
     -- lb-add lb1 43.43.43.43:1000 42.42.42.3:1000 udp           \
