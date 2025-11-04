@@ -15634,6 +15634,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([dynamic-routing - DGP])
+AT_SKIP_IF([test "$HAVE_ARPING" = no])
 
 VRF_RESERVE([1337])
 VRF_RESERVE([1338])
@@ -15970,7 +15971,121 @@ blackhole 198.51.100.0/24 proto ovn metric 1000
 # When we now stop the ovn-controller it will remove the VRF.
 start_daemon ovn-controller
 OVS_WAIT_UNTIL([test "$(ovn-appctl -t ovn-controller debug/status)" == "running"])
+
+# Create a virutal port "vip" with parent set to "vif4", "vif5".
+check ovn-nbctl lsp-add public vif4 \
+    -- lsp-set-addresses vif4 "00:00:ff:ff:ff:04 192.0.2.21"
+check ovn-nbctl lsp-add public vif5 \
+    -- lsp-set-addresses vif5 "00:00:ff:ff:ff:05 192.0.2.22"
+ADD_NAMESPACES(vif4)
+ADD_VETH(vif4, vif4, br-int, "192.0.2.30/24", "00:00:ff:ff:ff:04", "192.0.2.21")
+check ovn-nbctl lsp-add public vip \
+    -- lsp-set-addresses vip "00:00:00:00:01:88 192.0.2.30" \
+    -- lsp-set-type vip virtual \
+    -- set logical_switch_port vip options:virtual-ip=192.0.2.30 \
+    -- set logical_switch_port vip options:virtual-parents=vif4,vif5 \
+    -- set logical_router_port internet-public \
+            options:dynamic-routing-redistribute-local-only=true
 check ovn-nbctl --wait=hv sync
+
+OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 192.0.2.21 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000
+233.252.0.0/24 via 192.168.10.10 dev lo onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
+
+# Bind "vip" port locally and check the virtual IP is added in the VRF.
+NS_EXEC([vif4], [arping -U -c 1 -w 2 -I vif4 192.0.2.30])
+wait_column "vif4" Port_Binding virtual_parent logical_port=vip
+wait_for_ports_up vip
+OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 192.0.2.21 proto ovn metric 100
+blackhole 192.0.2.30 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000
+233.252.0.0/24 via 192.168.10.10 dev lo onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
+
+check ovn-sbctl clear Port_Binding vip virtual-parent
+OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 192.0.2.21 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000
+233.252.0.0/24 via 192.168.10.10 dev lo onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
+
+# Rebind "vip" locally.
+NS_EXEC([vif4], [arping -U -c 1 -w 2 -I vif4 192.0.2.30])
+wait_column "vif4" Port_Binding virtual_parent logical_port=vip
+wait_for_ports_up vip
+OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 192.0.2.21 proto ovn metric 100
+blackhole 192.0.2.30 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000
+233.252.0.0/24 via 192.168.10.10 dev lo onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
+
+# Simulate "vip" bound to a different chassis.
+check ovn-sbctl clear Port_Binding vip virtual-parent
+wait_column "" Port_Binding chassis logical_port=vip
+check ovn-sbctl set Port_Binding vip virtual_parent=vif5
+OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 192.0.2.21 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000
+233.252.0.0/24 via 192.168.10.10 dev lo onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
+
+# Check with dynamic-routing-redistribute-local-only=false.
+check ovn-nbctl --wait=hv set logical_router_port internet-public \
+    options:dynamic-routing-redistribute-local-only=false
+OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
+blackhole 192.0.2.1 proto ovn metric 1000
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 192.0.2.21 proto ovn metric 100
+blackhole 192.0.2.22 proto ovn metric 1000
+blackhole 192.0.2.30 proto ovn metric 1000
+blackhole 198.51.100.0/24 proto ovn metric 1000
+233.252.0.0/24 via 192.168.10.10 dev lo onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
+
+# Rebind "vip" locally.
+NS_EXEC([vif4], [arping -U -c 1 -w 2 -I vif4 192.0.2.30])
+wait_column "vif4" Port_Binding virtual_parent logical_port=vip
+wait_for_ports_up vip
+OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
+blackhole 192.0.2.1 proto ovn metric 1000
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 192.0.2.21 proto ovn metric 100
+blackhole 192.0.2.22 proto ovn metric 1000
+blackhole 192.0.2.30 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000
+233.252.0.0/24 via 192.168.10.10 dev lo onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
+
 OVN_CLEANUP_CONTROLLER([hv1])
 AT_CHECK([ip vrf | grep -q ovnvrf1338], [1], [])
 
