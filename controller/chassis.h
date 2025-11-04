@@ -44,7 +44,8 @@ const struct sbrec_chassis *chassis_run(
     const struct ovsrec_open_vswitch_table *,
     const char *chassis_id, const struct ovsrec_bridge *br_int,
     const struct sset *transport_zones,
-    const struct sbrec_chassis_private **chassis_private);
+    const struct sbrec_chassis_private **chassis_private,
+    struct ovsdb_idl_index *sbrec_encaps_index_by_ip_and_type);
 bool chassis_cleanup(struct ovsdb_idl_txn *ovs_idl_txn,
                      struct ovsdb_idl_txn *ovnsb_idl_txn,
                      const struct ovsrec_open_vswitch_table *,
