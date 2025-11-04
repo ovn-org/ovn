@@ -129,6 +129,7 @@ advertised_route_table_sync(
     const struct sbrec_advertised_route_table *sbrec_advertised_route_table,
     const struct hmap *routes,
     const struct hmap *dynamic_routes,
+    const struct hmap *ls_ports,
     struct advertised_route_sync_data *data);
 
 enum engine_input_handler_result
@@ -241,6 +242,7 @@ en_advertised_route_sync_run(struct engine_node *node, void *data OVS_UNUSED)
         = engine_get_input_data("routes", node);
     struct dynamic_routes_data *dynamic_routes_data
         = engine_get_input_data("dynamic_routes", node);
+    struct northd_data *northd_data = engine_get_input_data("northd", node);
     const struct engine_context *eng_ctx = engine_get_context();
     const struct sbrec_advertised_route_table *sbrec_advertised_route_table =
         EN_OVSDB_GET(engine_get_input("SB_advertised_route", node));
@@ -251,7 +253,7 @@ en_advertised_route_sync_run(struct engine_node *node, void *data OVS_UNUSED)
                                 sbrec_advertised_route_table,
                                 &routes_data->parsed_routes,
                                 &dynamic_routes_data->routes,
-                                routes_sync_data);
+                                &northd_data->ls_ports, routes_sync_data);
 
     stopwatch_stop(ADVERTISED_ROUTE_SYNC_RUN_STOPWATCH_NAME, time_msec());
     return EN_UPDATED;
@@ -561,10 +563,37 @@ publish_lport_addresses(struct hmap *sync_routes,
     }
 }
 
+static void
+publish_host_routes_for_virtual_ports(
+    struct ovn_port *port,
+    const struct hmap *ls_ports,
+    const struct ovn_datapath *advertising_od,
+    const struct ovn_port *advertising_op,
+    struct hmap *sync_routes)
+{
+    ovs_assert(port->sb);
+
+    const char *virtual_parent = port->sb->virtual_parent;
+    if (!virtual_parent) {
+        return;
+    }
+
+    struct ovn_port *vp = ovn_port_find(ls_ports, virtual_parent);
+    if (!vp) {
+        return;
+    }
+
+    for (size_t i = 0; i < port->n_lsp_addrs; i++) {
+        publish_lport_addresses(sync_routes, advertising_od, advertising_op,
+                                &port->lsp_addrs[i], vp);
+    }
+}
+
 /* Collect all IP addresses connected to the out_port of a route.
  * This traverses all LSPs on the LS connected to the out_port. */
 static void
 publish_host_routes(struct hmap *sync_routes,
+                    const struct hmap *ls_ports,
                     const struct ovn_datapath *advertising_od,
                     const struct ovn_port *advertising_op,
                     struct advertised_route_sync_data *data)
@@ -597,6 +626,10 @@ publish_host_routes(struct hmap *sync_routes,
             const struct ovn_port *lrp = port->peer;
             publish_lport_addresses(sync_routes, advertising_od,
                                     advertising_op, &lrp->lrp_networks, lrp);
+        } else if (port->nbsp && !strcmp(port->nbsp->type, "virtual")) {
+            publish_host_routes_for_virtual_ports(port, ls_ports,
+                                                  advertising_od,
+                                                  advertising_op, sync_routes);
         } else {
             /* This is just a plain LSP */
             for (size_t i = 0; i < port->n_lsp_addrs; i++) {
@@ -657,6 +690,7 @@ advertise_routes_as_host_prefix(
     struct advertised_route_sync_data *data,
     struct uuidset *host_route_lrps,
     struct hmap *sync_routes,
+    const struct hmap *ls_ports,
     const struct ovn_datapath *advertising_od,
     const struct ovn_port *advertising_op,
     enum route_source source
@@ -673,7 +707,8 @@ advertise_routes_as_host_prefix(
     }
 
     uuidset_insert(host_route_lrps, &advertising_op->nbrp->header_.uuid);
-    publish_host_routes(sync_routes, advertising_od, advertising_op, data);
+    publish_host_routes(sync_routes, ls_ports, advertising_od,
+                        advertising_op, data);
     return true;
 }
 
@@ -726,6 +761,7 @@ advertised_route_table_sync(
     const struct sbrec_advertised_route_table *sbrec_advertised_route_table,
     const struct hmap *routes,
     const struct hmap *dynamic_routes,
+    const struct hmap *ls_ports,
     struct advertised_route_sync_data *data)
 {
     struct hmap sync_routes = HMAP_INITIALIZER(&sync_routes);
@@ -744,8 +780,8 @@ advertised_route_table_sync(
         }
 
         if (advertise_routes_as_host_prefix(data, &host_route_lrps,
-                                            &sync_routes, route->od,
-                                            route->out_port,
+                                            &sync_routes, ls_ports,
+                                            route->od, route->out_port,
                                             route->source)) {
             continue;
         }
