@@ -274,7 +274,7 @@ ovs-vsctl -- set Open_vSwitch . external-ids:hostname="${new_sysid}" \
           -- set Open_vSwitch . external-ids:ovn-remote="${current_remote}"
 
 OVS_WAIT_UNTIL([
-    grep -q 'Transaction causes multiple rows in \\"Encap\\" table to have identical values' hv/ovn-controller.log
+    grep -q "'hv' already has encap ip '192.168.0.1' and type '.*', cannot duplicate on 'hv-foo'" hv/ovn-controller.log
 ])
 
 # Destroy the stale entries manually and ovn-controller should now be able
@@ -302,11 +302,11 @@ check ovn-sbctl destroy chassis_private . -- destroy chassis .
 # - could not create datapath br-int of unknown type foobar
 # - unknown datapath type bar
 # - could not create datapath br-int of unknown type bar
-# - Transaction causes multiple rows ...
 # - failed to create bridge br-int: Address family not supported by protocol # due to previous errors.
+# - 'hv' already has encap ip '192.168.0.1' and type 'geneve', cannot duplicate on 'hv-foo'
 OVN_CLEANUP_SBOX([hv], ["/foo/d
 /bar/d
-/Transaction causes multiple rows/d
+/already has encap ip.*cannot duplicate on/d
 /failed to create bridge/d"])
 
 OVN_CLEANUP_VSWITCH([main])
@@ -3527,3 +3527,66 @@ OVS_WAIT_FOR_OUTPUT([ovs-vsctl show | tail -n +2], [], [dnl
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 AT_CLEANUP
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - two chassis set same encap ip and type])
+AT_KEYWORDS([ovn])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.12
+
+# Wait for tunnels to appear in OVS, encaps to appear in sb-db, and set
+# controller's jsonrpc debug logging.
+as hv2
+OVS_WAIT_FOR_OUTPUT([ovs-vsctl find Interface type=geneve | grep -c _uuid], [0], [1
+])
+wait_row_count Encap 4
+as hv1
+OVS_WAIT_FOR_OUTPUT([ovs-vsctl find Interface type=geneve | grep -c _uuid], [0], [1
+])
+wait_row_count Encap 4
+ovn-appctl vlog/set jsonrpc:dbg
+as hv2
+ovn-appctl vlog/set jsonrpc:dbg
+
+# Give hv2 the same encap IP as hv1 (.11) with other valid IPs.
+as hv2 check ovs-vsctl set Open_vSwitch . \
+    external-ids:ovn-encap-ip="192.168.0.10,192.168.0.11,192.168.0.12,192.168.0.13"
+
+as hv1 wait_row_count Encap 2 chassis_name="hv1"
+
+# Make sure tunnels are created for the other three valid IPs configured.
+as hv2
+OVS_WAIT_FOR_OUTPUT([ovs-vsctl find Interface type=geneve | grep -c _uuid], [0], [3
+])
+wait_row_count Encap 6 chassis_name="hv2"
+OVS_WAIT_UNTIL([
+    grep -q "'hv1' already has encap ip '192.168.0.11' and type '.*', cannot duplicate on 'hv2'" hv2/ovn-controller.log
+])
+
+# Make sure controller logs have correct number of transactions.
+OVS_WAIT_FOR_OUTPUT([grep -c "transact" hv2/ovn-controller.log], [0], [2
+])
+OVS_WAIT_FOR_OUTPUT([grep -c "transact" hv1/ovn-controller.log], [0], [1
+])
+
+# Now set hv2's encap IP to hv1's, and since there is no valid encap IP
+# configured on hv2 now, controller should delete the chassis record.
+as hv2
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-encap-ip="192.168.0.11"
+wait_row_count Chassis 0 name="hv2"
+wait_row_count Chassis_Private 0 name="hv2"
+
+OVN_CLEANUP([hv1], [hv2
+/already has encap ip.*cannot duplicate on/d])
+AT_CLEANUP
+])
