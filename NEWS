@@ -60,6 +60,9 @@ Post v25.09.0
      specified LS.
    - Add ovn-nbctl lsp-add-localnet-port which will create localnet port on
      specified LS.
+  - Add a new experimental service - ovn-br-controller to program and
+    manage OVS bridges (not managed by ovn-controller) using OVN logical flows.
+    For more details see man ovn-br(5).
 
 OVN v25.09.0 - xxx xx xxxx
 --------------------------

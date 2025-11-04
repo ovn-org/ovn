@@ -375,6 +375,7 @@ parse_options(int argc, char *argv[])
             usage();
 
         case 'V':
+            printf("(Experimental) ");
             ovs_print_version(OFP15_VERSION, OFP15_VERSION);
             printf("OVN BR DB Schema %s\n", ovnbrrec_get_db_version());
             exit(EXIT_SUCCESS);

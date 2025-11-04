@@ -443,6 +443,24 @@
         column of the <ref table="Logical_Flow"
         db="OVN_Southbound"/> table in the <ref db="OVN_Southbound"/> database.
       </p>
+
+      <p>
+        While <code>ovn-br-controller</code> technically supports all OVN
+        logical flow actions defined in the <ref
+        column="actions" table="Logical_Flow" db="OVN_Southbound"/>
+        column of the <ref table="Logical_Flow"
+        db="OVN_Southbound"/> table in the <ref db="OVN_Southbound"/>,
+        some actions are not intended for use by the CMS. These include
+        controller OpenFlow actions (e.g., put_dhcp_opts, dns_lookup) and
+        OVN-specific actions (e.g., look_arp, look_fdb).
+      </p>
+
+      <p>
+        It is the CMS's responsibility to avoid using such actions. When the
+        CMS defines the packet pipeline in the OVS bridge and adds logical
+        flows using <code>ovn-br-controller</code>, it is expected to be
+        mindful of using only relevant OVN actions.
+      </p>
     </column>
 
     <column name="external_ids">
