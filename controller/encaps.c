@@ -452,6 +452,7 @@ clear_old_tunnels(const struct ovsrec_bridge *old_br_int, const char *prefix,
 
 void
 encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
+           struct ovsdb_idl_txn *ovnsb_idl_txn,
            const struct ovsrec_bridge *br_int,
            const struct sbrec_chassis_table *chassis_table,
            const struct sbrec_chassis *this_chassis,
@@ -460,7 +461,7 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
            const struct sset *transport_zones,
            const struct ovsrec_bridge_table *bridge_table)
 {
-    if (!ovs_idl_txn || !br_int) {
+    if (!ovs_idl_txn || !ovnsb_idl_txn || !br_int) {
         return;
     }
 

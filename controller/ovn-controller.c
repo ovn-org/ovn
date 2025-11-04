@@ -5660,6 +5660,9 @@ main(int argc, char *argv[])
     struct ovsdb_idl_index *sbrec_learned_route_index_by_datapath
         = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
                                   &sbrec_learned_route_col_datapath);
+    struct ovsdb_idl_index *sbrec_encaps_index_by_ip_and_type
+        = ovsdb_idl_index_create2(ovnsb_idl_loop.idl,
+                                  &sbrec_encap_col_type, &sbrec_encap_col_ip);
 
     ovsdb_idl_track_add_all(ovnsb_idl_loop.idl);
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
@@ -6283,7 +6286,8 @@ main(int argc, char *argv[])
                                       sbrec_chassis_private_by_name,
                                       ovs_table, chassis_id,
                                       br_int, &transport_zones,
-                                      &chassis_private);
+                                      &chassis_private,
+                                      sbrec_encaps_index_by_ip_and_type);
             }
 
             /* If any OVS feature support changed, force a full recompute.
@@ -6323,7 +6327,7 @@ main(int argc, char *argv[])
                 }
 
                 if (chassis && ovs_feature_set_discovered()) {
-                    encaps_run(ovs_idl_txn, br_int,
+                    encaps_run(ovs_idl_txn, ovnsb_idl_txn, br_int,
                                sbrec_chassis_table_get(ovnsb_idl_loop.idl),
                                chassis,
                                sbrec_sb_global_first(ovnsb_idl_loop.idl),
