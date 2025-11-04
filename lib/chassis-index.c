@@ -115,3 +115,23 @@ ha_chassis_group_lookup_by_name(
 
     return retval;
 }
+
+/* Finds and returns the encap with the given ip and type, or NULL if no such
+ * encap exists. */
+struct sbrec_encap *
+encap_lookup_by_ip_and_type(struct ovsdb_idl_index *sbrec_chassis_encaps,
+                       const char *ip, const char *type)
+{
+    struct sbrec_encap *target = sbrec_encap_index_init_row(
+        sbrec_chassis_encaps);
+
+    sbrec_encap_index_set_ip(target, ip);
+    sbrec_encap_index_set_type(target, type);
+
+    struct sbrec_encap *retval = sbrec_encap_index_find(
+        sbrec_chassis_encaps, target);
+
+    sbrec_encap_index_destroy_row(target);
+
+    return retval;
+}
