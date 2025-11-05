@@ -107,6 +107,11 @@ lport_is_local(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const struct sbrec_port_binding *cr_pb =
         lport_get_cr_port(sbrec_port_binding_by_name, pb, NULL);
 
+    /* Patch ports that are not redirect ports are always local. */
+    if (!cr_pb && get_lport_type(pb) == LP_PATCH) {
+        return true;
+    }
+
     return lport_pb_is_chassis_resident(chassis, cr_pb);
 }
 

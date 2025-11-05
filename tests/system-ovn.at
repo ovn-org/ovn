@@ -15932,13 +15932,14 @@ blackhole 198.51.100.0/24 proto ovn metric 1000])
 # * 192.0.2.3/32
 # * 192.0.2.10/32
 # * 192.0.2.20/32
-# The last 3 of them are local to the current chassis so we expect a better
-# prio.
+# All of them are local to the current chassis (the first one is a patch port
+# and the last two are chassis redirect ports bound to the current chassis)
+# so we expect a better prio for all of them.
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-public \
     options:dynamic-routing-redistribute="connected-as-host,static,nat"
 
 OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
-blackhole 192.0.2.1 proto ovn metric 1000
+blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
@@ -15951,7 +15952,7 @@ blackhole 198.51.100.0/24 proto ovn metric 1000])
 check ovn-nbctl lrp-del-gateway-chassis pr1-public hv1
 check ovn-nbctl --wait=hv lrp-set-gateway-chassis pr1-public hv123
 OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
-blackhole 192.0.2.1 proto ovn metric 1000
+blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 1000
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 1000
@@ -15962,7 +15963,7 @@ blackhole 198.51.100.0/24 proto ovn metric 1000])
 check ovn-nbctl lrp-del-gateway-chassis pr1-public hv123
 check ovn-nbctl --wait=hv lrp-set-gateway-chassis pr1-public hv1
 OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
-blackhole 192.0.2.1 proto ovn metric 1000
+blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
@@ -15972,7 +15973,7 @@ blackhole 198.51.100.0/24 proto ovn metric 1000])
 # Moving vif3 away from hv1 will change the route metric to default.
 check ovn-nbctl --wait=hv set Logical_Switch_Port vif3 options:requested-chassis=thisdoesnotexist
 OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
-blackhole 192.0.2.1 proto ovn metric 1000
+blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
@@ -15982,7 +15983,7 @@ blackhole 198.51.100.0/24 proto ovn metric 1000])
 # Bringing vif3 back will change the route metric to local again.
 check ovn-nbctl --wait=hv set Logical_Switch_Port vif3 options:requested-chassis=hv1
 OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
-blackhole 192.0.2.1 proto ovn metric 1000
+blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
@@ -16050,7 +16051,7 @@ OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
 start_daemon ovn-controller
 OVS_WAIT_UNTIL([test "$(ovn-appctl -t ovn-controller debug/status)" == "running"])
 OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
-blackhole 192.0.2.1 proto ovn metric 1000
+blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
@@ -16067,7 +16068,7 @@ check ovn-nbctl --wait=hv set Logical_Router internet \
     options:dynamic-routing-vrf-name=ovnvrf1338
 AT_CHECK([ip vrf | grep -q ovnvrf1337], [1], [])
 OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
-blackhole 192.0.2.1 proto ovn metric 1000
+blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
@@ -16079,7 +16080,7 @@ blackhole 198.51.100.0/24 proto ovn metric 1000
 # Stopping with --restart will not touch the routes.
 OVN_CONTROLLER_EXIT([],[--restart])
 OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
-blackhole 192.0.2.1 proto ovn metric 1000
+blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
@@ -16109,6 +16110,7 @@ check ovn-nbctl lsp-add public vip \
 check ovn-nbctl --wait=hv sync
 
 OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
@@ -16123,6 +16125,7 @@ NS_EXEC([vif4], [arping -U -c 1 -w 2 -I vif4 192.0.2.30])
 wait_column "vif4" Port_Binding virtual_parent logical_port=vip
 wait_for_ports_up vip
 OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
@@ -16135,6 +16138,7 @@ blackhole 198.51.100.0/24 proto ovn metric 1000
 
 check ovn-sbctl clear Port_Binding vip virtual-parent
 OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
@@ -16149,6 +16153,7 @@ NS_EXEC([vif4], [arping -U -c 1 -w 2 -I vif4 192.0.2.30])
 wait_column "vif4" Port_Binding virtual_parent logical_port=vip
 wait_for_ports_up vip
 OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
@@ -16164,6 +16169,7 @@ check ovn-sbctl clear Port_Binding vip virtual-parent
 wait_column "" Port_Binding chassis logical_port=vip
 check ovn-sbctl set Port_Binding vip virtual_parent=vif5
 OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
@@ -16177,7 +16183,7 @@ blackhole 198.51.100.0/24 proto ovn metric 1000
 check ovn-nbctl --wait=hv set logical_router_port internet-public \
     options:dynamic-routing-redistribute-local-only=false
 OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
-blackhole 192.0.2.1 proto ovn metric 1000
+blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
@@ -16194,7 +16200,7 @@ NS_EXEC([vif4], [arping -U -c 1 -w 2 -I vif4 192.0.2.30])
 wait_column "vif4" Port_Binding virtual_parent logical_port=vip
 wait_for_ports_up vip
 OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
-blackhole 192.0.2.1 proto ovn metric 1000
+blackhole 192.0.2.1 proto ovn metric 100
 blackhole 192.0.2.2 proto ovn metric 100
 blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
@@ -17582,6 +17588,104 @@ check_row_count Learned_Route 1 ip_prefix=3.3.3.0/24 \
                                 nexthop=2.2.2.2      \
                                 logical_port=$lrp2
 check_row_count Learned_Route 2
+
+OVN_CLEANUP_CONTROLLER([hv1])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([dynamic-routing - multiple DGP])
+
+VRF_RESERVE([1337])
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+
+ADD_BR([br-int])
+check ovs-vsctl                                                                     \
+    -- set Open_vSwitch . external-ids:system-id=hv1                                \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve                        \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1                       \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+check ovn-nbctl                                                               \
+    -- lr-add lr                                                              \
+      -- set logical_router lr options:dynamic-routing=true                   \
+                               options:dynamic-routing-vrf-id=1337            \
+      -- lrp-add lr lr-gw1 00:00:00:01:00:10 42.10.10.12/24                   \
+        -- lrp-set-gateway-chassis lr-gw1 hv1 10                              \
+        -- lrp-set-options lr-gw1 dynamic-routing-redistribute=nat,lb         \
+                                  dynamic-routing-maintain-vrf=true           \
+      -- lrp-add lr lr-gw2 00:00:00:02:00:10 42.20.10.22/24                   \
+        -- lrp-set-gateway-chassis lr-gw2 hv2 10                              \
+        -- lrp-set-options lr-gw2 dynamic-routing-redistribute=nat,lb         \
+                                  dynamic-routing-maintain-vrf=true           \
+      -- lrp-add lr lr-int1 00:00:00:00:01:02 30.0.1.1/24                     \
+        -- lrp-set-options lr-int1 dynamic-routing-redistribute=connected     \
+      -- lrp-add lr lr-int2 00:00:00:00:01:02 30.0.2.1/24                     \
+        -- lrp-set-options lr-int2 dynamic-routing-redistribute=connected     \
+    -- ls-add ls                                                              \
+      -- lsp-add-router-port ls ls-lr-gw1 lr-gw1                              \
+      -- lsp-add-router-port ls ls-lr-gw2 lr-gw2                              \
+    -- ls-add ls-int1                                                         \
+      -- lsp-add-router-port ls-int1 ls-int1-lr lr-int1                       \
+      -- lsp-add ls-int1 w1                                                   \
+        -- lsp-set-addresses w1 "00:00:00:00:00:01 30.0.1.11"                 \
+    -- ls-add ls-int2                                                         \
+      -- lsp-add-router-port ls-int2 ls-int2-lr lr-int2                       \
+      -- lsp-add ls-int2 w2                                                   \
+        -- lsp-set-addresses w2 "00:00:00:00:00:02 30.0.2.11"                 \
+    -- lr-nat-add lr dnat_and_snat 42.10.10.23 30.0.1.11 w1 00:00:00:00:01:11 \
+    -- lb-add lb1 42.10.10.14 30.0.1.11                                       \
+    -- lr-lb-add lr lb1                                                       \
+    -- lr-nat-add lr dnat_and_snat 42.20.10.23 30.0.2.11 w2 00:00:00:00:02:11 \
+    -- lb-add lb2 42.20.10.24 30.0.2.11                                       \
+    -- lr-lb-add lr lb2
+
+check ovs-vsctl add-port br-int w1 \
+    -- set interface w1 type=internal external_ids:iface-id=w1
+check ovs-vsctl add-port br-int w2 \
+    -- set interface w2 type=internal external_ids:iface-id=w2
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up w1 w2
+
+lrp1=$(fetch_column port_binding _uuid logical_port="lrp1")
+lrp2=$(fetch_column port_binding _uuid logical_port="lrp2")
+
+AT_CHECK([ip vrf show ovnvrf1337], [0], [dnl
+ovnvrf1337 1337
+])
+
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 30.0.1.0/24 proto ovn metric 1000
+blackhole 30.0.2.0/24 proto ovn metric 1000
+blackhole 42.10.10.14 proto ovn metric 100
+blackhole 42.10.10.14 proto ovn metric 1000
+blackhole 42.10.10.23 proto ovn metric 100
+blackhole 42.20.10.23 proto ovn metric 100
+blackhole 42.20.10.24 proto ovn metric 100
+blackhole 42.20.10.24 proto ovn metric 1000])
+
+check ovn-nbctl --wait=hv ls-del ls-int1
+check ovn-nbctl --wait=hv ls-del ls-int2
+check ovn-nbctl --wait=hv ls-del ls
+check ovn-nbctl --wait=hv lr-del lr
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
