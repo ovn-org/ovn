@@ -5239,6 +5239,20 @@ route_sb_port_binding_data_handler(struct engine_node *node, void *data)
              * request recompute. */
             return false;
         }
+
+        const char *dp_name = smap_get(&sbrec_pb->options, "distributed-port");
+        if (dp_name && sset_contains(&re_data->tracked_ports_local,
+                                     dp_name)) {
+            /* XXX: Until we get I-P support for route exchange we need to
+             * request recompute. */
+            return false;
+        }
+        if (dp_name && sset_contains(&re_data->tracked_ports_remote,
+                                     dp_name)) {
+            /* XXX: Until we get I-P support for route exchange we need to
+             * request recompute. */
+            return false;
+        }
     }
 
     return true;
