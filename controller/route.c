@@ -284,6 +284,16 @@ route_run(struct route_ctx_in *r_ctx_in,
             continue;
         }
 
+        if (!lport_is_local(r_ctx_in->sbrec_port_binding_by_name,
+                            r_ctx_in->chassis,
+                            route->logical_port->logical_port)) {
+            sset_add(r_ctx_out->tracked_ports_remote,
+                     route->logical_port->logical_port);
+            continue;
+        }
+        sset_add(r_ctx_out->tracked_ports_local,
+                 route->logical_port->logical_port);
+
         unsigned int priority = PRIORITY_DEFAULT;
         if (route->tracked_port) {
             bool redistribute_local_bound_only =
