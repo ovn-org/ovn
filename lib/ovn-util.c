@@ -1648,3 +1648,28 @@ normalize_addr_str(const char *orig_addr)
 
     return ret;
 }
+
+enum neigh_redistribute_mode
+parse_neigh_dynamic_redistribute(const struct smap *options)
+{
+    const char *redistribute = smap_get(options,
+                                        "dynamic-routing-redistribute");
+    if (!redistribute) {
+        return NRM_NONE;
+    }
+
+    enum neigh_redistribute_mode mode = NRM_NONE;
+    char *save_ptr = NULL, *tokstr = xstrdup(redistribute);
+    for (char *token = strtok_r(tokstr, ",", &save_ptr);
+         token; token = strtok_r(NULL, ",", &save_ptr)) {
+        if (!strcmp(token, "fdb")) {
+            mode |= NRM_FDB;
+        }
+        if (!strcmp(token, "ip")) {
+            mode |= NRM_IP;
+        }
+    }
+    free(tokstr);
+
+    return mode;
+}

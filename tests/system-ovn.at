@@ -18753,12 +18753,19 @@ check ovn-nbctl --wait=hv                                    \
     -- lrp-add lr lr-ls-evpn f0:00:0f:16:01:01 172.16.1.1/24
 
 ls_evpn_uuid=$(fetch_column Datapath_Binding _uuid external_ids:name=ls-evpn)
-check ovn-nbctl --wait=hv set logical_switch ls-evpn other_config:dynamic-routing-redistribute=ip
+check ovn-nbctl --wait=hv set logical_switch ls-evpn other_config:dynamic-routing-redistribute=fdb,ip
 check_row_count Advertised_MAC_Binding 1 ip=172.16.1.10 mac='f0\:00\:0f\:16\:01\:10' datapath=$ls_evpn_uuid
 check_row_count Advertised_MAC_Binding 1 ip=172.16.1.1 mac='f0\:00\:0f\:16\:01\:01' datapath=$ls_evpn_uuid
 
 AT_CHECK([ip neigh show dev br-10 nud noarp | grep -q '172.16.1.10 lladdr f0:00:0f:16:01:10 NOARP'])
 AT_CHECK([ip neigh show dev br-10 nud noarp | grep -q '172.16.1.1 lladdr f0:00:0f:16:01:01 NOARP'])
+
+OVS_WAIT_FOR_OUTPUT([bridge fdb show | grep "lo-10" | grep "f0:00:0f:16:01" | sort], [0], [dnl
+f0:00:0f:16:01:01 dev lo-10 master br-10 static
+f0:00:0f:16:01:01 dev lo-10 vlan 1 master br-10 static
+f0:00:0f:16:01:10 dev lo-10 master br-10 static
+f0:00:0f:16:01:10 dev lo-10 vlan 1 master br-10 static
+])
 
 check ovn-nbctl --wait=hv lsp-add ls-evpn workload2         \
     -- lsp-set-addresses workload2 "f0:00:0f:16:01:20 172.16.1.20"

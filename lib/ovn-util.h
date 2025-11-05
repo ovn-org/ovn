@@ -686,4 +686,34 @@ char *normalize_ipv6_addr_str(const char *orig_addr);
 
 char *normalize_addr_str(const char *orig_addr);
 
+#define NEIGH_REDISTRIBUTE_MODES    \
+    NEIGH_REDISTRIBUTE_MODE(FDB, 0) \
+    NEIGH_REDISTRIBUTE_MODE(IP, 1)
+
+enum neigh_redistribute_mode_bits {
+#define NEIGH_REDISTRIBUTE_MODE(PROTOCOL, BIT) NRM_##PROTOCOL##_BIT = BIT,
+    NEIGH_REDISTRIBUTE_MODES
+#undef NEIGH_REDISTRIBUTE_MODE
+};
+
+enum neigh_redistribute_mode {
+    NRM_NONE = 0,
+#define NEIGH_REDISTRIBUTE_MODE(PROTOCOL, BIT)  \
+    NRM_##PROTOCOL = (1 << NRM_##PROTOCOL##_BIT),
+    NEIGH_REDISTRIBUTE_MODES
+#undef NEIGH_REDISTRIBUTE_MODE
+};
+
+#define NEIGH_REDISTRIBUTE_MODE(PROTOCOL, BIT)          \
+    static inline bool nrm_mode_##PROTOCOL##_is_set(    \
+            enum neigh_redistribute_mode value)         \
+    {                                                   \
+        return !!(value & NRM_##PROTOCOL);             \
+    }
+NEIGH_REDISTRIBUTE_MODES
+#undef NEIGH_REDISTRIBUTE_MODE
+
+enum neigh_redistribute_mode
+parse_neigh_dynamic_redistribute(const struct smap *options);
+
 #endif /* OVN_UTIL_H */

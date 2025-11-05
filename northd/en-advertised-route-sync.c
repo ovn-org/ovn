@@ -887,9 +887,9 @@ evpn_ip_redistribution_enabled(const struct ovn_datapath *od)
         return false;
     }
 
-    const char *redistribute = smap_get(&od->nbs->other_config,
-                                        "dynamic-routing-redistribute");
-    return redistribute && !strcmp(redistribute, "ip");
+    enum neigh_redistribute_mode mode =
+        parse_neigh_dynamic_redistribute(&od->nbs->other_config);
+    return nrm_mode_IP_is_set(mode);
 }
 
 static uint32_t

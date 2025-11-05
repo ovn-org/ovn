@@ -5997,12 +5997,9 @@ neighbor_runtime_data_handler(struct engine_node *node, void *data)
             return EN_UNHANDLED;
         }
 
-        const char *redistribute = smap_get(&ld->datapath->external_ids,
-                                            "dynamic-routing-redistribute");
-        if (!redistribute) {
-            continue;
-        }
-        if (strcmp(redistribute, "fdb") && strcmp(redistribute, "ip")) {
+        enum neigh_redistribute_mode mode =
+            parse_neigh_dynamic_redistribute(&ld->datapath->external_ids);
+        if (mode == NRM_NONE) {
             continue;
         }
 

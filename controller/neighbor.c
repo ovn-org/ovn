@@ -117,15 +117,15 @@ neighbor_run(struct neighbor_ctx_in *n_ctx_in,
                                              NEIGH_IFACE_BRIDGE, vni);
         vector_push(n_ctx_out->monitored_interfaces, &br_v6);
 
-        const char *redistribute = smap_get(&ld->datapath->external_ids,
-                                            "dynamic-routing-redistribute");
-        if (redistribute && !strcmp(redistribute, "fdb")) {
+        enum neigh_redistribute_mode mode =
+            parse_neigh_dynamic_redistribute(&ld->datapath->external_ids);
+        if (nrm_mode_FDB_is_set(mode)) {
             neighbor_collect_mac_to_advertise(n_ctx_in,
                                               &lo->announced_neighbors,
                                               n_ctx_out->advertised_pbs,
                                               ld->datapath);
         }
-        if (redistribute && !strcmp(redistribute, "ip")) {
+        if (nrm_mode_IP_is_set(mode)) {
             neighbor_collect_ip_mac_to_advertise(n_ctx_in,
                                                  &br_v4->announced_neighbors,
                                                  &br_v6->announced_neighbors,
