@@ -3687,10 +3687,14 @@ ext_bgp_ip_gw1=42.10.$vni.11
 ext_bgp_mac_gw1=00:00:01:00:00:$vni
 host_bgp_ip_gw1=42.10.$vni.12
 host_bgp_mac_gw1=00:00:00:01:00:$vni
+nat_ip_gw1=42.10.$vni.13
+lb_ip_gw1=42.10.$vni.14
 ext_bgp_ip_gw2=42.20.$vni.21
 ext_bgp_mac_gw2=00:00:02:00:00:$vni
 host_bgp_ip_gw2=42.20.$vni.22
 host_bgp_mac_gw2=00:00:00:02:00:$vni
+nat_ip_gw2=42.20.$vni.23
+lb_ip_gw2=42.20.$vni.24
 
 # Create a flat, distributed OVN localnet switch, with EVPN configured.
  check m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
@@ -3729,32 +3733,40 @@ check m_as ovn-gw-2 ip link set lo-wl-$vni master vrf-$vni
 check m_as ovn-gw-2 ip a a dev lo-wl-$vni 77.77.2.$vni/32
 check m_as ovn-gw-2 ip link set lo-wl-$vni up
 
-check multinode_nbctl                                                     \
-    -- lr-add lr                                                          \
-      -- set logical_router lr options:dynamic-routing=true               \
-                               options:requested-tnl-key=$vni             \
-      -- lrp-add lr lr-gw1 $host_bgp_mac_gw1 $host_bgp_ip_gw1/24          \
-        -- lrp-set-gateway-chassis lr-gw1 ovn-gw-1 10                     \
-      -- lrp-add lr lr-gw2 $host_bgp_mac_gw2 $host_bgp_ip_gw2/24          \
-        -- lrp-set-gateway-chassis lr-gw2 ovn-gw-2 10                     \
-      -- lrp-add lr lr-int1 00:00:00:00:01:02 30.0.1.1/24                 \
-        -- lrp-set-options lr-int1 dynamic-routing-redistribute=connected \
-      -- lrp-add lr lr-int2 00:00:00:00:01:02 30.0.2.1/24                 \
-        -- lrp-set-options lr-int2 dynamic-routing-redistribute=connected \
-    -- ls-add ls                                                          \
-      -- lsp-add-localnet-port ls ls-ln public                            \
-      -- lsp-add-router-port ls ls-lr-gw1 lr-gw1                          \
-      -- lsp-add-router-port ls ls-lr-gw2 lr-gw2                          \
-    -- ls-add ls-int1                                                     \
-      -- lsp-add-router-port ls-int1 ls-int1-lr lr-int1                   \
-    -- ls-add ls-int2                                                     \
+check multinode_nbctl                                                            \
+    -- lr-add lr                                                                 \
+      -- set logical_router lr options:dynamic-routing=true                      \
+                               options:requested-tnl-key=$vni                    \
+      -- lrp-add lr lr-gw1 $host_bgp_mac_gw1 $host_bgp_ip_gw1/24                 \
+        -- lrp-set-gateway-chassis lr-gw1 ovn-gw-1 10                            \
+        -- lrp-set-options lr-gw1 dynamic-routing-redistribute=nat,lb            \
+      -- lrp-add lr lr-gw2 $host_bgp_mac_gw2 $host_bgp_ip_gw2/24                 \
+        -- lrp-set-gateway-chassis lr-gw2 ovn-gw-2 10                            \
+        -- lrp-set-options lr-gw2 dynamic-routing-redistribute=nat,lb            \
+      -- lrp-add lr lr-int1 00:00:00:00:01:02 30.0.1.1/24                        \
+        -- lrp-set-options lr-int1 dynamic-routing-redistribute=connected        \
+      -- lrp-add lr lr-int2 00:00:00:00:01:02 30.0.2.1/24                        \
+        -- lrp-set-options lr-int2 dynamic-routing-redistribute=connected        \
+    -- ls-add ls                                                                 \
+      -- lsp-add-localnet-port ls ls-ln public                                   \
+      -- lsp-add-router-port ls ls-lr-gw1 lr-gw1                                 \
+      -- lsp-add-router-port ls ls-lr-gw2 lr-gw2                                 \
+    -- ls-add ls-int1                                                            \
+      -- lsp-add-router-port ls-int1 ls-int1-lr lr-int1                          \
+    -- ls-add ls-int2                                                            \
       -- lsp-add-router-port ls-int2 ls-int2-lr lr-int2
 
-check multinode_nbctl                                       \
-    -- lsp-add ls-int1 w1                                   \
-      -- lsp-set-addresses w1 "00:00:00:00:00:01 30.0.1.11" \
-    -- lsp-add ls-int2 w2                                   \
-      -- lsp-set-addresses w2 "00:00:00:00:00:02 30.0.2.11"
+check multinode_nbctl                                                         \
+    -- lsp-add ls-int1 w1                                                     \
+      -- lsp-set-addresses w1 "00:00:00:00:00:01 30.0.1.11"                   \
+    -- lr-nat-add lr dnat_and_snat $nat_ip_gw1 30.0.1.11 w1 00:00:00:00:01:11 \
+    -- lb-add lb1 $lb_ip_gw1 30.0.1.11                                        \
+    -- lr-lb-add lr lb1                                                       \
+    -- lsp-add ls-int2 w2                                                     \
+      -- lsp-set-addresses w2 "00:00:00:00:00:02 30.0.2.11"                   \
+    -- lr-nat-add lr dnat_and_snat $nat_ip_gw2 30.0.2.11 w2 00:00:00:00:02:11 \
+    -- lb-add lb2 $lb_ip_gw2 30.0.2.11                                        \
+    -- lr-lb-add lr lb2
 
 check m_as ovn-gw-1 /data/create_fake_vm.sh w1 w1 \
     00:00:00:00:00:01 1500 30.0.1.11 24 30.0.1.1 1000::11/64 1000::1
@@ -3808,6 +3820,103 @@ OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_GET
 OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_GET_REMOTE_FDB | grep -c "cookie"], [0], [dnl
 2
 ])
+
+AS_BOX([Check traffic to "fabric" hosts - ping from fabric towards NAT/LB IPs])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 $nat_ip_gw1])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 $lb_ip_gw1])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 $nat_ip_gw2])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 $lb_ip_gw2])
+
+# Check routes on the external speaker, they should include:
+# - internal OVN subnets (30.0.x.0/24)
+# - OVN speaker (router port) IP and OVN LB and NAT IPs
+# - OVN L2 workload IPs
+NS_OVN_ROUTE_EQUAL([ovn-gw-1], [frr-ns], [vrf-10], [dnl
+30.0.1.0/24 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink
+30.0.2.0/24 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink
+42.10.10.0/24 dev br-10 proto kernel scope link src 42.10.10.11
+42.10.10.13 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink
+42.10.10.14 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink
+42.20.10.23 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink
+42.20.10.24 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink
+77.77.1.10 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink])
+
+NS_OVN_ROUTE_EQUAL([ovn-gw-2], [frr-ns], [vrf-10], [dnl
+30.0.1.0/24 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
+30.0.2.0/24 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
+42.10.10.13 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
+42.10.10.14 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
+42.20.10.0/24 dev br-10 proto kernel scope link src 42.20.10.21
+42.20.10.23 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
+42.20.10.24 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
+77.77.2.10 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink])
+
+# Check routes on the OVN speaker.
+OVN_ROUTE_EQUAL([ovn-gw-1], [vrf-10], [dnl
+blackhole 30.0.1.0/24 proto ovn metric 1000
+blackhole 30.0.2.0/24 proto ovn metric 1000
+42.10.10.0/24 via 42.10.10.11 dev br-10 proto bgp metric 20 onlink
+blackhole 42.10.10.13 proto ovn metric 100
+blackhole 42.10.10.14 proto ovn metric 100
+blackhole 42.10.10.14 proto ovn metric 1000
+blackhole 42.20.10.23 proto ovn metric 1000
+blackhole 42.20.10.24 proto ovn metric 100
+blackhole 42.20.10.24 proto ovn metric 1000])
+
+OVN_ROUTE_EQUAL([ovn-gw-2], [vrf-10], [dnl
+blackhole 30.0.1.0/24 proto ovn metric 1000
+blackhole 30.0.2.0/24 proto ovn metric 1000
+blackhole 42.10.10.13 proto ovn metric 1000
+blackhole 42.10.10.14 proto ovn metric 100
+blackhole 42.10.10.14 proto ovn metric 1000
+42.20.10.0/24 via 42.20.10.21 dev br-10 proto bgp metric 20 onlink
+blackhole 42.20.10.23 proto ovn metric 100
+blackhole 42.20.10.24 proto ovn metric 100
+blackhole 42.20.10.24 proto ovn metric 1000])
+
+check multinode_nbctl --wait=hv set logical_router lr \
+    options:dynamic-routing-redistribute-local-only=true
+
+AS_BOX([Check traffic to "fabric" hosts - ping from fabric towards NAT/LB IPs - local-only=true])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 $nat_ip_gw1])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 $lb_ip_gw1])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 $nat_ip_gw2])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 $lb_ip_gw2])
+
+NS_OVN_ROUTE_EQUAL([ovn-gw-1], [frr-ns], [vrf-10], [dnl
+30.0.1.0/24 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink
+30.0.2.0/24 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink
+42.10.10.0/24 dev br-10 proto kernel scope link src 42.10.10.11
+42.10.10.13 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink
+42.10.10.14 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink
+42.20.10.24 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink
+77.77.1.10 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink])
+
+NS_OVN_ROUTE_EQUAL([ovn-gw-2], [frr-ns], [vrf-10], [dnl
+30.0.1.0/24 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
+30.0.2.0/24 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
+42.10.10.14 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
+42.20.10.0/24 dev br-10 proto kernel scope link src 42.20.10.21
+42.20.10.23 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
+42.20.10.24 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
+77.77.2.10 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink])
+
+# Check routes on the OVN speaker.
+OVN_ROUTE_EQUAL([ovn-gw-1], [vrf-10], [dnl
+blackhole 30.0.1.0/24 proto ovn metric 1000
+blackhole 30.0.2.0/24 proto ovn metric 1000
+42.10.10.0/24 via 42.10.10.11 dev br-10 proto bgp metric 20 onlink
+blackhole 42.10.10.13 proto ovn metric 100
+blackhole 42.10.10.14 proto ovn metric 100
+blackhole 42.20.10.24 proto ovn metric 100])
+
+OVN_ROUTE_EQUAL([ovn-gw-2], [vrf-10], [dnl
+blackhole 30.0.1.0/24 proto ovn metric 1000
+blackhole 30.0.2.0/24 proto ovn metric 1000
+blackhole 42.10.10.14 proto ovn metric 100
+42.20.10.0/24 via 42.20.10.21 dev br-10 proto bgp metric 20 onlink
+blackhole 42.20.10.23 proto ovn metric 100
+blackhole 42.20.10.24 proto ovn metric 100])
 
 AT_CLEANUP
 

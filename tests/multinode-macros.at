@@ -70,6 +70,36 @@ m4_define([CHECK_VRF],
     on_exit 'modprobe -r vrf'
 ])
 
+# OVN_ROUTE_EQUAL_([fake_node], [ns], [vrf], [string to compare])
+#
+# Will dump all v4 routes in the mentioned vrf. Trailing spaces will be removed
+# and "proto 84" is converted to "proto ovn" for compatibility.
+m4_define([OVN_ROUTE_EQUAL_],
+  [
+    if test -n "$2"; then
+        ns_prefix="ip netns exec $2"
+    else
+        ns_prefix=""
+    fi
+    prefix="podman exec $1 $ns_prefix"
+    OVS_WAIT_UNTIL_EQUAL([$prefix ip route list vrf $3 | \
+        sed -e 's|[[[[:space:]]]]*$||g' -e 's|proto 84|proto ovn|' | \
+        sed -e 's|nhid [[0-9]]* ||g'], [$4])
+  ]
+)
+
+# OVN_ROUTE_EQUAL([fake_node], [vrf], [string to compare])
+#
+# Will dump all v4 routes in the mentioned vrf. Trailing spaces will be removed
+# and "proto 84" is converted to "proto ovn" for compatibility.
+m4_define([OVN_ROUTE_EQUAL], [OVN_ROUTE_EQUAL_([$1], [], [$2], [$3])])
+
+# NS_OVN_ROUTE_EQUAL([fake_node], [ns], [vrf], [string to compare])
+#
+# Will dump all v4 routes in the mentioned vrf. Trailing spaces will be removed
+# and "proto 84" is converted to "proto ovn" for compatibility.
+m4_define([NS_OVN_ROUTE_EQUAL], [OVN_ROUTE_EQUAL_([$1], [$2], [$3], [$4])])
+
 OVS_START_SHELL_HELPERS
 
 m_as() {
