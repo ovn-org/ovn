@@ -18230,7 +18230,7 @@ $recv_data
     : > output.txt
 
     OVS_WAIT_UNTIL([
-        total_pkts=$(cat pkt.pcap | wc -l)
+        total_pkts=$(cat tcpdump-nf.tcpdump | wc -l)
         test ${total_pkts} -ge ${pkt_cnt}
     ])
 }
@@ -18258,9 +18258,7 @@ Server Ready
     AS_BOX([$direction: Verify traffic forwarding through single NF without health check])
 
     # Capture traffic on nf0
-    NS_CHECK_EXEC([nf], [tcpdump -l -nvv -i nf-p1 tcp > pkt.pcap 2>tcpdump_err &])
-    OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
-    on_exit 'kill $(pidof tcpdump)'
+    NETNS_START_TCPDUMP([nf], [-nvv -i nf-p1 tcp], [tcpdump-nf])
 
     # Verify no service monitors exist when health check is not configured
     #AT_CHECK([ovn-sbctl list service_monitor | grep -v "^$"], [1])
@@ -18270,7 +18268,7 @@ Server Ready
 
     validate_traffic "test" "test" 5
 
-    kill $(pidof tcpdump)
+    kill $(cat tcpdump-nf.pid)
     kill $(cat client.pid)
     kill $(cat server.pid)
     rm -f client.pid server.pid /tmp/nffifo
@@ -18336,9 +18334,7 @@ Server Ready
     NS_CHECK_EXEC([nf], [ip link set dev br0 up])
     NS_CHECK_EXEC([nf], [ip link set dev br1 down])
 
-    NS_CHECK_EXEC([nf], [tcpdump -l -nvv -i nf-p1 tcp > pkt.pcap 2>tcpdump_err &])
-    OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
-    on_exit 'kill $(pidof tcpdump)'
+    NETNS_START_TCPDUMP([nf], [-nvv -i nf-p1 tcp], [tcpdump-nf])
 
     # sleep to allow service_monitor to detect the state
     sleep 5
@@ -18350,10 +18346,8 @@ Server Ready
 
     AS_BOX([$direction: Verify traffic forwarding through NF when nf1 is active])
 
-    kill $(pidof tcpdump)
-    NS_CHECK_EXEC([nf], [tcpdump -l -nvv -i nf-p3 tcp > pkt.pcap 2>tcpdump_err &])
-    OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
-    on_exit 'kill $(pidof tcpdump)'
+    kill $(cat tcpdump-nf.pid)
+    NETNS_START_TCPDUMP([nf], [-nvv -i nf-p3 tcp], [tcpdump-nf])
 
     # Bring nf0 down and nf1 up
     NS_CHECK_EXEC([nf], [ip link set dev br0 down])
@@ -18368,10 +18362,8 @@ Server Ready
 
     AS_BOX([$direction: Verify traffic forwarding through NF when nf0 and nf1 are down])
 
-    kill $(pidof tcpdump)
-    NS_CHECK_EXEC([nf], [tcpdump -l -nvv -i nf-p3 tcp > pkt.pcap 2>tcpdump_err &])
-    OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
-    on_exit 'kill $(pidof tcpdump)'
+    kill $(cat tcpdump-nf.pid)
+    NETNS_START_TCPDUMP([nf], [-nvv -i nf-p3 tcp], [tcpdump-nf])
 
     # Bring nf0 down and nf1 up
     NS_CHECK_EXEC([nf], [ip link set dev br1 down])
@@ -18383,6 +18375,7 @@ Server Ready
 
     validate_traffic "test" "" 0
 
+    kill $(cat tcpdump-nf.pid)
     kill $(cat client.pid)
     kill $(cat server.pid)
     rm -f client.pid
