@@ -3736,7 +3736,7 @@ check m_as ovn-gw-2 ip link set lo-wl-$vni up
 check multinode_nbctl                                                            \
     -- lr-add lr                                                                 \
       -- set logical_router lr options:dynamic-routing=true                      \
-                               options:requested-tnl-key=$vni                    \
+                               options:dynamic-routing-vrf-id=$vni               \
       -- lrp-add lr lr-gw1 $host_bgp_mac_gw1 $host_bgp_ip_gw1/24                 \
         -- lrp-set-gateway-chassis lr-gw1 ovn-gw-1 10                            \
         -- lrp-set-options lr-gw1 dynamic-routing-redistribute=nat,lb            \
