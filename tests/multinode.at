@@ -3491,9 +3491,9 @@ m_wait_for_ports_up
 
 # Enable EVPN support for the distributed logical switch and redistribute
 # local FDBs.
-check multinode_nbctl set logical_switch ls       \
-    other_config:dynamic-routing-vni=$vni         \
-    other_config:dynamic-routing-redistribute=fdb
+check multinode_nbctl set logical_switch ls          \
+    other_config:dynamic-routing-vni=$vni            \
+    other_config:dynamic-routing-redistribute=fdb,ip
 check multinode_nbctl --wait=hv sync
 dp_key=$(m_fetch_column Datapath_Binding tunnel_key external_ids:name=ls)
 
@@ -3539,7 +3539,7 @@ check m_as ovn-gw-2 ip netns exec fabric_workload ip r a default via 10.0.0.1
 check m_as ovn-gw-2 ip netns exec frr-ns ip link set address 00:00:10:00:00:82 dev br-10
 check m_as ovn-gw-2 ip netns exec frr-ns ip a a dev br-10 10.0.0.82/24
 
-AS_BOX([Checking EVPN MACs on External BGP host])
+AS_BOX([Checking EVPN MACs and IPs on External BGP host])
 OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-1 ip netns exec frr-ns vtysh --vty_socket /run/frr/frr-ns -c 'show evpn mac vni all'], [0], [dnl
 
 VNI 10 #MACs (local and remote) 2
@@ -3558,6 +3558,22 @@ Flags: N=sync-neighs, I=local-inactive, P=peer-active, X=peer-proxy
 MAC               Type   Flags Intf/Remote ES/VTEP            VLAN  Seq #'s
 00:00:00:00:00:02 remote       42.42.10.22                          0/0
 00:00:00:00:02:00 local        evpn_host_peer                       0/0
+])
+
+# Check that the fabric learned both FDB and IP routes for the workloads.
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-1 ip netns exec frr-ns vtysh --vty_socket /run/frr/frr-ns -c 'show bgp l2vpn evpn route' | \
+    grep --no-group-separator -A1 00:00:00:00:00:01], [0], [dnl
+ *>  [[2]]:[[0]]:[[48]]:[[00:00:00:00:00:01]]
+                    42.42.10.12                            0 4210000000 i
+ *>  [[2]]:[[0]]:[[48]]:[[00:00:00:00:00:01]]:[[32]]:[[10.0.0.11]]
+                    42.42.10.12                            0 4210000000 i
+])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ip netns exec frr-ns vtysh --vty_socket /run/frr/frr-ns -c 'show bgp l2vpn evpn route' | \
+    grep --no-group-separator -A1 00:00:00:00:00:02], [0], [dnl
+ *>  [[2]]:[[0]]:[[48]]:[[00:00:00:00:00:02]]
+                    42.42.10.22                            0 4210000000 i
+ *>  [[2]]:[[0]]:[[48]]:[[00:00:00:00:00:02]]:[[32]]:[[10.0.0.12]]
+                    42.42.10.22                            0 4210000000 i
 ])
 
 AS_BOX([Check traffic to "fabric" hosts - ping from fabric])
@@ -3666,6 +3682,12 @@ Flags: N=sync-neighs, I=local-inactive, P=peer-active, X=peer-proxy
 MAC               Type   Flags Intf/Remote ES/VTEP            VLAN  Seq #'s
 00:00:00:00:02:00 local        evpn_host_peer                       0/0
 ])
+
+# Check that the fabric un-learned both FDB and IP routes for the workloads.
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-1 ip netns exec frr-ns vtysh --vty_socket /run/frr/frr-ns -c 'show bgp l2vpn evpn route' | \
+    grep -q 00:00:00:00:00:01], [1])
+OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ip netns exec frr-ns vtysh --vty_socket /run/frr/frr-ns -c 'show bgp l2vpn evpn route' | \
+    grep -q 00:00:00:00:00:02], [1])
 
 # Check if the dynamic FDB was removed.
 check multinode_nbctl --wait=hv remove logical_switch ls other_config dynamic-routing-vni
@@ -3778,7 +3800,7 @@ m_wait_for_ports_up
 # Enable EVPN support for the distributed logical switch.
 check multinode_nbctl set logical_switch ls \
     other_config:dynamic-routing-vni=$vni   \
-    other_config:dynamic-routing-redistribute=ip
+    other_config:dynamic-routing-redistribute=fdb,ip
 
 check multinode_nbctl --wait=hv sync
 dp_key=$(m_fetch_column Datapath_Binding tunnel_key external_ids:name=ls)
