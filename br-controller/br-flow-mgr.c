@@ -547,8 +547,7 @@ br_flow_add_openflow__(struct br_flow_table *br_ftable, bool lflow_table,
         ovn_flow_invalidate_all_actions(f);
     }
 
-    struct ovn_flow_action *existing_a =
-        f ? ovn_flow_get_matching_action(f, a): NULL;
+    struct ovn_flow_action *existing_a = ovn_flow_get_matching_action(f, a);
     bool push_flow_to_switch = true;
 
     if (existing_a && uuid_equals(&existing_a->flow_uuid, flow_uuid)) {
