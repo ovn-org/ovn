@@ -946,7 +946,7 @@ ovn_get_internal_version(void)
                      N_OVNACTS, OVN_INTERNAL_MINOR_VER);
 }
 
-uint32_t
+enum chassis_tunnel_type
 get_tunnel_type(const char *name)
 {
     if (!strcmp(name, "geneve")) {
@@ -955,7 +955,7 @@ get_tunnel_type(const char *name)
         return VXLAN;
     }
 
-    return 0;
+    return TUNNEL_TYPE_INVALID;
 }
 
 const struct ovsrec_bridge *

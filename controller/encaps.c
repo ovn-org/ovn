@@ -349,7 +349,9 @@ exit:
 }
 
 static bool
-chassis_has_type(const struct sbrec_chassis *chassis, uint32_t tun_type) {
+chassis_has_type(const struct sbrec_chassis *chassis,
+                 enum chassis_tunnel_type tun_type)
+{
     for (size_t i = 0; i < chassis->n_encaps; i++) {
         if (get_tunnel_type(chassis->encaps[i]->type) == tun_type) {
             return true;
@@ -363,10 +365,11 @@ preferred_encap(const struct sbrec_chassis *chassis_rec,
                 const struct sbrec_chassis *this_chassis)
 {
     struct sbrec_encap *best_encap = NULL;
-    uint32_t best_type = 0;
+    enum chassis_tunnel_type best_type = TUNNEL_TYPE_INVALID;
 
     for (size_t i = 0; i < chassis_rec->n_encaps; i++) {
-        uint32_t tun_type = get_tunnel_type(chassis_rec->encaps[i]->type);
+        enum chassis_tunnel_type tun_type =
+            get_tunnel_type(chassis_rec->encaps[i]->type);
         if (tun_type > best_type && chassis_has_type(this_chassis, tun_type)) {
             best_type = tun_type;
             best_encap = chassis_rec->encaps[i];

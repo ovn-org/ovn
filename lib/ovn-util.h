@@ -345,14 +345,15 @@ hash_add_in6_addr(uint32_t hash, const struct in6_addr *addr)
     return hash;
 }
 
-/* Must be a bit-field ordered from most-preferred (higher number) to
+/* Tunnel types ordered from most-preferred (higher number) to
  * least-preferred (lower number). */
 enum chassis_tunnel_type {
-    GENEVE = 1 << 1,
-    VXLAN  = 1 << 0
+    TUNNEL_TYPE_INVALID = -1,
+    VXLAN  = 0,
+    GENEVE = 1
 };
 
-uint32_t get_tunnel_type(const char *name);
+enum chassis_tunnel_type get_tunnel_type(const char *name);
 
 struct ovsrec_bridge_table;
 const struct ovsrec_bridge *get_bridge(const struct ovsrec_bridge_table *,

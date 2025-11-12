@@ -24,6 +24,6 @@ struct ovsrec_bridge_table;
 const struct ovsrec_bridge *get_bridge(const struct ovsrec_bridge_table *,
                                        const char *br_name);
 
-uint32_t get_tunnel_type(const char *name);
+enum chassis_tunnel_type get_tunnel_type(const char *name);
 
 #endif /* controller/ovn-controller.h */
