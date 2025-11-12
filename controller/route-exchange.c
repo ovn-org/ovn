@@ -51,6 +51,7 @@ struct route_entry {
     struct hmap_node hmap_node;
 
     const struct sbrec_learned_route *sb_route;
+    bool stale;
 };
 
 static uint32_t
@@ -87,10 +88,14 @@ maintained_route_table_add(uint32_t table_id)
 
 static void
 route_add_entry(struct hmap *routes,
-                  const struct sbrec_learned_route *sb_route)
+                const struct sbrec_learned_route *sb_route,
+                bool stale)
 {
     struct route_entry *route_e = xmalloc(sizeof *route_e);
-    route_e->sb_route = sb_route;
+    *route_e = (struct route_entry) {
+        .sb_route = sb_route,
+        .stale = stale,
+    };
 
     uint32_t hash = uuid_hash(&sb_route->datapath->header_.uuid);
     hash = hash_string(sb_route->logical_port->logical_port, hash);
@@ -157,7 +162,7 @@ sb_sync_learned_routes(const struct ovs_list *learned_routes,
                            sb_route->logical_port->logical_port)) {
             continue;
         }
-        route_add_entry(&sync_routes, sb_route);
+        route_add_entry(&sync_routes, sb_route, true);
     }
     sbrec_learned_route_index_destroy_row(filter);
 
@@ -185,8 +190,7 @@ sb_sync_learned_routes(const struct ovs_list *learned_routes,
             route_e = route_lookup(&sync_routes, datapath,
                                    logical_port, ip_prefix, nexthop);
             if (route_e) {
-                hmap_remove(&sync_routes, &route_e->hmap_node);
-                free(route_e);
+                route_e->stale = false;
             } else {
                 if (!ovnsb_idl_txn) {
                     *sb_changes_pending = true;
@@ -197,6 +201,8 @@ sb_sync_learned_routes(const struct ovs_list *learned_routes,
                 sbrec_learned_route_set_logical_port(sb_route, logical_port);
                 sbrec_learned_route_set_ip_prefix(sb_route, ip_prefix);
                 sbrec_learned_route_set_nexthop(sb_route, nexthop);
+
+                route_add_entry(&sync_routes, sb_route, false);
             }
         }
         free(ip_prefix);
@@ -204,7 +210,9 @@ sb_sync_learned_routes(const struct ovs_list *learned_routes,
     }
 
     HMAP_FOR_EACH_POP (route_e, hmap_node, &sync_routes) {
-        sbrec_learned_route_delete(route_e->sb_route);
+        if (route_e->stale) {
+            sbrec_learned_route_delete(route_e->sb_route);
+        }
         free(route_e);
     }
     hmap_destroy(&sync_routes);
