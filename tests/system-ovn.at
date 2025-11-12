@@ -16209,6 +16209,8 @@ blackhole 198.51.100.0/24 proto ovn metric 1000
 233.252.0.0/24 via 192.168.10.10 dev lo onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
 
+# Remove the backoff period, so we can bind it right away.
+check ovn-sbctl remove Port_Binding vip options vport-backoff
 # Rebind "vip" locally.
 NS_EXEC([vif4], [arping -U -c 1 -w 2 -I vif4 192.0.2.30])
 wait_column "vif4" Port_Binding virtual_parent logical_port=vip
@@ -16256,6 +16258,8 @@ blackhole 198.51.100.0/24 proto ovn metric 1000
 233.252.0.0/24 via 192.168.10.10 dev lo onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink])
 
+# Remove the backoff period, so we can bind it right away.
+check ovn-sbctl remove Port_Binding vip options vport-backoff
 # Rebind "vip" locally.
 NS_EXEC([vif4], [arping -U -c 1 -w 2 -I vif4 192.0.2.30])
 wait_column "vif4" Port_Binding virtual_parent logical_port=vip
