@@ -13408,17 +13408,22 @@ build_gateway_mtu_flow(struct lflow_table *lflows, struct ovn_port *op,
                             hint, lflow_ref);
 
     if (gw_mtu > 0) {
+        ds_clear(actions);
+        ds_put_format_valist(actions, extra_actions_fmt,
+                             extra_actions_args);
+        ds_put_cstr(match, " && (arp");
+
         const char *gw_mtu_bypass = smap_get(&op->nbrp->options,
                                              "gateway_mtu_bypass");
         if (gw_mtu_bypass) {
-            ds_clear(actions);
-            ds_put_format_valist(actions, extra_actions_fmt,
-                                 extra_actions_args);
-            ds_put_format(match, " && (%s)", gw_mtu_bypass);
-            ovn_lflow_add_with_hint(lflows, op->od, stage, prio_high,
-                                    ds_cstr(match), ds_cstr(actions),
-                                    hint, lflow_ref);
+            ds_put_format(match, " || %s", gw_mtu_bypass);
         }
+
+        ds_put_char(match, ')');
+
+        ovn_lflow_add_with_hint(lflows, op->od, stage, prio_high,
+                                ds_cstr(match), ds_cstr(actions),
+                                hint, lflow_ref);
     }
     va_end(extra_actions_args);
 }
