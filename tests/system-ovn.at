@@ -13146,6 +13146,32 @@ check_uuid ovn-nbctl                                                            
 check_row_count nb:ACL 6
 check_row_count nb:Sample 12
 
+AT_DATA([client.py], [dnl
+import socket
+import sys
+import time
+
+port = int(sys.argv[[1]])
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.sendto(b"hello\n", ("43.43.43.43", port))
+time.sleep(0.3)
+sock.sendto(b"bye\n", ("43.43.43.43", port))
+sock.close()
+])
+
+AT_DATA([server.py], [dnl
+import sys
+import time
+
+line = sys.stdin.readline()
+if "bye" in line:
+    time.sleep(1)
+
+sys.stdout.write(line)
+sys.stdout.flush()
+])
+
 dnl Wait for ovn-controller to catch up.
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
@@ -13166,24 +13192,25 @@ dnl And wait for it to be up and running.
 OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q '1 ids'])
 
 dnl Start UDP echo server on vm2.
-NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l -m 1 1000], [nc-vm2-1000.pid])
-NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l -m 1 1010], [nc-vm2-1010.pid])
-NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l -m 1 2000], [nc-vm2-2000.pid])
-NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l -m 1 2010], [nc-vm2-2010.pid])
-NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l -m 1 3000], [nc-vm2-3000.pid])
-NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l -m 1 3010], [nc-vm2-3010.pid])
+NETNS_DAEMONIZE([vm2], [nc -e "$PYTHON ./server.py" -k -u -v -l -m 1 1000], [nc-vm2-1000.pid])
+NETNS_DAEMONIZE([vm2], [nc -e "$PYTHON ./server.py" -k -u -v -l -m 1 1010], [nc-vm2-1010.pid])
+NETNS_DAEMONIZE([vm2], [nc -e "$PYTHON ./server.py" -k -u -v -l -m 1 2000], [nc-vm2-2000.pid])
+NETNS_DAEMONIZE([vm2], [nc -e "$PYTHON ./server.py" -k -u -v -l -m 1 2010], [nc-vm2-2010.pid])
+NETNS_DAEMONIZE([vm2], [nc -e "$PYTHON ./server.py" -k -u -v -l -m 1 3000], [nc-vm2-3000.pid])
+NETNS_DAEMONIZE([vm2], [nc -e "$PYTHON ./server.py" -k -u -v -l -m 1 3010], [nc-vm2-3010.pid])
+NETNS_START_TCPDUMP([vm2], [-i vm2 -vnne], [vm2])
 
 dnl Send traffic (2 packets) to the UDP LB1 (hits the from-lport ACL).
-NS_CHECK_EXEC([vm1], [(echo a; sleep 1; echo a) | nc --send-only -u 43.43.43.43 1000])
-NS_CHECK_EXEC([vm1], [(echo a; sleep 1; echo a) | nc --send-only -u 43.43.43.43 1010])
+NS_CHECK_EXEC([vm1], [$PYTHON3 ./client.py 1000])
+NS_CHECK_EXEC([vm1], [$PYTHON3 ./client.py 1010])
 
 dnl Send traffic (2 packets) to the UDP LB1 (hits the from-lport after-lb ACL).
-NS_CHECK_EXEC([vm1], [(echo a; sleep 1; echo a) | nc --send-only -u 43.43.43.43 2000])
-NS_CHECK_EXEC([vm1], [(echo a; sleep 1; echo a) | nc --send-only -u 43.43.43.43 2010])
+NS_CHECK_EXEC([vm1], [$PYTHON3 ./client.py 2000])
+NS_CHECK_EXEC([vm1], [$PYTHON3 ./client.py 2010])
 
 dnl Send traffic (2 packets) to the UDP LB1 (hits the from-lport ACL).
-NS_CHECK_EXEC([vm1], [(echo a; sleep 1; echo a) | nc --send-only -u 43.43.43.43 3000])
-NS_CHECK_EXEC([vm1], [(echo a; sleep 1; echo a) | nc --send-only -u 43.43.43.43 3010])
+NS_CHECK_EXEC([vm1], [$PYTHON3 ./client.py 3000])
+NS_CHECK_EXEC([vm1], [$PYTHON3 ./client.py 3010])
 
 dnl Wait until OVS sampled all expected packets (4 data packets + 1 ICMP
 dnl port unreachable error on each session).
