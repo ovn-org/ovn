@@ -17854,9 +17854,9 @@ check ovn-nbctl --wait=hv set logical_switch ls-evpn other_config:fdb_age_thresh
 ovs-ofctl dump-flows br-int table=OFTABLE_LEARN_REMOTE_FDB
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_LEARN_REMOTE_FDB | grep priority | \
                    awk '{print $7, $8}' | strip_cookie | sort], [0], [dnl
-priority=100,reg14=0x80000001,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,idle_timeout=300,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
-priority=100,reg14=0x80000002,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,idle_timeout=300,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
-priority=100,reg14=0x80000003,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,idle_timeout=300,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
+priority=100,reg14=0x80000001,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,hard_timeout=300,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
+priority=100,reg14=0x80000002,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,hard_timeout=300,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
+priority=100,reg14=0x80000003,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,hard_timeout=300,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
 priority=150,reg14=0x80000001,metadata=0x$dp_key,dl_src=f0:00:0f:16:10:50 actions=drop
 priority=150,reg14=0x80000002,metadata=0x$dp_key,dl_src=f0:00:0f:16:10:60 actions=drop
 priority=150,reg14=0x80000003,metadata=0x$dp_key,dl_src=00:00:00:00:00:01 actions=drop

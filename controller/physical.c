@@ -2965,7 +2965,7 @@ physical_consider_evpn_binding(const struct evpn_binding *binding,
     ol->flags = NX_LEARN_F_DELETE_LEARNED;
     ol->priority = 150;
     ol->table_id = OFTABLE_GET_REMOTE_FDB;
-    ol->idle_timeout = binding->fdb_age_threshold;
+    ol->hard_timeout = binding->fdb_age_threshold;
 
     /* Match the learned flow on the same metadata. */
     ol_spec = ofpbuf_put_zeros(ofpacts, sizeof *ol_spec);
