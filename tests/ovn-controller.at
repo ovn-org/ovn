@@ -2088,6 +2088,58 @@ AT_CHECK([echo $(($reprocess_count_new - $reprocess_count_old))], [0], [2
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
+AT_SETUP([ovn-controller - I-P for address set update: handle duplicate addresses])
+AT_KEYWORDS([as-i-p])
+
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=ls1-lp1
+
+check ovn-nbctl ls-add ls1
+
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "f0:00:00:00:00:01"
+
+wait_for_ports_up
+ovn-appctl -t ovn-controller vlog/set file:dbg
+
+# Initial state:
+# 2 ASes, each has 3 IPs, no duplicates.
+check_uuid ovn-nbctl create address_set name=as1 addresses=10.0.0.1,10.0.0.2,10.0.0.3
+check_uuid ovn-nbctl create address_set name=as2 addresses='["::1","::2","::3"]'
+check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip4.src == $as1 && tcp && tcp.dst == {101, 102}' drop
+check ovn-nbctl acl-add ls1 to-lport 100 'outport == "ls1-lp1" && ip6.src == $as2 && tcp && tcp.dst == {201, 202}' drop
+
+check ovn-nbctl --wait=hv sync
+
+# Add duplicate IP, then remove it again.
+# This should generate a warning, but should not crash.
+check ovn-nbctl add address_set as1 addresses 10.0.0.1/32
+check ovn-nbctl --wait=hv sync
+check ovn-nbctl remove address_set as1 addresses 10.0.0.1/32
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([grep "already references desired flow" hv1/ovn-controller.log | grep -q "nw_src=10.0.0.1"])
+
+# Same for duplicate IPv6 addresses.
+check ovn-nbctl add address_set as2 addresses '["::01"]'
+check ovn-nbctl --wait=hv sync
+check ovn-nbctl remove address_set as2 addresses '["::01"]'
+check ovn-nbctl --wait=hv sync
+
+AT_CHECK([grep "already references desired flow" hv1/ovn-controller.log | grep -q "ipv6_src=::1"])
+
+OVN_CLEANUP([hv1
+/already references desired flow/d
+])
+AT_CLEANUP
+
 AT_SETUP([ovn-controller - I-P for address set update: mac])
 AT_KEYWORDS([as-i-p])
 

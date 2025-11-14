@@ -1402,11 +1402,22 @@ ofctrl_add_or_append_conj_flow(struct ovn_desired_flow_table *desired_flows,
          * actions properly when handle addrset ip deletion, instead of simply
          * delete the flow. */
         struct sb_flow_ref *sfr;
+        bool duplicate = false;
         LIST_FOR_EACH (sfr, sb_list, &f->references) {
+            duplicate |= uuid_equals(&sfr->sb_uuid, sb_uuid);
             ovs_list_remove(&sfr->as_ip_flow_list);
             ovs_list_init(&sfr->as_ip_flow_list);
         }
-        link_flow_to_sb(desired_flows, f, sb_uuid, NULL);
+
+        if (duplicate) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            char *s = ovn_flow_to_string(&f->flow);
+            VLOG_WARN_RL(&rl, "lflow "UUID_FMT" already references desired "
+                         "flow: %s", UUID_ARGS(sb_uuid), s);
+            free(s);
+        } else {
+            link_flow_to_sb(desired_flows, f, sb_uuid, NULL);
+        }
     } else {
         actions = create_conjunction_actions(conjunctions, NULL);
         f = desired_flow_alloc(table_id, priority, 0, match, actions,
