@@ -532,6 +532,7 @@ dynamic_bitmap_alloc(struct dynamic_bitmap *db, size_t n_elems)
 {
     db->map = bitmap_allocate(n_elems);
     db->capacity = n_elems;
+    db->n_elems = 0;
 }
 
 static inline void
