@@ -811,9 +811,8 @@ sync_sb_lb_record(struct sb_lb_record *sb_lb,
         } else {
             sb_lb->ls_dpg = ovn_dp_group_create(
                 ovnsb_txn, &sb_lbs->ls_dp_groups, sbrec_ls_dp_group,
-                lb_dps->nb_ls_map.n_elems, lb_dps->nb_ls_map.map,
-                ods_size(ls_datapaths), true,
-                ls_datapaths, lr_datapaths);
+                lb_dps->nb_ls_map.n_elems, &lb_dps->nb_ls_map,
+                true, ls_datapaths, lr_datapaths);
         }
 
         if (chassis_features->ls_dpg_column) {
@@ -866,9 +865,8 @@ sync_sb_lb_record(struct sb_lb_record *sb_lb,
         } else {
             sb_lb->lr_dpg = ovn_dp_group_create(
                 ovnsb_txn, &sb_lbs->lr_dp_groups, sbrec_lr_dp_group,
-                lb_dps->nb_lr_map.n_elems, lb_dps->nb_lr_map.map,
-                ods_size(lr_datapaths), false,
-                ls_datapaths, lr_datapaths);
+                lb_dps->nb_lr_map.n_elems, &lb_dps->nb_lr_map,
+                false, ls_datapaths, lr_datapaths);
         }
 
         sbrec_load_balancer_set_lr_datapath_group(sbrec_lb,
