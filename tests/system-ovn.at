@@ -18240,6 +18240,7 @@ AS_BOX([Test-1: Single NF without health check])
 check ovn-nbctl nf-add nf0 nf-p1 nf-p2
 nf0_uuid=$(fetch_column nb:network_function _uuid name=nf0)
 check ovn-nbctl nfg-add nfg0 1 inline nf0
+nfg_uuid=$(fetch_column nb:network_function_group _uuid name=nfg0)
 
 check ovn-nbctl pg-add pg0 server
 check ovn-nbctl acl-add pg0 from-lport 1001 "inport == @pg0 && ip4.dst == 192.168.1.10" allow-related nfg0
@@ -18253,7 +18254,40 @@ NS_CHECK_EXEC([nf], [ip link set dev nf-p1 master br0])
 NS_CHECK_EXEC([nf], [ip link set dev nf-p2 master br0])
 NS_CHECK_EXEC([nf], [ip link set dev br0 up])
 
+start_tcp_server_client() {
+    client_ns=$1
+    server_ns=$2
+    sip=$3
+    port=${4:-10000}
+    fifo_path=${5:-/tmp/nffifo}
+    wait_for_server=${6:-yes}
+
+    # Start a TCP server
+    : > output.txt
+    NETNS_DAEMONIZE($server_ns, [server.py -i $sip -p $port], [server.pid])
+    on_exit 'kill $(cat server.pid)'
+
+    # Ensure TCP server is ready for connections
+    if [[ "$wait_for_server" == "yes" ]]; then
+        OVS_WAIT_FOR_OUTPUT([cat output.txt], [0], [dnl
+Server Ready
+])
+    fi
+
+    # Make a FIFO and send its output to a server
+    if [[ ! -p "$fifo_path" ]]; then
+        mkfifo "$fifo_path"
+        on_exit "rm -rf $fifo_path"
+    fi
+
+    NETNS_DAEMONIZE($client_ns, [client.py -f "$fifo_path" -i $sip -p $port], [client.pid])
+    on_exit 'kill $(cat client.pid)'
+}
+
 validate_traffic() {
+    # Empty the file
+    : > output.txt
+
     send_data=$1; recv_data=$2; pkt_cnt=$3;
     AT_CHECK([printf "$send_data\n" > /tmp/nffifo], [0], [dnl
 ])
@@ -18267,8 +18301,6 @@ $recv_data
 ])
     fi
 
-    : > output.txt
-
     OVS_WAIT_UNTIL([
         total_pkts=$(cat tcpdump-nf.tcpdump | wc -l)
         test ${total_pkts} -ge ${pkt_cnt}
@@ -18278,22 +18310,7 @@ $recv_data
 validate_single_nf_no_health_check() {
     client_ns=$1; server_ns=$2; sip=$3; direction=$4
 
-    # Start a TCP server
-    NETNS_DAEMONIZE($server_ns, [server.py -i $sip -p 10000], [server.pid])
-    on_exit 'kill $(cat server.pid)'
-
-    # Ensure TCP server is ready for connections
-    OVS_WAIT_FOR_OUTPUT([cat output.txt], [0], [dnl
-Server Ready
-])
-    : > output.txt
-
-    # Make a FIFO and send its output to a server
-    mkfifo /tmp/nffifo
-    on_exit 'rm -rf /tmp/nffifo'
-
-    NETNS_DAEMONIZE($client_ns, [client.py -f "/tmp/nffifo" -i $sip -p 10000], [client.pid])
-    on_exit 'kill $(cat client.pid)'
+    start_tcp_server_client $client_ns $server_ns $sip
 
     AS_BOX([$direction: Verify traffic forwarding through single NF without health check])
 
@@ -18301,7 +18318,6 @@ Server Ready
     NETNS_START_TCPDUMP([nf], [-nvv -i nf-p1 tcp], [tcpdump-nf])
 
     # Verify no service monitors exist when health check is not configured
-    #AT_CHECK([ovn-sbctl list service_monitor | grep -v "^$"], [1])
     AT_CHECK([ovn-sbctl list service_monitor | wc -l], [0], [dnl
 0
 ])
@@ -18353,26 +18369,15 @@ check ovn-nbctl --wait=hv sync
 validate_nf_with_traffic() {
     client_ns=$1; server_ns=$2; sip=$3; direction=$4
 
-    # Start a TCP server
-    NETNS_DAEMONIZE($server_ns, [server.py -i $sip -p 10000], [server.pid])
-    on_exit 'kill $(cat server.pid)'
-
-    # Ensure TCP server is ready for connections
-    OVS_WAIT_FOR_OUTPUT([cat output.txt], [0], [dnl
-Server Ready
-])
-    : > output.txt
-
-    # Make a FIFO and send its output to a server
-    mkfifo /tmp/nffifo
-    on_exit 'rm -rf /tmp/nffifo'
-
-    NETNS_DAEMONIZE($client_ns, [client.py -f "/tmp/nffifo" -i $sip -p 10000], [client.pid])
-    on_exit 'kill $(cat client.pid)'
+    start_tcp_server_client $client_ns $server_ns $sip
 
     AS_BOX([$direction: Verify traffic forwarding through NF when nf0 is active])
     NS_CHECK_EXEC([nf], [ip link set dev br0 up])
     NS_CHECK_EXEC([nf], [ip link set dev br1 down])
+    # set fallback to fail-close
+    check ovn-nbctl set network_function_group $nfg_uuid fallback=fail-close
+    check ovn-nbctl --wait=hv sync
+
 
     NETNS_START_TCPDUMP([nf], [-nvv -i nf-p1 tcp], [tcpdump-nf])
 
@@ -18400,20 +18405,41 @@ Server Ready
 
     validate_traffic "test" "test" 2
 
-    AS_BOX([$direction: Verify traffic forwarding through NF when nf0 and nf1 are down])
+    AS_BOX([$direction: Verify traffic forwarding through NF when nf0 and nf1 are down "
+            "when fallback set to fail-close])
 
     kill $(cat tcpdump-nf.pid)
     NETNS_START_TCPDUMP([nf], [-nvv -i nf-p3 tcp], [tcpdump-nf])
 
-    # Bring nf0 down and nf1 up
+    # Bring nf1 down
     NS_CHECK_EXEC([nf], [ip link set dev br1 down])
     # sleep to allow service_monitor to detect the state
     sleep 5
 
-    ovn-sbctl dump-flows sw0 > lflows_nf1_active
+    ovn-sbctl dump-flows sw0 > lflows_both_down_fail_close
     ovn-sbctl list service_monitor
 
     validate_traffic "test" "" 0
+
+    AS_BOX(["$direction: Verify traffic forwarding through NF when nf0 and nf1 are down "
+            "when fallback set to fail-open"])
+
+    # Restart the client before fail-open test
+    kill $(cat client.pid)
+    kill $(cat server.pid)
+
+    start_tcp_server_client $client_ns $server_ns $sip 10000 /tmp/nffifo no
+
+    check ovn-nbctl set network_function_group $nfg_uuid fallback=fail-open
+    check ovn-nbctl --wait=hv sync
+
+    kill $(cat tcpdump-nf.pid)
+    NETNS_START_TCPDUMP([nf], [-nvv -i nf-p3 tcp], [tcpdump-nf])
+
+    ovn-sbctl dump-flows sw0 > lflows_both_down_fail_open
+    ovn-sbctl list service_monitor
+
+    validate_traffic "test" "test" 0
 
     kill $(cat tcpdump-nf.pid)
     kill $(cat client.pid)

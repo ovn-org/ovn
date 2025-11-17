@@ -73,6 +73,7 @@ Post v25.09.0
      external_ids:ovn-enable-flow-based-tunnels=true to use shared tunnel
      ports instead of per-chassis ports, reducing port count for large scale
      environments. Default is disabled.
+   - Add fallback support for Network Function.
 
 OVN v25.09.0 - xxx xx xxxx
 --------------------------

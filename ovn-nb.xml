@@ -6261,6 +6261,33 @@ or
       <code>Network_Function_Group</code>.
     </column>
 
+    <column name="fallback">
+      Fallback setting when no active network functions are available.
+      <p>
+        Supports following fallback mechanisms.
+        If not specified, fail-close will be applied when no active Network
+        Functions are available.
+      </p>
+
+      <dl>
+        <dt><code>fail-open</code></dt>
+        <dd>
+          <p>
+            Traffic bypasses Network Function and gets allowed when there is
+            no active Network Function available.
+          </p>
+        </dd>
+
+        <dt><code>fail-close</code></dt>
+        <dd>
+          <p>
+           Traffic gets dropped when there is no active Network Function
+           available.
+          </p>
+        </dd>
+      </dl>
+    </column>
+
     <column name="network_function">
       A list of network functions which belong to this group.
     </column>

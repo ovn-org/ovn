@@ -18233,6 +18233,8 @@ OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Check network function])
 ovn_start
 
+AS_BOX([Create a NF and add it to a from-lport ACL])
+
 # Create a NF and add it to a from-lport ACL.
 check ovn-nbctl ls-add sw0
 check ovn-nbctl lsp-add sw0 sw0-nf-p1
@@ -18252,6 +18254,11 @@ check ovn-nbctl lsp-add sw0 sw0-p3 -- lsp-set-addresses sw0-p3 "00:00:00:00:00:0
 
 check ovn-nbctl pg-add pg0 sw0-p1
 check ovn-nbctl acl-add pg0 from-lport 1002 "inport == @pg0 && ip4.dst == 10.0.0.3" allow-related nfg0
+
+# Add hypervisor and bind NF ports
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.1
+check ovn-sbctl lsp-bind sw0-nf-p1 hv1
+check ovn-sbctl lsp-bind sw0-nf-p2 hv1
 
 check ovn-nbctl --wait=sb sync
 
@@ -18340,6 +18347,8 @@ ct_next(ct_state=new|trk) {
 };
 ])
 
+AS_BOX([Create another NF and add it to a to-lport ACL.])
+
 # Create another NF and add it to a to-lport ACL.
 check ovn-nbctl lsp-add sw0 sw0-nf-p3
 check ovn-nbctl lsp-add sw0 sw0-nf-p4
@@ -18352,6 +18361,8 @@ check ovn-nbctl set logical_switch_port sw0-nf-p4 \
 check ovn-nbctl nf-add nf1 sw0-nf-p3 sw0-nf-p4
 check ovn-nbctl nfg-add nfg1 2 inline nf1
 check ovn-nbctl acl-add pg0 to-lport 1003 "outport == @pg0 && ip4.src == 10.0.0.4" allow-related nfg1
+check ovn-sbctl lsp-bind sw0-nf-p3 hv1
+check ovn-sbctl lsp-bind sw0-nf-p4 hv1
 check ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows sw0 > sw0flows
@@ -18646,7 +18657,7 @@ AT_CHECK(
 ])
 
 # Set the service monitor for nf0 to offline and nf1 to offline
-# and verify nf1 is still the active.
+# and verify fail-close is applied.
 
 AS_BOX([Set the service monitor for nf0 to offline and nf1 to offline])
 check ovn-sbctl set service_monitor $nfsw-p2 status=offline
@@ -18662,18 +18673,33 @@ AT_CHECK(
   [grep -E 'ls_(in|out)_network_function' lflows | ovn_strip_lflows | sort], [0], [dnl
   table=??(ls_in_network_function), priority=0    , match=(1), action=(next;)
   table=??(ls_in_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
-  table=??(ls_in_network_function), priority=100  , match=(inport == "child-3"), action=(reg5[[16..31]] = ct_label.tun_if_id; next;)
-  table=??(ls_in_network_function), priority=100  , match=(inport == "child-4"), action=(reg5[[16..31]] = ct_label.tun_if_id; next;)
   table=??(ls_in_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
-  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_group_id == 1), action=(outport = "child-3"; output;)
-  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(outport = "child-3"; output;)
   table=??(ls_out_network_function), priority=0    , match=(1), action=(next;)
   table=??(ls_out_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
-  table=??(ls_out_network_function), priority=100  , match=(outport == "child-3"), action=(next;)
-  table=??(ls_out_network_function), priority=100  , match=(outport == "child-4"), action=(next;)
   table=??(ls_out_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
-  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_group_id == 1), action=(outport = "child-4"; reg8[[23]] = 1; next(pipeline=ingress, table=??);)
-  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(outport = "child-4"; reg8[[23]] = 1; next(pipeline=ingress, table=??);)
+])
+
+AS_BOX([Configure NFG fallback method to fail-open])
+
+# Configure NFG fallback method to fail-open
+nfg_uuid=$(fetch_column nb:network_function_group _uuid name=nfg0)
+check ovn-nbctl set network_function_group $nfg_uuid fallback=fail-open
+
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows $sw > lflows
+AT_CAPTURE_FILE([lflows])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_network_function' lflows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(ls_in_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_in_network_function), priority=10   , match=(reg0[[22..29]] == 1 || (ct.trk && ct_label.nf_group_id == 1)), action=(next;)
+  table=??(ls_in_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_out_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_out_network_function), priority=10   , match=(reg0[[22..29]] == 1 || (ct.trk && ct_label.nf_group_id == 1)), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
 ])
 
 OVN_CLEANUP_NORTHD

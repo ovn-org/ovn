@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "7.14.0",
-    "cksum": "3428479461 43444",
+    "version": "7.15.0",
+    "cksum": "4060410729 43708",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -221,6 +221,10 @@
         "Network_Function_Group": {
             "columns": {
                 "name": {"type": "string"},
+                "fallback": {"type": {"key": {"type": "string",
+                                      "enum": ["set", ["fail-open",
+                                                       "fail-close"]]},
+                                      "min": 0, "max": 1}},
                 "network_function": {"type":
                                   {"key": {"type": "uuid",
                                            "refTable": "Network_Function",

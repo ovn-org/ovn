@@ -18281,6 +18281,27 @@ build_lswitch_stateful_nf(struct ovn_port *op,
                   ds_cstr(match), ds_cstr(actions), lflow_ref);
 }
 
+static const char*
+network_function_group_get_fallback(
+    const struct nbrec_network_function_group *nfg)
+{
+    if (nfg->fallback) {
+        return nfg->fallback;
+    }
+    return "fail-close";
+}
+
+static bool
+network_function_group_is_fallback_fail_open(
+    const struct nbrec_network_function_group *nfg)
+{
+    const char *fallback = network_function_group_get_fallback(nfg);
+    if (!strcasecmp(fallback, "fail-open")) {
+        return true;
+    }
+    return false;
+}
+
 static struct nbrec_network_function *
 nf_get_active(const struct nbrec_network_function_group *nfg)
 {
@@ -18357,21 +18378,23 @@ network_function_update_active(const struct nbrec_network_function_group *nfg,
             }
         }
     } else {
-        /* No healthy NFs, keep nf_active_prev if set, else select first one */
-        nf_active = nf_active_prev ? nf_active_prev : nfg->network_function[0];
+        /* No healthy NFs, clear nf_active to apply fallback */
+        nf_active = NULL;
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "NetworkFunction: No healthy network_function found "
-                     "in network_function_group %s, "
-                     "selected network_function %s as active", nfg->name,
-                     nf_active->name);
+        VLOG_WARN_RL(&rl, "NetworkFunction: No healthy network_function "
+                     "found in network_function_group %s, "
+                     "fallback to %s", nfg->name,
+                     network_function_group_get_fallback(nfg));
     }
     free(healthy_nfs);
 
     if (nf_active_prev != nf_active) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_INFO_RL(&rl, "NetworkFunction: Update active network_function %s "
-                     "in network_function_group %s",
-                     nf_active->name, nfg->name);
+        if (nf_active) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_INFO_RL(&rl, "NetworkFunction: Update active network_function"
+                         " %s in network_function_group %s",
+                         nf_active->name, nfg->name);
+        }
         nbrec_network_function_group_set_network_function_active(nfg,
                                                                  nf_active);
     }
@@ -18394,6 +18417,23 @@ static void build_network_function_active(
 }
 
 static void
+network_function_configure_fail_open_flows(struct lflow_table *lflows,
+              const struct ovn_datapath *od, struct lflow_ref *lflow_ref,
+              uint64_t nfg_id)
+{
+    struct ds match = DS_EMPTY_INITIALIZER;
+    ds_put_format(&match,
+                  REG_NF_GROUP_ID " == %"PRIu8" || "
+                  "(ct.trk && ct_label.nf_group_id == %"PRIu8")",
+                  (uint8_t) nfg_id, (uint8_t) nfg_id);
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_NF, 10,
+        ds_cstr(&match), "next;", lflow_ref);
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_NF, 10,
+        ds_cstr(&match), "next;", lflow_ref);
+    ds_destroy(&match);
+}
+
+static void
 consider_network_function(struct lflow_table *lflows,
                           const struct ovn_datapath *od,
                           struct nbrec_network_function_group *nfg,
@@ -18402,6 +18442,15 @@ consider_network_function(struct lflow_table *lflows,
     struct ds match = DS_EMPTY_INITIALIZER;
     struct ds action = DS_EMPTY_INITIALIZER;
     static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+
+    /* If NFG is in fail-open mode then, configure flows to with higher
+     * priority than default drop rule to allow the traffic when there is no
+     * active NF avaialble.
+     */
+    if (network_function_group_is_fallback_fail_open(nfg)) {
+        network_function_configure_fail_open_flows(lflows, od, lflow_ref,
+                                                   nfg->id);
+    }
 
     /* Currently we support only one active port-pair in a group.
      * If there are multiple active pairs, take the first one.
