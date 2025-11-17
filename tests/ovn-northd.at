@@ -3054,6 +3054,40 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([check LS/LR single line configuration])
+ovn_start
+
+cmd=""
+for i in {1..2048..1}; do
+    cmd="${cmd} -- ls-add lsw-${i}"
+    if test $(($i % 100)) -eq 0; then
+        check ovn-nbctl $cmd
+        cmd=""
+    fi
+done
+
+check ovn-nbctl --wait=sb $cmd
+
+check_row_count nb:Logical_Switch 2048
+wait_row_count sb:Datapath_Binding 2048
+
+cmd=""
+for i in {1..2048..1}; do
+    cmd="${cmd} -- lr-add lr-${i}"
+    if test $(($i % 100)) -eq 0; then
+        check ovn-nbctl $cmd
+        cmd=""
+    fi
+done
+
+check ovn-nbctl --wait=sb $cmd
+check_row_count nb:Logical_Router 2048
+wait_row_count sb:Datapath_Binding 4096
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check VXLAN encap in IC-mode])
 ovn_start
 

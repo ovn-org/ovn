@@ -159,7 +159,7 @@ void lflow_table_add_lflow(struct lflow_table *, const struct ovn_datapath *,
 struct sbrec_logical_dp_group;
 
 struct ovn_dp_group {
-    unsigned long *bitmap;
+    struct dynamic_bitmap bitmap;
     const struct sbrec_logical_dp_group *dp_group;
     struct uuid dpg_uuid;
     struct hmap_node node;
@@ -174,13 +174,13 @@ ovn_dp_groups_init(struct hmap *dp_groups)
 
 void ovn_dp_groups_clear(struct hmap *dp_groups);
 void ovn_dp_groups_destroy(struct hmap *dp_groups);
-struct ovn_dp_group *ovn_dp_group_get(struct hmap *dp_groups, size_t desired_n,
-                                      const unsigned long *desired_bitmap,
-                                      size_t bitmap_len);
+struct ovn_dp_group *ovn_dp_group_get(
+        struct hmap *dp_groups,
+        const struct dynamic_bitmap *desired_bitmap,
+        size_t bitmap_len);
 struct ovn_dp_group *ovn_dp_group_create(
     struct ovsdb_idl_txn *ovnsb_txn, struct hmap *dp_groups,
     struct sbrec_logical_dp_group *sb_group,
-    size_t desired_n,
     const struct dynamic_bitmap *desired_bitmap,
     bool is_switch,
     const struct ovn_datapaths *ls_datapaths,
@@ -199,7 +199,7 @@ dec_ovn_dp_group_ref(struct hmap *dp_groups, struct ovn_dp_group *dpg)
 
     if (!dpg->refcnt) {
         hmap_remove(dp_groups, &dpg->node);
-        free(dpg->bitmap);
+        dynamic_bitmap_free(&dpg->bitmap);
         free(dpg);
     }
 }

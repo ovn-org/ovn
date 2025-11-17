@@ -67,10 +67,10 @@ static struct sbrec_logical_dp_group *ovn_sb_insert_or_update_logical_dp_group(
     struct sbrec_logical_dp_group *,
     const unsigned long *dpg_bitmap,
     const struct ovn_datapaths *);
-static struct ovn_dp_group *ovn_dp_group_find(const struct hmap *dp_groups,
-                                              const unsigned long *dpg_bitmap,
-                                              size_t bitmap_len,
-                                              uint32_t hash);
+static struct ovn_dp_group *ovn_dp_group_find(
+        const struct hmap *dp_groups,
+        const struct dynamic_bitmap *dpg_bitmap,
+        size_t bitmap_len, uint32_t hash);
 static void ovn_dp_group_use(struct ovn_dp_group *);
 static void ovn_dp_group_release(struct hmap *dp_groups,
                                  struct ovn_dp_group *);
@@ -181,8 +181,6 @@ struct ovn_lflow {
     char *io_port;
     char *stage_hint;
     char *ctrl_meter;
-    size_t n_ods;                /* Number of datapaths referenced by 'od' and
-                                  * 'dpg_bitmap'. */
     struct ovn_dp_group *dpg;    /* Link to unique Sb datapath group. */
     const char *where;
     const char *flow_desc;
@@ -776,13 +774,13 @@ lflow_table_add_lflow(struct lflow_table *lflow_table,
 }
 
 struct ovn_dp_group *
-ovn_dp_group_get(struct hmap *dp_groups, size_t desired_n,
-                 const unsigned long *desired_bitmap,
+ovn_dp_group_get(struct hmap *dp_groups,
+                 const struct dynamic_bitmap *desired_bitmap,
                  size_t bitmap_len)
 {
     uint32_t hash;
 
-    hash = hash_int(desired_n, 0);
+    hash = hash_int(desired_bitmap->n_elems, 0);
     return ovn_dp_group_find(dp_groups, desired_bitmap, bitmap_len, hash);
 }
 
@@ -794,7 +792,6 @@ struct ovn_dp_group *
 ovn_dp_group_create(struct ovsdb_idl_txn *ovnsb_txn,
                     struct hmap *dp_groups,
                     struct sbrec_logical_dp_group *sb_group,
-                    size_t desired_n,
                     const struct dynamic_bitmap *desired_bitmap,
                     bool is_switch,
                     const struct ovn_datapaths *ls_datapaths,
@@ -803,10 +800,10 @@ ovn_dp_group_create(struct ovsdb_idl_txn *ovnsb_txn,
     struct ovn_dp_group *dpg;
 
     bool update_dp_group = false, can_modify = false;
-    unsigned long *dpg_bitmap;
-    size_t i, n = 0;
+    struct dynamic_bitmap dpg_bitmap;
+    size_t i;
 
-    dpg_bitmap = sb_group ? bitmap_allocate(desired_bitmap->capacity) : NULL;
+    dynamic_bitmap_alloc(&dpg_bitmap, desired_bitmap->capacity);
     for (i = 0; sb_group && i < sb_group->n_datapaths; i++) {
         struct ovn_datapath *datapath_od;
 
@@ -817,27 +814,25 @@ ovn_dp_group_create(struct ovsdb_idl_txn *ovnsb_txn,
         if (!datapath_od || ovn_datapath_is_stale(datapath_od)) {
             break;
         }
-        bitmap_set1(dpg_bitmap, datapath_od->index);
-        n++;
+        dynamic_bitmap_set1(&dpg_bitmap, datapath_od->index);
     }
     if (!sb_group || i != sb_group->n_datapaths) {
         /* No group or stale group.  Not going to be used. */
         update_dp_group = true;
         can_modify = true;
-    } else if (!bitmap_equal(dpg_bitmap, desired_bitmap->map,
-                             desired_bitmap->capacity)) {
+    } else if (!dynamic_bitmap_equal(&dpg_bitmap, desired_bitmap)) {
         /* The group in Sb is different. */
         update_dp_group = true;
         /* We can modify existing group if it's not already in use. */
-        can_modify = !ovn_dp_group_find(dp_groups, dpg_bitmap,
+        can_modify = !ovn_dp_group_find(dp_groups, &dpg_bitmap,
                                         desired_bitmap->capacity,
-                                        hash_int(n, 0));
+                                        hash_int(dpg_bitmap.n_elems, 0));
     }
 
-    bitmap_free(dpg_bitmap);
+    dynamic_bitmap_free(&dpg_bitmap);
 
     dpg = xzalloc(sizeof *dpg);
-    dpg->bitmap = bitmap_clone(desired_bitmap->map, desired_bitmap->capacity);
+    dynamic_bitmap_clone_from_db(&dpg->bitmap, desired_bitmap);
     if (!update_dp_group) {
         dpg->dp_group = sb_group;
     } else {
@@ -848,7 +843,7 @@ ovn_dp_group_create(struct ovsdb_idl_txn *ovnsb_txn,
                             is_switch ? ls_datapaths : lr_datapaths);
     }
     dpg->dpg_uuid = dpg->dp_group->header_.uuid;
-    hmap_insert(dp_groups, &dpg->node, hash_int(desired_n, 0));
+    hmap_insert(dp_groups, &dpg->node, hash_int(desired_bitmap->n_elems, 0));
 
     return dpg;
 }
@@ -1076,10 +1071,9 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
         is_switch = false;
     }
 
-    lflow->n_ods = dynamic_bitmap_count1(&lflow->dpg_bitmap);
-    ovs_assert(lflow->n_ods);
-
-    if (lflow->n_ods == 1) {
+    size_t n_ods = dynamic_bitmap_count1(&lflow->dpg_bitmap);
+    ovs_assert(n_ods);
+    if (n_ods == 1) {
         /* There is only one datapath, so it should be moved out of the
          * group to a single 'od'. */
         size_t index = dynamic_bitmap_scan(&lflow->dpg_bitmap, true, 0);
@@ -1180,8 +1174,7 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
         sbrec_logical_flow_set_logical_dp_group(sbflow, NULL);
     } else {
         sbrec_logical_flow_set_logical_datapath(sbflow, NULL);
-        lflow->dpg = ovn_dp_group_get(dp_groups, lflow->n_ods,
-                                      lflow->dpg_bitmap.map,
+        lflow->dpg = ovn_dp_group_get(dp_groups, &lflow->dpg_bitmap,
                                       n_datapaths);
         if (lflow->dpg) {
             /* Update the dpg's sb dp_group. */
@@ -1214,8 +1207,8 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
         } else {
             lflow->dpg = ovn_dp_group_create(
                                 ovnsb_txn, dp_groups, sbrec_dp_group,
-                                lflow->n_ods, &lflow->dpg_bitmap,
-                                is_switch, ls_datapaths, lr_datapaths);
+                                &lflow->dpg_bitmap, is_switch,
+                                ls_datapaths, lr_datapaths);
         }
         sbrec_logical_flow_set_logical_dp_group(sbflow,
                                                 lflow->dpg->dp_group);
@@ -1232,13 +1225,14 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
 
 static struct ovn_dp_group *
 ovn_dp_group_find(const struct hmap *dp_groups,
-                  const unsigned long *dpg_bitmap, size_t bitmap_len,
-                  uint32_t hash)
+                  const struct dynamic_bitmap *dpg_bitmap,
+                  size_t bitmap_len, uint32_t hash)
 {
     struct ovn_dp_group *dpg;
 
     HMAP_FOR_EACH_WITH_HASH (dpg, node, hash, dp_groups) {
-        if (bitmap_equal(dpg->bitmap, dpg_bitmap, bitmap_len)) {
+        if (dynamic_bitmap_equal(&dpg->bitmap, dpg_bitmap)) {
+            dynamic_bitmap_realloc(&dpg->bitmap, bitmap_len);
             return dpg;
         }
     }
@@ -1268,7 +1262,7 @@ ovn_dp_group_release(struct hmap *dp_groups, struct ovn_dp_group *dpg)
 static void
 ovn_dp_group_destroy(struct ovn_dp_group *dpg)
 {
-    bitmap_free(dpg->bitmap);
+    dynamic_bitmap_free(&dpg->bitmap);
     free(dpg);
 }
 
