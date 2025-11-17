@@ -174,8 +174,9 @@ struct ovn_dp_group *ovn_dp_group_get(struct hmap *dp_groups, size_t desired_n,
 struct ovn_dp_group *ovn_dp_group_create(
     struct ovsdb_idl_txn *ovnsb_txn, struct hmap *dp_groups,
     struct sbrec_logical_dp_group *sb_group,
-    size_t desired_n, const unsigned long *desired_bitmap,
-    size_t bitmap_len, bool is_switch,
+    size_t desired_n,
+    const struct dynamic_bitmap *desired_bitmap,
+    bool is_switch,
     const struct ovn_datapaths *ls_datapaths,
     const struct ovn_datapaths *lr_datapaths);
 
