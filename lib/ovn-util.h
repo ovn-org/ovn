@@ -587,9 +587,28 @@ dynamic_bitmap_or(struct dynamic_bitmap *db,
 }
 
 static inline unsigned long *
-dynamic_bitmap_clone_map(struct dynamic_bitmap *db)
+dynamic_bitmap_clone_map(const struct dynamic_bitmap *db)
 {
     return bitmap_clone(db->map, db->capacity);
+}
+
+static inline bool
+dynamic_bitmap_equal(const struct dynamic_bitmap *a,
+                     const struct dynamic_bitmap *b)
+{
+    return bitmap_equal(a->map, b->map, MIN(a->capacity, b->capacity));
+}
+
+static inline void
+dynamic_bitmap_clone_from_db(struct dynamic_bitmap *dst,
+                             const struct dynamic_bitmap *orig)
+{
+    if (dst->map) {
+        bitmap_free(dst->map);
+    }
+    dst->map = dynamic_bitmap_clone_map(orig);
+    dst->n_elems = dynamic_bitmap_count1(orig);
+    dst->capacity = orig->capacity;
 }
 
 static inline size_t
