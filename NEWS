@@ -1,5 +1,6 @@
-OVN v25.09.1 - xx xxx xxxx
+OVN v25.09.1 - 18 Nov 2025
 --------------------------
+   - Bug fixes
    - Added disable_garp_rarp option to logical_router table in order to disable
      GARP/RARP announcements by all the peer ports of this logical router.
    - Add ovn-nbctl lsp-add-router-port which will create router port on
