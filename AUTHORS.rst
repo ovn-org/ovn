@@ -153,6 +153,7 @@ Evgenii Kovalev                    ekovalev.off@gmail.com
 Eziz Durdyyev                      ezizdurdy@gmail.com
 Fabrizio D'Angelo                  fdangelo@redhat.com
 Felix Huettner                     felix.huettner@mail.schwarz
+Felix Moebius                      felix.moebius@mail.schwarz
 Flavio Fernandes                   flavio@flaviof.com
 Flavio Leitner                     fbl@redhat.com
 Francesco Fusco                    ffusco@redhat.com
