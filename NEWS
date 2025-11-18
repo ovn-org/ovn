@@ -1,9 +1,10 @@
-OVN v24.03.7 - xx xxx xxxx
+OVN v24.03.7 - 18 Nov 2025
 --------------------------
-   - Add ovn-nbctl lsp-add-router-port which will create router port on
-     specified LS.
-   - Add ovn-nbctl lsp-add-localnet-port which will create localnet port on
-     specified LS.
+  - Bug fixes
+  - Add ovn-nbctl lsp-add-router-port which will create router port on
+    specified LS.
+  - Add ovn-nbctl lsp-add-localnet-port which will create localnet port on
+    specified LS.
 
 OVN v24.03.6 - 13 Jun 2025
 --------------------------
