@@ -18693,3 +18693,141 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
 /.*terminating with signal 15.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Distributed gw port CT zone allocation])
+AT_SKIP_IF([test $HAVE_NC = no])
+CHECK_CONNTRACK()
+
+ovn_start
+
+# Topo: vm1 -- ls -- lr  -- ext (with ACLs on ext_lr)
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-ext], [set Bridge br-ext fail-mode=standalone])
+
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true \
+        -- set Open_vSwitch . external-ids:ovn-bridge-mappings=phynet:br-ext
+
+start_daemon ovn-controller
+
+# Create logical switches: internal and external networks.
+check ovn-nbctl ls-add ls
+check ovn-nbctl ls-add ext
+
+# Add localnet port to external switch for physical connectivity.
+check ovn-nbctl lsp-add-localnet-port ext ln_port phynet
+
+# Add VM port to internal switch.
+check ovn-nbctl lsp-add ls vm1 \
+    -- lsp-set-addresses vm1 "00:00:00:00:00:11 192.168.100.11"
+
+# Create logical_router_ports: lr_ls and lr_ext.
+check ovn-nbctl lr-add lr
+check ovn-nbctl lrp-add lr lr_ls 00:00:00:00:01:01 192.168.100.1/24
+check ovn-nbctl lrp-add lr lr_ext 00:00:00:00:01:02 172.16.0.1/24
+check ovn-nbctl lrp-set-gateway-chassis lr_ext hv1
+
+# Create peer logical_switch_ports: ls_lr and ext_lr.
+check ovn-nbctl lsp-add ls ls_lr \
+    -- lsp-set-type ls_lr router \
+    -- lsp-set-addresses ls_lr router \
+    -- lsp-set-options ls_lr router-port=lr_ls
+
+check ovn-nbctl lsp-add ext ext_lr \
+    -- lsp-set-type ext_lr router \
+    -- lsp-set-addresses ext_lr router \
+    -- lsp-set-options ext_lr router-port=lr_ext enable_router_port_acl=true
+
+# Create port group for external gateway ACLs.
+check ovn-nbctl pg-add gw_pg ext_lr
+
+# Add ACL rule to enable connection tracking for external gateway traffic
+# allowing ICMP from vm1 to external.
+check ovn-nbctl acl-add gw_pg to-lport 2001 "inport == @gw_pg && ip4  && icmp4" allow-related
+check ovn-nbctl acl-add gw_pg to-lport 1001 "inport == @gw_pg && ip4" drop
+check ovn-nbctl acl-add gw_pg to-lport 1001 "outport == @gw_pg && ip4" drop
+
+# Create namespace vm1.
+ADD_NAMESPACES(vm1)
+ADD_VETH(vm1, vm1, br-int, "192.168.100.11/24", "00:00:00:00:00:11", \
+         "192.168.100.1")
+
+# Create namespace external.
+ADD_NAMESPACES(external)
+ADD_VETH(external, external, br-ext, "172.16.0.100/24", "00:00:00:00:01:10", \
+         "172.16.0.1")
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Check that ext_lr has enable_router_port_acl option.
+AT_CHECK([ovn-sbctl get Port_Binding ext_lr options:enable_router_port_acl], [0], [dnl
+"true"
+])
+
+# Check that ls_lr does not have enable_router_port_acl option.
+AT_CHECK([ovn-sbctl --columns options list Port_Binding ls_lr | grep -q enable_router_port_acl], [1], [])
+
+# Check allocated CT zone for ext_lr.
+AT_CHECK([ovn-appctl -t ovn-controller ct-zone-list | sed "s/ [[0-9]]*/ ??/"], [0], [stdout])
+AT_CHECK([grep "ext_lr" stdout], [0], [dnl
+ext_lr ??
+])
+
+# Check no CT zone for ls_lr.
+AT_CHECK([grep "ls_lr" stdout], [1], [])
+
+# Generate ICMP traffic to create conntrack entries.
+NS_CHECK_EXEC([vm1], [ping -q -c 2 -W 1 172.16.0.100 | FORMAT_PING], \
+[0], [dnl
+2 packets transmitted, 2 received, 0% packet loss, time 0ms
+])
+
+# Check that ICMP conntrack entries exist.
+zone_id=$(ovn-appctl -t ovn-controller ct-zone-list | grep ext_lr | cut -d ' ' -f2)
+AT_CHECK_UNQUOTED([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.0.100) | grep "zone=$zone_id"], [0], [dnl
+icmp,orig=(src=192.168.100.11,dst=172.16.0.100,id=<cleared>,type=8,code=0),reply=(src=172.16.0.100,dst=192.168.100.11,id=<cleared>,type=0,code=0),zone=$zone_id
+])
+
+# Test TCP traffic - should be blocked by ACLs.
+NETNS_DAEMONIZE([external], [nc -l -k 172.16.0.100 80], [external.pid])
+NS_CHECK_EXEC([vm1], [nc -z 172.16.0.100 80], [1])
+
+# Remove enable_router_port_acl and verify CT zone release.
+check ovn-nbctl lsp-set-options ext_lr router-port=lr_ext
+check ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-appctl -t ovn-controller ct-zone-list | grep "ext_lr"], [1], [])
+
+# Re-enable enable_router_port_acl and verify CT zone reallocation.
+check ovn-nbctl lsp-set-options ext_lr router-port=lr_ext enable_router_port_acl=true
+check ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-appctl -t ovn-controller ct-zone-list | sed "s/ [[0-9]]*/ ??/"], [0], [stdout])
+AT_CHECK([grep "ext_lr" stdout], [0], [dnl
+ext_lr ??
+])
+
+# Test ICMP traffic still works after dynamic ACL changes
+NS_CHECK_EXEC([vm1], [ping -q -c 2 -W 1 172.16.0.100 | FORMAT_PING], \
+[0], [dnl
+2 packets transmitted, 2 received, 0% packet loss, time 0ms
+])
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+OVN_CLEANUP_NORTHD
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
+])
