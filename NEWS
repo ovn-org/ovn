@@ -1,5 +1,6 @@
-OVN v25.03.2 - xx xxx xxxx
+OVN v25.03.2 - 18 Nov 2025
 --------------------------
+   - Bug fixes
    - Dynamic Routing:
      * Add the option "dynamic-routing-redistribute-local-only" to Logical
        Routers and Logical Router Ports which refines the way in which
