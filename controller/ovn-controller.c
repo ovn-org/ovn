@@ -2730,9 +2730,29 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
             if (strcmp(t_lport->pb->type, "")
                 && strcmp(t_lport->pb->type, "localport")
                 && strcmp(t_lport->pb->type, "l3gateway")
-                && strcmp(t_lport->pb->type, "localnet")) {
+                && strcmp(t_lport->pb->type, "localnet")
+                && strcmp(t_lport->pb->type, "patch")) {
                 /* We allocate zone-id's only to VIF, localport, l3gateway,
-                 * and localnet lports. */
+                 * localnet and patch (enabled ACL) lports. */
+                continue;
+            }
+
+            /* For patch ports without ACL flag, delete the ct_zone. */
+            if (!strcmp(t_lport->pb->type, "patch") &&
+                !smap_get_bool(&t_lport->pb->options,
+                               "enable_router_port_acl", false)) {
+                struct simap_node *ct_zone =
+                simap_find(&ct_zones_data->current,
+                            t_lport->pb->logical_port);
+                if (ct_zone) {
+                    add_pending_ct_zone_entry(
+                        &ct_zones_data->pending, CT_ZONE_OF_QUEUED,
+                        ct_zone->data, false, ct_zone->name);
+
+                    bitmap_set0(ct_zones_data->bitmap, ct_zone->data);
+                    simap_delete(&ct_zones_data->current, ct_zone);
+                    updated = true;
+                }
                 continue;
             }
 
