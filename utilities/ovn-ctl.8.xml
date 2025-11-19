@@ -143,6 +143,14 @@
     <p><code>--ovn-br-controller-ssl-ciphers=<var>CIPHERS</var></code></p>
     <p><code>--ovn-br-db-ssl-ciphers=<var>CIPHERS</var></code></p>
     <p><code>--ovn-br-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
+    <p><code>--ovn-controller-ssl-server-name=<var>NAME</var></code></p>
+    <p><code>--ovn-ic-ssl-server-name=<var>NAME</var></code></p>
+    <p><code>--ovn-northd-ssl-server-name=<var>NAME</var></code></p>
+    <p><code>--ovn-nb-db-ssl-server-name=<var>NAME</var></code></p>
+    <p><code>--ovn-sb-db-ssl-server-name=<var>NAME</var></code></p>
+    <p><code>--ovn-ic-nb-db-ssl-server-name=<var>NAME</var></code></p>
+    <p><code>--ovn-ic-sb-db-ssl-server-name=<var>NAME</var></code></p>
+    <p><code>--ovn-sb-relay-db-ssl-server-name=<var>NAME</var></code></p>
 
     <h1>Address and port options</h1>
     <p><code>--db-nb-sync-from-addr=<var>IP ADDRESS</var></code></p>
