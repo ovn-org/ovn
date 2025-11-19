@@ -17719,3 +17719,227 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([dynamic-routing - BGP learned routes])
+
+vni=10
+VRF_RESERVE([$vni])
+
+# This test validates that BGP learned routes work correctly:
+# 1. Routes added to the VRF appear in Learned_Route table
+# 2. Disabling dynamic-routing removes learned routes
+#
+# Topology:
+#  +----+
+#  | vm1|
+#  +--+-+
+#     |
+#  +--+------+
+#  |ls-tenant|
+#  +--+------+
+#     |
+#  +--+-------+      +---------+
+#  |lr-tenant |------| public  |
+#  +----------+      +----+----+
+#                         |
+#                    +----+---+
+#                    | lr-frr | (in VRF 10)
+#                    +----+---+
+#                         |
+#                  +------+-------+
+#                  |local-bgp-port| (in VRF 10)
+#                  +--------------+
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-ex])
+
+check ovs-ofctl add-flow br-ex action=normal
+
+# Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv1 \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Configure bridge mappings for localnet
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phys:br-ex
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+OVS_WAIT_WHILE([ip link | grep -q ovnvrf$vni:.*UP])
+
+check ip link add vrf-$vni type vrf table $vni
+on_exit "ip link del vrf-$vni"
+check ip link set vrf-$vni up
+
+# Create public logical switch with localnet port
+check ovn-nbctl ls-add public
+check ovn-nbctl lsp-add-localnet-port public ln_port phys
+
+# Create lr-frr with dynamic routing in VRF $vni
+check ovn-nbctl lr-add lr-frr \
+    -- set Logical_Router lr-frr \
+        options:chassis=hv1 \
+        options:dynamic-routing=true \
+        options:requested-tnl-key=$vni \
+        options:dynamic-routing-maintain-vrf=false \
+        options:dynamic-routing-redistribute=static
+
+check ovn-nbctl lrp-add lr-frr lrp-local-bgp-port 00:00:00:00:00:03 20.0.0.3/8
+check ovn-nbctl lsp-add public public-lr-frr \
+    -- set Logical_Switch_Port public-lr-frr type=router \
+        options:router-port=lrp-local-bgp-port \
+    -- lsp-set-addresses public-lr-frr router
+
+# Create lr-tenant with gateway chassis
+check ovn-nbctl lr-add lr-tenant
+check ovn-nbctl lrp-add lr-tenant lr-tenant-public 00:00:00:00:00:42 20.0.0.42/8
+check ovn-nbctl lrp-set-gateway-chassis lr-tenant-public hv1
+check ovn-nbctl lsp-add public public-lr-tenant \
+    -- set Logical_Switch_Port public-lr-tenant type=router \
+        options:router-port=lr-tenant-public \
+    -- lsp-set-addresses public-lr-tenant router
+
+# Create ls-tenant and connect to lr-tenant
+check ovn-nbctl ls-add ls-tenant
+check ovn-nbctl lrp-add lr-tenant lr-tenant-ls 00:00:00:00:01:01 192.168.1.1/24
+check ovn-nbctl lsp-add ls-tenant ls-tenant-lr \
+    -- set Logical_Switch_Port ls-tenant-lr type=router \
+           options:router-port=lr-tenant-ls \
+    -- lsp-set-addresses ls-tenant-lr router
+
+# Add vm1 port
+check ovn-nbctl lsp-add ls-tenant vm1 \
+    -- lsp-set-addresses vm1 "00:00:00:00:01:10 192.168.1.10"
+
+# Create vm1 namespace and configure connectivity
+ADD_NAMESPACES(vm1)
+ADD_VETH(vm1, vm1, br-int, "192.168.1.10/24", "00:00:00:00:01:10", "192.168.1.1")
+
+# Add NAT rule on lr-tenant
+check ovn-nbctl lr-nat-add lr-tenant dnat_and_snat 20.0.0.88 192.168.1.10
+
+# Add static routes
+check ovn-nbctl lr-route-add lr-tenant 10.10.1.1 20.0.0.2 lr-tenant-public
+check ovn-nbctl lr-route-add lr-frr 10.10.2.1 20.0.0.42 lrp-local-bgp-port
+
+# Create local-bgp-port in VRF 10
+check ovs-vsctl add-port br-int local-bgp-port \
+    -- set Interface local-bgp-port type=internal \
+    -- set Interface local-bgp-port external_ids:iface-id=local-bgp-port
+
+check ovn-nbctl lsp-add public local-bgp-port \
+    -- lsp-set-addresses local-bgp-port "00:00:00:00:00:03 20.0.0.3"
+
+# Configure local-bgp-port interface and add to VRF
+AT_CHECK([ip link set local-bgp-port master vrf-$vni])
+AT_CHECK([ip link set local-bgp-port address 00:00:00:00:00:03])
+AT_CHECK([ip addr add dev local-bgp-port 20.0.0.3/8])
+AT_CHECK([ip link set local-bgp-port up])
+
+# Wait for everything to be ready
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Check lrp-local-bgp-port has dynamic-routing option set.
+check_row_count Port_Binding 1 logical_port=lrp-local-bgp-port 'options:dynamic-routing=true'
+
+# Verify advertised routes exist
+AS_BOX([Advertised_Route])
+OVS_WAIT_UNTIL([ovn-sbctl list Advertised_Route | grep ip_prefix | grep -Fe 10.10.2.1])
+
+# Add a route to the VRF (simulating BGP learning a route)
+AT_CHECK([ip route add 10.10.3.1 via 20.0.0.25 vrf vrf-$vni])
+
+# Verify learned route appears in SB database
+OVS_WAIT_UNTIL([ovn-sbctl list Learned_Route | grep ip_prefix | grep -Fe 10.10.3.1])
+
+# Add a second route to the VRF (simulating BGP learning a route)
+AT_CHECK([ip route add 10.10.4.1 via 20.0.0.25 vrf vrf-$vni])
+
+# Verify both routes appear in SB database.
+OVS_WAIT_FOR_OUTPUT([ovn-sbctl list Learned_Route | grep ip_prefix | sort], [0], [dnl
+ip_prefix           : "10.10.3.1"
+ip_prefix           : "10.10.4.1"
+])
+
+# Remove one route.
+AS_BOX([$(date +%H:%M:%S.%03N) Remove first route])
+AT_CHECK([ip route del 10.10.4.1 via 20.0.0.25 vrf vrf-$vni])
+
+# Verify only one route remains in SB database.
+OVS_WAIT_FOR_OUTPUT([ovn-sbctl list Learned_Route | grep ip_prefix | sort], [0], [dnl
+ip_prefix           : "10.10.3.1"
+])
+
+# Remove second route.
+AS_BOX([$(date +%H:%M:%S.%03N) Remove second route])
+AT_CHECK([ip route del 10.10.3.1 via 20.0.0.25 vrf vrf-$vni])
+
+# Verify all routes removed from SB database.
+OVS_WAIT_FOR_OUTPUT([ovn-sbctl list Learned_Route | grep ip_prefix | sort], [0], [dnl
+])
+
+# Add again a route to the VRF (simulating BGP learning a route)
+AT_CHECK([ip route add 10.10.3.1 via 20.0.0.25 vrf vrf-$vni])
+
+# Verify learned route appears in SB database
+OVS_WAIT_UNTIL([ovn-sbctl list Learned_Route | grep ip_prefix | grep -Fe 10.10.3.1])
+
+# Disable dynamic routing
+AS_BOX([$(date +%H:%M:%S.%03N) Disable dynamic-routing])
+check ovn-nbctl --wait=sb set Logical_Router lr-frr options:dynamic-routing=false
+check_row_count Port_Binding 0 logical_port=lrp-local-bgp-port 'options:dynamic-routing=true'
+
+# Add one more route to the VRF (simulating BGP learning a route)
+AT_CHECK([ip route add 10.10.4.1 via 20.0.0.25 vrf vrf-$vni])
+
+# Verify learned routes are removed as dynamic-routing=false
+OVS_WAIT_FOR_OUTPUT([ovn-sbctl list Learned_Route | grep ip_prefix | sort], [0], [dnl
+])
+
+# Re-enable dynamic routing
+check ovn-nbctl --wait=sb set Logical_Router lr-frr options:dynamic-routing=true
+check_row_count Port_Binding 1 logical_port=lrp-local-bgp-port 'options:dynamic-routing=true'
+
+# Verify both routes appear in SB database.
+OVS_WAIT_FOR_OUTPUT([ovn-sbctl list Learned_Route | grep ip_prefix | sort], [0], [dnl
+ip_prefix           : "10.10.3.1"
+ip_prefix           : "10.10.4.1"
+])
+
+# Remove lrp-local-bgp-port port.
+AS_BOX([$(date +%H:%M:%S.%03N) Remove lrp])
+check ovn-nbctl --wait=hv lrp-del lrp-local-bgp-port
+
+# Verify routes do not appear in SB database.
+OVS_WAIT_FOR_OUTPUT([ovn-sbctl list Learned_Route | grep ip_prefix | sort], [0], [dnl
+])
+
+# Cleanup VRF route
+AT_CHECK([ip route del 10.10.3.1 via 20.0.0.25 vrf vrf-$vni])
+AT_CHECK([ip route del 10.10.4.1 via 20.0.0.25 vrf vrf-$vni])
+
+OVN_CLEANUP_CONTROLLER([hv1], [], [], [lr-frr])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
+/failed to query port patch-.*/d
+/.*terminating with signal 15.*/d"])
+AT_CLEANUP
+])
