@@ -1,5 +1,11 @@
 Post v25.09.0
 -------------
+   - Added support for TLS Server Name Indication (SNI) with the new
+     --ssl-server-name option in OVN utilities and daemons. This allows
+     specifying the server name for SNI, which is useful when connecting
+     through proxies or service meshes where the connection endpoint differs
+     from the intended server name. Without this option, the hostname from
+     the connection string is used for SNI, as before.
    - Added disable_garp_rarp option to logical_router table in order to disable
      GARP/RARP announcements by all the peer ports of this logical router.
    - Support for specifying output_port for logical router reroute policies.

@@ -678,6 +678,10 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
             stream_ssl_set_ciphersuites(optarg);
             break;
 
+        case OPT_SSL_SERVER_NAME:
+            stream_ssl_set_server_name(optarg);
+            break;
+
         case 'd':
             ovnsb_db = optarg;
             break;
