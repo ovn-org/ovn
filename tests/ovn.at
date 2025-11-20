@@ -9504,14 +9504,7 @@ AT_CHECK([ovn-nbctl list Logical-Switch-Port | grep 192.10.2.127], [1])
 AT_CHECK([ovn-nbctl list Logical-Switch-Port | grep 192.10.2.128], [1])
 AT_CHECK([ovn-nbctl list Logical-Switch-Port | grep 192.10.2.180], [1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 

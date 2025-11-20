@@ -164,14 +164,7 @@ icmp,orig=(src=192.168.2.2,dst=192.168.1.2,id=<cleared>,type=8,code=0),reply=(sr
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -344,14 +337,7 @@ icmpv6,orig=(src=fd12::2,dst=fd11::2,id=<cleared>,type=128,code=0),reply=(src=fd
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -456,14 +442,7 @@ icmp,orig=(src=192.168.1.2,dst=172.16.1.2,id=<cleared>,type=8,code=0),reply=(src
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -568,14 +547,7 @@ icmpv6,orig=(src=fd10::2,dst=fd30::2,id=<cleared>,type=128,code=0),reply=(src=fd
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -790,14 +762,7 @@ icmp,orig=(src=192.168.1.2,dst=172.16.1.3,id=<cleared>,type=8,code=0),reply=(src
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -1016,14 +981,7 @@ icmpv6,orig=(src=fd11::2,dst=fd30::3,id=<cleared>,type=128,code=0),reply=(src=fd
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -1330,14 +1288,7 @@ icmpv6,orig=(src=fd11::2,dst=fd30::3,id=<cleared>,type=128,code=0),reply=(src=fd
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -1612,14 +1563,7 @@ OVS_WAIT_UNTIL([
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d"])
@@ -1833,14 +1777,7 @@ else
 fi
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d"])
@@ -2082,14 +2019,7 @@ AT_CHECK([test $bar3_ct -gt 0])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d"])
@@ -2190,14 +2120,7 @@ tcp,orig=(src=192.168.1.2,dst=30.0.0.2,sport=<cleared>,dport=<cleared>),reply=(s
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d"])
@@ -2300,14 +2223,7 @@ tcp,orig=(src=fd01::2,dst=fd03::2,sport=<cleared>,dport=<cleared>),reply=(src=fd
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d"])
@@ -2549,14 +2465,7 @@ OVS_WAIT_UNTIL([check_est_flows], [check established flows])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -2641,14 +2550,7 @@ done
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -2798,14 +2700,7 @@ tcp,orig=(src=fd72::2,dst=fd30::2,sport=<cleared>,dport=<cleared>),reply=(src=fd
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -2969,14 +2864,7 @@ test "x$ct1 = x$exp_ct1" && test "x$ct2 = x$exp_ct2"
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -3142,14 +3030,7 @@ test "x$ct1 = x$exp_ct1" && test "x$ct2 = x$exp_ct2"
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -3363,14 +3244,7 @@ test "x$ct1 = x$exp_ct1" && test "x$ct2 = x$exp_ct2" && test "x$ct3 = x$exp_ct3"
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -3506,14 +3380,7 @@ tcp,orig=(src=172.16.1.2,dst=172.16.1.11,sport=<cleared>,dport=<cleared>),reply=
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -3649,14 +3516,7 @@ tcp,orig=(src=fd72::2,dst=fd72::11,sport=<cleared>,dport=<cleared>),reply=(src=f
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -3832,14 +3692,7 @@ OVS_WAIT_UNTIL([
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -3995,14 +3848,7 @@ NS_CHECK_CONNECTIVITY_V6([alice1], [bar1], [fd12::2])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -4178,14 +4024,7 @@ icmp,orig=(src=192.168.1.3,dst=172.16.1.4,id=<cleared>,type=8,code=0),reply=(src
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -4345,14 +4184,7 @@ icmpv6,orig=(src=fd20::1,dst=fd20::4,id=<cleared>,type=128,code=0),reply=(src=fd
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -4423,14 +4255,7 @@ OVS_WAIT_WHILE([ovs-appctl dpctl/dump-conntrack zone=$zone_id | grep .])
 # ls1 should not be a local datapath anymore since ovs-p1 binding removed
 OVN_CLEANUP_CONTROLLER([hv1], [], [], [ls1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -4589,14 +4414,7 @@ OVS_WAIT_UNTIL([
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -4807,14 +4625,7 @@ OVS_WAIT_UNTIL([
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -4984,14 +4795,7 @@ wait_row_count Service_Monitor 1 status=online
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -5083,14 +4887,7 @@ NS_CHECK_EXEC([lsp], [nc 88.88.88.89 8080 -z], [0], [ignore], [ignore])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -5233,14 +5030,7 @@ AT_CHECK([ovs-appctl dpctl/dump-conntrack zone=$zone_lsp1_id | FORMAT_CT(192.168
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -5327,14 +5117,7 @@ NS_CHECK_EXEC([lsp], [nc 8800::0089 8080 -z], [0], [ignore], [ignore])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -5554,14 +5337,7 @@ aef0::3 udp port 90" | uniq | wc -l)
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -5787,14 +5563,7 @@ kill $(pidof tcpdump)
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -5907,14 +5676,7 @@ AT_CHECK([
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -6021,14 +5783,7 @@ NS_CHECK_EXEC([sw0-p1-lbc], [nc -z 30.0.0.10 80], [0], [ignore], [ignore])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -6128,14 +5883,7 @@ tcp,orig=(src=42.42.42.3,dst=66.66.66.66,sport=<clnt_s_port>,dport=666),reply=(s
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -6235,14 +5983,7 @@ tcp,orig=(src=4242::3,dst=6666::1,sport=<clnt_s_port>,dport=666),reply=(src=4242
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -6329,14 +6070,7 @@ NS_CHECK_EXEC([sw0-p1-f], [ping -q -c 3 -i 0.3 -w 2 10.0.0.5 | FORMAT_PING], \
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -6545,14 +6279,7 @@ tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(sr
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -6777,14 +6504,7 @@ tcp,orig=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),reply=(src=fd
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -6826,14 +6546,7 @@ OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-port1) = xdown])
 
 OVN_CLEANUP_CONTROLLER([hv1], [], [], [sw0])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -6914,14 +6627,7 @@ icmp,orig=(src=192.168.1.2,dst=172.16.1.100,id=<cleared>,type=8,code=0),reply=(s
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
@@ -7144,14 +6850,7 @@ OVS_WAIT_UNTIL([tc class show dev ovs-public | \
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
@@ -7354,14 +7053,7 @@ check ovn-nbctl destroy bfd $uuid_v6
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
@@ -7488,14 +7180,7 @@ AT_CHECK([ovs-appctl dpctl/dump-flows | grep ct_mark | grep -v ipv6 -c], [1], [d
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -7607,14 +7292,7 @@ NS_CHECK_EXEC([vm2], [ping -q -c 3 -i 0.3 -w 2 172.18.2.10 | FORMAT_PING], \
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
@@ -7713,14 +7391,7 @@ NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 172.18.2.12 | FORMAT_PING], \
 # Avoid checking flows on ls-pub due to different ct-zone allocation for cr-ports in I+P/recompute.
 OVN_CLEANUP_CONTROLLER([hv1], [], [], [ls-pub])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -7923,14 +7594,7 @@ OVS_WAIT_UNTIL([test "1" = "$(grep -c "dl_dst=33:33:33:33:33:33" ovn-controller.
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
@@ -8066,14 +7730,7 @@ icmp,orig=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -8208,14 +7865,7 @@ icmp,orig=(src=10.0.0.3,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -8309,14 +7959,7 @@ icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -8410,14 +8053,7 @@ icmp,orig=(src=10.0.0.2,dst=10.0.0.3,id=<cleared>,type=8,code=0),reply=(src=10.0
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -8504,14 +8140,7 @@ AT_CHECK([ip netns exec sw0p1 wget 20.0.0.3 -t 3 -T 1], [0], [ignore], [ignore])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -8861,14 +8490,7 @@ check $PYTHON $srcdir/check_acl_log.py \
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -8990,14 +8612,7 @@ AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -9052,14 +8667,7 @@ NS_CHECK_EXEC([sw0-p1.2], [ping -q -c 3 -i 0.3 -w 2 10.0.0.3 | FORMAT_PING], \
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -9141,14 +8749,7 @@ NS_CHECK_EXEC([ls1p1], [ping6 -q -c 3 -i 0.3 -w 2 1711::1  | FORMAT_PING], \
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -9250,14 +8851,7 @@ AT_CHECK([grep -qE 'Too many active IPv4 mcast flows' northd/ovn-northd.log], [1
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -9319,14 +8913,7 @@ NS_CHECK_EXEC([vif0], [ping -q -c 3 -i 0.3 -w 1 192.168.20.1 | FORMAT_PING], \
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -9521,14 +9108,7 @@ udp,orig=(src=192.168.10.10,dst=192.168.20.20,sport=<cleared>,dport=<cleared>),r
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -9665,14 +9245,7 @@ OVS_WAIT_UNTIL([
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -9810,14 +9383,7 @@ OVS_WAIT_UNTIL([
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -9935,14 +9501,7 @@ OVS_WAIT_UNTIL([
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -10086,14 +9645,7 @@ AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -10230,14 +9782,7 @@ AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -10326,14 +9871,7 @@ NS_CHECK_EXEC([ns_ls1p1], [ping -q -c 3 -i 0.3 -w 2 10.89.189.1 | FORMAT_PING], 
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -10468,14 +10006,7 @@ NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | FORMAT_PING], \
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -10682,14 +10213,7 @@ AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(30.0.0.1) | sed -e 's/zone
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -10823,14 +10347,7 @@ NS_CHECK_EXEC([ns_ext1], [ping -q -c 3 -i 0.3 -w 2 172.0.0.88 | FORMAT_PING], \
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -10977,14 +10494,7 @@ OVS_WAIT_UNTIL([
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -11145,14 +10655,7 @@ OVS_WAIT_UNTIL([
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -11278,14 +10781,7 @@ OVS_WAIT_UNTIL([
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -11611,14 +11107,7 @@ TMPPID=$(cat $OVS_RUNDIR/ovn-controller.pid)
 check ovs-appctl -t ovn-controller exit --restart
 OVS_WAIT_WHILE([kill -0 $TMPPID 2>/dev/null])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 AT_CLEANUP
 ])
@@ -11773,14 +11262,7 @@ killall tcpdump
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -11915,14 +11397,7 @@ acl_test to-lport "" pg
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -11995,14 +11470,7 @@ tcp,orig=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),reply=(sr
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -12065,14 +11533,7 @@ check_row_count mac_binding 1 mac=\"00:00:00:00:00:02\"
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -12179,14 +11640,7 @@ OVS_WAIT_FOR_OUTPUT([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.1.151) |
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -12392,14 +11846,7 @@ OVS_WAIT_UNTIL([check_est_flows 0xa], [check established flows])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -12477,14 +11924,7 @@ AT_CHECK([ovs-ofctl dump-flows br-int | grep 'table=OFTABLE_CHK_LB_AFFINITY, n_p
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -12567,14 +12007,7 @@ NS_CHECK_EXEC([sw1-p0], [ping -q -c 3 -i 0.3 -w 2 172.16.1.100 | FORMAT_PING], \
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -12677,14 +12110,7 @@ wait_row_count MAC_Binding 1 logical_port=lr1-pub ip=172.24.4.100
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -12769,14 +12195,7 @@ AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep -c "zone=$zone_id"], [0], [2
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -12913,14 +12332,7 @@ NS_CHECK_EXEC([sw11], [ip addr show sw11 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'],
 ])
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
@@ -13047,14 +12459,7 @@ check_dnat
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -13180,14 +12585,7 @@ check_dnat
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -13420,14 +12818,7 @@ AT_CHECK([for f in $(ls -1 nfcapd.*); do nfdump -o json -r $f; done | grep obser
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -13547,14 +12938,7 @@ AT_CHECK([for f in $(ls -1 nfcapd.*); do nfdump -o json -r $f; done | grep obser
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -13671,14 +13055,7 @@ AT_CHECK([for f in $(ls -1 nfcapd.*); do nfdump -o json -r $f; done | grep obser
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -13792,14 +13169,7 @@ AT_CHECK([for f in $(ls -1 nfcapd.*); do nfdump -o json -r $f; done | grep obser
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -13911,14 +13281,7 @@ NS_CHECK_EXEC([sw01], [ping -q -c 2 -i 0.2 -w 2 172.16.1.1 | FORMAT_PING],
 AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-remote=$SB_PATH])
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
@@ -14011,14 +13374,7 @@ AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-remote=$SB_PATH])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
@@ -14158,14 +13514,7 @@ NS_CHECK_EXEC([bar1], [echo "TCP test" | nc -w 1 --send-only 172.16.1.100 2222])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
@@ -14305,14 +13654,7 @@ NS_CHECK_EXEC([bar1], [echo "TCP test" | nc -w 1 --send-only 172.16.1.100 2222])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
@@ -14378,14 +13720,7 @@ AT_CHECK([grep -c "NXT_CT_FLUSH_ZONE" ovs-vswitchd.log], [0], [dnl
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
@@ -14487,14 +13822,7 @@ AT_CHECK([ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-15], [0
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
@@ -14686,14 +14014,7 @@ sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -14841,14 +14162,7 @@ NS_CHECK_EXEC([bob], [ping -q -c 3 -i 0.3 -w 2 10.42.0.10 | FORMAT_PING], \
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -14989,14 +14303,7 @@ NS_CHECK_EXEC([bob], [ping -q -c 3 -i 0.3 -w 2 10.42.0.10 | FORMAT_PING], \
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -15107,14 +14414,7 @@ NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 172.18.1.12 | FORMAT_PING], \
 # Avoid checking flows on ls-pub due to different ct-zone allocation for cr-ports in I+P/recompute.
 OVN_CLEANUP_CONTROLLER([hv1], [], [], [ls-pub])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -15176,14 +14476,7 @@ NS_CHECK_EXEC([foo], [arping -q -c 3 172.16.1.100])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -15441,14 +14734,7 @@ sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
@@ -15705,14 +14991,7 @@ sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
@@ -16199,14 +15478,7 @@ blackhole 198.51.100.0/24 proto ovn metric 1000
 OVN_CLEANUP_CONTROLLER([hv1])
 AT_CHECK([ip vrf | grep -q ovnvrf1338], [1], [])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
@@ -16546,14 +15818,7 @@ check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
 OVN_CLEANUP_CONTROLLER([hv1])
 AT_CHECK([ip vrf | grep -q ovnvrf1337], [1], [])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
@@ -16703,14 +15968,7 @@ OVN_CLEANUP_CONTROLLER([hv1])
 AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP], [1])
 AT_CHECK([test `ip route show table $vrf | wc -l` -eq 1], [1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -16863,14 +16121,7 @@ OVN_CLEANUP_CONTROLLER([hv1])
 AT_CHECK([ip link | grep -q ovnvrf1001:.*UP], [1])
 AT_CHECK([test `ip -6 route show table 1001 | wc -l` -eq 1], [1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -17093,14 +16344,7 @@ OVN_CLEANUP_CONTROLLER([hv1], [], [], [ls-join])
 AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP], [1])
 AT_CHECK([test `ip route show table $vrf | wc -l` -eq 1], [1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -17318,14 +16562,7 @@ OVN_CLEANUP_CONTROLLER([hv1], [], [], [ls-join])
 AT_CHECK([ip link | grep -q ovnvrf1003:.*UP], [1])
 AT_CHECK([test `ip -6 route show table 1003 | wc -l` -eq 2], [1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -17489,14 +16726,7 @@ dnl Ensure system resources are cleaned up.
 AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP], [1])
 AT_CHECK([test `ip route show table $vrf | wc -l` -eq 1], [1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -17579,14 +16809,7 @@ check_row_count Learned_Route 2
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -17677,14 +16900,7 @@ check ovn-nbctl --wait=hv lr-del lr
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -17811,14 +17027,7 @@ OVS_WAIT_UNTIL([
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -17880,14 +17089,7 @@ AT_CHECK([test $lflow_run_end == $lflow_run])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP()
@@ -18025,14 +17227,7 @@ tcp,orig=(src=172.16.1.2,dst=192.168.2.2,sport=<cleared>,dport=<cleared>),reply=
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -18144,14 +17339,7 @@ icmp,orig=(src=192.168.1.2,dst=192.168.1.1,id=<cleared>,type=8,code=0),reply=(sr
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -18287,14 +17475,7 @@ check ovn-nbctl lb-del lb1
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
@@ -18530,14 +17711,7 @@ OVS_WAIT_FOR_OUTPUT([bridge fdb show | grep "lo-10" | grep "f0:00:0f:16:01" | so
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
