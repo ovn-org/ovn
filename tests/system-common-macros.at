@@ -326,14 +326,7 @@ AT_CHECK([ovn-nbctl get logical_router_port rp-sw0 ipv6_prefix | cut -c3-15], [0
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
