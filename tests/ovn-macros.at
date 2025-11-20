@@ -1,3 +1,22 @@
+# OVN_CLEANUP_NORTHD
+#
+# Gracefully terminate all central OVN daemons: NB, SB and ovn-northd.
+m4_define([OVN_CLEANUP_NORTHD],[
+    as ovn-sb
+    OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+    as ovn-nb
+    OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+    as northd
+    OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+    if test -d northd-backup; then
+        as northd-backup
+        OVS_APP_EXIT_AND_WAIT([ovn-northd])
+    fi
+])
+
 # OVN_CLEANUP_VSWITCH(sim)
 #
 # Gracefully terminate vswitch daemons in the
