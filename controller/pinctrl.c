@@ -383,6 +383,7 @@ static void pinctrl_handle_put_fdb(const struct flow *md,
 static void set_from_ctrl_flag_in_pkt_metadata(struct ofputil_packet_in *);
 
 COVERAGE_DEFINE(pinctrl_drop_put_mac_binding);
+COVERAGE_DEFINE(pinctrl_drop_put_fdb);
 COVERAGE_DEFINE(pinctrl_drop_buffered_packets_map);
 COVERAGE_DEFINE(pinctrl_drop_controller_event);
 COVERAGE_DEFINE(pinctrl_drop_put_vport_binding);
@@ -8828,7 +8829,7 @@ pinctrl_handle_put_fdb(const struct flow *md, const struct flow *headers)
                        OVS_REQUIRES(pinctrl_mutex)
 {
     if (hmap_count(&put_fdbs) >= MAX_FDB_ENTRIES) {
-        COVERAGE_INC(pinctrl_drop_put_mac_binding);
+        COVERAGE_INC(pinctrl_drop_put_fdb);
         return;
     }
 
