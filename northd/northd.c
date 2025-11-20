@@ -19301,8 +19301,7 @@ lflow_handle_northd_lr_changes(struct ovsdb_idl_txn *ovnsb_txn,
     struct hmapx_node *hmapx_node;
     HMAPX_FOR_EACH (hmapx_node, &tracked_lrs->deleted) {
         struct ovn_datapath *od = hmapx_node->data;
-        lflow_ref_unlink_lflows(od->datapath_lflows);
-        handled = lflow_ref_sync_lflows(
+        handled = lflow_ref_resync_flows(
             od->datapath_lflows, lflows, ovnsb_txn, lflow_input->ls_datapaths,
             lflow_input->lr_datapaths,
             lflow_input->ovn_internal_version_changed,
@@ -19325,17 +19324,28 @@ lflow_handle_northd_lr_changes(struct ovsdb_idl_txn *ovnsb_txn,
     };
     HMAPX_FOR_EACH (hmapx_node, &tracked_lrs->crupdated) {
         struct ovn_datapath *od = hmapx_node->data;
+
+        lflow_ref_unlink_lflows(od->datapath_lflows);
         build_lswitch_and_lrouter_iterate_by_lr(od, &lsi);
+    }
+
+    /* We need to make sure that all datapath groups are allocated before
+     * trying to sync logical flows. Otherwise, we would need to recompute
+     * those datapath groups within those flows over and over again. */
+    HMAPX_FOR_EACH (hmapx_node, &tracked_lrs->crupdated) {
+        struct ovn_datapath *od = hmapx_node->data;
+
         handled = lflow_ref_sync_lflows(
             od->datapath_lflows, lflows, ovnsb_txn, lflow_input->ls_datapaths,
             lflow_input->lr_datapaths,
             lflow_input->ovn_internal_version_changed,
             lflow_input->sbrec_logical_flow_table,
             lflow_input->sbrec_logical_dp_group_table);
-         if (!handled) {
+        if (!handled) {
             break;
-         }
+        }
     }
+
     ds_destroy(&lsi.actions);
     ds_destroy(&lsi.match);
     return handled;
