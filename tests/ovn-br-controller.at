@@ -261,7 +261,9 @@ actions="next;" bridge=${br_id} table_id=10 priority=1000
 
 OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br1 | grep -v NXST_FLOW | wc -l` -eq 37])
 
-AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br1 | sort | ofctl_strip_all], [0], [dnl
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br1 | sort | ofctl_strip_all |
+                   sed -r 's/conjunction\([[0-9]]*,([[/0-9]]*)\)/conjunction\(xx,\1\)/' |
+                   sed -r 's/conj_id=[[0-9]]*,/conj_id=xx,/'], [0], [dnl
  priority=0 actions=NORMAL
  priority=100,in_port=1 actions=load:0x1->NXM_NX_REG14[[]],resubmit(,8)
  priority=100,in_port=2 actions=load:0x2->NXM_NX_REG14[[]],resubmit(,8)
@@ -274,30 +276,30 @@ AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br1 | sort | ofctl_strip_all], [0], [dnl
  table=121, priority=0 actions=NORMAL
  table=121, priority=100,reg15=0x1 actions=output:1
  table=121, priority=100,reg15=0x2 actions=output:2
- table=18, priority=1000,conj_id=1644032429,tcp actions=resubmit(,19)
- table=18, priority=1000,tcp,tp_dst=0x3ea/0xfffe actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_dst=0x3ec/0xfffc actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_dst=0x3f0/0xfff0 actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_dst=0x400/0xfe00 actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_dst=0x600/0xff00 actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_dst=0x700/0xff80 actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_dst=0x780/0xffc0 actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_dst=0x7c0/0xfff0 actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_dst=1001 actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_src=0x10/0xfff0 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x100/0xff00 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x2/0xfffe actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x20/0xffe0 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x200/0xff00 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x300/0xff80 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x380/0xffc0 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x3c0/0xffe0 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x3e0/0xfff8 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x4/0xfffc actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x40/0xffc0 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x8/0xfff8 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x80/0xff80 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=1 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,conj_id=xx,tcp actions=resubmit(,19)
+ table=18, priority=1000,tcp,tp_dst=0x3ea/0xfffe actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x3ec/0xfffc actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x3f0/0xfff0 actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x400/0xfe00 actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x600/0xff00 actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x700/0xff80 actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x780/0xffc0 actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x7c0/0xfff0 actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_dst=1001 actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_src=0x10/0xfff0 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x100/0xff00 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x2/0xfffe actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x20/0xffe0 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x200/0xff00 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x300/0xff80 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x380/0xffc0 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x3c0/0xffe0 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x3e0/0xfff8 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x4/0xfffc actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x40/0xffc0 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x8/0xfff8 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x80/0xff80 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=1 actions=conjunction(xx,2/2)
  table=9, priority=1000,ip actions=ct(table=10,zone=NXM_NX_REG12[[0..15]],nat)
 NXST_FLOW reply:
 ])
@@ -328,7 +330,9 @@ as ovn-br ovn-brctl set logical_flow ${lflow_id} \
 match='"ip4 && tcp.src > 0 && tcp.src < 1000 && tcp.dst > 1000 && tcp.dst < 2000"'
 OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br1 | grep -v NXST_FLOW | wc -l` -eq 37])
 
-AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br1 | sort | ofctl_strip_all], [0], [dnl
+AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br1 | sort | ofctl_strip_all |
+                   sed -r 's/conjunction\([[0-9]]*,([[/0-9]]*)\)/conjunction\(xx,\1\)/' |
+                   sed -r 's/conj_id=[[0-9]]*,/conj_id=xx,/'], [0], [dnl
  priority=0 actions=NORMAL
  priority=100,in_port=1 actions=load:0x1->NXM_NX_REG14[[]],resubmit(,8)
  priority=100,in_port=2 actions=load:0x2->NXM_NX_REG14[[]],resubmit(,8)
@@ -341,30 +345,30 @@ AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br1 | sort | ofctl_strip_all], [0], [dnl
  table=121, priority=0 actions=NORMAL
  table=121, priority=100,reg15=0x1 actions=output:1
  table=121, priority=100,reg15=0x2 actions=output:2
- table=18, priority=1000,conj_id=1644032429,tcp actions=resubmit(,19)
- table=18, priority=1000,tcp,tp_dst=0x3ea/0xfffe actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_dst=0x3ec/0xfffc actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_dst=0x3f0/0xfff0 actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_dst=0x400/0xfe00 actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_dst=0x600/0xff00 actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_dst=0x700/0xff80 actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_dst=0x780/0xffc0 actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_dst=0x7c0/0xfff0 actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_dst=1001 actions=conjunction(1644032429,1/2)
- table=18, priority=1000,tcp,tp_src=0x10/0xfff0 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x100/0xff00 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x2/0xfffe actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x20/0xffe0 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x200/0xff00 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x300/0xff80 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x380/0xffc0 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x3c0/0xffe0 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x3e0/0xfff8 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x4/0xfffc actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x40/0xffc0 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x8/0xfff8 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=0x80/0xff80 actions=conjunction(1644032429,2/2)
- table=18, priority=1000,tcp,tp_src=1 actions=conjunction(1644032429,2/2)
+ table=18, priority=1000,conj_id=xx,tcp actions=resubmit(,19)
+ table=18, priority=1000,tcp,tp_dst=0x3ea/0xfffe actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x3ec/0xfffc actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x3f0/0xfff0 actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x400/0xfe00 actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x600/0xff00 actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x700/0xff80 actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x780/0xffc0 actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_dst=0x7c0/0xfff0 actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_dst=1001 actions=conjunction(xx,1/2)
+ table=18, priority=1000,tcp,tp_src=0x10/0xfff0 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x100/0xff00 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x2/0xfffe actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x20/0xffe0 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x200/0xff00 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x300/0xff80 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x380/0xffc0 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x3c0/0xffe0 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x3e0/0xfff8 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x4/0xfffc actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x40/0xffc0 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x8/0xfff8 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=0x80/0xff80 actions=conjunction(xx,2/2)
+ table=18, priority=1000,tcp,tp_src=1 actions=conjunction(xx,2/2)
  table=9, priority=1000,ip actions=ct(table=10,zone=NXM_NX_REG12[[0..15]],nat)
 NXST_FLOW reply:
 ])
