@@ -78,10 +78,6 @@ northd_get_input_data(struct engine_node *node,
         EN_OVSDB_GET(engine_get_input("NB_mirror", node));
     input_data->nbrec_port_group_table =
         EN_OVSDB_GET(engine_get_input("NB_port_group", node));
-    input_data->sbrec_service_monitor_by_learned_type =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_service_monitor", node),
-            "sbrec_service_monitor_by_learned_type");
 
     input_data->sbrec_port_binding_table =
         EN_OVSDB_GET(engine_get_input("SB_port_binding", node));
