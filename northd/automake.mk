@@ -44,6 +44,8 @@ northd_ovn_northd_SOURCES = \
 	northd/en-lr-stateful.h \
 	northd/en-ls-stateful.c \
 	northd/en-ls-stateful.h \
+	northd/en-ls-arp.c \
+	northd/en-ls-arp.h \
 	northd/en-sampling-app.c \
 	northd/en-sampling-app.h \
 	northd/en-acl-ids.c \

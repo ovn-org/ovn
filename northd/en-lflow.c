@@ -23,6 +23,7 @@
 #include "en-lr-nat.h"
 #include "en-lr-stateful.h"
 #include "en-ls-stateful.h"
+#include "en-ls-arp.h"
 #include "en-multicast.h"
 #include "en-northd.h"
 #include "en-meters.h"
@@ -62,6 +63,8 @@ lflow_get_input_data(struct engine_node *node,
         engine_get_input_data("lr_stateful", node);
     struct ed_type_ls_stateful *ls_stateful_data =
         engine_get_input_data("ls_stateful", node);
+    struct ed_type_ls_arp *ls_arp_data =
+        engine_get_input_data("ls_arp", node);
     struct multicast_igmp_data *multicat_igmp_data =
         engine_get_input_data("multicast_igmp", node);
     struct ic_learned_svc_monitors_data *ic_learned_svc_monitors_data =
@@ -86,6 +89,7 @@ lflow_get_input_data(struct engine_node *node,
     lflow_input->ls_port_groups = &pg_data->ls_port_groups;
     lflow_input->lr_stateful_table = &lr_stateful_data->table;
     lflow_input->ls_stateful_table = &ls_stateful_data->table;
+    lflow_input->ls_arp_table = &ls_arp_data->table;
     lflow_input->meter_groups = &sync_meters_data->meter_groups;
     lflow_input->lb_datapaths_map = &northd_data->lb_datapaths_map;
     lflow_input->local_svc_monitors_map =
@@ -220,6 +224,31 @@ lflow_ls_stateful_handler(struct engine_node *node, void *data)
                                           &ls_sful_data->trk_data,
                                           &lflow_input,
                                           lflow_data->lflow_table)) {
+        return EN_UNHANDLED;
+    }
+
+    return EN_HANDLED_UPDATED;
+}
+
+enum engine_input_handler_result
+lflow_ls_arp_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_ls_arp *ls_arp_data =
+        engine_get_input_data("ls_arp", node);
+
+    if (!ls_arp_has_tracked_data(&ls_arp_data->trk_data)) {
+        return EN_UNHANDLED;
+    }
+
+    const struct engine_context *eng_ctx = engine_get_context();
+    struct lflow_data *lflow_data = data;
+    struct lflow_input lflow_input;
+
+    lflow_get_input_data(node, &lflow_input);
+    if (!lflow_handle_ls_arp_changes(eng_ctx->ovnsb_idl_txn,
+                                     &ls_arp_data->trk_data,
+                                     &lflow_input,
+                                     lflow_data->lflow_table)) {
         return EN_UNHANDLED;
     }
 

@@ -311,6 +311,15 @@
       </li>
 
       <li>
+        For each logical switch that has connected physical ports
+        (localnet or l2gateway) and is also connected to a distributed router,
+        filtering rules are added for ARP requests coming from localnet or
+        l2gateway ports, allowed for processing on gateway chassis.
+        The <code>REGBIT_EXT_ARP</code> register is set for all ARP requests
+        originating from physical ports with priority 75 flow.
+      </li>
+
+      <li>
         For each (enabled) vtep logical port, a priority 70 flow is added which
         matches on all packets and applies the action
         <code>next(pipeline=ingress, table=S_SWITCH_IN_L3_LKUP) = 1;</code>
@@ -395,6 +404,13 @@
       <li>
         One priority-0 fallback flow that matches all packets and advances to
         the next table.
+      </li>
+
+      <li>
+        Priority 75: Allows <code>REGBIT_EXT_ARP</code> packets only on gateway
+        chassis and chassis with distributed NAT entries.
+        Priority 70: Drops <code>REGBIT_EXT_ARP</code> packets on non-gateway
+        chassis (complements the priority 75 flow).
       </li>
     </ul>
 

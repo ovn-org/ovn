@@ -7371,9 +7371,6 @@ AT_CHECK([grep lr_in_admission lrflows | grep cr-DR | ovn_strip_lflows], [0], [d
 ])
 # Check the flows in lr_in_lookup_neighbor stage
 AT_CHECK([grep lr_in_lookup_neighbor lrflows | grep cr-DR | ovn_strip_lflows], [0], [dnl
-  table=??(lr_in_lookup_neighbor), priority=100  , match=(inport == "DR-S1" && arp.spa == 172.16.1.0/24 && arp.op == 1 && is_chassis_resident("cr-DR-S1")), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); next;)
-  table=??(lr_in_lookup_neighbor), priority=100  , match=(inport == "DR-S2" && arp.spa == 172.16.2.0/24 && arp.op == 1 && is_chassis_resident("cr-DR-S2")), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); next;)
-  table=??(lr_in_lookup_neighbor), priority=100  , match=(inport == "DR-S3" && arp.spa == 172.16.3.0/24 && arp.op == 1 && is_chassis_resident("cr-DR-S3")), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); next;)
   table=??(lr_in_lookup_neighbor), priority=120  , match=(inport == "DR-S1" && (nd_na || nd_ns) && eth.mcast && !is_chassis_resident("cr-DR-S1")), action=(reg9[[2]] = 1; next;)
   table=??(lr_in_lookup_neighbor), priority=120  , match=(inport == "DR-S2" && (nd_na || nd_ns) && eth.mcast && !is_chassis_resident("cr-DR-S2")), action=(reg9[[2]] = 1; next;)
   table=??(lr_in_lookup_neighbor), priority=120  , match=(inport == "DR-S3" && (nd_na || nd_ns) && eth.mcast && !is_chassis_resident("cr-DR-S3")), action=(reg9[[2]] = 1; next;)
@@ -14068,7 +14065,7 @@ AT_CHECK([grep -Fe "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3
   table=??(lr_out_undnat      ), priority=100  , match=(ip && ip4.src == 20.0.0.3 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_dnat;)
 ])
 
-AT_CHECK([grep -Fe "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" publicflows | ovn_strip_lflows], [0], [dnl
+AT_CHECK([grep -Fe "172.168.0.110" -e "172.168.0.120" -e "10.0.0.3" -e "20.0.0.3" -e "30:54:00:00:00:03"  -e "sw0-port1" publicflows | ovn_strip_lflows | grep -v "reg0.*22"], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && is_chassis_resident("sw0-port1")), action=(outport = "public-lr0"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:ff:02, 30:54:00:00:00:03} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.110), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
@@ -18795,5 +18792,96 @@ check ovn-nbctl --wait=sb clear logical_switch ls-evpn other_config
 check_row_count Advertised_MAC_Binding 0
 
 OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Logical Switch ARP filtering])
+ovn_start
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 down_link f0:00:00:00:00:f1 192.168.1.1/24
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 up_link
+check ovn-nbctl lsp-add ls1 down_vif1
+check ovn-nbctl lsp-add ls1 down_vif2
+check ovn-nbctl lsp-add ls1 down_ext
+
+check ovn-nbctl set Logical_Switch_Port up_link \
+    type=router \
+    options:router-port=down_link \
+    addresses=router
+
+check ovn-nbctl lsp-set-addresses down_vif1 'f0:00:00:00:00:01 192.168.1.101'
+check ovn-nbctl lsp-set-addresses down_vif2 'f0:00:00:00:00:02 192.168.1.102'
+check ovn-nbctl lrp-set-gateway-chassis down_link hv1
+check ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_apply_port_sec | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
+])
+
+# Check localnet port addings trigger ls-arp flow
+check ovn-nbctl --wait=sb lsp-set-type down_ext localnet
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_apply_port_sec | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
+  table=??(ls_in_apply_port_sec), priority=70   , match=(reg0[[22]] == 1), action=(drop;)
+  table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("cr-down_link")), action=(next;)
+])
+
+# Check nat adding to dgr attached to logical switch trigger ls-arp flow.
+check ovn-nbctl lr-nat-add lr1 dnat_and_snat 192.168.0.4 10.0.0.4
+check ovn-nbctl lr-nat-add lr1 dnat_and_snat 192.168.0.3 10.0.0.3 down_vif1 f0:00:00:00:00:03
+check ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_apply_port_sec | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
+  table=??(ls_in_apply_port_sec), priority=70   , match=(reg0[[22]] == 1), action=(drop;)
+  table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("cr-down_link")), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("down_vif1")), action=(next;)
+])
+
+check ovn-nbctl --wait=sb lr-nat-del lr1 dnat_and_snat 192.168.0.3
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_apply_port_sec | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
+  table=??(ls_in_apply_port_sec), priority=70   , match=(reg0[[22]] == 1), action=(drop;)
+  table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("cr-down_link")), action=(next;)
+])
+
+# Check changing logical port type to l2gateway.
+check ovn-nbctl --wait=sb lsp-set-type down_ext l2gateway
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_apply_port_sec | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
+  table=??(ls_in_apply_port_sec), priority=70   , match=(reg0[[22]] == 1), action=(drop;)
+  table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("cr-down_link")), action=(next;)
+])
+
+# Check changing logical port type to vif.
+check ovn-nbctl --wait=sb lsp-set-type down_ext ''
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_apply_port_sec | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
+])
+
+# Check changing logical port type back to localnet.
+check ovn-nbctl --wait=sb lsp-set-type down_ext localnet
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_apply_port_sec | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
+  table=??(ls_in_apply_port_sec), priority=70   , match=(reg0[[22]] == 1), action=(drop;)
+  table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("cr-down_link")), action=(next;)
+])
+
+# Check changing removing logical port.
+check ovn-nbctl --wait=sb lsp-del down_ext
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_apply_port_sec | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
+])
+
 AT_CLEANUP
 ])

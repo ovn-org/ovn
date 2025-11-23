@@ -43885,3 +43885,157 @@ OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], expected)
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([GARP delivery: gw and external ports])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+# Configure initial environment
+# LR1: down_link <-> LS1: up_link
+# set lr_down: gateway port (chassis redirect) bound to hv1
+# LS1: down_vif1 - vif port bound to hv1
+#      down_vif2 - vif port bound to hv2
+#      down_ext - outer (port will be iterated as localnet, l2gateway)
+#
+# Test: send GARP request from virtual ports (down_vif1, down_vif2)
+#       ensure mac_binding is always updated.
+#       (Fixing the issue: mac_binding is only updated for packets came from
+#        down_link's resident chassis)
+#       send GARP request from from localnet.
+#       ensure mac_binding is updated only if localnet bound to same hv as l3dgw
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 down_link f0:00:00:00:00:f1 192.168.1.1/24
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 up_link
+check ovn-nbctl lsp-add ls1 down_vif1
+check ovn-nbctl lsp-add ls1 down_vif2
+check ovn-nbctl lsp-add ls1 down_ext
+
+check ovn-nbctl set Logical_Switch_Port up_link \
+    type=router \
+    options:router-port=down_link \
+    addresses=router
+
+check ovn-nbctl lsp-set-addresses down_vif1 'f0:00:00:00:00:01 192.168.1.101'
+check ovn-nbctl lsp-set-addresses down_vif2 'f0:00:00:00:00:02 192.168.1.102'
+
+check ovn-nbctl lsp-set-type down_ext localnet
+check ovn-nbctl lsp-set-options down_ext network_name=physnet1
+check ovn-nbctl lrp-set-gateway-chassis down_link hv1
+
+net_add n1
+
+# Create hypervisor hv1 connected to n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl add-port br-int vif1 -- \
+    set Interface vif1 external-ids:iface-id=down_vif1 \
+    options:tx_pcap=hv1/vif1-tx.pcap options:rxq_pcap=hv1/vif1-rx.pcap
+
+# Create hypervisor hv2 connected to n1, add localnet here
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovs-vsctl add-br br-eth0
+ovn_attach n1 br-phys 192.168.0.2
+ovs-vsctl add-port br-int vif2 -- \
+    set Interface vif2 external-ids:iface-id=down_vif2 \
+    options:tx_pcap=hv2/vif2-tx.pcap options:rxq_pcap=hv2/vif2-rx.pcap
+
+ovs-vsctl set Open_vSwitch . external_ids:ovn-bridge-mappings="physnet1:br-eth0"
+
+ovs-vsctl add-port br-eth0 vif_ext -- \
+    set Interface vif_ext options:tx_pcap=hv2/vif_ext-tx.pcap \
+    options:rxq_pcap=hv2/vif_ext-rx.pcap
+
+# Pre-populate the hypervisors' ARP tables so that we don't lose any
+# packets for ARP resolution (native tunneling doesn't queue packets
+# for ARP resolution).
+OVN_POPULATE_ARP
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Annonce 192.168.1.222 from localnet in hv2
+# result: drop, hv2 is not gateway chassis for down_link
+sha=02:00:00:00:00:ee
+tha=00:00:00:00:00:00
+spa=192.168.1.222
+tpa=$spa
+garp=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                ARP(hwsrc='${sha}', hwdst='${tha}', psrc='${spa}', pdst='${tpa}')")
+as hv2 ovs-appctl netdev-dummy/receive vif_ext $garp
+
+# Make hv2 gateway chassis
+# Annonce 192.168.1.223 from localnet in hv2
+# result: ok, hv2 is gateway chassis for down_link
+#
+check ovn-nbctl lrp-set-gateway-chassis down_link hv2
+
+wait_row_count Port_Binding 1 logical_port=cr-down_link 'chassis!=[[]]'
+check ovn-nbctl --wait=hv sync
+
+sha=02:00:00:00:00:ee
+tha=00:00:00:00:00:00
+spa=192.168.1.223
+tpa=$spa
+garp=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                ARP(hwsrc='${sha}', hwdst='${tha}', psrc='${spa}', pdst='${tpa}')")
+as hv2 ovs-appctl netdev-dummy/receive vif_ext $garp
+
+# Annonce 192.168.1.111, 112 from vif1, vif2 in hv1, hv2
+# result: ok, vif1, vif2 are virtual ports, restrictions are not applied.
+sha=f0:00:00:00:00:01
+tha=00:00:00:00:00:00
+spa=192.168.1.111
+tpa=0.0.0.0
+garp=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                ARP(hwsrc='${sha}', hwdst='${tha}', psrc='${spa}', pdst='${tpa}')")
+as hv1 ovs-appctl netdev-dummy/receive vif1 $garp
+
+sha=f0:00:00:00:00:02
+tha=00:00:00:00:00:00
+spa=192.168.1.112
+tpa=0.0.0.0
+garp=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                ARP(hwsrc='${sha}', hwdst='${tha}', psrc='${spa}', pdst='${tpa}')")
+as hv2 ovs-appctl netdev-dummy/receive vif2 $garp
+
+# Set down_ext type to l2gateway
+# Annonce 192.168.1.113, 114 from vif1, vif2 in hv1, hv2
+# result: ok, vif1, vif2 are virtual ports, restrictions are not applied.
+check ovn-nbctl --wait=hv lsp-set-type down_ext l2gateway
+
+sha=f0:00:00:00:00:01
+tha=00:00:00:00:00:00
+spa=192.168.1.113
+tpa=0.0.0.0
+garp=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                ARP(hwsrc='${sha}', hwdst='${tha}', psrc='${spa}', pdst='${tpa}')")
+as hv1 ovs-appctl netdev-dummy/receive vif1 $garp
+
+sha=f0:00:00:00:00:02
+tha=00:00:00:00:00:00
+spa=192.168.1.114
+tpa=0.0.0.0
+garp=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+                ARP(hwsrc='${sha}', hwdst='${tha}', psrc='${spa}', pdst='${tpa}')")
+as hv2 ovs-appctl netdev-dummy/receive vif2 $garp
+
+wait_row_count MAC_Binding 1 ip="192.168.1.111" mac='"f0:00:00:00:00:01"' logical_port='"down_link"'
+wait_row_count MAC_Binding 1 ip="192.168.1.112" mac='"f0:00:00:00:00:02"' logical_port='"down_link"'
+wait_row_count MAC_Binding 1 ip="192.168.1.113" mac='"f0:00:00:00:00:01"' logical_port='"down_link"'
+wait_row_count MAC_Binding 1 ip="192.168.1.114" mac='"f0:00:00:00:00:02"' logical_port='"down_link"'
+wait_row_count MAC_Binding 1 ip="192.168.1.223" mac='"02:00:00:00:00:ee"' logical_port='"down_link"'
+wait_row_count MAC_Binding 0 ip="192.168.1.222" mac='"02:00:00:00:00:ee"' logical_port='"down_link"'
+
+check ovn-nbctl --wait=hv lsp-set-type down_ext localnet
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])

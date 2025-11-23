@@ -50,6 +50,7 @@
 #include "en-lr-nat.h"
 #include "en-lr-stateful.h"
 #include "en-ls-stateful.h"
+#include "en-ls-arp.h"
 #include "en-multicast.h"
 #include "en-sampling-app.h"
 #include "en-datapath-logical-switch.h"
@@ -136,6 +137,7 @@ static bool vxlan_mode;
 #define REGBIT_IP_FRAG            "reg0[19]"
 #define REGBIT_ACL_PERSIST_ID     "reg0[20]"
 #define REGBIT_ACL_HINT_ALLOW_PERSISTED "reg0[21]"
+#define REGBIT_EXT_ARP            "reg0[22]"
 
 /* Register definitions for switches and routers. */
 
@@ -547,6 +549,7 @@ ovn_datapath_create(struct hmap *datapaths, const struct uuid *key,
     hmap_insert(datapaths, &od->key_node, uuid_hash(&od->key));
     od->lr_group = NULL;
     hmap_init(&od->ports);
+    hmapx_init(&od->phys_ports);
     sset_init(&od->router_ips);
     od->ls_peers = VECTOR_EMPTY_INITIALIZER(struct ovn_datapath *);
     od->router_ports = VECTOR_EMPTY_INITIALIZER(struct ovn_port *);
@@ -583,6 +586,7 @@ ovn_datapath_destroy(struct ovn_datapath *od)
         vector_destroy(&od->l3dgw_ports);
         destroy_mcast_info_for_datapath(od);
         destroy_ports_for_datapath(od);
+        hmapx_destroy(&od->phys_ports);
         sset_destroy(&od->router_ips);
         free(od);
     }
@@ -1217,6 +1221,12 @@ lsp_is_vtep(const struct nbrec_logical_switch_port *nbsp)
 }
 
 static bool
+lsp_is_l2gw(const struct nbrec_logical_switch_port *nbsp)
+{
+    return !strcmp(nbsp->type, "l2gateway");
+}
+
+static bool
 localnet_can_learn_mac(const struct nbrec_logical_switch_port *nbsp)
 {
     return smap_get_bool(&nbsp->options, "localnet_learn_fdb", false);
@@ -1600,6 +1610,10 @@ join_logical_ports_lsp(struct hmap *ports,
 
     if (lsp_is_vtep(nbsp)) {
         od->has_vtep_lports = true;
+    }
+
+    if (lsp_is_localnet(nbsp) || lsp_is_l2gw(nbsp)) {
+        hmapx_add(&od->phys_ports, op);
     }
 
     parse_lsp_addrs(op);
@@ -1995,6 +2009,15 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
     }
 }
 
+static bool
+is_nat_distributed(const struct nbrec_nat *nat,
+                   const struct ovn_datapath *od)
+{
+    return !vector_is_empty(&od->l3dgw_ports)
+           && nat->logical_port && nat->external_mac
+           && !strcmp(nat->type, "dnat_and_snat");
+}
+
 /* Returns an array of strings, each consisting of a MAC address followed
  * by one or more IP addresses, and if the port is a distributed gateway
  * port, followed by 'is_chassis_resident("LPORT_NAME")', where the
@@ -2053,9 +2076,7 @@ get_nat_addresses(const struct ovn_port *op, size_t *n, bool routable_only,
 
         /* Determine whether this NAT rule satisfies the conditions for
          * distributed NAT processing. */
-        if (!vector_is_empty(&op->od->l3dgw_ports) &&
-            !strcmp(nat->type, "dnat_and_snat") &&
-            nat->logical_port && nat->external_mac) {
+        if (is_nat_distributed(nat, op->od)) {
             /* Distributed NAT rule. */
             if (eth_addr_from_string(nat->external_mac, &mac)) {
                 struct ds address = DS_EMPTY_INITIALIZER;
@@ -9674,6 +9695,93 @@ build_drop_arp_nd_flows_for_unbound_router_ports(struct ovn_port *op,
     ds_destroy(&match);
 }
 
+/*
+ * Create ARP filtering flow for od, assumed logical switch,
+ * for the following condition:
+ * Given lswitch has either localnet or l2gateway ports and
+ * router connection ports that requires chassis residence.
+ * ARP requests coming from localnet/l2gateway ports
+ * allowed for processing on resident chassis only.
+ */
+static void
+build_lswitch_arp_chassis_resident(const struct ovn_datapath *od,
+                                   struct lflow_table *lflows,
+                                   const struct ls_arp_record *ar)
+{
+    struct sset distributed_nat_ports =
+        SSET_INITIALIZER(&distributed_nat_ports);
+    struct sset resident_ports = SSET_INITIALIZER(&resident_ports);
+    struct sset inports = SSET_INITIALIZER(&inports);
+    struct ds match = DS_EMPTY_INITIALIZER;
+
+    struct hmapx_node *node;
+    HMAPX_FOR_EACH (node, &od->phys_ports) {
+        struct ovn_port *op = node->data;
+        sset_add(&inports, op->json_key);
+    }
+
+    struct ovn_port *op;
+    VECTOR_FOR_EACH (&od->router_ports, op) {
+        struct ovn_port *op_r = op->peer;
+
+        if (lrp_is_l3dgw(op_r)) {
+            sset_add(&resident_ports, op_r->cr_port->json_key);
+        }
+    }
+
+    struct hmapx_node *hmapx_node;
+    HMAPX_FOR_EACH (hmapx_node, &ar->nat_records) {
+        struct lr_nat_record *nr = hmapx_node->data;
+
+        for (size_t i = 0; i < nr->n_nat_entries; i++) {
+            struct ovn_nat *ent = &nr->nat_entries[i];
+            if (ent->is_valid && ent->is_distributed) {
+                sset_add(&distributed_nat_ports, ent->nb->logical_port);
+            }
+        }
+    }
+
+    if (!sset_is_empty(&inports) && !sset_is_empty(&resident_ports)) {
+        const char *port_name;
+
+        SSET_FOR_EACH (port_name, &inports) {
+            ds_clear(&match);
+            ds_put_format(&match, "(arp.op == 1 || arp.op == 2) "
+                                  "&& inport == %s",
+                          port_name);
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_CHECK_PORT_SEC, 75,
+                          ds_cstr(&match), REGBIT_EXT_ARP " = 1; next;",
+                          ar->lflow_ref);
+        }
+
+        SSET_FOR_EACH (port_name, &resident_ports) {
+            ds_clear(&match);
+            ds_put_format(&match, REGBIT_EXT_ARP" == 1 "
+                                  "&& is_chassis_resident(%s)",
+                          port_name);
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_APPLY_PORT_SEC, 75,
+                          ds_cstr(&match), "next;", ar->lflow_ref);
+        }
+
+        SSET_FOR_EACH (port_name, &distributed_nat_ports) {
+            ds_clear(&match);
+            ds_put_format(&match, REGBIT_EXT_ARP " == 1 "
+                                  "&& is_chassis_resident(\"%s\")",
+                          port_name);
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_APPLY_PORT_SEC, 75,
+                          ds_cstr(&match), "next;", ar->lflow_ref);
+        }
+
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_APPLY_PORT_SEC, 70,
+                      REGBIT_EXT_ARP" == 1", "drop;", ar->lflow_ref);
+    }
+
+    sset_destroy(&distributed_nat_ports);
+    sset_destroy(&resident_ports);
+    sset_destroy(&inports);
+    ds_destroy(&match);
+}
+
 static bool
 is_vlan_transparent(const struct ovn_datapath *od)
 {
@@ -14115,10 +14223,6 @@ build_neigh_learning_flows_for_lrouter_port(
                           op->lrp_networks.ipv4_addrs[i].network_s,
                           op->lrp_networks.ipv4_addrs[i].plen,
                           op->lrp_networks.ipv4_addrs[i].addr_s);
-            if (lrp_is_l3dgw(op)) {
-                ds_put_format(match, " && is_chassis_resident(%s)",
-                              op->cr_port->json_key);
-            }
             const char *actions_s = REGBIT_LOOKUP_NEIGHBOR_RESULT
                               " = lookup_arp(inport, arp.spa, arp.sha); "
                               REGBIT_LOOKUP_NEIGHBOR_IP_RESULT" = 1;"
@@ -14135,10 +14239,6 @@ build_neigh_learning_flows_for_lrouter_port(
                       op->json_key,
                       op->lrp_networks.ipv4_addrs[i].network_s,
                       op->lrp_networks.ipv4_addrs[i].plen);
-        if (lrp_is_l3dgw(op)) {
-            ds_put_format(match, " && is_chassis_resident(%s)",
-                          op->cr_port->json_key);
-        }
         ds_clear(actions);
         ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
                       " = lookup_arp(inport, arp.spa, arp.sha); %snext;",
@@ -18550,6 +18650,7 @@ struct lswitch_flow_build_info {
     const struct ls_port_group_table *ls_port_groups;
     const struct lr_stateful_table *lr_stateful_table;
     const struct ls_stateful_table *ls_stateful_table;
+    const struct ls_arp_table *ls_arp_table;
     struct lflow_table *lflows;
     const struct shash *meter_groups;
     const struct hmap *lb_dps_map;
@@ -18742,6 +18843,7 @@ build_lflows_thread(void *arg)
     struct worker_control *control = (struct worker_control *) arg;
     const struct lr_stateful_record *lr_stateful_rec;
     const struct ls_stateful_record *ls_stateful_rec;
+    const struct ls_arp_record *ls_arp_rec;
     struct lswitch_flow_build_info *lsi;
     struct ovn_lb_datapaths *lb_dps;
     struct ovn_datapath *od;
@@ -18898,6 +19000,19 @@ build_lflows_thread(void *arg)
                 }
             }
 
+            for (bnum = control->id;
+                    bnum <= lsi->ls_arp_table->entries.mask;
+                    bnum += control->pool->size)
+            {
+                LS_ARP_TABLE_FOR_EACH_IN_P (ls_arp_rec, bnum,
+                                            lsi->ls_arp_table) {
+                    od = ovn_datapaths_find_by_index(
+                        lsi->ls_datapaths, ls_arp_rec->ls_index);
+                    build_lswitch_arp_chassis_resident(od, lsi->lflows,
+                                                       ls_arp_rec);
+                }
+            }
+
             lsi->thread_lflow_counter = thread_lflow_counter;
         }
         post_completed_work(control);
@@ -18946,6 +19061,7 @@ build_lswitch_and_lrouter_flows(
     const struct ls_port_group_table *ls_pgs,
     const struct lr_stateful_table *lr_stateful_table,
     const struct ls_stateful_table *ls_stateful_table,
+    const struct ls_arp_table *ls_arp_table,
     struct lflow_table *lflows,
     const struct shash *meter_groups,
     const struct hmap *lb_dps_map,
@@ -18982,6 +19098,7 @@ build_lswitch_and_lrouter_flows(
             lsiv[index].ls_port_groups = ls_pgs;
             lsiv[index].lr_stateful_table = lr_stateful_table;
             lsiv[index].ls_stateful_table = ls_stateful_table;
+            lsiv[index].ls_arp_table = ls_arp_table;
             lsiv[index].meter_groups = meter_groups;
             lsiv[index].lb_dps_map = lb_dps_map;
             lsiv[index].local_svc_monitor_map =
@@ -19018,6 +19135,7 @@ build_lswitch_and_lrouter_flows(
     } else {
         const struct lr_stateful_record *lr_stateful_rec;
         const struct ls_stateful_record *ls_stateful_rec;
+        const struct ls_arp_record *ls_arp_rec;
         struct ovn_lb_datapaths *lb_dps;
         struct ovn_datapath *od;
         struct ovn_port *op;
@@ -19030,6 +19148,7 @@ build_lswitch_and_lrouter_flows(
             .ls_port_groups = ls_pgs,
             .lr_stateful_table = lr_stateful_table,
             .ls_stateful_table = ls_stateful_table,
+            .ls_arp_table = ls_arp_table,
             .lflows = lflows,
             .meter_groups = meter_groups,
             .lb_dps_map = lb_dps_map,
@@ -19125,6 +19244,12 @@ build_lswitch_and_lrouter_flows(
                                     lsi.sbrec_acl_id_table);
         }
 
+        LS_ARP_TABLE_FOR_EACH (ls_arp_rec, ls_arp_table) {
+            od = ovn_datapaths_find_by_index(lsi.ls_datapaths,
+                                             ls_arp_rec->ls_index);
+            build_lswitch_arp_chassis_resident(od, lsi.lflows, ls_arp_rec);
+        }
+
         ds_destroy(&lsi.match);
         ds_destroy(&lsi.actions);
     }
@@ -19208,6 +19333,7 @@ void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
                                     input_data->ls_port_groups,
                                     input_data->lr_stateful_table,
                                     input_data->ls_stateful_table,
+                                    input_data->ls_arp_table,
                                     lflows,
                                     input_data->meter_groups,
                                     input_data->lb_datapaths_map,
@@ -19646,6 +19772,42 @@ lflow_handle_ls_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                           &ls_stateful_rec->nbs_uuid));
 
         lflow_ref_unlink_lflows(ls_stateful_rec->lflow_ref);
+    }
+
+    return true;
+}
+
+bool
+lflow_handle_ls_arp_changes(struct ovsdb_idl_txn *ovnsb_txn,
+                            struct ls_arp_tracked_data *trk_data,
+                            struct lflow_input *lflow_input,
+                            struct lflow_table *lflows)
+{
+    struct hmapx_node *hmapx_node;
+
+    HMAPX_FOR_EACH (hmapx_node, &trk_data->crupdated) {
+        const struct ls_arp_record *ls_arp_record = hmapx_node->data;
+        const struct ovn_datapath *od =
+            ovn_datapaths_find_by_index(lflow_input->ls_datapaths,
+                                        ls_arp_record->ls_index);
+        lflow_ref_unlink_lflows(ls_arp_record->lflow_ref);
+
+        build_lswitch_arp_chassis_resident(od, lflows, ls_arp_record);
+
+        bool handled = lflow_ref_sync_lflows(
+            ls_arp_record->lflow_ref, lflows, ovnsb_txn,
+            lflow_input->ls_datapaths, lflow_input->lr_datapaths,
+            lflow_input->ovn_internal_version_changed,
+            lflow_input->sbrec_logical_flow_table,
+            lflow_input->sbrec_logical_dp_group_table);
+        if (!handled) {
+            return false;
+        }
+    }
+
+    HMAPX_FOR_EACH (hmapx_node, &trk_data->deleted) {
+        struct ls_arp_record *ls_arp_record = hmapx_node->data;
+        lflow_ref_unlink_lflows(ls_arp_record->lflow_ref);
     }
 
     return true;

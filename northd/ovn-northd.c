@@ -1016,6 +1016,7 @@ main(int argc, char *argv[])
     stopwatch_create(LR_NAT_RUN_STOPWATCH_NAME, SW_MS);
     stopwatch_create(LR_STATEFUL_RUN_STOPWATCH_NAME, SW_MS);
     stopwatch_create(LS_STATEFUL_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(LS_ARP_RUN_STOPWATCH_NAME, SW_MS);
     stopwatch_create(ADVERTISED_ROUTE_SYNC_RUN_STOPWATCH_NAME, SW_MS);
     stopwatch_create(LEARNED_ROUTE_SYNC_RUN_STOPWATCH_NAME, SW_MS);
     stopwatch_create(DYNAMIC_ROUTES_RUN_STOPWATCH_NAME, SW_MS);
