@@ -1280,7 +1280,9 @@ ovn_sb_insert_or_update_logical_dp_group(
     BITMAP_FOR_EACH_1 (index, ods_size(datapaths), dpg_bitmap) {
         struct ovn_datapath *od = vector_get(&datapaths->dps, index,
                                              struct ovn_datapath *);
-        sb[n++] = od->sdp->sb_dp;
+        if (od) {
+            sb[n++] = od->sdp->sb_dp;
+        }
     }
     if (!dp_group) {
         struct uuid dpg_uuid = uuid_random();
