@@ -19815,7 +19815,13 @@ lflow_handle_ls_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
         build_network_function(od, lflows,
                                lflow_input->ls_port_groups,
                                ls_stateful_rec->lflow_ref);
+    }
 
+    /* We need to make sure that all datapath groups are allocated before
+     * trying to sync logical flows. Otherwise, we would need to recompute
+     * those datapath groups within those flows over and over again. */
+    HMAPX_FOR_EACH (hmapx_node, &trk_data->crupdated) {
+        struct ls_stateful_record *ls_stateful_rec = hmapx_node->data;
         /* Sync the new flows to SB. */
         bool handled = lflow_ref_sync_lflows(
             ls_stateful_rec->lflow_ref, lflows, ovnsb_txn,
@@ -19831,13 +19837,16 @@ lflow_handle_ls_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
 
     HMAPX_FOR_EACH (hmapx_node, &trk_data->deleted) {
         struct ls_stateful_record *ls_stateful_rec = hmapx_node->data;
-        const struct ovn_datapath *od =
-            ovn_datapaths_find_by_index(lflow_input->ls_datapaths,
-                                        ls_stateful_rec->ls_index);
-        ovs_assert(od->nbs && uuid_equals(&od->nbs->header_.uuid,
-                                          &ls_stateful_rec->nbs_uuid));
 
-        lflow_ref_unlink_lflows(ls_stateful_rec->lflow_ref);
+        if (!lflow_ref_resync_flows(
+                    ls_stateful_rec->lflow_ref, lflows, ovnsb_txn,
+                    lflow_input->ls_datapaths,
+                    lflow_input->lr_datapaths,
+                    lflow_input->ovn_internal_version_changed,
+                    lflow_input->sbrec_logical_flow_table,
+                    lflow_input->sbrec_logical_dp_group_table)) {
+            return false;
+        }
     }
 
     return true;

@@ -161,8 +161,10 @@ ls_stateful_northd_handler(struct engine_node *node, void *data_)
         const struct ovn_datapath *od = hmapx_node->data;
 
         if (!ls_stateful_table_find_(&data->table, od->nbs)) {
-            ls_stateful_record_create(&data->table, od,
-                                      input_data.ls_port_groups);
+            struct ls_stateful_record *ls_stateful_rec =
+                ls_stateful_record_create(&data->table, od,
+                                          input_data.ls_port_groups);
+            hmapx_add(&data->trk_data.crupdated, ls_stateful_rec);
         }
     }
 
