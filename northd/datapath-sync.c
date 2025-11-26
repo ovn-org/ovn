@@ -28,7 +28,7 @@ static const char *ovn_datapath_strings[] = {
 enum ovn_datapath_type
 ovn_datapath_type_from_string(const char *type_str)
 {
-    for (enum ovn_datapath_type i = DP_SWITCH; i < DP_MAX; i++) {
+    for (enum ovn_datapath_type i = DP_MIN; i < DP_MAX; i++) {
         if (!strcmp(type_str, ovn_datapath_strings[i])) {
             return i;
         }

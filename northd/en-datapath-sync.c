@@ -218,7 +218,7 @@ create_synced_datapath_candidates_from_nb(
     struct uuidset *visited,
     struct vector *candidate_sdps)
 {
-    for (size_t i = 0; i < DP_MAX; i++) {
+    for (enum ovn_datapath_type i = DP_MIN; i < DP_MAX; i++) {
         const struct ovn_unsynced_datapath_map *map = input_maps[i];
         struct ovn_unsynced_datapath *udp;
         HMAP_FOR_EACH (udp, hmap_node, &map->dps) {
@@ -554,7 +554,7 @@ en_datapath_sync_run(struct engine_node *node , void *data)
     input_maps[unsynced_lr_map->dp_type] = unsynced_lr_map;
 
     size_t num_datapaths = 0;
-    for (enum ovn_datapath_type i = 0; i < DP_MAX; i++) {
+    for (enum ovn_datapath_type i = DP_MIN; i < DP_MAX; i++) {
         ovs_assert(input_maps[i]);
         num_datapaths += hmap_count(&input_maps[i]->dps);
     }
