@@ -149,18 +149,15 @@ lflow_northd_handler(struct engine_node *node,
         return EN_UNHANDLED;
     }
 
+    if (northd_has_lrouters_in_tracked_data(&northd_data->trk_data)) {
+        return EN_UNHANDLED;
+    }
+
     const struct engine_context *eng_ctx = engine_get_context();
     struct lflow_data *lflow_data = data;
 
     struct lflow_input lflow_input;
     lflow_get_input_data(node, &lflow_input);
-
-    if (!lflow_handle_northd_lr_changes(eng_ctx->ovnsb_idl_txn,
-                                        &northd_data->trk_data.trk_routers,
-                                        &lflow_input,
-                                        lflow_data->lflow_table)) {
-        return EN_UNHANDLED;
-    }
 
     if (!lflow_handle_northd_port_changes(eng_ctx->ovnsb_idl_txn,
                                           &northd_data->trk_data.trk_lsps,

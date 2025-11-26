@@ -556,7 +556,6 @@ ovn_datapath_create(struct hmap *datapaths, const struct uuid *key,
     od->ipam_info_initialized = false;
     od->tunnel_key = sdp->sb_dp->tunnel_key;
     init_mcast_info_for_datapath(od);
-    od->datapath_lflows = lflow_ref_create();
     return od;
 }
 
@@ -585,7 +584,6 @@ ovn_datapath_destroy(struct ovn_datapath *od)
         destroy_mcast_info_for_datapath(od);
         destroy_ports_for_datapath(od);
         sset_destroy(&od->router_ips);
-        lflow_ref_destroy(od->datapath_lflows);
         free(od);
     }
 }
@@ -19256,7 +19254,6 @@ lflow_reset_northd_refs(struct lflow_input *lflow_input)
     struct ls_stateful_record *ls_stateful_rec;
     struct ovn_lb_datapaths *lb_dps;
     struct ovn_port *op;
-    const struct ovn_datapath *od;
 
     LR_STATEFUL_TABLE_FOR_EACH (lr_stateful_rec,
                                 lflow_input->lr_stateful_table) {
@@ -19281,74 +19278,6 @@ lflow_reset_northd_refs(struct lflow_input *lflow_input)
     HMAP_FOR_EACH (lb_dps, hmap_node, lflow_input->lb_datapaths_map) {
         lflow_ref_clear(lb_dps->lflow_ref);
     }
-
-    HMAP_FOR_EACH (od, key_node, &lflow_input->lr_datapaths->datapaths) {
-        lflow_ref_clear(od->datapath_lflows);
-    }
-
-    HMAP_FOR_EACH (od, key_node, &lflow_input->ls_datapaths->datapaths) {
-        lflow_ref_clear(od->datapath_lflows);
-    }
-}
-
-bool
-lflow_handle_northd_lr_changes(struct ovsdb_idl_txn *ovnsb_txn,
-                                struct tracked_dps *tracked_lrs,
-                                struct lflow_input *lflow_input,
-                                struct lflow_table *lflows)
-{
-    bool handled = true;
-    struct hmapx_node *hmapx_node;
-    HMAPX_FOR_EACH (hmapx_node, &tracked_lrs->deleted) {
-        struct ovn_datapath *od = hmapx_node->data;
-        handled = lflow_ref_resync_flows(
-            od->datapath_lflows, lflows, ovnsb_txn, lflow_input->ls_datapaths,
-            lflow_input->lr_datapaths,
-            lflow_input->ovn_internal_version_changed,
-            lflow_input->sbrec_logical_flow_table,
-            lflow_input->sbrec_logical_dp_group_table);
-        if (!handled) {
-            return handled;
-        }
-    }
-
-    struct lswitch_flow_build_info lsi = {
-        .lr_datapaths = lflow_input->lr_datapaths,
-        .lr_stateful_table = lflow_input->lr_stateful_table,
-        .lflows =lflows,
-        .route_data = lflow_input->route_data,
-        .route_tables = lflow_input->route_tables,
-        .route_policies = lflow_input->route_policies,
-        .match = DS_EMPTY_INITIALIZER,
-        .actions = DS_EMPTY_INITIALIZER,
-    };
-    HMAPX_FOR_EACH (hmapx_node, &tracked_lrs->crupdated) {
-        struct ovn_datapath *od = hmapx_node->data;
-
-        lflow_ref_unlink_lflows(od->datapath_lflows);
-        build_lswitch_and_lrouter_iterate_by_lr(od, &lsi);
-    }
-
-    /* We need to make sure that all datapath groups are allocated before
-     * trying to sync logical flows. Otherwise, we would need to recompute
-     * those datapath groups within those flows over and over again. */
-    HMAPX_FOR_EACH (hmapx_node, &tracked_lrs->crupdated) {
-        struct ovn_datapath *od = hmapx_node->data;
-
-        handled = lflow_ref_sync_lflows(
-            od->datapath_lflows, lflows, ovnsb_txn, lflow_input->ls_datapaths,
-            lflow_input->lr_datapaths,
-            lflow_input->ovn_internal_version_changed,
-            lflow_input->sbrec_logical_flow_table,
-            lflow_input->sbrec_logical_dp_group_table);
-        if (!handled) {
-            break;
-        }
-    }
-
-    ds_destroy(&lsi.actions);
-    ds_destroy(&lsi.match);
-    return handled;
 }
 
 bool

@@ -3172,6 +3172,22 @@ AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Gr
 $(cat lr_sb_uuids | sort)
 ])
 
+dnl The same one group after the third router, but with 3 datapaths.
+check ovn-nbctl --wait=sb lr-add lr2
+lr2_sb_uuid=$(fetch_column datapath_binding _uuid external_ids:name=lr2)
+check_row_count sb:logical_dp_group 2
+
+echo "$lr2_sb_uuid" >> lr_sb_uuids
+
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $ls_dpg_uuid | tail -1 | tr ' ' '\n' | sort], [0], [dnl
+$(cat sw_sb_uuids | sort)
+])
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lr_dpg_uuid | tail -1 | tr ' ' '\n' | sort], [0], [dnl
+$(cat lr_sb_uuids | sort)
+])
+
 dnl Remove switch sw1 and check that the group was modified correctly.
 check ovn-nbctl --wait=sb ls-del sw1
 check_row_count sb:logical_dp_group 2
@@ -3182,6 +3198,26 @@ echo "$sw2_sb_uuid" >> sw_sb_uuids
 AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
                     | grep -A1 $ls_dpg_uuid | tail -1 | tr ' ' '\n' | sort], [0], [dnl
 $(cat sw_sb_uuids | sort)
+])
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lr_dpg_uuid | tail -1 | tr ' ' '\n' | sort], [0], [dnl
+$(cat lr_sb_uuids | sort)
+])
+
+dnl Remove switch lr1 and check that the group was modified correctly.
+check ovn-nbctl --wait=sb lr-del lr1
+check_row_count sb:logical_dp_group 2
+
+echo "$lr0_sb_uuid" > lr_sb_uuids
+echo "$lr2_sb_uuid" >> lr_sb_uuids
+
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $ls_dpg_uuid | tail -1 | tr ' ' '\n' | sort], [0], [dnl
+$(cat sw_sb_uuids | sort)
+])
+AT_CHECK_UNQUOTED([ovn-sbctl --bare --columns _uuid,datapaths find Logical_DP_Group dnl
+                    | grep -A1 $lr_dpg_uuid | tail -1 | tr ' ' '\n' | sort], [0], [dnl
+$(cat lr_sb_uuids | sort)
 ])
 
 OVN_CLEANUP_NORTHD
@@ -12627,17 +12663,18 @@ check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
 check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
-check_engine_stats lflow norecompute compute
+check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-del lr0
+
 check_engine_stats northd norecompute compute
 check_engine_stats lr_nat norecompute compute
 check_engine_stats lr_stateful norecompute compute
 check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
-check_engine_stats lflow norecompute compute
+check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check ovn-nbctl --wait=sb lr-add lr0
