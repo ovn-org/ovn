@@ -18,6 +18,14 @@
 #define EN_DATAPATH_SYNC_H
 
 #include "inc-proc-eng.h"
+#include "datapath-sync.h"
+
+struct all_synced_datapaths {
+    struct ovn_synced_datapaths synced_dps[DP_MAX];
+    struct hmap dp_tnlids;
+    bool vxlan_mode;
+    bool has_tracked_data;
+};
 
 void *en_datapath_sync_init(struct engine_node *,
                             struct engine_arg *);

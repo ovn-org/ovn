@@ -94,16 +94,10 @@ struct ovn_synced_datapath {
 
 struct ovn_synced_datapaths {
     struct hmap synced_dps;
-    struct hmap dp_tnlids;
 
     struct hmapx new;
     struct hmapx updated;
     struct hmapx deleted;
-
-    /* Cache the vxlan mode setting. This is an easy way for us to detect if
-     * the global configuration resulted in a change to this value.
-     */
-    bool vxlan_mode;
 };
 
 struct ovn_unsynced_datapath *ovn_unsynced_datapath_alloc(

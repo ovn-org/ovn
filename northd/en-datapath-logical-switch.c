@@ -25,6 +25,7 @@
 #include "ovn-nb-idl.h"
 #include "datapath-sync.h"
 #include "en-datapath-logical-switch.h"
+#include "en-datapath-sync.h"
 #include "en-global-config.h"
 #include "ovn-util.h"
 
@@ -360,8 +361,9 @@ synced_logical_switch_alloc(const struct ovn_synced_datapath *sdp)
 enum engine_node_state
 en_datapath_synced_logical_switch_run(struct engine_node *node , void *data)
 {
-    const struct ovn_synced_datapaths *dps =
+    const struct all_synced_datapaths *all_dps =
         engine_get_input_data("datapath_sync", node);
+    const struct ovn_synced_datapaths *dps = &all_dps->synced_dps[DP_SWITCH];
     struct ovn_synced_logical_switch_map *switch_map = data;
 
     synced_logical_switch_map_destroy(switch_map);
@@ -369,9 +371,6 @@ en_datapath_synced_logical_switch_run(struct engine_node *node , void *data)
 
     struct ovn_synced_datapath *sdp;
     HMAP_FOR_EACH (sdp, hmap_node, &dps->synced_dps) {
-        if (sdp->nb_row->table->class_ != &nbrec_table_logical_switch) {
-            continue;
-        }
         struct ovn_synced_logical_switch *lsw =
             synced_logical_switch_alloc(sdp);
         hmap_insert(&switch_map->synced_switches, &lsw->hmap_node,
@@ -402,13 +401,12 @@ enum engine_input_handler_result
 en_datapath_synced_logical_switch_datapath_sync_handler(
         struct engine_node *node, void *data)
 {
-    const struct ovn_synced_datapaths *dps =
+    const struct all_synced_datapaths *all_dps =
         engine_get_input_data("datapath_sync", node);
+    const struct ovn_synced_datapaths *dps = &all_dps->synced_dps[DP_SWITCH];
     struct ovn_synced_logical_switch_map *switch_map = data;
 
-    if (hmapx_is_empty(&dps->deleted) &&
-        hmapx_is_empty(&dps->new) &&
-        hmapx_is_empty(&dps->updated)) {
+    if (!all_dps->has_tracked_data) {
         return EN_UNHANDLED;
     }
 
@@ -417,9 +415,6 @@ en_datapath_synced_logical_switch_datapath_sync_handler(
     struct ovn_synced_logical_switch *lsw;
     HMAPX_FOR_EACH (hmapx_node, &dps->new) {
         sdp = hmapx_node->data;
-        if (sdp->nb_row->table->class_ != &nbrec_table_logical_switch) {
-            continue;
-        }
         lsw = synced_logical_switch_alloc(sdp);
         hmap_insert(&switch_map->synced_switches, &lsw->hmap_node,
                     uuid_hash(&lsw->nb->header_.uuid));
@@ -428,9 +423,6 @@ en_datapath_synced_logical_switch_datapath_sync_handler(
 
     HMAPX_FOR_EACH (hmapx_node, &dps->deleted) {
         sdp = hmapx_node->data;
-        if (sdp->nb_row->table->class_ != &nbrec_table_logical_switch) {
-            continue;
-        }
         lsw = ovn_synced_logical_switch_find(switch_map, &sdp->nb_row->uuid);
         if (!lsw) {
             return EN_UNHANDLED;
@@ -441,9 +433,6 @@ en_datapath_synced_logical_switch_datapath_sync_handler(
 
     HMAPX_FOR_EACH (hmapx_node, &dps->updated) {
         sdp = hmapx_node->data;
-        if (sdp->nb_row->table->class_ != &nbrec_table_logical_switch) {
-            continue;
-        }
         lsw = ovn_synced_logical_switch_find(switch_map, &sdp->nb_row->uuid);
         if (!lsw) {
             return EN_UNHANDLED;

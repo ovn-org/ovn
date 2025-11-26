@@ -24,6 +24,7 @@
 #include "aging.h"
 #include "datapath-sync.h"
 #include "en-datapath-logical-router.h"
+#include "en-datapath-sync.h"
 #include "ovn-util.h"
 
 VLOG_DEFINE_THIS_MODULE(en_datapath_logical_router);
@@ -308,8 +309,9 @@ synced_logical_router_alloc(const struct ovn_synced_datapath *sdp)
 enum engine_node_state
 en_datapath_synced_logical_router_run(struct engine_node *node , void *data)
 {
-    const struct ovn_synced_datapaths *dps =
+    const struct all_synced_datapaths *all_dps =
         engine_get_input_data("datapath_sync", node);
+    const struct ovn_synced_datapaths *dps = &all_dps->synced_dps[DP_ROUTER];
     struct ovn_synced_logical_router_map *router_map = data;
 
     synced_logical_router_map_destroy(router_map);
@@ -317,9 +319,6 @@ en_datapath_synced_logical_router_run(struct engine_node *node , void *data)
 
     struct ovn_synced_datapath *sdp;
     HMAP_FOR_EACH (sdp, hmap_node, &dps->synced_dps) {
-        if (sdp->nb_row->table->class_ != &nbrec_table_logical_router) {
-            continue;
-        }
         struct ovn_synced_logical_router *lr =
             synced_logical_router_alloc(sdp);
         hmap_insert(&router_map->synced_routers, &lr->hmap_node,
@@ -349,13 +348,12 @@ enum engine_input_handler_result
 en_datapath_synced_logical_router_datapath_sync_handler(
         struct engine_node *node, void *data)
 {
-    const struct ovn_synced_datapaths *dps =
+    const struct all_synced_datapaths *all_dps =
         engine_get_input_data("datapath_sync", node);
+    const struct ovn_synced_datapaths *dps = &all_dps->synced_dps[DP_ROUTER];
     struct ovn_synced_logical_router_map *router_map = data;
 
-    if (hmapx_is_empty(&dps->deleted) &&
-        hmapx_is_empty(&dps->new) &&
-        hmapx_is_empty(&dps->updated)) {
+    if (!all_dps->has_tracked_data) {
         return EN_UNHANDLED;
     }
 
@@ -364,9 +362,6 @@ en_datapath_synced_logical_router_datapath_sync_handler(
     struct ovn_synced_logical_router *lr;
     HMAPX_FOR_EACH (hmapx_node, &dps->new) {
         sdp = hmapx_node->data;
-        if (sdp->nb_row->table->class_ != &nbrec_table_logical_router) {
-            continue;
-        }
         lr = synced_logical_router_alloc(sdp);
         hmap_insert(&router_map->synced_routers, &lr->hmap_node,
                     uuid_hash(&lr->nb->header_.uuid));
@@ -375,9 +370,6 @@ en_datapath_synced_logical_router_datapath_sync_handler(
 
     HMAPX_FOR_EACH (hmapx_node, &dps->deleted) {
         sdp = hmapx_node->data;
-        if (sdp->nb_row->table->class_ != &nbrec_table_logical_router) {
-            continue;
-        }
         lr = ovn_synced_logical_router_find(router_map, &sdp->nb_row->uuid);
         if (!lr) {
             return EN_UNHANDLED;
@@ -388,9 +380,6 @@ en_datapath_synced_logical_router_datapath_sync_handler(
 
     HMAPX_FOR_EACH (hmapx_node, &dps->updated) {
         sdp = hmapx_node->data;
-        if (sdp->nb_row->table->class_ != &nbrec_table_logical_router) {
-            continue;
-        }
         lr = ovn_synced_logical_router_find(router_map, &sdp->nb_row->uuid);
         if (!lr) {
             return EN_UNHANDLED;
