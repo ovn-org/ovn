@@ -32,6 +32,7 @@
 #include "timeval.h"
 #include "unixctl.h"
 #include "vec.h"
+#include "sset.h"
 
 VLOG_DEFINE_THIS_MODULE(inc_proc_eng);
 
@@ -266,24 +267,27 @@ engine_get_input_data(const char *input_name, struct engine_node *node)
 }
 
 void
-engine_add_input(struct engine_node *node, struct engine_node *input,
-                 enum engine_input_handler_result (*change_handler)
-                     (struct engine_node *, void *))
+engine_add_input_impl(struct engine_node *node, struct engine_node *input,
+                      enum engine_input_handler_result (*change_handler)
+                          (struct engine_node *, void *),
+                      const char *change_handler_name)
 {
     ovs_assert(node->n_inputs < ENGINE_MAX_INPUT);
     node->inputs[node->n_inputs].node = input;
     node->inputs[node->n_inputs].change_handler = change_handler;
+    node->inputs[node->n_inputs].change_handler_name = change_handler_name;
     node->n_inputs ++;
 }
 
 void
-engine_add_input_with_compute_debug(
+engine_add_input_with_compute_debug_impl(
         struct engine_node *node, struct engine_node *input,
         enum engine_input_handler_result (*change_handler)
             (struct engine_node *, void *),
-        void (*get_compute_failure_info)(struct engine_node *))
+        void (*get_compute_failure_info)(struct engine_node *),
+        const char *change_handler_name)
 {
-    engine_add_input(node, input, change_handler);
+    engine_add_input_impl(node, input, change_handler, change_handler_name);
     node->get_compute_failure_info = get_compute_failure_info;
 }
 
@@ -610,4 +614,52 @@ engine_trigger_recompute(void)
 {
     VLOG_INFO("User triggered force recompute.");
     engine_set_force_recompute_immediate();
+}
+
+static void
+engine_dump_node(struct engine_node *node, struct sset *visited_nodes)
+{
+    if (sset_contains(visited_nodes, node->name)) {
+        return;
+    }
+    sset_add(visited_nodes, node->name);
+
+    printf("\t%s [style=filled, shape=box, fillcolor=white, "
+           "label=\"%s\"];\n",
+           node->name, node->name);
+    for (size_t i = 0; i < node->n_inputs; i++) {
+        const char *label = node->inputs[i].change_handler
+                            ? node->inputs[i].change_handler_name
+                            : NULL;
+
+        printf("\t%s -> %s [label=\"%s\"];\n",
+               node->inputs[i].node->name, node->name,
+               label ? label : "");
+
+        engine_dump_node(node->inputs[i].node, visited_nodes);
+    }
+}
+
+void
+engine_dump_graph(const char *node_name)
+{
+    printf("digraph \"Incremental-Processing-Engine\" {\n");
+    printf("\trankdir=LR;\n");
+
+    struct sset visited_nodes = SSET_INITIALIZER(&visited_nodes);
+    struct engine_node *node;
+    VECTOR_FOR_EACH (&engine_nodes, node) {
+        if (node_name && strcmp(node->name, node_name)) {
+            continue;
+        }
+
+        engine_dump_node(node, &visited_nodes);
+
+        if (node_name) {
+            break;
+        }
+    }
+
+    sset_destroy(&visited_nodes);
+    printf("}\n");
 }

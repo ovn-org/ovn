@@ -8083,6 +8083,23 @@ loop_done:
     exit(retval);
 }
 
+static void
+inc_proc_graph_dump(const char *end_node)
+{
+    struct ovsdb_idl_loop ovs_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
+        ovsdb_idl_create_unconnected(&ovsrec_idl_class, true));
+    struct ovsdb_idl_loop ovnsb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
+        ovsdb_idl_create_unconnected(&sbrec_idl_class, true));
+
+    inc_proc_ovn_controller_init(&ovnsb_idl_loop, &ovs_idl_loop,
+                                 NULL, NULL, NULL, NULL, NULL,
+                                 NULL, NULL, NULL, NULL);
+    engine_dump_graph(end_node);
+
+    ovsdb_idl_loop_destroy(&ovs_idl_loop);
+    ovsdb_idl_loop_destroy(&ovnsb_idl_loop);
+}
+
 static char *
 parse_options(int argc, char *argv[])
 {
@@ -8093,6 +8110,7 @@ parse_options(int argc, char *argv[])
         OVN_DAEMON_OPTION_ENUMS,
         SSL_OPTION_ENUMS,
         OPT_ENABLE_DUMMY_VIF_PLUG,
+        OPT_DUMP_INC_PROC_GRAPH,
     };
 
     static struct option long_options[] = {
@@ -8107,6 +8125,8 @@ parse_options(int argc, char *argv[])
         {"chassis", required_argument, NULL, 'n'},
         {"enable-dummy-vif-plug", no_argument, NULL,
          OPT_ENABLE_DUMMY_VIF_PLUG},
+        {"dump-inc-proc-graph", optional_argument, NULL,
+         OPT_DUMP_INC_PROC_GRAPH},
         {NULL, 0, NULL, 0}
     };
     char *short_options = ovs_cmdl_long_options_to_short_options(long_options);
@@ -8174,6 +8194,14 @@ parse_options(int argc, char *argv[])
         case OPT_ENABLE_DUMMY_VIF_PLUG:
             vif_plug_dummy_enable();
             break;
+
+        /* --dump-inc-proc-graph[=<i-p-node>]: Whether to dump the I-P engine
+         * graph representation in DOT format to stdout.  Optionally only up
+         * to <i-p-node>.
+         */
+        case OPT_DUMP_INC_PROC_GRAPH:
+            inc_proc_graph_dump(optarg);
+            exit(EXIT_SUCCESS);
 
         case 'n':
             free(cli_system_id);

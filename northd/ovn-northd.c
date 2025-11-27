@@ -590,6 +590,20 @@ update_sequence_numbers(int64_t loop_start_time,
         nbrec_nb_global_set_hv_cfg_timestamp(nb, hv_cfg_ts);
     }
 }
+
+static void inc_proc_graph_dump(const char *end_node)
+{
+    struct ovsdb_idl_loop ovnnb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
+        ovsdb_idl_create_unconnected(&nbrec_idl_class, true));
+    struct ovsdb_idl_loop ovnsb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
+        ovsdb_idl_create_unconnected(&sbrec_idl_class, true));
+
+    inc_proc_northd_init(&ovnnb_idl_loop, &ovnsb_idl_loop);
+    engine_dump_graph(end_node);
+
+    ovsdb_idl_loop_destroy(&ovnnb_idl_loop);
+    ovsdb_idl_loop_destroy(&ovnsb_idl_loop);
+}
 
 static void
 usage(void)
@@ -625,6 +639,7 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
         SSL_OPTION_ENUMS,
         OPT_DRY_RUN,
         OPT_N_THREADS,
+        OPT_DUMP_INC_PROC_GRAPH,
     };
     static const struct option long_options[] = {
         {"ovnsb-db", required_argument, NULL, 'd'},
@@ -635,6 +650,8 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
         {"version", no_argument, NULL, 'V'},
         {"dry-run", no_argument, NULL, OPT_DRY_RUN},
         {"n-threads", required_argument, NULL, OPT_N_THREADS},
+        {"dump-inc-proc-graph", optional_argument, NULL,
+         OPT_DUMP_INC_PROC_GRAPH},
         OVN_DAEMON_LONG_OPTIONS,
         VLOG_LONG_OPTIONS,
         STREAM_SSL_LONG_OPTIONS,
@@ -726,6 +743,14 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED,
         case OPT_DRY_RUN:
             *paused = true;
             break;
+
+        /* --dump-inc-proc-graph[=<i-p-node>]: Whether to dump the I-P engine
+         * graph representation in DOT format to stdout.  Optionally only up
+         * to <i-p-node>.
+         */
+        case OPT_DUMP_INC_PROC_GRAPH:
+            inc_proc_graph_dump(optarg);
+            exit(EXIT_SUCCESS);
 
         default:
             break;

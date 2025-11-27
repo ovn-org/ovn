@@ -9,3 +9,4 @@
 ^debian/rules$
 ^\.gitmodules$
 ^utilities/containers/Makefile
+^tests/ovn-inc-proc-graph-dump.at
