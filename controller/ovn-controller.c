@@ -998,61 +998,6 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
      * track that column which should be addressed in the future. */
 }
 
-#define SB_NODES \
-    SB_NODE(sb_global) \
-    SB_NODE(chassis) \
-    SB_NODE(ha_chassis_group) \
-    SB_NODE(encap) \
-    SB_NODE(address_set) \
-    SB_NODE(port_group) \
-    SB_NODE(multicast_group) \
-    SB_NODE(datapath_binding) \
-    SB_NODE(logical_dp_group) \
-    SB_NODE(port_binding) \
-    SB_NODE(mac_binding) \
-    SB_NODE(logical_flow) \
-    SB_NODE(dhcp_options) \
-    SB_NODE(dhcpv6_options) \
-    SB_NODE(dns) \
-    SB_NODE(load_balancer) \
-    SB_NODE(fdb) \
-    SB_NODE(meter) \
-    SB_NODE(static_mac_binding) \
-    SB_NODE(chassis_template_var) \
-    SB_NODE(acl_id) \
-    SB_NODE(advertised_route) \
-    SB_NODE(learned_route) \
-    SB_NODE(advertised_mac_binding)
-
-enum sb_engine_node {
-#define SB_NODE(NAME) SB_##NAME,
-    SB_NODES
-#undef SB_NODE
-};
-
-#define SB_NODE(NAME) ENGINE_FUNC_SB(NAME);
-    SB_NODES
-#undef SB_NODE
-
-#define OVS_NODES \
-    OVS_NODE(open_vswitch) \
-    OVS_NODE(bridge) \
-    OVS_NODE(port) \
-    OVS_NODE(interface) \
-    OVS_NODE(qos) \
-    OVS_NODE(queue) \
-    OVS_NODE(flow_sample_collector_set)
-
-enum ovs_engine_node {
-#define OVS_NODE(NAME) OVS_##NAME,
-    OVS_NODES
-#undef OVS_NODE
-};
-
-#define OVS_NODE(NAME) ENGINE_FUNC_OVS(NAME);
-    OVS_NODES
-#undef OVS_NODE
-
 struct ed_type_ofctrl_is_connected {
     bool connected;
 };
@@ -6515,6 +6460,129 @@ evpn_arp_vtep_binding_handler(struct engine_node *node, void *data OVS_UNUSED)
     return EN_UNHANDLED;
 }
 
+/* Define engine node functions for nodes that represent SB tables.
+ *
+ * en_sb_<TABLE_NAME>_run()
+ * en_sb_<TABLE_NAME>_init()
+ * en_sb_<TABLE_NAME>_cleanup()
+ * en_sb_<TABLE_NAME>_compute_failure_info()
+ */
+#define SB_NODES \
+    SB_NODE(sb_global) \
+    SB_NODE(chassis) \
+    SB_NODE(ha_chassis_group) \
+    SB_NODE(encap) \
+    SB_NODE(address_set) \
+    SB_NODE(port_group) \
+    SB_NODE(multicast_group) \
+    SB_NODE(datapath_binding) \
+    SB_NODE(logical_dp_group) \
+    SB_NODE(port_binding) \
+    SB_NODE(mac_binding) \
+    SB_NODE(logical_flow) \
+    SB_NODE(dhcp_options) \
+    SB_NODE(dhcpv6_options) \
+    SB_NODE(dns) \
+    SB_NODE(load_balancer) \
+    SB_NODE(fdb) \
+    SB_NODE(meter) \
+    SB_NODE(static_mac_binding) \
+    SB_NODE(chassis_template_var) \
+    SB_NODE(acl_id) \
+    SB_NODE(advertised_route) \
+    SB_NODE(learned_route) \
+    SB_NODE(advertised_mac_binding)
+
+enum sb_engine_node {
+#define SB_NODE(NAME) SB_##NAME,
+    SB_NODES
+#undef SB_NODE
+};
+
+#define SB_NODE(NAME) ENGINE_FUNC_SB(NAME);
+    SB_NODES
+#undef SB_NODE
+
+/* Define engine node functions for nodes that represent OVS tables.
+ *
+ * en_ovs_<TABLE_NAME>_run()
+ * en_ovs_<TABLE_NAME>_init()
+ * en_ovs_<TABLE_NAME>_cleanup()
+ * en_ovs_<TABLE_NAME>_compute_failure_info()
+ */
+#define OVS_NODES \
+    OVS_NODE(open_vswitch) \
+    OVS_NODE(bridge) \
+    OVS_NODE(port) \
+    OVS_NODE(interface) \
+    OVS_NODE(qos) \
+    OVS_NODE(queue) \
+    OVS_NODE(flow_sample_collector_set)
+
+enum ovs_engine_node {
+#define OVS_NODE(NAME) OVS_##NAME,
+    OVS_NODES
+#undef OVS_NODE
+};
+
+#define OVS_NODE(NAME) ENGINE_FUNC_OVS(NAME);
+    OVS_NODES
+#undef OVS_NODE
+
+/* Define engine nodes for SB and OVS tables.
+ *
+ * struct engine_node en_sb_<TABLE_NAME>
+ * struct engine_node en_ovs_<TABLE_NAME>
+ *
+ * Define nodes as static to avoid sparse errors.
+ */
+#define SB_NODE(NAME) static ENGINE_NODE_SB(NAME);
+    SB_NODES
+#undef SB_NODE
+
+#define OVS_NODE(NAME) static ENGINE_NODE_OVS(NAME);
+    OVS_NODES
+#undef OVS_NODE
+
+/* Define engine nodes for other nodes. They should be defined as static to
+ * avoid sparse errors. */
+static ENGINE_NODE(sb_ro);
+static ENGINE_NODE(template_vars, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(ct_zones, CLEAR_TRACKED_DATA, IS_VALID);
+static ENGINE_NODE(ovs_interface_shadow, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(runtime_data, CLEAR_TRACKED_DATA, SB_WRITE);
+static ENGINE_NODE(non_vif_data);
+static ENGINE_NODE(mff_ovn_geneve);
+static ENGINE_NODE(ofctrl_is_connected);
+static ENGINE_NODE(activated_ports, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(postponed_ports);
+static ENGINE_NODE(pflow_output);
+static ENGINE_NODE(lflow_output, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(controller_output);
+static ENGINE_NODE(addr_sets, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(port_groups, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(northd_options);
+static ENGINE_NODE(dhcp_options);
+static ENGINE_NODE(if_status_mgr);
+static ENGINE_NODE(lb_data, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(mac_cache);
+static ENGINE_NODE(bfd_chassis);
+static ENGINE_NODE(dns_cache);
+static ENGINE_NODE(acl_id, IS_VALID);
+static ENGINE_NODE(route);
+static ENGINE_NODE(route_table_notify);
+static ENGINE_NODE(route_exchange, SB_WRITE);
+static ENGINE_NODE(route_exchange_status);
+static ENGINE_NODE(garp_rarp, SB_WRITE);
+static ENGINE_NODE(host_if_monitor);
+static ENGINE_NODE(neighbor);
+static ENGINE_NODE(neighbor_table_notify);
+static ENGINE_NODE(neighbor_exchange);
+static ENGINE_NODE(neighbor_exchange_status);
+static ENGINE_NODE(evpn_vtep_binding, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(evpn_fdb, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(evpn_arp, CLEAR_TRACKED_DATA);
+
 /* Returns false if the northd internal version stored in SB_Global
  * and ovn-controller internal version don't match.
  */
@@ -6812,52 +6880,6 @@ main(int argc, char *argv[])
     stopwatch_create(OFCTRL_SEQNO_RUN_STOPWATCH_NAME, SW_MS);
     stopwatch_create(BFD_RUN_STOPWATCH_NAME, SW_MS);
     stopwatch_create(VIF_PLUG_RUN_STOPWATCH_NAME, SW_MS);
-
-    /* Define inc-proc-engine nodes. */
-    ENGINE_NODE(sb_ro);
-    ENGINE_NODE(template_vars, CLEAR_TRACKED_DATA);
-    ENGINE_NODE(ct_zones, CLEAR_TRACKED_DATA, IS_VALID);
-    ENGINE_NODE(ovs_interface_shadow, CLEAR_TRACKED_DATA);
-    ENGINE_NODE(runtime_data, CLEAR_TRACKED_DATA, SB_WRITE);
-    ENGINE_NODE(non_vif_data);
-    ENGINE_NODE(mff_ovn_geneve);
-    ENGINE_NODE(ofctrl_is_connected);
-    ENGINE_NODE(activated_ports, CLEAR_TRACKED_DATA);
-    ENGINE_NODE(postponed_ports);
-    ENGINE_NODE(pflow_output);
-    ENGINE_NODE(lflow_output, CLEAR_TRACKED_DATA);
-    ENGINE_NODE(controller_output);
-    ENGINE_NODE(addr_sets, CLEAR_TRACKED_DATA);
-    ENGINE_NODE(port_groups, CLEAR_TRACKED_DATA);
-    ENGINE_NODE(northd_options);
-    ENGINE_NODE(dhcp_options);
-    ENGINE_NODE(if_status_mgr);
-    ENGINE_NODE(lb_data, CLEAR_TRACKED_DATA);
-    ENGINE_NODE(mac_cache);
-    ENGINE_NODE(bfd_chassis);
-    ENGINE_NODE(dns_cache);
-    ENGINE_NODE(acl_id, IS_VALID);
-    ENGINE_NODE(route);
-    ENGINE_NODE(route_table_notify);
-    ENGINE_NODE(route_exchange, SB_WRITE);
-    ENGINE_NODE(route_exchange_status);
-    ENGINE_NODE(garp_rarp, SB_WRITE);
-    ENGINE_NODE(host_if_monitor);
-    ENGINE_NODE(neighbor);
-    ENGINE_NODE(neighbor_table_notify);
-    ENGINE_NODE(neighbor_exchange);
-    ENGINE_NODE(neighbor_exchange_status);
-    ENGINE_NODE(evpn_vtep_binding, CLEAR_TRACKED_DATA);
-    ENGINE_NODE(evpn_fdb, CLEAR_TRACKED_DATA);
-    ENGINE_NODE(evpn_arp, CLEAR_TRACKED_DATA);
-
-#define SB_NODE(NAME) ENGINE_NODE_SB(NAME);
-    SB_NODES
-#undef SB_NODE
-
-#define OVS_NODE(NAME) ENGINE_NODE_OVS(NAME);
-    OVS_NODES
-#undef OVS_NODE
 
     /* Add dependencies between inc-proc-engine nodes. */
     engine_add_input(&en_template_vars, &en_ovs_open_vswitch, NULL);
