@@ -27,6 +27,10 @@ DOC_SOURCE = \
 	Documentation/topics/testing.rst \
 	Documentation/topics/test-development.rst \
 	Documentation/topics/high-availability.rst \
+	Documentation/topics/incremental-processing/datapath-sync-graph.png \
+	Documentation/topics/incremental-processing/evpn-arp-graph.png \
+	Documentation/topics/incremental-processing/index.rst \
+	Documentation/topics/incremental-processing/incremental-processing.rst \
 	Documentation/topics/integration.rst \
 	Documentation/topics/ovn-news-2.8.rst \
 	Documentation/topics/role-based-access-control.rst \
