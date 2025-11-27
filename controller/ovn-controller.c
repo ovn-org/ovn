@@ -6583,305 +6583,22 @@ static ENGINE_NODE(evpn_vtep_binding, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(evpn_fdb, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(evpn_arp, CLEAR_TRACKED_DATA);
 
-/* Returns false if the northd internal version stored in SB_Global
- * and ovn-controller internal version don't match.
- */
-static bool
-check_northd_version(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
-                     const char *version)
-{
-    static bool version_mismatch;
-
-    const struct ovsrec_open_vswitch *cfg = ovsrec_open_vswitch_first(ovs_idl);
-    const struct ovsrec_open_vswitch_table *ovs_table =
-        ovsrec_open_vswitch_table_get(ovs_idl);
-    const char *chassis_id = get_ovs_chassis_id(ovs_table);
-    if (!cfg || !get_chassis_external_id_value_bool(
-                     &cfg->external_ids, chassis_id,
-                     "ovn-match-northd-version", false)) {
-        version_mismatch = false;
-        return true;
-    }
-
-    const struct sbrec_sb_global *sb = sbrec_sb_global_first(ovnsb_idl);
-    if (!sb) {
-        version_mismatch = true;
-        return false;
-    }
-
-    const char *northd_version =
-        smap_get_def(&sb->options, "northd_internal_version", "");
-
-    if (strcmp(northd_version, version)) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-        VLOG_WARN_RL(&rl, "controller version - %s mismatch with northd "
-                     "version - %s", version, northd_version);
-        version_mismatch = true;
-        return false;
-    }
-
-    /* If there used to be a mismatch and ovn-northd got updated, force a
-     * full recompute.
-     */
-    if (version_mismatch) {
-        engine_set_force_recompute();
-    }
-    version_mismatch = false;
-    return true;
-}
-
 static void
-br_int_remote_update(struct br_int_remote *remote,
-                     const struct ovsrec_bridge *br_int,
-                     const struct ovsrec_open_vswitch_table *ovs_table)
+inc_proc_ovn_controller_init(
+    struct ovsdb_idl_loop *sb_idl_loop, struct ovsdb_idl_loop *ovs_idl_loop,
+    struct ovsdb_idl_index *sbrec_chassis_by_name,
+    struct ovsdb_idl_index *sbrec_port_binding_by_name,
+    struct ovsdb_idl_index *sbrec_port_binding_by_key,
+    struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
+    struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+    struct ovsdb_idl_index *ovsrec_flow_sample_collector_set_by_id,
+    struct ovsdb_idl_index *ovsrec_port_by_qos,
+    struct ovsdb_idl_index *ovsrec_interface_by_name,
+    struct ovsdb_idl_index *ovsrec_queue_by_external_ids)
 {
-    if (!br_int) {
-        return;
-    }
+    /* Define relationships between nodes where first argument is dependent
+     * on the second argument. */
 
-    const struct ovsrec_open_vswitch *cfg =
-            ovsrec_open_vswitch_table_first(ovs_table);
-
-    const char *ext_target =
-            smap_get(&cfg->external_ids, "ovn-bridge-remote");
-    char *target = ext_target
-            ? xstrdup(ext_target)
-            : xasprintf("unix:%s/%s.mgmt", ovs_rundir(), br_int->name);
-
-    if (!remote->target || strcmp(remote->target, target)) {
-        free(remote->target);
-        remote->target = target;
-    } else {
-        free(target);
-    }
-
-    unsigned long long probe_interval =
-            smap_get_ullong(&cfg->external_ids,
-                            "ovn-bridge-remote-probe-interval", 0);
-    remote->probe_interval = MIN(probe_interval / 1000, INT_MAX);
-}
-
-static void
-ovsdb_idl_loop_next_cfg_inc(struct ovsdb_idl_loop *idl_loop)
-{
-    if (idl_loop->next_cfg == INT64_MAX) {
-        idl_loop->next_cfg = 0;
-    } else {
-        idl_loop->next_cfg++;
-    }
-}
-
-int
-main(int argc, char *argv[])
-{
-    struct unixctl_server *unixctl;
-    struct ovn_exit_args exit_args = {0};
-    struct br_int_remote br_int_remote = {0};
-    int retval;
-
-    /* Read from system-id-override file once on startup. */
-    file_system_id = get_file_system_id();
-
-    ovs_cmdl_proctitle_init(argc, argv);
-    ovn_set_program_name(argv[0]);
-    service_start(&argc, &argv);
-    char *ovs_remote = parse_options(argc, argv);
-    fatal_ignore_sigpipe();
-
-    daemonize_start(true, false);
-
-    char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
-    retval = unixctl_server_create(abs_unixctl_path, &unixctl);
-    free(abs_unixctl_path);
-    if (retval) {
-        exit(EXIT_FAILURE);
-    }
-    unixctl_command_register("exit", "", 0, 1, ovn_exit_command_callback,
-                             &exit_args);
-
-    daemonize_complete();
-
-    /* Register ofctrl seqno types. */
-    ofctrl_seq_type_nb_cfg = ofctrl_seqno_add_type();
-
-    patch_init();
-    pinctrl_init();
-    lflow_init();
-    mirror_init();
-    vif_plug_provider_initialize();
-    statctrl_init();
-    dns_resolve_init(true);
-
-    /* Connect to OVS OVSDB instance. */
-    struct ovsdb_idl_loop ovs_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
-        ovsdb_idl_create(ovs_remote, &ovsrec_idl_class, false, true));
-    ctrl_register_ovs_idl(ovs_idl_loop.idl);
-
-    struct ovsdb_idl_index *ovsrec_port_by_interfaces
-        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
-                                  &ovsrec_port_col_interfaces);
-    struct ovsdb_idl_index *ovsrec_port_by_name
-        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
-                                  &ovsrec_port_col_name);
-    struct ovsdb_idl_index *ovsrec_port_by_qos
-        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
-                                  &ovsrec_port_col_qos);
-    struct ovsdb_idl_index *ovsrec_interface_by_name
-        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
-                                  &ovsrec_interface_col_name);
-    struct ovsdb_idl_index *ovsrec_queue_by_external_ids
-        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
-                                  &ovsrec_queue_col_external_ids);
-    struct ovsdb_idl_index *ovsrec_flow_sample_collector_set_by_id
-        = ovsdb_idl_index_create2(ovs_idl_loop.idl,
-                                  &ovsrec_flow_sample_collector_set_col_bridge,
-                                  &ovsrec_flow_sample_collector_set_col_id);
-
-    ovsdb_idl_get_initial_snapshot(ovs_idl_loop.idl);
-
-    /* Configure OVN SB database. */
-    struct ovsdb_idl_loop ovnsb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
-        ovsdb_idl_create_unconnected(&sbrec_idl_class, true));
-    ovsdb_idl_set_leader_only(ovnsb_idl_loop.idl, false);
-
-    unixctl_command_register("connection-status", "", 0, 0,
-                             ovn_conn_show, ovnsb_idl_loop.idl);
-
-    struct ovsdb_idl_index *sbrec_chassis_by_name
-        = chassis_index_create(ovnsb_idl_loop.idl);
-    struct ovsdb_idl_index *sbrec_chassis_private_by_name
-        = chassis_private_index_create(ovnsb_idl_loop.idl);
-    struct ovsdb_idl_index *sbrec_multicast_group_by_name_datapath
-        = mcast_group_index_create(ovnsb_idl_loop.idl);
-    struct ovsdb_idl_index *sbrec_meter_by_name
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl, &sbrec_meter_col_name);
-    struct ovsdb_idl_index *sbrec_logical_flow_by_logical_datapath
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_logical_flow_col_logical_datapath);
-    struct ovsdb_idl_index *sbrec_logical_flow_by_logical_dp_group
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_logical_flow_col_logical_dp_group);
-    struct ovsdb_idl_index *sbrec_port_binding_by_name
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_port_binding_col_logical_port);
-    struct ovsdb_idl_index *sbrec_port_binding_by_key
-        = ovsdb_idl_index_create2(ovnsb_idl_loop.idl,
-                                  &sbrec_port_binding_col_tunnel_key,
-                                  &sbrec_port_binding_col_datapath);
-    struct ovsdb_idl_index *sbrec_port_binding_by_datapath
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_port_binding_col_datapath);
-    struct ovsdb_idl_index *sbrec_port_binding_by_type
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_port_binding_col_type);
-    struct ovsdb_idl_index *sbrec_port_binding_by_requested_chassis
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_port_binding_col_requested_chassis);
-    struct ovsdb_idl_index *sbrec_datapath_binding_by_key
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_datapath_binding_col_tunnel_key);
-    struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip
-        = mac_binding_by_lport_ip_index_create(ovnsb_idl_loop.idl);
-    struct ovsdb_idl_index *sbrec_ip_multicast
-        = ip_mcast_index_create(ovnsb_idl_loop.idl);
-    struct ovsdb_idl_index *sbrec_igmp_group
-        = igmp_group_index_create(ovnsb_idl_loop.idl);
-    struct ovsdb_idl_index *sbrec_fdb_by_dp_key
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_fdb_col_dp_key);
-    struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac
-        = ovsdb_idl_index_create2(ovnsb_idl_loop.idl,
-                                  &sbrec_fdb_col_mac,
-                                  &sbrec_fdb_col_dp_key);
-    struct ovsdb_idl_index *sbrec_mac_binding_by_datapath
-        = mac_binding_by_datapath_index_create(ovnsb_idl_loop.idl);
-    struct ovsdb_idl_index *sbrec_static_mac_binding_by_datapath
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_static_mac_binding_col_datapath);
-    struct ovsdb_idl_index *sbrec_chassis_template_var_index_by_chassis
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_chassis_template_var_col_chassis);
-    struct ovsdb_idl_index *sbrec_learned_route_index_by_datapath
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_learned_route_col_datapath);
-    struct ovsdb_idl_index *sbrec_advertised_mac_binding_index_by_dp
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_advertised_mac_binding_col_datapath);
-    struct ovsdb_idl_index *sbrec_encaps_index_by_ip_and_type
-        = ovsdb_idl_index_create2(ovnsb_idl_loop.idl,
-                                  &sbrec_encap_col_type, &sbrec_encap_col_ip);
-
-    ovsdb_idl_track_add_all(ovnsb_idl_loop.idl);
-    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
-                         &sbrec_chassis_private_col_nb_cfg);
-    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
-                         &sbrec_chassis_private_col_nb_cfg_timestamp);
-    /* Omit the timestamp columns of the MAC_Binding and FDB tables.
-     * ovn-controller doesn't need to react to changes in timestamp
-     * values (it does read them to implement aging).  Therefore we
-     * can disable change tracking and alerting for these columns. */
-    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_mac_binding_col_timestamp);
-    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_fdb_col_timestamp);
-
-    /* Omit the external_ids column of all the tables except for -
-     *  - DNS. pinctrl.c uses the external_ids column of DNS,
-     *    which it shouldn't. This should be removed.
-     *
-     *  - Datapath_binding - lflow.c is using this to check if the datapath
-     *                       is switch or not. This should be removed.
-     * */
-
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_sb_global_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_logical_flow_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_port_binding_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_ssl_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl,
-                   &sbrec_gateway_chassis_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_ha_chassis_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl,
-                   &sbrec_ha_chassis_group_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl,
-                   &sbrec_advertised_route_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl,
-                   &sbrec_learned_route_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl,
-                   &sbrec_advertised_mac_binding_col_external_ids);
-
-    /* We don't want to monitor Connection table at all. So omit all the
-     * columns. */
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_inactivity_probe);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_is_connected);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_max_backoff);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_other_config);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_read_only);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_role);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_status);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_target);
-
-    /* Omit alerts to the Chassis external_ids column, the configuration
-     * from the local open_vswitch table has now being moved to the
-     * other_config column so we no longer need to monitor it */
-    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_chassis_col_external_ids);
-
-    /* Do not monitor Chassis_Private external_ids */
-    ovsdb_idl_omit(ovnsb_idl_loop.idl,
-                   &sbrec_chassis_private_col_external_ids);
-
-    update_sb_monitors(ovnsb_idl_loop.idl, NULL, NULL, NULL, NULL, false);
-
-    stopwatch_create(CONTROLLER_LOOP_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(OFCTRL_PUT_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(PINCTRL_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(PATCH_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(CT_ZONE_COMMIT_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(IF_STATUS_MGR_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(IF_STATUS_MGR_UPDATE_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(OFCTRL_SEQNO_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(BFD_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(VIF_PLUG_RUN_STOPWATCH_NAME, SW_MS);
-
-    /* Add dependencies between inc-proc-engine nodes. */
     engine_add_input(&en_template_vars, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_template_vars, &en_sb_chassis, NULL);
     engine_add_input(&en_template_vars, &en_sb_chassis_template_var,
@@ -7161,40 +6878,82 @@ main(int argc, char *argv[])
                      controller_output_acl_id_handler);
 
     struct engine_arg engine_arg = {
-        .sb_idl = ovnsb_idl_loop.idl,
-        .ovs_idl = ovs_idl_loop.idl,
+        .sb_idl = sb_idl_loop->idl,
+        .ovs_idl = ovs_idl_loop->idl,
     };
     engine_init(&en_controller_output, &engine_arg);
 
     engine_ovsdb_node_add_index(&en_sb_chassis, "name", sbrec_chassis_by_name);
+    struct ovsdb_idl_index *sbrec_multicast_group_by_name_datapath
+        = mcast_group_index_create(sb_idl_loop->idl);
     engine_ovsdb_node_add_index(&en_sb_multicast_group, "name_datapath",
                                 sbrec_multicast_group_by_name_datapath);
+
+    struct ovsdb_idl_index *sbrec_logical_flow_by_logical_datapath
+        = ovsdb_idl_index_create1(sb_idl_loop->idl,
+                                  &sbrec_logical_flow_col_logical_datapath);
     engine_ovsdb_node_add_index(&en_sb_logical_flow, "logical_datapath",
                                 sbrec_logical_flow_by_logical_datapath);
+
+    struct ovsdb_idl_index *sbrec_logical_flow_by_logical_dp_group
+        = ovsdb_idl_index_create1(sb_idl_loop->idl,
+                                  &sbrec_logical_flow_col_logical_dp_group);
     engine_ovsdb_node_add_index(&en_sb_logical_flow, "logical_dp_group",
                                 sbrec_logical_flow_by_logical_dp_group);
+
     engine_ovsdb_node_add_index(&en_sb_port_binding, "name",
                                 sbrec_port_binding_by_name);
+
     engine_ovsdb_node_add_index(&en_sb_port_binding, "key",
                                 sbrec_port_binding_by_key);
+
+    struct ovsdb_idl_index *sbrec_port_binding_by_datapath
+        = ovsdb_idl_index_create1(sb_idl_loop->idl,
+                                  &sbrec_port_binding_col_datapath);
     engine_ovsdb_node_add_index(&en_sb_port_binding, "datapath",
                                 sbrec_port_binding_by_datapath);
+
     engine_ovsdb_node_add_index(&en_sb_datapath_binding, "key",
                                 sbrec_datapath_binding_by_key);
+
+    struct ovsdb_idl_index *sbrec_fdb_by_dp_key
+        = ovsdb_idl_index_create1(sb_idl_loop->idl,
+                                  &sbrec_fdb_col_dp_key);
     engine_ovsdb_node_add_index(&en_sb_fdb, "dp_key",
                                 sbrec_fdb_by_dp_key);
+
+    struct ovsdb_idl_index *sbrec_mac_binding_by_datapath
+        = mac_binding_by_datapath_index_create(sb_idl_loop->idl);
     engine_ovsdb_node_add_index(&en_sb_mac_binding, "datapath",
                                 sbrec_mac_binding_by_datapath);
+
+    struct ovsdb_idl_index *sbrec_static_mac_binding_by_datapath
+        = ovsdb_idl_index_create1(sb_idl_loop->idl,
+                                  &sbrec_static_mac_binding_col_datapath);
     engine_ovsdb_node_add_index(&en_sb_static_mac_binding, "datapath",
                                 sbrec_static_mac_binding_by_datapath);
+
+    struct ovsdb_idl_index *sbrec_chassis_template_var_index_by_chassis
+        = ovsdb_idl_index_create1(sb_idl_loop->idl,
+                                  &sbrec_chassis_template_var_col_chassis);
     engine_ovsdb_node_add_index(&en_sb_chassis_template_var, "chassis",
                                 sbrec_chassis_template_var_index_by_chassis);
+
+    struct ovsdb_idl_index *sbrec_learned_route_index_by_datapath
+        = ovsdb_idl_index_create1(sb_idl_loop->idl,
+                                  &sbrec_learned_route_col_datapath);
     engine_ovsdb_node_add_index(&en_sb_learned_route, "datapath",
                                 sbrec_learned_route_index_by_datapath);
+
+    struct ovsdb_idl_index *sbrec_advertised_mac_binding_index_by_dp
+        = ovsdb_idl_index_create1(sb_idl_loop->idl,
+                                  &sbrec_advertised_mac_binding_col_datapath);
     engine_ovsdb_node_add_index(&en_sb_advertised_mac_binding, "datapath",
                                 sbrec_advertised_mac_binding_index_by_dp);
+
     engine_ovsdb_node_add_index(&en_sb_mac_binding, "lport_ip",
                                 sbrec_mac_binding_by_lport_ip);
+
     engine_ovsdb_node_add_index(&en_ovs_flow_sample_collector_set, "id",
                                 ovsrec_flow_sample_collector_set_by_id);
     engine_ovsdb_node_add_index(&en_ovs_port, "qos", ovsrec_port_by_qos);
@@ -7202,6 +6961,288 @@ main(int argc, char *argv[])
                                 ovsrec_interface_by_name);
     engine_ovsdb_node_add_index(&en_ovs_queue, "external_ids",
                                 ovsrec_queue_by_external_ids);
+}
+
+/* Returns false if the northd internal version stored in SB_Global
+ * and ovn-controller internal version don't match.
+ */
+static bool
+check_northd_version(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
+                     const char *version)
+{
+    static bool version_mismatch;
+
+    const struct ovsrec_open_vswitch *cfg = ovsrec_open_vswitch_first(ovs_idl);
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        ovsrec_open_vswitch_table_get(ovs_idl);
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    if (!cfg || !get_chassis_external_id_value_bool(
+                     &cfg->external_ids, chassis_id,
+                     "ovn-match-northd-version", false)) {
+        version_mismatch = false;
+        return true;
+    }
+
+    const struct sbrec_sb_global *sb = sbrec_sb_global_first(ovnsb_idl);
+    if (!sb) {
+        version_mismatch = true;
+        return false;
+    }
+
+    const char *northd_version =
+        smap_get_def(&sb->options, "northd_internal_version", "");
+
+    if (strcmp(northd_version, version)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "controller version - %s mismatch with northd "
+                     "version - %s", version, northd_version);
+        version_mismatch = true;
+        return false;
+    }
+
+    /* If there used to be a mismatch and ovn-northd got updated, force a
+     * full recompute.
+     */
+    if (version_mismatch) {
+        engine_set_force_recompute();
+    }
+    version_mismatch = false;
+    return true;
+}
+
+static void
+br_int_remote_update(struct br_int_remote *remote,
+                     const struct ovsrec_bridge *br_int,
+                     const struct ovsrec_open_vswitch_table *ovs_table)
+{
+    if (!br_int) {
+        return;
+    }
+
+    const struct ovsrec_open_vswitch *cfg =
+            ovsrec_open_vswitch_table_first(ovs_table);
+
+    const char *ext_target =
+            smap_get(&cfg->external_ids, "ovn-bridge-remote");
+    char *target = ext_target
+            ? xstrdup(ext_target)
+            : xasprintf("unix:%s/%s.mgmt", ovs_rundir(), br_int->name);
+
+    if (!remote->target || strcmp(remote->target, target)) {
+        free(remote->target);
+        remote->target = target;
+    } else {
+        free(target);
+    }
+
+    unsigned long long probe_interval =
+            smap_get_ullong(&cfg->external_ids,
+                            "ovn-bridge-remote-probe-interval", 0);
+    remote->probe_interval = MIN(probe_interval / 1000, INT_MAX);
+}
+
+static void
+ovsdb_idl_loop_next_cfg_inc(struct ovsdb_idl_loop *idl_loop)
+{
+    if (idl_loop->next_cfg == INT64_MAX) {
+        idl_loop->next_cfg = 0;
+    } else {
+        idl_loop->next_cfg++;
+    }
+}
+
+int
+main(int argc, char *argv[])
+{
+    struct unixctl_server *unixctl;
+    struct ovn_exit_args exit_args = {0};
+    struct br_int_remote br_int_remote = {0};
+    int retval;
+
+    /* Read from system-id-override file once on startup. */
+    file_system_id = get_file_system_id();
+
+    ovs_cmdl_proctitle_init(argc, argv);
+    ovn_set_program_name(argv[0]);
+    service_start(&argc, &argv);
+    char *ovs_remote = parse_options(argc, argv);
+    fatal_ignore_sigpipe();
+
+    daemonize_start(true, false);
+
+    char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
+    retval = unixctl_server_create(abs_unixctl_path, &unixctl);
+    free(abs_unixctl_path);
+    if (retval) {
+        exit(EXIT_FAILURE);
+    }
+    unixctl_command_register("exit", "", 0, 1, ovn_exit_command_callback,
+                             &exit_args);
+
+    daemonize_complete();
+
+    /* Register ofctrl seqno types. */
+    ofctrl_seq_type_nb_cfg = ofctrl_seqno_add_type();
+
+    patch_init();
+    pinctrl_init();
+    lflow_init();
+    mirror_init();
+    vif_plug_provider_initialize();
+    statctrl_init();
+    dns_resolve_init(true);
+
+    /* Connect to OVS OVSDB instance. */
+    struct ovsdb_idl_loop ovs_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
+        ovsdb_idl_create(ovs_remote, &ovsrec_idl_class, false, true));
+    ctrl_register_ovs_idl(ovs_idl_loop.idl);
+
+    struct ovsdb_idl_index *ovsrec_port_by_interfaces
+        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
+                                  &ovsrec_port_col_interfaces);
+    struct ovsdb_idl_index *ovsrec_port_by_name
+        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
+                                  &ovsrec_port_col_name);
+    struct ovsdb_idl_index *ovsrec_port_by_qos
+        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
+                                  &ovsrec_port_col_qos);
+    struct ovsdb_idl_index *ovsrec_interface_by_name
+        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
+                                  &ovsrec_interface_col_name);
+    struct ovsdb_idl_index *ovsrec_flow_sample_collector_set_by_id
+        = ovsdb_idl_index_create2(ovs_idl_loop.idl,
+                                  &ovsrec_flow_sample_collector_set_col_bridge,
+                                  &ovsrec_flow_sample_collector_set_col_id);
+    struct ovsdb_idl_index *ovsrec_queue_by_external_ids
+        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
+                                  &ovsrec_queue_col_external_ids);
+
+    ovsdb_idl_get_initial_snapshot(ovs_idl_loop.idl);
+
+    /* Configure OVN SB database. */
+    struct ovsdb_idl_loop ovnsb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
+        ovsdb_idl_create_unconnected(&sbrec_idl_class, true));
+    ovsdb_idl_set_leader_only(ovnsb_idl_loop.idl, false);
+
+    unixctl_command_register("connection-status", "", 0, 0,
+                             ovn_conn_show, ovnsb_idl_loop.idl);
+
+    struct ovsdb_idl_index *sbrec_chassis_by_name
+        = chassis_index_create(ovnsb_idl_loop.idl);
+    struct ovsdb_idl_index *sbrec_chassis_private_by_name
+        = chassis_private_index_create(ovnsb_idl_loop.idl);
+    struct ovsdb_idl_index *sbrec_meter_by_name
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl, &sbrec_meter_col_name);
+    struct ovsdb_idl_index *sbrec_port_binding_by_name
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_port_binding_col_logical_port);
+    struct ovsdb_idl_index *sbrec_port_binding_by_key
+        = ovsdb_idl_index_create2(ovnsb_idl_loop.idl,
+                                  &sbrec_port_binding_col_tunnel_key,
+                                  &sbrec_port_binding_col_datapath);
+    struct ovsdb_idl_index *sbrec_port_binding_by_type
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_port_binding_col_type);
+    struct ovsdb_idl_index *sbrec_port_binding_by_requested_chassis
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_port_binding_col_requested_chassis);
+    struct ovsdb_idl_index *sbrec_datapath_binding_by_key
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_datapath_binding_col_tunnel_key);
+    struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip
+        = mac_binding_by_lport_ip_index_create(ovnsb_idl_loop.idl);
+    struct ovsdb_idl_index *sbrec_ip_multicast
+        = ip_mcast_index_create(ovnsb_idl_loop.idl);
+    struct ovsdb_idl_index *sbrec_igmp_group
+        = igmp_group_index_create(ovnsb_idl_loop.idl);
+    struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac
+        = ovsdb_idl_index_create2(ovnsb_idl_loop.idl,
+                                  &sbrec_fdb_col_mac,
+                                  &sbrec_fdb_col_dp_key);
+    struct ovsdb_idl_index *sbrec_encaps_index_by_ip_and_type
+        = ovsdb_idl_index_create2(ovnsb_idl_loop.idl,
+                                  &sbrec_encap_col_type, &sbrec_encap_col_ip);
+
+    ovsdb_idl_track_add_all(ovnsb_idl_loop.idl);
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
+                         &sbrec_chassis_private_col_nb_cfg);
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
+                         &sbrec_chassis_private_col_nb_cfg_timestamp);
+    /* Omit the timestamp columns of the MAC_Binding and FDB tables.
+     * ovn-controller doesn't need to react to changes in timestamp
+     * values (it does read them to implement aging).  Therefore we
+     * can disable change tracking and alerting for these columns. */
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_mac_binding_col_timestamp);
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_fdb_col_timestamp);
+
+    /* Omit the external_ids column of all the tables except for -
+     *  - DNS. pinctrl.c uses the external_ids column of DNS,
+     *    which it shouldn't. This should be removed.
+     *
+     *  - Datapath_binding - lflow.c is using this to check if the datapath
+     *                       is switch or not. This should be removed.
+     * */
+
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_sb_global_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_logical_flow_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_port_binding_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_ssl_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl,
+                   &sbrec_gateway_chassis_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_ha_chassis_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl,
+                   &sbrec_ha_chassis_group_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl,
+                   &sbrec_advertised_route_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl,
+                   &sbrec_learned_route_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl,
+                   &sbrec_advertised_mac_binding_col_external_ids);
+
+    /* We don't want to monitor Connection table at all. So omit all the
+     * columns. */
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_inactivity_probe);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_is_connected);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_max_backoff);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_other_config);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_read_only);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_role);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_status);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_target);
+
+    /* Omit alerts to the Chassis external_ids column, the configuration
+     * from the local open_vswitch table has now being moved to the
+     * other_config column so we no longer need to monitor it */
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_chassis_col_external_ids);
+
+    /* Do not monitor Chassis_Private external_ids */
+    ovsdb_idl_omit(ovnsb_idl_loop.idl,
+                   &sbrec_chassis_private_col_external_ids);
+
+    update_sb_monitors(ovnsb_idl_loop.idl, NULL, NULL, NULL, NULL, false);
+
+    stopwatch_create(CONTROLLER_LOOP_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(OFCTRL_PUT_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(PINCTRL_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(PATCH_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(CT_ZONE_COMMIT_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(IF_STATUS_MGR_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(IF_STATUS_MGR_UPDATE_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(OFCTRL_SEQNO_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(BFD_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(VIF_PLUG_RUN_STOPWATCH_NAME, SW_MS);
+
+    inc_proc_ovn_controller_init(&ovnsb_idl_loop, &ovs_idl_loop,
+                                 sbrec_chassis_by_name,
+                                 sbrec_port_binding_by_name,
+                                 sbrec_port_binding_by_key,
+                                 sbrec_datapath_binding_by_key,
+                                 sbrec_mac_binding_by_lport_ip,
+                                 ovsrec_flow_sample_collector_set_by_id,
+                                 ovsrec_port_by_qos,
+                                 ovsrec_interface_by_name,
+                                 ovsrec_queue_by_external_ids);
 
     struct ed_type_lflow_output *lflow_output_data =
         engine_get_internal_data(&en_lflow_output);
