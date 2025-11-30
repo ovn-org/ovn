@@ -1224,7 +1224,9 @@ port_binding_run(struct ic_context *ctx)
 
         for (size_t i = 0; i < lr->n_ports; i++) {
             const struct nbrec_logical_router_port *lrp = lr->ports[i];
-            shash_add(&nb_ports, lrp->name, lrp);
+            if (smap_get_def(&lrp->options, "interconn-tr", NULL)) {
+                shash_add(&nb_ports, lrp->name, lrp);
+            }
         }
 
         isb_pb_key = icsbrec_port_binding_index_init_row(
