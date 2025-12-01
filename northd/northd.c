@@ -628,6 +628,10 @@ ovn_datapath_from_sbrec(const struct hmap *ls_datapaths,
         return NULL;
     }
 
+    if (!dps) {
+        return NULL;
+    }
+
     struct ovn_datapath *od = ovn_datapath_find_(dps, &key);
     if (od && (od->sdp->sb_dp == sb)) {
         return od;
