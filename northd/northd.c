@@ -9750,8 +9750,7 @@ build_lswitch_arp_chassis_resident(const struct ovn_datapath *od,
 
         SSET_FOR_EACH (port_name, &inports) {
             ds_clear(&match);
-            ds_put_format(&match, "(arp.op == 1 || arp.op == 2) "
-                                  "&& inport == %s",
+            ds_put_format(&match, "arp.op == 1 && inport == %s",
                           port_name);
             ovn_lflow_add(lflows, od, S_SWITCH_IN_CHECK_PORT_SEC, 75,
                           ds_cstr(&match), REGBIT_EXT_ARP " = 1; next;",
