@@ -4575,9 +4575,12 @@ ovs-vsctl remove interface ovs-sw1-p1 external_ids iface-id
 wait_row_count Service_Monitor 2
 wait_row_count Service_Monitor 2 status=offline
 
+# Once port is added, status should be online very soon: if it takes more than a few seconds, that's a bug.
+OVS_CTL_TIMEOUT=3
 ovs-vsctl set interface ovs-sw1-p1 external_ids:iface-id=sw1-p1
 wait_row_count Service_Monitor 2
 wait_row_count Service_Monitor 1 status=online
+OVS_CTL_TIMEOUT=30
 
 # Create udp load balancer.
 check ovn-nbctl lb-add lb2 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80 udp
