@@ -8126,7 +8126,7 @@ svc_monitors_run(struct rconn *swconn,
             break;
 
         case SVC_MON_S_WAITING:
-            if (current_time > svc_mon->wait_time) {
+            if (current_time >= svc_mon->wait_time) {
                 if (svc_mon->protocol ==  SVC_MON_PROTO_UDP) {
                     svc_mon->n_success++;
                     svc_mon->state = SVC_MON_S_ONLINE;
