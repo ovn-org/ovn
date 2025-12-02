@@ -5771,7 +5771,7 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
         struct local_datapath *local_dp =
             get_local_datapath(local_datapaths, ip_ms->dp_key);
 
-        if (!local_dp) {
+        if (!local_dp || !local_dp->is_switch) {
             continue;
         }
 
