@@ -8692,7 +8692,7 @@ svc_monitors_run(struct rconn *swconn,
             break;
 
         case SVC_MON_S_WAITING:
-            if (current_time > svc_mon->wait_time) {
+            if (current_time >= svc_mon->wait_time) {
                 if (svc_mon->protocol ==  SVC_MON_PROTO_TCP) {
                     svc_mon->n_failures++;
                     svc_mon->state = SVC_MON_S_OFFLINE;
