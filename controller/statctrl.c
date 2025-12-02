@@ -96,6 +96,7 @@ struct statctrl_ctx {
 
     struct seq *thread_seq;
     struct seq *main_seq;
+    uint64_t new_main_seq;
 
     struct stats_node nodes[STATS_MAX];
 };
@@ -131,6 +132,7 @@ statctrl_init(void)
     ovs_mutex_init(&mutex);
     statctrl_ctx.thread_seq = seq_create();
     statctrl_ctx.main_seq = seq_create();
+    statctrl_ctx.new_main_seq = seq_read(statctrl_ctx.main_seq);
 
     /* Definition of all stat nodes. */
     struct ofputil_flow_stats_request mac_binding_request = {
@@ -189,6 +191,7 @@ statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
     long long now = time_msec();
 
     ovs_mutex_lock(&mutex);
+    statctrl_ctx.new_main_seq = seq_read(statctrl_ctx.main_seq);
     for (size_t i = 0; i < STATS_MAX; i++) {
         struct stats_node *node = &statctrl_ctx.nodes[i];
         uint64_t prev_delay = node->request_delay;
@@ -241,8 +244,7 @@ statctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn)
             poll_immediate_wake();
         }
     }
-    int64_t new_seq = seq_read(statctrl_ctx.main_seq);
-    seq_wait(statctrl_ctx.main_seq, new_seq);
+    seq_wait(statctrl_ctx.main_seq, statctrl_ctx.new_main_seq);
     ovs_mutex_unlock(&mutex);
 }
 
