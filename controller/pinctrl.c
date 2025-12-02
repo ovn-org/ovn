@@ -7004,7 +7004,7 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
             continue;
         }
 
-        if (pb->chassis != our_chassis) {
+        if ((pb->chassis != our_chassis) || (pb->n_up && !pb->up[0])) {
             continue;
         }
 
