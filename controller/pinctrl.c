@@ -160,6 +160,7 @@ VLOG_DEFINE_THIS_MODULE(pinctrl);
 static struct ovs_mutex pinctrl_mutex = OVS_MUTEX_INITIALIZER;
 static struct seq *pinctrl_handler_seq;
 static struct seq *pinctrl_main_seq;
+static uint64_t main_seq;
 
 #define GARP_RARP_DEF_MAX_TIMEOUT    16000
 static long long int garp_rarp_max_timeout = GARP_RARP_DEF_MAX_TIMEOUT;
@@ -208,7 +209,7 @@ static void run_put_mac_bindings(
     struct ovsdb_idl_index *sbrec_port_binding_by_key,
     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip)
     OVS_REQUIRES(pinctrl_mutex);
-static void wait_put_mac_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn);
+static void wait_put_mac_bindings(void);
 static void send_mac_binding_buffered_pkts(struct rconn *swconn)
     OVS_REQUIRES(pinctrl_mutex);
 
@@ -277,7 +278,7 @@ static void pinctrl_handle_put_icmp_frag_mtu(struct rconn *swconn,
 static void
 pinctrl_handle_event(struct ofpbuf *userdata)
     OVS_REQUIRES(pinctrl_mutex);
-static void wait_controller_event(struct ovsdb_idl_txn *ovnsb_idl_txn);
+static void wait_controller_event(void);
 static void init_ipv6_ras(void);
 static void destroy_ipv6_ras(void);
 static void ipv6_ra_wait(long long int send_ipv6_ra_time);
@@ -324,7 +325,7 @@ static void run_put_vport_bindings(
     struct ovsdb_idl_index *sbrec_port_binding_by_key,
     const struct sbrec_chassis *chassis, int64_t cur_cfg)
     OVS_REQUIRES(pinctrl_mutex);
-static void wait_put_vport_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn);
+static void wait_put_vport_bindings(void);
 static void pinctrl_handle_bind_vport(const struct flow *md,
                                       struct ofpbuf *userdata);
 static void pinctrl_handle_svc_check(struct rconn *swconn,
@@ -396,7 +397,7 @@ static void run_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn,
                         struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac,
                         uint64_t cur_cfg)
                         OVS_REQUIRES(pinctrl_mutex);
-static void wait_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn);
+static void wait_put_fdbs(void);
 static void pinctrl_handle_put_fdb(const struct flow *md,
                                    const struct flow *headers)
                                    OVS_REQUIRES(pinctrl_mutex);
@@ -578,6 +579,7 @@ pinctrl_init(void)
     pinctrl.mac_binding_can_timestamp = false;
     pinctrl_handler_seq = seq_create();
     pinctrl_main_seq = seq_create();
+    main_seq = seq_read(pinctrl_main_seq);
 
     latch_init(&pinctrl.pinctrl_thread_exit);
     pinctrl.pinctrl_thread = ovs_thread_create("ovn_pinctrl", pinctrl_handler,
@@ -4094,6 +4096,9 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             struct if_status_mgr *mgr)
 {
     ovs_mutex_lock(&pinctrl_mutex);
+
+    main_seq = seq_read(pinctrl_main_seq);
+
     run_put_mac_bindings(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
                          sbrec_port_binding_by_key,
                          sbrec_mac_binding_by_lport_ip);
@@ -4627,12 +4632,13 @@ void
 pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn)
 {
     ovs_mutex_lock(&pinctrl_mutex);
-    wait_put_mac_bindings(ovnsb_idl_txn);
-    wait_controller_event(ovnsb_idl_txn);
-    wait_put_vport_bindings(ovnsb_idl_txn);
-    int64_t new_seq = seq_read(pinctrl_main_seq);
-    seq_wait(pinctrl_main_seq, new_seq);
-    wait_put_fdbs(ovnsb_idl_txn);
+    if (ovnsb_idl_txn) {
+        wait_put_mac_bindings();
+        wait_controller_event();
+        wait_put_vport_bindings();
+        wait_put_fdbs();
+        seq_wait(pinctrl_main_seq, main_seq);
+    }
     wait_activated_ports();
     ovs_mutex_unlock(&pinctrl_mutex);
 }
@@ -4972,13 +4978,9 @@ run_buffered_binding(const struct sbrec_mac_binding_table *mac_binding_table,
 }
 
 static void
-wait_put_mac_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn)
+wait_put_mac_bindings(void)
     OVS_REQUIRES(pinctrl_mutex)
 {
-    if (!ovnsb_idl_txn) {
-        return;
-    }
-
     struct mac_binding *mb;
     HMAP_FOR_EACH (mb, hmap_node, &put_mac_bindings) {
         poll_timer_wait_until(mb->timestamp);
@@ -7226,12 +7228,8 @@ exit:
 }
 
 static void
-wait_controller_event(struct ovsdb_idl_txn *ovnsb_idl_txn)
+wait_controller_event(void)
 {
-    if (!ovnsb_idl_txn) {
-        return;
-    }
-
     for (size_t i = 0; i < OVN_EVENT_MAX; i++) {
         if (!hmap_is_empty(&event_table[i])) {
             poll_immediate_wake();
@@ -7376,9 +7374,9 @@ destroy_put_vport_bindings(void)
 }
 
 static void
-wait_put_vport_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn)
+wait_put_vport_bindings(void)
 {
-    if (ovnsb_idl_txn && !hmap_is_empty(&put_vport_bindings)) {
+    if (!hmap_is_empty(&put_vport_bindings)) {
         poll_immediate_wake();
     }
 }
@@ -9286,13 +9284,9 @@ run_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
 
 static void
-wait_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn)
+wait_put_fdbs(void)
     OVS_REQUIRES(pinctrl_mutex)
 {
-    if (!ovnsb_idl_txn) {
-        return;
-    }
-
     struct fdb *fdb;
     HMAP_FOR_EACH (fdb, hmap_node, &put_fdbs) {
         poll_timer_wait_until(fdb->timestamp);
