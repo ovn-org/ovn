@@ -3970,7 +3970,7 @@ pinctrl_handler(void *arg_)
         if (lock_failed) {
             /* Wait for 5 msecs before waking to avoid degrading the
              * lock to a spinlock. */
-            poll_timer_wait_until(5);
+            poll_timer_wait(5);
         } else {
             rconn_run_wait(swconn);
             rconn_recv_wait(swconn);
