@@ -4440,6 +4440,7 @@ ovs-vsctl \
 
 # Start ovn-controller
 start_daemon ovn-controller
+ovn-appctl vlog/set poll_loop:dbg
 
 check ovn-nbctl ls-add sw0
 
@@ -4622,6 +4623,11 @@ OVS_WAIT_UNTIL([
     n_reset=$(cat rst.tcpdump | wc -l)
     test "${n_reset}" = "1"
 ])
+
+# Check that we do not get too many immediate wake up.
+# Tolerate a few for any race conditions.
+AT_CHECK([test 5 -gt `cat ovn-controller.log | \
+grep -c "wakeup due to 0-ms timeout at controller/pinctrl.c:"`])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
