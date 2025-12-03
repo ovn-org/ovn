@@ -613,7 +613,9 @@ port_group_nb_port_group_handler(struct engine_node *node, void *data_)
         const struct sbrec_port_group *sb_pg =
             sb_port_group_lookup_by_name(sbrec_port_group_by_name,
                                          stale_sb_port_group_name);
+        if (sb_pg) {
             sbrec_port_group_delete(sb_pg);
+        }
     }
 
     sset_destroy(&stale_sb_port_groups);
