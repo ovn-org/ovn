@@ -164,6 +164,13 @@ en_datapath_logical_router_logical_router_handler(struct engine_node *node,
     struct ovn_unsynced_datapath *udp;
     const struct nbrec_logical_router *nbr;
     NBREC_LOGICAL_ROUTER_TABLE_FOR_EACH_TRACKED (nbr, nb_lr_table) {
+        /* If the logical router is added and removed within the same
+         * transaction, then this is a no-op
+         */
+        if (nbrec_logical_router_is_new(nbr) &&
+            nbrec_logical_router_is_deleted(nbr)) {
+            continue;
+        }
         udp = ovn_unsynced_datapath_find(map, &nbr->header_.uuid);
 
         if (nbrec_logical_router_is_deleted(nbr) && !udp) {

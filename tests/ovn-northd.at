@@ -18914,3 +18914,34 @@ wait_row_count Igmp_Group 0 address=mrouters
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Added and Deleted Logical Switch])
+ovn_start
+
+# For this test, we will pause northd. While northd is paused, we will
+# add a logical switch, a load balancer, and a load balancer group. The load
+# balancer will be in the load balancer group, and the logical switch will use
+# the load balancer group. We will then delete the logical switch, the load
+# balancer, and the load balancer group. We then will unpause ovn-northd.
+#
+# The test only fails if putting northd to sleep or waking it up fails due to
+# ovn-northd crashing.
+#
+# We run this a few times in a loop just to be certain we aren't causing any
+# catastrophic issues.
+for i in $(seq 5); do
+    sleep_northd
+    check ovn-nbctl ls-add ls1
+    check ovn-nbctl lb-add lb1 192.168.0.1 10.0.0.1
+    lb_uuid=$(fetch_column nb:Load_Balancer _uuid name=lb1)
+    lbg_uuid=$(ovn-nbctl create load_balancer_group name=lbg1 load_balancer=$lb_uuid)
+    check ovn-nbctl set logical_switch ls1 load_balancer_group=$lbg_uuid
+    check ovn-nbctl ls-del ls1
+    check ovn-nbctl lb-del lb1
+    check ovn-nbctl --all destroy load_balancer_group
+    wake_up_northd
+done
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])

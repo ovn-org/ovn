@@ -143,6 +143,13 @@ datapath_logical_switch_handler(struct engine_node *node, void *data)
 
     const struct nbrec_logical_switch *nbs;
     NBREC_LOGICAL_SWITCH_TABLE_FOR_EACH_TRACKED (nbs, nb_ls_table) {
+        /* If the logical switch is added and removed within the same
+         * transaction, then this is a no-op
+         */
+        if (nbrec_logical_switch_is_new(nbs) &&
+            nbrec_logical_switch_is_deleted(nbs)) {
+            continue;
+        }
         struct ovn_unsynced_datapath *udp =
             ovn_unsynced_datapath_find(map, &nbs->header_.uuid);
 
