@@ -18100,3 +18100,30 @@ done
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([port group segfault])
+
+ovn_start
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-port1 \
+             -- lsp-set-addresses sw0-port1 "50:54:00:00:00:01 192.168.0.2"
+
+check ovn-nbctl pg-add pg1
+check ovn-nbctl --wait=sb pg-set-ports pg1 sw0-port1
+
+sleep_sb
+sleep_northd
+check ovn-nbctl pg-del pg1
+check ovn-nbctl pg-add pg1
+check ovn-nbctl pg-set-ports pg1 sw0-port1
+
+wake_up_sb
+wake_up_northd
+check ovn-nbctl pg-del pg1
+check ovn-nbctl --wait=sb sync
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
