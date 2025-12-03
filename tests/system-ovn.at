@@ -15366,14 +15366,16 @@ check ovn-nbctl set Logical_Router_Port internet-phys \
 
 # Now we test route learning.
 check_row_count Learned_Route 0
-check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
+check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337 proto zebra
+check ip route add 233.253.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 1
 lp=$(fetch_column port_binding _uuid logical_port=internet-phys)
 check_row_count Learned_Route 1 logical_port=$lp ip_prefix=233.252.0.0/24 nexthop=192.168.10.10
 
 # If we remove the route it is also gone.
-check ip route del 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
+check ip route del 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337 proto zebra
+check ip route del 233.253.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 0
 
@@ -15381,7 +15383,7 @@ check_row_count Learned_Route 0
 # route again. The Port referenced by the name does not even exist.
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
       options:dynamic-routing-port-name=thisportdoesnotexist
-check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
+check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337 proto zebra
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 0
 
@@ -15402,8 +15404,8 @@ wait_for_ports_up mylearninglsp
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
       options:dynamic-routing-port-name=mylearninglsp
 
-check ip route add 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink vrf ovnvrf1337 metric 30
-check ip route add 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink vrf ovnvrf1337 metric 40
+check ip route add 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink vrf ovnvrf1337 metric 30 proto zebra
+check ip route add 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink vrf ovnvrf1337 metric 40 proto zebra
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 1 ip_prefix=233.253.0.0/24 nexthop=192.168.20.20
 
@@ -15414,9 +15416,9 @@ check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
                              options:dynamic-routing-maintain-vrf=false
 OVN_CLEANUP_CONTROLLER([hv1])
 OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
-233.252.0.0/24 via 192.168.10.10 dev lo onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 30 onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 40 onlink])
+233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 # Starting it again will add the routes again.
 start_daemon ovn-controller
@@ -15428,9 +15430,9 @@ blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
 blackhole 192.0.2.20 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000
-233.252.0.0/24 via 192.168.10.10 dev lo onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 30 onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 40 onlink])
+233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 # Changing the vrf name will switch to the new one.
 # The old vrf will be removed.
@@ -15446,9 +15448,9 @@ blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
 blackhole 192.0.2.20 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000
-233.252.0.0/24 via 192.168.10.10 dev lo onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 30 onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 40 onlink])
+233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 # Stopping with --restart will not touch the routes.
 OVN_CONTROLLER_EXIT([],[--restart])
@@ -15459,9 +15461,9 @@ blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
 blackhole 192.0.2.20 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000
-233.252.0.0/24 via 192.168.10.10 dev lo onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 30 onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 40 onlink])
+233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 # When we now stop the ovn-controller it will remove the VRF.
 start_daemon ovn-controller
@@ -15491,9 +15493,9 @@ blackhole 192.0.2.10 proto ovn metric 100
 blackhole 192.0.2.20 proto ovn metric 100
 blackhole 192.0.2.21 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000
-233.252.0.0/24 via 192.168.10.10 dev lo onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 30 onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 40 onlink])
+233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 # Bind "vip" port locally and check the virtual IP is added in the VRF.
 NS_EXEC([vif4], [arping -U -c 1 -w 2 -I vif4 192.0.2.30])
@@ -15508,9 +15510,9 @@ blackhole 192.0.2.20 proto ovn metric 100
 blackhole 192.0.2.21 proto ovn metric 100
 blackhole 192.0.2.30 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000
-233.252.0.0/24 via 192.168.10.10 dev lo onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 30 onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 40 onlink])
+233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 check ovn-sbctl clear Port_Binding vip virtual-parent
 OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
@@ -15521,9 +15523,9 @@ blackhole 192.0.2.10 proto ovn metric 100
 blackhole 192.0.2.20 proto ovn metric 100
 blackhole 192.0.2.21 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000
-233.252.0.0/24 via 192.168.10.10 dev lo onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 30 onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 40 onlink])
+233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 # Remove the backoff period, so we can bind it right away.
 check ovn-sbctl remove Port_Binding vip options vport-backoff
@@ -15540,9 +15542,9 @@ blackhole 192.0.2.20 proto ovn metric 100
 blackhole 192.0.2.21 proto ovn metric 100
 blackhole 192.0.2.30 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000
-233.252.0.0/24 via 192.168.10.10 dev lo onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 30 onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 40 onlink])
+233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 # Simulate "vip" bound to a different chassis.
 check ovn-sbctl clear Port_Binding vip virtual-parent
@@ -15556,9 +15558,9 @@ blackhole 192.0.2.10 proto ovn metric 100
 blackhole 192.0.2.20 proto ovn metric 100
 blackhole 192.0.2.21 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000
-233.252.0.0/24 via 192.168.10.10 dev lo onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 30 onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 40 onlink])
+233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 # Check with dynamic-routing-redistribute-local-only=false.
 check ovn-nbctl --wait=hv set logical_router_port internet-public \
@@ -15573,9 +15575,9 @@ blackhole 192.0.2.21 proto ovn metric 100
 blackhole 192.0.2.22 proto ovn metric 1000
 blackhole 192.0.2.30 proto ovn metric 1000
 blackhole 198.51.100.0/24 proto ovn metric 1000
-233.252.0.0/24 via 192.168.10.10 dev lo onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 30 onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 40 onlink])
+233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 # Remove the backoff period, so we can bind it right away.
 check ovn-sbctl remove Port_Binding vip options vport-backoff
@@ -15593,9 +15595,9 @@ blackhole 192.0.2.21 proto ovn metric 100
 blackhole 192.0.2.22 proto ovn metric 1000
 blackhole 192.0.2.30 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000
-233.252.0.0/24 via 192.168.10.10 dev lo onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 30 onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 40 onlink])
+233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 AT_CHECK([ip vrf | grep -q ovnvrf1338], [1], [])
@@ -15850,7 +15852,8 @@ check ovn-nbctl set Logical_Router_Port internet-phys \
 
 # Now we test route learning.
 check_row_count Learned_Route 0
-check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
+check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337 proto zebra
+check ip route add 233.253.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
 check ovn-nbctl --wait=hv sync
 # With a Gateway Router all LRPs are locally bound, and without explicit
 # mapping/filtering they will all learn the route.
@@ -15859,7 +15862,8 @@ lp=$(fetch_column port_binding _uuid logical_port=internet-phys)
 check_row_count Learned_Route 1 logical_port=$lp ip_prefix=233.252.0.0/24 nexthop=192.168.10.10
 
 # If we remove the route it is also gone.
-check ip route del 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
+check ip route del 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337 proto zebra
+check ip route del 233.253.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 0
 
@@ -15867,7 +15871,7 @@ check_row_count Learned_Route 0
 # route again. The Port referenced by the name does not even exist.
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
     options:dynamic-routing-port-name=thisportdoesnotexist
-check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337
+check ip route add 233.252.0.0/24 via 192.168.10.10 dev lo onlink vrf ovnvrf1337 proto zebra
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 0
 
@@ -15888,8 +15892,8 @@ wait_for_ports_up mylearninglsp
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
     options:dynamic-routing-port-name=mylearninglsp
 
-check ip route add 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink vrf ovnvrf1337 metric 30
-check ip route add 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink vrf ovnvrf1337 metric 40
+check ip route add 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink vrf ovnvrf1337 metric 30 proto zebra
+check ip route add 233.253.0.0/24 via 192.168.20.20 dev hv1-mll onlink vrf ovnvrf1337 metric 40 proto zebra
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 1 ip_prefix=233.253.0.0/24 nexthop=192.168.20.20
 
@@ -15900,9 +15904,9 @@ check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
                              options:dynamic-routing-maintain-vrf=false
 OVN_CLEANUP_CONTROLLER([hv1])
 OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
-233.252.0.0/24 via 192.168.10.10 dev lo onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 30 onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 40 onlink])
+233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 # Starting it again will add the routes again.
 start_daemon ovn-controller
@@ -15914,9 +15918,9 @@ blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
 blackhole 192.0.2.20 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000
-233.252.0.0/24 via 192.168.10.10 dev lo onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 30 onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 40 onlink])
+233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 # Stopping with --restart will not touch the routes.
 OVN_CONTROLLER_EXIT([],[--restart])
@@ -15927,9 +15931,9 @@ blackhole 192.0.2.3 proto ovn metric 100
 blackhole 192.0.2.10 proto ovn metric 100
 blackhole 192.0.2.20 proto ovn metric 100
 blackhole 198.51.100.0/24 proto ovn metric 1000
-233.252.0.0/24 via 192.168.10.10 dev lo onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 30 onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll metric 40 onlink])
+233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 # Now we set maintain-vrf again and stop the ovn-controller.
 # It will then remove the VRF.
@@ -16906,7 +16910,7 @@ AS_BOX([Unbound vif2: no routes learned])
 check ovs-vsctl add-port br-int vif2 \
     -- set interface vif2 type=internal
 check ip link set vif2 up
-check ip route add 3.3.3.0/24 via 2.2.2.2 dev vif2 onlink vrf ovnvrf1337
+check ip route add 3.3.3.0/24 via 2.2.2.2 dev vif2 onlink vrf ovnvrf1337 proto zebra
 check ovn-nbctl --wait=hv sync
 check_row_count Learned_Route 0
 
@@ -18601,13 +18605,13 @@ AS_BOX([Advertised_Route])
 OVS_WAIT_UNTIL([ovn-sbctl list Advertised_Route | grep ip_prefix | grep -Fe 10.10.2.1])
 
 # Add a route to the VRF (simulating BGP learning a route)
-AT_CHECK([ip route add 10.10.3.1 via 20.0.0.25 vrf vrf-$vni])
+AT_CHECK([ip route add 10.10.3.1 via 20.0.0.25 vrf vrf-$vni proto zebra])
 
 # Verify learned route appears in SB database
 OVS_WAIT_UNTIL([ovn-sbctl list Learned_Route | grep ip_prefix | grep -Fe 10.10.3.1])
 
 # Add a second route to the VRF (simulating BGP learning a route)
-AT_CHECK([ip route add 10.10.4.1 via 20.0.0.25 vrf vrf-$vni])
+AT_CHECK([ip route add 10.10.4.1 via 20.0.0.25 vrf vrf-$vni proto zebra])
 
 # Verify both routes appear in SB database.
 OVS_WAIT_FOR_OUTPUT([ovn-sbctl list Learned_Route | grep ip_prefix | sort], [0], [dnl
@@ -18633,7 +18637,7 @@ OVS_WAIT_FOR_OUTPUT([ovn-sbctl list Learned_Route | grep ip_prefix | sort], [0],
 ])
 
 # Add again a route to the VRF (simulating BGP learning a route)
-AT_CHECK([ip route add 10.10.3.1 via 20.0.0.25 vrf vrf-$vni])
+AT_CHECK([ip route add 10.10.3.1 via 20.0.0.25 vrf vrf-$vni proto zebra])
 
 # Verify learned route appears in SB database
 OVS_WAIT_UNTIL([ovn-sbctl list Learned_Route | grep ip_prefix | grep -Fe 10.10.3.1])
@@ -18644,7 +18648,7 @@ check ovn-nbctl --wait=sb set Logical_Router lr-frr options:dynamic-routing=fals
 check_row_count Port_Binding 0 logical_port=lrp-local-bgp-port 'options:dynamic-routing=true'
 
 # Add one more route to the VRF (simulating BGP learning a route)
-AT_CHECK([ip route add 10.10.4.1 via 20.0.0.25 vrf vrf-$vni])
+AT_CHECK([ip route add 10.10.4.1 via 20.0.0.25 vrf vrf-$vni proto zebra])
 
 # Verify learned routes are removed as dynamic-routing=false
 OVS_WAIT_FOR_OUTPUT([ovn-sbctl list Learned_Route | grep ip_prefix | sort], [0], [dnl
