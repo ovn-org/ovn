@@ -229,8 +229,14 @@ handle_route_msg(const struct route_table_msg *msg, void *data)
         return;
     }
 
-    /* This route is not from us, so we learn it. */
+    /* This route is not from us, learn it only if it's > RTPROT_STATIC,
+     * those protocol values are used by dynamic routing protocols.
+     * This should prevent us from learning static routes installed
+     * by users in the VRF. */
     if (rd->rtm_protocol != RTPROT_OVN) {
+        if (rd->rtm_protocol <= RTPROT_STATIC) {
+            return;
+        }
         if (!handle_data->learned_routes) {
             return;
         }
