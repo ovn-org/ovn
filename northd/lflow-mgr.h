@@ -128,12 +128,6 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
                           PRIORITY, MATCH, ACTIONS, NULL, NULL, STAGE_HINT, \
                           OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
 
-#define ovn_lflow_add_default_drop(LFLOW_TABLE, OD, STAGE, LFLOW_REF)   \
-    lflow_table_add_lflow(LFLOW_TABLE, OD->sdp, NULL, 0, STAGE, 0, "1", \
-                          debug_drop_action(), NULL, NULL, NULL,  \
-                          OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
-
-
 /* This macro is similar to ovn_lflow_add_with_hint, except that it requires
  * the IN_OUT_PORT argument, which tells the lport name that appears in the
  * MATCH, which helps ovn-controller to bypass lflows parsing when the lport is
@@ -150,6 +144,11 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
     lflow_table_add_lflow(LFLOW_TABLE, OD->sdp, NULL, 0, STAGE, PRIORITY, \
                           MATCH, ACTIONS, IN_OUT_PORT, NULL, STAGE_HINT, \
                           OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
+
+/* Adds a row with the specified contents to the Logical_Flow table. */
+#define ovn_lflow_add_default_drop(LFLOW_TABLE, OD, STAGE, LFLOW_REF, ...) \
+    ovn_lflow_add(LFLOW_TABLE, OD, STAGE, 0, "1", debug_drop_action(), \
+                  LFLOW_REF, __VA_ARGS__)
 
 #define ovn_lflow_add(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, ACTIONS, \
                       LFLOW_REF, ...) \
