@@ -9627,11 +9627,12 @@ build_drop_arp_nd_flows_for_unbound_router_ports(struct ovn_port *op,
                         port->json_key,
                         op->lsp_addrs[i].ea_s, op->json_key,
                         rp->lsp_addrs[k].ipv4_addrs[l].addr_s);
-                    ovn_lflow_add_drop_with_lport_hint_and_desc(
-                        lflows, op->od, S_SWITCH_IN_EXTERNAL_PORT, 100,
-                        ds_cstr(&match), port->key,
-                        &op->nbsp->header_,
-                        "Drop ARP for unknown router ports", lflow_ref);
+                    ovn_lflow_add(lflows, op->od, S_SWITCH_IN_EXTERNAL_PORT,
+                                  100, ds_cstr(&match), debug_drop_action(),
+                                  lflow_ref, WITH_IO_PORT(port->key),
+                                  WITH_HINT(&op->nbsp->header_),
+                                  WITH_DESC("Drop ARP for unknown "
+                                            "router ports"));
                 }
                 for (size_t l = 0; l < rp->lsp_addrs[k].n_ipv6_addrs; l++) {
                     ds_clear(&match);
@@ -9644,11 +9645,12 @@ build_drop_arp_nd_flows_for_unbound_router_ports(struct ovn_port *op,
                         rp->lsp_addrs[k].ipv6_addrs[l].addr_s,
                         rp->lsp_addrs[k].ipv6_addrs[l].sn_addr_s,
                         rp->lsp_addrs[k].ipv6_addrs[l].addr_s);
-                    ovn_lflow_add_drop_with_lport_hint_and_desc(
-                        lflows, op->od, S_SWITCH_IN_EXTERNAL_PORT, 100,
-                        ds_cstr(&match), port->key,
-                        &op->nbsp->header_, "Drop ND for unbound router ports",
-                        lflow_ref);
+                    ovn_lflow_add(lflows, op->od, S_SWITCH_IN_EXTERNAL_PORT,
+                                  100, ds_cstr(&match), debug_drop_action(),
+                                  lflow_ref, WITH_IO_PORT(port->key),
+                                  WITH_HINT(&op->nbsp->header_),
+                                  WITH_DESC("Drop ND for unbound router "
+                                            "ports"));
                 }
 
                 ds_clear(&match);
@@ -9659,14 +9661,12 @@ build_drop_arp_nd_flows_for_unbound_router_ports(struct ovn_port *op,
                     port->json_key,
                     op->lsp_addrs[i].ea_s, rp->lsp_addrs[k].ea_s,
                     op->json_key);
-                ovn_lflow_add_drop_with_lport_hint_and_desc(
-                    lflows, op->od,
-                    S_SWITCH_IN_EXTERNAL_PORT,
-                    100, ds_cstr(&match),
-                    port->key,
-                    &op->nbsp->header_,
-                    "Packet does not come from a chassis resident",
-                    lflow_ref);
+                ovn_lflow_add(lflows, op->od, S_SWITCH_IN_EXTERNAL_PORT, 100,
+                              ds_cstr(&match), debug_drop_action(), lflow_ref,
+                              WITH_IO_PORT(port->key),
+                              WITH_HINT(&op->nbsp->header_),
+                              WITH_DESC("Packet does not come from a chassis "
+                                        "resident"));
             }
         }
     }
