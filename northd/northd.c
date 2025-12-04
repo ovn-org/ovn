@@ -5239,6 +5239,12 @@ northd_handle_sb_port_binding_changes(
     const struct sbrec_port_binding *pb;
     static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
     SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb, sbrec_port_binding_table) {
+        /* "New" + "Deleted" is a no-op. */
+        if (sbrec_port_binding_is_new(pb) &&
+            sbrec_port_binding_is_deleted(pb)) {
+            continue;
+        }
+
         bool is_lrp =
             !strcmp(datapath_get_nb_type(pb->datapath),
                     ovn_datapath_type_to_string(DP_ROUTER));
