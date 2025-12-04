@@ -414,7 +414,8 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
  *
  *   - For each logical flow L(M, A) generated for the entity 'E'
  *     pass E->lflow_ref when adding L(M, A) to the lflow table.
- *     Eg. lflow_table_add_lflow(lflow_table, od_of_E, M, A, .., E->lflow_ref);
+ *     Eg. lflow_table_add_lflow__(lflow_table, od_of_E, M, A, ..,
+ *                                E->lflow_ref);
  *
  * If lflows L1, L2 and L3 are generated for 'E', then
  * E->lflow_ref stores these in its hmap.
@@ -458,7 +459,7 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
  *  4. LRN(L1, E1)->linked is set to false when the client calls
  *     lflow_ref_unlink_lflows(E1->lflow_ref).
  *  5. LRN(L1, E1)->linked is set to true again when the client calls
- *     lflow_table_add_lflow(L1, ..., E1->lflow_ref) and LRN(L1, E1)
+ *     lflow_table_add_lflow__(L1, ..., E1->lflow_ref) and LRN(L1, E1)
  *     is already present.
  *  6. LRN(L1, E1) is destroyed if LRN(L1, E1)->linked is false
  *     when the client calls lflow_ref_sync_lflows().
@@ -512,8 +513,8 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
  *
  *   2.  In step (2), client should generate the logical flows again for 'E1'.
  *       Lets say it calls:
- *       lflow_table_add_lflow(lflow_table, L3, E1->lflow_ref)
- *       lflow_table_add_lflow(lflow_table, L5, E1->lflow_ref)
+ *       lflow_table_add_lflow__(lflow_table, L3, E1->lflow_ref)
+ *       lflow_table_add_lflow__(lflow_table, L5, E1->lflow_ref)
  *
  *       So, E1 generates the flows L3 and L5 and discards L1 and L2.
  *
@@ -718,16 +719,16 @@ lflow_ref_sync_lflows(struct lflow_ref *lflow_ref,
  * then it may corrupt the hmap.  Caller should ensure thread safety
  * for such scenarios.
  */
-void
-lflow_table_add_lflow(struct lflow_table *lflow_table,
-                      const struct ovn_synced_datapath *sdp,
-                      const unsigned long *dp_bitmap, size_t dp_bitmap_len,
-                      const struct ovn_stage *stage, uint16_t priority,
-                      const char *match, const char *actions,
-                      const char *io_port, const char *ctrl_meter,
-                      const struct ovsdb_idl_row *stage_hint,
-                      const char *where, const char *flow_desc,
-                      struct lflow_ref *lflow_ref)
+static void
+lflow_table_add_lflow__(struct lflow_table *lflow_table,
+                       const struct ovn_synced_datapath *sdp,
+                       const unsigned long *dp_bitmap, size_t dp_bitmap_len,
+                       const struct ovn_stage *stage, uint16_t priority,
+                       const char *match, const char *actions,
+                       const char *io_port, const char *ctrl_meter,
+                       const struct ovsdb_idl_row *stage_hint,
+                       const char *where, const char *flow_desc,
+                       struct lflow_ref *lflow_ref)
     OVS_EXCLUDED(fake_hash_mutex)
 {
     struct ovs_mutex *hash_lock;
@@ -794,7 +795,7 @@ lflow_table_add_lflow(struct lflow_table *lflow_table,
 }
 
 void
-lflow_table_add_lflow__(struct lflow_table_add_args *args)
+lflow_table_add_lflow(struct lflow_table_add_args *args)
 {
     /* It is invalid for both args->dp_bitmap and args->sdp to be
      * Non-NULL. We favor the non-NULL args->dp_bitmap over the
@@ -804,11 +805,11 @@ lflow_table_add_lflow__(struct lflow_table_add_args *args)
         args->sdp = NULL;
     }
 
-    lflow_table_add_lflow(args->table, args->sdp, args->dp_bitmap,
-                          args->dp_bitmap_len, args->stage, args->priority,
-                          args->match, args->actions, args->io_port,
-                          args->ctrl_meter, args->stage_hint, args->where,
-                          args->flow_desc, args->lflow_ref);
+    lflow_table_add_lflow__(args->table, args->sdp, args->dp_bitmap,
+                            args->dp_bitmap_len, args->stage, args->priority,
+                            args->match, args->actions, args->io_port,
+                            args->ctrl_meter, args->stage_hint, args->where,
+                            args->flow_desc, args->lflow_ref);
 }
 
 struct ovn_dp_group *

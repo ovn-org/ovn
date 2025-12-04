@@ -89,23 +89,7 @@ struct lflow_table_add_args {
     const char *where;
 };
 
-void lflow_table_add_lflow__(struct lflow_table_add_args *args);
-
-void lflow_table_add_lflow(struct lflow_table *,
-                           const struct ovn_synced_datapath *,
-                           const unsigned long *dp_bitmap,
-                           size_t dp_bitmap_len, const struct ovn_stage *stage,
-                           uint16_t priority, const char *match,
-                           const char *actions, const char *io_port,
-                           const char *ctrl_meter,
-                           const struct ovsdb_idl_row *stage_hint,
-                           const char *where, const char *flow_desc,
-                           struct lflow_ref *);
-void lflow_table_add_lflow_default_drop(struct lflow_table *,
-                                        const struct ovn_synced_datapath *,
-                                        const struct ovn_stage *stage,
-                                        const char *where,
-                                        struct lflow_ref *);
+void lflow_table_add_lflow(struct lflow_table_add_args *args);
 
 
 #define WITH_HINT(HINT) .stage_hint = HINT
@@ -130,7 +114,7 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
 
 #define ovn_lflow_add(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, ACTIONS, \
                       LFLOW_REF, ...) \
-    lflow_table_add_lflow__( \
+    lflow_table_add_lflow( \
         &(struct lflow_table_add_args) { \
             .table = LFLOW_TABLE, \
             .sdp = (OD)->sdp, \
@@ -147,7 +131,7 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
 #define ovn_lflow_add_with_dp_group(LFLOW_TABLE, DP_BITMAP, DP_BITMAP_LEN, \
                                     STAGE, PRIORITY, MATCH, ACTIONS, \
                                     LFLOW_REF, ...) \
-    lflow_table_add_lflow__( \
+    lflow_table_add_lflow( \
         &(struct lflow_table_add_args) { \
             .table = LFLOW_TABLE, \
             .dp_bitmap = DP_BITMAP, \
