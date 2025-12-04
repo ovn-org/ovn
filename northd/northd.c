@@ -6066,10 +6066,9 @@ build_lswitch_output_port_sec_od(struct ovn_datapath *od,
                   REGBIT_PORT_SEC_DROP" = check_out_port_sec(); next;",
                   lflow_ref);
 
-    ovn_lflow_add_drop_with_desc(
-        lflows, od, S_SWITCH_OUT_APPLY_PORT_SEC, 50,
-        REGBIT_PORT_SEC_DROP" == 1",
-        "Packet does not follow port security rules", lflow_ref);
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_APPLY_PORT_SEC, 50,
+                  REGBIT_PORT_SEC_DROP" == 1", debug_drop_action(), lflow_ref,
+                  WITH_DESC("Packet does not follow port security rules"));
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_APPLY_PORT_SEC, 0,
                   "1", "output;", lflow_ref);
 }
@@ -9776,9 +9775,10 @@ build_lswitch_lflows_evpn_l2_unknown(struct ovn_datapath *od,
                       "outport == \"none\" && remote_outport == \"none\"",
                       "outport = \""MC_UNKNOWN "\"; output;", lflow_ref);
     } else {
-        ovn_lflow_add_drop_with_desc(
-            lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50, "outport == \"none\" && "
-            "remote_outport == \"none\"", "No L2 destination", lflow_ref);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50,
+                      "outport == \"none\" && remote_outport == \"none\"",
+                      debug_drop_action(), lflow_ref,
+                      WITH_DESC("No L2 destination"));
     }
 
     if (smap_get_bool(&od->nbs->other_config,
@@ -9808,9 +9808,9 @@ build_lswitch_lflows_l2_unknown(struct ovn_datapath *od,
                       "outport = \""MC_UNKNOWN "\"; output;",
                       lflow_ref);
     } else {
-        ovn_lflow_add_drop_with_desc(
-            lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50, "outport == \"none\"",
-            "No L2 destination", lflow_ref);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50,
+                      "outport == \"none\"", debug_drop_action(), lflow_ref,
+                      WITH_DESC("No L2 destination"));
     }
     ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 0, "1",
                   "output;", lflow_ref);
@@ -9846,36 +9846,33 @@ build_lswitch_lflows_admission_control(struct ovn_datapath *od,
     ovs_assert(od->nbs);
 
     /* Default action for recirculated ICMP error 'packet too big'. */
-    ovn_lflow_add_drop_with_desc(
-        lflows, od, S_SWITCH_IN_CHECK_PORT_SEC, 105,
-        "((ip4 && icmp4.type == 3 && icmp4.code == 4) ||"
-        " (ip6 && icmp6.type == 2 && icmp6.code == 0)) &&"
-        " flags.tunnel_rx == 1", "ICMP: packet too big", lflow_ref);
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_CHECK_PORT_SEC, 105,
+                  "((ip4 && icmp4.type == 3 && icmp4.code == 4) ||"
+                  " (ip6 && icmp6.type == 2 && icmp6.code == 0)) &&"
+                  " flags.tunnel_rx == 1", debug_drop_action(), lflow_ref,
+                  WITH_DESC("ICMP: packet too big"));
 
     /* Logical VLANs not supported. */
     if (!is_vlan_transparent(od)) {
         /* Block logical VLANs. */
-        ovn_lflow_add_drop_with_desc(
-            lflows, od, S_SWITCH_IN_CHECK_PORT_SEC,
-            100, "vlan.present",
-            "VLANs blocked due to vlan-passthru option",
-            lflow_ref);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_CHECK_PORT_SEC, 100,
+                      "vlan.present", debug_drop_action(), lflow_ref,
+                      WITH_DESC("VLANs blocked due to vlan-passthru option"));
     }
 
     /* Broadcast/multicast source address is invalid. */
-    ovn_lflow_add_drop_with_desc(
-        lflows, od, S_SWITCH_IN_CHECK_PORT_SEC, 100,
-        "eth.src[40]", "Incoming Broadcast/multicast source"
-        " address is invalid", lflow_ref);
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_CHECK_PORT_SEC, 100, "eth.src[40]",
+                  debug_drop_action(), lflow_ref,
+                  WITH_DESC("Incoming Broadcast/multicast source"
+                            "address is invalid"));
 
     ovn_lflow_add(lflows, od, S_SWITCH_IN_CHECK_PORT_SEC, 50, "1",
                   REGBIT_PORT_SEC_DROP" = check_in_port_sec(); next;",
                   lflow_ref);
 
-    ovn_lflow_add_drop_with_desc(
-        lflows, od, S_SWITCH_IN_APPLY_PORT_SEC, 50,
-        REGBIT_PORT_SEC_DROP" == 1",
-        "Broadcast/multicast port security invalid", lflow_ref);
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_APPLY_PORT_SEC, 50,
+                  REGBIT_PORT_SEC_DROP" == 1", debug_drop_action(), lflow_ref,
+                  WITH_DESC("Broadcast/multicast port security invalid"));
 
     ovn_lflow_add(lflows, od, S_SWITCH_IN_APPLY_PORT_SEC, 0, "1", "next;",
                   lflow_ref);

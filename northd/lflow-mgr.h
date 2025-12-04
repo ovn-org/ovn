@@ -121,6 +121,7 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
  */
 #define WITH_IO_PORT(IO_PORT) .io_port = IO_PORT
 #define WITH_CTRL_METER(CTRL_METER) .ctrl_meter = CTRL_METER
+#define WITH_DESC(FLOW_DESC) .flow_desc = FLOW_DESC
 
 /* Adds a row with the specified contents to the Logical_Flow table. */
 #define ovn_lflow_add_default_drop(LFLOW_TABLE, OD, STAGE, LFLOW_REF, ...) \
@@ -160,13 +161,6 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
             __VA_ARGS__ \
         } \
     )
-
-
-#define ovn_lflow_add_drop_with_desc(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, \
-                                     DESCRIPTION, LFLOW_REF) \
-    lflow_table_add_lflow(LFLOW_TABLE, OD->sdp, NULL, 0, STAGE, PRIORITY, \
-                          MATCH, debug_drop_action(), NULL, NULL, NULL,  \
-                          OVS_SOURCE_LOCATOR, DESCRIPTION, LFLOW_REF)
 
 #define ovn_lflow_add_drop_with_lport_hint_and_desc(LFLOW_TABLE, OD, STAGE, \
                                                     PRIORITY, MATCH,  \
