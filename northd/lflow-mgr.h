@@ -123,14 +123,6 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
 #define WITH_CTRL_METER(CTRL_METER) .ctrl_meter = CTRL_METER
 
 /* Adds a row with the specified contents to the Logical_Flow table. */
-#define ovn_lflow_add_with_dp_group(LFLOW_TABLE, DP_BITMAP, DP_BITMAP_LEN, \
-                                    STAGE, PRIORITY, MATCH, ACTIONS, \
-                                    STAGE_HINT, LFLOW_REF) \
-    lflow_table_add_lflow(LFLOW_TABLE, NULL, DP_BITMAP, DP_BITMAP_LEN, STAGE, \
-                          PRIORITY, MATCH, ACTIONS, NULL, NULL, STAGE_HINT, \
-                          OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
-
-/* Adds a row with the specified contents to the Logical_Flow table. */
 #define ovn_lflow_add_default_drop(LFLOW_TABLE, OD, STAGE, LFLOW_REF, ...) \
     ovn_lflow_add(LFLOW_TABLE, OD, STAGE, 0, "1", debug_drop_action(), \
                   LFLOW_REF, __VA_ARGS__)
@@ -150,6 +142,25 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
             __VA_ARGS__ \
         } \
     )
+
+#define ovn_lflow_add_with_dp_group(LFLOW_TABLE, DP_BITMAP, DP_BITMAP_LEN, \
+                                    STAGE, PRIORITY, MATCH, ACTIONS, \
+                                    LFLOW_REF, ...) \
+    lflow_table_add_lflow__( \
+        &(struct lflow_table_add_args) { \
+            .table = LFLOW_TABLE, \
+            .dp_bitmap = DP_BITMAP, \
+            .dp_bitmap_len = DP_BITMAP_LEN, \
+            .stage = STAGE, \
+            .priority = PRIORITY, \
+            .match = MATCH, \
+            .actions = ACTIONS, \
+            .lflow_ref = LFLOW_REF, \
+            .where = OVS_SOURCE_LOCATOR, \
+            __VA_ARGS__ \
+        } \
+    )
+
 
 #define ovn_lflow_add_drop_with_desc(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, \
                                      DESCRIPTION, LFLOW_REF) \

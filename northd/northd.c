@@ -8040,10 +8040,12 @@ build_lb_rules_pre_stateful(struct lflow_table *lflows,
                           lb_vip->port_str);
         }
 
-        ovn_lflow_add_with_dp_group(
-            lflows, lb_dps->nb_ls_map.map, ods_size(ls_datapaths),
-            S_SWITCH_IN_PRE_STATEFUL, 120, ds_cstr(match), ds_cstr(action),
-            &lb->nlb->header_, lb_dps->lflow_ref);
+        ovn_lflow_add_with_dp_group(lflows, lb_dps->nb_ls_map.map,
+                                    ods_size(ls_datapaths),
+                                    S_SWITCH_IN_PRE_STATEFUL, 120,
+                                    ds_cstr(match), ds_cstr(action),
+                                    lb_dps->lflow_ref,
+                                    WITH_HINT(&lb->nlb->header_));
 
         struct lflow_ref *lflow_ref = lb_dps->lflow_ref;
         struct hmapx_node *hmapx_node;
@@ -8149,10 +8151,11 @@ build_lb_affinity_lr_flows(struct lflow_table *lflows,
     }
 
     /* Create affinity check flow. */
-    ovn_lflow_add_with_dp_group(
-        lflows, dp_bitmap, ods_size(lr_datapaths), S_ROUTER_IN_LB_AFF_CHECK,
-        100, new_lb_match, REGBIT_KNOWN_LB_SESSION" = chk_lb_aff(); next;",
-        &lb->nlb->header_, lflow_ref);
+    ovn_lflow_add_with_dp_group(lflows, dp_bitmap, ods_size(lr_datapaths),
+                                S_ROUTER_IN_LB_AFF_CHECK, 100, new_lb_match,
+                                REGBIT_KNOWN_LB_SESSION
+                                " = chk_lb_aff(); next;",
+                                lflow_ref, WITH_HINT(&lb->nlb->header_));
 
     /* Prepare common part of affinity LB and affinity learn action. */
     ds_put_cstr(&aff_action_learn, "commit_lb_aff(vip = \"");
@@ -8230,17 +8233,17 @@ build_lb_affinity_lr_flows(struct lflow_table *lflows,
                       lb->affinity_timeout);
 
         /* Forward to OFTABLE_CHK_LB_AFFINITY table to store flow tuple. */
-        ovn_lflow_add_with_dp_group(
-            lflows, dp_bitmap, ods_size(lr_datapaths),
-            S_ROUTER_IN_LB_AFF_LEARN, 100, ds_cstr(&aff_match_learn),
-            ds_cstr(&aff_action_learn), &lb->nlb->header_,
-            lflow_ref);
+        ovn_lflow_add_with_dp_group(lflows, dp_bitmap, ods_size(lr_datapaths),
+                                    S_ROUTER_IN_LB_AFF_LEARN, 100,
+                                    ds_cstr(&aff_match_learn),
+                                    ds_cstr(&aff_action_learn),
+                                    lflow_ref, WITH_HINT(&lb->nlb->header_));
 
         /* Use already selected backend within affinity timeslot. */
-        ovn_lflow_add_with_dp_group(
-            lflows, dp_bitmap, ods_size(lr_datapaths), S_ROUTER_IN_DNAT, 150,
-            ds_cstr(&aff_match), ds_cstr(&aff_action), &lb->nlb->header_,
-            lflow_ref);
+        ovn_lflow_add_with_dp_group(lflows, dp_bitmap, ods_size(lr_datapaths),
+                                    S_ROUTER_IN_DNAT, 150, ds_cstr(&aff_match),
+                                    ds_cstr(&aff_action), lflow_ref,
+                                    WITH_HINT(&lb->nlb->header_));
 
         ds_truncate(&aff_action, aff_action_len);
         ds_truncate(&aff_action_learn, aff_action_learn_len);
@@ -8320,10 +8323,11 @@ build_lb_affinity_ls_flows(struct lflow_table *lflows,
 
     static char *aff_check = REGBIT_KNOWN_LB_SESSION" = chk_lb_aff(); next;";
 
-    ovn_lflow_add_with_dp_group(
-        lflows, lb_dps->nb_ls_map.map, ods_size(ls_datapaths),
-        S_SWITCH_IN_LB_AFF_CHECK, 100, ds_cstr(&new_lb_match), aff_check,
-        &lb_dps->lb->nlb->header_, lflow_ref);
+    ovn_lflow_add_with_dp_group(lflows, lb_dps->nb_ls_map.map,
+                                ods_size(ls_datapaths),
+                                S_SWITCH_IN_LB_AFF_CHECK, 100,
+                                ds_cstr(&new_lb_match), aff_check, lflow_ref,
+                                WITH_HINT(&lb_dps->lb->nlb->header_));
     ds_destroy(&new_lb_match);
 
     struct ds aff_action = DS_EMPTY_INITIALIZER;
@@ -8402,17 +8406,19 @@ build_lb_affinity_ls_flows(struct lflow_table *lflows,
                       lb->affinity_timeout);
 
         /* Forward to OFTABLE_CHK_LB_AFFINITY table to store flow tuple. */
-        ovn_lflow_add_with_dp_group(
-            lflows, lb_dps->nb_ls_map.map, ods_size(ls_datapaths),
-            S_SWITCH_IN_LB_AFF_LEARN, 100, ds_cstr(&aff_match_learn),
-            ds_cstr(&aff_action_learn), &lb->nlb->header_,
-            lflow_ref);
+        ovn_lflow_add_with_dp_group(lflows, lb_dps->nb_ls_map.map,
+                                    ods_size(ls_datapaths),
+                                    S_SWITCH_IN_LB_AFF_LEARN, 100,
+                                    ds_cstr(&aff_match_learn),
+                                    ds_cstr(&aff_action_learn), lflow_ref,
+                                    WITH_HINT(&lb->nlb->header_));
 
         /* Use already selected backend within affinity timeslot. */
-        ovn_lflow_add_with_dp_group(
-            lflows, lb_dps->nb_ls_map.map, ods_size(ls_datapaths),
-            S_SWITCH_IN_LB, 150, ds_cstr(&aff_match), ds_cstr(&aff_action),
-            &lb->nlb->header_, lflow_ref);
+        ovn_lflow_add_with_dp_group(lflows, lb_dps->nb_ls_map.map,
+                                    ods_size(ls_datapaths), S_SWITCH_IN_LB,
+                                    150, ds_cstr(&aff_match),
+                                    ds_cstr(&aff_action), lflow_ref,
+                                    WITH_HINT(&lb->nlb->header_));
 
         ds_truncate(&aff_action, aff_action_len);
         ds_truncate(&aff_action_learn, aff_action_learn_len);
@@ -8536,11 +8542,14 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
             }
         }
         if (!reject || build_non_meter) {
-            ovn_lflow_add_with_dp_group(
-                lflows, dp_non_meter ? dp_non_meter : lb_dps->nb_ls_map.map,
-                ods_size(ls_datapaths), S_SWITCH_IN_LB, priority,
-                ds_cstr(match), ds_cstr(action), &lb->nlb->header_,
-                lb_dps->lflow_ref);
+            ovn_lflow_add_with_dp_group(lflows,
+                                        dp_non_meter
+                                            ? dp_non_meter
+                                            : lb_dps->nb_ls_map.map,
+                                        ods_size(ls_datapaths), S_SWITCH_IN_LB,
+                                        priority, ds_cstr(match),
+                                        ds_cstr(action), lb_dps->lflow_ref,
+                                        WITH_HINT(&lb->nlb->header_));
         }
         bitmap_free(dp_non_meter);
     }
@@ -12656,9 +12665,11 @@ build_gw_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
     }
     if (!ctx->reject || build_non_meter) {
         ovn_lflow_add_with_dp_group(ctx->lflows,
-            dp_non_meter ? dp_non_meter : dp_bitmap, ods_size(lr_datapaths),
-            S_ROUTER_IN_DNAT, ctx->prio, ds_cstr(ctx->new_match),
-            ctx->new_action[type], &ctx->lb->nlb->header_, lflow_ref);
+                                    dp_non_meter ? dp_non_meter : dp_bitmap,
+                                    ods_size(lr_datapaths), S_ROUTER_IN_DNAT,
+                                    ctx->prio, ds_cstr(ctx->new_match),
+                                    ctx->new_action[type], lflow_ref,
+                                    WITH_HINT(&ctx->lb->nlb->header_));
     }
     bitmap_free(dp_non_meter);
 }
@@ -12930,10 +12941,11 @@ build_lrouter_defrag_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
         ds_put_format(match, "ip && ip%c.dst == %s", ipv6 ? '6' : '4',
                       lb_vip->vip_str);
 
-        ovn_lflow_add_with_dp_group(
-            lflows, lb_dps->nb_lr_map.map, ods_size(lr_datapaths),
-            S_ROUTER_IN_DEFRAG, prio, ds_cstr(match), "ct_dnat;",
-            &lb_dps->lb->nlb->header_, lb_dps->lflow_ref);
+        ovn_lflow_add_with_dp_group(lflows, lb_dps->nb_lr_map.map,
+                                    ods_size(lr_datapaths), S_ROUTER_IN_DEFRAG,
+                                    prio, ds_cstr(match), "ct_dnat;",
+                                    lb_dps->lflow_ref,
+                                    WITH_HINT(&lb_dps->lb->nlb->header_));
     }
 }
 
