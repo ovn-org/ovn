@@ -6336,21 +6336,21 @@ build_interconn_mcast_snoop_flows(struct ovn_datapath *od,
         /* Punt IGMP traffic to controller. */
         char *match = xasprintf("inport == %s && igmp && "
                                 "flags.igmp_loopback == 0", op->json_key);
-        ovn_lflow_metered(lflows, od, S_SWITCH_OUT_PRE_LB, 120, match,
-                          "clone { igmp; }; next;",
-                          copp_meter_get(COPP_IGMP, od->nbs->copp,
-                                         meter_groups),
-                          lflow_ref);
+        ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB, 120, match,
+                      "clone { igmp; }; next;", lflow_ref,
+                      WITH_CTRL_METER(copp_meter_get(COPP_IGMP,
+                                                     od->nbs->copp,
+                                                     meter_groups)));
         free(match);
 
         /* Punt MLD traffic to controller. */
         match = xasprintf("inport == %s && (mldv1 || mldv2) && "
                           "flags.igmp_loopback == 0", op->json_key);
-        ovn_lflow_metered(lflows, od, S_SWITCH_OUT_PRE_LB, 120, match,
-                          "clone { igmp; }; next;",
-                          copp_meter_get(COPP_IGMP, od->nbs->copp,
-                                         meter_groups),
-                          lflow_ref);
+        ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB, 120, match,
+                      "clone { igmp; }; next;", lflow_ref,
+                      WITH_CTRL_METER(copp_meter_get(COPP_IGMP,
+                                                     od->nbs->copp,
+                                                     meter_groups)));
         free(match);
     }
 }
@@ -7518,10 +7518,11 @@ build_acl_action_lflows(const struct ls_stateful_record *ls_stateful_rec,
         ds_truncate(actions, verdict_tier_len);
         build_acl_reject_action(actions, ingress);
 
-        ovn_lflow_metered(lflows, od, stage, 1000,
-                          REGBIT_ACL_VERDICT_REJECT " == 1", ds_cstr(actions),
-                          copp_meter_get(COPP_REJECT, od->nbs->copp,
-                          meter_groups), lflow_ref);
+        ovn_lflow_add(lflows, od, stage, 1000, REGBIT_ACL_VERDICT_REJECT
+                      " == 1", ds_cstr(actions), lflow_ref,
+                      WITH_CTRL_METER(copp_meter_get(COPP_REJECT,
+                                                     od->nbs->copp,
+                                                     meter_groups)));
 
         ds_truncate(actions, verdict_tier_len);
         ds_put_cstr(actions, default_acl_action);
@@ -8528,11 +8529,10 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
                     continue;
                 }
                 bitmap_set0(dp_non_meter, index);
-                ovn_lflow_add_with_hint__(
-                        lflows, od, S_SWITCH_IN_LB, priority,
-                        ds_cstr(match), ds_cstr(action),
-                        NULL, meter, &lb->nlb->header_,
-                        lb_dps->lflow_ref);
+                ovn_lflow_add(lflows, od, S_SWITCH_IN_LB, priority,
+                              ds_cstr(match), ds_cstr(action),
+                              lb_dps->lflow_ref, WITH_CTRL_METER(meter),
+                              WITH_HINT(&lb->nlb->header_));
             }
         }
         if (!reject || build_non_meter) {
@@ -9374,16 +9374,13 @@ build_dhcpv4_options_flows(struct ovn_port *op,
                               op->json_key);
             }
 
-            ovn_lflow_add_with_hint__(lflows, op->od,
-                                      S_SWITCH_IN_DHCP_OPTIONS, 100,
-                                      ds_cstr(&match),
-                                      ds_cstr(&options_action),
-                                      inport->key,
-                                      copp_meter_get(COPP_DHCPV4_OPTS,
-                                                     op->od->nbs->copp,
-                                                     meter_groups),
-                                      &op->nbsp->dhcpv4_options->header_,
-                                      lflow_ref);
+            ovn_lflow_add(lflows, op->od, S_SWITCH_IN_DHCP_OPTIONS, 100,
+                          ds_cstr(&match), ds_cstr(&options_action), lflow_ref,
+                          WITH_IO_PORT(inport->key),
+                          WITH_CTRL_METER(copp_meter_get(COPP_DHCPV4_OPTS,
+                                                         op->od->nbs->copp,
+                                                         meter_groups)),
+                          WITH_HINT(&op->nbsp->dhcpv4_options->header_));
             ds_clear(&match);
 
             /* If REGBIT_DHCP_OPTS_RESULT is set, it means the
@@ -9465,16 +9462,13 @@ build_dhcpv6_options_flows(struct ovn_port *op,
                               op->json_key);
             }
 
-            ovn_lflow_add_with_hint__(lflows, op->od,
-                                      S_SWITCH_IN_DHCP_OPTIONS, 100,
-                                      ds_cstr(&match),
-                                      ds_cstr(&options_action),
-                                      inport->key,
-                                      copp_meter_get(COPP_DHCPV6_OPTS,
-                                                     op->od->nbs->copp,
-                                                     meter_groups),
-                                      &op->nbsp->dhcpv6_options->header_,
-                                      lflow_ref);
+            ovn_lflow_add(lflows, op->od, S_SWITCH_IN_DHCP_OPTIONS, 100,
+                          ds_cstr(&match), ds_cstr(&options_action), lflow_ref,
+                          WITH_IO_PORT(inport->key),
+                          WITH_CTRL_METER(copp_meter_get(COPP_DHCPV6_OPTS,
+                                                         op->od->nbs->copp,
+                                                         meter_groups)),
+                          WITH_HINT(&op->nbsp->dhcpv6_options->header_));
 
             /* If REGBIT_DHCP_OPTS_RESULT is set to 1, it means the
              * put_dhcpv6_opts action is successful */
@@ -9592,14 +9586,13 @@ build_lswitch_dhcp_relay_flows(struct ovn_port *op,
     ds_put_format(actions,
                   "eth.dst = %s; outport = %s; next; /* DHCP_RELAY_REQ */",
                   rp->lrp_networks.ea_s,sp->json_key);
-    ovn_lflow_add_with_hint__(lflows, op->od,
-                              S_SWITCH_IN_L2_LKUP, 100,
-                              ds_cstr(match),
-                              ds_cstr(actions),
-                              op->key,
-                              NULL,
-                              &op->nbsp->header_,
-                              op->lflow_ref);
+    ovn_lflow_add(lflows, op->od,
+                  S_SWITCH_IN_L2_LKUP, 100,
+                  ds_cstr(match),
+                  ds_cstr(actions),
+                  op->lflow_ref,
+                  WITH_IO_PORT(op->key),
+                  WITH_HINT(&op->nbsp->header_));
     ds_clear(match);
     ds_clear(actions);
     free(server_ip_str);
@@ -10137,14 +10130,13 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
                                   "nd_ns && ip6.dst == %s && nd.target == %s",
                                   op->lsp_addrs[i].ipv6_addrs[j].addr_s,
                                   op->lsp_addrs[i].ipv6_addrs[j].addr_s);
-                    ovn_lflow_add_with_hint__(lflows, op->od,
-                                              S_SWITCH_IN_ARP_ND_RSP, 50,
-                                              ds_cstr(match), "next;", NULL,
-                                              copp_meter_get(COPP_ND_NA,
-                                                             op->od->nbs->copp,
-                                                             meter_groups),
-                                              &op->nbsp->header_,
-                                              op->lflow_ref);
+                    ovn_lflow_add(lflows, op->od, S_SWITCH_IN_ARP_ND_RSP, 50,
+                                  ds_cstr(match), "next;", op->lflow_ref,
+                                  WITH_CTRL_METER(
+                                      copp_meter_get(COPP_ND_NA,
+                                                     op->od->nbs->copp,
+                                                     meter_groups)),
+                                  WITH_HINT(&op->nbsp->header_));
                 }
                 ds_clear(match);
                 ds_put_format(
@@ -10169,16 +10161,12 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
                         op->lsp_addrs[i].ipv6_addrs[j].addr_s,
                         op->lsp_addrs[i].ipv6_addrs[j].addr_s,
                         op->lsp_addrs[i].ea_s);
-                ovn_lflow_add_with_hint__(lflows, op->od,
-                                          S_SWITCH_IN_ARP_ND_RSP, 50,
-                                          ds_cstr(match),
-                                          ds_cstr(actions),
-                                          NULL,
-                                          copp_meter_get(COPP_ND_NA,
-                                            op->od->nbs->copp,
-                                            meter_groups),
-                                          &op->nbsp->header_,
-                                          op->lflow_ref);
+                ovn_lflow_add(lflows, op->od, S_SWITCH_IN_ARP_ND_RSP, 50,
+                              ds_cstr(match), ds_cstr(actions), op->lflow_ref,
+                              WITH_CTRL_METER(copp_meter_get(COPP_ND_NA,
+                                                             op->od->nbs->copp,
+                                                             meter_groups)),
+                              WITH_HINT(&op->nbsp->header_));
 
                 /* Do not reply to a solicitation from the port that owns
                  * the address (otherwise DAD detection will fail). */
@@ -10280,16 +10268,12 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
                     lsp_is_router(op->nbsp) ? "nd_na_router" : "nd_na",
                     ea_s,
                     ea_s);
-            ovn_lflow_add_with_hint__(lflows, op->od,
-                                      S_SWITCH_IN_ARP_ND_RSP, 30,
-                                      ds_cstr(match),
-                                      ds_cstr(actions),
-                                      NULL,
-                                      copp_meter_get(COPP_ND_NA,
-                                        op->od->nbs->copp,
-                                        meter_groups),
-                                      &op->nbsp->header_,
-                                      op->lflow_ref);
+            ovn_lflow_add(lflows, op->od, S_SWITCH_IN_ARP_ND_RSP, 30,
+                          ds_cstr(match), ds_cstr(actions), op->lflow_ref,
+                          WITH_CTRL_METER(copp_meter_get(COPP_ND_NA,
+                                                         op->od->nbs->copp,
+                                                         meter_groups)),
+                          WITH_HINT(&op->nbsp->header_));
             ds_destroy(&ip6_dst_match);
             ds_destroy(&nd_target_match);
         }
@@ -10485,11 +10469,12 @@ build_lswitch_dns_lookup_and_response(struct ovn_datapath *od,
     if (!ls_has_dns_records(od->nbs)) {
         return;
     }
-    ovn_lflow_metered(lflows, od, S_SWITCH_IN_DNS_LOOKUP, 100,
-                      "udp.dst == 53",
-                      REGBIT_DNS_LOOKUP_RESULT" = dns_lookup(); next;",
-                      copp_meter_get(COPP_DNS, od->nbs->copp,
-                                     meter_groups), lflow_ref);
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_LOOKUP, 100,
+                  "udp.dst == 53",
+                  REGBIT_DNS_LOOKUP_RESULT" = dns_lookup(); next;",
+                  lflow_ref, WITH_CTRL_METER(copp_meter_get(COPP_DNS,
+                                                            od->nbs->copp,
+                                                            meter_groups)));
     const char *dns_action = "eth.dst <-> eth.src; ip4.src <-> ip4.dst; "
                   "udp.dst = udp.src; udp.src = 53; outport = inport; "
                   "flags.loopback = 1; output;";
@@ -10533,11 +10518,12 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
 {
     ovs_assert(od->nbs);
 
-    ovn_lflow_metered(lflows, od, S_SWITCH_IN_L2_LKUP, 110,
-                      "eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)",
-                      "handle_svc_check(inport);",
-                      copp_meter_get(COPP_SVC_MONITOR, od->nbs->copp,
-                                     meter_groups), lflow_ref);
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 110,
+                  "eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)",
+                  "handle_svc_check(inport);", lflow_ref,
+                  WITH_CTRL_METER(copp_meter_get(COPP_SVC_MONITOR,
+                                                 od->nbs->copp,
+                                                 meter_groups)));
 
     struct mcast_switch_info *mcast_sw_info = &od->mcast_info.sw;
 
@@ -10545,19 +10531,20 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
         ds_clear(actions);
         ds_put_cstr(actions, "igmp;");
         /* Punt IGMP traffic to controller. */
-        ovn_lflow_metered(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
-                          "flags.igmp_loopback == 0 && igmp", ds_cstr(actions),
-                          copp_meter_get(COPP_IGMP, od->nbs->copp,
-                                         meter_groups),
-                          lflow_ref);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
+                      "flags.igmp_loopback == 0 && igmp", ds_cstr(actions),
+                      lflow_ref,
+                      WITH_CTRL_METER(copp_meter_get(COPP_IGMP,
+                                                     od->nbs->copp,
+                                                     meter_groups)));
 
         /* Punt MLD traffic to controller. */
-        ovn_lflow_metered(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
-                          "flags.igmp_loopback == 0 && (mldv1 || mldv2)",
-                          ds_cstr(actions),
-                          copp_meter_get(COPP_IGMP, od->nbs->copp,
-                                         meter_groups),
-                          lflow_ref);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
+                      "flags.igmp_loopback == 0 && (mldv1 || mldv2)",
+                      ds_cstr(actions), lflow_ref,
+                      WITH_CTRL_METER(copp_meter_get(COPP_IGMP,
+                                                     od->nbs->copp,
+                                                     meter_groups)));
 
         /* Flood all IP multicast traffic destined to 224.0.0.X to all
          * ports - RFC 4541, section 2.1.2, item 2.
@@ -12533,10 +12520,10 @@ build_distr_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
                       dgp->cr_port->json_key);
     }
 
-    ovn_lflow_add_with_hint__(ctx->lflows, od, S_ROUTER_IN_DNAT, ctx->prio,
-                              ds_cstr(ctx->new_match), ds_cstr(&dnat_action),
-                              NULL, meter, &ctx->lb->nlb->header_,
-                              lflow_ref);
+    ovn_lflow_add(ctx->lflows, od, S_ROUTER_IN_DNAT, ctx->prio,
+                  ds_cstr(ctx->new_match), ds_cstr(&dnat_action),
+                  lflow_ref, WITH_CTRL_METER(meter),
+                  WITH_HINT(&ctx->lb->nlb->header_));
 
     ds_truncate(ctx->new_match, new_match_len);
 
@@ -12661,9 +12648,10 @@ build_gw_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
                 continue;
             }
             bitmap_set0(dp_non_meter, index);
-            ovn_lflow_add_with_hint__(ctx->lflows, od, S_ROUTER_IN_DNAT,
-                    ctx->prio, ds_cstr(ctx->new_match), ctx->new_action[type],
-                    NULL, meter, &ctx->lb->nlb->header_, lflow_ref);
+            ovn_lflow_add(ctx->lflows, od, S_ROUTER_IN_DNAT, ctx->prio,
+                          ds_cstr(ctx->new_match), ctx->new_action[type],
+                          lflow_ref, WITH_CTRL_METER(meter),
+                          WITH_HINT(&ctx->lb->nlb->header_));
         }
     }
     if (!ctx->reject || build_non_meter) {
@@ -12890,15 +12878,12 @@ build_lswitch_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
             struct ovn_datapath *od = sparse_array_get(&ls_datapaths->dps,
                                                        index);
 
-            ovn_lflow_add_with_hint__(lflows, od,
-                                      S_SWITCH_IN_PRE_LB, 130, ds_cstr(match),
-                                      ds_cstr(action),
-                                      NULL,
-                                      copp_meter_get(COPP_EVENT_ELB,
-                                                     od->nbs->copp,
-                                                     meter_groups),
-                                      &lb->nlb->header_,
-                                      lb_dps->lflow_ref);
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB, 130, ds_cstr(match),
+                          ds_cstr(action), lb_dps->lflow_ref,
+                          WITH_CTRL_METER(copp_meter_get(COPP_EVENT_ELB,
+                                                         od->nbs->copp,
+                                                         meter_groups)),
+                          WITH_HINT(&lb->nlb->header_));
         }
         /* Ignore L4 port information in the key because fragmented packets
          * may not have L4 information.  The pre-stateful table will send
@@ -13015,13 +13000,12 @@ build_lrouter_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
         DYNAMIC_BITMAP_FOR_EACH_1 (index, &lb_dps->nb_lr_map) {
             struct ovn_datapath *od = sparse_array_get(&lr_datapaths->dps,
                                                        index);
-            ovn_lflow_add_with_hint__(lflows, od, S_ROUTER_IN_DNAT,
-                                      130, ds_cstr(match), ds_cstr(action),
-                                      NULL,
-                                      copp_meter_get(COPP_EVENT_ELB,
-                                                     od->nbr->copp,
-                                                     meter_groups),
-                                      &lb->nlb->header_, lb_dps->lflow_ref);
+            ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, 130, ds_cstr(match),
+                          ds_cstr(action), lb_dps->lflow_ref,
+                          WITH_CTRL_METER(copp_meter_get(COPP_EVENT_ELB,
+                                                         od->nbr->copp,
+                                                         meter_groups)),
+                          WITH_HINT(&lb->nlb->header_));
         }
     }
 
@@ -13321,11 +13305,12 @@ build_lrouter_nd_flow(const struct ovn_datapath *od, struct ovn_port *op,
                       action,
                       eth_addr,
                       eth_addr);
-        ovn_lflow_add_with_hint__(lflows, od, S_ROUTER_IN_IP_INPUT, priority,
-                                  ds_cstr(&match), ds_cstr(&actions), NULL,
-                                  copp_meter_get(COPP_ND_NA, od->nbr->copp,
-                                                 meter_groups),
-                                  hint, lflow_ref);
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, priority,
+                      ds_cstr(&match), ds_cstr(&actions), lflow_ref,
+                      WITH_CTRL_METER(copp_meter_get(COPP_ND_NA,
+                                                     od->nbr->copp,
+                                                     meter_groups)),
+                      WITH_HINT(hint));
     }
 
     ds_destroy(&match);
@@ -13767,12 +13752,12 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
         ds_clear(&match);
         ds_put_format(&match, "ip4.dst == %s && udp.dst == 3784",
                       ds_cstr(&ip_list));
-        ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT, 110,
-                                  ds_cstr(&match), "handle_bfd_msg(); ", NULL,
-                                  copp_meter_get(COPP_BFD, op->od->nbr->copp,
-                                                 meter_groups),
-                                  &op->nbrp->header_,
-                                  lflow_ref);
+        ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 110,
+                      ds_cstr(&match), "handle_bfd_msg(); ", lflow_ref,
+                      WITH_CTRL_METER(copp_meter_get(COPP_BFD,
+                                                     op->od->nbr->copp,
+                                                     meter_groups)),
+                      WITH_HINT(&op->nbrp->header_));
     }
     if (op->lrp_networks.n_ipv6_addrs) {
         ds_clear(&ip_list);
@@ -13787,12 +13772,12 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
         ds_clear(&match);
         ds_put_format(&match, "ip6.dst == %s && udp.dst == 3784",
                       ds_cstr(&ip_list));
-        ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT, 110,
-                                  ds_cstr(&match), "handle_bfd_msg(); ", NULL,
-                                  copp_meter_get(COPP_BFD, op->od->nbr->copp,
-                                                 meter_groups),
-                                  &op->nbrp->header_,
-                                  lflow_ref);
+        ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 110,
+                      ds_cstr(&match), "handle_bfd_msg(); ", lflow_ref,
+                      WITH_CTRL_METER(copp_meter_get(COPP_BFD,
+                                                     op->od->nbr->copp,
+                                                     meter_groups)),
+                      WITH_HINT(&op->nbrp->header_));
     }
 
     ds_destroy(&ip_list);
@@ -14085,34 +14070,34 @@ build_neigh_learning_flows_for_lrouter(
                   ds_cstr(match), "mac_cache_use; next;",
                   lflow_ref);
 
-    ovn_lflow_metered(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR, 90,
-                      "arp", "put_arp(inport, arp.spa, arp.sha); next;",
-                      copp_meter_get(COPP_ARP, od->nbr->copp,
-                                     meter_groups),
-                      lflow_ref);
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR, 90, "arp",
+                  "put_arp(inport, arp.spa, arp.sha); next;", lflow_ref,
+                  WITH_CTRL_METER(copp_meter_get(COPP_ARP,
+                                                 od->nbr->copp,
+                                                 meter_groups)));
 
     ovn_lflow_add(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR, 95,
                   "nd_ns && (ip6.src == 0 || nd.sll == 0)", "next;",
                   lflow_ref);
 
-    ovn_lflow_metered(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR, 95,
-                      "nd_na && nd.tll == 0",
-                      "put_nd(inport, nd.target, eth.src); next;",
-                      copp_meter_get(COPP_ND_NA, od->nbr->copp,
-                                     meter_groups),
-                      lflow_ref);
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR, 95,
+                  "nd_na && nd.tll == 0",
+                  "put_nd(inport, nd.target, eth.src); next;",
+                  lflow_ref, WITH_CTRL_METER(copp_meter_get(COPP_ND_NA,
+                                                            od->nbr->copp,
+                                                            meter_groups)));
 
-    ovn_lflow_metered(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR, 90,
-                      "nd_na", "put_nd(inport, nd.target, nd.tll); next;",
-                      copp_meter_get(COPP_ND_NA, od->nbr->copp,
-                                     meter_groups),
-                      lflow_ref);
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR, 90,
+                  "nd_na", "put_nd(inport, nd.target, nd.tll); next;",
+                  lflow_ref, WITH_CTRL_METER(copp_meter_get(COPP_ND_NA,
+                                                            od->nbr->copp,
+                                                            meter_groups)));
 
-    ovn_lflow_metered(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR, 90,
-                      "nd_ns", "put_nd(inport, ip6.src, nd.sll); next;",
-                      copp_meter_get(COPP_ND_NS, od->nbr->copp,
-                                     meter_groups),
-                      lflow_ref);
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR, 90,
+                  "nd_ns", "put_nd(inport, ip6.src, nd.sll); next;",
+                  lflow_ref, WITH_CTRL_METER(copp_meter_get(COPP_ND_NS,
+                                                            od->nbr->copp,
+                                                            meter_groups)));
 
     ovn_lflow_add_default_drop(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR,
                                lflow_ref);
@@ -14271,13 +14256,12 @@ build_ND_RA_flows_for_lrouter_port(
 
     if (add_rs_response_flow) {
         ds_put_cstr(actions, "); next;");
-        ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_ND_RA_OPTIONS,
-                                  50, ds_cstr(match), ds_cstr(actions), NULL,
-                                  copp_meter_get(COPP_ND_RA_OPTS,
-                                                 op->od->nbr->copp,
-                                                 meter_groups),
-                                  &op->nbrp->header_,
-                                  lflow_ref);
+        ovn_lflow_add(lflows, op->od, S_ROUTER_IN_ND_RA_OPTIONS, 50,
+                      ds_cstr(match), ds_cstr(actions), lflow_ref,
+                      WITH_CTRL_METER(copp_meter_get(COPP_ND_RA_OPTS,
+                                                     op->od->nbr->copp,
+                                                     meter_groups)),
+                      WITH_HINT(&op->nbrp->header_));
         ds_clear(actions);
         ds_clear(match);
         ds_put_format(match, "inport == %s && ip6.dst == ff02::2 && "
@@ -15317,9 +15301,9 @@ create_icmp_need_frag_lflow(const struct ovn_port *op, int mtu,
                   extra_action, op->lrp_networks.ea_s, ip,
                   mtu, ovn_stage_get_table(S_ROUTER_IN_ADMISSION));
 
-    ovn_lflow_add_with_hint__(lflows, op->od, stage, priority,
-                              ds_cstr(match), ds_cstr(actions),
-                              NULL, meter, &op->nbrp->header_, lflow_ref);
+    ovn_lflow_add(lflows, op->od, stage, priority, ds_cstr(match),
+                  ds_cstr(actions), lflow_ref, WITH_CTRL_METER(meter),
+                  WITH_HINT(&op->nbrp->header_));
 
     ds_truncate(match, match_len);
 }
@@ -15620,38 +15604,37 @@ build_arp_request_flows_for_lrouter(
                       "}; output;", ETH_ADDR_ARGS(eth_dst), sn_addr_s,
                       route->nexthop);
 
-        ovn_lflow_add_with_hint__(lflows, od, S_ROUTER_IN_ARP_REQUEST, 200,
-                                  ds_cstr(match), ds_cstr(actions), NULL,
-                                  copp_meter_get(COPP_ND_NS_RESOLVE,
-                                                 od->nbr->copp,
-                                                 meter_groups),
-                                  &route->header_,
-                                  lflow_ref);
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 200,
+                      ds_cstr(match), ds_cstr(actions), lflow_ref,
+                      WITH_CTRL_METER(copp_meter_get(COPP_ND_NS_RESOLVE,
+                                                     od->nbr->copp,
+                                                     meter_groups)),
+                      WITH_HINT(&route->header_));
     }
 
-    ovn_lflow_metered(lflows, od, S_ROUTER_IN_ARP_REQUEST, 100,
-                      "eth.dst == 00:00:00:00:00:00 && "
-                      REGBIT_NEXTHOP_IS_IPV4" == 1",
-                      "arp { "
-                      "eth.dst = ff:ff:ff:ff:ff:ff; "
-                      "arp.spa = " REG_SRC_IPV4 "; "
-                      "arp.tpa = " REG_NEXT_HOP_IPV4 "; "
-                      "arp.op = 1; " /* ARP request */
-                      "output; "
-                      "}; output;",
-                      copp_meter_get(COPP_ARP_RESOLVE, od->nbr->copp,
-                                     meter_groups),
-                      lflow_ref);
-    ovn_lflow_metered(lflows, od, S_ROUTER_IN_ARP_REQUEST, 100,
-                      "eth.dst == 00:00:00:00:00:00 && "
-                      REGBIT_NEXTHOP_IS_IPV4" == 0",
-                      "nd_ns { "
-                      "nd.target = " REG_NEXT_HOP_IPV6 "; "
-                      "output; "
-                      "}; output;",
-                      copp_meter_get(COPP_ND_NS_RESOLVE, od->nbr->copp,
-                                     meter_groups),
-                      lflow_ref);
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 100,
+                  "eth.dst == 00:00:00:00:00:00 && "
+                  REGBIT_NEXTHOP_IS_IPV4" == 1",
+                  "arp { "
+                  "eth.dst = ff:ff:ff:ff:ff:ff; "
+                  "arp.spa = " REG_SRC_IPV4 "; "
+                  "arp.tpa = " REG_NEXT_HOP_IPV4 "; "
+                  "arp.op = 1; " /* ARP request */
+                  "output; "
+                  "}; output;",
+                  lflow_ref, WITH_CTRL_METER(copp_meter_get(COPP_ARP_RESOLVE,
+                                                            od->nbr->copp,
+                                                            meter_groups)));
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 100,
+                  "eth.dst == 00:00:00:00:00:00 && "
+                  REGBIT_NEXTHOP_IS_IPV4" == 0",
+                  "nd_ns { "
+                  "nd.target = " REG_NEXT_HOP_IPV6 "; "
+                  "output; "
+                  "}; output;",
+                  lflow_ref, WITH_CTRL_METER(copp_meter_get(COPP_ND_NS_RESOLVE,
+                                                            od->nbr->copp,
+                                                            meter_groups)));
     ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 0, "1", "output;",
                   lflow_ref);
 }
@@ -15960,12 +15943,12 @@ build_dhcp_relay_flows_for_lrouter_port(struct ovn_port *op,
                   "next; /* DHCP_RELAY_REQ */",
                   op->lrp_networks.ipv4_addrs[0].addr_s, server_ip_str);
 
-    ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT, 110,
-                              ds_cstr(match), ds_cstr(actions), NULL,
-                              copp_meter_get(COPP_DHCPV4_RELAY,
-                                             op->od->nbr->copp,
-                                             meter_groups),
-                              &op->nbrp->header_, lflow_ref);
+    ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 110, ds_cstr(match),
+                  ds_cstr(actions), lflow_ref,
+                  WITH_CTRL_METER(copp_meter_get(COPP_DHCPV4_RELAY,
+                                                 op->od->nbr->copp,
+                                                 meter_groups)),
+                  WITH_HINT(&op->nbrp->header_));
 
     ds_clear(match);
     ds_clear(actions);
@@ -16025,13 +16008,12 @@ build_dhcp_relay_flows_for_lrouter_port(struct ovn_port *op,
           " = dhcp_relay_resp_chk(%s, %s); next; /* DHCP_RELAY_RESP */",
           op->lrp_networks.ipv4_addrs[0].addr_s, server_ip_str);
 
-    ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_DHCP_RELAY_RESP_CHK,
-                              100,
-                              ds_cstr(match), ds_cstr(actions), NULL,
-                              copp_meter_get(COPP_DHCPV4_RELAY,
-                                             op->od->nbr->copp,
-                                             meter_groups),
-                              &op->nbrp->header_, lflow_ref);
+    ovn_lflow_add(lflows, op->od, S_ROUTER_IN_DHCP_RELAY_RESP_CHK, 100,
+                  ds_cstr(match), ds_cstr(actions), lflow_ref,
+                  WITH_CTRL_METER(copp_meter_get(COPP_DHCPV4_RELAY,
+                                                 op->od->nbr->copp,
+                                                 meter_groups)),
+                  WITH_HINT(&op->nbrp->header_));
 
 
     ds_clear(match);
@@ -16133,14 +16115,12 @@ build_ipv6_input_flows_for_lrouter_port(
                                  "eth.dst <-> eth.src; "
                                  "ip6.dst <-> ip6.src; "
                                  "next; };";
-            ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                                      80, ds_cstr(match), action, NULL,
-                                      copp_meter_get(
-                                          COPP_TCP_RESET,
-                                          op->od->nbr->copp,
-                                          meter_groups),
-                                      &op->nbrp->header_,
-                                      lflow_ref);
+            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 80,
+                          ds_cstr(match), action, lflow_ref,
+                          WITH_CTRL_METER(copp_meter_get(COPP_TCP_RESET,
+                                                         op->od->nbr->copp,
+                                                         meter_groups)),
+                          WITH_HINT(&op->nbrp->header_));
 
             ds_clear(match);
             ds_put_format(match,
@@ -16150,14 +16130,12 @@ build_ipv6_input_flows_for_lrouter_port(
                      "eth.dst <-> eth.src; "
                      "ip6.dst <-> ip6.src; "
                      "next; };";
-            ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                                      80, ds_cstr(match), action, NULL,
-                                      copp_meter_get(
-                                          COPP_TCP_RESET,
-                                          op->od->nbr->copp,
-                                          meter_groups),
-                                      &op->nbrp->header_,
-                                      lflow_ref);
+            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 80,
+                          ds_cstr(match), action, lflow_ref,
+                          WITH_CTRL_METER(copp_meter_get(COPP_TCP_RESET,
+                                                         op->od->nbr->copp,
+                                                         meter_groups)),
+                          WITH_HINT(&op->nbrp->header_));
 
             ds_clear(match);
             ds_put_format(match,
@@ -16170,14 +16148,12 @@ build_ipv6_input_flows_for_lrouter_port(
                      "icmp6.type = 1; "
                      "icmp6.code = 4; "
                      "next; };";
-            ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                                      80, ds_cstr(match), action, NULL,
-                                      copp_meter_get(
-                                          COPP_ICMP6_ERR,
-                                          op->od->nbr->copp,
-                                          meter_groups),
-                                      &op->nbrp->header_,
-                                      lflow_ref);
+            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 80,
+                          ds_cstr(match), action, lflow_ref,
+                          WITH_CTRL_METER(copp_meter_get(COPP_ICMP6_ERR,
+                                                         op->od->nbr->copp,
+                                                         meter_groups)),
+                          WITH_HINT(&op->nbrp->header_));
 
             ds_clear(match);
             ds_put_format(match,
@@ -16190,14 +16166,12 @@ build_ipv6_input_flows_for_lrouter_port(
                      "icmp6.type = 1; "
                      "icmp6.code = 3; "
                      "next; };";
-            ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                                      70, ds_cstr(match), action, NULL,
-                                      copp_meter_get(
-                                          COPP_ICMP6_ERR,
-                                          op->od->nbr->copp,
-                                          meter_groups),
-                                      &op->nbrp->header_,
-                                      lflow_ref);
+            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 70,
+                          ds_cstr(match), action, lflow_ref,
+                          WITH_CTRL_METER(copp_meter_get(COPP_ICMP6_ERR,
+                                                         op->od->nbr->copp,
+                                                         meter_groups)),
+                          WITH_HINT(&op->nbrp->header_));
         }
     }
 
@@ -16233,11 +16207,12 @@ build_ipv6_input_flows_for_lrouter_port(
                       "icmp6.code = 0; /* TTL exceeded in transit */ "
                       "outport = %s; flags.loopback = 1; output; };",
                       ds_cstr(&ip_ds), op->json_key);
-        ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                31, ds_cstr(match), ds_cstr(actions), NULL,
-                copp_meter_get(COPP_ICMP6_ERR, op->od->nbr->copp,
-                               meter_groups),
-                &op->nbrp->header_, lflow_ref);
+        ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 31,
+                      ds_cstr(match), ds_cstr(actions), lflow_ref,
+                      WITH_CTRL_METER(copp_meter_get(COPP_ICMP6_ERR,
+                                                     op->od->nbr->copp,
+                                                     meter_groups)),
+                      WITH_HINT(&op->nbrp->header_));
     }
     ds_destroy(&ip_ds);
 }
@@ -16369,11 +16344,12 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
                       "%s ; ip.ttl = 254; "
                       "outport = %s; flags.loopback = 1; output; };",
                       ds_cstr(&ip_ds), op->json_key);
-        ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                31, ds_cstr(match), ds_cstr(actions), NULL,
-                copp_meter_get(COPP_ICMP4_ERR, op->od->nbr->copp,
-                               meter_groups),
-                &op->nbrp->header_, lflow_ref);
+        ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 31,
+                      ds_cstr(match), ds_cstr(actions), lflow_ref,
+                      WITH_CTRL_METER(copp_meter_get(COPP_ICMP4_ERR,
+                                                     op->od->nbr->copp,
+                                                     meter_groups)),
+                      WITH_HINT(&op->nbrp->header_));
 
     }
     ds_destroy(&ip_ds);
@@ -16441,14 +16417,12 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
                                  "icmp4.type = 3; "
                                  "icmp4.code = 3; "
                                  "next; };";
-            ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                                      80, ds_cstr(match), action, NULL,
-                                      copp_meter_get(
-                                          COPP_ICMP4_ERR,
-                                          op->od->nbr->copp,
-                                          meter_groups),
-                                      &op->nbrp->header_,
-                                      lflow_ref);
+            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 80,
+                          ds_cstr(match), action, lflow_ref,
+                          WITH_CTRL_METER(copp_meter_get(COPP_ICMP4_ERR,
+                                                         op->od->nbr->copp,
+                                                         meter_groups)),
+                          WITH_HINT(&op->nbrp->header_));
 
             ds_clear(match);
             ds_put_format(match,
@@ -16458,14 +16432,12 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
                      "eth.dst <-> eth.src; "
                      "ip4.dst <-> ip4.src; "
                      "next; };";
-            ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                                      80, ds_cstr(match), action, NULL,
-                                      copp_meter_get(
-                                          COPP_TCP_RESET,
-                                          op->od->nbr->copp,
-                                          meter_groups),
-                                      &op->nbrp->header_,
-                                      lflow_ref);
+            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 80,
+                          ds_cstr(match), action, lflow_ref,
+                          WITH_CTRL_METER(copp_meter_get(COPP_TCP_RESET,
+                                                         op->od->nbr->copp,
+                                                         meter_groups)),
+                          WITH_HINT(&op->nbrp->header_));
 
             ds_clear(match);
             ds_put_format(match,
@@ -16475,14 +16447,12 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
                      "eth.dst <-> eth.src; "
                      "ip4.dst <-> ip4.src; "
                      "next; };";
-            ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                                      80, ds_cstr(match), action, NULL,
-                                      copp_meter_get(
-                                          COPP_TCP_RESET,
-                                          op->od->nbr->copp,
-                                          meter_groups),
-                                      &op->nbrp->header_,
-                                      lflow_ref);
+            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 80,
+                          ds_cstr(match), action, lflow_ref,
+                          WITH_CTRL_METER(copp_meter_get(COPP_TCP_RESET,
+                                                         op->od->nbr->copp,
+                                                         meter_groups)),
+                          WITH_HINT(&op->nbrp->header_));
 
             ds_clear(match);
             ds_put_format(match,
@@ -16495,14 +16465,12 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
                      "icmp4.type = 3; "
                      "icmp4.code = 2; "
                      "next; };";
-            ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                                      70, ds_cstr(match), action, NULL,
-                                      copp_meter_get(
-                                          COPP_ICMP4_ERR,
-                                          op->od->nbr->copp,
-                                          meter_groups),
-                                      &op->nbrp->header_,
-                                      lflow_ref);
+            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 70,
+                          ds_cstr(match), action, lflow_ref,
+                          WITH_CTRL_METER(copp_meter_get(COPP_ICMP4_ERR,
+                                                         op->od->nbr->copp,
+                                                         meter_groups)),
+                          WITH_HINT(&op->nbrp->header_));
         }
     }
 }
@@ -17142,15 +17110,12 @@ build_lrouter_ingress_nat_check_pkt_len(struct lflow_table *lflows,
                 nat->external_mac,
                 nat->external_ip,
                 mtu, l3dgw_port->json_key);
-            ovn_lflow_add_with_hint__(lflows, od, S_ROUTER_IN_IP_INPUT, 160,
-                                      ds_cstr(match), ds_cstr(actions),
-                                      NULL,
-                                      copp_meter_get(
-                                            COPP_ICMP4_ERR,
-                                            od->nbr->copp,
-                                            meter_groups),
-                                      &nat->header_,
-                                      lflow_ref);
+            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 160,
+                          ds_cstr(match), ds_cstr(actions), lflow_ref,
+                          WITH_CTRL_METER(copp_meter_get(COPP_ICMP4_ERR,
+                                                         od->nbr->copp,
+                                                         meter_groups)),
+                          WITH_HINT(&nat->header_));
         } else {
             ds_put_format(match, " && ip6 && ip6.dst == %s", nat->external_ip);
             /* Set icmp6.frag_mtu to gw_mtu */
@@ -17170,15 +17135,12 @@ build_lrouter_ingress_nat_check_pkt_len(struct lflow_table *lflows,
                 nat->external_mac,
                 nat->external_ip,
                 mtu, l3dgw_port->json_key);
-            ovn_lflow_add_with_hint__(lflows, od, S_ROUTER_IN_IP_INPUT, 160,
-                                      ds_cstr(match), ds_cstr(actions),
-                                      NULL,
-                                      copp_meter_get(
-                                            COPP_ICMP6_ERR,
-                                            od->nbr->copp,
-                                            meter_groups),
-                                      &nat->header_,
-                                      lflow_ref);
+            ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 160,
+                          ds_cstr(match), ds_cstr(actions), lflow_ref,
+                          WITH_CTRL_METER(copp_meter_get(COPP_ICMP6_ERR,
+                                                         od->nbr->copp,
+                                                         meter_groups)),
+                          WITH_HINT(&nat->header_));
         }
 }
 
