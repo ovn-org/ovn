@@ -107,6 +107,9 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
                                         const char *where,
                                         struct lflow_ref *);
 
+
+#define WITH_HINT(HINT) .stage_hint = HINT
+
 /* Adds a row with the specified contents to the Logical_Flow table. */
 #define ovn_lflow_add_with_hint__(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, \
                                   ACTIONS, IN_OUT_PORT, CTRL_METER, \
@@ -114,12 +117,6 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
     lflow_table_add_lflow(LFLOW_TABLE, OD->sdp, NULL, 0, STAGE, PRIORITY, \
                           MATCH, ACTIONS, IN_OUT_PORT, CTRL_METER, \
                           STAGE_HINT, OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
-
-#define ovn_lflow_add_with_hint(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, \
-                                ACTIONS, STAGE_HINT, LFLOW_REF) \
-    lflow_table_add_lflow(LFLOW_TABLE, OD->sdp, NULL, 0, STAGE, PRIORITY, \
-                          MATCH, ACTIONS, NULL, NULL, STAGE_HINT,  \
-                          OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
 
 #define ovn_lflow_add_with_dp_group(LFLOW_TABLE, DP_BITMAP, DP_BITMAP_LEN, \
                                     STAGE, PRIORITY, MATCH, ACTIONS, \
