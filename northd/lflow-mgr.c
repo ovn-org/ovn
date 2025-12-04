@@ -794,15 +794,13 @@ lflow_table_add_lflow(struct lflow_table *lflow_table,
 }
 
 void
-lflow_table_add_lflow_default_drop(struct lflow_table *lflow_table,
-                                   const struct ovn_synced_datapath *sdp,
-                                   const struct ovn_stage *stage,
-                                   const char *where,
-                                   struct lflow_ref *lflow_ref)
+lflow_table_add_lflow__(struct lflow_table_add_args *args)
 {
-    lflow_table_add_lflow(lflow_table, sdp, NULL, 0, stage, 0, "1",
-                          debug_drop_action(), NULL, NULL, NULL,
-                          where, NULL, lflow_ref);
+    lflow_table_add_lflow(args->table, args->sdp, args->dp_bitmap,
+                          args->dp_bitmap_len, args->stage, args->priority,
+                          args->match, args->actions, args->io_port,
+                          args->ctrl_meter, args->stage_hint, args->where,
+                          args->flow_desc, args->lflow_ref);
 }
 
 struct ovn_dp_group *

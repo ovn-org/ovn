@@ -72,6 +72,24 @@ bool lflow_ref_sync_lflows(struct lflow_ref *,
                            const struct sbrec_logical_flow_table *,
                            const struct sbrec_logical_dp_group_table *);
 
+struct lflow_table_add_args {
+    struct lflow_table *table;
+    const struct ovn_synced_datapath *sdp;
+    const unsigned long *dp_bitmap;
+    size_t dp_bitmap_len;
+    const struct ovn_stage *stage;
+    uint16_t priority;
+    const char *match;
+    const char *actions;
+    const char *io_port;
+    const char *ctrl_meter;
+    const struct ovsdb_idl_row *stage_hint;
+    const char *flow_desc;
+    struct lflow_ref *lflow_ref;
+    const char *where;
+};
+
+void lflow_table_add_lflow__(struct lflow_table_add_args *args);
 
 void lflow_table_add_lflow(struct lflow_table *,
                            const struct ovn_synced_datapath *,
@@ -134,10 +152,20 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
                           OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
 
 #define ovn_lflow_add(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, ACTIONS, \
-                      LFLOW_REF) \
-    lflow_table_add_lflow(LFLOW_TABLE, OD->sdp, NULL, 0, STAGE, PRIORITY, \
-                          MATCH, ACTIONS, NULL, NULL, NULL, \
-                          OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
+                      LFLOW_REF, ...) \
+    lflow_table_add_lflow__( \
+        &(struct lflow_table_add_args) { \
+            .table = LFLOW_TABLE, \
+            .sdp = (OD)->sdp, \
+            .stage = STAGE, \
+            .priority = PRIORITY, \
+            .match = MATCH, \
+            .actions = ACTIONS, \
+            .lflow_ref = LFLOW_REF, \
+            .where = OVS_SOURCE_LOCATOR, \
+            __VA_ARGS__ \
+        } \
+    )
 
 #define ovn_lflow_add_drop_with_desc(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, \
                                      DESCRIPTION, LFLOW_REF) \
