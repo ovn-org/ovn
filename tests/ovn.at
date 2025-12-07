@@ -21484,6 +21484,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([IP packet buffering])
 AT_KEYWORDS([ip-buffering])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 
 # Logical network:
