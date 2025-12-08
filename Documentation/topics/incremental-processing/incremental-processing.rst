@@ -136,7 +136,7 @@ Example Output
 The output is in DOT format and can be visualized using tools like `dot` from
 the Graphviz suite.
 
-.. code-block:: dot
+.. code-block:: none
 
    digraph "Incremental-Processing-Engine" {
        rankdir=LR;
