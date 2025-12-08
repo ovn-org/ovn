@@ -18972,3 +18972,33 @@ check ovn-nbctl --wait=sb sync
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LS/LSP add and delete])
+
+ovn_start
+
+check ovn-nbctl --wait=sb ls-add ls1
+
+sleep_northd
+check ovn-nbctl lsp-add ls1 lsp1
+check ovn-nbctl lsp-del lsp1
+check ovn-nbctl lsp-add ls1 lsp1
+wake_up_northd
+check ovn-nbctl --wait=sb sync
+
+sleep_northd
+check ovn-nbctl lsp-set-addresses lsp1 "50:54:00:00:00:03 11.0.0.2"
+check ovn-nbctl ls-del ls1
+wake_up_northd
+
+check ovn-nbctl --wait=sb ls-add ls1
+sleep_northd
+check ovn-nbctl lsp-add ls1 lsp1
+check ovn-nbctl ls-del ls1
+wake_up_northd
+check ovn-nbctl --wait=sb sync
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])

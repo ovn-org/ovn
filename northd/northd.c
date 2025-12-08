@@ -4599,75 +4599,78 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
         op->visited = false;
     }
 
-    /* Compare the individual ports in the old and new Logical Switches */
-    for (size_t j = 0; j < changed_ls->n_ports; ++j) {
-        struct nbrec_logical_switch_port *new_nbsp = changed_ls->ports[j];
-        op = ovn_port_find_in_datapath(od, new_nbsp);
+    /* If ls is deleted, no need to update/create ports */
+    if (!ls_deleted) {
+        /* Compare the individual ports in the old and new Logical Switches */
+        for (size_t j = 0; j < changed_ls->n_ports; ++j) {
+            struct nbrec_logical_switch_port *new_nbsp = changed_ls->ports[j];
+            op = ovn_port_find_in_datapath(od, new_nbsp);
 
-        if (!op) {
-            if (!lsp_can_be_inc_processed(new_nbsp)) {
-                goto fail;
-            }
-            op = ls_port_create(ovnsb_idl_txn, &nd->ls_ports,
-                                new_nbsp->name, new_nbsp, od,
-                                ni->sbrec_mirror_table,
-                                ni->sbrec_chassis_by_name,
-                                ni->sbrec_chassis_by_hostname);
             if (!op) {
-                goto fail;
-            }
-            add_op_to_northd_tracked_ports(&trk_lsps->created, op);
-        } else if (ls_port_has_changed(new_nbsp)) {
-            /* Existing port updated */
-            bool temp = false;
-            if (lsp_is_type_changed(op->sb, new_nbsp, &temp) ||
-                !op->lsp_can_be_inc_processed ||
-                !lsp_can_be_inc_processed(new_nbsp)) {
-                goto fail;
-            }
-            const struct sbrec_port_binding *sb = op->sb;
-            if (sset_contains(&nd->svc_monitor_lsps, new_nbsp->name)) {
-                /* This port is used for svc monitor, which may be impacted
-                 * by this change. Fallback to recompute. */
-                goto fail;
-            }
-            if (!lsp_handle_mirror_rules_changes(op) ||
-                 is_lsp_mirror_target_port(ni->nbrec_mirror_by_type_and_sink,
-                                           op)) {
-                /* Fallback to recompute. */
-                goto fail;
-            }
-            if (!check_lsp_is_up &&
-                !check_lsp_changes_other_than_up(new_nbsp)) {
-                /* If the only change is the "up" column while the
-                 * "ignore_lsp_down" is set to true, just ignore this
-                 * change. */
-                op->visited = true;
-                continue;
-            }
-
-            uint32_t old_tunnel_key = op->tunnel_key;
-            if (!ls_port_reinit(op, ovnsb_idl_txn,
-                                new_nbsp,
-                                od, sb, ni->sbrec_mirror_table,
-                                ni->sbrec_chassis_by_name,
-                                ni->sbrec_chassis_by_hostname)) {
-                if (sb) {
-                    sbrec_port_binding_delete(sb);
+                if (!lsp_can_be_inc_processed(new_nbsp)) {
+                    goto fail;
                 }
-                ovn_port_destroy(&nd->ls_ports, op);
-                goto fail;
-            }
-            add_op_to_northd_tracked_ports(&trk_lsps->updated, op);
+                op = ls_port_create(ovnsb_idl_txn, &nd->ls_ports,
+                                    new_nbsp->name, new_nbsp, od,
+                                    ni->sbrec_mirror_table,
+                                    ni->sbrec_chassis_by_name,
+                                    ni->sbrec_chassis_by_hostname);
+                if (!op) {
+                    goto fail;
+                }
+                add_op_to_northd_tracked_ports(&trk_lsps->created, op);
+            } else if (ls_port_has_changed(new_nbsp)) {
+                /* Existing port updated */
+                bool temp = false;
+                if (lsp_is_type_changed(op->sb, new_nbsp, &temp) ||
+                    !op->lsp_can_be_inc_processed ||
+                    !lsp_can_be_inc_processed(new_nbsp)) {
+                    goto fail;
+                }
+                const struct sbrec_port_binding *sb = op->sb;
+                if (sset_contains(&nd->svc_monitor_lsps, new_nbsp->name)) {
+                    /* This port is used for svc monitor, which may be impacted
+                     * by this change. Fallback to recompute. */
+                    goto fail;
+                }
+                if (!lsp_handle_mirror_rules_changes(op) ||
+                     is_lsp_mirror_target_port(
+                         ni->nbrec_mirror_by_type_and_sink, op)) {
+                    /* Fallback to recompute. */
+                    goto fail;
+                }
+                if (!check_lsp_is_up &&
+                    !check_lsp_changes_other_than_up(new_nbsp)) {
+                    /* If the only change is the "up" column while the
+                     * "ignore_lsp_down" is set to true, just ignore this
+                     * change. */
+                    op->visited = true;
+                    continue;
+                }
 
-            if (old_tunnel_key != op->tunnel_key) {
-                delete_fdb_entries(ni->sbrec_fdb_by_dp_and_port,
-                                   od->tunnel_key, old_tunnel_key);
+                uint32_t old_tunnel_key = op->tunnel_key;
+                if (!ls_port_reinit(op, ovnsb_idl_txn,
+                                    new_nbsp,
+                                    od, sb, ni->sbrec_mirror_table,
+                                    ni->sbrec_chassis_by_name,
+                                    ni->sbrec_chassis_by_hostname)) {
+                    if (sb) {
+                        sbrec_port_binding_delete(sb);
+                    }
+                    ovn_port_destroy(&nd->ls_ports, op);
+                    goto fail;
+                }
+                add_op_to_northd_tracked_ports(&trk_lsps->updated, op);
+
+                if (old_tunnel_key != op->tunnel_key) {
+                    delete_fdb_entries(ni->sbrec_fdb_by_dp_and_port,
+                                       od->tunnel_key, old_tunnel_key);
+                }
+            } else if (!strcmp(op->nbsp->type, "virtual")) {
+                ovs_list_push_back(&existing_virtual_ports, &op->list);
             }
-        } else if (!strcmp(op->nbsp->type, "virtual")) {
-            ovs_list_push_back(&existing_virtual_ports, &op->list);
+            op->visited = true;
         }
-        op->visited = !ls_deleted;
     }
 
     /* Check for deleted ports */
