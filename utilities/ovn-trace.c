@@ -51,6 +51,8 @@
 
 VLOG_DEFINE_THIS_MODULE(ovntrace);
 
+static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+
 /* --db: The database server to contact. */
 static const char *db;
 
@@ -196,7 +198,7 @@ parse_ct_option(const char *state_s_)
         ovs_fatal(0, "%s", ds_cstr(&ds));
     }
     if (!validate_ct_state(state, &ds)) {
-        VLOG_WARN("%s", ds_cstr(&ds));
+        VLOG_WARN_RL(&rl, "%s", ds_cstr(&ds));
     }
     ds_destroy(&ds);
 
@@ -553,7 +555,8 @@ ovntrace_datapath_find_by_name(const char *name)
         if (uuid_is_partial_match(&dp->sb_uuid, name) >= 4 ||
             uuid_is_partial_match(&dp->nb_uuid, name) >= 4) {
             if (match) {
-                VLOG_WARN("name \"%s\" matches multiple datapaths", name);
+                VLOG_WARN_RL(&rl, "name \"%s\" matches multiple datapaths",
+                             name);
                 return NULL;
             }
             match = dp;
@@ -737,13 +740,13 @@ read_ports(void)
         struct ovntrace_datapath *dp
             = ovntrace_datapath_find_by_sb_uuid(&sbpb->datapath->header_.uuid);
         if (!dp) {
-            VLOG_WARN("logical port %s missing datapath", port_name);
+            VLOG_WARN_RL(&rl, "logical port %s missing datapath", port_name);
             continue;
         }
 
         struct ovntrace_port *port = xzalloc(sizeof *port);
         if (!shash_add_once(&ports, port_name, port)) {
-            VLOG_WARN("duplicate logical port name %s", port_name);
+            VLOG_WARN_RL(&rl, "duplicate logical port name %s", port_name);
             free(port);
             continue;
         }
@@ -788,11 +791,9 @@ read_ports(void)
         for (size_t i = 0; i < sbpb->n_port_security; i++) {
             if (!extract_lsp_addresses(sbpb->port_security[i],
                                         &port->ps_addrs[port->n_ps_addrs])) {
-                static struct vlog_rate_limit rl
-                    = VLOG_RATE_LIMIT_INIT(1, 1);
-                VLOG_INFO_RL(&rl, "invalid syntax '%s' in port "
-                            "security. No MAC address found",
-                            sbpb->port_security[i]);
+                VLOG_WARN_RL(&rl, "invalid syntax '%s' in port "
+                             "security. No MAC address found",
+                             sbpb->port_security[i]);
                 continue;
             }
             port->n_ps_addrs++;
@@ -837,8 +838,8 @@ read_mcgroups(void)
         struct ovntrace_datapath *dp
             = ovntrace_datapath_find_by_sb_uuid(&sbmg->datapath->header_.uuid);
         if (!dp) {
-            VLOG_WARN("logical multicast group %s missing datapath",
-                      sbmg->name);
+            VLOG_WARN_RL(&rl, "logical multicast group %s missing datapath",
+                         sbmg->name);
             continue;
         }
 
@@ -852,14 +853,14 @@ read_mcgroups(void)
             const char *port_name = sbmg->ports[i]->logical_port;
             struct ovntrace_port *p = shash_find_data(&ports, port_name);
             if (!p) {
-                VLOG_WARN("missing port %s", port_name);
+                VLOG_WARN_RL(&rl, "missing port %s", port_name);
                 continue;
             }
             if (!uuid_equals(&sbmg->ports[i]->datapath->header_.uuid,
                              &p->dp->sb_uuid)) {
-                VLOG_WARN("multicast group %s in datapath %s contains "
-                          "port %s outside that datapath",
-                          mcgroup->name, mcgroup->dp->name, port_name);
+                VLOG_WARN_RL(&rl, "multicast group %s in datapath %s contains "
+                             "port %s outside that datapath",
+                             mcgroup->name, mcgroup->dp->name, port_name);
                 continue;
             }
             mcgroup->ports[mcgroup->n_ports++] = p;
@@ -913,7 +914,7 @@ ovntrace_is_chassis_resident(const void *aux OVS_UNUSED,
         return true;
     }
 
-    VLOG_WARN("%s: unknown logical port\n", port_name);
+    VLOG_WARN_RL(&rl, "%s: unknown logical port\n", port_name);
     return false;
 }
 
@@ -981,7 +982,7 @@ parse_lflow_for_datapath(const struct sbrec_logical_flow *sblf,
         struct ovntrace_datapath *dp
             = ovntrace_datapath_find_by_sb_uuid(&sbdb->header_.uuid);
         if (!dp) {
-            VLOG_WARN("logical flow missing datapath");
+            VLOG_WARN_RL(&rl, "logical flow missing datapath");
             return;
         }
 
@@ -989,7 +990,7 @@ parse_lflow_for_datapath(const struct sbrec_logical_flow *sblf,
         struct lex_str match_s;
         if (!lexer_parse_template_string(&match_s, sblf->match,
                                          &template_vars, NULL)) {
-            VLOG_WARN("%s: parsing expression failed", sblf->match);
+            VLOG_WARN_RL(&rl, "%s: parsing expression failed", sblf->match);
         }
         struct expr *match;
         match = expr_parse_string(lex_str_get(&match_s), &symtab,
@@ -997,8 +998,8 @@ parse_lflow_for_datapath(const struct sbrec_logical_flow *sblf,
                                   dp->tunnel_key, &error);
         lex_str_free(&match_s);
         if (error) {
-            VLOG_WARN("%s: parsing expression failed (%s)",
-                      sblf->match, error);
+            VLOG_WARN_RL(&rl, "%s: parsing expression failed (%s)",
+                         sblf->match, error);
             expr_destroy(match);
             free(error);
             return;
@@ -1023,7 +1024,7 @@ parse_lflow_for_datapath(const struct sbrec_logical_flow *sblf,
         struct lex_str actions_s;
         if (!lexer_parse_template_string(&actions_s, sblf->actions,
                                          &template_vars, NULL)) {
-            VLOG_WARN("%s: parsing actions failed", sblf->actions);
+            VLOG_WARN_RL(&rl, "%s: parsing actions failed", sblf->actions);
             expr_destroy(match);
             return;
         }
@@ -1031,7 +1032,8 @@ parse_lflow_for_datapath(const struct sbrec_logical_flow *sblf,
                                      &prereqs);
         lex_str_free(&actions_s);
         if (error) {
-            VLOG_WARN("%s: parsing actions failed (%s)", sblf->actions, error);
+            VLOG_WARN_RL(&rl, "%s: parsing actions failed (%s)", sblf->actions,
+                         error);
             free(error);
             expr_destroy(match);
             return;
@@ -1040,7 +1042,7 @@ parse_lflow_for_datapath(const struct sbrec_logical_flow *sblf,
         match = expr_combine(EXPR_T_AND, match, prereqs);
         match = expr_annotate(match, &symtab, &error);
         if (error) {
-            VLOG_WARN("match annotation failed (%s)", error);
+            VLOG_WARN_RL(&rl, "match annotation failed (%s)", error);
             free(error);
             expr_destroy(match);
             ovnacts_free(ovnacts.data, ovnacts.size);
@@ -1093,7 +1095,7 @@ read_flows(void)
             missing_datapath = false;
         }
         if (missing_datapath) {
-            VLOG_WARN("logical flow missing datapath");
+            VLOG_WARN_RL(&rl, "logical flow missing datapath");
         }
     }
 
@@ -1134,24 +1136,25 @@ read_mac_bindings(void)
         const struct ovntrace_port *port = shash_find_data(
             &ports, sbmb->logical_port);
         if (!port) {
-            VLOG_WARN("missing port %s", sbmb->logical_port);
+            VLOG_WARN_RL(&rl, "missing port %s", sbmb->logical_port);
             continue;
         }
 
         if (!uuid_equals(&port->dp->sb_uuid, &sbmb->datapath->header_.uuid)) {
-            VLOG_WARN("port %s is in wrong datapath", sbmb->logical_port);
+            VLOG_WARN_RL(&rl, "port %s is in wrong datapath",
+                         sbmb->logical_port);
             continue;
         }
 
         struct in6_addr ip6;
         if (!ip46_parse(sbmb->ip, &ip6)) {
-            VLOG_WARN("%s: bad IP address", sbmb->ip);
+            VLOG_WARN_RL(&rl, "%s: bad IP address", sbmb->ip);
             continue;
         }
 
         struct eth_addr mac;
         if (!eth_addr_from_string(sbmb->mac, &mac)) {
-            VLOG_WARN("%s: bad Ethernet address", sbmb->mac);
+            VLOG_WARN_RL(&rl, "%s: bad Ethernet address", sbmb->mac);
             continue;
         }
 
@@ -1171,7 +1174,7 @@ read_fdbs(void)
     SBREC_FDB_FOR_EACH (fdb, ovnsb_idl) {
         struct eth_addr mac;
         if (!eth_addr_from_string(fdb->mac, &mac)) {
-            VLOG_WARN("%s: bad Ethernet address", fdb->mac);
+            VLOG_WARN_RL(&rl, "%s: bad Ethernet address", fdb->mac);
             continue;
         }
 
@@ -1218,7 +1221,7 @@ ovntrace_port_lookup_by_name(const char *name)
 
         if (port->name2 && !strcmp(port->name2, name)) {
             if (match) {
-                VLOG_WARN("name \"%s\" matches multiple ports", name);
+                VLOG_WARN_RL(&rl, "name \"%s\" matches multiple ports", name);
                 return NULL;
             }
             match = port;
@@ -1234,7 +1237,8 @@ ovntrace_port_lookup_by_name(const char *name)
                 || (uuid_from_string(&name_uuid, port->name)
                     && uuid_is_partial_match(&name_uuid, name))) {
                 if (match && match != port) {
-                    VLOG_WARN("name \"%s\" matches multiple ports", name);
+                    VLOG_WARN_RL(&rl, "name \"%s\" matches multiple ports",
+                                 name);
                     return NULL;
                 }
                 match = port;
@@ -1278,7 +1282,7 @@ ovntrace_lookup_port(const void *dp_, const char *port_name,
         return true;
     }
 
-    VLOG_WARN("%s: unknown logical port", port_name);
+    VLOG_WARN_RL(&rl, "%s: unknown logical port", port_name);
     return false;
 }
 
@@ -3625,8 +3629,8 @@ trace_openflow(const struct ovntrace_flow *f, struct ovs_list *super)
         ovntrace_node_append(super, OVNTRACE_NODE_ERROR,
                              "*** error obtaining flow stats (%s)",
                              ovs_strerror(error));
-        VLOG_WARN("%s: error obtaining flow stats (%s)",
-                  ovs, ovs_strerror(error));
+        VLOG_WARN_RL(&rl, "%s: error obtaining flow stats (%s)",
+                     ovs, ovs_strerror(error));
         return;
     }
 
@@ -3794,7 +3798,8 @@ trace(const char *dp_s, const char *flow_s)
     if (ovs) {
         int retval = vconn_open_block(ovs, 1 << OFP15_VERSION, 0, -1, &vconn);
         if (retval) {
-            VLOG_WARN("%s: connection failed (%s)", ovs, ovs_strerror(retval));
+            VLOG_WARN_RL(&rl, "%s: connection failed (%s)",
+                         ovs, ovs_strerror(retval));
         }
     }
 
