@@ -199,6 +199,8 @@ AT_SETUP([ovn-northd basic scale test -- 200 Hypervisors, 200 Logical Ports/Hype
 ovn_start
 
 BUILD_NBDB(OVN_BASIC_SCALE_CONFIG(200, 200))
+
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
@@ -207,5 +209,7 @@ AT_SETUP([ovn-northd basic scale test -- 500 Hypervisors, 50 Logical Ports/Hyper
 ovn_start
 
 BUILD_NBDB(OVN_BASIC_SCALE_CONFIG(500, 50))
+
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])

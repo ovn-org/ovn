@@ -3052,6 +3052,7 @@ check ovn-nbctl --wait=sb $cmd
 check_row_count nb:Logical_Router 2048
 wait_row_count sb:Datapath_Binding 4096
 
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
