@@ -643,7 +643,6 @@ AT_CLEANUP
 AT_SETUP([ovn -- check ovn-northd and ovn-controller-vtep version pinning])
 ovn_start
 OVN_CONTROLLER_VTEP_START(vtep1)
-net_add n1
 
 # adds vlan_bindings to physical ports.
 check as vtep1 vtep-ctl add-ls lswitch0 -- bind-ls vtep1 p0 100 lswitch0 -- bind-ls vtep1 p0 200 lswitch0 -- bind-ls vtep1 p1 300 lswitch0
