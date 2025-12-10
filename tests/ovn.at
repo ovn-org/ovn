@@ -3285,6 +3285,7 @@ AT_CHECK_UNQUOTED([ovs-appctl -t ovn-trace trace --all lsw100 "inport == p100 &&
 unknown datapath "lsw100"
 ])
 
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
@@ -9921,6 +9922,7 @@ AT_CHECK([ovn-nbctl --wait=sb  set logical_switch_port local1 tag_request=50])
 AT_CHECK([ovn-nbctl lsp-get-tag local1], [0], [50
 ])
 
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
@@ -18789,6 +18791,7 @@ dnl Check if updated address got propagated to the port group address sets
 check_column '10.0.0.11 10.0.0.2' Address_Set addresses name=pg1_ip4
 check_column '2001:db8::11 2001:db8::2' Address_Set addresses name=pg1_ip6
 
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
@@ -18855,6 +18858,7 @@ AT_CHECK(
 [["2001:db8:2::ff:fe00:2", "2001:db8:3::ff:fe00:3"]]
 ])
 
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
@@ -21065,6 +21069,7 @@ AT_CHECK([ovn-nbctl lsp-set-addresses sw2-p1 "00:00:00:00:00:04 192.168.0.2"])
 AT_CHECK([ovn-nbctl lsp-set-addresses sw2-p1 "00:00:00:00:00:04 192.168.0.3"])
 AT_CHECK([ovn-nbctl lsp-set-addresses sw2-p1 "00:00:00:00:00:04 aef0::1"])
 
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
@@ -21817,6 +21822,8 @@ ovn-nbctl get Logical-Switch-Port p0 dynamic_addresses
 
 AT_CHECK([ovn-nbctl get Logical-Switch-Port p0 dynamic_addresses], [0], [[[]]
 ])
+
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
@@ -21840,6 +21847,7 @@ done
 ovn-nbctl list logical_switch_port
 ovn-nbctl list logical_router_port
 
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
@@ -22793,6 +22801,7 @@ AT_CHECK([ovn-nbctl ls-add sw1], [1], [ignore],
 [ovn-nbctl: transaction error: {"details":"insert operation not allowed when database server is in read only mode","error":"not allowed"}
 ])
 
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
@@ -24422,6 +24431,7 @@ on_exit 'kill $(cat ovn-nbctl.pid)'
 # but we can still ensure that the command is successful.
 AT_CHECK([ovn-nbctl -u $sockfile show])
 
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
@@ -28230,6 +28240,8 @@ check ovn-nbctl lr-add r1
 check ovn-nbctl lrp-add r1 rp1 CC:DD:EE:EE:DD:CC AEF0::1/64 BEF0::1/64
 
 AT_CHECK([ovn-nbctl --may-exist lrp-add r1 rp1 cc:dd:ee:ee:dd:cc bef0:0000:0000:0000::1/64 aef0::1/64])
+
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
@@ -28243,6 +28255,8 @@ check ovn-nbctl lr-nat-add r1 dnat AEF0::1 BEEF::1
 
 AT_CHECK([ovn-nbctl --may-exist lr-nat-add r1 snat aef0:0000::1 beef:0000::/ffff:ffff:ffff:ffff::0])
 AT_CHECK([ovn-nbctl --may-exist lr-nat-add r1 dnat aef0:0000:00::1 beef::0001])
+
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
@@ -28256,6 +28270,8 @@ check ovn-nbctl lr-nat-add r1 dnat AEF0::1 BEEF::1
 
 AT_CHECK([ovn-nbctl --if-exists lr-nat-del r1 snat beef:0000::0/ffff:ffff:ffff:ffff::0])
 AT_CHECK([ovn-nbctl --if-exists lr-nat-del r1 dnat aef0:0000:00::1])
+
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
