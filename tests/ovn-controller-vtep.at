@@ -162,6 +162,7 @@ AT_CHECK([ovn-sbctl --columns=vtep_logical_switches list Chassis | cut -d ':' -f
 ])
 
 OVN_CONTROLLER_VTEP_STOP([/Chassis for VTEP physical switch (br-vtep) disappears/d])
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 
 
@@ -237,6 +238,7 @@ AT_CHECK_UNQUOTED([ovn-sbctl --columns=chassis list Port_Binding | cut -d ':' -f
 ])
 
 OVN_CONTROLLER_VTEP_STOP([/has already been associated with logical port/d])
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 
 
@@ -279,6 +281,7 @@ ${chassis_uuid}
 ])
 
 OVN_CONTROLLER_VTEP_STOP([/has already been associated with logical datapath/d])
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 
 
@@ -333,6 +336,7 @@ AT_CHECK([vtep-ctl --columns=tunnel_key list Logical_Switch | cut -d ':' -f2 | t
 ])
 
 OVN_CONTROLLER_VTEP_STOP
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 
 
@@ -437,6 +441,7 @@ AT_CHECK([vtep-ctl --columns=MAC list Ucast_Macs_Remote | cut -d ':' -f2- | tr -
 ])
 
 OVN_CONTROLLER_VTEP_STOP
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 
 
@@ -507,6 +512,7 @@ AT_CHECK([vtep-ctl --columns=MAC list Ucast_Macs_Remote | cut -d ':' -f2- | tr -
 ])
 
 OVN_CONTROLLER_VTEP_STOP([/has already been known to be on logical port/d])
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 
 # Tests vtep module 'Mcast_Macs_Remote's.
@@ -565,6 +571,7 @@ done | sort], [0], [dnl
 ])
 
 OVN_CONTROLLER_VTEP_STOP
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 
 
