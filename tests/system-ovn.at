@@ -13776,8 +13776,8 @@ check ovn-nbctl pg-add gw_pg ext_lr
 
 # Add ACL rule to enable connection tracking for external gateway traffic
 # allowing ICMP from vm1 to external.
-check ovn-nbctl acl-add gw_pg to-lport 2001 "inport == @gw_pg && ip4  && icmp4" allow-related
-check ovn-nbctl acl-add gw_pg to-lport 1001 "inport == @gw_pg && ip4" drop
+check ovn-nbctl acl-add gw_pg from-lport 2001 "inport == @gw_pg && ip4  && icmp4" allow-related
+check ovn-nbctl acl-add gw_pg from-lport 1001 "inport == @gw_pg && ip4" drop
 check ovn-nbctl acl-add gw_pg to-lport 1001 "outport == @gw_pg && ip4" drop
 
 # Create namespace vm1.
