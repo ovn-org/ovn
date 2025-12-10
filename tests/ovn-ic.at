@@ -1539,6 +1539,8 @@ AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr12 | grep dst-ip | sort], [0], [d
            192.168.1.0/24             169.254.100.1 dst-ip (learned)
 ])
 
+OVN_CLEANUP_IC([az1], [az2])
+
 AT_CLEANUP
 ])
 
