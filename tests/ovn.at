@@ -7465,11 +7465,7 @@ compare_dhcp_packets 1
 as hv1
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+OVN_CLEANUP_DBS
 AT_CLEANUP
 ])
 
