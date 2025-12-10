@@ -169,12 +169,13 @@ AT_CHECK([ovs-vsctl remove Open_vSwitch . external-ids ovn-bridge-mappings])
 check_bridge_mappings
 check_patches
 
-# Gracefully terminate daemons
+# Gracefully terminate daemons.
 OVN_CLEANUP_SBOX([hv])
-OVN_CLEANUP_VSWITCH([main])
+
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
+OVN_CLEANUP_VSWITCH([main])
 AT_CLEANUP
 ])
 
@@ -307,14 +308,11 @@ check ovn-sbctl destroy chassis_private . -- destroy chassis .
 # - could not create datapath br-int of unknown type bar
 # - failed to create bridge br-int: Address family not supported by protocol # due to previous errors.
 # - 'hv' already has encap ip '192.168.0.1' and type 'geneve', cannot duplicate on 'hv-foo'
-OVN_CLEANUP_SBOX([hv], ["/foo/d
+OVN_CLEANUP([hv
+/foo/d
 /bar/d
 /already has encap ip.*cannot duplicate on/d
-/failed to create bridge/d"])
-
-OVN_CLEANUP_VSWITCH([main])
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+/failed to create bridge/d])
 
 AT_CLEANUP
 ])
@@ -371,14 +369,7 @@ OVS_WAIT_UNTIL([check_tunnel_property type geneve])
 ovs-vsctl set interface ovn-fakech-0 options:local_ip="1.1.1.1"
 OVS_WAIT_UNTIL([check_tunnel_property options:local_ip "\"192.168.0.1\""])
 
-# Gracefully terminate daemons
-OVN_CLEANUP_SBOX([hv])
-OVN_CLEANUP_VSWITCH([main])
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
+OVN_CLEANUP([hv])
 AT_CLEANUP
 ])
 
@@ -409,14 +400,8 @@ OVS_WAIT_UNTIL([check_sbdb_connection 'not connected'])
 
 # reset the remote for clean-up
 ovs-vsctl set open . external_ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock
-# Gracefully terminate daemons
-OVN_CLEANUP_SBOX([hv])
-OVN_CLEANUP_VSWITCH([main])
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
+OVN_CLEANUP([hv])
 AT_CLEANUP
 ])
 
@@ -442,14 +427,7 @@ check ovn-sbctl chassis-del hv
 # ovn-controller should recreate its chassis row.
 OVS_WAIT_UNTIL([test xhv = x`ovn-sbctl --columns name --bare find chassis`])
 
-# Gracefully terminate daemons
-OVN_CLEANUP_SBOX([hv])
-OVN_CLEANUP_VSWITCH([main])
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
+OVN_CLEANUP([hv])
 AT_CLEANUP
 
 # Checks that ovn-controller increments the nb_cfg value in the Chassis_Private table
@@ -977,12 +955,8 @@ AT_CHECK([test "$tos_option" = "$no_tos_options"], [0], [])
 
 # Gracefully terminate daemons
 # Expect invalid TOS 61
-OVN_CLEANUP_SBOX([hv], ["/invalid TOS 61/d"])
-OVN_CLEANUP_VSWITCH([main])
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+OVN_CLEANUP([hv
+/invalid TOS 61/d])
 
 AT_CLEANUP
 ])
@@ -2776,6 +2750,7 @@ name: 'foo' value: 'foo-hv'
 check ovn-nbctl --wait=hv remove Chassis_Template_Var hv variables foo
 AT_CHECK([GET_LOCAL_TEMPLATE_VARS], [1], [])
 
+OVN_CLEANUP([hv])
 AT_CLEANUP
 ])
 
@@ -2802,6 +2777,7 @@ zone_num=$(printf "$ct_zones" | grep lr0_snat | cut -d ' ' -f 2)
 
 check test "$zone_num" -eq 666
 
+OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
