@@ -7409,10 +7409,11 @@ expected_dhcp_opts=4311626f6f7466696c655f6e616d655f616c74330400000e100104ffffff0
 test_dhcp 21 1 f00000000001 01 0 $ciaddr $offer_ip $request_ip 0 1 $offer_ip $server_ip ff1000000001 $server_ip 02 $expected_dhcp_opts
 compare_dhcp_packets 1
 
-as hv1
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
-
+OVN_CLEANUP_SBOX([hv1], ["/DHCP/d
+/mismatch with northd version/d"
+])
 OVN_CLEANUP_DBS
+OVN_CLEANUP_VSWITCH([main])
 AT_CLEANUP
 ])
 
@@ -31847,14 +31848,9 @@ AT_CHECK_UNQUOTED([grep -c "in_port=2" offlows_table0.txt], [1], [dnl
 0
 ])
 
-as hv1
-OVS_APP_EXIT_AND_WAIT([ovn-controller])
-
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+OVN_CLEANUP_SBOX([hv1], ["/mismatch with northd version/d"])
+OVN_CLEANUP_DBS
+OVN_CLEANUP_VSWITCH([main])
 
 AT_CLEANUP
 ])
