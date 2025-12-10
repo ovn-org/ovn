@@ -18678,14 +18678,7 @@ AT_CHECK([ip route del 10.10.4.1 via 20.0.0.25 vrf vrf-$vni])
 
 OVN_CLEANUP_CONTROLLER([hv1], [], [], [lr-frr])
 
-as ovn-sb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as ovn-nb
-OVS_APP_EXIT_AND_WAIT([ovsdb-server])
-
-as northd
-OVS_APP_EXIT_AND_WAIT([ovn-northd])
+OVN_CLEANUP_NORTHD
 
 as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d

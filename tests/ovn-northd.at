@@ -3084,6 +3084,7 @@ check ovn-nbctl --wait=sb $cmd
 check_row_count nb:Logical_Router 2048
 wait_row_count sb:Datapath_Binding 4096
 
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
@@ -18883,6 +18884,7 @@ AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_apply_port_sec | ovn_strip_lflow
   table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
 ])
 
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
