@@ -179,15 +179,22 @@ m4_define([OVN_WAIT_REMOTE_OUTPUT_FLOWS],
 m4_define([OVN_WAIT_REMOTE_INPUT_FLOWS],
   [ovn_wait_remote_input_flows "$1" "$2" "__file__:__line__"])
 
-# OVN_CLEANUP_NORTHD
+# OVN_CLEANUP_DBS
 #
-# Gracefully terminate all central OVN daemons: NB, SB and ovn-northd.
-m4_define([OVN_CLEANUP_NORTHD],[
+# Gracefully terminate NB, SB OVN daemons.
+m4_define([OVN_CLEANUP_DBS],[
     as ovn-sb
     OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
     as ovn-nb
     OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+])
+
+# OVN_CLEANUP_NORTHD
+#
+# Gracefully terminate all central OVN daemons: NB, SB and ovn-northd.
+m4_define([OVN_CLEANUP_NORTHD],[
+    OVN_CLEANUP_DBS
 
     as northd
     OVS_APP_EXIT_AND_WAIT([ovn-northd])
