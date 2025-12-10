@@ -2420,6 +2420,7 @@ OVS_WAIT_UNTIL([test x`ovs-vsctl get Open_vSwitch . other_config:vlan-limit | tr
 check ovs-vsctl set Open_vSwitch . other_config:vlan-limit=foo
 OVS_WAIT_UNTIL([test x`ovs-vsctl get Open_vSwitch . other_config:vlan-limit | tr -d '""'` = x0])
 
+OVN_CLEANUP
 AT_CLEANUP
 ])
 
@@ -3932,6 +3933,7 @@ for i in 1 2; do
     OVN_CHECK_PACKETS([vif$i-tx.pcap], [$i.expected])
 done
 
+OVN_CLEANUP
 AT_CLEANUP
 ])
 
@@ -4202,6 +4204,7 @@ for i in 1 2; do
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([vif$i-tx.pcap], [$i.expected])
 done
 
+OVN_CLEANUP
 AT_CLEANUP
 ])
 
@@ -4249,6 +4252,7 @@ for i in 1 2; do
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([vif$i-tx.pcap], [$i.expected])
 done
 
+OVN_CLEANUP
 AT_CLEANUP
 ])
 
@@ -4299,6 +4303,7 @@ AT_CHECK([ovn-sbctl get Port_Binding lsp-good tunnel_key], [0], [dnl
 1000
 ])
 
+OVN_CLEANUP
 AT_CLEANUP
 ])
 
@@ -14101,6 +14106,7 @@ for suffix in 2 a; do
 ],[ignore])
 done
 
+OVN_CLEANUP
 AT_CLEANUP
 ])
 
@@ -14155,6 +14161,7 @@ send_arp_request lsp lp ${src_mac} ${src_ip} ${dst_ip}
 
 OVN_CHECK_PACKETS([lp-tx.pcap], [lp.expected])
 
+OVN_CLEANUP
 AT_CLEANUP
 ])
 
@@ -26220,6 +26227,7 @@ check ovn-nbctl set Logical_Router lr1 options:disable_garp_rarp="false"
 check ovn-nbctl --wait=hv sync
 OVN_CHECK_PACKETS_UNIQ([hv1/snoopvif-tx.pcap], [expected])
 
+OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
@@ -40874,6 +40882,7 @@ dnl Make sure that the packet was received by vm0.
 echo $packet >> expected-vif1
 OVN_CHECK_PACKETS([hv/vif1-tx.pcap], [expected-vif1])
 
+OVN_CLEANUP([hv])
 AT_CLEANUP
 ])
 
@@ -41017,6 +41026,7 @@ packet=$(fmt_pkt "Ether(dst='f0:00:0f:01:02:fe', src='fa:16:3e:00:00:02')/ \
 echo $packet >> expected-ext
 OVN_CHECK_PACKETS([hv/br-phys_n1-tx.pcap], [expected-ext])
 
+OVN_CLEANUP([hv])
 AT_CLEANUP
 ])
 
@@ -43249,6 +43259,8 @@ expected=$(fmt_pkt "Ether(dst='${rx_dst_mac}', src='${rx_src_mac}')/ \
 
 echo $expected > expected
 OVN_CHECK_PACKETS([hv1/server-tx.pcap], [expected])
+
+OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
