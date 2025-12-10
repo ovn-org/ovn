@@ -690,4 +690,6 @@ AT_CHECK([ovn-sbctl --columns=vtep_logical_switches list Chassis | cut -d ':' -f
 ])
 
 OVN_CONTROLLER_VTEP_STOP([], vtep1)
+
+OVN_CLEANUP_DBS
 AT_CLEANUP

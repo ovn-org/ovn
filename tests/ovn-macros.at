@@ -1,12 +1,19 @@
-# OVN_CLEANUP_NORTHD
+# OVN_CLEANUP_DBS
 #
-# Gracefully terminate all central OVN daemons: NB, SB and ovn-northd.
-m4_define([OVN_CLEANUP_NORTHD],[
+# Gracefully terminate NB, SB OVN daemons.
+m4_define([OVN_CLEANUP_DBS],[
     as ovn-sb
     OVS_APP_EXIT_AND_WAIT([ovsdb-server])
 
     as ovn-nb
     OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+])
+
+# OVN_CLEANUP_NORTHD
+#
+# Gracefully terminate all central OVN daemons: NB, SB and ovn-northd.
+m4_define([OVN_CLEANUP_NORTHD],[
+    OVN_CLEANUP_DBS
 
     as northd
     OVS_APP_EXIT_AND_WAIT([ovn-northd])
