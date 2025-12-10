@@ -175,6 +175,15 @@ check_fake_multinode_setup() {
 cleanup_multinode_resources_by_nodes() {
     m_as ovn-central-az1 rm -f /etc/ovn/ovnnb_db.db
     m_as ovn-central-az1 /usr/share/ovn/scripts/ovn-ctl restart_northd
+
+    m_as ovn-central-az1 rm -f /etc/ovn/ovn_ic_nb_db.db
+    m_as ovn-central-az1 rm -f /etc/ovn/ovn_ic_sb_db.db
+    m_as ovn-central-az1 /usr/share/ovn/scripts/ovn-ctl \
+        --db-ic-nb-create-insecure-remote=yes \
+        --db-ic-sb-create-insecure-remote=yes \
+        restart_ic_ovsdb
+
+    m_as ovn-central-az1 ovn-nbctl set NB_Global . name=ovn-central-az1
     check m_as ovn-central-az1 ovn-nbctl --wait=sb sync
     for c; do
         m_as $c ovs-vsctl del-br br-int
@@ -248,6 +257,31 @@ multinode_setup_controller() {
     m_as $c ip link set eth2 down
     m_as $c ovs-vsctl add-port br-ex eth2
     m_as $c ip link set eth2 up
+}
+
+# multinode_cleanup_ic NODE
+#
+# Cleans up ovn-ic on specified node.
+multinode_cleanup_ic() {
+    c=$1
+    # Cleanup existing one
+    m_as $c /usr/share/ovn/scripts/ovn-ctl stop_ic
+}
+
+# multinode_setup_ic NODE IC_DB_IP
+#
+# Sets up ovn_ic on specified node.
+multinode_setup_ic() {
+    c=$1
+    remote=$2
+
+    m_as $c /usr/share/ovn/scripts/ovn-ctl stop_ic
+
+    check m_as $c ovn-nbctl set NB_Global . name=$c
+    m_as $c ovs-vsctl set open_vswitch . external_ids:ovn-is-interconn=true
+    m_as $c /usr/share/ovn/scripts/ovn-ctl start_ic \
+        --ovn-ic-nb-db=tcp:$remote:6645 \
+        --ovn-ic-sb-db=tcp:$remote:6646
 }
 
 # m_count_rows TABLE [CONDITION...]
