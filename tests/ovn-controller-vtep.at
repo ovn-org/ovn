@@ -635,6 +635,7 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep 'priority=
 priority=110,tun_id=0x<>,in_port=<> actions=move:NXM_NX_TUN_ID[[0..23]]->OXM_OF_METADATA[[0..23]],load:0x<>->NXM_NX_REG14[[0..14]],load:0x<>->NXM_NX_REG10[[1]],resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
 ])
 
+OVN_CONTROLLER_VTEP_STOP([], vtep1)
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
@@ -689,4 +690,5 @@ AT_CHECK([ovn-sbctl --columns=vtep_logical_switches list Chassis | cut -d ':' -f
 [[lswitch0]]
 ])
 
+OVN_CONTROLLER_VTEP_STOP([], vtep1)
 AT_CLEANUP
