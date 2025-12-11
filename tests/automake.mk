@@ -306,6 +306,8 @@ tests_ovstest_SOURCES += \
 	controller/neighbor-table-notify.h \
 	controller/neighbor.c \
 	controller/neighbor.h \
+	controller/route-exchange-netlink.c \
+	controller/route-exchange-netlink.h \
 	tests/test-ovn-netlink.c
 endif
 

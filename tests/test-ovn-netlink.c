@@ -16,6 +16,7 @@
 #include <config.h>
 
 #include "openvswitch/hmap.h"
+#include "route-table.h"
 #include "packets.h"
 #include "tests/ovstest.h"
 #include "tests/test-utils.h"
@@ -24,6 +25,8 @@
 #include "controller/neighbor-exchange-netlink.h"
 #include "controller/neighbor-table-notify.h"
 #include "controller/neighbor.h"
+#include "controller/route.h"
+#include "controller/route-exchange-netlink.h"
 
 static void
 test_neighbor_sync(struct ovs_cmdl_context *ctx)
@@ -178,6 +181,69 @@ test_host_if_monitor(struct ovs_cmdl_context *ctx)
 }
 
 static void
+test_route_sync(struct ovs_cmdl_context *ctx)
+{
+    struct advertise_route_entry *e;
+    unsigned int shift = 1;
+
+    unsigned int table_id;
+    if (!test_read_uint_value(ctx, shift++, "table id", &table_id)) {
+        return;
+    }
+
+    struct hmap routes_to_advertise = HMAP_INITIALIZER(&routes_to_advertise);
+    struct vector received_routes =
+        VECTOR_EMPTY_INITIALIZER(struct re_nl_received_route_node);
+
+    while (shift < ctx->argc) {
+        struct advertise_route_entry *ar = xzalloc(sizeof *ar);
+        if (!test_read_ipv6_cidr_mapped_value(ctx, shift++, "IP address",
+                                              &ar->addr, &ar->plen)) {
+            free(ar);
+            goto done;
+        }
+
+        /* Check if we are adding only blackhole route. */
+        if (shift + 1 < ctx->argc) {
+            const char *via = test_read_value(ctx, shift++, "via");
+            if (strcmp(via, "via")) {
+                shift--;
+                continue;
+            }
+
+            if (!test_read_ipv6_mapped_value(ctx, shift++, "IP address",
+                                             &ar->nexthop)) {
+                free(ar);
+                goto done;
+            }
+        }
+        hmap_insert(&routes_to_advertise, &ar->node,
+                    advertise_route_hash(&ar->addr, &ar->nexthop, ar->plen));
+    }
+
+    ovs_assert(re_nl_sync_routes(table_id, &routes_to_advertise,
+                                 &received_routes, NULL) == 0);
+
+    struct ds msg = DS_EMPTY_INITIALIZER;
+
+    struct re_nl_received_route_node *rr;
+    VECTOR_FOR_EACH_PTR (&received_routes, rr) {
+        re_route_format(&msg, table_id, &rr->prefix,
+                        rr->plen, &rr->nexthop, 0);
+        printf("Route %s\n", ds_cstr(&msg));
+        ds_clear(&msg);
+    }
+
+done:
+    HMAP_FOR_EACH_POP (e, node, &routes_to_advertise) {
+        free(e);
+    }
+    hmap_destroy(&routes_to_advertise);
+    vector_destroy(&received_routes);
+    ds_destroy(&msg);
+}
+
+static void
 test_ovn_netlink(int argc, char *argv[])
 {
     set_program_name(argv[0]);
@@ -186,6 +252,7 @@ test_ovn_netlink(int argc, char *argv[])
         {"neighbor-table-notify", NULL, 3, 4,
          test_neighbor_table_notify, OVS_RO},
         {"host-if-monitor", NULL, 2, 3, test_host_if_monitor, OVS_RO},
+        {"route-sync", NULL, 1, INT_MAX, test_route_sync, OVS_RO},
         {NULL, NULL, 0, 0, NULL, OVS_RO},
     };
     struct ovs_cmdl_context ctx;

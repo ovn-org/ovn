@@ -114,3 +114,21 @@ test_read_ipv6_mapped_value(struct ovs_cmdl_context *ctx, unsigned int index,
     }
     return true;
 }
+
+bool
+test_read_ipv6_cidr_mapped_value(struct ovs_cmdl_context *ctx,
+                                 unsigned int index, const char *descr,
+                                 struct in6_addr *result, unsigned int *plen)
+{
+    if (index >= ctx->argc) {
+        fprintf(stderr, "Missing %s argument\n", descr);
+        return false;
+    }
+
+    const char *arg = ctx->argv[index];
+    if (!ip46_parse_cidr(arg, result, plen)) {
+        fprintf(stderr, "Invalid %s: %s\n", descr, arg);
+        return false;
+    }
+    return true;
+}

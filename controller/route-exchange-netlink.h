@@ -55,6 +55,9 @@ int re_nl_delete_vrf(const char *ifname);
 int re_nl_add_route(uint32_t table_id, const struct advertise_route_entry *);
 int re_nl_delete_route(uint32_t table_id,
                        const struct advertise_route_entry *);
+void re_route_format(struct ds *, uint32_t table_id,
+                     const struct in6_addr *dst, unsigned int plen,
+                     const struct in6_addr *nexthop, int err);
 
 int re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
                       struct vector *learned_routes,

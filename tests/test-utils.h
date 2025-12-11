@@ -35,4 +35,8 @@ bool test_read_eth_addr_value(struct ovs_cmdl_context *ctx, unsigned int index,
 bool test_read_ipv6_mapped_value(struct ovs_cmdl_context *ctx,
                                  unsigned int index, const char *descr,
                                  struct in6_addr *result);
+bool test_read_ipv6_cidr_mapped_value(struct ovs_cmdl_context *ctx,
+                                      unsigned int index, const char *descr,
+                                      struct in6_addr *result,
+                                      unsigned int *plen);
 #endif /* tests/test-utils.h */

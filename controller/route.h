@@ -80,6 +80,7 @@ struct advertise_datapath_entry {
 struct advertise_route_entry {
     struct hmap_node node;
     struct in6_addr addr;
+    struct in6_addr nexthop;
     unsigned int plen;
     unsigned int priority;
 };
@@ -89,7 +90,9 @@ const struct sbrec_port_binding *route_exchange_find_port(
     const struct sbrec_chassis *chassis,
     const struct sbrec_port_binding *pb,
     const char **dynamic_routing_port_name);
-uint32_t advertise_route_hash(const struct in6_addr *dst, unsigned int plen);
+uint32_t advertise_route_hash(const struct in6_addr *dst,
+                              const struct in6_addr *nexthop,
+                              unsigned int plen);
 struct advertise_route_entry
 advertise_route_from_route_data(const struct route_data *);
 void route_run(struct route_ctx_in *, struct route_ctx_out *);
