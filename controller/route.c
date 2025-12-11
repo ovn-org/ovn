@@ -31,6 +31,8 @@
 #include "local_data.h"
 #include "route.h"
 
+#include "route-table.h"
+
 VLOG_DEFINE_THIS_MODULE(exchange);
 
 #define PRIORITY_DEFAULT 1000
@@ -47,6 +49,16 @@ advertise_route_hash(const struct in6_addr *dst, unsigned int plen)
 {
     uint32_t hash = hash_bytes(dst->s6_addr, 16, 0);
     return hash_int(plen, hash);
+}
+
+struct advertise_route_entry
+advertise_route_from_route_data(const struct route_data *rd)
+{
+    return (struct advertise_route_entry) {
+        .addr = rd->rta_dst,
+        .plen = rd->rtm_dst_len,
+        .priority = rd->rta_priority,
+    };
 }
 
 const struct sbrec_port_binding*
