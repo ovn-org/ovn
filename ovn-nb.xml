@@ -3421,6 +3421,34 @@ or
         </p>
       </column>
 
+      <column name="options" key="dynamic-routing-v4-prefix-nexthop"
+              type='{"type": "string"}'>
+        <p>
+          Only relevant if <ref column="options" key="dynamic-routing"/>
+          is set to <code>true</code>.
+        </p>
+
+        <p>
+          This defines nexthop used by IPv4 advertised routes instead of the
+          routes being advertised as blackhole. This can be either valid IPv4
+          or IPv6 address.
+        </p>
+      </column>
+
+      <column name="options" key="dynamic-routing-v6-prefix-nexthop"
+              type='{"type": "string"}'>
+        <p>
+          Only relevant if <ref column="options" key="dynamic-routing"/>
+          is set to <code>true</code>.
+        </p>
+
+        <p>
+          This defines nexthop used by IPv6 advertised routes instead of the
+          routes being advertised as blackhole. This can be only valid IPv6
+          address.
+        </p>
+      </column>
+
       <column name="options" key="ct-commit-all" type='{"type": "boolean"}'>
         When enabled the LR will commit traffic in a zone that is stateful.
         The traffic is not commited to both zones but it is selective based

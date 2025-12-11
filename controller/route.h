@@ -66,6 +66,9 @@ struct advertise_datapath_entry {
     const struct sbrec_datapath_binding *db;
     bool maintain_vrf;
     char vrf_name[IFNAMSIZ + 1];
+    struct in6_addr ipv4_nexthop;
+    struct in6_addr ipv6_nexthop;
+
     struct hmap routes;
 
     /* The name of the port bindings locally bound for this datapath and

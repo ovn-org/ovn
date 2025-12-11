@@ -185,6 +185,37 @@ advertise_datapath_find(const struct hmap *datapaths,
     return NULL;
 }
 
+static struct advertise_datapath_entry *
+advertised_datapath_alloc(const struct sbrec_datapath_binding *datapath)
+{
+    struct advertise_datapath_entry *ad = xmalloc(sizeof *ad);
+    *ad = (struct advertise_datapath_entry) {
+        .db = datapath,
+        .routes = HMAP_INITIALIZER(&ad->routes),
+        .bound_ports = SMAP_INITIALIZER(&ad->bound_ports),
+    };
+
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 10);
+
+    const char *nh4 =
+        smap_get(&datapath->external_ids, "dynamic-routing-v4-prefix-nexthop");
+    if (nh4 && !ip46_parse(nh4, &ad->ipv4_nexthop)) {
+        memset(&ad->ipv4_nexthop, 0, sizeof ad->ipv4_nexthop);
+        VLOG_WARN_RL(&rl, "Couldn't parse IPv4 prefix nexthop %s, "
+                     "routes will be installed as blackhole.", nh4);
+    }
+
+    const char *nh6 =
+        smap_get(&datapath->external_ids, "dynamic-routing-v6-prefix-nexthop");
+    if (nh6 && !ipv6_parse(nh6, &ad->ipv6_nexthop)) {
+        memset(&ad->ipv6_nexthop, 0, sizeof ad->ipv6_nexthop);
+        VLOG_WARN_RL(&rl, "Couldn't parse IPv6 prefix nexthop %s, "
+                     "routes will be installed as blackhole.", nh6);
+    }
+
+    return ad;
+}
+
 void
 route_run(struct route_ctx_in *r_ctx_in,
           struct route_ctx_out *r_ctx_out)
@@ -220,10 +251,7 @@ route_run(struct route_ctx_in *r_ctx_in,
             }
 
             if (!ad) {
-                ad = xzalloc(sizeof(*ad));
-                ad->db = ld->datapath;
-                hmap_init(&ad->routes);
-                smap_init(&ad->bound_ports);
+                ad = advertised_datapath_alloc(ld->datapath);
             }
 
             ad->maintain_vrf |=
@@ -345,6 +373,8 @@ route_run(struct route_ctx_in *r_ctx_in,
             .addr = prefix,
             .plen = plen,
             .priority = priority,
+            .nexthop = IN6_IS_ADDR_V4MAPPED(&prefix)
+                       ? ad->ipv4_nexthop : ad->ipv6_nexthop,
         };
         hmap_insert(&ad->routes, &ar->node,
                     advertise_route_hash(&ar->addr, &ar->nexthop, plen));

@@ -447,6 +447,7 @@ digraph "Incremental-Processing-Engine" {
 	SB_port_binding -> route [[label="route_sb_port_binding_data_handler"]];
 	runtime_data -> route [[label="route_runtime_data_handler"]];
 	SB_advertised_route -> route [[label="route_sb_advertised_route_data_handler"]];
+	SB_datapath_binding -> route [[label="route_sb_datapath_binding_handler"]];
 	SB_learned_route [[style=filled, shape=box, fillcolor=white, label="SB_learned_route"]];
 	route_table_notify [[style=filled, shape=box, fillcolor=white, label="route_table_notify"]];
 	route_exchange_status [[style=filled, shape=box, fillcolor=white, label="route_exchange_status"]];

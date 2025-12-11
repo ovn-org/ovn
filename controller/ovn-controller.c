@@ -5427,6 +5427,40 @@ route_sb_advertised_route_data_handler(struct engine_node *node, void *data)
     return EN_HANDLED_UNCHANGED;
 }
 
+static enum engine_input_handler_result
+route_sb_datapath_binding_handler(struct engine_node *node,
+                                  void *data OVS_UNUSED)
+{
+    const struct sbrec_datapath_binding_table *dp_table =
+        EN_OVSDB_GET(engine_get_input("SB_datapath_binding", node));
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+
+    const struct sbrec_datapath_binding *dp;
+    SBREC_DATAPATH_BINDING_TABLE_FOR_EACH_TRACKED (dp, dp_table) {
+        if (sbrec_datapath_binding_is_new(dp) ||
+            sbrec_datapath_binding_is_deleted(dp)) {
+            /* We are reflecting only datapaths that are becoming or are
+             * removed from being local, that is taken care of by runtime_data
+             * handler. */
+            return EN_HANDLED_UNCHANGED;
+        }
+
+        struct local_datapath *ld =
+            get_local_datapath(&rt_data->local_datapaths, dp->tunnel_key);
+        if (!ld || ld->is_switch) {
+            continue;
+        }
+
+        if (sbrec_datapath_binding_is_updated(
+                dp, SBREC_DATAPATH_BINDING_COL_EXTERNAL_IDS)) {
+            return EN_UNHANDLED;
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
 struct ed_type_route_exchange {
     /* We need the idl to check if the Learned_Route table exists. */
     struct ovsdb_idl *sb_idl;
@@ -6642,6 +6676,8 @@ inc_proc_ovn_controller_init(
                      route_runtime_data_handler);
     engine_add_input(&en_route, &en_sb_advertised_route,
                      route_sb_advertised_route_data_handler);
+    engine_add_input(&en_route, &en_sb_datapath_binding,
+                     route_sb_datapath_binding_handler);
 
     engine_add_input(&en_route_exchange, &en_route, NULL);
     engine_add_input(&en_route_exchange, &en_sb_learned_route,

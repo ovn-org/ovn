@@ -25,6 +25,10 @@ Post v25.09.0
        EVPN domain.
      * Add the option "dynamic-routing-vrf-id" to Logical Routers which allows
        CMS to specify the Linux routing table id for a given vrf.
+     * Add the option "dynamic-routing-v4-prefix-nexthop" to Logical Routers
+       which allows CMS to specify nexthop for IPv4 Advertised routes.
+     * Add the option "dynamic-routing-v6-prefix-nexthop" to Logical Routers
+       which allows CMS to specify nexthop for IPv6 Advertised routes.
    - Add support for Network Function insertion in OVN with stateful traffic
      redirection capability in Logical Switch datapath. The feature introduces
      three new NB database tables:

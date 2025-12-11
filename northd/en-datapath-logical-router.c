@@ -95,6 +95,18 @@ gather_external_ids(const struct nbrec_logical_router *nbr,
                         vrf_id);
     }
 
+    const char *nh4 =
+        smap_get(&nbr->options, "dynamic-routing-v4-prefix-nexthop");
+    if (nh4 && nh4[0]) {
+        smap_add(external_ids, "dynamic-routing-v4-prefix-nexthop", nh4);
+    }
+
+    const char *nh6 =
+        smap_get(&nbr->options, "dynamic-routing-v6-prefix-nexthop");
+    if (nh6 && nh6[0]) {
+        smap_add(external_ids, "dynamic-routing-v6-prefix-nexthop", nh6);
+    }
+
     /* For backwards-compatibility, also store the NB UUID in
      * external-ids:logical-router. This is useful if ovn-controller
      * has not updated and expects this to be where to find the
