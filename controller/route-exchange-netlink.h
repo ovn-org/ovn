@@ -52,10 +52,9 @@ struct re_nl_received_route_node {
 int re_nl_create_vrf(const char *ifname, uint32_t table_id);
 int re_nl_delete_vrf(const char *ifname);
 
-int re_nl_add_route(uint32_t table_id, const struct in6_addr *dst,
-                    unsigned int plen, unsigned int priority);
-int re_nl_delete_route(uint32_t table_id, const struct in6_addr *dst,
-                       unsigned int plen, unsigned int priority);
+int re_nl_add_route(uint32_t table_id, const struct advertise_route_entry *);
+int re_nl_delete_route(uint32_t table_id,
+                       const struct advertise_route_entry *);
 
 int re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
                       struct vector *learned_routes,
