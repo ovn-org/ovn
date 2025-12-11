@@ -300,7 +300,6 @@ re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
     struct hmapx routes_to_advertise = HMAPX_INITIALIZER(&routes_to_advertise);
     struct vector stale_routes = VECTOR_EMPTY_INITIALIZER(struct route_data);
     struct advertise_route_entry *ar;
-    int ret = 0;
 
     HMAP_FOR_EACH (ar, node, routes) {
         hmapx_add(&routes_to_advertise, ar);
@@ -318,6 +317,8 @@ re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
         .table_id = table_id,
     };
     route_table_dump_one_table(table_id, handle_route_msg, &data);
+
+    int ret = re_nl_delete_stale_routes(&stale_routes);
 
     /* Add any remaining routes in the routes_to_advertise hmapx to the
      * system routing table. */
@@ -342,11 +343,6 @@ re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
         }
     }
 
-    int err = re_nl_delete_stale_routes(&stale_routes);
-    if (!ret) {
-        ret = err;
-    }
-
     hmapx_destroy(&routes_to_advertise);
     vector_destroy(&stale_routes);
 
@@ -356,7 +352,6 @@ re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
 int
 re_nl_cleanup_routes(uint32_t table_id)
 {
-    int ret = 0;
     struct vector stale_routes = VECTOR_EMPTY_INITIALIZER(struct route_data);
     /* Remove routes from the system that are not in the host_routes hmap and
      * remove entries from host_routes hmap that match routes already installed
@@ -369,10 +364,7 @@ re_nl_cleanup_routes(uint32_t table_id)
     };
     route_table_dump_one_table(table_id, handle_route_msg, &data);
 
-    int err = re_nl_delete_stale_routes(&stale_routes);
-    if (!ret) {
-        ret = err;
-    }
+    int ret = re_nl_delete_stale_routes(&stale_routes);
     vector_destroy(&stale_routes);
 
     return ret;
