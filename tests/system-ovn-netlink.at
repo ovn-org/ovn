@@ -340,8 +340,7 @@ OVN_ROUTE_EQUAL([vrf-$table_id], [dnl
 OVN_ROUTE_V6_EQUAL([vrf-$table_id], [dnl
 fd20::/64 dev lo-test proto kernel metric 256 pref medium
 fd20:100::10 via fd20::1 dev lo-test proto zebra metric 1024 pref medium
-fe80::/64 dev lo-test proto kernel metric 256 pref medium
-multicast ff00::/8 dev lo-test proto kernel metric 256 pref medium])
+fe80::/64 dev lo-test proto kernel metric 256 pref medium])
 
 AS_BOX([Advertise just IPv4])
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink route-sync \
@@ -359,8 +358,7 @@ blackhole 192.168.100.0/24 proto ovn])
 OVN_ROUTE_V6_EQUAL([vrf-$table_id], [dnl
 fd20::/64 dev lo-test proto kernel metric 256 pref medium
 fd20:100::10 via fd20::1 dev lo-test proto zebra metric 1024 pref medium
-fe80::/64 dev lo-test proto kernel metric 256 pref medium
-multicast ff00::/8 dev lo-test proto kernel metric 256 pref medium])
+fe80::/64 dev lo-test proto kernel metric 256 pref medium])
 
 AS_BOX([Advertise both IPv4 and IPv6])
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink route-sync \
@@ -379,8 +377,7 @@ OVN_ROUTE_V6_EQUAL([vrf-$table_id], [dnl
 fd20::/64 dev lo-test proto kernel metric 256 pref medium
 fd20:100::10 via fd20::1 dev lo-test proto zebra metric 1024 pref medium
 blackhole fd20:100::/64 dev lo proto ovn metric 1024 pref medium
-fe80::/64 dev lo-test proto kernel metric 256 pref medium
-multicast ff00::/8 dev lo-test proto kernel metric 256 pref medium])
+fe80::/64 dev lo-test proto kernel metric 256 pref medium])
 
 AS_BOX([Advertise just IPv4, should remove the IPv6])
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink route-sync \
@@ -398,8 +395,7 @@ blackhole 192.168.100.0/24 proto ovn])
 OVN_ROUTE_V6_EQUAL([vrf-$table_id], [dnl
 fd20::/64 dev lo-test proto kernel metric 256 pref medium
 fd20:100::10 via fd20::1 dev lo-test proto zebra metric 1024 pref medium
-fe80::/64 dev lo-test proto kernel metric 256 pref medium
-multicast ff00::/8 dev lo-test proto kernel metric 256 pref medium])
+fe80::/64 dev lo-test proto kernel metric 256 pref medium])
 
 AS_BOX([No advertisement should remove IPv4])
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink route-sync \
@@ -416,8 +412,7 @@ OVN_ROUTE_EQUAL([vrf-$table_id], [dnl
 OVN_ROUTE_V6_EQUAL([vrf-$table_id], [dnl
 fd20::/64 dev lo-test proto kernel metric 256 pref medium
 fd20:100::10 via fd20::1 dev lo-test proto zebra metric 1024 pref medium
-fe80::/64 dev lo-test proto kernel metric 256 pref medium
-multicast ff00::/8 dev lo-test proto kernel metric 256 pref medium])
+fe80::/64 dev lo-test proto kernel metric 256 pref medium])
 
 AT_CLEANUP
 
@@ -450,8 +445,7 @@ OVN_ROUTE_EQUAL([vrf-$table_id], [dnl
 
 OVN_ROUTE_V6_EQUAL([vrf-$table_id], [dnl
 fd20::/64 dev lo-test proto kernel metric 256 pref medium
-fe80::/64 dev lo-test proto kernel metric 256 pref medium
-multicast ff00::/8 dev lo-test proto kernel metric 256 pref medium])
+fe80::/64 dev lo-test proto kernel metric 256 pref medium])
 
 AS_BOX([Advertise IPv4 via IPv4 and IPv6 via IPv6])
 check ovstest test-ovn-netlink route-sync $table_id \
@@ -465,8 +459,7 @@ OVN_ROUTE_EQUAL([vrf-$table_id], [dnl
 OVN_ROUTE_V6_EQUAL([vrf-$table_id], [dnl
 fd20::/64 dev lo-test proto kernel metric 256 pref medium
 fd20:100::/64 via fd20::1 dev lo-test proto ovn metric 1024 pref medium
-fe80::/64 dev lo-test proto kernel metric 256 pref medium
-multicast ff00::/8 dev lo-test proto kernel metric 256 pref medium])
+fe80::/64 dev lo-test proto kernel metric 256 pref medium])
 
 AS_BOX([Advertise IPv4 via IPv6 and IPv6 via IPv6])
 check ovstest test-ovn-netlink route-sync $table_id \
@@ -480,8 +473,7 @@ OVN_ROUTE_EQUAL([vrf-$table_id], [dnl
 OVN_ROUTE_V6_EQUAL([vrf-$table_id], [dnl
 fd20::/64 dev lo-test proto kernel metric 256 pref medium
 fd20:100::/64 via fd20::1 dev lo-test proto ovn metric 1024 pref medium
-fe80::/64 dev lo-test proto kernel metric 256 pref medium
-multicast ff00::/8 dev lo-test proto kernel metric 256 pref medium])
+fe80::/64 dev lo-test proto kernel metric 256 pref medium])
 
 AS_BOX([Replace both with blackhole])
 check ovstest test-ovn-netlink route-sync $table_id \
@@ -495,7 +487,6 @@ blackhole 192.168.100.0/24 proto ovn])
 OVN_ROUTE_V6_EQUAL([vrf-$table_id], [dnl
 fd20::/64 dev lo-test proto kernel metric 256 pref medium
 blackhole fd20:100::/64 dev lo proto ovn metric 1024 pref medium
-fe80::/64 dev lo-test proto kernel metric 256 pref medium
-multicast ff00::/8 dev lo-test proto kernel metric 256 pref medium])
+fe80::/64 dev lo-test proto kernel metric 256 pref medium])
 
 AT_CLEANUP

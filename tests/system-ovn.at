@@ -18991,8 +18991,7 @@ blackhole 2001:db8:1003::1 dev lo proto ovn metric 100 pref medium
 blackhole 2001:db8:1003::20 dev lo proto ovn metric 1000 pref medium
 blackhole 2001:db8:1003::150 dev lo proto ovn metric 1000 pref medium
 blackhole 2001:db8:1003::151 dev lo proto ovn metric 1000 pref medium
-fe80::/64 dev lo-test proto kernel metric 256 pref medium
-multicast ff00::/8 dev lo-test proto kernel metric 256 pref medium])
+fe80::/64 dev lo-test proto kernel metric 256 pref medium])
 
 check ovn-nbctl --wait=hv set logical_router R1 \
     options:dynamic-routing-v4-prefix-nexthop="20.0.0.1"
@@ -19020,8 +19019,7 @@ blackhole 2001:db8:1003::1 dev lo proto ovn metric 100 pref medium
 blackhole 2001:db8:1003::20 dev lo proto ovn metric 1000 pref medium
 blackhole 2001:db8:1003::150 dev lo proto ovn metric 1000 pref medium
 blackhole 2001:db8:1003::151 dev lo proto ovn metric 1000 pref medium
-fe80::/64 dev lo-test proto kernel metric 256 pref medium
-multicast ff00::/8 dev lo-test proto kernel metric 256 pref medium])
+fe80::/64 dev lo-test proto kernel metric 256 pref medium])
 
 check ovn-nbctl --wait=hv set logical_router R1 \
     options:dynamic-routing-v6-prefix-nexthop="2000:db8:1000::1"
@@ -19031,8 +19029,7 @@ OVN_ROUTE_V6_EQUAL([ovnvrf$vrf], [dnl
 2001:db8:1003::20 via 2000:db8:1000::1 dev lo-test proto ovn metric 1000 pref medium
 2001:db8:1003::150 via 2000:db8:1000::1 dev lo-test proto ovn metric 1000 pref medium
 2001:db8:1003::151 via 2000:db8:1000::1 dev lo-test proto ovn metric 1000 pref medium
-fe80::/64 dev lo-test proto kernel metric 256 pref medium
-multicast ff00::/8 dev lo-test proto kernel metric 256 pref medium])
+fe80::/64 dev lo-test proto kernel metric 256 pref medium])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
