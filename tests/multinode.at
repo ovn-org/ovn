@@ -2879,14 +2879,14 @@ add_guest_vm_and_connections() {
 }
 
 m_setup_external_frr_router  ovn-gw-1                        41.41.41.41/32
-m_config_external_frr_router ovn-gw-1 4200000100 41.41.41.41 41.41.41.41/32 12:fb:d6:66:99:0c
-m_setup_ovn_frr_router       ovn-gw-1                                       12:fb:d6:66:99:1c 10
-m_config_ovn_frr_router      ovn-gw-1 4210000000 14.14.14.14                                  10
+m_config_external_frr_router ovn-gw-1 4200000100 41.41.41.41 41.41.41.41/32 41::41/64 12:fb:d6:66:99:0c
+m_setup_ovn_frr_router       ovn-gw-1                                                 12:fb:d6:66:99:1c 10
+m_config_ovn_frr_router      ovn-gw-1 4210000000 14.14.14.14                                            10
 
 m_setup_external_frr_router  ovn-gw-2                        42.42.42.42/32
-m_config_external_frr_router ovn-gw-2 4200000200 42.42.42.42 42.42.42.42/32 22:fb:d6:66:99:0c
-m_setup_ovn_frr_router       ovn-gw-2                                       22:fb:d6:66:99:2c 20
-m_config_ovn_frr_router      ovn-gw-2 4210000000 24.24.24.24                                  20
+m_config_external_frr_router ovn-gw-2 4200000200 42.42.42.42 42.42.42.42/32 42::42/64 22:fb:d6:66:99:0c
+m_setup_ovn_frr_router       ovn-gw-2                                                 22:fb:d6:66:99:2c 20
+m_config_ovn_frr_router      ovn-gw-2 4210000000 24.24.24.24                                            20
 
 OVS_WAIT_UNTIL([m_as ovn-gw-2 vtysh -c 'show bgp vrf ovnvrf20 neighbors' | grep -qE 'Connections established 1'])
 OVS_WAIT_UNTIL([m_as ovn-gw-1 vtysh -c 'show bgp vrf ovnvrf10 neighbors' | grep -qE 'Connections established 1'])
@@ -3441,10 +3441,12 @@ CHECK_VRF()
 
 vni=10
 ext_bgp_ip_gw1=42.42.$vni.11
+ext_bgp_ip6_gw1=42:42:$vni::11
 ext_bgp_mac_gw1=00:00:01:00:00:$vni
 host_bgp_ip_gw1=42.42.$vni.12
 host_bgp_mac_gw1=00:00:00:01:00:$vni
 ext_bgp_ip_gw2=42.42.$vni.21
+ext_bgp_ip6_gw2=42:42:$vni::21
 ext_bgp_mac_gw2=00:00:02:00:00:$vni
 host_bgp_ip_gw2=42.42.$vni.22
 host_bgp_mac_gw2=00:00:00:02:00:$vni
@@ -3459,14 +3461,14 @@ host_bgp_mac_gw2=00:00:00:02:00:$vni
  check m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-evpn-vxlan-ports=4789
 
 m_setup_external_frr_router  ovn-gw-1                             $ext_bgp_ip_gw1/24
-m_config_external_frr_router ovn-gw-1 4200000100 $ext_bgp_ip_gw1  $ext_bgp_ip_gw1/24  $ext_bgp_mac_gw1 $vni
-m_setup_host_frr_router      ovn-gw-1 4210000000 $host_bgp_ip_gw1 $host_bgp_ip_gw1/24 $host_bgp_mac_gw1 $vni
-m_config_host_frr_router     ovn-gw-1 4210000000 $host_bgp_ip_gw1 $host_bgp_ip_gw1/24 $host_bgp_mac_gw1 $vni
+m_config_external_frr_router ovn-gw-1 4200000100 $ext_bgp_ip_gw1  $ext_bgp_ip_gw1/24  $ext_bgp_ip6_gw1/64 $ext_bgp_mac_gw1 $vni
+m_setup_host_frr_router      ovn-gw-1 4210000000 $host_bgp_ip_gw1 $host_bgp_ip_gw1/24                     $host_bgp_mac_gw1 $vni
+m_config_host_frr_router     ovn-gw-1 4210000000 $host_bgp_ip_gw1 $host_bgp_ip_gw1/24                     $host_bgp_mac_gw1 $vni
 
 m_setup_external_frr_router  ovn-gw-2                             $ext_bgp_ip_gw2/24
-m_config_external_frr_router ovn-gw-2 4200000200 $ext_bgp_ip_gw2  $ext_bgp_ip_gw2/24  $ext_bgp_mac_gw2 $vni
-m_setup_host_frr_router      ovn-gw-2 4210000000 $host_bgp_ip_gw2 $host_bgp_ip_gw2/24 $host_bgp_mac_gw2 $vni
-m_config_host_frr_router     ovn-gw-2 4210000000 $host_bgp_ip_gw2 $host_bgp_ip_gw2/24 $host_bgp_mac_gw2 $vni
+m_config_external_frr_router ovn-gw-2 4200000200 $ext_bgp_ip_gw2  $ext_bgp_ip_gw2/24  $ext_bgp_ip6_gw2/64 $ext_bgp_mac_gw2 $vni
+m_setup_host_frr_router      ovn-gw-2 4210000000 $host_bgp_ip_gw2 $host_bgp_ip_gw2/24                     $host_bgp_mac_gw2 $vni
+m_config_host_frr_router     ovn-gw-2 4210000000 $host_bgp_ip_gw2 $host_bgp_ip_gw2/24                     $host_bgp_mac_gw2 $vni
 
 OVS_WAIT_UNTIL([m_as ovn-gw-1 vtysh -c 'show bgp neighbors' | grep -qE 'Connections established 1'])
 OVS_WAIT_UNTIL([m_as ovn-gw-2 vtysh -c 'show bgp neighbors' | grep -qE 'Connections established 1'])
@@ -3475,13 +3477,13 @@ check multinode_nbctl ls-add ls                        \
     -- lsp-add-localnet-port ls ls-ln public
 
 # Configure "workloads" (VIF LSPs) on both chassis.
-check multinode_nbctl lsp-add ls w1                       \
-    -- lsp-set-addresses w1 "00:00:00:00:00:01 10.0.0.11"
-check multinode_nbctl lsp-add ls w2                       \
-    -- lsp-set-addresses w2 "00:00:00:00:00:02 10.0.0.12"
+check multinode_nbctl lsp-add ls w1                              \
+    -- lsp-set-addresses w1 "00:00:00:00:00:01 10.0.0.11 10::11"
+check multinode_nbctl lsp-add ls w2                              \
+    -- lsp-set-addresses w2 "00:00:00:00:00:02 10.0.0.12 10::12"
 
-check m_as ovn-gw-1 /data/create_fake_vm.sh w1 w1 00:00:00:00:00:01 1500 10.0.0.11 24 10.0.0.1 1000::11/64 1000::1
-check m_as ovn-gw-2 /data/create_fake_vm.sh w2 w2 00:00:00:00:00:02 1500 10.0.0.12 24 10.0.0.1 1000::12/64 1000::1
+check m_as ovn-gw-1 /data/create_fake_vm.sh w1 w1 00:00:00:00:00:01 1500 10.0.0.11 24 10.0.0.1 10::11/64 10::1
+check m_as ovn-gw-2 /data/create_fake_vm.sh w2 w2 00:00:00:00:00:02 1500 10.0.0.12 24 10.0.0.1 10::12/64 10::1
 m_wait_for_ports_up
 
 # Enable EVPN support for the distributed logical switch and redistribute
@@ -3514,10 +3516,13 @@ check m_as ovn-gw-1 ip netns exec frr-ns ip link set evpn_host_peer up
 check m_as ovn-gw-1 ip link set netns fabric_workload evpn_host
 check m_as ovn-gw-1 ip netns exec fabric_workload ip link set evpn_host addr 00:00:00:00:01:00
 check m_as ovn-gw-1 ip netns exec fabric_workload ip addr add dev evpn_host 10.0.0.41/24
+check m_as ovn-gw-1 ip netns exec fabric_workload ip -6 addr add dev evpn_host 10::41/64 nodad
 check m_as ovn-gw-1 ip netns exec fabric_workload ip link set evpn_host up
-check m_as ovn-gw-1 ip netns exec fabric_workload ip r a default via 10.0.0.1
+check m_as ovn-gw-1 ip netns exec fabric_workload ip route add default via 10.0.0.1
+check m_as ovn-gw-1 ip netns exec fabric_workload ip -6 route add default via 10::1
 check m_as ovn-gw-1 ip netns exec frr-ns ip link set address 00:00:10:00:00:81 dev br-10
-check m_as ovn-gw-1 ip netns exec frr-ns ip a a dev br-10 10.0.0.81/24
+check m_as ovn-gw-1 ip netns exec frr-ns ip addr add dev br-10 10.0.0.81/24
+check m_as ovn-gw-1 ip netns exec frr-ns ip -6 addr add dev br-10 10::81/64 nodad
 
 check m_as ovn-gw-2 ip netns add fabric_workload
 on_exit "m_as ovn-gw-2 ip netns del fabric_workload"
@@ -3529,10 +3534,13 @@ check m_as ovn-gw-2 ip netns exec frr-ns ip link set evpn_host_peer up
 check m_as ovn-gw-2 ip link set netns fabric_workload evpn_host
 check m_as ovn-gw-2 ip netns exec fabric_workload ip link set evpn_host addr 00:00:00:00:02:00
 check m_as ovn-gw-2 ip netns exec fabric_workload ip addr add dev evpn_host 10.0.0.42/24
+check m_as ovn-gw-2 ip netns exec fabric_workload ip -6 addr add dev evpn_host 10::42/64 nodad
 check m_as ovn-gw-2 ip netns exec fabric_workload ip link set evpn_host up
-check m_as ovn-gw-2 ip netns exec fabric_workload ip r a default via 10.0.0.1
+check m_as ovn-gw-2 ip netns exec fabric_workload ip route add default via 10.0.0.1
+check m_as ovn-gw-2 ip netns exec fabric_workload ip -6 r a default via 10::1
 check m_as ovn-gw-2 ip netns exec frr-ns ip link set address 00:00:10:00:00:82 dev br-10
-check m_as ovn-gw-2 ip netns exec frr-ns ip a a dev br-10 10.0.0.82/24
+check m_as ovn-gw-2 ip netns exec frr-ns ip addr add dev br-10 10.0.0.82/24
+check m_as ovn-gw-2 ip netns exec frr-ns ip -6 addr add dev br-10 10::82/64 nodad
 
 AS_BOX([Checking EVPN MACs and IPs on External BGP host])
 OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-1 ip netns exec frr-ns vtysh --vty_socket /run/frr/frr-ns -c 'show evpn mac vni all'], [0], [dnl
@@ -3562,6 +3570,8 @@ OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-1 ip netns exec frr-ns vtysh --vty_socket /run/
                     42.42.10.12                            0 4210000000 i
  *>  [[2]]:[[0]]:[[48]]:[[00:00:00:00:00:01]]:[[32]]:[[10.0.0.11]]
                     42.42.10.12                            0 4210000000 i
+ *>  [[2]]:[[0]]:[[48]]:[[00:00:00:00:00:01]]:[[128]]:[[10::11]]
+                    42.42.10.12                            0 4210000000 i
 ])
 OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ip netns exec frr-ns vtysh --vty_socket /run/frr/frr-ns -c 'show bgp l2vpn evpn route' | \
     grep --no-group-separator -A1 00:00:00:00:00:02], [0], [dnl
@@ -3569,39 +3579,47 @@ OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ip netns exec frr-ns vtysh --vty_socket /run/
                     42.42.10.22                            0 4210000000 i
  *>  [[2]]:[[0]]:[[48]]:[[00:00:00:00:00:02]]:[[32]]:[[10.0.0.12]]
                     42.42.10.22                            0 4210000000 i
+ *>  [[2]]:[[0]]:[[48]]:[[00:00:00:00:00:02]]:[[128]]:[[10::12]]
+                    42.42.10.22                            0 4210000000 i
 ])
 
 AS_BOX([Check traffic to "fabric" hosts - ping from fabric])
-OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec fabric_workload ping -W 1 -c 1 10.0.0.11])
-OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec fabric_workload ping -W 1 -c 1 10.0.0.12])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec fabric_workload ping    -W 1 -c 1 10.0.0.11])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec fabric_workload ping -6 -W 1 -c 1 10::11])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec fabric_workload ping    -W 1 -c 1 10.0.0.12])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec fabric_workload ping -6 -W 1 -c 1 10::12])
 
 AS_BOX([Check type-2 MAC+IP EVPN route advertisements])
 # Ping from the frr-ns to the fabric workload so that its IP is learned on
 # the fabric EVPN peer (and advertised to OVN).
-OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-10 ping -W 1 -c 1 10.0.0.41])
-OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-10 ping -W 1 -c 1 10.0.0.42])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-10 ping    -W 1 -c 1 10.0.0.41])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-10 ping -6 -W 1 -c 1 10::41])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-10 ping    -W 1 -c 1 10.0.0.42])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-10 ping -6 -W 1 -c 1 10::42])
 
 # Check that OVN learned the ARPs.
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([m_as ovn-gw-1 ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | sort], [0], [dnl
  VNI: 10, MAC: 00:00:00:00:01:00, IP: 10.0.0.41, dp_key: $dp_key
+ VNI: 10, MAC: 00:00:00:00:01:00, IP: 10::41, dp_key: $dp_key
 ])
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([m_as ovn-gw-2 ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | sort], [0], [dnl
  VNI: 10, MAC: 00:00:00:00:02:00, IP: 10.0.0.42, dp_key: $dp_key
+ VNI: 10, MAC: 00:00:00:00:02:00, IP: 10::42, dp_key: $dp_key
 ])
 
 AS_BOX([Check that OVN routers used ARP entries learned through type-2 EVPN MAC+IP routes])
 # Add an OVN router with an internal switch and internal workload.
-check multinode_nbctl --wait=hv                               \
-    -- lr-add lr                                              \
-    -- lrp-add lr lr-ls 00:00:00:01:00:00 10.0.0.1/24         \
-    -- lrp-add lr lr-ls-int 00:00:00:02:00:00 20.0.0.1/24     \
-    -- lsp-add-router-port ls ls-lr lr-ls                     \
-    -- ls-add ls-int                                          \
-    -- lsp-add-router-port ls-int ls-int-lr lr-ls-int         \
-    -- lsp-add ls-int w-int1                                  \
-    -- lsp-set-addresses w-int1 "00:00:00:02:00:01 20.0.0.11" \
-    -- lsp-add ls-int w-int2                                  \
-    -- lsp-set-addresses w-int2 "00:00:00:02:00:02 20.0.0.12"
+check multinode_nbctl --wait=hv                                        \
+    -- lr-add lr                                                       \
+    -- lrp-add lr lr-ls 00:00:00:01:00:00 10.0.0.1/24 10::1/64         \
+    -- lrp-add lr lr-ls-int 00:00:00:02:00:00 20.0.0.1/24 2000::1/64   \
+    -- lsp-add-router-port ls ls-lr lr-ls                              \
+    -- ls-add ls-int                                                   \
+    -- lsp-add-router-port ls-int ls-int-lr lr-ls-int                  \
+    -- lsp-add ls-int w-int1                                           \
+    -- lsp-set-addresses w-int1 "00:00:00:02:00:01 20.0.0.11 2000::11" \
+    -- lsp-add ls-int w-int2                                           \
+    -- lsp-set-addresses w-int2 "00:00:00:02:00:02 20.0.0.12 2000::12"
 
 rtr_dp_key=$(m_fetch_column Datapath tunnel_key external_ids:name=lr)
 rtr_port_key=$(m_fetch_column Port_Binding tunnel_key logical_port=lr-ls)
@@ -3617,6 +3635,7 @@ AT_CHECK_UNQUOTED([m_as ovn-gw-1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_B
 priority=100,reg0=0xa00000b,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:00:01,load:0x1->NXM_NX_REG10[[6]]
 priority=100,reg0=0xa00000c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:00:02,load:0x1->NXM_NX_REG10[[6]]
 priority=200,reg0=0xa000029,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:01:00,load:0x1->NXM_NX_REG10[[6]]
+priority=200,reg4=0x100000,reg5=0,reg6=0,reg7=0x41,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:01:00,load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([m_as ovn-gw-1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
@@ -3624,6 +3643,7 @@ AT_CHECK_UNQUOTED([m_as ovn-gw-1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_L
 priority=100,arp,reg0=0xa00000b,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:00:01 actions=load:0x1->NXM_NX_REG10[[6]]
 priority=100,arp,reg0=0xa00000c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:00:02 actions=load:0x1->NXM_NX_REG10[[6]]
 priority=200,arp,reg0=0xa000029,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:01:00 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=200,icmp6,reg0=0x100000,reg1=0,reg2=0,reg3=0x41,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:01:00,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
@@ -3631,6 +3651,7 @@ AT_CHECK_UNQUOTED([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_B
 priority=100,reg0=0xa00000b,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:00:01,load:0x1->NXM_NX_REG10[[6]]
 priority=100,reg0=0xa00000c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:00:02,load:0x1->NXM_NX_REG10[[6]]
 priority=200,reg0=0xa00002a,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:02:00,load:0x1->NXM_NX_REG10[[6]]
+priority=200,reg4=0x100000,reg5=0,reg6=0,reg7=0x42,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:02:00,load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
@@ -3638,15 +3659,20 @@ AT_CHECK_UNQUOTED([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_L
 priority=100,arp,reg0=0xa00000b,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:00:01 actions=load:0x1->NXM_NX_REG10[[6]]
 priority=100,arp,reg0=0xa00000c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:00:02 actions=load:0x1->NXM_NX_REG10[[6]]
 priority=200,arp,reg0=0xa00002a,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:02:00 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=200,icmp6,reg0=0x100000,reg1=0,reg2=0,reg3=0x42,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:02:00,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AS_BOX([Check traffic to "fabric" hosts - ping from internal hosts])
-OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec w-int1 ping -W 1 -c 1 10.0.0.41])
-OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec w-int2 ping -W 1 -c 1 10.0.0.42])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec w-int1 ping    -W 1 -c 1 10.0.0.41])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec w-int1 ping -6 -W 1 -c 1 10::41])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec w-int2 ping    -W 1 -c 1 10.0.0.42])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec w-int2 ping -6 -W 1 -c 1 10::42])
 
 AS_BOX([Check traffic to "fabric" hosts - ping from VNI bridge])
-OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-10 ping -W 1 -c 3 10.0.0.11])
-OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-10 ping -W 1 -c 3 10.0.0.12])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-10 ping    -W 1 -c 3 10.0.0.11])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-10 ping -6 -W 1 -c 3 10::11])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-10 ping    -W 1 -c 3 10.0.0.12])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-10 ping -6 -W 1 -c 3 10::12])
 
 # Check if the dynamic FDB was created.
 OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-1 ovs-ofctl dump-flows br-int table=OFTABLE_GET_REMOTE_FDB,dl_dst=00:00:10:00:00:81 | grep -c "cookie"], [0], [dnl
@@ -3701,17 +3727,25 @@ CHECK_VRF()
 
 vni=10
 ext_bgp_ip_gw1=42.10.$vni.11
+ext_bgp_ip6_gw1=42:10:$vni::11
 ext_bgp_mac_gw1=00:00:01:00:00:$vni
 host_bgp_ip_gw1=42.10.$vni.12
+host_bgp_ip6_gw1=42:10:$vni::12
 host_bgp_mac_gw1=00:00:00:01:00:$vni
 nat_ip_gw1=42.10.$vni.13
+nat_ip6_gw1=42:10:$vni::13
 lb_ip_gw1=42.10.$vni.14
+lb_ip6_gw1=42:10:$vni::14
 ext_bgp_ip_gw2=42.20.$vni.21
+ext_bgp_ip6_gw2=42:20:$vni::21
 ext_bgp_mac_gw2=00:00:02:00:00:$vni
 host_bgp_ip_gw2=42.20.$vni.22
+host_bgp_ip6_gw2=42:20:$vni::22
 host_bgp_mac_gw2=00:00:00:02:00:$vni
 nat_ip_gw2=42.20.$vni.23
+nat_ip6_gw2=42:20:$vni::23
 lb_ip_gw2=42.20.$vni.24
+lb_ip6_gw2=42:20:$vni::24
 
 # Create a flat, distributed OVN localnet switch, with EVPN configured.
  check m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
@@ -3723,14 +3757,14 @@ lb_ip_gw2=42.20.$vni.24
  check m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-evpn-vxlan-ports=4789
 
 m_setup_external_frr_router     ovn-gw-1                             $ext_bgp_ip_gw1/24
-m_config_external_frr_router_l3 ovn-gw-1 4200000100 $ext_bgp_ip_gw1  $ext_bgp_ip_gw1/24  $ext_bgp_mac_gw1 $vni
-m_setup_host_frr_router         ovn-gw-1 4210000000 $host_bgp_ip_gw1 $host_bgp_ip_gw1/24 $host_bgp_mac_gw1 $vni
-m_config_host_frr_router_l3     ovn-gw-1 4210000000 $host_bgp_ip_gw1 $host_bgp_ip_gw1/24 $host_bgp_mac_gw1 $vni
+m_config_external_frr_router_l3 ovn-gw-1 4200000100 $ext_bgp_ip_gw1  $ext_bgp_ip_gw1/24  $ext_bgp_ip6_gw1/64 $ext_bgp_mac_gw1 $vni
+m_setup_host_frr_router         ovn-gw-1 4210000000 $host_bgp_ip_gw1 $host_bgp_ip_gw1/24                     $host_bgp_mac_gw1 $vni
+m_config_host_frr_router_l3     ovn-gw-1 4210000000 $host_bgp_ip_gw1 $host_bgp_ip_gw1/24                     $host_bgp_mac_gw1 $vni
 
 m_setup_external_frr_router     ovn-gw-2                             $ext_bgp_ip_gw2/24
-m_config_external_frr_router_l3 ovn-gw-2 4200000200 $ext_bgp_ip_gw2  $ext_bgp_ip_gw2/24  $ext_bgp_mac_gw2 $vni
-m_setup_host_frr_router         ovn-gw-2 4210000000 $host_bgp_ip_gw2 $host_bgp_ip_gw2/24 $host_bgp_mac_gw2 $vni
-m_config_host_frr_router_l3     ovn-gw-2 4210000000 $host_bgp_ip_gw2 $host_bgp_ip_gw2/24 $host_bgp_mac_gw2 $vni
+m_config_external_frr_router_l3 ovn-gw-2 4200000200 $ext_bgp_ip_gw2  $ext_bgp_ip_gw2/24  $ext_bgp_ip6_gw2/64 $ext_bgp_mac_gw2 $vni
+m_setup_host_frr_router         ovn-gw-2 4210000000 $host_bgp_ip_gw2 $host_bgp_ip_gw2/24                     $host_bgp_mac_gw2 $vni
+m_config_host_frr_router_l3     ovn-gw-2 4210000000 $host_bgp_ip_gw2 $host_bgp_ip_gw2/24                     $host_bgp_mac_gw2 $vni
 
 OVS_WAIT_UNTIL([m_as ovn-gw-1 vtysh -c 'show bgp neighbors' | grep -qE 'Connections established 1'])
 OVS_WAIT_UNTIL([m_as ovn-gw-2 vtysh -c 'show bgp neighbors' | grep -qE 'Connections established 1'])
@@ -3740,55 +3774,63 @@ check m_as ovn-gw-1 ip link add name lo-wl-$vni type dummy
 on_exit "m_as ovn-gw-1 ip link del lo-wl-$vni"
 check m_as ovn-gw-1 ip link set lo-wl-$vni address 00:01:01:01:01:$vni
 check m_as ovn-gw-1 ip link set lo-wl-$vni master vrf-$vni
-check m_as ovn-gw-1 ip a a dev lo-wl-$vni 77.77.1.$vni/32
+check m_as ovn-gw-1 ip addr add dev lo-wl-$vni 77.77.1.$vni/32
+check m_as ovn-gw-1 ip -6 addr add dev lo-wl-$vni 77:77::1:$vni/64 nodad
 check m_as ovn-gw-1 ip link set lo-wl-$vni up
 
 check m_as ovn-gw-2 ip link add name lo-wl-$vni type dummy
 on_exit "m_as ovn-gw-2 ip link del lo-wl-$vni"
 check m_as ovn-gw-2 ip link set lo-wl-$vni address 00:02:02:02:02:$vni
 check m_as ovn-gw-2 ip link set lo-wl-$vni master vrf-$vni
-check m_as ovn-gw-2 ip a a dev lo-wl-$vni 77.77.2.$vni/32
+check m_as ovn-gw-2 ip addr add dev lo-wl-$vni 77.77.2.$vni/32
+check m_as ovn-gw-2 ip -6 addr add dev lo-wl-$vni 77:77::2:$vni/64 nodad
 check m_as ovn-gw-2 ip link set lo-wl-$vni up
 
-check multinode_nbctl                                                            \
-    -- lr-add lr                                                                 \
-      -- set logical_router lr options:dynamic-routing=true                      \
-                               options:dynamic-routing-vrf-id=$vni               \
-      -- lrp-add lr lr-gw1 $host_bgp_mac_gw1 $host_bgp_ip_gw1/24                 \
-        -- lrp-set-gateway-chassis lr-gw1 ovn-gw-1 10                            \
-        -- lrp-set-options lr-gw1 dynamic-routing-redistribute=nat,lb            \
-      -- lrp-add lr lr-gw2 $host_bgp_mac_gw2 $host_bgp_ip_gw2/24                 \
-        -- lrp-set-gateway-chassis lr-gw2 ovn-gw-2 10                            \
-        -- lrp-set-options lr-gw2 dynamic-routing-redistribute=nat,lb            \
-      -- lrp-add lr lr-int1 00:00:00:00:01:02 30.0.1.1/24                        \
-        -- lrp-set-options lr-int1 dynamic-routing-redistribute=connected        \
-      -- lrp-add lr lr-int2 00:00:00:00:01:02 30.0.2.1/24                        \
-        -- lrp-set-options lr-int2 dynamic-routing-redistribute=connected        \
-    -- ls-add ls                                                                 \
-      -- lsp-add-localnet-port ls ls-ln public                                   \
-      -- lsp-add-router-port ls ls-lr-gw1 lr-gw1                                 \
-      -- lsp-add-router-port ls ls-lr-gw2 lr-gw2                                 \
-    -- ls-add ls-int1                                                            \
-      -- lsp-add-router-port ls-int1 ls-int1-lr lr-int1                          \
-    -- ls-add ls-int2                                                            \
+check multinode_nbctl                                                                 \
+    -- lr-add lr                                                                      \
+      -- set logical_router lr options:dynamic-routing=true                           \
+                               options:dynamic-routing-vrf-id=$vni                    \
+      -- lrp-add lr lr-gw1 $host_bgp_mac_gw1 $host_bgp_ip_gw1/24 $host_bgp_ip6_gw1/64 \
+        -- lrp-set-gateway-chassis lr-gw1 ovn-gw-1 10                                 \
+        -- lrp-set-options lr-gw1 dynamic-routing-redistribute=nat,lb                 \
+      -- lrp-add lr lr-gw2 $host_bgp_mac_gw2 $host_bgp_ip_gw2/24 $host_bgp_ip6_gw2/64 \
+        -- lrp-set-gateway-chassis lr-gw2 ovn-gw-2 10                                 \
+        -- lrp-set-options lr-gw2 dynamic-routing-redistribute=nat,lb                 \
+      -- lrp-add lr lr-int1 00:00:00:00:01:02 30.0.1.1/24 30:1::1/64                  \
+        -- lrp-set-options lr-int1 dynamic-routing-redistribute=connected             \
+      -- lrp-add lr lr-int2 00:00:00:00:01:02 30.0.2.1/24 30:2::1/64                  \
+        -- lrp-set-options lr-int2 dynamic-routing-redistribute=connected             \
+    -- ls-add ls                                                                      \
+      -- lsp-add-localnet-port ls ls-ln public                                        \
+      -- lsp-add-router-port ls ls-lr-gw1 lr-gw1                                      \
+      -- lsp-add-router-port ls ls-lr-gw2 lr-gw2                                      \
+    -- ls-add ls-int1                                                                 \
+      -- lsp-add-router-port ls-int1 ls-int1-lr lr-int1                               \
+    -- ls-add ls-int2                                                                 \
       -- lsp-add-router-port ls-int2 ls-int2-lr lr-int2
 
-check multinode_nbctl                                                         \
-    -- lsp-add ls-int1 w1                                                     \
-      -- lsp-set-addresses w1 "00:00:00:00:00:01 30.0.1.11"                   \
-    -- lr-nat-add lr dnat_and_snat $nat_ip_gw1 30.0.1.11 w1 00:00:00:00:01:11 \
-    -- lb-add lb1 $lb_ip_gw1 30.0.1.11                                        \
-    -- lr-lb-add lr lb1                                                       \
-    -- lsp-add ls-int2 w2                                                     \
-      -- lsp-set-addresses w2 "00:00:00:00:00:02 30.0.2.11"                   \
-    -- lr-nat-add lr dnat_and_snat $nat_ip_gw2 30.0.2.11 w2 00:00:00:00:02:11 \
-    -- lb-add lb2 $lb_ip_gw2 30.0.2.11                                        \
-    -- lr-lb-add lr lb2
+check multinode_nbctl                                                          \
+    -- lsp-add ls-int1 w1                                                      \
+      -- lsp-set-addresses w1 "00:00:00:00:00:01 30.0.1.11 30:1::11"           \
+    -- lr-nat-add lr dnat_and_snat $nat_ip_gw1 30.0.1.11 w1 00:00:00:00:01:11  \
+    -- lr-nat-add lr dnat_and_snat $nat_ip6_gw1 30:1::11 w1 00:00:00:00:01:11  \
+    -- lb-add lb1 $lb_ip_gw1 30.0.1.11                                         \
+    -- lb-add lb2 $lb_ip6_gw1 30:1::11                                         \
+    -- lr-lb-add lr lb1                                                        \
+    -- lr-lb-add lr lb2                                                        \
+    -- lsp-add ls-int2 w2                                                      \
+      -- lsp-set-addresses w2 "00:00:00:00:00:02 30.0.2.11 30:2::11"           \
+    -- lr-nat-add lr dnat_and_snat $nat_ip_gw2 30.0.2.11 w2 00:00:00:00:02:11  \
+    -- lr-nat-add lr dnat_and_snat $nat_ip6_gw2 30:2::11 w2 00:00:00:00:02:11  \
+    -- lb-add lb3 $lb_ip_gw2 30.0.2.11                                         \
+    -- lb-add lb4 $lb_ip6_gw2 30:2::11                                         \
+    -- lr-lb-add lr lb3                                                        \
+    -- lr-lb-add lr lb4
 
 check m_as ovn-gw-1 /data/create_fake_vm.sh w1 w1 \
-    00:00:00:00:00:01 1500 30.0.1.11 24 30.0.1.1 1000::11/64 1000::1
+    00:00:00:00:00:01 1500 30.0.1.11 24 30.0.1.1 30:1::11/64 30:1::1
 check m_as ovn-gw-2 /data/create_fake_vm.sh w2 w2 \
-    00:00:00:00:00:02 1500 30.0.2.11 24 30.0.2.1 1000::11/64 1000::1
+    00:00:00:00:00:02 1500 30.0.2.11 24 30.0.2.1 30:2::11/64 30:2::1
 
 m_wait_for_ports_up
 
@@ -3812,8 +3854,10 @@ IP: $ext_bgp_ip_gw2, port: 4789, vni: 10
 ])
 
 AS_BOX([Check traffic to "fabric" hosts - ping from fabric])
-OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 30.0.1.11])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping    -c1 30.0.1.11])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -6 -c1 30:1::11])
 OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 30.0.2.11])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping -6 -c1 30:2::11])
 
 # Check that OVN learned the ARPs.
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([m_as ovn-gw-1 ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | sort], [0], [dnl
@@ -3839,10 +3883,14 @@ OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_GET
 ])
 
 AS_BOX([Check traffic to "fabric" hosts - ping from fabric towards NAT/LB IPs])
-OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 $nat_ip_gw1])
-OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 $lb_ip_gw1])
-OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 $nat_ip_gw2])
-OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 $lb_ip_gw2])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping    -c1 $nat_ip_gw1])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -6 -c1 $nat_ip6_gw1])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping    -c1 $lb_ip_gw1])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -6 -c1 $lb_ip6_gw1])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping    -c1 $nat_ip_gw2])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping -6 -c1 $nat_ip6_gw2])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping    -c1 $lb_ip_gw2])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping -6 -c1 $lb_ip6_gw2])
 
 # Check routes on the external speaker, they should include:
 # - internal OVN subnets (30.0.x.0/24)
@@ -3858,6 +3906,16 @@ NS_OVN_ROUTE_EQUAL([ovn-gw-1], [frr-ns], [vrf-10], [dnl
 42.20.10.24 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink
 77.77.1.10 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink])
 
+NS_OVN_ROUTE_V6_EQUAL([ovn-gw-1], [frr-ns], [vrf-10], [dnl
+30:1::/64 via ::ffff:42.10.10.12 dev br-10 proto bgp metric 20 onlink pref medium
+30:2::/64 via ::ffff:42.10.10.12 dev br-10 proto bgp metric 20 onlink pref medium
+42:10:10::13 via ::ffff:42.10.10.12 dev br-10 proto bgp metric 20 onlink pref medium
+42:10:10::14 via ::ffff:42.10.10.12 dev br-10 proto bgp metric 20 onlink pref medium
+42:10:10::/64 dev br-10 proto kernel metric 256 pref medium
+42:20:10::23 via ::ffff:42.10.10.12 dev br-10 proto bgp metric 20 onlink pref medium
+42:20:10::24 via ::ffff:42.10.10.12 dev br-10 proto bgp metric 20 onlink pref medium
+77:77::/64 via ::ffff:42.10.10.12 dev br-10 proto bgp metric 20 onlink pref medium])
+
 NS_OVN_ROUTE_EQUAL([ovn-gw-2], [frr-ns], [vrf-10], [dnl
 30.0.1.0/24 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
 30.0.2.0/24 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
@@ -3867,6 +3925,16 @@ NS_OVN_ROUTE_EQUAL([ovn-gw-2], [frr-ns], [vrf-10], [dnl
 42.20.10.23 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
 42.20.10.24 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
 77.77.2.10 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink])
+
+NS_OVN_ROUTE_V6_EQUAL([ovn-gw-2], [frr-ns], [vrf-10], [dnl
+30:1::/64 via ::ffff:42.20.10.22 dev br-10 proto bgp metric 20 onlink pref medium
+30:2::/64 via ::ffff:42.20.10.22 dev br-10 proto bgp metric 20 onlink pref medium
+42:10:10::13 via ::ffff:42.20.10.22 dev br-10 proto bgp metric 20 onlink pref medium
+42:10:10::14 via ::ffff:42.20.10.22 dev br-10 proto bgp metric 20 onlink pref medium
+42:20:10::23 via ::ffff:42.20.10.22 dev br-10 proto bgp metric 20 onlink pref medium
+42:20:10::24 via ::ffff:42.20.10.22 dev br-10 proto bgp metric 20 onlink pref medium
+42:20:10::/64 dev br-10 proto kernel metric 256 pref medium
+77:77::/64 via ::ffff:42.20.10.22 dev br-10 proto bgp metric 20 onlink pref medium])
 
 # Check routes on the OVN speaker.
 OVN_ROUTE_EQUAL([ovn-gw-1], [vrf-10], [dnl
@@ -3880,6 +3948,19 @@ blackhole 42.20.10.23 proto ovn metric 1000
 blackhole 42.20.10.24 proto ovn metric 100
 blackhole 42.20.10.24 proto ovn metric 1000])
 
+OVN_ROUTE_V6_EQUAL([ovn-gw-1], [vrf-10], [dnl
+blackhole 30:1::/64 dev lo proto ovn metric 1000 pref medium
+blackhole 30:2::/64 dev lo proto ovn metric 1000 pref medium
+blackhole 42:10:10::13 dev lo proto ovn metric 100 pref medium
+blackhole 42:10:10::14 dev lo proto ovn metric 100 pref medium
+blackhole 42:10:10::14 dev lo proto ovn metric 1000 pref medium
+42:10:10::/64 via ::ffff:42.10.10.11 dev br-10 proto bgp metric 20 onlink pref medium
+blackhole 42:20:10::23 dev lo proto ovn metric 1000 pref medium
+blackhole 42:20:10::24 dev lo proto ovn metric 100 pref medium
+blackhole 42:20:10::24 dev lo proto ovn metric 1000 pref medium
+77:77::/64 dev lo-wl-10 proto kernel metric 256 pref medium
+fe80::/64 dev lo-wl-10 proto kernel metric 256 pref medium])
+
 OVN_ROUTE_EQUAL([ovn-gw-2], [vrf-10], [dnl
 blackhole 30.0.1.0/24 proto ovn metric 1000
 blackhole 30.0.2.0/24 proto ovn metric 1000
@@ -3891,14 +3972,31 @@ blackhole 42.20.10.23 proto ovn metric 100
 blackhole 42.20.10.24 proto ovn metric 100
 blackhole 42.20.10.24 proto ovn metric 1000])
 
+OVN_ROUTE_V6_EQUAL([ovn-gw-2], [vrf-10], [dnl
+blackhole 30:1::/64 dev lo proto ovn metric 1000 pref medium
+blackhole 30:2::/64 dev lo proto ovn metric 1000 pref medium
+blackhole 42:10:10::13 dev lo proto ovn metric 1000 pref medium
+blackhole 42:10:10::14 dev lo proto ovn metric 100 pref medium
+blackhole 42:10:10::14 dev lo proto ovn metric 1000 pref medium
+blackhole 42:20:10::23 dev lo proto ovn metric 100 pref medium
+blackhole 42:20:10::24 dev lo proto ovn metric 100 pref medium
+blackhole 42:20:10::24 dev lo proto ovn metric 1000 pref medium
+42:20:10::/64 via ::ffff:42.20.10.21 dev br-10 proto bgp metric 20 onlink pref medium
+77:77::/64 dev lo-wl-10 proto kernel metric 256 pref medium
+fe80::/64 dev lo-wl-10 proto kernel metric 256 pref medium])
+
 check multinode_nbctl --wait=hv set logical_router lr \
     options:dynamic-routing-redistribute-local-only=true
 
 AS_BOX([Check traffic to "fabric" hosts - ping from fabric towards NAT/LB IPs - local-only=true])
-OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 $nat_ip_gw1])
-OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 $lb_ip_gw1])
-OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 $nat_ip_gw2])
-OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping -c1 $lb_ip_gw2])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping    -c1 $nat_ip_gw1])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -6 -c1 $nat_ip6_gw1])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping    -c1 $lb_ip_gw1])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -6 -c1 $lb_ip6_gw1])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping    -c1 $nat_ip_gw2])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping -6 -c1 $nat_ip6_gw2])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping    -c1 $lb_ip_gw2])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ip vrf exec vrf-$vni ping -6 -c1 $lb_ip6_gw2])
 
 NS_OVN_ROUTE_EQUAL([ovn-gw-1], [frr-ns], [vrf-10], [dnl
 30.0.1.0/24 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink
@@ -3909,6 +4007,15 @@ NS_OVN_ROUTE_EQUAL([ovn-gw-1], [frr-ns], [vrf-10], [dnl
 42.20.10.24 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink
 77.77.1.10 via 42.10.10.12 dev br-10 proto bgp metric 20 onlink])
 
+NS_OVN_ROUTE_V6_EQUAL([ovn-gw-1], [frr-ns], [vrf-10], [dnl
+30:1::/64 via ::ffff:42.10.10.12 dev br-10 proto bgp metric 20 onlink pref medium
+30:2::/64 via ::ffff:42.10.10.12 dev br-10 proto bgp metric 20 onlink pref medium
+42:10:10::13 via ::ffff:42.10.10.12 dev br-10 proto bgp metric 20 onlink pref medium
+42:10:10::14 via ::ffff:42.10.10.12 dev br-10 proto bgp metric 20 onlink pref medium
+42:10:10::/64 dev br-10 proto kernel metric 256 pref medium
+42:20:10::24 via ::ffff:42.10.10.12 dev br-10 proto bgp metric 20 onlink pref medium
+77:77::/64 via ::ffff:42.10.10.12 dev br-10 proto bgp metric 20 onlink pref medium])
+
 NS_OVN_ROUTE_EQUAL([ovn-gw-2], [frr-ns], [vrf-10], [dnl
 30.0.1.0/24 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
 30.0.2.0/24 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
@@ -3917,6 +4024,15 @@ NS_OVN_ROUTE_EQUAL([ovn-gw-2], [frr-ns], [vrf-10], [dnl
 42.20.10.23 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
 42.20.10.24 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink
 77.77.2.10 via 42.20.10.22 dev br-10 proto bgp metric 20 onlink])
+
+NS_OVN_ROUTE_V6_EQUAL([ovn-gw-2], [frr-ns], [vrf-10], [dnl
+30:1::/64 via ::ffff:42.20.10.22 dev br-10 proto bgp metric 20 onlink pref medium
+30:2::/64 via ::ffff:42.20.10.22 dev br-10 proto bgp metric 20 onlink pref medium
+42:10:10::14 via ::ffff:42.20.10.22 dev br-10 proto bgp metric 20 onlink pref medium
+42:20:10::23 via ::ffff:42.20.10.22 dev br-10 proto bgp metric 20 onlink pref medium
+42:20:10::24 via ::ffff:42.20.10.22 dev br-10 proto bgp metric 20 onlink pref medium
+42:20:10::/64 dev br-10 proto kernel metric 256 pref medium
+77:77::/64 via ::ffff:42.20.10.22 dev br-10 proto bgp metric 20 onlink pref medium])
 
 # Check routes on the OVN speaker.
 OVN_ROUTE_EQUAL([ovn-gw-1], [vrf-10], [dnl
@@ -3927,6 +4043,16 @@ blackhole 42.10.10.13 proto ovn metric 100
 blackhole 42.10.10.14 proto ovn metric 100
 blackhole 42.20.10.24 proto ovn metric 100])
 
+OVN_ROUTE_V6_EQUAL([ovn-gw-1], [vrf-10], [dnl
+blackhole 30:1::/64 dev lo proto ovn metric 1000 pref medium
+blackhole 30:2::/64 dev lo proto ovn metric 1000 pref medium
+blackhole 42:10:10::13 dev lo proto ovn metric 100 pref medium
+blackhole 42:10:10::14 dev lo proto ovn metric 100 pref medium
+42:10:10::/64 via ::ffff:42.10.10.11 dev br-10 proto bgp metric 20 onlink pref medium
+blackhole 42:20:10::24 dev lo proto ovn metric 100 pref medium
+77:77::/64 dev lo-wl-10 proto kernel metric 256 pref medium
+fe80::/64 dev lo-wl-10 proto kernel metric 256 pref medium])
+
 OVN_ROUTE_EQUAL([ovn-gw-2], [vrf-10], [dnl
 blackhole 30.0.1.0/24 proto ovn metric 1000
 blackhole 30.0.2.0/24 proto ovn metric 1000
@@ -3934,6 +4060,16 @@ blackhole 42.10.10.14 proto ovn metric 100
 42.20.10.0/24 via 42.20.10.21 dev br-10 proto bgp metric 20 onlink
 blackhole 42.20.10.23 proto ovn metric 100
 blackhole 42.20.10.24 proto ovn metric 100])
+
+OVN_ROUTE_V6_EQUAL([ovn-gw-2], [vrf-10], [dnl
+blackhole 30:1::/64 dev lo proto ovn metric 1000 pref medium
+blackhole 30:2::/64 dev lo proto ovn metric 1000 pref medium
+blackhole 42:10:10::14 dev lo proto ovn metric 100 pref medium
+blackhole 42:20:10::23 dev lo proto ovn metric 100 pref medium
+blackhole 42:20:10::24 dev lo proto ovn metric 100 pref medium
+42:20:10::/64 via ::ffff:42.20.10.21 dev br-10 proto bgp metric 20 onlink pref medium
+77:77::/64 dev lo-wl-10 proto kernel metric 256 pref medium
+fe80::/64 dev lo-wl-10 proto kernel metric 256 pref medium])
 
 AT_CLEANUP
 

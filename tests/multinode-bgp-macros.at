@@ -18,12 +18,12 @@ m_frr_ns_flags() {
     fi
 }
 
-# m_setup_external_frr_vrf NODE VNI VXLAN_IP LOCAL_MAC LOCAL_IP NETNS
+# m_setup_external_frr_vrf NODE VNI VXLAN_IP LOCAL_MAC LOCAL_IP LOCAL_IP6 NETNS
 #
 # Sets up a VRF in NETNS so that it can be used by FRR running in that
 # namespace to advertise EVPN routes.
 m_setup_external_frr_vrf() {
-    local node=$1 vni=$2 vxlan_ip=$3 local_mac=$4 local_ip=$5 ns=$6
+    local node=$1 vni=$2 vxlan_ip=$3 local_mac=$4 local_ip=$5 local_ip6=$6 ns=$7
 
     local ns_prefix="ip netns exec $ns "
     local vrf=vrf-$vni
@@ -41,6 +41,7 @@ m_setup_external_frr_vrf() {
     check m_as $node $ns_prefix ip link set $br master $vrf addrgenmode none
     check m_as $node $ns_prefix ip link set $br address $local_mac
     check m_as $node $ns_prefix ip addr add dev $br $local_ip
+    check m_as $node $ns_prefix ip -6 addr add dev $br $local_ip6
     check m_as $node $ns_prefix ip link set dev $br up
 
     # Add VXLAN VTEP for the VNI.
@@ -110,14 +111,14 @@ m_setup_external_frr_router() {
     check m_as $node systemctl start frr
 }
 
-# m_config_external_frr_router NODE BGP_AS BGP_ROUTER_ID BGP_IP BGP_MAC [VNI]
+# m_config_external_frr_router NODE BGP_AS BGP_ROUTER_ID BGP_IP BGP_IP6 BGP_MAC [VNI]
 #
 # Configures an external FRR BGP speaker in a network namespace on the
 # ovn-fake-multinode node NODE.  The BGP autonomous system is configured to be
-# BGP_AS.  The speaker uses as BGP IP address, BGP_IP and BGP_MAC as mac
+# BGP_AS.  The speaker uses as BGP IP address, BGP_IP, BGP_IP6 and BGP_MAC as mac
 # address.
 m_config_external_frr_router() {
-    local node=$1 bgp_as=$2 bgp_router_id=$3 bgp_ip=$4 bgp_mac=$5 vni=$6
+    local node=$1 bgp_as=$2 bgp_router_id=$3 bgp_ip=$4 bgp_ip6=$5 bgp_mac=$6 vni=$7
     local frr_flags=$(m_frr_ns_flags frr-ns)
     local br_name=br-$node
 
@@ -146,18 +147,18 @@ m_config_external_frr_router() {
     # Configure VRF, if any provided.
     vxlan_ip=$(echo $bgp_ip | cut -f 1 -d '/')
     if [[[ -n "$vni" ]]]; then
-        m_setup_external_frr_vrf $node $vni $vxlan_ip $bgp_mac $bgp_ip frr-ns
+        m_setup_external_frr_vrf $node $vni $vxlan_ip $bgp_mac $bgp_ip $bgp_ip6 frr-ns
     fi
 }
 
-# m_config_external_frr_router_l3 NODE BGP_AS BGP_ROUTER_ID BGP_IP BGP_MAC VNI
+# m_config_external_frr_router_l3 NODE BGP_AS BGP_ROUTER_ID BGP_IP BGP_IP6 BGP_MAC VNI
 #
 # Configures an external FRR BGP speaker for L3 EVPN in a network namespace
 # on the ovn-fake-multinode node NODE.  The BGP autonomous system is
-# configured to be BGP_AS.  The speaker uses as BGP IP address, BGP_IP and
-# BGP_MAC as mac address.
+# configured to be BGP_AS.  The speaker uses as BGP IP address, BGP_IP, BGP_IP6
+# and BGP_MAC as mac address.
 m_config_external_frr_router_l3() {
-    local node=$1 bgp_as=$2 bgp_router_id=$3 bgp_ip=$4 bgp_mac=$5 vni=$6
+    local node=$1 bgp_as=$2 bgp_router_id=$3 bgp_ip=$4 bgp_ip6=$5 bgp_mac=$6 vni=$7
     local frr_flags=$(m_frr_ns_flags frr-ns)
     local br_name=br-$node
 
@@ -199,13 +200,14 @@ m_config_external_frr_router_l3() {
 
       address-family l2vpn evpn
        advertise ipv4 unicast
+       advertise ipv6 unicast
       exit-address-family
     exit
     " | podman exec -i $node vtysh $frr_flags
 
     # Configure VRF, if any provided.
     vxlan_ip=$(echo $bgp_ip | cut -f 1 -d '/')
-    m_setup_external_frr_vrf $node $vni $vxlan_ip $bgp_mac $bgp_ip frr-ns
+    m_setup_external_frr_vrf $node $vni $vxlan_ip $bgp_mac $bgp_ip $bgp_ip6 frr-ns
 }
 
 # m_ovn_frr_router_name NODE
@@ -529,8 +531,14 @@ m_config_host_frr_router_l3() {
        redistribute connected
       exit-address-family
 
+      address-family ipv6 unicast
+       redistribute kernel
+       redistribute connected
+      exit-address-family
+
       address-family l2vpn evpn
        advertise ipv4 unicast
+       advertise ipv6 unicast
       exit-address-family
     exit
     " | podman exec -i $node vtysh
