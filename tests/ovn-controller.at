@@ -848,7 +848,7 @@ check ovn-nbctl meter-add event-elb drop 100 pktps 10
 check ovn-nbctl --wait=hv copp-add copp0 event-elb event-elb
 check ovn-nbctl --wait=hv ls-copp-add copp0 ls1
 
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep controller | grep userdata=00.00.00.0f | grep -q meter_id=1])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep controller | grep userdata=00.00.00.0f | grep -q meter_id=1], [0], [], [ignore])
 
 check ovn-nbctl copp-del copp0
 AT_CHECK([ovn-nbctl copp-list copp0], [0], [dnl
@@ -861,13 +861,13 @@ check ovn-nbctl --wait=hv copp-add copp1 reject acl-meter
 check ovn-nbctl ls-copp-add copp1 ls1
 check ovn-nbctl --wait=hv acl-add ls1 from-lport 1002 'inport == "lsp1" && ip && udp' reject
 
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep controller | grep userdata=00.00.00.16 | grep -q meter_id=1])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep controller | grep userdata=00.00.00.16 | grep -q meter_id=1], [0], [], [ignore])
 
 # arp metering
 check ovn-nbctl meter-add arp-meter drop 200 pktps 0
 check ovn-nbctl --wait=hv copp-add copp2 arp-resolve arp-meter
 check ovn-nbctl --wait=hv lr-copp-add copp2 lr1
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep controller | grep userdata=00.00.00.00 | grep -q meter_id=2])
+AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | grep controller | grep userdata=00.00.00.00 | grep -q meter_id=2], [0], [], [ignore])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
@@ -2085,7 +2085,7 @@ check ovn-nbctl --wait=hv sync
 check ovn-nbctl remove address_set as1 addresses 10.0.0.1/32
 check ovn-nbctl --wait=hv sync
 
-AT_CHECK([grep "already references desired flow" hv1/ovn-controller.log | grep -q "nw_src=10.0.0.1"])
+AT_CHECK([grep "already references desired flow" hv1/ovn-controller.log | grep -q "nw_src=10.0.0.1"], [0], [], [ignore])
 
 # Same for duplicate IPv6 addresses.
 check ovn-nbctl add address_set as2 addresses '["::01"]'
@@ -2093,7 +2093,7 @@ check ovn-nbctl --wait=hv sync
 check ovn-nbctl remove address_set as2 addresses '["::01"]'
 check ovn-nbctl --wait=hv sync
 
-AT_CHECK([grep "already references desired flow" hv1/ovn-controller.log | grep -q "ipv6_src=::1"])
+AT_CHECK([grep "already references desired flow" hv1/ovn-controller.log | grep -q "ipv6_src=::1"], [0], [], [ignore])
 
 OVN_CLEANUP([hv1
 /already references desired flow/d
@@ -2501,8 +2501,8 @@ AT_CHECK([ovn-nbctl --wait=hv sync])
 # Check if ovn-controller is still alive
 AT_CHECK([ps $pid], [0], [ignore])
 # Check if we got warnings for invalid
-AT_CHECK([grep "Parsing of ovn-chassis-mac-mappings failed" hv1/ovn-controller.log | grep -q invalid1])
-AT_CHECK([grep "Parsing of ovn-chassis-mac-mappings failed" hv1/ovn-controller.log | grep -q invalid2])
+AT_CHECK([grep "Parsing of ovn-chassis-mac-mappings failed" hv1/ovn-controller.log | grep -q invalid1], [0], [], [ignore])
+AT_CHECK([grep "Parsing of ovn-chassis-mac-mappings failed" hv1/ovn-controller.log | grep -q invalid2], [0], [], [ignore])
 AT_CHECK([grep "Parsing of ovn-chassis-mac-mappings failed" hv1/ovn-controller.log | grep -q br1], [1])
 
 OVN_CLEANUP([hv1
