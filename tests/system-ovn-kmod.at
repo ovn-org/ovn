@@ -1247,11 +1247,11 @@ check_flow_assured() {
     echo Check if a conntrack entry exists for src=$src_ip, dst=$dst_ip, zone=$zone
 
     if test -n "$src_ip" && test -n "$dst_ip"; then
-        AT_CHECK([grep -F "$src_ip" conntrack_file | grep -F "$dst_ip" | grep "zone=$zone" | grep -q "ASSURED"])
+        AT_CHECK([grep -F "$src_ip" conntrack_file | grep -F "$dst_ip" | grep "zone=$zone" | grep -q "ASSURED"], [0], [], [ignore])
     elif test -n "$src_ip"; then
-        AT_CHECK([grep -F "$src_ip" conntrack_file | grep "zone=$zone" | grep -q "ASSURED"])
+        AT_CHECK([grep -F "$src_ip" conntrack_file | grep "zone=$zone" | grep -q "ASSURED"], [0], [], [ignore])
     else
-        AT_CHECK([grep -F "$dst_ip" conntrack_file | grep "zone=$zone" | grep -q "ASSURED"])
+        AT_CHECK([grep -F "$dst_ip" conntrack_file | grep "zone=$zone" | grep -q "ASSURED"], [0], [], [ignore])
     fi
 }
 
